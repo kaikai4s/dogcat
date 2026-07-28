@@ -1,0 +1,9 @@
+<view class="page">
+  <view class="title">选择工作台</view>
+  <view class="tip">当前账号可进入以下角色。</view>
+
+  <view class="role" wx:for="{{roles}}" wx:key="*this" data-role="{{item}}" bindtap="chooseRole">
+    <view class="role-name">{{item === 'client' ? '宠物主端' : item === 'staff' ? '员工端' : '管理端'}}</view>
+    <view class="role-tip">点击进入</view>
+  </view>
+</view>

@@ -1,0 +1,1 @@
+<view class="page"><view class="title">宠物档案</view><button class="primary" bindtap="create">新增宠物</button><view class="card" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="edit"><view class="strong">{{item.name}}</view><view class="muted">{{item.breed || '未填写品种'}} · {{item.weight || 0}}kg</view></view><view class="empty" wx:if="{{!pets.length}}">暂无宠物档案</view></view>

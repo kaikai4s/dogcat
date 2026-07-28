@@ -1,0 +1,42 @@
+{
+  "pages": [
+    "pages/login/index",
+    "pages/dev/init/index",
+    "pages/role-select/index",
+    "pages/client/home/index",
+    "pages/client/pets/list/index",
+    "pages/client/pets/edit/index",
+    "pages/client/home-security/index",
+    "pages/client/orders/create/index",
+    "pages/client/orders/list/index",
+    "pages/client/orders/detail/index",
+    "pages/client/orders/tracking/index",
+    "pages/client/orders/report/index",
+    "pages/staff/home/index",
+    "pages/staff/certification/index",
+    "pages/staff/orders/list/index",
+    "pages/staff/orders/detail/index",
+    "pages/staff/orders/service/index",
+    "pages/staff/checkin/camera/index",
+    "pages/staff/sos/index",
+    "pages/admin/home/index",
+    "pages/admin/orders/list/index",
+    "pages/admin/orders/detail/index",
+    "pages/admin/orders/assign/index",
+    "pages/admin/staff-audit/list/index",
+    "pages/admin/staff-audit/detail/index",
+    "pages/admin/incidents/list/index",
+    "pages/admin/evidence/detail/index"
+  ],
+  "window": {
+    "backgroundColor": "#F7F3ED",
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#F7F3ED",
+    "navigationBarTitleText": "VIP 宠护",
+    "navigationBarTextStyle": "black"
+  },
+  "requiredBackgroundModes": ["location"],
+  "sitemapLocation": "sitemap.json",
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents"
+}

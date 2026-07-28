@@ -1,0 +1,21 @@
+<view class="page">
+  <view class="title">开发初始化</view>
+  <view class="tip">仅开发期使用。上线前请从 app.json 移除此页面。</view>
+
+  <button class="ghost" bindtap="checkCollections">检查集合</button>
+  <button class="primary" bindtap="seedAdmin">把当前账号设为管理员</button>
+  <button class="primary" bindtap="seedDemoData">生成演示数据</button>
+
+  <view class="subtitle" wx:if="{{collections.length}}">集合检查</view>
+  <view class="card" wx:for="{{collections}}" wx:key="name">
+    <view>{{item.name}}：{{item.exists ? '已存在' : '未创建'}}</view>
+    <view class="muted" wx:if="{{!item.exists}}">{{item.message}}</view>
+  </view>
+
+  <view class="subtitle" wx:if="{{result}}">最近结果</view>
+  <view class="card" wx:if="{{result}}">
+    <view>用户：{{result.user.nickname || result.nickname}}</view>
+    <view wx:if="{{result.pet}}">演示宠物：{{result.pet.name}}</view>
+    <view wx:if="{{result.order}}">演示订单：{{result.order.orderNo}}</view>
+  </view>
+</view>

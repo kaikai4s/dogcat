@@ -1,0 +1,1 @@
+<view class="page" wx:if="{{detail}}"><view class="title">订单详情</view><view class="card"><view>{{detail.order.orderNo}}</view><view>状态：{{detail.order.status}}</view><view>轨迹点：{{detail.tracks.length}}</view><view>打卡：{{detail.checkins.length}}</view><view>密码日志：{{detail.unlockLogs.length}}</view></view><button class="ghost" bindtap="evidence">证据链</button></view>

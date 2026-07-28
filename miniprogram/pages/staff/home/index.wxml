@@ -1,0 +1,1 @@
+<view class="page"><view class="title">员工工作台</view><view class="grid"><view class="card" data-url="/pages/staff/certification/index" bindtap="go">入驻认证</view><view class="card" data-url="/pages/staff/orders/list/index" bindtap="go">我的任务</view></view><button class="ghost" bindtap="switchRole">切换角色</button></view>

@@ -1,0 +1,1 @@
+<view class="page"><view class="title">员工审核</view><view class="card" wx:for="{{staff}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail"><view class="strong">{{item.realName}}</view><view class="muted">{{item.auditStatus}} · {{item.serviceCity}}</view></view></view>

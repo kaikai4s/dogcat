@@ -1,0 +1,1 @@
+<view class="page"><view class="title">我的订单</view><view class="card" wx:for="{{orders}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail"><view class="strong">{{item.serviceType === 'walk' ? '遛狗' : '喂养'}} · {{item.petName}}</view><view class="muted">{{item.status}} · ¥{{item.payAmount}}</view></view><view class="empty" wx:if="{{!orders.length}}">暂无订单</view></view>

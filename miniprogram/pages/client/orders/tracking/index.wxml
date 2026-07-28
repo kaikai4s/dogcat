@@ -1,0 +1,1 @@
+<view class="page"><view class="title">服务轨迹</view><view class="card">轨迹点：{{tracks.length}}</view><view class="subtitle">打卡时间轴</view><view class="card" wx:for="{{checkins}}" wx:key="_id"><view class="strong">{{item.eventType}}</view><view class="muted">{{item.remark}}</view></view></view>

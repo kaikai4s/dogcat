@@ -1,0 +1,1 @@
+<view class="page" wx:if="{{order}}"><view class="title">任务详情</view><view class="card"><view>宠物：{{order.petName}}</view><view>地址：{{order.serviceAddress}}</view><view>状态：{{order.status}}</view><view>时间：{{order.startTime}} - {{order.endTime}}</view></view><button class="primary" bindtap="service">进入服务</button><button class="danger" bindtap="sos">SOS</button></view>

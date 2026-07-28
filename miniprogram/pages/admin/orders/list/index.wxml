@@ -1,0 +1,1 @@
+<view class="page"><view class="title">订单管理</view><view class="card" wx:for="{{orders}}" wx:key="_id"><view data-id="{{item._id}}" bindtap="detail"><view class="strong">{{item.orderNo}}</view><view class="muted">{{item.status}} · {{item.petName}}</view></view><button wx:if="{{item.status === 'paid'}}" size="mini" data-id="{{item._id}}" bindtap="assign">派单</button></view></view>

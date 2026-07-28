@@ -1,0 +1,1 @@
+<view class="page" wx:if="{{evidence}}"><view class="title">证据链</view><view class="card"><view>订单：{{evidence.order.orderNo}}</view><view>轨迹点：{{evidence.tracks.length}}</view><view>打卡记录：{{evidence.checkins.length}}</view><view>密码访问日志：{{evidence.unlockLogs.length}}</view></view></view>

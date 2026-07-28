@@ -1,0 +1,1 @@
+<view class="page" wx:if="{{report}}"><view class="title">服务报告</view><view class="card"><view>订单：{{report.order.orderNo}}</view><view>状态：{{report.order.status}}</view><view>轨迹点：{{report.tracks.length}}</view><view>打卡数：{{report.checkins.length}}</view></view></view>

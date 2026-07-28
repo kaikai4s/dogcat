@@ -1,0 +1,1 @@
+<view class="page"><view class="title">一键 SOS</view><textarea placeholder="描述现场情况" value="{{description}}" bindinput="input"/><button class="danger" bindtap="submit">提交 SOS</button></view>

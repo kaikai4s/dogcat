@@ -1,0 +1,1 @@
+<view class="page"><view class="title">{{eventType}} 打卡</view><camera device-position="back" flash="off" class="camera"></camera><button class="ghost" bindtap="takePhoto">实时拍照</button><view class="muted" wx:if="{{mediaFileId}}">照片已上传</view><textarea placeholder="备注" value="{{remark}}" bindinput="input"/><button class="primary" bindtap="submit">提交打卡</button></view>

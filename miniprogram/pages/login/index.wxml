@@ -1,0 +1,13 @@
+<view class="page">
+  <view class="hero">
+    <view class="brand">VIP 宠护</view>
+    <view class="subtitle">上门遛狗 / 喂养 / 可视化履约</view>
+  </view>
+
+  <view class="card" wx:if="{{!envReady}}">
+    <view class="warn">请先在 miniprogram/envList.js 配置云开发环境 ID。</view>
+  </view>
+
+  <button class="primary" loading="{{loading}}" bindtap="login">微信云开发登录</button>
+  <button class="ghost" bindtap="openInit">开发初始化</button>
+</view>
