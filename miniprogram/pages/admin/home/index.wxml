@@ -1,1 +1,56 @@
-<view class="page"><view class="title">管理工作台</view><view class="card" wx:if="{{dashboard}}"><view>待审核员工：{{dashboard.staffPending}}</view><view>待处理异常：{{dashboard.incidentsOpen}}</view><view>进行中订单：{{dashboard.orders.in_service || 0}}</view></view><view class="grid"><view class="card" data-url="/pages/admin/orders/list/index" bindtap="go">订单管理</view><view class="card" data-url="/pages/admin/staff-audit/list/index" bindtap="go">员工审核</view><view class="card" data-url="/pages/admin/incidents/list/index" bindtap="go">异常事件</view></view><button class="ghost" bindtap="switchRole">切换角色</button></view>
+<view class="page dashboard-page">
+  <view class="dashboard-header">
+    <view class="badge">管理端</view>
+    <view class="title">运营控制台</view>
+    <view class="tip">监控订单、审核员工、处理异常和调阅证据链。</view>
+  </view>
+
+  <view class="stats-grid" wx:if="{{dashboard}}">
+    <view class="stat-card">
+      <view class="stat-number">{{dashboard.staffPending}}</view>
+      <view class="stat-label">待审核员工</view>
+    </view>
+    <view class="stat-card">
+      <view class="stat-number">{{dashboard.incidentsOpen}}</view>
+      <view class="stat-label">待处理异常</view>
+    </view>
+    <view class="stat-card">
+      <view class="stat-number">{{dashboard.orders.in_service || 0}}</view>
+      <view class="stat-label">进行中订单</view>
+    </view>
+    <view class="stat-card">
+      <view class="stat-number">{{dashboard.orders.paid || 0}}</view>
+      <view class="stat-label">待派单订单</view>
+    </view>
+  </view>
+
+  <view class="grid">
+    <view class="card interactive action-card" data-url="/pages/admin/orders/list/index" bindtap="go">
+      <view class="action-icon">单</view>
+      <view class="strong">订单管理</view>
+      <view class="muted">派单与监控</view>
+    </view>
+    <view class="card interactive action-card" data-url="/pages/admin/staff-audit/list/index" bindtap="go">
+      <view class="action-icon">审</view>
+      <view class="strong">员工审核</view>
+      <view class="muted">资质与权限</view>
+    </view>
+    <view class="card interactive action-card" data-url="/pages/admin/incidents/list/index" bindtap="go">
+      <view class="action-icon">警</view>
+      <view class="strong">异常事件</view>
+      <view class="muted">SOS 与客诉</view>
+    </view>
+    <view class="card interactive action-card" data-url="/pages/admin/service-prices/index" bindtap="go">
+      <view class="action-icon">价</view>
+      <view class="strong">价格配置</view>
+      <view class="muted">服务项目与收费</view>
+    </view>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item active"><view class="nav-icon">⌂</view><view>控制台</view></view>
+    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon">☑</view><view>审核</view></view>
+    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon">!</view><view>异常</view></view>
+  </view>
+</view>

@@ -1,1 +1,19 @@
-<view class="page"><view class="title">派单</view><picker range="{{staff}}" range-key="realName" bindchange="choose"><view class="field">选择员工：{{staff.length ? '已选择' : '暂无已审核员工'}}</view></picker><button class="primary" bindtap="assign">确认派单</button></view>
+<view class="page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">订单派发</view>
+    <view class="title">派单</view>
+    <view class="tip">选择已审核员工承接该订单，派单后员工端会显示任务。</view>
+  </view>
+
+  <view class="card form-card">
+    <picker range="{{staff}}" range-key="realName" bindchange="choose">
+      <view class="field">选择员工：{{staff.length ? '已选择' : '暂无已审核员工'}}</view>
+    </picker>
+  </view>
+
+  <button class="primary" bindtap="assign">确认派单</button>
+</view>

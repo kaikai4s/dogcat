@@ -1,1 +1,28 @@
-<view class="page" wx:if="{{report}}"><view class="title">服务报告</view><view class="card"><view>订单：{{report.order.orderNo}}</view><view>状态：{{report.order.status}}</view><view>轨迹点：{{report.tracks.length}}</view><view>打卡数：{{report.checkins.length}}</view></view></view>
+<view class="page" wx:if="{{report}}">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">完成报告</view>
+    <view class="title">服务报告</view>
+    <view class="tip">服务完成后自动汇总轨迹、打卡和履约证据。</view>
+  </view>
+
+  <view class="soft-panel">
+    <view class="between">
+      <view>
+        <view class="muted">订单编号</view>
+        <view class="strong">{{report.order.orderNo}}</view>
+      </view>
+      <view class="badge">{{report.order.statusText}}</view>
+    </view>
+  </view>
+
+  <view class="card info-list">
+    <view class="info-row"><view class="label">订单</view><view class="value">{{report.order.orderNo}}</view></view>
+    <view class="info-row"><view class="label">状态</view><view class="badge">{{report.order.statusText}}</view></view>
+    <view class="info-row"><view class="label">轨迹点</view><view class="value">{{report.tracks.length}}</view></view>
+    <view class="info-row"><view class="label">打卡数</view><view class="value">{{report.checkins.length}}</view></view>
+  </view>
+</view>

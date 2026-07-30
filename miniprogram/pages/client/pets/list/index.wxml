@@ -1,1 +1,37 @@
-<view class="page"><view class="title">宠物档案</view><button class="primary" bindtap="create">新增宠物</button><view class="card" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="edit"><view class="strong">{{item.name}}</view><view class="muted">{{item.breed || '未填写品种'}} · {{item.weight || 0}}kg</view></view><view class="empty" wx:if="{{!pets.length}}">暂无宠物档案</view></view>
+<view class="page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">我的爱宠</view>
+    <view class="title">宠物档案</view>
+    <view class="tip">完善品种、体重和敏感备注，宠托师服务更安心。</view>
+  </view>
+
+  <button class="primary" bindtap="create">添加自己的宠物</button>
+
+  <view class="card interactive pet-card" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="edit">
+    <view class="row">
+      <image class="pet-photo" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" />
+      <view class="pet-photo empty-photo" wx:else>🐾</view>
+      <view style="flex: 1;">
+        <view class="between">
+          <view class="strong">{{item.name}}</view>
+          <view class="badge">{{item.aiInteractionEnabled ? 'AI互动' : '档案'}}</view>
+        </view>
+        <view class="muted">{{item.breed || '未填写品种'}} · {{item.birthday || '未填写生日'}} · {{item.weight || 0}}kg</view>
+        <view class="muted">{{item.personality || '还没有填写性格特点'}}</view>
+        <view class="chip-row">
+          <view class="chip">{{item.species === 'cat' ? '猫咪' : item.species === 'other' ? '其他宠物' : '狗狗'}}</view>
+          <view class="chip pink">{{item.gender || '未填性别'}}</view>
+          <view class="chip blue">{{item.specialNotes || item.healthNotes ? '有照顾说明' : '健康乖巧'}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!pets.length}}">
+    <view>暂无宠物档案，先添加一个宠物吧</view>
+  </view>
+</view>

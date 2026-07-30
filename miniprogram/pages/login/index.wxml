@@ -1,11 +1,20 @@
-<view class="page">
-  <view class="hero">
-    <view class="brand">VIP 宠护</view>
-    <view class="subtitle">上门遛狗 / 喂养 / 可视化履约</view>
+<view class="page login-page">
+  <view class="pet-hero">
+    <view class="hero-location">📍 VIP 宠护</view>
+    <view class="hero-kicker">上门服务 · 立即预约</view>
+    <view class="hero-title">喂猫 / 遛狗 放下出行烦恼</view>
+    <view class="hero-subtitle">实时轨迹、相机打卡、完整服务报告</view>
+    <view class="hero-chip">安心托付每一次上门</view>
   </view>
 
-  <view class="card" wx:if="{{!envReady}}">
-    <view class="warn">请先在 miniprogram/envList.js 配置云开发环境 ID。</view>
+  <view class="card">
+    <view class="strong">欢迎来到 VIP 宠护</view>
+    <view class="muted">登录后可管理宠物档案、预约上门服务，并查看轨迹与履约证据。</view>
+  </view>
+
+  <view class="notice danger" wx:if="{{!envReady}}">
+    <view class="strong">云环境未配置</view>
+    <view class="muted">请先在 miniprogram/envList.js 配置云开发环境 ID。</view>
   </view>
 
   <button class="primary" loading="{{loading}}" bindtap="login">微信云开发登录</button>

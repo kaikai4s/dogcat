@@ -1,1 +1,105 @@
-<view class="page"><view class="title">预约服务</view><picker range="{{pets}}" range-key="name" bindchange="choosePet"><view class="field">宠物：{{pets.length ? '已选择' : '请先添加宠物'}}</view></picker><view class="tabs"><button class="tab" data-type="walk" bindtap="chooseType">遛狗</button><button class="tab" data-type="feed" bindtap="chooseType">喂养</button></view><input placeholder="服务地址" value="{{form.serviceAddress}}" data-field="serviceAddress" bindinput="input"/><input placeholder="开始时间 2026-07-28 10:00" value="{{form.startTime}}" data-field="startTime" bindinput="input"/><input placeholder="结束时间 2026-07-28 11:00" value="{{form.endTime}}" data-field="endTime" bindinput="input"/><button class="ghost" bindtap="quoteOrder">试算价格</button><view class="card" wx:if="{{quote}}">预计支付：¥{{quote.payAmount}}</view><button class="primary" bindtap="create">创建订单</button></view>
+<view class="page order-create-page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">立即预约</view>
+    <view class="title">预约上门服务</view>
+    <view class="tip">选择服务项目、上门时间和详细门牌，系统会自动试算价格。</view>
+  </view>
+
+  <view class="pet-search">
+    <view class="search-icon">🔎</view>
+    <view style="flex: 1;">多选宠护服务</view>
+    <view class="search-button" bindtap="quoteOrder">试算</view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">发布方式</view>
+    <view class="publish-grid">
+      <view class="publish-option {{form.publishMode === 'open' ? 'active' : ''}}" data-mode="open" bindtap="choosePublishMode">
+        <view class="service-title">公开发布抢单</view>
+        <view class="service-desc">支付后附近审核通过的宠托师可抢单</view>
+      </view>
+      <view class="publish-option {{form.publishMode === 'direct' ? 'active' : ''}}" data-mode="direct" bindtap="choosePublishMode">
+        <view class="service-title">指定宠托师接单</view>
+        <view class="service-desc">支付后仅指定宠托师可看到并接单</view>
+      </view>
+    </view>
+    <view class="notice" wx:if="{{form.publishMode === 'direct'}}">
+      <view class="strong">{{requestedSitter ? requestedSitter.displayName : '还未选择宠托师'}}</view>
+      <view class="muted">{{requestedSitter ? requestedSitter.serviceSummary : '请从宠托师列表选择指定对象'}}</view>
+      <button class="ghost compact-btn" bindtap="chooseSitter">重新选择宠托师</button>
+    </view>
+
+    <picker range="{{pets}}" range-key="name" bindchange="choosePet">
+      <view class="field">🐾 宠物：{{pets.length ? '已选择' : '请先添加宠物'}}</view>
+    </picker>
+
+    <view class="subtitle">服务项目（可多选）</view>
+    <view class="service-grid">
+      <view class="service-option {{item.selected ? 'active' : ''}}" wx:for="{{serviceOptions}}" wx:key="key" data-key="{{item.key}}" bindtap="toggleService">
+        <view class="service-title">{{item.label}}</view>
+        <view class="service-price">¥{{item.price}} 起</view>
+        <view class="service-desc">{{item.description}}</view>
+      </view>
+    </view>
+
+    <view class="subtitle">服务地址</view>
+    <view class="address-actions">
+      <button class="ghost compact-btn" bindtap="chooseSavedAddress">常用地址</button>
+      <button class="ghost compact-btn" bindtap="useCurrentLocation">地图选择</button>
+    </view>
+    <view class="notice" wx:if="{{locationReady || form.serviceAddress}}">
+      <view class="strong">{{form.serviceAddress}}</view>
+      <view class="muted">{{locationTip}}</view>
+    </view>
+    <input placeholder="详细地址（如 3栋2单元18楼）必填" value="{{form.addressDetail}}" data-field="addressDetail" bindinput="input" />
+    <input placeholder="门牌号/入户说明（如 1802，门牌朝南）必填" value="{{form.doorplate}}" data-field="doorplate" bindinput="input" />
+    <view class="between save-row">
+      <view>
+        <view class="strong">保存为常用地址</view>
+        <view class="muted">下次预约自动带入默认地址</view>
+      </view>
+      <switch checked="{{saveAddress}}" bindchange="toggleSaveAddress" />
+    </view>
+
+    <view class="subtitle">服务时间</view>
+    <view class="picker-grid">
+      <picker mode="date" value="{{form.startDate}}" bindchange="chooseDate">
+        <view class="field">日期：{{form.startDate}}</view>
+      </picker>
+      <picker mode="time" value="{{form.startClock}}" bindchange="chooseClock">
+        <view class="field">开始：{{form.startClock}}</view>
+      </picker>
+    </view>
+    <picker range="{{durationOptions}}" range-key="label" value="{{durationIndex}}" bindchange="chooseDuration">
+      <view class="field">服务时长：{{durationOptions[durationIndex].label}}</view>
+    </picker>
+    <view class="notice">
+      <view class="muted">预计时间</view>
+      <view class="strong">{{form.startTime}} 至 {{form.endTime}}</view>
+    </view>
+  </view>
+
+  <button class="ghost" bindtap="quoteOrder">试算价格</button>
+
+  <view class="soft-panel" wx:if="{{quote}}">
+    <view class="between">
+      <view>
+        <view class="muted">预计支付</view>
+        <view class="price">¥{{quote.payAmount}}</view>
+      </view>
+      <view class="badge">{{quote.serviceSummary}}</view>
+    </view>
+    <view class="price-breakdown">
+      <view class="info-row" wx:for="{{quote.priceItems}}" wx:key="key">
+        <view class="label">{{item.label}}</view>
+        <view class="value">¥{{item.price}}</view>
+      </view>
+    </view>
+  </view>
+
+  <button class="primary" bindtap="create">创建订单</button>
+</view>

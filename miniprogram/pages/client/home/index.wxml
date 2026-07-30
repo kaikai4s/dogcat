@@ -1,1 +1,75 @@
-<view class="page"><view class="title">宠物主工作台</view><view class="grid"><view class="card" data-url="/pages/client/pets/list/index" bindtap="go">宠物档案</view><view class="card" data-url="/pages/client/home-security/index" bindtap="go">家庭安防</view><view class="card" data-url="/pages/client/orders/create/index" bindtap="go">预约下单</view><view class="card" data-url="/pages/client/orders/list/index" bindtap="go">我的订单</view></view><button class="ghost" bindtap="switchRole">切换角色</button></view>
+<view class="page dashboard-page">
+  <view class="pet-hero">
+    <view class="hero-top">
+      <view class="hero-location interactive" bindtap="updateLocation">
+        <view class="location-pin">📍</view>
+        <view>
+          <view class="location-name">{{locationName}}</view>
+          <view class="location-tip" wx:if="{{locationTip}}">{{locationTip}}</view>
+        </view>
+        <view class="location-arrow">⌄</view>
+      </view>
+      <view class="hero-mini-pill">上门服务 · 立即预约</view>
+    </view>
+    <view class="hero-kicker">上门服务 · 立即下单</view>
+    <view class="hero-title">上门喂猫 / 遛狗</view>
+    <view class="hero-subtitle">放下出行烦恼，宠物在家也安心</view>
+    <view class="hero-chip">GPS 轨迹 + 实时打卡</view>
+  </view>
+
+  <view class="grid">
+    <view class="card interactive service-card" data-url="/pages/client/orders/create/index" bindtap="go">
+      <view class="action-icon">🐱</view>
+      <view class="strong">上门喂猫</view>
+      <view class="muted">换粮换水 / 铲屎 / 陪伴</view>
+    </view>
+    <view class="card interactive service-card" data-url="/pages/client/orders/create/index" bindtap="go">
+      <view class="action-icon">🐶</view>
+      <view class="strong">上门遛狗</view>
+      <view class="muted">牵引出门 / 轨迹可视</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="subtitle">快捷入口</view>
+    <view class="grid">
+      <view class="quick-card interactive" data-url="/pages/client/pets/list/index" bindtap="go">
+        <view class="action-icon">🐾</view>
+        <view class="strong">宠物档案</view>
+        <view class="muted">完善爱宠资料</view>
+      </view>
+      <view class="quick-card interactive" data-url="/pages/client/home-security/index" bindtap="go">
+        <view class="action-icon">🏠</view>
+        <view class="strong">家庭安防</view>
+        <view class="muted">门锁入户说明</view>
+      </view>
+      <view class="quick-card interactive" data-url="/pages/client/orders/list/index" bindtap="go">
+        <view class="action-icon">📋</view>
+        <view class="strong">我的订单</view>
+        <view class="muted">查看轨迹报告</view>
+      </view>
+      <view class="quick-card interactive" data-url="/pages/client/sitters/list/index" bindtap="go">
+        <view class="action-icon">🐾</view>
+        <view class="strong">找宠托师</view>
+        <view class="muted">按城市区域筛选</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="soft-panel">
+    <view class="between">
+      <view>
+        <view class="strong">历史服务记录</view>
+        <view class="muted">查看更多服务记录和评价</view>
+      </view>
+      <view class="badge">安心履约</view>
+    </view>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item active"><view class="nav-icon">⌂</view><view>首页</view></view>
+    <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon">🐾</view><view>宠托师</view></view>
+    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon">♙</view><view>我的</view></view>
+  </view>
+</view>

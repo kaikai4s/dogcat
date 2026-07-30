@@ -31,7 +31,7 @@ async function login(openid) {
       phone: '',
       nickname: '微信用户',
       avatarUrl: '',
-      roles: ['client', 'staff'],
+      roles: ['client'],
       activeRole: 'client',
       status: 'active',
       createdAt: time,

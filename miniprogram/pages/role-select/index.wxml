@@ -1,9 +1,15 @@
 <view class="page">
-  <view class="title">选择工作台</view>
-  <view class="tip">当前账号可进入以下角色。</view>
+  <view class="dashboard-header">
+    <view class="badge">选择身份</view>
+    <view class="title">进入你的宠护工作台</view>
+    <view class="tip">宠物主预约服务，宠托师通过个人中心申请并执行任务。</view>
+  </view>
 
-  <view class="role" wx:for="{{roles}}" wx:key="*this" data-role="{{item}}" bindtap="chooseRole">
-    <view class="role-name">{{item === 'client' ? '宠物主端' : item === 'staff' ? '员工端' : '管理端'}}</view>
-    <view class="role-tip">点击进入</view>
+  <view class="role interactive" wx:for="{{roles}}" wx:key="*this" data-role="{{item}}" bindtap="chooseRole">
+    <view class="role-mark">{{item === 'client' ? '🐾' : '😺'}}</view>
+    <view>
+      <view class="role-name">{{item === 'client' ? '宠物主端' : '宠托师端'}}</view>
+      <view class="role-tip">{{item === 'client' ? '预约喂猫遛狗，查看订单报告' : '查看任务，上传打卡证据'}}</view>
+    </view>
   </view>
 </view>

@@ -4,6 +4,11 @@
     "pages/dev/init/index",
     "pages/role-select/index",
     "pages/client/home/index",
+    "pages/client/sitters/list/index",
+    "pages/client/sitters/detail/index",
+    "pages/client/sitters/favorites/index",
+    "pages/client/addresses/list/index",
+    "pages/client/addresses/edit/index",
     "pages/client/pets/list/index",
     "pages/client/pets/edit/index",
     "pages/client/home-security/index",
@@ -12,7 +17,11 @@
     "pages/client/orders/detail/index",
     "pages/client/orders/tracking/index",
     "pages/client/orders/report/index",
+    "pages/client/orders/review/index",
+    "pages/client/profile/index",
+    "pages/client/profile/edit/index",
     "pages/staff/home/index",
+    "pages/staff/profile/index",
     "pages/staff/certification/index",
     "pages/staff/orders/list/index",
     "pages/staff/orders/detail/index",
@@ -20,6 +29,7 @@
     "pages/staff/checkin/camera/index",
     "pages/staff/sos/index",
     "pages/admin/home/index",
+    "pages/admin/service-prices/index",
     "pages/admin/orders/list/index",
     "pages/admin/orders/detail/index",
     "pages/admin/orders/assign/index",
@@ -29,13 +39,19 @@
     "pages/admin/evidence/detail/index"
   ],
   "window": {
-    "backgroundColor": "#F7F3ED",
+    "backgroundColor": "#FFF3F7",
     "backgroundTextStyle": "light",
-    "navigationBarBackgroundColor": "#F7F3ED",
+    "navigationBarBackgroundColor": "#FFF3F7",
     "navigationBarTitleText": "VIP 宠护",
     "navigationBarTextStyle": "black"
   },
   "requiredBackgroundModes": ["location"],
+  "requiredPrivateInfos": ["getLocation", "chooseLocation"],
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于获取当前位置，为您推荐附近宠托师和附近可接订单"
+    }
+  },
   "sitemapLocation": "sitemap.json",
   "style": "v2",
   "lazyCodeLoading": "requiredComponents"

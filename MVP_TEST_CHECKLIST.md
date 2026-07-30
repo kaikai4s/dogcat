@@ -10,6 +10,7 @@ npm test
 
 当前已覆盖云函数单元测试：
 
+- `api` 统一云函数分发
 - `auth` 登录和角色切换
 - `order` 创建订单、强制打卡校验
 - `homeSecurity` 门锁密码加密、解锁时间窗校验和日志记录
@@ -47,21 +48,13 @@ admin_operation_logs
 
 ### 2.3 部署云函数
 
-需要部署：
+当前已合并为单一云函数以适配免费套餐限制，只需要部署：
 
 ```text
-auth
-pet
-homeSecurity
-staff
-order
-payment
-track
-checkin
-incident
-admin
-initData
+api
 ```
+
+前端仍按业务模块调用，`miniprogram/utils/cloud.js` 会统一转发到 `api`。旧的拆分云函数目录可保留在本地作为参考，但云端无需部署。
 
 ## 3. 初始化管理员
 

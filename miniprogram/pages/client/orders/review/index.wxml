@@ -1,0 +1,27 @@
+<view class="page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">服务评价</view>
+    <view class="title">评价这次宠护服务</view>
+    <view class="tip">真实评价会帮助其他宠物主选择可靠宠托师。</view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">整体评分</view>
+    <view class="rating-row">
+      <view class="rating-star {{rating >= item ? 'active' : ''}}" wx:for="{{ratingOptions}}" wx:key="*this" data-rating="{{item}}" bindtap="chooseRating">★</view>
+    </view>
+
+    <view class="subtitle">服务标签</view>
+    <view class="tag-grid">
+      <view class="tag-option {{item.selected ? 'active' : ''}}" wx:for="{{tags}}" wx:key="label" data-label="{{item.label}}" bindtap="toggleTag">{{item.label}}</view>
+    </view>
+
+    <textarea placeholder="可以写下宠托师的服务表现、宠物状态反馈等" value="{{content}}" bindinput="input" maxlength="300" />
+  </view>
+
+  <button class="primary" bindtap="submit">提交评价</button>
+</view>

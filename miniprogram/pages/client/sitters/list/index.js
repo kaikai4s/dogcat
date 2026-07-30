@@ -1,0 +1,140 @@
+const { callFunction, showError } = require('../../../../utils/cloud')
+
+const ALL = '全部'
+const sortOptions = [
+  { label: '推荐', value: 'default' },
+  { label: '最近更新', value: 'latest' },
+  { label: '城市优先', value: 'city' }
+]
+
+function unique(values) {
+  return Array.from(new Set(values.filter(Boolean)))
+}
+
+function areaTags(sitter) {
+  return Array.isArray(sitter.areaTags) ? sitter.areaTags : []
+}
+
+Page({
+  data: {
+    keyword: '',
+    activeCity: ALL,
+    activeArea: ALL,
+    sortBy: 'default',
+    sortOptions,
+    cityOptions: [ALL],
+    areaOptions: [ALL],
+    allSitters: [],
+    sitters: [],
+    total: 0,
+    loading: false
+  },
+
+  onShow() {
+    this.loadFacets()
+  },
+
+  loadFacets() {
+    this.setData({ loading: true })
+    callFunction('staff', 'listApprovedSitters', { pageSize: 50 })
+      .then((res) => {
+        const allSitters = res.list || []
+        this.setData({ allSitters }, () => {
+          this.refreshOptions()
+          this.loadSitters()
+        })
+      })
+      .catch((error) => {
+        this.setData({ loading: false })
+        showError(error)
+      })
+  },
+
+  refreshOptions() {
+    const { allSitters, activeCity } = this.data
+    const cityOptions = [ALL, ...unique(allSitters.map((item) => item.serviceCity).filter((city) => city && city !== '服务城市待完善'))]
+    const source = activeCity === ALL ? allSitters : allSitters.filter((item) => item.serviceCity === activeCity)
+    const areaOptions = [ALL, ...unique(source.reduce((list, item) => list.concat(areaTags(item)), []))]
+    this.setData({ cityOptions, areaOptions })
+  },
+
+  loadSitters() {
+    const { keyword, activeCity, activeArea, sortBy } = this.data
+    this.setData({ loading: true })
+    callFunction('staff', 'listApprovedSitters', {
+      keyword,
+      serviceCity: activeCity === ALL ? '' : activeCity,
+      serviceArea: activeArea === ALL ? '' : activeArea,
+      sortBy,
+      pageSize: 50
+    })
+      .then((res) => {
+        this.setData({ sitters: res.list || [], total: res.total || 0, loading: false })
+      })
+      .catch((error) => {
+        this.setData({ loading: false })
+        showError(error)
+      })
+  },
+
+  inputKeyword(e) {
+    this.setData({ keyword: e.detail.value })
+  },
+
+  search() {
+    this.loadSitters()
+  },
+
+  chooseCity(e) {
+    this.setData({ activeCity: e.currentTarget.dataset.city, activeArea: ALL }, () => {
+      this.refreshOptions()
+      this.loadSitters()
+    })
+  },
+
+  chooseArea(e) {
+    this.setData({ activeArea: e.currentTarget.dataset.area }, this.loadSitters)
+  },
+
+  chooseSort(e) {
+    this.setData({ sortBy: e.currentTarget.dataset.sort }, this.loadSitters)
+  },
+
+  clearFilters() {
+    this.setData({ keyword: '', activeCity: ALL, activeArea: ALL, sortBy: 'default' }, () => {
+      this.refreshOptions()
+      this.loadSitters()
+    })
+  },
+
+  detail(e) {
+    wx.navigateTo({ url: '/pages/client/sitters/detail/index?id=' + e.currentTarget.dataset.id })
+  },
+
+  book(e) {
+    const staffProfileId = e.currentTarget.dataset.id
+    const url = staffProfileId
+      ? `/pages/client/orders/create/index?publishMode=direct&staffProfileId=${staffProfileId}`
+      : '/pages/client/orders/create/index?publishMode=open'
+    wx.navigateTo({ url })
+  },
+
+  openPublish() {
+    wx.navigateTo({ url: '/pages/client/orders/create/index?publishMode=open' })
+  },
+
+  showAreas(e) {
+    wx.showModal({
+      title: '服务区域',
+      content: e.currentTarget.dataset.area || '服务区域待完善',
+      showCancel: false,
+      confirmText: '知道了'
+    })
+  },
+
+  go(e) {
+    const url = e.currentTarget.dataset.url
+    if (!url) return
+    wx.redirectTo({ url })
+  }
+})

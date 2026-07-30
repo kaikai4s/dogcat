@@ -1,1 +1,18 @@
-<view class="page" wx:if="{{evidence}}"><view class="title">证据链</view><view class="card"><view>订单：{{evidence.order.orderNo}}</view><view>轨迹点：{{evidence.tracks.length}}</view><view>打卡记录：{{evidence.checkins.length}}</view><view>密码访问日志：{{evidence.unlockLogs.length}}</view></view></view>
+<view class="page" wx:if="{{evidence}}">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">履约证据</view>
+    <view class="title">证据链</view>
+    <view class="tip">汇总订单轨迹、打卡记录和限时门锁密码访问日志。</view>
+  </view>
+
+  <view class="card info-list">
+    <view class="info-row"><view class="label">订单</view><view class="value">{{evidence.order.orderNo}}</view></view>
+    <view class="info-row"><view class="label">轨迹点</view><view class="value">{{evidence.tracks.length}}</view></view>
+    <view class="info-row"><view class="label">打卡记录</view><view class="value">{{evidence.checkins.length}}</view></view>
+    <view class="info-row"><view class="label">密码访问日志</view><view class="value">{{evidence.unlockLogs.length}}</view></view>
+  </view>
+</view>

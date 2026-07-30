@@ -1,0 +1,94 @@
+<view class="page sitter-page">
+  <view class="sitter-hero">
+    <view class="hero-topline">
+      <view class="badge">宠物主精选</view>
+      <view class="hero-count">{{total}} 位可预约</view>
+    </view>
+    <view class="title">找靠谱宠托师</view>
+    <view class="tip">实名审核 · 服务区域可筛选 · 上门喂猫遛狗</view>
+  </view>
+
+  <view class="pet-search sitter-search">
+    <view class="search-icon">🔎</view>
+    <input class="search-input" placeholder="搜索城市 / 区域 / 宠托师" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="search" />
+    <view class="search-button" bindtap="search">搜索</view>
+  </view>
+
+  <view class="card filter-card">
+    <view class="filter-section">
+      <view class="filter-title">服务城市</view>
+      <scroll-view scroll-x class="filter-scroll">
+        <view class="filter-row">
+          <view class="filter-chip {{activeCity === item ? 'active' : ''}}" wx:for="{{cityOptions}}" wx:key="*this" data-city="{{item}}" bindtap="chooseCity">{{item}}</view>
+        </view>
+      </scroll-view>
+    </view>
+    <view class="filter-section">
+      <view class="filter-title">服务区域</view>
+      <scroll-view scroll-x class="filter-scroll">
+        <view class="filter-row">
+          <view class="filter-chip {{activeArea === item ? 'active' : ''}}" wx:for="{{areaOptions}}" wx:key="*this" data-area="{{item}}" bindtap="chooseArea">{{item}}</view>
+        </view>
+      </scroll-view>
+    </view>
+    <view class="filter-section last">
+      <view class="filter-title">排序</view>
+      <view class="filter-row wrap">
+        <view class="filter-chip {{sortBy === item.value ? 'active' : ''}}" wx:for="{{sortOptions}}" wx:key="value" data-sort="{{item.value}}" bindtap="chooseSort">{{item.label}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="soft-panel sitter-trust">
+    <view class="between">
+      <view>
+        <view class="strong">平台审核宠托师</view>
+        <view class="muted">可指定某位宠托师，也可以公开发布让附近宠托师抢单</view>
+      </view>
+      <view class="pet-avatar">🐾</view>
+    </view>
+    <button class="ghost" bindtap="openPublish">公开发布抢单</button>
+  </view>
+
+  <view class="loading-card" wx:if="{{loading}}">正在寻找合适宠托师...</view>
+
+  <view class="card sitter-card" wx:for="{{sitters}}" wx:key="_id">
+    <view class="sitter-head">
+      <view class="sitter-avatar">🐶</view>
+      <view class="sitter-main">
+        <view class="between">
+          <view>
+            <view class="strong">{{item.displayName}}</view>
+            <view class="muted">{{item.serviceCity}}</view>
+          </view>
+          <view class="badge">已审核</view>
+        </view>
+        <view class="chip-row">
+          <view class="chip pink" wx:for="{{item.publicTags}}" wx:for-item="tag" wx:key="*this">{{tag}}</view>
+        </view>
+      </view>
+    </view>
+    <view class="sitter-summary">{{item.serviceSummary}}</view>
+    <view class="chip-row area-row">
+      <view class="chip" wx:for="{{item.areaTags}}" wx:for-item="area" wx:key="*this">{{area}}</view>
+    </view>
+    <view class="sitter-actions">
+      <button class="primary compact-btn" data-id="{{item._id}}" bindtap="book">指定预约</button>
+      <button class="ghost compact-btn" data-id="{{item._id}}" bindtap="detail">查看详情</button>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && !sitters.length}}">
+    <view>暂时没有符合条件的宠托师</view>
+    <view class="muted">这里只展示管理端审核通过的宠托师；刚提交入驻申请会先处于审核中。</view>
+    <button class="ghost" bindtap="clearFilters">清空筛选</button>
+    <button class="primary" bindtap="openPublish">公开发布抢单</button>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>首页</view></view>
+    <view class="nav-item active"><view class="nav-icon">🐾</view><view>宠托师</view></view>
+    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon">♙</view><view>我的</view></view>
+  </view>
+</view>

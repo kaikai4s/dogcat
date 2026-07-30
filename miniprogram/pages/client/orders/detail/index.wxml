@@ -1,1 +1,65 @@
-<view class="page" wx:if="{{order}}"><view class="title">订单详情</view><view class="card"><view class="strong">{{order.orderNo}}</view><view>服务：{{order.serviceType === 'walk' ? '遛狗' : '喂养'}}</view><view>宠物：{{order.petName}}</view><view>状态：{{order.status}}</view><view>金额：¥{{order.payAmount}}</view></view><button class="primary" wx:if="{{order.status === 'pending_pay'}}" bindtap="pay">Mock 支付</button><button class="ghost" bindtap="tracking">查看轨迹/打卡</button><button class="ghost" bindtap="report">服务报告</button></view>
+<view class="page" wx:if="{{order}}">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">订单详情</view>
+    <view class="title">{{order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+    <view class="tip">订单号 {{order.orderNo}}</view>
+  </view>
+
+  <view class="soft-panel">
+    <view class="between">
+      <view>
+        <view class="muted">当前状态</view>
+        <view class="strong">{{order.statusText}}</view>
+      </view>
+      <view class="price">¥{{order.payAmount}}</view>
+    </view>
+  </view>
+
+  <view class="card info-list">
+    <view class="info-row"><view class="label">服务</view><view class="value">{{order.serviceSummary || (order.serviceType === 'walk' ? '遛狗' : '喂养')}}</view></view>
+    <view class="info-row"><view class="label">发布方式</view><view class="value">{{order.publishMode === 'direct' ? '指定宠托师' : '公开发布抢单'}}</view></view>
+    <view class="info-row" wx:if="{{order.publishMode === 'direct'}}"><view class="label">指定宠托师</view><view class="value">{{order.requestedStaffName || '已指定宠托师'}}</view></view>
+    <view class="info-row"><view class="label">宠物</view><view class="value">{{order.petName}}</view></view>
+    <view class="info-row"><view class="label">地址</view><view class="value">{{order.serviceAddress}}</view></view>
+    <view class="info-row" wx:if="{{order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{order.addressDetail}}</view></view>
+    <view class="info-row" wx:if="{{order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{order.doorplate}}</view></view>
+    <view class="info-row"><view class="label">时间</view><view class="value">{{order.startTime}} - {{order.endTime}}</view></view>
+    <view class="info-row" wx:if="{{order.durationMinutes}}"><view class="label">时长</view><view class="value">{{order.durationMinutes}}分钟</view></view>
+    <view class="info-row"><view class="label">状态</view><view class="badge">{{order.statusText}}</view></view>
+    <view class="info-row"><view class="label">金额</view><view class="price">¥{{order.payAmount}}</view></view>
+  </view>
+
+  <view class="card" wx:if="{{timeline.length}}">
+    <view class="subtitle">订单进度</view>
+    <view class="timeline">
+      <view class="timeline-item" wx:for="{{timeline}}" wx:key="_id">
+        <view class="timeline-dot"></view>
+        <view class="timeline-content">
+          <view class="strong">{{item.title}}</view>
+          <view class="muted">{{item.detail}}</view>
+          <view class="muted">{{item.createdAt}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{review}}">
+    <view class="subtitle">服务评价</view>
+    <view class="strong">{{review.rating}} 星</view>
+    <view class="muted">{{review.content || '客户未填写文字评价'}}</view>
+    <view class="tag-row" wx:if="{{review.tags.length}}">
+      <view class="tag" wx:for="{{review.tags}}" wx:key="*this">{{item}}</view>
+    </view>
+  </view>
+
+  <button class="primary" wx:if="{{order.status === 'pending_pay'}}" bindtap="pay">Mock 支付</button>
+  <button class="ghost" wx:if="{{order.status === 'pending_pay' || order.status === 'paid' || order.status === 'assigned'}}" bindtap="cancelOrder">取消订单 / 查看退款</button>
+  <button class="ghost" wx:if="{{order.status === 'completed' && !review}}" bindtap="reviewOrder">评价服务</button>
+  <button class="ghost" bindtap="rebook">再次预约</button>
+  <button class="ghost" bindtap="tracking">查看轨迹 / 打卡</button>
+  <button class="ghost" bindtap="report">服务报告</button>
+</view>

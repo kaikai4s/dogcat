@@ -1,1 +1,32 @@
-<view class="page"><view class="title">服务轨迹</view><view class="card">轨迹点：{{tracks.length}}</view><view class="subtitle">打卡时间轴</view><view class="card" wx:for="{{checkins}}" wx:key="_id"><view class="strong">{{item.eventType}}</view><view class="muted">{{item.remark}}</view></view></view>
+<view class="page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">实时履约</view>
+    <view class="title">服务轨迹</view>
+    <view class="tip">实时轨迹和打卡时间轴会在服务过程中持续更新。</view>
+  </view>
+
+  <view class="stats-grid">
+    <view class="stat-card">
+      <view class="stat-number">{{tracks.length}}</view>
+      <view class="stat-label">轨迹点</view>
+    </view>
+    <view class="stat-card">
+      <view class="stat-number">{{checkins.length}}</view>
+      <view class="stat-label">打卡记录</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="subtitle">打卡时间轴</view>
+    <view class="timeline">
+      <view class="timeline-item" wx:for="{{checkins}}" wx:key="_id">
+        <view class="strong">{{item.eventTypeText}}</view>
+        <view class="muted">{{item.remark || '暂无备注'}}</view>
+      </view>
+    </view>
+  </view>
+</view>

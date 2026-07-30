@@ -1,0 +1,3 @@
+.avatar-picker { width: 180rpx; height: 180rpx; border-radius: 50%; overflow: hidden; background: #fff2f7; border: 2rpx dashed rgba(244, 63, 107, 0.28); display: flex; align-items: center; justify-content: center; margin-bottom: 24rpx; }
+.avatar-preview { width: 100%; height: 100%; }
+.avatar-empty { color: #f43f6b; font-size: 26rpx; font-weight: 700; }

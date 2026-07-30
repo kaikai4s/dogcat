@@ -1,0 +1,3 @@
+.sitter-summary { margin: 18rpx 0; color: #5f585e; font-size: 28rpx; line-height: 1.5; }
+.sitter-actions { display: flex; gap: 16rpx; }
+.compact-btn { flex: 1; min-height: 72rpx; font-size: 26rpx; }

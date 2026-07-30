@@ -1,0 +1,2 @@
+.staff-hero { margin-bottom: 24rpx; }
+.staff-hero .profile-avatar { background: linear-gradient(135deg, #f43f6b 0%, #ff9ab0 100%); color: #fff; }

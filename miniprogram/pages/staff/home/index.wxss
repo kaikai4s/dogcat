@@ -1,13 +1,3 @@
-.page { padding: 32rpx; }
-.title { font-size: 42rpx; font-weight: 700; color: #2f241d; margin-bottom: 28rpx; }
-.subtitle { font-size: 30rpx; font-weight: 600; margin: 28rpx 0 16rpx; }
-.card { background: #fff; border-radius: 22rpx; padding: 28rpx; margin-bottom: 20rpx; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20rpx; }
-.strong { font-weight: 600; }
-.muted, .empty { color: #8a7b70; font-size: 26rpx; margin-top: 10rpx; }
-.primary { background: #5b3f2f; color: #fff; border-radius: 999rpx; margin: 20rpx 0; }
-.ghost { background: #fff; color: #5b3f2f; border-radius: 999rpx; margin: 20rpx 0; }
-.danger { background: #b93838; color: #fff; border-radius: 999rpx; margin: 20rpx 0; }
-input, textarea { display: block; box-sizing: border-box; width: 100%; background: #fff; border-radius: 18rpx; padding: 24rpx; margin-bottom: 18rpx; }
-textarea { min-height: 160rpx; }
-.camera { width: 100%; height: 520rpx; border-radius: 24rpx; overflow: hidden; }
+.order-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16rpx; margin-top: 18rpx; }
+.three-actions { grid-template-columns: repeat(3, 1fr); }
+.ghost-mini { background: #fff7fa; color: #f43f6b; border: 2rpx solid rgba(244, 63, 107, 0.18); }

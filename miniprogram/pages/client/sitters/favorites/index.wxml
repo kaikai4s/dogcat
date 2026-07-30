@@ -1,0 +1,39 @@
+<view class="page sitter-page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">我的关注</view>
+    <view class="title">收藏的宠托师</view>
+    <view class="tip">常用宠托师可快速指定预约。</view>
+  </view>
+
+  <view class="loading-card" wx:if="{{loading}}">正在加载收藏...</view>
+
+  <view class="card sitter-card" wx:for="{{sitters}}" wx:key="_id">
+    <view class="sitter-head interactive" data-id="{{item._id}}" bindtap="detail">
+      <view class="sitter-avatar">🐶</view>
+      <view class="sitter-main">
+        <view class="between">
+          <view>
+            <view class="strong">{{item.displayName}}</view>
+            <view class="muted">{{item.serviceCity}}</view>
+          </view>
+          <view class="badge">{{item.ratingAverage || '-'}} 星</view>
+        </view>
+        <view class="sitter-summary">{{item.serviceSummary}}</view>
+      </view>
+    </view>
+    <view class="sitter-actions">
+      <button class="ghost compact-btn" data-id="{{item._id}}" bindtap="unfavorite">取消收藏</button>
+      <button class="primary compact-btn" data-id="{{item._id}}" bindtap="book">指定预约</button>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && !sitters.length}}">
+    <view>还没有收藏宠托师</view>
+    <view class="muted">去宠托师列表看看，遇到合适的可以先收藏。</view>
+    <button class="primary" bindtap="goList">去找宠托师</button>
+  </view>
+</view>

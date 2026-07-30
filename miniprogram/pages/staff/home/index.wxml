@@ -1,1 +1,97 @@
-<view class="page"><view class="title">员工工作台</view><view class="grid"><view class="card" data-url="/pages/staff/certification/index" bindtap="go">入驻认证</view><view class="card" data-url="/pages/staff/orders/list/index" bindtap="go">我的任务</view></view><button class="ghost" bindtap="switchRole">切换角色</button></view>
+<view class="page dashboard-page">
+  <view class="dashboard-header">
+    <view class="badge">宠托师</view>
+    <view class="title">服务工作台</view>
+    <view class="tip">获取当前位置后，系统会优先推荐距离更近的可接订单。</view>
+  </view>
+
+  <view class="grid">
+    <view class="card interactive action-card" data-url="/pages/staff/certification/index" bindtap="go">
+      <view class="action-icon">证</view>
+      <view class="strong">入驻认证</view>
+      <view class="muted">资质审核与服务区域</view>
+    </view>
+    <view class="card interactive action-card" data-url="/pages/staff/orders/list/index" bindtap="go">
+      <view class="action-icon">务</view>
+      <view class="strong">我的任务</view>
+      <view class="muted">订单履约与打卡</view>
+    </view>
+  </view>
+
+  <view class="soft-panel">
+    <view class="between">
+      <view>
+        <view class="strong">指定给我的订单</view>
+        <view class="muted">宠物主指定你接单的订单只在这里展示</view>
+      </view>
+      <view class="badge">{{directOrders.length}} 单</view>
+    </view>
+  </view>
+
+  <view class="card order-card" wx:for="{{directOrders}}" wx:key="_id">
+    <view class="between">
+      <view>
+        <view class="strong">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}} · {{item.petName}}</view>
+        <view class="muted">{{item.serviceAddress || '未填写地址'}}</view>
+      </view>
+      <view class="badge">指定</view>
+    </view>
+    <view class="chip-row">
+      <view class="chip">{{item.startTime}}</view>
+      <view class="chip pink">¥{{item.payAmount}}</view>
+      <view class="chip blue">{{item.distanceText || '未定位'}}</view>
+    </view>
+    <view class="order-actions three-actions">
+      <button class="mini-btn" size="mini" data-id="{{item._id}}" bindtap="detail">详情</button>
+      <button class="mini-btn" size="mini" data-id="{{item._id}}" bindtap="accept">接单</button>
+      <button class="mini-btn ghost-mini" size="mini" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">导航</button>
+    </view>
+  </view>
+
+  <view class="soft-panel">
+    <view class="between">
+      <view>
+        <view class="strong">附近可接订单</view>
+        <view class="muted">{{locationText}}</view>
+      </view>
+      <view class="badge">{{nearbyOrders.length}} 单</view>
+    </view>
+    <button class="primary" loading="{{loadingNearby}}" bindtap="refreshNearby">刷新当前位置并推荐</button>
+  </view>
+
+  <view class="card order-card" wx:for="{{nearbyOrders}}" wx:key="_id">
+    <view class="between">
+      <view>
+        <view class="strong">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}} · {{item.petName}}</view>
+        <view class="muted">{{item.serviceAddress || '未填写地址'}}</view>
+      </view>
+      <view class="badge">{{item.distanceText}}</view>
+    </view>
+    <view class="chip-row">
+      <view class="chip">{{item.startTime}}</view>
+      <view class="chip pink">¥{{item.payAmount}}</view>
+      <view class="chip blue">待接单</view>
+    </view>
+    <view class="order-actions three-actions">
+      <button class="mini-btn" size="mini" data-id="{{item._id}}" bindtap="detail">详情</button>
+      <button class="mini-btn" size="mini" data-id="{{item._id}}" bindtap="accept">抢单</button>
+      <button class="mini-btn ghost-mini" size="mini" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">导航</button>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{locationReady && !nearbyOrders.length}}">
+    <view>附近暂无可接订单，稍后再刷新看看～</view>
+  </view>
+
+  <view class="notice">
+    <view class="strong">服务提醒</view>
+    <view class="muted">门锁密码仅在服务时间窗口内可查看，所有访问都会记录日志。</view>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item active"><view class="nav-icon">⌂</view><view>工作台</view></view>
+    <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>任务</view></view>
+    <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon">☑</view><view>认证</view></view>
+    <view class="nav-item" bindtap="backProfile"><view class="nav-icon">♙</view><view>我的</view></view>
+  </view>
+</view>

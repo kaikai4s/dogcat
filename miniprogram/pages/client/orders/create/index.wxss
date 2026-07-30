@@ -1,13 +1,57 @@
-.page { padding: 32rpx; }
-.title { font-size: 42rpx; font-weight: 700; color: #2f241d; margin-bottom: 28rpx; }
-.subtitle { font-size: 30rpx; font-weight: 600; margin: 28rpx 0 16rpx; }
-.card { background: #fff; border-radius: 22rpx; padding: 28rpx; margin-bottom: 20rpx; box-shadow: 0 8rpx 24rpx rgba(71,52,38,.06); }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20rpx; }
-.strong { font-weight: 600; font-size: 30rpx; }
-.muted, .empty { color: #8a7b70; font-size: 26rpx; margin-top: 10rpx; }
-.primary { background: #5b3f2f; color: #fff; border-radius: 999rpx; margin: 24rpx 0; }
-.ghost { background: #fff; color: #5b3f2f; border-radius: 999rpx; margin: 20rpx 0; }
-.form input, input, textarea, .field { display: block; box-sizing: border-box; width: 100%; background: #fff; border-radius: 18rpx; padding: 24rpx; margin-bottom: 18rpx; }
-textarea { min-height: 160rpx; }
-.tabs { display: flex; gap: 18rpx; margin-bottom: 18rpx; }
-.tab { flex: 1; background: #fff; color: #5b3f2f; }
+.publish-grid,
+.service-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18rpx;
+}
+
+.publish-option,
+.service-option {
+  min-height: 156rpx;
+  padding: 22rpx;
+  border-radius: 28rpx;
+  background: #fff7fa;
+  border: 2rpx solid rgba(244, 63, 107, 0.1);
+}
+
+.publish-option.active,
+.service-option.active {
+  background: linear-gradient(135deg, #ffe3ec 0%, #fff8fb 100%);
+  border-color: #f43f6b;
+  box-shadow: 0 12rpx 28rpx rgba(244, 63, 107, 0.14);
+}
+
+.service-title {
+  color: #262125;
+  font-size: 29rpx;
+  font-weight: 850;
+}
+
+.service-price {
+  margin-top: 8rpx;
+  color: #f43f6b;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.service-desc {
+  margin-top: 8rpx;
+  color: #969196;
+  font-size: 23rpx;
+  line-height: 1.35;
+}
+
+.address-actions,
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18rpx;
+}
+
+.save-row { margin-top: 20rpx; }
+
+.price-breakdown {
+  margin-top: 22rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid rgba(244, 63, 107, 0.12);
+}

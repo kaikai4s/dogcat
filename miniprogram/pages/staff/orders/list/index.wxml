@@ -1,1 +1,28 @@
-<view class="page"><view class="title">我的任务</view><view class="card" wx:for="{{orders}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail"><view class="strong">{{item.petName}} · {{item.serviceType === 'walk' ? '遛狗' : '喂养'}}</view><view class="muted">{{item.status}} · {{item.startTime}}</view></view><view class="empty" wx:if="{{!orders.length}}">暂无任务</view></view>
+<view class="page">
+  <view class="dashboard-header">
+    <view class="badge">服务任务</view>
+    <view class="title">我的任务</view>
+    <view class="tip">查看已分配订单，按服务时间完成上门履约。</view>
+  </view>
+
+  <view class="card task-card" wx:for="{{orders}}" wx:key="_id">
+    <view class="between interactive" data-id="{{item._id}}" bindtap="detail">
+      <view>
+        <view class="strong">{{item.petName}} · {{item.serviceSummary || (item.serviceType === 'walk' ? '遛狗' : '喂养')}}</view>
+        <view class="muted">{{item.startTime}}</view>
+        <view class="muted">{{item.serviceAddress || '未填写地址'}} · 距你 {{item.distanceText || '未定位'}}</view>
+      </view>
+      <view class="badge">{{item.statusText}}</view>
+    </view>
+    <button class="ghost" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">导航到服务地址</button>
+  </view>
+
+  <view class="empty" wx:if="{{!orders.length}}">暂无任务，去工作台刷新附近订单看看～</view>
+
+  <view class="bottom-nav">
+    <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>工作台</view></view>
+    <view class="nav-item active"><view class="nav-icon">☷</view><view>任务</view></view>
+    <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon">☑</view><view>认证</view></view>
+    <view class="nav-item" bindtap="backProfile"><view class="nav-icon">♙</view><view>我的</view></view>
+  </view>
+</view>

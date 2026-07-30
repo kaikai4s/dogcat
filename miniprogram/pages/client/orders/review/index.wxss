@@ -1,0 +1,6 @@
+.rating-row { display: flex; gap: 16rpx; margin: 16rpx 0 28rpx; }
+.rating-star { color: #e7d5dc; font-size: 58rpx; }
+.rating-star.active { color: #f7b500; }
+.tag-grid { display: flex; flex-wrap: wrap; gap: 14rpx; margin: 14rpx 0 24rpx; }
+.tag-option { padding: 14rpx 22rpx; border-radius: 999rpx; background: #fff7fa; color: #6f6670; font-size: 25rpx; border: 2rpx solid rgba(244, 63, 107, 0.1); }
+.tag-option.active { color: #f43f6b; border-color: #f43f6b; background: #ffe8ef; }

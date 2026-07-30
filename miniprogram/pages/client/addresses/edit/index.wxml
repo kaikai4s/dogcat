@@ -1,0 +1,30 @@
+<view class="page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">地址管理</view>
+    <view class="title">{{id ? '编辑地址' : '新增地址'}}</view>
+    <view class="tip">请填写到门牌号，方便宠托师准确上门。</view>
+  </view>
+
+  <view class="card form-card">
+    <input placeholder="地址标签，如 家 / 公司" value="{{form.label}}" data-field="label" bindinput="input" />
+    <input placeholder="联系人姓名（可选）" value="{{form.contactName}}" data-field="contactName" bindinput="input" />
+    <input placeholder="联系人手机号（可选）" value="{{form.contactPhone}}" data-field="contactPhone" bindinput="input" />
+    <button class="ghost" bindtap="chooseLocation">地图选择小区/地点</button>
+    <view class="notice" wx:if="{{form.serviceAddress}}">
+      <view class="strong">{{form.serviceAddress}}</view>
+      <view class="muted">已选择地图位置</view>
+    </view>
+    <input placeholder="详细地址（如 3栋2单元18楼）必填" value="{{form.addressDetail}}" data-field="addressDetail" bindinput="input" />
+    <input placeholder="门牌号/入户说明（如 1802，门牌朝南）必填" value="{{form.doorplate}}" data-field="doorplate" bindinput="input" />
+    <view class="between switch-row">
+      <view class="strong">设为默认地址</view>
+      <switch checked="{{form.isDefault}}" bindchange="toggleDefault" />
+    </view>
+  </view>
+
+  <button class="primary" bindtap="save">保存地址</button>
+</view>

@@ -1,1 +1,46 @@
-<view class="page"><view class="title">我的订单</view><view class="card" wx:for="{{orders}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail"><view class="strong">{{item.serviceType === 'walk' ? '遛狗' : '喂养'}} · {{item.petName}}</view><view class="muted">{{item.status}} · ¥{{item.payAmount}}</view></view><view class="empty" wx:if="{{!orders.length}}">暂无订单</view></view>
+<view class="page">
+  <view class="dashboard-header">
+    <view class="title">订单</view>
+  </view>
+
+  <view class="status-tabs">
+    <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
+  </view>
+
+  <view class="card interactive order-card" wx:for="{{orders}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+    <view class="between">
+      <view>
+        <view class="strong">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}} · {{item.petName}}</view>
+        <view class="muted">订单金额 ¥{{item.payAmount}}</view>
+      </view>
+      <view class="badge">{{item.statusText}}</view>
+    </view>
+    <view class="chip-row">
+      <view class="chip">安心履约</view>
+      <view class="chip pink">实时打卡</view>
+      <view class="chip blue">服务报告</view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!orders.length}}">
+    <view>暂时还没有订单哦，赶紧给爱宠预约服务吧～</view>
+    <navigator class="primary" url="/pages/client/orders/create/index">去预约</navigator>
+  </view>
+
+  <view class="soft-panel">
+    <view class="between">
+      <view class="row">
+        <view class="action-icon">💬</view>
+        <view class="strong">关注公众号订阅订单信息</view>
+      </view>
+      <view class="badge">立即订阅</view>
+    </view>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>首页</view></view>
+    <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon">🐾</view><view>宠托师</view></view>
+    <view class="nav-item active"><view class="nav-icon">☷</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon">♙</view><view>我的</view></view>
+  </view>
+</view>

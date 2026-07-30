@@ -1,0 +1,78 @@
+<view class="page profile-page">
+  <view class="profile-hero">
+    <image class="profile-avatar" wx:if="{{avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />
+    <view class="profile-avatar" wx:else>🐾</view>
+    <view class="profile-main">
+      <view class="profile-name">{{userName}}</view>
+      <view class="profile-points">{{userMeta}}</view>
+    </view>
+    <view class="checkin-pill">🪙 签到</view>
+  </view>
+
+  <view class="grid">
+    <view class="card interactive profile-card" bindtap="subscribe">
+      <view class="action-icon">▣</view>
+      <view>
+        <view class="strong">关注公众号</view>
+        <view class="muted">了解更多养宠小知识</view>
+      </view>
+    </view>
+    <view class="card interactive profile-card" bindtap="openStaffEntry">
+      <view class="action-icon">🏠</view>
+      <view>
+        <view class="strong">{{staffEntryTitle}}</view>
+        <view class="muted">{{staffEntryTip}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="soft-panel reward-banner">
+    <view>
+      <view class="strong">轻松赚奖励</view>
+      <view class="muted">分享感受体验，现金到手</view>
+    </view>
+    <view class="pet-avatar">🎁</view>
+  </view>
+
+  <view class="card menu-list">
+    <view class="menu-item interactive" bindtap="editProfile">
+      <view class="menu-left"><view class="menu-icon">名</view><view>编辑个人资料</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item">
+      <view class="menu-left"><view class="menu-icon">券</view><view>我的优惠券</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item interactive" bindtap="openAddresses">
+      <view class="menu-left"><view class="menu-icon">⌖</view><view>我的地址</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item interactive" bindtap="openFavorites">
+      <view class="menu-left"><view class="menu-icon">☆</view><view>我的关注</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item">
+      <view class="menu-left"><view class="menu-icon">☏</view><view>客服中心</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item">
+      <view class="menu-left"><view class="menu-icon">!</view><view>意见反馈</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item interactive" bindtap="openAdmin">
+      <view class="menu-left"><view class="menu-icon">管</view><view>管理端入口</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item">
+      <view class="menu-left"><view class="menu-icon">⚙</view><view>设置</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>首页</view></view>
+    <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon">🐾</view><view>宠托师</view></view>
+    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>订单</view></view>
+    <view class="nav-item active"><view class="nav-icon">♙</view><view>我的</view></view>
+  </view>
+</view>

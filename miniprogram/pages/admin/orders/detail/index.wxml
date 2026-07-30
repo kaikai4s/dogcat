@@ -1,1 +1,29 @@
-<view class="page" wx:if="{{detail}}"><view class="title">订单详情</view><view class="card"><view>{{detail.order.orderNo}}</view><view>状态：{{detail.order.status}}</view><view>轨迹点：{{detail.tracks.length}}</view><view>打卡：{{detail.checkins.length}}</view><view>密码日志：{{detail.unlockLogs.length}}</view></view><button class="ghost" bindtap="evidence">证据链</button></view>
+<view class="page" wx:if="{{detail}}">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">订单详情</view>
+    <view class="title">{{detail.order.orderNo}}</view>
+    <view class="tip">汇总订单履约状态、轨迹、打卡和门锁访问记录。</view>
+  </view>
+
+  <view class="card info-list">
+    <view class="info-row"><view class="label">订单</view><view class="value">{{detail.order.orderNo}}</view></view>
+    <view class="info-row"><view class="label">服务</view><view class="value">{{detail.order.serviceSummary || (detail.order.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view></view>
+    <view class="info-row"><view class="label">发布方式</view><view class="value">{{detail.order.publishMode === 'direct' ? '指定宠托师' : '公开发布抢单'}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.publishMode === 'direct'}}"><view class="label">指定宠托师</view><view class="value">{{detail.order.requestedStaffName || '已指定宠托师'}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.staffOpenid}}"><view class="label">实际接单</view><view class="value">{{detail.order.staffProfileId || detail.order.staffOpenid}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.assignmentSource}}"><view class="label">派单来源</view><view class="value">{{detail.order.assignmentSourceText}}</view></view>
+    <view class="info-row"><view class="label">地址</view><view class="value">{{detail.order.serviceAddress}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{detail.order.addressDetail}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{detail.order.doorplate}}</view></view>
+    <view class="info-row"><view class="label">状态</view><view class="badge">{{detail.order.statusText}}</view></view>
+    <view class="info-row"><view class="label">轨迹点</view><view class="value">{{detail.tracks.length}}</view></view>
+    <view class="info-row"><view class="label">打卡</view><view class="value">{{detail.checkins.length}}</view></view>
+    <view class="info-row"><view class="label">密码日志</view><view class="value">{{detail.unlockLogs.length}}</view></view>
+  </view>
+
+  <button class="ghost" bindtap="evidence">证据链</button>
+</view>

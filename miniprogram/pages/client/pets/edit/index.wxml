@@ -1,1 +1,65 @@
-<view class="page"><view class="title">宠物资料</view><view class="form"><input placeholder="宠物名称" value="{{form.name}}" data-field="name" bindinput="input"/><input placeholder="品种" value="{{form.breed}}" data-field="breed" bindinput="input"/><input placeholder="体重 kg" type="digit" value="{{form.weight}}" data-field="weight" bindinput="input"/><textarea placeholder="敏感备注：爆冲、护食、攻击倾向等" value="{{form.specialNotes}}" data-field="specialNotes" bindinput="input"/></view><button class="primary" bindtap="save">保存</button></view>
+<view class="page pet-edit-page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">爱宠资料</view>
+    <view class="title">{{id ? '编辑宠物资料' : '添加自己的宠物'}}</view>
+    <view class="tip">填写名字、照片、生日、品种和照顾习惯，后续可用于 AI 宠物互动。</view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">宠物照片</view>
+    <view class="photo-box" bindtap="choosePhoto">
+      <image class="photo-preview" wx:if="{{form.avatarFileId}}" src="{{form.avatarFileId}}" mode="aspectFill" />
+      <view class="photo-empty" wx:else>
+        <view class="photo-icon">＋</view>
+        <view class="muted">上传宠物照片</view>
+      </view>
+    </view>
+
+    <view class="subtitle">基础信息</view>
+    <input placeholder="宠物名字（必填）" value="{{form.name}}" data-field="name" bindinput="input" />
+    <view class="picker-grid">
+      <picker range="{{speciesOptions}}" range-key="label" value="{{speciesIndex}}" bindchange="chooseSpecies">
+        <view class="field">类型：{{speciesOptions[speciesIndex].label}}</view>
+      </picker>
+      <picker range="{{genderOptions}}" value="{{genderIndex}}" bindchange="chooseGender">
+        <view class="field">性别：{{form.gender}}</view>
+      </picker>
+    </view>
+    <input placeholder="品种，如 金毛 / 布偶 / 柯基" value="{{form.breed}}" data-field="breed" bindinput="input" />
+    <view class="picker-grid">
+      <picker mode="date" value="{{form.birthday}}" bindchange="chooseBirthday">
+        <view class="field">生日：{{form.birthday || '请选择'}}</view>
+      </picker>
+      <view class="weight-field">
+        <input placeholder="体重，只填数字" type="digit" value="{{form.weight}}" data-field="weight" bindinput="input" />
+        <view class="weight-unit">kg</view>
+      </view>
+    </view>
+
+    <view class="subtitle">照顾资料</view>
+    <input placeholder="性格特点，如 胆小 / 活泼 / 粘人" value="{{form.personality}}" data-field="personality" bindinput="input" />
+    <input placeholder="喜欢的食物或玩具" value="{{form.favoriteFood}}" data-field="favoriteFood" bindinput="input" />
+    <input placeholder="不喜欢/害怕什么" value="{{form.dislikes}}" data-field="dislikes" bindinput="input" />
+    <textarea placeholder="健康情况：过敏、用药、疫苗、绝育、慢性病等" value="{{form.healthNotes}}" data-field="healthNotes" bindinput="input" />
+    <textarea placeholder="照顾备注：爆冲、护食、攻击倾向、外出习惯、喂食要求等" value="{{form.specialNotes}}" data-field="specialNotes" bindinput="input" />
+  </view>
+
+  <view class="card form-card ai-card">
+    <view class="between">
+      <view>
+        <view class="subtitle no-margin">AI 宠物互动资料</view>
+        <view class="muted">根据宠物资料生成拟人化互动设定</view>
+      </view>
+      <switch checked="{{form.aiInteractionEnabled}}" bindchange="toggleAi" />
+    </view>
+    <button class="ghost" bindtap="generateAiProfile">一键生成 AI 互动设定</button>
+    <textarea placeholder="AI 性格设定，例如：用第一视角模拟宠物和主人互动" value="{{form.aiPersona}}" data-field="aiPersona" bindinput="input" />
+    <input placeholder="AI 打招呼文案" value="{{form.aiGreeting}}" data-field="aiGreeting" bindinput="input" />
+  </view>
+
+  <button class="primary" bindtap="save">保存宠物档案</button>
+</view>

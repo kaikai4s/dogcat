@@ -1,1 +1,41 @@
-<view class="page"><view class="title">服务执行</view><button class="primary" bindtap="start">开始服务</button><button class="ghost" bindtap="unlock">查看限时门锁密码</button><view class="card" wx:if="{{unlock}}"><view>门锁密码：{{unlock.doorLockCode}}</view><view>钥匙：{{unlock.keyLocation}}</view></view><button class="ghost" bindtap="uploadPoint">上传当前定位</button><view class="muted">已上传轨迹点：{{pointCount}}</view><view class="subtitle">打卡</view><button data-type="enter_door" bindtap="checkin">入户打卡</button><button data-type="leash_on" bindtap="checkin">牵引出门</button><button data-type="feed" bindtap="checkin">喂食</button><button data-type="water" bindtap="checkin">饮水</button><button data-type="pet_status" bindtap="checkin">宠物状态</button><button data-type="return_home" bindtap="checkin">回家入户</button><button data-type="leave_door" bindtap="checkin">离户闭锁</button><button class="primary" bindtap="finish">完成服务</button></view>
+<view class="page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">现场服务</view>
+    <view class="title">服务执行</view>
+    <view class="tip">按流程上传轨迹、完成打卡，门锁密码仅在服务窗口内展示并记录访问日志。</view>
+  </view>
+
+  <view class="card">
+    <view class="subtitle">服务操作</view>
+    <button class="primary" bindtap="start">开始服务</button>
+    <button class="ghost" bindtap="unlock">查看限时门锁密码</button>
+  </view>
+
+  <view class="notice" wx:if="{{unlock}}">
+    <view class="info-row"><view class="label">门锁密码</view><view class="value">{{unlock.doorLockCode}}</view></view>
+    <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{unlock.keyLocation}}</view></view>
+  </view>
+
+  <view class="card">
+    <view class="subtitle">轨迹上传</view>
+    <button class="ghost" bindtap="uploadPoint">上传当前定位</button>
+    <view class="muted">已上传轨迹点：{{pointCount}}</view>
+  </view>
+
+  <view class="subtitle">打卡证据</view>
+  <view class="grid">
+    <button class="ghost" data-type="enter_door" bindtap="checkin">入户打卡</button>
+    <button class="ghost" data-type="leash_on" bindtap="checkin">牵引出门</button>
+    <button class="ghost" data-type="feed" bindtap="checkin">喂食</button>
+    <button class="ghost" data-type="water" bindtap="checkin">饮水</button>
+    <button class="ghost" data-type="pet_status" bindtap="checkin">宠物状态</button>
+    <button class="ghost" data-type="return_home" bindtap="checkin">回家入户</button>
+    <button class="ghost" data-type="leave_door" bindtap="checkin">离户闭锁</button>
+  </view>
+
+  <button class="primary" bindtap="finish">完成服务</button>
+</view>

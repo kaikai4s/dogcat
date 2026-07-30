@@ -1,1 +1,26 @@
-<view class="page" wx:if="{{staff}}"><view class="title">审核详情</view><view class="card"><view>姓名：{{staff.realName}}</view><view>手机：{{staff.phone}}</view><view>城市：{{staff.serviceCity}}</view><view>区域：{{staff.serviceAreas}}</view><view>状态：{{staff.auditStatus}}</view></view><textarea placeholder="审核备注" value="{{remark}}" bindinput="input"/><button class="primary" data-status="approved" bindtap="audit">审核通过</button><button class="danger" data-status="rejected" bindtap="audit">审核拒绝</button></view>
+<view class="page" wx:if="{{staff}}">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">审核详情</view>
+    <view class="title">{{staff.realName}}</view>
+    <view class="tip">核对身份和服务范围后，填写备注并给出审核结论。</view>
+  </view>
+
+  <view class="card info-list">
+    <view class="info-row"><view class="label">姓名</view><view class="value">{{staff.realName}}</view></view>
+    <view class="info-row"><view class="label">手机</view><view class="value">{{staff.phone}}</view></view>
+    <view class="info-row"><view class="label">城市</view><view class="value">{{staff.serviceCity}}</view></view>
+    <view class="info-row"><view class="label">区域</view><view class="value">{{staff.serviceAreas}}</view></view>
+    <view class="info-row"><view class="label">状态</view><view class="badge">{{staff.auditStatusText}}</view></view>
+  </view>
+
+  <view class="card form-card">
+    <textarea placeholder="审核备注" value="{{remark}}" bindinput="input" />
+  </view>
+
+  <button class="primary" data-status="approved" bindtap="audit">审核通过</button>
+  <button class="danger" data-status="rejected" bindtap="audit">审核拒绝</button>
+</view>

@@ -6,8 +6,9 @@ function callFunction(name, action, data = {}) {
   }
 
   return wx.cloud.callFunction({
-    name,
+    name: 'api',
     data: {
+      module: name,
       action,
       data
     }
@@ -21,8 +22,12 @@ function callFunction(name, action, data = {}) {
 }
 
 function showError(error) {
+  const message = error.message || '操作失败'
+  const title = message.includes('collection.get') || message.includes('-501003')
+    ? '请先在云开发中创建数据库集合并部署 api 云函数'
+    : message
   wx.showToast({
-    title: error.message || '操作失败',
+    title,
     icon: 'none'
   })
 }

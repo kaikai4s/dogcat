@@ -1,0 +1,25 @@
+<view class="page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">个人资料</view>
+    <view class="title">编辑个人资料</view>
+    <view class="tip">设置昵称、头像和手机号，宠托师端会优先显示昵称。</view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">头像</view>
+    <view class="avatar-picker" bindtap="chooseAvatar">
+      <image class="avatar-preview" wx:if="{{form.avatarUrl}}" src="{{form.avatarUrl}}" mode="aspectFill" />
+      <view class="avatar-empty" wx:else>上传头像</view>
+    </view>
+
+    <view class="subtitle">基础资料</view>
+    <input placeholder="昵称（必填）" value="{{form.nickname}}" data-field="nickname" bindinput="input" />
+    <input placeholder="手机号（可选）" type="number" maxlength="11" value="{{form.phone}}" data-field="phone" bindinput="input" />
+  </view>
+
+  <button class="primary" bindtap="save">保存资料</button>
+</view>

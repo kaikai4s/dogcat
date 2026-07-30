@@ -1,11 +1,1 @@
-.page { padding: 32rpx; }
-.title { font-size: 42rpx; font-weight: 700; color: #2f241d; margin-bottom: 28rpx; }
-.card { background: #fff; border-radius: 22rpx; padding: 28rpx; margin-bottom: 20rpx; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20rpx; }
-.strong { font-weight: 600; }
-.muted { color: #8a7b70; font-size: 26rpx; margin-top: 10rpx; }
-.primary { background: #5b3f2f; color: #fff; border-radius: 999rpx; margin: 20rpx 0; }
-.ghost { background: #fff; color: #5b3f2f; border-radius: 999rpx; margin: 20rpx 0; }
-.danger { background: #b93838; color: #fff; border-radius: 999rpx; margin: 20rpx 0; }
-input, textarea, .field { display: block; box-sizing: border-box; width: 100%; background: #fff; border-radius: 18rpx; padding: 24rpx; margin-bottom: 18rpx; }
-textarea { min-height: 160rpx; }
+/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */

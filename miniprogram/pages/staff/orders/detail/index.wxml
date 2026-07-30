@@ -1,1 +1,46 @@
-<view class="page" wx:if="{{order}}"><view class="title">任务详情</view><view class="card"><view>宠物：{{order.petName}}</view><view>地址：{{order.serviceAddress}}</view><view>状态：{{order.status}}</view><view>时间：{{order.startTime}} - {{order.endTime}}</view></view><button class="primary" bindtap="service">进入服务</button><button class="danger" bindtap="sos">SOS</button></view>
+<view class="page" wx:if="{{order}}">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+    <view class="nav-round" bindtap="goSectionHome">⌂</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">任务详情</view>
+    <view class="title">{{order.petName}}</view>
+    <view class="tip">核对服务地址、时间和状态后进入服务流程。</view>
+  </view>
+
+  <view class="card" wx:if="{{order.petSnapshot}}">
+    <view class="subtitle">宠物信息</view>
+    <view class="row">
+      <image class="pet-photo" wx:if="{{order.petSnapshot.avatarFileId}}" src="{{order.petSnapshot.avatarFileId}}" mode="aspectFill" />
+      <view class="pet-photo empty-photo" wx:else>🐾</view>
+      <view style="flex: 1;">
+        <view class="strong">{{order.petSnapshot.name || order.petName}}</view>
+        <view class="muted">{{order.petSnapshot.breed || '未填写品种'}} · {{order.petSnapshot.gender || '未填性别'}} · {{order.petSnapshot.weight || 0}}kg</view>
+        <view class="muted">生日：{{order.petSnapshot.birthday || '未填写'}}</view>
+      </view>
+    </view>
+    <view class="info-list pet-info-list">
+      <view class="info-row" wx:if="{{order.petSnapshot.personality}}"><view class="label">性格</view><view class="value">{{order.petSnapshot.personality}}</view></view>
+      <view class="info-row" wx:if="{{order.petSnapshot.favoriteFood}}"><view class="label">喜欢</view><view class="value">{{order.petSnapshot.favoriteFood}}</view></view>
+      <view class="info-row" wx:if="{{order.petSnapshot.dislikes}}"><view class="label">害怕/不喜欢</view><view class="value">{{order.petSnapshot.dislikes}}</view></view>
+      <view class="info-row" wx:if="{{order.petSnapshot.healthNotes}}"><view class="label">健康情况</view><view class="value">{{order.petSnapshot.healthNotes}}</view></view>
+      <view class="info-row" wx:if="{{order.petSnapshot.specialNotes}}"><view class="label">照顾备注</view><view class="value">{{order.petSnapshot.specialNotes}}</view></view>
+    </view>
+  </view>
+
+  <view class="card info-list">
+    <view class="info-row"><view class="label">宠物</view><view class="value">{{order.petName}}</view></view>
+    <view class="info-row"><view class="label">服务</view><view class="value">{{order.serviceSummary || (order.serviceType === 'walk' ? '遛狗' : '喂养')}}</view></view>
+    <view class="info-row"><view class="label">地址</view><view class="value">{{order.serviceAddress}}</view></view>
+    <view class="info-row" wx:if="{{order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{order.addressDetail}}</view></view>
+    <view class="info-row" wx:if="{{order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{order.doorplate}}</view></view>
+    <view class="info-row"><view class="label">状态</view><view class="badge">{{order.statusText}}</view></view>
+    <view class="info-row"><view class="label">时间</view><view class="value">{{order.startTime}} - {{order.endTime}}</view></view>
+  </view>
+
+  <button class="primary" wx:if="{{order.status === 'paid'}}" bindtap="accept">确认接单</button>
+  <button class="ghost" bindtap="openNavigation">导航到服务地址</button>
+  <button class="primary" wx:if="{{order.status !== 'paid'}}" bindtap="service">进入服务</button>
+  <button class="danger" wx:if="{{order.status !== 'paid'}}" bindtap="sos">SOS</button>
+</view>

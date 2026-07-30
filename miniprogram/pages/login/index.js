@@ -15,8 +15,8 @@ Page({
     callFunction('auth', 'login')
       .then((user) => {
         getApp().globalData.user = user
-        getApp().globalData.activeRole = user.activeRole || 'client'
-        wx.redirectTo({ url: '/pages/role-select/index' })
+        getApp().globalData.activeRole = 'client'
+        wx.redirectTo({ url: '/pages/client/home/index' })
       })
       .catch(showError)
       .finally(() => this.setData({ loading: false }))

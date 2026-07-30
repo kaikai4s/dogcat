@@ -1,6 +1,1 @@
-.page { padding: 48rpx 32rpx; }
-.title { font-size: 44rpx; font-weight: 700; color: #2f241d; }
-.tip { margin: 16rpx 0 36rpx; color: #8a7b70; }
-.role { background: #fff; border-radius: 24rpx; padding: 34rpx; margin-bottom: 24rpx; box-shadow: 0 10rpx 30rpx rgba(71, 52, 38, .08); }
-.role-name { font-size: 34rpx; font-weight: 600; }
-.role-tip { margin-top: 10rpx; color: #9a8c80; }
+/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
