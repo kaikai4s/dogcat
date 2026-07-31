@@ -1,24 +1,25 @@
-const { callFunction, showError } = require('../../utils/cloud')
+const { loginWithWechat } = require('../../utils/cloud')
+const { envList } = require('../../envList')
 
 Page({
   data: {
     loading: false,
-    envReady: false
-  },
-
-  onLoad() {
-    this.setData({ envReady: Boolean(getApp().globalData.env) })
+    envReady: Boolean(envList[0] && envList[0].envId),
+    errorText: ''
   },
 
   login() {
-    this.setData({ loading: true })
-    callFunction('auth', 'login')
-      .then((user) => {
-        getApp().globalData.user = user
+    this.setData({ loading: true, errorText: '' })
+    loginWithWechat()
+      .then(() => {
         getApp().globalData.activeRole = 'client'
         wx.redirectTo({ url: '/pages/client/home/index' })
       })
-      .catch(showError)
+      .catch((error) => {
+        const message = error.message || '登录失败'
+        this.setData({ errorText: message })
+        wx.showModal({ title: '登录失败', content: message, showCancel: false })
+      })
       .finally(() => this.setData({ loading: false }))
   },
 

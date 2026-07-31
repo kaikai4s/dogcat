@@ -1,7 +1,6 @@
 <view class="page" wx:if="{{order}}">
   <view class="top-nav">
     <view class="nav-round" bindtap="goBack">‹</view>
-    <view class="nav-round" bindtap="goSectionHome">⌂</view>
   </view>
   <view class="dashboard-header">
     <view class="badge">订单详情</view>
@@ -30,7 +29,9 @@
     <view class="info-row"><view class="label">时间</view><view class="value">{{order.startTime}} - {{order.endTime}}</view></view>
     <view class="info-row" wx:if="{{order.durationMinutes}}"><view class="label">时长</view><view class="value">{{order.durationMinutes}}分钟</view></view>
     <view class="info-row"><view class="label">状态</view><view class="badge">{{order.statusText}}</view></view>
-    <view class="info-row"><view class="label">金额</view><view class="price">¥{{order.payAmount}}</view></view>
+    <view class="info-row"><view class="label">原价</view><view class="value">¥{{order.amount}}</view></view>
+    <view class="info-row" wx:if="{{order.discountAmount}}"><view class="label">优惠券</view><view class="value">-¥{{order.discountAmount}} {{order.couponName}}</view></view>
+    <view class="info-row"><view class="label">实付金额</view><view class="price">¥{{order.payAmount}}</view></view>
   </view>
 
   <view class="card" wx:if="{{timeline.length}}">

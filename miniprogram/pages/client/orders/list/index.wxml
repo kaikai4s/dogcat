@@ -11,7 +11,7 @@
     <view class="between">
       <view>
         <view class="strong">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}} · {{item.petName}}</view>
-        <view class="muted">订单金额 ¥{{item.payAmount}}</view>
+        <view class="muted">订单金额 ¥{{item.payAmount}}<text wx:if="{{item.discountAmount}}">，已优惠 ¥{{item.discountAmount}}</text></view>
       </view>
       <view class="badge">{{item.statusText}}</view>
     </view>

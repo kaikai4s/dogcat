@@ -1,22 +1,15 @@
-<view class="page login-page">
-  <view class="pet-hero">
-    <view class="hero-location">📍 VIP 宠护</view>
-    <view class="hero-kicker">上门服务 · 立即预约</view>
-    <view class="hero-title">喂猫 / 遛狗 放下出行烦恼</view>
-    <view class="hero-subtitle">实时轨迹、相机打卡、完整服务报告</view>
-    <view class="hero-chip">安心托付每一次上门</view>
+<view class="login-simple">
+  <view class="login-title">VIP 宠护</view>
+  <view class="login-subtitle">登录后可预约上门喂猫、遛狗，并查看轨迹与服务报告。</view>
+
+  <view class="login-error" wx:if="{{!envReady}}">
+    云环境未初始化，请重新编译并检查 envList.js。
   </view>
 
-  <view class="card">
-    <view class="strong">欢迎来到 VIP 宠护</view>
-    <view class="muted">登录后可管理宠物档案、预约上门服务，并查看轨迹与履约证据。</view>
+  <view class="login-error" wx:if="{{errorText}}">
+    登录失败：{{errorText}}
   </view>
 
-  <view class="notice danger" wx:if="{{!envReady}}">
-    <view class="strong">云环境未配置</view>
-    <view class="muted">请先在 miniprogram/envList.js 配置云开发环境 ID。</view>
-  </view>
-
-  <button class="primary" loading="{{loading}}" bindtap="login">微信云开发登录</button>
+  <button class="primary" disabled="{{!envReady}}" loading="{{loading}}" bindtap="login">微信登录</button>
   <button class="ghost" bindtap="openInit">开发初始化</button>
 </view>

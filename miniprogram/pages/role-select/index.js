@@ -1,4 +1,5 @@
 const { callFunction, showError } = require('../../utils/cloud')
+const { getCachedUser, ensureLogin, setCachedUser } = require('../../utils/cloud')
 
 const roleHome = {
   client: '/pages/client/home/index',
@@ -17,18 +18,15 @@ Page({
   },
 
   onShow() {
-    const cached = getApp().globalData.user
+    const cached = getCachedUser()
     if (cached) {
       this.applyUser(cached)
       return
     }
 
-    callFunction('auth', 'me')
-      .then((user) => {
-        getApp().globalData.user = user
-        this.applyUser(user)
-      })
-      .catch(() => wx.redirectTo({ url: '/pages/login/index' }))
+    ensureLogin({ content: '登录后可切换身份。' })
+      .then((user) => this.applyUser(user))
+      .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
   },
 
   applyUser(user) {
@@ -48,7 +46,7 @@ Page({
     }
     callFunction('auth', 'switchRole', { role })
       .then((user) => {
-        getApp().globalData.user = user
+        setCachedUser(user)
         getApp().globalData.activeRole = role
         wx.redirectTo({ url: roleHome[role] })
       })

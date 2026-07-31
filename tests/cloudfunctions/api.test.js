@@ -13,11 +13,76 @@ test('api dispatches auth login through unified cloud function', async () => {
   assert.deepEqual(result.data.roles, ['client'])
 })
 
+test('auth loginByPhoneCode creates user with verified phone', async () => {
+  const db = createCollectionStore({ users: [] })
+  const fn = loadCloudFunction('api', db, 'openid_phone')
+
+  const result = await fn.main({ module: 'auth', action: 'loginByPhoneCode', data: { code: 'phone_code' } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.openid, 'openid_phone')
+  assert.equal(result.data.phone, '19900006302')
+  assert.equal(db.state.users[0].phone, '19900006302')
+})
+
+test('guest can browse approved sitters', async () => {
+  const db = createCollectionStore({
+    users: [],
+    staff_profiles: [
+      { _id: 's1', openid: 'staff_openid', auditStatus: 'approved', realName: '王小明', serviceCity: '上海', serviceAreas: '浦东,徐汇', updatedAt: '2026-07-28' },
+      { _id: 's2', openid: 'staff_pending', auditStatus: 'pending', realName: '李小明', serviceCity: '上海', serviceAreas: '静安' }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'guest_openid')
+
+  const result = await fn.main({ module: 'staff', action: 'listApprovedSitters', data: { pageSize: 50 } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.total, 1)
+  assert.equal(result.data.list[0]._id, 's1')
+  assert.equal(result.data.list[0].displayName, '王* 宠托师')
+})
+
+test('guest can view public sitter detail without favorite state', async () => {
+  const db = createCollectionStore({
+    users: [],
+    staff_profiles: [{ _id: 's1', openid: 'staff_openid', auditStatus: 'approved', realName: '王小明', serviceCity: '上海', serviceAreas: '浦东', updatedAt: '2026-07-28' }],
+    service_reviews: [],
+    sitter_favorites: [{ _id: 'f1', openid: 'guest_openid', staffProfileId: 's1' }]
+  })
+  const fn = loadCloudFunction('api', db, 'guest_openid')
+
+  const result = await fn.main({ module: 'staff', action: 'getPublicSitterDetail', data: { staffProfileId: 's1' } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data._id, 's1')
+  assert.equal(result.data.favorite, false)
+})
+
+test('guest cannot favorite sitters or create orders', async () => {
+  const db = createCollectionStore({
+    users: [],
+    staff_profiles: [{ _id: 's1', openid: 'staff_openid', auditStatus: 'approved', realName: '王小明' }],
+    sitter_favorites: [],
+    orders: []
+  })
+  const fn = loadCloudFunction('api', db, 'guest_openid')
+
+  const favorite = await fn.main({ module: 'staff', action: 'favoriteSitter', data: { staffProfileId: 's1' } })
+  const order = await fn.main({ module: 'order', action: 'createOrder', data: { petId: 'p1' } })
+
+  assert.equal(favorite.ok, false)
+  assert.equal(favorite.message, '请先登录')
+  assert.equal(order.ok, false)
+  assert.equal(order.message, '请先登录')
+})
+
 test('api dispatches order createOrder through unified cloud function', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
-    orders: []
+    orders: [],
+    user_addresses: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
 
@@ -32,13 +97,17 @@ test('api dispatches order createOrder through unified cloud function', async ()
       doorplate: '1802',
       startTime: '2026-07-28 10:00',
       endTime: '2026-07-28 11:00',
-      durationMinutes: 60
+      durationMinutes: 60,
+      saveAddress: true
     }
   })
 
   assert.equal(result.ok, true)
   assert.equal(result.data.status, 'pending_pay')
   assert.equal(db.state.orders.length, 1)
+  assert.equal(db.state.user_addresses.length, 1)
+  assert.equal(db.state.user_addresses[0].openid, 'openid_client')
+  assert.equal(db.state.user_addresses[0].isDefault, true)
 })
 
 test('auth updateProfile saves editable nickname avatar and phone', async () => {
@@ -595,4 +664,128 @@ test('client cancel order returns MVP refund quote and writes cancelled timeline
   assert.equal(order.status, 'cancelled')
   assert.equal(order.refundStatus, 'mock_refunded')
   assert.equal(db.state.order_timeline[0].type, 'cancelled')
+})
+
+
+test('coupon quote auto applies best available coupon', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
+    user_coupons: [
+      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 80, applicableServiceTypes: [] } },
+      { _id: 'c2', openid: 'openid_client', userId: 'u1', templateId: 't2', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减10', type: 'fixed', discountAmount: 10, minOrderAmount: 80, applicableServiceTypes: [] } }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const result = await fn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['walk'], durationMinutes: 60, autoApplyCoupon: true } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.amount, 89)
+  assert.equal(result.data.discountAmount, 20)
+  assert.equal(result.data.payAmount, 69)
+  assert.equal(result.data.coupon.couponId, 'c1')
+  assert.equal(result.data.priceItems.some((item) => item.key === 'coupon' && item.price === -20), true)
+})
+
+test('coupon quote rejects explicit inapplicable coupon but auto apply ignores it', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 8 }],
+    user_coupons: [
+      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满200减20', type: 'fixed', discountAmount: 20, minOrderAmount: 200, applicableServiceTypes: [] } }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const explicit = await fn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['feed'], durationMinutes: 60, couponId: 'c1' } })
+  const auto = await fn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['feed'], durationMinutes: 60, autoApplyCoupon: true } })
+
+  assert.equal(explicit.ok, false)
+  assert.equal(explicit.message, '订单满 ¥200 可用')
+  assert.equal(auto.ok, true)
+  assert.equal(auto.data.discountAmount, 0)
+  assert.equal(auto.data.payAmount, 59)
+})
+
+test('coupon create order locks coupon and prevents reuse', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
+    orders: [],
+    user_coupons: [
+      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 80, applicableServiceTypes: [] } }
+    ],
+    order_timeline: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+  const data = { petId: 'p1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋101', doorplate: '101', startTime: '2026-07-28 10:00', endTime: '2026-07-28 11:00', durationMinutes: 60, couponId: 'c1' }
+
+  const created = await fn.main({ module: 'order', action: 'createOrder', data })
+  const reused = await fn.main({ module: 'order', action: 'createOrder', data })
+
+  assert.equal(created.ok, true)
+  assert.equal(created.data.amount, 89)
+  assert.equal(created.data.discountAmount, 20)
+  assert.equal(created.data.payAmount, 69)
+  assert.equal(created.data.couponId, 'c1')
+  assert.equal(db.state.user_coupons[0].status, 'locked')
+  assert.equal(db.state.user_coupons[0].lockedOrderId, created.data._id)
+  assert.equal(reused.ok, false)
+  assert.equal(reused.message, '已锁定')
+})
+
+test('coupon payment marks coupon used and cancel unpaid releases coupon', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
+    orders: [],
+    payments: [],
+    user_coupons: [
+      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 80, applicableServiceTypes: [] } },
+      { _id: 'c2', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 80, applicableServiceTypes: [] } }
+    ],
+    order_timeline: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+  const base = { petId: 'p1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋101', doorplate: '101', startTime: '2026-07-28 10:00', endTime: '2026-07-28 11:00', durationMinutes: 60 }
+
+  const paidOrder = await fn.main({ module: 'order', action: 'createOrder', data: { ...base, couponId: 'c1' } })
+  const paid = await fn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: paidOrder.data._id } })
+  const cancelOrder = await fn.main({ module: 'order', action: 'createOrder', data: { ...base, couponId: 'c2' } })
+  const cancelled = await fn.main({ module: 'order', action: 'cancelOrder', data: { orderId: cancelOrder.data._id, reason: '暂不需要' } })
+
+  assert.equal(paid.ok, true)
+  assert.equal(db.state.payments[0].amount, 69)
+  assert.equal(db.state.user_coupons.find((item) => item._id === 'c1').status, 'used')
+  assert.equal(cancelled.ok, true)
+  assert.equal(db.state.user_coupons.find((item) => item._id === 'c2').status, 'available')
+})
+
+test('admin can save coupon template issue coupon and per-user limit applies', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+    ],
+    coupon_templates: [],
+    user_coupons: [],
+    admin_operation_logs: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const saved = await adminFn.main({ module: 'admin', action: 'saveCouponTemplate', data: { name: '满80减20', discountAmount: 20, minOrderAmount: 80, validDays: 30, perUserLimit: 1, enabled: true } })
+  const issued = await adminFn.main({ module: 'admin', action: 'issueCouponToUser', data: { templateId: saved.data._id, openid: 'openid_client' } })
+  const issuedAgain = await adminFn.main({ module: 'admin', action: 'issueCouponToUser', data: { templateId: saved.data._id, openid: 'openid_client' } })
+  const wallet = await clientFn.main({ module: 'coupon', action: 'listMyCoupons', data: { status: 'available' } })
+
+  assert.equal(saved.ok, true)
+  assert.equal(issued.ok, true)
+  assert.equal(issued.data.templateSnapshot.name, '满80减20')
+  assert.equal(issuedAgain.ok, false)
+  assert.equal(issuedAgain.message, '该用户已达到领取上限')
+  assert.equal(wallet.ok, true)
+  assert.equal(wallet.data.length, 1)
+  assert.equal(wallet.data[0].ruleText, '满80减20')
 })

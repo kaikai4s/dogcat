@@ -1,5 +1,6 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { ensureLogin } = require('../../../../utils/cloud')
 
 const speciesOptions = [
   { label: '狗狗', value: 'dog' },
@@ -12,6 +13,7 @@ const genderOptions = ['妹妹', '弟弟', '已绝育妹妹', '已绝育弟弟',
 Page({
   data: {
     id: '',
+    initialized: false,
     sectionHomeUrl: '',
     canGoBack: false,
     speciesOptions,
@@ -38,10 +40,22 @@ Page({
   },
 
   onLoad(query) {
-    this.setData(createPageNav(query))
-    if (!query.id) return
-    this.setData({ id: query.id })
-    callFunction('pet', 'getPet', { id: query.id })
+    this.setData({ ...createPageNav(query), id: query.id || '' })
+  },
+
+  onShow() {
+    ensureLogin({ content: '登录后可编辑宠物档案。' })
+      .then(() => {
+        if (this.data.initialized) return
+        this.setData({ initialized: true })
+        this.load()
+      })
+      .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+  },
+
+  load() {
+    if (!this.data.id) return
+    callFunction('pet', 'getPet', { id: this.data.id })
       .then((form) => {
         const speciesIndex = Math.max(speciesOptions.findIndex((item) => item.value === form.species), 0)
         const genderIndex = Math.max(genderOptions.indexOf(form.gender || '未知'), 0)

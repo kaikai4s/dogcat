@@ -1,0 +1,52 @@
+<view class="page">
+  <view class="dashboard-header">
+    <view class="badge">管理端</view>
+    <view class="title">优惠券管理</view>
+    <view class="tip">配置优惠券模板，并给指定用户发券。</view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">模板配置</view>
+    <input placeholder="优惠券名称，如 满80减20" value="{{form.name}}" data-field="name" bindinput="input" />
+    <input placeholder="优惠说明" value="{{form.description}}" data-field="description" bindinput="input" />
+    <input type="number" placeholder="优惠金额" value="{{form.discountAmount}}" data-field="discountAmount" bindinput="input" />
+    <input type="number" placeholder="最低订单金额" value="{{form.minOrderAmount}}" data-field="minOrderAmount" bindinput="input" />
+    <input type="number" placeholder="有效天数" value="{{form.validDays}}" data-field="validDays" bindinput="input" />
+    <input type="number" placeholder="每人限制张数" value="{{form.perUserLimit}}" data-field="perUserLimit" bindinput="input" />
+    <input type="number" placeholder="总发放上限，0为不限" value="{{form.totalIssueLimit}}" data-field="totalIssueLimit" bindinput="input" />
+    <view class="between switch-row">
+      <view class="strong">启用模板</view>
+      <switch checked="{{form.enabled}}" bindchange="toggleEnabled" />
+    </view>
+    <button class="primary" bindtap="saveTemplate">保存模板</button>
+    <button class="ghost" bindtap="resetForm">新建模板</button>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">发券</view>
+    <picker range="{{templates}}" range-key="name" bindchange="chooseIssueTemplate">
+      <view class="field">模板：{{issue.templateId || '请选择模板'}}</view>
+    </picker>
+    <input placeholder="用户 openid" value="{{issue.openid}}" data-field="openid" bindinput="issueInput" />
+    <button class="primary" bindtap="issueCoupon">发放优惠券</button>
+  </view>
+
+  <view class="card" wx:for="{{templates}}" wx:key="_id">
+    <view class="between">
+      <view>
+        <view class="strong">{{item.name}}</view>
+        <view class="muted">满 ¥{{item.minOrderAmount}} 减 ¥{{item.discountAmount}} · {{item.validDays}}天有效</view>
+        <view class="muted">已发 {{item.issuedCount || 0}} 张 · 每人 {{item.perUserLimit}} 张</view>
+      </view>
+      <view class="badge">{{item.enabled ? '启用' : '停用'}}</view>
+    </view>
+    <button class="ghost compact-btn" data-index="{{index}}" bindtap="chooseTemplate">编辑</button>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>
+    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon">☑</view><view>审核</view></view>
+    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon">!</view><view>异常</view></view>
+  </view>
+</view>

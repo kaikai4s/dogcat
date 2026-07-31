@@ -1,9 +1,11 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { ensureLogin } = require('../../../../utils/cloud')
 
 Page({
   data: {
     from: 'client',
+    initialized: false,
     form: {
       nickname: '',
       phone: '',
@@ -18,9 +20,19 @@ Page({
   },
 
   onShow() {
-    callFunction('auth', 'me')
-      .then((user) => this.setData({ form: { ...this.data.form, ...user } }))
-      .catch(showError)
+    ensureLogin({ content: '登录后可编辑个人资料。' })
+      .then(() => {
+        if (this.data.initialized) return null
+        this.setData({ initialized: true })
+        return callFunction('auth', 'me')
+      })
+      .then((user) => {
+        if (user) this.setData({ form: { ...this.data.form, ...user } })
+      })
+      .catch((error) => {
+        if (error && error.code === 'LOGIN_CANCELLED') wx.redirectTo({ url: '/pages/client/home/index' })
+        else showError(error)
+      })
   },
 
   input(e) {

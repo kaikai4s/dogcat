@@ -2,7 +2,7 @@
   <view class="dashboard-header">
     <view class="badge">宠托师</view>
     <view class="title">服务工作台</view>
-    <view class="tip">获取当前位置后，系统会优先推荐距离更近的可接订单。</view>
+    <view class="tip">系统会使用首页左上角选择的位置，与订单地址比较距离。</view>
   </view>
 
   <view class="grid">
@@ -56,7 +56,7 @@
       </view>
       <view class="badge">{{nearbyOrders.length}} 单</view>
     </view>
-    <button class="primary" loading="{{loadingNearby}}" bindtap="refreshNearby">刷新当前位置并推荐</button>
+    <button class="primary" loading="{{loadingNearby}}" bindtap="refreshNearby">手动更新位置并推荐</button>
   </view>
 
   <view class="card order-card" wx:for="{{nearbyOrders}}" wx:key="_id">

@@ -1,15 +1,19 @@
 <view class="page">
   <view class="top-nav">
     <view class="nav-round" bindtap="goBack">‹</view>
-    <view class="nav-round" bindtap="goSectionHome">⌂</view>
   </view>
   <view class="dashboard-header">
-    <view class="badge">常用地址</view>
+    <view class="badge">{{select ? '选择地址' : '常用地址'}}</view>
     <view class="title">我的地址</view>
-    <view class="tip">保存常用上门地址，下次预约可直接选择。</view>
+    <view class="tip">{{select ? '点击地址卡片即可带回下单页。没有地址时请先新增。' : '保存常用上门地址，下次预约可直接选择。'}}</view>
   </view>
 
-  <button class="primary" bindtap="add">新增常用地址</button>
+  <view class="address-actions">
+    <button class="primary compact-btn" bindtap="add">新增常用地址</button>
+    <button class="ghost compact-btn" bindtap="load">刷新列表</button>
+  </view>
+
+  <view class="loading-card" wx:if="{{loading}}">正在加载地址...</view>
 
   <view class="card" wx:for="{{addresses}}" wx:key="_id">
     <view class="interactive" data-id="{{item._id}}" bindtap="choose">
@@ -20,7 +24,7 @@
         </view>
         <view>
           <view class="badge" wx:if="{{item.isDefault}}">默认地址</view>
-          <view class="badge" wx:if="{{select}}">选择</view>
+          <view class="badge" wx:if="{{select}}">点我选择</view>
         </view>
       </view>
       <view class="sitter-summary">{{item.addressDetail}} · {{item.doorplate}}</view>
@@ -32,8 +36,8 @@
     </view>
   </view>
 
-  <view class="empty" wx:if="{{!addresses.length}}">
-    <view>暂无常用地址</view>
+  <view class="empty" wx:if="{{!loading && !addresses.length}}">
+    <view>{{select ? '还没有可选择的常用地址' : '暂无常用地址'}}</view>
     <view class="muted">新增后下单会自动带入默认地址。</view>
     <button class="primary" bindtap="add">新增常用地址</button>
   </view>

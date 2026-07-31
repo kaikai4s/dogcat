@@ -1,9 +1,12 @@
-const { callFunction, showError } = require('../../../../../utils/cloud')
-const { createPageNav, navMethods } = require('../../../../../utils/nav')
+const { callFunction, showError } = require('../../../../utils/cloud')
+const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { chooseSelectedLocation } = require('../../../../utils/cloud')
+const { ensureLogin } = require('../../../../utils/cloud')
 
 Page({
   data: {
     id: '',
+    initialized: false,
     sectionHomeUrl: '',
     canGoBack: false,
     form: {
@@ -22,8 +25,17 @@ Page({
   onLoad(query) {
     const id = query.id || ''
     this.setData({ ...createPageNav(query), id })
-    if (id) this.load(id)
-    else this.prepareNewAddressDefault()
+  },
+
+  onShow() {
+    ensureLogin({ content: '登录后可编辑常用地址。' })
+      .then(() => {
+        if (this.data.initialized) return
+        this.setData({ initialized: true })
+        if (this.data.id) this.load(this.data.id)
+        else this.prepareNewAddressDefault()
+      })
+      .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
   },
 
   load(id) {
@@ -52,16 +64,15 @@ Page({
   },
 
   chooseLocation() {
-    wx.chooseLocation({
-      success: (loc) => {
+    chooseSelectedLocation()
+      .then((loc) => {
         this.setData({
           ['form.serviceAddress']: loc.name || loc.address || '',
           ['form.latitude']: loc.latitude,
           ['form.longitude']: loc.longitude
         })
-      },
-      fail: showError
-    })
+      })
+      .catch(showError)
   },
 
   save() {

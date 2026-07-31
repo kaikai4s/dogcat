@@ -1,3 +1,6 @@
+const { getSelectedLocation, chooseSelectedLocation } = require('../../../utils/cloud')
+const { ensureLogin } = require('../../../utils/cloud')
+
 Page({
   data: {
     locationName: '选择位置',
@@ -6,25 +9,46 @@ Page({
     longitude: 0
   },
 
+  onShow() {
+    this.applySavedLocation()
+  },
+
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    wx.redirectTo({ url })
+    wx.navigateTo({ url })
   },
 
+  goProtected(e) {
+    const url = e.currentTarget.dataset.url
+    if (!url) return
+    ensureLogin({ content: '登录后可预约服务、管理宠物和查看订单。' })
+      .then(() => wx.navigateTo({ url }))
+      .catch(() => {})
+  },
+
+  applySavedLocation() {
+    const location = getSelectedLocation()
+    if (!location) return
+    this.setData({
+      locationName: location.name,
+      locationTip: location.address || '已选择服务附近位置',
+      latitude: location.latitude,
+      longitude: location.longitude
+    })
+  },
 
   updateLocation() {
-    wx.chooseLocation({
-      success: (loc) => {
+    chooseSelectedLocation()
+      .then((location) => {
         this.setData({
-          locationName: loc.name || '已选择位置',
-          locationTip: loc.address || '已选择服务附近位置',
-          latitude: loc.latitude,
-          longitude: loc.longitude
+          locationName: location.name,
+          locationTip: location.address || '已选择服务附近位置',
+          latitude: location.latitude,
+          longitude: location.longitude
         })
-      },
-      fail: () => this.showLocationAuth()
-    })
+      })
+      .catch(() => this.showLocationAuth())
   },
 
   showLocationAuth() {

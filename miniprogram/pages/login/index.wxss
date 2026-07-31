@@ -1,1 +1,29 @@
-/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+.login-simple {
+  min-height: 100vh;
+  padding: 96rpx 32rpx 48rpx;
+  background: #fff3f7;
+}
+
+.login-title {
+  margin-top: 80rpx;
+  color: #1f1b1d;
+  font-size: 56rpx;
+  font-weight: 900;
+}
+
+.login-subtitle {
+  margin: 24rpx 0 48rpx;
+  color: #6f676d;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+
+.login-error {
+  margin-bottom: 24rpx;
+  padding: 24rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  color: #f43f6b;
+  font-size: 26rpx;
+  line-height: 1.5;
+}

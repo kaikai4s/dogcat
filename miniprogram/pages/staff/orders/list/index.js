@@ -1,8 +1,13 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { withOrderText } = require('../../../../utils/format')
+const { getSelectedLocation } = require('../../../../utils/cloud')
 Page({
   data: { orders: [] },
-  onShow() { callFunction('staff', 'listStaffOrders').then((orders) => this.setData({ orders: orders.map(withOrderText) })).catch(showError) },
+  onShow() {
+    const location = getSelectedLocation()
+    const data = location ? { latitude: location.latitude, longitude: location.longitude } : {}
+    callFunction('staff', 'listStaffOrders', data).then((orders) => this.setData({ orders: orders.map(withOrderText) })).catch(showError)
+  },
   detail(e) { wx.navigateTo({ url: '/pages/staff/orders/detail/index?id=' + e.currentTarget.dataset.id }) },
   openNavigation(e) {
     const { latitude, longitude, name, address } = e.currentTarget.dataset

@@ -1,4 +1,5 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
+const { ensureLogin } = require('../../../../utils/cloud')
 
 const ALL = '全部'
 const sortOptions = [
@@ -116,11 +117,15 @@ Page({
     const url = staffProfileId
       ? `/pages/client/orders/create/index?publishMode=direct&staffProfileId=${staffProfileId}`
       : '/pages/client/orders/create/index?publishMode=open'
-    wx.navigateTo({ url })
+    ensureLogin({ content: '登录后可预约宠托师。' })
+      .then(() => wx.navigateTo({ url }))
+      .catch(() => {})
   },
 
   openPublish() {
-    wx.navigateTo({ url: '/pages/client/orders/create/index?publishMode=open' })
+    ensureLogin({ content: '登录后可发布预约。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/orders/create/index?publishMode=open' }))
+      .catch(() => {})
   },
 
   showAreas(e) {
@@ -136,5 +141,13 @@ Page({
     const url = e.currentTarget.dataset.url
     if (!url) return
     wx.redirectTo({ url })
+  },
+
+  goProtected(e) {
+    const url = e.currentTarget.dataset.url
+    if (!url) return
+    ensureLogin({ content: '登录后可查看订单。' })
+      .then(() => wx.redirectTo({ url }))
+      .catch(() => {})
   }
 })

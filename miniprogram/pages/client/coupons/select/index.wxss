@@ -1,0 +1,32 @@
+.coupon-card {
+  margin-bottom: 22rpx;
+  padding: 28rpx;
+  display: flex;
+  gap: 24rpx;
+  align-items: center;
+  border-radius: 30rpx;
+  background: #ffffff;
+  box-shadow: 0 14rpx 36rpx rgba(116, 91, 101, 0.1);
+  border: 2rpx solid transparent;
+}
+
+.coupon-card.active {
+  border-color: #f43f6b;
+  background: linear-gradient(135deg, #fff0f5 0%, #fff 100%);
+}
+
+.coupon-card.disabled {
+  opacity: 0.55;
+}
+
+.coupon-amount {
+  min-width: 150rpx;
+  color: #f43f6b;
+  font-size: 54rpx;
+  font-weight: 900;
+}
+
+.coupon-main {
+  flex: 1;
+  min-width: 0;
+}

@@ -96,7 +96,14 @@ function loadCloudFunction(functionName, db, openid = 'openid_test') {
         DYNAMIC_CURRENT_ENV: 'test-env',
         init() {},
         database() { return db },
-        getWXContext() { return { OPENID: openid } }
+        getWXContext() { return { OPENID: openid } },
+        openapi: {
+          phonenumber: {
+            async getPhoneNumber() {
+              return { phoneInfo: { phoneNumber: '19900006302', purePhoneNumber: '19900006302' } }
+            }
+          }
+        }
       }
     }
     return originalLoad.call(this, request, parent, isMain)

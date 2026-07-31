@@ -1,0 +1,31 @@
+<view class="page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">选择优惠</view>
+    <view class="title">选择优惠券</view>
+    <view class="tip">不可用优惠券会显示原因，最终优惠以后端试算为准。</view>
+  </view>
+
+  <button class="ghost" bindtap="clearCoupon">不使用优惠券，自动选择最优</button>
+
+  <view class="loading-card" wx:if="{{loading}}">正在计算可用优惠券...</view>
+
+  <view class="coupon-card interactive {{!item.applicable ? 'disabled' : ''}} {{selectedCouponId === item._id ? 'active' : ''}}" wx:for="{{coupons}}" wx:key="_id" data-index="{{index}}" bindtap="select">
+    <view class="coupon-amount">¥{{item.discountAmount}}</view>
+    <view class="coupon-main">
+      <view class="between">
+        <view class="strong">{{item.name}}</view>
+        <view class="badge" wx:if="{{item.applicable}}">可省 ¥{{item.discountAmount}}</view>
+        <view class="badge" wx:else>不可用</view>
+      </view>
+      <view class="muted">{{item.ruleText}}</view>
+      <view class="muted" wx:if="{{item.applicable}}">使用后预计支付 ¥{{item.payAmountAfterDiscount}}</view>
+      <view class="muted" wx:else>{{item.reason}}</view>
+      <view class="muted">有效期至 {{item.validTo}}</view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && !coupons.length}}">暂无可选择优惠券</view>
+</view>

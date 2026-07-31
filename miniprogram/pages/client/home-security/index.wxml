@@ -1,7 +1,6 @@
 <view class="page">
   <view class="top-nav">
     <view class="nav-round" bindtap="goBack">‹</view>
-    <view class="nav-round" bindtap="goSectionHome">⌂</view>
   </view>
   <view class="dashboard-header">
     <view class="badge">家庭安全</view>

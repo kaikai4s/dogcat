@@ -1,5 +1,6 @@
-const { callFunction, showError } = require('../../../../../utils/cloud')
-const { createPageNav, navMethods } = require('../../../../../utils/nav')
+const { callFunction, showError } = require('../../../../utils/cloud')
+const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { ensureLogin } = require('../../../../utils/cloud')
 
 Page({
   data: {
@@ -14,7 +15,9 @@ Page({
   },
 
   onShow() {
-    this.load()
+    ensureLogin({ content: '登录后可查看关注的宠托师。' })
+      .then(() => this.load())
+      .catch(() => wx.redirectTo({ url: '/pages/client/sitters/list/index' }))
   },
 
   load() {

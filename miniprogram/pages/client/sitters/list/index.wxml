@@ -88,7 +88,7 @@
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>首页</view></view>
     <view class="nav-item active"><view class="nav-icon">🐾</view><view>宠托师</view></view>
-    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon">☷</view><view>订单</view></view>
     <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon">♙</view><view>我的</view></view>
   </view>
 </view>

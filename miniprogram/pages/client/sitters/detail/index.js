@@ -1,5 +1,6 @@
-const { callFunction, showError } = require('../../../../../utils/cloud')
-const { createPageNav, navMethods } = require('../../../../../utils/nav')
+const { callFunction, showError } = require('../../../../utils/cloud')
+const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { ensureLogin } = require('../../../../utils/cloud')
 
 Page({
   data: {
@@ -27,18 +28,26 @@ Page({
   toggleFavorite() {
     const sitter = this.data.sitter
     if (!sitter) return
-    const action = sitter.favorite ? 'unfavoriteSitter' : 'favoriteSitter'
-    callFunction('staff', action, { staffProfileId: sitter._id })
+    ensureLogin({ content: '登录后可收藏宠托师。' })
+      .then(() => {
+        const action = sitter.favorite ? 'unfavoriteSitter' : 'favoriteSitter'
+        return callFunction('staff', action, { staffProfileId: sitter._id })
+      })
       .then((res) => {
         this.setData({ ['sitter.favorite']: res.favorite })
         wx.showToast({ title: res.favorite ? '已收藏' : '已取消' })
       })
-      .catch(showError)
+      .catch((error) => {
+        if (error && error.code === 'LOGIN_CANCELLED') return
+        showError(error)
+      })
   },
 
   book() {
     if (!this.data.id) return
-    wx.navigateTo({ url: `/pages/client/orders/create/index?publishMode=direct&staffProfileId=${this.data.id}` })
+    ensureLogin({ content: '登录后可预约宠托师。' })
+      .then(() => wx.navigateTo({ url: `/pages/client/orders/create/index?publishMode=direct&staffProfileId=${this.data.id}` }))
+      .catch(() => {})
   },
 
   goList() {

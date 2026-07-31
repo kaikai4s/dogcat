@@ -1,5 +1,6 @@
-const { callFunction, showError } = require('../../../../../utils/cloud')
-const { createPageNav, navMethods } = require('../../../../../utils/nav')
+const { callFunction, showError } = require('../../../../utils/cloud')
+const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { ensureLogin } = require('../../../../utils/cloud')
 
 const tagOptions = [
   { label: '准时到达', selected: false },
@@ -23,6 +24,11 @@ Page({
 
   onLoad(query) {
     this.setData({ ...createPageNav(query), id: query.id || query.orderId || '' })
+  },
+
+  onShow() {
+    ensureLogin({ content: '登录后可评价订单。' })
+      .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
   },
 
   chooseRating(e) {

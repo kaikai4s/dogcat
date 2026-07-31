@@ -7,7 +7,8 @@ const db = cloud.database()
 const collections = [
   'users', 'pets', 'home_security', 'staff_profiles', 'orders', 'payments',
   'track_logs', 'checkin_logs', 'unlock_code_logs', 'order_incidents', 'admin_operation_logs', 'service_prices',
-  'sitter_favorites', 'service_reviews', 'user_addresses', 'order_timeline', 'platform_configs'
+  'sitter_favorites', 'service_reviews', 'user_addresses', 'order_timeline', 'platform_configs',
+  'coupon_templates', 'user_coupons'
 ]
 
 const defaultServicePrices = [
@@ -161,7 +162,110 @@ function getWalkPrice(basePrice, weight) {
   return 69
 }
 
-async function calcOrderPricing(data, pet) {
+function normalizeCouponSnapshot(coupon) {
+  const snapshot = coupon.templateSnapshot || coupon
+  return {
+    templateId: coupon.templateId || coupon._id || '',
+    name: safeText(snapshot.name).trim() || '优惠券',
+    description: safeText(snapshot.description).trim(),
+    type: snapshot.type === 'fixed' ? 'fixed' : 'fixed',
+    discountAmount: Math.max(Number(snapshot.discountAmount || 0), 0),
+    minOrderAmount: Math.max(Number(snapshot.minOrderAmount || 0), 0),
+    applicableServiceTypes: Array.isArray(snapshot.applicableServiceTypes) ? snapshot.applicableServiceTypes.map((item) => String(item || '').trim()).filter(Boolean) : []
+  }
+}
+
+function couponRuleText(snapshot) {
+  const minText = snapshot.minOrderAmount > 0 ? `满${snapshot.minOrderAmount}减${snapshot.discountAmount}` : `立减${snapshot.discountAmount}`
+  return snapshot.applicableServiceTypes.length ? `${minText}，限指定服务` : minText
+}
+
+function couponDisplayStatus(coupon, time = now()) {
+  if (coupon.status === 'used' || coupon.status === 'locked' || coupon.status === 'void') return coupon.status
+  const validTo = new Date(coupon.validTo || 0).getTime()
+  if (validTo && validTo < time.getTime()) return 'expired'
+  return coupon.status || 'available'
+}
+
+function couponStatusText(status) {
+  return ({ available: '可使用', locked: '已锁定', used: '已使用', expired: '已过期', void: '已作废' })[status] || '未知状态'
+}
+
+function formatUserCoupon(coupon, options = {}) {
+  const snapshot = normalizeCouponSnapshot(coupon)
+  const status = options.status || couponDisplayStatus(coupon)
+  return {
+    _id: coupon._id,
+    templateId: coupon.templateId || snapshot.templateId,
+    name: snapshot.name,
+    description: snapshot.description,
+    discountAmount: snapshot.discountAmount,
+    minOrderAmount: snapshot.minOrderAmount,
+    applicableServiceTypes: snapshot.applicableServiceTypes,
+    validFrom: coupon.validFrom || '',
+    validTo: coupon.validTo || '',
+    status,
+    statusText: couponStatusText(status),
+    ruleText: couponRuleText(snapshot),
+    applicable: options.applicable,
+    reason: options.reason || '',
+    payAmountAfterDiscount: options.payAmountAfterDiscount
+  }
+}
+
+async function getAvailableUserCoupons(openid) {
+  const res = await db.collection('user_coupons').where({ openid }).get()
+  const time = now()
+  return (res.data || [])
+    .filter((coupon) => couponDisplayStatus(coupon, time) === 'available')
+    .sort((a, b) => String(a.validTo || '').localeCompare(String(b.validTo || '')) || String(b.issuedAt || b.createdAt || '').localeCompare(String(a.issuedAt || a.createdAt || '')))
+}
+
+function evaluateCoupon(coupon, pricing, openid) {
+  if (!coupon || coupon.openid !== openid) return { applicable: false, reason: '优惠券不存在' }
+  const status = couponDisplayStatus(coupon)
+  if (status !== 'available') return { applicable: false, reason: couponStatusText(status) }
+  const snapshot = normalizeCouponSnapshot(coupon)
+  if (pricing.amount < snapshot.minOrderAmount) return { applicable: false, reason: `订单满 ¥${snapshot.minOrderAmount} 可用` }
+  if (snapshot.applicableServiceTypes.length && !pricing.serviceTypes.some((key) => snapshot.applicableServiceTypes.includes(key))) return { applicable: false, reason: '当前服务不可用' }
+  const discountAmount = Math.min(snapshot.discountAmount, pricing.amount)
+  if (discountAmount <= 0) return { applicable: false, reason: '优惠金额无效' }
+  return {
+    applicable: true,
+    couponId: coupon._id,
+    templateId: coupon.templateId || snapshot.templateId,
+    name: snapshot.name,
+    discountAmount,
+    ruleText: couponRuleText(snapshot),
+    snapshot
+  }
+}
+
+function applyCouponToPricing(pricing, couponResult) {
+  if (!couponResult || !couponResult.applicable) {
+    return { ...pricing, discountAmount: 0, coupon: null, payAmount: pricing.amount, priceSnapshot: { ...pricing.priceSnapshot, originalAmount: pricing.amount, discountAmount: 0, payAmount: pricing.amount } }
+  }
+  const discountAmount = couponResult.discountAmount
+  const payAmount = Math.max(pricing.amount - discountAmount, 0)
+  const coupon = {
+    couponId: couponResult.couponId,
+    templateId: couponResult.templateId,
+    name: couponResult.name,
+    discountAmount,
+    ruleText: couponResult.ruleText,
+    snapshot: couponResult.snapshot
+  }
+  return {
+    ...pricing,
+    discountAmount,
+    coupon,
+    payAmount,
+    priceItems: [...pricing.priceItems, { key: 'coupon', label: `优惠券：${coupon.name}`, price: -discountAmount }],
+    priceSnapshot: { ...pricing.priceSnapshot, coupon, originalAmount: pricing.amount, discountAmount, payAmount }
+  }
+}
+
+async function calcOrderPricing(data, pet, options = {}) {
   const serviceTypes = normalizeServiceTypes(data)
   if (!serviceTypes.length) throw new Error('请选择服务项目')
   const catalog = await listServicePrices(false)
@@ -179,17 +283,36 @@ async function calcOrderPricing(data, pet) {
   })
   const amount = priceItems.reduce((sum, item) => sum + item.price, 0)
   const serviceLabels = priceItems.map((item) => item.label)
-  return {
+  const basePricing = {
     amount,
     payAmount: amount,
+    discountAmount: 0,
+    coupon: null,
     currency: 'CNY',
     serviceTypes,
     serviceLabels,
     serviceSummary: serviceLabels.join('、'),
     durationMinutes,
     priceItems,
-    priceSnapshot: { services: priceItems, durationMinutes, weight }
+    priceSnapshot: { services: priceItems, durationMinutes, weight, originalAmount: amount, discountAmount: 0, payAmount: amount }
   }
+  const openid = options.openid || ''
+  if (!openid) return basePricing
+  if (data.couponId) {
+    const coupon = (await db.collection('user_coupons').doc(data.couponId).get()).data
+    const result = evaluateCoupon(coupon, basePricing, openid)
+    if (!result.applicable) throw new Error(result.reason)
+    return applyCouponToPricing(basePricing, result)
+  }
+  if (data.autoApplyCoupon === true) {
+    const coupons = await getAvailableUserCoupons(openid)
+    const best = coupons
+      .map((coupon) => evaluateCoupon(coupon, basePricing, openid))
+      .filter((item) => item.applicable)
+      .sort((a, b) => b.discountAmount - a.discountAmount)[0]
+    return applyCouponToPricing(basePricing, best)
+  }
+  return basePricing
 }
 
 function requiredCheckins(serviceType, serviceTypes) {
@@ -328,6 +451,41 @@ async function appendOrderTimeline(orderId, type, title, detail, actorRole) {
   })
 }
 
+async function saveUserAddress(openid, user, data) {
+  if (!data.serviceAddress) throw new Error('请选择服务地址')
+  if (!data.addressDetail) throw new Error('请填写详细地址')
+  if (!data.doorplate) throw new Error('请填写门牌号或入户说明')
+  const time = now()
+  const existingAddresses = await db.collection('user_addresses').where({ openid }).get()
+  const isNewAddress = !data.id
+  const shouldBeDefault = data.isDefault === true || (isNewAddress && existingAddresses.data.length === 0)
+  const payload = {
+    userId: user._id,
+    openid,
+    label: data.label || '常用地址',
+    contactName: data.contactName || '',
+    contactPhone: data.contactPhone || '',
+    serviceAddress: data.serviceAddress || '',
+    addressDetail: data.addressDetail || '',
+    doorplate: data.doorplate || '',
+    latitude: Number(data.latitude || data.addressLatitude || 0),
+    longitude: Number(data.longitude || data.addressLongitude || 0),
+    isDefault: shouldBeDefault,
+    updatedAt: time
+  }
+  if (payload.isDefault) {
+    await Promise.all(existingAddresses.data.map((item) => db.collection('user_addresses').doc(item._id).update({ data: { isDefault: false, updatedAt: time } })))
+  }
+  if (data.id) {
+    const existing = await db.collection('user_addresses').doc(data.id).get()
+    if (existing.data.openid !== openid) throw new Error('无权操作地址')
+    await db.collection('user_addresses').doc(data.id).update({ data: payload })
+    return { _id: data.id, ...existing.data, ...payload }
+  }
+  const created = await db.collection('user_addresses').add({ data: { ...payload, createdAt: time } })
+  return { _id: created._id, ...payload, createdAt: time }
+}
+
 async function getReviewStats(staffProfileId) {
   const res = await db.collection('service_reviews').where({ staffProfileId, status: 'visible' }).get()
   const reviews = res.data || []
@@ -362,7 +520,7 @@ async function toPublicSitterDetail(openid, profile) {
     levelName: profile.levelName || '认证宠托师',
     serviceRadiusKm: Number(profile.serviceRadiusKm || 0),
     publicTags: Array.isArray(profile.publicTags) && profile.publicTags.length ? profile.publicTags : base.publicTags,
-    favorite: await isFavoriteSitter(openid, profile._id),
+    favorite: openid ? await isFavoriteSitter(openid, profile._id) : false,
     ...reviewStats
   }
 }
@@ -390,6 +548,33 @@ const handlers = {
         user = { _id: created._id, ...userData }
       }
       if (user.status !== 'active') throw new Error('账号不可用')
+      return user
+    }
+
+    if (action === 'loginByPhoneCode') {
+      const code = safeText(data.code).trim()
+      if (!code) throw new Error('未获取到手机号授权码')
+      let phoneResult = null
+      try {
+        phoneResult = await cloud.openapi.phonenumber.getPhoneNumber({ code })
+      } catch (error) {
+        const message = error.message || error.errMsg || JSON.stringify(error)
+        throw new Error(`调用微信手机号接口失败：${message}`)
+      }
+      const phoneInfo = phoneResult.phoneInfo || phoneResult.phone_info || {}
+      const phone = safeText(phoneInfo.phoneNumber || phoneInfo.purePhoneNumber || phoneInfo.phone_number || phoneInfo.pure_phone_number).trim()
+      if (!phone) throw new Error(`手机号授权失败：${JSON.stringify(phoneResult)}`)
+      let user = await getOptionalUser(openid)
+      const time = now()
+      if (!user) {
+        const userData = { openid, phone, nickname: '微信用户', avatarUrl: '', roles: ['client'], activeRole: 'client', status: 'active', createdAt: time, updatedAt: time }
+        const created = await db.collection('users').add({ data: userData })
+        user = { _id: created._id, ...userData }
+      } else {
+        if (user.status !== 'active') throw new Error('账号不可用')
+        await db.collection('users').doc(user._id).update({ data: { phone, updatedAt: time } })
+        user = { ...user, phone, updatedAt: time }
+      }
       return user
     }
 
@@ -506,38 +691,7 @@ const handlers = {
     }
 
     if (action === 'saveAddress') {
-      if (!data.serviceAddress) throw new Error('请选择服务地址')
-      if (!data.addressDetail) throw new Error('请填写详细地址')
-      if (!data.doorplate) throw new Error('请填写门牌号或入户说明')
-      const time = now()
-      const existingAddresses = await db.collection('user_addresses').where({ openid }).get()
-      const isNewAddress = !data.id
-      const shouldBeDefault = data.isDefault === true || (isNewAddress && existingAddresses.data.length === 0)
-      const payload = {
-        userId: user._id,
-        openid,
-        label: data.label || '常用地址',
-        contactName: data.contactName || '',
-        contactPhone: data.contactPhone || '',
-        serviceAddress: data.serviceAddress || '',
-        addressDetail: data.addressDetail || '',
-        doorplate: data.doorplate || '',
-        latitude: Number(data.latitude || data.addressLatitude || 0),
-        longitude: Number(data.longitude || data.addressLongitude || 0),
-        isDefault: shouldBeDefault,
-        updatedAt: time
-      }
-      if (payload.isDefault) {
-        await Promise.all(existingAddresses.data.map((item) => db.collection('user_addresses').doc(item._id).update({ data: { isDefault: false, updatedAt: time } })))
-      }
-      if (data.id) {
-        const existing = await db.collection('user_addresses').doc(data.id).get()
-        if (existing.data.openid !== openid) throw new Error('无权操作地址')
-        await db.collection('user_addresses').doc(data.id).update({ data: payload })
-        return { _id: data.id, ...existing.data, ...payload }
-      }
-      const created = await db.collection('user_addresses').add({ data: { ...payload, createdAt: time } })
-      return { _id: created._id, ...payload, createdAt: time }
+      return saveUserAddress(openid, user, data)
     }
 
     if (action === 'deleteAddress') {
@@ -626,7 +780,7 @@ const handlers = {
         if (petRes.data.openid !== openid) throw new Error('宠物不存在')
         pet = petRes.data
       }
-      return calcOrderPricing(data, pet)
+      return calcOrderPricing(data, pet, { openid })
     }
 
     if (action === 'createOrder') {
@@ -638,13 +792,29 @@ const handlers = {
       validateOrderTime(data)
       const petRes = await db.collection('pets').doc(data.petId).get()
       if (petRes.data.openid !== openid) throw new Error('宠物不存在')
-      const pricing = await calcOrderPricing(data, petRes.data)
+      const pricing = await calcOrderPricing(data, petRes.data, { openid })
       const requestedStaff = await getRequestedStaff(data)
       const time = now()
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, payAmount: pricing.payAmount, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', requiredCheckins: requiredCheckins(pricing.serviceTypes[0], pricing.serviceTypes), insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', requiredCheckins: requiredCheckins(pricing.serviceTypes[0], pricing.serviceTypes), insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      let savedAddress = null
+      if (data.saveAddress === true) {
+        savedAddress = await saveUserAddress(openid, user, {
+          label: data.addressLabel || '预约地址',
+          serviceAddress: data.serviceAddress,
+          addressDetail: data.addressDetail,
+          doorplate: data.doorplate,
+          latitude: data.addressLatitude,
+          longitude: data.addressLongitude,
+          isDefault: true
+        })
+      }
       const created = await db.collection('orders').add({ data: order })
+      if (order.couponId) {
+        await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'locked', lockedOrderId: created._id, lockedAt: time, updatedAt: time } })
+      }
       await appendOrderTimeline(created._id, 'created', '订单已创建', order.serviceSummary, 'client')
-      return { _id: created._id, ...order }
+      if (order.couponId) await appendOrderTimeline(created._id, 'coupon_locked', '已使用优惠券', `优惠 ¥${order.discountAmount}`, 'client')
+      return { _id: created._id, ...order, savedAddress }
     }
 
     if (action === 'listOrders') {
@@ -733,6 +903,12 @@ const handlers = {
       if (!quote.canCancel) throw new Error(quote.ruleText)
       const time = now()
       await db.collection('orders').doc(data.orderId).update({ data: { status: 'cancelled', cancelReason: data.reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time } })
+      if (order.paymentStatus !== 'paid' && order.couponId) {
+        const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
+        if (coupon && coupon.status === 'locked' && coupon.lockedOrderId === data.orderId) {
+          await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'available', lockedOrderId: '', lockedAt: null, updatedAt: time } })
+        }
+      }
       await appendOrderTimeline(data.orderId, 'cancelled', '订单已取消', `${quote.ruleText}，预计退款 ¥${quote.refundAmount}`, 'client')
       return { orderId: data.orderId, status: 'cancelled', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount }
     }
@@ -772,6 +948,43 @@ const handlers = {
     throw new Error('未知 order 操作')
   },
 
+  async coupon(openid, action, data) {
+    if (action === 'listMyCoupons') {
+      await getUser(openid)
+      const res = await db.collection('user_coupons').where({ openid }).get()
+      const statusFilter = data.status || 'available'
+      return (res.data || [])
+        .map((coupon) => formatUserCoupon(coupon))
+        .filter((coupon) => statusFilter === 'all' || coupon.status === statusFilter)
+        .sort((a, b) => String(a.validTo || '').localeCompare(String(b.validTo || '')))
+    }
+
+    if (action === 'listApplicableCoupons') {
+      await getUser(openid)
+      let pet = null
+      if (data.petId) {
+        const petRes = await db.collection('pets').doc(data.petId).get()
+        if (petRes.data.openid !== openid) throw new Error('宠物不存在')
+        pet = petRes.data
+      }
+      const pricing = await calcOrderPricing({ ...data, couponId: '', autoApplyCoupon: false }, pet, { openid })
+      const coupons = (await db.collection('user_coupons').where({ openid }).get()).data || []
+      return coupons
+        .map((coupon) => {
+          const result = evaluateCoupon(coupon, pricing, openid)
+          return formatUserCoupon(coupon, {
+            status: couponDisplayStatus(coupon),
+            applicable: result.applicable,
+            reason: result.reason || '',
+            payAmountAfterDiscount: result.applicable ? Math.max(pricing.amount - result.discountAmount, 0) : pricing.amount
+          })
+        })
+        .sort((a, b) => Number(b.applicable) - Number(a.applicable) || String(a.validTo || '').localeCompare(String(b.validTo || '')))
+    }
+
+    throw new Error('未知 coupon 操作')
+  },
+
   async payment(openid, action, data) {
     if (action === 'createPayment') return { mock: true, message: 'MVP 暂未接入真实微信支付，请调用 mockPayOrder' }
     if (action === 'paymentCallback') return { ignored: true }
@@ -783,8 +996,14 @@ const handlers = {
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid' }
       if (order.status !== 'pending_pay') throw new Error('订单状态不可支付')
       const time = now()
+      if (order.couponId) {
+        const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
+        if (!coupon || coupon.openid !== openid) throw new Error('优惠券不可用')
+        if (coupon.status !== 'locked' || coupon.lockedOrderId !== data.orderId) throw new Error('优惠券状态异常')
+      }
       await db.collection('payments').add({ data: { orderId: data.orderId, orderNo: order.orderNo, paymentNo: `P${Date.now()}${Math.floor(Math.random() * 1000)}`, wxTransactionId: '', amount: order.payAmount, status: 'success', paidAt: time, rawCallback: { mock: true }, createdAt: time, updatedAt: time } })
       await db.collection('orders').doc(data.orderId).update({ data: { paymentStatus: 'paid', status: 'paid', paidAt: time, updatedAt: time } })
+      if (order.couponId) await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'used', usedOrderId: data.orderId, usedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.orderId, 'paid', '订单已支付', `支付金额 ¥${order.payAmount}`, 'client')
       return { orderId: data.orderId, status: 'paid' }
     }
@@ -793,7 +1012,6 @@ const handlers = {
 
   async staff(openid, action, data) {
     if (action === 'listApprovedSitters') {
-      await getUser(openid)
       const keyword = String(data.keyword || '').trim().toLowerCase()
       const serviceCity = String(data.serviceCity || '').trim()
       const serviceArea = String(data.serviceArea || '').trim()
@@ -824,11 +1042,11 @@ const handlers = {
       }
     }
     if (action === 'getPublicSitterDetail') {
-      await getUser(openid)
+      const user = await getOptionalUser(openid)
       const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
       const profile = profileRes.data
       if (!profile || profile.auditStatus !== 'approved') throw new Error('宠托师不可用')
-      return toPublicSitterDetail(openid, await withSitterUserProfile(profile))
+      return toPublicSitterDetail(user ? openid : '', await withSitterUserProfile(profile))
     }
     if (action === 'favoriteSitter') {
       const user = await getUser(openid)
@@ -907,11 +1125,13 @@ const handlers = {
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = profileRes.data[0] || {}
+      const latitude = Number(data.latitude || profile.currentLatitude || 0)
+      const longitude = Number(data.longitude || profile.currentLongitude || 0)
       const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
       return res.data
         .filter((order) => order.publishMode === 'direct' && !order.staffOpenid && order.requestedStaffOpenid === openid)
         .map((order) => {
-          const distanceKm = calcDistanceKm(profile.currentLatitude, profile.currentLongitude, order.addressLatitude, order.addressLongitude)
+          const distanceKm = calcDistanceKm(latitude, longitude, order.addressLatitude, order.addressLongitude)
           return { ...order, distanceKm, distanceText: formatDistance(distanceKm) }
         })
     }
@@ -929,9 +1149,11 @@ const handlers = {
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = profileRes.data[0] || {}
+      const latitude = Number(data.latitude || profile.currentLatitude || 0)
+      const longitude = Number(data.longitude || profile.currentLongitude || 0)
       const res = await db.collection('orders').where({ staffOpenid: openid }).orderBy('startTime', 'asc').get()
       return res.data.map((order) => {
-        const distanceKm = calcDistanceKm(profile.currentLatitude, profile.currentLongitude, order.addressLatitude, order.addressLongitude)
+        const distanceKm = calcDistanceKm(latitude, longitude, order.addressLatitude, order.addressLongitude)
         return { ...order, distanceKm, distanceText: formatDistance(distanceKm) }
       })
     }
@@ -1086,6 +1308,85 @@ const handlers = {
       }))
       await logAdmin(admin, 'service_price', 'defaults', 'resetDefaultServicePrices', {})
       return listServicePrices(true)
+    }
+    if (action === 'listCouponTemplates') {
+      const res = await db.collection('coupon_templates').orderBy('sortOrder', 'asc').get()
+      return (res.data || []).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    }
+    if (action === 'saveCouponTemplate') {
+      const name = safeText(data.name).trim()
+      if (!name) throw new Error('优惠券名称不能为空')
+      const discountAmount = Math.round(Number(data.discountAmount || 0))
+      const minOrderAmount = Math.max(Math.round(Number(data.minOrderAmount || 0)), 0)
+      const validDays = Math.max(Math.round(Number(data.validDays || 30)), 1)
+      if (!discountAmount || discountAmount < 0) throw new Error('优惠金额不正确')
+      const validServiceKeys = (await listServicePrices(true)).map((item) => item.key)
+      const applicableServiceTypes = Array.isArray(data.applicableServiceTypes) ? data.applicableServiceTypes.map((item) => String(item || '').trim()).filter(Boolean) : []
+      if (applicableServiceTypes.some((key) => !validServiceKeys.includes(key))) throw new Error('适用服务不正确')
+      const time = now()
+      const payload = {
+        name,
+        description: safeText(data.description).trim(),
+        type: 'fixed',
+        discountAmount,
+        minOrderAmount,
+        applicableServiceTypes,
+        validDays,
+        enabled: data.enabled !== false,
+        totalIssueLimit: Math.max(Math.round(Number(data.totalIssueLimit || 0)), 0),
+        perUserLimit: Math.max(Math.round(Number(data.perUserLimit || 1)), 1),
+        sortOrder: Number(data.sortOrder || 100),
+        updatedAt: time
+      }
+      if (data._id) {
+        const existing = await db.collection('coupon_templates').doc(data._id).get()
+        await db.collection('coupon_templates').doc(data._id).update({ data: payload })
+        await logAdmin(admin, 'coupon_template', data._id, 'saveCouponTemplate', { name, discountAmount })
+        return { ...existing.data, ...payload, _id: data._id }
+      }
+      const created = await db.collection('coupon_templates').add({ data: { ...payload, issuedCount: 0, createdAt: time } })
+      await logAdmin(admin, 'coupon_template', created._id, 'saveCouponTemplate', { name, discountAmount })
+      return { _id: created._id, ...payload, issuedCount: 0, createdAt: time }
+    }
+    if (action === 'issueCouponToUser') {
+      const templateId = safeText(data.templateId).trim()
+      const targetOpenid = safeText(data.openid).trim()
+      if (!templateId) throw new Error('请选择优惠券模板')
+      if (!targetOpenid) throw new Error('请输入用户 openid')
+      const template = (await db.collection('coupon_templates').doc(templateId).get()).data
+      if (!template || template.enabled === false) throw new Error('优惠券模板不可用')
+      const targetUser = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
+      if (!targetUser || targetUser.status !== 'active') throw new Error('目标用户不存在')
+      const existing = (await db.collection('user_coupons').where({ openid: targetOpenid, templateId }).get()).data || []
+      const activeCount = existing.filter((coupon) => coupon.status !== 'void').length
+      if (activeCount >= Number(template.perUserLimit || 1)) throw new Error('该用户已达到领取上限')
+      if (Number(template.totalIssueLimit || 0) > 0 && Number(template.issuedCount || 0) >= Number(template.totalIssueLimit || 0)) throw new Error('优惠券已达到发放上限')
+      const time = now()
+      const validTo = new Date(time.getTime() + Number(template.validDays || 30) * 86400000)
+      const snapshot = normalizeCouponSnapshot(template)
+      const created = await db.collection('user_coupons').add({
+        data: {
+          templateId,
+          templateSnapshot: snapshot,
+          userId: targetUser._id,
+          openid: targetOpenid,
+          status: 'available',
+          validFrom: time,
+          validTo,
+          lockedOrderId: '',
+          lockedAt: null,
+          usedOrderId: '',
+          usedAt: null,
+          issuedByAdminUserId: admin._id,
+          issuedByAdminOpenid: openid,
+          issuedAt: time,
+          createdAt: time,
+          updatedAt: time
+        }
+      })
+      await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: Number(template.issuedCount || 0) + 1, updatedAt: time } })
+      await logAdmin(admin, 'coupon_template', templateId, 'issueCouponToUser', { targetOpenid, couponId: created._id })
+      return { _id: created._id, templateId, openid: targetOpenid, status: 'available', templateSnapshot: snapshot, validFrom: time, validTo }
     }
     if (action === 'listStaffAudits') {
       const where = data.auditStatus ? { auditStatus: data.auditStatus } : {}

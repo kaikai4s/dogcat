@@ -1,5 +1,10 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { getSelectedLocation, chooseSelectedLocation } = require('../../../../utils/cloud')
+const { ensureLogin } = require('../../../../utils/cloud')
+
+const COUPON_CONTEXT_KEY = 'vip_pet_coupon_select_context'
+const SELECTED_COUPON_KEY = 'vip_pet_selected_coupon'
 
 const durationOptions = [
   { label: '30分钟', value: 30 },
@@ -57,26 +62,52 @@ Page({
       addressLongitude: 0
     },
     quote: null,
+    selectedCouponId: '',
+    selectedCoupon: null,
     requestedSitter: null,
     saveAddress: false,
     locationReady: false,
     locationTip: '',
+    initialized: false,
+    pendingOptions: {},
     sectionHomeUrl: '',
     canGoBack: false
   },
 
   onLoad(options) {
-    this.setData(createPageNav(options))
+    this.setData({ ...createPageNav(options), pendingOptions: options || {} })
     const publishMode = options.publishMode === 'direct' ? 'direct' : 'open'
     const staffProfileId = options.staffProfileId || ''
     this.setData({ ['form.publishMode']: publishMode, ['form.staffProfileId']: staffProfileId })
-    if (publishMode === 'direct' && staffProfileId) this.loadRequestedSitter(staffProfileId)
-    if (options.rebookOrderId) this.loadRebook(options.rebookOrderId)
-    else this.loadDefaultAddress()
   },
 
   onShow() {
+    this.consumeSelectedCoupon()
+    ensureLogin({ content: '登录后可创建预约订单。' })
+      .then(() => this.loadPageData())
+      .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+  },
+
+  consumeSelectedCoupon() {
+    const selected = wx.getStorageSync(SELECTED_COUPON_KEY)
+    if (!selected) return
+    wx.removeStorageSync(SELECTED_COUPON_KEY)
+    if (selected.clear) {
+      this.setData({ selectedCouponId: '', selectedCoupon: null, quote: null })
+      return
+    }
+    this.setData({ selectedCouponId: selected._id, selectedCoupon: selected, quote: null })
+  },
+
+  loadPageData() {
     this.prepareTime()
+    const options = this.data.pendingOptions || {}
+    if (!this.data.initialized) {
+      this.setData({ initialized: true })
+      if (this.data.form.publishMode === 'direct' && this.data.form.staffProfileId) this.loadRequestedSitter(this.data.form.staffProfileId)
+      if (options.rebookOrderId) this.loadRebook(options.rebookOrderId)
+      else this.loadDefaultAddress()
+    }
     Promise.all([
       callFunction('pet', 'listPets'),
       callFunction('order', 'listServiceOptions')
@@ -88,7 +119,7 @@ Page({
         this.setData({
           pets,
           serviceOptions: markSelected(enabled, serviceTypes),
-          ['form.petId']: pets[0]?._id || '',
+          ['form.petId']: this.data.form.petId || pets[0]?._id || '',
           ['form.serviceTypes']: serviceTypes,
           ['form.serviceType']: serviceTypes[0]
         })
@@ -132,8 +163,22 @@ Page({
       .then((addresses) => {
         const address = addresses.find((item) => item.isDefault)
         if (address) this.applyAddress(address)
+        else this.applySelectedLocation()
       })
-      .catch(() => {})
+      .catch(() => this.applySelectedLocation())
+  },
+
+  applySelectedLocation() {
+    const location = getSelectedLocation()
+    if (!location) return
+    this.setData({
+      ['form.serviceAddress']: location.name || location.address || '',
+      ['form.addressLatitude']: location.latitude,
+      ['form.addressLongitude']: location.longitude,
+      locationReady: true,
+      locationTip: location.address || '已使用首页选择的位置',
+      quote: null
+    })
   },
 
   loadRebook(orderId) {
@@ -181,7 +226,17 @@ Page({
   },
 
   chooseSavedAddress() {
-    wx.navigateTo({ url: '/pages/client/addresses/list/index?select=1' })
+    wx.showToast({ title: '正在打开常用地址', icon: 'none' })
+    wx.navigateTo({
+      url: '/pages/client/addresses/list/index?select=1',
+      fail: (error) => {
+        wx.showModal({
+          title: '无法打开常用地址',
+          content: error.errMsg || '请重新编译小程序后再试',
+          showCancel: false
+        })
+      }
+    })
   },
 
   toggleSaveAddress(e) {
@@ -220,20 +275,19 @@ Page({
   },
 
   useCurrentLocation() {
-    wx.chooseLocation({
-      success: (loc) => {
+    chooseSelectedLocation()
+      .then((location) => {
         this.setData({
-          ['form.serviceAddress']: loc.name || loc.address || this.data.form.serviceAddress,
-          ['form.addressLatitude']: loc.latitude,
-          ['form.addressLongitude']: loc.longitude,
+          ['form.serviceAddress']: location.name || location.address || this.data.form.serviceAddress,
+          ['form.addressLatitude']: location.latitude,
+          ['form.addressLongitude']: location.longitude,
           locationReady: true,
-          locationTip: loc.address || '已选择服务位置',
+          locationTip: location.address || '已选择服务位置',
           quote: null
         })
-        wx.showToast({ title: '已选择位置' })
-      },
-      fail: showError
-    })
+        wx.showToast({ title: '已更新位置' })
+      })
+      .catch(showError)
   },
 
   validateRequired() {
@@ -248,6 +302,25 @@ Page({
     return ''
   },
 
+  buildOrderPayload() {
+    return {
+      ...this.data.form,
+      couponId: this.data.selectedCouponId,
+      autoApplyCoupon: !this.data.selectedCouponId
+    }
+  },
+
+  chooseCoupon() {
+    this.prepareTime()
+    const error = this.validateRequired()
+    if (error) {
+      wx.showToast({ title: error, icon: 'none' })
+      return
+    }
+    wx.setStorageSync(COUPON_CONTEXT_KEY, this.buildOrderPayload())
+    wx.navigateTo({ url: `/pages/client/coupons/select/index?selectedCouponId=${this.data.selectedCouponId || ''}` })
+  },
+
   quoteOrder() {
     this.prepareTime()
     const error = this.validateRequired()
@@ -255,8 +328,8 @@ Page({
       wx.showToast({ title: error, icon: 'none' })
       return
     }
-    callFunction('order', 'quoteOrder', this.data.form)
-      .then((quote) => this.setData({ quote }))
+    callFunction('order', 'quoteOrder', this.buildOrderPayload())
+      .then((quote) => this.setData({ quote, selectedCouponId: quote.coupon ? quote.coupon.couponId : this.data.selectedCouponId, selectedCoupon: quote.coupon || this.data.selectedCoupon }))
       .catch(showError)
   },
 
@@ -267,34 +340,10 @@ Page({
       wx.showToast({ title: error, icon: 'none' })
       return
     }
-    callFunction('order', 'createOrder', this.data.form)
+    callFunction('order', 'createOrder', { ...this.buildOrderPayload(), saveAddress: this.data.saveAddress })
       .then((order) => {
-        const redirect = () => wx.redirectTo({ url: '/pages/client/orders/detail/index?id=' + order._id })
-        if (!this.data.saveAddress) {
-          redirect()
-          return
-        }
-        callFunction('client', 'saveAddress', {
-          label: '预约地址',
-          serviceAddress: this.data.form.serviceAddress,
-          addressDetail: this.data.form.addressDetail,
-          doorplate: this.data.form.doorplate,
-          latitude: this.data.form.addressLatitude,
-          longitude: this.data.form.addressLongitude,
-          isDefault: true
-        })
-          .then(() => {
-            wx.showToast({ title: '已保存常用地址' })
-            setTimeout(redirect, 500)
-          })
-          .catch((error) => {
-            wx.showModal({
-              title: '订单已创建',
-              content: `但常用地址保存失败：${error.message || '请稍后在我的地址中手动添加'}`,
-              showCancel: false,
-              success: redirect
-            })
-          })
+        if (this.data.saveAddress && order.savedAddress) wx.showToast({ title: '已保存常用地址' })
+        wx.redirectTo({ url: '/pages/client/orders/detail/index?id=' + order._id })
       })
       .catch(showError)
   },

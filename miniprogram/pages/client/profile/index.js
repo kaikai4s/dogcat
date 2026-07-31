@@ -1,4 +1,5 @@
 const { callFunction, showError } = require('../../../utils/cloud')
+const { getCurrentUser, loginWithWechat, ensureLogin, setCachedUser, logoutCurrentUser } = require('../../../utils/cloud')
 
 const staffEntryMap = {
   none: { title: '申请成为宠托师', tip: '提交资料后等待平台审核' },
@@ -9,36 +10,69 @@ const staffEntryMap = {
 
 Page({
   data: {
+    isGuest: true,
+    showSettings: false,
+    loadingLogin: false,
     staffProfile: null,
     staffEntryTitle: staffEntryMap.none.title,
     staffEntryTip: staffEntryMap.none.tip,
-    userName: '宠物主',
-    userMeta: '欢迎回来，今天也要安心宠护',
+    userName: '游客',
+    userMeta: '登录后可管理宠物、订单、地址和收藏',
     avatarUrl: ''
   },
 
-  onShow() {
-    this.loadUser()
-    this.loadStaffProfile()
+  onLoad(query) {
+    this.setData({ showSettings: query.settings === '1' })
   },
 
-  loadUser() {
-    callFunction('auth', 'me')
+  onShow() {
+    wx.setNavigationBarTitle({ title: this.data.showSettings ? '设置' : '我的' })
+    getCurrentUser({ silent: true })
       .then((user) => {
-        getApp().globalData.user = user
+        if (!user) {
+          this.applyGuest()
+          return
+        }
         this.applyUser(user)
+        this.loadStaffProfile()
       })
-      .catch(() => {})
+      .catch(() => this.applyGuest())
+  },
+
+  applyGuest() {
+    setCachedUser(null)
+    this.setData({
+      isGuest: true,
+      staffProfile: null,
+      staffEntryTitle: staffEntryMap.none.title,
+      staffEntryTip: staffEntryMap.none.tip,
+      userName: '游客',
+      userMeta: '登录后可管理宠物、订单、地址和收藏',
+      avatarUrl: ''
+    })
   },
 
   applyUser(user) {
     const rawPhone = String(user.phone || '')
     const phone = rawPhone ? `${rawPhone.slice(0, 3)}****${rawPhone.slice(-4)}` : ''
     this.setData({
+      isGuest: false,
       userName: user.nickname || phone || '宠物主',
       userMeta: phone ? `已绑定手机 ${phone}` : '欢迎回来，今天也要安心宠护',
       avatarUrl: user.avatarUrl || ''
     })
+  },
+
+  login() {
+    this.setData({ loadingLogin: true })
+    loginWithWechat()
+      .then((user) => {
+        this.applyUser(user)
+        this.loadStaffProfile()
+        wx.showToast({ title: '已登录' })
+      })
+      .catch(showError)
+      .finally(() => this.setData({ loadingLogin: false }))
   },
 
   loadStaffProfile() {
@@ -61,33 +95,105 @@ Page({
     wx.redirectTo({ url })
   },
 
+  goProtected(e) {
+    const url = e.currentTarget.dataset.url
+    if (!url) return
+    ensureLogin({ content: '登录后可查看订单。' })
+      .then(() => wx.redirectTo({ url }))
+      .catch(() => {})
+  },
+
   openStaffEntry() {
-    const profile = this.data.staffProfile
-    if (!profile || profile.auditStatus === 'rejected') {
-      wx.navigateTo({ url: '/pages/staff/certification/index' })
-      return
-    }
-    if (profile.auditStatus === 'approved') {
-      wx.redirectTo({ url: '/pages/staff/home/index' })
-      return
-    }
-    wx.showToast({ title: '资料审核中', icon: 'none' })
+    ensureLogin({ content: '登录后可申请或进入宠托师工作台。' })
+      .then(() => {
+        const profile = this.data.staffProfile
+        if (!profile || profile.auditStatus === 'rejected') {
+          wx.navigateTo({ url: '/pages/staff/certification/index' })
+          return
+        }
+        if (profile.auditStatus === 'approved') {
+          wx.redirectTo({ url: '/pages/staff/home/index' })
+          return
+        }
+        wx.showToast({ title: '资料审核中', icon: 'none' })
+      })
+      .catch(() => {})
   },
 
   openAdmin() {
-    wx.redirectTo({ url: '/pages/admin/home/index' })
+    ensureLogin({ content: '登录后可进入管理端。' })
+      .then(() => wx.redirectTo({ url: '/pages/admin/home/index' }))
+      .catch(() => {})
   },
 
   openAddresses() {
-    wx.navigateTo({ url: '/pages/client/addresses/list/index' })
+    ensureLogin({ content: '登录后可管理常用地址。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/addresses/list/index' }))
+      .catch(() => {})
   },
 
   openFavorites() {
-    wx.navigateTo({ url: '/pages/client/sitters/favorites/index?from=profile' })
+    ensureLogin({ content: '登录后可查看关注的宠托师。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/sitters/favorites/index?from=profile' }))
+      .catch(() => {})
+  },
+
+  openCoupons() {
+    ensureLogin({ content: '登录后可查看优惠券。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/coupons/list/index' }))
+      .catch(() => {})
   },
 
   editProfile() {
-    wx.navigateTo({ url: '/pages/client/profile/edit/index?from=client' })
+    ensureLogin({ content: '登录后可编辑个人资料。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/profile/edit/index?from=client' }))
+      .catch(() => {})
+  },
+
+  openSettings() {
+    wx.navigateTo({ url: '/pages/client/profile/index?settings=1' })
+  },
+
+  openAccountSafety() {
+    ensureLogin({ content: '登录后可查看账号安全信息。' })
+      .then(() => {
+        wx.showModal({
+          title: '账号安全',
+          content: `${this.data.userName}\n${this.data.userMeta}\n\n当前版本使用微信 openid 作为登录凭证，不保存微信密码。`,
+          showCancel: false
+        })
+      })
+      .catch(() => {})
+  },
+
+  openAbout() {
+    wx.showModal({ title: '关于我们', content: 'VIP 宠护提供上门喂养、遛狗、宠托师预约、订单跟踪与服务报告等宠物照护服务。', showCancel: false })
+  },
+
+  openInfoCollection() {
+    wx.showModal({ title: '个人信息收集清单', content: '为提供服务，我们可能收集微信 openid、昵称头像、联系方式、宠物资料、服务地址、订单信息、服务打卡和评价内容。', showCancel: false })
+  },
+
+  openThirdPartySharing() {
+    wx.showModal({ title: '第三方信息数据共享', content: '当前 MVP 版本不主动向第三方共享个人信息。后续如接入支付、地图、消息通知等能力，将在隐私政策中说明共享目的、范围和方式。', showCancel: false })
+  },
+
+  openPrivacySummary() {
+    wx.showModal({ title: '隐私政策概要', content: '我们仅在完成预约、服务履约、安全验证和客服支持所需范围内处理信息。你可以在个人资料、地址、宠物档案等页面查看、修改或删除相关信息。', showCancel: false })
+  },
+
+  logout() {
+    wx.showModal({
+      title: '退出登录',
+      content: '退出后将以游客身份使用，需要登录的操作会再次提示微信登录。',
+      confirmText: '退出',
+      success: (res) => {
+        if (!res.confirm) return
+        logoutCurrentUser()
+        this.applyGuest()
+        wx.showToast({ title: '已退出登录' })
+      }
+    })
   },
 
   subscribe() {

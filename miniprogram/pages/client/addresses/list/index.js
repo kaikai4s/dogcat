@@ -1,10 +1,12 @@
-const { callFunction, showError } = require('../../../../../utils/cloud')
-const { createPageNav, navMethods } = require('../../../../../utils/nav')
+const { callFunction, showError } = require('../../../../utils/cloud')
+const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { ensureLogin } = require('../../../../utils/cloud')
 
 Page({
   data: {
     addresses: [],
     select: false,
+    loading: false,
     sectionHomeUrl: '',
     canGoBack: false
   },
@@ -14,17 +16,26 @@ Page({
   },
 
   onShow() {
-    this.load()
+    ensureLogin({ content: '登录后可管理常用地址。' })
+      .then(() => this.load())
+      .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
   },
 
   load() {
+    this.setData({ loading: true })
     callFunction('client', 'listAddresses')
-      .then((addresses) => this.setData({ addresses }))
-      .catch(showError)
+      .then((addresses) => this.setData({ addresses, loading: false }))
+      .catch((error) => {
+        this.setData({ loading: false })
+        showError(error)
+      })
   },
 
   add() {
-    wx.navigateTo({ url: '/pages/client/addresses/edit/index' })
+    wx.navigateTo({
+      url: '/pages/client/addresses/edit/index',
+      fail: (error) => wx.showModal({ title: '无法打开新增地址', content: error.errMsg || '请重新编译小程序后再试', showCancel: false })
+    })
   },
 
   edit(e) {

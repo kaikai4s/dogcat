@@ -18,12 +18,12 @@
   </view>
 
   <view class="grid">
-    <view class="card interactive service-card" data-url="/pages/client/orders/create/index" bindtap="go">
+    <view class="card interactive service-card" data-url="/pages/client/orders/create/index" bindtap="goProtected">
       <view class="action-icon">🐱</view>
       <view class="strong">上门喂猫</view>
       <view class="muted">换粮换水 / 铲屎 / 陪伴</view>
     </view>
-    <view class="card interactive service-card" data-url="/pages/client/orders/create/index" bindtap="go">
+    <view class="card interactive service-card" data-url="/pages/client/orders/create/index" bindtap="goProtected">
       <view class="action-icon">🐶</view>
       <view class="strong">上门遛狗</view>
       <view class="muted">牵引出门 / 轨迹可视</view>
@@ -33,17 +33,17 @@
   <view class="card">
     <view class="subtitle">快捷入口</view>
     <view class="grid">
-      <view class="quick-card interactive" data-url="/pages/client/pets/list/index" bindtap="go">
+      <view class="quick-card interactive" data-url="/pages/client/pets/list/index" bindtap="goProtected">
         <view class="action-icon">🐾</view>
         <view class="strong">宠物档案</view>
         <view class="muted">完善爱宠资料</view>
       </view>
-      <view class="quick-card interactive" data-url="/pages/client/home-security/index" bindtap="go">
+      <view class="quick-card interactive" data-url="/pages/client/home-security/index" bindtap="goProtected">
         <view class="action-icon">🏠</view>
         <view class="strong">家庭安防</view>
         <view class="muted">门锁入户说明</view>
       </view>
-      <view class="quick-card interactive" data-url="/pages/client/orders/list/index" bindtap="go">
+      <view class="quick-card interactive" data-url="/pages/client/orders/list/index" bindtap="goProtected">
         <view class="action-icon">📋</view>
         <view class="strong">我的订单</view>
         <view class="muted">查看轨迹报告</view>
@@ -69,7 +69,7 @@
   <view class="bottom-nav">
     <view class="nav-item active"><view class="nav-icon">⌂</view><view>首页</view></view>
     <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon">🐾</view><view>宠托师</view></view>
-    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon">☷</view><view>订单</view></view>
     <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon">♙</view><view>我的</view></view>
   </view>
 </view>

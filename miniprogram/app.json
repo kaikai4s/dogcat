@@ -1,12 +1,14 @@
 {
   "pages": [
-    "pages/login/index",
-    "pages/dev/init/index",
-    "pages/role-select/index",
     "pages/client/home/index",
     "pages/client/sitters/list/index",
     "pages/client/sitters/detail/index",
     "pages/client/sitters/favorites/index",
+    "pages/client/coupons/list/index",
+    "pages/client/coupons/select/index",
+    "pages/login/index",
+    "pages/dev/init/index",
+    "pages/role-select/index",
     "pages/client/addresses/list/index",
     "pages/client/addresses/edit/index",
     "pages/client/pets/list/index",
@@ -30,6 +32,7 @@
     "pages/staff/sos/index",
     "pages/admin/home/index",
     "pages/admin/service-prices/index",
+    "pages/admin/coupons/index",
     "pages/admin/orders/list/index",
     "pages/admin/orders/detail/index",
     "pages/admin/orders/assign/index",
@@ -45,11 +48,11 @@
     "navigationBarTitleText": "VIP 宠护",
     "navigationBarTextStyle": "black"
   },
-  "requiredBackgroundModes": ["location"],
-  "requiredPrivateInfos": ["getLocation", "chooseLocation"],
+  "__usePrivacyCheck__": true,
+  "requiredPrivateInfos": ["chooseLocation"],
   "permission": {
     "scope.userLocation": {
-      "desc": "用于获取当前位置，为您推荐附近宠托师和附近可接订单"
+      "desc": "用于手动选择服务位置，为您推荐附近宠托师和附近可接订单"
     }
   },
   "sitemapLocation": "sitemap.json",

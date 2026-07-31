@@ -1,3 +1,10 @@
+.address-actions,
+.sitter-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
 .sitter-summary { margin: 18rpx 0; color: #5f585e; font-size: 28rpx; line-height: 1.5; }
-.sitter-actions { display: flex; gap: 16rpx; }
-.compact-btn { flex: 1; min-height: 72rpx; font-size: 26rpx; }
+.sitter-actions { margin-bottom: 0; }
+.compact-btn { flex: 1; min-height: 72rpx; font-size: 26rpx; margin: 0; }

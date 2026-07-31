@@ -3,12 +3,15 @@ const { envList } = require('./envList')
 
 App({
   onLaunch() {
-    const env = envList[0]?.envId || ''
+    const env = envList[0] && envList[0].envId ? envList[0].envId : ''
 
     this.globalData = {
       env,
       user: null,
-      activeRole: 'client'
+      isGuest: true,
+      authChecked: false,
+      activeRole: 'client',
+      selectedLocation: null
     }
 
     if (!wx.cloud) {
@@ -25,6 +28,9 @@ App({
   globalData: {
     env: '',
     user: null,
-    activeRole: 'client'
+    isGuest: true,
+    authChecked: false,
+    activeRole: 'client',
+    selectedLocation: null
   }
 })

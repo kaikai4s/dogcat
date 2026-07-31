@@ -1,4 +1,5 @@
 const { callFunction, showError } = require('../../../utils/cloud')
+const { getSelectedLocation, chooseSelectedLocation } = require('../../../utils/cloud')
 
 Page({
   data: {
@@ -10,7 +11,7 @@ Page({
   },
 
   onShow() {
-    this.refreshNearby()
+    this.loadNearbyWithSavedLocation()
   },
 
   go(e) {
@@ -23,37 +24,44 @@ Page({
 
   backProfile() { wx.redirectTo({ url: '/pages/staff/profile/index' }) },
 
+  loadNearbyWithSavedLocation() {
+    const location = getSelectedLocation()
+    if (!location) {
+      this.setData({ directOrders: [], nearbyOrders: [], locationReady: false, locationText: '请先在首页左上角选择服务位置' })
+      return
+    }
+    this.loadNearby(location, '已按首页选择的位置推荐订单')
+  },
+
   refreshNearby() {
     if (this.data.loadingNearby) return
+    chooseSelectedLocation()
+      .then((location) => this.loadNearby(location, '位置已更新，已按新位置推荐订单'))
+      .catch(showError)
+  },
+
+  loadNearby(location, locationText) {
+    if (this.data.loadingNearby) return
     this.setData({ loadingNearby: true })
-    wx.getLocation({
-      type: 'gcj02',
-      success: (loc) => {
-        const data = { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy }
-        callFunction('staff', 'updateCurrentLocation', data)
-          .then(() => Promise.all([
-            callFunction('staff', 'listDirectOrders'),
-            callFunction('staff', 'listNearbyOrders', data)
-          ]))
-          .then(([directOrders, nearbyOrders]) => {
-            this.setData({
-              directOrders,
-              nearbyOrders,
-              locationReady: true,
-              locationText: '位置已更新，已按附近距离推荐订单',
-              loadingNearby: false
-            })
-          })
-          .catch((error) => {
-            this.setData({ loadingNearby: false })
-            showError(error)
-          })
-      },
-      fail: (error) => {
+    const data = { latitude: location.latitude, longitude: location.longitude, accuracy: location.accuracy }
+    callFunction('staff', 'updateCurrentLocation', data)
+      .then(() => Promise.all([
+        callFunction('staff', 'listDirectOrders', data),
+        callFunction('staff', 'listNearbyOrders', data)
+      ]))
+      .then(([directOrders, nearbyOrders]) => {
+        this.setData({
+          directOrders,
+          nearbyOrders,
+          locationReady: true,
+          locationText: `${locationText}：${location.name}`,
+          loadingNearby: false
+        })
+      })
+      .catch((error) => {
         this.setData({ loadingNearby: false })
         showError(error)
-      }
-    })
+      })
   },
 
   openNavigation(e) {

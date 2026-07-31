@@ -1,11 +1,16 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { ensureLogin } = require('../../../../utils/cloud')
 const { withOrderText } = require('../../../../utils/format')
 
 Page({
   data: { id: '', order: null, timeline: [], review: null, sectionHomeUrl: '', canGoBack: false },
   onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }) },
-  onShow() { this.load() },
+  onShow() {
+    ensureLogin({ content: '登录后可查看订单详情。' })
+      .then(() => this.load())
+      .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+  },
   load() {
     Promise.all([
       callFunction('order', 'getOrderDetail', { id: this.data.id }),

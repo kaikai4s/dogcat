@@ -1,1 +1,68 @@
-/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+.guest-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.guest-panel .compact-btn {
+  flex-shrink: 0;
+}
+
+.profile-settings-page {
+  min-height: 100vh;
+  background: #f6f6f6;
+  color: #2b2b2b;
+  padding: 0 0 80rpx;
+  overflow: hidden;
+}
+
+.settings-card {
+  margin-top: 0;
+  background: #ffffff;
+}
+
+.privacy-card {
+  margin-top: 64rpx;
+}
+
+.settings-row {
+  min-height: 112rpx;
+  margin-left: 24rpx;
+  padding: 0 20rpx 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1rpx solid #eeeeee;
+  font-size: 34rpx;
+  color: #303030;
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+}
+
+.settings-arrow {
+  color: #a8a8a8;
+  font-size: 52rpx;
+  font-weight: 300;
+}
+
+.settings-logout {
+  width: 608rpx;
+  height: 96rpx;
+  margin: 126rpx auto 0;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4436b;
+  color: #ffffff;
+  font-size: 34rpx;
+  font-weight: 500;
+}
+
+.settings-logout:active,
+.settings-row:active {
+  opacity: 0.75;
+}

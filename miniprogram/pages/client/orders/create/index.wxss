@@ -1,3 +1,12 @@
+.order-create-page {
+  padding-top: 0;
+  overflow: hidden;
+}
+
+.order-create-page .top-nav {
+  margin-top: 0;
+}
+
 .publish-grid,
 .service-grid {
   display: grid;

@@ -1,0 +1,35 @@
+<view class="settings-page">
+  <view class="settings-nav">
+    <view class="settings-back" bindtap="goBack">‹</view>
+    <view class="settings-title">设置</view>
+    <view class="settings-placeholder"></view>
+  </view>
+
+  <view class="settings-card">
+    <view class="settings-row interactive" bindtap="openAccountSafety">
+      <view>账号安全</view>
+      <view class="settings-arrow">›</view>
+    </view>
+    <view class="settings-row interactive" bindtap="openAbout">
+      <view>关于我们</view>
+      <view class="settings-arrow">›</view>
+    </view>
+  </view>
+
+  <view class="settings-card privacy-card">
+    <view class="settings-row interactive" bindtap="openInfoCollection">
+      <view>个人信息收集清单</view>
+      <view class="settings-arrow">›</view>
+    </view>
+    <view class="settings-row interactive" bindtap="openThirdPartySharing">
+      <view>第三方信息数据共享</view>
+      <view class="settings-arrow">›</view>
+    </view>
+    <view class="settings-row interactive" bindtap="openPrivacySummary">
+      <view>隐私政策概要</view>
+      <view class="settings-arrow">›</view>
+    </view>
+  </view>
+
+  <button class="logout-btn" wx:if="{{!isGuest}}" bindtap="logout">退出登录</button>
+</view>

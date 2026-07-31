@@ -1,0 +1,31 @@
+<view class="page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">福利中心</view>
+    <view class="title">我的优惠券</view>
+    <view class="tip">下单时可自动选择最优惠券，也可手动选择。</view>
+  </view>
+
+  <view class="status-tabs">
+    <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
+  </view>
+
+  <view class="loading-card" wx:if="{{loading}}">正在加载优惠券...</view>
+
+  <view class="coupon-card {{item.status !== 'available' ? 'disabled' : ''}}" wx:for="{{coupons}}" wx:key="_id">
+    <view class="coupon-amount">¥{{item.discountAmount}}</view>
+    <view class="coupon-main">
+      <view class="between">
+        <view class="strong">{{item.name}}</view>
+        <view class="badge">{{item.statusText}}</view>
+      </view>
+      <view class="muted">{{item.ruleText}}</view>
+      <view class="muted">有效期至 {{item.validTo}}</view>
+      <view class="muted" wx:if="{{item.description}}">{{item.description}}</view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && !coupons.length}}">暂无优惠券</view>
+</view>

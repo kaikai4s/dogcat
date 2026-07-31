@@ -1,7 +1,6 @@
 <view class="page order-create-page">
   <view class="top-nav">
     <view class="nav-round" bindtap="goBack">‹</view>
-    <view class="nav-round" bindtap="goSectionHome">⌂</view>
   </view>
   <view class="dashboard-header">
     <view class="badge">立即预约</view>
@@ -9,11 +8,6 @@
     <view class="tip">选择服务项目、上门时间和详细门牌，系统会自动试算价格。</view>
   </view>
 
-  <view class="pet-search">
-    <view class="search-icon">🔎</view>
-    <view style="flex: 1;">多选宠护服务</view>
-    <view class="search-button" bindtap="quoteOrder">试算</view>
-  </view>
 
   <view class="card form-card">
     <view class="subtitle">发布方式</view>
@@ -83,6 +77,16 @@
     </view>
   </view>
 
+  <view class="card interactive" bindtap="chooseCoupon">
+    <view class="between">
+      <view>
+        <view class="strong">优惠券</view>
+        <view class="muted">{{selectedCoupon ? selectedCoupon.name : '自动选择最优优惠券'}}</view>
+      </view>
+      <view class="menu-arrow">›</view>
+    </view>
+  </view>
+
   <button class="ghost" bindtap="quoteOrder">试算价格</button>
 
   <view class="soft-panel" wx:if="{{quote}}">
@@ -94,6 +98,8 @@
       <view class="badge">{{quote.serviceSummary}}</view>
     </view>
     <view class="price-breakdown">
+      <view class="info-row"><view class="label">原价</view><view class="value">¥{{quote.amount}}</view></view>
+      <view class="info-row" wx:if="{{quote.discountAmount}}"><view class="label">优惠券</view><view class="value">-¥{{quote.discountAmount}}</view></view>
       <view class="info-row" wx:for="{{quote.priceItems}}" wx:key="key">
         <view class="label">{{item.label}}</view>
         <view class="value">¥{{item.price}}</view>

@@ -45,6 +45,11 @@
       <view class="strong">价格配置</view>
       <view class="muted">服务项目与收费</view>
     </view>
+    <view class="card interactive action-card" data-url="/pages/admin/coupons/index" bindtap="go">
+      <view class="action-icon">券</view>
+      <view class="strong">优惠券管理</view>
+      <view class="muted">模板与发券</view>
+    </view>
   </view>
 
   <view class="bottom-nav">

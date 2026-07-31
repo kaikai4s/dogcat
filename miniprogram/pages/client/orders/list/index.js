@@ -1,4 +1,5 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
+const { ensureLogin } = require('../../../../utils/cloud')
 const { withOrderText } = require('../../../../utils/format')
 
 const tabs = [
@@ -17,6 +18,11 @@ Page({
     orders: []
   },
   onShow() {
+    ensureLogin({ content: '登录后可查看订单。' })
+      .then(() => this.load())
+      .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+  },
+  load() {
     callFunction('order', 'listOrders', { role: 'client' })
       .then((orders) => this.setData({ allOrders: orders.map(withOrderText) }, this.filterOrders))
       .catch(showError)

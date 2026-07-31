@@ -1,7 +1,6 @@
 <view class="page" wx:if="{{evidence}}">
   <view class="top-nav">
     <view class="nav-round" bindtap="goBack">‹</view>
-    <view class="nav-round" bindtap="goSectionHome">⌂</view>
   </view>
   <view class="dashboard-header">
     <view class="badge">履约证据</view>
