@@ -54,8 +54,11 @@
     "navigationBarTitleText": "VIP 宠护",
     "navigationBarTextStyle": "black"
   },
-  "__usePrivacyCheck__": true,
-  "requiredPrivateInfos": ["chooseLocation"],
+  "__usePrivacyCheck__": false,
+  "requiredPrivateInfos": [
+    "chooseLocation",
+    "getLocation"
+  ],
   "permission": {
     "scope.userLocation": {
       "desc": "用于手动选择服务位置，为您推荐附近宠托师和附近可接订单"

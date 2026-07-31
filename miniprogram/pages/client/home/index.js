@@ -1,4 +1,4 @@
-const { getSelectedLocation, chooseSelectedLocation, callFunction, showError } = require('../../../utils/cloud')
+const { getSelectedLocation, saveSelectedLocation, callFunction, showError } = require('../../../utils/cloud')
 const { ensureLogin } = require('../../../utils/cloud')
 
 Page({
@@ -41,16 +41,24 @@ Page({
   },
 
   updateLocation() {
-    chooseSelectedLocation()
-      .then((location) => {
+    wx.chooseLocation({
+      success: (loc) => {
+        saveSelectedLocation(loc)
         this.setData({
-          locationName: location.name,
-          locationTip: location.address || '已选择服务附近位置',
-          latitude: location.latitude,
-          longitude: location.longitude
+          locationName: loc.name || '已选择位置',
+          locationTip: loc.address || '已选择服务附近位置',
+          latitude: loc.latitude,
+          longitude: loc.longitude
         })
-      })
-      .catch(() => this.showLocationAuth())
+      },
+      fail: (err) => {
+        console.log('wx.chooseLocation fail error:', err)
+        // 用户在地图界面点击取消/返回，不触发授权弹窗
+        const errMsg = (err && err.errMsg) || ''
+        if (errMsg.includes('cancel')) return
+        this.showLocationAuth()
+      }
+    })
   },
 
   loadLottery() {
