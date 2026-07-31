@@ -1,0 +1,34 @@
+<view class="page">
+  <view class="dashboard-header">
+    <view class="badge">管理端</view>
+    <view class="title">积分管理</view>
+    <view class="tip">手动给用户增减积分，或查看积分流水。</view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">手动增减积分</view>
+    <input placeholder="用户 openid" value="{{form.openid}}" data-field="openid" bindinput="input" />
+    <input type="number" placeholder="积分变动（负数为扣减）" value="{{form.delta}}" data-field="delta" bindinput="input" />
+    <input placeholder="备注原因" value="{{form.reason}}" data-field="reason" bindinput="input" />
+    <button class="primary" bindtap="grant">确认操作</button>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">流水查询</view>
+    <input placeholder="用户 openid（留空查全部）" value="{{filterOpenid}}" bindinput="filterInput" />
+    <button class="ghost" bindtap="search">查询</button>
+  </view>
+
+  <view class="card" wx:for="{{logs}}" wx:key="_id">
+    <view class="between">
+      <view>
+        <view class="strong" style="color:{{item.delta > 0 ? '#e05c8b' : '#888'}}">{{item.delta > 0 ? '+' : ''}}{{item.delta}} 积分</view>
+        <view class="muted">余额 {{item.balance}} · {{item.reason}}</view>
+        <view class="muted">{{item.openid}}</view>
+      </view>
+      <view class="muted">{{item.sourceType}}</view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!logs.length}}">暂无记录</view>
+</view>

@@ -1,0 +1,55 @@
+<view class="page">
+  <view class="dashboard-header">
+    <view class="badge">管理端</view>
+    <view class="title">抽奖活动</view>
+    <view class="tip">创建抽奖活动，开启后用户可每天参与一次，随机获得优惠券。</view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">{{form._id ? '编辑活动' : '新建活动'}}</view>
+    <input placeholder="活动名称" value="{{form.name}}" data-field="name" bindinput="input" />
+    <input placeholder="活动说明" value="{{form.description}}" data-field="description" bindinput="input" />
+
+    <view class="subtitle" style="margin-top:24rpx;">奖品设置</view>
+    <view class="card" wx:for="{{form.prizes}}" wx:key="{{index}}" style="margin-bottom:12rpx;">
+      <view class="between">
+        <view>
+          <view class="strong">{{item.name}}</view>
+          <view class="muted">概率 {{item.probability}}% · 库存 {{item.stockLeft}}</view>
+        </view>
+        <button class="ghost compact-btn" data-index="{{index}}" bindtap="removePrize">移除</button>
+      </view>
+    </view>
+
+    <view class="card" style="margin-bottom:12rpx;">
+      <view class="muted" style="margin-bottom:12rpx;">添加奖品</view>
+      <picker range="{{templates}}" range-key="name" bindchange="choosePrizeTemplate">
+        <view class="field">关联优惠券：{{newPrize.templateId ? newPrize.name : '请选择（可不选表示谢谢参与）'}}</view>
+      </picker>
+      <input placeholder="奖品名称（如：满100减20优惠券）" value="{{newPrize.name}}" data-field="name" bindinput="prizeInput" />
+      <input type="number" placeholder="中奖概率（%，如 30）" value="{{newPrize.probability}}" data-field="probability" bindinput="prizeInput" />
+      <input type="number" placeholder="库存数量" value="{{newPrize.stockLeft}}" data-field="stockLeft" bindinput="prizeInput" />
+      <button class="ghost" bindtap="addPrize">添加此奖品</button>
+    </view>
+
+    <button class="primary" bindtap="save">保存活动</button>
+    <button class="ghost" bindtap="resetForm">新建活动</button>
+  </view>
+
+  <view class="card" wx:for="{{activities}}" wx:key="_id">
+    <view class="between">
+      <view>
+        <view class="strong">{{item.name}}</view>
+        <view class="muted">{{item.prizes.length}} 个奖品</view>
+        <view class="muted">{{item.description}}</view>
+      </view>
+      <view style="display:flex;flex-direction:column;align-items:flex-end;gap:8rpx;">
+        <view class="badge" style="background:{{item.enabled ? '#e05c8b' : '#ccc'}}">{{item.enabled ? '进行中' : '已关闭'}}</view>
+        <button class="ghost compact-btn" data-index="{{index}}" bindtap="toggle">{{item.enabled ? '关闭' : '开启'}}</button>
+        <button class="ghost compact-btn" data-index="{{index}}" bindtap="chooseActivity">编辑</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!activities.length}}">暂无活动</view>
+</view>

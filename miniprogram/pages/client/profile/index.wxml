@@ -35,8 +35,9 @@
     <view class="profile-main">
       <view class="profile-name">{{userName}}</view>
       <view class="profile-points">{{userMeta}}</view>
+      <view wx:if="{{!isGuest && memberLevelName}}" style="margin-top:8rpx;font-size:24rpx;color:#e05c8b;">{{memberLevelName}} · {{points}} 积分</view>
     </view>
-    <view class="checkin-pill" wx:if="{{!isGuest}}">🪙 签到</view>
+    <view class="checkin-pill" wx:if="{{!isGuest}}" bindtap="checkin">🪙 签到</view>
   </view>
 
   <view class="soft-panel guest-panel" wx:if="{{isGuest}}">
@@ -48,6 +49,13 @@
   </view>
 
   <view class="grid">
+    <view class="card interactive profile-card" bindtap="openAiAssistant">
+      <view class="action-icon">🤖</view>
+      <view>
+        <view class="strong">AI 宠护小助手</view>
+        <view class="muted">养宠知识、健康建议与服务咨询</view>
+      </view>
+    </view>
     <view class="card interactive profile-card" bindtap="subscribe">
       <view class="action-icon">▣</view>
       <view>
@@ -79,6 +87,11 @@
     </view>
     <view class="menu-item interactive" bindtap="openCoupons">
       <view class="menu-left"><view class="menu-icon">券</view><view>我的优惠券</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item interactive" bindtap="openPoints">
+      <view class="menu-left"><view class="menu-icon">🪙</view><view>我的积分</view></view>
+      <view class="menu-right-info" wx:if="{{!isGuest}}">{{points}} 积分</view>
       <view class="menu-arrow">›</view>
     </view>
     <view class="menu-item interactive" bindtap="openAddresses">

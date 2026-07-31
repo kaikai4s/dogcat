@@ -29,7 +29,12 @@ function callFunction(name, action, data = {}) {
   }).then((res) => {
     const result = res.result || {}
     if (!result.ok) {
-      throw new Error(result.message || '云函数调用失败')
+      const err = new Error(result.message || '云函数调用失败')
+      // session 失效时清除缓存，下次操作重新验证
+      if (result.message && result.message.includes('登录')) {
+        setCachedUser(null)
+      }
+      throw err
     }
     return result.data
   })

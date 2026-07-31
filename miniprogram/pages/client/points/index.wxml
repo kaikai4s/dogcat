@@ -1,0 +1,36 @@
+<view class="page">
+  <view class="dashboard-header">
+    <view class="badge">{{memberLevelName}}</view>
+    <view class="title">我的积分</view>
+    <view class="tip">完成订单、评价、每日签到均可获得积分。</view>
+  </view>
+
+  <view class="card" style="text-align:center;padding:40rpx 32rpx;">
+    <view style="font-size:72rpx;font-weight:700;color:#e05c8b;">{{points}}</view>
+    <view class="muted">当前可用积分</view>
+    <view class="muted" style="margin-top:8rpx;">累计获得 {{totalPoints}} 积分</view>
+    <view style="display:flex;gap:16rpx;margin-top:24rpx;">
+      <button class="primary" style="flex:1;" bindtap="checkin">每日签到 +5</button>
+      <button class="primary" style="flex:1;background:#ff94b9;" bindtap="openLottery">幸运抽奖 🎰</button>
+    </view>
+  </view>
+
+  <view class="card" style="margin-top:24rpx;">
+    <view class="subtitle">积分明细</view>
+    <view wx:for="{{logs}}" wx:key="_id" class="between" style="padding:20rpx 0;border-bottom:1rpx solid #f5e6ec;">
+      <view>
+        <view class="strong">{{item.sourceLabel}}</view>
+        <view class="muted">余额 {{item.balance}} · {{item.createdAt}}</view>
+        <view class="muted" wx:if="{{item.reason}}">{{item.reason}}</view>
+      </view>
+      <view style="font-weight:600;color:{{item.delta > 0 ? '#e05c8b' : '#888'}}">
+        {{item.sign}}{{item.delta}}
+      </view>
+    </view>
+    <view class="empty" wx:if="{{!logs.length && !loading}}">暂无积分记录</view>
+    <view style="text-align:center;padding:24rpx 0;" wx:if="{{logs.length < total}}">
+      <button class="primary" loading="{{loading}}" bindtap="loadMore">加载更多</button>
+    </view>
+    <view class="muted" style="text-align:center;padding:16rpx 0;" wx:if="{{logs.length >= total && logs.length > 0}}">已显示全部记录</view>
+  </view>
+</view>

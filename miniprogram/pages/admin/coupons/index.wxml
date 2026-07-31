@@ -2,7 +2,7 @@
   <view class="dashboard-header">
     <view class="badge">管理端</view>
     <view class="title">优惠券管理</view>
-    <view class="tip">配置优惠券模板，并给指定用户发券。</view>
+    <view class="tip">配置优惠券模板，按会员段位批量发券或精确发给指定用户。</view>
   </view>
 
   <view class="card form-card">
@@ -23,12 +23,37 @@
   </view>
 
   <view class="card form-card">
-    <view class="subtitle">发券</view>
+    <view class="subtitle">发放优惠券</view>
+    <view class="status-tabs" style="margin-bottom:24rpx;">
+      <view class="status-tab {{issueMode === 'level' ? 'active' : ''}}" data-mode="level" bindtap="switchIssueMode">按会员段位</view>
+      <view class="status-tab {{issueMode === 'openid' ? 'active' : ''}}" data-mode="openid" bindtap="switchIssueMode">精确发券</view>
+    </view>
+
     <picker range="{{templates}}" range-key="name" bindchange="chooseIssueTemplate">
-      <view class="field">模板：{{issue.templateId || '请选择模板'}}</view>
+      <view class="field">模板：{{issueMode === 'level' ? (issueByLevel.templateId || '请选择') : (issueByOpenid.templateId || '请选择')}}</view>
     </picker>
-    <input placeholder="用户 openid" value="{{issue.openid}}" data-field="openid" bindinput="issueInput" />
+
+    <view wx:if="{{issueMode === 'level'}}">
+      <view class="muted" style="margin:16rpx 0 8rpx;">选择段位（可多选）：</view>
+      <view wx:if="{{!levels.length}}" class="muted">暂无等级，请先在「会员等级」页配置</view>
+      <view wx:for="{{levels}}" wx:key="_id" class="between" style="padding:12rpx 0;border-bottom:1rpx solid #f5e6ec;">
+        <view>{{item.icon}} {{item.name}} <text class="muted">（≥{{item.minPoints}}积分）</text></view>
+        <switch checked="{{issueByLevel.targetLevels.indexOf(item.name) !== -1}}" data-name="{{item.name}}" bindchange="toggleLevel" />
+      </view>
+      <view class="muted" style="margin-top:12rpx;">已选：{{issueByLevel.targetLevels.join('、') || '未选择'}}</view>
+    </view>
+
+    <view wx:if="{{issueMode === 'openid'}}">
+      <input placeholder="用户 openid" value="{{issueByOpenid.openid}}" bindinput="openidInput" />
+    </view>
+
     <button class="primary" bindtap="issueCoupon">发放优惠券</button>
+  </view>
+
+  <view style="display:flex;gap:16rpx;padding:0 32rpx 24rpx;">
+    <button class="ghost" style="flex:1;" bindtap="go" data-url="/pages/admin/member-levels/index">会员等级</button>
+    <button class="ghost" style="flex:1;" bindtap="go" data-url="/pages/admin/points/index">积分管理</button>
+    <button class="ghost" style="flex:1;" bindtap="go" data-url="/pages/admin/lottery/index">抽奖活动</button>
   </view>
 
   <view class="card" wx:for="{{templates}}" wx:key="_id">

@@ -1,4 +1,4 @@
-const { getSelectedLocation, chooseSelectedLocation } = require('../../../utils/cloud')
+const { getSelectedLocation, chooseSelectedLocation, callFunction, showError } = require('../../../utils/cloud')
 const { ensureLogin } = require('../../../utils/cloud')
 
 Page({
@@ -6,11 +6,13 @@ Page({
     locationName: '选择位置',
     locationTip: '点击选择当前位置或常用地址',
     latitude: 0,
-    longitude: 0
+    longitude: 0,
+    lotteryActivity: null
   },
 
   onShow() {
     this.applySavedLocation()
+    this.loadLottery()
   },
 
   go(e) {
@@ -49,6 +51,19 @@ Page({
         })
       })
       .catch(() => this.showLocationAuth())
+  },
+
+  loadLottery() {
+    // 不要求登录，公开接口
+    callFunction('lottery', 'getActiveActivity')
+      .then((activity) => this.setData({ lotteryActivity: activity }))
+      .catch(() => {})
+  },
+
+  goLottery() {
+    ensureLogin({ content: '登录后可参与抽奖。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/lottery/index' }))
+      .catch(() => {})
   },
 
   showLocationAuth() {

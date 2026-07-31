@@ -22,6 +22,7 @@
     "pages/client/orders/review/index",
     "pages/client/profile/index",
     "pages/client/profile/edit/index",
+    "pages/client/ai-assistant/index",
     "pages/staff/home/index",
     "pages/staff/profile/index",
     "pages/staff/certification/index",
@@ -39,7 +40,12 @@
     "pages/admin/staff-audit/list/index",
     "pages/admin/staff-audit/detail/index",
     "pages/admin/incidents/list/index",
-    "pages/admin/evidence/detail/index"
+    "pages/admin/evidence/detail/index",
+    "pages/admin/member-levels/index",
+    "pages/admin/points/index",
+    "pages/admin/lottery/index",
+    "pages/client/points/index",
+    "pages/client/lottery/index"
   ],
   "window": {
     "backgroundColor": "#FFF3F7",

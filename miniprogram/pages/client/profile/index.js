@@ -18,7 +18,9 @@ Page({
     staffEntryTip: staffEntryMap.none.tip,
     userName: '游客',
     userMeta: '登录后可管理宠物、订单、地址和收藏',
-    avatarUrl: ''
+    avatarUrl: '',
+    points: 0,
+    memberLevelName: ''
   },
 
   onLoad(query) {
@@ -35,6 +37,7 @@ Page({
         }
         this.applyUser(user)
         this.loadStaffProfile()
+        this.loadPoints()
       })
       .catch(() => this.applyGuest())
   },
@@ -48,7 +51,9 @@ Page({
       staffEntryTip: staffEntryMap.none.tip,
       userName: '游客',
       userMeta: '登录后可管理宠物、订单、地址和收藏',
-      avatarUrl: ''
+      avatarUrl: '',
+      points: 0,
+      memberLevelName: ''
     })
   },
 
@@ -69,6 +74,7 @@ Page({
       .then((user) => {
         this.applyUser(user)
         this.loadStaffProfile()
+        this.loadPoints()
         wx.showToast({ title: '已登录' })
       })
       .catch(showError)
@@ -87,6 +93,26 @@ Page({
         })
       })
       .catch(showError)
+  },
+
+  loadPoints() {
+    callFunction('memberLevel', 'myInfo')
+      .then((info) => this.setData({ points: info.points, memberLevelName: info.memberLevelName || '普通会员' }))
+      .catch(() => {})
+  },
+
+  checkin() {
+    ensureLogin({ content: '登录后可每日签到获得积分。' })
+      .then(() => callFunction('auth', 'dailyCheckin'))
+      .then((res) => {
+        if (res.checkedIn) {
+          wx.showToast({ title: '今天已签到', icon: 'none' })
+        } else {
+          wx.showToast({ title: `签到成功 +${res.delta} 积分`, icon: 'none' })
+          this.setData({ points: res.points })
+        }
+      })
+      .catch(() => {})
   },
 
   go(e) {
@@ -144,6 +170,12 @@ Page({
       .catch(() => {})
   },
 
+  openPoints() {
+    ensureLogin({ content: '登录后可查看积分。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/points/index' }))
+      .catch(() => {})
+  },
+
   editProfile() {
     ensureLogin({ content: '登录后可编辑个人资料。' })
       .then(() => wx.navigateTo({ url: '/pages/client/profile/edit/index?from=client' }))
@@ -194,6 +226,10 @@ Page({
         wx.showToast({ title: '已退出登录' })
       }
     })
+  },
+
+  openAiAssistant() {
+    wx.navigateTo({ url: '/pages/client/ai-assistant/index' })
   },
 
   subscribe() {

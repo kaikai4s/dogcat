@@ -7,8 +7,11 @@ function emptyTemplate() {
 Page({
   data: {
     templates: [],
+    levels: [],
     form: emptyTemplate(),
-    issue: { templateId: '', openid: '' }
+    issueByLevel: { templateId: '', targetLevels: [] },
+    issueByOpenid: { templateId: '', openid: '' },
+    issueMode: 'level'
   },
 
   onShow() {
@@ -17,18 +20,23 @@ Page({
 
   load() {
     callFunction('admin', 'listCouponTemplates')
-      .then((templates) => this.setData({ templates, ['issue.templateId']: this.data.issue.templateId || templates[0]?._id || '' }))
+      .then((templates) => {
+        const first = templates[0]?._id || ''
+        this.setData({
+          templates,
+          ['issueByLevel.templateId']: this.data.issueByLevel.templateId || first,
+          ['issueByOpenid.templateId']: this.data.issueByOpenid.templateId || first
+        })
+      })
+      .catch(showError)
+    callFunction('admin', 'listMemberLevels')
+      .then((levels) => this.setData({ levels }))
       .catch(showError)
   },
 
   input(e) {
     const field = e.currentTarget.dataset.field
     this.setData({ ['form.' + field]: e.detail.value })
-  },
-
-  issueInput(e) {
-    const field = e.currentTarget.dataset.field
-    this.setData({ ['issue.' + field]: e.detail.value })
   },
 
   toggleEnabled(e) {
@@ -43,7 +51,27 @@ Page({
 
   chooseIssueTemplate(e) {
     const template = this.data.templates[e.detail.value]
-    if (template) this.setData({ ['issue.templateId']: template._id })
+    if (!template) return
+    const mode = this.data.issueMode
+    if (mode === 'level') this.setData({ ['issueByLevel.templateId']: template._id })
+    else this.setData({ ['issueByOpenid.templateId']: template._id })
+  },
+
+  switchIssueMode(e) {
+    this.setData({ issueMode: e.currentTarget.dataset.mode })
+  },
+
+  toggleLevel(e) {
+    const levelName = e.currentTarget.dataset.name
+    const current = this.data.issueByLevel.targetLevels || []
+    const next = current.includes(levelName)
+      ? current.filter((n) => n !== levelName)
+      : [...current, levelName]
+    this.setData({ ['issueByLevel.targetLevels']: next })
+  },
+
+  openidInput(e) {
+    this.setData({ ['issueByOpenid.openid']: e.detail.value })
   },
 
   resetForm() {
@@ -61,18 +89,34 @@ Page({
   },
 
   issueCoupon() {
-    callFunction('admin', 'issueCouponToUser', this.data.issue)
-      .then(() => {
-        wx.showToast({ title: '已发券' })
-        this.setData({ ['issue.openid']: '' })
-        this.load()
-      })
-      .catch(showError)
+    if (this.data.issueMode === 'level') {
+      const { templateId, targetLevels } = this.data.issueByLevel
+      if (!templateId) return wx.showToast({ title: '请选择模板', icon: 'none' })
+      if (!targetLevels.length) return wx.showToast({ title: '请选择会员段位', icon: 'none' })
+      callFunction('admin', 'issueCouponByLevels', { templateId, targetLevels })
+        .then((res) => {
+          wx.showToast({ title: `已发放 ${res.issued} 张，跳过 ${res.skipped}` , icon: 'none' })
+          this.setData({ ['issueByLevel.targetLevels']: [] })
+          this.load()
+        })
+        .catch(showError)
+    } else {
+      const { templateId, openid } = this.data.issueByOpenid
+      if (!templateId) return wx.showToast({ title: '请选择模板', icon: 'none' })
+      if (!openid) return wx.showToast({ title: '请输入 openid', icon: 'none' })
+      callFunction('admin', 'issueCouponToUser', { templateId, openid })
+        .then(() => {
+          wx.showToast({ title: '已发券' })
+          this.setData({ ['issueByOpenid.openid']: '' })
+          this.load()
+        })
+        .catch(showError)
+    }
   },
 
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    wx.redirectTo({ url })
+    wx.navigateTo({ url })
   }
 })

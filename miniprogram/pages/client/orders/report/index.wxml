@@ -24,4 +24,14 @@
     <view class="info-row"><view class="label">轨迹点</view><view class="value">{{report.tracks.length}}</view></view>
     <view class="info-row"><view class="label">打卡数</view><view class="value">{{report.checkins.length}}</view></view>
   </view>
+
+  <view class="card" style="margin-top:24rpx;padding:24rpx;">
+    <view class="between" style="align-items:center;">
+      <view class="subtitle" style="margin-bottom:0;">🤖 AI 智能总结</view>
+      <button class="primary compact-btn" loading="{{loadingAi}}" bindtap="generateAiReport">一键生成总结</button>
+    </view>
+    <view wx:if="{{aiSummary}}" class="muted" style="margin-top:16rpx;line-height:1.6;white-space:pre-wrap;background:#fff8fa;padding:20rpx;border-radius:12rpx;">
+      {{aiSummary}}
+    </view>
+  </view>
 </view>

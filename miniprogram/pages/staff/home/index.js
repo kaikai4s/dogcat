@@ -86,7 +86,9 @@ Page({
     callFunction('staff', 'acceptOrder', { orderId })
       .then(() => {
         wx.showToast({ title: '接单成功' })
-        this.refreshNearby()
+        const location = getSelectedLocation()
+        if (location) this.loadNearby(location, '已按当前位置推荐订单')
+        else this.loadNearbyWithSavedLocation()
       })
       .catch(showError)
   }

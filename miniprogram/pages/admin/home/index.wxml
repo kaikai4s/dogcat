@@ -50,6 +50,21 @@
       <view class="strong">优惠券管理</view>
       <view class="muted">模板与发券</view>
     </view>
+    <view class="card interactive action-card" data-url="/pages/admin/member-levels/index" bindtap="go">
+      <view class="action-icon">级</view>
+      <view class="strong">会员等级</view>
+      <view class="muted">积分升级规则</view>
+    </view>
+    <view class="card interactive action-card" data-url="/pages/admin/points/index" bindtap="go">
+      <view class="action-icon">🪙</view>
+      <view class="strong">积分管理</view>
+      <view class="muted">手动增减与流水</view>
+    </view>
+    <view class="card interactive action-card" data-url="/pages/admin/lottery/index" bindtap="go">
+      <view class="action-icon">🎰</view>
+      <view class="strong">抽奖活动</view>
+      <view class="muted">开关与奖品设置</view>
+    </view>
   </view>
 
   <view class="bottom-nav">

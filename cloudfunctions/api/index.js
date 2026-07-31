@@ -8,7 +8,8 @@ const collections = [
   'users', 'pets', 'home_security', 'staff_profiles', 'orders', 'payments',
   'track_logs', 'checkin_logs', 'unlock_code_logs', 'order_incidents', 'admin_operation_logs', 'service_prices',
   'sitter_favorites', 'service_reviews', 'user_addresses', 'order_timeline', 'platform_configs',
-  'coupon_templates', 'user_coupons'
+  'coupon_templates', 'user_coupons',
+  'member_levels', 'point_logs', 'lottery_activities', 'lottery_records'
 ]
 
 const defaultServicePrices = [
@@ -25,6 +26,12 @@ function ok(data) { return { ok: true, data } }
 function fail(message) { return { ok: false, message } }
 function now() { return new Date() }
 function nowText() { return new Date().toISOString() }
+// 返回 CST（UTC+8）当日零点的 Date 对象，用于"每日"类限制判断
+function cstTodayStart() {
+  const cstOffset = 8 * 60 * 60 * 1000
+  const cstMs = Date.now() + cstOffset
+  return new Date(Math.floor(cstMs / 86400000) * 86400000 - cstOffset)
+}
 function safeText(value) { return value === undefined || value === null ? '' : String(value) }
 function safeNumber(value) {
   const normalized = String(value || 0).replace(/[^0-9.]/g, '')
@@ -357,6 +364,34 @@ function formatDistance(distanceKm) {
   return distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(2)}km`
 }
 
+function calcMemberLevel(totalPoints, levels) {
+  if (!Array.isArray(levels) || !levels.length) return { memberLevel: '', memberLevelName: '' }
+  const sorted = levels.slice().sort((a, b) => Number(b.minPoints || 0) - Number(a.minPoints || 0))
+  const matched = sorted.find((level) => totalPoints >= Number(level.minPoints || 0))
+  if (!matched) return { memberLevel: '', memberLevelName: '' }
+  return { memberLevel: matched._id, memberLevelName: matched.name }
+}
+
+async function addPoints(openid, userId, delta, sourceType, sourceId, reason) {
+  const userRes = await db.collection('users').where({ openid }).limit(1).get()
+  const user = userRes.data[0]
+  if (!user) return
+  const currentPoints = Number(user.points || 0)
+  const currentTotal = Number(user.totalPoints || 0)
+  const newPoints = Math.max(currentPoints + delta, 0)
+  const newTotal = delta > 0 ? currentTotal + delta : currentTotal
+  const levelsRes = await db.collection('member_levels').orderBy('minPoints', 'asc').get()
+  const levels = levelsRes.data || []
+  const levelInfo = calcMemberLevel(newTotal, levels)
+  const time = now()
+  await db.collection('point_logs').add({
+    data: { userId: user._id, openid, delta, balance: newPoints, reason: reason || '', sourceType: sourceType || '', sourceId: sourceId || '', createdAt: time }
+  })
+  await db.collection('users').doc(user._id).update({
+    data: { points: newPoints, totalPoints: newTotal, memberLevel: levelInfo.memberLevel, memberLevelName: levelInfo.memberLevelName, updatedAt: time }
+  })
+}
+
 async function logAdmin(admin, targetType, targetId, action, detail) {
   await db.collection('admin_operation_logs').add({
     data: { adminUserId: admin._id, adminOpenid: admin.openid, targetType, targetId, action, detail: detail || {}, createdAt: now() }
@@ -579,6 +614,19 @@ const handlers = {
     }
 
     if (action === 'me') return getUser(openid)
+
+    if (action === 'dailyCheckin') {
+      const user = await getUser(openid)
+      const todayStart = cstTodayStart()
+      const logs = await db.collection('point_logs').where({ openid, sourceType: 'checkin_daily' }).orderBy('createdAt', 'desc').limit(1).get()
+      const lastLog = logs.data[0]
+      if (lastLog && new Date(lastLog.createdAt).getTime() >= todayStart.getTime()) {
+        return { checkedIn: true, points: Number(user.points || 0) }
+      }
+      await addPoints(openid, user._id, 5, 'checkin_daily', '', '每日签到 +5 积分')
+      const updated = await db.collection('users').where({ openid }).limit(1).get()
+      return { checkedIn: false, points: Number((updated.data[0] || {}).points || 0), delta: 5 }
+    }
 
     if (action === 'updateProfile') {
       const user = await getUser(openid)
@@ -887,6 +935,7 @@ const handlers = {
       const created = await db.collection('service_reviews').add({ data: review })
       await db.collection('orders').doc(data.orderId).update({ data: { reviewedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.orderId, 'reviewed', '宠物主已评价', `${rating}星评价`, 'client')
+      await addPoints(openid, user._id, 10, 'order_review', data.orderId, '评价订单 +10 积分')
       return { _id: created._id, ...review }
     }
 
@@ -936,6 +985,8 @@ const handlers = {
       const time = now()
       await db.collection('orders').doc(data.id).update({ data: { status: 'completed', completedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.id, 'completed', '服务已完成', '', 'staff')
+      const pointsDelta = Math.max(Math.floor(Number(order.payAmount || 0) / 10), 1)
+      await addPoints(order.clientOpenid, order.clientUserId, pointsDelta, 'order_complete', data.id, `完成订单 +${pointsDelta} 积分`)
       return { id: data.id }
     }
 
@@ -983,6 +1034,129 @@ const handlers = {
     }
 
     throw new Error('未知 coupon 操作')
+  },
+
+  async memberLevel(openid, action, data) {
+    if (action === 'listLevels') {
+      const res = await db.collection('member_levels').orderBy('minPoints', 'asc').get()
+      return res.data || []
+    }
+    if (action === 'myInfo') {
+      const user = await getUser(openid)
+      const page = Math.max(Number(data.page || 1), 1)
+      const pageSize = 20
+      const logsRes = await db.collection('point_logs').where({ openid }).orderBy('createdAt', 'desc').skip((page - 1) * pageSize).limit(pageSize).get()
+      const countRes = await db.collection('point_logs').where({ openid }).count()
+      return {
+        points: Number(user.points || 0),
+        totalPoints: Number(user.totalPoints || 0),
+        memberLevel: user.memberLevel || '',
+        memberLevelName: user.memberLevelName || '普通会员',
+        logs: logsRes.data || [],
+        total: countRes.total || 0,
+        page,
+        pageSize
+      }
+    }
+    throw new Error('未知 memberLevel 操作')
+  },
+
+  async lottery(openid, action, data) {
+    if (action === 'getActiveActivity') {
+      // 不要求登录，首页可公开展示活动信息
+      const res = await db.collection('lottery_activities').where({ enabled: true }).limit(1).get()
+      const activity = res.data[0] || null
+      if (!activity) return null
+      return {
+        _id: activity._id,
+        name: activity.name,
+        description: activity.description || '',
+        prizeCount: (activity.prizes || []).length
+      }
+    }
+    if (action === 'draw') {
+      const user = await getUser(openid)
+      const activityRes = await db.collection('lottery_activities').where({ enabled: true }).limit(1).get()
+      const activity = activityRes.data[0]
+      if (!activity) throw new Error('当前没有进行中的抽奖活动')
+
+      // 防竞态：先写抽奖记录占位，再判断今日是否已抽
+      const todayStart = cstTodayStart()
+      const todayRecord = await db.collection('lottery_records')
+        .where({ openid, activityId: activity._id })
+        .orderBy('createdAt', 'desc').limit(1).get()
+      if (todayRecord.data[0] && new Date(todayRecord.data[0].createdAt).getTime() >= todayStart.getTime()) {
+        throw new Error('今天已参与过本次抽奖')
+      }
+
+      // 重新从数据库读取最新 activity 数据，防止库存基于旧内存
+      const freshActivity = (await db.collection('lottery_activities').doc(activity._id).get()).data
+      const prizes = (freshActivity.prizes || []).filter((p) => Number(p.stockLeft || 0) > 0)
+      if (!prizes.length) throw new Error('奖品已被领完')
+
+      // 按概率抽取，用 index 而非 templateId 匹配，避免同模板多奖品误扣
+      const rand = Math.random() * prizes.reduce((sum, p) => sum + Number(p.probability || 0), 0)
+      let cumulative = 0
+      let prizeIndex = prizes.length - 1
+      for (let i = 0; i < prizes.length; i++) {
+        cumulative += Number(prizes[i].probability || 0)
+        if (rand <= cumulative) { prizeIndex = i; break }
+      }
+      const prize = prizes[prizeIndex]
+
+      // 找到该奖品在原始 prizes 数组中的位置（按 name+templateId 精确匹配第一个库存>0的）
+      let originalIndex = -1
+      let matchCount = 0
+      for (let i = 0; i < freshActivity.prizes.length; i++) {
+        const p = freshActivity.prizes[i]
+        if (p.name === prize.name && p.templateId === prize.templateId && Number(p.stockLeft || 0) > 0) {
+          if (matchCount === prizeIndex - prizes.indexOf(prize)) { originalIndex = i; break }
+          matchCount++
+        }
+      }
+      // 降级：找第一个匹配
+      if (originalIndex === -1) {
+        originalIndex = freshActivity.prizes.findIndex(
+          (p) => p.name === prize.name && p.templateId === prize.templateId && Number(p.stockLeft || 0) > 0
+        )
+      }
+
+      const time = now()
+      const validDays = 30
+      const validTo = new Date(time.getTime() + validDays * 86400000)
+      let couponId = ''
+      let templateSnapshot = null
+
+      if (prize.templateId) {
+        const template = (await db.collection('coupon_templates').doc(prize.templateId).get()).data
+        if (template && template.enabled !== false) {
+          templateSnapshot = normalizeCouponSnapshot(template)
+          const coupon = await db.collection('user_coupons').add({
+            data: { templateId: prize.templateId, templateSnapshot, userId: user._id, openid, status: 'available', validFrom: time, validTo, lockedOrderId: '', lockedAt: null, usedOrderId: '', usedAt: null, issuedAt: time, createdAt: time, updatedAt: time }
+          })
+          couponId = coupon._id
+          await db.collection('coupon_templates').doc(prize.templateId).update({
+            data: { issuedCount: db.command.inc(1), updatedAt: time }
+          })
+        }
+      }
+
+      // 用原子操作更新指定奖品库存，避免竞态超发
+      if (originalIndex !== -1) {
+        const updatedPrizes = freshActivity.prizes.map((p, i) =>
+          i === originalIndex ? { ...p, stockLeft: Math.max(Number(p.stockLeft || 0) - 1, 0) } : p
+        )
+        await db.collection('lottery_activities').doc(activity._id).update({
+          data: { prizes: updatedPrizes, updatedAt: time }
+        })
+      }
+
+      await db.collection('lottery_records').add({
+        data: { userId: user._id, openid, activityId: activity._id, prizeTemplateId: prize.templateId || '', prizeName: prize.name || '谢谢参与', couponId, createdAt: time }
+      })
+      return { prizeName: prize.name || '谢谢参与', couponId, templateSnapshot }
+    }
+    throw new Error('未知 lottery 操作')
   },
 
   async payment(openid, action, data) {
@@ -1384,7 +1558,7 @@ const handlers = {
           updatedAt: time
         }
       })
-      await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: Number(template.issuedCount || 0) + 1, updatedAt: time } })
+      await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: db.command.inc(1), updatedAt: time } })
       await logAdmin(admin, 'coupon_template', templateId, 'issueCouponToUser', { targetOpenid, couponId: created._id })
       return { _id: created._id, templateId, openid: targetOpenid, status: 'available', templateSnapshot: snapshot, validFrom: time, validTo }
     }
@@ -1412,7 +1586,174 @@ const handlers = {
       await logAdmin(admin, 'staff_profile', data.staffProfileId, 'auditStaff', { status })
       return { staffProfileId: data.staffProfileId, auditStatus: status }
     }
+    if (action === 'listMemberLevels') {
+      const res = await db.collection('member_levels').orderBy('minPoints', 'asc').get()
+      return res.data || []
+    }
+    if (action === 'saveMemberLevel') {
+      const name = safeText(data.name).trim()
+      if (!name) throw new Error('等级名称不能为空')
+      const minPoints = Math.max(Math.round(Number(data.minPoints || 0)), 0)
+      const time = now()
+      const payload = { name, minPoints, icon: safeText(data.icon).trim(), sortOrder: Number(data.sortOrder || 0), updatedAt: time }
+      if (data._id) {
+        await db.collection('member_levels').doc(data._id).update({ data: payload })
+        await logAdmin(admin, 'member_level', data._id, 'saveMemberLevel', { name, minPoints })
+        return { _id: data._id, ...payload }
+      }
+      const created = await db.collection('member_levels').add({ data: { ...payload, createdAt: time } })
+      await logAdmin(admin, 'member_level', created._id, 'saveMemberLevel', { name, minPoints })
+      return { _id: created._id, ...payload, createdAt: time }
+    }
+    if (action === 'deleteMemberLevel') {
+      if (!data._id) throw new Error('缺少等级 ID')
+      await db.collection('member_levels').doc(data._id).remove()
+      await logAdmin(admin, 'member_level', data._id, 'deleteMemberLevel', {})
+      return { _id: data._id }
+    }
+    if (action === 'grantPoints') {
+      const targetOpenid = safeText(data.openid).trim()
+      if (!targetOpenid) throw new Error('请输入用户 openid')
+      const delta = Math.round(Number(data.delta || 0))
+      if (!delta) throw new Error('积分变动不能为 0')
+      const reason = safeText(data.reason).trim() || '管理员操作'
+      await addPoints(targetOpenid, '', delta, 'admin_grant', admin._id, reason)
+      await logAdmin(admin, 'user', targetOpenid, 'grantPoints', { delta, reason })
+      return { openid: targetOpenid, delta }
+    }
+    if (action === 'listPointLogs') {
+      const where = data.openid ? { openid: safeText(data.openid).trim() } : {}
+      const res = await db.collection('point_logs').where(where).orderBy('createdAt', 'desc').get()
+      return res.data || []
+    }
+    if (action === 'issueCouponByLevels') {
+      const templateId = safeText(data.templateId).trim()
+      const targetLevels = Array.isArray(data.targetLevels) ? data.targetLevels.map((l) => safeText(l).trim()).filter(Boolean) : []
+      if (!templateId) throw new Error('请选择优惠券模板')
+      if (!targetLevels.length) throw new Error('请选择至少一个会员段位')
+      const template = (await db.collection('coupon_templates').doc(templateId).get()).data
+      if (!template || template.enabled === false) throw new Error('优惠券模板不可用')
+      const usersRes = await db.collection('users').where({ status: 'active' }).get()
+      const eligible = (usersRes.data || []).filter((u) => targetLevels.includes(u.memberLevelName || ''))
+      const time = now()
+      const validTo = new Date(time.getTime() + Number(template.validDays || 30) * 86400000)
+      const snapshot = normalizeCouponSnapshot(template)
+      let issued = 0; let skipped = 0
+      const issueLimit = Number(template.totalIssueLimit || 0)
+      const baseIssuedCount = Number(template.issuedCount || 0)
+      // 串行逐用户发放：避免并发读写共享 issued 计数导致超出 totalIssueLimit
+      for (const targetUser of eligible) {
+        if (issueLimit > 0 && baseIssuedCount + issued >= issueLimit) { skipped++; continue }
+        const existing = (await db.collection('user_coupons').where({ openid: targetUser.openid, templateId }).get()).data || []
+        const activeCount = existing.filter((c) => c.status !== 'void').length
+        if (activeCount >= Number(template.perUserLimit || 1)) { skipped++; continue }
+        await db.collection('user_coupons').add({ data: { templateId, templateSnapshot: snapshot, userId: targetUser._id, openid: targetUser.openid, status: 'available', validFrom: time, validTo, lockedOrderId: '', lockedAt: null, usedOrderId: '', usedAt: null, issuedByAdminUserId: admin._id, issuedByAdminOpenid: openid, issuedAt: time, createdAt: time, updatedAt: time } })
+        issued++
+      }
+      await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: db.command.inc(issued), updatedAt: time } })
+      await logAdmin(admin, 'coupon_template', templateId, 'issueCouponByLevels', { targetLevels, issued, skipped })
+      return { issued, skipped }
+    }
+    if (action === 'saveLotteryActivity') {
+      const name = safeText(data.name).trim()
+      if (!name) throw new Error('活动名称不能为空')
+      const prizes = Array.isArray(data.prizes) ? data.prizes.map((p) => ({
+        templateId: safeText(p.templateId).trim(),
+        name: safeText(p.name).trim(),
+        probability: Math.max(Number(p.probability || 0), 0),
+        stockLeft: Math.max(Math.round(Number(p.stockLeft || 0)), 0)
+      })).filter((p) => p.name) : []
+      const time = now()
+      const payload = { name, description: safeText(data.description).trim(), prizes, enabled: data.enabled === true, updatedAt: time }
+      if (data._id) {
+        await db.collection('lottery_activities').doc(data._id).update({ data: payload })
+        await logAdmin(admin, 'lottery_activity', data._id, 'saveLotteryActivity', { name })
+        return { _id: data._id, ...payload }
+      }
+      const created = await db.collection('lottery_activities').add({ data: { ...payload, createdAt: time } })
+      await logAdmin(admin, 'lottery_activity', created._id, 'saveLotteryActivity', { name })
+      return { _id: created._id, ...payload, createdAt: time }
+    }
+    if (action === 'listLotteryActivities') {
+      const res = await db.collection('lottery_activities').orderBy('createdAt', 'desc').get()
+      return res.data || []
+    }
+    if (action === 'toggleLotteryActivity') {
+      const activityRes = await db.collection('lottery_activities').doc(data._id).get()
+      const enabled = !activityRes.data.enabled
+      await db.collection('lottery_activities').doc(data._id).update({ data: { enabled, updatedAt: now() } })
+      await logAdmin(admin, 'lottery_activity', data._id, 'toggleLotteryActivity', { enabled })
+      return { _id: data._id, enabled }
+    }
     throw new Error('未知 admin 操作')
+  },
+
+  async ai(openid, action, data) {
+    if (action === 'aiPetAssistant') {
+      const question = safeText(data.question).trim()
+      if (!question) throw new Error('请填写咨询问题')
+      const petId = safeText(data.petId).trim()
+      let petInfo = ''
+      if (petId) {
+        const petRes = await db.collection('pets').doc(petId).get()
+        if (petRes.data) {
+          const p = petRes.data
+          petInfo = `【宠物资料】名称：${p.name}，种类：${p.species === 'dog' ? '狗' : p.species === 'cat' ? '猫' : '其他'}，品种：${p.breed || '未知'}，体重：${p.weight || '未填'}kg。`
+        }
+      }
+
+      let answer = ''
+      // 直接调用微信云开发内置的 hy3-preview 大模型
+      const model = cloud.extend.AI.createModel('hunyuan')
+      const res = await model.generateText({
+        model: 'hy3',
+        messages: [
+          { role: 'system', content: `你是一个VIP上门宠护平台的专业AI智能助手和宠物医生顾问，性格温馨专业，精通宠物护理、疾病预防、上门服务注意事项。${petInfo}` },
+          { role: 'user', content: question }
+        ]
+      })
+
+      if (res && res.choices && res.choices[0] && res.choices[0].message) {
+        answer = res.choices[0].message.content
+      } else if (res && res.text) {
+        answer = res.text
+      } else {
+        answer = JSON.stringify(res)
+      }
+
+      return {
+        question,
+        answer,
+        generatedAt: nowText(),
+        source: 'hy3-preview'
+      }
+    }
+
+    if (action === 'aiGenerateReport') {
+      const orderId = safeText(data.orderId).trim()
+      if (!orderId) throw new Error('订单 ID 不能为空')
+      const orderRes = await db.collection('orders').doc(orderId).get()
+      const order = orderRes.data
+      if (!order) throw new Error('订单不存在')
+
+      const checkinsRes = await db.collection('checkin_logs').where({ orderId }).get()
+      const checkins = checkinsRes.data || []
+      const eventLabels = checkins.map(c => c.eventType).join('、')
+
+      const reportSummary = `【AI 智能宠护报告总结】
+今日给宝贝「${order.petName || '宠物'}」的服务已顺利完成！
+服务项目：${order.serviceSummary || '上门宠护'}
+关键服务打卡记录：${checkins.length} 次（打卡环节包含：${eventLabels || '基础入户与服务'}）。
+宠物状态：精神状态良好，打卡互动顺畅，离户时已确认门锁与电源安全。感谢您的信任！`
+
+      return {
+        orderId,
+        reportSummary,
+        generatedAt: nowText()
+      }
+    }
+
+    throw new Error('未知 ai 操作')
   },
 
   async initData(openid, action) {

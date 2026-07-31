@@ -1,0 +1,24 @@
+<view class="ai-page">
+  <view class="ai-header">
+    <view class="title">🤖 AI 宠护小助手</view>
+    <view class="tip">智能解答养宠知识、饮食指导、行为习惯与服务安排问题</view>
+    <view class="preset-box">
+      <view class="preset-chip" bindtap="askPreset" data-text="狗狗外出爆冲怎么办？">爆冲防护</view>
+      <view class="preset-chip" bindtap="askPreset" data-text="猫咪换粮呕吐如何处理？">饮食消化</view>
+      <view class="preset-chip" bindtap="askPreset" data-text="上门喂养需要准备什么？">上门准备</view>
+    </view>
+  </view>
+
+  <view class="chat-list">
+    <block wx:for="{{messages}}" wx:key="index">
+      <view class="chat-msg {{item.role}}">
+        <text selectable="{{true}}">{{item.content}}</text>
+      </view>
+    </block>
+  </view>
+
+  <view class="input-bar">
+    <input placeholder="请输入养宠或服务咨询问题..." value="{{inputText}}" bindinput="onInput" bindconfirm="send" />
+    <button class="send-btn" loading="{{loading}}" bindtap="send">发送</button>
+  </view>
+</view>

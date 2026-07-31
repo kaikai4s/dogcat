@@ -18,5 +18,17 @@ Page({
       .then((report) => this.setData({ report: { ...report, order: withOrderText(report.order), checkins: (report.checkins || []).map(withCheckinText) } }))
       .catch(showError)
   },
+  generateAiReport() {
+    if (!this.data.id || this.data.loadingAi) return
+    this.setData({ loadingAi: true })
+    callFunction('ai', 'aiGenerateReport', { orderId: this.data.id })
+      .then((res) => {
+        this.setData({ aiSummary: res.reportSummary, loadingAi: false })
+      })
+      .catch((err) => {
+        this.setData({ loadingAi: false })
+        showError(err)
+      })
+  },
   ...navMethods()
 })
