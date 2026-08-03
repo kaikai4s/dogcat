@@ -28,6 +28,8 @@
         <view style="flex:1;">
           <view class="strong">{{requestedSitter ? requestedSitter.displayName : '还未选择宠托师'}}</view>
           <view class="muted">{{requestedSitter ? requestedSitter.serviceSummary : '请从宠托师列表选择指定对象'}}</view>
+          <view class="muted" style="font-size:22rpx; color:#f43f6b; margin-top:4rpx;" wx:if="{{requestedSitter && requestedSitter.serviceRadiusKm}}">📍 接单范围：{{requestedSitter.serviceRadiusKm}}km 内</view>
+          <view class="muted" style="font-size:22rpx; color:#666; margin-top:2rpx;" wx:if="{{requestedSitter && requestedSitter.weeklyScheduleText}}">⏰ 可预约时间：{{requestedSitter.weeklyScheduleText}}</view>
         </view>
       </view>
       <button class="ghost compact-btn" bindtap="chooseSitter">重新选择宠托师</button>

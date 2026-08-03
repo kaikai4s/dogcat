@@ -256,14 +256,110 @@ function sitterDisplayName(profile) {
   return nickname || maskStaffName(profile.realName)
 }
 
+const WEEKDAY_NAMES = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日']
+
+function normalizeWeeklySchedule(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const result = {}
+  let hasAnySlot = false
+  for (let day = 1; day <= 7; day += 1) {
+    const key = String(day)
+    const list = Array.isArray(raw[key]) ? raw[key] : []
+    const normalizedList = list
+      .map((slot) => ({
+        start: Math.max(0, Math.min(23, Math.floor(Number(slot.start || 0)))),
+        end: Math.max(1, Math.min(24, Math.floor(Number(slot.end || 0))))
+      }))
+      .filter((slot) => slot.end > slot.start)
+      .sort((a, b) => a.start - b.start)
+
+    result[key] = normalizedList
+    if (normalizedList.length > 0) hasAnySlot = true
+  }
+  return hasAnySlot ? result : null
+}
+
+function formatWeeklyScheduleText(weeklySchedule) {
+  const normalized = normalizeWeeklySchedule(weeklySchedule)
+  if (!normalized) return '全天可预约'
+  const items = []
+  for (let day = 1; day <= 7; day += 1) {
+    const slots = normalized[String(day)] || []
+    if (slots.length > 0) {
+      const slotText = slots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
+      items.push(`${WEEKDAY_NAMES[day]} ${slotText}`)
+    }
+  }
+  return items.length > 0 ? items.join('；') : '暂未设置接单时间段'
+}
+
+function parseDateTimeParts(dateStr) {
+  if (!dateStr) return null
+  const text = String(dateStr).trim()
+  const match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{1,2})/)
+  if (match) {
+    const year = Number(match[1])
+    const month = Number(match[2]) - 1
+    const day = Number(match[3])
+    const hour = Number(match[4])
+    const minute = Number(match[5])
+    const utcDate = new Date(Date.UTC(year, month, day, hour, minute))
+    const dayOfWeek = utcDate.getUTCDay() === 0 ? 7 : utcDate.getUTCDay()
+    return { dayOfWeek, hour, minute, day, utcDate }
+  }
+  const d = new Date(text.replace(/-/g, '/'))
+  if (Number.isNaN(d.getTime())) return null
+  const dayOfWeek = d.getDay() === 0 ? 7 : d.getDay()
+  return { dayOfWeek, hour: d.getHours(), minute: d.getMinutes(), day: d.getDate(), utcDate: d }
+}
+
+function validateSitterScheduleTime(weeklySchedule, startTimeStr, endTimeStr) {
+  const normalized = normalizeWeeklySchedule(weeklySchedule)
+  if (!normalized) return // 未配置按周时间段则不做时间段硬限制
+
+  if (!startTimeStr || !endTimeStr) throw new Error('请选择服务时间')
+  const startParts = parseDateTimeParts(startTimeStr)
+  const endParts = parseDateTimeParts(endTimeStr)
+  if (!startParts || !endParts || endParts.utcDate <= startParts.utcDate) {
+    throw new Error('服务时间格式无效')
+  }
+
+  const dayOfWeek = startParts.dayOfWeek
+  const dayName = WEEKDAY_NAMES[dayOfWeek] || `周${dayOfWeek}`
+
+  const startVal = startParts.hour + startParts.minute / 60
+  const durationHours = (endParts.utcDate.getTime() - startParts.utcDate.getTime()) / (3600 * 1000)
+  const endVal = startVal + durationHours
+
+  const slots = normalized[String(dayOfWeek)] || []
+  if (!slots.length) {
+    throw new Error(`宠托师在${dayName}未设置可接单时间段`)
+  }
+
+  const fitsInSlot = slots.some((slot) => startVal >= slot.start && endVal <= slot.end)
+  if (!fitsInSlot) {
+    const allowedText = slots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
+    throw new Error(`预约时间不在宠托师${dayName}的可接单时间段（${allowedText}）内`)
+  }
+}
+
 function toPublicSitter(profile) {
   const areaTags = splitServiceAreas(profile.serviceAreas)
+  const radius = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+  const hasLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
   return {
     _id: profile._id,
     displayName: sitterDisplayName(profile),
     avatarUrl: safeFileId(profile.avatarUrl) || safeText(profile.avatarUrl),
     serviceCity: profile.serviceCity || '服务城市待完善',
     serviceAreas: profile.serviceAreas || '',
+    serviceAddress: profile.serviceAddress || '',
+    serviceLatitude: Number(profile.serviceLatitude || 0),
+    serviceLongitude: Number(profile.serviceLongitude || 0),
+    serviceRadiusKm: radius,
+    hasServiceAddress: hasLoc,
+    weeklySchedule: normalizeWeeklySchedule(profile.weeklySchedule),
+    weeklyScheduleText: formatWeeklyScheduleText(profile.weeklySchedule),
     areaTags,
     publicTags: ['已实名', '平台审核', '可上门'],
     serviceSummary: areaTags.length ? `可服务：${areaTags.slice(0, 4).join('、')}` : '服务区域待完善',
@@ -1021,7 +1117,7 @@ async function toPublicSitterDetail(openid, profile) {
     ...base,
     level: profile.level || 'normal',
     levelName: profile.levelName || '认证宠托师',
-    serviceRadiusKm: Number(profile.serviceRadiusKm || 0),
+    serviceRadiusKm: base.serviceRadiusKm,
     publicTags: Array.isArray(profile.publicTags) && profile.publicTags.length ? profile.publicTags : base.publicTags,
     favorite: openid ? await isFavoriteSitter(openid, profile._id) : false,
     ...reviewStats
@@ -1355,6 +1451,30 @@ const handlers = {
         if (petRes.data.openid !== openid) throw new Error('宠物不存在')
         pet = petRes.data
       }
+      const publishMode = data.publishMode === 'direct' ? 'direct' : 'open'
+      const staffProfileId = data.staffProfileId || data.requestedStaffProfileId
+      if (publishMode === 'direct' && staffProfileId) {
+        const staffProfileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
+        const staffProfile = staffProfileRes.data
+        if (staffProfile) {
+          const orderLat = Number(data.addressLatitude || 0)
+          const orderLng = Number(data.addressLongitude || 0)
+          const sitterLat = Number(staffProfile.serviceLatitude || 0)
+          const sitterLng = Number(staffProfile.serviceLongitude || 0)
+          const radiusKm = Math.max(Number(staffProfile.serviceRadiusKm || 5), 1)
+
+          if (hasCoordinate(orderLat, orderLng) && hasCoordinate(sitterLat, sitterLng)) {
+            const dist = calcDistanceKm(orderLat, orderLng, sitterLat, sitterLng)
+            if (dist !== null && dist > radiusKm) {
+              throw new Error(`订单服务地址超出宠托师设定的接单范围（${radiusKm}公里内），无法预约`)
+            }
+          }
+
+          if (staffProfile.weeklySchedule && data.startTime && data.endTime) {
+            validateSitterScheduleTime(staffProfile.weeklySchedule, data.startTime, data.endTime)
+          }
+        }
+      }
       return calcOrderPricing(data, pet, { openid })
     }
 
@@ -1369,6 +1489,28 @@ const handlers = {
       if (petRes.data.openid !== openid) throw new Error('宠物不存在')
       const pricing = await calcOrderPricing(data, petRes.data, { openid })
       const requestedStaff = await getRequestedStaff(data)
+      if (requestedStaff && requestedStaff.requestedStaffProfileId) {
+        const staffProfileRes = await db.collection('staff_profiles').doc(requestedStaff.requestedStaffProfileId).get()
+        const staffProfile = staffProfileRes.data
+        if (staffProfile) {
+          const orderLat = Number(data.addressLatitude || 0)
+          const orderLng = Number(data.addressLongitude || 0)
+          const sitterLat = Number(staffProfile.serviceLatitude || 0)
+          const sitterLng = Number(staffProfile.serviceLongitude || 0)
+          const radiusKm = Math.max(Number(staffProfile.serviceRadiusKm || 5), 1)
+
+          if (hasCoordinate(orderLat, orderLng) && hasCoordinate(sitterLat, sitterLng)) {
+            const dist = calcDistanceKm(orderLat, orderLng, sitterLat, sitterLng)
+            if (dist !== null && dist > radiusKm) {
+              throw new Error(`订单服务地址超出宠托师设定的接单范围（${radiusKm}公里内），无法预约`)
+            }
+          }
+
+          if (staffProfile.weeklySchedule) {
+            validateSitterScheduleTime(staffProfile.weeklySchedule, data.startTime, data.endTime)
+          }
+        }
+      }
       const time = now()
       const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', requiredCheckins: requiredCheckins(pricing.serviceTypes[0], pricing.serviceTypes), insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
@@ -1810,29 +1952,63 @@ const handlers = {
       const serviceCity = String(data.serviceCity || '').trim()
       const serviceArea = String(data.serviceArea || '').trim()
       const sortBy = data.sortBy || 'default'
+      const userLat = Number(data.latitude || 0)
+      const userLng = Number(data.longitude || 0)
+      const userHasLoc = hasCoordinate(userLat, userLng)
+
       const page = Math.max(Number(data.page || 1), 1)
       const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 50)
       const res = await db.collection('staff_profiles').where({ auditStatus: 'approved' }).orderBy('updatedAt', 'desc').get()
       let sitters = await Promise.all(res.data.map(withSitterUserProfile))
+
       sitters = sitters.filter((profile) => {
         const areas = splitServiceAreas(profile.serviceAreas)
         if (serviceCity && profile.serviceCity !== serviceCity) return false
         if (serviceArea && !areas.includes(serviceArea)) return false
-        if (!keyword) return true
-        return matchText(profile.nickname, keyword) || matchText(profile.realName, keyword) || matchText(profile.serviceCity, keyword) || matchText(profile.serviceAreas, keyword)
+        if (keyword && !(matchText(profile.nickname, keyword) || matchText(profile.realName, keyword) || matchText(profile.serviceCity, keyword) || matchText(profile.serviceAreas, keyword))) return false
+
+        if (userHasLoc) {
+          const sitterLat = Number(profile.serviceLatitude || 0)
+          const sitterLng = Number(profile.serviceLongitude || 0)
+          if (!hasCoordinate(sitterLat, sitterLng) || !profile.serviceAddress) {
+            return false
+          }
+          const dist = calcDistanceKm(userLat, userLng, sitterLat, sitterLng)
+          const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+          if (dist === null || dist > radiusKm) {
+            return false
+          }
+        }
+        return true
       })
-      if (sortBy === 'city') {
-        sitters = sitters.slice().sort((a, b) => String(a.serviceCity || '').localeCompare(String(b.serviceCity || '')) || String(a.serviceAreas || '').localeCompare(String(b.serviceAreas || '')))
+
+      const publicList = sitters.map((profile) => {
+        const publicData = toPublicSitter(profile)
+        if (userHasLoc && hasCoordinate(profile.serviceLatitude, profile.serviceLongitude)) {
+          const distanceKm = calcDistanceKm(userLat, userLng, profile.serviceLatitude, profile.serviceLongitude)
+          return {
+            ...publicData,
+            distanceKm,
+            distanceText: formatDistance(distanceKm)
+          }
+        }
+        return publicData
+      })
+
+      if (sortBy === 'distance' && userHasLoc) {
+        publicList.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999))
+      } else if (sortBy === 'city') {
+        publicList.sort((a, b) => String(a.serviceCity || '').localeCompare(String(b.serviceCity || '')) || String(a.serviceAreas || '').localeCompare(String(b.serviceAreas || '')))
+      } else if (sortBy === 'latest') {
+        publicList.sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
       }
-      if (sortBy === 'latest') {
-        sitters = sitters.slice().sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
-      }
+
       const start = (page - 1) * pageSize
       return {
-        total: sitters.length,
+        total: publicList.length,
         page,
         pageSize,
-        list: sitters.slice(start, start + pageSize).map(toPublicSitter)
+        list: publicList.slice(start, start + pageSize)
       }
     }
     if (action === 'getPublicSitterDetail') {
@@ -1880,15 +2056,34 @@ const handlers = {
     }
     if (action === 'submitStaffProfile') {
       const user = await getUser(openid)
+      const realName = safeText(data.realName).trim()
+      const phone = safeText(data.phone || user.phone).trim()
+      const serviceCity = safeText(data.serviceCity).trim()
+      const serviceAreas = safeText(data.serviceAreas).trim()
+      const serviceAddress = safeText(data.serviceAddress).trim()
+      const serviceLatitude = Number(data.latitude || data.serviceLatitude || 0)
+      const serviceLongitude = Number(data.longitude || data.serviceLongitude || 0)
+      const serviceRadiusKm = Math.max(Number(data.serviceRadiusKm || 5), 1)
+
+      if (!realName) throw new Error('请输入真实姓名')
+      if (!serviceAddress || !hasCoordinate(serviceLatitude, serviceLongitude)) {
+        throw new Error('宠托师认证必须设置固定服务地址及坐标')
+      }
+
       const time = now()
       const profile = {
         userId: user._id,
         openid,
-        realName: data.realName || '',
-        phone: data.phone || user.phone || '',
+        realName,
+        phone,
         avatarUrl: user.avatarUrl || data.avatarUrl || '',
-        serviceCity: data.serviceCity || '',
-        serviceAreas: data.serviceAreas || '',
+        serviceCity,
+        serviceAreas,
+        serviceAddress,
+        serviceLatitude,
+        serviceLongitude,
+        serviceRadiusKm,
+        weeklySchedule: normalizeWeeklySchedule(data.weeklySchedule),
         faceVerifyStatus: 'pending',
         auditStatus: 'pending',
         auditRemark: '',
@@ -1901,6 +2096,34 @@ const handlers = {
       }
       const created = await db.collection('staff_profiles').add({ data: { ...profile, createdAt: time } })
       return { _id: created._id, ...profile, createdAt: time }
+    }
+    if (action === 'updateStaffProfileConfig') {
+      await getUser(openid)
+      const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get()
+      const profile = existing.data[0]
+      if (!profile) throw new Error('请先提交宠托师认证')
+
+      const serviceAddress = safeText(data.serviceAddress !== undefined ? data.serviceAddress : profile.serviceAddress).trim()
+      const serviceLatitude = Number(data.serviceLatitude !== undefined ? data.serviceLatitude : (data.latitude !== undefined ? data.latitude : (profile.serviceLatitude || 0)))
+      const serviceLongitude = Number(data.serviceLongitude !== undefined ? data.serviceLongitude : (data.longitude !== undefined ? data.longitude : (profile.serviceLongitude || 0)))
+      const serviceRadiusKm = Math.max(Number(data.serviceRadiusKm !== undefined ? data.serviceRadiusKm : (profile.serviceRadiusKm || 5)), 1)
+      const weeklySchedule = data.weeklySchedule !== undefined ? normalizeWeeklySchedule(data.weeklySchedule) : profile.weeklySchedule
+
+      if (!serviceAddress || !hasCoordinate(serviceLatitude, serviceLongitude)) {
+        throw new Error('请选择有效的固定服务地址及坐标')
+      }
+
+      const time = now()
+      const updateData = {
+        serviceAddress,
+        serviceLatitude,
+        serviceLongitude,
+        serviceRadiusKm,
+        weeklySchedule,
+        updatedAt: time
+      }
+      await db.collection('staff_profiles').doc(profile._id).update({ data: updateData })
+      return { _id: profile._id, ...profile, ...updateData }
     }
     if (action === 'updateCurrentLocation') {
       const user = await getUser(openid)
@@ -1974,6 +2197,9 @@ const handlers = {
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = profileRes.data[0]
       if (!profile || profile.auditStatus !== 'approved') throw new Error('员工认证审核通过后才可接单')
+      if (!hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) || !profile.serviceAddress) {
+        throw new Error('请先在个人中心设置固定服务地址与接单范围，方可接单')
+      }
       const orderRes = await db.collection('orders').doc(data.orderId).get()
       const order = orderRes.data
       if (order.status !== 'paid') throw new Error('订单状态不可接单')

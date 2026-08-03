@@ -66,6 +66,8 @@
         </view>
         <view class="chip-row">
           <view class="chip pink" wx:for="{{item.publicTags}}" wx:for-item="tag" wx:key="*this">{{tag}}</view>
+          <view class="chip blue" wx:if="{{item.distanceText}}">📍 距您 {{item.distanceText}}</view>
+          <view class="chip" wx:if="{{item.serviceRadiusKm}}">{{item.serviceRadiusKm}}km内接单</view>
         </view>
       </view>
     </view>
