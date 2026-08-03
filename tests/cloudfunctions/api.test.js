@@ -258,6 +258,136 @@ test('admin can save and public can read system settings', async () => {
   assert.equal(fetched.data.enableTestAddressMode, true)
 })
 
+test('admin dashboard includes monthly order and registration trends', async () => {
+  const nowDate = new Date()
+  const monthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`
+  const makeDate = (day) => `${monthKey}-${String(day).padStart(2, '0')} 10:00:00`
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active', createdAt: makeDate(1) },
+      { _id: 'client_a', openid: 'openid_client_a', roles: ['client'], status: 'active', createdAt: makeDate(2) },
+      { _id: 'client_b', openid: 'openid_client_b', roles: ['client'], status: 'active', createdAt: '2020-01-01 10:00:00' }
+    ],
+    orders: [
+      { _id: 'o1', status: 'paid', paymentStatus: 'paid', payAmount: 88, createdAt: makeDate(2), paidAt: makeDate(2) },
+      { _id: 'o2', status: 'in_service', paymentStatus: 'paid', payAmount: 128, createdAt: makeDate(2), paidAt: makeDate(3) },
+      { _id: 'o3', status: 'completed', paymentStatus: 'paid', payAmount: 68, createdAt: '2020-01-01 10:00:00', paidAt: '2020-01-01 10:00:00' }
+    ],
+    staff_profiles: [{ _id: 'sp1', auditStatus: 'pending' }],
+    order_incidents: [{ _id: 'i1', status: 'open' }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const result = await fn.main({ module: 'admin', action: 'dashboard', data: {} })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.orders.paid, 1)
+  assert.equal(result.data.orders.in_service, 1)
+  assert.equal(result.data.staffPending, 1)
+  assert.equal(result.data.incidentsOpen, 1)
+  assert.equal(result.data.monthly.monthKey, monthKey)
+  assert.equal(result.data.monthly.totals.orders, 2)
+  assert.equal(result.data.monthly.totals.registrations, 2)
+  assert.equal(result.data.monthly.totals.revenue, 216)
+  assert.equal(result.data.monthly.totals.paidOrders, 2)
+  assert.equal(result.data.monthly.totals.averageOrderValue, 108)
+  assert.equal(result.data.monthly.days[1].orders, 2)
+  assert.equal(result.data.monthly.days[1].registrations, 1)
+  assert.equal(result.data.monthly.days[1].revenue, 88)
+  assert.equal(result.data.monthly.days[2].revenue, 128)
+  assert.ok(result.data.monthly.days[1].orderHeight > 0)
+  assert.ok(result.data.monthly.days[2].revenueHeight > 0)
+})
+
+test('admin listUsers supports role status and keyword filters', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active', nickname: '后台管理员', phone: '13000000000', createdAt: '2026-08-03' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '豆豆家长', phone: '13800000000', memberLevelName: '银卡会员', points: 20, totalPoints: 100, createdAt: '2026-08-02' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'disabled', nickname: '宠托姐姐', phone: '13900000000', createdAt: '2026-08-01' }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const staffResult = await fn.main({ module: 'admin', action: 'listUsers', data: { role: 'staff' } })
+  const keywordResult = await fn.main({ module: 'admin', action: 'listUsers', data: { keyword: '豆豆' } })
+  const disabledResult = await fn.main({ module: 'admin', action: 'listUsers', data: { status: 'disabled' } })
+
+  assert.equal(staffResult.ok, true)
+  assert.deepEqual(staffResult.data.map((user) => user.openid), ['openid_staff'])
+  assert.deepEqual(keywordResult.data.map((user) => user.openid), ['openid_client'])
+  assert.equal(keywordResult.data[0].memberLevelName, '银卡会员')
+  assert.deepEqual(disabledResult.data.map((user) => user.openid), ['openid_staff'])
+})
+
+test('admin listStaffProfiles filters status and attaches user display fields', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active', nickname: '豆豆姐姐', avatarUrl: 'cloud://avatar', phone: '13800000000' }
+    ],
+    staff_profiles: [
+      { _id: 'sp1', openid: 'openid_staff', realName: '王小花', phone: '', serviceCity: '上海', serviceAreas: '浦东', auditStatus: 'approved', updatedAt: '2026-08-03' },
+      { _id: 'sp2', openid: 'openid_pending', realName: '李小狗', phone: '13900000000', serviceCity: '杭州', serviceAreas: '西湖', auditStatus: 'pending', updatedAt: '2026-08-02' }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const approvedResult = await fn.main({ module: 'admin', action: 'listStaffProfiles', data: { auditStatus: 'approved' } })
+  const keywordResult = await fn.main({ module: 'admin', action: 'listStaffProfiles', data: { keyword: '豆豆' } })
+
+  assert.equal(approvedResult.ok, true)
+  assert.deepEqual(approvedResult.data.map((profile) => profile._id), ['sp1'])
+  assert.equal(approvedResult.data[0].phone, '13800000000')
+  assert.equal(approvedResult.data[0].userNickname, '豆豆姐姐')
+  assert.equal(approvedResult.data[0].auditStatusText, '已通过')
+  assert.deepEqual(keywordResult.data.map((profile) => profile._id), ['sp1'])
+})
+
+test('admin can list grant and revoke admin roles safely', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], activeRole: 'admin', status: 'active', nickname: '当前管理员' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '豆豆家长' },
+      { _id: 'other_admin', openid: 'openid_other_admin', roles: ['client', 'admin'], activeRole: 'admin', status: 'active', nickname: '备用管理员' }
+    ],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const listResult = await fn.main({ module: 'admin', action: 'listAdmins', data: {} })
+  const grantResult = await fn.main({ module: 'admin', action: 'grantAdmin', data: { openid: 'openid_client' } })
+  const revokeResult = await fn.main({ module: 'admin', action: 'revokeAdmin', data: { openid: 'openid_other_admin' } })
+  const selfRevokeResult = await fn.main({ module: 'admin', action: 'revokeAdmin', data: { openid: 'openid_admin' } })
+
+  assert.equal(listResult.ok, true)
+  assert.equal(listResult.data.find((user) => user.openid === 'openid_admin').isSelf, true)
+  assert.equal(grantResult.ok, true)
+  assert.deepEqual(db.state.users.find((user) => user._id === 'client').roles, ['client', 'admin'])
+  assert.equal(revokeResult.ok, true)
+  assert.deepEqual(db.state.users.find((user) => user._id === 'other_admin').roles, ['client'])
+  assert.equal(db.state.users.find((user) => user._id === 'other_admin').activeRole, 'client')
+  assert.equal(selfRevokeResult.ok, false)
+  assert.equal(selfRevokeResult.message, '不能移除自己的管理员权限')
+  assert.equal(db.state.admin_operation_logs.length, 2)
+})
+
+test('admin revokeAdmin keeps at least one administrator', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+    ],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const result = await fn.main({ module: 'admin', action: 'revokeAdmin', data: { openid: 'openid_client' } })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.message, '至少保留一个管理员')
+})
+
 test('admin can manage service prices and quote uses configured price', async () => {
   const db = createCollectionStore({
     users: [

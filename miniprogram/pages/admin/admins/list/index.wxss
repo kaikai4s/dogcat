@@ -1,0 +1,73 @@
+.grant-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+
+.grant-row input {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.grant-row .mini-btn {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.admin-card {
+  overflow: hidden;
+}
+
+.admin-head {
+  display: flex;
+  gap: 18rpx;
+  align-items: center;
+}
+
+.admin-avatar {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #fff0f5;
+}
+
+.avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f43f6b;
+  font-weight: 900;
+}
+
+.admin-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-name,
+.openid-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.self-tip {
+  min-height: 58rpx;
+  margin-top: 22rpx;
+  padding: 0 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  color: #969196;
+  background: #f7f7f8;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.danger-mini {
+  color: #d63158;
+  background: #ffecef;
+}

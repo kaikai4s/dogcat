@@ -1,0 +1,48 @@
+<view class="page admin-sitters-page">
+  <view class="dashboard-header">
+    <view class="badge">人员管理</view>
+    <view class="title">宠托师管理</view>
+    <view class="tip">查看宠托师资料、服务区域、账号绑定和审核状态。</view>
+  </view>
+
+  <view class="card compact">
+    <view class="search-row">
+      <input value="{{keyword}}" placeholder="搜索姓名 / 城市 / 手机号 / openid" bindinput="inputKeyword" confirm-type="search" bindconfirm="search" />
+      <button class="mini-btn" bindtap="search">搜索</button>
+    </view>
+    <view class="status-tabs role-tabs">
+      <view wx:for="{{statusTabs}}" wx:key="value" class="status-tab {{auditStatus === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="switchStatus">{{item.label}}</view>
+    </view>
+  </view>
+
+  <view wx:if="{{!profiles.length && !loading}}" class="empty">暂无宠托师资料</view>
+
+  <view class="card sitter-card" wx:for="{{profiles}}" wx:key="_id">
+    <view class="sitter-head">
+      <image wx:if="{{item.userAvatarUrl}}" class="sitter-avatar" src="{{item.userAvatarUrl}}" mode="aspectFill" />
+      <view wx:else class="sitter-avatar avatar-placeholder">{{item.avatarText}}</view>
+      <view class="sitter-main">
+        <view class="between">
+          <view class="strong sitter-name">{{item.realName || '未填写姓名'}}</view>
+          <view class="badge">{{item.auditStatusText}}</view>
+        </view>
+        <view class="muted">绑定账号：{{item.userNickname}}</view>
+        <view class="muted openid-text">{{item.openid}}</view>
+      </view>
+    </view>
+    <view class="info-list sitter-info">
+      <view class="info-row"><view class="label">手机号</view><view class="value">{{item.phone || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">服务城市</view><view class="value">{{item.serviceCity || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">服务区域</view><view class="value">{{item.serviceAreas || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">账号状态</view><view class="value">{{item.userStatus || '未知'}}</view></view>
+    </view>
+    <button class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>
+    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon">单</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon">审</view><view>审核</view></view>
+    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon">!</view><view>异常</view></view>
+  </view>
+</view>

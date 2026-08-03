@@ -1,0 +1,49 @@
+<view class="page admin-users-page">
+  <view class="dashboard-header">
+    <view class="badge">人员管理</view>
+    <view class="title">用户管理</view>
+    <view class="tip">查看用户账号、角色、会员等级和积分信息。</view>
+  </view>
+
+  <view class="card compact">
+    <view class="search-row">
+      <input value="{{keyword}}" placeholder="搜索昵称 / 手机号 / openid" bindinput="inputKeyword" confirm-type="search" bindconfirm="search" />
+      <button class="mini-btn" bindtap="search">搜索</button>
+    </view>
+    <view class="status-tabs role-tabs">
+      <view wx:for="{{roleTabs}}" wx:key="value" class="status-tab {{role === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="switchRole">{{item.label}}</view>
+    </view>
+  </view>
+
+  <view wx:if="{{!users.length && !loading}}" class="empty">暂无用户</view>
+
+  <view class="card user-card" wx:for="{{users}}" wx:key="_id">
+    <view class="user-head">
+      <image wx:if="{{item.avatarUrl}}" class="user-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+      <view wx:else class="user-avatar avatar-placeholder">{{item.avatarText}}</view>
+      <view class="user-main">
+        <view class="between">
+          <view class="strong user-name">{{item.nickname}}</view>
+          <view class="badge">{{item.status}}</view>
+        </view>
+        <view class="muted openid-text">{{item.openid}}</view>
+      </view>
+    </view>
+    <view class="chip-row">
+      <view class="chip pink" wx:for="{{item.roles}}" wx:for-item="roleItem" wx:key="*this">{{roleItem}}</view>
+    </view>
+    <view class="info-list user-info">
+      <view class="info-row"><view class="label">手机号</view><view class="value">{{item.phone || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">会员等级</view><view class="value">{{item.memberLevelName}}</view></view>
+      <view class="info-row"><view class="label">可用积分</view><view class="value">{{item.points}}</view></view>
+      <view class="info-row"><view class="label">累计积分</view><view class="value">{{item.totalPoints}}</view></view>
+    </view>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>
+    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon">单</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon">审</view><view>审核</view></view>
+    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon">!</view><view>异常</view></view>
+  </view>
+</view>

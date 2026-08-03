@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm test:*)",
+      "Bash(npm audit:*)",
+      "Bash(git init:*)",
+      "Bash(git remote:*)",
+      "Bash(ssh:*)",
+      "Bash(python3:*)",
+      "Bash(node:*)",
+      "WebSearch",
+      "Bash(printf '\\\\n---\\\\n')",
+      "Bash(xxd /home/ebrook-dev/project/vx/miniprogram/pages/client/coupons/list/index.wxml)",
+      "WebFetch(domain:docs.cloudbase.net)",
+      "Bash(git checkout:*)",
+      "Bash(git -C \"/home/ebrook-dev/project/vx\" status --short)",
+      "Bash(git -C \"/home/ebrook-dev/project/vx\" log --oneline -5)"
+    ]
+  }
+}

@@ -1,86 +1,100 @@
-<view class="page dashboard-page">
+<view class="page dashboard-page admin-home-page">
   <view class="dashboard-header">
     <view class="badge">管理端</view>
     <view class="title">运营控制台</view>
-    <view class="tip">监控订单、审核员工、处理异常和调阅证据链。</view>
+    <view class="tip">按业务域查看订单、人员、营销和平台配置，快速定位运营动作。</view>
   </view>
 
-  <view class="stats-grid" wx:if="{{dashboard}}">
-    <view class="stat-card">
-      <view class="stat-number">{{dashboard.staffPending}}</view>
-      <view class="stat-label">待审核员工</view>
-    </view>
-    <view class="stat-card">
-      <view class="stat-number">{{dashboard.incidentsOpen}}</view>
-      <view class="stat-label">待处理异常</view>
-    </view>
-    <view class="stat-card">
-      <view class="stat-number">{{dashboard.orders.in_service || 0}}</view>
-      <view class="stat-label">进行中订单</view>
-    </view>
-    <view class="stat-card">
-      <view class="stat-number">{{dashboard.orders.paid || 0}}</view>
-      <view class="stat-label">待派单订单</view>
+  <view class="stats-grid admin-stats-grid" wx:if="{{dashboard}}">
+    <view class="stat-card" wx:for="{{overviewStats}}" wx:key="label">
+      <view class="stat-number">{{item.value}}</view>
+      <view class="stat-label">{{item.label}}</view>
     </view>
   </view>
 
-  <view class="grid">
-    <view class="card interactive action-card" data-url="/pages/admin/orders/list/index" bindtap="go">
-      <view class="action-icon">单</view>
-      <view class="strong">订单管理</view>
-      <view class="muted">派单与监控</view>
+  <view class="card chart-card" wx:if="{{dashboard && dashboard.monthly}}">
+    <view class="between chart-head">
+      <view>
+        <view class="strong">本月趋势</view>
+        <view class="muted">{{dashboard.monthly.monthKey}} 订单与新注册用户</view>
+      </view>
+      <view class="chart-total">
+        <view>订单 {{dashboard.monthly.totals.orders || 0}}</view>
+        <view>新用户 {{dashboard.monthly.totals.registrations || 0}}</view>
+      </view>
     </view>
-    <view class="card interactive action-card" data-url="/pages/admin/staff-audit/list/index" bindtap="go">
-      <view class="action-icon">审</view>
-      <view class="strong">员工审核</view>
-      <view class="muted">资质与权限</view>
+    <view class="chart-legend">
+      <view class="legend-item"><view class="legend-dot order-dot"></view><view>订单</view></view>
+      <view class="legend-item"><view class="legend-dot registration-dot"></view><view>新注册</view></view>
     </view>
-    <view class="card interactive action-card" data-url="/pages/admin/incidents/list/index" bindtap="go">
-      <view class="action-icon">警</view>
-      <view class="strong">异常事件</view>
-      <view class="muted">SOS 与客诉</view>
+    <scroll-view class="chart-scroll" scroll-x="true" enhanced="true" show-scrollbar="false">
+      <view class="monthly-chart">
+        <view class="chart-day" wx:for="{{dashboard.monthly.days}}" wx:key="day">
+          <view class="value-row">
+            <view class="value-pill order-value" wx:if="{{item.orders}}">{{item.orders}}</view>
+            <view class="value-pill registration-value" wx:if="{{item.registrations}}">{{item.registrations}}</view>
+          </view>
+          <view class="bar-box">
+            <view class="bar-col">
+              <view class="bar order-bar" style="height: {{item.orderHeight}}%;"></view>
+            </view>
+            <view class="bar-col">
+              <view class="bar registration-bar" style="height: {{item.registrationHeight}}%;"></view>
+            </view>
+          </view>
+          <view class="chart-label">{{item.day}}</view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="card revenue-card" wx:if="{{dashboard && dashboard.monthly}}">
+    <view class="between revenue-head">
+      <view>
+        <view class="strong">收入分析</view>
+        <view class="muted">按支付金额统计本月收入表现</view>
+      </view>
+      <view class="revenue-badge">{{dashboard.monthly.monthKey}}</view>
     </view>
-    <view class="card interactive action-card" data-url="/pages/admin/service-prices/index" bindtap="go">
-      <view class="action-icon">价</view>
-      <view class="strong">价格配置</view>
-      <view class="muted">服务项目与收费</view>
+    <view class="revenue-grid">
+      <view class="revenue-stat {{item.highlight ? 'highlight' : ''}}" wx:for="{{revenueStats}}" wx:key="label">
+        <view class="revenue-number">{{item.value}}</view>
+        <view class="revenue-label">{{item.label}}</view>
+      </view>
     </view>
-    <view class="card interactive action-card" data-url="/pages/admin/coupons/index" bindtap="go">
-      <view class="action-icon">券</view>
-      <view class="strong">优惠券管理</view>
-      <view class="muted">模板与发券</view>
+    <scroll-view class="revenue-scroll" scroll-x="true" enhanced="true" show-scrollbar="false">
+      <view class="revenue-chart">
+        <view class="revenue-day" wx:for="{{dashboard.monthly.days}}" wx:key="day">
+          <view class="revenue-value" wx:if="{{item.revenue}}">{{item.revenueText}}</view>
+          <view class="revenue-bar-box">
+            <view class="revenue-bar" style="height: {{item.revenueHeight}}%;"></view>
+          </view>
+          <view class="chart-label">{{item.day}}</view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="admin-section" wx:for="{{adminSections}}" wx:key="title">
+    <view class="section-head">
+      <view>
+        <view class="subtitle section-title">{{item.title}}</view>
+        <view class="muted">{{item.desc}}</view>
+      </view>
     </view>
-    <view class="card interactive action-card" data-url="/pages/admin/member-levels/index" bindtap="go">
-      <view class="action-icon">级</view>
-      <view class="strong">会员等级</view>
-      <view class="muted">积分升级规则</view>
-    </view>
-    <view class="card interactive action-card" data-url="/pages/admin/checkin-config/index" bindtap="go">
-      <view class="action-icon">签</view>
-      <view class="strong">签到奖励</view>
-      <view class="muted">月度每日奖励配置</view>
-    </view>
-    <view class="card interactive action-card" data-url="/pages/admin/points/index" bindtap="go">
-      <view class="action-icon">🪙</view>
-      <view class="strong">积分管理</view>
-      <view class="muted">手动增减与流水</view>
-    </view>
-    <view class="card interactive action-card" data-url="/pages/admin/lottery/index" bindtap="go">
-      <view class="action-icon">🎰</view>
-      <view class="strong">抽奖活动</view>
-      <view class="muted">开关与奖品设置</view>
-    </view>
-    <view class="card interactive action-card" data-url="/pages/admin/settings/index" bindtap="go">
-      <view class="action-icon">⚙</view>
-      <view class="strong">系统设置</view>
-      <view class="muted">测试模式与平台参数</view>
+    <view class="grid section-grid">
+      <view class="card interactive action-card admin-action-card" wx:for="{{item.items}}" wx:for-item="entry" wx:key="title" data-url="{{entry.url}}" bindtap="go">
+        <view class="action-icon">{{entry.icon}}</view>
+        <view class="strong">{{entry.title}}</view>
+        <view class="muted">{{entry.desc}}</view>
+      </view>
     </view>
   </view>
 
   <view class="bottom-nav">
     <view class="nav-item active"><view class="nav-icon">⌂</view><view>控制台</view></view>
-    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>订单</view></view>
-    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon">☑</view><view>审核</view></view>
+    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon">单</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon">审</view><view>审核</view></view>
     <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon">!</view><view>异常</view></view>
   </view>
 </view>

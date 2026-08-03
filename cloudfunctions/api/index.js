@@ -71,6 +71,101 @@ function safeFileId(value) {
   return text.startsWith('cloud://') ? text : ''
 }
 
+function parseDateValue(value) {
+  if (!value) return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  const text = String(value)
+  const direct = new Date(text)
+  if (!Number.isNaN(direct.getTime())) return direct
+  const normalized = new Date(text.replace(/-/g, '/'))
+  return Number.isNaN(normalized.getTime()) ? null : normalized
+}
+
+function roleText(roles = []) {
+  const labels = { client: '用户', staff: '宠托师', admin: '管理员' }
+  return (Array.isArray(roles) ? roles : []).map((role) => labels[role] || role).join('、') || '用户'
+}
+
+function auditStatusText(status) {
+  const labels = { approved: '已通过', pending: '待审核', rejected: '未通过' }
+  return labels[status] || '未知'
+}
+
+function safeUserSummary(user = {}, extra = {}) {
+  const roles = Array.isArray(user.roles) ? user.roles : ['client']
+  return {
+    _id: user._id || '',
+    openid: user.openid || '',
+    nickname: user.nickname || '微信用户',
+    avatarUrl: user.avatarUrl || '',
+    phone: user.phone || '',
+    roles,
+    rolesText: roleText(roles),
+    activeRole: user.activeRole || 'client',
+    status: user.status || 'active',
+    memberLevelName: user.memberLevelName || '普通会员',
+    points: Number(user.points || 0),
+    totalPoints: Number(user.totalPoints || 0),
+    createdAt: user.createdAt || '',
+    updatedAt: user.updatedAt || '',
+    ...extra
+  }
+}
+
+function isPaidOrder(order = {}) {
+  return order.paymentStatus === 'paid' || ['paid', 'assigned', 'in_service', 'completed'].includes(order.status)
+}
+
+function buildMonthlyDashboard(orders = [], users = []) {
+  const monthKey = toCstParts().monthKey
+  const dayCount = getMonthDays(monthKey)
+  const days = Array.from({ length: dayCount }, (_, index) => ({ day: index + 1, label: `${index + 1}日`, orders: 0, registrations: 0, revenue: 0 }))
+  orders.forEach((order) => {
+    const createdDate = parseDateValue(order.createdAt)
+    if (createdDate) {
+      const createdParts = toCstParts(createdDate)
+      if (createdParts.monthKey === monthKey && days[createdParts.dayNumber - 1]) days[createdParts.dayNumber - 1].orders += 1
+    }
+    const paidDate = parseDateValue(order.paidAt || order.createdAt)
+    if (!paidDate || !isPaidOrder(order)) return
+    const paidParts = toCstParts(paidDate)
+    if (paidParts.monthKey === monthKey && days[paidParts.dayNumber - 1]) days[paidParts.dayNumber - 1].revenue += Number(order.payAmount || 0)
+  })
+  users.forEach((user) => {
+    const date = parseDateValue(user.createdAt)
+    if (!date) return
+    const parts = toCstParts(date)
+    if (parts.monthKey === monthKey && days[parts.dayNumber - 1]) days[parts.dayNumber - 1].registrations += 1
+  })
+  const maxOrders = Math.max(...days.map((item) => item.orders), 1)
+  const maxRegistrations = Math.max(...days.map((item) => item.registrations), 1)
+  const maxRevenue = Math.max(...days.map((item) => item.revenue), 1)
+  const revenueTotal = days.reduce((sum, item) => sum + item.revenue, 0)
+  const paidOrders = orders.filter((order) => isPaidOrder(order)).filter((order) => {
+    const paidDate = parseDateValue(order.paidAt || order.createdAt)
+    return paidDate && toCstParts(paidDate).monthKey === monthKey
+  })
+  const withHeights = days.map((item) => ({
+    ...item,
+    revenueText: `¥${item.revenue}`,
+    orderHeight: item.orders ? Math.max(Math.round((item.orders / maxOrders) * 100), 8) : 0,
+    registrationHeight: item.registrations ? Math.max(Math.round((item.registrations / maxRegistrations) * 100), 8) : 0,
+    revenueHeight: item.revenue ? Math.max(Math.round((item.revenue / maxRevenue) * 100), 8) : 0
+  }))
+  return {
+    monthKey,
+    days: withHeights,
+    totals: {
+      orders: days.reduce((sum, item) => sum + item.orders, 0),
+      registrations: days.reduce((sum, item) => sum + item.registrations, 0),
+      revenue: revenueTotal,
+      paidOrders: paidOrders.length,
+      averageOrderValue: paidOrders.length ? Math.round(revenueTotal / paidOrders.length) : 0
+    },
+    max: { orders: maxOrders, registrations: maxRegistrations, revenue: maxRevenue }
+  }
+}
+
 function normalizeSystemSettings(value = {}) {
   return {
     enableTestAddressMode: value.enableTestAddressMode === true
@@ -2058,7 +2153,9 @@ const handlers = {
       for (let i = 0; i < statuses.length; i += 1) counts[statuses[i]] = (await db.collection('orders').where({ status: statuses[i] }).count()).total
       const staffPending = await db.collection('staff_profiles').where({ auditStatus: 'pending' }).count()
       const incidentsOpen = await db.collection('order_incidents').where({ status: 'open' }).count()
-      return { orders: counts, staffPending: staffPending.total, incidentsOpen: incidentsOpen.total }
+      const ordersRes = await db.collection('orders').get()
+      const usersRes = await db.collection('users').get()
+      return { orders: counts, staffPending: staffPending.total, incidentsOpen: incidentsOpen.total, monthly: buildMonthlyDashboard(ordersRes.data || [], usersRes.data || []) }
     }
     if (action === 'getSystemSettings') {
       return getSystemSettings()
@@ -2067,6 +2164,80 @@ const handlers = {
       const saved = await saveSystemSettings(data)
       await logAdmin(admin, 'platform_config', 'system_settings', 'saveSystemSettings', saved.value)
       return saved.value
+    }
+    if (action === 'listUsers') {
+      const keyword = safeText(data.keyword).trim().toLowerCase()
+      const role = safeText(data.role).trim()
+      const status = safeText(data.status).trim()
+      const res = await db.collection('users').orderBy('createdAt', 'desc').get()
+      return (res.data || [])
+        .filter((user) => !role || (Array.isArray(user.roles) && user.roles.includes(role)))
+        .filter((user) => !status || user.status === status)
+        .filter((user) => !keyword || [user.openid, user.nickname, user.phone].some((value) => safeText(value).toLowerCase().includes(keyword)))
+        .map((user) => safeUserSummary(user))
+    }
+    if (action === 'listStaffProfiles') {
+      const auditStatus = safeText(data.auditStatus).trim()
+      const keyword = safeText(data.keyword).trim().toLowerCase()
+      const profilesRes = await db.collection('staff_profiles').orderBy('updatedAt', 'desc').get()
+      const usersRes = await db.collection('users').get()
+      const userMap = new Map((usersRes.data || []).map((user) => [user.openid, user]))
+      return (profilesRes.data || [])
+        .filter((profile) => !auditStatus || profile.auditStatus === auditStatus)
+        .map((profile) => {
+          const user = userMap.get(profile.openid) || {}
+          return {
+            _id: profile._id,
+            openid: profile.openid || '',
+            realName: profile.realName || '',
+            phone: profile.phone || user.phone || '',
+            serviceCity: profile.serviceCity || '',
+            serviceAreas: profile.serviceAreas || '',
+            auditStatus: profile.auditStatus || 'pending',
+            auditStatusText: auditStatusText(profile.auditStatus || 'pending'),
+            auditRemark: profile.auditRemark || '',
+            createdAt: profile.createdAt || '',
+            updatedAt: profile.updatedAt || '',
+            userNickname: user.nickname || '微信用户',
+            userAvatarUrl: user.avatarUrl || '',
+            userStatus: user.status || '',
+            roles: Array.isArray(user.roles) ? user.roles : []
+          }
+        })
+        .filter((item) => !keyword || [item.openid, item.realName, item.phone, item.serviceCity, item.serviceAreas, item.userNickname].some((value) => safeText(value).toLowerCase().includes(keyword)))
+    }
+    if (action === 'listAdmins') {
+      const usersRes = await db.collection('users').get()
+      return (usersRes.data || [])
+        .filter((user) => Array.isArray(user.roles) && user.roles.includes('admin'))
+        .map((user) => safeUserSummary(user, { isSelf: user.openid === openid }))
+    }
+    if (action === 'grantAdmin') {
+      const targetOpenid = safeText(data.openid).trim()
+      if (!targetOpenid) throw new Error('请输入用户 openid')
+      const userRes = await db.collection('users').where({ openid: targetOpenid }).limit(1).get()
+      const target = userRes.data[0]
+      if (!target || target.status !== 'active') throw new Error('目标用户不存在或不可用')
+      const roles = Array.from(new Set([...(Array.isArray(target.roles) ? target.roles : ['client']), 'admin']))
+      await db.collection('users').doc(target._id).update({ data: { roles, updatedAt: now() } })
+      await logAdmin(admin, 'user', targetOpenid, 'grantAdmin', {})
+      return safeUserSummary({ ...target, roles })
+    }
+    if (action === 'revokeAdmin') {
+      const targetOpenid = safeText(data.openid).trim()
+      if (!targetOpenid) throw new Error('请输入用户 openid')
+      if (targetOpenid === openid) throw new Error('不能移除自己的管理员权限')
+      const usersRes = await db.collection('users').get()
+      const admins = (usersRes.data || []).filter((user) => Array.isArray(user.roles) && user.roles.includes('admin'))
+      if (admins.length <= 1) throw new Error('至少保留一个管理员')
+      const target = (usersRes.data || []).find((user) => user.openid === targetOpenid)
+      if (!target) throw new Error('目标用户不存在')
+      const roles = (Array.isArray(target.roles) ? target.roles : []).filter((role) => role !== 'admin')
+      const update = { roles, updatedAt: now() }
+      if (target.activeRole === 'admin') update.activeRole = 'client'
+      await db.collection('users').doc(target._id).update({ data: update })
+      await logAdmin(admin, 'user', targetOpenid, 'revokeAdmin', {})
+      return safeUserSummary({ ...target, ...update })
     }
     if (action === 'listOrders') {
       const where = data.status ? { status: data.status } : {}

@@ -1,0 +1,42 @@
+<view class="page admin-admins-page">
+  <view class="dashboard-header">
+    <view class="badge">权限管理</view>
+    <view class="title">管理员管理</view>
+    <view class="tip">通过用户 openid 添加或移除后台管理员权限。</view>
+  </view>
+
+  <view class="card compact">
+    <view class="strong">添加管理员</view>
+    <view class="muted">目标用户必须已注册且账号状态正常。</view>
+    <view class="grant-row">
+      <input value="{{openid}}" placeholder="输入用户 openid" bindinput="inputOpenid" />
+      <button class="mini-btn" disabled="{{saving || !openid}}" bindtap="grantAdmin">{{saving ? '添加中...' : '添加管理员'}}</button>
+    </view>
+  </view>
+
+  <view wx:if="{{!admins.length && !loading}}" class="empty">暂无管理员</view>
+
+  <view class="card admin-card" wx:for="{{admins}}" wx:key="_id">
+    <view class="admin-head">
+      <image wx:if="{{item.avatarUrl}}" class="admin-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+      <view wx:else class="admin-avatar avatar-placeholder">{{item.avatarText}}</view>
+      <view class="admin-main">
+        <view class="between">
+          <view class="strong admin-name">{{item.nickname}}</view>
+          <view class="badge">{{item.status}}</view>
+        </view>
+        <view class="muted openid-text">{{item.openid}}</view>
+        <view class="muted">{{item.phone || '未填写手机号'}}</view>
+      </view>
+    </view>
+    <view wx:if="{{item.isSelf}}" class="self-tip">当前账号，不可移除</view>
+    <button wx:else class="mini-btn danger-mini" data-openid="{{item.openid}}" disabled="{{removingOpenid === item.openid}}" bindtap="revokeAdmin">{{removingOpenid === item.openid ? '移除中...' : '移除管理员'}}</button>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>
+    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon">单</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon">审</view><view>审核</view></view>
+    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon">!</view><view>异常</view></view>
+  </view>
+</view>
