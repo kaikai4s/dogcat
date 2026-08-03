@@ -1,0 +1,149 @@
+.summary-card {
+  padding: 32rpx;
+}
+
+.summary-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.month-title {
+  margin-top: 24rpx;
+  font-size: 34rpx;
+  font-weight: 800;
+  color: #2b2528;
+}
+
+.calendar-card {
+  padding: 26rpx 22rpx 22rpx;
+}
+
+.week-row,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10rpx;
+}
+
+.week-row {
+  margin-bottom: 10rpx;
+}
+
+.week-label {
+  text-align: center;
+  font-size: 24rpx;
+  color: #a59aa0;
+  padding: 8rpx 0;
+}
+
+.calendar-cell-wrap {
+  min-width: 0;
+}
+
+.calendar-cell {
+  min-height: 118rpx;
+  border-radius: 24rpx;
+  padding: 14rpx 10rpx 12rpx;
+  background: #fffafc;
+  border: 2rpx solid rgba(244, 129, 161, 0.08);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.calendar-cell.empty {
+  background: transparent;
+  border-color: transparent;
+}
+
+.calendar-cell.selected {
+  border-color: #f43f6b;
+  box-shadow: 0 10rpx 24rpx rgba(244, 63, 107, 0.12);
+}
+
+.calendar-cell.today {
+  background: linear-gradient(180deg, #fff8e9 0%, #fffdf8 100%);
+  border-color: rgba(243, 166, 58, 0.35);
+}
+
+.calendar-cell.retro {
+  background: linear-gradient(180deg, #fff5ed 0%, #fffdf9 100%);
+  border-color: rgba(255, 154, 83, 0.3);
+}
+
+.calendar-cell.checked {
+  background: linear-gradient(180deg, #fff2f7 0%, #fffdfd 100%);
+  border-color: rgba(244, 63, 107, 0.18);
+}
+
+.calendar-cell.locked {
+  opacity: 0.72;
+}
+
+.calendar-cell.disabled {
+  opacity: 0.55;
+}
+
+.cell-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8rpx;
+}
+
+.cell-day {
+  font-size: 30rpx;
+  font-weight: 800;
+  color: #2b2528;
+  line-height: 1;
+}
+
+.cell-tag {
+  min-width: 34rpx;
+  height: 34rpx;
+  border-radius: 999rpx;
+  background: rgba(244, 63, 107, 0.12);
+  color: #f43f6b;
+  font-size: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cell-reward {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #745b65;
+  line-height: 1.2;
+  word-break: break-all;
+}
+
+.cell-status {
+  margin-top: 10rpx;
+  font-size: 20rpx;
+  color: #e05c8b;
+  line-height: 1.2;
+}
+
+.detail-card {
+  padding: 30rpx;
+}
+
+.detail-reward {
+  margin-top: 20rpx;
+  font-size: 34rpx;
+  font-weight: 850;
+  color: #2b2528;
+}
+
+.detail-desc {
+  margin-top: 14rpx;
+}
+
+.detail-action {
+  margin-top: 24rpx;
+  width: 100%;
+}

@@ -2,18 +2,38 @@
   <view class="dashboard-header">
     <view class="badge">管理端</view>
     <view class="title">优惠券管理</view>
-    <view class="tip">配置优惠券模板，按会员段位批量发券或精确发给指定用户。</view>
+    <view class="tip">配置更细的优惠券规则，并支持按段位直接发券或投递奖励邮件。</view>
   </view>
 
   <view class="card form-card">
     <view class="subtitle">模板配置</view>
     <input placeholder="优惠券名称，如 满80减20" value="{{form.name}}" data-field="name" bindinput="input" />
     <input placeholder="优惠说明" value="{{form.description}}" data-field="description" bindinput="input" />
+    <input placeholder="展示标签，如 新人券 / 月度奖励" value="{{form.displayTag}}" data-field="displayTag" bindinput="input" />
     <input type="number" placeholder="优惠金额" value="{{form.discountAmount}}" data-field="discountAmount" bindinput="input" />
     <input type="number" placeholder="最低订单金额" value="{{form.minOrderAmount}}" data-field="minOrderAmount" bindinput="input" />
-    <input type="number" placeholder="有效天数" value="{{form.validDays}}" data-field="validDays" bindinput="input" />
+
+    <view class="muted" style="margin:12rpx 0 10rpx;">适用服务（可多选）</view>
+    <view class="chip-row">
+      <view class="chip {{form.applicableServiceTypes.indexOf(item.key) !== -1 ? 'pink' : ''}}" wx:for="{{servicePrices}}" wx:key="key" data-key="{{item.key}}" bindtap="toggleServiceType">{{item.label}}</view>
+    </view>
+
+    <view class="muted" style="margin:20rpx 0 10rpx;">有效期模式</view>
+    <view class="tabs">
+      <button class="tab {{form.validType === 'relative_days' ? 'active-tab' : ''}}" data-type="relative_days" bindtap="setValidType">按天数</button>
+      <button class="tab {{form.validType === 'fixed_range' ? 'active-tab' : ''}}" data-type="fixed_range" bindtap="setValidType">固定日期</button>
+    </view>
+    <input wx:if="{{form.validType === 'relative_days'}}" type="number" placeholder="有效天数" value="{{form.validDays}}" data-field="validDays" bindinput="input" />
+    <view wx:if="{{form.validType === 'fixed_range'}}">
+      <input placeholder="开始日期，如 2026-08-01" value="{{form.validFromFixed}}" data-field="validFromFixed" bindinput="input" />
+      <input placeholder="结束日期，如 2026-08-31" value="{{form.validToFixed}}" data-field="validToFixed" bindinput="input" />
+    </view>
+
+    <input placeholder="领取说明" value="{{form.claimNotice}}" data-field="claimNotice" bindinput="input" />
+    <input placeholder="使用说明" value="{{form.useNotice}}" data-field="useNotice" bindinput="input" />
     <input type="number" placeholder="每人限制张数" value="{{form.perUserLimit}}" data-field="perUserLimit" bindinput="input" />
     <input type="number" placeholder="总发放上限，0为不限" value="{{form.totalIssueLimit}}" data-field="totalIssueLimit" bindinput="input" />
+    <input type="number" placeholder="排序序号" value="{{form.sortOrder}}" data-field="sortOrder" bindinput="input" />
     <view class="between switch-row">
       <view class="strong">启用模板</view>
       <switch checked="{{form.enabled}}" bindchange="toggleEnabled" />
@@ -23,45 +43,65 @@
   </view>
 
   <view class="card form-card">
-    <view class="subtitle">发放优惠券</view>
+    <view class="subtitle">发放 / 投递奖励</view>
     <view class="status-tabs" style="margin-bottom:24rpx;">
-      <view class="status-tab {{issueMode === 'level' ? 'active' : ''}}" data-mode="level" bindtap="switchIssueMode">按会员段位</view>
+      <view class="status-tab {{issueMode === 'level' ? 'active' : ''}}" data-mode="level" bindtap="switchIssueMode">按段位发券</view>
       <view class="status-tab {{issueMode === 'openid' ? 'active' : ''}}" data-mode="openid" bindtap="switchIssueMode">精确发券</view>
+      <view class="status-tab {{issueMode === 'mail' ? 'active' : ''}}" data-mode="mail" bindtap="switchIssueMode">奖励邮箱</view>
     </view>
 
     <picker range="{{templates}}" range-key="name" bindchange="chooseIssueTemplate">
-      <view class="field">模板：{{issueMode === 'level' ? (issueByLevel.templateId || '请选择') : (issueByOpenid.templateId || '请选择')}}</view>
+      <view class="field">模板：{{issueMode === 'level' ? issueByLevelTemplateName : issueMode === 'openid' ? issueByOpenidTemplateName : publishMailTemplateName}}</view>
     </picker>
 
     <view wx:if="{{issueMode === 'level'}}">
-      <view class="muted" style="margin:16rpx 0 8rpx;">选择段位（可多选）：</view>
+      <view class="muted" style="margin:16rpx 0 8rpx;">选择段位（可多选）</view>
+      <view wx:if="{{hasDuplicateLevelNames}}" class="notice" style="margin:12rpx 0;padding:18rpx 20rpx;">检测到重复等级名，已按积分门槛和 ID 后缀区分；建议到「会员等级」页清理重复项。</view>
       <view wx:if="{{!levels.length}}" class="muted">暂无等级，请先在「会员等级」页配置</view>
-      <view wx:for="{{levels}}" wx:key="_id" class="between" style="padding:12rpx 0;border-bottom:1rpx solid #f5e6ec;">
-        <view>{{item.icon}} {{item.name}} <text class="muted">（≥{{item.minPoints}}积分）</text></view>
-        <switch checked="{{issueByLevel.targetLevels.indexOf(item.name) !== -1}}" data-name="{{item.name}}" bindchange="toggleLevel" />
+      <view wx:for="{{issueLevelRows}}" wx:key="_id" class="between level-row selectable-row {{item.selectedClass}}" data-id="{{item._id}}" bindtap="toggleLevel">
+        <view>{{item.icon}} {{item.labelText}}</view>
+        <view class="select-pill {{item.selectClass}}">{{item.selectText}}</view>
       </view>
-      <view class="muted" style="margin-top:12rpx;">已选：{{issueByLevel.targetLevels.join('、') || '未选择'}}</view>
+      <view class="muted" style="margin-top:12rpx;">已选：{{issueByLevelNamesText}}</view>
     </view>
 
     <view wx:if="{{issueMode === 'openid'}}">
       <input placeholder="用户 openid" value="{{issueByOpenid.openid}}" bindinput="openidInput" />
     </view>
 
-    <button class="primary" bindtap="issueCoupon">发放优惠券</button>
+    <view wx:if="{{issueMode === 'mail'}}">
+      <input placeholder="站内奖励标题" value="{{publishMail.title}}" data-field="title" bindinput="mailInput" />
+      <input placeholder="站内奖励内容" value="{{publishMail.content}}" data-field="content" bindinput="mailInput" />
+      <view class="muted" style="margin:12rpx 0 10rpx;">奖励类型</view>
+      <view class="tabs">
+        <button class="tab {{publishMail.rewardType === 'coupon' ? 'active-tab' : ''}}" data-type="coupon" bindtap="setMailRewardType">优惠券</button>
+        <button class="tab {{publishMail.rewardType === 'points' ? 'active-tab' : ''}}" data-type="points" bindtap="setMailRewardType">积分</button>
+      </view>
+      <input wx:if="{{publishMail.rewardType === 'points'}}" type="number" placeholder="奖励积分" value="{{publishMail.points}}" data-field="points" bindinput="mailInput" />
+      <view class="muted" style="margin:16rpx 0 8rpx;">选择段位（可多选）</view>
+      <view wx:for="{{publishMailLevelRows}}" wx:key="_id" class="between level-row selectable-row {{item.selectedClass}}" data-id="{{item._id}}" bindtap="toggleMailLevel">
+        <view>{{item.icon}} {{item.labelText}}</view>
+        <view class="select-pill {{item.selectClass}}">{{item.selectText}}</view>
+      </view>
+      <view class="muted" style="margin-top:12rpx;">已选：{{publishMailLevelNamesText}}</view>
+    </view>
+
+    <button class="primary" disabled="{{issuing}}" bindtap="issueCoupon">{{issuing ? '处理中...' : (issueMode === 'mail' ? '投递奖励邮箱' : '立即发券')}}</button>
   </view>
 
   <view style="display:flex;gap:16rpx;padding:0 32rpx 24rpx;">
     <button class="ghost" style="flex:1;" bindtap="go" data-url="/pages/admin/member-levels/index">会员等级</button>
+    <button class="ghost" style="flex:1;" bindtap="go" data-url="/pages/admin/checkin-config/index">签到奖励</button>
     <button class="ghost" style="flex:1;" bindtap="go" data-url="/pages/admin/points/index">积分管理</button>
-    <button class="ghost" style="flex:1;" bindtap="go" data-url="/pages/admin/lottery/index">抽奖活动</button>
   </view>
 
   <view class="card" wx:for="{{templates}}" wx:key="_id">
-    <view class="between">
-      <view>
+    <view class="between" style="align-items:flex-start;gap:18rpx;">
+      <view style="flex:1;">
         <view class="strong">{{item.name}}</view>
-        <view class="muted">满 ¥{{item.minOrderAmount}} 减 ¥{{item.discountAmount}} · {{item.validDays}}天有效</view>
-        <view class="muted">已发 {{item.issuedCount || 0}} 张 · 每人 {{item.perUserLimit}} 张</view>
+        <view class="muted">满 ¥{{item.minOrderAmount}} 减 ¥{{item.discountAmount}} · {{item.validType === 'fixed_range' ? (item.validFromFixed + ' ~ ' + item.validToFixed) : (item.validDays + '天有效')}}</view>
+        <view class="muted">{{item.displayTag || '无标签'}} · 已发 {{item.issuedCount || 0}} 张 · 每人 {{item.perUserLimit}} 张</view>
+        <view class="muted" wx:if="{{item.claimNotice}}">领取说明：{{item.claimNotice}}</view>
       </view>
       <view class="badge">{{item.enabled ? '启用' : '停用'}}</view>
     </view>

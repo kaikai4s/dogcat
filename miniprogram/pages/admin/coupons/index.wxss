@@ -1,3 +1,55 @@
 .switch-row {
   margin: 20rpx 0;
 }
+
+.active-tab {
+  color: #ffffff;
+  background: linear-gradient(135deg, #ff7a93 0%, #f43f6b 100%);
+  border-color: transparent;
+}
+
+.level-row {
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid #f5e6ec;
+}
+
+.selectable-row {
+  border-radius: 24rpx;
+  padding: 18rpx 16rpx;
+  margin-bottom: 8rpx;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  border: 2rpx solid transparent;
+}
+
+.selectable-row:active {
+  transform: scale(0.985);
+  background: #fff5f8;
+}
+
+.selected-level-row {
+  background: linear-gradient(135deg, #fff1f6 0%, #fff8fb 100%);
+  border-color: rgba(244, 63, 107, 0.34);
+  box-shadow: 0 10rpx 24rpx rgba(244, 63, 107, 0.1);
+}
+
+.select-pill {
+  min-width: 96rpx;
+  height: 54rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+  font-weight: 800;
+  color: #f43f6b;
+  background: #fff;
+  border: 2rpx solid rgba(244, 63, 107, 0.24);
+  box-shadow: inset 0 0 0 1rpx rgba(255, 255, 255, 0.5);
+}
+
+.select-pill.selected {
+  color: #ffffff;
+  background: linear-gradient(135deg, #ff7a93 0%, #f43f6b 100%);
+  border-color: transparent;
+  box-shadow: 0 8rpx 18rpx rgba(244, 63, 107, 0.22);
+}

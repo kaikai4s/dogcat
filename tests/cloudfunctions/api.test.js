@@ -240,6 +240,24 @@ test('api createOrder stores compatible and extended service fields', async () =
   assert.equal(result.data.durationMinutes, 60)
 })
 
+test('admin can save and public can read system settings', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    platform_configs: [],
+    admin_operation_logs: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const guestFn = loadCloudFunction('api', db, 'openid_guest')
+
+  const saved = await adminFn.main({ module: 'admin', action: 'saveSystemSettings', data: { enableTestAddressMode: true } })
+  const fetched = await guestFn.main({ module: 'system', action: 'getSettings' })
+
+  assert.equal(saved.ok, true)
+  assert.equal(saved.data.enableTestAddressMode, true)
+  assert.equal(fetched.ok, true)
+  assert.equal(fetched.data.enableTestAddressMode, true)
+})
+
 test('admin can manage service prices and quote uses configured price', async () => {
   const db = createCollectionStore({
     users: [
@@ -788,4 +806,267 @@ test('admin can save coupon template issue coupon and per-user limit applies', a
   assert.equal(wallet.ok, true)
   assert.equal(wallet.data.length, 1)
   assert.equal(wallet.data[0].ruleText, '满80减20')
+})
+
+test('invite login rewards inviter with retro card once', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'inviter', openid: 'openid_inviter', roles: ['client'], status: 'active', retroCardCount: 0, inviteCode: 'INVITER01' }
+    ],
+    retro_card_logs: [],
+    user_invites: []
+  })
+  const invitedFn = loadCloudFunction('api', db, 'openid_new')
+
+  const result = await invitedFn.main({ module: 'auth', action: 'login', data: { inviterOpenid: 'openid_inviter' } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.inviterOpenid, 'openid_inviter')
+  assert.equal(db.state.users.find((item) => item.openid === 'openid_inviter').retroCardCount, 1)
+  assert.equal(db.state.user_invites.length, 1)
+  assert.equal(db.state.user_invites[0].invitedOpenid, 'openid_new')
+})
+
+test('checkin supports monthly rewards and retro card consumption', async () => {
+  const now = new Date(Date.now() + 8 * 60 * 60 * 1000)
+  const monthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
+  const todayDay = now.getUTCDate()
+  const retroDay = Math.max(todayDay - 1, 1)
+  const daysInMonth = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0).getDate()
+  const days = Array.from({ length: daysInMonth }, (_, index) => ({ day: index + 1, rewardType: 'points', points: 5, couponTemplateId: '', couponSnapshot: null, title: `第${index + 1}天奖励`, desc: '签到奖励' }))
+  days[todayDay - 1] = { day: todayDay, rewardType: 'points', points: 7, couponTemplateId: '', couponSnapshot: null, title: '今日奖励', desc: '双倍签到积分' }
+  days[retroDay - 1] = { day: retroDay, rewardType: 'coupon', points: 0, couponTemplateId: 'tpl1', couponSnapshot: { templateId: 'tpl1', name: '补签奖励券', discountAmount: 10, minOrderAmount: 50 }, title: '补签奖励', desc: '补签送券' }
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, retroCardCount: 1 }],
+    checkin_month_configs: [{ _id: 'cfg1', monthKey, days, status: 'active' }],
+    user_checkins: [],
+    coupon_templates: [{ _id: 'tpl1', name: '补签奖励券', discountAmount: 10, minOrderAmount: 50, validDays: 30, validType: 'relative_days', enabled: true, perUserLimit: 5, totalIssueLimit: 0, issuedCount: 0 }],
+    user_coupons: [],
+    point_logs: [],
+    retro_card_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const todayResult = await fn.main({ module: 'checkin', action: 'checkinToday', data: {} })
+  const retroResult = await fn.main({ module: 'checkin', action: 'retroCheckin', data: { monthKey, day: retroDay } })
+  const calendar = await fn.main({ module: 'checkin', action: 'getMonthCalendar', data: { monthKey } })
+
+  assert.equal(todayResult.ok, true)
+  assert.equal(todayResult.data.pointsDelta, 7)
+  assert.equal(retroResult.ok, true)
+  assert.equal(db.state.user_coupons.length, 1)
+  assert.equal(db.state.users[0].retroCardCount, 0)
+  assert.equal(db.state.user_checkins.length, 2)
+  assert.equal(calendar.ok, true)
+  assert.equal(calendar.data.days.find((item) => item.day === todayDay).checked, true)
+  assert.equal(calendar.data.days.find((item) => item.day === retroDay).checkinType, retroDay === todayDay ? 'normal' : 'retro')
+})
+
+test('reward mail unread count and claim are idempotent', async () => {
+  const now = new Date().toISOString()
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0 }],
+    reward_mails: [{ _id: 'mail1', userId: 'client', openid: 'openid_client', title: '积分到账', content: '请领取奖励', reward: { type: 'points', points: 20 }, readAt: null, claimedAt: null, createdAt: now, updatedAt: now }],
+    point_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const unreadBefore = await fn.main({ module: 'rewardMail', action: 'getUnreadCount', data: {} })
+  const marked = await fn.main({ module: 'rewardMail', action: 'markRead', data: { id: 'mail1' } })
+  const claimed = await fn.main({ module: 'rewardMail', action: 'claimReward', data: { id: 'mail1' } })
+  const claimedAgain = await fn.main({ module: 'rewardMail', action: 'claimReward', data: { id: 'mail1' } })
+  const unreadAfter = await fn.main({ module: 'rewardMail', action: 'getUnreadCount', data: {} })
+
+  assert.equal(unreadBefore.ok, true)
+  assert.equal(unreadBefore.data.unreadCount, 1)
+  assert.equal(marked.ok, true)
+  assert.equal(marked.data.unread, false)
+  assert.equal(claimed.ok, true)
+  assert.equal(db.state.users[0].points, 20)
+  assert.equal(db.state.point_logs.length, 1)
+  assert.equal(claimedAgain.ok, true)
+  assert.equal(db.state.point_logs.length, 1)
+  assert.equal(unreadAfter.data.unreadCount, 0)
+  assert.equal(unreadAfter.data.unclaimedCount, 0)
+})
+
+test('finishService applies member multiplier and grants retro card on third completed order', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 100, memberLevel: 'gold', memberLevelName: '黄金会员', completedOrderCount: 2, retroCardCount: 0 },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
+    ],
+    member_levels: [{ _id: 'gold', name: '黄金会员', minPoints: 100, pointMultiplier: 2 }],
+    orders: [{ _id: 'order1', clientOpenid: 'openid_client', clientUserId: 'client', staffOpenid: 'openid_staff', status: 'in_service', payAmount: 50, requiredCheckins: [] }],
+    checkin_logs: [],
+    point_logs: [],
+    retro_card_logs: [],
+    order_timeline: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_staff')
+
+  const result = await fn.main({ module: 'order', action: 'finishService', data: { id: 'order1' } })
+
+  assert.equal(result.ok, true)
+  assert.equal(db.state.point_logs[0].baseDelta, 5)
+  assert.equal(db.state.point_logs[0].delta, 10)
+  assert.equal(db.state.users.find((item) => item.openid === 'openid_client').completedOrderCount, 3)
+  assert.equal(db.state.users.find((item) => item.openid === 'openid_client').retroCardCount, 1)
+  assert.equal(db.state.retro_card_logs.length, 1)
+})
+
+test('admin can save rich member level and coupon template settings', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    member_levels: [],
+    coupon_templates: [],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const level = await fn.main({ module: 'admin', action: 'saveMemberLevel', data: { name: '钻石会员', minPoints: 300, pointMultiplier: 3, description: '高阶会员', benefits: ['专属券', '高倍积分'] } })
+  const coupon = await fn.main({ module: 'admin', action: 'saveCouponTemplate', data: { name: '月度券', discountAmount: 20, minOrderAmount: 80, validType: 'fixed_range', validFromFixed: '2026-08-01', validToFixed: '2026-08-31', displayTag: '月度奖励', claimNotice: '限时领取', useNotice: '按规则使用', perUserLimit: 2, enabled: true } })
+
+  assert.equal(level.ok, true)
+  assert.equal(level.data.pointMultiplier, 3)
+  assert.deepEqual(level.data.benefits, ['专属券', '高倍积分'])
+  assert.equal(coupon.ok, true)
+  assert.equal(coupon.data.validType, 'fixed_range')
+  assert.equal(coupon.data.displayTag, '月度奖励')
+})
+
+test('admin issues coupons by target level ids', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'u1', openid: 'openid_gold', roles: ['client'], status: 'active', memberLevel: 'level_gold', memberLevelName: '黄金会员' },
+      { _id: 'u2', openid: 'openid_renamed', roles: ['client'], status: 'active', memberLevel: 'level_gold', memberLevelName: '旧黄金会员' },
+      { _id: 'u3', openid: 'openid_silver', roles: ['client'], status: 'active', memberLevel: 'level_silver', memberLevelName: '白银会员' }
+    ],
+    member_levels: [
+      { _id: 'level_silver', name: '白银会员', minPoints: 100, pointMultiplier: 1 },
+      { _id: 'level_gold', name: '黄金会员', minPoints: 200, pointMultiplier: 2 }
+    ],
+    coupon_templates: [{ _id: 'tpl1', name: '月度券', discountAmount: 20, minOrderAmount: 80, validDays: 30, perUserLimit: 1, issuedCount: 0, enabled: true }],
+    user_coupons: [],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const result = await fn.main({ module: 'admin', action: 'issueCouponByLevels', data: { templateId: 'tpl1', targetLevelIds: ['level_gold'] } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.issued, 2)
+  assert.equal(result.data.eligibleCount, 2)
+  assert.deepEqual(result.data.targetLevelNamesSnapshot, ['黄金会员'])
+  assert.equal(db.state.user_coupons.length, 2)
+  assert.deepEqual(db.state.user_coupons.map((item) => item.openid).sort(), ['openid_gold', 'openid_renamed'])
+})
+
+test('admin issueCouponByLevels returns skipped reasons', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'u1', openid: 'openid_silver_1', roles: ['client'], status: 'active', memberLevel: 'level_silver', memberLevelName: '银卡会员' },
+      { _id: 'u2', openid: 'openid_silver_2', roles: ['client'], status: 'active', memberLevel: 'level_silver', memberLevelName: '银卡会员' }
+    ],
+    member_levels: [
+      { _id: 'level_silver', name: '银卡会员', minPoints: 10, pointMultiplier: 1 }
+    ],
+    coupon_templates: [{ _id: 'tpl1', name: '满80减20', discountAmount: 20, minOrderAmount: 80, validDays: 30, perUserLimit: 1, issuedCount: 1, enabled: true }],
+    user_coupons: [{ _id: 'coupon1', templateId: 'tpl1', openid: 'openid_silver_1', status: 'available' }],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const result = await fn.main({ module: 'admin', action: 'issueCouponByLevels', data: { templateId: 'tpl1', targetLevelIds: ['level_silver'] } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.issued, 1)
+  assert.equal(result.data.skipped, 1)
+  assert.equal(result.data.skippedReasons['该用户已达到领取上限'], 1)
+})
+
+test('admin can publish reward mails by target level ids', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'u1', openid: 'openid_gold', roles: ['client'], status: 'active', memberLevel: 'level_gold', memberLevelName: '黄金会员' },
+      { _id: 'u2', openid: 'openid_silver', roles: ['client'], status: 'active', memberLevel: 'level_silver', memberLevelName: '白银会员' }
+    ],
+    member_levels: [
+      { _id: 'level_silver', name: '白银会员', minPoints: 100, pointMultiplier: 1 },
+      { _id: 'level_gold', name: '黄金会员', minPoints: 200, pointMultiplier: 2 }
+    ],
+    reward_mails: [],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const result = await fn.main({ module: 'admin', action: 'publishRewardMailByLevels', data: { title: '等级奖励', content: '请领取积分', rewardType: 'points', points: 30, targetLevelIds: ['level_gold'] } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.issued, 1)
+  assert.equal(db.state.reward_mails.length, 1)
+  assert.equal(db.state.reward_mails[0].openid, 'openid_gold')
+  assert.equal(db.state.reward_mails[0].reward.points, 30)
+  assert.deepEqual(db.state.reward_mails[0].targetLevelIds, ['level_gold'])
+  assert.deepEqual(db.state.reward_mails[0].targetLevelNamesSnapshot, ['黄金会员'])
+})
+
+test('saving member level syncs memberLevelName for bound users', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'u1', openid: 'openid_gold', roles: ['client'], status: 'active', memberLevel: 'level_gold', memberLevelName: '旧黄金会员', totalPoints: 260, points: 50 }
+    ],
+    member_levels: [{ _id: 'level_gold', name: '旧黄金会员', minPoints: 200, pointMultiplier: 2 }],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const result = await fn.main({ module: 'admin', action: 'saveMemberLevel', data: { _id: 'level_gold', name: '黄金会员', minPoints: 200, pointMultiplier: 2 } })
+
+  assert.equal(result.ok, true)
+  assert.equal(db.state.users.find((item) => item._id === 'u1').memberLevelName, '黄金会员')
+})
+
+test('saving member level rejects duplicate names', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    member_levels: [
+      { _id: 'level_normal', name: '普通会员', minPoints: 0, pointMultiplier: 1 },
+      { _id: 'level_silver', name: '银卡会员', minPoints: 10, pointMultiplier: 1 }
+    ],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const result = await fn.main({ module: 'admin', action: 'saveMemberLevel', data: { name: '银卡会员', minPoints: 20, pointMultiplier: 2 } })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.message, '已存在同名会员等级，请先编辑原等级或换一个名称')
+})
+
+test('deleting member level recalculates affected users', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'u1', openid: 'openid_gold', roles: ['client'], status: 'active', memberLevel: 'level_gold', memberLevelName: '黄金会员', totalPoints: 260, points: 80 },
+      { _id: 'u2', openid: 'openid_silver', roles: ['client'], status: 'active', memberLevel: 'level_silver', memberLevelName: '白银会员', totalPoints: 120, points: 30 }
+    ],
+    member_levels: [
+      { _id: 'level_silver', name: '白银会员', minPoints: 100, pointMultiplier: 1 },
+      { _id: 'level_gold', name: '黄金会员', minPoints: 200, pointMultiplier: 2 }
+    ],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const result = await fn.main({ module: 'admin', action: 'deleteMemberLevel', data: { _id: 'level_gold' } })
+  const affected = db.state.users.find((item) => item._id === 'u1')
+
+  assert.equal(result.ok, true)
+  assert.equal(affected.memberLevel, 'level_silver')
+  assert.equal(affected.memberLevelName, '白银会员')
 })

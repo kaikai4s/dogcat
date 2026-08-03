@@ -42,9 +42,13 @@
     "pages/admin/incidents/list/index",
     "pages/admin/evidence/detail/index",
     "pages/admin/member-levels/index",
+    "pages/admin/checkin-config/index",
     "pages/admin/points/index",
     "pages/admin/lottery/index",
+    "pages/admin/settings/index",
     "pages/client/points/index",
+    "pages/client/checkin/index",
+    "pages/client/reward-mails/index",
     "pages/client/lottery/index"
   ],
   "window": {
@@ -54,7 +58,7 @@
     "navigationBarTitleText": "VIP 宠护",
     "navigationBarTextStyle": "black"
   },
-  "__usePrivacyCheck__": true,
+  "__usePrivacyCheck__": false,
   "requiredPrivateInfos": [
     "chooseLocation"
   ],

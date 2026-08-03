@@ -9,7 +9,10 @@
     <view class="subtitle">{{form._id ? '编辑等级' : '新建等级'}}</view>
     <input placeholder="等级名称，如 银卡会员" value="{{form.name}}" data-field="name" bindinput="input" />
     <input type="number" placeholder="所需累计积分" value="{{form.minPoints}}" data-field="minPoints" bindinput="input" />
+    <input type="number" placeholder="积分倍数，如 1.2 / 2" value="{{form.pointMultiplier}}" data-field="pointMultiplier" bindinput="input" />
     <input placeholder="图标（可选，如 🥈）" value="{{form.icon}}" data-field="icon" bindinput="input" />
+    <input placeholder="等级说明" value="{{form.description}}" data-field="description" bindinput="input" />
+    <textarea placeholder="权益说明，每行一条" value="{{form.benefitsText}}" data-field="benefitsText" bindinput="input" />
     <input type="number" placeholder="排序序号" value="{{form.sortOrder}}" data-field="sortOrder" bindinput="input" />
     <button class="primary" bindtap="save">保存等级</button>
     <button class="ghost" bindtap="resetForm">新建等级</button>
@@ -19,7 +22,11 @@
     <view class="between">
       <view>
         <view class="strong">{{item.icon}} {{item.name}}</view>
-        <view class="muted">累计积分 ≥ {{item.minPoints}}</view>
+        <view class="muted">累计积分 ≥ {{item.minPoints}} · {{item.pointMultiplier || 1}} 倍积分</view>
+        <view class="muted" wx:if="{{item.description}}">{{item.description}}</view>
+        <view class="chip-row" wx:if="{{item.benefits && item.benefits.length}}">
+          <view class="chip pink" wx:for="{{item.benefits}}" wx:key="*this">{{item}}</view>
+        </view>
       </view>
       <view style="display:flex;gap:8rpx;">
         <button class="ghost compact-btn" data-index="{{index}}" bindtap="chooseLevel">编辑</button>

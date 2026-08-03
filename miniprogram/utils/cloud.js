@@ -52,6 +52,7 @@ function showError(error) {
 }
 
 const LOCATION_STORAGE_KEY = 'vip_pet_selected_location'
+const SYSTEM_SETTINGS_STORAGE_KEY = 'vip_pet_system_settings'
 
 function normalizeLocation(location) {
   const source = location || {}
@@ -81,6 +82,22 @@ function saveSelectedLocation(location) {
   return normalized
 }
 
+function getCachedSystemSettings() {
+  return wx.getStorageSync(SYSTEM_SETTINGS_STORAGE_KEY) || { enableTestAddressMode: false }
+}
+
+function setCachedSystemSettings(settings) {
+  const normalized = { enableTestAddressMode: settings && settings.enableTestAddressMode === true }
+  wx.setStorageSync(SYSTEM_SETTINGS_STORAGE_KEY, normalized)
+  return normalized
+}
+
+function loadSystemSettings() {
+  return callFunction('system', 'getSettings')
+    .then(setCachedSystemSettings)
+    .catch(() => getCachedSystemSettings())
+}
+
 function requirePrivacyAuthorize() {
   return new Promise((resolve, reject) => {
     if (typeof wx.requirePrivacyAuthorize !== 'function') {
@@ -94,8 +111,8 @@ function requirePrivacyAuthorize() {
   })
 }
 
-function chooseSelectedLocation() {
-  return requirePrivacyAuthorize().then(() => new Promise((resolve, reject) => {
+function openChooseLocation() {
+  return new Promise((resolve, reject) => {
     wx.chooseLocation({
       success: (location) => {
         const saved = saveSelectedLocation(location)
@@ -104,7 +121,14 @@ function chooseSelectedLocation() {
       },
       fail: reject
     })
-  }))
+  })
+}
+
+function chooseSelectedLocation() {
+  return loadSystemSettings().then((settings) => {
+    if (settings.enableTestAddressMode) return openChooseLocation()
+    return requirePrivacyAuthorize().then(openChooseLocation)
+  })
 }
 
 function requireSelectedLocation() {
@@ -209,6 +233,9 @@ module.exports = {
   getSelectedLocation,
   saveSelectedLocation,
   requirePrivacyAuthorize,
+  loadSystemSettings,
+  setCachedSystemSettings,
+  getCachedSystemSettings,
   chooseSelectedLocation,
   requireSelectedLocation,
   getCachedUser,

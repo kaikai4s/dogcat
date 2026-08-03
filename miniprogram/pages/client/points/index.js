@@ -4,7 +4,8 @@ const sourceTypeMap = {
   order_complete: '完成订单',
   order_review: '评价订单',
   admin_grant: '管理员操作',
-  checkin_daily: '每日签到'
+  checkin_daily: '每日签到',
+  reward_mail: '奖励邮箱'
 }
 
 function formatDate(val) {
@@ -20,6 +21,11 @@ Page({
     points: 0,
     totalPoints: 0,
     memberLevelName: '普通会员',
+    pointMultiplier: 1,
+    retroCardCount: 0,
+    currentLevel: null,
+    nextLevel: null,
+    levels: [],
     logs: [],
     page: 1,
     total: 0,
@@ -46,6 +52,11 @@ Page({
           points: info.points,
           totalPoints: info.totalPoints,
           memberLevelName: info.memberLevelName || '普通会员',
+          pointMultiplier: Number(info.pointMultiplier || 1),
+          retroCardCount: Number(info.retroCardCount || 0),
+          currentLevel: info.currentLevel || null,
+          nextLevel: info.nextLevel || null,
+          levels: info.levels || [],
           logs: page === 1 ? newLogs : [...this.data.logs, ...newLogs],
           page: info.page,
           total: info.total,
@@ -61,17 +72,8 @@ Page({
     this.load(this.data.page + 1)
   },
 
-  checkin() {
-    callFunction('auth', 'dailyCheckin')
-      .then((res) => {
-        if (res.checkedIn) {
-          wx.showToast({ title: '今天已签到', icon: 'none' })
-        } else {
-          wx.showToast({ title: `签到成功 +${res.delta} 积分`, icon: 'none' })
-          this.load(1)
-        }
-      })
-      .catch(showError)
+  openCheckin() {
+    wx.navigateTo({ url: '/pages/client/checkin/index' })
   },
 
   openLottery() {

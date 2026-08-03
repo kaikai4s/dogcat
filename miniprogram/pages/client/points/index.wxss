@@ -1,1 +1,11 @@
 /* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+
+.level-item {
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #f5e6ec;
+}
+
+.level-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}

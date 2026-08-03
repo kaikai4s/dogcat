@@ -1,0 +1,29 @@
+<view class="page">
+  <view class="dashboard-header">
+    <view class="badge">站内奖励</view>
+    <view class="title">奖励邮箱</view>
+    <view class="tip">未读奖励会在“我的”显示红点，打开后可领取积分或优惠券。</view>
+  </view>
+
+  <view wx:if="{{mails.length}}">
+    <view class="card mail-card interactive" wx:for="{{mails}}" wx:key="_id" data-id="{{item._id}}" bindtap="openMail">
+      <view class="between" style="align-items:flex-start;gap:18rpx;">
+        <view style="flex:1;min-width:0;">
+          <view class="strong">{{item.title}}</view>
+          <view class="muted" style="margin-top:8rpx;">{{item.content || '打开后即可领取奖励。'}}</view>
+        </view>
+        <view class="mail-dot" wx:if="{{item.unread}}"></view>
+      </view>
+      <view class="between meta-row">
+        <view class="badge">{{item.rewardSummary}}</view>
+        <view class="muted">{{item.createdAtText}}</view>
+      </view>
+      <view class="between action-row">
+        <view class="muted">{{item.statusText}}</view>
+        <button class="mini-btn" wx:if="{{item.claimable}}" data-id="{{item._id}}" disabled="{{claimingId === item._id}}" catchtap="claimMail">{{claimingId === item._id ? '领取中...' : '领取奖励'}}</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty" wx:else>暂时还没有奖励邮件，后续活动和会员奖励会在这里发放。</view>
+</view>

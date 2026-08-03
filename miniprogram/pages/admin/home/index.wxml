@@ -55,6 +55,11 @@
       <view class="strong">会员等级</view>
       <view class="muted">积分升级规则</view>
     </view>
+    <view class="card interactive action-card" data-url="/pages/admin/checkin-config/index" bindtap="go">
+      <view class="action-icon">签</view>
+      <view class="strong">签到奖励</view>
+      <view class="muted">月度每日奖励配置</view>
+    </view>
     <view class="card interactive action-card" data-url="/pages/admin/points/index" bindtap="go">
       <view class="action-icon">🪙</view>
       <view class="strong">积分管理</view>
@@ -64,6 +69,11 @@
       <view class="action-icon">🎰</view>
       <view class="strong">抽奖活动</view>
       <view class="muted">开关与奖品设置</view>
+    </view>
+    <view class="card interactive action-card" data-url="/pages/admin/settings/index" bindtap="go">
+      <view class="action-icon">⚙</view>
+      <view class="strong">系统设置</view>
+      <view class="muted">测试模式与平台参数</view>
     </view>
   </view>
 

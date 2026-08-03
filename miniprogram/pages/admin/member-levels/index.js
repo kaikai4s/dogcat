@@ -1,7 +1,7 @@
 const { callFunction, showError } = require('../../../utils/cloud')
 
 function emptyLevel() {
-  return { name: '', minPoints: 0, icon: '', sortOrder: 0 }
+  return { name: '', minPoints: 0, icon: '', pointMultiplier: 1, description: '', benefitsText: '', sortOrder: 0 }
 }
 
 Page({
@@ -28,7 +28,14 @@ Page({
   chooseLevel(e) {
     const level = this.data.levels[e.currentTarget.dataset.index]
     if (!level) return
-    this.setData({ form: { ...level } })
+    this.setData({
+      form: {
+        ...level,
+        pointMultiplier: Number(level.pointMultiplier || 1),
+        description: level.description || '',
+        benefitsText: Array.isArray(level.benefits) ? level.benefits.join('\n') : ''
+      }
+    })
   },
 
   resetForm() {
@@ -41,6 +48,8 @@ Page({
     callFunction('admin', 'saveMemberLevel', {
       ...form,
       minPoints: Number(form.minPoints || 0),
+      pointMultiplier: Number(form.pointMultiplier || 1),
+      benefits: String(form.benefitsText || '').split(/\n+/).map((item) => item.trim()).filter(Boolean),
       sortOrder: Number(form.sortOrder || 0)
     })
       .then(() => {

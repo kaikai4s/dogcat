@@ -1,0 +1,8 @@
+.day-card {
+  padding: 28rpx 30rpx;
+}
+
+.picker-field {
+  min-height: 76rpx;
+  margin-bottom: 0;
+}

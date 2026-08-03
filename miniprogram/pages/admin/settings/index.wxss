@@ -1,0 +1,5 @@
+.setting-row {
+  align-items: center;
+  gap: 24rpx;
+  padding: 12rpx 0 28rpx;
+}

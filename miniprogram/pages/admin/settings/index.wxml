@@ -1,0 +1,27 @@
+<view class="page">
+  <view class="dashboard-header">
+    <view class="badge">管理端</view>
+    <view class="title">系统设置</view>
+    <view class="tip">控制开发调试和平台级参数。</view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">开发调试</view>
+    <view class="between setting-row">
+      <view style="flex:1;min-width:0;">
+        <view class="strong">开启测试地址模式</view>
+        <view class="muted">开启后，选择服务位置时跳过隐私授权前置调用，直接打开微信地图选择位置。</view>
+      </view>
+      <switch checked="{{settings.enableTestAddressMode}}" bindchange="toggleTestAddressMode" />
+    </view>
+    <view class="notice" wx:if="{{settings.enableTestAddressMode}}">当前构建已关闭 __usePrivacyCheck__，可用于隐私协议未通过前的地图选点联调；正式上线前请关闭该模式并恢复隐私校验。</view>
+    <button class="primary" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存设置'}}</button>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>
+    <view class="nav-item" data-url="/pages/admin/coupons/index" bindtap="go"><view class="nav-icon">券</view><view>优惠券</view></view>
+    <view class="nav-item" data-url="/pages/admin/member-levels/index" bindtap="go"><view class="nav-icon">级</view><view>等级</view></view>
+    <view class="nav-item active"><view class="nav-icon">⚙</view><view>设置</view></view>
+  </view>
+</view>

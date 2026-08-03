@@ -35,9 +35,9 @@
     <view class="profile-main">
       <view class="profile-name">{{userName}}</view>
       <view class="profile-points">{{userMeta}}</view>
-      <view wx:if="{{!isGuest && memberLevelName}}" style="margin-top:8rpx;font-size:24rpx;color:#e05c8b;">{{memberLevelName}} · {{points}} 积分</view>
+      <view wx:if="{{!isGuest && memberLevelName}}" style="margin-top:8rpx;font-size:24rpx;color:#e05c8b;">{{memberLevelName}} · {{points}} 积分 · {{pointMultiplier}} 倍积分</view>
     </view>
-    <view class="checkin-pill" wx:if="{{!isGuest}}" bindtap="checkin">🪙 签到</view>
+    <view class="checkin-pill" wx:if="{{!isGuest}}" bindtap="openCheckin">签到中心</view>
   </view>
 
   <view class="soft-panel guest-panel" wx:if="{{isGuest}}">
@@ -68,7 +68,8 @@
   <view class="soft-panel reward-banner">
     <view>
       <view class="strong">成长权益</view>
-      <view class="muted">优惠券、积分和每日签到都在这里累计。</view>
+      <view class="muted">{{memberLevelName || '普通会员'}} · {{pointMultiplier}} 倍积分 · 补签卡 {{retroCardCount}} 张</view>
+      <view class="muted" wx:if="{{levelDescription}}" style="margin-top:8rpx;">{{levelDescription}}</view>
     </view>
     <view class="pet-avatar">🎁</view>
   </view>
@@ -94,6 +95,19 @@
     <view class="menu-item interactive" bindtap="openCoupons">
       <view class="menu-left"><view class="menu-icon">券</view><view>我的优惠券</view></view>
       <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item interactive" bindtap="openCheckin">
+      <view class="menu-left"><view class="menu-icon">签</view><view>签到中心</view></view>
+      <view class="menu-right-info" wx:if="{{!isGuest}}">补签卡 {{retroCardCount}}</view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item interactive" bindtap="openRewardMails">
+      <view class="menu-left"><view class="menu-icon">邮</view><view>奖励邮箱</view></view>
+      <view class="menu-right-wrap">
+        <view class="menu-right-info" wx:if="{{!isGuest && rewardMailUnclaimedCount}}">待领 {{rewardMailUnclaimedCount}}</view>
+        <view class="menu-dot" wx:if="{{!isGuest && rewardMailUnreadCount}}"></view>
+        <view class="menu-arrow">›</view>
+      </view>
     </view>
     <view class="menu-item interactive" bindtap="openPoints">
       <view class="menu-left"><view class="menu-icon">🪙</view><view>我的积分</view></view>

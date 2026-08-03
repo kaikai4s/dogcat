@@ -20,7 +20,12 @@ Page({
     userMeta: '登录后可管理宠物、订单、地址和收藏',
     avatarUrl: '',
     points: 0,
-    memberLevelName: ''
+    memberLevelName: '',
+    pointMultiplier: 1,
+    retroCardCount: 0,
+    levelDescription: '',
+    rewardMailUnreadCount: 0,
+    rewardMailUnclaimedCount: 0
   },
 
   onLoad(query) {
@@ -38,6 +43,7 @@ Page({
         this.applyUser(user)
         this.loadStaffProfile()
         this.loadPoints()
+        this.loadRewardMailUnread()
       })
       .catch(() => this.applyGuest())
   },
@@ -53,7 +59,12 @@ Page({
       userMeta: '登录后可管理宠物、订单、地址和收藏',
       avatarUrl: '',
       points: 0,
-      memberLevelName: ''
+      memberLevelName: '',
+      pointMultiplier: 1,
+      retroCardCount: 0,
+      levelDescription: '',
+      rewardMailUnreadCount: 0,
+      rewardMailUnclaimedCount: 0
     })
   },
 
@@ -75,6 +86,7 @@ Page({
         this.applyUser(user)
         this.loadStaffProfile()
         this.loadPoints()
+        this.loadRewardMailUnread()
         wx.showToast({ title: '已登录' })
       })
       .catch(showError)
@@ -97,21 +109,34 @@ Page({
 
   loadPoints() {
     callFunction('memberLevel', 'myInfo')
-      .then((info) => this.setData({ points: info.points, memberLevelName: info.memberLevelName || '普通会员' }))
+      .then((info) => this.setData({
+        points: info.points,
+        memberLevelName: info.memberLevelName || '普通会员',
+        pointMultiplier: Number(info.pointMultiplier || 1),
+        retroCardCount: Number(info.retroCardCount || 0),
+        levelDescription: info.currentLevel && info.currentLevel.description ? info.currentLevel.description : ''
+      }))
       .catch(() => {})
   },
 
-  checkin() {
-    ensureLogin({ content: '登录后可每日签到获得积分。' })
-      .then(() => callFunction('auth', 'dailyCheckin'))
-      .then((res) => {
-        if (res.checkedIn) {
-          wx.showToast({ title: '今天已签到', icon: 'none' })
-        } else {
-          wx.showToast({ title: `签到成功 +${res.delta} 积分`, icon: 'none' })
-          this.setData({ points: res.points })
-        }
-      })
+  loadRewardMailUnread() {
+    callFunction('rewardMail', 'getUnreadCount')
+      .then((res) => this.setData({
+        rewardMailUnreadCount: Number(res.unreadCount || 0),
+        rewardMailUnclaimedCount: Number(res.unclaimedCount || 0)
+      }))
+      .catch(() => {})
+  },
+
+  openCheckin() {
+    ensureLogin({ content: '登录后可查看签到奖励和补签卡。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/checkin/index' }))
+      .catch(() => {})
+  },
+
+  openRewardMails() {
+    ensureLogin({ content: '登录后可领取会员奖励。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/reward-mails/index' }))
       .catch(() => {})
   },
 

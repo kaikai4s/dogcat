@@ -1,0 +1,64 @@
+<view class="page">
+  <view class="dashboard-header">
+    <view class="badge">每日签到</view>
+    <view class="title">签到中心</view>
+    <view class="tip">按月查看签到奖励，点选日期后再签到或补签。</view>
+  </view>
+
+  <view class="card summary-card">
+    <view class="summary-main">
+      <view>
+        <view class="strong">{{memberLevelName}}</view>
+        <view class="muted">当前可用积分 {{points}}</view>
+      </view>
+      <view class="badge">补签卡 {{retroCardCount}}</view>
+    </view>
+    <view class="month-title">{{monthLabel}}</view>
+  </view>
+
+  <view class="card calendar-card">
+    <view class="week-row">
+      <view class="week-label" wx:for="{{weekLabels}}" wx:key="*this">{{item}}</view>
+    </view>
+    <view class="calendar-grid">
+      <view wx:for="{{calendarCells}}" wx:key="id" class="calendar-cell-wrap">
+        <view wx:if="{{item.empty}}" class="calendar-cell empty"></view>
+        <view
+          wx:else
+          class="calendar-cell {{item.statusClass}} {{item.selected ? 'selected' : ''}} {{submitting && item.day === selectedDay ? 'disabled' : ''}}"
+          data-day="{{item.day}}"
+          bindtap="tapDay"
+        >
+          <view class="cell-head">
+            <view class="cell-day">{{item.day}}</view>
+            <view class="cell-tag" wx:if="{{item.checked}}">{{item.checkinType === 'retro' ? '补' : '签'}}</view>
+          </view>
+          <view class="cell-reward">{{item.rewardBadge}}</view>
+          <view class="cell-status">{{item.canCheckin ? '今' : (item.canRetro ? '补' : (item.checked ? '已签' : ''))}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card detail-card" wx:if="{{selectedDayDetail}}">
+    <view class="between" style="align-items:flex-start;gap:20rpx;">
+      <view>
+        <view class="strong">{{selectedDayDetail.dateLabel}}</view>
+        <view class="muted">{{selectedDayDetail.statusText}}</view>
+      </view>
+      <view class="badge">{{selectedDayDetail.rewardType === 'coupon' ? '优惠券' : (selectedDayDetail.rewardType === 'none' ? '无奖励' : '积分奖励')}}</view>
+    </view>
+    <view class="detail-reward">{{selectedDayDetail.rewardText}}</view>
+    <view class="muted detail-desc" wx:if="{{selectedDayDetail.desc}}">{{selectedDayDetail.desc}}</view>
+    <button
+      wx:if="{{selectedDayDetail.actionText}}"
+      class="primary detail-action"
+      disabled="{{submitting}}"
+      bindtap="handleSelectedAction"
+    >
+      {{submitting ? '处理中...' : selectedDayDetail.actionText}}
+    </button>
+  </view>
+
+  <button class="ghost" bindtap="openPoints">查看积分明细</button>
+</view>

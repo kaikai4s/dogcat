@@ -9,7 +9,8 @@ const collections = [
   'track_logs', 'checkin_logs', 'unlock_code_logs', 'order_incidents', 'admin_operation_logs', 'service_prices',
   'sitter_favorites', 'service_reviews', 'user_addresses', 'order_timeline', 'platform_configs',
   'coupon_templates', 'user_coupons',
-  'member_levels', 'point_logs', 'lottery_activities', 'lottery_records'
+  'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
+  'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites'
 ]
 
 const defaultServicePrices = [
@@ -32,6 +33,33 @@ function cstTodayStart() {
   const cstMs = Date.now() + cstOffset
   return new Date(Math.floor(cstMs / 86400000) * 86400000 - cstOffset)
 }
+
+function toCstParts(date = now()) {
+  const source = date instanceof Date ? date : new Date(date)
+  const cst = new Date(source.getTime() + 8 * 60 * 60 * 1000)
+  const year = cst.getUTCFullYear()
+  const month = String(cst.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(cst.getUTCDate()).padStart(2, '0')
+  return {
+    year,
+    month,
+    day,
+    monthKey: `${year}-${month}`,
+    dateKey: `${year}-${month}-${day}`,
+    dayNumber: Number(day)
+  }
+}
+
+function getMonthDays(monthKey) {
+  const matched = String(monthKey || '').match(/^(\d{4})-(\d{2})$/)
+  if (!matched) return 31
+  return new Date(Number(matched[1]), Number(matched[2]), 0).getDate()
+}
+
+function defaultCheckinDays(monthKey) {
+  const count = getMonthDays(monthKey)
+  return Array.from({ length: count }, (_, index) => ({ day: index + 1, rewardType: 'points', points: 5, couponTemplateId: '', couponSnapshot: null, title: `第${index + 1}天奖励`, desc: '签到奖励' }))
+}
 function safeText(value) { return value === undefined || value === null ? '' : String(value) }
 function safeNumber(value) {
   const normalized = String(value || 0).replace(/[^0-9.]/g, '')
@@ -41,6 +69,30 @@ function safeNumber(value) {
 function safeFileId(value) {
   const text = safeText(value)
   return text.startsWith('cloud://') ? text : ''
+}
+
+function normalizeSystemSettings(value = {}) {
+  return {
+    enableTestAddressMode: value.enableTestAddressMode === true
+  }
+}
+
+async function getSystemSettings() {
+  const res = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
+  return normalizeSystemSettings(res.data[0] ? res.data[0].value : {})
+}
+
+async function saveSystemSettings(settings) {
+  const value = normalizeSystemSettings(settings)
+  const time = now()
+  const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
+  const payload = { key: 'system_settings', value, updatedAt: time }
+  if (existing.data[0]) {
+    await db.collection('platform_configs').doc(existing.data[0]._id).update({ data: payload })
+    return { _id: existing.data[0]._id, ...payload }
+  }
+  const created = await db.collection('platform_configs').add({ data: { ...payload, createdAt: time } })
+  return { _id: created._id, ...payload, createdAt: time }
 }
 
 function incUpdateValue(currentValue, delta) {
@@ -188,7 +240,14 @@ function normalizeCouponSnapshot(coupon) {
     type: snapshot.type === 'fixed' ? 'fixed' : 'fixed',
     discountAmount: Math.max(Number(snapshot.discountAmount || 0), 0),
     minOrderAmount: Math.max(Number(snapshot.minOrderAmount || 0), 0),
-    applicableServiceTypes: Array.isArray(snapshot.applicableServiceTypes) ? snapshot.applicableServiceTypes.map((item) => String(item || '').trim()).filter(Boolean) : []
+    applicableServiceTypes: Array.isArray(snapshot.applicableServiceTypes) ? snapshot.applicableServiceTypes.map((item) => String(item || '').trim()).filter(Boolean) : [],
+    validType: snapshot.validType === 'fixed_range' ? 'fixed_range' : 'relative_days',
+    validDays: Math.max(Math.round(Number(snapshot.validDays || 30)), 1),
+    validFromFixed: snapshot.validFromFixed || '',
+    validToFixed: snapshot.validToFixed || '',
+    displayTag: safeText(snapshot.displayTag).trim(),
+    claimNotice: safeText(snapshot.claimNotice).trim(),
+    useNotice: safeText(snapshot.useNotice).trim()
   }
 }
 
@@ -374,32 +433,304 @@ function formatDistance(distanceKm) {
   return distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(2)}km`
 }
 
-function calcMemberLevel(totalPoints, levels) {
-  if (!Array.isArray(levels) || !levels.length) return { memberLevel: '', memberLevelName: '' }
-  const sorted = levels.slice().sort((a, b) => Number(b.minPoints || 0) - Number(a.minPoints || 0))
-  const matched = sorted.find((level) => totalPoints >= Number(level.minPoints || 0))
-  if (!matched) return { memberLevel: '', memberLevelName: '' }
-  return { memberLevel: matched._id, memberLevelName: matched.name }
+function normalizeBenefits(value) {
+  if (Array.isArray(value)) return value.map((item) => safeText(item).trim()).filter(Boolean)
+  return safeText(value).split(/[\n,，；;]+/).map((item) => item.trim()).filter(Boolean)
 }
 
-async function addPoints(openid, userId, delta, sourceType, sourceId, reason) {
+function calcMemberLevel(totalPoints, levels) {
+  if (!Array.isArray(levels) || !levels.length) return { memberLevel: '', memberLevelName: '普通会员', pointMultiplier: 1, description: '', benefits: [] }
+  const sorted = levels.slice().sort((a, b) => Number(b.minPoints || 0) - Number(a.minPoints || 0))
+  const matched = sorted.find((level) => totalPoints >= Number(level.minPoints || 0))
+  if (!matched) return { memberLevel: '', memberLevelName: '普通会员', pointMultiplier: 1, description: '', benefits: [] }
+  return {
+    memberLevel: matched._id,
+    memberLevelName: matched.name,
+    pointMultiplier: Math.max(Number(matched.pointMultiplier || 1), 1),
+    description: safeText(matched.description).trim(),
+    benefits: normalizeBenefits(matched.benefits)
+  }
+}
+
+async function getMemberLevels() {
+  const levelsRes = await db.collection('member_levels').orderBy('minPoints', 'asc').get()
+  return levelsRes.data || []
+}
+
+function normalizeTargetLevelIds(targetLevelIds) {
+  return Array.from(new Set((Array.isArray(targetLevelIds) ? targetLevelIds : []).map((item) => safeText(item).trim()).filter(Boolean)))
+}
+
+async function resolveTargetLevels(targetLevelIds) {
+  const ids = normalizeTargetLevelIds(targetLevelIds)
+  const levels = await getMemberLevels()
+  const levelMap = new Map(levels.map((level) => [level._id, level]))
+  return ids.map((id) => levelMap.get(id)).filter(Boolean)
+}
+
+async function syncUsersMemberLevelName(levelId, levelName) {
+  const usersRes = await db.collection('users').where({ memberLevel: levelId }).get()
+  const users = usersRes.data || []
+  const time = now()
+  for (const user of users) {
+    await db.collection('users').doc(user._id).update({ data: { memberLevelName: levelName || '普通会员', updatedAt: time } })
+  }
+}
+
+async function recalcUsersForDeletedLevel(levelId) {
+  const usersRes = await db.collection('users').where({ memberLevel: levelId }).get()
+  const users = usersRes.data || []
+  if (!users.length) return
+  const levels = await getMemberLevels()
+  const time = now()
+  for (const user of users) {
+    const levelInfo = calcMemberLevel(Number(user.totalPoints || 0), levels)
+    await db.collection('users').doc(user._id).update({
+      data: {
+        memberLevel: levelInfo.memberLevel,
+        memberLevelName: levelInfo.memberLevelName,
+        updatedAt: time
+      }
+    })
+  }
+}
+
+function createInviteCode(user) {
+  return `INV${safeText((user && (user._id || user.openid)) || '').replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase() || Date.now()}`
+}
+
+function normalizeMonthKey(monthKey) {
+  const text = safeText(monthKey).trim()
+  return /^\d{4}-\d{2}$/.test(text) ? text : toCstParts().monthKey
+}
+
+async function resolveInviter(data = {}) {
+  const inviterOpenid = safeText(data.inviterOpenid).trim()
+  if (inviterOpenid) {
+    const inviter = await getOptionalUser(inviterOpenid)
+    return inviter || null
+  }
+  const inviteCode = safeText(data.inviteCode).trim().toUpperCase()
+  if (!inviteCode) return null
+  const inviterRes = await db.collection('users').where({ inviteCode }).limit(1).get()
+  return inviterRes.data[0] || null
+}
+
+async function bindInviteRelation(user, data = {}) {
+  if (!user || !user._id) return user
+  const time = now()
+  let currentUser = user
+  if (!safeText(user.inviteCode).trim()) {
+    const inviteCode = createInviteCode(user)
+    await db.collection('users').doc(user._id).update({ data: { inviteCode, updatedAt: time } })
+    currentUser = { ...currentUser, inviteCode, updatedAt: time }
+  }
+  const inviter = await resolveInviter(data)
+  if (!inviter || inviter.openid === currentUser.openid) return currentUser
+  const existing = (await db.collection('user_invites').where({ invitedOpenid: currentUser.openid }).limit(1).get()).data[0]
+  if (existing) return { ...currentUser, inviterOpenid: existing.inviterOpenid || currentUser.inviterOpenid || '' }
+  await db.collection('user_invites').add({
+    data: {
+      inviterUserId: inviter._id,
+      inviterOpenid: inviter.openid,
+      invitedUserId: currentUser._id,
+      invitedOpenid: currentUser.openid,
+      rewarded: true,
+      rewardType: 'retro_card',
+      rewardCount: 1,
+      createdAt: time,
+      updatedAt: time
+    }
+  })
+  await db.collection('users').doc(currentUser._id).update({ data: { inviterOpenid: inviter.openid, updatedAt: time } })
+  await grantRetroCards(inviter.openid, inviter._id, 1, 'invite_first_login', currentUser.openid, '邀请新用户首登奖励补签卡 +1')
+  return { ...currentUser, inviterOpenid: inviter.openid, updatedAt: time }
+}
+
+function getCouponValidRange(template, time = now()) {
+  const snapshot = normalizeCouponSnapshot(template)
+  if (snapshot.validType === 'fixed_range' && snapshot.validFromFixed && snapshot.validToFixed) {
+    return {
+      validFrom: new Date(`${snapshot.validFromFixed} 00:00:00`),
+      validTo: new Date(`${snapshot.validToFixed} 23:59:59`)
+    }
+  }
+  return {
+    validFrom: time,
+    validTo: new Date(time.getTime() + Number(snapshot.validDays || 30) * 86400000)
+  }
+}
+
+async function grantRetroCards(openid, userId, delta, sourceType, sourceId, reason) {
   const userRes = await db.collection('users').where({ openid }).limit(1).get()
   const user = userRes.data[0]
-  if (!user) return
+  if (!user) return { balance: 0 }
+  const time = now()
+  const balance = Math.max(Number(user.retroCardCount || 0) + Number(delta || 0), 0)
+  await db.collection('retro_card_logs').add({
+    data: { userId: user._id, openid, delta: Number(delta || 0), balance, sourceType: sourceType || '', sourceId: sourceId || '', reason: reason || '', createdAt: time }
+  })
+  await db.collection('users').doc(user._id).update({ data: { retroCardCount: balance, updatedAt: time } })
+  return { balance }
+}
+
+async function issueCouponToTargetUser(template, targetUser, adminMeta = {}) {
+  if (!template || template.enabled === false) throw new Error('优惠券模板不可用')
+  const templateId = template._id || template.templateId
+  const existing = (await db.collection('user_coupons').where({ openid: targetUser.openid, templateId }).get()).data || []
+  const activeCount = existing.filter((coupon) => coupon.status !== 'void').length
+  if (activeCount >= Number(template.perUserLimit || 1)) throw new Error('该用户已达到领取上限')
+  if (Number(template.totalIssueLimit || 0) > 0 && Number(template.issuedCount || 0) >= Number(template.totalIssueLimit || 0)) throw new Error('优惠券已达到发放上限')
+  const time = now()
+  const validRange = getCouponValidRange(template, time)
+  const snapshot = normalizeCouponSnapshot(template)
+  const created = await db.collection('user_coupons').add({
+    data: {
+      templateId,
+      templateSnapshot: snapshot,
+      userId: targetUser._id,
+      openid: targetUser.openid,
+      status: 'available',
+      validFrom: validRange.validFrom,
+      validTo: validRange.validTo,
+      lockedOrderId: '',
+      lockedAt: null,
+      usedOrderId: '',
+      usedAt: null,
+      issuedByAdminUserId: adminMeta.adminUserId || '',
+      issuedByAdminOpenid: adminMeta.adminOpenid || '',
+      issuedAt: time,
+      createdAt: time,
+      updatedAt: time
+    }
+  })
+  await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time } })
+  template.issuedCount = Number(template.issuedCount || 0) + 1
+  return { _id: created._id, templateSnapshot: snapshot, validFrom: validRange.validFrom, validTo: validRange.validTo }
+}
+
+async function getMonthConfig(monthKey) {
+  const configRes = await db.collection('checkin_month_configs').where({ monthKey }).limit(1).get()
+  return configRes.data[0] || null
+}
+
+async function ensureMonthConfig(monthKey) {
+  const existing = await getMonthConfig(monthKey)
+  if (existing) return existing
+  const time = now()
+  const created = await db.collection('checkin_month_configs').add({ data: { monthKey, days: defaultCheckinDays(monthKey), status: 'draft', createdAt: time, updatedAt: time } })
+  return { _id: created._id, monthKey, days: defaultCheckinDays(monthKey), status: 'draft', createdAt: time, updatedAt: time }
+}
+
+function normalizeCheckinReward(dayConfig, day) {
+  const rewardType = ['points', 'coupon', 'none'].includes(dayConfig && dayConfig.rewardType) ? dayConfig.rewardType : 'points'
+  return {
+    day,
+    rewardType,
+    points: Math.max(Math.round(Number((dayConfig && dayConfig.points) || 0)), 0),
+    couponTemplateId: safeText(dayConfig && dayConfig.couponTemplateId).trim(),
+    couponSnapshot: dayConfig && dayConfig.couponSnapshot ? dayConfig.couponSnapshot : null,
+    title: safeText(dayConfig && dayConfig.title).trim() || `第${day}天奖励`,
+    desc: safeText(dayConfig && dayConfig.desc).trim()
+  }
+}
+
+async function claimCheckinReward(user, reward, dateInfo, checkinType) {
+  const rewardSnapshot = { ...reward }
+  let pointsDelta = 0
+  let couponId = ''
+  if (reward.rewardType === 'points' && reward.points > 0) {
+    const result = await addPoints(user.openid, user._id, reward.points, 'checkin_daily', dateInfo.dateKey, `签到奖励 +${reward.points} 积分`, { applyMultiplier: true, baseDelta: reward.points })
+    pointsDelta = result.delta
+    rewardSnapshot.finalPoints = result.delta
+    rewardSnapshot.multiplier = result.multiplier
+  }
+  if (reward.rewardType === 'coupon' && reward.couponTemplateId) {
+    const template = (await db.collection('coupon_templates').doc(reward.couponTemplateId).get()).data
+    const issued = await issueCouponToTargetUser(template, user)
+    couponId = issued._id
+    rewardSnapshot.couponSnapshot = issued.templateSnapshot
+  }
+  return { rewardSnapshot, pointsDelta, couponId, checkinType }
+}
+
+async function buildMonthCalendar(openid, monthKey) {
+  const user = await getUser(openid)
+  const config = await ensureMonthConfig(monthKey)
+  const checkinsRes = await db.collection('user_checkins').where({ openid, monthKey }).get()
+  const checkinMap = (checkinsRes.data || []).reduce((map, item) => ({ ...map, [item.day]: item }), {})
+  const todayInfo = toCstParts()
+  const days = defaultCheckinDays(monthKey).map((fallback) => {
+    const reward = normalizeCheckinReward((config.days || []).find((item) => Number(item.day) === fallback.day) || fallback, fallback.day)
+    const checkin = checkinMap[fallback.day]
+    const isPast = monthKey < todayInfo.monthKey || (monthKey === todayInfo.monthKey && fallback.day < todayInfo.dayNumber)
+    const isToday = monthKey === todayInfo.monthKey && fallback.day === todayInfo.dayNumber
+    return {
+      ...reward,
+      checked: Boolean(checkin),
+      checkinType: checkin ? checkin.checkinType : '',
+      rewardSnapshot: checkin ? (checkin.rewardSnapshot || reward) : reward,
+      canCheckin: isToday && !checkin,
+      canRetro: isPast && !checkin && Number(user.retroCardCount || 0) > 0,
+      rewardStatus: checkin ? 'claimed' : (isToday ? 'today' : (isPast ? 'missed' : 'future'))
+    }
+  })
+  return {
+    monthKey,
+    retroCardCount: Number(user.retroCardCount || 0),
+    points: Number(user.points || 0),
+    memberLevelName: user.memberLevelName || '普通会员',
+    days
+  }
+}
+
+function rewardMailStatusText(mail) {
+  if (mail.claimedAt) return '已领取'
+  if (mail.readAt) return '待领取'
+  return '未读'
+}
+
+function formatRewardMail(mail) {
+  const reward = mail.reward || {}
+  return {
+    _id: mail._id,
+    title: safeText(mail.title).trim() || '奖励到账提醒',
+    content: safeText(mail.content).trim(),
+    targetLevels: Array.isArray(mail.targetLevels) ? mail.targetLevels : [],
+    rewardType: reward.type || 'points',
+    reward,
+    readAt: mail.readAt || null,
+    claimedAt: mail.claimedAt || null,
+    createdAt: mail.createdAt,
+    updatedAt: mail.updatedAt,
+    unread: !mail.readAt,
+    claimable: !mail.claimedAt,
+    statusText: rewardMailStatusText(mail)
+  }
+}
+
+async function addPoints(openid, userId, delta, sourceType, sourceId, reason, options = {}) {
+  const userRes = await db.collection('users').where({ openid }).limit(1).get()
+  const user = userRes.data[0]
+  if (!user) return { delta: 0, multiplier: 1, balance: 0 }
+  const baseDelta = Number(options.baseDelta !== undefined ? options.baseDelta : delta)
   const currentPoints = Number(user.points || 0)
   const currentTotal = Number(user.totalPoints || 0)
-  const newPoints = Math.max(currentPoints + delta, 0)
-  const newTotal = delta > 0 ? currentTotal + delta : currentTotal
-  const levelsRes = await db.collection('member_levels').orderBy('minPoints', 'asc').get()
-  const levels = levelsRes.data || []
-  const levelInfo = calcMemberLevel(newTotal, levels)
+  const currentLevels = await getMemberLevels()
+  const currentLevelInfo = calcMemberLevel(currentTotal, currentLevels)
+  const multiplier = options.applyMultiplier && baseDelta > 0 ? Math.max(Number(currentLevelInfo.pointMultiplier || 1), 1) : 1
+  const finalDelta = baseDelta > 0 ? Math.max(Math.round(baseDelta * multiplier), 1) : Number(delta || 0)
+  const newPoints = Math.max(currentPoints + finalDelta, 0)
+  const newTotal = finalDelta > 0 ? currentTotal + finalDelta : currentTotal
+  const levelInfo = calcMemberLevel(newTotal, currentLevels)
   const time = now()
   await db.collection('point_logs').add({
-    data: { userId: user._id, openid, delta, balance: newPoints, reason: reason || '', sourceType: sourceType || '', sourceId: sourceId || '', createdAt: time }
+    data: { userId: user._id, openid, delta: finalDelta, baseDelta, multiplier, balance: newPoints, reason: reason || '', sourceType: sourceType || '', sourceId: sourceId || '', createdAt: time }
   })
   await db.collection('users').doc(user._id).update({
     data: { points: newPoints, totalPoints: newTotal, memberLevel: levelInfo.memberLevel, memberLevelName: levelInfo.memberLevelName, updatedAt: time }
   })
+  return { delta: finalDelta, multiplier, balance: newPoints, totalPoints: newTotal, memberLevelName: levelInfo.memberLevelName }
 }
 
 async function logAdmin(admin, targetType, targetId, action, detail) {
@@ -615,16 +946,36 @@ function getCancelQuoteForOrder(order) {
 }
 
 const handlers = {
+  async system(openid, action) {
+    if (action === 'getSettings') return getSystemSettings()
+    throw new Error('未知 system 操作')
+  },
+
   async auth(openid, action, data) {
     if (action === 'login') {
       let user = await getOptionalUser(openid)
       const time = now()
       if (!user) {
-        const userData = { openid, phone: '', nickname: '微信用户', avatarUrl: '', roles: ['client'], activeRole: 'client', status: 'active', createdAt: time, updatedAt: time }
+        const userData = {
+          openid,
+          phone: '',
+          nickname: '微信用户',
+          avatarUrl: '',
+          roles: ['client'],
+          activeRole: 'client',
+          status: 'active',
+          retroCardCount: 0,
+          completedOrderCount: 0,
+          inviterOpenid: '',
+          inviteCode: '',
+          createdAt: time,
+          updatedAt: time
+        }
         const created = await db.collection('users').add({ data: userData })
         user = { _id: created._id, ...userData }
       }
       if (user.status !== 'active') throw new Error('账号不可用')
+      user = await bindInviteRelation(user, data)
       return user
     }
 
@@ -644,7 +995,21 @@ const handlers = {
       let user = await getOptionalUser(openid)
       const time = now()
       if (!user) {
-        const userData = { openid, phone, nickname: '微信用户', avatarUrl: '', roles: ['client'], activeRole: 'client', status: 'active', createdAt: time, updatedAt: time }
+        const userData = {
+          openid,
+          phone,
+          nickname: '微信用户',
+          avatarUrl: '',
+          roles: ['client'],
+          activeRole: 'client',
+          status: 'active',
+          retroCardCount: 0,
+          completedOrderCount: 0,
+          inviterOpenid: '',
+          inviteCode: '',
+          createdAt: time,
+          updatedAt: time
+        }
         const created = await db.collection('users').add({ data: userData })
         user = { _id: created._id, ...userData }
       } else {
@@ -652,6 +1017,7 @@ const handlers = {
         await db.collection('users').doc(user._id).update({ data: { phone, updatedAt: time } })
         user = { ...user, phone, updatedAt: time }
       }
+      user = await bindInviteRelation(user, data)
       return user
     }
 
@@ -659,15 +1025,39 @@ const handlers = {
 
     if (action === 'dailyCheckin') {
       const user = await getUser(openid)
-      const todayStart = cstTodayStart()
-      const logs = await db.collection('point_logs').where({ openid, sourceType: 'checkin_daily' }).orderBy('createdAt', 'desc').limit(1).get()
-      const lastLog = logs.data[0]
-      if (lastLog && new Date(lastLog.createdAt).getTime() >= todayStart.getTime()) {
-        return { checkedIn: true, points: Number(user.points || 0) }
+      const todayInfo = toCstParts()
+      const existing = (await db.collection('user_checkins').where({ openid, dateKey: todayInfo.dateKey }).limit(1).get()).data[0]
+      if (existing) {
+        return { checkedIn: true, points: Number(user.points || 0), retroCardCount: Number(user.retroCardCount || 0) }
       }
-      await addPoints(openid, user._id, 5, 'checkin_daily', '', '每日签到 +5 积分')
-      const updated = await db.collection('users').where({ openid }).limit(1).get()
-      return { checkedIn: false, points: Number((updated.data[0] || {}).points || 0), delta: 5 }
+      const config = await ensureMonthConfig(todayInfo.monthKey)
+      const reward = normalizeCheckinReward((config.days || []).find((item) => Number(item.day) === todayInfo.dayNumber) || {}, todayInfo.dayNumber)
+      const claimed = await claimCheckinReward(user, reward, todayInfo, 'normal')
+      const time = now()
+      await db.collection('user_checkins').add({
+        data: {
+          userId: user._id,
+          openid,
+          monthKey: todayInfo.monthKey,
+          dateKey: todayInfo.dateKey,
+          day: todayInfo.dayNumber,
+          checkinType: 'normal',
+          usedRetroCard: false,
+          rewardSnapshot: claimed.rewardSnapshot,
+          pointsDelta: claimed.pointsDelta,
+          couponId: claimed.couponId || '',
+          createdAt: time,
+          updatedAt: time
+        }
+      })
+      const updated = await getUser(openid)
+      return {
+        checkedIn: false,
+        points: Number(updated.points || 0),
+        retroCardCount: Number(updated.retroCardCount || 0),
+        delta: claimed.pointsDelta,
+        rewardSnapshot: claimed.rewardSnapshot
+      }
     }
 
     if (action === 'updateProfile') {
@@ -977,7 +1367,7 @@ const handlers = {
       const created = await db.collection('service_reviews').add({ data: review })
       await db.collection('orders').doc(data.orderId).update({ data: { reviewedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.orderId, 'reviewed', '宠物主已评价', `${rating}星评价`, 'client')
-      await addPoints(openid, user._id, 10, 'order_review', data.orderId, '评价订单 +10 积分')
+      await addPoints(openid, user._id, 10, 'order_review', data.orderId, '评价订单 +10 积分', { applyMultiplier: true, baseDelta: 10 })
       return { _id: created._id, ...review }
     }
 
@@ -1028,8 +1418,14 @@ const handlers = {
       await db.collection('orders').doc(data.id).update({ data: { status: 'completed', completedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.id, 'completed', '服务已完成', '', 'staff')
       const pointsDelta = Math.max(Math.floor(Number(order.payAmount || 0) / 10), 1)
-      await addPoints(order.clientOpenid, order.clientUserId, pointsDelta, 'order_complete', data.id, `完成订单 +${pointsDelta} 积分`)
-      return { id: data.id }
+      await addPoints(order.clientOpenid, order.clientUserId, pointsDelta, 'order_complete', data.id, `完成订单 +${pointsDelta} 积分`, { applyMultiplier: true, baseDelta: pointsDelta })
+      const clientUser = await getUser(order.clientOpenid)
+      const completedOrderCount = Number(clientUser.completedOrderCount || 0) + 1
+      await db.collection('users').doc(clientUser._id).update({ data: { completedOrderCount, updatedAt: time } })
+      if (completedOrderCount % 3 === 0) {
+        await grantRetroCards(order.clientOpenid, clientUser._id, 1, 'order_complete_milestone', data.id, '完成 3 次订单奖励补签卡 +1')
+      }
+      return { id: data.id, completedOrderCount }
     }
 
     if (action === 'getServiceReport') {
@@ -1080,27 +1476,114 @@ const handlers = {
 
   async memberLevel(openid, action, data) {
     if (action === 'listLevels') {
-      const res = await db.collection('member_levels').orderBy('minPoints', 'asc').get()
-      return res.data || []
+      const levels = await getMemberLevels()
+      return levels.map((level) => ({
+        ...level,
+        pointMultiplier: Math.max(Number(level.pointMultiplier || 1), 1),
+        description: safeText(level.description).trim(),
+        benefits: normalizeBenefits(level.benefits)
+      }))
     }
     if (action === 'myInfo') {
       const user = await getUser(openid)
       const page = Math.max(Number(data.page || 1), 1)
       const pageSize = 20
-      const logsRes = await db.collection('point_logs').where({ openid }).orderBy('createdAt', 'desc').skip((page - 1) * pageSize).limit(pageSize).get()
+      const logsRes = await db.collection('point_logs').where({ openid }).orderBy('createdAt', 'desc').limit(page * pageSize).get()
       const countRes = await db.collection('point_logs').where({ openid }).count()
+      const allLogs = logsRes.data || []
+      const logs = allLogs.slice((page - 1) * pageSize, page * pageSize)
+      const levels = (await getMemberLevels()).map((level) => ({
+        ...level,
+        pointMultiplier: Math.max(Number(level.pointMultiplier || 1), 1),
+        description: safeText(level.description).trim(),
+        benefits: normalizeBenefits(level.benefits)
+      }))
+      const currentLevel = levels.find((level) => level._id === user.memberLevel) || null
+      const nextLevel = levels.find((level) => Number(level.minPoints || 0) > Number(user.totalPoints || 0)) || null
       return {
         points: Number(user.points || 0),
         totalPoints: Number(user.totalPoints || 0),
         memberLevel: user.memberLevel || '',
         memberLevelName: user.memberLevelName || '普通会员',
-        logs: logsRes.data || [],
+        pointMultiplier: currentLevel ? Math.max(Number(currentLevel.pointMultiplier || 1), 1) : 1,
+        retroCardCount: Number(user.retroCardCount || 0),
+        inviteCode: safeText(user.inviteCode).trim(),
+        inviterOpenid: safeText(user.inviterOpenid).trim(),
+        currentLevel,
+        nextLevel,
+        levels,
+        logs,
         total: countRes.total || 0,
         page,
         pageSize
       }
     }
     throw new Error('未知 memberLevel 操作')
+  },
+
+  async rewardMail(openid, action, data) {
+    if (action === 'getUnreadCount') {
+      await getUser(openid)
+      const mailsRes = await db.collection('reward_mails').where({ openid }).get()
+      const mails = mailsRes.data || []
+      return {
+        unreadCount: mails.filter((mail) => !mail.readAt).length,
+        unclaimedCount: mails.filter((mail) => !mail.claimedAt).length
+      }
+    }
+    if (action === 'listMyMails') {
+      await getUser(openid)
+      const mailsRes = await db.collection('reward_mails').where({ openid }).orderBy('createdAt', 'desc').get()
+      return (mailsRes.data || []).map(formatRewardMail)
+    }
+    if (action === 'markRead') {
+      await getUser(openid)
+      const id = safeText(data.id).trim()
+      if (!id) throw new Error('缺少邮件 ID')
+      const mail = (await db.collection('reward_mails').doc(id).get()).data
+      if (!mail || mail.openid !== openid) throw new Error('奖励邮件不存在')
+      if (mail.readAt) return formatRewardMail(mail)
+      const updated = { readAt: now(), updatedAt: now() }
+      await db.collection('reward_mails').doc(id).update({ data: updated })
+      return formatRewardMail({ ...mail, ...updated })
+    }
+    if (action === 'claimReward') {
+      const user = await getUser(openid)
+      const id = safeText(data.id).trim()
+      if (!id) throw new Error('缺少邮件 ID')
+      const mail = (await db.collection('reward_mails').doc(id).get()).data
+      if (!mail || mail.openid !== openid) throw new Error('奖励邮件不存在')
+      if (mail.claimedAt) return formatRewardMail(mail)
+      const reward = mail.reward || {}
+      let pointsResult = null
+      let couponResult = null
+      if (reward.type === 'coupon') {
+        const templateId = safeText(reward.couponTemplateId).trim()
+        if (!templateId) throw new Error('奖励优惠券不存在')
+        const template = (await db.collection('coupon_templates').doc(templateId).get()).data
+        couponResult = await issueCouponToTargetUser(template, user, {
+          adminUserId: safeText(mail.sentByAdminUserId).trim(),
+          adminOpenid: safeText(mail.sentByAdminOpenid).trim()
+        })
+      } else {
+        const delta = Math.max(Math.round(Number(reward.points || 0)), 0)
+        if (delta > 0) {
+          pointsResult = await addPoints(openid, user._id, delta, 'reward_mail', id, safeText(mail.title).trim() || '奖励邮件积分', { baseDelta: delta })
+        }
+      }
+      const updated = {
+        readAt: mail.readAt || now(),
+        claimedAt: now(),
+        rewardClaimResult: {
+          pointsDelta: pointsResult ? pointsResult.delta : 0,
+          couponId: couponResult ? couponResult._id : ''
+        },
+        updatedAt: now()
+      }
+      await db.collection('reward_mails').doc(id).update({ data: updated })
+      return formatRewardMail({ ...mail, ...updated })
+    }
+    throw new Error('未知 rewardMail 操作')
   },
 
   async lottery(openid, action, data) {
@@ -1430,6 +1913,100 @@ const handlers = {
   },
 
   async checkin(openid, action, data) {
+    if (action === 'getMonthCalendar') {
+      await getUser(openid)
+      const monthKey = normalizeMonthKey(data.monthKey)
+      return buildMonthCalendar(openid, monthKey)
+    }
+    if (action === 'getMyRetroCards') {
+      const user = await getUser(openid)
+      const logsRes = await db.collection('retro_card_logs').where({ openid }).orderBy('createdAt', 'desc').get()
+      return {
+        retroCardCount: Number(user.retroCardCount || 0),
+        completedOrderCount: Number(user.completedOrderCount || 0),
+        logs: logsRes.data || []
+      }
+    }
+    if (action === 'checkinToday') {
+      const user = await getUser(openid)
+      const todayInfo = toCstParts()
+      const existing = (await db.collection('user_checkins').where({ openid, dateKey: todayInfo.dateKey }).limit(1).get()).data[0]
+      if (existing) throw new Error('今天已签到')
+      const config = await ensureMonthConfig(todayInfo.monthKey)
+      const reward = normalizeCheckinReward((config.days || []).find((item) => Number(item.day) === todayInfo.dayNumber) || {}, todayInfo.dayNumber)
+      const claimed = await claimCheckinReward(user, reward, todayInfo, 'normal')
+      const time = now()
+      const created = await db.collection('user_checkins').add({
+        data: {
+          userId: user._id,
+          openid,
+          monthKey: todayInfo.monthKey,
+          dateKey: todayInfo.dateKey,
+          day: todayInfo.dayNumber,
+          checkinType: 'normal',
+          usedRetroCard: false,
+          rewardSnapshot: claimed.rewardSnapshot,
+          pointsDelta: claimed.pointsDelta,
+          couponId: claimed.couponId || '',
+          createdAt: time,
+          updatedAt: time
+        }
+      })
+      return {
+        _id: created._id,
+        monthKey: todayInfo.monthKey,
+        dateKey: todayInfo.dateKey,
+        day: todayInfo.dayNumber,
+        rewardSnapshot: claimed.rewardSnapshot,
+        pointsDelta: claimed.pointsDelta,
+        couponId: claimed.couponId || '',
+        retroCardCount: Number((await getUser(openid)).retroCardCount || 0)
+      }
+    }
+    if (action === 'retroCheckin') {
+      const user = await getUser(openid)
+      const todayInfo = toCstParts()
+      const monthKey = normalizeMonthKey(data.monthKey || todayInfo.monthKey)
+      const day = Math.max(Math.round(Number(data.day || 0)), 1)
+      if (monthKey !== todayInfo.monthKey) throw new Error('当前仅支持补签本月日期')
+      if (day >= todayInfo.dayNumber) throw new Error('只能补签今天之前的日期')
+      if (day > getMonthDays(monthKey)) throw new Error('补签日期无效')
+      if (Number(user.retroCardCount || 0) <= 0) throw new Error('补签卡不足')
+      const dateKey = `${monthKey}-${String(day).padStart(2, '0')}`
+      const existing = (await db.collection('user_checkins').where({ openid, dateKey }).limit(1).get()).data[0]
+      if (existing) throw new Error('该日期已签到')
+      const config = await ensureMonthConfig(monthKey)
+      const reward = normalizeCheckinReward((config.days || []).find((item) => Number(item.day) === day) || {}, day)
+      const claimed = await claimCheckinReward(user, reward, { monthKey, dateKey, dayNumber: day }, 'retro')
+      const time = now()
+      await grantRetroCards(openid, user._id, -1, 'retro_checkin', dateKey, `补签 ${dateKey} 消耗补签卡 1 张`)
+      const created = await db.collection('user_checkins').add({
+        data: {
+          userId: user._id,
+          openid,
+          monthKey,
+          dateKey,
+          day,
+          checkinType: 'retro',
+          usedRetroCard: true,
+          rewardSnapshot: claimed.rewardSnapshot,
+          pointsDelta: claimed.pointsDelta,
+          couponId: claimed.couponId || '',
+          createdAt: time,
+          updatedAt: time
+        }
+      })
+      return {
+        _id: created._id,
+        monthKey,
+        dateKey,
+        day,
+        rewardSnapshot: claimed.rewardSnapshot,
+        pointsDelta: claimed.pointsDelta,
+        couponId: claimed.couponId || '',
+        retroCardCount: Number((await getUser(openid)).retroCardCount || 0)
+      }
+    }
     if (action === 'createCheckin') {
       const { user, order } = await getOrderForAccess(openid, data.orderId)
       if (!user.roles.includes('staff') || order.staffOpenid !== openid) throw new Error('仅订单员工可打卡')
@@ -1482,6 +2059,14 @@ const handlers = {
       const staffPending = await db.collection('staff_profiles').where({ auditStatus: 'pending' }).count()
       const incidentsOpen = await db.collection('order_incidents').where({ status: 'open' }).count()
       return { orders: counts, staffPending: staffPending.total, incidentsOpen: incidentsOpen.total }
+    }
+    if (action === 'getSystemSettings') {
+      return getSystemSettings()
+    }
+    if (action === 'saveSystemSettings') {
+      const saved = await saveSystemSettings(data)
+      await logAdmin(admin, 'platform_config', 'system_settings', 'saveSystemSettings', saved.value)
+      return saved.value
     }
     if (action === 'listOrders') {
       const where = data.status ? { status: data.status } : {}
@@ -1551,8 +2136,15 @@ const handlers = {
       if (!name) throw new Error('优惠券名称不能为空')
       const discountAmount = Math.round(Number(data.discountAmount || 0))
       const minOrderAmount = Math.max(Math.round(Number(data.minOrderAmount || 0)), 0)
+      const validType = data.validType === 'fixed_range' ? 'fixed_range' : 'relative_days'
       const validDays = Math.max(Math.round(Number(data.validDays || 30)), 1)
+      const validFromFixed = safeText(data.validFromFixed).trim()
+      const validToFixed = safeText(data.validToFixed).trim()
       if (!discountAmount || discountAmount < 0) throw new Error('优惠金额不正确')
+      if (validType === 'fixed_range') {
+        if (!validFromFixed || !validToFixed) throw new Error('请填写固定有效期')
+        if (validToFixed < validFromFixed) throw new Error('固定有效期结束时间不能早于开始时间')
+      }
       const validServiceKeys = (await listServicePrices(true)).map((item) => item.key)
       const applicableServiceTypes = Array.isArray(data.applicableServiceTypes) ? data.applicableServiceTypes.map((item) => String(item || '').trim()).filter(Boolean) : []
       if (applicableServiceTypes.some((key) => !validServiceKeys.includes(key))) throw new Error('适用服务不正确')
@@ -1564,7 +2156,13 @@ const handlers = {
         discountAmount,
         minOrderAmount,
         applicableServiceTypes,
+        validType,
         validDays,
+        validFromFixed: validType === 'fixed_range' ? validFromFixed : '',
+        validToFixed: validType === 'fixed_range' ? validToFixed : '',
+        displayTag: safeText(data.displayTag).trim(),
+        claimNotice: safeText(data.claimNotice).trim(),
+        useNotice: safeText(data.useNotice).trim(),
         enabled: data.enabled !== false,
         totalIssueLimit: Math.max(Math.round(Number(data.totalIssueLimit || 0)), 0),
         perUserLimit: Math.max(Math.round(Number(data.perUserLimit || 1)), 1),
@@ -1574,11 +2172,11 @@ const handlers = {
       if (data._id) {
         const existing = await db.collection('coupon_templates').doc(data._id).get()
         await db.collection('coupon_templates').doc(data._id).update({ data: payload })
-        await logAdmin(admin, 'coupon_template', data._id, 'saveCouponTemplate', { name, discountAmount })
+        await logAdmin(admin, 'coupon_template', data._id, 'saveCouponTemplate', { name, discountAmount, validType })
         return { ...existing.data, ...payload, _id: data._id }
       }
       const created = await db.collection('coupon_templates').add({ data: { ...payload, issuedCount: 0, createdAt: time } })
-      await logAdmin(admin, 'coupon_template', created._id, 'saveCouponTemplate', { name, discountAmount })
+      await logAdmin(admin, 'coupon_template', created._id, 'saveCouponTemplate', { name, discountAmount, validType })
       return { _id: created._id, ...payload, issuedCount: 0, createdAt: time }
     }
     if (action === 'issueCouponToUser') {
@@ -1590,36 +2188,9 @@ const handlers = {
       if (!template || template.enabled === false) throw new Error('优惠券模板不可用')
       const targetUser = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
       if (!targetUser || targetUser.status !== 'active') throw new Error('目标用户不存在')
-      const existing = (await db.collection('user_coupons').where({ openid: targetOpenid, templateId }).get()).data || []
-      const activeCount = existing.filter((coupon) => coupon.status !== 'void').length
-      if (activeCount >= Number(template.perUserLimit || 1)) throw new Error('该用户已达到领取上限')
-      if (Number(template.totalIssueLimit || 0) > 0 && Number(template.issuedCount || 0) >= Number(template.totalIssueLimit || 0)) throw new Error('优惠券已达到发放上限')
-      const time = now()
-      const validTo = new Date(time.getTime() + Number(template.validDays || 30) * 86400000)
-      const snapshot = normalizeCouponSnapshot(template)
-      const created = await db.collection('user_coupons').add({
-        data: {
-          templateId,
-          templateSnapshot: snapshot,
-          userId: targetUser._id,
-          openid: targetOpenid,
-          status: 'available',
-          validFrom: time,
-          validTo,
-          lockedOrderId: '',
-          lockedAt: null,
-          usedOrderId: '',
-          usedAt: null,
-          issuedByAdminUserId: admin._id,
-          issuedByAdminOpenid: openid,
-          issuedAt: time,
-          createdAt: time,
-          updatedAt: time
-        }
-      })
-      await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time } })
-      await logAdmin(admin, 'coupon_template', templateId, 'issueCouponToUser', { targetOpenid, couponId: created._id })
-      return { _id: created._id, templateId, openid: targetOpenid, status: 'available', templateSnapshot: snapshot, validFrom: time, validTo }
+      const issued = await issueCouponToTargetUser(template, targetUser, { adminUserId: admin._id, adminOpenid: openid })
+      await logAdmin(admin, 'coupon_template', templateId, 'issueCouponToUser', { targetOpenid, couponId: issued._id })
+      return { _id: issued._id, templateId, openid: targetOpenid, status: 'available', templateSnapshot: issued.templateSnapshot, validFrom: issued.validFrom, validTo: issued.validTo }
     }
     if (action === 'listStaffAudits') {
       const where = data.auditStatus ? { auditStatus: data.auditStatus } : {}
@@ -1646,27 +2217,46 @@ const handlers = {
       return { staffProfileId: data.staffProfileId, auditStatus: status }
     }
     if (action === 'listMemberLevels') {
-      const res = await db.collection('member_levels').orderBy('minPoints', 'asc').get()
-      return res.data || []
+      const levels = await getMemberLevels()
+      return levels.map((level) => ({
+        ...level,
+        pointMultiplier: Math.max(Number(level.pointMultiplier || 1), 1),
+        description: safeText(level.description).trim(),
+        benefits: normalizeBenefits(level.benefits)
+      }))
     }
     if (action === 'saveMemberLevel') {
       const name = safeText(data.name).trim()
       if (!name) throw new Error('等级名称不能为空')
+      const existingLevels = await getMemberLevels()
+      const duplicate = existingLevels.find((item) => item.name === name && item._id !== data._id)
+      if (duplicate) throw new Error('已存在同名会员等级，请先编辑原等级或换一个名称')
       const minPoints = Math.max(Math.round(Number(data.minPoints || 0)), 0)
       const time = now()
-      const payload = { name, minPoints, icon: safeText(data.icon).trim(), sortOrder: Number(data.sortOrder || 0), updatedAt: time }
+      const payload = {
+        name,
+        minPoints,
+        icon: safeText(data.icon).trim(),
+        pointMultiplier: Math.max(Number(data.pointMultiplier || 1), 1),
+        description: safeText(data.description).trim(),
+        benefits: normalizeBenefits(data.benefits),
+        sortOrder: Number(data.sortOrder || 0),
+        updatedAt: time
+      }
       if (data._id) {
         await db.collection('member_levels').doc(data._id).update({ data: payload })
-        await logAdmin(admin, 'member_level', data._id, 'saveMemberLevel', { name, minPoints })
+        await syncUsersMemberLevelName(data._id, name)
+        await logAdmin(admin, 'member_level', data._id, 'saveMemberLevel', { name, minPoints, pointMultiplier: payload.pointMultiplier })
         return { _id: data._id, ...payload }
       }
       const created = await db.collection('member_levels').add({ data: { ...payload, createdAt: time } })
-      await logAdmin(admin, 'member_level', created._id, 'saveMemberLevel', { name, minPoints })
+      await logAdmin(admin, 'member_level', created._id, 'saveMemberLevel', { name, minPoints, pointMultiplier: payload.pointMultiplier })
       return { _id: created._id, ...payload, createdAt: time }
     }
     if (action === 'deleteMemberLevel') {
       if (!data._id) throw new Error('缺少等级 ID')
       await db.collection('member_levels').doc(data._id).remove()
+      await recalcUsersForDeletedLevel(data._id)
       await logAdmin(admin, 'member_level', data._id, 'deleteMemberLevel', {})
       return { _id: data._id }
     }
@@ -1685,33 +2275,126 @@ const handlers = {
       const res = await db.collection('point_logs').where(where).orderBy('createdAt', 'desc').get()
       return res.data || []
     }
+    if (action === 'getCheckinMonthConfig') {
+      const monthKey = normalizeMonthKey(data.monthKey)
+      const config = await ensureMonthConfig(monthKey)
+      return {
+        ...config,
+        days: defaultCheckinDays(monthKey).map((fallback) => normalizeCheckinReward((config.days || []).find((item) => Number(item.day) === fallback.day) || fallback, fallback.day))
+      }
+    }
+    if (action === 'saveCheckinMonthConfig') {
+      const monthKey = normalizeMonthKey(data.monthKey)
+      const dayCount = getMonthDays(monthKey)
+      const couponIds = Array.from(new Set((Array.isArray(data.days) ? data.days : []).map((item) => safeText(item.couponTemplateId).trim()).filter(Boolean)))
+      const couponTemplates = {}
+      for (const couponId of couponIds) {
+        const template = (await db.collection('coupon_templates').doc(couponId).get()).data
+        if (!template || template.enabled === false) throw new Error('签到奖励优惠券不可用')
+        couponTemplates[couponId] = normalizeCouponSnapshot(template)
+      }
+      const days = Array.from({ length: dayCount }, (_, index) => {
+        const day = index + 1
+        const raw = (Array.isArray(data.days) ? data.days : []).find((item) => Number(item.day) === day) || {}
+        const reward = normalizeCheckinReward(raw, day)
+        if (reward.rewardType === 'coupon') {
+          if (!reward.couponTemplateId) throw new Error(`第 ${day} 天未选择优惠券模板`)
+          reward.couponSnapshot = couponTemplates[reward.couponTemplateId] || null
+        } else {
+          reward.couponTemplateId = ''
+          reward.couponSnapshot = null
+        }
+        if (reward.rewardType !== 'points') reward.points = 0
+        return reward
+      })
+      const time = now()
+      const payload = { monthKey, days, status: safeText(data.status).trim() || 'active', updatedAt: time }
+      const existing = await getMonthConfig(monthKey)
+      if (existing) {
+        await db.collection('checkin_month_configs').doc(existing._id).update({ data: payload })
+        await logAdmin(admin, 'checkin_month_config', existing._id, 'saveCheckinMonthConfig', { monthKey })
+        return { _id: existing._id, ...existing, ...payload }
+      }
+      const created = await db.collection('checkin_month_configs').add({ data: { ...payload, createdAt: time } })
+      await logAdmin(admin, 'checkin_month_config', created._id, 'saveCheckinMonthConfig', { monthKey })
+      return { _id: created._id, ...payload, createdAt: time }
+    }
     if (action === 'issueCouponByLevels') {
       const templateId = safeText(data.templateId).trim()
-      const targetLevels = Array.isArray(data.targetLevels) ? data.targetLevels.map((l) => safeText(l).trim()).filter(Boolean) : []
+      const targetLevelIds = normalizeTargetLevelIds(data.targetLevelIds)
       if (!templateId) throw new Error('请选择优惠券模板')
-      if (!targetLevels.length) throw new Error('请选择至少一个会员段位')
+      if (!targetLevelIds.length) throw new Error('请选择至少一个会员段位')
+      const targetLevels = await resolveTargetLevels(targetLevelIds)
+      if (!targetLevels.length) throw new Error('所选会员段位不存在')
+      const targetLevelNamesSnapshot = targetLevels.map((level) => level.name)
       const template = (await db.collection('coupon_templates').doc(templateId).get()).data
       if (!template || template.enabled === false) throw new Error('优惠券模板不可用')
       const usersRes = await db.collection('users').where({ status: 'active' }).get()
-      const eligible = (usersRes.data || []).filter((u) => targetLevels.includes(u.memberLevelName || ''))
-      const time = now()
-      const validTo = new Date(time.getTime() + Number(template.validDays || 30) * 86400000)
-      const snapshot = normalizeCouponSnapshot(template)
+      const eligible = (usersRes.data || []).filter((u) => targetLevelIds.includes(u.memberLevel || ''))
       let issued = 0; let skipped = 0
-      const issueLimit = Number(template.totalIssueLimit || 0)
-      const baseIssuedCount = Number(template.issuedCount || 0)
-      // 串行逐用户发放：避免并发读写共享 issued 计数导致超出 totalIssueLimit
+      const skippedReasons = {}
       for (const targetUser of eligible) {
-        if (issueLimit > 0 && baseIssuedCount + issued >= issueLimit) { skipped++; continue }
-        const existing = (await db.collection('user_coupons').where({ openid: targetUser.openid, templateId }).get()).data || []
-        const activeCount = existing.filter((c) => c.status !== 'void').length
-        if (activeCount >= Number(template.perUserLimit || 1)) { skipped++; continue }
-        await db.collection('user_coupons').add({ data: { templateId, templateSnapshot: snapshot, userId: targetUser._id, openid: targetUser.openid, status: 'available', validFrom: time, validTo, lockedOrderId: '', lockedAt: null, usedOrderId: '', usedAt: null, issuedByAdminUserId: admin._id, issuedByAdminOpenid: openid, issuedAt: time, createdAt: time, updatedAt: time } })
+        try {
+          await issueCouponToTargetUser(template, targetUser, { adminUserId: admin._id, adminOpenid: openid })
+          issued++
+        } catch (error) {
+          skipped++
+          const reason = safeText(error.message).trim() || '发放失败'
+          skippedReasons[reason] = (skippedReasons[reason] || 0) + 1
+        }
+      }
+      const skippedReasonText = Object.keys(skippedReasons).map((reason) => `${reason}：${skippedReasons[reason]}人`).join('\n')
+      await logAdmin(admin, 'coupon_template', templateId, 'issueCouponByLevels', { targetLevelIds, targetLevelNamesSnapshot, issued, skipped, skippedReasons, eligibleCount: eligible.length })
+      return { issued, skipped, targetLevelIds, targetLevelNamesSnapshot, eligibleCount: eligible.length, skippedReasons, skippedReasonText }
+    }
+    if (action === 'publishRewardMailByLevels') {
+      const targetLevelIds = normalizeTargetLevelIds(data.targetLevelIds)
+      if (!targetLevelIds.length) throw new Error('请选择至少一个会员段位')
+      const targetLevels = await resolveTargetLevels(targetLevelIds)
+      if (!targetLevels.length) throw new Error('所选会员段位不存在')
+      const targetLevelNamesSnapshot = targetLevels.map((level) => level.name)
+      const rewardType = data.rewardType === 'coupon' ? 'coupon' : 'points'
+      const title = safeText(data.title).trim() || '会员奖励到账'
+      const content = safeText(data.content).trim()
+      const reward = { type: rewardType }
+      if (rewardType === 'coupon') {
+        const couponTemplateId = safeText(data.couponTemplateId).trim()
+        if (!couponTemplateId) throw new Error('请选择奖励优惠券')
+        const template = (await db.collection('coupon_templates').doc(couponTemplateId).get()).data
+        if (!template || template.enabled === false) throw new Error('奖励优惠券不可用')
+        reward.couponTemplateId = couponTemplateId
+        reward.couponSnapshot = normalizeCouponSnapshot(template)
+      } else {
+        reward.points = Math.max(Math.round(Number(data.points || 0)), 0)
+        if (!reward.points) throw new Error('奖励积分必须大于 0')
+      }
+      const usersRes = await db.collection('users').where({ status: 'active' }).get()
+      const eligible = (usersRes.data || []).filter((u) => targetLevelIds.includes(u.memberLevel || ''))
+      const time = now()
+      let issued = 0
+      for (const targetUser of eligible) {
+        await db.collection('reward_mails').add({
+          data: {
+            userId: targetUser._id,
+            openid: targetUser.openid,
+            targetLevelIds,
+            targetLevelNamesSnapshot,
+            title,
+            content,
+            reward,
+            sentByAdminUserId: admin._id,
+            sentByAdminOpenid: openid,
+            readAt: null,
+            claimedAt: null,
+            rewardClaimResult: null,
+            createdAt: time,
+            updatedAt: time
+          }
+        })
         issued++
       }
-      await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: incUpdateValue(template.issuedCount, issued), updatedAt: time } })
-      await logAdmin(admin, 'coupon_template', templateId, 'issueCouponByLevels', { targetLevels, issued, skipped })
-      return { issued, skipped }
+      await logAdmin(admin, 'reward_mail', title, 'publishRewardMailByLevels', { targetLevelIds, targetLevelNamesSnapshot, rewardType, issued })
+      return { issued, skipped: 0, targetLevelIds, targetLevelNamesSnapshot }
     }
     if (action === 'saveLotteryActivity') {
       const name = safeText(data.name).trim()

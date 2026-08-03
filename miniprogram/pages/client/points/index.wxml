@@ -8,10 +8,37 @@
   <view class="card" style="text-align:center;padding:40rpx 32rpx;">
     <view style="font-size:72rpx;font-weight:700;color:#e05c8b;">{{points}}</view>
     <view class="muted">当前可用积分</view>
-    <view class="muted" style="margin-top:8rpx;">累计获得 {{totalPoints}} 积分</view>
+    <view class="muted" style="margin-top:8rpx;">累计获得 {{totalPoints}} 积分 · 当前 {{pointMultiplier}} 倍积分</view>
+    <view class="muted" style="margin-top:8rpx;">补签卡 {{retroCardCount}} 张</view>
     <view style="display:flex;gap:16rpx;margin-top:24rpx;">
-      <button class="primary" style="flex:1;" bindtap="checkin">每日签到 +5</button>
+      <button class="primary" style="flex:1;" bindtap="openCheckin">签到中心</button>
       <button class="primary" style="flex:1;background:#ff94b9;" bindtap="openLottery">幸运抽奖 🎰</button>
+    </view>
+  </view>
+
+  <view class="card" style="margin-top:24rpx;">
+    <view class="subtitle" style="margin-top:0;">会员段位说明</view>
+    <view class="between" style="align-items:flex-start;gap:24rpx;">
+      <view style="flex:1;">
+        <view class="strong">当前段位：{{memberLevelName}}</view>
+        <view class="muted" wx:if="{{currentLevel && currentLevel.description}}" style="margin-top:8rpx;">{{currentLevel.description}}</view>
+        <view class="muted" style="margin-top:8rpx;">当前积分获取倍数：{{pointMultiplier}} 倍</view>
+      </view>
+      <view class="badge" wx:if="{{nextLevel}}">下一段：{{nextLevel.name}}</view>
+    </view>
+    <view class="muted" wx:if="{{nextLevel}}" style="margin-top:12rpx;">再累计 {{nextLevel.minPoints - totalPoints}} 积分可升级到 {{nextLevel.name}}</view>
+    <view wx:for="{{levels}}" wx:key="_id" class="level-item">
+      <view class="between" style="align-items:flex-start;gap:20rpx;">
+        <view style="flex:1;">
+          <view class="strong">{{item.name}}</view>
+          <view class="muted" style="margin-top:6rpx;">满 {{item.minPoints}} 积分 · {{item.pointMultiplier || 1}} 倍积分</view>
+          <view class="muted" wx:if="{{item.description}}" style="margin-top:6rpx;">{{item.description}}</view>
+        </view>
+        <view class="badge" wx:if="{{currentLevel && item._id === currentLevel._id}}">当前</view>
+      </view>
+      <view class="chip-row" wx:if="{{item.benefits && item.benefits.length}}">
+        <view class="chip pink" wx:for="{{item.benefits}}" wx:key="*this">{{item}}</view>
+      </view>
     </view>
   </view>
 
