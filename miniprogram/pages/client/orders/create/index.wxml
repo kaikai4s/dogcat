@@ -22,13 +22,20 @@
       </view>
     </view>
     <view class="notice" wx:if="{{form.publishMode === 'direct'}}">
-      <view class="strong">{{requestedSitter ? requestedSitter.displayName : '还未选择宠托师'}}</view>
-      <view class="muted">{{requestedSitter ? requestedSitter.serviceSummary : '请从宠托师列表选择指定对象'}}</view>
+      <view class="row" style="align-items:center;gap:18rpx;">
+        <image class="order-avatar" wx:if="{{requestedSitter && requestedSitter.avatarUrl}}" src="{{requestedSitter.avatarUrl}}" mode="aspectFill" />
+        <view class="order-avatar" wx:else>🐶</view>
+        <view style="flex:1;">
+          <view class="strong">{{requestedSitter ? requestedSitter.displayName : '还未选择宠托师'}}</view>
+          <view class="muted">{{requestedSitter ? requestedSitter.serviceSummary : '请从宠托师列表选择指定对象'}}</view>
+        </view>
+      </view>
       <button class="ghost compact-btn" bindtap="chooseSitter">重新选择宠托师</button>
     </view>
 
+    <view class="subtitle">服务对象</view>
     <picker range="{{pets}}" range-key="name" bindchange="choosePet">
-      <view class="field">🐾 宠物：{{pets.length ? '已选择' : '请先添加宠物'}}</view>
+      <view class="field">🐾 宠物：{{pets.length ? (form.petId ? '已选择宠物，可继续完善服务信息' : '请选择本次服务宠物') : '请先添加宠物'}}</view>
     </picker>
 
     <view class="subtitle">服务项目（可多选）</view>
@@ -40,17 +47,18 @@
       </view>
     </view>
 
-    <view class="subtitle">服务地址</view>
+    <view class="subtitle">服务地点</view>
     <view class="address-actions">
       <button class="ghost compact-btn" bindtap="chooseSavedAddress">常用地址</button>
       <button class="ghost compact-btn" bindtap="useCurrentLocation">地图选择</button>
     </view>
     <view class="notice" wx:if="{{locationReady || form.serviceAddress}}">
+      <view class="muted">服务位置</view>
       <view class="strong">{{form.serviceAddress}}</view>
       <view class="muted">{{locationTip}}</view>
     </view>
-    <input placeholder="详细地址（如 3栋2单元18楼）必填" value="{{form.addressDetail}}" data-field="addressDetail" bindinput="input" />
-    <input placeholder="门牌号/入户说明（如 1802，门牌朝南）必填" value="{{form.doorplate}}" data-field="doorplate" bindinput="input" />
+    <input placeholder="详细地址（如 3栋2单元18楼）" value="{{form.addressDetail}}" data-field="addressDetail" bindinput="input" />
+    <input placeholder="门牌号 / 入户说明（如 1802，门牌朝南）" value="{{form.doorplate}}" data-field="doorplate" bindinput="input" />
     <view class="between save-row">
       <view>
         <view class="strong">保存为常用地址</view>
@@ -85,6 +93,11 @@
       </view>
       <view class="menu-arrow">›</view>
     </view>
+  </view>
+
+  <view class="notice">
+    <view class="strong">下单后你能看到什么？</view>
+    <view class="muted">服务轨迹、关键打卡、服务报告都会在订单详情里持续更新。</view>
   </view>
 
   <button class="ghost" bindtap="quoteOrder">试算价格</button>

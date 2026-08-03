@@ -49,20 +49,6 @@
   </view>
 
   <view class="grid">
-    <view class="card interactive profile-card" bindtap="openAiAssistant">
-      <view class="action-icon">🤖</view>
-      <view>
-        <view class="strong">AI 宠护小助手</view>
-        <view class="muted">养宠知识、健康建议与服务咨询</view>
-      </view>
-    </view>
-    <view class="card interactive profile-card" bindtap="subscribe">
-      <view class="action-icon">▣</view>
-      <view>
-        <view class="strong">关注公众号</view>
-        <view class="muted">了解更多养宠小知识</view>
-      </view>
-    </view>
     <view class="card interactive profile-card" bindtap="openStaffEntry">
       <view class="action-icon">🏠</view>
       <view>
@@ -70,28 +56,27 @@
         <view class="muted">{{staffEntryTip}}</view>
       </view>
     </view>
+    <view class="card interactive profile-card" bindtap="openAiAssistant">
+      <view class="action-icon">🤖</view>
+      <view>
+        <view class="strong">AI 宠护小助手</view>
+        <view class="muted">养宠知识、健康建议与服务咨询</view>
+      </view>
+    </view>
   </view>
 
   <view class="soft-panel reward-banner">
     <view>
-      <view class="strong">轻松赚奖励</view>
-      <view class="muted">分享感受体验，现金到手</view>
+      <view class="strong">成长权益</view>
+      <view class="muted">优惠券、积分和每日签到都在这里累计。</view>
     </view>
     <view class="pet-avatar">🎁</view>
   </view>
 
   <view class="card menu-list">
+    <view class="subtitle">我的服务</view>
     <view class="menu-item interactive" bindtap="editProfile">
       <view class="menu-left"><view class="menu-icon">名</view><view>编辑个人资料</view></view>
-      <view class="menu-arrow">›</view>
-    </view>
-    <view class="menu-item interactive" bindtap="openCoupons">
-      <view class="menu-left"><view class="menu-icon">券</view><view>我的优惠券</view></view>
-      <view class="menu-arrow">›</view>
-    </view>
-    <view class="menu-item interactive" bindtap="openPoints">
-      <view class="menu-left"><view class="menu-icon">🪙</view><view>我的积分</view></view>
-      <view class="menu-right-info" wx:if="{{!isGuest}}">{{points}} 积分</view>
       <view class="menu-arrow">›</view>
     </view>
     <view class="menu-item interactive" bindtap="openAddresses">
@@ -102,6 +87,27 @@
       <view class="menu-left"><view class="menu-icon">☆</view><view>我的关注</view></view>
       <view class="menu-arrow">›</view>
     </view>
+  </view>
+
+  <view class="card menu-list">
+    <view class="subtitle">成长权益</view>
+    <view class="menu-item interactive" bindtap="openCoupons">
+      <view class="menu-left"><view class="menu-icon">券</view><view>我的优惠券</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item interactive" bindtap="openPoints">
+      <view class="menu-left"><view class="menu-icon">🪙</view><view>我的积分</view></view>
+      <view class="menu-right-info" wx:if="{{!isGuest}}">{{points}} 积分</view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item interactive" bindtap="subscribe">
+      <view class="menu-left"><view class="menu-icon">▣</view><view>关注公众号</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+  </view>
+
+  <view class="card menu-list">
+    <view class="subtitle">其他入口</view>
     <view class="menu-item">
       <view class="menu-left"><view class="menu-icon">☏</view><view>客服中心</view></view>
       <view class="menu-arrow">›</view>
@@ -111,7 +117,7 @@
       <view class="menu-arrow">›</view>
     </view>
     <view class="menu-item interactive" bindtap="openAdmin">
-      <view class="menu-left"><view class="menu-icon">管</view><view>管理端入口</view></view>
+      <view class="menu-left"><view class="menu-icon">测</view><view>管理端入口（测试用）</view></view>
       <view class="menu-arrow">›</view>
     </view>
     <view class="menu-item interactive" bindtap="openSettings">

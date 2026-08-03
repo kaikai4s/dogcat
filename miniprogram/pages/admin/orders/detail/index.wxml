@@ -8,6 +8,18 @@
     <view class="tip">汇总订单履约状态、轨迹、打卡和门锁访问记录。</view>
   </view>
 
+  <view class="card">
+    <view class="subtitle">客户信息</view>
+    <view class="order-person">
+      <image class="order-avatar" wx:if="{{detail.order.clientSnapshot && detail.order.clientSnapshot.avatarUrl}}" src="{{detail.order.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+      <view class="order-avatar" wx:else>🐾</view>
+      <view>
+        <view class="strong">{{detail.order.clientSnapshot.displayName || '宠物主'}}</view>
+        <view class="muted">{{detail.order.clientSnapshot.phoneMasked || '预约客户'}}</view>
+      </view>
+    </view>
+  </view>
+
   <view class="card info-list">
     <view class="info-row"><view class="label">订单</view><view class="value">{{detail.order.orderNo}}</view></view>
     <view class="info-row"><view class="label">服务</view><view class="value">{{detail.order.serviceSummary || (detail.order.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view></view>

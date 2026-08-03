@@ -28,6 +28,18 @@
     </view>
   </view>
 
+  <view class="card">
+    <view class="subtitle">宠物主信息</view>
+    <view class="order-person">
+      <image class="order-avatar" wx:if="{{order.clientSnapshot && order.clientSnapshot.avatarUrl}}" src="{{order.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+      <view class="order-avatar" wx:else>🐾</view>
+      <view>
+        <view class="strong">{{order.clientSnapshot.displayName || '宠物主'}}</view>
+        <view class="muted">{{order.clientSnapshot.phoneMasked || '预约客户'}}</view>
+      </view>
+    </view>
+  </view>
+
   <view class="card info-list">
     <view class="info-row"><view class="label">宠物</view><view class="value">{{order.petName}}</view></view>
     <view class="info-row"><view class="label">服务</view><view class="value">{{order.serviceSummary || (order.serviceType === 'walk' ? '遛狗' : '喂养')}}</view></view>

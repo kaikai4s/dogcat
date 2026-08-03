@@ -54,7 +54,8 @@
 
   <view class="card sitter-card" wx:for="{{sitters}}" wx:key="_id">
     <view class="sitter-head">
-      <view class="sitter-avatar">🐶</view>
+      <image class="sitter-avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+      <image class="sitter-avatar" wx:else src="../../../../images/icons/avatar.png" mode="aspectFill" />
       <view class="sitter-main">
         <view class="between">
           <view>

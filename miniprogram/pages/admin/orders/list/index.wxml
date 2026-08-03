@@ -7,11 +7,15 @@
 
   <view class="card order-card" wx:for="{{orders}}" wx:key="_id">
     <view class="interactive" data-id="{{item._id}}" bindtap="detail">
-      <view class="between">
-        <view>
-          <view class="strong">{{item.orderNo}}</view>
-          <view class="muted">{{item.petName}} · {{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
-          <view class="muted" wx:if="{{item.publishMode === 'direct'}}">指定：{{item.requestedStaffName || '已指定宠托师'}}</view>
+      <view class="between order-card-head">
+        <view class="order-person">
+          <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+          <view class="order-avatar" wx:else>🐾</view>
+          <view>
+            <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.orderNo}}</view>
+            <view class="muted">{{item.petName}} · {{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+            <view class="muted" wx:if="{{item.publishMode === 'direct'}}">指定：{{item.requestedStaffName || '已指定宠托师'}}</view>
+          </view>
         </view>
         <view>
           <view class="badge">{{item.publishMode === 'direct' ? '指定宠托师' : '公开发布'}}</view>

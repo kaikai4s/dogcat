@@ -43,6 +43,11 @@ function safeFileId(value) {
   return text.startsWith('cloud://') ? text : ''
 }
 
+function incUpdateValue(currentValue, delta) {
+  if (db.command && typeof db.command.inc === 'function') return db.command.inc(delta)
+  return Number(currentValue || 0) + Number(delta || 0)
+}
+
 async function getUser(openid) {
   const res = await db.collection('users').where({ openid }).limit(1).get()
   const user = res.data[0]
@@ -109,6 +114,7 @@ function toPublicSitter(profile) {
   return {
     _id: profile._id,
     displayName: sitterDisplayName(profile),
+    avatarUrl: safeFileId(profile.avatarUrl) || safeText(profile.avatarUrl),
     serviceCity: profile.serviceCity || '服务城市待完善',
     serviceAreas: profile.serviceAreas || '',
     areaTags,
@@ -121,7 +127,11 @@ function toPublicSitter(profile) {
 async function withSitterUserProfile(profile) {
   const res = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
   const user = res.data[0] || {}
-  return { ...profile, nickname: user.nickname || '', avatarUrl: user.avatarUrl || '' }
+  return {
+    ...profile,
+    nickname: user.nickname || profile.nickname || '',
+    avatarUrl: user.avatarUrl || profile.avatarUrl || ''
+  }
 }
 
 function matchText(value, keyword) {
@@ -478,6 +488,38 @@ function maskClientName(value) {
   const name = String(value || '').trim()
   if (!name) return '宠物主'
   return name.length <= 1 ? `${name}用户` : `${name.slice(0, 1)}* 用户`
+}
+
+function createClientSnapshot(user) {
+  const nickname = safeText(user.nickname).trim()
+  return {
+    userId: safeText(user._id),
+    nickname,
+    displayName: maskClientName(nickname),
+    avatarUrl: safeFileId(user.avatarUrl) || safeText(user.avatarUrl),
+    phoneMasked: mask(safeText(user.phone).trim())
+  }
+}
+
+async function attachClientSnapshot(order) {
+  if (order.clientSnapshot && (order.clientSnapshot.displayName || order.clientSnapshot.avatarUrl)) return order
+  if (!order.clientOpenid) return order
+  try {
+    const userRes = await db.collection('users').where({ openid: order.clientOpenid }).limit(1).get()
+    const user = userRes.data[0]
+    if (!user) return order
+    return {
+      ...order,
+      clientSnapshot: createClientSnapshot(user)
+    }
+  } catch (error) {
+    return order
+  }
+}
+
+async function attachOrderDisplayData(order) {
+  const withPet = await attachPetSnapshot(order)
+  return attachClientSnapshot(withPet)
 }
 
 async function appendOrderTimeline(orderId, type, title, detail, actorRole) {
@@ -843,7 +885,7 @@ const handlers = {
       const pricing = await calcOrderPricing(data, petRes.data, { openid })
       const requestedStaff = await getRequestedStaff(data)
       const time = now()
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', requiredCheckins: requiredCheckins(pricing.serviceTypes[0], pricing.serviceTypes), insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', requiredCheckins: requiredCheckins(pricing.serviceTypes[0], pricing.serviceTypes), insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {
@@ -870,12 +912,12 @@ const handlers = {
       const role = data.role || user.activeRole || 'client'
       const where = role === 'staff' ? { staffOpenid: openid } : { clientOpenid: openid }
       const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
-      return res.data
+      return Promise.all((res.data || []).map(attachOrderDisplayData))
     }
 
     if (action === 'getOrderDetail') {
       const { order } = await getOrderForAccess(openid, data.id)
-      return attachPetSnapshot(order)
+      return attachOrderDisplayData(order)
     }
 
     if (action === 'prepareRebook') {
@@ -1136,7 +1178,7 @@ const handlers = {
           })
           couponId = coupon._id
           await db.collection('coupon_templates').doc(prize.templateId).update({
-            data: { issuedCount: db.command.inc(1), updatedAt: time }
+            data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time }
           })
         }
       }
@@ -1245,7 +1287,10 @@ const handlers = {
       for (let i = 0; i < favorites.data.length; i += 1) {
         try {
           const profileRes = await db.collection('staff_profiles').doc(favorites.data[i].staffProfileId).get()
-          if (profileRes.data && profileRes.data.auditStatus === 'approved') list.push({ ...(await toPublicSitterDetail(openid, profileRes.data)), favorite: true })
+          if (profileRes.data && profileRes.data.auditStatus === 'approved') {
+            const profile = await withSitterUserProfile(profileRes.data)
+            list.push({ ...(await toPublicSitterDetail(openid, profile)), favorite: true })
+          }
         } catch (error) {}
       }
       return list
@@ -1258,7 +1303,19 @@ const handlers = {
     if (action === 'submitStaffProfile') {
       const user = await getUser(openid)
       const time = now()
-      const profile = { userId: user._id, openid, realName: data.realName || '', phone: data.phone || user.phone || '', serviceCity: data.serviceCity || '', serviceAreas: data.serviceAreas || '', faceVerifyStatus: 'pending', auditStatus: 'pending', auditRemark: '', updatedAt: time }
+      const profile = {
+        userId: user._id,
+        openid,
+        realName: data.realName || '',
+        phone: data.phone || user.phone || '',
+        avatarUrl: user.avatarUrl || data.avatarUrl || '',
+        serviceCity: data.serviceCity || '',
+        serviceAreas: data.serviceAreas || '',
+        faceVerifyStatus: 'pending',
+        auditStatus: 'pending',
+        auditRemark: '',
+        updatedAt: time
+      }
       const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       if (existing.data[0]) {
         await db.collection('staff_profiles').doc(existing.data[0]._id).update({ data: profile })
@@ -1285,12 +1342,12 @@ const handlers = {
       const latitude = Number(data.latitude || 0)
       const longitude = Number(data.longitude || 0)
       const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
-      return res.data
-        .filter(isOpenOrder)
-        .map((order) => {
-          const distanceKm = calcDistanceKm(latitude, longitude, order.addressLatitude, order.addressLongitude)
-          return { ...order, distanceKm, distanceText: formatDistance(distanceKm) }
-        })
+      const orders = await Promise.all((res.data || []).filter(isOpenOrder).map(async (order) => {
+        const enriched = await attachOrderDisplayData(order)
+        const distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
+        return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
+      }))
+      return orders
         .sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
         .slice(0, 20)
     }
@@ -1302,12 +1359,13 @@ const handlers = {
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
-      return res.data
+      return Promise.all((res.data || [])
         .filter((order) => order.publishMode === 'direct' && !order.staffOpenid && order.requestedStaffOpenid === openid)
-        .map((order) => {
-          const distanceKm = calcDistanceKm(latitude, longitude, order.addressLatitude, order.addressLongitude)
-          return { ...order, distanceKm, distanceText: formatDistance(distanceKm) }
-        })
+        .map(async (order) => {
+          const enriched = await attachOrderDisplayData(order)
+          const distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
+          return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
+        }))
     }
     if (action === 'listStaffReviews') {
       const user = await getUser(openid)
@@ -1326,10 +1384,11 @@ const handlers = {
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       const res = await db.collection('orders').where({ staffOpenid: openid }).orderBy('startTime', 'asc').get()
-      return res.data.map((order) => {
-        const distanceKm = calcDistanceKm(latitude, longitude, order.addressLatitude, order.addressLongitude)
-        return { ...order, distanceKm, distanceText: formatDistance(distanceKm) }
-      })
+      return Promise.all((res.data || []).map(async (order) => {
+        const enriched = await attachOrderDisplayData(order)
+        const distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
+        return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
+      }))
     }
     if (action === 'acceptOrder') {
       const user = await getUser(openid)
@@ -1427,7 +1486,7 @@ const handlers = {
     if (action === 'listOrders') {
       const where = data.status ? { status: data.status } : {}
       const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
-      return res.data
+      return Promise.all((res.data || []).map(attachOrderDisplayData))
     }
     if (action === 'getOrderDetail' || action === 'getEvidence') {
       const id = data.id || data.orderId
@@ -1435,7 +1494,7 @@ const handlers = {
       const tracks = await db.collection('track_logs').where({ orderId: id }).orderBy('recordedAt', 'asc').get()
       const checkins = await db.collection('checkin_logs').where({ orderId: id }).orderBy('createdAt', 'asc').get()
       const unlockLogs = await db.collection('unlock_code_logs').where({ orderId: id }).orderBy('createdAt', 'desc').get()
-      return { order: order.data, tracks: tracks.data, checkins: checkins.data, unlockLogs: unlockLogs.data }
+      return { order: await attachOrderDisplayData(order.data), tracks: tracks.data, checkins: checkins.data, unlockLogs: unlockLogs.data }
     }
     if (action === 'assignOrder') {
       const orderRes = await db.collection('orders').doc(data.orderId).get()
@@ -1558,7 +1617,7 @@ const handlers = {
           updatedAt: time
         }
       })
-      await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: db.command.inc(1), updatedAt: time } })
+      await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time } })
       await logAdmin(admin, 'coupon_template', templateId, 'issueCouponToUser', { targetOpenid, couponId: created._id })
       return { _id: created._id, templateId, openid: targetOpenid, status: 'available', templateSnapshot: snapshot, validFrom: time, validTo }
     }
@@ -1650,7 +1709,7 @@ const handlers = {
         await db.collection('user_coupons').add({ data: { templateId, templateSnapshot: snapshot, userId: targetUser._id, openid: targetUser.openid, status: 'available', validFrom: time, validTo, lockedOrderId: '', lockedAt: null, usedOrderId: '', usedAt: null, issuedByAdminUserId: admin._id, issuedByAdminOpenid: openid, issuedAt: time, createdAt: time, updatedAt: time } })
         issued++
       }
-      await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: db.command.inc(issued), updatedAt: time } })
+      await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: incUpdateValue(template.issuedCount, issued), updatedAt: time } })
       await logAdmin(admin, 'coupon_template', templateId, 'issueCouponByLevels', { targetLevels, issued, skipped })
       return { issued, skipped }
     }

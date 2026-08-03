@@ -13,7 +13,8 @@
 
   <view class="card sitter-card">
     <view class="sitter-head">
-      <view class="sitter-avatar">🐶</view>
+      <image class="sitter-avatar" wx:if="{{sitter.avatarUrl}}" src="{{sitter.avatarUrl}}" mode="aspectFill" />
+      <image class="sitter-avatar" wx:else src="../../../../images/icons/avatar.png" mode="aspectFill" />
       <view class="sitter-main">
         <view class="strong">{{sitter.displayName}}</view>
         <view class="muted">{{sitter.serviceSummary}}</view>

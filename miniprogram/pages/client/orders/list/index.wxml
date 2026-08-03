@@ -8,10 +8,15 @@
   </view>
 
   <view class="card interactive order-card" wx:for="{{orders}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
-    <view class="between">
-      <view>
-        <view class="strong">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}} · {{item.petName}}</view>
-        <view class="muted">订单金额 ¥{{item.payAmount}}<text wx:if="{{item.discountAmount}}">，已优惠 ¥{{item.discountAmount}}</text></view>
+    <view class="between order-card-head">
+      <view class="order-person">
+        <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+        <view class="order-avatar" wx:else>🐾</view>
+        <view>
+          <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
+          <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+          <view class="muted">订单金额 ¥{{item.payAmount}}<text wx:if="{{item.discountAmount}}">，已优惠 ¥{{item.discountAmount}}</text></view>
+        </view>
       </view>
       <view class="badge">{{item.statusText}}</view>
     </view>

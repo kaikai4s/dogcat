@@ -29,13 +29,18 @@
   </view>
 
   <view class="card order-card" wx:for="{{directOrders}}" wx:key="_id">
-    <view class="between">
-      <view>
-        <view class="strong">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}} · {{item.petName}}</view>
-        <view class="muted">{{item.serviceAddress || '未填写地址'}}</view>
+    <view class="between order-card-head">
+      <view class="order-person">
+        <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+        <view class="order-avatar" wx:else>🐾</view>
+        <view>
+          <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
+          <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+        </view>
       </view>
       <view class="badge">指定</view>
     </view>
+    <view class="muted order-card-address">{{item.serviceAddress || '未填写地址'}}</view>
     <view class="chip-row">
       <view class="chip">{{item.startTime}}</view>
       <view class="chip pink">¥{{item.payAmount}}</view>
@@ -60,13 +65,18 @@
   </view>
 
   <view class="card order-card" wx:for="{{nearbyOrders}}" wx:key="_id">
-    <view class="between">
-      <view>
-        <view class="strong">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}} · {{item.petName}}</view>
-        <view class="muted">{{item.serviceAddress || '未填写地址'}}</view>
+    <view class="between order-card-head">
+      <view class="order-person">
+        <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+        <view class="order-avatar" wx:else>🐾</view>
+        <view>
+          <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
+          <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+        </view>
       </view>
       <view class="badge">{{item.distanceText}}</view>
     </view>
+    <view class="muted order-card-address">{{item.serviceAddress || '未填写地址'}}</view>
     <view class="chip-row">
       <view class="chip">{{item.startTime}}</view>
       <view class="chip pink">¥{{item.payAmount}}</view>
