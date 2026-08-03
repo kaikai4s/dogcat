@@ -1,4 +1,4 @@
-const { getSelectedLocation, saveSelectedLocation, callFunction, showError } = require('../../../utils/cloud')
+const { getSelectedLocation, chooseSelectedLocation, callFunction, showError } = require('../../../utils/cloud')
 const { ensureLogin } = require('../../../utils/cloud')
 
 Page({
@@ -41,24 +41,25 @@ Page({
   },
 
   updateLocation() {
-    wx.chooseLocation({
-      success: (loc) => {
-        saveSelectedLocation(loc)
+    chooseSelectedLocation()
+      .then((loc) => {
         this.setData({
           locationName: loc.name || '已选择位置',
           locationTip: loc.address || '已选择服务附近位置',
           latitude: loc.latitude,
           longitude: loc.longitude
         })
-      },
-      fail: (err) => {
-        console.log('wx.chooseLocation fail error:', err)
-        // 用户在地图界面点击取消/返回，不触发授权弹窗
+      })
+      .catch((err) => {
+        console.log('chooseSelectedLocation fail error:', err)
         const errMsg = (err && err.errMsg) || ''
         if (errMsg.includes('cancel')) return
-        this.showLocationAuth()
-      }
-    })
+        if (errMsg.includes('authorize') || errMsg.includes('auth deny') || errMsg.includes('scope.userLocation')) {
+          this.showLocationAuth()
+          return
+        }
+        wx.showToast({ title: '获取位置失败', icon: 'none' })
+      })
   },
 
   loadLottery() {
@@ -81,7 +82,7 @@ Page({
     })
     wx.showModal({
       title: '需要位置权限',
-      content: '请选择你的当前位置或服务区域，方便推荐附近宠托师。',
+      content: '请开启位置信息权限，方便推荐附近宠托师和附近订单。',
       confirmText: '去开启',
       success: (res) => {
         if (res.confirm) wx.openSetting()

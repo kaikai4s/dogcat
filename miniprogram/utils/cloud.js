@@ -81,8 +81,21 @@ function saveSelectedLocation(location) {
   return normalized
 }
 
-function chooseSelectedLocation() {
+function requirePrivacyAuthorize() {
   return new Promise((resolve, reject) => {
+    if (typeof wx.requirePrivacyAuthorize !== 'function') {
+      resolve()
+      return
+    }
+    wx.requirePrivacyAuthorize({
+      success: resolve,
+      fail: reject
+    })
+  })
+}
+
+function chooseSelectedLocation() {
+  return requirePrivacyAuthorize().then(() => new Promise((resolve, reject) => {
     wx.chooseLocation({
       success: (location) => {
         const saved = saveSelectedLocation(location)
@@ -91,7 +104,7 @@ function chooseSelectedLocation() {
       },
       fail: reject
     })
-  })
+  }))
 }
 
 function requireSelectedLocation() {
@@ -195,6 +208,7 @@ module.exports = {
   showError,
   getSelectedLocation,
   saveSelectedLocation,
+  requirePrivacyAuthorize,
   chooseSelectedLocation,
   requireSelectedLocation,
   getCachedUser,
