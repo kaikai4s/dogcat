@@ -1,9 +1,10 @@
-const { callFunction, showError } = require('../../../../utils/cloud')
+const { callFunction, showError, getSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
 
 const ALL = '全部'
 const sortOptions = [
   { label: '推荐', value: 'default' },
+  { label: '距离最近', value: 'distance' },
   { label: '最近更新', value: 'latest' },
   { label: '城市优先', value: 'city' }
 ]
@@ -37,7 +38,9 @@ Page({
 
   loadFacets() {
     this.setData({ loading: true })
-    callFunction('staff', 'listApprovedSitters', { pageSize: 50 })
+    const loc = getSelectedLocation()
+    const locParams = loc ? { latitude: loc.latitude, longitude: loc.longitude } : {}
+    callFunction('staff', 'listApprovedSitters', { pageSize: 50, ...locParams })
       .then((res) => {
         const allSitters = res.list || []
         this.setData({ allSitters }, () => {
@@ -61,13 +64,16 @@ Page({
 
   loadSitters() {
     const { keyword, activeCity, activeArea, sortBy } = this.data
+    const loc = getSelectedLocation()
+    const locParams = loc ? { latitude: loc.latitude, longitude: loc.longitude } : {}
     this.setData({ loading: true })
     callFunction('staff', 'listApprovedSitters', {
       keyword,
       serviceCity: activeCity === ALL ? '' : activeCity,
       serviceArea: activeArea === ALL ? '' : activeArea,
       sortBy,
-      pageSize: 50
+      pageSize: 50,
+      ...locParams
     })
       .then((res) => {
         this.setData({ sitters: res.list || [], total: res.total || 0, loading: false })

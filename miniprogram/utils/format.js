@@ -25,6 +25,8 @@ const checkinEventText = {
   leash_on: '牵引出门',
   feed: '喂食',
   water: '饮水',
+  clean: '清洁打卡',
+  medicine: '喂药打卡',
   pet_status: '宠物状态',
   return_home: '回家入户',
   leave_door: '离户闭锁',

@@ -7,11 +7,26 @@ Page({
     nearbyOrders: [],
     locationReady: false,
     locationText: '尚未获取当前位置',
-    loadingNearby: false
+    loadingNearby: false,
+    missingAddressNotice: false
   },
 
   onShow() {
+    this.checkProfileAddress()
     this.loadNearbyWithSavedLocation()
+  },
+
+  checkProfileAddress() {
+    callFunction('staff', 'getStaffProfile')
+      .then((profile) => {
+        if (profile && profile.auditStatus === 'approved') {
+          const hasAddr = Boolean(profile.serviceAddress && profile.serviceLatitude && profile.serviceLongitude)
+          this.setData({ missingAddressNotice: !hasAddr })
+        } else {
+          this.setData({ missingAddressNotice: false })
+        }
+      })
+      .catch(() => {})
   },
 
   go(e) {

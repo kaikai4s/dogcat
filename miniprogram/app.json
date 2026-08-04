@@ -63,11 +63,12 @@
   },
   "__usePrivacyCheck__": false,
   "requiredPrivateInfos": [
-    "chooseLocation"
+    "chooseLocation",
+    "getLocation"
   ],
   "permission": {
     "scope.userLocation": {
-      "desc": "用于手动选择服务位置，为您推荐附近宠托师和附近可接订单"
+      "desc": "用于服务打卡、轨迹记录、附近订单和地图展示"
     }
   },
   "sitemapLocation": "sitemap.json",

@@ -42,7 +42,15 @@
   <view class="card info-list">
     <view class="info-row"><view class="label">服务城市</view><view class="value">{{sitter.serviceCity}}</view></view>
     <view class="info-row"><view class="label">服务区域</view><view class="value">{{sitter.serviceAreas || '待完善'}}</view></view>
+    <view class="info-row" wx:if="{{sitter.serviceAddress}}"><view class="label">固定服务地址</view><view class="value">📍 {{sitter.serviceAddress}}</view></view>
     <view class="info-row" wx:if="{{sitter.serviceRadiusKm}}"><view class="label">接单范围</view><view class="value">{{sitter.serviceRadiusKm}}km 内</view></view>
+  </view>
+
+  <view class="card info-list" style="margin-top: 24rpx;">
+    <view style="font-weight: bold; font-size: 28rpx; margin-bottom: 12rpx; color: #2b2528;">⏰ 按周可预约时间段</view>
+    <view style="font-size: 26rpx; color: #555; line-height: 1.6; background: #fff5f8; padding: 20rpx; border-radius: 16rpx; border: 1rpx dashed #ffe4ec;">
+      {{sitter.weeklyScheduleText || '全天可预约'}}
+    </view>
   </view>
 
   <view class="subtitle">最近评价</view>

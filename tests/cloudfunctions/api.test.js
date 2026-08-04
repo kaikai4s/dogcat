@@ -623,8 +623,8 @@ test('staff visibility and accept permissions respect open and direct publish mo
       { _id: 'staff_b', openid: 'openid_staff_b', roles: ['client', 'staff'], status: 'active' }
     ],
     staff_profiles: [
-      { _id: 'sp_a', openid: 'openid_staff_a', auditStatus: 'approved', currentLatitude: 31.2, currentLongitude: 121.5 },
-      { _id: 'sp_b', openid: 'openid_staff_b', auditStatus: 'approved', currentLatitude: 31.2, currentLongitude: 121.5 }
+      { _id: 'sp_a', openid: 'openid_staff_a', auditStatus: 'approved', serviceAddress: '基准服务地址', serviceLatitude: 31.2, serviceLongitude: 121.5, currentLatitude: 31.2, currentLongitude: 121.5 },
+      { _id: 'sp_b', openid: 'openid_staff_b', auditStatus: 'approved', serviceAddress: '基准服务地址', serviceLatitude: 31.2, serviceLongitude: 121.5, currentLatitude: 31.2, currentLongitude: 121.5 }
     ],
     pets: [{ _id: 'pet1', openid: 'openid_client', name: '可乐', breed: '金毛', weight: 12, birthday: '2024-05-01', personality: '活泼' }],
     orders: [
@@ -767,7 +767,7 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
     ],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 8 }],
-    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'approved' }],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'approved', serviceAddress: '基准服务地址', serviceLatitude: 31.2, serviceLongitude: 121.5 }],
     orders: [],
     payments: [],
     order_timeline: [],
@@ -781,7 +781,7 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
   await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: created.data._id } })
   await staffFn.main({ module: 'order', action: 'startService', data: { id: created.data._id } })
   for (const eventType of ['enter_door', 'pet_status', 'feed', 'water', 'leave_door']) {
-    await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: created.data._id, eventType, note: '已完成打卡' } })
+    await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: created.data._id, eventType, mediaFileId: 'cloud://checkin.jpg', remark: '已完成打卡', latitude: 31.2, longitude: 121.5 } })
   }
   await staffFn.main({ module: 'order', action: 'finishService', data: { id: created.data._id } })
   const review = await clientFn.main({ module: 'order', action: 'createReview', data: { orderId: created.data._id, rating: 5, tags: ['服务细心'], content: '很好' } })
@@ -1199,4 +1199,196 @@ test('deleting member level recalculates affected users', async () => {
   assert.equal(result.ok, true)
   assert.equal(affected.memberLevel, 'level_silver')
   assert.equal(affected.memberLevelName, '白银会员')
+})
+
+test('submitStaffProfile requires fixed service address and valid coordinates', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_staff_new', roles: ['client', 'staff'], status: 'active', phone: '13800001111' }],
+    staff_profiles: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_staff_new')
+
+  const noAddress = await fn.main({
+    module: 'staff',
+    action: 'submitStaffProfile',
+    data: { realName: '张三', phone: '13800001111', serviceCity: '上海' }
+  })
+  assert.equal(noAddress.ok, false)
+  assert.equal(noAddress.message, '宠托师认证必须设置固定服务地址及坐标')
+
+  const success = await fn.main({
+    module: 'staff',
+    action: 'submitStaffProfile',
+    data: {
+      realName: '张三',
+      phone: '13800001111',
+      serviceCity: '上海',
+      serviceAreas: '浦东',
+      serviceAddress: '三里屯SOHO',
+      serviceLatitude: 31.2,
+      serviceLongitude: 121.5,
+      serviceRadiusKm: 5
+    }
+  })
+  assert.equal(success.ok, true)
+  assert.equal(db.state.staff_profiles[0].serviceAddress, '三里屯SOHO')
+  assert.equal(db.state.staff_profiles[0].serviceRadiusKm, 5)
+})
+
+test('updateStaffProfileConfig updates service radius and weekly schedule', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_staff_cfg', roles: ['client', 'staff'], status: 'active' }],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff_cfg', auditStatus: 'approved', realName: '李四', serviceAddress: '旧地址', serviceLatitude: 31.2, serviceLongitude: 121.5, serviceRadiusKm: 5 }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_staff_cfg')
+
+  const result = await fn.main({
+    module: 'staff',
+    action: 'updateStaffProfileConfig',
+    data: {
+      serviceAddress: '新基准地址',
+      serviceLatitude: 31.2,
+      serviceLongitude: 121.5,
+      serviceRadiusKm: 10,
+      weeklySchedule: {
+        '1': [{ start: 10, end: 12 }, { start: 16, end: 18 }],
+        '2': [{ start: 10, end: 12 }]
+      }
+    }
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(db.state.staff_profiles[0].serviceAddress, '新基准地址')
+  assert.equal(db.state.staff_profiles[0].serviceRadiusKm, 10)
+  assert.deepEqual(db.state.staff_profiles[0].weeklySchedule['1'], [{ start: 10, end: 12 }, { start: 16, end: 18 }])
+})
+
+test('listApprovedSitters filters out sitters exceeding user location distance', async () => {
+  const db = createCollectionStore({
+    users: [],
+    staff_profiles: [
+      { _id: 's_near', openid: 'openid_near', auditStatus: 'approved', realName: '近处宠托师', serviceAddress: '陆家嘴', serviceLatitude: 31.2, serviceLongitude: 121.5, serviceRadiusKm: 5, updatedAt: '2026-08-01' },
+      { _id: 's_far', openid: 'openid_far', auditStatus: 'approved', realName: '远处宠托师', serviceAddress: '松江大学城', serviceLatitude: 30.9, serviceLongitude: 121.1, serviceRadiusKm: 5, updatedAt: '2026-08-02' }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'guest_user')
+
+  // 用户在陆家嘴附近 (31.201, 121.501)
+  const result = await fn.main({
+    module: 'staff',
+    action: 'listApprovedSitters',
+    data: { latitude: 31.201, longitude: 121.501, pageSize: 50 }
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.total, 1)
+  assert.equal(result.data.list[0]._id, 's_near')
+  assert.equal(typeof result.data.list[0].distanceText, 'string')
+})
+
+test('createOrder enforces sitter weekly schedule and service radius limits', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'u_sitter', openid: 'openid_sitter', roles: ['client', 'staff'], status: 'active' }
+    ],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '豆豆', weight: 8 }],
+    staff_profiles: [
+      {
+        _id: 'sitter_1',
+        openid: 'openid_sitter',
+        realName: '王宠托',
+        auditStatus: 'approved',
+        serviceAddress: '陆家嘴中心',
+        serviceLatitude: 31.2,
+        serviceLongitude: 121.5,
+        serviceRadiusKm: 5,
+        weeklySchedule: {
+          // 2026-08-03 是周一 (CST)
+          '1': [{ start: 10, end: 12 }, { start: 16, end: 18 }]
+        }
+      }
+    ],
+    orders: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  // 1. 周一 08:00 - 09:00 -> 不在接单时间段内
+  const wrongTime = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      petId: 'p1',
+      publishMode: 'direct',
+      staffProfileId: 'sitter_1',
+      serviceTypes: ['feed'],
+      serviceAddress: '近距离小区',
+      addressDetail: '1栋',
+      doorplate: '101',
+      addressLatitude: 31.201,
+      addressLongitude: 121.501,
+      startTime: '2026-08-03 08:00',
+      endTime: '2026-08-03 09:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(wrongTime.ok, false)
+  assert.equal(wrongTime.message.includes('不在宠托师周一的可接单时间段'), true)
+
+  // 2. 超出 5km 范围 -> 无法预约
+  const farAddress = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      petId: 'p1',
+      publishMode: 'direct',
+      staffProfileId: 'sitter_1',
+      serviceTypes: ['feed'],
+      serviceAddress: '远距离小区',
+      addressDetail: '1栋',
+      doorplate: '101',
+      addressLatitude: 31.5,
+      addressLongitude: 121.9,
+      startTime: '2026-08-03 10:00',
+      endTime: '2026-08-03 11:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(farAddress.ok, false)
+  assert.equal(farAddress.message.includes('超出宠托师设定的接单范围'), true)
+
+  // 3. 符合时间与距离 -> 成功创建
+  const validOrder = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      petId: 'p1',
+      publishMode: 'direct',
+      staffProfileId: 'sitter_1',
+      serviceTypes: ['feed'],
+      serviceAddress: '合规小区',
+      addressDetail: '1栋',
+      doorplate: '101',
+      addressLatitude: 31.201,
+      addressLongitude: 121.501,
+      startTime: '2026-08-03 10:00',
+      endTime: '2026-08-03 11:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(validOrder.ok, true)
+  assert.equal(validOrder.data.status, 'pending_pay')
+})
+
+test('acceptOrder rejects staff without fixed service address', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u_staff', openid: 'openid_no_addr', roles: ['client', 'staff'], status: 'active' }],
+    staff_profiles: [{ _id: 'sp_no_addr', openid: 'openid_no_addr', auditStatus: 'approved' }],
+    orders: [{ _id: 'ord1', status: 'paid', publishMode: 'open' }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_no_addr')
+
+  const result = await fn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'ord1' } })
+  assert.equal(result.ok, false)
+  assert.equal(result.message, '请先在个人中心设置固定服务地址与接单范围，方可接单')
 })

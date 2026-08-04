@@ -12,10 +12,43 @@
   </view>
 
   <view class="card form-card">
-    <input placeholder="真实姓名" value="{{form.realName}}" data-field="realName" bindinput="input" />
-    <input placeholder="手机号" value="{{form.phone}}" data-field="phone" bindinput="input" />
-    <input placeholder="服务城市" value="{{form.serviceCity}}" data-field="serviceCity" bindinput="input" />
-    <textarea placeholder="服务区域" value="{{form.serviceAreas}}" data-field="serviceAreas" bindinput="input" />
+    <view class="form-item">
+      <view class="label" style="font-weight: bold; margin-bottom: 12rpx;">基本信息</view>
+      <input placeholder="真实姓名" value="{{form.realName}}" data-field="realName" bindinput="input" />
+      <input placeholder="手机号" value="{{form.phone}}" data-field="phone" bindinput="input" />
+      <input placeholder="服务城市" value="{{form.serviceCity}}" data-field="serviceCity" bindinput="input" />
+      <textarea placeholder="服务区域说明" value="{{form.serviceAreas}}" data-field="serviceAreas" bindinput="input" />
+    </view>
+
+    <view class="form-item" style="margin-top: 24rpx;">
+      <view class="label" style="display:flex; justify-content:space-between; align-items:center;">
+        <text style="font-weight: bold;">固定服务地址 (必填)</text>
+        <text style="color:#f43f6b; font-size:24rpx;">* 接单基准位置</text>
+      </view>
+      <view class="location-box" bindtap="chooseAddress" style="padding:20rpx; background:#fff5f8; border:2rpx dashed #f43f6b; border-radius:16rpx; margin-top:12rpx; display:flex; align-items:center; justify-content:space-between;">
+        <view style="flex:1;">
+          <view style="font-weight:600; color:#2b2528;" wx:if="{{form.serviceAddress}}">📍 {{form.serviceAddress}}</view>
+          <view style="color:#999; font-size:26rpx;" wx:else>📍 点击在地图上选择您的固定服务地址</view>
+          <view style="color:#888; font-size:22rpx; margin-top:4rpx;" wx:if="{{form.serviceLatitude}}">坐标：{{form.serviceLatitude}}, {{form.serviceLongitude}}</view>
+        </view>
+        <button size="mini" style="background:#f43f6b; color:#fff; font-size:24rpx; border-radius:30rpx; padding:0 24rpx; margin: 0;">选择</button>
+      </view>
+    </view>
+
+    <view class="form-item" style="margin-top: 24rpx;">
+      <view class="label" style="font-weight: bold; margin-bottom: 12rpx;">接单范围（服务半径）</view>
+      <view style="display:flex; gap:12rpx; flex-wrap:wrap;">
+        <view
+          wx:for="{{radiusOptions}}"
+          wx:key="value"
+          bindtap="selectRadius"
+          data-radius="{{item.value}}"
+          style="padding:12rpx 24rpx; border-radius:30rpx; font-size:26rpx; {{form.serviceRadiusKm === item.value ? 'background:#f43f6b; color:#fff; font-weight:bold;' : 'background:#f5f5f5; color:#666;'}}"
+        >
+          {{item.label}}
+        </view>
+      </view>
+    </view>
   </view>
 
   <button class="primary" bindtap="submit">提交入驻申请</button>

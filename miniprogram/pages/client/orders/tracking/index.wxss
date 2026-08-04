@@ -1,1 +1,6 @@
-/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+.tracking-map {
+  width: 100%;
+  height: 520rpx;
+  border-radius: 24rpx;
+  overflow: hidden;
+}
