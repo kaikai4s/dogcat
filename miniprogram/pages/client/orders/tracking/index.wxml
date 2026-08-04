@@ -20,6 +20,12 @@
   </view>
 
   <view class="card">
+    <view class="subtitle">服务路径</view>
+    <map wx:if="{{hasMapData}}" class="tracking-map" latitude="{{mapLatitude}}" longitude="{{mapLongitude}}" markers="{{markers}}" polyline="{{polyline}}" include-points="{{includePoints}}" show-location></map>
+    <view wx:else class="muted">暂无有效定位数据，宠托师记录位置或打卡后会生成地图路径。</view>
+  </view>
+
+  <view class="card">
     <view class="subtitle">打卡时间轴</view>
     <view class="timeline">
       <view class="timeline-item" wx:for="{{checkins}}" wx:key="_id">

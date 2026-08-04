@@ -781,7 +781,7 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
   await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: created.data._id } })
   await staffFn.main({ module: 'order', action: 'startService', data: { id: created.data._id } })
   for (const eventType of ['enter_door', 'pet_status', 'feed', 'water', 'leave_door']) {
-    await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: created.data._id, eventType, note: '已完成打卡' } })
+    await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: created.data._id, eventType, mediaFileId: 'cloud://checkin.jpg', remark: '已完成打卡', latitude: 31.2, longitude: 121.5 } })
   }
   await staffFn.main({ module: 'order', action: 'finishService', data: { id: created.data._id } })
   const review = await clientFn.main({ module: 'order', action: 'createReview', data: { orderId: created.data._id, rating: 5, tags: ['服务细心'], content: '很好' } })

@@ -15,7 +15,8 @@
       "WebFetch(domain:docs.cloudbase.net)",
       "Bash(git checkout:*)",
       "Bash(git -C \"/home/ebrook-dev/project/vx\" status --short)",
-      "Bash(git -C \"/home/ebrook-dev/project/vx\" log --oneline -5)"
+      "Bash(git -C \"/home/ebrook-dev/project/vx\" log --oneline -5)",
+      "Bash(npm run:*)"
     ]
   }
 }

@@ -17,11 +17,13 @@
   <view class="notice" wx:if="{{unlock}}">
     <view class="info-row"><view class="label">门锁密码</view><view class="value">{{unlock.doorLockCode}}</view></view>
     <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{unlock.keyLocation}}</view></view>
+    <view class="info-row" wx:if="{{unlock.entryNotes}}"><view class="label">入户备注</view><view class="value">{{unlock.entryNotes}}</view></view>
   </view>
 
   <view class="card">
-    <view class="subtitle">轨迹上传</view>
-    <button class="ghost" bindtap="uploadPoint">上传当前定位</button>
+    <view class="subtitle">轨迹记录</view>
+    <button class="ghost" bindtap="uploadPoint">记录当前位置</button>
+    <view class="muted">服务过程中可多次记录位置，用户端会按时间生成路径。</view>
     <view class="muted">已上传轨迹点：{{pointCount}}</view>
   </view>
 
@@ -31,6 +33,8 @@
     <button class="ghost" data-type="leash_on" bindtap="checkin">牵引出门</button>
     <button class="ghost" data-type="feed" bindtap="checkin">喂食</button>
     <button class="ghost" data-type="water" bindtap="checkin">饮水</button>
+    <button class="ghost" data-type="clean" bindtap="checkin">清洁打卡</button>
+    <button class="ghost" data-type="medicine" bindtap="checkin">喂药打卡</button>
     <button class="ghost" data-type="pet_status" bindtap="checkin">宠物状态</button>
     <button class="ghost" data-type="return_home" bindtap="checkin">回家入户</button>
     <button class="ghost" data-type="leave_door" bindtap="checkin">离户闭锁</button>

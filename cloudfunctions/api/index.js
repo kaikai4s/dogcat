@@ -582,6 +582,8 @@ async function calcOrderPricing(data, pet, options = {}) {
   return basePricing
 }
 
+const CHECKIN_EVENT_TYPES = new Set(['enter_door', 'leash_on', 'feed', 'water', 'pet_status', 'return_home', 'leave_door', 'clean', 'medicine', 'video_checkin'])
+
 function requiredCheckins(serviceType, serviceTypes) {
   const types = Array.isArray(serviceTypes) && serviceTypes.length ? serviceTypes : [serviceType]
   const events = new Set(['enter_door', 'pet_status', 'leave_door'])
@@ -606,7 +608,9 @@ function validateOrderTime(data) {
 }
 
 function hasCoordinate(latitude, longitude) {
-  return Number(latitude) !== 0 && Number(longitude) !== 0
+  const lat = Number(latitude)
+  const lng = Number(longitude)
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && lat !== 0 && lng !== 0
 }
 
 function calcDistanceKm(lat1, lng1, lat2, lng2) {
@@ -2221,8 +2225,13 @@ const handlers = {
       if (!user.roles.includes('staff') || order.staffOpenid !== openid) throw new Error('仅订单员工可上传轨迹')
       if (order.status !== 'in_service') throw new Error('仅服务中可上传轨迹')
       const uploadedAt = now()
-      const points = Array.isArray(data.points) ? data.points.slice(0, 50) : []
-      await Promise.all(points.map((point) => db.collection('track_logs').add({ data: { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, latitude: Number(point.latitude), longitude: Number(point.longitude), speed: Number(point.speed || 0), accuracy: Number(point.accuracy || 0), recordedAt: point.recordedAt || uploadedAt, uploadedAt } })))
+      const rawPoints = Array.isArray(data.points) ? data.points.slice(0, 50) : []
+      if (!rawPoints.length) throw new Error('请上传轨迹点')
+      const points = rawPoints
+        .map((point) => ({ latitude: Number(point.latitude), longitude: Number(point.longitude), speed: Number(point.speed || 0), accuracy: Number(point.accuracy || 0), recordedAt: point.recordedAt || uploadedAt }))
+        .filter((point) => hasCoordinate(point.latitude, point.longitude))
+      if (!points.length) throw new Error('轨迹点定位无效')
+      await Promise.all(points.map((point) => db.collection('track_logs').add({ data: { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, latitude: point.latitude, longitude: point.longitude, speed: point.speed, accuracy: point.accuracy, recordedAt: point.recordedAt, uploadedAt } })))
       return { count: points.length }
     }
     if (action === 'getOrderTracks') {
@@ -2333,8 +2342,13 @@ const handlers = {
       if (!user.roles.includes('staff') || order.staffOpenid !== openid) throw new Error('仅订单员工可打卡')
       if (order.status !== 'in_service') throw new Error('仅服务中可打卡')
       if (!data.eventType) throw new Error('请选择打卡类型')
+      if (!CHECKIN_EVENT_TYPES.has(data.eventType)) throw new Error('打卡类型无效')
+      if (!data.mediaFileId) throw new Error('请先上传打卡照片')
+      const latitude = Number(data.latitude || 0)
+      const longitude = Number(data.longitude || 0)
+      if (!hasCoordinate(latitude, longitude)) throw new Error('打卡定位无效')
       const time = now()
-      const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), serverTime: time, remark: data.remark || '', createdAt: time }
+      const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, serverTime: time, remark: data.remark || data.note || '', createdAt: time }
       const created = await db.collection('checkin_logs').add({ data: checkin })
       await appendOrderTimeline(data.orderId, 'checkin', '服务打卡', data.eventType, 'staff')
       return { _id: created._id, ...checkin }

@@ -131,6 +131,45 @@ function chooseSelectedLocation() {
   })
 }
 
+function getCurrentLocation() {
+  return new Promise((resolve, reject) => {
+    wx.getLocation({
+      type: 'gcj02',
+      success: (location) => {
+        const saved = saveSelectedLocation({ ...location, name: '当前位置' })
+        if (saved) resolve(saved)
+        else reject(new Error('位置信息无效'))
+      },
+      fail: reject
+    })
+  })
+}
+
+function confirmManualLocation() {
+  return new Promise((resolve, reject) => {
+    wx.showModal({
+      title: '定位失败',
+      content: '未能获取实时定位，可手动选择当前位置继续。',
+      confirmText: '手动选择',
+      cancelText: '取消',
+      success: (res) => {
+        if (res.confirm) resolve()
+        else reject(new Error('未获取到定位，本次操作未提交'))
+      },
+      fail: reject
+    })
+  })
+}
+
+function getServiceLocation() {
+  return loadSystemSettings().then((settings) => {
+    if (settings.enableTestAddressMode) return openChooseLocation()
+    return requirePrivacyAuthorize()
+      .then(getCurrentLocation)
+      .catch(() => confirmManualLocation().then(openChooseLocation))
+  })
+}
+
 function requireSelectedLocation() {
   const saved = getSelectedLocation()
   if (saved) return Promise.resolve(saved)
@@ -238,6 +277,7 @@ module.exports = {
   getCachedSystemSettings,
   chooseSelectedLocation,
   requireSelectedLocation,
+  getServiceLocation,
   getCachedUser,
   setCachedUser,
   logoutCurrentUser,
