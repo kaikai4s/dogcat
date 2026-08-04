@@ -18,26 +18,28 @@ function buildMapData(tracks, checkins) {
   }).filter(Boolean)
   const checkinMapPoints = checkinPoints.map((item) => ({ latitude: item.latitude, longitude: item.longitude }))
   const includePoints = trackPoints.concat(checkinMapPoints)
-  const routePoints = trackPoints.length > 1 ? trackPoints : checkinMapPoints
-  const center = routePoints[0] || includePoints[0]
+  const routePoints = trackPoints.length > 1 ? trackPoints : []
+  const center = routePoints[0] || checkinMapPoints[0] || includePoints[0]
   const markers = []
 
-  if (routePoints.length) {
+  if (trackPoints.length > 0) {
     markers.push({
       id: 1,
-      latitude: routePoints[0].latitude,
-      longitude: routePoints[0].longitude,
+      latitude: trackPoints[0].latitude,
+      longitude: trackPoints[0].longitude,
       title: '服务起点',
       callout: { content: '服务起点', display: 'BYCLICK' }
     })
-    const end = routePoints[routePoints.length - 1]
-    markers.push({
-      id: 2,
-      latitude: end.latitude,
-      longitude: end.longitude,
-      title: '服务终点',
-      callout: { content: '服务终点', display: 'BYCLICK' }
-    })
+    if (trackPoints.length > 1) {
+      const end = trackPoints[trackPoints.length - 1]
+      markers.push({
+        id: 2,
+        latitude: end.latitude,
+        longitude: end.longitude,
+        title: '服务终点',
+        callout: { content: '服务终点', display: 'BYCLICK' }
+      })
+    }
   }
 
   checkinPoints.forEach((item, index) => {

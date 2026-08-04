@@ -1380,6 +1380,113 @@ test('createOrder enforces sitter weekly schedule and service radius limits', as
   assert.equal(validOrder.data.status, 'pending_pay')
 })
 
+test('createOrder supports overnight sitter schedule time validation', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'u_sitter', openid: 'openid_sitter', roles: ['client', 'staff'], status: 'active' }
+    ],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '豆豆', weight: 8 }],
+    staff_profiles: [
+      {
+        _id: 'sitter_overnight',
+        openid: 'openid_sitter',
+        auditStatus: 'approved',
+        serviceAddress: '陆家嘴中心',
+        serviceLatitude: 31.2,
+        serviceLongitude: 121.5,
+        serviceRadiusKm: 10,
+        weeklySchedule: {
+          '1': [{ start: 22, end: 24 }],
+          '2': [{ start: 0, end: 2 }]
+        }
+      }
+    ],
+    orders: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const overnightOrder = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      petId: 'p1',
+      publishMode: 'direct',
+      staffProfileId: 'sitter_overnight',
+      serviceTypes: ['feed'],
+      serviceAddress: '合规小区',
+      addressDetail: '1栋',
+      doorplate: '101',
+      addressLatitude: 31.201,
+      addressLongitude: 121.501,
+      startTime: '2026-08-03 23:00',
+      endTime: '2026-08-04 01:00',
+      durationMinutes: 120
+    }
+  })
+  assert.equal(overnightOrder.ok, true)
+})
+
+test('updateStaffProfileConfig rejects unapproved sitters', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_pending_staff', roles: ['client'], status: 'active' }],
+    staff_profiles: [{ _id: 'sp_pending', openid: 'openid_pending_staff', auditStatus: 'pending', realName: '张三' }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_pending_staff')
+
+  const res = await fn.main({
+    module: 'staff',
+    action: 'updateStaffProfileConfig',
+    data: { serviceAddress: '测试地址', serviceLatitude: 31.2, serviceLongitude: 121.5 }
+  })
+  assert.equal(res.ok, false)
+  assert.equal(res.message, '宠托师认证审核通过后方可设置接单配置')
+})
+
+test('createOrder rejects direct booking when order lacks valid coordinates', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'u_sitter', openid: 'openid_sitter', roles: ['client', 'staff'], status: 'active' }
+    ],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '豆豆', weight: 8 }],
+    staff_profiles: [
+      {
+        _id: 'sitter_1',
+        openid: 'openid_sitter',
+        auditStatus: 'approved',
+        serviceAddress: '陆家嘴中心',
+        serviceLatitude: 31.2,
+        serviceLongitude: 121.5,
+        serviceRadiusKm: 5
+      }
+    ],
+    orders: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const res = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      petId: 'p1',
+      publishMode: 'direct',
+      staffProfileId: 'sitter_1',
+      serviceTypes: ['feed'],
+      serviceAddress: '无定位小区',
+      addressDetail: '1栋',
+      doorplate: '101',
+      addressLatitude: 0,
+      addressLongitude: 0,
+      startTime: '2026-08-03 10:00',
+      endTime: '2026-08-03 11:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(res.ok, false)
+  assert.equal(res.message, '指定宠托师预约需选择包含精确定位的服务地址')
+})
+
 test('acceptOrder rejects staff without fixed service address', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'u_staff', openid: 'openid_no_addr', roles: ['client', 'staff'], status: 'active' }],

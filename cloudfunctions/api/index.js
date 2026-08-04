@@ -303,14 +303,22 @@ function parseDateTimeParts(dateStr) {
     const day = Number(match[3])
     const hour = Number(match[4])
     const minute = Number(match[5])
-    const utcDate = new Date(Date.UTC(year, month, day, hour, minute))
-    const dayOfWeek = utcDate.getUTCDay() === 0 ? 7 : utcDate.getUTCDay()
-    return { dayOfWeek, hour, minute, day, utcDate }
+    const dateObj = new Date(Date.UTC(year, month, day, hour, minute))
+    const utcDay = dateObj.getUTCDay()
+    const dayOfWeek = utcDay === 0 ? 7 : utcDay
+    return { dayOfWeek, hour, minute, day, dateObj }
   }
   const d = new Date(text.replace(/-/g, '/'))
   if (Number.isNaN(d.getTime())) return null
-  const dayOfWeek = d.getDay() === 0 ? 7 : d.getDay()
-  return { dayOfWeek, hour: d.getHours(), minute: d.getMinutes(), day: d.getDate(), utcDate: d }
+  const year = d.getUTCFullYear()
+  const month = d.getUTCMonth()
+  const day = d.getUTCDate()
+  const hour = d.getUTCHours()
+  const minute = d.getUTCMinutes()
+  const dateObj = new Date(Date.UTC(year, month, day, hour, minute))
+  const utcDay = dateObj.getUTCDay()
+  const dayOfWeek = utcDay === 0 ? 7 : utcDay
+  return { dayOfWeek, hour, minute, day, dateObj }
 }
 
 function validateSitterScheduleTime(weeklySchedule, startTimeStr, endTimeStr) {
@@ -320,26 +328,61 @@ function validateSitterScheduleTime(weeklySchedule, startTimeStr, endTimeStr) {
   if (!startTimeStr || !endTimeStr) throw new Error('请选择服务时间')
   const startParts = parseDateTimeParts(startTimeStr)
   const endParts = parseDateTimeParts(endTimeStr)
-  if (!startParts || !endParts || endParts.utcDate <= startParts.utcDate) {
+  if (!startParts || !endParts || endParts.dateObj <= startParts.dateObj) {
     throw new Error('服务时间格式无效')
   }
 
-  const dayOfWeek = startParts.dayOfWeek
-  const dayName = WEEKDAY_NAMES[dayOfWeek] || `周${dayOfWeek}`
+  const durationHours = (endParts.dateObj.getTime() - startParts.dateObj.getTime()) / (3600 * 1000)
 
-  const startVal = startParts.hour + startParts.minute / 60
-  const durationHours = (endParts.utcDate.getTime() - startParts.utcDate.getTime()) / (3600 * 1000)
-  const endVal = startVal + durationHours
-
-  const slots = normalized[String(dayOfWeek)] || []
-  if (!slots.length) {
-    throw new Error(`宠托师在${dayName}未设置可接单时间段`)
+  if (startParts.dayOfWeek === endParts.dayOfWeek && durationHours <= 24) {
+    const dayOfWeek = startParts.dayOfWeek
+    const dayName = WEEKDAY_NAMES[dayOfWeek] || `周${dayOfWeek}`
+    const startVal = startParts.hour + startParts.minute / 60
+    const endVal = endParts.hour + endParts.minute / 60
+    const slots = normalized[String(dayOfWeek)] || []
+    if (!slots.length) {
+      throw new Error(`宠托师在${dayName}未设置可接单时间段`)
+    }
+    const fitsInSlot = slots.some((slot) => startVal >= slot.start && endVal <= slot.end)
+    if (!fitsInSlot) {
+      const allowedText = slots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
+      throw new Error(`预约时间不在宠托师${dayName}的可接单时间段（${allowedText}）内`)
+    }
+    return
   }
 
-  const fitsInSlot = slots.some((slot) => startVal >= slot.start && endVal <= slot.end)
-  if (!fitsInSlot) {
-    const allowedText = slots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
-    throw new Error(`预约时间不在宠托师${dayName}的可接单时间段（${allowedText}）内`)
+  let curr = new Date(startParts.dateObj.getTime())
+  const endTs = endParts.dateObj.getTime()
+
+  while (curr.getTime() < endTs) {
+    const currYear = curr.getUTCFullYear()
+    const currMonth = curr.getUTCMonth()
+    const currDate = curr.getUTCDate()
+    const currParts = parseDateTimeParts(
+      `${currYear}-${String(currMonth + 1).padStart(2, '0')}-${String(currDate).padStart(2, '0')} ${String(curr.getUTCHours()).padStart(2, '0')}:${String(curr.getUTCMinutes()).padStart(2, '0')}`
+    )
+    const dayOfWeek = currParts.dayOfWeek
+    const dayName = WEEKDAY_NAMES[dayOfWeek] || `周${dayOfWeek}`
+    const slots = normalized[String(dayOfWeek)] || []
+
+    if (!slots.length) {
+      throw new Error(`宠托师在${dayName}未设置可接单时间段`)
+    }
+
+    const segmentStart = currParts.hour + currParts.minute / 60
+    const isSameDayAsEnd = currYear === endParts.dateObj.getUTCFullYear() &&
+                           currMonth === endParts.dateObj.getUTCMonth() &&
+                           currDate === endParts.dateObj.getUTCDate()
+    const segmentEnd = isSameDayAsEnd ? (endParts.hour + endParts.minute / 60) : 24
+
+    const fits = slots.some((slot) => segmentStart >= slot.start && segmentEnd <= slot.end)
+    if (!fits) {
+      const allowedText = slots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
+      throw new Error(`预约时间不在宠托师${dayName}的可接单时间段（${allowedText}）内`)
+    }
+
+    if (isSameDayAsEnd) break
+    curr = new Date(Date.UTC(currYear, currMonth, currDate + 1, 0, 0))
   }
 }
 
@@ -1467,7 +1510,10 @@ const handlers = {
           const sitterLng = Number(staffProfile.serviceLongitude || 0)
           const radiusKm = Math.max(Number(staffProfile.serviceRadiusKm || 5), 1)
 
-          if (hasCoordinate(orderLat, orderLng) && hasCoordinate(sitterLat, sitterLng)) {
+          if (hasCoordinate(sitterLat, sitterLng)) {
+            if (!hasCoordinate(orderLat, orderLng)) {
+              throw new Error('指定宠托师预约需选择包含精确定位的服务地址')
+            }
             const dist = calcDistanceKm(orderLat, orderLng, sitterLat, sitterLng)
             if (dist !== null && dist > radiusKm) {
               throw new Error(`订单服务地址超出宠托师设定的接单范围（${radiusKm}公里内），无法预约`)
@@ -1503,7 +1549,10 @@ const handlers = {
           const sitterLng = Number(staffProfile.serviceLongitude || 0)
           const radiusKm = Math.max(Number(staffProfile.serviceRadiusKm || 5), 1)
 
-          if (hasCoordinate(orderLat, orderLng) && hasCoordinate(sitterLat, sitterLng)) {
+          if (hasCoordinate(sitterLat, sitterLng)) {
+            if (!hasCoordinate(orderLat, orderLng)) {
+              throw new Error('指定宠托师预约需选择包含精确定位的服务地址')
+            }
             const dist = calcDistanceKm(orderLat, orderLng, sitterLat, sitterLng)
             if (dist !== null && dist > radiusKm) {
               throw new Error(`订单服务地址超出宠托师设定的接单范围（${radiusKm}公里内），无法预约`)
@@ -2106,10 +2155,15 @@ const handlers = {
       const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = existing.data[0]
       if (!profile) throw new Error('请先提交宠托师认证')
+      if (profile.auditStatus !== 'approved') throw new Error('宠托师认证审核通过后方可设置接单配置')
 
       const serviceAddress = safeText(data.serviceAddress !== undefined ? data.serviceAddress : profile.serviceAddress).trim()
-      const serviceLatitude = Number(data.serviceLatitude !== undefined ? data.serviceLatitude : (data.latitude !== undefined ? data.latitude : (profile.serviceLatitude || 0)))
-      const serviceLongitude = Number(data.serviceLongitude !== undefined ? data.serviceLongitude : (data.longitude !== undefined ? data.longitude : (profile.serviceLongitude || 0)))
+      let serviceLatitude = Number(data.serviceLatitude !== undefined ? data.serviceLatitude : (data.latitude !== undefined ? data.latitude : (profile.serviceLatitude || 0)))
+      let serviceLongitude = Number(data.serviceLongitude !== undefined ? data.serviceLongitude : (data.longitude !== undefined ? data.longitude : (profile.serviceLongitude || 0)))
+      if (!hasCoordinate(serviceLatitude, serviceLongitude) && hasCoordinate(profile.serviceLatitude, profile.serviceLongitude)) {
+        serviceLatitude = Number(profile.serviceLatitude)
+        serviceLongitude = Number(profile.serviceLongitude)
+      }
       const serviceRadiusKm = Math.max(Number(data.serviceRadiusKm !== undefined ? data.serviceRadiusKm : (profile.serviceRadiusKm || 5)), 1)
       const weeklySchedule = data.weeklySchedule !== undefined ? normalizeWeeklySchedule(data.weeklySchedule) : profile.weeklySchedule
 
