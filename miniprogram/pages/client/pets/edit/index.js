@@ -20,6 +20,8 @@ Page({
     genderOptions,
     speciesIndex: 0,
     genderIndex: 4,
+    recognizingBreed: false,
+    aiResultText: '',
     form: {
       species: 'dog',
       name: '',
@@ -88,6 +90,12 @@ Page({
     this.setData({ ['form.aiInteractionEnabled']: e.detail.value })
   },
 
+  previewPhoto() {
+    if (this.data.form.avatarFileId) {
+      wx.previewImage({ urls: [this.data.form.avatarFileId] })
+    }
+  },
+
   choosePhoto() {
     wx.chooseMedia({
       count: 1,
@@ -96,15 +104,86 @@ Page({
       success: (res) => {
         const filePath = res.tempFiles[0].tempFilePath
         const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+        this.setData({ localTempPath: filePath, tempHttpsUrl: '', ['form.avatarFileId']: '' })
+        wx.showLoading({ title: '上传照片中...' })
         wx.cloud.uploadFile({
           cloudPath: `pets/${Date.now()}${ext}`,
           filePath,
-          success: (upload) => this.setData({ ['form.avatarFileId']: upload.fileID }),
-          fail: showError
+          success: (upload) => {
+            const fileID = upload.fileID
+            this.setData({ ['form.avatarFileId']: fileID })
+            wx.cloud.getTempFileURL({
+              fileList: [fileID],
+              success: (tempRes) => {
+                wx.hideLoading()
+                if (tempRes.fileList && tempRes.fileList[0] && tempRes.fileList[0].tempFileURL) {
+                  this.setData({ tempHttpsUrl: tempRes.fileList[0].tempFileURL })
+                }
+                wx.showToast({ title: '照片上传成功', icon: 'success' })
+              },
+              fail: () => {
+                wx.hideLoading()
+                wx.showToast({ title: '照片上传成功', icon: 'success' })
+              }
+            })
+          },
+          fail: (err) => {
+            wx.hideLoading()
+            showError(err)
+          }
         })
       },
-      fail: showError
+      fail: (err) => {
+        if (err.errMsg && !err.errMsg.includes('cancel')) showError(err)
+      }
     })
+  },
+
+  recognizeBreed() {
+    const avatarFileId = this.data.form.avatarFileId
+    const tempHttpsUrl = this.data.tempHttpsUrl
+    const localTempPath = this.data.localTempPath
+    if (!avatarFileId && !localTempPath && !tempHttpsUrl) {
+      wx.showToast({ title: '请先上传宠物照片再进行AI识别', icon: 'none' })
+      return
+    }
+
+    this.setData({ recognizingBreed: true })
+    console.log('[AI识图日志] 开始调用云函数 AI 识别...', { avatarFileId, tempHttpsUrl })
+
+    const executeRecognize = (fileId, httpsUrl) => {
+      callFunction('pet', 'recognizePetBreed', { avatarFileId: fileId, imageUrl: httpsUrl })
+        .then((res) => {
+          this.setData({ recognizingBreed: false })
+          console.log('[AI识图日志] 云函数识别成功返回:', res)
+          if (!res) return
+          const fullText = res.aiResultText || res.fullAnalysis || res.aiMessage || ''
+          this.setData({
+            aiResultText: fullText
+          })
+          wx.showToast({ title: 'AI 识别完成', icon: 'success', duration: 2500 })
+        })
+        .catch((err) => {
+          this.setData({ recognizingBreed: false })
+          console.error('[AI识图日志] 云函数识别失败:', err)
+          showError(err)
+        })
+    }
+
+    if (tempHttpsUrl) {
+      executeRecognize(avatarFileId, tempHttpsUrl)
+    } else if (avatarFileId && avatarFileId.startsWith('cloud://')) {
+      wx.cloud.getTempFileURL({
+        fileList: [avatarFileId],
+        success: (res) => {
+          const url = res.fileList && res.fileList[0] ? res.fileList[0].tempFileURL : ''
+          executeRecognize(avatarFileId, url)
+        },
+        fail: () => executeRecognize(avatarFileId, '')
+      })
+    } else {
+      executeRecognize(avatarFileId, '')
+    }
   },
 
   generateAiProfile() {
@@ -121,6 +200,10 @@ Page({
   },
 
   save() {
+    if (!this.data.form.avatarFileId) {
+      wx.showToast({ title: '请上传至少一张宠物照片', icon: 'none' })
+      return
+    }
     if (!this.data.form.name) {
       wx.showToast({ title: '请填写宠物名字', icon: 'none' })
       return
@@ -131,7 +214,7 @@ Page({
     const data = {
       id: this.data.id,
       name: form.name || '',
-      avatarFileId: avatarFileId.indexOf('cloud://') === 0 ? avatarFileId : '',
+      avatarFileId: avatarFileId,
       species: form.species || 'dog',
       breed: form.breed || '',
       gender: form.gender || '',

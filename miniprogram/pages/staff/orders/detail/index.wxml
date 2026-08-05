@@ -8,23 +8,44 @@
     <view class="tip">核对服务地址、时间和状态后进入服务流程。</view>
   </view>
 
-  <view class="card" wx:if="{{order.petSnapshot}}">
-    <view class="subtitle">宠物信息</view>
-    <view class="row">
-      <image class="pet-photo" wx:if="{{order.petSnapshot.avatarFileId}}" src="{{order.petSnapshot.avatarFileId}}" mode="aspectFill" />
-      <view class="pet-photo empty-photo" wx:else>🐾</view>
-      <view style="flex: 1;">
-        <view class="strong">{{order.petSnapshot.name || order.petName}}</view>
-        <view class="muted">{{order.petSnapshot.breed || '未填写品种'}} · {{order.petSnapshot.gender || '未填性别'}} · {{order.petSnapshot.weight || 0}}kg</view>
-        <view class="muted">生日：{{order.petSnapshot.birthday || '未填写'}}</view>
+  <view class="card pet-card" wx:if="{{order.petSnapshot}}">
+    <view class="subtitle">服务宠物信息</view>
+    <view class="row pet-header">
+      <view class="photo-container">
+        <image class="pet-photo" wx:if="{{order.petSnapshot.avatarFileId}}" src="{{order.petSnapshot.avatarFileId}}" mode="aspectFill" bindtap="previewPetPhoto" />
+        <view class="pet-photo empty-photo" wx:else>🐾</view>
+        <view class="preview-tip" wx:if="{{order.petSnapshot.avatarFileId}}">点击大图</view>
+      </view>
+      <view class="pet-main-info" style="flex: 1;">
+        <view class="strong pet-name-row">
+          <text class="pet-name">{{order.petSnapshot.name || order.petName}}</text>
+          <text class="species-badge">{{order.petSnapshot.species === 'cat' ? '🐱 猫咪' : order.petSnapshot.species === 'other' ? '🐾 异宠' : '🐶 狗狗'}}</text>
+        </view>
+        <view class="muted">{{order.petSnapshot.breed || '未知品种'}} · {{order.petSnapshot.gender || '未知性别'}} · {{order.petSnapshot.weight || 0}}kg</view>
+        <view class="muted" wx:if="{{order.petSnapshot.birthday}}">生日：{{order.petSnapshot.birthday}}</view>
       </view>
     </view>
     <view class="info-list pet-info-list">
-      <view class="info-row" wx:if="{{order.petSnapshot.personality}}"><view class="label">性格</view><view class="value">{{order.petSnapshot.personality}}</view></view>
-      <view class="info-row" wx:if="{{order.petSnapshot.favoriteFood}}"><view class="label">喜欢</view><view class="value">{{order.petSnapshot.favoriteFood}}</view></view>
-      <view class="info-row" wx:if="{{order.petSnapshot.dislikes}}"><view class="label">害怕/不喜欢</view><view class="value">{{order.petSnapshot.dislikes}}</view></view>
-      <view class="info-row" wx:if="{{order.petSnapshot.healthNotes}}"><view class="label">健康情况</view><view class="value">{{order.petSnapshot.healthNotes}}</view></view>
-      <view class="info-row" wx:if="{{order.petSnapshot.specialNotes}}"><view class="label">照顾备注</view><view class="value">{{order.petSnapshot.specialNotes}}</view></view>
+      <view class="info-row highlight-row" wx:if="{{order.petSnapshot.personality}}">
+        <view class="label label-highlight">性格特点</view>
+        <view class="value value-highlight">{{order.petSnapshot.personality}}</view>
+      </view>
+      <view class="info-row highlight-row danger-row" wx:if="{{order.petSnapshot.specialNotes}}">
+        <view class="label label-danger">照顾备注</view>
+        <view class="value value-danger">{{order.petSnapshot.specialNotes}}</view>
+      </view>
+      <view class="info-row" wx:if="{{order.petSnapshot.favoriteFood}}">
+        <view class="label">喜欢/嗜好</view>
+        <view class="value">{{order.petSnapshot.favoriteFood}}</view>
+      </view>
+      <view class="info-row" wx:if="{{order.petSnapshot.dislikes}}">
+        <view class="label">害怕/避讳</view>
+        <view class="value">{{order.petSnapshot.dislikes}}</view>
+      </view>
+      <view class="info-row" wx:if="{{order.petSnapshot.healthNotes}}">
+        <view class="label">健康情况</view>
+        <view class="value">{{order.petSnapshot.healthNotes}}</view>
+      </view>
     </view>
   </view>
 

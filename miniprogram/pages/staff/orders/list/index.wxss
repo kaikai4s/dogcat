@@ -1,1 +1,4 @@
 /* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+.breed-badge { font-weight: normal; color: #f43f6b; font-size: 24rpx; }
+.pet-note-tag { background: #fff2f7; color: #be123c; font-size: 22rpx; border-radius: 12rpx; padding: 6rpx 14rpx; margin-top: 8rpx; display: inline-block; max-width: 520rpx; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag-title { font-weight: 700; }

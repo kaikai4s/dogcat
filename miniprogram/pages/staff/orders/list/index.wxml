@@ -8,13 +8,16 @@
   <view class="card task-card" wx:for="{{orders}}" wx:key="_id">
     <view class="between interactive order-card-head" data-id="{{item._id}}" bindtap="detail">
       <view class="order-person">
-        <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+        <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" />
+        <image class="order-avatar" wx:elif="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
         <view class="order-avatar" wx:else>🐾</view>
-        <view>
-          <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
-          <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '遛狗' : '喂养')}}</view>
-          <view class="muted">{{item.startTime}}</view>
+        <view style="flex: 1;">
+          <view class="strong">{{item.petName}} <text class="breed-badge" wx:if="{{item.petSnapshot && item.petSnapshot.breed}}">({{item.petSnapshot.breed}})</text> · {{item.clientSnapshot.displayName || '宠物主'}}</view>
+          <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '遛狗' : '喂养')}} · {{item.startTime}}</view>
           <view class="muted">{{item.serviceAddress || '未填写地址'}} · 距你 {{item.distanceText || '未定位'}}</view>
+          <view class="pet-note-tag" wx:if="{{item.petSnapshot && (item.petSnapshot.personality || item.petSnapshot.specialNotes)}}">
+            <text class="tag-title">🐾 {{item.petSnapshot.personality ? '性格：' + item.petSnapshot.personality : ''}} {{item.petSnapshot.specialNotes ? ' 备注：' + item.petSnapshot.specialNotes : ''}}</text>
+          </view>
         </view>
       </view>
       <view class="badge">{{item.statusText}}</view>

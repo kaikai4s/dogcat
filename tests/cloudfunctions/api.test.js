@@ -161,6 +161,25 @@ test('pet profile stores photo birthday breed and AI interaction fields', async 
   assert.equal(fetched.data.breed, '金毛')
   assert.equal(fetched.data.aiInteractionEnabled, true)
   assert.equal(fetched.data.aiGreeting, '我是可乐')
+
+  // Test missing photo validation
+  const noPhoto = await fn.main({
+    module: 'pet',
+    action: 'createPet',
+    data: { name: '雪球' }
+  })
+  assert.equal(noPhoto.ok, false)
+  assert.match(noPhoto.message, /请上传至少一张宠物照片/)
+
+  // Test AI pet breed recognition
+  const aiRecognize = await fn.main({
+    module: 'pet',
+    action: 'recognizePetBreed',
+    data: { avatarFileId: 'cloud://corgi-photo.jpg', apiKey: 'mock-key' }
+  })
+  assert.equal(aiRecognize.ok, true)
+  assert.equal(aiRecognize.data.species, 'dog')
+  assert.equal(aiRecognize.data.breed, '威尔士柯基犬')
 })
 
 test('api quoteOrder supports multiple services and price details', async () => {

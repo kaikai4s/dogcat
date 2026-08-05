@@ -8,6 +8,18 @@
     <view class="tip">按流程上传轨迹、完成打卡，门锁密码仅在服务窗口内展示并记录访问日志。</view>
   </view>
 
+  <view class="card pet-card" wx:if="{{order && order.petSnapshot}}">
+    <view class="subtitle">服务对象与照顾备注</view>
+    <view class="row">
+      <image class="pet-photo" wx:if="{{order.petSnapshot.avatarFileId}}" src="{{order.petSnapshot.avatarFileId}}" mode="aspectFill" bindtap="previewPetPhoto" style="width: 100rpx; height: 100rpx; border-radius: 24rpx; margin-right: 18rpx; flex-shrink: 0;" />
+      <view style="flex: 1;">
+        <view class="strong">{{order.petSnapshot.name || order.petName}} ({{order.petSnapshot.breed || '未知品种'}})</view>
+        <view class="muted" wx:if="{{order.petSnapshot.personality}}">性格：{{order.petSnapshot.personality}}</view>
+        <view class="muted" wx:if="{{order.petSnapshot.specialNotes}}" style="color: #be123c; font-weight: bold;">备注：{{order.petSnapshot.specialNotes}}</view>
+      </view>
+    </view>
+  </view>
+
   <view class="card">
     <view class="subtitle">服务操作</view>
     <button class="primary" bindtap="start">开始服务</button>

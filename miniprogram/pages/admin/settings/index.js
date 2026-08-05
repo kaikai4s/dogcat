@@ -15,7 +15,9 @@ Page({
   load() {
     callFunction('admin', 'getSystemSettings')
       .then((settings) => {
-        const normalized = { enableTestAddressMode: settings.enableTestAddressMode === true }
+        const normalized = {
+          enableTestAddressMode: settings.enableTestAddressMode === true
+        }
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized })
       })
@@ -31,7 +33,9 @@ Page({
     this.setData({ saving: true })
     callFunction('admin', 'saveSystemSettings', this.data.settings)
       .then((settings) => {
-        const normalized = { enableTestAddressMode: settings.enableTestAddressMode === true }
+        const normalized = {
+          enableTestAddressMode: settings.enableTestAddressMode === true
+        }
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized, saving: false })
         wx.showToast({ title: '已保存' })

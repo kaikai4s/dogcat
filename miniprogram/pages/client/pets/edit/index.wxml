@@ -9,13 +9,30 @@
   </view>
 
   <view class="card form-card">
-    <view class="subtitle">宠物照片</view>
-    <view class="photo-box" bindtap="choosePhoto">
-      <image class="photo-preview" wx:if="{{form.avatarFileId}}" src="{{form.avatarFileId}}" mode="aspectFill" />
-      <view class="photo-empty" wx:else>
-        <view class="photo-icon">＋</view>
-        <view class="muted">上传宠物照片</view>
+    <view class="subtitle">宠物照片 <text class="required-tag">（必填，至少1张）</text></view>
+    <view class="photo-section">
+      <view class="photo-box">
+        <view class="photo-wrapper" wx:if="{{form.avatarFileId}}">
+          <image class="photo-preview" src="{{form.avatarFileId}}" mode="aspectFill" bindtap="previewPhoto" />
+        </view>
+        <view class="photo-empty" wx:else bindtap="choosePhoto">
+          <view class="photo-icon">＋</view>
+          <view class="muted">上传照片</view>
+        </view>
       </view>
+      <view class="photo-actions">
+        <button class="ghost photo-btn" bindtap="choosePhoto">{{form.avatarFileId ? '更换照片' : '选择照片'}}</button>
+        <button class="ai-breed-btn" bindtap="recognizeBreed" loading="{{recognizingBreed}}">
+          ✨ AI 识别种类/品种
+        </button>
+      </view>
+    </view>
+
+    <view class="ai-result-box" wx:if="{{aiResultText}}">
+      <view class="ai-result-header">
+        <text class="ai-result-title">✨ 微信云开发 AI 识别回复 (请参考自主填写)</text>
+      </view>
+      <view class="ai-result-content">{{aiResultText}}</view>
     </view>
 
     <view class="subtitle">基础信息</view>

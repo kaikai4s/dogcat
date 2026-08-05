@@ -7,6 +7,12 @@ Page({
   onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }) },
   onShow() { this.load() },
   load() { callFunction('order', 'getOrderDetail', { id: this.data.id }).then((order) => this.setData({ order: withOrderText(order) })).catch(showError) },
+  previewPetPhoto() {
+    const photo = this.data.order && this.data.order.petSnapshot && this.data.order.petSnapshot.avatarFileId
+    if (photo) {
+      wx.previewImage({ urls: [photo] })
+    }
+  },
   openNavigation() {
     const order = this.data.order || {}
     const latitude = Number(order.addressLatitude)
