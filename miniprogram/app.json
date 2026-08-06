@@ -64,7 +64,8 @@
   "__usePrivacyCheck__": true,
   "requiredPrivateInfos": [
     "chooseLocation",
-    "getLocation"
+    "getLocation",
+    "chooseAddress"
   ],
   "permission": {
     "scope.userLocation": {

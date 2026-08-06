@@ -186,15 +186,17 @@ function chooseSelectedLocation() {
 }
 
 function getCurrentLocation() {
-  return new Promise((resolve, reject) => {
-    wx.getLocation({
-      type: 'gcj02',
-      success: (location) => {
-        const saved = saveSelectedLocation({ ...location, name: '当前位置' })
-        if (saved) resolve(saved)
-        else reject(new Error('位置信息无效'))
-      },
-      fail: reject
+  return requirePrivacyAuthorize().then(() => {
+    return new Promise((resolve, reject) => {
+      wx.getLocation({
+        type: 'gcj02',
+        success: (location) => {
+          const saved = saveSelectedLocation({ ...location, name: '当前位置' })
+          if (saved) resolve(saved)
+          else reject(new Error('位置信息无效'))
+        },
+        fail: reject
+      })
     })
   })
 }
