@@ -167,11 +167,45 @@ function buildMonthlyDashboard(orders = [], users = []) {
   }
 }
 
+function normalizeHomeHeroCarousel(carousel = {}) {
+  const source = typeof carousel === 'object' && carousel !== null ? carousel : {}
+  const rawItems = Array.isArray(source.items) ? source.items : []
+  const items = rawItems
+    .map((item, index) => {
+      const type = item && item.type === 'video' ? 'video' : 'image'
+      const fileId = safeText(item && item.fileId).trim()
+      if (!fileId) return null
+      return {
+        id: safeText(item && item.id).trim() || `hero_${Date.now()}_${index}`,
+        type,
+        fileId,
+        posterFileId: safeText(item && item.posterFileId).trim(),
+        title: safeText(item && item.title).trim(),
+        subtitle: safeText(item && item.subtitle).trim(),
+        enabled: item && item.enabled !== false,
+        sort: safeNumber(item && item.sort) || (index + 1) * 10
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.sort - b.sort)
+
+  const interval = safeNumber(source.rotateIntervalMs || source.interval)
+  const rotateIntervalMs = interval >= 1000 ? Math.min(interval, 30000) : 5000
+
+  return {
+    enabled: source.enabled === true,
+    autoRotate: source.autoRotate !== false,
+    rotateIntervalMs,
+    items
+  }
+}
+
 function normalizeSystemSettings(value = {}) {
   return {
     enableTestAddressMode: value.enableTestAddressMode === true,
     qwenApiKey: safeText(value.qwenApiKey).trim(),
-    qwenModel: safeText(value.qwenModel).trim() || 'qwen3.5-flash'
+    qwenModel: safeText(value.qwenModel).trim() || 'qwen3.5-flash',
+    homeHeroCarousel: normalizeHomeHeroCarousel(value.homeHeroCarousel)
   }
 }
 

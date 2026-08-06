@@ -319,13 +319,41 @@ test('admin can save and public can read system settings', async () => {
   const adminFn = loadCloudFunction('api', db, 'openid_admin')
   const guestFn = loadCloudFunction('api', db, 'openid_guest')
 
-  const saved = await adminFn.main({ module: 'admin', action: 'saveSystemSettings', data: { enableTestAddressMode: true } })
+  const settingsPayload = {
+    enableTestAddressMode: true,
+    homeHeroCarousel: {
+      enabled: true,
+      autoRotate: true,
+      rotateIntervalMs: 6000,
+      items: [
+        {
+          id: 'item1',
+          type: 'video',
+          fileId: 'cloud://video1.mp4',
+          posterFileId: 'cloud://poster1.jpg',
+          title: '视频测试',
+          subtitle: '测试副标题',
+          enabled: true,
+          sort: 1
+        }
+      ]
+    }
+  }
+
+  const saved = await adminFn.main({ module: 'admin', action: 'saveSystemSettings', data: settingsPayload })
   const fetched = await guestFn.main({ module: 'system', action: 'getSettings' })
 
   assert.equal(saved.ok, true)
   assert.equal(saved.data.enableTestAddressMode, true)
+  assert.equal(saved.data.homeHeroCarousel.enabled, true)
+  assert.equal(saved.data.homeHeroCarousel.rotateIntervalMs, 6000)
+  assert.equal(saved.data.homeHeroCarousel.items.length, 1)
+  assert.equal(saved.data.homeHeroCarousel.items[0].type, 'video')
+
   assert.equal(fetched.ok, true)
   assert.equal(fetched.data.enableTestAddressMode, true)
+  assert.equal(fetched.data.homeHeroCarousel.enabled, true)
+  assert.equal(fetched.data.homeHeroCarousel.items[0].title, '视频测试')
 })
 
 test('admin dashboard includes monthly order and registration trends', async () => {

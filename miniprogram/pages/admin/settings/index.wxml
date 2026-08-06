@@ -15,7 +15,128 @@
       <switch checked="{{settings.enableTestAddressMode}}" bindchange="toggleTestAddressMode" />
     </view>
     <view class="notice" wx:if="{{settings.enableTestAddressMode}}">当前构建已关闭 __usePrivacyCheck__，可用于隐私协议未通过前的地图选点联调；正式上线前请关闭该模式并恢复隐私校验。</view>
-    <button class="primary" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存设置'}}</button>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">首页顶部轮播媒体配置</view>
+
+    <view class="between setting-row border-bottom">
+      <view style="flex:1;min-width:0;">
+        <view class="strong">启用首页轮播 Hero</view>
+        <view class="muted">关闭时首页显示默认静态 Hero。</view>
+      </view>
+      <switch checked="{{settings.homeHeroCarousel.enabled}}" bindchange="toggleCarouselEnabled" />
+    </view>
+
+    <block wx:if="{{settings.homeHeroCarousel.enabled}}">
+      <view class="between setting-row border-bottom">
+        <view style="flex:1;min-width:0;">
+          <view class="strong">自动轮换</view>
+          <view class="muted">多张/多个素材时自动轮播切换，视频播放时会自动暂停。</view>
+        </view>
+        <switch checked="{{settings.homeHeroCarousel.autoRotate}}" bindchange="toggleCarouselAutoRotate" />
+      </view>
+
+      <view class="field-item border-bottom" wx:if="{{settings.homeHeroCarousel.autoRotate}}">
+        <text class="label">轮换间隔（秒）</text>
+        <input class="input" type="number" value="{{settings.homeHeroCarousel.rotateIntervalSec}}" placeholder="例如 5" bindinput="inputIntervalSec" />
+      </view>
+
+      <view class="section-title-row between">
+        <text class="section-title">轮播素材列表 ({{settings.homeHeroCarousel.items.length}} / 5)</text>
+        <button class="small-btn primary-btn" wx:if="{{settings.homeHeroCarousel.items.length < 5}}" bindtap="startAddItem">+ 添加素材</button>
+      </view>
+
+      <!-- 素材列表 -->
+      <view class="carousel-list" wx:if="{{settings.homeHeroCarousel.items.length > 0}}">
+        <view class="carousel-item-card" wx:for="{{settings.homeHeroCarousel.items}}" wx:key="id">
+          <view class="item-preview">
+            <image wx:if="{{item.type === 'image'}}" src="{{item.tempUrl}}" mode="aspectFill" class="preview-img" />
+            <view wx:else class="preview-video-box">
+              <image src="{{item.posterTempUrl || item.tempUrl}}" mode="aspectFill" class="preview-img" />
+              <view class="video-tag">视频</view>
+            </view>
+          </view>
+
+          <view class="item-info">
+            <view class="item-title-line">
+              <text class="item-title">{{item.title || '(无标题)'}}</text>
+              <text class="badge-type">{{item.type === 'video' ? '视频' : '图片'}}</text>
+            </view>
+            <view class="item-sub" wx:if="{{item.subtitle}}">{{item.subtitle}}</view>
+            <view class="item-meta">排序: {{item.sort}} | 状态: {{item.enabled !== false ? '已启用' : '已禁用'}}</view>
+          </view>
+
+          <view class="item-actions">
+            <switch checked="{{item.enabled !== false}}" data-index="{{index}}" bindchange="toggleItemEnabled" class="mini-switch" />
+            <button class="mini-btn" data-index="{{index}}" bindtap="startEditItem">编辑</button>
+            <button class="mini-btn danger" data-index="{{index}}" bindtap="deleteItem">删除</button>
+          </view>
+        </view>
+      </view>
+      <view class="empty-tip" wx:else>暂无轮播素材，请点击“+ 添加素材”。</view>
+
+      <!-- 添加/编辑弹层或表单 -->
+      <view class="edit-form-box" wx:if="{{editingIndex >= -1 && (editingItem.fileId || editingIndex !== -1 || editingItem.title || editingItem.type)}}">
+        <view class="form-title">{{editingIndex >= 0 ? '编辑轮播素材' : '新增轮播素材'}}</view>
+
+        <view class="field-item">
+          <text class="label">素材类型</text>
+          <radio-group bindchange="typeChange" class="radio-group">
+            <label class="radio-label"><radio value="image" checked="{{editingItem.type === 'image'}}" /> 图片</label>
+            <label class="radio-label"><radio value="video" checked="{{editingItem.type === 'video'}}" /> 视频</label>
+          </radio-group>
+        </view>
+
+        <view class="field-item">
+          <text class="label">{{editingItem.type === 'video' ? '视频文件' : '图片文件'}}</text>
+          <view class="upload-trigger" bindtap="chooseMediaFile">
+            <view wx:if="{{editingItem.tempUrl}}" class="upload-preview-box">
+              <image wx:if="{{editingItem.type === 'image'}}" src="{{editingItem.tempUrl}}" mode="aspectFill" class="upload-preview" />
+              <text wx:else class="upload-preview-text">视频已选择/上传 (FileID: {{editingItem.fileId}})</text>
+            </view>
+            <view wx:else class="upload-placeholder">+ 上传{{editingItem.type === 'video' ? '视频' : '图片'}}</view>
+          </view>
+        </view>
+
+        <view class="field-item" wx:if="{{editingItem.type === 'video'}}">
+          <text class="label">视频封面图 (必填)</text>
+          <view class="upload-trigger" bindtap="choosePosterFile">
+            <view wx:if="{{editingItem.posterTempUrl}}" class="upload-preview-box">
+              <image src="{{editingItem.posterTempUrl}}" mode="aspectFill" class="upload-preview" />
+            </view>
+            <view wx:else class="upload-placeholder">+ 上传视频封面图片</view>
+          </view>
+        </view>
+
+        <view class="field-item">
+          <text class="label">主标题</text>
+          <input class="input" value="{{editingItem.title}}" placeholder="如：专业的上门宠托服务" data-field="title" bindinput="editingInput" />
+        </view>
+
+        <view class="field-item">
+          <text class="label">副标题</text>
+          <input class="input" value="{{editingItem.subtitle}}" placeholder="如：安全 · 贴心 · 实时反馈" data-field="subtitle" bindinput="editingInput" />
+        </view>
+
+        <view class="field-item">
+          <text class="label">排序权重</text>
+          <input class="input" type="number" value="{{editingItem.sort}}" placeholder="数字越小越靠前" data-field="sort" bindinput="editingInput" />
+        </view>
+
+        <view class="field-item between">
+          <text class="label">状态启用</text>
+          <switch checked="{{editingItem.enabled !== false}}" bindchange="toggleEditingEnabled" />
+        </view>
+
+        <view class="form-btn-row">
+          <button class="mini-btn default" bindtap="cancelEditItem">取消</button>
+          <button class="mini-btn primary" bindtap="saveEditingItem">确认暂存到列表</button>
+        </view>
+      </view>
+    </block>
+
+    <button class="primary margin-top-lg" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>
   </view>
 
   <view class="bottom-nav">

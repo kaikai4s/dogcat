@@ -18,7 +18,11 @@
       "Bash(git -C \"/home/ebrook-dev/project/vx\" log --oneline -5)",
       "Bash(npm run:*)",
       "Bash(git push:*)",
-      "Bash(npm view:*)"
+      "Bash(npm view:*)",
+      "Bash(mkdir -p /tmp/rec_frames)",
+      "Bash(ffmpeg -i \"/home/ebrook-dev/视频/录屏/录屏 2026年08月06日 17时17分48秒.webm\" -vf \"fps=1\" /tmp/rec_frames/frame_%03d.png)",
+      "Read(//tmp/**)",
+      "Bash(ffprobe:*)"
     ]
   }
 }

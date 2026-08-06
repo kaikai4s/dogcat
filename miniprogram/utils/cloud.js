@@ -45,7 +45,7 @@ function callFunction(name, action, data = {}) {
 }
 
 function showError(error) {
-  const message = error.message || '操作失败'
+  const message = error && (error.message || error.errMsg) || '操作失败'
   const title = message.includes('collection.get') || message.includes('-501003')
     ? '请先在云开发中创建数据库集合并部署 api 云函数'
     : message
@@ -95,12 +95,53 @@ function saveSelectedLocation(location) {
   return normalized
 }
 
+function normalizeHomeHeroCarousel(carousel = {}) {
+  const source = typeof carousel === 'object' && carousel !== null ? carousel : {}
+  const rawItems = Array.isArray(source.items) ? source.items : []
+  const items = rawItems
+    .map((item, index) => {
+      const type = item && item.type === 'video' ? 'video' : 'image'
+      const fileId = String(item && item.fileId || '').trim()
+      if (!fileId) return null
+      return {
+        id: String(item && item.id || '').trim() || `hero_${Date.now()}_${index}`,
+        type,
+        fileId,
+        posterFileId: String(item && item.posterFileId || '').trim(),
+        title: String(item && item.title || '').trim(),
+        subtitle: String(item && item.subtitle || '').trim(),
+        enabled: item && item.enabled !== false,
+        sort: Number(item && item.sort) || (index + 1) * 10
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.sort - b.sort)
+
+  const interval = Number(source.rotateIntervalMs || source.interval || 0)
+  const rotateIntervalMs = interval >= 1000 ? Math.min(interval, 30000) : 5000
+
+  return {
+    enabled: source.enabled === true,
+    autoRotate: source.autoRotate !== false,
+    rotateIntervalMs,
+    items
+  }
+}
+
 function getCachedSystemSettings() {
-  return wx.getStorageSync(SYSTEM_SETTINGS_STORAGE_KEY) || { enableTestAddressMode: false }
+  const cached = wx.getStorageSync(SYSTEM_SETTINGS_STORAGE_KEY) || {}
+  return {
+    enableTestAddressMode: cached.enableTestAddressMode === true,
+    homeHeroCarousel: normalizeHomeHeroCarousel(cached.homeHeroCarousel)
+  }
 }
 
 function setCachedSystemSettings(settings) {
-  const normalized = { enableTestAddressMode: settings && settings.enableTestAddressMode === true }
+  const source = settings || {}
+  const normalized = {
+    enableTestAddressMode: source.enableTestAddressMode === true,
+    homeHeroCarousel: normalizeHomeHeroCarousel(source.homeHeroCarousel)
+  }
   wx.setStorageSync(SYSTEM_SETTINGS_STORAGE_KEY, normalized)
   return normalized
 }
