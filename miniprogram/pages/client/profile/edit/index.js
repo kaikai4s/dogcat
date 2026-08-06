@@ -54,7 +54,11 @@ Page({
           fail: showError
         })
       },
-      fail: showError
+      fail: (err) => {
+        const errMsg = (err && (err.errMsg || err.message)) || ''
+        if (errMsg.includes('cancel')) return
+        showError(err)
+      }
     })
   },
 
