@@ -61,7 +61,7 @@
     "navigationBarTitleText": "VIP 宠护",
     "navigationBarTextStyle": "black"
   },
-  "__usePrivacyCheck__": false,
+  "__usePrivacyCheck__": true,
   "requiredPrivateInfos": [
     "chooseLocation",
     "getLocation"
