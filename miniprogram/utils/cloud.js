@@ -45,7 +45,10 @@ function callFunction(name, action, data = {}) {
 }
 
 function showError(error) {
-  const message = error && (error.message || error.errMsg) || '操作失败'
+  const message = error && (error.message || error.errMsg) || ''
+  if (!message || message.includes('cancel') || message.includes('canceled')) {
+    return
+  }
   const title = message.includes('collection.get') || message.includes('-501003')
     ? '请先在云开发中创建数据库集合并部署 api 云函数'
     : message
