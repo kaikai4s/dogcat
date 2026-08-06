@@ -86,7 +86,7 @@ function clearRequireCache(filePath) {
   delete require.cache[resolved]
 }
 
-function loadCloudFunction(functionName, db, openid = 'openid_test') {
+function loadCloudFunction(functionName, db, openid = 'openid_test', cloudOverrides = {}) {
   const functionPath = path.resolve(__dirname, '../../cloudfunctions', functionName, 'index.js')
   const originalLoad = Module._load
 
@@ -97,6 +97,9 @@ function loadCloudFunction(functionName, db, openid = 'openid_test') {
         init() {},
         database() { return db },
         getWXContext() { return { OPENID: openid } },
+        getTempFileURL: cloudOverrides.getTempFileURL,
+        ai: cloudOverrides.ai,
+        extend: cloudOverrides.extend,
         openapi: {
           phonenumber: {
             async getPhoneNumber() {

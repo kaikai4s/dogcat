@@ -30,6 +30,10 @@ function callFunction(name, action, data = {}) {
     const result = res.result || {}
     if (!result.ok) {
       const err = new Error(result.message || '云函数调用失败')
+      err.code = result.code || ''
+      err.details = result.details || null
+      err.module = name
+      err.action = action
       // session 失效时清除缓存，下次操作重新验证
       if (result.message && result.message.includes('登录')) {
         setCachedUser(null)
@@ -45,6 +49,15 @@ function showError(error) {
   const title = message.includes('collection.get') || message.includes('-501003')
     ? '请先在云开发中创建数据库集合并部署 api 云函数'
     : message
+  const shouldUseModal = title.length > 18 || /AI|模型|图片|照片|云开发/.test(title)
+  if (shouldUseModal) {
+    wx.showModal({
+      title: '操作失败',
+      content: title,
+      showCancel: false
+    })
+    return
+  }
   wx.showToast({
     title,
     icon: 'none'

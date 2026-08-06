@@ -49,32 +49,7 @@ exports.main = async (event) => {
     }
 
     if (action === 'recognizePetBreed') {
-      const avatarFileId = data.avatarFileId || data.imageUrl || data.photoFileId
-      if (!avatarFileId) throw new Error('请先上传宠物照片再进行AI识别')
-
-      const lower = String(avatarFileId).toLowerCase()
-      let species = 'dog'
-      let breed = '金毛寻回犬'
-
-      if (lower.includes('cat') || lower.includes('ragdoll') || lower.includes('猫')) {
-        species = 'cat'
-        breed = lower.includes('布偶') ? '布偶猫' : '中华田园猫'
-      } else if (lower.includes('other') || lower.includes('兔') || lower.includes('鼠')) {
-        species = 'other'
-        breed = '垂耳兔'
-      } else {
-        species = 'dog'
-        if (lower.includes('corgi') || lower.includes('柯基')) breed = '威尔士柯基犬'
-        else breed = '金毛寻回犬'
-      }
-
-      return ok({
-        species,
-        speciesName: species === 'cat' ? '猫咪' : species === 'other' ? '其他' : '狗狗',
-        breed,
-        confidence: 0.96,
-        aiMessage: `AI 识别成功: ${species === 'cat' ? '猫咪' : species === 'other' ? '其他' : '狗狗'} · ${breed}`
-      })
+      throw new Error('宠物 AI 识别已迁移到 api 云函数，请通过 module=pet/action=recognizePetBreed 调用')
     }
 
     if (action === 'createPet') {

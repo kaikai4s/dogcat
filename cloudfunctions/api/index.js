@@ -294,6 +294,94 @@ function callCloudbaseAiGateway(envId, modelName, imageUrl, promptText) {
   })
 }
 
+function getCloudbaseAiGatewayEnvId() {
+  return process.env.TCB_ENV || process.env.SCF_NAMESPACE || 'cloud1-5gnhqn4t0554c1d9'
+}
+
+function petSpeciesName(species) {
+  return species === 'cat' ? '猫咪' : species === 'other' ? '其他' : '狗狗'
+}
+
+function normalizePetSpecies(value) {
+  return ['dog', 'cat', 'other'].includes(value) ? value : ''
+}
+
+function inferPetSpecies(text) {
+  const source = safeText(text)
+  if (/猫|布偶|英短|美短|狸花|暹罗|波斯/.test(source)) return 'cat'
+  if (/狗|犬|柯基|金毛|拉布拉多|泰迪|贵宾|柴犬|边牧|哈士奇|萨摩耶/.test(source)) return 'dog'
+  if (/兔|仓鼠|豚鼠|鸟|鹦鹉|龟|乌龟|龙猫|刺猬/.test(source)) return 'other'
+  return ''
+}
+
+function parsePetRecognitionText(rawAiContent) {
+  const rawText = safeText(rawAiContent).replace(/```json/g, '').replace(/```/g, '').trim()
+  if (!rawText) throw new Error('AI 服务未返回识别内容，请稍后重试')
+
+  let species = ''
+  let breed = ''
+  const jsonMatch = rawText.match(/\{[\s\S]*?\}/)
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0])
+      species = normalizePetSpecies(safeText(parsed.species))
+      breed = safeText(parsed.breed).trim()
+    } catch (error) {
+      throw new Error('AI 返回格式异常，请换一张清晰照片后重试')
+    }
+  }
+
+  if (!species) species = inferPetSpecies(rawText)
+  if (!species) throw new Error('AI 未能识别出宠物类型，请换一张清晰正脸或全身照片重试')
+
+  const cleanAnalysisText = rawText.replace(/\{[\s\S]*?\}/g, '').trim() || rawText
+  return {
+    species,
+    speciesName: petSpeciesName(species),
+    breed,
+    confidence: breed ? 0.98 : 0.7,
+    aiResultText: cleanAnalysisText,
+    fullAnalysis: cleanAnalysisText
+  }
+}
+
+function getCloudbaseAiClient() {
+  if (typeof cloud.ai === 'function') return { client: cloud.ai(), wrapData: false }
+  if (cloud.extend && cloud.extend.AI && typeof cloud.extend.AI.createModel === 'function') return { client: cloud.extend.AI, wrapData: true }
+  throw new Error('当前云函数 SDK 不支持 cloud.ai，请确认 wx-server-sdk 版本并使用“上传并部署：云端安装依赖”重新部署 api 云函数')
+}
+
+async function callCloudbaseExtendAi(modelNames, imageUrl, promptText) {
+  let lastError = null
+  const aiClient = getCloudbaseAiClient()
+  const aiModel = aiClient.client.createModel('cloudbase')
+  for (const modelName of modelNames) {
+    try {
+      console.log(`[云函数AI识图] 正在调用微信云开发 AI 服务: ${modelName}, imageUrl: ${imageUrl.slice(0, 50)}...`)
+      const payload = {
+        model: modelName,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: promptText },
+              { type: 'image_url', image_url: { url: imageUrl } }
+            ]
+          }
+        ]
+      }
+      const res = await aiModel.generateText(aiClient.wrapData ? { data: payload } : payload)
+      const rawAiContent = res.text || res.content || (res.data && (res.data.text || res.data.content)) || (typeof res === 'string' ? res : '')
+      if (rawAiContent) return { rawAiContent, modelName, source: 'cloudbase_extend_ai' }
+      lastError = new Error('AI 服务返回空内容')
+    } catch (error) {
+      lastError = error
+      console.warn(`[云函数AI识图] cloud.extend.AI (${modelName}) 调用失败:`, error.message || error)
+    }
+  }
+  throw lastError || new Error('微信云开发 AI 服务未响应')
+}
+
 async function getSystemSettings() {
   const res = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
   return normalizeSystemSettings(res.data[0] ? res.data[0].value : {})
@@ -1486,115 +1574,68 @@ const handlers = {
     }
     if (action === 'recognizePetBreed') {
       const avatarFileId = safeText(data.avatarFileId || data.photoFileId)
-      let imageUrl = safeText(data.imageUrl)
-      let imageBase64 = safeText(data.imageBase64)
+      let imageUrl = safeText(data.imageUrl).trim()
+      const imageBase64 = safeText(data.imageBase64).trim()
+      let imageSource = imageUrl ? 'imageUrl' : ''
 
       if (!avatarFileId && !imageUrl && !imageBase64) throw new Error('请先上传宠物照片再进行AI识别')
 
-      const envId = cloud.DYNAMIC_CURRENT_ENV || process.env.TCB_ENV || 'cloud1-5gnhqn4t0554c1d9'
-      let modelName = safeText(data.model) || 'qwen3.5-flash'
-
-      // 获取云端图片 HTTPS 访问链接
       if (!imageUrl && avatarFileId && avatarFileId.startsWith('cloud://')) {
         try {
-          if (typeof cloud.getTempFileURL === 'function') {
-            const fileRes = await cloud.getTempFileURL({ fileList: [avatarFileId] })
-            if (fileRes && fileRes.fileList && fileRes.fileList[0] && fileRes.fileList[0].tempFileURL) {
-              imageUrl = fileRes.fileList[0].tempFileURL
-            }
-          }
-        } catch (e) {
-          console.error('getTempFileURL error:', e)
+          if (typeof cloud.getTempFileURL !== 'function') throw new Error('当前云函数 SDK 不支持 getTempFileURL')
+          const fileRes = await cloud.getTempFileURL({ fileList: [avatarFileId] })
+          const fileItem = fileRes && fileRes.fileList && fileRes.fileList[0]
+          imageUrl = safeText(fileItem && fileItem.tempFileURL).trim()
+          if (imageUrl) imageSource = 'avatarFileId'
+        } catch (error) {
+          console.error('[云函数AI识图] getTempFileURL 失败:', error.message || error)
         }
       }
 
       if (!imageUrl && imageBase64) {
-        imageUrl = `data:image/jpeg;base64,${imageBase64}`
+        imageUrl = imageBase64.startsWith('data:image/') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`
+        imageSource = 'imageBase64'
       }
 
-      // 测试环境 mock 处理
-      if (data.apiKey === 'mock-key') {
-        const mockText = '照片中的宠物是一只威尔士柯基犬，体型矮小，大耳朵，毛色黄白相间。{"species":"dog","breed":"威尔士柯基犬"}'
-        return {
-          species: 'dog',
-          speciesName: '狗狗',
-          breed: '威尔士柯基犬',
-          confidence: 0.98,
-          aiResultText: '照片中的宠物是一只威尔士柯基犬，体型矮小，大耳朵，毛色黄白相间。',
-          fullAnalysis: '照片中的宠物是一只威尔士柯基犬，体型矮小，大耳朵，毛色黄白相间。',
-          aiMessage: '微信云开发 AI (qwen3.5-flash) 识别成功'
-        }
+      if (!imageUrl) throw new Error('照片链接生成失败，请重新上传照片后再试')
+
+      const requestedModel = safeText(data.model).trim() || 'qwen3.5-flash'
+      const modelsToTry = Array.from(new Set([requestedModel, 'qwen3.5-flash', 'qwen3.5-plus', 'glm-4v-flash', 'glm-4v-plus', 'glm-5v-turbo']))
+      const promptText = '请详细描述并识别照片中的宠物：包括宠物类型（狗狗/猫咪/异宠）、判断出的具体品种名称，以及外貌毛色形态特征。字数在120字以内。最后单独一行返回格式如 {"species":"dog","breed":"柯基"} 的严格JSON，其中 species 只能是 dog、cat、other。'
+
+      let aiResponse = null
+      let extendAiError = null
+      try {
+        aiResponse = await callCloudbaseExtendAi(modelsToTry, imageUrl, promptText)
+      } catch (error) {
+        extendAiError = error
+        console.warn('[云函数AI识图] cloud.extend.AI 全部失败，尝试 AI 网关:', error.message || error)
       }
 
-      const promptText = '请详细描述并识别照片中的宠物：包括宠物类型（狗狗/猫咪/异宠）、判断出的具体品种名称，以及外貌毛色形态特征。字数在120字以内。最后单独一行返回格式如 {"species":"dog","breed":"柯基"} 的严格JSON。'
-
-      let rawAiContent = ''
-
-      // 1. 使用微信云开发内置 AI 扩展 (cloud.extend.AI)
-      if (cloud.extend && cloud.extend.AI && typeof cloud.extend.AI.createModel === 'function') {
-        const modelsToTry = [modelName, 'qwen3.5-flash', 'qwen3.5-plus', 'glm-4v-flash', 'glm-4v-plus', 'glm-5v-turbo']
-        for (const m of modelsToTry) {
-          try {
-            console.log(`[云函数AI识图] 正在调用微信云开发 AI 服务: ${m}, imageUrl: ${imageUrl ? imageUrl.slice(0, 50) + '...' : 'none'}`)
-            const aiModel = cloud.extend.AI.createModel('cloudbase')
-            const messages = [
-              {
-                role: 'user',
-                content: imageUrl ? [
-                  { type: 'text', text: promptText },
-                  { type: 'image_url', image_url: { url: imageUrl } }
-                ] : promptText
-              }
-            ]
-            const res = await aiModel.generateText({
-              data: {
-                model: m,
-                messages
-              }
-            })
-            rawAiContent = res.text || (res.data && res.data.text) || (typeof res === 'string' ? res : '')
-            if (rawAiContent) {
-              modelName = m
-              console.log(`[云函数AI识图] 微信云开发 AI (${m}) 真实响应:`, rawAiContent)
-              break
-            }
-          } catch (err1) {
-            console.warn(`[云函数AI识图] cloud.extend.AI (${m}) 调用失败:`, err1.message || err1)
-          }
-        }
+      if (!aiResponse) {
+        const reason = extendAiError && extendAiError.message ? extendAiError.message : '模型无响应'
+        throw new Error(`AI 识别服务暂不可用，请检查云开发 AI 服务配置或重新部署 api 云函数：${reason}`)
       }
 
-      // 2. 解析真实 AI 返回文本
-      if (rawAiContent) {
-        let species = 'dog'
-        let breed = ''
-        const jsonMatch = rawAiContent.match(/\{[\s\S]*?\}/)
-        if (jsonMatch) {
-          try {
-            const parsed = JSON.parse(jsonMatch[0])
-            if (parsed.species) species = ['dog', 'cat', 'other'].includes(parsed.species) ? parsed.species : 'dog'
-            if (parsed.breed) breed = parsed.breed
-          } catch (e) {}
-        }
+      const parsedResult = parsePetRecognitionText(aiResponse.rawAiContent)
+      const aiMessage = `微信云开发 AI (${aiResponse.modelName}) 识别分析完成`
+      await recordAiLog(openid, {
+        avatarFileId,
+        modelName: aiResponse.modelName,
+        source: aiResponse.source,
+        rawResponse: aiResponse.rawAiContent,
+        species: parsedResult.species,
+        breed: parsedResult.breed,
+        aiMessage: parsedResult.aiResultText
+      })
 
-        const speciesName = species === 'cat' ? '猫咪' : species === 'other' ? '其他' : '狗狗'
-        const cleanAnalysisText = rawAiContent.replace(/\{[\s\S]*?\}/g, '').trim() || rawAiContent
-        const aiMessage = `微信云开发 AI (${modelName}) 识别分析完成`
-
-        await recordAiLog(openid, { avatarFileId, modelName, source: 'cloudbase_extend_ai', rawResponse: rawAiContent, species, breed, aiMessage: cleanAnalysisText })
-
-        return {
-          species,
-          speciesName,
-          breed,
-          confidence: 0.98,
-          aiResultText: cleanAnalysisText,
-          fullAnalysis: cleanAnalysisText,
-          aiMessage
-        }
+      return {
+        ...parsedResult,
+        aiMessage,
+        modelName: aiResponse.modelName,
+        source: aiResponse.source,
+        imageSource
       }
-
-      throw new Error('微信云开发 AI 服务未响应，请检查云开发控制台是否已开通 qwen3.5-flash / qwen3.5-plus 图像模型')
     }
     if (action === 'createPet') {
       if (!data.name) throw new Error('宠物名称不能为空')

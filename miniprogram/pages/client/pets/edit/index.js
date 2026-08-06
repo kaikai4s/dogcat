@@ -140,6 +140,8 @@ Page({
   },
 
   recognizeBreed() {
+    if (this.data.recognizingBreed) return
+
     const avatarFileId = this.data.form.avatarFileId
     const tempHttpsUrl = this.data.tempHttpsUrl
     const localTempPath = this.data.localTempPath
@@ -157,11 +159,19 @@ Page({
           this.setData({ recognizingBreed: false })
           console.log('[AI识图日志] 云函数识别成功返回:', res)
           if (!res) return
-          const fullText = res.aiResultText || res.fullAnalysis || res.aiMessage || ''
-          this.setData({
-            aiResultText: fullText
-          })
-          wx.showToast({ title: 'AI 识别完成', icon: 'success', duration: 2500 })
+
+          const updates = {
+            aiResultText: res.aiResultText || res.fullAnalysis || res.aiMessage || ''
+          }
+          const speciesIndex = speciesOptions.findIndex((item) => item.value === res.species)
+          if (speciesIndex >= 0) {
+            updates.speciesIndex = speciesIndex
+            updates['form.species'] = speciesOptions[speciesIndex].value
+          }
+          if (res.breed) updates['form.breed'] = res.breed
+
+          this.setData(updates)
+          wx.showToast({ title: 'AI 识别完成，已回填', icon: 'success', duration: 2500 })
         })
         .catch((err) => {
           this.setData({ recognizingBreed: false })
@@ -177,6 +187,7 @@ Page({
         fileList: [avatarFileId],
         success: (res) => {
           const url = res.fileList && res.fileList[0] ? res.fileList[0].tempFileURL : ''
+          this.setData({ tempHttpsUrl: url })
           executeRecognize(avatarFileId, url)
         },
         fail: () => executeRecognize(avatarFileId, '')

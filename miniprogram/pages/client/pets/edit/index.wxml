@@ -22,7 +22,7 @@
       </view>
       <view class="photo-actions">
         <button class="ghost photo-btn" bindtap="choosePhoto">{{form.avatarFileId ? '更换照片' : '选择照片'}}</button>
-        <button class="ai-breed-btn" bindtap="recognizeBreed" loading="{{recognizingBreed}}">
+        <button class="ai-breed-btn" bindtap="recognizeBreed" loading="{{recognizingBreed}}" disabled="{{recognizingBreed}}">
           ✨ AI 识别种类/品种
         </button>
       </view>
@@ -30,7 +30,7 @@
 
     <view class="ai-result-box" wx:if="{{aiResultText}}">
       <view class="ai-result-header">
-        <text class="ai-result-title">✨ 微信云开发 AI 识别回复 (请参考自主填写)</text>
+        <text class="ai-result-title">✨ AI 识别结果（已自动回填，可手动修改）</text>
       </view>
       <view class="ai-result-content">{{aiResultText}}</view>
     </view>

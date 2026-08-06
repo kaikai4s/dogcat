@@ -171,15 +171,66 @@ test('pet profile stores photo birthday breed and AI interaction fields', async 
   assert.equal(noPhoto.ok, false)
   assert.match(noPhoto.message, /请上传至少一张宠物照片/)
 
-  // Test AI pet breed recognition
-  const aiRecognize = await fn.main({
+  // Test AI pet breed recognition through mocked cloud AI service
+  const aiDb = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    ai_logs: []
+  })
+  const aiFn = loadCloudFunction('api', aiDb, 'openid_client', {
+    async getTempFileURL({ fileList }) {
+      return { fileList: [{ fileID: fileList[0], tempFileURL: 'https://example.com/corgi-photo.jpg' }] }
+    },
+    ai() {
+      return {
+        createModel() {
+          return {
+            async generateText(payload) {
+              assert.equal(payload.model, 'qwen3.5-flash')
+              assert.equal(payload.messages[0].content[1].type, 'image_url')
+              return { text: '照片中的宠物是一只威尔士柯基犬，体型矮小，大耳朵，毛色黄白相间。{"species":"dog","breed":"威尔士柯基犬"}' }
+            }
+          }
+        }
+      }
+    }
+  })
+  const aiRecognize = await aiFn.main({
     module: 'pet',
     action: 'recognizePetBreed',
-    data: { avatarFileId: 'cloud://corgi-photo.jpg', apiKey: 'mock-key' }
+    data: { avatarFileId: 'cloud://corgi-photo.jpg' }
   })
   assert.equal(aiRecognize.ok, true)
   assert.equal(aiRecognize.data.species, 'dog')
   assert.equal(aiRecognize.data.breed, '威尔士柯基犬')
+  assert.match(aiRecognize.data.aiResultText, /柯基/)
+})
+
+test('pet AI recognition requires an uploaded image', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const result = await fn.main({ module: 'pet', action: 'recognizePetBreed', data: {} })
+
+  assert.equal(result.ok, false)
+  assert.match(result.message, /请先上传宠物照片/)
+})
+
+test('pet AI recognition fails when cloud photo URL cannot be generated', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client', {
+    async getTempFileURL() {
+      throw new Error('file not found')
+    }
+  })
+
+  const result = await fn.main({ module: 'pet', action: 'recognizePetBreed', data: { avatarFileId: 'cloud://missing-photo.jpg' } })
+
+  assert.equal(result.ok, false)
+  assert.match(result.message, /照片链接生成失败/)
 })
 
 test('api quoteOrder supports multiple services and price details', async () => {
