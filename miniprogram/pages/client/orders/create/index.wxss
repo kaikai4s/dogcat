@@ -64,3 +64,139 @@
   padding-top: 12rpx;
   border-top: 1rpx solid rgba(244, 63, 107, 0.12);
 }
+
+.pet-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.pet-option {
+  display: flex;
+  gap: 18rpx;
+  padding: 20rpx;
+  border-radius: 28rpx;
+  background: #fff7fa;
+  border: 2rpx solid rgba(244, 63, 107, 0.1);
+}
+
+.pet-option.active {
+  background: linear-gradient(135deg, #ffe3ec 0%, #fff8fb 100%);
+  border-color: #f43f6b;
+  box-shadow: 0 12rpx 28rpx rgba(244, 63, 107, 0.14);
+}
+
+.pet-option-avatar {
+  width: 132rpx;
+  height: 132rpx;
+  flex-shrink: 0;
+  border-radius: 26rpx;
+  background: #ffeef4;
+}
+
+.pet-option-avatar.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f43f6b;
+  font-size: 48rpx;
+}
+
+.pet-option-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.pet-option-head {
+  align-items: center;
+  gap: 12rpx;
+}
+
+.pet-option-name {
+  color: #262125;
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.pet-selected-badge {
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  background: #f43f6b;
+  color: #fff;
+  font-size: 21rpx;
+  font-weight: 800;
+}
+
+.pet-option-meta,
+.pet-option-hint {
+  margin-top: 8rpx;
+  color: #969196;
+  font-size: 23rpx;
+  line-height: 1.35;
+}
+
+.pet-option-hint {
+  color: #6f676d;
+}
+
+.pet-chip-row {
+  margin-top: 12rpx;
+}
+
+.pet-voice {
+  position: relative;
+  padding: 22rpx 24rpx;
+  border-radius: 28rpx;
+  background: linear-gradient(135deg, #fff2d7 0%, #fff8fb 100%);
+  border: 2rpx solid rgba(244, 63, 107, 0.12);
+}
+
+.pet-voice::before {
+  content: '';
+  position: absolute;
+  top: -12rpx;
+  left: 52rpx;
+  width: 24rpx;
+  height: 24rpx;
+  background: #fff2d7;
+  transform: rotate(45deg);
+  border-left: 2rpx solid rgba(244, 63, 107, 0.12);
+  border-top: 2rpx solid rgba(244, 63, 107, 0.12);
+}
+
+.pet-voice-label {
+  color: #f43f6b;
+  font-size: 23rpx;
+  font-weight: 850;
+}
+
+.pet-voice-text {
+  margin-top: 8rpx;
+  color: #4a4248;
+  font-size: 27rpx;
+  line-height: 1.5;
+  font-weight: 700;
+}
+
+.pet-empty {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  padding: 22rpx;
+  border-radius: 28rpx;
+  background: #fff7fa;
+  border: 2rpx dashed rgba(244, 63, 107, 0.24);
+}
+
+.pet-empty-icon {
+  width: 88rpx;
+  height: 88rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24rpx;
+  background: #ffeef4;
+  color: #f43f6b;
+  font-size: 40rpx;
+}

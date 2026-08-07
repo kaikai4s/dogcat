@@ -38,6 +38,57 @@ function markSelected(options, selected) {
   return options.map((item) => ({ ...item, selected: selected.includes(item.key) }))
 }
 
+function getSpeciesLabel(species) {
+  if (species === 'cat') return '猫咪'
+  if (species === 'other') return '其他宠物'
+  return '狗狗'
+}
+
+function formatPetMeta(pet) {
+  if (!pet) return ''
+  const parts = [getSpeciesLabel(pet.species)]
+  if (pet.breed) parts.push(pet.breed)
+  if (pet.weight) parts.push(`${pet.weight}kg`)
+  return parts.join(' · ')
+}
+
+function formatPetHint(pet) {
+  if (!pet) return ''
+  return pet.personality || pet.specialNotes || pet.healthNotes || '今天也想和你一起安心出门'
+}
+
+function getVoiceWeekday(startDate) {
+  const date = new Date(`${startDate}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return new Date().getDay()
+  return date.getDay()
+}
+
+function buildPetVoiceMessage(pet, startDate) {
+  if (!pet) return ''
+  const name = pet.name || '我'
+  const species = getSpeciesLabel(pet.species)
+  const messages = [
+    `主人主人，周日我想和你贴贴放松，预约好服务后你就安心休息吧～`,
+    `主人，周一你要加油工作哦，我会乖乖等宠托师来陪我的！`,
+    `主人，周二我也在想你呢，等我玩开心了就回去抱你～`,
+    `主人，周三快过半啦，今天也要记得想我这个快乐${species}哦！`,
+    `主人，周四我都准备好啦，你帮我安排的服务最贴心了～`,
+    `我是${name}，周五马上放假啦！主人今晚要早点回家陪我玩哦！`,
+    `主人，周六又是美好的一天，谢谢你帮我找了帮手照顾我～`
+  ]
+  return messages[getVoiceWeekday(startDate)]
+}
+
+function decoratePets(pets, selectedPetId) {
+  return (pets || []).map((pet) => ({
+    ...pet,
+    selected: pet._id === selectedPetId,
+    metaText: formatPetMeta(pet),
+    hintText: formatPetHint(pet),
+    speciesText: getSpeciesLabel(pet.species)
+  }))
+}
+
 Page({
   data: {
     pets: [],
@@ -64,6 +115,8 @@ Page({
     quote: null,
     selectedCouponId: '',
     selectedCoupon: null,
+    selectedPet: null,
+    petVoiceMessage: '',
     requestedSitter: null,
     saveAddress: false,
     locationReady: false,
@@ -116,13 +169,14 @@ Page({
         const enabled = serviceOptions || []
         const selected = this.data.form.serviceTypes.filter((key) => enabled.some((item) => item.key === key))
         const serviceTypes = selected.length ? selected : [enabled[0]?.key || 'walk']
+        const petId = this.data.form.petId || pets[0]?._id || ''
         this.setData({
-          pets,
+          pets: decoratePets(pets, petId),
           serviceOptions: markSelected(enabled, serviceTypes),
-          ['form.petId']: this.data.form.petId || pets[0]?._id || '',
+          ['form.petId']: petId,
           ['form.serviceTypes']: serviceTypes,
           ['form.serviceType']: serviceTypes[0]
-        })
+        }, this.syncSelectedPetUI)
       })
       .catch(showError)
   },
@@ -206,6 +260,7 @@ Page({
         if (durationIndex >= 0) update.durationIndex = durationIndex
         this.setData(update, () => {
           this.prepareTime()
+          this.syncSelectedPetUI()
           if (template.staffProfileId) this.loadRequestedSitter(template.staffProfileId)
         })
       })
@@ -243,8 +298,25 @@ Page({
     this.setData({ saveAddress: e.detail.value })
   },
 
+  syncSelectedPetUI() {
+    const petId = this.data.form.petId
+    const pets = decoratePets(this.data.pets, petId)
+    const selectedPet = pets.find((item) => item._id === petId) || null
+    this.setData({
+      pets,
+      selectedPet,
+      petVoiceMessage: buildPetVoiceMessage(selectedPet, this.data.form.startDate)
+    })
+  },
+
   choosePet(e) {
-    this.setData({ ['form.petId']: this.data.pets[e.detail.value]._id, quote: null })
+    const petId = e.currentTarget.dataset.id
+    if (!petId) return
+    this.setData({ ['form.petId']: petId, quote: null }, this.syncSelectedPetUI)
+  },
+
+  addPet() {
+    wx.navigateTo({ url: '/pages/client/pets/edit/index' })
   },
 
   toggleService(e) {
@@ -261,7 +333,10 @@ Page({
   },
 
   chooseDate(e) {
-    this.setData({ ['form.startDate']: e.detail.value, quote: null }, this.prepareTime)
+    this.setData({ ['form.startDate']: e.detail.value, quote: null }, () => {
+      this.prepareTime()
+      this.syncSelectedPetUI()
+    })
   },
 
   chooseClock(e) {

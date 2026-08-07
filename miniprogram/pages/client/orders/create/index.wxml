@@ -36,9 +36,37 @@
     </view>
 
     <view class="subtitle">服务对象</view>
-    <picker range="{{pets}}" range-key="name" bindchange="choosePet">
-      <view class="field">🐾 宠物：{{pets.length ? (form.petId ? '已选择宠物，可继续完善服务信息' : '请选择本次服务宠物') : '请先添加宠物'}}</view>
-    </picker>
+    <view class="pet-selector" wx:if="{{pets.length}}">
+      <view class="pet-option {{item.selected ? 'active' : ''}}" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="choosePet">
+        <image class="pet-option-avatar" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" />
+        <view class="pet-option-avatar empty" wx:else>🐾</view>
+        <view class="pet-option-info">
+          <view class="between pet-option-head">
+            <view class="pet-option-name">{{item.name}}</view>
+            <view class="pet-selected-badge" wx:if="{{item.selected}}">已选择</view>
+          </view>
+          <view class="pet-option-meta">{{item.metaText}}</view>
+          <view class="pet-option-hint">{{item.hintText}}</view>
+          <view class="chip-row pet-chip-row">
+            <view class="chip">{{item.speciesText}}</view>
+            <view class="chip pink">{{item.gender || '未填性别'}}</view>
+            <view class="chip blue">{{item.specialNotes || item.healthNotes ? '有照顾说明' : '健康乖巧'}}</view>
+          </view>
+        </view>
+      </view>
+      <view class="pet-voice" wx:if="{{selectedPet && petVoiceMessage}}">
+        <view class="pet-voice-label">{{selectedPet.name}}想说</view>
+        <view class="pet-voice-text">“{{petVoiceMessage}}”</view>
+      </view>
+    </view>
+    <view class="pet-empty" wx:else>
+      <view class="pet-empty-icon">🐾</view>
+      <view>
+        <view class="strong">请先添加宠物</view>
+        <view class="muted">完善宠物头像和档案后，宠托师能更好地照顾它。</view>
+      </view>
+      <button class="ghost compact-btn" bindtap="addPet">添加宠物</button>
+    </view>
 
     <view class="subtitle">服务项目（可多选）</view>
     <view class="service-grid">
