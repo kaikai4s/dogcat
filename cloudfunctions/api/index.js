@@ -923,17 +923,43 @@ function hasCoordinate(latitude, longitude) {
 
 function calcDistanceKm(lat1, lng1, lat2, lng2) {
   if (!hasCoordinate(lat1, lng1) || !hasCoordinate(lat2, lng2)) return null
-  const radius = 6371
-  const toRad = (value) => Number(value) * Math.PI / 180
+  const R = 6371 // 地球平均半径 (公里)
+  const toRad = (value) => (Number(value) * Math.PI) / 180
+  const radLat1 = toRad(lat1)
+  const radLat2 = toRad(lat2)
   const dLat = toRad(lat2 - lat1)
   const dLng = toRad(lng2 - lng1)
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
-  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(radLat1) * Math.cos(radLat2) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
 }
 
 function formatDistance(distanceKm) {
   if (distanceKm === null) return '未定位'
   return distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(2)}km`
+}
+
+function normalizeCityName(city) {
+  return String(city || '').trim().replace(/^(.*省|.*自治区)/, '').replace(/(市|特别行政区|地区|盟|自治州)$/, '')
+}
+
+function extractCityFromText(text) {
+  const value = String(text || '')
+  const directCity = value.match(/(北京市|上海市|天津市|重庆市|香港特别行政区|澳门特别行政区)/)
+  if (directCity) return directCity[1]
+  const city = value.match(/(?:.*省|.*自治区)?([^省自治区特别行政区]{2,20}市|[^省自治区特别行政区]{2,20}自治州|[^省自治区特别行政区]{2,20}地区|[^省自治区特别行政区]{2,20}盟)/)
+  return city ? city[1] : ''
+}
+
+function orderMatchesCity(order, selectedCity) {
+  const filterCity = normalizeCityName(selectedCity)
+  if (!filterCity) return true
+  const orderCity = normalizeCityName(order.city || extractCityFromText(`${order.serviceAddress || ''}${order.addressDetail || ''}`))
+  if (!orderCity) return true
+  return orderCity.includes(filterCity) || filterCity.includes(orderCity)
 }
 
 function normalizeBenefits(value) {
@@ -1897,7 +1923,7 @@ const handlers = {
         }
       }
       const time = now()
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', requiredCheckins: requiredCheckins(pricing.serviceTypes[0], pricing.serviceTypes), insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', requiredCheckins: requiredCheckins(pricing.serviceTypes[0], pricing.serviceTypes), insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {
@@ -2530,14 +2556,71 @@ const handlers = {
     if (action === 'listNearbyOrders') {
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
-      const latitude = Number(data.latitude || 0)
-      const longitude = Number(data.longitude || 0)
+
+      const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
+      const profile = profileRes.data[0] || {}
+      const latitude = Number(data.latitude || profile.currentLatitude || 0)
+      const longitude = Number(data.longitude || profile.currentLongitude || 0)
+
+      const filterCity = data.city ? String(data.city).trim() : ''
+      const inServiceRange = Boolean(data.inServiceRange)
+      const inServiceTime = Boolean(data.inServiceTime)
+      const filterDate = data.filterDate ? String(data.filterDate).trim() : ''
+
       const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
-      const orders = await Promise.all((res.data || []).filter(isOpenOrder).map(async (order) => {
+      let orders = await Promise.all((res.data || []).filter(isOpenOrder).map(async (order) => {
         const enriched = await attachOrderDisplayData(order)
-        const distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
+        // 订单距离只按前端传入的工作台位置与订单服务地址计算。
+        let distanceKm = null
+        if (hasCoordinate(latitude, longitude) && hasCoordinate(enriched.addressLatitude, enriched.addressLongitude)) {
+          distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
+        }
         return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
       }))
+
+      // 1. 城市筛选：优先用订单 city 字段，历史订单无 city 时从服务地址解析；解析不到城市的旧数据默认保留。
+      if (filterCity) {
+        orders = orders.filter((order) => orderMatchesCity(order, filterCity))
+      }
+
+      // 2. 服务日期筛选 (Date Filter: YYYY-MM-DD)
+      if (filterDate) {
+        orders = orders.filter((order) => {
+          if (!order.startTime) return false
+          return String(order.startTime).startsWith(filterDate)
+        })
+      }
+
+      // 3. 服务范围筛选 (In Service Range Filter)
+      if (inServiceRange) {
+        const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+        orders = orders.filter((order) => {
+          // 直接使用前面精准计算出的 distanceKm 进行比对，确保与界面显示的距离完全一致
+          return order.distanceKm !== null && order.distanceKm <= radiusKm
+        })
+      }
+
+      // 4. 服务时间筛选 (In Service Time Filter)
+      if (inServiceTime && profile.weeklySchedule) {
+        orders = orders.filter((order) => {
+          if (!order.startTime) return false
+          const orderDate = new Date(order.startTime.replace(/-/g, '/'))
+          if (isNaN(orderDate.getTime())) return false
+          // JS getDay(): 0 is Sunday, 1 is Monday. Schedule keys are "1"-"7" (1: Monday, 7: Sunday)
+          const jsDay = orderDate.getDay()
+          const dayKey = String(jsDay === 0 ? 7 : jsDay)
+          const slots = profile.weeklySchedule[dayKey]
+          if (!Array.isArray(slots) || !slots.length) return false
+
+          const orderHour = orderDate.getHours() + orderDate.getMinutes() / 60
+          return slots.some((slot) => {
+            const startH = Number(slot.start || 0)
+            const endH = Number(slot.end || 24)
+            return orderHour >= startH && orderHour <= endH
+          })
+        })
+      }
+
       return orders
         .sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
         .slice(0, 20)
@@ -2554,7 +2637,10 @@ const handlers = {
         .filter((order) => order.publishMode === 'direct' && !order.staffOpenid && order.requestedStaffOpenid === openid)
         .map(async (order) => {
           const enriched = await attachOrderDisplayData(order)
-          const distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
+          let distanceKm = null
+          if (hasCoordinate(latitude, longitude) && hasCoordinate(enriched.addressLatitude, enriched.addressLongitude)) {
+            distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
+          }
           return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
         }))
     }

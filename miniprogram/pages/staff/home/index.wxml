@@ -1,8 +1,19 @@
 <view class="page dashboard-page">
   <view class="dashboard-header">
-    <view class="badge">宠托师</view>
-    <view class="title">服务工作台</view>
-    <view class="tip">系统会使用首页左上角选择的位置，与订单地址比较距离。</view>
+    <view class="between" style="align-items: center;">
+      <view>
+        <view class="badge">宠托师</view>
+        <view class="title">服务工作台</view>
+      </view>
+      <picker mode="region" bindchange="onCityPickerChange">
+        <view class="city-selector-btn">
+          <text class="city-icon">📍</text>
+          <text class="city-name">{{selectedCity || '选择城市'}}</text>
+          <text class="arrow-down">▼</text>
+        </view>
+      </picker>
+    </view>
+    <view class="tip">默认根据选定城市推荐可接订单，支持高级条件筛选。</view>
   </view>
 
   <view class="notice-bar" wx:if="{{missingAddressNotice}}" style="background: #fff0f3; border: 2rpx solid #f43f6b; color: #d32f2f; padding: 24rpx; border-radius: 16rpx; margin-bottom: 24rpx; display: flex; align-items: center; justify-content: space-between;">
@@ -62,14 +73,55 @@
   </view>
 
   <view class="soft-panel">
-    <view class="between">
+    <view class="between" style="align-items: center;">
       <view>
         <view class="strong">附近可接订单</view>
         <view class="muted">{{locationText}}</view>
       </view>
-      <view class="badge">{{nearbyOrders.length}} 单</view>
+      <view style="display: flex; align-items: center; gap: 12rpx;">
+        <view class="filter-trigger-btn {{inServiceRange || inServiceTime || filterDate ? 'active' : ''}}" bindtap="toggleFilterPanel">
+          <text>筛选 ⚙️</text>
+          <text class="active-dot" wx:if="{{inServiceRange || inServiceTime || filterDate}}"></text>
+        </view>
+        <view class="badge">{{nearbyOrders.length}} 单</view>
+      </view>
     </view>
-    <button class="primary" loading="{{loadingNearby}}" bindtap="refreshNearby">手动更新位置并推荐</button>
+
+    <!-- 下拉筛选面板 -->
+    <view class="filter-dropdown-panel" wx:if="{{showFilterPanel}}">
+      <view class="filter-group">
+        <view class="filter-label">高级过滤选项</view>
+        <view class="filter-chips">
+          <view class="filter-chip {{inServiceRange ? 'selected' : ''}}" bindtap="toggleInServiceRange">
+            <text class="chip-icon">{{inServiceRange ? '✓' : '+'}}</text>
+            <text>服务范围内</text>
+          </view>
+          <view class="filter-chip {{inServiceTime ? 'selected' : ''}}" bindtap="toggleInServiceTime">
+            <text class="chip-icon">{{inServiceTime ? '✓' : '+'}}</text>
+            <text>服务时间内</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="filter-group" style="margin-top: 16rpx;">
+        <view class="filter-label">履约日期筛选</view>
+        <view class="date-picker-row">
+          <picker mode="date" value="{{filterDate}}" bindchange="onDateChange" style="flex: 1;">
+            <view class="date-input-box">
+              <text>{{filterDate || '选择特定履约日期 (YYYY-MM-DD)'}}</text>
+            </view>
+          </picker>
+          <button class="clear-date-btn" size="mini" wx:if="{{filterDate}}" bindtap="clearDate">清除</button>
+        </view>
+      </view>
+
+      <view class="filter-actions">
+        <button class="reset-btn" size="mini" bindtap="resetFilters">重置全部</button>
+        <button class="confirm-btn" size="mini" bindtap="toggleFilterPanel">收起面板</button>
+      </view>
+    </view>
+
+    <button class="primary" style="margin-top: 16rpx;" loading="{{loadingNearby}}" bindtap="refreshNearby">手动更新工作台位置并推荐</button>
   </view>
 
   <view class="card order-card" wx:for="{{nearbyOrders}}" wx:key="_id">
