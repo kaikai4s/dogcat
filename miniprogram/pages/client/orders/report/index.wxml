@@ -27,6 +27,16 @@
 
   <view class="card" style="margin-top:24rpx;padding:24rpx;">
     <view class="between" style="align-items:center;">
+      <view>
+        <view class="subtitle" style="margin-bottom:0;">服务轨迹</view>
+        <view class="muted">查看地图轨迹、起终点和打卡位置</view>
+      </view>
+      <button class="ghost compact-btn" bindtap="goTracking">查看轨迹</button>
+    </view>
+  </view>
+
+  <view class="card" style="margin-top:24rpx;padding:24rpx;">
+    <view class="between" style="align-items:center;">
       <view class="subtitle" style="margin-bottom:0;">🤖 AI 智能总结</view>
       <button class="primary compact-btn" loading="{{loadingAi}}" bindtap="generateAiReport">一键生成总结</button>
     </view>

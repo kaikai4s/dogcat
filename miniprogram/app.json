@@ -65,11 +65,19 @@
   "requiredPrivateInfos": [
     "chooseLocation",
     "getLocation",
+    "startLocationUpdate",
+    "startLocationUpdateBackground",
     "chooseAddress"
+  ],
+  "requiredBackgroundModes": [
+    "location"
   ],
   "permission": {
     "scope.userLocation": {
       "desc": "用于服务打卡、轨迹记录、附近订单和地图展示"
+    },
+    "scope.userLocationBackground": {
+      "desc": "用于服务期间在后台持续记录履约轨迹"
     }
   },
   "sitemapLocation": "sitemap.json",

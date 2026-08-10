@@ -1,25 +1,226 @@
-const { callFunction, showError, getServiceLocation } = require('../../../../utils/cloud')
+const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 
+const TRACK_INTERVAL_MS = 60 * 1000
+const TRACK_MIN_DISTANCE_M = 50
+const MAX_ACCEPTABLE_ACCURACY_M = 200
+
+function hasCoordinate(latitude, longitude) {
+  const lat = Number(latitude)
+  const lng = Number(longitude)
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) > 0.000001 && Math.abs(lng) > 0.000001
+}
+
+function calcDistanceM(lat1, lng1, lat2, lng2) {
+  const toRad = (degree) => degree * Math.PI / 180
+  const radius = 6371000
+  const radLat1 = toRad(Number(lat1))
+  const radLat2 = toRad(Number(lat2))
+  const dLat = toRad(Number(lat2) - Number(lat1))
+  const dLng = toRad(Number(lng2) - Number(lng1))
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(radLat1) * Math.cos(radLat2) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2)
+  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function toTrackPoint(location) {
+  const latitude = Number(location && location.latitude)
+  const longitude = Number(location && location.longitude)
+  if (!hasCoordinate(latitude, longitude)) return null
+  return {
+    latitude,
+    longitude,
+    accuracy: Number(location.accuracy || 0),
+    speed: Number(location.speed || 0),
+    recordedAt: Date.now()
+  }
+}
+
 Page({
-  data: { id: '', order: null, unlock: null, pointCount: 0, sectionHomeUrl: '', canGoBack: false },
+  data: {
+    id: '',
+    order: null,
+    unlock: null,
+    pointCount: 0,
+    autoTracking: false,
+    backgroundTracking: false,
+    trackStatusText: '服务开始后自动记录轨迹',
+    latestTrackText: '',
+    sectionHomeUrl: '',
+    canGoBack: false
+  },
+
   onLoad(q) {
     this.setData({ ...createPageNav(q), id: q.id })
     this.loadOrder()
   },
+
+  onUnload() {
+    this.stopAutoTracking()
+  },
+
   loadOrder() {
     callFunction('order', 'getOrderDetail', { id: this.data.id })
-      .then((order) => this.setData({ order }))
+      .then((order) => {
+        this.setData({ order })
+        if (order && order.status === 'in_service') this.startAutoTracking()
+      })
       .catch(() => {})
   },
+
   previewPetPhoto() {
     const photo = this.data.order && this.data.order.petSnapshot && this.data.order.petSnapshot.avatarFileId
     if (photo) wx.previewImage({ urls: [photo] })
   },
-  start() { callFunction('order', 'startService', { id: this.data.id }).then(() => wx.showToast({ title: '已开始' })).catch(showError) },
-  unlock() { callFunction('homeSecurity', 'getUnlockCode', { orderId: this.data.id }).then((unlock) => this.setData({ unlock })).catch(showError) },
-  uploadPoint() { getServiceLocation().then((loc) => { callFunction('track', 'batchUploadTrack', { orderId: this.data.id, points: [{ latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy, speed: 0, recordedAt: Date.now() }] }).then((res) => this.setData({ pointCount: this.data.pointCount + res.count })).catch(showError) }).catch(showError) },
-  checkin(e) { wx.navigateTo({ url: '/pages/staff/checkin/camera/index?id=' + this.data.id + '&eventType=' + e.currentTarget.dataset.type }) },
-  finish() { callFunction('order', 'finishService', { id: this.data.id }).then(() => wx.showToast({ title: '已完成' })).catch(showError) },
+
+  start() {
+    callFunction('order', 'startService', { id: this.data.id })
+      .then(() => {
+        wx.showToast({ title: '已开始' })
+        this.setData({ order: { ...(this.data.order || {}), status: 'in_service' } })
+        this.startAutoTracking()
+      })
+      .catch(showError)
+  },
+
+  unlock() {
+    callFunction('homeSecurity', 'getUnlockCode', { orderId: this.data.id })
+      .then((unlock) => this.setData({ unlock }))
+      .catch(showError)
+  },
+
+  startAutoTracking() {
+    if (this.trackingStarted || !this.data.id) return
+    this.trackingStarted = true
+    this.lastTrackPoint = null
+    this.lastTrackUploadedAt = 0
+    this.setData({ autoTracking: true, backgroundTracking: false, trackStatusText: '正在开启轨迹记录' })
+
+    requirePrivacyAuthorize()
+      .then(() => this.startLocationUpdate())
+      .then((mode) => {
+        if (typeof wx.onLocationChange !== 'function') throw new Error('当前微信版本不支持连续定位')
+        this.handleLocationChange = (location) => this.recordTrackPoint(location, false)
+        wx.onLocationChange(this.handleLocationChange)
+        this.uploadAutoTrackPoint()
+        this.trackTimer = setInterval(() => this.uploadAutoTrackPoint(), TRACK_INTERVAL_MS)
+        this.setData({
+          backgroundTracking: mode === 'background',
+          trackStatusText: mode === 'background' ? '后台轨迹记录中' : '前台轨迹记录中'
+        })
+      })
+      .catch((error) => {
+        this.trackingStarted = false
+        this.setData({ autoTracking: false, backgroundTracking: false, trackStatusText: '自动轨迹未开启，请手动记录当前位置' })
+        showError(error)
+      })
+  },
+
+  startLocationUpdate() {
+    const startForeground = () => new Promise((resolve, reject) => {
+      if (typeof wx.startLocationUpdate !== 'function') {
+        reject(new Error('当前微信版本不支持连续定位'))
+        return
+      }
+      wx.startLocationUpdate({ success: () => resolve('foreground'), fail: reject })
+    })
+
+    if (typeof wx.startLocationUpdateBackground !== 'function') return startForeground()
+    return new Promise((resolve) => {
+      wx.startLocationUpdateBackground({
+        success: () => resolve('background'),
+        fail: () => startForeground().then(resolve).catch(() => resolve('failed'))
+      })
+    }).then((mode) => {
+      if (mode === 'failed') throw new Error('当前微信版本或权限不支持连续定位')
+      return mode
+    })
+  },
+
+  stopAutoTracking() {
+    if (!this.trackingStarted) return
+    this.trackingStarted = false
+    if (this.handleLocationChange && typeof wx.offLocationChange === 'function') {
+      wx.offLocationChange(this.handleLocationChange)
+    }
+    this.handleLocationChange = null
+    if (this.trackTimer) clearInterval(this.trackTimer)
+    this.trackTimer = null
+    if (typeof wx.stopLocationUpdate === 'function') wx.stopLocationUpdate({})
+    this.setData({ autoTracking: false, backgroundTracking: false, trackStatusText: '轨迹记录已停止' })
+  },
+
+  shouldUploadTrackPoint(point, force) {
+    if (force) return true
+    if (point.accuracy && point.accuracy > MAX_ACCEPTABLE_ACCURACY_M) return false
+    if (!this.lastTrackPoint) return true
+    if (Date.now() - this.lastTrackUploadedAt >= TRACK_INTERVAL_MS) return true
+    const distance = calcDistanceM(this.lastTrackPoint.latitude, this.lastTrackPoint.longitude, point.latitude, point.longitude)
+    return distance >= TRACK_MIN_DISTANCE_M
+  },
+
+  getRealtimeLocation() {
+    return requirePrivacyAuthorize().then(() => new Promise((resolve, reject) => {
+      wx.getLocation({
+        type: 'gcj02',
+        success: resolve,
+        fail: reject
+      })
+    }))
+  },
+
+  uploadAutoTrackPoint() {
+    return this.getRealtimeLocation()
+      .then((loc) => this.recordTrackPoint(loc, false))
+      .catch(() => null)
+  },
+
+  recordTrackPoint(location, force) {
+    const point = toTrackPoint(location)
+    if (!point || !this.shouldUploadTrackPoint(point, force)) return Promise.resolve(null)
+    return callFunction('track', 'batchUploadTrack', { orderId: this.data.id, points: [point] })
+      .then((res) => {
+        this.lastTrackPoint = point
+        this.lastTrackUploadedAt = Date.now()
+        const pointCount = this.data.pointCount + Number(res.count || 0)
+        this.setData({
+          pointCount,
+          latestTrackText: `最近记录：${new Date(point.recordedAt).toTimeString().slice(0, 5)}，精度${Math.round(point.accuracy || 0)}m`
+        })
+        return res
+      })
+      .catch((error) => {
+        if (force) showError(error)
+        return null
+      })
+  },
+
+  uploadPoint(options = {}) {
+    return getServiceLocation()
+      .then((loc) => this.recordTrackPoint(loc, true))
+      .then((res) => {
+        if (res && !options.silent) wx.showToast({ title: '已记录位置' })
+      })
+      .catch((error) => {
+        if (!options.silent) showError(error)
+      })
+  },
+
+  checkin(e) {
+    wx.navigateTo({ url: '/pages/staff/checkin/camera/index?id=' + this.data.id + '&eventType=' + e.currentTarget.dataset.type })
+  },
+
+  finish() {
+    this.uploadAutoTrackPoint()
+      .then(() => callFunction('order', 'finishService', { id: this.data.id }))
+      .then(() => {
+        this.stopAutoTracking()
+        wx.showToast({ title: '已完成' })
+        this.setData({ order: { ...(this.data.order || {}), status: 'completed' } })
+      })
+      .catch(showError)
+  },
+
   ...navMethods()
 })

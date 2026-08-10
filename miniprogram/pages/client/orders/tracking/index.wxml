@@ -1,14 +1,18 @@
-<view class="page">
+<view class="page tracking-page">
   <view class="top-nav">
     <view class="nav-round" bindtap="goBack">‹</view>
   </view>
-  <view class="dashboard-header">
+  <view class="dashboard-header tracking-hero">
     <view class="badge">实时履约</view>
     <view class="title">服务轨迹</view>
-    <view class="tip">实时轨迹和打卡时间轴会在服务过程中持续更新。</view>
+    <view class="tip">查看宠托师服务期间的轨迹路径、起终点和关键打卡位置。</view>
   </view>
 
-  <view class="stats-grid">
+  <view class="stats-grid tracking-stats">
+    <view class="stat-card highlight">
+      <view class="stat-number">{{trackSummary.distanceText}}</view>
+      <view class="stat-label">轨迹距离</view>
+    </view>
     <view class="stat-card">
       <view class="stat-number">{{tracks.length}}</view>
       <view class="stat-label">轨迹点</view>
@@ -19,19 +23,51 @@
     </view>
   </view>
 
-  <view class="card">
-    <view class="subtitle">服务路径</view>
-    <map wx:if="{{hasMapData}}" class="tracking-map" latitude="{{mapLatitude}}" longitude="{{mapLongitude}}" markers="{{markers}}" polyline="{{polyline}}" include-points="{{includePoints}}" show-location></map>
-    <view wx:else class="muted">暂无有效定位数据，宠托师记录位置或打卡后会生成地图路径。</view>
+  <view class="map-card">
+    <view class="map-header">
+      <view>
+        <view class="subtitle">服务路径</view>
+        <view class="muted">{{trackSummary.startTimeText}} - {{trackSummary.endTimeText}}</view>
+      </view>
+      <view class="live-pill" wx:if="{{hasMapData}}">轨迹已生成</view>
+    </view>
+    <view class="map-shell" wx:if="{{hasMapData}}">
+      <map
+        class="tracking-map"
+        latitude="{{mapLatitude}}"
+        longitude="{{mapLongitude}}"
+        markers="{{markers}}"
+        polyline="{{polyline}}"
+        include-points="{{includePoints}}"
+        show-location
+        show-compass
+        scale="15"
+      ></map>
+      <cover-view class="map-legend">
+        <cover-view class="legend-item"><cover-view class="legend-dot start"></cover-view><cover-view>起点</cover-view></cover-view>
+        <cover-view class="legend-item"><cover-view class="legend-dot route"></cover-view><cover-view>轨迹</cover-view></cover-view>
+        <cover-view class="legend-item"><cover-view class="legend-dot checkin"></cover-view><cover-view>打卡</cover-view></cover-view>
+        <cover-view class="legend-item"><cover-view class="legend-dot end"></cover-view><cover-view>终点</cover-view></cover-view>
+      </cover-view>
+    </view>
+    <view wx:else class="empty-map">
+      <view class="empty-map-icon">⌖</view>
+      <view class="strong">暂无有效定位数据</view>
+      <view class="muted">宠托师记录位置或打卡后会自动生成地图路径。</view>
+    </view>
   </view>
 
-  <view class="card">
+  <view class="card timeline-card">
     <view class="subtitle">打卡时间轴</view>
-    <view class="timeline">
-      <view class="timeline-item" wx:for="{{checkins}}" wx:key="_id">
-        <view class="strong">{{item.eventTypeText}}</view>
-        <view class="muted">{{item.remark || '暂无备注'}}</view>
+    <view class="timeline" wx:if="{{checkins.length}}">
+      <view class="timeline-item pretty" wx:for="{{checkins}}" wx:key="_id">
+        <view class="timeline-dot"></view>
+        <view class="timeline-content">
+          <view class="strong">{{item.eventTypeText}}</view>
+          <view class="muted">{{item.remark || '暂无备注'}}</view>
+        </view>
       </view>
     </view>
+    <view wx:else class="muted">暂无打卡记录。</view>
   </view>
 </view>

@@ -34,8 +34,11 @@
 
   <view class="card">
     <view class="subtitle">轨迹记录</view>
-    <button class="ghost" bindtap="uploadPoint">记录当前位置</button>
-    <view class="muted">服务过程中可多次记录位置，用户端会按时间生成路径。</view>
+    <view class="badge" wx:if="{{autoTracking}}">{{backgroundTracking ? '后台记录中' : '自动记录中'}}</view>
+    <view class="muted">{{trackStatusText}}</view>
+    <view class="muted" wx:if="{{latestTrackText}}">{{latestTrackText}}</view>
+    <button class="ghost" bindtap="uploadPoint">手动补记当前位置</button>
+    <view class="muted">服务期间会定时记录当前位置，用户端会按时间生成路径。</view>
     <view class="muted">已上传轨迹点：{{pointCount}}</view>
   </view>
 

@@ -18,6 +18,10 @@ Page({
       .then((report) => this.setData({ report: { ...report, order: withOrderText(report.order), checkins: (report.checkins || []).map(withCheckinText) } }))
       .catch(showError)
   },
+  goTracking() {
+    wx.navigateTo({ url: `/pages/client/orders/tracking/index?id=${this.data.id}` })
+  },
+
   generateAiReport() {
     if (!this.data.id || this.data.loadingAi) return
     this.setData({ loadingAi: true })
