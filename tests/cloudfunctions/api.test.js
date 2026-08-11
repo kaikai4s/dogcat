@@ -439,7 +439,51 @@ test('admin listStaffProfiles filters status and attaches user display fields', 
   assert.equal(approvedResult.data[0].phone, '13800000000')
   assert.equal(approvedResult.data[0].userNickname, '豆豆姐姐')
   assert.equal(approvedResult.data[0].auditStatusText, '已通过')
+  assert.equal(approvedResult.data[0].ratingAverage, 0)
+  assert.equal(approvedResult.data[0].reviewCount, 0)
+  assert.equal(approvedResult.data[0].isFeatured, false)
   assert.deepEqual(keywordResult.data.map((profile) => profile._id), ['sp1'])
+})
+
+test('admin can set and cancel featured sitter', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+    ],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'approved' }],
+    admin_operation_logs: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const setResult = await adminFn.main({ module: 'admin', action: 'setSitterFeatured', data: { staffProfileId: 'sp1', isFeatured: true } })
+  const cancelResult = await adminFn.main({ module: 'admin', action: 'setSitterFeatured', data: { staffProfileId: 'sp1', isFeatured: false } })
+  const deniedResult = await clientFn.main({ module: 'admin', action: 'setSitterFeatured', data: { staffProfileId: 'sp1', isFeatured: true } })
+  const profile = db.state.staff_profiles.find((item) => item._id === 'sp1')
+
+  assert.equal(setResult.ok, true)
+  assert.equal(setResult.data.isFeatured, true)
+  assert.equal(cancelResult.ok, true)
+  assert.equal(profile.isFeatured, false)
+  assert.equal(profile.featuredAt, '')
+  assert.equal(deniedResult.ok, false)
+  assert.equal(deniedResult.message, '仅管理员可操作')
+  assert.equal(db.state.admin_operation_logs.length, 2)
+})
+
+test('admin cannot feature unapproved sitter', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'pending' }],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const result = await fn.main({ module: 'admin', action: 'setSitterFeatured', data: { staffProfileId: 'sp1', isFeatured: true } })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.message, '仅已审核通过的宠托师可设为精选')
 })
 
 test('admin can list grant and revoke admin roles safely', async () => {
@@ -591,6 +635,73 @@ test('client can list only approved sitters with safe public fields', async () =
   assert.equal(Object.hasOwn(result.data.list[0], 'currentLatitude'), false)
   assert.equal(Object.hasOwn(result.data.list[0], 'currentLongitude'), false)
   assert.equal(Object.hasOwn(result.data.list[0], 'auditRemark'), false)
+  assert.equal(result.data.list[0].ratingAverage, 0)
+  assert.equal(result.data.list[0].reviewCount, 0)
+  assert.equal(result.data.list[0].isFeatured, false)
+})
+
+test('client sitter list supports rating sort and featured-first ordering', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    staff_profiles: [
+      { _id: 'sp1', realName: '普通高分', serviceCity: '上海', serviceAreas: '浦东', auditStatus: 'approved', ratingAverage: 4.9, reviewCount: 8, updatedAt: '2026-07-29 10:00' },
+      { _id: 'sp2', realName: '精选低分', serviceCity: '上海', serviceAreas: '徐汇', auditStatus: 'approved', ratingAverage: 4.2, reviewCount: 2, isFeatured: true, featuredAt: '2026-07-29 09:00', updatedAt: '2026-07-29 09:00' },
+      { _id: 'sp3', realName: '普通次高', serviceCity: '上海', serviceAreas: '静安', auditStatus: 'approved', ratingAverage: 4.8, reviewCount: 12, updatedAt: '2026-07-29 12:00' }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const ratingResult = await fn.main({ module: 'staff', action: 'listApprovedSitters', data: { sortBy: 'rating' } })
+  const latestResult = await fn.main({ module: 'staff', action: 'listApprovedSitters', data: { sortBy: 'latest' } })
+  const cityResult = await fn.main({ module: 'staff', action: 'listApprovedSitters', data: { sortBy: 'city' } })
+
+  assert.equal(ratingResult.ok, true)
+  assert.deepEqual(ratingResult.data.list.map((item) => item._id), ['sp2', 'sp1', 'sp3'])
+  assert.equal(ratingResult.data.list[0].isFeatured, true)
+  assert.equal(ratingResult.data.list[1].ratingAverage, 4.9)
+  assert.equal(ratingResult.data.list[1].reviewCount, 8)
+  assert.equal(latestResult.data.list[0]._id, 'sp2')
+  assert.equal(cityResult.data.list[0]._id, 'sp2')
+})
+
+test('client sitter list keeps featured first for distance sort', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    staff_profiles: [
+      { _id: 'sp1', realName: '近距离', serviceCity: '上海', serviceAreas: '浦东', auditStatus: 'approved', serviceAddress: '近', serviceLatitude: 31.21, serviceLongitude: 121.51, serviceRadiusKm: 20, ratingAverage: 4.9, reviewCount: 10 },
+      { _id: 'sp2', realName: '精选远距离', serviceCity: '上海', serviceAreas: '徐汇', auditStatus: 'approved', serviceAddress: '远', serviceLatitude: 31.25, serviceLongitude: 121.55, serviceRadiusKm: 20, ratingAverage: 4.1, reviewCount: 1, isFeatured: true, featuredAt: '2026-07-29 09:00' }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const result = await fn.main({ module: 'staff', action: 'listApprovedSitters', data: { sortBy: 'distance', latitude: 31.2, longitude: 121.5 } })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.data.list.map((item) => item._id), ['sp2', 'sp1'])
+})
+
+test('client review updates sitter rating stats and blocks duplicates', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '豆豆家长', points: 0, totalPoints: 0 }],
+    orders: [{ _id: 'order1', clientOpenid: 'openid_client', staffProfileId: 'sp1', staffUserId: 'staff', staffOpenid: 'openid_staff', status: 'completed' }],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'approved', ratingAverage: 0, reviewCount: 0 }],
+    service_reviews: [{ _id: 'old_review', orderId: 'old_order', staffProfileId: 'sp1', rating: 4, status: 'visible', createdAt: '2026-07-28 10:00' }],
+    order_timeline: [],
+    point_logs: [],
+    member_levels: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const result = await fn.main({ module: 'order', action: 'createReview', data: { orderId: 'order1', rating: 5, tags: ['服务细心'], content: '很细心' } })
+  const duplicate = await fn.main({ module: 'order', action: 'createReview', data: { orderId: 'order1', rating: 3 } })
+  const profile = db.state.staff_profiles.find((item) => item._id === 'sp1')
+
+  assert.equal(result.ok, true)
+  assert.equal(profile.ratingAverage, 4.5)
+  assert.equal(profile.reviewCount, 2)
+  assert.ok(profile.ratingUpdatedAt)
+  assert.equal(duplicate.ok, false)
+  assert.equal(duplicate.message, '该订单已评价')
 })
 
 test('client sitter list and detail display current nickname first', async () => {

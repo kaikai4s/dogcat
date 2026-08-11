@@ -176,3 +176,31 @@
   min-height: 74rpx;
   font-size: 27rpx;
 }
+
+.featured-badge {
+  color: #9a3412;
+  background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%);
+}
+
+.sitter-rating-row {
+  margin: 8rpx 0 12rpx;
+}
+
+.rating-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  color: #b45309;
+  font-size: 25rpx;
+  font-weight: 850;
+}
+
+.rating-chip text {
+  color: #8c858b;
+  font-weight: 650;
+}
+
+.muted-rating {
+  color: #a7a0a6;
+  font-weight: 650;
+}

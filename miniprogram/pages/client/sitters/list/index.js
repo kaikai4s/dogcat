@@ -5,6 +5,7 @@ const ALL = '全部'
 const sortOptions = [
   { label: '推荐', value: 'default' },
   { label: '距离最近', value: 'distance' },
+  { label: '评分最高', value: 'rating' },
   { label: '最近更新', value: 'latest' },
   { label: '城市优先', value: 'city' }
 ]

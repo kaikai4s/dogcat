@@ -60,3 +60,24 @@
 .sitter-info {
   margin-top: 18rpx;
 }
+
+.featured-badge {
+  color: #9a3412;
+  background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%);
+}
+
+.admin-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 18rpx;
+}
+
+.admin-actions .mini-btn {
+  flex: 1;
+}
+
+.ghost-mini {
+  color: #f43f6b;
+  background: #fff7fa;
+  border: 2rpx solid rgba(244, 63, 107, 0.18);
+}

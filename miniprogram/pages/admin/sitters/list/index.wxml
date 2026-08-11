@@ -24,7 +24,8 @@
       <view class="sitter-main">
         <view class="between">
           <view class="strong sitter-name">{{item.realName || '未填写姓名'}}</view>
-          <view class="badge">{{item.auditStatusText}}</view>
+          <view class="badge featured-badge" wx:if="{{item.isFeatured}}">平台精选</view>
+          <view class="badge" wx:else>{{item.auditStatusText}}</view>
         </view>
         <view class="muted">绑定账号：{{item.userNickname}}</view>
         <view class="muted openid-text">{{item.openid}}</view>
@@ -34,9 +35,14 @@
       <view class="info-row"><view class="label">手机号</view><view class="value">{{item.phone || '未填写'}}</view></view>
       <view class="info-row"><view class="label">服务城市</view><view class="value">{{item.serviceCity || '未填写'}}</view></view>
       <view class="info-row"><view class="label">服务区域</view><view class="value">{{item.serviceAreas || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">评分评价</view><view class="value">{{item.ratingText}}</view></view>
+      <view class="info-row"><view class="label">精选状态</view><view class="value">{{item.isFeatured ? '平台精选' : '未精选'}}</view></view>
       <view class="info-row"><view class="label">账号状态</view><view class="value">{{item.userStatus || '未知'}}</view></view>
     </view>
-    <button class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
+    <view class="admin-actions">
+      <button class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
+      <button class="mini-btn ghost-mini" wx:if="{{item.auditStatus === 'approved'}}" data-id="{{item._id}}" data-featured="{{item.isFeatured}}" bindtap="toggleFeatured">{{item.featuredActionText}}</button>
+    </view>
   </view>
 
   <view class="bottom-nav">

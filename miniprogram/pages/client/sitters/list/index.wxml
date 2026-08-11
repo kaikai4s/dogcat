@@ -62,7 +62,12 @@
             <view class="strong">{{item.displayName}}</view>
             <view class="muted">{{item.serviceCity}}</view>
           </view>
-          <view class="badge">已审核</view>
+          <view class="badge featured-badge" wx:if="{{item.isFeatured}}">平台精选</view>
+          <view class="badge" wx:else>已审核</view>
+        </view>
+        <view class="sitter-rating-row">
+          <view class="rating-chip" wx:if="{{item.reviewCount}}">★ {{item.ratingAverage}} <text>{{item.reviewCount}}条评价</text></view>
+          <view class="rating-chip muted-rating" wx:else>暂无评分</view>
         </view>
         <view class="chip-row">
           <view class="chip pink" wx:for="{{item.publicTags}}" wx:for-item="tag" wx:key="*this">{{tag}}</view>

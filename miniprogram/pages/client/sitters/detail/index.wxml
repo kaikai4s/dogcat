@@ -5,7 +5,7 @@
   <view class="sitter-hero">
     <view class="hero-topline">
       <view class="badge">宠托师详情</view>
-      <view class="hero-count">{{sitter.favorite ? '已收藏' : '可收藏'}}</view>
+      <view class="hero-count">{{sitter.isFeatured ? '平台精选' : (sitter.favorite ? '已收藏' : '可收藏')}}</view>
     </view>
     <view class="title">{{sitter.displayName}}</view>
     <view class="tip">{{sitter.serviceCity}} · {{sitter.levelName}}</view>
@@ -19,6 +19,7 @@
         <view class="strong">{{sitter.displayName}}</view>
         <view class="muted">{{sitter.serviceSummary}}</view>
         <view class="chip-row">
+          <view class="chip pink" wx:if="{{sitter.isFeatured}}">平台精选</view>
           <view class="chip pink" wx:for="{{sitter.publicTags}}" wx:key="*this">{{item}}</view>
         </view>
       </view>

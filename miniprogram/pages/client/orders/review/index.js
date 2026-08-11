@@ -11,13 +11,18 @@ const tagOptions = [
   { label: '值得推荐', selected: false }
 ]
 
+const ratingTexts = ['', '很差', '不满意', '一般', '满意', '超出预期']
+
 Page({
   data: {
     id: '',
     rating: 5,
+    ratingText: ratingTexts[5],
     ratingOptions: [1, 2, 3, 4, 5],
     tags: tagOptions,
     content: '',
+    contentCount: 0,
+    submitting: false,
     sectionHomeUrl: '',
     canGoBack: false
   },
@@ -32,7 +37,8 @@ Page({
   },
 
   chooseRating(e) {
-    this.setData({ rating: Number(e.currentTarget.dataset.rating) })
+    const rating = Number(e.currentTarget.dataset.rating)
+    this.setData({ rating, ratingText: ratingTexts[rating] || '' })
   },
 
   toggleTag(e) {
@@ -43,11 +49,14 @@ Page({
   },
 
   input(e) {
-    this.setData({ content: e.detail.value })
+    const content = e.detail.value || ''
+    this.setData({ content, contentCount: content.length })
   },
 
   submit() {
+    if (this.data.submitting) return
     const tags = this.data.tags.filter((item) => item.selected).map((item) => item.label)
+    this.setData({ submitting: true })
     callFunction('order', 'createReview', {
       orderId: this.data.id,
       rating: this.data.rating,
@@ -58,7 +67,10 @@ Page({
         wx.showToast({ title: '已评价' })
         wx.navigateBack()
       })
-      .catch(showError)
+      .catch((error) => {
+        this.setData({ submitting: false })
+        showError(error)
+      })
   },
 
   ...navMethods()

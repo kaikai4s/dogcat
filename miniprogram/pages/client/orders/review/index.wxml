@@ -10,8 +10,11 @@
 
   <view class="card form-card">
     <view class="subtitle">整体评分</view>
-    <view class="rating-row">
-      <view class="rating-star {{rating >= item ? 'active' : ''}}" wx:for="{{ratingOptions}}" wx:key="*this" data-rating="{{item}}" bindtap="chooseRating">★</view>
+    <view class="rating-panel">
+      <view class="rating-row">
+        <view class="rating-star {{rating >= item ? 'active' : ''}}" wx:for="{{ratingOptions}}" wx:key="*this" data-rating="{{item}}" bindtap="chooseRating">★</view>
+      </view>
+      <view class="rating-text">{{ratingText}}</view>
     </view>
 
     <view class="subtitle">服务标签</view>
@@ -19,8 +22,11 @@
       <view class="tag-option {{item.selected ? 'active' : ''}}" wx:for="{{tags}}" wx:key="label" data-label="{{item.label}}" bindtap="toggleTag">{{item.label}}</view>
     </view>
 
-    <textarea placeholder="可以写下宠托师的服务表现、宠物状态反馈等" value="{{content}}" bindinput="input" maxlength="300" />
+    <view class="textarea-wrap">
+      <textarea placeholder="写下服务表现、宠物状态、沟通反馈，帮助其他宠物主参考" value="{{content}}" bindinput="input" maxlength="300" />
+      <view class="word-count">{{contentCount}}/300</view>
+    </view>
   </view>
 
-  <button class="primary" bindtap="submit">提交评价</button>
+  <button class="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">提交评价</button>
 </view>

@@ -651,6 +651,13 @@ function validateSitterScheduleTime(weeklySchedule, startTimeStr, endTimeStr) {
   }
 }
 
+function toTimeValue(value) {
+  if (!value) return 0
+  if (value instanceof Date) return value.getTime()
+  const parsed = new Date(String(value).replace(/-/g, '/')).getTime()
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
 function toPublicSitter(profile) {
   const areaTags = splitServiceAreas(profile.serviceAreas)
   const radius = Math.max(Number(profile.serviceRadiusKm || 5), 1)
@@ -671,6 +678,12 @@ function toPublicSitter(profile) {
     areaTags,
     publicTags: ['已实名', '平台审核', '可上门'],
     serviceSummary: areaTags.length ? `可服务：${areaTags.slice(0, 4).join('、')}` : '服务区域待完善',
+    ratingAverage: Number(profile.ratingAverage || 0),
+    reviewCount: Number(profile.reviewCount || 0),
+    ratingUpdatedAt: profile.ratingUpdatedAt || '',
+    isFeatured: profile.isFeatured === true,
+    featuredAt: profile.featuredAt || '',
+    createdAt: profile.createdAt || '',
     updatedAt: profile.updatedAt || profile.createdAt || ''
   }
 }
@@ -1430,7 +1443,7 @@ async function getReviewStats(staffProfileId) {
   const ratingAverage = reviewCount ? Number((reviews.reduce((sum, item) => sum + Number(item.rating || 0), 0) / reviewCount).toFixed(1)) : 0
   const recentReviews = reviews
     .slice()
-    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    .sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
     .slice(0, 5)
     .map((item) => ({
       _id: item._id,
@@ -1441,6 +1454,20 @@ async function getReviewStats(staffProfileId) {
       createdAt: item.createdAt
     }))
   return { ratingAverage, reviewCount, recentReviews }
+}
+
+async function updateStaffRatingStats(staffProfileId, time = now()) {
+  if (!staffProfileId) return { ratingAverage: 0, reviewCount: 0 }
+  const stats = await getReviewStats(staffProfileId)
+  await db.collection('staff_profiles').doc(staffProfileId).update({
+    data: {
+      ratingAverage: stats.ratingAverage,
+      reviewCount: stats.reviewCount,
+      ratingUpdatedAt: time,
+      updatedAt: time
+    }
+  })
+  return stats
 }
 
 async function isFavoriteSitter(openid, staffProfileId) {
@@ -2014,6 +2041,7 @@ const handlers = {
       const review = { orderId: data.orderId, clientUserId: user._id, clientOpenid: openid, clientName: user.nickname || '', staffUserId: order.staffUserId || '', staffOpenid: order.staffOpenid || '', staffProfileId: order.staffProfileId || '', rating, tags: Array.isArray(data.tags) ? data.tags.slice(0, 8) : [], content: String(data.content || '').trim(), status: 'visible', createdAt: time, updatedAt: time }
       const created = await db.collection('service_reviews').add({ data: review })
       await db.collection('orders').doc(data.orderId).update({ data: { reviewedAt: time, updatedAt: time } })
+      await updateStaffRatingStats(order.staffProfileId, time)
       await appendOrderTimeline(data.orderId, 'reviewed', '宠物主已评价', `${rating}星评价`, 'client')
       await addPoints(openid, user._id, 10, 'order_review', data.orderId, '评价订单 +10 积分', { applyMultiplier: true, baseDelta: 10 })
       return { _id: created._id, ...review }
@@ -2406,13 +2434,22 @@ const handlers = {
         return publicData
       })
 
-      if (sortBy === 'distance' && userHasLoc) {
-        publicList.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999))
-      } else if (sortBy === 'city') {
-        publicList.sort((a, b) => String(a.serviceCity || '').localeCompare(String(b.serviceCity || '')) || String(a.serviceAreas || '').localeCompare(String(b.serviceAreas || '')))
-      } else if (sortBy === 'latest') {
-        publicList.sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
+      const compareRating = (a, b) => Number(b.ratingAverage || 0) - Number(a.ratingAverage || 0) || Number(b.reviewCount || 0) - Number(a.reviewCount || 0) || toTimeValue(b.ratingUpdatedAt || b.updatedAt) - toTimeValue(a.ratingUpdatedAt || a.updatedAt)
+      const compareFeatured = (a, b) => {
+        const featuredDiff = Number(b.isFeatured === true) - Number(a.isFeatured === true)
+        if (featuredDiff) return featuredDiff
+        if (a.isFeatured === true && b.isFeatured === true) return toTimeValue(b.featuredAt) - toTimeValue(a.featuredAt)
+        return 0
       }
+      const compareDefault = (a, b) => compareRating(a, b) || toTimeValue(b.updatedAt) - toTimeValue(a.updatedAt)
+      const compareByMode = (a, b) => {
+        if (sortBy === 'distance' && userHasLoc) return (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999) || compareRating(a, b)
+        if (sortBy === 'city') return String(a.serviceCity || '').localeCompare(String(b.serviceCity || '')) || String(a.serviceAreas || '').localeCompare(String(b.serviceAreas || '')) || compareRating(a, b)
+        if (sortBy === 'latest') return toTimeValue(b.updatedAt || b.createdAt) - toTimeValue(a.updatedAt || a.createdAt) || compareRating(a, b)
+        if (sortBy === 'rating') return compareRating(a, b)
+        return compareDefault(a, b)
+      }
+      publicList.sort((a, b) => compareFeatured(a, b) || compareByMode(a, b))
 
       const start = (page - 1) * pageSize
       return {
@@ -2908,6 +2945,10 @@ const handlers = {
             auditStatus: profile.auditStatus || 'pending',
             auditStatusText: auditStatusText(profile.auditStatus || 'pending'),
             auditRemark: profile.auditRemark || '',
+            ratingAverage: Number(profile.ratingAverage || 0),
+            reviewCount: Number(profile.reviewCount || 0),
+            isFeatured: profile.isFeatured === true,
+            featuredAt: profile.featuredAt || '',
             createdAt: profile.createdAt || '',
             updatedAt: profile.updatedAt || '',
             userNickname: user.nickname || '微信用户',
@@ -2917,6 +2958,22 @@ const handlers = {
           }
         })
         .filter((item) => !keyword || [item.openid, item.realName, item.phone, item.serviceCity, item.serviceAreas, item.userNickname].some((value) => safeText(value).toLowerCase().includes(keyword)))
+    }
+    if (action === 'setSitterFeatured') {
+      const staffProfileId = safeText(data.staffProfileId).trim()
+      if (!staffProfileId) throw new Error('请选择宠托师')
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
+      const profile = profileRes.data
+      if (!profile) throw new Error('宠托师不存在')
+      if (profile.auditStatus !== 'approved') throw new Error('仅已审核通过的宠托师可设为精选')
+      const time = now()
+      const isFeatured = data.isFeatured === true
+      const update = isFeatured
+        ? { isFeatured: true, featuredAt: time, featuredByOpenid: openid, updatedAt: time }
+        : { isFeatured: false, featuredAt: '', featuredByOpenid: '', updatedAt: time }
+      await db.collection('staff_profiles').doc(staffProfileId).update({ data: update })
+      await logAdmin(admin, 'staff_profile', staffProfileId, 'setSitterFeatured', { isFeatured })
+      return { staffProfileId, ...update }
     }
     if (action === 'listAdmins') {
       const usersRes = await db.collection('users').get()
