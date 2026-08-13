@@ -1,0 +1,82 @@
+<view class="page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+  </view>
+
+  <view class="dashboard-header">
+    <view class="badge">排班日历</view>
+    <view class="title">日期例外与预约占用</view>
+    <view class="tip">按周规则仍在个人中心配置，这里可设置某天休息或加班时间。</view>
+  </view>
+
+  <view class="card info-list">
+    <view class="info-row"><view class="label">按周规则</view><view class="value schedule-text">{{weeklyScheduleText || '全天可预约'}}</view></view>
+  </view>
+
+  <view class="calendar-grid">
+    <view
+      wx:for="{{calendar}}"
+      wx:key="dateKey"
+      class="card day-card {{selectedDate === item.dateKey ? 'active' : ''}} {{item.status === 'available' ? '' : 'rest'}}"
+      data-date="{{item.dateKey}}"
+      bindtap="selectDay"
+    >
+      <view class="between">
+        <view class="strong">{{item.dateKey}}</view>
+        <view class="badge {{item.source === 'exception' ? 'pink' : ''}}">{{item.sourceText}}</view>
+      </view>
+      <view class="muted">{{item.dayName}} · {{item.statusText}}</view>
+      <view class="slot-text">{{item.slotText}}</view>
+      <view class="muted">{{item.busyText}}</view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{selectedDay}}">
+    <view class="between editor-head">
+      <view>
+        <view class="strong">编辑 {{selectedDay.dateKey}}</view>
+        <view class="muted">{{selectedDay.dayName}} · 已接订单会自动占用该时间段</view>
+      </view>
+      <view class="badge">{{selectedDay.busyText}}</view>
+    </view>
+
+    <view class="chip-row">
+      <view class="chip {{form.status === 'available' ? 'pink' : ''}}" bindtap="setAvailable">可预约</view>
+      <view class="chip {{form.status === 'unavailable' ? 'pink' : ''}}" bindtap="setUnavailable">休息</view>
+    </view>
+
+    <view wx:if="{{form.status === 'available'}}">
+      <view class="slot-row" wx:for="{{form.slots}}" wx:key="index">
+        <view>{{item.start}}:00 - {{item.end}}:00</view>
+        <view class="remove" data-index="{{index}}" bindtap="removeSlot">删除</view>
+      </view>
+      <view class="add-row">
+        <picker mode="selector" range="{{hourLabels}}" value="{{startHourIndex}}" bindchange="bindStartHourChange">
+          <view class="field">{{hourLabels[startHourIndex]}}</view>
+        </picker>
+        <view class="muted">至</view>
+        <picker mode="selector" range="{{hourLabels}}" value="{{endHourIndex}}" bindchange="bindEndHourChange">
+          <view class="field">{{hourLabels[endHourIndex]}}</view>
+        </picker>
+        <button class="ghost compact-btn" bindtap="addSlot">添加</button>
+      </view>
+    </view>
+
+    <input class="field remark" placeholder="备注，如临时休息、加班" value="{{form.remark}}" bindinput="inputRemark" />
+
+    <view wx:if="{{selectedDay.busyOrders.length}}" class="busy-list">
+      <view class="subtitle">已接订单占用</view>
+      <view class="busy-item" wx:for="{{selectedDay.busyOrders}}" wx:key="orderId">
+        <view>{{item.startTime}} 至 {{item.endTime}}</view>
+        <view class="muted">{{item.serviceSummary}}</view>
+      </view>
+    </view>
+
+    <view class="row">
+      <button class="ghost compact-btn" bindtap="resetException">恢复按周规则</button>
+      <button class="primary compact-btn" bindtap="saveException">保存日期例外</button>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && !calendar.length}}">暂无排班数据。</view>
+</view>

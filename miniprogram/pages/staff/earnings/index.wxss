@@ -1,0 +1,12 @@
+.revenue-card {
+  background: linear-gradient(145deg, #fff 0%, #fff7ed 48%, #fff2f6 100%);
+}
+
+.stats-grid {
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 18rpx;
+}
+
+.field-item {
+  margin-bottom: 20rpx;
+}

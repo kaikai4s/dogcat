@@ -113,6 +113,11 @@
       <view class="muted">预计时间</view>
       <view class="strong">{{form.startTime}} 至 {{form.endTime}}</view>
     </view>
+    <view class="notice" wx:if="{{form.publishMode === 'direct' && selectedAvailability}}">
+      <view class="muted">宠托师当天排班</view>
+      <view class="strong">{{selectedAvailability.status === 'available' ? selectedAvailability.slotText : '当天休息'}}</view>
+      <view class="muted">{{selectedAvailability.source === 'exception' ? '按日期例外' : '按周规则'}} · 已接订单 {{selectedAvailability.busyOrders.length || 0}} 个</view>
+    </view>
   </view>
 
   <view class="card interactive" bindtap="chooseCoupon">

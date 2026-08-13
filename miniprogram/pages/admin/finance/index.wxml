@@ -1,0 +1,106 @@
+<view class="page">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">财务管理</view>
+    <view class="title">经营看板与提现审核</view>
+    <view class="tip">查看 GMV、实收、退款、收益和提现进度。第一版提现采用人工线下打款。</view>
+  </view>
+
+  <view class="card">
+    <view class="row date-row">
+      <picker mode="date" value="{{startDate}}" bindchange="chooseStartDate">
+        <view class="field">开始：{{startDate}}</view>
+      </picker>
+      <picker mode="date" value="{{endDate}}" bindchange="chooseEndDate">
+        <view class="field">结束：{{endDate}}</view>
+      </picker>
+    </view>
+  </view>
+
+  <view class="stats-grid finance-grid">
+    <view class="stat-card {{item.highlight ? 'highlight' : ''}}" wx:for="{{metricCards}}" wx:key="label">
+      <view class="stat-value">{{item.value}}</view>
+      <view class="stat-label">{{item.label}}</view>
+    </view>
+  </view>
+
+  <view class="chip-row">
+    <view class="chip {{activeTab === 'withdraws' ? 'pink' : ''}}" data-tab="withdraws" bindtap="switchTab">提现</view>
+    <view class="chip {{activeTab === 'payments' ? 'pink' : ''}}" data-tab="payments" bindtap="switchTab">支付</view>
+    <view class="chip {{activeTab === 'refunds' ? 'pink' : ''}}" data-tab="refunds" bindtap="switchTab">退款</view>
+    <view class="chip {{activeTab === 'earnings' ? 'pink' : ''}}" data-tab="earnings" bindtap="switchTab">收益</view>
+    <view class="chip {{activeTab === 'logs' ? 'pink' : ''}}" data-tab="logs" bindtap="switchTab">流水</view>
+  </view>
+
+  <block wx:if="{{activeTab === 'withdraws'}}">
+    <view class="chip-row">
+      <view class="chip {{status === '' ? 'pink' : ''}}" data-status="" bindtap="filter">全部</view>
+      <view class="chip {{status === 'pending' ? 'pink' : ''}}" data-status="pending" bindtap="filter">待审核</view>
+      <view class="chip {{status === 'approved' ? 'pink' : ''}}" data-status="approved" bindtap="filter">待打款</view>
+      <view class="chip {{status === 'paid' ? 'pink' : ''}}" data-status="paid" bindtap="filter">已打款</view>
+    </view>
+
+    <view class="card info-list" wx:for="{{requests}}" wx:key="_id">
+      <view class="info-row"><view class="label">申请人</view><view class="value">{{item.staffOpenid}}</view></view>
+      <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>
+      <view class="info-row"><view class="label">状态</view><view class="badge">{{item.status}}</view></view>
+      <view class="info-row"><view class="label">收款人</view><view class="value">{{item.accountName || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">收款账号</view><view class="value">{{item.accountNo || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">申请时间</view><view class="value">{{item.createdAt}}</view></view>
+      <view class="info-row" wx:if="{{item.auditRemark}}"><view class="label">审核备注</view><view class="value">{{item.auditRemark}}</view></view>
+      <view class="row" wx:if="{{item.status === 'pending'}}">
+        <button class="ghost compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="audit">驳回</button>
+        <button class="primary compact-btn" data-id="{{item._id}}" data-approved="true" bindtap="audit">通过</button>
+      </view>
+      <button class="primary" wx:if="{{item.status === 'approved'}}" data-id="{{item._id}}" bindtap="markPaid">标记已打款</button>
+    </view>
+    <view class="empty" wx:if="{{!requests.length}}">暂无提现申请。</view>
+  </block>
+
+  <block wx:if="{{activeTab === 'payments'}}">
+    <view class="card info-list" wx:for="{{payments}}" wx:key="_id">
+      <view class="info-row"><view class="label">支付单号</view><view class="value">{{item.paymentNo || item._id}}</view></view>
+      <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
+      <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>
+      <view class="info-row"><view class="label">状态</view><view class="badge">{{item.status}}</view></view>
+      <view class="info-row"><view class="label">渠道</view><view class="value">{{item.channel || 'mock'}}</view></view>
+      <view class="info-row"><view class="label">时间</view><view class="value">{{item.paidAt || item.createdAt}}</view></view>
+    </view>
+    <view class="empty" wx:if="{{!payments.length}}">暂无支付流水。</view>
+  </block>
+
+  <block wx:if="{{activeTab === 'refunds'}}">
+    <view class="card info-list" wx:for="{{refunds}}" wx:key="_id">
+      <view class="info-row"><view class="label">退款单号</view><view class="value">{{item.refundNo || item._id}}</view></view>
+      <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
+      <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>
+      <view class="info-row"><view class="label">状态</view><view class="badge">{{item.status}}</view></view>
+      <view class="info-row"><view class="label">原因</view><view class="value">{{item.reason || '-'}}</view></view>
+      <view class="info-row"><view class="label">时间</view><view class="value">{{item.createdAt}}</view></view>
+    </view>
+    <view class="empty" wx:if="{{!refunds.length}}">暂无退款记录。</view>
+  </block>
+
+  <block wx:if="{{activeTab === 'earnings'}}">
+    <view class="card info-list" wx:for="{{earnings}}" wx:key="_id">
+      <view class="info-row"><view class="label">宠托师</view><view class="value">{{item.staffOpenid}}</view></view>
+      <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
+      <view class="info-row"><view class="label">收益</view><view class="price">¥{{item.amountText}}</view></view>
+      <view class="info-row"><view class="label">状态</view><view class="badge">{{item.status}}</view></view>
+      <view class="info-row"><view class="label">可提现时间</view><view class="value">{{item.availableAt}}</view></view>
+    </view>
+    <view class="empty" wx:if="{{!earnings.length}}">暂无收益明细。</view>
+  </block>
+
+  <block wx:if="{{activeTab === 'logs'}}">
+    <view class="card info-list" wx:for="{{logs}}" wx:key="_id">
+      <view class="info-row"><view class="label">动作</view><view class="value">{{item.action}}</view></view>
+      <view class="info-row"><view class="label">对象</view><view class="value">{{item.targetType}} / {{item.targetId}}</view></view>
+      <view class="info-row"><view class="label">金额变动</view><view class="price">¥{{item.amountDelta || 0}}</view></view>
+      <view class="info-row"><view class="label">时间</view><view class="value">{{item.createdAt}}</view></view>
+    </view>
+    <view class="empty" wx:if="{{!logs.length}}">暂无财务流水。</view>
+  </block>
+</view>

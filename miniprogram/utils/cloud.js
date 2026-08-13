@@ -131,10 +131,27 @@ function normalizeHomeHeroCarousel(carousel = {}) {
   }
 }
 
+function normalizeSubscriptionConfig(subscription = {}) {
+  const templates = subscription.templates || {}
+  return {
+    enabled: subscription.enabled === true,
+    templates: {
+      orderPaid: templates.orderPaid || '',
+      orderAssigned: templates.orderAssigned || '',
+      serviceStart: templates.serviceStart || '',
+      serviceFinish: templates.serviceFinish || '',
+      refundResult: templates.refundResult || '',
+      disputeUpdate: templates.disputeUpdate || '',
+      withdrawResult: templates.withdrawResult || ''
+    }
+  }
+}
+
 function getCachedSystemSettings() {
   const cached = wx.getStorageSync(SYSTEM_SETTINGS_STORAGE_KEY) || {}
   return {
     enableTestAddressMode: cached.enableTestAddressMode === true,
+    subscription: normalizeSubscriptionConfig(cached.subscription),
     homeHeroCarousel: normalizeHomeHeroCarousel(cached.homeHeroCarousel)
   }
 }
@@ -143,6 +160,7 @@ function setCachedSystemSettings(settings) {
   const source = settings || {}
   const normalized = {
     enableTestAddressMode: source.enableTestAddressMode === true,
+    subscription: normalizeSubscriptionConfig(source.subscription),
     homeHeroCarousel: normalizeHomeHeroCarousel(source.homeHeroCarousel)
   }
   wx.setStorageSync(SYSTEM_SETTINGS_STORAGE_KEY, normalized)
@@ -153,6 +171,29 @@ function loadSystemSettings() {
   return callFunction('system', 'getSettings')
     .then(setCachedSystemSettings)
     .catch(() => getCachedSystemSettings())
+}
+
+function requestSubscribeTemplates(templateKeys = [], scene = '') {
+  return loadSystemSettings().then((settings) => {
+    const subscription = settings.subscription || {}
+    if (!subscription.enabled || typeof wx.requestSubscribeMessage !== 'function') return null
+    const templates = subscription.templates || {}
+    const requestKeys = templateKeys.filter((key) => templates[key])
+    const tmplIds = requestKeys.map((key) => templates[key])
+    if (!tmplIds.length) return null
+    return new Promise((resolve) => {
+      wx.requestSubscribeMessage({
+        tmplIds,
+        success: (res) => resolve(res || {}),
+        fail: () => resolve({})
+      })
+    }).then((results) => {
+      const templateIds = {}
+      requestKeys.forEach((key) => { templateIds[key] = templates[key] })
+      return callFunction('system', 'recordSubscriptionConsent', { templateKeys: requestKeys, templateIds, results, scene })
+        .catch(() => null)
+    })
+  }).catch(() => null)
 }
 
 function requirePrivacyAuthorize() {
@@ -334,6 +375,7 @@ module.exports = {
   loadSystemSettings,
   setCachedSystemSettings,
   getCachedSystemSettings,
+  requestSubscribeTemplates,
   chooseSelectedLocation,
   requireSelectedLocation,
   getServiceLocation,

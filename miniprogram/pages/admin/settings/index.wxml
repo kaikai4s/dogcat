@@ -18,6 +18,58 @@
   </view>
 
   <view class="card form-card">
+    <view class="subtitle">支付与退款</view>
+    <view class="between setting-row border-bottom">
+      <view style="flex:1;min-width:0;">
+        <view class="strong">启用支付</view>
+        <view class="muted">关闭后用户不能发起支付。</view>
+      </view>
+      <switch checked="{{settings.payment.enabled}}" bindchange="togglePaymentEnabled" />
+    </view>
+    <view class="field-item border-bottom">
+      <text class="label">支付模式</text>
+      <radio-group bindchange="paymentModeChange" class="radio-group">
+        <label class="radio-label"><radio value="mock" checked="{{settings.payment.mode === 'mock'}}" /> 模拟支付</label>
+        <label class="radio-label"><radio value="wechat" checked="{{settings.payment.mode === 'wechat'}}" /> 微信支付</label>
+      </radio-group>
+    </view>
+    <view class="field-item"><text class="label">商户号</text><input class="input" value="{{settings.payment.mchId}}" data-field="mchId" bindinput="paymentInput" placeholder="微信支付商户号" /></view>
+    <view class="field-item"><text class="label">AppID</text><input class="input" value="{{settings.payment.appId}}" data-field="appId" bindinput="paymentInput" placeholder="小程序 AppID" /></view>
+    <view class="field-item"><text class="label">支付回调地址</text><input class="input" value="{{settings.payment.notifyUrl}}" data-field="notifyUrl" bindinput="paymentInput" placeholder="notifyUrl" /></view>
+    <view class="field-item"><text class="label">证书序列号</text><input class="input" value="{{settings.payment.certSerialNo}}" data-field="certSerialNo" bindinput="paymentInput" placeholder="certSerialNo" /></view>
+    <view class="between setting-row">
+      <view style="flex:1;min-width:0;"><view class="strong">启用退款</view><view class="muted">开启后取消已支付订单会生成退款单。</view></view>
+      <switch checked="{{settings.payment.refundEnabled}}" bindchange="toggleRefundEnabled" />
+    </view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">订阅消息</view>
+    <view class="between setting-row border-bottom">
+      <view style="flex:1;min-width:0;"><view class="strong">启用订阅消息</view><view class="muted">模板未配置时只记录 skipped 日志，不影响业务。</view></view>
+      <switch checked="{{settings.subscription.enabled}}" bindchange="toggleSubscriptionEnabled" />
+    </view>
+    <view class="field-item"><text class="label">支付成功模板</text><input class="input" value="{{settings.subscription.templates.orderPaid}}" data-field="orderPaid" bindinput="subscriptionTemplateInput" /></view>
+    <view class="field-item"><text class="label">接单/派单模板</text><input class="input" value="{{settings.subscription.templates.orderAssigned}}" data-field="orderAssigned" bindinput="subscriptionTemplateInput" /></view>
+    <view class="field-item"><text class="label">服务开始模板</text><input class="input" value="{{settings.subscription.templates.serviceStart}}" data-field="serviceStart" bindinput="subscriptionTemplateInput" /></view>
+    <view class="field-item"><text class="label">服务完成模板</text><input class="input" value="{{settings.subscription.templates.serviceFinish}}" data-field="serviceFinish" bindinput="subscriptionTemplateInput" /></view>
+    <view class="field-item"><text class="label">退款结果模板</text><input class="input" value="{{settings.subscription.templates.refundResult}}" data-field="refundResult" bindinput="subscriptionTemplateInput" /></view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">结算与可靠性</view>
+    <view class="field-item"><text class="label">宠托师分成比例</text><input class="input" type="digit" value="{{settings.settlement.staffCommissionRate}}" data-field="staffCommissionRate" bindinput="settlementInput" /></view>
+    <view class="field-item"><text class="label">结算等待天数</text><input class="input" type="number" value="{{settings.settlement.settlementDelayDays}}" data-field="settlementDelayDays" bindinput="settlementInput" /></view>
+    <view class="field-item"><text class="label">最低提现金额</text><input class="input" type="digit" value="{{settings.settlement.minWithdrawAmount}}" data-field="minWithdrawAmount" bindinput="settlementInput" /></view>
+    <view class="between setting-row border-bottom">
+      <view style="flex:1;min-width:0;"><view class="strong">启用离线补传</view><view class="muted">弱网轨迹和打卡可本地排队后补传。</view></view>
+      <switch checked="{{settings.reliability.enableOfflineQueue}}" bindchange="toggleOfflineQueue" />
+    </view>
+    <view class="field-item"><text class="label">轨迹批量大小</text><input class="input" type="number" value="{{settings.reliability.maxTrackBatchSize}}" data-field="maxTrackBatchSize" bindinput="reliabilityInput" /></view>
+    <view class="field-item"><text class="label">最大重试次数</text><input class="input" type="number" value="{{settings.reliability.maxRetryTimes}}" data-field="maxRetryTimes" bindinput="reliabilityInput" /></view>
+  </view>
+
+  <view class="card form-card">
     <view class="subtitle">首页顶部轮播媒体配置</view>
 
     <view class="between setting-row border-bottom">

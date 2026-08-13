@@ -44,6 +44,11 @@
     <view class="info-row"><view class="label">原价</view><view class="value">¥{{order.amount}}</view></view>
     <view class="info-row" wx:if="{{order.discountAmount}}"><view class="label">优惠券</view><view class="value">-¥{{order.discountAmount}} {{order.couponName}}</view></view>
     <view class="info-row"><view class="label">实付金额</view><view class="price">¥{{order.payAmount}}</view></view>
+    <view class="info-row"><view class="label">支付状态</view><view class="value">{{order.paymentStatus || 'unpaid'}}</view></view>
+    <view class="info-row" wx:if="{{order.paymentNo}}"><view class="label">支付单号</view><view class="value">{{order.paymentNo}}</view></view>
+    <view class="info-row" wx:if="{{order.paidAt}}"><view class="label">支付时间</view><view class="value">{{order.paidAt}}</view></view>
+    <view class="info-row" wx:if="{{order.refundText}}"><view class="label">退款进度</view><view class="value">{{order.refundText}}</view></view>
+    <view class="info-row" wx:if="{{order.refundNo}}"><view class="label">退款单号</view><view class="value">{{order.refundNo}}</view></view>
   </view>
 
   <view class="card" wx:if="{{timeline.length}}">
@@ -69,9 +74,10 @@
     </view>
   </view>
 
-  <button class="primary" wx:if="{{order.status === 'pending_pay'}}" bindtap="pay">Mock 支付</button>
+  <button class="primary" wx:if="{{order.status === 'pending_pay'}}" loading="{{paying}}" disabled="{{paying}}" bindtap="pay">立即支付</button>
   <button class="ghost" wx:if="{{order.status === 'pending_pay' || order.status === 'paid' || order.status === 'assigned'}}" bindtap="cancelOrder">取消订单 / 查看退款</button>
   <button class="ghost" wx:if="{{order.status === 'completed' && !review}}" bindtap="reviewOrder">评价服务</button>
+  <button class="ghost" wx:if="{{order.status === 'assigned' || order.status === 'in_service' || order.status === 'completed'}}" bindtap="createIncident">发起投诉 / 售后</button>
   <button class="ghost" bindtap="rebook">再次预约</button>
   <button class="ghost" bindtap="tracking">查看轨迹 / 打卡</button>
   <button class="ghost" bindtap="report">服务报告</button>

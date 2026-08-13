@@ -6,7 +6,8 @@ const adminSections = [
     desc: '派单、服务履约、异常处理',
     items: [
       { icon: '单', title: '订单管理', desc: '派单与监控', url: '/pages/admin/orders/list/index' },
-      { icon: '警', title: '异常事件', desc: 'SOS 与客诉', url: '/pages/admin/incidents/list/index' }
+      { icon: '警', title: '异常事件', desc: 'SOS 与客诉', url: '/pages/admin/incidents/list/index' },
+      { icon: '财', title: '财务提现', desc: '收益与打款审核', url: '/pages/admin/finance/index' }
     ]
   },
   {

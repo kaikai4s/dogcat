@@ -1,5 +1,6 @@
-const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize } = require('../../../../utils/cloud')
+const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, requestSubscribeTemplates } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, updateOfflineTask } = require('../../../../utils/offlineQueue')
 
 const TRACK_INTERVAL_MS = 60 * 1000
 const TRACK_MIN_DISTANCE_M = 50
@@ -47,6 +48,7 @@ Page({
     backgroundTracking: false,
     trackStatusText: '服务开始后自动记录轨迹',
     latestTrackText: '',
+    offlineTaskCount: 0,
     sectionHomeUrl: '',
     canGoBack: false
   },
@@ -63,8 +65,11 @@ Page({
   loadOrder() {
     callFunction('order', 'getOrderDetail', { id: this.data.id })
       .then((order) => {
-        this.setData({ order })
-        if (order && order.status === 'in_service') this.startAutoTracking()
+        this.setData({ order, offlineTaskCount: getOfflineTaskCount(this.data.id) })
+        if (order && order.status === 'in_service') {
+          this.flushOfflineTasks()
+          this.startAutoTracking()
+        }
       })
       .catch(() => {})
   },
@@ -75,7 +80,8 @@ Page({
   },
 
   start() {
-    callFunction('order', 'startService', { id: this.data.id })
+    requestSubscribeTemplates(['serviceStart', 'serviceFinish'], 'staff_service')
+      .then(() => callFunction('order', 'startService', { id: this.data.id }))
       .then(() => {
         wx.showToast({ title: '已开始' })
         this.setData({ order: { ...(this.data.order || {}), status: 'in_service' } })
@@ -173,27 +179,56 @@ Page({
   uploadAutoTrackPoint() {
     return this.getRealtimeLocation()
       .then((loc) => this.recordTrackPoint(loc, false))
+      .then((res) => this.flushOfflineTasks().then(() => res))
       .catch(() => null)
   },
 
   recordTrackPoint(location, force) {
     const point = toTrackPoint(location)
     if (!point || !this.shouldUploadTrackPoint(point, force)) return Promise.resolve(null)
-    return callFunction('track', 'batchUploadTrack', { orderId: this.data.id, points: [point] })
+    point.clientPointId = createClientRequestId('track')
+    return callFunction('track', 'batchUploadTrack', { orderId: this.data.id, batchId: createClientRequestId('batch'), points: [point] })
       .then((res) => {
         this.lastTrackPoint = point
         this.lastTrackUploadedAt = Date.now()
         const pointCount = this.data.pointCount + Number(res.count || 0)
         this.setData({
           pointCount,
-          latestTrackText: `最近记录：${new Date(point.recordedAt).toTimeString().slice(0, 5)}，精度${Math.round(point.accuracy || 0)}m`
+          latestTrackText: `最近记录：${new Date(point.recordedAt).toTimeString().slice(0, 5)}，精度${Math.round(point.accuracy || 0)}m`,
+          offlineTaskCount: getOfflineTaskCount(this.data.id)
         })
         return res
       })
       .catch((error) => {
+        enqueueOfflineTask('track', { orderId: this.data.id, point: { ...point, isBackfilled: true }, clientPointId: point.clientPointId })
+        this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id) })
         if (force) showError(error)
         return null
       })
+  },
+
+  flushOfflineTasks() {
+    const tasks = getOfflineTasks(this.data.id)
+    if (!tasks.length) {
+      this.setData({ offlineTaskCount: 0 })
+      return Promise.resolve()
+    }
+    return tasks.reduce((chain, task) => chain.then(() => {
+      if (task.type === 'track') {
+        return callFunction('track', 'batchUploadTrack', { orderId: task.orderId, batchId: createClientRequestId('backfill'), points: [task.payload.point] })
+          .then(() => removeOfflineTask(task.id))
+      }
+      if (task.type === 'checkin') {
+        return callFunction('checkin', 'createCheckin', { ...task.payload, isBackfilled: true })
+          .then(() => removeOfflineTask(task.id))
+      }
+      removeOfflineTask(task.id)
+      return Promise.resolve()
+    }).catch(() => {
+      updateOfflineTask({ ...task, retryTimes: Number(task.retryTimes || 0) + 1 })
+    }), Promise.resolve()).then(() => {
+      this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id) })
+    })
   },
 
   uploadPoint(options = {}) {
@@ -213,6 +248,10 @@ Page({
 
   finish() {
     this.uploadAutoTrackPoint()
+      .then(() => this.flushOfflineTasks())
+      .then(() => {
+        if (getOfflineTaskCount(this.data.id) > 0) wx.showToast({ title: '仍有数据待补传，网络恢复后会继续上传', icon: 'none' })
+      })
       .then(() => callFunction('order', 'finishService', { id: this.data.id }))
       .then(() => {
         this.stopAutoTracking()

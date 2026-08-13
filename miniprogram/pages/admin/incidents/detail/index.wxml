@@ -1,0 +1,80 @@
+<view class="page" wx:if="{{detail}}">
+  <view class="top-nav">
+    <view class="nav-round" bindtap="goBack">‹</view>
+  </view>
+  <view class="dashboard-header">
+    <view class="badge">纠纷处理</view>
+    <view class="title">{{detail.incident.title || detail.incident.incidentTypeText}}</view>
+    <view class="tip">查看双方证据、更新状态、冻结收益并记录处理方案。</view>
+  </view>
+
+  <view class="card info-list">
+    <view class="info-row"><view class="label">类型</view><view class="value">{{detail.incident.incidentTypeText}}</view></view>
+    <view class="info-row"><view class="label">状态</view><view class="badge">{{detail.incident.statusText}}</view></view>
+    <view class="info-row"><view class="label">订单</view><view class="value">{{detail.incident.orderId}}</view></view>
+    <view class="info-row"><view class="label">宠物主</view><view class="value">{{detail.incident.clientOpenid}}</view></view>
+    <view class="info-row"><view class="label">宠托师</view><view class="value">{{detail.incident.staffOpenid || '未接单'}}</view></view>
+    <view class="info-row"><view class="label">提交时间</view><view class="value">{{detail.incident.createdAt}}</view></view>
+    <view class="info-row" wx:if="{{detail.incident.frozenEarningIds.length}}"><view class="label">冻结收益</view><view class="value">{{detail.incident.frozenEarningIds.length}} 条</view></view>
+    <view class="info-row" wx:if="{{detail.incident.refundNo}}"><view class="label">关联退款</view><view class="value">{{detail.incident.refundNo}}</view></view>
+  </view>
+
+  <view class="card">
+    <view class="subtitle">问题说明</view>
+    <view class="strong">{{detail.incident.description}}</view>
+    <view class="evidence-grid" wx:if="{{detail.incident.mediaFileIds.length}}">
+      <image class="evidence-image" wx:for="{{detail.incident.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
+    </view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">状态流转</view>
+    <picker mode="selector" range="{{statusOptions}}" range-key="label" value="{{statusIndex}}" bindchange="chooseStatus">
+      <view class="field">{{statusOptions[statusIndex].label}}</view>
+    </picker>
+    <input placeholder="处理备注" value="{{statusRemark}}" bindinput="inputStatusRemark" />
+    <button class="ghost" bindtap="setStatus">更新状态</button>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">处理方案</view>
+    <picker mode="selector" range="{{resolutionOptions}}" range-key="label" value="{{resolutionIndex}}" bindchange="chooseResolution">
+      <view class="field">{{resolutionOptions[resolutionIndex].label}}</view>
+    </picker>
+    <input placeholder="退款金额，非退款可不填" type="digit" value="{{refundAmount}}" bindinput="inputRefundAmount" />
+    <textarea placeholder="填写处理方案或说明" value="{{resolutionContent}}" bindinput="inputResolution" maxlength="500" />
+    <button class="ghost" bindtap="proposeResolution">保存方案</button>
+  </view>
+
+  <view class="card" wx:if="{{detail.incident.resolution}}">
+    <view class="subtitle">当前方案</view>
+    <view class="strong">{{detail.incident.resolution.type}}</view>
+    <view class="muted">{{detail.incident.resolution.content}}</view>
+    <view class="price" wx:if="{{detail.incident.resolution.refundAmount}}">¥{{detail.incident.resolution.refundAmount}}</view>
+  </view>
+
+  <view class="card" wx:if="{{detail.comments.length}}">
+    <view class="subtitle">沟通记录</view>
+    <view class="timeline">
+      <view class="timeline-item" wx:for="{{detail.comments}}" wx:key="_id">
+        <view class="strong">{{item.actorRole}}</view>
+        <view class="muted">{{item.content}}</view>
+        <view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}">
+          <image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
+        </view>
+        <view class="muted">{{item.createdAt}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">内部 / 对客留言</view>
+    <textarea placeholder="记录沟通内容" value="{{comment}}" bindinput="inputComment" maxlength="500" />
+    <button class="ghost" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitComment">添加留言</button>
+  </view>
+
+  <button class="danger" bindtap="freezeEarning">冻结宠托师收益</button>
+  <button class="primary" bindtap="closeResolved">解决并结案</button>
+  <button class="ghost" bindtap="closeRejected">驳回并结案</button>
+  <button class="ghost" bindtap="goOrder">查看订单详情</button>
+</view>

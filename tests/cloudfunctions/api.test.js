@@ -321,6 +321,10 @@ test('admin can save and public can read system settings', async () => {
 
   const settingsPayload = {
     enableTestAddressMode: true,
+    payment: { enabled: true, mode: 'mock', mchId: 'mch_1', refundEnabled: true },
+    settlement: { staffCommissionRate: 0.75, settlementDelayDays: 2, minWithdrawAmount: 20 },
+    subscription: { enabled: true, templates: { orderPaid: 'tpl_paid', orderAssigned: 'tpl_assigned', serviceStart: 'tpl_start', serviceFinish: 'tpl_finish', refundResult: 'tpl_refund' } },
+    reliability: { enableOfflineQueue: true, maxTrackBatchSize: 60, maxRetryTimes: 6 },
     homeHeroCarousel: {
       enabled: true,
       autoRotate: true,
@@ -346,12 +350,22 @@ test('admin can save and public can read system settings', async () => {
   assert.equal(saved.ok, true)
   assert.equal(saved.data.enableTestAddressMode, true)
   assert.equal(saved.data.homeHeroCarousel.enabled, true)
+  assert.equal(saved.data.payment.mode, 'mock')
+  assert.equal(saved.data.payment.mchId, 'mch_1')
+  assert.equal(saved.data.settlement.staffCommissionRate, 0.75)
+  assert.equal(saved.data.subscription.enabled, true)
+  assert.equal(saved.data.subscription.templates.orderPaid, 'tpl_paid')
+  assert.equal(saved.data.reliability.maxTrackBatchSize, 60)
   assert.equal(saved.data.homeHeroCarousel.rotateIntervalMs, 6000)
   assert.equal(saved.data.homeHeroCarousel.items.length, 1)
   assert.equal(saved.data.homeHeroCarousel.items[0].type, 'video')
 
   assert.equal(fetched.ok, true)
   assert.equal(fetched.data.enableTestAddressMode, true)
+  assert.equal(fetched.data.payment.refundEnabled, true)
+  assert.equal(fetched.data.settlement.minWithdrawAmount, 20)
+  assert.equal(fetched.data.subscription.templates.refundResult, 'tpl_refund')
+  assert.equal(fetched.data.reliability.maxRetryTimes, 6)
   assert.equal(fetched.data.homeHeroCarousel.enabled, true)
   assert.equal(fetched.data.homeHeroCarousel.items[0].title, '视频测试')
 })
@@ -879,7 +893,7 @@ test('admin assignOrder writes staff profile and admin assignment source', async
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
     ],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'approved' }],
-    orders: [{ _id: 'order1', status: 'paid', publishMode: 'direct', requestedStaffOpenid: 'other_staff', staffOpenid: '' }],
+    orders: [{ _id: 'order1', status: 'paid', publishMode: 'direct', requestedStaffOpenid: 'other_staff', staffOpenid: '', startTime: '2026-07-28 10:00', endTime: '2026-07-28 11:00' }],
     admin_operation_logs: []
   })
   const fn = loadCloudFunction('api', db, 'openid_admin')
@@ -1006,7 +1020,9 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
 test('client cancel order returns MVP refund quote and writes cancelled timeline', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
-    orders: [{ _id: 'order1', clientOpenid: 'openid_client', status: 'assigned', payAmount: 100, startTime: '2000-07-28 10:00' }],
+    orders: [{ _id: 'order1', clientOpenid: 'openid_client', status: 'assigned', paymentStatus: 'paid', paymentNo: 'P1', payAmount: 100, startTime: '2000-07-28 10:00' }],
+    refunds: [],
+    payment_events: [],
     order_timeline: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
@@ -1019,7 +1035,10 @@ test('client cancel order returns MVP refund quote and writes cancelled timeline
   assert.equal(quote.data.refundAmount, 80)
   assert.equal(cancel.ok, true)
   assert.equal(order.status, 'cancelled')
-  assert.equal(order.refundStatus, 'mock_refunded')
+  assert.equal(order.paymentStatus, 'refunding')
+  assert.equal(order.refundStatus, 'processing')
+  assert.equal(db.state.refunds.length, 1)
+  assert.equal(db.state.refunds[0].refundAmount, 80)
   assert.equal(db.state.order_timeline[0].type, 'cancelled')
 })
 
@@ -1091,6 +1110,62 @@ test('coupon create order locks coupon and prevents reuse', async () => {
   assert.equal(reused.ok, false)
   assert.equal(reused.message, '已锁定')
 })
+
+test('system records subscription consent results', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    subscription_consents: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const result = await fn.main({ module: 'system', action: 'recordSubscriptionConsent', data: { templateKeys: ['orderPaid'], templateIds: { orderPaid: 'tpl_paid' }, results: { tpl_paid: 'accept' }, scene: 'client_pay' } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.count, 1)
+  assert.equal(db.state.subscription_consents[0].templateKey, 'orderPaid')
+  assert.equal(db.state.subscription_consents[0].status, 'accept')
+})
+
+
+test('payment create status mock pay and admin refund permissions work', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }
+    ],
+    orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'pending_pay', paymentStatus: 'unpaid', payAmount: 88 }],
+    payments: [],
+    refunds: [],
+    payment_events: [],
+    finance_logs: [],
+    order_timeline: [],
+    user_coupons: [],
+    subscription_logs: [],
+    platform_configs: []
+  })
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+
+  const created = await clientFn.main({ module: 'payment', action: 'createPayment', data: { orderId: 'order1' } })
+  const statusBeforePay = await clientFn.main({ module: 'payment', action: 'getPaymentStatus', data: { orderId: 'order1' } })
+  const paid = await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: 'order1', paymentNo: created.data.paymentNo } })
+  const clientRefund = await clientFn.main({ module: 'payment', action: 'createRefund', data: { orderId: 'order1' } })
+  const adminRefund = await adminFn.main({ module: 'payment', action: 'createRefund', data: { orderId: 'order1', refundAmount: 30, reason: '测试退款' } })
+  const refunds = await adminFn.main({ module: 'payment', action: 'listRefunds', data: { orderId: 'order1' } })
+  const order = db.state.orders.find((item) => item._id === 'order1')
+
+  assert.equal(created.ok, true)
+  assert.equal(created.data.mock, true)
+  assert.equal(statusBeforePay.data.paymentStatus, 'paying')
+  assert.equal(paid.ok, true)
+  assert.equal(order.status, 'paid')
+  assert.equal(order.paymentStatus, 'refunding')
+  assert.equal(clientRefund.ok, false)
+  assert.equal(adminRefund.ok, true)
+  assert.equal(adminRefund.data.refundAmount, 30)
+  assert.equal(refunds.data.length, 1)
+})
+
 
 test('coupon payment marks coupon used and cancel unpaid releases coupon', async () => {
   const db = createCollectionStore({
@@ -1228,6 +1303,177 @@ test('reward mail unread count and claim are idempotent', async () => {
   assert.equal(unreadAfter.data.unreadCount, 0)
   assert.equal(unreadAfter.data.unclaimedCount, 0)
 })
+
+test('track and checkin backfill are idempotent', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }],
+    orders: [{ _id: 'order1', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', status: 'in_service', requiredCheckins: [] }],
+    track_logs: [],
+    checkin_logs: [],
+    order_timeline: [],
+    platform_configs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_staff')
+
+  const track1 = await fn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: 'order1', batchId: 'batch1', points: [{ clientPointId: 'pt1', latitude: 31.2, longitude: 121.5, recordedAt: 1000, isBackfilled: true }] } })
+  const track2 = await fn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: 'order1', batchId: 'batch1', points: [{ clientPointId: 'pt1', latitude: 31.2, longitude: 121.5, recordedAt: 1000, isBackfilled: true }] } })
+  const checkin1 = await fn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: 'order1', eventType: 'feed', mediaFileId: 'cloud://checkin.jpg', latitude: 31.2, longitude: 121.5, clientRequestId: 'ck1', recordedAt: 1000, isBackfilled: true } })
+  const checkin2 = await fn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: 'order1', eventType: 'feed', mediaFileId: 'cloud://checkin.jpg', latitude: 31.2, longitude: 121.5, clientRequestId: 'ck1', recordedAt: 1000, isBackfilled: true } })
+
+  assert.equal(track1.ok, true)
+  assert.equal(track1.data.count, 1)
+  assert.equal(track2.data.count, 0)
+  assert.equal(db.state.track_logs.length, 1)
+  assert.equal(db.state.track_logs[0].isBackfilled, true)
+  assert.equal(checkin1.ok, true)
+  assert.equal(checkin2.ok, true)
+  assert.equal(checkin1.data._id, checkin2.data._id)
+  assert.equal(db.state.checkin_logs.length, 1)
+  assert.equal(db.state.checkin_logs[0].isBackfilled, true)
+})
+
+
+test('incident workflow supports client complaint comments status and earning freeze', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' },
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }
+    ],
+    orders: [{ _id: 'order1', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', staffProfileId: 'sp1', status: 'completed', serviceSummary: '上门喂养' }],
+    order_incidents: [],
+    incident_comments: [],
+    incident_actions: [],
+    order_timeline: [],
+    staff_earnings: [{ _id: 'earn1', orderId: 'order1', staffOpenid: 'openid_staff', status: 'available', amount: 70 }],
+    finance_logs: []
+  })
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+
+  const created = await clientFn.main({ module: 'incident', action: 'createComplaint', data: { orderId: 'order1', title: '服务投诉', description: '猫粮没有补满' } })
+  const comment = await clientFn.main({ module: 'incident', action: 'appendIncidentComment', data: { incidentId: created.data._id, content: '补充说明' } })
+  const frozen = await adminFn.main({ module: 'incident', action: 'freezeStaffEarning', data: { incidentId: created.data._id } })
+  const resolution = await adminFn.main({ module: 'incident', action: 'proposeResolution', data: { incidentId: created.data._id, resolutionType: 'refund', refundAmount: 20, content: '建议部分退款' } })
+  const closed = await adminFn.main({ module: 'incident', action: 'closeIncident', data: { incidentId: created.data._id, status: 'resolved', closeRemark: '已协商' } })
+  const detail = await clientFn.main({ module: 'incident', action: 'getIncidentDetail', data: { incidentId: created.data._id } })
+
+  assert.equal(created.ok, true)
+  assert.equal(created.data.clientOpenid, 'openid_client')
+  assert.equal(comment.ok, true)
+  assert.equal(db.state.incident_comments.length, 1)
+  assert.deepEqual(frozen.data.frozenEarningIds, ['earn1'])
+  assert.equal(db.state.staff_earnings[0].status, 'frozen')
+  assert.equal(resolution.data.resolution.refundAmount, 20)
+  assert.equal(closed.data.status, 'resolved')
+  assert.equal(detail.data.comments.length, 1)
+})
+
+
+test('admin finance dashboard summarizes payments refunds earnings and withdraws', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    orders: [
+      { _id: 'order1', status: 'completed', paymentStatus: 'paid', payAmount: 100, paidAt: '2026-07-28 10:00' },
+      { _id: 'order2', status: 'completed', paymentStatus: 'paid', payAmount: 50, paidAt: '2026-07-29 10:00' }
+    ],
+    payments: [{ _id: 'pay1', status: 'paid', amount: 100, paidAt: '2026-07-28 10:01' }],
+    refunds: [{ _id: 'refund1', status: 'processing', amount: 20, createdAt: '2026-07-28 11:00' }],
+    staff_earnings: [{ _id: 'earn1', status: 'available', amount: 70, createdAt: '2026-07-28 12:00' }],
+    withdraw_requests: [{ _id: 'withdraw1', status: 'pending', amount: 30, createdAt: '2026-07-28 13:00' }],
+    finance_logs: [{ _id: 'log1', action: 'staff_earning_created', targetType: 'staff_earning', amountDelta: 70, createdAt: '2026-07-28 12:00' }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const dashboard = await fn.main({ module: 'admin', action: 'financeDashboard', data: { startDate: '2026-07-28', endDate: '2026-07-28' } })
+  const payments = await fn.main({ module: 'admin', action: 'listPayments', data: { startDate: '2026-07-28', endDate: '2026-07-28' } })
+  const logs = await fn.main({ module: 'admin', action: 'listFinanceLogs', data: { startDate: '2026-07-28', endDate: '2026-07-28' } })
+
+  assert.equal(dashboard.ok, true)
+  assert.equal(dashboard.data.metrics.gmv, 100)
+  assert.equal(dashboard.data.metrics.received, 100)
+  assert.equal(dashboard.data.metrics.refundAmount, 20)
+  assert.equal(dashboard.data.metrics.netRevenue, 80)
+  assert.equal(dashboard.data.metrics.staffEarningAmount, 70)
+  assert.equal(dashboard.data.metrics.platformGrossProfit, 10)
+  assert.equal(dashboard.data.metrics.pendingWithdrawAmount, 30)
+  assert.equal(payments.data.length, 1)
+  assert.equal(logs.data.length, 1)
+})
+
+
+test('staff schedule exceptions and order conflicts block unavailable slots', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
+    ],
+    pets: [{ _id: 'pet1', openid: 'openid_client', name: '可乐', weight: 10 }],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'approved', realName: '王小花', serviceAddress: '固定地址', serviceLatitude: 31.2, serviceLongitude: 121.5, serviceRadiusKm: 5, weeklySchedule: { '2': [{ start: 9, end: 18 }] } }],
+    staff_schedule_exceptions: [],
+    orders: [],
+    user_addresses: [],
+    user_coupons: [],
+    coupon_templates: [],
+    order_timeline: []
+  })
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const rest = await staffFn.main({ module: 'staff', action: 'saveScheduleException', data: { dateKey: '2026-07-28', status: 'unavailable', remark: '休息' } })
+  const blocked = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'pet1', publishMode: 'direct', staffProfileId: 'sp1', serviceTypes: ['walk'], addressLatitude: 31.21, addressLongitude: 121.51, startTime: '2026-07-28 10:00', endTime: '2026-07-28 11:00', durationMinutes: 60 } })
+  const available = await staffFn.main({ module: 'staff', action: 'saveScheduleException', data: { dateKey: '2026-07-28', status: 'available', slots: [{ start: 10, end: 12 }] } })
+  const order = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: 'pet1', publishMode: 'direct', staffProfileId: 'sp1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.51, startTime: '2026-07-28 10:00', endTime: '2026-07-28 11:00', durationMinutes: 60 } })
+  db.state.orders.push({ _id: 'busy1', clientOpenid: 'other_client', staffOpenid: 'openid_staff', staffProfileId: 'sp1', status: 'assigned', startTime: '2026-07-28 10:30', endTime: '2026-07-28 11:30' })
+  db.state.orders.push({ _id: 'open1', clientOpenid: 'openid_client', status: 'paid', startTime: '2026-07-28 11:00', endTime: '2026-07-28 12:00' })
+  const conflict = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'open1' } })
+
+  assert.equal(rest.ok, true)
+  assert.equal(blocked.ok, false)
+  assert.match(blocked.message, /休息/)
+  assert.equal(available.ok, true)
+  assert.equal(order.ok, true)
+  assert.equal(conflict.ok, false)
+  assert.match(conflict.message, /已有订单/)
+})
+
+
+test('finishService creates staff earning and withdraw workflow locks earnings', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' },
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }
+    ],
+    orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', clientUserId: 'client', staffOpenid: 'openid_staff', staffUserId: 'staff', staffProfileId: 'sp1', status: 'in_service', payAmount: 100, requiredCheckins: [] }],
+    staff_earnings: [],
+    withdraw_requests: [],
+    finance_logs: [],
+    point_logs: [],
+    retro_card_logs: [],
+    order_timeline: [],
+    subscription_logs: [],
+    platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { settlement: { staffCommissionRate: 0.8, settlementDelayDays: 0, minWithdrawAmount: 10 } } }]
+  })
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+
+  const finished = await staffFn.main({ module: 'order', action: 'finishService', data: { id: 'order1' } })
+  const balance = await staffFn.main({ module: 'finance', action: 'getStaffBalance', data: {} })
+  const withdraw = await staffFn.main({ module: 'finance', action: 'createWithdrawRequest', data: { accountName: '王小花', accountNo: 'wxid_staff' } })
+  const approved = await adminFn.main({ module: 'admin', action: 'auditWithdrawRequest', data: { id: withdraw.data._id, approved: true } })
+  const paid = await adminFn.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: withdraw.data._id } })
+
+  assert.equal(finished.ok, true)
+  assert.equal(db.state.staff_earnings.length, 1)
+  assert.equal(db.state.staff_earnings[0].amount, 80)
+  assert.equal(balance.data.available, 80)
+  assert.equal(withdraw.ok, true)
+  assert.equal(db.state.staff_earnings[0].status, 'withdrawn')
+  assert.equal(approved.data.status, 'approved')
+  assert.equal(paid.data.status, 'paid')
+})
+
 
 test('finishService applies member multiplier and grants retro card on third completed order', async () => {
   const db = createCollectionStore({

@@ -15,9 +15,14 @@ const auditStatusText = {
 
 const incidentStatusText = {
   open: '待处理',
+  triaging: '分诊中',
+  waiting_client: '待客户补充',
+  waiting_staff: '待宠托师补充',
   processing: '处理中',
+  refund_pending: '退款处理中',
   resolved: '已解决',
-  rejected: '已驳回'
+  rejected: '已驳回',
+  closed: '已关闭'
 }
 
 const checkinEventText = {
@@ -41,9 +46,12 @@ const assignmentSourceText = {
 
 const incidentTypeText = {
   sos: 'SOS紧急协助',
+  complaint: '客户投诉',
   client_complaint: '客户投诉',
   staff_sos: '宠托师SOS',
-  service_issue: '服务异常'
+  service_issue: '服务异常',
+  refund_dispute: '退款争议',
+  safety: '安全问题'
 }
 
 function formatOrderStatus(status, order = {}) {

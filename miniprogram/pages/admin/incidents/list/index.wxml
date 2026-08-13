@@ -5,16 +5,26 @@
     <view class="tip">集中处理员工提交的 SOS 和履约异常。</view>
   </view>
 
-  <view class="card" wx:for="{{incidents}}" wx:key="_id">
+  <view class="chip-row">
+    <view class="chip {{status === item.value ? 'pink' : ''}}" wx:for="{{statusTabs}}" wx:key="value" data-status="{{item.value}}" bindtap="switchStatus">{{item.label}}</view>
+  </view>
+
+  <view class="card interactive" wx:for="{{incidents}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
     <view class="between">
       <view>
-        <view class="strong">{{item.incidentTypeText}}</view>
+        <view class="strong">{{item.title || item.incidentTypeText}}</view>
         <view class="muted">{{item.description}}</view>
+        <view class="muted">订单 {{item.orderId}} · {{item.createdAt}}</view>
       </view>
       <view class="badge">{{item.statusText}}</view>
     </view>
-    <button class="mini-btn" size="mini" data-id="{{item._id}}" bindtap="resolve">标记处理</button>
+    <view class="chip-row">
+      <view class="chip pink">{{item.incidentTypeText}}</view>
+      <button class="mini-btn" size="mini" data-id="{{item._id}}" catchtap="resolve">快速解决</button>
+    </view>
   </view>
+
+  <view class="empty" wx:if="{{!incidents.length}}">暂无异常事件。</view>
 
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>

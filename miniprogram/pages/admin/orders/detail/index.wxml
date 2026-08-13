@@ -31,10 +31,31 @@
     <view class="info-row" wx:if="{{detail.order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{detail.order.addressDetail}}</view></view>
     <view class="info-row" wx:if="{{detail.order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{detail.order.doorplate}}</view></view>
     <view class="info-row"><view class="label">状态</view><view class="badge">{{detail.order.statusText}}</view></view>
+    <view class="info-row"><view class="label">支付状态</view><view class="value">{{detail.order.paymentStatus || 'unpaid'}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.paymentNo}}"><view class="label">支付单号</view><view class="value">{{detail.order.paymentNo}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.wxTransactionId}}"><view class="label">微信交易号</view><view class="value">{{detail.order.wxTransactionId}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.paidAt}}"><view class="label">支付时间</view><view class="value">{{detail.order.paidAt}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.refundStatus}}"><view class="label">退款状态</view><view class="value">{{detail.order.refundStatus}} ¥{{detail.order.refundAmount || 0}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.refundNo}}"><view class="label">退款单号</view><view class="value">{{detail.order.refundNo}}</view></view>
     <view class="info-row"><view class="label">轨迹点</view><view class="value">{{detail.tracks.length}}</view></view>
     <view class="info-row"><view class="label">打卡</view><view class="value">{{detail.checkins.length}}</view></view>
     <view class="info-row"><view class="label">密码日志</view><view class="value">{{detail.unlockLogs.length}}</view></view>
   </view>
 
+  <view class="card" wx:if="{{refunds.length}}">
+    <view class="subtitle">退款记录</view>
+    <view class="timeline">
+      <view class="timeline-item" wx:for="{{refunds}}" wx:key="_id">
+        <view class="timeline-dot"></view>
+        <view class="timeline-content">
+          <view class="strong">{{item.refundNo}} · ¥{{item.refundAmount}}</view>
+          <view class="muted">{{item.status}} · {{item.reason}}</view>
+          <view class="muted">{{item.createdAt}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
   <button class="ghost" bindtap="evidence">证据链</button>
+  <button class="ghost" bindtap="incidents">查看异常 / 纠纷</button>
 </view>

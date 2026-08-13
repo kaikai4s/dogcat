@@ -15,6 +15,51 @@ function createEmptyItem() {
   }
 }
 
+function normalizePaymentConfig(payment = {}) {
+  return {
+    enabled: payment.enabled !== false,
+    mode: payment.mode === 'wechat' ? 'wechat' : 'mock',
+    mchId: payment.mchId || '',
+    appId: payment.appId || '',
+    notifyUrl: payment.notifyUrl || '',
+    certSerialNo: payment.certSerialNo || '',
+    refundEnabled: payment.refundEnabled !== false
+  }
+}
+
+function normalizeSettlementConfig(settlement = {}) {
+  return {
+    staffCommissionRate: Number(settlement.staffCommissionRate || 0.7),
+    settlementDelayDays: Number(settlement.settlementDelayDays || 1),
+    minWithdrawAmount: Number(settlement.minWithdrawAmount || 10),
+    withdrawFeeRate: Number(settlement.withdrawFeeRate || 0)
+  }
+}
+
+function normalizeSubscriptionConfig(subscription = {}) {
+  const templates = subscription.templates || {}
+  return {
+    enabled: subscription.enabled === true,
+    templates: {
+      orderPaid: templates.orderPaid || '',
+      orderAssigned: templates.orderAssigned || '',
+      serviceStart: templates.serviceStart || '',
+      serviceFinish: templates.serviceFinish || '',
+      refundResult: templates.refundResult || '',
+      disputeUpdate: templates.disputeUpdate || '',
+      withdrawResult: templates.withdrawResult || ''
+    }
+  }
+}
+
+function normalizeReliabilityConfig(reliability = {}) {
+  return {
+    enableOfflineQueue: reliability.enableOfflineQueue !== false,
+    maxTrackBatchSize: Number(reliability.maxTrackBatchSize || 50),
+    maxRetryTimes: Number(reliability.maxRetryTimes || 5)
+  }
+}
+
 function normalizeCarouselConfig(carousel = {}) {
   const source = carousel || {}
   const rotateIntervalMs = Number(source.rotateIntervalMs || 5000)
@@ -46,6 +91,10 @@ Page({
   data: {
     settings: {
       enableTestAddressMode: false,
+      payment: normalizePaymentConfig(),
+      settlement: normalizeSettlementConfig(),
+      subscription: normalizeSubscriptionConfig(),
+      reliability: normalizeReliabilityConfig(),
       homeHeroCarousel: normalizeCarouselConfig()
     },
     editingIndex: -1,
@@ -64,6 +113,10 @@ Page({
       .then((settings) => {
         const normalized = {
           enableTestAddressMode: settings.enableTestAddressMode === true,
+          payment: normalizePaymentConfig(settings.payment),
+          settlement: normalizeSettlementConfig(settings.settlement),
+          subscription: normalizeSubscriptionConfig(settings.subscription),
+          reliability: normalizeReliabilityConfig(settings.reliability),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel)
         }
         setCachedSystemSettings(normalized)
@@ -118,6 +171,46 @@ Page({
       ['settings.homeHeroCarousel.rotateIntervalSec']: sec,
       ['settings.homeHeroCarousel.rotateIntervalMs']: sec * 1000
     })
+  },
+
+  togglePaymentEnabled(e) {
+    this.setData({ ['settings.payment.enabled']: e.detail.value })
+  },
+
+  paymentModeChange(e) {
+    this.setData({ ['settings.payment.mode']: e.detail.value === 'wechat' ? 'wechat' : 'mock' })
+  },
+
+  toggleRefundEnabled(e) {
+    this.setData({ ['settings.payment.refundEnabled']: e.detail.value })
+  },
+
+  paymentInput(e) {
+    const field = e.currentTarget.dataset.field
+    this.setData({ [`settings.payment.${field}`]: e.detail.value })
+  },
+
+  settlementInput(e) {
+    const field = e.currentTarget.dataset.field
+    this.setData({ [`settings.settlement.${field}`]: Number(e.detail.value || 0) })
+  },
+
+  reliabilityInput(e) {
+    const field = e.currentTarget.dataset.field
+    this.setData({ [`settings.reliability.${field}`]: Number(e.detail.value || 0) })
+  },
+
+  toggleOfflineQueue(e) {
+    this.setData({ ['settings.reliability.enableOfflineQueue']: e.detail.value })
+  },
+
+  toggleSubscriptionEnabled(e) {
+    this.setData({ ['settings.subscription.enabled']: e.detail.value })
+  },
+
+  subscriptionTemplateInput(e) {
+    const field = e.currentTarget.dataset.field
+    this.setData({ [`settings.subscription.templates.${field}`]: e.detail.value })
   },
 
   startAddItem() {
@@ -356,6 +449,10 @@ Page({
 
     const payload = {
       enableTestAddressMode: this.data.settings.enableTestAddressMode === true,
+      payment: this.data.settings.payment,
+      settlement: this.data.settings.settlement,
+      subscription: this.data.settings.subscription,
+      reliability: this.data.settings.reliability,
       homeHeroCarousel: {
         enabled: carousel.enabled === true,
         autoRotate: carousel.autoRotate !== false,
@@ -368,6 +465,10 @@ Page({
       .then((settings) => {
         const normalized = {
           enableTestAddressMode: settings.enableTestAddressMode === true,
+          payment: normalizePaymentConfig(settings.payment),
+          settlement: normalizeSettlementConfig(settings.settlement),
+          subscription: normalizeSubscriptionConfig(settings.subscription),
+          reliability: normalizeReliabilityConfig(settings.reliability),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel)
         }
         setCachedSystemSettings(normalized)

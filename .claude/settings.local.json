@@ -22,7 +22,9 @@
       "Bash(mkdir -p /tmp/rec_frames)",
       "Bash(ffmpeg -i \"/home/ebrook-dev/视频/录屏/录屏 2026年08月06日 17时17分48秒.webm\" -vf \"fps=1\" /tmp/rec_frames/frame_%03d.png)",
       "Read(//tmp/**)",
-      "Bash(ffprobe:*)"
+      "Bash(ffprobe:*)",
+      "Bash(git:*)",
+      "Bash(perl -0ne 'while\\(/not ok[^\\\\n]*[\\\\s\\\\S]*?\\(?=\\\\n# Subtest:|\\\\n1\\\\.\\\\.|\\\\z\\)/g\\){print $&}')"
     ]
   }
 }

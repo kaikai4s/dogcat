@@ -7,9 +7,11 @@ const db = cloud.database()
 
 const collections = [
   'users', 'pets', 'home_security', 'staff_profiles', 'orders', 'payments',
-  'track_logs', 'checkin_logs', 'unlock_code_logs', 'order_incidents', 'admin_operation_logs', 'service_prices',
+  'track_logs', 'checkin_logs', 'unlock_code_logs', 'order_incidents', 'incident_comments', 'incident_actions', 'admin_operation_logs', 'service_prices',
   'sitter_favorites', 'service_reviews', 'user_addresses', 'order_timeline', 'platform_configs',
-  'coupon_templates', 'user_coupons',
+  'coupon_templates', 'user_coupons', 'payment_events', 'refunds', 'finance_logs',
+  'staff_earnings', 'withdraw_requests', 'staff_schedule_exceptions',
+  'subscription_consents', 'subscription_logs',
   'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs'
 ]
@@ -201,11 +203,47 @@ function normalizeHomeHeroCarousel(carousel = {}) {
 }
 
 function normalizeSystemSettings(value = {}) {
+  const payment = value.payment || {}
+  const settlement = value.settlement || {}
+  const subscription = value.subscription || {}
+  const reliability = value.reliability || {}
   return {
     enableTestAddressMode: value.enableTestAddressMode === true,
     qwenApiKey: safeText(value.qwenApiKey).trim(),
     qwenModel: safeText(value.qwenModel).trim() || 'qwen3.5-flash',
-    homeHeroCarousel: normalizeHomeHeroCarousel(value.homeHeroCarousel)
+    homeHeroCarousel: normalizeHomeHeroCarousel(value.homeHeroCarousel),
+    payment: {
+      enabled: payment.enabled !== false,
+      mode: payment.mode === 'wechat' ? 'wechat' : 'mock',
+      mchId: safeText(payment.mchId).trim(),
+      appId: safeText(payment.appId).trim(),
+      notifyUrl: safeText(payment.notifyUrl).trim(),
+      certSerialNo: safeText(payment.certSerialNo).trim(),
+      refundEnabled: payment.refundEnabled !== false
+    },
+    settlement: {
+      staffCommissionRate: Math.min(Math.max(Number(settlement.staffCommissionRate ?? 0.7), 0), 1),
+      settlementDelayDays: Math.max(Math.round(Number(settlement.settlementDelayDays ?? 1)), 0),
+      minWithdrawAmount: Math.max(Number(settlement.minWithdrawAmount ?? 10), 0),
+      withdrawFeeRate: Math.min(Math.max(Number(settlement.withdrawFeeRate || 0), 0), 1)
+    },
+    subscription: {
+      enabled: subscription.enabled === true,
+      templates: {
+        orderPaid: safeText(subscription.templates && subscription.templates.orderPaid).trim(),
+        orderAssigned: safeText(subscription.templates && subscription.templates.orderAssigned).trim(),
+        serviceStart: safeText(subscription.templates && subscription.templates.serviceStart).trim(),
+        serviceFinish: safeText(subscription.templates && subscription.templates.serviceFinish).trim(),
+        refundResult: safeText(subscription.templates && subscription.templates.refundResult).trim(),
+        disputeUpdate: safeText(subscription.templates && subscription.templates.disputeUpdate).trim(),
+        withdrawResult: safeText(subscription.templates && subscription.templates.withdrawResult).trim()
+      }
+    },
+    reliability: {
+      enableOfflineQueue: reliability.enableOfflineQueue !== false,
+      maxTrackBatchSize: Math.min(Math.max(Math.round(Number(reliability.maxTrackBatchSize || 50)), 1), 200),
+      maxRetryTimes: Math.min(Math.max(Math.round(Number(reliability.maxRetryTimes || 5)), 0), 20)
+    }
   }
 }
 
@@ -649,6 +687,124 @@ function validateSitterScheduleTime(weeklySchedule, startTimeStr, endTimeStr) {
     if (isSameDayAsEnd) break
     curr = new Date(Date.UTC(currYear, currMonth, currDate + 1, 0, 0))
   }
+}
+
+function formatDateKey(dateObj) {
+  return `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth() + 1).padStart(2, '0')}-${String(dateObj.getUTCDate()).padStart(2, '0')}`
+}
+
+function getDateKeyFromTime(value) {
+  const parts = parseDateTimeParts(value)
+  return parts ? formatDateKey(parts.dateObj) : ''
+}
+
+function normalizeScheduleSlots(raw) {
+  const list = Array.isArray(raw) ? raw : []
+  return list
+    .map((slot) => ({
+      start: Math.max(0, Math.min(23, Math.floor(Number(slot.start || 0)))),
+      end: Math.max(1, Math.min(24, Math.floor(Number(slot.end || 0))))
+    }))
+    .filter((slot) => slot.end > slot.start)
+    .sort((a, b) => a.start - b.start)
+}
+
+function normalizeScheduleException(data = {}, profile = {}) {
+  const dateKey = safeText(data.dateKey).trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) throw new Error('请选择日期')
+  const status = data.status === 'available' ? 'available' : 'unavailable'
+  const slots = status === 'available' ? normalizeScheduleSlots(data.slots) : []
+  if (status === 'available' && !slots.length) throw new Error('请设置可接单时间段')
+  return {
+    staffProfileId: profile._id || data.staffProfileId || '',
+    staffOpenid: profile.openid || data.staffOpenid || '',
+    dateKey,
+    status,
+    slots,
+    remark: safeText(data.remark).trim().slice(0, 80)
+  }
+}
+
+function validateSlotsForDate(slots, startTimeStr, endTimeStr, dateKey, emptyMessage) {
+  const startParts = parseDateTimeParts(startTimeStr)
+  const endParts = parseDateTimeParts(endTimeStr)
+  if (!startParts || !endParts || endParts.dateObj <= startParts.dateObj) throw new Error('服务时间格式无效')
+  const startKey = formatDateKey(startParts.dateObj)
+  const endKey = formatDateKey(endParts.dateObj)
+  if (startKey !== dateKey || endKey !== dateKey) throw new Error('跨日期服务暂不支持日期例外排班')
+  if (!slots.length) throw new Error(emptyMessage)
+  const startVal = startParts.hour + startParts.minute / 60
+  const endVal = endParts.hour + endParts.minute / 60
+  const fits = slots.some((slot) => startVal >= slot.start && endVal <= slot.end)
+  if (!fits) {
+    const allowedText = slots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
+    throw new Error(`预约时间不在宠托师当天可接单时间段（${allowedText}）内`)
+  }
+}
+
+function isOrderConflictCandidate(order = {}) {
+  return ['paid', 'assigned', 'in_service'].includes(order.status) && order.status !== 'cancelled'
+}
+
+function timeRangesOverlap(startA, endA, startB, endB) {
+  const aStart = toTimeValue(startA)
+  const aEnd = toTimeValue(endA)
+  const bStart = toTimeValue(startB)
+  const bEnd = toTimeValue(endB)
+  return aStart > 0 && aEnd > aStart && bStart > 0 && bEnd > bStart && aStart < bEnd && bStart < aEnd
+}
+
+async function validateStaffAvailability(profile, startTimeStr, endTimeStr, options = {}) {
+  if (!profile || !profile.openid) throw new Error('宠托师不可用')
+  const dateKey = getDateKeyFromTime(startTimeStr)
+  if (!dateKey) throw new Error('请选择服务时间')
+  const exceptionRes = await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid, dateKey }).limit(1).get()
+  const exception = exceptionRes.data[0]
+  if (exception) {
+    if (exception.status === 'unavailable') throw new Error('宠托师当天设置为休息，无法预约')
+    validateSlotsForDate(normalizeScheduleSlots(exception.slots), startTimeStr, endTimeStr, dateKey, '宠托师当天未设置可接单时间段')
+  } else {
+    validateSitterScheduleTime(profile.weeklySchedule, startTimeStr, endTimeStr)
+  }
+
+  const orderRes = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
+  const conflict = (orderRes.data || []).find((order) => {
+    if (options.excludeOrderId && order._id === options.excludeOrderId) return false
+    return isOrderConflictCandidate(order) && timeRangesOverlap(startTimeStr, endTimeStr, order.startTime, order.endTime)
+  })
+  if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
+}
+
+async function buildStaffAvailability(profile, startDateKey = '', days = 14) {
+  const baseParts = parseDateTimeParts(`${startDateKey || formatDateKey(now())} 00:00`)
+  const base = baseParts ? baseParts.dateObj : now()
+  const normalizedWeekly = normalizeWeeklySchedule(profile.weeklySchedule)
+  const maxDays = Math.min(Math.max(Number(days || 14), 1), 31)
+  const exceptions = (await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid }).get()).data || []
+  const orders = (await db.collection('orders').where({ staffOpenid: profile.openid }).get()).data || []
+  const availableOrders = orders.filter(isOrderConflictCandidate)
+  const list = []
+  for (let i = 0; i < maxDays; i += 1) {
+    const date = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() + i, 0, 0))
+    const dateKey = formatDateKey(date)
+    const dayOfWeek = date.getUTCDay() === 0 ? 7 : date.getUTCDay()
+    const exception = exceptions.find((item) => item.dateKey === dateKey)
+    let source = 'weekly'
+    let slots = normalizedWeekly ? (normalizedWeekly[String(dayOfWeek)] || []) : [{ start: 0, end: 24 }]
+    let status = slots.length ? 'available' : 'unavailable'
+    let remark = ''
+    if (exception) {
+      source = 'exception'
+      status = exception.status === 'available' ? 'available' : 'unavailable'
+      slots = status === 'available' ? normalizeScheduleSlots(exception.slots) : []
+      remark = exception.remark || ''
+    }
+    const busyOrders = availableOrders
+      .filter((order) => getDateKeyFromTime(order.startTime) === dateKey)
+      .map((order) => ({ orderId: order._id, startTime: order.startTime, endTime: order.endTime, serviceSummary: order.serviceSummary || '' }))
+    list.push({ dateKey, dayOfWeek, dayName: WEEKDAY_NAMES[dayOfWeek], source, status, slots, busyOrders, remark })
+  }
+  return list
 }
 
 function toTimeValue(value) {
@@ -1401,6 +1557,278 @@ async function appendOrderTimeline(orderId, type, title, detail, actorRole) {
   })
 }
 
+function makeIdempotencyKey(...parts) {
+  return parts.map((part) => safeText(part).trim()).filter(Boolean).join(':')
+}
+
+async function appendPaymentEvent(eventType, payload = {}) {
+  await db.collection('payment_events').add({
+    data: {
+      eventType,
+      orderId: payload.orderId || '',
+      paymentNo: payload.paymentNo || '',
+      refundNo: payload.refundNo || '',
+      status: payload.status || '',
+      detail: payload.detail || {},
+      raw: payload.raw || {},
+      createdAt: now()
+    }
+  })
+}
+
+async function appendFinanceLog(action, payload = {}) {
+  await db.collection('finance_logs').add({
+    data: {
+      action,
+      targetType: payload.targetType || '',
+      targetId: payload.targetId || '',
+      orderId: payload.orderId || '',
+      staffOpenid: payload.staffOpenid || '',
+      amountDelta: Number(payload.amountDelta || 0),
+      detail: payload.detail || {},
+      createdAt: now()
+    }
+  })
+}
+
+function buildSubscriptionPage(orderId) {
+  return orderId ? `pages/client/orders/detail/index?id=${orderId}` : 'pages/client/home/index'
+}
+
+function buildSubscriptionData(templateKey, order = {}, detail = {}) {
+  const serviceName = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
+  const orderNo = order.orderNo || order._id || ''
+  const amount = detail.amount || order.payAmount || order.refundAmount || 0
+  return {
+    thing1: { value: safeText(serviceName).slice(0, 20) },
+    character_string2: { value: safeText(orderNo).slice(0, 32) },
+    time3: { value: safeText(order.startTime || nowText()).slice(0, 20) },
+    amount4: { value: `${Number(amount || 0).toFixed(2)}元` },
+    phrase5: { value: safeText(detail.statusText || templateKey).slice(0, 5) }
+  }
+}
+
+async function recordSubscriptionLog(log) {
+  await db.collection('subscription_logs').add({
+    data: {
+      openid: log.openid || '',
+      templateKey: log.templateKey || '',
+      templateId: log.templateId || '',
+      orderId: log.orderId || '',
+      status: log.status || 'skipped',
+      page: log.page || '',
+      data: log.data || {},
+      error: log.error || '',
+      createdAt: now()
+    }
+  })
+}
+
+async function sendSubscribeMessage(openid, templateKey, page, messageData = {}, orderId = '') {
+  if (!openid || !templateKey) return
+  try {
+    const settings = await getSystemSettings()
+    const templateId = settings.subscription.templates[templateKey] || ''
+    if (!settings.subscription.enabled || !templateId) {
+      await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: 'skipped', error: !settings.subscription.enabled ? 'subscription_disabled' : 'template_not_configured' })
+      return
+    }
+    if (!cloud.openapi || !cloud.openapi.subscribeMessage || typeof cloud.openapi.subscribeMessage.send !== 'function') {
+      await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: 'skipped', error: 'openapi_unavailable' })
+      return
+    }
+    await cloud.openapi.subscribeMessage.send({ touser: openid, templateId, page, data: messageData })
+    await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: 'sent' })
+  } catch (error) {
+    await recordSubscriptionLog({ openid, templateKey, orderId, page, data: messageData, status: 'failed', error: error && (error.message || error.errMsg) || String(error) })
+  }
+}
+
+function notifyOrder(openid, templateKey, order, detail = {}) {
+  return sendSubscribeMessage(openid, templateKey, buildSubscriptionPage(order && order._id), buildSubscriptionData(templateKey, order, detail), order && order._id)
+}
+
+function calculateAvailableAt(completedAt, delayDays) {
+  const base = parseDateValue(completedAt) || now()
+  return new Date(base.getTime() + Math.max(Number(delayDays || 0), 0) * 86400000)
+}
+
+async function ensureStaffEarning(order, completedAt = now()) {
+  if (!order || !order._id || !order.staffOpenid) return null
+  const existing = await db.collection('staff_earnings').where({ orderId: order._id }).limit(1).get()
+  if (existing.data[0]) return existing.data[0]
+  const settings = await getSystemSettings()
+  const rate = Number(settings.settlement.staffCommissionRate || 0.7)
+  const grossAmount = Number(order.payAmount || 0)
+  const earningAmount = Math.round(grossAmount * rate * 100) / 100
+  const time = now()
+  const earning = {
+    orderId: order._id,
+    orderNo: order.orderNo || '',
+    staffOpenid: order.staffOpenid || '',
+    staffUserId: order.staffUserId || '',
+    staffProfileId: order.staffProfileId || '',
+    clientOpenid: order.clientOpenid || '',
+    grossAmount,
+    commissionRate: rate,
+    amount: earningAmount,
+    status: settings.settlement.settlementDelayDays > 0 ? 'pending' : 'available',
+    availableAt: calculateAvailableAt(completedAt, settings.settlement.settlementDelayDays),
+    withdrawRequestId: '',
+    frozenReason: '',
+    createdAt: time,
+    updatedAt: time
+  }
+  const created = await db.collection('staff_earnings').add({ data: earning })
+  await appendFinanceLog('staff_earning_created', { targetType: 'staff_earning', targetId: created._id, orderId: order._id, staffOpenid: order.staffOpenid, amountDelta: earningAmount, detail: { commissionRate: rate } })
+  return { _id: created._id, ...earning }
+}
+
+async function refreshStaffEarnings(openid = '') {
+  const query = openid ? { staffOpenid: openid, status: 'pending' } : { status: 'pending' }
+  const res = await db.collection('staff_earnings').where(query).get()
+  const time = now()
+  for (const earning of res.data || []) {
+    const availableAt = parseDateValue(earning.availableAt)
+    if (availableAt && availableAt.getTime() <= time.getTime()) {
+      await db.collection('staff_earnings').doc(earning._id).update({ data: { status: 'available', updatedAt: time } })
+      earning.status = 'available'
+    }
+  }
+}
+
+function summarizeStaffEarnings(earnings = []) {
+  return earnings.reduce((summary, earning) => {
+    const amount = Number(earning.amount || 0)
+    summary.total += amount
+    if (earning.status === 'pending') summary.pending += amount
+    if (earning.status === 'available') summary.available += amount
+    if (earning.status === 'withdrawing') summary.withdrawing += amount
+    if (earning.status === 'withdrawn') summary.withdrawn += amount
+    if (earning.status === 'frozen') summary.frozen += amount
+    return summary
+  }, { total: 0, pending: 0, available: 0, withdrawing: 0, withdrawn: 0, frozen: 0 })
+}
+
+function buildDateRange(data = {}) {
+  const startText = safeText(data.startDate).trim()
+  const endText = safeText(data.endDate).trim()
+  const start = startText ? parseDateValue(`${startText} 00:00:00`) : null
+  const end = endText ? parseDateValue(`${endText} 23:59:59`) : null
+  return { start, end, startDate: startText, endDate: endText }
+}
+
+function inDateRange(item, range, fields = ['createdAt']) {
+  if (!range.start && !range.end) return true
+  const date = fields.map((field) => parseDateValue(item[field])).find(Boolean)
+  if (!date) return false
+  if (range.start && date < range.start) return false
+  if (range.end && date > range.end) return false
+  return true
+}
+
+function sumAmount(list = [], field = 'amount') {
+  return Math.round(list.reduce((sum, item) => sum + Number(item[field] || 0), 0) * 100) / 100
+}
+
+function statusCount(list = []) {
+  return list.reduce((acc, item) => {
+    const status = item.status || 'unknown'
+    acc[status] = (acc[status] || 0) + 1
+    return acc
+  }, {})
+}
+
+function limitList(list = [], size = 50) {
+  const pageSize = Math.min(Math.max(Number(size || 50), 1), 100)
+  return list.slice(0, pageSize)
+}
+
+function buildFinanceDashboardData({ orders = [], payments = [], refunds = [], earnings = [], withdraws = [], logs = [] }, range) {
+  const paidOrders = orders.filter((order) => isPaidOrder(order) && inDateRange(order, range, ['paidAt', 'createdAt']))
+  const paidPayments = payments.filter((payment) => payment.status === 'paid' && inDateRange(payment, range, ['paidAt', 'updatedAt', 'createdAt']))
+  const refundList = refunds.filter((refund) => inDateRange(refund, range, ['createdAt', 'updatedAt']))
+  const earningList = earnings.filter((earning) => inDateRange(earning, range, ['createdAt', 'completedAt']))
+  const withdrawList = withdraws.filter((withdraw) => inDateRange(withdraw, range, ['createdAt', 'paidAt']))
+  const logList = logs.filter((log) => inDateRange(log, range, ['createdAt']))
+  const gmv = sumAmount(paidOrders, 'payAmount')
+  const received = paidPayments.length ? sumAmount(paidPayments, 'amount') : gmv
+  const refundAmount = sumAmount(refundList, 'amount')
+  const staffEarningAmount = sumAmount(earningList, 'amount')
+  return {
+    range: { startDate: range.startDate, endDate: range.endDate },
+    metrics: {
+      gmv,
+      received,
+      refundAmount,
+      netRevenue: Math.round((received - refundAmount) * 100) / 100,
+      staffEarningAmount,
+      platformGrossProfit: Math.round((received - refundAmount - staffEarningAmount) * 100) / 100,
+      pendingWithdrawAmount: sumAmount(withdrawList.filter((item) => item.status === 'pending'), 'amount'),
+      withdrawingAmount: sumAmount(withdrawList.filter((item) => item.status === 'approved'), 'amount'),
+      paidWithdrawAmount: sumAmount(withdrawList.filter((item) => item.status === 'paid'), 'amount')
+    },
+    counts: {
+      paidOrders: paidOrders.length,
+      payments: paidPayments.length,
+      refunds: refundList.length,
+      earnings: earningList.length,
+      withdraws: withdrawList.length,
+      logs: logList.length,
+      withdrawStatus: statusCount(withdrawList),
+      earningStatus: statusCount(earningList),
+      refundStatus: statusCount(refundList)
+    },
+    recentLogs: limitList(logList.sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt)), 10)
+  }
+}
+
+function normalizeIncidentStatus(value, fallback = 'open') {
+  const status = safeText(value).trim()
+  const allowed = ['open', 'triaging', 'waiting_client', 'waiting_staff', 'processing', 'refund_pending', 'resolved', 'rejected', 'closed']
+  return allowed.includes(status) ? status : fallback
+}
+
+function normalizeIncidentType(value, fallback = 'complaint') {
+  const type = safeText(value).trim()
+  return ['sos', 'complaint', 'service_issue', 'refund_dispute', 'safety'].includes(type) ? type : fallback
+}
+
+async function recordIncidentAction(incidentId, action, actorRole, actorOpenid, detail = {}) {
+  const time = now()
+  await db.collection('incident_actions').add({ data: { incidentId, action, actorRole, actorOpenid, detail, createdAt: time } })
+}
+
+async function getIncidentForAccess(openid, incidentId) {
+  const user = await getUser(openid)
+  const incident = (await db.collection('order_incidents').doc(incidentId).get()).data
+  if (!incident) throw new Error('纠纷不存在')
+  if (user.roles.includes('admin') || incident.clientOpenid === openid || incident.staffOpenid === openid) return { user, incident }
+  throw new Error('无权访问纠纷')
+}
+
+async function appendIncidentComment(incidentId, actorRole, actorOpenid, content, mediaFileIds = []) {
+  const text = safeText(content).trim()
+  const files = Array.isArray(mediaFileIds) ? mediaFileIds.filter(Boolean).slice(0, 9) : []
+  if (!text && !files.length) throw new Error('请填写留言或上传证据')
+  const time = now()
+  const comment = { incidentId, actorRole, actorOpenid, content: text, mediaFileIds: files, createdAt: time }
+  const created = await db.collection('incident_comments').add({ data: comment })
+  return { _id: created._id, ...comment }
+}
+
+async function freezeOrderEarnings(orderId, incidentId, time = now()) {
+  const res = await db.collection('staff_earnings').where({ orderId }).get()
+  const frozen = []
+  for (const earning of res.data || []) {
+    if (!['pending', 'available'].includes(earning.status)) continue
+    await db.collection('staff_earnings').doc(earning._id).update({ data: { status: 'frozen', frozenIncidentId: incidentId, updatedAt: time } })
+    frozen.push(earning._id)
+  }
+  if (frozen.length) await appendFinanceLog('staff_earning_frozen', { targetType: 'incident', targetId: incidentId, amountDelta: 0, detail: { orderId, earningIds: frozen } })
+  return frozen
+}
+
 async function saveUserAddress(openid, user, data) {
   if (!data.serviceAddress) throw new Error('请选择服务地址')
   if (!data.addressDetail) throw new Error('请填写详细地址')
@@ -1491,19 +1919,159 @@ async function toPublicSitterDetail(openid, profile) {
 
 function getCancelQuoteForOrder(order) {
   if (order.status === 'pending_pay') return { canCancel: true, refundAmount: 0, refundStatus: 'not_required', ruleText: '待支付订单可直接取消' }
-  if (order.status === 'paid') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'mock_refunded', ruleText: '已支付未接单订单可全额退款' }
+  if (order.status === 'paid') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'processing', ruleText: '已支付未接单订单可全额退款' }
   if (order.status === 'assigned') {
     const start = new Date(String(order.startTime || '').replace(/-/g, '/')).getTime()
     const hoursBeforeStart = start ? (start - now().getTime()) / 36e5 : 0
     const rate = hoursBeforeStart >= 24 ? 1 : 0.8
-    return { canCancel: true, refundAmount: Math.round(Number(order.payAmount || 0) * rate), refundStatus: 'mock_refunded', ruleText: hoursBeforeStart >= 24 ? '距服务开始超过24小时，可全额退款' : '距服务开始不足24小时，可退80%' }
+    return { canCancel: true, refundAmount: Math.round(Number(order.payAmount || 0) * rate), refundStatus: 'processing', ruleText: hoursBeforeStart >= 24 ? '距服务开始超过24小时，可全额退款' : '距服务开始不足24小时，可退80%' }
   }
   return { canCancel: false, refundAmount: 0, refundStatus: 'pending_manual', ruleText: '服务中或已完成订单需申请平台介入' }
 }
 
+function createPaymentNo() {
+  return `P${Date.now()}${Math.floor(Math.random() * 1000)}`
+}
+
+function createRefundNo() {
+  return `R${Date.now()}${Math.floor(Math.random() * 1000)}`
+}
+
+async function ensurePaymentRecord(order, openid, channel = 'mock') {
+  const existing = await db.collection('payments').where({ orderId: order._id, status: 'pending' }).limit(1).get()
+  if (existing.data[0]) return existing.data[0]
+  const time = now()
+  const paymentNo = createPaymentNo()
+  const payment = {
+    orderId: order._id,
+    orderNo: order.orderNo || '',
+    openid,
+    paymentNo,
+    prepayId: '',
+    wxTransactionId: '',
+    amount: Number(order.payAmount || 0),
+    currency: 'CNY',
+    status: 'pending',
+    channel,
+    idempotencyKey: makeIdempotencyKey('payment', order._id, paymentNo),
+    rawRequest: {},
+    rawCallback: {},
+    createdAt: time,
+    updatedAt: time
+  }
+  const created = await db.collection('payments').add({ data: payment })
+  await appendPaymentEvent('create', { orderId: order._id, paymentNo, status: 'pending', detail: { channel, amount: payment.amount } })
+  return { _id: created._id, ...payment }
+}
+
+async function markOrderPaid(orderId, paymentPayload = {}) {
+  const order = (await db.collection('orders').doc(orderId).get()).data
+  if (order.paymentStatus === 'paid') return { orderId, status: 'paid' }
+  if (order.status !== 'pending_pay') throw new Error('订单状态不可支付')
+  const time = now()
+  const paymentNo = paymentPayload.paymentNo || createPaymentNo()
+  const paymentUpdate = {
+    paymentStatus: 'paid',
+    status: 'paid',
+    paymentNo,
+    wxTransactionId: paymentPayload.wxTransactionId || '',
+    paidAt: time,
+    updatedAt: time
+  }
+  const existing = await db.collection('payments').where({ orderId, paymentNo }).limit(1).get()
+  if (existing.data[0]) {
+    await db.collection('payments').doc(existing.data[0]._id).update({
+      data: {
+        status: 'success',
+        wxTransactionId: paymentUpdate.wxTransactionId,
+        rawCallback: paymentPayload.rawCallback || {},
+        paidAt: time,
+        updatedAt: time
+      }
+    })
+  } else {
+    await db.collection('payments').add({
+      data: {
+        orderId,
+        orderNo: order.orderNo || '',
+        openid: order.clientOpenid || '',
+        paymentNo,
+        prepayId: paymentPayload.prepayId || '',
+        wxTransactionId: paymentUpdate.wxTransactionId,
+        amount: Number(order.payAmount || 0),
+        currency: 'CNY',
+        status: 'success',
+        channel: paymentPayload.channel || 'mock',
+        idempotencyKey: makeIdempotencyKey('payment', orderId, paymentNo),
+        rawCallback: paymentPayload.rawCallback || {},
+        paidAt: time,
+        createdAt: time,
+        updatedAt: time
+      }
+    })
+  }
+  await db.collection('orders').doc(orderId).update({ data: paymentUpdate })
+  if (order.couponId) await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'used', usedOrderId: orderId, usedAt: time, updatedAt: time } })
+  await appendPaymentEvent('paid', { orderId, paymentNo, status: 'success', detail: { amount: Number(order.payAmount || 0), channel: paymentPayload.channel || 'mock' }, raw: paymentPayload.rawCallback || {} })
+  await appendFinanceLog('order_paid', { targetType: 'order', targetId: orderId, orderId, amountDelta: Number(order.payAmount || 0), detail: { paymentNo } })
+  await appendOrderTimeline(orderId, 'paid', '订单已支付', `支付金额 ¥${order.payAmount}`, 'client')
+  await notifyOrder(order.clientOpenid, 'orderPaid', { ...order, _id: orderId }, { amount: Number(order.payAmount || 0), statusText: '已支付' })
+  return { orderId, status: 'paid', paymentNo }
+}
+
+async function createRefundForOrder(order, refundAmount, reason, source, operatorOpenid) {
+  const existing = await db.collection('refunds').where({ orderId: order._id, status: 'processing' }).limit(1).get()
+  if (existing.data[0]) return existing.data[0]
+  const time = now()
+  const refundNo = createRefundNo()
+  const refund = {
+    orderId: order._id,
+    orderNo: order.orderNo || '',
+    paymentNo: order.paymentNo || '',
+    wxTransactionId: order.wxTransactionId || '',
+    refundNo,
+    wxRefundId: '',
+    openid: order.clientOpenid || '',
+    amount: Number(order.payAmount || 0),
+    refundAmount: Number(refundAmount || 0),
+    reason: reason || '',
+    status: 'processing',
+    source: source || 'client_cancel',
+    operatorOpenid: operatorOpenid || '',
+    rawRequest: {},
+    rawCallback: {},
+    requestedAt: time,
+    createdAt: time,
+    updatedAt: time
+  }
+  const created = await db.collection('refunds').add({ data: refund })
+  await appendPaymentEvent('refund_create', { orderId: order._id, refundNo, status: 'processing', detail: { refundAmount: refund.refundAmount, source } })
+  await notifyOrder(order.clientOpenid, 'refundResult', order, { amount: refund.refundAmount, statusText: '退款中' })
+  return { _id: created._id, ...refund }
+}
+
 const handlers = {
-  async system(openid, action) {
+  async system(openid, action, data) {
     if (action === 'getSettings') return getSystemSettings()
+    if (action === 'recordSubscriptionConsent') {
+      await getUser(openid)
+      const templateKeys = Array.isArray(data.templateKeys) ? data.templateKeys : []
+      const results = data.results || {}
+      const time = now()
+      const records = templateKeys.map((templateKey) => ({
+        openid,
+        templateKey,
+        templateId: safeText(data.templateIds && data.templateIds[templateKey]).trim(),
+        status: safeText(results[templateKey] || results[data.templateIds && data.templateIds[templateKey]] || 'unknown'),
+        scene: safeText(data.scene).trim(),
+        createdAt: time,
+        updatedAt: time
+      }))
+      for (const record of records) {
+        await db.collection('subscription_consents').add({ data: record })
+      }
+      return { count: records.length }
+    }
     throw new Error('未知 system 操作')
   },
 
@@ -1905,8 +2473,8 @@ const handlers = {
             }
           }
 
-          if (staffProfile.weeklySchedule && data.startTime && data.endTime) {
-            validateSitterScheduleTime(staffProfile.weeklySchedule, data.startTime, data.endTime)
+          if (data.startTime && data.endTime) {
+            await validateStaffAvailability(staffProfile, data.startTime, data.endTime)
           }
         }
       }
@@ -1944,9 +2512,7 @@ const handlers = {
             }
           }
 
-          if (staffProfile.weeklySchedule) {
-            validateSitterScheduleTime(staffProfile.weeklySchedule, data.startTime, data.endTime)
-          }
+          await validateStaffAvailability(staffProfile, data.startTime, data.endTime)
         }
       }
       const time = now()
@@ -2059,7 +2625,14 @@ const handlers = {
       const quote = getCancelQuoteForOrder(order)
       if (!quote.canCancel) throw new Error(quote.ruleText)
       const time = now()
-      await db.collection('orders').doc(data.orderId).update({ data: { status: 'cancelled', cancelReason: data.reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time } })
+      const update = { status: 'cancelled', cancelReason: data.reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time }
+      let refund = null
+      if (order.paymentStatus === 'paid' && quote.refundAmount > 0) {
+        refund = await createRefundForOrder(order, quote.refundAmount, data.reason || '宠物主取消', 'client_cancel', openid)
+        update.paymentStatus = 'refunding'
+        update.refundNo = refund.refundNo
+      }
+      await db.collection('orders').doc(data.orderId).update({ data: update })
       if (order.paymentStatus !== 'paid' && order.couponId) {
         const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
         if (coupon && coupon.status === 'locked' && coupon.lockedOrderId === data.orderId) {
@@ -2067,7 +2640,8 @@ const handlers = {
         }
       }
       await appendOrderTimeline(data.orderId, 'cancelled', '订单已取消', `${quote.ruleText}，预计退款 ¥${quote.refundAmount}`, 'client')
-      return { orderId: data.orderId, status: 'cancelled', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount }
+      if (refund) await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${quote.refundAmount}`, 'system')
+      return { orderId: data.orderId, status: 'cancelled', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, refundNo: refund ? refund.refundNo : '' }
     }
 
     if (action === 'startService') {
@@ -2078,6 +2652,7 @@ const handlers = {
       const time = now()
       await db.collection('orders').doc(data.id).update({ data: { status: 'in_service', startedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.id, 'started', '服务已开始', '', 'staff')
+      await notifyOrder(order.clientOpenid, 'serviceStart', order, { statusText: '服务中' })
       return { id: data.id }
     }
 
@@ -2093,6 +2668,8 @@ const handlers = {
       const time = now()
       await db.collection('orders').doc(data.id).update({ data: { status: 'completed', completedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.id, 'completed', '服务已完成', '', 'staff')
+      await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '已完成' })
+      await ensureStaffEarning({ ...order, _id: data.id }, time)
       const pointsDelta = Math.max(Math.floor(Number(order.payAmount || 0) / 10), 1)
       await addPoints(order.clientOpenid, order.clientUserId, pointsDelta, 'order_complete', data.id, `完成订单 +${pointsDelta} 积分`, { applyMultiplier: true, baseDelta: pointsDelta })
       const clientUser = await getUser(order.clientOpenid)
@@ -2361,28 +2938,135 @@ const handlers = {
   },
 
   async payment(openid, action, data) {
-    if (action === 'createPayment') return { mock: true, message: 'MVP 暂未接入真实微信支付，请调用 mockPayOrder' }
-    if (action === 'paymentCallback') return { ignored: true }
-    if (action === 'mockPayOrder') {
+    if (action === 'createPayment') {
       await getUser(openid)
-      const orderRes = await db.collection('orders').doc(data.orderId).get()
-      const order = orderRes.data
+      const settings = await getSystemSettings()
+      if (settings.payment.enabled === false) throw new Error('支付功能暂未开启')
+      const order = (await db.collection('orders').doc(data.orderId).get()).data
       if (order.clientOpenid !== openid) throw new Error('无权支付该订单')
-      if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid' }
+      if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid', paid: true }
       if (order.status !== 'pending_pay') throw new Error('订单状态不可支付')
-      const time = now()
+      if (Number(order.payAmount || 0) <= 0) throw new Error('订单金额不正确')
       if (order.couponId) {
         const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
         if (!coupon || coupon.openid !== openid) throw new Error('优惠券不可用')
         if (coupon.status !== 'locked' || coupon.lockedOrderId !== data.orderId) throw new Error('优惠券状态异常')
       }
-      await db.collection('payments').add({ data: { orderId: data.orderId, orderNo: order.orderNo, paymentNo: `P${Date.now()}${Math.floor(Math.random() * 1000)}`, wxTransactionId: '', amount: order.payAmount, status: 'success', paidAt: time, rawCallback: { mock: true }, createdAt: time, updatedAt: time } })
-      await db.collection('orders').doc(data.orderId).update({ data: { paymentStatus: 'paid', status: 'paid', paidAt: time, updatedAt: time } })
-      if (order.couponId) await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'used', usedOrderId: data.orderId, usedAt: time, updatedAt: time } })
-      await appendOrderTimeline(data.orderId, 'paid', '订单已支付', `支付金额 ¥${order.payAmount}`, 'client')
-      return { orderId: data.orderId, status: 'paid' }
+      const payment = await ensurePaymentRecord(order, openid, settings.payment.mode)
+      await db.collection('orders').doc(data.orderId).update({ data: { paymentStatus: 'paying', paymentNo: payment.paymentNo, updatedAt: now() } })
+      if (settings.payment.mode === 'mock') return { mock: true, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, message: '当前为模拟支付模式' }
+      return { mock: false, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, payParams: null, message: '请配置微信支付参数后接入 wx.requestPayment' }
+    }
+    if (action === 'getPaymentStatus') {
+      await getUser(openid)
+      const order = (await db.collection('orders').doc(data.orderId).get()).data
+      if (order.clientOpenid !== openid) throw new Error('无权查看支付状态')
+      const payments = await db.collection('payments').where({ orderId: data.orderId }).get()
+      return { orderId: data.orderId, status: order.status, paymentStatus: order.paymentStatus || 'unpaid', paymentNo: order.paymentNo || '', wxTransactionId: order.wxTransactionId || '', paidAt: order.paidAt || '', payments: payments.data || [] }
+    }
+    if (action === 'paymentCallback') return { ignored: true }
+    if (action === 'mockPayOrder') {
+      await getUser(openid)
+      const settings = await getSystemSettings()
+      if (settings.payment.mode !== 'mock') throw new Error('当前未开启模拟支付')
+      const order = (await db.collection('orders').doc(data.orderId).get()).data
+      if (order.clientOpenid !== openid) throw new Error('无权支付该订单')
+      if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid' }
+      if (order.status !== 'pending_pay' && order.paymentStatus !== 'paying') throw new Error('订单状态不可支付')
+      if (order.couponId) {
+        const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
+        if (!coupon || coupon.openid !== openid) throw new Error('优惠券不可用')
+        if (coupon.status !== 'locked' || coupon.lockedOrderId !== data.orderId) throw new Error('优惠券状态异常')
+      }
+      const payment = await ensurePaymentRecord(order, openid, 'mock')
+      return markOrderPaid(data.orderId, { paymentNo: data.paymentNo || payment.paymentNo, channel: 'mock', rawCallback: { mock: true } })
+    }
+    if (action === 'createRefund') {
+      const admin = await requireAdmin(openid)
+      const order = (await db.collection('orders').doc(data.orderId).get()).data
+      const amount = Number(data.refundAmount || order.payAmount || 0)
+      if (order.paymentStatus !== 'paid' && order.paymentStatus !== 'refunding') throw new Error('订单未支付，不能退款')
+      if (amount <= 0 || amount > Number(order.payAmount || 0)) throw new Error('退款金额不正确')
+      const refund = await createRefundForOrder(order, amount, data.reason || '管理员退款', 'admin', openid)
+      await db.collection('orders').doc(data.orderId).update({ data: { paymentStatus: 'refunding', refundStatus: 'processing', refundAmount: amount, refundNo: refund.refundNo, updatedAt: now() } })
+      await logAdmin(admin, 'order', data.orderId, 'createRefund', { refundNo: refund.refundNo, refundAmount: amount })
+      await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${amount}`, 'admin')
+      return refund
+    }
+    if (action === 'queryRefund') {
+      const user = await getUser(openid)
+      const res = await db.collection('refunds').where({ refundNo: data.refundNo }).limit(1).get()
+      const refund = res.data[0]
+      if (!refund) throw new Error('退款单不存在')
+      const order = (await db.collection('orders').doc(refund.orderId).get()).data
+      if (order.clientOpenid !== openid && !user.roles.includes('admin')) throw new Error('无权查看退款')
+      return refund
+    }
+    if (action === 'listRefunds') {
+      await requireAdmin(openid)
+      const where = data.orderId ? { orderId: data.orderId } : {}
+      const res = await db.collection('refunds').where(where).orderBy('createdAt', 'desc').get()
+      return res.data || []
     }
     throw new Error('未知 payment 操作')
+  },
+
+  async finance(openid, action, data) {
+    if (action === 'getStaffBalance') {
+      await getUser(openid)
+      await refreshStaffEarnings(openid)
+      const earnings = (await db.collection('staff_earnings').where({ staffOpenid: openid }).get()).data || []
+      const withdraws = (await db.collection('withdraw_requests').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').get()).data || []
+      const settings = await getSystemSettings()
+      return { ...summarizeStaffEarnings(earnings), minWithdrawAmount: settings.settlement.minWithdrawAmount, withdraws }
+    }
+    if (action === 'listStaffEarnings') {
+      await getUser(openid)
+      await refreshStaffEarnings(openid)
+      const status = safeText(data.status).trim()
+      const res = await db.collection('staff_earnings').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').get()
+      return (res.data || []).filter((item) => !status || item.status === status)
+    }
+    if (action === 'listMyWithdraws') {
+      await getUser(openid)
+      const res = await db.collection('withdraw_requests').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').get()
+      return res.data || []
+    }
+    if (action === 'createWithdrawRequest') {
+      await getUser(openid)
+      await refreshStaffEarnings(openid)
+      const settings = await getSystemSettings()
+      const earnings = (await db.collection('staff_earnings').where({ staffOpenid: openid, status: 'available' }).get()).data || []
+      const total = earnings.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+      const amount = Math.min(Number(data.amount || total), total)
+      if (amount <= 0) throw new Error('暂无可提现收益')
+      if (amount < Number(settings.settlement.minWithdrawAmount || 0)) throw new Error(`最低提现金额 ¥${settings.settlement.minWithdrawAmount}`)
+      let remaining = amount
+      const selected = []
+      for (const earning of earnings) {
+        if (remaining <= 0) break
+        selected.push(earning)
+        remaining -= Number(earning.amount || 0)
+      }
+      const time = now()
+      const request = {
+        staffOpenid: openid,
+        amount: selected.reduce((sum, item) => sum + Number(item.amount || 0), 0),
+        status: 'pending',
+        earningIds: selected.map((item) => item._id),
+        accountName: safeText(data.accountName).trim(),
+        accountNo: safeText(data.accountNo).trim(),
+        remark: safeText(data.remark).trim(),
+        auditRemark: '',
+        createdAt: time,
+        updatedAt: time
+      }
+      const created = await db.collection('withdraw_requests').add({ data: request })
+      await Promise.all(selected.map((earning) => db.collection('staff_earnings').doc(earning._id).update({ data: { status: 'withdrawing', withdrawRequestId: created._id, updatedAt: time } })))
+      await appendFinanceLog('withdraw_requested', { targetType: 'withdraw_request', targetId: created._id, staffOpenid: openid, amountDelta: -request.amount, detail: { earningIds: request.earningIds } })
+      return { _id: created._id, ...request }
+    }
+    throw new Error('未知 finance 操作')
   },
 
   async staff(openid, action, data) {
@@ -2681,6 +3365,52 @@ const handlers = {
           return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
         }))
     }
+    if (action === 'getScheduleCalendar') {
+      const user = await getUser(openid)
+      if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
+      const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
+      const profile = profileRes.data[0]
+      if (!profile) throw new Error('请先提交宠托师认证')
+      const availability = await buildStaffAvailability(profile, data.startDate || data.dateKey || '', data.days || 14)
+      return { weeklySchedule: normalizeWeeklySchedule(profile.weeklySchedule), weeklyScheduleText: formatWeeklyScheduleText(profile.weeklySchedule), availability }
+    }
+    if (action === 'saveScheduleException') {
+      const user = await getUser(openid)
+      if (!user.roles.includes('staff')) throw new Error('仅员工可设置排班')
+      const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
+      const profile = profileRes.data[0]
+      if (!profile || profile.auditStatus !== 'approved') throw new Error('宠托师认证审核通过后方可设置排班')
+      const payload = normalizeScheduleException(data, profile)
+      const time = now()
+      const existing = await db.collection('staff_schedule_exceptions').where({ staffOpenid: openid, dateKey: payload.dateKey }).limit(1).get()
+      if (existing.data[0]) {
+        await db.collection('staff_schedule_exceptions').doc(existing.data[0]._id).update({ data: { ...payload, updatedAt: time } })
+        return { _id: existing.data[0]._id, ...existing.data[0], ...payload, updatedAt: time }
+      }
+      const created = await db.collection('staff_schedule_exceptions').add({ data: { ...payload, createdAt: time, updatedAt: time } })
+      return { _id: created._id, ...payload, createdAt: time, updatedAt: time }
+    }
+    if (action === 'deleteScheduleException') {
+      const user = await getUser(openid)
+      if (!user.roles.includes('staff')) throw new Error('仅员工可设置排班')
+      const dateKey = safeText(data.dateKey).trim()
+      const existing = await db.collection('staff_schedule_exceptions').where({ staffOpenid: openid, dateKey }).limit(1).get()
+      if (existing.data[0]) await db.collection('staff_schedule_exceptions').doc(existing.data[0]._id).remove()
+      return { dateKey, deleted: true }
+    }
+    if (action === 'listScheduleAvailability') {
+      const profileId = data.staffProfileId || data.requestedStaffProfileId
+      let profile = null
+      if (profileId) {
+        profile = (await db.collection('staff_profiles').doc(profileId).get()).data
+      } else {
+        const user = await getUser(openid)
+        if (!user.roles.includes('staff')) throw new Error('请选择宠托师')
+        profile = (await db.collection('staff_profiles').where({ openid }).limit(1).get()).data[0]
+      }
+      if (!profile || profile.auditStatus !== 'approved') throw new Error('宠托师不可用')
+      return buildStaffAvailability(profile, data.startDate || data.dateKey || '', data.days || 14)
+    }
     if (action === 'listStaffReviews') {
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
@@ -2720,9 +3450,11 @@ const handlers = {
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
+      await validateStaffAvailability(profile, order.startTime, order.endTime, { excludeOrderId: data.orderId })
       const time = now()
       await db.collection('orders').doc(data.orderId).update({ data: { staffUserId: user._id, staffOpenid: openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: publishMode === 'direct' ? 'direct_accept' : 'open_grab', assignedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.orderId, 'assigned', publishMode === 'direct' ? '指定宠托师已接单' : '宠托师已抢单', maskStaffName(profile.realName), 'staff')
+      await notifyOrder(order.clientOpenid, 'orderAssigned', { ...order, _id: data.orderId }, { statusText: '已接单' })
       return { orderId: data.orderId, status: 'assigned' }
     }
     throw new Error('未知 staff 操作')
@@ -2734,14 +3466,35 @@ const handlers = {
       if (!user.roles.includes('staff') || order.staffOpenid !== openid) throw new Error('仅订单员工可上传轨迹')
       if (order.status !== 'in_service') throw new Error('仅服务中可上传轨迹')
       const uploadedAt = now()
-      const rawPoints = Array.isArray(data.points) ? data.points.slice(0, 50) : []
+      const settings = await getSystemSettings()
+      const batchSize = settings.reliability.maxTrackBatchSize || 50
+      const rawPoints = Array.isArray(data.points) ? data.points.slice(0, batchSize) : []
       if (!rawPoints.length) throw new Error('请上传轨迹点')
+      const batchId = safeText(data.batchId).trim()
       const points = rawPoints
-        .map((point) => ({ latitude: Number(point.latitude), longitude: Number(point.longitude), speed: Number(point.speed || 0), accuracy: Number(point.accuracy || 0), recordedAt: point.recordedAt || uploadedAt }))
+        .map((point) => ({
+          clientPointId: safeText(point.clientPointId).trim(),
+          batchId,
+          latitude: Number(point.latitude),
+          longitude: Number(point.longitude),
+          speed: Number(point.speed || 0),
+          accuracy: Number(point.accuracy || 0),
+          recordedAt: point.recordedAt || uploadedAt,
+          isBackfilled: point.isBackfilled === true || data.isBackfilled === true,
+          uploadedAt
+        }))
         .filter((point) => hasCoordinate(point.latitude, point.longitude))
       if (!points.length) throw new Error('轨迹点定位无效')
-      await Promise.all(points.map((point) => db.collection('track_logs').add({ data: { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, latitude: point.latitude, longitude: point.longitude, speed: point.speed, accuracy: point.accuracy, recordedAt: point.recordedAt, uploadedAt } })))
-      return { count: points.length }
+      let count = 0
+      for (const point of points) {
+        if (point.clientPointId) {
+          const existing = await db.collection('track_logs').where({ orderId: data.orderId, clientPointId: point.clientPointId }).limit(1).get()
+          if (existing.data[0]) continue
+        }
+        await db.collection('track_logs').add({ data: { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientPointId: point.clientPointId, batchId: point.batchId, latitude: point.latitude, longitude: point.longitude, speed: point.speed, accuracy: point.accuracy, recordedAt: point.recordedAt, isBackfilled: point.isBackfilled, uploadedAt: point.uploadedAt } })
+        count += 1
+      }
+      return { count }
     }
     if (action === 'getOrderTracks') {
       await getOrderForAccess(openid, data.orderId)
@@ -2853,13 +3606,19 @@ const handlers = {
       if (!data.eventType) throw new Error('请选择打卡类型')
       if (!CHECKIN_EVENT_TYPES.has(data.eventType)) throw new Error('打卡类型无效')
       if (!data.mediaFileId) throw new Error('请先上传打卡照片')
+      const clientRequestId = safeText(data.clientRequestId).trim()
+      if (clientRequestId) {
+        const existing = await db.collection('checkin_logs').where({ orderId: data.orderId, clientRequestId }).limit(1).get()
+        if (existing.data[0]) return existing.data[0]
+      }
       const latitude = Number(data.latitude || 0)
       const longitude = Number(data.longitude || 0)
       if (!hasCoordinate(latitude, longitude)) throw new Error('打卡定位无效')
       const time = now()
-      const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, serverTime: time, remark: data.remark || data.note || '', createdAt: time }
+      const recordedAt = data.recordedAt || time
+      const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientRequestId, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, serverTime: time, recordedAt, isBackfilled: data.isBackfilled === true, remark: data.remark || data.note || '', createdAt: time }
       const created = await db.collection('checkin_logs').add({ data: checkin })
-      await appendOrderTimeline(data.orderId, 'checkin', '服务打卡', data.eventType, 'staff')
+      await appendOrderTimeline(data.orderId, 'checkin', data.isBackfilled === true ? '服务打卡已补传' : '服务打卡', data.eventType, 'staff')
       return { _id: created._id, ...checkin }
     }
     if (action === 'listOrderCheckins') {
@@ -2877,19 +3636,104 @@ const handlers = {
       const orderRes = await db.collection('orders').doc(data.orderId).get()
       const order = orderRes.data
       if (order.staffOpenid !== openid) throw new Error('不是该订单员工')
-      const incident = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, incidentType: data.incidentType || 'sos', description: data.description || '', latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds: data.mediaFileIds || [], status: 'open', createdAt: now(), updatedAt: now() }
+      const time = now()
+      const incident = { orderId: data.orderId, clientOpenid: order.clientOpenid || '', staffUserId: user._id, staffOpenid: openid, incidentType: normalizeIncidentType(data.incidentType, 'sos'), title: data.title || '宠托师 SOS', description: data.description || '', latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds: data.mediaFileIds || [], status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'staff', createdAt: time, updatedAt: time }
       const created = await db.collection('order_incidents').add({ data: incident })
+      await recordIncidentAction(created._id, 'created_sos', 'staff', openid, { orderId: data.orderId })
+      await appendOrderTimeline(data.orderId, 'incident_open', '宠托师发起 SOS', incident.description, 'staff')
       return { _id: created._id, ...incident }
+    }
+    if (action === 'createComplaint') {
+      const { user, order } = await getOrderForAccess(openid, data.orderId)
+      if (order.clientOpenid !== openid) throw new Error('仅宠物主可发起投诉')
+      const description = safeText(data.description).trim()
+      if (!description) throw new Error('请填写投诉说明')
+      const time = now()
+      const incident = { orderId: data.orderId, clientUserId: user._id, clientOpenid: openid, staffOpenid: order.staffOpenid || '', staffProfileId: order.staffProfileId || '', incidentType: normalizeIncidentType(data.incidentType, 'complaint'), title: safeText(data.title).trim() || '订单投诉', description, latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds: Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9) : [], status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'client', createdAt: time, updatedAt: time }
+      const created = await db.collection('order_incidents').add({ data: incident })
+      await recordIncidentAction(created._id, 'created_complaint', 'client', openid, { orderId: data.orderId })
+      await appendOrderTimeline(data.orderId, 'incident_open', '宠物主发起投诉', incident.title, 'client')
+      return { _id: created._id, ...incident }
+    }
+    if (action === 'getIncidentDetail') {
+      const { user, incident } = await getIncidentForAccess(openid, data.id || data.incidentId)
+      const comments = (await db.collection('incident_comments').where({ incidentId: incident._id }).orderBy('createdAt', 'asc').get()).data || []
+      const actions = user.roles.includes('admin') ? ((await db.collection('incident_actions').where({ incidentId: incident._id }).orderBy('createdAt', 'asc').get()).data || []) : []
+      const order = incident.orderId ? (await db.collection('orders').doc(incident.orderId).get()).data : null
+      return { incident, comments, actions, order: order ? await attachOrderDisplayData(order) : null }
+    }
+    if (action === 'appendIncidentComment') {
+      const { user, incident } = await getIncidentForAccess(openid, data.incidentId)
+      const actorRole = user.roles.includes('admin') ? 'admin' : (incident.staffOpenid === openid ? 'staff' : 'client')
+      const comment = await appendIncidentComment(data.incidentId, actorRole, openid, data.content, data.mediaFileIds)
+      await db.collection('order_incidents').doc(data.incidentId).update({ data: { updatedAt: now() } })
+      await recordIncidentAction(data.incidentId, 'commented', actorRole, openid, { commentId: comment._id })
+      return comment
+    }
+    if (action === 'uploadIncidentEvidence') {
+      const { user, incident } = await getIncidentForAccess(openid, data.incidentId)
+      const actorRole = user.roles.includes('admin') ? 'admin' : (incident.staffOpenid === openid ? 'staff' : 'client')
+      const comment = await appendIncidentComment(data.incidentId, actorRole, openid, data.remark || '补充证据', data.mediaFileIds)
+      await recordIncidentAction(data.incidentId, 'evidence_uploaded', actorRole, openid, { commentId: comment._id })
+      return comment
+    }
+    if (action === 'listMyIncidents') {
+      const user = await getUser(openid)
+      const role = data.role === 'staff' ? 'staff' : 'client'
+      const where = role === 'staff' && user.roles.includes('staff') ? { staffOpenid: openid } : { clientOpenid: openid }
+      const res = await db.collection('order_incidents').where(where).orderBy('createdAt', 'desc').get()
+      return res.data || []
     }
     if (action === 'listIncidents') {
       await requireAdmin(openid)
+      const status = safeText(data.status).trim()
+      const orderId = safeText(data.orderId).trim()
       const res = await db.collection('order_incidents').orderBy('createdAt', 'desc').get()
-      return res.data
+      return (res.data || []).filter((item) => (!status || item.status === status) && (!orderId || item.orderId === orderId))
     }
-    if (action === 'resolveIncident') {
+    if (action === 'updateIncidentStatus' || action === 'resolveIncident') {
       await requireAdmin(openid)
-      await db.collection('order_incidents').doc(data.id).update({ data: { status: data.status || 'resolved', updatedAt: now() } })
-      return { id: data.id }
+      const id = data.id || data.incidentId
+      const status = action === 'resolveIncident' ? normalizeIncidentStatus(data.status, 'resolved') : normalizeIncidentStatus(data.status, 'processing')
+      const update = { status, updatedAt: now() }
+      await db.collection('order_incidents').doc(id).update({ data: update })
+      await recordIncidentAction(id, 'status_updated', 'admin', openid, { status })
+      return { id, status }
+    }
+    if (action === 'proposeResolution') {
+      await requireAdmin(openid)
+      const id = data.id || data.incidentId
+      const resolution = { type: safeText(data.resolutionType || data.type).trim() || 'explain', content: safeText(data.content).trim(), refundAmount: Number(data.refundAmount || 0), createdByOpenid: openid, createdAt: now() }
+      await db.collection('order_incidents').doc(id).update({ data: { resolution, status: data.status ? normalizeIncidentStatus(data.status) : 'processing', updatedAt: now() } })
+      await recordIncidentAction(id, 'resolution_proposed', 'admin', openid, resolution)
+      return { id, resolution }
+    }
+    if (action === 'freezeStaffEarning') {
+      await requireAdmin(openid)
+      const id = data.id || data.incidentId
+      const incident = (await db.collection('order_incidents').doc(id).get()).data
+      if (!incident) throw new Error('纠纷不存在')
+      const frozen = await freezeOrderEarnings(incident.orderId, id)
+      await db.collection('order_incidents').doc(id).update({ data: { frozenEarningIds: frozen, updatedAt: now() } })
+      await recordIncidentAction(id, 'earning_frozen', 'admin', openid, { earningIds: frozen })
+      return { id, frozenEarningIds: frozen }
+    }
+    if (action === 'linkRefund') {
+      await requireAdmin(openid)
+      const id = data.id || data.incidentId
+      const refund = data.refundId ? (await db.collection('refunds').doc(data.refundId).get()).data : null
+      const update = { refundId: data.refundId || '', refundNo: (refund && refund.refundNo) || data.refundNo || '', status: 'refund_pending', updatedAt: now() }
+      await db.collection('order_incidents').doc(id).update({ data: update })
+      await recordIncidentAction(id, 'refund_linked', 'admin', openid, update)
+      return { id, ...update }
+    }
+    if (action === 'closeIncident') {
+      await requireAdmin(openid)
+      const id = data.id || data.incidentId
+      const status = normalizeIncidentStatus(data.status, 'closed')
+      await db.collection('order_incidents').doc(id).update({ data: { status, closeRemark: safeText(data.closeRemark).trim(), closedAt: now(), updatedAt: now() } })
+      await recordIncidentAction(id, 'closed', 'admin', openid, { status, closeRemark: data.closeRemark || '' })
+      return { id, status }
     }
     throw new Error('未知 incident 操作')
   },
@@ -2905,6 +3749,78 @@ const handlers = {
       const ordersRes = await db.collection('orders').get()
       const usersRes = await db.collection('users').get()
       return { orders: counts, staffPending: staffPending.total, incidentsOpen: incidentsOpen.total, monthly: buildMonthlyDashboard(ordersRes.data || [], usersRes.data || []) }
+    }
+    if (action === 'financeDashboard') {
+      await refreshStaffEarnings()
+      const range = buildDateRange(data)
+      const [orders, payments, refunds, earnings, withdraws, logs] = await Promise.all([
+        db.collection('orders').get(),
+        db.collection('payments').get(),
+        db.collection('refunds').get(),
+        db.collection('staff_earnings').get(),
+        db.collection('withdraw_requests').get(),
+        db.collection('finance_logs').get()
+      ])
+      return buildFinanceDashboardData({ orders: orders.data || [], payments: payments.data || [], refunds: refunds.data || [], earnings: earnings.data || [], withdraws: withdraws.data || [], logs: logs.data || [] }, range)
+    }
+    if (action === 'listFinanceLogs') {
+      const range = buildDateRange(data)
+      const targetType = safeText(data.targetType).trim()
+      const res = await db.collection('finance_logs').orderBy('createdAt', 'desc').get()
+      return limitList((res.data || []).filter((item) => (!targetType || item.targetType === targetType) && inDateRange(item, range, ['createdAt'])), data.pageSize || 50)
+    }
+    if (action === 'listPayments') {
+      const range = buildDateRange(data)
+      const status = safeText(data.status).trim()
+      const res = await db.collection('payments').orderBy('createdAt', 'desc').get()
+      return limitList((res.data || []).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['paidAt', 'updatedAt', 'createdAt'])), data.pageSize || 50)
+    }
+    if (action === 'listRefunds') {
+      const range = buildDateRange(data)
+      const status = safeText(data.status).trim()
+      const res = await db.collection('refunds').orderBy('createdAt', 'desc').get()
+      return limitList((res.data || []).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'updatedAt'])), data.pageSize || 50)
+    }
+    if (action === 'listStaffEarnings') {
+      await refreshStaffEarnings()
+      const range = buildDateRange(data)
+      const status = safeText(data.status).trim()
+      const res = await db.collection('staff_earnings').orderBy('createdAt', 'desc').get()
+      return limitList((res.data || []).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'completedAt'])), data.pageSize || 50)
+    }
+    if (action === 'listWithdrawRequests') {
+      const range = buildDateRange(data)
+      const status = safeText(data.status).trim()
+      const res = await db.collection('withdraw_requests').orderBy('createdAt', 'desc').get()
+      return limitList((res.data || []).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt'])), data.pageSize || 50)
+    }
+    if (action === 'auditWithdrawRequest') {
+      const request = (await db.collection('withdraw_requests').doc(data.id).get()).data
+      if (!request) throw new Error('提现申请不存在')
+      if (request.status !== 'pending') throw new Error('当前状态不可审核')
+      const approved = data.approved === true
+      const time = now()
+      const nextStatus = approved ? 'approved' : 'rejected'
+      await db.collection('withdraw_requests').doc(data.id).update({ data: { status: nextStatus, auditRemark: safeText(data.auditRemark).trim(), auditedByOpenid: openid, auditedAt: time, updatedAt: time } })
+      if (!approved) {
+        await Promise.all((request.earningIds || []).map((id) => db.collection('staff_earnings').doc(id).update({ data: { status: 'available', withdrawRequestId: '', updatedAt: time } })))
+      }
+      await appendFinanceLog(approved ? 'withdraw_approved' : 'withdraw_rejected', { targetType: 'withdraw_request', targetId: data.id, staffOpenid: request.staffOpenid, amountDelta: 0, detail: { auditRemark: data.auditRemark || '' } })
+      await logAdmin(admin, 'withdraw_request', data.id, 'auditWithdrawRequest', { approved })
+      await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id }, { amount: request.amount, statusText: approved ? '已审核' : '已驳回' }), '')
+      return { id: data.id, status: nextStatus }
+    }
+    if (action === 'markWithdrawPaid') {
+      const request = (await db.collection('withdraw_requests').doc(data.id).get()).data
+      if (!request) throw new Error('提现申请不存在')
+      if (request.status !== 'approved') throw new Error('仅已审核提现可标记打款')
+      const time = now()
+      await db.collection('withdraw_requests').doc(data.id).update({ data: { status: 'paid', paidAt: time, paidByOpenid: openid, payRemark: safeText(data.payRemark).trim(), updatedAt: time } })
+      await Promise.all((request.earningIds || []).map((id) => db.collection('staff_earnings').doc(id).update({ data: { status: 'withdrawn', updatedAt: time } })))
+      await appendFinanceLog('withdraw_paid', { targetType: 'withdraw_request', targetId: data.id, staffOpenid: request.staffOpenid, amountDelta: -Number(request.amount || 0), detail: { payRemark: data.payRemark || '' } })
+      await logAdmin(admin, 'withdraw_request', data.id, 'markWithdrawPaid', { amount: request.amount })
+      await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id }, { amount: request.amount, statusText: '已打款' }), '')
+      return { id: data.id, status: 'paid' }
     }
     if (action === 'getSystemSettings') {
       return getSystemSettings()
@@ -3027,12 +3943,14 @@ const handlers = {
       const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
       const profile = profileRes.data
       if (profile.auditStatus !== 'approved') throw new Error('员工未审核通过')
+      await validateStaffAvailability(profile, orderRes.data.startTime, orderRes.data.endTime, { excludeOrderId: data.orderId })
       const staffUserRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = staffUserRes.data[0]
       if (!staffUser) throw new Error('员工用户不存在')
       const time = now()
       await db.collection('orders').doc(data.orderId).update({ data: { staffUserId: staffUser._id, staffOpenid: staffUser.openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: 'admin_assign', assignedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.orderId, 'assigned', '管理员已派单', maskStaffName(profile.realName), 'admin')
+      await notifyOrder(orderRes.data.clientOpenid, 'orderAssigned', { ...orderRes.data, _id: data.orderId }, { statusText: '已派单' })
       await logAdmin(admin, 'order', data.orderId, 'assignOrder', { staffProfileId: data.staffProfileId })
       return { orderId: data.orderId }
     }

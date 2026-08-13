@@ -52,11 +52,25 @@
       <view class="strong">我的任务</view>
       <view class="muted">查看已接订单</view>
     </view>
+    <view class="card interactive action-card" data-url="/pages/staff/schedule/index" bindtap="go">
+      <view class="action-icon">排</view>
+      <view class="strong">排班日历</view>
+      <view class="muted">休息与加班例外</view>
+    </view>
+    <view class="card interactive action-card" data-url="/pages/staff/earnings/index" bindtap="go">
+      <view class="action-icon">收</view>
+      <view class="strong">收益提现</view>
+      <view class="muted">余额与提现记录</view>
+    </view>
   </view>
 
   <view class="card menu-list">
     <view class="menu-item interactive" bindtap="openConfigModal">
       <view class="menu-left"><view class="menu-icon">设</view><view>接单地址与按周时间段设置</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
+    <view class="menu-item interactive" data-url="/pages/staff/schedule/index" bindtap="go">
+      <view class="menu-left"><view class="menu-icon">排</view><view>排班日历与日期例外</view></view>
       <view class="menu-arrow">›</view>
     </view>
     <view class="menu-item interactive" bindtap="editProfile">

@@ -22,5 +22,5 @@
     <textarea placeholder="备注" value="{{remark}}" bindinput="input" />
   </view>
 
-  <button class="primary" bindtap="submit">提交打卡</button>
+  <button class="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">提交打卡</button>
 </view>

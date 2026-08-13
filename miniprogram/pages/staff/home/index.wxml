@@ -35,6 +35,11 @@
       <view class="strong">我的任务</view>
       <view class="muted">订单履约与打卡</view>
     </view>
+    <view class="card interactive action-card" data-url="/pages/staff/schedule/index" bindtap="go">
+      <view class="action-icon">排</view>
+      <view class="strong">排班日历</view>
+      <view class="muted">休息、加班与占用</view>
+    </view>
   </view>
 
   <view class="soft-panel">

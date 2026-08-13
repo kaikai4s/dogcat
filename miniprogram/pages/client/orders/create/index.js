@@ -1,4 +1,4 @@
-const { callFunction, showError } = require('../../../../utils/cloud')
+const { callFunction, showError, requestSubscribeTemplates } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { getSelectedLocation, chooseSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
@@ -118,6 +118,8 @@ Page({
     selectedPet: null,
     petVoiceMessage: '',
     requestedSitter: null,
+    sitterAvailability: [],
+    selectedAvailability: null,
     saveAddress: false,
     locationReady: false,
     locationTip: '',
@@ -195,7 +197,7 @@ Page({
   choosePublishMode(e) {
     const publishMode = e.currentTarget.dataset.mode
     if (publishMode === 'open') {
-      this.setData({ ['form.publishMode']: 'open', ['form.staffProfileId']: '', requestedSitter: null, quote: null })
+      this.setData({ ['form.publishMode']: 'open', ['form.staffProfileId']: '', requestedSitter: null, sitterAvailability: [], selectedAvailability: null, quote: null })
       return
     }
     this.setData({ ['form.publishMode']: 'direct', quote: null })
@@ -207,9 +209,22 @@ Page({
   },
 
   loadRequestedSitter(staffProfileId) {
-    callFunction('staff', 'getPublicSitterDetail', { staffProfileId })
-      .then((requestedSitter) => this.setData({ requestedSitter }))
+    Promise.all([
+      callFunction('staff', 'getPublicSitterDetail', { staffProfileId }),
+      callFunction('staff', 'listScheduleAvailability', { staffProfileId, days: 14 })
+    ])
+      .then(([requestedSitter, availability]) => {
+        this.setData({ requestedSitter, sitterAvailability: availability || [] }, this.syncSelectedAvailability)
+      })
       .catch(showError)
+  },
+
+  syncSelectedAvailability() {
+    const selected = (this.data.sitterAvailability || []).find((item) => item.dateKey === this.data.form.startDate) || null
+    const slotText = selected && Array.isArray(selected.slots) && selected.slots.length
+      ? selected.slots.map((slot) => `${String(slot.start).padStart(2, '0')}:00-${String(slot.end).padStart(2, '0')}:00`).join('、')
+      : ''
+    this.setData({ selectedAvailability: selected ? { ...selected, slotText } : null })
   },
 
   loadDefaultAddress() {
@@ -336,6 +351,7 @@ Page({
     this.setData({ ['form.startDate']: e.detail.value, quote: null }, () => {
       this.prepareTime()
       this.syncSelectedPetUI()
+      this.syncSelectedAvailability()
     })
   },
 
@@ -415,7 +431,8 @@ Page({
       wx.showToast({ title: error, icon: 'none' })
       return
     }
-    callFunction('order', 'createOrder', { ...this.buildOrderPayload(), saveAddress: this.data.saveAddress })
+    requestSubscribeTemplates(['orderPaid', 'orderAssigned', 'serviceStart', 'serviceFinish'], 'client_create_order')
+      .then(() => callFunction('order', 'createOrder', { ...this.buildOrderPayload(), saveAddress: this.data.saveAddress }))
       .then((order) => {
         if (this.data.saveAddress && order.savedAddress) wx.showToast({ title: '已保存常用地址' })
         wx.redirectTo({ url: '/pages/client/orders/detail/index?id=' + order._id })

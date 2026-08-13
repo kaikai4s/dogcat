@@ -40,6 +40,7 @@
     <button class="ghost" bindtap="uploadPoint">手动补记当前位置</button>
     <view class="muted">服务期间会定时记录当前位置，用户端会按时间生成路径。</view>
     <view class="muted">已上传轨迹点：{{pointCount}}</view>
+    <view class="muted" wx:if="{{offlineTaskCount}}">待补传数据：{{offlineTaskCount}} 条，网络恢复后自动上传。</view>
   </view>
 
   <view class="subtitle">打卡证据</view>

@@ -1,0 +1,19 @@
+.chip-row {
+  margin-bottom: 22rpx;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+
+.date-row {
+  margin-top: 0;
+}
+
+.finance-grid {
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 20rpx;
+}
