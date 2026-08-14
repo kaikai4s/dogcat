@@ -1,8 +1,6 @@
 <view class="settings-page">
   <view class="settings-nav">
-    <view class="settings-back" bindtap="goBack">‹</view>
     <view class="settings-title">设置</view>
-    <view class="settings-placeholder"></view>
   </view>
 
   <view class="settings-card">

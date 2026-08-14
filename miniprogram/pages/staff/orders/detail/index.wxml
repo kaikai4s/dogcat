@@ -1,7 +1,4 @@
 <view class="page" wx:if="{{order}}">
-  <view class="top-nav">
-    <view class="nav-round" bindtap="goBack">‹</view>
-  </view>
   <view class="dashboard-header">
     <view class="badge">任务详情</view>
     <view class="title">{{order.petName}}</view>

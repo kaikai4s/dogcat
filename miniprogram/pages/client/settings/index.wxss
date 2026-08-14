@@ -19,22 +19,6 @@ page {
   border-bottom: 1rpx solid #f0f0f0;
 }
 
-.settings-back,
-.settings-placeholder {
-  width: 80rpx;
-  height: 80rpx;
-}
-
-.settings-back {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  color: #111111;
-  font-size: 70rpx;
-  line-height: 1;
-  font-weight: 300;
-}
-
 .settings-title {
   font-size: 34rpx;
   font-weight: 500;
@@ -87,7 +71,6 @@ page {
 }
 
 .logout-btn:active,
-.settings-row:active,
-.settings-back:active {
+.settings-row:active {
   opacity: 0.75;
 }

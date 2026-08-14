@@ -1,7 +1,4 @@
 <view class="page tracking-page">
-  <view class="top-nav">
-    <view class="nav-round" bindtap="goBack">‹</view>
-  </view>
   <view class="dashboard-header tracking-hero">
     <view class="badge">实时履约</view>
     <view class="title">服务轨迹</view>
