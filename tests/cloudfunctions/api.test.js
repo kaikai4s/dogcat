@@ -401,8 +401,9 @@ test('system home page data aggregates public conversion modules', async () => {
     service_prices: [{ _id: 'price1', key: 'feed', label: '上门喂养', price: 66, enabled: true, sortOrder: 1, description: '喂粮换水' }],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'approved', serviceCity: '上海', serviceAreas: '浦东', ratingAverage: 4.8, reviewCount: 3, isFeatured: true, featuredAt: '2026-08-01 10:00' }],
     coupon_templates: [{ _id: 'tpl1', name: '新人券', discountAmount: 20, minOrderAmount: 80, enabled: true, sortOrder: 1 }],
-    orders: [{ _id: 'o1', clientOpenid: 'openid_client', status: 'completed', serviceSummary: '上门喂养', petName: '豆豆', createdAt: '2026-08-01 10:00' }],
-    service_reviews: [{ _id: 'r1', status: 'visible', rating: 5 }]
+    orders: [{ _id: 'o1', orderNo: 'ORDER000001', clientOpenid: 'openid_client', staffProfileId: 'sp1', status: 'completed', serviceSummary: '上门喂养', petName: '豆豆', serviceAddress: '秘密小区', addressLatitude: 31.2, addressLongitude: 121.5, createdAt: '2026-08-01 10:00', completedAt: '2026-08-01 11:00' }],
+    service_reviews: [{ _id: 'r1', orderId: 'o1', status: 'visible', rating: 5, content: '很细心', tags: ['准时'] }],
+    checkin_logs: [{ _id: 'c1', orderId: 'o1', eventType: 'feed', mediaFileId: 'cloud://feed-photo', latitude: 31.2, longitude: 121.5, createdAt: '2026-08-01 10:30' }]
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
 
@@ -416,8 +417,37 @@ test('system home page data aggregates public conversion modules', async () => {
   assert.equal(result.data.coupons[0].ruleText, '满80减20')
   assert.equal(result.data.repeatOrder._id, 'o1')
   assert.equal(result.data.recentOrders[0].statusText, '已完成')
+  assert.equal(result.data.recentOrders[0].clientName, '宠物主')
+  assert.equal(result.data.recentOrders[0].staffName, '王* 宠托师')
+  assert.equal(result.data.recentOrders[0].review.content, '很细心')
+  assert.equal(result.data.recentOrders[0].checkinPhotos[0].mediaFileId, 'cloud://feed-photo')
+  assert.equal(result.data.recentOrders[0].serviceAddress, undefined)
+  assert.equal(result.data.recentOrders[0].addressLatitude, undefined)
   assert.equal(result.data.statsData.completedCount, '1')
   assert.equal(result.data.statsData.ratingCount, '1')
+})
+
+test('public completed order detail exposes service proof without location', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '豆豆家长' }],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'approved' }],
+    orders: [{ _id: 'o1', orderNo: 'ORDER000001', clientOpenid: 'openid_client', staffProfileId: 'sp1', status: 'completed', serviceSummary: '上门喂养', petName: '豆豆', serviceAddress: '秘密小区', addressDetail: '1栋101', addressLatitude: 31.2, addressLongitude: 121.5, createdAt: '2026-08-01 10:00' }],
+    service_reviews: [{ _id: 'r1', orderId: 'o1', status: 'visible', rating: 5, content: '很细心', tags: ['准时'] }],
+    checkin_logs: [{ _id: 'c1', orderId: 'o1', eventType: 'feed', mediaFileId: 'cloud://feed-photo', latitude: 31.2, longitude: 121.5, createdAt: '2026-08-01 10:30' }]
+  })
+  const fn = loadCloudFunction('api', db, 'guest_openid')
+
+  const result = await fn.main({ module: 'order', action: 'getPublicCompletedOrderDetail', data: { id: 'o1' } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.clientName, '豆* 用户')
+  assert.equal(result.data.staffName, '王* 宠托师')
+  assert.equal(result.data.review.content, '很细心')
+  assert.equal(result.data.checkinPhotos[0].eventText, '喂食')
+  assert.equal(result.data.serviceAddress, undefined)
+  assert.equal(result.data.addressDetail, undefined)
+  assert.equal(result.data.addressLatitude, undefined)
+  assert.equal(result.data.checkinPhotos[0].latitude, undefined)
 })
 
 test('admin dashboard includes monthly order and registration trends', async () => {

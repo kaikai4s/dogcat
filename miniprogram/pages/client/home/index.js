@@ -19,6 +19,8 @@ Page({
     latitude: 0,
     longitude: 0,
     lotteryActivity: null,
+    lotteryLoaded: false,
+    lotteryFloatVisible: false,
     homePage: {
       ctaTitle: '立即预约上门宠护',
       ctaSubtitle: '填写宠物和服务时间，平台认证宠托师快速响应。',
@@ -60,10 +62,13 @@ Page({
 
   onHide() {
     this.stopAllVideos()
+    this.clearLotteryFloatTimer()
+    this.setData({ lotteryFloatVisible: false })
   },
 
   onUnload() {
     this.stopAllVideos()
+    this.clearLotteryFloatTimer()
   },
 
   go(e) {
@@ -135,7 +140,8 @@ Page({
         })
         this.applyHeroCarousel(homeData.settings && homeData.settings.homeHeroCarousel)
         if (homePage.modules && homePage.modules.lottery === false) {
-          this.setData({ lotteryActivity: null })
+          this.clearLotteryFloatTimer()
+          this.setData({ lotteryActivity: null, lotteryLoaded: false, lotteryFloatVisible: false })
         } else {
           this.loadLottery()
         }
@@ -148,10 +154,38 @@ Page({
   },
 
   loadLottery() {
-    // 不要求登录，公开接口
+    // 不要求登录，公开接口；已登录时会返回今日剩余抽奖次数
     callFunction('lottery', 'getActiveActivity')
-      .then((activity) => this.setData({ lotteryActivity: activity }))
-      .catch(() => {})
+      .then((activity) => {
+        this.setData({ lotteryActivity: activity, lotteryLoaded: true })
+        this.showLotteryFloatIfNeeded(activity)
+      })
+      .catch(() => this.setData({ lotteryLoaded: true }))
+  },
+
+  showLotteryFloatIfNeeded(activity) {
+    const hasDrawCount = Number(activity && activity.remainingDrawCount || 0) > 0
+    const drawStateUnknown = activity && activity.canDraw === undefined && activity.remainingDrawCount === undefined
+    const canDraw = activity && (activity.canDraw === true || hasDrawCount || drawStateUnknown)
+    if (!canDraw) {
+      this.clearLotteryFloatTimer()
+      this.setData({ lotteryFloatVisible: false })
+      return
+    }
+    if (this._lotteryFloatShown) return
+    this._lotteryFloatShown = true
+    this.clearLotteryFloatTimer()
+    this.setData({ lotteryFloatVisible: true })
+    this._lotteryFloatTimer = setTimeout(() => {
+      this.setData({ lotteryFloatVisible: false })
+      this._lotteryFloatTimer = null
+    }, 10000)
+  },
+
+  clearLotteryFloatTimer() {
+    if (!this._lotteryFloatTimer) return
+    clearTimeout(this._lotteryFloatTimer)
+    this._lotteryFloatTimer = null
   },
 
   loadHeroCarousel() {
@@ -308,6 +342,8 @@ Page({
   },
 
   goLottery() {
+    this.clearLotteryFloatTimer()
+    this.setData({ lotteryFloatVisible: false })
     ensureLogin({ content: '登录后可参与抽奖。' })
       .then(() => wx.navigateTo({ url: '/pages/client/lottery/index' }))
       .catch(() => {})

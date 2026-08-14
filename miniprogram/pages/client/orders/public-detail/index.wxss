@@ -1,0 +1,59 @@
+.public-order-hero {
+  background: linear-gradient(135deg, #fff7fa 0%, #ffffff 100%);
+}
+
+.public-order-title-row {
+  align-items: flex-start;
+}
+
+.public-service-name {
+  margin-top: 22rpx;
+  color: #2b2528;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.public-people-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18rpx;
+  margin-top: 24rpx;
+}
+
+.public-people-grid > view {
+  padding: 20rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+  border: 1rpx solid #f5e8ee;
+}
+
+.public-stars {
+  margin-bottom: 14rpx;
+  color: #ffad1f;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.public-stars text {
+  margin-left: 12rpx;
+  color: #6b3d00;
+}
+
+.public-checkin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16rpx;
+  margin-top: 22rpx;
+}
+
+.public-checkin-item {
+  min-width: 0;
+}
+
+.public-checkin-photo {
+  width: 100%;
+  height: 210rpx;
+  border-radius: 24rpx;
+  background: #fff0f5;
+  margin-bottom: 10rpx;
+}

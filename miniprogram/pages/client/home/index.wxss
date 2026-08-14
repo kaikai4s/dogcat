@@ -152,29 +152,90 @@
   margin: 10rpx 0;
 }
 
-.recent-order-row {
-  display: flex;
+.recent-order-story {
+  margin-top: 20rpx;
+  padding: 24rpx;
+  border-radius: 30rpx;
+  background: linear-gradient(180deg, #fff7fa 0%, #ffffff 100%);
+  border: 1rpx solid rgba(244, 63, 107, 0.1);
+  box-shadow: 0 12rpx 34rpx rgba(116, 91, 101, 0.08);
+}
+
+.recent-story-head {
+  align-items: flex-start;
   gap: 18rpx;
-  padding: 18rpx 0;
-  border-bottom: 1rpx solid #f3edf0;
 }
 
-.recent-order-row:last-child {
-  border-bottom: 0;
+.recent-service-line,
+.recent-checkin-line,
+.recent-more {
+  margin-top: 18rpx;
+  color: #6f6870;
+  font-size: 24rpx;
+  line-height: 1.45;
 }
 
-.recent-dot {
-  width: 16rpx;
-  height: 16rpx;
-  margin-top: 14rpx;
+.service-dot {
+  display: inline-block;
+  width: 14rpx;
+  height: 14rpx;
+  margin-right: 10rpx;
   border-radius: 50%;
   background: #f43f6b;
-  box-shadow: 0 0 0 8rpx rgba(244, 63, 107, 0.12);
+  box-shadow: 0 0 0 8rpx rgba(244, 63, 107, 0.1);
 }
 
-.recent-main {
-  flex: 1;
-  min-width: 0;
+.recent-people-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+
+.recent-people-grid > view {
+  padding: 18rpx;
+  border-radius: 22rpx;
+  background: #ffffff;
+  border: 1rpx solid #f5e8ee;
+}
+
+.recent-review-box {
+  margin-top: 20rpx;
+  padding: 20rpx;
+  border-radius: 24rpx;
+  background: #fffaf0;
+}
+
+.recent-stars {
+  margin-bottom: 10rpx;
+  color: #ffad1f;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.recent-stars text {
+  margin-left: 10rpx;
+  color: #6b3d00;
+}
+
+.recent-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10rpx;
+  margin-top: 16rpx;
+}
+
+.recent-checkin-photo {
+  width: 100%;
+  height: 150rpx;
+  border-radius: 20rpx;
+  background: #fff0f5;
+}
+
+.recent-more {
+  color: #f43f6b;
+  font-weight: 850;
+  text-align: right;
 }
 
 .assurance-item {
@@ -187,4 +248,48 @@
 .assurance-icon {
   font-size: 40rpx;
   margin-bottom: 10rpx;
+}
+
+.lottery-float-card {
+  position: fixed;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: 190rpx;
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 26rpx 28rpx;
+  border-radius: 34rpx;
+  color: #ffffff;
+  background: linear-gradient(135deg, #ff4d6d 0%, #ff8a3d 100%);
+  box-shadow: 0 18rpx 46rpx rgba(244, 63, 107, 0.32);
+  overflow: hidden;
+}
+
+.lottery-float-glow {
+  position: absolute;
+  right: -36rpx;
+  top: -46rpx;
+  width: 180rpx;
+  height: 180rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+}
+
+.lottery-float-card .lottery-icon,
+.lottery-float-card .lottery-info,
+.lottery-float-card .lottery-btn {
+  position: relative;
+  z-index: 1;
+}
+
+.lottery-float-card .lottery-sub {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.lottery-float-card .lottery-btn {
+  background: #ffffff;
+  color: #f43f6b;
 }

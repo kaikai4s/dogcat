@@ -1025,15 +1025,65 @@ function orderStatusText(status) {
   return ({ pending_pay: '待支付', paid: '已支付', assigned: '已接单', in_service: '服务中', completed: '已完成', cancelled: '已取消', refunding: '退款中', refunded: '已退款' })[status] || '处理中'
 }
 
-function toHomeOrderActivity(order = {}) {
+function checkinEventText(eventType) {
+  return ({
+    enter_door: '到达入户',
+    leash_on: '牵引准备',
+    feed: '喂食',
+    water: '换水',
+    pet_status: '宠物状态',
+    return_home: '返家确认',
+    leave_door: '离户检查',
+    clean: '清洁',
+    medicine: '喂药',
+    video_checkin: '视频打卡'
+  })[eventType] || '服务打卡'
+}
+
+function publicOrderNo(order = {}) {
+  const value = safeText(order.orderNo || order._id).trim()
+  if (!value) return '近期订单'
+  return `订单 ${value.slice(-6)}`
+}
+
+function toHomeOrderActivity(order = {}, context = {}) {
+  const review = context.review || null
+  const checkins = Array.isArray(context.checkins) ? context.checkins : []
+  const staffProfile = context.staffProfile || {}
+  const clientSnapshot = order.clientSnapshot || {}
+  const checkinPhotos = checkins
+    .map((item) => ({
+      _id: item._id || `${order._id}_${item.eventType || 'checkin'}`,
+      eventType: item.eventType || '',
+      eventText: checkinEventText(item.eventType),
+      mediaFileId: safeFileId(item.watermarkedMediaFileId || item.mediaFileId) || safeText(item.watermarkedMediaFileId || item.mediaFileId),
+      createdAt: item.createdAt || item.recordedAt || ''
+    }))
+    .filter((item) => item.mediaFileId)
+    .slice(0, 3)
+
   return {
     _id: order._id || '',
+    orderTitle: publicOrderNo(order),
     serviceSummary: order.serviceSummary || order.serviceType || '上门宠护',
     petName: order.petName || '宠物',
+    clientName: clientSnapshot.displayName || maskClientName(order.clientName || ''),
+    staffName: sitterDisplayName(staffProfile) || order.staffName || '平台宠托师',
+    staffProfileId: order.staffProfileId || order.requestedStaffProfileId || '',
     status: order.status || '',
     statusText: orderStatusText(order.status),
-    city: order.serviceCity || order.city || '',
-    createdAt: order.createdAt || ''
+    startTime: order.startTime || '',
+    completedAt: order.completedAt || order.updatedAt || order.createdAt || '',
+    review: review ? {
+      rating: Number(review.rating || 0),
+      ratingText: `${Number(review.rating || 0)}.0`,
+      content: safeText(review.content).trim(),
+      tags: Array.isArray(review.tags) ? review.tags.slice(0, 4) : [],
+      createdAt: review.createdAt || ''
+    } : null,
+    checkinCount: checkins.length,
+    checkinSummary: checkins.slice(0, 4).map((item) => checkinEventText(item.eventType)).join(' · '),
+    checkinPhotos
   }
 }
 
@@ -1071,10 +1121,28 @@ async function getHomePageData(openid, data = {}) {
 
   const userOrders = optionalUser ? orders.filter((order) => order.clientOpenid === openid) : []
   const repeatOrder = userOrders.find((order) => ['paid', 'assigned', 'in_service', 'completed'].includes(order.status)) || null
-  const recentOrders = orders
-    .filter((order) => ['paid', 'assigned', 'in_service', 'completed'].includes(order.status))
+  const completedOrders = orders
+    .filter((order) => order.status === 'completed')
+    .sort((a, b) => toTimeValue(b.completedAt || b.updatedAt || b.createdAt) - toTimeValue(a.completedAt || a.updatedAt || a.createdAt))
     .slice(0, 6)
-    .map(toHomeOrderActivity)
+  const recentOrderIds = completedOrders.map((order) => order._id).filter(Boolean)
+  const [homeReviews, homeCheckins] = await Promise.all([
+    recentOrderIds.length ? safeCollectionData('service_reviews', (col) => col.where({ status: 'visible' })) : Promise.resolve([]),
+    recentOrderIds.length ? safeCollectionData('checkin_logs') : Promise.resolve([])
+  ])
+  const reviewMap = homeReviews
+    .filter((review) => recentOrderIds.includes(review.orderId))
+    .reduce((map, review) => ({ ...map, [review.orderId]: review }), {})
+  const checkinMap = homeCheckins
+    .filter((checkin) => recentOrderIds.includes(checkin.orderId))
+    .reduce((map, checkin) => ({ ...map, [checkin.orderId]: [...(map[checkin.orderId] || []), checkin] }), {})
+  const staffProfileMap = staffProfiles.reduce((map, profile) => ({ ...map, [profile._id]: profile }), {})
+  const recentOrders = (await Promise.all(completedOrders.map(attachClientSnapshot)))
+    .map((order) => toHomeOrderActivity(order, {
+      review: reviewMap[order._id],
+      checkins: (checkinMap[order._id] || []).sort((a, b) => toTimeValue(a.createdAt || a.recordedAt) - toTimeValue(b.createdAt || b.recordedAt)),
+      staffProfile: staffProfileMap[order.staffProfileId || order.requestedStaffProfileId] || {}
+    }))
 
   const completedCount = orders.filter((order) => order.status === 'completed').length
   const reviewCount = await safeCollectionCount('service_reviews', { status: 'visible' })
@@ -3206,6 +3274,26 @@ const handlers = {
       const checkins = await db.collection('checkin_logs').where({ orderId: data.id }).orderBy('createdAt', 'asc').get()
       return { order, tracks: tracks.data, checkins: checkins.data }
     }
+    if (action === 'getPublicCompletedOrderDetail') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      const order = (await db.collection('orders').doc(orderId).get()).data
+      if (!order || order.status !== ORDER_STATUS.COMPLETED) throw new Error('订单不可查看')
+      const [reviewRes, checkinsRes] = await Promise.all([
+        db.collection('service_reviews').where({ orderId, status: 'visible' }).limit(1).get(),
+        db.collection('checkin_logs').where({ orderId }).orderBy('createdAt', 'asc').get()
+      ])
+      const staffProfileId = order.staffProfileId || order.requestedStaffProfileId || ''
+      let staffProfile = {}
+      if (staffProfileId) {
+        staffProfile = (await db.collection('staff_profiles').doc(staffProfileId).get()).data || {}
+      }
+      const displayOrder = await attachClientSnapshot(order)
+      return toHomeOrderActivity(displayOrder, {
+        review: reviewRes.data[0] || null,
+        checkins: checkinsRes.data || [],
+        staffProfile
+      })
+    }
     throw new Error('未知 order 操作')
   },
 
@@ -3360,15 +3448,31 @@ const handlers = {
 
   async lottery(openid, action, data) {
     if (action === 'getActiveActivity') {
-      // 不要求登录，首页可公开展示活动信息
+      // 不要求登录，首页可公开展示活动信息；已登录时返回今日剩余抽奖次数
       const res = await db.collection('lottery_activities').where({ enabled: true }).limit(1).get()
       const activity = res.data[0] || null
       if (!activity) return null
+
+      let remainingDrawCount = openid ? 1 : 0
+      if (openid) {
+        const todayStart = cstTodayStart()
+        const todayRecord = await db.collection('lottery_records')
+          .where({ openid, activityId: activity._id })
+          .orderBy('createdAt', 'desc')
+          .limit(1)
+          .get()
+        if (todayRecord.data[0] && new Date(todayRecord.data[0].createdAt).getTime() >= todayStart.getTime()) {
+          remainingDrawCount = 0
+        }
+      }
+
       return {
         _id: activity._id,
         name: activity.name,
         description: activity.description || '',
-        prizeCount: (activity.prizes || []).length
+        prizeCount: (activity.prizes || []).length,
+        remainingDrawCount,
+        canDraw: remainingDrawCount > 0
       }
     }
     if (action === 'draw') {

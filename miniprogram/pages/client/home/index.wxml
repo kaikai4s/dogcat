@@ -153,12 +153,29 @@
     </scroll-view>
   </view>
 
-  <!-- 最近订单动态 -->
+  <!-- 最近完成订单 / 服务履约动态 -->
   <view class="card recent-order-card" wx:if="{{recentOrders.length}}">
-    <view class="card-header between"><text class="header-title">近期服务动态</text><text class="muted">真实履约更新</text></view>
-    <view class="recent-order-row" wx:for="{{recentOrders}}" wx:key="_id">
-      <view class="recent-dot"></view>
-      <view class="recent-main"><view class="strong">{{item.petName}} · {{item.serviceSummary}}</view><view class="muted">{{item.statusText}} {{item.city}}</view></view>
+    <view class="card-header between"><text class="header-title">近期完成订单</text><text class="muted">脱敏展示 · 不含位置</text></view>
+    <view class="recent-order-story interactive" wx:for="{{recentOrders}}" wx:key="_id" data-url="/pages/client/orders/public-detail/index?id={{item._id}}" bindtap="go">
+      <view class="recent-story-head between">
+        <view><view class="strong">{{item.orderTitle}} · {{item.petName}}</view><view class="muted">{{item.startTime || item.completedAt}}</view></view>
+        <view class="badge">{{item.statusText}}</view>
+      </view>
+      <view class="recent-service-line"><text class="service-dot"></text><text>{{item.serviceSummary}}</text></view>
+      <view class="recent-people-grid">
+        <view><view class="muted">宠物主</view><view class="strong">{{item.clientName}}</view></view>
+        <view><view class="muted">宠托师</view><view class="strong">{{item.staffName}}</view></view>
+      </view>
+      <view class="recent-review-box" wx:if="{{item.review}}">
+        <view class="recent-stars">★★★★★ <text>{{item.review.ratingText}}</text></view>
+        <view class="muted" wx:if="{{item.review.content}}">“{{item.review.content}}”</view>
+        <view class="tag-row" wx:if="{{item.review.tags.length}}"><text class="tag-pill yellow-tag" wx:for="{{item.review.tags}}" wx:key="*this">{{item}}</text></view>
+      </view>
+      <view class="recent-checkin-line" wx:if="{{item.checkinCount}}">打卡 {{item.checkinCount}} 次 · {{item.checkinSummary}}</view>
+      <view class="recent-photo-grid" wx:if="{{item.checkinPhotos.length}}">
+        <image class="recent-checkin-photo" wx:for="{{item.checkinPhotos}}" wx:key="_id" src="{{item.mediaFileId}}" mode="aspectFill" />
+      </view>
+      <view class="recent-more">查看脱敏订单详情 ›</view>
     </view>
   </view>
 
@@ -171,14 +188,22 @@
   </view>
 
   <!-- 抽奖活动/福利横幅 -->
-  <view class="card interactive lottery-banner-card" wx:if="{{homePage.modules.lottery && lotteryActivity}}" bindtap="goLottery">
-    <view class="lottery-icon">🎰</view><view class="lottery-info"><view class="lottery-title">{{lotteryActivity.name}}</view><view class="lottery-sub">每天参与一次，随机赢优惠券</view></view><view class="lottery-btn">去抽奖</view>
+  <view class="card interactive lottery-banner-card" wx:if="{{homePage.modules.lottery && lotteryLoaded && lotteryActivity && !lotteryFloatVisible}}" bindtap="goLottery">
+    <view class="lottery-icon">🎰</view><view class="lottery-info"><view class="lottery-title">{{lotteryActivity.name}}</view><view class="lottery-sub" wx:if="{{lotteryActivity.canDraw}}">今日还有 {{lotteryActivity.remainingDrawCount}} 次抽奖机会</view><view class="lottery-sub" wx:else>每天参与一次，随机赢优惠券</view></view><view class="lottery-btn">去抽奖</view>
   </view>
 
-  <view class="bottom-nav">
-    <view class="nav-item active"><view class="nav-icon">⌂</view><view>首页</view></view>
-    <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon">🐾</view><view>宠托师</view></view>
-    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon">☷</view><view>订单</view></view>
-    <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon">♙</view><view>我的</view></view>
-  </view>
+</view>
+
+<view class="lottery-float-card interactive" wx:if="{{homePage.modules.lottery && lotteryActivity && lotteryFloatVisible}}" bindtap="goLottery">
+  <view class="lottery-float-glow"></view>
+  <view class="lottery-icon">🎰</view>
+  <view class="lottery-info"><view class="lottery-title">{{lotteryActivity.name}}</view><view class="lottery-sub" wx:if="{{lotteryActivity.remainingDrawCount !== undefined}}">今日还有 {{lotteryActivity.remainingDrawCount}} 次抽奖机会，点我开奖</view><view class="lottery-sub" wx:else>今日抽奖机会待领取，点我开奖</view></view>
+  <view class="lottery-btn">立即抽</view>
+</view>
+
+<view class="bottom-nav">
+  <view class="nav-item active"><view class="nav-icon">⌂</view><view>首页</view></view>
+  <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon">🐾</view><view>宠托师</view></view>
+  <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon">☷</view><view>订单</view></view>
+  <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon">♙</view><view>我的</view></view>
 </view>
