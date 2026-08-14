@@ -88,6 +88,10 @@
       <view class="menu-left"><view class="menu-icon">☆</view><view>我的关注</view></view>
       <view class="menu-arrow">›</view>
     </view>
+    <view class="menu-item interactive" bindtap="openIncidents">
+      <view class="menu-left"><view class="menu-icon">售</view><view>我的投诉 / 售后</view></view>
+      <view class="menu-arrow">›</view>
+    </view>
   </view>
 
   <view class="card menu-list">

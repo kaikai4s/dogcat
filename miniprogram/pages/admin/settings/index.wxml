@@ -35,11 +35,19 @@
     </view>
     <view class="field-item"><text class="label">商户号</text><input class="input" value="{{settings.payment.mchId}}" data-field="mchId" bindinput="paymentInput" placeholder="微信支付商户号" /></view>
     <view class="field-item"><text class="label">AppID</text><input class="input" value="{{settings.payment.appId}}" data-field="appId" bindinput="paymentInput" placeholder="小程序 AppID" /></view>
-    <view class="field-item"><text class="label">支付回调地址</text><input class="input" value="{{settings.payment.notifyUrl}}" data-field="notifyUrl" bindinput="paymentInput" placeholder="notifyUrl" /></view>
-    <view class="field-item"><text class="label">证书序列号</text><input class="input" value="{{settings.payment.certSerialNo}}" data-field="certSerialNo" bindinput="paymentInput" placeholder="certSerialNo" /></view>
-    <view class="between setting-row">
+    <view class="field-item"><text class="label">支付回调地址</text><input class="input" value="{{settings.payment.notifyUrl}}" data-field="notifyUrl" bindinput="paymentInput" placeholder="https://..." /></view>
+    <view class="field-item"><text class="label">证书序列号</text><input class="input" value="{{settings.payment.certSerialNo}}" data-field="certSerialNo" bindinput="paymentInput" placeholder="商户 API 证书序列号" /></view>
+    <view class="field-item"><text class="label">API v3 Key</text><input class="input" password value="{{settings.payment.apiV3KeyInput}}" data-field="apiV3KeyInput" bindinput="paymentInput" placeholder="{{settings.payment.apiV3KeyConfigured ? '已配置，留空不修改' : '请输入 API v3 Key'}}" /></view>
+    <view class="field-item"><text class="label">商户私钥</text><textarea class="input" value="{{settings.payment.privateKeyInput}}" data-field="privateKeyInput" bindinput="paymentInput" placeholder="{{settings.payment.privateKeyConfigured ? '已配置，留空不修改' : '请输入 PEM 私钥'}}" /></view>
+    <view class="field-item"><text class="label">平台公钥</text><textarea class="input" value="{{settings.payment.platformPublicKeyInput}}" data-field="platformPublicKeyInput" bindinput="paymentInput" placeholder="{{settings.payment.platformPublicKeyConfigured ? '已配置，留空不修改' : '用于回调验签的微信支付平台公钥'}}" /></view>
+    <view class="notice">密钥只提交到云函数，不会在前端回显；正式上线前请在微信商户平台配置 HTTPS 回调地址，并在小程序后台配置支付权限和服务器域名。</view>
+    <view class="between setting-row border-bottom">
       <view style="flex:1;min-width:0;"><view class="strong">启用退款</view><view class="muted">开启后取消已支付订单会生成退款单。</view></view>
       <switch checked="{{settings.payment.refundEnabled}}" bindchange="toggleRefundEnabled" />
+    </view>
+    <view class="between setting-row">
+      <view style="flex:1;min-width:0;"><view class="strong">允许正式环境模拟支付</view><view class="muted">仅测试联调用，正式上线前应关闭，避免生产误用 mock。</view></view>
+      <switch checked="{{settings.payment.allowMockInProduction}}" bindchange="toggleAllowMockInProduction" />
     </view>
   </view>
 
@@ -187,6 +195,26 @@
         </view>
       </view>
     </block>
+
+    <view class="home-config-box">
+      <view class="subtitle">首页转化模块配置</view>
+      <view class="field-item"><text class="label">预约 CTA 标题</text><input class="input" value="{{settings.homePage.ctaTitle}}" data-field="ctaTitle" bindinput="homePageInput" /></view>
+      <view class="field-item"><text class="label">预约 CTA 副标题</text><input class="input" value="{{settings.homePage.ctaSubtitle}}" data-field="ctaSubtitle" bindinput="homePageInput" /></view>
+      <view class="field-item"><text class="label">预约按钮文案</text><input class="input" value="{{settings.homePage.ctaText}}" data-field="ctaText" bindinput="homePageInput" /></view>
+      <view class="field-item"><text class="label">再次预约标题</text><input class="input" value="{{settings.homePage.repeatTitle}}" data-field="repeatTitle" bindinput="homePageInput" /></view>
+      <view class="field-item"><text class="label">新人优惠标题</text><input class="input" value="{{settings.homePage.couponTitle}}" data-field="couponTitle" bindinput="homePageInput" /></view>
+      <view class="field-item"><text class="label">保障说明标题</text><input class="input" value="{{settings.homePage.assuranceTitle}}" data-field="assuranceTitle" bindinput="homePageInput" /></view>
+      <view class="section-title-row"><text class="section-title">首页模块开关</text></view>
+      <view class="module-switch-row"><text>核心预约 CTA</text><switch checked="{{settings.homePage.modules.quickBooking !== false}}" data-key="quickBooking" bindchange="toggleHomeModule" /></view>
+      <view class="module-switch-row"><text>附近宠托师入口</text><switch checked="{{settings.homePage.modules.nearbySitters !== false}}" data-key="nearbySitters" bindchange="toggleHomeModule" /></view>
+      <view class="module-switch-row"><text>再次预约</text><switch checked="{{settings.homePage.modules.repeatBooking !== false}}" data-key="repeatBooking" bindchange="toggleHomeModule" /></view>
+      <view class="module-switch-row"><text>热门服务卡</text><switch checked="{{settings.homePage.modules.hotServices !== false}}" data-key="hotServices" bindchange="toggleHomeModule" /></view>
+      <view class="module-switch-row"><text>新人优惠</text><switch checked="{{settings.homePage.modules.newbieCoupon !== false}}" data-key="newbieCoupon" bindchange="toggleHomeModule" /></view>
+      <view class="module-switch-row"><text>精选宠托师</text><switch checked="{{settings.homePage.modules.featuredSitters !== false}}" data-key="featuredSitters" bindchange="toggleHomeModule" /></view>
+      <view class="module-switch-row"><text>平台保障</text><switch checked="{{settings.homePage.modules.platformAssurance !== false}}" data-key="platformAssurance" bindchange="toggleHomeModule" /></view>
+      <view class="module-switch-row"><text>历史服务统计</text><switch checked="{{settings.homePage.modules.historyStats !== false}}" data-key="historyStats" bindchange="toggleHomeModule" /></view>
+      <view class="module-switch-row"><text>抽奖活动横幅</text><switch checked="{{settings.homePage.modules.lottery !== false}}" data-key="lottery" bindchange="toggleHomeModule" /></view>
+    </view>
 
     <button class="primary margin-top-lg" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>
   </view>

@@ -1,13 +1,6 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { createClientRequestId } = require('../../../../utils/offlineQueue')
-
-const typeOptions = [
-  { label: '服务问题', value: 'service_issue' },
-  { label: '退款争议', value: 'refund_dispute' },
-  { label: '安全问题', value: 'safety' },
-  { label: '其他投诉', value: 'complaint' }
-]
+const { withIncidentText } = require('../../../../utils/format')
 
 function uploadEvidence(filePath) {
   const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
@@ -21,13 +14,20 @@ function uploadEvidence(filePath) {
   })
 }
 
+function decorate(detail = {}) {
+  const incident = detail.incident || {}
+  return {
+    ...detail,
+    incident: withIncidentText({ ...incident, mediaFileIds: Array.isArray(incident.mediaFileIds) ? incident.mediaFileIds : [] }),
+    comments: (detail.comments || []).map((item) => ({ ...item, mediaFileIds: Array.isArray(item.mediaFileIds) ? item.mediaFileIds : [] }))
+  }
+}
+
 Page({
   data: {
-    orderId: '',
-    typeOptions,
-    typeIndex: 0,
-    title: '',
-    description: '',
+    id: '',
+    detail: null,
+    comment: '',
     mediaFileIds: [],
     submitting: false,
     sectionHomeUrl: '',
@@ -35,20 +35,20 @@ Page({
   },
 
   onLoad(q) {
-    this.setData({ ...createPageNav(q), orderId: q.id || q.orderId || '' })
+    this.setData({ ...createPageNav(q), id: q.id || q.incidentId || '' })
   },
 
-  chooseType(e) {
-    this.setData({ typeIndex: Number(e.detail.value || 0) })
+  onShow() {
+    this.load()
   },
 
-  inputTitle(e) {
-    this.setData({ title: e.detail.value || '' })
+  load() {
+    callFunction('incident', 'getIncidentDetail', { incidentId: this.data.id })
+      .then((detail) => this.setData({ detail: decorate(detail) }))
+      .catch(showError)
   },
 
-  inputDescription(e) {
-    this.setData({ description: e.detail.value || '' })
-  },
+  inputComment(e) { this.setData({ comment: e.detail.value || '' }) },
 
   chooseEvidence() {
     wx.chooseMedia({
@@ -67,27 +67,29 @@ Page({
     this.setData({ mediaFileIds: this.data.mediaFileIds.filter((_, i) => i !== index) })
   },
 
-  submit() {
+  submitComment() {
     if (this.data.submitting) return
-    const option = this.data.typeOptions[this.data.typeIndex] || this.data.typeOptions[0]
     this.setData({ submitting: true })
     Promise.all(this.data.mediaFileIds.map(uploadEvidence))
-      .then((mediaFileIds) => callFunction('incident', 'createComplaint', {
-        orderId: this.data.orderId,
-        incidentType: option.value,
-        title: this.data.title,
-        description: this.data.description,
-        mediaFileIds,
-        clientRequestId: createClientRequestId('complaint')
+      .then((mediaFileIds) => callFunction('incident', 'appendIncidentComment', {
+        incidentId: this.data.id,
+        content: this.data.comment,
+        mediaFileIds
       }))
-      .then((incident) => {
+      .then(() => {
         wx.showToast({ title: '已提交', icon: 'none' })
-        wx.redirectTo({ url: `/pages/client/incidents/detail/index?id=${incident._id}` })
+        this.setData({ comment: '', mediaFileIds: [], submitting: false })
+        this.load()
       })
       .catch((error) => {
         this.setData({ submitting: false })
         showError(error)
       })
+  },
+
+  goOrder() {
+    if (!this.data.detail || !this.data.detail.incident.orderId) return
+    wx.navigateTo({ url: `/pages/staff/orders/detail/index?id=${this.data.detail.incident.orderId}` })
   },
 
   ...navMethods()

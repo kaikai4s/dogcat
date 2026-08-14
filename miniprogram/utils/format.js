@@ -54,6 +54,23 @@ const incidentTypeText = {
   safety: '安全问题'
 }
 
+const incidentActionText = {
+  created_sos: '宠托师发起 SOS',
+  created_complaint: '宠物主发起投诉',
+  commented: '新增留言',
+  evidence_uploaded: '补充证据',
+  status_updated: '状态更新',
+  resolution_proposed: '提出处理方案',
+  coupon_issued: '发放补偿优惠券',
+  earning_frozen: '冻结收益',
+  earning_release: '解冻收益',
+  earning_deduct: '扣减收益',
+  earning_keep_frozen: '继续冻结收益',
+  refund_created: '发起退款',
+  refund_linked: '关联退款',
+  closed: '工单结案'
+}
+
 function formatOrderStatus(status, order = {}) {
   if (status === 'paid' && order.publishMode === 'direct') return '待指定宠托师接单'
   if (status === 'paid') return '待附近宠托师接单'
@@ -80,6 +97,10 @@ function formatIncidentType(type) {
   return incidentTypeText[type] || type || '异常事件'
 }
 
+function formatIncidentAction(action) {
+  return incidentActionText[action] || action || '操作记录'
+}
+
 function withOrderText(order) {
   if (!order) return order
   return {
@@ -99,6 +120,19 @@ function withIncidentText(item) {
   return { ...item, statusText: formatIncidentStatus(item.status), incidentTypeText: formatIncidentType(item.incidentType) }
 }
 
+function withIncidentActionText(item) {
+  if (!item) return item
+  const detail = item.detail || {}
+  const detailParts = []
+  if (detail.status) detailParts.push(formatIncidentStatus(detail.status))
+  if (detail.refundAmount) detailParts.push(`退款 ¥${detail.refundAmount}`)
+  if (detail.deductedAmount) detailParts.push(`扣减 ¥${detail.deductedAmount}`)
+  if (detail.couponTemplateId) detailParts.push('优惠券补偿')
+  if (detail.closeRemark) detailParts.push(detail.closeRemark)
+  if (detail.remark) detailParts.push(detail.remark)
+  return { ...item, actionText: formatIncidentAction(item.action), actorRoleText: ({ admin: '后台', staff: '宠托师', client: '宠物主', system: '系统' })[item.actorRole] || item.actorRole || '', detailText: detailParts.join(' · ') }
+}
+
 function withCheckinText(item) {
   if (!item) return item
   return { ...item, eventTypeText: formatCheckinEvent(item.eventType) }
@@ -111,8 +145,10 @@ module.exports = {
   formatCheckinEvent,
   formatAssignmentSource,
   formatIncidentType,
+  formatIncidentAction,
   withOrderText,
   withAuditText,
   withIncidentText,
+  withIncidentActionText,
   withCheckinText
 }

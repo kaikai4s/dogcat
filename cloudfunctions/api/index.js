@@ -27,7 +27,18 @@ const defaultServicePrices = [
 ]
 
 function ok(data) { return { ok: true, data } }
-function fail(message) { return { ok: false, message } }
+
+function inferErrorCode(message = '') {
+  const text = String(message || '')
+  if (text.includes('请先登录') || text.includes('账号不可用')) return 'AUTH_REQUIRED'
+  if (text.includes('仅管理员') || text.includes('无权') || text.includes('不是该订单') || text.includes('仅订单员工') || text.includes('仅宠物主')) return 'FORBIDDEN'
+  if (text.includes('状态不可') || text.includes('仅服务中') || text.includes('订单完成后') || text.includes('已被分配') || text.includes('已评价')) return 'INVALID_STATE'
+  if (text.includes('请选择') || text.includes('请填写') || text.includes('请上传') || text.includes('格式无效') || text.includes('不能为空') || text.includes('不正确') || text.includes('无效')) return 'VALIDATION_ERROR'
+  if (text.includes('不存在') || text.includes('未配置') || text.includes('不可用')) return 'NOT_FOUND'
+  return 'UNKNOWN_ERROR'
+}
+
+function fail(message, code) { return { ok: false, code: code || inferErrorCode(message), message } }
 function now() { return new Date() }
 function nowText() { return new Date().toISOString() }
 // 返回 CST（UTC+8）当日零点的 Date 对象，用于"每日"类限制判断
@@ -202,8 +213,84 @@ function normalizeHomeHeroCarousel(carousel = {}) {
   }
 }
 
-function normalizeSystemSettings(value = {}) {
+const defaultHomeModules = {
+  quickBooking: true,
+  nearbySitters: true,
+  repeatBooking: true,
+  hotServices: true,
+  newbieCoupon: true,
+  featuredSitters: true,
+  platformAssurance: true,
+  historyStats: true,
+  lottery: true
+}
+
+function normalizeHomePageConfig(homePage = {}) {
+  const modules = homePage.modules || {}
+  return {
+    ctaTitle: safeText(homePage.ctaTitle).trim() || '立即预约上门宠护',
+    ctaSubtitle: safeText(homePage.ctaSubtitle).trim() || '填写宠物和服务时间，平台认证宠托师快速响应。',
+    ctaText: safeText(homePage.ctaText).trim() || '立即预约',
+    nearbyTitle: safeText(homePage.nearbyTitle).trim() || '附近宠托师',
+    repeatTitle: safeText(homePage.repeatTitle).trim() || '再次预约',
+    couponTitle: safeText(homePage.couponTitle).trim() || '新人优惠',
+    assuranceTitle: safeText(homePage.assuranceTitle).trim() || '平台保障',
+    modules: Object.keys(defaultHomeModules).reduce((result, key) => ({
+      ...result,
+      [key]: modules[key] !== false
+    }), {})
+  }
+}
+
+function pickPaymentSecret(payment, existingPayment, field, inputField) {
+  const directValue = payment[field]
+  const inputValue = inputField ? payment[inputField] : undefined
+  if (inputValue !== undefined) {
+    const normalized = safeText(inputValue).trim()
+    return normalized || safeText(existingPayment[field]).trim()
+  }
+  if (directValue !== undefined) {
+    const normalized = safeText(directValue).trim()
+    return normalized || safeText(existingPayment[field]).trim()
+  }
+  return safeText(existingPayment[field]).trim()
+}
+
+function maskConfigured(value) {
+  return safeText(value).trim() ? true : false
+}
+
+function normalizePaymentConfig(payment = {}, existingPayment = {}, includeSecrets = false) {
+  const apiV3Key = pickPaymentSecret(payment, existingPayment, 'apiV3Key', 'apiV3KeyInput')
+  const privateKey = pickPaymentSecret(payment, existingPayment, 'privateKey', 'privateKeyInput')
+  const platformPublicKey = pickPaymentSecret(payment, existingPayment, 'platformPublicKey', 'platformPublicKeyInput')
+  const certSerialNo = safeText(payment.certSerialNo ?? payment.merchantCertSerialNo ?? existingPayment.certSerialNo).trim()
+  const rawMode = payment.mode ?? existingPayment.mode
+  const normalized = {
+    enabled: payment.enabled !== undefined ? payment.enabled !== false : existingPayment.enabled !== false,
+    mode: rawMode === 'wechat' ? 'wechat' : 'mock',
+    mchId: safeText(payment.mchId ?? existingPayment.mchId).trim(),
+    appId: safeText(payment.appId ?? existingPayment.appId).trim(),
+    notifyUrl: safeText(payment.notifyUrl ?? existingPayment.notifyUrl).trim(),
+    certSerialNo,
+    merchantCertSerialNo: certSerialNo,
+    refundEnabled: payment.refundEnabled !== undefined ? payment.refundEnabled !== false : existingPayment.refundEnabled !== false,
+    allowMockInProduction: payment.allowMockInProduction !== undefined ? payment.allowMockInProduction === true : existingPayment.allowMockInProduction === true,
+    apiV3KeyConfigured: maskConfigured(apiV3Key || process.env.WECHAT_PAY_API_V3_KEY),
+    privateKeyConfigured: maskConfigured(privateKey || process.env.WECHAT_PAY_PRIVATE_KEY),
+    platformPublicKeyConfigured: maskConfigured(platformPublicKey || process.env.WECHAT_PAY_PLATFORM_PUBLIC_KEY)
+  }
+  if (includeSecrets) {
+    normalized.apiV3Key = apiV3Key
+    normalized.privateKey = privateKey
+    normalized.platformPublicKey = platformPublicKey
+  }
+  return normalized
+}
+
+function normalizeSystemSettings(value = {}, options = {}) {
   const payment = value.payment || {}
+  const existingPayment = options.existingPayment || {}
   const settlement = value.settlement || {}
   const subscription = value.subscription || {}
   const reliability = value.reliability || {}
@@ -212,15 +299,8 @@ function normalizeSystemSettings(value = {}) {
     qwenApiKey: safeText(value.qwenApiKey).trim(),
     qwenModel: safeText(value.qwenModel).trim() || 'qwen3.5-flash',
     homeHeroCarousel: normalizeHomeHeroCarousel(value.homeHeroCarousel),
-    payment: {
-      enabled: payment.enabled !== false,
-      mode: payment.mode === 'wechat' ? 'wechat' : 'mock',
-      mchId: safeText(payment.mchId).trim(),
-      appId: safeText(payment.appId).trim(),
-      notifyUrl: safeText(payment.notifyUrl).trim(),
-      certSerialNo: safeText(payment.certSerialNo).trim(),
-      refundEnabled: payment.refundEnabled !== false
-    },
+    homePage: normalizeHomePageConfig(value.homePage),
+    payment: normalizePaymentConfig(payment, existingPayment, options.includeSecrets === true),
     settlement: {
       staffCommissionRate: Math.min(Math.max(Number(settlement.staffCommissionRate ?? 0.7), 0), 1),
       settlementDelayDays: Math.max(Math.round(Number(settlement.settlementDelayDays ?? 1)), 0),
@@ -454,9 +534,9 @@ async function callCloudbaseExtendAi(modelNames, imageUrl, promptText) {
   throw lastError || new Error('微信云开发 AI 服务未响应')
 }
 
-async function getSystemSettings() {
+async function getSystemSettings(options = {}) {
   const res = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
-  return normalizeSystemSettings(res.data[0] ? res.data[0].value : {})
+  return normalizeSystemSettings(res.data[0] ? res.data[0].value : {}, options)
 }
 
 async function recordAiLog(openid, logData = {}) {
@@ -481,9 +561,10 @@ async function recordAiLog(openid, logData = {}) {
 }
 
 async function saveSystemSettings(settings) {
-  const value = normalizeSystemSettings(settings)
   const time = now()
   const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
+  const previousValue = existing.data[0] ? existing.data[0].value : {}
+  const value = normalizeSystemSettings(settings, { includeSecrets: true, existingPayment: previousValue.payment || {} })
   const payload = { key: 'system_settings', value, updatedAt: time }
   if (existing.data[0]) {
     await db.collection('platform_configs').doc(existing.data[0]._id).update({ data: payload })
@@ -885,6 +966,157 @@ async function listServicePrices(includeDisabled = false) {
   return merged
     .filter((item) => item.key && item.label && (includeDisabled || item.enabled))
     .sort((a, b) => a.sortOrder - b.sortOrder)
+}
+
+const serviceIcons = { walk: '🐶', feed: '🐱', litter: '🚽', play: '🧶', medicine: '💊', clean: '🧹', extra_pet: '🐾' }
+
+async function safeCollectionData(name, builder) {
+  try {
+    const query = builder ? builder(db.collection(name)) : db.collection(name)
+    const res = await query.get()
+    return res.data || []
+  } catch (error) {
+    return []
+  }
+}
+
+async function safeCollectionCount(name, where = {}) {
+  try {
+    const res = await db.collection(name).where(where).count()
+    return Number(res.total || 0)
+  } catch (error) {
+    return 0
+  }
+}
+
+function formatHomeCount(count) {
+  const value = Number(count || 0)
+  if (value >= 10000) return `${(value / 10000).toFixed(1).replace(/\.0$/, '')}万`
+  return String(value)
+}
+
+const ORDER_STATUS = {
+  PENDING_PAY: 'pending_pay',
+  PAID: 'paid',
+  ASSIGNED: 'assigned',
+  IN_SERVICE: 'in_service',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled'
+}
+
+const ORDER_TRANSITIONS = {
+  [ORDER_STATUS.PENDING_PAY]: [ORDER_STATUS.PAID, ORDER_STATUS.CANCELLED],
+  [ORDER_STATUS.PAID]: [ORDER_STATUS.ASSIGNED, ORDER_STATUS.CANCELLED],
+  [ORDER_STATUS.ASSIGNED]: [ORDER_STATUS.IN_SERVICE, ORDER_STATUS.CANCELLED],
+  [ORDER_STATUS.IN_SERVICE]: [ORDER_STATUS.COMPLETED],
+  [ORDER_STATUS.COMPLETED]: [],
+  [ORDER_STATUS.CANCELLED]: []
+}
+
+function canTransitionOrder(fromStatus, toStatus) {
+  return (ORDER_TRANSITIONS[fromStatus] || []).includes(toStatus)
+}
+
+function assertOrderTransition(fromStatus, toStatus, message) {
+  if (!canTransitionOrder(fromStatus, toStatus)) throw new Error(message || '订单状态不可流转')
+}
+
+function orderStatusText(status) {
+  return ({ pending_pay: '待支付', paid: '已支付', assigned: '已接单', in_service: '服务中', completed: '已完成', cancelled: '已取消', refunding: '退款中', refunded: '已退款' })[status] || '处理中'
+}
+
+function toHomeOrderActivity(order = {}) {
+  return {
+    _id: order._id || '',
+    serviceSummary: order.serviceSummary || order.serviceType || '上门宠护',
+    petName: order.petName || '宠物',
+    status: order.status || '',
+    statusText: orderStatusText(order.status),
+    city: order.serviceCity || order.city || '',
+    createdAt: order.createdAt || ''
+  }
+}
+
+async function getHomePageData(openid, data = {}) {
+  const settings = await getSystemSettings()
+  const loc = {
+    latitude: Number(data.latitude || 0),
+    longitude: Number(data.longitude || 0)
+  }
+  const hasLoc = hasCoordinate(loc.latitude, loc.longitude)
+  const [servicePrices, staffProfiles, couponTemplates, orders, optionalUser] = await Promise.all([
+    listServicePrices(false),
+    safeCollectionData('staff_profiles', (col) => col.where({ auditStatus: 'approved' }).orderBy('updatedAt', 'desc')),
+    safeCollectionData('coupon_templates', (col) => col.where({ enabled: true }).orderBy('sortOrder', 'asc')),
+    safeCollectionData('orders', (col) => col.orderBy('createdAt', 'desc')),
+    getOptionalUser(openid).catch(() => null)
+  ])
+
+  const sittersWithUser = await Promise.all(staffProfiles.slice(0, 30).map(withSitterUserProfile))
+  let featuredSitters = sittersWithUser.map((profile) => {
+    const item = toPublicSitter(profile)
+    if (hasLoc && hasCoordinate(profile.serviceLatitude, profile.serviceLongitude)) {
+      const distanceKm = calcDistanceKm(loc.latitude, loc.longitude, profile.serviceLatitude, profile.serviceLongitude)
+      return { ...item, distanceKm, distanceText: formatDistance(distanceKm) }
+    }
+    return item
+  })
+  featuredSitters.sort((a, b) => {
+    const featuredDiff = Number(b.isFeatured === true) - Number(a.isFeatured === true)
+    if (featuredDiff) return featuredDiff
+    if (hasLoc) return (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999) || Number(b.ratingAverage || 0) - Number(a.ratingAverage || 0)
+    return Number(b.ratingAverage || 0) - Number(a.ratingAverage || 0) || Number(b.reviewCount || 0) - Number(a.reviewCount || 0)
+  })
+  featuredSitters = featuredSitters.slice(0, 6)
+
+  const userOrders = optionalUser ? orders.filter((order) => order.clientOpenid === openid) : []
+  const repeatOrder = userOrders.find((order) => ['paid', 'assigned', 'in_service', 'completed'].includes(order.status)) || null
+  const recentOrders = orders
+    .filter((order) => ['paid', 'assigned', 'in_service', 'completed'].includes(order.status))
+    .slice(0, 6)
+    .map(toHomeOrderActivity)
+
+  const completedCount = orders.filter((order) => order.status === 'completed').length
+  const reviewCount = await safeCollectionCount('service_reviews', { status: 'visible' })
+
+  return {
+    settings: {
+      homeHeroCarousel: settings.homeHeroCarousel,
+      homePage: settings.homePage
+    },
+    servicePrices: servicePrices.slice(0, 6).map((item) => ({
+      ...item,
+      icon: serviceIcons[item.key] || '🐾',
+      priceText: `¥${item.price}起`
+    })),
+    featuredSitters,
+    coupons: couponTemplates.slice(0, 3).map((coupon) => ({
+      _id: coupon._id,
+      name: coupon.name || '新人优惠券',
+      discountAmount: Number(coupon.discountAmount || 0),
+      minOrderAmount: Number(coupon.minOrderAmount || 0),
+      displayTag: coupon.displayTag || '限时福利',
+      ruleText: coupon.minOrderAmount > 0 ? `满${coupon.minOrderAmount}减${coupon.discountAmount}` : `立减${coupon.discountAmount}`
+    })),
+    repeatOrder: repeatOrder ? {
+      _id: repeatOrder._id,
+      serviceSummary: repeatOrder.serviceSummary || '上门宠护',
+      petName: repeatOrder.petName || '宠物',
+      startTime: repeatOrder.startTime || '',
+      staffProfileId: repeatOrder.staffProfileId || repeatOrder.requestedStaffProfileId || ''
+    } : null,
+    recentOrders,
+    statsData: {
+      completedCount: formatHomeCount(completedCount),
+      sitterCount: formatHomeCount(staffProfiles.length),
+      ratingCount: formatHomeCount(reviewCount)
+    },
+    assuranceItems: [
+      { title: '实名认证', desc: '宠托师资料审核后上岗', icon: '✅' },
+      { title: '轨迹打卡', desc: '服务过程位置和照片可追踪', icon: '📍' },
+      { title: '售后保障', desc: '异常投诉有平台工单跟进', icon: '🛡️' }
+    ]
+  }
 }
 
 function normalizeServiceTypes(data) {
@@ -1441,9 +1673,21 @@ async function getOrderForAccess(openid, orderId) {
   const user = await getUser(openid)
   const res = await db.collection('orders').doc(orderId).get()
   const order = res.data
-  const canPreviewForStaff = user.roles.includes('staff') && order.status === 'paid' && (isOpenOrder(order) || order.requestedStaffOpenid === openid)
+  const canPreviewForStaff = user.roles.includes('staff') && order.status === ORDER_STATUS.PAID && (isOpenOrder(order) || order.requestedStaffOpenid === openid)
   const allowed = order.clientOpenid === openid || order.staffOpenid === openid || order.requestedStaffOpenid === openid || user.roles.includes('admin') || canPreviewForStaff
   if (!allowed) throw new Error('无权访问订单')
+  return { user, order }
+}
+
+async function requireClientOrder(openid, orderId, message = '无权操作该订单') {
+  const { user, order } = await getOrderForAccess(openid, orderId)
+  if (order.clientOpenid !== openid) throw new Error(message)
+  return { user, order }
+}
+
+async function requireStaffOrder(openid, orderId, message = '仅订单员工可操作') {
+  const { user, order } = await getOrderForAccess(openid, orderId)
+  if (!user.roles.includes('staff') || order.staffOpenid !== openid) throw new Error(message)
   return { user, order }
 }
 
@@ -1559,6 +1803,21 @@ async function appendOrderTimeline(orderId, type, title, detail, actorRole) {
 
 function makeIdempotencyKey(...parts) {
   return parts.map((part) => safeText(part).trim()).filter(Boolean).join(':')
+}
+
+function getClientRequestId(data = {}) {
+  return safeText(data.clientRequestId || data.idempotencyKey).trim()
+}
+
+async function findByClientRequestId(collectionName, scope) {
+  const clientRequestId = safeText(scope.clientRequestId).trim()
+  if (!clientRequestId) return null
+  const where = { clientRequestId }
+  if (scope.openid) where.openid = scope.openid
+  if (scope.orderId) where.orderId = scope.orderId
+  if (scope.staffOpenid) where.staffOpenid = scope.staffOpenid
+  const res = await db.collection(collectionName).where(where).limit(1).get()
+  return res.data[0] || null
 }
 
 async function appendPaymentEvent(eventType, payload = {}) {
@@ -1744,6 +2003,20 @@ function limitList(list = [], size = 50) {
   return list.slice(0, pageSize)
 }
 
+function paginateList(list = [], data = {}) {
+  const page = Math.max(Number(data.page || 1), 1)
+  const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 100)
+  const total = list.length
+  const start = (page - 1) * pageSize
+  return {
+    list: list.slice(start, start + pageSize),
+    total,
+    page,
+    pageSize,
+    hasMore: start + pageSize < total
+  }
+}
+
 function buildFinanceDashboardData({ orders = [], payments = [], refunds = [], earnings = [], withdraws = [], logs = [] }, range) {
   const paidOrders = orders.filter((order) => isPaidOrder(order) && inDateRange(order, range, ['paidAt', 'createdAt']))
   const paidPayments = payments.filter((payment) => payment.status === 'paid' && inDateRange(payment, range, ['paidAt', 'updatedAt', 'createdAt']))
@@ -1822,11 +2095,67 @@ async function freezeOrderEarnings(orderId, incidentId, time = now()) {
   const frozen = []
   for (const earning of res.data || []) {
     if (!['pending', 'available'].includes(earning.status)) continue
-    await db.collection('staff_earnings').doc(earning._id).update({ data: { status: 'frozen', frozenIncidentId: incidentId, updatedAt: time } })
+    await db.collection('staff_earnings').doc(earning._id).update({ data: { status: 'frozen', frozenIncidentId: incidentId, frozenFromStatus: earning.status, updatedAt: time } })
     frozen.push(earning._id)
   }
   if (frozen.length) await appendFinanceLog('staff_earning_frozen', { targetType: 'incident', targetId: incidentId, amountDelta: 0, detail: { orderId, earningIds: frozen } })
   return frozen
+}
+
+function releasedEarningStatus(earning, time = now()) {
+  if (earning.frozenFromStatus && earning.frozenFromStatus !== 'frozen') return earning.frozenFromStatus
+  const availableAt = parseDateValue(earning.availableAt)
+  return availableAt && availableAt.getTime() > time.getTime() ? 'pending' : 'available'
+}
+
+async function finalizeIncidentEarnings(incident, decision, deductAmount = 0, remark = '') {
+  const earningIds = Array.isArray(incident.frozenEarningIds) ? incident.frozenEarningIds : []
+  if (!earningIds.length) return { decision: '', earningIds: [], deductedAmount: 0 }
+  const time = now()
+  const normalizedDecision = ['release', 'deduct', 'keep_frozen'].includes(decision) ? decision : ''
+  if (!normalizedDecision) return { decision: '', earningIds, deductedAmount: 0 }
+
+  let remainingDeduct = normalizedDecision === 'deduct' ? Math.max(Number(deductAmount || 0), 0) : 0
+  const frozenEarnings = []
+  for (const id of earningIds) {
+    try {
+      const earning = (await db.collection('staff_earnings').doc(id).get()).data
+      if (earning && earning.status === 'frozen') frozenEarnings.push(earning)
+    } catch (error) {}
+  }
+  if (normalizedDecision === 'deduct' && remainingDeduct <= 0) remainingDeduct = frozenEarnings.reduce((sum, earning) => sum + Number(earning.amount || 0), 0)
+
+  const updated = []
+  let deductedAmount = 0
+  for (const earning of frozenEarnings) {
+    const amount = Number(earning.amount || 0)
+    let update = { updatedAt: time }
+    if (normalizedDecision === 'release') {
+      update = { ...update, status: releasedEarningStatus(earning, time), frozenIncidentId: '', frozenFromStatus: '', frozenResolvedAt: time, frozenResolveRemark: remark }
+    } else if (normalizedDecision === 'keep_frozen') {
+      update = { ...update, frozenResolveRemark: remark }
+    } else {
+      const currentDeduct = Math.min(amount, remainingDeduct)
+      remainingDeduct = Math.max(remainingDeduct - currentDeduct, 0)
+      deductedAmount += currentDeduct
+      const leftAmount = Math.round((amount - currentDeduct) * 100) / 100
+      update = {
+        ...update,
+        amount: leftAmount,
+        deductedAmount: Math.round((Number(earning.deductedAmount || 0) + currentDeduct) * 100) / 100,
+        status: leftAmount > 0 ? releasedEarningStatus(earning, time) : 'deducted',
+        frozenIncidentId: '',
+        frozenFromStatus: '',
+        frozenResolvedAt: time,
+        frozenResolveRemark: remark
+      }
+    }
+    await db.collection('staff_earnings').doc(earning._id).update({ data: update })
+    updated.push(earning._id)
+  }
+  deductedAmount = Math.round(deductedAmount * 100) / 100
+  await appendFinanceLog(`staff_earning_${normalizedDecision}`, { targetType: 'incident', targetId: incident._id, orderId: incident.orderId, amountDelta: normalizedDecision === 'deduct' ? -deductedAmount : 0, detail: { earningIds: updated, deductedAmount, remark } })
+  return { decision: normalizedDecision, earningIds: updated, deductedAmount }
 }
 
 async function saveUserAddress(openid, user, data) {
@@ -1937,7 +2266,162 @@ function createRefundNo() {
   return `R${Date.now()}${Math.floor(Math.random() * 1000)}`
 }
 
-async function ensurePaymentRecord(order, openid, channel = 'mock') {
+function normalizePem(value) {
+  return safeText(value).trim().replace(/\\n/g, '\n')
+}
+
+function randomNonce(length = 32) {
+  return crypto.randomBytes(length).toString('hex').slice(0, length)
+}
+
+function amountYuanToFen(amount) {
+  const normalized = Math.round(Number(amount || 0) * 100)
+  if (!Number.isFinite(normalized) || normalized <= 0) throw new Error('支付金额不正确')
+  return normalized
+}
+
+function isProductionPaymentEnv() {
+  return process.env.NODE_ENV === 'production' || process.env.PAYMENT_ENV === 'production'
+}
+
+function assertPaymentModeAllowed(payment) {
+  if (isProductionPaymentEnv() && payment.mode === 'mock' && payment.allowMockInProduction !== true) throw new Error('正式环境禁止使用模拟支付')
+}
+
+function getWechatPayConfig(settings) {
+  const payment = settings.payment || {}
+  const config = {
+    appId: safeText(process.env.WECHAT_PAY_APP_ID || payment.appId).trim(),
+    mchId: safeText(process.env.WECHAT_PAY_MCH_ID || payment.mchId).trim(),
+    notifyUrl: safeText(process.env.WECHAT_PAY_NOTIFY_URL || payment.notifyUrl).trim(),
+    certSerialNo: safeText(process.env.WECHAT_PAY_CERT_SERIAL_NO || payment.certSerialNo || payment.merchantCertSerialNo).trim(),
+    apiV3Key: safeText(process.env.WECHAT_PAY_API_V3_KEY || payment.apiV3Key).trim(),
+    privateKey: normalizePem(process.env.WECHAT_PAY_PRIVATE_KEY || payment.privateKey),
+    platformPublicKey: normalizePem(process.env.WECHAT_PAY_PLATFORM_PUBLIC_KEY || payment.platformPublicKey),
+    refundEnabled: payment.refundEnabled !== false
+  }
+  if (!config.appId || !config.mchId || !config.notifyUrl || !config.certSerialNo || !config.apiV3Key || !config.privateKey) throw new Error('微信支付配置未完成')
+  if (!/^https:\/\//i.test(config.notifyUrl)) throw new Error('微信支付回调地址必须是 HTTPS')
+  return config
+}
+
+function sanitizeWechatPayload(payload = {}) {
+  const clone = JSON.parse(JSON.stringify(payload || {}))
+  delete clone.apiV3Key
+  delete clone.privateKey
+  delete clone.privateKeyInput
+  delete clone.platformPublicKey
+  delete clone.platformPublicKeyInput
+  if (clone.payer && clone.payer.openid) clone.payer = { openid: 'configured' }
+  if (clone.resource && clone.resource.ciphertext) clone.resource = { ...clone.resource, ciphertext: '[encrypted]' }
+  return clone
+}
+
+function wechatPayRequest(method, path, body, config) {
+  if (process.env.WECHAT_PAY_MOCK_PREPAY_ID && path.includes('/v3/pay/transactions/jsapi')) return Promise.resolve({ prepay_id: process.env.WECHAT_PAY_MOCK_PREPAY_ID })
+  if (process.env.WECHAT_PAY_MOCK_REFUND_ID && path.includes('/v3/refund/domestic/refunds')) return Promise.resolve({ refund_id: process.env.WECHAT_PAY_MOCK_REFUND_ID, status: process.env.WECHAT_PAY_MOCK_REFUND_STATUS || 'PROCESSING' })
+
+  return new Promise((resolve, reject) => {
+    const bodyText = body ? JSON.stringify(body) : ''
+    const timestamp = String(Math.floor(Date.now() / 1000))
+    const nonce = randomNonce()
+    const message = `${method}\n${path}\n${timestamp}\n${nonce}\n${bodyText}\n`
+    const signature = crypto.createSign('RSA-SHA256').update(message).sign(config.privateKey, 'base64')
+    const authorization = `WECHATPAY2-SHA256-RSA2048 mchid="${config.mchId}",nonce_str="${nonce}",signature="${signature}",timestamp="${timestamp}",serial_no="${config.certSerialNo}"`
+    const req = https.request({
+      hostname: 'api.mch.weixin.qq.com',
+      port: 443,
+      path,
+      method,
+      headers: {
+        Authorization: authorization,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(bodyText)
+      }
+    }, (res) => {
+      let raw = ''
+      res.on('data', (chunk) => { raw += chunk })
+      res.on('end', () => {
+        let json = {}
+        try { json = raw ? JSON.parse(raw) : {} } catch (error) { return reject(new Error('微信支付响应解析失败')) }
+        if (res.statusCode >= 200 && res.statusCode < 300) return resolve(json)
+        reject(new Error(json.message || json.code || '微信支付请求失败'))
+      })
+    })
+    req.on('error', reject)
+    if (bodyText) req.write(bodyText)
+    req.end()
+  })
+}
+
+function buildMiniProgramPayParams(prepayId, config) {
+  const timeStamp = String(Math.floor(Date.now() / 1000))
+  const nonceStr = randomNonce()
+  const pkg = `prepay_id=${prepayId}`
+  const message = `${config.appId}\n${timeStamp}\n${nonceStr}\n${pkg}\n`
+  const paySign = crypto.createSign('RSA-SHA256').update(message).sign(config.privateKey, 'base64')
+  return { timeStamp, nonceStr, package: pkg, signType: 'RSA', paySign }
+}
+
+function getHeader(headers = {}, name) {
+  const foundKey = Object.keys(headers || {}).find((key) => key.toLowerCase() === name.toLowerCase())
+  return foundKey ? headers[foundKey] : ''
+}
+
+function verifyWechatPayCallback(headers, rawBody, config) {
+  if (process.env.WECHAT_PAY_SKIP_VERIFY === 'true') return true
+  if (!config.platformPublicKey) throw new Error('微信支付平台公钥未配置')
+  const timestamp = getHeader(headers, 'wechatpay-timestamp')
+  const nonce = getHeader(headers, 'wechatpay-nonce')
+  const signature = getHeader(headers, 'wechatpay-signature')
+  if (!timestamp || !nonce || !signature) throw new Error('微信支付回调签名头缺失')
+  if (Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp)) > 300) throw new Error('微信支付回调已过期')
+  const message = `${timestamp}\n${nonce}\n${rawBody}\n`
+  const ok = crypto.createVerify('RSA-SHA256').update(message).verify(config.platformPublicKey, signature, 'base64')
+  if (!ok) throw new Error('微信支付回调验签失败')
+  return true
+}
+
+function decryptWechatPayResource(resource = {}, apiV3Key = '') {
+  if (process.env.WECHAT_PAY_MOCK_CALLBACK_RESOURCE) return JSON.parse(process.env.WECHAT_PAY_MOCK_CALLBACK_RESOURCE)
+  const ciphertext = Buffer.from(resource.ciphertext || '', 'base64')
+  if (ciphertext.length <= 16) throw new Error('微信支付回调密文无效')
+  const authTag = ciphertext.slice(ciphertext.length - 16)
+  const encrypted = ciphertext.slice(0, ciphertext.length - 16)
+  const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(apiV3Key, 'utf8'), resource.nonce || '')
+  decipher.setAuthTag(authTag)
+  if (resource.associated_data) decipher.setAAD(Buffer.from(resource.associated_data, 'utf8'))
+  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8')
+  return JSON.parse(decrypted)
+}
+
+function mapWechatTradeState(state) {
+  if (state === 'SUCCESS') return 'success'
+  if (state === 'CLOSED' || state === 'REVOKED' || state === 'PAYERROR') return 'failed'
+  return 'pending'
+}
+
+function mapWechatRefundStatus(status) {
+  if (status === 'SUCCESS') return 'success'
+  if (status === 'ABNORMAL' || status === 'CLOSED') return 'failed'
+  return 'processing'
+}
+
+function validatePaymentCallbackPayload(payload, order, payment, config) {
+  if (safeText(payload.mchid).trim() !== config.mchId) throw new Error('微信支付商户号不匹配')
+  if (safeText(payload.appid).trim() !== config.appId) throw new Error('微信支付 AppID 不匹配')
+  if (safeText(payload.out_trade_no).trim() !== payment.paymentNo) throw new Error('微信支付单号不匹配')
+  if (payload.trade_state === 'SUCCESS' && !payload.transaction_id) throw new Error('微信交易号缺失')
+  const paidFen = Number(payload.amount && payload.amount.total)
+  if (paidFen !== amountYuanToFen(order.payAmount)) throw new Error('微信支付金额不匹配')
+}
+
+async function ensurePaymentRecord(order, openid, channel = 'mock', clientRequestId = '') {
+  if (clientRequestId) {
+    const existingByRequest = await findByClientRequestId('payments', { orderId: order._id, openid, clientRequestId })
+    if (existingByRequest) return existingByRequest
+  }
   const existing = await db.collection('payments').where({ orderId: order._id, status: 'pending' }).limit(1).get()
   if (existing.data[0]) return existing.data[0]
   const time = now()
@@ -1953,7 +2437,8 @@ async function ensurePaymentRecord(order, openid, channel = 'mock') {
     currency: 'CNY',
     status: 'pending',
     channel,
-    idempotencyKey: makeIdempotencyKey('payment', order._id, paymentNo),
+    clientRequestId,
+    idempotencyKey: clientRequestId || makeIdempotencyKey('payment', order._id, paymentNo),
     rawRequest: {},
     rawCallback: {},
     createdAt: time,
@@ -1967,7 +2452,7 @@ async function ensurePaymentRecord(order, openid, channel = 'mock') {
 async function markOrderPaid(orderId, paymentPayload = {}) {
   const order = (await db.collection('orders').doc(orderId).get()).data
   if (order.paymentStatus === 'paid') return { orderId, status: 'paid' }
-  if (order.status !== 'pending_pay') throw new Error('订单状态不可支付')
+  assertOrderTransition(order.status, ORDER_STATUS.PAID, '订单状态不可支付')
   const time = now()
   const paymentNo = paymentPayload.paymentNo || createPaymentNo()
   const paymentUpdate = {
@@ -1983,6 +2468,7 @@ async function markOrderPaid(orderId, paymentPayload = {}) {
     await db.collection('payments').doc(existing.data[0]._id).update({
       data: {
         status: 'success',
+        channel: paymentPayload.channel || existing.data[0].channel || 'mock',
         wxTransactionId: paymentUpdate.wxTransactionId,
         rawCallback: paymentPayload.rawCallback || {},
         paidAt: time,
@@ -2019,7 +2505,11 @@ async function markOrderPaid(orderId, paymentPayload = {}) {
   return { orderId, status: 'paid', paymentNo }
 }
 
-async function createRefundForOrder(order, refundAmount, reason, source, operatorOpenid) {
+async function createRefundForOrder(order, refundAmount, reason, source, operatorOpenid, clientRequestId = '') {
+  if (clientRequestId) {
+    const existingByRequest = await findByClientRequestId('refunds', { orderId: order._id, openid: order.clientOpenid || '', clientRequestId })
+    if (existingByRequest) return existingByRequest
+  }
   const existing = await db.collection('refunds').where({ orderId: order._id, status: 'processing' }).limit(1).get()
   if (existing.data[0]) return existing.data[0]
   const time = now()
@@ -2038,6 +2528,8 @@ async function createRefundForOrder(order, refundAmount, reason, source, operato
     status: 'processing',
     source: source || 'client_cancel',
     operatorOpenid: operatorOpenid || '',
+    clientRequestId,
+    idempotencyKey: clientRequestId || makeIdempotencyKey('refund', order._id, refundNo),
     rawRequest: {},
     rawCallback: {},
     requestedAt: time,
@@ -2045,14 +2537,44 @@ async function createRefundForOrder(order, refundAmount, reason, source, operato
     updatedAt: time
   }
   const created = await db.collection('refunds').add({ data: refund })
+  const createdRefund = { _id: created._id, ...refund }
   await appendPaymentEvent('refund_create', { orderId: order._id, refundNo, status: 'processing', detail: { refundAmount: refund.refundAmount, source } })
-  await notifyOrder(order.clientOpenid, 'refundResult', order, { amount: refund.refundAmount, statusText: '退款中' })
-  return { _id: created._id, ...refund }
+
+  const settings = await getSystemSettings({ includeSecrets: true })
+  assertPaymentModeAllowed(settings.payment)
+  if (settings.payment.mode === 'wechat' && settings.payment.refundEnabled !== false && (order.paymentNo || order.wxTransactionId)) {
+    try {
+      const config = getWechatPayConfig(settings)
+      const requestBody = {
+        out_trade_no: order.paymentNo || undefined,
+        transaction_id: order.wxTransactionId || undefined,
+        out_refund_no: refundNo,
+        reason: safeText(reason).trim() || '订单退款',
+        amount: { refund: amountYuanToFen(refund.refundAmount), total: amountYuanToFen(order.payAmount), currency: 'CNY' }
+      }
+      if (!requestBody.transaction_id) delete requestBody.transaction_id
+      if (requestBody.transaction_id) delete requestBody.out_trade_no
+      const response = await wechatPayRequest('POST', '/v3/refund/domestic/refunds', requestBody, config)
+      const refundStatus = mapWechatRefundStatus(response.status)
+      const update = { wxRefundId: response.refund_id || '', status: refundStatus, rawRequest: sanitizeWechatPayload(requestBody), rawResponse: sanitizeWechatPayload(response), updatedAt: now() }
+      await db.collection('refunds').doc(created._id).update({ data: update })
+      await appendPaymentEvent('refund_request', { orderId: order._id, refundNo, status: refundStatus, detail: { wxRefundId: update.wxRefundId, refundAmount: refund.refundAmount } })
+      Object.assign(createdRefund, update)
+    } catch (error) {
+      await db.collection('refunds').doc(created._id).update({ data: { status: 'failed', rawResponse: { message: error.message }, updatedAt: now() } })
+      await appendPaymentEvent('refund_failed', { orderId: order._id, refundNo, status: 'failed', detail: { message: error.message } })
+      throw new Error(`微信退款发起失败：${error.message}`)
+    }
+  }
+
+  await notifyOrder(order.clientOpenid, 'refundResult', order, { amount: refund.refundAmount, statusText: createdRefund.status === 'success' ? '已退款' : '退款中' })
+  return createdRefund
 }
 
 const handlers = {
   async system(openid, action, data) {
     if (action === 'getSettings') return getSystemSettings()
+    if (action === 'getHomePageData') return getHomePageData(openid, data)
     if (action === 'recordSubscriptionConsent') {
       await getUser(openid)
       const templateKeys = Array.isArray(data.templateKeys) ? data.templateKeys : []
@@ -2552,8 +3074,7 @@ const handlers = {
     }
 
     if (action === 'prepareRebook') {
-      const { order } = await getOrderForAccess(openid, data.orderId)
-      if (order.clientOpenid !== openid) throw new Error('无权再次预约')
+      const { order } = await requireClientOrder(openid, data.orderId, '无权再次预约')
       let publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       let staffProfileId = order.requestedStaffProfileId || order.staffProfileId || ''
       if (publishMode === 'direct' && staffProfileId) {
@@ -2597,8 +3118,7 @@ const handlers = {
     }
 
     if (action === 'createReview') {
-      const { user, order } = await getOrderForAccess(openid, data.orderId)
-      if (order.clientOpenid !== openid) throw new Error('仅宠物主可评价')
+      const { user, order } = await requireClientOrder(openid, data.orderId, '仅宠物主可评价')
       if (order.status !== 'completed') throw new Error('订单完成后才可评价')
       const existing = await db.collection('service_reviews').where({ orderId: data.orderId }).limit(1).get()
       if (existing.data[0]) throw new Error('该订单已评价')
@@ -2614,21 +3134,22 @@ const handlers = {
     }
 
     if (action === 'getCancelQuote') {
-      const { order } = await getOrderForAccess(openid, data.orderId)
-      if (order.clientOpenid !== openid) throw new Error('无权取消订单')
+      const { order } = await requireClientOrder(openid, data.orderId, '无权取消订单')
       return getCancelQuoteForOrder(order)
     }
 
     if (action === 'cancelOrder') {
-      const { order } = await getOrderForAccess(openid, data.orderId)
-      if (order.clientOpenid !== openid) throw new Error('无权取消订单')
+      const clientRequestId = getClientRequestId(data)
+      const { order } = await requireClientOrder(openid, data.orderId, '无权取消订单')
+      if (order.status === 'cancelled') return { orderId: data.orderId, status: 'cancelled', refundStatus: order.refundStatus || '', refundAmount: Number(order.refundAmount || 0), refundNo: order.refundNo || '' }
+      assertOrderTransition(order.status, ORDER_STATUS.CANCELLED, '订单状态不可取消')
       const quote = getCancelQuoteForOrder(order)
       if (!quote.canCancel) throw new Error(quote.ruleText)
       const time = now()
       const update = { status: 'cancelled', cancelReason: data.reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time }
       let refund = null
       if (order.paymentStatus === 'paid' && quote.refundAmount > 0) {
-        refund = await createRefundForOrder(order, quote.refundAmount, data.reason || '宠物主取消', 'client_cancel', openid)
+        refund = await createRefundForOrder(order, quote.refundAmount, data.reason || '宠物主取消', 'client_cancel', openid, clientRequestId)
         update.paymentStatus = 'refunding'
         update.refundNo = refund.refundNo
       }
@@ -2645,10 +3166,9 @@ const handlers = {
     }
 
     if (action === 'startService') {
-      const { user, order } = await getOrderForAccess(openid, data.id)
-      if (!user.roles.includes('staff')) throw new Error('仅员工可开始服务')
-      if (order.staffOpenid !== openid) throw new Error('不是该订单员工')
-      if (order.status !== 'assigned') throw new Error('订单状态不可开始')
+      const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
+      if (order.status === 'in_service') return { id: data.id }
+      assertOrderTransition(order.status, ORDER_STATUS.IN_SERVICE, '订单状态不可开始')
       const time = now()
       await db.collection('orders').doc(data.id).update({ data: { status: 'in_service', startedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.id, 'started', '服务已开始', '', 'staff')
@@ -2657,10 +3177,9 @@ const handlers = {
     }
 
     if (action === 'finishService') {
-      const { user, order } = await getOrderForAccess(openid, data.id)
-      if (!user.roles.includes('staff')) throw new Error('仅员工可完成服务')
-      if (order.staffOpenid !== openid) throw new Error('不是该订单员工')
-      if (order.status !== 'in_service') throw new Error('订单状态不可完成')
+      const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
+      if (order.status === 'completed') return { id: data.id, completedOrderCount: Number((await getUser(order.clientOpenid)).completedOrderCount || 0) }
+      assertOrderTransition(order.status, ORDER_STATUS.COMPLETED, '订单状态不可完成')
       const checkins = await db.collection('checkin_logs').where({ orderId: data.id }).get()
       const eventSet = checkins.data.reduce((map, item) => ({ ...map, [item.eventType]: true }), {})
       const missing = (order.requiredCheckins || []).filter((eventType) => !eventSet[eventType])
@@ -2939,38 +3458,80 @@ const handlers = {
 
   async payment(openid, action, data) {
     if (action === 'createPayment') {
-      await getUser(openid)
-      const settings = await getSystemSettings()
+      const { order } = await requireClientOrder(openid, data.orderId, '无权支付该订单')
+      const settings = await getSystemSettings({ includeSecrets: true })
       if (settings.payment.enabled === false) throw new Error('支付功能暂未开启')
-      const order = (await db.collection('orders').doc(data.orderId).get()).data
-      if (order.clientOpenid !== openid) throw new Error('无权支付该订单')
+      assertPaymentModeAllowed(settings.payment)
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid', paid: true }
-      if (order.status !== 'pending_pay') throw new Error('订单状态不可支付')
+      assertOrderTransition(order.status, ORDER_STATUS.PAID, '订单状态不可支付')
       if (Number(order.payAmount || 0) <= 0) throw new Error('订单金额不正确')
       if (order.couponId) {
         const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
         if (!coupon || coupon.openid !== openid) throw new Error('优惠券不可用')
         if (coupon.status !== 'locked' || coupon.lockedOrderId !== data.orderId) throw new Error('优惠券状态异常')
       }
-      const payment = await ensurePaymentRecord(order, openid, settings.payment.mode)
-      await db.collection('orders').doc(data.orderId).update({ data: { paymentStatus: 'paying', paymentNo: payment.paymentNo, updatedAt: now() } })
+      const clientRequestId = getClientRequestId(data)
+      const payment = await ensurePaymentRecord(order, openid, settings.payment.mode, clientRequestId)
+      await db.collection('orders').doc(data.orderId).update({ data: { paymentStatus: 'paying', paymentNo: payment.paymentNo, paymentClientRequestId: payment.clientRequestId || clientRequestId, updatedAt: now() } })
       if (settings.payment.mode === 'mock') return { mock: true, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, message: '当前为模拟支付模式' }
-      return { mock: false, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, payParams: null, message: '请配置微信支付参数后接入 wx.requestPayment' }
+
+      const config = getWechatPayConfig(settings)
+      if (payment.prepayId) return { mock: false, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, payParams: buildMiniProgramPayParams(payment.prepayId, config) }
+      const requestBody = {
+        appid: config.appId,
+        mchid: config.mchId,
+        description: safeText(order.serviceSummary || order.petName || '上门宠护服务').slice(0, 120) || '上门宠护服务',
+        out_trade_no: payment.paymentNo,
+        notify_url: config.notifyUrl,
+        amount: { total: amountYuanToFen(order.payAmount), currency: 'CNY' },
+        payer: { openid }
+      }
+      try {
+        const response = await wechatPayRequest('POST', '/v3/pay/transactions/jsapi', requestBody, config)
+        if (!response.prepay_id) throw new Error('微信支付未返回 prepay_id')
+        await db.collection('payments').doc(payment._id).update({ data: { channel: 'wechat', prepayId: response.prepay_id, rawRequest: sanitizeWechatPayload(requestBody), rawResponse: sanitizeWechatPayload(response), updatedAt: now() } })
+        await appendPaymentEvent('prepay_created', { orderId: data.orderId, paymentNo: payment.paymentNo, status: 'pending', detail: { channel: 'wechat', amount: payment.amount } })
+        return { mock: false, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, payParams: buildMiniProgramPayParams(response.prepay_id, config) }
+      } catch (error) {
+        await appendPaymentEvent('prepay_failed', { orderId: data.orderId, paymentNo: payment.paymentNo, status: 'failed', detail: { message: error.message } })
+        throw new Error(`微信支付下单失败：${error.message}`)
+      }
     }
     if (action === 'getPaymentStatus') {
-      await getUser(openid)
-      const order = (await db.collection('orders').doc(data.orderId).get()).data
-      if (order.clientOpenid !== openid) throw new Error('无权查看支付状态')
+      const { order } = await requireClientOrder(openid, data.orderId, '无权查看支付状态')
       const payments = await db.collection('payments').where({ orderId: data.orderId }).get()
       return { orderId: data.orderId, status: order.status, paymentStatus: order.paymentStatus || 'unpaid', paymentNo: order.paymentNo || '', wxTransactionId: order.wxTransactionId || '', paidAt: order.paidAt || '', payments: payments.data || [] }
     }
-    if (action === 'paymentCallback') return { ignored: true }
+    if (action === 'paymentCallback') {
+      const settings = await getSystemSettings({ includeSecrets: true })
+      const config = getWechatPayConfig(settings)
+      const headers = data.headers || {}
+      const rawBody = data.rawBody || (data.isBase64Encoded ? Buffer.from(data.body || '', 'base64').toString('utf8') : safeText(data.body || JSON.stringify(data.callback || {})))
+      try {
+        verifyWechatPayCallback(headers, rawBody, config)
+        const callbackBody = rawBody ? JSON.parse(rawBody) : (data.callback || {})
+        const payload = callbackBody.resource ? decryptWechatPayResource(callbackBody.resource, config.apiV3Key) : (data.callbackPayload || callbackBody)
+        const paymentNo = safeText(payload.out_trade_no).trim()
+        if (!paymentNo) throw new Error('微信支付回调缺少支付单号')
+        const payment = (await db.collection('payments').where({ paymentNo }).limit(1).get()).data[0]
+        if (!payment) throw new Error('支付单不存在')
+        const order = (await db.collection('orders').doc(payment.orderId).get()).data
+        if (!order) throw new Error('订单不存在')
+        validatePaymentCallbackPayload(payload, order, payment, config)
+        const status = mapWechatTradeState(payload.trade_state)
+        await db.collection('payments').doc(payment._id).update({ data: { status, wxTransactionId: payload.transaction_id || payment.wxTransactionId || '', rawCallback: sanitizeWechatPayload(payload), updatedAt: now() } })
+        await appendPaymentEvent('callback', { orderId: order._id || payment.orderId, paymentNo, status, detail: { tradeState: payload.trade_state, wxTransactionId: payload.transaction_id || '' } })
+        if (payload.trade_state === 'SUCCESS') await markOrderPaid(order._id || payment.orderId, { paymentNo, wxTransactionId: payload.transaction_id || '', channel: 'wechat', rawCallback: sanitizeWechatPayload(payload) })
+        return { code: 'SUCCESS', message: '成功' }
+      } catch (error) {
+        await appendPaymentEvent('callback_failed', { status: 'failed', detail: { message: error.message } })
+        return { code: 'FAIL', message: error.message }
+      }
+    }
     if (action === 'mockPayOrder') {
-      await getUser(openid)
+      const { order } = await requireClientOrder(openid, data.orderId, '无权支付该订单')
       const settings = await getSystemSettings()
       if (settings.payment.mode !== 'mock') throw new Error('当前未开启模拟支付')
-      const order = (await db.collection('orders').doc(data.orderId).get()).data
-      if (order.clientOpenid !== openid) throw new Error('无权支付该订单')
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid' }
       if (order.status !== 'pending_pay' && order.paymentStatus !== 'paying') throw new Error('订单状态不可支付')
       if (order.couponId) {
@@ -2987,7 +3548,7 @@ const handlers = {
       const amount = Number(data.refundAmount || order.payAmount || 0)
       if (order.paymentStatus !== 'paid' && order.paymentStatus !== 'refunding') throw new Error('订单未支付，不能退款')
       if (amount <= 0 || amount > Number(order.payAmount || 0)) throw new Error('退款金额不正确')
-      const refund = await createRefundForOrder(order, amount, data.reason || '管理员退款', 'admin', openid)
+      const refund = await createRefundForOrder(order, amount, data.reason || '管理员退款', 'admin', openid, getClientRequestId(data))
       await db.collection('orders').doc(data.orderId).update({ data: { paymentStatus: 'refunding', refundStatus: 'processing', refundAmount: amount, refundNo: refund.refundNo, updatedAt: now() } })
       await logAdmin(admin, 'order', data.orderId, 'createRefund', { refundNo: refund.refundNo, refundAmount: amount })
       await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${amount}`, 'admin')
@@ -3034,6 +3595,9 @@ const handlers = {
     }
     if (action === 'createWithdrawRequest') {
       await getUser(openid)
+      const clientRequestId = getClientRequestId(data)
+      const existingByRequest = await findByClientRequestId('withdraw_requests', { staffOpenid: openid, clientRequestId })
+      if (existingByRequest) return existingByRequest
       await refreshStaffEarnings(openid)
       const settings = await getSystemSettings()
       const earnings = (await db.collection('staff_earnings').where({ staffOpenid: openid, status: 'available' }).get()).data || []
@@ -3051,6 +3615,9 @@ const handlers = {
       const time = now()
       const request = {
         staffOpenid: openid,
+        openid,
+        clientRequestId,
+        idempotencyKey: clientRequestId || makeIdempotencyKey('withdraw', openid, time.getTime()),
         amount: selected.reduce((sum, item) => sum + Number(item.amount || 0), 0),
         status: 'pending',
         earningIds: selected.map((item) => item._id),
@@ -3445,7 +4012,7 @@ const handlers = {
       }
       const orderRes = await db.collection('orders').doc(data.orderId).get()
       const order = orderRes.data
-      if (order.status !== 'paid') throw new Error('订单状态不可接单')
+      assertOrderTransition(order.status, ORDER_STATUS.ASSIGNED, '订单状态不可接单')
       if (order.staffOpenid) throw new Error('订单已被分配')
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
@@ -3462,8 +4029,7 @@ const handlers = {
 
   async track(openid, action, data) {
     if (action === 'batchUploadTrack') {
-      const { user, order } = await getOrderForAccess(openid, data.orderId)
-      if (!user.roles.includes('staff') || order.staffOpenid !== openid) throw new Error('仅订单员工可上传轨迹')
+      const { user, order } = await requireStaffOrder(openid, data.orderId, '仅订单员工可上传轨迹')
       if (order.status !== 'in_service') throw new Error('仅服务中可上传轨迹')
       const uploadedAt = now()
       const settings = await getSystemSettings()
@@ -3600,8 +4166,7 @@ const handlers = {
       }
     }
     if (action === 'createCheckin') {
-      const { user, order } = await getOrderForAccess(openid, data.orderId)
-      if (!user.roles.includes('staff') || order.staffOpenid !== openid) throw new Error('仅订单员工可打卡')
+      const { user, order } = await requireStaffOrder(openid, data.orderId, '仅订单员工可打卡')
       if (order.status !== 'in_service') throw new Error('仅服务中可打卡')
       if (!data.eventType) throw new Error('请选择打卡类型')
       if (!CHECKIN_EVENT_TYPES.has(data.eventType)) throw new Error('打卡类型无效')
@@ -3631,25 +4196,26 @@ const handlers = {
 
   async incident(openid, action, data) {
     if (action === 'createSosIncident') {
-      const user = await getUser(openid)
-      if (!user.roles.includes('staff')) throw new Error('仅员工可发起 SOS')
-      const orderRes = await db.collection('orders').doc(data.orderId).get()
-      const order = orderRes.data
-      if (order.staffOpenid !== openid) throw new Error('不是该订单员工')
+      const clientRequestId = getClientRequestId(data)
+      const existingByRequest = await findByClientRequestId('order_incidents', { orderId: data.orderId, staffOpenid: openid, clientRequestId })
+      if (existingByRequest) return existingByRequest
+      const { user, order } = await requireStaffOrder(openid, data.orderId, '不是该订单员工')
       const time = now()
-      const incident = { orderId: data.orderId, clientOpenid: order.clientOpenid || '', staffUserId: user._id, staffOpenid: openid, incidentType: normalizeIncidentType(data.incidentType, 'sos'), title: data.title || '宠托师 SOS', description: data.description || '', latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds: data.mediaFileIds || [], status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'staff', createdAt: time, updatedAt: time }
+      const incident = { orderId: data.orderId, clientOpenid: order.clientOpenid || '', staffUserId: user._id, staffOpenid: openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident_sos', data.orderId, openid, time.getTime()), incidentType: normalizeIncidentType(data.incidentType, 'sos'), title: data.title || '宠托师 SOS', description: data.description || '', latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds: data.mediaFileIds || [], status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'staff', createdAt: time, updatedAt: time }
       const created = await db.collection('order_incidents').add({ data: incident })
       await recordIncidentAction(created._id, 'created_sos', 'staff', openid, { orderId: data.orderId })
       await appendOrderTimeline(data.orderId, 'incident_open', '宠托师发起 SOS', incident.description, 'staff')
       return { _id: created._id, ...incident }
     }
     if (action === 'createComplaint') {
-      const { user, order } = await getOrderForAccess(openid, data.orderId)
-      if (order.clientOpenid !== openid) throw new Error('仅宠物主可发起投诉')
+      const clientRequestId = getClientRequestId(data)
+      const existingByRequest = await findByClientRequestId('order_incidents', { orderId: data.orderId, openid, clientRequestId })
+      if (existingByRequest) return existingByRequest
+      const { user, order } = await requireClientOrder(openid, data.orderId, '仅宠物主可发起投诉')
       const description = safeText(data.description).trim()
       if (!description) throw new Error('请填写投诉说明')
       const time = now()
-      const incident = { orderId: data.orderId, clientUserId: user._id, clientOpenid: openid, staffOpenid: order.staffOpenid || '', staffProfileId: order.staffProfileId || '', incidentType: normalizeIncidentType(data.incidentType, 'complaint'), title: safeText(data.title).trim() || '订单投诉', description, latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds: Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9) : [], status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'client', createdAt: time, updatedAt: time }
+      const incident = { orderId: data.orderId, clientUserId: user._id, clientOpenid: openid, openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident', data.orderId, openid, time.getTime()), staffOpenid: order.staffOpenid || '', staffProfileId: order.staffProfileId || '', incidentType: normalizeIncidentType(data.incidentType, 'complaint'), title: safeText(data.title).trim() || '订单投诉', description, latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds: Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9) : [], status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'client', createdAt: time, updatedAt: time }
       const created = await db.collection('order_incidents').add({ data: incident })
       await recordIncidentAction(created._id, 'created_complaint', 'client', openid, { orderId: data.orderId })
       await appendOrderTimeline(data.orderId, 'incident_open', '宠物主发起投诉', incident.title, 'client')
@@ -3689,7 +4255,7 @@ const handlers = {
       const status = safeText(data.status).trim()
       const orderId = safeText(data.orderId).trim()
       const res = await db.collection('order_incidents').orderBy('createdAt', 'desc').get()
-      return (res.data || []).filter((item) => (!status || item.status === status) && (!orderId || item.orderId === orderId))
+      return paginateList((res.data || []).filter((item) => (!status || item.status === status) && (!orderId || item.orderId === orderId)), data)
     }
     if (action === 'updateIncidentStatus' || action === 'resolveIncident') {
       await requireAdmin(openid)
@@ -3701,12 +4267,30 @@ const handlers = {
       return { id, status }
     }
     if (action === 'proposeResolution') {
-      await requireAdmin(openid)
+      const admin = await requireAdmin(openid)
       const id = data.id || data.incidentId
-      const resolution = { type: safeText(data.resolutionType || data.type).trim() || 'explain', content: safeText(data.content).trim(), refundAmount: Number(data.refundAmount || 0), createdByOpenid: openid, createdAt: now() }
-      await db.collection('order_incidents').doc(id).update({ data: { resolution, status: data.status ? normalizeIncidentStatus(data.status) : 'processing', updatedAt: now() } })
+      const incident = (await db.collection('order_incidents').doc(id).get()).data
+      if (!incident) throw new Error('纠纷不存在')
+      const type = safeText(data.resolutionType || data.type).trim() || 'explain'
+      const resolution = { type, content: safeText(data.content).trim(), refundAmount: Number(data.refundAmount || 0), couponTemplateId: '', couponId: '', couponSnapshot: null, createdByOpenid: openid, createdAt: now() }
+      if (type === 'coupon') {
+        const couponTemplateId = safeText(data.couponTemplateId).trim()
+        if (!couponTemplateId) throw new Error('请选择补偿优惠券')
+        const order = (await db.collection('orders').doc(incident.orderId).get()).data
+        const targetUser = (await db.collection('users').where({ openid: order.clientOpenid || incident.clientOpenid }).limit(1).get()).data[0]
+        if (!targetUser) throw new Error('目标用户不存在')
+        const template = (await db.collection('coupon_templates').doc(couponTemplateId).get()).data
+        const issued = await issueCouponToTargetUser(template, targetUser, { adminUserId: admin._id, adminOpenid: openid })
+        resolution.couponTemplateId = couponTemplateId
+        resolution.couponId = issued._id
+        resolution.couponSnapshot = issued.templateSnapshot
+        await recordIncidentAction(id, 'coupon_issued', 'admin', openid, { couponId: issued._id, couponTemplateId })
+      }
+      const status = data.status ? normalizeIncidentStatus(data.status) : 'processing'
+      await db.collection('order_incidents').doc(id).update({ data: { resolution, status, updatedAt: now() } })
       await recordIncidentAction(id, 'resolution_proposed', 'admin', openid, resolution)
-      return { id, resolution }
+      await appendOrderTimeline(incident.orderId, 'incident_resolution', '平台提出处理方案', resolution.content || type, 'admin')
+      return { id, resolution, status }
     }
     if (action === 'freezeStaffEarning') {
       await requireAdmin(openid)
@@ -3721,19 +4305,46 @@ const handlers = {
     if (action === 'linkRefund') {
       await requireAdmin(openid)
       const id = data.id || data.incidentId
-      const refund = data.refundId ? (await db.collection('refunds').doc(data.refundId).get()).data : null
-      const update = { refundId: data.refundId || '', refundNo: (refund && refund.refundNo) || data.refundNo || '', status: 'refund_pending', updatedAt: now() }
+      const incident = (await db.collection('order_incidents').doc(id).get()).data
+      if (!incident) throw new Error('纠纷不存在')
+      const order = (await db.collection('orders').doc(incident.orderId).get()).data
+      if (!order) throw new Error('订单不存在')
+      let refund = null
+      let actionName = 'refund_linked'
+      const refundAmount = Number(data.refundAmount || 0)
+      if (refundAmount > 0) {
+        if (order.paymentStatus !== 'paid' && order.paymentStatus !== 'refunding') throw new Error('订单未支付，不能退款')
+        if (refundAmount > Number(order.payAmount || 0)) throw new Error('退款金额不正确')
+        refund = await createRefundForOrder({ ...order, _id: incident.orderId }, refundAmount, safeText(data.reason).trim() || '纠纷处理退款', 'incident', openid, getClientRequestId(data))
+        actionName = 'refund_created'
+      } else if (data.refundId) {
+        refund = (await db.collection('refunds').doc(data.refundId).get()).data
+        if (!refund) throw new Error('退款单不存在')
+      }
+      const update = { refundId: (refund && refund._id) || data.refundId || '', refundNo: (refund && refund.refundNo) || data.refundNo || '', status: 'refund_pending', updatedAt: now() }
       await db.collection('order_incidents').doc(id).update({ data: update })
-      await recordIncidentAction(id, 'refund_linked', 'admin', openid, update)
+      if (refund) {
+        await db.collection('orders').doc(incident.orderId).update({ data: { paymentStatus: 'refunding', refundStatus: 'processing', refundAmount: Number(refund.refundAmount || refundAmount || 0), refundNo: refund.refundNo || '', updatedAt: now() } })
+        await appendOrderTimeline(incident.orderId, 'refund_processing', '纠纷处理退款中', `退款金额 ¥${Number(refund.refundAmount || refundAmount || 0)}`, 'admin')
+      }
+      await recordIncidentAction(id, actionName, 'admin', openid, { ...update, refundAmount: refund ? Number(refund.refundAmount || 0) : 0 })
       return { id, ...update }
     }
     if (action === 'closeIncident') {
       await requireAdmin(openid)
       const id = data.id || data.incidentId
+      const incident = (await db.collection('order_incidents').doc(id).get()).data
+      if (!incident) throw new Error('纠纷不存在')
       const status = normalizeIncidentStatus(data.status, 'closed')
-      await db.collection('order_incidents').doc(id).update({ data: { status, closeRemark: safeText(data.closeRemark).trim(), closedAt: now(), updatedAt: now() } })
-      await recordIncidentAction(id, 'closed', 'admin', openid, { status, closeRemark: data.closeRemark || '' })
-      return { id, status }
+      const closeRemark = safeText(data.closeRemark).trim()
+      const earningResult = await finalizeIncidentEarnings(incident, data.earningDecision, data.deductAmount, safeText(data.earningRemark || closeRemark).trim())
+      const update = { status, closeRemark, closedAt: now(), updatedAt: now() }
+      if (earningResult.decision) update.earningResolution = earningResult
+      await db.collection('order_incidents').doc(id).update({ data: update })
+      if (earningResult.decision) await recordIncidentAction(id, `earning_${earningResult.decision}`, 'admin', openid, earningResult)
+      await recordIncidentAction(id, 'closed', 'admin', openid, { status, closeRemark })
+      await appendOrderTimeline(incident.orderId, 'incident_closed', '纠纷已结案', closeRemark || status, 'admin')
+      return { id, status, earningResolution: earningResult.decision ? earningResult : null }
     }
     throw new Error('未知 incident 操作')
   },
@@ -3827,19 +4438,21 @@ const handlers = {
     }
     if (action === 'saveSystemSettings') {
       const saved = await saveSystemSettings(data)
-      await logAdmin(admin, 'platform_config', 'system_settings', 'saveSystemSettings', saved.value)
-      return saved.value
+      const publicValue = normalizeSystemSettings(saved.value)
+      await logAdmin(admin, 'platform_config', 'system_settings', 'saveSystemSettings', publicValue)
+      return publicValue
     }
     if (action === 'listUsers') {
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const role = safeText(data.role).trim()
       const status = safeText(data.status).trim()
       const res = await db.collection('users').orderBy('createdAt', 'desc').get()
-      return (res.data || [])
+      const list = (res.data || [])
         .filter((user) => !role || (Array.isArray(user.roles) && user.roles.includes(role)))
         .filter((user) => !status || user.status === status)
         .filter((user) => !keyword || [user.openid, user.nickname, user.phone].some((value) => safeText(value).toLowerCase().includes(keyword)))
         .map((user) => safeUserSummary(user))
+      return paginateList(list, data)
     }
     if (action === 'listStaffProfiles') {
       const auditStatus = safeText(data.auditStatus).trim()
@@ -3847,7 +4460,7 @@ const handlers = {
       const profilesRes = await db.collection('staff_profiles').orderBy('updatedAt', 'desc').get()
       const usersRes = await db.collection('users').get()
       const userMap = new Map((usersRes.data || []).map((user) => [user.openid, user]))
-      return (profilesRes.data || [])
+      const list = (profilesRes.data || [])
         .filter((profile) => !auditStatus || profile.auditStatus === auditStatus)
         .map((profile) => {
           const user = userMap.get(profile.openid) || {}
@@ -3874,6 +4487,7 @@ const handlers = {
           }
         })
         .filter((item) => !keyword || [item.openid, item.realName, item.phone, item.serviceCity, item.serviceAreas, item.userNickname].some((value) => safeText(value).toLowerCase().includes(keyword)))
+      return paginateList(list, data)
     }
     if (action === 'setSitterFeatured') {
       const staffProfileId = safeText(data.staffProfileId).trim()
@@ -3927,7 +4541,8 @@ const handlers = {
     if (action === 'listOrders') {
       const where = data.status ? { status: data.status } : {}
       const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
-      return Promise.all((res.data || []).map(attachOrderDisplayData))
+      const page = paginateList(res.data || [], data)
+      return { ...page, list: await Promise.all(page.list.map(attachOrderDisplayData)) }
     }
     if (action === 'getOrderDetail' || action === 'getEvidence') {
       const id = data.id || data.orderId
@@ -4410,8 +5025,22 @@ const handlers = {
   }
 }
 
-exports.main = async (event) => {
+function isWechatPayHttpCallback(event = {}) {
+  const headers = event.headers || event.header || {}
+  const hasWechatHeader = Object.keys(headers).some((key) => key.toLowerCase().startsWith('wechatpay-'))
+  return !event.module && !event.action && (hasWechatHeader || event.httpMethod || event.requestContext) && (event.body || event.rawBody)
+}
+
+exports.main = async (event = {}) => {
   try {
+    if (isWechatPayHttpCallback(event)) {
+      return handlers.payment('', 'paymentCallback', {
+        headers: event.headers || event.header || {},
+        rawBody: event.rawBody,
+        body: event.body,
+        isBase64Encoded: event.isBase64Encoded === true
+      })
+    }
     const { OPENID } = cloud.getWXContext()
     const moduleName = event.module || event.name
     const action = event.action
@@ -4420,6 +5049,6 @@ exports.main = async (event) => {
     if (!handler) throw new Error(`未知模块：${moduleName}`)
     return ok(await handler(OPENID, action, data))
   } catch (error) {
-    return fail(error.message)
+    return fail(error.message, error.code)
   }
 }

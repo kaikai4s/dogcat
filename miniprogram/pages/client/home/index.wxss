@@ -1,1 +1,190 @@
-/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+/* 首页新增转化模块 */
+.home-cta-card {
+  background: linear-gradient(135deg, #ff6b94 0%, #ff9f7c 100%);
+  color: #fff;
+}
+
+.cta-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.cta-title {
+  font-size: 34rpx;
+  font-weight: 900;
+  margin-bottom: 10rpx;
+}
+
+.cta-sub {
+  font-size: 24rpx;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+.cta-btn {
+  flex-shrink: 0;
+  min-width: 176rpx;
+  padding: 22rpx 26rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  color: #f43f6b;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.repeat-row {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
+}
+
+.repeat-icon {
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff0f5;
+  font-size: 38rpx;
+}
+
+.service-scroll,
+.sitter-scroll {
+  white-space: nowrap;
+  width: 100%;
+}
+
+.service-price-card,
+.sitter-home-card {
+  display: inline-block;
+  vertical-align: top;
+  white-space: normal;
+  width: 232rpx;
+  margin-right: 18rpx;
+  padding: 24rpx;
+  border-radius: 28rpx;
+  background: #fff7fa;
+  border: 1rpx solid rgba(244, 63, 107, 0.12);
+}
+
+.service-price-icon {
+  font-size: 46rpx;
+  margin-bottom: 12rpx;
+}
+
+.service-price-name,
+.assurance-title {
+  font-size: 28rpx;
+  font-weight: 850;
+  color: #2b2528;
+}
+
+.service-price-desc,
+.assurance-desc,
+.coupon-rule {
+  min-height: 64rpx;
+  margin-top: 8rpx;
+  color: #969196;
+  font-size: 23rpx;
+  line-height: 1.4;
+}
+
+.service-price-text,
+.coupon-amount {
+  margin-top: 14rpx;
+  color: #f43f6b;
+  font-size: 32rpx;
+  font-weight: 900;
+}
+
+.coupon-grid,
+.assurance-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16rpx;
+}
+
+.coupon-mini {
+  min-height: 168rpx;
+  padding: 20rpx 14rpx;
+  border-radius: 24rpx;
+  background: linear-gradient(180deg, #fff2d8 0%, #fff 100%);
+  text-align: center;
+  border: 1rpx solid rgba(255, 170, 70, 0.18);
+}
+
+.coupon-name {
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  font-weight: 800;
+  color: #6b3d00;
+}
+
+.sitter-home-card {
+  width: 310rpx;
+  background: #fff;
+}
+
+.sitter-home-card .sitter-avatar-wrapper {
+  margin-bottom: 16rpx;
+}
+
+.featured-badge {
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  background: #fff0d7;
+  color: #a06400;
+  font-size: 22rpx;
+}
+
+.sitter-home-card .sitter-name-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.sitter-home-card .sitter-bio {
+  min-height: 64rpx;
+  margin: 10rpx 0;
+}
+
+.recent-order-row {
+  display: flex;
+  gap: 18rpx;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #f3edf0;
+}
+
+.recent-order-row:last-child {
+  border-bottom: 0;
+}
+
+.recent-dot {
+  width: 16rpx;
+  height: 16rpx;
+  margin-top: 14rpx;
+  border-radius: 50%;
+  background: #f43f6b;
+  box-shadow: 0 0 0 8rpx rgba(244, 63, 107, 0.12);
+}
+
+.recent-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.assurance-item {
+  padding: 22rpx 14rpx;
+  border-radius: 24rpx;
+  background: #f8fbff;
+  text-align: center;
+}
+
+.assurance-icon {
+  font-size: 40rpx;
+  margin-bottom: 10rpx;
+}

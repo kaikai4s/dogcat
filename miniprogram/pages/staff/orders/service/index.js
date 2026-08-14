@@ -49,6 +49,8 @@ Page({
     trackStatusText: '服务开始后自动记录轨迹',
     latestTrackText: '',
     offlineTaskCount: 0,
+    starting: false,
+    finishing: false,
     sectionHomeUrl: '',
     canGoBack: false
   },
@@ -80,14 +82,19 @@ Page({
   },
 
   start() {
+    if (this.data.starting) return
+    this.setData({ starting: true })
     requestSubscribeTemplates(['serviceStart', 'serviceFinish'], 'staff_service')
-      .then(() => callFunction('order', 'startService', { id: this.data.id }))
+      .then(() => callFunction('order', 'startService', { id: this.data.id, clientRequestId: createClientRequestId('start_service') }))
       .then(() => {
         wx.showToast({ title: '已开始' })
-        this.setData({ order: { ...(this.data.order || {}), status: 'in_service' } })
+        this.setData({ starting: false, order: { ...(this.data.order || {}), status: 'in_service' } })
         this.startAutoTracking()
       })
-      .catch(showError)
+      .catch((error) => {
+        this.setData({ starting: false })
+        showError(error)
+      })
   },
 
   unlock() {
@@ -247,18 +254,23 @@ Page({
   },
 
   finish() {
+    if (this.data.finishing) return
+    this.setData({ finishing: true })
     this.uploadAutoTrackPoint()
       .then(() => this.flushOfflineTasks())
       .then(() => {
         if (getOfflineTaskCount(this.data.id) > 0) wx.showToast({ title: '仍有数据待补传，网络恢复后会继续上传', icon: 'none' })
       })
-      .then(() => callFunction('order', 'finishService', { id: this.data.id }))
+      .then(() => callFunction('order', 'finishService', { id: this.data.id, clientRequestId: createClientRequestId('finish_service') }))
       .then(() => {
         this.stopAutoTracking()
         wx.showToast({ title: '已完成' })
-        this.setData({ order: { ...(this.data.order || {}), status: 'completed' } })
+        this.setData({ finishing: false, order: { ...(this.data.order || {}), status: 'completed' } })
       })
-      .catch(showError)
+      .catch((error) => {
+        this.setData({ finishing: false })
+        showError(error)
+      })
   },
 
   ...navMethods()

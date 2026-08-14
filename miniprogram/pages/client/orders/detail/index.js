@@ -1,5 +1,6 @@
 const { callFunction, showError, requestSubscribeTemplates } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { createClientRequestId } = require('../../../../utils/offlineQueue')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { withOrderText } = require('../../../../utils/format')
 
@@ -12,7 +13,7 @@ function getRefundText(order = {}) {
 }
 
 Page({
-  data: { id: '', order: null, timeline: [], review: null, paying: false, sectionHomeUrl: '', canGoBack: false },
+  data: { id: '', order: null, timeline: [], review: null, paying: false, cancelling: false, sectionHomeUrl: '', canGoBack: false },
   onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }) },
   onShow() {
     ensureLogin({ content: '登录后可查看订单详情。' })
@@ -34,8 +35,9 @@ Page({
   pay() {
     if (this.data.paying) return
     this.setData({ paying: true })
+    const clientRequestId = createClientRequestId('pay')
     requestSubscribeTemplates(['orderPaid', 'orderAssigned', 'refundResult'], 'client_pay')
-      .then(() => callFunction('payment', 'createPayment', { orderId: this.data.id }))
+      .then(() => callFunction('payment', 'createPayment', { orderId: this.data.id, clientRequestId }))
       .then((payment) => {
         if (payment.paid) return payment
         if (payment.mock) {
@@ -50,15 +52,18 @@ Page({
           })
         }).then(() => callFunction('payment', 'getPaymentStatus', { orderId: this.data.id }))
       })
-      .then(() => {
-        wx.showToast({ title: '已支付' })
+      .then((result) => {
+        const paid = result && (result.paid || result.paymentStatus === 'paid' || result.status === 'paid')
+        wx.showToast({ title: paid ? '已支付' : '支付处理中，请稍后刷新订单状态', icon: paid ? 'success' : 'none' })
         this.setData({ paying: false })
         this.load()
       })
       .catch((error) => {
         this.setData({ paying: false })
-        const message = error && error.errMsg && error.errMsg.includes('cancel') ? '已取消支付' : ''
-        if (message) wx.showToast({ title: message, icon: 'none' })
+        const errorMessage = (error && (error.errMsg || error.message)) || ''
+        if (errorMessage.includes('cancel')) wx.showToast({ title: '已取消支付', icon: 'none' })
+        else if (errorMessage.includes('配置') || errorMessage.includes('未完成')) wx.showToast({ title: '微信支付暂未配置完成', icon: 'none' })
+        else if (errorMessage.includes('微信支付下单失败')) wx.showToast({ title: '微信支付下单失败，请稍后重试', icon: 'none' })
         else showError(error)
       })
   },
@@ -68,9 +73,12 @@ Page({
   reviewOrder() { wx.navigateTo({ url: '/pages/client/orders/review/index?id=' + this.data.id }) },
   createIncident() { wx.navigateTo({ url: '/pages/client/incidents/create/index?id=' + this.data.id }) },
   cancelOrder() {
+    if (this.data.cancelling) return
+    this.setData({ cancelling: true })
     callFunction('order', 'getCancelQuote', { orderId: this.data.id })
       .then((quote) => {
         if (!quote.canCancel) {
+          this.setData({ cancelling: false })
           wx.showToast({ title: quote.ruleText, icon: 'none' })
           return
         }
@@ -78,17 +86,28 @@ Page({
           title: '取消订单',
           content: `${quote.ruleText}，预计退款 ¥${quote.refundAmount}。确认取消吗？`,
           success: (res) => {
-            if (!res.confirm) return
-            callFunction('order', 'cancelOrder', { orderId: this.data.id, reason: '宠物主取消' })
+            if (!res.confirm) {
+              this.setData({ cancelling: false })
+              return
+            }
+            callFunction('order', 'cancelOrder', { orderId: this.data.id, reason: '宠物主取消', clientRequestId: createClientRequestId('cancel') })
               .then(() => {
                 wx.showToast({ title: '已取消' })
+                this.setData({ cancelling: false })
                 this.load()
               })
-              .catch(showError)
-          }
+              .catch((error) => {
+                this.setData({ cancelling: false })
+                showError(error)
+              })
+          },
+          fail: () => this.setData({ cancelling: false })
         })
       })
-      .catch(showError)
+      .catch((error) => {
+        this.setData({ cancelling: false })
+        showError(error)
+      })
   },
 
   ...navMethods()

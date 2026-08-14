@@ -1,6 +1,6 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { withIncidentText } = require('../../../../utils/format')
+const { withIncidentText, withIncidentActionText } = require('../../../../utils/format')
 
 const statusOptions = [
   { label: '待处理', value: 'open' },
@@ -21,6 +21,13 @@ const resolutionOptions = [
   { label: '驳回诉求', value: 'reject' }
 ]
 
+const earningOptions = [
+  { label: '不处理收益', value: '' },
+  { label: '解冻收益', value: 'release' },
+  { label: '扣减收益', value: 'deduct' },
+  { label: '继续冻结', value: 'keep_frozen' }
+]
+
 function decorate(detail = {}) {
   const incident = detail.incident || {}
   return {
@@ -31,8 +38,14 @@ function decorate(detail = {}) {
       frozenEarningIds: Array.isArray(incident.frozenEarningIds) ? incident.frozenEarningIds : []
     }),
     comments: (detail.comments || []).map((item) => ({ ...item, mediaFileIds: Array.isArray(item.mediaFileIds) ? item.mediaFileIds : [] })),
-    actions: detail.actions || []
+    actions: (detail.actions || []).map(withIncidentActionText)
   }
+}
+
+function decorateCouponTemplate(item = {}) {
+  const discount = Number(item.discountAmount || 0)
+  const min = Number(item.minOrderAmount || 0)
+  return { ...item, displayName: `${item.name || '优惠券'} · ${min > 0 ? `满${min}减${discount}` : `立减${discount}`}` }
 }
 
 Page({
@@ -41,13 +54,20 @@ Page({
     detail: null,
     statusOptions,
     resolutionOptions,
+    earningOptions,
     statusIndex: 0,
     resolutionIndex: 0,
+    couponTemplates: [],
+    couponTemplateIndex: 0,
+    earningIndex: 0,
     statusRemark: '',
     resolutionContent: '',
     refundAmount: '',
+    refundReason: '',
+    linkedRefundNo: '',
+    deductAmount: '',
+    earningRemark: '',
     comment: '',
-    payRemark: '',
     submitting: false,
     sectionHomeUrl: '',
     canGoBack: false
@@ -56,6 +76,7 @@ Page({
   onLoad(q) {
     this.setData({ ...createPageNav(q), id: q.id || q.incidentId || '' })
     this.load()
+    this.loadCouponTemplates()
   },
 
   load() {
@@ -68,29 +89,24 @@ Page({
       .catch(showError)
   },
 
-  chooseStatus(e) {
-    this.setData({ statusIndex: Number(e.detail.value || 0) })
+  loadCouponTemplates() {
+    callFunction('admin', 'listCouponTemplates', {})
+      .then((templates) => this.setData({ couponTemplates: (templates || []).filter((item) => item.enabled !== false).map(decorateCouponTemplate) }))
+      .catch(() => {})
   },
 
-  chooseResolution(e) {
-    this.setData({ resolutionIndex: Number(e.detail.value || 0) })
-  },
-
-  inputStatusRemark(e) {
-    this.setData({ statusRemark: e.detail.value || '' })
-  },
-
-  inputResolution(e) {
-    this.setData({ resolutionContent: e.detail.value || '' })
-  },
-
-  inputRefundAmount(e) {
-    this.setData({ refundAmount: e.detail.value || '' })
-  },
-
-  inputComment(e) {
-    this.setData({ comment: e.detail.value || '' })
-  },
+  chooseStatus(e) { this.setData({ statusIndex: Number(e.detail.value || 0) }) },
+  chooseResolution(e) { this.setData({ resolutionIndex: Number(e.detail.value || 0) }) },
+  chooseCouponTemplate(e) { this.setData({ couponTemplateIndex: Number(e.detail.value || 0) }) },
+  chooseEarning(e) { this.setData({ earningIndex: Number(e.detail.value || 0) }) },
+  inputStatusRemark(e) { this.setData({ statusRemark: e.detail.value || '' }) },
+  inputResolution(e) { this.setData({ resolutionContent: e.detail.value || '' }) },
+  inputRefundAmount(e) { this.setData({ refundAmount: e.detail.value || '' }) },
+  inputRefundReason(e) { this.setData({ refundReason: e.detail.value || '' }) },
+  inputLinkedRefundNo(e) { this.setData({ linkedRefundNo: e.detail.value || '' }) },
+  inputDeductAmount(e) { this.setData({ deductAmount: e.detail.value || '' }) },
+  inputEarningRemark(e) { this.setData({ earningRemark: e.detail.value || '' }) },
+  inputComment(e) { this.setData({ comment: e.detail.value || '' }) },
 
   setStatus() {
     const option = this.data.statusOptions[this.data.statusIndex] || this.data.statusOptions[0]
@@ -105,15 +121,37 @@ Page({
 
   proposeResolution() {
     const option = this.data.resolutionOptions[this.data.resolutionIndex] || this.data.resolutionOptions[0]
+    const template = this.data.couponTemplates[this.data.couponTemplateIndex] || null
     callFunction('incident', 'proposeResolution', {
       incidentId: this.data.id,
       resolutionType: option.value,
       content: this.data.resolutionContent,
-      refundAmount: Number(this.data.refundAmount || 0)
+      refundAmount: Number(this.data.refundAmount || 0),
+      couponTemplateId: option.value === 'coupon' && template ? template._id : ''
     })
       .then(() => {
         wx.showToast({ title: '方案已保存', icon: 'none' })
         this.setData({ resolutionContent: '', refundAmount: '' })
+        this.load()
+      })
+      .catch(showError)
+  },
+
+  createRefund() {
+    callFunction('incident', 'linkRefund', { incidentId: this.data.id, refundAmount: Number(this.data.refundAmount || 0), reason: this.data.refundReason })
+      .then(() => {
+        wx.showToast({ title: '退款已发起', icon: 'none' })
+        this.setData({ refundAmount: '', refundReason: '' })
+        this.load()
+      })
+      .catch(showError)
+  },
+
+  linkRefundNo() {
+    callFunction('incident', 'linkRefund', { incidentId: this.data.id, refundNo: this.data.linkedRefundNo })
+      .then(() => {
+        wx.showToast({ title: '退款已关联', icon: 'none' })
+        this.setData({ linkedRefundNo: '' })
         this.load()
       })
       .catch(showError)
@@ -150,16 +188,19 @@ Page({
       })
   },
 
-  closeResolved() {
-    this.closeIncident('resolved')
-  },
-
-  closeRejected() {
-    this.closeIncident('rejected')
-  },
+  closeResolved() { this.closeIncident('resolved') },
+  closeRejected() { this.closeIncident('rejected') },
 
   closeIncident(status) {
-    callFunction('incident', 'closeIncident', { incidentId: this.data.id, status, closeRemark: this.data.statusRemark })
+    const earning = this.data.earningOptions[this.data.earningIndex] || this.data.earningOptions[0]
+    callFunction('incident', 'closeIncident', {
+      incidentId: this.data.id,
+      status,
+      closeRemark: this.data.statusRemark,
+      earningDecision: earning.value,
+      deductAmount: Number(this.data.deductAmount || 0),
+      earningRemark: this.data.earningRemark
+    })
       .then(() => {
         wx.showToast({ title: '已结案', icon: 'none' })
         this.load()

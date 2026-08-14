@@ -14,27 +14,57 @@ function withDisplay(user) {
   }
 }
 
+function pageList(result) {
+  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
+}
+
 Page({
   data: {
     users: [],
     keyword: '',
     role: '',
     roleTabs,
+    page: 1,
+    pageSize: 20,
+    hasMore: true,
+    total: 0,
     loading: false
   },
 
   onShow() {
-    this.load()
+    this.load({ reset: true })
   },
 
-  load() {
+  onReachBottom() {
+    this.loadMore()
+  },
+
+  load(options = {}) {
+    if (this.data.loading) return
+    const reset = options.reset === true
+    const page = reset ? 1 : this.data.page
     this.setData({ loading: true })
-    callFunction('admin', 'listUsers', { keyword: this.data.keyword, role: this.data.role })
-      .then((users) => this.setData({ users: users.map(withDisplay), loading: false }))
+    callFunction('admin', 'listUsers', { keyword: this.data.keyword, role: this.data.role, page, pageSize: this.data.pageSize })
+      .then((result) => {
+        const pageData = pageList(result)
+        const users = pageData.list.map(withDisplay)
+        this.setData({
+          users: reset ? users : this.data.users.concat(users),
+          page: pageData.page,
+          hasMore: pageData.hasMore,
+          total: pageData.total,
+          loading: false
+        })
+      })
       .catch((err) => {
         this.setData({ loading: false })
         showError(err)
       })
+  },
+
+  loadMore() {
+    if (!this.data.hasMore || this.data.loading) return
+    this.setData({ page: this.data.page + 1 }, () => this.load())
   },
 
   inputKeyword(e) {
@@ -42,12 +72,12 @@ Page({
   },
 
   search() {
-    this.load()
+    this.load({ reset: true })
   },
 
   switchRole(e) {
     this.setData({ role: e.currentTarget.dataset.value || '' })
-    this.load()
+    this.load({ reset: true })
   },
 
   go(e) {

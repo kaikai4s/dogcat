@@ -1,5 +1,6 @@
 const { callFunction, showError } = require('../../../utils/cloud')
 const { navMethods } = require('../../../utils/nav')
+const { createClientRequestId } = require('../../../utils/offlineQueue')
 
 function money(value) {
   return Number(value || 0).toFixed(2)
@@ -58,7 +59,8 @@ Page({
     callFunction('finance', 'createWithdrawRequest', {
       amount: Number(this.data.amount || 0),
       accountName: this.data.accountName,
-      accountNo: this.data.accountNo
+      accountNo: this.data.accountNo,
+      clientRequestId: createClientRequestId('withdraw')
     })
       .then(() => {
         wx.showToast({ title: '已提交提现' })

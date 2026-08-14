@@ -195,6 +195,12 @@ Page({
       .catch(() => {})
   },
 
+  openIncidents() {
+    ensureLogin({ content: '登录后可查看投诉和售后进度。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/incidents/list/index' }))
+      .catch(() => {})
+  },
+
   openPoints() {
     ensureLogin({ content: '登录后可查看积分。' })
       .then(() => wx.navigateTo({ url: '/pages/client/points/index' }))

@@ -45,6 +45,8 @@
     </view>
   </view>
 
+  <button class="ghost" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
+
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>
     <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon">单</view><view>订单</view></view>

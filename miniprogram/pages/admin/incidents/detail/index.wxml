@@ -5,7 +5,7 @@
   <view class="dashboard-header">
     <view class="badge">纠纷处理</view>
     <view class="title">{{detail.incident.title || detail.incident.incidentTypeText}}</view>
-    <view class="tip">查看双方证据、更新状态、冻结收益并记录处理方案。</view>
+    <view class="tip">查看双方证据、退款/补偿、收益处理和完整操作日志。</view>
   </view>
 
   <view class="card info-list">
@@ -32,7 +32,7 @@
     <picker mode="selector" range="{{statusOptions}}" range-key="label" value="{{statusIndex}}" bindchange="chooseStatus">
       <view class="field">{{statusOptions[statusIndex].label}}</view>
     </picker>
-    <input placeholder="处理备注" value="{{statusRemark}}" bindinput="inputStatusRemark" />
+    <input placeholder="处理备注 / 结案备注" value="{{statusRemark}}" bindinput="inputStatusRemark" />
     <button class="ghost" bindtap="setStatus">更新状态</button>
   </view>
 
@@ -41,9 +41,31 @@
     <picker mode="selector" range="{{resolutionOptions}}" range-key="label" value="{{resolutionIndex}}" bindchange="chooseResolution">
       <view class="field">{{resolutionOptions[resolutionIndex].label}}</view>
     </picker>
+    <picker wx:if="{{resolutionOptions[resolutionIndex].value === 'coupon'}}" mode="selector" range="{{couponTemplates}}" range-key="displayName" value="{{couponTemplateIndex}}" bindchange="chooseCouponTemplate">
+      <view class="field">{{couponTemplates[couponTemplateIndex].displayName || '请选择补偿优惠券'}}</view>
+    </picker>
     <input placeholder="退款金额，非退款可不填" type="digit" value="{{refundAmount}}" bindinput="inputRefundAmount" />
     <textarea placeholder="填写处理方案或说明" value="{{resolutionContent}}" bindinput="inputResolution" maxlength="500" />
     <button class="ghost" bindtap="proposeResolution">保存方案</button>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">退款处理</view>
+    <input placeholder="退款金额" type="digit" value="{{refundAmount}}" bindinput="inputRefundAmount" />
+    <input placeholder="退款原因" value="{{refundReason}}" bindinput="inputRefundReason" />
+    <button class="ghost" bindtap="createRefund">从纠纷发起退款</button>
+    <input placeholder="或填写已有退款单号" value="{{linkedRefundNo}}" bindinput="inputLinkedRefundNo" />
+    <button class="ghost" bindtap="linkRefundNo">关联已有退款</button>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">收益处理</view>
+    <picker mode="selector" range="{{earningOptions}}" range-key="label" value="{{earningIndex}}" bindchange="chooseEarning">
+      <view class="field">{{earningOptions[earningIndex].label}}</view>
+    </picker>
+    <input wx:if="{{earningOptions[earningIndex].value === 'deduct'}}" placeholder="扣减金额，不填则全额扣减" type="digit" value="{{deductAmount}}" bindinput="inputDeductAmount" />
+    <input placeholder="收益处理备注" value="{{earningRemark}}" bindinput="inputEarningRemark" />
+    <button class="danger" bindtap="freezeEarning">冻结宠托师收益</button>
   </view>
 
   <view class="card" wx:if="{{detail.incident.resolution}}">
@@ -51,6 +73,7 @@
     <view class="strong">{{detail.incident.resolution.type}}</view>
     <view class="muted">{{detail.incident.resolution.content}}</view>
     <view class="price" wx:if="{{detail.incident.resolution.refundAmount}}">¥{{detail.incident.resolution.refundAmount}}</view>
+    <view class="muted" wx:if="{{detail.incident.resolution.couponId}}">补偿券：{{detail.incident.resolution.couponId}}</view>
   </view>
 
   <view class="card" wx:if="{{detail.comments.length}}">
@@ -67,13 +90,26 @@
     </view>
   </view>
 
+  <view class="card" wx:if="{{detail.actions.length}}">
+    <view class="subtitle">操作日志</view>
+    <view class="timeline">
+      <view class="timeline-item" wx:for="{{detail.actions}}" wx:key="_id">
+        <view class="between">
+          <view class="strong">{{item.actionText}}</view>
+          <view class="badge">{{item.actorRoleText}}</view>
+        </view>
+        <view class="muted" wx:if="{{item.detailText}}">{{item.detailText}}</view>
+        <view class="muted">{{item.createdAt}}</view>
+      </view>
+    </view>
+  </view>
+
   <view class="card form-card">
     <view class="subtitle">内部 / 对客留言</view>
     <textarea placeholder="记录沟通内容" value="{{comment}}" bindinput="inputComment" maxlength="500" />
     <button class="ghost" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitComment">添加留言</button>
   </view>
 
-  <button class="danger" bindtap="freezeEarning">冻结宠托师收益</button>
   <button class="primary" bindtap="closeResolved">解决并结案</button>
   <button class="ghost" bindtap="closeRejected">驳回并结案</button>
   <button class="ghost" bindtap="goOrder">查看订单详情</button>

@@ -1,5 +1,16 @@
-const { getSelectedLocation, chooseSelectedLocation, callFunction, showError } = require('../../../utils/cloud')
-const { ensureLogin } = require('../../../utils/cloud')
+const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, ensureLogin } = require('../../../utils/cloud')
+
+const defaultModules = {
+  quickBooking: true,
+  nearbySitters: true,
+  repeatBooking: true,
+  hotServices: true,
+  newbieCoupon: true,
+  featuredSitters: true,
+  platformAssurance: true,
+  historyStats: true,
+  lottery: true
+}
 
 Page({
   data: {
@@ -8,20 +19,27 @@ Page({
     latitude: 0,
     longitude: 0,
     lotteryActivity: null,
+    homePage: {
+      ctaTitle: '立即预约上门宠护',
+      ctaSubtitle: '填写宠物和服务时间，平台认证宠托师快速响应。',
+      ctaText: '立即预约',
+      nearbyTitle: '附近宠托师',
+      repeatTitle: '再次预约',
+      couponTitle: '新人优惠',
+      assuranceTitle: '平台保障',
+      modules: defaultModules
+    },
     statsData: {
-      catCount: '14,720',
-      dogCount: '5,373',
-      ratingCount: '13,020'
+      completedCount: '0',
+      sitterCount: '0',
+      ratingCount: '0'
     },
-    topSitter: {
-      name: '小眠',
-      distance: '14.64km',
-      rating: '5.0',
-      orderCount: 215,
-      avatar: '/images/sitter-avatar-default.jpg',
-      bio: '点击主页即可下单 欢迎提前预约',
-      tags: ['有责任心', '超级耐心', '超爱小动物']
-    },
+    servicePrices: [],
+    featuredSitters: [],
+    coupons: [],
+    repeatOrder: null,
+    recentOrders: [],
+    assuranceItems: [],
 
     // 轮播 hero 相关状态
     heroCarouselEnabled: false,
@@ -29,6 +47,7 @@ Page({
     heroRotateInterval: 5000,
     heroSlides: [],
     heroCurrent: 0,
+    heroCarouselKey: '',
     heroAutoplay: true,
     heroPlayingVideoId: null,
     heroPausedByVideo: false
@@ -36,8 +55,7 @@ Page({
 
   onShow() {
     this.applySavedLocation()
-    this.loadLottery()
-    this.loadHeroCarousel()
+    this.loadHomePageData()
   },
 
   onHide() {
@@ -82,6 +100,7 @@ Page({
           latitude: loc.latitude,
           longitude: loc.longitude
         })
+        this.loadHomePageData()
       })
       .catch((err) => {
         console.log('chooseSelectedLocation fail error:', err)
@@ -95,6 +114,39 @@ Page({
       })
   },
 
+  loadHomePageData() {
+    const location = getSelectedLocation()
+    const params = location ? { latitude: location.latitude, longitude: location.longitude } : {}
+    callFunction('system', 'getHomePageData', params)
+      .then((homeData) => {
+        const homePage = homeData.settings && homeData.settings.homePage ? homeData.settings.homePage : this.data.homePage
+        this.setData({
+          homePage: {
+            ...homePage,
+            modules: { ...defaultModules, ...(homePage.modules || {}) }
+          },
+          servicePrices: homeData.servicePrices || [],
+          featuredSitters: homeData.featuredSitters || [],
+          coupons: homeData.coupons || [],
+          repeatOrder: homeData.repeatOrder || null,
+          recentOrders: homeData.recentOrders || [],
+          statsData: homeData.statsData || this.data.statsData,
+          assuranceItems: homeData.assuranceItems || []
+        })
+        this.applyHeroCarousel(homeData.settings && homeData.settings.homeHeroCarousel)
+        if (homePage.modules && homePage.modules.lottery === false) {
+          this.setData({ lotteryActivity: null })
+        } else {
+          this.loadLottery()
+        }
+      })
+      .catch((error) => {
+        this.loadLottery()
+        this.loadHeroCarousel()
+        showError(error)
+      })
+  },
+
   loadLottery() {
     // 不要求登录，公开接口
     callFunction('lottery', 'getActiveActivity')
@@ -104,70 +156,88 @@ Page({
 
   loadHeroCarousel() {
     callFunction('system', 'getSettings')
-      .then((settings) => {
-        const carousel = settings.homeHeroCarousel || {}
-        if (!carousel.enabled || !Array.isArray(carousel.items) || !carousel.items.length) {
-          this.setData({ heroCarouselEnabled: false, heroSlides: [] })
-          return
-        }
-
-        const validItems = carousel.items.filter((item) => item && item.enabled !== false && item.fileId)
-        if (!validItems.length) {
-          this.setData({ heroCarouselEnabled: false, heroSlides: [] })
-          return
-        }
-
-        const fileIds = []
-        validItems.forEach((item) => {
-          if (item.fileId) fileIds.push(item.fileId)
-          if (item.posterFileId) fileIds.push(item.posterFileId)
-        })
-
-        const uniqueIds = Array.from(new Set(fileIds))
-        if (!uniqueIds.length) {
-          this.setData({ heroCarouselEnabled: false, heroSlides: [] })
-          return
-        }
-
-        wx.cloud.getTempFileURL({
-          fileList: uniqueIds,
-          success: (res) => {
-            const urlMap = {}
-            ;(res.fileList || []).forEach((f) => {
-              if (f.fileID && f.tempFileURL) urlMap[f.fileID] = f.tempFileURL
-            })
-
-            const slides = validItems.map((item) => ({
-              ...item,
-              url: urlMap[item.fileId] || '',
-              posterUrl: urlMap[item.posterFileId] || urlMap[item.fileId] || ''
-            })).filter(item => item.url)
-
-            if (!slides.length) {
-              this.setData({ heroCarouselEnabled: false, heroSlides: [] })
-              return
-            }
-
-            const autoRotate = carousel.autoRotate !== false
-            const interval = Number(carousel.rotateIntervalMs) || 5000
-
-            this.setData({
-              heroCarouselEnabled: true,
-              heroAutoRotate: autoRotate,
-              heroRotateInterval: interval,
-              heroSlides: slides,
-              heroCurrent: 0,
-              heroAutoplay: autoRotate && slides.length > 1
-            })
-          },
-          fail: () => {
-            this.setData({ heroCarouselEnabled: false, heroSlides: [] })
-          }
-        })
-      })
+      .then((settings) => this.applyHeroCarousel(settings.homeHeroCarousel))
       .catch(() => {
         this.setData({ heroCarouselEnabled: false, heroSlides: [] })
       })
+  },
+
+  applyHeroCarousel(carousel = {}) {
+    this._heroCarouselRequestSeq = (this._heroCarouselRequestSeq || 0) + 1
+    const requestSeq = this._heroCarouselRequestSeq
+
+    if (!carousel.enabled || !Array.isArray(carousel.items) || !carousel.items.length) {
+      this.setData({ heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
+      return
+    }
+
+    const validItems = carousel.items.filter((item) => item && item.enabled !== false && item.fileId)
+    if (!validItems.length) {
+      this.setData({ heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
+      return
+    }
+
+    const carouselKey = validItems.map((item) => [item.id || '', item.fileId, item.posterFileId || '', item.type || 'image', item.title || '', item.subtitle || ''].join(':')).join('|')
+    const autoRotate = carousel.autoRotate !== false
+    const interval = Number(carousel.rotateIntervalMs) || 5000
+
+    if (this.data.heroCarouselEnabled && this.data.heroCarouselKey === carouselKey && this.data.heroSlides.length) {
+      this.setData({
+        heroAutoRotate: autoRotate,
+        heroRotateInterval: interval,
+        heroAutoplay: autoRotate && this.data.heroSlides.length > 1
+      })
+      return
+    }
+
+    const fileIds = []
+    validItems.forEach((item) => {
+      if (item.fileId) fileIds.push(item.fileId)
+      if (item.posterFileId) fileIds.push(item.posterFileId)
+    })
+
+    const uniqueIds = Array.from(new Set(fileIds))
+    if (!uniqueIds.length) {
+      this.setData({ heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
+      return
+    }
+
+    wx.cloud.getTempFileURL({
+      fileList: uniqueIds,
+      success: (res) => {
+        if (requestSeq !== this._heroCarouselRequestSeq) return
+
+        const urlMap = {}
+        ;(res.fileList || []).forEach((f) => {
+          if (f.fileID && f.tempFileURL) urlMap[f.fileID] = f.tempFileURL
+        })
+
+        const slides = validItems.map((item) => ({
+          ...item,
+          url: urlMap[item.fileId] || '',
+          posterUrl: urlMap[item.posterFileId] || urlMap[item.fileId] || ''
+        })).filter(item => item.url)
+
+        if (!slides.length) {
+          this.setData({ heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
+          return
+        }
+
+        this.setData({
+          heroCarouselEnabled: true,
+          heroAutoRotate: autoRotate,
+          heroRotateInterval: interval,
+          heroSlides: slides,
+          heroCarouselKey: carouselKey,
+          heroCurrent: Math.min(this.data.heroCurrent || 0, slides.length - 1),
+          heroAutoplay: autoRotate && slides.length > 1
+        })
+      },
+      fail: () => {
+        if (requestSeq !== this._heroCarouselRequestSeq) return
+        this.setData({ heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
+      }
+    })
   },
 
   previewHeroMedia(e) {

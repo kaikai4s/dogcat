@@ -1,6 +1,25 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const crypto = require('node:crypto')
 const { createCollectionStore, loadCloudFunction } = require('./helpers')
+
+async function withEnv(values, fn) {
+  const previous = {}
+  Object.keys(values).forEach((key) => {
+    previous[key] = process.env[key]
+    process.env[key] = values[key]
+  })
+  try {
+    return await fn()
+  } finally {
+    Object.keys(values).forEach((key) => {
+      if (previous[key] === undefined) delete process.env[key]
+      else process.env[key] = previous[key]
+    })
+  }
+}
+
+const testPrivateKey = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' })
 
 test('api dispatches auth login through unified cloud function', async () => {
   const db = createCollectionStore({ users: [] })
@@ -72,8 +91,10 @@ test('guest cannot favorite sitters or create orders', async () => {
   const order = await fn.main({ module: 'order', action: 'createOrder', data: { petId: 'p1' } })
 
   assert.equal(favorite.ok, false)
+  assert.equal(favorite.code, 'AUTH_REQUIRED')
   assert.equal(favorite.message, '请先登录')
   assert.equal(order.ok, false)
+  assert.equal(order.code, 'AUTH_REQUIRED')
   assert.equal(order.message, '请先登录')
 })
 
@@ -370,6 +391,35 @@ test('admin can save and public can read system settings', async () => {
   assert.equal(fetched.data.homeHeroCarousel.items[0].title, '视频测试')
 })
 
+test('system home page data aggregates public conversion modules', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['admin'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+    ],
+    platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { homePage: { ctaTitle: '马上预约', modules: { lottery: false } } } }],
+    service_prices: [{ _id: 'price1', key: 'feed', label: '上门喂养', price: 66, enabled: true, sortOrder: 1, description: '喂粮换水' }],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'approved', serviceCity: '上海', serviceAreas: '浦东', ratingAverage: 4.8, reviewCount: 3, isFeatured: true, featuredAt: '2026-08-01 10:00' }],
+    coupon_templates: [{ _id: 'tpl1', name: '新人券', discountAmount: 20, minOrderAmount: 80, enabled: true, sortOrder: 1 }],
+    orders: [{ _id: 'o1', clientOpenid: 'openid_client', status: 'completed', serviceSummary: '上门喂养', petName: '豆豆', createdAt: '2026-08-01 10:00' }],
+    service_reviews: [{ _id: 'r1', status: 'visible', rating: 5 }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const result = await fn.main({ module: 'system', action: 'getHomePageData', data: {} })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.settings.homePage.ctaTitle, '马上预约')
+  assert.equal(result.data.settings.homePage.modules.lottery, false)
+  assert.equal(result.data.servicePrices[0].priceText, '¥66起')
+  assert.equal(result.data.featuredSitters[0]._id, 'sp1')
+  assert.equal(result.data.coupons[0].ruleText, '满80减20')
+  assert.equal(result.data.repeatOrder._id, 'o1')
+  assert.equal(result.data.recentOrders[0].statusText, '已完成')
+  assert.equal(result.data.statsData.completedCount, '1')
+  assert.equal(result.data.statsData.ratingCount, '1')
+})
+
 test('admin dashboard includes monthly order and registration trends', async () => {
   const nowDate = new Date()
   const monthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`
@@ -426,10 +476,10 @@ test('admin listUsers supports role status and keyword filters', async () => {
   const disabledResult = await fn.main({ module: 'admin', action: 'listUsers', data: { status: 'disabled' } })
 
   assert.equal(staffResult.ok, true)
-  assert.deepEqual(staffResult.data.map((user) => user.openid), ['openid_staff'])
-  assert.deepEqual(keywordResult.data.map((user) => user.openid), ['openid_client'])
-  assert.equal(keywordResult.data[0].memberLevelName, '银卡会员')
-  assert.deepEqual(disabledResult.data.map((user) => user.openid), ['openid_staff'])
+  assert.deepEqual(staffResult.data.list.map((user) => user.openid), ['openid_staff'])
+  assert.deepEqual(keywordResult.data.list.map((user) => user.openid), ['openid_client'])
+  assert.equal(keywordResult.data.list[0].memberLevelName, '银卡会员')
+  assert.deepEqual(disabledResult.data.list.map((user) => user.openid), ['openid_staff'])
 })
 
 test('admin listStaffProfiles filters status and attaches user display fields', async () => {
@@ -449,14 +499,42 @@ test('admin listStaffProfiles filters status and attaches user display fields', 
   const keywordResult = await fn.main({ module: 'admin', action: 'listStaffProfiles', data: { keyword: '豆豆' } })
 
   assert.equal(approvedResult.ok, true)
-  assert.deepEqual(approvedResult.data.map((profile) => profile._id), ['sp1'])
-  assert.equal(approvedResult.data[0].phone, '13800000000')
-  assert.equal(approvedResult.data[0].userNickname, '豆豆姐姐')
-  assert.equal(approvedResult.data[0].auditStatusText, '已通过')
-  assert.equal(approvedResult.data[0].ratingAverage, 0)
-  assert.equal(approvedResult.data[0].reviewCount, 0)
-  assert.equal(approvedResult.data[0].isFeatured, false)
-  assert.deepEqual(keywordResult.data.map((profile) => profile._id), ['sp1'])
+  assert.deepEqual(approvedResult.data.list.map((profile) => profile._id), ['sp1'])
+  assert.equal(approvedResult.data.list[0].phone, '13800000000')
+  assert.equal(approvedResult.data.list[0].userNickname, '豆豆姐姐')
+  assert.equal(approvedResult.data.list[0].auditStatusText, '已通过')
+  assert.equal(approvedResult.data.list[0].ratingAverage, 0)
+  assert.equal(approvedResult.data.list[0].reviewCount, 0)
+  assert.equal(approvedResult.data.list[0].isFeatured, false)
+  assert.deepEqual(keywordResult.data.list.map((profile) => profile._id), ['sp1'])
+})
+
+test('admin large lists return pagination metadata', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    orders: [
+      { _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'paid', createdAt: '2026-08-03' },
+      { _id: 'order2', orderNo: 'O2', clientOpenid: 'openid_client', status: 'completed', createdAt: '2026-08-02' },
+      { _id: 'order3', orderNo: 'O3', clientOpenid: 'openid_client', status: 'cancelled', createdAt: '2026-08-01' }
+    ],
+    order_incidents: [
+      { _id: 'incident1', orderId: 'order1', status: 'open', createdAt: '2026-08-03' },
+      { _id: 'incident2', orderId: 'order2', status: 'processing', createdAt: '2026-08-02' }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const orders = await fn.main({ module: 'admin', action: 'listOrders', data: { page: 2, pageSize: 1 } })
+  const incidents = await fn.main({ module: 'incident', action: 'listIncidents', data: { page: 1, pageSize: 1 } })
+
+  assert.equal(orders.ok, true)
+  assert.equal(orders.data.total, 3)
+  assert.equal(orders.data.page, 2)
+  assert.equal(orders.data.hasMore, true)
+  assert.deepEqual(orders.data.list.map((order) => order._id), ['order2'])
+  assert.equal(incidents.data.total, 2)
+  assert.equal(incidents.data.hasMore, true)
+  assert.deepEqual(incidents.data.list.map((incident) => incident._id), ['incident1'])
 })
 
 test('admin can set and cancel featured sitter', async () => {
@@ -1017,6 +1095,94 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
   assert.deepEqual(timeline.data.map((item) => item.type), ['created', 'paid', 'assigned', 'started', 'checkin', 'checkin', 'checkin', 'checkin', 'checkin', 'completed', 'reviewed'])
 })
 
+test('real-device acceptance core flow covers client staff admin lifecycle', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' },
+      { _id: 'admin', openid: 'openid_admin', roles: ['admin'], status: 'active' }
+    ],
+    pets: [],
+    home_security: [],
+    user_addresses: [],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'approved', serviceCity: '上海', serviceAddress: '服务点', serviceLatitude: 31.2, serviceLongitude: 121.5 }],
+    service_prices: [{ _id: 'price1', key: 'feed', label: '上门喂养', price: 100, enabled: true, sortOrder: 1 }],
+    orders: [],
+    payments: [],
+    refunds: [],
+    payment_events: [],
+    track_logs: [],
+    checkin_logs: [],
+    order_timeline: [],
+    service_reviews: [],
+    staff_earnings: [],
+    withdraw_requests: [],
+    finance_logs: [],
+    point_logs: [],
+    retro_card_logs: [],
+    order_incidents: [],
+    incident_comments: [],
+    incident_actions: [],
+    admin_operation_logs: [],
+    subscription_logs: [],
+    platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { payment: { mode: 'mock' }, settlement: { staffCommissionRate: 0.8, settlementDelayDays: 0, minWithdrawAmount: 1 } } }]
+  })
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+
+  const profile = await clientFn.main({ module: 'auth', action: 'updateProfile', data: { nickname: '小明', avatarUrl: 'https://example.com/a.png' } })
+  const pet = await clientFn.main({ module: 'pet', action: 'createPet', data: { name: '可乐', species: 'dog', breed: '柯基', weight: 10, avatarFileId: 'cloud://pet.jpg' } })
+  const address = await clientFn.main({ module: 'client', action: 'saveAddress', data: { label: '家', serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', latitude: 31.21, longitude: 121.49, isDefault: true } })
+  const security = await clientFn.main({ module: 'homeSecurity', action: 'saveHomeSecurity', data: { doorLockCode: '123456', keyLocation: '门垫下', entryNotes: '轻声进门' } })
+  const directOrder = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: pet.data._id, serviceTypes: ['feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.49, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60, publishMode: 'direct', staffProfileId: 'sp1', saveAddress: true } })
+  const openOrder = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: pet.data._id, serviceTypes: ['feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '102', addressLatitude: 31.21, addressLongitude: 121.49, startTime: '2099-07-29 10:00', endTime: '2099-07-29 11:00', durationMinutes: 60, publishMode: 'open' } })
+  await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: directOrder.data._id } })
+  await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: openOrder.data._id } })
+  const openAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: openOrder.data._id } })
+  const directAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: directOrder.data._id } })
+  const started = await staffFn.main({ module: 'order', action: 'startService', data: { id: directOrder.data._id } })
+  const track = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p1', batchId: 'b1', latitude: 31.21, longitude: 121.49, recordedAt: '2099-07-28 10:05', isBackfilled: false }, { clientPointId: 'p2', batchId: 'b1', latitude: 31.22, longitude: 121.5, recordedAt: '2099-07-28 10:06', isBackfilled: true }] } })
+  const duplicateTrack = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p2', batchId: 'b2', latitude: 31.22, longitude: 121.5, recordedAt: '2099-07-28 10:06', isBackfilled: true }] } })
+  for (const eventType of ['enter_door', 'pet_status', 'feed', 'water', 'leave_door']) {
+    await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: directOrder.data._id, eventType, mediaFileId: 'cloud://checkin.jpg', remark: '已完成', latitude: 31.21, longitude: 121.49, clientRequestId: `checkin_${eventType}` } })
+  }
+  const finished = await staffFn.main({ module: 'order', action: 'finishService', data: { id: directOrder.data._id, clientRequestId: 'finish_e2e' } })
+  const report = await clientFn.main({ module: 'order', action: 'getServiceReport', data: { id: directOrder.data._id } })
+  const review = await clientFn.main({ module: 'order', action: 'createReview', data: { orderId: directOrder.data._id, rating: 5, content: '服务很好' } })
+  const balance = await staffFn.main({ module: 'finance', action: 'getStaffBalance', data: {} })
+  const withdraw = await staffFn.main({ module: 'finance', action: 'createWithdrawRequest', data: { accountName: '王小花', accountNo: 'wxid_staff', clientRequestId: 'withdraw_e2e' } })
+  const approved = await adminFn.main({ module: 'admin', action: 'auditWithdrawRequest', data: { id: withdraw.data._id, approved: true } })
+  const paidWithdraw = await adminFn.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: withdraw.data._id } })
+  const finance = await adminFn.main({ module: 'admin', action: 'financeDashboard', data: {} })
+  const incident = await clientFn.main({ module: 'incident', action: 'createComplaint', data: { orderId: directOrder.data._id, description: '补充测试投诉', clientRequestId: 'incident_e2e' } })
+  const resolution = await adminFn.main({ module: 'incident', action: 'proposeResolution', data: { incidentId: incident.data._id, resolutionType: 'explain', resolutionText: '已跟进说明' } })
+  const closed = await adminFn.main({ module: 'incident', action: 'closeIncident', data: { incidentId: incident.data._id, status: 'closed', closeRemark: '验收结案' } })
+  const detail = await clientFn.main({ module: 'incident', action: 'getIncidentDetail', data: { id: incident.data._id } })
+
+  assert.equal(profile.ok, true)
+  assert.equal(address.ok, true)
+  assert.equal(security.ok, true)
+  assert.equal(openAccepted.ok, true)
+  assert.equal(directAccepted.ok, true)
+  assert.equal(started.ok, true)
+  assert.equal(track.data.count, 2)
+  assert.equal(duplicateTrack.data.count, 0)
+  assert.equal(finished.ok, true)
+  assert.equal(report.data.tracks.length, 2)
+  assert.equal(report.data.checkins.length, 5)
+  assert.equal(review.ok, true)
+  assert.equal(balance.data.available, 80)
+  assert.equal(withdraw.ok, true)
+  assert.equal(approved.data.status, 'approved')
+  assert.equal(paidWithdraw.data.status, 'paid')
+  assert.equal(finance.data.counts.withdraws, 1)
+  assert.equal(resolution.ok, true)
+  assert.equal(closed.data.status, 'closed')
+  assert.equal(detail.data.incident.status, 'closed')
+})
+
+
 test('client cancel order returns MVP refund quote and writes cancelled timeline', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
@@ -1164,6 +1330,147 @@ test('payment create status mock pay and admin refund permissions work', async (
   assert.equal(adminRefund.ok, true)
   assert.equal(adminRefund.data.refundAmount, 30)
   assert.equal(refunds.data.length, 1)
+})
+
+
+test('wechat payment settings mask secrets in public responses', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['admin'], status: 'active' }],
+    platform_configs: [],
+    admin_operation_logs: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const guestFn = loadCloudFunction('api', db, 'openid_guest')
+
+  const saved = await adminFn.main({ module: 'admin', action: 'saveSystemSettings', data: { payment: { enabled: true, mode: 'wechat', mchId: 'mch_1', appId: 'app_1', notifyUrl: 'https://pay.example.com/callback', certSerialNo: 'serial_1', apiV3KeyInput: 'secret_v3_key', privateKeyInput: testPrivateKey, platformPublicKeyInput: 'public_key' } } })
+  const publicSettings = await guestFn.main({ module: 'system', action: 'getSettings' })
+
+  assert.equal(saved.ok, true)
+  assert.equal(saved.data.payment.apiV3KeyConfigured, true)
+  assert.equal(saved.data.payment.apiV3Key, undefined)
+  assert.equal(publicSettings.data.payment.privateKey, undefined)
+  assert.equal(db.state.platform_configs[0].value.payment.apiV3Key, 'secret_v3_key')
+  assert.equal(db.state.admin_operation_logs[0].detail.payment.apiV3Key, undefined)
+
+  const preserved = await adminFn.main({ module: 'admin', action: 'saveSystemSettings', data: { payment: { mchId: 'mch_2' } } })
+  assert.equal(preserved.data.payment.mode, 'wechat')
+  assert.equal(preserved.data.payment.enabled, true)
+  assert.equal(db.state.platform_configs[0].value.payment.apiV3Key, 'secret_v3_key')
+})
+
+
+test('wechat create payment returns pay params and reuses duplicate clientRequestId', async () => {
+  await withEnv({ WECHAT_PAY_MOCK_PREPAY_ID: 'mock_prepay_1' }, async () => {
+    const db = createCollectionStore({
+      users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+      orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'pending_pay', paymentStatus: 'unpaid', payAmount: 88, serviceSummary: '上门喂养' }],
+      payments: [],
+      payment_events: [],
+      platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { payment: { enabled: true, mode: 'wechat', mchId: 'mch_1', appId: 'app_1', notifyUrl: 'https://pay.example.com/callback', certSerialNo: 'serial_1', apiV3Key: '12345678901234567890123456789012', privateKey: testPrivateKey } } }],
+      user_coupons: []
+    })
+    const fn = loadCloudFunction('api', db, 'openid_client')
+
+    const created = await fn.main({ module: 'payment', action: 'createPayment', data: { orderId: 'order1', clientRequestId: 'pay_once' } })
+    const duplicate = await fn.main({ module: 'payment', action: 'createPayment', data: { orderId: 'order1', clientRequestId: 'pay_once' } })
+
+    assert.equal(created.ok, true)
+    assert.equal(created.data.mock, false)
+    assert.equal(created.data.payParams.package, 'prepay_id=mock_prepay_1')
+    assert.equal(duplicate.data.paymentNo, created.data.paymentNo)
+    assert.equal(db.state.payments.length, 1)
+    assert.equal(db.state.payments[0].channel, 'wechat')
+    assert.equal(db.state.payments[0].prepayId, 'mock_prepay_1')
+    assert.equal(db.state.payments[0].rawRequest.payer.openid, 'configured')
+  })
+})
+
+
+test('wechat callback marks paid idempotently and rejects amount mismatch', async () => {
+  const callbackPayload = { appid: 'app_1', mchid: 'mch_1', out_trade_no: 'P1', transaction_id: 'WX1', trade_state: 'SUCCESS', amount: { total: 8800, currency: 'CNY' } }
+  await withEnv({ WECHAT_PAY_SKIP_VERIFY: 'true', WECHAT_PAY_MOCK_CALLBACK_RESOURCE: JSON.stringify(callbackPayload) }, async () => {
+    const db = createCollectionStore({
+      users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+      orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'pending_pay', paymentStatus: 'paying', payAmount: 88, paymentNo: 'P1' }],
+      payments: [{ _id: 'pay1', orderId: 'order1', orderNo: 'O1', openid: 'openid_client', paymentNo: 'P1', amount: 88, status: 'pending', channel: 'wechat' }],
+      payment_events: [],
+      finance_logs: [],
+      order_timeline: [],
+      user_coupons: [],
+      subscription_logs: [],
+      platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { payment: { enabled: true, mode: 'wechat', mchId: 'mch_1', appId: 'app_1', notifyUrl: 'https://pay.example.com/callback', certSerialNo: 'serial_1', apiV3Key: '12345678901234567890123456789012', privateKey: testPrivateKey } } }]
+    })
+    const fn = loadCloudFunction('api', db, '')
+    const body = JSON.stringify({ resource: { ciphertext: 'mock' } })
+
+    const first = await fn.main({ module: 'payment', action: 'paymentCallback', data: { body, headers: {} } })
+    const second = await fn.main({ module: 'payment', action: 'paymentCallback', data: { body, headers: {} } })
+
+    assert.equal(first.ok, true)
+    assert.equal(first.data.code, 'SUCCESS')
+    assert.equal(second.data.code, 'SUCCESS')
+    assert.equal(db.state.orders[0].paymentStatus, 'paid')
+    assert.equal(db.state.orders[0].wxTransactionId, 'WX1')
+    assert.equal(db.state.finance_logs.length, 1)
+  })
+
+  await withEnv({ WECHAT_PAY_SKIP_VERIFY: 'true', WECHAT_PAY_MOCK_CALLBACK_RESOURCE: JSON.stringify(callbackPayload) }, async () => {
+    const db = createCollectionStore({
+      orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'pending_pay', paymentStatus: 'paying', payAmount: 88, paymentNo: 'P1' }],
+      payments: [{ _id: 'pay1', orderId: 'order1', orderNo: 'O1', openid: 'openid_client', paymentNo: 'P1', amount: 88, status: 'pending', channel: 'wechat' }],
+      payment_events: [],
+      finance_logs: [],
+      order_timeline: [],
+      user_coupons: [],
+      subscription_logs: [],
+      platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { payment: { enabled: true, mode: 'wechat', mchId: 'mch_1', appId: 'app_1', notifyUrl: 'https://pay.example.com/callback', certSerialNo: 'serial_1', apiV3Key: '12345678901234567890123456789012', privateKey: testPrivateKey } } }]
+    })
+    const fn = loadCloudFunction('api', db, '')
+    const direct = await fn.main({ httpMethod: 'POST', headers: { 'Wechatpay-Timestamp': '1' }, body: JSON.stringify({ resource: { ciphertext: 'mock' } }) })
+    assert.equal(direct.code, 'SUCCESS')
+    assert.equal(direct.ok, undefined)
+    assert.equal(db.state.orders[0].paymentStatus, 'paid')
+  })
+
+  await withEnv({ WECHAT_PAY_SKIP_VERIFY: 'true', WECHAT_PAY_MOCK_CALLBACK_RESOURCE: JSON.stringify({ ...callbackPayload, amount: { total: 1, currency: 'CNY' } }) }, async () => {
+    const db = createCollectionStore({
+      orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'pending_pay', paymentStatus: 'paying', payAmount: 88, paymentNo: 'P1' }],
+      payments: [{ _id: 'pay1', orderId: 'order1', paymentNo: 'P1', amount: 88, status: 'pending', channel: 'wechat' }],
+      payment_events: [],
+      platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { payment: { enabled: true, mode: 'wechat', mchId: 'mch_1', appId: 'app_1', notifyUrl: 'https://pay.example.com/callback', certSerialNo: 'serial_1', apiV3Key: '12345678901234567890123456789012', privateKey: testPrivateKey } } }]
+    })
+    const fn = loadCloudFunction('api', db, '')
+    const result = await fn.main({ module: 'payment', action: 'paymentCallback', data: { body: JSON.stringify({ resource: { ciphertext: 'mock' } }), headers: {} } })
+    assert.equal(result.data.code, 'FAIL')
+    assert.match(result.data.message, /金额不匹配/)
+  })
+})
+
+
+test('wechat refund request updates refund record and keeps idempotency', async () => {
+  await withEnv({ WECHAT_PAY_MOCK_REFUND_ID: 'wx_refund_1', WECHAT_PAY_MOCK_REFUND_STATUS: 'PROCESSING' }, async () => {
+    const db = createCollectionStore({
+      users: [{ _id: 'admin', openid: 'openid_admin', roles: ['admin'], status: 'active' }],
+      orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'paid', paymentStatus: 'paid', paymentNo: 'P1', wxTransactionId: 'WX1', payAmount: 88 }],
+      refunds: [],
+      payment_events: [],
+      order_timeline: [],
+      admin_operation_logs: [],
+      platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { payment: { enabled: true, mode: 'wechat', mchId: 'mch_1', appId: 'app_1', notifyUrl: 'https://pay.example.com/callback', certSerialNo: 'serial_1', apiV3Key: '12345678901234567890123456789012', privateKey: testPrivateKey, refundEnabled: true } } }],
+      subscription_logs: []
+    })
+    const fn = loadCloudFunction('api', db, 'openid_admin')
+
+    const refund = await fn.main({ module: 'payment', action: 'createRefund', data: { orderId: 'order1', refundAmount: 30, reason: '测试退款', clientRequestId: 'refund_once' } })
+    const duplicate = await fn.main({ module: 'payment', action: 'createRefund', data: { orderId: 'order1', refundAmount: 30, reason: '测试退款', clientRequestId: 'refund_once' } })
+
+    assert.equal(refund.ok, true)
+    assert.equal(refund.data.wxRefundId, 'wx_refund_1')
+    assert.equal(refund.data.status, 'processing')
+    assert.equal(duplicate.data.refundNo, refund.data.refundNo)
+    assert.equal(db.state.refunds.length, 1)
+    assert.equal(db.state.refunds[0].rawRequest.amount.refund, 3000)
+  })
 })
 
 
@@ -1472,6 +1779,92 @@ test('finishService creates staff earning and withdraw workflow locks earnings',
   assert.equal(db.state.staff_earnings[0].status, 'withdrawn')
   assert.equal(approved.data.status, 'approved')
   assert.equal(paid.data.status, 'paid')
+})
+
+
+test('critical write APIs ignore duplicate clientRequestId submissions', async () => {
+  const paymentDb = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    orders: [{ _id: 'order_pay', orderNo: 'OP1', clientOpenid: 'openid_client', status: 'pending_pay', paymentStatus: 'unpaid', payAmount: 88 }],
+    payments: [],
+    payment_events: [],
+    order_timeline: [],
+    platform_configs: []
+  })
+  const paymentFn = loadCloudFunction('api', paymentDb, 'openid_client')
+  const firstPayment = await paymentFn.main({ module: 'payment', action: 'createPayment', data: { orderId: 'order_pay', clientRequestId: 'pay_req_1' } })
+  const duplicatePayment = await paymentFn.main({ module: 'payment', action: 'createPayment', data: { orderId: 'order_pay', clientRequestId: 'pay_req_1' } })
+
+  assert.equal(firstPayment.ok, true)
+  assert.equal(duplicatePayment.data.paymentNo, firstPayment.data.paymentNo)
+  assert.equal(paymentDb.state.payments.length, 1)
+
+  const cancelDb = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    orders: [{ _id: 'order_cancel', orderNo: 'OC1', clientOpenid: 'openid_client', status: 'assigned', paymentStatus: 'paid', paymentNo: 'P1', payAmount: 100, startTime: '2000-07-28 10:00' }],
+    refunds: [],
+    payment_events: [],
+    order_timeline: []
+  })
+  const cancelFn = loadCloudFunction('api', cancelDb, 'openid_client')
+  const firstCancel = await cancelFn.main({ module: 'order', action: 'cancelOrder', data: { orderId: 'order_cancel', reason: '行程变化', clientRequestId: 'cancel_req_1' } })
+  const duplicateCancel = await cancelFn.main({ module: 'order', action: 'cancelOrder', data: { orderId: 'order_cancel', reason: '行程变化', clientRequestId: 'cancel_req_1' } })
+
+  assert.equal(firstCancel.ok, true)
+  assert.equal(duplicateCancel.ok, true)
+  assert.equal(cancelDb.state.refunds.length, 1)
+  assert.equal(cancelDb.state.order_timeline.length, 2)
+
+  const incidentDb = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    orders: [{ _id: 'order_incident', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', status: 'completed' }],
+    order_incidents: [],
+    incident_actions: [],
+    order_timeline: []
+  })
+  const incidentFn = loadCloudFunction('api', incidentDb, 'openid_client')
+  const firstIncident = await incidentFn.main({ module: 'incident', action: 'createComplaint', data: { orderId: 'order_incident', title: '服务投诉', description: '猫粮没有补满', clientRequestId: 'complaint_req_1' } })
+  const duplicateIncident = await incidentFn.main({ module: 'incident', action: 'createComplaint', data: { orderId: 'order_incident', title: '服务投诉', description: '猫粮没有补满', clientRequestId: 'complaint_req_1' } })
+
+  assert.equal(firstIncident.ok, true)
+  assert.equal(duplicateIncident.data._id, firstIncident.data._id)
+  assert.equal(incidentDb.state.order_incidents.length, 1)
+  assert.equal(incidentDb.state.incident_actions.length, 1)
+})
+
+
+test('service finish and withdraw requests are idempotent', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
+    ],
+    orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', clientUserId: 'client', staffOpenid: 'openid_staff', staffUserId: 'staff', staffProfileId: 'sp1', status: 'in_service', payAmount: 100, requiredCheckins: [] }],
+    staff_earnings: [],
+    withdraw_requests: [],
+    finance_logs: [],
+    point_logs: [],
+    retro_card_logs: [],
+    order_timeline: [],
+    subscription_logs: [],
+    platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { settlement: { staffCommissionRate: 0.8, settlementDelayDays: 0, minWithdrawAmount: 10 } } }]
+  })
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+
+  const firstFinish = await staffFn.main({ module: 'order', action: 'finishService', data: { id: 'order1', clientRequestId: 'finish_req_1' } })
+  const duplicateFinish = await staffFn.main({ module: 'order', action: 'finishService', data: { id: 'order1', clientRequestId: 'finish_req_1' } })
+  const firstWithdraw = await staffFn.main({ module: 'finance', action: 'createWithdrawRequest', data: { accountName: '王小花', accountNo: 'wxid_staff', clientRequestId: 'withdraw_req_1' } })
+  const duplicateWithdraw = await staffFn.main({ module: 'finance', action: 'createWithdrawRequest', data: { accountName: '王小花', accountNo: 'wxid_staff', clientRequestId: 'withdraw_req_1' } })
+
+  assert.equal(firstFinish.ok, true)
+  assert.equal(duplicateFinish.ok, true)
+  assert.equal(db.state.staff_earnings.length, 1)
+  assert.equal(db.state.point_logs.length, 1)
+  assert.equal(db.state.users.find((item) => item._id === 'client').completedOrderCount, 1)
+  assert.equal(firstWithdraw.ok, true)
+  assert.equal(duplicateWithdraw.data._id, firstWithdraw.data._id)
+  assert.equal(db.state.withdraw_requests.length, 1)
+  assert.equal(db.state.staff_earnings[0].status, 'withdrawing')
 })
 
 
@@ -1953,4 +2346,107 @@ test('acceptOrder rejects staff without fixed service address', async () => {
   const result = await fn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'ord1' } })
   assert.equal(result.ok, false)
   assert.equal(result.message, '请先在个人中心设置固定服务地址与接单范围，方可接单')
+})
+
+test('staff creates SOS incident and incident lists are scoped by role', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' },
+      { _id: 'other', openid: 'openid_other', roles: ['client'], status: 'active' }
+    ],
+    orders: [{ _id: 'order1', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', status: 'in_service' }],
+    order_incidents: [{ _id: 'other_incident', orderId: 'order2', clientOpenid: 'openid_other', staffOpenid: '', incidentType: 'complaint', status: 'open', createdAt: '2026-08-01' }],
+    incident_actions: [],
+    order_timeline: []
+  })
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const sos = await staffFn.main({ module: 'incident', action: 'createSosIncident', data: { orderId: 'order1', description: '门锁打不开', clientRequestId: 'sos_req_1' } })
+  const staffList = await staffFn.main({ module: 'incident', action: 'listMyIncidents', data: { role: 'staff' } })
+  const clientList = await clientFn.main({ module: 'incident', action: 'listMyIncidents', data: { role: 'client' } })
+
+  assert.equal(sos.ok, true)
+  assert.equal(sos.data.staffUserId, 'staff')
+  assert.equal(staffList.data.length, 1)
+  assert.equal(clientList.data.length, 1)
+  assert.equal(staffList.data[0]._id, sos.data._id)
+  assert.equal(clientList.data[0]._id, sos.data._id)
+})
+
+test('admin creates incident refund and coupon compensation', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+    ],
+    orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'completed', paymentStatus: 'paid', paymentNo: 'P1', payAmount: 120 }],
+    order_incidents: [{ _id: 'incident1', orderId: 'order1', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', status: 'processing', createdAt: '2026-08-01' }],
+    refunds: [],
+    payment_events: [],
+    subscription_logs: [],
+    user_coupons: [],
+    coupon_templates: [{ _id: 'tpl1', name: '补偿券', discountAmount: 20, minOrderAmount: 80, validDays: 30, perUserLimit: 1, issuedCount: 0, enabled: true }],
+    incident_actions: [],
+    order_timeline: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const refund = await fn.main({ module: 'incident', action: 'linkRefund', data: { incidentId: 'incident1', refundAmount: 60, reason: '纠纷退款', clientRequestId: 'incident_refund_1' } })
+  const coupon = await fn.main({ module: 'incident', action: 'proposeResolution', data: { incidentId: 'incident1', resolutionType: 'coupon', content: '发放补偿券', couponTemplateId: 'tpl1' } })
+
+  assert.equal(refund.ok, true)
+  assert.equal(db.state.refunds.length, 1)
+  assert.equal(db.state.orders[0].refundAmount, 60)
+  assert.equal(db.state.order_incidents[0].refundId, db.state.refunds[0]._id)
+  assert.equal(coupon.ok, true)
+  assert.equal(db.state.user_coupons.length, 1)
+  assert.equal(db.state.order_incidents[0].resolution.couponId, db.state.user_coupons[0]._id)
+  assert.equal(db.state.incident_actions.some((item) => item.action === 'refund_created'), true)
+  assert.equal(db.state.incident_actions.some((item) => item.action === 'coupon_issued'), true)
+})
+
+test('closing incidents resolves frozen earnings by release deduct or keep frozen', async () => {
+  const releaseDb = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    order_incidents: [{ _id: 'incident_release', orderId: 'order1', frozenEarningIds: ['earning_release'], status: 'processing' }],
+    staff_earnings: [{ _id: 'earning_release', orderId: 'order1', staffOpenid: 'openid_staff', amount: 80, status: 'frozen', frozenFromStatus: 'available' }],
+    incident_actions: [],
+    finance_logs: [],
+    order_timeline: []
+  })
+  const releaseFn = loadCloudFunction('api', releaseDb, 'openid_admin')
+  const released = await releaseFn.main({ module: 'incident', action: 'closeIncident', data: { incidentId: 'incident_release', status: 'resolved', earningDecision: 'release', closeRemark: '释放收益' } })
+  assert.equal(released.ok, true)
+  assert.equal(releaseDb.state.staff_earnings[0].status, 'available')
+
+  const deductDb = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    order_incidents: [{ _id: 'incident_deduct', orderId: 'order1', frozenEarningIds: ['earning_deduct'], status: 'processing' }],
+    staff_earnings: [{ _id: 'earning_deduct', orderId: 'order1', staffOpenid: 'openid_staff', amount: 80, status: 'frozen', frozenFromStatus: 'available' }],
+    incident_actions: [],
+    finance_logs: [],
+    order_timeline: []
+  })
+  const deductFn = loadCloudFunction('api', deductDb, 'openid_admin')
+  const deducted = await deductFn.main({ module: 'incident', action: 'closeIncident', data: { incidentId: 'incident_deduct', status: 'resolved', earningDecision: 'deduct', deductAmount: 30, closeRemark: '扣减收益' } })
+  assert.equal(deducted.ok, true)
+  assert.equal(deductDb.state.staff_earnings[0].amount, 50)
+  assert.equal(deductDb.state.staff_earnings[0].deductedAmount, 30)
+  assert.equal(deductDb.state.finance_logs[0].amountDelta, -30)
+
+  const keepDb = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    order_incidents: [{ _id: 'incident_keep', orderId: 'order1', frozenEarningIds: ['earning_keep'], status: 'processing' }],
+    staff_earnings: [{ _id: 'earning_keep', orderId: 'order1', staffOpenid: 'openid_staff', amount: 80, status: 'frozen', frozenFromStatus: 'pending' }],
+    incident_actions: [],
+    finance_logs: [],
+    order_timeline: []
+  })
+  const keepFn = loadCloudFunction('api', keepDb, 'openid_admin')
+  const kept = await keepFn.main({ module: 'incident', action: 'closeIncident', data: { incidentId: 'incident_keep', status: 'closed', earningDecision: 'keep_frozen', closeRemark: '等待复核' } })
+  assert.equal(kept.ok, true)
+  assert.equal(keepDb.state.staff_earnings[0].status, 'frozen')
+  assert.equal(keepDb.state.incident_actions.some((item) => item.action === 'earning_keep_frozen'), true)
 })

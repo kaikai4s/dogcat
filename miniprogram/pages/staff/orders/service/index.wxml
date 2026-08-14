@@ -22,7 +22,7 @@
 
   <view class="card">
     <view class="subtitle">服务操作</view>
-    <button class="primary" bindtap="start">开始服务</button>
+    <button class="primary" loading="{{starting}}" disabled="{{starting}}" bindtap="start">{{starting ? '处理中...' : '开始服务'}}</button>
     <button class="ghost" bindtap="unlock">查看限时门锁密码</button>
   </view>
 
@@ -56,5 +56,5 @@
     <button class="ghost" data-type="leave_door" bindtap="checkin">离户闭锁</button>
   </view>
 
-  <button class="primary" bindtap="finish">完成服务</button>
+  <button class="primary" loading="{{finishing}}" disabled="{{finishing}}" bindtap="finish">{{finishing ? '处理中...' : '完成服务'}}</button>
 </view>

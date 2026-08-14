@@ -75,7 +75,7 @@
   </view>
 
   <button class="primary" wx:if="{{order.status === 'pending_pay'}}" loading="{{paying}}" disabled="{{paying}}" bindtap="pay">立即支付</button>
-  <button class="ghost" wx:if="{{order.status === 'pending_pay' || order.status === 'paid' || order.status === 'assigned'}}" bindtap="cancelOrder">取消订单 / 查看退款</button>
+  <button class="ghost" wx:if="{{order.status === 'pending_pay' || order.status === 'paid' || order.status === 'assigned'}}" loading="{{cancelling}}" disabled="{{cancelling}}" bindtap="cancelOrder">{{cancelling ? '处理中...' : '取消订单 / 查看退款'}}</button>
   <button class="ghost" wx:if="{{order.status === 'completed' && !review}}" bindtap="reviewOrder">评价服务</button>
   <button class="ghost" wx:if="{{order.status === 'assigned' || order.status === 'in_service' || order.status === 'completed'}}" bindtap="createIncident">发起投诉 / 售后</button>
   <button class="ghost" bindtap="rebook">再次预约</button>

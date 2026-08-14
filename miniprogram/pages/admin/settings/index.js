@@ -22,8 +22,15 @@ function normalizePaymentConfig(payment = {}) {
     mchId: payment.mchId || '',
     appId: payment.appId || '',
     notifyUrl: payment.notifyUrl || '',
-    certSerialNo: payment.certSerialNo || '',
-    refundEnabled: payment.refundEnabled !== false
+    certSerialNo: payment.certSerialNo || payment.merchantCertSerialNo || '',
+    refundEnabled: payment.refundEnabled !== false,
+    allowMockInProduction: payment.allowMockInProduction === true,
+    apiV3KeyConfigured: payment.apiV3KeyConfigured === true,
+    privateKeyConfigured: payment.privateKeyConfigured === true,
+    platformPublicKeyConfigured: payment.platformPublicKeyConfigured === true,
+    apiV3KeyInput: '',
+    privateKeyInput: '',
+    platformPublicKeyInput: ''
   }
 }
 
@@ -87,6 +94,32 @@ function normalizeCarouselConfig(carousel = {}) {
   }
 }
 
+const homeModuleOptions = [
+  { key: 'quickBooking', label: '核心预约 CTA' },
+  { key: 'nearbySitters', label: '附近宠托师入口' },
+  { key: 'repeatBooking', label: '再次预约' },
+  { key: 'hotServices', label: '热门服务卡' },
+  { key: 'newbieCoupon', label: '新人优惠' },
+  { key: 'featuredSitters', label: '精选宠托师' },
+  { key: 'platformAssurance', label: '平台保障' },
+  { key: 'historyStats', label: '历史服务统计' },
+  { key: 'lottery', label: '抽奖活动横幅' }
+]
+
+function normalizeHomePageConfig(homePage = {}) {
+  const modules = homePage.modules || {}
+  return {
+    ctaTitle: homePage.ctaTitle || '立即预约上门宠护',
+    ctaSubtitle: homePage.ctaSubtitle || '填写宠物和服务时间，平台认证宠托师快速响应。',
+    ctaText: homePage.ctaText || '立即预约',
+    nearbyTitle: homePage.nearbyTitle || '附近宠托师',
+    repeatTitle: homePage.repeatTitle || '再次预约',
+    couponTitle: homePage.couponTitle || '新人优惠',
+    assuranceTitle: homePage.assuranceTitle || '平台保障',
+    modules: homeModuleOptions.reduce((result, item) => ({ ...result, [item.key]: modules[item.key] !== false }), {})
+  }
+}
+
 Page({
   data: {
     settings: {
@@ -95,8 +128,10 @@ Page({
       settlement: normalizeSettlementConfig(),
       subscription: normalizeSubscriptionConfig(),
       reliability: normalizeReliabilityConfig(),
-      homeHeroCarousel: normalizeCarouselConfig()
+      homeHeroCarousel: normalizeCarouselConfig(),
+      homePage: normalizeHomePageConfig()
     },
+    homeModuleOptions,
     editingIndex: -1,
     editingItem: createEmptyItem(),
     uploadingMedia: false,
@@ -117,7 +152,8 @@ Page({
           settlement: normalizeSettlementConfig(settings.settlement),
           subscription: normalizeSubscriptionConfig(settings.subscription),
           reliability: normalizeReliabilityConfig(settings.reliability),
-          homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel)
+          homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
+          homePage: normalizeHomePageConfig(settings.homePage)
         }
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized }, () => {
@@ -185,6 +221,10 @@ Page({
     this.setData({ ['settings.payment.refundEnabled']: e.detail.value })
   },
 
+  toggleAllowMockInProduction(e) {
+    this.setData({ ['settings.payment.allowMockInProduction']: e.detail.value })
+  },
+
   paymentInput(e) {
     const field = e.currentTarget.dataset.field
     this.setData({ [`settings.payment.${field}`]: e.detail.value })
@@ -211,6 +251,16 @@ Page({
   subscriptionTemplateInput(e) {
     const field = e.currentTarget.dataset.field
     this.setData({ [`settings.subscription.templates.${field}`]: e.detail.value })
+  },
+
+  homePageInput(e) {
+    const field = e.currentTarget.dataset.field
+    this.setData({ [`settings.homePage.${field}`]: e.detail.value })
+  },
+
+  toggleHomeModule(e) {
+    const key = e.currentTarget.dataset.key
+    this.setData({ [`settings.homePage.modules.${key}`]: e.detail.value })
   },
 
   startAddItem() {
@@ -453,6 +503,7 @@ Page({
       settlement: this.data.settings.settlement,
       subscription: this.data.settings.subscription,
       reliability: this.data.settings.reliability,
+      homePage: this.data.settings.homePage,
       homeHeroCarousel: {
         enabled: carousel.enabled === true,
         autoRotate: carousel.autoRotate !== false,
@@ -469,7 +520,8 @@ Page({
           settlement: normalizeSettlementConfig(settings.settlement),
           subscription: normalizeSubscriptionConfig(settings.subscription),
           reliability: normalizeReliabilityConfig(settings.reliability),
-          homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel)
+          homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
+          homePage: normalizeHomePageConfig(settings.homePage)
         }
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized, saving: false })

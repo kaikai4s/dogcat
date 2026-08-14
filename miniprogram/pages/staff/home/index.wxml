@@ -40,6 +40,11 @@
       <view class="strong">排班日历</view>
       <view class="muted">休息、加班与占用</view>
     </view>
+    <view class="card interactive action-card" data-url="/pages/staff/incidents/list/index" bindtap="go">
+      <view class="action-icon">!</view>
+      <view class="strong">纠纷 / SOS</view>
+      <view class="muted">投诉进度与补充说明</view>
+    </view>
   </view>
 
   <view class="soft-panel">

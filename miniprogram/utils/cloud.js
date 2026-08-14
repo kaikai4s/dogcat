@@ -147,12 +147,38 @@ function normalizeSubscriptionConfig(subscription = {}) {
   }
 }
 
+function normalizeHomePageConfig(homePage = {}) {
+  const defaultModules = {
+    quickBooking: true,
+    nearbySitters: true,
+    repeatBooking: true,
+    hotServices: true,
+    newbieCoupon: true,
+    featuredSitters: true,
+    platformAssurance: true,
+    historyStats: true,
+    lottery: true
+  }
+  const modules = homePage.modules || {}
+  return {
+    ctaTitle: homePage.ctaTitle || '立即预约上门宠护',
+    ctaSubtitle: homePage.ctaSubtitle || '填写宠物和服务时间，平台认证宠托师快速响应。',
+    ctaText: homePage.ctaText || '立即预约',
+    nearbyTitle: homePage.nearbyTitle || '附近宠托师',
+    repeatTitle: homePage.repeatTitle || '再次预约',
+    couponTitle: homePage.couponTitle || '新人优惠',
+    assuranceTitle: homePage.assuranceTitle || '平台保障',
+    modules: Object.keys(defaultModules).reduce((result, key) => ({ ...result, [key]: modules[key] !== false }), {})
+  }
+}
+
 function getCachedSystemSettings() {
   const cached = wx.getStorageSync(SYSTEM_SETTINGS_STORAGE_KEY) || {}
   return {
     enableTestAddressMode: cached.enableTestAddressMode === true,
     subscription: normalizeSubscriptionConfig(cached.subscription),
-    homeHeroCarousel: normalizeHomeHeroCarousel(cached.homeHeroCarousel)
+    homeHeroCarousel: normalizeHomeHeroCarousel(cached.homeHeroCarousel),
+    homePage: normalizeHomePageConfig(cached.homePage)
   }
 }
 
@@ -161,7 +187,8 @@ function setCachedSystemSettings(settings) {
   const normalized = {
     enableTestAddressMode: source.enableTestAddressMode === true,
     subscription: normalizeSubscriptionConfig(source.subscription),
-    homeHeroCarousel: normalizeHomeHeroCarousel(source.homeHeroCarousel)
+    homeHeroCarousel: normalizeHomeHeroCarousel(source.homeHeroCarousel),
+    homePage: normalizeHomePageConfig(source.homePage)
   }
   wx.setStorageSync(SYSTEM_SETTINGS_STORAGE_KEY, normalized)
   return normalized
