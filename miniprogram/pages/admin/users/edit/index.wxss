@@ -1,0 +1,66 @@
+.form-card {
+  padding: 30rpx;
+}
+
+.openid-text {
+  margin-top: 8rpx;
+  word-break: break-all;
+}
+
+.field {
+  margin-top: 24rpx;
+}
+
+.field-row {
+  display: flex;
+  gap: 18rpx;
+}
+
+.field.inline {
+  flex: 1;
+}
+
+.field .label {
+  margin-bottom: 10rpx;
+  color: #7d6f76;
+  font-size: 24rpx;
+}
+
+.picker-value {
+  min-height: 88rpx;
+  padding: 0 24rpx;
+  border-radius: 20rpx;
+  background: #fff7fa;
+  display: flex;
+  align-items: center;
+  color: #2b2528;
+}
+
+.role-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  margin: 8rpx 28rpx 8rpx 0;
+  color: #2b2528;
+  font-size: 28rpx;
+}
+
+.danger-btn {
+  margin-top: 20rpx;
+  height: 88rpx;
+  border-radius: 999rpx;
+  background: #fff0f3;
+  color: #f4436b;
+  font-weight: 800;
+  line-height: 88rpx;
+}
+
+.danger-btn::after {
+  border: 0;
+}
+
+.tip-text {
+  margin-top: 10rpx;
+  color: #a59aa0;
+  font-size: 24rpx;
+}

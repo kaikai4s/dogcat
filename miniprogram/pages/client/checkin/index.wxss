@@ -16,6 +16,34 @@
   color: #2b2528;
 }
 
+.invite-row {
+  margin-top: 24rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 24rpx;
+  background: linear-gradient(90deg, #fff1f6 0%, #fff8fb 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.invite-btn {
+  flex-shrink: 0;
+  height: 64rpx;
+  min-width: 132rpx;
+  padding: 0 24rpx;
+  border-radius: 999rpx;
+  background: #f43f6b;
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 800;
+  line-height: 64rpx;
+}
+
+.invite-btn::after {
+  border: 0;
+}
+
 .calendar-card {
   padding: 26rpx 22rpx 22rpx;
 }

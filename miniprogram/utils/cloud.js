@@ -305,6 +305,7 @@ function requireSelectedLocation() {
 
 const LOGIN_CANCEL_CODE = 'LOGIN_CANCELLED'
 const AUTH_LOGGED_OUT_KEY = 'vip_pet_auth_logged_out'
+const PENDING_INVITE_KEY = 'vip_pet_pending_invite'
 
 function getAppData() {
   const app = getApp()
@@ -340,6 +341,29 @@ function isLoginRequiredError(error) {
   return message.includes('请先登录') || message.includes('登录') || error.code === LOGIN_CANCEL_CODE
 }
 
+function savePendingInvite(invite = {}) {
+  const inviteCode = String(invite.inviteCode || '').trim()
+  const inviterOpenid = String(invite.inviterOpenid || '').trim()
+  if (!inviteCode && !inviterOpenid) return null
+  const payload = { inviteCode, inviterOpenid, capturedAt: Date.now() }
+  wx.setStorageSync(PENDING_INVITE_KEY, payload)
+  return payload
+}
+
+function getPendingInvitePayload() {
+  const invite = wx.getStorageSync(PENDING_INVITE_KEY) || {}
+  const inviteCode = String(invite.inviteCode || '').trim()
+  const inviterOpenid = String(invite.inviterOpenid || '').trim()
+  return {
+    ...(inviteCode ? { inviteCode } : {}),
+    ...(inviterOpenid ? { inviterOpenid } : {})
+  }
+}
+
+function clearPendingInvite() {
+  wx.removeStorageSync(PENDING_INVITE_KEY)
+}
+
 function getCurrentUser(options = {}) {
   const cached = getCachedUser()
   if (cached) return Promise.resolve(cached)
@@ -353,9 +377,13 @@ function getCurrentUser(options = {}) {
     })
 }
 
-function loginWithWechat() {
+function loginWithWechat(extraData = {}) {
   wx.removeStorageSync(AUTH_LOGGED_OUT_KEY)
-  return callFunction('auth', 'login').then(setCachedUser)
+  const inviteData = getPendingInvitePayload()
+  return callFunction('auth', 'login', { ...inviteData, ...extraData }).then((user) => {
+    clearPendingInvite()
+    return setCachedUser(user)
+  })
 }
 
 function showLoginModal(options = {}) {
@@ -410,6 +438,7 @@ module.exports = {
   setCachedUser,
   logoutCurrentUser,
   getCurrentUser,
+  savePendingInvite,
   loginWithWechat,
   ensureLogin,
   isLoginRequiredError

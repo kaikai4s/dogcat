@@ -80,6 +80,51 @@ Page({
     this.load({ reset: true })
   },
 
+  editUser(e) {
+    const openid = e.currentTarget.dataset.openid
+    if (!openid) return
+    wx.navigateTo({ url: `/pages/admin/users/edit/index?openid=${encodeURIComponent(openid)}` })
+  },
+
+  toggleUserStatus(e) {
+    const item = this.data.users.find((user) => user.openid === e.currentTarget.dataset.openid)
+    if (!item || item.status === 'deleted') return
+    const status = item.status === 'disabled' ? 'active' : 'disabled'
+    wx.showModal({
+      title: status === 'disabled' ? '禁用用户' : '启用用户',
+      content: status === 'disabled' ? '禁用后该用户将无法继续登录和使用功能。确认禁用？' : '确认恢复该用户使用？',
+      success: (res) => {
+        if (!res.confirm) return
+        callFunction('admin', 'updateUserProfile', { ...item, status })
+          .then(() => {
+            wx.showToast({ title: status === 'disabled' ? '已禁用' : '已启用', icon: 'none' })
+            this.load({ reset: true })
+          })
+          .catch(showError)
+      }
+    })
+  },
+
+  deleteUser(e) {
+    const openid = e.currentTarget.dataset.openid
+    if (!openid) return
+    wx.showModal({
+      title: '删除用户',
+      content: '删除后将清理用户宠物、地址、签到、优惠券、积分流水等个人数据；订单记录会保留。确认删除？',
+      confirmText: '删除',
+      confirmColor: '#f4436b',
+      success: (res) => {
+        if (!res.confirm) return
+        callFunction('admin', 'deleteUser', { openid })
+          .then(() => {
+            wx.showToast({ title: '已删除', icon: 'none' })
+            this.load({ reset: true })
+          })
+          .catch(showError)
+      }
+    })
+  },
+
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return

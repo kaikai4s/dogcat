@@ -120,6 +120,8 @@ function safeUserSummary(user = {}, extra = {}) {
     memberLevelName: user.memberLevelName || '普通会员',
     points: Number(user.points || 0),
     totalPoints: Number(user.totalPoints || 0),
+    retroCardCount: Number(user.retroCardCount || 0),
+    completedOrderCount: Number(user.completedOrderCount || 0),
     createdAt: user.createdAt || '',
     updatedAt: user.updatedAt || '',
     ...extra
@@ -1563,12 +1565,31 @@ async function grantRetroCards(openid, userId, delta, sourceType, sourceId, reas
   const userRes = await db.collection('users').where({ openid }).limit(1).get()
   const user = userRes.data[0]
   if (!user) return { balance: 0 }
+  const amount = Number(delta || 0)
+  if (!amount) return { balance: Number(user.retroCardCount || 0) }
   const time = now()
-  const balance = Math.max(Number(user.retroCardCount || 0) + Number(delta || 0), 0)
+  const command = db.command || {}
+  const hasAtomicInc = typeof command.inc === 'function'
+  const currentBalance = Number(user.retroCardCount || 0)
+
+  if (amount < 0 && hasAtomicInc && typeof command.gte === 'function') {
+    const updated = await db.collection('users').where({ openid, retroCardCount: command.gte(Math.abs(amount)) }).update({
+      data: { retroCardCount: command.inc(amount), updatedAt: time }
+    })
+    if (!updated.stats || Number(updated.stats.updated || 0) <= 0) throw new Error('补签卡不足')
+  } else {
+    if (amount < 0 && currentBalance < Math.abs(amount)) throw new Error('补签卡不足')
+    const nextBalance = Math.max(currentBalance + amount, 0)
+    await db.collection('users').doc(user._id).update({
+      data: { retroCardCount: hasAtomicInc ? command.inc(amount) : nextBalance, updatedAt: time }
+    })
+  }
+
+  const latest = (await db.collection('users').doc(user._id).get()).data || {}
+  const balance = Number(latest.retroCardCount || 0)
   await db.collection('retro_card_logs').add({
-    data: { userId: user._id, openid, delta: Number(delta || 0), balance, sourceType: sourceType || '', sourceId: sourceId || '', reason: reason || '', createdAt: time }
+    data: { userId: userId || user._id, openid, delta: amount, balance, sourceType: sourceType || '', sourceId: sourceId || '', reason: reason || '', createdAt: time }
   })
-  await db.collection('users').doc(user._id).update({ data: { retroCardCount: balance, updatedAt: time } })
   return { balance }
 }
 
@@ -1735,6 +1756,56 @@ async function logAdmin(admin, targetType, targetId, action, detail) {
   await db.collection('admin_operation_logs').add({
     data: { adminUserId: admin._id, adminOpenid: admin.openid, targetType, targetId, action, detail: detail || {}, createdAt: now() }
   })
+}
+
+async function removeByQuery(collectionName, where) {
+  const res = await db.collection(collectionName).where(where).get()
+  const list = res.data || []
+  await Promise.all(list.map((item) => db.collection(collectionName).doc(item._id).remove()))
+  return list.length
+}
+
+async function countByQuery(collectionName, where) {
+  const res = await db.collection(collectionName).where(where).count()
+  return Number(res.total || 0)
+}
+
+async function getUserManageStats(user) {
+  const openid = user.openid
+  const [pets, addresses, coupons, checkins, pointLogs, rewardMails, clientOrders, staffOrders, favorites, homeSecurity, retroLogs, invitesOut, invitesIn, staffProfiles] = await Promise.all([
+    countByQuery('pets', { openid }),
+    countByQuery('user_addresses', { openid }),
+    countByQuery('user_coupons', { openid }),
+    countByQuery('user_checkins', { openid }),
+    countByQuery('point_logs', { openid }),
+    countByQuery('reward_mails', { openid }),
+    countByQuery('orders', { clientOpenid: openid }),
+    countByQuery('orders', { staffOpenid: openid }),
+    countByQuery('sitter_favorites', { openid }),
+    countByQuery('home_security', { openid }),
+    countByQuery('retro_card_logs', { openid }),
+    countByQuery('user_invites', { inviterOpenid: openid }),
+    countByQuery('user_invites', { invitedOpenid: openid }),
+    countByQuery('staff_profiles', { openid })
+  ])
+  return { pets, addresses, coupons, checkins, pointLogs, rewardMails, clientOrders, staffOrders, favorites, homeSecurity, retroLogs, invitesOut, invitesIn, staffProfiles }
+}
+
+function normalizeEditableRoles(roles) {
+  const allowed = ['client', 'staff', 'admin']
+  const next = Array.isArray(roles) ? roles.filter((role) => allowed.includes(role)) : ['client']
+  return Array.from(new Set(next.length ? next : ['client']))
+}
+
+async function assertAdminRoleChangeAllowed(target, roles, currentOpenid) {
+  const hadAdmin = Array.isArray(target.roles) && target.roles.includes('admin')
+  const hasAdmin = roles.includes('admin')
+  if (target.openid === currentOpenid && hadAdmin !== hasAdmin) throw new Error('不能修改自己的管理员权限')
+  if (hadAdmin && !hasAdmin) {
+    const usersRes = await db.collection('users').get()
+    const admins = (usersRes.data || []).filter((user) => user.status !== 'deleted' && Array.isArray(user.roles) && user.roles.includes('admin'))
+    if (admins.length <= 1) throw new Error('至少保留一个管理员')
+  }
 }
 
 async function getOrderForAccess(openid, orderId) {
@@ -4233,40 +4304,75 @@ const handlers = {
       if (monthKey !== todayInfo.monthKey) throw new Error('当前仅支持补签本月日期')
       if (day >= todayInfo.dayNumber) throw new Error('只能补签今天之前的日期')
       if (day > getMonthDays(monthKey)) throw new Error('补签日期无效')
-      if (Number(user.retroCardCount || 0) <= 0) throw new Error('补签卡不足')
       const dateKey = `${monthKey}-${String(day).padStart(2, '0')}`
+      const clientRequestId = safeText(data.clientRequestId).trim()
+      if (clientRequestId) {
+        const sameRequest = (await db.collection('user_checkins').where({ openid, clientRequestId }).limit(1).get()).data[0]
+        if (sameRequest) return { ...sameRequest, retroCardCount: Number((await getUser(openid)).retroCardCount || 0) }
+      }
       const existing = (await db.collection('user_checkins').where({ openid, dateKey }).limit(1).get()).data[0]
-      if (existing) throw new Error('该日期已签到')
-      const config = await ensureMonthConfig(monthKey)
-      const reward = normalizeCheckinReward((config.days || []).find((item) => Number(item.day) === day) || {}, day)
-      const claimed = await claimCheckinReward(user, reward, { monthKey, dateKey, dayNumber: day }, 'retro')
+      if (existing) throw new Error(existing.status === 'processing' ? '补签处理中，请稍后刷新' : '该日期已签到')
+
       const time = now()
-      await grantRetroCards(openid, user._id, -1, 'retro_checkin', dateKey, `补签 ${dateKey} 消耗补签卡 1 张`)
-      const created = await db.collection('user_checkins').add({
-        data: {
-          userId: user._id,
-          openid,
+      const checkinId = `checkin_${openid}_${dateKey}`
+      let cardSpent = false
+      let rewardClaimed = false
+      try {
+        await db.collection('user_checkins').add({
+          data: {
+            _id: checkinId,
+            userId: user._id,
+            openid,
+            monthKey,
+            dateKey,
+            day,
+            clientRequestId,
+            checkinType: 'retro',
+            usedRetroCard: true,
+            status: 'processing',
+            rewardSnapshot: {},
+            pointsDelta: 0,
+            couponId: '',
+            createdAt: time,
+            updatedAt: time
+          }
+        })
+        await grantRetroCards(openid, user._id, -1, 'retro_checkin', dateKey, `补签 ${dateKey} 消耗补签卡 1 张`)
+        cardSpent = true
+        const config = await ensureMonthConfig(monthKey)
+        const reward = normalizeCheckinReward((config.days || []).find((item) => Number(item.day) === day) || {}, day)
+        const claimed = await claimCheckinReward(user, reward, { monthKey, dateKey, dayNumber: day }, 'retro')
+        rewardClaimed = true
+        await db.collection('user_checkins').doc(checkinId).update({
+          data: {
+            status: 'completed',
+            rewardSnapshot: claimed.rewardSnapshot,
+            pointsDelta: claimed.pointsDelta,
+            couponId: claimed.couponId || '',
+            updatedAt: now()
+          }
+        })
+        return {
+          _id: checkinId,
           monthKey,
           dateKey,
           day,
-          checkinType: 'retro',
-          usedRetroCard: true,
           rewardSnapshot: claimed.rewardSnapshot,
           pointsDelta: claimed.pointsDelta,
           couponId: claimed.couponId || '',
-          createdAt: time,
-          updatedAt: time
+          retroCardCount: Number((await getUser(openid)).retroCardCount || 0)
         }
-      })
-      return {
-        _id: created._id,
-        monthKey,
-        dateKey,
-        day,
-        rewardSnapshot: claimed.rewardSnapshot,
-        pointsDelta: claimed.pointsDelta,
-        couponId: claimed.couponId || '',
-        retroCardCount: Number((await getUser(openid)).retroCardCount || 0)
+      } catch (error) {
+        const locked = (await db.collection('user_checkins').where({ openid, dateKey }).limit(1).get()).data[0]
+        const isOwnProcessing = locked && locked._id === checkinId && locked.status === 'processing'
+        if (cardSpent && !rewardClaimed) {
+          await grantRetroCards(openid, user._id, 1, 'retro_checkin_rollback', dateKey, `补签 ${dateKey} 失败退回补签卡 1 张`)
+        }
+        if (isOwnProcessing && !rewardClaimed) {
+          await db.collection('user_checkins').doc(checkinId).remove()
+        }
+        if (!isOwnProcessing && locked) throw new Error(locked.status === 'processing' ? '补签处理中，请稍后刷新' : '该日期已签到')
+        throw error
       }
     }
     if (action === 'createCheckin') {
@@ -4557,6 +4663,90 @@ const handlers = {
         .filter((user) => !keyword || [user.openid, user.nickname, user.phone].some((value) => safeText(value).toLowerCase().includes(keyword)))
         .map((user) => safeUserSummary(user))
       return paginateList(list, data)
+    }
+    if (action === 'getUserDetail') {
+      const targetOpenid = safeText(data.openid).trim()
+      const targetUserId = safeText(data.userId || data._id).trim()
+      let target = null
+      if (targetOpenid) target = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
+      else if (targetUserId) target = (await db.collection('users').doc(targetUserId).get()).data
+      if (!target) throw new Error('用户不存在')
+      const stats = await getUserManageStats(target)
+      return { ...safeUserSummary(target, { isSelf: target.openid === openid }), inviteCode: target.inviteCode || '', retroCardCount: Number(target.retroCardCount || 0), completedOrderCount: Number(target.completedOrderCount || 0), stats }
+    }
+    if (action === 'updateUserProfile') {
+      const targetOpenid = safeText(data.openid).trim()
+      if (!targetOpenid) throw new Error('缺少用户 openid')
+      const target = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
+      if (!target) throw new Error('用户不存在')
+      if (target.status === 'deleted') throw new Error('已删除用户不可编辑')
+      const status = safeText(data.status || target.status || 'active').trim()
+      if (!['active', 'disabled'].includes(status)) throw new Error('用户状态无效')
+      const roles = normalizeEditableRoles(data.roles)
+      await assertAdminRoleChangeAllowed(target, roles, openid)
+      const activeRole = roles.includes(data.activeRole) ? data.activeRole : (roles.includes(target.activeRole) ? target.activeRole : roles[0])
+      const points = Math.max(Math.round(Number(data.points || 0)), 0)
+      const totalPoints = Math.max(Math.round(Number(data.totalPoints || 0)), points)
+      const update = {
+        nickname: safeText(data.nickname).trim() || '微信用户',
+        phone: safeText(data.phone).trim(),
+        avatarUrl: safeText(data.avatarUrl).trim(),
+        status,
+        roles,
+        activeRole,
+        memberLevelName: safeText(data.memberLevelName).trim() || '普通会员',
+        points,
+        totalPoints,
+        retroCardCount: Math.max(Math.round(Number(data.retroCardCount || 0)), 0),
+        updatedAt: now()
+      }
+      await db.collection('users').doc(target._id).update({ data: update })
+      await logAdmin(admin, 'user', targetOpenid, 'updateUserProfile', update)
+      return safeUserSummary({ ...target, ...update }, { retroCardCount: update.retroCardCount })
+    }
+    if (action === 'deleteUser') {
+      const targetOpenid = safeText(data.openid).trim()
+      if (!targetOpenid) throw new Error('缺少用户 openid')
+      if (targetOpenid === openid) throw new Error('不能删除自己的账号')
+      const target = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
+      if (!target) throw new Error('用户不存在')
+      const targetRoles = Array.isArray(target.roles) ? target.roles : []
+      if (targetRoles.includes('admin')) {
+        const usersRes = await db.collection('users').get()
+        const admins = (usersRes.data || []).filter((user) => user.status !== 'deleted' && Array.isArray(user.roles) && user.roles.includes('admin'))
+        if (admins.length <= 1) throw new Error('至少保留一个管理员')
+      }
+      const cleanup = {}
+      const openidWhere = { openid: targetOpenid }
+      for (const name of ['pets', 'user_addresses', 'home_security', 'sitter_favorites', 'user_coupons', 'reward_mails', 'user_checkins', 'retro_card_logs', 'point_logs', 'lottery_draw_logs']) {
+        cleanup[name] = await removeByQuery(name, openidWhere)
+      }
+      cleanup.userInvitesAsInviter = await removeByQuery('user_invites', { inviterOpenid: targetOpenid })
+      cleanup.userInvitesAsInvited = await removeByQuery('user_invites', { invitedOpenid: targetOpenid })
+      const staffProfiles = (await db.collection('staff_profiles').where({ openid: targetOpenid }).get()).data || []
+      await Promise.all(staffProfiles.map((profile) => db.collection('staff_profiles').doc(profile._id).update({ data: { auditStatus: 'rejected', auditRemark: '用户已删除', isFeatured: false, featuredAt: '', featuredByOpenid: '', updatedAt: now() } })))
+      cleanup.staffProfilesMarkedDeleted = staffProfiles.length
+      const reviews = (await db.collection('service_reviews').where({ clientOpenid: targetOpenid }).get()).data || []
+      await Promise.all(reviews.map((review) => db.collection('service_reviews').doc(review._id).update({ data: { clientName: '已删除用户', updatedAt: now() } })))
+      cleanup.reviewsAnonymized = reviews.length
+      const time = now()
+      const update = {
+        status: 'deleted',
+        nickname: '已删除用户',
+        avatarUrl: '',
+        phone: '',
+        roles: ['client'],
+        activeRole: 'client',
+        points: 0,
+        totalPoints: 0,
+        retroCardCount: 0,
+        deletedAt: time,
+        deletedByOpenid: openid,
+        updatedAt: time
+      }
+      await db.collection('users').doc(target._id).update({ data: update })
+      await logAdmin(admin, 'user', targetOpenid, 'deleteUser', { cleanup })
+      return { openid: targetOpenid, cleanup, user: safeUserSummary({ ...target, ...update }) }
     }
     if (action === 'listStaffProfiles') {
       const auditStatus = safeText(data.auditStatus).trim()

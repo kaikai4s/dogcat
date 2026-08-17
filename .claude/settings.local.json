@@ -24,7 +24,8 @@
       "Read(//tmp/**)",
       "Bash(ffprobe:*)",
       "Bash(git:*)",
-      "Bash(perl -0ne 'while\\(/not ok[^\\\\n]*[\\\\s\\\\S]*?\\(?=\\\\n# Subtest:|\\\\n1\\\\.\\\\.|\\\\z\\)/g\\){print $&}')"
+      "Bash(perl -0ne 'while\\(/not ok[^\\\\n]*[\\\\s\\\\S]*?\\(?=\\\\n# Subtest:|\\\\n1\\\\.\\\\.|\\\\z\\)/g\\){print $&}')",
+      "Bash(npx tsc:*)"
     ]
   }
 }

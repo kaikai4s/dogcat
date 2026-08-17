@@ -28,7 +28,7 @@ Page({
     rewardMailUnclaimedCount: 0
   },
 
-  onLoad(query) {
+  onLoad(query = {}) {
     this.setData({ showSettings: query.settings === '1' })
   },
 

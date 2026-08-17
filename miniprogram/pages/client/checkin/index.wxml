@@ -13,6 +13,13 @@
       </view>
       <view class="badge">补签卡 {{retroCardCount}}</view>
     </view>
+    <view class="invite-row">
+      <view>
+        <view class="strong">邀请好友得补签卡</view>
+        <view class="muted">好友首次登录后，你获得补签卡 +1</view>
+      </view>
+      <button class="invite-btn" open-type="share">去邀请</button>
+    </view>
     <view class="month-title">{{monthLabel}}</view>
   </view>
 

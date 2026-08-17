@@ -38,6 +38,11 @@
       <view class="info-row"><view class="label">可用积分</view><view class="value">{{item.points}}</view></view>
       <view class="info-row"><view class="label">累计积分</view><view class="value">{{item.totalPoints}}</view></view>
     </view>
+    <view class="user-actions">
+      <button class="mini-btn" data-openid="{{item.openid}}" bindtap="editUser">编辑资料</button>
+      <button class="mini-btn" wx:if="{{item.status !== 'deleted'}}" data-openid="{{item.openid}}" bindtap="toggleUserStatus">{{item.status === 'disabled' ? '启用' : '禁用'}}</button>
+      <button class="mini-btn danger" wx:if="{{item.status !== 'deleted'}}" data-openid="{{item.openid}}" bindtap="deleteUser">删除用户</button>
+    </view>
   </view>
 
   <button class="ghost" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>

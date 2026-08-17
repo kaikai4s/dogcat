@@ -1,4 +1,4 @@
-const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
+const { callFunction, showError, ensureLogin, savePendingInvite } = require('../../../utils/cloud')
 
 const weekLabels = ['一', '二', '三', '四', '五', '六', '日']
 
@@ -98,6 +98,7 @@ Page({
     monthLabel: '',
     points: 0,
     retroCardCount: 0,
+    inviteCode: '',
     memberLevelName: '普通会员',
     weekLabels,
     days: [],
@@ -108,11 +109,17 @@ Page({
     submitting: false
   },
 
+  onLoad(query = {}) {
+    if (query.inviteCode || query.inviterOpenid) {
+      savePendingInvite({ inviteCode: query.inviteCode, inviterOpenid: query.inviterOpenid })
+    }
+  },
+
   onShow() {
     ensureLogin({ content: '登录后可查看签到奖励。' })
-      .then(() => {
+      .then((user) => {
         const monthKey = this.data.monthKey || getCurrentMonthKey()
-        this.setData({ monthKey, monthLabel: getMonthLabel(monthKey) })
+        this.setData({ monthKey, monthLabel: getMonthLabel(monthKey), inviteCode: user.inviteCode || '' })
         this.loadCalendar()
       })
       .catch(() => {})
@@ -191,7 +198,8 @@ Page({
       success: (res) => {
         if (!res.confirm) return
         this.setData({ submitting: true })
-        callFunction('checkin', 'retroCheckin', { monthKey: this.data.monthKey, day })
+        const clientRequestId = `retro_${this.data.monthKey}_${day}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+        callFunction('checkin', 'retroCheckin', { monthKey: this.data.monthKey, day, clientRequestId })
           .then(() => {
             wx.showToast({ title: '补签成功', icon: 'none' })
             this.loadCalendar()
@@ -206,5 +214,14 @@ Page({
 
   openPoints() {
     wx.navigateTo({ url: '/pages/client/points/index' })
+  },
+
+  onShareAppMessage() {
+    const inviteCode = this.data.inviteCode
+    const query = inviteCode ? `?inviteCode=${encodeURIComponent(inviteCode)}` : ''
+    return {
+      title: '来签到领福利，补签卡也能拿',
+      path: `/pages/client/checkin/index${query}`
+    }
   }
 })

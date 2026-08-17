@@ -60,3 +60,19 @@
 .user-info {
   margin-top: 18rpx;
 }
+
+.user-actions {
+  margin-top: 22rpx;
+  display: flex;
+  gap: 14rpx;
+  flex-wrap: wrap;
+}
+
+.user-actions .mini-btn {
+  margin: 0;
+}
+
+.user-actions .danger {
+  background: #fff0f3;
+  color: #f4436b;
+}
