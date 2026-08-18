@@ -116,12 +116,14 @@
 
   <!-- 新人优惠 -->
   <view class="card coupon-home-card" wx:if="{{homePage.modules.newbieCoupon && coupons.length}}">
-    <view class="card-header between"><text class="header-title">{{homePage.couponTitle}}</text><view class="header-more" data-url="/pages/client/coupons/list/index" bindtap="goProtected"><text>查看</text><text class="arrow">›</text></view></view>
+    <view class="card-header between"><text class="header-title">{{homePage.couponTitle}}</text><view class="header-more" data-url="/pages/client/coupons/list/index" bindtap="goProtected"><text>我的券包</text><text class="arrow">›</text></view></view>
     <view class="coupon-grid">
-      <view class="coupon-mini interactive" wx:for="{{coupons}}" wx:key="_id" data-url="/pages/client/coupons/list/index" bindtap="goProtected">
+      <view class="coupon-mini" wx:for="{{coupons}}" wx:key="_id">
+        <view class="coupon-tag">{{item.displayTag}}</view>
         <view class="coupon-amount">¥{{item.discountAmount}}</view>
         <view class="coupon-name">{{item.name}}</view>
         <view class="coupon-rule">{{item.ruleText}}</view>
+        <button class="coupon-claim-btn" data-id="{{item._id}}" disabled="{{claimingCouponId === item._id}}" bindtap="claimNewbieCoupon">{{claimingCouponId === item._id ? '领取中' : '立即领取'}}</button>
       </view>
     </view>
   </view>
@@ -130,7 +132,7 @@
   <view class="card history-stats-card" wx:if="{{homePage.modules.historyStats}}">
     <view class="card-header between">
       <text class="header-title">历史服务记录</text>
-      <view class="header-more" data-url="/pages/client/sitters/list/index" bindtap="go"><text>查看更多服务记录和评价</text><text class="arrow">›</text></view>
+      <view class="header-more" data-url="/pages/client/orders/list/index" bindtap="goProtected"><text>查看更多服务记录和评价</text><text class="arrow">›</text></view>
     </view>
     <view class="stats-three-grid">
       <view class="stat-box yellow-bg"><view class="stat-icon-circle yellow">✅</view><view class="stat-num yellow-text">{{statsData.completedCount}} <text class="stat-unit">单</text></view><view class="stat-desc">已完成服务</view></view>

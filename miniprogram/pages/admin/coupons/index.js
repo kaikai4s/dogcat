@@ -15,6 +15,7 @@ function emptyTemplate() {
     useNotice: '',
     perUserLimit: 1,
     totalIssueLimit: 0,
+    newbieOnly: false,
     enabled: true,
     sortOrder: 100,
     applicableServiceTypes: []
@@ -148,6 +149,10 @@ Page({
 
   toggleEnabled(e) {
     this.setData({ ['form.enabled']: e.detail.value })
+  },
+
+  toggleNewbieOnly(e) {
+    this.setData({ ['form.newbieOnly']: e.detail.value })
   },
 
   setValidType(e) {

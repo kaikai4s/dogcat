@@ -1096,12 +1096,13 @@ async function getHomePageData(openid, data = {}) {
     longitude: Number(data.longitude || 0)
   }
   const hasLoc = hasCoordinate(loc.latitude, loc.longitude)
-  const [servicePrices, staffProfiles, couponTemplates, orders, optionalUser] = await Promise.all([
+  const [servicePrices, staffProfiles, couponTemplates, orders, optionalUser, userCoupons] = await Promise.all([
     listServicePrices(false),
     safeCollectionData('staff_profiles', (col) => col.where({ auditStatus: 'approved' }).orderBy('updatedAt', 'desc')),
     safeCollectionData('coupon_templates', (col) => col.where({ enabled: true }).orderBy('sortOrder', 'asc')),
     safeCollectionData('orders', (col) => col.orderBy('createdAt', 'desc')),
-    getOptionalUser(openid).catch(() => null)
+    getOptionalUser(openid).catch(() => null),
+    openid ? safeCollectionData('user_coupons', (col) => col.where({ openid })) : Promise.resolve([])
   ])
 
   const sittersWithUser = await Promise.all(staffProfiles.slice(0, 30).map(withSitterUserProfile))
@@ -1148,6 +1149,11 @@ async function getHomePageData(openid, data = {}) {
 
   const completedCount = orders.filter((order) => order.status === 'completed').length
   const reviewCount = await safeCollectionCount('service_reviews', { status: 'visible' })
+  const claimedNewbieTemplateIds = new Set((userCoupons || [])
+    .filter((coupon) => coupon.status !== 'void')
+    .map((coupon) => coupon.templateId || (coupon.templateSnapshot && coupon.templateSnapshot.templateId))
+    .filter(Boolean))
+  const newbieCoupons = couponTemplates.filter((coupon) => coupon.newbieOnly === true && !claimedNewbieTemplateIds.has(coupon._id))
 
   return {
     settings: {
@@ -1160,14 +1166,7 @@ async function getHomePageData(openid, data = {}) {
       priceText: `¥${item.price}起`
     })),
     featuredSitters,
-    coupons: couponTemplates.slice(0, 3).map((coupon) => ({
-      _id: coupon._id,
-      name: coupon.name || '新人优惠券',
-      discountAmount: Number(coupon.discountAmount || 0),
-      minOrderAmount: Number(coupon.minOrderAmount || 0),
-      displayTag: coupon.displayTag || '限时福利',
-      ruleText: coupon.minOrderAmount > 0 ? `满${coupon.minOrderAmount}减${coupon.discountAmount}` : `立减${coupon.discountAmount}`
-    })),
+    coupons: newbieCoupons.slice(0, 3).map(formatHomeCoupon),
     repeatOrder: repeatOrder ? {
       _id: repeatOrder._id,
       serviceSummary: repeatOrder.serviceSummary || '上门宠护',
@@ -1610,6 +1609,18 @@ async function grantRetroCards(openid, userId, delta, sourceType, sourceId, reas
     data: { userId: userId || user._id, openid, delta: amount, balance, sourceType: sourceType || '', sourceId: sourceId || '', reason: reason || '', createdAt: time }
   })
   return { balance }
+}
+
+function formatHomeCoupon(coupon) {
+  return {
+    _id: coupon._id,
+    name: coupon.name || '新人优惠券',
+    discountAmount: Number(coupon.discountAmount || 0),
+    minOrderAmount: Number(coupon.minOrderAmount || 0),
+    displayTag: coupon.displayTag || '新人专享',
+    claimNotice: coupon.claimNotice || '',
+    ruleText: coupon.minOrderAmount > 0 ? `满${coupon.minOrderAmount}减${coupon.discountAmount}` : `立减${coupon.discountAmount}`
+  }
 }
 
 async function issueCouponToTargetUser(template, targetUser, adminMeta = {}) {
@@ -3474,6 +3485,16 @@ const handlers = {
         .sort((a, b) => String(a.validTo || '').localeCompare(String(b.validTo || '')))
     }
 
+    if (action === 'claimNewbieCoupon') {
+      const user = await getUser(openid)
+      const templateId = safeText(data.templateId).trim()
+      if (!templateId) throw new Error('请选择新人优惠券')
+      const template = (await db.collection('coupon_templates').doc(templateId).get()).data
+      if (!template || template.enabled === false || template.newbieOnly !== true) throw new Error('新人优惠券不可领取')
+      const issued = await issueCouponToTargetUser(template, user)
+      return { _id: issued._id, templateId, status: 'available', templateSnapshot: issued.templateSnapshot, validFrom: issued.validFrom, validTo: issued.validTo }
+    }
+
     if (action === 'listApplicableCoupons') {
       await getUser(openid)
       let pet = null
@@ -5031,6 +5052,7 @@ const handlers = {
         displayTag: safeText(data.displayTag).trim(),
         claimNotice: safeText(data.claimNotice).trim(),
         useNotice: safeText(data.useNotice).trim(),
+        newbieOnly: data.newbieOnly === true,
         enabled: data.enabled !== false,
         totalIssueLimit: Math.max(Math.round(Number(data.totalIssueLimit || 0)), 0),
         perUserLimit: Math.max(Math.round(Number(data.perUserLimit || 1)), 1),

@@ -39,6 +39,7 @@ Page({
     servicePrices: [],
     featuredSitters: [],
     coupons: [],
+    claimingCouponId: '',
     repeatOrder: null,
     recentOrders: [],
     assuranceItems: [],
@@ -83,6 +84,28 @@ Page({
     ensureLogin({ content: '登录后可预约服务、管理宠物和查看订单。' })
       .then(() => wx.navigateTo({ url }))
       .catch(() => {})
+  },
+
+  claimNewbieCoupon(e) {
+    const templateId = e.currentTarget.dataset.id
+    if (!templateId || this.data.claimingCouponId) return
+    ensureLogin({ content: '登录后可领取新人优惠券。' })
+      .then(() => {
+        this.setData({ claimingCouponId: templateId })
+        return callFunction('coupon', 'claimNewbieCoupon', { templateId })
+      })
+      .then(() => {
+        wx.showToast({ title: '已领取' })
+        this.setData({
+          claimingCouponId: '',
+          coupons: this.data.coupons.filter((item) => item._id !== templateId)
+        })
+        this.loadHomePageData()
+      })
+      .catch((err) => {
+        this.setData({ claimingCouponId: '' })
+        showError(err)
+      })
   },
 
   applySavedLocation() {

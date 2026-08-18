@@ -35,6 +35,13 @@
     <input type="number" placeholder="总发放上限，0为不限" value="{{form.totalIssueLimit}}" data-field="totalIssueLimit" bindinput="input" />
     <input type="number" placeholder="排序序号" value="{{form.sortOrder}}" data-field="sortOrder" bindinput="input" />
     <view class="between switch-row">
+      <view>
+        <view class="strong">新人专属优惠券</view>
+        <view class="muted">开启后会在首页“新人优惠”展示，需用户手动领取</view>
+      </view>
+      <switch checked="{{form.newbieOnly}}" bindchange="toggleNewbieOnly" />
+    </view>
+    <view class="between switch-row">
       <view class="strong">启用模板</view>
       <switch checked="{{form.enabled}}" bindchange="toggleEnabled" />
     </view>
@@ -100,7 +107,7 @@
       <view style="flex:1;">
         <view class="strong">{{item.name}}</view>
         <view class="muted">满 ¥{{item.minOrderAmount}} 减 ¥{{item.discountAmount}} · {{item.validType === 'fixed_range' ? (item.validFromFixed + ' ~ ' + item.validToFixed) : (item.validDays + '天有效')}}</view>
-        <view class="muted">{{item.displayTag || '无标签'}} · 已发 {{item.issuedCount || 0}} 张 · 每人 {{item.perUserLimit}} 张</view>
+        <view class="muted">{{item.displayTag || '无标签'}} · {{item.newbieOnly ? '新人专属 · ' : ''}}已发 {{item.issuedCount || 0}} 张 · 每人 {{item.perUserLimit}} 张</view>
         <view class="muted" wx:if="{{item.claimNotice}}">领取说明：{{item.claimNotice}}</view>
       </view>
       <view class="badge">{{item.enabled ? '启用' : '停用'}}</view>
