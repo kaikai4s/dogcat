@@ -1561,6 +1561,25 @@ function getCouponValidRange(template, time = now()) {
   }
 }
 
+async function getRewardMailRetroCardGrant(openid, sourceId) {
+  const log = (await db.collection('retro_card_logs').where({ openid, sourceType: 'reward_mail', sourceId }).limit(1).get()).data[0]
+  if (!log) return null
+  return { balance: Number(log.balance || 0), delta: Number(log.delta || 0) }
+}
+
+async function resetRewardClaimResultField(mailId) {
+  const command = db.command || {}
+  if (typeof command.remove === 'function') {
+    await db.collection('reward_mails').doc(mailId).update({ data: { rewardClaimResult: command.remove() } })
+    return
+  }
+  if (typeof command.set === 'function') {
+    await db.collection('reward_mails').doc(mailId).update({ data: { rewardClaimResult: command.set({}) } })
+    return
+  }
+  await db.collection('reward_mails').doc(mailId).update({ data: { rewardClaimResult: {} } })
+}
+
 async function grantRetroCards(openid, userId, delta, sourceType, sourceId, reason) {
   const userRes = await db.collection('users').where({ openid }).limit(1).get()
   const user = userRes.data[0]
@@ -1806,6 +1825,82 @@ async function assertAdminRoleChangeAllowed(target, roles, currentOpenid) {
     const admins = (usersRes.data || []).filter((user) => user.status !== 'deleted' && Array.isArray(user.roles) && user.roles.includes('admin'))
     if (admins.length <= 1) throw new Error('至少保留一个管理员')
   }
+}
+
+async function assertUserDeleteAllowed(target, currentOpenid, message = '不能删除自己的账号') {
+  if (target.openid === currentOpenid) throw new Error(message)
+  const targetRoles = Array.isArray(target.roles) ? target.roles : []
+  if (targetRoles.includes('admin')) {
+    const usersRes = await db.collection('users').get()
+    const admins = (usersRes.data || []).filter((user) => user.status !== 'deleted' && Array.isArray(user.roles) && user.roles.includes('admin'))
+    if (admins.length <= 1) throw new Error('至少保留一个管理员')
+  }
+}
+
+async function updateByQuery(collectionName, where, buildUpdate) {
+  const res = await db.collection(collectionName).where(where).get()
+  const list = res.data || []
+  await Promise.all(list.map((item) => db.collection(collectionName).doc(item._id).update({ data: typeof buildUpdate === 'function' ? buildUpdate(item) : buildUpdate })))
+  return list.length
+}
+
+async function cleanupUserPersonalData(targetOpenid) {
+  const cleanup = {}
+  const openidWhere = { openid: targetOpenid }
+  for (const name of ['pets', 'user_addresses', 'home_security', 'sitter_favorites', 'user_coupons', 'reward_mails', 'user_checkins', 'retro_card_logs', 'point_logs', 'lottery_records']) {
+    cleanup[name] = await removeByQuery(name, openidWhere)
+  }
+  cleanup.userInvitesAsInviter = await removeByQuery('user_invites', { inviterOpenid: targetOpenid })
+  cleanup.userInvitesAsInvited = await removeByQuery('user_invites', { invitedOpenid: targetOpenid })
+  const staffProfiles = (await db.collection('staff_profiles').where({ openid: targetOpenid }).get()).data || []
+  await Promise.all(staffProfiles.map((profile) => db.collection('staff_profiles').doc(profile._id).update({ data: { auditStatus: 'rejected', auditRemark: '用户已删除', isFeatured: false, featuredAt: '', featuredByOpenid: '', updatedAt: now() } })))
+  cleanup.staffProfilesMarkedDeleted = staffProfiles.length
+  const reviews = (await db.collection('service_reviews').where({ clientOpenid: targetOpenid }).get()).data || []
+  await Promise.all(reviews.map((review) => db.collection('service_reviews').doc(review._id).update({ data: { clientName: '已删除用户', updatedAt: now() } })))
+  cleanup.reviewsAnonymized = reviews.length
+  return cleanup
+}
+
+async function detachUserFromHistoricalRecords(targetOpenid, deletedAt) {
+  const cleanup = {}
+  cleanup.ordersAsClient = await updateByQuery('orders', { clientOpenid: targetOpenid }, { deletedClientOpenid: targetOpenid, clientOpenid: '', clientUserId: '', clientDeletedAt: deletedAt, updatedAt: deletedAt })
+  cleanup.ordersAsStaff = await updateByQuery('orders', { staffOpenid: targetOpenid }, { deletedStaffOpenid: targetOpenid, staffOpenid: '', staffUserId: '', staffDeletedAt: deletedAt, updatedAt: deletedAt })
+  cleanup.ordersAsRequestedStaff = await updateByQuery('orders', { requestedStaffOpenid: targetOpenid }, { deletedRequestedStaffOpenid: targetOpenid, requestedStaffOpenid: '', updatedAt: deletedAt })
+  cleanup.incidentsAsClient = await updateByQuery('order_incidents', { clientOpenid: targetOpenid }, { deletedClientOpenid: targetOpenid, clientOpenid: '', updatedAt: deletedAt })
+  cleanup.incidentsAsStaff = await updateByQuery('order_incidents', { staffOpenid: targetOpenid }, { deletedStaffOpenid: targetOpenid, staffOpenid: '', updatedAt: deletedAt })
+  cleanup.reviewsAsClient = await updateByQuery('service_reviews', { clientOpenid: targetOpenid }, { deletedClientOpenid: targetOpenid, clientOpenid: '', clientUserId: '', clientName: '已删除用户', updatedAt: deletedAt })
+  cleanup.reviewsAsStaff = await updateByQuery('service_reviews', { staffOpenid: targetOpenid }, { deletedStaffOpenid: targetOpenid, staffOpenid: '', staffUserId: '', updatedAt: deletedAt })
+  cleanup.checkinLogsAsStaff = await updateByQuery('checkin_logs', { staffOpenid: targetOpenid }, { deletedStaffOpenid: targetOpenid, staffOpenid: '', staffUserId: '', updatedAt: deletedAt })
+  cleanup.trackLogsAsStaff = await updateByQuery('track_logs', { staffOpenid: targetOpenid }, { deletedStaffOpenid: targetOpenid, staffOpenid: '', staffUserId: '', updatedAt: deletedAt })
+  cleanup.unlockLogsAsStaff = await updateByQuery('unlock_code_logs', { staffOpenid: targetOpenid }, { deletedStaffOpenid: targetOpenid, staffOpenid: '', staffUserId: '', updatedAt: deletedAt })
+  return cleanup
+}
+
+function parseOpenidList(value) {
+  if (Array.isArray(value)) return value.map((item) => safeText(item).trim()).filter(Boolean)
+  return safeText(value).split(/[\s,，;；]+/).map((item) => item.trim()).filter(Boolean)
+}
+
+async function resolveRewardMailTargets(data = {}) {
+  const targetType = safeText(data.targetType).trim() || 'openid_list'
+  const usersRes = await db.collection('users').where({ status: 'active' }).get()
+  const users = usersRes.data || []
+  if (targetType === 'all_active') return { targetType, users }
+  if (targetType === 'role') {
+    const role = safeText(data.role).trim()
+    if (!['client', 'staff', 'admin'].includes(role)) throw new Error('请选择有效角色')
+    return { targetType, role, users: users.filter((user) => Array.isArray(user.roles) && user.roles.includes(role)) }
+  }
+  if (targetType === 'member_level') {
+    const targetLevelIds = normalizeTargetLevelIds(data.targetLevelIds)
+    if (!targetLevelIds.length) throw new Error('请选择至少一个会员段位')
+    const targetLevels = await resolveTargetLevels(targetLevelIds)
+    if (!targetLevels.length) throw new Error('所选会员段位不存在')
+    return { targetType, targetLevelIds, targetLevelNamesSnapshot: targetLevels.map((level) => level.name), users: users.filter((user) => targetLevelIds.includes(user.memberLevel || '')) }
+  }
+  const openids = Array.from(new Set(parseOpenidList(data.openids)))
+  if (!openids.length) throw new Error('请输入至少一个用户 openid')
+  return { targetType: 'openid_list', openids, users: users.filter((user) => openids.includes(user.openid)) }
 }
 
 async function getOrderForAccess(openid, orderId) {
@@ -3488,6 +3583,7 @@ const handlers = {
       const reward = mail.reward || {}
       let pointsResult = null
       let couponResult = null
+      let retroCardResult = null
       if (reward.type === 'coupon') {
         const templateId = safeText(reward.couponTemplateId).trim()
         if (!templateId) throw new Error('奖励优惠券不存在')
@@ -3496,6 +3592,13 @@ const handlers = {
           adminUserId: safeText(mail.sentByAdminUserId).trim(),
           adminOpenid: safeText(mail.sentByAdminOpenid).trim()
         })
+      } else if (reward.type === 'retro_card') {
+        const count = Math.max(Math.round(Number(reward.count || 0)), 0)
+        if (!count) throw new Error('补签卡奖励数量无效')
+        retroCardResult = await getRewardMailRetroCardGrant(openid, id)
+        if (!retroCardResult) {
+          retroCardResult = await grantRetroCards(openid, user._id, count, 'reward_mail', id, safeText(mail.title).trim() || '奖励邮件补签卡')
+        }
       } else {
         const delta = Math.max(Math.round(Number(reward.points || 0)), 0)
         if (delta > 0) {
@@ -3507,10 +3610,13 @@ const handlers = {
         claimedAt: now(),
         rewardClaimResult: {
           pointsDelta: pointsResult ? pointsResult.delta : 0,
-          couponId: couponResult ? couponResult._id : ''
+          couponId: couponResult ? couponResult._id : '',
+          retroCardCountDelta: retroCardResult ? Math.max(Math.round(Number(reward.count || 0)), 0) : 0,
+          retroCardBalance: retroCardResult ? retroCardResult.balance : 0
         },
         updatedAt: now()
       }
+      await resetRewardClaimResultField(id)
       await db.collection('reward_mails').doc(id).update({ data: updated })
       return formatRewardMail({ ...mail, ...updated })
     }
@@ -4707,28 +4813,10 @@ const handlers = {
     if (action === 'deleteUser') {
       const targetOpenid = safeText(data.openid).trim()
       if (!targetOpenid) throw new Error('缺少用户 openid')
-      if (targetOpenid === openid) throw new Error('不能删除自己的账号')
       const target = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
       if (!target) throw new Error('用户不存在')
-      const targetRoles = Array.isArray(target.roles) ? target.roles : []
-      if (targetRoles.includes('admin')) {
-        const usersRes = await db.collection('users').get()
-        const admins = (usersRes.data || []).filter((user) => user.status !== 'deleted' && Array.isArray(user.roles) && user.roles.includes('admin'))
-        if (admins.length <= 1) throw new Error('至少保留一个管理员')
-      }
-      const cleanup = {}
-      const openidWhere = { openid: targetOpenid }
-      for (const name of ['pets', 'user_addresses', 'home_security', 'sitter_favorites', 'user_coupons', 'reward_mails', 'user_checkins', 'retro_card_logs', 'point_logs', 'lottery_draw_logs']) {
-        cleanup[name] = await removeByQuery(name, openidWhere)
-      }
-      cleanup.userInvitesAsInviter = await removeByQuery('user_invites', { inviterOpenid: targetOpenid })
-      cleanup.userInvitesAsInvited = await removeByQuery('user_invites', { invitedOpenid: targetOpenid })
-      const staffProfiles = (await db.collection('staff_profiles').where({ openid: targetOpenid }).get()).data || []
-      await Promise.all(staffProfiles.map((profile) => db.collection('staff_profiles').doc(profile._id).update({ data: { auditStatus: 'rejected', auditRemark: '用户已删除', isFeatured: false, featuredAt: '', featuredByOpenid: '', updatedAt: now() } })))
-      cleanup.staffProfilesMarkedDeleted = staffProfiles.length
-      const reviews = (await db.collection('service_reviews').where({ clientOpenid: targetOpenid }).get()).data || []
-      await Promise.all(reviews.map((review) => db.collection('service_reviews').doc(review._id).update({ data: { clientName: '已删除用户', updatedAt: now() } })))
-      cleanup.reviewsAnonymized = reviews.length
+      await assertUserDeleteAllowed(target, openid)
+      const cleanup = await cleanupUserPersonalData(targetOpenid)
       const time = now()
       const update = {
         status: 'deleted',
@@ -4747,6 +4835,19 @@ const handlers = {
       await db.collection('users').doc(target._id).update({ data: update })
       await logAdmin(admin, 'user', targetOpenid, 'deleteUser', { cleanup })
       return { openid: targetOpenid, cleanup, user: safeUserSummary({ ...target, ...update }) }
+    }
+    if (action === 'hardDeleteUser') {
+      const targetOpenid = safeText(data.openid).trim()
+      if (!targetOpenid) throw new Error('缺少用户 openid')
+      const target = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
+      if (!target) throw new Error('用户不存在')
+      await assertUserDeleteAllowed(target, openid, '不能彻底删除自己的账号')
+      const time = now()
+      const cleanup = await cleanupUserPersonalData(targetOpenid)
+      cleanup.historicalRecordsDetached = await detachUserFromHistoricalRecords(targetOpenid, time)
+      await db.collection('users').doc(target._id).remove()
+      await logAdmin(admin, 'user', targetOpenid, 'hardDeleteUser', { userId: target._id, cleanup })
+      return { openid: targetOpenid, userId: target._id, cleanup }
     }
     if (action === 'listStaffProfiles') {
       const auditStatus = safeText(data.auditStatus).trim()
@@ -5153,7 +5254,7 @@ const handlers = {
             sentByAdminOpenid: openid,
             readAt: null,
             claimedAt: null,
-            rewardClaimResult: null,
+            rewardClaimResult: {},
             createdAt: time,
             updatedAt: time
           }
@@ -5162,6 +5263,43 @@ const handlers = {
       }
       await logAdmin(admin, 'reward_mail', title, 'publishRewardMailByLevels', { targetLevelIds, targetLevelNamesSnapshot, rewardType, issued })
       return { issued, skipped: 0, targetLevelIds, targetLevelNamesSnapshot }
+    }
+    if (action === 'publishRetroCardMail') {
+      const count = Math.max(Math.round(Number(data.count || 0)), 0)
+      if (!count) throw new Error('补签卡数量必须大于 0')
+      const target = await resolveRewardMailTargets(data)
+      if (!target.users.length) throw new Error('没有符合条件的用户')
+      const title = safeText(data.title).trim() || '补签卡奖励到账'
+      const content = safeText(data.content).trim() || `你获得 ${count} 张补签卡，请及时领取。`
+      const reward = { type: 'retro_card', count }
+      const time = now()
+      let issued = 0
+      for (const targetUser of target.users) {
+        await db.collection('reward_mails').add({
+          data: {
+            userId: targetUser._id,
+            openid: targetUser.openid,
+            targetType: target.targetType,
+            targetOpenids: target.openids || [],
+            targetRole: target.role || '',
+            targetLevelIds: target.targetLevelIds || [],
+            targetLevelNamesSnapshot: target.targetLevelNamesSnapshot || [],
+            title,
+            content,
+            reward,
+            sentByAdminUserId: admin._id,
+            sentByAdminOpenid: openid,
+            readAt: null,
+            claimedAt: null,
+            rewardClaimResult: {},
+            createdAt: time,
+            updatedAt: time
+          }
+        })
+        issued++
+      }
+      await logAdmin(admin, 'reward_mail', title, 'publishRetroCardMail', { targetType: target.targetType, openids: target.openids || [], role: target.role || '', targetLevelIds: target.targetLevelIds || [], targetLevelNamesSnapshot: target.targetLevelNamesSnapshot || [], count, issued })
+      return { issued, eligibleCount: target.users.length, targetType: target.targetType, count }
     }
     if (action === 'saveLotteryActivity') {
       const name = safeText(data.name).trim()

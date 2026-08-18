@@ -42,6 +42,7 @@
       <button class="mini-btn" data-openid="{{item.openid}}" bindtap="editUser">编辑资料</button>
       <button class="mini-btn" wx:if="{{item.status !== 'deleted'}}" data-openid="{{item.openid}}" bindtap="toggleUserStatus">{{item.status === 'disabled' ? '启用' : '禁用'}}</button>
       <button class="mini-btn danger" wx:if="{{item.status !== 'deleted'}}" data-openid="{{item.openid}}" bindtap="deleteUser">删除用户</button>
+      <button class="mini-btn danger" wx:if="{{item.status === 'deleted'}}" data-openid="{{item.openid}}" bindtap="hardDeleteUser">彻底删除</button>
     </view>
   </view>
 

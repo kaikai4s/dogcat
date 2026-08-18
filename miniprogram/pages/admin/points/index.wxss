@@ -1,1 +1,31 @@
 /* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+
+.picker-line {
+  min-height: 88rpx;
+  padding: 0 24rpx;
+  border-radius: 20rpx;
+  background: #fff7fa;
+  display: flex;
+  align-items: center;
+  color: #2b2528;
+  margin-bottom: 18rpx;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 150rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 20rpx;
+  background: #fff7fa;
+  box-sizing: border-box;
+  margin-bottom: 18rpx;
+}
+
+.level-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  margin: 8rpx 28rpx 18rpx 0;
+  color: #2b2528;
+  font-size: 28rpx;
+}

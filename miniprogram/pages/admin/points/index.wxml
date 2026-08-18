@@ -14,6 +14,27 @@
   </view>
 
   <view class="card form-card">
+    <view class="subtitle">发送补签卡邮件</view>
+    <picker mode="selector" range="{{retroMailTargetTypes}}" range-key="label" value="{{retroMailTargetIndex}}" bindchange="changeRetroMailTarget">
+      <view class="picker-line">发送目标：{{retroMailTargetTypes[retroMailTargetIndex].label}}</view>
+    </picker>
+    <textarea wx:if="{{retroMailForm.targetType === 'openid_list'}}" class="textarea" placeholder="用户 openid，多个可换行或逗号分隔" value="{{retroMailForm.openids}}" data-field="openids" bindinput="retroMailInput" />
+    <picker wx:if="{{retroMailForm.targetType === 'role'}}" mode="selector" range="{{retroMailRoles}}" range-key="label" value="{{retroMailRoleIndex}}" bindchange="changeRetroMailRole">
+      <view class="picker-line">角色：{{retroMailRoles[retroMailRoleIndex].label}}</view>
+    </picker>
+    <checkbox-group wx:if="{{retroMailForm.targetType === 'member_level'}}" bindchange="changeRetroMailLevels">
+      <label class="level-check" wx:for="{{retroMailMemberLevels}}" wx:key="_id">
+        <checkbox value="{{item._id}}" checked="{{item.checked}}" />
+        <text>{{item.name}}</text>
+      </label>
+    </checkbox-group>
+    <input type="number" placeholder="补签卡数量" value="{{retroMailForm.count}}" data-field="count" bindinput="retroMailInput" />
+    <input placeholder="邮件标题" value="{{retroMailForm.title}}" data-field="title" bindinput="retroMailInput" />
+    <textarea class="textarea" placeholder="邮件内容（可选）" value="{{retroMailForm.content}}" data-field="content" bindinput="retroMailInput" />
+    <button class="primary" bindtap="sendRetroCardMail">发送到奖励邮箱</button>
+  </view>
+
+  <view class="card form-card">
     <view class="subtitle">流水查询</view>
     <input placeholder="用户 openid（留空查全部）" value="{{filterOpenid}}" bindinput="filterInput" />
     <button class="ghost" bindtap="search">查询</button>

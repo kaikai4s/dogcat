@@ -125,6 +125,35 @@ Page({
     })
   },
 
+  hardDeleteUser(e) {
+    const openid = e.currentTarget.dataset.openid
+    if (!openid) return
+    wx.showModal({
+      title: '彻底删除用户',
+      content: '彻底删除会移除账号记录，并让该微信下次登录成为全新用户；旧订单会保留在后台，但会与该 openid 脱钩。该操作不可恢复，是否继续？',
+      confirmText: '继续',
+      confirmColor: '#f4436b',
+      success: (first) => {
+        if (!first.confirm) return
+        wx.showModal({
+          title: '最终确认',
+          content: '彻底删除后可重新触发新人邀请奖励，历史订单不再属于新账号。确认彻底删除？',
+          confirmText: '彻底删除',
+          confirmColor: '#f4436b',
+          success: (second) => {
+            if (!second.confirm) return
+            callFunction('admin', 'hardDeleteUser', { openid })
+              .then(() => {
+                wx.showToast({ title: '已彻底删除', icon: 'none' })
+                this.load({ reset: true })
+              })
+              .catch(showError)
+          }
+        })
+      }
+    })
+  },
+
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return

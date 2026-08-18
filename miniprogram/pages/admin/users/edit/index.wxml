@@ -60,6 +60,7 @@
 
     <button class="primary" loading="{{saving}}" disabled="{{saving || user.status === 'deleted'}}" bindtap="save">保存修改</button>
     <button class="danger-btn" wx:if="{{user.status !== 'deleted'}}" bindtap="deleteUser">删除用户</button>
+    <button class="danger-btn" wx:if="{{user.status === 'deleted'}}" bindtap="hardDeleteUser">彻底删除</button>
   </view>
 
   <view wx:if="{{user && !loading}}" class="card">

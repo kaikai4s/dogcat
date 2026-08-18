@@ -14,6 +14,9 @@ function rewardSummary(item) {
     const coupon = reward.couponSnapshot || {}
     return coupon.name || '奖励优惠券'
   }
+  if (item.rewardType === 'retro_card' || reward.type === 'retro_card') {
+    return `补签卡 ${Number(reward.count || 0)} 张`
+  }
   return `${Number(reward.points || 0)} 积分`
 }
 
