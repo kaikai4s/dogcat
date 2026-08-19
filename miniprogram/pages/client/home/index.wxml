@@ -132,7 +132,7 @@
   <view class="card history-stats-card" wx:if="{{homePage.modules.historyStats}}">
     <view class="card-header between">
       <text class="header-title">历史服务记录</text>
-      <view class="header-more" data-url="/pages/client/orders/list/index" bindtap="goProtected"><text>查看更多服务记录和评价</text><text class="arrow">›</text></view>
+      <view class="header-more" data-url="/pages/client/orders/public-list/index" bindtap="go"><text>查看更多服务记录和评价</text><text class="arrow">›</text></view>
     </view>
     <view class="stats-three-grid">
       <view class="stat-box yellow-bg"><view class="stat-icon-circle yellow">✅</view><view class="stat-num yellow-text">{{statsData.completedCount}} <text class="stat-unit">单</text></view><view class="stat-desc">已完成服务</view></view>
@@ -177,6 +177,7 @@
       <view class="recent-photo-grid" wx:if="{{item.checkinPhotos.length}}">
         <image class="recent-checkin-photo" wx:for="{{item.checkinPhotos}}" wx:key="_id" src="{{item.mediaFileId}}" mode="aspectFill" />
       </view>
+      <view class="muted" wx:elif="{{item.checkinPhotosHidden}}">用户已设置隐藏公共展示打卡照片。</view>
       <view class="recent-more">查看脱敏订单详情 ›</view>
     </view>
   </view>

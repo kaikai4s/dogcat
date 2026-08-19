@@ -1,0 +1,71 @@
+.public-order-card {
+  background: linear-gradient(135deg, #fff7fa 0%, #ffffff 100%);
+}
+
+.service-line {
+  margin-top: 18rpx;
+  color: #2b2528;
+  font-size: 32rpx;
+  font-weight: 900;
+}
+
+.people-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+
+.people-grid > view {
+  padding: 18rpx;
+  border-radius: 22rpx;
+  background: #fff;
+  border: 1rpx solid #f5e8ee;
+}
+
+.review-box {
+  margin-top: 20rpx;
+  padding: 18rpx;
+  border-radius: 22rpx;
+  background: #fffaf0;
+}
+
+.stars {
+  margin-bottom: 10rpx;
+  color: #ffad1f;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.stars text {
+  margin-left: 12rpx;
+  color: #6b3d00;
+}
+
+.checkin-line {
+  margin-top: 20rpx;
+  color: #6b6268;
+  font-size: 24rpx;
+}
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.checkin-photo {
+  width: 100%;
+  height: 150rpx;
+  border-radius: 20rpx;
+  background: #fff0f5;
+}
+
+.detail-link {
+  margin-top: 20rpx;
+  color: #e05c8b;
+  font-size: 25rpx;
+  font-weight: 800;
+  text-align: right;
+}

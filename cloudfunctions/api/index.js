@@ -1048,12 +1048,17 @@ function publicOrderNo(order = {}) {
   return `订单 ${value.slice(-6)}`
 }
 
+function shouldHidePublicCheckinPhotos(user = {}) {
+  return user.hidePublicCheckinPhotos === true || (user.privacySettings && user.privacySettings.hidePublicCheckinPhotos === true)
+}
+
 function toHomeOrderActivity(order = {}, context = {}) {
   const review = context.review || null
   const checkins = Array.isArray(context.checkins) ? context.checkins : []
+  const hideCheckinPhotos = context.hideCheckinPhotos === true
   const staffProfile = context.staffProfile || {}
   const clientSnapshot = order.clientSnapshot || {}
-  const checkinPhotos = checkins
+  const checkinPhotos = hideCheckinPhotos ? [] : checkins
     .map((item) => ({
       _id: item._id || `${order._id}_${item.eventType || 'checkin'}`,
       eventType: item.eventType || '',
@@ -1085,7 +1090,8 @@ function toHomeOrderActivity(order = {}, context = {}) {
     } : null,
     checkinCount: checkins.length,
     checkinSummary: checkins.slice(0, 4).map((item) => checkinEventText(item.eventType)).join(' · '),
-    checkinPhotos
+    checkinPhotos,
+    checkinPhotosHidden: hideCheckinPhotos
   }
 }
 
@@ -1096,13 +1102,14 @@ async function getHomePageData(openid, data = {}) {
     longitude: Number(data.longitude || 0)
   }
   const hasLoc = hasCoordinate(loc.latitude, loc.longitude)
-  const [servicePrices, staffProfiles, couponTemplates, orders, optionalUser, userCoupons] = await Promise.all([
+  const [servicePrices, staffProfiles, couponTemplates, orders, optionalUser, userCoupons, users] = await Promise.all([
     listServicePrices(false),
     safeCollectionData('staff_profiles', (col) => col.where({ auditStatus: 'approved' }).orderBy('updatedAt', 'desc')),
     safeCollectionData('coupon_templates', (col) => col.where({ enabled: true }).orderBy('sortOrder', 'asc')),
     safeCollectionData('orders', (col) => col.orderBy('createdAt', 'desc')),
     getOptionalUser(openid).catch(() => null),
-    openid ? safeCollectionData('user_coupons', (col) => col.where({ openid })) : Promise.resolve([])
+    openid ? safeCollectionData('user_coupons', (col) => col.where({ openid })) : Promise.resolve([]),
+    safeCollectionData('users')
   ])
 
   const sittersWithUser = await Promise.all(staffProfiles.slice(0, 30).map(withSitterUserProfile))
@@ -1140,11 +1147,13 @@ async function getHomePageData(openid, data = {}) {
     .filter((checkin) => recentOrderIds.includes(checkin.orderId))
     .reduce((map, checkin) => ({ ...map, [checkin.orderId]: [...(map[checkin.orderId] || []), checkin] }), {})
   const staffProfileMap = staffProfiles.reduce((map, profile) => ({ ...map, [profile._id]: profile }), {})
+  const userMap = users.reduce((map, user) => ({ ...map, [user.openid]: user }), {})
   const recentOrders = (await Promise.all(completedOrders.map(attachClientSnapshot)))
     .map((order) => toHomeOrderActivity(order, {
       review: reviewMap[order._id],
       checkins: (checkinMap[order._id] || []).sort((a, b) => toTimeValue(a.createdAt || a.recordedAt) - toTimeValue(b.createdAt || b.recordedAt)),
-      staffProfile: staffProfileMap[order.staffProfileId || order.requestedStaffProfileId] || {}
+      staffProfile: staffProfileMap[order.staffProfileId || order.requestedStaffProfileId] || {},
+      hideCheckinPhotos: shouldHidePublicCheckinPhotos(userMap[order.clientOpenid])
     }))
 
   const completedCount = orders.filter((order) => order.status === 'completed').length
@@ -2965,6 +2974,21 @@ const handlers = {
       return { ...user, ...payload }
     }
 
+    if (action === 'updatePrivacySettings') {
+      const user = await getUser(openid)
+      const privacySettings = {
+        ...(user.privacySettings || {}),
+        hidePublicCheckinPhotos: data.hidePublicCheckinPhotos === true
+      }
+      const payload = {
+        privacySettings,
+        hidePublicCheckinPhotos: privacySettings.hidePublicCheckinPhotos,
+        updatedAt: now()
+      }
+      await db.collection('users').doc(user._id).update({ data: payload })
+      return { ...user, ...payload }
+    }
+
     if (action === 'bindPhone') {
       const user = await getUser(openid)
       const phone = String(data.phone || '').trim()
@@ -3451,13 +3475,43 @@ const handlers = {
       const checkins = await db.collection('checkin_logs').where({ orderId: data.id }).orderBy('createdAt', 'asc').get()
       return { order, tracks: tracks.data, checkins: checkins.data }
     }
+    if (action === 'listPublicCompletedOrders') {
+      const pageSize = Math.min(Math.max(Math.round(Number(data.pageSize || 20)), 1), 50)
+      const ordersRes = await db.collection('orders').where({ status: ORDER_STATUS.COMPLETED }).orderBy('completedAt', 'desc').limit(pageSize).get()
+      const orders = ordersRes.data || []
+      const orderIds = orders.map((order) => order._id).filter(Boolean)
+      const [reviews, checkins, staffProfiles, users] = await Promise.all([
+        orderIds.length ? safeCollectionData('service_reviews', (col) => col.where({ status: 'visible' })) : Promise.resolve([]),
+        orderIds.length ? safeCollectionData('checkin_logs') : Promise.resolve([]),
+        safeCollectionData('staff_profiles'),
+        safeCollectionData('users')
+      ])
+      const reviewMap = reviews
+        .filter((review) => orderIds.includes(review.orderId))
+        .reduce((map, review) => ({ ...map, [review.orderId]: review }), {})
+      const checkinMap = checkins
+        .filter((checkin) => orderIds.includes(checkin.orderId))
+        .reduce((map, checkin) => ({ ...map, [checkin.orderId]: [...(map[checkin.orderId] || []), checkin] }), {})
+      const staffProfileMap = staffProfiles.reduce((map, profile) => ({ ...map, [profile._id]: profile }), {})
+      const userMap = users.reduce((map, user) => ({ ...map, [user.openid]: user }), {})
+      return Promise.all(orders.map(async (order) => {
+        const displayOrder = await attachClientSnapshot(order)
+        return toHomeOrderActivity(displayOrder, {
+          review: reviewMap[order._id] || null,
+          checkins: (checkinMap[order._id] || []).sort((a, b) => toTimeValue(a.createdAt || a.recordedAt) - toTimeValue(b.createdAt || b.recordedAt)),
+          staffProfile: staffProfileMap[order.staffProfileId || order.requestedStaffProfileId] || {},
+          hideCheckinPhotos: shouldHidePublicCheckinPhotos(userMap[order.clientOpenid])
+        })
+      }))
+    }
     if (action === 'getPublicCompletedOrderDetail') {
       const orderId = safeText(data.id || data.orderId).trim()
       const order = (await db.collection('orders').doc(orderId).get()).data
       if (!order || order.status !== ORDER_STATUS.COMPLETED) throw new Error('订单不可查看')
-      const [reviewRes, checkinsRes] = await Promise.all([
+      const [reviewRes, checkinsRes, clientRes] = await Promise.all([
         db.collection('service_reviews').where({ orderId, status: 'visible' }).limit(1).get(),
-        db.collection('checkin_logs').where({ orderId }).orderBy('createdAt', 'asc').get()
+        db.collection('checkin_logs').where({ orderId }).orderBy('createdAt', 'asc').get(),
+        order.clientOpenid ? db.collection('users').where({ openid: order.clientOpenid }).limit(1).get() : Promise.resolve({ data: [] })
       ])
       const staffProfileId = order.staffProfileId || order.requestedStaffProfileId || ''
       let staffProfile = {}
@@ -3468,7 +3522,8 @@ const handlers = {
       return toHomeOrderActivity(displayOrder, {
         review: reviewRes.data[0] || null,
         checkins: checkinsRes.data || [],
-        staffProfile
+        staffProfile,
+        hideCheckinPhotos: shouldHidePublicCheckinPhotos(clientRes.data[0])
       })
     }
     throw new Error('未知 order 操作')

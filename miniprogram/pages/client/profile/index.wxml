@@ -10,6 +10,16 @@
     </view>
   </view>
 
+  <view class="settings-card privacy-card" wx:if="{{!isGuest}}">
+    <view class="settings-row">
+      <view>
+        <view>隐藏公共展示打卡照片</view>
+        <view class="muted" style="margin-top:6rpx;">开启后，其他人在首页和服务评价列表看不到你订单的打卡照片</view>
+      </view>
+      <switch checked="{{hidePublicCheckinPhotos}}" disabled="{{savingPrivacy}}" bindchange="togglePublicCheckinPhotos" />
+    </view>
+  </view>
+
   <view class="settings-card privacy-card">
     <view class="settings-row interactive" bindtap="openInfoCollection">
       <view>个人信息收集清单</view>

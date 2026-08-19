@@ -25,7 +25,9 @@ Page({
     retroCardCount: 0,
     levelDescription: '',
     rewardMailUnreadCount: 0,
-    rewardMailUnclaimedCount: 0
+    rewardMailUnclaimedCount: 0,
+    hidePublicCheckinPhotos: false,
+    savingPrivacy: false
   },
 
   onLoad(query = {}) {
@@ -64,7 +66,9 @@ Page({
       retroCardCount: 0,
       levelDescription: '',
       rewardMailUnreadCount: 0,
-      rewardMailUnclaimedCount: 0
+      rewardMailUnclaimedCount: 0,
+      hidePublicCheckinPhotos: false,
+      savingPrivacy: false
     })
   },
 
@@ -75,7 +79,8 @@ Page({
       isGuest: false,
       userName: user.nickname || phone || '宠物主',
       userMeta: phone ? `已绑定手机 ${phone}` : '欢迎回来，今天也要安心宠护',
-      avatarUrl: user.avatarUrl || ''
+      avatarUrl: user.avatarUrl || '',
+      hidePublicCheckinPhotos: user.hidePublicCheckinPhotos === true || (user.privacySettings && user.privacySettings.hidePublicCheckinPhotos === true)
     })
   },
 
@@ -243,6 +248,23 @@ Page({
 
   openPrivacySummary() {
     wx.showModal({ title: '隐私政策概要', content: '我们仅在完成预约、服务履约、安全验证和客服支持所需范围内处理信息。你可以在个人资料、地址、宠物档案等页面查看、修改或删除相关信息。', showCancel: false })
+  },
+
+  togglePublicCheckinPhotos(e) {
+    if (this.data.isGuest) return
+    const hidePublicCheckinPhotos = e.detail.value === true
+    this.setData({ savingPrivacy: true, hidePublicCheckinPhotos })
+    callFunction('auth', 'updatePrivacySettings', { hidePublicCheckinPhotos })
+      .then((user) => {
+        setCachedUser(user)
+        this.applyUser(user)
+        wx.showToast({ title: '已保存', icon: 'none' })
+      })
+      .catch((err) => {
+        this.setData({ hidePublicCheckinPhotos: !hidePublicCheckinPhotos })
+        showError(err)
+      })
+      .finally(() => this.setData({ savingPrivacy: false }))
   },
 
   logout() {

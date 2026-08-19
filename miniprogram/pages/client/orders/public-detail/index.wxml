@@ -40,6 +40,7 @@
         <view class="muted">{{item.eventText}}</view>
       </view>
     </view>
+    <view class="muted" wx:elif="{{detail.checkinPhotosHidden}}">用户已设置隐藏公共展示打卡照片。</view>
     <view class="muted" wx:else>本单暂无公开打卡照片。</view>
   </view>
 </view>

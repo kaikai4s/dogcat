@@ -20,6 +20,7 @@
     "pages/client/orders/tracking/index",
     "pages/client/orders/report/index",
     "pages/client/orders/public-detail/index",
+    "pages/client/orders/public-list/index",
     "pages/client/orders/review/index",
     "pages/client/incidents/list/index",
     "pages/client/incidents/create/index",

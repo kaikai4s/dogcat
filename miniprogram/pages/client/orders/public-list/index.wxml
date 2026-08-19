@@ -1,0 +1,44 @@
+<view class="page">
+  <view class="dashboard-header">
+    <view class="badge">真实服务记录</view>
+    <view class="title">服务评价</view>
+    <view class="tip">展示已完成订单的脱敏评价与打卡记录，不包含地址、经纬度、门牌和联系方式。</view>
+  </view>
+
+  <view wx:if="{{orders.length}}">
+    <view class="card public-order-card" wx:for="{{orders}}" wx:key="_id">
+      <view class="between" style="align-items:flex-start;gap:18rpx;">
+        <view style="flex:1;min-width:0;">
+          <view class="strong">{{item.orderTitle}} · {{item.petName}}</view>
+          <view class="muted" style="margin-top:8rpx;">{{item.startTime || item.completedAt}}</view>
+        </view>
+        <view class="badge">{{item.statusText}}</view>
+      </view>
+
+      <view class="service-line">{{item.serviceSummary}}</view>
+      <view class="people-grid">
+        <view><view class="muted">宠物主</view><view class="strong">{{item.clientName}}</view></view>
+        <view><view class="muted">宠托师</view><view class="strong">{{item.staffName}}</view></view>
+      </view>
+
+      <view class="review-box" wx:if="{{item.review}}">
+        <view class="stars">★★★★★ <text>{{item.review.ratingText}}</text></view>
+        <view class="muted" wx:if="{{item.review.content}}">“{{item.review.content}}”</view>
+        <view class="tag-row" wx:if="{{item.review.tags.length}}"><text class="tag-pill yellow-tag" wx:for="{{item.review.tags}}" wx:key="*this">{{item}}</text></view>
+      </view>
+      <view class="muted" wx:else>该订单暂无公开评价。</view>
+
+      <view class="checkin-line" wx:if="{{item.checkinCount}}">打卡 {{item.checkinCount}} 次 · {{item.checkinSummary}}</view>
+      <view class="photo-grid" wx:if="{{item.checkinPhotos.length}}">
+        <image class="checkin-photo" wx:for="{{item.checkinPhotos}}" wx:key="_id" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" data-order-id="{{item._id}}" catchtap="previewPhoto" />
+      </view>
+      <view class="muted" wx:elif="{{item.checkinPhotosHidden}}">用户已设置隐藏公共展示打卡照片。</view>
+      <view class="muted" wx:else>本单暂无公开打卡照片。</view>
+
+      <view class="detail-link" data-id="{{item._id}}" bindtap="detail">查看脱敏订单详情 ›</view>
+    </view>
+  </view>
+
+  <view class="empty" wx:elif="{{!loading}}">暂无公开服务评价</view>
+  <view class="empty" wx:else>加载中...</view>
+</view>
