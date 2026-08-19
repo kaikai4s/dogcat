@@ -17,8 +17,8 @@
 }
 
 .day-card.active {
-  border-color: #f43f6b;
-  box-shadow: 0 12rpx 28rpx rgba(244, 63, 107, 0.14);
+  border-color: var(--theme-primary);
+  box-shadow: 0 12rpx 28rpx var(--theme-shadow);
 }
 
 .day-card.rest {
@@ -28,7 +28,7 @@
 .slot-text {
   margin: 10rpx 0;
   font-size: 26rpx;
-  color: #2b2528;
+  color: var(--theme-title);
   font-weight: 600;
 }
 
@@ -45,13 +45,13 @@
   padding: 16rpx 20rpx;
   margin-bottom: 12rpx;
   border-radius: 14rpx;
-  background: #fff7fa;
-  color: #2b2528;
+  background: var(--theme-bg-soft);
+  color: var(--theme-title);
   font-size: 26rpx;
 }
 
 .remove {
-  color: #f43f6b;
+  color: var(--theme-primary);
   font-size: 24rpx;
 }
 

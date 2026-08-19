@@ -1,5 +1,6 @@
 const { callFunction, showError, requirePrivacyAuthorize } = require('../../../utils/cloud')
 const { getSelectedLocation } = require('../../../utils/cloud')
+const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 function hasCoordinate(latitude, longitude) {
   return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && Math.abs(Number(latitude)) > 0.000001 && Math.abs(Number(longitude)) > 0.000001
@@ -69,6 +70,7 @@ function applyWorkbenchDistances(orders, location) {
 
 Page({
   data: {
+    themeClass: 'theme-day',
     directOrders: [],
     nearbyOrders: [],
     locationReady: false,
@@ -86,12 +88,18 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
     const justUpdatedWorkbenchLocation = this.lastWorkbenchLocationUpdatedAt && Date.now() - this.lastWorkbenchLocationUpdatedAt < 10000
     if (this.choosingWorkbenchLocation || justUpdatedWorkbenchLocation) return
     // 每次进入页面，工作台位置默认重置为宠托师个人中心的固定服务地址
     this.setData({ customLocation: null }, () => {
       this.initStaffHome()
     })
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   initStaffHome() {

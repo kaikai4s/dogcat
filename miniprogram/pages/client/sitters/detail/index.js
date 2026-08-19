@@ -1,9 +1,11 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 Page({
   data: {
+    themeClass: 'theme-day',
     id: '',
     sitter: null,
     sectionHomeUrl: '',
@@ -15,7 +17,13 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
     this.load()
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   load() {

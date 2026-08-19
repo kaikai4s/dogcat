@@ -2,16 +2,22 @@ const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { withOrderText, withCheckinText } = require('../../../../utils/format')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 Page({
-  data: { id: '', report: null, sectionHomeUrl: '', canGoBack: false },
+  data: { themeClass: 'theme-day', id: '', report: null, sectionHomeUrl: '', canGoBack: false },
   onLoad(q) {
     this.setData({ ...createPageNav(q), id: q.id })
   },
   onShow() {
+    this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看服务报告。' })
       .then(() => this.load())
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+  },
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
   load() {
     callFunction('order', 'getServiceReport', { id: this.data.id })

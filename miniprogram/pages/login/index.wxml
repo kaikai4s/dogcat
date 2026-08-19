@@ -1,4 +1,4 @@
-<view class="login-simple">
+<view class="login-simple {{themeClass}} {{fontClass}}">
   <view class="login-title">VIP 宠护</view>
   <view class="login-subtitle">登录后可预约上门喂猫、遛狗，并查看轨迹与服务报告。</view>
 

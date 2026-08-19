@@ -2,6 +2,7 @@ const { callFunction, showError, requestSubscribeTemplates } = require('../../..
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { getSelectedLocation, chooseSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const COUPON_CONTEXT_KEY = 'vip_pet_coupon_select_context'
 const SELECTED_COUPON_KEY = 'vip_pet_selected_coupon'
@@ -91,6 +92,7 @@ function decoratePets(pets, selectedPetId) {
 
 Page({
   data: {
+    themeClass: 'theme-day',
     pets: [],
     serviceOptions: [],
     durationOptions,
@@ -137,10 +139,16 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
     this.consumeSelectedCoupon()
     ensureLogin({ content: '登录后可创建预约订单。' })
       .then(() => this.loadPageData())
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   consumeSelectedCoupon() {

@@ -1,5 +1,6 @@
 const { callFunction, showError, getSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const ALL = '全部'
 const sortOptions = [
@@ -20,6 +21,7 @@ function areaTags(sitter) {
 
 Page({
   data: {
+    themeClass: 'theme-day',
     keyword: '',
     activeCity: ALL,
     activeArea: ALL,
@@ -34,7 +36,13 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
     this.loadFacets()
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   loadFacets() {

@@ -1,4 +1,4 @@
-<view class="page admin-admins-page">
+<view class="{{themeClass}} {{fontClass}} page admin-admins-page">
   <view class="dashboard-header">
     <view class="badge">权限管理</view>
     <view class="title">管理员管理</view>

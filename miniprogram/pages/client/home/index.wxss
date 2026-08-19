@@ -1,6 +1,6 @@
 /* 首页新增转化模块 */
 .home-cta-card {
-  background: linear-gradient(135deg, #ff6b94 0%, #ff9f7c 100%);
+  background: linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-primary-2) 100%);
   color: #fff;
 }
 
@@ -29,7 +29,7 @@
   padding: 22rpx 26rpx;
   border-radius: 999rpx;
   background: #fff;
-  color: #f43f6b;
+  color: var(--theme-primary);
   font-size: 28rpx;
   font-weight: 900;
 }
@@ -66,8 +66,8 @@
   margin-right: 18rpx;
   padding: 24rpx;
   border-radius: 28rpx;
-  background: #fff7fa;
-  border: 1rpx solid rgba(244, 63, 107, 0.12);
+  background: var(--theme-bg-soft);
+  border: 1rpx solid var(--theme-border);
 }
 
 .service-price-icon {
@@ -79,7 +79,7 @@
 .assurance-title {
   font-size: 28rpx;
   font-weight: 850;
-  color: #2b2528;
+  color: var(--theme-text);
 }
 
 .service-price-desc,
@@ -87,7 +87,7 @@
 .coupon-rule {
   min-height: 64rpx;
   margin-top: 8rpx;
-  color: #969196;
+  color: var(--theme-muted);
   font-size: 23rpx;
   line-height: 1.4;
 }
@@ -95,7 +95,7 @@
 .service-price-text,
 .coupon-amount {
   margin-top: 14rpx;
-  color: #f43f6b;
+  color: var(--theme-primary);
   font-size: 32rpx;
   font-weight: 900;
 }
@@ -121,7 +121,7 @@
   padding: 4rpx 12rpx;
   border-radius: 999rpx;
   background: rgba(244, 63, 107, 0.1);
-  color: #f43f6b;
+  color: var(--theme-primary);
   font-size: 20rpx;
   font-weight: 800;
 }
@@ -131,7 +131,7 @@
   line-height: 52rpx;
   margin-top: 14rpx;
   border-radius: 999rpx;
-  background: #f43f6b;
+  background: var(--theme-primary);
   color: #fff;
   font-size: 22rpx;
   font-weight: 800;
@@ -181,7 +181,7 @@
   margin-top: 20rpx;
   padding: 24rpx;
   border-radius: 30rpx;
-  background: linear-gradient(180deg, #fff7fa 0%, #ffffff 100%);
+  background: linear-gradient(180deg, var(--theme-bg-soft) 0%, #ffffff 100%);
   border: 1rpx solid rgba(244, 63, 107, 0.1);
   box-shadow: 0 12rpx 34rpx rgba(116, 91, 101, 0.08);
 }
@@ -206,7 +206,7 @@
   height: 14rpx;
   margin-right: 10rpx;
   border-radius: 50%;
-  background: #f43f6b;
+  background: var(--theme-primary);
   box-shadow: 0 0 0 8rpx rgba(244, 63, 107, 0.1);
 }
 
@@ -258,7 +258,7 @@
 }
 
 .recent-more {
-  color: #f43f6b;
+  color: var(--theme-primary);
   font-weight: 850;
   text-align: right;
 }
@@ -316,5 +316,5 @@
 
 .lottery-float-card .lottery-btn {
   background: #ffffff;
-  color: #f43f6b;
+  color: var(--theme-primary);
 }

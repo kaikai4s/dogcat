@@ -1,4 +1,4 @@
-<view class="page" wx:if="{{staff}}">
+<view class="{{themeClass}} {{fontClass}} page" wx:if="{{staff}}">
   <view class="dashboard-header">
     <view class="badge">审核详情</view>
     <view class="title">{{staff.realName}}</view>

@@ -1,4 +1,4 @@
-<view class="page admin-sitters-page">
+<view class="{{themeClass}} {{fontClass}} page admin-sitters-page">
   <view class="dashboard-header">
     <view class="badge">人员管理</view>
     <view class="title">宠托师管理</view>

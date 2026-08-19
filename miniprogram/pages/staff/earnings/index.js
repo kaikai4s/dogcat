@@ -1,6 +1,7 @@
 const { callFunction, showError } = require('../../../utils/cloud')
 const { navMethods } = require('../../../utils/nav')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
+const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 function money(value) {
   return Number(value || 0).toFixed(2)
@@ -12,6 +13,7 @@ function withMoney(item) {
 
 Page({
   data: {
+    themeClass: 'theme-day',
     balance: null,
     earnings: [],
     withdraws: [],
@@ -22,7 +24,13 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
     this.load()
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   load() {

@@ -1,6 +1,7 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { withOrderText } = require('../../../../utils/format')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const tabs = [
   { label: '全部', value: 'all' },
@@ -12,15 +13,21 @@ const tabs = [
 
 Page({
   data: {
+    themeClass: 'theme-day',
     tabs,
     activeStatus: 'all',
     allOrders: [],
     orders: []
   },
   onShow() {
+    this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看订单。' })
       .then(() => this.load())
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+  },
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
   load() {
     callFunction('order', 'listOrders', { role: 'client' })

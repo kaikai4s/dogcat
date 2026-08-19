@@ -1,4 +1,4 @@
-<view class="page" wx:if="{{order}}">
+<view class="page {{themeClass}} {{fontClass}}" wx:if="{{order}}">
   <view class="dashboard-header">
     <view class="badge">任务详情</view>
     <view class="title">{{order.petName}}</view>

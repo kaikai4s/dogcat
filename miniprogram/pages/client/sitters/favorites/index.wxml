@@ -1,4 +1,4 @@
-<view class="page sitter-page">
+<view class="page sitter-page {{themeClass}} {{fontClass}}">
   <view class="dashboard-header">
     <view class="badge">我的关注</view>
     <view class="title">收藏的宠托师</view>

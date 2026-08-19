@@ -1,5 +1,5 @@
 .public-order-hero {
-  background: linear-gradient(135deg, #fff7fa 0%, #ffffff 100%);
+  background: linear-gradient(135deg, var(--theme-bg-soft) 0%, var(--theme-card-bg) 100%);
 }
 
 .public-order-title-row {
@@ -8,7 +8,7 @@
 
 .public-service-name {
   margin-top: 22rpx;
-  color: #2b2528;
+  color: var(--theme-title);
   font-size: 34rpx;
   font-weight: 900;
 }
@@ -23,7 +23,7 @@
 .public-people-grid > view {
   padding: 20rpx;
   border-radius: 24rpx;
-  background: #ffffff;
+  background: var(--theme-card-bg);
   border: 1rpx solid #f5e8ee;
 }
 
@@ -54,6 +54,6 @@
   width: 100%;
   height: 210rpx;
   border-radius: 24rpx;
-  background: #fff0f5;
+  background: var(--theme-primary-soft);
   margin-bottom: 10rpx;
 }

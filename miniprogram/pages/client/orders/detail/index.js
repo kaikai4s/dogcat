@@ -3,6 +3,7 @@ const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { withOrderText } = require('../../../../utils/format')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 function getRefundText(order = {}) {
   if (!order.refundStatus || order.refundStatus === 'not_required') return ''
@@ -13,12 +14,17 @@ function getRefundText(order = {}) {
 }
 
 Page({
-  data: { id: '', order: null, timeline: [], review: null, paying: false, cancelling: false, sectionHomeUrl: '', canGoBack: false },
+  data: { themeClass: 'theme-day', id: '', order: null, timeline: [], review: null, paying: false, cancelling: false, sectionHomeUrl: '', canGoBack: false },
   onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }) },
   onShow() {
+    this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看订单详情。' })
       .then(() => this.load())
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+  },
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
   load() {
     Promise.all([

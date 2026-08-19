@@ -1,25 +1,25 @@
 .order-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16rpx; margin-top: 18rpx; }
 .three-actions { grid-template-columns: repeat(3, 1fr); }
-.ghost-mini { background: #fff7fa; color: #f43f6b; border: 2rpx solid rgba(244, 63, 107, 0.18); }
+.ghost-mini { background: var(--theme-bg-soft); color: var(--theme-primary); border: 2rpx solid var(--theme-border); }
 
 /* 独立城市选择栏 */
 .city-selector-btn {
   display: flex;
   align-items: center;
   gap: 8rpx;
-  background: #ffffff;
+  background: var(--theme-card-bg);
   padding: 10rpx 20rpx;
   border-radius: 30rpx;
   box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.06);
   font-size: 26rpx;
-  color: #333333;
+  color: var(--theme-text);
   font-weight: 600;
   border: 1rpx solid #eee;
 }
 
 .city-icon { font-size: 26rpx; }
-.city-name { font-size: 26rpx; color: #333; }
-.arrow-down { font-size: 20rpx; color: #888; margin-left: 4rpx; }
+.city-name { font-size: 26rpx; color: var(--theme-text); }
+.arrow-down { font-size: 20rpx; color: var(--theme-muted); margin-left: 4rpx; }
 
 /* 筛选触发展示按钮 */
 .filter-trigger-btn {
@@ -35,21 +35,21 @@
 }
 
 .filter-trigger-btn.active {
-  background: #fff0f3;
-  color: #f43f6b;
+  background: var(--theme-primary-soft);
+  color: var(--theme-primary);
   font-weight: 600;
 }
 
 .active-dot {
   width: 12rpx;
   height: 12rpx;
-  background: #f43f6b;
+  background: var(--theme-primary);
   border-radius: 50%;
 }
 
 /* 下拉筛选面板 */
 .filter-dropdown-panel {
-  background: #ffffff;
+  background: var(--theme-card-bg);
   border-radius: 16rpx;
   padding: 20rpx;
   margin-top: 16rpx;
@@ -87,9 +87,9 @@
 }
 
 .filter-chip.selected {
-  background: #fff0f3;
-  color: #f43f6b;
-  border-color: #f43f6b;
+  background: var(--theme-primary-soft);
+  color: var(--theme-primary);
+  border-color: var(--theme-primary);
   font-weight: 600;
 }
 
@@ -138,7 +138,7 @@
 }
 
 .confirm-btn {
-  background: #f43f6b !important;
+  background: var(--theme-primary) !important;
   color: #ffffff !important;
   border-radius: 30rpx !important;
   font-size: 24rpx !important;

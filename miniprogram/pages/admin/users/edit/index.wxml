@@ -1,4 +1,4 @@
-<view class="page admin-user-edit-page">
+<view class="{{themeClass}} {{fontClass}} page admin-user-edit-page">
   <view class="dashboard-header">
     <view class="badge">用户管理</view>
     <view class="title">编辑用户资料</view>

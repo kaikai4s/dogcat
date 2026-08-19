@@ -41,18 +41,18 @@
 .tag-option {
   padding: 16rpx 24rpx;
   border-radius: 999rpx;
-  background: #fff7fa;
+  background: var(--theme-bg-soft);
   color: #6f6670;
   font-size: 25rpx;
   font-weight: 750;
-  border: 2rpx solid rgba(244, 63, 107, 0.1);
+  border: 2rpx solid var(--theme-border);
 }
 
 .tag-option.active {
-  color: #f43f6b;
-  border-color: #f43f6b;
+  color: var(--theme-primary);
+  border-color: var(--theme-primary);
   background: #ffe8ef;
-  box-shadow: 0 8rpx 20rpx rgba(244, 63, 107, 0.12);
+  box-shadow: 0 8rpx 20rpx var(--theme-shadow);
 }
 
 .textarea-wrap {
@@ -67,7 +67,7 @@
   padding-bottom: 58rpx;
   border-radius: 24rpx;
   background: #fff8fa;
-  color: #2b2528;
+  color: var(--theme-text);
   font-size: 28rpx;
   line-height: 1.55;
 }

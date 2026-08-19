@@ -1,4 +1,5 @@
 const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, ensureLogin } = require('../../../utils/cloud')
+const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 const defaultModules = {
   quickBooking: true,
@@ -14,6 +15,7 @@ const defaultModules = {
 
 Page({
   data: {
+    themeClass: 'theme-day',
     locationName: '选择位置',
     locationTip: '点击选择当前位置或常用地址',
     latitude: 0,
@@ -57,6 +59,7 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
     this.applySavedLocation()
     this.loadHomePageData()
   },
@@ -70,6 +73,11 @@ Page({
   onUnload() {
     this.stopAllVideos()
     this.clearLotteryFloatTimer()
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   go(e) {

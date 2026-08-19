@@ -1,12 +1,18 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { withOrderText } = require('../../../../utils/format')
 const { getSelectedLocation } = require('../../../../utils/cloud')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 Page({
-  data: { orders: [] },
+  data: { themeClass: 'theme-day', orders: [] },
   onShow() {
+    this.applyCurrentTheme()
     const location = getSelectedLocation()
     const data = location ? { latitude: location.latitude, longitude: location.longitude } : {}
     callFunction('staff', 'listStaffOrders', data).then((orders) => this.setData({ orders: orders.map(withOrderText) })).catch(showError)
+  },
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
   detail(e) { wx.navigateTo({ url: '/pages/staff/orders/detail/index?id=' + e.currentTarget.dataset.id }) },
   openNavigation(e) {

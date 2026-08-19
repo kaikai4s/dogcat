@@ -1,5 +1,6 @@
 const { callFunction, showError, chooseSelectedLocation } = require('../../../utils/cloud')
 const { withAuditText } = require('../../../utils/format')
+const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 const statusText = {
   pending: '资料已提交，等待平台审核',
@@ -17,6 +18,7 @@ const radiusOptions = [
 
 Page({
   data: {
+    themeClass: 'theme-day',
     form: {
       realName: '',
       phone: '',
@@ -33,6 +35,7 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
     callFunction('staff', 'getStaffProfile')
       .then((profile) => {
         if (!profile) return
@@ -49,6 +52,11 @@ Page({
         })
       })
       .catch(showError)
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   input(e) {

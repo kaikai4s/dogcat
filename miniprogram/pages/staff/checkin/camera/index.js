@@ -2,10 +2,18 @@ const { callFunction, showError, getServiceLocation } = require('../../../../uti
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask } = require('../../../../utils/offlineQueue')
 const { formatCheckinEvent } = require('../../../../utils/format')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 Page({
-  data: { orderId: '', eventType: '', eventTypeText: '', remark: '', mediaFileId: '', tempFilePath: '', submitting: false, sectionHomeUrl: '', canGoBack: false },
-  onLoad(q) { this.setData({ ...createPageNav(q), orderId: q.id, eventType: q.eventType, eventTypeText: formatCheckinEvent(q.eventType) }) },
+  data: { themeClass: 'theme-day', orderId: '', eventType: '', eventTypeText: '', remark: '', mediaFileId: '', tempFilePath: '', submitting: false, sectionHomeUrl: '', canGoBack: false },
+  onLoad(q) {
+    this.applyCurrentTheme()
+    this.setData({ ...createPageNav(q), orderId: q.id, eventType: q.eventType, eventTypeText: formatCheckinEvent(q.eventType) })
+  },
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
+  },
   input(e) { this.setData({ remark: e.detail.value }) },
   takePhoto() { const ctx = wx.createCameraContext(); ctx.takePhoto({ quality: 'high', success: (res) => { this.setData({ tempFilePath: res.tempImagePath }); this.upload(res.tempImagePath) }, fail: showError }) },
   upload(tempFilePath) { const cloudPath = 'checkins/' + this.data.orderId + '/' + Date.now() + '.jpg'; wx.cloud.uploadFile({ cloudPath, filePath: tempFilePath, success: (res) => this.setData({ mediaFileId: res.fileID }), fail: (error) => { this.setData({ tempFilePath }); showError(error) } }) },

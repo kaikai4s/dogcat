@@ -1,4 +1,4 @@
-<view class="page" wx:if="{{report}}">
+<view class="page {{themeClass}} {{fontClass}}" wx:if="{{report}}">
   <view class="dashboard-header">
     <view class="badge">完成报告</view>
     <view class="title">服务报告</view>

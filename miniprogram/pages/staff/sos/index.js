@@ -2,10 +2,18 @@ const { callFunction, showError } = require('../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../utils/nav')
 const { requireSelectedLocation } = require('../../../utils/cloud')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
+const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 Page({
-  data: { orderId: '', description: '', submitting: false, sectionHomeUrl: '', canGoBack: false },
-  onLoad(q) { this.setData({ ...createPageNav(q), orderId: q.id }) },
+  data: { themeClass: 'theme-day', orderId: '', description: '', submitting: false, sectionHomeUrl: '', canGoBack: false },
+  onLoad(q) {
+    this.applyCurrentTheme()
+    this.setData({ ...createPageNav(q), orderId: q.id })
+  },
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
+  },
   input(e) { this.setData({ description: e.detail.value }) },
   submit() {
     if (this.data.submitting) return

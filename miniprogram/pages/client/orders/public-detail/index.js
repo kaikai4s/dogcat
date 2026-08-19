@@ -1,8 +1,10 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 Page({
   data: {
+    themeClass: 'theme-day',
     id: '',
     detail: null,
     sectionHomeUrl: '',
@@ -10,8 +12,14 @@ Page({
   },
 
   onLoad(q) {
+    this.applyCurrentTheme()
     this.setData({ ...createPageNav(q), id: q.id || q.orderId || '' })
     this.load()
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   load() {

@@ -1,4 +1,6 @@
 const { envList } = require('../envList')
+const { getSavedThemeKey, saveTheme } = require('./theme')
+const { getSavedFontKey, saveFont } = require('./font')
 
 function getCloudEnv() {
   const app = getApp()
@@ -323,7 +325,13 @@ function setCachedUser(user) {
   globalData.isGuest = !user
   globalData.authChecked = true
   if (user && user.activeRole) globalData.activeRole = user.activeRole
-  if (user) wx.removeStorageSync(AUTH_LOGGED_OUT_KEY)
+  if (user) {
+    wx.removeStorageSync(AUTH_LOGGED_OUT_KEY)
+    const themeKey = user.themeKey || (user.preferences && user.preferences.themeKey)
+    const fontKey = user.fontKey || (user.preferences && user.preferences.fontKey)
+    if (themeKey) saveTheme(themeKey)
+    if (fontKey) saveFont(fontKey)
+  }
   return user || null
 }
 
@@ -380,7 +388,7 @@ function getCurrentUser(options = {}) {
 function loginWithWechat(extraData = {}) {
   wx.removeStorageSync(AUTH_LOGGED_OUT_KEY)
   const inviteData = getPendingInvitePayload()
-  return callFunction('auth', 'login', { ...inviteData, ...extraData }).then((user) => {
+  return callFunction('auth', 'login', { themeKey: getSavedThemeKey(), fontKey: getSavedFontKey(), ...inviteData, ...extraData }).then((user) => {
     clearPendingInvite()
     return setCachedUser(user)
   })

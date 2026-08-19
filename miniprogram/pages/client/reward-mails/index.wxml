@@ -1,4 +1,4 @@
-<view class="page">
+<view class="{{themeClass}} {{fontClass}} page">
   <view class="dashboard-header">
     <view class="badge">站内奖励</view>
     <view class="title">奖励邮箱</view>

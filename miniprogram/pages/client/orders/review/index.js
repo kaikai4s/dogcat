@@ -1,6 +1,7 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const tagOptions = [
   { label: '准时到达', selected: false },
@@ -15,6 +16,7 @@ const ratingTexts = ['', '很差', '不满意', '一般', '满意', '超出预�
 
 Page({
   data: {
+    themeClass: 'theme-day',
     id: '',
     rating: 5,
     ratingText: ratingTexts[5],
@@ -32,8 +34,14 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
     ensureLogin({ content: '登录后可评价订单。' })
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   chooseRating(e) {

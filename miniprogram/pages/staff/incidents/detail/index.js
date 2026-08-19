@@ -1,6 +1,7 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { withIncidentText } = require('../../../../utils/format')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 function uploadEvidence(filePath) {
   const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
@@ -25,6 +26,7 @@ function decorate(detail = {}) {
 
 Page({
   data: {
+    themeClass: 'theme-day',
     id: '',
     detail: null,
     comment: '',
@@ -39,7 +41,13 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
     this.load()
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   load() {

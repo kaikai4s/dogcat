@@ -1,9 +1,27 @@
-<view class="settings-page">
+<view class="settings-page {{themeClass}} {{fontClass}}">
   <view class="settings-nav">
     <view class="settings-title">设置</view>
   </view>
 
   <view class="settings-card">
+    <picker range="{{themeOptions}}" range-key="label" value="{{themeIndex}}" disabled="{{savingTheme}}" bindchange="changeTheme">
+      <view class="settings-row interactive">
+        <view>
+          <view>主题切换</view>
+          <view class="muted" style="margin-top:6rpx;">切换后主颜色会同步变化</view>
+        </view>
+        <view class="settings-value">{{themeName}} ›</view>
+      </view>
+    </picker>
+    <picker range="{{fontOptions}}" range-key="label" value="{{fontIndex}}" disabled="{{savingFont}}" bindchange="changeFont">
+      <view class="settings-row interactive">
+        <view>
+          <view>字体设置</view>
+          <view class="muted" style="margin-top:6rpx;">选择后全局界面文字会同步变化</view>
+        </view>
+        <view class="settings-value">{{fontName}} ›</view>
+      </view>
+    </picker>
     <view class="settings-row interactive" bindtap="openAccountSafety">
       <view>账号安全</view>
       <view class="settings-arrow">›</view>

@@ -7,18 +7,18 @@ page {
 }
 
 .container {
-  font-family: PingFang SC;
+  font-family: inherit;
 }
 
 .title {
-  font-family: PingFang SC;
+  font-family: inherit;
   font-weight: 500;
   color: #000000;
   font-size: 44rpx;
   margin-bottom: 40rpx;
 }
 .function_title {
-  font-family: PingFang SC;
+  font-family: inherit;
   font-weight: 500;
   color: #000000;
   font-size: 36rpx;
@@ -29,7 +29,7 @@ page {
 
 .top_tip {
   font-size: 28rpx;
-  font-family: PingFang SC;
+  font-family: inherit;
   font-weight: 400;
   color: #888888;
   margin-bottom: 28rpx;
@@ -92,7 +92,7 @@ page {
   font-size: 32rpx;
   display: flex;
   align-items: center;
-  font-family: 'PingFang SC';
+  font-family: inherit;
   color: #000;
 }
 

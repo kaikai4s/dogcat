@@ -1,9 +1,11 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 Page({
   data: {
+    themeClass: 'theme-day',
     sitters: [],
     loading: false,
     sectionHomeUrl: '',
@@ -15,9 +17,15 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看关注的宠托师。' })
       .then(() => this.load())
       .catch(() => wx.redirectTo({ url: '/pages/client/sitters/list/index' }))
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   load() {

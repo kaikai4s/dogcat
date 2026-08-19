@@ -1,6 +1,6 @@
 <!--pages/exampleDetail/index.wxml-->
 <block wx:if="{{ type === 'getOpenId' }}">
-  <view class="page-container">
+  <view class="page-container {{themeClass}} {{fontClass}}">
     <view class="title">功能介绍</view>
     <view class="info">云函数无需维护鉴权机制及登录票据，仅一行代码即可获得。</view>
     <view class="title">云函数获取OpenId示例</view>
@@ -24,7 +24,7 @@
   </view>
 </block>
 <block wx:if="{{ type === 'getMiniProgramCode' }}">
-  <view class="page-container">
+  <view class="page-container {{themeClass}} {{fontClass}}">
     <view class="title">功能介绍</view>
     <view class="info">可通过云函数免接口调用凭证，直接生成小程序码。</view>
     <view class="title">云函数获取小程序码示例</view>
@@ -51,7 +51,7 @@
 </block>
 
 <block wx:if="{{ type === 'createCollection' }}">
-  <view class="page-container">
+  <view class="page-container {{themeClass}} {{fontClass}}">
     <view class="title">功能介绍</view>
     <view class="info">集合为常用数据库中表的概念。云开发数据库支持自动备份、无损回档，并且QPS高达3千+。</view>
     <view class="title">如何体验</view>
@@ -65,7 +65,7 @@
 </block>
 
 <block wx:if="{{ type === 'selectRecord' }}">
-  <view class="page-container">
+  <view class="page-container {{themeClass}} {{fontClass}}">
     <view class="title">功能介绍</view>
     <view class="top_tip">体验查询记录能力，查询数据表中的销量数据。</view>
     <view class="box_text" wx:if="{{!record}}">销量数据将展示在这里</view>
@@ -111,7 +111,7 @@
 </block>
 
 <block wx:if="{{ type === 'uploadFile' }}">
-  <view class="page-container">
+  <view class="page-container {{themeClass}} {{fontClass}}">
     <view class="title">功能介绍</view>
     <view class="top_tip">多存储类型，仅需一个云函数即可完成上传。</view>
     <view class="title">文件上传示例</view>
@@ -136,7 +136,7 @@
 </block>
 
 <block wx:if="{{ type === 'model-guide'}}">
-  <view class="page-container">
+  <view class="page-container {{themeClass}} {{fontClass}}">
     <view class="title">功能介绍</view>
     <view class="top_tip">腾讯云开发提供 AI 对话能力，支持 Agent，大模型流式对话，可通过 Agent-UI 组件快速集成 AI 能力</view>
     <view class="title">集成 Agent-UI 组件指引</view>
@@ -162,7 +162,7 @@
 </block>
 
 <block wx:if="{{ type === 'cloudbaserun' }}">
-  <view class="page-container">
+  <view class="page-container {{themeClass}} {{fontClass}}">
     <view class="title">功能介绍</view>
     <view class="info">云托管 支持托管用任意语言和框架编写的容器化应用，为开发者提供高可用、自动弹性扩缩的云服务。</view>
     <view class="title">小程序调用云托管示例</view>
@@ -187,7 +187,7 @@
 </block>
 
 <block wx:if="{{ type === 'ai-assistant' }}">
-  <view class="page-container">
+  <view class="page-container {{themeClass}} {{fontClass}}">
     <view class="title">AI 智能开发小程序</view>
     <view class="info">连接 AI 开发工具与 MCP 开发小程序</view>
     

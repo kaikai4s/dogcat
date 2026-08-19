@@ -1,4 +1,4 @@
-<view class="page pet-edit-page">
+<view class="{{themeClass}} {{fontClass}} page pet-edit-page">
   <view class="dashboard-header">
     <view class="badge">爱宠资料</view>
     <view class="title">{{id ? '编辑宠物资料' : '添加自己的宠物'}}</view>

@@ -1,5 +1,6 @@
 const { callFunction, showError } = require('../../../utils/cloud')
 const { navMethods } = require('../../../utils/nav')
+const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 const hourLabels = Array.from({ length: 25 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
 
@@ -21,6 +22,7 @@ function enrichDay(day = {}) {
 
 Page({
   data: {
+    themeClass: 'theme-day',
     loading: false,
     calendar: [],
     weeklyScheduleText: '',
@@ -39,7 +41,13 @@ Page({
   ...navMethods,
 
   onLoad() {
+    this.applyCurrentTheme()
     this.loadCalendar()
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   loadCalendar() {

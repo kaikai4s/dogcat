@@ -1,11 +1,19 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { withOrderText } = require('../../../../utils/format')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 Page({
-  data: { id: '', order: null, sectionHomeUrl: '', canGoBack: false },
+  data: { themeClass: 'theme-day', id: '', order: null, sectionHomeUrl: '', canGoBack: false },
   onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }) },
-  onShow() { this.load() },
+  onShow() {
+    this.applyCurrentTheme()
+    this.load()
+  },
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
+  },
   load() { callFunction('order', 'getOrderDetail', { id: this.data.id }).then((order) => this.setData({ order: withOrderText(order) })).catch(showError) },
   previewPetPhoto() {
     const photo = this.data.order && this.data.order.petSnapshot && this.data.order.petSnapshot.avatarFileId

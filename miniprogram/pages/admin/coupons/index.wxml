@@ -1,4 +1,4 @@
-<view class="page">
+<view class="{{themeClass}} {{fontClass}} page">
   <view class="dashboard-header">
     <view class="badge">管理端</view>
     <view class="title">优惠券管理</view>

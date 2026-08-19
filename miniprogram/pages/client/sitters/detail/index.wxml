@@ -1,4 +1,4 @@
-<view class="page sitter-page" wx:if="{{sitter}}">
+<view class="page sitter-page {{themeClass}} {{fontClass}}" wx:if="{{sitter}}">
   <view class="sitter-hero">
     <view class="hero-topline">
       <view class="badge">宠托师详情</view>
@@ -45,8 +45,8 @@
   </view>
 
   <view class="card info-list" style="margin-top: 24rpx;">
-    <view style="font-weight: bold; font-size: 28rpx; margin-bottom: 12rpx; color: #2b2528;">⏰ 按周可预约时间段</view>
-    <view style="font-size: 26rpx; color: #555; line-height: 1.6; background: #fff5f8; padding: 20rpx; border-radius: 16rpx; border: 1rpx dashed #ffe4ec;">
+    <view style="font-weight: bold; font-size: 28rpx; margin-bottom: 12rpx; color: var(--theme-text);">⏰ 按周可预约时间段</view>
+    <view style="font-size: 26rpx; color: var(--theme-muted); line-height: 1.6; background: var(--theme-bg-soft); padding: 20rpx; border-radius: 16rpx; border: 1rpx dashed var(--theme-border);">
       {{sitter.weeklyScheduleText || '全天可预约'}}
     </view>
   </view>

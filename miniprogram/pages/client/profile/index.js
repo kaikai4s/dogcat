@@ -1,5 +1,7 @@
 const { callFunction, showError } = require('../../../utils/cloud')
 const { getCurrentUser, loginWithWechat, ensureLogin, setCachedUser, logoutCurrentUser } = require('../../../utils/cloud')
+const { themeOptions, applyTheme, saveTheme, getThemeState } = require('../../../utils/theme')
+const { fontOptions, applyFont, saveFont, getFontState } = require('../../../utils/font')
 
 const staffEntryMap = {
   none: { title: '申请成为宠托师', tip: '提交资料后等待平台审核' },
@@ -12,6 +14,18 @@ Page({
   data: {
     isGuest: true,
     showSettings: false,
+    themeOptions,
+    themeKey: 'day',
+    themeClass: 'theme-day',
+    themeIndex: 0,
+    themeName: '白天',
+    savingTheme: false,
+    fontOptions,
+    fontKey: 'system',
+    fontClass: 'font-system',
+    fontIndex: 0,
+    fontName: '系统默认',
+    savingFont: false,
     loadingLogin: false,
     staffProfile: null,
     staffEntryTitle: staffEntryMap.none.title,
@@ -36,18 +50,44 @@ Page({
 
   onShow() {
     wx.setNavigationBarTitle({ title: this.data.showSettings ? '设置' : '我的' })
+    this.applyCurrentTheme()
+    this.applyCurrentFont()
     getCurrentUser({ silent: true })
       .then((user) => {
         if (!user) {
           this.applyGuest()
           return
         }
+        this.syncUserTheme(user)
+        this.syncUserFont(user)
         this.applyUser(user)
         this.loadStaffProfile()
         this.loadPoints()
         this.loadRewardMailUnread()
       })
       .catch(() => this.applyGuest())
+  },
+
+  applyCurrentTheme(themeKey) {
+    const theme = applyTheme(themeKey)
+    this.setData(getThemeState(theme.value))
+  },
+
+  syncUserTheme(user) {
+    const themeKey = user && (user.themeKey || (user.preferences && user.preferences.themeKey))
+    if (themeKey) saveTheme(themeKey)
+    this.applyCurrentTheme(themeKey)
+  },
+
+  applyCurrentFont(fontKey) {
+    const font = applyFont(fontKey)
+    this.setData(getFontState(font.value))
+  },
+
+  syncUserFont(user) {
+    const fontKey = user && (user.fontKey || (user.preferences && user.preferences.fontKey))
+    if (fontKey) saveFont(fontKey)
+    this.applyCurrentFont(fontKey)
   },
 
   applyGuest() {
@@ -88,6 +128,8 @@ Page({
     this.setData({ loadingLogin: true })
     loginWithWechat()
       .then((user) => {
+        this.syncUserTheme(user)
+        this.syncUserFont(user)
         this.applyUser(user)
         this.loadStaffProfile()
         this.loadPoints()
@@ -248,6 +290,40 @@ Page({
 
   openPrivacySummary() {
     wx.showModal({ title: '隐私政策概要', content: '我们仅在完成预约、服务履约、安全验证和客服支持所需范围内处理信息。你可以在个人资料、地址、宠物档案等页面查看、修改或删除相关信息。', showCancel: false })
+  },
+
+  changeTheme(e) {
+    const option = themeOptions[Number(e.detail.value || 0)] || themeOptions[0]
+    const theme = saveTheme(option.value)
+    this.setData({ ...getThemeState(theme.value), savingTheme: true })
+    if (this.data.isGuest) {
+      this.setData({ savingTheme: false })
+      return
+    }
+    callFunction('auth', 'updateTheme', { themeKey: theme.value })
+      .then((user) => {
+        setCachedUser(user)
+        this.applyUser(user)
+      })
+      .catch(showError)
+      .finally(() => this.setData({ savingTheme: false }))
+  },
+
+  changeFont(e) {
+    const option = fontOptions[Number(e.detail.value || 0)] || fontOptions[0]
+    const font = saveFont(option.value)
+    this.setData({ ...getFontState(font.value), savingFont: true })
+    if (this.data.isGuest) {
+      this.setData({ savingFont: false })
+      return
+    }
+    callFunction('auth', 'updateFont', { fontKey: font.value })
+      .then((user) => {
+        setCachedUser(user)
+        this.applyUser(user)
+      })
+      .catch(showError)
+      .finally(() => this.setData({ savingFont: false }))
   },
 
   togglePublicCheckinPhotos(e) {

@@ -1,5 +1,5 @@
 <!--index.wxml-->
-<view class="container">
+<view class="container {{themeClass}} {{fontClass}}">
   <view class="title">快速了解云开发</view>
   <view class="top_tip">免鉴权接口调用 免部署后台 高并发</view>
   <view class="power" wx:key="title" wx:for="{{powerList}}" wx:for-item="power">

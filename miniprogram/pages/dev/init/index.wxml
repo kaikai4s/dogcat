@@ -1,4 +1,4 @@
-<view class="page">
+<view class="{{themeClass}} {{fontClass}} page">
   <view class="title">开发初始化</view>
   <view class="tip">仅开发期使用。上线前请从 app.json 移除此页面。</view>
 

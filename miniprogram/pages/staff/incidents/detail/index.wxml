@@ -1,4 +1,4 @@
-<view class="page" wx:if="{{detail}}">
+<view class="page {{themeClass}} {{fontClass}}" wx:if="{{detail}}">
   <view class="dashboard-header">
     <view class="badge">纠纷详情</view>
     <view class="title">{{detail.incident.title || detail.incident.incidentTypeText}}</view>

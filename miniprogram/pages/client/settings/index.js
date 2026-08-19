@@ -1,10 +1,24 @@
-const { getCurrentUser, logoutCurrentUser, ensureLogin, showError } = require('../../../utils/cloud')
+const { getCurrentUser, logoutCurrentUser, ensureLogin, showError, callFunction, setCachedUser } = require('../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../utils/nav')
+const { themeOptions, applyTheme, saveTheme, getThemeState } = require('../../../utils/theme')
+const { fontOptions, applyFont, saveFont, getFontState } = require('../../../utils/font')
 
 Page({
   data: {
     canGoBack: false,
     isGuest: true,
+    themeOptions,
+    themeKey: 'day',
+    themeClass: 'theme-day',
+    themeIndex: 0,
+    themeName: '白天',
+    savingTheme: false,
+    fontOptions,
+    fontKey: 'system',
+    fontClass: 'font-system',
+    fontIndex: 0,
+    fontName: '系统默认',
+    savingFont: false,
     userName: '游客',
     userMeta: '登录后可使用完整账号功能'
   },
@@ -14,6 +28,8 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
+    this.applyCurrentFont()
     getCurrentUser({ silent: true })
       .then((user) => {
         if (!user) {
@@ -24,6 +40,8 @@ Page({
           })
           return
         }
+        this.syncUserTheme(user)
+        this.syncUserFont(user)
         const rawPhone = String(user.phone || '')
         const phone = rawPhone ? `${rawPhone.slice(0, 3)}****${rawPhone.slice(-4)}` : ''
         this.setData({
@@ -33,6 +51,56 @@ Page({
         })
       })
       .catch(showError)
+  },
+
+  applyCurrentTheme(themeKey) {
+    const theme = applyTheme(themeKey)
+    this.setData(getThemeState(theme.value))
+  },
+
+  syncUserTheme(user) {
+    const themeKey = user && (user.themeKey || (user.preferences && user.preferences.themeKey))
+    if (themeKey) saveTheme(themeKey)
+    this.applyCurrentTheme(themeKey)
+  },
+
+  applyCurrentFont(fontKey) {
+    const font = applyFont(fontKey)
+    this.setData(getFontState(font.value))
+  },
+
+  syncUserFont(user) {
+    const fontKey = user && (user.fontKey || (user.preferences && user.preferences.fontKey))
+    if (fontKey) saveFont(fontKey)
+    this.applyCurrentFont(fontKey)
+  },
+
+  changeTheme(e) {
+    const option = themeOptions[Number(e.detail.value || 0)] || themeOptions[0]
+    const theme = saveTheme(option.value)
+    this.setData({ ...getThemeState(theme.value), savingTheme: true })
+    if (this.data.isGuest) {
+      this.setData({ savingTheme: false })
+      return
+    }
+    callFunction('auth', 'updateTheme', { themeKey: theme.value })
+      .then(setCachedUser)
+      .catch(showError)
+      .finally(() => this.setData({ savingTheme: false }))
+  },
+
+  changeFont(e) {
+    const option = fontOptions[Number(e.detail.value || 0)] || fontOptions[0]
+    const font = saveFont(option.value)
+    this.setData({ ...getFontState(font.value), savingFont: true })
+    if (this.data.isGuest) {
+      this.setData({ savingFont: false })
+      return
+    }
+    callFunction('auth', 'updateFont', { fontKey: font.value })
+      .then(setCachedUser)
+      .catch(showError)
+      .finally(() => this.setData({ savingFont: false }))
   },
 
   openAccountSafety() {

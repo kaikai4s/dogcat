@@ -1,4 +1,4 @@
-<view class="page" wx:if="{{evidence}}">
+<view class="{{themeClass}} {{fontClass}} page" wx:if="{{evidence}}">
   <view class="dashboard-header">
     <view class="badge">履约证据</view>
     <view class="title">证据链</view>

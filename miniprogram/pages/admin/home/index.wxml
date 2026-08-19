@@ -1,4 +1,4 @@
-<view class="page dashboard-page admin-home-page">
+<view class="{{themeClass}} {{fontClass}} page dashboard-page admin-home-page">
   <view class="dashboard-header">
     <view class="badge">管理端</view>
     <view class="title">运营控制台</view>

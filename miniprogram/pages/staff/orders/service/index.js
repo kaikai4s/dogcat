@@ -1,6 +1,7 @@
 const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, requestSubscribeTemplates } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, updateOfflineTask } = require('../../../../utils/offlineQueue')
+const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const TRACK_INTERVAL_MS = 60 * 1000
 const TRACK_MIN_DISTANCE_M = 50
@@ -40,6 +41,7 @@ function toTrackPoint(location) {
 
 Page({
   data: {
+    themeClass: 'theme-day',
     id: '',
     order: null,
     unlock: null,
@@ -56,8 +58,14 @@ Page({
   },
 
   onLoad(q) {
+    this.applyCurrentTheme()
     this.setData({ ...createPageNav(q), id: q.id })
     this.loadOrder()
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   onUnload() {

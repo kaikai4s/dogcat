@@ -1,4 +1,5 @@
 const { callFunction, showError, chooseSelectedLocation } = require('../../../utils/cloud')
+const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 const statusMap = {
   pending: { title: '审核中', tip: '资料已提交，请等待平台审核' },
@@ -28,6 +29,7 @@ const hourLabels = Array.from({ length: 25 }, (_, i) => `${String(i).padStart(2,
 
 Page({
   data: {
+    themeClass: 'theme-day',
     user: null,
     profile: null,
     displayName: '宠托师',
@@ -52,7 +54,13 @@ Page({
   },
 
   onShow() {
+    this.applyCurrentTheme()
     this.loadProfile()
+  },
+
+  applyCurrentTheme() {
+    const theme = applyTheme()
+    this.setData(getThemeState(theme.value))
   },
 
   loadProfile() {

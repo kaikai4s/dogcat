@@ -1,4 +1,4 @@
-<view class="ai-page">
+<view class="{{themeClass}} {{fontClass}} ai-page">
   <view class="ai-header">
     <view class="title">🤖 AI 宠护小助手</view>
     <view class="tip">智能解答养宠知识、饮食指导、行为习惯与服务安排问题</view>

@@ -1,4 +1,4 @@
-<view class="page sitter-page">
+<view class="page sitter-page {{themeClass}} {{fontClass}}">
   <view class="sitter-hero">
     <view class="hero-topline">
       <view class="badge">宠物主精选</view>

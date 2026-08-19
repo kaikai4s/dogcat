@@ -75,6 +75,16 @@ function defaultCheckinDays(monthKey) {
   return Array.from({ length: count }, (_, index) => ({ day: index + 1, rewardType: 'points', points: 5, couponTemplateId: '', couponSnapshot: null, title: `第${index + 1}天奖励`, desc: '签到奖励' }))
 }
 function safeText(value) { return value === undefined || value === null ? '' : String(value) }
+function isValidThemeKey(value) { return ['day', 'night', 'sunshine', 'warm'].includes(safeText(value).trim()) }
+function normalizeThemeKey(value) {
+  const key = safeText(value).trim()
+  return isValidThemeKey(key) ? key : 'day'
+}
+function isValidFontKey(value) { return ['system', 'rounded', 'clean', 'serif', 'cute'].includes(safeText(value).trim()) }
+function normalizeFontKey(value) {
+  const key = safeText(value).trim()
+  return isValidFontKey(key) ? key : 'system'
+}
 function safeNumber(value) {
   const normalized = String(value || 0).replace(/[^0-9.]/g, '')
   const number = Number(normalized || 0)
@@ -2864,6 +2874,9 @@ const handlers = {
           roles: ['client'],
           activeRole: 'client',
           status: 'active',
+          themeKey: normalizeThemeKey(data.themeKey),
+          fontKey: normalizeFontKey(data.fontKey),
+          preferences: { themeKey: normalizeThemeKey(data.themeKey), fontKey: normalizeFontKey(data.fontKey) },
           retroCardCount: 0,
           completedOrderCount: 0,
           inviterOpenid: '',
@@ -2903,6 +2916,9 @@ const handlers = {
           roles: ['client'],
           activeRole: 'client',
           status: 'active',
+          themeKey: normalizeThemeKey(data.themeKey),
+          fontKey: normalizeFontKey(data.fontKey),
+          preferences: { themeKey: normalizeThemeKey(data.themeKey), fontKey: normalizeFontKey(data.fontKey) },
           retroCardCount: 0,
           completedOrderCount: 0,
           inviterOpenid: '',
@@ -2970,6 +2986,32 @@ const handlers = {
         phone: safeText(data.phone).trim(),
         updatedAt: now()
       }
+      await db.collection('users').doc(user._id).update({ data: payload })
+      return { ...user, ...payload }
+    }
+
+    if (action === 'updateTheme') {
+      const user = await getUser(openid)
+      if (!isValidThemeKey(data.themeKey)) throw new Error('主题无效')
+      const themeKey = normalizeThemeKey(data.themeKey)
+      const preferences = {
+        ...(user.preferences || {}),
+        themeKey
+      }
+      const payload = { themeKey, preferences, updatedAt: now() }
+      await db.collection('users').doc(user._id).update({ data: payload })
+      return { ...user, ...payload }
+    }
+
+    if (action === 'updateFont') {
+      const user = await getUser(openid)
+      if (!isValidFontKey(data.fontKey)) throw new Error('字体无效')
+      const fontKey = normalizeFontKey(data.fontKey)
+      const preferences = {
+        ...(user.preferences || {}),
+        fontKey
+      }
+      const payload = { fontKey, preferences, updatedAt: now() }
       await db.collection('users').doc(user._id).update({ data: payload })
       return { ...user, ...payload }
     }
@@ -3727,6 +3769,22 @@ const handlers = {
         remainingDrawCount,
         canDraw: remainingDrawCount > 0
       }
+    }
+    if (action === 'listMyRecords') {
+      const user = await getUser(openid)
+      const pageSize = Math.min(Math.max(Math.round(Number(data.pageSize || 20)), 1), 50)
+      const records = await db.collection('lottery_records')
+        .where({ openid: user.openid || openid })
+        .orderBy('createdAt', 'desc')
+        .limit(pageSize)
+        .get()
+      return (records.data || []).map((item) => ({
+        _id: item._id,
+        activityId: item.activityId || '',
+        prizeName: item.prizeName || '谢谢参与',
+        couponId: item.couponId || '',
+        createdAt: item.createdAt || ''
+      }))
     }
     if (action === 'draw') {
       const user = await getUser(openid)
