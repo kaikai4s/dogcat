@@ -2,7 +2,7 @@
   <view class="dashboard-header">
     <view class="badge">员工入驻</view>
     <view class="title">宠托师入驻申请</view>
-    <view class="tip">提交资料后会进入平台审核，审核通过后才会出现在宠物主端“宠托师”列表。</view>
+    <view class="tip">提交资料后会进入平台审核，审核通过后才会出现在毛孩家庭端“宠护师”列表。</view>
   </view>
 
   <view class="notice" wx:if="{{profile}}">
@@ -18,6 +18,28 @@
       <input placeholder="手机号" value="{{form.phone}}" data-field="phone" bindinput="input" />
       <input placeholder="服务城市" value="{{form.serviceCity}}" data-field="serviceCity" bindinput="input" />
       <textarea placeholder="服务区域说明" value="{{form.serviceAreas}}" data-field="serviceAreas" bindinput="input" />
+    </view>
+
+    <view class="form-item" style="margin-top: 24rpx;">
+      <view class="label" style="font-weight: bold; margin-bottom: 12rpx;">实名认证材料</view>
+      <view class="muted">请上传身份证正反面和自拍/人脸照，平台管家端会人工审核。</view>
+      <view class="service-grid" style="margin-top:16rpx;">
+        <view class="service-option" data-field="idCardFrontFileId" bindtap="chooseIdentityPhoto">
+          <image wx:if="{{identityPreviews.idCardFrontFileId}}" src="{{identityPreviews.idCardFrontFileId}}" mode="aspectFill" style="width:100%;height:150rpx;border-radius:16rpx;" />
+          <view class="service-title">身份证人像面</view>
+          <view class="service-desc">{{form.idCardFrontFileId ? '已上传' : '点击上传'}}</view>
+        </view>
+        <view class="service-option" data-field="idCardBackFileId" bindtap="chooseIdentityPhoto">
+          <image wx:if="{{identityPreviews.idCardBackFileId}}" src="{{identityPreviews.idCardBackFileId}}" mode="aspectFill" style="width:100%;height:150rpx;border-radius:16rpx;" />
+          <view class="service-title">身份证国徽面</view>
+          <view class="service-desc">{{form.idCardBackFileId ? '已上传' : '点击上传'}}</view>
+        </view>
+        <view class="service-option" data-field="facePhotoFileId" bindtap="chooseIdentityPhoto">
+          <image wx:if="{{identityPreviews.facePhotoFileId}}" src="{{identityPreviews.facePhotoFileId}}" mode="aspectFill" style="width:100%;height:150rpx;border-radius:16rpx;" />
+          <view class="service-title">自拍/人脸照</view>
+          <view class="service-desc">{{form.facePhotoFileId ? '已上传' : '点击上传'}}</view>
+        </view>
+      </view>
     </view>
 
     <view class="form-item" style="margin-top: 24rpx;">
@@ -51,8 +73,12 @@
     </view>
   </view>
 
-  <button class="primary" bindtap="submit">提交入驻申请</button>
-  <button class="ghost" bindtap="backProfile">返回宠托师我的</button>
+  <view class="notice" wx:if="{{isApproved}}">
+    <view class="strong">已完成安心宠护师认证</view>
+    <view class="muted">认证通过后不能重复提交入驻申请，如需修改接单地址和时间，请回到“我的”里编辑接单配置。</view>
+  </view>
+  <button class="primary" wx:else bindtap="submit">提交入驻申请</button>
+  <button class="ghost" bindtap="backProfile">返回安心宠护端我的</button>
 
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>工作台</view></view>

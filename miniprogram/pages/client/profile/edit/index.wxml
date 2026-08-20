@@ -2,7 +2,7 @@
   <view class="dashboard-header">
     <view class="badge">个人资料</view>
     <view class="title">编辑个人资料</view>
-    <view class="tip">设置昵称、头像和手机号，宠托师端会优先显示昵称。</view>
+    <view class="tip">设置昵称、头像和手机号，安心宠护端会优先显示昵称。</view>
   </view>
 
   <view class="card form-card">

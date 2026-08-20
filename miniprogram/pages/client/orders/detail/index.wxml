@@ -35,6 +35,8 @@
     <view class="info-row"><view class="label">地址</view><view class="value">{{order.serviceAddress}}</view></view>
     <view class="info-row" wx:if="{{order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{order.addressDetail}}</view></view>
     <view class="info-row" wx:if="{{order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{order.doorplate}}</view></view>
+    <view class="info-row" wx:if="{{order.orderHomeSecurity}}"><view class="label">入户方式</view><view class="value">{{order.orderHomeSecurity.lockMethodText}}</view></view>
+    <view class="info-row" wx:if="{{order.orderHomeSecurity && order.orderHomeSecurity.hasDoorLockCode}}"><view class="label">门锁密码</view><view class="value">已加密保存，仅服务窗口内可查看</view></view>
     <view class="info-row"><view class="label">时间</view><view class="value">{{order.startTime}} - {{order.endTime}}</view></view>
     <view class="info-row" wx:if="{{order.durationMinutes}}"><view class="label">时长</view><view class="value">{{order.durationMinutes}}分钟</view></view>
     <view class="info-row"><view class="label">状态</view><view class="badge">{{order.statusText}}</view></view>
@@ -46,6 +48,16 @@
     <view class="info-row" wx:if="{{order.paidAt}}"><view class="label">支付时间</view><view class="value">{{order.paidAt}}</view></view>
     <view class="info-row" wx:if="{{order.refundText}}"><view class="label">退款进度</view><view class="value">{{order.refundText}}</view></view>
     <view class="info-row" wx:if="{{order.refundNo}}"><view class="label">退款单号</view><view class="value">{{order.refundNo}}</view></view>
+  </view>
+
+  <view class="card" wx:if="{{order.earlyStartRequest}}">
+    <view class="subtitle">提前开始服务申请</view>
+    <view class="muted">{{order.earlyStartRequest.reason || '宠护师申请提前开始服务'}}</view>
+    <view class="badge">{{order.earlyStartRequest.status === 'approved' ? '已同意' : (order.earlyStartRequest.status === 'rejected' ? '已拒绝' : '待处理')}}</view>
+    <view class="chip-row" wx:if="{{order.earlyStartRequest.status === 'pending'}}">
+      <button class="primary" loading="{{handlingEarlyStart}}" disabled="{{handlingEarlyStart}}" data-action="approve" bindtap="handleEarlyStart">同意提前开始</button>
+      <button class="ghost" loading="{{handlingEarlyStart}}" disabled="{{handlingEarlyStart}}" data-action="reject" bindtap="handleEarlyStart">拒绝</button>
+    </view>
   </view>
 
   <view class="card" wx:if="{{timeline.length}}">

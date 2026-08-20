@@ -5,6 +5,20 @@
     <view class="tip">审核宠托师入驻资料，控制平台服务人员准入。</view>
   </view>
 
+  <view class="status-tabs">
+    <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
+  </view>
+
+  <view class="card">
+    <input placeholder="搜索姓名、手机、城市或区域" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="submitSearch" />
+    <view class="chip-row" style="margin-top:16rpx;">
+      <button class="primary compact-btn" bindtap="submitSearch">搜索</button>
+      <button class="ghost compact-btn" wx:if="{{keyword}}" bindtap="clearSearch">清空</button>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && !staff.length}}">暂无符合条件的审核资料。</view>
+
   <view class="card interactive" wx:for="{{staff}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
     <view class="between">
       <view>
@@ -14,6 +28,9 @@
       <view class="badge">{{item.auditStatusText}}</view>
     </view>
   </view>
+
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && staff.length}}">正在加载更多...</view>
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && staff.length && !hasMore}}">已显示全部审核资料</view>
 
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>

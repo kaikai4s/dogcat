@@ -6,8 +6,8 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 
 const collections = [
-  'users', 'pets', 'home_security', 'staff_profiles', 'orders', 'payments',
-  'track_logs', 'checkin_logs', 'unlock_code_logs', 'order_incidents', 'incident_comments', 'incident_actions', 'admin_operation_logs', 'service_prices',
+  'users', 'pets', 'home_security', 'staff_profiles', 'orders', 'payments', 'order_home_security', 'order_early_start_requests',
+  'track_logs', 'checkin_logs', 'unlock_code_logs', 'order_incidents', 'incident_comments', 'incident_actions', 'admin_operation_logs', 'service_prices', 'service_checkin_rules', 'staff_identity_verifications',
   'sitter_favorites', 'service_reviews', 'user_addresses', 'order_timeline', 'platform_configs',
   'coupon_templates', 'user_coupons', 'payment_events', 'refunds', 'finance_logs',
   'staff_earnings', 'withdraw_requests', 'staff_schedule_exceptions',
@@ -24,6 +24,24 @@ const defaultServicePrices = [
   { key: 'medicine', label: '喂药协助', price: 49, enabled: true, sortOrder: 50, description: '按主人说明协助喂药' },
   { key: 'clean', label: '简单清洁', price: 39, enabled: true, sortOrder: 60, description: '宠物活动区域简单整理' },
   { key: 'extra_pet', label: '增加一只宠物', price: 20, enabled: true, sortOrder: 70, description: '同地址额外宠物服务' }
+]
+
+const defaultServiceCheckinRules = [
+  { serviceType: 'walk', eventType: 'enter_door', required: true, sortOrder: 10 },
+  { serviceType: 'walk', eventType: 'leash_on', required: true, sortOrder: 20 },
+  { serviceType: 'walk', eventType: 'pet_status', required: true, sortOrder: 30 },
+  { serviceType: 'walk', eventType: 'return_home', required: true, sortOrder: 40 },
+  { serviceType: 'walk', eventType: 'leave_door', required: true, sortOrder: 50 },
+  { serviceType: 'feed', eventType: 'enter_door', required: true, sortOrder: 10 },
+  { serviceType: 'feed', eventType: 'feed', required: true, sortOrder: 20 },
+  { serviceType: 'feed', eventType: 'water', required: true, sortOrder: 30 },
+  { serviceType: 'feed', eventType: 'pet_status', required: true, sortOrder: 40 },
+  { serviceType: 'feed', eventType: 'leave_door', required: true, sortOrder: 50 },
+  { serviceType: 'litter', eventType: 'clean', required: true, sortOrder: 20 },
+  { serviceType: 'play', eventType: 'pet_status', required: true, sortOrder: 20 },
+  { serviceType: 'medicine', eventType: 'medicine', required: true, sortOrder: 20 },
+  { serviceType: 'clean', eventType: 'clean', required: true, sortOrder: 20 },
+  { serviceType: 'extra_pet', eventType: 'pet_status', required: false, sortOrder: 60 }
 ]
 
 function ok(data) { return { ok: true, data } }
@@ -907,6 +925,90 @@ function toTimeValue(value) {
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
+function normalizeLockMethod(value) {
+  const method = safeText(value).trim()
+  return ['handover', 'password', 'key', 'other'].includes(method) ? method : 'handover'
+}
+
+function lockMethodText(method) {
+  const textMap = { handover: '无需密码/当面交接', password: '一次性密码锁', key: '钥匙/门禁卡', other: '其他说明' }
+  return textMap[method] || textMap.handover
+}
+
+function normalizeHomeSecurityInput(data = {}) {
+  const source = data.homeSecuritySnapshot || data.homeSecurity || {}
+  const lockMethod = normalizeLockMethod(source.lockMethod || data.lockMethod)
+  const doorLockCode = safeText(source.doorLockCode || data.doorLockCode).trim()
+  const keyLocation = safeText(source.keyLocation || data.keyLocation).trim()
+  const entryNotes = safeText(source.entryNotes || data.entryNotes).trim()
+  if (!lockMethod) throw new Error('请选择入户与门锁方式')
+  if (lockMethod === 'password' && !doorLockCode) throw new Error('请填写一次性门锁密码')
+  return {
+    lockMethod,
+    lockMethodText: lockMethodText(lockMethod),
+    hasDoorLockCode: lockMethod === 'password' && Boolean(doorLockCode),
+    doorLockCode,
+    keyLocation,
+    entryNotes
+  }
+}
+
+async function getApprovedEarlyStart(orderId) {
+  const res = await db.collection('order_early_start_requests').where({ orderId, status: 'approved' }).orderBy('approvedAt', 'desc').limit(1).get()
+  return res.data[0] || null
+}
+
+async function getPendingEarlyStart(orderId) {
+  const res = await db.collection('order_early_start_requests').where({ orderId, status: 'pending' }).orderBy('createdAt', 'desc').limit(1).get()
+  return res.data[0] || null
+}
+
+function isBeforeServiceStart(order, current = now()) {
+  const start = toTimeValue(order.startTime)
+  return start > 0 && current.getTime() < start
+}
+
+async function canStartOrderService(order, current = now()) {
+  if (!isBeforeServiceStart(order, current)) return true
+  return Boolean(await getApprovedEarlyStart(order._id))
+}
+
+function toEarlyStartView(request) {
+  if (!request) return null
+  return {
+    _id: request._id,
+    orderId: request.orderId,
+    status: request.status,
+    reason: request.reason || '',
+    requestedAt: request.createdAt || '',
+    approvedAt: request.approvedAt || '',
+    rejectedAt: request.rejectedAt || '',
+    clientRemark: request.clientRemark || ''
+  }
+}
+
+function toPublicHomeSecuritySnapshot(security) {
+  return {
+    lockMethod: security.lockMethod,
+    lockMethodText: security.lockMethodText,
+    hasDoorLockCode: security.hasDoorLockCode,
+    keyLocation: security.keyLocation || '',
+    entryNotes: security.entryNotes || ''
+  }
+}
+
+function toPublicOrderHomeSecurity(security) {
+  if (!security) return null
+  return {
+    orderId: security.orderId,
+    lockMethod: security.lockMethod || 'handover',
+    lockMethodText: security.lockMethodText || lockMethodText(security.lockMethod),
+    hasDoorLockCode: security.hasDoorLockCode === true,
+    keyLocation: security.keyLocation || '',
+    entryNotes: security.entryNotes || ''
+  }
+}
+
 function toPublicSitter(profile) {
   const areaTags = splitServiceAreas(profile.serviceAreas)
   const radius = Math.max(Number(profile.serviceRadiusKm || 5), 1)
@@ -1395,6 +1497,48 @@ function requiredCheckins(serviceType, serviceTypes) {
   if (types.includes('litter') || types.includes('clean')) events.add('clean')
   if (types.includes('medicine')) events.add('medicine')
   return Array.from(events)
+}
+
+function normalizeServiceCheckinRule(rule = {}) {
+  const serviceType = safeText(rule.serviceType).trim()
+  const eventType = safeText(rule.eventType).trim()
+  if (!serviceType || !defaultServicePrices.some((item) => item.key === serviceType)) throw new Error('服务类型无效')
+  if (!CHECKIN_EVENT_TYPES.has(eventType)) throw new Error('打卡类型无效')
+  return {
+    serviceType,
+    eventType,
+    label: safeText(rule.label).trim() || checkinEventText(eventType),
+    required: rule.required !== false,
+    enabled: rule.enabled !== false,
+    sortOrder: Number(rule.sortOrder || 100),
+    description: safeText(rule.description).trim()
+  }
+}
+
+async function listServiceCheckinRules() {
+  const res = await db.collection('service_checkin_rules').orderBy('sortOrder', 'asc').get()
+  const rules = res.data && res.data.length ? res.data : defaultServiceCheckinRules
+  return rules
+    .map((rule) => normalizeServiceCheckinRule(rule))
+    .sort((a, b) => String(a.serviceType).localeCompare(String(b.serviceType)) || Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+}
+
+async function resolveCheckinRequirements(serviceTypes) {
+  const types = Array.isArray(serviceTypes) && serviceTypes.length ? serviceTypes : []
+  const rules = await listServiceCheckinRules()
+  const map = {}
+  rules.filter((rule) => rule.enabled !== false && types.includes(rule.serviceType)).forEach((rule) => {
+    const existing = map[rule.eventType]
+    map[rule.eventType] = {
+      eventType: rule.eventType,
+      label: rule.label || checkinEventText(rule.eventType),
+      required: Boolean(rule.required || (existing && existing.required)),
+      serviceTypes: Array.from(new Set([...(existing ? existing.serviceTypes : []), rule.serviceType])),
+      sortOrder: existing ? Math.min(Number(existing.sortOrder || 100), Number(rule.sortOrder || 100)) : Number(rule.sortOrder || 100),
+      completed: false
+    }
+  })
+  return Object.values(map).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
 }
 
 function validateOrderTime(data) {
@@ -1936,7 +2080,8 @@ async function resolveRewardMailTargets(data = {}) {
 async function getOrderForAccess(openid, orderId) {
   const user = await getUser(openid)
   const res = await db.collection('orders').doc(orderId).get()
-  const order = res.data
+  const order = res.data ? { ...res.data, _id: orderId } : null
+  if (!order) throw new Error('订单不存在')
   const canPreviewForStaff = user.roles.includes('staff') && order.status === ORDER_STATUS.PAID && (isOpenOrder(order) || order.requestedStaffOpenid === openid)
   const allowed = order.clientOpenid === openid || order.staffOpenid === openid || order.requestedStaffOpenid === openid || user.roles.includes('admin') || canPreviewForStaff
   if (!allowed) throw new Error('无权访问订单')
@@ -3052,8 +3197,14 @@ const handlers = {
   async pet(openid, action, data) {
     const user = await getUser(openid)
     if (action === 'listPets') {
+      const keyword = safeText(data.keyword).trim().toLowerCase()
+      const species = safeText(data.species).trim()
       const res = await db.collection('pets').where({ openid }).orderBy('createdAt', 'desc').get()
-      return res.data
+      const list = (res.data || [])
+        .filter((pet) => !species || pet.species === species)
+        .filter((pet) => !keyword || [pet.name, pet.breed, pet.personality, pet.specialNotes, pet.healthNotes].some((value) => safeText(value).toLowerCase().includes(keyword)))
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(list, data) : list
     }
     if (action === 'getPet') {
       const res = await db.collection('pets').doc(data.id).get()
@@ -3190,8 +3341,11 @@ const handlers = {
     const user = await getUser(openid)
 
     if (action === 'listAddresses') {
+      const keyword = safeText(data.keyword).trim().toLowerCase()
       const res = await db.collection('user_addresses').where({ openid }).orderBy('updatedAt', 'desc').get()
-      return res.data
+      const list = (res.data || []).filter((address) => !keyword || [address.label, address.serviceAddress, address.addressDetail, address.doorplate].some((value) => safeText(value).toLowerCase().includes(keyword)))
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(list, data) : list
     }
 
     if (action === 'saveAddress') {
@@ -3251,15 +3405,17 @@ const handlers = {
         if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
         if (!['assigned', 'in_service'].includes(order.status)) throw new Error('订单状态不允许查看')
         const current = now().getTime()
-        const start = new Date(order.startTime).getTime() - 30 * 60 * 1000
-        const end = new Date(order.endTime).getTime()
-        if (current < start || current > end) throw new Error('不在服务解锁时间窗口')
-        const securityRes = await db.collection('home_security').where({ openid: order.clientOpenid }).limit(1).get()
-        const security = securityRes.data[0]
+        const approvedEarlyStart = await getApprovedEarlyStart(data.orderId)
+        const regularStart = toTimeValue(order.startTime)
+        const start = approvedEarlyStart ? toTimeValue(approvedEarlyStart.approvedAt || approvedEarlyStart.createdAt) : regularStart
+        const end = toTimeValue(order.endTime)
+        if ((start && current < start) || (end && current > end)) throw new Error('不在服务解锁时间窗口')
+        let security = (await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get()).data[0]
+        if (!security) security = (await db.collection('home_security').where({ openid: order.clientOpenid }).limit(1).get()).data[0]
         if (!security) throw new Error('客户未配置门锁信息')
         result = 'success'
         reason = 'ok'
-        return { doorLockCode: decryptText(security.doorLockCodeCipher, security.doorLockCodeIv, security.doorLockCodeTag), keyLocation: security.keyLocation || '', entryNotes: security.entryNotes || '' }
+        return { lockMethod: security.lockMethod || 'password', lockMethodText: security.lockMethodText || lockMethodText(security.lockMethod), doorLockCode: decryptText(security.doorLockCodeCipher, security.doorLockCodeIv, security.doorLockCodeTag), keyLocation: security.keyLocation || '', entryNotes: security.entryNotes || '' }
       } catch (error) {
         reason = error.message
         throw error
@@ -3349,7 +3505,9 @@ const handlers = {
         }
       }
       const time = now()
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', requiredCheckins: requiredCheckins(pricing.serviceTypes[0], pricing.serviceTypes), insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const homeSecurity = normalizeHomeSecurityInput(data)
+      const checkinRequirements = await resolveCheckinRequirements(pricing.serviceTypes)
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {
@@ -3363,6 +3521,23 @@ const handlers = {
         })
       }
       const created = await db.collection('orders').add({ data: order })
+      const encrypted = encryptText(homeSecurity.doorLockCode)
+      await db.collection('order_home_security').add({
+        data: {
+          orderId: created._id,
+          clientOpenid: openid,
+          lockMethod: homeSecurity.lockMethod,
+          lockMethodText: homeSecurity.lockMethodText,
+          hasDoorLockCode: homeSecurity.hasDoorLockCode,
+          doorLockCodeCipher: encrypted.cipher,
+          doorLockCodeIv: encrypted.iv,
+          doorLockCodeTag: encrypted.tag,
+          keyLocation: homeSecurity.keyLocation,
+          entryNotes: homeSecurity.entryNotes,
+          createdAt: time,
+          updatedAt: time
+        }
+      })
       if (order.couponId) {
         await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'locked', lockedOrderId: created._id, lockedAt: time, updatedAt: time } })
       }
@@ -3376,12 +3551,33 @@ const handlers = {
       const role = data.role || user.activeRole || 'client'
       const where = role === 'staff' ? { staffOpenid: openid } : { clientOpenid: openid }
       const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
-      return Promise.all((res.data || []).map(attachOrderDisplayData))
+      let list = res.data || []
+      if (data.status && data.status !== 'all') list = list.filter((order) => order.status === data.status)
+      if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service'].includes(order.status))
+      if (data.startDate) list = list.filter((order) => String(order.startTime || '').slice(0, 10) >= safeText(data.startDate))
+      if (data.endDate) list = list.filter((order) => String(order.startTime || '').slice(0, 10) <= safeText(data.endDate))
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      if (wantsPage) {
+        const page = paginateList(list, data)
+        return { ...page, list: await Promise.all(page.list.map(attachOrderDisplayData)) }
+      }
+      return Promise.all(list.map(attachOrderDisplayData))
     }
 
     if (action === 'getOrderDetail') {
-      const { order } = await getOrderForAccess(openid, data.id)
-      return attachOrderDisplayData(order)
+      const orderId = data.id || data.orderId
+      const { order } = await getOrderForAccess(openid, orderId)
+      const displayOrder = await attachOrderDisplayData(order)
+      const [earlyStart, securityRes, checkinsRes] = await Promise.all([
+        getPendingEarlyStart(orderId).then((pending) => pending || getApprovedEarlyStart(orderId)),
+        db.collection('order_home_security').where({ orderId }).limit(1).get(),
+        db.collection('checkin_logs').where({ orderId }).get()
+      ])
+      const completedSet = new Set((checkinsRes.data || []).map((item) => item.eventType))
+      const checkinRequirements = Array.isArray(displayOrder.checkinRequirements) && displayOrder.checkinRequirements.length
+        ? displayOrder.checkinRequirements
+        : requiredCheckins(displayOrder.serviceType, displayOrder.serviceTypes).map((eventType, index) => ({ eventType, label: checkinEventText(eventType), required: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: (index + 1) * 10 }))
+      return { ...displayOrder, checkinRequirements: checkinRequirements.map((item) => ({ ...item, completed: completedSet.has(item.eventType) })), earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: toPublicOrderHomeSecurity(securityRes.data[0]) }
     }
 
     if (action === 'prepareRebook') {
@@ -3476,11 +3672,57 @@ const handlers = {
       return { orderId: data.orderId, status: 'cancelled', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, refundNo: refund ? refund.refundNo : '' }
     }
 
+    if (action === 'requestEarlyStart') {
+      const { user, order } = await requireStaffOrder(openid, data.id || data.orderId, '不是该订单员工')
+      if (!['assigned', 'in_service'].includes(order.status)) throw new Error('当前订单不可申请提前开始')
+      if (!isBeforeServiceStart(order)) throw new Error('已到预约时间，无需申请提前开始')
+      const existing = await getPendingEarlyStart(order._id)
+      if (existing) return toEarlyStartView(existing)
+      const time = now()
+      const request = {
+        orderId: order._id,
+        orderNo: order.orderNo || '',
+        clientOpenid: order.clientOpenid,
+        staffOpenid: openid,
+        staffUserId: user._id,
+        status: 'pending',
+        reason: safeText(data.reason).trim() || '宠护师已到达，申请提前开始服务',
+        createdAt: time,
+        updatedAt: time
+      }
+      const created = await db.collection('order_early_start_requests').add({ data: request })
+      await appendOrderTimeline(order._id, 'early_start_requested', '宠护师申请提前开始', request.reason, 'staff')
+      await notifyOrder(order.clientOpenid, 'serviceStart', order, { statusText: '待确认提前开始' })
+      return toEarlyStartView({ _id: created._id, ...request })
+    }
+
+    if (action === 'approveEarlyStart' || action === 'rejectEarlyStart') {
+      const { order } = await requireClientOrder(openid, data.id || data.orderId, '仅宠物主可处理提前开始申请')
+      const request = await getPendingEarlyStart(order._id)
+      if (!request) throw new Error('暂无待处理的提前开始申请')
+      const approved = action === 'approveEarlyStart'
+      const time = now()
+      const update = { status: approved ? 'approved' : 'rejected', clientRemark: safeText(data.remark).trim(), updatedAt: time }
+      if (approved) update.approvedAt = time
+      else update.rejectedAt = time
+      await db.collection('order_early_start_requests').doc(request._id).update({ data: update })
+      await appendOrderTimeline(order._id, approved ? 'early_start_approved' : 'early_start_rejected', approved ? '宠物主已同意提前开始' : '宠物主已拒绝提前开始', update.clientRemark, 'client')
+      await notifyOrder(order.staffOpenid, 'serviceStart', order, { statusText: approved ? '已同意提前开始' : '已拒绝提前开始' })
+      return toEarlyStartView({ ...request, ...update })
+    }
+
+    if (action === 'getEarlyStartStatus') {
+      await getOrderForAccess(openid, data.id || data.orderId)
+      const request = await getPendingEarlyStart(data.id || data.orderId) || await getApprovedEarlyStart(data.id || data.orderId)
+      return toEarlyStartView(request)
+    }
+
     if (action === 'startService') {
       const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
       if (order.status === 'in_service') return { id: data.id }
       assertOrderTransition(order.status, ORDER_STATUS.IN_SERVICE, '订单状态不可开始')
       const time = now()
+      if (!(await canStartOrderService({ ...order, _id: data.id }, time))) throw new Error('服务时间未到，可申请提前开始')
       await db.collection('orders').doc(data.id).update({ data: { status: 'in_service', startedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.id, 'started', '服务已开始', '', 'staff')
       await notifyOrder(order.clientOpenid, 'serviceStart', order, { statusText: '服务中' })
@@ -3493,8 +3735,11 @@ const handlers = {
       assertOrderTransition(order.status, ORDER_STATUS.COMPLETED, '订单状态不可完成')
       const checkins = await db.collection('checkin_logs').where({ orderId: data.id }).get()
       const eventSet = checkins.data.reduce((map, item) => ({ ...map, [item.eventType]: true }), {})
-      const missing = (order.requiredCheckins || []).filter((eventType) => !eventSet[eventType])
-      if (missing.length) throw new Error(`缺少强制打卡：${missing.join(',')}`)
+      const requirements = Array.isArray(order.checkinRequirements) && order.checkinRequirements.length
+        ? order.checkinRequirements
+        : (order.requiredCheckins || []).map((eventType) => ({ eventType, label: checkinEventText(eventType), required: true }))
+      const missing = requirements.filter((item) => item.required && !eventSet[item.eventType])
+      if (missing.length) throw new Error(`缺少必打卡：${missing.map((item) => item.label || checkinEventText(item.eventType)).join('、')}`)
       const time = now()
       await db.collection('orders').doc(data.id).update({ data: { status: 'completed', completedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.id, 'completed', '服务已完成', '', 'staff')
@@ -3518,10 +3763,13 @@ const handlers = {
       return { order, tracks: tracks.data, checkins: checkins.data }
     }
     if (action === 'listPublicCompletedOrders') {
-      const pageSize = Math.min(Math.max(Math.round(Number(data.pageSize || 20)), 1), 50)
-      const ordersRes = await db.collection('orders').where({ status: ORDER_STATUS.COMPLETED }).orderBy('completedAt', 'desc').limit(pageSize).get()
-      const orders = ordersRes.data || []
-      const orderIds = orders.map((order) => order._id).filter(Boolean)
+      const serviceType = safeText(data.serviceType).trim()
+      const ordersRes = await db.collection('orders').where({ status: ORDER_STATUS.COMPLETED }).orderBy('completedAt', 'desc').get()
+      let orders = ordersRes.data || []
+      if (serviceType) orders = orders.filter((order) => order.serviceType === serviceType || (Array.isArray(order.serviceTypes) && order.serviceTypes.includes(serviceType)))
+      const wantsPage = data.page !== undefined
+      const pageData = wantsPage ? paginateList(orders, data) : { list: orders.slice(0, Math.min(Math.max(Math.round(Number(data.pageSize || 20)), 1), 50)) }
+      const orderIds = pageData.list.map((order) => order._id).filter(Boolean)
       const [reviews, checkins, staffProfiles, users] = await Promise.all([
         orderIds.length ? safeCollectionData('service_reviews', (col) => col.where({ status: 'visible' })) : Promise.resolve([]),
         orderIds.length ? safeCollectionData('checkin_logs') : Promise.resolve([]),
@@ -3536,7 +3784,7 @@ const handlers = {
         .reduce((map, checkin) => ({ ...map, [checkin.orderId]: [...(map[checkin.orderId] || []), checkin] }), {})
       const staffProfileMap = staffProfiles.reduce((map, profile) => ({ ...map, [profile._id]: profile }), {})
       const userMap = users.reduce((map, user) => ({ ...map, [user.openid]: user }), {})
-      return Promise.all(orders.map(async (order) => {
+      const list = await Promise.all(pageData.list.map(async (order) => {
         const displayOrder = await attachClientSnapshot(order)
         return toHomeOrderActivity(displayOrder, {
           review: reviewMap[order._id] || null,
@@ -3545,6 +3793,7 @@ const handlers = {
           hideCheckinPhotos: shouldHidePublicCheckinPhotos(userMap[order.clientOpenid])
         })
       }))
+      return wantsPage ? { ...pageData, list } : list
     }
     if (action === 'getPublicCompletedOrderDetail') {
       const orderId = safeText(data.id || data.orderId).trim()
@@ -4150,6 +4399,7 @@ const handlers = {
     }
     if (action === 'listFavoriteSitters') {
       await getUser(openid)
+      const keyword = safeText(data.keyword).trim().toLowerCase()
       const favorites = await db.collection('sitter_favorites').where({ openid }).orderBy('createdAt', 'desc').get()
       const list = []
       for (let i = 0; i < favorites.data.length; i += 1) {
@@ -4161,7 +4411,9 @@ const handlers = {
           }
         } catch (error) {}
       }
-      return list
+      const filtered = list.filter((item) => !keyword || [item.displayName, item.serviceCity, item.serviceSummary, item.bio].some((value) => safeText(value).toLowerCase().includes(keyword)))
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(filtered, data) : filtered
     }
     if (action === 'getStaffProfile') {
       await getUser(openid)
@@ -4178,13 +4430,28 @@ const handlers = {
       const serviceLatitude = Number(data.latitude || data.serviceLatitude || 0)
       const serviceLongitude = Number(data.longitude || data.serviceLongitude || 0)
       const serviceRadiusKm = Math.max(Number(data.serviceRadiusKm || 5), 1)
+      const idCardFrontFileId = safeFileId(data.idCardFrontFileId) || safeText(data.idCardFrontFileId).trim()
+      const idCardBackFileId = safeFileId(data.idCardBackFileId) || safeText(data.idCardBackFileId).trim()
+      const facePhotoFileId = safeFileId(data.facePhotoFileId) || safeText(data.facePhotoFileId).trim()
 
       if (!realName) throw new Error('请输入真实姓名')
+      if (!phone) throw new Error('请输入手机号')
+      if (!idCardFrontFileId || !idCardBackFileId) throw new Error('请上传身份证正反面照片')
+      if (!facePhotoFileId) throw new Error('请上传自拍/人脸照片')
       if (!serviceAddress || !hasCoordinate(serviceLatitude, serviceLongitude)) {
         throw new Error('宠托师认证必须设置固定服务地址及坐标')
       }
 
       const time = now()
+      const identitySummary = {
+        idCardFrontFileId,
+        idCardBackFileId,
+        facePhotoFileId,
+        identityStatus: 'pending',
+        faceVerifyStatus: 'manual_pending',
+        faceVerifyProvider: '',
+        faceVerifyRequestId: ''
+      }
       const profile = {
         userId: user._id,
         openid,
@@ -4198,17 +4465,29 @@ const handlers = {
         serviceLongitude,
         serviceRadiusKm,
         weeklySchedule: normalizeWeeklySchedule(data.weeklySchedule),
-        faceVerifyStatus: 'pending',
+        idCardFrontFileId,
+        idCardBackFileId,
+        facePhotoFileId,
+        identityStatus: identitySummary.identityStatus,
+        faceVerifyStatus: identitySummary.faceVerifyStatus,
+        faceVerifyProvider: identitySummary.faceVerifyProvider,
+        faceVerifyRequestId: identitySummary.faceVerifyRequestId,
         auditStatus: 'pending',
         auditRemark: '',
         updatedAt: time
       }
       const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       if (existing.data[0]) {
+        if (existing.data[0].auditStatus === 'approved') throw new Error('已是安心宠护师，认证资料不可重复提交')
         await db.collection('staff_profiles').doc(existing.data[0]._id).update({ data: profile })
+        const identityPayload = { staffProfileId: existing.data[0]._id, userId: user._id, openid, realName, phone, ...identitySummary, auditStatus: 'pending', updatedAt: time }
+        const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId: existing.data[0]._id }).limit(1).get()
+        if (identityRes.data[0]) await db.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({ data: identityPayload })
+        else await db.collection('staff_identity_verifications').add({ data: { ...identityPayload, createdAt: time } })
         return { _id: existing.data[0]._id, ...profile }
       }
       const created = await db.collection('staff_profiles').add({ data: { ...profile, createdAt: time } })
+      await db.collection('staff_identity_verifications').add({ data: { staffProfileId: created._id, userId: user._id, openid, realName, phone, ...identitySummary, auditStatus: 'pending', createdAt: time, updatedAt: time } })
       return { _id: created._id, ...profile, createdAt: time }
     }
     if (action === 'updateStaffProfileConfig') {
@@ -4410,11 +4689,20 @@ const handlers = {
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       const res = await db.collection('orders').where({ staffOpenid: openid }).orderBy('startTime', 'asc').get()
-      return Promise.all((res.data || []).map(async (order) => {
+      let list = res.data || []
+      if (data.status && data.status !== 'all') list = list.filter((order) => order.status === data.status)
+      if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service'].includes(order.status))
+      const decorate = async (order) => {
         const enriched = await attachOrderDisplayData(order)
         const distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
         return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
-      }))
+      }
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      if (wantsPage) {
+        const page = paginateList(list, data)
+        return { ...page, list: await Promise.all(page.list.map(decorate)) }
+      }
+      return Promise.all(list.map(decorate))
     }
     if (action === 'acceptOrder') {
       const user = await getUser(openid)
@@ -4697,8 +4985,11 @@ const handlers = {
       const user = await getUser(openid)
       const role = data.role === 'staff' ? 'staff' : 'client'
       const where = role === 'staff' && user.roles.includes('staff') ? { staffOpenid: openid } : { clientOpenid: openid }
+      const status = safeText(data.status).trim()
       const res = await db.collection('order_incidents').where(where).orderBy('createdAt', 'desc').get()
-      return res.data || []
+      const list = (res.data || []).filter((item) => !status || item.status === status)
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(list, data) : list
     }
     if (action === 'listIncidents') {
       await requireAdmin(openid)
@@ -5035,10 +5326,14 @@ const handlers = {
       return { staffProfileId, ...update }
     }
     if (action === 'listAdmins') {
+      const keyword = safeText(data.keyword).trim().toLowerCase()
       const usersRes = await db.collection('users').get()
-      return (usersRes.data || [])
+      const list = (usersRes.data || [])
         .filter((user) => Array.isArray(user.roles) && user.roles.includes('admin'))
+        .filter((user) => !keyword || [user.openid, user.nickname, user.phone, user.status].some((value) => safeText(value).toLowerCase().includes(keyword)))
         .map((user) => safeUserSummary(user, { isSelf: user.openid === openid }))
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(list, data) : list
     }
     if (action === 'grantAdmin') {
       const targetOpenid = safeText(data.openid).trim()
@@ -5100,6 +5395,24 @@ const handlers = {
     }
     if (action === 'listServicePrices') {
       return listServicePrices(true)
+    }
+    if (action === 'listServiceCheckinRules') {
+      return listServiceCheckinRules()
+    }
+    if (action === 'saveServiceCheckinRules') {
+      const rules = (Array.isArray(data.rules) ? data.rules : []).map(normalizeServiceCheckinRule)
+      const time = now()
+      await removeByQuery('service_checkin_rules', {})
+      await Promise.all(rules.map((rule) => db.collection('service_checkin_rules').add({ data: { ...rule, createdAt: time, updatedAt: time } })))
+      await logAdmin(admin, 'service_checkin_rule', 'rules', 'saveServiceCheckinRules', { count: rules.length })
+      return listServiceCheckinRules()
+    }
+    if (action === 'resetDefaultServiceCheckinRules') {
+      const time = now()
+      await removeByQuery('service_checkin_rules', {})
+      await Promise.all(defaultServiceCheckinRules.map((rule) => db.collection('service_checkin_rules').add({ data: { ...normalizeServiceCheckinRule(rule), createdAt: time, updatedAt: time } })))
+      await logAdmin(admin, 'service_checkin_rule', 'defaults', 'resetDefaultServiceCheckinRules', {})
+      return listServiceCheckinRules()
     }
     if (action === 'saveServicePrice') {
       const key = String(data.key || '').trim()
@@ -5196,15 +5509,24 @@ const handlers = {
       return { _id: issued._id, templateId, openid: targetOpenid, status: 'available', templateSnapshot: issued.templateSnapshot, validFrom: issued.validFrom, validTo: issued.validTo }
     }
     if (action === 'listStaffAudits') {
-      const where = data.auditStatus ? { auditStatus: data.auditStatus } : {}
+      const status = safeText(data.auditStatus).trim()
+      const keyword = safeText(data.keyword).trim().toLowerCase()
+      const where = status ? { auditStatus: status } : {}
       const res = await db.collection('staff_profiles').where(where).orderBy('updatedAt', 'desc').get()
-      return res.data
+      const list = (res.data || []).filter((item) => !keyword || [item.realName, item.phone, item.serviceCity, item.serviceAreas].some((value) => safeText(value).toLowerCase().includes(keyword)))
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(list, data) : list
     }
     if (action === 'auditStaff') {
       const status = data.auditStatus === 'approved' ? 'approved' : 'rejected'
       const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
       const profile = profileRes.data
-      await db.collection('staff_profiles').doc(data.staffProfileId).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', updatedAt: now() } })
+      const identityStatus = status === 'approved' ? 'verified' : 'failed'
+      const faceVerifyStatus = status === 'approved' ? 'verified' : 'failed'
+      const time = now()
+      await db.collection('staff_profiles').doc(data.staffProfileId).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, updatedAt: time } })
+      const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId: data.staffProfileId }).limit(1).get()
+      if (identityRes.data[0]) await db.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, auditedByOpenid: openid, auditedAt: time, updatedAt: time } })
       const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = userRes.data[0]
       if (staffUser) {

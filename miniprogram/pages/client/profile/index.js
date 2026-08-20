@@ -4,10 +4,10 @@ const { themeOptions, applyTheme, saveTheme, getThemeState } = require('../../..
 const { fontOptions, applyFont, saveFont, getFontState } = require('../../../utils/font')
 
 const staffEntryMap = {
-  none: { title: '申请成为宠托师', tip: '提交资料后等待平台审核' },
-  pending: { title: '宠托师审核中', tip: '资料已提交，请等待平台审核' },
+  none: { title: '申请成为宠护师', tip: '提交资料后等待平台审核' },
+  pending: { title: '宠护师认证审核中', tip: '资料已提交，请等待平台审核' },
   rejected: { title: '审核未通过，重新提交', tip: '修改资料后再次提交审核' },
-  approved: { title: '进入宠托师工作台', tip: '查看附近订单并开始接单' }
+  approved: { title: '进入安心宠护端', tip: '查看任务并开始接单' }
 }
 
 Page({
@@ -24,10 +24,12 @@ Page({
     fontKey: 'system',
     fontClass: 'font-system',
     fontIndex: 0,
-    fontName: '系统默认',
+    fontName: '默认清爽',
+    fontPreviewText: '默认清爽',
     savingFont: false,
     loadingLogin: false,
     staffProfile: null,
+    staffEntryReady: false,
     staffEntryTitle: staffEntryMap.none.title,
     staffEntryTip: staffEntryMap.none.tip,
     userName: '游客',
@@ -50,6 +52,7 @@ Page({
 
   onShow() {
     wx.setNavigationBarTitle({ title: this.data.showSettings ? '设置' : '我的' })
+    this.setData({ staffEntryReady: false })
     this.applyCurrentTheme()
     this.applyCurrentFont()
     getCurrentUser({ silent: true })
@@ -95,6 +98,7 @@ Page({
     this.setData({
       isGuest: true,
       staffProfile: null,
+      staffEntryReady: true,
       staffEntryTitle: staffEntryMap.none.title,
       staffEntryTip: staffEntryMap.none.tip,
       userName: '游客',
@@ -147,6 +151,7 @@ Page({
         const entry = staffEntryMap[status] || staffEntryMap.none
         this.setData({
           staffProfile: profile,
+          staffEntryReady: true,
           staffEntryTitle: entry.title,
           staffEntryTip: status === 'rejected' && profile.auditRemark ? profile.auditRemark : entry.tip
         })
@@ -202,14 +207,16 @@ Page({
   },
 
   openStaffEntry() {
-    ensureLogin({ content: '登录后可申请或进入宠托师工作台。' })
-      .then(() => {
-        const profile = this.data.staffProfile
+    ensureLogin({ content: '登录后可申请或进入安心宠护端。' })
+      .then(() => callFunction('staff', 'getStaffProfile'))
+      .then((profile) => {
+        this.setData({ staffProfile: profile })
         if (!profile || profile.auditStatus === 'rejected') {
           wx.navigateTo({ url: '/pages/staff/certification/index' })
           return
         }
         if (profile.auditStatus === 'approved') {
+          wx.showToast({ title: '你已是安心宠护师', icon: 'none' })
           wx.redirectTo({ url: '/pages/staff/home/index' })
           return
         }

@@ -18,6 +18,7 @@
         <view>
           <view>字体设置</view>
           <view class="muted" style="margin-top:6rpx;">选择后全局界面文字会同步变化</view>
+          <view class="strong" style="margin-top:8rpx;">{{fontPreviewText}}</view>
         </view>
         <view class="settings-value">{{fontName}} ›</view>
       </view>

@@ -7,31 +7,74 @@ function withDisplay(user) {
   }
 }
 
+function pageList(result) {
+  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
+}
+
 Page({
   data: {
     admins: [],
     openid: '',
+    keyword: '',
+    page: 1,
+    pageSize: 10,
+    hasMore: true,
+    total: 0,
     loading: false,
     saving: false,
     removingOpenid: ''
   },
 
   onShow() {
-    this.load()
+    this.load({ reset: true })
   },
 
-  load() {
+  onReachBottom() {
+    this.loadMore()
+  },
+
+  load(options = {}) {
+    if (this.data.loading) return
+    const reset = options.reset === true
+    const page = reset ? 1 : this.data.page
     this.setData({ loading: true })
-    callFunction('admin', 'listAdmins')
-      .then((admins) => this.setData({ admins: admins.map(withDisplay), loading: false }))
+    callFunction('admin', 'listAdmins', { keyword: this.data.keyword, page, pageSize: this.data.pageSize })
+      .then((result) => {
+        const pageData = pageList(result)
+        const admins = pageData.list.map(withDisplay)
+        this.setData({
+          admins: reset ? admins : this.data.admins.concat(admins),
+          page: pageData.page,
+          hasMore: pageData.hasMore,
+          total: pageData.total,
+          loading: false
+        })
+      })
       .catch((err) => {
         this.setData({ loading: false })
         showError(err)
       })
   },
 
+  loadMore() {
+    if (!this.data.hasMore || this.data.loading) return
+    this.setData({ page: this.data.page + 1 }, () => this.load())
+  },
+
   inputOpenid(e) {
     this.setData({ openid: e.detail.value })
+  },
+
+  inputKeyword(e) {
+    this.setData({ keyword: e.detail.value })
+  },
+
+  submitSearch() {
+    this.setData({ page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+
+  clearSearch() {
+    this.setData({ keyword: '', page: 1, hasMore: true }, () => this.load({ reset: true }))
   },
 
   grantAdmin() {
@@ -42,7 +85,7 @@ Page({
       .then(() => {
         wx.showToast({ title: '已添加' })
         this.setData({ openid: '', saving: false })
-        this.load()
+        this.load({ reset: true })
       })
       .catch((err) => {
         this.setData({ saving: false })
@@ -63,7 +106,7 @@ Page({
           .then(() => {
             wx.showToast({ title: '已移除' })
             this.setData({ removingOpenid: '' })
-            this.load()
+            this.load({ reset: true })
           })
           .catch((err) => {
             this.setData({ removingOpenid: '' })

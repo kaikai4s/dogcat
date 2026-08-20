@@ -5,6 +5,10 @@
     <view class="tip">查看订单状态并为已支付订单分配服务人员。</view>
   </view>
 
+  <view class="status-tabs">
+    <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
+  </view>
+
   <view class="card order-card" wx:for="{{orders}}" wx:key="_id">
     <view class="interactive" data-id="{{item._id}}" bindtap="detail">
       <view class="between order-card-head">
@@ -14,7 +18,9 @@
           <view>
             <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.orderNo}}</view>
             <view class="muted">{{item.petName}} · {{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
-            <view class="muted" wx:if="{{item.publishMode === 'direct'}}">指定：{{item.requestedStaffName || '已指定宠托师'}}</view>
+            <view class="muted">创建：{{item.createdAtText || '-'}}</view>
+            <view class="muted">预约：{{item.appointmentTimeText || '-'}}</view>
+            <view class="muted" wx:if="{{item.publishMode === 'direct'}}">指定：{{item.requestedStaffName || '已指定宠护师'}}</view>
           </view>
         </view>
         <view>

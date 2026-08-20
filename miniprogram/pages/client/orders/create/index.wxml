@@ -94,6 +94,19 @@
       <switch checked="{{saveAddress}}" bindchange="toggleSaveAddress" />
     </view>
 
+    <view class="subtitle">入户与门锁方式</view>
+    <view class="service-grid">
+      <view class="service-option {{form.lockMethod === item.value ? 'active' : ''}}" wx:for="{{lockMethodOptions}}" wx:key="value" data-value="{{item.value}}" bindtap="chooseLockMethod">
+        <view class="service-title">{{item.label}}</view>
+      </view>
+    </view>
+    <input wx:if="{{form.lockMethod === 'password'}}" password placeholder="一次性门锁密码（仅服务窗口内可查看）" value="{{form.doorLockCode}}" data-field="doorLockCode" bindinput="input" />
+    <input wx:if="{{form.lockMethod === 'key'}}" placeholder="钥匙/门禁卡位置" value="{{form.keyLocation}}" data-field="keyLocation" bindinput="input" />
+    <textarea placeholder="入户备注（如交接方式、注意事项、安防提示）" value="{{form.entryNotes}}" data-field="entryNotes" bindinput="input" />
+    <view class="notice">
+      <view class="muted">密码会加密保存，安心宠护端仅在服务时间或你同意提前开始后可查看。</view>
+    </view>
+
     <view class="subtitle">服务时间</view>
     <view class="picker-grid">
       <picker mode="date" value="{{form.startDate}}" bindchange="chooseDate">

@@ -1,4 +1,4 @@
-const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, ensureLogin } = require('../../../utils/cloud')
+const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, ensureLogin, getCurrentUser } = require('../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 const defaultModules = {
@@ -45,6 +45,10 @@ Page({
     repeatOrder: null,
     recentOrders: [],
     assuranceItems: [],
+    staffEntryLoaded: false,
+    staffEntryTitle: '',
+    staffEntryTip: '',
+    staffEntryStatus: 'none',
 
     // 轮播 hero 相关状态
     heroCarouselEnabled: false,
@@ -62,6 +66,7 @@ Page({
     this.applyCurrentTheme()
     this.applySavedLocation()
     this.loadHomePageData()
+    this.loadStaffEntryState()
   },
 
   onHide() {
@@ -92,6 +97,58 @@ Page({
     ensureLogin({ content: '登录后可预约服务、管理宠物和查看订单。' })
       .then(() => wx.navigateTo({ url }))
       .catch(() => {})
+  },
+
+  loadStaffEntryState() {
+    this.setData({ staffEntryLoaded: false })
+    getCurrentUser({ silent: true })
+      .then((user) => {
+        if (!user) {
+          this.setData({
+            staffEntryLoaded: true,
+            staffEntryStatus: 'none',
+            staffEntryTitle: '申请成为宠护师',
+            staffEntryTip: '通过审核后进入安心宠护端接单'
+          })
+          return
+        }
+        return callFunction('staff', 'getStaffProfile')
+          .then((profile) => this.applyStaffEntryState(profile))
+          .catch(() => this.applyStaffEntryState(null))
+      })
+      .catch(() => this.setData({ staffEntryLoaded: true }))
+  },
+
+  applyStaffEntryState(profile) {
+    const status = profile && profile.auditStatus
+    const stateMap = {
+      approved: { title: '进入安心宠护端', tip: '查看任务与接单工作台' },
+      pending: { title: '宠护师认证审核中', tip: '资料已提交，请等待平台审核' },
+      rejected: { title: '修改宠护师认证', tip: (profile && profile.auditRemark) || '审核未通过，请修改后重新提交' },
+      none: { title: '申请成为宠护师', tip: '通过审核后进入安心宠护端接单' }
+    }
+    const entry = stateMap[status] || stateMap.none
+    this.setData({
+      staffEntryLoaded: true,
+      staffEntryStatus: status || 'none',
+      staffEntryTitle: entry.title,
+      staffEntryTip: entry.tip
+    })
+  },
+
+  openStaffEntry() {
+    ensureLogin({ content: '登录后可申请或进入安心宠护端。' })
+      .then(() => callFunction('staff', 'getStaffProfile'))
+      .then((profile) => {
+        const status = profile && profile.auditStatus
+        if (status === 'approved') {
+          wx.showToast({ title: '你已是安心宠护师', icon: 'none' })
+          wx.redirectTo({ url: '/pages/staff/home/index' })
+          return
+        }
+        wx.navigateTo({ url: '/pages/staff/certification/index' })
+      })
+      .catch(showError)
   },
 
   claimNewbieCoupon(e) {

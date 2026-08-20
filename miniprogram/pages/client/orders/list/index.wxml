@@ -15,6 +15,8 @@
         <view>
           <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
           <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+          <view class="muted">创建时间：{{item.createdAtText || '-'}}</view>
+          <view class="muted">预约时间：{{item.appointmentTimeText || '-'}}</view>
           <view class="muted">订单金额 ¥{{item.payAmount}}<text wx:if="{{item.discountAmount}}">，已优惠 ¥{{item.discountAmount}}</text></view>
         </view>
       </view>
@@ -27,7 +29,10 @@
     </view>
   </view>
 
-  <view class="empty" wx:if="{{!orders.length}}">
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && orders.length}}">正在加载更多...</view>
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && orders.length && !hasMore}}">已显示全部订单</view>
+
+  <view class="empty" wx:if="{{!loading && !orders.length}}">
     <view>暂时还没有订单哦，赶紧给爱宠预约服务吧～</view>
     <navigator class="primary" url="/pages/client/orders/create/index">去预约</navigator>
   </view>

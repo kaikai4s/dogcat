@@ -5,6 +5,10 @@
     <view class="tip">展示已完成订单的脱敏评价与打卡记录，不包含地址、经纬度、门牌和联系方式。</view>
   </view>
 
+  <view class="status-tabs">
+    <view class="status-tab {{activeServiceType === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-type="{{item.value}}" bindtap="chooseServiceType">{{item.label}}</view>
+  </view>
+
   <view wx:if="{{orders.length}}">
     <view class="card public-order-card" wx:for="{{orders}}" wx:key="_id">
       <view class="between" style="align-items:flex-start;gap:18rpx;">
@@ -41,4 +45,7 @@
 
   <view class="empty" wx:elif="{{!loading}}">暂无公开服务评价</view>
   <view class="empty" wx:else>加载中...</view>
+
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && orders.length}}">正在加载更多...</view>
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && orders.length && !hasMore}}">已显示全部评价</view>
 </view>

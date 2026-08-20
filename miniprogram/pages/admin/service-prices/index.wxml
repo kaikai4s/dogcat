@@ -25,6 +25,44 @@
 
   <button class="ghost" bindtap="resetDefaults">恢复默认价格</button>
 
+  <view class="card form-card">
+    <view class="between">
+      <view>
+        <view class="subtitle">服务打卡证据规则</view>
+        <view class="muted">按服务配置需要哪些打卡，同类打卡在多服务订单中会自动去重。</view>
+      </view>
+      <button class="primary compact-btn" bindtap="saveRules">保存规则</button>
+    </view>
+  </view>
+
+  <view class="card form-card" wx:for="{{ruleGroups}}" wx:for-item="group" wx:for-index="groupIndex" wx:key="serviceType">
+    <view class="between">
+      <view>
+        <view class="strong">{{group.serviceType}}</view>
+        <view class="muted">{{group.rules.length}} 个打卡项</view>
+      </view>
+      <button class="ghost compact-btn" data-group-index="{{groupIndex}}" bindtap="addRule">新增打卡</button>
+    </view>
+    <view class="notice" wx:for="{{group.rules}}" wx:for-item="rule" wx:for-index="ruleIndex" wx:key="eventType">
+      <picker range="{{eventOptions}}" range-key="label" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindchange="chooseRuleEvent">
+        <view class="field picker-field">{{rule.label || rule.eventType}}</view>
+      </picker>
+      <view class="between">
+        <view class="strong">必打卡</view>
+        <switch checked="{{rule.required}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindchange="toggleRuleRequired" />
+      </view>
+      <view class="between">
+        <view class="strong">启用</view>
+        <switch checked="{{rule.enabled}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindchange="toggleRuleEnabled" />
+      </view>
+      <input type="number" placeholder="排序" value="{{rule.sortOrder}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" data-field="sortOrder" bindinput="ruleInput" />
+      <input placeholder="说明" value="{{rule.description}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" data-field="description" bindinput="ruleInput" />
+      <button class="ghost" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindtap="removeRule">删除此打卡项</button>
+    </view>
+  </view>
+
+  <button class="ghost" bindtap="resetRuleDefaults">恢复默认打卡规则</button>
+
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>
     <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>订单</view></view>

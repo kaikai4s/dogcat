@@ -16,6 +16,18 @@ const radiusOptions = [
   { label: '20公里', value: 20 }
 ]
 
+function uploadIdentityFile(filePath, type) {
+  const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+  return new Promise((resolve, reject) => {
+    wx.cloud.uploadFile({
+      cloudPath: `staff_identity/${type}_${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`,
+      filePath,
+      success: (res) => resolve(res.fileID),
+      fail: reject
+    })
+  })
+}
+
 Page({
   data: {
     themeClass: 'theme-day',
@@ -27,11 +39,16 @@ Page({
       serviceAddress: '',
       serviceLatitude: 0,
       serviceLongitude: 0,
-      serviceRadiusKm: 5
+      serviceRadiusKm: 5,
+      idCardFrontFileId: '',
+      idCardBackFileId: '',
+      facePhotoFileId: ''
     },
+    identityPreviews: { idCardFrontFileId: '', idCardBackFileId: '', facePhotoFileId: '' },
     radiusOptions,
     profile: null,
-    statusTip: ''
+    statusTip: '',
+    isApproved: false
   },
 
   onShow() {
@@ -48,7 +65,13 @@ Page({
             serviceLatitude: Number(profile.serviceLatitude || 0),
             serviceLongitude: Number(profile.serviceLongitude || 0)
           },
-          statusTip: profile.auditRemark || statusText[profile.auditStatus] || ''
+          identityPreviews: {
+            idCardFrontFileId: profile.idCardFrontFileId || '',
+            idCardBackFileId: profile.idCardBackFileId || '',
+            facePhotoFileId: profile.facePhotoFileId || ''
+          },
+          statusTip: profile.auditRemark || statusText[profile.auditStatus] || '',
+          isApproved: profile.auditStatus === 'approved'
         })
       })
       .catch(showError)
@@ -83,10 +106,46 @@ Page({
     this.setData({ ['form.serviceRadiusKm']: radius })
   },
 
+  chooseIdentityPhoto(e) {
+    const field = e.currentTarget.dataset.field
+    if (!field) return
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const filePath = res.tempFiles[0].tempFilePath
+        this.setData({ [`identityPreviews.${field}`]: filePath })
+        wx.showLoading({ title: '上传中...' })
+        uploadIdentityFile(filePath, field)
+          .then((fileId) => {
+            wx.hideLoading()
+            this.setData({ ['form.' + field]: fileId, [`identityPreviews.${field}`]: fileId })
+          })
+          .catch((error) => {
+            wx.hideLoading()
+            showError(error)
+          })
+      }
+    })
+  },
+
   submit() {
-    const { realName, serviceAddress, serviceLatitude, serviceLongitude } = this.data.form
+    if (this.data.isApproved) {
+      wx.showToast({ title: '已完成认证，无需重复提交', icon: 'none' })
+      return
+    }
+    const { realName, phone, idCardFrontFileId, idCardBackFileId, facePhotoFileId, serviceAddress, serviceLatitude, serviceLongitude } = this.data.form
     if (!realName) {
       wx.showToast({ title: '请填写真实姓名', icon: 'none' })
+      return
+    }
+    if (!phone) {
+      wx.showToast({ title: '请填写手机号', icon: 'none' })
+      return
+    }
+    if (!idCardFrontFileId || !idCardBackFileId || !facePhotoFileId) {
+      wx.showToast({ title: '请上传身份证和人脸照片', icon: 'none' })
       return
     }
     if (!serviceAddress || !serviceLatitude || !serviceLongitude) {

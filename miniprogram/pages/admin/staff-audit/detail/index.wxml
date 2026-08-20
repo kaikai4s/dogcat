@@ -10,7 +10,27 @@
     <view class="info-row"><view class="label">手机</view><view class="value">{{staff.phone}}</view></view>
     <view class="info-row"><view class="label">城市</view><view class="value">{{staff.serviceCity}}</view></view>
     <view class="info-row"><view class="label">区域</view><view class="value">{{staff.serviceAreas}}</view></view>
+    <view class="info-row"><view class="label">身份核验</view><view class="badge">{{staff.identityStatus || 'pending'}}</view></view>
+    <view class="info-row"><view class="label">人脸核验</view><view class="badge">{{staff.faceVerifyStatus || 'manual_pending'}}</view></view>
     <view class="info-row"><view class="label">状态</view><view class="badge">{{staff.auditStatusText}}</view></view>
+  </view>
+
+  <view class="card form-card">
+    <view class="subtitle">实名认证材料</view>
+    <view class="service-grid">
+      <view class="service-option" wx:if="{{staff.idCardFrontFileId}}" data-url="{{staff.idCardFrontFileId}}" bindtap="preview">
+        <image src="{{staff.idCardFrontFileId}}" mode="aspectFill" style="width:100%;height:170rpx;border-radius:16rpx;" />
+        <view class="service-title">身份证人像面</view>
+      </view>
+      <view class="service-option" wx:if="{{staff.idCardBackFileId}}" data-url="{{staff.idCardBackFileId}}" bindtap="preview">
+        <image src="{{staff.idCardBackFileId}}" mode="aspectFill" style="width:100%;height:170rpx;border-radius:16rpx;" />
+        <view class="service-title">身份证国徽面</view>
+      </view>
+      <view class="service-option" wx:if="{{staff.facePhotoFileId}}" data-url="{{staff.facePhotoFileId}}" bindtap="preview">
+        <image src="{{staff.facePhotoFileId}}" mode="aspectFill" style="width:100%;height:170rpx;border-radius:16rpx;" />
+        <view class="service-title">自拍/人脸照</view>
+      </view>
+    </view>
   </view>
 
   <view class="card form-card">

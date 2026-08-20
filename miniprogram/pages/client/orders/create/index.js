@@ -15,6 +15,13 @@ const durationOptions = [
   { label: '180分钟', value: 180 }
 ]
 
+const lockMethodOptions = [
+  { label: '当面交接', value: 'handover' },
+  { label: '一次性密码锁', value: 'password' },
+  { label: '钥匙/门禁卡', value: 'key' },
+  { label: '其他说明', value: 'other' }
+]
+
 function formatDate(date) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -96,6 +103,7 @@ Page({
     pets: [],
     serviceOptions: [],
     durationOptions,
+    lockMethodOptions,
     durationIndex: 1,
     form: {
       petId: '',
@@ -106,6 +114,10 @@ Page({
       staffProfileId: '',
       addressDetail: '',
       doorplate: '',
+      lockMethod: 'handover',
+      doorLockCode: '',
+      keyLocation: '',
+      entryNotes: '',
       startDate: formatDate(new Date()),
       startClock: '10:00',
       startTime: '',
@@ -321,6 +333,11 @@ Page({
     this.setData({ saveAddress: e.detail.value })
   },
 
+  chooseLockMethod(e) {
+    const lockMethod = e.currentTarget.dataset.value || 'handover'
+    this.setData({ ['form.lockMethod']: lockMethod })
+  },
+
   syncSelectedPetUI() {
     const petId = this.data.form.petId
     const pets = decoratePets(this.data.pets, petId)
@@ -397,6 +414,9 @@ Page({
     if (!form.serviceAddress) return '请选择服务地址'
     if (!form.addressDetail) return '请填写详细地址'
     if (!form.doorplate) return '请填写门牌号或入户说明'
+    if (!form.lockMethod) return '请选择入户与门锁方式'
+    if (form.lockMethod === 'password' && !String(form.doorLockCode || '').trim()) return '请填写一次性门锁密码'
+    if ((form.lockMethod === 'key' || form.lockMethod === 'other') && !String(form.entryNotes || form.keyLocation || '').trim()) return '请填写入户说明'
     if (!form.startDate || !form.startClock) return '请选择开始时间'
     return ''
   },

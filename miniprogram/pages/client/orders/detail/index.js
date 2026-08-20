@@ -14,7 +14,7 @@ function getRefundText(order = {}) {
 }
 
 Page({
-  data: { themeClass: 'theme-day', id: '', order: null, timeline: [], review: null, paying: false, cancelling: false, sectionHomeUrl: '', canGoBack: false },
+  data: { themeClass: 'theme-day', id: '', order: null, timeline: [], review: null, paying: false, cancelling: false, handlingEarlyStart: false, sectionHomeUrl: '', canGoBack: false },
   onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }) },
   onShow() {
     this.applyCurrentTheme()
@@ -78,6 +78,22 @@ Page({
   rebook() { wx.navigateTo({ url: '/pages/client/orders/create/index?rebookOrderId=' + this.data.id }) },
   reviewOrder() { wx.navigateTo({ url: '/pages/client/orders/review/index?id=' + this.data.id }) },
   createIncident() { wx.navigateTo({ url: '/pages/client/incidents/create/index?id=' + this.data.id }) },
+  handleEarlyStart(e) {
+    if (this.data.handlingEarlyStart) return
+    const approve = e.currentTarget.dataset.action === 'approve'
+    this.setData({ handlingEarlyStart: true })
+    requestSubscribeTemplates(['serviceStart'], 'client_early_start')
+      .then(() => callFunction('order', approve ? 'approveEarlyStart' : 'rejectEarlyStart', { id: this.data.id }))
+      .then(() => {
+        wx.showToast({ title: approve ? '已同意提前开始' : '已拒绝', icon: 'none' })
+        this.setData({ handlingEarlyStart: false })
+        this.load()
+      })
+      .catch((error) => {
+        this.setData({ handlingEarlyStart: false })
+        showError(error)
+      })
+  },
   cancelOrder() {
     if (this.data.cancelling) return
     this.setData({ cancelling: true })

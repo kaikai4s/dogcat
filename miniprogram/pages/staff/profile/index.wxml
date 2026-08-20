@@ -2,7 +2,7 @@
   <view class="dashboard-header">
     <view class="badge">宠托师</view>
     <view class="title">我的宠托师主页</view>
-    <view class="tip">这里是宠托师身份下的个人中心，不会跳回宠物主端。</view>
+    <view class="tip">这里是安心宠护端的个人中心，不会跳回毛孩家庭端。</view>
   </view>
 
   <!-- 未设置服务地址警示条 -->
@@ -77,7 +77,11 @@
       <view class="menu-left"><view class="menu-icon">名</view><view>编辑个人资料</view></view>
       <view class="menu-arrow">›</view>
     </view>
-    <view class="menu-item interactive" bindtap="openCertification">
+    <view class="menu-item" wx:if="{{profile && profile.auditStatus === 'approved'}}">
+      <view class="menu-left"><view class="menu-icon">证</view><view>实名认证已通过</view></view>
+      <view class="badge">已认证</view>
+    </view>
+    <view class="menu-item interactive" wx:else bindtap="openCertification">
       <view class="menu-left"><view class="menu-icon">证</view><view>入驻认证资料</view></view>
       <view class="menu-arrow">›</view>
     </view>
@@ -88,8 +92,8 @@
   </view>
 
   <!-- 配置编辑弹窗 -->
-  <view class="modal-backdrop" wx:if="{{showConfigModal}}" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 999; display: flex; align-items: flex-end;">
-    <view style="background: var(--theme-card-bg); width: 100%; border-radius: 32rpx 32rpx 0 0; max-height: 85vh; overflow-y: auto; padding: 36rpx 30rpx 60rpx;">
+  <view class="modal-backdrop config-modal-backdrop" wx:if="{{showConfigModal}}">
+    <view class="config-modal-panel">
       <view class="between" style="margin-bottom: 24rpx; align-items: center;">
         <view style="font-size: 32rpx; font-weight: bold; color: var(--theme-text);">⚙️ 服务地址与按周接单时间设置</view>
         <view style="font-size: 36rpx; color: var(--theme-muted); padding: 10rpx;" bindtap="closeConfigModal">✕</view>
@@ -182,11 +186,14 @@
         </view>
       </view>
 
-      <button class="primary" style="margin-top: 24rpx;" bindtap="saveConfig">保存接单配置</button>
+      <view class="config-modal-footer">
+        <button class="ghost config-footer-btn" bindtap="closeConfigModal">取消</button>
+        <button class="primary config-footer-btn" bindtap="saveConfig">保存接单配置</button>
+      </view>
     </view>
   </view>
 
-  <view class="bottom-nav">
+  <view class="bottom-nav" wx:if="{{!showConfigModal}}">
     <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>工作台</view></view>
     <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>任务</view></view>
     <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon">☑</view><view>认证</view></view>

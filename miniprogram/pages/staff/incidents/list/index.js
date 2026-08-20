@@ -3,11 +3,30 @@ const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { withIncidentText } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
+const tabs = [
+  { label: '全部', value: 'all' },
+  { label: '待处理', value: 'open' },
+  { label: '处理中', value: 'processing' },
+  { label: '待补充', value: 'waiting_staff' },
+  { label: '已解决', value: 'resolved' },
+  { label: '已关闭', value: 'closed' }
+]
+
+function pageList(result) {
+  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
+}
+
 Page({
   data: {
     themeClass: 'theme-day',
+    tabs,
+    activeStatus: 'all',
     incidents: [],
+    page: 1,
+    pageSize: 10,
+    hasMore: true,
     loading: false,
+    total: 0,
     sectionHomeUrl: '',
     canGoBack: false
   },
@@ -18,7 +37,11 @@ Page({
 
   onShow() {
     this.applyCurrentTheme()
-    this.load()
+    this.load({ reset: true })
+  },
+
+  onReachBottom() {
+    this.loadMore()
   },
 
   applyCurrentTheme() {
@@ -26,14 +49,38 @@ Page({
     this.setData(getThemeState(theme.value))
   },
 
-  load() {
+  load(options = {}) {
+    if (this.data.loading) return
+    const reset = options.reset === true
+    const page = reset ? 1 : this.data.page
+    const params = { role: 'staff', page, pageSize: this.data.pageSize }
+    if (this.data.activeStatus !== 'all') params.status = this.data.activeStatus
     this.setData({ loading: true })
-    callFunction('incident', 'listMyIncidents', { role: 'staff' })
-      .then((list) => this.setData({ incidents: (list || []).map(withIncidentText), loading: false }))
+    callFunction('incident', 'listMyIncidents', params)
+      .then((result) => {
+        const pageData = pageList(result)
+        const incidents = pageData.list.map(withIncidentText)
+        this.setData({
+          incidents: reset ? incidents : this.data.incidents.concat(incidents),
+          page: pageData.page,
+          hasMore: pageData.hasMore,
+          total: pageData.total,
+          loading: false
+        })
+      })
       .catch((error) => {
         this.setData({ loading: false })
         showError(error)
       })
+  },
+
+  loadMore() {
+    if (!this.data.hasMore || this.data.loading) return
+    this.setData({ page: this.data.page + 1 }, () => this.load())
+  },
+
+  chooseStatus(e) {
+    this.setData({ activeStatus: e.currentTarget.dataset.status, page: 1, hasMore: true }, () => this.load({ reset: true }))
   },
 
   detail(e) {

@@ -5,6 +5,10 @@
     <view class="tip">查看已分配订单，按服务时间完成上门履约。</view>
   </view>
 
+  <view class="status-tabs">
+    <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
+  </view>
+
   <view class="card task-card" wx:for="{{orders}}" wx:key="_id">
     <view class="between interactive order-card-head" data-id="{{item._id}}" bindtap="detail">
       <view class="order-person">
@@ -13,7 +17,8 @@
         <view class="order-avatar" wx:else>🐾</view>
         <view style="flex: 1;">
           <view class="strong">{{item.petName}} <text class="breed-badge" wx:if="{{item.petSnapshot && item.petSnapshot.breed}}">({{item.petSnapshot.breed}})</text> · {{item.clientSnapshot.displayName || '宠物主'}}</view>
-          <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '遛狗' : '喂养')}} · {{item.startTime}}</view>
+          <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '遛狗' : '喂养')}} · {{item.appointmentTimeText || item.startTime}}</view>
+          <view class="muted">创建时间：{{item.createdAtText || '-'}}</view>
           <view class="muted">{{item.serviceAddress || '未填写地址'}} · 距你 {{item.distanceText || '未定位'}}</view>
           <view class="pet-note-tag" wx:if="{{item.petSnapshot && (item.petSnapshot.personality || item.petSnapshot.specialNotes)}}">
             <text class="tag-title">🐾 {{item.petSnapshot.personality ? '性格：' + item.petSnapshot.personality : ''}} {{item.petSnapshot.specialNotes ? ' 备注：' + item.petSnapshot.specialNotes : ''}}</text>
@@ -25,7 +30,10 @@
     <button class="ghost" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">导航到服务地址</button>
   </view>
 
-  <view class="empty" wx:if="{{!orders.length}}">暂无任务，去工作台刷新附近订单看看～</view>
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && orders.length}}">正在加载更多...</view>
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && orders.length && !hasMore}}">已显示全部任务</view>
+
+  <view class="empty" wx:if="{{!loading && !orders.length}}">暂无任务，去工作台刷新附近订单看看～</view>
 
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>工作台</view></view>

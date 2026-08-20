@@ -1,14 +1,9 @@
 const { callFunction, showError } = require('../../utils/cloud')
 const { getCachedUser, ensureLogin, setCachedUser } = require('../../utils/cloud')
-
-const roleHome = {
-  client: '/pages/client/home/index',
-  staff: '/pages/staff/home/index'
-}
-const publicRoles = Object.keys(roleHome)
+const { publicRoles, getRoleHome, decorateRoles } = require('../../utils/roles')
 
 function visibleRoles(user) {
-  return (user.roles || ['client']).filter((role) => publicRoles.includes(role))
+  return decorateRoles((user.roles || ['client']).filter((role) => publicRoles.includes(role)))
 }
 
 Page({
@@ -48,7 +43,7 @@ Page({
       .then((user) => {
         setCachedUser(user)
         getApp().globalData.activeRole = role
-        wx.redirectTo({ url: roleHome[role] })
+        wx.redirectTo({ url: getRoleHome(role) })
       })
       .catch(showError)
   }

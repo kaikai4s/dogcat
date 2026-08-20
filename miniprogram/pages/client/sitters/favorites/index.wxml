@@ -5,7 +5,15 @@
     <view class="tip">常用宠托师可快速指定预约。</view>
   </view>
 
-  <view class="loading-card" wx:if="{{loading}}">正在加载收藏...</view>
+  <view class="card">
+    <input placeholder="搜索宠护师、城市或服务" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="submitSearch" />
+    <view class="chip-row" style="margin-top:16rpx;">
+      <button class="primary compact-btn" bindtap="submitSearch">搜索</button>
+      <button class="ghost compact-btn" wx:if="{{keyword}}" bindtap="clearSearch">清空</button>
+    </view>
+  </view>
+
+  <view class="loading-card" wx:if="{{loading && !sitters.length}}">正在加载收藏...</view>
 
   <view class="card sitter-card" wx:for="{{sitters}}" wx:key="_id">
     <view class="sitter-head interactive" data-id="{{item._id}}" bindtap="detail">
@@ -27,6 +35,9 @@
       <button class="primary compact-btn" data-id="{{item._id}}" bindtap="book">指定预约</button>
     </view>
   </view>
+
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && sitters.length}}">正在加载更多...</view>
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && sitters.length && !hasMore}}">已显示全部收藏</view>
 
   <view class="empty" wx:if="{{!loading && !sitters.length}}">
     <view>还没有收藏宠托师</view>

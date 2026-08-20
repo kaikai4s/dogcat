@@ -14,6 +14,15 @@
     </view>
   </view>
 
+  <view class="card compact">
+    <view class="strong">筛选管理员</view>
+    <input value="{{keyword}}" placeholder="搜索 openid、昵称、手机或状态" bindinput="inputKeyword" confirm-type="search" bindconfirm="submitSearch" />
+    <view class="chip-row" style="margin-top:16rpx;">
+      <button class="primary compact-btn" bindtap="submitSearch">搜索</button>
+      <button class="ghost compact-btn" wx:if="{{keyword}}" bindtap="clearSearch">清空</button>
+    </view>
+  </view>
+
   <view wx:if="{{!admins.length && !loading}}" class="empty">暂无管理员</view>
 
   <view class="card admin-card" wx:for="{{admins}}" wx:key="_id">
@@ -32,6 +41,9 @@
     <view wx:if="{{item.isSelf}}" class="self-tip">当前账号，不可移除</view>
     <button wx:else class="mini-btn danger-mini" data-openid="{{item.openid}}" disabled="{{removingOpenid === item.openid}}" bindtap="revokeAdmin">{{removingOpenid === item.openid ? '移除中...' : '移除管理员'}}</button>
   </view>
+
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && admins.length}}">正在加载更多...</view>
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && admins.length && !hasMore}}">已显示全部管理员</view>
 
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>

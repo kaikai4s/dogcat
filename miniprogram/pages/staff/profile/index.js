@@ -210,6 +210,10 @@ Page({
   },
 
   openCertification() {
+    if (this.data.profile && this.data.profile.auditStatus === 'approved') {
+      wx.showToast({ title: '已完成安心宠护师认证', icon: 'none' })
+      return
+    }
     wx.redirectTo({ url: '/pages/staff/certification/index' })
   },
 

@@ -6,6 +6,10 @@
     <view class="tip">查看你提交的 SOS 和客户投诉，及时补充说明与证据。</view>
   </view>
 
+  <view class="status-tabs">
+    <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
+  </view>
+
   <view wx:if="{{!incidents.length && !loading}}" class="empty">
     暂无相关纠纷或 SOS。
     <button class="ghost" bindtap="goOrders">查看我的任务</button>
@@ -25,4 +29,7 @@
       <view class="chip" wx:if="{{item.refundNo}}">退款处理中</view>
     </view>
   </view>
+
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && incidents.length}}">正在加载更多...</view>
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && incidents.length && !hasMore}}">已显示全部工单</view>
 </view>

@@ -101,12 +101,37 @@ function formatIncidentAction(action) {
   return incidentActionText[action] || action || '操作记录'
 }
 
+function formatDateTime(value) {
+  if (!value) return ''
+  const date = typeof value === 'number' ? new Date(value) : new Date(String(value).replace(/-/g, '/'))
+  if (Number.isNaN(date.getTime())) return String(value || '')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `${month}-${day} ${hour}:${minute}`
+}
+
+function formatAppointmentTime(order = {}) {
+  const start = order.startTime || ''
+  const end = order.endTime || ''
+  if (!start && !end) return ''
+  if (!end) return formatDateTime(start)
+  const startText = formatDateTime(start)
+  const endText = formatDateTime(end)
+  if (!startText) return endText
+  if (!endText) return startText
+  return `${startText} 至 ${endText.slice(6)}`
+}
+
 function withOrderText(order) {
   if (!order) return order
   return {
     ...order,
     statusText: formatOrderStatus(order.status, order),
-    assignmentSourceText: formatAssignmentSource(order.assignmentSource)
+    assignmentSourceText: formatAssignmentSource(order.assignmentSource),
+    createdAtText: formatDateTime(order.createdAt),
+    appointmentTimeText: formatAppointmentTime(order)
   }
 }
 
@@ -146,6 +171,8 @@ module.exports = {
   formatAssignmentSource,
   formatIncidentType,
   formatIncidentAction,
+  formatDateTime,
+  formatAppointmentTime,
   withOrderText,
   withAuditText,
   withIncidentText,

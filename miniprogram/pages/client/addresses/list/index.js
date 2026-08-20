@@ -2,10 +2,19 @@ const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
 
+function pageList(result) {
+  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
+}
+
 Page({
   data: {
     addresses: [],
     select: false,
+    keyword: '',
+    page: 1,
+    pageSize: 10,
+    hasMore: true,
+    total: 0,
     loading: false,
     sectionHomeUrl: '',
     canGoBack: false
@@ -17,18 +26,51 @@ Page({
 
   onShow() {
     ensureLogin({ content: '登录后可管理常用地址。' })
-      .then(() => this.load())
+      .then(() => this.load({ reset: true }))
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
   },
 
-  load() {
+  onReachBottom() {
+    this.loadMore()
+  },
+
+  load(options = {}) {
+    if (this.data.loading) return
+    const reset = options.reset === true
+    const page = reset ? 1 : this.data.page
     this.setData({ loading: true })
-    callFunction('client', 'listAddresses')
-      .then((addresses) => this.setData({ addresses, loading: false }))
+    callFunction('client', 'listAddresses', { keyword: this.data.keyword, page, pageSize: this.data.pageSize })
+      .then((result) => {
+        const pageData = pageList(result)
+        this.setData({
+          addresses: reset ? pageData.list : this.data.addresses.concat(pageData.list),
+          page: pageData.page,
+          hasMore: pageData.hasMore,
+          total: pageData.total,
+          loading: false
+        })
+      })
       .catch((error) => {
         this.setData({ loading: false })
         showError(error)
       })
+  },
+
+  loadMore() {
+    if (!this.data.hasMore || this.data.loading) return
+    this.setData({ page: this.data.page + 1 }, () => this.load())
+  },
+
+  inputKeyword(e) {
+    this.setData({ keyword: e.detail.value })
+  },
+
+  submitSearch() {
+    this.setData({ page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+
+  clearSearch() {
+    this.setData({ keyword: '', page: 1, hasMore: true }, () => this.load({ reset: true }))
   },
 
   add() {
@@ -56,7 +98,7 @@ Page({
     callFunction('client', 'setDefaultAddress', { id: e.currentTarget.dataset.id })
       .then(() => {
         wx.showToast({ title: '已设默认' })
-        this.load()
+        this.load({ reset: true })
       })
       .catch(showError)
   },
@@ -70,7 +112,7 @@ Page({
         callFunction('client', 'deleteAddress', { id: e.currentTarget.dataset.id })
           .then(() => {
             wx.showToast({ title: '已删除' })
-            this.load()
+            this.load({ reset: true })
           })
           .catch(showError)
       }

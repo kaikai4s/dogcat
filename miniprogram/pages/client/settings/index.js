@@ -17,7 +17,8 @@ Page({
     fontKey: 'system',
     fontClass: 'font-system',
     fontIndex: 0,
-    fontName: '系统默认',
+    fontName: '默认清爽',
+    fontPreviewText: '默认清爽',
     savingFont: false,
     userName: '游客',
     userMeta: '登录后可使用完整账号功能'

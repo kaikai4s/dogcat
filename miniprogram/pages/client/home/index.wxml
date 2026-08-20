@@ -81,8 +81,8 @@
     <view class="quick-nav-item interactive" data-url="/pages/client/sitters/list/index" bindtap="go" wx:if="{{homePage.modules.nearbySitters}}">
       <view class="nav-icon-box green"><text class="icon-emoji">📍</text></view><text class="nav-label">附近宠托师</text>
     </view>
-    <view class="quick-nav-item interactive" data-url="/pages/client/sitters/apply/index" bindtap="goProtected">
-      <view class="nav-icon-box pink"><text class="icon-emoji">👩‍🌾</text></view><text class="nav-label">入驻宠托师</text>
+    <view class="quick-nav-item interactive" wx:if="{{staffEntryLoaded}}" bindtap="openStaffEntry">
+      <view class="nav-icon-box pink"><text class="icon-emoji">👩‍🌾</text></view><text class="nav-label">{{staffEntryTitle}}</text>
     </view>
     <view class="quick-nav-item interactive" data-url="/pages/client/coupons/list/index" bindtap="goProtected">
       <view class="nav-icon-box red"><text class="icon-emoji">🧧</text></view><text class="nav-label">优惠券</text>

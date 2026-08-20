@@ -20,12 +20,18 @@
   <view class="card">
     <view class="subtitle">服务操作</view>
     <button class="primary" loading="{{starting}}" disabled="{{starting}}" bindtap="start">{{starting ? '处理中...' : '开始服务'}}</button>
+    <button class="ghost" loading="{{requestingEarlyStart}}" disabled="{{requestingEarlyStart || (earlyStartRequest && earlyStartRequest.status === 'pending')}}" wx:if="{{order && order.status === 'assigned'}}" bindtap="requestEarlyStart">{{earlyStartRequest && earlyStartRequest.status === 'pending' ? '提前开始申请待确认' : '申请提前开始服务'}}</button>
+    <view class="notice" wx:if="{{earlyStartRequest}}">
+      <view class="muted">提前开始申请：{{earlyStartRequest.status === 'approved' ? '已同意' : (earlyStartRequest.status === 'rejected' ? '已拒绝' : '待宠物主确认')}}</view>
+      <view class="muted" wx:if="{{earlyStartRequest.reason}}">{{earlyStartRequest.reason}}</view>
+    </view>
     <button class="ghost" bindtap="unlock">查看限时门锁密码</button>
   </view>
 
   <view class="notice" wx:if="{{unlock}}">
-    <view class="info-row"><view class="label">门锁密码</view><view class="value">{{unlock.doorLockCode}}</view></view>
-    <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{unlock.keyLocation}}</view></view>
+    <view class="info-row"><view class="label">入户方式</view><view class="value">{{unlock.lockMethodText || '服务入户'}}</view></view>
+    <view class="info-row" wx:if="{{unlock.doorLockCode}}"><view class="label">门锁密码</view><view class="value">{{unlock.doorLockCode}}</view></view>
+    <view class="info-row" wx:if="{{unlock.keyLocation}}"><view class="label">钥匙位置</view><view class="value">{{unlock.keyLocation}}</view></view>
     <view class="info-row" wx:if="{{unlock.entryNotes}}"><view class="label">入户备注</view><view class="value">{{unlock.entryNotes}}</view></view>
   </view>
 
@@ -41,17 +47,15 @@
   </view>
 
   <view class="subtitle">打卡证据</view>
-  <view class="grid">
-    <button class="ghost" data-type="enter_door" bindtap="checkin">入户打卡</button>
-    <button class="ghost" data-type="leash_on" bindtap="checkin">牵引出门</button>
-    <button class="ghost" data-type="feed" bindtap="checkin">喂食</button>
-    <button class="ghost" data-type="water" bindtap="checkin">饮水</button>
-    <button class="ghost" data-type="clean" bindtap="checkin">清洁打卡</button>
-    <button class="ghost" data-type="medicine" bindtap="checkin">喂药打卡</button>
-    <button class="ghost" data-type="pet_status" bindtap="checkin">宠物状态</button>
-    <button class="ghost" data-type="return_home" bindtap="checkin">回家入户</button>
-    <button class="ghost" data-type="leave_door" bindtap="checkin">离户闭锁</button>
+  <view class="grid" wx:if="{{order && order.checkinRequirements && order.checkinRequirements.length}}">
+    <button class="ghost" wx:for="{{order.checkinRequirements}}" wx:key="eventType" data-type="{{item.eventType}}" bindtap="checkin">
+      {{item.label}}
+      <text wx:if="{{item.completed}}"> · 已完成</text>
+      <text wx:elif="{{item.required}}"> · 必打卡</text>
+      <text wx:else> · 选填</text>
+    </button>
   </view>
+  <view class="empty" wx:else>暂无打卡要求</view>
 
   <button class="primary" loading="{{finishing}}" disabled="{{finishing}}" bindtap="finish">{{finishing ? '处理中...' : '完成服务'}}</button>
 </view>

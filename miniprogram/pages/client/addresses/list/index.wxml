@@ -7,7 +7,15 @@
 
   <view class="address-actions">
     <button class="primary compact-btn" bindtap="add">新增常用地址</button>
-    <button class="ghost compact-btn" bindtap="load">刷新列表</button>
+    <button class="ghost compact-btn" bindtap="submitSearch">刷新列表</button>
+  </view>
+
+  <view class="card">
+    <input placeholder="搜索地址名称、位置或门牌" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="submitSearch" />
+    <view class="chip-row" style="margin-top:16rpx;">
+      <button class="primary compact-btn" bindtap="submitSearch">搜索</button>
+      <button class="ghost compact-btn" wx:if="{{keyword}}" bindtap="clearSearch">清空</button>
+    </view>
   </view>
 
   <view class="loading-card" wx:if="{{loading}}">正在加载地址...</view>
@@ -32,6 +40,9 @@
       <button class="ghost compact-btn" data-id="{{item._id}}" bindtap="remove">删除</button>
     </view>
   </view>
+
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && addresses.length}}">正在加载更多...</view>
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && addresses.length && !hasMore}}">已显示全部地址</view>
 
   <view class="empty" wx:if="{{!loading && !addresses.length}}">
     <view>{{select ? '还没有可选择的常用地址' : '暂无常用地址'}}</view>

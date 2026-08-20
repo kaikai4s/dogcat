@@ -15,6 +15,7 @@ page {
   --theme-hero: linear-gradient(135deg, #ffd2df 0%, #ffc0d2 58%, #ffe7ef 100%);
   --theme-hero-text: #7c3b12;
   --app-font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  --app-title-font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
   min-height: 100vh;
   background: var(--theme-bg);
   color: var(--theme-text);
@@ -24,22 +25,27 @@ page {
 
 .font-system {
   --app-font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  --app-title-font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
 }
 
 .font-rounded {
-  --app-font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --app-font-family: "AppRoundedFont", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --app-title-font-family: "AppRoundedTitleFont", "AppRoundedFont", "Microsoft YaHei UI", "PingFang SC", sans-serif;
 }
 
 .font-clean {
-  --app-font-family: "Helvetica Neue", Arial, "PingFang SC", sans-serif;
+  --app-font-family: "AppKaiFont", "Kaiti SC", "STKaiti", "KaiTi", "PingFang SC", cursive, sans-serif;
+  --app-title-font-family: "AppKaiTitleFont", "AppKaiFont", "Kaiti SC", "STKaiti", "KaiTi", cursive, sans-serif;
 }
 
 .font-serif {
-  --app-font-family: "Songti SC", "STSong", "SimSun", serif;
+  --app-font-family: "AppSongFont", "Songti SC", "STSong", "SimSun", serif;
+  --app-title-font-family: "AppSongTitleFont", "AppSongFont", "Songti SC", "STSong", serif;
 }
 
 .font-cute {
-  --app-font-family: "Kaiti SC", "STKaiti", "KaiTi", "PingFang SC", cursive, sans-serif;
+  --app-font-family: "AppCuteFont", "Kaiti SC", "STKaiti", "KaiTi", "PingFang SC", cursive, sans-serif;
+  --app-title-font-family: "AppCuteTitleFont", "AppCuteFont", "Kaiti SC", "STKaiti", "KaiTi", cursive, sans-serif;
 }
 
 .font-system,
@@ -171,6 +177,34 @@ camera {
 
 .font-cute {
   letter-spacing: 1rpx;
+}
+
+.brand,
+.title,
+.subtitle,
+.hero-title,
+.hero-kicker,
+.badge,
+.strong,
+.role-name,
+.service-title,
+.header-title,
+.profile-name {
+  font-family: var(--app-title-font-family);
+}
+
+.font-rounded .title,
+.font-rounded .hero-title,
+.font-cute .title,
+.font-cute .hero-title {
+  letter-spacing: 2rpx;
+}
+
+.font-clean .title,
+.font-clean .hero-title,
+.font-serif .title,
+.font-serif .hero-title {
+  letter-spacing: 1.4rpx;
 }
 
 button {

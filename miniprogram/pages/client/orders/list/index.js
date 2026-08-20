@@ -11,41 +11,67 @@ const tabs = [
   { label: '已完成', value: 'completed' }
 ]
 
+function pageList(result) {
+  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
+}
+
 Page({
   data: {
     themeClass: 'theme-day',
     tabs,
     activeStatus: 'all',
-    allOrders: [],
-    orders: []
+    orders: [],
+    page: 1,
+    pageSize: 10,
+    hasMore: true,
+    loading: false,
+    total: 0
   },
   onShow() {
     this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看订单。' })
-      .then(() => this.load())
+      .then(() => this.load({ reset: true }))
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+  },
+  onReachBottom() {
+    this.loadMore()
   },
   applyCurrentTheme() {
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
   },
-  load() {
-    callFunction('order', 'listOrders', { role: 'client' })
-      .then((orders) => this.setData({ allOrders: orders.map(withOrderText) }, this.filterOrders))
-      .catch(showError)
-  },
-  filterOrders() {
-    const { activeStatus, allOrders } = this.data
-    const orders = activeStatus === 'all'
-      ? allOrders
-      : allOrders.filter((order) => {
-        if (activeStatus === 'waiting_service') return ['assigned', 'in_service'].includes(order.status)
-        return order.status === activeStatus
+  load(options = {}) {
+    if (this.data.loading) return
+    const reset = options.reset === true
+    const page = reset ? 1 : this.data.page
+    const activeStatus = this.data.activeStatus
+    const params = { role: 'client', page, pageSize: this.data.pageSize }
+    if (activeStatus === 'waiting_service') params.statusGroup = 'waiting_service'
+    else if (activeStatus !== 'all') params.status = activeStatus
+    this.setData({ loading: true })
+    callFunction('order', 'listOrders', params)
+      .then((result) => {
+        const pageData = pageList(result)
+        const orders = pageData.list.map(withOrderText)
+        this.setData({
+          orders: reset ? orders : this.data.orders.concat(orders),
+          page: pageData.page,
+          hasMore: pageData.hasMore,
+          total: pageData.total,
+          loading: false
+        })
       })
-    this.setData({ orders })
+      .catch((error) => {
+        this.setData({ loading: false })
+        showError(error)
+      })
+  },
+  loadMore() {
+    if (!this.data.hasMore || this.data.loading) return
+    this.setData({ page: this.data.page + 1 }, () => this.load())
   },
   chooseStatus(e) {
-    this.setData({ activeStatus: e.currentTarget.dataset.status }, this.filterOrders)
+    this.setData({ activeStatus: e.currentTarget.dataset.status, page: 1, hasMore: true }, () => this.load({ reset: true }))
   },
   detail(e) { wx.navigateTo({ url: '/pages/client/orders/detail/index?id=' + e.currentTarget.dataset.id }) },
   go(e) {

@@ -51,6 +51,8 @@ Page({
     trackStatusText: '服务开始后自动记录轨迹',
     latestTrackText: '',
     offlineTaskCount: 0,
+    earlyStartRequest: null,
+    requestingEarlyStart: false,
     starting: false,
     finishing: false,
     sectionHomeUrl: '',
@@ -61,6 +63,11 @@ Page({
     this.applyCurrentTheme()
     this.setData({ ...createPageNav(q), id: q.id })
     this.loadOrder()
+  },
+
+  onShow() {
+    this.applyCurrentTheme()
+    if (this.data.id) this.loadOrder()
   },
 
   applyCurrentTheme() {
@@ -75,7 +82,7 @@ Page({
   loadOrder() {
     callFunction('order', 'getOrderDetail', { id: this.data.id })
       .then((order) => {
-        this.setData({ order, offlineTaskCount: getOfflineTaskCount(this.data.id) })
+        this.setData({ order, earlyStartRequest: order.earlyStartRequest || null, offlineTaskCount: getOfflineTaskCount(this.data.id) })
         if (order && order.status === 'in_service') {
           this.flushOfflineTasks()
           this.startAutoTracking()
@@ -101,6 +108,34 @@ Page({
       })
       .catch((error) => {
         this.setData({ starting: false })
+        const message = (error && (error.message || error.errMsg)) || ''
+        if (message.includes('服务时间未到')) {
+          wx.showModal({
+            title: '服务时间未到',
+            content: '现在还没到预约开始时间，可向宠物主申请提前开始服务。',
+            confirmText: '申请提前',
+            cancelText: '稍后再说',
+            success: (res) => {
+              if (res.confirm) this.requestEarlyStart()
+            }
+          })
+          return
+        }
+        showError(error)
+      })
+  },
+
+  requestEarlyStart() {
+    if (this.data.requestingEarlyStart) return
+    this.setData({ requestingEarlyStart: true })
+    requestSubscribeTemplates(['serviceStart'], 'staff_early_start')
+      .then(() => callFunction('order', 'requestEarlyStart', { id: this.data.id, reason: '宠护师已到达，申请提前开始服务' }))
+      .then((earlyStartRequest) => {
+        wx.showToast({ title: '已发送申请', icon: 'none' })
+        this.setData({ requestingEarlyStart: false, earlyStartRequest })
+      })
+      .catch((error) => {
+        this.setData({ requestingEarlyStart: false })
         showError(error)
       })
   },
@@ -261,7 +296,19 @@ Page({
     wx.navigateTo({ url: '/pages/staff/checkin/camera/index?id=' + this.data.id + '&eventType=' + e.currentTarget.dataset.type })
   },
 
+  validateRequiredCheckins() {
+    const requirements = (this.data.order && this.data.order.checkinRequirements) || []
+    const missing = requirements.filter((item) => item.required && !item.completed)
+    if (!missing.length) return ''
+    return `还缺少必打卡：${missing.map((item) => item.label || item.eventType).join('、')}`
+  },
+
   finish() {
+    const missingTip = this.validateRequiredCheckins()
+    if (missingTip) {
+      wx.showToast({ title: missingTip, icon: 'none' })
+      return
+    }
     if (this.data.finishing) return
     this.setData({ finishing: true })
     this.uploadAutoTrackPoint()
