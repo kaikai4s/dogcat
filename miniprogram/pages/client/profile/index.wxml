@@ -147,7 +147,7 @@
       <view class="menu-right-info" wx:if="{{!isGuest}}">{{points}} 积分</view>
       <view class="menu-arrow">›</view>
     </view>
-    <view class="menu-item interactive" bindtap="subscribe">
+    <view class="menu-item interactive" bindtap="openOfficialAccountModal">
       <view class="menu-left"><view class="menu-icon">▣</view><view>关注公众号</view></view>
       <view class="menu-arrow">›</view>
     </view>
@@ -155,11 +155,11 @@
 
   <view class="card menu-list">
     <view class="subtitle">其他入口</view>
-    <view class="menu-item">
+    <view class="menu-item interactive" bindtap="openCustomerService">
       <view class="menu-left"><view class="menu-icon">☏</view><view>客服中心</view></view>
       <view class="menu-arrow">›</view>
     </view>
-    <view class="menu-item">
+    <view class="menu-item interactive" bindtap="openFeedbackModal">
       <view class="menu-left"><view class="menu-icon">!</view><view>意见反馈</view></view>
       <view class="menu-arrow">›</view>
     </view>
@@ -174,6 +174,53 @@
     <view class="menu-item interactive" wx:if="{{!isGuest}}" bindtap="logout">
       <view class="menu-left"><view class="menu-icon">退</view><view>退出登录</view></view>
       <view class="menu-arrow">›</view>
+    </view>
+  </view>
+
+  <!-- 客服弹窗 -->
+  <view class="modal-backdrop" wx:if="{{showCustomerServiceModal}}" bindtap="closeCustomerServiceModal">
+    <view class="modal-card" catchtap="true">
+      <view class="modal-title">客服中心</view>
+      <view class="modal-tip">如需人工帮助或订单咨询，可通过以下方式联系我们。</view>
+      <view class="info-list" style="margin-top:20rpx;">
+        <view class="info-row"><view class="label">服务时间</view><view class="value">{{csInfo.workHours || '每天 9:00 - 21:00'}}</view></view>
+        <view class="info-row" wx:if="{{csInfo.phone}}"><view class="label">客服电话</view><view class="value" bindtap="callCsPhone">{{csInfo.phone}} 📞</view></view>
+        <view class="info-row" wx:if="{{csInfo.wechatId}}"><view class="label">客服微信</view><view class="value" bindtap="copyCsWechat">{{csInfo.wechatId}} 📋</view></view>
+      </view>
+      <view class="modal-actions" style="margin-top:24rpx; display:flex; gap:16rpx;">
+        <button class="primary" style="flex:1" open-type="contact">在线客服</button>
+        <button class="ghost" style="flex:1" bindtap="closeCustomerServiceModal">关闭</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 意见反馈弹窗 -->
+  <view class="modal-backdrop" wx:if="{{showFeedbackModal}}" bindtap="closeFeedbackModal">
+    <view class="modal-card" catchtap="true">
+      <view class="modal-title">意见反馈</view>
+      <view class="modal-tip">欢迎向我们提出宝贵建议或改进意见。</view>
+      <view class="form-item" style="margin-top:16rpx;">
+        <textarea placeholder="请详细描述你的建议、发现的问题或优化想法..." value="{{feedbackText}}" bindinput="inputFeedbackText" style="width:100%;height:180rpx;background:var(--theme-bg-soft);padding:16rpx;border-radius:12rpx;box-sizing:border-box;" />
+      </view>
+      <view class="form-item" style="margin-top:16rpx;">
+        <input placeholder="联系方式（手机号/微信，选填）" value="{{feedbackContact}}" bindinput="inputFeedbackContact" style="background:var(--theme-bg-soft);padding:16rpx;border-radius:12rpx;" />
+      </view>
+      <view class="modal-actions" style="margin-top:24rpx; display:flex; gap:16rpx;">
+        <button class="primary" style="flex:1" loading="{{submittingFeedback}}" bindtap="submitFeedback">提交反馈</button>
+        <button class="ghost" style="flex:1" bindtap="closeFeedbackModal">取消</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 关注公众号弹窗 -->
+  <view class="modal-backdrop" wx:if="{{showOfficialAccountModal}}" bindtap="closeOfficialAccountModal">
+    <view class="modal-card" catchtap="true">
+      <view class="modal-title">关注公众号</view>
+      <view class="modal-tip">搜索并关注“{{csInfo.officialAccountName || 'VIP宠护'}}”微信公众号，即可第一时间接收订单进度、打卡提醒和优惠福利推送。</view>
+      <view class="modal-actions" style="margin-top:24rpx;">
+        <button class="primary" bindtap="copyOfficialAccountName">复制公众号名称并去微信搜索</button>
+        <button class="ghost" style="margin-top:12rpx;" bindtap="closeOfficialAccountModal">关闭</button>
+      </view>
     </view>
   </view>
 

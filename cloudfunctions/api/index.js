@@ -13,7 +13,8 @@ const collections = [
   'staff_earnings', 'withdraw_requests', 'staff_schedule_exceptions',
   'subscription_consents', 'subscription_logs',
   'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
-  'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs'
+  'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',
+  'user_feedback'
 ]
 
 const defaultServicePrices = [
@@ -353,6 +354,12 @@ function normalizeSystemSettings(value = {}, options = {}) {
       enableOfflineQueue: reliability.enableOfflineQueue !== false,
       maxTrackBatchSize: Math.min(Math.max(Math.round(Number(reliability.maxTrackBatchSize || 50)), 1), 200),
       maxRetryTimes: Math.min(Math.max(Math.round(Number(reliability.maxRetryTimes || 5)), 0), 20)
+    },
+    customerService: {
+      phone: safeText((value.customerService || {}).phone).trim(),
+      wechatId: safeText((value.customerService || {}).wechatId).trim(),
+      workHours: safeText((value.customerService || {}).workHours).trim() || '每天 9:00-21:00',
+      officialAccountName: safeText((value.customerService || {}).officialAccountName).trim()
     }
   }
 }
@@ -1274,7 +1281,7 @@ async function getHomePageData(openid, data = {}) {
     .filter((coupon) => coupon.status !== 'void')
     .map((coupon) => coupon.templateId || (coupon.templateSnapshot && coupon.templateSnapshot.templateId))
     .filter(Boolean))
-  const newbieCoupons = couponTemplates.filter((coupon) => coupon.newbieOnly === true && !claimedNewbieTemplateIds.has(coupon._id))
+  const newbieCoupons = couponTemplates.filter((coupon) => coupon.newbieOnly !== false && !claimedNewbieTemplateIds.has(coupon._id))
 
   return {
     settings: {
@@ -3003,6 +3010,34 @@ const handlers = {
       }
       return { count: records.length }
     }
+    if (action === 'getCustomerServiceInfo') {
+      const settings = await getSystemSettings()
+      return settings.customerService || {}
+    }
+    if (action === 'submitFeedback') {
+      const user = await getUser(openid)
+      const content = safeText(data.content).trim()
+      const category = safeText(data.category).trim() || 'general'
+      const contactInfo = safeText(data.contactInfo).trim()
+      if (!content) throw new Error('请输入反馈内容')
+      if (content.length > 2000) throw new Error('反馈内容不超过 2000 字')
+      const time = now()
+      const feedback = {
+        openid,
+        userId: user._id,
+        nickname: user.nickname || '',
+        phone: user.phone || '',
+        category,
+        content,
+        contactInfo,
+        mediaFileIds: Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9).map(safeFileId).filter(Boolean) : [],
+        status: 'pending',
+        createdAt: time,
+        updatedAt: time
+      }
+      const created = await db.collection('user_feedback').add({ data: feedback })
+      return { _id: created._id }
+    }
     throw new Error('未知 system 操作')
   },
 
@@ -4436,11 +4471,11 @@ const handlers = {
 
       if (!realName) throw new Error('请输入真实姓名')
       if (!phone) throw new Error('请输入手机号')
-      if (!idCardFrontFileId || !idCardBackFileId) throw new Error('请上传身份证正反面照片')
-      if (!facePhotoFileId) throw new Error('请上传自拍/人脸照片')
       if (!serviceAddress || !hasCoordinate(serviceLatitude, serviceLongitude)) {
         throw new Error('宠托师认证必须设置固定服务地址及坐标')
       }
+      if (!idCardFrontFileId || !idCardBackFileId) throw new Error('请上传身份证正反面照片')
+      if (!facePhotoFileId) throw new Error('请上传自拍/人脸照片')
 
       const time = now()
       const identitySummary = {
@@ -5507,6 +5542,34 @@ const handlers = {
       const issued = await issueCouponToTargetUser(template, targetUser, { adminUserId: admin._id, adminOpenid: openid })
       await logAdmin(admin, 'coupon_template', templateId, 'issueCouponToUser', { targetOpenid, couponId: issued._id })
       return { _id: issued._id, templateId, openid: targetOpenid, status: 'available', templateSnapshot: issued.templateSnapshot, validFrom: issued.validFrom, validTo: issued.validTo }
+    }
+    if (action === 'listFeedback') {
+      const status = safeText(data.status).trim()
+      const category = safeText(data.category).trim()
+      const res = await db.collection('user_feedback').orderBy('createdAt', 'desc').get()
+      const list = (res.data || [])
+        .filter((item) => !status || item.status === status)
+        .filter((item) => !category || item.category === category)
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(list, data) : list
+    }
+    if (action === 'replyFeedback') {
+      const id = safeText(data.id || data.feedbackId).trim()
+      const replyContent = safeText(data.replyContent || data.reply).trim()
+      const status = safeText(data.status).trim() || 'resolved'
+      if (!id) throw new Error('请选择反馈')
+      if (!replyContent) throw new Error('请输入回复内容')
+      const time = now()
+      const updateData = {
+        replyContent,
+        repliedByOpenid: openid,
+        repliedAt: time,
+        status,
+        updatedAt: time
+      }
+      await db.collection('user_feedback').doc(id).update({ data: updateData })
+      await logAdmin(admin, 'user_feedback', id, 'replyFeedback', { status })
+      return { id, status }
     }
     if (action === 'listStaffAudits') {
       const status = safeText(data.auditStatus).trim()

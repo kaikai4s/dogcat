@@ -142,8 +142,10 @@ Page({
       .then((profile) => {
         const status = profile && profile.auditStatus
         if (status === 'approved') {
+          const app = getApp()
+          if (app && app.globalData) app.globalData.activeRole = 'staff'
           wx.showToast({ title: '你已是安心宠护师', icon: 'none' })
-          wx.redirectTo({ url: '/pages/staff/home/index' })
+          wx.reLaunch({ url: '/pages/staff/home/index' })
           return
         }
         wx.navigateTo({ url: '/pages/staff/certification/index' })

@@ -154,7 +154,7 @@ Page({
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    wx.redirectTo({ url })
+    wx.navigateTo({ url })
   },
 
   detail(e) { wx.navigateTo({ url: '/pages/staff/orders/detail/index?id=' + e.currentTarget.dataset.id }) },

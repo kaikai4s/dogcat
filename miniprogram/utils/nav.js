@@ -18,19 +18,40 @@ function getCurrentRouteFallback() {
   return getRoleHome(activeRole || 'client')
 }
 
+function isSameDomainRoute(sourceRoute, targetRoute) {
+  const sourcePrefix = (sourceRoute.match(/^\/pages\/([^/]+)\//) || [])[1]
+  const targetPrefix = (targetRoute.match(/^\/pages\/([^/]+)\//) || [])[1]
+  if (!sourcePrefix || !targetPrefix) return true
+  return sourcePrefix === targetPrefix
+}
+
 function createPageNav(query = {}) {
+  const pages = getCurrentPages()
+  const current = pages[pages.length - 1]
+  const currentRoute = normalizeUrl(current && current.route)
+  const prevPage = pages.length > 1 ? pages[pages.length - 2] : null
+  const prevRoute = normalizeUrl(prevPage && prevPage.route)
+
+  const hasSameDomainPrevPage = Boolean(prevRoute && isSameDomainRoute(currentRoute, prevRoute))
+
   return {
-    canGoBack: getCurrentPages().length > 1,
+    canGoBack: hasSameDomainPrevPage,
     fallbackUrl: normalizeUrl(query.fallbackUrl) || getCurrentRouteFallback()
   }
 }
 
 function goBack() {
   const pages = getCurrentPages()
-  if (pages.length > 1) {
+  const current = pages[pages.length - 1]
+  const currentRoute = normalizeUrl(current && current.route)
+  const prevPage = pages.length > 1 ? pages[pages.length - 2] : null
+  const prevRoute = normalizeUrl(prevPage && prevPage.route)
+
+  if (prevRoute && isSameDomainRoute(currentRoute, prevRoute)) {
     wx.navigateBack()
     return
   }
+
   const fallbackUrl = normalizeUrl(this && this.data && this.data.fallbackUrl) || getCurrentRouteFallback()
   wx.redirectTo({ url: fallbackUrl })
 }

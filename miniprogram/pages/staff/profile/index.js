@@ -206,7 +206,7 @@ Page({
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    wx.redirectTo({ url })
+    wx.navigateTo({ url })
   },
 
   openCertification() {
@@ -222,6 +222,8 @@ Page({
   },
 
   backClientProfile() {
-    wx.redirectTo({ url: '/pages/client/profile/index' })
+    const app = getApp()
+    if (app && app.globalData) app.globalData.activeRole = 'client'
+    wx.reLaunch({ url: '/pages/client/profile/index' })
   }
 })

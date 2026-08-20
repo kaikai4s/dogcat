@@ -2,6 +2,8 @@ const { callFunction, showError, chooseSelectedLocation } = require('../../../ut
 const { withAuditText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
+const { createPageNav, navMethods } = require('../../../utils/nav')
+
 const statusText = {
   pending: '资料已提交，等待平台审核',
   approved: '审核已通过，可以进入工作台接单',
@@ -48,8 +50,15 @@ Page({
     radiusOptions,
     profile: null,
     statusTip: '',
-    isApproved: false
+    isApproved: false,
+    canGoBack: false
   },
+
+  onLoad(q) {
+    this.setData(createPageNav(q))
+  },
+
+  ...navMethods(),
 
   onShow() {
     this.applyCurrentTheme()
@@ -167,7 +176,7 @@ Page({
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    wx.redirectTo({ url })
+    wx.navigateTo({ url })
   },
 
   backProfile() {

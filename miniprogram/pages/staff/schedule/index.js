@@ -35,15 +35,18 @@ Page({
       remark: ''
     },
     startHourIndex: 9,
-    endHourIndex: 18
+    endHourIndex: 18,
+    canGoBack: false
   },
 
-  ...navMethods,
-
-  onLoad() {
+  onLoad(q) {
+    const { createPageNav } = require('../../../utils/nav')
+    this.setData(createPageNav(q))
     this.applyCurrentTheme()
     this.loadCalendar()
   },
+
+  ...navMethods(),
 
   applyCurrentTheme() {
     const theme = applyTheme()

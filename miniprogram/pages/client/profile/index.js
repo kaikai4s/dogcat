@@ -43,7 +43,19 @@ Page({
     rewardMailUnreadCount: 0,
     rewardMailUnclaimedCount: 0,
     hidePublicCheckinPhotos: false,
-    savingPrivacy: false
+    savingPrivacy: false,
+    showCustomerServiceModal: false,
+    showFeedbackModal: false,
+    showOfficialAccountModal: false,
+    feedbackText: '',
+    feedbackContact: '',
+    submittingFeedback: false,
+    csInfo: {
+      phone: '',
+      wechatId: '',
+      workHours: '每天 9:00 - 21:00',
+      officialAccountName: 'VIP宠护'
+    }
   },
 
   onLoad(query = {}) {
@@ -216,8 +228,10 @@ Page({
           return
         }
         if (profile.auditStatus === 'approved') {
+          const app = getApp()
+          if (app && app.globalData) app.globalData.activeRole = 'staff'
           wx.showToast({ title: '你已是安心宠护师', icon: 'none' })
-          wx.redirectTo({ url: '/pages/staff/home/index' })
+          wx.reLaunch({ url: '/pages/staff/home/index' })
           return
         }
         wx.showToast({ title: '资料审核中', icon: 'none' })
@@ -227,7 +241,11 @@ Page({
 
   openAdmin() {
     ensureLogin({ content: '登录后可进入管理端。' })
-      .then(() => wx.redirectTo({ url: '/pages/admin/home/index' }))
+      .then(() => {
+        const app = getApp()
+        if (app && app.globalData) app.globalData.activeRole = 'admin'
+        wx.reLaunch({ url: '/pages/admin/home/index' })
+      })
       .catch(() => {})
   },
 
@@ -368,7 +386,98 @@ Page({
     wx.navigateTo({ url: '/pages/client/ai-assistant/index' })
   },
 
+  loadCsInfo() {
+    callFunction('system', 'getCustomerServiceInfo')
+      .then((csInfo) => {
+        if (csInfo) {
+          this.setData({
+            csInfo: {
+              phone: csInfo.phone || '',
+              wechatId: csInfo.wechatId || '',
+              workHours: csInfo.workHours || '每天 9:00 - 21:00',
+              officialAccountName: csInfo.officialAccountName || 'VIP宠护'
+            }
+          })
+        }
+      })
+      .catch(() => {})
+  },
+
+  openCustomerService() {
+    this.loadCsInfo()
+    this.setData({ showCustomerServiceModal: true })
+  },
+
+  closeCustomerServiceModal() {
+    this.setData({ showCustomerServiceModal: false })
+  },
+
+  callCsPhone() {
+    if (!this.data.csInfo.phone) return
+    wx.makePhoneCall({ phoneNumber: this.data.csInfo.phone }).catch(() => {})
+  },
+
+  copyCsWechat() {
+    if (!this.data.csInfo.wechatId) return
+    wx.setClipboardData({
+      data: this.data.csInfo.wechatId,
+      success: () => wx.showToast({ title: '已复制微信号' })
+    })
+  },
+
+  openFeedbackModal() {
+    this.setData({ showFeedbackModal: true, feedbackText: '', feedbackContact: '' })
+  },
+
+  closeFeedbackModal() {
+    this.setData({ showFeedbackModal: false })
+  },
+
+  inputFeedbackText(e) {
+    this.setData({ feedbackText: e.detail.value })
+  },
+
+  inputFeedbackContact(e) {
+    this.setData({ feedbackContact: e.detail.value })
+  },
+
+  submitFeedback() {
+    const content = String(this.data.feedbackText || '').trim()
+    if (!content) {
+      wx.showToast({ title: '请输入反馈内容', icon: 'none' })
+      return
+    }
+    this.setData({ submittingFeedback: true })
+    callFunction('system', 'submitFeedback', {
+      content,
+      contactInfo: this.data.feedbackContact
+    })
+      .then(() => {
+        wx.showToast({ title: '感谢你的反馈！' })
+        this.setData({ showFeedbackModal: false, feedbackText: '', feedbackContact: '' })
+      })
+      .catch(showError)
+      .finally(() => this.setData({ submittingFeedback: false }))
+  },
+
+  openOfficialAccountModal() {
+    this.loadCsInfo()
+    this.setData({ showOfficialAccountModal: true })
+  },
+
+  closeOfficialAccountModal() {
+    this.setData({ showOfficialAccountModal: false })
+  },
+
+  copyOfficialAccountName() {
+    const name = this.data.csInfo.officialAccountName || 'VIP宠护'
+    wx.setClipboardData({
+      data: name,
+      success: () => wx.showToast({ title: '已复制公众号名称' })
+    })
+  },
+
   subscribe() {
-    wx.showToast({ title: '敬请期待', icon: 'none' })
+    this.openOfficialAccountModal()
   }
 })

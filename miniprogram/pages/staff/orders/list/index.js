@@ -70,7 +70,7 @@ Page({
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    wx.redirectTo({ url })
+    wx.navigateTo({ url })
   },
   backProfile() { wx.redirectTo({ url: '/pages/staff/profile/index' }) }
 })

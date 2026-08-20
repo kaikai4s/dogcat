@@ -1110,6 +1110,8 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
   const created = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: 'p1', serviceTypes: ['feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: created.data._id } })
   await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: created.data._id } })
+  await staffFn.main({ module: 'order', action: 'requestEarlyStart', data: { orderId: created.data._id, reason: '测试提前开始' } })
+  await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId: created.data._id } })
   await staffFn.main({ module: 'order', action: 'startService', data: { id: created.data._id } })
   for (const eventType of ['enter_door', 'pet_status', 'feed', 'water', 'leave_door']) {
     await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: created.data._id, eventType, mediaFileId: 'cloud://checkin.jpg', remark: '已完成打卡', latitude: 31.2, longitude: 121.5 } })
@@ -1122,7 +1124,7 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
   assert.equal(review.ok, true)
   assert.equal(duplicate.ok, false)
   assert.equal(duplicate.message, '该订单已评价')
-  assert.deepEqual(timeline.data.map((item) => item.type), ['created', 'paid', 'assigned', 'started', 'checkin', 'checkin', 'checkin', 'checkin', 'checkin', 'completed', 'reviewed'])
+  assert.deepEqual(timeline.data.map((item) => item.type), ['created', 'paid', 'assigned', 'early_start_requested', 'early_start_approved', 'started', 'checkin', 'checkin', 'checkin', 'checkin', 'checkin', 'completed', 'reviewed'])
 })
 
 test('real-device acceptance core flow covers client staff admin lifecycle', async () => {
@@ -1171,6 +1173,8 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: openOrder.data._id } })
   const openAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: openOrder.data._id } })
   const directAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: directOrder.data._id } })
+  await staffFn.main({ module: 'order', action: 'requestEarlyStart', data: { orderId: directOrder.data._id, reason: '验收提前开始' } })
+  await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId: directOrder.data._id } })
   const started = await staffFn.main({ module: 'order', action: 'startService', data: { id: directOrder.data._id } })
   const track = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p1', batchId: 'b1', latitude: 31.21, longitude: 121.49, recordedAt: '2099-07-28 10:05', isBackfilled: false }, { clientPointId: 'p2', batchId: 'b1', latitude: 31.22, longitude: 121.5, recordedAt: '2099-07-28 10:06', isBackfilled: true }] } })
   const duplicateTrack = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p2', batchId: 'b2', latitude: 31.22, longitude: 121.5, recordedAt: '2099-07-28 10:06', isBackfilled: true }] } })
@@ -2105,7 +2109,10 @@ test('submitStaffProfile requires fixed service address and valid coordinates', 
       serviceAddress: '三里屯SOHO',
       serviceLatitude: 31.2,
       serviceLongitude: 121.5,
-      serviceRadiusKm: 5
+      serviceRadiusKm: 5,
+      idCardFrontFileId: 'cloud://id-front.jpg',
+      idCardBackFileId: 'cloud://id-back.jpg',
+      facePhotoFileId: 'cloud://face.jpg'
     }
   })
   assert.equal(success.ok, true)
