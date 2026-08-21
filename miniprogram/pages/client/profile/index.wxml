@@ -62,7 +62,10 @@
     <image class="profile-avatar" wx:if="{{avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />
     <view class="profile-avatar" wx:else>🐾</view>
     <view class="profile-main">
-      <view class="profile-name">{{userName}}</view>
+      <view class="profile-name-row" style="display:flex;align-items:center;gap:12rpx;flex-wrap:wrap;">
+        <text class="member-badge badge-{{badgeStyle || 'gold'}}" wx:if="{{!isGuest && badgeTag}}">{{badgeTag}}</text>
+        <text class="profile-name {{nameEffect && nameEffect !== 'none' ? 'name-effect-' + nameEffect : ''}}" style="{{nameColor ? 'color:' + nameColor + ';' : ''}}">{{userName}}</text>
+      </view>
       <view class="profile-points">{{userMeta}}</view>
       <view wx:if="{{!isGuest && memberLevelName}}" style="margin-top:8rpx;font-size:24rpx;color:#e05c8b;">{{memberLevelName}} · {{points}} 积分 · {{pointMultiplier}} 倍积分</view>
     </view>

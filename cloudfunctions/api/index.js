@@ -1608,13 +1608,17 @@ function normalizeBenefits(value) {
 }
 
 function calcMemberLevel(totalPoints, levels) {
-  if (!Array.isArray(levels) || !levels.length) return { memberLevel: '', memberLevelName: '普通会员', pointMultiplier: 1, description: '', benefits: [] }
+  if (!Array.isArray(levels) || !levels.length) return { memberLevel: '', memberLevelName: '普通会员', badgeTag: 'V1', nameColor: '', nameEffect: '', badgeStyle: 'gold', pointMultiplier: 1, description: '', benefits: [] }
   const sorted = levels.slice().sort((a, b) => Number(b.minPoints || 0) - Number(a.minPoints || 0))
   const matched = sorted.find((level) => totalPoints >= Number(level.minPoints || 0))
-  if (!matched) return { memberLevel: '', memberLevelName: '普通会员', pointMultiplier: 1, description: '', benefits: [] }
+  if (!matched) return { memberLevel: '', memberLevelName: '普通会员', badgeTag: 'V1', nameColor: '', nameEffect: '', badgeStyle: 'gold', pointMultiplier: 1, description: '', benefits: [] }
   return {
     memberLevel: matched._id,
     memberLevelName: matched.name,
+    badgeTag: safeText(matched.badgeTag).trim() || 'V1',
+    nameColor: safeText(matched.nameColor).trim(),
+    nameEffect: safeText(matched.nameEffect).trim(),
+    badgeStyle: safeText(matched.badgeStyle).trim() || 'gold',
     pointMultiplier: Math.max(Number(matched.pointMultiplier || 1), 1),
     description: safeText(matched.description).trim(),
     benefits: normalizeBenefits(matched.benefits)
@@ -3905,8 +3909,12 @@ const handlers = {
   async memberLevel(openid, action, data) {
     if (action === 'listLevels') {
       const levels = await getMemberLevels()
-      return levels.map((level) => ({
+      return levels.map((level, idx) => ({
         ...level,
+        badgeTag: safeText(level.badgeTag).trim() || `V${idx + 1}`,
+        nameColor: safeText(level.nameColor).trim(),
+        nameEffect: safeText(level.nameEffect).trim() || 'none',
+        badgeStyle: safeText(level.badgeStyle).trim() || 'gold',
         pointMultiplier: Math.max(Number(level.pointMultiplier || 1), 1),
         description: safeText(level.description).trim(),
         benefits: normalizeBenefits(level.benefits)
@@ -3920,8 +3928,12 @@ const handlers = {
       const countRes = await db.collection('point_logs').where({ openid }).count()
       const allLogs = logsRes.data || []
       const logs = allLogs.slice((page - 1) * pageSize, page * pageSize)
-      const levels = (await getMemberLevels()).map((level) => ({
+      const levels = (await getMemberLevels()).map((level, idx) => ({
         ...level,
+        badgeTag: safeText(level.badgeTag).trim() || `V${idx + 1}`,
+        nameColor: safeText(level.nameColor).trim(),
+        nameEffect: safeText(level.nameEffect).trim() || 'none',
+        badgeStyle: safeText(level.badgeStyle).trim() || 'gold',
         pointMultiplier: Math.max(Number(level.pointMultiplier || 1), 1),
         description: safeText(level.description).trim(),
         benefits: normalizeBenefits(level.benefits)
@@ -5606,8 +5618,12 @@ const handlers = {
     }
     if (action === 'listMemberLevels') {
       const levels = await getMemberLevels()
-      return levels.map((level) => ({
+      return levels.map((level, idx) => ({
         ...level,
+        badgeTag: safeText(level.badgeTag).trim() || `V${idx + 1}`,
+        nameColor: safeText(level.nameColor).trim(),
+        nameEffect: safeText(level.nameEffect).trim() || 'none',
+        badgeStyle: safeText(level.badgeStyle).trim() || 'gold',
         pointMultiplier: Math.max(Number(level.pointMultiplier || 1), 1),
         description: safeText(level.description).trim(),
         benefits: normalizeBenefits(level.benefits)
@@ -5623,6 +5639,10 @@ const handlers = {
       const time = now()
       const payload = {
         name,
+        badgeTag: safeText(data.badgeTag).trim(),
+        nameColor: safeText(data.nameColor).trim(),
+        nameEffect: safeText(data.nameEffect).trim(),
+        badgeStyle: safeText(data.badgeStyle).trim() || 'gold',
         minPoints,
         icon: safeText(data.icon).trim(),
         pointMultiplier: Math.max(Number(data.pointMultiplier || 1), 1),

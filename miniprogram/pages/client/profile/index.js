@@ -173,13 +173,20 @@ Page({
 
   loadPoints() {
     callFunction('memberLevel', 'myInfo')
-      .then((info) => this.setData({
-        points: info.points,
-        memberLevelName: info.memberLevelName || '普通会员',
-        pointMultiplier: Number(info.pointMultiplier || 1),
-        retroCardCount: Number(info.retroCardCount || 0),
-        levelDescription: info.currentLevel && info.currentLevel.description ? info.currentLevel.description : ''
-      }))
+      .then((info) => {
+        const curLevel = info.currentLevel || {}
+        this.setData({
+          points: info.points,
+          memberLevelName: info.memberLevelName || '普通会员',
+          badgeTag: curLevel.badgeTag || info.badgeTag || 'V1',
+          nameColor: curLevel.nameColor || info.nameColor || '',
+          nameEffect: curLevel.nameEffect || info.nameEffect || '',
+          badgeStyle: curLevel.badgeStyle || info.badgeStyle || 'gold',
+          pointMultiplier: Number(info.pointMultiplier || 1),
+          retroCardCount: Number(info.retroCardCount || 0),
+          levelDescription: curLevel && curLevel.description ? curLevel.description : ''
+        })
+      })
       .catch(() => {})
   },
 

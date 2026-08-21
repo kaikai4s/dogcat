@@ -1030,6 +1030,115 @@ textarea {
   color: #d63158;
 }
 
+/* 会员等级短徽章 short badge tags (V1, V2, VIP...) */
+.member-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34rpx;
+  padding: 0 12rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 1rpx;
+  vertical-align: middle;
+  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+}
+
+.member-badge.badge-gold {
+  background: linear-gradient(135deg, #ffe259 0%, #ffa751 100%);
+  color: #5c3500;
+  text-shadow: 0 1rpx 2rpx rgba(255, 255, 255, 0.6);
+  border: 1rpx solid rgba(255, 226, 89, 0.8);
+}
+
+.member-badge.badge-silver {
+  background: linear-gradient(135deg, #e0e0e0 0%, #a8b0b8 100%);
+  color: #2b3a4a;
+  text-shadow: 0 1rpx 2rpx rgba(255, 255, 255, 0.8);
+  border: 1rpx solid rgba(224, 224, 224, 0.9);
+}
+
+.member-badge.badge-bronze {
+  background: linear-gradient(135deg, #e6a15c 0%, #b87333 100%);
+  color: #4a2800;
+  text-shadow: 0 1rpx 2rpx rgba(255, 255, 255, 0.5);
+  border: 1rpx solid rgba(230, 161, 92, 0.8);
+}
+
+.member-badge.badge-purple {
+  background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
+  color: #3b1b68;
+  border: 1rpx solid rgba(161, 140, 209, 0.8);
+}
+
+.member-badge.badge-pink {
+  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%);
+  color: #781c34;
+  border: 1rpx solid rgba(255, 154, 158, 0.8);
+}
+
+.member-badge.badge-blue {
+  background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+  color: #0d3b66;
+  border: 1rpx solid rgba(161, 196, 253, 0.8);
+}
+
+.member-badge.badge-dark {
+  background: linear-gradient(135deg, #434343 0%, #000000 100%);
+  color: #ffe259;
+  border: 1rpx solid rgba(255, 226, 89, 0.4);
+}
+
+/* 用户名字流光与视效类 */
+.name-effect-gold_shine {
+  background: linear-gradient(90deg, #d99200 0%, #ffe87c 30%, #d99200 60%, #ffc000 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shineAnimation 3s linear infinite;
+  font-weight: 800;
+}
+
+@keyframes shineAnimation {
+  0% { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+
+.name-effect-gradient_rainbow {
+  background: linear-gradient(90deg, #ff4e50, #f9d423, #11998e, #38ef7d, #6a11cb, #2575fc);
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: rainbowAnimation 4s linear infinite;
+  font-weight: 800;
+}
+
+@keyframes rainbowAnimation {
+  0% { background-position: 0% center; }
+  100% { background-position: 300% center; }
+}
+
+.name-effect-fire_glow {
+  color: #ff3300 !important;
+  text-shadow: 0 0 4rpx #ff6600, 0 0 10rpx #ff3300, 0 0 16rpx #ff9900;
+  font-weight: 800;
+}
+
+.name-effect-purple_neon {
+  color: #b5179e !important;
+  text-shadow: 0 0 4rpx #7209b7, 0 0 10rpx #480ca8, 0 0 16rpx #f72585;
+  font-weight: 800;
+}
+
+.name-effect-3d_emboss {
+  color: #333333;
+  text-shadow: 1rpx 1rpx 0rpx #ffffff, 2rpx 2rpx 2rpx rgba(0, 0, 0, 0.25);
+  font-weight: 800;
+}
+
 .chip-row {
   display: flex;
   gap: 12rpx;

@@ -1,39 +1,148 @@
 <view class="{{themeClass}} {{fontClass}} page">
   <view class="dashboard-header">
-    <view class="badge">管理端</view>
-    <view class="title">会员等级</view>
-    <view class="tip">设置等级名称和所需累计积分，用户积分达标后自动升级。</view>
-  </view>
-
-  <view class="card form-card">
-    <view class="subtitle">{{form._id ? '编辑等级' : '新建等级'}}</view>
-    <input placeholder="等级名称，如 银卡会员" value="{{form.name}}" data-field="name" bindinput="input" />
-    <input type="number" placeholder="所需累计积分" value="{{form.minPoints}}" data-field="minPoints" bindinput="input" />
-    <input type="number" placeholder="积分倍数，如 1.2 / 2" value="{{form.pointMultiplier}}" data-field="pointMultiplier" bindinput="input" />
-    <input placeholder="图标（可选，如 🥈）" value="{{form.icon}}" data-field="icon" bindinput="input" />
-    <input placeholder="等级说明" value="{{form.description}}" data-field="description" bindinput="input" />
-    <textarea placeholder="权益说明，每行一条" value="{{form.benefitsText}}" data-field="benefitsText" bindinput="input" />
-    <input type="number" placeholder="排序序号" value="{{form.sortOrder}}" data-field="sortOrder" bindinput="input" />
-    <button class="primary" bindtap="save">保存等级</button>
-    <button class="ghost" bindtap="resetForm">新建等级</button>
-  </view>
-
-  <view class="card" wx:for="{{levels}}" wx:key="_id">
-    <view class="between">
+    <view class="header-top-row">
       <view>
-        <view class="strong">{{item.icon}} {{item.name}}</view>
-        <view class="muted">累计积分 ≥ {{item.minPoints}} · {{item.pointMultiplier || 1}} 倍积分</view>
-        <view class="muted" wx:if="{{item.description}}">{{item.description}}</view>
-        <view class="chip-row" wx:if="{{item.benefits && item.benefits.length}}">
-          <view class="chip pink" wx:for="{{item.benefits}}" wx:key="*this">{{item}}</view>
+        <view class="badge">管理端</view>
+        <view class="title">会员等级配置</view>
+      </view>
+      <button class="primary add-level-btn" bindtap="openAddModal">＋ 新增会员等级</button>
+    </view>
+    <view class="tip">设置等级名称、短徽章与炫彩特效，用户累计积分达标后自动升级并享受专属权益。</view>
+  </view>
+
+  <!-- 已配置的会员等级列表 -->
+  <view class="section-title">已配置的会员等级（{{levels.length}} 个）</view>
+  <view class="level-card-list">
+    <view class="level-card" wx:for="{{levels}}" wx:for-index="levelIndex" wx:key="_id">
+      <view class="level-card-header">
+        <view class="level-identity">
+          <text class="member-badge badge-{{item.badgeStyle || 'gold'}}">{{item.badgeTag || ('V' + (levelIndex + 1))}}</text>
+          <text class="level-name {{item.nameEffect && item.nameEffect !== 'none' ? 'name-effect-' + item.nameEffect : ''}}" style="{{item.nameColor ? 'color:' + item.nameColor + ';' : ''}}">{{item.icon ? item.icon + ' ' : ''}}{{item.name}}</text>
+        </view>
+        <view class="level-actions">
+          <view class="action-btn edit-btn" data-index="{{levelIndex}}" catchtap="chooseLevel">编辑</view>
+          <view class="action-btn delete-btn" data-index="{{levelIndex}}" catchtap="deleteLevel">删除</view>
         </view>
       </view>
-      <view style="display:flex;gap:8rpx;">
-        <button class="ghost compact-btn" data-index="{{index}}" bindtap="chooseLevel">编辑</button>
-        <button class="ghost compact-btn" data-index="{{index}}" bindtap="deleteLevel">删除</button>
+
+      <view class="level-meta">
+        <text class="meta-tag">累计积分 ≥ {{item.minPoints || 0}}</text>
+        <text class="meta-tag highlight">{{item.pointMultiplier || 1}} 倍积分加速</text>
+      </view>
+
+      <view class="level-desc" wx:if="{{item.description}}">{{item.description}}</view>
+
+      <view class="chip-row" wx:if="{{item.benefits && item.benefits.length}}">
+        <view class="chip pink" wx:for="{{item.benefits}}" wx:for-index="benefitIndex" wx:key="*this">{{item}}</view>
       </view>
     </view>
   </view>
 
-  <view class="empty" wx:if="{{!levels.length}}">暂无等级配置，请新建</view>
+  <view class="empty" wx:if="{{!levels.length}}">
+    <view>暂无会员等级配置</view>
+    <button class="primary" style="width: auto; min-width: 260rpx; margin-top: 20rpx;" bindtap="openAddModal">＋ 新增第一个等级</button>
+  </view>
+
+  <!-- 编辑 / 新建 弹窗Modal -->
+  <view class="modal-backdrop" wx:if="{{showFormModal}}" bindtap="closeFormModal">
+    <view class="modal-card level-form-modal" catchtap="true">
+      <view class="modal-header">
+        <view class="modal-title">{{form._id ? '编辑会员等级' : '新增会员等级'}}</view>
+        <view class="modal-close" bindtap="closeFormModal">✕</view>
+      </view>
+
+      <scroll-view scroll-y class="modal-scroll-body">
+        <!-- 实时效果预览区 -->
+        <view class="preview-box">
+          <view class="preview-title">名字与徽章前台展示效果预览：</view>
+          <view class="preview-user-row">
+            <text class="member-badge badge-{{form.badgeStyle || 'gold'}}">{{form.badgeTag || 'V1'}}</text>
+            <text class="preview-name {{form.nameEffect && form.nameEffect !== 'none' ? 'name-effect-' + form.nameEffect : ''}}" style="{{form.nameColor ? 'color:' + form.nameColor + ';' : ''}}">{{form.name || '示例会员'}}</text>
+          </view>
+        </view>
+
+        <!-- 基础信息配置 -->
+        <view class="form-group">
+          <view class="field-label">等级名称 <text class="required">*</text></view>
+          <input placeholder="例如：银卡会员、金卡VIP" value="{{form.name}}" data-field="name" bindinput="input" />
+        </view>
+
+        <view class="form-group">
+          <view class="field-label">徽章短标识（2-4位，如 V1, V2, VIP）</view>
+          <input placeholder="留空自动推导为 V1/V2/..." value="{{form.badgeTag}}" data-field="badgeTag" bindinput="input" />
+        </view>
+
+        <!-- 徽章配色风格 -->
+        <view class="form-group">
+          <view class="field-label">徽章配色风格</view>
+          <view class="selector-grid">
+            <view wx:for="{{badgeStyles}}" wx:key="key" class="grid-item {{form.badgeStyle === item.key ? 'active' : ''}}" data-style="{{item.key}}" bindtap="selectBadgeStyle">
+              <text class="member-badge badge-{{item.key}}">V1</text>
+              <text class="grid-item-text">{{item.name}}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 名字标准主题色 -->
+        <view class="form-group">
+          <view class="field-label">名字标准主题色</view>
+          <view class="color-palette">
+            <view wx:for="{{colorPalette}}" wx:key="hex" class="color-dot-wrap {{form.nameColor === item.hex ? 'active' : ''}}" data-hex="{{item.hex}}" bindtap="selectColor">
+              <view class="color-dot" style="background: {{item.hex}};"></view>
+              <text class="color-name">{{item.name}}</text>
+            </view>
+          </view>
+          <input placeholder="自定义 Hex 颜色（如 #d99200）" value="{{form.nameColor}}" data-field="nameColor" bindinput="input" />
+        </view>
+
+        <!-- 名字视觉特效 -->
+        <view class="form-group">
+          <view class="field-label">名字炫彩视觉特效</view>
+          <view class="selector-grid">
+            <view wx:for="{{effectOptions}}" wx:key="key" class="grid-item {{form.nameEffect === item.key ? 'active' : ''}}" data-effect="{{item.key}}" bindtap="selectEffect">
+              <text class="grid-item-text {{item.key !== 'none' ? 'name-effect-' + item.key : ''}}">{{item.name}}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 积分规则与图标 -->
+        <view class="form-row-2">
+          <view class="form-group">
+            <view class="field-label">所需累计积分</view>
+            <input type="number" placeholder="如 0, 1000" value="{{form.minPoints}}" data-field="minPoints" bindinput="input" />
+          </view>
+          <view class="form-group">
+            <view class="field-label">消费积分倍数</view>
+            <input type="number" placeholder="如 1, 1.2" value="{{form.pointMultiplier}}" data-field="pointMultiplier" bindinput="input" />
+          </view>
+        </view>
+
+        <view class="form-row-2">
+          <view class="form-group">
+            <view class="field-label">等级 Icon 符号</view>
+            <input placeholder="可选 Emoji 如 🥈" value="{{form.icon}}" data-field="icon" bindinput="input" />
+          </view>
+          <view class="form-group">
+            <view class="field-label">排序序号</view>
+            <input type="number" placeholder="数字越小越靠前" value="{{form.sortOrder}}" data-field="sortOrder" bindinput="input" />
+          </view>
+        </view>
+
+        <view class="form-group">
+          <view class="field-label">等级一句话简述</view>
+          <input placeholder="展示在个人中心成长权益处" value="{{form.description}}" data-field="description" bindinput="input" />
+        </view>
+
+        <view class="form-group">
+          <view class="field-label">专属权益说明（每行一条）</view>
+          <textarea placeholder="例如：\n1.2 倍积分加速\n专属客服优先响应\n每月赠送补签卡" value="{{form.benefitsText}}" data-field="benefitsText" bindinput="input" />
+        </view>
+      </scroll-view>
+
+      <view class="modal-actions">
+        <button class="primary" style="flex: 2;" bindtap="save">{{form._id ? '保存修改' : '确认新建'}}</button>
+        <button class="ghost" style="flex: 1;" bindtap="closeFormModal">取消</button>
+      </view>
+    </view>
+  </view>
 </view>
