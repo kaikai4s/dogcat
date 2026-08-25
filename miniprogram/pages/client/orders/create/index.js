@@ -117,6 +117,7 @@ function decoratePets(pets, selectedPetId) {
 Page({
   data: {
     themeClass: 'theme-day',
+    user: null,
     pets: [],
     serviceOptions: [],
     durationOptions,
@@ -181,7 +182,10 @@ Page({
     this.applyCurrentTheme()
     this.consumeSelectedCoupon()
     ensureLogin({ content: '登录后可创建预约订单。' })
-      .then(() => this.loadPageData())
+      .then((user) => {
+        this.setData({ user })
+        return this.loadPageData()
+      })
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
   },
 
@@ -499,6 +503,7 @@ Page({
 
   validateRequired() {
     const form = this.data.form
+    if (!this.data.user || !String(this.data.user.phone || '').trim()) return '请先绑定手机号'
     if (!form.petId) return '请先选择宠物'
     if (!form.serviceTypes.length) return '请选择服务项目'
     if (form.publishMode === 'direct' && !form.staffProfileId) return '请选择指定宠托师'
@@ -511,6 +516,8 @@ Page({
     if (form.lockMethod === 'key' && !String(form.keyLocation || '').trim()) return '请填写钥匙放置位置'
     if (form.lockMethod === 'key' && !(form.keyImageFileIds || []).length) return '请上传钥匙放置位置图片'
     if (!form.startDate || !form.startClock) return '请选择开始时间'
+    const start = parseDateTime(form.startTime)
+    if (!start || start.getTime() < Date.now()) return '服务开始时间不能早于当前时间'
     return ''
   },
 

@@ -48,7 +48,7 @@ test('guest can browse approved sitters', async () => {
   const db = createCollectionStore({
     users: [],
     staff_profiles: [
-      { _id: 's1', openid: 'staff_openid', auditStatus: 'approved', realName: '王小明', serviceCity: '上海', serviceAreas: '浦东,徐汇', updatedAt: '2026-07-28' },
+      { _id: 's1', openid: 'staff_openid', auditStatus: 'approved', realName: '王小明', serviceCity: '上海', serviceAreas: '浦东,徐汇', updatedAt: '2099-07-28' },
       { _id: 's2', openid: 'staff_pending', auditStatus: 'pending', realName: '李小明', serviceCity: '上海', serviceAreas: '静安' }
     ]
   })
@@ -65,7 +65,7 @@ test('guest can browse approved sitters', async () => {
 test('guest can view public sitter detail without favorite state', async () => {
   const db = createCollectionStore({
     users: [],
-    staff_profiles: [{ _id: 's1', openid: 'staff_openid', auditStatus: 'approved', realName: '王小明', serviceCity: '上海', serviceAreas: '浦东', updatedAt: '2026-07-28' }],
+    staff_profiles: [{ _id: 's1', openid: 'staff_openid', auditStatus: 'approved', realName: '王小明', serviceCity: '上海', serviceAreas: '浦东', updatedAt: '2099-07-28' }],
     service_reviews: [],
     sitter_favorites: [{ _id: 'f1', openid: 'guest_openid', staffProfileId: 's1' }]
   })
@@ -100,7 +100,7 @@ test('guest cannot favorite sitters or create orders', async () => {
 
 test('api dispatches order createOrder through unified cloud function', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
     orders: [],
     user_addresses: []
@@ -116,8 +116,8 @@ test('api dispatches order createOrder through unified cloud function', async ()
       serviceAddress: '测试地址',
       addressDetail: '3栋2单元',
       doorplate: '1802',
-      startTime: '2026-07-28 10:00',
-      endTime: '2026-07-28 11:00',
+      startTime: '2099-07-28 10:00',
+      endTime: '2099-07-28 11:00',
       durationMinutes: 60,
       saveAddress: true
     }
@@ -131,9 +131,13 @@ test('api dispatches order createOrder through unified cloud function', async ()
   assert.equal(db.state.user_addresses[0].isDefault, true)
 })
 
-test('auth updateProfile saves editable nickname avatar and phone', async () => {
+test('auth updateProfile saves editable nickname avatar and syncs order phone', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '旧昵称', avatarUrl: '', phone: '' }]
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '旧昵称', avatarUrl: '', phone: '' }],
+    orders: [
+      { _id: 'o1', clientOpenid: 'openid_client', contactPhone: '', clientSnapshot: { nickname: '旧昵称', phoneMasked: '' } },
+      { _id: 'o2', clientOpenid: 'other_client', contactPhone: '', clientSnapshot: { nickname: '其他用户', phoneMasked: '' } }
+    ]
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
 
@@ -143,11 +147,29 @@ test('auth updateProfile saves editable nickname avatar and phone', async () => 
   assert.equal(result.data.nickname, '豆豆家长')
   assert.equal(result.data.avatarUrl, 'cloud://avatar')
   assert.equal(db.state.users[0].phone, '13800000000')
+  assert.equal(db.state.orders[0].contactPhone, '13800000000')
+  assert.equal(db.state.orders[0].clientSnapshot.phoneMasked, '1***0')
+  assert.equal(db.state.orders[1].contactPhone, '')
+})
+
+test('auth bindPhone syncs existing order phone', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
+    orders: [{ _id: 'o1', clientOpenid: 'openid_client', contactPhone: '13800000000', clientSnapshot: { phoneMasked: '1***0' } }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const result = await fn.main({ module: 'auth', action: 'bindPhone', data: { phone: '15900000001' } })
+
+  assert.equal(result.ok, true)
+  assert.equal(db.state.users[0].phone, '15900000001')
+  assert.equal(db.state.orders[0].contactPhone, '15900000001')
+  assert.equal(db.state.orders[0].clientSnapshot.phoneMasked, '1***1')
 })
 
 test('pet profile stores photo birthday breed and AI interaction fields', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     pets: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
@@ -194,7 +216,7 @@ test('pet profile stores photo birthday breed and AI interaction fields', async 
 
   // Test AI pet breed recognition through mocked cloud AI service
   const aiDb = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     ai_logs: []
   })
   const aiFn = loadCloudFunction('api', aiDb, 'openid_client', {
@@ -228,7 +250,7 @@ test('pet profile stores photo birthday breed and AI interaction fields', async 
 
 test('pet AI recognition requires an uploaded image', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }]
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }]
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
 
@@ -240,7 +262,7 @@ test('pet AI recognition requires an uploaded image', async () => {
 
 test('pet AI recognition fails when cloud photo URL cannot be generated', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }]
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }]
   })
   const fn = loadCloudFunction('api', db, 'openid_client', {
     async getTempFileURL() {
@@ -256,7 +278,7 @@ test('pet AI recognition fails when cloud photo URL cannot be generated', async 
 
 test('api quoteOrder supports multiple services and price details', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
     service_prices: []
   })
@@ -276,7 +298,7 @@ test('api quoteOrder supports multiple services and price details', async () => 
 
 test('api createOrder requires detailed address and doorplate', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
     orders: []
   })
@@ -289,8 +311,8 @@ test('api createOrder requires detailed address and doorplate', async () => {
       petId: 'p1',
       serviceTypes: ['feed'],
       serviceAddress: '测试小区',
-      startTime: '2026-07-28 10:00',
-      endTime: '2026-07-28 11:00',
+      startTime: '2099-07-28 10:00',
+      endTime: '2099-07-28 11:00',
       durationMinutes: 60
     }
   })
@@ -299,9 +321,37 @@ test('api createOrder requires detailed address and doorplate', async () => {
   assert.equal(result.message, '请填写详细地址')
 })
 
+test('api createOrder requires bound phone and future start time', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '' }],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
+    orders: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+  const baseData = {
+    petId: 'p1',
+    serviceTypes: ['feed'],
+    serviceAddress: '测试小区',
+    addressDetail: '1栋101',
+    doorplate: '101',
+    startTime: '2099-07-28 10:00',
+    endTime: '2099-07-28 11:00',
+    durationMinutes: 60
+  }
+
+  const noPhone = await fn.main({ module: 'order', action: 'createOrder', data: baseData })
+  assert.equal(noPhone.ok, false)
+  assert.equal(noPhone.message, '请先绑定手机号')
+
+  db.state.users[0].phone = '13800000000'
+  const past = await fn.main({ module: 'order', action: 'createOrder', data: { ...baseData, startTime: '2000-01-01 10:00', endTime: '2000-01-01 11:00' } })
+  assert.equal(past.ok, false)
+  assert.equal(past.message, '服务开始时间不能早于当前时间')
+})
+
 test('api createOrder stores compatible and extended service fields', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 8 }],
     orders: []
   })
@@ -316,8 +366,8 @@ test('api createOrder stores compatible and extended service fields', async () =
       serviceAddress: '测试小区',
       addressDetail: '1栋101',
       doorplate: '101',
-      startTime: '2026-07-28 10:00',
-      endTime: '2026-07-28 11:00',
+      startTime: '2099-07-28 10:00',
+      endTime: '2099-07-28 11:00',
       durationMinutes: 60
     }
   })
@@ -328,6 +378,7 @@ test('api createOrder stores compatible and extended service fields', async () =
   assert.equal(result.data.serviceSummary, '上门喂养、清理宠物厕所')
   assert.equal(result.data.addressDetail, '1栋101')
   assert.equal(result.data.doorplate, '101')
+  assert.equal(result.data.contactPhone, '13800000000')
   assert.equal(result.data.durationMinutes, 60)
 })
 
@@ -395,7 +446,7 @@ test('system home page data aggregates public conversion modules', async () => {
   const db = createCollectionStore({
     users: [
       { _id: 'admin', openid: 'openid_admin', roles: ['admin'], status: 'active' },
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }
     ],
     platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { homePage: { ctaTitle: '马上预约', modules: { lottery: false } } } }],
     service_prices: [{ _id: 'price1', key: 'feed', label: '上门喂养', price: 66, enabled: true, sortOrder: 1, description: '喂粮换水' }],
@@ -414,7 +465,7 @@ test('system home page data aggregates public conversion modules', async () => {
   assert.equal(result.data.settings.homePage.modules.lottery, false)
   assert.equal(result.data.servicePrices[0].priceText, '¥66起')
   assert.equal(result.data.featuredSitters[0]._id, 'sp1')
-  assert.equal(result.data.coupons[0].ruleText, '满80减20')
+  assert.equal(result.data.coupons.length, 0)
   assert.equal(result.data.repeatOrder._id, 'o1')
   assert.equal(result.data.recentOrders[0].statusText, '已完成')
   assert.equal(result.data.recentOrders[0].clientName, '宠物主')
@@ -425,6 +476,36 @@ test('system home page data aggregates public conversion modules', async () => {
   assert.equal(result.data.recentOrders[0].addressLatitude, undefined)
   assert.equal(result.data.statsData.completedCount, '1')
   assert.equal(result.data.statsData.ratingCount, '1')
+})
+
+test('system home page newbie coupons only show for unclaimed new users', async () => {
+  const baseData = {
+    users: [{ _id: 'client', openid: 'openid_new', roles: ['client'], status: 'active' }],
+    coupon_templates: [{ _id: 'tpl1', name: '新人券', discountAmount: 20, minOrderAmount: 80, enabled: true, sortOrder: 1 }],
+    orders: [],
+    staff_profiles: [],
+    service_prices: [],
+    platform_configs: []
+  }
+  const newUserDb = createCollectionStore(baseData)
+  const newUserFn = loadCloudFunction('api', newUserDb, 'openid_new')
+
+  const newUserResult = await newUserFn.main({ module: 'system', action: 'getHomePageData', data: {} })
+
+  assert.equal(newUserResult.ok, true)
+  assert.equal(newUserResult.data.coupons.length, 1)
+  assert.equal(newUserResult.data.coupons[0].ruleText, '满80减20')
+
+  const claimedDb = createCollectionStore({
+    ...baseData,
+    user_coupons: [{ _id: 'uc1', openid: 'openid_new', templateId: 'tpl1', status: 'unused' }]
+  })
+  const claimedFn = loadCloudFunction('api', claimedDb, 'openid_new')
+
+  const claimedResult = await claimedFn.main({ module: 'system', action: 'getHomePageData', data: {} })
+
+  assert.equal(claimedResult.ok, true)
+  assert.equal(claimedResult.data.coupons.length, 0)
 })
 
 test('public completed order detail exposes service proof without location', async () => {
@@ -571,7 +652,7 @@ test('admin can set and cancel featured sitter', async () => {
   const db = createCollectionStore({
     users: [
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }
     ],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'approved' }],
     admin_operation_logs: []
@@ -640,7 +721,7 @@ test('admin revokeAdmin keeps at least one administrator', async () => {
   const db = createCollectionStore({
     users: [
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }
     ],
     admin_operation_logs: []
   })
@@ -656,7 +737,7 @@ test('admin can manage service prices and quote uses configured price', async ()
   const db = createCollectionStore({
     users: [
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }
     ],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 8 }],
     service_prices: [],
@@ -678,7 +759,7 @@ test('admin can manage service prices and quote uses configured price', async ()
 
 test('non-admin cannot save service prices', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     service_prices: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
@@ -735,7 +816,7 @@ test('admin audit rejection removes staff role and returns active role to client
 
 test('client can list only approved sitters with safe public fields', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     staff_profiles: [
       { _id: 'sp1', userId: 'u1', openid: 'openid_staff_1', realName: '王小花', phone: '13800000000', serviceCity: '上海', serviceAreas: '浦东、徐汇', auditStatus: 'approved', auditRemark: 'ok', currentLatitude: 31.2, currentLongitude: 121.5, updatedAt: '2026-07-29 10:00' },
       { _id: 'sp2', userId: 'u2', openid: 'openid_staff_2', realName: '李小狗', phone: '13900000000', serviceCity: '北京', serviceAreas: '朝阳', auditStatus: 'pending', updatedAt: '2026-07-29 11:00' },
@@ -764,7 +845,7 @@ test('client can list only approved sitters with safe public fields', async () =
 
 test('client sitter list supports rating sort and featured-first ordering', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     staff_profiles: [
       { _id: 'sp1', realName: '普通高分', serviceCity: '上海', serviceAreas: '浦东', auditStatus: 'approved', ratingAverage: 4.9, reviewCount: 8, updatedAt: '2026-07-29 10:00' },
       { _id: 'sp2', realName: '精选低分', serviceCity: '上海', serviceAreas: '徐汇', auditStatus: 'approved', ratingAverage: 4.2, reviewCount: 2, isFeatured: true, featuredAt: '2026-07-29 09:00', updatedAt: '2026-07-29 09:00' },
@@ -788,7 +869,7 @@ test('client sitter list supports rating sort and featured-first ordering', asyn
 
 test('client sitter list keeps featured first for distance sort', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     staff_profiles: [
       { _id: 'sp1', realName: '近距离', serviceCity: '上海', serviceAreas: '浦东', auditStatus: 'approved', serviceAddress: '近', serviceLatitude: 31.21, serviceLongitude: 121.51, serviceRadiusKm: 20, ratingAverage: 4.9, reviewCount: 10 },
       { _id: 'sp2', realName: '精选远距离', serviceCity: '上海', serviceAreas: '徐汇', auditStatus: 'approved', serviceAddress: '远', serviceLatitude: 31.25, serviceLongitude: 121.55, serviceRadiusKm: 20, ratingAverage: 4.1, reviewCount: 1, isFeatured: true, featuredAt: '2026-07-29 09:00' }
@@ -807,7 +888,7 @@ test('client review updates sitter rating stats and blocks duplicates', async ()
     users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '豆豆家长', points: 0, totalPoints: 0 }],
     orders: [{ _id: 'order1', clientOpenid: 'openid_client', staffProfileId: 'sp1', staffUserId: 'staff', staffOpenid: 'openid_staff', status: 'completed' }],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'approved', ratingAverage: 0, reviewCount: 0 }],
-    service_reviews: [{ _id: 'old_review', orderId: 'old_order', staffProfileId: 'sp1', rating: 4, status: 'visible', createdAt: '2026-07-28 10:00' }],
+    service_reviews: [{ _id: 'old_review', orderId: 'old_order', staffProfileId: 'sp1', rating: 4, status: 'visible', createdAt: '2099-07-28 10:00' }],
     order_timeline: [],
     point_logs: [],
     member_levels: []
@@ -829,7 +910,7 @@ test('client review updates sitter rating stats and blocks duplicates', async ()
 test('client sitter list and detail display current nickname first', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active', nickname: '豆豆姐姐' }
     ],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', serviceCity: '上海', serviceAreas: '浦东', auditStatus: 'approved' }],
@@ -850,7 +931,7 @@ test('client sitter list and detail display current nickname first', async () =>
 
 test('client sitter list supports city area and keyword filters', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     staff_profiles: [
       { _id: 'sp1', realName: '王小花', serviceCity: '上海', serviceAreas: '浦东、徐汇', auditStatus: 'approved', updatedAt: '2026-07-29 10:00' },
       { _id: 'sp2', realName: '陈小猫', serviceCity: '杭州', serviceAreas: '西湖,滨江', auditStatus: 'approved', updatedAt: '2026-07-29 11:00' },
@@ -869,9 +950,33 @@ test('client sitter list supports city area and keyword filters', async () => {
   assert.deepEqual(keywordResult.data.list.map((item) => item._id), ['sp3'])
 })
 
+test('paid order expires when service start time arrives without acceptance', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
+    ],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'approved', serviceAddress: '服务点', serviceLatitude: 31.2, serviceLongitude: 121.5 }],
+    orders: [{ _id: 'expired_order', orderNo: 'O_EXPIRED', clientOpenid: 'openid_client', status: 'paid', paymentStatus: 'paid', payAmount: 100, publishMode: 'open', staffOpenid: '', startTime: '2000-01-01 10:00', endTime: '2000-01-01 11:00', createdAt: '2000-01-01 09:00' }],
+    order_timeline: []
+  })
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+
+  const list = await clientFn.main({ module: 'order', action: 'listOrders', data: {} })
+  const accept = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'expired_order' } })
+
+  assert.equal(list.ok, true)
+  assert.equal(list.data[0].status, 'expired')
+  assert.equal(db.state.orders[0].status, 'expired')
+  assert.equal(db.state.order_timeline.some((item) => item.type === 'expired'), true)
+  assert.equal(accept.ok, false)
+  assert.equal(accept.message, '订单状态不可接单')
+})
+
 test('createOrder defaults to open publish mode', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 8 }],
     orders: []
   })
@@ -886,8 +991,8 @@ test('createOrder defaults to open publish mode', async () => {
       serviceAddress: '测试小区',
       addressDetail: '1栋101',
       doorplate: '101',
-      startTime: '2026-07-28 10:00',
-      endTime: '2026-07-28 11:00',
+      startTime: '2099-07-28 10:00',
+      endTime: '2099-07-28 11:00',
       durationMinutes: 60
     }
   })
@@ -901,7 +1006,7 @@ test('createOrder defaults to open publish mode', async () => {
 test('direct createOrder requires approved sitter and keeps requested staff after payment', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' },
       { _id: 'pending_staff', openid: 'openid_pending_staff', roles: ['client'], status: 'active' }
     ],
@@ -920,8 +1025,8 @@ test('direct createOrder requires approved sitter and keeps requested staff afte
     serviceAddress: '测试小区',
     addressDetail: '1栋101',
     doorplate: '101',
-    startTime: '2026-07-28 10:00',
-    endTime: '2026-07-28 11:00',
+    startTime: '2099-07-28 10:00',
+    endTime: '2099-07-28 11:00',
     durationMinutes: 60,
     publishMode: 'direct'
   }
@@ -959,8 +1064,8 @@ test('staff visibility and accept permissions respect open and direct publish mo
     ],
     pets: [{ _id: 'pet1', openid: 'openid_client', name: '可乐', breed: '金毛', weight: 12, birthday: '2024-05-01', personality: '活泼' }],
     orders: [
-      { _id: 'open_order', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'open', staffOpenid: '', requestedStaffOpenid: '', startTime: '2026-07-28 10:00', addressLatitude: 31.2, addressLongitude: 121.5 },
-      { _id: 'direct_order', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'direct', staffOpenid: '', requestedStaffOpenid: 'openid_staff_a', startTime: '2026-07-28 11:00', addressLatitude: 31.2, addressLongitude: 121.5 }
+      { _id: 'open_order', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'open', staffOpenid: '', requestedStaffOpenid: '', startTime: '2099-07-28 10:00', addressLatitude: 31.2, addressLongitude: 121.5 },
+      { _id: 'direct_order', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'direct', staffOpenid: '', requestedStaffOpenid: 'openid_staff_a', startTime: '2099-07-28 11:00', addressLatitude: 31.2, addressLongitude: 121.5 }
     ]
   })
   const staffAFn = loadCloudFunction('api', db, 'openid_staff_a')
@@ -1001,7 +1106,7 @@ test('admin assignOrder writes staff profile and admin assignment source', async
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
     ],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'approved' }],
-    orders: [{ _id: 'order1', status: 'paid', publishMode: 'direct', requestedStaffOpenid: 'other_staff', staffOpenid: '', startTime: '2026-07-28 10:00', endTime: '2026-07-28 11:00' }],
+    orders: [{ _id: 'order1', status: 'paid', publishMode: 'direct', requestedStaffOpenid: 'other_staff', staffOpenid: '', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00' }],
     admin_operation_logs: []
   })
   const fn = loadCloudFunction('api', db, 'openid_admin')
@@ -1087,7 +1192,7 @@ test('admin batchDeleteOrders soft deletes orders and hides them from list', asy
   const db = createCollectionStore({
     users: [
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }
     ],
     orders: [
       { _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'paid', createdAt: '2026-08-25 10:00' },
@@ -1121,7 +1226,7 @@ test('admin batchDeleteOrders soft deletes orders and hides them from list', asy
 
 test('client can favorite and list approved sitters without private fields', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', phone: '13800000000', auditStatus: 'approved', serviceCity: '上海', serviceAreas: '浦东' }],
     sitter_favorites: [],
     service_reviews: []
@@ -1146,7 +1251,7 @@ test('client can favorite and list approved sitters without private fields', asy
 test('client address CRUD is scoped to owner and default is unique', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'other', openid: 'openid_other', roles: ['client'], status: 'active' }
     ],
     user_addresses: [{ _id: 'other_addr', openid: 'openid_other', serviceAddress: '别人小区', addressDetail: '1栋', doorplate: '101', isDefault: true, updatedAt: '2026-07-29 09:00' }]
@@ -1174,7 +1279,7 @@ test('client address CRUD is scoped to owner and default is unique', async () =>
 test('rebook template is owner-only and preserves direct sitter only when approved', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'other', openid: 'openid_other', roles: ['client'], status: 'active' }
     ],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'approved' }],
@@ -1197,7 +1302,7 @@ test('rebook template is owner-only and preserves direct sitter only when approv
 test('order lifecycle writes timeline and completed order can be reviewed once', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', nickname: '小明', roles: ['client'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', nickname: '小明', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
     ],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 8 }],
@@ -1233,7 +1338,7 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
 test('real-device acceptance core flow covers client staff admin lifecycle', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000', points: 0, totalPoints: 0, completedOrderCount: 0 },
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' },
       { _id: 'admin', openid: 'openid_admin', roles: ['admin'], status: 'active' }
     ],
@@ -1322,7 +1427,7 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
 
 test('client cancel order returns MVP refund quote and writes cancelled timeline', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     orders: [{ _id: 'order1', clientOpenid: 'openid_client', status: 'assigned', paymentStatus: 'paid', paymentNo: 'P1', payAmount: 100, startTime: '2000-07-28 10:00' }],
     refunds: [],
     payment_events: [],
@@ -1348,7 +1453,7 @@ test('client cancel order returns MVP refund quote and writes cancelled timeline
 
 test('coupon quote auto applies best available coupon', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
     user_coupons: [
       { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 80, applicableServiceTypes: [] } },
@@ -1369,7 +1474,7 @@ test('coupon quote auto applies best available coupon', async () => {
 
 test('coupon quote rejects explicit inapplicable coupon but auto apply ignores it', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 8 }],
     user_coupons: [
       { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满200减20', type: 'fixed', discountAmount: 20, minOrderAmount: 200, applicableServiceTypes: [] } }
@@ -1389,7 +1494,7 @@ test('coupon quote rejects explicit inapplicable coupon but auto apply ignores i
 
 test('coupon create order locks coupon and prevents reuse', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
     orders: [],
     user_coupons: [
@@ -1398,7 +1503,7 @@ test('coupon create order locks coupon and prevents reuse', async () => {
     order_timeline: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
-  const data = { petId: 'p1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋101', doorplate: '101', startTime: '2026-07-28 10:00', endTime: '2026-07-28 11:00', durationMinutes: 60, couponId: 'c1' }
+  const data = { petId: 'p1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋101', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60, couponId: 'c1' }
 
   const created = await fn.main({ module: 'order', action: 'createOrder', data })
   const reused = await fn.main({ module: 'order', action: 'createOrder', data })
@@ -1416,7 +1521,7 @@ test('coupon create order locks coupon and prevents reuse', async () => {
 
 test('system records subscription consent results', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     subscription_consents: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
@@ -1433,7 +1538,7 @@ test('system records subscription consent results', async () => {
 test('payment create status mock pay and admin refund permissions work', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }
     ],
     orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'pending_pay', paymentStatus: 'unpaid', payAmount: 88 }],
@@ -1499,7 +1604,7 @@ test('wechat payment settings mask secrets in public responses', async () => {
 test('wechat create payment returns pay params and reuses duplicate clientRequestId', async () => {
   await withEnv({ WECHAT_PAY_MOCK_PREPAY_ID: 'mock_prepay_1' }, async () => {
     const db = createCollectionStore({
-      users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+      users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
       orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'pending_pay', paymentStatus: 'unpaid', payAmount: 88, serviceSummary: '上门喂养' }],
       payments: [],
       payment_events: [],
@@ -1527,7 +1632,7 @@ test('wechat callback marks paid idempotently and rejects amount mismatch', asyn
   const callbackPayload = { appid: 'app_1', mchid: 'mch_1', out_trade_no: 'P1', transaction_id: 'WX1', trade_state: 'SUCCESS', amount: { total: 8800, currency: 'CNY' } }
   await withEnv({ WECHAT_PAY_SKIP_VERIFY: 'true', WECHAT_PAY_MOCK_CALLBACK_RESOURCE: JSON.stringify(callbackPayload) }, async () => {
     const db = createCollectionStore({
-      users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+      users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
       orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'pending_pay', paymentStatus: 'paying', payAmount: 88, paymentNo: 'P1' }],
       payments: [{ _id: 'pay1', orderId: 'order1', orderNo: 'O1', openid: 'openid_client', paymentNo: 'P1', amount: 88, status: 'pending', channel: 'wechat' }],
       payment_events: [],
@@ -1613,7 +1718,7 @@ test('wechat refund request updates refund record and keeps idempotency', async 
 
 test('coupon payment marks coupon used and cancel unpaid releases coupon', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
     orders: [],
     payments: [],
@@ -1624,7 +1729,7 @@ test('coupon payment marks coupon used and cancel unpaid releases coupon', async
     order_timeline: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
-  const base = { petId: 'p1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋101', doorplate: '101', startTime: '2026-07-28 10:00', endTime: '2026-07-28 11:00', durationMinutes: 60 }
+  const base = { petId: 'p1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋101', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 }
 
   const paidOrder = await fn.main({ module: 'order', action: 'createOrder', data: { ...base, couponId: 'c1' } })
   const paid = await fn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: paidOrder.data._id } })
@@ -1642,7 +1747,7 @@ test('admin can save coupon template issue coupon and per-user limit applies', a
   const db = createCollectionStore({
     users: [
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }
     ],
     coupon_templates: [],
     user_coupons: [],
@@ -1780,7 +1885,7 @@ test('track and checkin backfill are idempotent', async () => {
 test('incident workflow supports client complaint comments status and earning freeze', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' },
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }
     ],
@@ -1818,20 +1923,20 @@ test('admin finance dashboard summarizes payments refunds earnings and withdraws
   const db = createCollectionStore({
     users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
     orders: [
-      { _id: 'order1', status: 'completed', paymentStatus: 'paid', payAmount: 100, paidAt: '2026-07-28 10:00' },
+      { _id: 'order1', status: 'completed', paymentStatus: 'paid', payAmount: 100, paidAt: '2099-07-28 10:00' },
       { _id: 'order2', status: 'completed', paymentStatus: 'paid', payAmount: 50, paidAt: '2026-07-29 10:00' }
     ],
-    payments: [{ _id: 'pay1', status: 'paid', amount: 100, paidAt: '2026-07-28 10:01' }],
-    refunds: [{ _id: 'refund1', status: 'processing', amount: 20, createdAt: '2026-07-28 11:00' }],
-    staff_earnings: [{ _id: 'earn1', status: 'available', amount: 70, createdAt: '2026-07-28 12:00' }],
-    withdraw_requests: [{ _id: 'withdraw1', status: 'pending', amount: 30, createdAt: '2026-07-28 13:00' }],
-    finance_logs: [{ _id: 'log1', action: 'staff_earning_created', targetType: 'staff_earning', amountDelta: 70, createdAt: '2026-07-28 12:00' }]
+    payments: [{ _id: 'pay1', status: 'paid', amount: 100, paidAt: '2099-07-28 10:01' }],
+    refunds: [{ _id: 'refund1', status: 'processing', amount: 20, createdAt: '2099-07-28 11:00' }],
+    staff_earnings: [{ _id: 'earn1', status: 'available', amount: 70, createdAt: '2099-07-28 12:00' }],
+    withdraw_requests: [{ _id: 'withdraw1', status: 'pending', amount: 30, createdAt: '2099-07-28 13:00' }],
+    finance_logs: [{ _id: 'log1', action: 'staff_earning_created', targetType: 'staff_earning', amountDelta: 70, createdAt: '2099-07-28 12:00' }]
   })
   const fn = loadCloudFunction('api', db, 'openid_admin')
 
-  const dashboard = await fn.main({ module: 'admin', action: 'financeDashboard', data: { startDate: '2026-07-28', endDate: '2026-07-28' } })
-  const payments = await fn.main({ module: 'admin', action: 'listPayments', data: { startDate: '2026-07-28', endDate: '2026-07-28' } })
-  const logs = await fn.main({ module: 'admin', action: 'listFinanceLogs', data: { startDate: '2026-07-28', endDate: '2026-07-28' } })
+  const dashboard = await fn.main({ module: 'admin', action: 'financeDashboard', data: { startDate: '2099-07-28', endDate: '2099-07-28' } })
+  const payments = await fn.main({ module: 'admin', action: 'listPayments', data: { startDate: '2099-07-28', endDate: '2099-07-28' } })
+  const logs = await fn.main({ module: 'admin', action: 'listFinanceLogs', data: { startDate: '2099-07-28', endDate: '2099-07-28' } })
 
   assert.equal(dashboard.ok, true)
   assert.equal(dashboard.data.metrics.gmv, 100)
@@ -1849,7 +1954,7 @@ test('admin finance dashboard summarizes payments refunds earnings and withdraws
 test('staff schedule exceptions and order conflicts block unavailable slots', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
     ],
     pets: [{ _id: 'pet1', openid: 'openid_client', name: '可乐', weight: 10 }],
@@ -1864,12 +1969,12 @@ test('staff schedule exceptions and order conflicts block unavailable slots', as
   const staffFn = loadCloudFunction('api', db, 'openid_staff')
   const clientFn = loadCloudFunction('api', db, 'openid_client')
 
-  const rest = await staffFn.main({ module: 'staff', action: 'saveScheduleException', data: { dateKey: '2026-07-28', status: 'unavailable', remark: '休息' } })
-  const blocked = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'pet1', publishMode: 'direct', staffProfileId: 'sp1', serviceTypes: ['walk'], addressLatitude: 31.21, addressLongitude: 121.51, startTime: '2026-07-28 10:00', endTime: '2026-07-28 11:00', durationMinutes: 60 } })
-  const available = await staffFn.main({ module: 'staff', action: 'saveScheduleException', data: { dateKey: '2026-07-28', status: 'available', slots: [{ start: 10, end: 12 }] } })
-  const order = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: 'pet1', publishMode: 'direct', staffProfileId: 'sp1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.51, startTime: '2026-07-28 10:00', endTime: '2026-07-28 11:00', durationMinutes: 60 } })
-  db.state.orders.push({ _id: 'busy1', clientOpenid: 'other_client', staffOpenid: 'openid_staff', staffProfileId: 'sp1', status: 'assigned', startTime: '2026-07-28 10:30', endTime: '2026-07-28 11:30' })
-  db.state.orders.push({ _id: 'open1', clientOpenid: 'openid_client', status: 'paid', startTime: '2026-07-28 11:00', endTime: '2026-07-28 12:00' })
+  const rest = await staffFn.main({ module: 'staff', action: 'saveScheduleException', data: { dateKey: '2099-07-28', status: 'unavailable', remark: '休息' } })
+  const blocked = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'pet1', publishMode: 'direct', staffProfileId: 'sp1', serviceTypes: ['walk'], addressLatitude: 31.21, addressLongitude: 121.51, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
+  const available = await staffFn.main({ module: 'staff', action: 'saveScheduleException', data: { dateKey: '2099-07-28', status: 'available', slots: [{ start: 10, end: 12 }] } })
+  const order = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: 'pet1', publishMode: 'direct', staffProfileId: 'sp1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.51, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
+  db.state.orders.push({ _id: 'busy1', clientOpenid: 'other_client', staffOpenid: 'openid_staff', staffProfileId: 'sp1', status: 'assigned', startTime: '2099-07-28 10:30', endTime: '2099-07-28 11:30' })
+  db.state.orders.push({ _id: 'open1', clientOpenid: 'openid_client', status: 'paid', startTime: '2099-07-28 11:00', endTime: '2099-07-28 12:00' })
   const conflict = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'open1' } })
 
   assert.equal(rest.ok, true)
@@ -1885,7 +1990,7 @@ test('staff schedule exceptions and order conflicts block unavailable slots', as
 test('finishService creates staff earning and withdraw workflow locks earnings', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000', points: 0, totalPoints: 0, completedOrderCount: 0 },
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' },
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }
     ],
@@ -1921,7 +2026,7 @@ test('finishService creates staff earning and withdraw workflow locks earnings',
 
 test('critical write APIs ignore duplicate clientRequestId submissions', async () => {
   const paymentDb = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     orders: [{ _id: 'order_pay', orderNo: 'OP1', clientOpenid: 'openid_client', status: 'pending_pay', paymentStatus: 'unpaid', payAmount: 88 }],
     payments: [],
     payment_events: [],
@@ -1937,7 +2042,7 @@ test('critical write APIs ignore duplicate clientRequestId submissions', async (
   assert.equal(paymentDb.state.payments.length, 1)
 
   const cancelDb = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     orders: [{ _id: 'order_cancel', orderNo: 'OC1', clientOpenid: 'openid_client', status: 'assigned', paymentStatus: 'paid', paymentNo: 'P1', payAmount: 100, startTime: '2000-07-28 10:00' }],
     refunds: [],
     payment_events: [],
@@ -1953,7 +2058,7 @@ test('critical write APIs ignore duplicate clientRequestId submissions', async (
   assert.equal(cancelDb.state.order_timeline.length, 2)
 
   const incidentDb = createCollectionStore({
-    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     orders: [{ _id: 'order_incident', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', status: 'completed' }],
     order_incidents: [],
     incident_actions: [],
@@ -1973,7 +2078,7 @@ test('critical write APIs ignore duplicate clientRequestId submissions', async (
 test('service finish and withdraw requests are idempotent', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000', points: 0, totalPoints: 0, completedOrderCount: 0 },
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
     ],
     orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', clientUserId: 'client', staffOpenid: 'openid_staff', staffUserId: 'staff', staffProfileId: 'sp1', status: 'in_service', payAmount: 100, requiredCheckins: [] }],
@@ -2298,7 +2403,7 @@ test('listApprovedSitters filters out sitters exceeding user location distance',
 test('createOrder enforces sitter weekly schedule and service radius limits', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'u_sitter', openid: 'openid_sitter', roles: ['client', 'staff'], status: 'active' }
     ],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '豆豆', weight: 8 }],
@@ -2336,8 +2441,8 @@ test('createOrder enforces sitter weekly schedule and service radius limits', as
       doorplate: '101',
       addressLatitude: 31.201,
       addressLongitude: 121.501,
-      startTime: '2026-08-03 08:00',
-      endTime: '2026-08-03 09:00',
+      startTime: '2099-08-03 08:00',
+      endTime: '2099-08-03 09:00',
       durationMinutes: 60
     }
   })
@@ -2358,8 +2463,8 @@ test('createOrder enforces sitter weekly schedule and service radius limits', as
       doorplate: '101',
       addressLatitude: 31.5,
       addressLongitude: 121.9,
-      startTime: '2026-08-03 10:00',
-      endTime: '2026-08-03 11:00',
+      startTime: '2099-08-03 10:00',
+      endTime: '2099-08-03 11:00',
       durationMinutes: 60
     }
   })
@@ -2380,8 +2485,8 @@ test('createOrder enforces sitter weekly schedule and service radius limits', as
       doorplate: '101',
       addressLatitude: 31.201,
       addressLongitude: 121.501,
-      startTime: '2026-08-03 10:00',
-      endTime: '2026-08-03 11:00',
+      startTime: '2099-08-03 10:00',
+      endTime: '2099-08-03 11:00',
       durationMinutes: 60
     }
   })
@@ -2392,7 +2497,7 @@ test('createOrder enforces sitter weekly schedule and service radius limits', as
 test('createOrder supports overnight sitter schedule time validation', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'u_sitter', openid: 'openid_sitter', roles: ['client', 'staff'], status: 'active' }
     ],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '豆豆', weight: 8 }],
@@ -2428,8 +2533,8 @@ test('createOrder supports overnight sitter schedule time validation', async () 
       doorplate: '101',
       addressLatitude: 31.201,
       addressLongitude: 121.501,
-      startTime: '2026-08-03 23:00',
-      endTime: '2026-08-04 01:00',
+      startTime: '2099-08-03 23:00',
+      endTime: '2099-08-04 01:00',
       durationMinutes: 120
     }
   })
@@ -2455,7 +2560,7 @@ test('updateStaffProfileConfig rejects unapproved sitters', async () => {
 test('createOrder rejects direct booking when order lacks valid coordinates', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'u_sitter', openid: 'openid_sitter', roles: ['client', 'staff'], status: 'active' }
     ],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '豆豆', weight: 8 }],
@@ -2487,8 +2592,8 @@ test('createOrder rejects direct booking when order lacks valid coordinates', as
       doorplate: '101',
       addressLatitude: 0,
       addressLongitude: 0,
-      startTime: '2026-08-03 10:00',
-      endTime: '2026-08-03 11:00',
+      startTime: '2099-08-03 10:00',
+      endTime: '2099-08-03 11:00',
       durationMinutes: 60
     }
   })
@@ -2512,7 +2617,7 @@ test('acceptOrder rejects staff without fixed service address', async () => {
 test('staff creates SOS incident and incident lists are scoped by role', async () => {
   const db = createCollectionStore({
     users: [
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' },
       { _id: 'other', openid: 'openid_other', roles: ['client'], status: 'active' }
     ],
@@ -2540,7 +2645,7 @@ test('admin creates incident refund and coupon compensation', async () => {
   const db = createCollectionStore({
     users: [
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
-      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }
     ],
     orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'completed', paymentStatus: 'paid', paymentNo: 'P1', payAmount: 120 }],
     order_incidents: [{ _id: 'incident1', orderId: 'order1', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', status: 'processing', createdAt: '2026-08-01' }],

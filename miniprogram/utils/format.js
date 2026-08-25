@@ -4,7 +4,8 @@ const orderStatusText = {
   assigned: '已接单',
   in_service: '服务中',
   completed: '已完成',
-  cancelled: '已取消'
+  cancelled: '已取消',
+  expired: '已过期'
 }
 
 const auditStatusText = {

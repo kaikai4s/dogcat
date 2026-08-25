@@ -7,7 +7,8 @@ const tabs = [
   { label: '待派单', value: 'paid' },
   { label: '待服务', value: 'assigned' },
   { label: '服务中', value: 'in_service' },
-  { label: '已完成', value: 'completed' }
+  { label: '已完成', value: 'completed' },
+  { label: '已过期', value: 'expired' }
 ]
 
 function pageList(result) {

@@ -1160,16 +1160,18 @@ const ORDER_STATUS = {
   ASSIGNED: 'assigned',
   IN_SERVICE: 'in_service',
   COMPLETED: 'completed',
-  CANCELLED: 'cancelled'
+  CANCELLED: 'cancelled',
+  EXPIRED: 'expired'
 }
 
 const ORDER_TRANSITIONS = {
   [ORDER_STATUS.PENDING_PAY]: [ORDER_STATUS.PAID, ORDER_STATUS.CANCELLED],
-  [ORDER_STATUS.PAID]: [ORDER_STATUS.ASSIGNED, ORDER_STATUS.CANCELLED],
+  [ORDER_STATUS.PAID]: [ORDER_STATUS.ASSIGNED, ORDER_STATUS.CANCELLED, ORDER_STATUS.EXPIRED],
   [ORDER_STATUS.ASSIGNED]: [ORDER_STATUS.IN_SERVICE, ORDER_STATUS.CANCELLED],
   [ORDER_STATUS.IN_SERVICE]: [ORDER_STATUS.COMPLETED],
   [ORDER_STATUS.COMPLETED]: [],
-  [ORDER_STATUS.CANCELLED]: []
+  [ORDER_STATUS.CANCELLED]: [],
+  [ORDER_STATUS.EXPIRED]: [ORDER_STATUS.CANCELLED]
 }
 
 function canTransitionOrder(fromStatus, toStatus) {
@@ -1181,7 +1183,26 @@ function assertOrderTransition(fromStatus, toStatus, message) {
 }
 
 function orderStatusText(status) {
-  return ({ pending_pay: '待支付', paid: '已支付', assigned: '已接单', in_service: '服务中', completed: '已完成', cancelled: '已取消', refunding: '退款中', refunded: '已退款' })[status] || '处理中'
+  return ({ pending_pay: '待支付', paid: '待接单', assigned: '已接单', in_service: '服务中', completed: '已完成', cancelled: '已取消', expired: '已过期', refunding: '退款中', refunded: '已退款' })[status] || '处理中'
+}
+
+function shouldExpireUnacceptedOrder(order = {}, time = now()) {
+  const start = toTimeValue(order.startTime)
+  return order.status === ORDER_STATUS.PAID && !safeText(order.staffOpenid).trim() && start > 0 && start <= time.getTime()
+}
+
+async function expireUnacceptedOrder(orderId, order, time = now()) {
+  if (!shouldExpireUnacceptedOrder(order, time)) return order
+  const update = { status: ORDER_STATUS.EXPIRED, expiredAt: time, expireReason: '服务开始时间前无人接单', updatedAt: time }
+  await db.collection('orders').doc(orderId).update({ data: update })
+  await appendOrderTimeline(orderId, 'expired', '订单已过期', '服务开始时间前无人接单', 'system')
+  return { ...order, ...update }
+}
+
+async function expireDueUnacceptedOrders() {
+  const res = await db.collection('orders').where({ status: ORDER_STATUS.PAID }).get()
+  const time = now()
+  await Promise.all((res.data || []).map((order) => expireUnacceptedOrder(order._id, order, time)))
 }
 
 function checkinEventText(eventType) {
@@ -1315,11 +1336,15 @@ async function getHomePageData(openid, data = {}) {
 
   const completedCount = orders.filter((order) => order.status === 'completed').length
   const reviewCount = await safeCollectionCount('service_reviews', { status: 'visible' })
+  const newbieTemplates = couponTemplates.filter((coupon) => coupon.newbieOnly !== false)
+  const newbieTemplateIds = new Set(newbieTemplates.map((coupon) => coupon._id).filter(Boolean))
   const claimedNewbieTemplateIds = new Set((userCoupons || [])
     .filter((coupon) => coupon.status !== 'void')
     .map((coupon) => coupon.templateId || (coupon.templateSnapshot && coupon.templateSnapshot.templateId))
     .filter(Boolean))
-  const newbieCoupons = couponTemplates.filter((coupon) => coupon.newbieOnly !== false && !claimedNewbieTemplateIds.has(coupon._id))
+  const hasClaimedNewbieCoupon = Array.from(claimedNewbieTemplateIds).some((templateId) => newbieTemplateIds.has(templateId))
+  const isNewUser = Boolean(optionalUser) && userOrders.length === 0
+  const newbieCoupons = isNewUser && !hasClaimedNewbieCoupon ? newbieTemplates : []
 
   return {
     settings: {
@@ -1591,6 +1616,7 @@ function validateOrderTime(data) {
   const start = new Date(String(data.startTime).replace(/-/g, '/')).getTime()
   const end = new Date(String(data.endTime).replace(/-/g, '/')).getTime()
   if (!start || !end || end <= start) throw new Error('服务时间不正确')
+  if (start < Date.now()) throw new Error('服务开始时间不能早于当前时间')
 }
 
 function hasCoordinate(latitude, longitude) {
@@ -2142,8 +2168,9 @@ async function resolveRewardMailTargets(data = {}) {
 async function getOrderForAccess(openid, orderId) {
   const user = await getUser(openid)
   const res = await db.collection('orders').doc(orderId).get()
-  const order = res.data ? { ...res.data, _id: orderId } : null
+  let order = res.data ? { ...res.data, _id: orderId } : null
   if (!order || (isAdminDeletedOrder(order) && !user.roles.includes('admin'))) throw new Error('订单不存在')
+  order = await expireUnacceptedOrder(orderId, order)
   const canPreviewForStaff = user.roles.includes('staff') && order.status === ORDER_STATUS.PAID && (isOpenOrder(order) || order.requestedStaffOpenid === openid)
   const allowed = order.clientOpenid === openid || order.staffOpenid === openid || order.requestedStaffOpenid === openid || user.roles.includes('admin') || canPreviewForStaff
   if (!allowed) throw new Error('无权访问订单')
@@ -2243,6 +2270,22 @@ function createClientSnapshot(user) {
     avatarUrl: safeFileId(user.avatarUrl) || safeText(user.avatarUrl),
     phoneMasked: mask(safeText(user.phone).trim())
   }
+}
+
+async function syncClientOrderPhone(openid, phone) {
+  const cleanPhone = safeText(phone).trim()
+  const ordersRes = await db.collection('orders').where({ clientOpenid: openid }).get()
+  const time = now()
+  await Promise.all((ordersRes.data || []).map((order) => db.collection('orders').doc(order._id).update({
+    data: {
+      contactPhone: cleanPhone,
+      clientSnapshot: {
+        ...(order.clientSnapshot || {}),
+        phoneMasked: mask(cleanPhone)
+      },
+      updatedAt: time
+    }
+  })))
 }
 
 async function getAdminClientContact(order) {
@@ -2768,6 +2811,7 @@ async function toPublicSitterDetail(openid, profile) {
 function getCancelQuoteForOrder(order) {
   if (order.status === 'pending_pay') return { canCancel: true, refundAmount: 0, refundStatus: 'not_required', ruleText: '待支付订单可直接取消' }
   if (order.status === 'paid') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'processing', ruleText: '已支付未接单订单可全额退款' }
+  if (order.status === 'expired') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'processing', ruleText: '过期未接单订单可全额退款' }
   if (order.status === 'assigned') {
     const start = new Date(String(order.startTime || '').replace(/-/g, '/')).getTime()
     const hoursBeforeStart = start ? (start - now().getTime()) / 36e5 : 0
@@ -3261,15 +3305,17 @@ const handlers = {
 
     if (action === 'updateProfile') {
       const user = await getUser(openid)
+      const oldPhone = safeText(user.phone).trim()
       const nickname = safeText(data.nickname).trim()
       if (!nickname) throw new Error('昵称不能为空')
       const payload = {
         nickname,
         avatarUrl: safeFileId(data.avatarUrl) || safeText(data.avatarUrl),
-        phone: safeText(data.phone).trim(),
+        phone: data.phone !== undefined ? safeText(data.phone).trim() : oldPhone,
         updatedAt: now()
       }
       await db.collection('users').doc(user._id).update({ data: payload })
+      if (payload.phone !== oldPhone) await syncClientOrderPhone(openid, payload.phone)
       return { ...user, ...payload }
     }
 
@@ -3316,9 +3362,11 @@ const handlers = {
 
     if (action === 'bindPhone') {
       const user = await getUser(openid)
+      const oldPhone = safeText(user.phone).trim()
       const phone = String(data.phone || '').trim()
       if (!phone) throw new Error('手机号不能为空')
       await db.collection('users').doc(user._id).update({ data: { phone, updatedAt: now() } })
+      if (phone !== oldPhone) await syncClientOrderPhone(openid, phone)
       return { ...user, phone }
     }
 
@@ -3647,6 +3695,7 @@ const handlers = {
 
     if (action === 'quoteOrder') {
       await getUser(openid)
+      if (data.startTime || data.endTime) validateOrderTime(data)
       let pet = null
       if (data.petId) {
         const petRes = await db.collection('pets').doc(data.petId).get()
@@ -3685,6 +3734,7 @@ const handlers = {
 
     if (action === 'createOrder') {
       const user = await getUser(openid)
+      if (!safeText(user.phone).trim()) throw new Error('请先绑定手机号')
       if (!data.petId) throw new Error('请选择宠物')
       if (!data.serviceAddress) throw new Error('请选择服务地址')
       if (!data.addressDetail) throw new Error('请填写详细地址')
@@ -3720,7 +3770,7 @@ const handlers = {
       const time = now()
       const homeSecurity = normalizeHomeSecurityInput(data)
       const checkinRequirements = await resolveCheckinRequirements(pricing.serviceTypes)
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {
@@ -3754,6 +3804,7 @@ const handlers = {
 
     if (action === 'listOrders') {
       const user = await getUser(openid)
+      await expireDueUnacceptedOrders()
       const role = data.role || user.activeRole || 'client'
       const where = role === 'staff' ? { staffOpenid: openid } : { clientOpenid: openid }
       const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
@@ -4765,6 +4816,7 @@ const handlers = {
       const inServiceRange = Boolean(data.inServiceRange)
       const inServiceTime = Boolean(data.inServiceTime)
       const filterDate = data.filterDate ? String(data.filterDate).trim() : ''
+      await expireDueUnacceptedOrders()
 
       const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
       let orders = await Promise.all((res.data || []).filter((order) => !isAdminDeletedOrder(order) && isOpenOrder(order)).map(async (order) => {
@@ -4831,6 +4883,7 @@ const handlers = {
       const profile = profileRes.data[0] || {}
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
+      await expireDueUnacceptedOrders()
       const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
       return Promise.all((res.data || [])
         .filter((order) => !isAdminDeletedOrder(order) && order.publishMode === 'direct' && !order.staffOpenid && order.requestedStaffOpenid === openid)
@@ -4931,7 +4984,7 @@ const handlers = {
         throw new Error('请先在个人中心设置固定服务地址与接单范围，方可接单')
       }
       const orderRes = await db.collection('orders').doc(data.orderId).get()
-      const order = orderRes.data
+      const order = await expireUnacceptedOrder(data.orderId, orderRes.data)
       assertOrderTransition(order.status, ORDER_STATUS.ASSIGNED, '订单状态不可接单')
       if (order.staffOpenid) throw new Error('订单已被分配')
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
@@ -5310,6 +5363,7 @@ const handlers = {
   async admin(openid, action, data) {
     const admin = await requireAdmin(openid)
     if (action === 'dashboard') {
+      await expireDueUnacceptedOrders()
       const statuses = ['paid', 'assigned', 'in_service', 'completed']
       const counts = {}
       for (let i = 0; i < statuses.length; i += 1) counts[statuses[i]] = (await db.collection('orders').where({ status: statuses[i] }).count()).total
@@ -5580,6 +5634,7 @@ const handlers = {
       return safeUserSummary({ ...target, ...update })
     }
     if (action === 'listOrders') {
+      await expireDueUnacceptedOrders()
       const where = data.status ? { status: data.status } : {}
       const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
       const orderKeyword = safeText(data.orderKeyword || data.keyword).trim().toLowerCase()
