@@ -68,6 +68,44 @@ function applyWorkbenchDistances(orders, location) {
   })
 }
 
+function normalizeScheduleSlots(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const result = {}
+  let hasAny = false
+  for (let day = 1; day <= 7; day++) {
+    const list = Array.isArray(raw[String(day)]) ? raw[String(day)] : []
+    const slots = list
+      .map((s) => ({ start: Math.max(0, Math.min(23, Math.floor(Number(s.start || 0)))), end: Math.max(1, Math.min(24, Math.floor(Number(s.end || 0)))) }))
+      .filter((s) => s.end > s.start)
+    result[String(day)] = slots
+    if (slots.length) hasAny = true
+  }
+  return hasAny ? result : null
+}
+
+function applyOrderFlags(orders, radiusKm, schedule) {
+  const normalized = normalizeScheduleSlots(schedule)
+  return orders.map((order) => {
+    const inRange = order.distanceKm !== null && order.distanceKm <= radiusKm
+    let inTime = true
+    if (normalized && order.startTime) {
+      const d = new Date(String(order.startTime).replace(/-/g, '/'))
+      if (!isNaN(d.getTime())) {
+        const jsDay = d.getDay()
+        const dayKey = String(jsDay === 0 ? 7 : jsDay)
+        const slots = normalized[dayKey]
+        if (!Array.isArray(slots) || !slots.length) {
+          inTime = false
+        } else {
+          const hour = d.getHours() + d.getMinutes() / 60
+          inTime = slots.some((s) => hour >= s.start && hour < s.end)
+        }
+      }
+    }
+    return { ...order, inRange, inTime }
+  })
+}
+
 Page({
   data: {
     themeClass: 'theme-day',
@@ -84,7 +122,9 @@ Page({
     filterDate: '',
     showFilterPanel: false,
     customLocation: null,
-    currentWorkbenchLocation: null
+    currentWorkbenchLocation: null,
+    staffRadiusKm: 5,
+    staffSchedule: null
   },
 
   onShow() {
@@ -109,6 +149,10 @@ Page({
         let locationTag = '已选择位置'
 
         if (profile) {
+          this.setData({
+            staffRadiusKm: Math.max(Number(profile.serviceRadiusKm || 5), 1),
+            staffSchedule: profile.weeklySchedule || null
+          })
           if (!this.data.customLocation && !this.cityManuallySelected && profile.serviceCity && profile.serviceCity !== '服务城市待完善') {
             this.setData({ selectedCity: profile.serviceCity })
           }
@@ -309,8 +353,11 @@ Page({
     ])
       .then(([directOrders, nearbyOrders]) => {
         const recalculatedDirectOrders = applyWorkbenchDistances(directOrders, location)
-        const recalculatedNearbyOrders = applyWorkbenchDistances(applyCityFilter(nearbyOrders, this.data.selectedCity), location)
-          .sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
+        let recalculatedNearbyOrders = applyWorkbenchDistances(applyCityFilter(nearbyOrders, this.data.selectedCity), location)
+        recalculatedNearbyOrders = applyOrderFlags(recalculatedNearbyOrders, this.data.staffRadiusKm, this.data.staffSchedule)
+        if (this.data.inServiceRange) recalculatedNearbyOrders = recalculatedNearbyOrders.filter((o) => o.inRange)
+        if (this.data.inServiceTime) recalculatedNearbyOrders = recalculatedNearbyOrders.filter((o) => o.inTime)
+        recalculatedNearbyOrders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
         this.setData({
           directOrders: recalculatedDirectOrders,
           nearbyOrders: recalculatedNearbyOrders,

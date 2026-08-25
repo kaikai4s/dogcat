@@ -144,3 +144,9 @@
   font-size: 24rpx !important;
   margin: 0 !important;
 }
+
+.chip.warn {
+  background: #fff3e0;
+  color: #e65100;
+  border: 1rpx solid #ffcc80;
+}

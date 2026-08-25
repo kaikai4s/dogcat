@@ -4819,14 +4819,35 @@ const handlers = {
       await expireDueUnacceptedOrders()
 
       const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
+      const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+      const normalizedSchedule = normalizeWeeklySchedule(profile.weeklySchedule)
+
+      function isOrderInRange(order) {
+        return order.distanceKm !== null && order.distanceKm <= radiusKm
+      }
+
+      function isOrderInTime(order) {
+        if (!normalizedSchedule || !order.startTime) return true
+        const orderDate = new Date(order.startTime.replace(/-/g, '/'))
+        if (isNaN(orderDate.getTime())) return true
+        const jsDay = orderDate.getDay()
+        const dayKey = String(jsDay === 0 ? 7 : jsDay)
+        const slots = normalizedSchedule[dayKey]
+        if (!Array.isArray(slots) || !slots.length) return false
+        const orderHour = orderDate.getHours() + orderDate.getMinutes() / 60
+        return slots.some((slot) => orderHour >= slot.start && orderHour < slot.end)
+      }
+
       let orders = await Promise.all((res.data || []).filter((order) => !isAdminDeletedOrder(order) && isOpenOrder(order)).map(async (order) => {
         const enriched = await attachOrderDisplayData(order)
-        // 订单距离只按前端传入的工作台位置与订单服务地址计算。
         let distanceKm = null
         if (hasCoordinate(latitude, longitude) && hasCoordinate(enriched.addressLatitude, enriched.addressLongitude)) {
           distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
         }
-        return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
+        const result = { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
+        result.inRange = isOrderInRange(result)
+        result.inTime = isOrderInTime(result)
+        return result
       }))
 
       // 1. 城市筛选：优先用订单 city 字段，历史订单无 city 时从服务地址解析；解析不到城市的旧数据默认保留。
@@ -4842,35 +4863,7 @@ const handlers = {
         })
       }
 
-      // 3. 服务范围筛选 (In Service Range Filter)
-      if (inServiceRange) {
-        const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
-        orders = orders.filter((order) => {
-          // 直接使用前面精准计算出的 distanceKm 进行比对，确保与界面显示的距离完全一致
-          return order.distanceKm !== null && order.distanceKm <= radiusKm
-        })
-      }
-
-      // 4. 服务时间筛选 (In Service Time Filter)
-      if (inServiceTime && profile.weeklySchedule) {
-        orders = orders.filter((order) => {
-          if (!order.startTime) return false
-          const orderDate = new Date(order.startTime.replace(/-/g, '/'))
-          if (isNaN(orderDate.getTime())) return false
-          // JS getDay(): 0 is Sunday, 1 is Monday. Schedule keys are "1"-"7" (1: Monday, 7: Sunday)
-          const jsDay = orderDate.getDay()
-          const dayKey = String(jsDay === 0 ? 7 : jsDay)
-          const slots = profile.weeklySchedule[dayKey]
-          if (!Array.isArray(slots) || !slots.length) return false
-
-          const orderHour = orderDate.getHours() + orderDate.getMinutes() / 60
-          return slots.some((slot) => {
-            const startH = Number(slot.start || 0)
-            const endH = Number(slot.end || 24)
-            return orderHour >= startH && orderHour <= endH
-          })
-        })
-      }
+      // 3. 服务范围与时间标记（由前端负责筛选，后端只计算标记）
 
       return orders
         .sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
@@ -6293,6 +6286,10 @@ function isWechatPayHttpCallback(event = {}) {
 
 exports.main = async (event = {}) => {
   try {
+    if (event.Type === 'Timer') {
+      await expireDueUnacceptedOrders()
+      return ok({ expired: true })
+    }
     if (isWechatPayHttpCallback(event)) {
       return handlers.payment('', 'paymentCallback', {
         headers: event.headers || event.header || {},

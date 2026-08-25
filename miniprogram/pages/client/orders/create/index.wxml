@@ -142,10 +142,10 @@
 
     <view class="subtitle">服务时间</view>
     <view class="picker-grid">
-      <picker mode="date" value="{{form.startDate}}" bindchange="chooseDate">
+      <picker mode="date" value="{{form.startDate}}" start="{{minDate}}" bindchange="chooseDate">
         <view class="field">日期：{{form.startDate}}</view>
       </picker>
-      <picker mode="time" value="{{form.startClock}}" bindchange="chooseClock">
+      <picker mode="time" value="{{form.startClock}}" start="{{minClock}}" bindchange="chooseClock">
         <view class="field">开始：{{form.startClock}}</view>
       </picker>
     </view>

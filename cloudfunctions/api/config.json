@@ -2,5 +2,12 @@
   "permissions": {
     "openapi": []
   },
-  "timeout": 60
+  "timeout": 60,
+  "triggers": [
+    {
+      "name": "expireOrders",
+      "type": "timer",
+      "config": "0 */5 * * * * *"
+    }
+  ]
 }

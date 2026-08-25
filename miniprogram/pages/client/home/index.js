@@ -122,7 +122,7 @@ Page({
   applyStaffEntryState(profile) {
     const status = profile && profile.auditStatus
     const stateMap = {
-      approved: { title: '进入安心宠护端', tip: '查看任务与接单工作台' },
+      approved: { title: '宠护端', tip: '查看任务与接单工作台' },
       pending: { title: '宠护师认证审核中', tip: '资料已提交，请等待平台审核' },
       rejected: { title: '修改宠护师认证', tip: (profile && profile.auditRemark) || '审核未通过，请修改后重新提交' },
       none: { title: '申请成为宠护师', tip: '通过审核后进入安心宠护端接单' }

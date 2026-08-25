@@ -168,7 +168,9 @@ Page({
     initialized: false,
     pendingOptions: {},
     sectionHomeUrl: '',
-    canGoBack: false
+    canGoBack: false,
+    minDate: formatDate(new Date()),
+    minClock: ''
   },
 
   onLoad(options) {
@@ -181,12 +183,19 @@ Page({
   onShow() {
     this.applyCurrentTheme()
     this.consumeSelectedCoupon()
+    this.updateMinTime()
     ensureLogin({ content: '登录后可创建预约订单。' })
       .then((user) => {
         this.setData({ user })
         return this.loadPageData()
       })
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+  },
+
+  updateMinTime() {
+    const today = formatDate(new Date())
+    const minClock = this.data.form.startDate === today ? formatTime(new Date()) : ''
+    this.setData({ minDate: today, minClock })
   },
 
   applyCurrentTheme() {
@@ -469,6 +478,7 @@ Page({
 
   chooseDate(e) {
     this.setData({ ['form.startDate']: e.detail.value, quote: null }, () => {
+      this.updateMinTime()
       this.prepareTime()
       this.syncSelectedPetUI()
       this.syncSelectedAvailability()

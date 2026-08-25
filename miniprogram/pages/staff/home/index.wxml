@@ -151,6 +151,8 @@
       <view class="chip">{{item.startTime}}</view>
       <view class="chip pink">¥{{item.payAmount}}</view>
       <view class="chip blue">待接单</view>
+      <view class="chip warn" wx:if="{{!item.inRange}}">超出范围</view>
+      <view class="chip warn" wx:if="{{!item.inTime}}">非服务时间</view>
     </view>
     <view class="order-actions three-actions">
       <button class="mini-btn" size="mini" data-id="{{item._id}}" bindtap="detail">详情</button>
