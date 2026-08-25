@@ -67,6 +67,15 @@ function normalizeReliabilityConfig(reliability = {}) {
   }
 }
 
+function normalizeCustomerServiceConfig(customerService = {}) {
+  return {
+    phone: customerService.phone || '',
+    wechatId: customerService.wechatId || '',
+    workHours: customerService.workHours || '每天 9:00-21:00',
+    officialAccountName: customerService.officialAccountName || ''
+  }
+}
+
 function normalizeCarouselConfig(carousel = {}) {
   const source = carousel || {}
   const rotateIntervalMs = Number(source.rotateIntervalMs || 5000)
@@ -128,6 +137,7 @@ Page({
       settlement: normalizeSettlementConfig(),
       subscription: normalizeSubscriptionConfig(),
       reliability: normalizeReliabilityConfig(),
+      customerService: normalizeCustomerServiceConfig(),
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig()
     },
@@ -152,6 +162,7 @@ Page({
           settlement: normalizeSettlementConfig(settings.settlement),
           subscription: normalizeSubscriptionConfig(settings.subscription),
           reliability: normalizeReliabilityConfig(settings.reliability),
+          customerService: normalizeCustomerServiceConfig(settings.customerService),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage)
         }
@@ -238,6 +249,11 @@ Page({
   reliabilityInput(e) {
     const field = e.currentTarget.dataset.field
     this.setData({ [`settings.reliability.${field}`]: Number(e.detail.value || 0) })
+  },
+
+  customerServiceInput(e) {
+    const field = e.currentTarget.dataset.field
+    this.setData({ [`settings.customerService.${field}`]: e.detail.value })
   },
 
   toggleOfflineQueue(e) {
@@ -503,6 +519,7 @@ Page({
       settlement: this.data.settings.settlement,
       subscription: this.data.settings.subscription,
       reliability: this.data.settings.reliability,
+      customerService: this.data.settings.customerService,
       homePage: this.data.settings.homePage,
       homeHeroCarousel: {
         enabled: carousel.enabled === true,
@@ -520,6 +537,7 @@ Page({
           settlement: normalizeSettlementConfig(settings.settlement),
           subscription: normalizeSubscriptionConfig(settings.subscription),
           reliability: normalizeReliabilityConfig(settings.reliability),
+          customerService: normalizeCustomerServiceConfig(settings.customerService),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage)
         }

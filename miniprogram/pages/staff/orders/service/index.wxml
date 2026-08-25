@@ -25,7 +25,32 @@
       <view class="muted">提前开始申请：{{earlyStartRequest.status === 'approved' ? '已同意' : (earlyStartRequest.status === 'rejected' ? '已拒绝' : '待宠物主确认')}}</view>
       <view class="muted" wx:if="{{earlyStartRequest.reason}}">{{earlyStartRequest.reason}}</view>
     </view>
-    <button class="ghost" bindtap="unlock">查看限时门锁密码</button>
+    <view class="notice" wx:if="{{order && order.orderHomeSecurity}}">
+      <view class="strong">入户方式：{{order.orderHomeSecurity.lockMethodText}}</view>
+      <view class="muted" wx:if="{{order.orderHomeSecurity.type === 'someone_home'}}">有人在家，到达后敲门即可。</view>
+      <view wx:if="{{order.orderHomeSecurity.type === 'remote_unlock'}}">
+        <view class="muted">到达服务地点后请求远程开门，系统会给宠物主发送微信提醒；如需电话催办，请联系平台客服并报订单号。</view>
+        <view class="info-row"><view class="label">订单号</view><view class="value">{{order.orderNo}}</view></view>
+        <view class="info-row"><view class="label">客服电话</view><view class="value">{{customerService.phone || '暂未配置'}}</view></view>
+        <view class="info-row" wx:if="{{customerService.workHours}}"><view class="label">服务时间</view><view class="value">{{customerService.workHours}}</view></view>
+        <button class="ghost" loading="{{requestingRemoteUnlock}}" disabled="{{requestingRemoteUnlock}}" bindtap="requestRemoteUnlock">已到达服务地点 / 请求开门</button>
+        <button class="ghost" bindtap="callCustomerService">联系平台客服转接</button>
+        <button class="ghost" bindtap="copyOrderNo">复制订单号</button>
+        <view class="muted" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}">最近请求：{{order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}</view>
+      </view>
+      <view wx:if="{{order.orderHomeSecurity.type === 'one_time_code'}}">
+        <view class="muted">密码区间：{{order.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{order.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view>
+        <button class="ghost" bindtap="unlock">查看一次性开门密码</button>
+      </view>
+      <view wx:if="{{order.orderHomeSecurity.type === 'key'}}">
+        <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{order.orderHomeSecurity.key.location}}</view></view>
+        <view class="image-list" wx:if="{{order.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
+        <view class="muted">{{order.orderHomeSecurity.key.returnedAt ? '已完成放回钥匙打卡' : '完成服务前必须打卡放回钥匙位置'}}</view>
+        <button class="ghost" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="chooseKeyReturnImage">上传放回钥匙图片</button>
+        <view class="image-list" wx:if="{{keyReturnImageFileIds.length}}"><image wx:for="{{keyReturnImageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
+        <button class="primary" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="recordKeyReturned">确认已放回钥匙</button>
+      </view>
+    </view>
   </view>
 
   <view class="notice" wx:if="{{unlock}}">

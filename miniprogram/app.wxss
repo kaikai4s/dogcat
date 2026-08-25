@@ -508,6 +508,7 @@ button::after { border: none; }
 .slide-image,
 .slide-video,
 .slide-video-box {
+  display: block;
   width: 100%;
   height: 100%;
 }

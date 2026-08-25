@@ -47,34 +47,45 @@ function formatTrackTime(value) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
+function getPointTimeValue(value) {
+  if (!value) return 0
+  if (typeof value === 'number') return value
+  if (value instanceof Date) return value.getTime()
+  const time = new Date(String(value).replace(/-/g, '/')).getTime()
+  return Number.isNaN(time) ? 0 : time
+}
+
 function buildMapData(tracks, checkins) {
   const trackPoints = (tracks || []).map((item) => {
     const point = toMapPoint(item)
-    return point ? { ...point, recordedAtText: formatTrackTime(item.recordedAt) } : null
+    return point ? { ...point, recordedAt: item.recordedAt, recordedAtValue: getPointTimeValue(item.recordedAt), recordedAtText: formatTrackTime(item.recordedAt), pointType: 'track' } : null
   }).filter(Boolean)
   const checkinPoints = (checkins || []).map((item) => {
     const point = toMapPoint(item)
-    return point ? { ...point, checkin: item } : null
+    const recordedAt = item.recordedAt || item.createdAt || item.serverTime
+    return point ? { ...point, recordedAt, recordedAtValue: getPointTimeValue(recordedAt), recordedAtText: formatTrackTime(recordedAt), pointType: 'checkin', checkin: item } : null
   }).filter(Boolean)
-  const checkinMapPoints = checkinPoints.map((item) => ({ latitude: item.latitude, longitude: item.longitude }))
-  const includePoints = trackPoints.concat(checkinMapPoints)
-  const routePoints = trackPoints.length > 1 ? trackPoints : []
-  const center = routePoints[0] || checkinMapPoints[0] || includePoints[0]
+  const routePoints = trackPoints.concat(checkinPoints)
+    .filter((item) => item.recordedAtValue > 0)
+    .sort((a, b) => a.recordedAtValue - b.recordedAtValue)
+  const fallbackPoints = trackPoints.concat(checkinPoints)
+  const includePoints = routePoints.length ? routePoints : fallbackPoints
+  const center = routePoints[0] || fallbackPoints[0]
   const markers = []
 
-  if (trackPoints.length > 0) {
+  if (routePoints.length > 0) {
     markers.push({
       id: 1,
-      latitude: trackPoints[0].latitude,
-      longitude: trackPoints[0].longitude,
+      latitude: routePoints[0].latitude,
+      longitude: routePoints[0].longitude,
       title: '服务起点',
       width: 30,
       height: 30,
       label: { content: '起点', color: '#16a34a', fontSize: 13, anchorX: -12, anchorY: -34, borderRadius: 12, bgColor: '#ffffff', padding: 6 },
-      callout: { content: `服务起点 ${trackPoints[0].recordedAtText || ''}`, color: '#16a34a', bgColor: '#ffffff', borderRadius: 12, padding: 8, display: 'BYCLICK' }
+      callout: { content: `服务起点 ${routePoints[0].recordedAtText || ''}`, color: '#16a34a', bgColor: '#ffffff', borderRadius: 12, padding: 8, display: 'BYCLICK' }
     })
-    if (trackPoints.length > 1) {
-      const end = trackPoints[trackPoints.length - 1]
+    if (routePoints.length > 1) {
+      const end = routePoints[routePoints.length - 1]
       markers.push({
         id: 2,
         latitude: end.latitude,
@@ -102,7 +113,7 @@ function buildMapData(tracks, checkins) {
     })
   })
 
-  const trackSummary = buildTrackSummary(trackPoints)
+  const trackSummary = buildTrackSummary(routePoints)
 
   return {
     hasMapData: Boolean(center),
@@ -112,7 +123,7 @@ function buildMapData(tracks, checkins) {
     markers,
     trackSummary,
     polyline: routePoints.length > 1 ? [{
-      points: routePoints,
+      points: routePoints.map((item) => ({ latitude: item.latitude, longitude: item.longitude })),
       color: '#ff4f87cc',
       width: 8,
       borderColor: '#ffffff',

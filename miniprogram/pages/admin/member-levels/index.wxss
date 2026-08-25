@@ -298,6 +298,7 @@
 
 .modal-scroll-body {
   flex: 1;
+  height: 60vh;
   max-height: 60vh;
 }
 

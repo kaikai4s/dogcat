@@ -16,10 +16,10 @@ const durationOptions = [
 ]
 
 const lockMethodOptions = [
-  { label: '当面交接', value: 'handover' },
-  { label: '一次性密码锁', value: 'password' },
-  { label: '钥匙/门禁卡', value: 'key' },
-  { label: '其他说明', value: 'other' }
+  { label: '有人在家', value: 'someone_home', desc: '宠托师到达后敲门即可' },
+  { label: '远程开门', value: 'remote_unlock', desc: '到达后请求你远程开门' },
+  { label: '一次性密码', value: 'one_time_code', desc: '设置本单专用密码和有效期' },
+  { label: '钥匙', value: 'key', desc: '说明钥匙位置并上传图片' }
 ]
 
 function formatDate(date) {
@@ -40,6 +40,23 @@ function addMinutes(startDate, startClock, minutes) {
   if (Number.isNaN(start.getTime())) return ''
   const end = new Date(start.getTime() + Number(minutes) * 60 * 1000)
   return `${formatDate(end)} ${formatTime(end)}`
+}
+
+function formatDateTime(date) {
+  return `${formatDate(date)} ${formatTime(date)}`
+}
+
+function parseDateTime(value) {
+  const date = new Date(String(value || '').replace(' ', 'T'))
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function coversServiceTime(startTime, endTime, effectiveStart, effectiveEnd) {
+  const start = parseDateTime(startTime)
+  const end = parseDateTime(endTime)
+  const coverStart = parseDateTime(effectiveStart)
+  const coverEnd = parseDateTime(effectiveEnd)
+  return Boolean(start && end && coverStart && coverEnd && coverStart <= start && coverEnd >= end)
 }
 
 function markSelected(options, selected) {
@@ -114,9 +131,16 @@ Page({
       staffProfileId: '',
       addressDetail: '',
       doorplate: '',
-      lockMethod: 'handover',
+      lockMethod: 'someone_home',
       doorLockCode: '',
+      doorLockCodeStartDate: formatDate(new Date()),
+      doorLockCodeStartClock: '09:30',
+      doorLockCodeEndDate: formatDate(new Date()),
+      doorLockCodeEndClock: '12:00',
+      doorLockCodeStartTime: '',
+      doorLockCodeEndTime: '',
       keyLocation: '',
+      keyImageFileIds: [],
       entryNotes: '',
       startDate: formatDate(new Date()),
       startClock: '10:00',
@@ -127,6 +151,9 @@ Page({
       addressLongitude: 0
     },
     quote: null,
+    securityCoverageText: '',
+    securityCoverageOk: true,
+    uploadingKeyImage: false,
     selectedCouponId: '',
     selectedCoupon: null,
     selectedPet: null,
@@ -204,10 +231,25 @@ Page({
   },
 
   prepareTime() {
-    const { startDate, startClock, durationMinutes } = this.data.form
+    const { startDate, startClock, durationMinutes, doorLockCodeStartDate, doorLockCodeStartClock, doorLockCodeEndDate, doorLockCodeEndClock } = this.data.form
     const startTime = `${startDate} ${startClock}`
     const endTime = addMinutes(startDate, startClock, durationMinutes)
-    this.setData({ ['form.startTime']: startTime, ['form.endTime']: endTime })
+    const doorLockCodeStartTime = `${doorLockCodeStartDate || startDate} ${doorLockCodeStartClock || startClock}`
+    const doorLockCodeEndTime = `${doorLockCodeEndDate || startDate} ${doorLockCodeEndClock || formatTime(parseDateTime(endTime) || new Date())}`
+    this.setData({ ['form.startTime']: startTime, ['form.endTime']: endTime, ['form.doorLockCodeStartTime']: doorLockCodeStartTime, ['form.doorLockCodeEndTime']: doorLockCodeEndTime }, this.syncSecurityCoverage)
+  },
+
+  syncSecurityCoverage() {
+    const form = this.data.form
+    if (form.lockMethod !== 'one_time_code') {
+      this.setData({ securityCoverageText: '', securityCoverageOk: true })
+      return
+    }
+    const ok = coversServiceTime(form.startTime, form.endTime, form.doorLockCodeStartTime, form.doorLockCodeEndTime)
+    this.setData({
+      securityCoverageOk: ok,
+      securityCoverageText: ok ? '一次性密码有效期已覆盖全程服务时间' : '一次性密码有效期未覆盖全程服务时间，请调整后再下单'
+    })
   },
 
   input(e) {
@@ -334,8 +376,57 @@ Page({
   },
 
   chooseLockMethod(e) {
-    const lockMethod = e.currentTarget.dataset.value || 'handover'
-    this.setData({ ['form.lockMethod']: lockMethod })
+    const lockMethod = e.currentTarget.dataset.value || 'someone_home'
+    this.setData({ ['form.lockMethod']: lockMethod, quote: null }, this.syncSecurityCoverage)
+  },
+
+  chooseCodeStartDate(e) {
+    this.setData({ ['form.doorLockCodeStartDate']: e.detail.value, quote: null }, this.prepareTime)
+  },
+
+  chooseCodeStartClock(e) {
+    this.setData({ ['form.doorLockCodeStartClock']: e.detail.value, quote: null }, this.prepareTime)
+  },
+
+  chooseCodeEndDate(e) {
+    this.setData({ ['form.doorLockCodeEndDate']: e.detail.value, quote: null }, this.prepareTime)
+  },
+
+  chooseCodeEndClock(e) {
+    this.setData({ ['form.doorLockCodeEndClock']: e.detail.value, quote: null }, this.prepareTime)
+  },
+
+  chooseKeyImage() {
+    if (this.data.uploadingKeyImage) return
+    wx.chooseMedia({
+      count: 3,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const files = res.tempFiles || []
+        if (!files.length) return
+        this.setData({ uploadingKeyImage: true })
+        Promise.all(files.map((file) => new Promise((resolve, reject) => {
+          const tempFilePath = file.tempFilePath
+          const ext = tempFilePath.includes('.') ? tempFilePath.slice(tempFilePath.lastIndexOf('.')) : '.jpg'
+          wx.cloud.uploadFile({ cloudPath: `home_security_keys/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`, filePath: tempFilePath, success: resolve, fail: reject })
+        }))).then((uploads) => {
+          const ids = uploads.map((item) => item.fileID).filter(Boolean)
+          this.setData({ ['form.keyImageFileIds']: [...this.data.form.keyImageFileIds, ...ids], uploadingKeyImage: false, quote: null })
+        }).catch((error) => {
+          this.setData({ uploadingKeyImage: false })
+          showError(error)
+        })
+      },
+      fail: showError
+    })
+  },
+
+  removeKeyImage(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const ids = this.data.form.keyImageFileIds.slice()
+    ids.splice(index, 1)
+    this.setData({ ['form.keyImageFileIds']: ids, quote: null })
   },
 
   syncSelectedPetUI() {
@@ -415,15 +506,28 @@ Page({
     if (!form.addressDetail) return '请填写详细地址'
     if (!form.doorplate) return '请填写门牌号或入户说明'
     if (!form.lockMethod) return '请选择入户与门锁方式'
-    if (form.lockMethod === 'password' && !String(form.doorLockCode || '').trim()) return '请填写一次性门锁密码'
-    if ((form.lockMethod === 'key' || form.lockMethod === 'other') && !String(form.entryNotes || form.keyLocation || '').trim()) return '请填写入户说明'
+    if (form.lockMethod === 'one_time_code' && !String(form.doorLockCode || '').trim()) return '请填写一次性开门密码'
+    if (form.lockMethod === 'one_time_code' && !coversServiceTime(form.startTime, form.endTime, form.doorLockCodeStartTime, form.doorLockCodeEndTime)) return '一次性密码有效期需要覆盖完整服务时间'
+    if (form.lockMethod === 'key' && !String(form.keyLocation || '').trim()) return '请填写钥匙放置位置'
+    if (form.lockMethod === 'key' && !(form.keyImageFileIds || []).length) return '请上传钥匙放置位置图片'
     if (!form.startDate || !form.startClock) return '请选择开始时间'
     return ''
   },
 
   buildOrderPayload() {
+    const form = this.data.form
+    const orderHomeSecurity = {
+      type: form.lockMethod,
+      entryNotes: form.entryNotes,
+      doorLockCode: form.doorLockCode,
+      effectiveStart: form.doorLockCodeStartTime,
+      effectiveEnd: form.doorLockCodeEndTime,
+      location: form.keyLocation,
+      imageFileIds: form.keyImageFileIds
+    }
     return {
-      ...this.data.form,
+      ...form,
+      orderHomeSecurity,
       couponId: this.data.selectedCouponId,
       autoApplyCoupon: !this.data.selectedCouponId
     }

@@ -65,6 +65,15 @@
   </view>
 
   <view class="card form-card">
+    <view class="subtitle">客服与转接</view>
+    <view class="notice">宠托师无法直接查看用户电话。远程开门或异常情况需要电话催办时，宠托师联系平台客服并报订单号，由管理员在订单详情中联系用户。</view>
+    <view class="field-item"><text class="label">客服电话</text><input class="input" value="{{settings.customerService.phone}}" data-field="phone" bindinput="customerServiceInput" placeholder="宠托师联系平台的电话" /></view>
+    <view class="field-item"><text class="label">客服微信</text><input class="input" value="{{settings.customerService.wechatId}}" data-field="wechatId" bindinput="customerServiceInput" placeholder="可选，客服微信号" /></view>
+    <view class="field-item"><text class="label">工作时间</text><input class="input" value="{{settings.customerService.workHours}}" data-field="workHours" bindinput="customerServiceInput" placeholder="例如：每天 9:00-21:00" /></view>
+    <view class="field-item"><text class="label">公众号名称</text><input class="input" value="{{settings.customerService.officialAccountName}}" data-field="officialAccountName" bindinput="customerServiceInput" placeholder="可选" /></view>
+  </view>
+
+  <view class="card form-card">
     <view class="subtitle">结算与可靠性</view>
     <view class="field-item"><text class="label">宠托师分成比例</text><input class="input" type="digit" value="{{settings.settlement.staffCommissionRate}}" data-field="staffCommissionRate" bindinput="settlementInput" /></view>
     <view class="field-item"><text class="label">结算等待天数</text><input class="input" type="number" value="{{settings.settlement.settlementDelayDays}}" data-field="settlementDelayDays" bindinput="settlementInput" /></view>

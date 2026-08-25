@@ -36,7 +36,7 @@
     <view class="info-row" wx:if="{{order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{order.addressDetail}}</view></view>
     <view class="info-row" wx:if="{{order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{order.doorplate}}</view></view>
     <view class="info-row" wx:if="{{order.orderHomeSecurity}}"><view class="label">入户方式</view><view class="value">{{order.orderHomeSecurity.lockMethodText}}</view></view>
-    <view class="info-row" wx:if="{{order.orderHomeSecurity && order.orderHomeSecurity.hasDoorLockCode}}"><view class="label">门锁密码</view><view class="value">已加密保存，仅服务窗口内可查看</view></view>
+    <view class="info-row" wx:if="{{order.orderHomeSecurity && order.orderHomeSecurity.oneTimeCode}}"><view class="label">一次性密码</view><view class="value">{{order.orderHomeSecurity.oneTimeCode.masked}} · {{order.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{order.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view></view>
     <view class="info-row"><view class="label">时间</view><view class="value">{{order.startTime}} - {{order.endTime}}</view></view>
     <view class="info-row" wx:if="{{order.durationMinutes}}"><view class="label">时长</view><view class="value">{{order.durationMinutes}}分钟</view></view>
     <view class="info-row"><view class="label">状态</view><view class="badge">{{order.statusText}}</view></view>
@@ -48,6 +48,35 @@
     <view class="info-row" wx:if="{{order.paidAt}}"><view class="label">支付时间</view><view class="value">{{order.paidAt}}</view></view>
     <view class="info-row" wx:if="{{order.refundText}}"><view class="label">退款进度</view><view class="value">{{order.refundText}}</view></view>
     <view class="info-row" wx:if="{{order.refundNo}}"><view class="label">退款单号</view><view class="value">{{order.refundNo}}</view></view>
+  </view>
+
+  <view class="card" wx:if="{{order.orderHomeSecurity}}">
+    <view class="subtitle">家庭安防</view>
+    <view class="info-row"><view class="label">方式</view><view class="value">{{order.orderHomeSecurity.lockMethodText}}</view></view>
+    <view wx:if="{{order.orderHomeSecurity.type === 'someone_home'}}" class="muted">有人在家，宠托师到达后敲门即可。</view>
+    <view wx:if="{{order.orderHomeSecurity.type === 'remote_unlock'}}">
+      <view class="muted">宠托师到达后可请求你远程开门，系统会发送微信提醒；电话催办由平台客服转接。</view>
+      <view class="info-row" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}"><view class="label">最近请求</view><view class="value">{{order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}</view></view>
+    </view>
+    <view wx:if="{{order.orderHomeSecurity.oneTimeCode}}">
+      <view class="info-row"><view class="label">密码状态</view><view class="value">已设置 {{order.orderHomeSecurity.oneTimeCode.masked}}</view></view>
+      <view class="info-row"><view class="label">有效区间</view><view class="value">{{order.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{order.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view></view>
+      <view class="muted">{{order.orderHomeSecurity.oneTimeCode.coversServiceTime ? '已覆盖全程服务时间' : '未覆盖全程服务时间，请重新设置'}}</view>
+      <button class="ghost" bindtap="showResetOneTimeCode">重新设置一次性密码</button>
+    </view>
+    <view wx:if="{{order.orderHomeSecurity.key}}">
+      <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{order.orderHomeSecurity.key.location}}</view></view>
+      <view class="image-list" wx:if="{{order.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
+      <view class="info-row"><view class="label">放回状态</view><view class="value">{{order.orderHomeSecurity.key.returnedAt ? '已放回' : '待宠托师放回打卡'}}</view></view>
+      <view class="image-list" wx:if="{{order.orderHomeSecurity.key.returnImageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.returnImageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
+    </view>
+    <view class="notice" wx:if="{{resettingCode}}">
+      <input password placeholder="新的开门密码" value="{{resetCodeForm.code}}" data-field="code" bindinput="inputResetCode" />
+      <input placeholder="生效时间，如 2026-08-25 09:30" value="{{resetCodeForm.effectiveStart}}" data-field="effectiveStart" bindinput="inputResetCode" />
+      <input placeholder="失效时间，如 2026-08-25 12:00" value="{{resetCodeForm.effectiveEnd}}" data-field="effectiveEnd" bindinput="inputResetCode" />
+      <button class="primary" bindtap="saveResetOneTimeCode">保存新密码</button>
+      <button class="ghost" bindtap="cancelResetOneTimeCode">取消</button>
+    </view>
   </view>
 
   <view class="card" wx:if="{{order.earlyStartRequest}}">

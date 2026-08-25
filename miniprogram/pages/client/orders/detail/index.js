@@ -14,7 +14,7 @@ function getRefundText(order = {}) {
 }
 
 Page({
-  data: { themeClass: 'theme-day', id: '', order: null, timeline: [], review: null, paying: false, cancelling: false, handlingEarlyStart: false, sectionHomeUrl: '', canGoBack: false },
+  data: { themeClass: 'theme-day', id: '', order: null, timeline: [], review: null, paying: false, cancelling: false, handlingEarlyStart: false, resettingCode: false, resetCodeForm: { code: '', effectiveStart: '', effectiveEnd: '' }, sectionHomeUrl: '', canGoBack: false },
   onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }) },
   onShow() {
     this.applyCurrentTheme()
@@ -78,6 +78,34 @@ Page({
   rebook() { wx.navigateTo({ url: '/pages/client/orders/create/index?rebookOrderId=' + this.data.id }) },
   reviewOrder() { wx.navigateTo({ url: '/pages/client/orders/review/index?id=' + this.data.id }) },
   createIncident() { wx.navigateTo({ url: '/pages/client/incidents/create/index?id=' + this.data.id }) },
+  inputResetCode(e) { this.setData({ ['resetCodeForm.' + e.currentTarget.dataset.field]: e.detail.value }) },
+  showResetOneTimeCode() {
+    const security = this.data.order && this.data.order.orderHomeSecurity
+    const code = security && security.oneTimeCode
+    this.setData({
+      resettingCode: true,
+      resetCodeForm: {
+        code: '',
+        effectiveStart: code && code.effectiveStart ? code.effectiveStart : (this.data.order && this.data.order.startTime) || '',
+        effectiveEnd: code && code.effectiveEnd ? code.effectiveEnd : (this.data.order && this.data.order.endTime) || ''
+      }
+    })
+  },
+  cancelResetOneTimeCode() { this.setData({ resettingCode: false }) },
+  saveResetOneTimeCode() {
+    const form = this.data.resetCodeForm
+    if (!form.code || !form.effectiveStart || !form.effectiveEnd) {
+      wx.showToast({ title: '请填写密码和有效区间', icon: 'none' })
+      return
+    }
+    callFunction('homeSecurity', 'updateOrderOneTimeCode', { orderId: this.data.id, ...form })
+      .then(() => {
+        wx.showToast({ title: '已更新' })
+        this.setData({ resettingCode: false })
+        this.load()
+      })
+      .catch(showError)
+  },
   handleEarlyStart(e) {
     if (this.data.handlingEarlyStart) return
     const approve = e.currentTarget.dataset.action === 'approve'

@@ -16,6 +16,27 @@ Page({
       })
       .catch(showError)
   },
+  callClient() {
+    const phone = this.data.detail && this.data.detail.order && this.data.detail.order.clientContact && this.data.detail.order.clientContact.phone
+    if (!phone) {
+      wx.showToast({ title: '用户电话未绑定', icon: 'none' })
+      return
+    }
+    wx.makePhoneCall({ phoneNumber: phone })
+  },
+  callStaff() {
+    const phone = this.data.detail && this.data.detail.order && this.data.detail.order.staffContact && this.data.detail.order.staffContact.phone
+    if (!phone) {
+      wx.showToast({ title: '宠托师电话未绑定', icon: 'none' })
+      return
+    }
+    wx.makePhoneCall({ phoneNumber: phone })
+  },
+  copyOrderNo() {
+    const orderNo = this.data.detail && this.data.detail.order && this.data.detail.order.orderNo
+    if (!orderNo) return
+    wx.setClipboardData({ data: orderNo })
+  },
   evidence() { wx.navigateTo({ url: '/pages/admin/evidence/detail/index?id=' + this.data.id }) },
   incidents() { wx.navigateTo({ url: '/pages/admin/incidents/list/index?orderId=' + this.data.id }) },
   ...navMethods()

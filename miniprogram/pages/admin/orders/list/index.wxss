@@ -1,1 +1,45 @@
 /* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+
+.order-filter-card,
+.batch-bar {
+  margin-bottom: 20rpx;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 16rpx;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.order-select-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding-bottom: 16rpx;
+  margin-bottom: 16rpx;
+  border-bottom: 1rpx solid var(--theme-border);
+}
+
+.select-box {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 10rpx;
+  border: 2rpx solid var(--theme-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.select-box.checked {
+  border-color: var(--theme-primary);
+  background: var(--theme-primary);
+}
+
+.order-card.selected {
+  border-color: var(--theme-primary);
+  box-shadow: 0 12rpx 34rpx rgba(244, 63, 107, 0.16);
+}

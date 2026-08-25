@@ -28,7 +28,10 @@
       "Bash(npx tsc:*)",
       "Bash(python -)",
       "Bash(ls:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(command -v cloudbase)",
+      "Bash(command -v tcb)",
+      "Bash(command -v wx)"
     ]
   }
 }

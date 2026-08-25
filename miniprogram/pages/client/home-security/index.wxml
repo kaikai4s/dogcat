@@ -1,33 +1,45 @@
 <view class="{{themeClass}} {{fontClass}} page">
   <view class="dashboard-header">
     <view class="badge">家庭安全</view>
-    <view class="title">家庭安防</view>
-    <view class="tip">门锁密码会加密保存，仅分配员工在服务时间窗口内可查看。</view>
+    <view class="title">家庭安防历史</view>
+    <view class="tip">新订单请在下单时设置本次入户方式；这里展示历史订单中提供过的安防信息。</view>
   </view>
 
   <view class="soft-panel">
     <view class="between">
       <view>
-        <view class="strong">限时密码保护</view>
-        <view class="muted">每次访问都会记录到证据链</view>
+        <view class="strong">订单级安防</view>
+        <view class="muted">密码仅脱敏展示，钥匙记录来自历史订单。</view>
       </view>
       <view class="pet-avatar">🔐</view>
     </view>
   </view>
 
-  <view class="notice" wx:if="{{masked}}">
-    <view class="strong">已保存门锁密码</view>
-    <view class="muted">{{masked}}</view>
-  </view>
+  <view class="empty" wx:if="{{!loading && !history.length}}">暂无历史安防信息，下单时可设置开门方式。</view>
 
-  <view class="card form-card">
-    <input password placeholder="门锁密码（重新保存时填写）" value="{{form.doorLockCode}}" data-field="doorLockCode" bindinput="input" />
-    <input placeholder="钥匙位置" value="{{form.keyLocation}}" data-field="keyLocation" bindinput="input" />
-    <textarea placeholder="入户说明" value="{{form.entryNotes}}" data-field="entryNotes" bindinput="input" />
-    <input placeholder="监控位置说明" value="{{form.cameraLocations}}" data-field="cameraLocations" bindinput="input" />
-    <input placeholder="紧急联系人" value="{{form.emergencyContactName}}" data-field="emergencyContactName" bindinput="input" />
-    <input placeholder="紧急联系电话" value="{{form.emergencyContactPhone}}" data-field="emergencyContactPhone" bindinput="input" />
-  </view>
+  <view class="card" wx:for="{{history}}" wx:key="orderId">
+    <view class="between">
+      <view>
+        <view class="strong">{{item.orderHomeSecurity.lockMethodText}}</view>
+        <view class="muted">订单 {{item.orderNo}}</view>
+      </view>
+      <button class="ghost compact-btn" data-id="{{item.orderId}}" bindtap="rebook">再次预约</button>
+    </view>
+    <view class="info-row"><view class="label">服务时间</view><view class="value">{{item.serviceTime}}</view></view>
+    <view class="info-row" wx:if="{{item.serviceAddress}}"><view class="label">地址</view><view class="value">{{item.serviceAddress}}</view></view>
 
-  <button class="primary" bindtap="save">保存安防信息</button>
+    <view wx:if="{{item.orderHomeSecurity.oneTimeCode}}">
+      <view class="info-row"><view class="label">历史密码</view><view class="value">{{item.orderHomeSecurity.oneTimeCode.masked}}</view></view>
+      <view class="info-row"><view class="label">有效区间</view><view class="value">{{item.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{item.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view></view>
+    </view>
+
+    <view wx:if="{{item.orderHomeSecurity.key}}">
+      <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{item.orderHomeSecurity.key.location}}</view></view>
+      <view class="image-list" wx:if="{{item.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{item.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
+      <view class="muted">{{item.orderHomeSecurity.key.returnedAt ? '宠托师已打卡放回钥匙' : '该订单暂无放回打卡记录'}}</view>
+    </view>
+
+    <view class="muted" wx:if="{{item.orderHomeSecurity.type === 'remote_unlock'}}">宠托师到达后请求远程开门，你会收到微信提醒；电话催办由平台客服转接。</view>
+    <view class="muted" wx:if="{{item.orderHomeSecurity.type === 'someone_home'}}">有人在家，宠托师敲门即可。</view>
+  </view>
 </view>

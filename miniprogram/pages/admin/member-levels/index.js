@@ -52,6 +52,7 @@ Page({
   data: {
     levels: [],
     showFormModal: false,
+    saving: false,
     form: emptyLevel(),
     colorPalette: COLOR_PALETTE,
     effectOptions: EFFECT_OPTIONS,
@@ -78,9 +79,12 @@ Page({
   closeFormModal() {
     this.setData({
       showFormModal: false,
+      saving: false,
       form: emptyLevel()
     })
   },
+
+  noop() {},
 
   input(e) {
     const field = e.currentTarget.dataset.field
@@ -127,6 +131,7 @@ Page({
   },
 
   save() {
+    if (this.data.saving) return
     const form = this.data.form
     if (!form.name) return wx.showToast({ title: '请填写等级名称', icon: 'none' })
     const payload = {
@@ -139,6 +144,7 @@ Page({
     if (!payload._id) {
       delete payload._id
     }
+    this.setData({ saving: true })
     callFunction('admin', 'saveMemberLevel', payload)
       .then(() => {
         wx.showToast({ title: form._id ? '修改已保存' : '新建已保存' })
@@ -146,6 +152,7 @@ Page({
         this.load()
       })
       .catch(showError)
+      .finally(() => this.setData({ saving: false }))
   },
 
   deleteLevel(e) {

@@ -1016,6 +1016,109 @@ test('admin assignOrder writes staff profile and admin assignment source', async
   assert.equal(order.assignmentSource, 'admin_assign')
 })
 
+test('admin getOrderDetail returns real client and staff phones only through admin module', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '豆豆家长', phone: '13800000000' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active', nickname: '宠托姐姐', phone: '13900000000' }
+    ],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', phone: '13911112222', auditStatus: 'approved' }],
+    orders: [{ _id: 'order1', orderNo: 'O20260825001', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', staffProfileId: 'sp1', status: 'assigned', petName: '豆豆' }],
+    track_logs: [],
+    checkin_logs: [],
+    unlock_code_logs: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+
+  const adminResult = await adminFn.main({ module: 'admin', action: 'getOrderDetail', data: { id: 'order1' } })
+  const staffResult = await staffFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'order1' } })
+
+  assert.equal(adminResult.ok, true)
+  assert.equal(adminResult.data.order.clientContact.phone, '13800000000')
+  assert.equal(adminResult.data.order.staffContact.phone, '13911112222')
+  assert.equal(staffResult.ok, true)
+  assert.equal(staffResult.data.clientContact, undefined)
+  assert.equal(staffResult.data.staffContact, undefined)
+})
+
+test('admin listOrders filters by order keyword client phone and staff phone', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'client1', openid: 'openid_client_1', roles: ['client'], status: 'active', nickname: '豆豆家长', phone: '13800000000' },
+      { _id: 'client2', openid: 'openid_client_2', roles: ['client'], status: 'active', nickname: '可乐家长', phone: '13900000000' },
+      { _id: 'staff1', openid: 'openid_staff_1', roles: ['client', 'staff'], status: 'active', nickname: '宠托甲', phone: '13700000000' },
+      { _id: 'staff2', openid: 'openid_staff_2', roles: ['client', 'staff'], status: 'active', nickname: '宠托乙', phone: '13600000000' }
+    ],
+    staff_profiles: [
+      { _id: 'sp1', openid: 'openid_staff_1', realName: '王小花', phone: '13711112222', auditStatus: 'approved' },
+      { _id: 'sp2', openid: 'openid_staff_2', realName: '李小狗', phone: '', auditStatus: 'approved' }
+    ],
+    orders: [
+      { _id: 'order_alpha', orderNo: 'O20260825001', clientOpenid: 'openid_client_1', contactPhone: '13500000000', staffOpenid: 'openid_staff_1', staffProfileId: 'sp1', status: 'paid', petName: '豆豆', createdAt: '2026-08-25 10:00' },
+      { _id: 'order_beta', orderNo: 'O20260825002', clientOpenid: 'openid_client_2', requestedStaffOpenid: 'openid_staff_2', requestedStaffProfileId: 'sp2', status: 'paid', petName: '可乐', createdAt: '2026-08-25 09:00' },
+      { _id: 'order_contact_phone', orderNo: 'O20260825004', clientOpenid: 'openid_no_phone', contactPhone: '13512345678', status: 'paid', petName: '花花', createdAt: '2026-08-25 08:30' },
+      { _id: 'order_deleted', orderNo: 'O20260825003', clientOpenid: 'openid_client_1', status: 'paid', adminDeletedAt: '2026-08-25 11:00', createdAt: '2026-08-25 08:00' }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const orderNoResult = await fn.main({ module: 'admin', action: 'listOrders', data: { orderKeyword: '25002' } })
+  const orderIdResult = await fn.main({ module: 'admin', action: 'listOrders', data: { orderKeyword: 'alpha' } })
+  const clientPhoneResult = await fn.main({ module: 'admin', action: 'listOrders', data: { clientPhone: '138' } })
+  const contactPhoneResult = await fn.main({ module: 'admin', action: 'listOrders', data: { clientPhone: '1351234' } })
+  const staffProfilePhoneResult = await fn.main({ module: 'admin', action: 'listOrders', data: { staffPhone: '1371111' } })
+  const staffUserPhoneResult = await fn.main({ module: 'admin', action: 'listOrders', data: { staffPhone: '136' } })
+
+  assert.equal(orderNoResult.ok, true)
+  assert.deepEqual(orderNoResult.data.list.map((order) => order._id), ['order_beta'])
+  assert.deepEqual(orderIdResult.data.list.map((order) => order._id), ['order_alpha'])
+  assert.deepEqual(clientPhoneResult.data.list.map((order) => order._id), ['order_alpha'])
+  assert.equal(clientPhoneResult.data.list[0].clientContact.phone, '13800000000')
+  assert.deepEqual(contactPhoneResult.data.list.map((order) => order._id), ['order_contact_phone'])
+  assert.deepEqual(staffProfilePhoneResult.data.list.map((order) => order._id), ['order_alpha'])
+  assert.equal(staffProfilePhoneResult.data.list[0].staffContact.phone, '13711112222')
+  assert.deepEqual(staffUserPhoneResult.data.list.map((order) => order._id), ['order_beta'])
+})
+
+test('admin batchDeleteOrders soft deletes orders and hides them from list', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+    ],
+    orders: [
+      { _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'paid', createdAt: '2026-08-25 10:00' },
+      { _id: 'order2', orderNo: 'O2', clientOpenid: 'openid_client', status: 'completed', createdAt: '2026-08-25 09:00' }
+    ],
+    admin_operation_logs: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const denied = await clientFn.main({ module: 'admin', action: 'batchDeleteOrders', data: { orderIds: ['order1'] } })
+  const deleted = await adminFn.main({ module: 'admin', action: 'batchDeleteOrders', data: { orderIds: ['order1', 'order2'], reason: '测试删除' } })
+  const list = await adminFn.main({ module: 'admin', action: 'listOrders' })
+  const clientList = await clientFn.main({ module: 'order', action: 'listOrders', data: { page: 1, pageSize: 20 } })
+  const clientDetail = await clientFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'order1' } })
+
+  assert.equal(denied.ok, false)
+  assert.equal(denied.message, '仅管理员可操作')
+  assert.equal(deleted.ok, true)
+  assert.equal(deleted.data.count, 2)
+  assert.equal(db.state.orders.length, 2)
+  assert.ok(db.state.orders[0].adminDeletedAt)
+  assert.equal(db.state.orders[0].adminDeletedByOpenid, 'openid_admin')
+  assert.equal(db.state.orders[0].adminDeletedReason, '测试删除')
+  assert.equal(list.data.total, 0)
+  assert.equal(clientList.data.total, 0)
+  assert.equal(clientDetail.ok, false)
+  assert.equal(clientDetail.message, '订单不存在')
+  assert.equal(db.state.admin_operation_logs.length, 2)
+})
+
 test('client can favorite and list approved sitters without private fields', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
@@ -1936,15 +2039,36 @@ test('admin can save rich member level and coupon template settings', async () =
   })
   const fn = loadCloudFunction('api', db, 'openid_admin')
 
-  const level = await fn.main({ module: 'admin', action: 'saveMemberLevel', data: { name: '钻石会员', minPoints: 300, pointMultiplier: 3, description: '高阶会员', benefits: ['专属券', '高倍积分'] } })
+  const level = await fn.main({ module: 'admin', action: 'saveMemberLevel', data: { name: '钻石会员', badgeTag: 'VIP-DIAMOND', nameColor: '#b87333', nameEffect: 'purple_neon', badgeStyle: 'bronze', minPoints: 300, pointMultiplier: 3, description: '高阶会员', benefits: ['专属券', '高倍积分'] } })
   const coupon = await fn.main({ module: 'admin', action: 'saveCouponTemplate', data: { name: '月度券', discountAmount: 20, minOrderAmount: 80, validType: 'fixed_range', validFromFixed: '2026-08-01', validToFixed: '2026-08-31', displayTag: '月度奖励', claimNotice: '限时领取', useNotice: '按规则使用', perUserLimit: 2, enabled: true } })
 
   assert.equal(level.ok, true)
+  assert.equal(level.data.badgeTag, 'VIP-DIAM')
+  assert.equal(level.data.nameColor, '#b87333')
+  assert.equal(level.data.nameEffect, 'purple_neon')
+  assert.equal(level.data.badgeStyle, 'bronze')
   assert.equal(level.data.pointMultiplier, 3)
   assert.deepEqual(level.data.benefits, ['专属券', '高倍积分'])
   assert.equal(coupon.ok, true)
   assert.equal(coupon.data.validType, 'fixed_range')
   assert.equal(coupon.data.displayTag, '月度奖励')
+})
+
+test('member level visual fields are normalized before storage', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    member_levels: [],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const result = await fn.main({ module: 'admin', action: 'saveMemberLevel', data: { name: '测试会员', badgeTag: 'VIPVIPVIP', nameColor: 'red;background:red', nameEffect: 'unknown-effect', badgeStyle: 'bad style' } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.badgeTag, 'VIPVIPVI')
+  assert.equal(result.data.nameColor, '')
+  assert.equal(result.data.nameEffect, 'none')
+  assert.equal(result.data.badgeStyle, 'gold')
 })
 
 test('admin issues coupons by target level ids', async () => {

@@ -12,17 +12,22 @@
       <view class="order-avatar" wx:else>🐾</view>
       <view>
         <view class="strong">{{detail.order.clientSnapshot.displayName || '宠物主'}}</view>
-        <view class="muted">{{detail.order.clientSnapshot.phoneMasked || '预约客户'}}</view>
+        <view class="muted">{{detail.order.clientContact.phone || detail.order.clientSnapshot.phoneMasked || '预约客户'}}</view>
       </view>
     </view>
   </view>
 
   <view class="card info-list">
     <view class="info-row"><view class="label">订单</view><view class="value">{{detail.order.orderNo}}</view></view>
+    <view class="info-row"><view class="label">用户电话</view><view class="value">{{detail.order.clientContact.phone || '未绑定'}}</view></view>
+    <button class="ghost" bindtap="callClient">拨打用户电话</button>
+    <button class="ghost" bindtap="copyOrderNo">复制订单号</button>
     <view class="info-row"><view class="label">服务</view><view class="value">{{detail.order.serviceSummary || (detail.order.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view></view>
     <view class="info-row"><view class="label">发布方式</view><view class="value">{{detail.order.publishMode === 'direct' ? '指定宠托师' : '公开发布抢单'}}</view></view>
     <view class="info-row" wx:if="{{detail.order.publishMode === 'direct'}}"><view class="label">指定宠托师</view><view class="value">{{detail.order.requestedStaffName || '已指定宠托师'}}</view></view>
-    <view class="info-row" wx:if="{{detail.order.staffOpenid}}"><view class="label">实际接单</view><view class="value">{{detail.order.staffProfileId || detail.order.staffOpenid}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.staffOpenid}}"><view class="label">实际接单</view><view class="value">{{detail.order.staffContact.displayName || detail.order.staffProfileId || detail.order.staffOpenid}}</view></view>
+    <view class="info-row"><view class="label">宠托师电话</view><view class="value">{{detail.order.staffContact.phone || '未绑定'}}</view></view>
+    <button class="ghost" bindtap="callStaff">拨打宠托师电话</button>
     <view class="info-row" wx:if="{{detail.order.assignmentSource}}"><view class="label">派单来源</view><view class="value">{{detail.order.assignmentSourceText}}</view></view>
     <view class="info-row"><view class="label">地址</view><view class="value">{{detail.order.serviceAddress}}</view></view>
     <view class="info-row" wx:if="{{detail.order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{detail.order.addressDetail}}</view></view>

@@ -1,1 +1,13 @@
-/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+.image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  margin: 14rpx 0;
+}
+
+.security-image {
+  width: 150rpx;
+  height: 150rpx;
+  border-radius: 20rpx;
+  background: var(--theme-bg-soft);
+}

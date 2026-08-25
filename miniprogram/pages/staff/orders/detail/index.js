@@ -4,8 +4,8 @@ const { withOrderText } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 Page({
-  data: { themeClass: 'theme-day', id: '', order: null, sectionHomeUrl: '', canGoBack: false },
-  onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }) },
+  data: { themeClass: 'theme-day', id: '', order: null, customerService: null, sectionHomeUrl: '', canGoBack: false },
+  onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }); this.loadCustomerService() },
   onShow() {
     this.applyCurrentTheme()
     this.load()
@@ -15,6 +15,24 @@ Page({
     this.setData(getThemeState(theme.value))
   },
   load() { callFunction('order', 'getOrderDetail', { id: this.data.id }).then((order) => this.setData({ order: withOrderText(order) })).catch(showError) },
+  loadCustomerService() {
+    callFunction('system', 'getCustomerServiceInfo')
+      .then((customerService) => this.setData({ customerService }))
+      .catch(() => {})
+  },
+  callCustomerService() {
+    const phone = this.data.customerService && this.data.customerService.phone
+    if (!phone) {
+      wx.showToast({ title: '暂未配置客服电话', icon: 'none' })
+      return
+    }
+    wx.makePhoneCall({ phoneNumber: phone })
+  },
+  copyOrderNo() {
+    const orderNo = this.data.order && this.data.order.orderNo
+    if (!orderNo) return
+    wx.setClipboardData({ data: orderNo })
+  },
   previewPetPhoto() {
     const photo = this.data.order && this.data.order.petSnapshot && this.data.order.petSnapshot.avatarFileId
     if (photo) {

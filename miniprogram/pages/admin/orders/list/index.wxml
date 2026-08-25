@@ -5,11 +5,33 @@
     <view class="tip">查看订单状态并为已支付订单分配服务人员。</view>
   </view>
 
+  <view class="card order-filter-card">
+    <view class="field-item"><text class="label">订单</text><input class="input" value="{{orderKeyword}}" bindinput="inputOrderKeyword" bindconfirm="submitSearch" confirm-type="search" placeholder="搜索订单ID或订单号" /></view>
+    <view class="field-item"><text class="label">用户手机号</text><input class="input" type="number" value="{{clientPhone}}" bindinput="inputClientPhone" bindconfirm="submitSearch" confirm-type="search" placeholder="搜索用户手机号" /></view>
+    <view class="field-item"><text class="label">宠托师手机号</text><input class="input" type="number" value="{{staffPhone}}" bindinput="inputStaffPhone" bindconfirm="submitSearch" confirm-type="search" placeholder="搜索宠托师手机号" /></view>
+    <view class="filter-actions">
+      <button class="primary compact-btn" bindtap="submitSearch">搜索</button>
+      <button class="ghost compact-btn" bindtap="clearSearch">清空</button>
+    </view>
+  </view>
+
   <view class="status-tabs">
     <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
   </view>
 
-  <view class="card order-card" wx:for="{{orders}}" wx:key="_id">
+  <view class="card batch-bar" wx:if="{{orders.length}}">
+    <view class="muted">共 {{total}} 单，已选 {{selectedOrderIds.length}} 单</view>
+    <view class="filter-actions">
+      <button class="ghost compact-btn" bindtap="toggleSelectAll">全选/取消</button>
+      <button class="danger compact-btn" loading="{{deleting}}" disabled="{{deleting || !selectedOrderIds.length}}" bindtap="batchDeleteOrders">批量删除</button>
+    </view>
+  </view>
+
+  <view class="card order-card {{item.selected ? 'selected' : ''}}" wx:for="{{orders}}" wx:key="_id">
+    <view class="order-select-row" data-id="{{item._id}}" bindtap="toggleSelect">
+      <view class="select-box {{item.selected ? 'checked' : ''}}">{{item.selected ? '✓' : ''}}</view>
+      <view class="muted">选择此订单</view>
+    </view>
     <view class="interactive" data-id="{{item._id}}" bindtap="detail">
       <view class="between order-card-head">
         <view class="order-person">
@@ -18,6 +40,9 @@
           <view>
             <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.orderNo}}</view>
             <view class="muted">{{item.petName}} · {{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+            <view class="muted">用户电话：{{item.clientContact.phone || item.clientSnapshot.phoneMasked || '未绑定'}}</view>
+            <view class="muted">宠托师：{{item.staffContact.displayName || item.requestedStaffName || item.staffProfileId || '未接单'}}</view>
+            <view class="muted">宠托师电话：{{item.staffContact.phone || '未绑定'}}</view>
             <view class="muted">创建：{{item.createdAtText || '-'}}</view>
             <view class="muted">预约：{{item.appointmentTimeText || '-'}}</view>
             <view class="muted" wx:if="{{item.publishMode === 'direct'}}">指定：{{item.requestedStaffName || '已指定宠护师'}}</view>

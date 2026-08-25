@@ -35,7 +35,15 @@ Page({
         const payload = { orderId: this.data.orderId, eventType: this.data.eventType, mediaFileId: this.data.mediaFileId, remark: this.data.remark, latitude: loc.latitude, longitude: loc.longitude, clientRequestId, recordedAt: Date.now() }
         return callFunction('checkin', 'createCheckin', payload)
           .then(() => { wx.showToast({ title: '已打卡' }); wx.navigateBack() })
-          .catch(() => this.enqueueCheckin(payload))
+          .catch((error) => {
+            const message = (error && (error.message || error.errMsg)) || ''
+            if (message.includes('network') || message.includes('timeout') || message.includes('fail')) {
+              this.enqueueCheckin(payload)
+              return
+            }
+            this.setData({ submitting: false })
+            showError(error)
+          })
       })
       .catch((error) => {
         this.setData({ submitting: false })

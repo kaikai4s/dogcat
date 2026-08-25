@@ -7,7 +7,16 @@
 
   <view class="notice danger">
     <view class="strong">请优先保障人宠安全</view>
-    <view class="muted">描述现场情况，必要时同步联系宠物主或线下紧急联系人。</view>
+    <view class="muted">描述现场情况并提交平台处理；如需电话联络宠物主，请联系平台客服并报订单号，由管理员转接。</view>
+  </view>
+
+  <view class="card info-list">
+    <view class="subtitle">平台客服转接</view>
+    <view class="info-row"><view class="label">订单号</view><view class="value">{{order.orderNo || orderId}}</view></view>
+    <view class="info-row"><view class="label">客服电话</view><view class="value">{{customerService.phone || '暂未配置'}}</view></view>
+    <view class="info-row" wx:if="{{customerService.workHours}}"><view class="label">工作时间</view><view class="value">{{customerService.workHours}}</view></view>
+    <button class="ghost" bindtap="callCustomerService">联系平台客服</button>
+    <button class="ghost" bindtap="copyOrderNo">复制订单号</button>
   </view>
 
   <view class="card form-card">

@@ -94,18 +94,51 @@
       <switch checked="{{saveAddress}}" bindchange="toggleSaveAddress" />
     </view>
 
-    <view class="subtitle">入户与门锁方式</view>
+    <view class="subtitle">家庭安防 / 入户方式</view>
     <view class="service-grid">
       <view class="service-option {{form.lockMethod === item.value ? 'active' : ''}}" wx:for="{{lockMethodOptions}}" wx:key="value" data-value="{{item.value}}" bindtap="chooseLockMethod">
         <view class="service-title">{{item.label}}</view>
+        <view class="service-desc">{{item.desc}}</view>
       </view>
     </view>
-    <input wx:if="{{form.lockMethod === 'password'}}" password placeholder="一次性门锁密码（仅服务窗口内可查看）" value="{{form.doorLockCode}}" data-field="doorLockCode" bindinput="input" />
-    <input wx:if="{{form.lockMethod === 'key'}}" placeholder="钥匙/门禁卡位置" value="{{form.keyLocation}}" data-field="keyLocation" bindinput="input" />
-    <textarea placeholder="入户备注（如交接方式、注意事项、安防提示）" value="{{form.entryNotes}}" data-field="entryNotes" bindinput="input" />
-    <view class="notice">
-      <view class="muted">密码会加密保存，安心宠护端仅在服务时间或你同意提前开始后可查看。</view>
+
+    <view class="notice" wx:if="{{form.lockMethod === 'someone_home'}}">
+      <view class="strong">有人在家</view>
+      <view class="muted">宠托师到达后敲门即可，不需要提供密码或钥匙。</view>
     </view>
+
+    <view class="notice" wx:if="{{form.lockMethod === 'remote_unlock'}}">
+      <view class="strong">上门后远程开门</view>
+      <view class="muted">宠托师到达服务地点后可请求开门，你会收到微信提醒；电话催办由平台客服转接。</view>
+    </view>
+
+    <view wx:if="{{form.lockMethod === 'one_time_code'}}">
+      <input password placeholder="一次性开门密码（本订单专用）" value="{{form.doorLockCode}}" data-field="doorLockCode" bindinput="input" />
+      <view class="picker-grid">
+        <picker mode="date" value="{{form.doorLockCodeStartDate}}" bindchange="chooseCodeStartDate"><view class="field">生效日期：{{form.doorLockCodeStartDate}}</view></picker>
+        <picker mode="time" value="{{form.doorLockCodeStartClock}}" bindchange="chooseCodeStartClock"><view class="field">生效时间：{{form.doorLockCodeStartClock}}</view></picker>
+      </view>
+      <view class="picker-grid">
+        <picker mode="date" value="{{form.doorLockCodeEndDate}}" bindchange="chooseCodeEndDate"><view class="field">失效日期：{{form.doorLockCodeEndDate}}</view></picker>
+        <picker mode="time" value="{{form.doorLockCodeEndClock}}" bindchange="chooseCodeEndClock"><view class="field">失效时间：{{form.doorLockCodeEndClock}}</view></picker>
+      </view>
+      <view class="notice {{securityCoverageOk ? '' : 'warning'}}">
+        <view class="muted">服务时间：{{form.startTime}} 至 {{form.endTime}}</view>
+        <view class="strong">密码区间：{{form.doorLockCodeStartTime}} 至 {{form.doorLockCodeEndTime}}</view>
+        <view class="muted">{{securityCoverageText}}</view>
+      </view>
+    </view>
+
+    <view wx:if="{{form.lockMethod === 'key'}}">
+      <input placeholder="钥匙放置位置（如门垫下、密码盒位置）" value="{{form.keyLocation}}" data-field="keyLocation" bindinput="input" />
+      <button class="ghost" loading="{{uploadingKeyImage}}" disabled="{{uploadingKeyImage}}" bindtap="chooseKeyImage">上传钥匙位置图片</button>
+      <view class="image-list" wx:if="{{form.keyImageFileIds.length}}">
+        <view class="image-chip" wx:for="{{form.keyImageFileIds}}" wx:key="*this" data-index="{{index}}" bindtap="removeKeyImage">图片{{index + 1}} · 点击移除</view>
+      </view>
+      <view class="notice"><view class="muted">服务完成前，宠托师必须打卡确认已把钥匙放回原位置。</view></view>
+    </view>
+
+    <textarea placeholder="入户备注（如敲门说明、安防提示、注意事项）" value="{{form.entryNotes}}" data-field="entryNotes" bindinput="input" />
 
     <view class="subtitle">服务时间</view>
     <view class="picker-grid">

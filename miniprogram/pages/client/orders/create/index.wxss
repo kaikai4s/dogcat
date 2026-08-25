@@ -206,3 +206,24 @@
   color: var(--theme-primary);
   font-size: 40rpx;
 }
+
+.notice.warning {
+  border-color: #f59e0b;
+  background: #fff7ed;
+}
+
+.image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin: 14rpx 0;
+}
+
+.image-chip {
+  padding: 10rpx 16rpx;
+  border-radius: 999rpx;
+  background: var(--theme-bg-soft);
+  color: var(--theme-primary);
+  font-size: 23rpx;
+  font-weight: 800;
+}

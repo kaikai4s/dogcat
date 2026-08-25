@@ -11,7 +11,7 @@ const collections = [
   'sitter_favorites', 'service_reviews', 'user_addresses', 'order_timeline', 'platform_configs',
   'coupon_templates', 'user_coupons', 'payment_events', 'refunds', 'finance_logs',
   'staff_earnings', 'withdraw_requests', 'staff_schedule_exceptions',
-  'subscription_consents', 'subscription_logs',
+  'subscription_consents', 'subscription_logs', 'home_security_notifications',
   'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',
   'user_feedback'
@@ -94,6 +94,21 @@ function defaultCheckinDays(monthKey) {
   return Array.from({ length: count }, (_, index) => ({ day: index + 1, rewardType: 'points', points: 5, couponTemplateId: '', couponSnapshot: null, title: `第${index + 1}天奖励`, desc: '签到奖励' }))
 }
 function safeText(value) { return value === undefined || value === null ? '' : String(value) }
+function normalizeMemberNameColor(value) {
+  const color = safeText(value).trim()
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : ''
+}
+function normalizeMemberNameEffect(value) {
+  const effect = safeText(value).trim()
+  return ['none', 'gold_shine', 'gradient_rainbow', 'fire_glow', 'purple_neon', '3d_emboss'].includes(effect) ? effect : 'none'
+}
+function normalizeMemberBadgeStyle(value) {
+  const style = safeText(value).trim()
+  return ['gold', 'silver', 'bronze', 'purple', 'pink', 'blue', 'dark'].includes(style) ? style : 'gold'
+}
+function normalizeMemberBadgeTag(value) {
+  return safeText(value).trim().slice(0, 8)
+}
 function isValidThemeKey(value) { return ['day', 'night', 'sunshine', 'warm'].includes(safeText(value).trim()) }
 function normalizeThemeKey(value) {
   const key = safeText(value).trim()
@@ -860,8 +875,12 @@ function validateSlotsForDate(slots, startTimeStr, endTimeStr, dateKey, emptyMes
   }
 }
 
+function isAdminDeletedOrder(order = {}) {
+  return Boolean(order.adminDeletedAt)
+}
+
 function isOrderConflictCandidate(order = {}) {
-  return ['paid', 'assigned', 'in_service'].includes(order.status) && order.status !== 'cancelled'
+  return !isAdminDeletedOrder(order) && ['paid', 'assigned', 'in_service'].includes(order.status) && order.status !== 'cancelled'
 }
 
 function timeRangesOverlap(startA, endA, startB, endB) {
@@ -934,30 +953,50 @@ function toTimeValue(value) {
 
 function normalizeLockMethod(value) {
   const method = safeText(value).trim()
-  return ['handover', 'password', 'key', 'other'].includes(method) ? method : 'handover'
+  const map = { handover: 'someone_home', password: 'one_time_code', other: 'someone_home' }
+  const normalized = map[method] || method
+  return ['someone_home', 'remote_unlock', 'one_time_code', 'key'].includes(normalized) ? normalized : 'someone_home'
 }
 
 function lockMethodText(method) {
-  const textMap = { handover: '无需密码/当面交接', password: '一次性密码锁', key: '钥匙/门禁卡', other: '其他说明' }
-  return textMap[method] || textMap.handover
+  const textMap = { someone_home: '有人在家，敲门即可', remote_unlock: '上门后远程开门', one_time_code: '一次性密码', key: '钥匙/门禁卡', handover: '有人在家，敲门即可', password: '一次性密码' }
+  return textMap[method] || textMap.someone_home
+}
+
+function isTimeRangeCovered(start, end, coverStart, coverEnd) {
+  return toTimeValue(coverStart) <= toTimeValue(start) && toTimeValue(coverEnd) >= toTimeValue(end)
 }
 
 function normalizeHomeSecurityInput(data = {}) {
-  const source = data.homeSecuritySnapshot || data.homeSecurity || {}
-  const lockMethod = normalizeLockMethod(source.lockMethod || data.lockMethod)
-  const doorLockCode = safeText(source.doorLockCode || data.doorLockCode).trim()
-  const keyLocation = safeText(source.keyLocation || data.keyLocation).trim()
+  const source = data.orderHomeSecurity || data.homeSecuritySnapshot || data.homeSecurity || {}
+  const type = normalizeLockMethod(source.type || source.lockMethod || data.lockMethod)
   const entryNotes = safeText(source.entryNotes || data.entryNotes).trim()
-  if (!lockMethod) throw new Error('请选择入户与门锁方式')
-  if (lockMethod === 'password' && !doorLockCode) throw new Error('请填写一次性门锁密码')
-  return {
-    lockMethod,
-    lockMethodText: lockMethodText(lockMethod),
-    hasDoorLockCode: lockMethod === 'password' && Boolean(doorLockCode),
-    doorLockCode,
-    keyLocation,
-    entryNotes
+  const base = { type, lockMethod: type, lockMethodText: lockMethodText(type), entryNotes, createdAt: now(), updatedAt: now() }
+
+  if (type === 'someone_home') return base
+  if (type === 'remote_unlock') {
+    return { ...base, remoteUnlock: { lastRequestedAt: '', requestCount: 0, notifyChannels: ['wechat', 'admin_phone'], lastNotifyStatus: { wechat: '', admin_phone: '' } } }
   }
+  if (type === 'one_time_code') {
+    const doorLockCode = safeText(source.code || source.doorLockCode || data.doorLockCode).trim()
+    const effectiveStart = source.effectiveStart || data.doorLockCodeStartTime
+    const effectiveEnd = source.effectiveEnd || data.doorLockCodeEndTime
+    if (!doorLockCode) throw new Error('请填写一次性开门密码')
+    if (!effectiveStart || !effectiveEnd) throw new Error('请选择一次性密码有效时间')
+    if (toTimeValue(effectiveEnd) <= toTimeValue(effectiveStart)) throw new Error('一次性密码结束时间必须晚于开始时间')
+    const coversServiceTime = isTimeRangeCovered(data.startTime, data.endTime, effectiveStart, effectiveEnd)
+    if (!coversServiceTime) throw new Error('一次性密码有效期需要覆盖完整服务时间')
+    const encrypted = encryptText(doorLockCode)
+    return { ...base, hasDoorLockCode: true, oneTimeCode: { cipher: encrypted.cipher, iv: encrypted.iv, tag: encrypted.tag, masked: mask(doorLockCode), effectiveStart, effectiveEnd, coversServiceTime }, doorLockCode }
+  }
+  if (type === 'key') {
+    const location = safeText(source.location || data.keyLocation).trim()
+    const imageFileIds = Array.isArray(source.imageFileIds) ? source.imageFileIds : (Array.isArray(data.keyImageFileIds) ? data.keyImageFileIds : [])
+    if (!location) throw new Error('请填写钥匙放置位置')
+    if (!imageFileIds.length) throw new Error('请上传钥匙放置位置图片')
+    return { ...base, keyLocation: location, key: { location, imageFileIds, returnRequired: true, returnedAt: '', returnImageFileIds: [], returnNote: '' } }
+  }
+  throw new Error('请选择有效的入户方式')
 }
 
 async function getApprovedEarlyStart(orderId) {
@@ -995,25 +1034,24 @@ function toEarlyStartView(request) {
 }
 
 function toPublicHomeSecuritySnapshot(security) {
-  return {
-    lockMethod: security.lockMethod,
-    lockMethodText: security.lockMethodText,
-    hasDoorLockCode: security.hasDoorLockCode,
-    keyLocation: security.keyLocation || '',
-    entryNotes: security.entryNotes || ''
+  if (!security) return null
+  const safe = { ...security, doorLockCode: undefined }
+  if (safe.oneTimeCode) {
+    safe.oneTimeCode = {
+      masked: safe.oneTimeCode.masked || '',
+      effectiveStart: safe.oneTimeCode.effectiveStart || '',
+      effectiveEnd: safe.oneTimeCode.effectiveEnd || '',
+      coversServiceTime: safe.oneTimeCode.coversServiceTime === true
+    }
+    safe.hasDoorLockCode = true
   }
+  return safe
 }
 
 function toPublicOrderHomeSecurity(security) {
   if (!security) return null
-  return {
-    orderId: security.orderId,
-    lockMethod: security.lockMethod || 'handover',
-    lockMethodText: security.lockMethodText || lockMethodText(security.lockMethod),
-    hasDoorLockCode: security.hasDoorLockCode === true,
-    keyLocation: security.keyLocation || '',
-    entryNotes: security.entryNotes || ''
-  }
+  const type = security.type || security.lockMethod || 'someone_home'
+  return toPublicHomeSecuritySnapshot({ ...security, type, lockMethod: type, lockMethodText: security.lockMethodText || lockMethodText(type) })
 }
 
 function toPublicSitter(profile) {
@@ -1615,10 +1653,10 @@ function calcMemberLevel(totalPoints, levels) {
   return {
     memberLevel: matched._id,
     memberLevelName: matched.name,
-    badgeTag: safeText(matched.badgeTag).trim() || 'V1',
-    nameColor: safeText(matched.nameColor).trim(),
-    nameEffect: safeText(matched.nameEffect).trim(),
-    badgeStyle: safeText(matched.badgeStyle).trim() || 'gold',
+    badgeTag: normalizeMemberBadgeTag(matched.badgeTag) || 'V1',
+    nameColor: normalizeMemberNameColor(matched.nameColor),
+    nameEffect: normalizeMemberNameEffect(matched.nameEffect),
+    badgeStyle: normalizeMemberBadgeStyle(matched.badgeStyle),
     pointMultiplier: Math.max(Number(matched.pointMultiplier || 1), 1),
     description: safeText(matched.description).trim(),
     benefits: normalizeBenefits(matched.benefits)
@@ -1969,6 +2007,19 @@ async function removeByQuery(collectionName, where) {
   return list.length
 }
 
+async function removeAllByQuery(collectionName, where, filter) {
+  let total = 0
+  while (true) {
+    const res = await db.collection(collectionName).where(where).limit(100).get()
+    const list = filter ? (res.data || []).filter(filter) : (res.data || [])
+    if (!list.length) break
+    await Promise.all(list.map((item) => db.collection(collectionName).doc(item._id).remove()))
+    total += list.length
+    if ((res.data || []).length < 100) break
+  }
+  return total
+}
+
 async function countByQuery(collectionName, where) {
   const res = await db.collection(collectionName).where(where).count()
   return Number(res.total || 0)
@@ -2092,7 +2143,7 @@ async function getOrderForAccess(openid, orderId) {
   const user = await getUser(openid)
   const res = await db.collection('orders').doc(orderId).get()
   const order = res.data ? { ...res.data, _id: orderId } : null
-  if (!order) throw new Error('订单不存在')
+  if (!order || (isAdminDeletedOrder(order) && !user.roles.includes('admin'))) throw new Error('订单不存在')
   const canPreviewForStaff = user.roles.includes('staff') && order.status === ORDER_STATUS.PAID && (isOpenOrder(order) || order.requestedStaffOpenid === openid)
   const allowed = order.clientOpenid === openid || order.staffOpenid === openid || order.requestedStaffOpenid === openid || user.roles.includes('admin') || canPreviewForStaff
   if (!allowed) throw new Error('无权访问订单')
@@ -2194,6 +2245,45 @@ function createClientSnapshot(user) {
   }
 }
 
+async function getAdminClientContact(order) {
+  if (!order.clientOpenid) return { phone: safeText(order.contactPhone).trim(), displayName: '', openid: '' }
+  const userRes = await db.collection('users').where({ openid: order.clientOpenid }).limit(1).get()
+  const user = userRes.data[0] || {}
+  return {
+    phone: safeText(user.phone || order.contactPhone).trim(),
+    displayName: safeText(user.nickname).trim() || maskClientName(order.clientName || ''),
+    openid: safeText(order.clientOpenid)
+  }
+}
+
+async function getAdminStaffContact(order) {
+  const staffOpenid = safeText(order.staffOpenid || order.requestedStaffOpenid).trim()
+  const staffProfileId = safeText(order.staffProfileId || order.requestedStaffProfileId).trim()
+  let profile = null
+  if (staffProfileId) {
+    try {
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
+      profile = profileRes.data || null
+    } catch (error) {}
+  }
+  if (!profile && staffOpenid) {
+    const profileRes = await db.collection('staff_profiles').where({ openid: staffOpenid }).limit(1).get()
+    profile = profileRes.data[0] || null
+  }
+  let user = null
+  const openidForUser = staffOpenid || safeText(profile && profile.openid).trim()
+  if (openidForUser) {
+    const userRes = await db.collection('users').where({ openid: openidForUser }).limit(1).get()
+    user = userRes.data[0] || null
+  }
+  return {
+    phone: safeText((profile && profile.phone) || (user && user.phone)).trim(),
+    displayName: sitterDisplayName({ ...(profile || {}), nickname: user && user.nickname }) || safeText(order.staffName || order.requestedStaffName).trim(),
+    openid: openidForUser,
+    staffProfileId: staffProfileId || safeText(profile && profile._id).trim()
+  }
+}
+
 async function attachClientSnapshot(order) {
   if (order.clientSnapshot && (order.clientSnapshot.displayName || order.clientSnapshot.avatarUrl)) return order
   if (!order.clientOpenid) return order
@@ -2213,6 +2303,15 @@ async function attachClientSnapshot(order) {
 async function attachOrderDisplayData(order) {
   const withPet = await attachPetSnapshot(order)
   return attachClientSnapshot(withPet)
+}
+
+async function attachAdminOrderContactData(order) {
+  const displayOrder = await attachOrderDisplayData(order)
+  return {
+    ...displayOrder,
+    clientContact: await getAdminClientContact(order),
+    staffContact: await getAdminStaffContact(order)
+  }
 }
 
 async function appendOrderTimeline(orderId, type, title, detail, actorRole) {
@@ -3433,6 +3532,20 @@ const handlers = {
       return { ...record, doorLockCodeCipher: undefined, doorLockCodeIv: undefined, doorLockCodeTag: undefined, doorLockCodeMasked: mask(plain) }
     }
 
+    if (action === 'listHomeSecurityHistory') {
+      await getUser(openid)
+      const res = await db.collection('orders').where({ clientOpenid: openid }).orderBy('createdAt', 'desc').get()
+      return (res.data || [])
+        .filter((order) => !isAdminDeletedOrder(order))
+        .map((order) => {
+          const security = toPublicOrderHomeSecurity(order.orderHomeSecurity || order.homeSecuritySnapshot)
+          if (!security) return null
+          return { orderId: order._id, orderNo: order.orderNo || '', serviceTime: `${order.startTime || ''} - ${order.endTime || ''}`, serviceAddress: order.serviceAddress || '', orderHomeSecurity: security, createdAt: order.createdAt || '' }
+        })
+        .filter(Boolean)
+        .slice(0, Math.min(Number(data.limit || 30), 50))
+    }
+
     if (action === 'getUnlockCode') {
       const user = await getUser(openid)
       const orderRes = await db.collection('orders').doc(data.orderId).get()
@@ -3450,17 +3563,78 @@ const handlers = {
         const end = toTimeValue(order.endTime)
         if ((start && current < start) || (end && current > end)) throw new Error('不在服务解锁时间窗口')
         let security = (await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get()).data[0]
-        if (!security) security = (await db.collection('home_security').where({ openid: order.clientOpenid }).limit(1).get()).data[0]
-        if (!security) throw new Error('客户未配置门锁信息')
+        if (!security) security = order.orderHomeSecurity || order.homeSecuritySnapshot
+        if (!security || security.type !== 'one_time_code' || !security.oneTimeCode) throw new Error('该订单未设置一次性密码')
+        const effectiveStart = toTimeValue(security.oneTimeCode.effectiveStart)
+        const effectiveEnd = toTimeValue(security.oneTimeCode.effectiveEnd)
+        if (current < effectiveStart) throw new Error('一次性密码尚未生效，请提醒用户重新设置或等待生效')
+        if (current > effectiveEnd) throw new Error('一次性密码已过期，请提醒用户重新设置')
         result = 'success'
         reason = 'ok'
-        return { lockMethod: security.lockMethod || 'password', lockMethodText: security.lockMethodText || lockMethodText(security.lockMethod), doorLockCode: decryptText(security.doorLockCodeCipher, security.doorLockCodeIv, security.doorLockCodeTag), keyLocation: security.keyLocation || '', entryNotes: security.entryNotes || '' }
+        return { lockMethod: security.type, lockMethodText: security.lockMethodText || lockMethodText(security.type), doorLockCode: decryptText(security.oneTimeCode.cipher, security.oneTimeCode.iv, security.oneTimeCode.tag), effectiveStart: security.oneTimeCode.effectiveStart, effectiveEnd: security.oneTimeCode.effectiveEnd, entryNotes: security.entryNotes || '' }
       } catch (error) {
         reason = error.message
         throw error
       } finally {
         await db.collection('unlock_code_logs').add({ data: { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, result, reason, createdAt: now() } })
       }
+    }
+
+    if (action === 'requestRemoteUnlock') {
+      const user = await getUser(openid)
+      if (!user.roles.includes('staff')) throw new Error('仅员工可请求开门')
+      const order = (await db.collection('orders').doc(data.orderId).get()).data
+      if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
+      if (!['assigned', 'in_service'].includes(order.status)) throw new Error('订单状态不允许请求开门')
+      const security = order.orderHomeSecurity || order.homeSecuritySnapshot || {}
+      if (security.type !== 'remote_unlock') throw new Error('该订单不是远程开门方式')
+      const remoteUnlock = security.remoteUnlock || { requestCount: 0, notifyChannels: ['wechat', 'admin_phone'], lastNotifyStatus: {} }
+      const time = now()
+      if (remoteUnlock.lastRequestedAt && time.getTime() - toTimeValue(remoteUnlock.lastRequestedAt) < 2 * 60 * 1000) throw new Error('开门请求发送过于频繁，请稍后再试')
+      const settings = await getSystemSettings()
+      const customerServiceSnapshot = settings.customerService || {}
+      const updatedSecurity = { ...security, remoteUnlock: { ...remoteUnlock, lastRequestedAt: time.toISOString(), requestCount: Number(remoteUnlock.requestCount || 0) + 1, notifyChannels: ['wechat', 'admin_phone'], lastNotifyStatus: { wechat: 'pending', admin_phone: 'available' }, customerServiceSnapshot }, updatedAt: time }
+      await db.collection('orders').doc(data.orderId).update({ data: { orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time } })
+      const securityRes = await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get()
+      if (securityRes.data[0]) await db.collection('order_home_security').doc(securityRes.data[0]._id).update({ data: { ...updatedSecurity, updatedAt: time } })
+      await db.collection('home_security_notifications').add({ data: { orderId: data.orderId, type: 'remote_unlock', clientOpenid: order.clientOpenid, staffOpenid: openid, channels: ['wechat', 'admin_phone'], status: { wechat: 'pending', admin_phone: 'available' }, customerServiceSnapshot, createdAt: time } })
+      await notifyOrder(order.clientOpenid, 'serviceStart', order, { statusText: '宠托师已到达，请远程开门' })
+      return toPublicOrderHomeSecurity(updatedSecurity)
+    }
+
+    if (action === 'updateOrderOneTimeCode') {
+      await getUser(openid)
+      const order = (await db.collection('orders').doc(data.orderId).get()).data
+      if (order.clientOpenid !== openid) throw new Error('无权修改该订单')
+      if (!['pending_pay', 'paid', 'assigned', 'in_service'].includes(order.status)) throw new Error('当前订单状态不可修改密码')
+      const code = safeText(data.code).trim()
+      if (!code) throw new Error('请填写一次性开门密码')
+      if (!data.effectiveStart || !data.effectiveEnd) throw new Error('请选择一次性密码有效时间')
+      if (toTimeValue(data.effectiveEnd) <= toTimeValue(data.effectiveStart)) throw new Error('一次性密码结束时间必须晚于开始时间')
+      const encrypted = encryptText(code)
+      const time = now()
+      const security = { ...(order.orderHomeSecurity || {}), type: 'one_time_code', lockMethod: 'one_time_code', lockMethodText: lockMethodText('one_time_code'), entryNotes: data.entryNotes || (order.orderHomeSecurity && order.orderHomeSecurity.entryNotes) || '', hasDoorLockCode: true, oneTimeCode: { cipher: encrypted.cipher, iv: encrypted.iv, tag: encrypted.tag, masked: mask(code), effectiveStart: data.effectiveStart, effectiveEnd: data.effectiveEnd, coversServiceTime: isTimeRangeCovered(order.startTime, order.endTime, data.effectiveStart, data.effectiveEnd) }, updatedAt: time }
+      await db.collection('orders').doc(data.orderId).update({ data: { orderHomeSecurity: security, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(security), updatedAt: time } })
+      const securityRes = await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get()
+      if (securityRes.data[0]) await db.collection('order_home_security').doc(securityRes.data[0]._id).update({ data: { ...security, updatedAt: time } })
+      return toPublicOrderHomeSecurity(security)
+    }
+
+    if (action === 'recordKeyReturned') {
+      const user = await getUser(openid)
+      if (!user.roles.includes('staff')) throw new Error('仅员工可操作')
+      const order = (await db.collection('orders').doc(data.orderId).get()).data
+      if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
+      const security = order.orderHomeSecurity || order.homeSecuritySnapshot || {}
+      if (security.type !== 'key' || !security.key) throw new Error('该订单不是钥匙入户方式')
+      const imageFileIds = Array.isArray(data.imageFileIds) ? data.imageFileIds : []
+      if (!imageFileIds.length) throw new Error('请上传放回钥匙位置图片')
+      const time = now()
+      const updatedSecurity = { ...security, key: { ...security.key, returnedAt: time.toISOString(), returnImageFileIds: imageFileIds, returnNote: data.note || '' }, updatedAt: time }
+      await db.collection('orders').doc(data.orderId).update({ data: { orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time } })
+      const securityRes = await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get()
+      if (securityRes.data[0]) await db.collection('order_home_security').doc(securityRes.data[0]._id).update({ data: { ...updatedSecurity, updatedAt: time } })
+      return toPublicOrderHomeSecurity(updatedSecurity)
     }
     throw new Error('未知 homeSecurity 操作')
   },
@@ -3546,7 +3720,7 @@ const handlers = {
       const time = now()
       const homeSecurity = normalizeHomeSecurityInput(data)
       const checkinRequirements = await resolveCheckinRequirements(pricing.serviceTypes)
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {
@@ -3560,19 +3734,12 @@ const handlers = {
         })
       }
       const created = await db.collection('orders').add({ data: order })
-      const encrypted = encryptText(homeSecurity.doorLockCode)
+      const { doorLockCode, ...securityRecord } = homeSecurity
       await db.collection('order_home_security').add({
         data: {
           orderId: created._id,
           clientOpenid: openid,
-          lockMethod: homeSecurity.lockMethod,
-          lockMethodText: homeSecurity.lockMethodText,
-          hasDoorLockCode: homeSecurity.hasDoorLockCode,
-          doorLockCodeCipher: encrypted.cipher,
-          doorLockCodeIv: encrypted.iv,
-          doorLockCodeTag: encrypted.tag,
-          keyLocation: homeSecurity.keyLocation,
-          entryNotes: homeSecurity.entryNotes,
+          ...securityRecord,
           createdAt: time,
           updatedAt: time
         }
@@ -3582,7 +3749,7 @@ const handlers = {
       }
       await appendOrderTimeline(created._id, 'created', '订单已创建', order.serviceSummary, 'client')
       if (order.couponId) await appendOrderTimeline(created._id, 'coupon_locked', '已使用优惠券', `优惠 ¥${order.discountAmount}`, 'client')
-      return { _id: created._id, ...order, savedAddress }
+      return { _id: created._id, ...order, orderHomeSecurity: toPublicOrderHomeSecurity(homeSecurity), savedAddress }
     }
 
     if (action === 'listOrders') {
@@ -3590,7 +3757,7 @@ const handlers = {
       const role = data.role || user.activeRole || 'client'
       const where = role === 'staff' ? { staffOpenid: openid } : { clientOpenid: openid }
       const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
-      let list = res.data || []
+      let list = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
       if (data.status && data.status !== 'all') list = list.filter((order) => order.status === data.status)
       if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service'].includes(order.status))
       if (data.startDate) list = list.filter((order) => String(order.startTime || '').slice(0, 10) >= safeText(data.startDate))
@@ -3616,7 +3783,8 @@ const handlers = {
       const checkinRequirements = Array.isArray(displayOrder.checkinRequirements) && displayOrder.checkinRequirements.length
         ? displayOrder.checkinRequirements
         : requiredCheckins(displayOrder.serviceType, displayOrder.serviceTypes).map((eventType, index) => ({ eventType, label: checkinEventText(eventType), required: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: (index + 1) * 10 }))
-      return { ...displayOrder, checkinRequirements: checkinRequirements.map((item) => ({ ...item, completed: completedSet.has(item.eventType) })), earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: toPublicOrderHomeSecurity(securityRes.data[0]) }
+      const orderSecurity = securityRes.data[0] || displayOrder.orderHomeSecurity || displayOrder.homeSecuritySnapshot
+      return { ...displayOrder, checkinRequirements: checkinRequirements.map((item) => ({ ...item, completed: completedSet.has(item.eventType) })), earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: toPublicOrderHomeSecurity(orderSecurity) }
     }
 
     if (action === 'prepareRebook') {
@@ -3779,6 +3947,8 @@ const handlers = {
         : (order.requiredCheckins || []).map((eventType) => ({ eventType, label: checkinEventText(eventType), required: true }))
       const missing = requirements.filter((item) => item.required && !eventSet[item.eventType])
       if (missing.length) throw new Error(`缺少必打卡：${missing.map((item) => item.label || checkinEventText(item.eventType)).join('、')}`)
+      const security = order.orderHomeSecurity || order.homeSecuritySnapshot || {}
+      if (security.type === 'key' && security.key && security.key.returnRequired && !security.key.returnedAt) throw new Error('请先完成放回钥匙打卡')
       const time = now()
       await db.collection('orders').doc(data.id).update({ data: { status: 'completed', completedAt: time, updatedAt: time } })
       await appendOrderTimeline(data.id, 'completed', '服务已完成', '', 'staff')
@@ -3804,7 +3974,7 @@ const handlers = {
     if (action === 'listPublicCompletedOrders') {
       const serviceType = safeText(data.serviceType).trim()
       const ordersRes = await db.collection('orders').where({ status: ORDER_STATUS.COMPLETED }).orderBy('completedAt', 'desc').get()
-      let orders = ordersRes.data || []
+      let orders = (ordersRes.data || []).filter((order) => !isAdminDeletedOrder(order))
       if (serviceType) orders = orders.filter((order) => order.serviceType === serviceType || (Array.isArray(order.serviceTypes) && order.serviceTypes.includes(serviceType)))
       const wantsPage = data.page !== undefined
       const pageData = wantsPage ? paginateList(orders, data) : { list: orders.slice(0, Math.min(Math.max(Math.round(Number(data.pageSize || 20)), 1), 50)) }
@@ -3911,10 +4081,10 @@ const handlers = {
       const levels = await getMemberLevels()
       return levels.map((level, idx) => ({
         ...level,
-        badgeTag: safeText(level.badgeTag).trim() || `V${idx + 1}`,
-        nameColor: safeText(level.nameColor).trim(),
-        nameEffect: safeText(level.nameEffect).trim() || 'none',
-        badgeStyle: safeText(level.badgeStyle).trim() || 'gold',
+        badgeTag: normalizeMemberBadgeTag(level.badgeTag) || `V${idx + 1}`,
+        nameColor: normalizeMemberNameColor(level.nameColor),
+        nameEffect: normalizeMemberNameEffect(level.nameEffect),
+        badgeStyle: normalizeMemberBadgeStyle(level.badgeStyle),
         pointMultiplier: Math.max(Number(level.pointMultiplier || 1), 1),
         description: safeText(level.description).trim(),
         benefits: normalizeBenefits(level.benefits)
@@ -3930,10 +4100,10 @@ const handlers = {
       const logs = allLogs.slice((page - 1) * pageSize, page * pageSize)
       const levels = (await getMemberLevels()).map((level, idx) => ({
         ...level,
-        badgeTag: safeText(level.badgeTag).trim() || `V${idx + 1}`,
-        nameColor: safeText(level.nameColor).trim(),
-        nameEffect: safeText(level.nameEffect).trim() || 'none',
-        badgeStyle: safeText(level.badgeStyle).trim() || 'gold',
+        badgeTag: normalizeMemberBadgeTag(level.badgeTag) || `V${idx + 1}`,
+        nameColor: normalizeMemberNameColor(level.nameColor),
+        nameEffect: normalizeMemberNameEffect(level.nameEffect),
+        badgeStyle: normalizeMemberBadgeStyle(level.badgeStyle),
         pointMultiplier: Math.max(Number(level.pointMultiplier || 1), 1),
         description: safeText(level.description).trim(),
         benefits: normalizeBenefits(level.benefits)
@@ -4597,7 +4767,7 @@ const handlers = {
       const filterDate = data.filterDate ? String(data.filterDate).trim() : ''
 
       const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
-      let orders = await Promise.all((res.data || []).filter(isOpenOrder).map(async (order) => {
+      let orders = await Promise.all((res.data || []).filter((order) => !isAdminDeletedOrder(order) && isOpenOrder(order)).map(async (order) => {
         const enriched = await attachOrderDisplayData(order)
         // 订单距离只按前端传入的工作台位置与订单服务地址计算。
         let distanceKm = null
@@ -4663,7 +4833,7 @@ const handlers = {
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
       return Promise.all((res.data || [])
-        .filter((order) => order.publishMode === 'direct' && !order.staffOpenid && order.requestedStaffOpenid === openid)
+        .filter((order) => !isAdminDeletedOrder(order) && order.publishMode === 'direct' && !order.staffOpenid && order.requestedStaffOpenid === openid)
         .map(async (order) => {
           const enriched = await attachOrderDisplayData(order)
           let distanceKm = null
@@ -4973,7 +5143,7 @@ const handlers = {
     }
     if (action === 'listOrderCheckins') {
       await getOrderForAccess(openid, data.orderId)
-      const res = await db.collection('checkin_logs').where({ orderId: data.orderId }).orderBy('createdAt', 'asc').get()
+      const res = await db.collection('checkin_logs').where({ orderId: data.orderId }).orderBy('recordedAt', 'asc').get()
       return res.data
     }
     throw new Error('未知 checkin 操作')
@@ -5412,8 +5582,70 @@ const handlers = {
     if (action === 'listOrders') {
       const where = data.status ? { status: data.status } : {}
       const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
-      const page = paginateList(res.data || [], data)
-      return { ...page, list: await Promise.all(page.list.map(attachOrderDisplayData)) }
+      const orderKeyword = safeText(data.orderKeyword || data.keyword).trim().toLowerCase()
+      const clientPhone = safeText(data.clientPhone || data.phone).trim()
+      const staffPhone = safeText(data.staffPhone).trim()
+      const usersRes = (clientPhone || staffPhone) ? await db.collection('users').get() : { data: [] }
+      let clientOpenids = null
+      if (clientPhone) {
+        clientOpenids = new Set((usersRes.data || [])
+          .filter((user) => safeText(user.phone).includes(clientPhone))
+          .map((user) => safeText(user.openid))
+          .filter(Boolean))
+      }
+      let staffOpenids = null
+      let staffProfileIds = null
+      if (staffPhone) {
+        staffOpenids = new Set((usersRes.data || [])
+          .filter((user) => safeText(user.phone).includes(staffPhone))
+          .map((user) => safeText(user.openid))
+          .filter(Boolean))
+        const profilesRes = await db.collection('staff_profiles').get()
+        staffProfileIds = new Set()
+        ;(profilesRes.data || []).forEach((profile) => {
+          if (!safeText(profile.phone).includes(staffPhone)) return
+          const profileOpenid = safeText(profile.openid).trim()
+          const profileId = safeText(profile._id).trim()
+          if (profileOpenid) staffOpenids.add(profileOpenid)
+          if (profileId) staffProfileIds.add(profileId)
+        })
+      }
+      let orders = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
+      if (orderKeyword) {
+        orders = orders.filter((order) => [order._id, order.orderNo].some((value) => safeText(value).toLowerCase().includes(orderKeyword)))
+      }
+      if (clientOpenids) {
+        orders = orders.filter((order) => clientOpenids.has(safeText(order.clientOpenid)) || safeText(order.contactPhone).includes(clientPhone))
+      }
+      if (staffOpenids && staffProfileIds) {
+        orders = orders.filter((order) => staffOpenids.has(safeText(order.staffOpenid)) || staffOpenids.has(safeText(order.requestedStaffOpenid)) || staffProfileIds.has(safeText(order.staffProfileId)) || staffProfileIds.has(safeText(order.requestedStaffProfileId)))
+      }
+      const page = paginateList(orders, data)
+      return { ...page, list: await Promise.all(page.list.map(attachAdminOrderContactData)) }
+    }
+    if (action === 'batchDeleteOrders') {
+      const orderIds = Array.from(new Set((Array.isArray(data.orderIds) ? data.orderIds : []).map((id) => safeText(id).trim()).filter(Boolean)))
+      if (!orderIds.length) throw new Error('请选择要删除的订单')
+      if (orderIds.length > 100) throw new Error('单次最多删除 100 个订单')
+      const reason = safeText(data.reason).trim()
+      const time = now()
+      const deletedIds = []
+      const skippedIds = []
+      for (const orderId of orderIds) {
+        try {
+          const orderRes = await db.collection('orders').doc(orderId).get()
+          if (orderRes.data.adminDeletedAt) {
+            skippedIds.push(orderId)
+            continue
+          }
+          await db.collection('orders').doc(orderId).update({ data: { adminDeletedAt: time, adminDeletedByOpenid: openid, adminDeletedReason: reason, updatedAt: time } })
+          await logAdmin(admin, 'order', orderId, 'batchDeleteOrders', { reason })
+          deletedIds.push(orderId)
+        } catch (error) {
+          skippedIds.push(orderId)
+        }
+      }
+      return { deletedIds, skippedIds, count: deletedIds.length }
     }
     if (action === 'getOrderDetail' || action === 'getEvidence') {
       const id = data.id || data.orderId
@@ -5421,7 +5653,8 @@ const handlers = {
       const tracks = await db.collection('track_logs').where({ orderId: id }).orderBy('recordedAt', 'asc').get()
       const checkins = await db.collection('checkin_logs').where({ orderId: id }).orderBy('createdAt', 'asc').get()
       const unlockLogs = await db.collection('unlock_code_logs').where({ orderId: id }).orderBy('createdAt', 'desc').get()
-      return { order: await attachOrderDisplayData(order.data), tracks: tracks.data, checkins: checkins.data, unlockLogs: unlockLogs.data }
+      const displayOrder = await attachAdminOrderContactData(order.data)
+      return { order: displayOrder, tracks: tracks.data, checkins: checkins.data, unlockLogs: unlockLogs.data }
     }
     if (action === 'assignOrder') {
       const orderRes = await db.collection('orders').doc(data.orderId).get()
@@ -5620,10 +5853,10 @@ const handlers = {
       const levels = await getMemberLevels()
       return levels.map((level, idx) => ({
         ...level,
-        badgeTag: safeText(level.badgeTag).trim() || `V${idx + 1}`,
-        nameColor: safeText(level.nameColor).trim(),
-        nameEffect: safeText(level.nameEffect).trim() || 'none',
-        badgeStyle: safeText(level.badgeStyle).trim() || 'gold',
+        badgeTag: normalizeMemberBadgeTag(level.badgeTag) || `V${idx + 1}`,
+        nameColor: normalizeMemberNameColor(level.nameColor),
+        nameEffect: normalizeMemberNameEffect(level.nameEffect),
+        badgeStyle: normalizeMemberBadgeStyle(level.badgeStyle),
         pointMultiplier: Math.max(Number(level.pointMultiplier || 1), 1),
         description: safeText(level.description).trim(),
         benefits: normalizeBenefits(level.benefits)
@@ -5639,10 +5872,10 @@ const handlers = {
       const time = now()
       const payload = {
         name,
-        badgeTag: safeText(data.badgeTag).trim(),
-        nameColor: safeText(data.nameColor).trim(),
-        nameEffect: safeText(data.nameEffect).trim(),
-        badgeStyle: safeText(data.badgeStyle).trim() || 'gold',
+        badgeTag: normalizeMemberBadgeTag(data.badgeTag),
+        nameColor: normalizeMemberNameColor(data.nameColor),
+        nameEffect: normalizeMemberNameEffect(data.nameEffect),
+        badgeStyle: normalizeMemberBadgeStyle(data.badgeStyle),
         minPoints,
         icon: safeText(data.icon).trim(),
         pointMultiplier: Math.max(Number(data.pointMultiplier || 1), 1),

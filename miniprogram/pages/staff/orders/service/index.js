@@ -53,6 +53,10 @@ Page({
     offlineTaskCount: 0,
     earlyStartRequest: null,
     requestingEarlyStart: false,
+    requestingRemoteUnlock: false,
+    returningKey: false,
+    keyReturnImageFileIds: [],
+    customerService: null,
     starting: false,
     finishing: false,
     sectionHomeUrl: '',
@@ -62,6 +66,7 @@ Page({
   onLoad(q) {
     this.applyCurrentTheme()
     this.setData({ ...createPageNav(q), id: q.id })
+    this.loadCustomerService()
     this.loadOrder()
   },
 
@@ -89,6 +94,27 @@ Page({
         }
       })
       .catch(() => {})
+  },
+
+  loadCustomerService() {
+    callFunction('system', 'getCustomerServiceInfo')
+      .then((customerService) => this.setData({ customerService }))
+      .catch(() => {})
+  },
+
+  callCustomerService() {
+    const phone = this.data.customerService && this.data.customerService.phone
+    if (!phone) {
+      wx.showToast({ title: '暂未配置客服电话', icon: 'none' })
+      return
+    }
+    wx.makePhoneCall({ phoneNumber: phone })
+  },
+
+  copyOrderNo() {
+    const orderNo = this.data.order && this.data.order.orderNo
+    if (!orderNo) return
+    wx.setClipboardData({ data: orderNo })
   },
 
   previewPetPhoto() {
@@ -143,7 +169,71 @@ Page({
   unlock() {
     callFunction('homeSecurity', 'getUnlockCode', { orderId: this.data.id })
       .then((unlock) => this.setData({ unlock }))
-      .catch(showError)
+      .catch((error) => {
+        const message = (error && error.message) || ''
+        if (message.includes('尚未生效') || message.includes('已过期')) {
+          wx.showModal({ title: '密码暂不可用', content: message, showCancel: false })
+          return
+        }
+        showError(error)
+      })
+  },
+
+  requestRemoteUnlock() {
+    if (this.data.requestingRemoteUnlock) return
+    this.setData({ requestingRemoteUnlock: true })
+    requestSubscribeTemplates(['serviceStart'], 'staff_remote_unlock')
+      .then(() => callFunction('homeSecurity', 'requestRemoteUnlock', { orderId: this.data.id }))
+      .then((security) => {
+        wx.showToast({ title: '已请求开门', icon: 'none' })
+        this.setData({ requestingRemoteUnlock: false, order: { ...(this.data.order || {}), orderHomeSecurity: security } })
+      })
+      .catch((error) => {
+        this.setData({ requestingRemoteUnlock: false })
+        showError(error)
+      })
+  },
+
+  chooseKeyReturnImage() {
+    if (this.data.returningKey) return
+    wx.chooseMedia({
+      count: 3,
+      mediaType: ['image'],
+      sourceType: ['camera', 'album'],
+      success: (res) => {
+        const files = res.tempFiles || []
+        if (!files.length) return
+        this.setData({ returningKey: true })
+        Promise.all(files.map((file) => new Promise((resolve, reject) => {
+          const tempFilePath = file.tempFilePath
+          const ext = tempFilePath.includes('.') ? tempFilePath.slice(tempFilePath.lastIndexOf('.')) : '.jpg'
+          wx.cloud.uploadFile({ cloudPath: `key_returns/${this.data.id}/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`, filePath: tempFilePath, success: resolve, fail: reject })
+        }))).then((uploads) => {
+          this.setData({ keyReturnImageFileIds: [...this.data.keyReturnImageFileIds, ...uploads.map((item) => item.fileID).filter(Boolean)], returningKey: false })
+        }).catch((error) => {
+          this.setData({ returningKey: false })
+          showError(error)
+        })
+      },
+      fail: showError
+    })
+  },
+
+  recordKeyReturned() {
+    if (!this.data.keyReturnImageFileIds.length) {
+      wx.showToast({ title: '请上传放回钥匙图片', icon: 'none' })
+      return
+    }
+    this.setData({ returningKey: true })
+    callFunction('homeSecurity', 'recordKeyReturned', { orderId: this.data.id, imageFileIds: this.data.keyReturnImageFileIds })
+      .then((security) => {
+        wx.showToast({ title: '已记录放回' })
+        this.setData({ returningKey: false, keyReturnImageFileIds: [], order: { ...(this.data.order || {}), orderHomeSecurity: security } })
+      })
+      .catch((error) => {
+        this.setData({ returningKey: false })
+        showError(error)
+      })
   },
 
   startAutoTracking() {
