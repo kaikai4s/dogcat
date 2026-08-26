@@ -1,0 +1,29 @@
+<view class="page {{themeClass}}" wx:if="{{thread}}">
+  <view class="dashboard-header">
+    <view class="badge">订单消息</view>
+    <view class="title">{{thread.orderTitle || '订单消息'}}</view>
+    <view class="tip">订单 {{thread.orderNo || thread.orderId}}</view>
+  </view>
+
+  <view class="chat-list">
+    <view class="chat-row" wx:for="{{messages}}" wx:key="_id">
+      <view class="chat-avatar">系</view>
+      <view class="chat-content">
+        <view class="chat-time">{{item.createdAtText}}</view>
+        <view class="chat-bubble">
+          <view class="strong">{{item.title}}</view>
+          <view class="chat-detail" wx:if="{{item.detail}}">{{item.detail}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="chat-input-placeholder">
+    <view class="muted">此处仅展示订单系统消息，暂不支持发送消息</view>
+    <button class="primary" bindtap="viewOrder">查看订单详情</button>
+  </view>
+</view>
+
+<view class="page {{themeClass}}" wx:else>
+  <view class="empty">{{loading ? '正在加载消息...' : '消息会话不存在'}}</view>
+</view>

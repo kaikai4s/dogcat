@@ -1,4 +1,5 @@
-const { callFunction, showError, requestSubscribeTemplates } = require('../../../../utils/cloud')
+const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings } = require('../../../../utils/cloud')
+const { createClientRequestId } = require('../../../../utils/offlineQueue')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { getSelectedLocation, chooseSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
@@ -163,6 +164,7 @@ Page({
     sitterAvailability: [],
     selectedAvailability: null,
     saveAddress: false,
+    creating: false,
     locationReady: false,
     locationTip: '',
     initialized: false,
@@ -174,6 +176,7 @@ Page({
   },
 
   onLoad(options) {
+    loadSystemSettings().catch(() => null)
     this.setData({ ...createPageNav(options), pendingOptions: options || {} })
     const publishMode = options.publishMode === 'direct' ? 'direct' : 'open'
     const staffProfileId = options.staffProfileId || ''
@@ -574,19 +577,29 @@ Page({
   },
 
   create() {
+    if (this.creatingOrder || this.data.creating) return
+    this.creatingOrder = true
+    this.setData({ creating: true })
     this.prepareTime()
     const error = this.validateRequired()
     if (error) {
+      this.creatingOrder = false
+      this.setData({ creating: false })
       wx.showToast({ title: error, icon: 'none' })
       return
     }
-    requestSubscribeTemplates(['orderPaid', 'orderAssigned', 'serviceStart', 'serviceFinish'], 'client_create_order')
-      .then(() => callFunction('order', 'createOrder', { ...this.buildOrderPayload(), saveAddress: this.data.saveAddress }))
+    const clientRequestId = createClientRequestId('create_order')
+    requestSubscribeTemplates(['orderAccepted', 'serviceStart', 'remoteUnlock'], 'client_create_order')
+      .then(() => callFunction('order', 'createOrder', { ...this.buildOrderPayload(), saveAddress: this.data.saveAddress, clientRequestId }))
       .then((order) => {
         if (this.data.saveAddress && order.savedAddress) wx.showToast({ title: '已保存常用地址' })
         wx.redirectTo({ url: '/pages/client/orders/detail/index?id=' + order._id })
       })
-      .catch(showError)
+      .catch((error) => {
+        this.creatingOrder = false
+        this.setData({ creating: false })
+        showError(error)
+      })
   },
 
   ...navMethods()

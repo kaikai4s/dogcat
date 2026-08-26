@@ -1,4 +1,5 @@
 const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
+const { formatDateTime } = require('../../../utils/format')
 
 const sourceTypeMap = {
   order_complete: '完成订单',
@@ -6,14 +7,6 @@ const sourceTypeMap = {
   admin_grant: '管理员操作',
   checkin_daily: '每日签到',
   reward_mail: '奖励邮箱'
-}
-
-function formatDate(val) {
-  if (!val) return ''
-  const d = new Date(val)
-  if (isNaN(d.getTime())) return ''
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 Page({
@@ -46,7 +39,7 @@ Page({
           ...log,
           sourceLabel: sourceTypeMap[log.sourceType] || log.sourceType,
           sign: log.delta > 0 ? '+' : '',
-          createdAt: formatDate(log.createdAt)
+          createdAt: formatDateTime(log.createdAt)
         }))
         this.setData({
           points: info.points,

@@ -31,7 +31,8 @@
       "Bash(find:*)",
       "Bash(command -v cloudbase)",
       "Bash(command -v tcb)",
-      "Bash(command -v wx)"
+      "Bash(command -v wx)",
+      "Bash(env)"
     ]
   }
 }

@@ -1,5 +1,6 @@
 const { callFunction, showError, chooseSelectedLocation } = require('../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
+const { loadMessageUnread } = require('../../../utils/client-nav')
 
 const statusMap = {
   pending: { title: '审核中', tip: '资料已提交，请等待平台审核' },
@@ -50,12 +51,15 @@ Page({
     },
     activeDay: 1,
     startHourIndex: 10,
-    endHourIndex: 12
+    endHourIndex: 12,
+    messageUnreadCount: 0,
+    messageHasUnread: false
   },
 
   onShow() {
     this.applyCurrentTheme()
     this.loadProfile()
+    loadMessageUnread(this, 'staff')
   },
 
   applyCurrentTheme() {

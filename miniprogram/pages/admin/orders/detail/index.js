@@ -12,6 +12,8 @@ Page({
     ])
       .then(([detail, refunds]) => {
         const order = withOrderText(detail.order)
+        order.acceptedNotifyStatusText = order.acceptedNotifyStatus || '未记录'
+        order.acceptedNotifyErrorText = order.acceptedNotifyError || '无'
         this.setData({ detail: { ...detail, order }, refunds: refunds || [] })
       })
       .catch(showError)

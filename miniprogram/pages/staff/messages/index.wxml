@@ -1,0 +1,37 @@
+<view class="page {{themeClass}}">
+  <view class="dashboard-header">
+    <view class="title">消息</view>
+    <view class="tip">远程开门、一次性密码等订单系统消息会集中展示在这里。</view>
+  </view>
+
+  <view class="card interactive message-card" wx:for="{{threads}}" wx:key="_id" data-id="{{item._id}}" bindtap="openThread">
+    <view class="message-icon">信<view class="message-card-dot" wx:if="{{item.hasUnread}}"></view></view>
+    <view class="message-main">
+      <view class="between message-title-row">
+        <view class="strong message-title">{{item.titleText}}</view>
+        <view class="muted message-time">{{item.lastMessageAtText}}</view>
+      </view>
+      <view class="message-preview">{{item.lastMessageTitle || '订单消息'}}<text wx:if="{{item.lastMessageDetail}}"> · {{item.lastMessageDetail}}</text></view>
+      <view class="message-meta">
+        <view class="badge">{{item.orderStatusText || '处理中'}}</view>
+        <view class="muted">订单 {{item.orderNo || item.orderId}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && threads.length}}">正在加载更多...</view>
+  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && threads.length && !hasMore}}">已显示全部消息</view>
+
+  <view class="empty" wx:if="{{!loading && !threads.length}}">
+    <view>暂无订单消息</view>
+    <navigator class="primary" url="/pages/staff/home/index">去工作台</navigator>
+  </view>
+
+  <view class="bottom-nav">
+    <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>工作台</view></view>
+    <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>任务</view></view>
+    <view class="nav-item active"><view class="nav-icon">信<view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
+    <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon">☑</view><view>认证</view></view>
+    <view class="nav-item" bindtap="backProfile"><view class="nav-icon">♙</view><view>我的</view></view>
+  </view>
+</view>

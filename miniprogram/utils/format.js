@@ -14,6 +14,14 @@ const auditStatusText = {
   rejected: '未通过'
 }
 
+const paymentStatusText = {
+  unpaid: '未支付',
+  paying: '支付中',
+  paid: '已支付',
+  refunding: '退款中',
+  refunded: '已退款'
+}
+
 const incidentStatusText = {
   open: '待处理',
   triaging: '分诊中',
@@ -82,6 +90,10 @@ function formatAuditStatus(status) {
   return auditStatusText[status] || status || ''
 }
 
+function formatPaymentStatus(status) {
+  return paymentStatusText[status] || status || ''
+}
+
 function formatIncidentStatus(status) {
   return incidentStatusText[status] || status || ''
 }
@@ -102,14 +114,28 @@ function formatIncidentAction(action) {
   return incidentActionText[action] || action || '操作记录'
 }
 
+function toBeijingDate(value) {
+  if (!value) return null
+  if (value instanceof Date) return new Date(value.getTime() + 8 * 60 * 60 * 1000)
+  if (typeof value === 'number') return new Date(value + 8 * 60 * 60 * 1000)
+  const text = String(value).trim()
+  const localMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/)
+  if (localMatch) {
+    const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)))
+  }
+  const time = new Date(text).getTime()
+  return Number.isFinite(time) ? new Date(time + 8 * 60 * 60 * 1000) : null
+}
+
 function formatDateTime(value) {
   if (!value) return ''
-  const date = typeof value === 'number' ? new Date(value) : new Date(String(value).replace(/-/g, '/'))
-  if (Number.isNaN(date.getTime())) return String(value || '')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hour = String(date.getHours()).padStart(2, '0')
-  const minute = String(date.getMinutes()).padStart(2, '0')
+  const date = toBeijingDate(value)
+  if (!date) return String(value || '')
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  const hour = String(date.getUTCHours()).padStart(2, '0')
+  const minute = String(date.getUTCMinutes()).padStart(2, '0')
   return `${month}-${day} ${hour}:${minute}`
 }
 
@@ -130,6 +156,7 @@ function withOrderText(order) {
   return {
     ...order,
     statusText: formatOrderStatus(order.status, order),
+    paymentStatusText: formatPaymentStatus(order.paymentStatus || 'unpaid'),
     assignmentSourceText: formatAssignmentSource(order.assignmentSource),
     createdAtText: formatDateTime(order.createdAt),
     appointmentTimeText: formatAppointmentTime(order)
@@ -167,6 +194,7 @@ function withCheckinText(item) {
 module.exports = {
   formatOrderStatus,
   formatAuditStatus,
+  formatPaymentStatus,
   formatIncidentStatus,
   formatCheckinEvent,
   formatAssignmentSource,

@@ -2,6 +2,7 @@ const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, re
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, updateOfflineTask } = require('../../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
+const { formatDateTime } = require('../../../../utils/format')
 
 const TRACK_INTERVAL_MS = 60 * 1000
 const TRACK_MIN_DISTANCE_M = 50
@@ -37,6 +38,21 @@ function toTrackPoint(location) {
     speed: Number(location.speed || 0),
     recordedAt: Date.now()
   }
+}
+
+function toTimeValue(value) {
+  if (!value) return 0
+  const date = value instanceof Date ? value : new Date(String(value).replace(/-/g, '/'))
+  const time = date.getTime()
+  return Number.isFinite(time) ? time : 0
+}
+
+function withServiceActionState(order) {
+  if (!order) return order
+  const serviceStarted = order.status === 'in_service'
+  const startTime = toTimeValue(order.startTime)
+  const canRequestEarlyStart = order.status === 'assigned' && startTime > Date.now()
+  return { ...order, serviceStarted, canRequestEarlyStart }
 }
 
 Page({
@@ -87,7 +103,8 @@ Page({
   loadOrder() {
     callFunction('order', 'getOrderDetail', { id: this.data.id })
       .then((order) => {
-        this.setData({ order, earlyStartRequest: order.earlyStartRequest || null, offlineTaskCount: getOfflineTaskCount(this.data.id) })
+        const displayOrder = withServiceActionState(order)
+        this.setData({ order: displayOrder, earlyStartRequest: order.earlyStartRequest || null, offlineTaskCount: getOfflineTaskCount(this.data.id) })
         if (order && order.status === 'in_service') {
           this.flushOfflineTasks()
           this.startAutoTracking()
@@ -129,7 +146,7 @@ Page({
       .then(() => callFunction('order', 'startService', { id: this.data.id, clientRequestId: createClientRequestId('start_service') }))
       .then(() => {
         wx.showToast({ title: '已开始' })
-        this.setData({ starting: false, order: { ...(this.data.order || {}), status: 'in_service' } })
+        this.setData({ starting: false, order: withServiceActionState({ ...(this.data.order || {}), status: 'in_service' }) })
         this.startAutoTracking()
       })
       .catch((error) => {
@@ -167,6 +184,7 @@ Page({
   },
 
   unlock() {
+    if (!this.data.order || !this.data.order.serviceStarted) return
     callFunction('homeSecurity', 'getUnlockCode', { orderId: this.data.id })
       .then((unlock) => this.setData({ unlock }))
       .catch((error) => {
@@ -180,6 +198,7 @@ Page({
   },
 
   requestRemoteUnlock() {
+    if (!this.data.order || !this.data.order.serviceStarted) return
     if (this.data.requestingRemoteUnlock) return
     this.setData({ requestingRemoteUnlock: true })
     requestSubscribeTemplates(['serviceStart'], 'staff_remote_unlock')
@@ -334,7 +353,7 @@ Page({
         const pointCount = this.data.pointCount + Number(res.count || 0)
         this.setData({
           pointCount,
-          latestTrackText: `最近记录：${new Date(point.recordedAt).toTimeString().slice(0, 5)}，精度${Math.round(point.accuracy || 0)}m`,
+          latestTrackText: `最近记录：${formatDateTime(point.recordedAt).slice(6)}，精度${Math.round(point.accuracy || 0)}m`,
           offlineTaskCount: getOfflineTaskCount(this.data.id)
         })
         return res
@@ -372,6 +391,7 @@ Page({
   },
 
   uploadPoint(options = {}) {
+    if (!this.data.order || !this.data.order.serviceStarted) return Promise.resolve(null)
     return getServiceLocation()
       .then((loc) => this.recordTrackPoint(loc, true))
       .then((res) => {
@@ -383,6 +403,7 @@ Page({
   },
 
   checkin(e) {
+    if (!this.data.order || !this.data.order.serviceStarted) return
     wx.navigateTo({ url: '/pages/staff/checkin/camera/index?id=' + this.data.id + '&eventType=' + e.currentTarget.dataset.type })
   },
 
@@ -394,6 +415,7 @@ Page({
   },
 
   finish() {
+    if (!this.data.order || !this.data.order.serviceStarted) return
     const missingTip = this.validateRequiredCheckins()
     if (missingTip) {
       wx.showToast({ title: missingTip, icon: 'none' })
@@ -410,7 +432,7 @@ Page({
       .then(() => {
         this.stopAutoTracking()
         wx.showToast({ title: '已完成' })
-        this.setData({ finishing: false, order: { ...(this.data.order || {}), status: 'completed' } })
+        this.setData({ finishing: false, order: withServiceActionState({ ...(this.data.order || {}), status: 'completed' }) })
       })
       .catch((error) => {
         this.setData({ finishing: false })

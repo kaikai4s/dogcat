@@ -1,30 +1,28 @@
-const { callFunction, showError } = require('../../../../utils/cloud')
-const { ensureLogin } = require('../../../../utils/cloud')
-const { loadMessageUnread } = require('../../../../utils/client-nav')
-const { withOrderText } = require('../../../../utils/format')
-const { applyTheme, getThemeState } = require('../../../../utils/theme')
-
-const tabs = [
-  { label: '全部', value: 'all' },
-  { label: '待支付', value: 'pending_pay' },
-  { label: '待派单', value: 'paid' },
-  { label: '待服务', value: 'waiting_service' },
-  { label: '已完成', value: 'completed' },
-  { label: '已过期', value: 'expired' }
-]
+const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
+const { formatDateTime } = require('../../../utils/format')
+const { loadMessageUnread } = require('../../../utils/client-nav')
+const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 function pageList(result) {
   return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
 }
 
+function withThreadText(thread) {
+  if (!thread) return thread
+  return {
+    ...thread,
+    titleText: thread.orderTitle || thread.serviceSummary || (thread.petName ? `${thread.petName}的订单` : '订单消息'),
+    lastMessageAtText: formatDateTime(thread.lastMessageAt),
+    hasUnread: Number(thread.unreadCount || 0) > 0
+  }
+}
+
 Page({
   data: {
     themeClass: 'theme-day',
-    tabs,
-    activeStatus: 'all',
-    orders: [],
+    threads: [],
     page: 1,
-    pageSize: 10,
+    pageSize: 20,
     hasMore: true,
     loading: false,
     total: 0,
@@ -33,7 +31,7 @@ Page({
   },
   onShow() {
     this.applyCurrentTheme()
-    ensureLogin({ content: '登录后可查看订单。' })
+    ensureLogin({ content: '登录后可查看消息。' })
       .then(() => {
         this.load({ reset: true })
         loadMessageUnread(this)
@@ -51,17 +49,13 @@ Page({
     if (this.data.loading) return
     const reset = options.reset === true
     const page = reset ? 1 : this.data.page
-    const activeStatus = this.data.activeStatus
-    const params = { role: 'client', page, pageSize: this.data.pageSize }
-    if (activeStatus === 'waiting_service') params.statusGroup = 'waiting_service'
-    else if (activeStatus !== 'all') params.status = activeStatus
     this.setData({ loading: true })
-    callFunction('order', 'listOrders', params)
+    callFunction('message', 'listThreads', { page, pageSize: this.data.pageSize })
       .then((result) => {
         const pageData = pageList(result)
-        const orders = pageData.list.map(withOrderText)
+        const threads = pageData.list.map(withThreadText)
         this.setData({
-          orders: reset ? orders : this.data.orders.concat(orders),
+          threads: reset ? threads : this.data.threads.concat(threads),
           page: pageData.page,
           hasMore: pageData.hasMore,
           total: pageData.total,
@@ -77,10 +71,11 @@ Page({
     if (!this.data.hasMore || this.data.loading) return
     this.setData({ page: this.data.page + 1 }, () => this.load())
   },
-  chooseStatus(e) {
-    this.setData({ activeStatus: e.currentTarget.dataset.status, page: 1, hasMore: true }, () => this.load({ reset: true }))
+  openThread(e) {
+    const threadId = e.currentTarget.dataset.id
+    if (!threadId) return
+    wx.navigateTo({ url: '/pages/client/messages/thread/index?id=' + threadId })
   },
-  detail(e) { wx.navigateTo({ url: '/pages/client/orders/detail/index?id=' + e.currentTarget.dataset.id }) },
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return

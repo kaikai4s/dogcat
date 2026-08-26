@@ -198,5 +198,5 @@
     </view>
   </view>
 
-  <button class="primary" bindtap="create">创建订单</button>
+  <button class="primary" loading="{{creating}}" disabled="{{creating}}" bindtap="create">{{creating ? '创建中...' : '创建订单'}}</button>
 </view>

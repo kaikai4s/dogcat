@@ -1,20 +1,10 @@
 const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
-
-function formatRecordTime(value) {
-  if (!value) return ''
-  const date = typeof value === 'number' ? new Date(value) : new Date(String(value).replace(/-/g, '/'))
-  if (Number.isNaN(date.getTime())) return ''
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hour = String(date.getHours()).padStart(2, '0')
-  const minute = String(date.getMinutes()).padStart(2, '0')
-  return `${month}-${day} ${hour}:${minute}`
-}
+const { formatDateTime } = require('../../../utils/format')
 
 function decorateRecords(records = []) {
   return records.map((item) => ({
     ...item,
-    createdAtText: formatRecordTime(item.createdAt),
+    createdAtText: formatDateTime(item.createdAt),
     prizeTag: item.couponId ? '优惠券' : '参与奖'
   }))
 }

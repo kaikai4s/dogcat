@@ -38,6 +38,7 @@
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>工作台</view></view>
     <view class="nav-item active"><view class="nav-icon">☷</view><view>任务</view></view>
+    <view class="nav-item" data-url="/pages/staff/messages/index" bindtap="go"><view class="nav-icon">信<view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
     <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon">☑</view><view>认证</view></view>
     <view class="nav-item" bindtap="backProfile"><view class="nav-icon">♙</view><view>我的</view></view>
   </view>

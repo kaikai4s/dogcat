@@ -395,7 +395,7 @@ test('admin can save and public can read system settings', async () => {
     enableTestAddressMode: true,
     payment: { enabled: true, mode: 'mock', mchId: 'mch_1', refundEnabled: true },
     settlement: { staffCommissionRate: 0.75, settlementDelayDays: 2, minWithdrawAmount: 20 },
-    subscription: { enabled: true, templates: { orderPaid: 'tpl_paid', orderAssigned: 'tpl_assigned', serviceStart: 'tpl_start', serviceFinish: 'tpl_finish', refundResult: 'tpl_refund' } },
+    subscription: { enabled: true, templates: { orderPaid: 'tpl_paid', orderAssigned: 'tpl_assigned', orderAccepted: 'tpl_accepted', serviceStart: 'tpl_start', serviceFinish: 'tpl_finish', remoteUnlock: 'tpl_unlock', refundResult: 'tpl_refund' } },
     reliability: { enableOfflineQueue: true, maxTrackBatchSize: 60, maxRetryTimes: 6 },
     homeHeroCarousel: {
       enabled: true,
@@ -427,6 +427,7 @@ test('admin can save and public can read system settings', async () => {
   assert.equal(saved.data.settlement.staffCommissionRate, 0.75)
   assert.equal(saved.data.subscription.enabled, true)
   assert.equal(saved.data.subscription.templates.orderPaid, 'tpl_paid')
+  assert.equal(saved.data.subscription.templates.remoteUnlock, 'tpl_unlock')
   assert.equal(saved.data.reliability.maxTrackBatchSize, 60)
   assert.equal(saved.data.homeHeroCarousel.rotateIntervalMs, 6000)
   assert.equal(saved.data.homeHeroCarousel.items.length, 1)
@@ -1310,6 +1311,8 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
     orders: [],
     payments: [],
     order_timeline: [],
+    order_staff_message_threads: [],
+    order_staff_messages: [],
     service_reviews: []
   })
   const clientFn = loadCloudFunction('api', db, 'openid_client')
@@ -1329,6 +1332,7 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
   const duplicate = await clientFn.main({ module: 'order', action: 'createReview', data: { orderId: created.data._id, rating: 4 } })
   const timeline = await clientFn.main({ module: 'order', action: 'getOrderTimeline', data: { orderId: created.data._id } })
 
+  assert.equal(db.state.order_staff_messages.some((item) => item.eventType === 'early_start_approved' && item.title === '宠物主已同意提前开始'), true)
   assert.equal(review.ok, true)
   assert.equal(duplicate.ok, false)
   assert.equal(duplicate.message, '该订单已评价')
@@ -1572,6 +1576,197 @@ test('payment create status mock pay and admin refund permissions work', async (
   assert.equal(adminRefund.ok, true)
   assert.equal(adminRefund.data.refundAmount, 30)
   assert.equal(refunds.data.length, 1)
+})
+
+
+test('order messages list unread summary and mark read work', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'other', openid: 'openid_other', roles: ['client'], status: 'active' }
+    ],
+    order_message_threads: [
+      { _id: 'thread1', orderId: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', orderTitle: '上门喂养', orderStatus: 'paid', lastMessageTitle: '订单已支付', lastMessageDetail: '支付金额 ¥88', unreadCount: 2, updatedAt: '2099-07-28 10:00' },
+      { _id: 'thread2', orderId: 'order2', orderNo: 'O2', clientOpenid: 'openid_other', orderTitle: '其他订单', orderStatus: 'paid', lastMessageTitle: '订单已支付', unreadCount: 1, updatedAt: '2099-07-28 10:00' }
+    ]
+  })
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+  const otherFn = loadCloudFunction('api', db, 'openid_other')
+
+  db.state.order_messages = [
+    { _id: 'm1', threadId: 'thread1', orderId: 'order1', clientOpenid: 'openid_client', eventType: 'paid', title: '订单已支付', detail: '支付金额 ¥88', createdAt: '2099-07-28 10:00' },
+    { _id: 'm2', threadId: 'thread2', orderId: 'order2', clientOpenid: 'openid_other', eventType: 'paid', title: '订单已支付', detail: '支付金额 ¥66', createdAt: '2099-07-28 10:00' }
+  ]
+  const list = await clientFn.main({ module: 'message', action: 'listThreads', data: { page: 1, pageSize: 10 } })
+  const messages = await clientFn.main({ module: 'message', action: 'getThreadMessages', data: { threadId: 'thread1' } })
+  const foreignMessages = await clientFn.main({ module: 'message', action: 'getThreadMessages', data: { threadId: 'thread2' } })
+  const summary = await clientFn.main({ module: 'message', action: 'getUnreadSummary', data: {} })
+  const denied = await otherFn.main({ module: 'message', action: 'markThreadRead', data: { threadId: 'thread1' } })
+  const read = await clientFn.main({ module: 'message', action: 'markThreadRead', data: { threadId: 'thread1' } })
+  const after = await clientFn.main({ module: 'message', action: 'getUnreadSummary', data: {} })
+
+  assert.equal(list.ok, true)
+  assert.equal(list.data.list.length, 1)
+  assert.equal(list.data.list[0].orderStatusText, '待接单')
+  assert.equal(messages.ok, true)
+  assert.equal(messages.data.messages.length, 1)
+  assert.equal(messages.data.messages[0].title, '订单已支付')
+  assert.equal(foreignMessages.ok, false)
+  assert.equal(summary.data.totalUnread, 2)
+  assert.equal(summary.data.hasUnread, true)
+  assert.equal(denied.ok, false)
+  assert.equal(read.ok, true)
+  assert.equal(db.state.order_message_threads[0].unreadCount, 0)
+  assert.equal(after.data.totalUnread, 0)
+})
+
+
+test('staff order messages use independent module collections and mark read works', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' },
+      { _id: 'other_staff', openid: 'openid_other_staff', roles: ['client', 'staff'], status: 'active' }
+    ],
+    order_message_threads: [
+      { _id: 'client_thread', orderId: 'order3', orderNo: 'O3', clientOpenid: 'openid_client', orderTitle: '用户订单', orderStatus: 'paid', lastMessageTitle: '订单已支付', unreadCount: 1, updatedAt: '2099-07-28 10:00' }
+    ],
+    order_messages: [
+      { _id: 'm3', threadId: 'client_thread', orderId: 'order3', clientOpenid: 'openid_client', eventType: 'paid', title: '订单已支付', createdAt: '2099-07-28 10:00' }
+    ],
+    order_staff_message_threads: [
+      { _id: 'staff_thread', orderId: 'order1', orderNo: 'O1', staffOpenid: 'openid_staff', orderTitle: '上门喂养', orderStatus: 'assigned', lastMessageTitle: '一次性密码已更新', unreadCount: 2, updatedAt: '2099-07-28 10:00' },
+      { _id: 'other_thread', orderId: 'order2', orderNo: 'O2', staffOpenid: 'openid_other_staff', orderTitle: '其他订单', orderStatus: 'assigned', lastMessageTitle: '开门提醒已发送', unreadCount: 1, updatedAt: '2099-07-28 10:00' }
+    ],
+    order_staff_messages: [
+      { _id: 'm1', threadId: 'staff_thread', orderId: 'order1', staffOpenid: 'openid_staff', eventType: 'one_time_code_updated', title: '一次性密码已更新', createdAt: '2099-07-28 10:00' },
+      { _id: 'm2', threadId: 'other_thread', orderId: 'order2', staffOpenid: 'openid_other_staff', eventType: 'remote_unlock_reminder_sent', title: '已提醒宠物主远程开门', createdAt: '2099-07-28 10:00' }
+    ]
+  })
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+  const otherStaffFn = loadCloudFunction('api', db, 'openid_other_staff')
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const list = await staffFn.main({ module: 'staffMessage', action: 'listThreads', data: { page: 1, pageSize: 10 } })
+  const summary = await staffFn.main({ module: 'staffMessage', action: 'getUnreadSummary', data: {} })
+  const messages = await staffFn.main({ module: 'staffMessage', action: 'getThreadMessages', data: { threadId: 'staff_thread' } })
+  const deniedOtherStaff = await otherStaffFn.main({ module: 'staffMessage', action: 'getThreadMessages', data: { threadId: 'staff_thread' } })
+  const deniedClient = await clientFn.main({ module: 'staffMessage', action: 'getThreadMessages', data: { threadId: 'staff_thread' } })
+  const read = await staffFn.main({ module: 'staffMessage', action: 'markThreadRead', data: { threadId: 'staff_thread' } })
+
+  assert.equal(list.ok, true)
+  assert.equal(list.data.list.length, 1)
+  assert.equal(list.data.list[0]._id, 'staff_thread')
+  assert.equal(summary.data.totalUnread, 2)
+  assert.equal(messages.ok, true)
+  assert.equal(messages.data.messages.length, 1)
+  assert.equal(messages.data.messages[0].title, '一次性密码已更新')
+  assert.equal(deniedOtherStaff.ok, false)
+  assert.equal(deniedClient.ok, false)
+  assert.equal(read.ok, true)
+  assert.equal(db.state.order_staff_message_threads[0].unreadCount, 0)
+})
+
+
+test('home security actions create staff order messages', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
+    ],
+    orders: [{
+      _id: 'order1',
+      orderNo: 'O1',
+      clientOpenid: 'openid_client',
+      clientUserId: 'client',
+      staffOpenid: 'openid_staff',
+      staffUserId: 'staff',
+      staffProfileId: 'sp1',
+      status: 'assigned',
+      serviceSummary: '上门喂养',
+      startTime: '2099-07-28 10:00',
+      endTime: '2099-07-28 11:00',
+      orderHomeSecurity: { type: 'remote_unlock', lockMethod: 'remote_unlock', remoteUnlock: { requestCount: 0, notifyChannels: ['wechat', 'admin_phone'], lastNotifyStatus: {} } }
+    }],
+    order_home_security: [{ _id: 'sec1', orderId: 'order1', type: 'remote_unlock', lockMethod: 'remote_unlock' }],
+    home_security_notifications: [],
+    order_message_threads: [],
+    order_messages: [],
+    order_staff_message_threads: [],
+    order_staff_messages: [],
+    subscription_logs: [],
+    platform_configs: []
+  })
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const unlock = await staffFn.main({ module: 'homeSecurity', action: 'requestRemoteUnlock', data: { orderId: 'order1' } })
+  db.state.orders[0].orderHomeSecurity.remoteUnlock.lastRequestedAt = '2000-01-01T00:00:00.000Z'
+  db.state.order_home_security[0].remoteUnlock.lastRequestedAt = '2000-01-01T00:00:00.000Z'
+  const secondUnlock = await staffFn.main({ module: 'homeSecurity', action: 'requestRemoteUnlock', data: { orderId: 'order1' } })
+  db.state.orders[0].orderHomeSecurity.remoteUnlock.lastRequestedAt = '2000-01-01T00:00:00.000Z'
+  db.state.order_home_security[0].remoteUnlock.lastRequestedAt = '2000-01-01T00:00:00.000Z'
+  const code = await clientFn.main({ module: 'homeSecurity', action: 'updateOrderOneTimeCode', data: { orderId: 'order1', code: '123456', effectiveStart: '2099-07-28 09:00', effectiveEnd: '2099-07-28 12:00' } })
+  const summary = await staffFn.main({ module: 'staffMessage', action: 'getUnreadSummary', data: {} })
+  const clientSummary = await clientFn.main({ module: 'message', action: 'getUnreadSummary', data: {} })
+
+  assert.equal(unlock.ok, true)
+  assert.equal(secondUnlock.ok, true)
+  assert.equal(code.ok, true)
+  assert.equal(db.state.order_messages.filter((item) => item.eventType === 'remote_unlock_requested' && item.title === '宠托师请求远程开门').length, 2)
+  assert.equal(db.state.order_message_threads[0].unreadCount, 2)
+  assert.equal(clientSummary.data.totalUnread, 2)
+  assert.equal(db.state.subscription_logs.some((item) => item.templateKey === 'remoteUnlock' && item.data.thing1.value === '宠托师请求远程开门'), true)
+  assert.equal(db.state.order_staff_messages.some((item) => item.eventType === 'remote_unlock_reminder_sent' && item.title === '已提醒宠物主远程开门'), true)
+  assert.equal(db.state.order_staff_messages.some((item) => item.eventType === 'one_time_code_updated' && item.title === '一次性密码已更新'), true)
+  assert.equal(summary.data.totalUnread, 3)
+})
+
+
+test('payment success creates unread order message', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
+    orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', clientUserId: 'client', status: 'pending_pay', paymentStatus: 'unpaid', payAmount: 88, serviceSummary: '上门喂养' }],
+    payments: [],
+    refunds: [],
+    payment_events: [],
+    finance_logs: [],
+    order_timeline: [],
+    order_message_threads: [],
+    order_messages: [],
+    user_coupons: [],
+    subscription_logs: [],
+    platform_configs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const paid = await fn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: 'order1', paymentNo: 'P1' } })
+  const summary = await fn.main({ module: 'message', action: 'getUnreadSummary', data: {} })
+
+  assert.equal(paid.ok, true)
+  assert.equal(db.state.order_messages.some((item) => item.eventType === 'paid' && item.title === '订单已支付'), true)
+  assert.equal(db.state.order_message_threads[0].unreadCount, 1)
+  assert.equal(summary.data.totalUnread, 1)
+})
+
+
+test('expired order creates unread order message', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    orders: [{ _id: 'expired_order', orderNo: 'O_EXPIRED', clientOpenid: 'openid_client', clientUserId: 'client', status: 'paid', paymentStatus: 'paid', payAmount: 100, publishMode: 'open', staffOpenid: '', serviceSummary: '上门遛狗', startTime: '2000-01-01 10:00', endTime: '2000-01-01 11:00', createdAt: '2000-01-01 09:00' }],
+    order_timeline: [],
+    order_message_threads: [],
+    order_messages: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const list = await fn.main({ module: 'order', action: 'listOrders', data: {} })
+  const summary = await fn.main({ module: 'message', action: 'getUnreadSummary', data: {} })
+
+  assert.equal(list.ok, true)
+  assert.equal(db.state.orders[0].status, 'expired')
+  assert.equal(db.state.order_messages.some((item) => item.eventType === 'expired' && item.title === '订单已过期'), true)
+  assert.equal(summary.data.totalUnread, 1)
 })
 
 

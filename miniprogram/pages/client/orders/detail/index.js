@@ -1,4 +1,4 @@
-const { callFunction, showError, requestSubscribeTemplates } = require('../../../../utils/cloud')
+const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
 const { ensureLogin } = require('../../../../utils/cloud')
@@ -13,9 +13,33 @@ function getRefundText(order = {}) {
   return '退款待处理'
 }
 
+function showRemoteUnlockSubscribeTip(result) {
+  const showTip = (content) => new Promise((resolve) => {
+    wx.showModal({ title: '开锁通知未授权', content, showCancel: false, complete: resolve })
+  })
+  if (!result || !result.requested) {
+    const reasonMap = {
+      subscription_disabled: '后台未启用订阅消息',
+      request_api_unavailable: '当前微信版本不支持订阅消息接口',
+      template_not_configured: '后台未配置开锁请求模板',
+      request_failed: '微信订阅授权接口调用失败',
+      settings_load_failed: '系统设置加载失败'
+    }
+    return showTip(reasonMap[result && result.reason] || '未能发起订阅授权，请检查订阅消息设置。')
+  }
+  const index = (result.templateKeys || []).indexOf('remoteUnlock')
+  const templateId = index >= 0 ? result.templateIds[index] : ''
+  const status = templateId ? result.results[templateId] : ''
+  if (templateId && status !== 'accept') return showTip('你没有允许“开锁请求通知”，宠托师请求开门时微信不会推送通知。')
+  return Promise.resolve()
+}
+
 Page({
   data: { themeClass: 'theme-day', id: '', order: null, timeline: [], review: null, paying: false, cancelling: false, handlingEarlyStart: false, resettingCode: false, resetCodeForm: { code: '', effectiveStart: '', effectiveEnd: '' }, sectionHomeUrl: '', canGoBack: false },
-  onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }) },
+  onLoad(q) {
+    loadSystemSettings().catch(() => null)
+    this.setData({ ...createPageNav(q), id: q.id })
+  },
   onShow() {
     this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看订单详情。' })
@@ -34,7 +58,8 @@ Page({
     ])
       .then(([order, timeline, review]) => {
         const displayOrder = withOrderText(order)
-        this.setData({ order: { ...displayOrder, refundText: getRefundText(displayOrder) }, timeline, review })
+        this.setData({ order: { ...displayOrder, refundText: getRefundText(displayOrder), acceptedNotifyStatusText: displayOrder.acceptedNotifyStatus || '未记录', acceptedNotifyErrorText: displayOrder.acceptedNotifyError || '无' }, timeline, review })
+        callFunction('message', 'markOrderThreadRead', { orderId: this.data.id }).catch(() => {})
       })
       .catch(showError)
   },
@@ -42,7 +67,8 @@ Page({
     if (this.data.paying) return
     this.setData({ paying: true })
     const clientRequestId = createClientRequestId('pay')
-    requestSubscribeTemplates(['orderPaid', 'orderAssigned', 'refundResult'], 'client_pay')
+    requestSubscribeTemplates(['orderAccepted', 'remoteUnlock', 'refundResult'], 'client_pay')
+      .then((subscribeResult) => showRemoteUnlockSubscribeTip(subscribeResult))
       .then(() => callFunction('payment', 'createPayment', { orderId: this.data.id, clientRequestId }))
       .then((payment) => {
         if (payment.paid) return payment

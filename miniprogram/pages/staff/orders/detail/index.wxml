@@ -67,6 +67,8 @@
     <view class="info-row" wx:if="{{order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{order.doorplate}}</view></view>
     <view class="info-row"><view class="label">状态</view><view class="badge">{{order.statusText}}</view></view>
     <view class="info-row"><view class="label">时间</view><view class="value">{{order.startTime}} - {{order.endTime}}</view></view>
+    <view class="info-row"><view class="label">接单微信通知</view><view class="value">{{order.acceptedNotifyStatusText}}</view></view>
+    <view class="info-row"><view class="label">接单通知失败</view><view class="value">{{order.acceptedNotifyErrorText}}</view></view>
   </view>
 
   <button class="primary" wx:if="{{order.status === 'paid'}}" bindtap="accept">确认接单</button>

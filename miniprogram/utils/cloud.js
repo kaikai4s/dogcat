@@ -140,8 +140,10 @@ function normalizeSubscriptionConfig(subscription = {}) {
     templates: {
       orderPaid: templates.orderPaid || '',
       orderAssigned: templates.orderAssigned || '',
+      orderAccepted: templates.orderAccepted || '',
       serviceStart: templates.serviceStart || '',
       serviceFinish: templates.serviceFinish || '',
+      remoteUnlock: templates.remoteUnlock || '',
       refundResult: templates.refundResult || '',
       disputeUpdate: templates.disputeUpdate || '',
       withdrawResult: templates.withdrawResult || ''
@@ -203,26 +205,37 @@ function loadSystemSettings() {
 }
 
 function requestSubscribeTemplates(templateKeys = [], scene = '') {
-  return loadSystemSettings().then((settings) => {
+  const requestWithSettings = (settings) => {
     const subscription = settings.subscription || {}
-    if (!subscription.enabled || typeof wx.requestSubscribeMessage !== 'function') return null
+    if (!subscription.enabled) return Promise.resolve({ requested: false, reason: 'subscription_disabled' })
+    if (typeof wx.requestSubscribeMessage !== 'function') return Promise.resolve({ requested: false, reason: 'request_api_unavailable' })
     const templates = subscription.templates || {}
     const requestKeys = templateKeys.filter((key) => templates[key])
-    const tmplIds = requestKeys.map((key) => templates[key])
-    if (!tmplIds.length) return null
+    const limitedKeys = requestKeys.slice(0, 3)
+    const tmplIds = limitedKeys.map((key) => templates[key])
+    if (!tmplIds.length) return Promise.resolve({ requested: false, reason: 'template_not_configured' })
     return new Promise((resolve) => {
       wx.requestSubscribeMessage({
         tmplIds,
-        success: (res) => resolve(res || {}),
-        fail: () => resolve({})
+        success: (res) => resolve({ requested: true, templateKeys: limitedKeys, templateIds: tmplIds, results: res || {} }),
+        fail: (error) => resolve({ requested: false, reason: 'request_failed', error: error && (error.errMsg || error.message) || '' })
       })
-    }).then((results) => {
+    }).then((result) => {
+      if (!result.requested) return result
       const templateIds = {}
-      requestKeys.forEach((key) => { templateIds[key] = templates[key] })
-      return callFunction('system', 'recordSubscriptionConsent', { templateKeys: requestKeys, templateIds, results, scene })
-        .catch(() => null)
+      limitedKeys.forEach((key) => { templateIds[key] = templates[key] })
+      return callFunction('system', 'recordSubscriptionConsent', { templateKeys: limitedKeys, templateIds, results: result.results, scene })
+        .then(() => result)
+        .catch(() => result)
     })
-  }).catch(() => null)
+  }
+
+  const cachedSettings = getCachedSystemSettings()
+  const cachedSubscription = cachedSettings.subscription || {}
+  const cachedTemplates = cachedSubscription.templates || {}
+  const hasCachedTemplate = templateKeys.some((key) => cachedTemplates[key])
+  if (cachedSubscription.enabled && hasCachedTemplate) return requestWithSettings(cachedSettings)
+  return loadSystemSettings().then(requestWithSettings).catch((error) => ({ requested: false, reason: 'settings_load_failed', error: error && (error.message || error.errMsg) || '' }))
 }
 
 function requirePrivacyAuthorize() {

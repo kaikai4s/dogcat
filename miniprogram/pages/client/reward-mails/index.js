@@ -1,12 +1,5 @@
 const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
-
-function formatDate(val) {
-  if (!val) return ''
-  const date = new Date(val)
-  if (isNaN(date.getTime())) return ''
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
+const { formatDateTime } = require('../../../utils/format')
 
 function rewardSummary(item) {
   const reward = item.reward || {}
@@ -41,7 +34,7 @@ Page({
           mails: (list || []).map((item) => ({
             ...item,
             rewardSummary: rewardSummary(item),
-            createdAtText: formatDate(item.createdAt)
+            createdAtText: formatDateTime(item.createdAt)
           })),
           loading: false
         })
@@ -74,7 +67,7 @@ Page({
           ...item,
           ...mail,
           rewardSummary: rewardSummary(mail),
-          createdAtText: formatDate(mail.createdAt)
+          createdAtText: formatDateTime(mail.createdAt)
         }
         this.setData({
           mails: this.data.mails.map((record) => (record._id === id ? updated : record))
@@ -97,7 +90,7 @@ Page({
             ...record,
             ...mail,
             rewardSummary: rewardSummary(mail),
-            createdAtText: formatDate(mail.createdAt)
+            createdAtText: formatDateTime(mail.createdAt)
           } : record))
         })
       })

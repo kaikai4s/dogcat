@@ -14,7 +14,22 @@ Page({
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
   },
-  load() { callFunction('order', 'getOrderDetail', { id: this.data.id }).then((order) => this.setData({ order: withOrderText(order) })).catch(showError) },
+  load() {
+    callFunction('order', 'getOrderDetail', { id: this.data.id })
+      .then((order) => {
+        const displayOrder = withOrderText(order)
+        displayOrder.acceptedNotifyStatusText = displayOrder.acceptedNotifyStatus || '未记录'
+        displayOrder.acceptedNotifyErrorText = displayOrder.acceptedNotifyError || '无'
+        console.log('[staff order detail] order notify status', {
+          orderId: order && order._id,
+          orderNo: order && order.orderNo,
+          acceptedNotifyStatus: order && order.acceptedNotifyStatus,
+          acceptedNotifyError: order && order.acceptedNotifyError
+        })
+        this.setData({ order: displayOrder })
+      })
+      .catch(showError)
+  },
   loadCustomerService() {
     callFunction('system', 'getCustomerServiceInfo')
       .then((customerService) => this.setData({ customerService }))
@@ -50,12 +65,17 @@ Page({
     wx.openLocation({ latitude, longitude, name: order.serviceAddress || '服务地址', address: `${order.addressDetail || ''} ${order.doorplate || ''}`, scale: 16 })
   },
   accept() {
+    console.log('[staff acceptOrder] request', { orderId: this.data.id })
     callFunction('staff', 'acceptOrder', { orderId: this.data.id })
-      .then(() => {
+      .then((result) => {
+        console.log('[staff acceptOrder] response', result)
         wx.showToast({ title: '接单成功' })
         this.load()
       })
-      .catch(showError)
+      .catch((error) => {
+        console.error('[staff acceptOrder] error', error)
+        showError(error)
+      })
   },
   service() { wx.navigateTo({ url: '/pages/staff/orders/service/index?id=' + this.data.id }) },
   sos() { wx.navigateTo({ url: '/pages/staff/sos/index?id=' + this.data.id }) },

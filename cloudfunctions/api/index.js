@@ -12,6 +12,7 @@ const collections = [
   'coupon_templates', 'user_coupons', 'payment_events', 'refunds', 'finance_logs',
   'staff_earnings', 'withdraw_requests', 'staff_schedule_exceptions',
   'subscription_consents', 'subscription_logs', 'home_security_notifications',
+  'order_message_threads', 'order_messages', 'order_staff_message_threads', 'order_staff_messages',
   'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',
   'user_feedback'
@@ -60,6 +61,14 @@ function inferErrorCode(message = '') {
 function fail(message, code) { return { ok: false, code: code || inferErrorCode(message), message } }
 function now() { return new Date() }
 function nowText() { return new Date().toISOString() }
+function beijingClockText(value = now()) {
+  const source = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(source.getTime())) return ''
+  const cst = new Date(source.getTime() + 8 * 60 * 60 * 1000)
+  const hour = String(cst.getUTCHours()).padStart(2, '0')
+  const minute = String(cst.getUTCMinutes()).padStart(2, '0')
+  return `${hour}:${minute}`
+}
 // 返回 CST（UTC+8）当日零点的 Date 对象，用于"每日"类限制判断
 function cstTodayStart() {
   const cstOffset = 8 * 60 * 60 * 1000
@@ -358,8 +367,10 @@ function normalizeSystemSettings(value = {}, options = {}) {
       templates: {
         orderPaid: safeText(subscription.templates && subscription.templates.orderPaid).trim(),
         orderAssigned: safeText(subscription.templates && subscription.templates.orderAssigned).trim(),
+        orderAccepted: safeText(subscription.templates && subscription.templates.orderAccepted).trim(),
         serviceStart: safeText(subscription.templates && subscription.templates.serviceStart).trim(),
         serviceFinish: safeText(subscription.templates && subscription.templates.serviceFinish).trim(),
+        remoteUnlock: safeText(subscription.templates && subscription.templates.remoteUnlock).trim(),
         refundResult: safeText(subscription.templates && subscription.templates.refundResult).trim(),
         disputeUpdate: safeText(subscription.templates && subscription.templates.disputeUpdate).trim(),
         withdrawResult: safeText(subscription.templates && subscription.templates.withdrawResult).trim()
@@ -947,7 +958,13 @@ async function buildStaffAvailability(profile, startDateKey = '', days = 14) {
 function toTimeValue(value) {
   if (!value) return 0
   if (value instanceof Date) return value.getTime()
-  const parsed = new Date(String(value).replace(/-/g, '/')).getTime()
+  const text = String(value).trim()
+  const localMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/)
+  if (localMatch) {
+    const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch
+    return Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 8, Number(minute), Number(second))
+  }
+  const parsed = new Date(text.replace(/-/g, '/')).getTime()
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
@@ -1195,8 +1212,10 @@ async function expireUnacceptedOrder(orderId, order, time = now()) {
   if (!shouldExpireUnacceptedOrder(order, time)) return order
   const update = { status: ORDER_STATUS.EXPIRED, expiredAt: time, expireReason: '服务开始时间前无人接单', updatedAt: time }
   await db.collection('orders').doc(orderId).update({ data: update })
+  const updatedOrder = { ...order, _id: orderId, ...update }
   await appendOrderTimeline(orderId, 'expired', '订单已过期', '服务开始时间前无人接单', 'system')
-  return { ...order, ...update }
+  await appendOrderClientMessage(updatedOrder, { eventType: 'expired', title: '订单已过期', detail: '服务开始时间前无人接单', actorRole: 'system' })
+  return updatedOrder
 }
 
 async function expireDueUnacceptedOrders() {
@@ -2363,6 +2382,181 @@ async function appendOrderTimeline(orderId, type, title, detail, actorRole) {
   })
 }
 
+function buildOrderMessageTitle(order = {}) {
+  return order.serviceSummary || (order.petName ? `${order.petName}的订单` : '订单消息')
+}
+
+async function getOrCreateOrderMessageThread(order = {}) {
+  const orderId = order._id || order.orderId || ''
+  const clientOpenid = safeText(order.clientOpenid).trim()
+  if (!orderId || !clientOpenid) return null
+  const existing = await db.collection('order_message_threads').where({ orderId, clientOpenid }).limit(1).get()
+  if (existing.data[0]) return existing.data[0]
+  const time = now()
+  const thread = {
+    orderId,
+    orderNo: order.orderNo || '',
+    clientOpenid,
+    clientUserId: order.clientUserId || '',
+    threadType: 'order',
+    orderTitle: buildOrderMessageTitle(order),
+    petName: order.petName || '',
+    serviceSummary: order.serviceSummary || '',
+    orderStatus: order.status || '',
+    lastMessageTitle: '',
+    lastMessageDetail: '',
+    lastMessageAt: time,
+    lastMessageType: '',
+    unreadCount: 0,
+    readAt: null,
+    createdAt: time,
+    updatedAt: time
+  }
+  const created = await db.collection('order_message_threads').add({ data: thread })
+  return { _id: created._id, ...thread }
+}
+
+async function appendOrderClientMessage(order = {}, event = {}) {
+  const orderId = order._id || event.orderId || ''
+  const clientOpenid = safeText(order.clientOpenid).trim()
+  if (!orderId || !clientOpenid) return null
+  const eventType = safeText(event.eventType).trim()
+  const title = safeText(event.title).trim()
+  if (!eventType || !title) return null
+  const detail = safeText(event.detail).trim()
+  const idempotencyKey = safeText(event.idempotencyKey).trim() || makeIdempotencyKey('order_message', orderId, eventType, title, detail)
+  const existingMessage = await db.collection('order_messages').where({ idempotencyKey }).limit(1).get()
+  if (existingMessage.data[0]) return existingMessage.data[0]
+  const thread = await getOrCreateOrderMessageThread({ ...order, _id: orderId })
+  if (!thread || !thread._id) return null
+  const time = event.createdAt || now()
+  const actorRole = event.actorRole || ''
+  const forceUnreadTypes = new Set(['paid', 'expired', 'refund_processing', 'refund_result', 'assigned', 'started', 'completed', 'early_start_requested', 'remote_unlock_requested'])
+  const unreadForClient = event.unreadForClient !== undefined ? event.unreadForClient === true : (actorRole !== 'client' || forceUnreadTypes.has(eventType))
+  const message = {
+    threadId: thread._id,
+    orderId,
+    orderNo: order.orderNo || thread.orderNo || '',
+    clientOpenid,
+    clientUserId: order.clientUserId || thread.clientUserId || '',
+    messageType: 'order_status',
+    eventType,
+    title,
+    detail,
+    actorRole,
+    unreadForClient,
+    idempotencyKey,
+    createdAt: time
+  }
+  const created = await db.collection('order_messages').add({ data: message })
+  const unreadCount = unreadForClient ? Number(thread.unreadCount || 0) + 1 : Number(thread.unreadCount || 0)
+  await db.collection('order_message_threads').doc(thread._id).update({
+    data: {
+      orderNo: message.orderNo,
+      orderTitle: buildOrderMessageTitle(order),
+      petName: order.petName || thread.petName || '',
+      serviceSummary: order.serviceSummary || thread.serviceSummary || '',
+      orderStatus: order.status || thread.orderStatus || '',
+      lastMessageId: created._id,
+      lastMessageType: eventType,
+      lastMessageTitle: title,
+      lastMessageDetail: detail,
+      lastMessageAt: time,
+      lastActorRole: actorRole,
+      unreadCount,
+      updatedAt: time
+    }
+  })
+  return { _id: created._id, ...message }
+}
+
+async function getOrCreateOrderStaffMessageThread(order = {}) {
+  const orderId = order._id || order.orderId || ''
+  const staffOpenid = safeText(order.staffOpenid).trim()
+  if (!orderId || !staffOpenid) return null
+  const existing = await db.collection('order_staff_message_threads').where({ orderId, staffOpenid }).limit(1).get()
+  if (existing.data[0]) return existing.data[0]
+  const time = now()
+  const thread = {
+    orderId,
+    orderNo: order.orderNo || '',
+    staffOpenid,
+    staffUserId: order.staffUserId || '',
+    recipientRole: 'staff',
+    recipientOpenid: staffOpenid,
+    threadType: 'order',
+    orderTitle: buildOrderMessageTitle(order),
+    petName: order.petName || '',
+    serviceSummary: order.serviceSummary || '',
+    orderStatus: order.status || '',
+    lastMessageTitle: '',
+    lastMessageDetail: '',
+    lastMessageAt: time,
+    lastMessageType: '',
+    unreadCount: 0,
+    readAt: null,
+    createdAt: time,
+    updatedAt: time
+  }
+  const created = await db.collection('order_staff_message_threads').add({ data: thread })
+  return { _id: created._id, ...thread }
+}
+
+async function appendOrderStaffMessage(order = {}, event = {}) {
+  const orderId = order._id || event.orderId || ''
+  const staffOpenid = safeText(order.staffOpenid).trim()
+  if (!orderId || !staffOpenid) return null
+  const eventType = safeText(event.eventType).trim()
+  const title = safeText(event.title).trim()
+  if (!eventType || !title) return null
+  const detail = safeText(event.detail).trim()
+  const idempotencyKey = safeText(event.idempotencyKey).trim() || makeIdempotencyKey('order_staff_message', orderId, eventType, title, detail)
+  const existingMessage = await db.collection('order_staff_messages').where({ idempotencyKey }).limit(1).get()
+  if (existingMessage.data[0]) return existingMessage.data[0]
+  const thread = await getOrCreateOrderStaffMessageThread({ ...order, _id: orderId })
+  if (!thread || !thread._id) return null
+  const time = event.createdAt || now()
+  const actorRole = event.actorRole || ''
+  const unreadForStaff = event.unreadForStaff !== undefined ? event.unreadForStaff === true : true
+  const message = {
+    threadId: thread._id,
+    orderId,
+    orderNo: order.orderNo || thread.orderNo || '',
+    staffOpenid,
+    staffUserId: order.staffUserId || thread.staffUserId || '',
+    recipientRole: 'staff',
+    recipientOpenid: staffOpenid,
+    messageType: 'order_status',
+    eventType,
+    title,
+    detail,
+    actorRole,
+    unreadForStaff,
+    idempotencyKey,
+    createdAt: time
+  }
+  const created = await db.collection('order_staff_messages').add({ data: message })
+  const unreadCount = unreadForStaff ? Number(thread.unreadCount || 0) + 1 : Number(thread.unreadCount || 0)
+  await db.collection('order_staff_message_threads').doc(thread._id).update({
+    data: {
+      orderNo: message.orderNo,
+      orderTitle: buildOrderMessageTitle(order),
+      petName: order.petName || thread.petName || '',
+      serviceSummary: order.serviceSummary || thread.serviceSummary || '',
+      orderStatus: order.status || thread.orderStatus || '',
+      lastMessageId: created._id,
+      lastMessageType: eventType,
+      lastMessageTitle: title,
+      lastMessageDetail: detail,
+      lastMessageAt: time,
+      lastActorRole: actorRole,
+      unreadCount,
+      updatedAt: time
+    }
+  })
+  return { _id: created._id, ...message }
+}
+
 function makeIdempotencyKey(...parts) {
   return parts.map((part) => safeText(part).trim()).filter(Boolean).join(':')
 }
@@ -2416,16 +2610,39 @@ function buildSubscriptionPage(orderId) {
   return orderId ? `pages/client/orders/detail/index?id=${orderId}` : 'pages/client/home/index'
 }
 
+function getClockText(value) {
+  const text = safeText(value).trim()
+  const matched = text.match(/(?:^|\s|T)(\d{1,2}:\d{2})/)
+  if (matched) return matched[1]
+  return beijingClockText(value)
+}
+
 function buildSubscriptionData(templateKey, order = {}, detail = {}) {
   const serviceName = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
   const orderNo = order.orderNo || order._id || ''
-  const amount = detail.amount || order.payAmount || order.refundAmount || 0
+  const statusText = safeText(detail.statusText || templateKey)
+  if (templateKey === 'orderAccepted') {
+    return {
+      character_string1: { value: safeText(orderNo).slice(0, 32) },
+      thing2: { value: safeText(detail.orderDemand || serviceName).slice(0, 20) },
+      name3: { value: safeText(detail.staffName || order.staffName || order.requestedStaffName || '宠托师').slice(0, 10) },
+      thing4: { value: safeText(detail.serviceArea || order.serviceAddress || '服务地址').slice(0, 20) },
+      time17: { value: safeText(detail.serviceTime || getClockText(order.startTime) || beijingClockText()).slice(0, 20) }
+    }
+  }
+  if (templateKey === 'remoteUnlock') {
+    return {
+      thing1: { value: safeText(detail.deviceName || '入户门锁').slice(0, 20) },
+      character_string2: { value: safeText(orderNo).slice(0, 32) },
+      time3: { value: safeText(detail.requestTime || nowText()).slice(0, 20) }
+    }
+  }
   return {
-    thing1: { value: safeText(serviceName).slice(0, 20) },
-    character_string2: { value: safeText(orderNo).slice(0, 32) },
-    time3: { value: safeText(order.startTime || nowText()).slice(0, 20) },
-    amount4: { value: `${Number(amount || 0).toFixed(2)}元` },
-    phrase5: { value: safeText(detail.statusText || templateKey).slice(0, 5) }
+    thing9: { value: safeText(detail.tip || '订单状态已更新').slice(0, 20) },
+    thing4: { value: statusText.slice(0, 20) },
+    character_string5: { value: safeText(orderNo).slice(0, 32) },
+    thing10: { value: safeText(serviceName).slice(0, 20) },
+    date3: { value: safeText(order.startTime || nowText()).slice(0, 20) }
   }
 }
 
@@ -2446,27 +2663,70 @@ async function recordSubscriptionLog(log) {
 }
 
 async function sendSubscribeMessage(openid, templateKey, page, messageData = {}, orderId = '') {
-  if (!openid || !templateKey) return
+  if (!openid || !templateKey) return { status: 'skipped', error: 'missing_recipient_or_template_key' }
   try {
     const settings = await getSystemSettings()
     const templateId = settings.subscription.templates[templateKey] || ''
+    console.log('[subscription] send prepare', { openid, templateKey, templateId, enabled: settings.subscription.enabled, orderId, page, data: messageData })
     if (!settings.subscription.enabled || !templateId) {
-      await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: 'skipped', error: !settings.subscription.enabled ? 'subscription_disabled' : 'template_not_configured' })
-      return
+      const result = { status: 'skipped', error: !settings.subscription.enabled ? 'subscription_disabled' : 'template_not_configured', templateKey, templateId }
+      console.log('[subscription] send skipped', { openid, templateKey, templateId, orderId, result })
+      await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: result.status, error: result.error })
+      return result
     }
     if (!cloud.openapi || !cloud.openapi.subscribeMessage || typeof cloud.openapi.subscribeMessage.send !== 'function') {
-      await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: 'skipped', error: 'openapi_unavailable' })
-      return
+      const result = { status: 'skipped', error: 'openapi_unavailable', templateKey, templateId }
+      console.log('[subscription] send skipped', { openid, templateKey, templateId, orderId, result })
+      await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: result.status, error: result.error })
+      return result
     }
     await cloud.openapi.subscribeMessage.send({ touser: openid, templateId, page, data: messageData })
+    console.log('[subscription] send success', { openid, templateKey, templateId, orderId })
     await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: 'sent' })
+    return { status: 'sent', error: '', templateKey, templateId }
   } catch (error) {
-    await recordSubscriptionLog({ openid, templateKey, orderId, page, data: messageData, status: 'failed', error: error && (error.message || error.errMsg) || String(error) })
+    const message = error && (error.message || error.errMsg) || String(error)
+    console.error('[subscription] send failed', { openid, templateKey, orderId, error: message })
+    await recordSubscriptionLog({ openid, templateKey, orderId, page, data: messageData, status: 'failed', error: message })
+    return { status: 'failed', error: message, templateKey }
   }
 }
 
 function notifyOrder(openid, templateKey, order, detail = {}) {
   return sendSubscribeMessage(openid, templateKey, buildSubscriptionPage(order && order._id), buildSubscriptionData(templateKey, order, detail), order && order._id)
+}
+
+function notifyOrderAccepted(order, staffName = '') {
+  const detail = {
+    staffName: staffName || order.staffName || order.requestedStaffName || '宠托师',
+    orderDemand: order.serviceSummary || '宠护服务',
+    serviceArea: order.serviceAddress || order.city || '服务地址',
+    serviceTime: getClockText(order.startTime)
+  }
+  console.log('[orderAccepted] prepare notify', {
+    orderId: order && order._id,
+    orderNo: order && order.orderNo,
+    clientOpenid: order && order.clientOpenid,
+    templateKey: 'orderAccepted',
+    detail
+  })
+  return notifyOrder(order.clientOpenid, 'orderAccepted', order, detail)
+    .then((result) => {
+      console.log('[orderAccepted] notify result', {
+        orderId: order && order._id,
+        orderNo: order && order.orderNo,
+        result
+      })
+      return result
+    })
+    .catch((error) => {
+      console.error('[orderAccepted] notify error', {
+        orderId: order && order._id,
+        orderNo: order && order.orderNo,
+        message: error && (error.message || error.errMsg) || String(error)
+      })
+      throw error
+    })
 }
 
 function calculateAvailableAt(completedAt, delayDays) {
@@ -3063,8 +3323,14 @@ async function markOrderPaid(orderId, paymentPayload = {}) {
   if (order.couponId) await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'used', usedOrderId: orderId, usedAt: time, updatedAt: time } })
   await appendPaymentEvent('paid', { orderId, paymentNo, status: 'success', detail: { amount: Number(order.payAmount || 0), channel: paymentPayload.channel || 'mock' }, raw: paymentPayload.rawCallback || {} })
   await appendFinanceLog('order_paid', { targetType: 'order', targetId: orderId, orderId, amountDelta: Number(order.payAmount || 0), detail: { paymentNo } })
+  const paidOrder = { ...order, _id: orderId, ...paymentUpdate }
   await appendOrderTimeline(orderId, 'paid', '订单已支付', `支付金额 ¥${order.payAmount}`, 'client')
+  await appendOrderClientMessage(paidOrder, { eventType: 'paid', title: '订单已支付', detail: `支付金额 ¥${order.payAmount}`, actorRole: 'system', unreadForClient: true })
   await notifyOrder(order.clientOpenid, 'orderPaid', { ...order, _id: orderId }, { amount: Number(order.payAmount || 0), statusText: '已支付' })
+  if (paidOrder.publishMode === 'direct' && paidOrder.requestedStaffOpenid) {
+    const notifyResult = await notifyOrderAccepted(paidOrder, paidOrder.requestedStaffName)
+    await db.collection('orders').doc(orderId).update({ data: { acceptedNotifyStatus: notifyResult && notifyResult.status || 'skipped', acceptedNotifyError: notifyResult && notifyResult.error || '', updatedAt: time } })
+  }
   return { orderId, status: 'paid', paymentNo }
 }
 
@@ -3130,6 +3396,7 @@ async function createRefundForOrder(order, refundAmount, reason, source, operato
     }
   }
 
+  await appendOrderClientMessage(order, { eventType: createdRefund.status === 'success' ? 'refund_result' : 'refund_processing', title: createdRefund.status === 'success' ? '退款已完成' : '退款处理中', detail: `退款金额 ¥${refund.refundAmount}`, actorRole: 'system', unreadForClient: true })
   await notifyOrder(order.clientOpenid, 'refundResult', order, { amount: refund.refundAmount, statusText: createdRefund.status === 'success' ? '已退款' : '退款中' })
   return createdRefund
 }
@@ -3645,9 +3912,16 @@ const handlers = {
       await db.collection('orders').doc(data.orderId).update({ data: { orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time } })
       const securityRes = await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get()
       if (securityRes.data[0]) await db.collection('order_home_security').doc(securityRes.data[0]._id).update({ data: { ...updatedSecurity, updatedAt: time } })
-      await db.collection('home_security_notifications').add({ data: { orderId: data.orderId, type: 'remote_unlock', clientOpenid: order.clientOpenid, staffOpenid: openid, channels: ['wechat', 'admin_phone'], status: { wechat: 'pending', admin_phone: 'available' }, customerServiceSnapshot, createdAt: time } })
-      await notifyOrder(order.clientOpenid, 'serviceStart', order, { statusText: '宠托师已到达，请远程开门' })
-      return toPublicOrderHomeSecurity(updatedSecurity)
+      const notification = await db.collection('home_security_notifications').add({ data: { orderId: data.orderId, type: 'remote_unlock', clientOpenid: order.clientOpenid, staffOpenid: openid, channels: ['wechat', 'admin_phone'], status: { wechat: 'pending', admin_phone: 'available' }, customerServiceSnapshot, createdAt: time } })
+      const updatedOrder = { ...order, _id: data.orderId, orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time }
+      await appendOrderClientMessage(updatedOrder, { eventType: 'remote_unlock_requested', title: '宠托师请求远程开门', detail: '宠托师已到达服务地点，请及时远程开门。', actorRole: 'staff', idempotencyKey: makeIdempotencyKey('order_message', data.orderId, 'remote_unlock_requested', notification._id || time.toISOString()) })
+      const notifyResult = await notifyOrder(order.clientOpenid, 'remoteUnlock', updatedOrder, { deviceName: '宠托师请求远程开门', requestTime: beijingClockText(time) })
+      const finalSecurity = { ...updatedSecurity, remoteUnlock: { ...updatedSecurity.remoteUnlock, lastNotifyStatus: { wechat: notifyResult && notifyResult.status || 'skipped', admin_phone: 'available' }, lastNotifyError: notifyResult && notifyResult.error || '' } }
+      await db.collection('orders').doc(data.orderId).update({ data: { orderHomeSecurity: finalSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(finalSecurity), updatedAt: time } })
+      if (securityRes.data[0]) await db.collection('order_home_security').doc(securityRes.data[0]._id).update({ data: { ...finalSecurity, updatedAt: time } })
+      await db.collection('home_security_notifications').doc(notification._id).update({ data: { status: finalSecurity.remoteUnlock.lastNotifyStatus, error: finalSecurity.remoteUnlock.lastNotifyError, updatedAt: time } })
+      await appendOrderStaffMessage({ ...updatedOrder, orderHomeSecurity: finalSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(finalSecurity) }, { eventType: 'remote_unlock_reminder_sent', title: '已提醒宠物主远程开门', detail: '开门提醒已发送给宠物主，请等待对方处理。', actorRole: 'system', idempotencyKey: makeIdempotencyKey('order_staff_message', data.orderId, 'remote_unlock_reminder_sent', notification._id || time.toISOString()) })
+      return toPublicOrderHomeSecurity(finalSecurity)
     }
 
     if (action === 'updateOrderOneTimeCode') {
@@ -3665,6 +3939,7 @@ const handlers = {
       await db.collection('orders').doc(data.orderId).update({ data: { orderHomeSecurity: security, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(security), updatedAt: time } })
       const securityRes = await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get()
       if (securityRes.data[0]) await db.collection('order_home_security').doc(securityRes.data[0]._id).update({ data: { ...security, updatedAt: time } })
+      await appendOrderStaffMessage({ ...order, _id: data.orderId, orderHomeSecurity: security, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(security), updatedAt: time }, { eventType: 'one_time_code_updated', title: '一次性密码已更新', detail: '宠物主已重新填写一次性门锁密码，请在服务时间内查看。', actorRole: 'client', idempotencyKey: makeIdempotencyKey('order_staff_message', data.orderId, 'one_time_code_updated', time.toISOString()) })
       return toPublicOrderHomeSecurity(security)
     }
 
@@ -3734,6 +4009,11 @@ const handlers = {
 
     if (action === 'createOrder') {
       const user = await getUser(openid)
+      const clientRequestId = getClientRequestId(data)
+      if (clientRequestId) {
+        const existingOrder = (await db.collection('orders').where({ clientOpenid: openid, clientRequestId }).limit(1).get()).data[0]
+        if (existingOrder) return { ...existingOrder, orderHomeSecurity: toPublicOrderHomeSecurity(existingOrder.orderHomeSecurity || existingOrder.homeSecuritySnapshot), savedAddress: null }
+      }
       if (!safeText(user.phone).trim()) throw new Error('请先绑定手机号')
       if (!data.petId) throw new Error('请选择宠物')
       if (!data.serviceAddress) throw new Error('请选择服务地址')
@@ -3770,7 +4050,7 @@ const handlers = {
       const time = now()
       const homeSecurity = normalizeHomeSecurityInput(data)
       const checkinRequirements = await resolveCheckinRequirements(pricing.serviceTypes)
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {
@@ -3797,9 +4077,14 @@ const handlers = {
       if (order.couponId) {
         await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'locked', lockedOrderId: created._id, lockedAt: time, updatedAt: time } })
       }
+      const createdOrder = { _id: created._id, ...order }
       await appendOrderTimeline(created._id, 'created', '订单已创建', order.serviceSummary, 'client')
-      if (order.couponId) await appendOrderTimeline(created._id, 'coupon_locked', '已使用优惠券', `优惠 ¥${order.discountAmount}`, 'client')
-      return { _id: created._id, ...order, orderHomeSecurity: toPublicOrderHomeSecurity(homeSecurity), savedAddress }
+      await appendOrderClientMessage(createdOrder, { eventType: 'created', title: '订单已创建', detail: order.serviceSummary, actorRole: 'client', unreadForClient: false })
+      if (order.couponId) {
+        await appendOrderTimeline(created._id, 'coupon_locked', '已使用优惠券', `优惠 ¥${order.discountAmount}`, 'client')
+        await appendOrderClientMessage(createdOrder, { eventType: 'coupon_locked', title: '已使用优惠券', detail: `优惠 ¥${order.discountAmount}`, actorRole: 'client', unreadForClient: false })
+      }
+      return { ...createdOrder, orderHomeSecurity: toPublicOrderHomeSecurity(homeSecurity), savedAddress }
     }
 
     if (action === 'listOrders') {
@@ -3925,7 +4210,9 @@ const handlers = {
           await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'available', lockedOrderId: '', lockedAt: null, updatedAt: time } })
         }
       }
+      const cancelledOrder = { ...order, _id: data.orderId, ...update }
       await appendOrderTimeline(data.orderId, 'cancelled', '订单已取消', `${quote.ruleText}，预计退款 ¥${quote.refundAmount}`, 'client')
+      await appendOrderClientMessage(cancelledOrder, { eventType: 'cancelled', title: '订单已取消', detail: `${quote.ruleText}，预计退款 ¥${quote.refundAmount}`, actorRole: 'client', unreadForClient: false })
       if (refund) await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${quote.refundAmount}`, 'system')
       return { orderId: data.orderId, status: 'cancelled', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, refundNo: refund ? refund.refundNo : '' }
     }
@@ -3950,6 +4237,7 @@ const handlers = {
       }
       const created = await db.collection('order_early_start_requests').add({ data: request })
       await appendOrderTimeline(order._id, 'early_start_requested', '宠护师申请提前开始', request.reason, 'staff')
+      await appendOrderClientMessage(order, { eventType: 'early_start_requested', title: '宠护师申请提前开始', detail: request.reason, actorRole: 'staff' })
       await notifyOrder(order.clientOpenid, 'serviceStart', order, { statusText: '待确认提前开始' })
       return toEarlyStartView({ _id: created._id, ...request })
     }
@@ -3965,6 +4253,13 @@ const handlers = {
       else update.rejectedAt = time
       await db.collection('order_early_start_requests').doc(request._id).update({ data: update })
       await appendOrderTimeline(order._id, approved ? 'early_start_approved' : 'early_start_rejected', approved ? '宠物主已同意提前开始' : '宠物主已拒绝提前开始', update.clientRemark, 'client')
+      await appendOrderStaffMessage(order, {
+        eventType: approved ? 'early_start_approved' : 'early_start_rejected',
+        title: approved ? '宠物主已同意提前开始' : '宠物主已拒绝提前开始',
+        detail: approved ? '宠物主已同意提前开始服务，现在可以开始服务。' : '宠物主已拒绝提前开始服务，请按预约时间开始。',
+        actorRole: 'client',
+        idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, approved ? 'early_start_approved' : 'early_start_rejected', request._id)
+      })
       await notifyOrder(order.staffOpenid, 'serviceStart', order, { statusText: approved ? '已同意提前开始' : '已拒绝提前开始' })
       return toEarlyStartView({ ...request, ...update })
     }
@@ -3982,7 +4277,9 @@ const handlers = {
       const time = now()
       if (!(await canStartOrderService({ ...order, _id: data.id }, time))) throw new Error('服务时间未到，可申请提前开始')
       await db.collection('orders').doc(data.id).update({ data: { status: 'in_service', startedAt: time, updatedAt: time } })
+      const startedOrder = { ...order, _id: data.id, status: 'in_service', startedAt: time, updatedAt: time }
       await appendOrderTimeline(data.id, 'started', '服务已开始', '', 'staff')
+      await appendOrderClientMessage(startedOrder, { eventType: 'started', title: '服务已开始', detail: '宠护师已开始服务', actorRole: 'staff' })
       await notifyOrder(order.clientOpenid, 'serviceStart', order, { statusText: '服务中' })
       return { id: data.id }
     }
@@ -4002,7 +4299,9 @@ const handlers = {
       if (security.type === 'key' && security.key && security.key.returnRequired && !security.key.returnedAt) throw new Error('请先完成放回钥匙打卡')
       const time = now()
       await db.collection('orders').doc(data.id).update({ data: { status: 'completed', completedAt: time, updatedAt: time } })
+      const completedOrder = { ...order, _id: data.id, status: 'completed', completedAt: time, updatedAt: time }
       await appendOrderTimeline(data.id, 'completed', '服务已完成', '', 'staff')
+      await appendOrderClientMessage(completedOrder, { eventType: 'completed', title: '服务已完成', detail: '服务已完成，可查看服务报告或评价', actorRole: 'staff' })
       await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '已完成' })
       await ensureStaffEarning({ ...order, _id: data.id }, time)
       const pointsDelta = Math.max(Math.floor(Number(order.payAmount || 0) / 10), 1)
@@ -4985,10 +5284,15 @@ const handlers = {
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
       await validateStaffAvailability(profile, order.startTime, order.endTime, { excludeOrderId: data.orderId })
       const time = now()
-      await db.collection('orders').doc(data.orderId).update({ data: { staffUserId: user._id, staffOpenid: openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: publishMode === 'direct' ? 'direct_accept' : 'open_grab', assignedAt: time, updatedAt: time } })
-      await appendOrderTimeline(data.orderId, 'assigned', publishMode === 'direct' ? '指定宠托师已接单' : '宠托师已抢单', maskStaffName(profile.realName), 'staff')
-      await notifyOrder(order.clientOpenid, 'orderAssigned', { ...order, _id: data.orderId }, { statusText: '已接单' })
-      return { orderId: data.orderId, status: 'assigned' }
+      const assignmentUpdate = { staffUserId: user._id, staffOpenid: openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: publishMode === 'direct' ? 'direct_accept' : 'open_grab', assignedAt: time, updatedAt: time }
+      await db.collection('orders').doc(data.orderId).update({ data: assignmentUpdate })
+      const assignedOrder = { ...order, _id: data.orderId, ...assignmentUpdate }
+      const assignedTitle = publishMode === 'direct' ? '指定宠托师已接单' : '宠托师已抢单'
+      await appendOrderTimeline(data.orderId, 'assigned', assignedTitle, maskStaffName(profile.realName), 'staff')
+      await appendOrderClientMessage(assignedOrder, { eventType: 'assigned', title: assignedTitle, detail: maskStaffName(profile.realName), actorRole: 'staff' })
+      const notifyResult = await notifyOrderAccepted(assignedOrder, maskStaffName(profile.realName))
+      await db.collection('orders').doc(data.orderId).update({ data: { acceptedNotifyStatus: notifyResult && notifyResult.status || 'skipped', acceptedNotifyError: notifyResult && notifyResult.error || '', updatedAt: time } })
+      return { orderId: data.orderId, status: 'assigned', notifyStatus: notifyResult && notifyResult.status || 'skipped', notifyError: notifyResult && notifyResult.error || '' }
     }
     throw new Error('未知 staff 操作')
   },
@@ -5715,8 +6019,11 @@ const handlers = {
       const staffUser = staffUserRes.data[0]
       if (!staffUser) throw new Error('员工用户不存在')
       const time = now()
-      await db.collection('orders').doc(data.orderId).update({ data: { staffUserId: staffUser._id, staffOpenid: staffUser.openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: 'admin_assign', assignedAt: time, updatedAt: time } })
+      const assignmentUpdate = { staffUserId: staffUser._id, staffOpenid: staffUser.openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: 'admin_assign', assignedAt: time, updatedAt: time }
+      await db.collection('orders').doc(data.orderId).update({ data: assignmentUpdate })
+      const assignedOrder = { ...orderRes.data, _id: data.orderId, ...assignmentUpdate }
       await appendOrderTimeline(data.orderId, 'assigned', '管理员已派单', maskStaffName(profile.realName), 'admin')
+      await appendOrderClientMessage(assignedOrder, { eventType: 'assigned', title: '平台已派单', detail: maskStaffName(profile.realName), actorRole: 'admin' })
       await notifyOrder(orderRes.data.clientOpenid, 'orderAssigned', { ...orderRes.data, _id: data.orderId }, { statusText: '已派单' })
       await logAdmin(admin, 'order', data.orderId, 'assignOrder', { staffProfileId: data.staffProfileId })
       return { orderId: data.orderId }
@@ -6222,6 +6529,105 @@ const handlers = {
     }
 
     throw new Error('未知 ai 操作')
+  },
+
+  async message(openid, action, data) {
+    await getUser(openid)
+    if (action === 'listThreads') {
+      const res = await db.collection('order_message_threads').where({ clientOpenid: openid }).orderBy('updatedAt', 'desc').get()
+      const list = (res.data || []).map((thread) => ({
+        ...thread,
+        orderStatusText: orderStatusText(thread.orderStatus),
+        hasUnread: Number(thread.unreadCount || 0) > 0
+      }))
+      return paginateList(list, data)
+    }
+    if (action === 'getUnreadSummary') {
+      const res = await db.collection('order_message_threads').where({ clientOpenid: openid }).get()
+      const totalUnread = (res.data || []).reduce((sum, thread) => sum + Math.max(Number(thread.unreadCount || 0), 0), 0)
+      return { totalUnread, hasUnread: totalUnread > 0 }
+    }
+    if (action === 'getThreadMessages') {
+      const threadId = safeText(data.threadId).trim()
+      if (!threadId) throw new Error('消息会话不存在')
+      const thread = (await db.collection('order_message_threads').doc(threadId).get()).data
+      if (!thread || thread.clientOpenid !== openid) throw new Error('消息会话不存在')
+      const res = await db.collection('order_messages').where({ threadId }).orderBy('createdAt', 'asc').get()
+      return {
+        thread: { ...thread, orderStatusText: orderStatusText(thread.orderStatus) },
+        messages: (res.data || []).map((message) => ({ ...message }))
+      }
+    }
+    if (action === 'markThreadRead') {
+      const threadId = safeText(data.threadId).trim()
+      if (!threadId) throw new Error('消息会话不存在')
+      const thread = (await db.collection('order_message_threads').doc(threadId).get()).data
+      if (!thread || thread.clientOpenid !== openid) throw new Error('消息会话不存在')
+      const time = now()
+      await db.collection('order_message_threads').doc(threadId).update({ data: { unreadCount: 0, readAt: time, updatedAt: time } })
+      return { threadId, unreadCount: 0 }
+    }
+    if (action === 'markOrderThreadRead') {
+      const orderId = safeText(data.orderId).trim()
+      if (!orderId) throw new Error('订单消息不存在')
+      const res = await db.collection('order_message_threads').where({ orderId, clientOpenid: openid }).limit(1).get()
+      const thread = res.data[0]
+      if (!thread) return { orderId, unreadCount: 0 }
+      const time = now()
+      await db.collection('order_message_threads').doc(thread._id).update({ data: { unreadCount: 0, readAt: time, updatedAt: time } })
+      return { threadId: thread._id, orderId, unreadCount: 0 }
+    }
+    throw new Error('未知 message 操作')
+  },
+
+  async staffMessage(openid, action, data) {
+    const user = await getUser(openid)
+    if (!(user.roles || []).includes('staff')) throw new Error('仅宠托师可查看消息')
+    if (action === 'listThreads') {
+      const res = await db.collection('order_staff_message_threads').where({ staffOpenid: openid }).orderBy('updatedAt', 'desc').get()
+      const list = (res.data || []).map((thread) => ({
+        ...thread,
+        orderStatusText: orderStatusText(thread.orderStatus),
+        hasUnread: Number(thread.unreadCount || 0) > 0
+      }))
+      return paginateList(list, data)
+    }
+    if (action === 'getUnreadSummary') {
+      const res = await db.collection('order_staff_message_threads').where({ staffOpenid: openid }).get()
+      const totalUnread = (res.data || []).reduce((sum, thread) => sum + Math.max(Number(thread.unreadCount || 0), 0), 0)
+      return { totalUnread, hasUnread: totalUnread > 0 }
+    }
+    if (action === 'getThreadMessages') {
+      const threadId = safeText(data.threadId).trim()
+      if (!threadId) throw new Error('消息会话不存在')
+      const thread = (await db.collection('order_staff_message_threads').doc(threadId).get()).data
+      if (!thread || thread.staffOpenid !== openid) throw new Error('消息会话不存在')
+      const res = await db.collection('order_staff_messages').where({ threadId }).orderBy('createdAt', 'asc').get()
+      return {
+        thread: { ...thread, orderStatusText: orderStatusText(thread.orderStatus) },
+        messages: (res.data || []).map((message) => ({ ...message }))
+      }
+    }
+    if (action === 'markThreadRead') {
+      const threadId = safeText(data.threadId).trim()
+      if (!threadId) throw new Error('消息会话不存在')
+      const thread = (await db.collection('order_staff_message_threads').doc(threadId).get()).data
+      if (!thread || thread.staffOpenid !== openid) throw new Error('消息会话不存在')
+      const time = now()
+      await db.collection('order_staff_message_threads').doc(threadId).update({ data: { unreadCount: 0, readAt: time, updatedAt: time } })
+      return { threadId, unreadCount: 0 }
+    }
+    if (action === 'markOrderThreadRead') {
+      const orderId = safeText(data.orderId).trim()
+      if (!orderId) throw new Error('订单消息不存在')
+      const res = await db.collection('order_staff_message_threads').where({ orderId, staffOpenid: openid }).limit(1).get()
+      const thread = res.data[0]
+      if (!thread) return { orderId, unreadCount: 0 }
+      const time = now()
+      await db.collection('order_staff_message_threads').doc(thread._id).update({ data: { unreadCount: 0, readAt: time, updatedAt: time } })
+      return { threadId: thread._id, orderId, unreadCount: 0 }
+    }
+    throw new Error('未知 staffMessage 操作')
   },
 
   async initData(openid, action) {

@@ -2,6 +2,7 @@ const { callFunction, showError } = require('../../../../utils/cloud')
 const { withOrderText } = require('../../../../utils/format')
 const { getSelectedLocation } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
+const { loadMessageUnread } = require('../../../../utils/client-nav')
 
 const tabs = [
   { label: '全部', value: 'all' },
@@ -15,10 +16,11 @@ function pageList(result) {
 }
 
 Page({
-  data: { themeClass: 'theme-day', tabs, activeStatus: 'all', orders: [], page: 1, pageSize: 10, hasMore: true, loading: false, total: 0 },
+  data: { themeClass: 'theme-day', tabs, activeStatus: 'all', orders: [], page: 1, pageSize: 10, hasMore: true, loading: false, total: 0, messageUnreadCount: 0, messageHasUnread: false },
   onShow() {
     this.applyCurrentTheme()
     this.load({ reset: true })
+    loadMessageUnread(this, 'staff')
   },
   onReachBottom() {
     this.loadMore()

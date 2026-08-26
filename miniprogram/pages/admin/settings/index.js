@@ -50,8 +50,10 @@ function normalizeSubscriptionConfig(subscription = {}) {
     templates: {
       orderPaid: templates.orderPaid || '',
       orderAssigned: templates.orderAssigned || '',
+      orderAccepted: templates.orderAccepted || '',
       serviceStart: templates.serviceStart || '',
       serviceFinish: templates.serviceFinish || '',
+      remoteUnlock: templates.remoteUnlock || '',
       refundResult: templates.refundResult || '',
       disputeUpdate: templates.disputeUpdate || '',
       withdrawResult: templates.withdrawResult || ''

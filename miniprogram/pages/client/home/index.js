@@ -1,4 +1,5 @@
 const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, ensureLogin, getCurrentUser } = require('../../../utils/cloud')
+const { loadMessageUnread } = require('../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 const defaultModules = {
@@ -45,6 +46,8 @@ Page({
     repeatOrder: null,
     recentOrders: [],
     assuranceItems: [],
+    messageUnreadCount: 0,
+    messageHasUnread: false,
     staffEntryLoaded: false,
     staffEntryTitle: '',
     staffEntryTip: '',
@@ -67,6 +70,7 @@ Page({
     this.applySavedLocation()
     this.loadHomePageData()
     this.loadStaffEntryState()
+    loadMessageUnread(this)
   },
 
   onHide() {
@@ -94,7 +98,7 @@ Page({
   goProtected(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    ensureLogin({ content: '登录后可预约服务、管理宠物和查看订单。' })
+    ensureLogin({ content: '登录后可预约服务、管理宠物、查看订单和消息。' })
       .then(() => wx.navigateTo({ url }))
       .catch(() => {})
   },

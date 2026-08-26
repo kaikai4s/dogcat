@@ -1,7 +1,7 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
-const { withCheckinText } = require('../../../../utils/format')
+const { withCheckinText, formatDateTime } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 function toMapPoint(item) {
@@ -41,10 +41,7 @@ function buildTrackSummary(trackPoints) {
 }
 
 function formatTrackTime(value) {
-  if (!value) return ''
-  const date = typeof value === 'number' ? new Date(value) : new Date(String(value).replace(/-/g, '/'))
-  if (Number.isNaN(date.getTime())) return ''
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  return formatDateTime(value).slice(6)
 }
 
 function getPointTimeValue(value) {

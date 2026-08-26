@@ -1,6 +1,7 @@
 const { callFunction, showError, chooseSelectedLocation } = require('../../../utils/cloud')
 const { withAuditText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
+const { loadMessageUnread } = require('../../../utils/client-nav')
 
 const { createPageNav, navMethods } = require('../../../utils/nav')
 
@@ -51,7 +52,9 @@ Page({
     profile: null,
     statusTip: '',
     isApproved: false,
-    canGoBack: false
+    canGoBack: false,
+    messageUnreadCount: 0,
+    messageHasUnread: false
   },
 
   onLoad(q) {
@@ -62,6 +65,7 @@ Page({
 
   onShow() {
     this.applyCurrentTheme()
+    loadMessageUnread(this, 'staff')
     callFunction('staff', 'getStaffProfile')
       .then((profile) => {
         if (!profile) return

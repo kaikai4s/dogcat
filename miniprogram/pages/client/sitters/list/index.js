@@ -1,5 +1,6 @@
 const { callFunction, showError, getSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
+const { loadMessageUnread } = require('../../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const ALL = '全部'
@@ -32,12 +33,15 @@ Page({
     allSitters: [],
     sitters: [],
     total: 0,
-    loading: false
+    loading: false,
+    messageUnreadCount: 0,
+    messageHasUnread: false
   },
 
   onShow() {
     this.applyCurrentTheme()
     this.loadFacets()
+    loadMessageUnread(this)
   },
 
   applyCurrentTheme() {
@@ -161,7 +165,7 @@ Page({
   goProtected(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    ensureLogin({ content: '登录后可查看订单。' })
+    ensureLogin({ content: '登录后可查看订单和消息。' })
       .then(() => wx.redirectTo({ url }))
       .catch(() => {})
   }

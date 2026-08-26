@@ -59,8 +59,10 @@
     </view>
     <view class="field-item"><text class="label">支付成功模板</text><input class="input" value="{{settings.subscription.templates.orderPaid}}" data-field="orderPaid" bindinput="subscriptionTemplateInput" /></view>
     <view class="field-item"><text class="label">接单/派单模板</text><input class="input" value="{{settings.subscription.templates.orderAssigned}}" data-field="orderAssigned" bindinput="subscriptionTemplateInput" /></view>
+    <view class="field-item"><text class="label">师傅接单模板</text><input class="input" value="{{settings.subscription.templates.orderAccepted}}" data-field="orderAccepted" bindinput="subscriptionTemplateInput" placeholder="收到师傅接单通知模板 ID" /></view>
     <view class="field-item"><text class="label">服务开始模板</text><input class="input" value="{{settings.subscription.templates.serviceStart}}" data-field="serviceStart" bindinput="subscriptionTemplateInput" /></view>
     <view class="field-item"><text class="label">服务完成模板</text><input class="input" value="{{settings.subscription.templates.serviceFinish}}" data-field="serviceFinish" bindinput="subscriptionTemplateInput" /></view>
+    <view class="field-item"><text class="label">开锁请求模板</text><input class="input" value="{{settings.subscription.templates.remoteUnlock}}" data-field="remoteUnlock" bindinput="subscriptionTemplateInput" /></view>
     <view class="field-item"><text class="label">退款结果模板</text><input class="input" value="{{settings.subscription.templates.refundResult}}" data-field="refundResult" bindinput="subscriptionTemplateInput" /></view>
   </view>
 

@@ -1306,7 +1306,7 @@ textarea {
   bottom: calc(18rpx + env(safe-area-inset-bottom));
   z-index: 9999;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 10rpx;
   padding: 18rpx 10rpx 10rpx;
   background: rgba(255, 255, 255, 0.98);
@@ -1329,6 +1329,7 @@ textarea {
 }
 
 .nav-icon {
+  position: relative;
   width: 58rpx;
   height: 58rpx;
   margin: 0 auto 6rpx;
@@ -1347,6 +1348,17 @@ textarea {
 .nav-item.active .nav-icon {
   border-color: var(--theme-primary);
   background: var(--theme-primary-soft);
+}
+
+.nav-red-dot {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  width: 18rpx;
+  height: 18rpx;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 4rpx solid #fff;
 }
 
 .profile-page {

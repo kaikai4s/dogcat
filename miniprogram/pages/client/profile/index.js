@@ -2,6 +2,7 @@ const { callFunction, showError } = require('../../../utils/cloud')
 const { getCurrentUser, loginWithWechat, ensureLogin, setCachedUser, logoutCurrentUser } = require('../../../utils/cloud')
 const { themeOptions, applyTheme, saveTheme, getThemeState } = require('../../../utils/theme')
 const { fontOptions, applyFont, saveFont, getFontState } = require('../../../utils/font')
+const { loadMessageUnread } = require('../../../utils/client-nav')
 
 const staffEntryMap = {
   none: { title: '申请成为宠护师', tip: '提交资料后等待平台审核' },
@@ -42,6 +43,8 @@ Page({
     levelDescription: '',
     rewardMailUnreadCount: 0,
     rewardMailUnclaimedCount: 0,
+    messageUnreadCount: 0,
+    messageHasUnread: false,
     hidePublicCheckinPhotos: false,
     savingPrivacy: false,
     showCustomerServiceModal: false,
@@ -79,6 +82,7 @@ Page({
         this.loadStaffProfile()
         this.loadPoints()
         this.loadRewardMailUnread()
+        loadMessageUnread(this)
       })
       .catch(() => this.applyGuest())
   },
@@ -123,6 +127,8 @@ Page({
       levelDescription: '',
       rewardMailUnreadCount: 0,
       rewardMailUnclaimedCount: 0,
+      messageUnreadCount: 0,
+      messageHasUnread: false,
       hidePublicCheckinPhotos: false,
       savingPrivacy: false
     })
@@ -150,6 +156,7 @@ Page({
         this.loadStaffProfile()
         this.loadPoints()
         this.loadRewardMailUnread()
+        loadMessageUnread(this)
         wx.showToast({ title: '已登录' })
       })
       .catch(showError)
@@ -220,7 +227,7 @@ Page({
   goProtected(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    ensureLogin({ content: '登录后可查看订单。' })
+    ensureLogin({ content: '登录后可查看订单和消息。' })
       .then(() => wx.redirectTo({ url }))
       .catch(() => {})
   },

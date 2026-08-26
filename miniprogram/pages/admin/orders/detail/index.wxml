@@ -33,10 +33,12 @@
     <view class="info-row" wx:if="{{detail.order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{detail.order.addressDetail}}</view></view>
     <view class="info-row" wx:if="{{detail.order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{detail.order.doorplate}}</view></view>
     <view class="info-row"><view class="label">状态</view><view class="badge">{{detail.order.statusText}}</view></view>
-    <view class="info-row"><view class="label">支付状态</view><view class="value">{{detail.order.paymentStatus || 'unpaid'}}</view></view>
+    <view class="info-row"><view class="label">支付状态</view><view class="value">{{detail.order.paymentStatusText}}</view></view>
     <view class="info-row" wx:if="{{detail.order.paymentNo}}"><view class="label">支付单号</view><view class="value">{{detail.order.paymentNo}}</view></view>
     <view class="info-row" wx:if="{{detail.order.wxTransactionId}}"><view class="label">微信交易号</view><view class="value">{{detail.order.wxTransactionId}}</view></view>
     <view class="info-row" wx:if="{{detail.order.paidAt}}"><view class="label">支付时间</view><view class="value">{{detail.order.paidAt}}</view></view>
+    <view class="info-row"><view class="label">接单微信通知</view><view class="value">{{detail.order.acceptedNotifyStatusText}}</view></view>
+    <view class="info-row"><view class="label">接单通知失败</view><view class="value">{{detail.order.acceptedNotifyErrorText}}</view></view>
     <view class="info-row" wx:if="{{detail.order.refundStatus}}"><view class="label">退款状态</view><view class="value">{{detail.order.refundStatus}} ¥{{detail.order.refundAmount || 0}}</view></view>
     <view class="info-row" wx:if="{{detail.order.refundNo}}"><view class="label">退款单号</view><view class="value">{{detail.order.refundNo}}</view></view>
     <view class="info-row"><view class="label">轨迹点</view><view class="value">{{detail.tracks.length}}</view></view>

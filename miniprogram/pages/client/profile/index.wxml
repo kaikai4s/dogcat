@@ -229,8 +229,9 @@
 
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>首页</view></view>
-    <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon">🐾</view><view>宠托师</view></view>
-    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon">☷</view><view>订单</view></view>
-    <view class="nav-item active"><view class="nav-icon">♙</view><view>我的</view></view>
+    <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon">宠</view><view>宠托师</view></view>
+    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon">单</view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/client/messages/index" bindtap="goProtected"><view class="nav-icon">信<view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
+    <view class="nav-item active"><view class="nav-icon">我</view><view>我的</view></view>
   </view>
 </view>
