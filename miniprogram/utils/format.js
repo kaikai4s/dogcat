@@ -124,7 +124,8 @@ function toBeijingDate(value) {
     const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch
     return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)))
   }
-  const time = new Date(text).getTime()
+  const normalizedText = text.replace(/-/g, '/').replace('T', ' ')
+  const time = new Date(normalizedText).getTime()
   return Number.isFinite(time) ? new Date(time + 8 * 60 * 60 * 1000) : null
 }
 
@@ -200,6 +201,7 @@ module.exports = {
   formatAssignmentSource,
   formatIncidentType,
   formatIncidentAction,
+  toBeijingDate,
   formatDateTime,
   formatAppointmentTime,
   withOrderText,

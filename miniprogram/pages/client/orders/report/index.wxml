@@ -33,6 +33,20 @@
   </view>
 
   <view class="card" style="margin-top:24rpx;padding:24rpx;">
+    <view class="subtitle">打卡照片</view>
+    <view wx:if="{{report.checkinGroups.length}}">
+      <view wx:for="{{report.checkinGroups}}" wx:key="eventType" style="margin-top:18rpx;">
+        <view class="strong">{{item.eventTypeText}} · {{item.count}}张</view>
+        <view class="muted" wx:if="{{item.remarkText}}">{{item.remarkText}}</view>
+        <view class="image-list">
+          <image wx:for="{{item.photos}}" wx:for-item="photo" wx:key="_id" class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewPhoto" />
+        </view>
+      </view>
+    </view>
+    <view class="empty" wx:else>暂无打卡照片。</view>
+  </view>
+
+  <view class="card" style="margin-top:24rpx;padding:24rpx;">
     <view class="between" style="align-items:center;">
       <view class="subtitle" style="margin-bottom:0;">🤖 AI 智能总结</view>
       <button class="primary compact-btn" loading="{{loadingAi}}" bindtap="generateAiReport">一键生成总结</button>

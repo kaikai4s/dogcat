@@ -7,7 +7,6 @@
     "pages/client/coupons/list/index",
     "pages/client/coupons/select/index",
     "pages/login/index",
-    "pages/dev/init/index",
     "pages/role-select/index",
     "pages/client/addresses/list/index",
     "pages/client/addresses/edit/index",

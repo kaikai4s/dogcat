@@ -32,7 +32,9 @@
       "Bash(command -v cloudbase)",
       "Bash(command -v tcb)",
       "Bash(command -v wx)",
-      "Bash(env)"
+      "Bash(env)",
+      "Bash(npx mocha:*)",
+      "Bash(npx npx:*)"
     ]
   }
 }

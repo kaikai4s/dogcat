@@ -21,9 +21,5 @@ Page({
         wx.showModal({ title: '登录失败', content: message, showCancel: false })
       })
       .finally(() => this.setData({ loading: false }))
-  },
-
-  openInit() {
-    wx.navigateTo({ url: '/pages/dev/init/index' })
   }
 })

@@ -11,5 +11,4 @@
   </view>
 
   <button class="primary" disabled="{{!envReady}}" loading="{{loading}}" bindtap="login">微信登录</button>
-  <button class="ghost" bindtap="openInit">开发初始化</button>
 </view>

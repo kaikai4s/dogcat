@@ -78,7 +78,7 @@
     <view class="grid" wx:if="{{order.checkinRequirements && order.checkinRequirements.length}}">
       <button class="ghost" wx:for="{{order.checkinRequirements}}" wx:key="eventType" data-type="{{item.eventType}}" bindtap="checkin">
         {{item.label}}
-        <text wx:if="{{item.completed}}"> · 已完成</text>
+        <text wx:if="{{item.photoCount}}"> · {{item.photoCount}}张</text>
         <text wx:elif="{{item.required}}"> · 必打卡</text>
         <text wx:else> · 选填</text>
       </button>

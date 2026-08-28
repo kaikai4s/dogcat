@@ -2,7 +2,7 @@ const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, re
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, updateOfflineTask } = require('../../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
-const { formatDateTime } = require('../../../../utils/format')
+const { formatDateTime, toBeijingDate } = require('../../../../utils/format')
 
 const TRACK_INTERVAL_MS = 60 * 1000
 const TRACK_MIN_DISTANCE_M = 50
@@ -42,9 +42,14 @@ function toTrackPoint(location) {
 
 function toTimeValue(value) {
   if (!value) return 0
-  const date = value instanceof Date ? value : new Date(String(value).replace(/-/g, '/'))
-  const time = date.getTime()
+  const date = toBeijingDate(value)
+  const time = date ? date.getTime() : 0
   return Number.isFinite(time) ? time : 0
+}
+
+function isNetworkError(error) {
+  const message = error && (error.message || error.errMsg) || ''
+  return /network|timeout|fail/i.test(message)
 }
 
 function withServiceActionState(order) {
@@ -104,7 +109,7 @@ Page({
     callFunction('order', 'getOrderDetail', { id: this.data.id })
       .then((order) => {
         const displayOrder = withServiceActionState(order)
-        this.setData({ order: displayOrder, earlyStartRequest: order.earlyStartRequest || null, offlineTaskCount: getOfflineTaskCount(this.data.id) })
+        this.setData({ order: displayOrder, pointCount: Number(order.trackCount || 0), earlyStartRequest: order.earlyStartRequest || null, offlineTaskCount: getOfflineTaskCount(this.data.id) })
         if (order && order.status === 'in_service') {
           this.flushOfflineTasks()
           this.startAutoTracking()
@@ -251,6 +256,12 @@ Page({
       })
       .catch((error) => {
         this.setData({ returningKey: false })
+        if (isNetworkError(error)) {
+          enqueueOfflineTask('key_return', { orderId: this.data.id, imageFileIds: this.data.keyReturnImageFileIds, clientRequestId: createClientRequestId('key_return') })
+          this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id), keyReturnImageFileIds: [] })
+          wx.showToast({ title: '网络异常，已加入待补传', icon: 'none' })
+          return
+        }
         showError(error)
       })
   },
@@ -313,6 +324,7 @@ Page({
     if (this.trackTimer) clearInterval(this.trackTimer)
     this.trackTimer = null
     if (typeof wx.stopLocationUpdate === 'function') wx.stopLocationUpdate({})
+    if (typeof wx.stopLocationUpdateBackground === 'function') wx.stopLocationUpdateBackground({})
     this.setData({ autoTracking: false, backgroundTracking: false, trackStatusText: '轨迹记录已停止' })
   },
 
@@ -372,14 +384,19 @@ Page({
       this.setData({ offlineTaskCount: 0 })
       return Promise.resolve()
     }
+    let flushed = false
     return tasks.reduce((chain, task) => chain.then(() => {
       if (task.type === 'track') {
         return callFunction('track', 'batchUploadTrack', { orderId: task.orderId, batchId: createClientRequestId('backfill'), points: [task.payload.point] })
-          .then(() => removeOfflineTask(task.id))
+          .then(() => { flushed = true; removeOfflineTask(task.id) })
       }
       if (task.type === 'checkin') {
         return callFunction('checkin', 'createCheckin', { ...task.payload, isBackfilled: true })
-          .then(() => removeOfflineTask(task.id))
+          .then(() => { flushed = true; removeOfflineTask(task.id) })
+      }
+      if (task.type === 'key_return') {
+        return callFunction('homeSecurity', 'recordKeyReturned', task.payload)
+          .then(() => { flushed = true; removeOfflineTask(task.id) })
       }
       removeOfflineTask(task.id)
       return Promise.resolve()
@@ -387,6 +404,10 @@ Page({
       updateOfflineTask({ ...task, retryTimes: Number(task.retryTimes || 0) + 1 })
     }), Promise.resolve()).then(() => {
       this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id) })
+      if (!flushed) return null
+      return callFunction('order', 'getOrderDetail', { id: this.data.id })
+        .then((order) => this.setData({ order: withServiceActionState(order), pointCount: Number(order.trackCount || 0), earlyStartRequest: order.earlyStartRequest || null }))
+        .catch(() => null)
     })
   },
 

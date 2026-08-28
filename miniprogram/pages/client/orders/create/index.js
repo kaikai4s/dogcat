@@ -4,6 +4,7 @@ const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { getSelectedLocation, chooseSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
+const { toBeijingDate } = require('../../../../utils/format')
 
 const COUPON_CONTEXT_KEY = 'vip_pet_coupon_select_context'
 const SELECTED_COUPON_KEY = 'vip_pet_selected_coupon'
@@ -37,8 +38,8 @@ function formatTime(date) {
 }
 
 function addMinutes(startDate, startClock, minutes) {
-  const start = new Date(`${startDate}T${startClock}:00`)
-  if (Number.isNaN(start.getTime())) return ''
+  const start = toBeijingDate(`${startDate} ${startClock}:00`)
+  if (!start) return ''
   const end = new Date(start.getTime() + Number(minutes) * 60 * 1000)
   return `${formatDate(end)} ${formatTime(end)}`
 }
@@ -48,8 +49,7 @@ function formatDateTime(date) {
 }
 
 function parseDateTime(value) {
-  const date = new Date(String(value || '').replace(' ', 'T'))
-  return Number.isNaN(date.getTime()) ? null : date
+  return toBeijingDate(value)
 }
 
 function coversServiceTime(startTime, endTime, effectiveStart, effectiveEnd) {
@@ -84,9 +84,9 @@ function formatPetHint(pet) {
 }
 
 function getVoiceWeekday(startDate) {
-  const date = new Date(`${startDate}T00:00:00`)
-  if (Number.isNaN(date.getTime())) return new Date().getDay()
-  return date.getDay()
+  const date = toBeijingDate(`${startDate} 00:00:00`)
+  if (!date) return new Date().getDay()
+  return date.getUTCDay()
 }
 
 function buildPetVoiceMessage(pet, startDate) {

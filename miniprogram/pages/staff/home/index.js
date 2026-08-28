@@ -2,6 +2,7 @@ const { callFunction, showError, requirePrivacyAuthorize } = require('../../../u
 const { getSelectedLocation } = require('../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
+const { toBeijingDate } = require('../../../utils/format')
 
 function hasCoordinate(latitude, longitude) {
   return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && Math.abs(Number(latitude)) > 0.000001 && Math.abs(Number(longitude)) > 0.000001
@@ -90,9 +91,9 @@ function applyOrderFlags(orders, radiusKm, schedule) {
     const inRange = order.distanceKm !== null && order.distanceKm <= radiusKm
     let inTime = true
     if (normalized && order.startTime) {
-      const d = new Date(String(order.startTime).replace(/-/g, '/'))
-      if (!isNaN(d.getTime())) {
-        const jsDay = d.getDay()
+      const d = toBeijingDate(order.startTime)
+      if (d) {
+        const jsDay = d.getUTCDay()
         const dayKey = String(jsDay === 0 ? 7 : jsDay)
         const slots = normalized[dayKey]
         if (!Array.isArray(slots) || !slots.length) {

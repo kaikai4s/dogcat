@@ -1,7 +1,7 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
-const { withCheckinText, formatDateTime } = require('../../../../utils/format')
+const { withCheckinText, formatDateTime, toBeijingDate } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 function toMapPoint(item) {
@@ -47,9 +47,22 @@ function formatTrackTime(value) {
 function getPointTimeValue(value) {
   if (!value) return 0
   if (typeof value === 'number') return value
-  if (value instanceof Date) return value.getTime()
-  const time = new Date(String(value).replace(/-/g, '/')).getTime()
+  const date = toBeijingDate(value)
+  const time = date ? date.getTime() : 0
   return Number.isNaN(time) ? 0 : time
+}
+
+function groupCheckinPhotos(checkins = []) {
+  const map = {}
+  checkins.filter((item) => item.mediaFileId).forEach((item) => {
+    const eventType = item.eventType || ''
+    if (!map[eventType]) map[eventType] = { eventType, eventTypeText: item.eventTypeText || eventType, count: 0, photos: [], remarks: [], remarkText: '' }
+    map[eventType].count += 1
+    map[eventType].photos.push(item)
+    if (item.remark && !map[eventType].remarks.includes(item.remark)) map[eventType].remarks.push(item.remark)
+    map[eventType].remarkText = map[eventType].remarks.join('；')
+  })
+  return Object.values(map)
 }
 
 function buildMapData(tracks, checkins) {
@@ -136,6 +149,7 @@ Page({
     id: '',
     tracks: [],
     checkins: [],
+    checkinGroups: [],
     mapLatitude: 0,
     mapLongitude: 0,
     polyline: [],
@@ -166,9 +180,15 @@ Page({
       this.setData({
         tracks: tracks || [],
         checkins: mappedCheckins,
+        checkinGroups: groupCheckinPhotos(mappedCheckins),
         ...buildMapData(tracks || [], mappedCheckins)
       })
     }).catch(showError)
+  },
+  previewCheckinPhoto(e) {
+    const current = e.currentTarget.dataset.url
+    const urls = this.data.checkins.map((item) => item.mediaFileId).filter(Boolean)
+    if (current && urls.length) wx.previewImage({ current, urls })
   },
   ...navMethods()
 })

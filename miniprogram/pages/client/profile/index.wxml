@@ -166,8 +166,8 @@
       <view class="menu-left"><view class="menu-icon">!</view><view>意见反馈</view></view>
       <view class="menu-arrow">›</view>
     </view>
-    <view class="menu-item interactive" bindtap="openAdmin">
-      <view class="menu-left"><view class="menu-icon">测</view><view>管理端入口（测试用）</view></view>
+    <view class="menu-item interactive" wx:if="{{isAdmin}}" bindtap="openAdmin">
+      <view class="menu-left"><view class="menu-icon">管</view><view>进入管理员端</view></view>
       <view class="menu-arrow">›</view>
     </view>
     <view class="menu-item interactive" bindtap="openSettings">

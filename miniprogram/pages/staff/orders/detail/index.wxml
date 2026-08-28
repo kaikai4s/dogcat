@@ -81,6 +81,17 @@
     <button class="ghost" bindtap="copyOrderNo">复制订单号</button>
   </view>
 
+  <view class="card" wx:if="{{order.status === 'in_service' || order.status === 'completed'}}">
+    <view class="subtitle">履约证据</view>
+    <view class="info-row"><view class="label">轨迹点</view><view class="value">{{order.trackCount || 0}}</view></view>
+    <view wx:for="{{order.checkinRequirements}}" wx:key="eventType" class="info-row">
+      <view class="label">{{item.label}}</view>
+      <view class="value">{{item.photoCount || 0}} 张</view>
+    </view>
+    <button class="ghost" bindtap="tracking">查看服务轨迹</button>
+    <button class="ghost" wx:if="{{order.status === 'completed'}}" bindtap="report">查看服务报告</button>
+  </view>
+
   <button class="ghost" bindtap="openNavigation">导航到服务地址</button>
   <button class="primary" wx:if="{{order.status !== 'paid'}}" bindtap="service">进入服务</button>
   <button class="danger" wx:if="{{order.status !== 'paid'}}" bindtap="sos">SOS</button>

@@ -14,6 +14,7 @@ const staffEntryMap = {
 Page({
   data: {
     isGuest: true,
+    isAdmin: false,
     showSettings: false,
     themeOptions,
     themeKey: 'day',
@@ -113,6 +114,7 @@ Page({
     setCachedUser(null)
     this.setData({
       isGuest: true,
+      isAdmin: false,
       staffProfile: null,
       staffEntryReady: true,
       staffEntryTitle: staffEntryMap.none.title,
@@ -137,8 +139,10 @@ Page({
   applyUser(user) {
     const rawPhone = String(user.phone || '')
     const phone = rawPhone ? `${rawPhone.slice(0, 3)}****${rawPhone.slice(-4)}` : ''
+    const roles = Array.isArray(user.roles) ? user.roles : []
     this.setData({
       isGuest: false,
+      isAdmin: roles.includes('admin'),
       userName: user.nickname || phone || '宠物主',
       userMeta: phone ? `已绑定手机 ${phone}` : '欢迎回来，今天也要安心宠护',
       avatarUrl: user.avatarUrl || '',
@@ -255,12 +259,16 @@ Page({
 
   openAdmin() {
     ensureLogin({ content: '登录后可进入管理端。' })
-      .then(() => {
+      .then(() => callFunction('auth', 'me'))
+      .then((user) => {
+        const roles = Array.isArray(user.roles) ? user.roles : []
+        if (!roles.includes('admin')) throw new Error('仅管理员可进入')
+        setCachedUser(user)
         const app = getApp()
         if (app && app.globalData) app.globalData.activeRole = 'admin'
         wx.reLaunch({ url: '/pages/admin/home/index' })
       })
-      .catch(() => {})
+      .catch(showError)
   },
 
   openAddresses() {

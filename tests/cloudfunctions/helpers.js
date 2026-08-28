@@ -54,6 +54,11 @@ function createCollectionStore(initial = {}) {
         ensure(name).push({ _id, ...data })
         return { _id }
       },
+      async update({ data }) {
+        const items = ensure(name).filter((item) => matchWhere(item, this._where))
+        items.forEach((item) => Object.assign(item, data))
+        return { stats: { updated: items.length } }
+      },
       doc(id) {
         return {
           async get() {

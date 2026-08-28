@@ -1644,6 +1644,38 @@ function hasCoordinate(latitude, longitude) {
   return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && lat !== 0 && lng !== 0
 }
 
+function isActiveCheckin(item = {}) {
+  return !item.deletedAt
+}
+
+function hasCheckinPhoto(item = {}) {
+  return isActiveCheckin(item) && Boolean(item.mediaFileId)
+}
+
+function toCheckinPhotoView(item = {}) {
+  return {
+    _id: item._id || '',
+    eventType: item.eventType || '',
+    mediaFileId: item.mediaFileId || '',
+    remark: item.remark || '',
+    recordedAt: item.recordedAt || item.createdAt || item.serverTime || '',
+    createdAt: item.createdAt || '',
+    latitude: item.latitude,
+    longitude: item.longitude
+  }
+}
+
+function groupCheckinsByEventType(checkins = []) {
+  return checkins.filter(hasCheckinPhoto).reduce((map, item) => {
+    const eventType = item.eventType || ''
+    if (!eventType) return map
+    if (!map[eventType]) map[eventType] = { count: 0, photos: [] }
+    map[eventType].count += 1
+    map[eventType].photos.push(toCheckinPhotoView(item))
+    return map
+  }, {})
+}
+
 function calcDistanceKm(lat1, lng1, lat2, lng2) {
   if (!hasCoordinate(lat1, lng1) || !hasCoordinate(lat2, lng2)) return null
   const R = 6371 // 地球平均半径 (公里)
@@ -2043,6 +2075,12 @@ async function logAdmin(admin, targetType, targetId, action, detail) {
   await db.collection('admin_operation_logs').add({
     data: { adminUserId: admin._id, adminOpenid: admin.openid, targetType, targetId, action, detail: detail || {}, createdAt: now() }
   })
+}
+
+async function updateOrderWhenStatus(orderId, expectedStatus, data, message, extraWhere = {}) {
+  const updated = await db.collection('orders').where({ _id: orderId, status: expectedStatus, ...extraWhere }).update({ data })
+  if (!updated.stats || !updated.stats.updated) throw new Error(message)
+  return updated
 }
 
 async function removeByQuery(collectionName, where) {
@@ -3108,7 +3146,7 @@ function isProductionPaymentEnv() {
 }
 
 function assertPaymentModeAllowed(payment) {
-  if (isProductionPaymentEnv() && payment.mode === 'mock' && payment.allowMockInProduction !== true) throw new Error('正式环境禁止使用模拟支付')
+  if (isProductionPaymentEnv() && payment.mode === 'mock') throw new Error('正式环境禁止使用模拟支付')
 }
 
 function getWechatPayConfig(settings) {
@@ -3141,8 +3179,8 @@ function sanitizeWechatPayload(payload = {}) {
 }
 
 function wechatPayRequest(method, path, body, config) {
-  if (process.env.WECHAT_PAY_MOCK_PREPAY_ID && path.includes('/v3/pay/transactions/jsapi')) return Promise.resolve({ prepay_id: process.env.WECHAT_PAY_MOCK_PREPAY_ID })
-  if (process.env.WECHAT_PAY_MOCK_REFUND_ID && path.includes('/v3/refund/domestic/refunds')) return Promise.resolve({ refund_id: process.env.WECHAT_PAY_MOCK_REFUND_ID, status: process.env.WECHAT_PAY_MOCK_REFUND_STATUS || 'PROCESSING' })
+  if (!isProductionPaymentEnv() && process.env.WECHAT_PAY_MOCK_PREPAY_ID && path.includes('/v3/pay/transactions/jsapi')) return Promise.resolve({ prepay_id: process.env.WECHAT_PAY_MOCK_PREPAY_ID })
+  if (!isProductionPaymentEnv() && process.env.WECHAT_PAY_MOCK_REFUND_ID && path.includes('/v3/refund/domestic/refunds')) return Promise.resolve({ refund_id: process.env.WECHAT_PAY_MOCK_REFUND_ID, status: process.env.WECHAT_PAY_MOCK_REFUND_STATUS || 'PROCESSING' })
 
   return new Promise((resolve, reject) => {
     const bodyText = body ? JSON.stringify(body) : ''
@@ -3193,7 +3231,10 @@ function getHeader(headers = {}, name) {
 }
 
 function verifyWechatPayCallback(headers, rawBody, config) {
-  if (process.env.WECHAT_PAY_SKIP_VERIFY === 'true') return true
+  if (process.env.WECHAT_PAY_SKIP_VERIFY === 'true') {
+    if (isProductionPaymentEnv()) throw new Error('正式环境禁止跳过微信支付验签')
+    return true
+  }
   if (!config.platformPublicKey) throw new Error('微信支付平台公钥未配置')
   const timestamp = getHeader(headers, 'wechatpay-timestamp')
   const nonce = getHeader(headers, 'wechatpay-nonce')
@@ -3207,7 +3248,7 @@ function verifyWechatPayCallback(headers, rawBody, config) {
 }
 
 function decryptWechatPayResource(resource = {}, apiV3Key = '') {
-  if (process.env.WECHAT_PAY_MOCK_CALLBACK_RESOURCE) return JSON.parse(process.env.WECHAT_PAY_MOCK_CALLBACK_RESOURCE)
+  if (!isProductionPaymentEnv() && process.env.WECHAT_PAY_MOCK_CALLBACK_RESOURCE) return JSON.parse(process.env.WECHAT_PAY_MOCK_CALLBACK_RESOURCE)
   const ciphertext = Buffer.from(resource.ciphertext || '', 'base64')
   if (ciphertext.length <= 16) throw new Error('微信支付回调密文无效')
   const authTag = ciphertext.slice(ciphertext.length - 16)
@@ -3319,7 +3360,7 @@ async function markOrderPaid(orderId, paymentPayload = {}) {
       }
     })
   }
-  await db.collection('orders').doc(orderId).update({ data: paymentUpdate })
+  await updateOrderWhenStatus(orderId, order.status, paymentUpdate, '订单状态不可支付')
   if (order.couponId) await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'used', usedOrderId: orderId, usedAt: time, updatedAt: time } })
   await appendPaymentEvent('paid', { orderId, paymentNo, status: 'success', detail: { amount: Number(order.payAmount || 0), channel: paymentPayload.channel || 'mock' }, raw: paymentPayload.rawCallback || {} })
   await appendFinanceLog('order_paid', { targetType: 'order', targetId: orderId, orderId, amountDelta: Number(order.payAmount || 0), detail: { paymentNo } })
@@ -4110,17 +4151,22 @@ const handlers = {
       const orderId = data.id || data.orderId
       const { order } = await getOrderForAccess(openid, orderId)
       const displayOrder = await attachOrderDisplayData(order)
-      const [earlyStart, securityRes, checkinsRes] = await Promise.all([
+      const [earlyStart, securityRes, checkinsRes, tracksRes] = await Promise.all([
         getPendingEarlyStart(orderId).then((pending) => pending || getApprovedEarlyStart(orderId)),
         db.collection('order_home_security').where({ orderId }).limit(1).get(),
-        db.collection('checkin_logs').where({ orderId }).get()
+        db.collection('checkin_logs').where({ orderId }).get(),
+        db.collection('track_logs').where({ orderId }).get()
       ])
-      const completedSet = new Set((checkinsRes.data || []).map((item) => item.eventType))
+      const checkinGroups = groupCheckinsByEventType(checkinsRes.data || [])
       const checkinRequirements = Array.isArray(displayOrder.checkinRequirements) && displayOrder.checkinRequirements.length
         ? displayOrder.checkinRequirements
         : requiredCheckins(displayOrder.serviceType, displayOrder.serviceTypes).map((eventType, index) => ({ eventType, label: checkinEventText(eventType), required: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: (index + 1) * 10 }))
       const orderSecurity = securityRes.data[0] || displayOrder.orderHomeSecurity || displayOrder.homeSecuritySnapshot
-      return { ...displayOrder, checkinRequirements: checkinRequirements.map((item) => ({ ...item, completed: completedSet.has(item.eventType) })), earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: toPublicOrderHomeSecurity(orderSecurity) }
+      const enrichedRequirements = checkinRequirements.map((item) => {
+        const group = checkinGroups[item.eventType] || { count: 0, photos: [] }
+        return { ...item, completed: group.count > 0, photoCount: group.count, photos: group.photos }
+      })
+      return { ...displayOrder, trackCount: (tracksRes.data || []).length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: toPublicOrderHomeSecurity(orderSecurity) }
     }
 
     if (action === 'prepareRebook') {
@@ -4203,7 +4249,7 @@ const handlers = {
         update.paymentStatus = 'refunding'
         update.refundNo = refund.refundNo
       }
-      await db.collection('orders').doc(data.orderId).update({ data: update })
+      await updateOrderWhenStatus(data.orderId, order.status, update, '订单状态不可取消')
       if (order.paymentStatus !== 'paid' && order.couponId) {
         const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
         if (coupon && coupon.status === 'locked' && coupon.lockedOrderId === data.orderId) {
@@ -4276,7 +4322,7 @@ const handlers = {
       assertOrderTransition(order.status, ORDER_STATUS.IN_SERVICE, '订单状态不可开始')
       const time = now()
       if (!(await canStartOrderService({ ...order, _id: data.id }, time))) throw new Error('服务时间未到，可申请提前开始')
-      await db.collection('orders').doc(data.id).update({ data: { status: 'in_service', startedAt: time, updatedAt: time } })
+      await updateOrderWhenStatus(data.id, ORDER_STATUS.ASSIGNED, { status: 'in_service', startedAt: time, updatedAt: time }, '订单状态不可开始服务')
       const startedOrder = { ...order, _id: data.id, status: 'in_service', startedAt: time, updatedAt: time }
       await appendOrderTimeline(data.id, 'started', '服务已开始', '', 'staff')
       await appendOrderClientMessage(startedOrder, { eventType: 'started', title: '服务已开始', detail: '宠护师已开始服务', actorRole: 'staff' })
@@ -4289,16 +4335,16 @@ const handlers = {
       if (order.status === 'completed') return { id: data.id, completedOrderCount: Number((await getUser(order.clientOpenid)).completedOrderCount || 0) }
       assertOrderTransition(order.status, ORDER_STATUS.COMPLETED, '订单状态不可完成')
       const checkins = await db.collection('checkin_logs').where({ orderId: data.id }).get()
-      const eventSet = checkins.data.reduce((map, item) => ({ ...map, [item.eventType]: true }), {})
+      const eventSet = (checkins.data || []).filter(hasCheckinPhoto).reduce((map, item) => ({ ...map, [item.eventType]: true }), {})
       const requirements = Array.isArray(order.checkinRequirements) && order.checkinRequirements.length
         ? order.checkinRequirements
         : (order.requiredCheckins || []).map((eventType) => ({ eventType, label: checkinEventText(eventType), required: true }))
       const missing = requirements.filter((item) => item.required && !eventSet[item.eventType])
-      if (missing.length) throw new Error(`缺少必打卡：${missing.map((item) => item.label || checkinEventText(item.eventType)).join('、')}`)
+      if (missing.length) throw new Error(`缺少必打卡照片：${missing.map((item) => item.label || checkinEventText(item.eventType)).join('、')}`)
       const security = order.orderHomeSecurity || order.homeSecuritySnapshot || {}
       if (security.type === 'key' && security.key && security.key.returnRequired && !security.key.returnedAt) throw new Error('请先完成放回钥匙打卡')
       const time = now()
-      await db.collection('orders').doc(data.id).update({ data: { status: 'completed', completedAt: time, updatedAt: time } })
+      await updateOrderWhenStatus(data.id, ORDER_STATUS.IN_SERVICE, { status: 'completed', completedAt: time, updatedAt: time }, '订单状态不可完成')
       const completedOrder = { ...order, _id: data.id, status: 'completed', completedAt: time, updatedAt: time }
       await appendOrderTimeline(data.id, 'completed', '服务已完成', '', 'staff')
       await appendOrderClientMessage(completedOrder, { eventType: 'completed', title: '服务已完成', detail: '服务已完成，可查看服务报告或评价', actorRole: 'staff' })
@@ -4319,7 +4365,7 @@ const handlers = {
       const order = (await getOrderForAccess(openid, data.id)).order
       const tracks = await db.collection('track_logs').where({ orderId: data.id }).orderBy('recordedAt', 'asc').get()
       const checkins = await db.collection('checkin_logs').where({ orderId: data.id }).orderBy('createdAt', 'asc').get()
-      return { order, tracks: tracks.data, checkins: checkins.data }
+      return { order, tracks: tracks.data, checkins: (checkins.data || []).filter(isActiveCheckin) }
     }
     if (action === 'listPublicCompletedOrders') {
       const serviceType = safeText(data.serviceType).trim()
@@ -4347,7 +4393,7 @@ const handlers = {
         const displayOrder = await attachClientSnapshot(order)
         return toHomeOrderActivity(displayOrder, {
           review: reviewMap[order._id] || null,
-          checkins: (checkinMap[order._id] || []).sort((a, b) => toTimeValue(a.createdAt || a.recordedAt) - toTimeValue(b.createdAt || b.recordedAt)),
+          checkins: (checkinMap[order._id] || []).filter(isActiveCheckin).sort((a, b) => toTimeValue(a.createdAt || a.recordedAt) - toTimeValue(b.createdAt || b.recordedAt)),
           staffProfile: staffProfileMap[order.staffProfileId || order.requestedStaffProfileId] || {},
           hideCheckinPhotos: shouldHidePublicCheckinPhotos(userMap[order.clientOpenid])
         })
@@ -4371,7 +4417,7 @@ const handlers = {
       const displayOrder = await attachClientSnapshot(order)
       return toHomeOrderActivity(displayOrder, {
         review: reviewRes.data[0] || null,
-        checkins: checkinsRes.data || [],
+        checkins: (checkinsRes.data || []).filter(isActiveCheckin),
         staffProfile,
         hideCheckinPhotos: shouldHidePublicCheckinPhotos(clientRes.data[0])
       })
@@ -4703,7 +4749,7 @@ const handlers = {
       }
       const clientRequestId = getClientRequestId(data)
       const payment = await ensurePaymentRecord(order, openid, settings.payment.mode, clientRequestId)
-      await db.collection('orders').doc(data.orderId).update({ data: { paymentStatus: 'paying', paymentNo: payment.paymentNo, paymentClientRequestId: payment.clientRequestId || clientRequestId, updatedAt: now() } })
+      await updateOrderWhenStatus(data.orderId, ORDER_STATUS.PENDING_PAY, { paymentStatus: 'paying', paymentNo: payment.paymentNo, paymentClientRequestId: payment.clientRequestId || clientRequestId, updatedAt: now() }, '订单状态不可支付')
       if (settings.payment.mode === 'mock') return { mock: true, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, message: '当前为模拟支付模式' }
 
       const config = getWechatPayConfig(settings)
@@ -4762,6 +4808,7 @@ const handlers = {
     if (action === 'mockPayOrder') {
       const { order } = await requireClientOrder(openid, data.orderId, '无权支付该订单')
       const settings = await getSystemSettings()
+      assertPaymentModeAllowed(settings.payment)
       if (settings.payment.mode !== 'mock') throw new Error('当前未开启模拟支付')
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid' }
       if (order.status !== 'pending_pay' && order.paymentStatus !== 'paying') throw new Error('订单状态不可支付')
@@ -5285,7 +5332,7 @@ const handlers = {
       await validateStaffAvailability(profile, order.startTime, order.endTime, { excludeOrderId: data.orderId })
       const time = now()
       const assignmentUpdate = { staffUserId: user._id, staffOpenid: openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: publishMode === 'direct' ? 'direct_accept' : 'open_grab', assignedAt: time, updatedAt: time }
-      await db.collection('orders').doc(data.orderId).update({ data: assignmentUpdate })
+      await updateOrderWhenStatus(data.orderId, ORDER_STATUS.PAID, assignmentUpdate, '订单已被分配', { staffOpenid: '' })
       const assignedOrder = { ...order, _id: data.orderId, ...assignmentUpdate }
       const assignedTitle = publishMode === 'direct' ? '指定宠托师已接单' : '宠托师已抢单'
       await appendOrderTimeline(data.orderId, 'assigned', assignedTitle, maskStaffName(profile.realName), 'staff')
@@ -5486,15 +5533,28 @@ const handlers = {
       if (!hasCoordinate(latitude, longitude)) throw new Error('打卡定位无效')
       const time = now()
       const recordedAt = data.recordedAt || time
-      const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientRequestId, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, serverTime: time, recordedAt, isBackfilled: data.isBackfilled === true, remark: data.remark || data.note || '', createdAt: time }
+      const existingEventPhotos = await db.collection('checkin_logs').where({ orderId: data.orderId, eventType: data.eventType }).get()
+      const shouldWriteTimeline = !(existingEventPhotos.data || []).some(hasCheckinPhoto)
+      const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientRequestId, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, serverTime: time, recordedAt, isBackfilled: data.isBackfilled === true, remark: data.remark || data.note || '', createdAt: time, updatedAt: time, deletedAt: null, deletedByOpenid: '' }
       const created = await db.collection('checkin_logs').add({ data: checkin })
-      await appendOrderTimeline(data.orderId, 'checkin', data.isBackfilled === true ? '服务打卡已补传' : '服务打卡', data.eventType, 'staff')
+      if (shouldWriteTimeline) await appendOrderTimeline(data.orderId, 'checkin', data.isBackfilled === true ? '服务打卡已补传' : '服务打卡', data.eventType, 'staff')
       return { _id: created._id, ...checkin }
+    }
+    if (action === 'deleteCheckin') {
+      const { order } = await requireStaffOrder(openid, data.orderId, '仅订单员工可删除打卡照片')
+      if (order.status !== 'in_service') throw new Error('仅服务中可删除打卡照片')
+      if (!data.checkinId) throw new Error('请选择要删除的照片')
+      const checkin = (await db.collection('checkin_logs').doc(data.checkinId).get()).data
+      if (!checkin || checkin.orderId !== data.orderId) throw new Error('打卡照片不存在')
+      if (checkin.deletedAt) return { _id: data.checkinId, deletedAt: checkin.deletedAt }
+      const time = now()
+      await db.collection('checkin_logs').doc(data.checkinId).update({ data: { deletedAt: time, deletedByOpenid: openid, updatedAt: time } })
+      return { _id: data.checkinId, deletedAt: time }
     }
     if (action === 'listOrderCheckins') {
       await getOrderForAccess(openid, data.orderId)
       const res = await db.collection('checkin_logs').where({ orderId: data.orderId }).orderBy('recordedAt', 'asc').get()
-      return res.data
+      return (res.data || []).filter(isActiveCheckin)
     }
     throw new Error('未知 checkin 操作')
   },
@@ -6006,7 +6066,8 @@ const handlers = {
       const checkins = await db.collection('checkin_logs').where({ orderId: id }).orderBy('createdAt', 'asc').get()
       const unlockLogs = await db.collection('unlock_code_logs').where({ orderId: id }).orderBy('createdAt', 'desc').get()
       const displayOrder = await attachAdminOrderContactData(order.data)
-      return { order: displayOrder, tracks: tracks.data, checkins: checkins.data, unlockLogs: unlockLogs.data }
+      if (action === 'getEvidence') await logAdmin(admin, 'order', id, 'getEvidence', { trackCount: (tracks.data || []).length, checkinCount: (checkins.data || []).filter(isActiveCheckin).length })
+      return { order: displayOrder, tracks: tracks.data, checkins: (checkins.data || []).filter(isActiveCheckin), unlockLogs: unlockLogs.data }
     }
     if (action === 'assignOrder') {
       const orderRes = await db.collection('orders').doc(data.orderId).get()
@@ -6020,7 +6081,7 @@ const handlers = {
       if (!staffUser) throw new Error('员工用户不存在')
       const time = now()
       const assignmentUpdate = { staffUserId: staffUser._id, staffOpenid: staffUser.openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: 'admin_assign', assignedAt: time, updatedAt: time }
-      await db.collection('orders').doc(data.orderId).update({ data: assignmentUpdate })
+      await updateOrderWhenStatus(data.orderId, ORDER_STATUS.PAID, assignmentUpdate, '订单已被分配', { staffOpenid: '' })
       const assignedOrder = { ...orderRes.data, _id: data.orderId, ...assignmentUpdate }
       await appendOrderTimeline(data.orderId, 'assigned', '管理员已派单', maskStaffName(profile.realName), 'admin')
       await appendOrderClientMessage(assignedOrder, { eventType: 'assigned', title: '平台已派单', detail: maskStaffName(profile.realName), actorRole: 'admin' })
@@ -6630,8 +6691,30 @@ const handlers = {
     throw new Error('未知 staffMessage 操作')
   },
 
-  async initData(openid, action) {
+  async initData(openid, action, data = {}) {
+    function getInitAdminSecret() {
+      return safeText(process.env.INIT_ADMIN_SECRET).trim()
+    }
+
+    function assertInitAdminSecret() {
+      const secret = getInitAdminSecret()
+      if (!secret) throw new Error('初始管理员配置未完成')
+      if (safeText(data.secret).trim() !== secret) throw new Error('初始化密钥不正确')
+    }
+
+    async function hasActiveAdmin() {
+      const usersRes = await db.collection('users').get()
+      return (usersRes.data || []).some((user) => user.status === 'active' && Array.isArray(user.roles) && user.roles.includes('admin'))
+    }
+
+    async function requireInitSecretOrAdmin() {
+      if (await hasActiveAdmin()) return requireAdmin(openid)
+      assertInitAdminSecret()
+      return null
+    }
+
     if (action === 'checkCollections') {
+      await requireInitSecretOrAdmin()
       const result = []
       for (let i = 0; i < collections.length; i += 1) {
         const name = collections[i]
@@ -6645,22 +6728,27 @@ const handlers = {
       return result
     }
 
-    async function seedAdmin() {
+    async function claimInitialAdmin() {
+      assertInitAdminSecret()
+      const allowedPhones = safeText(process.env.INIT_ADMIN_PHONES)
+        .split(',')
+        .map((phone) => phone.trim())
+        .filter(Boolean)
+      if (!allowedPhones.length) throw new Error('初始管理员配置未完成')
+      const user = await getUser(openid)
+      const phone = safeText(user.phone).trim()
+      if (!phone) throw new Error('请先绑定手机号')
+      if (!allowedPhones.includes(phone)) throw new Error('当前手机号不在初始管理员白名单')
+      if (await hasActiveAdmin()) throw new Error('初始管理员已存在')
       const time = now()
-      let user = await getOptionalUser(openid)
-      if (!user) {
-        const userData = { openid, phone: '', nickname: '管理员', avatarUrl: '', roles: ['client', 'staff', 'admin'], activeRole: 'admin', status: 'active', createdAt: time, updatedAt: time }
-        const created = await db.collection('users').add({ data: userData })
-        return { _id: created._id, ...userData }
-      }
-      const roles = Array.from(new Set([...(user.roles || ['client']), 'staff', 'admin']))
+      const roles = Array.from(new Set([...(Array.isArray(user.roles) ? user.roles : ['client']), 'admin']))
       await db.collection('users').doc(user._id).update({ data: { roles, activeRole: 'admin', status: 'active', updatedAt: time } })
-      return { ...user, roles, activeRole: 'admin', status: 'active' }
+      return { ...user, roles, activeRole: 'admin', status: 'active', updatedAt: time }
     }
 
-    if (action === 'seedAdmin') return seedAdmin()
+    if (action === 'claimInitialAdmin' || action === 'seedAdmin') return claimInitialAdmin()
     if (action === 'seedDemoData') {
-      const user = await seedAdmin()
+      const user = await requireAdmin(openid)
       const time = now()
       const petRes = await db.collection('pets').where({ openid, name: '可乐' }).limit(1).get()
       let pet = petRes.data[0]

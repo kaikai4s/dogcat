@@ -690,6 +690,99 @@ test('admin cannot feature unapproved sitter', async () => {
   assert.equal(result.message, '仅已审核通过的宠托师可设为精选')
 })
 
+test('initData claimInitialAdmin grants first admin with matching secret and phone whitelist', async () => {
+  await withEnv({ INIT_ADMIN_SECRET: 'init-secret', INIT_ADMIN_PHONES: '19900006302,13800000000' }, async () => {
+    const db = createCollectionStore({
+      users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000', nickname: '豆豆家长' }]
+    })
+    const fn = loadCloudFunction('api', db, 'openid_client')
+
+    const result = await fn.main({ module: 'initData', action: 'claimInitialAdmin', data: { secret: 'init-secret' } })
+
+    assert.equal(result.ok, true)
+    assert.deepEqual(db.state.users[0].roles, ['client', 'admin'])
+    assert.equal(db.state.users[0].activeRole, 'admin')
+  })
+})
+
+test('initData claimInitialAdmin rejects wrong secret', async () => {
+  await withEnv({ INIT_ADMIN_SECRET: 'init-secret', INIT_ADMIN_PHONES: '13800000000' }, async () => {
+    const db = createCollectionStore({
+      users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }]
+    })
+    const fn = loadCloudFunction('api', db, 'openid_client')
+
+    const result = await fn.main({ module: 'initData', action: 'claimInitialAdmin', data: { secret: 'wrong' } })
+
+    assert.equal(result.ok, false)
+    assert.equal(result.message, '初始化密钥不正确')
+    assert.deepEqual(db.state.users[0].roles, ['client'])
+  })
+})
+
+test('initData claimInitialAdmin rejects phone outside whitelist', async () => {
+  await withEnv({ INIT_ADMIN_SECRET: 'init-secret', INIT_ADMIN_PHONES: '13800000000' }, async () => {
+    const db = createCollectionStore({
+      users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '15900000001' }]
+    })
+    const fn = loadCloudFunction('api', db, 'openid_client')
+
+    const result = await fn.main({ module: 'initData', action: 'claimInitialAdmin', data: { secret: 'init-secret' } })
+
+    assert.equal(result.ok, false)
+    assert.equal(result.message, '当前手机号不在初始管理员白名单')
+    assert.deepEqual(db.state.users[0].roles, ['client'])
+  })
+})
+
+test('initData claimInitialAdmin rejects when active admin already exists', async () => {
+  await withEnv({ INIT_ADMIN_SECRET: 'init-secret', INIT_ADMIN_PHONES: '13800000000' }, async () => {
+    const db = createCollectionStore({
+      users: [
+        { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active', phone: '19900006302' },
+        { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }
+      ]
+    })
+    const fn = loadCloudFunction('api', db, 'openid_client')
+
+    const result = await fn.main({ module: 'initData', action: 'claimInitialAdmin', data: { secret: 'init-secret' } })
+
+    assert.equal(result.ok, false)
+    assert.equal(result.message, '初始管理员已存在')
+    assert.deepEqual(db.state.users.find((user) => user._id === 'client').roles, ['client'])
+  })
+})
+
+test('initData checkCollections requires init secret before admin exists', async () => {
+  await withEnv({ INIT_ADMIN_SECRET: 'init-secret', INIT_ADMIN_PHONES: '13800000000' }, async () => {
+    const db = createCollectionStore({ users: [] })
+    const fn = loadCloudFunction('api', db, 'openid_guest')
+
+    const denied = await fn.main({ module: 'initData', action: 'checkCollections', data: { secret: 'wrong' } })
+    const allowed = await fn.main({ module: 'initData', action: 'checkCollections', data: { secret: 'init-secret' } })
+
+    assert.equal(denied.ok, false)
+    assert.equal(denied.message, '初始化密钥不正确')
+    assert.equal(allowed.ok, true)
+    assert.ok(Array.isArray(allowed.data))
+  })
+})
+
+test('initData seedDemoData requires admin after setup', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }
+    ]
+  })
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const result = await clientFn.main({ module: 'initData', action: 'seedDemoData' })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.message, '仅管理员可操作')
+})
+
 test('admin can list grant and revoke admin roles safely', async () => {
   const db = createCollectionStore({
     users: [
@@ -1080,6 +1173,7 @@ test('staff visibility and accept permissions respect open and direct publish mo
   const deniedResult = await staffBFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'direct_order' } })
   const directAcceptResult = await staffAFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'direct_order' } })
   const openAcceptResult = await staffBFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'open_order' } })
+  const duplicateOpenAcceptResult = await staffAFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'open_order' } })
 
   assert.equal(nearbyResult.ok, true)
   assert.deepEqual(nearbyResult.data.map((order) => order._id), ['open_order'])
@@ -1097,7 +1191,10 @@ test('staff visibility and accept permissions respect open and direct publish mo
   assert.equal(directAcceptResult.ok, true)
   assert.equal(db.state.orders.find((order) => order._id === 'direct_order').assignmentSource, 'direct_accept')
   assert.equal(openAcceptResult.ok, true)
+  assert.equal(duplicateOpenAcceptResult.ok, false)
+  assert.equal(duplicateOpenAcceptResult.message, '订单状态不可接单')
   assert.equal(db.state.orders.find((order) => order._id === 'open_order').assignmentSource, 'open_grab')
+  assert.equal(db.state.orders.find((order) => order._id === 'open_order').staffOpenid, 'openid_staff_b')
 })
 
 test('admin assignOrder writes staff profile and admin assignment source', async () => {
@@ -1579,6 +1676,43 @@ test('payment create status mock pay and admin refund permissions work', async (
 })
 
 
+test('payment mock pay is blocked in production', async () => {
+  await withEnv({ PAYMENT_ENV: 'production' }, async () => {
+    const db = createCollectionStore({
+      users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+      orders: [{ _id: 'order1', orderNo: 'O1', clientOpenid: 'openid_client', status: 'pending_pay', paymentStatus: 'unpaid', payAmount: 88 }],
+      platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { payment: { mode: 'mock' } } }]
+    })
+    const fn = loadCloudFunction('api', db, 'openid_client')
+
+    const result = await fn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: 'order1' } })
+
+    assert.equal(result.ok, false)
+    assert.equal(result.message, '正式环境禁止使用模拟支付')
+  })
+})
+
+test('payment callback cannot skip signature verification in production', async () => {
+  await withEnv({ PAYMENT_ENV: 'production', WECHAT_PAY_SKIP_VERIFY: 'true', WECHAT_PAY_PRIVATE_KEY: testPrivateKey }, async () => {
+    const db = createCollectionStore({
+      payments: [],
+      payment_events: [],
+      platform_configs: [{
+        _id: 'cfg1',
+        key: 'system_settings',
+        value: { payment: { mode: 'wechat', appId: 'wx_app', mchId: 'mch_1', notifyUrl: 'https://example.com/pay/callback', certSerialNo: 'cert_1', apiV3Key: '12345678901234567890123456789012' } }
+      }]
+    })
+    const fn = loadCloudFunction('api', db, 'openid_client')
+
+    const result = await fn.main({ module: 'payment', action: 'paymentCallback', data: { headers: {}, rawBody: '{}' } })
+
+    assert.equal(result.ok, true)
+    assert.equal(result.data.code, 'FAIL')
+    assert.equal(result.data.message, '正式环境禁止跳过微信支付验签')
+  })
+})
+
 test('order messages list unread summary and mark read work', async () => {
   const db = createCollectionStore({
     users: [
@@ -2046,6 +2180,76 @@ test('reward mail unread count and claim are idempotent', async () => {
   assert.equal(db.state.point_logs.length, 1)
   assert.equal(unreadAfter.data.unreadCount, 0)
   assert.equal(unreadAfter.data.unclaimedCount, 0)
+})
+
+test('order detail returns persisted track count and grouped checkin photos', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
+    ],
+    orders: [{ _id: 'order1', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', status: 'in_service', serviceType: 'feed', checkinRequirements: [{ eventType: 'enter_door', label: '入户打卡', required: true }, { eventType: 'feed', label: '喂食', required: true }] }],
+    checkin_logs: [
+      { _id: 'ck1', orderId: 'order1', eventType: 'enter_door', mediaFileId: 'cloud://p1.jpg', recordedAt: '2026-08-28 10:00' },
+      { _id: 'ck2', orderId: 'order1', eventType: 'enter_door', mediaFileId: 'cloud://p2.jpg', recordedAt: '2026-08-28 10:01' },
+      { _id: 'ck3', orderId: 'order1', eventType: 'feed', mediaFileId: 'cloud://deleted.jpg', deletedAt: '2026-08-28 10:02' }
+    ],
+    track_logs: [{ _id: 't1', orderId: 'order1' }, { _id: 't2', orderId: 'order1' }],
+    order_home_security: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_staff')
+
+  const result = await fn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'order1' } })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.trackCount, 2)
+  assert.equal(result.data.checkinPhotoCount, 2)
+  assert.equal(result.data.checkinRequirements[0].completed, true)
+  assert.equal(result.data.checkinRequirements[0].photoCount, 2)
+  assert.equal(result.data.checkinRequirements[0].photos.length, 2)
+  assert.equal(result.data.checkinRequirements[1].completed, false)
+  assert.equal(result.data.checkinRequirements[1].photoCount, 0)
+})
+
+test('checkin supports multiple photos per service item and idempotency per photo', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }],
+    orders: [{ _id: 'order1', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', status: 'in_service', requiredCheckins: [] }],
+    checkin_logs: [],
+    order_timeline: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_staff')
+
+  const first = await fn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: 'order1', eventType: 'feed', mediaFileId: 'cloud://p1.jpg', latitude: 31.2, longitude: 121.5, clientRequestId: 'ck1' } })
+  const second = await fn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: 'order1', eventType: 'feed', mediaFileId: 'cloud://p2.jpg', latitude: 31.2, longitude: 121.5, clientRequestId: 'ck2' } })
+  const duplicate = await fn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: 'order1', eventType: 'feed', mediaFileId: 'cloud://p1-again.jpg', latitude: 31.2, longitude: 121.5, clientRequestId: 'ck1' } })
+
+  assert.equal(first.ok, true)
+  assert.equal(second.ok, true)
+  assert.equal(duplicate.data._id, first.data._id)
+  assert.equal(db.state.checkin_logs.length, 2)
+  assert.equal(db.state.order_timeline.length, 1)
+})
+
+test('checkin delete soft deletes active photos and list hides them', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }],
+    orders: [{ _id: 'order1', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', status: 'in_service', requiredCheckins: [] }],
+    checkin_logs: [{ _id: 'ck1', orderId: 'order1', staffOpenid: 'openid_staff', eventType: 'feed', mediaFileId: 'cloud://p1.jpg' }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_staff')
+
+  const deleted = await fn.main({ module: 'checkin', action: 'deleteCheckin', data: { orderId: 'order1', checkinId: 'ck1' } })
+  const deletedAgain = await fn.main({ module: 'checkin', action: 'deleteCheckin', data: { orderId: 'order1', checkinId: 'ck1' } })
+  const list = await fn.main({ module: 'checkin', action: 'listOrderCheckins', data: { orderId: 'order1' } })
+  db.state.orders[0].status = 'completed'
+  const denied = await fn.main({ module: 'checkin', action: 'deleteCheckin', data: { orderId: 'order1', checkinId: 'ck1' } })
+
+  assert.equal(deleted.ok, true)
+  assert.ok(db.state.checkin_logs[0].deletedAt)
+  assert.equal(deletedAgain.ok, true)
+  assert.deepEqual(list.data, [])
+  assert.equal(denied.ok, false)
 })
 
 test('track and checkin backfill are idempotent', async () => {

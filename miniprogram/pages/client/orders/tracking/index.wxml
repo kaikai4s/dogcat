@@ -56,12 +56,15 @@
 
   <view class="card timeline-card">
     <view class="subtitle">打卡时间轴</view>
-    <view class="timeline" wx:if="{{checkins.length}}">
-      <view class="timeline-item pretty" wx:for="{{checkins}}" wx:key="_id">
+    <view class="timeline" wx:if="{{checkinGroups.length}}">
+      <view class="timeline-item pretty" wx:for="{{checkinGroups}}" wx:key="eventType">
         <view class="timeline-dot"></view>
         <view class="timeline-content">
-          <view class="strong">{{item.eventTypeText}}</view>
-          <view class="muted">{{item.remark || '暂无备注'}}</view>
+          <view class="strong">{{item.eventTypeText}} · {{item.count}}张</view>
+          <view class="muted">{{item.remarkText || '暂无备注'}}</view>
+          <view class="image-list" wx:if="{{item.photos.length}}">
+            <image wx:for="{{item.photos}}" wx:for-item="photo" wx:key="_id" class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewCheckinPhoto" />
+          </view>
         </view>
       </view>
     </view>

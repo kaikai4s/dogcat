@@ -1,23 +1,32 @@
 <view class="page {{themeClass}} {{fontClass}}">
   <view class="dashboard-header">
-    <view class="badge">实时证据</view>
+    <view class="badge">现场证据</view>
     <view class="title">{{eventTypeText}} 打卡</view>
-    <view class="tip">使用实时相机拍照上传，补充备注后提交到订单证据链。</view>
-  </view>
-
-  <view class="camera-shell">
-    <camera device-position="back" flash="off" class="camera"></camera>
-  </view>
-
-  <button class="ghost" bindtap="takePhoto">实时拍照</button>
-  <view class="notice" wx:if="{{mediaFileId}}">
-    <view class="strong">照片已上传</view>
-    <view class="muted">请确认现场情况后提交打卡。</view>
+    <view class="tip">拍照或上传截图后会立即保存到订单证据链，可在服务结束前删除。</view>
   </view>
 
   <view class="card form-card">
-    <textarea placeholder="备注" value="{{remark}}" bindinput="input" />
+    <textarea placeholder="备注（会随本次上传的照片保存）" value="{{remark}}" bindinput="input" />
   </view>
 
-  <button class="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">提交打卡</button>
+  <button class="primary" loading="{{uploading}}" disabled="{{uploading}}" bindtap="chooseAndCreateCheckins">{{uploading ? '上传中...' : '拍照 / 上传截图'}}</button>
+
+  <view class="card">
+    <view class="between">
+      <view>
+        <view class="subtitle">已上传照片</view>
+        <view class="muted">{{photos.length}} 张，至少保留 1 张才计入必打卡。</view>
+      </view>
+    </view>
+    <view class="photo-grid" wx:if="{{photos.length}}">
+      <view class="photo-cell" wx:for="{{photos}}" wx:key="_id">
+        <image class="checkin-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewPhoto" />
+        <view class="photo-meta">{{item.remark || '无备注'}}</view>
+        <button class="mini-delete" data-id="{{item._id}}" loading="{{deletingId === item._id}}" disabled="{{deletingId === item._id}}" bindtap="deletePhoto">删除</button>
+      </view>
+    </view>
+    <view class="empty" wx:else>暂无照片，请拍照或上传截图。</view>
+  </view>
+
+  <button class="ghost" bindtap="goBack">完成返回</button>
 </view>

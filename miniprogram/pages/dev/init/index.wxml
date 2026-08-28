@@ -3,7 +3,8 @@
   <view class="tip">仅开发期使用。上线前请从 app.json 移除此页面。</view>
 
   <button class="ghost" bindtap="checkCollections">检查集合</button>
-  <button class="primary" bindtap="seedAdmin">把当前账号设为管理员</button>
+  <input class="input" password placeholder="输入初始管理员密钥" value="{{initAdminSecret}}" bindinput="inputInitAdminSecret" />
+  <button class="primary" bindtap="seedAdmin">领取初始管理员</button>
   <button class="primary" bindtap="seedDemoData">生成演示数据</button>
 
   <view class="subtitle" wx:if="{{collections.length}}">集合检查</view>
