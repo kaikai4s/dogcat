@@ -111,6 +111,8 @@
   font-size: 52rpx;
 }
 
+.title-badge { background: #fff7d6; color: #b45309; }
+
 .preview-tip {
   position: absolute;
   bottom: 0;

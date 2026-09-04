@@ -92,6 +92,15 @@
     </view>
   </view>
 
+  <view class="home-section pet-beauty-entry interactive" wx:if="{{homePage.modules.petBeautyActivity !== false}}" data-url="/pages/client/pet-beauty/activity/index" bindtap="go">
+    <view class="remix-icon ri-heart-3-fill pet-beauty-icon"></view>
+    <view class="pet-beauty-copy">
+      <view class="section-title">最美宠物活动</view>
+      <view class="section-desc">晒出爱宠美照，每天为 TA 投一票</view>
+    </view>
+    <view class="pet-beauty-btn">去围观</view>
+  </view>
+
   <view class="home-section repeat-section interactive" wx:if="{{homePage.modules.repeatBooking && repeatOrder}}" data-url="/pages/client/orders/create/index" bindtap="goProtected">
     <view class="remix-icon ri-restart-fill section-side-icon"></view>
     <view class="repeat-main"><view class="section-title">{{homePage.repeatTitle}}</view><view class="repeat-title">{{repeatOrder.petName}} · {{repeatOrder.serviceSummary}}</view><view class="section-desc">复用历史服务习惯，快速填写预约</view></view>

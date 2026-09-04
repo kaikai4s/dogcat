@@ -457,6 +457,38 @@
   text-align: center;
 }
 
+.pet-beauty-entry {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  background: linear-gradient(135deg, #fff7d6 0%, #fff0e2 52%, #fff7f4 100%);
+}
+
+.pet-beauty-icon {
+  width: 72rpx !important;
+  height: 72rpx !important;
+  border-radius: 26rpx;
+  color: #ff7a45 !important;
+  background: rgba(255,255,255,.74) !important;
+  font-size: 46rpx !important;
+  box-shadow: 0 10rpx 22rpx rgba(255,122,69,.12) !important;
+}
+
+.pet-beauty-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.pet-beauty-btn {
+  flex-shrink: 0;
+  padding: 12rpx 18rpx;
+  border-radius: 999rpx;
+  color: #fff;
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
 .repeat-section {
   display: flex;
   align-items: center;

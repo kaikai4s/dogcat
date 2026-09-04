@@ -35,10 +35,11 @@
           <view class="group-title">{{item.eventTypeText}}</view>
           <view class="group-count">{{item.count}}张</view>
         </view>
+        <button class="ghost-btn import-beauty-btn" wx:if="{{item.eventType === 'pet_beauty_photo'}}" data-index="{{index}}" loading="{{importingBeauty}}" disabled="{{importingBeauty}}" bindtap="importBeautyPhotos"><text class="remix-icon ri-image-add-line"></text><text>加入宠物美照相册</text></button>
         <view class="group-remark" wx:if="{{item.remarkText}}">{{item.remarkText}}</view>
         <view class="image-list">
           <view class="photo-item" wx:for="{{item.photos}}" wx:for-item="photo" wx:key="_id">
-            <image class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewPhoto" />
+            <image class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewPhoto" bindlongpress="savePhoto" />
             <view class="photo-time">{{photo.recordedAtText || '未记录时间'}}</view>
           </view>
         </view>

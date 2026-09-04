@@ -1,0 +1,46 @@
+<view class="page pet-beauty-page {{themeClass}}">
+  <view class="beauty-hero">
+    <view class="hero-badge"><text class="remix-icon ri-heart-3-fill"></text><text>最美宠物活动</text></view>
+    <view class="hero-title">{{monthKey}} 最美爱宠榜</view>
+    <view class="hero-desc">上传宠物美照参与月榜，每天可以为喜欢的毛孩子投一票。</view>
+    <view class="hero-state">{{locked ? '本月榜单已锁定' : (hasVotedToday ? '今日已投票' : '今日还可投票')}}</view>
+  </view>
+
+  <view class="section-card">
+    <view class="section-head">
+      <view><view class="section-title">美照墙</view><view class="section-desc">点击卡片查看宠物全部美照</view></view>
+      <text class="remix-icon ri-image-fill section-icon"></text>
+    </view>
+    <view class="photo-wall" wx:if="{{candidates.length}}">
+      <view class="pet-card" wx:for="{{candidates}}" wx:key="petId" data-id="{{item.petId}}" bindtap="previewPet">
+        <image class="pet-cover" src="{{item.avatarFileId || item.beautyPhotos[0].fileId}}" mode="aspectFill" />
+        <view class="pet-info">
+          <view class="pet-name">{{item.name}}</view>
+          <view class="pet-title" wx:if="{{item.beautyTitle && item.beautyTitle.title}}">{{item.beautyTitle.title}}</view>
+          <view class="pet-meta">{{item.ageText}} · {{item.speciesText}}</view>
+          <button class="vote-btn" catchtap="vote" data-id="{{item.petId}}" loading="{{votingPetId === item.petId}}" disabled="{{locked || hasVotedToday || votingPetId === item.petId}}"><text class="remix-icon {{votedPetId === item.petId ? 'ri-thumb-up-fill' : 'ri-thumb-up-line'}}"></text><text>{{item.voteCount}}票</text></button>
+        </view>
+      </view>
+    </view>
+    <view class="empty-state" wx:else>
+      <text class="remix-icon ri-image-add-line empty-icon"></text>
+      <view>暂无宠物美照，先去宠物档案上传吧</view>
+    </view>
+  </view>
+
+  <view class="section-card ranking-card">
+    <view class="section-head"><view><view class="section-title">排行榜</view><view class="section-desc">只展示宠物名、年龄、种类和点赞数</view></view><text class="remix-icon ri-trophy-fill section-icon"></text></view>
+    <view class="search-field"><text class="remix-icon ri-search-2-line"></text><input placeholder="输入宠物专属ID搜索" value="{{keyword}}" bindinput="inputKeyword" bindconfirm="submitSearch" confirm-type="search" /></view>
+    <view class="search-actions"><button class="primary-btn" bindtap="submitSearch">搜索</button><button class="ghost-btn" wx:if="{{keyword}}" bindtap="clearSearch">清空</button></view>
+
+    <view class="rank-list" wx:if="{{ranking.length}}">
+      <view class="rank-item" wx:for="{{ranking}}" wx:key="petId">
+        <view class="rank-no">{{index + 1}}</view>
+        <view class="rank-main"><view class="rank-name">{{item.name}}</view><view class="rank-meta">{{item.ageText}} · {{item.speciesText}}</view></view>
+        <view class="rank-votes"><text class="remix-icon ri-thumb-up-fill"></text><text>{{item.voteCount}}</text></view>
+      </view>
+    </view>
+    <view class="empty-state" wx:else><text class="remix-icon ri-trophy-line empty-icon"></text><view>暂无排行数据</view></view>
+    <button class="ghost-btn load-more" wx:if="{{hasMore}}" loading="{{loading}}" bindtap="loadMore">加载更多</button>
+  </view>
+</view>

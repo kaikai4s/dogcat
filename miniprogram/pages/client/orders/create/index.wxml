@@ -54,6 +54,7 @@
           <view class="pet-option-meta">{{item.metaText}}</view>
           <view class="pet-option-hint">{{item.hintText}}</view>
           <view class="chip-row pet-chip-row">
+            <view class="chip gold" wx:if="{{item.beautyTitle && item.beautyTitle.title}}">{{item.beautyTitle.title}}</view>
             <view class="chip">{{item.speciesText}}</view>
             <view class="chip pink">{{item.gender || '未填性别'}}</view>
             <view class="chip blue">{{item.specialNotes || item.healthNotes ? '有照顾说明' : '健康乖巧'}}</view>

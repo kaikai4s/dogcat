@@ -20,7 +20,7 @@
   </view>
 
   <view class="card pet-card" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="edit">
-    <image class="pet-photo" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" />
+    <image class="pet-photo" wx:if="{{item.avatarFileId || (item.beautyPhotos && item.beautyPhotos[0] && item.beautyPhotos[0].fileId)}}" src="{{item.avatarFileId || item.beautyPhotos[0].fileId}}" mode="aspectFill" />
     <view class="pet-photo empty-photo" wx:else><text class="remix-icon ri-paw-print-line"></text></view>
     <view class="pet-main">
       <view class="pet-head">
@@ -28,6 +28,10 @@
         <view class="pet-badge">{{item.aiInteractionEnabled ? 'AI互动' : '档案'}}</view>
       </view>
       <view class="pet-meta">{{item.breed || '未填写品种'}} · {{item.birthday || '未填写生日'}} · {{item.weight || 0}}kg</view>
+      <view class="beauty-row">
+        <view class="beauty-title" wx:if="{{item.beautyTitle && item.beautyTitle.title}}"><text class="remix-icon ri-vip-crown-line"></text><text>{{item.beautyTitle.title}}</text></view>
+        <view class="exclusive-id" wx:if="{{item.exclusiveId}}">ID {{item.exclusiveId}}</view>
+      </view>
       <view class="pet-desc">{{item.personality || '还没有填写性格特点'}}</view>
       <view class="chip-row">
         <view class="chip">{{item.species === 'cat' ? '猫咪' : item.species === 'other' ? '其他宠物' : '狗狗'}}</view>

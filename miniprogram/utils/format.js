@@ -44,7 +44,8 @@ const checkinEventText = {
   pet_status: '宠物状态',
   return_home: '回家入户',
   leave_door: '离户闭锁',
-  video_checkin: '视频打卡'
+  video_checkin: '视频打卡',
+  pet_beauty_photo: '宠物美照'
 }
 
 const assignmentSourceText = {

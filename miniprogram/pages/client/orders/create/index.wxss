@@ -107,6 +107,8 @@
   line-height: 1.25;
 }
 
+.chip.gold { background: #fff7d6; color: #b45309; }
+
 .step-desc,
 .muted {
   margin-top: 6rpx;

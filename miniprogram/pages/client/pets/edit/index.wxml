@@ -6,21 +6,22 @@
   </view>
 
   <view class="card form-card">
-    <view class="card-subtitle"><text class="remix-icon ri-image-add-line sub-icon"></text><text>宠物照片</text><text class="required-tag">必填，至少1张</text></view>
-    <view class="photo-section">
-      <view class="photo-box">
-        <view class="photo-wrapper" wx:if="{{form.avatarFileId}}">
-          <image class="photo-preview" src="{{form.avatarFileId}}" mode="aspectFill" bindtap="previewPhoto" />
-        </view>
-        <view class="photo-empty" wx:else bindtap="choosePhoto">
-          <view class="photo-icon"><text class="remix-icon ri-add-line"></text></view>
-          <view class="photo-text">上传照片</view>
-        </view>
+    <view class="card-subtitle"><text class="remix-icon ri-image-add-line sub-icon"></text><text>宠物美照</text><text class="required-tag">1-9张</text></view>
+    <view class="beauty-tip">第一张会作为宠物头像；每月1日可删除美照，2日后将锁定保留。</view>
+    <view class="beauty-grid">
+      <view class="beauty-photo" wx:for="{{form.beautyPhotos}}" wx:key="id">
+        <image class="beauty-image" src="{{item.fileId}}" mode="aspectFill" data-url="{{item.fileId}}" bindtap="previewPhoto" />
+        <view class="cover-tag" wx:if="{{index === 0}}">头像</view>
+        <view class="delete-photo {{canDeleteBeautyPhoto ? '' : 'disabled'}}" data-index="{{index}}" catchtap="removeBeautyPhoto"><text class="remix-icon ri-delete-bin-4-line"></text></view>
       </view>
-      <view class="photo-actions">
-        <button class="ghost-btn photo-btn" bindtap="choosePhoto"><text class="remix-icon ri-image-edit-line"></text><text>{{form.avatarFileId ? '更换照片' : '选择照片'}}</text></button>
-        <button class="primary-btn photo-btn" bindtap="recognizeBreed" loading="{{recognizingBreed}}" disabled="{{recognizingBreed}}"><text class="remix-icon ri-sparkling-line"></text><text>AI 识别种类/品种</text></button>
+      <view class="beauty-add" wx:if="{{form.beautyPhotos.length < 9}}" bindtap="chooseBeautyPhotos">
+        <text class="remix-icon ri-image-add-line"></text>
+        <text>{{uploadingBeauty ? '上传中' : '添加美照'}}</text>
       </view>
+    </view>
+    <view class="photo-actions beauty-actions">
+      <button class="ghost-btn photo-btn" bindtap="chooseBeautyPhotos" disabled="{{uploadingBeauty || form.beautyPhotos.length >= 9}}"><text class="remix-icon ri-image-edit-line"></text><text>{{form.beautyPhotos.length ? '继续添加' : '选择美照'}}</text></button>
+      <button class="primary-btn photo-btn" bindtap="recognizeBreed" loading="{{recognizingBreed}}" disabled="{{recognizingBreed || !form.avatarFileId}}"><text class="remix-icon ri-sparkling-line"></text><text>AI 识别种类/品种</text></button>
     </view>
 
     <view class="ai-result-box" wx:if="{{aiResultText}}">

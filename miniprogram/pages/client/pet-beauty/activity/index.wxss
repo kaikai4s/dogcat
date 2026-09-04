@@ -1,0 +1,40 @@
+.pet-beauty-page { min-height: 100vh; padding: 0 28rpx 120rpx; box-sizing: border-box; background: linear-gradient(180deg,#fff8ec 0%,#fffaf6 42%,#f7fbfa 100%); color: #2d211a; }
+.beauty-hero { margin: 0 -28rpx 24rpx; padding: 44rpx 34rpx 40rpx; border-bottom-left-radius: 48rpx; border-bottom-right-radius: 48rpx; background: linear-gradient(135deg,#fff0c9 0%,#ffd9c8 54%,#fff5f0 100%); box-shadow: 0 18rpx 44rpx rgba(123,89,62,.08); }
+.hero-badge { display: inline-flex; align-items: center; gap: 8rpx; padding: 6rpx 18rpx; border-radius: 999rpx; color: #d45f22; background: rgba(255,255,255,.86); font-size: 24rpx; font-weight: 900; }
+.hero-badge .remix-icon { font-size: 28rpx; }
+.hero-title { margin-top: 18rpx; color: #2d211a; font-size: 42rpx; font-weight: 950; line-height: 1.2; }
+.hero-desc { margin-top: 12rpx; color: #7a6a5e; font-size: 25rpx; line-height: 1.45; }
+.hero-state { display: inline-flex; margin-top: 18rpx; padding: 10rpx 18rpx; border-radius: 999rpx; color: #fff; background: linear-gradient(135deg,#ffb86c 0%,#ff7a45 100%); font-size: 24rpx; font-weight: 900; }
+.section-card { margin-top: 24rpx; padding: 28rpx; border-radius: 36rpx; background: #fff; border: 1rpx solid rgba(255,153,102,.14); box-shadow: 0 14rpx 34rpx rgba(123,89,62,.06); }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin-bottom: 20rpx; }
+.section-title { color: #2d211a; font-size: 32rpx; font-weight: 950; }
+.section-desc { margin-top: 6rpx; color: #8e8580; font-size: 24rpx; }
+.section-icon { color: #ff7a45; font-size: 42rpx; }
+.photo-wall { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18rpx; }
+.pet-card { overflow: hidden; border-radius: 30rpx; background: linear-gradient(180deg,#fffaf4 0%,#fff 100%); border: 1rpx solid rgba(255,153,102,.14); }
+.pet-cover { width: 100%; height: 220rpx; display: block; background: #fff0e2; }
+.pet-info { padding: 18rpx; }
+.pet-name { color: #2d211a; font-size: 28rpx; font-weight: 950; }
+.pet-title { display: inline-flex; margin-top: 8rpx; padding: 5rpx 12rpx; border-radius: 999rpx; color: #b45309; background: #fff7d6; font-size: 20rpx; font-weight: 900; }
+.pet-meta { margin-top: 8rpx; color: #8e8580; font-size: 23rpx; }
+.vote-btn { width: 100%; min-height: 62rpx; margin: 16rpx 0 0; border: none; border-radius: 22rpx; display: flex; align-items: center; justify-content: center; gap: 8rpx; color: #fff; background: linear-gradient(135deg,#ffb86c 0%,#ff7a45 100%); font-size: 24rpx; font-weight: 900; }
+.vote-btn::after, .primary-btn::after, .ghost-btn::after { display: none; }
+.vote-btn[disabled] { opacity: .62; }
+.search-field { height: 76rpx; border-radius: 26rpx; background: #fff8ec; border: 1rpx solid rgba(255,153,102,.16); display: flex; align-items: center; gap: 10rpx; padding: 0 22rpx; }
+.search-field .remix-icon { color: #e9672f; font-size: 30rpx; }
+.search-field input { flex: 1; min-width: 0; font-size: 26rpx; color: #2d211a; }
+.search-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14rpx; margin-top: 16rpx; }
+.primary-btn, .ghost-btn, .load-more { min-height: 70rpx; border-radius: 24rpx; display: flex; align-items: center; justify-content: center; border: none; font-size: 25rpx; font-weight: 900; }
+.primary-btn { color: #fff; background: linear-gradient(135deg,#ffb86c 0%,#ff7a45 100%); }
+.ghost-btn { color: #d45f22; background: #fff0e2; }
+.rank-list { margin-top: 18rpx; }
+.rank-item { display: flex; align-items: center; gap: 16rpx; padding: 18rpx 0; border-bottom: 1rpx solid rgba(255,153,102,.08); }
+.rank-item:last-child { border-bottom: none; }
+.rank-no { width: 52rpx; height: 52rpx; border-radius: 18rpx; display: flex; align-items: center; justify-content: center; color: #d45f22; background: #fff0e2; font-size: 25rpx; font-weight: 950; }
+.rank-main { flex: 1; min-width: 0; }
+.rank-name { color: #2d211a; font-size: 27rpx; font-weight: 950; }
+.rank-meta { margin-top: 6rpx; color: #8e8580; font-size: 23rpx; }
+.rank-votes { display: flex; align-items: center; gap: 6rpx; color: #ff7a45; font-size: 24rpx; font-weight: 950; }
+.empty-state { min-height: 260rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12rpx; color: #8e8580; font-size: 25rpx; text-align: center; }
+.empty-icon { color: #e9672f; font-size: 88rpx; }
+.load-more { width: 100%; margin-top: 18rpx; }

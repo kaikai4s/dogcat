@@ -28,7 +28,8 @@ const defaultModules = {
   featuredSitters: true,
   platformAssurance: true,
   historyStats: true,
-  lottery: true
+  lottery: true,
+  petBeautyActivity: true
 }
 
 Page({

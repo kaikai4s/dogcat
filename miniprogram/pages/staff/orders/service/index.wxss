@@ -103,6 +103,9 @@
   font-weight: 950;
 }
 
+.pet-title-badge { display: inline-flex; align-items: center; gap: 6rpx; margin-top: 8rpx; padding: 6rpx 14rpx; border-radius: 999rpx; color: #b45309; background: #fff7d6; font-size: 22rpx; font-weight: 900; }
+.pet-title-badge .remix-icon { font-size: 24rpx; }
+
 .pet-desc {
   margin-top: 8rpx;
   color: #7a6a5e;

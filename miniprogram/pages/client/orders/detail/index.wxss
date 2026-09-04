@@ -168,6 +168,9 @@
   word-break: break-all;
 }
 
+.pet-title-value { display: inline-flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8rpx; }
+.pet-title-badge { display: inline-flex; padding: 4rpx 12rpx; border-radius: 999rpx; color: #b45309; background: #fff7d6; font-size: 20rpx; font-weight: 900; }
+
 .discount { color: #00b42a; }
 
 .status-badge {

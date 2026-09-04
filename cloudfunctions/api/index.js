@@ -14,6 +14,7 @@ const collections = [
   'subscription_consents', 'subscription_logs', 'home_security_notifications',
   'order_message_threads', 'order_messages', 'order_staff_message_threads', 'order_staff_messages',
   'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
+  'pet_beauty_votes', 'pet_beauty_month_rankings', 'pet_beauty_month_locks',
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',
   'user_feedback'
 ]
@@ -280,7 +281,8 @@ const defaultHomeModules = {
   featuredSitters: true,
   platformAssurance: true,
   historyStats: true,
-  lottery: true
+  lottery: true,
+  petBeautyActivity: true
 }
 
 function normalizeHomePageConfig(homePage = {}) {
@@ -1277,7 +1279,8 @@ function checkinEventText(eventType) {
     leave_door: '离户检查',
     clean: '清洁',
     medicine: '喂药',
-    video_checkin: '视频打卡'
+    video_checkin: '视频打卡',
+    pet_beauty_photo: '宠物美照'
   })[eventType] || '服务打卡'
 }
 
@@ -1484,8 +1487,151 @@ function createPetSnapshot(pet = {}) {
     favoriteFood: pet.favoriteFood || '',
     dislikes: pet.dislikes || '',
     healthNotes: pet.healthNotes || '',
-    specialNotes: pet.specialNotes || ''
+    specialNotes: pet.specialNotes || '',
+    exclusiveId: pet.exclusiveId || '',
+    beautyTitle: pet.beautyTitle || null
   }
+}
+
+function normalizeBeautyPhoto(item = {}, index = 0) {
+  const fileId = safeFileId(item.fileId || item.mediaFileId) || safeText(item.fileId || item.mediaFileId)
+  if (!fileId) return null
+  const time = item.createdAt || nowText()
+  return {
+    id: safeText(item.id).trim() || `bp_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 7)}`,
+    fileId,
+    source: ['pet_profile', 'service_checkin'].includes(item.source) ? item.source : 'pet_profile',
+    orderId: safeText(item.orderId).trim(),
+    checkinId: safeText(item.checkinId || item._id).trim(),
+    createdAt: time,
+    updatedAt: item.updatedAt || time
+  }
+}
+
+function normalizeBeautyPhotos(input = [], fallbackAvatarFileId = '') {
+  const source = Array.isArray(input) ? input : []
+  const photos = source.map(normalizeBeautyPhoto).filter(Boolean)
+  const seen = new Set()
+  const unique = photos.filter((photo) => {
+    if (seen.has(photo.fileId)) return false
+    seen.add(photo.fileId)
+    return true
+  }).slice(0, 9)
+  const avatarFileId = safeFileId(fallbackAvatarFileId) || safeText(fallbackAvatarFileId)
+  if (!unique.length && avatarFileId) unique.push(normalizeBeautyPhoto({ fileId: avatarFileId, source: 'pet_profile' }, 0))
+  if (!unique.length) throw new Error('请上传至少一张宠物美照')
+  if (unique.length > 9) throw new Error('宠物美照最多上传9张')
+  return unique
+}
+
+async function generatePetExclusiveId() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    let code = 'P'
+    for (let i = 0; i < 6; i += 1) code += chars[Math.floor(Math.random() * chars.length)]
+    const existing = await db.collection('pets').where({ exclusiveId: code }).limit(1).get()
+    if (!existing.data || !existing.data[0]) return code
+  }
+  return `P${Date.now().toString(36).slice(-6).toUpperCase()}`
+}
+
+async function ensurePetExclusiveId(pet = {}) {
+  if (pet.exclusiveId) return pet.exclusiveId
+  const exclusiveId = await generatePetExclusiveId()
+  if (pet._id) await db.collection('pets').doc(pet._id).update({ data: { exclusiveId, updatedAt: nowText() } })
+  pet.exclusiveId = exclusiveId
+  return exclusiveId
+}
+
+function formatPetAgeText(birthday) {
+  const birth = parseDateValue(birthday)
+  if (!birth) return '年龄未知'
+  const today = toCstParts()
+  const nowDate = new Date(`${today.monthKey}-${today.day}T00:00:00+08:00`)
+  let months = (nowDate.getFullYear() - birth.getFullYear()) * 12 + nowDate.getMonth() - birth.getMonth()
+  if (nowDate.getDate() < birth.getDate()) months -= 1
+  if (months < 1) return '未满1个月'
+  if (months < 12) return `${months}个月`
+  const years = Math.floor(months / 12)
+  const rest = months % 12
+  return rest ? `${years}岁${rest}个月` : `${years}岁`
+}
+
+function petSpeciesText(species) {
+  return ({ dog: '狗狗', cat: '猫咪', other: '异宠' })[species] || '宠物'
+}
+
+function toPetPublicBeautyView(pet = {}, voteCount = 0) {
+  const beautyPhotos = Array.isArray(pet.beautyPhotos) ? pet.beautyPhotos : []
+  return {
+    petId: pet._id || pet.id || '',
+    name: pet.name || '毛孩子',
+    ageText: formatPetAgeText(pet.birthday),
+    species: pet.species || '',
+    speciesText: petSpeciesText(pet.species),
+    avatarFileId: pet.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '',
+    beautyPhotos,
+    beautyTitle: pet.beautyTitle || null,
+    exclusiveId: pet.exclusiveId || '',
+    voteCount: Number(voteCount || 0)
+  }
+}
+
+function formatPetBeautyTitle(monthKey, rank) {
+  const month = Number(String(monthKey || '').slice(5, 7)) || toCstParts().month
+  return Number(rank) === 1 ? `${Number(month)}月最美爱宠` : `${Number(month)}月第${rank}爱宠`
+}
+
+function currentMonthStart(monthKey) {
+  return new Date(`${normalizeMonthKey(monthKey)}-01T00:00:00+08:00`)
+}
+
+function nextMonthStart(monthKey) {
+  const [year, month] = normalizeMonthKey(monthKey).split('-').map(Number)
+  return new Date(year, month, 1, -8, 0, 0, 0)
+}
+
+async function countPetBeautyVotes(monthKey) {
+  const start = currentMonthStart(monthKey)
+  const end = nextMonthStart(monthKey)
+  const res = await db.collection('pet_beauty_votes').where({ monthKey }).get()
+  return (res.data || []).filter((vote) => {
+    const created = parseDateValue(vote.createdAt)
+    return !created || (created >= start && created < end)
+  }).reduce((map, vote) => {
+    if (!vote.petId) return map
+    map[vote.petId] = (map[vote.petId] || 0) + 1
+    return map
+  }, {})
+}
+
+async function isPetBeautyMonthLocked(monthKey) {
+  const locked = await db.collection('pet_beauty_month_locks').where({ monthKey, status: 'locked' }).limit(1).get()
+  return Boolean(locked.data && locked.data[0])
+}
+
+async function settlePetBeautyMonthlyRanking(monthKey = toCstParts().monthKey, options = {}) {
+  monthKey = normalizeMonthKey(monthKey)
+  if (!options.force && await isPetBeautyMonthLocked(monthKey)) return { monthKey, locked: true, skipped: true }
+  const voteMap = await countPetBeautyVotes(monthKey)
+  const petsRes = await db.collection('pets').get()
+  const ranked = (petsRes.data || [])
+    .filter((pet) => Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length)
+    .map((pet) => ({ pet, voteCount: Number(voteMap[pet._id] || 0) }))
+    .filter((item) => item.voteCount > 0)
+    .sort((a, b) => b.voteCount - a.voteCount || String(a.pet.createdAt || '').localeCompare(String(b.pet.createdAt || '')))
+    .slice(0, 100)
+  const lockedAt = now()
+  await Promise.all(ranked.map(async ({ pet, voteCount }, index) => {
+    const rank = index + 1
+    const exclusiveId = await ensurePetExclusiveId(pet)
+    const title = formatPetBeautyTitle(monthKey, rank)
+    const beautyTitle = { monthKey, rank, title, awardedAt: lockedAt }
+    await db.collection('pet_beauty_month_rankings').add({ data: { monthKey, petId: pet._id, petExclusiveId: exclusiveId, rank, voteCount, locked: true, title, petSnapshot: toPetPublicBeautyView({ ...pet, exclusiveId, beautyTitle }, voteCount), lockedAt, createdAt: lockedAt, updatedAt: lockedAt } })
+    await db.collection('pets').doc(pet._id).update({ data: { beautyTitle, updatedAt: nowText() } })
+  }))
+  await db.collection('pet_beauty_month_locks').add({ data: { monthKey, status: 'locked', topCount: ranked.length, lockedAt, source: options.source || 'manual', createdAt: lockedAt, updatedAt: lockedAt } })
+  return { monthKey, locked: true, topCount: ranked.length }
 }
 
 function formatPetSummary(pets = []) {
@@ -1687,7 +1833,7 @@ async function calcOrderPricing(data, pet, options = {}) {
   return basePricing
 }
 
-const CHECKIN_EVENT_TYPES = new Set(['enter_door', 'leash_on', 'feed', 'water', 'pet_status', 'return_home', 'leave_door', 'clean', 'medicine', 'video_checkin'])
+const CHECKIN_EVENT_TYPES = new Set(['enter_door', 'leash_on', 'feed', 'water', 'pet_status', 'return_home', 'leave_door', 'clean', 'medicine', 'video_checkin', 'pet_beauty_photo'])
 
 function requiredCheckins(serviceType, serviceTypes) {
   const types = Array.isArray(serviceTypes) && serviceTypes.length ? serviceTypes : [serviceType]
@@ -1746,6 +1892,17 @@ async function resolveCheckinRequirements(serviceTypes) {
       completed: false
     }
   })
+  if (types.length) {
+    map.pet_beauty_photo = map.pet_beauty_photo || {
+      eventType: 'pet_beauty_photo',
+      label: checkinEventText('pet_beauty_photo'),
+      required: false,
+      serviceTypes: types,
+      sortOrder: 999,
+      completed: false,
+      optional: true
+    }
+  }
   return Object.values(map).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
 }
 
@@ -2374,20 +2531,7 @@ async function attachPetSnapshot(order) {
     const pet = (await db.collection('pets').doc(order.petId).get()).data
     return {
       ...order,
-      petSnapshot: {
-        name: pet.name || order.petName || '',
-        avatarFileId: pet.avatarFileId || '',
-        species: pet.species || '',
-        breed: pet.breed || '',
-        gender: pet.gender || '',
-        birthday: pet.birthday || '',
-        weight: Number(pet.weight || 0),
-        personality: pet.personality || '',
-        favoriteFood: pet.favoriteFood || '',
-        dislikes: pet.dislikes || '',
-        healthNotes: pet.healthNotes || '',
-        specialNotes: pet.specialNotes || ''
-      }
+      petSnapshot: createPetSnapshot({ ...pet, name: pet.name || order.petName || '' })
     }
   } catch (error) {
     return order
@@ -3830,16 +3974,23 @@ const handlers = {
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const species = safeText(data.species).trim()
       const res = await db.collection('pets').where({ openid }).orderBy('createdAt', 'desc').get()
-      const list = (res.data || [])
+      const list = await Promise.all((res.data || [])
         .filter((pet) => !species || pet.species === species)
-        .filter((pet) => !keyword || [pet.name, pet.breed, pet.personality, pet.specialNotes, pet.healthNotes].some((value) => safeText(value).toLowerCase().includes(keyword)))
+        .filter((pet) => !keyword || [pet.name, pet.breed, pet.personality, pet.specialNotes, pet.healthNotes, pet.exclusiveId].some((value) => safeText(value).toLowerCase().includes(keyword)))
+        .map(async (pet) => {
+          const exclusiveId = await ensurePetExclusiveId(pet)
+          const beautyPhotos = Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length ? pet.beautyPhotos : normalizeBeautyPhotos([], pet.avatarFileId)
+          return { ...pet, exclusiveId, beautyPhotos }
+        }))
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       return wantsPage ? paginateList(list, data) : list
     }
     if (action === 'getPet') {
       const res = await db.collection('pets').doc(data.id).get()
       if (res.data.openid !== openid) throw new Error('无权访问')
-      return res.data
+      const exclusiveId = await ensurePetExclusiveId(res.data)
+      const beautyPhotos = Array.isArray(res.data.beautyPhotos) && res.data.beautyPhotos.length ? res.data.beautyPhotos : normalizeBeautyPhotos([], res.data.avatarFileId)
+      return { ...res.data, exclusiveId, beautyPhotos }
     }
     if (action === 'recognizePetBreed') {
       const avatarFileId = safeText(data.avatarFileId || data.photoFileId)
@@ -3910,11 +4061,16 @@ const handlers = {
       if (!data.name) throw new Error('宠物名称不能为空')
       if (!safeFileId(data.avatarFileId) && !safeText(data.avatarFileId)) throw new Error('请上传至少一张宠物照片')
       const time = nowText()
+      const beautyPhotos = normalizeBeautyPhotos(data.beautyPhotos, data.avatarFileId)
+      const avatarFileId = safeFileId(data.avatarFileId) || safeText(data.avatarFileId) || beautyPhotos[0].fileId
       const pet = {
         userId: safeText(user._id),
         openid: safeText(openid),
+        exclusiveId: await generatePetExclusiveId(),
         name: safeText(data.name),
-        avatarFileId: safeFileId(data.avatarFileId) || safeText(data.avatarFileId),
+        avatarFileId,
+        beautyPhotos,
+        beautyTitle: data.beautyTitle || null,
         species: safeText(data.species || 'dog'),
         breed: safeText(data.breed),
         gender: safeText(data.gender),
@@ -3938,9 +4094,18 @@ const handlers = {
       const existing = await db.collection('pets').doc(data.id).get()
       if (existing.data.openid !== openid) throw new Error('无权访问')
       if (!safeFileId(data.avatarFileId) && !safeText(data.avatarFileId)) throw new Error('请上传至少一张宠物照片')
+      const exclusiveId = existing.data.exclusiveId || await generatePetExclusiveId()
+      const beautyPhotos = normalizeBeautyPhotos(data.beautyPhotos, data.avatarFileId)
+      const existingPhotos = Array.isArray(existing.data.beautyPhotos) && existing.data.beautyPhotos.length ? existing.data.beautyPhotos : normalizeBeautyPhotos([], existing.data.avatarFileId)
+      const nextFileIds = new Set(beautyPhotos.map((photo) => photo.fileId))
+      const hasDeletedPhoto = existingPhotos.some((photo) => !nextFileIds.has(photo.fileId))
+      if (hasDeletedPhoto && toCstParts().dayNumber !== 1) throw new Error('每月1日才可以删除宠物美照')
+      const avatarFileId = safeFileId(data.avatarFileId) || safeText(data.avatarFileId) || beautyPhotos[0].fileId
       await db.collection('pets').doc(data.id).update({ data: {
         name: safeText(data.name),
-        avatarFileId: safeFileId(data.avatarFileId) || safeText(data.avatarFileId),
+        exclusiveId,
+        avatarFileId,
+        beautyPhotos,
         species: safeText(data.species || 'dog'),
         breed: safeText(data.breed),
         gender: safeText(data.gender),
@@ -3956,7 +4121,7 @@ const handlers = {
         specialNotes: safeText(data.specialNotes),
         updatedAt: nowText()
       } })
-      return { id: data.id }
+      return { id: data.id, exclusiveId, beautyPhotos, avatarFileId }
     }
     if (action === 'deletePet') {
       const existing = await db.collection('pets').doc(data.id).get()
@@ -3965,6 +4130,113 @@ const handlers = {
       return { id: data.id }
     }
     throw new Error('未知 pet 操作')
+  },
+
+  async petBeauty(openid, action, data) {
+    const today = toCstParts()
+    const monthKey = normalizeMonthKey(data.monthKey || today.monthKey)
+
+    async function getPublicPetsWithVotes() {
+      const voteMap = await countPetBeautyVotes(monthKey)
+      const petsRes = await db.collection('pets').get()
+      const pets = await Promise.all((petsRes.data || [])
+        .filter((pet) => !pet.deletedAt && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length)
+        .map(async (pet) => {
+          const exclusiveId = await ensurePetExclusiveId(pet)
+          return toPetPublicBeautyView({ ...pet, exclusiveId }, voteMap[pet._id] || 0)
+        }))
+      return pets.sort((a, b) => Number(b.voteCount || 0) - Number(a.voteCount || 0) || String(a.petId).localeCompare(String(b.petId)))
+    }
+
+    async function todayVoteState() {
+      if (!openid) return { hasVotedToday: false }
+      const voted = await db.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).limit(1).get()
+      return { hasVotedToday: Boolean(voted.data && voted.data[0]), votedPetId: voted.data && voted.data[0] ? voted.data[0].petId : '' }
+    }
+
+    if (action === 'getActivityHome') {
+      const [pets, voteState, locked] = await Promise.all([getPublicPetsWithVotes(), todayVoteState(), isPetBeautyMonthLocked(monthKey)])
+      return { monthKey, locked, ...voteState, candidates: pets.slice(0, 12), ranking: pets.slice(0, 10) }
+    }
+
+    if (action === 'listCandidates') {
+      const species = safeText(data.species).trim()
+      const pets = (await getPublicPetsWithVotes()).filter((pet) => !species || pet.species === species)
+      return paginateList(pets, data)
+    }
+
+    if (action === 'listRanking') {
+      const keyword = safeText(data.keyword).trim().toUpperCase()
+      const pets = (await getPublicPetsWithVotes())
+        .filter((pet) => !keyword || safeText(pet.exclusiveId).toUpperCase().includes(keyword))
+        .map((pet, index) => ({ ...pet, rank: index + 1 }))
+      return paginateList(pets, data)
+    }
+
+    if (action === 'vote') {
+      const user = await getUser(openid)
+      if (await isPetBeautyMonthLocked(monthKey)) throw new Error('本月排行榜已锁定')
+      const todayVote = await db.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).limit(1).get()
+      if (todayVote.data && todayVote.data[0]) throw new Error('今天已经投过票了')
+      const petId = safeText(data.petId).trim()
+      if (!petId) throw new Error('请选择要投票的宠物')
+      const pet = (await db.collection('pets').doc(petId).get()).data
+      if (!pet || pet.deletedAt) throw new Error('宠物不存在')
+      if (!Array.isArray(pet.beautyPhotos) || !pet.beautyPhotos.length) throw new Error('该宠物还没有美照')
+      const exclusiveId = await ensurePetExclusiveId({ ...pet, _id: petId })
+      const time = now()
+      await db.collection('pet_beauty_votes').add({ data: { openid, userId: user._id, petId, petExclusiveId: exclusiveId, monthKey, dateKey: today.dateKey, createdAt: time } })
+      const voteMap = await countPetBeautyVotes(monthKey)
+      return { petId, monthKey, dateKey: today.dateKey, hasVotedToday: true, voteCount: Number(voteMap[petId] || 0) }
+    }
+
+    if (action === 'importFromServiceCheckins') {
+      const petId = safeText(data.petId).trim()
+      const orderId = safeText(data.orderId).trim()
+      const checkinIds = Array.isArray(data.checkinIds) ? data.checkinIds.map((id) => safeText(id).trim()).filter(Boolean) : []
+      if (!petId || !orderId || !checkinIds.length) throw new Error('请选择要导入的美照')
+      const { order } = await requireClientOrder(openid, orderId, '仅宠物主可导入美照')
+      const orderPetIds = Array.isArray(order.petIds) && order.petIds.length ? order.petIds : [order.petId].filter(Boolean)
+      if (!orderPetIds.includes(petId)) throw new Error('该宠物不属于此订单')
+      const pet = (await db.collection('pets').doc(petId).get()).data
+      if (!pet || pet.openid !== openid) throw new Error('宠物不存在')
+      const currentPhotos = Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length ? pet.beautyPhotos : normalizeBeautyPhotos([], pet.avatarFileId)
+      const checkins = await Promise.all(checkinIds.map(async (id) => ({ ...(await db.collection('checkin_logs').doc(id).get()).data, _id: id })))
+      const imported = checkins
+        .filter((item) => item.orderId === orderId && item.eventType === 'pet_beauty_photo' && !item.deletedAt && item.mediaFileId)
+        .map((item, index) => normalizeBeautyPhoto({ fileId: item.mediaFileId, source: 'service_checkin', orderId, checkinId: item._id, createdAt: item.recordedAt || item.createdAt }, index))
+        .filter(Boolean)
+      const seen = new Set(currentPhotos.map((photo) => photo.fileId))
+      const additions = imported.filter((photo) => !seen.has(photo.fileId))
+      if (currentPhotos.length + additions.length > 9) throw new Error('宠物美照最多9张，请先在每月1日删除后再导入')
+      const beautyPhotos = currentPhotos.concat(additions)
+      await db.collection('pets').doc(petId).update({ data: { beautyPhotos, avatarFileId: pet.avatarFileId || beautyPhotos[0].fileId, updatedAt: nowText() } })
+      return { petId, importedCount: additions.length, beautyPhotos }
+    }
+
+    if (action === 'deleteBeautyPhoto') {
+      const todayInfo = toCstParts()
+      if (todayInfo.dayNumber !== 1) throw new Error('每月1日才可以删除宠物美照')
+      const petId = safeText(data.petId).trim()
+      const photoId = safeText(data.photoId).trim()
+      const fileId = safeText(data.fileId).trim()
+      const pet = (await db.collection('pets').doc(petId).get()).data
+      if (!pet || pet.openid !== openid) throw new Error('宠物不存在')
+      const currentPhotos = Array.isArray(pet.beautyPhotos) ? pet.beautyPhotos : []
+      const beautyPhotos = currentPhotos.filter((photo) => (photoId && photo.id !== photoId) || (fileId && photo.fileId !== fileId))
+      if (beautyPhotos.length === currentPhotos.length) throw new Error('美照不存在')
+      if (!beautyPhotos.length) throw new Error('至少保留一张宠物美照')
+      const avatarFileId = beautyPhotos.some((photo) => photo.fileId === pet.avatarFileId) ? pet.avatarFileId : beautyPhotos[0].fileId
+      await db.collection('pets').doc(petId).update({ data: { beautyPhotos, avatarFileId, updatedAt: nowText() } })
+      return { petId, beautyPhotos, avatarFileId }
+    }
+
+    if (action === 'settleMonthlyRanking') {
+      await requireAdmin(openid)
+      return settlePetBeautyMonthlyRanking(monthKey, { force: data.force === true, source: 'admin_repair' })
+    }
+
+    throw new Error('未知 petBeauty 操作')
   },
 
   async client(openid, action, data) {
@@ -4295,9 +4567,12 @@ const handlers = {
         db.collection('track_logs').where({ orderId }).get()
       ])
       const checkinGroups = groupCheckinsByEventType(checkinsRes.data || [])
-      const checkinRequirements = Array.isArray(displayOrder.checkinRequirements) && displayOrder.checkinRequirements.length
+      const baseCheckinRequirements = Array.isArray(displayOrder.checkinRequirements) && displayOrder.checkinRequirements.length
         ? displayOrder.checkinRequirements
         : requiredCheckins(displayOrder.serviceType, displayOrder.serviceTypes).map((eventType, index) => ({ eventType, label: checkinEventText(eventType), required: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: (index + 1) * 10 }))
+      const checkinRequirements = baseCheckinRequirements.some((item) => item.eventType === 'pet_beauty_photo')
+        ? baseCheckinRequirements
+        : baseCheckinRequirements.concat([{ eventType: 'pet_beauty_photo', label: checkinEventText('pet_beauty_photo'), required: false, optional: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: 999 }])
       const orderSecurity = securityRes.data[0] || displayOrder.orderHomeSecurity || displayOrder.homeSecuritySnapshot
       const enrichedRequirements = checkinRequirements.map((item) => {
         const group = checkinGroups[item.eventType] || { count: 0, photos: [] }
@@ -6952,7 +7227,12 @@ exports.main = async (event = {}) => {
   try {
     if (event.Type === 'Timer') {
       await expireDueUnacceptedOrders()
-      return ok({ expired: true })
+      const today = toCstParts()
+      let petBeautySettled = null
+      if (today.dayNumber === getMonthDays(today.monthKey)) {
+        petBeautySettled = await settlePetBeautyMonthlyRanking(today.monthKey, { source: 'timer' })
+      }
+      return ok({ expired: true, petBeautySettled })
     }
     if (isWechatPayHttpCallback(event)) {
       return handlers.payment('', 'paymentCallback', {

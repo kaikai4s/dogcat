@@ -5,7 +5,7 @@
       <text>现场证据</text>
     </view>
     <view class="hero-title">{{eventTypeText}} 打卡</view>
-    <view class="hero-desc">拍照或上传截图后将保存至订单证据链，服务结束前可删除并重新上传。</view>
+    <view class="hero-desc">{{isBeautyCheckin ? '上传服务中拍到的宠物美照，宠物家长可在服务报告中保存或加入宠物相册。' : '拍照或上传截图后将保存至订单证据链，服务结束前可删除并重新上传。'}}</view>
   </view>
 
   <view class="card form-card">
@@ -18,7 +18,7 @@
 
   <button class="primary-btn upload-btn" loading="{{uploading}}" disabled="{{uploading}}" bindtap="chooseAndCreateCheckins">
     <text class="remix-icon ri-image-add-line"></text>
-    <text>{{uploading ? '上传中...' : '拍照 / 上传截图'}}</text>
+    <text>{{uploading ? '上传中...' : (isBeautyCheckin ? '拍照 / 上传美照' : '拍照 / 上传截图')}}</text>
   </button>
 
   <view class="card photo-card">

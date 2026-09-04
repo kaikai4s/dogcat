@@ -65,6 +65,12 @@
 .pet-badge { padding: 6rpx 16rpx; border-radius: 999rpx; background: #e6f8ea; color: #00b42a; font-size: 22rpx; font-weight: 850; white-space: nowrap; }
 .pet-meta,
 .pet-desc { margin-top: 8rpx; color: #7a6a5e; font-size: 24rpx; line-height: 1.45; }
+.beauty-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10rpx; margin-top: 10rpx; }
+.beauty-title,
+.exclusive-id { display: inline-flex; align-items: center; gap: 6rpx; padding: 6rpx 14rpx; border-radius: 999rpx; font-size: 21rpx; font-weight: 900; }
+.beauty-title { color: #b45309; background: #fff7d6; }
+.beauty-title .remix-icon { font-size: 22rpx; }
+.exclusive-id { color: #d45f22; background: #fff0e2; }
 .pet-desc { color: #8e8580; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 14rpx; }
 .chip { padding: 8rpx 16rpx; border-radius: 999rpx; background: #fff0e2; color: #d45f22; font-size: 22rpx; font-weight: 850; }

@@ -25,6 +25,7 @@
           <text class="species-badge" wx:if="{{order.petSnapshot.species === 'cat'}}"><text class="remix-icon ri-footprint-line"></text><text>猫咪</text></text>
           <text class="species-badge" wx:elif="{{order.petSnapshot.species === 'other'}}"><text class="remix-icon ri-paw-print-line"></text><text>异宠</text></text>
           <text class="species-badge" wx:else><text class="remix-icon ri-footprint-line"></text><text>狗狗</text></text>
+          <text class="species-badge title-badge" wx:if="{{order.petSnapshot.beautyTitle && order.petSnapshot.beautyTitle.title}}"><text class="remix-icon ri-vip-crown-line"></text><text>{{order.petSnapshot.beautyTitle.title}}</text></text>
         </view>
         <view class="muted">{{order.petSnapshot.breed || '未知品种'}} · {{order.petSnapshot.gender || '未知性别'}} · {{order.petSnapshot.weight || 0}}kg</view>
         <view class="muted" wx:if="{{order.petSnapshot.birthday}}">生日：{{order.petSnapshot.birthday}}</view>

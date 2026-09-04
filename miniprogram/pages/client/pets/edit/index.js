@@ -10,6 +10,18 @@ const speciesOptions = [
 
 const genderOptions = ['妹妹', '弟弟', '已绝育妹妹', '已绝育弟弟', '未知']
 
+function normalizeBeautyPhotos(form = {}) {
+  const photos = Array.isArray(form.beautyPhotos) ? form.beautyPhotos.filter((item) => item && item.fileId) : []
+  if (!photos.length && form.avatarFileId) {
+    return [{ id: `bp_${Date.now()}`, fileId: form.avatarFileId, source: 'pet_profile', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]
+  }
+  return photos.slice(0, 9)
+}
+
+function canDeleteBeautyPhotoToday() {
+  return new Date().getDate() === 1
+}
+
 Page({
   data: {
     id: '',
@@ -21,11 +33,14 @@ Page({
     speciesIndex: 0,
     genderIndex: 4,
     recognizingBreed: false,
+    uploadingBeauty: false,
+    canDeleteBeautyPhoto: canDeleteBeautyPhotoToday(),
     aiResultText: '',
     form: {
       species: 'dog',
       name: '',
       avatarFileId: '',
+      beautyPhotos: [],
       breed: '',
       gender: '未知',
       birthday: '',
@@ -46,6 +61,7 @@ Page({
   },
 
   onShow() {
+    this.setData({ canDeleteBeautyPhoto: canDeleteBeautyPhotoToday() })
     ensureLogin({ content: '登录后可编辑宠物档案。' })
       .then(() => {
         if (this.data.initialized) return
@@ -61,7 +77,9 @@ Page({
       .then((form) => {
         const speciesIndex = Math.max(speciesOptions.findIndex((item) => item.value === form.species), 0)
         const genderIndex = Math.max(genderOptions.indexOf(form.gender || '未知'), 0)
-        this.setData({ form: { ...this.data.form, ...form }, speciesIndex, genderIndex })
+        const nextForm = { ...this.data.form, ...form }
+        const beautyPhotos = normalizeBeautyPhotos(nextForm)
+        this.setData({ form: { ...nextForm, beautyPhotos, avatarFileId: nextForm.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '' }, speciesIndex, genderIndex })
       })
       .catch(showError)
   },
@@ -90,53 +108,89 @@ Page({
     this.setData({ ['form.aiInteractionEnabled']: e.detail.value })
   },
 
-  previewPhoto() {
-    if (this.data.form.avatarFileId) {
-      wx.previewImage({ urls: [this.data.form.avatarFileId] })
-    }
+  previewPhoto(e) {
+    const current = e && e.currentTarget && e.currentTarget.dataset.url ? e.currentTarget.dataset.url : this.data.form.avatarFileId
+    const urls = normalizeBeautyPhotos(this.data.form).map((item) => item.fileId)
+    if (current && urls.length) wx.previewImage({ current, urls })
   },
 
   choosePhoto() {
+    this.chooseBeautyPhotos()
+  },
+
+  chooseBeautyPhotos() {
+    const currentPhotos = normalizeBeautyPhotos(this.data.form)
+    const remaining = 9 - currentPhotos.length
+    if (remaining <= 0) {
+      wx.showToast({ title: '最多上传9张美照', icon: 'none' })
+      return
+    }
     wx.chooseMedia({
-      count: 1,
+      count: remaining,
       mediaType: ['image'],
       sourceType: ['album', 'camera'],
       success: (res) => {
-        const filePath = res.tempFiles[0].tempFilePath
-        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
-        this.setData({ localTempPath: filePath, tempHttpsUrl: '', ['form.avatarFileId']: '' })
-        wx.showLoading({ title: '上传照片中...' })
-        wx.cloud.uploadFile({
-          cloudPath: `pets/${Date.now()}${ext}`,
-          filePath,
-          success: (upload) => {
-            const fileID = upload.fileID
-            this.setData({ ['form.avatarFileId']: fileID })
-            wx.cloud.getTempFileURL({
-              fileList: [fileID],
-              success: (tempRes) => {
-                wx.hideLoading()
-                if (tempRes.fileList && tempRes.fileList[0] && tempRes.fileList[0].tempFileURL) {
-                  this.setData({ tempHttpsUrl: tempRes.fileList[0].tempFileURL })
-                }
-                wx.showToast({ title: '照片上传成功', icon: 'success' })
-              },
-              fail: () => {
-                wx.hideLoading()
-                wx.showToast({ title: '照片上传成功', icon: 'success' })
-              }
-            })
-          },
-          fail: (err) => {
+        const files = res.tempFiles || []
+        if (!files.length) return
+        this.setData({ uploadingBeauty: true })
+        wx.showLoading({ title: '上传美照中...' })
+        files.reduce((chain, file) => chain.then(() => this.uploadBeautyPhoto(file.tempFilePath)), Promise.resolve())
+          .then(() => {
             wx.hideLoading()
+            this.setData({ uploadingBeauty: false })
+            wx.showToast({ title: '美照上传成功', icon: 'success' })
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            this.setData({ uploadingBeauty: false })
             showError(err)
-          }
-        })
+          })
       },
       fail: (err) => {
         if (err.errMsg && !err.errMsg.includes('cancel')) showError(err)
       }
     })
+  },
+
+  uploadBeautyPhoto(filePath) {
+    if (!filePath) return Promise.resolve()
+    const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+    const cloudPath = `pets/beauty/${Date.now()}_${Math.random().toString(36).slice(2, 7)}${ext}`
+    return new Promise((resolve, reject) => {
+      wx.cloud.uploadFile({
+        cloudPath,
+        filePath,
+        success: (upload) => {
+          const fileID = upload.fileID
+          const photos = normalizeBeautyPhotos(this.data.form).concat([{ id: `bp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, fileId: fileID, source: 'pet_profile', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]).slice(0, 9)
+          this.setData({ localTempPath: filePath, tempHttpsUrl: '', ['form.avatarFileId']: this.data.form.avatarFileId || fileID, ['form.beautyPhotos']: photos })
+          wx.cloud.getTempFileURL({
+            fileList: [this.data.form.avatarFileId || fileID],
+            success: (tempRes) => {
+              if (tempRes.fileList && tempRes.fileList[0] && tempRes.fileList[0].tempFileURL) this.setData({ tempHttpsUrl: tempRes.fileList[0].tempFileURL })
+              resolve()
+            },
+            fail: resolve
+          })
+        },
+        fail: reject
+      })
+    })
+  },
+
+  removeBeautyPhoto(e) {
+    if (!this.data.canDeleteBeautyPhoto) {
+      wx.showToast({ title: '每月1日才可以删除美照', icon: 'none' })
+      return
+    }
+    const index = Number(e.currentTarget.dataset.index)
+    const photos = normalizeBeautyPhotos(this.data.form)
+    if (photos.length <= 1) {
+      wx.showToast({ title: '至少保留1张美照', icon: 'none' })
+      return
+    }
+    photos.splice(index, 1)
+    this.setData({ ['form.beautyPhotos']: photos, ['form.avatarFileId']: photos[0].fileId })
   },
 
   recognizeBreed() {
@@ -211,8 +265,9 @@ Page({
   },
 
   save() {
-    if (!this.data.form.avatarFileId) {
-      wx.showToast({ title: '请上传至少一张宠物照片', icon: 'none' })
+    const beautyPhotos = normalizeBeautyPhotos(this.data.form)
+    if (!beautyPhotos.length) {
+      wx.showToast({ title: '请上传至少一张宠物美照', icon: 'none' })
       return
     }
     if (!this.data.form.name) {
@@ -221,11 +276,12 @@ Page({
     }
     const action = this.data.id ? 'updatePet' : 'createPet'
     const form = this.data.form
-    const avatarFileId = String(form.avatarFileId || '')
+    const avatarFileId = String(form.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '')
     const data = {
       id: this.data.id,
       name: form.name || '',
       avatarFileId: avatarFileId,
+      beautyPhotos,
       species: form.species || 'dog',
       breed: form.breed || '',
       gender: form.gender || '',

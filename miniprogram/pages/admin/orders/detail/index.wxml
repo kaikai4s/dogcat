@@ -23,6 +23,7 @@
     <view class="info-row"><view class="label">用户电话</view><view class="value">{{detail.order.clientContact.phone || '未绑定'}}</view></view>
     <view class="button-row"><button class="ghost-btn" bindtap="callClient"><text class="remix-icon ri-phone-line"></text><text>拨打用户电话</text></button><button class="ghost-btn" bindtap="copyOrderNo"><text class="remix-icon ri-file-copy-line"></text><text>复制订单号</text></button></view>
     <view class="info-row"><view class="label">服务</view><view class="value">{{detail.order.serviceSummary || (detail.order.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.petSnapshot && detail.order.petSnapshot.beautyTitle && detail.order.petSnapshot.beautyTitle.title}}"><view class="label">宠物称号</view><view class="soft-badge">{{detail.order.petSnapshot.beautyTitle.title}}</view></view>
     <view class="info-row"><view class="label">发布方式</view><view class="value">{{detail.order.publishMode === 'direct' ? '指定宠托师' : '公开发布抢单'}}</view></view>
     <view class="info-row" wx:if="{{detail.order.publishMode === 'direct'}}"><view class="label">指定宠托师</view><view class="value">{{detail.order.requestedStaffName || '已指定宠托师'}}</view></view>
     <view class="info-row" wx:if="{{detail.order.staffOpenid}}"><view class="label">实际接单</view><view class="value">{{detail.order.staffContact.displayName || detail.order.staffProfileId || detail.order.staffOpenid}}</view></view>

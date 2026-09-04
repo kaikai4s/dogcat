@@ -239,6 +239,7 @@
       <view class="module-switch-row"><text>平台保障</text><switch checked="{{settings.homePage.modules.platformAssurance !== false}}" data-key="platformAssurance" bindchange="toggleHomeModule" /></view>
       <view class="module-switch-row"><text>历史服务统计</text><switch checked="{{settings.homePage.modules.historyStats !== false}}" data-key="historyStats" bindchange="toggleHomeModule" /></view>
       <view class="module-switch-row"><text>抽奖活动横幅</text><switch checked="{{settings.homePage.modules.lottery !== false}}" data-key="lottery" bindchange="toggleHomeModule" /></view>
+      <view class="module-switch-row"><text>最美宠物活动</text><switch checked="{{settings.homePage.modules.petBeautyActivity !== false}}" data-key="petBeautyActivity" bindchange="toggleHomeModule" /></view>
     </view>
 
     <button class="primary margin-top-lg" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>

@@ -30,7 +30,7 @@
     <view class="info-row"><view class="label">服务</view><view class="value">{{order.serviceSummary || (order.serviceType === 'walk' ? '遛狗' : '喂养')}}</view></view>
     <view class="info-row"><view class="label">发布方式</view><view class="value">{{order.publishMode === 'direct' ? '指定宠托师' : '公开发布抢单'}}</view></view>
     <view class="info-row" wx:if="{{order.publishMode === 'direct'}}"><view class="label">指定宠托师</view><view class="value">{{order.requestedStaffName || '已指定宠托师'}}</view></view>
-    <view class="info-row"><view class="label">宠物</view><view class="value">{{order.petName}}</view></view>
+    <view class="info-row"><view class="label">宠物</view><view class="value pet-title-value">{{order.petName}}<text class="pet-title-badge" wx:if="{{order.petSnapshot && order.petSnapshot.beautyTitle && order.petSnapshot.beautyTitle.title}}">{{order.petSnapshot.beautyTitle.title}}</text></view></view>
     <view class="info-row"><view class="label">地址</view><view class="value">{{order.serviceAddress}}</view></view>
     <view class="info-row" wx:if="{{order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{order.addressDetail}}</view></view>
     <view class="info-row" wx:if="{{order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{order.doorplate}}</view></view>

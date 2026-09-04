@@ -67,7 +67,8 @@
     "pages/client/points/index",
     "pages/client/checkin/index",
     "pages/client/reward-mails/index",
-    "pages/client/lottery/index"
+    "pages/client/lottery/index",
+    "pages/client/pet-beauty/activity/index"
   ],
   "window": {
     "backgroundColor": "#FFF8EC",

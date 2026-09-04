@@ -34,7 +34,8 @@
       "Bash(command -v wx)",
       "Bash(env)",
       "Bash(npx mocha:*)",
-      "Bash(npx npx:*)"
+      "Bash(npx npx:*)",
+      "Bash([ -f \"/home/ebrook-dev/project/dogcat/tests/cloudfunctions/api.test.js\" ])"
     ]
   }
 }

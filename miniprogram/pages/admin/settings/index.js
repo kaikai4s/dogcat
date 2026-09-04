@@ -122,7 +122,8 @@ const homeModuleOptions = [
   { key: 'featuredSitters', label: '精选宠托师' },
   { key: 'platformAssurance', label: '平台保障' },
   { key: 'historyStats', label: '历史服务统计' },
-  { key: 'lottery', label: '抽奖活动横幅' }
+  { key: 'lottery', label: '抽奖活动横幅' },
+  { key: 'petBeautyActivity', label: '最美宠物活动' }
 ]
 
 function normalizeHomePageConfig(homePage = {}) {

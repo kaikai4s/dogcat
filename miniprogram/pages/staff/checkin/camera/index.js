@@ -15,6 +15,7 @@ Page({
     orderId: '',
     eventType: '',
     eventTypeText: '',
+    isBeautyCheckin: false,
     remark: '',
     photos: [],
     uploading: false,
@@ -24,7 +25,7 @@ Page({
   },
   onLoad(q) {
     this.applyCurrentTheme()
-    this.setData({ ...createPageNav(q), orderId: q.id, eventType: q.eventType, eventTypeText: formatCheckinEvent(q.eventType) })
+    this.setData({ ...createPageNav(q), orderId: q.id, eventType: q.eventType, eventTypeText: formatCheckinEvent(q.eventType), isBeautyCheckin: q.eventType === 'pet_beauty_photo' })
     this.loadPhotos()
   },
   onShow() {

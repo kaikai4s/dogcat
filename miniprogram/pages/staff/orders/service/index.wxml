@@ -18,6 +18,7 @@
       <view class="pet-photo placeholder" wx:else><text class="remix-icon ri-footprint-line"></text></view>
       <view class="pet-info">
         <view class="pet-name">{{order.petSnapshot.name || order.petName}} · {{order.petSnapshot.breed || '未知品种'}}</view>
+        <view class="pet-title-badge" wx:if="{{order.petSnapshot.beautyTitle && order.petSnapshot.beautyTitle.title}}"><text class="remix-icon ri-vip-crown-line"></text><text>{{order.petSnapshot.beautyTitle.title}}</text></view>
         <view class="pet-desc" wx:if="{{order.petSnapshot.personality}}">性格：{{order.petSnapshot.personality}}</view>
         <view class="pet-note" wx:if="{{order.petSnapshot.specialNotes}}">备注：{{order.petSnapshot.specialNotes}}</view>
       </view>
