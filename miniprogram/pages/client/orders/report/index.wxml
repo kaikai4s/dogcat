@@ -1,58 +1,60 @@
-<view class="page {{themeClass}} {{fontClass}}" wx:if="{{report}}">
-  <view class="dashboard-header">
-    <view class="badge">完成报告</view>
-    <view class="title">服务报告</view>
-    <view class="tip">服务完成后自动汇总轨迹、打卡和履约证据。</view>
+<view class="page report-page {{themeClass}} {{fontClass}}" wx:if="{{report}}">
+  <view class="report-hero">
+    <view class="hero-badge"><text class="remix-icon ri-file-text-fill hero-icon"></text><text>完成报告</text></view>
+    <view class="hero-title">服务报告</view>
+    <view class="hero-desc">服务完成后自动汇总轨迹、打卡照片和履约证据。</view>
   </view>
 
-  <view class="soft-panel">
-    <view class="between">
-      <view>
-        <view class="muted">订单编号</view>
-        <view class="strong">{{report.order.orderNo}}</view>
-      </view>
-      <view class="badge">{{report.order.statusText}}</view>
+  <view class="summary-card">
+    <view class="summary-main">
+      <view class="summary-label">订单编号</view>
+      <view class="summary-no">{{report.order.orderNo}}</view>
     </view>
+    <view class="status-badge">{{report.order.statusText}}</view>
   </view>
 
-  <view class="card info-list">
-    <view class="info-row"><view class="label">订单</view><view class="value">{{report.order.orderNo}}</view></view>
-    <view class="info-row"><view class="label">状态</view><view class="badge">{{report.order.statusText}}</view></view>
-    <view class="info-row"><view class="label">轨迹点</view><view class="value">{{report.tracks.length}}</view></view>
-    <view class="info-row"><view class="label">打卡数</view><view class="value">{{report.checkins.length}}</view></view>
+  <view class="stats-grid">
+    <view class="stat-card highlight"><view class="stat-number">{{report.tracks.length}}</view><view class="stat-label">轨迹点</view></view>
+    <view class="stat-card"><view class="stat-number">{{report.checkins.length}}</view><view class="stat-label">打卡数</view></view>
+    <view class="stat-card"><view class="stat-number">{{report.checkinGroups.length}}</view><view class="stat-label">打卡项目</view></view>
   </view>
 
-  <view class="card" style="margin-top:24rpx;padding:24rpx;">
-    <view class="between" style="align-items:center;">
-      <view>
-        <view class="subtitle" style="margin-bottom:0;">服务轨迹</view>
-        <view class="muted">查看地图轨迹、起终点和打卡位置</view>
-      </view>
-      <button class="ghost compact-btn" bindtap="goTracking">查看轨迹</button>
+  <view class="card track-entry-card">
+    <view class="track-entry-main">
+      <view class="card-subtitle no-margin"><text class="remix-icon ri-route-line sub-icon"></text><text>服务轨迹</text></view>
+      <view class="card-desc">查看地图轨迹、起终点和打卡位置</view>
     </view>
+    <button class="ghost-btn compact-btn" bindtap="goTracking"><text class="remix-icon ri-map-pin-line"></text><text>查看轨迹</text></button>
   </view>
 
-  <view class="card" style="margin-top:24rpx;padding:24rpx;">
-    <view class="subtitle">打卡照片</view>
-    <view wx:if="{{report.checkinGroups.length}}">
-      <view wx:for="{{report.checkinGroups}}" wx:key="eventType" style="margin-top:18rpx;">
-        <view class="strong">{{item.eventTypeText}} · {{item.count}}张</view>
-        <view class="muted" wx:if="{{item.remarkText}}">{{item.remarkText}}</view>
+  <view class="card">
+    <view class="card-subtitle"><text class="remix-icon ri-gallery-line sub-icon"></text><text>打卡照片</text></view>
+    <view wx:if="{{report.checkinGroups.length}}" class="checkin-group-list">
+      <view wx:for="{{report.checkinGroups}}" wx:key="eventType" class="checkin-group">
+        <view class="group-head">
+          <view class="group-title">{{item.eventTypeText}}</view>
+          <view class="group-count">{{item.count}}张</view>
+        </view>
+        <view class="group-remark" wx:if="{{item.remarkText}}">{{item.remarkText}}</view>
         <view class="image-list">
-          <image wx:for="{{item.photos}}" wx:for-item="photo" wx:key="_id" class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewPhoto" />
+          <view class="photo-item" wx:for="{{item.photos}}" wx:for-item="photo" wx:key="_id">
+            <image class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewPhoto" />
+            <view class="photo-time">{{photo.recordedAtText || '未记录时间'}}</view>
+          </view>
         </view>
       </view>
     </view>
-    <view class="empty" wx:else>暂无打卡照片。</view>
+    <view class="empty-state" wx:else>
+      <text class="remix-icon ri-image-line empty-icon"></text>
+      <view class="empty-text">暂无打卡照片</view>
+    </view>
   </view>
 
-  <view class="card" style="margin-top:24rpx;padding:24rpx;">
-    <view class="between" style="align-items:center;">
-      <view class="subtitle" style="margin-bottom:0;">🤖 AI 智能总结</view>
-      <button class="primary compact-btn" loading="{{loadingAi}}" bindtap="generateAiReport">一键生成总结</button>
+  <view class="card ai-card">
+    <view class="ai-head">
+      <view class="card-subtitle no-margin"><text class="remix-icon ri-robot-2-line sub-icon"></text><text>AI 智能总结</text></view>
+      <button class="primary-btn compact-btn" loading="{{loadingAi}}" bindtap="generateAiReport"><text class="remix-icon ri-sparkling-line"></text><text>一键总结</text></button>
     </view>
-    <view wx:if="{{aiSummary}}" class="muted" style="margin-top:16rpx;line-height:1.6;white-space:pre-wrap;background:#fff8fa;padding:20rpx;border-radius:12rpx;">
-      {{aiSummary}}
-    </view>
+    <view wx:if="{{aiSummary}}" class="ai-summary">{{aiSummary}}</view>
   </view>
 </view>

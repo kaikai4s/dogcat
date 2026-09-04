@@ -1,14 +1,17 @@
-<view class="{{themeClass}} {{fontClass}} page" wx:if="{{evidence}}">
-  <view class="dashboard-header">
-    <view class="badge">履约证据</view>
-    <view class="title">证据链</view>
-    <view class="tip">汇总订单轨迹、打卡记录和限时门锁密码访问日志。</view>
+<view class="admin-evidence-page {{themeClass}} {{fontClass}}" wx:if="{{evidence}}">
+  <view class="evidence-hero">
+    <view class="hero-badge"><text class="remix-icon ri-shield-check-fill"></text><text>履约证据</text></view>
+    <view class="hero-title">证据链</view>
+    <view class="hero-desc">汇总订单轨迹、打卡记录和限时门锁密码访问日志。</view>
   </view>
 
-  <view class="card info-list">
+  <view class="admin-card summary-card">
+    <view class="card-subtitle"><text class="remix-icon ri-file-shield-line sub-icon"></text><text>订单证据概览</text></view>
     <view class="info-row"><view class="label">订单</view><view class="value">{{evidence.order.orderNo}}</view></view>
-    <view class="info-row"><view class="label">轨迹点</view><view class="value">{{evidence.tracks.length}}</view></view>
-    <view class="info-row"><view class="label">打卡记录</view><view class="value">{{evidence.checkins.length}}</view></view>
-    <view class="info-row"><view class="label">密码访问日志</view><view class="value">{{evidence.unlockLogs.length}}</view></view>
+    <view class="stats-grid">
+      <view class="stat-item"><view class="stat-number">{{evidence.tracks.length}}</view><view class="stat-label">轨迹点</view></view>
+      <view class="stat-item"><view class="stat-number">{{evidence.checkins.length}}</view><view class="stat-label">打卡记录</view></view>
+      <view class="stat-item"><view class="stat-number">{{evidence.unlockLogs.length}}</view><view class="stat-label">密码访问日志</view></view>
+    </view>
   </view>
 </view>

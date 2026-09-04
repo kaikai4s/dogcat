@@ -1,3 +1,5 @@
 {
-  "usingComponents": {}
+  "navigationBarTitleText": "签到中心",
+  "navigationBarBackgroundColor": "#FFF8EC",
+  "backgroundColor": "#FFF8EC"
 }

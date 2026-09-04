@@ -1,32 +1,56 @@
-<view class="page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="badge">现场证据</view>
-    <view class="title">{{eventTypeText}} 打卡</view>
-    <view class="tip">拍照或上传截图后会立即保存到订单证据链，可在服务结束前删除。</view>
+<view class="page staff-camera-page {{themeClass}} {{fontClass}}">
+  <view class="staff-hero">
+    <view class="hero-badge">
+      <text class="remix-icon ri-camera-lens-fill hero-icon"></text>
+      <text>现场证据</text>
+    </view>
+    <view class="hero-title">{{eventTypeText}} 打卡</view>
+    <view class="hero-desc">拍照或上传截图后将保存至订单证据链，服务结束前可删除并重新上传。</view>
   </view>
 
   <view class="card form-card">
-    <textarea placeholder="备注（会随本次上传的照片保存）" value="{{remark}}" bindinput="input" />
+    <view class="card-subtitle">
+      <text class="remix-icon ri-edit-2-line sub-icon"></text>
+      <text>本次打卡备注</text>
+    </view>
+    <textarea class="remark-textarea" placeholder="备注（会随本次上传的照片保存）" value="{{remark}}" bindinput="input" />
   </view>
 
-  <button class="primary" loading="{{uploading}}" disabled="{{uploading}}" bindtap="chooseAndCreateCheckins">{{uploading ? '上传中...' : '拍照 / 上传截图'}}</button>
+  <button class="primary-btn upload-btn" loading="{{uploading}}" disabled="{{uploading}}" bindtap="chooseAndCreateCheckins">
+    <text class="remix-icon ri-image-add-line"></text>
+    <text>{{uploading ? '上传中...' : '拍照 / 上传截图'}}</text>
+  </button>
 
-  <view class="card">
-    <view class="between">
+  <view class="card photo-card">
+    <view class="photo-head">
       <view>
-        <view class="subtitle">已上传照片</view>
-        <view class="muted">{{photos.length}} 张，至少保留 1 张才计入必打卡。</view>
+        <view class="card-subtitle no-margin">
+          <text class="remix-icon ri-gallery-line sub-icon"></text>
+          <text>已上传照片</text>
+        </view>
+        <view class="photo-tip">{{photos.length}} 张，至少保留 1 张才计入必打卡。</view>
       </view>
+      <view class="photo-count">{{photos.length}}</view>
     </view>
+
     <view class="photo-grid" wx:if="{{photos.length}}">
       <view class="photo-cell" wx:for="{{photos}}" wx:key="_id">
         <image class="checkin-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewPhoto" />
         <view class="photo-meta">{{item.remark || '无备注'}}</view>
-        <button class="mini-delete" data-id="{{item._id}}" loading="{{deletingId === item._id}}" disabled="{{deletingId === item._id}}" bindtap="deletePhoto">删除</button>
+        <button class="mini-delete" data-id="{{item._id}}" loading="{{deletingId === item._id}}" disabled="{{deletingId === item._id}}" bindtap="deletePhoto">
+          <text class="remix-icon ri-delete-bin-line"></text>
+          <text>删除</text>
+        </button>
       </view>
     </view>
-    <view class="empty" wx:else>暂无照片，请拍照或上传截图。</view>
+    <view class="empty-state" wx:else>
+      <text class="remix-icon ri-image-add-line empty-icon"></text>
+      <view class="empty-text">暂无照片，请拍照或上传截图</view>
+    </view>
   </view>
 
-  <button class="ghost" bindtap="goBack">完成返回</button>
+  <button class="ghost-btn back-btn" bindtap="goBack">
+    <text class="remix-icon ri-arrow-left-line"></text>
+    <text>完成返回</text>
+  </button>
 </view>

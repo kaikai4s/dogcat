@@ -389,6 +389,10 @@ function normalizeSystemSettings(value = {}, options = {}) {
       wechatId: safeText((value.customerService || {}).wechatId).trim(),
       workHours: safeText((value.customerService || {}).workHours).trim() || '每天 9:00-21:00',
       officialAccountName: safeText((value.customerService || {}).officialAccountName).trim()
+    },
+    checkinShare: {
+      title: safeText((value.checkinShare || {}).title).trim() || '来签到领福利，补签卡也能拿',
+      imageUrl: safeText((value.checkinShare || {}).imageUrl).trim()
     }
   }
 }
@@ -2128,12 +2132,15 @@ async function buildMonthCalendar(openid, monthKey) {
       rewardStatus: checkin ? 'claimed' : (isToday ? 'today' : (isPast ? 'missed' : 'future'))
     }
   })
+  const settings = await getSystemSettings()
   return {
     monthKey,
     retroCardCount: Number(user.retroCardCount || 0),
     points: Number(user.points || 0),
     memberLevelName: user.memberLevelName || '普通会员',
-    days
+    days,
+    shareTitle: (settings.checkinShare && settings.checkinShare.title) || '来签到领福利，补签卡也能拿',
+    shareImageUrl: (settings.checkinShare && settings.checkinShare.imageUrl) || ''
   }
 }
 
@@ -2990,6 +2997,20 @@ function paginateList(list = [], data = {}) {
     pageSize,
     hasMore: start + pageSize < total
   }
+}
+
+function messageTimeValue(thread = {}) {
+  const source = thread.lastMessageAt || thread.updatedAt || thread.createdAt
+  const time = source instanceof Date ? source.getTime() : new Date(source || 0).getTime()
+  return Number.isFinite(time) ? time : 0
+}
+
+function sortMessageThreads(list = []) {
+  return list.slice().sort((a, b) => {
+    const unreadDiff = (Number(b.unreadCount || 0) > 0) - (Number(a.unreadCount || 0) > 0)
+    if (unreadDiff !== 0) return unreadDiff
+    return messageTimeValue(b) - messageTimeValue(a)
+  })
 }
 
 function buildFinanceDashboardData({ orders = [], payments = [], refunds = [], earnings = [], withdraws = [], logs = [] }, range) {
@@ -6744,12 +6765,12 @@ const handlers = {
   async message(openid, action, data) {
     await getUser(openid)
     if (action === 'listThreads') {
-      const res = await db.collection('order_message_threads').where({ clientOpenid: openid }).orderBy('updatedAt', 'desc').get()
-      const list = (res.data || []).map((thread) => ({
+      const res = await db.collection('order_message_threads').where({ clientOpenid: openid }).get()
+      const list = sortMessageThreads((res.data || []).map((thread) => ({
         ...thread,
         orderStatusText: orderStatusText(thread.orderStatus),
         hasUnread: Number(thread.unreadCount || 0) > 0
-      }))
+      })))
       return paginateList(list, data)
     }
     if (action === 'getUnreadSummary') {
@@ -6774,7 +6795,7 @@ const handlers = {
       const thread = (await db.collection('order_message_threads').doc(threadId).get()).data
       if (!thread || thread.clientOpenid !== openid) throw new Error('消息会话不存在')
       const time = now()
-      await db.collection('order_message_threads').doc(threadId).update({ data: { unreadCount: 0, readAt: time, updatedAt: time } })
+      await db.collection('order_message_threads').doc(threadId).update({ data: { unreadCount: 0, readAt: time } })
       return { threadId, unreadCount: 0 }
     }
     if (action === 'markOrderThreadRead') {
@@ -6784,7 +6805,7 @@ const handlers = {
       const thread = res.data[0]
       if (!thread) return { orderId, unreadCount: 0 }
       const time = now()
-      await db.collection('order_message_threads').doc(thread._id).update({ data: { unreadCount: 0, readAt: time, updatedAt: time } })
+      await db.collection('order_message_threads').doc(thread._id).update({ data: { unreadCount: 0, readAt: time } })
       return { threadId: thread._id, orderId, unreadCount: 0 }
     }
     throw new Error('未知 message 操作')
@@ -6794,12 +6815,12 @@ const handlers = {
     const user = await getUser(openid)
     if (!(user.roles || []).includes('staff')) throw new Error('仅宠托师可查看消息')
     if (action === 'listThreads') {
-      const res = await db.collection('order_staff_message_threads').where({ staffOpenid: openid }).orderBy('updatedAt', 'desc').get()
-      const list = (res.data || []).map((thread) => ({
+      const res = await db.collection('order_staff_message_threads').where({ staffOpenid: openid }).get()
+      const list = sortMessageThreads((res.data || []).map((thread) => ({
         ...thread,
         orderStatusText: orderStatusText(thread.orderStatus),
         hasUnread: Number(thread.unreadCount || 0) > 0
-      }))
+      })))
       return paginateList(list, data)
     }
     if (action === 'getUnreadSummary') {
@@ -6824,7 +6845,7 @@ const handlers = {
       const thread = (await db.collection('order_staff_message_threads').doc(threadId).get()).data
       if (!thread || thread.staffOpenid !== openid) throw new Error('消息会话不存在')
       const time = now()
-      await db.collection('order_staff_message_threads').doc(threadId).update({ data: { unreadCount: 0, readAt: time, updatedAt: time } })
+      await db.collection('order_staff_message_threads').doc(threadId).update({ data: { unreadCount: 0, readAt: time } })
       return { threadId, unreadCount: 0 }
     }
     if (action === 'markOrderThreadRead') {
@@ -6834,7 +6855,7 @@ const handlers = {
       const thread = res.data[0]
       if (!thread) return { orderId, unreadCount: 0 }
       const time = now()
-      await db.collection('order_staff_message_threads').doc(thread._id).update({ data: { unreadCount: 0, readAt: time, updatedAt: time } })
+      await db.collection('order_staff_message_threads').doc(thread._id).update({ data: { unreadCount: 0, readAt: time } })
       return { threadId: thread._id, orderId, unreadCount: 0 }
     }
     throw new Error('未知 staffMessage 操作')

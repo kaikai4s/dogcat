@@ -1,1 +1,47 @@
 @import "../list/index.wxss";
+
+.favorites-page .hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.favorites-page .hero-badge .remix-icon {
+  font-size: 26rpx;
+  color: #d45f22;
+}
+
+.favorites-search-wrap {
+  margin-bottom: 8rpx;
+}
+
+.favorites-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-top: 16rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  color: #d45f22;
+  background: rgba(255, 240, 226, 0.92);
+  font-size: 23rpx;
+  font-weight: 850;
+}
+
+.favorites-clear .remix-icon {
+  font-size: 26rpx;
+}
+
+.favorite-sitter-card .sitter-item-actions .remix-icon,
+.sitter-empty .primary-cute-btn .remix-icon {
+  margin-right: 8rpx;
+  font-size: 30rpx;
+  line-height: 1;
+}
+
+.load-more-tip {
+  padding: 24rpx 0;
+  color: #8e8580;
+  font-size: 24rpx;
+  text-align: center;
+}

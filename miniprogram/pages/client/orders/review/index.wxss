@@ -1,9 +1,84 @@
+/* Client order review - Cute Pet Style UI redesign */
+.review-page {
+  min-height: 100vh;
+  padding: 0 28rpx 120rpx;
+  background: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
+  color: #2d211a;
+  box-sizing: border-box;
+}
+
+.review-hero {
+  margin: 0 -28rpx 24rpx;
+  padding: 42rpx 34rpx 38rpx;
+  border-bottom-left-radius: 48rpx;
+  border-bottom-right-radius: 48rpx;
+  background: linear-gradient(135deg, #fff0c9 0%, #ffd9c8 54%, #fff5f0 100%);
+  box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  color: #d45f22;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 24rpx;
+  font-weight: 850;
+  margin-bottom: 16rpx;
+}
+
+.hero-icon { font-size: 28rpx; }
+
+.hero-title {
+  color: #2d211a;
+  font-size: 42rpx;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.hero-desc {
+  margin-top: 12rpx;
+  color: #7a6a5e;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.card {
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  box-shadow: 0 14rpx 34rpx rgba(123, 89, 62, 0.06);
+  border-radius: 36rpx;
+}
+
+.form-card {
+  padding: 28rpx;
+}
+
+.card-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  color: #2d211a;
+  font-size: 30rpx;
+  font-weight: 950;
+  margin: 28rpx 0 18rpx;
+}
+
+.card-subtitle:first-child { margin-top: 0; }
+
+.sub-icon {
+  color: #e9672f;
+  font-size: 34rpx;
+}
+
 .rating-panel {
-  margin: 16rpx 0 32rpx;
-  padding: 26rpx 20rpx;
-  border-radius: 28rpx;
-  background: linear-gradient(180deg, #fff8f0 0%, #fffaf6 100%);
-  border: 2rpx solid #ffe3c2;
+  margin-bottom: 30rpx;
+  padding: 30rpx 20rpx;
+  border-radius: 30rpx;
+  background: linear-gradient(145deg, #fff8ec 0%, #fff0e2 100%);
+  border: 1rpx solid rgba(255, 153, 102, 0.16);
   text-align: center;
 }
 
@@ -14,68 +89,103 @@
 }
 
 .rating-star {
-  color: #e7d5dc;
-  font-size: 76rpx;
+  color: #e6d7c8;
+  font-size: 72rpx;
   line-height: 1;
-  text-shadow: 0 6rpx 14rpx rgba(247, 181, 0, 0.08);
 }
 
 .rating-star.active {
-  color: #f7b500;
+  color: #ffb020;
+  text-shadow: 0 8rpx 18rpx rgba(255, 176, 32, 0.16);
 }
 
 .rating-text {
-  margin-top: 14rpx;
-  color: #d97706;
+  margin-top: 16rpx;
+  color: #d45f22;
   font-size: 28rpx;
-  font-weight: 850;
+  font-weight: 900;
 }
 
 .tag-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 14rpx;
-  margin: 14rpx 0 24rpx;
+  margin-bottom: 28rpx;
 }
 
 .tag-option {
-  padding: 16rpx 24rpx;
+  padding: 14rpx 24rpx;
   border-radius: 999rpx;
-  background: var(--theme-bg-soft);
-  color: #6f6670;
+  background: #fff8ec;
+  color: #7a6a5e;
   font-size: 25rpx;
-  font-weight: 750;
-  border: 2rpx solid var(--theme-border);
+  font-weight: 800;
+  border: 1rpx solid rgba(255, 153, 102, 0.18);
 }
 
 .tag-option.active {
-  color: var(--theme-primary);
-  border-color: var(--theme-primary);
-  background: #ffe8ef;
-  box-shadow: 0 8rpx 20rpx var(--theme-shadow);
+  color: #ffffff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
+  box-shadow: 0 8rpx 20rpx rgba(255, 122, 69, 0.18);
 }
 
 .textarea-wrap {
   position: relative;
+  border-radius: 28rpx;
+  background: #fff8ec;
+  border: 1rpx solid rgba(255, 153, 102, 0.16);
+  overflow: hidden;
 }
 
 .textarea-wrap textarea {
   width: 100%;
-  min-height: 220rpx;
+  min-height: 240rpx;
   box-sizing: border-box;
-  padding: 22rpx;
-  padding-bottom: 58rpx;
-  border-radius: 24rpx;
-  background: #fff8fa;
-  color: var(--theme-text);
+  padding: 24rpx;
+  padding-bottom: 64rpx;
+  background: transparent;
+  color: #2d211a;
   font-size: 28rpx;
   line-height: 1.55;
 }
 
 .word-count {
   position: absolute;
-  right: 22rpx;
+  right: 24rpx;
   bottom: 18rpx;
-  color: #a7a0a6;
+  color: #a89b90;
   font-size: 24rpx;
+}
+
+.primary-btn {
+  min-height: 84rpx;
+  border-radius: 28rpx;
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
+  color: #ffffff;
+  box-shadow: 0 10rpx 26rpx rgba(255, 122, 69, 0.22);
+  font-size: 28rpx;
+  font-weight: 950;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  border: none;
+  line-height: 1;
+}
+
+.primary-btn::after { display: none; }
+
+.primary-btn .remix-icon {
+  font-size: 32rpx;
+  line-height: 1;
+}
+
+.submit-btn {
+  margin-top: 28rpx;
+  width: 100%;
+}
+
+button[disabled] {
+  opacity: 0.62;
 }

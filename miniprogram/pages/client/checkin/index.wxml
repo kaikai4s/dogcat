@@ -1,26 +1,47 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">每日签到</view>
-    <view class="title">签到中心</view>
-    <view class="tip">按月查看签到奖励，点选日期后再签到或补签。</view>
+<view class="page checkin-page {{themeClass}} {{fontClass}}">
+  <view class="checkin-hero">
+    <view class="hero-kicker">
+      <text class="remix-icon ri-calendar-check-line kicker-icon"></text>
+      <text>每日福利</text>
+    </view>
+    <view class="hero-title">签到中心</view>
+    <view class="hero-desc">连续签到解锁萌宠卡券与积分奖励，每日打卡好礼不断。</view>
   </view>
 
   <view class="card summary-card">
-    <view class="summary-main">
-      <view>
-        <view class="strong">{{memberLevelName}}</view>
-        <view class="muted">当前可用积分 {{points}}</view>
+    <view class="summary-top">
+      <view class="user-level-block">
+        <view class="level-badge">
+          <text class="remix-icon ri-vip-crown-2-fill crown-icon"></text>
+          <text>{{memberLevelName}}</text>
+        </view>
+        <view class="points-val">
+          <text class="num">{{points}}</text>
+          <text class="unit">可用积分</text>
+        </view>
       </view>
-      <view class="badge">补签卡 {{retroCardCount}}</view>
-    </view>
-    <view class="invite-row">
-      <view>
-        <view class="strong">邀请好友得补签卡</view>
-        <view class="muted">好友首次登录后，你获得补签卡 +1</view>
+      <view class="retro-card-badge">
+        <text class="remix-icon ri-ticket-2-line retro-icon"></text>
+        <text>补签卡 ×{{retroCardCount}}</text>
       </view>
-      <button class="invite-btn" open-type="share">去邀请</button>
     </view>
-    <view class="month-title">{{monthLabel}}</view>
+
+    <view class="invite-card">
+      <view class="invite-tag">
+        <text class="remix-icon ri-user-add-fill invite-icon"></text>
+        <text class="invite-title">邀请好友得补签卡</text>
+      </view>
+      <view class="invite-sub">好友首次成功登录后，你与好友各获得补签卡 +1</view>
+      <button class="invite-btn" open-type="share">
+        <text class="remix-icon ri-share-forward-fill btn-icon"></text>
+        <text>去邀请好友</text>
+      </button>
+    </view>
+
+    <view class="month-bar">
+      <text class="remix-icon ri-calendar-event-line month-icon"></text>
+      <text class="month-label">{{monthLabel}}</text>
+    </view>
   </view>
 
   <view class="card calendar-card">
@@ -38,7 +59,9 @@
         >
           <view class="cell-head">
             <view class="cell-day">{{item.day}}</view>
-            <view class="cell-tag" wx:if="{{item.checked}}">{{item.checkinType === 'retro' ? '补' : '签'}}</view>
+            <view class="cell-tag" wx:if="{{item.checked}}">
+              <text class="remix-icon {{item.checkinType === 'retro' ? 'ri-history-line' : 'ri-check-line'}}"></text>
+            </view>
           </view>
           <view class="cell-reward">{{item.rewardBadge}}</view>
           <view class="cell-status">{{item.canCheckin ? '今' : (item.canRetro ? '补' : (item.checked ? '已签' : ''))}}</view>
@@ -48,24 +71,33 @@
   </view>
 
   <view class="card detail-card" wx:if="{{selectedDayDetail}}">
-    <view class="between" style="align-items:flex-start;gap:20rpx;">
-      <view>
-        <view class="strong">{{selectedDayDetail.dateLabel}}</view>
-        <view class="muted">{{selectedDayDetail.statusText}}</view>
+    <view class="detail-head">
+      <view class="detail-title-group">
+        <view class="detail-day-label">{{selectedDayDetail.dateLabel}}</view>
+        <view class="detail-status-text">{{selectedDayDetail.statusText}}</view>
       </view>
-      <view class="badge">{{selectedDayDetail.rewardType === 'coupon' ? '优惠券' : (selectedDayDetail.rewardType === 'none' ? '无奖励' : '积分奖励')}}</view>
+      <view class="reward-type-chip">
+        {{selectedDayDetail.rewardType === 'coupon' ? '优惠券' : (selectedDayDetail.rewardType === 'none' ? '常规打卡' : '积分大礼')}}
+      </view>
     </view>
-    <view class="detail-reward">{{selectedDayDetail.rewardText}}</view>
-    <view class="muted detail-desc" wx:if="{{selectedDayDetail.desc}}">{{selectedDayDetail.desc}}</view>
+    <view class="detail-reward-box">
+      <text class="remix-icon ri-gift-2-line reward-icon"></text>
+      <text class="reward-val">{{selectedDayDetail.rewardText}}</text>
+    </view>
+    <view class="detail-desc" wx:if="{{selectedDayDetail.desc}}">{{selectedDayDetail.desc}}</view>
     <button
       wx:if="{{selectedDayDetail.actionText}}"
-      class="primary detail-action"
+      class="primary detail-action-btn"
       disabled="{{submitting}}"
       bindtap="handleSelectedAction"
     >
-      {{submitting ? '处理中...' : selectedDayDetail.actionText}}
+      <text class="remix-icon ri-footprint-line btn-icon"></text>
+      <text>{{submitting ? '打卡处理中...' : selectedDayDetail.actionText}}</text>
     </button>
   </view>
 
-  <button class="ghost" bindtap="openPoints">查看积分明细</button>
+  <button class="ghost points-link-btn" bindtap="openPoints">
+    <text class="remix-icon ri-coins-line btn-icon"></text>
+    <text>查看积分与打卡明细</text>
+  </button>
 </view>

@@ -275,16 +275,22 @@ Page({
   },
 
   showLotteryFloatIfNeeded(activity) {
-    const hasDrawCount = Number(activity && activity.remainingDrawCount || 0) > 0
+    const remainingDrawCount = Number(activity && activity.remainingDrawCount)
+    const hasRemainingDrawCount = Number.isFinite(remainingDrawCount) && remainingDrawCount > 0
+    const noRemainingDrawCount = Number.isFinite(remainingDrawCount) && remainingDrawCount <= 0
     const drawStateUnknown = activity && activity.canDraw === undefined && activity.remainingDrawCount === undefined
-    const canDraw = activity && (activity.canDraw === true || hasDrawCount || drawStateUnknown)
+    const canDraw = activity && !noRemainingDrawCount && activity.canDraw !== false && (activity.canDraw === true || hasRemainingDrawCount || drawStateUnknown)
     if (!canDraw) {
       this.clearLotteryFloatTimer()
       this.setData({ lotteryFloatVisible: false })
       return
     }
-    if (this._lotteryFloatShown) return
-    this._lotteryFloatShown = true
+    const app = getApp()
+    if (app.globalData && app.globalData.lotteryFloatShownThisLaunch) {
+      this.setData({ lotteryFloatVisible: false })
+      return
+    }
+    if (app.globalData) app.globalData.lotteryFloatShownThisLaunch = true
     this.clearLotteryFloatTimer()
     this.setData({ lotteryFloatVisible: true })
     this._lotteryFloatTimer = setTimeout(() => {

@@ -1,38 +1,38 @@
-<view class="{{themeClass}} {{fontClass}} page" wx:if="{{detail}}">
-  <view class="dashboard-header">
-    <view class="badge">订单详情</view>
-    <view class="title">{{detail.order.orderNo}}</view>
-    <view class="tip">汇总订单履约状态、轨迹、打卡和门锁访问记录。</view>
+<view class="admin-order-page {{themeClass}} {{fontClass}}" wx:if="{{detail}}">
+  <view class="admin-order-hero">
+    <view class="hero-badge"><text class="remix-icon ri-file-text-fill"></text><text>订单详情</text></view>
+    <view class="hero-title">{{detail.order.orderNo}}</view>
+    <view class="hero-desc">汇总订单履约状态、轨迹、打卡、退款和门锁访问记录。</view>
   </view>
 
-  <view class="card">
-    <view class="subtitle">客户信息</view>
+  <view class="admin-card person-card">
+    <view class="card-subtitle"><text class="remix-icon ri-user-heart-line sub-icon"></text><text>客户信息</text></view>
     <view class="order-person">
       <image class="order-avatar" wx:if="{{detail.order.clientSnapshot && detail.order.clientSnapshot.avatarUrl}}" src="{{detail.order.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-      <view class="order-avatar" wx:else>🐾</view>
-      <view>
-        <view class="strong">{{detail.order.clientSnapshot.displayName || '宠物主'}}</view>
-        <view class="muted">{{detail.order.clientContact.phone || detail.order.clientSnapshot.phoneMasked || '预约客户'}}</view>
+      <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-smile-line"></text></view>
+      <view class="order-main">
+        <view class="order-title">{{detail.order.clientSnapshot.displayName || '宠物主'}}</view>
+        <view class="order-desc">{{detail.order.clientContact.phone || detail.order.clientSnapshot.phoneMasked || '预约客户'}}</view>
       </view>
     </view>
   </view>
 
-  <view class="card info-list">
+  <view class="admin-card detail-card">
+    <view class="card-subtitle"><text class="remix-icon ri-information-line sub-icon"></text><text>订单资料</text></view>
     <view class="info-row"><view class="label">订单</view><view class="value">{{detail.order.orderNo}}</view></view>
     <view class="info-row"><view class="label">用户电话</view><view class="value">{{detail.order.clientContact.phone || '未绑定'}}</view></view>
-    <button class="ghost" bindtap="callClient">拨打用户电话</button>
-    <button class="ghost" bindtap="copyOrderNo">复制订单号</button>
+    <view class="button-row"><button class="ghost-btn" bindtap="callClient"><text class="remix-icon ri-phone-line"></text><text>拨打用户电话</text></button><button class="ghost-btn" bindtap="copyOrderNo"><text class="remix-icon ri-file-copy-line"></text><text>复制订单号</text></button></view>
     <view class="info-row"><view class="label">服务</view><view class="value">{{detail.order.serviceSummary || (detail.order.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view></view>
     <view class="info-row"><view class="label">发布方式</view><view class="value">{{detail.order.publishMode === 'direct' ? '指定宠托师' : '公开发布抢单'}}</view></view>
     <view class="info-row" wx:if="{{detail.order.publishMode === 'direct'}}"><view class="label">指定宠托师</view><view class="value">{{detail.order.requestedStaffName || '已指定宠托师'}}</view></view>
     <view class="info-row" wx:if="{{detail.order.staffOpenid}}"><view class="label">实际接单</view><view class="value">{{detail.order.staffContact.displayName || detail.order.staffProfileId || detail.order.staffOpenid}}</view></view>
     <view class="info-row"><view class="label">宠托师电话</view><view class="value">{{detail.order.staffContact.phone || '未绑定'}}</view></view>
-    <button class="ghost" bindtap="callStaff">拨打宠托师电话</button>
+    <view class="button-row"><button class="ghost-btn" bindtap="callStaff"><text class="remix-icon ri-phone-line"></text><text>拨打宠托师电话</text></button></view>
     <view class="info-row" wx:if="{{detail.order.assignmentSource}}"><view class="label">派单来源</view><view class="value">{{detail.order.assignmentSourceText}}</view></view>
     <view class="info-row"><view class="label">地址</view><view class="value">{{detail.order.serviceAddress}}</view></view>
     <view class="info-row" wx:if="{{detail.order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{detail.order.addressDetail}}</view></view>
     <view class="info-row" wx:if="{{detail.order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{detail.order.doorplate}}</view></view>
-    <view class="info-row"><view class="label">状态</view><view class="badge">{{detail.order.statusText}}</view></view>
+    <view class="info-row"><view class="label">状态</view><view class="soft-badge status-badge">{{detail.order.statusText}}</view></view>
     <view class="info-row"><view class="label">支付状态</view><view class="value">{{detail.order.paymentStatusText}}</view></view>
     <view class="info-row" wx:if="{{detail.order.paymentNo}}"><view class="label">支付单号</view><view class="value">{{detail.order.paymentNo}}</view></view>
     <view class="info-row" wx:if="{{detail.order.wxTransactionId}}"><view class="label">微信交易号</view><view class="value">{{detail.order.wxTransactionId}}</view></view>
@@ -41,13 +41,16 @@
     <view class="info-row"><view class="label">接单通知失败</view><view class="value">{{detail.order.acceptedNotifyErrorText}}</view></view>
     <view class="info-row" wx:if="{{detail.order.refundStatus}}"><view class="label">退款状态</view><view class="value">{{detail.order.refundStatus}} ¥{{detail.order.refundAmount || 0}}</view></view>
     <view class="info-row" wx:if="{{detail.order.refundNo}}"><view class="label">退款单号</view><view class="value">{{detail.order.refundNo}}</view></view>
-    <view class="info-row"><view class="label">轨迹点</view><view class="value">{{detail.tracks.length}}</view></view>
-    <view class="info-row"><view class="label">打卡</view><view class="value">{{detail.checkins.length}}</view></view>
-    <view class="info-row"><view class="label">密码日志</view><view class="value">{{detail.unlockLogs.length}}</view></view>
   </view>
 
-  <view class="card" wx:if="{{refunds.length}}">
-    <view class="subtitle">退款记录</view>
+  <view class="stats-grid admin-card">
+    <view class="stat-item"><view class="stat-number">{{detail.tracks.length}}</view><view class="stat-label">轨迹点</view></view>
+    <view class="stat-item"><view class="stat-number">{{detail.checkins.length}}</view><view class="stat-label">打卡</view></view>
+    <view class="stat-item"><view class="stat-number">{{detail.unlockLogs.length}}</view><view class="stat-label">密码日志</view></view>
+  </view>
+
+  <view class="admin-card" wx:if="{{refunds.length}}">
+    <view class="card-subtitle"><text class="remix-icon ri-refund-2-line sub-icon"></text><text>退款记录</text></view>
     <view class="timeline">
       <view class="timeline-item" wx:for="{{refunds}}" wx:key="_id">
         <view class="timeline-dot"></view>
@@ -60,6 +63,8 @@
     </view>
   </view>
 
-  <button class="ghost" bindtap="evidence">证据链</button>
-  <button class="ghost" bindtap="incidents">查看异常 / 纠纷</button>
+  <view class="bottom-actions">
+    <button class="ghost-btn" bindtap="evidence"><text class="remix-icon ri-shield-check-line"></text><text>证据链</text></button>
+    <button class="ghost-btn" bindtap="incidents"><text class="remix-icon ri-customer-service-2-line"></text><text>查看异常 / 纠纷</text></button>
+  </view>
 </view>

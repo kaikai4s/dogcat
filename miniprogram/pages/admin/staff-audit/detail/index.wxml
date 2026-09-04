@@ -1,42 +1,46 @@
-<view class="{{themeClass}} {{fontClass}} page" wx:if="{{staff}}">
-  <view class="dashboard-header">
-    <view class="badge">审核详情</view>
-    <view class="title">{{staff.realName}}</view>
-    <view class="tip">核对身份和服务范围后，填写备注并给出审核结论。</view>
+<view class="admin-audit-page audit-detail-page {{themeClass}} {{fontClass}}" wx:if="{{staff}}">
+  <view class="audit-hero">
+    <view class="hero-badge"><text class="remix-icon ri-user-star-fill"></text><text>审核详情</text></view>
+    <view class="hero-title">{{staff.realName}}</view>
+    <view class="hero-desc">核对身份和服务范围后，填写备注并给出审核结论。</view>
   </view>
 
-  <view class="card info-list">
+  <view class="admin-card detail-card">
+    <view class="card-subtitle"><text class="remix-icon ri-profile-line sub-icon"></text><text>入驻资料</text></view>
     <view class="info-row"><view class="label">姓名</view><view class="value">{{staff.realName}}</view></view>
     <view class="info-row"><view class="label">手机</view><view class="value">{{staff.phone}}</view></view>
     <view class="info-row"><view class="label">城市</view><view class="value">{{staff.serviceCity}}</view></view>
     <view class="info-row"><view class="label">区域</view><view class="value">{{staff.serviceAreas}}</view></view>
-    <view class="info-row"><view class="label">身份核验</view><view class="badge">{{staff.identityStatus || 'pending'}}</view></view>
-    <view class="info-row"><view class="label">人脸核验</view><view class="badge">{{staff.faceVerifyStatus || 'manual_pending'}}</view></view>
-    <view class="info-row"><view class="label">状态</view><view class="badge">{{staff.auditStatusText}}</view></view>
+    <view class="info-row"><view class="label">身份核验</view><view class="soft-badge status-badge">{{staff.identityStatus || 'pending'}}</view></view>
+    <view class="info-row"><view class="label">人脸核验</view><view class="soft-badge status-badge">{{staff.faceVerifyStatus || 'manual_pending'}}</view></view>
+    <view class="info-row"><view class="label">状态</view><view class="soft-badge status-badge">{{staff.auditStatusText}}</view></view>
   </view>
 
-  <view class="card form-card">
-    <view class="subtitle">实名认证材料</view>
-    <view class="service-grid">
+  <view class="admin-card form-card">
+    <view class="card-subtitle"><text class="remix-icon ri-id-card-line sub-icon"></text><text>实名认证材料</text></view>
+    <view class="evidence-grid">
       <view class="service-option" wx:if="{{staff.idCardFrontFileId}}" data-url="{{staff.idCardFrontFileId}}" bindtap="preview">
-        <image src="{{staff.idCardFrontFileId}}" mode="aspectFill" style="width:100%;height:170rpx;border-radius:16rpx;" />
+        <image class="evidence-image" src="{{staff.idCardFrontFileId}}" mode="aspectFill" />
         <view class="service-title">身份证人像面</view>
       </view>
       <view class="service-option" wx:if="{{staff.idCardBackFileId}}" data-url="{{staff.idCardBackFileId}}" bindtap="preview">
-        <image src="{{staff.idCardBackFileId}}" mode="aspectFill" style="width:100%;height:170rpx;border-radius:16rpx;" />
+        <image class="evidence-image" src="{{staff.idCardBackFileId}}" mode="aspectFill" />
         <view class="service-title">身份证国徽面</view>
       </view>
       <view class="service-option" wx:if="{{staff.facePhotoFileId}}" data-url="{{staff.facePhotoFileId}}" bindtap="preview">
-        <image src="{{staff.facePhotoFileId}}" mode="aspectFill" style="width:100%;height:170rpx;border-radius:16rpx;" />
+        <image class="evidence-image" src="{{staff.facePhotoFileId}}" mode="aspectFill" />
         <view class="service-title">自拍/人脸照</view>
       </view>
     </view>
   </view>
 
-  <view class="card form-card">
-    <textarea placeholder="审核备注" value="{{remark}}" bindinput="input" />
+  <view class="admin-card form-card">
+    <view class="card-subtitle"><text class="remix-icon ri-edit-line sub-icon"></text><text>审核备注</text></view>
+    <textarea class="remark-textarea" placeholder="审核备注" value="{{remark}}" bindinput="input" />
   </view>
 
-  <button class="primary" data-status="approved" bindtap="audit">审核通过</button>
-  <button class="danger" data-status="rejected" bindtap="audit">审核拒绝</button>
+  <view class="bottom-actions">
+    <button class="primary-btn" data-status="approved" bindtap="audit"><text class="remix-icon ri-check-line"></text><text>审核通过</text></button>
+    <button class="danger-btn" data-status="rejected" bindtap="audit"><text class="remix-icon ri-close-line"></text><text>审核拒绝</text></button>
+  </view>
 </view>

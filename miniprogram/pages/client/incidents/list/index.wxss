@@ -1,1 +1,227 @@
-.page { padding-bottom: 40rpx; }
+/* Client incident list - Cute Pet Style UI redesign */
+.incident-list-page {
+  min-height: 100vh;
+  padding: 0 28rpx 100rpx;
+  background: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
+  color: #2d211a;
+  box-sizing: border-box;
+}
+
+.incident-hero {
+  margin: 0 -28rpx 24rpx;
+  padding: 42rpx 34rpx 38rpx;
+  border-bottom-left-radius: 48rpx;
+  border-bottom-right-radius: 48rpx;
+  background: linear-gradient(135deg, #fff0c9 0%, #ffd9c8 54%, #fff5f0 100%);
+  box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  color: #d45f22;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 24rpx;
+  font-weight: 850;
+  margin-bottom: 16rpx;
+}
+
+.hero-icon { font-size: 28rpx; }
+
+.hero-title {
+  color: #2d211a;
+  font-size: 42rpx;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.hero-desc {
+  margin-top: 12rpx;
+  color: #7a6a5e;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.status-tabs {
+  display: flex;
+  gap: 14rpx;
+  overflow-x: auto;
+  padding-bottom: 8rpx;
+  margin-bottom: 18rpx;
+  white-space: nowrap;
+}
+
+.status-tab {
+  flex-shrink: 0;
+  padding: 14rpx 24rpx;
+  border-radius: 999rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  color: #7a6a5e;
+  font-size: 25rpx;
+  font-weight: 850;
+  box-shadow: 0 8rpx 18rpx rgba(123, 89, 62, 0.04);
+}
+
+.status-tab.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
+  border-color: transparent;
+  box-shadow: 0 8rpx 20rpx rgba(255, 122, 69, 0.18);
+}
+
+.card {
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  box-shadow: 0 14rpx 34rpx rgba(123, 89, 62, 0.06);
+  border-radius: 36rpx;
+}
+
+.incident-card {
+  padding: 28rpx;
+  margin-top: 18rpx;
+}
+
+.incident-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18rpx;
+  align-items: flex-start;
+}
+
+.incident-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.incident-title {
+  color: #2d211a;
+  font-size: 30rpx;
+  font-weight: 950;
+  line-height: 1.3;
+}
+
+.incident-desc {
+  margin-top: 10rpx;
+  color: #7a6a5e;
+  font-size: 25rpx;
+  line-height: 1.45;
+}
+
+.status-badge,
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.status-badge {
+  padding: 6rpx 18rpx;
+  background: #e6f8ea;
+  color: #00b42a;
+  font-size: 22rpx;
+  flex-shrink: 0;
+}
+
+.incident-meta {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-top: 16rpx;
+  color: #a89b90;
+  font-size: 23rpx;
+  line-height: 1.35;
+  flex-wrap: wrap;
+}
+
+.incident-meta .remix-icon {
+  color: #e9672f;
+  font-size: 26rpx;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.chip {
+  padding: 8rpx 18rpx;
+  background: #fff0e2;
+  color: #d45f22;
+  font-size: 23rpx;
+}
+
+.chip.pink {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.empty-state {
+  min-height: 440rpx;
+  border-radius: 36rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  box-shadow: 0 14rpx 34rpx rgba(123, 89, 62, 0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 44rpx;
+  margin-top: 24rpx;
+}
+
+.empty-icon {
+  color: #e9672f;
+  font-size: 100rpx;
+  margin-bottom: 16rpx;
+}
+
+.empty-title {
+  color: #2d211a;
+  font-size: 30rpx;
+  font-weight: 950;
+}
+
+.empty-desc {
+  margin-top: 10rpx;
+  color: #8e8580;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.ghost-btn {
+  margin-top: 24rpx;
+  min-height: 74rpx;
+  padding: 0 28rpx;
+  border-radius: 24rpx;
+  background: #fff0e2;
+  color: #7a6a5e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  font-size: 25rpx;
+  font-weight: 900;
+  border: none;
+  line-height: 1;
+}
+
+.ghost-btn::after { display: none; }
+
+.ghost-btn .remix-icon { font-size: 28rpx; }
+
+.list-tip {
+  text-align: center;
+  padding: 26rpx 0;
+  color: #8e8580;
+  font-size: 24rpx;
+}

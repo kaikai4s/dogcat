@@ -319,8 +319,8 @@
 }
 
 .compact-btn,
-.primary,
-.ghost {
+.profile-primary-btn,
+.profile-ghost-btn {
   min-height: 76rpx;
   padding: 0 24rpx;
   border-radius: 24rpx;
@@ -331,13 +331,13 @@
   font-weight: 900;
 }
 
-.primary {
+.profile-primary-btn {
   color: #ffffff;
   background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
   box-shadow: 0 12rpx 26rpx rgba(255, 122, 69, 0.20);
 }
 
-.ghost {
+.profile-ghost-btn {
   color: #d45f22;
   background: #fff0e2;
 }
@@ -496,15 +496,15 @@
   gap: 16rpx;
 }
 
-.modal-actions .primary,
-.modal-actions .ghost {
+.modal-actions .profile-primary-btn,
+.modal-actions .profile-ghost-btn {
   width: 100%;
   min-height: 84rpx;
   margin-top: 12rpx;
 }
 
-.two-actions .primary,
-.two-actions .ghost {
+.two-actions .profile-primary-btn,
+.two-actions .profile-ghost-btn {
   margin-top: 0;
 }
 

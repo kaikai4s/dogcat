@@ -138,7 +138,7 @@
       <view class="sitter-home-card interactive" wx:for="{{featuredSitters}}" wx:key="_id" data-url="/pages/client/sitters/detail/index?id={{item._id}}" bindtap="go">
         <view class="sitter-avatar-wrapper"><image class="sitter-avatar-img" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" /><view class="remix-icon ri-user-smile-fill" wx:else></view></view>
         <view class="sitter-name-line"><view class="sitter-name">{{item.displayName}}</view><view class="featured-badge" wx:if="{{item.isFeatured}}">精选</view></view>
-        <view class="sitter-rating-line"><text class="stars">★</text><text class="score">{{item.ratingAverage || '新'}}</text><text class="divider">|</text><text class="count">{{item.reviewCount}}条评价</text></view>
+        <view class="sitter-rating-line"><text class="stars remix-icon ri-star-fill"></text><text class="score">{{item.ratingAverage || '新'}}</text><text class="divider">|</text><text class="count">{{item.reviewCount}}条评价</text></view>
         <view class="sitter-bio">{{item.serviceSummary}}</view>
         <view class="sitter-distance" wx:if="{{item.distanceText}}"><view class="remix-icon ri-map-pin-2-line"></view>{{item.distanceText}}</view>
       </view>

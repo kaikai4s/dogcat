@@ -1,4 +1,284 @@
-/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
-.breed-badge { font-weight: normal; color: var(--theme-primary); font-size: 24rpx; }
-.pet-note-tag { background: #fff2f7; color: #be123c; font-size: 22rpx; border-radius: 12rpx; padding: 6rpx 14rpx; margin-top: 8rpx; display: inline-block; max-width: 520rpx; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tag-title { font-weight: 700; }
+/* Staff order task center - Warm Cute Pet Style UI redesign */
+.staff-orders-page {
+  min-height: 100vh;
+  padding: 0 28rpx 160rpx;
+  background: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
+  color: #2d211a;
+  box-sizing: border-box;
+}
+
+.staff-orders-hero {
+  margin: 0 -28rpx 24rpx;
+  padding: 42rpx 34rpx 38rpx;
+  border-bottom-left-radius: 48rpx;
+  border-bottom-right-radius: 48rpx;
+  background: linear-gradient(135deg, #fff0c9 0%, #ffd9c8 54%, #fff5f0 100%);
+  box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  color: #d45f22;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 24rpx;
+  font-weight: 850;
+}
+
+.hero-title {
+  margin-top: 20rpx;
+  color: #2d211a;
+  font-size: 44rpx;
+  font-weight: 950;
+  line-height: 1.18;
+}
+
+.hero-desc {
+  margin-top: 12rpx;
+  color: #7a6a5e;
+  font-size: 26rpx;
+  line-height: 1.4;
+}
+
+.status-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  width: 100%;
+  white-space: nowrap;
+  margin: 0 -28rpx 20rpx;
+  padding: 18rpx 28rpx;
+  background: rgba(255, 250, 246, 0.96);
+  border-bottom: 1rpx solid rgba(255, 153, 102, 0.08);
+  backdrop-filter: blur(14rpx);
+  box-sizing: border-box;
+}
+
+.status-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 66rpx;
+  margin-right: 14rpx;
+  padding: 0 26rpx;
+  border-radius: 999rpx;
+  color: #8e8580;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  font-size: 26rpx;
+  font-weight: 760;
+  box-shadow: 0 8rpx 20rpx rgba(123, 89, 62, 0.05);
+}
+
+.status-tab.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
+  border: none;
+  box-shadow: 0 12rpx 26rpx rgba(255, 122, 69, 0.22);
+}
+
+.task-card {
+  margin-top: 20rpx;
+  padding: 28rpx;
+  border-radius: 36rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  box-shadow: 0 14rpx 34rpx rgba(123, 89, 62, 0.06);
+}
+
+.task-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.order-person {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  flex: 1;
+  min-width: 0;
+}
+
+.order-avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 30rpx;
+  flex-shrink: 0;
+}
+
+.order-avatar.placeholder {
+  background: #fff0e2;
+  color: #e9672f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
+}
+
+.order-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.order-title {
+  color: #2d211a;
+  font-size: 30rpx;
+  font-weight: 950;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  flex-wrap: wrap;
+}
+
+.pet-name {
+  color: #2d211a;
+}
+
+.breed-badge {
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  color: #d45f22;
+  background: #fff0e2;
+  font-size: 20rpx;
+  font-weight: 850;
+}
+
+.owner-name {
+  color: #7a6a5e;
+  font-size: 26rpx;
+}
+
+.service-type {
+  margin-top: 6rpx;
+  color: #8e8580;
+  font-size: 24rpx;
+}
+
+.status-badge {
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  color: #d45f22;
+  background: #fff0e2;
+  font-size: 22rpx;
+  font-weight: 850;
+}
+
+.info-grid {
+  margin-top: 20rpx;
+  padding: 20rpx 22rpx;
+  border-radius: 24rpx;
+  background: #fffdf9;
+  border: 1rpx solid rgba(255, 153, 102, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  color: #574b42;
+  font-size: 25rpx;
+}
+
+.info-item .icon {
+  color: #e9672f;
+  font-size: 28rpx;
+  flex-shrink: 0;
+}
+
+.pet-note-card {
+  margin-top: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 20rpx;
+  background: #fff4f7;
+  border: 1rpx solid rgba(244, 63, 107, 0.15);
+  display: flex;
+  align-items: flex-start;
+  gap: 10rpx;
+}
+
+.note-icon {
+  color: #f43f6b;
+  font-size: 28rpx;
+  flex-shrink: 0;
+  margin-top: 2rpx;
+}
+
+.note-text {
+  color: #be123c;
+  font-size: 23rpx;
+  line-height: 1.4;
+}
+
+.card-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.ghost-btn {
+  height: 72rpx;
+  border-radius: 24rpx;
+  background: #fff0e2;
+  color: #7a6a5e;
+  font-size: 26rpx;
+  font-weight: 850;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  line-height: 1;
+}
+
+.nav-btn {
+  gap: 6rpx;
+  color: #e9672f;
+}
+
+.list-state {
+  padding: 28rpx 0 10rpx;
+  text-align: center;
+  color: #8e8580;
+  font-size: 24rpx;
+}
+
+.order-empty {
+  margin-top: 24rpx;
+  padding: 48rpx 28rpx;
+  border-radius: 36rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  text-align: center;
+}
+
+.empty-icon {
+  width: 100rpx;
+  height: 100rpx;
+  margin: 0 auto 16rpx;
+  border-radius: 32rpx;
+  color: #e9672f;
+  background: #fff0e2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48rpx;
+}
+
+.empty-title {
+  color: #2d211a;
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.empty-desc {
+  margin-top: 8rpx;
+  color: #8e8580;
+  font-size: 24rpx;
+}

@@ -1,23 +1,25 @@
 <view class="page sitter-page {{themeClass}} {{fontClass}}">
   <view class="sitter-hero">
     <view class="hero-topline">
-      <view class="badge">宠物主精选</view>
-      <view class="hero-count">{{total}} 位可预约</view>
+      <view class="badge hero-badge">认证宠护团队</view>
+      <view class="hero-count">{{total}} 位金牌宠托师</view>
     </view>
-    <view class="title">找靠谱宠托师</view>
-    <view class="tip">实名审核 · 服务区域可筛选 · 上门喂猫遛狗</view>
+    <view class="hero-title">寻找身边的安心宠托师</view>
+    <view class="hero-tip">100% 实名与健康审核 · 附近随时响应 · 服务过程全程记录</view>
   </view>
 
-  <view class="pet-search sitter-search">
-    <view class="search-icon">🔎</view>
-    <input class="search-input" placeholder="搜索城市 / 区域 / 宠托师" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="search" />
-    <view class="search-button" bindtap="search">搜索</view>
+  <view class="sitter-search-wrap">
+    <view class="search-card">
+      <view class="remix-icon ri-search-line search-icon-cute"></view>
+      <input class="search-input" placeholder="输入城市、区域或宠托师姓名" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="search" />
+      <view class="search-btn-cute" bindtap="search">搜索</view>
+    </view>
   </view>
 
   <view class="card filter-card">
     <view class="filter-section">
       <view class="filter-title">服务城市</view>
-      <scroll-view scroll-x class="filter-scroll">
+      <scroll-view scroll-x class="filter-scroll" show-scrollbar="false" enhanced="true">
         <view class="filter-row">
           <view class="filter-chip {{activeCity === item ? 'active' : ''}}" wx:for="{{cityOptions}}" wx:key="*this" data-city="{{item}}" bindtap="chooseCity">{{item}}</view>
         </view>
@@ -25,79 +27,94 @@
     </view>
     <view class="filter-section">
       <view class="filter-title">服务区域</view>
-      <scroll-view scroll-x class="filter-scroll">
+      <scroll-view scroll-x class="filter-scroll" show-scrollbar="false" enhanced="true">
         <view class="filter-row">
           <view class="filter-chip {{activeArea === item ? 'active' : ''}}" wx:for="{{areaOptions}}" wx:key="*this" data-area="{{item}}" bindtap="chooseArea">{{item}}</view>
         </view>
       </scroll-view>
     </view>
     <view class="filter-section last">
-      <view class="filter-title">排序</view>
+      <view class="filter-title">排序方式</view>
       <view class="filter-row wrap">
         <view class="filter-chip {{sortBy === item.value ? 'active' : ''}}" wx:for="{{sortOptions}}" wx:key="value" data-sort="{{item.value}}" bindtap="chooseSort">{{item.label}}</view>
       </view>
     </view>
   </view>
 
-  <view class="soft-panel sitter-trust">
-    <view class="between">
-      <view>
-        <view class="strong">平台审核宠托师</view>
-        <view class="muted">可指定某位宠托师，也可以公开发布让附近宠托师抢单</view>
-      </view>
-      <view class="pet-avatar">🐾</view>
+  <view class="trust-banner">
+    <view class="trust-head">
+      <view class="trust-title"><view class="remix-icon ri-radar-line trust-icon"></view> 找不到心仪的宠托师？</view>
+      <view class="trust-badge">快捷抢单</view>
     </view>
-    <button class="ghost" bindtap="openPublish">公开发布抢单</button>
+    <view class="trust-desc">公开发布照护需求，附近已审核通过的宠托师将第一时间为您抢单响应。</view>
+    <button class="trust-btn-cute" bindtap="openPublish">公开发布抢单需求</button>
   </view>
 
-  <view class="loading-card" wx:if="{{loading}}">正在寻找合适宠托师...</view>
+  <view class="loading-card" wx:if="{{loading}}">
+    <view class="remix-icon ri-loader-4-line spin-icon"></view>
+    <text>正在为您推荐优秀宠托师...</text>
+  </view>
 
-  <view class="card sitter-card" wx:for="{{sitters}}" wx:key="_id">
-    <view class="sitter-head">
-      <image class="sitter-avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
-      <image class="sitter-avatar" wx:else src="../../../../images/icons/avatar.png" mode="aspectFill" />
-      <view class="sitter-main">
-        <view class="between">
-          <view>
-            <view class="strong">{{item.displayName}}</view>
-            <view class="muted">{{item.serviceCity}}</view>
+  <view class="card sitter-item-card" wx:for="{{sitters}}" wx:key="_id">
+    <view class="sitter-item-head">
+      <view class="sitter-avatar-container">
+        <image class="sitter-avatar-img" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+        <view class="sitter-avatar-placeholder" wx:else><view class="remix-icon ri-user-3-line"></view></view>
+      </view>
+      <view class="sitter-item-main">
+        <view class="between sitter-title-line">
+          <view class="sitter-name-block">
+            <text class="sitter-name">{{item.displayName}}</text>
+            <text class="sitter-city-tag">{{item.serviceCity}}</text>
           </view>
-          <view class="badge featured-badge" wx:if="{{item.isFeatured}}">平台精选</view>
-          <view class="badge" wx:else>已审核</view>
+          <view class="badge-pill orange" wx:if="{{item.isFeatured}}">平台精选</view>
+          <view class="badge-pill green" wx:else>已认证</view>
         </view>
-        <view class="sitter-rating-row">
-          <view class="rating-chip" wx:if="{{item.reviewCount}}">★ {{item.ratingAverage}} <text>{{item.reviewCount}}条评价</text></view>
-          <view class="rating-chip muted-rating" wx:else>暂无评分</view>
+        <view class="sitter-rating-line">
+          <view class="rating-box" wx:if="{{item.reviewCount}}">
+            <view class="remix-icon ri-star-fill star-gold-icon"></view>
+            <text class="rating-num">{{item.ratingAverage}}</text>
+            <text class="review-count">({{item.reviewCount}}条评价)</text>
+          </view>
+          <view class="rating-box muted-box" wx:else>暂无评价</view>
         </view>
         <view class="chip-row">
-          <view class="chip pink" wx:for="{{item.publicTags}}" wx:for-item="tag" wx:key="*this">{{tag}}</view>
-          <view class="chip blue" wx:if="{{item.distanceText}}">📍 距您 {{item.distanceText}}</view>
-          <view class="chip" wx:if="{{item.serviceRadiusKm}}">{{item.serviceRadiusKm}}km内接单</view>
+          <view class="chip-cute pink-cute" wx:for="{{item.publicTags}}" wx:for-item="tag" wx:key="*this">{{tag}}</view>
+          <view class="chip-cute blue-cute" wx:if="{{item.distanceText}}">
+            <view class="remix-icon ri-map-pin-2-fill pin-mini-icon"></view> {{item.distanceText}}
+          </view>
+          <view class="chip-cute gray-cute" wx:if="{{item.serviceRadiusKm}}">{{item.serviceRadiusKm}}km范围内</view>
         </view>
       </view>
     </view>
-    <view class="sitter-summary">{{item.serviceSummary}}</view>
-    <view class="chip-row area-row">
-      <view class="chip" wx:for="{{item.areaTags}}" wx:for-item="area" wx:key="*this">{{area}}</view>
+
+    <view class="sitter-intro" wx:if="{{item.serviceSummary}}">“{{item.serviceSummary}}”</view>
+
+    <view class="chip-row area-tags-row" wx:if="{{item.areaTags && item.areaTags.length}}">
+      <view class="area-chip" wx:for="{{item.areaTags}}" wx:for-item="area" wx:key="*this">{{area}}</view>
     </view>
-    <view class="sitter-actions">
-      <button class="primary compact-btn" data-id="{{item._id}}" bindtap="book">指定预约</button>
-      <button class="ghost compact-btn" data-id="{{item._id}}" bindtap="detail">查看详情</button>
+
+    <view class="sitter-item-actions">
+      <button class="primary-cute-btn" data-id="{{item._id}}" bindtap="book">指定预约</button>
+      <button class="ghost-cute-btn" data-id="{{item._id}}" bindtap="detail">查看资料</button>
     </view>
   </view>
 
-  <view class="empty" wx:if="{{!loading && !sitters.length}}">
-    <view>暂时没有符合条件的宠托师</view>
-    <view class="muted">这里只展示管理端审核通过的宠托师；刚提交入驻申请会先处于审核中。</view>
-    <button class="ghost" bindtap="clearFilters">清空筛选</button>
-    <button class="primary" bindtap="openPublish">公开发布抢单</button>
+  <view class="empty sitter-empty" wx:if="{{!loading && !sitters.length}}">
+    <view class="remix-icon ri-emotion-sad-line empty-icon"></view>
+    <view class="empty-title">暂时没有符合条件的宠托师</view>
+    <view class="empty-desc">建议清空筛选条件或直接公开发布需求由附近宠托师响应</view>
+    <view class="empty-actions">
+      <button class="ghost-cute-btn" bindtap="clearFilters">清空筛选</button>
+      <button class="primary-cute-btn" bindtap="openPublish">公开发布抢单</button>
+    </view>
   </view>
 
   <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>首页</view></view>
-    <view class="nav-item active"><view class="nav-icon">宠</view><view>宠托师</view></view>
-    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon">单</view><view>订单</view></view>
-    <view class="nav-item" data-url="/pages/client/messages/index" bindtap="goProtected"><view class="nav-icon">信<view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
-    <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon">我</view><view>我的</view></view>
+    <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>首页</view></view>
+    <view class="nav-item active"><view class="nav-icon remix-icon ri-team-fill"></view><view>宠托师</view></view>
+    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/client/messages/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
+    <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
   </view>
 </view>

@@ -1,51 +1,51 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">福利中心</view>
-    <view class="title">幸运抽奖</view>
-    <view class="tip">每天可参与一次，随机获得优惠券奖励。</view>
+<view class="lottery-page {{themeClass}} {{fontClass}} page">
+  <view class="lottery-hero">
+    <view class="hero-badge"><text class="remix-icon ri-gift-fill hero-icon"></text><text>福利中心</text></view>
+    <view class="hero-title">幸运抽奖</view>
+    <view class="hero-desc">每天可参与一次，随机获得优惠券奖励。</view>
   </view>
 
   <view wx:if="{{activity}}">
-    <view class="card" style="text-align:center;padding:60rpx 32rpx;">
-      <view style="font-size:100rpx;margin-bottom:24rpx;">🎰</view>
-      <view class="strong" style="font-size:40rpx;margin-bottom:12rpx;">{{activity.name}}</view>
-      <view class="muted" wx:if="{{activity.description}}">{{activity.description}}</view>
-      <view class="muted" style="margin-top:12rpx;">共 {{activity.prizeCount}} 种奖品</view>
-      <view class="muted" style="margin-top:12rpx;">今日剩余 {{activity.remainingDrawCount || 0}} 次</view>
-      <button wx:if="{{activity.canDraw}}" class="primary" style="margin-top:40rpx;font-size:36rpx;padding:24rpx;" loading="{{drawing}}" bindtap="draw">
-        {{drawing ? '抽取中...' : '立即抽奖'}}
-      </button>
+    <view class="draw-card">
+      <view class="draw-icon"><text class="remix-icon ri-gift-line"></text></view>
+      <view class="draw-title">{{activity.name}}</view>
+      <view class="draw-desc" wx:if="{{activity.description}}">{{activity.description}}</view>
+      <view class="draw-stats">
+        <view><view class="stat-number">{{activity.prizeCount}}</view><view class="stat-label">奖品种类</view></view>
+        <view><view class="stat-number">{{activity.remainingDrawCount || 0}}</view><view class="stat-label">今日剩余</view></view>
+      </view>
+      <button wx:if="{{activity.canDraw}}" class="primary-btn draw-btn" loading="{{drawing}}" bindtap="draw"><text class="remix-icon ri-sparkling-line"></text><text>{{drawing ? '抽取中...' : '立即抽奖'}}</text></button>
       <view wx:else class="draw-disabled">今日抽奖次数已用完</view>
     </view>
 
     <view class="card" wx:if="{{result}}">
-      <view class="subtitle">本次结果</view>
-      <view class="between">
-        <view class="strong">{{result.prizeName}}</view>
-        <view class="badge" wx:if="{{result.couponId}}">已存入优惠券</view>
+      <view class="card-subtitle"><text class="remix-icon ri-award-line sub-icon"></text><text>本次结果</text></view>
+      <view class="result-row">
+        <view class="result-name">{{result.prizeName}}</view>
+        <view class="status-badge" wx:if="{{result.couponId}}">已存入优惠券</view>
       </view>
     </view>
   </view>
 
-  <view class="card" wx:else style="text-align:center;padding:80rpx 32rpx;">
-    <view style="font-size:80rpx;margin-bottom:24rpx;">🌙</view>
-    <view class="strong">暂无进行中的抽奖活动</view>
-    <view class="muted" style="margin-top:12rpx;">关注平台动态，等待下次活动开启</view>
+  <view class="empty-card" wx:else>
+    <text class="remix-icon ri-moon-clear-line empty-icon"></text>
+    <view class="empty-title">暂无进行中的抽奖活动</view>
+    <view class="empty-desc">关注平台动态，等待下次活动开启</view>
   </view>
 
   <view class="card lottery-records">
-    <view class="between">
-      <view class="subtitle">抽奖记录</view>
-      <view class="muted">最近 20 条</view>
+    <view class="records-head">
+      <view class="card-subtitle no-margin"><text class="remix-icon ri-history-line sub-icon"></text><text>抽奖记录</text></view>
+      <view class="records-tip">最近 20 条</view>
     </view>
-    <view class="muted" wx:if="{{loadingRecords}}">正在加载记录...</view>
+    <view class="list-tip" wx:if="{{loadingRecords}}">正在加载记录...</view>
     <view class="record-row" wx:for="{{records}}" wx:key="_id">
-      <view>
-        <view class="strong">{{item.prizeName}}</view>
-        <view class="muted">{{item.createdAtText}}</view>
+      <view class="record-main">
+        <view class="record-title">{{item.prizeName}}</view>
+        <view class="record-time">{{item.createdAtText}}</view>
       </view>
-      <view class="badge">{{item.prizeTag}}</view>
+      <view class="status-badge">{{item.prizeTag}}</view>
     </view>
-    <view class="muted empty-record" wx:if="{{!loadingRecords && !records.length}}">暂无抽奖记录</view>
+    <view class="empty-record" wx:if="{{!loadingRecords && !records.length}}">暂无抽奖记录</view>
   </view>
 </view>

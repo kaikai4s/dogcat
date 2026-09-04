@@ -1,13 +1,14 @@
-<view class="{{themeClass}} {{fontClass}} page" wx:if="{{detail}}">
-  <view class="dashboard-header">
-    <view class="badge">纠纷处理</view>
-    <view class="title">{{detail.incident.title || detail.incident.incidentTypeText}}</view>
-    <view class="tip">查看双方证据、退款/补偿、收益处理和完整操作日志。</view>
+<view class="admin-incident-page incident-detail-page {{themeClass}} {{fontClass}}" wx:if="{{detail}}">
+  <view class="incident-hero">
+    <view class="hero-badge"><text class="remix-icon ri-auction-fill"></text><text>纠纷处理</text></view>
+    <view class="hero-title">{{detail.incident.title || detail.incident.incidentTypeText}}</view>
+    <view class="hero-desc">查看双方证据、退款/补偿、收益处理和完整操作日志。</view>
   </view>
 
-  <view class="card info-list">
+  <view class="admin-card detail-card">
+    <view class="card-subtitle"><text class="remix-icon ri-information-line sub-icon"></text><text>事件信息</text></view>
     <view class="info-row"><view class="label">类型</view><view class="value">{{detail.incident.incidentTypeText}}</view></view>
-    <view class="info-row"><view class="label">状态</view><view class="badge">{{detail.incident.statusText}}</view></view>
+    <view class="info-row"><view class="label">状态</view><view class="soft-badge status-badge">{{detail.incident.statusText}}</view></view>
     <view class="info-row"><view class="label">订单</view><view class="value">{{detail.incident.orderId}}</view></view>
     <view class="info-row"><view class="label">宠物主</view><view class="value">{{detail.incident.clientOpenid}}</view></view>
     <view class="info-row"><view class="label">宠托师</view><view class="value">{{detail.incident.staffOpenid || '未接单'}}</view></view>
@@ -16,98 +17,69 @@
     <view class="info-row" wx:if="{{detail.incident.refundNo}}"><view class="label">关联退款</view><view class="value">{{detail.incident.refundNo}}</view></view>
   </view>
 
-  <view class="card">
-    <view class="subtitle">问题说明</view>
-    <view class="strong">{{detail.incident.description}}</view>
-    <view class="evidence-grid" wx:if="{{detail.incident.mediaFileIds.length}}">
-      <image class="evidence-image" wx:for="{{detail.incident.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
-    </view>
+  <view class="admin-card">
+    <view class="card-subtitle"><text class="remix-icon ri-file-warning-line sub-icon"></text><text>问题说明</text></view>
+    <view class="problem-text">{{detail.incident.description}}</view>
+    <view class="evidence-grid" wx:if="{{detail.incident.mediaFileIds.length}}"><image class="evidence-image" wx:for="{{detail.incident.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" /></view>
   </view>
 
-  <view class="card form-card">
-    <view class="subtitle">状态流转</view>
-    <picker mode="selector" range="{{statusOptions}}" range-key="label" value="{{statusIndex}}" bindchange="chooseStatus">
-      <view class="field">{{statusOptions[statusIndex].label}}</view>
-    </picker>
-    <input placeholder="处理备注 / 结案备注" value="{{statusRemark}}" bindinput="inputStatusRemark" />
-    <button class="ghost" bindtap="setStatus">更新状态</button>
+  <view class="admin-card form-card">
+    <view class="card-subtitle"><text class="remix-icon ri-loop-right-line sub-icon"></text><text>状态流转</text></view>
+    <picker mode="selector" range="{{statusOptions}}" range-key="label" value="{{statusIndex}}" bindchange="chooseStatus"><view class="picker-field">{{statusOptions[statusIndex].label}}</view></picker>
+    <input class="form-input" placeholder="处理备注 / 结案备注" value="{{statusRemark}}" bindinput="inputStatusRemark" />
+    <button class="ghost-btn form-btn" bindtap="setStatus">更新状态</button>
   </view>
 
-  <view class="card form-card">
-    <view class="subtitle">处理方案</view>
-    <picker mode="selector" range="{{resolutionOptions}}" range-key="label" value="{{resolutionIndex}}" bindchange="chooseResolution">
-      <view class="field">{{resolutionOptions[resolutionIndex].label}}</view>
-    </picker>
-    <picker wx:if="{{resolutionOptions[resolutionIndex].value === 'coupon'}}" mode="selector" range="{{couponTemplates}}" range-key="displayName" value="{{couponTemplateIndex}}" bindchange="chooseCouponTemplate">
-      <view class="field">{{couponTemplates[couponTemplateIndex].displayName || '请选择补偿优惠券'}}</view>
-    </picker>
-    <input placeholder="退款金额，非退款可不填" type="digit" value="{{refundAmount}}" bindinput="inputRefundAmount" />
-    <textarea placeholder="填写处理方案或说明" value="{{resolutionContent}}" bindinput="inputResolution" maxlength="500" />
-    <button class="ghost" bindtap="proposeResolution">保存方案</button>
+  <view class="admin-card form-card">
+    <view class="card-subtitle"><text class="remix-icon ri-hand-heart-line sub-icon"></text><text>处理方案</text></view>
+    <picker mode="selector" range="{{resolutionOptions}}" range-key="label" value="{{resolutionIndex}}" bindchange="chooseResolution"><view class="picker-field">{{resolutionOptions[resolutionIndex].label}}</view></picker>
+    <picker wx:if="{{resolutionOptions[resolutionIndex].value === 'coupon'}}" mode="selector" range="{{couponTemplates}}" range-key="displayName" value="{{couponTemplateIndex}}" bindchange="chooseCouponTemplate"><view class="picker-field">{{couponTemplates[couponTemplateIndex].displayName || '请选择补偿优惠券'}}</view></picker>
+    <input class="form-input" placeholder="退款金额，非退款可不填" type="digit" value="{{refundAmount}}" bindinput="inputRefundAmount" />
+    <textarea class="form-textarea" placeholder="填写处理方案或说明" value="{{resolutionContent}}" bindinput="inputResolution" maxlength="500" />
+    <button class="ghost-btn form-btn" bindtap="proposeResolution">保存方案</button>
   </view>
 
-  <view class="card form-card">
-    <view class="subtitle">退款处理</view>
-    <input placeholder="退款金额" type="digit" value="{{refundAmount}}" bindinput="inputRefundAmount" />
-    <input placeholder="退款原因" value="{{refundReason}}" bindinput="inputRefundReason" />
-    <button class="ghost" bindtap="createRefund">从纠纷发起退款</button>
-    <input placeholder="或填写已有退款单号" value="{{linkedRefundNo}}" bindinput="inputLinkedRefundNo" />
-    <button class="ghost" bindtap="linkRefundNo">关联已有退款</button>
+  <view class="admin-card form-card">
+    <view class="card-subtitle"><text class="remix-icon ri-refund-2-line sub-icon"></text><text>退款处理</text></view>
+    <input class="form-input" placeholder="退款金额" type="digit" value="{{refundAmount}}" bindinput="inputRefundAmount" />
+    <input class="form-input" placeholder="退款原因" value="{{refundReason}}" bindinput="inputRefundReason" />
+    <button class="ghost-btn form-btn" bindtap="createRefund">从纠纷发起退款</button>
+    <input class="form-input" placeholder="或填写已有退款单号" value="{{linkedRefundNo}}" bindinput="inputLinkedRefundNo" />
+    <button class="ghost-btn form-btn" bindtap="linkRefundNo">关联已有退款</button>
   </view>
 
-  <view class="card form-card">
-    <view class="subtitle">收益处理</view>
-    <picker mode="selector" range="{{earningOptions}}" range-key="label" value="{{earningIndex}}" bindchange="chooseEarning">
-      <view class="field">{{earningOptions[earningIndex].label}}</view>
-    </picker>
-    <input wx:if="{{earningOptions[earningIndex].value === 'deduct'}}" placeholder="扣减金额，不填则全额扣减" type="digit" value="{{deductAmount}}" bindinput="inputDeductAmount" />
-    <input placeholder="收益处理备注" value="{{earningRemark}}" bindinput="inputEarningRemark" />
-    <button class="danger" bindtap="freezeEarning">冻结宠托师收益</button>
+  <view class="admin-card form-card">
+    <view class="card-subtitle"><text class="remix-icon ri-wallet-3-line sub-icon"></text><text>收益处理</text></view>
+    <picker mode="selector" range="{{earningOptions}}" range-key="label" value="{{earningIndex}}" bindchange="chooseEarning"><view class="picker-field">{{earningOptions[earningIndex].label}}</view></picker>
+    <input class="form-input" wx:if="{{earningOptions[earningIndex].value === 'deduct'}}" placeholder="扣减金额，不填则全额扣减" type="digit" value="{{deductAmount}}" bindinput="inputDeductAmount" />
+    <input class="form-input" placeholder="收益处理备注" value="{{earningRemark}}" bindinput="inputEarningRemark" />
+    <button class="danger-btn form-btn" bindtap="freezeEarning">冻结宠托师收益</button>
   </view>
 
-  <view class="card" wx:if="{{detail.incident.resolution}}">
-    <view class="subtitle">当前方案</view>
-    <view class="strong">{{detail.incident.resolution.type}}</view>
-    <view class="muted">{{detail.incident.resolution.content}}</view>
-    <view class="price" wx:if="{{detail.incident.resolution.refundAmount}}">¥{{detail.incident.resolution.refundAmount}}</view>
-    <view class="muted" wx:if="{{detail.incident.resolution.couponId}}">补偿券：{{detail.incident.resolution.couponId}}</view>
+  <view class="admin-card" wx:if="{{detail.incident.resolution}}">
+    <view class="card-subtitle"><text class="remix-icon ri-lightbulb-flash-line sub-icon"></text><text>当前方案</text></view>
+    <view class="strong">{{detail.incident.resolution.type}}</view><view class="muted">{{detail.incident.resolution.content}}</view><view class="price" wx:if="{{detail.incident.resolution.refundAmount}}">¥{{detail.incident.resolution.refundAmount}}</view><view class="muted" wx:if="{{detail.incident.resolution.couponId}}">补偿券：{{detail.incident.resolution.couponId}}</view>
   </view>
 
-  <view class="card" wx:if="{{detail.comments.length}}">
-    <view class="subtitle">沟通记录</view>
-    <view class="timeline">
-      <view class="timeline-item" wx:for="{{detail.comments}}" wx:key="_id">
-        <view class="strong">{{item.actorRole}}</view>
-        <view class="muted">{{item.content}}</view>
-        <view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}">
-          <image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
-        </view>
-        <view class="muted">{{item.createdAt}}</view>
-      </view>
-    </view>
+  <view class="admin-card" wx:if="{{detail.comments.length}}">
+    <view class="card-subtitle"><text class="remix-icon ri-chat-3-line sub-icon"></text><text>沟通记录</text></view>
+    <view class="timeline"><view class="timeline-item" wx:for="{{detail.comments}}" wx:key="_id"><view class="strong">{{item.actorRole}}</view><view class="muted">{{item.content}}</view><view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}"><image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" /></view><view class="muted">{{item.createdAt}}</view></view></view>
   </view>
 
-  <view class="card" wx:if="{{detail.actions.length}}">
-    <view class="subtitle">操作日志</view>
-    <view class="timeline">
-      <view class="timeline-item" wx:for="{{detail.actions}}" wx:key="_id">
-        <view class="between">
-          <view class="strong">{{item.actionText}}</view>
-          <view class="badge">{{item.actorRoleText}}</view>
-        </view>
-        <view class="muted" wx:if="{{item.detailText}}">{{item.detailText}}</view>
-        <view class="muted">{{item.createdAt}}</view>
-      </view>
-    </view>
+  <view class="admin-card" wx:if="{{detail.actions.length}}">
+    <view class="card-subtitle"><text class="remix-icon ri-history-line sub-icon"></text><text>操作日志</text></view>
+    <view class="timeline"><view class="timeline-item" wx:for="{{detail.actions}}" wx:key="_id"><view class="log-head"><view class="strong">{{item.actionText}}</view><view class="soft-badge status-badge">{{item.actorRoleText}}</view></view><view class="muted" wx:if="{{item.detailText}}">{{item.detailText}}</view><view class="muted">{{item.createdAt}}</view></view></view>
   </view>
 
-  <view class="card form-card">
-    <view class="subtitle">内部 / 对客留言</view>
-    <textarea placeholder="记录沟通内容" value="{{comment}}" bindinput="inputComment" maxlength="500" />
-    <button class="ghost" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitComment">添加留言</button>
+  <view class="admin-card form-card">
+    <view class="card-subtitle"><text class="remix-icon ri-edit-line sub-icon"></text><text>内部 / 对客留言</text></view>
+    <textarea class="form-textarea" placeholder="记录沟通内容" value="{{comment}}" bindinput="inputComment" maxlength="500" />
+    <button class="ghost-btn form-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitComment">添加留言</button>
   </view>
 
-  <button class="primary" bindtap="closeResolved">解决并结案</button>
-  <button class="ghost" bindtap="closeRejected">驳回并结案</button>
-  <button class="ghost" bindtap="goOrder">查看订单详情</button>
+  <view class="bottom-actions three-actions">
+    <button class="primary-btn" bindtap="closeResolved">解决并结案</button>
+    <button class="ghost-btn" bindtap="closeRejected">驳回并结案</button>
+    <button class="ghost-btn" bindtap="goOrder">查看订单详情</button>
+  </view>
 </view>

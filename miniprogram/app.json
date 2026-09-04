@@ -70,9 +70,9 @@
     "pages/client/lottery/index"
   ],
   "window": {
-    "backgroundColor": "#FFF3F7",
+    "backgroundColor": "#FFF8EC",
     "backgroundTextStyle": "light",
-    "navigationBarBackgroundColor": "#FFF3F7",
+    "navigationBarBackgroundColor": "#FFF8EC",
     "navigationBarTitleText": "VIP 宠护",
     "navigationBarTextStyle": "black"
   },

@@ -1,30 +1,21 @@
 <view class="page tracking-page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header tracking-hero">
-    <view class="badge">实时履约</view>
-    <view class="title">服务轨迹</view>
-    <view class="tip">查看宠托师服务期间的轨迹路径、起终点和关键打卡位置。</view>
+  <view class="tracking-hero">
+    <view class="hero-badge"><text class="remix-icon ri-route-fill hero-icon"></text><text>实时履约</text></view>
+    <view class="hero-title">服务轨迹</view>
+    <view class="hero-desc">查看宠托师服务期间的轨迹路径、起终点和关键打卡位置。</view>
   </view>
 
   <view class="stats-grid tracking-stats">
-    <view class="stat-card highlight">
-      <view class="stat-number">{{trackSummary.distanceText}}</view>
-      <view class="stat-label">轨迹距离</view>
-    </view>
-    <view class="stat-card">
-      <view class="stat-number">{{tracks.length}}</view>
-      <view class="stat-label">轨迹点</view>
-    </view>
-    <view class="stat-card">
-      <view class="stat-number">{{checkins.length}}</view>
-      <view class="stat-label">打卡记录</view>
-    </view>
+    <view class="stat-card highlight"><view class="stat-number">{{trackSummary.distanceText}}</view><view class="stat-label">轨迹距离</view></view>
+    <view class="stat-card"><view class="stat-number">{{tracks.length}}</view><view class="stat-label">轨迹点</view></view>
+    <view class="stat-card"><view class="stat-number">{{checkins.length}}</view><view class="stat-label">打卡记录</view></view>
   </view>
 
   <view class="map-card">
     <view class="map-header">
       <view>
-        <view class="subtitle">服务路径</view>
-        <view class="muted">{{trackSummary.startTimeText}} - {{trackSummary.endTimeText}}</view>
+        <view class="card-subtitle no-margin"><text class="remix-icon ri-map-pin-line sub-icon"></text><text>服务路径</text></view>
+        <view class="card-desc">{{trackSummary.startTimeText}} - {{trackSummary.endTimeText}}</view>
       </view>
       <view class="live-pill" wx:if="{{hasMapData}}">轨迹已生成</view>
     </view>
@@ -48,26 +39,29 @@
       </cover-view>
     </view>
     <view wx:else class="empty-map">
-      <view class="empty-map-icon">⌖</view>
-      <view class="strong">暂无有效定位数据</view>
-      <view class="muted">宠托师记录位置或打卡后会自动生成地图路径。</view>
+      <text class="remix-icon ri-map-pin-range-line empty-map-icon"></text>
+      <view class="empty-title">暂无有效定位数据</view>
+      <view class="empty-desc">宠托师记录位置或打卡后会自动生成地图路径。</view>
     </view>
   </view>
 
   <view class="card timeline-card">
-    <view class="subtitle">打卡时间轴</view>
+    <view class="card-subtitle"><text class="remix-icon ri-time-line sub-icon"></text><text>打卡时间轴</text></view>
     <view class="timeline" wx:if="{{checkinGroups.length}}">
-      <view class="timeline-item pretty" wx:for="{{checkinGroups}}" wx:key="eventType">
+      <view class="timeline-item" wx:for="{{checkinGroups}}" wx:key="eventType">
         <view class="timeline-dot"></view>
         <view class="timeline-content">
-          <view class="strong">{{item.eventTypeText}} · {{item.count}}张</view>
-          <view class="muted">{{item.remarkText || '暂无备注'}}</view>
+          <view class="timeline-title">{{item.eventTypeText}} · {{item.count}}张</view>
+          <view class="timeline-desc">{{item.remarkText || '暂无备注'}}</view>
           <view class="image-list" wx:if="{{item.photos.length}}">
-            <image wx:for="{{item.photos}}" wx:for-item="photo" wx:key="_id" class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewCheckinPhoto" />
+            <view class="photo-item" wx:for="{{item.photos}}" wx:for-item="photo" wx:key="_id">
+              <image class="security-image" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewCheckinPhoto" />
+              <view class="photo-time">{{photo.recordedAtText || '未记录时间'}}</view>
+            </view>
           </view>
         </view>
       </view>
     </view>
-    <view wx:else class="muted">暂无打卡记录。</view>
+    <view wx:else class="empty-state">暂无打卡记录。</view>
   </view>
 </view>

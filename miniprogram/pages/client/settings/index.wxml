@@ -1,52 +1,54 @@
 <view class="settings-page {{themeClass}} {{fontClass}}">
-  <view class="settings-nav">
-    <view class="settings-title">设置</view>
+  <view class="settings-hero">
+    <view class="hero-badge"><text class="remix-icon ri-settings-4-fill hero-icon"></text><text>设置中心</text></view>
+    <view class="hero-title">设置</view>
+    <view class="hero-desc">管理主题、字体、账号安全与隐私信息。</view>
   </view>
 
   <view class="settings-card">
     <picker range="{{themeOptions}}" range-key="label" value="{{themeIndex}}" disabled="{{savingTheme}}" bindchange="changeTheme">
-      <view class="settings-row interactive">
-        <view>
-          <view>主题切换</view>
-          <view class="muted" style="margin-top:6rpx;">切换后主颜色会同步变化</view>
-        </view>
-        <view class="settings-value">{{themeName}} ›</view>
+      <view class="settings-row">
+        <view class="row-icon"><text class="remix-icon ri-palette-line"></text></view>
+        <view class="row-main"><view class="row-title">主题切换</view><view class="row-desc">切换后主颜色会同步变化</view></view>
+        <view class="settings-value">{{themeName}} <text class="remix-icon ri-arrow-right-s-line"></text></view>
       </view>
     </picker>
     <picker range="{{fontOptions}}" range-key="label" value="{{fontIndex}}" disabled="{{savingFont}}" bindchange="changeFont">
-      <view class="settings-row interactive">
-        <view>
-          <view>字体设置</view>
-          <view class="muted" style="margin-top:6rpx;">选择后全局界面文字会同步变化</view>
-          <view class="strong" style="margin-top:8rpx;">{{fontPreviewText}}</view>
-        </view>
-        <view class="settings-value">{{fontName}} ›</view>
+      <view class="settings-row">
+        <view class="row-icon"><text class="remix-icon ri-font-size-line"></text></view>
+        <view class="row-main"><view class="row-title">字体设置</view><view class="row-desc">选择后全局界面文字会同步变化</view><view class="font-preview">{{fontPreviewText}}</view></view>
+        <view class="settings-value">{{fontName}} <text class="remix-icon ri-arrow-right-s-line"></text></view>
       </view>
     </picker>
-    <view class="settings-row interactive" bindtap="openAccountSafety">
-      <view>账号安全</view>
-      <view class="settings-arrow">›</view>
+    <view class="settings-row" bindtap="openAccountSafety">
+      <view class="row-icon"><text class="remix-icon ri-shield-user-line"></text></view>
+      <view class="row-main"><view class="row-title">账号安全</view></view>
+      <view class="settings-value"><text class="remix-icon ri-arrow-right-s-line"></text></view>
     </view>
-    <view class="settings-row interactive" bindtap="openAbout">
-      <view>关于我们</view>
-      <view class="settings-arrow">›</view>
+    <view class="settings-row" bindtap="openAbout">
+      <view class="row-icon"><text class="remix-icon ri-information-line"></text></view>
+      <view class="row-main"><view class="row-title">关于我们</view></view>
+      <view class="settings-value"><text class="remix-icon ri-arrow-right-s-line"></text></view>
     </view>
   </view>
 
   <view class="settings-card privacy-card">
-    <view class="settings-row interactive" bindtap="openInfoCollection">
-      <view>个人信息收集清单</view>
-      <view class="settings-arrow">›</view>
+    <view class="settings-row" bindtap="openInfoCollection">
+      <view class="row-icon"><text class="remix-icon ri-file-list-3-line"></text></view>
+      <view class="row-main"><view class="row-title">个人信息收集清单</view></view>
+      <view class="settings-value"><text class="remix-icon ri-arrow-right-s-line"></text></view>
     </view>
-    <view class="settings-row interactive" bindtap="openThirdPartySharing">
-      <view>第三方信息数据共享</view>
-      <view class="settings-arrow">›</view>
+    <view class="settings-row" bindtap="openThirdPartySharing">
+      <view class="row-icon"><text class="remix-icon ri-share-line"></text></view>
+      <view class="row-main"><view class="row-title">第三方信息数据共享</view></view>
+      <view class="settings-value"><text class="remix-icon ri-arrow-right-s-line"></text></view>
     </view>
-    <view class="settings-row interactive" bindtap="openPrivacySummary">
-      <view>隐私政策概要</view>
-      <view class="settings-arrow">›</view>
+    <view class="settings-row" bindtap="openPrivacySummary">
+      <view class="row-icon"><text class="remix-icon ri-shield-check-line"></text></view>
+      <view class="row-main"><view class="row-title">隐私政策概要</view></view>
+      <view class="settings-value"><text class="remix-icon ri-arrow-right-s-line"></text></view>
     </view>
   </view>
 
-  <button class="logout-btn" wx:if="{{!isGuest}}" bindtap="logout">退出登录</button>
+  <button class="logout-btn" wx:if="{{!isGuest}}" bindtap="logout"><text class="remix-icon ri-logout-box-r-line"></text><text>退出登录</text></button>
 </view>

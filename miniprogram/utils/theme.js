@@ -1,7 +1,7 @@
 const THEME_STORAGE_KEY = 'vip_pet_theme'
 
 const themeOptions = [
-  { label: '白天', value: 'day', className: 'theme-day', navBackground: '#fff3f7', navText: 'black' },
+  { label: '白天', value: 'day', className: 'theme-day', navBackground: '#FFF8EC', navText: 'black' },
   { label: '黑夜', value: 'night', className: 'theme-night', navBackground: '#17151f', navText: 'white' },
   { label: '阳光', value: 'sunshine', className: 'theme-sunshine', navBackground: '#fff6d8', navText: 'black' },
   { label: '温暖', value: 'warm', className: 'theme-warm', navBackground: '#fff2e8', navText: 'black' }

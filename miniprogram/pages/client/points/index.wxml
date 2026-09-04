@@ -1,63 +1,62 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">{{memberLevelName}}</view>
-    <view class="title">我的积分</view>
-    <view class="tip">完成订单、评价、每日签到均可获得积分。</view>
+<view class="points-page {{themeClass}} {{fontClass}} page">
+  <view class="points-hero">
+    <view class="hero-badge"><text class="remix-icon ri-vip-crown-fill hero-icon"></text><text>{{memberLevelName}}</text></view>
+    <view class="hero-title">我的积分</view>
+    <view class="hero-desc">完成订单、评价、每日签到均可获得积分。</view>
   </view>
 
-  <view class="card" style="text-align:center;padding:40rpx 32rpx;">
-    <view style="font-size:72rpx;font-weight:700;color:#e05c8b;">{{points}}</view>
-    <view class="muted">当前可用积分</view>
-    <view class="muted" style="margin-top:8rpx;">累计获得 {{totalPoints}} 积分 · 当前 {{pointMultiplier}} 倍积分</view>
-    <view class="muted" style="margin-top:8rpx;">补签卡 {{retroCardCount}} 张</view>
-    <view style="display:flex;gap:16rpx;margin-top:24rpx;">
-      <button class="primary" style="flex:1;" bindtap="openCheckin">签到中心</button>
-      <button class="primary" style="flex:1;background:#ff94b9;" bindtap="openLottery">幸运抽奖 🎰</button>
+  <view class="points-card">
+    <view class="points-label">当前可用积分</view>
+    <view class="points-number">{{points}}</view>
+    <view class="points-meta">累计获得 {{totalPoints}} 积分 · 当前 {{pointMultiplier}} 倍积分</view>
+    <view class="points-meta">补签卡 {{retroCardCount}} 张</view>
+    <view class="quick-actions">
+      <button class="primary-btn" bindtap="openCheckin"><text class="remix-icon ri-calendar-check-line"></text><text>签到中心</text></button>
+      <button class="primary-btn lottery-btn" bindtap="openLottery"><text class="remix-icon ri-gift-line"></text><text>幸运抽奖</text></button>
     </view>
   </view>
 
-  <view class="card" style="margin-top:24rpx;">
-    <view class="subtitle" style="margin-top:0;">会员段位说明</view>
-    <view class="between" style="align-items:flex-start;gap:24rpx;">
-      <view style="flex:1;">
-        <view class="strong">当前段位：{{memberLevelName}}</view>
-        <view class="muted" wx:if="{{currentLevel && currentLevel.description}}" style="margin-top:8rpx;">{{currentLevel.description}}</view>
-        <view class="muted" style="margin-top:8rpx;">当前积分获取倍数：{{pointMultiplier}} 倍</view>
+  <view class="card">
+    <view class="card-subtitle"><text class="remix-icon ri-vip-crown-line sub-icon"></text><text>会员段位说明</text></view>
+    <view class="level-summary">
+      <view>
+        <view class="level-title">当前段位：{{memberLevelName}}</view>
+        <view class="level-desc" wx:if="{{currentLevel && currentLevel.description}}">{{currentLevel.description}}</view>
+        <view class="level-desc">当前积分获取倍数：{{pointMultiplier}} 倍</view>
       </view>
-      <view class="badge" wx:if="{{nextLevel}}">下一段：{{nextLevel.name}}</view>
+      <view class="status-badge" wx:if="{{nextLevel}}">下一段：{{nextLevel.name}}</view>
     </view>
-    <view class="muted" wx:if="{{nextLevel}}" style="margin-top:12rpx;">再累计 {{nextLevel.minPoints - totalPoints}} 积分可升级到 {{nextLevel.name}}</view>
+    <view class="upgrade-tip" wx:if="{{nextLevel}}">再累计 {{nextLevel.minPoints - totalPoints}} 积分可升级到 {{nextLevel.name}}</view>
     <view wx:for="{{levels}}" wx:key="_id" class="level-item">
-      <view class="between" style="align-items:flex-start;gap:20rpx;">
-        <view style="flex:1;">
-          <view class="strong">{{item.name}}</view>
-          <view class="muted" style="margin-top:6rpx;">满 {{item.minPoints}} 积分 · {{item.pointMultiplier || 1}} 倍积分</view>
-          <view class="muted" wx:if="{{item.description}}" style="margin-top:6rpx;">{{item.description}}</view>
+      <view class="level-row">
+        <view class="level-main">
+          <view class="level-name">{{item.name}}</view>
+          <view class="level-desc">满 {{item.minPoints}} 积分 · {{item.pointMultiplier || 1}} 倍积分</view>
+          <view class="level-desc" wx:if="{{item.description}}">{{item.description}}</view>
         </view>
-        <view class="badge" wx:if="{{currentLevel && item._id === currentLevel._id}}">当前</view>
+        <view class="status-badge" wx:if="{{currentLevel && item._id === currentLevel._id}}">当前</view>
       </view>
       <view class="chip-row" wx:if="{{item.benefits && item.benefits.length}}">
-        <view class="chip pink" wx:for="{{item.benefits}}" wx:key="*this">{{item}}</view>
+        <view class="chip" wx:for="{{item.benefits}}" wx:key="*this">{{item}}</view>
       </view>
     </view>
   </view>
 
-  <view class="card" style="margin-top:24rpx;">
-    <view class="subtitle">积分明细</view>
-    <view wx:for="{{logs}}" wx:key="_id" class="between" style="padding:20rpx 0;border-bottom:1rpx solid #f5e6ec;">
-      <view>
-        <view class="strong">{{item.sourceLabel}}</view>
-        <view class="muted">余额 {{item.balance}} · {{item.createdAt}}</view>
-        <view class="muted" wx:if="{{item.reason}}">{{item.reason}}</view>
+  <view class="card">
+    <view class="card-subtitle"><text class="remix-icon ri-coins-line sub-icon"></text><text>积分明细</text></view>
+    <view wx:for="{{logs}}" wx:key="_id" class="log-row">
+      <view class="log-icon"><text class="remix-icon ri-coins-line"></text></view>
+      <view class="log-main">
+        <view class="log-title">{{item.sourceLabel}}</view>
+        <view class="log-desc">余额 {{item.balance}} · {{item.createdAt}}</view>
+        <view class="log-desc" wx:if="{{item.reason}}">{{item.reason}}</view>
       </view>
-      <view style="font-weight:600;color:{{item.delta > 0 ? '#e05c8b' : '#888'}}">
-        {{item.sign}}{{item.delta}}
-      </view>
+      <view class="log-delta {{item.delta > 0 ? 'plus' : ''}}">{{item.sign}}{{item.delta}}</view>
     </view>
-    <view class="empty" wx:if="{{!logs.length && !loading}}">暂无积分记录</view>
-    <view style="text-align:center;padding:24rpx 0;" wx:if="{{logs.length < total}}">
-      <button class="primary" loading="{{loading}}" bindtap="loadMore">加载更多</button>
+    <view class="empty-state" wx:if="{{!logs.length && !loading}}">暂无积分记录</view>
+    <view class="load-more" wx:if="{{logs.length < total}}">
+      <button class="primary-btn" loading="{{loading}}" bindtap="loadMore">加载更多</button>
     </view>
-    <view class="muted" style="text-align:center;padding:16rpx 0;" wx:if="{{logs.length >= total && logs.length > 0}}">已显示全部记录</view>
+    <view class="list-tip" wx:if="{{logs.length >= total && logs.length > 0}}">已显示全部记录</view>
   </view>
 </view>

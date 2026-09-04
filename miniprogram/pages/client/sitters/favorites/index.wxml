@@ -1,47 +1,54 @@
-<view class="page sitter-page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="badge">我的关注</view>
-    <view class="title">收藏的宠托师</view>
-    <view class="tip">常用宠托师可快速指定预约。</view>
-  </view>
-
-  <view class="card">
-    <input placeholder="搜索宠护师、城市或服务" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="submitSearch" />
-    <view class="chip-row" style="margin-top:16rpx;">
-      <button class="primary compact-btn" bindtap="submitSearch">搜索</button>
-      <button class="ghost compact-btn" wx:if="{{keyword}}" bindtap="clearSearch">清空</button>
+<view class="page sitter-page favorites-page {{themeClass}} {{fontClass}}">
+  <view class="sitter-hero">
+    <view class="hero-topline">
+      <view class="hero-badge"><text class="remix-icon ri-star-smile-fill"></text><text>我的关注</text></view>
+      <view class="hero-count">{{sitters.length}} 位</view>
     </view>
+    <view class="hero-title">收藏的宠托师</view>
+    <view class="hero-tip">常用宠托师可快速指定预约，回访熟悉的照护伙伴更安心。</view>
   </view>
 
-  <view class="loading-card" wx:if="{{loading && !sitters.length}}">正在加载收藏...</view>
+  <view class="sitter-search-wrap favorites-search-wrap">
+    <view class="search-card">
+      <text class="remix-icon ri-search-line search-icon-cute"></text>
+      <input class="search-input" placeholder="搜索宠护师、城市或服务" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="submitSearch" />
+      <view class="search-btn-cute" bindtap="submitSearch">搜索</view>
+    </view>
+    <view class="favorites-clear" wx:if="{{keyword}}" bindtap="clearSearch"><text class="remix-icon ri-close-circle-line"></text><text>清空筛选</text></view>
+  </view>
 
-  <view class="card sitter-card" wx:for="{{sitters}}" wx:key="_id">
-    <view class="sitter-head interactive" data-id="{{item._id}}" bindtap="detail">
-      <image class="sitter-avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
-      <image class="sitter-avatar" wx:else src="../../../../images/icons/avatar.png" mode="aspectFill" />
-      <view class="sitter-main">
-        <view class="between">
-          <view>
-            <view class="strong">{{item.displayName}}</view>
-            <view class="muted">{{item.serviceCity}}</view>
+  <view class="loading-card" wx:if="{{loading && !sitters.length}}"><text class="remix-icon ri-loader-4-line spin-icon"></text><text>正在加载收藏...</text></view>
+
+  <view class="sitter-item-card favorite-sitter-card" wx:for="{{sitters}}" wx:key="_id">
+    <view class="sitter-item-head interactive" data-id="{{item._id}}" bindtap="detail">
+      <view class="sitter-avatar-container">
+        <image class="sitter-avatar-img" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+        <view class="sitter-avatar-placeholder" wx:else><text class="remix-icon ri-user-heart-line"></text></view>
+      </view>
+      <view class="sitter-item-main">
+        <view class="sitter-title-line">
+          <view class="sitter-name-block">
+            <view class="sitter-name">{{item.displayName}}</view>
           </view>
-          <view class="badge">{{item.ratingAverage || '-'}} 星</view>
+          <view class="rating-box"><text class="remix-icon ri-star-fill star-gold-icon"></text><text class="rating-num">{{item.ratingAverage || '-'}}</text></view>
         </view>
-        <view class="sitter-summary">{{item.serviceSummary}}</view>
+        <view class="sitter-rating-line"><text class="chip-cute blue-cute"><text class="remix-icon ri-map-pin-2-line pin-mini-icon"></text>{{item.serviceCity || '服务城市待完善'}}</text></view>
+        <view class="sitter-intro">{{item.serviceSummary || '这位宠托师还没有填写服务简介'}}</view>
       </view>
     </view>
-    <view class="sitter-actions">
-      <button class="ghost compact-btn" data-id="{{item._id}}" bindtap="unfavorite">取消收藏</button>
-      <button class="primary compact-btn" data-id="{{item._id}}" bindtap="book">指定预约</button>
+    <view class="sitter-item-actions">
+      <button class="ghost-cute-btn" data-id="{{item._id}}" bindtap="unfavorite"><text class="remix-icon ri-star-line"></text><text>取消收藏</text></button>
+      <button class="primary-cute-btn" data-id="{{item._id}}" bindtap="book"><text class="remix-icon ri-calendar-check-line"></text><text>指定预约</text></button>
     </view>
   </view>
 
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && sitters.length}}">正在加载更多...</view>
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && sitters.length && !hasMore}}">已显示全部收藏</view>
+  <view class="load-more-tip" wx:if="{{loading && sitters.length}}">正在加载更多...</view>
+  <view class="load-more-tip" wx:if="{{!loading && sitters.length && !hasMore}}">已显示全部收藏</view>
 
-  <view class="empty" wx:if="{{!loading && !sitters.length}}">
-    <view>还没有收藏宠托师</view>
-    <view class="muted">去宠托师列表看看，遇到合适的可以先收藏。</view>
-    <button class="primary" bindtap="goList">去找宠托师</button>
+  <view class="sitter-empty" wx:if="{{!loading && !sitters.length}}">
+    <view class="remix-icon ri-star-smile-line empty-icon"></view>
+    <view class="empty-title">还没有收藏宠托师</view>
+    <view class="empty-desc">去宠托师列表看看，遇到合适的可以先收藏。</view>
+    <view class="empty-actions"><button class="primary-cute-btn" bindtap="goList"><text class="remix-icon ri-search-eye-line"></text><text>去找宠托师</text></button></view>
   </view>
 </view>

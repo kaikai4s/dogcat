@@ -1,20 +1,20 @@
-<view class="page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="badge">服务评价</view>
-    <view class="title">评价这次宠护服务</view>
-    <view class="tip">真实评价会帮助其他宠物主选择可靠宠托师。</view>
+<view class="page review-page {{themeClass}} {{fontClass}}">
+  <view class="review-hero">
+    <view class="hero-badge"><text class="remix-icon ri-star-smile-fill hero-icon"></text><text>服务评价</text></view>
+    <view class="hero-title">评价这次宠护服务</view>
+    <view class="hero-desc">真实评价会帮助其他宠物主选择可靠宠托师。</view>
   </view>
 
   <view class="card form-card">
-    <view class="subtitle">整体评分</view>
+    <view class="card-subtitle"><text class="remix-icon ri-star-line sub-icon"></text><text>整体评分</text></view>
     <view class="rating-panel">
       <view class="rating-row">
-        <view class="rating-star {{rating >= item ? 'active' : ''}}" wx:for="{{ratingOptions}}" wx:key="*this" data-rating="{{item}}" bindtap="chooseRating">★</view>
+        <view class="rating-star remix-icon {{rating >= item ? 'ri-star-fill active' : 'ri-star-line'}}" wx:for="{{ratingOptions}}" wx:key="*this" data-rating="{{item}}" bindtap="chooseRating"></view>
       </view>
       <view class="rating-text">{{ratingText}}</view>
     </view>
 
-    <view class="subtitle">服务标签</view>
+    <view class="card-subtitle"><text class="remix-icon ri-price-tag-3-line sub-icon"></text><text>服务标签</text></view>
     <view class="tag-grid">
       <view class="tag-option {{item.selected ? 'active' : ''}}" wx:for="{{tags}}" wx:key="label" data-label="{{item.label}}" bindtap="toggleTag">{{item.label}}</view>
     </view>
@@ -25,5 +25,5 @@
     </view>
   </view>
 
-  <button class="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">提交评价</button>
+  <button class="primary-btn submit-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit"><text class="remix-icon ri-send-plane-fill"></text><text>提交评价</text></button>
 </view>

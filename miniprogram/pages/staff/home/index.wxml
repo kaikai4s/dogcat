@@ -1,180 +1,209 @@
-<view class="page dashboard-page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="between" style="align-items: center;">
-      <view>
-        <view class="badge">宠托师</view>
-        <view class="title">服务工作台</view>
-      </view>
+<view class="page staff-home-page {{themeClass}} {{fontClass}}">
+  <view class="staff-home-hero">
+    <view class="hero-topline">
+      <view class="hero-badge">宠托师端</view>
       <picker mode="region" bindchange="onCityPickerChange">
         <view class="city-selector-btn">
-          <text class="city-icon">📍</text>
+          <text class="remix-icon ri-map-pin-2-fill city-icon"></text>
           <text class="city-name">{{selectedCity || '选择城市'}}</text>
-          <text class="arrow-down">▼</text>
+          <text class="remix-icon ri-arrow-down-s-line arrow-icon"></text>
         </view>
       </picker>
     </view>
-    <view class="tip">默认根据选定城市推荐可接订单，支持高级条件筛选。</view>
+    <view class="hero-title">服务履约工作台</view>
+    <view class="hero-desc">默认根据选定城市推荐可接订单，支持高级条件筛选与路线导航。</view>
   </view>
 
-  <view class="notice-bar" wx:if="{{missingAddressNotice}}" style="background: var(--theme-primary-soft); border: 2rpx solid var(--theme-primary); color: var(--theme-primary); padding: 24rpx; border-radius: 16rpx; margin-bottom: 24rpx; display: flex; align-items: center; justify-content: space-between;">
-    <view style="flex: 1; padding-right: 16rpx;">
-      <view style="font-weight: bold; font-size: 28rpx; margin-bottom: 6rpx;">⚠️ 尚未设置固定服务地址与范围</view>
-      <view style="font-size: 24rpx; color: var(--theme-muted);">无法正常接单及在宠托师列表中被搜索到，请前往个人中心设置！</view>
-    </view>
-    <button size="mini" style="background: var(--theme-primary); color: #fff; border-radius: 30rpx; padding: 0 24rpx; margin: 0; font-size: 24rpx;" data-url="/pages/staff/profile/index" bindtap="go">去设置</button>
-  </view>
-
-  <view class="grid">
-    <view class="card interactive action-card" data-url="/pages/staff/certification/index" bindtap="go">
-      <view class="action-icon">证</view>
-      <view class="strong">入驻认证</view>
-      <view class="muted">资质审核与服务区域</view>
-    </view>
-    <view class="card interactive action-card" data-url="/pages/staff/orders/list/index" bindtap="go">
-      <view class="action-icon">务</view>
-      <view class="strong">我的任务</view>
-      <view class="muted">订单履约与打卡</view>
-    </view>
-    <view class="card interactive action-card" data-url="/pages/staff/schedule/index" bindtap="go">
-      <view class="action-icon">排</view>
-      <view class="strong">排班日历</view>
-      <view class="muted">休息、加班与占用</view>
-    </view>
-    <view class="card interactive action-card" data-url="/pages/staff/incidents/list/index" bindtap="go">
-      <view class="action-icon">!</view>
-      <view class="strong">纠纷 / SOS</view>
-      <view class="muted">投诉进度与补充说明</view>
-    </view>
-  </view>
-
-  <view class="soft-panel">
-    <view class="between">
-      <view>
-        <view class="strong">指定给我的订单</view>
-        <view class="muted">宠物主指定你接单的订单只在这里展示</view>
+  <view class="notice-card warning-notice" wx:if="{{missingAddressNotice}}">
+    <view class="notice-main">
+      <view class="notice-title">
+        <text class="remix-icon ri-alert-fill notice-icon"></text>
+        <text>未设置服务地址与接单范围</text>
       </view>
-      <view class="badge">{{directOrders.length}} 单</view>
+      <view class="notice-desc">无法正常接单及在列表被宠物主检索，请尽快设置。</view>
+    </view>
+    <button class="notice-btn" data-url="/pages/staff/profile/index" bindtap="go">去设置</button>
+  </view>
+
+  <view class="action-grid">
+    <view class="action-card" data-url="/pages/staff/certification/index" bindtap="go">
+      <view class="icon-box"><text class="remix-icon ri-shield-user-line action-icon"></text></view>
+      <view class="action-title">入驻认证</view>
+      <view class="action-sub">资质审核与区域</view>
+    </view>
+    <view class="action-card" data-url="/pages/staff/orders/list/index" bindtap="go">
+      <view class="icon-box"><text class="remix-icon ri-file-list-3-line action-icon"></text></view>
+      <view class="action-title">我的任务</view>
+      <view class="action-sub">订单履约打卡</view>
+    </view>
+    <view class="action-card" data-url="/pages/staff/schedule/index" bindtap="go">
+      <view class="icon-box"><text class="remix-icon ri-calendar-event-line action-icon"></text></view>
+      <view class="action-title">排班日历</view>
+      <view class="action-sub">休息与接单设置</view>
+    </view>
+    <view class="action-card" data-url="/pages/staff/incidents/list/index" bindtap="go">
+      <view class="icon-box"><text class="remix-icon ri-alarm-warning-line action-icon"></text></view>
+      <view class="action-title">纠纷 / SOS</view>
+      <view class="action-sub">异常上报与处置</view>
     </view>
   </view>
 
-  <view class="card order-card" wx:for="{{directOrders}}" wx:key="_id">
-    <view class="between order-card-head">
-      <view class="order-person">
-        <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-        <view class="order-avatar" wx:else>🐾</view>
-        <view>
-          <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
-          <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+  <view class="section-card" wx:if="{{directOrders && directOrders.length}}">
+    <view class="section-head">
+      <view class="section-title-group">
+        <text class="remix-icon ri-user-heart-line title-icon"></text>
+        <text class="section-title">指定给我的订单</text>
+      </view>
+      <view class="count-badge">{{directOrders.length}} 单</view>
+    </view>
+    <view class="section-sub">宠物主指定你履约的订单专区</view>
+
+    <view class="order-card" wx:for="{{directOrders}}" wx:key="_id">
+      <view class="order-card-head">
+        <view class="order-person">
+          <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+          <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+          <view class="order-person-info">
+            <view class="order-title">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
+            <view class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+          </view>
         </view>
+        <view class="badge pink">指定单</view>
       </view>
-      <view class="badge">指定</view>
-    </view>
-    <view class="muted order-card-address">{{item.serviceAddress || '未填写地址'}}</view>
-    <view class="chip-row">
-      <view class="chip">{{item.startTime}}</view>
-      <view class="chip pink">¥{{item.payAmount}}</view>
-      <view class="chip blue">{{item.distanceText || '未定位'}}</view>
-    </view>
-    <view class="order-actions three-actions">
-      <button class="mini-btn" size="mini" data-id="{{item._id}}" bindtap="detail">详情</button>
-      <button class="mini-btn" size="mini" data-id="{{item._id}}" bindtap="accept">接单</button>
-      <button class="mini-btn ghost-mini" size="mini" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">导航</button>
+
+      <view class="order-card-address">
+        <text class="remix-icon ri-map-pin-2-line addr-icon"></text>
+        <text>{{item.serviceAddress || '未填写地址'}}</text>
+      </view>
+
+      <view class="chip-row">
+        <view class="chip"><text class="remix-icon ri-time-line"></text>{{item.startTime}}</view>
+        <view class="chip pink">¥{{item.payAmount}}</view>
+        <view class="chip blue"><text class="remix-icon ri-navigation-line"></text>{{item.distanceText || '未定位'}}</view>
+      </view>
+
+      <view class="order-actions">
+        <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">详情</button>
+        <button class="primary-btn" data-id="{{item._id}}" bindtap="accept">接单</button>
+        <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
+          <text class="remix-icon ri-map-pin-line"></text>导航
+        </button>
+      </view>
     </view>
   </view>
 
-  <view class="soft-panel">
-    <view class="between" style="align-items: center;">
-      <view>
-        <view class="strong">附近可接订单</view>
-        <view class="muted">{{locationText}}</view>
+  <view class="section-card">
+    <view class="section-head">
+      <view class="section-title-group">
+        <text class="remix-icon ri-radar-line title-icon"></text>
+        <text class="section-title">附近可接订单</text>
       </view>
-      <view style="display: flex; align-items: center; gap: 12rpx;">
+      <view class="head-right">
         <view class="filter-trigger-btn {{inServiceRange || inServiceTime || filterDate ? 'active' : ''}}" bindtap="toggleFilterPanel">
-          <text>筛选 ⚙️</text>
-          <text class="active-dot" wx:if="{{inServiceRange || inServiceTime || filterDate}}"></text>
+          <text class="remix-icon ri-filter-3-line filter-icon"></text>
+          <text>筛选</text>
+          <view class="active-dot" wx:if="{{inServiceRange || inServiceTime || filterDate}}"></view>
         </view>
-        <view class="badge">{{nearbyOrders.length}} 单</view>
+        <view class="count-badge">{{nearbyOrders.length}} 单</view>
       </view>
     </view>
+    <view class="section-sub">{{locationText}}</view>
 
     <!-- 下拉筛选面板 -->
     <view class="filter-dropdown-panel" wx:if="{{showFilterPanel}}">
       <view class="filter-group">
-        <view class="filter-label">高级过滤选项</view>
+        <view class="filter-label">高级过滤条件</view>
         <view class="filter-chips">
           <view class="filter-chip {{inServiceRange ? 'selected' : ''}}" bindtap="toggleInServiceRange">
-            <text class="chip-icon">{{inServiceRange ? '✓' : '+'}}</text>
-            <text>服务范围内</text>
+            <text class="remix-icon {{inServiceRange ? 'ri-checkbox-circle-fill' : 'ri-add-circle-line'}} chip-icon"></text>
+            <text>接单范围内</text>
           </view>
           <view class="filter-chip {{inServiceTime ? 'selected' : ''}}" bindtap="toggleInServiceTime">
-            <text class="chip-icon">{{inServiceTime ? '✓' : '+'}}</text>
-            <text>服务时间内</text>
+            <text class="remix-icon {{inServiceTime ? 'ri-checkbox-circle-fill' : 'ri-add-circle-line'}} chip-icon"></text>
+            <text>可服务时间内</text>
           </view>
         </view>
       </view>
 
-      <view class="filter-group" style="margin-top: 16rpx;">
-        <view class="filter-label">履约日期筛选</view>
+      <view class="filter-group" style="margin-top: 20rpx;">
+        <view class="filter-label">特定履约日期筛选</view>
         <view class="date-picker-row">
           <picker mode="date" value="{{filterDate}}" bindchange="onDateChange" style="flex: 1;">
             <view class="date-input-box">
-              <text>{{filterDate || '选择特定履约日期 (YYYY-MM-DD)'}}</text>
+              <text class="remix-icon ri-calendar-line"></text>
+              <text>{{filterDate || '选择特定履约日期'}}</text>
             </view>
           </picker>
-          <button class="clear-date-btn" size="mini" wx:if="{{filterDate}}" bindtap="clearDate">清除</button>
+          <button class="clear-date-btn" wx:if="{{filterDate}}" bindtap="clearDate">清除日期</button>
         </view>
       </view>
 
       <view class="filter-actions">
-        <button class="reset-btn" size="mini" bindtap="resetFilters">重置全部</button>
-        <button class="confirm-btn" size="mini" bindtap="toggleFilterPanel">收起面板</button>
+        <button class="reset-btn" bindtap="resetFilters">重置全部</button>
+        <button class="confirm-btn" bindtap="toggleFilterPanel">收起面板</button>
       </view>
     </view>
 
-    <button class="primary" style="margin-top: 16rpx;" loading="{{loadingNearby}}" bindtap="refreshNearby">手动更新工作台位置并推荐</button>
+    <button class="ghost-btn refresh-btn" loading="{{loadingNearby}}" bindtap="refreshNearby">
+      <text class="remix-icon ri-refresh-line"></text>
+      <text>更新位置并刷新订单</text>
+    </button>
   </view>
 
-  <view class="card order-card" wx:for="{{nearbyOrders}}" wx:key="_id">
-    <view class="between order-card-head">
+  <view class="order-card" wx:for="{{nearbyOrders}}" wx:key="_id">
+    <view class="order-card-head">
       <view class="order-person">
         <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-        <view class="order-avatar" wx:else>🐾</view>
-        <view>
-          <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
-          <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+        <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+        <view class="order-person-info">
+          <view class="order-title">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
+          <view class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
         </view>
       </view>
-      <view class="badge">{{item.distanceText}}</view>
+      <view class="count-badge">{{item.distanceText}}</view>
     </view>
-    <view class="muted order-card-address">{{item.serviceAddress || '未填写地址'}}</view>
+
+    <view class="order-card-address">
+      <text class="remix-icon ri-map-pin-2-line addr-icon"></text>
+      <text>{{item.serviceAddress || '未填写地址'}}</text>
+    </view>
+
     <view class="chip-row">
-      <view class="chip">{{item.startTime}}</view>
+      <view class="chip"><text class="remix-icon ri-time-line"></text>{{item.startTime}}</view>
       <view class="chip pink">¥{{item.payAmount}}</view>
-      <view class="chip blue">待接单</view>
+      <view class="chip blue">待抢单</view>
       <view class="chip warn" wx:if="{{!item.inRange}}">超出范围</view>
       <view class="chip warn" wx:if="{{!item.inTime}}">非服务时间</view>
     </view>
-    <view class="order-actions three-actions">
-      <button class="mini-btn" size="mini" data-id="{{item._id}}" bindtap="detail">详情</button>
-      <button class="mini-btn" size="mini" data-id="{{item._id}}" bindtap="accept">抢单</button>
-      <button class="mini-btn ghost-mini" size="mini" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">导航</button>
+
+    <view class="order-actions">
+      <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">订单详情</button>
+      <button class="primary-btn" data-id="{{item._id}}" bindtap="accept">立即抢单</button>
+      <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
+        <text class="remix-icon ri-map-pin-line"></text>导航
+      </button>
     </view>
   </view>
 
-  <view class="empty" wx:if="{{locationReady && !nearbyOrders.length}}">
-    <view>附近暂无可接订单，稍后再刷新看看～</view>
+  <view class="card empty order-empty" wx:if="{{locationReady && !nearbyOrders.length}}">
+    <view class="empty-icon remix-icon ri-radar-line"></view>
+    <view class="empty-title">附近暂无待抢订单</view>
+    <view class="empty-desc">调整服务城市或过滤条件，或稍后再更新位置看看～</view>
   </view>
 
-  <view class="notice">
-    <view class="strong">服务提醒</view>
-    <view class="muted">门锁密码仅在服务时间窗口内可查看，所有访问都会记录日志。</view>
+  <view class="notice-card info-notice">
+    <text class="remix-icon ri-shield-check-line notice-icon"></text>
+    <view class="notice-text">
+      <text class="strong">隐私安全保障：</text>
+      <text>客户门锁密码仅在服务时间窗口内解密可读，操作日志全流程加密记录。</text>
+    </view>
   </view>
 
-  <view class="bottom-nav">
-    <view class="nav-item active"><view class="nav-icon">⌂</view><view>工作台</view></view>
-    <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>任务</view></view>
-    <view class="nav-item" data-url="/pages/staff/messages/index" bindtap="go"><view class="nav-icon">信<view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
-    <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon">☑</view><view>认证</view></view>
-    <view class="nav-item" bindtap="backProfile"><view class="nav-icon">♙</view><view>我的</view></view>
+  <view class="bottom-nav staff-bottom-nav">
+    <view class="nav-item active"><view class="nav-icon remix-icon ri-home-5-fill"></view><view>工作台</view></view>
+    <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>任务</view></view>
+    <view class="nav-item" data-url="/pages/staff/messages/index" bindtap="go"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
+    <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon remix-icon ri-checkbox-circle-line"></view><view>认证</view></view>
+    <view class="nav-item" bindtap="backProfile"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
   </view>
 </view>

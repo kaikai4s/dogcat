@@ -1,17 +1,18 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">运营管理</view>
-    <view class="title">订单管理</view>
-    <view class="tip">查看订单状态并为已支付订单分配服务人员。</view>
+<view class="admin-order-page {{themeClass}} {{fontClass}}">
+  <view class="admin-order-hero">
+    <view class="hero-badge"><text class="remix-icon ri-file-list-3-fill"></text><text>运营管理</text></view>
+    <view class="hero-title">订单管理</view>
+    <view class="hero-desc">查看订单状态、检索用户与宠托师，并为待接单订单分配服务人员。</view>
   </view>
 
-  <view class="card order-filter-card">
+  <view class="admin-card order-filter-card">
+    <view class="card-subtitle"><text class="remix-icon ri-search-line sub-icon"></text><text>订单筛选</text></view>
     <view class="field-item"><text class="label">订单</text><input class="input" value="{{orderKeyword}}" bindinput="inputOrderKeyword" bindconfirm="submitSearch" confirm-type="search" placeholder="搜索订单ID或订单号" /></view>
     <view class="field-item"><text class="label">用户手机号</text><input class="input" type="number" value="{{clientPhone}}" bindinput="inputClientPhone" bindconfirm="submitSearch" confirm-type="search" placeholder="搜索用户手机号" /></view>
     <view class="field-item"><text class="label">宠托师手机号</text><input class="input" type="number" value="{{staffPhone}}" bindinput="inputStaffPhone" bindconfirm="submitSearch" confirm-type="search" placeholder="搜索宠托师手机号" /></view>
     <view class="filter-actions">
-      <button class="primary compact-btn" bindtap="submitSearch">搜索</button>
-      <button class="ghost compact-btn" bindtap="clearSearch">清空</button>
+      <button class="primary-btn compact-btn" bindtap="submitSearch"><text class="remix-icon ri-search-line"></text><text>搜索</text></button>
+      <button class="ghost-btn compact-btn" bindtap="clearSearch"><text class="remix-icon ri-close-circle-line"></text><text>清空</text></button>
     </view>
   </view>
 
@@ -19,50 +20,50 @@
     <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
   </view>
 
-  <view class="card batch-bar" wx:if="{{orders.length}}">
-    <view class="muted">共 {{total}} 单，已选 {{selectedOrderIds.length}} 单</view>
-    <view class="filter-actions">
-      <button class="ghost compact-btn" bindtap="toggleSelectAll">全选/取消</button>
-      <button class="danger compact-btn" loading="{{deleting}}" disabled="{{deleting || !selectedOrderIds.length}}" bindtap="batchDeleteOrders">批量删除</button>
+  <view class="admin-card batch-bar" wx:if="{{orders.length}}">
+    <view class="batch-main"><view class="batch-title">批量管理</view><view class="batch-count">共 {{total}} 单，已选 {{selectedOrderIds.length}} 单</view></view>
+    <view class="batch-actions">
+      <button class="ghost-btn compact-btn" bindtap="toggleSelectAll"><text class="remix-icon ri-checkbox-multiple-line"></text><text>全选/取消</text></button>
+      <button class="danger-btn compact-btn" loading="{{deleting}}" disabled="{{deleting || !selectedOrderIds.length}}" bindtap="batchDeleteOrders"><text class="remix-icon ri-delete-bin-4-line"></text><text>批量删除</text></button>
     </view>
   </view>
 
-  <view class="card order-card {{item.selected ? 'selected' : ''}}" wx:for="{{orders}}" wx:key="_id">
+  <view class="admin-card order-card {{item.selected ? 'selected' : ''}}" wx:for="{{orders}}" wx:key="_id">
     <view class="order-select-row" data-id="{{item._id}}" bindtap="toggleSelect">
-      <view class="select-box {{item.selected ? 'checked' : ''}}">{{item.selected ? '✓' : ''}}</view>
+      <view class="select-box {{item.selected ? 'checked' : ''}}"><text class="remix-icon ri-check-line" wx:if="{{item.selected}}"></text></view>
       <view class="muted">选择此订单</view>
     </view>
-    <view class="interactive" data-id="{{item._id}}" bindtap="detail">
-      <view class="between order-card-head">
-        <view class="order-person">
-          <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-          <view class="order-avatar" wx:else>🐾</view>
-          <view>
-            <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.orderNo}}</view>
-            <view class="muted">{{item.petName}} · {{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
-            <view class="muted">用户电话：{{item.clientContact.phone || item.clientSnapshot.phoneMasked || '未绑定'}}</view>
-            <view class="muted">宠托师：{{item.staffContact.displayName || item.requestedStaffName || item.staffProfileId || '未接单'}}</view>
-            <view class="muted">宠托师电话：{{item.staffContact.phone || '未绑定'}}</view>
-            <view class="muted">创建：{{item.createdAtText || '-'}}</view>
-            <view class="muted">预约：{{item.appointmentTimeText || '-'}}</view>
-            <view class="muted" wx:if="{{item.publishMode === 'direct'}}">指定：{{item.requestedStaffName || '已指定宠护师'}}</view>
-          </view>
-        </view>
-        <view>
-          <view class="badge">{{item.publishMode === 'direct' ? '指定宠托师' : '公开发布'}}</view>
-          <view class="badge">{{item.statusText}}</view>
+    <view class="order-content interactive" data-id="{{item._id}}" bindtap="detail">
+      <view class="order-person">
+        <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+        <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-heart-line"></text></view>
+        <view class="order-main">
+          <view class="order-title">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.orderNo}}</view>
+          <view class="order-desc">{{item.petName}} · {{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
         </view>
       </view>
+      <view class="badge-row">
+        <view class="soft-badge mode-badge">{{item.publishMode === 'direct' ? '指定宠托师' : '公开发布'}}</view>
+        <view class="soft-badge status-badge">{{item.statusText}}</view>
+      </view>
+      <view class="info-grid">
+        <view class="info-chip"><text class="label">用户电话</text><text class="value">{{item.clientContact.phone || item.clientSnapshot.phoneMasked || '未绑定'}}</text></view>
+        <view class="info-chip"><text class="label">宠托师</text><text class="value">{{item.staffContact.displayName || item.requestedStaffName || item.staffProfileId || '未接单'}}</text></view>
+        <view class="info-chip"><text class="label">宠托师电话</text><text class="value">{{item.staffContact.phone || '未绑定'}}</text></view>
+        <view class="info-chip"><text class="label">创建</text><text class="value">{{item.createdAtText || '-'}}</text></view>
+        <view class="info-chip wide"><text class="label">预约</text><text class="value">{{item.appointmentTimeText || '-'}}</text></view>
+        <view class="info-chip wide" wx:if="{{item.publishMode === 'direct'}}"><text class="label">指定</text><text class="value">{{item.requestedStaffName || '已指定宠护师'}}</text></view>
+      </view>
     </view>
-    <button class="mini-btn" wx:if="{{item.status === 'paid'}}" size="mini" data-id="{{item._id}}" bindtap="assign">派单</button>
+    <button class="primary-btn mini-assign-btn" wx:if="{{item.status === 'paid'}}" size="mini" data-id="{{item._id}}" bindtap="assign"><text class="remix-icon ri-user-shared-line"></text><text>派单</text></button>
   </view>
 
-  <button class="ghost" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
+  <button class="ghost-btn load-more-btn" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>
-    <view class="nav-item active"><view class="nav-icon">☷</view><view>订单</view></view>
-    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon">☑</view><view>审核</view></view>
-    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon">!</view><view>异常</view></view>
+  <view class="bottom-nav admin-bottom-nav">
+    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
+    <view class="nav-item active"><view class="nav-icon remix-icon ri-file-list-3-fill"></view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon remix-icon ri-shield-check-line"></view><view>审核</view></view>
+    <view class="nav-item" data-url="/pages/admin/incidents/list/index" bindtap="go"><view class="nav-icon remix-icon ri-alarm-warning-line"></view><view>异常</view></view>
   </view>
 </view>

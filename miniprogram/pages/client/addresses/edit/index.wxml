@@ -1,26 +1,33 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">地址管理</view>
-    <view class="title">{{id ? '编辑地址' : '新增地址'}}</view>
-    <view class="tip">请填写到门牌号，方便宠托师准确上门。</view>
+<view class="address-edit-page {{themeClass}} {{fontClass}} page">
+  <view class="address-hero">
+    <view class="hero-badge"><text class="remix-icon ri-map-pin-2-fill hero-icon"></text><text>地址管理</text></view>
+    <view class="hero-title">{{id ? '编辑地址' : '新增地址'}}</view>
+    <view class="hero-desc">请填写到门牌号，方便宠托师准确上门。</view>
   </view>
 
   <view class="card form-card">
-    <input placeholder="地址标签，如 家 / 公司" value="{{form.label}}" data-field="label" bindinput="input" />
-    <input placeholder="联系人姓名（可选）" value="{{form.contactName}}" data-field="contactName" bindinput="input" />
-    <input placeholder="联系人手机号（可选）" value="{{form.contactPhone}}" data-field="contactPhone" bindinput="input" />
-    <button class="ghost" bindtap="chooseLocation">地图选择小区/地点</button>
-    <view class="notice" wx:if="{{form.serviceAddress}}">
-      <view class="strong">{{form.serviceAddress}}</view>
-      <view class="muted">已选择地图位置</view>
+    <view class="card-subtitle"><text class="remix-icon ri-home-heart-line sub-icon"></text><text>地址信息</text></view>
+    <input class="input-field" placeholder="地址标签，如 家 / 公司" value="{{form.label}}" data-field="label" bindinput="input" />
+    <input class="input-field" placeholder="联系人姓名（可选）" value="{{form.contactName}}" data-field="contactName" bindinput="input" />
+    <input class="input-field" placeholder="联系人手机号（可选）" value="{{form.contactPhone}}" data-field="contactPhone" bindinput="input" />
+    <button class="ghost-btn map-btn" bindtap="chooseLocation"><text class="remix-icon ri-map-pin-line"></text><text>地图选择小区/地点</text></button>
+    <view class="location-card" wx:if="{{form.serviceAddress}}">
+      <text class="remix-icon ri-map-pin-2-fill location-icon"></text>
+      <view>
+        <view class="location-title">{{form.serviceAddress}}</view>
+        <view class="location-desc">已选择地图位置</view>
+      </view>
     </view>
-    <input placeholder="详细地址（如 3栋2单元18楼）必填" value="{{form.addressDetail}}" data-field="addressDetail" bindinput="input" />
-    <input placeholder="门牌号/入户说明（如 1802，门牌朝南）必填" value="{{form.doorplate}}" data-field="doorplate" bindinput="input" />
-    <view class="between switch-row">
-      <view class="strong">设为默认地址</view>
+    <input class="input-field" placeholder="详细地址（如 3栋2单元18楼）必填" value="{{form.addressDetail}}" data-field="addressDetail" bindinput="input" />
+    <input class="input-field" placeholder="门牌号/入户说明（如 1802，门牌朝南）必填" value="{{form.doorplate}}" data-field="doorplate" bindinput="input" />
+    <view class="switch-row">
+      <view>
+        <view class="switch-title">设为默认地址</view>
+        <view class="switch-desc">下单时优先使用该地址</view>
+      </view>
       <switch checked="{{form.isDefault}}" bindchange="toggleDefault" />
     </view>
   </view>
 
-  <button class="primary" bindtap="save">保存地址</button>
+  <button class="primary-btn submit-btn" bindtap="save"><text class="remix-icon ri-save-3-line"></text><text>保存地址</text></button>
 </view>

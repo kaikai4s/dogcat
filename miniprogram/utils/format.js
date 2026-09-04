@@ -189,7 +189,7 @@ function withIncidentActionText(item) {
 
 function withCheckinText(item) {
   if (!item) return item
-  return { ...item, eventTypeText: formatCheckinEvent(item.eventType) }
+  return { ...item, eventTypeText: formatCheckinEvent(item.eventType), recordedAtText: formatDateTime(item.recordedAt || item.createdAt || item.serverTime) }
 }
 
 module.exports = {

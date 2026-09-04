@@ -1,51 +1,219 @@
+/* Client checkin page - Cute warm pet style UI redesign */
+.checkin-page {
+  min-height: 100vh;
+  padding: 0 28rpx 60rpx;
+  background: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
+  color: #2d211a;
+  box-sizing: border-box;
+}
+
+.checkin-hero {
+  margin: 0 -28rpx 24rpx;
+  padding: 42rpx 34rpx 38rpx;
+  border-bottom-left-radius: 48rpx;
+  border-bottom-right-radius: 48rpx;
+  background: linear-gradient(135deg, #fff0c9 0%, #ffd9c8 54%, #fff5f0 100%);
+  box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
+}
+
+.hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  color: #d45f22;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 24rpx;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.kicker-icon {
+  font-size: 26rpx;
+}
+
+.hero-title {
+  margin-top: 20rpx;
+  color: #2d211a;
+  font-size: 44rpx;
+  font-weight: 950;
+  line-height: 1.18;
+}
+
+.hero-desc {
+  margin-top: 12rpx;
+  color: #7a6a5e;
+  font-size: 26rpx;
+  line-height: 1.4;
+}
+
 .summary-card {
-  padding: 32rpx;
+  margin-top: -20rpx;
+  padding: 30rpx 28rpx;
+  border-radius: 36rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  box-shadow: 0 14rpx 34rpx rgba(123, 89, 62, 0.06);
 }
 
-.summary-main {
+.summary-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24rpx;
 }
 
-.month-title {
-  margin-top: 24rpx;
-  font-size: 34rpx;
-  font-weight: 800;
-  color: #2b2528;
-}
-
-.invite-row {
-  margin-top: 24rpx;
-  padding: 22rpx 24rpx;
-  border-radius: 24rpx;
-  background: linear-gradient(90deg, #fff1f6 0%, #fff8fb 100%);
+.user-level-block {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20rpx;
+  gap: 16rpx;
+}
+
+.level-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  color: #a46114;
+  background: linear-gradient(135deg, #fff2ce 0%, #ffe5a3 100%);
+  font-size: 24rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.crown-icon {
+  font-size: 26rpx;
+}
+
+.points-val {
+  display: flex;
+  align-items: baseline;
+  gap: 6rpx;
+}
+
+.points-val .num {
+  font-size: 36rpx;
+  font-weight: 950;
+  color: #e9672f;
+  line-height: 1;
+}
+
+.points-val .unit {
+  font-size: 22rpx;
+  color: #8e8580;
+}
+
+.retro-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 10rpx 20rpx;
+  border-radius: 999rpx;
+  color: #d45f22;
+  background: #fff0e2;
+  font-size: 24rpx;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.retro-icon {
+  font-size: 28rpx;
+}
+
+.invite-card {
+  margin-top: 24rpx;
+  padding: 26rpx 28rpx;
+  border-radius: 28rpx;
+  background: linear-gradient(135deg, #fff4ee 0%, #fffdfc 100%);
+  border: 1rpx solid rgba(255, 153, 102, 0.16);
+}
+
+.invite-tag {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.invite-icon {
+  color: #e9672f;
+  font-size: 32rpx;
+  line-height: 1;
+}
+
+.invite-title {
+  color: #2d211a;
+  font-size: 28rpx;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.invite-sub {
+  margin-top: 12rpx;
+  color: #8e8580;
+  font-size: 24rpx;
+  line-height: 1.45;
 }
 
 .invite-btn {
-  flex-shrink: 0;
+  margin-top: 20rpx;
+  margin-left: 0;
+  margin-right: auto;
   height: 64rpx;
-  min-width: 132rpx;
-  padding: 0 24rpx;
+  padding: 0 28rpx;
   border-radius: 999rpx;
-  background: #f43f6b;
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
   color: #ffffff;
   font-size: 26rpx;
-  font-weight: 800;
-  line-height: 64rpx;
+  font-weight: 850;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  box-shadow: 0 8rpx 20rpx rgba(255, 122, 69, 0.2);
+  border: none;
+  line-height: 1;
 }
 
 .invite-btn::after {
-  border: 0;
+  display: none !important;
+}
+
+.invite-sub {
+  margin-top: 14rpx;
+  color: #8e8580;
+  font-size: 24rpx;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.month-bar {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 28rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid rgba(255, 153, 102, 0.1);
+}
+
+.month-icon {
+  color: #e9672f;
+  font-size: 32rpx;
+}
+
+.month-label {
+  color: #2d211a;
+  font-size: 32rpx;
+  font-weight: 900;
 }
 
 .calendar-card {
-  padding: 26rpx 22rpx 22rpx;
+  margin-top: 24rpx;
+  padding: 28rpx 20rpx 22rpx;
+  border-radius: 36rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  box-shadow: 0 14rpx 34rpx rgba(123, 89, 62, 0.06);
 }
 
 .week-row,
@@ -56,14 +224,15 @@
 }
 
 .week-row {
-  margin-bottom: 10rpx;
+  margin-bottom: 14rpx;
 }
 
 .week-label {
   text-align: center;
   font-size: 24rpx;
-  color: #a59aa0;
-  padding: 8rpx 0;
+  font-weight: 800;
+  color: #8e8580;
+  padding: 6rpx 0;
 }
 
 .calendar-cell-wrap {
@@ -71,116 +240,204 @@
 }
 
 .calendar-cell {
-  min-height: 118rpx;
+  min-height: 114rpx;
   border-radius: 24rpx;
-  padding: 14rpx 10rpx 12rpx;
-  background: #fffafc;
-  border: 2rpx solid rgba(244, 129, 161, 0.08);
+  padding: 12rpx 8rpx 10rpx;
+  background: #fffdf9;
+  border: 1rpx solid rgba(255, 153, 102, 0.12);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-}
-
-.calendar-cell.empty {
-  background: transparent;
-  border-color: transparent;
+  box-sizing: border-box;
 }
 
 .calendar-cell.empty::before {
-  width: 58rpx;
-  height: 58rpx;
-  font-size: 34rpx;
-  background: transparent;
-  box-shadow: none;
-  opacity: 0.35;
+  display: none !important;
+  content: none !important;
 }
 
 .calendar-cell.selected {
-  border-color: #f43f6b;
-  box-shadow: 0 10rpx 24rpx rgba(244, 63, 107, 0.12);
+  border: 2rpx solid #ff7a45;
+  background: #fff4ee;
+  box-shadow: 0 8rpx 20rpx rgba(255, 122, 69, 0.15);
 }
 
 .calendar-cell.today {
-  background: linear-gradient(180deg, #fff8e9 0%, #fffdf8 100%);
-  border-color: rgba(243, 166, 58, 0.35);
+  background: linear-gradient(180deg, #fff0e2 0%, #fffdf9 100%);
+  border-color: rgba(255, 122, 69, 0.3);
 }
 
 .calendar-cell.retro {
-  background: linear-gradient(180deg, #fff5ed 0%, #fffdf9 100%);
-  border-color: rgba(255, 154, 83, 0.3);
+  background: linear-gradient(180deg, #fff6ee 0%, #fffdfb 100%);
+  border-color: rgba(255, 184, 108, 0.4);
 }
 
 .calendar-cell.checked {
-  background: linear-gradient(180deg, #fff2f7 0%, #fffdfd 100%);
-  border-color: rgba(244, 63, 107, 0.18);
+  background: linear-gradient(180deg, #f0faf6 0%, #ffffff 100%);
+  border-color: rgba(24, 168, 124, 0.22);
 }
 
 .calendar-cell.locked {
-  opacity: 0.72;
+  opacity: 0.65;
 }
 
 .calendar-cell.disabled {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
 .cell-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 8rpx;
+  gap: 4rpx;
 }
 
 .cell-day {
-  font-size: 30rpx;
-  font-weight: 800;
-  color: #2b2528;
+  font-size: 28rpx;
+  font-weight: 850;
+  color: #2d211a;
   line-height: 1;
 }
 
 .cell-tag {
-  min-width: 34rpx;
-  height: 34rpx;
-  border-radius: 999rpx;
-  background: rgba(244, 63, 107, 0.12);
-  color: #f43f6b;
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 50%;
+  background: #18a87c;
+  color: #ffffff;
   font-size: 20rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  line-height: 1;
+}
+
+.calendar-cell.retro .cell-tag {
+  background: #ffb86c;
 }
 
 .cell-reward {
-  margin-top: 10rpx;
-  font-size: 24rpx;
-  font-weight: 700;
-  color: #745b65;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  font-weight: 850;
+  color: #e9672f;
   line-height: 1.2;
-  word-break: break-all;
+  text-align: center;
 }
 
 .cell-status {
-  margin-top: 10rpx;
+  margin-top: 4rpx;
   font-size: 20rpx;
-  color: #e05c8b;
-  line-height: 1.2;
+  color: #8e8580;
+  line-height: 1;
+  text-align: center;
 }
 
 .detail-card {
-  padding: 30rpx;
+  margin-top: 24rpx;
+  padding: 30rpx 28rpx;
+  border-radius: 36rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  box-shadow: 0 14rpx 34rpx rgba(123, 89, 62, 0.06);
 }
 
-.detail-reward {
-  margin-top: 20rpx;
-  font-size: 34rpx;
+.detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.detail-day-label {
+  font-size: 32rpx;
+  font-weight: 950;
+  color: #2d211a;
+}
+
+.detail-status-text {
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: #8e8580;
+}
+
+.reward-type-chip {
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  color: #d45f22;
+  background: #fff0e2;
+  font-size: 22rpx;
   font-weight: 850;
-  color: #2b2528;
+}
+
+.detail-reward-box {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 20rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 24rpx;
+  background: #fffdf9;
+  border: 1rpx solid rgba(255, 153, 102, 0.12);
+}
+
+.reward-icon {
+  color: #e9672f;
+  font-size: 36rpx;
+  line-height: 1;
+}
+
+.reward-val {
+  color: #2d211a;
+  font-size: 30rpx;
+  font-weight: 900;
 }
 
 .detail-desc {
   margin-top: 14rpx;
+  color: #8e8580;
+  font-size: 24rpx;
+  line-height: 1.4;
 }
 
-.detail-action {
+.detail-action-btn {
   margin-top: 24rpx;
   width: 100%;
+  min-height: 88rpx;
+  border-radius: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  color: #ffffff;
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
+  font-size: 28rpx;
+  font-weight: 900;
+  border: none;
+  box-shadow: 0 10rpx 24rpx rgba(255, 122, 69, 0.2);
+  line-height: 1;
+}
+
+.points-link-btn {
+  margin-top: 32rpx;
+  width: 100%;
+  min-height: 88rpx;
+  border-radius: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  color: #7a6a5e;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  font-size: 28rpx;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.btn-icon {
+  font-size: 32rpx;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }

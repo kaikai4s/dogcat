@@ -1,42 +1,42 @@
-<view class="page {{themeClass}} {{fontClass}}" wx:if="{{detail}}">
-  <view class="dashboard-header">
-    <view class="badge">完成订单</view>
-    <view class="title">{{detail.petName}} · {{detail.serviceSummary}}</view>
-    <view class="tip">公开展示已脱敏，不包含服务地址、经纬度、门牌和联系方式。</view>
+<view class="public-detail-page {{themeClass}} {{fontClass}} page" wx:if="{{detail}}">
+  <view class="public-hero">
+    <view class="hero-badge"><text class="remix-icon ri-file-shield-2-fill hero-icon"></text><text>完成订单</text></view>
+    <view class="hero-title">{{detail.petName}} · {{detail.serviceSummary}}</view>
+    <view class="hero-desc">公开展示已脱敏，不包含服务地址、经纬度、门牌和联系方式。</view>
   </view>
 
   <view class="card public-order-hero">
-    <view class="between public-order-title-row">
-      <view>
-        <view class="strong">{{detail.orderTitle}}</view>
-        <view class="muted">{{detail.startTime || detail.completedAt}}</view>
+    <view class="order-head">
+      <view class="order-main">
+        <view class="order-title">{{detail.orderTitle}}</view>
+        <view class="order-time">{{detail.startTime || detail.completedAt}}</view>
       </view>
-      <view class="badge">{{detail.statusText}}</view>
+      <view class="status-badge">{{detail.statusText}}</view>
     </view>
     <view class="public-service-name">{{detail.serviceSummary}}</view>
     <view class="public-people-grid">
-      <view><view class="muted">宠物主</view><view class="strong">{{detail.clientName}}</view></view>
-      <view><view class="muted">宠托师</view><view class="strong">{{detail.staffName}}</view></view>
+      <view><view class="person-label">宠物主</view><view class="person-name">{{detail.clientName}}</view></view>
+      <view><view class="person-label">宠托师</view><view class="person-name">{{detail.staffName}}</view></view>
     </view>
   </view>
 
   <view class="card" wx:if="{{detail.review}}">
-    <view class="subtitle">用户评价</view>
-    <view class="public-stars">★★★★★ <text>{{detail.review.ratingText}}</text></view>
-    <view class="strong" wx:if="{{detail.review.content}}">“{{detail.review.content}}”</view>
-    <view class="tag-row" wx:if="{{detail.review.tags.length}}"><text class="tag-pill yellow-tag" wx:for="{{detail.review.tags}}" wx:key="*this">{{item}}</text></view>
+    <view class="card-subtitle"><text class="remix-icon ri-star-smile-line sub-icon"></text><text>用户评价</text></view>
+    <view class="public-stars"><text class="remix-icon ri-star-fill" wx:for="{{[1,2,3,4,5]}}" wx:key="*this"></text><text class="rating-text">{{detail.review.ratingText}}</text></view>
+    <view class="review-content" wx:if="{{detail.review.content}}">“{{detail.review.content}}”</view>
+    <view class="tag-row" wx:if="{{detail.review.tags.length}}"><text class="tag-pill" wx:for="{{detail.review.tags}}" wx:key="*this">{{item}}</text></view>
   </view>
 
   <view class="card">
-    <view class="subtitle">宠托师服务拍照打卡</view>
-    <view class="muted" wx:if="{{detail.checkinCount}}">共完成 {{detail.checkinCount}} 次服务打卡：{{detail.checkinSummary}}</view>
+    <view class="card-subtitle"><text class="remix-icon ri-camera-lens-line sub-icon"></text><text>宠托师服务拍照打卡</text></view>
+    <view class="muted-text" wx:if="{{detail.checkinCount}}">共完成 {{detail.checkinCount}} 次服务打卡：{{detail.checkinSummary}}</view>
     <view class="public-checkin-grid" wx:if="{{detail.checkinPhotos.length}}">
       <view class="public-checkin-item" wx:for="{{detail.checkinPhotos}}" wx:key="_id">
         <image class="public-checkin-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewPhoto" />
-        <view class="muted">{{item.eventText}}</view>
+        <view class="photo-caption">{{item.eventText}}</view>
       </view>
     </view>
-    <view class="muted" wx:elif="{{detail.checkinPhotosHidden}}">用户已设置隐藏公共展示打卡照片。</view>
-    <view class="muted" wx:else>本单暂无公开打卡照片。</view>
+    <view class="muted-text" wx:elif="{{detail.checkinPhotosHidden}}">用户已设置隐藏公共展示打卡照片。</view>
+    <view class="muted-text" wx:else>本单暂无公开打卡照片。</view>
   </view>
 </view>

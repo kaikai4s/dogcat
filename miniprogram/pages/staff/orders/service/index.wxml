@@ -1,90 +1,117 @@
-<view class="page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="badge">现场服务</view>
-    <view class="title">服务执行</view>
-    <view class="tip">按流程上传轨迹、完成打卡，门锁密码仅在服务窗口内展示并记录访问日志。</view>
+<view class="page staff-service-page {{themeClass}} {{fontClass}}">
+  <view class="staff-hero">
+    <view class="hero-badge">
+      <text class="remix-icon ri-shield-check-fill hero-icon"></text>
+      <text>现场服务</text>
+    </view>
+    <view class="hero-title">服务履约控制台</view>
+    <view class="hero-desc">按流程上传轨迹并完成打卡；门锁密码仅在服务窗口内展示并记录访问日志。</view>
   </view>
 
   <view class="card pet-card" wx:if="{{order && order.petSnapshot}}">
-    <view class="subtitle">服务对象与照顾备注</view>
-    <view class="row">
-      <image class="pet-photo" wx:if="{{order.petSnapshot.avatarFileId}}" src="{{order.petSnapshot.avatarFileId}}" mode="aspectFill" bindtap="previewPetPhoto" style="width: 100rpx; height: 100rpx; border-radius: 24rpx; margin-right: 18rpx; flex-shrink: 0;" />
-      <view style="flex: 1;">
-        <view class="strong">{{order.petSnapshot.name || order.petName}} ({{order.petSnapshot.breed || '未知品种'}})</view>
-        <view class="muted" wx:if="{{order.petSnapshot.personality}}">性格：{{order.petSnapshot.personality}}</view>
-        <view class="muted" wx:if="{{order.petSnapshot.specialNotes}}" style="color: #be123c; font-weight: bold;">备注：{{order.petSnapshot.specialNotes}}</view>
+    <view class="card-subtitle">
+      <text class="remix-icon ri-footprint-line sub-icon"></text>
+      <text>服务对象与照顾备注</text>
+    </view>
+    <view class="pet-row">
+      <image class="pet-photo" wx:if="{{order.petSnapshot.avatarFileId}}" src="{{order.petSnapshot.avatarFileId}}" mode="aspectFill" bindtap="previewPetPhoto" />
+      <view class="pet-photo placeholder" wx:else><text class="remix-icon ri-footprint-line"></text></view>
+      <view class="pet-info">
+        <view class="pet-name">{{order.petSnapshot.name || order.petName}} · {{order.petSnapshot.breed || '未知品种'}}</view>
+        <view class="pet-desc" wx:if="{{order.petSnapshot.personality}}">性格：{{order.petSnapshot.personality}}</view>
+        <view class="pet-note" wx:if="{{order.petSnapshot.specialNotes}}">备注：{{order.petSnapshot.specialNotes}}</view>
       </view>
     </view>
   </view>
 
-  <view class="card">
-    <view class="subtitle">服务操作</view>
-    <button class="primary" wx:if="{{order && order.status === 'assigned'}}" loading="{{starting}}" disabled="{{starting}}" bindtap="start">{{starting ? '处理中...' : '开始服务'}}</button>
-    <button class="ghost" loading="{{requestingEarlyStart}}" disabled="{{requestingEarlyStart || (earlyStartRequest && earlyStartRequest.status === 'pending')}}" wx:if="{{order && order.canRequestEarlyStart}}" bindtap="requestEarlyStart">{{earlyStartRequest && earlyStartRequest.status === 'pending' ? '提前开始申请待确认' : '申请提前开始服务'}}</button>
-    <view class="notice" wx:if="{{earlyStartRequest}}">
-      <view class="muted">提前开始申请：{{earlyStartRequest.status === 'approved' ? '已同意' : (earlyStartRequest.status === 'rejected' ? '已拒绝' : '待宠物主确认')}}</view>
-      <view class="muted" wx:if="{{earlyStartRequest.reason}}">{{earlyStartRequest.reason}}</view>
+  <view class="card operation-card">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-play-circle-line sub-icon"></text>
+      <text>服务操作</text>
     </view>
-    <view class="notice" wx:if="{{order && order.serviceStarted && order.orderHomeSecurity}}">
-      <view class="strong">入户方式：{{order.orderHomeSecurity.lockMethodText}}</view>
-      <view class="muted" wx:if="{{order.orderHomeSecurity.type === 'someone_home'}}">有人在家，到达后敲门即可。</view>
+    <button class="primary-btn full-btn" wx:if="{{order && order.status === 'assigned'}}" loading="{{starting}}" disabled="{{starting}}" bindtap="start">{{starting ? '处理中...' : '开始服务'}}</button>
+    <button class="ghost-btn full-btn" loading="{{requestingEarlyStart}}" disabled="{{requestingEarlyStart || (earlyStartRequest && earlyStartRequest.status === 'pending')}}" wx:if="{{order && order.canRequestEarlyStart}}" bindtap="requestEarlyStart">{{earlyStartRequest && earlyStartRequest.status === 'pending' ? '提前开始申请待确认' : '申请提前开始服务'}}</button>
+
+    <view class="notice-card" wx:if="{{earlyStartRequest}}">
+      <view class="notice-title">提前开始申请：{{earlyStartRequest.status === 'approved' ? '已同意' : (earlyStartRequest.status === 'rejected' ? '已拒绝' : '待宠物主确认')}}</view>
+      <view class="notice-desc" wx:if="{{earlyStartRequest.reason}}">{{earlyStartRequest.reason}}</view>
+    </view>
+
+    <view class="security-card" wx:if="{{order && order.serviceStarted && order.orderHomeSecurity}}">
+      <view class="security-head">
+        <text class="remix-icon ri-door-lock-line security-icon"></text>
+        <text>入户方式：{{order.orderHomeSecurity.lockMethodText}}</text>
+      </view>
+      <view class="security-desc" wx:if="{{order.orderHomeSecurity.type === 'someone_home'}}">有人在家，到达后敲门即可。</view>
+
       <view wx:if="{{order.orderHomeSecurity.type === 'remote_unlock'}}">
-        <view class="muted">到达服务地点后请求远程开门，系统会给宠物主发送微信提醒；如需电话催办，请联系平台客服并报订单号。</view>
+        <view class="security-desc">到达服务地点后请求远程开门，系统会给宠物主发送微信提醒；如需电话催办，请联系客服并报订单号。</view>
         <view class="info-row"><view class="label">订单号</view><view class="value">{{order.orderNo}}</view></view>
         <view class="info-row"><view class="label">客服电话</view><view class="value">{{customerService.phone || '暂未配置'}}</view></view>
         <view class="info-row" wx:if="{{customerService.workHours}}"><view class="label">服务时间</view><view class="value">{{customerService.workHours}}</view></view>
-        <button class="ghost" loading="{{requestingRemoteUnlock}}" disabled="{{requestingRemoteUnlock}}" bindtap="requestRemoteUnlock">已到达服务地点 / 请求开门</button>
-        <button class="ghost" bindtap="callCustomerService">联系平台客服转接</button>
-        <button class="ghost" bindtap="copyOrderNo">复制订单号</button>
-        <view class="muted" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}">最近请求：{{order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}</view>
-        <view class="muted" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastNotifyStatus}}">微信通知：{{order.orderHomeSecurity.remoteUnlock.lastNotifyStatus.wechat || '未知'}}</view>
-        <view class="muted" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastNotifyError}}">失败原因：{{order.orderHomeSecurity.remoteUnlock.lastNotifyError}}</view>
+        <button class="ghost-btn full-btn" loading="{{requestingRemoteUnlock}}" disabled="{{requestingRemoteUnlock}}" bindtap="requestRemoteUnlock">已到达服务地点 / 请求开门</button>
+        <view class="security-actions">
+          <button class="ghost-btn" bindtap="callCustomerService"><text class="remix-icon ri-phone-line"></text>联系客服</button>
+          <button class="ghost-btn" bindtap="copyOrderNo"><text class="remix-icon ri-file-copy-line"></text>复制订单号</button>
+        </view>
+        <view class="security-desc" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}">最近请求：{{order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}</view>
+        <view class="security-desc" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastNotifyStatus}}">微信通知：{{order.orderHomeSecurity.remoteUnlock.lastNotifyStatus.wechat || '未知'}}</view>
+        <view class="security-desc danger" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastNotifyError}}">失败原因：{{order.orderHomeSecurity.remoteUnlock.lastNotifyError}}</view>
       </view>
+
       <view wx:if="{{order.orderHomeSecurity.type === 'one_time_code'}}">
-        <view class="muted">密码区间：{{order.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{order.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view>
-        <button class="ghost" bindtap="unlock">查看一次性开门密码</button>
+        <view class="security-desc">密码区间：{{order.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{order.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view>
+        <button class="ghost-btn full-btn" bindtap="unlock"><text class="remix-icon ri-eye-line"></text>查看一次性开门密码</button>
       </view>
+
       <view wx:if="{{order.orderHomeSecurity.type === 'key'}}">
         <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{order.orderHomeSecurity.key.location}}</view></view>
         <view class="image-list" wx:if="{{order.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
-        <view class="muted">{{order.orderHomeSecurity.key.returnedAt ? '已完成放回钥匙打卡' : '完成服务前必须打卡放回钥匙位置'}}</view>
-        <button class="ghost" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="chooseKeyReturnImage">上传放回钥匙图片</button>
+        <view class="security-desc">{{order.orderHomeSecurity.key.returnedAt ? '已完成放回钥匙打卡' : '完成服务前必须打卡放回钥匙位置'}}</view>
+        <button class="ghost-btn full-btn" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="chooseKeyReturnImage">上传放回钥匙图片</button>
         <view class="image-list" wx:if="{{keyReturnImageFileIds.length}}"><image wx:for="{{keyReturnImageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
-        <button class="primary" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="recordKeyReturned">确认已放回钥匙</button>
+        <button class="primary-btn full-btn" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="recordKeyReturned">确认已放回钥匙</button>
       </view>
     </view>
   </view>
 
-  <view class="notice" wx:if="{{order && order.serviceStarted && unlock}}">
+  <view class="security-card unlock-result" wx:if="{{order && order.serviceStarted && unlock}}">
     <view class="info-row"><view class="label">入户方式</view><view class="value">{{unlock.lockMethodText || '服务入户'}}</view></view>
-    <view class="info-row" wx:if="{{unlock.doorLockCode}}"><view class="label">门锁密码</view><view class="value">{{unlock.doorLockCode}}</view></view>
+    <view class="info-row" wx:if="{{unlock.doorLockCode}}"><view class="label">门锁密码</view><view class="value code-text">{{unlock.doorLockCode}}</view></view>
     <view class="info-row" wx:if="{{unlock.keyLocation}}"><view class="label">钥匙位置</view><view class="value">{{unlock.keyLocation}}</view></view>
     <view class="info-row" wx:if="{{unlock.entryNotes}}"><view class="label">入户备注</view><view class="value">{{unlock.entryNotes}}</view></view>
   </view>
 
   <view wx:if="{{order && order.serviceStarted}}">
-    <view class="card">
-      <view class="subtitle">轨迹记录</view>
-      <view class="badge" wx:if="{{autoTracking}}">{{backgroundTracking ? '后台记录中' : '自动记录中'}}</view>
-      <view class="muted">{{trackStatusText}}</view>
-      <view class="muted" wx:if="{{latestTrackText}}">{{latestTrackText}}</view>
-      <button class="ghost" bindtap="uploadPoint">手动补记当前位置</button>
-      <view class="muted">服务期间会定时记录当前位置，用户端会按时间生成路径。</view>
-      <view class="muted">已上传轨迹点：{{pointCount}}</view>
-      <view class="muted" wx:if="{{offlineTaskCount}}">待补传数据：{{offlineTaskCount}} 条，网络恢复后自动上传。</view>
+    <view class="card track-card">
+      <view class="card-subtitle">
+        <text class="remix-icon ri-map-pin-line sub-icon"></text>
+        <text>轨迹记录</text>
+      </view>
+      <view class="badge green" wx:if="{{autoTracking}}">{{backgroundTracking ? '后台记录中' : '自动记录中'}}</view>
+      <view class="track-text">{{trackStatusText}}</view>
+      <view class="track-text" wx:if="{{latestTrackText}}">{{latestTrackText}}</view>
+      <button class="ghost-btn full-btn" bindtap="uploadPoint">手动补记当前位置</button>
+      <view class="track-tips">服务期间会定时记录当前位置，用户端会按时间生成路径。</view>
+      <view class="track-count">已上传轨迹点：{{pointCount}}</view>
+      <view class="track-tips danger" wx:if="{{offlineTaskCount}}">待补传数据：{{offlineTaskCount}} 条，网络恢复后自动上传。</view>
     </view>
 
-    <view class="subtitle">打卡证据</view>
-    <view class="grid" wx:if="{{order.checkinRequirements && order.checkinRequirements.length}}">
-      <button class="ghost" wx:for="{{order.checkinRequirements}}" wx:key="eventType" data-type="{{item.eventType}}" bindtap="checkin">
-        {{item.label}}
-        <text wx:if="{{item.photoCount}}"> · {{item.photoCount}}张</text>
-        <text wx:elif="{{item.required}}"> · 必打卡</text>
-        <text wx:else> · 选填</text>
+    <view class="section-title">
+      <text class="remix-icon ri-camera-lens-line section-icon"></text>
+      <text>打卡证据</text>
+    </view>
+    <view class="checkin-grid" wx:if="{{order.checkinRequirements && order.checkinRequirements.length}}">
+      <button class="checkin-btn" wx:for="{{order.checkinRequirements}}" wx:key="eventType" data-type="{{item.eventType}}" bindtap="checkin">
+        <text class="remix-icon {{item.photoCount ? 'ri-checkbox-circle-fill' : 'ri-camera-lens-line'}} checkin-icon"></text>
+        <text>{{item.label}}</text>
+        <text class="checkin-meta" wx:if="{{item.photoCount}}">{{item.photoCount}}张</text>
+        <text class="checkin-meta" wx:elif="{{item.required}}">必打卡</text>
+        <text class="checkin-meta" wx:else>选填</text>
       </button>
     </view>
-    <view class="empty" wx:else>暂无打卡要求</view>
+    <view class="empty-state" wx:else>暂无打卡要求</view>
 
-    <button class="primary" loading="{{finishing}}" disabled="{{finishing}}" bindtap="finish">{{finishing ? '处理中...' : '完成服务'}}</button>
+    <button class="primary-btn finish-btn" loading="{{finishing}}" disabled="{{finishing}}" bindtap="finish">{{finishing ? '处理中...' : '完成服务'}}</button>
   </view>
 </view>

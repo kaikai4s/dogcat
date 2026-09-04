@@ -1,5 +1,52 @@
+/* Client message thread - Cute Pet Style UI redesign */
+.message-thread-page {
+  min-height: 100vh;
+  padding: 0 28rpx 190rpx;
+  background: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
+  color: #2d211a;
+  box-sizing: border-box;
+}
+
+.thread-hero {
+  margin: 0 -28rpx 24rpx;
+  padding: 42rpx 34rpx 38rpx;
+  border-bottom-left-radius: 48rpx;
+  border-bottom-right-radius: 48rpx;
+  background: linear-gradient(135deg, #fff0c9 0%, #ffd9c8 54%, #fff5f0 100%);
+  box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  color: #d45f22;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 24rpx;
+  font-weight: 850;
+  margin-bottom: 16rpx;
+}
+
+.hero-icon { font-size: 28rpx; }
+
+.hero-title {
+  color: #2d211a;
+  font-size: 42rpx;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.hero-desc {
+  margin-top: 12rpx;
+  color: #7a6a5e;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
 .chat-list {
-  padding-bottom: 180rpx;
+  padding-bottom: 24rpx;
 }
 
 .chat-row {
@@ -10,16 +57,21 @@
 }
 
 .chat-avatar {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 22rpx;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 26rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--theme-primary-soft);
-  color: var(--theme-primary);
-  font-weight: 900;
+  background: #fff0e2;
+  color: #e9672f;
   flex-shrink: 0;
+  box-shadow: 0 8rpx 18rpx rgba(123, 89, 62, 0.06);
+}
+
+.chat-avatar .remix-icon {
+  font-size: 38rpx;
+  line-height: 1;
 }
 
 .chat-content {
@@ -29,7 +81,7 @@
 
 .chat-time {
   margin-bottom: 10rpx;
-  color: var(--theme-muted);
+  color: #a89b90;
   font-size: 23rpx;
   text-align: center;
 }
@@ -39,14 +91,21 @@
   max-width: 560rpx;
   padding: 22rpx 24rpx;
   border-radius: 10rpx 28rpx 28rpx 28rpx;
-  background: #fff;
-  box-shadow: 0 12rpx 30rpx var(--theme-shadow);
-  border: 1rpx solid var(--theme-border);
+  background: #ffffff;
+  box-shadow: 0 12rpx 30rpx rgba(123, 89, 62, 0.06);
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+}
+
+.chat-title {
+  color: #2d211a;
+  font-size: 28rpx;
+  font-weight: 950;
+  line-height: 1.35;
 }
 
 .chat-detail {
   margin-top: 10rpx;
-  color: var(--theme-muted);
+  color: #7a6a5e;
   font-size: 26rpx;
   line-height: 1.5;
 }
@@ -56,13 +115,74 @@
   left: 24rpx;
   right: 24rpx;
   bottom: calc(18rpx + env(safe-area-inset-bottom));
-  padding: 18rpx;
-  border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 14rpx 38rpx rgba(116, 91, 101, 0.16);
-  border: 1rpx solid rgba(244, 63, 107, 0.1);
+  padding: 20rpx;
+  border-radius: 32rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16rpx 38rpx rgba(123, 89, 62, 0.12);
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  backdrop-filter: blur(16rpx);
 }
 
-.chat-input-placeholder .primary {
-  margin-top: 14rpx;
+.readonly-tip {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  color: #8e8580;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.readonly-tip .remix-icon {
+  color: #e9672f;
+  font-size: 28rpx;
+  flex-shrink: 0;
+}
+
+.primary-btn {
+  margin-top: 16rpx;
+  width: 100%;
+  min-height: 78rpx;
+  border-radius: 26rpx;
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
+  color: #ffffff;
+  box-shadow: 0 10rpx 26rpx rgba(255, 122, 69, 0.22);
+  font-size: 26rpx;
+  font-weight: 950;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  border: none;
+  line-height: 1;
+}
+
+.primary-btn::after { display: none; }
+
+.primary-btn .remix-icon { font-size: 30rpx; }
+
+.empty-state {
+  min-height: 520rpx;
+  border-radius: 36rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  box-shadow: 0 14rpx 34rpx rgba(123, 89, 62, 0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 44rpx;
+  margin-top: 28rpx;
+}
+
+.empty-icon {
+  color: #e9672f;
+  font-size: 100rpx;
+  margin-bottom: 16rpx;
+}
+
+.empty-title {
+  color: #2d211a;
+  font-size: 30rpx;
+  font-weight: 950;
 }

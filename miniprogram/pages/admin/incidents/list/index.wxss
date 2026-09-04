@@ -1,1 +1,57 @@
-/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+@import "../../orders/list/index.wxss";
+
+.admin-incident-page {
+  min-height: 100vh;
+  padding: 0 28rpx 178rpx;
+  background: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
+  color: #2d211a;
+  box-sizing: border-box;
+}
+
+.incident-hero {
+  margin: 0 -28rpx 24rpx;
+  padding: 42rpx 34rpx 38rpx;
+  border-bottom-left-radius: 48rpx;
+  border-bottom-right-radius: 48rpx;
+  background: linear-gradient(135deg, #fff0c9 0%, #ffd9c8 54%, #fff5f0 100%);
+  box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
+}
+
+.incident-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 18rpx;
+}
+
+.incident-icon {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e9672f;
+  background: #fff0e2;
+  font-size: 42rpx;
+  flex-shrink: 0;
+}
+
+.incident-main { flex: 1; min-width: 0; }
+
+.incident-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 20rpx;
+  padding-top: 18rpx;
+  border-top: 1rpx solid rgba(255, 153, 102, 0.1);
+}
+
+.type-badge { color: #f43f6b; background: #fff0f5; }
+
+.mini-btn {
+  min-height: 60rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+}

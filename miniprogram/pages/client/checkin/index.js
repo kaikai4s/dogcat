@@ -141,6 +141,8 @@ Page({
           selectedDayDetail: buildSelectedDayDetail(days, selectedDay),
           monthKey: res.monthKey || this.data.monthKey,
           monthLabel: getMonthLabel(res.monthKey || this.data.monthKey),
+          shareTitle: res.shareTitle || '来签到领福利，补签卡也能拿',
+          shareImageUrl: res.shareImageUrl || '',
           loading: false,
           submitting: false
         })
@@ -219,9 +221,13 @@ Page({
   onShareAppMessage() {
     const inviteCode = this.data.inviteCode
     const query = inviteCode ? `?inviteCode=${encodeURIComponent(inviteCode)}` : ''
-    return {
-      title: '来签到领福利，补签卡也能拿',
+    const shareObj = {
+      title: this.data.shareTitle || '来签到领福利，补签卡也能拿',
       path: `/pages/client/checkin/index${query}`
     }
+    if (this.data.shareImageUrl) {
+      shareObj.imageUrl = this.data.shareImageUrl
+    }
+    return shareObj
   }
 })

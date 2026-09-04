@@ -76,6 +76,20 @@
   </view>
 
   <view class="card form-card">
+    <view class="subtitle">签到中心分享卡片配置</view>
+    <view class="notice">配置用户在签到中心点击“去邀请好友”时发送给微信好友/群的分享标题与封面图片。</view>
+    <view class="field-item"><text class="label">分享卡片标题</text><input class="input" value="{{settings.checkinShare.title}}" data-field="title" bindinput="checkinShareInput" placeholder="例如：来签到领福利，补签卡也能拿" /></view>
+    <view class="field-item">
+      <text class="label">封面图片</text>
+      <view class="checkin-share-upload" bindtap="chooseCheckinShareImage">
+        <image wx:if="{{settings.checkinShare.imageTempUrl}}" class="checkin-share-preview" src="{{settings.checkinShare.imageTempUrl}}" mode="aspectFill" />
+        <view wx:else class="checkin-share-placeholder"><text class="remix-icon ri-image-add-line"></text><text>{{uploadingCheckinShareImage ? '上传中...' : '上传分享封面图'}}</text></view>
+      </view>
+      <view class="checkin-share-file" wx:if="{{settings.checkinShare.imageUrl}}">{{settings.checkinShare.imageUrl}}</view>
+    </view>
+  </view>
+
+  <view class="card form-card">
     <view class="subtitle">结算与可靠性</view>
     <view class="field-item"><text class="label">宠托师分成比例</text><input class="input" type="digit" value="{{settings.settlement.staffCommissionRate}}" data-field="staffCommissionRate" bindinput="settlementInput" /></view>
     <view class="field-item"><text class="label">结算等待天数</text><input class="input" type="number" value="{{settings.settlement.settlementDelayDays}}" data-field="settlementDelayDays" bindinput="settlementInput" /></view>
@@ -231,9 +245,9 @@
   </view>
 
   <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>
-    <view class="nav-item" data-url="/pages/admin/coupons/index" bindtap="go"><view class="nav-icon">券</view><view>优惠券</view></view>
-    <view class="nav-item" data-url="/pages/admin/member-levels/index" bindtap="go"><view class="nav-icon">级</view><view>等级</view></view>
-    <view class="nav-item active"><view class="nav-icon">⚙</view><view>设置</view></view>
+    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
+    <view class="nav-item" data-url="/pages/admin/coupons/index" bindtap="go"><view class="nav-icon remix-icon ri-coupon-3-line"></view><view>优惠券</view></view>
+    <view class="nav-item" data-url="/pages/admin/member-levels/index" bindtap="go"><view class="nav-icon remix-icon ri-vip-crown-line"></view><view>等级</view></view>
+    <view class="nav-item active"><view class="nav-icon remix-icon ri-settings-4-line"></view><view>设置</view></view>
   </view>
 </view>

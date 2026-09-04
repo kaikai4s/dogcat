@@ -1,45 +1,77 @@
-<view class="page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="badge">服务任务</view>
-    <view class="title">我的任务</view>
-    <view class="tip">查看已分配订单，按服务时间完成上门履约。</view>
+<view class="page staff-orders-page {{themeClass}} {{fontClass}}">
+  <view class="staff-orders-hero">
+    <view class="hero-badge">服务履约</view>
+    <view class="hero-title">我的任务</view>
+    <view class="hero-desc">查看已接单与服务中任务，按时前往客户家中打卡履约。</view>
   </view>
 
-  <view class="status-tabs">
+  <scroll-view scroll-x class="status-tabs">
     <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
-  </view>
+  </scroll-view>
 
   <view class="card task-card" wx:for="{{orders}}" wx:key="_id">
-    <view class="between interactive order-card-head" data-id="{{item._id}}" bindtap="detail">
+    <view class="task-head" data-id="{{item._id}}" bindtap="detail">
       <view class="order-person">
         <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" />
         <image class="order-avatar" wx:elif="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-        <view class="order-avatar" wx:else>🐾</view>
-        <view style="flex: 1;">
-          <view class="strong">{{item.petName}} <text class="breed-badge" wx:if="{{item.petSnapshot && item.petSnapshot.breed}}">({{item.petSnapshot.breed}})</text> · {{item.clientSnapshot.displayName || '宠物主'}}</view>
-          <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '遛狗' : '喂养')}} · {{item.appointmentTimeText || item.startTime}}</view>
-          <view class="muted">创建时间：{{item.createdAtText || '-'}}</view>
-          <view class="muted">{{item.serviceAddress || '未填写地址'}} · 距你 {{item.distanceText || '未定位'}}</view>
-          <view class="pet-note-tag" wx:if="{{item.petSnapshot && (item.petSnapshot.personality || item.petSnapshot.specialNotes)}}">
-            <text class="tag-title">🐾 {{item.petSnapshot.personality ? '性格：' + item.petSnapshot.personality : ''}} {{item.petSnapshot.specialNotes ? ' 备注：' + item.petSnapshot.specialNotes : ''}}</text>
+        <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+        <view class="order-info">
+          <view class="order-title">
+            <text class="pet-name">{{item.petName}}</text>
+            <text class="breed-badge" wx:if="{{item.petSnapshot && item.petSnapshot.breed}}">{{item.petSnapshot.breed}}</text>
+            <text class="owner-name">· {{item.clientSnapshot.displayName || '宠物主'}}</text>
           </view>
+          <view class="service-type">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
         </view>
       </view>
-      <view class="badge">{{item.statusText}}</view>
+      <view class="status-badge">{{item.statusText}}</view>
     </view>
-    <button class="ghost" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">导航到服务地址</button>
+
+    <view class="info-grid">
+      <view class="info-item">
+        <text class="remix-icon ri-time-line icon"></text>
+        <text class="val">{{item.appointmentTimeText || item.startTime}}</text>
+      </view>
+      <view class="info-item">
+        <text class="remix-icon ri-map-pin-2-line icon"></text>
+        <text class="val">{{item.serviceAddress || '未填写地址'}}</text>
+      </view>
+      <view class="info-item">
+        <text class="remix-icon ri-navigation-line icon"></text>
+        <text class="val">距当前位置 {{item.distanceText || '未定位'}}</text>
+      </view>
+    </view>
+
+    <view class="pet-note-card" wx:if="{{item.petSnapshot && (item.petSnapshot.personality || item.petSnapshot.specialNotes)}}">
+      <text class="remix-icon ri-footprint-line note-icon"></text>
+      <view class="note-text">
+        <text wx:if="{{item.petSnapshot.personality}}">性格：{{item.petSnapshot.personality}} </text>
+        <text wx:if="{{item.petSnapshot.specialNotes}}">备注：{{item.petSnapshot.specialNotes}}</text>
+      </view>
+    </view>
+
+    <view class="card-action-row">
+      <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">查看任务详情</button>
+      <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
+        <text class="remix-icon ri-map-pin-line"></text>导航到地址
+      </button>
+    </view>
   </view>
 
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && orders.length}}">正在加载更多...</view>
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && orders.length && !hasMore}}">已显示全部任务</view>
+  <view class="list-state" wx:if="{{loading && orders.length}}">正在加载更多任务...</view>
+  <view class="list-state" wx:if="{{!loading && orders.length && !hasMore}}">已显示全部服务任务</view>
 
-  <view class="empty" wx:if="{{!loading && !orders.length}}">暂无任务，去工作台刷新附近订单看看～</view>
+  <view class="card empty order-empty" wx:if="{{!loading && !orders.length}}">
+    <view class="empty-icon remix-icon ri-file-list-3-line"></view>
+    <view class="empty-title">暂无该状态任务</view>
+    <view class="empty-desc">前往工作台抢单或接单后，任务会显示在这里。</view>
+  </view>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>工作台</view></view>
-    <view class="nav-item active"><view class="nav-icon">☷</view><view>任务</view></view>
-    <view class="nav-item" data-url="/pages/staff/messages/index" bindtap="go"><view class="nav-icon">信<view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
-    <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon">☑</view><view>认证</view></view>
-    <view class="nav-item" bindtap="backProfile"><view class="nav-icon">♙</view><view>我的</view></view>
+  <view class="bottom-nav staff-bottom-nav">
+    <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>工作台</view></view>
+    <view class="nav-item active"><view class="nav-icon remix-icon ri-file-list-3-fill"></view><view>任务</view></view>
+    <view class="nav-item" data-url="/pages/staff/messages/index" bindtap="go"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
+    <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon remix-icon ri-checkbox-circle-line"></view><view>认证</view></view>
+    <view class="nav-item" bindtap="backProfile"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
   </view>
 </view>

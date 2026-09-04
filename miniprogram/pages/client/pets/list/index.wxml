@@ -1,48 +1,48 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">我的爱宠</view>
-    <view class="title">宠物档案</view>
-    <view class="tip">完善品种、体重和敏感备注，宠托师服务更安心。</view>
+<view class="pet-list-page {{themeClass}} {{fontClass}} page">
+  <view class="pet-hero">
+    <view class="hero-badge"><text class="remix-icon ri-paw-print-fill hero-icon"></text><text>我的爱宠</text></view>
+    <view class="hero-title">宠物档案</view>
+    <view class="hero-desc">完善品种、体重和敏感备注，宠托师服务更安心。</view>
   </view>
 
-  <button class="primary" bindtap="create">添加自己的宠物</button>
+  <button class="primary-btn add-btn" bindtap="create"><text class="remix-icon ri-add-circle-line"></text><text>添加自己的宠物</text></button>
 
   <view class="status-tabs">
     <view class="status-tab {{activeSpecies === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-species="{{item.value}}" bindtap="chooseSpecies">{{item.label}}</view>
   </view>
 
-  <view class="card">
-    <input placeholder="搜索宠物名称、品种或照顾说明" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="submitSearch" />
-    <view class="chip-row" style="margin-top:16rpx;">
-      <button class="primary compact-btn" bindtap="submitSearch">搜索</button>
-      <button class="ghost compact-btn" wx:if="{{keyword}}" bindtap="clearSearch">清空</button>
+  <view class="search-card">
+    <view class="search-field"><text class="remix-icon ri-search-line"></text><input placeholder="搜索宠物名称、品种或照顾说明" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="submitSearch" /></view>
+    <view class="search-actions">
+      <button class="primary-btn compact-btn" bindtap="submitSearch">搜索</button>
+      <button class="ghost-btn compact-btn" wx:if="{{keyword}}" bindtap="clearSearch">清空</button>
     </view>
   </view>
 
-  <view class="card interactive pet-card" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="edit">
-    <view class="row">
-      <image class="pet-photo" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" />
-      <view class="pet-photo empty-photo" wx:else>🐾</view>
-      <view style="flex: 1;">
-        <view class="between">
-          <view class="strong">{{item.name}}</view>
-          <view class="badge">{{item.aiInteractionEnabled ? 'AI互动' : '档案'}}</view>
-        </view>
-        <view class="muted">{{item.breed || '未填写品种'}} · {{item.birthday || '未填写生日'}} · {{item.weight || 0}}kg</view>
-        <view class="muted">{{item.personality || '还没有填写性格特点'}}</view>
-        <view class="chip-row">
-          <view class="chip">{{item.species === 'cat' ? '猫咪' : item.species === 'other' ? '其他宠物' : '狗狗'}}</view>
-          <view class="chip pink">{{item.gender || '未填性别'}}</view>
-          <view class="chip blue">{{item.specialNotes || item.healthNotes ? '有照顾说明' : '健康乖巧'}}</view>
-        </view>
+  <view class="card pet-card" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="edit">
+    <image class="pet-photo" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" />
+    <view class="pet-photo empty-photo" wx:else><text class="remix-icon ri-paw-print-line"></text></view>
+    <view class="pet-main">
+      <view class="pet-head">
+        <view class="pet-name">{{item.name}}</view>
+        <view class="pet-badge">{{item.aiInteractionEnabled ? 'AI互动' : '档案'}}</view>
+      </view>
+      <view class="pet-meta">{{item.breed || '未填写品种'}} · {{item.birthday || '未填写生日'}} · {{item.weight || 0}}kg</view>
+      <view class="pet-desc">{{item.personality || '还没有填写性格特点'}}</view>
+      <view class="chip-row">
+        <view class="chip">{{item.species === 'cat' ? '猫咪' : item.species === 'other' ? '其他宠物' : '狗狗'}}</view>
+        <view class="chip pink">{{item.gender || '未填性别'}}</view>
+        <view class="chip blue">{{item.specialNotes || item.healthNotes ? '有照顾说明' : '健康乖巧'}}</view>
       </view>
     </view>
   </view>
 
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && pets.length}}">正在加载更多...</view>
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && pets.length && !hasMore}}">已显示全部宠物档案</view>
+  <view class="list-tip" wx:if="{{loading && pets.length}}">正在加载更多...</view>
+  <view class="list-tip" wx:if="{{!loading && pets.length && !hasMore}}">已显示全部宠物档案</view>
 
-  <view class="empty" wx:if="{{!loading && !pets.length}}">
-    <view>暂无宠物档案，先添加一个宠物吧</view>
+  <view class="empty-state" wx:if="{{!loading && !pets.length}}">
+    <text class="remix-icon ri-paw-print-line empty-icon"></text>
+    <view class="empty-title">暂无宠物档案</view>
+    <view class="empty-desc">先添加一个宠物，预约服务时会更方便。</view>
   </view>
 </view>

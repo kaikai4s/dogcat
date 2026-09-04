@@ -1,63 +1,122 @@
-<view class="page sitter-page {{themeClass}} {{fontClass}}" wx:if="{{sitter}}">
+<view class="page sitter-detail-page {{themeClass}} {{fontClass}}" wx:if="{{sitter}}">
   <view class="sitter-hero">
     <view class="hero-topline">
-      <view class="badge">宠托师详情</view>
+      <view class="badge">宠托师名片</view>
       <view class="hero-count">{{sitter.isFeatured ? '平台精选' : (sitter.favorite ? '已收藏' : '可收藏')}}</view>
     </view>
     <view class="title">{{sitter.displayName}}</view>
     <view class="tip">{{sitter.serviceCity}} · {{sitter.levelName}}</view>
   </view>
 
-  <view class="card sitter-card">
+  <view class="card sitter-main-card">
     <view class="sitter-head">
       <image class="sitter-avatar" wx:if="{{sitter.avatarUrl}}" src="{{sitter.avatarUrl}}" mode="aspectFill" />
       <image class="sitter-avatar" wx:else src="../../../../images/icons/avatar.png" mode="aspectFill" />
       <view class="sitter-main">
-        <view class="strong">{{sitter.displayName}}</view>
-        <view class="muted">{{sitter.serviceSummary}}</view>
-        <view class="chip-row">
+        <view class="sitter-name-row">
+          <text class="sitter-name">{{sitter.displayName}}</text>
           <view class="chip pink" wx:if="{{sitter.isFeatured}}">平台精选</view>
+        </view>
+        <view class="muted">{{sitter.serviceSummary || '专业爱宠、用心照护'}}</view>
+        <view class="chip-row">
           <view class="chip pink" wx:for="{{sitter.publicTags}}" wx:key="*this">{{item}}</view>
         </view>
       </view>
     </view>
+
     <view class="stats-grid">
       <view class="stat-card">
-        <view class="stat-number">{{sitter.ratingAverage || '-'}}</view>
-        <view class="stat-label">平均评分</view>
+        <view class="stat-number">
+          <text class="remix-icon ri-star-fill star-icon"></text>
+          <text>{{sitter.ratingAverage || '-'}}</text>
+        </view>
+        <view class="stat-label">综合评分</view>
       </view>
       <view class="stat-card">
         <view class="stat-number">{{sitter.reviewCount || 0}}</view>
-        <view class="stat-label">服务评价</view>
+        <view class="stat-label">累计评价</view>
+      </view>
+      <view class="stat-card" wx:if="{{sitter.serviceRadiusKm}}">
+        <view class="stat-number">{{sitter.serviceRadiusKm}}km</view>
+        <view class="stat-label">接单范围</view>
       </view>
     </view>
+
     <view class="sitter-actions">
-      <button class="ghost compact-btn" bindtap="toggleFavorite">{{sitter.favorite ? '取消收藏' : '收藏宠托师'}}</button>
-      <button class="primary compact-btn" bindtap="book">指定预约</button>
+      <button class="ghost compact-btn" bindtap="toggleFavorite">
+        <text class="remix-icon {{sitter.favorite ? 'ri-star-fill' : 'ri-star-line'}} action-icon {{sitter.favorite ? 'favorited' : ''}}"></text>
+        <text>{{sitter.favorite ? '取消收藏' : '收藏宠托师'}}</text>
+      </button>
+      <button class="primary compact-btn" bindtap="book">
+        <text class="remix-icon ri-hand-heart-line action-icon"></text>
+        <text>指定预约</text>
+      </button>
     </view>
   </view>
 
-  <view class="card info-list">
-    <view class="info-row"><view class="label">服务城市</view><view class="value">{{sitter.serviceCity}}</view></view>
-    <view class="info-row"><view class="label">服务区域</view><view class="value">{{sitter.serviceAreas || '待完善'}}</view></view>
-    <view class="info-row" wx:if="{{sitter.serviceAddress}}"><view class="label">固定服务地址</view><view class="value">📍 {{sitter.serviceAddress}}</view></view>
-    <view class="info-row" wx:if="{{sitter.serviceRadiusKm}}"><view class="label">接单范围</view><view class="value">{{sitter.serviceRadiusKm}}km 内</view></view>
-  </view>
-
-  <view class="card info-list" style="margin-top: 24rpx;">
-    <view style="font-weight: bold; font-size: 28rpx; margin-bottom: 12rpx; color: var(--theme-text);">⏰ 按周可预约时间段</view>
-    <view style="font-size: 26rpx; color: var(--theme-muted); line-height: 1.6; background: var(--theme-bg-soft); padding: 20rpx; border-radius: 16rpx; border: 1rpx dashed var(--theme-border);">
-      {{sitter.weeklyScheduleText || '全天可预约'}}
+  <view class="card info-list-card">
+    <view class="section-title">
+      <text class="remix-icon ri-map-pin-user-line section-icon"></text>
+      <text>服务范围与区域</text>
+    </view>
+    <view class="info-row">
+      <view class="label">服务城市</view>
+      <view class="value">{{sitter.serviceCity}}</view>
+    </view>
+    <view class="info-row">
+      <view class="label">服务区域</view>
+      <view class="value">{{sitter.serviceAreas || '覆盖周边主要小区'}}</view>
+    </view>
+    <view class="info-row" wx:if="{{sitter.serviceAddress}}">
+      <view class="label">常用出发行程</view>
+      <view class="value">{{sitter.serviceAddress}}</view>
     </view>
   </view>
 
-  <view class="subtitle">最近评价</view>
-  <view class="card" wx:for="{{sitter.recentReviews}}" wx:key="_id">
-    <view class="between"><view class="strong">{{item.clientName}}</view><view class="badge">{{item.rating}} 星</view></view>
-    <view class="muted">{{item.content || '用户未填写文字评价'}}</view>
-    <view class="chip-row"><view class="chip" wx:for="{{item.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</view></view>
+  <view class="card schedule-card">
+    <view class="section-title">
+      <text class="remix-icon ri-time-line section-icon"></text>
+      <text>按周可预约时间段</text>
+    </view>
+    <view class="schedule-box">
+      {{sitter.weeklyScheduleText || '全天均可沟通与预约服务'}}
+    </view>
   </view>
-  <view class="empty" wx:if="{{!sitter.recentReviews.length}}">暂无评价，预约后可以成为第一批体验用户。</view>
 
-  <button class="ghost" bindtap="goList">返回宠托师列表</button>
+  <view class="reviews-header">
+    <view class="section-title">
+      <text class="remix-icon ri-chat-smile-2-line section-icon"></text>
+      <text>客户评价 ({{sitter.recentReviews.length || 0}})</text>
+    </view>
+  </view>
+
+  <view class="card review-card" wx:for="{{sitter.recentReviews}}" wx:key="_id">
+    <view class="review-head">
+      <view class="review-user">
+        <view class="avatar-placeholder"><text class="remix-icon ri-user-heart-line"></text></view>
+        <text class="strong">{{item.clientName || '宠物主'}}</text>
+      </view>
+      <view class="review-rating">
+        <text class="remix-icon ri-star-fill star-icon"></text>
+        <text class="rating-val">{{item.rating}}分</text>
+      </view>
+    </view>
+    <view class="review-content">{{item.content || '用户未填写文字评价'}}</view>
+    <view class="chip-row" wx:if="{{item.tags && item.tags.length}}">
+      <view class="chip" wx:for="{{item.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</view>
+    </view>
+  </view>
+
+  <view class="card empty review-empty" wx:if="{{!sitter.recentReviews.length}}">
+    <view class="empty-icon remix-icon ri-message-2-line"></view>
+    <view class="empty-title">暂无服务评价</view>
+    <view class="empty-desc">抢先指定该宠托师，成为第一批体验专属宠护服务的宠物主吧！</view>
+  </view>
+
+  <view class="bottom-actions">
+    <button class="ghost back-btn" bindtap="goList">
+      <text class="remix-icon ri-arrow-left-line"></text>
+      <text>返回宠托师列表</text>
+    </button>
+  </view>
 </view>

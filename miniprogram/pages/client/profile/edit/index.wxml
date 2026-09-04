@@ -1,21 +1,21 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">个人资料</view>
-    <view class="title">编辑个人资料</view>
-    <view class="tip">设置昵称、头像和手机号，安心宠护端会优先显示昵称。</view>
+<view class="profile-edit-page {{themeClass}} {{fontClass}} page">
+  <view class="profile-hero">
+    <view class="hero-badge"><text class="remix-icon ri-user-3-fill hero-icon"></text><text>个人资料</text></view>
+    <view class="hero-title">编辑个人资料</view>
+    <view class="hero-desc">设置昵称、头像和手机号，安心宠护端会优先显示昵称。</view>
   </view>
 
   <view class="card form-card">
-    <view class="subtitle">头像</view>
+    <view class="card-subtitle"><text class="remix-icon ri-image-edit-line sub-icon"></text><text>头像</text></view>
     <view class="avatar-picker" bindtap="chooseAvatar">
       <image class="avatar-preview" wx:if="{{form.avatarUrl}}" src="{{form.avatarUrl}}" mode="aspectFill" />
-      <view class="avatar-empty" wx:else>上传头像</view>
+      <view class="avatar-empty" wx:else><text class="remix-icon ri-camera-line"></text><text>上传头像</text></view>
     </view>
 
-    <view class="subtitle">基础资料</view>
-    <input placeholder="昵称（必填）" value="{{form.nickname}}" data-field="nickname" bindinput="input" />
-    <input placeholder="手机号（可选）" type="number" maxlength="11" value="{{form.phone}}" data-field="phone" bindinput="input" />
+    <view class="card-subtitle"><text class="remix-icon ri-profile-line sub-icon"></text><text>基础资料</text></view>
+    <input class="input-field" placeholder="昵称（必填）" value="{{form.nickname}}" data-field="nickname" bindinput="input" />
+    <input class="input-field" placeholder="手机号（可选）" type="number" maxlength="11" value="{{form.phone}}" data-field="phone" bindinput="input" />
   </view>
 
-  <button class="primary" bindtap="save">保存资料</button>
+  <button class="primary-btn submit-btn" bindtap="save"><text class="remix-icon ri-save-3-line"></text><text>保存资料</text></button>
 </view>

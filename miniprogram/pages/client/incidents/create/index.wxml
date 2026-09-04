@@ -1,39 +1,48 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">售后纠纷</view>
-    <view class="title">发起订单投诉</view>
-    <view class="tip">描述服务问题，平台会根据证据、订单记录和双方沟通处理。</view>
+<view class="incident-create-page {{themeClass}} {{fontClass}} page">
+  <view class="incident-hero danger-hero">
+    <view class="hero-badge"><text class="remix-icon ri-alarm-warning-fill hero-icon"></text><text>售后纠纷</text></view>
+    <view class="hero-title">发起订单投诉</view>
+    <view class="hero-desc">描述服务问题，平台会根据证据、订单记录和双方沟通处理。</view>
   </view>
 
-  <view class="notice danger">
-    <view class="strong">请尽量补充完整情况</view>
-    <view class="muted">如涉及宠物安全、服务缺失、退款争议，可上传现场照片作为证据。</view>
+  <view class="notice-card danger">
+    <text class="remix-icon ri-shield-check-line notice-icon"></text>
+    <view>
+      <view class="notice-title">请尽量补充完整情况</view>
+      <view class="notice-desc">如涉及宠物安全、服务缺失、退款争议，可上传现场照片作为证据。</view>
+    </view>
   </view>
 
   <view class="card form-card">
-    <view class="subtitle">问题类型</view>
-    <picker mode="selector" range="{{typeOptions}}" range-key="label" value="{{typeIndex}}" bindchange="chooseType">
-      <view class="field">{{typeOptions[typeIndex].label}}</view>
-    </picker>
+    <view class="field-group">
+      <view class="card-subtitle"><text class="remix-icon ri-price-tag-3-line sub-icon"></text><text>问题类型</text></view>
+      <picker mode="selector" range="{{typeOptions}}" range-key="label" value="{{typeIndex}}" bindchange="chooseType">
+        <view class="select-field"><text>{{typeOptions[typeIndex].label}}</text><text class="remix-icon ri-arrow-down-s-line"></text></view>
+      </picker>
+    </view>
 
-    <view class="subtitle">标题</view>
-    <input placeholder="例如：服务未按约完成" value="{{title}}" bindinput="inputTitle" maxlength="40" />
+    <view class="field-group">
+      <view class="card-subtitle"><text class="remix-icon ri-edit-box-line sub-icon"></text><text>标题</text></view>
+      <input class="input-field" placeholder="例如：服务未按约完成" value="{{title}}" bindinput="inputTitle" maxlength="40" />
+    </view>
 
-    <view class="subtitle">问题说明</view>
-    <textarea placeholder="请说明发生了什么、希望平台如何处理" value="{{description}}" bindinput="inputDescription" maxlength="500" />
+    <view class="field-group">
+      <view class="card-subtitle"><text class="remix-icon ri-file-text-line sub-icon"></text><text>问题说明</text></view>
+      <textarea class="textarea-field" placeholder="请说明发生了什么、希望平台如何处理" value="{{description}}" bindinput="inputDescription" maxlength="500" />
+    </view>
 
-    <view class="between">
-      <view class="subtitle">证据照片</view>
-      <view class="muted">{{mediaFileIds.length}}/9</view>
+    <view class="upload-head">
+      <view class="card-subtitle no-margin"><text class="remix-icon ri-image-add-line sub-icon"></text><text>证据照片</text></view>
+      <view class="upload-count">{{mediaFileIds.length}}/9</view>
     </view>
     <view class="evidence-grid" wx:if="{{mediaFileIds.length}}">
       <view class="evidence-item" wx:for="{{mediaFileIds}}" wx:key="*this">
         <image src="{{item}}" mode="aspectFill" />
-        <view class="remove" data-index="{{index}}" bindtap="removeEvidence">×</view>
+        <view class="remove" data-index="{{index}}" bindtap="removeEvidence"><text class="remix-icon ri-close-line"></text></view>
       </view>
     </view>
-    <button class="ghost" wx:if="{{mediaFileIds.length < 9}}" bindtap="chooseEvidence">添加照片</button>
+    <button class="ghost-btn upload-btn" wx:if="{{mediaFileIds.length < 9}}" bindtap="chooseEvidence"><text class="remix-icon ri-image-add-line"></text><text>添加照片</text></button>
   </view>
 
-  <button class="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">提交投诉</button>
+  <button class="primary-btn submit-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit"><text class="remix-icon ri-send-plane-fill"></text><text>提交投诉</text></button>
 </view>

@@ -1,37 +1,50 @@
-<view class="page {{themeClass}}">
-  <view class="dashboard-header">
-    <view class="title">消息</view>
-    <view class="tip">远程开门、一次性密码等订单系统消息会集中展示在这里。</view>
+<view class="page staff-messages-page {{themeClass}} {{fontClass}}">
+  <view class="staff-hero">
+    <view class="hero-badge">
+      <text class="remix-icon ri-message-3-fill hero-icon"></text>
+      <text>消息中心</text>
+    </view>
+    <view class="hero-title">订单与系统消息</view>
+    <view class="hero-desc">远程开门、一次性密码与订单进度提醒会集中展示在这里。</view>
   </view>
 
-  <view class="card interactive message-card" wx:for="{{threads}}" wx:key="_id" data-id="{{item._id}}" bindtap="openThread">
-    <view class="message-icon">信<view class="message-card-dot" wx:if="{{item.hasUnread}}"></view></view>
-    <view class="message-main">
-      <view class="between message-title-row">
-        <view class="strong message-title">{{item.titleText}}</view>
-        <view class="muted message-time">{{item.lastMessageAtText}}</view>
+  <view class="message-list">
+    <view class="card message-card" wx:for="{{threads}}" wx:key="_id" data-id="{{item._id}}" bindtap="openThread">
+      <view class="message-icon">
+        <text class="remix-icon ri-chat-3-line"></text>
+        <view class="message-card-dot" wx:if="{{item.showUnreadDot}}"></view>
+        <view class="message-card-count" wx:elif="{{item.unreadCount > 1}}">{{item.unreadCountText}}</view>
       </view>
-      <view class="message-preview">{{item.lastMessageTitle || '订单消息'}}<text wx:if="{{item.lastMessageDetail}}"> · {{item.lastMessageDetail}}</text></view>
-      <view class="message-meta">
-        <view class="badge">{{item.orderStatusText || '处理中'}}</view>
-        <view class="muted">订单 {{item.orderNo || item.orderId}}</view>
+      <view class="message-main">
+        <view class="message-title-row">
+          <view class="message-title">{{item.titleText}}</view>
+          <view class="message-time">{{item.lastMessageAtText}}</view>
+        </view>
+        <view class="message-preview">{{item.lastMessageTitle || '订单消息'}}<text wx:if="{{item.lastMessageDetail}}"> · {{item.lastMessageDetail}}</text></view>
+        <view class="message-meta">
+          <view class="status-badge {{item.orderStatusClass}}">{{item.orderStatusText || '处理中'}}</view>
+          <view class="order-no">订单 {{item.orderNo || item.orderId}}</view>
+        </view>
       </view>
+      <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
     </view>
   </view>
 
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && threads.length}}">正在加载更多...</view>
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && threads.length && !hasMore}}">已显示全部消息</view>
+  <view class="load-tip" wx:if="{{loading && threads.length}}">正在加载更多...</view>
+  <view class="load-tip" wx:if="{{!loading && threads.length && !hasMore}}">已显示全部消息</view>
 
-  <view class="empty" wx:if="{{!loading && !threads.length}}">
-    <view>暂无订单消息</view>
-    <navigator class="primary" url="/pages/staff/home/index">去工作台</navigator>
+  <view class="empty-state" wx:if="{{!loading && !threads.length}}">
+    <text class="remix-icon ri-inbox-line empty-icon"></text>
+    <view class="empty-title">暂无订单消息</view>
+    <view class="empty-desc">新的订单提醒、门锁与服务通知会在这里出现。</view>
+    <navigator class="primary-link" url="/pages/staff/home/index">去工作台看看</navigator>
   </view>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>工作台</view></view>
-    <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>任务</view></view>
-    <view class="nav-item active"><view class="nav-icon">信<view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
-    <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon">☑</view><view>认证</view></view>
-    <view class="nav-item" bindtap="backProfile"><view class="nav-icon">♙</view><view>我的</view></view>
+  <view class="bottom-nav staff-bottom-nav">
+    <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>工作台</view></view>
+    <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>任务</view></view>
+    <view class="nav-item active"><view class="nav-icon remix-icon ri-message-3-fill"><view class="nav-red-dot" wx:if="{{messageShowUnreadDot}}"></view><view class="nav-unread-count" wx:elif="{{messageUnreadCount > 1}}">{{messageUnreadCountText}}</view></view><view>消息</view></view>
+    <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon remix-icon ri-checkbox-circle-line"></view><view>认证</view></view>
+    <view class="nav-item" bindtap="backProfile"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
   </view>
 </view>

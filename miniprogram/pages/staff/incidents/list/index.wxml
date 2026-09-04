@@ -1,35 +1,39 @@
-<view class="page {{themeClass}} {{fontClass}}">
-
-  <view class="dashboard-header">
-    <view class="badge">履约异常</view>
-    <view class="title">纠纷 / SOS 处理</view>
-    <view class="tip">查看你提交的 SOS 和客户投诉，及时补充说明与证据。</view>
+<view class="page staff-incidents-page {{themeClass}} {{fontClass}}">
+  <view class="staff-hero">
+    <view class="hero-badge">
+      <text class="remix-icon ri-alarm-warning-fill hero-icon"></text>
+      <text>履约异常</text>
+    </view>
+    <view class="hero-title">纠纷 / SOS 处理</view>
+    <view class="hero-desc">查看你提交的 SOS 和客户投诉，及时补充说明与证据。</view>
   </view>
 
-  <view class="status-tabs">
+  <scroll-view scroll-x class="status-tabs">
     <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
+  </scroll-view>
+
+  <view wx:if="{{!incidents.length && !loading}}" class="empty-state">
+    <text class="remix-icon ri-shield-check-line empty-icon"></text>
+    <view class="empty-title">暂无相关纠纷或 SOS</view>
+    <view class="empty-desc">如遇突发情况，可在订单履约页发起 SOS。</view>
+    <button class="ghost-btn empty-btn" bindtap="goOrders">查看我的任务</button>
   </view>
 
-  <view wx:if="{{!incidents.length && !loading}}" class="empty">
-    暂无相关纠纷或 SOS。
-    <button class="ghost" bindtap="goOrders">查看我的任务</button>
-  </view>
-
-  <view class="card interactive" wx:for="{{incidents}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
-    <view class="between">
-      <view>
-        <view class="strong">{{item.title || item.incidentTypeText}}</view>
-        <view class="muted">{{item.description}}</view>
-        <view class="muted">订单 {{item.orderId}} · {{item.createdAt}}</view>
+  <view class="card incident-card" wx:for="{{incidents}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+    <view class="incident-head">
+      <view class="incident-main">
+        <view class="incident-title">{{item.title || item.incidentTypeText}}</view>
+        <view class="incident-desc">{{item.description}}</view>
+        <view class="incident-meta">订单 {{item.orderId}} · {{item.createdAt}}</view>
       </view>
-      <view class="badge">{{item.statusText}}</view>
+      <view class="badge pink">{{item.statusText}}</view>
     </view>
     <view class="chip-row">
-      <view class="chip pink">{{item.incidentTypeText}}</view>
-      <view class="chip" wx:if="{{item.refundNo}}">退款处理中</view>
+      <view class="chip warning"><text class="remix-icon ri-error-warning-line"></text>{{item.incidentTypeText}}</view>
+      <view class="chip" wx:if="{{item.refundNo}}"><text class="remix-icon ri-refund-2-line"></text>退款处理中</view>
     </view>
   </view>
 
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && incidents.length}}">正在加载更多...</view>
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && incidents.length && !hasMore}}">已显示全部工单</view>
+  <view class="load-tip" wx:if="{{loading && incidents.length}}">正在加载更多...</view>
+  <view class="load-tip" wx:if="{{!loading && incidents.length && !hasMore}}">已显示全部工单</view>
 </view>

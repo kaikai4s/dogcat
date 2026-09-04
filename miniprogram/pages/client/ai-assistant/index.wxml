@@ -1,11 +1,12 @@
-<view class="{{themeClass}} {{fontClass}} ai-page">
-  <view class="ai-header">
-    <view class="title">🤖 AI 宠护小助手</view>
-    <view class="tip">智能解答养宠知识、饮食指导、行为习惯与服务安排问题</view>
+<view class="ai-page {{themeClass}} {{fontClass}}">
+  <view class="ai-hero">
+    <view class="hero-badge"><text class="remix-icon ri-robot-2-fill hero-icon"></text><text>AI 宠护</text></view>
+    <view class="hero-title">AI 宠护小助手</view>
+    <view class="hero-desc">智能解答养宠知识、饮食指导、行为习惯与服务安排问题。</view>
     <view class="preset-box">
-      <view class="preset-chip" bindtap="askPreset" data-text="狗狗外出爆冲怎么办？">爆冲防护</view>
-      <view class="preset-chip" bindtap="askPreset" data-text="猫咪换粮呕吐如何处理？">饮食消化</view>
-      <view class="preset-chip" bindtap="askPreset" data-text="上门喂养需要准备什么？">上门准备</view>
+      <view class="preset-chip" bindtap="askPreset" data-text="狗狗外出爆冲怎么办？"><text class="remix-icon ri-run-line"></text><text>爆冲防护</text></view>
+      <view class="preset-chip" bindtap="askPreset" data-text="猫咪换粮呕吐如何处理？"><text class="remix-icon ri-restaurant-line"></text><text>饮食消化</text></view>
+      <view class="preset-chip" bindtap="askPreset" data-text="上门喂养需要准备什么？"><text class="remix-icon ri-home-heart-line"></text><text>上门准备</text></view>
     </view>
   </view>
 
@@ -19,6 +20,6 @@
 
   <view class="input-bar">
     <input placeholder="请输入养宠或服务咨询问题..." value="{{inputText}}" bindinput="onInput" bindconfirm="send" />
-    <button class="send-btn" loading="{{loading}}" bindtap="send">发送</button>
+    <button class="send-btn" loading="{{loading}}" bindtap="send"><text class="remix-icon ri-send-plane-fill"></text><text>发送</text></button>
   </view>
 </view>

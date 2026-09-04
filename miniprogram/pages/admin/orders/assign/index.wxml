@@ -1,15 +1,22 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">订单派发</view>
-    <view class="title">派单</view>
-    <view class="tip">选择已审核员工承接该订单，派单后员工端会显示任务。</view>
+<view class="admin-order-page assign-page {{themeClass}} {{fontClass}}">
+  <view class="admin-order-hero">
+    <view class="hero-badge"><text class="remix-icon ri-user-shared-fill"></text><text>订单派发</text></view>
+    <view class="hero-title">派单</view>
+    <view class="hero-desc">选择已审核员工承接该订单，派单后员工端会显示任务。</view>
   </view>
 
-  <view class="card form-card">
+  <view class="admin-card form-card">
+    <view class="card-subtitle"><text class="remix-icon ri-team-line sub-icon"></text><text>选择服务人员</text></view>
     <picker range="{{staff}}" range-key="realName" bindchange="choose">
-      <view class="field">选择员工：{{staff.length ? '已选择' : '暂无已审核员工'}}</view>
+      <view class="picker-field">
+        <view class="picker-main">
+          <view class="label">宠托师</view>
+          <view class="value">{{staff.length ? '已选择' : '暂无已审核员工'}}</view>
+        </view>
+        <text class="remix-icon ri-arrow-right-s-line picker-arrow"></text>
+      </view>
     </picker>
   </view>
 
-  <button class="primary" bindtap="assign">确认派单</button>
+  <button class="primary-btn submit-btn" bindtap="assign"><text class="remix-icon ri-checkbox-circle-line"></text><text>确认派单</text></button>
 </view>

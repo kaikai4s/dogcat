@@ -1,35 +1,36 @@
-<view class="{{themeClass}} {{fontClass}} page">
-
-  <view class="dashboard-header">
-    <view class="badge">售后中心</view>
-    <view class="title">我的投诉 / 售后</view>
-    <view class="tip">查看已发起投诉的处理进度、补充说明和平台方案。</view>
+<view class="incident-list-page {{themeClass}} {{fontClass}} page">
+  <view class="incident-hero">
+    <view class="hero-badge"><text class="remix-icon ri-customer-service-2-fill hero-icon"></text><text>售后中心</text></view>
+    <view class="hero-title">我的投诉 / 售后</view>
+    <view class="hero-desc">查看已发起投诉的处理进度、补充说明和平台方案。</view>
   </view>
 
   <view class="status-tabs">
     <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
   </view>
 
-  <view wx:if="{{!incidents.length && !loading}}" class="empty">
-    暂无投诉或售后工单。
-    <button class="ghost" bindtap="goOrders">从订单发起售后</button>
+  <view wx:if="{{!incidents.length && !loading}}" class="empty-state">
+    <text class="remix-icon ri-service-line empty-icon"></text>
+    <view class="empty-title">暂无投诉或售后工单</view>
+    <view class="empty-desc">如服务遇到问题，可从订单详情页发起售后。</view>
+    <button class="ghost-btn" bindtap="goOrders"><text class="remix-icon ri-file-list-3-line"></text><text>从订单发起售后</text></button>
   </view>
 
-  <view class="card interactive" wx:for="{{incidents}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
-    <view class="between">
-      <view>
-        <view class="strong">{{item.title || item.incidentTypeText}}</view>
-        <view class="muted">{{item.description}}</view>
-        <view class="muted">订单 {{item.orderId}} · {{item.createdAt}}</view>
+  <view class="card incident-card" wx:for="{{incidents}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+    <view class="incident-head">
+      <view class="incident-main">
+        <view class="incident-title">{{item.title || item.incidentTypeText}}</view>
+        <view class="incident-desc">{{item.description}}</view>
       </view>
-      <view class="badge">{{item.statusText}}</view>
+      <view class="status-badge">{{item.statusText}}</view>
     </view>
+    <view class="incident-meta"><text class="remix-icon ri-file-list-3-line"></text><text>订单 {{item.orderId}}</text><text>·</text><text>{{item.createdAt}}</text></view>
     <view class="chip-row">
       <view class="chip pink">{{item.incidentTypeText}}</view>
       <view class="chip" wx:if="{{item.refundNo}}">退款处理中</view>
     </view>
   </view>
 
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && incidents.length}}">正在加载更多...</view>
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && incidents.length && !hasMore}}">已显示全部工单</view>
+  <view class="list-tip" wx:if="{{loading && incidents.length}}">正在加载更多...</view>
+  <view class="list-tip" wx:if="{{!loading && incidents.length && !hasMore}}">已显示全部工单</view>
 </view>

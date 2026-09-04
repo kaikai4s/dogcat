@@ -1,8 +1,8 @@
-<view class="page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="badge">真实服务记录</view>
-    <view class="title">服务评价</view>
-    <view class="tip">展示已完成订单的脱敏评价与打卡记录，不包含地址、经纬度、门牌和联系方式。</view>
+<view class="public-list-page {{themeClass}} {{fontClass}} page">
+  <view class="public-hero">
+    <view class="hero-badge"><text class="remix-icon ri-star-smile-fill hero-icon"></text><text>真实服务记录</text></view>
+    <view class="hero-title">服务评价</view>
+    <view class="hero-desc">展示已完成订单的脱敏评价与打卡记录，不包含地址、经纬度、门牌和联系方式。</view>
   </view>
 
   <view class="status-tabs">
@@ -11,41 +11,41 @@
 
   <view wx:if="{{orders.length}}">
     <view class="card public-order-card" wx:for="{{orders}}" wx:key="_id">
-      <view class="between" style="align-items:flex-start;gap:18rpx;">
-        <view style="flex:1;min-width:0;">
-          <view class="strong">{{item.orderTitle}} · {{item.petName}}</view>
-          <view class="muted" style="margin-top:8rpx;">{{item.startTime || item.completedAt}}</view>
+      <view class="order-head">
+        <view class="order-main">
+          <view class="order-title">{{item.orderTitle}} · {{item.petName}}</view>
+          <view class="order-time">{{item.startTime || item.completedAt}}</view>
         </view>
-        <view class="badge">{{item.statusText}}</view>
+        <view class="status-badge">{{item.statusText}}</view>
       </view>
 
       <view class="service-line">{{item.serviceSummary}}</view>
       <view class="people-grid">
-        <view><view class="muted">宠物主</view><view class="strong">{{item.clientName}}</view></view>
-        <view><view class="muted">宠托师</view><view class="strong">{{item.staffName}}</view></view>
+        <view><view class="person-label">宠物主</view><view class="person-name">{{item.clientName}}</view></view>
+        <view><view class="person-label">宠托师</view><view class="person-name">{{item.staffName}}</view></view>
       </view>
 
       <view class="review-box" wx:if="{{item.review}}">
-        <view class="stars">★★★★★ <text>{{item.review.ratingText}}</text></view>
-        <view class="muted" wx:if="{{item.review.content}}">“{{item.review.content}}”</view>
-        <view class="tag-row" wx:if="{{item.review.tags.length}}"><text class="tag-pill yellow-tag" wx:for="{{item.review.tags}}" wx:key="*this">{{item}}</text></view>
+        <view class="stars"><text class="remix-icon ri-star-fill" wx:for="{{[1,2,3,4,5]}}" wx:key="*this"></text><text class="rating-text">{{item.review.ratingText}}</text></view>
+        <view class="review-content" wx:if="{{item.review.content}}">“{{item.review.content}}”</view>
+        <view class="tag-row" wx:if="{{item.review.tags.length}}"><text class="tag-pill" wx:for="{{item.review.tags}}" wx:key="*this">{{item}}</text></view>
       </view>
-      <view class="muted" wx:else>该订单暂无公开评价。</view>
+      <view class="muted-text" wx:else>该订单暂无公开评价。</view>
 
-      <view class="checkin-line" wx:if="{{item.checkinCount}}">打卡 {{item.checkinCount}} 次 · {{item.checkinSummary}}</view>
+      <view class="checkin-line" wx:if="{{item.checkinCount}}"><text class="remix-icon ri-camera-lens-line"></text><text>打卡 {{item.checkinCount}} 次 · {{item.checkinSummary}}</text></view>
       <view class="photo-grid" wx:if="{{item.checkinPhotos.length}}">
         <image class="checkin-photo" wx:for="{{item.checkinPhotos}}" wx:key="_id" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" data-order-id="{{item._id}}" catchtap="previewPhoto" />
       </view>
-      <view class="muted" wx:elif="{{item.checkinPhotosHidden}}">用户已设置隐藏公共展示打卡照片。</view>
-      <view class="muted" wx:else>本单暂无公开打卡照片。</view>
+      <view class="muted-text" wx:elif="{{item.checkinPhotosHidden}}">用户已设置隐藏公共展示打卡照片。</view>
+      <view class="muted-text" wx:else>本单暂无公开打卡照片。</view>
 
-      <view class="detail-link" data-id="{{item._id}}" bindtap="detail">查看脱敏订单详情 ›</view>
+      <view class="detail-link" data-id="{{item._id}}" bindtap="detail"><text>查看脱敏订单详情</text><text class="remix-icon ri-arrow-right-s-line"></text></view>
     </view>
   </view>
 
-  <view class="empty" wx:elif="{{!loading}}">暂无公开服务评价</view>
-  <view class="empty" wx:else>加载中...</view>
+  <view class="empty-state" wx:elif="{{!loading}}"><text class="remix-icon ri-star-smile-line empty-icon"></text><view class="empty-title">暂无公开服务评价</view></view>
+  <view class="empty-state" wx:else><view class="empty-title">加载中...</view></view>
 
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && orders.length}}">正在加载更多...</view>
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && orders.length && !hasMore}}">已显示全部评价</view>
+  <view class="list-tip" wx:if="{{loading && orders.length}}">正在加载更多...</view>
+  <view class="list-tip" wx:if="{{!loading && orders.length && !hasMore}}">已显示全部评价</view>
 </view>

@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "我的任务"
+  "navigationBarTitleText": "我的任务",
+  "navigationBarBackgroundColor": "#FFF8EC",
+  "backgroundColor": "#FFF8EC"
 }

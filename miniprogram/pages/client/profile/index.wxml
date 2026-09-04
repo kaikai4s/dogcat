@@ -10,21 +10,21 @@
     <picker range="{{themeOptions}}" range-key="label" value="{{themeIndex}}" disabled="{{savingTheme}}" bindchange="changeTheme">
       <view class="settings-row interactive">
         <view class="settings-row-main"><view class="settings-label">主题切换</view><view class="settings-help">切换后主颜色会同步变化</view></view>
-        <view class="settings-value">{{themeName}} ›</view>
+        <view class="settings-value">{{themeName}} <text class="remix-icon ri-arrow-right-s-line"></text></view>
       </view>
     </picker>
     <picker range="{{fontOptions}}" range-key="label" value="{{fontIndex}}" disabled="{{savingFont}}" bindchange="changeFont">
       <view class="settings-row interactive">
         <view class="settings-row-main"><view class="settings-label">字体设置</view><view class="settings-help">选择后全局界面文字会同步变化</view><view class="font-preview">{{fontPreviewText}}</view></view>
-        <view class="settings-value">{{fontName}} ›</view>
+        <view class="settings-value">{{fontName}} <text class="remix-icon ri-arrow-right-s-line"></text></view>
       </view>
     </picker>
   </view>
 
   <view class="settings-section">
     <view class="settings-section-title">账号</view>
-    <view class="settings-row interactive" bindtap="openAccountSafety"><view class="settings-label">账号安全</view><view class="settings-arrow">›</view></view>
-    <view class="settings-row interactive" bindtap="openAbout"><view class="settings-label">关于我们</view><view class="settings-arrow">›</view></view>
+    <view class="settings-row interactive" bindtap="openAccountSafety"><view class="settings-label">账号安全</view><view class="settings-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="settings-row interactive" bindtap="openAbout"><view class="settings-label">关于我们</view><view class="settings-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
   </view>
 
   <view class="settings-section" wx:if="{{!isGuest}}">
@@ -37,9 +37,9 @@
 
   <view class="settings-section">
     <view class="settings-section-title">合规说明</view>
-    <view class="settings-row interactive" bindtap="openInfoCollection"><view class="settings-label">个人信息收集清单</view><view class="settings-arrow">›</view></view>
-    <view class="settings-row interactive" bindtap="openThirdPartySharing"><view class="settings-label">第三方信息数据共享</view><view class="settings-arrow">›</view></view>
-    <view class="settings-row interactive" bindtap="openPrivacySummary"><view class="settings-label">隐私政策概要</view><view class="settings-arrow">›</view></view>
+    <view class="settings-row interactive" bindtap="openInfoCollection"><view class="settings-label">个人信息收集清单</view><view class="settings-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="settings-row interactive" bindtap="openThirdPartySharing"><view class="settings-label">第三方信息数据共享</view><view class="settings-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="settings-row interactive" bindtap="openPrivacySummary"><view class="settings-label">隐私政策概要</view><view class="settings-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
   </view>
 
   <button class="settings-logout" wx:if="{{!isGuest}}" bindtap="logout">退出登录</button>
@@ -70,7 +70,7 @@
   <view class="guest-card" wx:if="{{isGuest}}">
     <view class="remix-icon ri-user-smile-line guest-icon"></view>
     <view class="guest-main"><view class="strong">微信授权登录</view><view class="muted">登录后可管理宠物、订单、地址和收藏。</view></view>
-    <button class="primary compact-btn" loading="{{loadingLogin}}" bindtap="login">微信登录</button>
+    <button class="profile-primary-btn compact-btn" loading="{{loadingLogin}}" bindtap="login">微信登录</button>
   </view>
 
   <view class="asset-card">
@@ -93,28 +93,28 @@
 
   <view class="menu-section">
     <view class="menu-section-title">我的服务</view>
-    <view class="menu-item interactive" bindtap="editProfile"><view class="menu-left"><view class="remix-icon ri-user-settings-line menu-icon"></view><view>编辑个人资料</view></view><view class="menu-arrow">›</view></view>
-    <view class="menu-item interactive" bindtap="openAddresses"><view class="menu-left"><view class="remix-icon ri-map-pin-2-line menu-icon"></view><view>我的地址</view></view><view class="menu-arrow">›</view></view>
-    <view class="menu-item interactive" bindtap="openFavorites"><view class="menu-left"><view class="remix-icon ri-star-line menu-icon"></view><view>我的关注</view></view><view class="menu-arrow">›</view></view>
-    <view class="menu-item interactive" bindtap="openIncidents"><view class="menu-left"><view class="remix-icon ri-customer-service-line menu-icon"></view><view>我的投诉 / 售后</view></view><view class="menu-arrow">›</view></view>
+    <view class="menu-item interactive" bindtap="editProfile"><view class="menu-left"><view class="remix-icon ri-user-settings-line menu-icon"></view><view>编辑个人资料</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="menu-item interactive" bindtap="openAddresses"><view class="menu-left"><view class="remix-icon ri-map-pin-2-line menu-icon"></view><view>我的地址</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="menu-item interactive" bindtap="openFavorites"><view class="menu-left"><view class="remix-icon ri-star-line menu-icon"></view><view>我的关注</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="menu-item interactive" bindtap="openIncidents"><view class="menu-left"><view class="remix-icon ri-customer-service-line menu-icon"></view><view>我的投诉 / 售后</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
   </view>
 
   <view class="menu-section">
     <view class="menu-section-title">成长权益</view>
-    <view class="menu-item interactive" bindtap="openCoupons"><view class="menu-left"><view class="remix-icon ri-coupon-3-line menu-icon"></view><view>我的优惠券</view></view><view class="menu-arrow">›</view></view>
-    <view class="menu-item interactive" bindtap="openCheckin"><view class="menu-left"><view class="remix-icon ri-calendar-check-line menu-icon"></view><view>签到中心</view></view><view class="menu-right-info" wx:if="{{!isGuest}}">补签卡 {{retroCardCount}}</view><view class="menu-arrow">›</view></view>
-    <view class="menu-item interactive" bindtap="openRewardMails"><view class="menu-left"><view class="remix-icon ri-mail-star-line menu-icon"></view><view>奖励邮箱</view></view><view class="menu-right-wrap"><view class="menu-right-info" wx:if="{{!isGuest && rewardMailUnclaimedCount}}">待领 {{rewardMailUnclaimedCount}}</view><view class="menu-dot" wx:if="{{!isGuest && rewardMailUnreadCount}}"></view><view class="menu-arrow">›</view></view></view>
-    <view class="menu-item interactive" bindtap="openPoints"><view class="menu-left"><view class="remix-icon ri-coins-line menu-icon"></view><view>我的积分</view></view><view class="menu-right-info" wx:if="{{!isGuest}}">{{points}} 积分</view><view class="menu-arrow">›</view></view>
-    <view class="menu-item interactive" bindtap="openOfficialAccountModal"><view class="menu-left"><view class="remix-icon ri-wechat-line menu-icon"></view><view>关注公众号</view></view><view class="menu-arrow">›</view></view>
+    <view class="menu-item interactive" bindtap="openCoupons"><view class="menu-left"><view class="remix-icon ri-coupon-3-line menu-icon"></view><view>我的优惠券</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="menu-item interactive" bindtap="openCheckin"><view class="menu-left"><view class="remix-icon ri-calendar-check-line menu-icon"></view><view>签到中心</view></view><view class="menu-right-info" wx:if="{{!isGuest}}">补签卡 {{retroCardCount}}</view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="menu-item interactive" bindtap="openRewardMails"><view class="menu-left"><view class="remix-icon ri-mail-star-line menu-icon"></view><view>奖励邮箱</view></view><view class="menu-right-wrap"><view class="menu-right-info" wx:if="{{!isGuest && rewardMailUnclaimedCount}}">待领 {{rewardMailUnclaimedCount}}</view><view class="menu-dot" wx:if="{{!isGuest && rewardMailUnreadCount}}"></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view></view>
+    <view class="menu-item interactive" bindtap="openPoints"><view class="menu-left"><view class="remix-icon ri-coins-line menu-icon"></view><view>我的积分</view></view><view class="menu-right-info" wx:if="{{!isGuest}}">{{points}} 积分</view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="menu-item interactive" bindtap="openOfficialAccountModal"><view class="menu-left"><view class="remix-icon ri-wechat-line menu-icon"></view><view>关注公众号</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
   </view>
 
   <view class="menu-section">
     <view class="menu-section-title">帮助与设置</view>
-    <view class="menu-item interactive" bindtap="openCustomerService"><view class="menu-left"><view class="remix-icon ri-customer-service-line menu-icon"></view><view>客服中心</view></view><view class="menu-arrow">›</view></view>
-    <view class="menu-item interactive" bindtap="openFeedbackModal"><view class="menu-left"><view class="remix-icon ri-feedback-line menu-icon"></view><view>意见反馈</view></view><view class="menu-arrow">›</view></view>
-    <view class="menu-item interactive" wx:if="{{isAdmin}}" bindtap="openAdmin"><view class="menu-left"><view class="remix-icon ri-admin-line menu-icon"></view><view>进入管理员端</view></view><view class="menu-arrow">›</view></view>
-    <view class="menu-item interactive" bindtap="openSettings"><view class="menu-left"><view class="remix-icon ri-settings-3-line menu-icon"></view><view>设置</view></view><view class="menu-arrow">›</view></view>
-    <view class="menu-item interactive" wx:if="{{!isGuest}}" bindtap="logout"><view class="menu-left"><view class="remix-icon ri-logout-box-r-line menu-icon danger"></view><view>退出登录</view></view><view class="menu-arrow">›</view></view>
+    <view class="menu-item interactive" bindtap="openCustomerService"><view class="menu-left"><view class="remix-icon ri-customer-service-line menu-icon"></view><view>客服中心</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="menu-item interactive" bindtap="openFeedbackModal"><view class="menu-left"><view class="remix-icon ri-feedback-line menu-icon"></view><view>意见反馈</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="menu-item interactive" wx:if="{{isAdmin}}" bindtap="openAdmin"><view class="menu-left"><view class="remix-icon ri-admin-line menu-icon"></view><view>进入管理员端</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="menu-item interactive" bindtap="openSettings"><view class="menu-left"><view class="remix-icon ri-settings-3-line menu-icon"></view><view>设置</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="menu-item interactive" wx:if="{{!isGuest}}" bindtap="logout"><view class="menu-left"><view class="remix-icon ri-logout-box-r-line menu-icon danger"></view><view>退出登录</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
   </view>
 
   <view class="modal-backdrop" wx:if="{{showCustomerServiceModal}}" bindtap="closeCustomerServiceModal">
@@ -127,8 +127,8 @@
         <view class="info-row" wx:if="{{csInfo.wechatId}}"><view class="label">客服微信</view><view class="value" bindtap="copyCsWechat">{{csInfo.wechatId}}</view></view>
       </view>
       <view class="modal-actions two-actions">
-        <button class="primary" open-type="contact">在线客服</button>
-        <button class="ghost" bindtap="closeCustomerServiceModal">关闭</button>
+        <button class="profile-primary-btn" open-type="contact">在线客服</button>
+        <button class="profile-ghost-btn" bindtap="closeCustomerServiceModal">关闭</button>
       </view>
     </view>
   </view>
@@ -140,8 +140,8 @@
       <view class="form-item"><textarea class="feedback-textarea" placeholder="请详细描述你的建议、发现的问题或优化想法..." value="{{feedbackText}}" bindinput="inputFeedbackText" /></view>
       <view class="form-item"><input class="feedback-input" placeholder="联系方式（手机号/微信，选填）" value="{{feedbackContact}}" bindinput="inputFeedbackContact" /></view>
       <view class="modal-actions two-actions">
-        <button class="primary" loading="{{submittingFeedback}}" bindtap="submitFeedback">提交反馈</button>
-        <button class="ghost" bindtap="closeFeedbackModal">取消</button>
+        <button class="profile-primary-btn" loading="{{submittingFeedback}}" bindtap="submitFeedback">提交反馈</button>
+        <button class="profile-ghost-btn" bindtap="closeFeedbackModal">取消</button>
       </view>
     </view>
   </view>
@@ -151,8 +151,8 @@
       <view class="modal-title">关注公众号</view>
       <view class="modal-tip">搜索并关注“{{csInfo.officialAccountName || 'VIP宠护'}}”微信公众号，即可第一时间接收订单进度、打卡提醒和优惠福利推送。</view>
       <view class="modal-actions">
-        <button class="primary" bindtap="copyOfficialAccountName">复制公众号名称并去微信搜索</button>
-        <button class="ghost" bindtap="closeOfficialAccountModal">关闭</button>
+        <button class="profile-primary-btn" bindtap="copyOfficialAccountName">复制公众号名称并去微信搜索</button>
+        <button class="profile-ghost-btn" bindtap="closeOfficialAccountModal">关闭</button>
       </view>
     </view>
   </view>

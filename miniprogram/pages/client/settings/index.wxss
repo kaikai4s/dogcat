@@ -1,82 +1,25 @@
-page {
-  background: var(--theme-bg);
-}
-
-.settings-page {
-  min-height: 100vh;
-  background: var(--theme-bg);
-  color: var(--theme-text);
-  padding-bottom: 80rpx;
-}
-
-.settings-nav {
-  height: 176rpx;
-  padding: 72rpx 24rpx 18rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--theme-card-bg);
-  border-bottom: 1rpx solid var(--theme-border);
-}
-
-.settings-title {
-  font-size: 34rpx;
-  font-weight: 500;
-  color: var(--theme-title);
-}
-
-.settings-card {
-  margin-top: 12rpx;
-  background: var(--theme-card-bg);
-}
-
-.privacy-card {
-  margin-top: 64rpx;
-}
-
-.settings-row {
-  min-height: 112rpx;
-  margin-left: 24rpx;
-  padding: 0 20rpx 0 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1rpx solid var(--theme-border);
-  font-size: 34rpx;
-  color: var(--theme-text);
-}
-
-.settings-row:last-child {
-  border-bottom: none;
-}
-
-.settings-arrow,
-.settings-value {
-  color: var(--theme-muted);
-  font-size: 28rpx;
-  font-weight: 500;
-}
-
-.settings-arrow {
-  font-size: 52rpx;
-  font-weight: 300;
-}
-
-.logout-btn {
-  width: 608rpx;
-  height: 96rpx;
-  margin: 126rpx auto 0;
-  border-radius: 999rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--theme-primary);
-  color: #ffffff;
-  font-size: 34rpx;
-  font-weight: 500;
-}
-
+/* Client settings - Cute Pet Style UI redesign */
+page { background: linear-gradient(180deg,#fff8ec 0%,#fffaf6 42%,#f7fbfa 100%); }
+.settings-page { min-height: 100vh; padding: 0 28rpx 100rpx; background: linear-gradient(180deg,#fff8ec 0%,#fffaf6 42%,#f7fbfa 100%); color: #2d211a; box-sizing: border-box; }
+.settings-hero { margin: 0 -28rpx 24rpx; padding: 42rpx 34rpx 38rpx; border-bottom-left-radius: 48rpx; border-bottom-right-radius: 48rpx; background: linear-gradient(135deg,#fff0c9 0%,#ffd9c8 54%,#fff5f0 100%); box-shadow: 0 18rpx 44rpx rgba(123,89,62,.08); }
+.hero-badge { display: inline-flex; align-items: center; gap: 8rpx; padding: 6rpx 18rpx; border-radius: 999rpx; color: #d45f22; background: rgba(255,255,255,.85); font-size: 24rpx; font-weight: 850; margin-bottom: 16rpx; }
+.hero-icon { font-size: 28rpx; }
+.hero-title { color: #2d211a; font-size: 42rpx; font-weight: 950; line-height: 1.2; }
+.hero-desc { margin-top: 12rpx; color: #7a6a5e; font-size: 24rpx; line-height: 1.4; }
+.settings-card { margin-top: 24rpx; padding: 8rpx 0; border-radius: 36rpx; background: #fff; border: 1rpx solid rgba(255,153,102,.14); box-shadow: 0 14rpx 34rpx rgba(123,89,62,.06); overflow: hidden; }
+.privacy-card { margin-top: 24rpx; }
+.settings-row { min-height: 108rpx; padding: 18rpx 22rpx; display: flex; align-items: center; gap: 16rpx; border-bottom: 1rpx solid rgba(255,153,102,.08); color: #2d211a; box-sizing: border-box; }
+.settings-row:last-child { border-bottom: none; }
+.row-icon { width: 64rpx; height: 64rpx; border-radius: 24rpx; background: #fff0e2; color: #e9672f; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.row-icon .remix-icon { font-size: 32rpx; }
+.row-main { flex: 1; min-width: 0; }
+.row-title { color: #2d211a; font-size: 28rpx; font-weight: 950; line-height: 1.35; }
+.row-desc { margin-top: 6rpx; color: #8e8580; font-size: 23rpx; line-height: 1.35; }
+.font-preview { margin-top: 8rpx; color: #574b42; font-size: 24rpx; font-weight: 900; }
+.settings-value { display: inline-flex; align-items: center; gap: 4rpx; color: #8e8580; font-size: 24rpx; font-weight: 850; flex-shrink: 0; }
+.settings-value .remix-icon { font-size: 30rpx; color: #a89b90; }
+.logout-btn { width: 100%; min-height: 84rpx; margin: 48rpx 0 0; border-radius: 28rpx; display: flex; align-items: center; justify-content: center; gap: 8rpx; background: linear-gradient(135deg,#fb7185 0%,#f43f5e 100%); color: #fff; font-size: 28rpx; font-weight: 950; border: none; box-shadow: 0 10rpx 26rpx rgba(244,63,94,.18); line-height: 1; }
+.logout-btn::after { display: none; }
+.logout-btn .remix-icon { font-size: 32rpx; }
 .logout-btn:active,
-.settings-row:active {
-  opacity: 0.75;
-}
+.settings-row:active { opacity: .75; }

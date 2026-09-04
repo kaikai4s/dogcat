@@ -1,71 +1,113 @@
-<view class="page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="badge">员工入驻</view>
-    <view class="title">宠托师入驻申请</view>
-    <view class="tip">提交资料后会进入平台审核，审核通过后才会出现在毛孩家庭端“宠护师”列表。</view>
+<view class="page staff-cert-page {{themeClass}} {{fontClass}}">
+  <view class="staff-hero">
+    <view class="hero-badge">
+      <text class="remix-icon ri-checkbox-circle-fill hero-icon"></text>
+      <text>入驻中心</text>
+    </view>
+    <view class="hero-title">宠托师入驻申请</view>
+    <view class="hero-desc">提交真实认证资料后将进入平台审核，审核通过后即可成为认证宠托师并开启接单。</view>
   </view>
 
-  <view class="notice" wx:if="{{profile}}">
-    <view class="muted">当前审核状态</view>
-    <view class="strong">{{profile.auditStatusText}}</view>
-    <view class="muted" wx:if="{{statusTip}}">{{statusTip}}</view>
+  <view class="status-notice-card" wx:if="{{profile}}">
+    <view class="notice-head">
+      <text class="remix-icon ri-shield-user-line notice-icon"></text>
+      <text class="notice-title">当前审核状态</text>
+    </view>
+    <view class="notice-status">{{profile.auditStatusText}}</view>
+    <view class="notice-tip" wx:if="{{statusTip}}">{{statusTip}}</view>
   </view>
 
   <view class="card form-card">
-    <view class="form-item">
-      <view class="label" style="font-weight: bold; margin-bottom: 12rpx;">基本信息</view>
-      <input placeholder="真实姓名" value="{{form.realName}}" data-field="realName" bindinput="input" />
-      <input placeholder="手机号" value="{{form.phone}}" data-field="phone" bindinput="input" />
-      <input placeholder="服务城市" value="{{form.serviceCity}}" data-field="serviceCity" bindinput="input" />
-      <textarea placeholder="服务区域说明" value="{{form.serviceAreas}}" data-field="serviceAreas" bindinput="input" />
+    <view class="card-subtitle">
+      <text class="remix-icon ri-user-settings-line sub-icon"></text>
+      <text>基本资料与服务区域</text>
     </view>
 
-    <view class="form-item" style="margin-top: 24rpx;">
-      <view class="label" style="font-weight: bold; margin-bottom: 12rpx;">实名认证材料</view>
-      <view class="muted">请上传身份证正反面和自拍/人脸照，平台管家端会人工审核。</view>
-      <view class="service-grid" style="margin-top:16rpx;">
-        <view class="service-option" data-field="idCardFrontFileId" bindtap="chooseIdentityPhoto">
-          <image wx:if="{{identityPreviews.idCardFrontFileId}}" src="{{identityPreviews.idCardFrontFileId}}" mode="aspectFill" style="width:100%;height:150rpx;border-radius:16rpx;" />
-          <view class="service-title">身份证人像面</view>
-          <view class="service-desc">{{form.idCardFrontFileId ? '已上传' : '点击上传'}}</view>
+    <view class="form-group">
+      <text class="input-label">真实姓名</text>
+      <input class="input-field" placeholder="请输入真实姓名" value="{{form.realName}}" data-field="realName" bindinput="input" />
+    </view>
+
+    <view class="form-group">
+      <text class="input-label">联系手机号</text>
+      <input class="input-field" placeholder="请输入常用手机号" value="{{form.phone}}" data-field="phone" bindinput="input" />
+    </view>
+
+    <view class="form-group">
+      <text class="input-label">常驻服务城市</text>
+      <input class="input-field" placeholder="如：北京市 / 深圳市" value="{{form.serviceCity}}" data-field="serviceCity" bindinput="input" />
+    </view>
+
+    <view class="form-group">
+      <text class="input-label">主要服务区域说明</text>
+      <textarea class="textarea-field" placeholder="如：朝阳区建国门街道、CBD商圈周边等" value="{{form.serviceAreas}}" data-field="serviceAreas" bindinput="input" />
+    </view>
+
+    <view class="section-divider"></view>
+
+    <view class="card-subtitle">
+      <text class="remix-icon ri-id-card-line sub-icon"></text>
+      <text>实名认证材料</text>
+    </view>
+    <view class="section-sub-tip">请上传清晰的身份证正反面及人脸照片，仅用于平台安全审核。</view>
+
+    <view class="photo-upload-grid">
+      <view class="upload-item" data-field="idCardFrontFileId" bindtap="chooseIdentityPhoto">
+        <image wx:if="{{identityPreviews.idCardFrontFileId}}" src="{{identityPreviews.idCardFrontFileId}}" mode="aspectFill" class="preview-img" />
+        <view class="upload-placeholder" wx:else>
+          <text class="remix-icon ri-camera-switch-line upload-icon"></text>
+          <text class="upload-title">身份证人像面</text>
         </view>
-        <view class="service-option" data-field="idCardBackFileId" bindtap="chooseIdentityPhoto">
-          <image wx:if="{{identityPreviews.idCardBackFileId}}" src="{{identityPreviews.idCardBackFileId}}" mode="aspectFill" style="width:100%;height:150rpx;border-radius:16rpx;" />
-          <view class="service-title">身份证国徽面</view>
-          <view class="service-desc">{{form.idCardBackFileId ? '已上传' : '点击上传'}}</view>
+        <view class="upload-status {{form.idCardFrontFileId ? 'uploaded' : ''}}">{{form.idCardFrontFileId ? '✓ 已上传' : '点击上传'}}</view>
+      </view>
+
+      <view class="upload-item" data-field="idCardBackFileId" bindtap="chooseIdentityPhoto">
+        <image wx:if="{{identityPreviews.idCardBackFileId}}" src="{{identityPreviews.idCardBackFileId}}" mode="aspectFill" class="preview-img" />
+        <view class="upload-placeholder" wx:else>
+          <text class="remix-icon ri-bank-card-line upload-icon"></text>
+          <text class="upload-title">身份证国徽面</text>
         </view>
-        <view class="service-option" data-field="facePhotoFileId" bindtap="chooseIdentityPhoto">
-          <image wx:if="{{identityPreviews.facePhotoFileId}}" src="{{identityPreviews.facePhotoFileId}}" mode="aspectFill" style="width:100%;height:150rpx;border-radius:16rpx;" />
-          <view class="service-title">自拍/人脸照</view>
-          <view class="service-desc">{{form.facePhotoFileId ? '已上传' : '点击上传'}}</view>
+        <view class="upload-status {{form.idCardBackFileId ? 'uploaded' : ''}}">{{form.idCardBackFileId ? '✓ 已上传' : '点击上传'}}</view>
+      </view>
+
+      <view class="upload-item" data-field="facePhotoFileId" bindtap="chooseIdentityPhoto">
+        <image wx:if="{{identityPreviews.facePhotoFileId}}" src="{{identityPreviews.facePhotoFileId}}" mode="aspectFill" class="preview-img" />
+        <view class="upload-placeholder" wx:else>
+          <text class="remix-icon ri-user-smile-line upload-icon"></text>
+          <text class="upload-title">自拍/人脸照</text>
         </view>
+        <view class="upload-status {{form.facePhotoFileId ? 'uploaded' : ''}}">{{form.facePhotoFileId ? '✓ 已上传' : '点击上传'}}</view>
       </view>
     </view>
 
-    <view class="form-item" style="margin-top: 24rpx;">
-      <view class="label" style="display:flex; justify-content:space-between; align-items:center;">
-        <text style="font-weight: bold;">固定服务地址 (必填)</text>
-        <text style="color:var(--theme-primary); font-size:24rpx;">* 接单基准位置</text>
+    <view class="section-divider"></view>
+
+    <view class="card-subtitle between-head">
+      <view class="sub-left">
+        <text class="remix-icon ri-map-pin-user-line sub-icon"></text>
+        <text>固定服务基准地址</text>
       </view>
-      <view class="location-box" bindtap="chooseAddress" style="padding:20rpx; background:var(--theme-bg-soft); border:2rpx dashed var(--theme-primary); border-radius:16rpx; margin-top:12rpx; display:flex; align-items:center; justify-content:space-between;">
-        <view style="flex:1;">
-          <view style="font-weight:600; color:var(--theme-text);" wx:if="{{form.serviceAddress}}">📍 {{form.serviceAddress}}</view>
-          <view style="color:#999; font-size:26rpx;" wx:else>📍 点击在地图上选择您的固定服务地址</view>
-          <view style="color:#888; font-size:22rpx; margin-top:4rpx;" wx:if="{{form.serviceLatitude}}">坐标：{{form.serviceLatitude}}, {{form.serviceLongitude}}</view>
-        </view>
-        <button size="mini" style="background:var(--theme-primary); color:#fff; font-size:24rpx; border-radius:30rpx; padding:0 24rpx; margin: 0;">选择</button>
-      </view>
+      <text class="required-tag">* 必填</text>
     </view>
 
-    <view class="form-item" style="margin-top: 24rpx;">
-      <view class="label" style="font-weight: bold; margin-bottom: 12rpx;">接单范围（服务半径）</view>
-      <view style="display:flex; gap:12rpx; flex-wrap:wrap;">
+    <view class="location-box" bindtap="chooseAddress">
+      <view class="loc-info">
+        <view class="loc-text" wx:if="{{form.serviceAddress}}">📍 {{form.serviceAddress}}</view>
+        <view class="loc-placeholder" wx:else>📍 点击选择固定服务地址（定位接单点）</view>
+        <view class="loc-coord" wx:if="{{form.serviceLatitude}}">坐标：{{form.serviceLatitude}}, {{form.serviceLongitude}}</view>
+      </view>
+      <button class="mini-btn">选择位置</button>
+    </view>
+
+    <view class="form-group" style="margin-top: 28rpx;">
+      <text class="input-label">接单服务半径 (公里)</text>
+      <view class="radius-options">
         <view
           wx:for="{{radiusOptions}}"
           wx:key="value"
           bindtap="selectRadius"
           data-radius="{{item.value}}"
-          style="padding:12rpx 24rpx; border-radius:30rpx; font-size:26rpx; {{form.serviceRadiusKm === item.value ? 'background:var(--theme-primary); color:#fff; font-weight:bold;' : 'background:#f5f5f5; color:var(--theme-muted);'}}"
+          class="radius-pill {{form.serviceRadiusKm === item.value ? 'selected' : ''}}"
         >
           {{item.label}}
         </view>
@@ -73,18 +115,31 @@
     </view>
   </view>
 
-  <view class="notice" wx:if="{{isApproved}}">
-    <view class="strong">已完成安心宠护师认证</view>
-    <view class="muted">认证通过后不能重复提交入驻申请，如需修改接单地址和时间，请回到“我的”里编辑接单配置。</view>
+  <view class="status-notice-card approved-card" wx:if="{{isApproved}}">
+    <view class="notice-head">
+      <text class="remix-icon ri-checkbox-circle-fill notice-icon green-icon"></text>
+      <text class="notice-title">已完成安心宠护师认证</text>
+    </view>
+    <view class="notice-tip">认证通过后无需重复提交入驻申请。如需调整服务地址与接单时间，请回到“我的”页面修改配置。</view>
   </view>
-  <button class="primary" wx:else bindtap="submit">提交入驻申请</button>
-  <button class="ghost" bindtap="backProfile">返回安心宠护端我的</button>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>工作台</view></view>
-    <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>任务</view></view>
-    <view class="nav-item" data-url="/pages/staff/messages/index" bindtap="go"><view class="nav-icon">信<view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
-    <view class="nav-item active"><view class="nav-icon">☑</view><view>认证</view></view>
-    <view class="nav-item" bindtap="backProfile"><view class="nav-icon">♙</view><view>我的</view></view>
+  <view class="action-btn-container" wx:else>
+    <button class="primary-btn submit-btn" bindtap="submit">
+      <text class="remix-icon ri-send-plane-fill"></text>
+      <text>提交入驻申请</text>
+    </button>
+  </view>
+
+  <button class="ghost-btn back-btn" bindtap="backProfile">
+    <text class="remix-icon ri-arrow-left-line"></text>
+    <text>返回宠托师个人中心</text>
+  </button>
+
+  <view class="bottom-nav staff-bottom-nav">
+    <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>工作台</view></view>
+    <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>任务</view></view>
+    <view class="nav-item" data-url="/pages/staff/messages/index" bindtap="go"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
+    <view class="nav-item active"><view class="nav-icon remix-icon ri-checkbox-circle-fill"></view><view>认证</view></view>
+    <view class="nav-item" bindtap="backProfile"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
   </view>
 </view>

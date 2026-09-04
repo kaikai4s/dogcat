@@ -1,45 +1,47 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">家庭安全</view>
-    <view class="title">家庭安防历史</view>
-    <view class="tip">新订单请在下单时设置本次入户方式；这里展示历史订单中提供过的安防信息。</view>
+<view class="home-security-page {{themeClass}} {{fontClass}} page">
+  <view class="security-hero">
+    <view class="hero-badge"><text class="remix-icon ri-door-lock-fill hero-icon"></text><text>家庭安全</text></view>
+    <view class="hero-title">家庭安防历史</view>
+    <view class="hero-desc">新订单请在下单时设置本次入户方式；这里展示历史订单中提供过的安防信息。</view>
   </view>
 
-  <view class="soft-panel">
-    <view class="between">
-      <view>
-        <view class="strong">订单级安防</view>
-        <view class="muted">密码仅脱敏展示，钥匙记录来自历史订单。</view>
-      </view>
-      <view class="pet-avatar">🔐</view>
+  <view class="intro-card">
+    <view>
+      <view class="intro-title">订单级安防</view>
+      <view class="intro-desc">密码仅脱敏展示，钥匙记录来自历史订单。</view>
     </view>
+    <view class="intro-icon"><text class="remix-icon ri-shield-keyhole-line"></text></view>
   </view>
 
-  <view class="empty" wx:if="{{!loading && !history.length}}">暂无历史安防信息，下单时可设置开门方式。</view>
+  <view class="empty-state" wx:if="{{!loading && !history.length}}">
+    <text class="remix-icon ri-door-lock-line empty-icon"></text>
+    <view class="empty-title">暂无历史安防信息</view>
+    <view class="empty-desc">下单时可设置开门方式。</view>
+  </view>
 
-  <view class="card" wx:for="{{history}}" wx:key="orderId">
-    <view class="between">
+  <view class="card security-card" wx:for="{{history}}" wx:key="orderId">
+    <view class="security-head">
       <view>
-        <view class="strong">{{item.orderHomeSecurity.lockMethodText}}</view>
-        <view class="muted">订单 {{item.orderNo}}</view>
+        <view class="security-title">{{item.orderHomeSecurity.lockMethodText}}</view>
+        <view class="security-meta">订单 {{item.orderNo}}</view>
       </view>
-      <button class="ghost compact-btn" data-id="{{item.orderId}}" bindtap="rebook">再次预约</button>
+      <button class="ghost-btn compact-btn" data-id="{{item.orderId}}" bindtap="rebook"><text class="remix-icon ri-calendar-check-line"></text><text>再次预约</text></button>
     </view>
     <view class="info-row"><view class="label">服务时间</view><view class="value">{{item.serviceTime}}</view></view>
     <view class="info-row" wx:if="{{item.serviceAddress}}"><view class="label">地址</view><view class="value">{{item.serviceAddress}}</view></view>
 
-    <view wx:if="{{item.orderHomeSecurity.oneTimeCode}}">
+    <view wx:if="{{item.orderHomeSecurity.oneTimeCode}}" class="security-block">
       <view class="info-row"><view class="label">历史密码</view><view class="value">{{item.orderHomeSecurity.oneTimeCode.masked}}</view></view>
       <view class="info-row"><view class="label">有效区间</view><view class="value">{{item.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{item.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view></view>
     </view>
 
-    <view wx:if="{{item.orderHomeSecurity.key}}">
+    <view wx:if="{{item.orderHomeSecurity.key}}" class="security-block">
       <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{item.orderHomeSecurity.key.location}}</view></view>
       <view class="image-list" wx:if="{{item.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{item.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
-      <view class="muted">{{item.orderHomeSecurity.key.returnedAt ? '宠托师已打卡放回钥匙' : '该订单暂无放回打卡记录'}}</view>
+      <view class="notice-text">{{item.orderHomeSecurity.key.returnedAt ? '宠托师已打卡放回钥匙' : '该订单暂无放回打卡记录'}}</view>
     </view>
 
-    <view class="muted" wx:if="{{item.orderHomeSecurity.type === 'remote_unlock'}}">宠托师到达后请求远程开门，你会收到微信提醒；电话催办由平台客服转接。</view>
-    <view class="muted" wx:if="{{item.orderHomeSecurity.type === 'someone_home'}}">有人在家，宠托师敲门即可。</view>
+    <view class="notice-text" wx:if="{{item.orderHomeSecurity.type === 'remote_unlock'}}">宠托师到达后请求远程开门，你会收到微信提醒；电话催办由平台客服转接。</view>
+    <view class="notice-text" wx:if="{{item.orderHomeSecurity.type === 'someone_home'}}">有人在家，宠托师敲门即可。</view>
   </view>
 </view>

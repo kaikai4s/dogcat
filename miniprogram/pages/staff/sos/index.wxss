@@ -1,1 +1,186 @@
-/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+/* Staff SOS page - Cute Pet Style UI redesign */
+.staff-sos-page {
+  min-height: 100vh;
+  padding: 0 28rpx 100rpx;
+  background: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
+  color: #2d211a;
+  box-sizing: border-box;
+}
+
+.staff-hero {
+  margin: 0 -28rpx 24rpx;
+  padding: 42rpx 34rpx 38rpx;
+  border-bottom-left-radius: 48rpx;
+  border-bottom-right-radius: 48rpx;
+  background: linear-gradient(135deg, #fff0c9 0%, #ffd9c8 54%, #fff5f0 100%);
+  box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
+}
+
+.danger-hero {
+  background: linear-gradient(135deg, #fff1f2 0%, #ffe0e6 52%, #fff6f7 100%);
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  color: #d45f22;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 24rpx;
+  font-weight: 850;
+  margin-bottom: 16rpx;
+}
+
+.danger-badge {
+  color: #be123c;
+}
+
+.hero-icon { font-size: 28rpx; }
+
+.hero-title {
+  color: #2d211a;
+  font-size: 42rpx;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.hero-desc {
+  margin-top: 12rpx;
+  color: #7a6a5e;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.danger-notice-card {
+  margin-top: 24rpx;
+  padding: 26rpx;
+  border-radius: 32rpx;
+  background: #fff4f7;
+  border: 1rpx solid rgba(190, 18, 60, 0.18);
+}
+
+.notice-head {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  color: #be123c;
+  font-size: 30rpx;
+  font-weight: 950;
+}
+
+.notice-icon {
+  font-size: 36rpx;
+}
+
+.notice-desc {
+  margin-top: 10rpx;
+  color: #7a6a5e;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.card {
+  margin-top: 24rpx;
+  padding: 28rpx;
+  border-radius: 36rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  box-shadow: 0 14rpx 34rpx rgba(123, 89, 62, 0.06);
+}
+
+.card-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  color: #2d211a;
+  font-size: 30rpx;
+  font-weight: 950;
+  margin-bottom: 20rpx;
+}
+
+.sub-icon {
+  color: #e9672f;
+  font-size: 34rpx;
+}
+
+.danger-icon {
+  color: #be123c !important;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid rgba(255, 153, 102, 0.08);
+}
+
+.info-row:last-child { border-bottom: none; }
+
+.info-row .label {
+  color: #8e8580;
+  font-size: 24rpx;
+}
+
+.info-row .value {
+  color: #2d211a;
+  font-size: 24rpx;
+  font-weight: 850;
+  text-align: right;
+  max-width: 65%;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-top: 20rpx;
+}
+
+.ghost-btn {
+  min-height: 76rpx;
+  border-radius: 24rpx;
+  background: #fff0e2;
+  color: #7a6a5e;
+  font-size: 25rpx;
+  font-weight: 850;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  border: none;
+  line-height: 1;
+}
+
+.sos-textarea {
+  width: 100%;
+  min-height: 220rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 24rpx;
+  background: #fff8ec;
+  border: 1rpx solid rgba(190, 18, 60, 0.12);
+  font-size: 26rpx;
+  color: #2d211a;
+  line-height: 1.45;
+  box-sizing: border-box;
+}
+
+.danger-btn {
+  width: 100%;
+  height: 88rpx;
+  margin-top: 28rpx;
+  border-radius: 28rpx;
+  background: linear-gradient(135deg, #fb7185 0%, #f43f5e 100%);
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 950;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  border: none;
+  box-shadow: 0 8rpx 22rpx rgba(244, 63, 94, 0.22);
+  line-height: 1;
+}

@@ -1,41 +1,25 @@
 /* Client order list: rebuilt status-driven order center */
 .order-list-page {
+  width: 100%;
+  min-height: 100vh;
   padding: 0 0 178rpx;
   background: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
   color: #2d211a;
   overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .order-list-page::before,
 .order-list-page::after {
-  display: none;
-}
-
-.order-list-page .remix-icon {
-  position: relative;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40rpx;
-  height: 40rpx;
-  color: #ff8a45;
-  font-size: 40rpx;
-}
-
-.order-list-page .remix-icon::before {
-  font-family: "remixicon" !important;
-  font-size: inherit;
-  line-height: 1;
+  display: none !important;
 }
 
 .order-list-hero {
-  padding: 34rpx 30rpx 38rpx;
+  margin: 0 -30rpx 24rpx;
+  padding: 42rpx 34rpx 38rpx;
   border-bottom-left-radius: 48rpx;
   border-bottom-right-radius: 48rpx;
-  background:
-    radial-gradient(circle at 90% 18%, rgba(255, 255, 255, 0.50) 0 64rpx, transparent 65rpx),
-    linear-gradient(135deg, #fff0c9 0%, #ffd9c8 54%, #fff5f0 100%);
+  background: linear-gradient(135deg, #fff0c9 0%, #ffd9c8 54%, #fff5f0 100%);
   box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
 }
 
@@ -68,16 +52,18 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  width: auto;
+  width: 100%;
   white-space: nowrap;
   margin: 0;
   padding: 18rpx 28rpx;
-  background: rgba(255, 250, 246, 0.94);
-  border-bottom: 1rpx solid rgba(255, 153, 102, 0.10);
+  background: rgba(255, 250, 246, 0.96);
+  border-bottom: 1rpx solid rgba(255, 153, 102, 0.08);
   backdrop-filter: blur(14rpx);
+  box-sizing: border-box;
 }
 
 .status-tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -87,17 +73,36 @@
   border-radius: 999rpx;
   color: #8e8580;
   background: rgba(255, 255, 255, 0.78);
-  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  border: 1rpx solid rgba(255, 153, 102, 0.14) !important;
+  border-bottom: 1rpx solid rgba(255, 153, 102, 0.14) !important;
   font-size: 26rpx;
   font-weight: 760;
   box-shadow: 0 8rpx 20rpx rgba(123, 89, 62, 0.05);
 }
 
+.status-tab::after,
+.status-tab::before {
+  display: none !important;
+  content: none !important;
+  border: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
 .status-tab.active {
   color: #ffffff;
   background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
-  border-color: transparent;
+  border: none !important;
   box-shadow: 0 12rpx 26rpx rgba(255, 122, 69, 0.22);
+}
+
+.status-tab.active::after,
+.status-tab.active::before {
+  display: none !important;
+  content: none !important;
+  border: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 .order-list-content {

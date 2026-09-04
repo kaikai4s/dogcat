@@ -2,7 +2,7 @@ const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings }
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
 const { ensureLogin } = require('../../../../utils/cloud')
-const { withOrderText } = require('../../../../utils/format')
+const { withOrderText, formatCheckinEvent } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 function getRefundText(order = {}) {
@@ -11,6 +11,14 @@ function getRefundText(order = {}) {
   if (order.refundStatus === 'success') return `已退款 ¥${order.refundAmount || 0}`
   if (order.refundStatus === 'failed') return '退款失败，请联系平台'
   return '退款待处理'
+}
+
+function withTimelineText(list = []) {
+  return list.map((item) => {
+    if (item.title !== '服务打卡') return item
+    const detailText = formatCheckinEvent(item.detail)
+    return { ...item, detail: detailText || item.detail }
+  })
 }
 
 function showRemoteUnlockSubscribeTip(result) {
@@ -58,7 +66,7 @@ Page({
     ])
       .then(([order, timeline, review]) => {
         const displayOrder = withOrderText(order)
-        this.setData({ order: { ...displayOrder, refundText: getRefundText(displayOrder), acceptedNotifyStatusText: displayOrder.acceptedNotifyStatus || '未记录', acceptedNotifyErrorText: displayOrder.acceptedNotifyError || '无' }, timeline, review })
+        this.setData({ order: { ...displayOrder, refundText: getRefundText(displayOrder), acceptedNotifyStatusText: displayOrder.acceptedNotifyStatus || '未记录', acceptedNotifyErrorText: displayOrder.acceptedNotifyError || '无' }, timeline: withTimelineText(timeline), review })
         callFunction('message', 'markOrderThreadRead', { orderId: this.data.id }).catch(() => {})
       })
       .catch(showError)

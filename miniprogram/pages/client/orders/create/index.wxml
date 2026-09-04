@@ -23,15 +23,20 @@
       </view>
     </view>
     <view class="sitter-summary" wx:if="{{form.publishMode === 'direct'}}">
-      <image class="order-avatar" wx:if="{{requestedSitter && requestedSitter.avatarUrl}}" src="{{requestedSitter.avatarUrl}}" mode="aspectFill" />
-      <view class="order-avatar placeholder" wx:else><view class="remix-icon ri-service-line"></view></view>
-      <view class="sitter-summary-main">
-        <view class="strong">{{requestedSitter ? requestedSitter.displayName : '还未选择宠托师'}}</view>
-        <view class="muted">{{requestedSitter ? requestedSitter.serviceSummary : '请从宠托师列表选择指定对象'}}</view>
-        <view class="sitter-meta" wx:if="{{requestedSitter && requestedSitter.serviceRadiusKm}}">接单范围：{{requestedSitter.serviceRadiusKm}}km 内</view>
-        <view class="sitter-meta muted" wx:if="{{requestedSitter && requestedSitter.weeklyScheduleText}}">可预约时间：{{requestedSitter.weeklyScheduleText}}</view>
+      <view class="sitter-summary-top">
+        <image class="order-avatar" wx:if="{{requestedSitter && requestedSitter.avatarUrl}}" src="{{requestedSitter.avatarUrl}}" mode="aspectFill" />
+        <view class="order-avatar placeholder" wx:else><view class="remix-icon ri-service-line"></view></view>
+        <view class="sitter-summary-main">
+          <view class="strong">{{requestedSitter ? requestedSitter.displayName : '还未选择宠托师'}}</view>
+          <view class="muted">{{requestedSitter ? requestedSitter.serviceSummary : '请从宠托师列表选择指定对象'}}</view>
+          <view class="sitter-meta" wx:if="{{requestedSitter && requestedSitter.serviceRadiusKm}}">接单范围：{{requestedSitter.serviceRadiusKm}}km 内</view>
+        </view>
       </view>
-      <button class="ghost compact-btn" bindtap="chooseSitter">重新选择</button>
+      <view class="sitter-schedule-line" wx:if="{{requestedSitter && requestedSitter.weeklyScheduleText}}">
+        <view class="schedule-label">可预约时间</view>
+        <view class="schedule-text">{{requestedSitter.weeklyScheduleText}}</view>
+      </view>
+      <button class="ghost compact-btn sitter-change-btn" bindtap="chooseSitter"><text class="remix-icon ri-user-search-line"></text><text>重新选择</text></button>
     </view>
   </view>
 
@@ -197,7 +202,7 @@
   <view class="booking-side-card interactive" bindtap="chooseCoupon">
     <view class="remix-icon ri-coupon-3-line side-icon"></view>
     <view class="side-main"><view class="strong">优惠券</view><view class="muted">{{selectedCoupon ? selectedCoupon.name : '自动选择最优优惠券'}}</view></view>
-    <view class="menu-arrow">›</view>
+    <view class="menu-arrow remix-icon ri-arrow-right-s-line"></view>
   </view>
 
   <view class="booking-side-card trust-note">

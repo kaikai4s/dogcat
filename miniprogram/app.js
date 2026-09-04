@@ -34,7 +34,8 @@ App({
       activeRole: 'client',
       selectedLocation: null,
       themeKey: getSavedThemeKey(),
-      fontKey: getSavedFontKey()
+      fontKey: getSavedFontKey(),
+      lotteryFloatShownThisLaunch: false
     }
 
     applyTheme(this.globalData.themeKey)
@@ -59,6 +60,7 @@ App({
     activeRole: 'client',
     selectedLocation: null,
     themeKey: 'day',
-    fontKey: 'system'
+    fontKey: 'system',
+    lotteryFloatShownThisLaunch: false
   }
 })

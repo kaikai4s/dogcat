@@ -1,11 +1,46 @@
-/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
-
-.level-item {
-  padding: 24rpx 0;
-  border-bottom: 1rpx solid #f5e6ec;
-}
-
-.level-item:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
+/* Client points - Cute Pet Style UI redesign */
+.points-page { min-height: 100vh; padding: 0 28rpx 100rpx; background: linear-gradient(180deg,#fff8ec 0%,#fffaf6 42%,#f7fbfa 100%); color: #2d211a; box-sizing: border-box; }
+.points-hero { margin: 0 -28rpx 24rpx; padding: 42rpx 34rpx 38rpx; border-bottom-left-radius: 48rpx; border-bottom-right-radius: 48rpx; background: linear-gradient(135deg,#fff0c9 0%,#ffd9c8 54%,#fff5f0 100%); box-shadow: 0 18rpx 44rpx rgba(123,89,62,.08); }
+.hero-badge { display: inline-flex; align-items: center; gap: 8rpx; padding: 6rpx 18rpx; border-radius: 999rpx; color: #d45f22; background: rgba(255,255,255,.85); font-size: 24rpx; font-weight: 850; margin-bottom: 16rpx; }
+.hero-icon { font-size: 28rpx; }
+.hero-title { color: #2d211a; font-size: 42rpx; font-weight: 950; line-height: 1.2; }
+.hero-desc { margin-top: 12rpx; color: #7a6a5e; font-size: 24rpx; line-height: 1.4; }
+.points-card,
+.card { background: #fff; border: 1rpx solid rgba(255,153,102,.14); box-shadow: 0 14rpx 34rpx rgba(123,89,62,.06); border-radius: 36rpx; }
+.points-card { padding: 36rpx 28rpx; text-align: center; background: linear-gradient(145deg,#fff 0%,#fff8ec 48%,#fff2ec 100%); }
+.points-label { color: #8e8580; font-size: 24rpx; }
+.points-number { margin-top: 8rpx; color: #e9672f; font-size: 76rpx; font-weight: 950; line-height: 1; }
+.points-meta { margin-top: 10rpx; color: #7a6a5e; font-size: 24rpx; line-height: 1.4; }
+.quick-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16rpx; margin-top: 26rpx; }
+.primary-btn { min-height: 76rpx; border-radius: 26rpx; background: linear-gradient(135deg,#ffb86c 0%,#ff7a45 100%); color: #fff; box-shadow: 0 10rpx 26rpx rgba(255,122,69,.22); display: flex; align-items: center; justify-content: center; gap: 8rpx; font-size: 25rpx; font-weight: 900; border: none; line-height: 1; }
+.primary-btn::after { display: none; }
+.primary-btn .remix-icon { font-size: 30rpx; }
+.lottery-btn { background: linear-gradient(135deg,#ffd166 0%,#ff8a65 100%); }
+.card { margin-top: 24rpx; padding: 28rpx; }
+.card-subtitle { display: flex; align-items: center; gap: 10rpx; color: #2d211a; font-size: 30rpx; font-weight: 950; margin-bottom: 18rpx; }
+.sub-icon { color: #e9672f; font-size: 34rpx; }
+.level-summary,
+.level-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; }
+.level-title,
+.level-name,
+.log-title { color: #2d211a; font-size: 28rpx; font-weight: 950; line-height: 1.35; }
+.level-desc,
+.log-desc { margin-top: 6rpx; color: #7a6a5e; font-size: 24rpx; line-height: 1.45; }
+.status-badge { padding: 6rpx 16rpx; border-radius: 999rpx; background: #e6f8ea; color: #00b42a; font-size: 22rpx; font-weight: 850; white-space: nowrap; }
+.upgrade-tip { margin-top: 14rpx; padding: 16rpx 18rpx; border-radius: 22rpx; background: #fff8ec; color: #d45f22; font-size: 24rpx; line-height: 1.4; }
+.level-item { padding: 24rpx 0; border-bottom: 1rpx solid rgba(255,153,102,.08); }
+.level-item:last-child { border-bottom: none; padding-bottom: 0; }
+.level-main { flex: 1; min-width: 0; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 14rpx; }
+.chip { padding: 8rpx 16rpx; border-radius: 999rpx; background: #fff0e2; color: #d45f22; font-size: 22rpx; font-weight: 850; }
+.log-row { display: flex; align-items: flex-start; gap: 16rpx; padding: 20rpx 0; border-bottom: 1rpx solid rgba(255,153,102,.08); }
+.log-row:last-child { border-bottom: none; }
+.log-icon { width: 58rpx; height: 58rpx; border-radius: 22rpx; background: #fff0e2; color: #e9672f; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.log-icon .remix-icon { font-size: 30rpx; }
+.log-main { flex: 1; min-width: 0; }
+.log-delta { color: #8e8580; font-size: 30rpx; font-weight: 950; flex-shrink: 0; }
+.log-delta.plus { color: #e9672f; }
+.empty-state { padding: 60rpx 0; color: #8e8580; font-size: 25rpx; text-align: center; }
+.load-more { display: flex; justify-content: center; padding: 24rpx 0; }
+.load-more .primary-btn { min-width: 240rpx; }
+.list-tip { text-align: center; padding: 18rpx 0; color: #8e8580; font-size: 24rpx; }

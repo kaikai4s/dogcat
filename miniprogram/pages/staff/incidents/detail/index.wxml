@@ -1,54 +1,58 @@
-<view class="page {{themeClass}} {{fontClass}}" wx:if="{{detail}}">
-  <view class="dashboard-header">
-    <view class="badge">纠纷详情</view>
-    <view class="title">{{detail.incident.title || detail.incident.incidentTypeText}}</view>
-    <view class="tip">平台处理期间可继续补充说明和证据。</view>
+<view class="page staff-incident-detail-page {{themeClass}} {{fontClass}}" wx:if="{{detail}}">
+  <view class="staff-hero">
+    <view class="hero-badge">
+      <text class="remix-icon ri-file-warning-fill hero-icon"></text>
+      <text>纠纷详情</text>
+    </view>
+    <view class="hero-title">{{detail.incident.title || detail.incident.incidentTypeText}}</view>
+    <view class="hero-desc">平台处理期间可继续补充说明和证据。</view>
   </view>
 
-  <view class="card info-list">
+  <view class="card info-card">
     <view class="info-row"><view class="label">类型</view><view class="value">{{detail.incident.incidentTypeText}}</view></view>
-    <view class="info-row"><view class="label">状态</view><view class="badge">{{detail.incident.statusText}}</view></view>
+    <view class="info-row"><view class="label">状态</view><view class="badge pink">{{detail.incident.statusText}}</view></view>
     <view class="info-row"><view class="label">订单</view><view class="value">{{detail.incident.orderId}}</view></view>
     <view class="info-row"><view class="label">提交时间</view><view class="value">{{detail.incident.createdAt}}</view></view>
     <view class="info-row" wx:if="{{detail.incident.refundNo}}"><view class="label">关联退款</view><view class="value">{{detail.incident.refundNo}}</view></view>
   </view>
 
   <view class="card">
-    <view class="subtitle">问题说明</view>
-    <view class="muted">{{detail.incident.description}}</view>
+    <view class="card-subtitle"><text class="remix-icon ri-question-answer-line sub-icon"></text><text>问题说明</text></view>
+    <view class="desc-text">{{detail.incident.description}}</view>
     <view class="evidence-grid" wx:if="{{detail.incident.mediaFileIds.length}}">
       <image class="evidence-image" wx:for="{{detail.incident.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
     </view>
   </view>
 
-  <view class="card" wx:if="{{detail.incident.resolution}}">
-    <view class="subtitle">处理方案</view>
-    <view class="strong">{{detail.incident.resolution.type || '处理结果'}}</view>
-    <view class="muted">{{detail.incident.resolution.content}}</view>
-    <view class="price" wx:if="{{detail.incident.resolution.refundAmount}}">¥{{detail.incident.resolution.refundAmount}}</view>
-    <view class="muted" wx:if="{{detail.incident.resolution.couponId}}">平台已发放补偿优惠券</view>
+  <view class="card resolution-card" wx:if="{{detail.incident.resolution}}">
+    <view class="card-subtitle"><text class="remix-icon ri-scales-3-line sub-icon"></text><text>处理方案</text></view>
+    <view class="resolution-title">{{detail.incident.resolution.type || '处理结果'}}</view>
+    <view class="desc-text">{{detail.incident.resolution.content}}</view>
+    <view class="price-text" wx:if="{{detail.incident.resolution.refundAmount}}">¥{{detail.incident.resolution.refundAmount}}</view>
+    <view class="desc-text" wx:if="{{detail.incident.resolution.couponId}}">平台已发放补偿优惠券</view>
   </view>
 
   <view class="card" wx:if="{{detail.comments.length}}">
-    <view class="subtitle">沟通记录</view>
+    <view class="card-subtitle"><text class="remix-icon ri-chat-history-line sub-icon"></text><text>沟通记录</text></view>
     <view class="timeline">
       <view class="timeline-item" wx:for="{{detail.comments}}" wx:key="_id">
-        <view class="strong">{{item.actorRole}}</view>
-        <view class="muted">{{item.content}}</view>
+        <view class="timeline-dot"></view>
+        <view class="timeline-role">{{item.actorRole}}</view>
+        <view class="desc-text">{{item.content}}</view>
         <view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}">
           <image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
         </view>
-        <view class="muted">{{item.createdAt}}</view>
+        <view class="timeline-time">{{item.createdAt}}</view>
       </view>
     </view>
   </view>
 
   <view class="card form-card">
-    <view class="subtitle">补充说明</view>
-    <textarea placeholder="说明现场情况、服务记录或处理意见" value="{{comment}}" bindinput="inputComment" maxlength="500" />
-    <view class="between">
-      <view class="muted">证据照片 {{mediaFileIds.length}}/9</view>
-      <button class="mini-btn" wx:if="{{mediaFileIds.length < 9}}" bindtap="chooseEvidence">添加</button>
+    <view class="card-subtitle"><text class="remix-icon ri-edit-2-line sub-icon"></text><text>补充说明</text></view>
+    <textarea class="comment-textarea" placeholder="说明现场情况、服务记录或处理意见" value="{{comment}}" bindinput="inputComment" maxlength="500" />
+    <view class="upload-row">
+      <view class="upload-count">证据照片 {{mediaFileIds.length}}/9</view>
+      <button class="mini-btn" wx:if="{{mediaFileIds.length < 9}}" bindtap="chooseEvidence"><text class="remix-icon ri-image-add-line"></text>添加</button>
     </view>
     <view class="evidence-grid" wx:if="{{mediaFileIds.length}}">
       <view class="evidence-item" wx:for="{{mediaFileIds}}" wx:key="*this">
@@ -58,6 +62,6 @@
     </view>
   </view>
 
-  <button class="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitComment">提交补充</button>
-  <button class="ghost" bindtap="goOrder">查看订单</button>
+  <button class="primary-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitComment">提交补充</button>
+  <button class="ghost-btn" bindtap="goOrder">查看订单</button>
 </view>

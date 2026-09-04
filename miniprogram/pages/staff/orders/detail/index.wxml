@@ -1,27 +1,36 @@
-<view class="page {{themeClass}} {{fontClass}}" wx:if="{{order}}">
-  <view class="dashboard-header">
-    <view class="badge">任务详情</view>
-    <view class="title">{{order.petName}}</view>
-    <view class="tip">核对服务地址、时间和状态后进入服务流程。</view>
+<view class="page staff-detail-page {{themeClass}} {{fontClass}}" wx:if="{{order}}">
+  <view class="staff-detail-hero">
+    <view class="hero-top">
+      <view class="hero-badge">任务名片</view>
+      <view class="status-chip">{{order.statusText}}</view>
+    </view>
+    <view class="hero-title">{{order.petName}} 的服务任务</view>
+    <view class="hero-desc">核对服务地址、时间与宠物注意事项后进入履约流程。</view>
   </view>
 
   <view class="card pet-card" wx:if="{{order.petSnapshot}}">
-    <view class="subtitle">服务宠物信息</view>
-    <view class="row pet-header">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-footprint-line sub-icon"></text>
+      <text>服务宠物档案</text>
+    </view>
+    <view class="pet-header-row">
       <view class="photo-container">
         <image class="pet-photo" wx:if="{{order.petSnapshot.avatarFileId}}" src="{{order.petSnapshot.avatarFileId}}" mode="aspectFill" bindtap="previewPetPhoto" />
-        <view class="pet-photo empty-photo" wx:else>🐾</view>
+        <view class="pet-photo empty-photo" wx:else><text class="remix-icon ri-footprint-line"></text></view>
         <view class="preview-tip" wx:if="{{order.petSnapshot.avatarFileId}}">点击大图</view>
       </view>
-      <view class="pet-main-info" style="flex: 1;">
-        <view class="strong pet-name-row">
+      <view class="pet-main-info">
+        <view class="pet-name-row">
           <text class="pet-name">{{order.petSnapshot.name || order.petName}}</text>
-          <text class="species-badge">{{order.petSnapshot.species === 'cat' ? '🐱 猫咪' : order.petSnapshot.species === 'other' ? '🐾 异宠' : '🐶 狗狗'}}</text>
+          <text class="species-badge" wx:if="{{order.petSnapshot.species === 'cat'}}"><text class="remix-icon ri-footprint-line"></text><text>猫咪</text></text>
+          <text class="species-badge" wx:elif="{{order.petSnapshot.species === 'other'}}"><text class="remix-icon ri-paw-print-line"></text><text>异宠</text></text>
+          <text class="species-badge" wx:else><text class="remix-icon ri-footprint-line"></text><text>狗狗</text></text>
         </view>
         <view class="muted">{{order.petSnapshot.breed || '未知品种'}} · {{order.petSnapshot.gender || '未知性别'}} · {{order.petSnapshot.weight || 0}}kg</view>
         <view class="muted" wx:if="{{order.petSnapshot.birthday}}">生日：{{order.petSnapshot.birthday}}</view>
       </view>
     </view>
+
     <view class="info-list pet-info-list">
       <view class="info-row highlight-row" wx:if="{{order.petSnapshot.personality}}">
         <view class="label label-highlight">性格特点</view>
@@ -46,53 +55,84 @@
     </view>
   </view>
 
-  <view class="card">
-    <view class="subtitle">宠物主信息</view>
+  <view class="card client-card">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-user-heart-line sub-icon"></text>
+      <text>宠物主信息</text>
+    </view>
     <view class="order-person">
       <image class="order-avatar" wx:if="{{order.clientSnapshot && order.clientSnapshot.avatarUrl}}" src="{{order.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-      <view class="order-avatar" wx:else>🐾</view>
-      <view>
+      <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+      <view class="client-info">
         <view class="strong">{{order.clientSnapshot.displayName || '宠物主'}}</view>
-        <view class="muted">用户联系方式由平台保护；需电话联系时请走客服转接。</view>
+        <view class="muted">联系方式受隐私保护，紧急情况可通过客服呼叫。</view>
       </view>
     </view>
   </view>
 
-  <view class="card info-list">
+  <view class="card detail-info-card">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-file-list-3-line sub-icon"></text>
+      <text>服务订单信息</text>
+    </view>
     <view class="info-row"><view class="label">订单号</view><view class="value">{{order.orderNo}}</view></view>
-    <view class="info-row"><view class="label">宠物</view><view class="value">{{order.petName}}</view></view>
-    <view class="info-row"><view class="label">服务</view><view class="value">{{order.serviceSummary || (order.serviceType === 'walk' ? '遛狗' : '喂养')}}</view></view>
-    <view class="info-row"><view class="label">地址</view><view class="value">{{order.serviceAddress}}</view></view>
+    <view class="info-row"><view class="label">服务项目</view><view class="value">{{order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view></view>
+    <view class="info-row"><view class="label">服务地址</view><view class="value">{{order.serviceAddress}}</view></view>
     <view class="info-row" wx:if="{{order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{order.addressDetail}}</view></view>
     <view class="info-row" wx:if="{{order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{order.doorplate}}</view></view>
-    <view class="info-row"><view class="label">状态</view><view class="badge">{{order.statusText}}</view></view>
-    <view class="info-row"><view class="label">时间</view><view class="value">{{order.startTime}} - {{order.endTime}}</view></view>
+    <view class="info-row"><view class="label">预约时间</view><view class="value">{{order.startTime}} - {{order.endTime}}</view></view>
     <view class="info-row"><view class="label">接单微信通知</view><view class="value">{{order.acceptedNotifyStatusText}}</view></view>
-    <view class="info-row"><view class="label">接单通知失败</view><view class="value">{{order.acceptedNotifyErrorText}}</view></view>
+    <view class="info-row" wx:if="{{order.acceptedNotifyErrorText}}"><view class="label">失败原因</view><view class="value red">{{order.acceptedNotifyErrorText}}</view></view>
   </view>
 
-  <button class="primary" wx:if="{{order.status === 'paid'}}" bindtap="accept">确认接单</button>
-  <view class="card info-list">
-    <view class="subtitle">平台客服转接</view>
-    <view class="info-row"><view class="label">客服电话</view><view class="value">{{customerService.phone || '暂未配置'}}</view></view>
-    <view class="info-row" wx:if="{{customerService.workHours}}"><view class="label">工作时间</view><view class="value">{{customerService.workHours}}</view></view>
-    <view class="muted">如需联系宠物主，请拨打平台客服并报订单号，由管理员联系用户。</view>
-    <button class="ghost" bindtap="callCustomerService">联系平台客服</button>
-    <button class="ghost" bindtap="copyOrderNo">复制订单号</button>
-  </view>
-
-  <view class="card" wx:if="{{order.status === 'in_service' || order.status === 'completed'}}">
-    <view class="subtitle">履约证据</view>
-    <view class="info-row"><view class="label">轨迹点</view><view class="value">{{order.trackCount || 0}}</view></view>
+  <view class="card service-card" wx:if="{{order.status === 'in_service' || order.status === 'completed'}}">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-shield-check-line sub-icon"></text>
+      <text>履约证据与报告</text>
+    </view>
+    <view class="info-row"><view class="label">服务轨迹点数</view><view class="value">{{order.trackCount || 0}} 个点</view></view>
     <view wx:for="{{order.checkinRequirements}}" wx:key="eventType" class="info-row">
       <view class="label">{{item.label}}</view>
-      <view class="value">{{item.photoCount || 0}} 张</view>
+      <view class="value">{{item.photoCount || 0}} 张证据照</view>
     </view>
-    <button class="ghost" bindtap="tracking">查看服务轨迹</button>
-    <button class="ghost" wx:if="{{order.status === 'completed'}}" bindtap="report">查看服务报告</button>
+    <view class="action-btn-group">
+      <button class="ghost-btn" bindtap="tracking">
+        <text class="remix-icon ri-map-pin-line"></text>查看服务轨迹
+      </button>
+      <button class="ghost-btn" wx:if="{{order.status === 'completed'}}" bindtap="report">
+        <text class="remix-icon ri-file-text-line"></text>查看服务报告
+      </button>
+    </view>
   </view>
 
-  <button class="ghost" bindtap="openNavigation">导航到服务地址</button>
-  <button class="primary" wx:if="{{order.status !== 'paid'}}" bindtap="service">进入服务</button>
-  <button class="danger" wx:if="{{order.status !== 'paid'}}" bindtap="sos">SOS</button>
+  <view class="card cs-card">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-customer-service-2-line sub-icon"></text>
+      <text>平台客服转接</text>
+    </view>
+    <view class="info-row"><view class="label">客服电话</view><view class="value">{{customerService.phone || '暂未配置'}}</view></view>
+    <view class="info-row" wx:if="{{customerService.workHours}}"><view class="label">工作时间</view><view class="value">{{customerService.workHours}}</view></view>
+    <view class="muted cs-tip">如需紧急联系宠物主或报备异常，请联系客服并报订单号。</view>
+    <view class="action-btn-group">
+      <button class="ghost-btn" bindtap="callCustomerService">
+        <text class="remix-icon ri-phone-line"></text>呼叫平台客服
+      </button>
+      <button class="ghost-btn" bindtap="copyOrderNo">
+        <text class="remix-icon ri-file-copy-line"></text>复制订单号
+      </button>
+    </view>
+  </view>
+
+  <view class="bottom-fixed-actions">
+    <button class="ghost-btn nav-action-btn" bindtap="openNavigation">
+      <text class="remix-icon ri-map-pin-line"></text>导航到地址
+    </button>
+    <button class="primary-btn accept-action-btn" wx:if="{{order.status === 'paid'}}" bindtap="accept">确认接单</button>
+    <button class="primary-btn service-action-btn" wx:if="{{order.status !== 'paid'}}" bindtap="service">
+      <text class="remix-icon ri-play-circle-line"></text>进入服务履约
+    </button>
+    <button class="danger-btn sos-action-btn" wx:if="{{order.status !== 'paid'}}" bindtap="sos">
+      <text class="remix-icon ri-alarm-warning-line"></text>SOS 紧急
+    </button>
+  </view>
 </view>

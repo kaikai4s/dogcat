@@ -1,44 +1,115 @@
-<view class="page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="badge">宠托师收益</view>
-    <view class="title">我的收益与提现</view>
-    <view class="tip">服务完成后按平台分成生成收益，达到结算期后可提现。</view>
+<view class="page staff-earnings-page {{themeClass}} {{fontClass}}">
+  <view class="staff-hero">
+    <view class="hero-badge">
+      <text class="remix-icon ri-wallet-3-fill hero-icon"></text>
+      <text>收益中心</text>
+    </view>
+    <view class="hero-title">我的收益与提现</view>
+    <view class="hero-desc">服务完成后按平台分成生成收益，到达结算期即可申请提现。</view>
   </view>
 
   <view class="card revenue-card" wx:if="{{balance}}">
-    <view class="subtitle">余额概览</view>
-    <view class="stats-grid">
-      <view class="stat-card"><view class="stat-number">¥{{balance.availableText}}</view><view class="stat-label">可提现</view></view>
-      <view class="stat-card"><view class="stat-number">¥{{balance.pendingText}}</view><view class="stat-label">待结算</view></view>
-      <view class="stat-card"><view class="stat-number">¥{{balance.withdrawingText}}</view><view class="stat-label">提现中</view></view>
-      <view class="stat-card"><view class="stat-number">¥{{balance.withdrawnText}}</view><view class="stat-label">已提现</view></view>
+    <view class="card-subtitle">
+      <text class="remix-icon ri-coins-line sub-icon"></text>
+      <text>余额概览</text>
     </view>
-    <view class="muted">最低提现金额：¥{{balance.minWithdrawAmountText}}</view>
+    <view class="stats-grid">
+      <view class="stat-card primary-stat">
+        <view class="stat-number">¥{{balance.availableText}}</view>
+        <view class="stat-label">可提现余额</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-number">¥{{balance.pendingText}}</view>
+        <view class="stat-label">待结算</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-number">¥{{balance.withdrawingText}}</view>
+        <view class="stat-label">提现中</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-number">¥{{balance.withdrawnText}}</view>
+        <view class="stat-label">已提现总额</view>
+      </view>
+    </view>
+    <view class="withdraw-limit-tip">💡 单次最低提现金额：¥{{balance.minWithdrawAmountText}}</view>
   </view>
 
   <view class="card form-card">
-    <view class="subtitle">申请提现</view>
-    <view class="field-item"><text class="label">提现金额</text><input class="input" type="digit" value="{{amount}}" data-field="amount" bindinput="input" /></view>
-    <view class="field-item"><text class="label">收款人</text><input class="input" value="{{accountName}}" data-field="accountName" bindinput="input" placeholder="真实姓名" /></view>
-    <view class="field-item"><text class="label">收款账号</text><input class="input" value="{{accountNo}}" data-field="accountNo" bindinput="input" placeholder="微信/银行卡备注" /></view>
-    <button class="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="withdraw">提交提现申请</button>
+    <view class="card-subtitle">
+      <text class="remix-icon ri-hand-coin-line sub-icon"></text>
+      <text>申请提现</text>
+    </view>
+    <view class="field-item">
+      <text class="label">提现金额 (元)</text>
+      <input class="input-field" type="digit" value="{{amount}}" data-field="amount" bindinput="input" placeholder="请输入提现金额" />
+    </view>
+    <view class="field-item">
+      <text class="label">收款人姓名</text>
+      <input class="input-field" value="{{accountName}}" data-field="accountName" bindinput="input" placeholder="请输入真实姓名" />
+    </view>
+    <view class="field-item">
+      <text class="label">收款账号/说明</text>
+      <input class="input-field" value="{{accountNo}}" data-field="accountNo" bindinput="input" placeholder="如：微信手机号 / 银行卡号及开户行" />
+    </view>
+    <button class="primary-btn submit-withdraw-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="withdraw">
+      <text class="remix-icon ri-bank-card-line"></text>
+      <text>提交提现申请</text>
+    </button>
   </view>
 
-  <view class="subtitle">收益明细</view>
-  <view class="card info-list" wx:for="{{earnings}}" wx:key="_id">
-    <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderNo || item.orderId}}</view></view>
-    <view class="info-row"><view class="label">订单金额</view><view class="value">¥{{item.grossAmountText}}</view></view>
-    <view class="info-row"><view class="label">收益</view><view class="price">¥{{item.amountText}}</view></view>
-    <view class="info-row"><view class="label">状态</view><view class="badge">{{item.status}}</view></view>
-    <view class="info-row"><view class="label">可提现时间</view><view class="value">{{item.availableAt}}</view></view>
+  <view class="section-title">
+    <text class="remix-icon ri-list-check-2 section-icon"></text>
+    <text>收益明细记录</text>
   </view>
-  <view class="empty" wx:if="{{!earnings.length}}">暂无收益明细。</view>
 
-  <view class="subtitle">提现记录</view>
-  <view class="card info-list" wx:for="{{withdraws}}" wx:key="_id">
-    <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>
-    <view class="info-row"><view class="label">状态</view><view class="badge">{{item.status}}</view></view>
-    <view class="info-row"><view class="label">申请时间</view><view class="value">{{item.createdAt}}</view></view>
-    <view class="info-row" wx:if="{{item.auditRemark}}"><view class="label">审核备注</view><view class="value">{{item.auditRemark}}</view></view>
+  <view class="card record-card" wx:for="{{earnings}}" wx:key="_id">
+    <view class="record-head">
+      <view class="record-title">订单 {{item.orderNo || item.orderId}}</view>
+      <view class="badge pink">{{item.status}}</view>
+    </view>
+    <view class="info-list">
+      <view class="info-row">
+        <view class="label">订单原价</view>
+        <view class="value">¥{{item.grossAmountText}}</view>
+      </view>
+      <view class="info-row">
+        <view class="label">到手收益</view>
+        <view class="value price-highlight">¥{{item.amountText}}</view>
+      </view>
+      <view class="info-row">
+        <view class="label">可提现时间</view>
+        <view class="value muted">{{item.availableAt}}</view>
+      </view>
+    </view>
+  </view>
+  <view class="empty-state" wx:if="{{!earnings.length}}">
+    <text class="remix-icon ri-inbox-archive-line empty-icon"></text>
+    <view class="empty-text">暂无收益明细</view>
+  </view>
+
+  <view class="section-title">
+    <text class="remix-icon ri-history-line section-icon"></text>
+    <text>历史提现记录</text>
+  </view>
+
+  <view class="card record-card" wx:for="{{withdraws}}" wx:key="_id">
+    <view class="record-head">
+      <view class="record-title">提现金额：¥{{item.amountText}}</view>
+      <view class="badge {{item.status === 'approved' ? 'green' : 'pink'}}">{{item.status}}</view>
+    </view>
+    <view class="info-list">
+      <view class="info-row">
+        <view class="label">申请时间</view>
+        <view class="value muted">{{item.createdAt}}</view>
+      </view>
+      <view class="info-row" wx:if="{{item.auditRemark}}">
+        <view class="label">审核备注</view>
+        <view class="value">{{item.auditRemark}}</view>
+      </view>
+    </view>
+  </view>
+  <view class="empty-state" wx:if="{{!withdraws.length}}">
+    <text class="remix-icon ri-history-line empty-icon"></text>
+    <view class="empty-text">暂无提现记录</view>
   </view>
 </view>

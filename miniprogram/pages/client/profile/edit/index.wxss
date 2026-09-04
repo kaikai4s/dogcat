@@ -1,3 +1,20 @@
-.avatar-picker { width: 180rpx; height: 180rpx; border-radius: 50%; overflow: hidden; background: #fff2f7; border: 2rpx dashed rgba(244, 63, 107, 0.28); display: flex; align-items: center; justify-content: center; margin-bottom: 24rpx; }
+/* Client profile edit - Cute Pet Style UI redesign */
+.profile-edit-page { min-height: 100vh; padding: 0 28rpx 120rpx; background: linear-gradient(180deg,#fff8ec 0%,#fffaf6 42%,#f7fbfa 100%); color: #2d211a; box-sizing: border-box; }
+.profile-hero { margin: 0 -28rpx 24rpx; padding: 42rpx 34rpx 38rpx; border-bottom-left-radius: 48rpx; border-bottom-right-radius: 48rpx; background: linear-gradient(135deg,#fff0c9 0%,#ffd9c8 54%,#fff5f0 100%); box-shadow: 0 18rpx 44rpx rgba(123,89,62,.08); }
+.hero-badge { display: inline-flex; align-items: center; gap: 8rpx; padding: 6rpx 18rpx; border-radius: 999rpx; color: #d45f22; background: rgba(255,255,255,.85); font-size: 24rpx; font-weight: 850; margin-bottom: 16rpx; }
+.hero-icon { font-size: 28rpx; }
+.hero-title { color: #2d211a; font-size: 42rpx; font-weight: 950; line-height: 1.2; }
+.hero-desc { margin-top: 12rpx; color: #7a6a5e; font-size: 24rpx; line-height: 1.4; }
+.card { padding: 28rpx; border-radius: 36rpx; background: #fff; border: 1rpx solid rgba(255,153,102,.14); box-shadow: 0 14rpx 34rpx rgba(123,89,62,.06); }
+.card-subtitle { display: flex; align-items: center; gap: 10rpx; color: #2d211a; font-size: 30rpx; font-weight: 950; margin: 28rpx 0 18rpx; }
+.card-subtitle:first-child { margin-top: 0; }
+.sub-icon { color: #e9672f; font-size: 34rpx; }
+.avatar-picker { width: 184rpx; height: 184rpx; border-radius: 50%; overflow: hidden; background: #fff0e2; border: 1rpx dashed rgba(255,153,102,.42); display: flex; align-items: center; justify-content: center; margin: 0 auto 24rpx; }
 .avatar-preview { width: 100%; height: 100%; }
-.avatar-empty { color: #f43f6b; font-size: 26rpx; font-weight: 700; }
+.avatar-empty { color: #e9672f; font-size: 24rpx; font-weight: 850; display: flex; flex-direction: column; align-items: center; gap: 8rpx; }
+.avatar-empty .remix-icon { font-size: 44rpx; }
+.input-field { width: 100%; height: 82rpx; padding: 0 22rpx; margin-bottom: 16rpx; box-sizing: border-box; border-radius: 26rpx; background: #fff8ec; border: 1rpx solid rgba(255,153,102,.16); color: #2d211a; font-size: 26rpx; }
+.primary-btn { min-height: 84rpx; border-radius: 28rpx; background: linear-gradient(135deg,#ffb86c 0%,#ff7a45 100%); color: #fff; box-shadow: 0 10rpx 26rpx rgba(255,122,69,.22); display: flex; align-items: center; justify-content: center; gap: 8rpx; font-size: 28rpx; font-weight: 950; border: none; line-height: 1; }
+.primary-btn::after { display: none; }
+.primary-btn .remix-icon { font-size: 32rpx; }
+.submit-btn { width: 100%; margin-top: 28rpx; }

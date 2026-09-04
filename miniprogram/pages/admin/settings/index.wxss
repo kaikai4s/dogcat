@@ -268,6 +268,46 @@
   word-break: break-all;
 }
 
+.checkin-share-upload {
+  width: 100%;
+  height: 220rpx;
+  margin-top: 14rpx;
+  border-radius: 26rpx;
+  background: #fff8ec;
+  border: 2rpx dashed rgba(255, 153, 102, 0.28);
+  overflow: hidden;
+}
+
+.checkin-share-preview {
+  width: 100%;
+  height: 100%;
+  border-radius: 26rpx;
+}
+
+.checkin-share-placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  color: #d45f22;
+  font-size: 26rpx;
+  font-weight: 900;
+}
+
+.checkin-share-placeholder .remix-icon {
+  font-size: 52rpx;
+}
+
+.checkin-share-file {
+  margin-top: 10rpx;
+  color: #8e8580;
+  font-size: 21rpx;
+  line-height: 1.35;
+  word-break: break-all;
+}
+
 .form-btn-row {
   display: flex;
   justify-content: flex-end;

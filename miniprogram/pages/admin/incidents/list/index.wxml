@@ -1,37 +1,38 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">风险处理</view>
-    <view class="title">异常事件</view>
-    <view class="tip">集中处理员工提交的 SOS 和履约异常。</view>
+<view class="admin-incident-page {{themeClass}} {{fontClass}}">
+  <view class="incident-hero">
+    <view class="hero-badge"><text class="remix-icon ri-alarm-warning-fill"></text><text>风险处理</text></view>
+    <view class="hero-title">异常事件</view>
+    <view class="hero-desc">集中处理员工提交的 SOS、客户投诉和履约异常。</view>
   </view>
 
-  <view class="chip-row">
-    <view class="chip {{status === item.value ? 'pink' : ''}}" wx:for="{{statusTabs}}" wx:key="value" data-status="{{item.value}}" bindtap="switchStatus">{{item.label}}</view>
+  <view class="status-tabs">
+    <view class="status-tab {{status === item.value ? 'active' : ''}}" wx:for="{{statusTabs}}" wx:key="value" data-status="{{item.value}}" bindtap="switchStatus">{{item.label}}</view>
   </view>
 
-  <view class="card interactive" wx:for="{{incidents}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
-    <view class="between">
-      <view>
+  <view class="admin-card incident-card interactive" wx:for="{{incidents}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+    <view class="incident-head">
+      <view class="incident-icon"><text class="remix-icon ri-customer-service-2-line"></text></view>
+      <view class="incident-main">
         <view class="strong">{{item.title || item.incidentTypeText}}</view>
         <view class="muted">{{item.description}}</view>
         <view class="muted">订单 {{item.orderId}} · {{item.createdAt}}</view>
       </view>
-      <view class="badge">{{item.statusText}}</view>
+      <view class="soft-badge status-badge">{{item.statusText}}</view>
     </view>
-    <view class="chip-row">
-      <view class="chip pink">{{item.incidentTypeText}}</view>
-      <button class="mini-btn" size="mini" data-id="{{item._id}}" catchtap="resolve">快速解决</button>
+    <view class="incident-actions">
+      <view class="soft-badge type-badge">{{item.incidentTypeText}}</view>
+      <button class="primary-btn mini-btn" size="mini" data-id="{{item._id}}" catchtap="resolve"><text class="remix-icon ri-check-line"></text><text>快速解决</text></button>
     </view>
   </view>
 
-  <view class="empty" wx:if="{{!incidents.length}}">暂无异常事件。</view>
+  <view class="empty-state" wx:if="{{!incidents.length}}"><text class="remix-icon ri-shield-smile-line empty-icon"></text><view>暂无异常事件。</view></view>
 
-  <button class="ghost" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
+  <button class="ghost-btn load-more-btn" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>控制台</view></view>
-    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>订单</view></view>
-    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon">☑</view><view>审核</view></view>
-    <view class="nav-item active"><view class="nav-icon">!</view><view>异常</view></view>
+  <view class="bottom-nav admin-bottom-nav">
+    <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>
+    <view class="nav-item" data-url="/pages/admin/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/admin/staff-audit/list/index" bindtap="go"><view class="nav-icon remix-icon ri-shield-check-line"></view><view>审核</view></view>
+    <view class="nav-item active"><view class="nav-icon remix-icon ri-alarm-warning-fill"></view><view>异常</view></view>
   </view>
 </view>

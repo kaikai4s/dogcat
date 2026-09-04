@@ -1,52 +1,54 @@
-<view class="{{themeClass}} {{fontClass}} page">
-  <view class="dashboard-header">
-    <view class="badge">{{select ? '选择地址' : '常用地址'}}</view>
-    <view class="title">我的地址</view>
-    <view class="tip">{{select ? '点击地址卡片即可带回下单页。没有地址时请先新增。' : '保存常用上门地址，下次预约可直接选择。'}}</view>
+<view class="address-list-page {{themeClass}} {{fontClass}} page">
+  <view class="address-hero">
+    <view class="hero-badge"><text class="remix-icon ri-map-pin-2-fill hero-icon"></text><text>{{select ? '选择地址' : '常用地址'}}</text></view>
+    <view class="hero-title">我的地址</view>
+    <view class="hero-desc">{{select ? '点击地址卡片即可带回下单页。没有地址时请先新增。' : '保存常用上门地址，下次预约可直接选择。'}}</view>
   </view>
 
   <view class="address-actions">
-    <button class="primary compact-btn" bindtap="add">新增常用地址</button>
-    <button class="ghost compact-btn" bindtap="submitSearch">刷新列表</button>
+    <button class="primary-btn compact-btn" bindtap="add"><text class="remix-icon ri-add-circle-line"></text><text>新增常用地址</text></button>
+    <button class="ghost-btn compact-btn" bindtap="submitSearch"><text class="remix-icon ri-refresh-line"></text><text>刷新列表</text></button>
   </view>
 
-  <view class="card">
-    <input placeholder="搜索地址名称、位置或门牌" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="submitSearch" />
-    <view class="chip-row" style="margin-top:16rpx;">
-      <button class="primary compact-btn" bindtap="submitSearch">搜索</button>
-      <button class="ghost compact-btn" wx:if="{{keyword}}" bindtap="clearSearch">清空</button>
+  <view class="search-card">
+    <view class="search-field"><text class="remix-icon ri-search-line"></text><input placeholder="搜索地址名称、位置或门牌" value="{{keyword}}" bindinput="inputKeyword" confirm-type="search" bindconfirm="submitSearch" /></view>
+    <view class="search-actions">
+      <button class="primary-btn compact-btn" bindtap="submitSearch">搜索</button>
+      <button class="ghost-btn compact-btn" wx:if="{{keyword}}" bindtap="clearSearch">清空</button>
     </view>
   </view>
 
   <view class="loading-card" wx:if="{{loading}}">正在加载地址...</view>
 
-  <view class="card" wx:for="{{addresses}}" wx:key="_id">
-    <view class="interactive" data-id="{{item._id}}" bindtap="choose">
-      <view class="between">
-        <view>
-          <view class="strong">{{item.label || '常用地址'}}</view>
-          <view class="muted">{{item.serviceAddress}}</view>
+  <view class="card address-card" wx:for="{{addresses}}" wx:key="_id">
+    <view class="address-main" data-id="{{item._id}}" bindtap="choose">
+      <view class="address-icon"><text class="remix-icon ri-map-pin-2-line"></text></view>
+      <view class="address-content">
+        <view class="address-head">
+          <view class="address-title">{{item.label || '常用地址'}}</view>
+          <view class="badge-row">
+            <view class="status-badge" wx:if="{{item.isDefault}}">默认地址</view>
+            <view class="select-badge" wx:if="{{select}}">点我选择</view>
+          </view>
         </view>
-        <view>
-          <view class="badge" wx:if="{{item.isDefault}}">默认地址</view>
-          <view class="badge" wx:if="{{select}}">点我选择</view>
-        </view>
+        <view class="address-line">{{item.serviceAddress}}</view>
+        <view class="address-detail">{{item.addressDetail}} · {{item.doorplate}}</view>
       </view>
-      <view class="sitter-summary">{{item.addressDetail}} · {{item.doorplate}}</view>
     </view>
-    <view class="sitter-actions">
-      <button class="ghost compact-btn" data-id="{{item._id}}" bindtap="edit">编辑</button>
-      <button class="ghost compact-btn" wx:if="{{!item.isDefault}}" data-id="{{item._id}}" bindtap="setDefault">设为默认</button>
-      <button class="ghost compact-btn" data-id="{{item._id}}" bindtap="remove">删除</button>
+    <view class="card-actions">
+      <button class="ghost-btn compact-btn" data-id="{{item._id}}" bindtap="edit"><text class="remix-icon ri-edit-box-line"></text><text>编辑</text></button>
+      <button class="ghost-btn compact-btn" wx:if="{{!item.isDefault}}" data-id="{{item._id}}" bindtap="setDefault"><text class="remix-icon ri-star-line"></text><text>设默认</text></button>
+      <button class="ghost-btn compact-btn danger" data-id="{{item._id}}" bindtap="remove"><text class="remix-icon ri-delete-bin-4-line"></text><text>删除</text></button>
     </view>
   </view>
 
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && addresses.length}}">正在加载更多...</view>
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && addresses.length && !hasMore}}">已显示全部地址</view>
+  <view class="list-tip" wx:if="{{loading && addresses.length}}">正在加载更多...</view>
+  <view class="list-tip" wx:if="{{!loading && addresses.length && !hasMore}}">已显示全部地址</view>
 
-  <view class="empty" wx:if="{{!loading && !addresses.length}}">
-    <view>{{select ? '还没有可选择的常用地址' : '暂无常用地址'}}</view>
-    <view class="muted">新增后下单会自动带入默认地址。</view>
-    <button class="primary" bindtap="add">新增常用地址</button>
+  <view class="empty-state" wx:if="{{!loading && !addresses.length}}">
+    <text class="remix-icon ri-map-pin-line empty-icon"></text>
+    <view class="empty-title">{{select ? '还没有可选择的常用地址' : '暂无常用地址'}}</view>
+    <view class="empty-desc">新增后下单会自动带入默认地址。</view>
+    <button class="primary-btn" bindtap="add"><text class="remix-icon ri-add-circle-line"></text><text>新增常用地址</text></button>
   </view>
 </view>

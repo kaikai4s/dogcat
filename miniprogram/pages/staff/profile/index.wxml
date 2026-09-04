@@ -1,127 +1,176 @@
 <view class="page staff-profile-page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="badge">宠托师</view>
-    <view class="title">我的宠托师主页</view>
-    <view class="tip">这里是安心宠护端的个人中心，不会跳回毛孩家庭端。</view>
+  <view class="staff-hero">
+    <view class="hero-badge">安心宠护 · 宠托师中心</view>
+    <view class="profile-user-row">
+      <image class="profile-avatar" wx:if="{{avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />
+      <view class="profile-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+      <view class="profile-user-info">
+        <view class="profile-name-row">
+          <text class="profile-name">{{displayName}}</text>
+          <view class="badge pink">{{statusTitle}}</view>
+        </view>
+        <view class="profile-sub">{{statusTip}}</view>
+      </view>
+    </view>
   </view>
 
   <!-- 未设置服务地址警示条 -->
-  <view class="notice-bar" wx:if="{{missingAddressNotice}}" style="background: var(--theme-primary-soft); border: 2rpx solid var(--theme-primary); color: #d32f2f; padding: 24rpx; border-radius: 16rpx; margin-bottom: 24rpx; display: flex; align-items: center; justify-content: space-between;">
-    <view style="flex: 1; padding-right: 16rpx;">
-      <view style="font-weight: bold; font-size: 28rpx; margin-bottom: 6rpx;">⚠️ 尚未设置固定服务地址与接单范围</view>
-      <view style="font-size: 24rpx; color: var(--theme-muted);">无法接收预约及被搜索到，请立即前往设置服务地址与时间段！</view>
+  <view class="notice-card warning-notice" wx:if="{{missingAddressNotice}}">
+    <view class="notice-main">
+      <view class="notice-title">
+        <text class="remix-icon ri-alert-fill notice-icon"></text>
+        <text>未设置固定服务地址与接单范围</text>
+      </view>
+      <view class="notice-desc">无法正常接单及在列表被宠物主检索，请立即设置。</view>
     </view>
-    <button size="mini" style="background: var(--theme-primary); color: #fff; border-radius: 30rpx; padding: 0 24rpx; margin: 0; font-size: 24rpx;" bindtap="openConfigModal">去设置</button>
-  </view>
-
-  <view class="profile-hero staff-hero">
-    <image class="profile-avatar" wx:if="{{avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />
-    <view class="profile-avatar" wx:else>护</view>
-    <view class="profile-main">
-      <view class="profile-name">{{displayName}}</view>
-      <view class="profile-points">{{statusTitle}} · {{statusTip}}</view>
-    </view>
+    <button class="notice-btn" bindtap="openConfigModal">去设置</button>
   </view>
 
   <!-- 接单服务设置卡片 -->
-  <view class="card info-list" wx:if="{{profile}}">
-    <view class="between" style="margin-bottom: 16rpx; align-items: center;">
-      <view style="font-weight: bold; font-size: 30rpx; color: var(--theme-text);">📍 接单服务与时间段配置</view>
-      <button size="mini" style="background: var(--theme-primary); color: #fff; border-radius: 30rpx; padding: 0 20rpx; margin: 0; font-size: 24rpx;" bindtap="openConfigModal">编辑配置</button>
+  <view class="card config-summary-card" wx:if="{{profile}}">
+    <view class="card-head-between">
+      <view class="card-subtitle">
+        <text class="remix-icon ri-map-pin-user-line sub-icon"></text>
+        <text>接单服务与时间段配置</text>
+      </view>
+      <button class="edit-pill-btn" bindtap="openConfigModal">
+        <text class="remix-icon ri-edit-line"></text>编辑配置
+      </button>
     </view>
-    <view class="info-row"><view class="label">固定服务地址</view><view class="value">{{profile.serviceAddress || '⚠️ 未设置（无法接单）'}}</view></view>
-    <view class="info-row"><view class="label">接单服务半径</view><view class="value">{{profile.serviceRadiusKm || 5}} 公里内</view></view>
-    <view class="info-row"><view class="label">按周接单时间</view><view class="value" style="font-size: 24rpx; color: var(--theme-muted); max-width: 440rpx; text-align: right;">{{profile.weeklyScheduleText || '全天可预约'}}</view></view>
-  </view>
-
-  <view class="card info-list" wx:if="{{profile}}">
-    <view class="info-row"><view class="label">手机号</view><view class="value">{{profile.phone || '未填写'}}</view></view>
-    <view class="info-row"><view class="label">服务城市</view><view class="value">{{profile.serviceCity || '未填写'}}</view></view>
-    <view class="info-row"><view class="label">服务区域</view><view class="value">{{profile.serviceAreas || '未填写'}}</view></view>
-    <view class="info-row"><view class="label">审核状态</view><view class="badge">{{statusTitle}}</view></view>
-  </view>
-
-  <view class="grid">
-    <view class="card interactive action-card" data-url="/pages/staff/home/index" bindtap="go">
-      <view class="action-icon">接</view>
-      <view class="strong">接单工作台</view>
-      <view class="muted">查看附近订单</view>
-    </view>
-    <view class="card interactive action-card" data-url="/pages/staff/orders/list/index" bindtap="go">
-      <view class="action-icon">单</view>
-      <view class="strong">我的任务</view>
-      <view class="muted">查看已接订单</view>
-    </view>
-    <view class="card interactive action-card" data-url="/pages/staff/schedule/index" bindtap="go">
-      <view class="action-icon">排</view>
-      <view class="strong">排班日历</view>
-      <view class="muted">休息与加班例外</view>
-    </view>
-    <view class="card interactive action-card" data-url="/pages/staff/earnings/index" bindtap="go">
-      <view class="action-icon">收</view>
-      <view class="strong">收益提现</view>
-      <view class="muted">余额与提现记录</view>
+    <view class="info-list">
+      <view class="info-row">
+        <view class="label">固定服务地址</view>
+        <view class="value">{{profile.serviceAddress || '⚠️ 未设置（无法接单）'}}</view>
+      </view>
+      <view class="info-row">
+        <view class="label">接单服务半径</view>
+        <view class="value">{{profile.serviceRadiusKm || 5}} 公里内</view>
+      </view>
+      <view class="info-row">
+        <view class="label">按周接单时间</view>
+        <view class="value muted">{{profile.weeklyScheduleText || '全天可预约'}}</view>
+      </view>
     </view>
   </view>
 
-  <view class="card menu-list">
-    <view class="menu-item interactive" bindtap="openConfigModal">
-      <view class="menu-left"><view class="menu-icon">设</view><view>接单地址与按周时间段设置</view></view>
-      <view class="menu-arrow">›</view>
+  <view class="card profile-info-card" wx:if="{{profile}}">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-shield-check-line sub-icon"></text>
+      <text>实名与区域信息</text>
     </view>
-    <view class="menu-item interactive" data-url="/pages/staff/schedule/index" bindtap="go">
-      <view class="menu-left"><view class="menu-icon">排</view><view>排班日历与日期例外</view></view>
-      <view class="menu-arrow">›</view>
+    <view class="info-list">
+      <view class="info-row"><view class="label">手机号</view><view class="value">{{profile.phone || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">服务城市</view><view class="value">{{profile.serviceCity || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">服务区域</view><view class="value">{{profile.serviceAreas || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">审核状态</view><view class="badge pink">{{statusTitle}}</view></view>
     </view>
-    <view class="menu-item interactive" bindtap="editProfile">
-      <view class="menu-left"><view class="menu-icon">名</view><view>编辑个人资料</view></view>
-      <view class="menu-arrow">›</view>
+  </view>
+
+  <view class="action-grid">
+    <view class="action-card" data-url="/pages/staff/home/index" bindtap="go">
+      <view class="icon-box"><text class="remix-icon ri-home-5-line action-icon"></text></view>
+      <view class="action-title">接单工作台</view>
+      <view class="action-sub">查看附近订单</view>
+    </view>
+    <view class="action-card" data-url="/pages/staff/orders/list/index" bindtap="go">
+      <view class="icon-box"><text class="remix-icon ri-file-list-3-line action-icon"></text></view>
+      <view class="action-title">我的任务</view>
+      <view class="action-sub">查看已接订单</view>
+    </view>
+    <view class="action-card" data-url="/pages/staff/schedule/index" bindtap="go">
+      <view class="icon-box"><text class="remix-icon ri-calendar-event-line action-icon"></text></view>
+      <view class="action-title">排班日历</view>
+      <view class="action-sub">休息与加班例外</view>
+    </view>
+    <view class="action-card" data-url="/pages/staff/earnings/index" bindtap="go">
+      <view class="icon-box"><text class="remix-icon ri-wallet-3-line action-icon"></text></view>
+      <view class="action-title">收益提现</view>
+      <view class="action-sub">余额与提现记录</view>
+    </view>
+  </view>
+
+  <view class="card menu-list-card">
+    <view class="menu-item" bindtap="openConfigModal">
+      <view class="menu-left">
+        <text class="remix-icon ri-settings-4-line menu-icon"></text>
+        <text>接单地址与按周时间段设置</text>
+      </view>
+      <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
+    </view>
+    <view class="menu-item" data-url="/pages/staff/schedule/index" bindtap="go">
+      <view class="menu-left">
+        <text class="remix-icon ri-calendar-todo-line menu-icon"></text>
+        <text>排班日历与日期例外</text>
+      </view>
+      <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
+    </view>
+    <view class="menu-item" bindtap="editProfile">
+      <view class="menu-left">
+        <text class="remix-icon ri-user-settings-line menu-icon"></text>
+        <text>编辑个人资料</text>
+      </view>
+      <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
     </view>
     <view class="menu-item" wx:if="{{profile && profile.auditStatus === 'approved'}}">
-      <view class="menu-left"><view class="menu-icon">证</view><view>实名认证已通过</view></view>
-      <view class="badge">已认证</view>
+      <view class="menu-left">
+        <text class="remix-icon ri-shield-check-line menu-icon active"></text>
+        <text>实名认证已通过</text>
+      </view>
+      <view class="badge green">已认证</view>
     </view>
-    <view class="menu-item interactive" wx:else bindtap="openCertification">
-      <view class="menu-left"><view class="menu-icon">证</view><view>入驻认证资料</view></view>
-      <view class="menu-arrow">›</view>
+    <view class="menu-item" wx:else bindtap="openCertification">
+      <view class="menu-left">
+        <text class="remix-icon ri-checkbox-circle-line menu-icon"></text>
+        <text>入驻认证资料</text>
+      </view>
+      <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
     </view>
-    <view class="menu-item interactive" bindtap="backClientProfile">
-      <view class="menu-left"><view class="menu-icon">主</view><view>切回宠物主个人中心</view></view>
-      <view class="menu-arrow">›</view>
+    <view class="menu-item" bindtap="backClientProfile">
+      <view class="menu-left">
+        <text class="remix-icon ri-swap-line menu-icon"></text>
+        <text>切回宠物主个人中心</text>
+      </view>
+      <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
     </view>
   </view>
 
   <!-- 配置编辑弹窗 -->
   <view class="modal-backdrop config-modal-backdrop" wx:if="{{showConfigModal}}">
     <view class="config-modal-panel">
-      <view class="between" style="margin-bottom: 24rpx; align-items: center;">
-        <view style="font-size: 32rpx; font-weight: bold; color: var(--theme-text);">⚙️ 服务地址与按周接单时间设置</view>
-        <view style="font-size: 36rpx; color: var(--theme-muted); padding: 10rpx;" bindtap="closeConfigModal">✕</view>
+      <view class="modal-head">
+        <view class="modal-title">
+          <text class="remix-icon ri-settings-4-line modal-icon"></text>
+          <text>服务地址与按周接单时间设置</text>
+        </view>
+        <view class="close-btn" bindtap="closeConfigModal">✕</view>
       </view>
 
       <!-- 1. 服务地址 -->
-      <view style="margin-bottom: 24rpx;">
-        <view style="font-weight: bold; margin-bottom: 12rpx;">1. 固定服务地址（必填）</view>
-        <view bindtap="chooseConfigAddress" style="padding: 20rpx; background: var(--theme-bg-soft); border: 2rpx dashed var(--theme-primary); border-radius: 16rpx; display: flex; justify-content: space-between; align-items: center;">
-          <view style="flex: 1;">
-            <view style="font-weight: 600; color: var(--theme-text);" wx:if="{{configForm.serviceAddress}}">📍 {{configForm.serviceAddress}}</view>
-            <view style="color: var(--theme-muted); font-size: 26rpx;" wx:else>📍 点击选择固定服务地址</view>
-            <view style="color: #888; font-size: 22rpx; margin-top: 4rpx;" wx:if="{{configForm.serviceLatitude}}">坐标: {{configForm.serviceLatitude}}, {{configForm.serviceLongitude}}</view>
+      <view class="modal-section">
+        <view class="modal-section-title">1. 固定服务地址（必填）</view>
+        <view class="addr-box" bindtap="chooseConfigAddress">
+          <view class="addr-info">
+            <view class="addr-text" wx:if="{{configForm.serviceAddress}}">
+              <text class="remix-icon ri-map-pin-2-fill addr-icon"></text>
+              <text>{{configForm.serviceAddress}}</text>
+            </view>
+            <view class="addr-placeholder" wx:else>📍 点击选择固定服务地址</view>
+            <view class="coord-text" wx:if="{{configForm.serviceLatitude}}">坐标: {{configForm.serviceLatitude}}, {{configForm.serviceLongitude}}</view>
           </view>
-          <button size="mini" style="background: var(--theme-primary); color: #fff; border-radius: 30rpx; margin: 0; font-size: 24rpx;">修改位置</button>
+          <button class="mini-btn">修改位置</button>
         </view>
       </view>
 
       <!-- 2. 服务半径 -->
-      <view style="margin-bottom: 24rpx;">
-        <view style="font-weight: bold; margin-bottom: 12rpx;">2. 接单服务半径（公里）</view>
-        <view style="display: flex; gap: 12rpx; flex-wrap: wrap;">
+      <view class="modal-section">
+        <view class="modal-section-title">2. 接单服务半径（公里）</view>
+        <view class="radius-options">
           <view
             wx:for="{{radiusOptions}}"
             wx:key="value"
             bindtap="selectConfigRadius"
             data-radius="{{item.value}}"
-            style="padding: 12rpx 24rpx; border-radius: 30rpx; font-size: 26rpx; {{configForm.serviceRadiusKm === item.value ? 'background: var(--theme-primary); color: #fff; font-weight: bold;' : 'background: #f5f5f5; color: var(--theme-muted);'}}"
+            class="radius-pill {{configForm.serviceRadiusKm === item.value ? 'selected' : ''}}"
           >
             {{item.label}}
           </view>
@@ -129,75 +178,75 @@
       </view>
 
       <!-- 3. 按周接单时间段 -->
-      <view style="margin-bottom: 30rpx;">
-        <view class="between" style="align-items: center; margin-bottom: 12rpx;">
-          <view style="font-weight: bold;">3. 按周接单可预约时间段（最小单位：小时）</view>
-          <button size="mini" style="background: #e3f2fd; color: #1976d2; border-radius: 30rpx; margin: 0; font-size: 22rpx; padding: 0 16rpx;" bindtap="presetWeekdaySchedule">一键 08:00-22:00</button>
+      <view class="modal-section">
+        <view class="section-head-between">
+          <view class="modal-section-title">3. 按周接单可预约时间段</view>
+          <button class="preset-btn" bindtap="presetWeekdaySchedule">一键 08:00-22:00</button>
         </view>
 
         <!-- 星期切换 Tab -->
-        <view style="display: flex; gap: 8rpx; overflow-x: auto; margin-bottom: 20rpx; padding-bottom: 8rpx;">
+        <scroll-view scroll-x class="weekday-tabs">
           <view
             wx:for="{{weekdays}}"
             wx:key="day"
             bindtap="switchDay"
             data-day="{{item.day}}"
-            style="padding: 12rpx 20rpx; border-radius: 16rpx; font-size: 26rpx; whitespace: nowrap; flex-shrink: 0; {{activeDay === item.day ? 'background: var(--theme-primary); color: #fff; font-weight: bold;' : 'background: #f8f8f8; color: #555;'}}"
+            class="weekday-tab {{activeDay === item.day ? 'active' : ''}}"
           >
-            {{item.label}}
-            <text style="font-size: 20rpx; margin-left: 4rpx;" wx:if="{{configForm.weeklySchedule[item.day] && configForm.weeklySchedule[item.day].length > 0}}">({{configForm.weeklySchedule[item.day].length}})</text>
+            <text>{{item.label}}</text>
+            <text class="count" wx:if="{{configForm.weeklySchedule[item.day] && configForm.weeklySchedule[item.day].length > 0}}">({{configForm.weeklySchedule[item.day].length}})</text>
           </view>
-        </view>
+        </scroll-view>
 
         <!-- 当前星期的配置区 -->
-        <view style="background: var(--theme-bg-soft); border-radius: 20rpx; padding: 20rpx;">
-          <view class="between" style="align-items: center; margin-bottom: 16rpx;">
-            <view style="font-weight: bold; color: var(--theme-primary);">{{weekdays[activeDay - 1].label}} 接单时间段列表</view>
-            <view style="font-size: 22rpx; color: #d32f2f;" bindtap="clearCurrentDaySchedule">清空本日时间</view>
+        <view class="schedule-config-box">
+          <view class="box-head">
+            <view class="box-title">{{weekdays[activeDay - 1].label}} 接单时间段列表</view>
+            <view class="clear-link" bindtap="clearCurrentDaySchedule">清空本日时间</view>
           </view>
 
           <!-- 时间段列表 -->
-          <view wx:if="{{configForm.weeklySchedule[activeDay] && configForm.weeklySchedule[activeDay].length > 0}}">
+          <view class="slot-list" wx:if="{{configForm.weeklySchedule[activeDay] && configForm.weeklySchedule[activeDay].length > 0}}">
             <view
               wx:for="{{configForm.weeklySchedule[activeDay]}}"
               wx:key="index"
-              style="display: flex; justify-content: space-between; align-items: center; background: var(--theme-card-bg); padding: 16rpx 24rpx; border-radius: 12rpx; margin-bottom: 12rpx; border: 1rpx solid #ffe4ec;"
+              class="slot-item"
             >
-              <view style="font-weight: 600; color: var(--theme-text);">⏰ {{item.start}}:00 - {{item.end}}:00</view>
-              <view style="color: var(--theme-primary); font-size: 24rpx; padding: 4rpx 12rpx;" data-index="{{index}}" bindtap="removeTimeSlot">删除</view>
+              <view class="slot-text">⏰ {{item.start}}:00 - {{item.end}}:00</view>
+              <view class="del-btn" data-index="{{index}}" bindtap="removeTimeSlot">删除</view>
             </view>
           </view>
-          <view style="color: var(--theme-muted); font-size: 26rpx; text-align: center; padding: 20rpx 0;" wx:else>
+          <view class="empty-slot" wx:else>
             {{weekdays[activeDay - 1].label}} 暂未添加可预约时间段（不接单）
           </view>
 
           <!-- 添加时间段控件 -->
-          <view style="margin-top: 20rpx; padding-top: 20rpx; border-top: 2rpx dashed #ffd1dc; display: flex; align-items: center; gap: 12rpx;">
-            <text style="font-size: 26rpx; color: #555;">添加区间：</text>
+          <view class="add-slot-row">
+            <text class="label">添加区间：</text>
             <picker mode="selector" range="{{hourLabels}}" value="{{startHourIndex}}" bindchange="bindStartHourChange">
-              <view style="background: var(--theme-card-bg); padding: 10rpx 20rpx; border-radius: 10rpx; border: 1rpx solid #ddd; font-size: 26rpx;">{{startHourIndex}}:00</view>
+              <view class="picker-box">{{startHourIndex}}:00</view>
             </picker>
-            <text style="color: var(--theme-muted);">至</text>
+            <text class="to-text">至</text>
             <picker mode="selector" range="{{hourLabels}}" value="{{endHourIndex}}" bindchange="bindEndHourChange">
-              <view style="background: var(--theme-card-bg); padding: 10rpx 20rpx; border-radius: 10rpx; border: 1rpx solid #ddd; font-size: 26rpx;">{{endHourIndex}}:00</view>
+              <view class="picker-box">{{endHourIndex}}:00</view>
             </picker>
-            <button size="mini" style="background: var(--theme-primary); color: #fff; border-radius: 30rpx; margin: 0; font-size: 24rpx; padding: 0 20rpx;" bindtap="addTimeSlot">+ 添加</button>
+            <button class="add-btn" bindtap="addTimeSlot">+ 添加</button>
           </view>
         </view>
       </view>
 
       <view class="config-modal-footer">
-        <button class="ghost config-footer-btn" bindtap="closeConfigModal">取消</button>
-        <button class="primary config-footer-btn" bindtap="saveConfig">保存接单配置</button>
+        <button class="ghost-btn config-footer-btn" bindtap="closeConfigModal">取消</button>
+        <button class="primary-btn config-footer-btn" bindtap="saveConfig">保存接单配置</button>
       </view>
     </view>
   </view>
 
-  <view class="bottom-nav" wx:if="{{!showConfigModal}}">
-    <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>工作台</view></view>
-    <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon">☷</view><view>任务</view></view>
-    <view class="nav-item" data-url="/pages/staff/messages/index" bindtap="go"><view class="nav-icon">信<view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
-    <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon">☑</view><view>认证</view></view>
-    <view class="nav-item active"><view class="nav-icon">♙</view><view>我的</view></view>
+  <view class="bottom-nav staff-bottom-nav" wx:if="{{!showConfigModal}}">
+    <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>工作台</view></view>
+    <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>任务</view></view>
+    <view class="nav-item" data-url="/pages/staff/messages/index" bindtap="go"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
+    <view class="nav-item" data-url="/pages/staff/certification/index" bindtap="go"><view class="nav-icon remix-icon ri-checkbox-circle-line"></view><view>认证</view></view>
+    <view class="nav-item active"><view class="nav-icon remix-icon ri-user-3-fill"></view><view>我的</view></view>
   </view>
 </view>

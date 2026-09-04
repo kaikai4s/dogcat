@@ -1,1 +1,205 @@
-.page { padding-bottom: 40rpx; }
+/* Staff incidents list - Cute Pet Style UI redesign */
+.staff-incidents-page {
+  min-height: 100vh;
+  padding: 0 28rpx 100rpx;
+  background: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
+  color: #2d211a;
+  box-sizing: border-box;
+}
+
+.staff-hero {
+  margin: 0 -28rpx 24rpx;
+  padding: 42rpx 34rpx 38rpx;
+  border-bottom-left-radius: 48rpx;
+  border-bottom-right-radius: 48rpx;
+  background: linear-gradient(135deg, #fff1f2 0%, #ffd9c8 54%, #fff5f0 100%);
+  box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  color: #be123c;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 24rpx;
+  font-weight: 850;
+  margin-bottom: 16rpx;
+}
+
+.hero-icon { font-size: 28rpx; }
+
+.hero-title {
+  color: #2d211a;
+  font-size: 40rpx;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.hero-desc {
+  margin-top: 12rpx;
+  color: #7a6a5e;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.status-tabs {
+  white-space: nowrap;
+  margin: 8rpx 0 24rpx;
+}
+
+.status-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 128rpx;
+  height: 64rpx;
+  padding: 0 24rpx;
+  margin-right: 14rpx;
+  border-radius: 999rpx;
+  background: #ffffff;
+  color: #7a6a5e;
+  font-size: 26rpx;
+  font-weight: 850;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  box-shadow: 0 8rpx 20rpx rgba(123, 89, 62, 0.04);
+}
+
+.status-tab.active {
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.card {
+  margin-top: 18rpx;
+  padding: 26rpx;
+  border-radius: 34rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+  box-shadow: 0 12rpx 32rpx rgba(123, 89, 62, 0.06);
+}
+
+.incident-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.incident-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.incident-title {
+  color: #2d211a;
+  font-size: 30rpx;
+  font-weight: 950;
+  line-height: 1.3;
+}
+
+.incident-desc {
+  margin-top: 8rpx;
+  color: #7a6a5e;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.incident-meta {
+  margin-top: 8rpx;
+  color: #8e8580;
+  font-size: 22rpx;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 850;
+}
+
+.badge.pink {
+  background: #ffebe6;
+  color: #e9672f;
+}
+
+.chip-row {
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+  margin-top: 18rpx;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  background: #f7f3ee;
+  color: #7a6a5e;
+  font-size: 22rpx;
+  font-weight: 850;
+}
+
+.chip.warning {
+  background: #fff4f7;
+  color: #be123c;
+}
+
+.empty-state {
+  margin-top: 80rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #8e8580;
+}
+
+.empty-icon {
+  font-size: 110rpx;
+  color: #e2d9d2;
+}
+
+.empty-title {
+  margin-top: 18rpx;
+  color: #2d211a;
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.empty-desc {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+}
+
+.ghost-btn {
+  min-height: 76rpx;
+  border-radius: 24rpx;
+  background: #fff0e2;
+  color: #7a6a5e;
+  font-size: 26rpx;
+  font-weight: 850;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  line-height: 1;
+}
+
+.empty-btn {
+  margin-top: 24rpx;
+  padding: 0 34rpx;
+}
+
+.load-tip {
+  text-align: center;
+  padding: 28rpx 0;
+  color: #8e8580;
+  font-size: 24rpx;
+}

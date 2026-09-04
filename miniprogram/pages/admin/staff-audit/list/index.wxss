@@ -1,1 +1,77 @@
-/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+@import "../../orders/list/index.wxss";
+
+.admin-audit-page {
+  min-height: 100vh;
+  padding: 0 28rpx 178rpx;
+  background: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
+  color: #2d211a;
+  box-sizing: border-box;
+}
+
+.audit-hero {
+  margin: 0 -28rpx 24rpx;
+  padding: 42rpx 34rpx 38rpx;
+  border-bottom-left-radius: 48rpx;
+  border-bottom-right-radius: 48rpx;
+  background: linear-gradient(135deg, #fff0c9 0%, #ffd9c8 54%, #fff5f0 100%);
+  box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
+}
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 18rpx;
+  padding: 0 22rpx;
+  height: 76rpx;
+  border-radius: 999rpx;
+  background: #fffdf9;
+  border: 1rpx solid rgba(255, 153, 102, 0.14);
+}
+
+.search-field .remix-icon { color: #e9672f; font-size: 30rpx; }
+.search-field input { flex: 1; color: #2d211a; font-size: 26rpx; }
+
+.audit-main {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+
+.audit-avatar {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e9672f;
+  background: #fff0e2;
+  font-size: 42rpx;
+}
+
+.audit-info { flex: 1; min-width: 0; }
+
+.empty-state {
+  margin: 40rpx 0;
+  padding: 54rpx 28rpx;
+  border-radius: 36rpx;
+  background: #ffffff;
+  color: #8e8580;
+  text-align: center;
+  box-shadow: 0 14rpx 34rpx rgba(123, 89, 62, 0.06);
+}
+
+.empty-icon {
+  display: block;
+  margin-bottom: 14rpx;
+  color: #ffb86c;
+  font-size: 78rpx;
+}
+
+.load-tip {
+  padding: 24rpx 0;
+  color: #8e8580;
+  font-size: 24rpx;
+  text-align: center;
+}

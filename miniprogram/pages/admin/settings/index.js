@@ -78,6 +78,14 @@ function normalizeCustomerServiceConfig(customerService = {}) {
   }
 }
 
+function normalizeCheckinShareConfig(checkinShare = {}) {
+  return {
+    title: checkinShare.title || '来签到领福利，补签卡也能拿',
+    imageUrl: checkinShare.imageUrl || '',
+    imageTempUrl: checkinShare.imageUrl && /^https?:\/\//.test(checkinShare.imageUrl) ? checkinShare.imageUrl : ''
+  }
+}
+
 function normalizeCarouselConfig(carousel = {}) {
   const source = carousel || {}
   const rotateIntervalMs = Number(source.rotateIntervalMs || 5000)
@@ -140,6 +148,7 @@ Page({
       subscription: normalizeSubscriptionConfig(),
       reliability: normalizeReliabilityConfig(),
       customerService: normalizeCustomerServiceConfig(),
+      checkinShare: normalizeCheckinShareConfig(),
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig()
     },
@@ -148,6 +157,7 @@ Page({
     editingItem: createEmptyItem(),
     uploadingMedia: false,
     uploadingPoster: false,
+    uploadingCheckinShareImage: false,
     saving: false
   },
 
@@ -165,12 +175,14 @@ Page({
           subscription: normalizeSubscriptionConfig(settings.subscription),
           reliability: normalizeReliabilityConfig(settings.reliability),
           customerService: normalizeCustomerServiceConfig(settings.customerService),
+          checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage)
         }
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized }, () => {
           this.resolveMediaUrls(normalized.homeHeroCarousel.items)
+          this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
         })
       })
       .catch(showError)
@@ -198,6 +210,24 @@ Page({
           posterTempUrl: urlMap[item.posterFileId] || item.posterTempUrl || ''
         }))
         this.setData({ ['settings.homeHeroCarousel.items']: updatedItems })
+      }
+    })
+  },
+
+  resolveCheckinShareImageUrl(imageUrl) {
+    if (!imageUrl) {
+      this.setData({ ['settings.checkinShare.imageTempUrl']: '' })
+      return
+    }
+    if (/^https?:\/\//.test(imageUrl)) {
+      this.setData({ ['settings.checkinShare.imageTempUrl']: imageUrl })
+      return
+    }
+    wx.cloud.getTempFileURL({
+      fileList: [imageUrl],
+      success: (res) => {
+        const file = res.fileList && res.fileList[0]
+        this.setData({ ['settings.checkinShare.imageTempUrl']: (file && file.tempFileURL) || '' })
       }
     })
   },
@@ -256,6 +286,68 @@ Page({
   customerServiceInput(e) {
     const field = e.currentTarget.dataset.field
     this.setData({ [`settings.customerService.${field}`]: e.detail.value })
+  },
+
+  checkinShareInput(e) {
+    const field = e.currentTarget.dataset.field
+    this.setData({ [`settings.checkinShare.${field}`]: e.detail.value })
+  },
+
+  chooseCheckinShareImage() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const file = res.tempFiles && res.tempFiles[0]
+        if (!file || !file.tempFilePath) return
+        const filePath = file.tempFilePath
+        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+        const cloudPath = `checkin_share/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
+
+        this.setData({ uploadingCheckinShareImage: true })
+        wx.showLoading({ title: '上传封面...' })
+        wx.cloud.uploadFile({
+          cloudPath,
+          filePath,
+          success: (upload) => {
+            const fileId = upload.fileID
+            wx.cloud.getTempFileURL({
+              fileList: [fileId],
+              success: (tempRes) => {
+                wx.hideLoading()
+                const tempFile = tempRes.fileList && tempRes.fileList[0]
+                this.setData({
+                  ['settings.checkinShare.imageUrl']: fileId,
+                  ['settings.checkinShare.imageTempUrl']: (tempFile && tempFile.tempFileURL) || filePath,
+                  uploadingCheckinShareImage: false
+                })
+                wx.showToast({ title: '封面上传成功' })
+              },
+              fail: () => {
+                wx.hideLoading()
+                this.setData({
+                  ['settings.checkinShare.imageUrl']: fileId,
+                  ['settings.checkinShare.imageTempUrl']: filePath,
+                  uploadingCheckinShareImage: false
+                })
+                wx.showToast({ title: '封面上传成功' })
+              }
+            })
+          },
+          fail: (err) => {
+            wx.hideLoading()
+            this.setData({ uploadingCheckinShareImage: false })
+            showError(err)
+          }
+        })
+      },
+      fail: (err) => {
+        const errMsg = (err && err.errMsg) || ''
+        if (errMsg.includes('cancel')) return
+        showError(err)
+      }
+    })
   },
 
   toggleOfflineQueue(e) {
@@ -515,6 +607,7 @@ Page({
       sort: Number(item.sort) || 10
     }))
 
+    const checkinShare = this.data.settings.checkinShare || {}
     const payload = {
       enableTestAddressMode: this.data.settings.enableTestAddressMode === true,
       payment: this.data.settings.payment,
@@ -522,6 +615,10 @@ Page({
       subscription: this.data.settings.subscription,
       reliability: this.data.settings.reliability,
       customerService: this.data.settings.customerService,
+      checkinShare: {
+        title: checkinShare.title || '',
+        imageUrl: checkinShare.imageUrl || ''
+      },
       homePage: this.data.settings.homePage,
       homeHeroCarousel: {
         enabled: carousel.enabled === true,
@@ -540,12 +637,14 @@ Page({
           subscription: normalizeSubscriptionConfig(settings.subscription),
           reliability: normalizeReliabilityConfig(settings.reliability),
           customerService: normalizeCustomerServiceConfig(settings.customerService),
+          checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage)
         }
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized, saving: false })
         this.resolveMediaUrls(normalized.homeHeroCarousel.items)
+        this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
         wx.showToast({ title: '设置已保存' })
       })
       .catch((err) => {
