@@ -1,57 +1,62 @@
-<view class="page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="title">订单</view>
+<view class="page order-list-page {{themeClass}} {{fontClass}}">
+  <view class="order-list-hero">
+    <view class="order-list-kicker">我的预约</view>
+    <view class="order-list-title">订单中心</view>
+    <view class="order-list-desc">查看预约进度、服务状态和历史照护记录。</view>
   </view>
 
-  <view class="status-tabs">
+  <scroll-view scroll-x class="status-tabs">
     <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
-  </view>
+  </scroll-view>
 
-  <view class="card interactive order-card" wx:for="{{orders}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
-    <view class="between order-card-head">
-      <view class="order-person">
-        <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-        <view class="order-avatar" wx:else>🐾</view>
-        <view>
-          <view class="strong">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
-          <view class="muted">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
-          <view class="muted">创建时间：{{item.createdAtText || '-'}}</view>
-          <view class="muted">预约时间：{{item.appointmentTimeText || '-'}}</view>
-          <view class="muted">订单金额 ¥{{item.payAmount}}<text wx:if="{{item.discountAmount}}">，已优惠 ¥{{item.discountAmount}}</text></view>
+  <view class="order-list-content">
+    <view class="order-card interactive" wx:for="{{orders}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+      <view class="order-card-head">
+        <view class="order-person">
+          <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+          <view class="order-avatar placeholder" wx:else><view class="remix-icon ri-file-user-line"></view></view>
+          <view class="order-person-main">
+            <view class="order-title">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
+            <view class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+          </view>
         </view>
+        <view class="badge">{{item.statusText}}</view>
       </view>
-      <view class="badge">{{item.statusText}}</view>
-    </view>
-    <view class="chip-row">
-      <view class="chip">安心履约</view>
-      <view class="chip pink">实时打卡</view>
-      <view class="chip blue">服务报告</view>
-    </view>
-  </view>
-
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{loading && orders.length}}">正在加载更多...</view>
-  <view class="muted" style="text-align:center;padding:24rpx 0;" wx:if="{{!loading && orders.length && !hasMore}}">已显示全部订单</view>
-
-  <view class="empty" wx:if="{{!loading && !orders.length}}">
-    <view>暂时还没有订单哦，赶紧给爱宠预约服务吧～</view>
-    <navigator class="primary" url="/pages/client/orders/create/index">去预约</navigator>
-  </view>
-
-  <view class="soft-panel">
-    <view class="between">
-      <view class="row">
-        <view class="action-icon">💬</view>
-        <view class="strong">关注公众号订阅订单信息</view>
+      <view class="order-info-grid">
+        <view><view class="order-label">创建时间</view><view class="order-value">{{item.createdAtText || '-'}}</view></view>
+        <view><view class="order-label">预约时间</view><view class="order-value">{{item.appointmentTimeText || '-'}}</view></view>
+        <view class="amount-cell"><view class="order-label">订单金额</view><view class="order-amount">¥{{item.payAmount}}</view></view>
+        <view wx:if="{{item.discountAmount}}"><view class="order-label">已优惠</view><view class="order-value discount">¥{{item.discountAmount}}</view></view>
       </view>
+      <view class="chip-row">
+        <view class="chip">安心履约</view>
+        <view class="chip pink">实时打卡</view>
+        <view class="chip blue">服务报告</view>
+      </view>
+    </view>
+
+    <view class="list-state" wx:if="{{loading && orders.length}}">正在加载更多...</view>
+    <view class="list-state" wx:if="{{!loading && orders.length && !hasMore}}">已显示全部订单</view>
+
+    <view class="empty order-empty" wx:if="{{!loading && !orders.length}}">
+      <view class="empty-icon remix-icon ri-file-list-3-line"></view>
+      <view class="empty-title">暂时还没有订单</view>
+      <view class="empty-desc">给爱宠预约一次上门照护，轨迹、打卡和报告都会实时记录。</view>
+      <navigator class="primary empty-btn" url="/pages/client/orders/create/index">去预约</navigator>
+    </view>
+
+    <view class="subscribe-card">
+      <view class="remix-icon ri-message-3-line subscribe-icon"></view>
+      <view class="subscribe-main"><view class="strong">关注公众号订阅订单信息</view><view class="muted">服务进度、打卡提醒和优惠消息及时送达。</view></view>
       <view class="badge">立即订阅</view>
     </view>
   </view>
 
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon">⌂</view><view>首页</view></view>
-    <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon">宠</view><view>宠托师</view></view>
-    <view class="nav-item active"><view class="nav-icon">单</view><view>订单</view></view>
-    <view class="nav-item" data-url="/pages/client/messages/index" bindtap="go"><view class="nav-icon">信<view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
-    <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon">我</view><view>我的</view></view>
+  <view class="bottom-nav client-bottom-nav">
+    <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>首页</view></view>
+    <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon remix-icon ri-team-line"></view><view>宠托师</view></view>
+    <view class="nav-item active"><view class="nav-icon remix-icon ri-file-list-3-fill"></view><view>订单</view></view>
+    <view class="nav-item" data-url="/pages/client/messages/index" bindtap="go"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
+    <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
   </view>
 </view>

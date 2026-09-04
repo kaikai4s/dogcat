@@ -1,112 +1,108 @@
-<view class="page dashboard-page {{themeClass}} {{fontClass}}">
-  <!-- 动态轮播 Hero 模式 -->
-  <view class="pet-hero hero-carousel-wrapper" wx:if="{{heroCarouselEnabled && heroSlides.length > 0}}">
-    <view class="hero-top">
-      <view class="hero-location interactive" bindtap="updateLocation">
-        <view class="location-pin">📍</view>
-        <view>
-          <view class="location-name">{{locationName}}</view>
-          <view class="location-tip" wx:if="{{locationTip}}">{{locationTip}}</view>
+<view class="page client-home-page {{themeClass}} {{fontClass}}">
+  <view class="home-hero-section">
+    <view class="home-topbar">
+      <view class="home-location-card interactive" bindtap="updateLocation">
+        <view class="remix-icon ri-map-pin-2-fill"></view>
+        <view class="home-location-text">
+          <view class="home-location-name">{{locationName}}</view>
+          <view class="home-location-tip" wx:if="{{locationTip}}">{{locationTip}}</view>
         </view>
-        <view class="location-arrow">⌄</view>
+        <view class="remix-icon ri-arrow-down-s-line"></view>
       </view>
+      <view class="home-top-badge">上门宠护</view>
     </view>
 
-    <swiper class="hero-swiper" autoplay="{{heroAutoplay}}" interval="{{heroRotateInterval}}" circular="{{true}}" previous-margin="50rpx" next-margin="50rpx" bindchange="onSwiperChange">
-      <swiper-item wx:for="{{heroSlides}}" wx:key="id" class="hero-swiper-item">
-        <view class="slide-media-container {{index === heroCurrent ? 'active-slide' : 'inactive-slide'}}">
-          <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="scaleToFill" class="slide-image" data-item="{{item}}" bindtap="previewHeroMedia" />
-          <view wx:else class="slide-video-box">
-            <view wx:if="{{heroPlayingVideoId !== item.id}}" class="video-poster-wrapper" data-id="{{item.id}}" data-item="{{item}}" bindtap="previewHeroMedia">
-              <image src="{{item.posterUrl || item.url}}" mode="scaleToFill" class="slide-image" />
-              <view class="video-play-overlay"><view class="play-icon-btn">▶</view></view>
+    <view class="hero-media-card" wx:if="{{heroCarouselEnabled && heroSlides.length > 0}}">
+      <swiper class="hero-swiper" autoplay="{{heroAutoplay}}" interval="{{heroRotateInterval}}" circular="{{true}}" previous-margin="0rpx" next-margin="0rpx" bindchange="onSwiperChange">
+        <swiper-item wx:for="{{heroSlides}}" wx:key="id" class="hero-swiper-item">
+          <view class="hero-slide {{index === heroCurrent ? 'is-active' : 'is-muted'}}">
+            <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="scaleToFill" class="hero-slide-media" data-item="{{item}}" bindtap="previewHeroMedia" />
+            <view wx:else class="hero-slide-video">
+              <view wx:if="{{heroPlayingVideoId !== item.id}}" class="hero-video-poster" data-id="{{item.id}}" data-item="{{item}}" bindtap="previewHeroMedia">
+                <image src="{{item.posterUrl || item.url}}" mode="scaleToFill" class="hero-slide-media" />
+                <view class="hero-play-mask"><view class="remix-icon ri-play-circle-fill hero-play-icon"></view></view>
+              </view>
+              <video wx:else id="hero_video_{{item.id}}" src="{{item.url}}" poster="{{item.posterUrl}}" controls="{{true}}" autoplay="{{true}}" show-fullscreen-btn="{{false}}" class="hero-slide-media" data-id="{{item.id}}" bindpause="onVideoPauseOrEnded" bindended="onVideoPauseOrEnded" />
             </view>
-            <video wx:else id="hero_video_{{item.id}}" src="{{item.url}}" poster="{{item.posterUrl}}" controls="{{true}}" autoplay="{{true}}" show-fullscreen-btn="{{false}}" class="slide-video" data-id="{{item.id}}" bindpause="onVideoPauseOrEnded" bindended="onVideoPauseOrEnded" />
+            <view class="hero-copy-layer">
+              <view class="hero-kicker" wx:if="{{item.title}}">{{item.title}}</view>
+              <view class="hero-subtitle" wx:if="{{item.subtitle}}">{{item.subtitle}}</view>
+            </view>
           </view>
-          <view class="slide-overlay-content">
-            <view class="hero-kicker" wx:if="{{item.title}}">{{item.title}}</view>
-            <view class="hero-subtitle" wx:if="{{item.subtitle}}">{{item.subtitle}}</view>
-          </view>
-        </view>
-      </swiper-item>
-    </swiper>
-
-    <view class="carousel-dots" wx:if="{{heroSlides.length > 1}}">
-      <view wx:for="{{heroSlides}}" wx:key="id" class="dot-item {{index === heroCurrent ? 'active' : ''}}" />
-    </view>
-  </view>
-
-  <!-- 静态降级 Hero 模式 -->
-  <view class="pet-hero" wx:else>
-    <view class="hero-top">
-      <view class="hero-location interactive" bindtap="updateLocation">
-        <view class="location-pin">📍</view>
-        <view>
-          <view class="location-name">{{locationName}}</view>
-          <view class="location-tip" wx:if="{{locationTip}}">{{locationTip}}</view>
-        </view>
-        <view class="location-arrow">⌄</view>
+        </swiper-item>
+      </swiper>
+      <view class="carousel-dots" wx:if="{{heroSlides.length > 1}}">
+        <view wx:for="{{heroSlides}}" wx:key="id" class="dot-item {{index === heroCurrent ? 'active' : ''}}" />
       </view>
     </view>
-    <view class="hero-kicker">高信任上门宠护</view>
-    <view class="hero-title">上门喂猫 / 遛狗 / 陪伴照护</view>
-    <view class="hero-subtitle">查看附近宠托师，服务轨迹和关键打卡全程可见。</view>
-    <view class="hero-chip">GPS 轨迹 + 实时打卡 + 服务报告</view>
-  </view>
 
-  <!-- 核心 CTA -->
-  <view class="card home-cta-card" wx:if="{{homePage.modules.quickBooking}}">
-    <view class="cta-main">
+    <view class="hero-static-card" wx:else>
+      <view class="hero-static-copy">
+        <view class="hero-kicker">高信任上门宠护</view>
+        <view class="hero-title">上门喂养 / 遛狗 / 陪伴照护</view>
+        <view class="hero-subtitle">查看附近宠托师，服务轨迹和关键打卡全程可见。</view>
+        <view class="hero-chip">GPS 轨迹 + 实时打卡 + 服务报告</view>
+      </view>
+      <view class="hero-pet-illustration"><view class="remix-icon ri-service-fill"></view></view>
+    </view>
+
+    <view class="primary-booking-card" wx:if="{{homePage.modules.quickBooking}}">
       <view>
-        <view class="cta-title">{{homePage.ctaTitle}}</view>
-        <view class="cta-sub">{{homePage.ctaSubtitle}}</view>
+        <view class="primary-booking-title">{{homePage.ctaTitle}}</view>
+        <view class="primary-booking-subtitle">{{homePage.ctaSubtitle}}</view>
       </view>
-      <button class="cta-btn" data-url="/pages/client/orders/create/index" bindtap="goProtected">{{homePage.ctaText}}</button>
+      <button class="primary-booking-btn" data-url="/pages/client/orders/create/index" bindtap="goProtected">{{homePage.ctaText}}</button>
     </view>
   </view>
 
-  <!-- 核心金刚区与快捷入口 -->
-  <view class="hero-services-grid">
-    <view class="hero-service-card pink-theme interactive" data-url="/pages/client/orders/create/index" bindtap="goProtected">
-      <view class="card-text-box"><view class="service-title">上门喂猫</view><view class="service-sub">核心照护 干净卫生</view></view>
-      <view class="service-emoji">🐱</view>
+  <view class="home-section service-entry-section">
+    <view class="section-heading">
+      <view>
+        <view class="section-title">今天需要哪种照护？</view>
+        <view class="section-desc">选择服务后，系统会带你完成预约</view>
+      </view>
     </view>
-    <view class="hero-service-card blue-theme interactive" data-url="/pages/client/orders/create/index" bindtap="goProtected">
-      <view class="card-text-box"><view class="service-title">上门遛狗</view><view class="service-sub">科学遛狗 安全有保障</view></view>
-      <view class="service-emoji">🐶</view>
-    </view>
-  </view>
-
-  <view class="card nav-quick-bar">
-    <view class="quick-nav-item interactive" data-url="/pages/client/sitters/list/index" bindtap="go" wx:if="{{homePage.modules.nearbySitters}}">
-      <view class="nav-icon-box green"><text class="icon-emoji">📍</text></view><text class="nav-label">附近宠托师</text>
-    </view>
-    <view class="quick-nav-item interactive" wx:if="{{staffEntryLoaded}}" bindtap="openStaffEntry">
-      <view class="nav-icon-box pink"><text class="icon-emoji">👩‍🌾</text></view><text class="nav-label">{{staffEntryTitle}}</text>
-    </view>
-    <view class="quick-nav-item interactive" data-url="/pages/client/coupons/list/index" bindtap="goProtected">
-      <view class="nav-icon-box red"><text class="icon-emoji">🧧</text></view><text class="nav-label">优惠券</text>
-    </view>
-    <view class="quick-nav-item interactive" data-url="/pages/client/pets/list/index" bindtap="goProtected">
-      <view class="nav-icon-box purple"><text class="icon-emoji">🐾</text></view><text class="nav-label">宠物档案</text>
-    </view>
-    <view class="quick-nav-item interactive" data-url="/pages/client/home-security/index" bindtap="goProtected">
-      <view class="nav-icon-box orange"><text class="icon-emoji">🏠</text></view><text class="nav-label">家庭安防</text>
+    <view class="service-entry-grid">
+      <view class="service-entry-card cat interactive" data-url="/pages/client/orders/create/index?serviceType=feed" bindtap="goProtected">
+        <view class="service-entry-copy"><view class="service-entry-title">上门喂养</view><view class="service-entry-desc">换粮换水、陪伴全记录</view></view>
+        <view class="remix-icon ri-bowl-fill service-entry-icon"></view>
+      </view>
+      <view class="service-entry-card dog interactive" data-url="/pages/client/orders/create/index?serviceType=walk" bindtap="goProtected">
+        <view class="service-entry-copy"><view class="service-entry-title">上门遛狗</view><view class="service-entry-desc">安全路线，轨迹可追踪</view></view>
+        <view class="remix-icon ri-walk-fill service-entry-icon"></view>
+      </view>
     </view>
   </view>
 
-  <!-- 再次预约 -->
-  <view class="card repeat-card interactive" wx:if="{{homePage.modules.repeatBooking && repeatOrder}}" data-url="/pages/client/orders/create/index" bindtap="goProtected">
-    <view class="card-header between"><text class="header-title">{{homePage.repeatTitle}}</text><text class="header-more">一键复购 ›</text></view>
-    <view class="repeat-row"><view class="repeat-icon">🔁</view><view><view class="strong">{{repeatOrder.petName}} · {{repeatOrder.serviceSummary}}</view><view class="muted">复用历史服务习惯，快速填写预约</view></view></view>
+  <view class="home-section quick-action-panel">
+    <view class="quick-action-item interactive" data-url="/pages/client/sitters/list/index" bindtap="go" wx:if="{{homePage.modules.nearbySitters}}">
+      <view class="remix-icon ri-map-pin-user-fill quick-action-icon green"></view><view class="quick-action-label">附近宠托师</view>
+    </view>
+    <view class="quick-action-item interactive" wx:if="{{staffEntryLoaded}}" bindtap="openStaffEntry">
+      <view class="remix-icon ri-shield-user-fill quick-action-icon peach"></view><view class="quick-action-label">{{staffEntryTitle}}</view>
+    </view>
+    <view class="quick-action-item interactive" data-url="/pages/client/coupons/list/index" bindtap="goProtected">
+      <view class="remix-icon ri-coupon-3-fill quick-action-icon orange"></view><view class="quick-action-label">优惠券</view>
+    </view>
+    <view class="quick-action-item interactive" data-url="/pages/client/pets/list/index" bindtap="goProtected">
+      <view class="remix-icon ri-file-user-fill quick-action-icon blue"></view><view class="quick-action-label">宠物档案</view>
+    </view>
+    <view class="quick-action-item interactive" data-url="/pages/client/home-security/index" bindtap="goProtected">
+      <view class="remix-icon ri-shield-keyhole-fill quick-action-icon purple"></view><view class="quick-action-label">家庭安防</view>
+    </view>
   </view>
 
-  <!-- 热门服务卡 -->
-  <view class="card" wx:if="{{homePage.modules.hotServices && servicePrices.length}}">
-    <view class="card-header between"><text class="header-title">热门服务</text><view class="header-more" data-url="/pages/client/orders/create/index" bindtap="goProtected"><text>去下单</text><text class="arrow">›</text></view></view>
+  <view class="home-section repeat-section interactive" wx:if="{{homePage.modules.repeatBooking && repeatOrder}}" data-url="/pages/client/orders/create/index" bindtap="goProtected">
+    <view class="remix-icon ri-restart-fill section-side-icon"></view>
+    <view class="repeat-main"><view class="section-title">{{homePage.repeatTitle}}</view><view class="repeat-title">{{repeatOrder.petName}} · {{repeatOrder.serviceSummary}}</view><view class="section-desc">复用历史服务习惯，快速填写预约</view></view>
+    <view class="section-link">一键复购</view>
+  </view>
+
+  <view class="home-section" wx:if="{{homePage.modules.hotServices && servicePrices.length}}">
+    <view class="section-heading"><view><view class="section-title">热门服务</view><view class="section-desc">按常用项目快速了解价格</view></view><view class="section-link" data-url="/pages/client/orders/create/index" bindtap="goProtected">去下单</view></view>
     <scroll-view scroll-x class="service-scroll">
-      <view class="service-price-card interactive" wx:for="{{servicePrices}}" wx:key="key" data-url="/pages/client/orders/create/index" bindtap="goProtected">
-        <view class="service-price-icon">{{item.icon}}</view>
+      <view class="service-price-card interactive" wx:for="{{servicePrices}}" wx:key="key" data-url="/pages/client/orders/create/index?serviceType={{item.key}}" bindtap="goProtected">
+        <view class="remix-icon ri-price-tag-3-fill service-price-icon"></view>
         <view class="service-price-name">{{item.label}}</view>
         <view class="service-price-desc">{{item.description}}</view>
         <view class="service-price-text">{{item.priceText}}</view>
@@ -114,9 +110,8 @@
     </scroll-view>
   </view>
 
-  <!-- 新人优惠 -->
-  <view class="card coupon-home-card" wx:if="{{homePage.modules.newbieCoupon && coupons.length}}">
-    <view class="card-header between"><text class="header-title">{{homePage.couponTitle}}</text><view class="header-more" data-url="/pages/client/coupons/list/index" bindtap="goProtected"><text>我的券包</text><text class="arrow">›</text></view></view>
+  <view class="home-section coupon-section" wx:if="{{homePage.modules.newbieCoupon && coupons.length}}">
+    <view class="section-heading"><view><view class="section-title">{{homePage.couponTitle}}</view><view class="section-desc">新人专属权益，预约时自动抵扣</view></view><view class="section-link" data-url="/pages/client/coupons/list/index" bindtap="goProtected">我的券包</view></view>
     <view class="coupon-grid">
       <view class="coupon-mini" wx:for="{{coupons}}" wx:key="_id">
         <view class="coupon-tag">{{item.displayTag}}</view>
@@ -128,86 +123,60 @@
     </view>
   </view>
 
-  <!-- 历史服务记录 / 数据看板 -->
-  <view class="card history-stats-card" wx:if="{{homePage.modules.historyStats}}">
-    <view class="card-header between">
-      <text class="header-title">历史服务记录</text>
-      <view class="header-more" data-url="/pages/client/orders/public-list/index" bindtap="go"><text>查看更多服务记录和评价</text><text class="arrow">›</text></view>
-    </view>
-    <view class="stats-three-grid">
-      <view class="stat-box yellow-bg"><view class="stat-icon-circle yellow">✅</view><view class="stat-num yellow-text">{{statsData.completedCount}} <text class="stat-unit">单</text></view><view class="stat-desc">已完成服务</view></view>
-      <view class="stat-box pink-bg"><view class="stat-icon-circle pink">👩‍🌾</view><view class="stat-num pink-text">{{statsData.sitterCount}} <text class="stat-unit">位</text></view><view class="stat-desc">认证宠托师</view></view>
-      <view class="stat-box blue-bg"><view class="stat-icon-circle blue">👥</view><view class="stat-num blue-text">{{statsData.ratingCount}} <text class="stat-unit">次</text></view><view class="stat-desc">家长好评数</view></view>
+  <view class="home-section trust-section" wx:if="{{homePage.modules.historyStats}}">
+    <view class="section-heading"><view><view class="section-title">服务安心指数</view><view class="section-desc">真实服务数据，帮你更放心选择</view></view><view class="section-link" data-url="/pages/client/orders/public-list/index" bindtap="go">查看记录</view></view>
+    <view class="trust-grid">
+      <view class="trust-card"><view class="remix-icon ri-checkbox-circle-fill trust-icon success"></view><view class="trust-num">{{statsData.completedCount}}<text>单</text></view><view class="trust-label">已完成服务</view></view>
+      <view class="trust-card"><view class="remix-icon ri-shield-user-fill trust-icon peach"></view><view class="trust-num">{{statsData.sitterCount}}<text>位</text></view><view class="trust-label">认证宠托师</view></view>
+      <view class="trust-card"><view class="remix-icon ri-star-smile-fill trust-icon blue"></view><view class="trust-num">{{statsData.ratingCount}}<text>次</text></view><view class="trust-label">家长好评</view></view>
     </view>
   </view>
 
-  <!-- 优选宠托师推荐卡片 -->
-  <view class="card sitter-featured-card" wx:if="{{homePage.modules.featuredSitters && featuredSitters.length}}">
-    <view class="card-header between"><text class="header-title">优选宠托师</text><view class="header-more" data-url="/pages/client/sitters/list/index" bindtap="go"><text>查看更多</text><text class="arrow">›</text></view></view>
+  <view class="home-section" wx:if="{{homePage.modules.featuredSitters && featuredSitters.length}}">
+    <view class="section-heading"><view><view class="section-title">优选宠托师</view><view class="section-desc">平台认证，服务资料公开可查</view></view><view class="section-link" data-url="/pages/client/sitters/list/index" bindtap="go">查看更多</view></view>
     <scroll-view scroll-x class="sitter-scroll">
       <view class="sitter-home-card interactive" wx:for="{{featuredSitters}}" wx:key="_id" data-url="/pages/client/sitters/detail/index?id={{item._id}}" bindtap="go">
-        <view class="sitter-avatar-wrapper"><view class="sitter-avatar-emoji">🐱🐶</view></view>
-        <view class="sitter-name-line"><view class="sitter-name">{{item.displayName}}</view><view class="badge featured-badge" wx:if="{{item.isFeatured}}">精选</view></view>
-        <view class="sitter-rating-line"><text class="stars">⭐</text><text class="score">{{item.ratingAverage || '新'}}</text><text class="divider">|</text><text class="count">{{item.reviewCount}}条评价</text></view>
+        <view class="sitter-avatar-wrapper"><image class="sitter-avatar-img" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" /><view class="remix-icon ri-user-smile-fill" wx:else></view></view>
+        <view class="sitter-name-line"><view class="sitter-name">{{item.displayName}}</view><view class="featured-badge" wx:if="{{item.isFeatured}}">精选</view></view>
+        <view class="sitter-rating-line"><text class="stars">★</text><text class="score">{{item.ratingAverage || '新'}}</text><text class="divider">|</text><text class="count">{{item.reviewCount}}条评价</text></view>
         <view class="sitter-bio">{{item.serviceSummary}}</view>
-        <view class="sitter-distance" wx:if="{{item.distanceText}}">📍 {{item.distanceText}}</view>
+        <view class="sitter-distance" wx:if="{{item.distanceText}}"><view class="remix-icon ri-map-pin-2-line"></view>{{item.distanceText}}</view>
       </view>
     </scroll-view>
   </view>
 
-  <!-- 最近完成订单 / 服务履约动态 -->
-  <view class="card recent-order-card" wx:if="{{recentOrders.length}}">
-    <view class="card-header between"><text class="header-title">近期完成订单</text><text class="muted">脱敏展示 · 不含位置</text></view>
-    <view class="recent-order-story interactive" wx:for="{{recentOrders}}" wx:key="_id" data-url="/pages/client/orders/public-detail/index?id={{item._id}}" bindtap="go">
-      <view class="recent-story-head between">
-        <view><view class="strong">{{item.orderTitle}} · {{item.petName}}</view><view class="muted">{{item.startTime || item.completedAt}}</view></view>
-        <view class="badge">{{item.statusText}}</view>
-      </view>
-      <view class="recent-service-line"><text class="service-dot"></text><text>{{item.serviceSummary}}</text></view>
-      <view class="recent-people-grid">
-        <view><view class="muted">宠物主</view><view class="strong">{{item.clientName}}</view></view>
-        <view><view class="muted">宠托师</view><view class="strong">{{item.staffName}}</view></view>
-      </view>
-      <view class="recent-review-box" wx:if="{{item.review}}">
-        <view class="recent-stars">★★★★★ <text>{{item.review.ratingText}}</text></view>
-        <view class="muted" wx:if="{{item.review.content}}">“{{item.review.content}}”</view>
-        <view class="tag-row" wx:if="{{item.review.tags.length}}"><text class="tag-pill yellow-tag" wx:for="{{item.review.tags}}" wx:key="*this">{{item}}</text></view>
-      </view>
-      <view class="recent-checkin-line" wx:if="{{item.checkinCount}}">打卡 {{item.checkinCount}} 次 · {{item.checkinSummary}}</view>
-      <view class="recent-photo-grid" wx:if="{{item.checkinPhotos.length}}">
-        <image class="recent-checkin-photo" wx:for="{{item.checkinPhotos}}" wx:key="_id" src="{{item.mediaFileId}}" mode="aspectFill" />
-      </view>
-      <view class="muted" wx:elif="{{item.checkinPhotosHidden}}">用户已设置隐藏公共展示打卡照片。</view>
-      <view class="recent-more">查看脱敏订单详情 ›</view>
+  <view class="home-section service-flow-section">
+    <view class="section-heading"><view><view class="section-title">服务怎么进行？</view><view class="section-desc">从预约到报告，全程清晰可追踪</view></view><view class="section-link" data-url="/pages/client/orders/create/index" bindtap="goProtected">立即预约</view></view>
+    <view class="service-flow-grid">
+      <view class="service-flow-item"><view class="remix-icon ri-calendar-check-line flow-icon"></view><view class="flow-title">确认需求</view><view class="flow-desc">选择宠物、项目和上门时间</view></view>
+      <view class="service-flow-item"><view class="remix-icon ri-user-star-line flow-icon green"></view><view class="flow-title">宠托师接单</view><view class="flow-desc">公开抢单或指定熟悉宠托师</view></view>
+      <view class="service-flow-item"><view class="remix-icon ri-map-pin-time-line flow-icon blue"></view><view class="flow-title">上门打卡</view><view class="flow-desc">轨迹、照片和关键节点可见</view></view>
+      <view class="service-flow-item"><view class="remix-icon ri-file-list-3-line flow-icon purple"></view><view class="flow-title">服务报告</view><view class="flow-desc">完成后查看照护记录和总结</view></view>
     </view>
   </view>
 
-  <!-- 平台保障 -->
-  <view class="card assurance-card" wx:if="{{homePage.modules.platformAssurance && assuranceItems.length}}">
-    <view class="card-header"><text class="header-title">{{homePage.assuranceTitle}}</text></view>
+  <view class="home-section assurance-section" wx:if="{{homePage.modules.platformAssurance && assuranceItems.length}}">
+    <view class="section-heading"><view><view class="section-title">{{homePage.assuranceTitle}}</view><view class="section-desc">平台把关，让照护更安心</view></view></view>
     <view class="assurance-grid">
-      <view class="assurance-item" wx:for="{{assuranceItems}}" wx:key="title"><view class="assurance-icon">{{item.icon}}</view><view class="assurance-title">{{item.title}}</view><view class="assurance-desc">{{item.desc}}</view></view>
+      <view class="assurance-item" wx:for="{{assuranceItems}}" wx:key="title"><view class="remix-icon ri-verified-badge-fill assurance-icon"></view><view class="assurance-title">{{item.title}}</view><view class="assurance-desc">{{item.desc}}</view></view>
     </view>
   </view>
 
-  <!-- 抽奖活动/福利横幅 -->
-  <view class="card interactive lottery-banner-card" wx:if="{{homePage.modules.lottery && lotteryLoaded && lotteryActivity && !lotteryFloatVisible}}" bindtap="goLottery">
-    <view class="lottery-icon">🎰</view><view class="lottery-info"><view class="lottery-title">{{lotteryActivity.name}}</view><view class="lottery-sub" wx:if="{{lotteryActivity.canDraw}}">今日还有 {{lotteryActivity.remainingDrawCount}} 次抽奖机会</view><view class="lottery-sub" wx:else>每天参与一次，随机赢优惠券</view></view><view class="lottery-btn">去抽奖</view>
+  <view class="lottery-banner-card interactive" wx:if="{{homePage.modules.lottery && lotteryLoaded && lotteryActivity && !lotteryFloatVisible}}" bindtap="goLottery">
+    <view class="remix-icon ri-gift-fill lottery-icon"></view><view class="lottery-info"><view class="lottery-title">{{lotteryActivity.name}}</view><view class="lottery-sub" wx:if="{{lotteryActivity.canDraw}}">今日还有 {{lotteryActivity.remainingDrawCount}} 次抽奖机会</view><view class="lottery-sub" wx:else>每天参与一次，随机赢优惠券</view></view><view class="lottery-btn">去抽奖</view>
   </view>
-
 </view>
 
 <view class="lottery-float-card interactive" wx:if="{{homePage.modules.lottery && lotteryActivity && lotteryFloatVisible}}" bindtap="goLottery">
-  <view class="lottery-float-glow"></view>
-  <view class="lottery-icon">🎰</view>
+  <view class="remix-icon ri-gift-fill lottery-icon"></view>
   <view class="lottery-info"><view class="lottery-title">{{lotteryActivity.name}}</view><view class="lottery-sub" wx:if="{{lotteryActivity.remainingDrawCount !== undefined}}">今日还有 {{lotteryActivity.remainingDrawCount}} 次抽奖机会，点我开奖</view><view class="lottery-sub" wx:else>今日抽奖机会待领取，点我开奖</view></view>
   <view class="lottery-btn">立即抽</view>
 </view>
 
-<view class="bottom-nav">
-  <view class="nav-item active"><view class="nav-icon">⌂</view><view>首页</view></view>
-  <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon">宠</view><view>宠托师</view></view>
-  <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon">单</view><view>订单</view></view>
-  <view class="nav-item" data-url="/pages/client/messages/index" bindtap="goProtected"><view class="nav-icon">信<view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
-  <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon">我</view><view>我的</view></view>
+<view class="bottom-nav client-bottom-nav">
+  <view class="nav-item active"><view class="nav-icon remix-icon ri-home-5-fill"></view><view>首页</view></view>
+  <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon remix-icon ri-team-line"></view><view>宠托师</view></view>
+  <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
+  <view class="nav-item" data-url="/pages/client/messages/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-red-dot" wx:if="{{messageHasUnread}}"></view></view><view>消息</view></view>
+  <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
 </view>

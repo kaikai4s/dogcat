@@ -1,47 +1,51 @@
 <view class="page order-create-page {{themeClass}} {{fontClass}}">
-  <view class="dashboard-header">
-    <view class="badge">立即预约</view>
-    <view class="title">预约上门服务</view>
-    <view class="tip">选择服务项目、上门时间和详细门牌，系统会自动试算价格。</view>
+  <view class="booking-hero">
+    <view class="booking-badge">立即预约</view>
+    <view class="booking-title">安排一次安心上门照护</view>
+    <view class="booking-desc">按步骤确认宠物、服务、地址和入户方式，系统会自动试算价格。</view>
   </view>
 
-
-  <view class="card form-card">
-    <view class="subtitle">发布方式</view>
+  <view class="booking-step-card">
+    <view class="step-head">
+      <view class="step-index">01</view>
+      <view><view class="step-title">发布方式</view><view class="step-desc">选择公开抢单或指定宠托师</view></view>
+    </view>
     <view class="publish-grid">
       <view class="publish-option {{form.publishMode === 'open' ? 'active' : ''}}" data-mode="open" bindtap="choosePublishMode">
+        <view class="remix-icon ri-broadcast-line option-icon"></view>
         <view class="service-title">公开发布抢单</view>
         <view class="service-desc">支付后附近审核通过的宠托师可抢单</view>
       </view>
       <view class="publish-option {{form.publishMode === 'direct' ? 'active' : ''}}" data-mode="direct" bindtap="choosePublishMode">
+        <view class="remix-icon ri-user-star-line option-icon"></view>
         <view class="service-title">指定宠托师接单</view>
         <view class="service-desc">支付后仅指定宠托师可看到并接单</view>
       </view>
     </view>
-    <view class="notice" wx:if="{{form.publishMode === 'direct'}}">
-      <view class="row" style="align-items:center;gap:18rpx;">
-        <image class="order-avatar" wx:if="{{requestedSitter && requestedSitter.avatarUrl}}" src="{{requestedSitter.avatarUrl}}" mode="aspectFill" />
-        <view class="order-avatar" wx:else>🐶</view>
-        <view style="flex:1;">
-          <view class="strong">{{requestedSitter ? requestedSitter.displayName : '还未选择宠托师'}}</view>
-          <view class="muted">{{requestedSitter ? requestedSitter.serviceSummary : '请从宠托师列表选择指定对象'}}</view>
-          <view class="muted" style="font-size:22rpx; color:var(--theme-primary); margin-top:4rpx;" wx:if="{{requestedSitter && requestedSitter.serviceRadiusKm}}">📍 接单范围：{{requestedSitter.serviceRadiusKm}}km 内</view>
-          <view class="muted" style="font-size:22rpx; color:var(--theme-muted); margin-top:2rpx;" wx:if="{{requestedSitter && requestedSitter.weeklyScheduleText}}">⏰ 可预约时间：{{requestedSitter.weeklyScheduleText}}</view>
-        </view>
+    <view class="sitter-summary" wx:if="{{form.publishMode === 'direct'}}">
+      <image class="order-avatar" wx:if="{{requestedSitter && requestedSitter.avatarUrl}}" src="{{requestedSitter.avatarUrl}}" mode="aspectFill" />
+      <view class="order-avatar placeholder" wx:else><view class="remix-icon ri-service-line"></view></view>
+      <view class="sitter-summary-main">
+        <view class="strong">{{requestedSitter ? requestedSitter.displayName : '还未选择宠托师'}}</view>
+        <view class="muted">{{requestedSitter ? requestedSitter.serviceSummary : '请从宠托师列表选择指定对象'}}</view>
+        <view class="sitter-meta" wx:if="{{requestedSitter && requestedSitter.serviceRadiusKm}}">接单范围：{{requestedSitter.serviceRadiusKm}}km 内</view>
+        <view class="sitter-meta muted" wx:if="{{requestedSitter && requestedSitter.weeklyScheduleText}}">可预约时间：{{requestedSitter.weeklyScheduleText}}</view>
       </view>
-      <button class="ghost compact-btn" bindtap="chooseSitter">重新选择宠托师</button>
+      <button class="ghost compact-btn" bindtap="chooseSitter">重新选择</button>
     </view>
+  </view>
 
-    <view class="subtitle">服务对象</view>
+  <view class="booking-step-card">
+    <view class="step-head">
+      <view class="step-index">02</view>
+      <view><view class="step-title">服务对象</view><view class="step-desc">确认今天需要照护的宠物</view></view>
+    </view>
     <view class="pet-selector" wx:if="{{pets.length}}">
       <view class="pet-option {{item.selected ? 'active' : ''}}" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="choosePet">
         <image class="pet-option-avatar" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" />
-        <view class="pet-option-avatar empty" wx:else>🐾</view>
+        <view class="pet-option-avatar empty" wx:else><view class="remix-icon ri-file-user-line"></view></view>
         <view class="pet-option-info">
-          <view class="between pet-option-head">
-            <view class="pet-option-name">{{item.name}}</view>
-            <view class="pet-selected-badge" wx:if="{{item.selected}}">已选择</view>
-          </view>
+          <view class="pet-option-head"><view class="pet-option-name">{{item.name}}</view><view class="pet-selected-badge" wx:if="{{item.selected}}">已选中</view><view class="pet-selected-badge muted-badge" wx:else>可多选</view></view>
           <view class="pet-option-meta">{{item.metaText}}</view>
           <view class="pet-option-hint">{{item.hintText}}</view>
           <view class="chip-row pet-chip-row">
@@ -51,52 +55,78 @@
           </view>
         </view>
       </view>
-      <view class="pet-voice" wx:if="{{selectedPet && petVoiceMessage}}">
-        <view class="pet-voice-label">{{selectedPet.name}}想说</view>
+      <view class="pet-voice" wx:if="{{selectedPets.length && petVoiceMessage}}">
+        <view class="pet-voice-label">{{selectedPetsTitle}}</view>
         <view class="pet-voice-text">“{{petVoiceMessage}}”</view>
       </view>
     </view>
     <view class="pet-empty" wx:else>
-      <view class="pet-empty-icon">🐾</view>
-      <view>
+      <view class="pet-empty-icon"><view class="remix-icon ri-file-user-line"></view></view>
+      <view class="pet-empty-main">
         <view class="strong">请先添加宠物</view>
         <view class="muted">完善宠物头像和档案后，宠托师能更好地照顾它。</view>
       </view>
       <button class="ghost compact-btn" bindtap="addPet">添加宠物</button>
     </view>
+  </view>
 
-    <view class="subtitle">服务项目（可多选）</view>
-    <view class="service-grid">
-      <view class="service-option {{item.selected ? 'active' : ''}}" wx:for="{{serviceOptions}}" wx:key="key" data-key="{{item.key}}" bindtap="toggleService">
-        <view class="service-title">{{item.label}}</view>
-        <view class="service-price">¥{{item.price}} 起</view>
-        <view class="service-desc">{{item.description}}</view>
-      </view>
+  <view class="booking-step-card">
+    <view class="step-head">
+      <view class="step-index">03</view>
+      <view><view class="step-title">服务项目</view><view class="step-desc">上门费固定必选，再选择至少一项照护服务</view></view>
     </view>
+    <block wx:for="{{serviceOptions}}" wx:key="key">
+      <view wx:if="{{item.isVisitFee}}" class="visit-fee-card active" data-key="{{item.key}}" bindtap="toggleService">
+        <view class="remix-icon ri-home-heart-line option-icon"></view>
+        <view class="visit-fee-main">
+          <view class="service-title">{{item.label}}</view>
+          <view class="service-desc">{{item.description}}</view>
+        </view>
+        <view class="visit-fee-side"><view class="fixed-badge">固定必选</view><view class="service-price">¥{{item.price}}</view></view>
+      </view>
+    </block>
+    <view class="business-service-title">选择照护内容</view>
+    <view class="service-grid business-service-grid">
+      <block wx:for="{{serviceOptions}}" wx:key="key">
+        <view wx:if="{{!item.isVisitFee}}" class="service-option {{item.selected ? 'active' : ''}}" data-key="{{item.key}}" bindtap="toggleService">
+          <view class="remix-icon ri-service-line option-icon"></view>
+          <view class="service-title">{{item.label}}</view>
+          <view class="service-price">¥{{item.price}} 起</view>
+          <view class="service-desc">{{item.description}}</view>
+        </view>
+      </block>
+    </view>
+  </view>
 
-    <view class="subtitle">服务地点</view>
+  <view class="booking-step-card">
+    <view class="step-head">
+      <view class="step-index">04</view>
+      <view><view class="step-title">服务地点</view><view class="step-desc">选择常用地址或地图定位</view></view>
+    </view>
     <view class="address-actions">
       <button class="ghost compact-btn" bindtap="chooseSavedAddress">常用地址</button>
       <button class="ghost compact-btn" bindtap="useCurrentLocation">地图选择</button>
     </view>
-    <view class="notice" wx:if="{{locationReady || form.serviceAddress}}">
-      <view class="muted">服务位置</view>
-      <view class="strong">{{form.serviceAddress}}</view>
-      <view class="muted">{{locationTip}}</view>
+    <view class="address-summary" wx:if="{{locationReady || form.serviceAddress}}">
+      <view class="remix-icon ri-map-pin-2-line address-icon"></view>
+      <view><view class="muted">服务位置</view><view class="strong">{{form.serviceAddress}}</view><view class="muted">{{locationTip}}</view></view>
     </view>
     <input placeholder="详细地址（如 3栋2单元18楼）" value="{{form.addressDetail}}" data-field="addressDetail" bindinput="input" />
     <input placeholder="门牌号 / 入户说明（如 1802，门牌朝南）" value="{{form.doorplate}}" data-field="doorplate" bindinput="input" />
-    <view class="between save-row">
-      <view>
-        <view class="strong">保存为常用地址</view>
-        <view class="muted">下次预约自动带入默认地址</view>
-      </view>
+    <view class="save-row">
+      <view><view class="strong">保存为常用地址</view><view class="muted">下次预约自动带入默认地址</view></view>
       <switch checked="{{saveAddress}}" bindchange="toggleSaveAddress" />
     </view>
+  </view>
 
-    <view class="subtitle">家庭安防 / 入户方式</view>
+  <view class="booking-step-card">
+    <view class="step-head">
+      <view class="step-index">05</view>
+      <view><view class="step-title">家庭安防 / 入户方式</view><view class="step-desc">选择宠托师如何安全入户</view></view>
+    </view>
     <view class="service-grid">
       <view class="service-option {{form.lockMethod === item.value ? 'active' : ''}}" wx:for="{{lockMethodOptions}}" wx:key="value" data-value="{{item.value}}" bindtap="chooseLockMethod">
+        <view class="remix-icon ri-shield-keyhole-line option-icon"></view>
         <view class="service-title">{{item.label}}</view>
         <view class="service-desc">{{item.desc}}</view>
       </view>
@@ -112,7 +142,7 @@
       <view class="muted">宠托师到达服务地点后可请求开门，你会收到微信提醒；电话催办由平台客服转接。</view>
     </view>
 
-    <view wx:if="{{form.lockMethod === 'one_time_code'}}">
+    <view class="lock-panel" wx:if="{{form.lockMethod === 'one_time_code'}}">
       <input password placeholder="一次性开门密码（本订单专用）" value="{{form.doorLockCode}}" data-field="doorLockCode" bindinput="input" />
       <view class="picker-grid">
         <picker mode="date" value="{{form.doorLockCodeStartDate}}" bindchange="chooseCodeStartDate"><view class="field">生效日期：{{form.doorLockCodeStartDate}}</view></picker>
@@ -129,9 +159,9 @@
       </view>
     </view>
 
-    <view wx:if="{{form.lockMethod === 'key'}}">
+    <view class="lock-panel" wx:if="{{form.lockMethod === 'key'}}">
       <input placeholder="钥匙放置位置（如门垫下、密码盒位置）" value="{{form.keyLocation}}" data-field="keyLocation" bindinput="input" />
-      <button class="ghost" loading="{{uploadingKeyImage}}" disabled="{{uploadingKeyImage}}" bindtap="chooseKeyImage">上传钥匙位置图片</button>
+      <button class="ghost upload-btn" loading="{{uploadingKeyImage}}" disabled="{{uploadingKeyImage}}" bindtap="chooseKeyImage">上传钥匙位置图片</button>
       <view class="image-list" wx:if="{{form.keyImageFileIds.length}}">
         <view class="image-chip" wx:for="{{form.keyImageFileIds}}" wx:key="*this" data-index="{{index}}" bindtap="removeKeyImage">图片{{index + 1}} · 点击移除</view>
       </view>
@@ -139,15 +169,16 @@
     </view>
 
     <textarea placeholder="入户备注（如敲门说明、安防提示、注意事项）" value="{{form.entryNotes}}" data-field="entryNotes" bindinput="input" />
+  </view>
 
-    <view class="subtitle">服务时间</view>
+  <view class="booking-step-card">
+    <view class="step-head">
+      <view class="step-index">06</view>
+      <view><view class="step-title">服务时间</view><view class="step-desc">确认开始时间和服务时长</view></view>
+    </view>
     <view class="picker-grid">
-      <picker mode="date" value="{{form.startDate}}" start="{{minDate}}" bindchange="chooseDate">
-        <view class="field">日期：{{form.startDate}}</view>
-      </picker>
-      <picker mode="time" value="{{form.startClock}}" start="{{minClock}}" bindchange="chooseClock">
-        <view class="field">开始：{{form.startClock}}</view>
-      </picker>
+      <picker mode="date" value="{{form.startDate}}" start="{{minDate}}" bindchange="chooseDate"><view class="field">日期：{{form.startDate}}</view></picker>
+      <picker mode="time" value="{{form.startClock}}" start="{{minClock}}" bindchange="chooseClock"><view class="field">开始：{{form.startClock}}</view></picker>
     </view>
     <picker range="{{durationOptions}}" range-key="label" value="{{durationIndex}}" bindchange="chooseDuration">
       <view class="field">服务时长：{{durationOptions[durationIndex].label}}</view>
@@ -163,40 +194,31 @@
     </view>
   </view>
 
-  <view class="card interactive" bindtap="chooseCoupon">
-    <view class="between">
-      <view>
-        <view class="strong">优惠券</view>
-        <view class="muted">{{selectedCoupon ? selectedCoupon.name : '自动选择最优优惠券'}}</view>
-      </view>
-      <view class="menu-arrow">›</view>
-    </view>
+  <view class="booking-side-card interactive" bindtap="chooseCoupon">
+    <view class="remix-icon ri-coupon-3-line side-icon"></view>
+    <view class="side-main"><view class="strong">优惠券</view><view class="muted">{{selectedCoupon ? selectedCoupon.name : '自动选择最优优惠券'}}</view></view>
+    <view class="menu-arrow">›</view>
   </view>
 
-  <view class="notice">
-    <view class="strong">下单后你能看到什么？</view>
-    <view class="muted">服务轨迹、关键打卡、服务报告都会在订单详情里持续更新。</view>
+  <view class="booking-side-card trust-note">
+    <view class="remix-icon ri-shield-check-line side-icon"></view>
+    <view><view class="strong">下单后你能看到什么？</view><view class="muted">服务轨迹、关键打卡、服务报告都会在订单详情里持续更新。</view></view>
   </view>
 
-  <button class="ghost" bindtap="quoteOrder">试算价格</button>
-
-  <view class="soft-panel" wx:if="{{quote}}">
-    <view class="between">
-      <view>
-        <view class="muted">预计支付</view>
-        <view class="price">¥{{quote.payAmount}}</view>
-      </view>
+  <view class="quote-card" wx:if="{{quote}}">
+    <view class="quote-head">
+      <view><view class="muted">预计支付</view><view class="price">¥{{quote.payAmount}}</view></view>
       <view class="badge">{{quote.serviceSummary}}</view>
     </view>
     <view class="price-breakdown">
       <view class="info-row"><view class="label">原价</view><view class="value">¥{{quote.amount}}</view></view>
       <view class="info-row" wx:if="{{quote.discountAmount}}"><view class="label">优惠券</view><view class="value">-¥{{quote.discountAmount}}</view></view>
-      <view class="info-row" wx:for="{{quote.priceItems}}" wx:key="key">
-        <view class="label">{{item.label}}</view>
-        <view class="value">¥{{item.price}}</view>
-      </view>
+      <view class="info-row" wx:for="{{quote.priceItems}}" wx:key="key"><view class="label">{{item.label}}</view><view class="value">¥{{item.price}}</view></view>
     </view>
   </view>
 
-  <button class="primary" loading="{{creating}}" disabled="{{creating}}" bindtap="create">{{creating ? '创建中...' : '创建订单'}}</button>
+  <view class="booking-submit-bar">
+    <button class="ghost quote-btn" bindtap="quoteOrder">试算价格</button>
+    <button class="primary create-btn" loading="{{creating}}" disabled="{{creating}}" bindtap="create">{{creating ? '创建中...' : '创建订单'}}</button>
+  </view>
 </view>

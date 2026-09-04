@@ -2,6 +2,23 @@ const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, en
 const { loadMessageUnread } = require('../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
+const VISIT_FEE_SERVICE_KEY = 'visit_fee'
+const RETIRED_SERVICE_KEYS = ['extra_pet']
+
+function normalizeHomeServicePrices(options = []) {
+  return options
+    .filter((item) => item.key !== VISIT_FEE_SERVICE_KEY && !RETIRED_SERVICE_KEYS.includes(item.key) && item.enabled !== false && item.showOnHome === true)
+    .map((item) => {
+      if (item.key === 'walk' && String(item.label || '').includes('上门')) {
+        return { ...item, label: '遛狗服务', price: 39, description: '牵引遛狗、轨迹记录、回家安置', priceText: '¥39起' }
+      }
+      if (item.key === 'feed' && String(item.label || '').includes('上门')) {
+        return { ...item, label: '喂养服务', price: 29, description: '换粮换水、基础陪伴', priceText: '¥29起' }
+      }
+      return item
+    })
+}
+
 const defaultModules = {
   quickBooking: true,
   nearbySitters: true,
@@ -224,7 +241,7 @@ Page({
             ...homePage,
             modules: { ...defaultModules, ...(homePage.modules || {}) }
           },
-          servicePrices: homeData.servicePrices || [],
+          servicePrices: normalizeHomeServicePrices(homeData.servicePrices || []),
           featuredSitters: homeData.featuredSitters || [],
           coupons: homeData.coupons || [],
           repeatOrder: homeData.repeatOrder || null,

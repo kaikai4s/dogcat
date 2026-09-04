@@ -112,7 +112,7 @@ test('api dispatches order createOrder through unified cloud function', async ()
     action: 'createOrder',
     data: {
       petId: 'p1',
-      serviceTypes: ['walk'],
+      serviceTypes: ['visit_fee', 'walk'],
       serviceAddress: '测试地址',
       addressDetail: '3栋2单元',
       doorplate: '1802',
@@ -287,13 +287,13 @@ test('api quoteOrder supports multiple services and price details', async () => 
   const result = await fn.main({
     module: 'order',
     action: 'quoteOrder',
-    data: { petId: 'p1', serviceTypes: ['walk', 'feed'], durationMinutes: 60 }
+    data: { petId: 'p1', serviceTypes: ['visit_fee', 'walk', 'feed'], durationMinutes: 60 }
   })
 
   assert.equal(result.ok, true)
-  assert.equal(result.data.payAmount, 148)
-  assert.equal(result.data.serviceSummary, '上门遛狗、上门喂养')
-  assert.deepEqual(result.data.priceItems.map((item) => item.key), ['walk', 'feed'])
+  assert.equal(result.data.payAmount, 98)
+  assert.equal(result.data.serviceSummary, '上门费、遛狗服务、喂养服务')
+  assert.deepEqual(result.data.priceItems.map((item) => item.key), ['visit_fee', 'walk', 'feed'])
 })
 
 test('api createOrder requires detailed address and doorplate', async () => {
@@ -309,13 +309,14 @@ test('api createOrder requires detailed address and doorplate', async () => {
     action: 'createOrder',
     data: {
       petId: 'p1',
-      serviceTypes: ['feed'],
+      serviceTypes: ['visit_fee', 'feed'],
       serviceAddress: '测试小区',
       startTime: '2099-07-28 10:00',
       endTime: '2099-07-28 11:00',
       durationMinutes: 60
     }
   })
+
 
   assert.equal(result.ok, false)
   assert.equal(result.message, '请填写详细地址')
@@ -330,7 +331,7 @@ test('api createOrder requires bound phone and future start time', async () => {
   const fn = loadCloudFunction('api', db, 'openid_client')
   const baseData = {
     petId: 'p1',
-    serviceTypes: ['feed'],
+    serviceTypes: ['visit_fee', 'feed'],
     serviceAddress: '测试小区',
     addressDetail: '1栋101',
     doorplate: '101',
@@ -362,7 +363,7 @@ test('api createOrder stores compatible and extended service fields', async () =
     action: 'createOrder',
     data: {
       petId: 'p1',
-      serviceTypes: ['feed', 'litter'],
+      serviceTypes: ['visit_fee', 'feed', 'litter'],
       serviceAddress: '测试小区',
       addressDetail: '1栋101',
       doorplate: '101',
@@ -374,8 +375,8 @@ test('api createOrder stores compatible and extended service fields', async () =
 
   assert.equal(result.ok, true)
   assert.equal(result.data.serviceType, 'feed')
-  assert.deepEqual(result.data.serviceTypes, ['feed', 'litter'])
-  assert.equal(result.data.serviceSummary, '上门喂养、清理宠物厕所')
+  assert.deepEqual(result.data.serviceTypes, ['visit_fee', 'feed', 'litter'])
+  assert.equal(result.data.serviceSummary, '上门费、喂养服务、清理宠物厕所')
   assert.equal(result.data.addressDetail, '1栋101')
   assert.equal(result.data.doorplate, '101')
   assert.equal(result.data.contactPhone, '13800000000')
@@ -450,7 +451,7 @@ test('system home page data aggregates public conversion modules', async () => {
       { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }
     ],
     platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { homePage: { ctaTitle: '马上预约', modules: { lottery: false } } } }],
-    service_prices: [{ _id: 'price1', key: 'feed', label: '上门喂养', price: 66, enabled: true, sortOrder: 1, description: '喂粮换水' }],
+    service_prices: [{ _id: 'price1', key: 'feed', label: '喂养服务', price: 66, showOnHome: true, enabled: true, sortOrder: 1, description: '喂粮换水' }],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'approved', serviceCity: '上海', serviceAreas: '浦东', ratingAverage: 4.8, reviewCount: 3, isFeatured: true, featuredAt: '2026-08-01 10:00' }],
     coupon_templates: [{ _id: 'tpl1', name: '新人券', discountAmount: 20, minOrderAmount: 80, enabled: true, sortOrder: 1 }],
     orders: [{ _id: 'o1', orderNo: 'ORDER000001', clientOpenid: 'openid_client', staffProfileId: 'sp1', status: 'completed', serviceSummary: '上门喂养', petName: '豆豆', serviceAddress: '秘密小区', addressLatitude: 31.2, addressLongitude: 121.5, createdAt: '2026-08-01 10:00', completedAt: '2026-08-01 11:00' }],
@@ -842,13 +843,62 @@ test('admin can manage service prices and quote uses configured price', async ()
 
   const listResult = await adminFn.main({ module: 'admin', action: 'listServicePrices' })
   const saveResult = await adminFn.main({ module: 'admin', action: 'saveServicePrice', data: { key: 'feed', price: 88, enabled: true } })
-  const quoteResult = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['feed'], durationMinutes: 60 } })
+  const quoteResult = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['visit_fee', 'feed'], durationMinutes: 60 } })
 
   assert.equal(listResult.ok, true)
   assert.ok(listResult.data.some((item) => item.key === 'walk'))
   assert.equal(saveResult.ok, true)
   assert.equal(quoteResult.ok, true)
-  assert.equal(quoteResult.data.payAmount, 88)
+  assert.equal(quoteResult.data.payAmount, 118)
+  assert.equal(listResult.data.find((item) => item.key === 'walk').extraPetFee, 30)
+  assert.equal(listResult.data.find((item) => item.key === 'walk').extraPetRule, 'dog')
+})
+
+test('admin can configure extra pet fee home visibility and custom services', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }
+    ],
+    pets: [
+      { _id: 'p1', openid: 'openid_client', name: '可乐', species: 'dog', weight: 8 },
+      { _id: 'p2', openid: 'openid_client', name: '豆豆', species: 'dog', weight: 6 }
+    ],
+    service_prices: [],
+    service_checkin_rules: [],
+    admin_operation_logs: [],
+    staff_profiles: [],
+    coupon_templates: [],
+    orders: [],
+    user_coupons: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const saveWalk = await adminFn.main({ module: 'admin', action: 'saveServicePrice', data: { key: 'walk', label: '遛狗服务', price: 39, extraPetFee: 45, extraPetRule: 'dog', showOnHome: false, enabled: true } })
+  const quote = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petIds: ['p1', 'p2'], serviceTypes: ['visit_fee', 'walk'], durationMinutes: 60 } })
+  const home = await clientFn.main({ module: 'system', action: 'getHomePageData', data: {} })
+  const showWalkOnHome = await adminFn.main({ module: 'admin', action: 'saveServicePrice', data: { key: 'walk', label: '遛狗服务', price: 39, extraPetFee: 45, extraPetRule: 'dog', showOnHome: true, enabled: true } })
+  const listAfterShowOnHome = await adminFn.main({ module: 'admin', action: 'listServicePrices' })
+  const custom = await adminFn.main({ module: 'admin', action: 'saveServicePrice', data: { key: 'grooming', label: '洗护服务', price: 66, extraPetFee: 12, extraPetRule: 'all', showOnHome: true, enabled: true, sortOrder: 80, description: '基础洗护' } })
+  const rules = await adminFn.main({ module: 'admin', action: 'saveServiceCheckinRules', data: { rules: [{ serviceType: 'grooming', eventType: 'pet_status', required: true, enabled: true, sortOrder: 10 }] } })
+  const deleted = await adminFn.main({ module: 'admin', action: 'deleteServicePrice', data: { key: 'grooming' } })
+
+  assert.equal(saveWalk.ok, true)
+  assert.equal(quote.ok, true)
+  assert.equal(quote.data.payAmount, 114)
+  assert.equal(home.ok, true)
+  assert.equal(home.data.servicePrices.some((item) => item.key === 'walk'), false)
+  assert.equal(showWalkOnHome.ok, true)
+  assert.equal(showWalkOnHome.data.showOnHome, true)
+  assert.equal(listAfterShowOnHome.ok, true)
+  assert.equal(listAfterShowOnHome.data.find((item) => item.key === 'walk').showOnHome, true)
+  assert.equal(custom.ok, true)
+  assert.equal(custom.data.extraPetFee, 12)
+  assert.equal(rules.ok, true)
+  assert.equal(rules.data.some((item) => item.serviceType === 'grooming'), true)
+  assert.equal(deleted.ok, true)
+  assert.equal(deleted.data.some((item) => item.key === 'grooming'), false)
 })
 
 test('non-admin cannot save service prices', async () => {
@@ -1081,7 +1131,7 @@ test('createOrder defaults to open publish mode', async () => {
     action: 'createOrder',
     data: {
       petId: 'p1',
-      serviceTypes: ['feed'],
+      serviceTypes: ['visit_fee', 'feed'],
       serviceAddress: '测试小区',
       addressDetail: '1栋101',
       doorplate: '101',
@@ -1115,7 +1165,7 @@ test('direct createOrder requires approved sitter and keeps requested staff afte
   const fn = loadCloudFunction('api', db, 'openid_client')
   const baseData = {
     petId: 'p1',
-    serviceTypes: ['feed'],
+    serviceTypes: ['visit_fee', 'feed'],
     serviceAddress: '测试小区',
     addressDetail: '1栋101',
     doorplate: '101',
@@ -1415,7 +1465,7 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
   const clientFn = loadCloudFunction('api', db, 'openid_client')
   const staffFn = loadCloudFunction('api', db, 'openid_staff')
 
-  const created = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: 'p1', serviceTypes: ['feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
+  const created = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: 'p1', serviceTypes: ['visit_fee', 'feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: created.data._id } })
   await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: created.data._id } })
   await staffFn.main({ module: 'order', action: 'requestEarlyStart', data: { orderId: created.data._id, reason: '测试提前开始' } })
@@ -1447,7 +1497,7 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
     home_security: [],
     user_addresses: [],
     staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', realName: '王小花', auditStatus: 'approved', serviceCity: '上海', serviceAddress: '服务点', serviceLatitude: 31.2, serviceLongitude: 121.5 }],
-    service_prices: [{ _id: 'price1', key: 'feed', label: '上门喂养', price: 100, enabled: true, sortOrder: 1 }],
+    service_prices: [{ _id: 'price1', key: 'feed', label: '喂养服务', price: 70, enabled: true, sortOrder: 1 }],
     orders: [],
     payments: [],
     refunds: [],
@@ -1476,8 +1526,8 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   const pet = await clientFn.main({ module: 'pet', action: 'createPet', data: { name: '可乐', species: 'dog', breed: '柯基', weight: 10, avatarFileId: 'cloud://pet.jpg' } })
   const address = await clientFn.main({ module: 'client', action: 'saveAddress', data: { label: '家', serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', latitude: 31.21, longitude: 121.49, isDefault: true } })
   const security = await clientFn.main({ module: 'homeSecurity', action: 'saveHomeSecurity', data: { doorLockCode: '123456', keyLocation: '门垫下', entryNotes: '轻声进门' } })
-  const directOrder = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: pet.data._id, serviceTypes: ['feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.49, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60, publishMode: 'direct', staffProfileId: 'sp1', saveAddress: true } })
-  const openOrder = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: pet.data._id, serviceTypes: ['feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '102', addressLatitude: 31.21, addressLongitude: 121.49, startTime: '2099-07-29 10:00', endTime: '2099-07-29 11:00', durationMinutes: 60, publishMode: 'open' } })
+  const directOrder = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: pet.data._id, serviceTypes: ['visit_fee', 'feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.49, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60, publishMode: 'direct', staffProfileId: 'sp1', saveAddress: true } })
+  const openOrder = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: pet.data._id, serviceTypes: ['visit_fee', 'feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.49, startTime: '2099-07-29 10:00', endTime: '2099-07-29 11:00', durationMinutes: 60, publishMode: 'open' } })
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: directOrder.data._id } })
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: openOrder.data._id } })
   const openAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: openOrder.data._id } })
@@ -1557,18 +1607,18 @@ test('coupon quote auto applies best available coupon', async () => {
     users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
     user_coupons: [
-      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 80, applicableServiceTypes: [] } },
-      { _id: 'c2', openid: 'openid_client', userId: 'u1', templateId: 't2', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减10', type: 'fixed', discountAmount: 10, minOrderAmount: 80, applicableServiceTypes: [] } }
+      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 50, applicableServiceTypes: [] } },
+      { _id: 'c2', openid: 'openid_client', userId: 'u1', templateId: 't2', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减10', type: 'fixed', discountAmount: 10, minOrderAmount: 50, applicableServiceTypes: [] } }
     ]
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
 
-  const result = await fn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['walk'], durationMinutes: 60, autoApplyCoupon: true } })
+  const result = await fn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['visit_fee', 'walk'], durationMinutes: 60, autoApplyCoupon: true } })
 
   assert.equal(result.ok, true)
-  assert.equal(result.data.amount, 89)
+  assert.equal(result.data.amount, 69)
   assert.equal(result.data.discountAmount, 20)
-  assert.equal(result.data.payAmount, 69)
+  assert.equal(result.data.payAmount, 49)
   assert.equal(result.data.coupon.couponId, 'c1')
   assert.equal(result.data.priceItems.some((item) => item.key === 'coupon' && item.price === -20), true)
 })
@@ -1583,8 +1633,8 @@ test('coupon quote rejects explicit inapplicable coupon but auto apply ignores i
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
 
-  const explicit = await fn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['feed'], durationMinutes: 60, couponId: 'c1' } })
-  const auto = await fn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['feed'], durationMinutes: 60, autoApplyCoupon: true } })
+  const explicit = await fn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['visit_fee', 'feed'], durationMinutes: 60, couponId: 'c1' } })
+  const auto = await fn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['visit_fee', 'feed'], durationMinutes: 60, autoApplyCoupon: true } })
 
   assert.equal(explicit.ok, false)
   assert.equal(explicit.message, '订单满 ¥200 可用')
@@ -1599,20 +1649,21 @@ test('coupon create order locks coupon and prevents reuse', async () => {
     pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
     orders: [],
     user_coupons: [
-      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 80, applicableServiceTypes: [] } }
+      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满50减20', type: 'fixed', discountAmount: 20, minOrderAmount: 50, applicableServiceTypes: [] } }
     ],
     order_timeline: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
-  const data = { petId: 'p1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋101', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60, couponId: 'c1' }
+  const data = { petId: 'p1', serviceTypes: ['visit_fee', 'walk'], serviceAddress: '测试地址', addressDetail: '1栋101', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60, couponId: 'c1' }
 
   const created = await fn.main({ module: 'order', action: 'createOrder', data })
   const reused = await fn.main({ module: 'order', action: 'createOrder', data })
 
   assert.equal(created.ok, true)
-  assert.equal(created.data.amount, 89)
+  assert.equal(created.data.amount, 69)
   assert.equal(created.data.discountAmount, 20)
-  assert.equal(created.data.payAmount, 69)
+
+  assert.equal(created.data.payAmount, 49)
   assert.equal(created.data.couponId, 'c1')
   assert.equal(db.state.user_coupons[0].status, 'locked')
   assert.equal(db.state.user_coupons[0].lockedOrderId, created.data._id)
@@ -2052,13 +2103,13 @@ test('coupon payment marks coupon used and cancel unpaid releases coupon', async
     orders: [],
     payments: [],
     user_coupons: [
-      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 80, applicableServiceTypes: [] } },
-      { _id: 'c2', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 80, applicableServiceTypes: [] } }
+      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 50, applicableServiceTypes: [] } },
+      { _id: 'c2', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 50, applicableServiceTypes: [] } }
     ],
     order_timeline: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
-  const base = { petId: 'p1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋101', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 }
+  const base = { petId: 'p1', serviceTypes: ['visit_fee', 'walk'], serviceAddress: '测试地址', addressDetail: '1栋101', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 }
 
   const paidOrder = await fn.main({ module: 'order', action: 'createOrder', data: { ...base, couponId: 'c1' } })
   const paid = await fn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: paidOrder.data._id } })
@@ -2066,7 +2117,7 @@ test('coupon payment marks coupon used and cancel unpaid releases coupon', async
   const cancelled = await fn.main({ module: 'order', action: 'cancelOrder', data: { orderId: cancelOrder.data._id, reason: '暂不需要' } })
 
   assert.equal(paid.ok, true)
-  assert.equal(db.state.payments[0].amount, 69)
+  assert.equal(db.state.payments[0].amount, 49)
   assert.equal(db.state.user_coupons.find((item) => item._id === 'c1').status, 'used')
   assert.equal(cancelled.ok, true)
   assert.equal(db.state.user_coupons.find((item) => item._id === 'c2').status, 'available')
@@ -2369,9 +2420,9 @@ test('staff schedule exceptions and order conflicts block unavailable slots', as
   const clientFn = loadCloudFunction('api', db, 'openid_client')
 
   const rest = await staffFn.main({ module: 'staff', action: 'saveScheduleException', data: { dateKey: '2099-07-28', status: 'unavailable', remark: '休息' } })
-  const blocked = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'pet1', publishMode: 'direct', staffProfileId: 'sp1', serviceTypes: ['walk'], addressLatitude: 31.21, addressLongitude: 121.51, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
+  const blocked = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'pet1', publishMode: 'direct', staffProfileId: 'sp1', serviceTypes: ['visit_fee', 'walk'], addressLatitude: 31.21, addressLongitude: 121.51, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
   const available = await staffFn.main({ module: 'staff', action: 'saveScheduleException', data: { dateKey: '2099-07-28', status: 'available', slots: [{ start: 10, end: 12 }] } })
-  const order = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: 'pet1', publishMode: 'direct', staffProfileId: 'sp1', serviceTypes: ['walk'], serviceAddress: '测试地址', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.51, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
+  const order = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: 'pet1', publishMode: 'direct', staffProfileId: 'sp1', serviceTypes: ['visit_fee', 'walk'], serviceAddress: '测试地址', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.51, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
   db.state.orders.push({ _id: 'busy1', clientOpenid: 'other_client', staffOpenid: 'openid_staff', staffProfileId: 'sp1', status: 'assigned', startTime: '2099-07-28 10:30', endTime: '2099-07-28 11:30' })
   db.state.orders.push({ _id: 'open1', clientOpenid: 'openid_client', status: 'paid', startTime: '2099-07-28 11:00', endTime: '2099-07-28 12:00' })
   const conflict = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'open1' } })
@@ -2544,7 +2595,7 @@ test('admin can save rich member level and coupon template settings', async () =
   const fn = loadCloudFunction('api', db, 'openid_admin')
 
   const level = await fn.main({ module: 'admin', action: 'saveMemberLevel', data: { name: '钻石会员', badgeTag: 'VIP-DIAMOND', nameColor: '#b87333', nameEffect: 'purple_neon', badgeStyle: 'bronze', minPoints: 300, pointMultiplier: 3, description: '高阶会员', benefits: ['专属券', '高倍积分'] } })
-  const coupon = await fn.main({ module: 'admin', action: 'saveCouponTemplate', data: { name: '月度券', discountAmount: 20, minOrderAmount: 80, validType: 'fixed_range', validFromFixed: '2026-08-01', validToFixed: '2026-08-31', displayTag: '月度奖励', claimNotice: '限时领取', useNotice: '按规则使用', perUserLimit: 2, enabled: true } })
+  const coupon = await fn.main({ module: 'admin', action: 'saveCouponTemplate', data: { name: '月度券', discountAmount: 20, minOrderAmount: 50, validType: 'fixed_range', validFromFixed: '2026-08-01', validToFixed: '2026-08-31', displayTag: '月度奖励', claimNotice: '限时领取', useNotice: '按规则使用', perUserLimit: 2, enabled: true } })
 
   assert.equal(level.ok, true)
   assert.equal(level.data.badgeTag, 'VIP-DIAM')
@@ -2587,7 +2638,7 @@ test('admin issues coupons by target level ids', async () => {
       { _id: 'level_silver', name: '白银会员', minPoints: 100, pointMultiplier: 1 },
       { _id: 'level_gold', name: '黄金会员', minPoints: 200, pointMultiplier: 2 }
     ],
-    coupon_templates: [{ _id: 'tpl1', name: '月度券', discountAmount: 20, minOrderAmount: 80, validDays: 30, perUserLimit: 1, issuedCount: 0, enabled: true }],
+    coupon_templates: [{ _id: 'tpl1', name: '月度券', discountAmount: 20, minOrderAmount: 50, validDays: 30, perUserLimit: 1, issuedCount: 0, enabled: true }],
     user_coupons: [],
     admin_operation_logs: []
   })
@@ -2613,7 +2664,7 @@ test('admin issueCouponByLevels returns skipped reasons', async () => {
     member_levels: [
       { _id: 'level_silver', name: '银卡会员', minPoints: 10, pointMultiplier: 1 }
     ],
-    coupon_templates: [{ _id: 'tpl1', name: '满80减20', discountAmount: 20, minOrderAmount: 80, validDays: 30, perUserLimit: 1, issuedCount: 1, enabled: true }],
+    coupon_templates: [{ _id: 'tpl1', name: '满80减20', discountAmount: 20, minOrderAmount: 50, validDays: 30, perUserLimit: 1, issuedCount: 1, enabled: true }],
     user_coupons: [{ _id: 'coupon1', templateId: 'tpl1', openid: 'openid_silver_1', status: 'available' }],
     admin_operation_logs: []
   })
@@ -2834,7 +2885,7 @@ test('createOrder enforces sitter weekly schedule and service radius limits', as
       petId: 'p1',
       publishMode: 'direct',
       staffProfileId: 'sitter_1',
-      serviceTypes: ['feed'],
+      serviceTypes: ['visit_fee', 'feed'],
       serviceAddress: '近距离小区',
       addressDetail: '1栋',
       doorplate: '101',
@@ -2856,7 +2907,7 @@ test('createOrder enforces sitter weekly schedule and service radius limits', as
       petId: 'p1',
       publishMode: 'direct',
       staffProfileId: 'sitter_1',
-      serviceTypes: ['feed'],
+      serviceTypes: ['visit_fee', 'feed'],
       serviceAddress: '远距离小区',
       addressDetail: '1栋',
       doorplate: '101',
@@ -2878,7 +2929,7 @@ test('createOrder enforces sitter weekly schedule and service radius limits', as
       petId: 'p1',
       publishMode: 'direct',
       staffProfileId: 'sitter_1',
-      serviceTypes: ['feed'],
+      serviceTypes: ['visit_fee', 'feed'],
       serviceAddress: '合规小区',
       addressDetail: '1栋',
       doorplate: '101',
@@ -2926,7 +2977,7 @@ test('createOrder supports overnight sitter schedule time validation', async () 
       petId: 'p1',
       publishMode: 'direct',
       staffProfileId: 'sitter_overnight',
-      serviceTypes: ['feed'],
+      serviceTypes: ['visit_fee', 'feed'],
       serviceAddress: '合规小区',
       addressDetail: '1栋',
       doorplate: '101',
@@ -2985,7 +3036,7 @@ test('createOrder rejects direct booking when order lacks valid coordinates', as
       petId: 'p1',
       publishMode: 'direct',
       staffProfileId: 'sitter_1',
-      serviceTypes: ['feed'],
+      serviceTypes: ['visit_fee', 'feed'],
       serviceAddress: '无定位小区',
       addressDetail: '1栋',
       doorplate: '101',
@@ -3052,7 +3103,7 @@ test('admin creates incident refund and coupon compensation', async () => {
     payment_events: [],
     subscription_logs: [],
     user_coupons: [],
-    coupon_templates: [{ _id: 'tpl1', name: '补偿券', discountAmount: 20, minOrderAmount: 80, validDays: 30, perUserLimit: 1, issuedCount: 0, enabled: true }],
+    coupon_templates: [{ _id: 'tpl1', name: '补偿券', discountAmount: 20, minOrderAmount: 50, validDays: 30, perUserLimit: 1, issuedCount: 0, enabled: true }],
     incident_actions: [],
     order_timeline: []
   })

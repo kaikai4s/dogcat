@@ -18,14 +18,18 @@ const collections = [
   'user_feedback'
 ]
 
+const VISIT_FEE_SERVICE_KEY = 'visit_fee'
+const RETIRED_SERVICE_KEYS = new Set(['extra_pet'])
+const EXTRA_PET_RULES = new Set(['none', 'all', 'dog'])
+
 const defaultServicePrices = [
-  { key: 'walk', label: '上门遛狗', price: 69, enabled: true, sortOrder: 10, description: '牵引遛狗、轨迹记录、回家安置' },
-  { key: 'feed', label: '上门喂养', price: 59, enabled: true, sortOrder: 20, description: '换粮换水、基础陪伴' },
-  { key: 'litter', label: '清理宠物厕所', price: 29, enabled: true, sortOrder: 30, description: '猫砂盆/宠物厕所基础清理' },
-  { key: 'play', label: '陪伴玩耍', price: 39, enabled: true, sortOrder: 40, description: '陪伴互动、安抚情绪' },
-  { key: 'medicine', label: '喂药协助', price: 49, enabled: true, sortOrder: 50, description: '按主人说明协助喂药' },
-  { key: 'clean', label: '简单清洁', price: 39, enabled: true, sortOrder: 60, description: '宠物活动区域简单整理' },
-  { key: 'extra_pet', label: '增加一只宠物', price: 20, enabled: true, sortOrder: 70, description: '同地址额外宠物服务' }
+  { key: VISIT_FEE_SERVICE_KEY, label: '上门费', price: 30, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 5, description: '每次上门服务固定收取，包含基础到店与履约保障' },
+  { key: 'walk', label: '遛狗服务', price: 39, extraPetFee: 30, extraPetRule: 'dog', showOnHome: false, enabled: true, sortOrder: 10, description: '牵引遛狗、轨迹记录、回家安置' },
+  { key: 'feed', label: '喂养服务', price: 29, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 20, description: '换粮换水、基础陪伴' },
+  { key: 'litter', label: '清理宠物厕所', price: 29, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 30, description: '猫砂盆/宠物厕所基础清理' },
+  { key: 'play', label: '陪伴玩耍', price: 39, extraPetFee: 15, extraPetRule: 'all', showOnHome: false, enabled: true, sortOrder: 40, description: '陪伴互动、安抚情绪' },
+  { key: 'medicine', label: '喂药协助', price: 49, extraPetFee: 15, extraPetRule: 'all', showOnHome: false, enabled: true, sortOrder: 50, description: '按主人说明协助喂药' },
+  { key: 'clean', label: '简单清洁', price: 39, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 60, description: '宠物活动区域简单整理' }
 ]
 
 const defaultServiceCheckinRules = [
@@ -42,8 +46,7 @@ const defaultServiceCheckinRules = [
   { serviceType: 'litter', eventType: 'clean', required: true, sortOrder: 20 },
   { serviceType: 'play', eventType: 'pet_status', required: true, sortOrder: 20 },
   { serviceType: 'medicine', eventType: 'medicine', required: true, sortOrder: 20 },
-  { serviceType: 'clean', eventType: 'clean', required: true, sortOrder: 20 },
-  { serviceType: 'extra_pet', eventType: 'pet_status', required: false, sortOrder: 60 }
+  { serviceType: 'clean', eventType: 'clean', required: true, sortOrder: 20 }
 ]
 
 function ok(data) { return { ok: true, data } }
@@ -1115,14 +1118,45 @@ function matchText(value, keyword) {
   return String(value || '').toLowerCase().includes(keyword)
 }
 
+function isPresetServiceKey(key) {
+  return defaultServicePrices.some((item) => item.key === key)
+}
+
+function defaultExtraPetFeeForService(key) {
+  if (key === 'walk') return 30
+  if (key === 'play' || key === 'medicine') return 15
+  return 0
+}
+
+function defaultExtraPetRuleForService(key) {
+  if (key === 'walk') return 'dog'
+  if (key === 'play' || key === 'medicine') return 'all'
+  return 'none'
+}
+
+function normalizeExtraPetRule(value, key) {
+  const rule = String(value || '').trim()
+  if (EXTRA_PET_RULES.has(rule)) return rule
+  return defaultExtraPetRuleForService(key)
+}
+
 function normalizeServicePrice(item) {
+  const key = String(item.key || '').trim()
+  const preset = defaultServicePrices.find((presetItem) => presetItem.key === key)
+  const extraPetRule = key === VISIT_FEE_SERVICE_KEY ? 'none' : normalizeExtraPetRule(item.extraPetRule, key)
+  const enabled = item.enabled !== false
+  const showOnHome = key !== VISIT_FEE_SERVICE_KEY && enabled && item.showOnHome === true
   return {
-    key: String(item.key || '').trim(),
+    key,
     label: String(item.label || '').trim(),
     price: Math.max(Number(item.price || 0), 0),
-    enabled: item.enabled !== false,
+    extraPetFee: Math.max(Number(item.extraPetFee !== undefined ? item.extraPetFee : defaultExtraPetFeeForService(key)), 0),
+    extraPetRule,
+    showOnHome,
+    enabled,
     sortOrder: Number(item.sortOrder || 0),
-    description: item.description || ''
+    description: item.description || '',
+    isPreset: Boolean(preset)
   }
 }
 
@@ -1135,16 +1169,20 @@ async function listServicePrices(includeDisabled = false) {
     configured = []
   }
   const configuredMap = configured.reduce((map, item) => ({ ...map, [item.key]: item }), {})
-  const merged = defaultServicePrices.map((item) => normalizeServicePrice({ ...item, ...(configuredMap[item.key] || {}) }))
+  const merged = defaultServicePrices.map((item) => {
+    const configuredItem = configuredMap[item.key] || {}
+    const isLegacyCombinedService = ['walk', 'feed'].includes(item.key) && String(configuredItem.label || '').startsWith('上门')
+    return normalizeServicePrice(isLegacyCombinedService ? { ...configuredItem, label: item.label, price: item.price, description: item.description } : { ...item, ...configuredItem })
+  })
   configured.forEach((item) => {
     if (!defaultServicePrices.some((preset) => preset.key === item.key)) merged.push(normalizeServicePrice(item))
   })
   return merged
-    .filter((item) => item.key && item.label && (includeDisabled || item.enabled))
+    .filter((item) => item.key && item.label && !RETIRED_SERVICE_KEYS.has(item.key) && (includeDisabled || item.enabled))
     .sort((a, b) => a.sortOrder - b.sortOrder)
 }
 
-const serviceIcons = { walk: '🐶', feed: '🐱', litter: '🚽', play: '🧶', medicine: '💊', clean: '🧹', extra_pet: '🐾' }
+const serviceIcons = { visit_fee: '🏠', walk: '🐶', feed: '🐱', litter: '🚽', play: '🧶', medicine: '💊', clean: '🧹' }
 
 async function safeCollectionData(name, builder) {
   try {
@@ -1370,7 +1408,7 @@ async function getHomePageData(openid, data = {}) {
       homeHeroCarousel: settings.homeHeroCarousel,
       homePage: settings.homePage
     },
-    servicePrices: servicePrices.slice(0, 6).map((item) => ({
+    servicePrices: servicePrices.filter((item) => item.key !== VISIT_FEE_SERVICE_KEY && item.enabled !== false && item.showOnHome === true).slice(0, 6).map((item) => ({
       ...item,
       icon: serviceIcons[item.key] || '🐾',
       priceText: `¥${item.price}起`
@@ -1400,7 +1438,56 @@ async function getHomePageData(openid, data = {}) {
 
 function normalizeServiceTypes(data) {
   const raw = Array.isArray(data.serviceTypes) ? data.serviceTypes : [data.serviceType || 'walk']
+  const unique = Array.from(new Set(raw.map((item) => String(item || '').trim()).filter(Boolean)))
+  return unique.includes(VISIT_FEE_SERVICE_KEY) ? [VISIT_FEE_SERVICE_KEY, ...unique.filter((key) => key !== VISIT_FEE_SERVICE_KEY)] : unique
+}
+
+function getBusinessServiceTypes(serviceTypes) {
+  return (serviceTypes || []).filter((key) => key !== VISIT_FEE_SERVICE_KEY)
+}
+
+function validateVisitFeeServices(serviceTypes) {
+  if (serviceTypes.some((key) => RETIRED_SERVICE_KEYS.has(key))) throw new Error('该服务项目已下线')
+  if (!serviceTypes.includes(VISIT_FEE_SERVICE_KEY)) throw new Error('请选择上门费')
+  if (!getBusinessServiceTypes(serviceTypes).length) throw new Error('请选择至少一项照护服务')
+}
+
+function normalizePetIds(data = {}) {
+  const raw = Array.isArray(data.petIds) && data.petIds.length ? data.petIds : [data.petId]
   return Array.from(new Set(raw.map((item) => String(item || '').trim()).filter(Boolean)))
+}
+
+async function getClientPetsByIds(openid, petIds) {
+  if (!petIds.length) throw new Error('请选择宠物')
+  const pets = await Promise.all(petIds.map(async (petId) => {
+    const res = await db.collection('pets').doc(petId).get()
+    if (!res.data || res.data.openid !== openid) throw new Error('宠物不存在')
+    return { ...res.data, _id: res.data._id || petId }
+  }))
+  return pets
+}
+
+function createPetSnapshot(pet = {}) {
+  return {
+    name: pet.name || '',
+    avatarFileId: pet.avatarFileId || '',
+    species: pet.species || '',
+    breed: pet.breed || '',
+    gender: pet.gender || '',
+    birthday: pet.birthday || '',
+    weight: Number(pet.weight || 0),
+    personality: pet.personality || '',
+    favoriteFood: pet.favoriteFood || '',
+    dislikes: pet.dislikes || '',
+    healthNotes: pet.healthNotes || '',
+    specialNotes: pet.specialNotes || ''
+  }
+}
+
+function formatPetSummary(pets = []) {
+  const names = pets.map((pet) => pet.name).filter(Boolean)
+  if (names.length <= 2) return names.join('、') || '宠物'
+  return `${names.slice(0, 2).join('、')}等${names.length}只`
 }
 
 function getWalkPrice(basePrice, weight) {
@@ -1523,21 +1610,45 @@ function applyCouponToPricing(pricing, couponResult) {
 async function calcOrderPricing(data, pet, options = {}) {
   const serviceTypes = normalizeServiceTypes(data)
   if (!serviceTypes.length) throw new Error('请选择服务项目')
+  validateVisitFeeServices(serviceTypes)
+  const pets = Array.isArray(pet) ? pet : (pet ? [pet] : [])
+  const primaryPet = pets[0] || null
+  const petCount = pets.length || normalizePetIds(data).length
+  const dogCount = pets.filter((item) => item.species === 'dog').length
   const catalog = await listServicePrices(false)
   const catalogMap = catalog.reduce((map, item) => ({ ...map, [item.key]: item }), {})
-  const weight = Number((pet && pet.weight) || data.weight || 0)
+  const weight = Number((primaryPet && primaryPet.weight) || data.weight || 0)
   const durationMinutes = Number(data.durationMinutes || 60)
   if (durationMinutes < 30 || durationMinutes > 240) throw new Error('服务时长不正确')
   const multiplier = Math.max(durationMinutes, 60) / 60
-  const priceItems = serviceTypes.map((key) => {
+  const basePriceItems = serviceTypes.map((key) => {
     const item = catalogMap[key]
     if (!item) throw new Error('服务项目不可用')
     const basePrice = key === 'walk' ? getWalkPrice(item.price, weight) : item.price
-    const price = Math.round(basePrice * multiplier)
+    const price = key === VISIT_FEE_SERVICE_KEY ? Math.round(basePrice) : Math.round(basePrice * multiplier)
     return { key, label: item.label, price }
   })
+  const extraPetItems = getBusinessServiceTypes(serviceTypes).map((key) => {
+    const item = catalogMap[key]
+    if (!item || item.extraPetRule === 'none' || !Number(item.extraPetFee || 0)) return null
+    const extraCount = item.extraPetRule === 'dog' ? Math.max(dogCount - 1, 0) : Math.max(petCount - 1, 0)
+    if (!extraCount) return null
+    const price = Math.round(extraCount * Number(item.extraPetFee || 0))
+    return {
+      key: `${key}_extra_pet`,
+      serviceKey: key,
+      label: `${item.label} · 额外${item.extraPetRule === 'dog' ? '狗狗' : '宠物'} x${extraCount}`,
+      price,
+      quantity: extraCount,
+      unitPrice: Number(item.extraPetFee || 0),
+      type: 'extra_pet_fee',
+      extraPetRule: item.extraPetRule
+    }
+  }).filter(Boolean)
+  const priceItems = [...basePriceItems, ...extraPetItems]
   const amount = priceItems.reduce((sum, item) => sum + item.price, 0)
-  const serviceLabels = priceItems.map((item) => item.label)
+  const serviceLabels = basePriceItems.map((item) => item.label)
+  const businessServiceTypes = getBusinessServiceTypes(serviceTypes)
   const basePricing = {
     amount,
     payAmount: amount,
@@ -1545,11 +1656,13 @@ async function calcOrderPricing(data, pet, options = {}) {
     coupon: null,
     currency: 'CNY',
     serviceTypes,
+    businessServiceTypes,
+    primaryServiceType: businessServiceTypes[0],
     serviceLabels,
     serviceSummary: serviceLabels.join('、'),
     durationMinutes,
     priceItems,
-    priceSnapshot: { services: priceItems, durationMinutes, weight, originalAmount: amount, discountAmount: 0, payAmount: amount }
+    priceSnapshot: { services: priceItems, extraPetItems, durationMinutes, weight, petCount, dogCount, originalAmount: amount, discountAmount: 0, payAmount: amount }
   }
   const openid = options.openid || ''
   if (!openid) return basePricing
@@ -1588,10 +1701,10 @@ function requiredCheckins(serviceType, serviceTypes) {
   return Array.from(events)
 }
 
-function normalizeServiceCheckinRule(rule = {}) {
+function normalizeServiceCheckinRule(rule = {}, validServiceKeys = defaultServicePrices.map((item) => item.key)) {
   const serviceType = safeText(rule.serviceType).trim()
   const eventType = safeText(rule.eventType).trim()
-  if (!serviceType || !defaultServicePrices.some((item) => item.key === serviceType)) throw new Error('服务类型无效')
+  if (!serviceType || !validServiceKeys.includes(serviceType)) throw new Error('服务类型无效')
   if (!CHECKIN_EVENT_TYPES.has(eventType)) throw new Error('打卡类型无效')
   return {
     serviceType,
@@ -1607,8 +1720,10 @@ function normalizeServiceCheckinRule(rule = {}) {
 async function listServiceCheckinRules() {
   const res = await db.collection('service_checkin_rules').orderBy('sortOrder', 'asc').get()
   const rules = res.data && res.data.length ? res.data : defaultServiceCheckinRules
+  const validServiceKeys = (await listServicePrices(true)).map((item) => item.key)
   return rules
-    .map((rule) => normalizeServiceCheckinRule(rule))
+    .filter((rule) => validServiceKeys.includes(safeText(rule.serviceType).trim()))
+    .map((rule) => normalizeServiceCheckinRule(rule, validServiceKeys))
     .sort((a, b) => String(a.serviceType).localeCompare(String(b.serviceType)) || Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
 }
 
@@ -4012,12 +4127,9 @@ const handlers = {
     if (action === 'quoteOrder') {
       await getUser(openid)
       if (data.startTime || data.endTime) validateOrderTime(data)
-      let pet = null
-      if (data.petId) {
-        const petRes = await db.collection('pets').doc(data.petId).get()
-        if (petRes.data.openid !== openid) throw new Error('宠物不存在')
-        pet = petRes.data
-      }
+      let pets = []
+      const petIds = normalizePetIds(data)
+      if (petIds.length) pets = await getClientPetsByIds(openid, petIds)
       const publishMode = data.publishMode === 'direct' ? 'direct' : 'open'
       const staffProfileId = data.staffProfileId || data.requestedStaffProfileId
       if (publishMode === 'direct' && staffProfileId) {
@@ -4045,7 +4157,7 @@ const handlers = {
           }
         }
       }
-      return calcOrderPricing(data, pet, { openid })
+      return calcOrderPricing(data, pets, { openid })
     }
 
     if (action === 'createOrder') {
@@ -4056,14 +4168,18 @@ const handlers = {
         if (existingOrder) return { ...existingOrder, orderHomeSecurity: toPublicOrderHomeSecurity(existingOrder.orderHomeSecurity || existingOrder.homeSecuritySnapshot), savedAddress: null }
       }
       if (!safeText(user.phone).trim()) throw new Error('请先绑定手机号')
-      if (!data.petId) throw new Error('请选择宠物')
+      const petIds = normalizePetIds(data)
+      if (!petIds.length) throw new Error('请选择宠物')
       if (!data.serviceAddress) throw new Error('请选择服务地址')
       if (!data.addressDetail) throw new Error('请填写详细地址')
       if (!data.doorplate) throw new Error('请填写门牌号或入户说明')
       validateOrderTime(data)
-      const petRes = await db.collection('pets').doc(data.petId).get()
-      if (petRes.data.openid !== openid) throw new Error('宠物不存在')
-      const pricing = await calcOrderPricing(data, petRes.data, { openid })
+      const pets = await getClientPetsByIds(openid, petIds)
+      const primaryPet = pets[0]
+      const petSnapshots = pets.map(createPetSnapshot)
+      const petNames = pets.map((pet) => pet.name || '宠物')
+      const petSummary = formatPetSummary(pets)
+      const pricing = await calcOrderPricing(data, pets, { openid })
       const requestedStaff = await getRequestedStaff(data)
       if (requestedStaff && requestedStaff.requestedStaffProfileId) {
         const staffProfileRes = await db.collection('staff_profiles').doc(requestedStaff.requestedStaffProfileId).get()
@@ -4091,7 +4207,7 @@ const handlers = {
       const time = now()
       const homeSecurity = normalizeHomeSecurityInput(data)
       const checkinRequirements = await resolveCheckinRequirements(pricing.serviceTypes)
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: data.petId, petName: petRes.data.name, petSnapshot: { name: petRes.data.name || '', avatarFileId: petRes.data.avatarFileId || '', species: petRes.data.species || '', breed: petRes.data.breed || '', gender: petRes.data.gender || '', birthday: petRes.data.birthday || '', weight: Number(petRes.data.weight || 0), personality: petRes.data.personality || '', favoriteFood: petRes.data.favoriteFood || '', dislikes: petRes.data.dislikes || '', healthNotes: petRes.data.healthNotes || '', specialNotes: petRes.data.specialNotes || '' }, serviceType: pricing.serviceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: primaryPet._id || petIds[0], petIds, petName: petSummary, petNames, petSnapshot: petSnapshots[0], petSnapshots, petSummary, serviceType: pricing.primaryServiceType || pricing.businessServiceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {
@@ -4188,6 +4304,7 @@ const handlers = {
       return {
         sourceOrderId: order._id,
         petId: order.petId,
+        petIds: Array.isArray(order.petIds) && order.petIds.length ? order.petIds : [order.petId].filter(Boolean),
         serviceType: order.serviceType,
         serviceTypes: order.serviceTypes || [order.serviceType],
         serviceAddress: order.serviceAddress || '',
@@ -4448,13 +4565,10 @@ const handlers = {
 
     if (action === 'listApplicableCoupons') {
       await getUser(openid)
-      let pet = null
-      if (data.petId) {
-        const petRes = await db.collection('pets').doc(data.petId).get()
-        if (petRes.data.openid !== openid) throw new Error('宠物不存在')
-        pet = petRes.data
-      }
-      const pricing = await calcOrderPricing({ ...data, couponId: '', autoApplyCoupon: false }, pet, { openid })
+      let pets = []
+      const petIds = normalizePetIds(data)
+      if (petIds.length) pets = await getClientPetsByIds(openid, petIds)
+      const pricing = await calcOrderPricing({ ...data, couponId: '', autoApplyCoupon: false }, pets, { openid })
       const coupons = (await db.collection('user_coupons').where({ openid }).get()).data || []
       return coupons
         .map((coupon) => {
@@ -6096,7 +6210,8 @@ const handlers = {
       return listServiceCheckinRules()
     }
     if (action === 'saveServiceCheckinRules') {
-      const rules = (Array.isArray(data.rules) ? data.rules : []).map(normalizeServiceCheckinRule)
+      const validServiceKeys = (await listServicePrices(true)).map((item) => item.key)
+      const rules = (Array.isArray(data.rules) ? data.rules : []).map((rule) => normalizeServiceCheckinRule(rule, validServiceKeys))
       const time = now()
       await removeByQuery('service_checkin_rules', {})
       await Promise.all(rules.map((rule) => db.collection('service_checkin_rules').add({ data: { ...rule, createdAt: time, updatedAt: time } })))
@@ -6112,20 +6227,54 @@ const handlers = {
     }
     if (action === 'saveServicePrice') {
       const key = String(data.key || '').trim()
+      if (!/^[a-z][a-z0-9_]{1,40}$/.test(key)) throw new Error('服务标识格式不正确')
+      if (RETIRED_SERVICE_KEYS.has(key)) throw new Error('该服务项目已下线')
       const preset = defaultServicePrices.find((item) => item.key === key)
-      if (!preset) throw new Error('服务项目不存在')
+      const label = safeText(data.label || (preset && preset.label)).trim()
+      if (!label) throw new Error('服务名称不能为空')
       const price = Number(data.price)
       if (!Number.isFinite(price) || price < 0) throw new Error('价格不正确')
+      const extraPetFee = Number(data.extraPetFee || 0)
+      if (!Number.isFinite(extraPetFee) || extraPetFee < 0) throw new Error('多宠物加价不正确')
       const time = now()
-      const payload = { key, label: preset.label, price, enabled: data.enabled !== false, description: data.description || preset.description, sortOrder: preset.sortOrder, updatedAt: time }
+      const payload = normalizeServicePrice({
+        ...(preset || {}),
+        key,
+        label,
+        price,
+        extraPetFee,
+        extraPetRule: key === VISIT_FEE_SERVICE_KEY ? 'none' : data.extraPetRule,
+        showOnHome: key === VISIT_FEE_SERVICE_KEY ? false : Boolean(data.showOnHome),
+        enabled: data.enabled !== false,
+        description: safeText(data.description || (preset && preset.description)).trim(),
+        sortOrder: Number(data.sortOrder || (preset && preset.sortOrder) || 100),
+        updatedAt: time
+      })
       const existing = await db.collection('service_prices').where({ key }).limit(1).get()
       if (existing.data[0]) {
-        await db.collection('service_prices').doc(existing.data[0]._id).update({ data: payload })
+        await db.collection('service_prices').doc(existing.data[0]._id).update({ data: { ...payload, updatedAt: time } })
       } else {
-        await db.collection('service_prices').add({ data: { ...payload, createdAt: time } })
+        await db.collection('service_prices').add({ data: { ...payload, createdAt: time, updatedAt: time } })
       }
-      await logAdmin(admin, 'service_price', key, 'saveServicePrice', { price, enabled: payload.enabled })
+      await logAdmin(admin, 'service_price', key, 'saveServicePrice', { price, extraPetFee: payload.extraPetFee, extraPetRule: payload.extraPetRule, enabled: payload.enabled, showOnHome: payload.showOnHome })
       return payload
+    }
+    if (action === 'deleteServicePrice') {
+      const key = String(data.key || '').trim()
+      if (!key) throw new Error('服务标识不能为空')
+      if (key === VISIT_FEE_SERVICE_KEY) throw new Error('上门费不能删除')
+      const time = now()
+      const existing = await db.collection('service_prices').where({ key }).limit(1).get()
+      if (isPresetServiceKey(key)) {
+        const payload = { enabled: false, showOnHome: false, updatedAt: time }
+        if (existing.data[0]) await db.collection('service_prices').doc(existing.data[0]._id).update({ data: payload })
+        else await db.collection('service_prices').add({ data: { key, label: (defaultServicePrices.find((item) => item.key === key) || {}).label || key, price: 0, ...payload, createdAt: time } })
+      } else if (existing.data[0]) {
+        await db.collection('service_prices').doc(existing.data[0]._id).remove()
+        await removeByQuery('service_checkin_rules', { serviceType: key })
+      }
+      await logAdmin(admin, 'service_price', key, 'deleteServicePrice', {})
+      return listServicePrices(true)
     }
     if (action === 'resetDefaultServicePrices') {
       const time = now()

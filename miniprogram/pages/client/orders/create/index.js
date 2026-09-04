@@ -8,6 +8,7 @@ const { toBeijingDate } = require('../../../../utils/format')
 
 const COUPON_CONTEXT_KEY = 'vip_pet_coupon_select_context'
 const SELECTED_COUPON_KEY = 'vip_pet_selected_coupon'
+const VISIT_FEE_SERVICE_KEY = 'visit_fee'
 
 const durationOptions = [
   { label: '30分钟', value: 30 },
@@ -60,8 +61,38 @@ function coversServiceTime(startTime, endTime, effectiveStart, effectiveEnd) {
   return Boolean(start && end && coverStart && coverEnd && coverStart <= start && coverEnd >= end)
 }
 
+function getBusinessServiceTypes(serviceTypes) {
+  return (serviceTypes || []).filter((key) => key !== VISIT_FEE_SERVICE_KEY)
+}
+
+function getPrimaryBusinessService(serviceTypes) {
+  return getBusinessServiceTypes(serviceTypes)[0] || 'walk'
+}
+
+function ensureVisitFeeServiceTypes(serviceTypes, fallbackBusinessKey = 'walk') {
+  const selected = Array.from(new Set([VISIT_FEE_SERVICE_KEY, ...(serviceTypes || []).filter(Boolean)]))
+  if (!getBusinessServiceTypes(selected).length && fallbackBusinessKey && fallbackBusinessKey !== VISIT_FEE_SERVICE_KEY) selected.push(fallbackBusinessKey)
+  return selected
+}
+
+function normalizeServiceOptions(options = []) {
+  const mapped = options.filter((item) => item.key !== 'extra_pet').map((item) => {
+    if (item.key === 'walk' && String(item.label || '').includes('上门')) {
+      return { ...item, label: '遛狗服务', price: 39, description: '牵引遛狗、轨迹记录、回家安置' }
+    }
+    if (item.key === 'feed' && String(item.label || '').includes('上门')) {
+      return { ...item, label: '喂养服务', price: 29, description: '换粮换水、基础陪伴' }
+    }
+    return item
+  })
+  if (!mapped.some((item) => item.key === VISIT_FEE_SERVICE_KEY)) {
+    mapped.unshift({ key: VISIT_FEE_SERVICE_KEY, label: '上门费', price: 30, enabled: true, sortOrder: 5, description: '每次上门固定收取，包含基础到达与履约保障' })
+  }
+  return mapped.sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+}
+
 function markSelected(options, selected) {
-  return options.map((item) => ({ ...item, selected: selected.includes(item.key) }))
+  return normalizeServiceOptions(options).map((item) => ({ ...item, selected: selected.includes(item.key), isVisitFee: item.key === VISIT_FEE_SERVICE_KEY }))
 }
 
 function getSpeciesLabel(species) {
@@ -105,10 +136,22 @@ function buildPetVoiceMessage(pet, startDate) {
   return messages[getVoiceWeekday(startDate)]
 }
 
-function decoratePets(pets, selectedPetId) {
+function normalizeSelectedPetIds(petIds, fallbackPetId = '') {
+  const raw = Array.isArray(petIds) && petIds.length ? petIds : [fallbackPetId]
+  return Array.from(new Set(raw.map((item) => String(item || '').trim()).filter(Boolean)))
+}
+
+function formatSelectedPetsSummary(pets) {
+  const names = (pets || []).map((pet) => pet.name).filter(Boolean)
+  if (!names.length) return ''
+  return names.length === 1 ? `${names[0]}想说` : `已选择 ${names.length} 只宠物：${names.join('、')}`
+}
+
+function decoratePets(pets, selectedPetIds) {
+  const selectedSet = new Set(normalizeSelectedPetIds(selectedPetIds))
   return (pets || []).map((pet) => ({
     ...pet,
-    selected: pet._id === selectedPetId,
+    selected: selectedSet.has(pet._id),
     metaText: formatPetMeta(pet),
     hintText: formatPetHint(pet),
     speciesText: getSpeciesLabel(pet.species)
@@ -126,8 +169,9 @@ Page({
     durationIndex: 1,
     form: {
       petId: '',
+      petIds: [],
       serviceType: 'walk',
-      serviceTypes: ['walk'],
+      serviceTypes: [VISIT_FEE_SERVICE_KEY, 'walk'],
       serviceAddress: '',
       publishMode: 'open',
       staffProfileId: '',
@@ -159,6 +203,8 @@ Page({
     selectedCouponId: '',
     selectedCoupon: null,
     selectedPet: null,
+    selectedPets: [],
+    selectedPetsTitle: '',
     petVoiceMessage: '',
     requestedSitter: null,
     sitterAvailability: [],
@@ -180,7 +226,14 @@ Page({
     this.setData({ ...createPageNav(options), pendingOptions: options || {} })
     const publishMode = options.publishMode === 'direct' ? 'direct' : 'open'
     const staffProfileId = options.staffProfileId || ''
-    this.setData({ ['form.publishMode']: publishMode, ['form.staffProfileId']: staffProfileId })
+    const serviceType = options.serviceType || options.serviceKey || ''
+    const nextData = { ['form.publishMode']: publishMode, ['form.staffProfileId']: staffProfileId }
+    if (serviceType) {
+      const serviceTypes = ensureVisitFeeServiceTypes(serviceType === VISIT_FEE_SERVICE_KEY ? [] : [serviceType])
+      nextData['form.serviceType'] = getPrimaryBusinessService(serviceTypes)
+      nextData['form.serviceTypes'] = serviceTypes
+    }
+    this.setData(nextData)
   },
 
   onShow() {
@@ -231,16 +284,19 @@ Page({
       callFunction('order', 'listServiceOptions')
     ])
       .then(([pets, serviceOptions]) => {
-        const enabled = serviceOptions || []
+        const enabled = normalizeServiceOptions(serviceOptions || [])
+        const fallbackBusinessKey = (enabled.find((item) => item.key !== VISIT_FEE_SERVICE_KEY) || {}).key || 'walk'
         const selected = this.data.form.serviceTypes.filter((key) => enabled.some((item) => item.key === key))
-        const serviceTypes = selected.length ? selected : [enabled[0]?.key || 'walk']
-        const petId = this.data.form.petId || pets[0]?._id || ''
+        const serviceTypes = ensureVisitFeeServiceTypes(selected, fallbackBusinessKey).filter((key) => enabled.some((item) => item.key === key))
+        const selectedPetIds = normalizeSelectedPetIds(this.data.form.petIds, this.data.form.petId).filter((id) => pets.some((pet) => pet._id === id))
+        const petIds = selectedPetIds.length ? selectedPetIds : [pets[0]?._id].filter(Boolean)
         this.setData({
-          pets: decoratePets(pets, petId),
+          pets: decoratePets(pets, petIds),
           serviceOptions: markSelected(enabled, serviceTypes),
-          ['form.petId']: petId,
+          ['form.petId']: petIds[0] || '',
+          ['form.petIds']: petIds,
           ['form.serviceTypes']: serviceTypes,
-          ['form.serviceType']: serviceTypes[0]
+          ['form.serviceType']: getPrimaryBusinessService(serviceTypes)
         }, this.syncSelectedPetUI)
       })
       .catch(showError)
@@ -331,11 +387,14 @@ Page({
   loadRebook(orderId) {
     callFunction('order', 'prepareRebook', { orderId })
       .then((template) => {
+        const serviceTypes = ensureVisitFeeServiceTypes(template.serviceTypes || [template.serviceType])
+        const petIds = normalizeSelectedPetIds(template.petIds, template.petId)
         const update = {
           ['form.sourceOrderId']: template.sourceOrderId,
-          ['form.petId']: template.petId,
-          ['form.serviceType']: template.serviceType,
-          ['form.serviceTypes']: template.serviceTypes,
+          ['form.petId']: petIds[0] || '',
+          ['form.petIds']: petIds,
+          ['form.serviceType']: getPrimaryBusinessService(serviceTypes),
+          ['form.serviceTypes']: serviceTypes,
           ['form.serviceAddress']: template.serviceAddress,
           ['form.addressDetail']: template.addressDetail,
           ['form.doorplate']: template.doorplate,
@@ -346,7 +405,7 @@ Page({
           ['form.staffProfileId']: template.staffProfileId,
           locationReady: Boolean(template.serviceAddress),
           locationTip: '已从历史订单带入地址',
-          serviceOptions: markSelected(this.data.serviceOptions, template.serviceTypes),
+          serviceOptions: markSelected(this.data.serviceOptions, serviceTypes),
           quote: null
         }
         const durationIndex = durationOptions.findIndex((item) => item.value === template.durationMinutes)
@@ -446,20 +505,31 @@ Page({
   },
 
   syncSelectedPetUI() {
-    const petId = this.data.form.petId
-    const pets = decoratePets(this.data.pets, petId)
-    const selectedPet = pets.find((item) => item._id === petId) || null
+    const petIds = normalizeSelectedPetIds(this.data.form.petIds, this.data.form.petId)
+    const pets = decoratePets(this.data.pets, petIds)
+    const selectedPets = pets.filter((item) => petIds.includes(item._id))
+    const selectedPet = selectedPets[0] || null
     this.setData({
       pets,
       selectedPet,
-      petVoiceMessage: buildPetVoiceMessage(selectedPet, this.data.form.startDate)
+      selectedPets,
+      selectedPetsTitle: formatSelectedPetsSummary(selectedPets),
+      petVoiceMessage: selectedPets.length > 1 ? '多宠物订单会根据服务规则自动计算额外照护费用。' : buildPetVoiceMessage(selectedPet, this.data.form.startDate)
     })
   },
 
   choosePet(e) {
     const petId = e.currentTarget.dataset.id
     if (!petId) return
-    this.setData({ ['form.petId']: petId, quote: null }, this.syncSelectedPetUI)
+    const selected = normalizeSelectedPetIds(this.data.form.petIds, this.data.form.petId)
+    const index = selected.indexOf(petId)
+    if (index >= 0) selected.splice(index, 1)
+    else selected.push(petId)
+    if (!selected.length) {
+      wx.showToast({ title: '至少选择一只宠物', icon: 'none' })
+      return
+    }
+    this.setData({ ['form.petId']: selected[0], ['form.petIds']: selected, quote: null }, this.syncSelectedPetUI)
   },
 
   addPet() {
@@ -468,15 +538,20 @@ Page({
 
   toggleService(e) {
     const key = e.currentTarget.dataset.key
-    const selected = this.data.form.serviceTypes.slice()
+    if (key === VISIT_FEE_SERVICE_KEY) {
+      wx.showToast({ title: '上门费为固定必选', icon: 'none' })
+      return
+    }
+    const selected = ensureVisitFeeServiceTypes(this.data.form.serviceTypes.slice())
     const index = selected.indexOf(key)
     if (index >= 0) selected.splice(index, 1)
     else selected.push(key)
-    if (!selected.length) {
-      wx.showToast({ title: '至少选择一项服务', icon: 'none' })
+    const serviceTypes = ensureVisitFeeServiceTypes(selected, '')
+    if (!getBusinessServiceTypes(serviceTypes).length) {
+      wx.showToast({ title: '至少选择一项照护服务', icon: 'none' })
       return
     }
-    this.setData({ ['form.serviceTypes']: selected, ['form.serviceType']: selected[0], serviceOptions: markSelected(this.data.serviceOptions, selected), quote: null })
+    this.setData({ ['form.serviceTypes']: serviceTypes, ['form.serviceType']: getPrimaryBusinessService(serviceTypes), serviceOptions: markSelected(this.data.serviceOptions, serviceTypes), quote: null })
   },
 
   chooseDate(e) {
@@ -517,8 +592,9 @@ Page({
   validateRequired() {
     const form = this.data.form
     if (!this.data.user || !String(this.data.user.phone || '').trim()) return '请先绑定手机号'
-    if (!form.petId) return '请先选择宠物'
-    if (!form.serviceTypes.length) return '请选择服务项目'
+    if (!normalizeSelectedPetIds(form.petIds, form.petId).length) return '请先选择宠物'
+    if (!form.serviceTypes.includes(VISIT_FEE_SERVICE_KEY)) return '请选择上门费'
+    if (!getBusinessServiceTypes(form.serviceTypes).length) return '请选择至少一项照护服务'
     if (form.publishMode === 'direct' && !form.staffProfileId) return '请选择指定宠托师'
     if (!form.serviceAddress) return '请选择服务地址'
     if (!form.addressDetail) return '请填写详细地址'
@@ -545,8 +621,14 @@ Page({
       location: form.keyLocation,
       imageFileIds: form.keyImageFileIds
     }
+    const serviceTypes = ensureVisitFeeServiceTypes(form.serviceTypes, getPrimaryBusinessService(form.serviceTypes))
+    const petIds = normalizeSelectedPetIds(form.petIds, form.petId)
     return {
       ...form,
+      petId: petIds[0] || '',
+      petIds,
+      serviceTypes,
+      serviceType: getPrimaryBusinessService(serviceTypes),
       orderHomeSecurity,
       couponId: this.data.selectedCouponId,
       autoApplyCoupon: !this.data.selectedCouponId

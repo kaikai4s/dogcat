@@ -1,8 +1,4 @@
 <view class="page {{themeClass}} {{fontClass}}" wx:if="{{detail}}">
-  <view class="top-nav">
-    <view class="nav-round" bindtap="goBack">‹</view>
-  </view>
-
   <view class="dashboard-header">
     <view class="badge">完成订单</view>
     <view class="title">{{detail.petName}} · {{detail.serviceSummary}}</view>

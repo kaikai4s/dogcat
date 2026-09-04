@@ -1,4 +1,5 @@
 /** app.wxss - 粉色宠护全局视觉系统 **/
+@import "assets/fonts/remixicon.wxss";
 
 page {
   --theme-bg: linear-gradient(180deg, #fff0f5 0%, #fcf3f6 40%, #f7f7f9 100%);
