@@ -24,6 +24,10 @@
   height: 40rpx;
   color: #ff8a45;
   font-size: 40rpx;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
 }
 
 .profile-page .remix-icon::before,
@@ -181,8 +185,41 @@
 }
 
 .profile-hero {
-  gap: 20rpx;
+  display: flex;
   align-items: center;
+  gap: 22rpx;
+  width: 100%;
+}
+
+.profile-hero-top {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
+  width: 100%;
+}
+
+.profile-level-tag-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 10rpx;
+}
+
+.profile-level-mini-badge {
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  color: #ffffff;
+  background: linear-gradient(135deg, #ff8a45 0%, #e9672f 100%);
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.profile-level-mini-detail {
+  color: #d45f22;
+  font-size: 22rpx;
+  font-weight: 850;
+  line-height: 1.2;
 }
 
 .profile-avatar-wrap {
@@ -267,8 +304,7 @@
 
 .guest-icon,
 .asset-icon,
-.quick-icon,
-.menu-icon {
+.quick-icon {
   width: 62rpx;
   height: 62rpx;
   border-radius: 24rpx;
@@ -373,14 +409,20 @@
 }
 
 .menu-icon {
-  width: 58rpx;
-  height: 58rpx;
-  color: #d45f22;
+  width: 44rpx;
+  height: 44rpx;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+  border-radius: 0 !important;
+  color: #ff7a45;
 }
 
 .menu-icon.danger {
   color: #f53f3f;
-  background: #fff1f0;
+  background: transparent !important;
+  border: none !important;
 }
 
 .menu-right-wrap {

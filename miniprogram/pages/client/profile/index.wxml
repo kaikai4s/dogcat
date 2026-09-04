@@ -47,19 +47,24 @@
 
 <view wx:else class="page profile-page {{themeClass}} {{fontClass}}">
   <view class="profile-hero">
-    <view class="profile-avatar-wrap">
-      <image class="profile-avatar" wx:if="{{avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />
-      <view class="profile-avatar empty" wx:else><view class="remix-icon ri-user-3-line"></view></view>
-    </view>
-    <view class="profile-main">
-      <view class="profile-name-row">
-        <text class="member-badge badge-{{badgeStyle || 'gold'}}" wx:if="{{!isGuest && badgeTag}}">{{badgeTag}}</text>
-        <text class="profile-name {{nameEffect && nameEffect !== 'none' ? 'name-effect-' + nameEffect : ''}}" style="{{nameColor ? 'color:' + nameColor + ';' : ''}}">{{userName}}</text>
+    <view class="profile-hero-top">
+      <view class="profile-avatar-wrap">
+        <image class="profile-avatar" wx:if="{{avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />
+        <view class="profile-avatar empty" wx:else><view class="remix-icon ri-user-3-line"></view></view>
       </view>
-      <view class="profile-points">{{userMeta}}</view>
-      <view class="profile-level" wx:if="{{!isGuest && memberLevelName}}">{{memberLevelName}} · {{points}} 积分 · {{pointMultiplier}} 倍积分</view>
+      <view class="profile-main">
+        <view class="profile-name-row">
+          <text class="profile-name {{nameEffect && nameEffect !== 'none' ? 'name-effect-' + nameEffect : ''}}" style="{{nameColor ? 'color:' + nameColor + ';' : ''}}">{{userName}}</text>
+          <text class="member-badge badge-{{badgeStyle || 'gold'}}" wx:if="{{!isGuest && badgeTag}}">{{badgeTag}}</text>
+        </view>
+        <view class="profile-points">{{userMeta}}</view>
+        <view class="profile-level-tag-row" wx:if="{{!isGuest && memberLevelName}}">
+          <text class="profile-level-mini-badge">{{memberLevelName}}</text>
+          <text class="profile-level-mini-detail">{{points}} 积分 · {{pointMultiplier}}倍加速</text>
+        </view>
+      </view>
+      <view class="checkin-pill" wx:if="{{!isGuest}}" bindtap="openCheckin">签到中心</view>
     </view>
-    <view class="checkin-pill" wx:if="{{!isGuest}}" bindtap="openCheckin">签到中心</view>
   </view>
 
   <view class="guest-card" wx:if="{{isGuest}}">
