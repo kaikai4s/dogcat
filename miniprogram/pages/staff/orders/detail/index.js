@@ -18,14 +18,6 @@ Page({
     callFunction('order', 'getOrderDetail', { id: this.data.id })
       .then((order) => {
         const displayOrder = withOrderText(order)
-        displayOrder.acceptedNotifyStatusText = displayOrder.acceptedNotifyStatus || '未记录'
-        displayOrder.acceptedNotifyErrorText = displayOrder.acceptedNotifyError || '无'
-        console.log('[staff order detail] order notify status', {
-          orderId: order && order._id,
-          orderNo: order && order.orderNo,
-          acceptedNotifyStatus: order && order.acceptedNotifyStatus,
-          acceptedNotifyError: order && order.acceptedNotifyError
-        })
         this.setData({ order: displayOrder })
       })
       .catch(showError)

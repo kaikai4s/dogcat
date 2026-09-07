@@ -1,4 +1,31 @@
 /* Staff Workstation / Home page - Warm Cute Pet Style UI redesign */
+/* 微信小程序 button 默认样式重置 */
+button.ghost-btn,
+button.primary-btn,
+button.notice-btn,
+button.clear-date-btn,
+button.reset-btn,
+button.confirm-btn,
+button.refresh-btn {
+  margin: 0 !important;
+  padding: 0;
+  width: 100% !important;
+  font-weight: normal;
+  line-height: 1.4;
+  box-sizing: border-box;
+  position: static;
+}
+
+button.ghost-btn::after,
+button.primary-btn::after,
+button.notice-btn::after,
+button.clear-date-btn::after,
+button.reset-btn::after,
+button.confirm-btn::after,
+button.refresh-btn::after {
+  display: none !important;
+}
+
 .staff-home-page {
   min-height: 100vh;
   padding: 0 28rpx 160rpx;
@@ -465,10 +492,39 @@
   min-width: 0;
 }
 
+.order-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  width: 100%;
+}
+
 .order-title {
   color: #2d211a;
-  font-size: 30rpx;
+  font-size: 29rpx;
   font-weight: 950;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pet-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 999rpx;
+  color: #b45309;
+  background: #fff7d6;
+  font-size: 19rpx;
+  font-weight: 900;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pet-title .remix-icon {
+  font-size: 22rpx;
+  color: #f59e0b;
 }
 
 .order-service {
@@ -543,13 +599,14 @@
   border-radius: 22rpx;
   background: #fff0e2;
   color: #7a6a5e;
-  font-size: 26rpx;
+  font-size: 24rpx;
   font-weight: 850;
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: center;
   border: none;
   line-height: 1;
+  width: 100% !important;
 }
 
 .primary-btn {
@@ -557,14 +614,15 @@
   border-radius: 22rpx;
   background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
   color: #ffffff;
-  font-size: 26rpx;
+  font-size: 24rpx;
   font-weight: 900;
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: center;
   border: none;
   box-shadow: 0 6rpx 16rpx rgba(255, 122, 69, 0.2);
   line-height: 1;
+  width: 100% !important;
 }
 
 .nav-btn {

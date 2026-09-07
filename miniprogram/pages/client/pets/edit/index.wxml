@@ -2,6 +2,7 @@
   <view class="pet-hero">
     <view class="hero-badge"><text class="remix-icon ri-paw-print-fill hero-icon"></text><text>爱宠资料</text></view>
     <view class="hero-title">{{id ? '编辑宠物资料' : '添加自己的宠物'}}</view>
+    <view class="pet-title-badge" wx:if="{{form.beautyTitle && form.beautyTitle.title}}"><text class="remix-icon ri-vip-crown-line"></text>{{form.beautyTitle.title}}</view>
     <view class="hero-desc">填写名字、照片、生日、品种和照顾习惯，后续可用于 AI 宠物互动。</view>
   </view>
 

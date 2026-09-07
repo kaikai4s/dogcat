@@ -66,7 +66,7 @@ Page({
     ])
       .then(([order, timeline, review]) => {
         const displayOrder = withOrderText(order)
-        this.setData({ order: { ...displayOrder, refundText: getRefundText(displayOrder), acceptedNotifyStatusText: displayOrder.acceptedNotifyStatus || '未记录', acceptedNotifyErrorText: displayOrder.acceptedNotifyError || '无' }, timeline: withTimelineText(timeline), review })
+        this.setData({ order: { ...displayOrder, refundText: getRefundText(displayOrder) }, timeline: withTimelineText(timeline), review })
         callFunction('message', 'markOrderThreadRead', { orderId: this.data.id }).catch(() => {})
       })
       .catch(showError)

@@ -1254,11 +1254,27 @@ function shouldExpireUnacceptedOrder(order = {}, time = now()) {
 
 async function expireUnacceptedOrder(orderId, order, time = now()) {
   if (!shouldExpireUnacceptedOrder(order, time)) return order
-  const update = { status: ORDER_STATUS.EXPIRED, expiredAt: time, expireReason: '服务开始时间前无人接单', updatedAt: time }
+  const isPaid = order.paymentStatus === 'paid' && Number(order.payAmount || 0) > 0
+  const update = {
+    status: ORDER_STATUS.EXPIRED,
+    expiredAt: time,
+    expireReason: '服务开始时间前无人接单',
+    updatedAt: time
+  }
+
+  let refund = null
+  if (isPaid) {
+    refund = await createRefundForOrder(order, order.payAmount, '服务开始时间前无人接单，系统自动全额退款', 'system_expire', order.clientOpenid, makeIdempotencyKey('expire_refund', orderId, time.getTime()))
+    update.paymentStatus = 'refunding'
+    update.refundStatus = 'processing'
+    update.refundNo = refund.refundNo
+    update.refundAmount = Number(order.payAmount)
+  }
+
   await db.collection('orders').doc(orderId).update({ data: update })
   const updatedOrder = { ...order, _id: orderId, ...update }
-  await appendOrderTimeline(orderId, 'expired', '订单已过期', '服务开始时间前无人接单', 'system')
-  await appendOrderClientMessage(updatedOrder, { eventType: 'expired', title: '订单已过期', detail: '服务开始时间前无人接单', actorRole: 'system' })
+  await appendOrderTimeline(orderId, 'expired', '订单已过期', isPaid ? `服务开始时间前无人接单，已发起全额退款 ¥${order.payAmount}` : '服务开始时间前无人接单', 'system')
+  await appendOrderClientMessage(updatedOrder, { eventType: 'expired', title: '订单已过期', detail: isPaid ? `服务开始时间前无人接单，已自动发起全额退款 ¥${order.payAmount}` : '服务开始时间前无人接单', actorRole: 'system' })
   return updatedOrder
 }
 
@@ -2526,15 +2542,19 @@ async function requireStaffOrder(openid, orderId, message = '仅订单员工可�
 }
 
 async function attachPetSnapshot(order) {
-  if (order.petSnapshot || !order.petId) return order
-  try {
-    const pet = (await db.collection('pets').doc(order.petId).get()).data
-    return {
-      ...order,
-      petSnapshot: createPetSnapshot({ ...pet, name: pet.name || order.petName || '' })
-    }
-  } catch (error) {
-    return order
+  let snapshot = order.petSnapshot || null
+  if (order.petId) {
+    try {
+      const pet = (await db.collection('pets').doc(order.petId).get()).data
+      if (pet) {
+        const latest = createPetSnapshot({ ...pet, name: pet.name || order.petName || '' })
+        snapshot = snapshot ? { ...snapshot, ...latest, avatarFileId: pet.avatarFileId || snapshot.avatarFileId || '', beautyTitle: pet.beautyTitle || snapshot.beautyTitle || null } : latest
+      }
+    } catch (error) {}
+  }
+  return {
+    ...order,
+    petSnapshot: snapshot
   }
 }
 
@@ -4154,6 +4174,12 @@ const handlers = {
       return { hasVotedToday: Boolean(voted.data && voted.data[0]), votedPetId: voted.data && voted.data[0] ? voted.data[0].petId : '' }
     }
 
+    if (action === 'listHistoryMonths') {
+      const locksRes = await db.collection('pet_beauty_month_locks').where({ status: 'locked' }).orderBy('monthKey', 'desc').get()
+      const months = (locksRes.data || []).map((item) => item.monthKey).filter(Boolean)
+      return { months }
+    }
+
     if (action === 'getActivityHome') {
       const [pets, voteState, locked] = await Promise.all([getPublicPetsWithVotes(), todayVoteState(), isPetBeautyMonthLocked(monthKey)])
       return { monthKey, locked, ...voteState, candidates: pets.slice(0, 12), ranking: pets.slice(0, 10) }
@@ -4167,8 +4193,16 @@ const handlers = {
 
     if (action === 'listRanking') {
       const keyword = safeText(data.keyword).trim().toUpperCase()
+      const historyMonthKey = safeText(data.historyMonthKey).trim()
+      if (historyMonthKey && historyMonthKey !== monthKey) {
+        const histRes = await db.collection('pet_beauty_month_rankings').where({ monthKey: historyMonthKey, locked: true }).orderBy('rank', 'asc').get()
+        const histList = (histRes.data || [])
+          .filter((item) => !keyword || safeText(item.petExclusiveId).toUpperCase().includes(keyword) || safeText(item.petSnapshot && item.petSnapshot.name).toUpperCase().includes(keyword))
+          .map((item) => ({ petId: item.petId, name: item.petSnapshot && item.petSnapshot.name || '', ageText: item.petSnapshot && item.petSnapshot.ageText || '', species: item.petSnapshot && item.petSnapshot.species || '', speciesText: petSpeciesText(item.petSnapshot && item.petSnapshot.species), exclusiveId: item.petExclusiveId || '', voteCount: item.voteCount || 0, rank: item.rank, beautyTitle: { monthKey: item.monthKey, rank: item.rank, title: item.title } }))
+        return { ...paginateList(histList, data), monthKey: historyMonthKey, locked: true, isHistory: true }
+      }
       const pets = (await getPublicPetsWithVotes())
-        .filter((pet) => !keyword || safeText(pet.exclusiveId).toUpperCase().includes(keyword))
+        .filter((pet) => !keyword || safeText(pet.exclusiveId).toUpperCase().includes(keyword) || safeText(pet.name).toUpperCase().includes(keyword))
         .map((pet, index) => ({ ...pet, rank: index + 1 }))
       return paginateList(pets, data)
     }
@@ -4208,10 +4242,12 @@ const handlers = {
         .filter(Boolean)
       const seen = new Set(currentPhotos.map((photo) => photo.fileId))
       const additions = imported.filter((photo) => !seen.has(photo.fileId))
-      if (currentPhotos.length + additions.length > 9) throw new Error('宠物美照最多9张，请先在每月1日删除后再导入')
-      const beautyPhotos = currentPhotos.concat(additions)
+      const maxAllowed = Math.max(0, 9 - currentPhotos.length)
+      if (maxAllowed <= 0) throw new Error('宠物美照已满9张，请先在每月1日删除后再导入')
+      const allowedAdditions = additions.slice(0, maxAllowed)
+      const beautyPhotos = currentPhotos.concat(allowedAdditions)
       await db.collection('pets').doc(petId).update({ data: { beautyPhotos, avatarFileId: pet.avatarFileId || beautyPhotos[0].fileId, updatedAt: nowText() } })
-      return { petId, importedCount: additions.length, beautyPhotos }
+      return { petId, importedCount: allowedAdditions.length, beautyPhotos }
     }
 
     if (action === 'deleteBeautyPhoto') {
@@ -7229,8 +7265,16 @@ exports.main = async (event = {}) => {
       await expireDueUnacceptedOrders()
       const today = toCstParts()
       let petBeautySettled = null
-      if (today.dayNumber === getMonthDays(today.monthKey)) {
+      const isLastDayOfMonth = today.dayNumber === getMonthDays(today.monthKey)
+      if (isLastDayOfMonth) {
         petBeautySettled = await settlePetBeautyMonthlyRanking(today.monthKey, { source: 'timer' })
+      }
+      if (today.dayNumber <= 2) {
+        const prevMonth = today.month === '01'
+          ? `${today.year - 1}-12`
+          : `${today.year}-${String(Number(today.month) - 1).padStart(2, '0')}`
+        const prevSettled = await settlePetBeautyMonthlyRanking(prevMonth, { source: 'timer_catchup' })
+        if (!petBeautySettled) petBeautySettled = prevSettled
       }
       return ok({ expired: true, petBeautySettled })
     }

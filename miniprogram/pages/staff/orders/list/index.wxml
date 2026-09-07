@@ -18,6 +18,9 @@
         <view class="order-info">
           <view class="order-title">
             <text class="pet-name">{{item.petName}}</text>
+            <view class="pet-title-badge" wx:if="{{item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title}}">
+              <text class="remix-icon ri-vip-crown-line"></text>{{item.petSnapshot.beautyTitle.title}}
+            </view>
             <text class="breed-badge" wx:if="{{item.petSnapshot && item.petSnapshot.breed}}">{{item.petSnapshot.breed}}</text>
             <text class="owner-name">· {{item.clientSnapshot.displayName || '宠物主'}}</text>
           </view>

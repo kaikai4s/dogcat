@@ -16,7 +16,13 @@
           <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
           <view class="order-avatar placeholder" wx:else><view class="remix-icon ri-file-user-line"></view></view>
           <view class="order-person-main">
-            <view class="order-title">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</view>
+            <view class="order-title-row">
+              <text class="order-title">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</text>
+              <view class="pet-title" wx:if="{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}">
+                <text class="remix-icon ri-vip-crown-fill"></text>
+                <text>{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}</text>
+              </view>
+            </view>
             <view class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
           </view>
         </view>

@@ -162,10 +162,12 @@ Page({
         filePath,
         success: (upload) => {
           const fileID = upload.fileID
-          const photos = normalizeBeautyPhotos(this.data.form).concat([{ id: `bp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, fileId: fileID, source: 'pet_profile', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]).slice(0, 9)
-          this.setData({ localTempPath: filePath, tempHttpsUrl: '', ['form.avatarFileId']: this.data.form.avatarFileId || fileID, ['form.beautyPhotos']: photos })
+          const currentForm = this.data.form || {}
+          const photos = normalizeBeautyPhotos(currentForm).concat([{ id: `bp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, fileId: fileID, source: 'pet_profile', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]).slice(0, 9)
+          const newAvatar = currentForm.avatarFileId || fileID
+          this.setData({ localTempPath: filePath, tempHttpsUrl: '', ['form.avatarFileId']: newAvatar, ['form.beautyPhotos']: photos })
           wx.cloud.getTempFileURL({
-            fileList: [this.data.form.avatarFileId || fileID],
+            fileList: [newAvatar],
             success: (tempRes) => {
               if (tempRes.fileList && tempRes.fileList[0] && tempRes.fileList[0].tempFileURL) this.setData({ tempHttpsUrl: tempRes.fileList[0].tempFileURL })
               resolve()

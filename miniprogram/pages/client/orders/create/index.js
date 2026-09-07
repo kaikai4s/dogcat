@@ -158,6 +158,14 @@ function decoratePets(pets, selectedPetIds) {
   }))
 }
 
+function getInitialStartClock() {
+  const now = new Date()
+  const minutes = now.getMinutes()
+  // 向上取整到下一个30分钟，再留出30分钟缓冲时间
+  const nextTime = new Date(now.getTime() + (30 - (minutes % 30) + 30) * 60 * 1000)
+  return formatTime(nextTime)
+}
+
 Page({
   data: {
     themeClass: 'theme-day',
@@ -189,7 +197,7 @@ Page({
       keyImageFileIds: [],
       entryNotes: '',
       startDate: formatDate(new Date()),
-      startClock: '10:00',
+      startClock: getInitialStartClock(),
       startTime: '',
       endTime: '',
       durationMinutes: 60,

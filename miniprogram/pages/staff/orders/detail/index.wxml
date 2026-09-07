@@ -82,8 +82,6 @@
     <view class="info-row" wx:if="{{order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{order.addressDetail}}</view></view>
     <view class="info-row" wx:if="{{order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{order.doorplate}}</view></view>
     <view class="info-row"><view class="label">预约时间</view><view class="value">{{order.startTime}} - {{order.endTime}}</view></view>
-    <view class="info-row"><view class="label">接单微信通知</view><view class="value">{{order.acceptedNotifyStatusText}}</view></view>
-    <view class="info-row" wx:if="{{order.acceptedNotifyErrorText}}"><view class="label">失败原因</view><view class="value red">{{order.acceptedNotifyErrorText}}</view></view>
   </view>
 
   <view class="card service-card" wx:if="{{order.status === 'in_service' || order.status === 'completed'}}">
