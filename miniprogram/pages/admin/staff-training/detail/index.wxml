@@ -1,0 +1,22 @@
+<view class="page detail-page" wx:if="{{profile}}">
+  <view class="header">
+    <view class="title">{{profile.realName || '宠托师'}}</view>
+    <view class="desc">{{profile.phone}} · {{profile.serviceCity}} · {{profile.serviceAreas}}</view>
+  </view>
+  <view class="card">
+    <view class="card-title">培训完成情况</view>
+    <view class="info"><text>答题通过</text><text>{{profile.quizPassedAtText || '-'}}</text></view>
+    <view class="info"><text>视频完成</text><text>{{profile.videosCompletedAtText || '-'}}</text></view>
+    <view class="info"><text>审核申请</text><text>{{profile.requestedAtText || '-'}}</text></view>
+    <view class="info"><text>当前状态</text><text>{{profile.videoAuditStatusText}}</text></view>
+  </view>
+  <view class="card">
+    <view class="card-title">微信视频审核</view>
+    <view class="guide">请确认已添加用户微信/手机号并完成线上视频面试，再回到这里标记结果。</view>
+    <textarea class="textarea" placeholder="填写审核备注（选填）" value="{{remark}}" bindinput="inputRemark" />
+    <view class="actions">
+      <button class="reject" data-status="rejected" bindtap="audit">拒绝</button>
+      <button class="approve" data-status="approved" bindtap="audit">通过，成为实习宠托师</button>
+    </view>
+  </view>
+</view>

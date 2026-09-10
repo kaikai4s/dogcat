@@ -1,0 +1,13 @@
+.detail-page { min-height: 100vh; padding: 28rpx 28rpx 140rpx; background: #fff8ec; color: #2d211a; box-sizing: border-box; }
+.header { padding: 20rpx 4rpx 24rpx; }
+.title { font-size: 40rpx; font-weight: 950; }
+.desc, .guide { margin-top: 8rpx; font-size: 24rpx; color: #7a6a5e; line-height: 1.5; }
+.card { margin-top: 20rpx; padding: 28rpx; border-radius: 30rpx; background: #fff; box-shadow: 0 12rpx 28rpx rgba(123,89,62,.06); }
+.card-title { font-size: 30rpx; font-weight: 950; margin-bottom: 18rpx; }
+.info { display: flex; justify-content: space-between; gap: 20rpx; padding: 16rpx 0; border-bottom: 1rpx solid rgba(255,153,102,.12); font-size: 26rpx; }
+.info:last-child { border-bottom: none; }
+.textarea { width: 100%; min-height: 150rpx; margin-top: 20rpx; padding: 20rpx; border-radius: 24rpx; background: #fff8ec; box-sizing: border-box; font-size: 26rpx; }
+.actions { display: flex; gap: 16rpx; margin-top: 24rpx; }
+.reject, .approve { flex: 1; height: 84rpx; border: none; border-radius: 999rpx; font-size: 26rpx; font-weight: 900; }
+.reject { color: #d45f22; background: #fff0e2; }
+.approve { color: #fff; background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%); }

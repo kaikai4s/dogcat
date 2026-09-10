@@ -1,0 +1,38 @@
+<view class="page detail-page" wx:if="{{application}}">
+  <view class="header">
+    <view class="title">{{profile.realName || '宠托师'}}的晋升申请</view>
+    <view class="desc">{{profile.phone}} · 提交于 {{application.createdAtText}}</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">申请信息</view>
+    <view class="info"><text>当前等级</text><text>{{profile.staffLevelText}}</text></view>
+    <view class="info"><text>申请状态</text><text>{{application.status}}</text></view>
+    <view class="info"><text>申请说明</text><text>{{application.staffRemark || '无'}}</text></view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">三单服务报告质量</view>
+    <view class="order" wx:for="{{orders}}" wx:key="order._id">
+      <view class="order-title">{{index + 1}}. {{item.order.serviceSummary || item.order.petName || '服务订单'}}</view>
+      <view class="muted">{{item.order.appointmentTimeText}} · {{item.order.statusText}}</view>
+      <view class="score-row">
+        <view>打卡 {{item.checkinCount}}</view>
+        <view>轨迹 {{item.trackCount}}</view>
+        <view>{{item.reviewText}}</view>
+      </view>
+      <view class="checkins">
+        <view class="checkin" wx:for="{{item.checkins}}" wx:key="_id" wx:for-item="c">{{c.eventTypeText}} · {{c.recordedAtText}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{application.status === 'pending'}}">
+    <view class="card-title">审核操作</view>
+    <textarea class="textarea" placeholder="填写审核备注（拒绝时建议填写原因）" value="{{remark}}" bindinput="inputRemark" />
+    <view class="actions">
+      <button class="reject" data-status="rejected" bindtap="audit">拒绝</button>
+      <button class="approve" data-status="approved" bindtap="audit">通过认证</button>
+    </view>
+  </view>
+</view>

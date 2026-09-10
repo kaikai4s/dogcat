@@ -5,7 +5,7 @@
       <text>入驻中心</text>
     </view>
     <view class="hero-title">宠托师入驻申请</view>
-    <view class="hero-desc">提交真实认证资料后将进入平台审核，审核通过后即可成为认证宠托师并开启接单。</view>
+    <view class="hero-desc">提交真实认证资料后将进入平台审核，审核通过后需完成培训答题、视频学习和线上视频审核。</view>
   </view>
 
   <view class="status-notice-card" wx:if="{{profile}}">
@@ -118,9 +118,11 @@
   <view class="status-notice-card approved-card" wx:if="{{isApproved}}">
     <view class="notice-head">
       <text class="remix-icon ri-checkbox-circle-fill notice-icon green-icon"></text>
-      <text class="notice-title">已完成安心宠护师认证</text>
+      <text class="notice-title">资料审核已通过</text>
     </view>
-    <view class="notice-tip">认证通过后无需重复提交入驻申请。如需调整服务地址与接单时间，请回到“我的”页面修改配置。</view>
+    <view class="notice-status">{{profile.staffLevelText}}</view>
+    <view class="notice-tip">下一步完成培训答题、视频学习和线上视频审核，通过后成为实习宠托师。</view>
+    <button class="primary-btn submit-btn" data-url="/pages/staff/training/index" bindtap="go">去完成培训</button>
   </view>
 
   <view class="action-btn-container" wx:else>

@@ -1,0 +1,20 @@
+<view class="page admin-list-page">
+  <view class="header">
+    <view class="title">实习转正审核</view>
+    <view class="desc">审核实习宠托师最近三单服务报告质量。</view>
+  </view>
+  <view class="tabs">
+    <view class="tab {{status === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-value="{{item.value}}" bindtap="switchStatus">{{item.label}}</view>
+  </view>
+  <view class="card item" wx:for="{{list}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+    <view class="row">
+      <view>
+        <view class="name">{{item.realName}}</view>
+        <view class="muted">{{item.phone}} · {{item.createdAtText}}</view>
+      </view>
+      <view class="pill">{{item.status}}</view>
+    </view>
+    <view class="meta">订单数：{{item.orderIds.length || 0}} · {{item.staffRemark || '无申请说明'}}</view>
+  </view>
+  <view class="empty" wx:if="{{!list.length && !loading}}">暂无晋升申请</view>
+</view>

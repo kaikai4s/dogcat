@@ -63,6 +63,9 @@
       <view class="info-row"><view class="label">服务城市</view><view class="value">{{profile.serviceCity || '未填写'}}</view></view>
       <view class="info-row"><view class="label">服务区域</view><view class="value">{{profile.serviceAreas || '未填写'}}</view></view>
       <view class="info-row"><view class="label">审核状态</view><view class="badge pink">{{statusTitle}}</view></view>
+      <view class="info-row"><view class="label">宠托师等级</view><view class="value">{{profile.staffLevelText}}</view></view>
+      <view class="info-row"><view class="label">培训状态</view><view class="value">{{profile.onboardingStatusText}}</view></view>
+      <view class="info-row"><view class="label">晋升状态</view><view class="value">{{profile.promotionStatusText}}</view></view>
     </view>
   </view>
 
@@ -111,14 +114,21 @@
       </view>
       <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
     </view>
-    <view class="menu-item" wx:if="{{profile && profile.auditStatus === 'approved'}}">
+    <view class="menu-item" wx:if="{{profile && profile.auditStatus === 'approved'}}" data-url="/pages/staff/training/index" bindtap="go">
       <view class="menu-left">
-        <text class="remix-icon ri-shield-check-line menu-icon active"></text>
-        <text>实名认证已通过</text>
+        <text class="remix-icon ri-graduation-cap-line menu-icon active"></text>
+        <text>培训与视频审核</text>
       </view>
-      <view class="badge green">已认证</view>
+      <view class="badge green">{{profile.onboardingStatusText}}</view>
     </view>
-    <view class="menu-item" wx:else bindtap="openCertification">
+    <view class="menu-item" wx:if="{{profile && (profile.staffLevel === 'intern' || profile.promotionStatus === 'pending' || profile.promotionStatus === 'approved' || profile.promotionStatus === 'rejected')}}" data-url="/pages/staff/promotion/index" bindtap="go">
+      <view class="menu-left">
+        <text class="remix-icon ri-award-line menu-icon active"></text>
+        <text>实习转正申请</text>
+      </view>
+      <view class="badge green">{{profile.promotionStatusText}}</view>
+    </view>
+    <view class="menu-item" wx:if="{{!profile || profile.auditStatus !== 'approved'}}" bindtap="openCertification">
       <view class="menu-left">
         <text class="remix-icon ri-checkbox-circle-line menu-icon"></text>
         <text>入驻认证资料</text>

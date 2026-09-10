@@ -1,0 +1,38 @@
+<view class="page promotion-page {{themeClass}} {{fontClass}}">
+  <view class="hero">
+    <view class="badge">实习转正</view>
+    <view class="title">晋升认证宠托师</view>
+    <view class="desc">完成 3 单实习服务后，可提交晋升申请，管理员将审核三次订单的服务报告质量。</view>
+  </view>
+
+  <view class="card" wx:if="{{profile}}">
+    <view class="card-title">当前状态</view>
+    <view class="status-row">
+      <view>
+        <view class="level">{{profile.staffLevelText}}</view>
+        <view class="muted">晋升状态：{{profile.promotionStatusText}}</view>
+      </view>
+      <view class="progress">{{count}}/3</view>
+    </view>
+    <view class="bar"><view class="bar-inner" style="width: {{count >= 3 ? 100 : count * 33}}%;"></view></view>
+    <view class="reject" wx:if="{{profile.promotionRejectReason}}">上次拒绝原因：{{profile.promotionRejectReason}}</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">最近完成订单</view>
+    <view class="order-card" wx:for="{{orders}}" wx:key="_id">
+      <view class="order-title">{{item.serviceSummary || item.petName || '服务订单'}}</view>
+      <view class="muted">{{item.appointmentTimeText}}</view>
+      <view class="muted">状态：{{item.statusText}}</view>
+    </view>
+    <view class="empty" wx:if="{{!orders.length}}">暂无已完成实习订单</view>
+  </view>
+
+  <view class="card" wx:if="{{profile.staffLevel === 'intern'}}">
+    <view class="card-title">申请说明</view>
+    <textarea class="textarea" placeholder="可填写想对管理员说明的内容（选填）" value="{{remark}}" bindinput="inputRemark" />
+    <button class="primary-btn" wx:if="{{canSubmitPromotion}}" bindtap="submit">提交晋升申请</button>
+    <button class="ghost-btn" wx:elif="{{profile.promotionStatus === 'pending'}}">晋升审核中</button>
+    <button class="ghost-btn" wx:else>完成 3 单后可申请</button>
+  </view>
+</view>

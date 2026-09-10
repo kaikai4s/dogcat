@@ -1,0 +1,21 @@
+<view class="page admin-list-page">
+  <view class="header">
+    <view class="title">培训视频审核</view>
+    <view class="desc">查看已完成答题和培训视频、等待微信视频审核的宠托师。</view>
+  </view>
+  <view class="search-card">
+    <input class="search-input" placeholder="搜索姓名/手机号/城市" value="{{keyword}}" bindinput="inputKeyword" />
+    <button class="search-btn" bindtap="search">搜索</button>
+  </view>
+  <view class="card item" wx:for="{{list}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+    <view class="row">
+      <view>
+        <view class="name">{{item.realName || '宠托师'}}</view>
+        <view class="muted">{{item.phone}} · {{item.serviceCity}}</view>
+      </view>
+      <view class="pill">{{item.videoAuditStatusText}}</view>
+    </view>
+    <view class="meta">答题：{{item.quizPassedAtText || '-'}} · 视频：{{item.videosCompletedAtText || '-'}} · 申请：{{item.requestedAtText || '-'}}</view>
+  </view>
+  <view class="empty" wx:if="{{!list.length && !loading}}">暂无待视频审核记录</view>
+</view>

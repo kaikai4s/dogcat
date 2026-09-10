@@ -36,12 +36,16 @@
       <view class="info-row"><view class="label">服务城市</view><view class="value">{{item.serviceCity || '未填写'}}</view></view>
       <view class="info-row"><view class="label">服务区域</view><view class="value">{{item.serviceAreas || '未填写'}}</view></view>
       <view class="info-row"><view class="label">评分评价</view><view class="value">{{item.ratingText}}</view></view>
+      <view class="info-row"><view class="label">宠托师等级</view><view class="value">{{item.staffLevelText || '申请人'}}</view></view>
+      <view class="info-row"><view class="label">培训状态</view><view class="value">{{item.onboardingStatusText || '-'}}</view></view>
+      <view class="info-row"><view class="label">晋升状态</view><view class="value">{{item.promotionStatusText || '-'}}</view></view>
+      <view class="info-row"><view class="label">实习订单</view><view class="value">{{item.internCompletedOrderCount || 0}}/3</view></view>
       <view class="info-row"><view class="label">精选状态</view><view class="value">{{item.isFeatured ? '平台精选' : '未精选'}}</view></view>
       <view class="info-row"><view class="label">账号状态</view><view class="value">{{item.userStatus || '未知'}}</view></view>
     </view>
     <view class="admin-actions">
       <button class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
-      <button class="mini-btn ghost-mini" wx:if="{{item.auditStatus === 'approved'}}" data-id="{{item._id}}" data-featured="{{item.isFeatured}}" bindtap="toggleFeatured">{{item.featuredActionText}}</button>
+      <button class="mini-btn ghost-mini" wx:if="{{item.staffLevel === 'certified'}}" data-id="{{item._id}}" data-featured="{{item.isFeatured}}" bindtap="toggleFeatured">{{item.featuredActionText}}</button>
     </view>
   </view>
 

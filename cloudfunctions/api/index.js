@@ -16,7 +16,7 @@ const collections = [
   'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
   'pet_beauty_votes', 'pet_beauty_month_rankings', 'pet_beauty_month_locks',
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',
-  'user_feedback'
+  'user_feedback', 'staff_promotion_applications'
 ]
 
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'
@@ -49,6 +49,25 @@ const defaultServiceCheckinRules = [
   { serviceType: 'medicine', eventType: 'medicine', required: true, sortOrder: 20 },
   { serviceType: 'clean', eventType: 'clean', required: true, sortOrder: 20 }
 ]
+
+const STAFF_TRAINING_PASS_SCORE = 80
+const STAFF_TRAINING_VIDEOS = [
+  { key: 'platform_rules', title: '平台服务规范', durationText: '约 5 分钟', description: '学习接单、履约、禁止私单和服务边界。' },
+  { key: 'home_service', title: '上门服务流程', durationText: '约 6 分钟', description: '了解出发、到达、服务中、离开和报告提交规范。' },
+  { key: 'pet_safety', title: '宠物安全与异常处理', durationText: '约 8 分钟', description: '掌握牵引、喂食、清洁、异常上报和紧急处理。' }
+]
+const STAFF_TRAINING_QUIZ = [
+  { id: 'q1', type: 'single', question: '遛狗服务中是否必须全程牵引？', options: [{ value: 'A', label: '必须全程牵引' }, { value: 'B', label: '宠物很乖可以不牵' }, { value: 'C', label: '客户没要求就不用' }], answer: 'A' },
+  { id: 'q2', type: 'single', question: '服务中发现宠物精神异常，应该怎么做？', options: [{ value: 'A', label: '结束后再说' }, { value: 'B', label: '立即联系客户并在平台记录' }, { value: 'C', label: '自行喂药处理' }], answer: 'B' },
+  { id: 'q3', type: 'single', question: '是否可以绕过平台与客户私下交易？', options: [{ value: 'A', label: '可以' }, { value: 'B', label: '熟客可以' }, { value: 'C', label: '不可以' }], answer: 'C' },
+  { id: 'q4', type: 'single', question: '服务报告应包含哪些内容？', options: [{ value: 'A', label: '图文反馈、宠物状态和服务结果' }, { value: 'B', label: '只写已完成' }, { value: 'C', label: '只上传一张图片' }], answer: 'A' },
+  { id: 'q5', type: 'single', question: '是否可以带无关人员进入客户家中？', options: [{ value: 'A', label: '不可以' }, { value: 'B', label: '朋友可以' }, { value: 'C', label: '宠物喜欢就可以' }], answer: 'A' }
+]
+const STAFF_VIDEO_AUDIT_GUIDE = {
+  wechatId: 'pet-service-admin',
+  remarkTemplate: '宠托师审核 + 姓名 + 手机号',
+  description: '请添加平台审核微信并按备注格式发送信息，管理员完成线上视频审核后会在后台更新结果。'
+}
 
 function ok(data) { return { ok: true, data } }
 
@@ -160,6 +179,76 @@ function roleText(roles = []) {
 function auditStatusText(status) {
   const labels = { approved: '已通过', pending: '待审核', rejected: '未通过' }
   return labels[status] || '未知'
+}
+
+function staffLevelText(level) {
+  const labels = { applicant: '申请人', intern: '实习宠托师', certified: '认证宠托师' }
+  return labels[level] || labels.applicant
+}
+
+function onboardingStatusText(status) {
+  const labels = { application_pending: '入驻审核中', training_pending: '待完成培训', quiz_passed: '答题已通过', videos_completed: '视频已完成', video_audit_pending: '视频审核中', intern: '实习中' }
+  return labels[status] || labels.application_pending
+}
+
+function videoAuditStatusText(status) {
+  const labels = { not_started: '未申请', pending: '待视频审核', approved: '已通过', rejected: '未通过' }
+  return labels[status] || labels.not_started
+}
+
+function promotionStatusText(status) {
+  const labels = { none: '未申请', pending: '转正审核中', approved: '已转正', rejected: '转正未通过' }
+  return labels[status] || labels.none
+}
+
+function normalizeStaffWorkflow(profile = {}) {
+  if (!profile) return null
+  const approved = profile.auditStatus === 'approved'
+  const legacyCertified = approved && !profile.staffLevel
+  const staffLevel = legacyCertified ? 'certified' : (profile.staffLevel || 'applicant')
+  let onboardingStatus = profile.onboardingStatus || 'application_pending'
+  if (approved && staffLevel === 'applicant' && onboardingStatus === 'application_pending') onboardingStatus = 'training_pending'
+  if (staffLevel === 'intern' && onboardingStatus !== 'video_audit_pending') onboardingStatus = 'intern'
+  return {
+    ...profile,
+    staffLevel,
+    staffLevelText: staffLevelText(staffLevel),
+    onboardingStatus,
+    onboardingStatusText: onboardingStatusText(onboardingStatus),
+    videoAuditStatus: profile.videoAuditStatus || 'not_started',
+    videoAuditStatusText: videoAuditStatusText(profile.videoAuditStatus || 'not_started'),
+    promotionStatus: profile.promotionStatus || 'none',
+    promotionStatusText: promotionStatusText(profile.promotionStatus || 'none'),
+    internCompletedOrderCount: Number(profile.internCompletedOrderCount || 0)
+  }
+}
+
+function isCertifiedSitter(profile = {}) {
+  const p = normalizeStaffWorkflow(profile)
+  return Boolean(p && p.auditStatus === 'approved' && p.staffLevel === 'certified')
+}
+
+function canTakeOrders(profile = {}) {
+  const p = normalizeStaffWorkflow(profile)
+  return Boolean(p && p.auditStatus === 'approved' && ['intern', 'certified'].includes(p.staffLevel))
+}
+
+function isTrainingComplete(profile = {}) {
+  const p = normalizeStaffWorkflow(profile)
+  const progress = p.trainingVideoProgress || {}
+  const allVideosWatched = STAFF_TRAINING_VIDEOS.every((video) => progress[video.key] && progress[video.key].watched === true)
+  return Boolean(p && p.quizPassedAt && allVideosWatched)
+}
+
+async function getStaffProfileByOpenid(openid) {
+  const res = await db.collection('staff_profiles').where({ openid }).limit(1).get()
+  return normalizeStaffWorkflow(res.data[0] || null)
+}
+
+async function getCompletedStaffOrders(staffOpenid, limit = 0) {
+  const res = await db.collection('orders').where({ staffOpenid, status: 'completed' }).orderBy('completedAt', 'desc').get()
+  const list = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
+  return limit > 0 ? list.slice(0, limit) : list
 }
 
 function safeUserSummary(user = {}, extra = {}) {
@@ -1264,7 +1353,7 @@ async function expireUnacceptedOrder(orderId, order, time = now()) {
 
   let refund = null
   if (isPaid) {
-    refund = await createRefundForOrder(order, order.payAmount, '服务开始时间前无人接单，系统自动全额退款', 'system_expire', order.clientOpenid, makeIdempotencyKey('expire_refund', orderId, time.getTime()))
+    refund = await createRefundForOrder(order, order.payAmount, '服务开始时间前无人接单，系统自动全额退款', 'system_expire', order.clientOpenid, makeIdempotencyKey('expire_refund', orderId, time.getTime()), { unreadForClient: false })
     update.paymentStatus = 'refunding'
     update.refundStatus = 'processing'
     update.refundNo = refund.refundNo
@@ -1370,7 +1459,7 @@ async function getHomePageData(openid, data = {}) {
     safeCollectionData('users')
   ])
 
-  const sittersWithUser = await Promise.all(staffProfiles.slice(0, 30).map(withSitterUserProfile))
+  const sittersWithUser = await Promise.all(staffProfiles.filter(isCertifiedSitter).slice(0, 30).map(withSitterUserProfile))
   let featuredSitters = sittersWithUser.map((profile) => {
     const item = toPublicSitter(profile)
     if (hasLoc && hasCoordinate(profile.serviceLatitude, profile.serviceLongitude)) {
@@ -2574,7 +2663,7 @@ async function getRequestedStaff(data) {
   if (!staffProfileId) throw new Error('请选择指定宠托师')
   const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
   const profile = profileRes.data
-  if (!profile || profile.auditStatus !== 'approved') throw new Error('指定宠托师未审核通过')
+  if (!profile || !isCertifiedSitter(profile)) throw new Error('指定宠托师未审核通过')
   const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
   const staffUser = userRes.data[0]
   if (!staffUser) throw new Error('指定宠托师账号不存在')
@@ -3675,7 +3764,7 @@ async function markOrderPaid(orderId, paymentPayload = {}) {
   return { orderId, status: 'paid', paymentNo }
 }
 
-async function createRefundForOrder(order, refundAmount, reason, source, operatorOpenid, clientRequestId = '') {
+async function createRefundForOrder(order, refundAmount, reason, source, operatorOpenid, clientRequestId = '', options = {}) {
   if (clientRequestId) {
     const existingByRequest = await findByClientRequestId('refunds', { orderId: order._id, openid: order.clientOpenid || '', clientRequestId })
     if (existingByRequest) return existingByRequest
@@ -3737,7 +3826,7 @@ async function createRefundForOrder(order, refundAmount, reason, source, operato
     }
   }
 
-  await appendOrderClientMessage(order, { eventType: createdRefund.status === 'success' ? 'refund_result' : 'refund_processing', title: createdRefund.status === 'success' ? '退款已完成' : '退款处理中', detail: `退款金额 ¥${refund.refundAmount}`, actorRole: 'system', unreadForClient: true })
+  await appendOrderClientMessage(order, { eventType: createdRefund.status === 'success' ? 'refund_result' : 'refund_processing', title: createdRefund.status === 'success' ? '退款已完成' : '退款处理中', detail: `退款金额 ¥${refund.refundAmount}`, actorRole: 'system', unreadForClient: options.unreadForClient !== undefined ? options.unreadForClient === true : true })
   await notifyOrder(order.clientOpenid, 'refundResult', order, { amount: refund.refundAmount, statusText: createdRefund.status === 'success' ? '已退款' : '退款中' })
   return createdRefund
 }
@@ -4624,7 +4713,7 @@ const handlers = {
       if (publishMode === 'direct' && staffProfileId) {
         try {
           const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
-          if (!profileRes.data || profileRes.data.auditStatus !== 'approved') {
+          if (!profileRes.data || !isCertifiedSitter(profileRes.data)) {
             publishMode = 'open'
             staffProfileId = ''
           }
@@ -4804,6 +4893,15 @@ const handlers = {
       const clientUser = await getUser(order.clientOpenid)
       const completedOrderCount = Number(clientUser.completedOrderCount || 0) + 1
       await db.collection('users').doc(clientUser._id).update({ data: { completedOrderCount, updatedAt: time } })
+      if (order.staffProfileId) {
+        try {
+          const staffProfile = normalizeStaffWorkflow((await db.collection('staff_profiles').doc(order.staffProfileId).get()).data)
+          if (staffProfile && staffProfile.staffLevel === 'intern') {
+            const internOrders = await getCompletedStaffOrders(order.staffOpenid || openid)
+            await db.collection('staff_profiles').doc(staffProfile._id).update({ data: { internCompletedOrderCount: internOrders.length, updatedAt: time } })
+          }
+        } catch (error) {}
+      }
       if (completedOrderCount % 3 === 0) {
         await grantRetroCards(order.clientOpenid, clientUser._id, 1, 'order_complete_milestone', data.id, '完成 3 次订单奖励补签卡 +1')
       }
@@ -5373,7 +5471,7 @@ const handlers = {
       const page = Math.max(Number(data.page || 1), 1)
       const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 50)
       const res = await db.collection('staff_profiles').where({ auditStatus: 'approved' }).orderBy('updatedAt', 'desc').get()
-      let sitters = await Promise.all(res.data.map(withSitterUserProfile))
+      let sitters = await Promise.all((res.data || []).filter(isCertifiedSitter).map(withSitterUserProfile))
 
       sitters = sitters.filter((profile) => {
         const areas = splitServiceAreas(profile.serviceAreas)
@@ -5438,14 +5536,14 @@ const handlers = {
       const user = await getOptionalUser(openid)
       const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
       const profile = profileRes.data
-      if (!profile || profile.auditStatus !== 'approved') throw new Error('宠托师不可用')
-      return toPublicSitterDetail(user ? openid : '', await withSitterUserProfile(profile))
+      if (!profile || !isCertifiedSitter(profile)) throw new Error('宠托师不可用')
+      return toPublicSitterDetail(user ? openid : '', await withSitterUserProfile(normalizeStaffWorkflow(profile)))
     }
     if (action === 'favoriteSitter') {
       const user = await getUser(openid)
       const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
       const profile = profileRes.data
-      if (!profile || profile.auditStatus !== 'approved') throw new Error('宠托师不可用')
+      if (!profile || !isCertifiedSitter(profile)) throw new Error('宠托师不可用')
       const existing = await db.collection('sitter_favorites').where({ openid, staffProfileId: data.staffProfileId }).limit(1).get()
       if (existing.data[0]) return { staffProfileId: data.staffProfileId, favorite: true }
       await db.collection('sitter_favorites').add({ data: { userId: user._id, openid, staffProfileId: data.staffProfileId, createdAt: now() } })
@@ -5465,8 +5563,8 @@ const handlers = {
       for (let i = 0; i < favorites.data.length; i += 1) {
         try {
           const profileRes = await db.collection('staff_profiles').doc(favorites.data[i].staffProfileId).get()
-          if (profileRes.data && profileRes.data.auditStatus === 'approved') {
-            const profile = await withSitterUserProfile(profileRes.data)
+          if (profileRes.data && isCertifiedSitter(profileRes.data)) {
+            const profile = await withSitterUserProfile(normalizeStaffWorkflow(profileRes.data))
             list.push({ ...(await toPublicSitterDetail(openid, profile)), favorite: true })
           }
         } catch (error) {}
@@ -5478,7 +5576,83 @@ const handlers = {
     if (action === 'getStaffProfile') {
       await getUser(openid)
       const res = await db.collection('staff_profiles').where({ openid }).limit(1).get()
-      return res.data[0] || null
+      return normalizeStaffWorkflow(res.data[0] || null)
+    }
+    if (action === 'getTrainingStatus') {
+      await getUser(openid)
+      const profile = await getStaffProfileByOpenid(openid)
+      if (!profile) throw new Error('请先提交宠托师认证')
+      const progress = profile.trainingVideoProgress || {}
+      const completedOrders = await getCompletedStaffOrders(openid, 3)
+      const videos = STAFF_TRAINING_VIDEOS.map((video) => ({ ...video, watched: Boolean(progress[video.key] && progress[video.key].watched), watchedAt: progress[video.key] && progress[video.key].watchedAt || '' }))
+      return {
+        profile,
+        quiz: { questions: STAFF_TRAINING_QUIZ.map(({ answer, ...item }) => item), passScore: STAFF_TRAINING_PASS_SCORE, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
+        videos,
+        videoAuditGuide: STAFF_VIDEO_AUDIT_GUIDE,
+        completedInternOrders: completedOrders,
+        completedInternOrderCount: completedOrders.length,
+        canRequestVideoAudit: profile.auditStatus === 'approved' && isTrainingComplete(profile) && profile.videoAuditStatus !== 'pending' && profile.videoAuditStatus !== 'approved',
+        canSubmitPromotion: profile.staffLevel === 'intern' && profile.promotionStatus !== 'pending' && completedOrders.length >= 3,
+        canTakeOrders: canTakeOrders(profile)
+      }
+    }
+    if (action === 'submitTrainingQuiz') {
+      await getUser(openid)
+      const profile = await getStaffProfileByOpenid(openid)
+      if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可参加培训答题')
+      const answers = data.answers || {}
+      const correct = STAFF_TRAINING_QUIZ.filter((item) => safeText(answers[item.id]).trim() === item.answer).length
+      const score = Math.round((correct / STAFF_TRAINING_QUIZ.length) * 100)
+      const passed = score >= STAFF_TRAINING_PASS_SCORE
+      const time = now()
+      const update = { quizScore: score, updatedAt: time }
+      if (passed) {
+        update.quizPassedAt = time
+        update.onboardingStatus = 'quiz_passed'
+      }
+      await db.collection('staff_profiles').doc(profile._id).update({ data: update })
+      return { score, passed, passScore: STAFF_TRAINING_PASS_SCORE }
+    }
+    if (action === 'markTrainingVideoWatched') {
+      await getUser(openid)
+      const profile = await getStaffProfileByOpenid(openid)
+      if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可观看培训视频')
+      const videoKey = safeText(data.videoKey).trim()
+      if (!STAFF_TRAINING_VIDEOS.some((item) => item.key === videoKey)) throw new Error('培训视频不存在')
+      const progress = { ...(profile.trainingVideoProgress || {}) }
+      const time = now()
+      progress[videoKey] = { watched: true, watchedAt: time }
+      const allWatched = STAFF_TRAINING_VIDEOS.every((video) => progress[video.key] && progress[video.key].watched === true)
+      const update = { trainingVideoProgress: progress, updatedAt: time }
+      if (allWatched) {
+        update.trainingVideosCompletedAt = time
+        update.onboardingStatus = profile.quizPassedAt ? 'videos_completed' : profile.onboardingStatus
+      }
+      await db.collection('staff_profiles').doc(profile._id).update({ data: update })
+      return { videoKey, allWatched }
+    }
+    if (action === 'submitVideoAuditRequest') {
+      await getUser(openid)
+      const profile = await getStaffProfileByOpenid(openid)
+      if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可提交视频审核')
+      if (!isTrainingComplete(profile)) throw new Error('请先完成答题和全部培训视频')
+      const time = now()
+      const update = { videoAuditStatus: 'pending', videoAuditRequestedAt: time, onboardingStatus: 'video_audit_pending', videoAuditRemark: '', updatedAt: time }
+      await db.collection('staff_profiles').doc(profile._id).update({ data: update })
+      return { ...profile, ...update }
+    }
+    if (action === 'submitPromotionApplication') {
+      const user = await getUser(openid)
+      const profile = await getStaffProfileByOpenid(openid)
+      if (!profile || profile.staffLevel !== 'intern') throw new Error('仅实习宠托师可申请晋升')
+      if (profile.promotionStatus === 'pending') throw new Error('已有待审核晋升申请')
+      const completedOrders = await getCompletedStaffOrders(openid, 3)
+      if (completedOrders.length < 3) throw new Error('完成 3 单实习服务后才可申请晋升')
+      const time = now()
+      const created = await db.collection('staff_promotion_applications').add({ data: { staffProfileId: profile._id, staffOpenid: openid, staffUserId: user._id, orderIds: completedOrders.map((order) => order._id), status: 'pending', staffRemark: safeText(data.remark).trim(), adminRemark: '', createdAt: time, updatedAt: time } })
+      await db.collection('staff_profiles').doc(profile._id).update({ data: { promotionStatus: 'pending', promotionApplicationId: created._id, promotionAppliedAt: time, updatedAt: time } })
+      return { applicationId: created._id, status: 'pending' }
     }
     if (action === 'submitStaffProfile') {
       const user = await getUser(openid)
@@ -5600,7 +5774,8 @@ const handlers = {
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
 
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
-      const profile = profileRes.data[0] || {}
+      const profile = normalizeStaffWorkflow(profileRes.data[0] || {})
+      if (!canTakeOrders(profile)) throw new Error('完成培训和视频审核成为实习宠托师后方可查看可接订单')
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
 
@@ -5665,7 +5840,8 @@ const handlers = {
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
-      const profile = profileRes.data[0] || {}
+      const profile = normalizeStaffWorkflow(profileRes.data[0] || {})
+      if (!canTakeOrders(profile)) throw new Error('完成培训和视频审核成为实习宠托师后方可查看指定订单')
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       await expireDueUnacceptedOrders()
@@ -5724,7 +5900,7 @@ const handlers = {
         if (!user.roles.includes('staff')) throw new Error('请选择宠托师')
         profile = (await db.collection('staff_profiles').where({ openid }).limit(1).get()).data[0]
       }
-      if (!profile || profile.auditStatus !== 'approved') throw new Error('宠托师不可用')
+      if (!profile || !isCertifiedSitter(profile)) throw new Error('宠托师不可用')
       return buildStaffAvailability(profile, data.startDate || data.dateKey || '', data.days || 14)
     }
     if (action === 'listStaffReviews') {
@@ -5763,8 +5939,8 @@ const handlers = {
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅员工可接单')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
-      const profile = profileRes.data[0]
-      if (!profile || profile.auditStatus !== 'approved') throw new Error('员工认证审核通过后才可接单')
+      const profile = normalizeStaffWorkflow(profileRes.data[0])
+      if (!profile || !canTakeOrders(profile)) throw new Error('完成培训和视频审核成为实习宠托师后方可接单')
       if (!hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) || !profile.serviceAddress) {
         throw new Error('请先在个人中心设置固定服务地址与接单范围，方可接单')
       }
@@ -6358,6 +6534,7 @@ const handlers = {
         .filter((profile) => !auditStatus || profile.auditStatus === auditStatus)
         .map((profile) => {
           const user = userMap.get(profile.openid) || {}
+          const workflow = normalizeStaffWorkflow(profile)
           return {
             _id: profile._id,
             openid: profile.openid || '',
@@ -6368,6 +6545,15 @@ const handlers = {
             auditStatus: profile.auditStatus || 'pending',
             auditStatusText: auditStatusText(profile.auditStatus || 'pending'),
             auditRemark: profile.auditRemark || '',
+            staffLevel: workflow.staffLevel,
+            staffLevelText: workflow.staffLevelText,
+            onboardingStatus: workflow.onboardingStatus,
+            onboardingStatusText: workflow.onboardingStatusText,
+            videoAuditStatus: workflow.videoAuditStatus,
+            videoAuditStatusText: workflow.videoAuditStatusText,
+            promotionStatus: workflow.promotionStatus,
+            promotionStatusText: workflow.promotionStatusText,
+            internCompletedOrderCount: workflow.internCompletedOrderCount,
             ratingAverage: Number(profile.ratingAverage || 0),
             reviewCount: Number(profile.reviewCount || 0),
             isFeatured: profile.isFeatured === true,
@@ -6389,7 +6575,7 @@ const handlers = {
       const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
       const profile = profileRes.data
       if (!profile) throw new Error('宠托师不存在')
-      if (profile.auditStatus !== 'approved') throw new Error('仅已审核通过的宠托师可设为精选')
+      if (!isCertifiedSitter(profile)) throw new Error('仅已审核通过的宠托师可设为精选')
       const time = now()
       const isFeatured = data.isFeatured === true
       const update = isFeatured
@@ -6519,8 +6705,8 @@ const handlers = {
       const orderRes = await db.collection('orders').doc(data.orderId).get()
       if (orderRes.data.status !== 'paid') throw new Error('仅已支付订单可派单')
       const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
-      const profile = profileRes.data
-      if (profile.auditStatus !== 'approved') throw new Error('员工未审核通过')
+      const profile = normalizeStaffWorkflow(profileRes.data)
+      if (!canTakeOrders(profile)) throw new Error('该宠托师尚未完成培训/视频审核，不能派单')
       await validateStaffAvailability(profile, orderRes.data.startTime, orderRes.data.endTime, { excludeOrderId: data.orderId })
       const staffUserRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = staffUserRes.data[0]
@@ -6729,7 +6915,10 @@ const handlers = {
       const identityStatus = status === 'approved' ? 'verified' : 'failed'
       const faceVerifyStatus = status === 'approved' ? 'verified' : 'failed'
       const time = now()
-      await db.collection('staff_profiles').doc(data.staffProfileId).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, updatedAt: time } })
+      const workflowUpdate = status === 'approved'
+        ? { staffLevel: profile.staffLevel || 'applicant', onboardingStatus: profile.onboardingStatus || 'training_pending', videoAuditStatus: profile.videoAuditStatus || 'not_started', promotionStatus: profile.promotionStatus || 'none' }
+        : { staffLevel: 'applicant', onboardingStatus: 'application_pending', videoAuditStatus: 'not_started', promotionStatus: 'none' }
+      await db.collection('staff_profiles').doc(data.staffProfileId).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, ...workflowUpdate, updatedAt: time } })
       const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId: data.staffProfileId }).limit(1).get()
       if (identityRes.data[0]) await db.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, auditedByOpenid: openid, auditedAt: time, updatedAt: time } })
       const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
@@ -6745,6 +6934,78 @@ const handlers = {
       }
       await logAdmin(admin, 'staff_profile', data.staffProfileId, 'auditStaff', { status })
       return { staffProfileId: data.staffProfileId, auditStatus: status }
+    }
+    if (action === 'listTrainingAudits') {
+      const keyword = safeText(data.keyword).trim().toLowerCase()
+      const res = await db.collection('staff_profiles').where({ auditStatus: 'approved', videoAuditStatus: 'pending' }).orderBy('videoAuditRequestedAt', 'desc').get()
+      const list = (res.data || []).map(normalizeStaffWorkflow).filter((item) => !keyword || [item.realName, item.phone, item.serviceCity, item.serviceAreas].some((value) => safeText(value).toLowerCase().includes(keyword)))
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(list, data) : list
+    }
+    if (action === 'auditTrainingVideo') {
+      const staffProfileId = safeText(data.staffProfileId).trim()
+      const status = data.status === 'approved' ? 'approved' : 'rejected'
+      if (!staffProfileId) throw new Error('请选择宠托师')
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
+      const profile = profileRes.data
+      if (!profile) throw new Error('宠托师不存在')
+      const time = now()
+      const update = status === 'approved'
+        ? { videoAuditStatus: 'approved', onboardingStatus: 'intern', staffLevel: 'intern', internStartedAt: profile.internStartedAt || time, videoAuditRemark: safeText(data.remark).trim(), updatedAt: time }
+        : { videoAuditStatus: 'rejected', onboardingStatus: 'videos_completed', videoAuditRemark: safeText(data.remark).trim(), updatedAt: time }
+      await db.collection('staff_profiles').doc(staffProfileId).update({ data: update })
+      const staffUserRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
+      const staffUser = staffUserRes.data[0]
+      if (staffUser && status === 'approved') {
+        const roles = Array.from(new Set([...(Array.isArray(staffUser.roles) ? staffUser.roles : ['client']), 'staff']))
+        await db.collection('users').doc(staffUser._id).update({ data: { roles, updatedAt: time } })
+      }
+      await logAdmin(admin, 'staff_profile', staffProfileId, 'auditTrainingVideo', { status })
+      return { staffProfileId, status, ...update }
+    }
+    if (action === 'listPromotionApplications') {
+      const status = safeText(data.status).trim()
+      const appsRes = await db.collection('staff_promotion_applications').orderBy('createdAt', 'desc').get()
+      const profilesRes = await db.collection('staff_profiles').get()
+      const profileMap = new Map((profilesRes.data || []).map((item) => [item._id, normalizeStaffWorkflow(item)]))
+      const list = (appsRes.data || [])
+        .filter((item) => !status || item.status === status)
+        .map((item) => ({ ...item, profile: profileMap.get(item.staffProfileId) || null }))
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(list, data) : list
+    }
+    if (action === 'getPromotionApplicationDetail') {
+      const applicationId = safeText(data.applicationId || data.id).trim()
+      if (!applicationId) throw new Error('请选择晋升申请')
+      const app = (await db.collection('staff_promotion_applications').doc(applicationId).get()).data
+      if (!app) throw new Error('晋升申请不存在')
+      const profile = normalizeStaffWorkflow((await db.collection('staff_profiles').doc(app.staffProfileId).get()).data)
+      const orders = []
+      for (const orderId of (app.orderIds || [])) {
+        const order = (await db.collection('orders').doc(orderId).get()).data
+        if (!order) continue
+        const tracks = await db.collection('track_logs').where({ orderId }).orderBy('recordedAt', 'asc').get()
+        const checkins = await db.collection('checkin_logs').where({ orderId }).orderBy('createdAt', 'asc').get()
+        const reviews = await db.collection('service_reviews').where({ orderId }).get()
+        orders.push({ order: await attachAdminOrderContactData({ ...order, _id: orderId }), tracks: tracks.data || [], checkins: (checkins.data || []).filter(isActiveCheckin), review: (reviews.data || [])[0] || null })
+      }
+      return { application: app, profile, orders }
+    }
+    if (action === 'auditPromotionApplication') {
+      const applicationId = safeText(data.applicationId || data.id).trim()
+      const status = data.status === 'approved' ? 'approved' : 'rejected'
+      if (!applicationId) throw new Error('请选择晋升申请')
+      const app = (await db.collection('staff_promotion_applications').doc(applicationId).get()).data
+      if (!app) throw new Error('晋升申请不存在')
+      const time = now()
+      const appUpdate = { status, adminRemark: safeText(data.remark).trim(), reviewedByOpenid: openid, reviewedAt: time, updatedAt: time }
+      await db.collection('staff_promotion_applications').doc(applicationId).update({ data: appUpdate })
+      const profileUpdate = status === 'approved'
+        ? { staffLevel: 'certified', promotionStatus: 'approved', certifiedAt: time, updatedAt: time }
+        : { promotionStatus: 'rejected', promotionRejectReason: safeText(data.remark).trim(), updatedAt: time }
+      await db.collection('staff_profiles').doc(app.staffProfileId).update({ data: profileUpdate })
+      await logAdmin(admin, 'staff_promotion_application', applicationId, 'auditPromotionApplication', { status })
+      return { applicationId, status }
     }
     if (action === 'listMemberLevels') {
       const levels = await getMemberLevels()

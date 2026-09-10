@@ -1,0 +1,67 @@
+<view class="page training-page {{themeClass}} {{fontClass}}">
+  <view class="hero">
+    <view class="badge">宠托师成长中心</view>
+    <view class="title">培训与线上视频审核</view>
+    <view class="desc">完成答题、培训视频和管理员微信视频审核后，即可成为实习宠托师。</view>
+  </view>
+
+  <view class="card" wx:if="{{profile}}">
+    <view class="card-title">当前身份</view>
+    <view class="status-row">
+      <view class="level">{{profile.staffLevelText}}</view>
+      <view class="pill">{{profile.onboardingStatusText}}</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">培训进度</view>
+    <view class="steps">
+      <view class="step {{item.done ? 'done' : ''}}" wx:for="{{steps}}" wx:key="title">
+        <view class="dot">{{index + 1}}</view>
+        <view class="step-main">
+          <view class="step-title">{{item.title}}</view>
+          <view class="step-desc">{{item.desc}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{quiz}}">
+    <view class="card-title">培训答题</view>
+    <view class="muted">{{quiz.passed ? '已通过，得分 ' + quiz.score : '达到 ' + quiz.passScore + ' 分即可通过'}}</view>
+    <view class="question" wx:for="{{quiz.questions}}" wx:key="id" wx:for-item="q">
+      <view class="question-title">{{index + 1}}. {{q.question}}</view>
+      <view class="option {{answers[q.id] === opt.value ? 'selected' : ''}}" wx:for="{{q.options}}" wx:key="value" wx:for-item="opt" data-question-id="{{q.id}}" data-value="{{opt.value}}" bindtap="selectAnswer">
+        <text>{{opt.value}}.</text><text>{{opt.label}}</text>
+      </view>
+    </view>
+    <button class="primary-btn" wx:if="{{!quiz.passed}}" bindtap="submitQuiz">提交答题</button>
+  </view>
+
+  <view class="card">
+    <view class="card-title">培训视频</view>
+    <view class="video-card" wx:for="{{videos}}" wx:key="key">
+      <view class="video-main">
+        <view class="video-title">{{item.title}}</view>
+        <view class="muted">{{item.durationText}} · {{item.description}}</view>
+        <view class="done-text" wx:if="{{item.watched}}">已完成 {{item.watchedAtText}}</view>
+      </view>
+      <button class="mini-btn {{item.watched ? 'done' : ''}}" data-key="{{item.key}}" bindtap="markVideo">{{item.watched ? '已看完' : '我已看完'}}</button>
+    </view>
+  </view>
+
+  <view class="card audit-card" wx:if="{{videoAuditGuide}}">
+    <view class="card-title">线上视频审核</view>
+    <view class="muted">{{videoAuditGuide.description}}</view>
+    <view class="guide-box">
+      <view>微信号：{{videoAuditGuide.wechatId}}</view>
+      <view>备注：{{videoAuditGuide.remarkTemplate}}</view>
+      <view wx:if="{{profile.videoAuditRemark}}">审核备注：{{profile.videoAuditRemark}}</view>
+    </view>
+    <button class="primary-btn" wx:if="{{canRequestVideoAudit}}" bindtap="requestVideoAudit">提交线上视频审核申请</button>
+    <button class="ghost-btn" wx:elif="{{profile.videoAuditStatus === 'pending'}}">等待管理员审核</button>
+    <button class="ghost-btn" wx:elif="{{profile.videoAuditStatus === 'approved'}}">视频审核已通过</button>
+  </view>
+
+  <button class="primary-btn" wx:if="{{profile.staffLevel === 'intern'}}" bindtap="goPromotion">查看实习转正进度</button>
+</view>

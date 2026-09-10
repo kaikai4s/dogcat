@@ -22,6 +22,35 @@ const paymentStatusText = {
   refunded: '已退款'
 }
 
+const staffLevelText = {
+  applicant: '申请人',
+  intern: '实习宠托师',
+  certified: '认证宠托师'
+}
+
+const onboardingStatusText = {
+  application_pending: '入驻审核中',
+  training_pending: '待完成培训',
+  quiz_passed: '答题已通过',
+  videos_completed: '视频已完成',
+  video_audit_pending: '视频审核中',
+  intern: '实习中'
+}
+
+const videoAuditStatusText = {
+  not_started: '未申请',
+  pending: '待视频审核',
+  approved: '已通过',
+  rejected: '未通过'
+}
+
+const promotionStatusText = {
+  none: '未申请',
+  pending: '转正审核中',
+  approved: '已转正',
+  rejected: '转正未通过'
+}
+
 const incidentStatusText = {
   open: '待处理',
   triaging: '分诊中',
@@ -93,6 +122,22 @@ function formatAuditStatus(status) {
 
 function formatPaymentStatus(status) {
   return paymentStatusText[status] || status || ''
+}
+
+function formatStaffLevel(level) {
+  return staffLevelText[level] || staffLevelText.applicant
+}
+
+function formatOnboardingStatus(status) {
+  return onboardingStatusText[status] || onboardingStatusText.application_pending
+}
+
+function formatVideoAuditStatus(status) {
+  return videoAuditStatusText[status] || videoAuditStatusText.not_started
+}
+
+function formatPromotionStatus(status) {
+  return promotionStatusText[status] || promotionStatusText.none
 }
 
 function formatIncidentStatus(status) {
@@ -170,6 +215,26 @@ function withAuditText(item) {
   return { ...item, auditStatusText: formatAuditStatus(item.auditStatus) }
 }
 
+function withStaffWorkflowText(item) {
+  if (!item) return item
+  const staffLevel = item.staffLevel || (item.auditStatus === 'approved' ? 'certified' : 'applicant')
+  const onboardingStatus = item.onboardingStatus || (item.auditStatus === 'approved' ? 'intern' : 'application_pending')
+  const videoAuditStatus = item.videoAuditStatus || 'not_started'
+  const promotionStatus = item.promotionStatus || 'none'
+  return {
+    ...item,
+    auditStatusText: formatAuditStatus(item.auditStatus),
+    staffLevel,
+    staffLevelText: formatStaffLevel(staffLevel),
+    onboardingStatus,
+    onboardingStatusText: formatOnboardingStatus(onboardingStatus),
+    videoAuditStatus,
+    videoAuditStatusText: formatVideoAuditStatus(videoAuditStatus),
+    promotionStatus,
+    promotionStatusText: formatPromotionStatus(promotionStatus)
+  }
+}
+
 function withIncidentText(item) {
   if (!item) return item
   return { ...item, statusText: formatIncidentStatus(item.status), incidentTypeText: formatIncidentType(item.incidentType) }
@@ -197,6 +262,10 @@ module.exports = {
   formatOrderStatus,
   formatAuditStatus,
   formatPaymentStatus,
+  formatStaffLevel,
+  formatOnboardingStatus,
+  formatVideoAuditStatus,
+  formatPromotionStatus,
   formatIncidentStatus,
   formatCheckinEvent,
   formatAssignmentSource,
@@ -207,6 +276,7 @@ module.exports = {
   formatAppointmentTime,
   withOrderText,
   withAuditText,
+  withStaffWorkflowText,
   withIncidentText,
   withIncidentActionText,
   withCheckinText

@@ -1,0 +1,12 @@
+.admin-list-page { min-height: 100vh; padding: 28rpx 28rpx 140rpx; background: #fff8ec; color: #2d211a; box-sizing: border-box; }
+.header { padding: 20rpx 4rpx 24rpx; }
+.title { font-size: 40rpx; font-weight: 950; }
+.desc, .muted, .meta { margin-top: 8rpx; font-size: 24rpx; color: #7a6a5e; }
+.search-card, .card { margin-top: 20rpx; padding: 24rpx; border-radius: 30rpx; background: #fff; box-shadow: 0 12rpx 28rpx rgba(123,89,62,.06); }
+.search-card { display: flex; gap: 16rpx; }
+.search-input { flex: 1; height: 72rpx; padding: 0 20rpx; background: #fff8ec; border-radius: 20rpx; font-size: 26rpx; }
+.search-btn { width: 140rpx; height: 72rpx; border: none; border-radius: 20rpx; background: #ff8a4c; color: #fff; font-weight: 900; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.name { font-size: 30rpx; font-weight: 950; }
+.pill { padding: 8rpx 18rpx; border-radius: 999rpx; background: #fff0e2; color: #d45f22; font-size: 24rpx; font-weight: 850; }
+.empty { padding: 80rpx 0; text-align: center; color: #8e8580; }

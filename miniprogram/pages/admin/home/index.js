@@ -17,6 +17,8 @@ const adminSections = [
       { icon: 'ri-user-heart-line', title: '用户管理', desc: '资料与筛选', url: '/pages/admin/users/list/index' },
       { icon: 'ri-user-follow-line', title: '宠托师管理', desc: '资料与状态', url: '/pages/admin/sitters/list/index' },
       { icon: 'ri-shield-check-line', title: '员工审核', desc: '资质与权限', url: '/pages/admin/staff-audit/list/index' },
+      { icon: 'ri-graduation-cap-line', title: '培训视频审核', desc: '微信视频审核', url: '/pages/admin/staff-training/list/index' },
+      { icon: 'ri-award-line', title: '实习转正审核', desc: '三单报告质量', url: '/pages/admin/staff-promotion/list/index' },
       { icon: 'ri-admin-line', title: '管理员管理', desc: '后台权限', url: '/pages/admin/admins/list/index' }
     ]
   },

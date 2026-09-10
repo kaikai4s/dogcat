@@ -1,5 +1,5 @@
 const { callFunction, showError, chooseSelectedLocation } = require('../../../utils/cloud')
-const { withAuditText } = require('../../../utils/format')
+const { withAuditText, withStaffWorkflowText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
 
@@ -70,7 +70,7 @@ Page({
       .then((profile) => {
         if (!profile) return
         this.setData({
-          profile: withAuditText(profile),
+          profile: withStaffWorkflowText(withAuditText(profile)),
           form: {
             ...this.data.form,
             ...profile,
@@ -145,7 +145,7 @@ Page({
 
   submit() {
     if (this.data.isApproved) {
-      wx.showToast({ title: '已完成认证，无需重复提交', icon: 'none' })
+      wx.navigateTo({ url: '/pages/staff/training/index' })
       return
     }
     const { realName, phone, idCardFrontFileId, idCardBackFileId, facePhotoFileId, serviceAddress, serviceLatitude, serviceLongitude } = this.data.form
@@ -169,7 +169,7 @@ Page({
     callFunction('staff', 'submitStaffProfile', this.data.form)
       .then((profile) => {
         this.setData({
-          profile: withAuditText(profile),
+          profile: withStaffWorkflowText(withAuditText(profile)),
           statusTip: statusText.pending
         })
         wx.showToast({ title: '已提交审核', icon: 'none' })

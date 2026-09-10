@@ -1,11 +1,21 @@
 const { callFunction, showError, chooseSelectedLocation } = require('../../../utils/cloud')
+const { withStaffWorkflowText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
 
 const statusMap = {
   pending: { title: '审核中', tip: '资料已提交，请等待平台审核' },
-  approved: { title: '已认证宠托师', tip: '可以接收指定订单和附近可接订单' },
+  approved: { title: '待完成培训', tip: '资料已通过，请完成答题、视频学习和线上视频审核' },
   rejected: { title: '审核未通过', tip: '请修改资料后重新提交' }
+}
+
+function profileStatusInfo(profile) {
+  if (!profile) return { title: '未入驻', tip: '完善资料后申请成为宠托师' }
+  if (profile.auditStatus !== 'approved') return statusMap[profile.auditStatus] || { title: '未入驻', tip: '完善资料后申请成为宠托师' }
+  if (profile.staffLevel === 'certified') return { title: '认证宠托师', tip: '已完成认证，可正常接单服务' }
+  if (profile.staffLevel === 'intern') return { title: '实习宠托师', tip: '完成 3 单后可申请晋升认证宠托师' }
+  if (profile.videoAuditStatus === 'pending') return { title: '视频审核中', tip: '等待管理员完成线上视频审核' }
+  return { title: profile.onboardingStatusText || '待完成培训', tip: '请完成答题、视频学习和线上视频审核' }
 }
 
 const WEEKDAYS = [
@@ -73,19 +83,20 @@ Page({
       callFunction('staff', 'getStaffProfile')
     ])
       .then(([user, profile]) => {
-        const status = profile?.auditStatus
-        const info = statusMap[status] || { title: '未入驻', tip: '完善资料后申请成为宠托师' }
+        const profileView = withStaffWorkflowText(profile)
+        const status = profileView?.auditStatus
+        const info = profileStatusInfo(profileView)
         const nickname = String(user.nickname || '').trim()
-        const hasAddr = Boolean(profile?.serviceAddress && profile?.serviceLatitude && profile?.serviceLongitude)
+        const hasAddr = Boolean(profileView?.serviceAddress && profileView?.serviceLatitude && profileView?.serviceLongitude)
         const isApproved = status === 'approved'
 
         this.setData({
           user,
-          profile,
-          displayName: nickname || profile?.realName || '宠托师',
+          profile: profileView,
+          displayName: nickname || profileView?.realName || '宠托师',
           avatarUrl: user.avatarUrl || '',
           statusTitle: info.title,
-          statusTip: profile?.auditRemark || info.tip,
+          statusTip: profileView?.auditRemark || info.tip,
           missingAddressNotice: isApproved && !hasAddr
         })
       })
@@ -214,8 +225,12 @@ Page({
   },
 
   openCertification() {
-    if (this.data.profile && this.data.profile.auditStatus === 'approved') {
-      wx.showToast({ title: '已完成安心宠护师认证', icon: 'none' })
+    if (this.data.profile && this.data.profile.auditStatus === 'approved' && this.data.profile.staffLevel !== 'certified') {
+      wx.navigateTo({ url: '/pages/staff/training/index' })
+      return
+    }
+    if (this.data.profile && this.data.profile.staffLevel === 'certified') {
+      wx.showToast({ title: '已成为认证宠托师', icon: 'none' })
       return
     }
     wx.redirectTo({ url: '/pages/staff/certification/index' })
