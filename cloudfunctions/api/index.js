@@ -50,13 +50,13 @@ const defaultServiceCheckinRules = [
   { serviceType: 'clean', eventType: 'clean', required: true, sortOrder: 20 }
 ]
 
-const STAFF_TRAINING_PASS_SCORE = 80
+const DEFAULT_STAFF_TRAINING_PASS_SCORE = 80
 const STAFF_TRAINING_VIDEOS = [
   { key: 'platform_rules', title: '平台服务规范', durationText: '约 5 分钟', description: '学习接单、履约、禁止私单和服务边界。' },
   { key: 'home_service', title: '上门服务流程', durationText: '约 6 分钟', description: '了解出发、到达、服务中、离开和报告提交规范。' },
   { key: 'pet_safety', title: '宠物安全与异常处理', durationText: '约 8 分钟', description: '掌握牵引、喂食、清洁、异常上报和紧急处理。' }
 ]
-const STAFF_TRAINING_QUIZ = [
+const DEFAULT_STAFF_TRAINING_QUIZ = [
   { id: 'q1', type: 'single', question: '遛狗服务中是否必须全程牵引？', options: [{ value: 'A', label: '必须全程牵引' }, { value: 'B', label: '宠物很乖可以不牵' }, { value: 'C', label: '客户没要求就不用' }], answer: 'A' },
   { id: 'q2', type: 'single', question: '服务中发现宠物精神异常，应该怎么做？', options: [{ value: 'A', label: '结束后再说' }, { value: 'B', label: '立即联系客户并在平台记录' }, { value: 'C', label: '自行喂药处理' }], answer: 'B' },
   { id: 'q3', type: 'single', question: '是否可以绕过平台与客户私下交易？', options: [{ value: 'A', label: '可以' }, { value: 'B', label: '熟客可以' }, { value: 'C', label: '不可以' }], answer: 'C' },
@@ -67,6 +67,37 @@ const STAFF_VIDEO_AUDIT_GUIDE = {
   wechatId: 'pet-service-admin',
   remarkTemplate: '宠托师审核 + 姓名 + 手机号',
   description: '请添加平台审核微信并按备注格式发送信息，管理员完成线上视频审核后会在后台更新结果。'
+}
+const QUIZ_OPTION_VALUES = ['A', 'B', 'C', 'D', 'E', 'F']
+
+function normalizeStaffTrainingConfig(training = {}) {
+  const passScore = Math.min(Math.max(Math.round(Number(training.passScore ?? DEFAULT_STAFF_TRAINING_PASS_SCORE)), 1), 100)
+  const sourceQuiz = Array.isArray(training.quiz) ? training.quiz : []
+  const quiz = sourceQuiz.map((item, index) => {
+    const question = safeText(item.question).trim()
+    const options = (Array.isArray(item.options) ? item.options : []).map((option, optionIndex) => ({
+      value: QUIZ_OPTION_VALUES[optionIndex] || safeText(option.value).trim(),
+      label: safeText(option.label).trim()
+    })).filter((option) => option.value && option.label).slice(0, QUIZ_OPTION_VALUES.length)
+    const answer = safeText(item.answer).trim()
+    if (!question || options.length < 2 || !options.some((option) => option.value === answer)) return null
+    return {
+      id: safeText(item.id).trim() || `q${index + 1}`,
+      type: 'single',
+      question,
+      options,
+      answer
+    }
+  }).filter(Boolean)
+
+  return {
+    passScore,
+    quiz: quiz.length ? quiz : DEFAULT_STAFF_TRAINING_QUIZ
+  }
+}
+
+function publicTrainingQuiz(quiz = []) {
+  return quiz.map(({ answer, ...item }) => item)
 }
 
 function ok(data) { return { ok: true, data } }
@@ -177,7 +208,7 @@ function roleText(roles = []) {
 }
 
 function auditStatusText(status) {
-  const labels = { approved: '已通过', pending: '待审核', rejected: '未通过' }
+  const labels = { approved: '已通过', pending: '待审核', rejected: '未通过', revoked: '已移除' }
   return labels[status] || '未知'
 }
 
@@ -445,8 +476,10 @@ function normalizeSystemSettings(value = {}, options = {}) {
   const reliability = value.reliability || {}
   return {
     enableTestAddressMode: value.enableTestAddressMode === true,
+    enablePetBreedAi: value.enablePetBreedAi !== false,
     qwenApiKey: safeText(value.qwenApiKey).trim(),
     qwenModel: safeText(value.qwenModel).trim() || 'qwen3.5-flash',
+    staffTraining: normalizeStaffTrainingConfig(value.staffTraining),
     homeHeroCarousel: normalizeHomeHeroCarousel(value.homeHeroCarousel),
     homePage: normalizeHomePageConfig(value.homePage),
     payment: normalizePaymentConfig(payment, existingPayment, options.includeSecrets === true),
@@ -1241,11 +1274,15 @@ function normalizeServicePrice(item) {
   const extraPetRule = key === VISIT_FEE_SERVICE_KEY ? 'none' : normalizeExtraPetRule(item.extraPetRule, key)
   const enabled = item.enabled !== false
   const showOnHome = key !== VISIT_FEE_SERVICE_KEY && enabled && item.showOnHome === true
+  const price = Math.max(Number(item.price || 0), 0)
+  const extraPetFee = Math.max(Number(item.extraPetFee !== undefined ? item.extraPetFee : defaultExtraPetFeeForService(key)), 0)
   return {
     key,
     label: String(item.label || '').trim(),
-    price: Math.max(Number(item.price || 0), 0),
-    extraPetFee: Math.max(Number(item.extraPetFee !== undefined ? item.extraPetFee : defaultExtraPetFeeForService(key)), 0),
+    price,
+    internPrice: Math.max(Number(item.internPrice !== undefined ? item.internPrice : price), 0),
+    extraPetFee,
+    internExtraPetFee: Math.max(Number(item.internExtraPetFee !== undefined ? item.internExtraPetFee : extraPetFee), 0),
     extraPetRule,
     showOnHome,
     enabled,
@@ -1862,6 +1899,14 @@ function applyCouponToPricing(pricing, couponResult) {
   }
 }
 
+async function resolveStaffPriceLevel(data = {}) {
+  if (data.publishMode !== 'direct') return 'certified'
+  const staffProfileId = safeText(data.staffProfileId || data.requestedStaffProfileId).trim()
+  if (!staffProfileId) return 'certified'
+  const staffProfile = normalizeStaffWorkflow((await db.collection('staff_profiles').doc(staffProfileId).get()).data)
+  return staffProfile && staffProfile.staffLevel === 'intern' ? 'intern' : 'certified'
+}
+
 async function calcOrderPricing(data, pet, options = {}) {
   const serviceTypes = normalizeServiceTypes(data)
   if (!serviceTypes.length) throw new Error('请选择服务项目')
@@ -1870,6 +1915,8 @@ async function calcOrderPricing(data, pet, options = {}) {
   const primaryPet = pets[0] || null
   const petCount = pets.length || normalizePetIds(data).length
   const dogCount = pets.filter((item) => item.species === 'dog').length
+  const staffPriceLevel = await resolveStaffPriceLevel(data)
+  const isInternPrice = staffPriceLevel === 'intern'
   const catalog = await listServicePrices(false)
   const catalogMap = catalog.reduce((map, item) => ({ ...map, [item.key]: item }), {})
   const weight = Number((primaryPet && primaryPet.weight) || data.weight || 0)
@@ -1879,23 +1926,26 @@ async function calcOrderPricing(data, pet, options = {}) {
   const basePriceItems = serviceTypes.map((key) => {
     const item = catalogMap[key]
     if (!item) throw new Error('服务项目不可用')
-    const basePrice = key === 'walk' ? getWalkPrice(item.price, weight) : item.price
+    const unitBasePrice = isInternPrice ? item.internPrice : item.price
+    const basePrice = key === 'walk' ? getWalkPrice(unitBasePrice, weight) : unitBasePrice
     const price = key === VISIT_FEE_SERVICE_KEY ? Math.round(basePrice) : Math.round(basePrice * multiplier)
     return { key, label: item.label, price }
   })
   const extraPetItems = getBusinessServiceTypes(serviceTypes).map((key) => {
     const item = catalogMap[key]
-    if (!item || item.extraPetRule === 'none' || !Number(item.extraPetFee || 0)) return null
+    if (!item) return null
+    const extraPetFee = isInternPrice ? item.internExtraPetFee : item.extraPetFee
+    if (item.extraPetRule === 'none' || !Number(extraPetFee || 0)) return null
     const extraCount = item.extraPetRule === 'dog' ? Math.max(dogCount - 1, 0) : Math.max(petCount - 1, 0)
     if (!extraCount) return null
-    const price = Math.round(extraCount * Number(item.extraPetFee || 0))
+    const price = Math.round(extraCount * Number(extraPetFee || 0))
     return {
       key: `${key}_extra_pet`,
       serviceKey: key,
       label: `${item.label} · 额外${item.extraPetRule === 'dog' ? '狗狗' : '宠物'} x${extraCount}`,
       price,
       quantity: extraCount,
-      unitPrice: Number(item.extraPetFee || 0),
+      unitPrice: Number(extraPetFee || 0),
       type: 'extra_pet_fee',
       extraPetRule: item.extraPetRule
     }
@@ -1917,7 +1967,7 @@ async function calcOrderPricing(data, pet, options = {}) {
     serviceSummary: serviceLabels.join('、'),
     durationMinutes,
     priceItems,
-    priceSnapshot: { services: priceItems, extraPetItems, durationMinutes, weight, petCount, dogCount, originalAmount: amount, discountAmount: 0, payAmount: amount }
+    priceSnapshot: { services: priceItems, extraPetItems, durationMinutes, weight, petCount, dogCount, staffPriceLevel, staffLevelText: isInternPrice ? '实习宠托师' : '认证宠托师', originalAmount: amount, discountAmount: 0, payAmount: amount }
   }
   const openid = options.openid || ''
   if (!openid) return basePricing
@@ -2662,8 +2712,8 @@ async function getRequestedStaff(data) {
   const staffProfileId = data.staffProfileId || data.requestedStaffProfileId
   if (!staffProfileId) throw new Error('请选择指定宠托师')
   const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
-  const profile = profileRes.data
-  if (!profile || !isCertifiedSitter(profile)) throw new Error('指定宠托师未审核通过')
+  const profile = normalizeStaffWorkflow(profileRes.data)
+  if (!profile || !canTakeOrders(profile)) throw new Error('指定宠托师未审核通过')
   const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
   const staffUser = userRes.data[0]
   if (!staffUser) throw new Error('指定宠托师账号不存在')
@@ -4102,6 +4152,8 @@ const handlers = {
       return { ...res.data, exclusiveId, beautyPhotos }
     }
     if (action === 'recognizePetBreed') {
+      const settings = await getSystemSettings()
+      if (settings.enablePetBreedAi === false) throw new Error('AI 识别功能已关闭')
       const avatarFileId = safeText(data.avatarFileId || data.photoFileId)
       let imageUrl = safeText(data.imageUrl).trim()
       const imageBase64 = safeText(data.imageBase64).trim()
@@ -5583,11 +5635,13 @@ const handlers = {
       const profile = await getStaffProfileByOpenid(openid)
       if (!profile) throw new Error('请先提交宠托师认证')
       const progress = profile.trainingVideoProgress || {}
+      const settings = await getSystemSettings()
+      const training = settings.staffTraining || normalizeStaffTrainingConfig()
       const completedOrders = await getCompletedStaffOrders(openid, 3)
       const videos = STAFF_TRAINING_VIDEOS.map((video) => ({ ...video, watched: Boolean(progress[video.key] && progress[video.key].watched), watchedAt: progress[video.key] && progress[video.key].watchedAt || '' }))
       return {
         profile,
-        quiz: { questions: STAFF_TRAINING_QUIZ.map(({ answer, ...item }) => item), passScore: STAFF_TRAINING_PASS_SCORE, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
+        quiz: { questions: publicTrainingQuiz(training.quiz), passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
         videos,
         videoAuditGuide: STAFF_VIDEO_AUDIT_GUIDE,
         completedInternOrders: completedOrders,
@@ -5601,10 +5655,13 @@ const handlers = {
       await getUser(openid)
       const profile = await getStaffProfileByOpenid(openid)
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可参加培训答题')
+      const settings = await getSystemSettings()
+      const training = settings.staffTraining || normalizeStaffTrainingConfig()
+      const questions = training.quiz || DEFAULT_STAFF_TRAINING_QUIZ
       const answers = data.answers || {}
-      const correct = STAFF_TRAINING_QUIZ.filter((item) => safeText(answers[item.id]).trim() === item.answer).length
-      const score = Math.round((correct / STAFF_TRAINING_QUIZ.length) * 100)
-      const passed = score >= STAFF_TRAINING_PASS_SCORE
+      const correct = questions.filter((item) => safeText(answers[item.id]).trim() === item.answer).length
+      const score = Math.round((correct / questions.length) * 100)
+      const passed = score >= training.passScore
       const time = now()
       const update = { quizScore: score, updatedAt: time }
       if (passed) {
@@ -5612,7 +5669,7 @@ const handlers = {
         update.onboardingStatus = 'quiz_passed'
       }
       await db.collection('staff_profiles').doc(profile._id).update({ data: update })
-      return { score, passed, passScore: STAFF_TRAINING_PASS_SCORE }
+      return { score, passed, passScore: training.passScore }
     }
     if (action === 'markTrainingVideoWatched') {
       await getUser(openid)
@@ -5708,6 +5765,20 @@ const handlers = {
         faceVerifyRequestId: identitySummary.faceVerifyRequestId,
         auditStatus: 'pending',
         auditRemark: '',
+        staffLevel: 'applicant',
+        onboardingStatus: 'application_pending',
+        videoAuditStatus: 'not_started',
+        promotionStatus: 'none',
+        quizPassedAt: null,
+        quizScore: 0,
+        trainingVideoProgress: {},
+        trainingVideosCompletedAt: null,
+        videoAuditRequestedAt: null,
+        videoAuditRemark: '',
+        internStartedAt: null,
+        internCompletedOrderCount: 0,
+        promotionApplicationId: '',
+        promotionAppliedAt: null,
         updatedAt: time
       }
       const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get()
@@ -6754,13 +6825,19 @@ const handlers = {
       if (!Number.isFinite(price) || price < 0) throw new Error('价格不正确')
       const extraPetFee = Number(data.extraPetFee || 0)
       if (!Number.isFinite(extraPetFee) || extraPetFee < 0) throw new Error('多宠物加价不正确')
+      const internPrice = data.internPrice === undefined || data.internPrice === '' ? price : Number(data.internPrice)
+      if (!Number.isFinite(internPrice) || internPrice < 0) throw new Error('实习宠托师价格不正确')
+      const internExtraPetFee = data.internExtraPetFee === undefined || data.internExtraPetFee === '' ? extraPetFee : Number(data.internExtraPetFee)
+      if (!Number.isFinite(internExtraPetFee) || internExtraPetFee < 0) throw new Error('实习宠托师多宠物加价不正确')
       const time = now()
       const payload = normalizeServicePrice({
         ...(preset || {}),
         key,
         label,
         price,
+        internPrice,
         extraPetFee,
+        internExtraPetFee,
         extraPetRule: key === VISIT_FEE_SERVICE_KEY ? 'none' : data.extraPetRule,
         showOnHome: key === VISIT_FEE_SERVICE_KEY ? false : Boolean(data.showOnHome),
         enabled: data.enabled !== false,
@@ -6774,7 +6851,7 @@ const handlers = {
       } else {
         await db.collection('service_prices').add({ data: { ...payload, createdAt: time, updatedAt: time } })
       }
-      await logAdmin(admin, 'service_price', key, 'saveServicePrice', { price, extraPetFee: payload.extraPetFee, extraPetRule: payload.extraPetRule, enabled: payload.enabled, showOnHome: payload.showOnHome })
+      await logAdmin(admin, 'service_price', key, 'saveServicePrice', { price, internPrice: payload.internPrice, extraPetFee: payload.extraPetFee, internExtraPetFee: payload.internExtraPetFee, extraPetRule: payload.extraPetRule, enabled: payload.enabled, showOnHome: payload.showOnHome })
       return payload
     }
     if (action === 'deleteServicePrice') {
@@ -6798,7 +6875,7 @@ const handlers = {
       const time = now()
       await Promise.all(defaultServicePrices.map(async (preset) => {
         const existing = await db.collection('service_prices').where({ key: preset.key }).limit(1).get()
-        const payload = { ...preset, updatedAt: time }
+        const payload = { ...normalizeServicePrice(preset), updatedAt: time }
         if (existing.data[0]) return db.collection('service_prices').doc(existing.data[0]._id).update({ data: payload })
         return db.collection('service_prices').add({ data: { ...payload, createdAt: time } })
       }))
@@ -6916,7 +6993,7 @@ const handlers = {
       const faceVerifyStatus = status === 'approved' ? 'verified' : 'failed'
       const time = now()
       const workflowUpdate = status === 'approved'
-        ? { staffLevel: profile.staffLevel || 'applicant', onboardingStatus: profile.onboardingStatus || 'training_pending', videoAuditStatus: profile.videoAuditStatus || 'not_started', promotionStatus: profile.promotionStatus || 'none' }
+        ? { staffLevel: 'applicant', onboardingStatus: 'training_pending', videoAuditStatus: 'not_started', promotionStatus: 'none' }
         : { staffLevel: 'applicant', onboardingStatus: 'application_pending', videoAuditStatus: 'not_started', promotionStatus: 'none' }
       await db.collection('staff_profiles').doc(data.staffProfileId).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, ...workflowUpdate, updatedAt: time } })
       const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId: data.staffProfileId }).limit(1).get()
@@ -6934,6 +7011,46 @@ const handlers = {
       }
       await logAdmin(admin, 'staff_profile', data.staffProfileId, 'auditStaff', { status })
       return { staffProfileId: data.staffProfileId, auditStatus: status }
+    }
+    if (action === 'revokeStaff') {
+      const staffProfileId = safeText(data.staffProfileId || data.id).trim()
+      if (!staffProfileId) throw new Error('请选择宠托师')
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
+      const profile = profileRes.data
+      if (!profile) throw new Error('宠托师不存在')
+      const time = now()
+      const auditRemark = safeText(data.auditRemark || data.remark).trim() || '管理员移除宠托师身份'
+      const update = {
+        auditStatus: 'revoked',
+        auditRemark,
+        staffLevel: 'applicant',
+        onboardingStatus: 'application_pending',
+        videoAuditStatus: 'not_started',
+        promotionStatus: 'none',
+        isFeatured: false,
+        quizPassedAt: null,
+        quizScore: 0,
+        trainingVideoProgress: {},
+        trainingVideosCompletedAt: null,
+        videoAuditRequestedAt: null,
+        videoAuditRemark: '',
+        internStartedAt: null,
+        internCompletedOrderCount: 0,
+        promotionApplicationId: '',
+        promotionAppliedAt: null,
+        updatedAt: time
+      }
+      await db.collection('staff_profiles').doc(staffProfileId).update({ data: update })
+      const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
+      const staffUser = userRes.data[0]
+      if (staffUser) {
+        const roles = (Array.isArray(staffUser.roles) ? staffUser.roles : ['client']).filter((role) => role !== 'staff')
+        const userUpdate = { roles: roles.length ? roles : ['client'], updatedAt: time }
+        if (staffUser.activeRole === 'staff') userUpdate.activeRole = 'client'
+        await db.collection('users').doc(staffUser._id).update({ data: userUpdate })
+      }
+      await logAdmin(admin, 'staff_profile', staffProfileId, 'revokeStaff', { auditRemark })
+      return { staffProfileId, auditStatus: 'revoked' }
     }
     if (action === 'listTrainingAudits') {
       const keyword = safeText(data.keyword).trim().toLowerCase()

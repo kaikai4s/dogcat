@@ -41,7 +41,7 @@ function decoratePrice(item = {}) {
 function groupRules(rules, prices = []) {
   const groups = prices
     .filter((price) => price.key && price.key !== 'visit_fee')
-    .map((price) => ({ serviceType: price.key, title: price.label || price.key, rules: [] }))
+    .map((price) => ({ serviceType: price.key, title: price.label || price.key, rules: [], expanded: false }))
   ;(rules || []).forEach((rule) => {
     let group = groups.find((item) => item.serviceType === rule.serviceType)
     if (!group) {
@@ -58,7 +58,11 @@ Page({
     prices: [],
     eventOptions,
     extraPetRuleOptions,
-    ruleGroups: []
+    ruleGroups: [],
+    expandedRuleGroups: {},
+    showPriceModal: false,
+    priceForm: {},
+    priceFormIndex: -1
   },
 
   onShow() {
@@ -75,6 +79,15 @@ Page({
         this.setData({ prices: decorated, ruleGroups: groupRules(rules, decorated) })
       })
       .catch(showError)
+  },
+
+  noop() {},
+
+  toggleRuleGroup(e) {
+    const groupIndex = Number(e.currentTarget.dataset.groupIndex)
+    const group = this.data.ruleGroups[groupIndex]
+    if (!group) return
+    this.setData({ [`ruleGroups[${groupIndex}].expanded`]: !group.expanded })
   },
 
   ruleInput(e) {
@@ -148,44 +161,53 @@ Page({
   },
 
   input(e) {
-    const index = Number(e.currentTarget.dataset.index)
     const field = e.currentTarget.dataset.field
-    this.setData({ [`prices[${index}].${field}`]: e.detail.value })
+    this.setData({ [`priceForm.${field}`]: e.detail.value })
   },
 
   toggleEnabled(e) {
-    const index = Number(e.currentTarget.dataset.index)
-    this.setData({ [`prices[${index}].enabled`]: e.detail.value })
+    this.setData({ 'priceForm.enabled': e.detail.value })
   },
 
   toggleShowOnHome(e) {
-    const index = Number(e.currentTarget.dataset.index)
-    this.setData({ [`prices[${index}].showOnHome`]: e.detail.value })
+    this.setData({ 'priceForm.showOnHome': e.detail.value })
   },
 
   chooseExtraPetRule(e) {
-    const index = Number(e.currentTarget.dataset.index)
     const option = this.data.extraPetRuleOptions[Number(e.detail.value)] || this.data.extraPetRuleOptions[0]
     this.setData({
-      [`prices[${index}].extraPetRule`]: option.value,
-      [`prices[${index}].extraPetRuleText`]: option.label
+      'priceForm.extraPetRule': option.value,
+      'priceForm.extraPetRuleText': option.label
     })
+  },
+
+  openPriceModal(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const item = this.data.prices[index]
+    if (!item) return
+    this.setData({ priceForm: decoratePrice({ ...item }), priceFormIndex: index, showPriceModal: true })
+  },
+
+  closePriceModal() {
+    this.setData({ showPriceModal: false, priceForm: {}, priceFormIndex: -1 })
   },
 
   addService() {
     const sortOrder = this.data.prices.reduce((max, item) => Math.max(max, Number(item.sortOrder || 0)), 0) + 10
-    const draft = decoratePrice({ key: '', label: '', price: 0, extraPetFee: 0, extraPetRule: 'none', showOnHome: true, enabled: true, sortOrder, description: '', isPreset: false, isNew: true })
-    this.setData({ prices: [draft, ...this.data.prices] })
+    const draft = decoratePrice({ key: '', label: '', price: 0, internPrice: 0, extraPetFee: 0, internExtraPetFee: 0, extraPetRule: 'none', showOnHome: true, enabled: true, sortOrder, description: '', isPreset: false, isNew: true })
+    this.setData({ priceForm: draft, priceFormIndex: -1, showPriceModal: true })
   },
 
-  save(e) {
-    const index = Number(e.currentTarget.dataset.index)
-    const item = decoratePrice(this.data.prices[index])
+  savePriceForm() {
+    const item = decoratePrice(this.data.priceForm)
     callFunction('admin', 'saveServicePrice', item)
       .then((saved) => {
+        const savedItem = decoratePrice(saved || item)
         const prices = this.data.prices.slice()
-        prices[index] = decoratePrice(saved || item)
+        if (this.data.priceFormIndex >= 0) prices[this.data.priceFormIndex] = savedItem
+        else prices.unshift(savedItem)
         this.setData({ prices, ruleGroups: groupRules(this.data.ruleGroups.reduce((list, group) => list.concat(group.rules), []), prices) })
+        this.closePriceModal()
         wx.showToast({ title: '已保存' })
       })
       .catch(showError)

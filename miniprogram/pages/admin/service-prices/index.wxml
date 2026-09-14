@@ -2,87 +2,114 @@
   <view class="dashboard-header">
     <view class="badge">管理端</view>
     <view class="title">服务价格配置</view>
-    <view class="tip">配置预约页服务、基础价格、多宠物加价、首页展示和自定义服务。</view>
+    <view class="tip">用紧凑卡片查看价格，编辑服务和规则时再展开或弹出表单。</view>
   </view>
 
-  <view class="notice">
+  <view class="notice compact-price-notice">
     <view class="strong">价格说明</view>
-    <view class="muted">上门费固定必选；其他服务可按“多一只宠物”或“多一只狗狗”设置额外加价。服务关闭后不可被下单选择。</view>
+    <view class="muted">上门费固定必选；指定实习宠托师下单时使用实习价，普通抢单仍使用标准价。点击服务卡片编辑完整配置。</view>
   </view>
 
-  <button class="primary" bindtap="addService">添加自定义服务</button>
+  <button class="primary compact-main-action" bindtap="addService">添加自定义服务</button>
 
-  <view class="card form-card service-config-card" wx:for="{{prices}}" wx:key="key">
-    <view class="between">
-      <view>
-        <view class="strong">{{item.label || '新服务'}}</view>
-        <view class="muted">{{item.key || '填写服务标识后保存'}}</view>
+  <view class="admin-compact-card service-summary-card" wx:for="{{prices}}" wx:key="key">
+    <view class="admin-summary-row">
+      <view class="admin-summary-main">
+        <view class="admin-summary-title">{{item.label || '新服务'}}</view>
+        <view class="admin-summary-sub">{{item.key || '待填写标识'}} · {{item.extraPetRuleText}}</view>
       </view>
-      <switch checked="{{item.enabled}}" data-index="{{index}}" bindchange="toggleEnabled" />
+      <view class="admin-summary-actions">
+        <view class="meta-chip {{item.enabled ? 'success' : ''}}">{{item.enabled ? '启用' : '停用'}}</view>
+        <button class="mini-btn" data-index="{{index}}" bindtap="openPriceModal">编辑</button>
+      </view>
     </view>
-
-    <input placeholder="服务名称" value="{{item.label}}" data-index="{{index}}" data-field="label" bindinput="input" />
-    <input placeholder="服务标识，如 grooming" value="{{item.key}}" data-index="{{index}}" data-field="key" bindinput="input" disabled="{{item.keyReadonly}}" />
-    <input type="number" placeholder="基础价格" value="{{item.price}}" data-index="{{index}}" data-field="price" bindinput="input" />
-    <input type="number" placeholder="多宠物加价金额" value="{{item.extraPetFee}}" data-index="{{index}}" data-field="extraPetFee" bindinput="input" />
-
-    <picker range="{{extraPetRuleOptions}}" range-key="label" data-index="{{index}}" bindchange="chooseExtraPetRule" disabled="{{item.key === 'visit_fee'}}">
-      <view class="field picker-field">加宠规则：{{item.extraPetRuleText}}</view>
-    </picker>
-
-    <view class="between switch-row">
-      <view><view class="strong">首页展示</view><view class="muted">控制是否出现在客户端首页热门服务</view></view>
-      <switch checked="{{item.showOnHome}}" data-index="{{index}}" bindchange="toggleShowOnHome" disabled="{{item.key === 'visit_fee'}}" />
-    </view>
-
-    <input type="number" placeholder="排序，数字越小越靠前" value="{{item.sortOrder}}" data-index="{{index}}" data-field="sortOrder" bindinput="input" />
-    <textarea placeholder="服务说明" value="{{item.description}}" data-index="{{index}}" data-field="description" bindinput="input" />
-
-    <view class="action-row">
-      <button class="primary compact-btn" data-index="{{index}}" bindtap="save">保存服务</button>
-      <button class="ghost compact-btn" wx:if="{{item.canDelete}}" data-index="{{index}}" bindtap="deleteService">{{item.isPreset ? '停用服务' : '删除服务'}}</button>
+    <view class="meta-chip-row">
+      <view class="meta-chip chip-primary">标准 ¥{{item.price}}</view>
+      <view class="meta-chip warning">实习 ¥{{item.internPrice}}</view>
+      <view class="meta-chip">标准加宠 ¥{{item.extraPetFee}}</view>
+      <view class="meta-chip">实习加宠 ¥{{item.internExtraPetFee}}</view>
+      <view class="meta-chip" wx:if="{{item.showOnHome}}">首页展示</view>
+      <view class="meta-chip" wx:if="{{item.description}}">{{item.description}}</view>
     </view>
   </view>
 
-  <button class="ghost" bindtap="resetDefaults">恢复默认价格</button>
+  <button class="ghost compact-main-action" bindtap="resetDefaults">恢复默认价格</button>
 
-  <view class="card form-card">
-    <view class="between">
-      <view>
-        <view class="subtitle">服务打卡证据规则</view>
-        <view class="muted">按服务配置需要哪些打卡，同类打卡在多服务订单中会自动去重。</view>
+  <view class="admin-compact-card">
+    <view class="admin-summary-row">
+      <view class="admin-summary-main">
+        <view class="admin-summary-title">服务打卡证据规则</view>
+        <view class="admin-summary-sub">按服务折叠展示，需要调整时展开对应服务。</view>
       </view>
-      <button class="primary compact-btn" bindtap="saveRules">保存规则</button>
+      <button class="mini-btn" bindtap="saveRules">保存规则</button>
     </view>
   </view>
 
-  <view class="card form-card" wx:for="{{ruleGroups}}" wx:for-item="group" wx:for-index="groupIndex" wx:key="serviceType">
-    <view class="between">
-      <view>
-        <view class="strong">{{group.title}}</view>
-        <view class="muted">{{group.serviceType}} · {{group.rules.length}} 个打卡项</view>
-      </view>
-      <button class="ghost compact-btn" data-group-index="{{groupIndex}}" bindtap="addRule">新增打卡</button>
+  <view class="collapse-card" wx:for="{{ruleGroups}}" wx:for-item="group" wx:for-index="groupIndex" wx:key="serviceType">
+    <view class="collapse-header" data-group-index="{{groupIndex}}" bindtap="toggleRuleGroup">
+      <view class="collapse-title">{{group.title}}</view>
+      <view class="meta-chip">{{group.rules.length}} 个打卡项</view>
+      <button class="mini-btn" data-group-index="{{groupIndex}}" catchtap="addRule">新增</button>
+      <view class="collapse-arrow">{{group.expanded ? '收起' : '展开'}}</view>
     </view>
-    <view class="notice" wx:for="{{group.rules}}" wx:for-item="rule" wx:for-index="ruleIndex" wx:key="eventType">
-      <picker range="{{eventOptions}}" range-key="label" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindchange="chooseRuleEvent">
-        <view class="field picker-field">{{rule.label || rule.eventType}}</view>
-      </picker>
-      <view class="between">
-        <view class="strong">必打卡</view>
-        <switch checked="{{rule.required}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindchange="toggleRuleRequired" />
+    <view class="collapse-body" wx:if="{{group.expanded}}">
+      <view class="notice compact-rule-item" wx:for="{{group.rules}}" wx:for-item="rule" wx:for-index="ruleIndex" wx:key="eventType">
+        <picker range="{{eventOptions}}" range-key="label" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindchange="chooseRuleEvent">
+          <view class="field picker-field">{{rule.label || rule.eventType}}</view>
+        </picker>
+        <view class="compact-switch-row">
+          <view class="strong">必打卡</view>
+          <switch checked="{{rule.required}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindchange="toggleRuleRequired" />
+        </view>
+        <view class="compact-switch-row">
+          <view class="strong">启用</view>
+          <switch checked="{{rule.enabled}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindchange="toggleRuleEnabled" />
+        </view>
+        <input type="number" placeholder="排序" value="{{rule.sortOrder}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" data-field="sortOrder" bindinput="ruleInput" />
+        <input placeholder="说明" value="{{rule.description}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" data-field="description" bindinput="ruleInput" />
+        <button class="ghost compact-main-action" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindtap="removeRule">删除此打卡项</button>
       </view>
-      <view class="between">
-        <view class="strong">启用</view>
-        <switch checked="{{rule.enabled}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindchange="toggleRuleEnabled" />
-      </view>
-      <input type="number" placeholder="排序" value="{{rule.sortOrder}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" data-field="sortOrder" bindinput="ruleInput" />
-      <input placeholder="说明" value="{{rule.description}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" data-field="description" bindinput="ruleInput" />
-      <button class="ghost" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindtap="removeRule">删除此打卡项</button>
     </view>
   </view>
 
-  <button class="ghost" bindtap="resetRuleDefaults">恢复默认打卡规则</button>
+  <button class="ghost compact-main-action" bindtap="resetRuleDefaults">恢复默认打卡规则</button>
+
+  <view class="modal-backdrop" wx:if="{{showPriceModal}}" bindtap="closePriceModal" catchtouchmove="noop">
+    <view class="modal-card" catchtap="noop">
+      <view class="modal-header">
+        <view class="modal-title">{{priceForm.isNew ? '添加服务' : '编辑服务'}}</view>
+        <view class="modal-close" bindtap="closePriceModal">×</view>
+      </view>
+      <scroll-view scroll-y class="modal-scroll-body">
+        <input placeholder="服务名称" value="{{priceForm.label}}" data-field="label" bindinput="input" />
+        <input placeholder="服务标识，如 grooming" value="{{priceForm.key}}" data-field="key" bindinput="input" disabled="{{priceForm.keyReadonly}}" />
+        <input type="number" placeholder="标准基础价格" value="{{priceForm.price}}" data-field="price" bindinput="input" />
+        <input type="number" placeholder="实习宠托师基础价" value="{{priceForm.internPrice}}" data-field="internPrice" bindinput="input" />
+        <input type="number" placeholder="标准多宠物加价金额" value="{{priceForm.extraPetFee}}" data-field="extraPetFee" bindinput="input" />
+        <input type="number" placeholder="实习宠托师多宠物加价" value="{{priceForm.internExtraPetFee}}" data-field="internExtraPetFee" bindinput="input" />
+
+        <picker range="{{extraPetRuleOptions}}" range-key="label" bindchange="chooseExtraPetRule" disabled="{{priceForm.key === 'visit_fee'}}">
+          <view class="field picker-field">加宠规则：{{priceForm.extraPetRuleText}}</view>
+        </picker>
+
+        <view class="compact-switch-row">
+          <view><view class="strong">启用服务</view><view class="muted">关闭后不可被下单选择</view></view>
+          <switch checked="{{priceForm.enabled}}" bindchange="toggleEnabled" />
+        </view>
+        <view class="compact-switch-row">
+          <view><view class="strong">首页展示</view><view class="muted">控制是否出现在客户端首页热门服务</view></view>
+          <switch checked="{{priceForm.showOnHome}}" bindchange="toggleShowOnHome" disabled="{{priceForm.key === 'visit_fee'}}" />
+        </view>
+
+        <input type="number" placeholder="排序，数字越小越靠前" value="{{priceForm.sortOrder}}" data-field="sortOrder" bindinput="input" />
+        <textarea placeholder="服务说明" value="{{priceForm.description}}" data-field="description" bindinput="input" />
+      </scroll-view>
+      <view class="modal-actions">
+        <button class="primary" style="flex: 2;" bindtap="savePriceForm">保存服务</button>
+        <button class="ghost" style="flex: 1;" bindtap="closePriceModal">取消</button>
+      </view>
+    </view>
+  </view>
 
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>

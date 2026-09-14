@@ -15,18 +15,26 @@
 }
 
 .role-tabs {
-  margin-top: 24rpx;
+  margin-top: 20rpx;
   padding-bottom: 0;
 }
 
-.sitter-card {
+.compact-admin-header {
+  margin-bottom: 20rpx;
+}
+
+.sitter-compact-card {
   overflow: hidden;
 }
 
 .sitter-head {
   display: flex;
-  gap: 18rpx;
+  gap: 16rpx;
   align-items: center;
+}
+
+.compact-sitter-head {
+  align-items: flex-start;
 }
 
 .sitter-avatar {
@@ -35,6 +43,11 @@
   border-radius: 50%;
   flex-shrink: 0;
   background: #fff0f5;
+}
+
+.compact-avatar {
+  width: 76rpx;
+  height: 76rpx;
 }
 
 .avatar-placeholder {
@@ -50,15 +63,53 @@
   min-width: 0;
 }
 
+.compact-title-row {
+  align-items: flex-start;
+  gap: 12rpx;
+}
+
 .sitter-name,
-.openid-text {
+.openid-text,
+.compact-line {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sitter-info {
-  margin-top: 18rpx;
+.compact-line {
+  margin-top: 6rpx;
+  font-size: 23rpx;
+}
+
+.compact-meta-row {
+  margin-top: 10rpx;
+}
+
+.sitter-action-row {
+  margin-top: 16rpx;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.sitter-action-row .mini-btn {
+  margin: 0;
+  min-height: 54rpx;
+  flex: 1;
+  min-width: 160rpx;
+}
+
+.sitter-detail-body {
+  margin-top: 16rpx;
+}
+
+.openid-box {
+  margin-top: 12rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 14rpx;
+  background: rgba(134, 144, 156, 0.08);
+  color: var(--theme-muted);
+  font-size: 22rpx;
+  word-break: break-all;
 }
 
 .featured-badge {
@@ -66,18 +117,14 @@
   background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%);
 }
 
-.admin-actions {
-  display: flex;
-  gap: 16rpx;
-  margin-top: 18rpx;
-}
-
-.admin-actions .mini-btn {
-  flex: 1;
-}
-
 .ghost-mini {
   color: #f43f6b;
   background: #fff7fa;
   border: 2rpx solid rgba(244, 63, 107, 0.18);
+}
+
+.danger-mini {
+  color: #dc2626;
+  background: #fef2f2;
+  border: 2rpx solid rgba(220, 38, 38, 0.18);
 }

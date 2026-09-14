@@ -1,38 +1,64 @@
 <view class="page detail-page" wx:if="{{application}}">
-  <view class="header">
+  <view class="header compact-header">
     <view class="title">{{profile.realName || '宠托师'}}的晋升申请</view>
     <view class="desc">{{profile.phone}} · 提交于 {{application.createdAtText}}</view>
   </view>
 
-  <view class="card">
-    <view class="card-title">申请信息</view>
-    <view class="info"><text>当前等级</text><text>{{profile.staffLevelText}}</text></view>
-    <view class="info"><text>申请状态</text><text>{{application.status}}</text></view>
-    <view class="info"><text>申请说明</text><text>{{application.staffRemark || '无'}}</text></view>
+  <view class="admin-compact-card">
+    <view class="admin-summary-row">
+      <view class="admin-summary-main">
+        <view class="admin-summary-title">申请信息</view>
+        <view class="admin-summary-sub">{{application.staffRemark || '无申请说明'}}</view>
+      </view>
+      <view class="meta-chip warning">{{application.status}}</view>
+    </view>
+    <view class="meta-chip-row">
+      <view class="meta-chip chip-primary">{{profile.staffLevelText}}</view>
+      <view class="meta-chip success">{{orders.length}} 单服务报告</view>
+    </view>
   </view>
 
-  <view class="card">
-    <view class="card-title">三单服务报告质量</view>
-    <view class="order" wx:for="{{orders}}" wx:key="order._id">
-      <view class="order-title">{{index + 1}}. {{item.order.serviceSummary || item.order.petName || '服务订单'}}</view>
-      <view class="muted">{{item.order.appointmentTimeText}} · {{item.order.statusText}}</view>
-      <view class="score-row">
-        <view>打卡 {{item.checkinCount}}</view>
-        <view>轨迹 {{item.trackCount}}</view>
-        <view>{{item.reviewText}}</view>
-      </view>
-      <view class="checkins">
-        <view class="checkin" wx:for="{{item.checkins}}" wx:key="_id" wx:for-item="c">{{c.eventTypeText}} · {{c.recordedAtText}}</view>
+  <view class="admin-section-title">三单服务报告质量</view>
+  <view class="collapse-card order-report-card" wx:for="{{orders}}" wx:key="order._id">
+    <view class="collapse-header" data-index="{{index}}" bindtap="toggleOrder">
+      <view class="collapse-title">{{index + 1}}. {{item.order.serviceSummary || item.order.petName || '服务订单'}}</view>
+      <view class="collapse-arrow">{{item.expanded ? '收起' : '展开'}}</view>
+    </view>
+    <view class="meta-chip-row">
+      <view class="meta-chip">{{item.order.appointmentTimeText}}</view>
+      <view class="meta-chip chip-primary">{{item.order.statusText}}</view>
+      <view class="meta-chip success">打卡 {{item.checkinCount}}</view>
+      <view class="meta-chip">轨迹 {{item.trackCount}}</view>
+      <view class="meta-chip warning">{{item.reviewText}}</view>
+    </view>
+    <view class="collapse-body" wx:if="{{item.expanded}}">
+      <view class="empty compact-empty" wx:if="{{!item.checkins.length}}">暂无打卡记录</view>
+      <view class="checkin" wx:for="{{item.checkins}}" wx:key="_id" wx:for-item="c">
+        <view class="strong">{{c.eventTypeText}}</view>
+        <view class="muted">{{c.recordedAtText}}</view>
       </view>
     </view>
   </view>
 
-  <view class="card" wx:if="{{application.status === 'pending'}}">
-    <view class="card-title">审核操作</view>
-    <textarea class="textarea" placeholder="填写审核备注（拒绝时建议填写原因）" value="{{remark}}" bindinput="inputRemark" />
-    <view class="actions">
-      <button class="reject" data-status="rejected" bindtap="audit">拒绝</button>
-      <button class="approve" data-status="approved" bindtap="audit">通过认证</button>
+  <view class="audit-sticky-actions" wx:if="{{application.status === 'pending'}}">
+    <button class="reject" data-status="rejected" bindtap="openAuditModal">拒绝</button>
+    <button class="approve" data-status="approved" bindtap="openAuditModal">通过认证</button>
+  </view>
+
+  <view class="modal-backdrop" wx:if="{{showAuditModal}}" bindtap="closeAuditModal" catchtouchmove="noop">
+    <view class="modal-card" catchtap="noop">
+      <view class="modal-header">
+        <view class="modal-title">{{auditStatus === 'approved' ? '通过晋升申请' : '拒绝晋升申请'}}</view>
+        <view class="modal-close" bindtap="closeAuditModal">×</view>
+      </view>
+      <scroll-view scroll-y class="modal-scroll-body">
+        <view class="muted">{{auditStatus === 'approved' ? '通过后该宠托师将成为认证宠托师。' : '确认拒绝本次晋升申请，建议填写原因。'}}</view>
+        <textarea class="textarea" placeholder="填写审核备注（拒绝时建议填写原因）" value="{{remark}}" bindinput="inputRemark" />
+      </scroll-view>
+      <view class="modal-actions">
+        <button class="primary" style="flex: 2;" bindtap="audit">确认处理</button>
+        <button class="ghost" style="flex: 1;" bindtap="closeAuditModal">取消</button>
+      </view>
     </view>
   </view>
 </view>

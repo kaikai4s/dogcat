@@ -1,22 +1,67 @@
 <view class="page detail-page" wx:if="{{profile}}">
-  <view class="header">
+  <view class="header compact-header">
     <view class="title">{{profile.realName || '宠托师'}}</view>
     <view class="desc">{{profile.phone}} · {{profile.serviceCity}} · {{profile.serviceAreas}}</view>
   </view>
-  <view class="card">
-    <view class="card-title">培训完成情况</view>
-    <view class="info"><text>答题通过</text><text>{{profile.quizPassedAtText || '-'}}</text></view>
-    <view class="info"><text>视频完成</text><text>{{profile.videosCompletedAtText || '-'}}</text></view>
-    <view class="info"><text>审核申请</text><text>{{profile.requestedAtText || '-'}}</text></view>
-    <view class="info"><text>当前状态</text><text>{{profile.videoAuditStatusText}}</text></view>
+
+  <view class="admin-compact-card">
+    <view class="admin-summary-row">
+      <view class="admin-summary-main">
+        <view class="admin-summary-title">微信视频审核</view>
+        <view class="admin-summary-sub">{{profile.videoAuditStatusText}} · 申请 {{profile.requestedAtText || '-'}}</view>
+      </view>
+      <view class="meta-chip warning">{{profile.onboardingStatusText}}</view>
+    </view>
+    <view class="meta-chip-row">
+      <view class="meta-chip success">答题 {{profile.quizPassedAtText || '-'}}</view>
+      <view class="meta-chip chip-primary">视频 {{profile.videosCompletedAtText || '-'}}</view>
+    </view>
   </view>
-  <view class="card">
-    <view class="card-title">微信视频审核</view>
-    <view class="guide">请确认已添加用户微信/手机号并完成线上视频面试，再回到这里标记结果。</view>
-    <textarea class="textarea" placeholder="填写审核备注（选填）" value="{{remark}}" bindinput="inputRemark" />
-    <view class="actions">
-      <button class="reject" data-status="rejected" bindtap="audit">拒绝</button>
-      <button class="approve" data-status="approved" bindtap="audit">通过，成为实习宠托师</button>
+
+  <view class="collapse-card">
+    <view class="collapse-header" data-key="training" bindtap="toggleSection">
+      <view class="collapse-title">培训完成情况</view>
+      <view class="collapse-arrow">{{expanded.training ? '收起' : '展开'}}</view>
+    </view>
+    <view class="collapse-body" wx:if="{{expanded.training}}">
+      <view class="compact-info-grid">
+        <view class="compact-info-item"><view class="compact-info-label">答题通过</view><view class="compact-info-value">{{profile.quizPassedAtText || '-'}}</view></view>
+        <view class="compact-info-item"><view class="compact-info-label">视频完成</view><view class="compact-info-value">{{profile.videosCompletedAtText || '-'}}</view></view>
+        <view class="compact-info-item"><view class="compact-info-label">审核申请</view><view class="compact-info-value">{{profile.requestedAtText || '-'}}</view></view>
+        <view class="compact-info-item"><view class="compact-info-label">当前状态</view><view class="compact-info-value">{{profile.videoAuditStatusText}}</view></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="collapse-card">
+    <view class="collapse-header" data-key="guide" bindtap="toggleSection">
+      <view class="collapse-title">微信审核说明</view>
+      <view class="collapse-arrow">{{expanded.guide ? '收起' : '展开'}}</view>
+    </view>
+    <view class="collapse-body" wx:if="{{expanded.guide}}">
+      <view class="guide">请确认已添加用户微信/手机号并完成线上视频面试，再回到这里标记结果。</view>
+    </view>
+  </view>
+
+  <view class="audit-sticky-actions">
+    <button class="reject" data-status="rejected" bindtap="openAuditModal">拒绝</button>
+    <button class="approve" data-status="approved" bindtap="openAuditModal">通过，成为实习宠托师</button>
+  </view>
+
+  <view class="modal-backdrop" wx:if="{{showAuditModal}}" bindtap="closeAuditModal" catchtouchmove="noop">
+    <view class="modal-card" catchtap="noop">
+      <view class="modal-header">
+        <view class="modal-title">{{auditStatus === 'approved' ? '通过视频审核' : '拒绝视频审核'}}</view>
+        <view class="modal-close" bindtap="closeAuditModal">×</view>
+      </view>
+      <scroll-view scroll-y class="modal-scroll-body">
+        <view class="guide">{{auditStatus === 'approved' ? '确认该宠托师已完成微信视频审核并成为实习宠托师。' : '确认拒绝本次视频审核，建议填写原因。'}}</view>
+        <textarea class="textarea" placeholder="填写审核备注（选填）" value="{{remark}}" bindinput="inputRemark" />
+      </scroll-view>
+      <view class="modal-actions">
+        <button class="primary" style="flex: 2;" bindtap="audit">确认处理</button>
+        <button class="ghost" style="flex: 1;" bindtap="closeAuditModal">取消</button>
+      </view>
     </view>
   </view>
 </view>

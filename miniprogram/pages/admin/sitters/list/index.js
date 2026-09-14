@@ -4,7 +4,8 @@ const statusTabs = [
   { label: '全部', value: '' },
   { label: '已通过', value: 'approved' },
   { label: '待审核', value: 'pending' },
-  { label: '未通过', value: 'rejected' }
+  { label: '未通过', value: 'rejected' },
+  { label: '已移除', value: 'revoked' }
 ]
 
 function withDisplay(profile) {
@@ -15,7 +16,9 @@ function withDisplay(profile) {
     ratingText: reviewCount ? `${Number(profile.ratingAverage || 0)}分 / ${reviewCount}条评价` : '暂无评分',
     featuredActionText: profile.isFeatured ? '取消精选' : '设为精选',
     actionText: profile.auditStatus === 'pending' ? '去审核' : '查看资料',
-    avatarText: (profile.userNickname || profile.realName || '托').slice(0, 1)
+    canRevokeStaff: profile.auditStatus === 'approved',
+    avatarText: (profile.userNickname || profile.realName || '托').slice(0, 1),
+    expanded: false
   }
 }
 
@@ -85,6 +88,13 @@ Page({
     this.load({ reset: true })
   },
 
+  toggleDetails(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const profile = this.data.profiles[index]
+    if (!profile) return
+    this.setData({ [`profiles[${index}].expanded`]: !profile.expanded })
+  },
+
   detail(e) {
     const id = e.currentTarget.dataset.id
     if (!id) return
@@ -104,6 +114,26 @@ Page({
         callFunction('admin', 'setSitterFeatured', { staffProfileId, isFeatured })
           .then(() => {
             wx.showToast({ title: isFeatured ? '已设为精选' : '已取消精选' })
+            this.load({ reset: true })
+          })
+          .catch(showError)
+      }
+    })
+  },
+
+  revokeStaff(e) {
+    const staffProfileId = e.currentTarget.dataset.id
+    if (!staffProfileId) return
+    wx.showModal({
+      title: '移除宠托师身份',
+      content: '确认后该用户会失去宠托师角色和接单资格；再次申请需重新审核、答题、观看培训视频并通过视频审核。',
+      confirmText: '确认移除',
+      confirmColor: '#ef4444',
+      success: (res) => {
+        if (!res.confirm) return
+        callFunction('admin', 'revokeStaff', { staffProfileId })
+          .then(() => {
+            wx.showToast({ title: '已移除身份' })
             this.load({ reset: true })
           })
           .catch(showError)

@@ -1,20 +1,25 @@
 <view class="page admin-list-page">
-  <view class="header">
+  <view class="header compact-header">
     <view class="title">实习转正审核</view>
-    <view class="desc">审核实习宠托师最近三单服务报告质量。</view>
+    <view class="desc">紧凑查看晋升申请，进入详情后按订单折叠检查三单报告质量。</view>
   </view>
-  <view class="tabs">
+  <view class="tabs compact-tabs">
     <view class="tab {{status === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-value="{{item.value}}" bindtap="switchStatus">{{item.label}}</view>
   </view>
-  <view class="card item" wx:for="{{list}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
-    <view class="row">
-      <view>
-        <view class="name">{{item.realName}}</view>
-        <view class="muted">{{item.phone}} · {{item.createdAtText}}</view>
+  <view class="admin-compact-card" wx:for="{{list}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+    <view class="admin-summary-row">
+      <view class="admin-summary-main">
+        <view class="admin-summary-title">{{item.realName}}</view>
+        <view class="admin-summary-sub">{{item.phone || '未填写手机号'}} · {{item.createdAtText}}</view>
       </view>
-      <view class="pill">{{item.status}}</view>
+      <view class="meta-chip warning">{{item.status}}</view>
     </view>
-    <view class="meta">订单数：{{item.orderIds.length || 0}} · {{item.staffRemark || '无申请说明'}}</view>
+    <view class="meta-chip-row">
+      <view class="meta-chip chip-primary">{{item.staffLevelText || '实习宠托师'}}</view>
+      <view class="meta-chip success">{{item.orderIds.length || 0}} 单报告</view>
+      <view class="meta-chip">{{item.staffRemark || '无申请说明'}}</view>
+    </view>
   </view>
   <view class="empty" wx:if="{{!list.length && !loading}}">暂无晋升申请</view>
+  <button class="ghost compact-load-btn" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
 </view>

@@ -22,7 +22,7 @@
     </view>
     <view class="photo-actions beauty-actions">
       <button class="ghost-btn photo-btn" bindtap="chooseBeautyPhotos" disabled="{{uploadingBeauty || form.beautyPhotos.length >= 9}}"><text class="remix-icon ri-image-edit-line"></text><text>{{form.beautyPhotos.length ? '继续添加' : '选择美照'}}</text></button>
-      <button class="primary-btn photo-btn" bindtap="recognizeBreed" loading="{{recognizingBreed}}" disabled="{{recognizingBreed || !form.avatarFileId}}"><text class="remix-icon ri-sparkling-line"></text><text>AI 识别种类/品种</text></button>
+      <button wx:if="{{enablePetBreedAi}}" class="primary-btn photo-btn" bindtap="recognizeBreed" loading="{{recognizingBreed}}" disabled="{{recognizingBreed || !form.avatarFileId}}"><text class="remix-icon ri-sparkling-line"></text><text>AI 识别种类/品种</text></button>
     </view>
 
     <view class="ai-result-box" wx:if="{{aiResultText}}">

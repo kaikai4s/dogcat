@@ -2,7 +2,7 @@ const { callFunction, showError } = require('../../../../utils/cloud')
 const { formatDateTime, withStaffWorkflowText } = require('../../../../utils/format')
 
 Page({
-  data: { id: '', profile: null, remark: '' },
+  data: { id: '', profile: null, remark: '', showAuditModal: false, auditStatus: '', expanded: { training: true, guide: false } },
   onLoad(q) { this.setData({ id: q.id || '' }); this.load() },
   load() {
     callFunction('admin', 'listTrainingAudits', { page: 1, pageSize: 100 })
@@ -14,18 +14,24 @@ Page({
       })
       .catch(showError)
   },
+  noop() {},
   inputRemark(e) { this.setData({ remark: e.detail.value }) },
-  audit(e) {
-    const status = e.currentTarget.dataset.status
-    wx.showModal({
-      title: status === 'approved' ? '通过视频审核' : '拒绝视频审核',
-      content: status === 'approved' ? '确认该宠托师已完成微信视频审核并成为实习宠托师？' : '确认拒绝本次视频审核？',
-      success: (res) => {
-        if (!res.confirm) return
-        callFunction('admin', 'auditTrainingVideo', { staffProfileId: this.data.id, status, remark: this.data.remark })
-          .then(() => { wx.showToast({ title: '已处理', icon: 'none' }); wx.navigateBack() })
-          .catch(showError)
-      }
-    })
+  toggleSection(e) {
+    const key = e.currentTarget.dataset.key
+    if (!key) return
+    this.setData({ [`expanded.${key}`]: !this.data.expanded[key] })
+  },
+  openAuditModal(e) {
+    this.setData({ auditStatus: e.currentTarget.dataset.status, showAuditModal: true })
+  },
+  closeAuditModal() {
+    this.setData({ showAuditModal: false, auditStatus: '', remark: '' })
+  },
+  audit() {
+    const status = this.data.auditStatus
+    if (!status) return
+    callFunction('admin', 'auditTrainingVideo', { staffProfileId: this.data.id, status, remark: this.data.remark })
+      .then(() => { wx.showToast({ title: '已处理', icon: 'none' }); wx.navigateBack() })
+      .catch(showError)
   }
 })

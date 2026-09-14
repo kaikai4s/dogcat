@@ -1,6 +1,5 @@
-const { callFunction, showError } = require('../../../../utils/cloud')
+const { callFunction, showError, ensureLogin, loadSystemSettings, getCachedSystemSettings } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { ensureLogin } = require('../../../../utils/cloud')
 
 const speciesOptions = [
   { label: '狗狗', value: 'dog' },
@@ -33,6 +32,7 @@ Page({
     speciesIndex: 0,
     genderIndex: 4,
     recognizingBreed: false,
+    enablePetBreedAi: true,
     uploadingBeauty: false,
     canDeleteBeautyPhoto: canDeleteBeautyPhotoToday(),
     aiResultText: '',
@@ -61,7 +61,8 @@ Page({
   },
 
   onShow() {
-    this.setData({ canDeleteBeautyPhoto: canDeleteBeautyPhotoToday() })
+    this.setData({ canDeleteBeautyPhoto: canDeleteBeautyPhotoToday(), enablePetBreedAi: getCachedSystemSettings().enablePetBreedAi !== false })
+    loadSystemSettings().then((settings) => this.setData({ enablePetBreedAi: settings.enablePetBreedAi !== false }))
     ensureLogin({ content: '登录后可编辑宠物档案。' })
       .then(() => {
         if (this.data.initialized) return
@@ -197,6 +198,10 @@ Page({
 
   recognizeBreed() {
     if (this.data.recognizingBreed) return
+    if (this.data.enablePetBreedAi === false) {
+      wx.showToast({ title: 'AI 识别功能暂未开放', icon: 'none' })
+      return
+    }
 
     const avatarFileId = this.data.form.avatarFileId
     const tempHttpsUrl = this.data.tempHttpsUrl

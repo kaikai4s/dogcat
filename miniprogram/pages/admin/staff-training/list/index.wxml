@@ -1,21 +1,26 @@
 <view class="page admin-list-page">
-  <view class="header">
+  <view class="header compact-header">
     <view class="title">培训视频审核</view>
-    <view class="desc">查看已完成答题和培训视频、等待微信视频审核的宠托师。</view>
+    <view class="desc">待微信视频审核的宠托师，列表默认只展示关键进度。</view>
   </view>
-  <view class="search-card">
+  <view class="search-card compact-search-card">
     <input class="search-input" placeholder="搜索姓名/手机号/城市" value="{{keyword}}" bindinput="inputKeyword" />
     <button class="search-btn" bindtap="search">搜索</button>
   </view>
-  <view class="card item" wx:for="{{list}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
-    <view class="row">
-      <view>
-        <view class="name">{{item.realName || '宠托师'}}</view>
-        <view class="muted">{{item.phone}} · {{item.serviceCity}}</view>
+  <view class="admin-compact-card" wx:for="{{list}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+    <view class="admin-summary-row">
+      <view class="admin-summary-main">
+        <view class="admin-summary-title">{{item.realName || '宠托师'}}</view>
+        <view class="admin-summary-sub">{{item.phone || '未填写手机号'}} · {{item.serviceCity || '未填写城市'}}</view>
       </view>
-      <view class="pill">{{item.videoAuditStatusText}}</view>
+      <view class="meta-chip warning">{{item.videoAuditStatusText}}</view>
     </view>
-    <view class="meta">答题：{{item.quizPassedAtText || '-'}} · 视频：{{item.videosCompletedAtText || '-'}} · 申请：{{item.requestedAtText || '-'}}</view>
+    <view class="meta-chip-row">
+      <view class="meta-chip success">答题 {{item.quizPassedAtText || '-'}}</view>
+      <view class="meta-chip chip-primary">视频 {{item.videosCompletedAtText || '-'}}</view>
+      <view class="meta-chip">申请 {{item.requestedAtText || '-'}}</view>
+    </view>
   </view>
   <view class="empty" wx:if="{{!list.length && !loading}}">暂无待视频审核记录</view>
+  <button class="ghost compact-load-btn" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
 </view>

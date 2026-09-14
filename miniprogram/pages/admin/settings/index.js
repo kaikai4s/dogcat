@@ -1,5 +1,7 @@
 const { callFunction, showError, setCachedSystemSettings } = require('../../../utils/cloud')
 
+const quizOptionValues = ['A', 'B', 'C', 'D', 'E', 'F']
+
 function createEmptyItem() {
   return {
     id: `hero_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -86,6 +88,43 @@ function normalizeCheckinShareConfig(checkinShare = {}) {
   }
 }
 
+function createEmptyQuizQuestion() {
+  const id = `q_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+  return {
+    id,
+    type: 'single',
+    question: '',
+    options: [
+      { value: 'A', label: '' },
+      { value: 'B', label: '' },
+      { value: 'C', label: '' }
+    ],
+    answer: 'A'
+  }
+}
+
+function normalizeStaffTrainingConfig(training = {}) {
+  const sourceQuiz = Array.isArray(training.quiz) ? training.quiz : []
+  return {
+    passScore: Math.min(Math.max(Math.round(Number(training.passScore || 80)), 1), 100),
+    quiz: sourceQuiz.map((item, index) => {
+      const options = (Array.isArray(item.options) ? item.options : []).slice(0, quizOptionValues.length).map((option, optionIndex) => ({
+        value: quizOptionValues[optionIndex],
+        label: option.label || ''
+      }))
+      while (options.length < 2) options.push({ value: quizOptionValues[options.length], label: '' })
+      const answer = options.some((option) => option.value === item.answer) ? item.answer : options[0].value
+      return {
+        id: item.id || `q${index + 1}`,
+        type: 'single',
+        question: item.question || '',
+        options,
+        answer
+      }
+    })
+  }
+}
+
 function normalizeCarouselConfig(carousel = {}) {
   const source = carousel || {}
   const rotateIntervalMs = Number(source.rotateIntervalMs || 5000)
@@ -140,10 +179,48 @@ function normalizeHomePageConfig(homePage = {}) {
   }
 }
 
+function buildSettingSummary(settings = {}) {
+  const payment = settings.payment || normalizePaymentConfig()
+  const subscription = settings.subscription || normalizeSubscriptionConfig()
+  const templates = subscription.templates || {}
+  const configuredTemplateCount = Object.keys(templates).filter((key) => String(templates[key] || '').trim()).length
+  const carousel = settings.homeHeroCarousel || normalizeCarouselConfig()
+  const carouselItems = carousel.items || []
+  const enabledCarouselCount = carouselItems.filter((item) => item.enabled !== false).length
+  const homePage = settings.homePage || normalizeHomePageConfig()
+  const modules = homePage.modules || {}
+  const enabledModuleCount = homeModuleOptions.filter((item) => modules[item.key] !== false).length
+  const customerService = settings.customerService || normalizeCustomerServiceConfig()
+  const checkinShare = settings.checkinShare || normalizeCheckinShareConfig()
+  const settlement = settings.settlement || normalizeSettlementConfig()
+  const reliability = settings.reliability || normalizeReliabilityConfig()
+  const staffTraining = settings.staffTraining || normalizeStaffTrainingConfig()
+  const quiz = staffTraining.quiz || []
+
+  return {
+    debug: settings.enableTestAddressMode ? '测试地址模式已开启' : '测试地址模式已关闭',
+    petBreedAi: settings.enablePetBreedAi === false ? '前台宠物档案 AI 识别已关闭' : '前台宠物档案 AI 识别已开启',
+    payment: `${payment.enabled ? '支付已启用' : '支付已关闭'} · ${payment.mode === 'wechat' ? '微信支付' : '模拟支付'} · ${payment.refundEnabled ? '退款已启用' : '退款已关闭'}`,
+    subscription: `${subscription.enabled ? '订阅已启用' : '订阅已关闭'} · 已配置 ${configuredTemplateCount} 个模板`,
+    customerService: `${customerService.phone || '未配置电话'} · ${customerService.workHours || '未配置时间'}`,
+    checkinShare: `${checkinShare.title || '未配置标题'} · ${checkinShare.imageUrl ? '已配置封面' : '未配置封面'}`,
+    settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · T+${settlement.settlementDelayDays} · ${reliability.enableOfflineQueue ? '离线补传开' : '离线补传关'}`,
+    carousel: `${carousel.enabled ? '轮播已启用' : '轮播已关闭'} · ${enabledCarouselCount}/${carouselItems.length} 个素材启用`,
+    homePage: `${enabledModuleCount}/${homeModuleOptions.length} 个模块启用 · ${homePage.ctaTitle || '未配置标题'}`,
+    staffTraining: `及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题`,
+    configuredTemplateCount,
+    enabledCarouselCount,
+    carouselCount: carouselItems.length,
+    enabledModuleCount,
+    moduleCount: homeModuleOptions.length
+  }
+}
+
 Page({
   data: {
     settings: {
       enableTestAddressMode: false,
+      enablePetBreedAi: true,
       payment: normalizePaymentConfig(),
       settlement: normalizeSettlementConfig(),
       subscription: normalizeSubscriptionConfig(),
@@ -151,9 +228,26 @@ Page({
       customerService: normalizeCustomerServiceConfig(),
       checkinShare: normalizeCheckinShareConfig(),
       homeHeroCarousel: normalizeCarouselConfig(),
-      homePage: normalizeHomePageConfig()
+      homePage: normalizeHomePageConfig(),
+      staffTraining: normalizeStaffTrainingConfig()
     },
     homeModuleOptions,
+    settingSummary: buildSettingSummary({
+      enableTestAddressMode: false,
+      enablePetBreedAi: true,
+      payment: normalizePaymentConfig(),
+      settlement: normalizeSettlementConfig(),
+      subscription: normalizeSubscriptionConfig(),
+      reliability: normalizeReliabilityConfig(),
+      customerService: normalizeCustomerServiceConfig(),
+      checkinShare: normalizeCheckinShareConfig(),
+      homeHeroCarousel: normalizeCarouselConfig(),
+      homePage: normalizeHomePageConfig(),
+      staffTraining: normalizeStaffTrainingConfig()
+    }),
+    showSettingModal: false,
+    activeSettingPanel: '',
+    showCarouselEditor: false,
     editingIndex: -1,
     editingItem: createEmptyItem(),
     uploadingMedia: false,
@@ -171,6 +265,7 @@ Page({
       .then((settings) => {
         const normalized = {
           enableTestAddressMode: settings.enableTestAddressMode === true,
+          enablePetBreedAi: settings.enablePetBreedAi !== false,
           payment: normalizePaymentConfig(settings.payment),
           settlement: normalizeSettlementConfig(settings.settlement),
           subscription: normalizeSubscriptionConfig(settings.subscription),
@@ -178,10 +273,11 @@ Page({
           customerService: normalizeCustomerServiceConfig(settings.customerService),
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
-          homePage: normalizeHomePageConfig(settings.homePage)
+          homePage: normalizeHomePageConfig(settings.homePage),
+          staffTraining: normalizeStaffTrainingConfig(settings.staffTraining)
         }
         setCachedSystemSettings(normalized)
-        this.setData({ settings: normalized }, () => {
+        this.setData({ settings: normalized, settingSummary: buildSettingSummary(normalized) }, () => {
           this.resolveMediaUrls(normalized.homeHeroCarousel.items)
           this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
         })
@@ -233,8 +329,29 @@ Page({
     })
   },
 
+  refreshSettingSummary() {
+    this.setData({ settingSummary: buildSettingSummary(this.data.settings) })
+  },
+
+  openSettingModal(e) {
+    const panel = e.currentTarget.dataset.panel
+    if (!panel) return
+    this.setData({ showSettingModal: true, activeSettingPanel: panel })
+  },
+
+  closeSettingModal() {
+    this.setData({ showSettingModal: false, activeSettingPanel: '', showCarouselEditor: false })
+    this.refreshSettingSummary()
+  },
+
+  noop() {},
+
   toggleTestAddressMode(e) {
     this.setData({ ['settings.enableTestAddressMode']: e.detail.value })
+  },
+
+  togglePetBreedAi(e) {
+    this.setData({ ['settings.enablePetBreedAi']: e.detail.value })
   },
 
   toggleCarouselEnabled(e) {
@@ -374,6 +491,77 @@ Page({
     this.setData({ [`settings.homePage.modules.${key}`]: e.detail.value })
   },
 
+  trainingPassScoreInput(e) {
+    const passScore = Math.min(Math.max(Math.round(Number(e.detail.value || 80)), 1), 100)
+    this.setData({ ['settings.staffTraining.passScore']: passScore })
+  },
+
+  addQuizQuestion() {
+    const quiz = [...(this.data.settings.staffTraining.quiz || [])]
+    quiz.push(createEmptyQuizQuestion())
+    this.setData({ ['settings.staffTraining.quiz']: quiz })
+  },
+
+  deleteQuizQuestion(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const quiz = [...(this.data.settings.staffTraining.quiz || [])]
+    if (quiz.length <= 1) {
+      wx.showToast({ title: '至少保留 1 道题', icon: 'none' })
+      return
+    }
+    quiz.splice(index, 1)
+    this.setData({ ['settings.staffTraining.quiz']: quiz })
+  },
+
+  quizQuestionInput(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    this.setData({ [`settings.staffTraining.quiz[${index}].question`]: e.detail.value })
+  },
+
+  quizOptionInput(e) {
+    const questionIndex = Number(e.currentTarget.dataset.questionIndex)
+    const optionIndex = Number(e.currentTarget.dataset.optionIndex)
+    this.setData({ [`settings.staffTraining.quiz[${questionIndex}].options[${optionIndex}].label`]: e.detail.value })
+  },
+
+  quizAnswerChange(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    this.setData({ [`settings.staffTraining.quiz[${index}].answer`]: e.detail.value })
+  },
+
+  addQuizOption(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const quiz = [...(this.data.settings.staffTraining.quiz || [])]
+    const question = quiz[index]
+    if (!question) return
+    const options = [...(question.options || [])]
+    if (options.length >= quizOptionValues.length) {
+      wx.showToast({ title: '最多 6 个选项', icon: 'none' })
+      return
+    }
+    options.push({ value: quizOptionValues[options.length], label: '' })
+    quiz[index] = { ...question, options }
+    this.setData({ ['settings.staffTraining.quiz']: quiz })
+  },
+
+  deleteQuizOption(e) {
+    const questionIndex = Number(e.currentTarget.dataset.questionIndex)
+    const optionIndex = Number(e.currentTarget.dataset.optionIndex)
+    const quiz = [...(this.data.settings.staffTraining.quiz || [])]
+    const question = quiz[questionIndex]
+    if (!question) return
+    const options = [...(question.options || [])]
+    if (options.length <= 2) {
+      wx.showToast({ title: '至少保留 2 个选项', icon: 'none' })
+      return
+    }
+    options.splice(optionIndex, 1)
+    const normalizedOptions = options.map((option, index) => ({ ...option, value: quizOptionValues[index] }))
+    const answer = normalizedOptions.some((option) => option.value === question.answer) ? question.answer : normalizedOptions[0].value
+    quiz[questionIndex] = { ...question, options: normalizedOptions, answer }
+    this.setData({ ['settings.staffTraining.quiz']: quiz })
+  },
+
   startAddItem() {
     const items = this.data.settings.homeHeroCarousel.items || []
     if (items.length >= 5) {
@@ -385,7 +573,8 @@ Page({
     newItem.sort = nextSort
     this.setData({
       editingIndex: -1,
-      editingItem: newItem
+      editingItem: newItem,
+      showCarouselEditor: true
     })
   },
 
@@ -395,7 +584,8 @@ Page({
     if (items[index]) {
       this.setData({
         editingIndex: index,
-        editingItem: { ...items[index] }
+        editingItem: { ...items[index] },
+        showCarouselEditor: true
       })
     }
   },
@@ -403,7 +593,8 @@ Page({
   cancelEditItem() {
     this.setData({
       editingIndex: -1,
-      editingItem: createEmptyItem()
+      editingItem: createEmptyItem(),
+      showCarouselEditor: false
     })
   },
 
@@ -570,7 +761,8 @@ Page({
     this.setData({
       ['settings.homeHeroCarousel.items']: items,
       editingIndex: -1,
-      editingItem: createEmptyItem()
+      editingItem: createEmptyItem(),
+      showCarouselEditor: false
     })
     wx.showToast({ title: '素材已提交到当前列表，请点击底部“保存设置”' })
   },
@@ -582,7 +774,8 @@ Page({
     this.setData({
       ['settings.homeHeroCarousel.items']: items,
       editingIndex: -1,
-      editingItem: createEmptyItem()
+      editingItem: createEmptyItem(),
+      showCarouselEditor: false
     })
   },
 
@@ -611,6 +804,7 @@ Page({
     const checkinShare = this.data.settings.checkinShare || {}
     const payload = {
       enableTestAddressMode: this.data.settings.enableTestAddressMode === true,
+      enablePetBreedAi: this.data.settings.enablePetBreedAi !== false,
       payment: this.data.settings.payment,
       settlement: this.data.settings.settlement,
       subscription: this.data.settings.subscription,
@@ -621,6 +815,7 @@ Page({
         imageUrl: checkinShare.imageUrl || ''
       },
       homePage: this.data.settings.homePage,
+      staffTraining: this.data.settings.staffTraining,
       homeHeroCarousel: {
         enabled: carousel.enabled === true,
         autoRotate: carousel.autoRotate !== false,
@@ -633,6 +828,7 @@ Page({
       .then((settings) => {
         const normalized = {
           enableTestAddressMode: settings.enableTestAddressMode === true,
+          enablePetBreedAi: settings.enablePetBreedAi !== false,
           payment: normalizePaymentConfig(settings.payment),
           settlement: normalizeSettlementConfig(settings.settlement),
           subscription: normalizeSubscriptionConfig(settings.subscription),
@@ -640,10 +836,11 @@ Page({
           customerService: normalizeCustomerServiceConfig(settings.customerService),
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
-          homePage: normalizeHomePageConfig(settings.homePage)
+          homePage: normalizeHomePageConfig(settings.homePage),
+          staffTraining: normalizeStaffTrainingConfig(settings.staffTraining)
         }
         setCachedSystemSettings(normalized)
-        this.setData({ settings: normalized, saving: false })
+        this.setData({ settings: normalized, settingSummary: buildSettingSummary(normalized), saving: false })
         this.resolveMediaUrls(normalized.homeHeroCarousel.items)
         this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
         wx.showToast({ title: '设置已保存' })

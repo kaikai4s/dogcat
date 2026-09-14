@@ -394,6 +394,7 @@ test('admin can save and public can read system settings', async () => {
 
   const settingsPayload = {
     enableTestAddressMode: true,
+    enablePetBreedAi: false,
     payment: { enabled: true, mode: 'mock', mchId: 'mch_1', refundEnabled: true },
     settlement: { staffCommissionRate: 0.75, settlementDelayDays: 2, minWithdrawAmount: 20 },
     subscription: { enabled: true, templates: { orderPaid: 'tpl_paid', orderAssigned: 'tpl_assigned', orderAccepted: 'tpl_accepted', serviceStart: 'tpl_start', serviceFinish: 'tpl_finish', remoteUnlock: 'tpl_unlock', refundResult: 'tpl_refund' } },
@@ -422,6 +423,7 @@ test('admin can save and public can read system settings', async () => {
 
   assert.equal(saved.ok, true)
   assert.equal(saved.data.enableTestAddressMode, true)
+  assert.equal(saved.data.enablePetBreedAi, false)
   assert.equal(saved.data.homeHeroCarousel.enabled, true)
   assert.equal(saved.data.payment.mode, 'mock')
   assert.equal(saved.data.payment.mchId, 'mch_1')
@@ -436,12 +438,84 @@ test('admin can save and public can read system settings', async () => {
 
   assert.equal(fetched.ok, true)
   assert.equal(fetched.data.enableTestAddressMode, true)
+  assert.equal(fetched.data.enablePetBreedAi, false)
   assert.equal(fetched.data.payment.refundEnabled, true)
   assert.equal(fetched.data.settlement.minWithdrawAmount, 20)
   assert.equal(fetched.data.subscription.templates.refundResult, 'tpl_refund')
   assert.equal(fetched.data.reliability.maxRetryTimes, 6)
   assert.equal(fetched.data.homeHeroCarousel.enabled, true)
   assert.equal(fetched.data.homeHeroCarousel.items[0].title, '视频测试')
+})
+
+test('pet breed AI recognition can be disabled by system settings', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { enablePetBreedAi: false } }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const result = await fn.main({ module: 'pet', action: 'recognizePetBreed', data: { imageUrl: 'https://example.com/pet.jpg' } })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.message, 'AI 识别功能已关闭')
+})
+
+test('staff training quiz uses admin configured questions and pass score', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'staff_user', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active' }
+    ],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'approved', staffLevel: 'applicant', onboardingStatus: 'training_pending' }],
+    orders: [],
+    platform_configs: [],
+    admin_operation_logs: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+
+  const staffTraining = {
+    passScore: 60,
+    quiz: [
+      { id: 'custom1', type: 'single', question: '服务前应该确认什么？', options: [{ value: 'A', label: '订单时间和服务内容' }, { value: 'B', label: '不用确认' }], answer: 'A' },
+      { id: 'custom2', type: 'single', question: '能否私下交易？', options: [{ value: 'A', label: '可以' }, { value: 'B', label: '不可以' }], answer: 'B' }
+    ]
+  }
+
+  const saved = await adminFn.main({ module: 'admin', action: 'saveSystemSettings', data: { staffTraining } })
+  const status = await staffFn.main({ module: 'staff', action: 'getTrainingStatus' })
+  const failed = await staffFn.main({ module: 'staff', action: 'submitTrainingQuiz', data: { answers: { custom1: 'A', custom2: 'A' } } })
+  const passed = await staffFn.main({ module: 'staff', action: 'submitTrainingQuiz', data: { answers: { custom1: 'A', custom2: 'B' } } })
+
+  assert.equal(saved.ok, true)
+  assert.equal(saved.data.staffTraining.passScore, 60)
+  assert.equal(status.ok, true)
+  assert.equal(status.data.quiz.passScore, 60)
+  assert.equal(status.data.quiz.questions.length, 2)
+  assert.equal(status.data.quiz.questions[0].id, 'custom1')
+  assert.equal(status.data.quiz.questions[0].answer, undefined)
+  assert.equal(failed.ok, true)
+  assert.equal(failed.data.score, 50)
+  assert.equal(failed.data.passed, false)
+  assert.equal(passed.ok, true)
+  assert.equal(passed.data.score, 100)
+  assert.equal(passed.data.passed, true)
+})
+
+test('invalid staff training quiz config falls back to default quiz', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    platform_configs: [],
+    admin_operation_logs: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+
+  const saved = await adminFn.main({ module: 'admin', action: 'saveSystemSettings', data: { staffTraining: { passScore: 120, quiz: [{ question: '', options: [], answer: 'A' }] } } })
+
+  assert.equal(saved.ok, true)
+  assert.equal(saved.data.staffTraining.passScore, 100)
+  assert.equal(saved.data.staffTraining.quiz.length, 5)
+  assert.equal(saved.data.staffTraining.quiz[0].answer, 'A')
 })
 
 test('system home page data aggregates public conversion modules', async () => {
@@ -854,6 +928,40 @@ test('admin can manage service prices and quote uses configured price', async ()
   assert.equal(listResult.data.find((item) => item.key === 'walk').extraPetRule, 'dog')
 })
 
+test('direct intern sitter quote uses configured intern price', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
+      { _id: 'intern_user', openid: 'openid_intern', roles: ['client', 'staff'], status: 'active' },
+      { _id: 'certified_user', openid: 'openid_certified', roles: ['client', 'staff'], status: 'active' }
+    ],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 8 }],
+    staff_profiles: [
+      { _id: 'sp_intern', openid: 'openid_intern', auditStatus: 'approved', staffLevel: 'intern' },
+      { _id: 'sp_certified', openid: 'openid_certified', auditStatus: 'approved', staffLevel: 'certified' }
+    ],
+    service_prices: [],
+    admin_operation_logs: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const saved = await adminFn.main({ module: 'admin', action: 'saveServicePrice', data: { key: 'feed', label: '喂养服务', price: 100, internPrice: 70, enabled: true } })
+  const internQuote = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['visit_fee', 'feed'], durationMinutes: 60, publishMode: 'direct', staffProfileId: 'sp_intern' } })
+  const certifiedQuote = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['visit_fee', 'feed'], durationMinutes: 60, publishMode: 'direct', staffProfileId: 'sp_certified' } })
+  const openQuote = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['visit_fee', 'feed'], durationMinutes: 60, publishMode: 'open' } })
+
+  assert.equal(saved.ok, true)
+  assert.equal(saved.data.internPrice, 70)
+  assert.equal(internQuote.ok, true)
+  assert.equal(internQuote.data.payAmount, 100)
+  assert.equal(internQuote.data.priceSnapshot.staffPriceLevel, 'intern')
+  assert.equal(certifiedQuote.data.payAmount, 130)
+  assert.equal(certifiedQuote.data.priceSnapshot.staffPriceLevel, 'certified')
+  assert.equal(openQuote.data.payAmount, 130)
+})
+
 test('admin can configure extra pet fee home visibility and custom services', async () => {
   const db = createCollectionStore({
     users: [
@@ -956,6 +1064,143 @@ test('admin audit rejection removes staff role and returns active role to client
   assert.equal(result.ok, true)
   assert.deepEqual(user.roles, ['client'])
   assert.equal(user.activeRole, 'client')
+})
+
+test('admin can revoke staff identity and clear workflow state', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], activeRole: 'staff', status: 'active' }
+    ],
+    staff_profiles: [{
+      _id: 'sp1',
+      openid: 'openid_staff',
+      auditStatus: 'approved',
+      staffLevel: 'certified',
+      onboardingStatus: 'intern',
+      videoAuditStatus: 'approved',
+      promotionStatus: 'pending',
+      isFeatured: true,
+      quizPassedAt: '2026-01-01',
+      quizScore: 100,
+      trainingVideoProgress: { platform_rules: { watched: true } },
+      trainingVideosCompletedAt: '2026-01-01',
+      videoAuditRequestedAt: '2026-01-02',
+      internStartedAt: '2026-01-03',
+      internCompletedOrderCount: 3,
+      promotionApplicationId: 'pa1',
+      promotionAppliedAt: '2026-01-04'
+    }],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  const result = await fn.main({ module: 'admin', action: 'revokeStaff', data: { staffProfileId: 'sp1' } })
+  const profile = db.state.staff_profiles.find((item) => item._id === 'sp1')
+  const user = db.state.users.find((item) => item._id === 'staff')
+
+  assert.equal(result.ok, true)
+  assert.equal(profile.auditStatus, 'revoked')
+  assert.equal(profile.staffLevel, 'applicant')
+  assert.equal(profile.onboardingStatus, 'application_pending')
+  assert.equal(profile.videoAuditStatus, 'not_started')
+  assert.equal(profile.promotionStatus, 'none')
+  assert.equal(profile.isFeatured, false)
+  assert.equal(profile.quizPassedAt, null)
+  assert.equal(profile.quizScore, 0)
+  assert.deepEqual(profile.trainingVideoProgress, {})
+  assert.equal(profile.trainingVideosCompletedAt, null)
+  assert.equal(profile.videoAuditRequestedAt, null)
+  assert.equal(profile.internCompletedOrderCount, 0)
+  assert.equal(profile.promotionApplicationId, '')
+  assert.deepEqual(user.roles, ['client'])
+  assert.equal(user.activeRole, 'client')
+})
+
+test('revoked staff cannot take direct orders and can reapply from scratch', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
+      { _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
+      { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], activeRole: 'staff', status: 'active', phone: '13800001111' }
+    ],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 8 }],
+    staff_profiles: [{
+      _id: 'sp1',
+      userId: 'staff',
+      openid: 'openid_staff',
+      realName: '张三',
+      phone: '13800001111',
+      auditStatus: 'approved',
+      staffLevel: 'certified',
+      onboardingStatus: 'intern',
+      videoAuditStatus: 'approved',
+      promotionStatus: 'approved',
+      quizPassedAt: '2026-01-01',
+      quizScore: 100,
+      trainingVideoProgress: { platform_rules: { watched: true } },
+      trainingVideosCompletedAt: '2026-01-01',
+      internCompletedOrderCount: 3
+    }],
+    staff_identity_verifications: [{ _id: 'idv1', staffProfileId: 'sp1', userId: 'staff', openid: 'openid_staff', auditStatus: 'approved' }],
+    service_prices: [],
+    orders: [],
+    user_addresses: [],
+    admin_operation_logs: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+
+  const revoked = await adminFn.main({ module: 'admin', action: 'revokeStaff', data: { staffProfileId: 'sp1' } })
+  const directOrder = await clientFn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      petId: 'p1',
+      serviceTypes: ['visit_fee', 'feed'],
+      serviceAddress: '测试地址',
+      addressDetail: '3栋2单元',
+      doorplate: '1802',
+      startTime: '2099-07-28 10:00',
+      endTime: '2099-07-28 11:00',
+      durationMinutes: 60,
+      publishMode: 'direct',
+      staffProfileId: 'sp1'
+    }
+  })
+  const reapplied = await staffFn.main({
+    module: 'staff',
+    action: 'submitStaffProfile',
+    data: {
+      realName: '张三',
+      phone: '13800001111',
+      serviceCity: '上海',
+      serviceAreas: '浦东',
+      serviceAddress: '测试地址',
+      serviceLatitude: 31.2,
+      serviceLongitude: 121.5,
+      idCardFrontFileId: 'cloud://id-front',
+      idCardBackFileId: 'cloud://id-back',
+      facePhotoFileId: 'cloud://face'
+    }
+  })
+  const approved = await adminFn.main({ module: 'admin', action: 'auditStaff', data: { staffProfileId: 'sp1', auditStatus: 'approved' } })
+  const profile = db.state.staff_profiles.find((item) => item._id === 'sp1')
+
+  assert.equal(revoked.ok, true)
+  assert.equal(directOrder.ok, false)
+  assert.equal(directOrder.message, '指定宠托师未审核通过')
+  assert.equal(reapplied.ok, true)
+  assert.equal(approved.ok, true)
+  assert.equal(profile.auditStatus, 'approved')
+  assert.equal(profile.staffLevel, 'applicant')
+  assert.equal(profile.onboardingStatus, 'training_pending')
+  assert.equal(profile.videoAuditStatus, 'not_started')
+  assert.equal(profile.quizPassedAt, null)
+  assert.deepEqual(profile.trainingVideoProgress, {})
+  assert.equal(profile.trainingVideosCompletedAt, null)
+  assert.equal(profile.internCompletedOrderCount, 0)
 })
 
 test('client can list only approved sitters with safe public fields', async () => {
