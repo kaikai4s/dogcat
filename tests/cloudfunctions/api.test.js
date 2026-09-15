@@ -1022,7 +1022,7 @@ test('non-admin cannot save service prices', async () => {
   assert.equal(result.message, '仅管理员可操作')
 })
 
-test('admin audit approval grants staff role', async () => {
+test('admin audit approval keeps applicant out of staff role until video audit passes', async () => {
   const db = createCollectionStore({
     users: [
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
@@ -1040,7 +1040,9 @@ test('admin audit approval grants staff role', async () => {
   })
 
   assert.equal(result.ok, true)
-  assert.deepEqual(db.state.users.find((user) => user._id === 'staff').roles, ['client', 'staff'])
+  assert.deepEqual(db.state.users.find((user) => user._id === 'staff').roles, ['client'])
+  assert.equal(db.state.staff_profiles.find((item) => item._id === 'sp1').staffLevel, 'applicant')
+  assert.equal(db.state.staff_profiles.find((item) => item._id === 'sp1').onboardingStatus, 'training_pending')
 })
 
 test('admin audit rejection removes staff role and returns active role to client', async () => {
@@ -3005,6 +3007,34 @@ test('deleting member level recalculates affected users', async () => {
   assert.equal(result.ok, true)
   assert.equal(affected.memberLevel, 'level_silver')
   assert.equal(affected.memberLevelName, '白银会员')
+})
+
+test('submitStaffProfile rejects non-cloud identity file ids', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_staff_new', roles: ['client'], status: 'active', phone: '13800001111' }],
+    staff_profiles: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_staff_new')
+
+  const result = await fn.main({
+    module: 'staff',
+    action: 'submitStaffProfile',
+    data: {
+      realName: '张三',
+      phone: '13800001111',
+      serviceCity: '上海',
+      serviceAreas: '浦东',
+      serviceAddress: '三里屯SOHO',
+      serviceLatitude: 31.2,
+      serviceLongitude: 121.5,
+      idCardFrontFileId: 'https://example.com/front.jpg',
+      idCardBackFileId: 'cloud://id-back',
+      facePhotoFileId: 'cloud://face'
+    }
+  })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.message, '请上传身份证正反面照片')
 })
 
 test('submitStaffProfile requires fixed service address and valid coordinates', async () => {

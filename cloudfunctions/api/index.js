@@ -5721,9 +5721,9 @@ const handlers = {
       const serviceLatitude = Number(data.latitude || data.serviceLatitude || 0)
       const serviceLongitude = Number(data.longitude || data.serviceLongitude || 0)
       const serviceRadiusKm = Math.max(Number(data.serviceRadiusKm || 5), 1)
-      const idCardFrontFileId = safeFileId(data.idCardFrontFileId) || safeText(data.idCardFrontFileId).trim()
-      const idCardBackFileId = safeFileId(data.idCardBackFileId) || safeText(data.idCardBackFileId).trim()
-      const facePhotoFileId = safeFileId(data.facePhotoFileId) || safeText(data.facePhotoFileId).trim()
+      const idCardFrontFileId = safeFileId(data.idCardFrontFileId)
+      const idCardBackFileId = safeFileId(data.idCardBackFileId)
+      const facePhotoFileId = safeFileId(data.facePhotoFileId)
 
       if (!realName) throw new Error('请输入真实姓名')
       if (!phone) throw new Error('请输入手机号')
@@ -7002,11 +7002,9 @@ const handlers = {
       const staffUser = userRes.data[0]
       if (staffUser) {
         const existingRoles = staffUser.roles || ['client']
-        const roles = status === 'approved'
-          ? Array.from(new Set([...existingRoles, 'staff']))
-          : existingRoles.filter((role) => role !== 'staff')
-        const userUpdate = { roles, updatedAt: now() }
-        if (staffUser.activeRole === 'staff' && status !== 'approved') userUpdate.activeRole = 'client'
+        const roles = existingRoles.filter((role) => role !== 'staff')
+        const userUpdate = { roles: roles.length ? roles : ['client'], updatedAt: now() }
+        if (staffUser.activeRole === 'staff') userUpdate.activeRole = 'client'
         await db.collection('users').doc(staffUser._id).update({ data: userUpdate })
       }
       await logAdmin(admin, 'staff_profile', data.staffProfileId, 'auditStaff', { status })
