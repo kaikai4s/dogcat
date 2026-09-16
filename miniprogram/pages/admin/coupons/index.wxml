@@ -13,9 +13,19 @@
     <input type="number" placeholder="优惠金额" value="{{form.discountAmount}}" data-field="discountAmount" bindinput="input" />
     <input type="number" placeholder="最低订单金额" value="{{form.minOrderAmount}}" data-field="minOrderAmount" bindinput="input" />
 
-    <view class="muted" style="margin:12rpx 0 10rpx;">适用服务（可多选）</view>
-    <view class="chip-row">
-      <view class="chip {{form.applicableServiceTypes.indexOf(item.key) !== -1 ? 'pink' : ''}}" wx:for="{{servicePrices}}" wx:key="key" data-key="{{item.key}}" bindtap="toggleServiceType">{{item.label}}</view>
+    <view class="muted" style="margin:12rpx 0 10rpx;">适用业务</view>
+    <view class="tabs">
+      <button class="tab {{form.usageScope === 'service' ? 'active-tab' : ''}}" data-scope="service" bindtap="setUsageScope">服务券</button>
+      <button class="tab {{form.usageScope === 'mall' ? 'active-tab' : ''}}" data-scope="mall" bindtap="setUsageScope">零售券</button>
+      <button class="tab {{form.usageScope === 'all' ? 'active-tab' : ''}}" data-scope="all" bindtap="setUsageScope">通用券</button>
+    </view>
+    <view class="notice" wx:if="{{form.usageScope === 'mall'}}" style="margin:12rpx 0;padding:18rpx 20rpx;">零售券仅可用于宠物用品商城，不会出现在上门服务下单优惠中。</view>
+
+    <view wx:if="{{form.usageScope !== 'mall'}}">
+      <view class="muted" style="margin:12rpx 0 10rpx;">适用服务（可多选）</view>
+      <view class="chip-row">
+        <view class="chip {{form.applicableServiceTypes.indexOf(item.key) !== -1 ? 'pink' : ''}}" wx:for="{{servicePrices}}" wx:key="key" data-key="{{item.key}}" bindtap="toggleServiceType">{{item.label}}</view>
+      </view>
     </view>
 
     <view class="muted" style="margin:20rpx 0 10rpx;">有效期模式</view>
@@ -106,7 +116,7 @@
     <view class="between" style="align-items:flex-start;gap:18rpx;">
       <view style="flex:1;">
         <view class="strong">{{item.name}}</view>
-        <view class="muted">满 ¥{{item.minOrderAmount}} 减 ¥{{item.discountAmount}} · {{item.validType === 'fixed_range' ? (item.validFromFixed + ' ~ ' + item.validToFixed) : (item.validDays + '天有效')}}</view>
+        <view class="muted">{{item.usageScopeText || (item.usageScope === 'mall' ? '零售券' : item.usageScope === 'all' ? '通用券' : '服务券')}} · 满 ¥{{item.minOrderAmount}} 减 ¥{{item.discountAmount}} · {{item.validType === 'fixed_range' ? (item.validFromFixed + ' ~ ' + item.validToFixed) : (item.validDays + '天有效')}}</view>
         <view class="muted">{{item.displayTag || '无标签'}} · {{item.newbieOnly ? '新人专属 · ' : ''}}已发 {{item.issuedCount || 0}} 张 · 每人 {{item.perUserLimit}} 张</view>
         <view class="muted" wx:if="{{item.claimNotice}}">领取说明：{{item.claimNotice}}</view>
       </view>

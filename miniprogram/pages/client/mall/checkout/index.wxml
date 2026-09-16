@@ -1,0 +1,23 @@
+<view class="mall-page checkout-page">
+  <view class="page-title">确认订单</view>
+  <view class="checkout-card" bindtap="chooseAddress">
+    <view class="card-head">收货地址 <text>更换</text></view>
+    <view wx:if="{{address}}"><view class="addr-name">{{address.contactName}} {{address.contactPhone}}</view><view class="addr-text">{{address.serviceAddress}} {{address.addressDetail}} {{address.doorplate}}</view></view>
+    <view class="empty-line" wx:else>请选择收货地址</view>
+  </view>
+  <view class="checkout-card">
+    <view class="card-head">商品明细</view>
+    <view class="mini-item" wx:for="{{items}}" wx:key="skuId"><image src="{{item.coverFileId}}" mode="aspectFill" /><view><view class="mini-name">{{item.name}}</view><view class="mini-sub">{{item.specText}} × {{item.quantity}}</view></view><view class="price">¥{{item.price}}</view></view>
+  </view>
+  <view class="checkout-card">
+    <view class="card-head">优惠券 <text wx:if="{{couponId}}" bindtap="clearCoupon">不使用</text></view>
+    <picker mode="selector" range="{{coupons}}" range-key="name" bindchange="chooseCoupon"><view class="picker-line">{{couponName || '不使用优惠券 / 选择优惠券'}}</view></picker>
+  </view>
+  <view class="checkout-card amount-card">
+    <view><text>商品金额</text><text>¥{{pricing.totalProductAmount}}</text></view>
+    <view><text>运费</text><text>¥{{pricing.shippingFee}}</text></view>
+    <view wx:if="{{pricing.discountAmount}}"><text>优惠</text><text>-¥{{pricing.discountAmount}}</text></view>
+    <view class="pay-line"><text>应付</text><text>¥{{pricing.payAmount}}</text></view>
+  </view>
+  <view class="bottom-bar"><view class="sum-price">¥{{pricing.payAmount}}</view><button class="primary" loading="{{submitting}}" bindtap="submit">提交并支付</button></view>
+</view>

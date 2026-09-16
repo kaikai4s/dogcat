@@ -1,0 +1,18 @@
+<view class="mall-page">
+  <view class="page-title">购物车</view>
+  <view class="cart-item" wx:for="{{cart.items}}" wx:key="skuId">
+    <view class="check {{item.selected !== false ? 'active' : ''}}" data-index="{{index}}" bindtap="toggle">✓</view>
+    <image src="{{item.snapshot.coverFileId || item.product.coverFileId || item.product.imageFileIds[0]}}" mode="aspectFill" data-id="{{item.productId}}" bindtap="detail" />
+    <view class="cart-main">
+      <view class="cart-name">{{item.snapshot.name || item.product.name}}</view>
+      <view class="cart-sub">{{item.specText || item.snapshot.specText || item.product.specText}} {{item.invalid ? '已下架' : ''}} {{item.soldOut ? '售罄' : ''}}</view>
+      <view class="cart-row"><text class="price">¥{{item.price || item.snapshot.price}}</text><view class="qty-box"><button data-index="{{index}}" data-delta="-1" bindtap="changeQty">-</button><text>{{item.quantity}}</text><button data-index="{{index}}" data-delta="1" bindtap="changeQty">+</button></view></view>
+    </view>
+    <button class="remove" data-index="{{index}}" bindtap="remove">删</button>
+  </view>
+  <view class="empty" wx:if="{{!loading && !cart.items.length}}">购物车还是空的</view>
+  <view class="bottom-bar">
+    <view><view class="sum-label">已选 {{cart.selectedCount}} 件</view><view class="sum-price">¥{{cart.totalAmount}}</view></view>
+    <button class="primary" bindtap="checkout" disabled="{{!cart.selectedCount}}">去结算</button>
+  </view>
+</view>

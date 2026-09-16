@@ -16,7 +16,8 @@ const collections = [
   'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
   'pet_beauty_votes', 'pet_beauty_month_rankings', 'pet_beauty_month_locks',
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',
-  'user_feedback', 'staff_promotion_applications'
+  'user_feedback', 'staff_promotion_applications',
+  'mall_categories', 'mall_products', 'mall_carts', 'mall_orders'
 ]
 
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'
@@ -1790,13 +1791,24 @@ function getWalkPrice(basePrice, weight) {
   return 69
 }
 
+function normalizeCouponUsageScope(value) {
+  return ['service', 'mall', 'all'].includes(value) ? value : 'service'
+}
+
+function couponUsageScopeText(scope) {
+  return ({ service: '服务券', mall: '零售券', all: '通用券' })[scope] || '服务券'
+}
+
 function normalizeCouponSnapshot(coupon) {
   const snapshot = coupon.templateSnapshot || coupon
+  const usageScope = normalizeCouponUsageScope(snapshot.usageScope || snapshot.businessType)
   return {
     templateId: coupon.templateId || coupon._id || '',
     name: safeText(snapshot.name).trim() || '优惠券',
     description: safeText(snapshot.description).trim(),
     type: snapshot.type === 'fixed' ? 'fixed' : 'fixed',
+    usageScope,
+    usageScopeText: couponUsageScopeText(usageScope),
     discountAmount: Math.max(Number(snapshot.discountAmount || 0), 0),
     minOrderAmount: Math.max(Number(snapshot.minOrderAmount || 0), 0),
     applicableServiceTypes: Array.isArray(snapshot.applicableServiceTypes) ? snapshot.applicableServiceTypes.map((item) => String(item || '').trim()).filter(Boolean) : [],
@@ -1811,8 +1823,16 @@ function normalizeCouponSnapshot(coupon) {
 }
 
 function couponRuleText(snapshot) {
-  const minText = snapshot.minOrderAmount > 0 ? `满${snapshot.minOrderAmount}减${snapshot.discountAmount}` : `立减${snapshot.discountAmount}`
-  return snapshot.applicableServiceTypes.length ? `${minText}，限指定服务` : minText
+  const normalized = normalizeCouponSnapshot(snapshot)
+  const minText = normalized.minOrderAmount > 0 ? `满${normalized.minOrderAmount}减${normalized.discountAmount}` : `立减${normalized.discountAmount}`
+  const scopeText = couponUsageScopeText(normalized.usageScope)
+  if (normalized.usageScope === 'service' && normalized.applicableServiceTypes.length) return `${scopeText}，${minText}，限指定服务`
+  return `${scopeText}，${minText}`
+}
+
+function couponBusinessMatches(snapshot, pricing = {}) {
+  const businessType = pricing.businessType === 'mall' || (Array.isArray(pricing.serviceTypes) && pricing.serviceTypes.includes('mall')) ? 'mall' : 'service'
+  return snapshot.usageScope === 'all' || snapshot.usageScope === businessType
 }
 
 function couponDisplayStatus(coupon, time = now()) {
@@ -1834,6 +1854,8 @@ function formatUserCoupon(coupon, options = {}) {
     templateId: coupon.templateId || snapshot.templateId,
     name: snapshot.name,
     description: snapshot.description,
+    usageScope: snapshot.usageScope,
+    usageScopeText: snapshot.usageScopeText,
     discountAmount: snapshot.discountAmount,
     minOrderAmount: snapshot.minOrderAmount,
     applicableServiceTypes: snapshot.applicableServiceTypes,
@@ -1861,8 +1883,9 @@ function evaluateCoupon(coupon, pricing, openid) {
   const status = couponDisplayStatus(coupon)
   if (status !== 'available') return { applicable: false, reason: couponStatusText(status) }
   const snapshot = normalizeCouponSnapshot(coupon)
+  if (!couponBusinessMatches(snapshot, pricing)) return { applicable: false, reason: snapshot.usageScope === 'mall' ? '仅限商城用品订单使用' : '仅限上门服务订单使用' }
   if (pricing.amount < snapshot.minOrderAmount) return { applicable: false, reason: `订单满 ¥${snapshot.minOrderAmount} 可用` }
-  if (snapshot.applicableServiceTypes.length && !pricing.serviceTypes.some((key) => snapshot.applicableServiceTypes.includes(key))) return { applicable: false, reason: '当前服务不可用' }
+  if (snapshot.usageScope !== 'mall' && snapshot.applicableServiceTypes.length && !pricing.serviceTypes.some((key) => snapshot.applicableServiceTypes.includes(key))) return { applicable: false, reason: '当前服务不可用' }
   const discountAmount = Math.min(snapshot.discountAmount, pricing.amount)
   if (discountAmount <= 0) return { applicable: false, reason: '优惠金额无效' }
   return {
@@ -2846,7 +2869,20 @@ async function appendOrderTimeline(orderId, type, title, detail, actorRole) {
   })
 }
 
+function isMallOrder(order = {}) {
+  return order.orderType === 'mall' || (Array.isArray(order.items) && order.items.some((item) => item && item.productId)) || !!order.shippingAddress
+}
+
+function buildMallOrderTitle(order = {}) {
+  const firstItem = Array.isArray(order.items) ? order.items[0] : null
+  const itemName = firstItem && safeText(firstItem.name).trim()
+  const count = Array.isArray(order.items) ? order.items.length : 0
+  if (itemName && count > 1) return `${itemName}等${count}件商品`
+  return itemName || '商城订单'
+}
+
 function buildOrderMessageTitle(order = {}) {
+  if (isMallOrder(order)) return buildMallOrderTitle(order)
   return order.serviceSummary || (order.petName ? `${order.petName}的订单` : '订单消息')
 }
 
@@ -3070,8 +3106,10 @@ async function appendFinanceLog(action, payload = {}) {
   })
 }
 
-function buildSubscriptionPage(orderId) {
-  return orderId ? `pages/client/orders/detail/index?id=${orderId}` : 'pages/client/home/index'
+function buildSubscriptionPage(order = {}) {
+  const orderId = order && order._id || ''
+  if (!orderId) return 'pages/client/home/index'
+  return isMallOrder(order) ? `pages/client/mall/orders/detail/index?id=${orderId}` : `pages/client/orders/detail/index?id=${orderId}`
 }
 
 function getClockText(value) {
@@ -3082,7 +3120,7 @@ function getClockText(value) {
 }
 
 function buildSubscriptionData(templateKey, order = {}, detail = {}) {
-  const serviceName = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
+  const serviceName = isMallOrder(order) ? buildMallOrderTitle(order) : (order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务')
   const orderNo = order.orderNo || order._id || ''
   const statusText = safeText(detail.statusText || templateKey)
   if (templateKey === 'orderAccepted') {
@@ -3157,7 +3195,7 @@ async function sendSubscribeMessage(openid, templateKey, page, messageData = {},
 }
 
 function notifyOrder(openid, templateKey, order, detail = {}) {
-  return sendSubscribeMessage(openid, templateKey, buildSubscriptionPage(order && order._id), buildSubscriptionData(templateKey, order, detail), order && order._id)
+  return sendSubscribeMessage(openid, templateKey, buildSubscriptionPage(order), buildSubscriptionData(templateKey, order, detail), order && order._id)
 }
 
 function notifyOrderAccepted(order, staffName = '') {
@@ -3721,6 +3759,286 @@ function validatePaymentCallbackPayload(payload, order, payment, config) {
   if (paidFen !== amountYuanToFen(order.payAmount)) throw new Error('微信支付金额不匹配')
 }
 
+async function getDocOrNull(collectionName, id) {
+  if (!id) return null
+  try {
+    const res = await db.collection(collectionName).doc(id).get()
+    return res.data ? { _id: id, ...res.data } : null
+  } catch (error) {
+    return null
+  }
+}
+
+function createMallOrderNo() {
+  return `M${Date.now()}${Math.floor(Math.random() * 1000)}`
+}
+
+function normalizeMallCategory(category = {}) {
+  return {
+    _id: category._id || '',
+    name: safeText(category.name).trim(),
+    icon: safeText(category.icon).trim(),
+    enabled: category.enabled !== false,
+    sortOrder: Number(category.sortOrder || 0),
+    createdAt: category.createdAt || null,
+    updatedAt: category.updatedAt || null
+  }
+}
+
+function createMallSkuId(index = 0) {
+  return `sku_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 7)}`
+}
+
+function normalizeMallSpecGroups(groups = []) {
+  return (Array.isArray(groups) ? groups : [])
+    .map((group) => {
+      const name = safeText(group.name).trim()
+      const values = Array.isArray(group.values) ? group.values.map((item) => safeText(item).trim()).filter(Boolean) : []
+      return name && values.length ? { name, values: Array.from(new Set(values)).slice(0, 20) } : null
+    })
+    .filter(Boolean)
+    .slice(0, 3)
+}
+
+function normalizeMallSku(raw = {}, index = 0, specGroups = []) {
+  const specs = raw.specs && typeof raw.specs === 'object' ? raw.specs : {}
+  const normalizedSpecs = {}
+  specGroups.forEach((group) => {
+    const value = safeText(specs[group.name]).trim()
+    if (value) normalizedSpecs[group.name] = value
+  })
+  const specText = safeText(raw.specText).trim() || Object.values(normalizedSpecs).join(' / ') || '默认规格'
+  return {
+    skuId: safeText(raw.skuId || raw.id).trim() || (index === 0 ? 'default' : createMallSkuId(index)),
+    specs: normalizedSpecs,
+    specText,
+    price: Math.max(Number(raw.price || 0), 0),
+    originalPrice: Math.max(Number(raw.originalPrice || 0), 0),
+    stock: Math.max(Math.floor(Number(raw.stock || 0)), 0),
+    salesCount: Math.max(Math.floor(Number(raw.salesCount || 0)), 0),
+    imageFileId: safeFileId(raw.imageFileId) || safeText(raw.imageFileId).trim(),
+    status: raw.status === 'off_sale' ? 'off_sale' : 'on_sale'
+  }
+}
+
+function normalizeMallSkus(product = {}, specGroups = []) {
+  const rawSkus = Array.isArray(product.skus) ? product.skus : []
+  const sourceSkus = rawSkus.length ? rawSkus : [{ skuId: 'default', specs: {}, specText: product.specText || '默认规格', price: product.price, originalPrice: product.originalPrice, stock: product.stock, salesCount: product.salesCount, status: 'on_sale' }]
+  const seen = new Set()
+  return sourceSkus.map((sku, index) => normalizeMallSku(sku, index, specGroups)).filter((sku) => {
+    const key = JSON.stringify(sku.specs || {}) || sku.specText || sku.skuId
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).slice(0, 80)
+}
+
+function deriveMallProductFields(product = {}) {
+  const skus = normalizeMallSkus(product, product.specGroups || [])
+  const activeSkus = skus.filter((sku) => sku.status !== 'off_sale')
+  const priceSkus = activeSkus.length ? activeSkus : skus
+  const prices = priceSkus.map((sku) => Number(sku.price || 0)).filter((price) => price > 0)
+  const minPrice = prices.length ? Math.min(...prices) : Math.max(Number(product.price || 0), 0)
+  const maxPrice = prices.length ? Math.max(...prices) : minPrice
+  const totalStock = activeSkus.reduce((sum, sku) => sum + Number(sku.stock || 0), 0)
+  const salesCount = skus.reduce((sum, sku) => sum + Number(sku.salesCount || 0), 0) || Math.max(Math.floor(Number(product.salesCount || 0)), 0)
+  const firstSku = priceSkus[0] || skus[0] || {}
+  return { skus, minPrice, maxPrice, totalStock, price: minPrice, originalPrice: Number(firstSku.originalPrice || product.originalPrice || 0), stock: totalStock, salesCount, specText: firstSku.specText || product.specText || '默认规格' }
+}
+
+function normalizeMallProduct(product = {}) {
+  const specGroups = normalizeMallSpecGroups(product.specGroups)
+  const specMode = product.specMode === 'multi' && specGroups.length ? 'multi' : 'single'
+  const imageFileIds = Array.isArray(product.imageFileIds) ? product.imageFileIds.map((item) => safeFileId(item) || safeText(item).trim()).filter(Boolean).slice(0, 9) : []
+  const base = {
+    _id: product._id || '',
+    categoryId: safeText(product.categoryId).trim(),
+    name: safeText(product.name).trim(),
+    subtitle: safeText(product.subtitle).trim(),
+    coverFileId: safeFileId(product.coverFileId) || safeText(product.coverFileId).trim(),
+    imageFileIds,
+    specMode,
+    specGroups: specMode === 'multi' ? specGroups : [],
+    status: product.status === 'off_sale' ? 'off_sale' : 'on_sale',
+    description: safeText(product.description).trim(),
+    sortOrder: Number(product.sortOrder || 0),
+    createdAt: product.createdAt || null,
+    updatedAt: product.updatedAt || null
+  }
+  const derived = deriveMallProductFields({ ...product, specGroups: base.specGroups })
+  return { ...base, ...derived }
+}
+
+function getProductSkus(product = {}) {
+  return normalizeMallProduct(product).skus
+}
+
+function getSkuById(product = {}, skuId = '') {
+  const skus = getProductSkus(product)
+  const targetSkuId = safeText(skuId).trim()
+  return skus.find((sku) => sku.skuId === targetSkuId) || skus.find((sku) => sku.skuId === 'default') || skus[0] || null
+}
+
+function formatMallPrice(product = {}) {
+  const minPrice = Number(product.minPrice || product.price || 0)
+  const maxPrice = Number(product.maxPrice || minPrice)
+  return minPrice === maxPrice ? `¥${minPrice}` : `¥${minPrice}-${maxPrice}`
+}
+
+function publicMallProduct(product = {}) {
+  const p = normalizeMallProduct(product)
+  const selectedSku = p.skus.find((sku) => sku.status !== 'off_sale' && sku.stock > 0) || p.skus[0] || null
+  return {
+    ...p,
+    skuCount: p.skus.length,
+    hasSku: p.skus.length > 1 || p.specMode === 'multi',
+    selectedSkuId: selectedSku ? selectedSku.skuId : '',
+    soldOut: p.stock <= 0,
+    displayPrice: formatMallPrice(p),
+    priceText: formatMallPrice(p),
+    imageFileIds: p.imageFileIds.length ? p.imageFileIds : (p.coverFileId ? [p.coverFileId] : [])
+  }
+}
+
+function mallOrderStatusText(status) {
+  const labels = { pending_pay: '待付款', pending_ship: '待发货', shipped: '已发货', completed: '已完成', cancelled: '已取消', refund_applied: '售后中', refunded: '已退款' }
+  return labels[status] || '未知'
+}
+
+function normalizeShippingAddress(data = {}) {
+  const contactName = safeText(data.contactName || data.name || data.receiverName).trim()
+  const contactPhone = safeText(data.contactPhone || data.phone || data.receiverPhone).trim()
+  const serviceAddress = safeText(data.serviceAddress || data.address || data.addressName).trim()
+  const addressDetail = safeText(data.addressDetail || data.detail).trim()
+  const doorplate = safeText(data.doorplate).trim()
+  if (!contactName) throw new Error('请填写收货人')
+  if (!contactPhone) throw new Error('请填写收货手机号')
+  if (!serviceAddress) throw new Error('请选择收货地址')
+  if (!addressDetail) throw new Error('请填写详细地址')
+  return { contactName, contactPhone, serviceAddress, addressDetail, doorplate, fullAddress: [serviceAddress, addressDetail, doorplate].filter(Boolean).join(' ') }
+}
+
+function buildMallCartItem(product, sku, quantity, data = {}) {
+  const time = now()
+  return {
+    productId: product._id,
+    skuId: sku.skuId,
+    quantity: Math.min(Math.max(Math.floor(Number(quantity || 1)), 1), 99),
+    selected: data.selected !== false,
+    snapshot: { name: product.name, coverFileId: sku.imageFileId || product.coverFileId || '', specText: sku.specText || '', price: Number(sku.price || 0), originalPrice: Number(sku.originalPrice || 0), specs: sku.specs || {}, imageFileId: sku.imageFileId || '' },
+    updatedAt: data.updatedAt || time
+  }
+}
+
+function isSameMallCartItem(a = {}, b = {}) {
+  return a.productId === b.productId && safeText(a.skuId || 'default').trim() === safeText(b.skuId || 'default').trim()
+}
+
+async function loadMallCart(openid) {
+  const res = await db.collection('mall_carts').where({ openid }).limit(1).get()
+  return res.data[0] || null
+}
+
+async function saveMallCart(openid, items = []) {
+  const time = now()
+  const normalizedItems = items.filter((item) => item && item.productId && Number(item.quantity || 0) > 0).map((item) => ({ productId: item.productId, skuId: safeText(item.skuId || 'default').trim() || 'default', quantity: Math.min(Math.max(Math.floor(Number(item.quantity || 1)), 1), 99), selected: item.selected !== false, snapshot: item.snapshot || null, updatedAt: item.updatedAt || time }))
+  const existing = await loadMallCart(openid)
+  if (existing) {
+    await db.collection('mall_carts').doc(existing._id).update({ data: { items: normalizedItems, updatedAt: time } })
+    return { ...existing, items: normalizedItems, updatedAt: time }
+  }
+  const created = await db.collection('mall_carts').add({ data: { openid, items: normalizedItems, updatedAt: time } })
+  return { _id: created._id, openid, items: normalizedItems, updatedAt: time }
+}
+
+async function formatMallCart(openid) {
+  const cart = await loadMallCart(openid)
+  const items = cart && Array.isArray(cart.items) ? cart.items : []
+  const products = []
+  for (const item of items) {
+    const product = await getDocOrNull('mall_products', item.productId)
+    if (!product) continue
+    const p = publicMallProduct(product)
+    const sku = getSkuById(product, item.skuId)
+    if (!sku) continue
+    const invalid = p.status !== 'on_sale' || sku.status === 'off_sale'
+    const soldOut = Number(sku.stock || 0) <= 0
+    const quantity = Number(item.quantity || 0)
+    const snapshot = item.snapshot || { name: p.name, coverFileId: sku.imageFileId || p.coverFileId || '', specText: sku.specText || '', price: Number(sku.price || 0), originalPrice: Number(sku.originalPrice || 0), specs: sku.specs || {}, imageFileId: sku.imageFileId || '' }
+    products.push({ ...item, skuId: sku.skuId, sku, specText: sku.specText, specs: sku.specs || {}, price: Number(sku.price || 0), snapshot, product: p, invalid, soldOut, subtotal: Math.round(Number(sku.price || 0) * quantity * 100) / 100 })
+  }
+  const selectedItems = products.filter((item) => item.selected !== false && !item.invalid && !item.soldOut)
+  const totalAmount = Math.round(selectedItems.reduce((sum, item) => sum + item.subtotal, 0) * 100) / 100
+  return { items: products, selectedCount: selectedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0), totalAmount }
+}
+
+function calcMallPricing(items, couponResult) {
+  const totalProductAmount = Math.round(items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0) * 100) / 100
+  const shippingFee = totalProductAmount >= 99 || totalProductAmount <= 0 ? 0 : 8
+  const amount = Math.round((totalProductAmount + shippingFee) * 100) / 100
+  const basePricing = { businessType: 'mall', amount, payAmount: amount, totalProductAmount, shippingFee, discountAmount: 0, currency: 'CNY', serviceTypes: ['mall'], priceItems: [{ key: 'mall_goods', label: '商品金额', price: totalProductAmount }, { key: 'shipping_fee', label: '运费', price: shippingFee }], priceSnapshot: { originalAmount: amount, totalProductAmount, shippingFee, discountAmount: 0, payAmount: amount } }
+  return couponResult ? applyCouponToPricing(basePricing, couponResult) : basePricing
+}
+
+async function getPayableOrder(orderId) {
+  const serviceOrder = await getDocOrNull('orders', orderId)
+  if (serviceOrder) return { order: serviceOrder, collectionName: 'orders', orderType: 'service' }
+  const mallOrder = await getDocOrNull('mall_orders', orderId)
+  if (mallOrder) return { order: mallOrder, collectionName: 'mall_orders', orderType: 'mall' }
+  return { order: null, collectionName: '', orderType: '' }
+}
+
+async function requireClientPayableOrder(openid, orderId, message = '无权操作该订单') {
+  const user = await getUser(openid)
+  const resolved = await getPayableOrder(orderId)
+  if (!resolved.order || resolved.order.clientOpenid !== openid) throw new Error(message)
+  return { user, ...resolved }
+}
+
+function buildMallOrderItemSnapshot(product, sku, quantity) {
+  return { productId: product._id, skuId: sku.skuId, name: product.name, coverFileId: sku.imageFileId || product.coverFileId || '', price: Number(sku.price || 0), quantity, specText: sku.specText || '', specs: sku.specs || {}, skuSnapshot: { skuId: sku.skuId, specs: sku.specs || {}, specText: sku.specText || '', price: Number(sku.price || 0), originalPrice: Number(sku.originalPrice || 0), imageFileId: sku.imageFileId || '' } }
+}
+
+async function deductMallProductStock(item, time) {
+  const quantity = Number(item.quantity || 0)
+  const product = await getDocOrNull('mall_products', item.productId)
+  if (!product || product.status !== 'on_sale') throw new Error(`商品已下架：${item.name}`)
+  const normalized = normalizeMallProduct(product)
+  const skuId = safeText(item.skuId || 'default').trim() || 'default'
+  const skus = normalized.skus.map((sku) => ({ ...sku, specs: { ...(sku.specs || {}) } }))
+  const index = skus.findIndex((sku) => sku.skuId === skuId) >= 0 ? skus.findIndex((sku) => sku.skuId === skuId) : 0
+  const sku = skus[index]
+  if (!sku || sku.status === 'off_sale') throw new Error(`商品已下架：${item.name}`)
+  if (Number(sku.stock || 0) < quantity) throw new Error(`商品库存不足：${item.name}`)
+  skus[index] = { ...sku, stock: Number(sku.stock || 0) - quantity, salesCount: Number(sku.salesCount || 0) + quantity }
+  const nextProduct = normalizeMallProduct({ ...normalized, skus, updatedAt: time })
+  await db.collection('mall_products').doc(item.productId).update({ data: { skus: nextProduct.skus, price: nextProduct.price, originalPrice: nextProduct.originalPrice, stock: nextProduct.stock, totalStock: nextProduct.totalStock, minPrice: nextProduct.minPrice, maxPrice: nextProduct.maxPrice, salesCount: nextProduct.salesCount, specText: nextProduct.specText, updatedAt: time } })
+}
+
+async function markMallOrderPaid(orderId, order, paymentPayload = {}) {
+  if (order.paymentStatus === 'paid') return { orderId, status: 'paid' }
+  if (order.status !== 'pending_pay' && order.paymentStatus !== 'paying') throw new Error('订单状态不可支付')
+  const time = now()
+  for (const item of (order.items || [])) {
+    const product = await getDocOrNull('mall_products', item.productId)
+    if (!product || product.status !== 'on_sale') throw new Error(`商品已下架：${item.name}`)
+    const sku = getSkuById(product, item.skuId)
+    if (!sku || sku.status === 'off_sale') throw new Error(`商品已下架：${item.name}`)
+    if (Number(sku.stock || 0) < Number(item.quantity || 0)) throw new Error(`商品库存不足：${item.name}`)
+  }
+  for (const item of (order.items || [])) await deductMallProductStock(item, time)
+  const paymentNo = paymentPayload.paymentNo || createPaymentNo()
+  const update = { paymentStatus: 'paid', status: 'pending_ship', paymentNo, wxTransactionId: paymentPayload.wxTransactionId || '', paidAt: time, updatedAt: time }
+  await db.collection('mall_orders').doc(orderId).update({ data: update })
+  if (order.couponId) await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'used', usedOrderId: orderId, usedAt: time, updatedAt: time } })
+  const existing = await db.collection('payments').where({ orderId, paymentNo }).limit(1).get()
+  if (existing.data[0]) await db.collection('payments').doc(existing.data[0]._id).update({ data: { status: 'success', channel: paymentPayload.channel || existing.data[0].channel || 'mock', wxTransactionId: update.wxTransactionId, rawCallback: paymentPayload.rawCallback || {}, paidAt: time, updatedAt: time } })
+  else await db.collection('payments').add({ data: { orderId, orderNo: order.orderNo || '', openid: order.clientOpenid || '', paymentNo, prepayId: paymentPayload.prepayId || '', wxTransactionId: update.wxTransactionId, amount: Number(order.payAmount || 0), currency: 'CNY', status: 'success', channel: paymentPayload.channel || 'mock', idempotencyKey: makeIdempotencyKey('payment', orderId, paymentNo), rawCallback: paymentPayload.rawCallback || {}, paidAt: time, createdAt: time, updatedAt: time } })
+  await appendPaymentEvent('paid', { orderId, paymentNo, status: 'success', detail: { amount: Number(order.payAmount || 0), channel: paymentPayload.channel || 'mock', orderType: 'mall' }, raw: paymentPayload.rawCallback || {} })
+  await appendFinanceLog('mall_order_paid', { targetType: 'mall_order', targetId: orderId, orderId, amountDelta: Number(order.payAmount || 0), detail: { paymentNo } })
+  return { orderId, status: 'paid', paymentNo }
+}
+
 async function ensurePaymentRecord(order, openid, channel = 'mock', clientRequestId = '') {
   if (clientRequestId) {
     const existingByRequest = await findByClientRequestId('payments', { orderId: order._id, openid, clientRequestId })
@@ -3754,7 +4072,10 @@ async function ensurePaymentRecord(order, openid, channel = 'mock', clientReques
 }
 
 async function markOrderPaid(orderId, paymentPayload = {}) {
-  const order = (await db.collection('orders').doc(orderId).get()).data
+  const resolved = await getPayableOrder(orderId)
+  const order = resolved.order
+  if (!order) throw new Error('订单不存在')
+  if (resolved.orderType === 'mall') return markMallOrderPaid(orderId, order, paymentPayload)
   if (order.paymentStatus === 'paid') return { orderId, status: 'paid' }
   assertOrderTransition(order.status, ORDER_STATUS.PAID, '订单状态不可支付')
   const time = now()
@@ -5036,6 +5357,24 @@ const handlers = {
         .sort((a, b) => String(a.validTo || '').localeCompare(String(b.validTo || '')))
     }
 
+    if (action === 'listMallCoupons') {
+      await getUser(openid)
+      const coupons = (await db.collection('user_coupons').where({ openid }).get()).data || []
+      const pricing = calcMallPricing(Array.isArray(data.items) ? data.items : [])
+      return coupons
+        .filter((coupon) => ['mall', 'all'].includes(normalizeCouponSnapshot(coupon).usageScope))
+        .map((coupon) => {
+          const result = evaluateCoupon(coupon, pricing, openid)
+          return formatUserCoupon(coupon, {
+            status: couponDisplayStatus(coupon),
+            applicable: result.applicable,
+            reason: result.reason || '',
+            payAmountAfterDiscount: result.applicable ? Math.max(pricing.amount - result.discountAmount, 0) : pricing.amount
+          })
+        })
+        .sort((a, b) => Number(b.applicable) - Number(a.applicable) || String(a.validTo || '').localeCompare(String(b.validTo || '')))
+    }
+
     if (action === 'claimNewbieCoupon') {
       const user = await getUser(openid)
       const templateId = safeText(data.templateId).trim()
@@ -5054,6 +5393,7 @@ const handlers = {
       const pricing = await calcOrderPricing({ ...data, couponId: '', autoApplyCoupon: false }, pets, { openid })
       const coupons = (await db.collection('user_coupons').where({ openid }).get()).data || []
       return coupons
+        .filter((coupon) => ['service', 'all'].includes(normalizeCouponSnapshot(coupon).usageScope))
         .map((coupon) => {
           const result = evaluateCoupon(coupon, pricing, openid)
           return formatUserCoupon(coupon, {
@@ -5338,14 +5678,277 @@ const handlers = {
     throw new Error('未知 lottery 操作')
   },
 
+  async mall(openid, action, data) {
+    if (action === 'listCategories') {
+      const res = await db.collection('mall_categories').where({ enabled: true }).get()
+      return (res.data || []).map(normalizeMallCategory).sort((a, b) => a.sortOrder - b.sortOrder)
+    }
+    if (action === 'listProducts') {
+      const keyword = safeText(data.keyword).trim().toLowerCase()
+      const categoryId = safeText(data.categoryId).trim()
+      const res = await db.collection('mall_products').where({ status: 'on_sale' }).get()
+      let list = (res.data || []).map(publicMallProduct).filter((item) => item.name)
+      if (categoryId) list = list.filter((item) => item.categoryId === categoryId)
+      if (keyword) list = list.filter((item) => [item.name, item.subtitle, item.specText].some((value) => safeText(value).toLowerCase().includes(keyword)))
+      if (data.sort === 'price_asc') list.sort((a, b) => a.minPrice - b.minPrice)
+      else if (data.sort === 'price_desc') list.sort((a, b) => b.maxPrice - a.maxPrice)
+      else if (data.sort === 'sales_desc') list.sort((a, b) => b.salesCount - a.salesCount)
+      else list.sort((a, b) => a.sortOrder - b.sortOrder || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+      return paginateList(list, data)
+    }
+    if (action === 'getProductDetail') {
+      const product = await getDocOrNull('mall_products', data.id || data.productId)
+      if (!product || product.status !== 'on_sale') throw new Error('商品不存在或已下架')
+      return publicMallProduct(product)
+    }
+    if (action === 'getCart') {
+      await getUser(openid)
+      return formatMallCart(openid)
+    }
+    if (action === 'updateCart') {
+      await getUser(openid)
+      const productId = safeText(data.productId).trim()
+      if (!productId) throw new Error('请选择商品')
+      const product = await getDocOrNull('mall_products', productId)
+      if (!product || product.status !== 'on_sale') throw new Error('商品不存在或已下架')
+      const normalizedProduct = normalizeMallProduct(product)
+      const sku = getSkuById(normalizedProduct, data.skuId)
+      if (!sku || sku.status === 'off_sale') throw new Error('商品规格不存在或已下架')
+      const cart = await loadMallCart(openid)
+      let items = cart && Array.isArray(cart.items) ? cart.items.slice() : []
+      const target = { productId, skuId: sku.skuId }
+      const index = items.findIndex((item) => isSameMallCartItem(item, target))
+      const operation = safeText(data.operation).trim() || 'set'
+      if (operation === 'remove') {
+        items = items.filter((item) => !isSameMallCartItem(item, target))
+      } else {
+        const quantity = Math.min(Math.max(Math.floor(Number(data.quantity || 1)), 1), 99)
+        if (quantity > Number(sku.stock || 0)) throw new Error('商品库存不足')
+        const nextQuantity = operation === 'add' && index >= 0 ? Number(items[index].quantity || 0) + quantity : quantity
+        if (nextQuantity > Number(sku.stock || 0)) throw new Error('商品库存不足')
+        const nextItem = buildMallCartItem(normalizedProduct, sku, nextQuantity, data)
+        if (index >= 0) items[index] = { ...items[index], ...nextItem }
+        else items.push(nextItem)
+      }
+      await saveMallCart(openid, items)
+      return formatMallCart(openid)
+    }
+    if (action === 'createOrder') {
+      const user = await getUser(openid)
+      if (!safeText(user.phone).trim()) throw new Error('请先绑定手机号')
+      const clientRequestId = getClientRequestId(data)
+      if (clientRequestId) {
+        const existing = (await db.collection('mall_orders').where({ clientOpenid: openid, clientRequestId }).limit(1).get()).data[0]
+        if (existing) return existing
+      }
+      let orderItems = []
+      if (data.productId) {
+        orderItems = [{ productId: safeText(data.productId).trim(), skuId: safeText(data.skuId || 'default').trim() || 'default', quantity: Math.max(Math.floor(Number(data.quantity || 1)), 1) }]
+      } else {
+        const cart = await formatMallCart(openid)
+        orderItems = cart.items.filter((item) => item.selected !== false && !item.invalid && !item.soldOut).map((item) => ({ productId: item.productId, skuId: item.skuId || 'default', quantity: Number(item.quantity || 1) }))
+      }
+      if (!orderItems.length) throw new Error('请选择要购买的商品')
+      const snapshotItems = []
+      for (const item of orderItems) {
+        const product = await getDocOrNull('mall_products', item.productId)
+        if (!product || product.status !== 'on_sale') throw new Error('商品不存在或已下架')
+        const normalizedProduct = normalizeMallProduct(product)
+        const sku = getSkuById(normalizedProduct, item.skuId)
+        if (!sku || sku.status === 'off_sale') throw new Error('商品规格不存在或已下架')
+        const quantity = Math.min(Math.max(Math.floor(Number(item.quantity || 1)), 1), 99)
+        if (quantity > Number(sku.stock || 0)) throw new Error(`商品库存不足：${product.name}`)
+        snapshotItems.push(buildMallOrderItemSnapshot(normalizedProduct, sku, quantity))
+      }
+      const address = normalizeShippingAddress(data.shippingAddress || data)
+      let couponResult = null
+      const basePricing = calcMallPricing(snapshotItems)
+      if (data.couponId) {
+        const coupon = (await db.collection('user_coupons').doc(data.couponId).get()).data
+        const result = evaluateCoupon(coupon, { ...basePricing, serviceTypes: ['mall'] }, openid)
+        if (!result.applicable) throw new Error(result.reason)
+        couponResult = result
+      }
+      const pricing = calcMallPricing(snapshotItems, couponResult)
+      const time = now()
+      const order = { orderType: 'mall', orderNo: createMallOrderNo(), clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), items: snapshotItems, totalProductAmount: pricing.totalProductAmount, shippingFee: pricing.shippingFee, discountAmount: pricing.discountAmount || 0, amount: pricing.amount, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, shippingAddress: address, status: 'pending_pay', paymentStatus: 'unpaid', paymentNo: '', wxTransactionId: '', refundStatus: 'none', refundReason: '', refundImages: [], refundAmount: 0, refundNo: '', expressCompany: '', trackingNo: '', shippedAt: null, receivedAt: null, createdAt: time, updatedAt: time }
+      const created = await db.collection('mall_orders').add({ data: order })
+      if (order.couponId) await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'locked', lockedOrderId: created._id, lockedAt: time, updatedAt: time } })
+      if (!data.productId) {
+        const cart = await loadMallCart(openid)
+        if (cart) await saveMallCart(openid, (cart.items || []).filter((item) => !snapshotItems.some((orderItem) => isSameMallCartItem(item, orderItem))))
+      }
+      return { _id: created._id, ...order }
+    }
+    if (action === 'listMyOrders') {
+      await getUser(openid)
+      const status = safeText(data.status).trim()
+      const res = await db.collection('mall_orders').where({ clientOpenid: openid }).orderBy('createdAt', 'desc').get()
+      let list = res.data || []
+      if (status && status !== 'all') list = list.filter((item) => status === 'after_sale' ? ['refund_applied', 'refunded'].includes(item.status) : item.status === status)
+      return paginateList(list.map((item) => ({ ...item, statusText: mallOrderStatusText(item.status) })), data)
+    }
+    if (action === 'getOrderDetail') {
+      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
+      return { ...order, statusText: mallOrderStatusText(order.status) }
+    }
+    if (action === 'cancelOrder') {
+      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
+      if (order.status !== 'pending_pay') throw new Error('当前订单不可取消')
+      const time = now()
+      await db.collection('mall_orders').doc(order._id).update({ data: { status: 'cancelled', updatedAt: time } })
+      if (order.couponId) await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'available', lockedOrderId: '', lockedAt: null, updatedAt: time } })
+      return { orderId: order._id, status: 'cancelled' }
+    }
+    if (action === 'confirmReceipt') {
+      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
+      if (order.status !== 'shipped') throw new Error('当前订单不可确认收货')
+      const time = now()
+      await db.collection('mall_orders').doc(order._id).update({ data: { status: 'completed', receivedAt: time, updatedAt: time } })
+      return { orderId: order._id, status: 'completed' }
+    }
+    if (action === 'applyRefund') {
+      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
+      if (!['pending_ship', 'shipped', 'completed'].includes(order.status) || order.paymentStatus !== 'paid') throw new Error('当前订单不可申请售后')
+      const reason = safeText(data.reason).trim()
+      if (!reason) throw new Error('请填写售后原因')
+      const time = now()
+      const refundImages = Array.isArray(data.images || data.refundImages) ? (data.images || data.refundImages).map(safeFileId).filter(Boolean).slice(0, 6) : []
+      await db.collection('mall_orders').doc(order._id).update({ data: { status: 'refund_applied', refundStatus: 'applied', refundReason: reason, refundImages, refundAmount: Number(order.payAmount || 0), updatedAt: time } })
+      return { orderId: order._id, refundStatus: 'applied' }
+    }
+    throw new Error('未知 mall 操作')
+  },
+
+  async adminMall(openid, action, data) {
+    const admin = await requireAdmin(openid)
+    if (action === 'listCategories') {
+      const res = await db.collection('mall_categories').get()
+      return (res.data || []).map(normalizeMallCategory).sort((a, b) => a.sortOrder - b.sortOrder)
+    }
+    if (action === 'saveCategory') {
+      const id = safeText(data.id || data._id).trim()
+      const time = now()
+      const payload = { name: safeText(data.name).trim(), icon: safeText(data.icon).trim(), enabled: data.enabled !== false, sortOrder: Number(data.sortOrder || 0), updatedAt: time }
+      if (!payload.name) throw new Error('分类名称不能为空')
+      if (id) {
+        await db.collection('mall_categories').doc(id).update({ data: payload })
+        await logAdmin(admin, 'mall_category', id, 'saveCategory', payload)
+        return { _id: id, ...payload }
+      }
+      const created = await db.collection('mall_categories').add({ data: { ...payload, createdAt: time } })
+      await logAdmin(admin, 'mall_category', created._id, 'saveCategory', payload)
+      return { _id: created._id, ...payload, createdAt: time }
+    }
+    if (action === 'deleteCategory') {
+      const id = safeText(data.id).trim()
+      if (!id) throw new Error('请选择分类')
+      const products = await db.collection('mall_products').where({ categoryId: id }).get()
+      if ((products.data || []).length) throw new Error('分类下已有商品，不能删除')
+      await db.collection('mall_categories').doc(id).remove()
+      await logAdmin(admin, 'mall_category', id, 'deleteCategory')
+      return { id, deleted: true }
+    }
+    if (action === 'listProducts') {
+      const keyword = safeText(data.keyword).trim().toLowerCase()
+      const status = safeText(data.status).trim()
+      const res = await db.collection('mall_products').get()
+      let list = (res.data || []).map(publicMallProduct)
+      if (status) list = list.filter((item) => item.status === status)
+      if (keyword) list = list.filter((item) => [item.name, item.subtitle, item.specText].some((value) => safeText(value).toLowerCase().includes(keyword)))
+      list.sort((a, b) => a.sortOrder - b.sortOrder || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+      return paginateList(list, data)
+    }
+    if (action === 'saveProduct') {
+      const id = safeText(data.id || data._id).trim()
+      const time = now()
+      const payload = normalizeMallProduct({ ...data, updatedAt: time })
+      delete payload._id
+      if (!payload.name) throw new Error('商品名称不能为空')
+      if (payload.price <= 0) throw new Error('商品价格必须大于0')
+      if (!payload.coverFileId && !payload.imageFileIds.length) throw new Error('请上传商品图片')
+      if (payload.categoryId) {
+        const category = await getDocOrNull('mall_categories', payload.categoryId)
+        if (!category) throw new Error('商品分类不存在')
+      }
+      if (id) {
+        await db.collection('mall_products').doc(id).update({ data: payload })
+        await logAdmin(admin, 'mall_product', id, 'saveProduct', { name: payload.name })
+        return { _id: id, ...payload }
+      }
+      const created = await db.collection('mall_products').add({ data: { ...payload, createdAt: time } })
+      await logAdmin(admin, 'mall_product', created._id, 'saveProduct', { name: payload.name })
+      return { _id: created._id, ...payload, createdAt: time }
+    }
+    if (action === 'toggleProductStatus') {
+      const id = safeText(data.id || data.productId).trim()
+      const status = data.status === 'off_sale' ? 'off_sale' : 'on_sale'
+      if (!id) throw new Error('请选择商品')
+      await db.collection('mall_products').doc(id).update({ data: { status, updatedAt: now() } })
+      await logAdmin(admin, 'mall_product', id, 'toggleProductStatus', { status })
+      return { id, status }
+    }
+    if (action === 'listOrders') {
+      const status = safeText(data.status).trim()
+      const keyword = safeText(data.keyword).trim().toLowerCase()
+      const res = await db.collection('mall_orders').orderBy('createdAt', 'desc').get()
+      let list = res.data || []
+      if (status) list = list.filter((item) => item.status === status)
+      if (keyword) list = list.filter((item) => [item.orderNo, item.contactPhone, item.trackingNo, item.expressCompany].some((value) => safeText(value).toLowerCase().includes(keyword)))
+      return paginateList(list.map((item) => ({ ...item, statusText: mallOrderStatusText(item.status) })), data)
+    }
+    if (action === 'getOrderDetail') {
+      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      if (!order) throw new Error('订单不存在')
+      return { ...order, statusText: mallOrderStatusText(order.status) }
+    }
+    if (action === 'shipOrder') {
+      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      if (!order) throw new Error('订单不存在')
+      if (order.status !== 'pending_ship') throw new Error('当前订单不可发货')
+      const expressCompany = safeText(data.expressCompany).trim()
+      const trackingNo = safeText(data.trackingNo).trim()
+      if (!expressCompany || !trackingNo) throw new Error('请填写快递公司和单号')
+      const time = now()
+      await db.collection('mall_orders').doc(order._id).update({ data: { status: 'shipped', expressCompany, trackingNo, shippedAt: time, updatedAt: time } })
+      await logAdmin(admin, 'mall_order', order._id, 'shipOrder', { expressCompany, trackingNo })
+      return { orderId: order._id, status: 'shipped', expressCompany, trackingNo }
+    }
+    if (action === 'auditRefund') {
+      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      if (!order) throw new Error('订单不存在')
+      if (order.refundStatus !== 'applied') throw new Error('当前订单没有待审核售后')
+      const approved = data.approved === true
+      const time = now()
+      if (!approved) {
+        await db.collection('mall_orders').doc(order._id).update({ data: { status: order.trackingNo ? 'shipped' : 'pending_ship', refundStatus: 'rejected', refundRejectReason: safeText(data.remark).trim(), updatedAt: time } })
+        await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: false })
+        return { orderId: order._id, refundStatus: 'rejected' }
+      }
+      const refund = await createRefundForOrder(order, Number(data.refundAmount || order.payAmount || 0), data.remark || order.refundReason || '商城售后退款', 'mall_after_sale', openid, getClientRequestId(data))
+      await db.collection('mall_orders').doc(order._id).update({ data: { status: 'refunded', paymentStatus: 'refunding', refundStatus: 'approved', refundAmount: refund.refundAmount, refundNo: refund.refundNo, updatedAt: time } })
+      await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: true, refundNo: refund.refundNo })
+      return { orderId: order._id, refundStatus: 'approved', refundNo: refund.refundNo }
+    }
+    throw new Error('未知 adminMall 操作')
+  },
+
   async payment(openid, action, data) {
     if (action === 'createPayment') {
-      const { order } = await requireClientOrder(openid, data.orderId, '无权支付该订单')
+      const { order, collectionName, orderType } = await requireClientPayableOrder(openid, data.orderId, '无权支付该订单')
       const settings = await getSystemSettings({ includeSecrets: true })
       if (settings.payment.enabled === false) throw new Error('支付功能暂未开启')
       assertPaymentModeAllowed(settings.payment)
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid', paid: true }
-      assertOrderTransition(order.status, ORDER_STATUS.PAID, '订单状态不可支付')
+      if (orderType === 'mall') {
+        if (order.status !== 'pending_pay' && order.paymentStatus !== 'paying') throw new Error('订单状态不可支付')
+      } else {
+        assertOrderTransition(order.status, ORDER_STATUS.PAID, '订单状态不可支付')
+      }
       if (Number(order.payAmount || 0) <= 0) throw new Error('订单金额不正确')
       if (order.couponId) {
         const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
@@ -5354,7 +5957,9 @@ const handlers = {
       }
       const clientRequestId = getClientRequestId(data)
       const payment = await ensurePaymentRecord(order, openid, settings.payment.mode, clientRequestId)
-      await updateOrderWhenStatus(data.orderId, ORDER_STATUS.PENDING_PAY, { paymentStatus: 'paying', paymentNo: payment.paymentNo, paymentClientRequestId: payment.clientRequestId || clientRequestId, updatedAt: now() }, '订单状态不可支付')
+      const payingUpdate = { paymentStatus: 'paying', paymentNo: payment.paymentNo, paymentClientRequestId: payment.clientRequestId || clientRequestId, updatedAt: now() }
+      if (orderType === 'mall') await db.collection(collectionName).doc(data.orderId).update({ data: payingUpdate })
+      else await updateOrderWhenStatus(data.orderId, ORDER_STATUS.PENDING_PAY, payingUpdate, '订单状态不可支付')
       if (settings.payment.mode === 'mock') return { mock: true, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, message: '当前为模拟支付模式' }
 
       const config = getWechatPayConfig(settings)
@@ -5362,7 +5967,7 @@ const handlers = {
       const requestBody = {
         appid: config.appId,
         mchid: config.mchId,
-        description: safeText(order.serviceSummary || order.petName || '上门宠护服务').slice(0, 120) || '上门宠护服务',
+        description: safeText(order.serviceSummary || order.petName || (orderType === 'mall' ? '宠物用品商城' : '上门宠护服务')).slice(0, 120) || (orderType === 'mall' ? '宠物用品商城' : '上门宠护服务'),
         out_trade_no: payment.paymentNo,
         notify_url: config.notifyUrl,
         amount: { total: amountYuanToFen(order.payAmount), currency: 'CNY' },
@@ -5380,7 +5985,7 @@ const handlers = {
       }
     }
     if (action === 'getPaymentStatus') {
-      const { order } = await requireClientOrder(openid, data.orderId, '无权查看支付状态')
+      const { order } = await requireClientPayableOrder(openid, data.orderId, '无权查看支付状态')
       const payments = await db.collection('payments').where({ orderId: data.orderId }).get()
       return { orderId: data.orderId, status: order.status, paymentStatus: order.paymentStatus || 'unpaid', paymentNo: order.paymentNo || '', wxTransactionId: order.wxTransactionId || '', paidAt: order.paidAt || '', payments: payments.data || [] }
     }
@@ -5397,7 +6002,8 @@ const handlers = {
         if (!paymentNo) throw new Error('微信支付回调缺少支付单号')
         const payment = (await db.collection('payments').where({ paymentNo }).limit(1).get()).data[0]
         if (!payment) throw new Error('支付单不存在')
-        const order = (await db.collection('orders').doc(payment.orderId).get()).data
+        const resolved = await getPayableOrder(payment.orderId)
+        const order = resolved.order
         if (!order) throw new Error('订单不存在')
         validatePaymentCallbackPayload(payload, order, payment, config)
         const status = mapWechatTradeState(payload.trade_state)
@@ -5411,7 +6017,7 @@ const handlers = {
       }
     }
     if (action === 'mockPayOrder') {
-      const { order } = await requireClientOrder(openid, data.orderId, '无权支付该订单')
+      const { order } = await requireClientPayableOrder(openid, data.orderId, '无权支付该订单')
       const settings = await getSystemSettings()
       assertPaymentModeAllowed(settings.payment)
       if (settings.payment.mode !== 'mock') throw new Error('当前未开启模拟支付')
@@ -5427,14 +6033,17 @@ const handlers = {
     }
     if (action === 'createRefund') {
       const admin = await requireAdmin(openid)
-      const order = (await db.collection('orders').doc(data.orderId).get()).data
+      const resolved = await getPayableOrder(data.orderId)
+      const order = resolved.order
+      if (!order) throw new Error('订单不存在')
       const amount = Number(data.refundAmount || order.payAmount || 0)
       if (order.paymentStatus !== 'paid' && order.paymentStatus !== 'refunding') throw new Error('订单未支付，不能退款')
       if (amount <= 0 || amount > Number(order.payAmount || 0)) throw new Error('退款金额不正确')
       const refund = await createRefundForOrder(order, amount, data.reason || '管理员退款', 'admin', openid, getClientRequestId(data))
-      await db.collection('orders').doc(data.orderId).update({ data: { paymentStatus: 'refunding', refundStatus: 'processing', refundAmount: amount, refundNo: refund.refundNo, updatedAt: now() } })
-      await logAdmin(admin, 'order', data.orderId, 'createRefund', { refundNo: refund.refundNo, refundAmount: amount })
-      await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${amount}`, 'admin')
+      const refundUpdate = { paymentStatus: 'refunding', refundStatus: resolved.orderType === 'mall' ? 'approved' : 'processing', refundAmount: amount, refundNo: refund.refundNo, updatedAt: now() }
+      await db.collection(resolved.collectionName).doc(data.orderId).update({ data: refundUpdate })
+      await logAdmin(admin, resolved.orderType === 'mall' ? 'mall_order' : 'order', data.orderId, 'createRefund', { refundNo: refund.refundNo, refundAmount: amount })
+      if (resolved.orderType !== 'mall') await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${amount}`, 'admin')
       return refund
     }
     if (action === 'queryRefund') {
@@ -5442,8 +6051,9 @@ const handlers = {
       const res = await db.collection('refunds').where({ refundNo: data.refundNo }).limit(1).get()
       const refund = res.data[0]
       if (!refund) throw new Error('退款单不存在')
-      const order = (await db.collection('orders').doc(refund.orderId).get()).data
-      if (order.clientOpenid !== openid && !user.roles.includes('admin')) throw new Error('无权查看退款')
+      const resolved = await getPayableOrder(refund.orderId)
+      const order = resolved.order
+      if (!order || (order.clientOpenid !== openid && !user.roles.includes('admin'))) throw new Error('无权查看退款')
       return refund
     }
     if (action === 'listRefunds') {
@@ -6911,14 +7521,17 @@ const handlers = {
         if (!validFromFixed || !validToFixed) throw new Error('请填写固定有效期')
         if (validToFixed < validFromFixed) throw new Error('固定有效期结束时间不能早于开始时间')
       }
+      const usageScope = normalizeCouponUsageScope(data.usageScope || data.businessType)
       const validServiceKeys = (await listServicePrices(true)).map((item) => item.key)
-      const applicableServiceTypes = Array.isArray(data.applicableServiceTypes) ? data.applicableServiceTypes.map((item) => String(item || '').trim()).filter(Boolean) : []
+      const applicableServiceTypes = usageScope === 'mall' ? [] : (Array.isArray(data.applicableServiceTypes) ? data.applicableServiceTypes.map((item) => String(item || '').trim()).filter(Boolean) : [])
       if (applicableServiceTypes.some((key) => !validServiceKeys.includes(key))) throw new Error('适用服务不正确')
       const time = now()
       const payload = {
         name,
         description: safeText(data.description).trim(),
         type: 'fixed',
+        usageScope,
+        usageScopeText: couponUsageScopeText(usageScope),
         discountAmount,
         minOrderAmount,
         applicableServiceTypes,

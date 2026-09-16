@@ -1,0 +1,113 @@
+<view class="admin-mall-page">
+  <view class="admin-hero">
+    <view class="hero-copy">
+      <view class="badge">用品商城</view>
+      <view class="title">商城订单</view>
+      <view class="tip">按状态处理发货、物流和售后审核，优先关注待发货与待审核订单。</view>
+    </view>
+    <view class="hero-stats">
+      <view><text>{{stats.pendingShip}}</text><text>待发货</text></view>
+      <view><text>{{stats.refundApplied}}</text><text>售后待审</text></view>
+      <view><text>{{stats.shipped}}</text><text>运输中</text></view>
+    </view>
+  </view>
+
+  <view class="search-card">
+    <input placeholder="订单号 / 手机 / 快递公司 / 快递单号" value="{{keyword}}" bindinput="inputKeyword" bindconfirm="search" />
+    <button bindtap="search">搜索</button>
+  </view>
+
+  <scroll-view scroll-x class="cat-row compact-row">
+    <view class="filter {{status === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
+  </scroll-view>
+
+  <view class="order-card" wx:for="{{orders}}" wx:key="_id">
+    <view class="order-head">
+      <view class="order-title-block">
+        <view class="strong">{{item.orderNo}}</view>
+        <view class="muted">{{item.createdAt}}</view>
+      </view>
+      <view class="badge {{item.statusClass}}">{{item.statusText}}</view>
+    </view>
+
+    <view class="order-summary">
+      <view>
+        <view class="muted">商品摘要</view>
+        <view class="strong small">{{item.goodsSummary}}</view>
+      </view>
+      <view class="summary-price">¥{{item.payAmount}}</view>
+    </view>
+
+    <view class="goods-line" wx:for="{{item.items}}" wx:for-item="goods" wx:key="productId">
+      <image wx:if="{{goods.coverFileId}}" src="{{goods.coverFileId}}" mode="aspectFill" />
+      <view wx:else class="goods-placeholder">图</view>
+      <view class="goods-main">
+        <view class="strong small">{{goods.name}}</view>
+        <view class="muted">{{goods.specText || '默认规格'}} × {{goods.quantity}}</view>
+      </view>
+      <view class="price">¥{{goods.price}}</view>
+    </view>
+
+    <view class="info-grid order-info-grid">
+      <view><text>收货人</text><text>{{item.shippingAddress.contactName}}</text></view>
+      <view><text>手机号</text><text>{{item.shippingAddress.contactPhone}}</text></view>
+      <view class="wide"><text>收货地址</text><text>{{item.addressText || '-'}}</text></view>
+      <view><text>支付</text><text>{{item.paymentStatusText}}</text></view>
+      <view><text>售后</text><text>{{item.refundStatusText}}</text></view>
+      <view class="wide"><text>物流</text><text>{{item.logisticsText}}</text></view>
+    </view>
+
+    <view class="refund-note" wx:if="{{item.refundStatus === 'applied'}}">
+      <view class="badge danger-badge">售后申请</view>
+      <view class="muted">{{item.refundReason || '用户申请退款'}}</view>
+    </view>
+
+    <view class="actions inline-actions order-actions">
+      <button wx:if="{{item.canShip}}" class="primary" data-id="{{item._id}}" bindtap="showShip">录入发货</button>
+      <button wx:if="{{item.trackingNo}}" data-id="{{item._id}}" bindtap="copyLogistics">复制物流</button>
+      <button wx:if="{{item.canAuditRefund}}" class="danger" data-id="{{item._id}}" bindtap="showRefund">售后审核</button>
+    </view>
+  </view>
+  <view class="empty" wx:if="{{!loading && !orders.length}}">暂无商城订单</view>
+
+  <view class="modal-mask" wx:if="{{shipping}}">
+    <view class="modal-card">
+      <view class="modal-title">订单发货</view>
+      <view class="modal-summary" wx:if="{{activeOrder}}">
+        <view class="strong small">{{activeOrder.orderNo}}</view>
+        <view class="muted">{{activeOrder.shippingAddress.contactName}} · {{activeOrder.shippingAddress.contactPhone}}</view>
+        <view class="muted">{{activeOrder.addressText}}</view>
+      </view>
+      <view class="form-section">
+        <view class="form-label">快递公司</view>
+        <input placeholder="如 顺丰 / 京东 / 中通" value="{{shipForm.expressCompany}}" data-field="expressCompany" bindinput="inputShip" />
+        <view class="form-label">快递单号</view>
+        <input placeholder="请输入快递单号" value="{{shipForm.trackingNo}}" data-field="trackingNo" bindinput="inputShip" />
+      </view>
+      <view class="modal-actions"><button bindtap="hideShip">取消</button><button class="primary" bindtap="submitShip">确认发货</button></view>
+    </view>
+  </view>
+
+  <view class="modal-mask" wx:if="{{refunding}}">
+    <view class="modal-card">
+      <view class="modal-title">售后审核</view>
+      <view class="modal-summary" wx:if="{{activeOrder}}">
+        <view class="strong small">{{activeOrder.orderNo}} · ¥{{activeOrder.payAmount}}</view>
+        <view class="muted">申请原因：{{activeOrder.refundReason || '未填写'}}</view>
+        <view class="refund-images" wx:if="{{activeOrder.refundImages && activeOrder.refundImages.length}}">
+          <image wx:for="{{activeOrder.refundImages}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
+        </view>
+      </view>
+      <view class="form-section">
+        <view class="switch-line">同意退款<switch checked="{{refundForm.approved}}" bindchange="switchRefund" /></view>
+        <view wx:if="{{refundForm.approved}}">
+          <view class="form-label">退款金额</view>
+          <input type="digit" placeholder="退款金额" value="{{refundForm.refundAmount}}" data-field="refundAmount" bindinput="inputRefund" />
+        </view>
+        <view class="form-label">审核备注</view>
+        <textarea placeholder="说明处理原因，用户可据此理解售后结果" value="{{refundForm.remark}}" data-field="remark" bindinput="inputRefund" />
+      </view>
+      <view class="modal-actions"><button bindtap="hideRefund">取消</button><button class="primary" bindtap="submitRefund">提交审核</button></view>
+    </view>
+  </view>
+</view>

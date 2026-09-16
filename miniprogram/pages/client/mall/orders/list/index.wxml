@@ -1,0 +1,10 @@
+<view class="mall-page">
+  <view class="mall-hero small"><view class="mall-kicker">商城订单</view><view class="mall-title">用品购买记录</view><view class="mall-desc">查看付款、发货、物流和售后进度。</view></view>
+  <scroll-view scroll-x class="category-tabs"><view class="category-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view></scroll-view>
+  <view class="order-card" wx:for="{{orders}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+    <view class="order-head"><text>{{item.orderNo}}</text><text class="badge">{{item.statusText}}</text></view>
+    <view class="mini-item" wx:for="{{item.items}}" wx:for-item="goods" wx:key="skuId"><image src="{{goods.coverFileId}}" mode="aspectFill" /><view><view class="mini-name">{{goods.name}}</view><view class="mini-sub">{{goods.specText}} × {{goods.quantity}}</view></view><view class="price">¥{{goods.price}}</view></view>
+    <view class="order-foot"><text>{{item.createdAt}}</text><text class="sum-price">¥{{item.payAmount}}</text></view>
+  </view>
+  <view class="empty" wx:if="{{!loading && !orders.length}}"><view>暂无商城订单</view><button bindtap="goMall">去逛逛</button></view>
+</view>

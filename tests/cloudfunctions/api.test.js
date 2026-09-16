@@ -2351,19 +2351,23 @@ test('coupon payment marks coupon used and cancel unpaid releases coupon', async
     orders: [],
     payments: [],
     user_coupons: [
-      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 50, applicableServiceTypes: [] } },
-      { _id: 'c2', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '满80减20', type: 'fixed', discountAmount: 20, minOrderAmount: 50, applicableServiceTypes: [] } }
+      { _id: 'c1', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '服务满80减20', type: 'fixed', usageScope: 'service', discountAmount: 20, minOrderAmount: 50, applicableServiceTypes: [] } },
+      { _id: 'c2', openid: 'openid_client', userId: 'u1', templateId: 't1', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '服务满80减20', type: 'fixed', usageScope: 'service', discountAmount: 20, minOrderAmount: 50, applicableServiceTypes: [] } },
+      { _id: 'c3', openid: 'openid_client', userId: 'u1', templateId: 't2', status: 'available', validFrom: '2026-01-01T00:00:00.000Z', validTo: '2099-01-01T00:00:00.000Z', templateSnapshot: { name: '零售满80减20', type: 'fixed', usageScope: 'mall', discountAmount: 20, minOrderAmount: 50, applicableServiceTypes: [] } }
     ],
     order_timeline: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
   const base = { petId: 'p1', serviceTypes: ['visit_fee', 'walk'], serviceAddress: '测试地址', addressDetail: '1栋101', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 }
 
+  const serviceCoupons = await fn.main({ module: 'coupon', action: 'listApplicableCoupons', data: base })
   const paidOrder = await fn.main({ module: 'order', action: 'createOrder', data: { ...base, couponId: 'c1' } })
   const paid = await fn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: paidOrder.data._id } })
   const cancelOrder = await fn.main({ module: 'order', action: 'createOrder', data: { ...base, couponId: 'c2' } })
   const cancelled = await fn.main({ module: 'order', action: 'cancelOrder', data: { orderId: cancelOrder.data._id, reason: '暂不需要' } })
 
+  assert.equal(serviceCoupons.ok, true)
+  assert.deepEqual(serviceCoupons.data.map((item) => item._id), ['c1', 'c2'])
   assert.equal(paid.ok, true)
   assert.equal(db.state.payments[0].amount, 49)
   assert.equal(db.state.user_coupons.find((item) => item._id === 'c1').status, 'used')
@@ -2396,7 +2400,7 @@ test('admin can save coupon template issue coupon and per-user limit applies', a
   assert.equal(issuedAgain.message, '该用户已达到领取上限')
   assert.equal(wallet.ok, true)
   assert.equal(wallet.data.length, 1)
-  assert.equal(wallet.data[0].ruleText, '满80减20')
+  assert.equal(wallet.data[0].ruleText, '服务券，满80减20')
 })
 
 test('invite login rewards inviter with retro card once', async () => {

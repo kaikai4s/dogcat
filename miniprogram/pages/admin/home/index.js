@@ -6,6 +6,7 @@ const adminSections = [
     desc: '派单、服务履约、异常处理',
     items: [
       { icon: 'ri-file-list-3-line', title: '订单管理', desc: '派单与监控', url: '/pages/admin/orders/list/index' },
+      { icon: 'ri-shopping-bag-3-line', title: '商城订单', desc: '发货与售后', url: '/pages/admin/mall/orders/index' },
       { icon: 'ri-alarm-warning-line', title: '异常事件', desc: 'SOS 与客诉', url: '/pages/admin/incidents/list/index' },
       { icon: 'ri-wallet-3-line', title: '财务提现', desc: '收益与打款审核', url: '/pages/admin/finance/index' }
     ]
@@ -27,6 +28,7 @@ const adminSections = [
     desc: '优惠、积分、签到和抽奖',
     items: [
       { icon: 'ri-coupon-3-line', title: '优惠券管理', desc: '模板与发券', url: '/pages/admin/coupons/index' },
+      { icon: 'ri-store-2-line', title: '商城商品', desc: '分类与商品', url: '/pages/admin/mall/products/index' },
       { icon: 'ri-vip-crown-line', title: '会员等级', desc: '积分升级规则', url: '/pages/admin/member-levels/index' },
       { icon: 'ri-calendar-check-line', title: '签到奖励', desc: '月度每日奖励配置', url: '/pages/admin/checkin-config/index' },
       { icon: 'ri-coins-line', title: '积分管理', desc: '手动增减与流水', url: '/pages/admin/points/index' },

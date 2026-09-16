@@ -1,0 +1,32 @@
+<view class="mall-page" wx:if="{{order}}">
+  <view class="mall-hero small"><view class="mall-kicker">{{order.statusText}}</view><view class="mall-title">订单详情</view><view class="mall-desc">{{order.orderNo}}</view></view>
+  <view class="checkout-card">
+    <view class="card-head">商品</view>
+    <view class="mini-item" wx:for="{{order.items}}" wx:key="skuId"><image src="{{item.coverFileId}}" mode="aspectFill" /><view><view class="mini-name">{{item.name}}</view><view class="mini-sub">{{item.specText}} × {{item.quantity}}</view></view><view class="price">¥{{item.price}}</view></view>
+  </view>
+  <view class="checkout-card">
+    <view class="card-head">收货信息</view>
+    <view class="addr-name">{{order.shippingAddress.contactName}} {{order.shippingAddress.contactPhone}}</view>
+    <view class="addr-text">{{order.shippingAddress.fullAddress}}</view>
+  </view>
+  <view class="checkout-card" wx:if="{{order.trackingNo}}">
+    <view class="card-head">物流信息 <text bindtap="copyTracking">复制单号</text></view>
+    <view class="addr-name">{{order.expressCompany}}</view><view class="addr-text">{{order.trackingNo}}</view>
+  </view>
+  <view class="checkout-card amount-card">
+    <view><text>商品金额</text><text>¥{{order.totalProductAmount}}</text></view>
+    <view><text>运费</text><text>¥{{order.shippingFee}}</text></view>
+    <view wx:if="{{order.discountAmount}}"><text>优惠</text><text>-¥{{order.discountAmount}}</text></view>
+    <view class="pay-line"><text>实付</text><text>¥{{order.payAmount}}</text></view>
+  </view>
+  <view class="checkout-card" wx:if="{{order.refundStatus && order.refundStatus !== 'none'}}"><view class="card-head">售后状态</view><view class="addr-text">{{order.refundStatus}} {{order.refundReason}}</view></view>
+  <view class="bottom-bar">
+    <button wx:if="{{order.status === 'pending_pay'}}" bindtap="cancelOrder">取消</button>
+    <button class="primary" wx:if="{{order.status === 'pending_pay'}}" loading="{{paying}}" bindtap="pay">去支付</button>
+    <button class="primary" wx:if="{{order.status === 'shipped'}}" bindtap="confirmReceipt">确认收货</button>
+    <button wx:if="{{order.paymentStatus === 'paid' && (order.status === 'pending_ship' || order.status === 'shipped' || order.status === 'completed')}}" bindtap="showRefund">申请售后</button>
+  </view>
+  <view class="modal-mask" wx:if="{{refunding}}">
+    <view class="modal-card"><view class="page-title">申请售后</view><textarea placeholder="请填写退款/售后原因" value="{{refundReason}}" bindinput="inputRefundReason" /><view class="modal-actions"><button bindtap="hideRefund">取消</button><button class="primary" bindtap="submitRefund">提交</button></view></view>
+  </view>
+</view>

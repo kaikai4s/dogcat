@@ -18,6 +18,7 @@ function emptyTemplate() {
     newbieOnly: false,
     enabled: true,
     sortOrder: 100,
+    usageScope: 'service',
     applicableServiceTypes: []
   }
 }
@@ -159,7 +160,13 @@ Page({
     this.setData({ ['form.validType']: e.currentTarget.dataset.type })
   },
 
+  setUsageScope(e) {
+    const usageScope = e.currentTarget.dataset.scope || 'service'
+    this.setData({ ['form.usageScope']: usageScope, ['form.applicableServiceTypes']: usageScope === 'mall' ? [] : this.data.form.applicableServiceTypes })
+  },
+
   toggleServiceType(e) {
+    if (this.data.form.usageScope === 'mall') return
     const key = e.currentTarget.dataset.key
     const current = this.data.form.applicableServiceTypes || []
     const next = current.includes(key) ? current.filter((item) => item !== key) : [...current, key]

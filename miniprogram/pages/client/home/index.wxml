@@ -81,6 +81,9 @@
     <view class="quick-action-item interactive" wx:if="{{staffEntryLoaded}}" bindtap="openStaffEntry">
       <view class="remix-icon ri-shield-user-fill quick-action-icon peach"></view><view class="quick-action-label">{{staffEntryTitle}}</view>
     </view>
+    <view class="quick-action-item interactive" data-url="/pages/client/mall/list/index" bindtap="go">
+      <view class="remix-icon ri-store-2-fill quick-action-icon orange"></view><view class="quick-action-label">用品商城</view>
+    </view>
     <view class="quick-action-item interactive" data-url="/pages/client/coupons/list/index" bindtap="goProtected">
       <view class="remix-icon ri-coupon-3-fill quick-action-icon orange"></view><view class="quick-action-label">优惠券</view>
     </view>

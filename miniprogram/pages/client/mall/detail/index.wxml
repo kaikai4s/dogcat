@@ -1,0 +1,31 @@
+<view class="mall-page detail-page" wx:if="{{product}}">
+  <swiper class="detail-swiper" indicator-dots="true" autoplay="true">
+    <swiper-item wx:for="{{displayImages}}" wx:key="*this"><image src="{{item}}" mode="aspectFill" /></swiper-item>
+  </swiper>
+  <view class="detail-card">
+    <view class="detail-price">¥{{selectedSku.price || product.price}} <text wx:if="{{selectedSku.originalPrice || product.originalPrice}}">¥{{selectedSku.originalPrice || product.originalPrice}}</text></view>
+    <view class="detail-title">{{product.name}}</view>
+    <view class="detail-sub">{{product.subtitle}}</view>
+    <view class="detail-meta"><text>{{selectedSku.specText || product.specText || '默认规格'}}</text><text>库存 {{selectedSku.stock || 0}}</text><text>已售 {{product.salesCount}}</text></view>
+  </view>
+  <view class="detail-card" wx:if="{{product.specGroups && product.specGroups.length}}">
+    <view class="section-title">选择规格</view>
+    <view class="spec-group" wx:for="{{product.specGroups}}" wx:key="name" wx:for-item="group">
+      <view class="spec-title">{{group.name}}</view>
+      <view class="spec-values">
+        <view class="spec-chip {{selectedSpecs[group.name] === value ? 'active' : ''}}" wx:for="{{group.values}}" wx:key="*this" wx:for-item="value" data-group="{{group.name}}" data-value="{{value}}" bindtap="selectSpec">{{value}}</view>
+      </view>
+    </view>
+  </view>
+  <view class="detail-card">
+    <view class="section-title">商品详情</view>
+    <view class="desc-text">{{product.description || '暂无详情说明'}}</view>
+  </view>
+  <view class="bottom-bar detail-bottom-bar">
+    <button class="ghost cart-entry" bindtap="cart">购物车</button>
+    <view class="qty-box detail-qty"><button data-delta="-1" bindtap="changeQty">-</button><input type="number" value="{{quantity}}" bindinput="inputQty" /><button data-delta="1" bindtap="changeQty">+</button></view>
+    <button class="add-cart-btn" bindtap="addCart" disabled="{{!selectedSku || selectedSku.stock <= 0}}">加购</button>
+    <button class="primary buy-btn" bindtap="buyNow" disabled="{{!selectedSku || selectedSku.stock <= 0}}">立即买</button>
+  </view>
+</view>
+<view class="mall-page empty" wx:else>商品加载中...</view>
