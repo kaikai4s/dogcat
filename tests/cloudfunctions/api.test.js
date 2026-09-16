@@ -20,6 +20,7 @@ async function withEnv(values, fn) {
 }
 
 const testPrivateKey = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' })
+process.env.HOME_SECURITY_KEY = process.env.HOME_SECURITY_KEY || 'test-home-security-key'
 
 test('api dispatches auth login through unified cloud function', async () => {
   const db = createCollectionStore({ users: [] })
@@ -2708,7 +2709,9 @@ test('finishService creates staff earning and withdraw workflow locks earnings',
   const balance = await staffFn.main({ module: 'finance', action: 'getStaffBalance', data: {} })
   const withdraw = await staffFn.main({ module: 'finance', action: 'createWithdrawRequest', data: { accountName: '王小花', accountNo: 'wxid_staff' } })
   const approved = await adminFn.main({ module: 'admin', action: 'auditWithdrawRequest', data: { id: withdraw.data._id, approved: true } })
+  const duplicateAudit = await adminFn.main({ module: 'admin', action: 'auditWithdrawRequest', data: { id: withdraw.data._id, approved: false } })
   const paid = await adminFn.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: withdraw.data._id } })
+  const duplicatePaid = await adminFn.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: withdraw.data._id } })
 
   assert.equal(finished.ok, true)
   assert.equal(db.state.staff_earnings.length, 1)
@@ -2717,7 +2720,9 @@ test('finishService creates staff earning and withdraw workflow locks earnings',
   assert.equal(withdraw.ok, true)
   assert.equal(db.state.staff_earnings[0].status, 'withdrawn')
   assert.equal(approved.data.status, 'approved')
+  assert.equal(duplicateAudit.ok, false)
   assert.equal(paid.data.status, 'paid')
+  assert.equal(duplicatePaid.ok, false)
 })
 
 

@@ -792,7 +792,8 @@ async function requireAdmin(openid) {
 }
 
 function getKey() {
-  const secret = process.env.HOME_SECURITY_KEY || 'dev-only-change-this-key-before-production'
+  const secret = process.env.HOME_SECURITY_KEY
+  if (!secret) throw new Error('家庭安防加密密钥未配置')
   return crypto.createHash('sha256').update(secret).digest()
 }
 
@@ -5156,34 +5157,42 @@ const handlers = {
       const mail = (await db.collection('reward_mails').doc(id).get()).data
       if (!mail || mail.openid !== openid) throw new Error('奖励邮件不存在')
       if (mail.claimedAt) return formatRewardMail(mail)
+      const claimTime = now()
+      const claimed = await db.collection('reward_mails').where({ _id: id, openid, claimedAt: null }).update({ data: { readAt: mail.readAt || claimTime, claimedAt: claimTime, updatedAt: claimTime } })
+      if (!claimed.stats || !claimed.stats.updated) throw new Error('奖励已领取，请刷新后查看')
       const reward = mail.reward || {}
       let pointsResult = null
       let couponResult = null
       let retroCardResult = null
-      if (reward.type === 'coupon') {
-        const templateId = safeText(reward.couponTemplateId).trim()
-        if (!templateId) throw new Error('奖励优惠券不存在')
-        const template = (await db.collection('coupon_templates').doc(templateId).get()).data
-        couponResult = await issueCouponToTargetUser(template, user, {
-          adminUserId: safeText(mail.sentByAdminUserId).trim(),
-          adminOpenid: safeText(mail.sentByAdminOpenid).trim()
-        })
-      } else if (reward.type === 'retro_card') {
-        const count = Math.max(Math.round(Number(reward.count || 0)), 0)
-        if (!count) throw new Error('补签卡奖励数量无效')
-        retroCardResult = await getRewardMailRetroCardGrant(openid, id)
-        if (!retroCardResult) {
-          retroCardResult = await grantRetroCards(openid, user._id, count, 'reward_mail', id, safeText(mail.title).trim() || '奖励邮件补签卡')
+      try {
+        if (reward.type === 'coupon') {
+          const templateId = safeText(reward.couponTemplateId).trim()
+          if (!templateId) throw new Error('奖励优惠券不存在')
+          const template = (await db.collection('coupon_templates').doc(templateId).get()).data
+          couponResult = await issueCouponToTargetUser(template, user, {
+            adminUserId: safeText(mail.sentByAdminUserId).trim(),
+            adminOpenid: safeText(mail.sentByAdminOpenid).trim()
+          })
+        } else if (reward.type === 'retro_card') {
+          const count = Math.max(Math.round(Number(reward.count || 0)), 0)
+          if (!count) throw new Error('补签卡奖励数量无效')
+          retroCardResult = await getRewardMailRetroCardGrant(openid, id)
+          if (!retroCardResult) {
+            retroCardResult = await grantRetroCards(openid, user._id, count, 'reward_mail', id, safeText(mail.title).trim() || '奖励邮件补签卡')
+          }
+        } else {
+          const delta = Math.max(Math.round(Number(reward.points || 0)), 0)
+          if (delta > 0) {
+            pointsResult = await addPoints(openid, user._id, delta, 'reward_mail', id, safeText(mail.title).trim() || '奖励邮件积分', { baseDelta: delta })
+          }
         }
-      } else {
-        const delta = Math.max(Math.round(Number(reward.points || 0)), 0)
-        if (delta > 0) {
-          pointsResult = await addPoints(openid, user._id, delta, 'reward_mail', id, safeText(mail.title).trim() || '奖励邮件积分', { baseDelta: delta })
-        }
+      } catch (error) {
+        await db.collection('reward_mails').doc(id).update({ data: { claimedAt: null, updatedAt: now() } })
+        throw error
       }
       const updated = {
-        readAt: mail.readAt || now(),
-        claimedAt: now(),
+        readAt: mail.readAt || claimTime,
+        claimedAt: claimTime,
         rewardClaimResult: {
           pointsDelta: pointsResult ? pointsResult.delta : 0,
           couponId: couponResult ? couponResult._id : '',
@@ -6474,7 +6483,8 @@ const handlers = {
       const approved = data.approved === true
       const time = now()
       const nextStatus = approved ? 'approved' : 'rejected'
-      await db.collection('withdraw_requests').doc(data.id).update({ data: { status: nextStatus, auditRemark: safeText(data.auditRemark).trim(), auditedByOpenid: openid, auditedAt: time, updatedAt: time } })
+      const updated = await db.collection('withdraw_requests').where({ _id: data.id, status: 'pending' }).update({ data: { status: nextStatus, auditRemark: safeText(data.auditRemark).trim(), auditedByOpenid: openid, auditedAt: time, updatedAt: time } })
+      if (!updated.stats || !updated.stats.updated) throw new Error('当前状态不可审核，请刷新后重试')
       if (!approved) {
         await Promise.all((request.earningIds || []).map((id) => db.collection('staff_earnings').doc(id).update({ data: { status: 'available', withdrawRequestId: '', updatedAt: time } })))
       }
@@ -6488,7 +6498,8 @@ const handlers = {
       if (!request) throw new Error('提现申请不存在')
       if (request.status !== 'approved') throw new Error('仅已审核提现可标记打款')
       const time = now()
-      await db.collection('withdraw_requests').doc(data.id).update({ data: { status: 'paid', paidAt: time, paidByOpenid: openid, payRemark: safeText(data.payRemark).trim(), updatedAt: time } })
+      const updated = await db.collection('withdraw_requests').where({ _id: data.id, status: 'approved' }).update({ data: { status: 'paid', paidAt: time, paidByOpenid: openid, payRemark: safeText(data.payRemark).trim(), updatedAt: time } })
+      if (!updated.stats || !updated.stats.updated) throw new Error('仅已审核提现可标记打款，请刷新后重试')
       await Promise.all((request.earningIds || []).map((id) => db.collection('staff_earnings').doc(id).update({ data: { status: 'withdrawn', updatedAt: time } })))
       await appendFinanceLog('withdraw_paid', { targetType: 'withdraw_request', targetId: data.id, staffOpenid: request.staffOpenid, amountDelta: -Number(request.amount || 0), detail: { payRemark: data.payRemark || '' } })
       await logAdmin(admin, 'withdraw_request', data.id, 'markWithdrawPaid', { amount: request.amount })

@@ -2,6 +2,27 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createCollectionStore, loadCloudFunction } = require('./helpers')
 
+process.env.HOME_SECURITY_KEY = process.env.HOME_SECURITY_KEY || 'test-home-security-key'
+
+test('homeSecurity saveHomeSecurity requires configured encryption key', async () => {
+  const previous = process.env.HOME_SECURITY_KEY
+  delete process.env.HOME_SECURITY_KEY
+  try {
+    const db = createCollectionStore({
+      users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],
+      home_security: []
+    })
+    const fn = loadCloudFunction('homeSecurity', db, 'openid_client')
+
+    const result = await fn.main({ action: 'saveHomeSecurity', data: { doorLockCode: '123456' } })
+
+    assert.equal(result.ok, false)
+    assert.equal(result.message, '家庭安防加密密钥未配置')
+  } finally {
+    process.env.HOME_SECURITY_KEY = previous
+  }
+})
+
 test('homeSecurity saveHomeSecurity stores encrypted door lock fields', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active' }],

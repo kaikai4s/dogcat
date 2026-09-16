@@ -80,17 +80,25 @@ Page({
   grantAdmin() {
     const openid = String(this.data.openid || '').trim()
     if (!openid || this.data.saving) return
-    this.setData({ saving: true })
-    callFunction('admin', 'grantAdmin', { openid })
-      .then(() => {
-        wx.showToast({ title: '已添加' })
-        this.setData({ openid: '', saving: false })
-        this.load({ reset: true })
-      })
-      .catch((err) => {
-        this.setData({ saving: false })
-        showError(err)
-      })
+    wx.showModal({
+      title: '添加管理员',
+      content: `确认授予 ${openid} 管理员权限？该用户将可以操作后台数据。`,
+      confirmText: '确认添加',
+      success: (res) => {
+        if (!res.confirm) return
+        this.setData({ saving: true })
+        callFunction('admin', 'grantAdmin', { openid })
+          .then(() => {
+            wx.showToast({ title: '已添加' })
+            this.setData({ openid: '', saving: false })
+            this.load({ reset: true })
+          })
+          .catch((err) => {
+            this.setData({ saving: false })
+            showError(err)
+          })
+      }
+    })
   },
 
   revokeAdmin(e) {
