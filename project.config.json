@@ -74,7 +74,12 @@
   "compileType": "miniprogram",
   "srcMiniprogramRoot": "miniprogram/",
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "file",
+        "value": "assets/fonts/remixicon.woff2"
+      }
+    ],
     "include": []
   },
   "editorSetting": {

@@ -4,7 +4,18 @@ const { withAuditText } = require('../../../../utils/format')
 
 Page({
   data: { id: '', staff: null, remark: '', sectionHomeUrl: '', canGoBack: false },
-  onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }); callFunction('admin', 'listStaffAudits').then((list) => this.setData({ staff: withAuditText(list.find((item) => item._id === q.id)) })).catch(showError) },
+  onLoad(q) {
+    this.setData({ ...createPageNav(q), id: q.id })
+    callFunction('admin', 'listStaffAudits')
+      .then((list) => {
+        const found = list.find((item) => item._id === q.id)
+        if (found) {
+          const staff = withAuditText(found)
+          this.setData({ staff, remark: staff.auditRemark || '' })
+        }
+      })
+      .catch(showError)
+  },
   input(e) { this.setData({ remark: e.detail.value }) },
   preview(e) {
     const url = e.currentTarget.dataset.url

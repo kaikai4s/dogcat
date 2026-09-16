@@ -83,6 +83,13 @@ Page({
       callFunction('staff', 'getStaffProfile')
     ])
       .then(([user, profile]) => {
+        if (!profile || profile.auditStatus !== 'approved') {
+          wx.showToast({ title: '未通过宠托师认证，即将返回', icon: 'none' })
+          setTimeout(() => {
+            wx.redirectTo({ url: '/pages/staff/certification/index' })
+          }, 1200)
+          return
+        }
         const profileView = withStaffWorkflowText(profile)
         const status = profileView?.auditStatus
         const info = profileStatusInfo(profileView)

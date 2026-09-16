@@ -11,7 +11,8 @@ const orderStatusText = {
 const auditStatusText = {
   pending: '待审核',
   approved: '已通过',
-  rejected: '未通过'
+  rejected: '未通过',
+  revoked: '已移除身份'
 }
 
 const paymentStatusText = {

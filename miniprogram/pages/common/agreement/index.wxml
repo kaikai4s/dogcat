@@ -1,0 +1,115 @@
+<view class="page agreement-page {{themeClass}} {{fontClass}}">
+  <view class="agreement-hero">
+    <view class="hero-badge">
+      <text class="remix-icon ri-file-paper-2-fill hero-icon"></text>
+      <text>{{badgeText || '安全告知与协议规范'}}</text>
+    </view>
+    <view class="hero-title">{{title || '重要服务条款阅读'}}</view>
+    <view class="hero-desc">{{subtitle || '为保障服务安全与合法权益，进入操作前请仔细阅读以下协议及规范。'}}</view>
+  </view>
+
+  <view class="card agreement-card">
+    <view class="agreement-header">
+      <view class="header-left">
+        <text class="remix-icon ri-shield-check-fill header-icon"></text>
+        <text class="header-title">{{agreementTitle}}</text>
+      </view>
+      <view class="countdown-badge {{countdown > 0 ? 'active' : 'done'}}">
+        <text class="remix-icon ri-time-line"></text>
+        <text wx:if="{{countdown > 0}}">倒计时 {{countdown}}s</text>
+        <text wx:else>已完成阅读</text>
+      </view>
+    </view>
+
+    <scroll-view scroll-y class="agreement-scroll-content">
+      <view class="agreement-section" wx:for="{{sections}}" wx:key="sectionIndex" wx:for-item="sec">
+        <view class="section-title-pill" wx:if="{{sec.sectionTitle}}">
+          <text class="pill-text">{{sec.sectionTitle}}</text>
+          <view class="pill-dots">
+            <text class="dot dot-pink"></text>
+            <text class="dot dot-yellow"></text>
+          </view>
+        </view>
+        <view class="section-card-box">
+          <view class="section-item" wx:for="{{sec.items}}" wx:key="itemIndex" wx:for-item="item">
+            <text class="item-title" wx:if="{{item.title}}">{{item.title}}</text>
+            <view class="item-text-wrap">
+              <block wx:for="{{item.segments}}" wx:key="segIndex" wx:for-item="seg">
+                <text
+                  class="seg-text {{seg.highlight ? 'text-highlight' : ''}} {{seg.isLink ? 'text-link-clickable' : ''}}"
+                  data-type="{{seg.linkType || ''}}"
+                  bindtap="onSegmentTap"
+                >{{seg.text}}</text>
+              </block>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="agreement-action-area">
+    <label class="checkbox-label" bindtap="toggleCheck">
+      <checkbox value="agreed" checked="{{agreedCheck}}" color="#ff7a45" class="custom-checkbox" />
+      <text class="label-text">我已充分阅读、理解并同意上述协议所有条款</text>
+    </label>
+
+    <button
+      class="primary-btn continue-btn {{canProceed ? '' : 'disabled-btn'}}"
+      disabled="{{!canProceed}}"
+      bindtap="proceed"
+    >
+      <text class="remix-icon ri-checkbox-circle-line" wx:if="{{canProceed}}"></text>
+      <text class="remix-icon ri-time-line" wx:else></text>
+      <text wx:if="{{countdown > 0}}">请仔细阅读协议 ({{countdown}}秒)</text>
+      <text wx:elif="{{!agreedCheck}}">请勾选上方同意选项</text>
+      <text wx:else>同意协议并继续</text>
+    </button>
+
+    <button class="ghost-btn cancel-btn" bindtap="cancel">
+      <text>暂不同意，返回</text>
+    </button>
+  </view>
+
+  <!-- 保证金说明 Modal 弹窗 -->
+  <view class="modal-backdrop" wx:if="{{showDepositModal}}" bindtap="closeDepositModal">
+    <view class="modal-card deposit-modal" catchtap="true">
+      <view class="modal-header">
+        <view class="header-title-box">
+          <text class="remix-icon ri-shield-user-fill modal-title-icon"></text>
+          <text class="modal-title">宠托师保证金说明与规范</text>
+        </view>
+        <view class="close-btn" bindtap="closeDepositModal">
+          <text class="remix-icon ri-close-line"></text>
+        </view>
+      </view>
+
+      <scroll-view scroll-y class="modal-body-scroll">
+        <view class="deposit-section">
+          <view class="deposit-sec-title">一、保证金设立目的</view>
+          <view class="deposit-sec-p">为保障宠物主人的财产及爱宠生命安全、规范宠托师服务行为，宠托师在抢单前需缴纳服务履约保证金（常规为 100元 - 300元）。保证金专户托管，防范服务过程中的重大违规或擅自放弃订单等行为。</view>
+        </view>
+
+        <view class="deposit-section">
+          <view class="deposit-sec-title">二、资金托管与安全保障</view>
+          <view class="deposit-sec-p">保证金由微信支付/平台资金专户全程安全托管，独立于平台运营资金，不扣取任何服务费或手续费。保证金始终属于宠托师个人合法资产。</view>
+        </view>
+
+        <view class="deposit-section">
+          <view class="deposit-sec-title">三、提现与退还规则</view>
+          <view class="deposit-sec-p">1. <text class="strong-text">随时申请退还</text>：当您无正在进行中的服务订单、无待处理的服务纠纷投诉时，可在「宠托师端 - 我的 - 保证金」页面随时发起全额退还提现。</view>
+          <view class="deposit-sec-p">2. <text class="strong-text">到账时效</text>：提交提现申请后，系统及资金专户将于 1-3 个工作日内自动原路退回至您的微信支付原账户。</view>
+        </view>
+
+        <view class="deposit-section">
+          <view class="deposit-sec-title">四、违规扣除与处罚说明</view>
+          <view class="deposit-sec-p">如在服务过程中发生严重违规（如私自放弃订单、入户失职造成宠物伤亡或重大财产损失等且拒不配合妥善解决），平台将依据《服务违约处罚规则》视情节依法扣除部分或全部保证金用于赔付受害宠物主，剩余保证金仍可正常提现。</view>
+        </view>
+      </scroll-view>
+
+      <view class="modal-footer">
+        <button class="primary-btn modal-confirm-btn" bindtap="closeDepositModal">我已充分了解</button>
+      </view>
+    </view>
+  </view>
+</view>

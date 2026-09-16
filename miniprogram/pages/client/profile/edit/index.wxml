@@ -14,14 +14,12 @@
 
     <view class="card-subtitle"><text class="remix-icon ri-profile-line sub-icon"></text><text>基础资料</text></view>
     <input class="input-field" placeholder="昵称（必填）" value="{{form.nickname}}" data-field="nickname" bindinput="input" />
-    <view class="phone-bind-card">
-      <view>
-        <view class="phone-title">手机号</view>
-        <view class="phone-desc">{{form.phone ? '已绑定：' + form.phone : '用于订单联系、售后与安全通知'}}</view>
-      </view>
-      <button wx:if="{{phoneAuthReady}}" class="phone-auth-btn" open-type="getPhoneNumber" bindgetphonenumber="bindPhone">{{form.phone ? '更换' : '授权绑定'}}</button>
-      <button wx:else class="phone-auth-btn" bindtap="preparePhoneAuth">{{form.phone ? '更换' : '授权绑定'}}</button>
+    <view class="card-subtitle"><text class="remix-icon ri-phone-line sub-icon"></text><text>联系电话</text></view>
+    <view class="phone-input-card">
+      <input class="input-field phone-input" placeholder="输入11位手机号" type="number" maxlength="11" value="{{form.phone}}" data-field="phone" bindinput="input" />
+      <button class="phone-auth-btn" open-type="getPhoneNumber" bindgetphonenumber="bindPhone">快捷授权</button>
     </view>
+    <view class="field-tip">个人主体小程序支持直接输入手机号保存；企业认证小程序可点击快捷授权。</view>
   </view>
 
   <button class="primary-btn submit-btn" bindtap="save"><text class="remix-icon ri-save-3-line"></text><text>保存资料</text></button>

@@ -1,89 +1,235 @@
 {
   "pages": [
     "pages/client/home/index",
-    "pages/client/sitters/list/index",
-    "pages/client/sitters/detail/index",
-    "pages/client/sitters/favorites/index",
-    "pages/client/coupons/list/index",
-    "pages/client/coupons/select/index",
-    "pages/client/mall/list/index",
-    "pages/client/mall/detail/index",
-    "pages/client/mall/cart/index",
-    "pages/client/mall/checkout/index",
-    "pages/client/mall/orders/list/index",
-    "pages/client/mall/orders/detail/index",
     "pages/login/index",
-    "pages/role-select/index",
-    "pages/client/addresses/list/index",
-    "pages/client/addresses/edit/index",
-    "pages/client/pets/list/index",
-    "pages/client/pets/edit/index",
-    "pages/client/home-security/index",
-    "pages/client/orders/create/index",
-    "pages/client/orders/list/index",
-    "pages/client/messages/index",
-    "pages/client/messages/thread/index",
-    "pages/client/orders/detail/index",
-    "pages/client/orders/tracking/index",
-    "pages/client/orders/report/index",
-    "pages/client/orders/public-detail/index",
-    "pages/client/orders/public-list/index",
-    "pages/client/orders/review/index",
-    "pages/client/incidents/list/index",
-    "pages/client/incidents/create/index",
-    "pages/client/incidents/detail/index",
-    "pages/client/profile/index",
-    "pages/client/profile/edit/index",
-    "pages/client/ai-assistant/index",
-    "pages/staff/home/index",
-    "pages/staff/profile/index",
-    "pages/staff/schedule/index",
-    "pages/staff/earnings/index",
-    "pages/staff/certification/index",
-    "pages/staff/training/index",
-    "pages/staff/promotion/index",
-    "pages/staff/messages/index",
-    "pages/staff/messages/thread/index",
-    "pages/staff/orders/list/index",
-    "pages/staff/orders/detail/index",
-    "pages/staff/orders/service/index",
-    "pages/staff/checkin/camera/index",
-    "pages/staff/sos/index",
-    "pages/staff/incidents/list/index",
-    "pages/staff/incidents/detail/index",
-    "pages/admin/home/index",
-    "pages/admin/users/list/index",
-    "pages/admin/users/edit/index",
-    "pages/admin/sitters/list/index",
-    "pages/admin/admins/list/index",
-    "pages/admin/service-prices/index",
-    "pages/admin/coupons/index",
-    "pages/admin/mall/products/index",
-    "pages/admin/mall/orders/index",
-    "pages/admin/orders/list/index",
-    "pages/admin/orders/detail/index",
-    "pages/admin/orders/assign/index",
-    "pages/admin/finance/index",
-    "pages/admin/staff-audit/list/index",
-    "pages/admin/staff-audit/detail/index",
-    "pages/admin/staff-training/list/index",
-    "pages/admin/staff-training/detail/index",
-    "pages/admin/staff-promotion/list/index",
-    "pages/admin/staff-promotion/detail/index",
-    "pages/admin/incidents/list/index",
-    "pages/admin/incidents/detail/index",
-    "pages/admin/evidence/detail/index",
-    "pages/admin/member-levels/index",
-    "pages/admin/checkin-config/index",
-    "pages/admin/points/index",
-    "pages/admin/lottery/index",
-    "pages/admin/settings/index",
-    "pages/client/points/index",
-    "pages/client/checkin/index",
-    "pages/client/reward-mails/index",
-    "pages/client/lottery/index",
-    "pages/client/pet-beauty/activity/index"
+    "pages/role-select/index"
   ],
+  "subpackages": [
+    {
+      "root": "pages/client/sitters",
+      "name": "client-sitters",
+      "pages": [
+        "list/index",
+        "detail/index",
+        "favorites/index"
+      ]
+    },
+    {
+      "root": "pages/client/coupons",
+      "name": "client-coupons",
+      "pages": [
+        "list/index",
+        "select/index"
+      ]
+    },
+    {
+      "root": "pages/client/mall",
+      "name": "client-mall",
+      "pages": [
+        "list/index",
+        "detail/index",
+        "cart/index",
+        "checkout/index",
+        "orders/list/index",
+        "orders/detail/index"
+      ]
+    },
+    {
+      "root": "pages/client/addresses",
+      "name": "client-addresses",
+      "pages": [
+        "list/index",
+        "edit/index"
+      ]
+    },
+    {
+      "root": "pages/client/pets",
+      "name": "client-pets",
+      "pages": [
+        "list/index",
+        "edit/index"
+      ]
+    },
+    {
+      "root": "pages/client/orders",
+      "name": "client-orders",
+      "pages": [
+        "create/index",
+        "list/index",
+        "detail/index",
+        "tracking/index",
+        "report/index",
+        "public-detail/index",
+        "public-list/index",
+        "review/index"
+      ]
+    },
+    {
+      "root": "pages/client/incidents",
+      "name": "client-incidents",
+      "pages": [
+        "list/index",
+        "create/index",
+        "detail/index"
+      ]
+    },
+    {
+      "root": "pages/client/messages",
+      "name": "client-messages",
+      "pages": [
+        "index",
+        "thread/index"
+      ]
+    },
+    {
+      "root": "pages/client/profile",
+      "name": "client-profile",
+      "pages": [
+        "index",
+        "edit/index"
+      ]
+    },
+    {
+      "root": "pages/client/ai-assistant",
+      "name": "client-ai-assistant",
+      "pages": [
+        "index"
+      ]
+    },
+    {
+      "root": "pages/client/home-security",
+      "name": "client-home-security",
+      "pages": [
+        "index"
+      ]
+    },
+    {
+      "root": "pages/client/points",
+      "name": "client-points",
+      "pages": [
+        "index"
+      ]
+    },
+    {
+      "root": "pages/client/checkin",
+      "name": "client-checkin",
+      "pages": [
+        "index"
+      ]
+    },
+    {
+      "root": "pages/client/reward-mails",
+      "name": "client-reward-mails",
+      "pages": [
+        "index"
+      ]
+    },
+    {
+      "root": "pages/client/lottery",
+      "name": "client-lottery",
+      "pages": [
+        "index"
+      ]
+    },
+    {
+      "root": "pages/client/pet-beauty/activity",
+      "name": "client-pet-beauty-activity",
+      "pages": [
+        "index"
+      ]
+    },
+    {
+      "root": "pages/client/settings",
+      "name": "client-settings",
+      "pages": [
+        "index"
+      ]
+    },
+    {
+      "root": "pages/staff",
+      "name": "staff",
+      "pages": [
+        "home/index",
+        "profile/index",
+        "schedule/index",
+        "earnings/index",
+        "certification/index",
+        "training/index",
+        "promotion/index",
+        "messages/index",
+        "messages/thread/index",
+        "orders/list/index",
+        "orders/detail/index",
+        "orders/service/index",
+        "checkin/camera/index",
+        "sos/index",
+        "incidents/list/index",
+        "incidents/detail/index"
+      ]
+    },
+    {
+      "root": "pages/admin",
+      "name": "admin",
+      "pages": [
+        "home/index",
+        "users/list/index",
+        "users/edit/index",
+        "sitters/list/index",
+        "admins/list/index",
+        "service-prices/index",
+        "coupons/index",
+        "mall/products/index",
+        "mall/orders/index",
+        "orders/list/index",
+        "orders/detail/index",
+        "orders/assign/index",
+        "finance/index",
+        "staff-audit/list/index",
+        "staff-audit/detail/index",
+        "staff-training/list/index",
+        "staff-training/detail/index",
+        "staff-promotion/list/index",
+        "staff-promotion/detail/index",
+        "incidents/list/index",
+        "incidents/detail/index",
+        "evidence/detail/index",
+        "member-levels/index",
+        "checkin-config/index",
+        "points/index",
+        "lottery/index",
+        "settings/index",
+        "prices/index"
+      ]
+    },
+    {
+      "root": "pages/dev",
+      "name": "dev",
+      "pages": [
+        "init/index"
+      ]
+    },
+    {
+      "root": "pages/common/agreement",
+      "name": "common-agreement",
+      "pages": [
+        "index"
+      ]
+    }
+  ],
+  "preloadRule": {
+    "pages/client/home/index": {
+      "network": "all",
+      "packages": ["client-orders", "client-sitters", "client-profile"]
+    },
+    "pages/staff/home/index": {
+      "network": "all",
+      "packages": ["staff"]
+    },
+    "pages/admin/home/index": {
+      "network": "all",
+      "packages": ["admin"]
+    }
+  },
   "window": {
     "backgroundColor": "#FFF8EC",
     "backgroundTextStyle": "light",

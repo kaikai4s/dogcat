@@ -150,6 +150,13 @@ Page({
   initStaffHome() {
     callFunction('staff', 'getStaffProfile')
       .then((profile) => {
+        if (!profile || profile.auditStatus !== 'approved') {
+          wx.showToast({ title: '未通过宠托师认证，不可进入宠托师端', icon: 'none' })
+          setTimeout(() => {
+            wx.reLaunch({ url: '/pages/client/home/index' })
+          }, 1200)
+          return
+        }
         let location = this.data.customLocation
         let locationTag = '已选择位置'
 

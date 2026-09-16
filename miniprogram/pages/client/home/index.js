@@ -170,6 +170,24 @@ Page({
           wx.reLaunch({ url: '/pages/staff/home/index' })
           return
         }
+        if (!profile || status === 'rejected' || status === 'revoked' || status === 'none') {
+          if (status === 'revoked' || status === 'rejected') {
+            try { wx.removeStorageSync('agreed_agreement_staff_application') } catch (e) {}
+          }
+          const agreed = wx.getStorageSync('agreed_agreement_staff_application')
+          if (!agreed) {
+            const targetUrl = encodeURIComponent('/pages/staff/certification/index')
+            wx.navigateTo({ url: `/pages/common/agreement/index?type=staff_application&targetUrl=${targetUrl}&countdown=30` })
+            return
+          }
+          wx.navigateTo({ url: '/pages/staff/certification/index' })
+          return
+        }
+        if (status === 'pending') {
+          wx.showToast({ title: '资料审核中，请等待平台审核', icon: 'none' })
+          wx.navigateTo({ url: '/pages/staff/certification/index' })
+          return
+        }
         wx.navigateTo({ url: '/pages/staff/certification/index' })
       })
       .catch(showError)

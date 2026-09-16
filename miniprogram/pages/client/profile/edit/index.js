@@ -11,8 +11,7 @@ Page({
       avatarUrl: ''
     },
     sectionHomeUrl: '',
-    canGoBack: false,
-    phoneAuthReady: false
+    canGoBack: false
   },
 
   onLoad(query) {
@@ -39,28 +38,30 @@ Page({
     this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value })
   },
 
-  preparePhoneAuth() {
-    requirePrivacyAuthorize()
-      .then(() => {
-        this.setData({ phoneAuthReady: true })
-        wx.showToast({ title: '请再次点击授权手机号', icon: 'none' })
-      })
-      .catch(() => wx.showToast({ title: '请先同意隐私保护指引', icon: 'none' }))
-  },
-
   bindPhone(e) {
     const code = e.detail && e.detail.code
     if (!code) {
+      const errMsg = (e.detail && (e.detail.errMsg || e.detail.message)) || ''
+      if (errMsg.includes('deny') || errMsg.includes('cancel')) {
+        wx.showToast({ title: '已取消授权', icon: 'none' })
+        return
+      }
       wx.showToast({ title: '未完成手机号授权', icon: 'none' })
       return
     }
+    wx.showLoading({ title: '绑定中...' })
     callFunction('auth', 'loginByPhoneCode', { code })
       .then((user) => {
+        wx.hideLoading()
         setCachedUser(user)
+        if (getApp().globalData) getApp().globalData.user = user
         this.setData({ form: { ...this.data.form, ...user } })
         wx.showToast({ title: '手机号已绑定' })
       })
-      .catch(showError)
+      .catch((err) => {
+        wx.hideLoading()
+        showError(err)
+      })
   },
 
   chooseAvatar() {
@@ -91,12 +92,19 @@ Page({
       wx.showToast({ title: '请填写昵称', icon: 'none' })
       return
     }
+    const phone = String(this.data.form.phone || '').trim()
+    if (phone && !/^1\d{10}$/.test(phone)) {
+      wx.showToast({ title: '手机号格式不正确', icon: 'none' })
+      return
+    }
     callFunction('auth', 'updateProfile', {
       nickname: this.data.form.nickname,
-      avatarUrl: this.data.form.avatarUrl
+      avatarUrl: this.data.form.avatarUrl,
+      phone
     })
       .then((user) => {
         getApp().globalData.user = user
+        setCachedUser(user)
         wx.showToast({ title: '已保存' })
         wx.navigateBack()
       })

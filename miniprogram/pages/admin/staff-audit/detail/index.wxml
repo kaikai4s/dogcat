@@ -34,12 +34,18 @@
     </view>
   </view>
 
-  <view class="admin-card form-card">
+  <view class="admin-card form-card" wx:if="{{staff.auditStatus === 'pending'}}">
     <view class="card-subtitle"><text class="remix-icon ri-edit-line sub-icon"></text><text>审核备注</text></view>
     <textarea class="remark-textarea" placeholder="审核备注" value="{{remark}}" bindinput="input" />
   </view>
 
-  <view class="bottom-actions">
+  <view class="admin-card form-card" wx:else>
+    <view class="card-subtitle"><text class="remix-icon ri-shield-check-line sub-icon"></text><text>审核结论</text></view>
+    <view class="info-row"><view class="label">审核状态</view><view class="soft-badge status-badge">{{staff.auditStatusText}}</view></view>
+    <view class="info-row" wx:if="{{staff.auditRemark}}"><view class="label">审核备注</view><view class="value">{{staff.auditRemark}}</view></view>
+  </view>
+
+  <view class="bottom-actions" wx:if="{{staff.auditStatus === 'pending'}}">
     <button class="primary-btn" data-status="approved" bindtap="audit"><text class="remix-icon ri-check-line"></text><text>审核通过</text></button>
     <button class="danger-btn" data-status="rejected" bindtap="audit"><text class="remix-icon ri-close-line"></text><text>审核拒绝</text></button>
   </view>
