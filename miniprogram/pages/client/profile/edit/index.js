@@ -1,6 +1,5 @@
-const { callFunction, showError } = require('../../../../utils/cloud')
+const { callFunction, showError, ensureLogin, setCachedUser, requirePrivacyAuthorize } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { ensureLogin } = require('../../../../utils/cloud')
 
 Page({
   data: {
@@ -12,7 +11,8 @@ Page({
       avatarUrl: ''
     },
     sectionHomeUrl: '',
-    canGoBack: false
+    canGoBack: false,
+    phoneAuthReady: false
   },
 
   onLoad(query) {
@@ -37,6 +37,30 @@ Page({
 
   input(e) {
     this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value })
+  },
+
+  preparePhoneAuth() {
+    requirePrivacyAuthorize()
+      .then(() => {
+        this.setData({ phoneAuthReady: true })
+        wx.showToast({ title: '请再次点击授权手机号', icon: 'none' })
+      })
+      .catch(() => wx.showToast({ title: '请先同意隐私保护指引', icon: 'none' }))
+  },
+
+  bindPhone(e) {
+    const code = e.detail && e.detail.code
+    if (!code) {
+      wx.showToast({ title: '未完成手机号授权', icon: 'none' })
+      return
+    }
+    callFunction('auth', 'loginByPhoneCode', { code })
+      .then((user) => {
+        setCachedUser(user)
+        this.setData({ form: { ...this.data.form, ...user } })
+        wx.showToast({ title: '手机号已绑定' })
+      })
+      .catch(showError)
   },
 
   chooseAvatar() {
@@ -69,7 +93,6 @@ Page({
     }
     callFunction('auth', 'updateProfile', {
       nickname: this.data.form.nickname,
-      phone: this.data.form.phone,
       avatarUrl: this.data.form.avatarUrl
     })
       .then((user) => {
