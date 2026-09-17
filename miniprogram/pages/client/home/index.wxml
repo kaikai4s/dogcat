@@ -90,6 +90,9 @@
     <view class="quick-action-item interactive" data-url="/pages/client/pets/list/index" bindtap="goProtected">
       <view class="remix-icon ri-file-user-fill quick-action-icon blue"></view><view class="quick-action-label">宠物档案</view>
     </view>
+    <view class="quick-action-item interactive" data-url="/packagePlayground/pages/index" bindtap="goProtected">
+      <view class="remix-icon ri-gamepad-fill quick-action-icon green"></view><view class="quick-action-label">宠物乐园</view>
+    </view>
     <view class="quick-action-item interactive" data-url="/pages/client/home-security/index" bindtap="goProtected">
       <view class="remix-icon ri-shield-keyhole-fill quick-action-icon purple"></view><view class="quick-action-label">家庭安防</view>
     </view>

@@ -36,7 +36,7 @@ Page({
     callFunction('staff', 'getTrainingStatus')
       .then((res) => {
         const profile = withStaffWorkflowText(res.profile)
-        const videos = (res.videos || []).map((item) => ({ ...item, watchedAtText: formatDateTime(item.watchedAt) }))
+        const videos = (res.videos || []).map((item) => ({ ...item, watchedAtText: formatDateTime(item.watchedAt), tempUrl: '', posterTempUrl: '' }))
         this.setData({
           profile,
           quiz: res.quiz,
@@ -45,7 +45,7 @@ Page({
           videoAuditGuide: res.videoAuditGuide,
           canRequestVideoAudit: res.canRequestVideoAudit,
           loading: false
-        })
+        }, () => this.resolveVideoUrls(videos))
       })
       .catch((err) => {
         this.setData({ loading: false })
@@ -73,8 +73,44 @@ Page({
       .catch(showError)
   },
 
+  resolveVideoUrls(videos = []) {
+    const fileIds = []
+    videos.forEach((item) => {
+      if (item.fileId) fileIds.push(item.fileId)
+      if (item.posterFileId) fileIds.push(item.posterFileId)
+    })
+    const uniqueIds = Array.from(new Set(fileIds))
+    if (!uniqueIds.length) return
+    wx.cloud.getTempFileURL({
+      fileList: uniqueIds,
+      success: (res) => {
+        const urlMap = {}
+        ;(res.fileList || []).forEach((file) => {
+          if (file.fileID && file.tempFileURL) urlMap[file.fileID] = file.tempFileURL
+        })
+        const updated = this.data.videos.map((item) => ({
+          ...item,
+          tempUrl: urlMap[item.fileId] || item.tempUrl || '',
+          posterTempUrl: urlMap[item.posterFileId] || item.posterTempUrl || ''
+        }))
+        this.setData({ videos: updated })
+      }
+    })
+  },
+
   markVideo(e) {
     const videoKey = e.currentTarget.dataset.key
+    this.markVideoWatched(videoKey)
+  },
+
+  videoEnded(e) {
+    const videoKey = e.currentTarget.dataset.key
+    this.markVideoWatched(videoKey)
+  },
+
+  markVideoWatched(videoKey) {
+    const target = this.data.videos.find((item) => item.key === videoKey)
+    if (!videoKey || (target && target.watched)) return
     callFunction('staff', 'markTrainingVideoWatched', { videoKey })
       .then(() => {
         wx.showToast({ title: '已记录观看', icon: 'none' })

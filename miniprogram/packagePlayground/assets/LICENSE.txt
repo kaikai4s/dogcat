@@ -1,0 +1,18 @@
+Models by Quaternius, licensed CC0 1.0 Universal.
+https://creativecommons.org/publicdomain/zero/1.0/
+
+shiba.glb: ShibaInu.gltf from Ultimate Animated Animal Pack.
+Source: https://quaternius.com/packs/ultimateanimatedanimals.html
+Original public file ID: 1XWUVbmMbiG9E90OqrumueD_pBdnYdyHZ
+Modifications: keep Idle, Walk, Gallop, Eating clips; remove unused animation buffers; convert embedded glTF to GLB. Geometry and rig unchanged.
+
+house.glb: Houses_FirstAge_1_Level1.gltf from Ultimate Fantasy RTS.
+Source: https://quaternius.com/packs/ultimatefantasyrts.html
+Original public file ID: 1ITHANc2S6cJxNRx0O0wDfEmYC4nXBBVg
+Modifications: convert embedded glTF to GLB.
+
+The source pack pages identify these assets as CC0 and permit personal and commercial use. These are sample assets, not AI likenesses of users' pets.
+
+Dog sequence frames: copied from project-local `wechat_golden_retriever_animation_pack/assets/dog/`.
+Actions included in this Mini Program subpackage: idle, walk, run, sit, sleep, happy.
+These frames are used as a 2D sequence-animation visual layer for dog movement, not as GLB/3D model assets. Confirm the original pack license before production release if it was not generated in-house.

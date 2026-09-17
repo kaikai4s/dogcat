@@ -43,9 +43,9 @@
       <view class="row-main"><view class="row-title">第三方信息数据共享</view></view>
       <view class="settings-value"><text class="remix-icon ri-arrow-right-s-line"></text></view>
     </view>
-    <view class="settings-row" bindtap="openPrivacySummary">
+    <view class="settings-row" wx:for="{{agreementLinks}}" wx:key="type" data-type="{{item.type}}" bindtap="openAgreement">
       <view class="row-icon"><text class="remix-icon ri-shield-check-line"></text></view>
-      <view class="row-main"><view class="row-title">隐私政策概要</view></view>
+      <view class="row-main"><view class="row-title">{{item.title}}</view></view>
       <view class="settings-value"><text class="remix-icon ri-arrow-right-s-line"></text></view>
     </view>
   </view>

@@ -9,7 +9,7 @@
     <text class="remix-icon ri-shield-check-line notice-icon"></text>
     <view>
       <view class="notice-title">请尽量补充完整情况</view>
-      <view class="notice-desc">如涉及宠物安全、服务缺失、退款争议，可上传现场照片作为证据。</view>
+      <view class="notice-desc">如涉及宠物安全、服务缺失、退款争议，可上传现场照片作为证据。提交前可查看 <text data-type="complaint_dispute" bindtap="openAgreement">《投诉与纠纷处理规则》</text>。</view>
     </view>
   </view>
 

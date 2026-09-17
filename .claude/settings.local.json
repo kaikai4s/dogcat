@@ -35,7 +35,22 @@
       "Bash(env)",
       "Bash(npx mocha:*)",
       "Bash(npx npx:*)",
-      "Bash([ -f \"/home/ebrook-dev/project/dogcat/tests/cloudfunctions/api.test.js\" ])"
+      "Bash([ -f \"/home/ebrook-dev/project/dogcat/tests/cloudfunctions/api.test.js\" ])",
+      "Bash(terser \"/home/ebrook-dev/project/dogcat/miniprogram/libs/three/three.js\" -c -m -o \"/home/ebrook-dev/project/dogcat/miniprogram/libs/three/three.min.js\")",
+      "Bash(npx terser:*)",
+      "Bash(npm pack:*)",
+      "Bash(rm -rf /tmp/three-compat)",
+      "Bash(mkdir -p /tmp/three-compat)",
+      "Bash(tar -xzf /tmp/three-0.124.0.tgz -C /tmp/three-compat)",
+      "Bash(cp /tmp/three-compat/package/build/three.min.js \"/home/ebrook-dev/project/dogcat/miniprogram/packagePlayground/libs/three/three.js\")",
+      "WebFetch(domain:quaternius.com)",
+      "Bash(du:*)",
+      "Bash(mkdir -p \"/home/ebrook-dev/project/dogcat/miniprogram/packagePlayground/assets/dog\" \"/home/ebrook-dev/project/dogcat/miniprogram/packagePlayground/components\")",
+      "Bash(cp -R \"/home/ebrook-dev/project/dogcat/wechat_golden_retriever_animation_pack/components/dog-animation\" \"/home/ebrook-dev/project/dogcat/miniprogram/packagePlayground/components/\")",
+      "Bash(mkdir -p /home/ebrook-dev/project/dogcat/miniprogram/packagePlayground/assets/dog/__TRACKED_VAR__)",
+      "Bash(cp '/home/ebrook-dev/project/dogcat/wechat_golden_retriever_animation_pack/assets/dog/__TRACKED_VAR__/frame_*.png' /home/ebrook-dev/project/dogcat/miniprogram/packagePlayground/assets/dog/__TRACKED_VAR__/)",
+      "Bash(cp \"/home/ebrook-dev/project/dogcat/wechat_golden_retriever_animation_pack/assets/dog/manifest.json\" \"/home/ebrook-dev/project/dogcat/miniprogram/packagePlayground/assets/dog/manifest.json\")",
+      "Bash(command -v miniprogram-ci)"
     ]
   }
 }

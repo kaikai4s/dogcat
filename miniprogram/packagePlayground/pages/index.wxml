@@ -1,0 +1,74 @@
+<view class="page playground-page">
+  <view class="playground-hero">
+    <view class="hero-copy">
+      <view class="hero-badge"><text class="remix-icon ri-gamepad-fill"></text><text>宠物乐园</text></view>
+      <view class="hero-title">进入爱宠的 3D 阳光庄园</view>
+      <view class="hero-desc">更大的草地、会馆、小窝、餐饮区和玩耍区，宠物会自由散步、吃饭、喝水和回家休息。</view>
+    </view>
+    <view class="hero-actions">
+      <button class="ghost-btn small-btn" bindtap="goPets">宠物档案</button>
+      <button class="primary-btn small-btn" bindtap="load" loading="{{loading}}">刷新乐园</button>
+    </view>
+  </view>
+
+  <view class="loading-card" wx:if="{{loading}}">
+    <view class="remix-icon ri-loader-4-line loading-icon"></view>
+    <view class="strong">正在唤醒宠物乐园...</view>
+    <view class="muted">正在准备 3D 庄园、餐饮区、玩耍区和宠物小窝</view>
+  </view>
+
+  <view class="empty-card" wx:elif="{{empty}}">
+    <view class="remix-icon ri-paw-print-line empty-icon"></view>
+    <view class="empty-title">还没有宠物进入乐园</view>
+    <view class="empty-desc">先上传宠物档案和头像，TA 就能拥有自己的 3D 小窝，并在庄园里自由活动。</view>
+    <button class="primary-btn empty-btn" bindtap="goAddPet">添加宠物</button>
+  </view>
+
+  <view class="daily-status">
+    <view class="daily-title">进入全屏庄园</view>
+    <view class="daily-desc">按宠物档案生成庄园成员，支持点选宠物、单独跟随、吃饭、喝水和休息。</view>
+    <button class="primary-btn" bindtap="openWorld">打开全屏庄园</button>
+    <view class="muted">狗狗使用本地柴犬模型；猫咪使用云存储小猫模型，资源不可用时会显示 3D 占位模型。</view>
+  </view>
+
+  <view class="daily-status" wx:if="{{!loading && !empty}}">
+    <view class="daily-title">样板验收重点</view>
+    <view class="daily-desc">观察是否能按名字选中不同宠物、单独控制去吃喝休息、宠物之间不重叠，查看全场时能看到庄园主体。</view>
+  </view>
+
+  <view class="action-dock" wx:if="{{!loading && !empty}}">
+    <view class="dock-item interactive" bindtap="showComingSoon">
+      <view class="remix-icon ri-t-shirt-2-line dock-icon pink"></view>
+      <view><view class="dock-title">衣物间</view><view class="dock-desc">即将开放</view></view>
+    </view>
+    <view class="dock-item interactive" bindtap="showComingSoon">
+      <view class="remix-icon ri-gift-line dock-icon orange"></view>
+      <view><view class="dock-title">衣物抽奖</view><view class="dock-desc">即将开放</view></view>
+    </view>
+  </view>
+
+  <view class="pet-strip" wx:if="{{pets.length}}">
+    <view class="strip-title">乐园成员</view>
+    <scroll-view scroll-x class="pet-scroll">
+      <view class="pet-chip {{selectedPet && selectedPet._id === item._id ? 'active' : ''}}" wx:for="{{pets}}" wx:key="_id" data-id="{{item._id}}" bindtap="choosePet">
+        <image class="pet-avatar" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" />
+        <view class="pet-avatar empty" wx:else><text class="remix-icon ri-paw-print-line"></text></view>
+        <view class="pet-chip-name">{{item.name}}</view>
+        <view class="pet-chip-type">{{item.species === 'cat' ? '猫窝' : '狗窝'}}</view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="pet-popover" wx:if="{{selectedPet}}">
+    <view class="popover-card">
+      <view class="popover-head">
+        <view>
+          <view class="popover-title">{{selectedPet.name}}</view>
+          <view class="muted">{{selectedPet.species === 'cat' ? '猫咪' : '狗狗'}} · {{selectedPet.breed || '未填写品种'}}</view>
+        </view>
+        <view class="remix-icon ri-close-line close-btn" bindtap="closePetCard"></view>
+      </view>
+      <view class="popover-desc">{{selectedPet.personality || '正在乐园里开心玩耍'}}</view>
+    </view>
+  </view>
+</view>

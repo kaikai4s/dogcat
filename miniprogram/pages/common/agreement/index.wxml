@@ -49,26 +49,29 @@
   </view>
 
   <view class="agreement-action-area">
-    <label class="checkbox-label" bindtap="toggleCheck">
-      <checkbox value="agreed" checked="{{agreedCheck}}" color="#ff7a45" class="custom-checkbox" />
-      <text class="label-text">我已充分阅读、理解并同意上述协议所有条款</text>
-    </label>
+    <block wx:if="{{!viewOnly}}">
+      <label class="checkbox-label" bindtap="toggleCheck">
+        <checkbox value="agreed" checked="{{agreedCheck}}" color="#ff7a45" class="custom-checkbox" />
+        <text class="label-text">我已充分阅读、理解并同意上述协议所有条款</text>
+      </label>
 
-    <button
-      class="primary-btn continue-btn {{canProceed ? '' : 'disabled-btn'}}"
-      disabled="{{!canProceed}}"
-      bindtap="proceed"
-    >
-      <text class="remix-icon ri-checkbox-circle-line" wx:if="{{canProceed}}"></text>
-      <text class="remix-icon ri-time-line" wx:else></text>
-      <text wx:if="{{countdown > 0}}">请仔细阅读协议 ({{countdown}}秒)</text>
-      <text wx:elif="{{!agreedCheck}}">请勾选上方同意选项</text>
-      <text wx:else>同意协议并继续</text>
-    </button>
+      <button
+        class="primary-btn continue-btn {{canProceed ? '' : 'disabled-btn'}}"
+        disabled="{{!canProceed}}"
+        bindtap="proceed"
+      >
+        <text class="remix-icon ri-checkbox-circle-line" wx:if="{{canProceed}}"></text>
+        <text class="remix-icon ri-time-line" wx:else></text>
+        <text wx:if="{{countdown > 0}}">请仔细阅读协议 ({{countdown}}秒)</text>
+        <text wx:elif="{{!agreedCheck}}">请勾选上方同意选项</text>
+        <text wx:else>同意协议并继续</text>
+      </button>
 
-    <button class="ghost-btn cancel-btn" bindtap="cancel">
-      <text>暂不同意，返回</text>
-    </button>
+      <button class="ghost-btn cancel-btn" bindtap="cancel">
+        <text>暂不同意，返回</text>
+      </button>
+    </block>
+    <button class="primary-btn continue-btn" wx:else bindtap="cancel">我已了解</button>
   </view>
 
   <!-- 保证金说明 Modal 弹窗 -->

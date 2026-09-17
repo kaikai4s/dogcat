@@ -23,7 +23,10 @@
     "useApiHook": true,
     "useApiHostProcess": true,
     "babelSetting": {
-      "ignore": [],
+      "ignore": [
+        "packagePlayground/libs/three/three.js",
+        "miniprogram/packagePlayground/libs/three/three.js"
+      ],
       "disablePlugins": [],
       "outputPath": ""
     },

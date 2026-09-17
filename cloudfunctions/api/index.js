@@ -15,6 +15,7 @@ const collections = [
   'order_message_threads', 'order_messages', 'order_staff_message_threads', 'order_staff_messages',
   'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
   'pet_beauty_votes', 'pet_beauty_month_rankings', 'pet_beauty_month_locks',
+  'pet_playgrounds', 'pet_homes', 'pet_playground_entities', 'pet_3d_models',
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',
   'user_feedback', 'staff_promotion_applications',
   'mall_categories', 'mall_products', 'mall_carts', 'mall_orders'
@@ -71,6 +72,30 @@ const STAFF_VIDEO_AUDIT_GUIDE = {
 }
 const QUIZ_OPTION_VALUES = ['A', 'B', 'C', 'D', 'E', 'F']
 
+function normalizeTrainingVideos(videos = STAFF_TRAINING_VIDEOS) {
+  const source = Array.isArray(videos) ? videos : []
+  const normalized = source.map((item, index) => {
+    const title = safeText(item.title).trim()
+    const key = safeText(item.key).trim() || `video_${index + 1}`
+    if (!title || !key) return null
+    return {
+      key,
+      title,
+      durationText: safeText(item.durationText).trim(),
+      description: safeText(item.description).trim(),
+      fileId: safeText(item.fileId).trim(),
+      posterFileId: safeText(item.posterFileId).trim(),
+      enabled: item.enabled !== false,
+      sort: Number(item.sort) || (index + 1) * 10
+    }
+  }).filter(Boolean).sort((a, b) => a.sort - b.sort)
+  return normalized.length ? normalized : STAFF_TRAINING_VIDEOS.map((item, index) => ({ ...item, fileId: '', posterFileId: '', enabled: true, sort: (index + 1) * 10 }))
+}
+
+function enabledTrainingVideos(training = {}) {
+  return normalizeTrainingVideos(training.videos).filter((item) => item.enabled !== false)
+}
+
 function normalizeStaffTrainingConfig(training = {}) {
   const passScore = Math.min(Math.max(Math.round(Number(training.passScore ?? DEFAULT_STAFF_TRAINING_PASS_SCORE)), 1), 100)
   const sourceQuiz = Array.isArray(training.quiz) ? training.quiz : []
@@ -93,7 +118,8 @@ function normalizeStaffTrainingConfig(training = {}) {
 
   return {
     passScore,
-    quiz: quiz.length ? quiz : DEFAULT_STAFF_TRAINING_QUIZ
+    quiz: quiz.length ? quiz : DEFAULT_STAFF_TRAINING_QUIZ,
+    videos: normalizeTrainingVideos(training.videos)
   }
 }
 
@@ -265,10 +291,11 @@ function canTakeOrders(profile = {}) {
   return Boolean(p && p.auditStatus === 'approved' && ['intern', 'certified'].includes(p.staffLevel))
 }
 
-function isTrainingComplete(profile = {}) {
+function isTrainingComplete(profile = {}, training = normalizeStaffTrainingConfig()) {
   const p = normalizeStaffWorkflow(profile)
   const progress = p.trainingVideoProgress || {}
-  const allVideosWatched = STAFF_TRAINING_VIDEOS.every((video) => progress[video.key] && progress[video.key].watched === true)
+  const videos = enabledTrainingVideos(training)
+  const allVideosWatched = videos.length === 0 || videos.every((video) => progress[video.key] && progress[video.key].watched === true)
   return Boolean(p && p.quizPassedAt && allVideosWatched)
 }
 
@@ -4203,6 +4230,97 @@ async function createRefundForOrder(order, refundAmount, reason, source, operato
   return createdRefund
 }
 
+function playgroundPosition(index, radius = 6) {
+  const angle = (index / 8) * Math.PI * 2
+  const zRadius = radius * 0.72
+  return {
+    x: Number((Math.cos(angle) * radius).toFixed(2)),
+    y: 0,
+    z: Number((Math.sin(angle) * zRadius).toFixed(2))
+  }
+}
+
+function playgroundHomeStyle(species, index) {
+  const catStyles = ['cream', 'pink', 'forest', 'blue']
+  const dogStyles = ['wood', 'blue', 'cream', 'forest']
+  const list = species === 'cat' ? catStyles : dogStyles
+  return list[index % list.length]
+}
+
+async function getOrCreateClientPlayground(openid) {
+  const res = await db.collection('pet_playgrounds').where({ ownerOpenid: openid }).limit(1).get()
+  if (res.data && res.data[0]) return res.data[0]
+  const time = nowText()
+  const playground = {
+    ownerOpenid: openid,
+    name: '我的宠物乐园',
+    theme: 'sunny_garden',
+    level: 1,
+    maxVisiblePets: 8,
+    camera: { x: 0, y: 8, z: 12, targetX: 0, targetY: 0, targetZ: 0 },
+    unlockedAreas: ['main_garden'],
+    createdAt: time,
+    updatedAt: time
+  }
+  const created = await db.collection('pet_playgrounds').add({ data: playground })
+  return { _id: created._id, ...playground }
+}
+
+async function getOrCreatePetHome(openid, playgroundId, pet, index) {
+  const res = await db.collection('pet_homes').where({ ownerOpenid: openid, petId: pet._id }).limit(1).get()
+  if (res.data && res.data[0]) return res.data[0]
+  const species = pet.species === 'cat' ? 'cat' : 'dog'
+  const position = playgroundPosition(index, 8.2)
+  const time = nowText()
+  const home = {
+    ownerOpenid: openid,
+    playgroundId,
+    petId: pet._id,
+    species,
+    homeType: species === 'cat' ? 'cat_nest' : 'dog_house',
+    name: `${safeText(pet.name) || '宠物'}的小窝`,
+    position,
+    rotation: { x: 0, y: 0, z: 0 },
+    scale: 1,
+    style: playgroundHomeStyle(species, index),
+    createdAt: time,
+    updatedAt: time
+  }
+  const created = await db.collection('pet_homes').add({ data: home })
+  return { _id: created._id, ...home }
+}
+
+async function getOrCreatePlaygroundEntity(openid, playgroundId, pet, home, index) {
+  const res = await db.collection('pet_playground_entities').where({ ownerOpenid: openid, petId: pet._id }).limit(1).get()
+  if (res.data && res.data[0]) return res.data[0]
+  const position = playgroundPosition(index, 5.2)
+  const species = pet.species === 'cat' ? 'cat' : 'dog'
+  const time = nowText()
+  const entity = {
+    ownerOpenid: openid,
+    playgroundId,
+    petId: pet._id,
+    species,
+    activeModelType: 'default',
+    activeModelId: '',
+    activeModelUrl: '',
+    homeId: home._id,
+    position,
+    rotation: { x: 0, y: 0, z: 0 },
+    scale: species === 'cat' ? 0.85 : 1,
+    currentAction: 'idle',
+    mood: 'happy',
+    equippedClothesId: '',
+    equippedOutfitModelId: '',
+    lastActionAt: time,
+    nextActionAt: time,
+    createdAt: time,
+    updatedAt: time
+  }
+  const created = await db.collection('pet_playground_entities').add({ data: entity })
+  return { _id: created._id, ...entity }
+}
+
 const handlers = {
   async system(openid, action, data) {
     if (action === 'getSettings') return getSystemSettings()
@@ -4459,6 +4577,43 @@ const handlers = {
     }
 
     throw new Error('未知 auth 操作')
+  },
+
+  async playground(openid, action, data) {
+    await getUser(openid)
+    if (action === 'getOverview') {
+      const playground = await getOrCreateClientPlayground(openid)
+      const petRes = await db.collection('pets').where({ openid }).orderBy('createdAt', 'desc').get()
+      const pets = (petRes.data || []).filter((pet) => !pet.deletedAt && ['cat', 'dog'].includes(pet.species || 'dog')).slice(0, Number(playground.maxVisiblePets || 8))
+      const homes = []
+      const entities = []
+      for (let index = 0; index < pets.length; index += 1) {
+        const pet = pets[index]
+        const home = await getOrCreatePetHome(openid, playground._id, pet, index)
+        const entity = await getOrCreatePlaygroundEntity(openid, playground._id, pet, home, index)
+        homes.push(home)
+        entities.push(entity)
+      }
+      return {
+        playground,
+        pets: pets.map((pet) => ({
+          _id: pet._id,
+          name: safeText(pet.name),
+          species: pet.species === 'cat' ? 'cat' : 'dog',
+          breed: safeText(pet.breed),
+          avatarFileId: safeText(pet.avatarFileId),
+          personality: safeText(pet.personality),
+          gender: safeText(pet.gender)
+        })),
+        homes,
+        entities,
+        defaults: {
+          theme: playground.theme || 'sunny_garden',
+          maxVisiblePets: Number(playground.maxVisiblePets || 8)
+        }
+      }
+    }
+    throw new Error('未知 playground 操作')
   },
 
   async pet(openid, action, data) {
@@ -6269,7 +6424,7 @@ const handlers = {
       const settings = await getSystemSettings()
       const training = settings.staffTraining || normalizeStaffTrainingConfig()
       const completedOrders = await getCompletedStaffOrders(openid, 3)
-      const videos = STAFF_TRAINING_VIDEOS.map((video) => ({ ...video, watched: Boolean(progress[video.key] && progress[video.key].watched), watchedAt: progress[video.key] && progress[video.key].watchedAt || '' }))
+      const videos = enabledTrainingVideos(training).map((video) => ({ ...video, watched: Boolean(progress[video.key] && progress[video.key].watched), watchedAt: progress[video.key] && progress[video.key].watchedAt || '' }))
       return {
         profile,
         quiz: { questions: publicTrainingQuiz(training.quiz), passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
@@ -6277,7 +6432,7 @@ const handlers = {
         videoAuditGuide: STAFF_VIDEO_AUDIT_GUIDE,
         completedInternOrders: completedOrders,
         completedInternOrderCount: completedOrders.length,
-        canRequestVideoAudit: profile.auditStatus === 'approved' && isTrainingComplete(profile) && profile.videoAuditStatus !== 'pending' && profile.videoAuditStatus !== 'approved',
+        canRequestVideoAudit: profile.auditStatus === 'approved' && isTrainingComplete(profile, training) && profile.videoAuditStatus !== 'pending' && profile.videoAuditStatus !== 'approved',
         canSubmitPromotion: profile.staffLevel === 'intern' && profile.promotionStatus !== 'pending' && completedOrders.length >= 3,
         canTakeOrders: canTakeOrders(profile)
       }
@@ -6306,12 +6461,15 @@ const handlers = {
       await getUser(openid)
       const profile = await getStaffProfileByOpenid(openid)
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可观看培训视频')
+      const settings = await getSystemSettings()
+      const training = settings.staffTraining || normalizeStaffTrainingConfig()
+      const videos = enabledTrainingVideos(training)
       const videoKey = safeText(data.videoKey).trim()
-      if (!STAFF_TRAINING_VIDEOS.some((item) => item.key === videoKey)) throw new Error('培训视频不存在')
+      if (!videos.some((item) => item.key === videoKey)) throw new Error('培训视频不存在')
       const progress = { ...(profile.trainingVideoProgress || {}) }
       const time = now()
       progress[videoKey] = { watched: true, watchedAt: time }
-      const allWatched = STAFF_TRAINING_VIDEOS.every((video) => progress[video.key] && progress[video.key].watched === true)
+      const allWatched = videos.every((video) => progress[video.key] && progress[video.key].watched === true)
       const update = { trainingVideoProgress: progress, updatedAt: time }
       if (allWatched) {
         update.trainingVideosCompletedAt = time
@@ -6324,7 +6482,9 @@ const handlers = {
       await getUser(openid)
       const profile = await getStaffProfileByOpenid(openid)
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可提交视频审核')
-      if (!isTrainingComplete(profile)) throw new Error('请先完成答题和全部培训视频')
+      const settings = await getSystemSettings()
+      const training = settings.staffTraining || normalizeStaffTrainingConfig()
+      if (!isTrainingComplete(profile, training)) throw new Error('请先完成答题和全部培训视频')
       const time = now()
       const update = { videoAuditStatus: 'pending', videoAuditRequestedAt: time, onboardingStatus: 'video_audit_pending', videoAuditRemark: '', updatedAt: time }
       await db.collection('staff_profiles').doc(profile._id).update({ data: update })

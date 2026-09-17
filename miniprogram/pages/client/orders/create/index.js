@@ -666,6 +666,12 @@ Page({
       .catch(showError)
   },
 
+  openAgreement(e) {
+    const type = e.currentTarget.dataset.type
+    if (!type) return
+    wx.navigateTo({ url: `/pages/common/agreement/index?type=${type}&mode=view` })
+  },
+
   create() {
     if (this.creatingOrder || this.data.creating) return
     this.creatingOrder = true

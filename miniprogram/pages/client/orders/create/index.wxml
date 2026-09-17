@@ -211,6 +211,14 @@
     <view><view class="strong">下单后你能看到什么？</view><view class="muted">服务轨迹、关键打卡、服务报告都会在订单详情里持续更新。</view></view>
   </view>
 
+  <view class="booking-side-card trust-note">
+    <view class="remix-icon ri-file-shield-2-line side-icon"></view>
+    <view>
+      <view class="strong">下单协议提醒</view>
+      <view class="muted">创建订单即表示你已阅读并同意 <text data-type="user_service" bindtap="openAgreement">《用户服务协议》</text>、<text data-type="trade_rules" bindtap="openAgreement">《平台交易规则》</text>、<text data-type="refund_cancel" bindtap="openAgreement">《退款/取消订单规则》</text>。</view>
+    </view>
+  </view>
+
   <view class="quote-card" wx:if="{{quote}}">
     <view class="quote-head">
       <view><view class="muted">预计支付</view><view class="price">¥{{quote.payAmount}}</view></view>

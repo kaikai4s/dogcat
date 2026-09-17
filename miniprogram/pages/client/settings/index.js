@@ -3,6 +3,15 @@ const { createPageNav, navMethods } = require('../../../utils/nav')
 const { themeOptions, applyTheme, saveTheme, getThemeState } = require('../../../utils/theme')
 const { fontOptions, applyFont, saveFont, getFontState } = require('../../../utils/font')
 
+const agreementLinks = [
+  { type: 'user_service', title: '用户服务协议' },
+  { type: 'staff_application', title: '宠托师/服务者入驻协议' },
+  { type: 'privacy', title: '隐私政策' },
+  { type: 'trade_rules', title: '平台交易规则' },
+  { type: 'refund_cancel', title: '退款/取消订单规则' },
+  { type: 'complaint_dispute', title: '投诉与纠纷处理规则' }
+]
+
 Page({
   data: {
     canGoBack: false,
@@ -21,7 +30,8 @@ Page({
     fontPreviewText: '默认清爽',
     savingFont: false,
     userName: '游客',
-    userMeta: '登录后可使用完整账号功能'
+    userMeta: '登录后可使用完整账号功能',
+    agreementLinks
   },
 
   onLoad(query) {
@@ -141,11 +151,13 @@ Page({
   },
 
   openPrivacySummary() {
-    wx.showModal({
-      title: '隐私政策概要',
-      content: '我们仅在完成预约、服务履约、安全验证和客服支持所需范围内处理信息。你可以在个人资料、地址、宠物档案等页面查看、修改或删除相关信息。',
-      showCancel: false
-    })
+    this.openAgreement({ currentTarget: { dataset: { type: 'privacy' } } })
+  },
+
+  openAgreement(e) {
+    const type = e.currentTarget.dataset.type
+    if (!type) return
+    wx.navigateTo({ url: `/pages/common/agreement/index?type=${type}&mode=view` })
   },
 
   logout() {

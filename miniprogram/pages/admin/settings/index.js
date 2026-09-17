@@ -17,6 +17,21 @@ function createEmptyItem() {
   }
 }
 
+function createEmptyTrainingVideo(index = 0) {
+  return {
+    key: `training_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    title: '',
+    description: '',
+    durationText: '',
+    fileId: '',
+    posterFileId: '',
+    enabled: true,
+    sort: (index + 1) * 10,
+    tempUrl: '',
+    posterTempUrl: ''
+  }
+}
+
 function normalizePaymentConfig(payment = {}) {
   return {
     enabled: payment.enabled !== false,
@@ -105,6 +120,7 @@ function createEmptyQuizQuestion() {
 
 function normalizeStaffTrainingConfig(training = {}) {
   const sourceQuiz = Array.isArray(training.quiz) ? training.quiz : []
+  const sourceVideos = Array.isArray(training.videos) ? training.videos : []
   return {
     passScore: Math.min(Math.max(Math.round(Number(training.passScore || 80)), 1), 100),
     quiz: sourceQuiz.map((item, index) => {
@@ -121,7 +137,19 @@ function normalizeStaffTrainingConfig(training = {}) {
         options,
         answer
       }
-    })
+    }),
+    videos: sourceVideos.map((item, index) => ({
+      key: item.key || `training_${index + 1}`,
+      title: item.title || '',
+      description: item.description || '',
+      durationText: item.durationText || '',
+      fileId: item.fileId || '',
+      posterFileId: item.posterFileId || '',
+      enabled: item.enabled !== false,
+      sort: Number(item.sort) || (index + 1) * 10,
+      tempUrl: item.tempUrl || '',
+      posterTempUrl: item.posterTempUrl || ''
+    })).sort((a, b) => a.sort - b.sort)
   }
 }
 
@@ -196,6 +224,8 @@ function buildSettingSummary(settings = {}) {
   const reliability = settings.reliability || normalizeReliabilityConfig()
   const staffTraining = settings.staffTraining || normalizeStaffTrainingConfig()
   const quiz = staffTraining.quiz || []
+  const videos = staffTraining.videos || []
+  const enabledVideoCount = videos.filter((item) => item.enabled !== false).length
 
   return {
     debug: settings.enableTestAddressMode ? '测试地址模式已开启' : '测试地址模式已关闭',
@@ -207,7 +237,7 @@ function buildSettingSummary(settings = {}) {
     settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · T+${settlement.settlementDelayDays} · ${reliability.enableOfflineQueue ? '离线补传开' : '离线补传关'}`,
     carousel: `${carousel.enabled ? '轮播已启用' : '轮播已关闭'} · ${enabledCarouselCount}/${carouselItems.length} 个素材启用`,
     homePage: `${enabledModuleCount}/${homeModuleOptions.length} 个模块启用 · ${homePage.ctaTitle || '未配置标题'}`,
-    staffTraining: `及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题`,
+    staffTraining: `及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题 · ${enabledVideoCount}/${videos.length} 个视频启用`,
     configuredTemplateCount,
     enabledCarouselCount,
     carouselCount: carouselItems.length,
@@ -253,6 +283,8 @@ Page({
     uploadingMedia: false,
     uploadingPoster: false,
     uploadingCheckinShareImage: false,
+    uploadingTrainingVideo: false,
+    uploadingTrainingPoster: false,
     saving: false
   },
 
@@ -279,6 +311,7 @@ Page({
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized, settingSummary: buildSettingSummary(normalized) }, () => {
           this.resolveMediaUrls(normalized.homeHeroCarousel.items)
+          this.resolveTrainingVideoUrls(normalized.staffTraining.videos)
           this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
         })
       })
@@ -307,6 +340,32 @@ Page({
           posterTempUrl: urlMap[item.posterFileId] || item.posterTempUrl || ''
         }))
         this.setData({ ['settings.homeHeroCarousel.items']: updatedItems })
+      }
+    })
+  },
+
+  resolveTrainingVideoUrls(videos = []) {
+    const fileIds = []
+    videos.forEach((item) => {
+      if (item.fileId) fileIds.push(item.fileId)
+      if (item.posterFileId) fileIds.push(item.posterFileId)
+    })
+    const uniqueIds = Array.from(new Set(fileIds))
+    if (!uniqueIds.length) return
+
+    wx.cloud.getTempFileURL({
+      fileList: uniqueIds,
+      success: (res) => {
+        const urlMap = {}
+        ;(res.fileList || []).forEach((f) => {
+          if (f.fileID && f.tempFileURL) urlMap[f.fileID] = f.tempFileURL
+        })
+        const updatedVideos = videos.map((item) => ({
+          ...item,
+          tempUrl: urlMap[item.fileId] || item.tempUrl || '',
+          posterTempUrl: urlMap[item.posterFileId] || item.posterTempUrl || ''
+        }))
+        this.setData({ ['settings.staffTraining.videos']: updatedVideos })
       }
     })
   },
@@ -562,6 +621,135 @@ Page({
     this.setData({ ['settings.staffTraining.quiz']: quiz })
   },
 
+  addTrainingVideo() {
+    const videos = [...(this.data.settings.staffTraining.videos || [])]
+    videos.push(createEmptyTrainingVideo(videos.length))
+    this.setData({ ['settings.staffTraining.videos']: videos })
+  },
+
+  deleteTrainingVideo(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const videos = [...(this.data.settings.staffTraining.videos || [])]
+    videos.splice(index, 1)
+    this.setData({ ['settings.staffTraining.videos']: videos })
+  },
+
+  trainingVideoInput(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const field = e.currentTarget.dataset.field
+    let value = e.detail.value
+    if (field === 'sort') value = Number(value) || 0
+    this.setData({ [`settings.staffTraining.videos[${index}].${field}`]: value })
+  },
+
+  toggleTrainingVideoEnabled(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    this.setData({ [`settings.staffTraining.videos[${index}].enabled`]: e.detail.value })
+  },
+
+  chooseTrainingVideoFile(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['video'],
+      maxDuration: 600,
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const file = res.tempFiles && res.tempFiles[0]
+        if (!file || !file.tempFilePath) return
+        if (file.size && file.size > 200 * 1024 * 1024) {
+          wx.showToast({ title: '视频不能超过 200MB', icon: 'none' })
+          return
+        }
+        const filePath = file.tempFilePath
+        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.mp4'
+        const cloudPath = `staff_training/videos/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
+        this.setData({ uploadingTrainingVideo: true })
+        wx.showLoading({ title: '上传视频...' })
+        wx.cloud.uploadFile({
+          cloudPath,
+          filePath,
+          success: (upload) => {
+            const fileId = upload.fileID
+            wx.cloud.getTempFileURL({
+              fileList: [fileId],
+              success: (tempRes) => {
+                wx.hideLoading()
+                const url = tempRes.fileList && tempRes.fileList[0] ? tempRes.fileList[0].tempFileURL : filePath
+                this.setData({ [`settings.staffTraining.videos[${index}].fileId`]: fileId, [`settings.staffTraining.videos[${index}].tempUrl`]: url, uploadingTrainingVideo: false })
+                wx.showToast({ title: '视频上传成功' })
+              },
+              fail: () => {
+                wx.hideLoading()
+                this.setData({ [`settings.staffTraining.videos[${index}].fileId`]: fileId, [`settings.staffTraining.videos[${index}].tempUrl`]: filePath, uploadingTrainingVideo: false })
+                wx.showToast({ title: '视频上传成功' })
+              }
+            })
+          },
+          fail: (err) => {
+            wx.hideLoading()
+            this.setData({ uploadingTrainingVideo: false })
+            showError(err)
+          }
+        })
+      },
+      fail: (err) => {
+        const errMsg = (err && err.errMsg) || ''
+        if (errMsg.includes('cancel')) return
+        showError(err)
+      }
+    })
+  },
+
+  chooseTrainingPosterFile(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const file = res.tempFiles && res.tempFiles[0]
+        if (!file || !file.tempFilePath) return
+        const filePath = file.tempFilePath
+        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+        const cloudPath = `staff_training/posters/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
+        this.setData({ uploadingTrainingPoster: true })
+        wx.showLoading({ title: '上传封面...' })
+        wx.cloud.uploadFile({
+          cloudPath,
+          filePath,
+          success: (upload) => {
+            const fileId = upload.fileID
+            wx.cloud.getTempFileURL({
+              fileList: [fileId],
+              success: (tempRes) => {
+                wx.hideLoading()
+                const url = tempRes.fileList && tempRes.fileList[0] ? tempRes.fileList[0].tempFileURL : filePath
+                this.setData({ [`settings.staffTraining.videos[${index}].posterFileId`]: fileId, [`settings.staffTraining.videos[${index}].posterTempUrl`]: url, uploadingTrainingPoster: false })
+                wx.showToast({ title: '封面上传成功' })
+              },
+              fail: () => {
+                wx.hideLoading()
+                this.setData({ [`settings.staffTraining.videos[${index}].posterFileId`]: fileId, [`settings.staffTraining.videos[${index}].posterTempUrl`]: filePath, uploadingTrainingPoster: false })
+                wx.showToast({ title: '封面上传成功' })
+              }
+            })
+          },
+          fail: (err) => {
+            wx.hideLoading()
+            this.setData({ uploadingTrainingPoster: false })
+            showError(err)
+          }
+        })
+      },
+      fail: (err) => {
+        const errMsg = (err && err.errMsg) || ''
+        if (errMsg.includes('cancel')) return
+        showError(err)
+      }
+    })
+  },
+
   startAddItem() {
     const items = this.data.settings.homeHeroCarousel.items || []
     if (items.length >= 5) {
@@ -802,6 +990,17 @@ Page({
     }))
 
     const checkinShare = this.data.settings.checkinShare || {}
+    const staffTraining = this.data.settings.staffTraining || normalizeStaffTrainingConfig()
+    const trainingVideos = (staffTraining.videos || []).map((item, index) => ({
+      key: item.key || `training_${index + 1}`,
+      title: item.title || '',
+      description: item.description || '',
+      durationText: item.durationText || '',
+      fileId: item.fileId || '',
+      posterFileId: item.posterFileId || '',
+      enabled: item.enabled !== false,
+      sort: Number(item.sort) || (index + 1) * 10
+    }))
     const payload = {
       enableTestAddressMode: this.data.settings.enableTestAddressMode === true,
       enablePetBreedAi: this.data.settings.enablePetBreedAi !== false,
@@ -815,7 +1014,11 @@ Page({
         imageUrl: checkinShare.imageUrl || ''
       },
       homePage: this.data.settings.homePage,
-      staffTraining: this.data.settings.staffTraining,
+      staffTraining: {
+        passScore: staffTraining.passScore,
+        quiz: staffTraining.quiz || [],
+        videos: trainingVideos
+      },
       homeHeroCarousel: {
         enabled: carousel.enabled === true,
         autoRotate: carousel.autoRotate !== false,
@@ -842,6 +1045,7 @@ Page({
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized, settingSummary: buildSettingSummary(normalized), saving: false })
         this.resolveMediaUrls(normalized.homeHeroCarousel.items)
+        this.resolveTrainingVideoUrls(normalized.staffTraining.videos)
         this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
         wx.showToast({ title: '设置已保存' })
       })

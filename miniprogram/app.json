@@ -146,6 +146,14 @@
       ]
     },
     {
+      "root": "packagePlayground",
+      "name": "playground",
+      "pages": [
+        "pages/index",
+        "pages/world"
+      ]
+    },
+    {
       "root": "pages/staff",
       "name": "staff",
       "pages": [

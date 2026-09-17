@@ -116,12 +116,12 @@
     <view class="admin-compact-card setting-overview-card" data-panel="staffTraining" bindtap="openSettingModal">
       <view class="admin-summary-row">
         <view class="admin-summary-main">
-          <view class="admin-summary-title">培训答题</view>
+          <view class="admin-summary-title">宠托师培训</view>
           <view class="admin-summary-sub">{{settingSummary.staffTraining}}</view>
         </view>
         <view class="meta-chip chip-primary">配置</view>
       </view>
-      <view class="setting-summary-line">配置宠托师培训题目、选项、正确答案和及格分数。</view>
+      <view class="setting-summary-line">配置宠托师培训视频、题目、选项、正确答案和及格分数。</view>
     </view>
   </view>
 
@@ -139,7 +139,7 @@
         <view class="modal-title" wx:if="{{activeSettingPanel === 'settlementReliability'}}">结算与可靠性</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'carousel'}}">首页顶部轮播</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'homePage'}}">首页转化模块</view>
-        <view class="modal-title" wx:if="{{activeSettingPanel === 'staffTraining'}}">培训答题</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'staffTraining'}}">宠托师培训</view>
         <view class="modal-close" bindtap="closeSettingModal">×</view>
       </view>
 
@@ -276,6 +276,30 @@
         </view>
 
         <view wx:if="{{activeSettingPanel === 'staffTraining'}}" class="setting-modal-section">
+          <view class="section-title-row between"><text class="section-title">培训视频</text><button class="small-btn primary-btn" bindtap="addTrainingVideo">添加视频</button></view>
+          <view class="notice">视频上传后请点击底部“保存设置”；员工端将优先通过播放完成记录观看。</view>
+          <view class="quiz-edit-card" wx:for="{{settings.staffTraining.videos}}" wx:key="key" wx:for-item="v" wx:for-index="vIndex">
+            <view class="quiz-card-header">
+              <view class="form-title">视频 {{vIndex + 1}}</view>
+              <view class="item-actions"><switch checked="{{v.enabled !== false}}" data-index="{{vIndex}}" bindchange="toggleTrainingVideoEnabled" class="mini-switch" /><button class="mini-btn danger" data-index="{{vIndex}}" bindtap="deleteTrainingVideo">删除</button></view>
+            </view>
+            <view class="field-item"><text class="label">标题</text><input class="input" value="{{v.title}}" data-index="{{vIndex}}" data-field="title" bindinput="trainingVideoInput" placeholder="例如：平台服务规范" /></view>
+            <view class="field-item"><text class="label">说明</text><input class="input" value="{{v.description}}" data-index="{{vIndex}}" data-field="description" bindinput="trainingVideoInput" placeholder="视频内容说明" /></view>
+            <view class="field-item"><text class="label">时长文案</text><input class="input" value="{{v.durationText}}" data-index="{{vIndex}}" data-field="durationText" bindinput="trainingVideoInput" placeholder="例如：约 5 分钟" /></view>
+            <view class="field-item"><text class="label">排序</text><input class="input" type="number" value="{{v.sort}}" data-index="{{vIndex}}" data-field="sort" bindinput="trainingVideoInput" placeholder="数字越小越靠前" /></view>
+            <view class="field-item">
+              <text class="label">视频文件</text>
+              <view class="upload-trigger" data-index="{{vIndex}}" bindtap="chooseTrainingVideoFile"><view wx:if="{{v.tempUrl}}" class="upload-placeholder">已上传视频，点击重新上传</view><view wx:else class="upload-placeholder">{{uploadingTrainingVideo ? '上传中...' : '+ 上传培训视频'}}</view></view>
+              <view class="checkin-share-file" wx:if="{{v.fileId}}">{{v.fileId}}</view>
+            </view>
+            <view class="field-item">
+              <text class="label">视频封面</text>
+              <view class="upload-trigger" data-index="{{vIndex}}" bindtap="chooseTrainingPosterFile"><view wx:if="{{v.posterTempUrl}}" class="upload-preview-box"><image src="{{v.posterTempUrl}}" mode="aspectFill" class="upload-preview" /></view><view wx:else class="upload-placeholder">{{uploadingTrainingPoster ? '上传中...' : '+ 上传视频封面'}}</view></view>
+            </view>
+          </view>
+          <view class="empty-tip" wx:if="{{!settings.staffTraining.videos.length}}">暂无培训视频，请点击添加视频。</view>
+
+          <view class="section-title-row between"><text class="section-title">培训答题</text><button class="small-btn primary-btn" bindtap="addQuizQuestion">新增题目</button></view>
           <view class="field-item"><text class="label">及格分数</text><input class="input" type="number" value="{{settings.staffTraining.passScore}}" bindinput="trainingPassScoreInput" placeholder="1-100" /></view>
           <view class="notice">员工端只会看到题目和选项，不会返回正确答案。</view>
           <view class="quiz-edit-card" wx:for="{{settings.staffTraining.quiz}}" wx:key="id" wx:for-item="q" wx:for-index="qIndex">
@@ -297,7 +321,6 @@
             </view>
             <button class="mini-btn primary" data-index="{{qIndex}}" bindtap="addQuizOption">添加选项</button>
           </view>
-          <button class="primary-btn" bindtap="addQuizQuestion">新增题目</button>
         </view>
       </scroll-view>
 

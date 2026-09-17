@@ -41,13 +41,17 @@
   <view class="card">
     <view class="card-title">培训视频</view>
     <view class="video-card" wx:for="{{videos}}" wx:key="key">
+      <video wx:if="{{item.tempUrl}}" class="training-video" src="{{item.tempUrl}}" poster="{{item.posterTempUrl}}" controls object-fit="contain" data-key="{{item.key}}" bindended="videoEnded"></video>
       <view class="video-main">
         <view class="video-title">{{item.title}}</view>
         <view class="muted">{{item.durationText}} · {{item.description}}</view>
         <view class="done-text" wx:if="{{item.watched}}">已完成 {{item.watchedAtText}}</view>
+        <view class="muted" wx:elif="{{item.tempUrl}}">播放完成后自动记录观看。</view>
+        <view class="muted" wx:else>视频资源暂不可播放，请联系管理员或使用下方按钮记录。</view>
       </view>
       <button class="mini-btn {{item.watched ? 'done' : ''}}" data-key="{{item.key}}" bindtap="markVideo">{{item.watched ? '已看完' : '我已看完'}}</button>
     </view>
+    <view class="muted" wx:if="{{!videos.length}}">管理员暂未配置培训视频。</view>
   </view>
 
   <view class="card audit-card" wx:if="{{videoAuditGuide}}">

@@ -67,6 +67,12 @@ Page({
     this.setData({ mediaFileIds: this.data.mediaFileIds.filter((_, i) => i !== index) })
   },
 
+  openAgreement(e) {
+    const type = e.currentTarget.dataset.type
+    if (!type) return
+    wx.navigateTo({ url: `/pages/common/agreement/index?type=${type}&mode=view` })
+  },
+
   submit() {
     if (this.data.submitting) return
     const option = this.data.typeOptions[this.data.typeIndex] || this.data.typeOptions[0]
