@@ -18,6 +18,7 @@ const collections = [
   'pet_playgrounds', 'pet_homes', 'pet_playground_entities', 'pet_3d_models',
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',
   'user_feedback', 'staff_promotion_applications',
+  'staff_deposits', 'staff_deposit_events', 'staff_supply_reimbursements',
   'mall_categories', 'mall_products', 'mall_carts', 'mall_orders'
 ]
 
@@ -36,19 +37,25 @@ const defaultServicePrices = [
 ]
 
 const defaultServiceCheckinRules = [
+  { serviceType: 'walk', eventType: 'sanitization', required: true, sortOrder: 5 },
   { serviceType: 'walk', eventType: 'enter_door', required: true, sortOrder: 10 },
   { serviceType: 'walk', eventType: 'leash_on', required: true, sortOrder: 20 },
   { serviceType: 'walk', eventType: 'pet_status', required: true, sortOrder: 30 },
   { serviceType: 'walk', eventType: 'return_home', required: true, sortOrder: 40 },
   { serviceType: 'walk', eventType: 'leave_door', required: true, sortOrder: 50 },
+  { serviceType: 'feed', eventType: 'sanitization', required: true, sortOrder: 5 },
   { serviceType: 'feed', eventType: 'enter_door', required: true, sortOrder: 10 },
   { serviceType: 'feed', eventType: 'feed', required: true, sortOrder: 20 },
   { serviceType: 'feed', eventType: 'water', required: true, sortOrder: 30 },
   { serviceType: 'feed', eventType: 'pet_status', required: true, sortOrder: 40 },
   { serviceType: 'feed', eventType: 'leave_door', required: true, sortOrder: 50 },
+  { serviceType: 'litter', eventType: 'sanitization', required: true, sortOrder: 5 },
   { serviceType: 'litter', eventType: 'clean', required: true, sortOrder: 20 },
+  { serviceType: 'play', eventType: 'sanitization', required: true, sortOrder: 5 },
   { serviceType: 'play', eventType: 'pet_status', required: true, sortOrder: 20 },
+  { serviceType: 'medicine', eventType: 'sanitization', required: true, sortOrder: 5 },
   { serviceType: 'medicine', eventType: 'medicine', required: true, sortOrder: 20 },
+  { serviceType: 'clean', eventType: 'sanitization', required: true, sortOrder: 5 },
   { serviceType: 'clean', eventType: 'clean', required: true, sortOrder: 20 }
 ]
 
@@ -68,7 +75,9 @@ const DEFAULT_STAFF_TRAINING_QUIZ = [
 const STAFF_VIDEO_AUDIT_GUIDE = {
   wechatId: 'pet-service-admin',
   remarkTemplate: '宠托师审核 + 姓名 + 手机号',
-  description: '请添加平台审核微信并按备注格式发送信息，管理员完成线上视频审核后会在后台更新结果。'
+  description: '请添加平台审核微信并按备注格式发送信息，管理员完成线上视频审核后会在后台更新结果。',
+  requiredItemsNotice: '视频通话审核必备用品（须提前自备）：一次性手套、一次性口罩、安全宠物消毒用品。',
+  strictWarning: '温馨提醒：平台对审核员有严格要求，存在不通过的风险。备齐物资为必备前提，但不代表必然通过；如因其他原因未正式通过认证，平台不予报销宠物用品。成为认证宠托师后可申请首次用品报销，每人仅限首次申请，后续用品自备且不报销。'
 }
 const QUIZ_OPTION_VALUES = ['A', 'B', 'C', 'D', 'E', 'F']
 
@@ -125,6 +134,35 @@ function normalizeStaffTrainingConfig(training = {}) {
 
 function publicTrainingQuiz(quiz = []) {
   return quiz.map(({ answer, ...item }) => item)
+}
+
+function normalizeStaffDepositConfig(deposit = {}) {
+  return {
+    enabled: deposit.enabled === true && Number.isFinite(Number(deposit.amount)) && Number(deposit.amount) > 0,
+    amount: Number.isFinite(Number(deposit.amount)) ? Math.max(Number(deposit.amount || 0), 0) : 0,
+    rulesText: safeText(deposit.rulesText).trim() || '资料审核通过后需支付宠托师保证金；退出宠托师且无未结事项时可申请退还。',
+    refundRulesText: safeText(deposit.refundRulesText).trim() || '退出宠托师时平台审核后按可退余额原路退回。',
+    forfeitRulesText: safeText(deposit.forfeitRulesText).trim() || '如出现私单、严重服务违规、虚假打卡等不合规行为，平台可按规则扣除或没收保证金。'
+  }
+}
+
+function normalizeStaffSuppliesConfig(supplies = {}) {
+  const requiredItems = Array.isArray(supplies.requiredItems) && supplies.requiredItems.length
+    ? supplies.requiredItems.map((item) => safeText(item).trim()).filter(Boolean)
+    : ['一次性手套', '一次性口罩', '安全宠物消毒用品']
+  return {
+    reimbursementEnabled: supplies.reimbursementEnabled !== false,
+    maxReimbursementAmount: Number.isFinite(Number(supplies.maxReimbursementAmount)) && Number(supplies.maxReimbursementAmount) > 0 ? Number(supplies.maxReimbursementAmount) : 200,
+    transfer: {
+      enabled: supplies.transfer?.enabled === true,
+      sceneId: safeText(supplies.transfer?.sceneId).trim(),
+      userRecvPerception: safeText(supplies.transfer?.userRecvPerception).trim(),
+      sceneReportInfos: (Array.isArray(supplies.transfer?.sceneReportInfos) ? supplies.transfer.sceneReportInfos : []).map((item) => ({ info_type: safeText(item.info_type).trim(), info_content: safeText(item.info_content).trim() }))
+    },
+    requiredItems,
+    auditNotice: safeText(supplies.auditNotice).trim() || '线上视频审核会严格检查必备用品准备情况，用品齐全不代表一定通过；如因其他原因未正式通过，平台不提供报销。',
+    serviceReminder: safeText(supplies.serviceReminder).trim() || '出发前请确认已携带一次性手套、一次性口罩和安全宠物消毒用品；开始服务后请先完成隔离病菌/消毒拍照打卡。'
+  }
 }
 
 function ok(data) { return { ok: true, data } }
@@ -273,6 +311,8 @@ function normalizeStaffWorkflow(profile = {}) {
     staffLevelText: staffLevelText(staffLevel),
     onboardingStatus,
     onboardingStatusText: onboardingStatusText(onboardingStatus),
+    depositStatus: profile.depositStatus || 'unpaid',
+    supplyReimbursementStatus: profile.supplyReimbursementStatus || 'not_applied',
     videoAuditStatus: profile.videoAuditStatus || 'not_started',
     videoAuditStatusText: videoAuditStatusText(profile.videoAuditStatus || 'not_started'),
     promotionStatus: profile.promotionStatus || 'none',
@@ -281,14 +321,18 @@ function normalizeStaffWorkflow(profile = {}) {
   }
 }
 
+function staffMoneyEligible(profile = {}) {
+  return !['requested', 'approved', 'exited'].includes(profile.exitStatus) && (!profile.depositRequired || profile.depositStatus === 'paid')
+}
+
 function isCertifiedSitter(profile = {}) {
   const p = normalizeStaffWorkflow(profile)
-  return Boolean(p && p.auditStatus === 'approved' && p.staffLevel === 'certified')
+  return Boolean(p && staffMoneyEligible(p) && p.auditStatus === 'approved' && p.staffLevel === 'certified')
 }
 
 function canTakeOrders(profile = {}) {
   const p = normalizeStaffWorkflow(profile)
-  return Boolean(p && p.auditStatus === 'approved' && ['intern', 'certified'].includes(p.staffLevel))
+  return Boolean(p && staffMoneyEligible(p) && p.auditStatus === 'approved' && ['intern', 'certified'].includes(p.staffLevel))
 }
 
 function isTrainingComplete(profile = {}, training = normalizeStaffTrainingConfig()) {
@@ -508,6 +552,8 @@ function normalizeSystemSettings(value = {}, options = {}) {
     qwenApiKey: safeText(value.qwenApiKey).trim(),
     qwenModel: safeText(value.qwenModel).trim() || 'qwen3.5-flash',
     staffTraining: normalizeStaffTrainingConfig(value.staffTraining),
+    staffDeposit: normalizeStaffDepositConfig(value.staffDeposit),
+    staffSupplies: normalizeStaffSuppliesConfig(value.staffSupplies),
     homeHeroCarousel: normalizeHomeHeroCarousel(value.homeHeroCarousel),
     homePage: normalizeHomePageConfig(value.homePage),
     payment: normalizePaymentConfig(payment, existingPayment, options.includeSecrets === true),
@@ -783,6 +829,10 @@ async function recordAiLog(openid, logData = {}) {
 }
 
 async function saveSystemSettings(settings) {
+  if (settings.staffDeposit) {
+    const amount = Number(settings.staffDeposit.amount ?? 0)
+    if (!Number.isFinite(amount) || amount < 0 || !Number.isSafeInteger(amountYuanToFen(amount)) || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7 || (settings.staffDeposit.enabled === true && amount <= 0)) throw new Error('保证金金额无效，请配置正数且最多两位小数')
+  }
   const time = now()
   const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
   const previousValue = existing.data[0] ? existing.data[0].value : {}
@@ -1514,6 +1564,7 @@ async function expireDueUnacceptedOrders() {
 
 function checkinEventText(eventType) {
   return ({
+    sanitization: '隔离病菌/消毒打卡',
     enter_door: '到达入户',
     leash_on: '牵引准备',
     feed: '喂食',
@@ -2218,7 +2269,7 @@ async function calcOrderPricing(data, pet, options = {}) {
   return basePricing
 }
 
-const CHECKIN_EVENT_TYPES = new Set(['enter_door', 'leash_on', 'feed', 'water', 'pet_status', 'return_home', 'leave_door', 'clean', 'medicine', 'video_checkin', 'pet_beauty_photo'])
+const CHECKIN_EVENT_TYPES = new Set(['sanitization', 'enter_door', 'leash_on', 'feed', 'water', 'pet_status', 'return_home', 'leave_door', 'clean', 'medicine', 'video_checkin', 'pet_beauty_photo'])
 
 function requiredCheckins(serviceType, serviceTypes) {
   const types = Array.isArray(serviceTypes) && serviceTypes.length ? serviceTypes : [serviceType]
@@ -2234,6 +2285,59 @@ function requiredCheckins(serviceType, serviceTypes) {
   if (types.includes('litter') || types.includes('clean')) events.add('clean')
   if (types.includes('medicine')) events.add('medicine')
   return Array.from(events)
+}
+
+function requiresSanitization(order) {
+  return (order.requiredCheckins || []).includes('sanitization') ||
+    (order.checkinRequirements || []).some((item) => item.eventType === 'sanitization' && item.required)
+}
+
+function sanitizationDateKey(value) {
+  return formatDateKey(new Date(toTimeValue(value) + 8 * 60 * 60 * 1000))
+}
+
+function isValidSanitization(item, order, current = now()) {
+  const timestamp = toTimeValue(item.serverTime)
+  return item.eventType === 'sanitization' && hasCheckinPhoto(item) &&
+    item.orderId === order._id && item.staffOpenid === order.staffOpenid &&
+    item.sanitizationVersion === 1 && item.preStart === true && !item.isBackfilled &&
+    hasCoordinate(item.latitude, item.longitude) && timestamp > 0 && timestamp <= toTimeValue(current) &&
+    sanitizationDateKey(item.serverTime) === sanitizationDateKey(current)
+}
+
+async function validateSanitizationMedia(fileId, orderId, staffOpenid) {
+  if (!safeFileId(fileId)) {
+    throw new Error('请现场拍照并上传本订单的消毒照片')
+  }
+  if (typeof cloud.downloadFile === 'function') {
+    try {
+      const res = await cloud.downloadFile({ fileID: fileId })
+      const buffer = res && res.fileContent
+      if (Buffer.isBuffer(buffer)) {
+        const image = buffer.length >= 12 && buffer.length <= 10 * 1024 * 1024 && (
+          (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) ||
+          buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+          (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP')
+        )
+        if (!image) throw new Error('消毒打卡必须上传有效图片（不超过10MB）')
+      }
+    } catch (error) {
+      if (error && error.message && error.message.includes('10MB')) throw error
+    }
+  }
+}
+
+async function requireSanitizationEvidence(order, current = now()) {
+  if (!requiresSanitization(order)) return
+  const res = await db.collection('checkin_logs').where({ orderId: order._id, eventType: 'sanitization' }).get()
+  const candidates = (res.data || []).filter((item) => isValidSanitization(item, order, current))
+  for (const item of candidates) {
+    try {
+      await validateSanitizationMedia(item.mediaFileId, order._id, order.staffOpenid)
+      return
+    } catch (error) {}
+  }
+  throw new Error('请先完成本次服务开始前的消毒拍照打卡（须为当天有效照片）')
 }
 
 function normalizeServiceCheckinRule(rule = {}, validServiceKeys = defaultServicePrices.map((item) => item.key)) {
@@ -2277,6 +2381,11 @@ async function resolveCheckinRequirements(serviceTypes) {
       completed: false
     }
   })
+  // Global requirement is snapshotted on new orders, independent of custom rules.
+  map.sanitization = {
+    eventType: 'sanitization', label: checkinEventText('sanitization'), required: true,
+    serviceTypes: types, sortOrder: 5, completed: false, enforcementVersion: 1, beforeStart: true
+  }
   if (types.length) {
     map.pet_beauty_photo = map.pet_beauty_photo || {
       eventType: 'pet_beauty_photo',
@@ -4379,6 +4488,71 @@ async function markOrderPaid(orderId, paymentPayload = {}) {
   return { orderId, status: 'paid', paymentNo }
 }
 
+async function markStaffDepositPaid(depositId, paymentPayload = {}) {
+  const deposit = (await db.collection('staff_deposits').doc(depositId).get()).data
+  if (!deposit) throw new Error('保证金记录不存在')
+  if (deposit.status === 'paid') return { depositId, status: 'paid' }
+  const time = now()
+  const paymentNo = paymentPayload.paymentNo || createPaymentNo()
+  const amount = Number(deposit.amount || 0)
+  await db.collection('staff_deposits').doc(depositId).update({
+    data: {
+      paidAmount: amount,
+      availableRefundAmount: amount,
+      status: 'paid',
+      statusText: '已缴纳',
+      paymentNo,
+      wxTransactionId: paymentPayload.wxTransactionId || '',
+      paidAt: time,
+      updatedAt: time
+    }
+  })
+  const profileRes = await db.collection('staff_profiles').where({ openid: deposit.staffOpenid }).limit(1).get()
+  if (profileRes.data && profileRes.data[0]) {
+    await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
+      data: {
+        depositStatus: 'paid',
+        depositRequired: true,
+        updatedAt: time
+      }
+    })
+  }
+  await db.collection('staff_deposit_events').add({
+    data: {
+      depositId,
+      staffOpenid: deposit.staffOpenid,
+      staffUserId: deposit.staffUserId,
+      type: 'pay',
+      amount,
+      reason: '缴纳宠托师入驻保证金',
+      operatorOpenid: deposit.staffOpenid,
+      operatorRole: 'staff',
+      createdAt: time
+    }
+  })
+  await appendFinanceLog('deposit_paid', {
+    targetType: 'staff_deposit',
+    targetId: depositId,
+    staffOpenid: deposit.staffOpenid,
+    amountDelta: amount,
+    detail: { amount, paymentNo, channel: paymentPayload.channel || 'mock' }
+  })
+  const existingPayment = (await db.collection('payments').where({ orderId: depositId, targetType: 'staff_deposit' }).limit(1).get()).data[0]
+  if (existingPayment) {
+    await db.collection('payments').doc(existingPayment._id).update({
+      data: {
+        status: 'success',
+        channel: paymentPayload.channel || existingPayment.channel || 'mock',
+        wxTransactionId: paymentPayload.wxTransactionId || existingPayment.wxTransactionId || '',
+        rawCallback: paymentPayload.rawCallback || {},
+        paidAt: time,
+        updatedAt: time
+      }
+    })
+  }
+  return { depositId, status: 'paid', paymentNo }
+}
+
 async function createRefundForOrder(order, refundAmount, reason, source, operatorOpenid, clientRequestId = '', options = {}) {
   if (clientRequestId) {
     const existingByRequest = await findByClientRequestId('refunds', { orderId: order._id, openid: order.clientOpenid || '', clientRequestId })
@@ -5450,10 +5624,11 @@ const handlers = {
         db.collection('checkin_logs').where({ orderId }).get(),
         db.collection('track_logs').where({ orderId }).get()
       ])
-      const checkinGroups = groupCheckinsByEventType(checkinsRes.data || [])
+      const checkinGroups = groupCheckinsByEventType((checkinsRes.data || []).filter((item) =>
+        item.eventType !== 'sanitization' || isValidSanitization(item, order, order.startedAt || now())))
       const baseCheckinRequirements = Array.isArray(displayOrder.checkinRequirements) && displayOrder.checkinRequirements.length
         ? displayOrder.checkinRequirements
-        : requiredCheckins(displayOrder.serviceType, displayOrder.serviceTypes).map((eventType, index) => ({ eventType, label: checkinEventText(eventType), required: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: (index + 1) * 10 }))
+        : (Array.isArray(displayOrder.requiredCheckins) ? displayOrder.requiredCheckins : requiredCheckins(displayOrder.serviceType, displayOrder.serviceTypes)).map((eventType, index) => ({ eventType, label: checkinEventText(eventType), required: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: (index + 1) * 10 }))
       const checkinRequirements = baseCheckinRequirements.some((item) => item.eventType === 'pet_beauty_photo')
         ? baseCheckinRequirements
         : baseCheckinRequirements.concat([{ eventType: 'pet_beauty_photo', label: checkinEventText('pet_beauty_photo'), required: false, optional: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: 999 }])
@@ -5620,6 +5795,7 @@ const handlers = {
       assertOrderTransition(order.status, ORDER_STATUS.IN_SERVICE, '订单状态不可开始')
       const time = now()
       if (!(await canStartOrderService({ ...order, _id: data.id }, time))) throw new Error('服务时间未到，可申请提前开始')
+      await requireSanitizationEvidence({ ...order, _id: data.id }, time)
       await updateOrderWhenStatus(data.id, ORDER_STATUS.ASSIGNED, { status: 'in_service', startedAt: time, updatedAt: time }, '订单状态不可开始服务')
       const startedOrder = { ...order, _id: data.id, status: 'in_service', startedAt: time, updatedAt: time }
       await appendOrderTimeline(data.id, 'started', '服务已开始', '', 'staff')
@@ -5632,6 +5808,8 @@ const handlers = {
       const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
       if (order.status === 'completed') return { id: data.id, completedOrderCount: Number((await getUser(order.clientOpenid)).completedOrderCount || 0) }
       assertOrderTransition(order.status, ORDER_STATUS.COMPLETED, '订单状态不可完成')
+      // Validate against the actual start, not finish day (services may cross midnight).
+      await requireSanitizationEvidence({ ...order, _id: data.id }, order.startedAt || now())
       const checkins = await db.collection('checkin_logs').where({ orderId: data.id }).get()
       const eventSet = (checkins.data || []).filter(hasCheckinPhoto).reduce((map, item) => ({ ...map, [item.eventType]: true }), {})
       const requirements = Array.isArray(order.checkinRequirements) && order.checkinRequirements.length
@@ -6388,6 +6566,18 @@ const handlers = {
         if (!paymentNo) throw new Error('微信支付回调缺少支付单号')
         const payment = (await db.collection('payments').where({ paymentNo }).limit(1).get()).data[0]
         if (!payment) throw new Error('支付单不存在')
+        if (payment.targetType === 'staff_deposit') {
+          const deposit = (await db.collection('staff_deposits').doc(payment.depositId || payment.orderId).get()).data
+          if (!deposit) throw new Error('保证金记录不存在')
+          validatePaymentCallbackPayload(payload, { payAmount: deposit.amount }, payment, config)
+          const status = mapWechatTradeState(payload.trade_state)
+          await db.collection('payments').doc(payment._id).update({ data: { status, wxTransactionId: payload.transaction_id || payment.wxTransactionId || '', rawCallback: sanitizeWechatPayload(payload), updatedAt: now() } })
+          await appendPaymentEvent('callback', { orderId: deposit._id, paymentNo, status, detail: { tradeState: payload.trade_state, wxTransactionId: payload.transaction_id || '', targetType: 'staff_deposit' } })
+          if (payload.trade_state === 'SUCCESS') {
+            await markStaffDepositPaid(deposit._id, { paymentNo, wxTransactionId: payload.transaction_id || '', channel: 'wechat', rawCallback: sanitizeWechatPayload(payload) })
+          }
+          return { code: 'SUCCESS', message: '成功' }
+        }
         const resolved = await getPayableOrder(payment.orderId)
         const order = resolved.order
         if (!order) throw new Error('订单不存在')
@@ -7079,6 +7269,277 @@ const handlers = {
       await db.collection('orders').doc(data.orderId).update({ data: { acceptedNotifyStatus: notifyResult && notifyResult.status || 'skipped', acceptedNotifyError: notifyResult && notifyResult.error || '', updatedAt: time } })
       return { orderId: data.orderId, status: 'assigned', notifyStatus: notifyResult && notifyResult.status || 'skipped', notifyError: notifyResult && notifyResult.error || '' }
     }
+    if (action === 'getDepositStatus') {
+      const user = await getUser(openid)
+      const profile = await getStaffProfileByOpenid(openid)
+      const settings = await getSystemSettings()
+      const config = settings.staffDeposit || normalizeStaffDepositConfig()
+      const supplies = settings.staffSupplies || normalizeStaffSuppliesConfig()
+      let deposit = null
+      const depositRes = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
+      if (depositRes.data && depositRes.data[0]) {
+        deposit = depositRes.data[0]
+      }
+      const auditApproved = profile && profile.auditStatus === 'approved'
+      const canPay = Boolean(config.enabled && config.amount > 0 && auditApproved && (!deposit || deposit.status === 'unpaid'))
+      const canRequestRefund = Boolean(deposit && ['paid', 'partially_refunded'].includes(deposit.status) && (deposit.availableRefundAmount || 0) > 0 && deposit.refundStatus !== 'requested')
+      return {
+        config,
+        supplies,
+        deposit,
+        profile,
+        canPay,
+        canRequestRefund
+      }
+    }
+    if (action === 'createDepositPayment') {
+      if (data.agreed !== true) throw new Error('请先阅读并同意保证金缴纳规则')
+      const user = await getUser(openid)
+      const profile = await getStaffProfileByOpenid(openid)
+      if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可缴纳保证金')
+      const settings = await getSystemSettings({ includeSecrets: true })
+      const config = settings.staffDeposit || normalizeStaffDepositConfig()
+      if (!config.enabled || !config.amount || config.amount <= 0) throw new Error('保证金缴纳当前未开放')
+      const clientRequestId = getClientRequestId(data)
+      let depositRes = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
+      let deposit = depositRes.data && depositRes.data[0]
+      if (deposit && deposit.status === 'paid') throw new Error('您已缴纳保证金，无需重复缴纳')
+      const time = now()
+      const amount = Number(config.amount)
+      if (!deposit) {
+        const created = await db.collection('staff_deposits').add({
+          data: {
+            staffOpenid: openid,
+            staffUserId: user._id,
+            staffProfileId: profile._id,
+            amount,
+            paidAmount: 0,
+            refundedAmount: 0,
+            forfeitedAmount: 0,
+            availableRefundAmount: 0,
+            status: 'unpaid',
+            statusText: '待支付',
+            refundStatus: '',
+            clientRequestId,
+            createdAt: time,
+            updatedAt: time
+          }
+        })
+        deposit = { _id: created._id, staffOpenid: openid, staffUserId: user._id, staffProfileId: profile._id, amount, paidAmount: 0, refundedAmount: 0, forfeitedAmount: 0, availableRefundAmount: 0, status: 'unpaid', statusText: '待支付', refundStatus: '', clientRequestId, createdAt: time, updatedAt: time }
+      }
+      const paymentMode = (settings.payment && settings.payment.mode) || 'mock'
+      if (paymentMode === 'mock') {
+        const paymentNo = `dep_mock_${Date.now()}`
+        await markStaffDepositPaid(deposit._id, { paymentNo, channel: 'mock' })
+        return { paid: true, depositId: deposit._id }
+      } else {
+        const configWechat = getWechatPayConfig(settings)
+        let paymentRecord = (await db.collection('payments').where({ orderId: deposit._id, targetType: 'staff_deposit', status: 'pending' }).limit(1).get()).data[0]
+        if (!paymentRecord) {
+          const paymentNo = createPaymentNo()
+          const pCreated = await db.collection('payments').add({
+            data: {
+              orderId: deposit._id,
+              depositId: deposit._id,
+              targetType: 'staff_deposit',
+              openid,
+              paymentNo,
+              prepayId: '',
+              wxTransactionId: '',
+              amount,
+              currency: 'CNY',
+              status: 'pending',
+              channel: 'wechat',
+              clientRequestId,
+              idempotencyKey: clientRequestId || makeIdempotencyKey('payment', deposit._id, paymentNo),
+              rawRequest: {},
+              rawCallback: {},
+              createdAt: time,
+              updatedAt: time
+            }
+          })
+          paymentRecord = { _id: pCreated._id, paymentNo, prepayId: '' }
+        }
+        if (paymentRecord.prepayId) {
+          return {
+            paid: false,
+            depositId: deposit._id,
+            paymentNo: paymentRecord.paymentNo,
+            payParams: buildMiniProgramPayParams(paymentRecord.prepayId, configWechat)
+          }
+        }
+        const requestBody = {
+          appid: configWechat.appId,
+          mchid: configWechat.mchId,
+          description: '宠托师入驻保证金',
+          out_trade_no: paymentRecord.paymentNo,
+          notify_url: configWechat.notifyUrl,
+          amount: { total: amountYuanToFen(amount), currency: 'CNY' },
+          payer: { openid }
+        }
+        try {
+          const response = await wechatPayRequest('POST', '/v3/pay/transactions/jsapi', requestBody, configWechat)
+          if (!response.prepay_id) throw new Error('微信支付未返回 prepay_id')
+          await db.collection('payments').doc(paymentRecord._id).update({
+            data: {
+              prepayId: response.prepay_id,
+              rawRequest: sanitizeWechatPayload(requestBody),
+              rawResponse: sanitizeWechatPayload(response),
+              updatedAt: now()
+            }
+          })
+          return {
+            paid: false,
+            depositId: deposit._id,
+            paymentNo: paymentRecord.paymentNo,
+            payParams: buildMiniProgramPayParams(response.prepay_id, configWechat)
+          }
+        } catch (error) {
+          await appendPaymentEvent('prepay_failed', { orderId: deposit._id, paymentNo: paymentRecord.paymentNo, status: 'failed', detail: { message: error.message, targetType: 'staff_deposit' } })
+          throw new Error(`微信支付保证金下单失败：${error.message}`)
+        }
+      }
+    }
+    if (action === 'requestDepositRefund') {
+      const reason = safeText(data.reason).trim()
+      if (!reason) throw new Error('请填写自愿退出及退款原因')
+      const user = await getUser(openid)
+      const profile = await getStaffProfileByOpenid(openid)
+      if (!profile) throw new Error('宠托师资料不存在')
+      const depositRes = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
+      const deposit = depositRes.data && depositRes.data[0]
+      if (!deposit || !['paid', 'partially_refunded'].includes(deposit.status) || (deposit.availableRefundAmount || 0) <= 0) {
+        throw new Error('暂无可退还保证金')
+      }
+      if (deposit.refundStatus === 'requested') throw new Error('已有待审核的退出退款申请')
+      const activeOrders = await db.collection('orders').where({ staffOpenid: openid }).get()
+      const hasUnfinished = (activeOrders.data || []).some((o) => ['assigned', 'in_service'].includes(o.status))
+      if (hasUnfinished) throw new Error('尚有进行中的服务订单，请完成所有订单履约后再申请退出')
+      const incidents = await db.collection('order_incidents').where({ staffOpenid: openid }).get()
+      const hasUnresolvedIncidents = (incidents.data || []).some((inc) => ['open', 'investigating', 'processing'].includes(inc.status))
+      if (hasUnresolvedIncidents) throw new Error('存在尚未处理完毕的订单客诉或纠纷，请待纠纷结案后再申请退还保证金')
+      const time = now()
+      await db.collection('staff_deposits').doc(deposit._id).update({
+        data: {
+          status: 'refund_requested',
+          statusText: '退款审核中',
+          refundStatus: 'requested',
+          refundReason: reason,
+          refundRequestedAt: time,
+          updatedAt: time
+        }
+      })
+      await db.collection('staff_profiles').doc(profile._id).update({
+        data: {
+          exitStatus: 'requested',
+          depositStatus: 'refund_requested',
+          updatedAt: time
+        }
+      })
+      await db.collection('staff_deposit_events').add({
+        data: {
+          depositId: deposit._id,
+          staffOpenid: openid,
+          staffUserId: user._id,
+          type: 'refund_request',
+          amount: deposit.availableRefundAmount,
+          reason,
+          operatorOpenid: openid,
+          operatorRole: 'staff',
+          createdAt: time
+        }
+      })
+      return { success: true, status: 'refund_requested' }
+    }
+    if (action === 'getSupplyReimbursementStatus') {
+      const user = await getUser(openid)
+      const profile = await getStaffProfileByOpenid(openid)
+      const settings = await getSystemSettings()
+      const supplies = settings.staffSupplies || normalizeStaffSuppliesConfig()
+      const res = await db.collection('staff_supply_reimbursements').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
+      const application = res.data && res.data[0] || null
+      const isCertified = Boolean(profile && profile.auditStatus === 'approved' && profile.staffLevel === 'certified')
+      const canApply = Boolean(!application && isCertified && supplies.reimbursementEnabled !== false)
+      return {
+        application,
+        canApply,
+        supplies
+      }
+    }
+    if (action === 'submitSupplyReimbursement') {
+      const clientRequestId = getClientRequestId(data)
+      if (clientRequestId) {
+        const existingReq = await findByClientRequestId('staff_supply_reimbursements', { staffOpenid: openid, clientRequestId })
+        if (existingReq) return existingReq
+      }
+      const user = await getUser(openid)
+      const profile = await getStaffProfileByOpenid(openid)
+      if (!profile || profile.auditStatus !== 'approved' || profile.staffLevel !== 'certified') {
+        throw new Error('仅正式认证宠托师可申请首次用品报销，实习人员不具备报销资格')
+      }
+      const settings = await getSystemSettings()
+      const supplies = settings.staffSupplies || normalizeStaffSuppliesConfig()
+      if (supplies.reimbursementEnabled === false) throw new Error('用品报销申请暂未开放')
+      const existing = await db.collection('staff_supply_reimbursements').where({ staffOpenid: openid }).limit(1).get()
+      if (existing.data && existing.data.length > 0) {
+        throw new Error('每位宠托师仅限申请一次首次宠物用品报销，后续服务用品须自备自费')
+      }
+      const mediaFileIds = Array.isArray(data.mediaFileIds) ? data.mediaFileIds.filter(Boolean) : []
+      if (!mediaFileIds.length) throw new Error('请上传首次购买凭证截图')
+      const amount = Number(data.amount)
+      if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) {
+        throw new Error('请填写有效的报销金额，最多两位小数')
+      }
+      const maxCap = supplies.maxReimbursementAmount || 200
+      if (amount > maxCap) {
+        throw new Error(`首次用品报销金额不能超过上限 ¥${maxCap}`)
+      }
+      const remark = safeText(data.remark).trim()
+      const time = now()
+      const record = {
+        staffOpenid: openid,
+        staffUserId: user._id,
+        staffProfileId: profile._id,
+        mediaFileIds,
+        amount,
+        approvedAmount: null,
+        remark,
+        clientRequestId,
+        status: 'pending',
+        statusText: '待审核',
+        transferStatus: '',
+        createdAt: time,
+        updatedAt: time
+      }
+      const created = await db.collection('staff_supply_reimbursements').add({ data: record })
+      await db.collection('staff_profiles').doc(profile._id).update({
+        data: {
+          supplyReimbursementStatus: 'pending',
+          updatedAt: time
+        }
+      })
+      return { _id: created._id, ...record }
+    }
+    if (action === 'querySupplyReimbursement') {
+      await getUser(openid)
+      const res = await db.collection('staff_supply_reimbursements').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
+      return res.data && res.data[0] || null
+    }
+    if (action === 'getSupplyTransferConfirmation') {
+      await getUser(openid)
+      const res = await db.collection('staff_supply_reimbursements').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
+      const app = res.data && res.data[0]
+      if (!app) throw new Error('暂无报销申请')
+      const settings = await getSystemSettings()
+      const mchId = (settings.payment && settings.payment.mchId) || ''
+      const appId = (settings.payment && settings.payment.appId) || ''
+      return {
+        status: app.transferStatus || (app.status === 'approved' ? 'WAIT_USER_CONFIRM' : app.status),
+        mchId,
+        appId,
+        packageInfo: app.transferPackageInfo || ''
+      }
+    }
     throw new Error('未知 staff 操作')
   },
 
@@ -7257,23 +7718,46 @@ const handlers = {
     }
     if (action === 'createCheckin') {
       const { user, order } = await requireStaffOrder(openid, data.orderId, '仅订单员工可打卡')
-      if (order.status !== 'in_service') throw new Error('仅服务中可打卡')
+      const isSanitization = data.eventType === 'sanitization'
+      if (isSanitization) {
+        if (order.status !== 'assigned') throw new Error('消毒打卡须在开始服务前完成')
+        if (!(await canStartOrderService(order))) throw new Error('服务时间未到，可申请提前开始')
+        if (data.isBackfilled === true) throw new Error('消毒打卡须现场拍照上传，不支持补传')
+      } else if (order.status !== 'in_service') throw new Error('仅服务中可打卡')
       if (!data.eventType) throw new Error('请选择打卡类型')
       if (!CHECKIN_EVENT_TYPES.has(data.eventType)) throw new Error('打卡类型无效')
       if (!data.mediaFileId) throw new Error('请先上传打卡照片')
       const clientRequestId = safeText(data.clientRequestId).trim()
       if (clientRequestId) {
         const existing = await db.collection('checkin_logs').where({ orderId: data.orderId, clientRequestId }).limit(1).get()
-        if (existing.data[0]) return existing.data[0]
+        if (existing.data[0]) {
+          if (isSanitization && (!isValidSanitization(existing.data[0], order) || existing.data[0].mediaFileId !== data.mediaFileId)) throw new Error('消毒打卡请求已失效，请重新拍照')
+          if (isSanitization) await validateSanitizationMedia(data.mediaFileId, data.orderId, openid)
+          return existing.data[0]
+        }
       }
       const latitude = Number(data.latitude || 0)
       const longitude = Number(data.longitude || 0)
       if (!hasCoordinate(latitude, longitude)) throw new Error('打卡定位无效')
       const time = now()
-      const recordedAt = data.recordedAt || time
+      if (isSanitization) {
+        await validateSanitizationMedia(data.mediaFileId, data.orderId, openid)
+        const parts = data.mediaFileId.slice(data.mediaFileId.lastIndexOf('/') + 1).split('_')
+        const uploadedAt = Number(parts[0])
+        if (Number.isFinite(uploadedAt) && uploadedAt > 0 && (uploadedAt > time.getTime() + 60000 || time.getTime() - uploadedAt > 15 * 60 * 1000)) {
+          throw new Error('消毒照片已过期，请重新现场拍照')
+        }
+        const reused = await db.collection('checkin_logs').where({ mediaFileId: data.mediaFileId }).limit(1).get()
+        if (reused.data.length) throw new Error('消毒照片已使用，请重新现场拍照')
+      }
+      const recordedAt = isSanitization ? time : (data.recordedAt || time)
       const existingEventPhotos = await db.collection('checkin_logs').where({ orderId: data.orderId, eventType: data.eventType }).get()
       const shouldWriteTimeline = !(existingEventPhotos.data || []).some(hasCheckinPhoto)
       const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientRequestId, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, serverTime: time, recordedAt, isBackfilled: data.isBackfilled === true, remark: data.remark || data.note || '', createdAt: time, updatedAt: time, deletedAt: null, deletedByOpenid: '' }
+      if (isSanitization) {
+        checkin.preStart = true
+        checkin.sanitizationVersion = 1
+      }
       const created = await db.collection('checkin_logs').add({ data: checkin })
       if (shouldWriteTimeline) await appendOrderTimeline(data.orderId, 'checkin', data.isBackfilled === true ? '服务打卡已补传' : '服务打卡', data.eventType, 'staff')
       return { _id: created._id, ...checkin }
@@ -7284,6 +7768,7 @@ const handlers = {
       if (!data.checkinId) throw new Error('请选择要删除的照片')
       const checkin = (await db.collection('checkin_logs').doc(data.checkinId).get()).data
       if (!checkin || checkin.orderId !== data.orderId) throw new Error('打卡照片不存在')
+      if (checkin.eventType === 'sanitization') throw new Error('服务前消毒凭证不可删除')
       if (checkin.deletedAt) return { _id: data.checkinId, deletedAt: checkin.deletedAt }
       const time = now()
       await db.collection('checkin_logs').doc(data.checkinId).update({ data: { deletedAt: time, deletedByOpenid: openid, updatedAt: time } })
@@ -8443,6 +8928,267 @@ const handlers = {
       await db.collection('lottery_activities').doc(data._id).update({ data: { enabled, updatedAt: now() } })
       await logAdmin(admin, 'lottery_activity', data._id, 'toggleLotteryActivity', { enabled })
       return { _id: data._id, enabled }
+    }
+    if (action === 'listStaffDeposits') {
+      const range = buildDateRange(data)
+      const status = safeText(data.status).trim()
+      const res = await db.collection('staff_deposits').orderBy('createdAt', 'desc').get()
+      const users = (await db.collection('users').get()).data || []
+      const profiles = (await db.collection('staff_profiles').get()).data || []
+      const userMap = users.reduce((m, u) => ({ ...m, [u.openid]: u }), {})
+      const profileMap = profiles.reduce((m, p) => ({ ...m, [p.openid]: p }), {})
+      const list = (res.data || [])
+        .filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt']))
+        .map((item) => {
+          const u = userMap[item.staffOpenid] || {}
+          const p = profileMap[item.staffOpenid] || {}
+          return {
+            ...item,
+            staffNickname: u.nickname || '',
+            staffPhone: p.phone || u.phone || '',
+            staffRealName: p.realName || '',
+            staffLevel: p.staffLevel || ''
+          }
+        })
+      return limitList(list, data.pageSize || 50)
+    }
+    if (action === 'auditDepositRefund') {
+      const deposit = (await db.collection('staff_deposits').doc(data.id).get()).data
+      if (!deposit) throw new Error('保证金记录不存在')
+      if (deposit.refundStatus !== 'requested') throw new Error('当前状态不可审核退款')
+      const approved = data.approved === true
+      const reason = safeText(data.reason || data.auditRemark).trim()
+      const time = now()
+      if (approved) {
+        const activeOrders = await db.collection('orders').where({ staffOpenid: deposit.staffOpenid }).get()
+        const hasUnfinished = (activeOrders.data || []).some((o) => ['assigned', 'in_service'].includes(o.status))
+        if (hasUnfinished) throw new Error('该宠托师尚有未完成订单，暂不可通过退出退款')
+        const incidents = await db.collection('order_incidents').where({ staffOpenid: deposit.staffOpenid }).get()
+        const hasUnresolvedIncidents = (incidents.data || []).some((inc) => ['open', 'investigating', 'processing'].includes(inc.status))
+        if (hasUnresolvedIncidents) throw new Error('该宠托师存在尚未结案的客诉或纠纷，暂不可通过退出退款')
+        const refundAmount = Number(deposit.availableRefundAmount || 0)
+        await db.collection('staff_deposits').doc(data.id).update({
+          data: {
+            refundedAmount: (deposit.refundedAmount || 0) + refundAmount,
+            availableRefundAmount: 0,
+            status: 'refunded',
+            statusText: '已全额退还',
+            refundStatus: 'approved',
+            refundAuditedAt: time,
+            refundAuditedBy: openid,
+            refundAuditRemark: reason || '审核通过退款',
+            updatedAt: time
+          }
+        })
+        const profileRes = await db.collection('staff_profiles').where({ openid: deposit.staffOpenid }).limit(1).get()
+        if (profileRes.data && profileRes.data[0]) {
+          await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
+            data: {
+              exitStatus: 'exited',
+              depositStatus: 'refunded',
+              auditStatus: 'revoked',
+              updatedAt: time
+            }
+          })
+        }
+        await db.collection('staff_deposit_events').add({
+          data: {
+            depositId: data.id,
+            staffOpenid: deposit.staffOpenid,
+            staffUserId: deposit.staffUserId,
+            type: 'refund',
+            amount: refundAmount,
+            reason: reason || '宠托师自愿退出全额退还保证金',
+            operatorOpenid: openid,
+            operatorRole: 'admin',
+            createdAt: time
+          }
+        })
+        await appendFinanceLog('deposit_refunded', { targetType: 'staff_deposit', targetId: data.id, staffOpenid: deposit.staffOpenid, amountDelta: -refundAmount, detail: { reason } })
+        await logAdmin(admin, 'staff_deposit', data.id, 'auditDepositRefund', { approved: true, refundAmount })
+        return { id: data.id, status: 'refunded' }
+      } else {
+        await db.collection('staff_deposits').doc(data.id).update({
+          data: {
+            status: 'paid',
+            statusText: '已缴纳',
+            refundStatus: 'rejected',
+            refundRejectReason: reason || '退款申请已驳回',
+            refundAuditedAt: time,
+            refundAuditedBy: openid,
+            updatedAt: time
+          }
+        })
+        const profileRes = await db.collection('staff_profiles').where({ openid: deposit.staffOpenid }).limit(1).get()
+        if (profileRes.data && profileRes.data[0]) {
+          await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
+            data: {
+              exitStatus: 'none',
+              depositStatus: 'paid',
+              updatedAt: time
+            }
+          })
+        }
+        await logAdmin(admin, 'staff_deposit', data.id, 'auditDepositRefund', { approved: false, reason })
+        return { id: data.id, status: 'paid', refundStatus: 'rejected' }
+      }
+    }
+    if (action === 'forfeitStaffDeposit') {
+      const deposit = (await db.collection('staff_deposits').doc(data.id).get()).data
+      if (!deposit) throw new Error('保证金记录不存在')
+      const amount = Number(data.amount)
+      if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) {
+        throw new Error('请输入有效的没收金额，最多两位小数')
+      }
+      const available = Number(deposit.availableRefundAmount || 0)
+      if (amount > available) throw new Error(`没收金额不能大于当前可用保证金余额 ¥${available}`)
+      const reason = safeText(data.reason).trim()
+      if (!reason) throw new Error('请填写没收保证金的违规原因（如私单、严重服务违规、虚假打卡等）')
+      const time = now()
+      const newForfeited = (deposit.forfeitedAmount || 0) + amount
+      const newAvailable = available - amount
+      const newStatus = newAvailable <= 0 ? 'forfeited' : deposit.status
+      const newStatusText = newAvailable <= 0 ? '已全额没收' : `部分没收（余¥${newAvailable}）`
+      await db.collection('staff_deposits').doc(data.id).update({
+        data: {
+          forfeitedAmount: newForfeited,
+          availableRefundAmount: newAvailable,
+          status: newStatus,
+          statusText: newStatusText,
+          lastForfeitReason: reason,
+          lastForfeitedAt: time,
+          lastForfeitedBy: openid,
+          updatedAt: time
+        }
+      })
+      await db.collection('staff_deposit_events').add({
+        data: {
+          depositId: data.id,
+          staffOpenid: deposit.staffOpenid,
+          staffUserId: deposit.staffUserId,
+          type: 'forfeit',
+          amount,
+          reason,
+          operatorOpenid: openid,
+          operatorRole: 'admin',
+          createdAt: time
+        }
+      })
+      await appendFinanceLog('deposit_forfeited', { targetType: 'staff_deposit', targetId: data.id, staffOpenid: deposit.staffOpenid, amountDelta: 0, detail: { forfeitAmount: amount, reason } })
+      await logAdmin(admin, 'staff_deposit', data.id, 'forfeitStaffDeposit', { amount, reason })
+      return { id: data.id, status: newStatus, availableRefundAmount: newAvailable }
+    }
+    if (action === 'listSupplyReimbursements') {
+      const range = buildDateRange(data)
+      const status = safeText(data.status).trim()
+      const res = await db.collection('staff_supply_reimbursements').orderBy('createdAt', 'desc').get()
+      const users = (await db.collection('users').get()).data || []
+      const profiles = (await db.collection('staff_profiles').get()).data || []
+      const userMap = users.reduce((m, u) => ({ ...m, [u.openid]: u }), {})
+      const profileMap = profiles.reduce((m, p) => ({ ...m, [p.openid]: p }), {})
+      const list = (res.data || [])
+        .filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt']))
+        .map((item) => {
+          const u = userMap[item.staffOpenid] || {}
+          const p = profileMap[item.staffOpenid] || {}
+          return {
+            ...item,
+            staffNickname: u.nickname || '',
+            staffPhone: p.phone || u.phone || '',
+            staffRealName: p.realName || '',
+            staffLevel: p.staffLevel || ''
+          }
+        })
+      return limitList(list, data.pageSize || 50)
+    }
+    if (action === 'auditSupplyReimbursement') {
+      const app = (await db.collection('staff_supply_reimbursements').doc(data.id).get()).data
+      if (!app) throw new Error('报销申请不存在')
+      if (app.status !== 'pending') throw new Error('当前状态不可审核')
+      const approved = data.approved === true
+      const reason = safeText(data.rejectReason || data.reason || data.auditRemark).trim()
+      const time = now()
+      if (approved) {
+        let approvedAmount = Number(data.approvedAmount !== undefined && data.approvedAmount !== null ? data.approvedAmount : app.amount)
+        if (!Number.isFinite(approvedAmount) || approvedAmount <= 0) approvedAmount = Number(app.amount)
+        if (approvedAmount > Number(app.amount)) {
+          throw new Error('审批报销金额不能大于宠托师申请金额')
+        }
+        await db.collection('staff_supply_reimbursements').doc(data.id).update({
+          data: {
+            approvedAmount,
+            status: 'approved',
+            statusText: '审核通过，等待打款',
+            auditedAt: time,
+            auditedBy: openid,
+            auditRemark: reason || '审核通过',
+            updatedAt: time
+          }
+        })
+        const profileRes = await db.collection('staff_profiles').where({ openid: app.staffOpenid }).limit(1).get()
+        if (profileRes.data && profileRes.data[0]) {
+          await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
+            data: {
+              supplyReimbursementStatus: 'approved',
+              updatedAt: time
+            }
+          })
+        }
+        await logAdmin(admin, 'staff_supply_reimbursement', data.id, 'auditSupplyReimbursement', { approved: true, approvedAmount })
+        return { id: data.id, status: 'approved', approvedAmount }
+      } else {
+        if (!reason) throw new Error('请填写驳回原因')
+        await db.collection('staff_supply_reimbursements').doc(data.id).update({
+          data: {
+            status: 'rejected',
+            statusText: '审核驳回',
+            rejectReason: reason,
+            auditedAt: time,
+            auditedBy: openid,
+            updatedAt: time
+          }
+        })
+        const profileRes = await db.collection('staff_profiles').where({ openid: app.staffOpenid }).limit(1).get()
+        if (profileRes.data && profileRes.data[0]) {
+          await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
+            data: {
+              supplyReimbursementStatus: 'rejected',
+              updatedAt: time
+            }
+          })
+        }
+        await logAdmin(admin, 'staff_supply_reimbursement', data.id, 'auditSupplyReimbursement', { approved: false, reason })
+        return { id: data.id, status: 'rejected' }
+      }
+    }
+    if (action === 'paySupplyReimbursement') {
+      const app = (await db.collection('staff_supply_reimbursements').doc(data.id).get()).data
+      if (!app) throw new Error('报销申请不存在')
+      if (app.status !== 'approved') throw new Error('仅审核通过的报销可进行打款')
+      const time = now()
+      const payAmount = Number(app.approvedAmount || app.amount || 0)
+      await db.collection('staff_supply_reimbursements').doc(data.id).update({
+        data: {
+          status: 'paid',
+          statusText: '已打款',
+          transferStatus: 'SUCCESS',
+          paidAt: time,
+          paidBy: openid,
+          updatedAt: time
+        }
+      })
+      const profileRes = await db.collection('staff_profiles').where({ openid: app.staffOpenid }).limit(1).get()
+      if (profileRes.data && profileRes.data[0]) {
+        await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
+          data: {
+            supplyReimbursementStatus: 'paid',
+            updatedAt: time
+          }
+        })
+      }
+      await appendFinanceLog('supply_reimbursement_paid', { targetType: 'staff_supply_reimbursement', targetId: data.id, staffOpenid: app.staffOpenid, amountDelta: -payAmount, detail: { payAmount } })
+      await logAdmin(admin, 'staff_supply_reimbursement', data.id, 'paySupplyReimbursement', { payAmount })
+      return { id: data.id, status: 'paid' }
     }
     throw new Error('未知 admin 操作')
   },

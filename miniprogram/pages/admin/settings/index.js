@@ -1,6 +1,37 @@
 const { callFunction, showError, setCachedSystemSettings } = require('../../../utils/cloud')
 
 const quizOptionValues = ['A', 'B', 'C', 'D', 'E', 'F']
+const requiredSupplyItems = ['一次性手套', '一次性口罩', '宠物安全消毒用品']
+
+// Amounts use yuan in the existing settings/API; require exact positive cents.
+function validAmount(value, allowZero = false) {
+  const text = String(value).trim()
+  const amount = Number(text)
+  return /^\d+(\.\d{1,2})?$/.test(text) && Number.isFinite(amount) &&
+    Number.isSafeInteger(Math.round(amount * 100)) && (allowZero ? amount >= 0 : amount > 0)
+}
+
+function normalizeStaffDeposit(deposit = {}) {
+  return {
+    ...deposit,
+    enabled: deposit.enabled === true && validAmount(deposit.amount),
+    amount: validAmount(deposit.amount, true) ? Number(deposit.amount) : 0,
+    rulesText: deposit.rulesText || '保证金金额以平台配置为准；用品报销由平台独立出资，绝不扣减保证金。',
+    refundRulesText: deposit.refundRulesText || '自愿退出时保证金全额原路退回；仅扣除管理员已记录依据、金额和原因的违规没收部分，已退金额不重复退还。',
+    forfeitRulesText: deposit.forfeitRulesText || '仅管理员可根据有据可查的违规事实没收保证金，必须记录依据、金额和原因；不得以用品报销为由扣减。'
+  }
+}
+
+function normalizeStaffSupplies(supplies = {}) {
+  return {
+    ...supplies,
+    reimbursementEnabled: supplies.reimbursementEnabled === true,
+    requiredItems: Array.isArray(supplies.requiredItems) ? supplies.requiredItems : [...requiredSupplyItems],
+    auditNotice: supplies.auditNotice || '视频审核必须检查手套、口罩、宠物安全消毒用品。严格考核可能不通过；未正式认证不报销。仅正式认证后首次申请可报销，实习阶段不可申请。',
+    serviceReminder: supplies.serviceReminder || '服务前带齐手套、口罩和宠物安全消毒用品，按规范完成消毒。',
+    transfer: { enabled: false, sceneId: '', userRecvPerception: '', sceneReportInfos: [], ...(supplies.transfer || {}) }
+  }
+}
 
 function createEmptyItem() {
   return {
@@ -33,7 +64,10 @@ function createEmptyTrainingVideo(index = 0) {
 }
 
 function normalizePaymentConfig(payment = {}) {
+  // Never render returned credentials, even if an older backend omits redaction.
+  const { apiV3Key, privateKey, merchantPrivateKey, platformPublicKey, ...publicPayment } = payment
   return {
+    ...publicPayment,
     enabled: payment.enabled !== false,
     mode: payment.mode === 'wechat' ? 'wechat' : 'mock',
     mchId: payment.mchId || '',
@@ -53,9 +87,10 @@ function normalizePaymentConfig(payment = {}) {
 
 function normalizeSettlementConfig(settlement = {}) {
   return {
-    staffCommissionRate: Number(settlement.staffCommissionRate || 0.7),
-    settlementDelayDays: Number(settlement.settlementDelayDays || 1),
-    minWithdrawAmount: Number(settlement.minWithdrawAmount || 10),
+    ...settlement,
+    staffCommissionRate: Number(settlement.staffCommissionRate === undefined ? 0.7 : settlement.staffCommissionRate),
+    settlementDelayDays: Number(settlement.settlementDelayDays === undefined ? 1 : settlement.settlementDelayDays),
+    minWithdrawAmount: Number(settlement.minWithdrawAmount === undefined ? 10 : settlement.minWithdrawAmount),
     withdrawFeeRate: Number(settlement.withdrawFeeRate || 0)
   }
 }
@@ -63,8 +98,10 @@ function normalizeSettlementConfig(settlement = {}) {
 function normalizeSubscriptionConfig(subscription = {}) {
   const templates = subscription.templates || {}
   return {
+    ...subscription,
     enabled: subscription.enabled === true,
     templates: {
+      ...templates,
       orderPaid: templates.orderPaid || '',
       orderAssigned: templates.orderAssigned || '',
       orderAccepted: templates.orderAccepted || '',
@@ -80,6 +117,7 @@ function normalizeSubscriptionConfig(subscription = {}) {
 
 function normalizeReliabilityConfig(reliability = {}) {
   return {
+    ...reliability,
     enableOfflineQueue: reliability.enableOfflineQueue !== false,
     maxTrackBatchSize: Number(reliability.maxTrackBatchSize || 50),
     maxRetryTimes: Number(reliability.maxRetryTimes || 5)
@@ -88,6 +126,7 @@ function normalizeReliabilityConfig(reliability = {}) {
 
 function normalizeCustomerServiceConfig(customerService = {}) {
   return {
+    ...customerService,
     phone: customerService.phone || '',
     wechatId: customerService.wechatId || '',
     workHours: customerService.workHours || '每天 9:00-21:00',
@@ -97,6 +136,7 @@ function normalizeCustomerServiceConfig(customerService = {}) {
 
 function normalizeCheckinShareConfig(checkinShare = {}) {
   return {
+    ...checkinShare,
     title: checkinShare.title || '来签到领福利，补签卡也能拿',
     imageUrl: checkinShare.imageUrl || '',
     imageTempUrl: checkinShare.imageUrl && /^https?:\/\//.test(checkinShare.imageUrl) ? checkinShare.imageUrl : ''
@@ -135,15 +175,18 @@ function normalizeStaffTrainingConfig(training = {}) {
   const sourceQuiz = Array.isArray(training.quiz) ? training.quiz : []
   const sourceVideos = Array.isArray(training.videos) ? training.videos : []
   return {
+    ...training,
     passScore: Math.min(Math.max(Math.round(Number(training.passScore || 80)), 1), 100),
     quiz: sourceQuiz.map((item, index) => {
       const options = (Array.isArray(item.options) ? item.options : []).slice(0, quizOptionValues.length).map((option, optionIndex) => ({
+        ...option,
         value: quizOptionValues[optionIndex],
         label: option.label || ''
       }))
       while (options.length < 2) options.push({ value: quizOptionValues[options.length], label: '' })
       const answer = options.some((option) => option.value === item.answer) ? item.answer : options[0].value
       return {
+        ...item,
         id: item.id || `q${index + 1}`,
         type: 'single',
         question: item.question || '',
@@ -152,6 +195,7 @@ function normalizeStaffTrainingConfig(training = {}) {
       }
     }),
     videos: sourceVideos.map((item, index) => ({
+      ...item,
       key: item.key || `training_${index + 1}`,
       title: item.title || '',
       description: item.description || '',
@@ -172,6 +216,7 @@ function normalizeCarouselConfig(carousel = {}) {
   const rotateIntervalSec = Math.max(Math.round(rotateIntervalMs / 1000), 1)
   const items = Array.isArray(source.items) ? source.items : []
   const normalizedItems = items.map((item, index) => ({
+    ...item,
     id: item.id || `hero_${Date.now()}_${index}`,
     type: item.type === 'video' ? 'video' : 'image',
     fileId: item.fileId || '',
@@ -185,6 +230,7 @@ function normalizeCarouselConfig(carousel = {}) {
   })).sort((a, b) => a.sort - b.sort)
 
   return {
+    ...source,
     enabled: source.enabled === true,
     autoRotate: source.autoRotate !== false,
     rotateIntervalMs: rotateIntervalSec * 1000,
@@ -209,6 +255,7 @@ const homeModuleOptions = [
 function normalizeHomePageConfig(homePage = {}) {
   const modules = homePage.modules || {}
   return {
+    ...homePage,
     ctaTitle: homePage.ctaTitle || '立即预约上门宠护',
     ctaSubtitle: homePage.ctaSubtitle || '填写宠物和服务时间，平台认证宠托师快速响应。',
     ctaText: homePage.ctaText || '立即预约',
@@ -216,7 +263,7 @@ function normalizeHomePageConfig(homePage = {}) {
     repeatTitle: homePage.repeatTitle || '再次预约',
     couponTitle: homePage.couponTitle || '新人优惠',
     assuranceTitle: homePage.assuranceTitle || '平台保障',
-    modules: homeModuleOptions.reduce((result, item) => ({ ...result, [item.key]: modules[item.key] !== false }), {})
+    modules: homeModuleOptions.reduce((result, item) => ({ ...result, [item.key]: modules[item.key] !== false }), { ...modules })
   }
 }
 
@@ -261,7 +308,12 @@ function buildSettingSummary(settings = {}) {
 
 Page({
   data: {
+    loaded: false,
+    requiredItemsText: '',
+    sceneReportInfosText: '[]',
     settings: {
+      staffDeposit: normalizeStaffDeposit(),
+      staffSupplies: normalizeStaffSupplies(),
       enableTestAddressMode: false,
       enablePetBreedAi: true,
       payment: normalizePaymentConfig(),
@@ -309,6 +361,9 @@ Page({
     callFunction('admin', 'getSystemSettings')
       .then((settings) => {
         const normalized = {
+          ...settings,
+          staffDeposit: normalizeStaffDeposit(settings.staffDeposit),
+          staffSupplies: normalizeStaffSupplies(settings.staffSupplies),
           enableTestAddressMode: settings.enableTestAddressMode === true,
           enablePetBreedAi: settings.enablePetBreedAi !== false,
           payment: normalizePaymentConfig(settings.payment),
@@ -321,6 +376,7 @@ Page({
           homePage: normalizeHomePageConfig(settings.homePage),
           staffTraining: normalizeStaffTrainingConfig(settings.staffTraining)
         }
+        this.setData({ loaded: true, requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'), sceneReportInfosText: JSON.stringify(normalized.staffSupplies.transfer.sceneReportInfos, null, 2) })
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized, settingSummary: buildSettingSummary(normalized) }, () => {
           this.resolveMediaUrls(normalized.homeHeroCarousel.items)
@@ -1003,8 +1059,39 @@ Page({
     this.setData({ [key]: e.detail.value })
   },
 
+  staffPolicyInput(e) {
+    this.setData({ [`settings.${e.currentTarget.dataset.field}`]: e.detail.value })
+  },
+
+  staffDepositToggle(e) {
+    if (e.detail.value && !validAmount(this.data.settings.staffDeposit.amount)) {
+      this.setData({ 'settings.staffDeposit.enabled': false })
+      return showError(new Error('先设置大于 0、最多两位小数的有效保证金金额，再启用'))
+    }
+    this.setData({ 'settings.staffDeposit.enabled': e.detail.value })
+  },
+
+  policyTextInput(e) {
+    this.setData({ [e.currentTarget.dataset.field]: e.detail.value })
+  },
+
   save() {
     if (this.data.saving) return
+    if (!this.data.loaded) return showError(new Error('请等待设置加载成功后再保存'))
+    const deposit = this.data.settings.staffDeposit
+    if (!validAmount(deposit.amount, !deposit.enabled)) return showError(new Error('保证金金额须为有效金额，最多两位小数；启用时必须大于 0'))
+    let sceneReportInfos
+    try {
+      sceneReportInfos = JSON.parse(this.data.sceneReportInfosText)
+      if (!Array.isArray(sceneReportInfos) || sceneReportInfos.some((item) => !item || typeof item.info_type !== 'string' || !item.info_type.trim() || typeof item.info_content !== 'string' || !item.info_content.trim())) throw new Error()
+    } catch (err) { return showError(new Error('场景报备信息须为 JSON 数组，每项包含非空 info_type 和 info_content')) }
+    const transfer = this.data.settings.staffSupplies.transfer
+    if (transfer.enabled && (!String(transfer.sceneId).trim() || !String(transfer.userRecvPerception).trim() || !sceneReportInfos.length)) {
+      return showError(new Error('启用前请填写商户已获批的真实转账场景、收款感知与对应报备信息'))
+    }
+    const requiredItems = this.data.requiredItemsText.split('\n').map((item) => item.trim()).filter(Boolean)
+    if (!requiredItems.length) return showError(new Error('请填写必备用品，必须涵盖手套、口罩和宠物安全消毒用品'))
+    this.setData({ 'settings.staffDeposit.amount': Number(deposit.amount), 'settings.staffSupplies.requiredItems': requiredItems, 'settings.staffSupplies.transfer.sceneReportInfos': sceneReportInfos })
     if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster) {
       wx.showToast({ title: '请等待培训素材上传完成', icon: 'none' })
       return
@@ -1013,6 +1100,7 @@ Page({
 
     const carousel = this.data.settings.homeHeroCarousel || {}
     const itemsToSave = (carousel.items || []).map((item) => ({
+      ...item,
       id: item.id,
       type: item.type,
       fileId: item.fileId,
@@ -1026,6 +1114,7 @@ Page({
     const checkinShare = this.data.settings.checkinShare || {}
     const staffTraining = this.data.settings.staffTraining || normalizeStaffTrainingConfig()
     const trainingVideos = (staffTraining.videos || []).map((item, index) => ({
+      ...item,
       key: item.key || `training_${index + 1}`,
       title: item.title || '',
       description: item.description || '',
@@ -1036,6 +1125,7 @@ Page({
       sort: Number(item.sort) || (index + 1) * 10
     }))
     const payload = {
+      ...this.data.settings,
       enableTestAddressMode: this.data.settings.enableTestAddressMode === true,
       enablePetBreedAi: this.data.settings.enablePetBreedAi !== false,
       payment: this.data.settings.payment,
@@ -1044,16 +1134,19 @@ Page({
       reliability: this.data.settings.reliability,
       customerService: this.data.settings.customerService,
       checkinShare: {
+        ...checkinShare,
         title: checkinShare.title || '',
         imageUrl: checkinShare.imageUrl || ''
       },
       homePage: this.data.settings.homePage,
       staffTraining: {
+        ...staffTraining,
         passScore: staffTraining.passScore,
         quiz: staffTraining.quiz || [],
         videos: trainingVideos
       },
       homeHeroCarousel: {
+        ...carousel,
         enabled: carousel.enabled === true,
         autoRotate: carousel.autoRotate !== false,
         rotateIntervalMs: Math.max(Number(carousel.rotateIntervalSec || 5), 1) * 1000,
@@ -1064,6 +1157,9 @@ Page({
     callFunction('admin', 'saveSystemSettings', payload)
       .then((settings) => {
         const normalized = {
+          ...settings,
+          staffDeposit: normalizeStaffDeposit(settings.staffDeposit),
+          staffSupplies: normalizeStaffSupplies(settings.staffSupplies),
           enableTestAddressMode: settings.enableTestAddressMode === true,
           enablePetBreedAi: settings.enablePetBreedAi !== false,
           payment: normalizePaymentConfig(settings.payment),
@@ -1076,6 +1172,7 @@ Page({
           homePage: normalizeHomePageConfig(settings.homePage),
           staffTraining: normalizeStaffTrainingConfig(settings.staffTraining)
         }
+        this.setData({ loaded: true, requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'), sceneReportInfosText: JSON.stringify(normalized.staffSupplies.transfer.sceneReportInfos, null, 2) })
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized, settingSummary: buildSettingSummary(normalized), saving: false })
         this.resolveMediaUrls(normalized.homeHeroCarousel.items)

@@ -25,6 +25,8 @@
 
   <scroll-view scroll-x class="chip-tabs">
     <view class="chip {{activeTab === 'withdraws' ? 'active' : ''}}" data-tab="withdraws" bindtap="switchTab">提现</view>
+    <view class="chip {{activeTab === 'deposits' ? 'active' : ''}}" data-tab="deposits" bindtap="switchTab">保证金</view>
+    <view class="chip {{activeTab === 'supplies' ? 'active' : ''}}" data-tab="supplies" bindtap="switchTab">用品报销</view>
     <view class="chip {{activeTab === 'payments' ? 'active' : ''}}" data-tab="payments" bindtap="switchTab">支付</view>
     <view class="chip {{activeTab === 'refunds' ? 'active' : ''}}" data-tab="refunds" bindtap="switchTab">退款</view>
     <view class="chip {{activeTab === 'earnings' ? 'active' : ''}}" data-tab="earnings" bindtap="switchTab">收益</view>
@@ -54,6 +56,64 @@
       <button class="primary-btn full-btn" wx:if="{{item.status === 'approved'}}" data-id="{{item._id}}" bindtap="markPaid">标记已打款</button>
     </view>
     <view class="empty-state" wx:if="{{!requests.length}}">暂无提现申请。</view>
+  </block>
+
+  <block wx:if="{{activeTab === 'deposits'}}">
+    <view class="card record-card" wx:for="{{deposits}}" wx:key="_id">
+      <view class="record-head">
+        <view class="record-title">宠托师保证金</view>
+        <view class="badge {{item.status === 'paid' ? 'green' : 'pink'}}">{{item.statusText || item.status}}</view>
+      </view>
+      <view class="info-row"><view class="label">宠托师</view><view class="value">{{item.staffRealName || item.staffNickname || item.staffOpenid}}</view></view>
+      <view class="info-row"><view class="label">手机号</view><view class="value">{{item.staffPhone || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">宠托师等级</view><view class="value">{{item.staffLevel === 'certified' ? '认证宠托师' : (item.staffLevel === 'intern' ? '实习宠托师' : '待定')}}</view></view>
+      <view class="info-row"><view class="label">应缴金额</view><view class="price">¥{{item.amountText}}</view></view>
+      <view class="info-row"><view class="label">已缴金额</view><view class="value">¥{{item.paidAmountText}}</view></view>
+      <view class="info-row"><view class="label">可退金额</view><view class="price">¥{{item.availableRefundAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.refundedAmount > 0}}"><view class="label">已退金额</view><view class="value">¥{{item.refundedAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.forfeitedAmount > 0}}"><view class="label">已没收金额</view><view class="value danger">¥{{item.forfeitedAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.refundReason}}"><view class="label">退出退款原因</view><view class="value">{{item.refundReason}}</view></view>
+      <view class="info-row" wx:if="{{item.lastForfeitReason}}"><view class="label">最近没收原因</view><view class="value">{{item.lastForfeitReason}}</view></view>
+      <view class="info-row"><view class="label">记录时间</view><view class="value">{{item.paidAt || item.createdAt}}</view></view>
+      
+      <view class="action-row" wx:if="{{item.refundStatus === 'requested'}}">
+        <button class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditDepositRefund">驳回退款</button>
+        <button class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" bindtap="auditDepositRefund">通过全额退还</button>
+      </view>
+      <button class="ghost-btn full-btn" wx:if="{{item.canForfeit}}" data-id="{{item._id}}" data-max="{{item.availableRefundAmount}}" bindtap="forfeitDeposit">违规没收保证金</button>
+    </view>
+    <view class="empty-state" wx:if="{{!deposits.length}}">暂无宠托师保证金记录。</view>
+  </block>
+
+  <block wx:if="{{activeTab === 'supplies'}}">
+    <view class="card record-card" wx:for="{{supplies}}" wx:key="_id">
+      <view class="record-head">
+        <view class="record-title">首次用品报销</view>
+        <view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'approved' ? 'pink' : 'gray')}}">{{item.statusText || item.status}}</view>
+      </view>
+      <view class="info-row"><view class="label">申请人</view><view class="value">{{item.staffRealName || item.staffNickname || item.staffOpenid}}</view></view>
+      <view class="info-row"><view class="label">手机号</view><view class="value">{{item.staffPhone || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">申请金额</view><view class="price">¥{{item.amountText}}</view></view>
+      <view class="info-row" wx:if="{{item.approvedAmount != null}}"><view class="label">核准金额</view><view class="price">¥{{item.approvedAmountText}}</view></view>
+      <view class="info-row" wx:if="{{item.remark}}"><view class="label">申请备注</view><view class="value">{{item.remark}}</view></view>
+      <view class="info-row" wx:if="{{item.rejectReason}}"><view class="label">驳回原因</view><view class="value">{{item.rejectReason}}</view></view>
+      <view class="info-row"><view class="label">申请时间</view><view class="value">{{item.createdAt}}</view></view>
+      
+      <view class="info-row" wx:if="{{item.mediaFileIds && item.mediaFileIds.length}}">
+        <view class="label">凭证截图（点击预览）</view>
+        <view class="value">{{item.mediaFileIds.length}}张</view>
+      </view>
+      <scroll-view scroll-x class="chip-tabs" wx:if="{{item.mediaFileIds && item.mediaFileIds.length}}">
+        <image wx:for="{{item.mediaFileIds}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" style="width: 120rpx; height: 120rpx; border-radius: 12rpx; margin-right: 12rpx;" data-urls="{{item.mediaFileIds}}" data-current="{{img}}" bindtap="previewReceipt" />
+      </scroll-view>
+
+      <view class="action-row" wx:if="{{item.status === 'pending'}}">
+        <button class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditSupplyReimbursement">驳回申请</button>
+        <button class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" data-amount="{{item.amount}}" bindtap="auditSupplyReimbursement">审核通过</button>
+      </view>
+      <button class="primary-btn full-btn" wx:if="{{item.status === 'approved'}}" data-id="{{item._id}}" bindtap="paySupplyReimbursement">确认打款（商家转账）</button>
+    </view>
+    <view class="empty-state" wx:if="{{!supplies.length}}">暂无用品报销记录。</view>
   </block>
 
   <block wx:if="{{activeTab === 'payments'}}">

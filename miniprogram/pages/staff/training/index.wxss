@@ -29,3 +29,10 @@
 .ghost-btn { margin-top: 24rpx; height: 88rpx; color: #d45f22; background: #fff0e2; font-size: 28rpx; }
 .mini-btn { min-width: 150rpx; height: 64rpx; padding: 0 20rpx; color: #fff; background: #ff8a4c; font-size: 24rpx; }
 .mini-btn.done { color: #00a870; background: #e6f8ea; }
+.rule-text { white-space: pre-wrap; font-size: 26rpx; line-height: 1.7; margin-top: 12rpx; }
+.acknowledgement { display: block; font-size: 26rpx; line-height: 1.7; margin-top: 24rpx; }
+.refund-input { box-sizing: border-box; width: 100%; min-height: 160rpx; margin-top: 24rpx; padding: 20rpx; background: #fff8ec; border-radius: 20rpx; font-size: 26rpx; }
+button[disabled] { opacity: .55; }
+.strong-text { font-weight: 900; color: #2d211a; margin-bottom: 8rpx; }
+.warning-text { color: #e9672f; font-weight: 850; margin-top: 8rpx; }
+.warning-box { background: #fff0eb; border: 1rpx solid #ffd1be; color: #8a3c1b; }

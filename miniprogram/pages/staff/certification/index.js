@@ -7,7 +7,7 @@ const { createPageNav, navMethods } = require('../../../utils/nav')
 
 const statusText = {
   pending: '资料已提交，等待平台审核',
-  approved: '审核已通过，可以进入工作台接单',
+  approved: '资料审核已通过，请前往培训中心查看保证金及后续认证要求',
   rejected: '审核未通过，请修改资料后重新提交'
 }
 

@@ -1,0 +1,63 @@
+<view class="page reimbursement-page {{themeClass}} {{fontClass}}">
+  <view class="hero">
+    <view class="badge">平台出资 · 首次物资</view>
+    <view class="title">物资报销</view>
+    <view class="desc">独立商家转账发放，不从保证金扣款，也不是保证金退款。</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">申请前请确认</view>
+    <view class="guide-box">
+      <view>视频审核必须准备一次性手套、一次性口罩、宠物安全消毒液。</view>
+      <view>严格审核可能因其他原因不通过，备齐物资不保证审核通过。</view>
+      <view>只有正式认证宠托师可申请首次物资报销，实习人员不可申请；未正式认证不报销。</view>
+      <view>后续每次采购均由本人自费。审核通过后由平台另行出资，通过商家转账发放。</view>
+    </view>
+    <view class="muted">{{supplies.auditNotice}}</view>
+    <view class="muted">{{supplies.serviceReminder}}</view>
+    <view class="muted" wx:if="{{supplies.reimbursementEnabled === false}}">平台暂未开放报销申请。</view>
+    <view class="muted" wx:if="{{profile &amp;&amp; profile.staffLevel !== 'certified'}}">当前尚未正式认证，暂不能提交申请。</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">申请与到账状态</view>
+    <view class="muted" wx:if="{{loading}}">正在获取最新状态...</view>
+    <view class="warning" wx:if="{{loadError}}">状态获取失败，暂不可操作。以下历史信息可能已过期，请刷新重试。</view>
+    <view class="status-label">{{statusLabel}}</view>
+    <block wx:if="{{application}}">
+      <view class="detail" wx:if="{{application.amount != null}}">申请金额：¥{{application.amount}}</view>
+      <view class="detail" wx:if="{{application.approvedAmount != null}}">核准金额：¥{{application.approvedAmount}}</view>
+      <view class="detail" wx:else>核准金额：待审核确认</view>
+      <view class="detail" wx:if="{{application.remark}}">申请备注：{{application.remark}}</view>
+      <view class="warning" wx:if="{{failureReason}}">驳回 / 失败原因：{{failureReason}}</view>
+      <view class="receipt-grid" wx:if="{{submittedReceipts.length}}">
+        <view class="receipt" wx:for="{{submittedReceipts}}" wx:key="*this">
+          <image class="receipt-image" src="{{item}}" mode="aspectFill" data-submitted="yes" data-index="{{index}}" bindtap="previewReceipt" />
+          <view class="muted">已提交凭证 {{index + 1}}</view>
+        </view>
+      </view>
+    </block>
+    <view class="warning" wx:if="{{transferNotice}}">{{transferNotice}}</view>
+    <button class="primary-btn" wx:if="{{canConfirmTransfer}}" bindtap="confirmTransfer" disabled="{{busy || loading || uploading}}" loading="{{busy}}">查看收款 / 确认商家转账</button>
+    <button class="ghost-btn" bindtap="refresh" disabled="{{busy || loading || uploading}}">刷新审核与到账状态</button>
+    <view class="muted">审核通过不代表已付款。商家转账未配置时仍为审核通过、等待付款；微信收款页面打开成功也不代表到账，最终以服务端核实结果为准。</view>
+  </view>
+
+  <view class="card" wx:if="{{canApply}}">
+    <view class="card-title">提交首次采购凭证</view>
+    <view class="privacy-notice">请仅上传本人首次采购的订单 / 支付截图，保留物品、金额、日期及核验所需订单信息。上传前遮挡无关手机号、地址、账户余额等个人信息，不要上传他人凭证。凭证仅供本次报销审核，请勿公开分享。</view>
+    <view class="receipt-grid">
+      <view class="receipt" wx:for="{{receipts}}" wx:key="fileId">
+        <image class="receipt-image" src="{{item.preview}}" mode="aspectFill" data-index="{{index}}" bindtap="previewReceipt" />
+        <button class="remove-btn" data-index="{{index}}" bindtap="removeReceipt" disabled="{{busy || uploading}}">移除</button>
+      </view>
+    </view>
+    <button class="ghost-btn" bindtap="chooseReceipts" disabled="{{busy || uploading || loading || receipts.length >= 9}}" loading="{{uploading}}">上传截图（{{receipts.length}}/9）</button>
+    <view class="field-label">申请金额（元）</view>
+    <input class="form-input" type="digit" value="{{amount}}" bindinput="inputAmount" placeholder="按首次采购实际金额填写" disabled="{{busy || uploading}}" maxlength="12" />
+    <view class="field-label">申请备注</view>
+    <textarea class="form-textarea" value="{{remark}}" bindinput="inputRemark" placeholder="可填写采购明细、日期及其他说明" maxlength="500" disabled="{{busy || uploading}}" />
+    <button class="primary-btn" bindtap="submit" loading="{{busy}}" disabled="{{busy || uploading || loading || !receipts.length}}">提交报销申请</button>
+  </view>
+  <view class="card muted" wx:elif="{{!loading &amp;&amp; !loadError}}">当前不可提交新申请。需正式认证、平台开放且服务端确认具备首次报销资格；已有申请请查看上方进度。</view>
+</view>

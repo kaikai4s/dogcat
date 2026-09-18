@@ -30,6 +30,25 @@
       <text class="remix-icon ri-play-circle-line sub-icon"></text>
       <text>服务操作</text>
     </view>
+    <view class="pre-service-card" wx:if="{{order && order.status === 'assigned'}}">
+      <view class="guide-box">
+        <view class="strong-text">服务必备物品自备提醒：</view>
+        <view>• 一次性手套（佩戴防接触感染）</view>
+        <view>• 一次性口罩（规范防护）</view>
+        <view>• 安全宠物消毒用品（进门及工具消毒）</view>
+      </view>
+      <view class="sanitization-status-box {{order.sanitizationCompleted ? 'done' : 'pending'}}" wx:if="{{order.sanitizationRequired}}">
+        <view class="status-title">
+          <text class="remix-icon {{order.sanitizationCompleted ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'}}"></text>
+          <text>{{order.sanitizationCompleted ? '已完成隔离病菌拍照打卡' : '服务前必须进行隔离病菌拍照打卡'}}</text>
+        </view>
+        <view class="status-desc">{{order.sanitizationCompleted ? '已现场拍摄手套口罩与消毒用品照片，符合服务开始要求。' : '根据服务规范，开始服务前必须现场佩戴手套口罩、手持消毒用品拍照打卡，未打卡无法开始服务。'}}</view>
+        <button class="{{order.sanitizationCompleted ? 'ghost-btn' : 'primary-btn'}} full-btn" data-type="sanitization" bindtap="checkin">
+          <text class="remix-icon ri-camera-lens-line"></text>
+          <text>{{order.sanitizationCompleted ? '查看 / 补拍隔离病菌照片' : '立即拍摄：隔离病菌打卡'}}</text>
+        </button>
+      </view>
+    </view>
     <button class="primary-btn full-btn" wx:if="{{order && order.status === 'assigned'}}" loading="{{starting}}" disabled="{{starting}}" bindtap="start">{{starting ? '处理中...' : '开始服务'}}</button>
     <button class="ghost-btn full-btn" loading="{{requestingEarlyStart}}" disabled="{{requestingEarlyStart || (earlyStartRequest && earlyStartRequest.status === 'pending')}}" wx:if="{{order && order.canRequestEarlyStart}}" bindtap="requestEarlyStart">{{earlyStartRequest && earlyStartRequest.status === 'pending' ? '提前开始申请待确认' : '申请提前开始服务'}}</button>
 

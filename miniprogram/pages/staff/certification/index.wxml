@@ -121,8 +121,10 @@
       <text class="notice-title">资料审核已通过</text>
     </view>
     <view class="notice-status">{{profile.staffLevelText}}</view>
-    <view class="notice-tip">下一步完成培训答题、视频学习和线上视频审核，通过后成为实习宠托师。</view>
-    <button class="primary-btn submit-btn" data-url="/pages/staff/training/index" bindtap="go">去完成培训</button>
+    <view class="notice-tip">下一步查看并按平台配置缴纳可退保证金，完成培训答题、视频学习和线上视频审核后成为实习宠托师。实习不等于正式认证，未正式认证不得报销物资。</view>
+    <view class="notice-tip">自愿退出全额退还保证金，有效管理员没收部分除外。首次物资报销由平台另行出资商家转账，后续采购自费。</view>
+    <button class="primary-btn submit-btn" data-url="/pages/staff/training/index" bindtap="go">保证金 / 培训 / 退出退款</button>
+    <button class="ghost-btn" data-url="/pages/staff/supplies/reimbursement/index" bindtap="go">首次物资报销与进度</button>
   </view>
 
   <view class="action-btn-container" wx:else>

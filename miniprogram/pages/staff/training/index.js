@@ -22,13 +22,102 @@ Page({
     steps: [],
     videoAuditGuide: null,
     canRequestVideoAudit: false,
-    loading: false
+    loading: false,
+    depositState: null,
+    depositLoading: false,
+    depositError: false,
+    depositBusy: false,
+    depositAgreed: false,
+    refundReason: ''
   },
 
   onShow() {
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
     this.load()
+    if (!this.data.depositBusy) this.loadDeposit()
+  },
+
+  async loadDeposit() {
+    this.setData({ depositLoading: true, depositError: false, depositAgreed: false })
+    try {
+      const depositState = await callFunction('staff', 'getDepositStatus')
+      this.setData({ depositState })
+    } catch (error) {
+      this.setData({ depositState: null, depositError: true })
+      showError(error)
+    } finally {
+      this.setData({ depositLoading: false })
+    }
+  },
+
+  agreeDeposit(e) {
+    this.setData({ depositAgreed: e.detail.value.includes('agreed') })
+  },
+
+  inputRefundReason(e) {
+    this.setData({ refundReason: e.detail.value })
+  },
+
+  async payDeposit() {
+    const state = this.data.depositState
+    if (this.data.depositBusy || this.data.depositLoading || !state || !state.canPay) return
+    if (!this.data.depositAgreed) {
+      wx.showToast({ title: '请先阅读并同意规则', icon: 'none' })
+      return
+    }
+    this.setData({ depositBusy: true })
+    wx.showLoading({ title: '创建支付...', mask: true })
+    try {
+      const result = await callFunction('staff', 'createDepositPayment', { agreed: true })
+      wx.hideLoading()
+      if (!result.paid) {
+        if (!result.payParams) throw new Error('支付暂不可用，请稍后重试或联系平台')
+        await new Promise((resolve, reject) => wx.requestPayment({ ...result.payParams, success: resolve, fail: reject }))
+      }
+      wx.showToast({ title: '正在核实服务端支付状态', icon: 'none' })
+    } catch (error) {
+      showError(error)
+    } finally {
+      wx.hideLoading()
+      await this.loadDeposit()
+      this.load()
+      this.setData({ depositBusy: false })
+    }
+  },
+
+  requestRefund() {
+    const state = this.data.depositState
+    if (this.data.depositBusy || this.data.depositLoading || !state || !state.canRequestRefund) return
+    const reason = this.data.refundReason.trim()
+    if (!reason) {
+      wx.showToast({ title: '请填写退出退款原因', icon: 'none' })
+      return
+    }
+    wx.showModal({
+      title: '申请退出并退还保证金',
+      content: '自愿退出全额退还保证金，存在有效管理员没收决定的部分除外。物资报销是独立的平台出资商家转账，不属于保证金退款。是否提交？',
+      success: async (res) => {
+        if (!res.confirm || this.data.depositBusy) return
+        this.setData({ depositBusy: true })
+        wx.showLoading({ title: '提交申请...', mask: true })
+        try {
+          await callFunction('staff', 'requestDepositRefund', { reason })
+          wx.showToast({ title: '已提交，以服务端状态为准', icon: 'none' })
+        } catch (error) {
+          showError(error)
+        } finally {
+          wx.hideLoading()
+          await this.loadDeposit()
+          this.load()
+          this.setData({ depositBusy: false })
+        }
+      }
+    })
+  },
+
+  goReimbursement() {
+    wx.navigateTo({ url: '/pages/staff/supplies/reimbursement/index' })
   },
 
   load() {

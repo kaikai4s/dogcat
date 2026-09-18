@@ -322,3 +322,47 @@
   color: #8e8580;
   font-size: 26rpx;
 }
+
+.pre-service-card {
+  border-left: 8rpx solid #ff7a45;
+}
+
+.sanitization-status-box {
+  margin-top: 16rpx;
+  padding: 20rpx;
+  border-radius: 20rpx;
+}
+
+.sanitization-status-box.pending {
+  background: #fff0eb;
+  border: 1rpx solid #ffd1be;
+}
+
+.sanitization-status-box.done {
+  background: #e6f8ea;
+  border: 1rpx solid #b7f0c5;
+}
+
+.sanitization-status-box .status-title {
+  font-size: 26rpx;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.sanitization-status-box.pending .status-title {
+  color: #e9672f;
+}
+
+.sanitization-status-box.done .status-title {
+  color: #00a870;
+}
+
+.sanitization-status-box .status-desc {
+  font-size: 24rpx;
+  color: #7a6a5e;
+  line-height: 1.5;
+  margin-top: 8rpx;
+}
+

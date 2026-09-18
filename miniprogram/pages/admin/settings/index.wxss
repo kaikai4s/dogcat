@@ -2,6 +2,17 @@
   padding-bottom: 180rpx;
 }
 
+.policy-notice {
+  padding: 20rpx;
+  border-radius: 16rpx;
+  background: #fff8ec;
+  color: #72543b;
+  font-size: 25rpx;
+  line-height: 1.6;
+}
+.danger-notice { background: #fff0f0; color: #a32929; }
+.report-json { min-height: 260rpx; font-family: monospace; }
+
 .settings-grid {
   display: flex;
   flex-direction: column;

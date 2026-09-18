@@ -57,7 +57,10 @@ function withServiceActionState(order) {
   const serviceStarted = order.status === 'in_service'
   const startTime = toTimeValue(order.startTime)
   const canRequestEarlyStart = order.status === 'assigned' && startTime > Date.now()
-  return { ...order, serviceStarted, canRequestEarlyStart }
+  const sanitization = (order.checkinRequirements || []).find((item) => item.eventType === 'sanitization')
+  const sanitizationRequired = Boolean((sanitization && sanitization.required) || (order.requiredCheckins || []).includes('sanitization'))
+  const sanitizationCompleted = Boolean(sanitization && sanitization.completed)
+  return { ...order, serviceStarted, canRequestEarlyStart, sanitizationRequired, sanitizationCompleted }
 }
 
 Page({
@@ -145,6 +148,11 @@ Page({
   },
 
   start() {
+    if (!this.data.order || this.data.order.status !== 'assigned') return
+    if (this.data.order.sanitizationRequired && !this.data.order.sanitizationCompleted) {
+      wx.showToast({ title: '请先完成服务前消毒拍照打卡', icon: 'none' })
+      return
+    }
     if (this.data.starting) return
     this.setData({ starting: true })
     requestSubscribeTemplates(['serviceStart', 'serviceFinish'], 'staff_service')
@@ -424,7 +432,9 @@ Page({
   },
 
   checkin(e) {
-    if (!this.data.order || !this.data.order.serviceStarted) return
+    const order = this.data.order
+    const isSanitization = e.currentTarget.dataset.type === 'sanitization'
+    if (!order || (isSanitization ? !['assigned', 'in_service'].includes(order.status) : !order.serviceStarted)) return
     wx.navigateTo({ url: '/pages/staff/checkin/camera/index?id=' + this.data.id + '&eventType=' + e.currentTarget.dataset.type })
   },
 

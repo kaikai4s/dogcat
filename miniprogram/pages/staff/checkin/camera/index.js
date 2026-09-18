@@ -49,10 +49,11 @@ Page({
   },
   chooseAndCreateCheckins() {
     if (this.data.uploading) return
+    const isSanitization = this.data.eventType === 'sanitization'
     wx.chooseMedia({
-      count: 9,
+      count: isSanitization ? 1 : 9,
       mediaType: ['image'],
-      sourceType: ['camera', 'album'],
+      sourceType: isSanitization ? ['camera'] : ['camera', 'album'],
       success: (res) => {
         const files = res.tempFiles || []
         if (!files.length) return
@@ -60,8 +61,11 @@ Page({
         getServiceLocation()
           .then((loc) => files.reduce((chain, file) => chain.then(() => this.uploadAndCreate(file.tempFilePath, loc)), Promise.resolve()))
           .then(() => {
-            wx.showToast({ title: '已上传' })
+            wx.showToast({ title: '已打卡' })
             this.setData({ uploading: false })
+            if (isSanitization) {
+              setTimeout(() => wx.navigateBack(), 800)
+            }
           })
           .catch((error) => {
             this.setData({ uploading: false })
@@ -72,7 +76,10 @@ Page({
     })
   },
   uploadAndCreate(tempFilePath, loc) {
-    const cloudPath = `checkins/${this.data.orderId}/${Date.now()}_${Math.random().toString(16).slice(2)}${fileExt(tempFilePath)}`
+    const isSanitization = this.data.eventType === 'sanitization'
+    const cloudPath = isSanitization
+      ? `checkins/${this.data.orderId}/sanitization/${Date.now()}_${Math.random().toString(16).slice(2)}${fileExt(tempFilePath)}`
+      : `checkins/${this.data.orderId}/${Date.now()}_${Math.random().toString(16).slice(2)}${fileExt(tempFilePath)}`
     return new Promise((resolve, reject) => {
       wx.cloud.uploadFile({ cloudPath, filePath: tempFilePath, success: resolve, fail: reject })
     }).then((upload) => {
@@ -80,7 +87,7 @@ Page({
         orderId: this.data.orderId,
         eventType: this.data.eventType,
         mediaFileId: upload.fileID,
-        remark: this.data.remark,
+        remark: this.data.remark || (isSanitization ? '服务前隔离病菌消毒打卡' : ''),
         latitude: loc.latitude,
         longitude: loc.longitude,
         clientRequestId: createClientRequestId('checkin'),

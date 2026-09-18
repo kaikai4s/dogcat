@@ -65,6 +65,7 @@ const incidentStatusText = {
 }
 
 const checkinEventText = {
+  sanitization: '隔离病菌/消毒打卡',
   enter_door: '入户打卡',
   leash_on: '牵引出门',
   feed: '喂食',

@@ -117,9 +117,17 @@
     <view class="menu-item" wx:if="{{profile && profile.auditStatus === 'approved'}}" data-url="/pages/staff/training/index" bindtap="go">
       <view class="menu-left">
         <text class="remix-icon ri-graduation-cap-line menu-icon active"></text>
-        <text>培训与视频审核</text>
+        <text>培训 / 视频审核 / 保证金</text>
       </view>
       <view class="badge green">{{profile.onboardingStatusText}}</view>
+    </view>
+    <view class="menu-item" wx:if="{{profile && profile.auditStatus === 'approved'}}" data-url="/pages/staff/supplies/reimbursement/index" bindtap="go">
+      <view class="menu-left">
+        <text class="remix-icon ri-shopping-bag-3-line menu-icon active"></text>
+        <text>首次宠物用品报销</text>
+      </view>
+      <view class="badge pink" wx:if="{{profile.staffLevel === 'certified'}}">认证专享</view>
+      <text class="remix-icon ri-arrow-right-s-line arrow-icon" wx:else></text>
     </view>
     <view class="menu-item" wx:if="{{profile && (profile.staffLevel === 'intern' || profile.promotionStatus === 'pending' || profile.promotionStatus === 'approved' || profile.promotionStatus === 'rejected')}}" data-url="/pages/staff/promotion/index" bindtap="go">
       <view class="menu-left">

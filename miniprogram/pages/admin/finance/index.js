@@ -24,6 +24,26 @@ function decorate(item) {
   return { ...item, amountText: money(item.amount), actionLoading: false }
 }
 
+function parseAmount(value) {
+  const text = String(value).trim()
+  const amount = Number(text)
+  if (!/^\d+(\.\d{1,2})?$/.test(text) || !Number.isFinite(amount) || amount <= 0 || !Number.isSafeInteger(Math.round(amount * 100))) return null
+  return amount
+}
+
+function decorateStaffFinance(item) {
+  const result = { ...item, id: item._id || item.id }
+  ;['amount', 'paidAmount', 'refundedAmount', 'forfeitedAmount', 'availableRefundAmount', 'approvedAmount'].forEach((key) => {
+    result[`${key}Text`] = item[key] === undefined || item[key] === null ? '待核实' : money(item[key])
+  })
+  result.refundPending = ['pending', 'requested', 'refund_requested', 'refund_pending'].includes(item.refundStatus) || ['refund_requested', 'refund_pending'].includes(item.status)
+  result.canForfeit = parseAmount(item.availableRefundAmount) !== null && !['processing', 'refunding', 'success'].includes(item.refundStatus)
+  // Unknown states stay visible but never imply successful payment.
+  result.transferConfirmed = item.status === 'paid' || item.transferStatus === 'SUCCESS'
+  result.mediaFileIds = Array.isArray(item.mediaFileIds) ? item.mediaFileIds : []
+  return result
+}
+
 function metricCards(metrics = {}) {
   return [
     { label: 'GMV', value: `¥${money(metrics.gmv)}`, highlight: true },
@@ -46,6 +66,15 @@ Page({
     earnings: [],
     logs: [],
     requests: [],
+    deposits: [],
+    supplies: [],
+    staffFinanceLoading: false,
+    staffFinanceError: '',
+    actionBusy: false,
+    review: null,
+    reviewAmount: '',
+    reviewRemark: '',
+    eligibilityChecked: false,
     status: '',
     activeTab: 'withdraws',
     startDate: monthStart(),
@@ -60,6 +89,7 @@ Page({
 
   onShow() {
     this.load()
+    this.loadStaffFinance()
   },
 
   query() {
@@ -88,16 +118,30 @@ Page({
       .catch(showError)
   },
 
+  reloadAll() {
+    this.load()
+    this.loadStaffFinance()
+  },
+
+  onPullDownRefresh() {
+    this.reloadAll()
+    setTimeout(() => wx.stopPullDownRefresh(), 500)
+  },
+
   chooseStartDate(e) {
-    this.setData({ startDate: e.detail.value }, this.load)
+    this.setData({ startDate: e.detail.value }, this.reloadAll)
   },
 
   chooseEndDate(e) {
-    this.setData({ endDate: e.detail.value }, this.load)
+    this.setData({ endDate: e.detail.value }, this.reloadAll)
   },
 
   switchTab(e) {
-    this.setData({ activeTab: e.currentTarget.dataset.tab })
+    const tab = e.currentTarget.dataset.tab
+    this.setData({ activeTab: tab })
+    if (tab === 'deposits' || tab === 'supplies') {
+      this.loadStaffFinance()
+    }
   },
 
   filter(e) {
@@ -130,6 +174,163 @@ Page({
           .catch(showError)
       }
     })
+  },
+
+  loadStaffFinance() {
+    this.setData({ staffFinanceLoading: true, staffFinanceError: '' })
+    const query = this.query()
+    Promise.all([
+      callFunction('admin', 'listStaffDeposits', query),
+      callFunction('admin', 'listSupplyReimbursements', query)
+    ])
+      .then(([deposits, supplies]) => {
+        this.setData({
+          deposits: (deposits || []).map(decorateStaffFinance),
+          supplies: (supplies || []).map(decorateStaffFinance),
+          staffFinanceLoading: false
+        })
+      })
+      .catch((err) => {
+        this.setData({ staffFinanceLoading: false, staffFinanceError: err.message || '加载宠托师财务失败' })
+        showError(err)
+      })
+  },
+
+  auditDepositRefund(e) {
+    const id = e.currentTarget.dataset.id
+    const approved = e.currentTarget.dataset.approved === true || e.currentTarget.dataset.approved === 'true'
+    wx.showModal({
+      title: approved ? '审核通过退还保证金' : '驳回退出退款申请',
+      content: approved ? '确认审核通过？将全额退还该宠托师当前可用保证金。' : '确认驳回该退出退款申请？',
+      editable: !approved,
+      placeholderText: !approved ? '请输入驳回原因' : '',
+      success: (res) => {
+        if (!res.confirm) return
+        const reason = (!approved && res.content) ? res.content.trim() : (approved ? '审核通过全额退款' : '')
+        if (!approved && !reason) {
+          wx.showToast({ title: '请填写驳回原因', icon: 'none' })
+          return
+        }
+        wx.showLoading({ title: '处理中...', mask: true })
+        callFunction('admin', 'auditDepositRefund', { id, approved, reason })
+          .then(() => {
+            wx.hideLoading()
+            wx.showToast({ title: approved ? '已通过退款' : '已驳回' })
+            this.loadStaffFinance()
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            showError(err)
+          })
+      }
+    })
+  },
+
+  forfeitDeposit(e) {
+    const id = e.currentTarget.dataset.id
+    const maxAmount = Number(e.currentTarget.dataset.max || 0)
+    wx.showModal({
+      title: '违规没收保证金',
+      content: `输入没收金额（不超过 ¥${maxAmount}）与原因：`,
+      editable: true,
+      placeholderText: '格式：金额|违规原因（如：100|私单服务）',
+      success: (res) => {
+        if (!res.confirm || !res.content) return
+        const parts = res.content.split('|')
+        const amount = Number(parts[0].trim())
+        const reason = (parts[1] || '').trim()
+        if (!amount || amount <= 0 || amount > maxAmount) {
+          wx.showToast({ title: `请输入有效金额（≤${maxAmount}）`, icon: 'none' })
+          return
+        }
+        if (!reason) {
+          wx.showToast({ title: '请填写没收原因（如私单/违规）', icon: 'none' })
+          return
+        }
+        wx.showLoading({ title: '处理中...', mask: true })
+        callFunction('admin', 'forfeitStaffDeposit', { id, amount, reason })
+          .then(() => {
+            wx.hideLoading()
+            wx.showToast({ title: '已执行没收' })
+            this.loadStaffFinance()
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            showError(err)
+          })
+      }
+    })
+  },
+
+  auditSupplyReimbursement(e) {
+    const id = e.currentTarget.dataset.id
+    const approved = e.currentTarget.dataset.approved === true || e.currentTarget.dataset.approved === 'true'
+    const defaultAmount = e.currentTarget.dataset.amount || ''
+    wx.showModal({
+      title: approved ? '审核通过物资报销' : '驳回物资报销申请',
+      content: approved ? `确认审核通过物资报销？核准金额将通过商家转账发放（默认¥${defaultAmount}）：` : '确认驳回该报销申请？',
+      editable: true,
+      placeholderText: approved ? `核准金额（留空默认¥${defaultAmount}）` : '请输入驳回原因',
+      success: (res) => {
+        if (!res.confirm) return
+        let approvedAmount = null
+        let rejectReason = ''
+        if (approved) {
+          approvedAmount = res.content && res.content.trim() ? Number(res.content.trim()) : Number(defaultAmount)
+          if (!Number.isFinite(approvedAmount) || approvedAmount <= 0) {
+            wx.showToast({ title: '请输入有效核准金额', icon: 'none' })
+            return
+          }
+        } else {
+          rejectReason = (res.content || '').trim()
+          if (!rejectReason) {
+            wx.showToast({ title: '请填写驳回原因', icon: 'none' })
+            return
+          }
+        }
+        wx.showLoading({ title: '处理中...', mask: true })
+        callFunction('admin', 'auditSupplyReimbursement', { id, approved, approvedAmount, rejectReason })
+          .then(() => {
+            wx.hideLoading()
+            wx.showToast({ title: approved ? '已通过' : '已驳回' })
+            this.loadStaffFinance()
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            showError(err)
+          })
+      }
+    })
+  },
+
+  paySupplyReimbursement(e) {
+    const id = e.currentTarget.dataset.id
+    wx.showModal({
+      title: '确认发放报销款项',
+      content: '确认执行微信商家转账发放报销？',
+      success: (res) => {
+        if (!res.confirm) return
+        wx.showLoading({ title: '打款中...', mask: true })
+        callFunction('admin', 'paySupplyReimbursement', { id })
+          .then(() => {
+            wx.hideLoading()
+            wx.showToast({ title: '已打款' })
+            this.loadStaffFinance()
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            showError(err)
+          })
+      }
+    })
+  },
+
+  previewReceipt(e) {
+    const urls = e.currentTarget.dataset.urls || []
+    const current = e.currentTarget.dataset.current || ''
+    if (urls.length) {
+      wx.previewImage({ current, urls })
+    }
   },
 
   ...navMethods()

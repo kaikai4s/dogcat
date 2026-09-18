@@ -14,6 +14,59 @@
   </view>
 
   <view class="card">
+    <view class="card-title">入驻保证金与退出退款</view>
+    <view class="muted">资料审核通过后，按平台配置缴纳可退保证金；金额以服务端展示为准，不设默认金额。</view>
+    <view class="guide-box">
+      <view>自愿退出全额退还保证金；有效管理员没收决定涉及的部分除外。</view>
+      <view>首次物资报销由平台另行出资，通过商家转账发放，不是保证金退款。后续每次物资采购均自费。</view>
+    </view>
+    <view class="muted" wx:if="{{depositLoading}}">正在获取保证金状态...</view>
+    <view class="muted" wx:if="{{depositError}}">状态获取失败，请刷新后再操作。</view>
+    <block wx:if="{{depositState}}">
+      <view wx:if="{{depositState.config.amount != null}}">平台配置金额：¥{{depositState.config.amount}}</view>
+      <view class="muted" wx:else>平台尚未提供缴纳金额，请勿自行转账。</view>
+      <view class="muted" wx:if="{{!depositState.config.enabled}}">保证金缴纳当前未开放。</view>
+      <view class="guide-box" wx:if="{{depositState.deposit}}">
+        <view>状态：{{depositState.deposit.statusText || depositState.deposit.status}}</view>
+        <view wx:if="{{depositState.deposit.amount != null}}">应缴：¥{{depositState.deposit.amount}}</view>
+        <view wx:if="{{depositState.deposit.paidAmount != null}}">已缴：¥{{depositState.deposit.paidAmount}}</view>
+        <view wx:if="{{depositState.deposit.refundedAmount != null}}">已退：¥{{depositState.deposit.refundedAmount}}</view>
+        <view wx:if="{{depositState.deposit.forfeitedAmount != null}}">已没收：¥{{depositState.deposit.forfeitedAmount}}</view>
+        <view wx:if="{{depositState.deposit.availableRefundAmount != null}}">可退：¥{{depositState.deposit.availableRefundAmount}}</view>
+        <view wx:if="{{depositState.deposit.refundStatus}}">退款状态：{{depositState.deposit.refundStatus}}</view>
+      </view>
+      <view class="muted" wx:else>暂无保证金记录。</view>
+      <view class="rule-text">{{depositState.config.rulesText}}</view>
+      <view class="rule-text">{{depositState.config.refundRulesText}}</view>
+      <view class="rule-text">{{depositState.config.forfeitRulesText}}</view>
+      <block wx:if="{{depositState.canPay}}">
+        <checkbox-group bindchange="agreeDeposit">
+          <label class="acknowledgement"><checkbox value="agreed" checked="{{depositAgreed}}" disabled="{{depositBusy || depositLoading}}" />我已阅读并同意上述缴纳、退出全额退款及有效管理员没收规则，知悉首次物资报销独立于保证金，需正式认证后申请，后续采购自费。</label>
+        </checkbox-group>
+        <button class="primary-btn" bindtap="payDeposit" loading="{{depositBusy}}" disabled="{{!depositAgreed || depositBusy || depositLoading || depositState.config.amount == null}}">微信支付保证金</button>
+      </block>
+      <block wx:if="{{depositState.canRequestRefund}}">
+        <textarea class="refund-input" placeholder="请填写自愿退出及退款原因" value="{{refundReason}}" bindinput="inputRefundReason" maxlength="500" disabled="{{depositBusy}}" />
+        <button class="ghost-btn" bindtap="requestRefund" disabled="{{depositBusy || depositLoading}}">申请退出 / 保证金退款</button>
+      </block>
+    </block>
+    <button class="ghost-btn" bindtap="loadDeposit" disabled="{{depositBusy || depositLoading}}">刷新保证金及退款状态</button>
+    <view class="muted">支付或退款是否完成均以服务端核实结果为准。</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">视频审核物资与首次报销</view>
+    <view class="guide-box">
+      <view>视频审核必须准备：一次性手套、一次性口罩、宠物安全消毒液。</view>
+      <view>审核标准严格，备齐物资不代表必然通过，其他不符合要求的情况也可能导致审核失败。</view>
+      <view>未获得正式认证不得报销，实习宠托师不具备报销资格。正式认证后仅首次物资可申请平台报销，后续每次采购均由本人承担。</view>
+    </view>
+    <view class="muted">{{depositState.supplies.auditNotice}}</view>
+    <view class="muted">{{depositState.supplies.serviceReminder}}</view>
+    <button class="ghost-btn" bindtap="goReimbursement">首次物资报销 / 查看进度</button>
+  </view>
+
+  <view class="card">
     <view class="card-title">培训进度</view>
     <view class="steps">
       <view class="step {{item.done ? 'done' : ''}}" wx:for="{{steps}}" wx:key="title">
@@ -55,12 +108,25 @@
   </view>
 
   <view class="card audit-card" wx:if="{{videoAuditGuide}}">
-    <view class="card-title">线上视频审核</view>
+    <view class="card-title">线上视频通话审核</view>
     <view class="muted">{{videoAuditGuide.description}}</view>
     <view class="guide-box">
       <view>微信号：{{videoAuditGuide.wechatId}}</view>
       <view>备注：{{videoAuditGuide.remarkTemplate}}</view>
       <view wx:if="{{profile.videoAuditRemark}}">审核备注：{{profile.videoAuditRemark}}</view>
+    </view>
+    <view class="guide-box">
+      <view class="strong-text">【视频通话审核必备物品要求】</view>
+      <view>视频考核时须在镜头前展示已自备齐备的必备防护用品：</view>
+      <view>• 一次性手套（足量自备）</view>
+      <view>• 一次性口罩（足量自备）</view>
+      <view>• 安全的宠物消毒用品（正规安全宠物消毒液/湿巾）</view>
+      <view class="warning-text">平台审核要求上述物品为【必备】，缺一不可。</view>
+    </view>
+    <view class="guide-box warning-box">
+      <view class="strong-text">【严审标准与风险提示】</view>
+      <view>平台对审核员有严格的标准要求，存在考核不通过的风险。备齐物资是参加考核的前提，不代表必然通过；若因专业技能、服务规范或其他原因未正式通过认证，平台不予报销宠物用品。</view>
+      <view class="muted">在正式成为【认证宠托师】后，可申请首次宠物用品报销（每人仅限首次申请，后续用品自备且不报销）。</view>
     </view>
     <button class="primary-btn" wx:if="{{canRequestVideoAudit}}" bindtap="requestVideoAudit">提交线上视频审核申请</button>
     <button class="ghost-btn" wx:elif="{{profile.videoAuditStatus === 'pending'}}">等待管理员审核</button>

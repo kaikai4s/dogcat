@@ -1769,6 +1769,7 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
   await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: created.data._id } })
   await staffFn.main({ module: 'order', action: 'requestEarlyStart', data: { orderId: created.data._id, reason: '测试提前开始' } })
   await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId: created.data._id } })
+  await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: created.data._id, eventType: 'sanitization', mediaFileId: 'cloud://checkin_sanitization.jpg', remark: '已完成消毒打卡', latitude: 31.2, longitude: 121.5 } })
   await staffFn.main({ module: 'order', action: 'startService', data: { id: created.data._id } })
   for (const eventType of ['enter_door', 'pet_status', 'feed', 'water', 'leave_door']) {
     await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: created.data._id, eventType, mediaFileId: 'cloud://checkin.jpg', remark: '已完成打卡', latitude: 31.2, longitude: 121.5 } })
@@ -1782,7 +1783,7 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
   assert.equal(review.ok, true)
   assert.equal(duplicate.ok, false)
   assert.equal(duplicate.message, '该订单已评价')
-  assert.deepEqual(timeline.data.map((item) => item.type), ['created', 'paid', 'assigned', 'early_start_requested', 'early_start_approved', 'started', 'checkin', 'checkin', 'checkin', 'checkin', 'checkin', 'completed', 'reviewed'])
+  assert.deepEqual(timeline.data.map((item) => item.type), ['created', 'paid', 'assigned', 'early_start_requested', 'early_start_approved', 'checkin', 'started', 'checkin', 'checkin', 'checkin', 'checkin', 'checkin', 'completed', 'reviewed'])
 })
 
 test('real-device acceptance core flow covers client staff admin lifecycle', async () => {
@@ -1833,6 +1834,7 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   const directAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: directOrder.data._id } })
   await staffFn.main({ module: 'order', action: 'requestEarlyStart', data: { orderId: directOrder.data._id, reason: '验收提前开始' } })
   await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId: directOrder.data._id } })
+  await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: directOrder.data._id, eventType: 'sanitization', mediaFileId: 'cloud://checkin_sanitization.jpg', remark: '服务前隔离消毒', latitude: 31.21, longitude: 121.49, clientRequestId: 'checkin_sanitization' } })
   const started = await staffFn.main({ module: 'order', action: 'startService', data: { id: directOrder.data._id } })
   const track = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p1', batchId: 'b1', latitude: 31.21, longitude: 121.49, recordedAt: '2099-07-28 10:05', isBackfilled: false }, { clientPointId: 'p2', batchId: 'b1', latitude: 31.22, longitude: 121.5, recordedAt: '2099-07-28 10:06', isBackfilled: true }] } })
   const duplicateTrack = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p2', batchId: 'b2', latitude: 31.22, longitude: 121.5, recordedAt: '2099-07-28 10:06', isBackfilled: true }] } })
@@ -1862,7 +1864,7 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   assert.equal(duplicateTrack.data.count, 0)
   assert.equal(finished.ok, true)
   assert.equal(report.data.tracks.length, 2)
-  assert.equal(report.data.checkins.length, 5)
+  assert.equal(report.data.checkins.length, 6)
   assert.equal(review.ok, true)
   assert.equal(balance.data.available, 80)
   assert.equal(withdraw.ok, true)

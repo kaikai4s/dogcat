@@ -6,6 +6,11 @@
   </view>
 
   <view class="settings-grid">
+    <view class="admin-compact-card setting-overview-card" data-panel="staffPolicy" bindtap="openSettingModal">
+      <view class="admin-summary-title">宠托师保证金与用品报销</view>
+      <view class="setting-summary-line">保证金{{settings.staffDeposit.enabled ? '已启用' : '未启用'}} · ¥{{settings.staffDeposit.amount}}；用品报销独立由平台出资，绝不扣减保证金。</view>
+      <view class="setting-summary-line">正式认证后仅首次申请可报销，实习阶段不可申请。</view>
+    </view>
     <view class="admin-compact-card setting-overview-card" data-panel="debug" bindtap="openSettingModal">
       <view class="admin-summary-row">
         <view class="admin-summary-main">
@@ -130,6 +135,7 @@
   <view class="modal-backdrop" wx:if="{{showSettingModal}}" bindtap="closeSettingModal" catchtouchmove="noop">
     <view class="modal-card settings-modal-card" catchtap="noop">
       <view class="modal-header">
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'staffPolicy'}}">保证金与用品报销</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'debug'}}">开发调试</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'petBreedAi'}}">宠物档案 AI</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'payment'}}">支付与退款</view>
@@ -144,6 +150,27 @@
       </view>
 
       <scroll-view scroll-y class="modal-scroll-body settings-modal-scroll">
+        <view wx:if="{{activeSettingPanel === 'staffPolicy'}}" class="setting-modal-section">
+          <view class="policy-notice">自愿退出时保证金全额原路退回，仅减去管理员有记录依据的违规没收及已退部分。用品报销不占用、不抵扣保证金。</view>
+          <view class="field-item"><text class="label">保证金金额（元，精确到分）</text><input class="input" type="digit" value="{{settings.staffDeposit.amount}}" data-field="staffDeposit.amount" bindinput="staffPolicyInput" /></view>
+          <view class="compact-toggle-row"><text>启用保证金（必须先配置正数金额）</text><switch checked="{{settings.staffDeposit.enabled}}" bindchange="staffDepositToggle" /></view>
+          <view class="field-item"><text class="label">保证金说明</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffDeposit.rulesText}}" data-field="staffDeposit.rulesText" bindinput="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">自愿退出退款规则</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffDeposit.refundRulesText}}" data-field="staffDeposit.refundRulesText" bindinput="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">违规没收规则</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffDeposit.forfeitRulesText}}" data-field="staffDeposit.forfeitRulesText" bindinput="staffPolicyInput" /></view>
+          <view class="section-title">平台出资的用品报销</view>
+          <view class="policy-notice">只有正式认证（不是实习）后首次申请可报销。视频审核必查手套、口罩、宠物安全消毒用品；用品齐全不代表考核通过，严格考核未通过不报销。</view>
+          <view class="compact-toggle-row"><text>启用用品报销申请</text><switch checked="{{settings.staffSupplies.reimbursementEnabled}}" data-field="staffSupplies.reimbursementEnabled" bindchange="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">必备用品（每行一项，三类基础用品不可省略）</text><textarea class="input textarea-input" maxlength="-1" value="{{requiredItemsText}}" data-field="requiredItemsText" bindinput="policyTextInput" /></view>
+          <view class="field-item"><text class="label">严格审核说明</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffSupplies.auditNotice}}" data-field="staffSupplies.auditNotice" bindinput="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">服务前用品提醒</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffSupplies.serviceReminder}}" data-field="staffSupplies.serviceReminder" bindinput="staffPolicyInput" /></view>
+          <view class="section-title">微信商家转账</view>
+          <view class="policy-notice">商户须单独开通商家转账产品并获批适用场景；配置开关不代表已开通。复用已有支付凭据，不在此展示密钥。转账提交、处理中或待用户确认均不等于到账，须以后端查询/回调确认为准。</view>
+          <view class="compact-toggle-row"><text>启用商家转账</text><switch checked="{{settings.staffSupplies.transfer.enabled}}" data-field="staffSupplies.transfer.enabled" bindchange="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">已获批的真实场景 ID</text><input class="input" value="{{settings.staffSupplies.transfer.sceneId}}" data-field="staffSupplies.transfer.sceneId" bindinput="staffPolicyInput" placeholder="以商户平台批准的值为准，无默认值" /></view>
+          <view class="field-item"><text class="label">收款用户感知</text><input class="input" value="{{settings.staffSupplies.transfer.userRecvPerception}}" data-field="staffSupplies.transfer.userRecvPerception" bindinput="staffPolicyInput" placeholder="填写获批场景允许的真实文案" /></view>
+          <view class="field-item"><text class="label">场景报备信息（JSON 数组）</text><textarea class="input textarea-input report-json" maxlength="-1" value="{{sceneReportInfosText}}" data-field="sceneReportInfosText" bindinput="policyTextInput" /><view class="muted">每项填写 info_type 和 info_content，严格使用获批场景要求，不使用示例或虚构 ID。</view></view>
+          <view class="policy-notice danger-notice">原生转账单笔 ≥ ¥2,000 时需要额外的收款人实名信息加密支持；后端未支持前不要发起。开通、限额和实际到账以微信及后端结果为准。</view>
+        </view>
         <view wx:if="{{activeSettingPanel === 'debug'}}" class="setting-modal-section">
           <view class="compact-toggle-row">
             <view class="compact-toggle-main">

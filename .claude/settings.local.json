@@ -50,7 +50,8 @@
       "Bash(mkdir -p /home/ebrook-dev/project/dogcat/miniprogram/packagePlayground/assets/dog/__TRACKED_VAR__)",
       "Bash(cp '/home/ebrook-dev/project/dogcat/wechat_golden_retriever_animation_pack/assets/dog/__TRACKED_VAR__/frame_*.png' /home/ebrook-dev/project/dogcat/miniprogram/packagePlayground/assets/dog/__TRACKED_VAR__/)",
       "Bash(cp \"/home/ebrook-dev/project/dogcat/wechat_golden_retriever_animation_pack/assets/dog/manifest.json\" \"/home/ebrook-dev/project/dogcat/miniprogram/packagePlayground/assets/dog/manifest.json\")",
-      "Bash(command -v miniprogram-ci)"
+      "Bash(command -v miniprogram-ci)",
+      "WebFetch(domain:pay.wechatpay.cn)"
     ]
   }
 }

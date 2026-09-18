@@ -172,7 +172,8 @@
         "checkin/camera/index",
         "sos/index",
         "incidents/list/index",
-        "incidents/detail/index"
+        "incidents/detail/index",
+        "supplies/reimbursement/index"
       ]
     },
     {
