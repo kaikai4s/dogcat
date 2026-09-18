@@ -289,7 +289,7 @@
             <view class="field-item"><text class="label">排序</text><input class="input" type="number" value="{{v.sort}}" data-index="{{vIndex}}" data-field="sort" bindinput="trainingVideoInput" placeholder="数字越小越靠前" /></view>
             <view class="field-item">
               <text class="label">视频文件</text>
-              <view class="upload-trigger" data-index="{{vIndex}}" bindtap="chooseTrainingVideoFile"><view wx:if="{{v.tempUrl}}" class="upload-placeholder">已上传视频，点击重新上传</view><view wx:else class="upload-placeholder">{{uploadingTrainingVideo ? '上传中...' : '+ 上传培训视频'}}</view></view>
+              <view class="upload-trigger" data-index="{{vIndex}}" bindtap="chooseTrainingVideoFile"><view wx:if="{{v.fileId}}" class="upload-placeholder">已上传视频，点击重新上传</view><view wx:else class="upload-placeholder">{{uploadingTrainingVideo ? '上传中...' : '+ 上传培训视频'}}</view></view>
               <view class="checkin-share-file" wx:if="{{v.fileId}}">{{v.fileId}}</view>
             </view>
             <view class="field-item">

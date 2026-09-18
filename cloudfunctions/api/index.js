@@ -1062,7 +1062,7 @@ function timeRangesOverlap(startA, endA, startB, endB) {
   return aStart > 0 && aEnd > aStart && bStart > 0 && bEnd > bStart && aStart < bEnd && bStart < aEnd
 }
 
-async function validateStaffAvailability(profile, startTimeStr, endTimeStr, options = {}) {
+async function validateStaffScheduleOnly(profile, startTimeStr, endTimeStr) {
   if (!profile || !profile.openid) throw new Error('宠托师不可用')
   const dateKey = getDateKeyFromTime(startTimeStr)
   if (!dateKey) throw new Error('请选择服务时间')
@@ -1074,6 +1074,10 @@ async function validateStaffAvailability(profile, startTimeStr, endTimeStr, opti
   } else {
     validateSitterScheduleTime(profile.weeklySchedule, startTimeStr, endTimeStr)
   }
+}
+
+async function validateStaffAvailability(profile, startTimeStr, endTimeStr, options = {}) {
+  await validateStaffScheduleOnly(profile, startTimeStr, endTimeStr)
 
   const orderRes = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
   const conflict = (orderRes.data || []).find((order) => {
@@ -1081,6 +1085,35 @@ async function validateStaffAvailability(profile, startTimeStr, endTimeStr, opti
     return isOrderConflictCandidate(order) && timeRangesOverlap(startTimeStr, endTimeStr, order.startTime, order.endTime)
   })
   if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
+}
+
+function buildAcceptRiskNotice(warnings = []) {
+  return {
+    requiresConfirmation: warnings.length > 0,
+    warnings,
+    noticeTitle: '超出接单设置确认',
+    noticeItems: [
+      '接单后必须按订单约定时间准时出发并完成服务，不得因距离较远或非本人常规接单时间擅自迟到、爽约或降低服务质量。',
+      '未按规定时间服务、未及时出发、无法按时到达或服务缺失，可能导致客户投诉、订单退款、差评、收益扣减或保证金/信用处罚。',
+      '若服务过程中发生异常，应第一时间联系客户并在平台内留痕，必要时联系平台客服协助处理。',
+      '继续接单即表示你已充分评估交通、时间、服务距离和自身安排，并承诺遵守平台履约规范。'
+    ]
+  }
+}
+
+async function checkAcceptOrderRisk(profile, order) {
+  const warnings = []
+  const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+  const distanceKm = calcDistanceKm(profile.serviceLatitude, profile.serviceLongitude, order.addressLatitude, order.addressLongitude)
+  if (distanceKm !== null && distanceKm > radiusKm) {
+    warnings.push({ type: 'range', title: '订单地址超出你的接单范围', detail: `订单距离约 ${formatDistance(distanceKm)}，已超出你设置的 ${radiusKm}km 接单范围。`, distanceKm, radiusKm })
+  }
+  try {
+    await validateStaffScheduleOnly(profile, order.startTime, order.endTime)
+  } catch (error) {
+    warnings.push({ type: 'time', title: '订单时间不在你的接单时间内', detail: error.message || '订单服务时间不在你设置的可接单时间段内。' })
+  }
+  return buildAcceptRiskNotice(warnings)
 }
 
 async function buildStaffAvailability(profile, startDateKey = '', days = 14) {
@@ -1297,6 +1330,11 @@ function normalizeExtraPetRule(value, key) {
   return defaultExtraPetRuleForService(key)
 }
 
+function normalizeServiceCaseImageFileIds(value) {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.map((item) => safeText(item).trim()).filter(Boolean))).slice(0, 9)
+}
+
 function normalizeServicePrice(item) {
   const key = String(item.key || '').trim()
   const preset = defaultServicePrices.find((presetItem) => presetItem.key === key)
@@ -1316,7 +1354,9 @@ function normalizeServicePrice(item) {
     showOnHome,
     enabled,
     sortOrder: Number(item.sortOrder || 0),
-    description: item.description || '',
+    description: safeText(item.description || '').trim(),
+    detailDescription: safeText(item.detailDescription || '').trim(),
+    caseImageFileIds: normalizeServiceCaseImageFileIds(item.caseImageFileIds),
     isPreset: Boolean(preset)
   }
 }
@@ -6797,6 +6837,30 @@ const handlers = {
       }
       return Promise.all(list.map(decorate))
     }
+    if (action === 'checkAcceptOrderRisk') {
+      const user = await getUser(openid)
+      if (!user.roles.includes('staff')) throw new Error('仅员工可接单')
+      const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
+      const profile = normalizeStaffWorkflow(profileRes.data[0])
+      if (!profile || !canTakeOrders(profile)) throw new Error('完成培训和视频审核成为实习宠托师后方可接单')
+      if (!hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) || !profile.serviceAddress) {
+        throw new Error('请先在个人中心设置固定服务地址与接单范围，方可接单')
+      }
+      const orderRes = await db.collection('orders').doc(data.orderId).get()
+      const order = await expireUnacceptedOrder(data.orderId, orderRes.data)
+      assertOrderTransition(order.status, ORDER_STATUS.ASSIGNED, '订单状态不可接单')
+      if (order.staffOpenid) throw new Error('订单已被分配')
+      const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
+      if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
+      if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
+      const orderResForConflict = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
+      const conflict = (orderResForConflict.data || []).find((item) => {
+        if (item._id === data.orderId) return false
+        return isOrderConflictCandidate(item) && timeRangesOverlap(order.startTime, order.endTime, item.startTime, item.endTime)
+      })
+      if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
+      return checkAcceptOrderRisk(profile, order)
+    }
     if (action === 'acceptOrder') {
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅员工可接单')
@@ -6813,9 +6877,20 @@ const handlers = {
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
-      await validateStaffAvailability(profile, order.startTime, order.endTime, { excludeOrderId: data.orderId })
+      const risk = await checkAcceptOrderRisk(profile, order)
+      const orderResForConflict = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
+      const conflict = (orderResForConflict.data || []).find((item) => {
+        if (item._id === data.orderId) return false
+        return isOrderConflictCandidate(item) && timeRangesOverlap(order.startTime, order.endTime, item.startTime, item.endTime)
+      })
+      if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
+      if (risk.requiresConfirmation && data.riskConfirmed !== true) throw new Error('请先阅读并确认超出接单设置的履约责任')
       const time = now()
       const assignmentUpdate = { staffUserId: user._id, staffOpenid: openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: publishMode === 'direct' ? 'direct_accept' : 'open_grab', assignedAt: time, updatedAt: time }
+      if (risk.requiresConfirmation) {
+        assignmentUpdate.acceptRiskConfirmedAt = time
+        assignmentUpdate.acceptRiskWarnings = risk.warnings
+      }
       await updateOrderWhenStatus(data.orderId, ORDER_STATUS.PAID, assignmentUpdate, '订单已被分配', { staffOpenid: '' })
       const assignedOrder = { ...order, _id: data.orderId, ...assignmentUpdate }
       const assignedTitle = publishMode === 'direct' ? '指定宠托师已接单' : '宠托师已抢单'
@@ -7635,6 +7710,8 @@ const handlers = {
         showOnHome: key === VISIT_FEE_SERVICE_KEY ? false : Boolean(data.showOnHome),
         enabled: data.enabled !== false,
         description: safeText(data.description || (preset && preset.description)).trim(),
+        detailDescription: safeText(data.detailDescription).trim().slice(0, 5000),
+        caseImageFileIds: normalizeServiceCaseImageFileIds(data.caseImageFileIds),
         sortOrder: Number(data.sortOrder || (preset && preset.sortOrder) || 100),
         updatedAt: time
       })
@@ -7668,7 +7745,15 @@ const handlers = {
       const time = now()
       await Promise.all(defaultServicePrices.map(async (preset) => {
         const existing = await db.collection('service_prices').where({ key: preset.key }).limit(1).get()
-        const payload = { ...normalizeServicePrice(preset), updatedAt: time }
+        const existingItem = existing.data[0] || {}
+        const payload = {
+          ...normalizeServicePrice({
+            ...preset,
+            detailDescription: existingItem.detailDescription || '',
+            caseImageFileIds: existingItem.caseImageFileIds || []
+          }),
+          updatedAt: time
+        }
         if (existing.data[0]) return db.collection('service_prices').doc(existing.data[0]._id).update({ data: payload })
         return db.collection('service_prices').add({ data: { ...payload, createdAt: time } })
       }))

@@ -95,6 +95,24 @@ function markSelected(options, selected) {
   return normalizeServiceOptions(options).map((item) => ({ ...item, selected: selected.includes(item.key), isVisitFee: item.key === VISIT_FEE_SERVICE_KEY }))
 }
 
+function buildSelectedServiceDetails(options, selected, expandedMap = {}, urlMap = {}) {
+  return (options || []).filter((item) => selected.includes(item.key)).map((item) => {
+    const detailText = String(item.detailDescription || item.description || '').trim()
+    const expanded = Boolean(expandedMap[item.key])
+    const isLong = detailText.length > 96
+    const caseImageFileIds = Array.isArray(item.caseImageFileIds) ? item.caseImageFileIds.filter(Boolean) : []
+    return {
+      ...item,
+      detailText,
+      detailDisplayText: isLong && !expanded ? `${detailText.slice(0, 96)}...` : detailText,
+      detailExpanded: expanded,
+      detailLong: isLong,
+      caseImageFileIds,
+      caseImageUrls: caseImageFileIds.map((id) => urlMap[id] || id)
+    }
+  })
+}
+
 function getSpeciesLabel(species) {
   if (species === 'cat') return '猫咪'
   if (species === 'other') return '其他宠物'
@@ -172,6 +190,9 @@ Page({
     user: null,
     pets: [],
     serviceOptions: [],
+    selectedServiceDetails: [],
+    serviceDetailExpanded: {},
+    serviceCaseUrlMap: {},
     durationOptions,
     lockMethodOptions,
     durationIndex: 1,
@@ -298,14 +319,19 @@ Page({
         const serviceTypes = ensureVisitFeeServiceTypes(selected, fallbackBusinessKey).filter((key) => enabled.some((item) => item.key === key))
         const selectedPetIds = normalizeSelectedPetIds(this.data.form.petIds, this.data.form.petId).filter((id) => pets.some((pet) => pet._id === id))
         const petIds = selectedPetIds.length ? selectedPetIds : [pets[0]?._id].filter(Boolean)
+        const serviceOptionsWithSelected = markSelected(enabled, serviceTypes)
         this.setData({
           pets: decoratePets(pets, petIds),
-          serviceOptions: markSelected(enabled, serviceTypes),
+          serviceOptions: serviceOptionsWithSelected,
+          selectedServiceDetails: buildSelectedServiceDetails(serviceOptionsWithSelected, serviceTypes, this.data.serviceDetailExpanded, this.data.serviceCaseUrlMap),
           ['form.petId']: petIds[0] || '',
           ['form.petIds']: petIds,
           ['form.serviceTypes']: serviceTypes,
           ['form.serviceType']: getPrimaryBusinessService(serviceTypes)
-        }, this.syncSelectedPetUI)
+        }, () => {
+          this.syncSelectedPetUI()
+          this.resolveServiceCaseUrls(serviceOptionsWithSelected)
+        })
       })
       .catch(showError)
   },
@@ -397,6 +423,7 @@ Page({
       .then((template) => {
         const serviceTypes = ensureVisitFeeServiceTypes(template.serviceTypes || [template.serviceType])
         const petIds = normalizeSelectedPetIds(template.petIds, template.petId)
+        const serviceOptionsWithSelected = markSelected(this.data.serviceOptions, serviceTypes)
         const update = {
           ['form.sourceOrderId']: template.sourceOrderId,
           ['form.petId']: petIds[0] || '',
@@ -413,7 +440,8 @@ Page({
           ['form.staffProfileId']: template.staffProfileId,
           locationReady: Boolean(template.serviceAddress),
           locationTip: '已从历史订单带入地址',
-          serviceOptions: markSelected(this.data.serviceOptions, serviceTypes),
+          serviceOptions: serviceOptionsWithSelected,
+          selectedServiceDetails: buildSelectedServiceDetails(serviceOptionsWithSelected, serviceTypes, this.data.serviceDetailExpanded, this.data.serviceCaseUrlMap),
           quote: null
         }
         const durationIndex = durationOptions.findIndex((item) => item.value === template.durationMinutes)
@@ -512,6 +540,49 @@ Page({
     this.setData({ ['form.keyImageFileIds']: ids, quote: null })
   },
 
+  syncSelectedServiceDetails() {
+    this.setData({
+      selectedServiceDetails: buildSelectedServiceDetails(this.data.serviceOptions, this.data.form.serviceTypes, this.data.serviceDetailExpanded, this.data.serviceCaseUrlMap)
+    })
+  },
+
+  resolveServiceCaseUrls(options = this.data.serviceOptions) {
+    const ids = Array.from(new Set((options || []).reduce((list, item) => list.concat(item.caseImageFileIds || []), []).filter(Boolean)))
+    if (!ids.length) {
+      this.setData({ serviceCaseUrlMap: {} }, this.syncSelectedServiceDetails)
+      return
+    }
+    wx.cloud.getTempFileURL({
+      fileList: ids,
+      success: (res) => {
+        const map = {}
+        ;(res.fileList || []).forEach((item) => { map[item.fileID] = item.tempFileURL || item.fileID })
+        ids.forEach((id) => { if (!map[id]) map[id] = id })
+        this.setData({ serviceCaseUrlMap: map }, this.syncSelectedServiceDetails)
+      },
+      fail: () => this.syncSelectedServiceDetails()
+    })
+  },
+
+  toggleServiceDetail(e) {
+    const key = e.currentTarget.dataset.key
+    if (!key) return
+    const expanded = { ...this.data.serviceDetailExpanded, [key]: !this.data.serviceDetailExpanded[key] }
+    this.setData({ serviceDetailExpanded: expanded }, this.syncSelectedServiceDetails)
+  },
+
+  previewServiceCases(e) {
+    const key = e.currentTarget.dataset.key
+    const detail = (this.data.selectedServiceDetails || []).find((item) => item.key === key)
+    if (!detail) return
+    const urls = (detail.caseImageUrls && detail.caseImageUrls.length ? detail.caseImageUrls : detail.caseImageFileIds || []).filter(Boolean)
+    if (!urls.length) {
+      wx.showToast({ title: '暂无服务案例图片', icon: 'none' })
+      return
+    }
+    wx.previewImage({ current: urls[0], urls })
+  },
+
   syncSelectedPetUI() {
     const petIds = normalizeSelectedPetIds(this.data.form.petIds, this.data.form.petId)
     const pets = decoratePets(this.data.pets, petIds)
@@ -559,7 +630,14 @@ Page({
       wx.showToast({ title: '至少选择一项照护服务', icon: 'none' })
       return
     }
-    this.setData({ ['form.serviceTypes']: serviceTypes, ['form.serviceType']: getPrimaryBusinessService(serviceTypes), serviceOptions: markSelected(this.data.serviceOptions, serviceTypes), quote: null })
+    const serviceOptionsWithSelected = markSelected(this.data.serviceOptions, serviceTypes)
+    this.setData({
+      ['form.serviceTypes']: serviceTypes,
+      ['form.serviceType']: getPrimaryBusinessService(serviceTypes),
+      serviceOptions: serviceOptionsWithSelected,
+      selectedServiceDetails: buildSelectedServiceDetails(serviceOptionsWithSelected, serviceTypes, this.data.serviceDetailExpanded, this.data.serviceCaseUrlMap),
+      quote: null
+    })
   },
 
   chooseDate(e) {

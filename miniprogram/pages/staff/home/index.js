@@ -128,7 +128,12 @@ Page({
     staffRadiusKm: 5,
     staffSchedule: null,
     messageUnreadCount: 0,
-    messageHasUnread: false
+    messageHasUnread: false,
+    acceptRisk: null,
+    acceptRiskStep: 1,
+    acceptRiskAgreed: false,
+    pendingAcceptOrderId: '',
+    acceptingRiskOrder: false
   },
 
   onShow() {
@@ -404,13 +409,53 @@ Page({
 
   accept(e) {
     const orderId = e.currentTarget.dataset.id
-    callFunction('staff', 'acceptOrder', { orderId })
+    this.prepareAcceptOrder(orderId)
+  },
+
+  prepareAcceptOrder(orderId) {
+    if (!orderId) return
+    callFunction('staff', 'checkAcceptOrderRisk', { orderId })
+      .then((risk) => {
+        if (risk && risk.requiresConfirmation) {
+          this.setData({ acceptRisk: risk, acceptRiskStep: 1, acceptRiskAgreed: false, pendingAcceptOrderId: orderId })
+          return
+        }
+        this.submitAcceptOrder(orderId, false)
+      })
+      .catch(showError)
+  },
+
+  submitAcceptOrder(orderId, riskConfirmed) {
+    this.setData({ acceptingRiskOrder: true })
+    callFunction('staff', 'acceptOrder', { orderId, riskConfirmed: riskConfirmed === true })
       .then(() => {
         wx.showToast({ title: '接单成功' })
+        this.closeAcceptRiskModal()
         const location = this.data.customLocation || this.data.currentWorkbenchLocation
         if (location) this.loadNearby(location, '已按工作台位置推荐订单')
         else this.loadNearbyWithSavedLocation()
       })
       .catch(showError)
+      .finally(() => this.setData({ acceptingRiskOrder: false }))
+  },
+
+  continueAcceptRisk() {
+    this.setData({ acceptRiskStep: 2, acceptRiskAgreed: false })
+  },
+
+  toggleAcceptRiskAgreed() {
+    this.setData({ acceptRiskAgreed: !this.data.acceptRiskAgreed })
+  },
+
+  confirmRiskAccept() {
+    if (!this.data.acceptRiskAgreed) {
+      wx.showToast({ title: '请先确认已阅读并会遵守规定', icon: 'none' })
+      return
+    }
+    this.submitAcceptOrder(this.data.pendingAcceptOrderId, true)
+  },
+
+  closeAcceptRiskModal() {
+    this.setData({ acceptRisk: null, acceptRiskStep: 1, acceptRiskAgreed: false, pendingAcceptOrderId: '' })
   }
 })

@@ -917,12 +917,28 @@ test('admin can manage service prices and quote uses configured price', async ()
   const clientFn = loadCloudFunction('api', db, 'openid_client')
 
   const listResult = await adminFn.main({ module: 'admin', action: 'listServicePrices' })
-  const saveResult = await adminFn.main({ module: 'admin', action: 'saveServicePrice', data: { key: 'feed', price: 88, enabled: true } })
+  const saveResult = await adminFn.main({
+    module: 'admin',
+    action: 'saveServicePrice',
+    data: {
+      key: 'feed',
+      price: 88,
+      enabled: true,
+      detailDescription: '详细喂养流程\n包含换粮换水',
+      caseImageFileIds: ['cloud://case-a.jpg', 'cloud://case-a.jpg', 'cloud://case-b.jpg']
+    }
+  })
+  const clientOptions = await clientFn.main({ module: 'order', action: 'listServiceOptions' })
   const quoteResult = await clientFn.main({ module: 'order', action: 'quoteOrder', data: { petId: 'p1', serviceTypes: ['visit_fee', 'feed'], durationMinutes: 60 } })
 
   assert.equal(listResult.ok, true)
   assert.ok(listResult.data.some((item) => item.key === 'walk'))
   assert.equal(saveResult.ok, true)
+  assert.equal(saveResult.data.detailDescription, '详细喂养流程\n包含换粮换水')
+  assert.deepEqual(saveResult.data.caseImageFileIds, ['cloud://case-a.jpg', 'cloud://case-b.jpg'])
+  assert.equal(clientOptions.ok, true)
+  assert.equal(clientOptions.data.find((item) => item.key === 'feed').detailDescription, '详细喂养流程\n包含换粮换水')
+  assert.deepEqual(clientOptions.data.find((item) => item.key === 'feed').caseImageFileIds, ['cloud://case-a.jpg', 'cloud://case-b.jpg'])
   assert.equal(quoteResult.ok, true)
   assert.equal(quoteResult.data.payAmount, 118)
   assert.equal(listResult.data.find((item) => item.key === 'walk').extraPetFee, 30)

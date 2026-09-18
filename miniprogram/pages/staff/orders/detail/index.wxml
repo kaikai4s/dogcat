@@ -122,6 +122,34 @@
     </view>
   </view>
 
+  <view class="risk-modal-mask" wx:if="{{acceptRisk}}" catchtap="closeAcceptRiskModal">
+    <view class="risk-modal" catchtap="true">
+      <view class="risk-modal-head">
+        <view class="risk-title">{{acceptRisk.noticeTitle}}</view>
+        <view class="risk-close" bindtap="closeAcceptRiskModal">×</view>
+      </view>
+      <view wx:if="{{acceptRiskStep === 1}}">
+        <view class="risk-desc">该订单与你的接单设置不完全匹配，请确认是否仍要继续接单。</view>
+        <view class="risk-warning" wx:for="{{acceptRisk.warnings}}" wx:key="type">
+          <view class="risk-warning-title">{{item.title}}</view>
+          <view class="risk-warning-detail">{{item.detail}}</view>
+        </view>
+        <button class="primary-btn risk-action" bindtap="continueAcceptRisk">我已知晓，继续接单</button>
+        <button class="ghost-btn risk-action" bindtap="closeAcceptRiskModal">取消</button>
+      </view>
+      <view wx:else>
+        <view class="risk-desc strong">请阅读以下履约影响与处罚说明</view>
+        <view class="risk-rule" wx:for="{{acceptRisk.noticeItems}}" wx:key="*this">{{index + 1}}. {{item}}</view>
+        <label class="risk-check" bindtap="toggleAcceptRiskAgreed">
+          <checkbox checked="{{acceptRiskAgreed}}" color="#ff7a45" />
+          <text>我已阅读并会遵守相关规定</text>
+        </label>
+        <button class="primary-btn risk-action {{acceptRiskAgreed ? '' : 'disabled'}}" loading="{{acceptingRiskOrder}}" disabled="{{!acceptRiskAgreed || acceptingRiskOrder}}" bindtap="confirmRiskAccept">确认接单</button>
+        <button class="ghost-btn risk-action" disabled="{{acceptingRiskOrder}}" bindtap="closeAcceptRiskModal">取消</button>
+      </view>
+    </view>
+  </view>
+
   <view class="bottom-fixed-actions">
     <button class="ghost-btn nav-action-btn" bindtap="openNavigation">
       <text class="remix-icon ri-map-pin-line"></text>导航到地址

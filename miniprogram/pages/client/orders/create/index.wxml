@@ -98,9 +98,27 @@
           <view class="remix-icon ri-service-line option-icon"></view>
           <view class="service-title">{{item.label}}</view>
           <view class="service-price">¥{{item.price}} 起</view>
-          <view class="service-desc">{{item.description}}</view>
+          <view class="service-desc service-desc-clamp">{{item.description}}</view>
         </view>
       </block>
+    </view>
+
+    <view class="selected-service-section" wx:if="{{selectedServiceDetails.length}}">
+      <view class="selected-service-title">已选服务说明</view>
+      <view class="selected-service-card" wx:for="{{selectedServiceDetails}}" wx:key="key">
+        <view class="selected-service-head">
+          <view>
+            <view class="service-title">{{item.label}}</view>
+            <view class="service-price">¥{{item.price}}{{item.isVisitFee ? '' : ' 起'}}</view>
+          </view>
+          <view class="fixed-badge" wx:if="{{item.isVisitFee}}">固定必选</view>
+        </view>
+        <view class="service-detail-text">{{item.detailDisplayText || '暂无详细说明'}}</view>
+        <view class="service-detail-actions">
+          <view class="service-expand" wx:if="{{item.detailLong}}" data-key="{{item.key}}" catchtap="toggleServiceDetail">{{item.detailExpanded ? '收起说明' : '展开完整说明'}}</view>
+          <view class="service-case-link" wx:if="{{item.caseImageFileIds.length}}" data-key="{{item.key}}" catchtap="previewServiceCases">点击查看服务案例</view>
+        </view>
+      </view>
     </view>
   </view>
 

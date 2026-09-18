@@ -29,6 +29,7 @@
       <view class="meta-chip">标准加宠 ¥{{item.extraPetFee}}</view>
       <view class="meta-chip">实习加宠 ¥{{item.internExtraPetFee}}</view>
       <view class="meta-chip" wx:if="{{item.showOnHome}}">首页展示</view>
+      <view class="meta-chip chip-primary" wx:if="{{item.caseImageFileIds.length}}">案例图 {{item.caseImageFileIds.length}} 张</view>
       <view class="meta-chip" wx:if="{{item.description}}">{{item.description}}</view>
     </view>
   </view>
@@ -102,11 +103,26 @@
         </view>
 
         <input type="number" placeholder="排序，数字越小越靠前" value="{{priceForm.sortOrder}}" data-field="sortOrder" bindinput="input" />
-        <textarea placeholder="服务说明" value="{{priceForm.description}}" data-field="description" bindinput="input" />
+        <textarea placeholder="服务说明（简短展示在服务卡片上）" maxlength="200" value="{{priceForm.description}}" data-field="description" bindinput="input" />
+        <textarea class="detail-textarea" placeholder="详细说明（展示在用户下单页，可填写服务流程、包含内容、注意事项等）" maxlength="5000" value="{{priceForm.detailDescription}}" data-field="detailDescription" bindinput="input" />
+
+        <view class="case-section">
+          <view class="compact-switch-row case-head">
+            <view><view class="strong">服务案例图片</view><view class="muted">用户下单时可查看，最多9张</view></view>
+            <button class="mini-btn" loading="{{uploadingServiceCase}}" disabled="{{uploadingServiceCase || priceForm.caseImageFileIds.length >= 9}}" catchtap="chooseServiceCaseImages">上传图片</button>
+          </view>
+          <view class="case-grid" wx:if="{{priceForm.caseImageFileIds.length}}">
+            <view class="case-thumb" wx:for="{{priceForm.caseImageFileIds}}" wx:key="*this">
+              <image class="case-image" mode="aspectFill" src="{{priceForm.caseImageUrls[index] || item}}" data-url="{{priceForm.caseImageUrls[index] || item}}" bindtap="previewServiceCaseImage" />
+              <view class="case-remove" data-index="{{index}}" catchtap="removeServiceCaseImage">×</view>
+            </view>
+          </view>
+          <view class="muted" wx:else>暂未上传案例图片</view>
+        </view>
       </scroll-view>
       <view class="modal-actions">
-        <button class="primary" style="flex: 2;" bindtap="savePriceForm">保存服务</button>
-        <button class="ghost" style="flex: 1;" bindtap="closePriceModal">取消</button>
+        <button class="primary" style="flex: 2;" loading="{{uploadingServiceCase}}" disabled="{{uploadingServiceCase}}" bindtap="savePriceForm">保存服务</button>
+        <button class="ghost" style="flex: 1;" disabled="{{uploadingServiceCase}}" bindtap="closePriceModal">取消</button>
       </view>
     </view>
   </view>

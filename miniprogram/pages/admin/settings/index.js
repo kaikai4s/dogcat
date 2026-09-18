@@ -118,6 +118,19 @@ function createEmptyQuizQuestion() {
   }
 }
 
+function formatFileSize(size) {
+  if (!size) return ''
+  return size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)}MB` : `${Math.ceil(size / 1024)}KB`
+}
+
+function getUploadErrorMessage(error, label, maxSizeText) {
+  const message = (error && (error.errMsg || error.message)) || ''
+  if (/size|exceed|too large|oversize|最大|大小|limit/i.test(message)) {
+    return `${label}上传失败：压缩后的文件仍超过云存储限制，请重新压缩后再上传${maxSizeText ? `（建议不超过 ${maxSizeText}）` : ''}`
+  }
+  return `${label}上传失败：${message || '请检查文件大小、格式或网络后重试'}`
+}
+
 function normalizeStaffTrainingConfig(training = {}) {
   const sourceQuiz = Array.isArray(training.quiz) ? training.quiz : []
   const sourceVideos = Array.isArray(training.videos) ? training.videos : []
@@ -360,12 +373,23 @@ Page({
         ;(res.fileList || []).forEach((f) => {
           if (f.fileID && f.tempFileURL) urlMap[f.fileID] = f.tempFileURL
         })
-        const updatedVideos = videos.map((item) => ({
+        const currentVideos = this.data.settings.staffTraining.videos || []
+        const updatedVideos = currentVideos.map((item) => ({
           ...item,
-          tempUrl: urlMap[item.fileId] || item.tempUrl || '',
-          posterTempUrl: urlMap[item.posterFileId] || item.posterTempUrl || ''
+          tempUrl: item.fileId ? (urlMap[item.fileId] || item.tempUrl || item.fileId) : '',
+          posterTempUrl: item.posterFileId ? (urlMap[item.posterFileId] || item.posterTempUrl || item.posterFileId) : ''
         }))
         this.setData({ ['settings.staffTraining.videos']: updatedVideos })
+      },
+      fail: () => {
+        const currentVideos = this.data.settings.staffTraining.videos || []
+        this.setData({
+          ['settings.staffTraining.videos']: currentVideos.map((item) => ({
+            ...item,
+            tempUrl: item.fileId ? (item.tempUrl || item.fileId) : '',
+            posterTempUrl: item.posterFileId ? (item.posterTempUrl || item.posterFileId) : ''
+          }))
+        })
       }
     })
   },
@@ -648,6 +672,7 @@ Page({
   },
 
   chooseTrainingVideoFile(e) {
+    if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster) return
     const index = Number(e.currentTarget.dataset.index)
     wx.chooseMedia({
       count: 1,
@@ -658,7 +683,7 @@ Page({
         const file = res.tempFiles && res.tempFiles[0]
         if (!file || !file.tempFilePath) return
         if (file.size && file.size > 200 * 1024 * 1024) {
-          wx.showToast({ title: '视频不能超过 200MB', icon: 'none' })
+          wx.showModal({ title: '视频过大', content: `当前压缩后大小约 ${formatFileSize(file.size)}，培训视频不能超过 200MB，请继续压缩后再上传。`, showCancel: false })
           return
         }
         const filePath = file.tempFilePath
@@ -673,15 +698,15 @@ Page({
             const fileId = upload.fileID
             wx.cloud.getTempFileURL({
               fileList: [fileId],
-              success: (tempRes) => {
+              complete: (tempRes) => {
                 wx.hideLoading()
-                const url = tempRes.fileList && tempRes.fileList[0] ? tempRes.fileList[0].tempFileURL : filePath
-                this.setData({ [`settings.staffTraining.videos[${index}].fileId`]: fileId, [`settings.staffTraining.videos[${index}].tempUrl`]: url, uploadingTrainingVideo: false })
-                wx.showToast({ title: '视频上传成功' })
-              },
-              fail: () => {
-                wx.hideLoading()
-                this.setData({ [`settings.staffTraining.videos[${index}].fileId`]: fileId, [`settings.staffTraining.videos[${index}].tempUrl`]: filePath, uploadingTrainingVideo: false })
+                const fileInfo = tempRes && tempRes.fileList && tempRes.fileList[0]
+                const url = (fileInfo && fileInfo.tempFileURL) || filePath
+                const current = (this.data.settings.staffTraining.videos || [])[index] || {}
+                this.setData({
+                  [`settings.staffTraining.videos[${index}]`]: { ...current, fileId, tempUrl: url },
+                  uploadingTrainingVideo: false
+                })
                 wx.showToast({ title: '视频上传成功' })
               }
             })
@@ -689,19 +714,20 @@ Page({
           fail: (err) => {
             wx.hideLoading()
             this.setData({ uploadingTrainingVideo: false })
-            showError(err)
+            wx.showModal({ title: '上传失败', content: getUploadErrorMessage(err, '培训视频', '200MB'), showCancel: false })
           }
         })
       },
       fail: (err) => {
         const errMsg = (err && err.errMsg) || ''
         if (errMsg.includes('cancel')) return
-        showError(err)
+        wx.showModal({ title: '选择失败', content: getUploadErrorMessage(err, '培训视频', '200MB'), showCancel: false })
       }
     })
   },
 
   chooseTrainingPosterFile(e) {
+    if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster) return
     const index = Number(e.currentTarget.dataset.index)
     wx.chooseMedia({
       count: 1,
@@ -710,6 +736,10 @@ Page({
       success: (res) => {
         const file = res.tempFiles && res.tempFiles[0]
         if (!file || !file.tempFilePath) return
+        if (file.size && file.size > 10 * 1024 * 1024) {
+          wx.showModal({ title: '封面过大', content: `当前压缩后大小约 ${formatFileSize(file.size)}，封面图片不能超过 10MB，请继续压缩后再上传。`, showCancel: false })
+          return
+        }
         const filePath = file.tempFilePath
         const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
         const cloudPath = `staff_training/posters/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
@@ -722,15 +752,15 @@ Page({
             const fileId = upload.fileID
             wx.cloud.getTempFileURL({
               fileList: [fileId],
-              success: (tempRes) => {
+              complete: (tempRes) => {
                 wx.hideLoading()
-                const url = tempRes.fileList && tempRes.fileList[0] ? tempRes.fileList[0].tempFileURL : filePath
-                this.setData({ [`settings.staffTraining.videos[${index}].posterFileId`]: fileId, [`settings.staffTraining.videos[${index}].posterTempUrl`]: url, uploadingTrainingPoster: false })
-                wx.showToast({ title: '封面上传成功' })
-              },
-              fail: () => {
-                wx.hideLoading()
-                this.setData({ [`settings.staffTraining.videos[${index}].posterFileId`]: fileId, [`settings.staffTraining.videos[${index}].posterTempUrl`]: filePath, uploadingTrainingPoster: false })
+                const fileInfo = tempRes && tempRes.fileList && tempRes.fileList[0]
+                const url = (fileInfo && fileInfo.tempFileURL) || filePath
+                const current = (this.data.settings.staffTraining.videos || [])[index] || {}
+                this.setData({
+                  [`settings.staffTraining.videos[${index}]`]: { ...current, posterFileId: fileId, posterTempUrl: url },
+                  uploadingTrainingPoster: false
+                })
                 wx.showToast({ title: '封面上传成功' })
               }
             })
@@ -738,14 +768,14 @@ Page({
           fail: (err) => {
             wx.hideLoading()
             this.setData({ uploadingTrainingPoster: false })
-            showError(err)
+            wx.showModal({ title: '上传失败', content: getUploadErrorMessage(err, '视频封面', '10MB'), showCancel: false })
           }
         })
       },
       fail: (err) => {
         const errMsg = (err && err.errMsg) || ''
         if (errMsg.includes('cancel')) return
-        showError(err)
+        wx.showModal({ title: '选择失败', content: getUploadErrorMessage(err, '视频封面', '10MB'), showCancel: false })
       }
     })
   },
@@ -975,6 +1005,10 @@ Page({
 
   save() {
     if (this.data.saving) return
+    if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster) {
+      wx.showToast({ title: '请等待培训素材上传完成', icon: 'none' })
+      return
+    }
     this.setData({ saving: true })
 
     const carousel = this.data.settings.homeHeroCarousel || {}

@@ -27,10 +27,14 @@ function extraPetRuleText(value) {
 function decoratePrice(item = {}) {
   const key = String(item.key || '').trim()
   const enabled = item.enabled !== false
+  const caseImageFileIds = Array.isArray(item.caseImageFileIds) ? item.caseImageFileIds.filter(Boolean).slice(0, 9) : []
   return {
     ...item,
     key,
     enabled,
+    detailDescription: item.detailDescription || '',
+    caseImageFileIds,
+    caseImageUrls: item.caseImageUrls || caseImageFileIds,
     showOnHome: key !== 'visit_fee' && enabled && item.showOnHome === true,
     extraPetRuleText: extraPetRuleText(item.extraPetRule),
     keyReadonly: !item.isNew,
@@ -62,7 +66,8 @@ Page({
     expandedRuleGroups: {},
     showPriceModal: false,
     priceForm: {},
-    priceFormIndex: -1
+    priceFormIndex: -1,
+    uploadingServiceCase: false
   },
 
   onShow() {
@@ -165,6 +170,23 @@ Page({
     this.setData({ [`priceForm.${field}`]: e.detail.value })
   },
 
+  resolveCaseImageUrls(fileIds = []) {
+    const ids = (fileIds || []).filter(Boolean)
+    if (!ids.length) {
+      this.setData({ 'priceForm.caseImageUrls': [] })
+      return
+    }
+    wx.cloud.getTempFileURL({
+      fileList: ids,
+      success: (res) => {
+        const map = {}
+        ;(res.fileList || []).forEach((item) => { map[item.fileID] = item.tempFileURL || item.fileID })
+        this.setData({ 'priceForm.caseImageUrls': ids.map((id) => map[id] || id) })
+      },
+      fail: () => this.setData({ 'priceForm.caseImageUrls': ids })
+    })
+  },
+
   toggleEnabled(e) {
     this.setData({ 'priceForm.enabled': e.detail.value })
   },
@@ -185,30 +207,101 @@ Page({
     const index = Number(e.currentTarget.dataset.index)
     const item = this.data.prices[index]
     if (!item) return
-    this.setData({ priceForm: decoratePrice({ ...item }), priceFormIndex: index, showPriceModal: true })
+    const priceForm = decoratePrice({ ...item })
+    this.setData({ priceForm, priceFormIndex: index, showPriceModal: true }, () => this.resolveCaseImageUrls(priceForm.caseImageFileIds))
   },
 
   closePriceModal() {
+    if (this.data.uploadingServiceCase) return
     this.setData({ showPriceModal: false, priceForm: {}, priceFormIndex: -1 })
   },
 
   addService() {
     const sortOrder = this.data.prices.reduce((max, item) => Math.max(max, Number(item.sortOrder || 0)), 0) + 10
-    const draft = decoratePrice({ key: '', label: '', price: 0, internPrice: 0, extraPetFee: 0, internExtraPetFee: 0, extraPetRule: 'none', showOnHome: true, enabled: true, sortOrder, description: '', isPreset: false, isNew: true })
+    const draft = decoratePrice({ key: '', label: '', price: 0, internPrice: 0, extraPetFee: 0, internExtraPetFee: 0, extraPetRule: 'none', showOnHome: true, enabled: true, sortOrder, description: '', detailDescription: '', caseImageFileIds: [], isPreset: false, isNew: true })
     this.setData({ priceForm: draft, priceFormIndex: -1, showPriceModal: true })
   },
 
+  chooseServiceCaseImages() {
+    if (this.data.uploadingServiceCase) return
+    const current = this.data.priceForm.caseImageFileIds || []
+    const remain = 9 - current.length
+    if (remain <= 0) {
+      wx.showToast({ title: '最多上传9张案例图', icon: 'none' })
+      return
+    }
+    wx.chooseMedia({
+      count: remain,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const files = res.tempFiles || []
+        if (!files.length) return
+        this.setData({ uploadingServiceCase: true })
+        wx.showLoading({ title: '上传图片中...' })
+        files.reduce((chain, file) => chain.then(() => this.uploadServiceCaseImage(file.tempFilePath)), Promise.resolve())
+          .then(() => {
+            wx.hideLoading()
+            this.setData({ uploadingServiceCase: false })
+            this.resolveCaseImageUrls(this.data.priceForm.caseImageFileIds)
+            wx.showToast({ title: '图片已上传，请保存服务', icon: 'none' })
+          })
+          .catch((error) => {
+            wx.hideLoading()
+            this.setData({ uploadingServiceCase: false })
+            this.resolveCaseImageUrls(this.data.priceForm.caseImageFileIds)
+            showError(error)
+          })
+      },
+      fail: (error) => { if (error && error.errMsg && !error.errMsg.includes('cancel')) showError(error) }
+    })
+  },
+
+  uploadServiceCaseImage(filePath) {
+    const key = String(this.data.priceForm.key || 'new_service').replace(/[^a-zA-Z0-9_]/g, '') || 'new_service'
+    const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+    const cloudPath = `service_cases/${key}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}${ext}`
+    return new Promise((resolve, reject) => {
+      wx.cloud.uploadFile({
+        cloudPath,
+        filePath,
+        success: (upload) => {
+          const fileID = upload.fileID
+          const ids = (this.data.priceForm.caseImageFileIds || []).concat(fileID).slice(0, 9)
+          this.setData({ 'priceForm.caseImageFileIds': ids })
+          resolve(fileID)
+        },
+        fail: reject
+      })
+    })
+  },
+
+  removeServiceCaseImage(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const ids = (this.data.priceForm.caseImageFileIds || []).slice()
+    ids.splice(index, 1)
+    this.setData({ 'priceForm.caseImageFileIds': ids }, () => this.resolveCaseImageUrls(ids))
+  },
+
+  previewServiceCaseImage(e) {
+    const current = e.currentTarget.dataset.url
+    const urls = (this.data.priceForm.caseImageUrls || []).filter(Boolean)
+    if (current && urls.length) wx.previewImage({ current, urls })
+  },
+
   savePriceForm() {
+    if (this.data.uploadingServiceCase) return
     const item = decoratePrice(this.data.priceForm)
     callFunction('admin', 'saveServicePrice', item)
-      .then((saved) => {
-        const savedItem = decoratePrice(saved || item)
-        const prices = this.data.prices.slice()
-        if (this.data.priceFormIndex >= 0) prices[this.data.priceFormIndex] = savedItem
-        else prices.unshift(savedItem)
-        this.setData({ prices, ruleGroups: groupRules(this.data.ruleGroups.reduce((list, group) => list.concat(group.rules), []), prices) })
+      .then(() => Promise.all([
+        callFunction('admin', 'listServicePrices'),
+        callFunction('admin', 'listServiceCheckinRules')
+      ]))
+      .then(([prices, rules]) => {
+        const decorated = (prices || []).map(decoratePrice)
+        this.setData({ prices: decorated, ruleGroups: groupRules(rules, decorated) })
         this.closePriceModal()
-        wx.showToast({ title: '已保存' })
+        wx.showToast({ title: '服务已保存' })
       })
       .catch(showError)
   },
