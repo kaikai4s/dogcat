@@ -1062,6 +1062,19 @@ function timeRangesOverlap(startA, endA, startB, endB) {
   return aStart > 0 && aEnd > aStart && bStart > 0 && bEnd > bStart && aStart < bEnd && bStart < aEnd
 }
 
+function getOrderTimeRanges(order = {}) {
+  const sessions = Array.isArray(order.serviceSessions) ? order.serviceSessions : []
+  const ranges = sessions
+    .map((session) => ({ startTime: session.startTime, endTime: session.endTime }))
+    .filter((session) => session.startTime && session.endTime)
+  if (ranges.length) return ranges
+  return order.startTime && order.endTime ? [{ startTime: order.startTime, endTime: order.endTime }] : []
+}
+
+function orderTimeRangesOverlap(orderA = {}, orderB = {}) {
+  return getOrderTimeRanges(orderA).some((rangeA) => getOrderTimeRanges(orderB).some((rangeB) => timeRangesOverlap(rangeA.startTime, rangeA.endTime, rangeB.startTime, rangeB.endTime)))
+}
+
 async function validateStaffScheduleOnly(profile, startTimeStr, endTimeStr) {
   if (!profile || !profile.openid) throw new Error('宠托师不可用')
   const dateKey = getDateKeyFromTime(startTimeStr)
@@ -1077,12 +1090,19 @@ async function validateStaffScheduleOnly(profile, startTimeStr, endTimeStr) {
 }
 
 async function validateStaffAvailability(profile, startTimeStr, endTimeStr, options = {}) {
-  await validateStaffScheduleOnly(profile, startTimeStr, endTimeStr)
+  return validateStaffAvailabilityForSessions(profile, [{ startTime: startTimeStr, endTime: endTimeStr }], options)
+}
+
+async function validateStaffAvailabilityForSessions(profile, sessions = [], options = {}) {
+  for (const session of sessions) {
+    await validateStaffScheduleOnly(profile, session.startTime, session.endTime)
+  }
 
   const orderRes = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
+  const candidate = { serviceSessions: sessions }
   const conflict = (orderRes.data || []).find((order) => {
     if (options.excludeOrderId && order._id === options.excludeOrderId) return false
-    return isOrderConflictCandidate(order) && timeRangesOverlap(startTimeStr, endTimeStr, order.startTime, order.endTime)
+    return isOrderConflictCandidate(order) && orderTimeRangesOverlap(candidate, order)
   })
   if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
 }
@@ -1108,10 +1128,17 @@ async function checkAcceptOrderRisk(profile, order) {
   if (distanceKm !== null && distanceKm > radiusKm) {
     warnings.push({ type: 'range', title: '订单地址超出你的接单范围', detail: `订单距离约 ${formatDistance(distanceKm)}，已超出你设置的 ${radiusKm}km 接单范围。`, distanceKm, radiusKm })
   }
-  try {
-    await validateStaffScheduleOnly(profile, order.startTime, order.endTime)
-  } catch (error) {
-    warnings.push({ type: 'time', title: '订单时间不在你的接单时间内', detail: error.message || '订单服务时间不在你设置的可接单时间段内。' })
+  const sessions = getOrderTimeRanges(order)
+  const failedSessions = []
+  for (const session of sessions) {
+    try {
+      await validateStaffScheduleOnly(profile, session.startTime, session.endTime)
+    } catch (error) {
+      failedSessions.push(`${session.startTime}：${error.message || '不在你设置的可接单时间段内'}`)
+    }
+  }
+  if (failedSessions.length) {
+    warnings.push({ type: 'time', title: '订单时间不在你的接单时间内', detail: failedSessions.slice(0, 3).join('；') + (failedSessions.length > 3 ? `；另有 ${failedSessions.length - 3} 次` : '') })
   }
   return buildAcceptRiskNotice(warnings)
 }
@@ -2013,8 +2040,10 @@ async function calcOrderPricing(data, pet, options = {}) {
   const weight = Number((primaryPet && primaryPet.weight) || data.weight || 0)
   const durationMinutes = Number(data.durationMinutes || 60)
   if (durationMinutes < 30 || durationMinutes > 240) throw new Error('服务时长不正确')
+  const sessions = data.startTime && data.endTime ? buildOrderSessions({ ...data, durationMinutes }) : [{ index: 1, startTime: data.startTime || '', endTime: data.endTime || '' }]
+  const sessionCount = sessions.length
   const multiplier = Math.max(durationMinutes, 60) / 60
-  const basePriceItems = serviceTypes.map((key) => {
+  const unitBasePriceItems = serviceTypes.map((key) => {
     const item = catalogMap[key]
     if (!item) throw new Error('服务项目不可用')
     const unitBasePrice = isInternPrice ? item.internPrice : item.price
@@ -2022,7 +2051,7 @@ async function calcOrderPricing(data, pet, options = {}) {
     const price = key === VISIT_FEE_SERVICE_KEY ? Math.round(basePrice) : Math.round(basePrice * multiplier)
     return { key, label: item.label, price }
   })
-  const extraPetItems = getBusinessServiceTypes(serviceTypes).map((key) => {
+  const unitExtraPetItems = getBusinessServiceTypes(serviceTypes).map((key) => {
     const item = catalogMap[key]
     if (!item) return null
     const extraPetFee = isInternPrice ? item.internExtraPetFee : item.extraPetFee
@@ -2041,9 +2070,12 @@ async function calcOrderPricing(data, pet, options = {}) {
       extraPetRule: item.extraPetRule
     }
   }).filter(Boolean)
-  const priceItems = [...basePriceItems, ...extraPetItems]
+  const unitPriceItems = [...unitBasePriceItems, ...unitExtraPetItems]
+  const priceItems = sessionCount > 1
+    ? unitPriceItems.map((item) => ({ ...item, unitPrice: item.price, price: item.price * sessionCount, label: `${item.label} × ${sessionCount}次` }))
+    : unitPriceItems
   const amount = priceItems.reduce((sum, item) => sum + item.price, 0)
-  const serviceLabels = basePriceItems.map((item) => item.label)
+  const serviceLabels = unitBasePriceItems.map((item) => item.label)
   const businessServiceTypes = getBusinessServiceTypes(serviceTypes)
   const basePricing = {
     amount,
@@ -2057,8 +2089,11 @@ async function calcOrderPricing(data, pet, options = {}) {
     serviceLabels,
     serviceSummary: serviceLabels.join('、'),
     durationMinutes,
+    sessionCount,
+    sessions,
+    orderType: sessionCount > 1 ? 'multi_day' : 'single',
     priceItems,
-    priceSnapshot: { services: priceItems, extraPetItems, durationMinutes, weight, petCount, dogCount, staffPriceLevel, staffLevelText: isInternPrice ? '实习宠托师' : '认证宠托师', originalAmount: amount, discountAmount: 0, payAmount: amount }
+    priceSnapshot: { services: priceItems, unitServices: unitPriceItems, extraPetItems: unitExtraPetItems, durationMinutes, sessionCount, sessions, weight, petCount, dogCount, staffPriceLevel, staffLevelText: isInternPrice ? '实习宠托师' : '认证宠托师', originalAmount: amount, discountAmount: 0, payAmount: amount }
   }
   const openid = options.openid || ''
   if (!openid) return basePricing
@@ -2153,11 +2188,42 @@ async function resolveCheckinRequirements(serviceTypes) {
 }
 
 function validateOrderTime(data) {
+  const sessions = buildOrderSessions(data)
+  sessions.forEach((session) => {
+    const start = toTimeValue(session.startTime)
+    const end = toTimeValue(session.endTime)
+    if (!start || !end || end <= start) throw new Error('服务时间不正确')
+    if (start < Date.now()) throw new Error('服务开始时间不能早于当前时间')
+  })
+}
+
+function formatDateTimeParts(dateObj) {
+  return `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth() + 1).padStart(2, '0')}-${String(dateObj.getUTCDate()).padStart(2, '0')} ${String(dateObj.getUTCHours()).padStart(2, '0')}:${String(dateObj.getUTCMinutes()).padStart(2, '0')}`
+}
+
+function buildOrderSessions(data = {}) {
   if (!data.startTime || !data.endTime) throw new Error('请选择服务时间')
-  const start = new Date(String(data.startTime).replace(/-/g, '/')).getTime()
-  const end = new Date(String(data.endTime).replace(/-/g, '/')).getTime()
-  if (!start || !end || end <= start) throw new Error('服务时间不正确')
-  if (start < Date.now()) throw new Error('服务开始时间不能早于当前时间')
+  const startParts = parseDateTimeParts(data.startTime)
+  const endParts = parseDateTimeParts(data.endTime)
+  if (!startParts || !endParts || endParts.dateObj <= startParts.dateObj) throw new Error('服务时间不正确')
+  const orderType = data.orderType === 'multi_day' || data.serviceFrequency === 'multi_day' ? 'multi_day' : 'single'
+  const durationMinutes = Math.max(Math.floor(Number(data.durationMinutes || ((endParts.dateObj.getTime() - startParts.dateObj.getTime()) / 60000))), 1)
+  if (orderType !== 'multi_day') return [{ index: 1, date: formatDateKey(startParts.dateObj), startTime: data.startTime, endTime: data.endTime }]
+
+  const endDateText = safeText(data.endDate || data.serviceEndDate).trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(endDateText)) throw new Error('请选择连续服务结束日期')
+  const endDateParts = parseDateTimeParts(`${endDateText} 00:00`)
+  if (!endDateParts || endDateParts.dateObj < new Date(Date.UTC(startParts.dateObj.getUTCFullYear(), startParts.dateObj.getUTCMonth(), startParts.dateObj.getUTCDate(), 0, 0))) throw new Error('连续服务结束日期不能早于开始日期')
+  const sessions = []
+  let current = new Date(Date.UTC(startParts.dateObj.getUTCFullYear(), startParts.dateObj.getUTCMonth(), startParts.dateObj.getUTCDate(), startParts.hour, startParts.minute))
+  const finalDay = new Date(Date.UTC(endDateParts.dateObj.getUTCFullYear(), endDateParts.dateObj.getUTCMonth(), endDateParts.dateObj.getUTCDate(), startParts.hour, startParts.minute))
+  while (current <= finalDay) {
+    if (sessions.length >= 31) throw new Error('连续服务最多支持31天')
+    const end = new Date(current.getTime() + durationMinutes * 60000)
+    sessions.push({ index: sessions.length + 1, date: formatDateKey(current), startTime: formatDateTimeParts(current), endTime: formatDateTimeParts(end) })
+    current = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate() + 1, startParts.hour, startParts.minute))
+  }
+  return sessions
 }
 
 function hasCoordinate(latitude, longitude) {
@@ -5152,7 +5218,7 @@ const handlers = {
           }
 
           if (data.startTime && data.endTime) {
-            await validateStaffAvailability(staffProfile, data.startTime, data.endTime)
+            await validateStaffAvailabilityForSessions(staffProfile, buildOrderSessions(data))
           }
         }
       }
@@ -5173,6 +5239,7 @@ const handlers = {
       if (!data.addressDetail) throw new Error('请填写详细地址')
       if (!data.doorplate) throw new Error('请填写门牌号或入户说明')
       validateOrderTime(data)
+      const serviceSessions = buildOrderSessions(data)
       const pets = await getClientPetsByIds(openid, petIds)
       const primaryPet = pets[0]
       const petSnapshots = pets.map(createPetSnapshot)
@@ -5200,13 +5267,13 @@ const handlers = {
             }
           }
 
-          await validateStaffAvailability(staffProfile, data.startTime, data.endTime)
+          await validateStaffAvailabilityForSessions(staffProfile, serviceSessions)
         }
       }
       const time = now()
-      const homeSecurity = normalizeHomeSecurityInput(data)
+      const homeSecurity = normalizeHomeSecurityInput({ ...data, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime })
       const checkinRequirements = await resolveCheckinRequirements(pricing.serviceTypes)
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: primaryPet._id || petIds[0], petIds, petName: petSummary, petNames, petSnapshot: petSnapshots[0], petSnapshots, petSummary, serviceType: pricing.primaryServiceType || pricing.businessServiceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), startTime: data.startTime, endTime: data.endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: primaryPet._id || petIds[0], petIds, petName: petSummary, petNames, petSnapshot: petSnapshots[0], petSnapshots, petSummary, serviceType: pricing.primaryServiceType || pricing.businessServiceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), orderType: pricing.orderType, serviceStartDate: serviceSessions[0].date, serviceEndDate: serviceSessions[serviceSessions.length - 1].date, sessionCount: serviceSessions.length, serviceSessions, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {
@@ -6856,7 +6923,7 @@ const handlers = {
       const orderResForConflict = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
       const conflict = (orderResForConflict.data || []).find((item) => {
         if (item._id === data.orderId) return false
-        return isOrderConflictCandidate(item) && timeRangesOverlap(order.startTime, order.endTime, item.startTime, item.endTime)
+        return isOrderConflictCandidate(item) && orderTimeRangesOverlap(order, item)
       })
       if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
       return checkAcceptOrderRisk(profile, order)
@@ -6881,7 +6948,7 @@ const handlers = {
       const orderResForConflict = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
       const conflict = (orderResForConflict.data || []).find((item) => {
         if (item._id === data.orderId) return false
-        return isOrderConflictCandidate(item) && timeRangesOverlap(order.startTime, order.endTime, item.startTime, item.endTime)
+        return isOrderConflictCandidate(item) && orderTimeRangesOverlap(order, item)
       })
       if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
       if (risk.requiresConfirmation && data.riskConfirmed !== true) throw new Error('请先阅读并确认超出接单设置的履约责任')

@@ -132,6 +132,41 @@ test('api dispatches order createOrder through unified cloud function', async ()
   assert.equal(db.state.user_addresses[0].isDefault, true)
 })
 
+test('api createOrder supports multi-day daily sessions and multiplied pricing', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
+    orders: [],
+    user_addresses: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const result = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      petId: 'p1',
+      serviceTypes: ['visit_fee', 'walk'],
+      serviceAddress: '测试地址',
+      addressDetail: '3栋2单元',
+      doorplate: '1802',
+      orderType: 'multi_day',
+      startTime: '2099-07-28 10:00',
+      endTime: '2099-07-28 11:00',
+      endDate: '2099-07-30',
+      durationMinutes: 60
+    }
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.orderType, 'multi_day')
+  assert.equal(result.data.sessionCount, 3)
+  assert.equal(result.data.startTime, '2099-07-28 10:00')
+  assert.equal(result.data.endTime, '2099-07-30 11:00')
+  assert.equal(result.data.payAmount, 207)
+  assert.deepEqual(result.data.serviceSessions.map((item) => item.date), ['2099-07-28', '2099-07-29', '2099-07-30'])
+})
+
 test('auth updateProfile saves editable nickname avatar and syncs order phone', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '旧昵称', avatarUrl: '', phone: '' }],

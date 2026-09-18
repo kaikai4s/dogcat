@@ -61,6 +61,22 @@ function coversServiceTime(startTime, endTime, effectiveStart, effectiveEnd) {
   return Boolean(start && end && coverStart && coverEnd && coverStart <= start && coverEnd >= end)
 }
 
+function buildDailySessions(form) {
+  const start = parseDateTime(`${form.startDate} ${form.startClock}`)
+  if (!start) return []
+  const endDate = form.orderType === 'multi_day' ? form.endDate : form.startDate
+  const final = parseDateTime(`${endDate} ${form.startClock}`)
+  if (!final || final < start) return []
+  const sessions = []
+  const current = new Date(start.getTime())
+  while (current <= final && sessions.length < 31) {
+    const end = new Date(current.getTime() + Number(form.durationMinutes || 60) * 60000)
+    sessions.push({ date: formatDate(current), startTime: formatDateTime(current), endTime: formatDateTime(end) })
+    current.setDate(current.getDate() + 1)
+  }
+  return sessions
+}
+
 function getBusinessServiceTypes(serviceTypes) {
   return (serviceTypes || []).filter((key) => key !== VISIT_FEE_SERVICE_KEY)
 }
@@ -217,7 +233,9 @@ Page({
       keyLocation: '',
       keyImageFileIds: [],
       entryNotes: '',
+      orderType: 'single',
       startDate: formatDate(new Date()),
+      endDate: formatDate(new Date()),
       startClock: getInitialStartClock(),
       startTime: '',
       endTime: '',
@@ -337,12 +355,14 @@ Page({
   },
 
   prepareTime() {
-    const { startDate, startClock, durationMinutes, doorLockCodeStartDate, doorLockCodeStartClock, doorLockCodeEndDate, doorLockCodeEndClock } = this.data.form
-    const startTime = `${startDate} ${startClock}`
-    const endTime = addMinutes(startDate, startClock, durationMinutes)
+    const { startDate, endDate, startClock, durationMinutes, doorLockCodeStartDate, doorLockCodeStartClock, doorLockCodeEndDate, doorLockCodeEndClock } = this.data.form
+    const sessions = buildDailySessions(this.data.form)
+    const startTime = sessions[0] ? sessions[0].startTime : `${startDate} ${startClock}`
+    const endTime = sessions.length ? sessions[sessions.length - 1].endTime : addMinutes(startDate, startClock, durationMinutes)
+    const safeEndDate = endDate && endDate >= startDate ? endDate : startDate
     const doorLockCodeStartTime = `${doorLockCodeStartDate || startDate} ${doorLockCodeStartClock || startClock}`
-    const doorLockCodeEndTime = `${doorLockCodeEndDate || startDate} ${doorLockCodeEndClock || formatTime(parseDateTime(endTime) || new Date())}`
-    this.setData({ ['form.startTime']: startTime, ['form.endTime']: endTime, ['form.doorLockCodeStartTime']: doorLockCodeStartTime, ['form.doorLockCodeEndTime']: doorLockCodeEndTime }, this.syncSecurityCoverage)
+    const doorLockCodeEndTime = `${doorLockCodeEndDate || safeEndDate} ${doorLockCodeEndClock || formatTime(parseDateTime(endTime) || new Date())}`
+    this.setData({ ['form.endDate']: safeEndDate, ['form.startTime']: startTime, ['form.endTime']: endTime, ['form.doorLockCodeStartTime']: doorLockCodeStartTime, ['form.doorLockCodeEndTime']: doorLockCodeEndTime }, this.syncSecurityCoverage)
   },
 
   syncSecurityCoverage() {
@@ -640,13 +660,27 @@ Page({
     })
   },
 
+  chooseOrderType(e) {
+    const orderType = e.currentTarget.dataset.type === 'multi_day' ? 'multi_day' : 'single'
+    const next = { ['form.orderType']: orderType, quote: null }
+    if (orderType === 'single') next['form.endDate'] = this.data.form.startDate
+    this.setData(next, this.prepareTime)
+  },
+
   chooseDate(e) {
-    this.setData({ ['form.startDate']: e.detail.value, quote: null }, () => {
+    const startDate = e.detail.value
+    const next = { ['form.startDate']: startDate, quote: null }
+    if (!this.data.form.endDate || this.data.form.endDate < startDate || this.data.form.orderType === 'single') next['form.endDate'] = startDate
+    this.setData(next, () => {
       this.updateMinTime()
       this.prepareTime()
       this.syncSelectedPetUI()
       this.syncSelectedAvailability()
     })
+  },
+
+  chooseEndDate(e) {
+    this.setData({ ['form.endDate']: e.detail.value, quote: null }, this.prepareTime)
   },
 
   chooseClock(e) {
@@ -691,6 +725,10 @@ Page({
     if (form.lockMethod === 'key' && !String(form.keyLocation || '').trim()) return '请填写钥匙放置位置'
     if (form.lockMethod === 'key' && !(form.keyImageFileIds || []).length) return '请上传钥匙放置位置图片'
     if (!form.startDate || !form.startClock) return '请选择开始时间'
+    if (form.orderType === 'multi_day' && (!form.endDate || form.endDate < form.startDate)) return '请选择正确的连续服务结束日期'
+    const sessions = buildDailySessions(form)
+    if (!sessions.length) return '服务时间不正确'
+    if (sessions.length > 31) return '连续服务最多支持31天'
     const start = parseDateTime(form.startTime)
     if (!start || start.getTime() < Date.now()) return '服务开始时间不能早于当前时间'
     return ''
@@ -709,12 +747,15 @@ Page({
     }
     const serviceTypes = ensureVisitFeeServiceTypes(form.serviceTypes, getPrimaryBusinessService(form.serviceTypes))
     const petIds = normalizeSelectedPetIds(form.petIds, form.petId)
+    const serviceSessions = buildDailySessions(form)
     return {
       ...form,
       petId: petIds[0] || '',
       petIds,
       serviceTypes,
       serviceType: getPrimaryBusinessService(serviceTypes),
+      serviceSessions,
+      sessionCount: serviceSessions.length,
       orderHomeSecurity,
       couponId: this.data.selectedCouponId,
       autoApplyCoupon: !this.data.selectedCouponId

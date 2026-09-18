@@ -198,10 +198,21 @@
   <view class="booking-step-card">
     <view class="step-head">
       <view class="step-index">06</view>
-      <view><view class="step-title">服务时间</view><view class="step-desc">确认开始时间和服务时长</view></view>
+      <view><view class="step-title">服务时间</view><view class="step-desc">确认单次预约或连续多天服务</view></view>
+    </view>
+    <view class="service-grid frequency-grid">
+      <view class="service-option {{form.orderType === 'single' ? 'active' : ''}}" data-type="single" bindtap="chooseOrderType">
+        <view class="service-title">单次服务</view>
+        <view class="service-desc">只预约当天一次上门</view>
+      </view>
+      <view class="service-option {{form.orderType === 'multi_day' ? 'active' : ''}}" data-type="multi_day" bindtap="chooseOrderType">
+        <view class="service-title">连续多天</view>
+        <view class="service-desc">每天同一时间上门服务</view>
+      </view>
     </view>
     <view class="picker-grid">
-      <picker mode="date" value="{{form.startDate}}" start="{{minDate}}" bindchange="chooseDate"><view class="field">日期：{{form.startDate}}</view></picker>
+      <picker mode="date" value="{{form.startDate}}" start="{{minDate}}" bindchange="chooseDate"><view class="field">开始日期：{{form.startDate}}</view></picker>
+      <picker mode="date" wx:if="{{form.orderType === 'multi_day'}}" value="{{form.endDate}}" start="{{form.startDate}}" bindchange="chooseEndDate"><view class="field">结束日期：{{form.endDate}}</view></picker>
       <picker mode="time" value="{{form.startClock}}" start="{{minClock}}" bindchange="chooseClock"><view class="field">开始：{{form.startClock}}</view></picker>
     </view>
     <picker range="{{durationOptions}}" range-key="label" value="{{durationIndex}}" bindchange="chooseDuration">
@@ -210,6 +221,7 @@
     <view class="notice">
       <view class="muted">预计时间</view>
       <view class="strong">{{form.startTime}} 至 {{form.endTime}}</view>
+      <view class="muted" wx:if="{{form.orderType === 'multi_day'}}">连续多天订单将按每天一次服务计费和校验宠托师时间</view>
     </view>
     <view class="notice" wx:if="{{form.publishMode === 'direct' && selectedAvailability}}">
       <view class="muted">宠托师当天排班</view>
@@ -244,6 +256,7 @@
     </view>
     <view class="price-breakdown">
       <view class="info-row"><view class="label">原价</view><view class="value">¥{{quote.amount}}</view></view>
+      <view class="info-row" wx:if="{{quote.sessionCount > 1}}"><view class="label">服务次数</view><view class="value">{{quote.sessionCount}} 次</view></view>
       <view class="info-row" wx:if="{{quote.discountAmount}}"><view class="label">优惠券</view><view class="value">-¥{{quote.discountAmount}}</view></view>
       <view class="info-row" wx:for="{{quote.priceItems}}" wx:key="key"><view class="label">{{item.label}}</view><view class="value">¥{{item.price}}</view></view>
     </view>
