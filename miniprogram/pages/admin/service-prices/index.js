@@ -32,6 +32,8 @@ function decoratePrice(item = {}) {
     ...item,
     key,
     enabled,
+    extraHalfHourFee: item.extraHalfHourFee || 0,
+    internExtraHalfHourFee: item.internExtraHalfHourFee || 0,
     detailDescription: item.detailDescription || '',
     caseImageFileIds,
     caseImageUrls: item.caseImageUrls || caseImageFileIds,
@@ -218,7 +220,7 @@ Page({
 
   addService() {
     const sortOrder = this.data.prices.reduce((max, item) => Math.max(max, Number(item.sortOrder || 0)), 0) + 10
-    const draft = decoratePrice({ key: '', label: '', price: 0, internPrice: 0, extraPetFee: 0, internExtraPetFee: 0, extraPetRule: 'none', showOnHome: true, enabled: true, sortOrder, description: '', detailDescription: '', caseImageFileIds: [], isPreset: false, isNew: true })
+    const draft = decoratePrice({ key: '', label: '', price: 0, internPrice: 0, extraPetFee: 0, internExtraPetFee: 0, extraHalfHourFee: 0, internExtraHalfHourFee: 0, extraPetRule: 'none', showOnHome: true, enabled: true, sortOrder, description: '', detailDescription: '', caseImageFileIds: [], isPreset: false, isNew: true })
     this.setData({ priceForm: draft, priceFormIndex: -1, showPriceModal: true })
   },
 
@@ -292,19 +294,31 @@ Page({
   savePriceForm() {
     if (this.data.uploadingServiceCase) return
     const item = decoratePrice(this.data.priceForm)
-    callFunction('admin', 'saveServicePrice', item)
-      .then(() => Promise.all([
-        callFunction('admin', 'listServicePrices'),
-        callFunction('admin', 'listServiceCheckinRules')
-      ]))
-      .then(([prices, rules]) => {
-        const decorated = (prices || []).map(decoratePrice)
-        this.setData({ prices: decorated, ruleGroups: groupRules(rules, decorated) })
-        this.closePriceModal()
-        wx.showToast({ title: '服务已保存' })
+    const doSave = () => {
+      callFunction('admin', 'saveServicePrice', item)
+        .then(() => Promise.all([
+          callFunction('admin', 'listServicePrices'),
+          callFunction('admin', 'listServiceCheckinRules')
+        ]))
+        .then(([prices, rules]) => {
+          const decorated = (prices || []).map(decoratePrice)
+          this.setData({ prices: decorated, ruleGroups: groupRules(rules, decorated) })
+          this.closePriceModal()
+          wx.showToast({ title: '服务已保存' })
+        })
+        .catch(showError)
+    }
+    if ((item.key === 'walk' || item.key === 'play') && (!Number(item.extraHalfHourFee) || !Number(item.internExtraHalfHourFee))) {
+      wx.showModal({
+        title: '续时费为0元',
+        content: '0元表示每只宠物超过30分钟后不额外收费，确认保存当前配置吗？',
+        success: (res) => { if (res.confirm) doSave() }
       })
-      .catch(showError)
+      return
+    }
+    doSave()
   },
+
 
   deleteService(e) {
     const index = Number(e.currentTarget.dataset.index)

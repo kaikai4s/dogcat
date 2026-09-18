@@ -22,7 +22,7 @@ function createFinishStore(checkinLogs = []) {
 test('order createOrder creates pending order for current client pet', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
-    pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', weight: 12 }],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '可乐', species: 'dog', weight: 12 }],
     orders: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
@@ -96,6 +96,88 @@ test('order multi-pet pricing applies per-service extra pet rules', async () => 
   assert.deepEqual(created.data.petIds, ['dog1', 'cat1'])
   assert.equal(created.data.petSnapshots.length, 2)
   assert.equal(created.data.petName, '可乐、雪球')
+})
+
+test('order pricing applies per-pet timed service extension fees', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
+    pets: [
+      { _id: 'dog1', openid: 'openid_client', name: '可乐', species: 'dog', weight: 8 },
+      { _id: 'dog2', openid: 'openid_client', name: '豆豆', species: 'dog', weight: 6 },
+      { _id: 'cat1', openid: 'openid_client', name: '雪球', species: 'cat', weight: 4 }
+    ],
+    service_prices: [
+      { key: 'walk', label: '遛狗', price: 69, internPrice: 59, extraPetFee: 10, internExtraPetFee: 8, extraPetRule: 'dog', extraHalfHourFee: 12, internExtraHalfHourFee: 9, enabled: true, sortOrder: 30 },
+      { key: 'play', label: '陪伴玩耍', price: 39, internPrice: 29, extraPetFee: 10, internExtraPetFee: 8, extraPetRule: 'all', extraHalfHourFee: 6, internExtraHalfHourFee: 5, enabled: true, sortOrder: 40 }
+    ],
+    staff_profiles: [{ _id: 'sp_intern', staffLevel: 'intern' }],
+    orders: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const quote = await fn.main({
+    module: 'order',
+    action: 'quoteOrder',
+    data: {
+      petIds: ['dog1', 'dog2', 'cat1'],
+      serviceTypes: ['visit_fee', 'walk', 'play'],
+      petServiceDurations: [
+        { serviceKey: 'walk', petId: 'dog1', durationMinutes: 30 },
+        { serviceKey: 'walk', petId: 'dog2', durationMinutes: 60 },
+        { serviceKey: 'play', petId: 'dog1', durationMinutes: 30 },
+        { serviceKey: 'play', petId: 'dog2', durationMinutes: 90 },
+        { serviceKey: 'play', petId: 'cat1', durationMinutes: 30 }
+      ],
+      startTime: '2099-07-28 10:00',
+      endTime: '2099-07-28 11:00'
+    }
+  })
+
+  assert.equal(quote.ok, true)
+  assert.equal(quote.data.durationMinutes, 240)
+  assert.equal(quote.data.sessions[0].endTime, '2099-07-28 14:00')
+  assert.equal(quote.data.payAmount, 192)
+  assert.equal(quote.data.petServiceDurations.length, 5)
+  assert.equal(quote.data.priceItems.filter((item) => item.type === 'pet_time_extra_fee').length, 2)
+
+  const internQuote = await fn.main({ module: 'order', action: 'quoteOrder', data: { petIds: ['dog1'], serviceTypes: ['visit_fee', 'walk'], publishMode: 'direct', staffProfileId: 'sp_intern', petServiceDurations: [{ serviceKey: 'walk', petId: 'dog1', durationMinutes: 60 }] } })
+  assert.equal(internQuote.ok, true)
+  assert.equal(internQuote.data.payAmount, 98)
+  assert.equal(internQuote.data.priceSnapshot.staffPriceLevel, 'intern')
+
+  db.state.service_prices[0].extraHalfHourFee = 12.5
+  const decimalQuote = await fn.main({ module: 'order', action: 'quoteOrder', data: { petIds: ['dog1'], serviceTypes: ['visit_fee', 'walk'], petServiceDurations: [{ serviceKey: 'walk', petId: 'dog1', durationMinutes: 90 }] } })
+  assert.equal(decimalQuote.data.payAmount, 124)
+  db.state.service_prices[0].extraHalfHourFee = 12
+
+  const multiDayOrder = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      petIds: ['dog1'],
+      serviceTypes: ['visit_fee', 'walk'],
+      petServiceDurations: [{ serviceKey: 'walk', petId: 'dog1', durationMinutes: 60 }],
+      serviceAddress: '测试地址',
+      addressDetail: '1栋101',
+      doorplate: '门口脚垫下有钥匙',
+      orderType: 'multi_day',
+      startTime: '2099-07-28 10:00',
+      endTime: '2099-07-28 11:00',
+      endDate: '2099-07-29'
+    }
+  })
+  assert.equal(multiDayOrder.ok, true)
+  assert.equal(multiDayOrder.data.sessionCount, 2)
+  assert.equal(multiDayOrder.data.payAmount, 222)
+  assert.equal(multiDayOrder.data.petServiceDurations.length, 1)
+  assert.equal(multiDayOrder.data.priceSnapshot.petServiceDurations[0].durationMinutes, 60)
+
+  const normalLongFeed = await fn.main({ module: 'order', action: 'quoteOrder', data: { petIds: ['cat1'], serviceTypes: ['visit_fee', 'feed'], durationMinutes: 180 } })
+  assert.equal(normalLongFeed.data.payAmount, 59)
+
+  const invalid = await fn.main({ module: 'order', action: 'quoteOrder', data: { petIds: ['cat1'], serviceTypes: ['visit_fee', 'walk'], petServiceDurations: [{ serviceKey: 'walk', petId: 'cat1', durationMinutes: 30 }] } })
+  assert.equal(invalid.ok, false)
+  assert.match(invalid.message, /狗狗/)
 })
 
 test('order quoteOrder requires visit fee and business service', async () => {

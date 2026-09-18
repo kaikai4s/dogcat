@@ -61,18 +61,27 @@ function coversServiceTime(startTime, endTime, effectiveStart, effectiveEnd) {
   return Boolean(start && end && coverStart && coverEnd && coverStart <= start && coverEnd >= end)
 }
 
+function isDogPet(pet = {}) {
+  const species = String(pet.species || pet.type || pet.petType || '').trim().toLowerCase()
+  if (!species) return true
+  return species === 'dog' || species === 'dogs' || species === '狗' || species === '狗狗'
+}
+
 function buildDailySessions(form) {
-  const start = parseDateTime(`${form.startDate} ${form.startClock}`)
-  if (!start) return []
-  const endDate = form.orderType === 'multi_day' ? form.endDate : form.startDate
-  const final = parseDateTime(`${endDate} ${form.startClock}`)
-  if (!final || final < start) return []
+  if (!form.startDate || !form.startClock) return []
+  const endDateStr = form.orderType === 'multi_day' ? form.endDate : form.startDate
+  if (!endDateStr || endDateStr < form.startDate) return []
+  const durationMinutes = Number(form.durationMinutes || 60)
+  const dateParts = form.startDate.split('-').map(Number)
+  const endDateParts = endDateStr.split('-').map(Number)
+  const clockParts = form.startClock.split(':').map(Number)
+  let current = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], clockParts[0], clockParts[1])
+  const finalDay = new Date(endDateParts[0], endDateParts[1] - 1, endDateParts[2], clockParts[0], clockParts[1])
   const sessions = []
-  const current = new Date(start.getTime())
-  while (current <= final && sessions.length < 31) {
-    const end = new Date(current.getTime() + Number(form.durationMinutes || 60) * 60000)
+  while (current <= finalDay && sessions.length < 31) {
+    const end = new Date(current.getTime() + durationMinutes * 60000)
     sessions.push({ date: formatDate(current), startTime: formatDateTime(current), endTime: formatDateTime(end) })
-    current.setDate(current.getDate() + 1)
+    current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1, clockParts[0], clockParts[1])
   }
   return sessions
 }
@@ -212,6 +221,11 @@ Page({
     durationOptions,
     lockMethodOptions,
     durationIndex: 1,
+    petsLoaded: false,
+    hasTimedServices: true,
+    petDurationRows: [],
+    timedDurationTotal: 0,
+    walkWithoutDog: false,
     form: {
       petId: '',
       petIds: [],
@@ -240,6 +254,7 @@ Page({
       startTime: '',
       endTime: '',
       durationMinutes: 60,
+      petServiceDurations: [],
       addressLatitude: 0,
       addressLongitude: 0
     },
@@ -339,6 +354,7 @@ Page({
         const petIds = selectedPetIds.length ? selectedPetIds : [pets[0]?._id].filter(Boolean)
         const serviceOptionsWithSelected = markSelected(enabled, serviceTypes)
         this.setData({
+          petsLoaded: true,
           pets: decoratePets(pets, petIds),
           serviceOptions: serviceOptionsWithSelected,
           selectedServiceDetails: buildSelectedServiceDetails(serviceOptionsWithSelected, serviceTypes, this.data.serviceDetailExpanded, this.data.serviceCaseUrlMap),
@@ -354,7 +370,60 @@ Page({
       .catch(showError)
   },
 
+  syncPetServiceDurations() {
+    // 再次预约与宠物列表并行加载，列表就绪前不清理模板时长。
+    if (!this.data.petsLoaded) return
+    const form = this.data.form
+    const petIds = normalizeSelectedPetIds(form.petIds, form.petId)
+    const pets = this.data.pets.filter((pet) => petIds.includes(pet._id))
+    const timedServices = form.serviceTypes.filter((key) => key === 'walk' || key === 'play')
+    const previous = Array.isArray(form.petServiceDurations) ? form.petServiceDurations : []
+    const isIntern = form.publishMode === 'direct' && this.data.requestedSitter && this.data.requestedSitter.staffLevel === 'intern'
+    const rows = []
+    timedServices.forEach((serviceKey) => {
+      const service = this.data.serviceOptions.find((item) => item.key === serviceKey) || {}
+      const feeValue = isIntern ? service.internExtraHalfHourFee : service.extraHalfHourFee
+      const feeKnown = feeValue !== undefined && feeValue !== null && Number.isFinite(Number(feeValue))
+      pets.filter((pet) => serviceKey !== 'walk' || isDogPet(pet)).forEach((pet) => {
+        const saved = previous.find((item) => item.serviceKey === serviceKey && item.petId === pet._id)
+        const minutes = Number(saved && saved.durationMinutes)
+        const durationMinutes = minutes >= 30 && minutes <= 240 && minutes % 30 === 0 ? minutes : 30
+        rows.push({
+          key: `${serviceKey}_${pet._id}`, serviceKey, petId: pet._id,
+          petName: pet.name || '宠物', serviceLabel: service.label || (serviceKey === 'walk' ? '遛狗' : '陪玩'),
+          durationMinutes, feeKnown,
+          extraHalfHourFee: feeKnown ? Number(feeValue) : 0,
+          extraFee: feeKnown ? ((durationMinutes - 30) / 30 * Number(feeValue)).toFixed(2) : ''
+        })
+      })
+    })
+    const total = rows.reduce((sum, item) => sum + item.durationMinutes, 0)
+    const hasTimedServices = timedServices.length > 0
+    this.setData({
+      hasTimedServices, petDurationRows: rows, timedDurationTotal: total,
+      walkWithoutDog: timedServices.includes('walk') && !pets.some((pet) => isDogPet(pet)),
+      ['form.petServiceDurations']: rows.map(({ serviceKey, petId, durationMinutes }) => ({ serviceKey, petId, durationMinutes })),
+      ['form.durationMinutes']: hasTimedServices ? total : durationOptions[this.data.durationIndex].value,
+      quote: null
+    })
+  },
+
+  changePetDuration(e) {
+    const { key, step } = e.currentTarget.dataset
+    const row = this.data.petDurationRows.find((item) => item.key === key)
+    if (!row) return
+    const durationMinutes = row.durationMinutes + Number(step)
+    if (durationMinutes < 30 || durationMinutes > 240) return
+    if (Number(step) > 0 && this.data.timedDurationTotal + Number(step) > 240) {
+      wx.showToast({ title: '每日合计不能超过240分钟', icon: 'none' })
+      return
+    }
+    const durations = this.data.form.petServiceDurations.map((item) => item.petId === row.petId && item.serviceKey === row.serviceKey ? { ...item, durationMinutes } : item)
+    this.setData({ ['form.petServiceDurations']: durations, quote: null }, this.prepareTime)
+  },
+
   prepareTime() {
+    this.syncPetServiceDurations()
     const { startDate, endDate, startClock, durationMinutes, doorLockCodeStartDate, doorLockCodeStartClock, doorLockCodeEndDate, doorLockCodeEndClock } = this.data.form
     const sessions = buildDailySessions(this.data.form)
     const startTime = sessions[0] ? sessions[0].startTime : `${startDate} ${startClock}`
@@ -362,7 +431,10 @@ Page({
     const safeEndDate = endDate && endDate >= startDate ? endDate : startDate
     const doorLockCodeStartTime = `${doorLockCodeStartDate || startDate} ${doorLockCodeStartClock || startClock}`
     const doorLockCodeEndTime = `${doorLockCodeEndDate || safeEndDate} ${doorLockCodeEndClock || formatTime(parseDateTime(endTime) || new Date())}`
-    this.setData({ ['form.endDate']: safeEndDate, ['form.startTime']: startTime, ['form.endTime']: endTime, ['form.doorLockCodeStartTime']: doorLockCodeStartTime, ['form.doorLockCodeEndTime']: doorLockCodeEndTime }, this.syncSecurityCoverage)
+    this.setData({ ['form.endDate']: safeEndDate, ['form.startTime']: startTime, ['form.endTime']: endTime, ['form.doorLockCodeStartTime']: doorLockCodeStartTime, ['form.doorLockCodeEndTime']: doorLockCodeEndTime }, () => {
+      this.syncSecurityCoverage()
+      this.syncSelectedAvailability()
+    })
   },
 
   syncSecurityCoverage() {
@@ -385,10 +457,10 @@ Page({
   choosePublishMode(e) {
     const publishMode = e.currentTarget.dataset.mode
     if (publishMode === 'open') {
-      this.setData({ ['form.publishMode']: 'open', ['form.staffProfileId']: '', requestedSitter: null, sitterAvailability: [], selectedAvailability: null, quote: null })
+      this.setData({ ['form.publishMode']: 'open', ['form.staffProfileId']: '', requestedSitter: null, sitterAvailability: [], selectedAvailability: null, quote: null }, this.prepareTime)
       return
     }
-    this.setData({ ['form.publishMode']: 'direct', quote: null })
+    this.setData({ ['form.publishMode']: 'direct', quote: null }, this.prepareTime)
     if (!this.data.form.staffProfileId) this.chooseSitter()
   },
 
@@ -402,7 +474,7 @@ Page({
       callFunction('staff', 'listScheduleAvailability', { staffProfileId, days: 14 })
     ])
       .then(([requestedSitter, availability]) => {
-        this.setData({ requestedSitter, sitterAvailability: availability || [] }, this.syncSelectedAvailability)
+        this.setData({ requestedSitter, sitterAvailability: availability || [] }, this.prepareTime)
       })
       .catch(showError)
   },
@@ -412,7 +484,19 @@ Page({
     const slotText = selected && Array.isArray(selected.slots) && selected.slots.length
       ? selected.slots.map((slot) => `${String(slot.start).padStart(2, '0')}:00-${String(slot.end).padStart(2, '0')}:00`).join('、')
       : ''
-    this.setData({ selectedAvailability: selected ? { ...selected, slotText } : null })
+    const session = buildDailySessions(this.data.form)[0]
+    let timeFitText = ''
+    if (selected && session) {
+      const [hour, minute] = this.data.form.startClock.split(':').map(Number)
+      const startMinute = hour * 60 + minute
+      const endMinute = startMinute + Number(this.data.form.durationMinutes)
+      const covered = selected.status === 'available' && (selected.slots || []).some((slot) => Number(slot.start) * 60 <= startMinute && Number(slot.end) * 60 >= endMinute)
+      const start = parseDateTime(session.startTime)
+      const end = parseDateTime(session.endTime)
+      const conflict = (selected.busyOrders || []).some((order) => parseDateTime(order.startTime) < end && parseDateTime(order.endTime) > start)
+      timeFitText = !covered ? '当前每日时长超出当天排班范围，请调整时间' : conflict ? '当前时间与已接订单重叠，请调整时间' : '当前时长在当天排班内；全部服务日期以试算和下单校验为准'
+    }
+    this.setData({ selectedAvailability: selected ? { ...selected, slotText, timeFitText } : null })
   },
 
   loadDefaultAddress() {
@@ -456,6 +540,7 @@ Page({
           ['form.addressLatitude']: template.addressLatitude,
           ['form.addressLongitude']: template.addressLongitude,
           ['form.durationMinutes']: template.durationMinutes,
+          ['form.petServiceDurations']: Array.isArray(template.petServiceDurations) ? template.petServiceDurations : [],
           ['form.publishMode']: template.publishMode,
           ['form.staffProfileId']: template.staffProfileId,
           locationReady: Boolean(template.serviceAddress),
@@ -614,7 +699,7 @@ Page({
       selectedPets,
       selectedPetsTitle: formatSelectedPetsSummary(selectedPets),
       petVoiceMessage: selectedPets.length > 1 ? '多宠物订单会根据服务规则自动计算额外照护费用。' : buildPetVoiceMessage(selectedPet, this.data.form.startDate)
-    })
+    }, this.prepareTime)
   },
 
   choosePet(e) {
@@ -657,7 +742,7 @@ Page({
       serviceOptions: serviceOptionsWithSelected,
       selectedServiceDetails: buildSelectedServiceDetails(serviceOptionsWithSelected, serviceTypes, this.data.serviceDetailExpanded, this.data.serviceCaseUrlMap),
       quote: null
-    })
+    }, this.prepareTime)
   },
 
   chooseOrderType(e) {
@@ -715,6 +800,10 @@ Page({
     if (!normalizeSelectedPetIds(form.petIds, form.petId).length) return '请先选择宠物'
     if (!form.serviceTypes.includes(VISIT_FEE_SERVICE_KEY)) return '请选择上门费'
     if (!getBusinessServiceTypes(form.serviceTypes).length) return '请选择至少一项照护服务'
+    if (!this.data.petsLoaded) return '宠物信息加载中，请稍后重试'
+    if (this.data.walkWithoutDog) return '遛狗服务需至少选择一只狗狗'
+    if (this.data.hasTimedServices && !form.petServiceDurations.length) return '请选择计时服务的宠物'
+    if (this.data.hasTimedServices && this.data.timedDurationTotal > 240) return '每日合计不能超过240分钟，请减少时长、宠物或服务'
     if (form.publishMode === 'direct' && !form.staffProfileId) return '请选择指定宠托师'
     if (!form.serviceAddress) return '请选择服务地址'
     if (!form.addressDetail) return '请填写详细地址'
@@ -750,6 +839,9 @@ Page({
     const serviceSessions = buildDailySessions(form)
     return {
       ...form,
+      petServiceDurations: form.petServiceDurations.map(({ serviceKey, petId, durationMinutes }) => ({ serviceKey, petId, durationMinutes })),
+      orderType: form.orderType || 'single',
+      endDate: form.endDate || form.startDate,
       petId: petIds[0] || '',
       petIds,
       serviceTypes,

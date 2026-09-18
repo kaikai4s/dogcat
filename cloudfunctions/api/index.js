@@ -1370,6 +1370,10 @@ function normalizeServicePrice(item) {
   const showOnHome = key !== VISIT_FEE_SERVICE_KEY && enabled && item.showOnHome === true
   const price = Math.max(Number(item.price || 0), 0)
   const extraPetFee = Math.max(Number(item.extraPetFee !== undefined ? item.extraPetFee : defaultExtraPetFeeForService(key)), 0)
+  const extraHalfHourFeeValue = Number(item.extraHalfHourFee || 0)
+  const extraHalfHourFee = Number.isFinite(extraHalfHourFeeValue) ? Math.max(extraHalfHourFeeValue, 0) : 0
+  const internExtraHalfHourFeeValue = Number(item.internExtraHalfHourFee !== undefined ? item.internExtraHalfHourFee : extraHalfHourFee)
+  const internExtraHalfHourFee = Number.isFinite(internExtraHalfHourFeeValue) ? Math.max(internExtraHalfHourFeeValue, 0) : extraHalfHourFee
   return {
     key,
     label: String(item.label || '').trim(),
@@ -1378,6 +1382,8 @@ function normalizeServicePrice(item) {
     extraPetFee,
     internExtraPetFee: Math.max(Number(item.internExtraPetFee !== undefined ? item.internExtraPetFee : extraPetFee), 0),
     extraPetRule,
+    extraHalfHourFee: ['walk', 'play'].includes(key) ? extraHalfHourFee : 0,
+    internExtraHalfHourFee: ['walk', 'play'].includes(key) ? internExtraHalfHourFee : 0,
     showOnHome,
     enabled,
     sortOrder: Number(item.sortOrder || 0),
@@ -2025,6 +2031,89 @@ async function resolveStaffPriceLevel(data = {}) {
   return staffProfile && staffProfile.staffLevel === 'intern' ? 'intern' : 'certified'
 }
 
+const PET_TIMED_SERVICE_KEYS = ['walk', 'play']
+
+function petSpecies(pet = {}) {
+  return safeText(pet.species || pet.type || pet.petType).trim().toLowerCase()
+}
+
+function isDogPet(pet = {}) {
+  const species = petSpecies(pet)
+  if (!species) return true
+  return species === 'dog' || species === 'dogs' || species === '狗' || species === '狗狗'
+}
+
+function timedServiceTargets(serviceKey, pets = []) {
+  if (serviceKey === 'walk') return pets.filter(isDogPet)
+  if (serviceKey === 'play') return pets
+  return []
+}
+
+function formatMinutesText(minutes) {
+  const value = Number(minutes || 0)
+  if (value % 60 === 0) return `${value / 60}小时`
+  if (value > 60) return `${Math.floor(value / 60)}小时${value % 60}分钟`
+  return `${value}分钟`
+}
+
+function normalizePetServiceDurations(data = {}, pets = [], serviceTypes = [], catalogMap = {}, isInternPrice = false) {
+  const selectedTimedKeys = PET_TIMED_SERVICE_KEYS.filter((key) => serviceTypes.includes(key))
+  const raw = Array.isArray(data.petServiceDurations) ? data.petServiceDurations : []
+  const hasExplicitConfig = raw.length > 0
+  const petMap = pets.reduce((map, pet) => ({ ...map, [String(pet._id || '')]: pet }), {})
+  const validKeys = new Set(selectedTimedKeys)
+  const validPairs = new Set()
+  selectedTimedKeys.forEach((serviceKey) => {
+    const targets = timedServiceTargets(serviceKey, pets)
+    if (serviceKey === 'walk' && !targets.length) throw new Error('遛狗服务仅支持狗狗，请先选择狗狗')
+    targets.forEach((pet) => validPairs.add(`${serviceKey}:${pet._id}`))
+  })
+
+  const configured = {}
+  if (hasExplicitConfig) {
+    raw.forEach((item) => {
+      const serviceKey = safeText(item.serviceKey || item.serviceType).trim()
+      const petId = safeText(item.petId).trim()
+      if (!validKeys.has(serviceKey)) throw new Error('服务时长配置不正确')
+      if (!petMap[petId] || !validPairs.has(`${serviceKey}:${petId}`)) throw new Error('服务时长宠物不匹配')
+      const key = `${serviceKey}:${petId}`
+      if (configured[key]) throw new Error('服务时长配置重复')
+      const durationMinutes = Number(item.durationMinutes)
+      if (!Number.isFinite(durationMinutes) || durationMinutes < 30 || durationMinutes > 240 || durationMinutes % 30 !== 0) throw new Error('服务时长需为30-240分钟，且按30分钟递增')
+      configured[key] = durationMinutes
+    })
+  }
+
+  const totalTargetCount = selectedTimedKeys.reduce((sum, serviceKey) => sum + timedServiceTargets(serviceKey, pets).length, 0)
+  const legacySingleDuration = Number(data.durationMinutes || 0)
+  const legacyDefaultDuration = !hasExplicitConfig && totalTargetCount === 1 && Number.isFinite(legacySingleDuration) && legacySingleDuration >= 30 && legacySingleDuration <= 240 && legacySingleDuration % 30 === 0 ? legacySingleDuration : 30
+  const durations = []
+  selectedTimedKeys.forEach((serviceKey) => {
+    const targets = timedServiceTargets(serviceKey, pets)
+    targets.forEach((pet) => {
+      const key = `${serviceKey}:${pet._id}`
+      if (hasExplicitConfig && !configured[key]) throw new Error('请为每只宠物设置服务时长')
+      const item = catalogMap[serviceKey] || {}
+      const durationMinutes = configured[key] || legacyDefaultDuration
+      const extraUnits = Math.max(durationMinutes / 30 - 1, 0)
+      const unitPrice = isInternPrice ? Number(item.internExtraHalfHourFee || 0) : Number(item.extraHalfHourFee || 0)
+      durations.push({
+        serviceKey,
+        serviceLabel: item.label || (serviceKey === 'walk' ? '遛狗' : '陪伴玩耍'),
+        petId: pet._id,
+        petName: pet.name || '宠物',
+        durationMinutes,
+        durationText: formatMinutesText(durationMinutes),
+        extraUnits,
+        unitPrice: Math.max(Number.isFinite(unitPrice) ? unitPrice : 0, 0),
+        extraAmount: Math.round(extraUnits * Math.max(Number.isFinite(unitPrice) ? unitPrice : 0, 0) * 100) / 100
+      })
+    })
+  })
+  const totalTimedMinutes = durations.reduce((sum, item) => sum + item.durationMinutes, 0)
+  return { durations, totalTimedMinutes }
+}
+
 async function calcOrderPricing(data, pet, options = {}) {
   const serviceTypes = normalizeServiceTypes(data)
   if (!serviceTypes.length) throw new Error('请选择服务项目')
@@ -2032,23 +2121,23 @@ async function calcOrderPricing(data, pet, options = {}) {
   const pets = Array.isArray(pet) ? pet : (pet ? [pet] : [])
   const primaryPet = pets[0] || null
   const petCount = pets.length || normalizePetIds(data).length
-  const dogCount = pets.filter((item) => item.species === 'dog').length
+  const dogCount = pets.filter(isDogPet).length
   const staffPriceLevel = await resolveStaffPriceLevel(data)
   const isInternPrice = staffPriceLevel === 'intern'
   const catalog = await listServicePrices(false)
   const catalogMap = catalog.reduce((map, item) => ({ ...map, [item.key]: item }), {})
   const weight = Number((primaryPet && primaryPet.weight) || data.weight || 0)
-  const durationMinutes = Number(data.durationMinutes || 60)
-  if (durationMinutes < 30 || durationMinutes > 240) throw new Error('服务时长不正确')
-  const sessions = data.startTime && data.endTime ? buildOrderSessions({ ...data, durationMinutes }) : [{ index: 1, startTime: data.startTime || '', endTime: data.endTime || '' }]
+  const petDurationResult = normalizePetServiceDurations(data, pets, serviceTypes, catalogMap, isInternPrice)
+  const durationMinutes = petDurationResult.totalTimedMinutes || Number(data.durationMinutes || 60)
+  if (!Number.isFinite(durationMinutes) || durationMinutes < 30 || durationMinutes > 240) throw new Error('服务时长不正确')
+  const sessions = data.startTime ? buildOrderSessions({ ...data, durationMinutes, endTime: addMinutesToDateTimeText(data.startTime, durationMinutes) || data.endTime }) : [{ index: 1, startTime: data.startTime || '', endTime: data.endTime || '' }]
   const sessionCount = sessions.length
-  const multiplier = Math.max(durationMinutes, 60) / 60
   const unitBasePriceItems = serviceTypes.map((key) => {
     const item = catalogMap[key]
     if (!item) throw new Error('服务项目不可用')
     const unitBasePrice = isInternPrice ? item.internPrice : item.price
     const basePrice = key === 'walk' ? getWalkPrice(unitBasePrice, weight) : unitBasePrice
-    const price = key === VISIT_FEE_SERVICE_KEY ? Math.round(basePrice) : Math.round(basePrice * multiplier)
+    const price = Math.round(basePrice * 100) / 100
     return { key, label: item.label, price }
   })
   const unitExtraPetItems = getBusinessServiceTypes(serviceTypes).map((key) => {
@@ -2070,11 +2159,25 @@ async function calcOrderPricing(data, pet, options = {}) {
       extraPetRule: item.extraPetRule
     }
   }).filter(Boolean)
-  const unitPriceItems = [...unitBasePriceItems, ...unitExtraPetItems]
+  const unitTimedExtraItems = petDurationResult.durations
+    .filter((item) => item.extraUnits > 0 && item.extraAmount > 0)
+    .map((item) => ({
+      key: `${item.serviceKey}_${item.petId}_time_extra`,
+      serviceKey: item.serviceKey,
+      petId: item.petId,
+      petName: item.petName,
+      label: `${item.serviceLabel} · ${item.petName}续时 ${item.extraUnits}×30分钟`,
+      price: item.extraAmount,
+      quantity: item.extraUnits,
+      unitPrice: item.unitPrice,
+      durationMinutes: item.durationMinutes,
+      type: 'pet_time_extra_fee'
+    }))
+  const unitPriceItems = [...unitBasePriceItems, ...unitExtraPetItems, ...unitTimedExtraItems]
   const priceItems = sessionCount > 1
-    ? unitPriceItems.map((item) => ({ ...item, unitPrice: item.price, price: item.price * sessionCount, label: `${item.label} × ${sessionCount}次` }))
+    ? unitPriceItems.map((item) => ({ ...item, unitPrice: item.price, price: Math.round(item.price * sessionCount * 100) / 100, label: `${item.label} × ${sessionCount}次` }))
     : unitPriceItems
-  const amount = priceItems.reduce((sum, item) => sum + item.price, 0)
+  const amount = Math.round(priceItems.reduce((sum, item) => sum + Math.round(item.price * 100), 0)) / 100
   const serviceLabels = unitBasePriceItems.map((item) => item.label)
   const businessServiceTypes = getBusinessServiceTypes(serviceTypes)
   const basePricing = {
@@ -2089,11 +2192,12 @@ async function calcOrderPricing(data, pet, options = {}) {
     serviceLabels,
     serviceSummary: serviceLabels.join('、'),
     durationMinutes,
+    petServiceDurations: petDurationResult.durations,
     sessionCount,
     sessions,
     orderType: sessionCount > 1 ? 'multi_day' : 'single',
     priceItems,
-    priceSnapshot: { services: priceItems, unitServices: unitPriceItems, extraPetItems: unitExtraPetItems, durationMinutes, sessionCount, sessions, weight, petCount, dogCount, staffPriceLevel, staffLevelText: isInternPrice ? '实习宠托师' : '认证宠托师', originalAmount: amount, discountAmount: 0, payAmount: amount }
+    priceSnapshot: { services: priceItems, unitServices: unitPriceItems, extraPetItems: unitExtraPetItems, timedExtraItems: unitTimedExtraItems, petServiceDurations: petDurationResult.durations, durationMinutes, sessionCount, sessions, weight, petCount, dogCount, staffPriceLevel, staffLevelText: isInternPrice ? '实习宠托师' : '认证宠托师', originalAmount: amount, discountAmount: 0, payAmount: amount }
   }
   const openid = options.openid || ''
   if (!openid) return basePricing
@@ -2201,14 +2305,20 @@ function formatDateTimeParts(dateObj) {
   return `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth() + 1).padStart(2, '0')}-${String(dateObj.getUTCDate()).padStart(2, '0')} ${String(dateObj.getUTCHours()).padStart(2, '0')}:${String(dateObj.getUTCMinutes()).padStart(2, '0')}`
 }
 
+function addMinutesToDateTimeText(startTime, durationMinutes) {
+  const parts = parseDateTimeParts(startTime)
+  if (!parts) return ''
+  return formatDateTimeParts(new Date(parts.dateObj.getTime() + Number(durationMinutes || 0) * 60000))
+}
+
 function buildOrderSessions(data = {}) {
   if (!data.startTime || !data.endTime) throw new Error('请选择服务时间')
   const startParts = parseDateTimeParts(data.startTime)
   const endParts = parseDateTimeParts(data.endTime)
   if (!startParts || !endParts || endParts.dateObj <= startParts.dateObj) throw new Error('服务时间不正确')
-  const orderType = data.orderType === 'multi_day' || data.serviceFrequency === 'multi_day' ? 'multi_day' : 'single'
+  const orderType = data.orderType === 'multi_day' || data.serviceFrequency === 'multi_day' || (data.endDate && data.endDate > String(data.startTime || '').slice(0, 10)) ? 'multi_day' : 'single'
   const durationMinutes = Math.max(Math.floor(Number(data.durationMinutes || ((endParts.dateObj.getTime() - startParts.dateObj.getTime()) / 60000))), 1)
-  if (orderType !== 'multi_day') return [{ index: 1, date: formatDateKey(startParts.dateObj), startTime: data.startTime, endTime: data.endTime }]
+  if (orderType !== 'multi_day') return [{ index: 1, date: formatDateKey(startParts.dateObj), startTime: data.startTime, endTime: addMinutesToDateTimeText(data.startTime, durationMinutes) || data.endTime }]
 
   const endDateText = safeText(data.endDate || data.serviceEndDate).trim()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(endDateText)) throw new Error('请选择连续服务结束日期')
@@ -5191,10 +5301,11 @@ const handlers = {
 
     if (action === 'quoteOrder') {
       await getUser(openid)
-      if (data.startTime || data.endTime) validateOrderTime(data)
       let pets = []
       const petIds = normalizePetIds(data)
       if (petIds.length) pets = await getClientPetsByIds(openid, petIds)
+      const pricing = await calcOrderPricing(data, pets, { openid })
+      if (data.startTime || data.endTime) validateOrderTime({ ...data, durationMinutes: pricing.durationMinutes, endTime: pricing.sessions[pricing.sessions.length - 1].endTime })
       const publishMode = data.publishMode === 'direct' ? 'direct' : 'open'
       const staffProfileId = data.staffProfileId || data.requestedStaffProfileId
       if (publishMode === 'direct' && staffProfileId) {
@@ -5218,11 +5329,11 @@ const handlers = {
           }
 
           if (data.startTime && data.endTime) {
-            await validateStaffAvailabilityForSessions(staffProfile, buildOrderSessions(data))
+            await validateStaffAvailabilityForSessions(staffProfile, pricing.sessions)
           }
         }
       }
-      return calcOrderPricing(data, pets, { openid })
+      return pricing
     }
 
     if (action === 'createOrder') {
@@ -5238,14 +5349,14 @@ const handlers = {
       if (!data.serviceAddress) throw new Error('请选择服务地址')
       if (!data.addressDetail) throw new Error('请填写详细地址')
       if (!data.doorplate) throw new Error('请填写门牌号或入户说明')
-      validateOrderTime(data)
-      const serviceSessions = buildOrderSessions(data)
       const pets = await getClientPetsByIds(openid, petIds)
+      const pricing = await calcOrderPricing(data, pets, { openid })
+      validateOrderTime({ ...data, durationMinutes: pricing.durationMinutes, endTime: pricing.sessions[pricing.sessions.length - 1].endTime })
+      const serviceSessions = pricing.sessions
       const primaryPet = pets[0]
       const petSnapshots = pets.map(createPetSnapshot)
       const petNames = pets.map((pet) => pet.name || '宠物')
       const petSummary = formatPetSummary(pets)
-      const pricing = await calcOrderPricing(data, pets, { openid })
       const requestedStaff = await getRequestedStaff(data)
       if (requestedStaff && requestedStaff.requestedStaffProfileId) {
         const staffProfileRes = await db.collection('staff_profiles').doc(requestedStaff.requestedStaffProfileId).get()
@@ -5273,7 +5384,7 @@ const handlers = {
       const time = now()
       const homeSecurity = normalizeHomeSecurityInput({ ...data, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime })
       const checkinRequirements = await resolveCheckinRequirements(pricing.serviceTypes)
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: primaryPet._id || petIds[0], petIds, petName: petSummary, petNames, petSnapshot: petSnapshots[0], petSnapshots, petSummary, serviceType: pricing.primaryServiceType || pricing.businessServiceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), orderType: pricing.orderType, serviceStartDate: serviceSessions[0].date, serviceEndDate: serviceSessions[serviceSessions.length - 1].date, sessionCount: serviceSessions.length, serviceSessions, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime, durationMinutes: pricing.durationMinutes, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: primaryPet._id || petIds[0], petIds, petName: petSummary, petNames, petSnapshot: petSnapshots[0], petSnapshots, petSummary, serviceType: pricing.primaryServiceType || pricing.businessServiceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), orderType: pricing.orderType, serviceStartDate: serviceSessions[0].date, serviceEndDate: serviceSessions[serviceSessions.length - 1].date, sessionCount: serviceSessions.length, serviceSessions, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime, durationMinutes: pricing.durationMinutes, petServiceDurations: pricing.petServiceDurations, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {
@@ -5382,6 +5493,7 @@ const handlers = {
         addressLatitude: Number(order.addressLatitude || 0),
         addressLongitude: Number(order.addressLongitude || 0),
         durationMinutes: Number(order.durationMinutes || 60),
+        petServiceDurations: Array.isArray(order.petServiceDurations) ? order.petServiceDurations : (order.priceSnapshot && Array.isArray(order.priceSnapshot.petServiceDurations) ? order.priceSnapshot.petServiceDurations : []),
         publishMode,
         staffProfileId
       }
@@ -7764,6 +7876,10 @@ const handlers = {
       if (!Number.isFinite(internPrice) || internPrice < 0) throw new Error('实习宠托师价格不正确')
       const internExtraPetFee = data.internExtraPetFee === undefined || data.internExtraPetFee === '' ? extraPetFee : Number(data.internExtraPetFee)
       if (!Number.isFinite(internExtraPetFee) || internExtraPetFee < 0) throw new Error('实习宠托师多宠物加价不正确')
+      const extraHalfHourFee = data.extraHalfHourFee === undefined || data.extraHalfHourFee === '' ? 0 : Number(data.extraHalfHourFee)
+      if (!Number.isFinite(extraHalfHourFee) || extraHalfHourFee < 0) throw new Error('续时加价不正确')
+      const internExtraHalfHourFee = data.internExtraHalfHourFee === undefined || data.internExtraHalfHourFee === '' ? extraHalfHourFee : Number(data.internExtraHalfHourFee)
+      if (!Number.isFinite(internExtraHalfHourFee) || internExtraHalfHourFee < 0) throw new Error('实习宠托师续时加价不正确')
       const time = now()
       const payload = normalizeServicePrice({
         ...(preset || {}),
@@ -7773,6 +7889,8 @@ const handlers = {
         internPrice,
         extraPetFee,
         internExtraPetFee,
+        extraHalfHourFee,
+        internExtraHalfHourFee,
         extraPetRule: key === VISIT_FEE_SERVICE_KEY ? 'none' : data.extraPetRule,
         showOnHome: key === VISIT_FEE_SERVICE_KEY ? false : Boolean(data.showOnHome),
         enabled: data.enabled !== false,
@@ -7788,7 +7906,7 @@ const handlers = {
       } else {
         await db.collection('service_prices').add({ data: { ...payload, createdAt: time, updatedAt: time } })
       }
-      await logAdmin(admin, 'service_price', key, 'saveServicePrice', { price, internPrice: payload.internPrice, extraPetFee: payload.extraPetFee, internExtraPetFee: payload.internExtraPetFee, extraPetRule: payload.extraPetRule, enabled: payload.enabled, showOnHome: payload.showOnHome })
+      await logAdmin(admin, 'service_price', key, 'saveServicePrice', { price, internPrice: payload.internPrice, extraPetFee: payload.extraPetFee, internExtraPetFee: payload.internExtraPetFee, extraHalfHourFee: payload.extraHalfHourFee, internExtraHalfHourFee: payload.internExtraHalfHourFee, extraPetRule: payload.extraPetRule, enabled: payload.enabled, showOnHome: payload.showOnHome })
       return payload
     }
     if (action === 'deleteServicePrice') {

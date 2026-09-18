@@ -28,6 +28,10 @@
       <view class="meta-chip warning">实习 ¥{{item.internPrice}}</view>
       <view class="meta-chip">标准加宠 ¥{{item.extraPetFee}}</view>
       <view class="meta-chip">实习加宠 ¥{{item.internExtraPetFee}}</view>
+      <block wx:if="{{item.key === 'walk' || item.key === 'play'}}">
+        <view class="meta-chip">标准续时 ¥{{item.extraHalfHourFee}}/只/30分钟</view>
+        <view class="meta-chip">实习续时 ¥{{item.internExtraHalfHourFee}}/只/30分钟</view>
+      </block>
       <view class="meta-chip" wx:if="{{item.showOnHome}}">首页展示</view>
       <view class="meta-chip chip-primary" wx:if="{{item.caseImageFileIds.length}}">案例图 {{item.caseImageFileIds.length}} 张</view>
       <view class="meta-chip" wx:if="{{item.description}}">{{item.description}}</view>
@@ -88,6 +92,16 @@
         <input type="number" placeholder="实习宠托师基础价" value="{{priceForm.internPrice}}" data-field="internPrice" bindinput="input" />
         <input type="number" placeholder="标准多宠物加价金额" value="{{priceForm.extraPetFee}}" data-field="extraPetFee" bindinput="input" />
         <input type="number" placeholder="实习宠托师多宠物加价" value="{{priceForm.internExtraPetFee}}" data-field="internExtraPetFee" bindinput="input" />
+
+        <view class="notice" wx:if="{{priceForm.key === 'walk' || priceForm.key === 'play'}}">
+          <view class="strong">按宠物续时计费</view>
+          <view class="muted">基础价含首只宠物30分钟，额外宠物加价含每只新增宠物30分钟；每只宠物超过基础30分钟后，每多30分钟收取一次续时费。</view>
+          <view class="strong">标准续时费（元/只/30分钟）</view>
+          <input type="digit" placeholder="请输入标准续时费" value="{{priceForm.extraHalfHourFee}}" data-field="extraHalfHourFee" bindinput="input" />
+          <view class="strong">实习宠托师续时费（元/只/30分钟）</view>
+          <input type="digit" placeholder="请输入实习宠托师续时费" value="{{priceForm.internExtraHalfHourFee}}" data-field="internExtraHalfHourFee" bindinput="input" />
+          <view class="muted">未配置默认0元；0元表示不收续时费，请按实际收费标准配置标准及实习续时费。</view>
+        </view>
 
         <picker range="{{extraPetRuleOptions}}" range-key="label" bindchange="chooseExtraPetRule" disabled="{{priceForm.key === 'visit_fee'}}">
           <view class="field picker-field">加宠规则：{{priceForm.extraPetRuleText}}</view>

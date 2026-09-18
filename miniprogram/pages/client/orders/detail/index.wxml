@@ -37,7 +37,11 @@
     <view class="info-row" wx:if="{{order.orderHomeSecurity}}"><view class="label">入户方式</view><view class="value">{{order.orderHomeSecurity.lockMethodText}}</view></view>
     <view class="info-row" wx:if="{{order.orderHomeSecurity && order.orderHomeSecurity.oneTimeCode}}"><view class="label">一次性密码</view><view class="value">{{order.orderHomeSecurity.oneTimeCode.masked}} · {{order.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{order.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view></view>
     <view class="info-row"><view class="label">时间</view><view class="value">{{order.startTime}} - {{order.endTime}}</view></view>
-    <view class="info-row" wx:if="{{order.durationMinutes}}"><view class="label">时长</view><view class="value">{{order.durationMinutes}}分钟{{order.sessionCount > 1 ? ' × ' + order.sessionCount + '次' : ''}}</view></view>
+    <view wx:if="{{order.petServiceDurations && order.petServiceDurations.length}}" class="session-list">
+      <view class="session-label">每日服务任务{{order.sessionCount > 1 ? '（每天相同）' : ''}}</view>
+      <view class="session-item" wx:for="{{order.petServiceDurations}}" wx:key="index">{{index + 1}}. {{item.petName}}｜{{item.serviceLabel}}｜{{item.durationMinutes}}分钟</view>
+    </view>
+    <view class="info-row" wx:if="{{order.durationMinutes}}"><view class="label">{{order.petServiceDurations.length ? '每日合计' : '时长'}}</view><view class="value">{{order.durationMinutes}}分钟{{order.sessionCount > 1 ? ' × ' + order.sessionCount + '次' : ''}}</view></view>
     <view wx:if="{{order.serviceSessions.length > 1}}" class="session-list">
       <view class="session-label">每日服务安排</view>
       <view class="session-item" wx:for="{{order.serviceSessions}}" wx:key="index">第{{item.index}}天 · {{item.date}} · {{item.startTime}} 至 {{item.endTime}}</view>

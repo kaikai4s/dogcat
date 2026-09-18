@@ -215,7 +215,29 @@
       <picker mode="date" wx:if="{{form.orderType === 'multi_day'}}" value="{{form.endDate}}" start="{{form.startDate}}" bindchange="chooseEndDate"><view class="field">结束日期：{{form.endDate}}</view></picker>
       <picker mode="time" value="{{form.startClock}}" start="{{minClock}}" bindchange="chooseClock"><view class="field">开始：{{form.startClock}}</view></picker>
     </view>
-    <picker range="{{durationOptions}}" range-key="label" value="{{durationIndex}}" bindchange="chooseDuration">
+    <view class="pet-duration-panel" wx:if="{{hasTimedServices}}">
+      <view class="strong">逐宠物服务时长 · 每日配置</view>
+      <view class="muted">遛狗覆盖所有已选狗狗；陪玩覆盖所有已选宠物。每项30分钟起，每次增减30分钟。</view>
+      <view class="pet-duration-row" wx:for="{{petDurationRows}}" wx:key="key">
+        <view class="strong">{{item.petName}} · {{item.serviceLabel}}</view>
+        <view class="duration-stepper">
+          <button class="duration-step" data-key="{{item.key}}" data-step="{{-30}}" disabled="{{item.durationMinutes <= 30}}" bindtap="changePetDuration">−</button>
+          <text class="duration-value">{{item.durationMinutes}} 分钟</text>
+          <button class="duration-step" data-key="{{item.key}}" data-step="{{30}}" disabled="{{item.durationMinutes >= 240 || timedDurationTotal >= 240}}" bindtap="changePetDuration">＋</button>
+        </view>
+        <view class="muted" wx:if="{{item.feeKnown}}">含30分钟；续时 ¥{{item.extraHalfHourFee}}/只/30分钟，本只本项每日续时费 ¥{{item.extraFee}}</view>
+        <view class="muted" wx:else>含30分钟；续时单价待加载，以试算价格为准</view>
+      </view>
+      <view class="notice {{timedDurationTotal > 240 || walkWithoutDog ? 'warning' : ''}}">
+        <view class="strong">每日合计：{{timedDurationTotal}} / 240 分钟</view>
+        <view class="muted" wx:if="{{walkWithoutDog}}">遛狗服务需至少选择一只狗狗，请调整宠物或取消遛狗。</view>
+        <view class="muted" wx:if="{{timedDurationTotal > 240}}">已超每日上限，请减少时长、宠物或服务后再提交。</view>
+        <view class="muted">基础价包含首只宠物30分钟，额外宠物加价包含新增宠物30分钟，均照常收取。仅每只每项超过30分钟的部分收续时费，其他服务不随时长加价。</view>
+        <view class="muted">续时单价按宠托师等级展示，最终金额以试算为准。</view>
+        <view class="muted" wx:if="{{form.orderType === 'multi_day'}}">多天订单每天使用相同的宠物、服务与时长配置，费用按服务天数累计。</view>
+      </view>
+    </view>
+    <picker wx:else range="{{durationOptions}}" range-key="label" value="{{durationIndex}}" bindchange="chooseDuration">
       <view class="field">服务时长：{{durationOptions[durationIndex].label}}</view>
     </picker>
     <view class="notice">
@@ -227,6 +249,7 @@
       <view class="muted">宠托师当天排班</view>
       <view class="strong">{{selectedAvailability.status === 'available' ? selectedAvailability.slotText : '当天休息'}}</view>
       <view class="muted">{{selectedAvailability.source === 'exception' ? '按日期例外' : '按周规则'}} · 已接订单 {{selectedAvailability.busyOrders.length || 0}} 个</view>
+      <view class="muted">{{selectedAvailability.timeFitText}}</view>
     </view>
   </view>
 
@@ -257,8 +280,19 @@
     <view class="price-breakdown">
       <view class="info-row"><view class="label">原价</view><view class="value">¥{{quote.amount}}</view></view>
       <view class="info-row" wx:if="{{quote.sessionCount > 1}}"><view class="label">服务次数</view><view class="value">{{quote.sessionCount}} 次</view></view>
+      <view class="quote-section-title">基础服务费</view>
+      <block wx:for="{{quote.priceItems}}" wx:key="key"><view class="info-row" wx:if="{{!item.type}}"><view class="label">{{item.label}}</view><view class="value">¥{{item.price}}</view></view></block>
+      <view class="quote-section-title">多宠物加价</view>
+      <block wx:for="{{quote.priceItems}}" wx:key="key"><view class="info-row" wx:if="{{item.type === 'extra_pet_fee'}}"><view class="label">{{item.label}}</view><view class="value">¥{{item.price}}</view></view></block>
+      <view class="quote-section-title">逐宠物续时费</view>
+      <view class="muted">基础价含首只30分钟，额外宠物加价含新增宠物30分钟；以下仅为超过30分钟的续时费用。</view>
+      <block wx:for="{{quote.priceItems}}" wx:key="key"><view class="info-row" wx:if="{{item.type === 'pet_time_extra_fee'}}"><view class="label">{{item.label}}</view><view class="value">¥{{item.price}}</view></view></block>
+      <view wx:if="{{quote.petServiceDurations && quote.petServiceDurations.length}}" class="quote-duration-list">
+        <view class="quote-section-title">每日服务清单</view>
+        <view class="muted" wx:if="{{quote.sessionCount > 1}}">以下宠物时长每天相同，费用按{{quote.sessionCount}}次累计。</view>
+        <view class="duration-task" wx:for="{{quote.petServiceDurations}}" wx:key="index">{{item.petName}} · {{item.serviceLabel}} · {{item.durationMinutes}}分钟</view>
+      </view>
       <view class="info-row" wx:if="{{quote.discountAmount}}"><view class="label">优惠券</view><view class="value">-¥{{quote.discountAmount}}</view></view>
-      <view class="info-row" wx:for="{{quote.priceItems}}" wx:key="key"><view class="label">{{item.label}}</view><view class="value">¥{{item.price}}</view></view>
     </view>
   </view>
 
