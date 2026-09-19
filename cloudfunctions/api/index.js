@@ -7561,8 +7561,8 @@ const handlers = {
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
 
       // 【修改】使用实时位置验证服务范围，而非固定服务地址
-      const orderLat = Number(order.serviceLatitude || 0)
-      const orderLng = Number(order.serviceLongitude || 0)
+      const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
+      const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
       if (!hasCoordinate(orderLat, orderLng)) {
         throw new Error('订单缺少有效的服务地址坐标')
       }
