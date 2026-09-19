@@ -69,29 +69,6 @@
     </view>
   </view>
 
-  <view class="action-grid">
-    <view class="action-card" data-url="/pages/staff/home/index" bindtap="go">
-      <view class="icon-box"><text class="remix-icon ri-home-5-line action-icon"></text></view>
-      <view class="action-title">接单工作台</view>
-      <view class="action-sub">查看附近订单</view>
-    </view>
-    <view class="action-card" data-url="/pages/staff/orders/list/index" bindtap="go">
-      <view class="icon-box"><text class="remix-icon ri-file-list-3-line action-icon"></text></view>
-      <view class="action-title">我的任务</view>
-      <view class="action-sub">查看已接订单</view>
-    </view>
-    <view class="action-card" data-url="/pages/staff/schedule/index" bindtap="go">
-      <view class="icon-box"><text class="remix-icon ri-calendar-event-line action-icon"></text></view>
-      <view class="action-title">排班日历</view>
-      <view class="action-sub">休息与加班例外</view>
-    </view>
-    <view class="action-card" data-url="/pages/staff/earnings/index" bindtap="go">
-      <view class="icon-box"><text class="remix-icon ri-wallet-3-line action-icon"></text></view>
-      <view class="action-title">收益提现</view>
-      <view class="action-sub">余额与提现记录</view>
-    </view>
-  </view>
-
   <view class="card menu-list-card">
     <view class="menu-item" bindtap="openConfigModal">
       <view class="menu-left">

@@ -21,24 +21,73 @@ function withTimelineText(list = []) {
   })
 }
 
-function showRemoteUnlockSubscribeTip(result) {
-  const showTip = (content) => new Promise((resolve) => {
-    wx.showModal({ title: '开锁通知未授权', content, showCancel: false, complete: resolve })
-  })
+function showRemoteUnlockSubscribeTip(result, retryCallback) {
+  // 如果未发起订阅请求，显示原因但允许继续
   if (!result || !result.requested) {
     const reasonMap = {
-      subscription_disabled: '后台未启用订阅消息',
-      request_api_unavailable: '当前微信版本不支持订阅消息接口',
-      template_not_configured: '后台未配置开锁请求模板',
-      request_failed: '微信订阅授权接口调用失败',
-      settings_load_failed: '系统设置加载失败'
+      subscription_disabled: '后台未启用订阅消息，你将无法收到服务通知。',
+      request_api_unavailable: '当前微信版本不支持订阅消息接口，你将无法收到服务通知。',
+      template_not_configured: '后台未配置开锁请求模板，你将无法收到服务通知。',
+      request_failed: '微信订阅授权接口调用失败，你将无法收到服务通知。',
+      settings_load_failed: '系统设置加载失败，你将无法收到服务通知。'
     }
-    return showTip(reasonMap[result && result.reason] || '未能发起订阅授权，请检查订阅消息设置。')
+    const message = reasonMap[result && result.reason] || '未能发起订阅授权，你将无法收到服务通知。'
+    return new Promise((resolve, reject) => {
+      wx.showModal({
+        title: '提醒',
+        content: message + '\n\n是否继续支付？',
+        confirmText: '继续支付',
+        cancelText: '取消',
+        success: (res) => {
+          if (res.confirm) resolve()
+          else reject(new Error('用户取消支付'))
+        },
+        fail: reject
+      })
+    })
   }
+
+  // 检查开锁通知是否授权
   const index = (result.templateKeys || []).indexOf('remoteUnlock')
   const templateId = index >= 0 ? result.templateIds[index] : ''
   const status = templateId ? result.results[templateId] : ''
-  if (templateId && status !== 'accept') return showTip('你没有允许“开锁请求通知”，宠托师请求开门时微信不会推送通知。')
+
+  if (templateId && status !== 'accept') {
+    return new Promise((resolve, reject) => {
+      wx.showModal({
+        title: '开锁通知未授权',
+        content: '你没有允许”开锁请求通知”，宠托师请求开门时微信不会推送通知。\n\n建议授权以便及时收到开锁提醒。',
+        confirmText: '重新授权',
+        cancelText: '暂不授权',
+        success: (res) => {
+          if (res.confirm && typeof retryCallback === 'function') {
+            // 用户选择重新授权，重新发起订阅请求
+            retryCallback()
+              .then(resolve)
+              .catch(reject)
+          } else if (res.confirm) {
+            // 没有回调函数，继续支付
+            resolve()
+          } else {
+            // 用户选择暂不授权，显示二次确认
+            wx.showModal({
+              title: '确认继续',
+              content: '不授权将无法收到宠托师的开锁通知，可能影响服务体验。\n\n确定继续支付吗？',
+              confirmText: '继续支付',
+              cancelText: '取消支付',
+              success: (res2) => {
+                if (res2.confirm) resolve()
+                else reject(new Error('用户取消支付'))
+              },
+              fail: reject
+            })
+          }
+        },
+        fail: reject
+      })
+    })
+  }
+
   return Promise.resolve()
 }
 
@@ -75,8 +124,15 @@ Page({
     if (this.data.paying) return
     this.setData({ paying: true })
     const clientRequestId = createClientRequestId('pay')
-    requestSubscribeTemplates(['orderAccepted', 'remoteUnlock', 'refundResult'], 'client_pay')
-      .then((subscribeResult) => showRemoteUnlockSubscribeTip(subscribeResult))
+
+    // 定义重新授权的函数
+    const requestSubscribe = () => requestSubscribeTemplates(['orderAccepted', 'remoteUnlock', 'refundResult'], 'client_pay')
+
+    requestSubscribe()
+      .then((subscribeResult) => {
+        // 传入重新授权的回调函数
+        return showRemoteUnlockSubscribeTip(subscribeResult, requestSubscribe)
+      })
       .then(() => callFunction('payment', 'createPayment', { orderId: this.data.id, clientRequestId }))
       .then((payment) => {
         if (payment.paid) return payment
@@ -101,10 +157,15 @@ Page({
       .catch((error) => {
         this.setData({ paying: false })
         const errorMessage = (error && (error.errMsg || error.message)) || ''
-        if (errorMessage.includes('cancel')) wx.showToast({ title: '已取消支付', icon: 'none' })
-        else if (errorMessage.includes('配置') || errorMessage.includes('未完成')) wx.showToast({ title: '微信支付暂未配置完成', icon: 'none' })
-        else if (errorMessage.includes('微信支付下单失败')) wx.showToast({ title: '微信支付下单失败，请稍后重试', icon: 'none' })
-        else showError(error)
+        if (errorMessage.includes('cancel') || errorMessage.includes('取消')) {
+          wx.showToast({ title: '已取消支付', icon: 'none' })
+        } else if (errorMessage.includes('配置') || errorMessage.includes('未完成')) {
+          wx.showToast({ title: '微信支付暂未配置完成', icon: 'none' })
+        } else if (errorMessage.includes('微信支付下单失败')) {
+          wx.showToast({ title: '微信支付下单失败，请稍后重试', icon: 'none' })
+        } else {
+          showError(error)
+        }
       })
   },
   tracking() { wx.navigateTo({ url: '/pages/client/orders/tracking/index?id=' + this.data.id }) },
@@ -144,7 +205,44 @@ Page({
     if (this.data.handlingEarlyStart) return
     const approve = e.currentTarget.dataset.action === 'approve'
     this.setData({ handlingEarlyStart: true })
-    requestSubscribeTemplates(['serviceStart'], 'client_early_start')
+
+    // 定义重新授权的函数
+    const requestSubscribe = () => requestSubscribeTemplates(['serviceStart'], 'client_early_start')
+
+    // 如果用户同意提前服务，先请求订阅通知
+    const subscribePromise = approve ? requestSubscribe() : Promise.resolve({ requested: false })
+
+    subscribePromise
+      .then((subscribeResult) => {
+        // 如果是同意操作且未授权，提示用户
+        if (approve && subscribeResult.requested) {
+          const index = (subscribeResult.templateKeys || []).indexOf('serviceStart')
+          const templateId = index >= 0 ? subscribeResult.templateIds[index] : ''
+          const status = templateId ? subscribeResult.results[templateId] : ''
+
+          if (templateId && status !== 'accept') {
+            return new Promise((resolve, reject) => {
+              wx.showModal({
+                title: '服务通知未授权',
+                content: '你没有允许"服务开始通知"，宠托师开始服务时微信不会推送通知。\n\n建议授权以便及时了解服务进度。',
+                confirmText: '重新授权',
+                cancelText: '暂不授权',
+                success: (res) => {
+                  if (res.confirm) {
+                    // 重新授权
+                    requestSubscribe().then(resolve).catch(reject)
+                  } else {
+                    // 暂不授权，继续操作
+                    resolve()
+                  }
+                },
+                fail: reject
+              })
+            })
+          }
+        }
+        return Promise.resolve()
+      })
       .then(() => callFunction('order', approve ? 'approveEarlyStart' : 'rejectEarlyStart', { id: this.data.id }))
       .then(() => {
         wx.showToast({ title: approve ? '已同意提前开始' : '已拒绝', icon: 'none' })

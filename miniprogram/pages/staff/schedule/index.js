@@ -4,38 +4,27 @@ const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 const hourLabels = Array.from({ length: 25 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
 
-function formatSlot(slot = {}) {
-  return `${String(slot.start).padStart(2, '0')}:00-${String(slot.end).padStart(2, '0')}:00`
-}
-
-function enrichDay(day = {}) {
-  const slots = Array.isArray(day.slots) ? day.slots : []
-  const busyOrders = Array.isArray(day.busyOrders) ? day.busyOrders : []
-  return {
-    ...day,
-    slotText: slots.length ? slots.map(formatSlot).join('、') : '不可预约',
-    statusText: day.status === 'available' ? '可预约' : '休息',
-    sourceText: day.source === 'exception' ? '日期例外' : '按周规则',
-    busyText: busyOrders.length ? `${busyOrders.length} 个已接订单` : '暂无已接订单'
-  }
-}
+const WEEKDAYS = [
+  { day: 1, label: '周一' },
+  { day: 2, label: '周二' },
+  { day: 3, label: '周三' },
+  { day: 4, label: '周四' },
+  { day: 5, label: '周五' },
+  { day: 6, label: '周六' },
+  { day: 7, label: '周日' }
+]
 
 Page({
   data: {
     themeClass: 'theme-day',
     loading: false,
-    calendar: [],
-    weeklyScheduleText: '',
-    selectedDate: '',
-    selectedDay: null,
+    saving: false,
+    weekdays: WEEKDAYS,
     hourLabels,
-    form: {
-      status: 'unavailable',
-      slots: [],
-      remark: ''
-    },
-    startHourIndex: 9,
-    endHourIndex: 18,
+    activeDay: 1,
+    startHourIndex: 8,
+    endHourIndex: 22,
+    weeklySchedule: { '1': [], '2': [], '3': [], '4': [], '5': [], '6': [], '7': [] },
     canGoBack: false
   },
 
@@ -43,7 +32,7 @@ Page({
     const { createPageNav } = require('../../../utils/nav')
     this.setData(createPageNav(q))
     this.applyCurrentTheme()
-    this.loadCalendar()
+    this.loadWeeklySchedule()
   },
 
   ...navMethods(),
@@ -53,45 +42,41 @@ Page({
     this.setData(getThemeState(theme.value))
   },
 
-  loadCalendar() {
+  loadWeeklySchedule() {
     this.setData({ loading: true })
-    callFunction('staff', 'getScheduleCalendar', { days: 14 })
-      .then((res) => {
-        const calendar = (res.availability || []).map(enrichDay)
-        const selectedDate = this.data.selectedDate || (calendar[0] && calendar[0].dateKey) || ''
+    callFunction('staff', 'getStaffProfile')
+      .then((profile) => {
+        if (!profile || profile.auditStatus !== 'approved') {
+          wx.showToast({ title: '未通过宠托师认证', icon: 'none' })
+          setTimeout(() => {
+            wx.navigateBack()
+          }, 1200)
+          return
+        }
+
+        // 加载当前的按周规则
+        const weeklySchedule = profile.weeklySchedule || {}
+        const defaultSchedule = { '1': [], '2': [], '3': [], '4': [], '5': [], '6': [], '7': [] }
+        const normalizedSchedule = { ...defaultSchedule }
+        for (let day = 1; day <= 7; day++) {
+          const key = String(day)
+          normalizedSchedule[key] = Array.isArray(weeklySchedule[key]) ? weeklySchedule[key] : []
+        }
+
         this.setData({
-          calendar,
-          weeklyScheduleText: res.weeklyScheduleText || '',
-          selectedDate,
-          selectedDay: calendar.find((day) => day.dateKey === selectedDate) || calendar[0] || null
+          weeklySchedule: normalizedSchedule,
+          loading: false
         })
       })
-      .catch(showError)
-      .finally(() => this.setData({ loading: false }))
+      .catch((error) => {
+        this.setData({ loading: false })
+        showError(error)
+      })
   },
 
-  selectDay(e) {
-    const dateKey = e.currentTarget.dataset.date
-    const day = this.data.calendar.find((item) => item.dateKey === dateKey)
-    if (!day) return
-    this.setData({
-      selectedDate: dateKey,
-      selectedDay: day,
-      form: {
-        status: day.status === 'available' ? 'available' : 'unavailable',
-        slots: JSON.parse(JSON.stringify(day.slots || [])),
-        remark: day.remark || ''
-      }
-    })
-  },
-
-  setAvailable() {
-    const slots = this.data.form.slots.length ? this.data.form.slots : [{ start: 9, end: 18 }]
-    this.setData({ 'form.status': 'available', 'form.slots': slots })
-  },
-
-  setUnavailable() {
-    this.setData({ 'form.status': 'unavailable', 'form.slots': [] })
+  switchDay(e) {
+    const day = Number(e.currentTarget.dataset.day || 1)
+    this.setData({ activeDay: day })
   },
 
   bindStartHourChange(e) {
@@ -102,51 +87,81 @@ Page({
     this.setData({ endHourIndex: Number(e.detail.value) })
   },
 
-  inputRemark(e) {
-    this.setData({ 'form.remark': e.detail.value })
-  },
-
   addSlot() {
-    const { startHourIndex, endHourIndex, form } = this.data
-    if (form.status !== 'available') {
-      wx.showToast({ title: '请先选择可预约', icon: 'none' })
-      return
-    }
+    const { activeDay, startHourIndex, endHourIndex, weeklySchedule } = this.data
     if (endHourIndex <= startHourIndex) {
       wx.showToast({ title: '结束时间必须大于开始时间', icon: 'none' })
       return
     }
-    const slots = [...form.slots, { start: startHourIndex, end: endHourIndex }].sort((a, b) => a.start - b.start)
-    this.setData({ 'form.slots': slots })
+    const dayKey = String(activeDay)
+    const list = Array.isArray(weeklySchedule[dayKey]) ? weeklySchedule[dayKey] : []
+    const updated = [...list, { start: startHourIndex, end: endHourIndex }]
+    updated.sort((a, b) => a.start - b.start)
+
+    this.setData({
+      [`weeklySchedule.${dayKey}`]: updated
+    })
   },
 
   removeSlot(e) {
+    const { activeDay, weeklySchedule } = this.data
     const index = Number(e.currentTarget.dataset.index)
-    this.setData({ 'form.slots': this.data.form.slots.filter((_, i) => i !== index) })
+    const dayKey = String(activeDay)
+    const list = Array.isArray(weeklySchedule[dayKey]) ? weeklySchedule[dayKey] : []
+    const updated = list.filter((_, i) => i !== index)
+
+    this.setData({
+      [`weeklySchedule.${dayKey}`]: updated
+    })
   },
 
-  saveException() {
-    if (!this.data.selectedDate) return
-    callFunction('staff', 'saveScheduleException', {
-      dateKey: this.data.selectedDate,
-      status: this.data.form.status,
-      slots: this.data.form.slots,
-      remark: this.data.form.remark
+  clearCurrentDay() {
+    const { activeDay } = this.data
+    this.setData({ [`weeklySchedule.${String(activeDay)}`]: [] })
+    wx.showToast({ title: '已清空本日时间', icon: 'none' })
+  },
+
+  presetWeeklySchedule() {
+    const preset = [{ start: 8, end: 22 }]
+    const updatedSchedule = {}
+    for (let day = 1; day <= 7; day += 1) {
+      updatedSchedule[String(day)] = [...preset]
+    }
+    this.setData({ weeklySchedule: updatedSchedule })
+    wx.showToast({ title: '已设置全周 08:00-22:00', icon: 'none' })
+  },
+
+  clearWeeklySchedule() {
+    wx.showModal({
+      title: '确认清空',
+      content: '确定要清空所有时间吗？',
+      success: (res) => {
+        if (res.confirm) {
+          const updatedSchedule = { '1': [], '2': [], '3': [], '4': [], '5': [], '6': [], '7': [] }
+          this.setData({ weeklySchedule: updatedSchedule })
+          wx.showToast({ title: '已清空所有时间', icon: 'none' })
+        }
+      }
+    })
+  },
+
+  saveWeeklySchedule() {
+    this.setData({ saving: true })
+
+    callFunction('staff', 'updateStaffProfileConfig', {
+      weeklySchedule: this.data.weeklySchedule
     })
       .then(() => {
-        wx.showToast({ title: '排班已保存', icon: 'none' })
-        this.loadCalendar()
+        wx.showToast({ title: '保存成功', icon: 'success' })
+        this.setData({ saving: false })
+        // 1秒后返回上一页
+        setTimeout(() => {
+          wx.navigateBack()
+        }, 1000)
       })
-      .catch(showError)
-  },
-
-  resetException() {
-    if (!this.data.selectedDate) return
-    callFunction('staff', 'deleteScheduleException', { dateKey: this.data.selectedDate })
-      .then(() => {
-        wx.showToast({ title: '已恢复按周规则', icon: 'none' })
-        this.loadCalendar()
+      .catch((error) => {
+        this.setData({ saving: false })
+        showError(error)
       })
-      .catch(showError)
   }
 })

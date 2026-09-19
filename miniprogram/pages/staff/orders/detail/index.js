@@ -69,15 +69,24 @@ Page({
   },
   accept() {
     const orderId = this.data.id
+    console.log('【调试】开始接单，订单ID:', orderId)
     callFunction('staff', 'checkAcceptOrderRisk', { orderId })
       .then((risk) => {
+        console.log('【调试】风险检测结果:', JSON.stringify(risk, null, 2))
+        console.log('【调试】requiresConfirmation:', risk?.requiresConfirmation)
+        console.log('【调试】warnings数量:', risk?.warnings?.length)
         if (risk && risk.requiresConfirmation) {
+          console.log('【调试】检测到风险，显示弹窗')
           this.setData({ acceptRisk: risk, acceptRiskStep: 1, acceptRiskAgreed: false })
           return
         }
+        console.log('【调试】无风险或未检测到风险，直接接单')
         this.submitAcceptOrder(false)
       })
-      .catch(showError)
+      .catch((error) => {
+        console.error('【调试】风险检测失败:', error)
+        showError(error)
+      })
   },
   submitAcceptOrder(riskConfirmed) {
     this.setData({ acceptingRiskOrder: true })

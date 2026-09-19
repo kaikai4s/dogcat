@@ -831,7 +831,21 @@ async function recordAiLog(openid, logData = {}) {
 async function saveSystemSettings(settings) {
   if (settings.staffDeposit) {
     const amount = Number(settings.staffDeposit.amount ?? 0)
-    if (!Number.isFinite(amount) || amount < 0 || !Number.isSafeInteger(amountYuanToFen(amount)) || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7 || (settings.staffDeposit.enabled === true && amount <= 0)) throw new Error('保证金金额无效，请配置正数且最多两位小数')
+    // 先验证基本条件，避免 amountYuanToFen 抛出通用错误
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new Error('【保证金设置】保证金金额必须是有效的非负数')
+    }
+    if (Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) {
+      throw new Error('【保证金设置】保证金金额最多两位小数')
+    }
+    if (settings.staffDeposit.enabled === true && amount <= 0) {
+      throw new Error('【保证金设置】启用保证金时金额必须大于0')
+    }
+    // 验证金额转换为分是否安全
+    const amountFen = Math.round(amount * 100)
+    if (!Number.isSafeInteger(amountFen)) {
+      throw new Error('【保证金设置】金额过大，请输入合理的金额')
+    }
   }
   const time = now()
   const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
@@ -960,21 +974,36 @@ function parseDateTimeParts(dateStr) {
     const day = Number(match[3])
     const hour = Number(match[4])
     const minute = Number(match[5])
-    const dateObj = new Date(Date.UTC(year, month, day, hour, minute))
-    const utcDay = dateObj.getUTCDay()
-    const dayOfWeek = utcDay === 0 ? 7 : utcDay
+
+    // 修复：使用 UTC 正午时间来计算星期几，避免时区问题
+    // 正午12:00不会因为时区调整而跨天
+    const dateForDayOfWeek = new Date(Date.UTC(year, month, day, 12, 0))
+    const jsDay = dateForDayOfWeek.getUTCDay()
+    const dayOfWeek = jsDay === 0 ? 7 : jsDay
+
+    // 将北京时间转为UTC时间（减去8小时）用于存储
+    const dateObj = new Date(Date.UTC(year, month, day, hour - 8, minute))
+
+    // 返回北京时间的 dayOfWeek, hour, minute，用于时间段判断
     return { dayOfWeek, hour, minute, day, dateObj }
   }
   const d = new Date(text.replace(/-/g, '/'))
   if (Number.isNaN(d.getTime())) return null
-  const year = d.getUTCFullYear()
-  const month = d.getUTCMonth()
-  const day = d.getUTCDate()
-  const hour = d.getUTCHours()
-  const minute = d.getUTCMinutes()
-  const dateObj = new Date(Date.UTC(year, month, day, hour, minute))
-  const utcDay = dateObj.getUTCDay()
-  const dayOfWeek = utcDay === 0 ? 7 : utcDay
+  // 修复：从UTC时间转换为北京时间
+  const beijingTime = new Date(d.getTime() + 8 * 60 * 60 * 1000)
+  const year = beijingTime.getUTCFullYear()
+  const month = beijingTime.getUTCMonth()
+  const day = beijingTime.getUTCDate()
+  const hour = beijingTime.getUTCHours()
+  const minute = beijingTime.getUTCMinutes()
+
+  // 使用 UTC 正午时间计算星期几
+  const dateForDayOfWeek = new Date(Date.UTC(year, month, day, 12, 0))
+  const jsDay = dateForDayOfWeek.getUTCDay()
+  const dayOfWeek = jsDay === 0 ? 7 : jsDay
+
+  // 构造UTC时间用于存储
+  const dateObj = new Date(Date.UTC(year, month, day, hour - 8, minute))
   return { dayOfWeek, hour, minute, day, dateObj }
 }
 
@@ -1172,25 +1201,73 @@ function buildAcceptRiskNotice(warnings = []) {
 }
 
 async function checkAcceptOrderRisk(profile, order) {
+  console.log('【调试】开始风险检测')
+  console.log('【调试】宠托师信息:', {
+    openid: profile.openid,
+    serviceLatitude: profile.serviceLatitude,
+    serviceLongitude: profile.serviceLongitude,
+    serviceRadiusKm: profile.serviceRadiusKm,
+    hasWeeklySchedule: !!profile.weeklySchedule,
+    weeklySchedule: profile.weeklySchedule
+  })
+  console.log('【调试】订单信息:', {
+    orderId: order._id,
+    startTime: order.startTime,
+    endTime: order.endTime,
+    addressLatitude: order.addressLatitude,
+    addressLongitude: order.addressLongitude
+  })
+
   const warnings = []
+
+  // 检查距离风险
   const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
   const distanceKm = calcDistanceKm(profile.serviceLatitude, profile.serviceLongitude, order.addressLatitude, order.addressLongitude)
+  console.log('【调试】距离检测:', { distanceKm, radiusKm, 超出: distanceKm !== null && distanceKm > radiusKm })
   if (distanceKm !== null && distanceKm > radiusKm) {
     warnings.push({ type: 'range', title: '订单地址超出你的接单范围', detail: `订单距离约 ${formatDistance(distanceKm)}，已超出你设置的 ${radiusKm}km 接单范围。`, distanceKm, radiusKm })
   }
+
+  // 检查时间风险
   const sessions = getOrderTimeRanges(order)
+  console.log('【调试】订单时间段:', sessions)
   const failedSessions = []
+  const hasWeeklySchedule = normalizeWeeklySchedule(profile.weeklySchedule) !== null
+  console.log('【调试】是否配置接单时间:', hasWeeklySchedule)
+
   for (const session of sessions) {
     try {
       await validateStaffScheduleOnly(profile, session.startTime, session.endTime)
+      console.log('【调试】时间段验证通过:', session.startTime)
     } catch (error) {
+      console.log('【调试】时间段验证失败:', session.startTime, error.message)
       failedSessions.push(`${session.startTime}：${error.message || '不在你设置的可接单时间段内'}`)
     }
   }
-  if (failedSessions.length) {
-    warnings.push({ type: 'time', title: '订单时间不在你的接单时间内', detail: failedSessions.slice(0, 3).join('；') + (failedSessions.length > 3 ? `；另有 ${failedSessions.length - 3} 次` : '') })
+
+  // 如果宠托师未配置接单时间，但订单有时间信息，也提示风险
+  if (!hasWeeklySchedule && sessions.length > 0) {
+    console.log('【调试】未配置接单时间，添加风险警告')
+    warnings.push({
+      type: 'no_schedule',
+      title: '你未设置可接单时间段',
+      detail: '你还未配置每周可接单时间。接单后请确保能在订单约定时间准时服务，避免因时间冲突导致履约问题。'
+    })
+  } else if (failedSessions.length) {
+    console.log('【调试】时间不匹配，添加风险警告，失败数量:', failedSessions.length)
+    warnings.push({
+      type: 'time',
+      title: '订单时间不在你的接单时间内',
+      detail: failedSessions.slice(0, 3).join('；') + (failedSessions.length > 3 ? `；另有 ${failedSessions.length - 3} 次` : '')
+    })
   }
-  return buildAcceptRiskNotice(warnings)
+
+  console.log('【调试】最终warnings数量:', warnings.length)
+  console.log('【调试】warnings内容:', JSON.stringify(warnings, null, 2))
+
+  const result = buildAcceptRiskNotice(warnings)
+  console.log('【调试】风险通知结果:', JSON.stringify(result, null, 2))
+  return result
 }
 
 async function buildStaffAvailability(profile, startDateKey = '', days = 14) {
@@ -2411,7 +2488,9 @@ function validateOrderTime(data) {
 }
 
 function formatDateTimeParts(dateObj) {
-  return `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth() + 1).padStart(2, '0')}-${String(dateObj.getUTCDate()).padStart(2, '0')} ${String(dateObj.getUTCHours()).padStart(2, '0')}:${String(dateObj.getUTCMinutes()).padStart(2, '0')}`
+  // 修复：dateObj 存储的是UTC时间（已减去8小时），需要加回8小时得到北京时间
+  const beijingTime = new Date(dateObj.getTime() + 8 * 60 * 60 * 1000)
+  return `${beijingTime.getUTCFullYear()}-${String(beijingTime.getUTCMonth() + 1).padStart(2, '0')}-${String(beijingTime.getUTCDate()).padStart(2, '0')} ${String(beijingTime.getUTCHours()).padStart(2, '0')}:${String(beijingTime.getUTCMinutes()).padStart(2, '0')}`
 }
 
 function addMinutesToDateTimeText(startTime, durationMinutes) {
@@ -2434,13 +2513,16 @@ function buildOrderSessions(data = {}) {
   const endDateParts = parseDateTimeParts(`${endDateText} 00:00`)
   if (!endDateParts || endDateParts.dateObj < new Date(Date.UTC(startParts.dateObj.getUTCFullYear(), startParts.dateObj.getUTCMonth(), startParts.dateObj.getUTCDate(), 0, 0))) throw new Error('连续服务结束日期不能早于开始日期')
   const sessions = []
-  let current = new Date(Date.UTC(startParts.dateObj.getUTCFullYear(), startParts.dateObj.getUTCMonth(), startParts.dateObj.getUTCDate(), startParts.hour, startParts.minute))
-  const finalDay = new Date(Date.UTC(endDateParts.dateObj.getUTCFullYear(), endDateParts.dateObj.getUTCMonth(), endDateParts.dateObj.getUTCDate(), startParts.hour, startParts.minute))
+  // 修复：startParts.hour 是北京时间，需要减去8小时转为UTC时间
+  const utcHour = startParts.hour - 8
+  const utcMinute = startParts.minute
+  let current = new Date(Date.UTC(startParts.dateObj.getUTCFullYear(), startParts.dateObj.getUTCMonth(), startParts.dateObj.getUTCDate(), utcHour, utcMinute))
+  const finalDay = new Date(Date.UTC(endDateParts.dateObj.getUTCFullYear(), endDateParts.dateObj.getUTCMonth(), endDateParts.dateObj.getUTCDate(), utcHour, utcMinute))
   while (current <= finalDay) {
     if (sessions.length >= 31) throw new Error('连续服务最多支持31天')
     const end = new Date(current.getTime() + durationMinutes * 60000)
     sessions.push({ index: sessions.length + 1, date: formatDateKey(current), startTime: formatDateTimeParts(current), endTime: formatDateTimeParts(end) })
-    current = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate() + 1, startParts.hour, startParts.minute))
+    current = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate() + 1, utcHour, utcMinute))
   }
   return sessions
 }
@@ -7002,29 +7084,48 @@ const handlers = {
       if (!profile) throw new Error('请先提交宠托师认证')
       if (profile.auditStatus !== 'approved') throw new Error('宠托师认证审核通过后方可设置接单配置')
 
-      const serviceAddress = safeText(data.serviceAddress !== undefined ? data.serviceAddress : profile.serviceAddress).trim()
-      let serviceLatitude = Number(data.serviceLatitude !== undefined ? data.serviceLatitude : (data.latitude !== undefined ? data.latitude : (profile.serviceLatitude || 0)))
-      let serviceLongitude = Number(data.serviceLongitude !== undefined ? data.serviceLongitude : (data.longitude !== undefined ? data.longitude : (profile.serviceLongitude || 0)))
-      if (!hasCoordinate(serviceLatitude, serviceLongitude) && hasCoordinate(profile.serviceLatitude, profile.serviceLongitude)) {
-        serviceLatitude = Number(profile.serviceLatitude)
-        serviceLongitude = Number(profile.serviceLongitude)
-      }
-      const serviceRadiusKm = Math.max(Number(data.serviceRadiusKm !== undefined ? data.serviceRadiusKm : (profile.serviceRadiusKm || 5)), 1)
-      const weeklySchedule = data.weeklySchedule !== undefined ? normalizeWeeklySchedule(data.weeklySchedule) : profile.weeklySchedule
-
-      if (!serviceAddress || !hasCoordinate(serviceLatitude, serviceLongitude)) {
-        throw new Error('请选择有效的固定服务地址及坐标')
-      }
+      console.log('【调试-updateStaffProfileConfig】接收到的 data:', JSON.stringify(data))
 
       const time = now()
-      const updateData = {
-        serviceAddress,
-        serviceLatitude,
-        serviceLongitude,
-        serviceRadiusKm,
-        weeklySchedule,
-        updatedAt: time
+      const updateData = { updatedAt: time }
+
+      // 判断是否只更新 weeklySchedule（从排班日历调用）
+      const isOnlyWeeklyScheduleUpdate = data.weeklySchedule !== undefined &&
+                                          data.serviceAddress === undefined &&
+                                          data.serviceLatitude === undefined &&
+                                          data.serviceLongitude === undefined &&
+                                          data.serviceRadiusKm === undefined
+
+      if (isOnlyWeeklyScheduleUpdate) {
+        // 只更新按周服务时间规则
+        const weeklySchedule = normalizeWeeklySchedule(data.weeklySchedule)
+        console.log('【调试-updateStaffProfileConfig】只更新 weeklySchedule:', JSON.stringify(weeklySchedule))
+        updateData.weeklySchedule = weeklySchedule
+      } else {
+        // 完整更新（从个人中心调用）
+        const serviceAddress = safeText(data.serviceAddress !== undefined ? data.serviceAddress : profile.serviceAddress).trim()
+        let serviceLatitude = Number(data.serviceLatitude !== undefined ? data.serviceLatitude : (data.latitude !== undefined ? data.latitude : (profile.serviceLatitude || 0)))
+        let serviceLongitude = Number(data.serviceLongitude !== undefined ? data.serviceLongitude : (data.longitude !== undefined ? data.longitude : (profile.serviceLongitude || 0)))
+        if (!hasCoordinate(serviceLatitude, serviceLongitude) && hasCoordinate(profile.serviceLatitude, profile.serviceLongitude)) {
+          serviceLatitude = Number(profile.serviceLatitude)
+          serviceLongitude = Number(profile.serviceLongitude)
+        }
+        const serviceRadiusKm = Math.max(Number(data.serviceRadiusKm !== undefined ? data.serviceRadiusKm : (profile.serviceRadiusKm || 5)), 1)
+        const weeklySchedule = data.weeklySchedule !== undefined ? normalizeWeeklySchedule(data.weeklySchedule) : profile.weeklySchedule
+
+        if (!serviceAddress || !hasCoordinate(serviceLatitude, serviceLongitude)) {
+          throw new Error('请选择有效的固定服务地址及坐标')
+        }
+
+        updateData.serviceAddress = serviceAddress
+        updateData.serviceLatitude = serviceLatitude
+        updateData.serviceLongitude = serviceLongitude
+        updateData.serviceRadiusKm = serviceRadiusKm
+        updateData.weeklySchedule = weeklySchedule
       }
+
+      console.log('【调试-updateStaffProfileConfig】准备保存的 updateData:', JSON.stringify(updateData))
+
       await db.collection('staff_profiles').doc(profile._id).update({ data: updateData })
       return { _id: profile._id, ...profile, ...updateData }
     }
@@ -7065,15 +7166,63 @@ const handlers = {
       }
 
       function isOrderInTime(order) {
-        if (!normalizedSchedule || !order.startTime) return true
-        const orderDate = new Date(order.startTime.replace(/-/g, '/'))
-        if (isNaN(orderDate.getTime())) return true
-        const jsDay = orderDate.getDay()
-        const dayKey = String(jsDay === 0 ? 7 : jsDay)
-        const slots = normalizedSchedule[dayKey]
-        if (!Array.isArray(slots) || !slots.length) return false
-        const orderHour = orderDate.getHours() + orderDate.getMinutes() / 60
-        return slots.some((slot) => orderHour >= slot.start && orderHour < slot.end)
+        if (!normalizedSchedule) {
+          console.log('【调试-isOrderInTime】normalizedSchedule 为空，返回 true')
+          return true
+        }
+
+        // 获取订单的所有时间段（支持单次和多次服务）
+        const sessions = getOrderTimeRanges(order)
+        console.log('【调试-isOrderInTime】订单时间段:', JSON.stringify(sessions))
+        if (!sessions || sessions.length === 0) return true
+
+        console.log('【调试-isOrderInTime】normalizedSchedule:', JSON.stringify(normalizedSchedule))
+
+        // 检查每个时间段是否都在接单时间内
+        for (const session of sessions) {
+          if (!session.startTime) continue
+
+          // 使用 parseDateTimeParts 正确解析北京时间
+          const startParts = parseDateTimeParts(session.startTime)
+          console.log('【调试-isOrderInTime】解析时间 session.startTime:', session.startTime)
+          console.log('【调试-isOrderInTime】startParts:', JSON.stringify(startParts))
+          console.log('【调试-isOrderInTime】dayOfWeek:', startParts.dayOfWeek, 'hour:', startParts.hour, 'minute:', startParts.minute)
+          if (!startParts) continue
+
+          const dayKey = String(startParts.dayOfWeek)
+          const slots = normalizedSchedule[dayKey]
+          console.log('【调试-isOrderInTime】dayKey:', dayKey)
+          console.log('【调试-isOrderInTime】slots:', JSON.stringify(slots))
+
+          // 如果某一天没有配置接单时间，视为不在时间内
+          if (!Array.isArray(slots) || !slots.length) {
+            console.log('【调试-isOrderInTime】该天未配置接单时间，返回 false')
+            return false
+          }
+
+          // 使用北京时间的小时和分钟
+          const orderHour = startParts.hour + startParts.minute / 60
+          console.log('【调试-isOrderInTime】orderHour:', orderHour)
+
+          // 检查是否在该天的任一时间段内
+          const inSlot = slots.some((slot) => {
+            const result = orderHour >= slot.start && orderHour < slot.end
+            console.log('【调试-isOrderInTime】检查时间段 [', slot.start, '-', slot.end, ']:', result)
+            return result
+          })
+
+          console.log('【调试-isOrderInTime】inSlot:', inSlot)
+
+          // 如果任一时间段不在接单时间内，返回 false
+          if (!inSlot) {
+            console.log('【调试-isOrderInTime】订单时间不在接单时间段内，返回 false')
+            return false
+          }
+        }
+
+        // 所有时间段都在接单时间内
+        console.log('【调试-isOrderInTime】所有时间段都在接单时间内，返回 true')
+        return true
       }
 
       let orders = await Promise.all((res.data || []).filter((order) => !isAdminDeletedOrder(order) && isOpenOrder(order)).map(async (order) => {
@@ -7260,7 +7409,15 @@ const handlers = {
         assignmentUpdate.acceptRiskConfirmedAt = time
         assignmentUpdate.acceptRiskWarnings = risk.warnings
       }
-      await updateOrderWhenStatus(data.orderId, ORDER_STATUS.PAID, assignmentUpdate, '订单已被分配', { staffOpenid: '' })
+      // 使用数据库条件更新，防止并发抢单
+      // 只有当订单状态为 paid 且 staffOpenid 为空字符串或不存在时才能更新成功
+      const updateResult = await updateOrderWhenStatus(data.orderId, ORDER_STATUS.PAID, assignmentUpdate, '订单已被分配', { staffOpenid: db.command.in(['', null]) })
+
+      // 如果更新失败（没有匹配到订单），说明订单已被其他人抢走
+      if (!updateResult || !updateResult.stats || !updateResult.stats.updated) {
+        throw new Error('订单已被其他宠托师抢走，请查看其他订单')
+      }
+
       const assignedOrder = { ...order, _id: data.orderId, ...assignmentUpdate }
       const assignedTitle = publishMode === 'direct' ? '指定宠托师已接单' : '宠托师已抢单'
       await appendOrderTimeline(data.orderId, 'assigned', assignedTitle, maskStaffName(profile.realName), 'staff')

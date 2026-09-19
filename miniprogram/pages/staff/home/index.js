@@ -85,21 +85,39 @@ function normalizeScheduleSlots(raw) {
   return hasAny ? result : null
 }
 
+function parseDateTimeParts(dateStr) {
+  if (!dateStr) return null
+  const text = String(dateStr).trim()
+  const match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{1,2})/)
+  if (match) {
+    const year = Number(match[1])
+    const month = Number(match[2]) - 1
+    const day = Number(match[3])
+    const hour = Number(match[4])
+    const minute = Number(match[5])
+    // 使用 UTC 正午时间计算星期几，避免时区问题
+    const dateForDayOfWeek = new Date(Date.UTC(year, month, day, 12, 0))
+    const jsDay = dateForDayOfWeek.getUTCDay()
+    const dayOfWeek = jsDay === 0 ? 7 : jsDay
+    return { dayOfWeek, hour, minute }
+  }
+  return null
+}
+
 function applyOrderFlags(orders, radiusKm, schedule) {
   const normalized = normalizeScheduleSlots(schedule)
   return orders.map((order) => {
     const inRange = order.distanceKm !== null && order.distanceKm <= radiusKm
     let inTime = true
     if (normalized && order.startTime) {
-      const d = toBeijingDate(order.startTime)
-      if (d) {
-        const jsDay = d.getUTCDay()
-        const dayKey = String(jsDay === 0 ? 7 : jsDay)
+      const parts = parseDateTimeParts(order.startTime)
+      if (parts) {
+        const dayKey = String(parts.dayOfWeek)
         const slots = normalized[dayKey]
         if (!Array.isArray(slots) || !slots.length) {
           inTime = false
         } else {
-          const hour = d.getHours() + d.getMinutes() / 60
+          const hour = parts.hour + parts.minute / 60
           inTime = slots.some((s) => hour >= s.start && hour < s.end)
         }
       }
