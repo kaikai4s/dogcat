@@ -12,7 +12,7 @@
       <text class="remix-icon ri-image-fill section-icon"></text>
     </view>
     <view class="photo-wall" wx:if="{{candidates.length}}">
-      <view class="pet-card" wx:for="{{candidates}}" wx:key="petId" data-id="{{item.petId}}" bindtap="previewPet">
+      <view class="pet-card" wx:for="{{candidates}}" wx:for-index="idx" wx:key="petId" data-id="{{item.petId}}" bindtap="previewPet" wx:if="{{idx < 4}}">
         <view class="pet-cover-wrapper {{item.beautyPhotos.length > 1 ? 'grid-' + (item.beautyPhotos.length > 4 ? 9 : 4) : 'single'}}">
           <block wx:if="{{item.beautyPhotos.length > 1}}">
             <image class="grid-img" wx:for="{{item.beautyPhotos}}" wx:for-item="img" wx:key="id" src="{{img.fileId}}" mode="aspectFill" />

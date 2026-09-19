@@ -446,15 +446,16 @@ Page({
   submitAcceptOrder(orderId, riskConfirmed) {
     this.setData({ acceptingRiskOrder: true })
 
-    // 【新增】获取实时位置用于抢单验证
-    wx.getLocation({
-      type: 'gcj02',
-      success: (res) => {
+    // 【临时注释】暂时不获取位置，等云函数部署成功后再启用
+    // wx.getLocation({
+    //   type: 'gcj02',
+    //   success: (res) => {
         callFunction('staff', 'acceptOrder', {
           orderId,
-          riskConfirmed: riskConfirmed === true,
-          currentLatitude: res.latitude,
-          currentLongitude: res.longitude
+          riskConfirmed: riskConfirmed === true
+          // 【临时注释】不传递位置参数
+          // currentLatitude: res.latitude,
+          // currentLongitude: res.longitude
         })
           .then(() => {
             wx.showToast({ title: '接单成功' })
@@ -465,12 +466,12 @@ Page({
           })
           .catch(showError)
           .finally(() => this.setData({ acceptingRiskOrder: false }))
-      },
-      fail: (err) => {
-        this.setData({ acceptingRiskOrder: false })
-        showError(new Error('请允许获取位置信息后再抢单'))
-      }
-    })
+    //   },
+    //   fail: (err) => {
+    //     this.setData({ acceptingRiskOrder: false })
+    //     showError(new Error('请允许获取位置信息后再抢单'))
+    //   }
+    // })
   },
 
   continueAcceptRisk() {

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>云函数版本测试</title>
+</head>
+<body>
+  <h1>云函数部署状态检测</h1>
+  <p>请在微信开发者工具中打开此页面，在控制台执行以下代码：</p>
+  <pre style="background: #f5f5f5; padding: 20px; border-radius: 8px;">
+wx.cloud.callFunction({
+  name: 'api',
+  data: {
+    action: 'getVersion'
+  }
+}).then(res => {
+  console.log('云函数版本信息:', res.result)
+  if (res.result && res.result.data) {
+    alert('云函数版本: ' + res.result.data.version + '\n' + res.result.data.message)
+  }
+}).catch(err => {
+  console.error('调用失败:', err)
+  alert('调用失败: ' + err.errMsg)
+})
+  </pre>
+
+  <h2>预期结果</h2>
+  <p>如果云函数已成功部署，应该返回：</p>
+  <pre style="background: #e8f5e9; padding: 20px; border-radius: 8px;">
+{
+  version: "2026-09-20 00:37",
+  message: "修复 distanceFromCurrent 变量定义问题",
+  timestamp: "2026-09-20T..."
+}
+  </pre>
+
+  <h2>部署步骤</h2>
+  <ol>
+    <li>打开微信开发者工具</li>
+    <li>找到 <code>cloudfunctions/api</code> 文件夹</li>
+    <li>右键点击 → 选择 <strong>"上传并部署：云端安装依赖"</strong></li>
+    <li>等待部署完成（查看输出窗口）</li>
+    <li>部署成功后，在控制台运行上面的代码测试</li>
+  </ol>
+</body>
+</html>

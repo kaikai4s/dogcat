@@ -45,6 +45,33 @@
   font-size: 28rpx;
 }
 
+.role-check checkbox {
+  transform: scale(1.2);
+}
+
+checkbox .wx-checkbox-input {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 8rpx;
+}
+
+checkbox .wx-checkbox-input.wx-checkbox-input-checked {
+  background: #f4436b;
+  border-color: #f4436b;
+}
+
+checkbox .wx-checkbox-input.wx-checkbox-input-checked::before {
+  width: 40rpx;
+  height: 40rpx;
+  line-height: 40rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #fff;
+  background: transparent;
+  transform: translate(-50%, -50%) scale(1);
+  -webkit-transform: translate(-50%, -50%) scale(1);
+}
+
 .danger-btn {
   margin-top: 20rpx;
   height: 88rpx;

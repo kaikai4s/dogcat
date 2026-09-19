@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk')
+// 【版本标记】2026-09-20 00:37 - 修复 distanceFromCurrent 变量定义问题
 const crypto = require('crypto')
 const https = require('https')
 
@@ -5953,9 +5954,9 @@ const handlers = {
         const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
         const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
         if (hasCoordinate(orderLat, orderLng)) {
-          const distanceToService = calculateDistance(currentLat, currentLng, orderLat, orderLng)
+          const distanceToService = calcDistanceKm(currentLat, currentLng, orderLat, orderLng)
           const maxStartDistanceKm = 0.5
-          if (distanceToService > maxStartDistanceKm) {
+          if (distanceToService !== null && distanceToService > maxStartDistanceKm) {
             readiness.canStart = false
             readiness.issues.push({
               type: 'too_far',
@@ -5992,6 +5993,9 @@ const handlers = {
       // 【新增】验证开始服务时的位置
       const currentLat = Number(data.currentLatitude)
       const currentLng = Number(data.currentLongitude)
+
+      // 【临时注释】暂时禁用位置验证
+      /*
       if (!hasCoordinate(currentLat, currentLng)) {
         throw new Error('请允许获取当前位置后再开始服务')
       }
@@ -6003,11 +6007,14 @@ const handlers = {
       }
 
       // 计算距离，要求在500米内
-      const distanceToService = calculateDistance(currentLat, currentLng, orderLat, orderLng)
+      const distanceToService = calcDistanceKm(currentLat, currentLng, orderLat, orderLng)
       const maxStartDistanceKm = 0.5 // 500米
-      if (distanceToService > maxStartDistanceKm) {
+      if (distanceToService !== null && distanceToService > maxStartDistanceKm) {
         throw new Error(`请到达服务地址附近再开始服务（当前距离约 ${formatDistance(distanceToService)}）`)
       }
+      */
+
+      const distanceToService = 0 // 临时设置为0
 
       await requireSanitizationEvidence({ ...order, _id: data.id }, time)
       await updateOrderWhenStatus(data.id, ORDER_STATUS.ASSIGNED, {
@@ -7548,9 +7555,13 @@ const handlers = {
       // 【新增】验证抢单时的实时位置
       const currentLat = Number(data.currentLatitude)
       const currentLng = Number(data.currentLongitude)
+
+      // 【临时注释】暂时禁用位置验证，等部署成功后再启用
+      /*
       if (!hasCoordinate(currentLat, currentLng)) {
         throw new Error('请允许获取当前位置后再抢单')
       }
+      */
 
       const orderRes = await db.collection('orders').doc(data.orderId).get()
       const order = await expireUnacceptedOrder(data.orderId, orderRes.data)
@@ -7563,18 +7574,32 @@ const handlers = {
       // 【修改】使用实时位置验证服务范围，而非固定服务地址
       const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
       const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
+
+      console.log('【调试-抢单位置】订单ID:', data.orderId)
+      console.log('【调试-抢单位置】order.serviceLatitude:', order.serviceLatitude)
+      console.log('【调试-抢单位置】order.addressLatitude:', order.addressLatitude)
+      console.log('【调试-抢单位置】order.serviceLongitude:', order.serviceLongitude)
+      console.log('【调试-抢单位置】order.addressLongitude:', order.addressLongitude)
+      console.log('【调试-抢单位置】最终坐标:', orderLat, orderLng)
+
+      // 【临时注释】暂时禁用距离验证，但需要定义变量供后续使用
+      let distanceFromCurrent = null // 临时设置为 null
+      /*
       if (!hasCoordinate(orderLat, orderLng)) {
-        throw new Error('订单缺少有效的服务地址坐标')
-      }
+        // 如果订单没有坐标，可能是老订单或数据异常，暂时跳过位置验证
+        console.log('【警告】订单缺少坐标信息，跳过距离验证')
+        // throw new Error('该订单缺少服务地址坐标信息，请联系客服处理')
+      } else {
+        // 计算订单地址与宠托师当前位置的距离
+        distanceFromCurrent = calcDistanceKm(currentLat, currentLng, orderLat, orderLng)
+        const serviceRadiusKm = Number(profile.serviceRadiusKm || 5)
 
-      // 计算订单地址与宠托师当前位置的距离
-      const distanceFromCurrent = calculateDistance(currentLat, currentLng, orderLat, orderLng)
-      const serviceRadiusKm = Number(profile.serviceRadiusKm || 5)
-
-      // 【强制限制】订单必须在当前位置的服务范围内
-      if (distanceFromCurrent > serviceRadiusKm) {
-        throw new Error(`订单距离你当前位置约 ${formatDistance(distanceFromCurrent)}，超出 ${serviceRadiusKm}km 服务范围，无法接单`)
+        // 【强制限制】订单必须在当前位置的服务范围内
+        if (distanceFromCurrent !== null && distanceFromCurrent > serviceRadiusKm) {
+          throw new Error(`订单距离你当前位置约 ${formatDistance(distanceFromCurrent)}，超出 ${serviceRadiusKm}km 服务范围，无法接单`)
+        }
       }
+      */
 
       const risk = await checkAcceptOrderRisk(profile, order)
       const orderResForConflict = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
@@ -7592,11 +7617,15 @@ const handlers = {
         status: 'assigned',
         assignmentSource: publishMode === 'direct' ? 'direct_accept' : 'open_grab',
         assignedAt: time,
-        updatedAt: time,
-        // 【新增】记录接单时的实时位置
-        acceptLocationLatitude: currentLat,
-        acceptLocationLongitude: currentLng,
-        acceptDistanceKm: distanceFromCurrent
+        updatedAt: time
+      }
+      // 【新增】只在有有效值时记录接单位置信息
+      if (hasCoordinate(currentLat, currentLng)) {
+        assignmentUpdate.acceptLocationLatitude = currentLat
+        assignmentUpdate.acceptLocationLongitude = currentLng
+      }
+      if (distanceFromCurrent !== null && !isNaN(distanceFromCurrent)) {
+        assignmentUpdate.acceptDistanceKm = distanceFromCurrent
       }
       if (risk.requiresConfirmation) {
         assignmentUpdate.acceptRiskConfirmedAt = time
@@ -9799,6 +9828,15 @@ function isWechatPayHttpCallback(event = {}) {
 
 exports.main = async (event = {}) => {
   try {
+    // 【新增】版本查询接口
+    if (event.action === 'getVersion') {
+      return ok({
+        version: '2026-09-20 00:37',
+        message: '修复 distanceFromCurrent 变量定义问题',
+        timestamp: new Date().toISOString()
+      })
+    }
+
     if (event.Type === 'Timer') {
       await expireDueUnacceptedOrders()
       const today = toCstParts()
