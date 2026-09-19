@@ -1,5 +1,4 @@
 const cloud = require('wx-server-sdk')
-// 【版本标记】2026-09-20 00:37 - 修复 distanceFromCurrent 变量定义问题
 const crypto = require('crypto')
 const https = require('https')
 
@@ -7572,16 +7571,9 @@ const handlers = {
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
 
-      // 【修改】使用实时位置验证服务范围，而非固定服务地址
+      // 使用实时位置验证服务范围
       const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
       const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
-
-      console.log('【调试-抢单位置】订单ID:', data.orderId)
-      console.log('【调试-抢单位置】order.serviceLatitude:', order.serviceLatitude)
-      console.log('【调试-抢单位置】order.addressLatitude:', order.addressLatitude)
-      console.log('【调试-抢单位置】order.serviceLongitude:', order.serviceLongitude)
-      console.log('【调试-抢单位置】order.addressLongitude:', order.addressLongitude)
-      console.log('【调试-抢单位置】最终坐标:', orderLat, orderLng)
 
       // 验证订单距离
       let distanceFromCurrent = null
@@ -9826,15 +9818,6 @@ function isWechatPayHttpCallback(event = {}) {
 
 exports.main = async (event = {}) => {
   try {
-    // 【新增】版本查询接口
-    if (event.action === 'getVersion') {
-      return ok({
-        version: '2026-09-20 00:37',
-        message: '修复 distanceFromCurrent 变量定义问题',
-        timestamp: new Date().toISOString()
-      })
-    }
-
     if (event.Type === 'Timer') {
       await expireDueUnacceptedOrders()
       const today = toCstParts()
