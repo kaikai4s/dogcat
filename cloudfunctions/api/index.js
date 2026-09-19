@@ -5994,8 +5994,7 @@ const handlers = {
       const currentLat = Number(data.currentLatitude)
       const currentLng = Number(data.currentLongitude)
 
-      // 【临时注释】暂时禁用位置验证
-      /*
+      // 验证位置权限
       if (!hasCoordinate(currentLat, currentLng)) {
         throw new Error('请允许获取当前位置后再开始服务')
       }
@@ -6012,20 +6011,24 @@ const handlers = {
       if (distanceToService !== null && distanceToService > maxStartDistanceKm) {
         throw new Error(`请到达服务地址附近再开始服务（当前距离约 ${formatDistance(distanceToService)}）`)
       }
-      */
-
-      const distanceToService = 0 // 临时设置为0
 
       await requireSanitizationEvidence({ ...order, _id: data.id }, time)
-      await updateOrderWhenStatus(data.id, ORDER_STATUS.ASSIGNED, {
+
+      const startServiceUpdate = {
         status: 'in_service',
         startedAt: time,
-        updatedAt: time,
-        // 【新增】记录开始服务时的位置
-        startLocationLatitude: currentLat,
-        startLocationLongitude: currentLng,
-        startDistanceKm: distanceToService
-      }, '订单状态不可开始服务')
+        updatedAt: time
+      }
+      // 只在有有效值时记录位置信息
+      if (hasCoordinate(currentLat, currentLng)) {
+        startServiceUpdate.startLocationLatitude = currentLat
+        startServiceUpdate.startLocationLongitude = currentLng
+      }
+      if (distanceToService !== null && !isNaN(distanceToService)) {
+        startServiceUpdate.startDistanceKm = distanceToService
+      }
+
+      await updateOrderWhenStatus(data.id, ORDER_STATUS.ASSIGNED, startServiceUpdate, '订单状态不可开始服务')
       const startedOrder = { ...order, _id: data.id, status: 'in_service', startedAt: time, updatedAt: time }
       await appendOrderTimeline(data.id, 'started', '服务已开始', '', 'staff')
       await appendOrderClientMessage(startedOrder, { eventType: 'started', title: '服务已开始', detail: '宠护师已开始服务', actorRole: 'staff' })
@@ -7556,12 +7559,10 @@ const handlers = {
       const currentLat = Number(data.currentLatitude)
       const currentLng = Number(data.currentLongitude)
 
-      // 【临时注释】暂时禁用位置验证，等部署成功后再启用
-      /*
+      // 验证位置权限
       if (!hasCoordinate(currentLat, currentLng)) {
         throw new Error('请允许获取当前位置后再抢单')
       }
-      */
 
       const orderRes = await db.collection('orders').doc(data.orderId).get()
       const order = await expireUnacceptedOrder(data.orderId, orderRes.data)
@@ -7582,13 +7583,11 @@ const handlers = {
       console.log('【调试-抢单位置】order.addressLongitude:', order.addressLongitude)
       console.log('【调试-抢单位置】最终坐标:', orderLat, orderLng)
 
-      // 【临时注释】暂时禁用距离验证，但需要定义变量供后续使用
-      let distanceFromCurrent = null // 临时设置为 null
-      /*
+      // 验证订单距离
+      let distanceFromCurrent = null
       if (!hasCoordinate(orderLat, orderLng)) {
         // 如果订单没有坐标，可能是老订单或数据异常，暂时跳过位置验证
         console.log('【警告】订单缺少坐标信息，跳过距离验证')
-        // throw new Error('该订单缺少服务地址坐标信息，请联系客服处理')
       } else {
         // 计算订单地址与宠托师当前位置的距离
         distanceFromCurrent = calcDistanceKm(currentLat, currentLng, orderLat, orderLng)
@@ -7599,7 +7598,6 @@ const handlers = {
           throw new Error(`订单距离你当前位置约 ${formatDistance(distanceFromCurrent)}，超出 ${serviceRadiusKm}km 服务范围，无法接单`)
         }
       }
-      */
 
       const risk = await checkAcceptOrderRisk(profile, order)
       const orderResForConflict = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
