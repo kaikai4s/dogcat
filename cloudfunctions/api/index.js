@@ -1220,15 +1220,22 @@ async function checkAcceptOrderRisk(profile, order) {
 
   const warnings = []
 
-  // 检查距离风险
+  // 【修改】检查距离风险 - 这里是基于固定服务地址的距离，仅作为参考提示
+  // 实际的强制限制已在acceptOrder中使用实时位置验证
   const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
   const distanceKm = calcDistanceKm(profile.serviceLatitude, profile.serviceLongitude, order.addressLatitude, order.addressLongitude)
   console.log('【调试】距离检测:', { distanceKm, radiusKm, 超出: distanceKm !== null && distanceKm > radiusKm })
   if (distanceKm !== null && distanceKm > radiusKm) {
-    warnings.push({ type: 'range', title: '订单地址超出你的接单范围', detail: `订单距离约 ${formatDistance(distanceKm)}，已超出你设置的 ${radiusKm}km 接单范围。`, distanceKm, radiusKm })
+    warnings.push({
+      type: 'range',
+      title: '订单地址距离你的固定服务地址较远',
+      detail: `订单距离你设置的固定服务地址约 ${formatDistance(distanceKm)}，已超出 ${radiusKm}km 接单范围。接单以当前位置为准，请确认能按时到达。`,
+      distanceKm,
+      radiusKm
+    })
   }
 
-  // 检查时间风险
+  // 【修改】检查时间风险 - 改为仅警告，不阻止接单
   const sessions = getOrderTimeRanges(order)
   console.log('【调试】订单时间段:', sessions)
   const failedSessions = []
@@ -1258,7 +1265,7 @@ async function checkAcceptOrderRisk(profile, order) {
     warnings.push({
       type: 'time',
       title: '订单时间不在你的接单时间内',
-      detail: failedSessions.slice(0, 3).join('；') + (failedSessions.length > 3 ? `；另有 ${failedSessions.length - 3} 次` : '')
+      detail: failedSessions.slice(0, 3).join('；') + (failedSessions.length > 3 ? `；另有 ${failedSessions.length - 3} 次` : '') + '。接单后请务必按时服务。'
     })
   }
 
@@ -2584,6 +2591,16 @@ function calcDistanceKm(lat1, lng1, lat2, lng2) {
 function formatDistance(distanceKm) {
   if (distanceKm === null) return '未定位'
   return distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(2)}km`
+}
+
+// 【新增】计算订单的宠托师收益
+async function calculateStaffEarningForOrder(order) {
+  if (!order || !order.payAmount) return { earningAmount: 0, commissionRate: 0.7 }
+  const settings = await getSystemSettings()
+  const rate = Number(settings.settlement.staffCommissionRate || 0.7)
+  const grossAmount = Number(order.payAmount || 0)
+  const earningAmount = Math.round(grossAmount * rate * 100) / 100
+  return { earningAmount, commissionRate: rate }
 }
 
 function normalizeCityName(city) {
@@ -4025,8 +4042,35 @@ function getCancelQuoteForOrder(order) {
   if (order.status === 'assigned') {
     const start = new Date(String(order.startTime || '').replace(/-/g, '/')).getTime()
     const hoursBeforeStart = start ? (start - now().getTime()) / 36e5 : 0
+
+    // 【新增】指定订单免责取消机制
+    // 如果是指定订单（direct模式），检查是否在免责取消时间窗口内（接单后2小时）
+    const isDirectOrder = order.publishMode === 'direct' || order.assignmentSource === 'direct_accept'
+    if (isDirectOrder && order.assignedAt) {
+      const hoursAfterAccept = (now().getTime() - new Date(order.assignedAt).getTime()) / 36e5
+      const freeGracePeriodHours = 2 // 免责取消时间窗口：2小时
+
+      if (hoursAfterAccept <= freeGracePeriodHours) {
+        // 在免责时间窗口内，指定订单可免费取消
+        return {
+          canCancel: true,
+          refundAmount: Number(order.payAmount || 0),
+          refundStatus: 'processing',
+          ruleText: `指定订单接单后${freeGracePeriodHours}小时内可免责取消并全额退款`,
+          isFreeGracePeriod: true
+        }
+      }
+    }
+
+    // 普通取消规则
     const rate = hoursBeforeStart >= 24 ? 1 : 0.8
-    return { canCancel: true, refundAmount: Math.round(Number(order.payAmount || 0) * rate), refundStatus: 'processing', ruleText: hoursBeforeStart >= 24 ? '距服务开始超过24小时，可全额退款' : '距服务开始不足24小时，可退80%' }
+    return {
+      canCancel: true,
+      refundAmount: Math.round(Number(order.payAmount || 0) * rate),
+      refundStatus: 'processing',
+      ruleText: hoursBeforeStart >= 24 ? '距服务开始超过24小时，可全额退款' : '距服务开始不足24小时，可退80%',
+      needsNegotiation: isDirectOrder && hoursBeforeStart < 24 // 指定订单超时取消需要协商
+    }
   }
   return { canCancel: false, refundAmount: 0, refundStatus: 'pending_manual', ruleText: '服务中或已完成订单需申请平台介入' }
 }
@@ -5871,14 +5915,110 @@ const handlers = {
       return toEarlyStartView(request)
     }
 
+    if (action === 'checkStartServiceReadiness') {
+      const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
+      const time = now()
+      const readiness = {
+        canStart: true,
+        issues: [],
+        order: { id: data.id, status: order.status }
+      }
+
+      // 检查订单状态
+      if (order.status === 'in_service') {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'already_started', message: '服务已开始' })
+        return readiness
+      }
+
+      if (order.status !== 'assigned') {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'wrong_status', message: '订单状态不可开始' })
+        return readiness
+      }
+
+      // 检查服务时间
+      if (!(await canStartOrderService({ ...order, _id: data.id }, time))) {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'time_not_ready', message: '服务时间未到，可申请提前开始' })
+      }
+
+      // 检查位置
+      const currentLat = Number(data.currentLatitude)
+      const currentLng = Number(data.currentLongitude)
+      if (!hasCoordinate(currentLat, currentLng)) {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'no_location', message: '请允许获取当前位置' })
+      } else {
+        const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
+        const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
+        if (hasCoordinate(orderLat, orderLng)) {
+          const distanceToService = calculateDistance(currentLat, currentLng, orderLat, orderLng)
+          const maxStartDistanceKm = 0.5
+          if (distanceToService > maxStartDistanceKm) {
+            readiness.canStart = false
+            readiness.issues.push({
+              type: 'too_far',
+              message: `请到达服务地址附近再开始服务（当前距离约 ${formatDistance(distanceToService)}）`,
+              distance: distanceToService
+            })
+          }
+        }
+      }
+
+      // 检查消毒打卡
+      if (requiresSanitization(order)) {
+        try {
+          await requireSanitizationEvidence({ ...order, _id: data.id }, time)
+        } catch (error) {
+          readiness.canStart = false
+          readiness.issues.push({
+            type: 'missing_sanitization',
+            message: error.message || '请先完成消毒拍照打卡'
+          })
+        }
+      }
+
+      return readiness
+    }
+
     if (action === 'startService') {
       const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
       if (order.status === 'in_service') return { id: data.id }
       assertOrderTransition(order.status, ORDER_STATUS.IN_SERVICE, '订单状态不可开始')
       const time = now()
       if (!(await canStartOrderService({ ...order, _id: data.id }, time))) throw new Error('服务时间未到，可申请提前开始')
+
+      // 【新增】验证开始服务时的位置
+      const currentLat = Number(data.currentLatitude)
+      const currentLng = Number(data.currentLongitude)
+      if (!hasCoordinate(currentLat, currentLng)) {
+        throw new Error('请允许获取当前位置后再开始服务')
+      }
+
+      const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
+      const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
+      if (!hasCoordinate(orderLat, orderLng)) {
+        throw new Error('订单缺少有效的服务地址坐标')
+      }
+
+      // 计算距离，要求在500米内
+      const distanceToService = calculateDistance(currentLat, currentLng, orderLat, orderLng)
+      const maxStartDistanceKm = 0.5 // 500米
+      if (distanceToService > maxStartDistanceKm) {
+        throw new Error(`请到达服务地址附近再开始服务（当前距离约 ${formatDistance(distanceToService)}）`)
+      }
+
       await requireSanitizationEvidence({ ...order, _id: data.id }, time)
-      await updateOrderWhenStatus(data.id, ORDER_STATUS.ASSIGNED, { status: 'in_service', startedAt: time, updatedAt: time }, '订单状态不可开始服务')
+      await updateOrderWhenStatus(data.id, ORDER_STATUS.ASSIGNED, {
+        status: 'in_service',
+        startedAt: time,
+        updatedAt: time,
+        // 【新增】记录开始服务时的位置
+        startLocationLatitude: currentLat,
+        startLocationLongitude: currentLng,
+        startDistanceKm: distanceToService
+      }, '订单状态不可开始服务')
       const startedOrder = { ...order, _id: data.id, status: 'in_service', startedAt: time, updatedAt: time }
       await appendOrderTimeline(data.id, 'started', '服务已开始', '', 'staff')
       await appendOrderClientMessage(startedOrder, { eventType: 'started', title: '服务已开始', detail: '宠护师已开始服务', actorRole: 'staff' })
@@ -7231,7 +7371,15 @@ const handlers = {
         if (hasCoordinate(latitude, longitude) && hasCoordinate(enriched.addressLatitude, enriched.addressLongitude)) {
           distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
         }
-        const result = { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
+        // 【新增】添加收益信息
+        const earning = await calculateStaffEarningForOrder(enriched)
+        const result = {
+          ...enriched,
+          distanceKm,
+          distanceText: formatDistance(distanceKm),
+          staffEarning: earning.earningAmount,
+          staffEarningText: `¥${earning.earningAmount.toFixed(2)}`
+        }
         result.inRange = isOrderInRange(result)
         result.inTime = isOrderInTime(result)
         return result
@@ -7346,7 +7494,15 @@ const handlers = {
       const decorate = async (order) => {
         const enriched = await attachOrderDisplayData(order)
         const distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
-        return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
+        // 【新增】添加收益信息
+        const earning = await calculateStaffEarningForOrder(enriched)
+        return {
+          ...enriched,
+          distanceKm,
+          distanceText: formatDistance(distanceKm),
+          staffEarning: earning.earningAmount,
+          staffEarningText: `¥${earning.earningAmount.toFixed(2)}`
+        }
       }
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       if (wantsPage) {
@@ -7388,6 +7544,14 @@ const handlers = {
       if (!hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) || !profile.serviceAddress) {
         throw new Error('请先在个人中心设置固定服务地址与接单范围，方可接单')
       }
+
+      // 【新增】验证抢单时的实时位置
+      const currentLat = Number(data.currentLatitude)
+      const currentLng = Number(data.currentLongitude)
+      if (!hasCoordinate(currentLat, currentLng)) {
+        throw new Error('请允许获取当前位置后再抢单')
+      }
+
       const orderRes = await db.collection('orders').doc(data.orderId).get()
       const order = await expireUnacceptedOrder(data.orderId, orderRes.data)
       assertOrderTransition(order.status, ORDER_STATUS.ASSIGNED, '订单状态不可接单')
@@ -7395,6 +7559,23 @@ const handlers = {
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
+
+      // 【修改】使用实时位置验证服务范围，而非固定服务地址
+      const orderLat = Number(order.serviceLatitude || 0)
+      const orderLng = Number(order.serviceLongitude || 0)
+      if (!hasCoordinate(orderLat, orderLng)) {
+        throw new Error('订单缺少有效的服务地址坐标')
+      }
+
+      // 计算订单地址与宠托师当前位置的距离
+      const distanceFromCurrent = calculateDistance(currentLat, currentLng, orderLat, orderLng)
+      const serviceRadiusKm = Number(profile.serviceRadiusKm || 5)
+
+      // 【强制限制】订单必须在当前位置的服务范围内
+      if (distanceFromCurrent > serviceRadiusKm) {
+        throw new Error(`订单距离你当前位置约 ${formatDistance(distanceFromCurrent)}，超出 ${serviceRadiusKm}km 服务范围，无法接单`)
+      }
+
       const risk = await checkAcceptOrderRisk(profile, order)
       const orderResForConflict = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
       const conflict = (orderResForConflict.data || []).find((item) => {
@@ -7404,7 +7585,19 @@ const handlers = {
       if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
       if (risk.requiresConfirmation && data.riskConfirmed !== true) throw new Error('请先阅读并确认超出接单设置的履约责任')
       const time = now()
-      const assignmentUpdate = { staffUserId: user._id, staffOpenid: openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: publishMode === 'direct' ? 'direct_accept' : 'open_grab', assignedAt: time, updatedAt: time }
+      const assignmentUpdate = {
+        staffUserId: user._id,
+        staffOpenid: openid,
+        staffProfileId: profile._id,
+        status: 'assigned',
+        assignmentSource: publishMode === 'direct' ? 'direct_accept' : 'open_grab',
+        assignedAt: time,
+        updatedAt: time,
+        // 【新增】记录接单时的实时位置
+        acceptLocationLatitude: currentLat,
+        acceptLocationLongitude: currentLng,
+        acceptDistanceKm: distanceFromCurrent
+      }
       if (risk.requiresConfirmation) {
         assignmentUpdate.acceptRiskConfirmedAt = time
         assignmentUpdate.acceptRiskWarnings = risk.warnings

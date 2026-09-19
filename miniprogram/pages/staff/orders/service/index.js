@@ -150,35 +150,87 @@ Page({
   start() {
     if (!this.data.order || this.data.order.status !== 'assigned') return
     if (this.data.order.sanitizationRequired && !this.data.order.sanitizationCompleted) {
-      wx.showToast({ title: '请先完成服务前消毒拍照打卡', icon: 'none' })
+      wx.showToast({ title: '请先完成服务前消毒拍照打卡', icon: 'none', duration: 3000 })
       return
     }
     if (this.data.starting) return
     this.setData({ starting: true })
-    requestSubscribeTemplates(['serviceStart', 'serviceFinish'], 'staff_service')
-      .then(() => callFunction('order', 'startService', { id: this.data.id, clientRequestId: createClientRequestId('start_service') }))
-      .then(() => {
-        wx.showToast({ title: '已开始' })
-        this.setData({ starting: false, order: withServiceActionState({ ...(this.data.order || {}), status: 'in_service' }) })
-        this.startAutoTracking()
-      })
-      .catch((error) => {
-        this.setData({ starting: false })
-        const message = (error && (error.message || error.errMsg)) || ''
-        if (message.includes('服务时间未到')) {
-          wx.showModal({
-            title: '服务时间未到',
-            content: '现在还没到预约开始时间，可向宠物主申请提前开始服务。',
-            confirmText: '申请提前',
-            cancelText: '稍后再说',
-            success: (res) => {
-              if (res.confirm) this.requestEarlyStart()
+
+    // 【新增】获取实时位置并检查前置条件
+    wx.getLocation({
+      type: 'gcj02',
+      success: (locationRes) => {
+        // 先检查开始服务的准备情况
+        callFunction('order', 'checkStartServiceReadiness', {
+          id: this.data.id,
+          currentLatitude: locationRes.latitude,
+          currentLongitude: locationRes.longitude
+        })
+          .then((readiness) => {
+            if (!readiness.canStart) {
+              this.setData({ starting: false })
+              // 找到最重要的问题并提示
+              const issue = readiness.issues[0]
+              if (issue.type === 'missing_sanitization') {
+                wx.showModal({
+                  title: '请先完成消毒打卡',
+                  content: '开始服务前需要先完成消毒拍照打卡，确保服务质量和安全。',
+                  showCancel: false
+                })
+              } else if (issue.type === 'too_far') {
+                wx.showModal({
+                  title: '距离服务地址较远',
+                  content: issue.message,
+                  showCancel: false
+                })
+              } else if (issue.type === 'time_not_ready') {
+                wx.showModal({
+                  title: '服务时间未到',
+                  content: '现在还没到预约开始时间，可向宠物主申请提前开始服务。',
+                  confirmText: '申请提前',
+                  cancelText: '稍后再说',
+                  success: (res) => {
+                    if (res.confirm) this.requestEarlyStart()
+                  }
+                })
+              } else {
+                wx.showModal({
+                  title: '暂时无法开始服务',
+                  content: issue.message,
+                  showCancel: false
+                })
+              }
+              return Promise.reject(new Error('前置条件未满足'))
             }
+            // 所有条件都满足，开始服务
+            return requestSubscribeTemplates(['serviceStart', 'serviceFinish'], 'staff_service')
           })
-          return
-        }
-        showError(error)
-      })
+          .then(() => callFunction('order', 'startService', {
+            id: this.data.id,
+            currentLatitude: locationRes.latitude,
+            currentLongitude: locationRes.longitude,
+            clientRequestId: createClientRequestId('start_service')
+          }))
+          .then(() => {
+            wx.showToast({ title: '已开始服务' })
+            this.setData({ starting: false, order: withServiceActionState({ ...(this.data.order || {}), status: 'in_service' }) })
+            this.startAutoTracking()
+          })
+          .catch((error) => {
+            if (error && error.message === '前置条件未满足') return // 已经显示了具体的错误提示
+            this.setData({ starting: false })
+            showError(error)
+          })
+      },
+      fail: (err) => {
+        this.setData({ starting: false })
+        wx.showModal({
+          title: '需要位置权限',
+          content: '开始服务需要验证你是否在服务地址附近，请允许获取位置信息。',
+          showCancel: false
+        })
+      }
+    })
   },
 
   requestEarlyStart() {

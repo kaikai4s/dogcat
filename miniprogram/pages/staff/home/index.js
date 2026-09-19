@@ -445,16 +445,32 @@ Page({
 
   submitAcceptOrder(orderId, riskConfirmed) {
     this.setData({ acceptingRiskOrder: true })
-    callFunction('staff', 'acceptOrder', { orderId, riskConfirmed: riskConfirmed === true })
-      .then(() => {
-        wx.showToast({ title: '接单成功' })
-        this.closeAcceptRiskModal()
-        const location = this.data.customLocation || this.data.currentWorkbenchLocation
-        if (location) this.loadNearby(location, '已按工作台位置推荐订单')
-        else this.loadNearbyWithSavedLocation()
-      })
-      .catch(showError)
-      .finally(() => this.setData({ acceptingRiskOrder: false }))
+
+    // 【新增】获取实时位置用于抢单验证
+    wx.getLocation({
+      type: 'gcj02',
+      success: (res) => {
+        callFunction('staff', 'acceptOrder', {
+          orderId,
+          riskConfirmed: riskConfirmed === true,
+          currentLatitude: res.latitude,
+          currentLongitude: res.longitude
+        })
+          .then(() => {
+            wx.showToast({ title: '接单成功' })
+            this.closeAcceptRiskModal()
+            const location = this.data.customLocation || this.data.currentWorkbenchLocation
+            if (location) this.loadNearby(location, '已按工作台位置推荐订单')
+            else this.loadNearbyWithSavedLocation()
+          })
+          .catch(showError)
+          .finally(() => this.setData({ acceptingRiskOrder: false }))
+      },
+      fail: (err) => {
+        this.setData({ acceptingRiskOrder: false })
+        showError(new Error('请允许获取位置信息后再抢单'))
+      }
+    })
   },
 
   continueAcceptRisk() {
