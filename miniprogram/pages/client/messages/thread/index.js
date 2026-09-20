@@ -1,6 +1,7 @@
 const { callFunction, showError, ensureLogin } = require('../../../../utils/cloud')
 const { formatDateTime } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
+const { refreshUnread } = require('../../../../utils/client-nav')
 
 function withMessageText(message) {
   if (!message) return message
@@ -37,6 +38,8 @@ Page({
         const messages = (result.messages || []).map(withMessageText)
         this.setData({ thread, messages, loading: false })
         return callFunction('message', 'markThreadRead', { threadId: this.data.id })
+          .then(() => refreshUnread('client'))
+          .catch(() => {})
       })
       .catch((error) => {
         this.setData({ loading: false })

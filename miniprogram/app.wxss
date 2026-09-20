@@ -1479,6 +1479,29 @@ textarea {
   border-radius: 50%;
   background: #ef4444;
   border: 4rpx solid #fff;
+  z-index: 5;
+}
+
+.nav-unread-count {
+  position: absolute;
+  top: -12rpx;
+  right: -20rpx;
+  min-width: 28rpx;
+  height: 28rpx;
+  padding: 0 8rpx;
+  border-radius: 999rpx;
+  background: #ef4444;
+  color: #ffffff;
+  border: 4rpx solid #ffffff;
+  font-size: 18rpx;
+  font-weight: 900;
+  line-height: 28rpx;
+  text-align: center;
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
 }
 
 .profile-page {
