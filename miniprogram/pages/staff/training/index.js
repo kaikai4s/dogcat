@@ -34,7 +34,14 @@ Page({
       { name: '一次性口罩', description: '规范防护', purchaseUrl: '' },
       { name: '一次性鞋套', description: '进门即穿戴', purchaseUrl: '' },
       { name: '安全宠物消毒用品', description: '正规安全无毒', purchaseUrl: '' }
-    ]
+    ],
+    copyModal: {
+      show: false,
+      title: '',
+      tip: '',
+      content: '',
+      btnText: '一键复制'
+    }
   },
 
   onShow() {
@@ -42,6 +49,23 @@ Page({
     this.setData(getThemeState(theme.value))
     this.load()
     if (!this.data.depositBusy) this.loadDeposit()
+  },
+
+  onHide() {
+    this.pauseAllVideos()
+  },
+
+  onUnload() {
+    this.pauseAllVideos()
+  },
+
+  pauseAllVideos() {
+    (this.data.videos || []).forEach((item) => {
+      try {
+        const videoCtx = wx.createVideoContext(`video-${item.key}`, this)
+        videoCtx.pause()
+      } catch (_) {}
+    })
   },
 
   async loadDeposit() {
@@ -131,7 +155,24 @@ Page({
     callFunction('staff', 'getTrainingStatus')
       .then((res) => {
         const profile = withStaffWorkflowText(res.profile)
-        const videos = (res.videos || []).map((item) => ({ ...item, watchedAtText: formatDateTime(item.watchedAt), tempUrl: '', posterTempUrl: '' }))
+        if (!this._videoTracking) this._videoTracking = {}
+        const videos = (res.videos || []).map((item) => {
+          if (item.watched) {
+            this._videoTracking[item.key] = {
+              maxTime: item.duration || 999999,
+              completed: true,
+              lastToast: 0,
+              seeking: false
+            }
+          }
+          return {
+            ...item,
+            watchedAtText: formatDateTime(item.watchedAt),
+            progressPercent: item.watched ? 100 : 0,
+            tempUrl: '',
+            posterTempUrl: ''
+          }
+        })
         const supplies = res.supplies || {}
         const supplyItems = Array.isArray(supplies.items) && supplies.items.length
           ? supplies.items.filter((i) => i.enabled !== false)
@@ -154,8 +195,8 @@ Page({
   },
 
   openPurchaseUrl(e) {
-    const url = e.currentTarget.dataset.url
-    const name = e.currentTarget.dataset.name || '物品'
+    const url = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.url) || ''
+    const name = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.name) || '物品'
     if (!url) {
       wx.showToast({ title: '暂未配置购买链接', icon: 'none' })
       return
@@ -164,32 +205,71 @@ Page({
       wx.navigateTo({ url })
       return
     }
-    wx.showModal({
-      title: `${name} 购买链接`,
-      content: `购买地址：${url}\n\n已为您准备好链接，点击“复制链接”后可在微信聊天或浏览器中打开完成购买。`,
-      confirmText: '复制链接',
-      cancelText: '关闭',
-      success: (res) => {
-        if (res.confirm) {
-          wx.setClipboardData({
-            data: url,
-            success: () => wx.showToast({ title: '已复制链接' })
-          })
-        }
+    // 同步手势中先执行剪贴板复制尝试
+    wx.setClipboardData({
+      data: url,
+      success: () => {
+        wx.showToast({ title: '已尝试自动复制', icon: 'none' })
+      },
+      fail: () => {}
+    })
+    // 弹出自定义支持长按选择复制与一键复制的交互弹窗
+    this.setData({
+      copyModal: {
+        show: true,
+        title: `${name} 购买链接`,
+        tip: '链接可用于在微信对话框或手机浏览器中打开完成购买：',
+        content: url,
+        btnText: '复制购买链接'
       }
     })
   },
 
-  copyAuditWechat() {
-    const wechatId = this.data.videoAuditGuide && this.data.videoAuditGuide.wechatId
-    if (!wechatId) return
+  copyAuditWechat(e) {
+    const wechatId = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.wechat)
+      || (this.data.videoAuditGuide && this.data.videoAuditGuide.wechatId)
+      || ''
+    if (!wechatId || wechatId === '未配置') {
+      wx.showToast({ title: '管理员暂未配置审核微信号', icon: 'none' })
+      return
+    }
+    const remark = (this.data.videoAuditGuide && this.data.videoAuditGuide.remarkTemplate) || '宠托师审核'
+    // 同步手势中先执行剪贴板复制尝试
     wx.setClipboardData({
       data: wechatId,
       success: () => {
-        wx.showToast({ title: '审核微信号已复制', icon: 'success' })
+        wx.showToast({ title: '已尝试自动复制', icon: 'none' })
+      },
+      fail: () => {}
+    })
+    // 弹出自定义支持长按选择复制与一键复制的交互弹窗
+    this.setData({
+      copyModal: {
+        show: true,
+        title: '平台视频审核微信号',
+        tip: `请添加管理员微信好友进行线上考核，添加时请备注：${remark}`,
+        content: wechatId,
+        btnText: '复制微信号'
       }
     })
   },
+
+  executeCopyModal() {
+    const content = this.data.copyModal && this.data.copyModal.content
+    if (!content) return
+    wx.setClipboardData({
+      data: content,
+      success: () => {
+        wx.showToast({ title: '复制成功', icon: 'success' })
+      }
+    })
+  },
+
+  closeCopyModal() {
+    this.setData({ 'copyModal.show': false })
+  },
+
+  noop() {},
 
   selectAnswer(e) {
     const { questionId, value } = e.currentTarget.dataset
@@ -236,25 +316,126 @@ Page({
     })
   },
 
-  markVideo(e) {
-    const videoKey = e.currentTarget.dataset.key
-    this.markVideoWatched(videoKey)
+  onVideoSeeking(e) {
+    const key = e.currentTarget.dataset.key
+    if (!this._videoTracking) this._videoTracking = {}
+    if (!this._videoTracking[key]) this._videoTracking[key] = { maxTime: 0, lastToast: 0 }
+    this._videoTracking[key].seeking = true
   },
 
-  videoEnded(e) {
-    const videoKey = e.currentTarget.dataset.key
-    this.markVideoWatched(videoKey)
+  onVideoSeekComplete(e) {
+    const key = e.currentTarget.dataset.key
+    if (this._videoTracking && this._videoTracking[key]) {
+      this._videoTracking[key].seeking = false
+    }
   },
 
-  markVideoWatched(videoKey) {
-    const target = this.data.videos.find((item) => item.key === videoKey)
-    if (!videoKey || (target && target.watched)) return
-    callFunction('staff', 'markTrainingVideoWatched', { videoKey })
+  onVideoTimeUpdate(e) {
+    const key = e.currentTarget.dataset.key
+    const currentTime = Number(e.detail.currentTime || 0)
+    const duration = Number(e.detail.duration || 0)
+    if (!key || duration <= 0) return
+
+    if (!this._videoTracking) this._videoTracking = {}
+    if (!this._videoTracking[key]) {
+      this._videoTracking[key] = { maxTime: 0, lastToast: 0, seeking: false, completed: false, duration }
+    }
+    const track = this._videoTracking[key]
+    track.duration = duration
+    if (track.completed) return
+
+    const target = this.data.videos.find((v) => v.key === key)
+    if (target && target.watched) {
+      track.completed = true
+      return
+    }
+
+    // 防快进拦截：若当前点跳跃超过已观看到的历史最大点 2.5 秒，判定为快进
+    if (currentTime > track.maxTime + 2.5) {
+      const videoCtx = wx.createVideoContext(`video-${key}`, this)
+      videoCtx.seek(track.maxTime)
+      const nowMs = Date.now()
+      if (nowMs - (track.lastToast || 0) > 3000) {
+        track.lastToast = nowMs
+        wx.showToast({
+          title: '培训视频须全程看完，不可快进',
+          icon: 'none',
+          duration: 2500
+        })
+      }
+      return
+    }
+
+    // 连续正常播放，推进历史最大观看时间
+    if (currentTime > track.maxTime) {
+      track.maxTime = currentTime
+      const percent = Math.min(100, Math.round((track.maxTime / duration) * 100))
+      if (target && target.progressPercent !== percent && (percent % 5 === 0 || percent >= 98)) {
+        const updatedVideos = this.data.videos.map((item) => {
+          if (item.key === key) {
+            return { ...item, progressPercent: percent }
+          }
+          return item
+        })
+        this.setData({ videos: updatedVideos })
+      }
+    }
+
+    // 达到尾部（还剩不到 1.5 秒且已看 90% 以上）
+    if (currentTime >= duration - 1.5 && track.maxTime >= duration * 0.9) {
+      this.handleVideoFinish(key, Math.max(track.maxTime, duration), duration)
+    }
+  },
+
+  onVideoEnded(e) {
+    const key = e.currentTarget.dataset.key
+    if (!key) return
+    const target = this.data.videos.find((v) => v.key === key)
+    // 已经标记为已完成的视频，重播结束属于正常温习，直接放行不弹任何报错
+    if (target && target.watched) return
+
+    const track = (this._videoTracking && this._videoTracking[key]) || { maxTime: 0, duration: 0 }
+    const duration = track.duration || 0
+    if (duration > 0 && track.maxTime < duration * 0.9) {
+      wx.showToast({
+        title: '未完整看完视频，请从头完整观看',
+        icon: 'none'
+      })
+      const videoCtx = wx.createVideoContext(`video-${key}`, this)
+      videoCtx.seek(track.maxTime)
+      return
+    }
+    this.handleVideoFinish(key, Math.max(track.maxTime, duration), duration)
+  },
+
+  handleVideoFinish(key, watchedSeconds, duration) {
+    if (!this._videoTracking) this._videoTracking = {}
+    if (!this._videoTracking[key]) this._videoTracking[key] = {}
+    if (this._videoTracking[key].completed) return
+
+    const target = this.data.videos.find((item) => item.key === key)
+    if (!key || (target && target.watched)) {
+      this._videoTracking[key].completed = true
+      return
+    }
+
+    this._videoTracking[key].completed = true
+    wx.showLoading({ title: '记录学习进度...' })
+    callFunction('staff', 'markTrainingVideoWatched', {
+      videoKey: key,
+      watchedSeconds: Math.round(Math.max(watchedSeconds || 0, duration ? duration * 0.95 : 0)),
+      duration: Math.round(duration || 0)
+    })
       .then(() => {
-        wx.showToast({ title: '已记录观看', icon: 'none' })
+        wx.hideLoading()
+        wx.showToast({ title: '已全程看完该视频', icon: 'success' })
         this.load()
       })
-      .catch(showError)
+      .catch((err) => {
+        wx.hideLoading()
+        this._videoTracking[key].completed = false
+        showError(err)
+      })
   },
 
   requestVideoAudit() {

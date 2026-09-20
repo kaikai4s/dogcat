@@ -7511,7 +7511,7 @@ const handlers = {
         profile,
         quiz: { questions: publicTrainingQuiz(training.quiz), passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
         videos,
-        videoAuditGuide: training.videoAuditGuide || STAFF_VIDEO_AUDIT_GUIDE,
+        videoAuditGuide: normalizeVideoAuditGuide(training.videoAuditGuide),
         supplies: settings.staffSupplies || normalizeStaffSuppliesConfig(),
         completedInternOrders: completedOrders,
         completedInternOrderCount: completedOrders.length,
@@ -7549,9 +7549,24 @@ const handlers = {
       const videos = enabledTrainingVideos(training)
       const videoKey = safeText(data.videoKey).trim()
       if (!videos.some((item) => item.key === videoKey)) throw new Error('培训视频不存在')
+
+      // 全程观看防作弊校验：如果前端传递了视频时长，必须观看达到90%以上
+      const watchedSeconds = Number(data.watchedSeconds)
+      const duration = Number(data.duration)
+      if (Number.isFinite(duration) && duration > 5) {
+        if (!Number.isFinite(watchedSeconds) || watchedSeconds < duration * 0.9) {
+          throw new Error('培训视频须全程完整观看，当前播放时长未达标')
+        }
+      }
+
       const progress = { ...(profile.trainingVideoProgress || {}) }
       const time = now()
-      progress[videoKey] = { watched: true, watchedAt: time }
+      progress[videoKey] = {
+        watched: true,
+        watchedAt: time,
+        watchedSeconds: Number.isFinite(watchedSeconds) ? watchedSeconds : null,
+        duration: Number.isFinite(duration) ? duration : null
+      }
       const allWatched = videos.every((video) => progress[video.key] && progress[video.key].watched === true)
       const update = { trainingVideoProgress: progress, updatedAt: time }
       if (allWatched) {

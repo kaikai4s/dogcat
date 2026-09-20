@@ -146,8 +146,8 @@ Page({
   },
 
   openPurchaseUrl(e) {
-    const url = e.currentTarget.dataset.url
-    const name = e.currentTarget.dataset.name || '物品'
+    const url = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.url) || ''
+    const name = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.name) || '物品'
     if (!url) {
       wx.showToast({ title: '暂未配置购买链接', icon: 'none' })
       return
@@ -156,18 +156,24 @@ Page({
       wx.navigateTo({ url })
       return
     }
-    wx.showModal({
-      title: `${name} 购买链接`,
-      content: `购买地址：${url}\n\n已为您准备好链接，点击“复制链接”后可在微信聊天或浏览器中打开完成购买。`,
-      confirmText: '复制链接',
-      cancelText: '关闭',
-      success: (res) => {
-        if (res.confirm) {
-          wx.setClipboardData({
-            data: url,
-            success: () => wx.showToast({ title: '已复制链接' })
-          })
-        }
+    wx.setClipboardData({
+      data: url,
+      success: () => {
+        wx.showModal({
+          title: `${name} 购买链接已复制`,
+          content: `购买链接已成功复制到剪贴板！\n\n地址：${url}\n\n可在微信对话框或手机浏览器中长按粘贴打开完成购买。`,
+          showCancel: false,
+          confirmText: '我知道了'
+        })
+      },
+      fail: (err) => {
+        console.warn('setClipboardData fail:', err)
+        wx.showModal({
+          title: `${name} 购买链接`,
+          content: `购买地址：\n${url}\n\n检测到剪贴板权限受限，您可长按上方地址复制，并在浏览器中打开完成购买。`,
+          showCancel: false,
+          confirmText: '关闭'
+        })
       }
     })
   },

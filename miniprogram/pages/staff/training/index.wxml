@@ -94,15 +94,38 @@
   <view class="card">
     <view class="card-title">培训视频</view>
     <view class="video-card" wx:for="{{videos}}" wx:key="key">
-      <video wx:if="{{item.tempUrl}}" class="training-video" src="{{item.tempUrl}}" poster="{{item.posterTempUrl}}" controls object-fit="contain" data-key="{{item.key}}" bindended="videoEnded"></video>
+      <video
+        wx:if="{{item.tempUrl}}"
+        id="video-{{item.key}}"
+        class="training-video"
+        src="{{item.tempUrl}}"
+        poster="{{item.posterTempUrl}}"
+        controls
+        enable-progress-gesture="{{item.watched ? true : false}}"
+        show-progress="{{true}}"
+        object-fit="contain"
+        data-key="{{item.key}}"
+        bindtimeupdate="onVideoTimeUpdate"
+        bindseeking="onVideoSeeking"
+        bindseekcomplete="onVideoSeekComplete"
+        bindended="onVideoEnded"
+      ></video>
       <view class="video-main">
-        <view class="video-title">{{item.title}}</view>
+        <view class="video-head-row">
+          <view class="video-title">{{item.title}}</view>
+          <view class="watch-status-badge {{item.watched ? 'done' : (item.progressPercent > 0 ? 'watching' : 'pending')}}">
+            <text class="remix-icon {{item.watched ? 'ri-checkbox-circle-fill' : (item.progressPercent > 0 ? 'ri-play-circle-line' : 'ri-time-line')}}"></text>
+            <text>{{item.watched ? '已看完' : (item.progressPercent > 0 ? '已看 ' + item.progressPercent + '%' : '待观看')}}</text>
+          </view>
+        </view>
         <view class="muted">{{item.durationText}} · {{item.description}}</view>
-        <view class="done-text" wx:if="{{item.watched}}">已完成 {{item.watchedAtText}}</view>
-        <view class="muted" wx:elif="{{item.tempUrl}}">播放完成后自动记录观看。</view>
-        <view class="muted" wx:else>视频资源暂不可播放，请联系管理员或使用下方按钮记录。</view>
+        <view class="done-text" wx:if="{{item.watched}}">✅ 已全程看完 {{item.watchedAtText}}</view>
+        <view class="progress-tip" wx:elif="{{item.tempUrl}}">
+          <text class="remix-icon ri-shield-check-line"></text>
+          <text>防快进保护：须从头至尾完整播放，中途不可跳过或快进。</text>
+        </view>
+        <view class="muted" wx:else>视频资源暂不可播放，请联系管理员配置素材。</view>
       </view>
-      <button class="mini-btn {{item.watched ? 'done' : ''}}" data-key="{{item.key}}" bindtap="markVideo">{{item.watched ? '已看完' : '我已看完'}}</button>
     </view>
     <view class="muted" wx:if="{{!videos.length}}">管理员暂未配置培训视频。</view>
   </view>
@@ -113,8 +136,8 @@
     <view class="guide-box">
       <view class="wechat-row">
         <text>微信号：</text>
-        <text class="wechat-val">{{videoAuditGuide.wechatId}}</text>
-        <button class="mini-copy-btn" bindtap="copyAuditWechat">复制</button>
+        <text class="wechat-val" user-select="{{true}}">{{videoAuditGuide.wechatId || '未配置'}}</text>
+        <button class="mini-copy-btn" data-wechat="{{videoAuditGuide.wechatId}}" bindtap="copyAuditWechat">复制</button>
       </view>
       <view>添加备注：{{videoAuditGuide.remarkTemplate}}</view>
       <view wx:if="{{profile.videoAuditRemark}}">审核备注：{{profile.videoAuditRemark}}</view>
@@ -148,4 +171,28 @@
   </view>
 
   <button class="primary-btn" wx:if="{{profile.staffLevel === 'intern'}}" bindtap="goPromotion">查看实习转正进度</button>
+
+  <!-- 自定义长按复制与一键复制弹窗 -->
+  <view class="copy-modal-mask" wx:if="{{copyModal.show}}" catchtouchmove="noop" bindtap="closeCopyModal">
+    <view class="copy-modal-card" catchtap="noop">
+      <view class="copy-modal-header">
+        <view class="copy-modal-title">{{copyModal.title}}</view>
+        <view class="copy-modal-close" bindtap="closeCopyModal">
+          <text class="remix-icon ri-close-line"></text>
+        </view>
+      </view>
+      <view class="copy-modal-tip">{{copyModal.tip}}</view>
+      <view class="copy-modal-content-box">
+        <text class="copy-modal-text" user-select="{{true}}" selectable="{{true}}">{{copyModal.content}}</text>
+      </view>
+      <view class="copy-modal-hint">提示：可直接长按上方文字选择复制，也可点击下方按钮一键复制。</view>
+      <view class="copy-modal-actions">
+        <button class="copy-modal-btn ghost" bindtap="closeCopyModal">关闭</button>
+        <button class="copy-modal-btn primary" bindtap="executeCopyModal">
+          <text class="remix-icon ri-file-copy-line"></text>
+          <text>{{copyModal.btnText || '一键复制'}}</text>
+        </button>
+      </view>
+    </view>
+  </view>
 </view>

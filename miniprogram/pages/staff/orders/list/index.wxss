@@ -138,6 +138,25 @@
   color: #2d211a;
 }
 
+.pet-title-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 999rpx;
+  color: #b45309;
+  background: #fff7d6;
+  font-size: 19rpx;
+  font-weight: 900;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pet-title-badge .remix-icon {
+  color: #f59e0b;
+  font-size: 22rpx;
+}
+
 .breed-badge {
   padding: 4rpx 12rpx;
   border-radius: 999rpx;

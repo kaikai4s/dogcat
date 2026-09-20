@@ -208,3 +208,120 @@ button[disabled] {
 .supply-desc { color: #7a6a5e; font-size: 22rpx; }
 .supply-buy-btn { display: inline-flex; align-items: center; gap: 6rpx; padding: 6rpx 16rpx; border-radius: 999rpx; background: #fff0e2; color: #e9672f; font-size: 22rpx; font-weight: 850; flex-shrink: 0; }
 .supply-buy-btn:active { opacity: 0.8; transform: scale(0.96); }
+
+.copy-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx;
+  background: rgba(0, 0, 0, 0.65);
+  box-sizing: border-box;
+}
+
+.copy-modal-card {
+  width: 100%;
+  max-width: 620rpx;
+  border-radius: 32rpx;
+  background: #ffffff;
+  padding: 36rpx 32rpx 32rpx;
+  box-shadow: 0 20rpx 60rpx rgba(0, 0, 0, 0.25);
+  box-sizing: border-box;
+}
+
+.copy-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14rpx;
+}
+
+.copy-modal-title {
+  font-size: 32rpx;
+  font-weight: 950;
+  color: #2d211a;
+}
+
+.copy-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  background: #f5ede6;
+  color: #8e8580;
+  font-size: 32rpx;
+}
+
+.copy-modal-tip {
+  font-size: 24rpx;
+  color: #7a6a5e;
+  line-height: 1.5;
+  margin-bottom: 20rpx;
+}
+
+.copy-modal-content-box {
+  background: #fff8ec;
+  border: 2rpx dashed #fcd3b6;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  margin-bottom: 16rpx;
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.copy-modal-text {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #e9672f;
+  line-height: 1.6;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.copy-modal-hint {
+  font-size: 22rpx;
+  color: #a89b92;
+  margin-bottom: 28rpx;
+  line-height: 1.4;
+}
+
+.copy-modal-actions {
+  display: flex;
+  gap: 16rpx;
+}
+
+.copy-modal-btn {
+  flex: 1;
+  height: 76rpx;
+  line-height: 76rpx;
+  border-radius: 999rpx;
+  font-size: 26rpx;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 0;
+  border: none;
+}
+
+.copy-modal-btn.ghost {
+  background: #f5ede6;
+  color: #7a6a5e;
+}
+
+.copy-modal-btn.primary {
+  background: linear-gradient(135deg, #ffb86c, #ff7a45);
+  color: #ffffff;
+  box-shadow: 0 8rpx 20rpx rgba(233, 103, 47, 0.3);
+}
+
+.copy-modal-btn:active {
+  transform: scale(0.98);
+  opacity: 0.9;
+}

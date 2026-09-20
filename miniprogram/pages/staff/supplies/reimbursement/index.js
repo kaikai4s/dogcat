@@ -32,7 +32,14 @@ Page({
     statusLabel: '',
     failureReason: '',
     canConfirmTransfer: false,
-    transferNotice: ''
+    transferNotice: '',
+    copyModal: {
+      show: false,
+      title: '',
+      tip: '',
+      content: '',
+      btnText: '一键复制'
+    }
   },
 
   onShow() {
@@ -124,8 +131,8 @@ Page({
   },
 
   openPurchaseUrl(e) {
-    const url = e.currentTarget.dataset.url
-    const name = e.currentTarget.dataset.name || '物品'
+    const url = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.url) || ''
+    const name = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.name) || '物品'
     if (!url) {
       wx.showToast({ title: '暂未配置购买链接', icon: 'none' })
       return
@@ -134,21 +141,40 @@ Page({
       wx.navigateTo({ url })
       return
     }
-    wx.showModal({
-      title: `${name} 购买链接`,
-      content: `购买地址：${url}\n\n已为您准备好链接，点击“复制链接”后可在微信聊天或浏览器中打开完成购买。`,
-      confirmText: '复制链接',
-      cancelText: '关闭',
-      success: (res) => {
-        if (res.confirm) {
-          wx.setClipboardData({
-            data: url,
-            success: () => wx.showToast({ title: '已复制链接' })
-          })
-        }
+    wx.setClipboardData({
+      data: url,
+      success: () => {
+        wx.showToast({ title: '已尝试自动复制', icon: 'none' })
+      },
+      fail: () => {}
+    })
+    this.setData({
+      copyModal: {
+        show: true,
+        title: `${name} 购买链接`,
+        tip: '链接可用于在微信对话框或手机浏览器中打开完成购买：',
+        content: url,
+        btnText: '复制购买链接'
       }
     })
   },
+
+  executeCopyModal() {
+    const content = this.data.copyModal && this.data.copyModal.content
+    if (!content) return
+    wx.setClipboardData({
+      data: content,
+      success: () => {
+        wx.showToast({ title: '复制成功', icon: 'success' })
+      }
+    })
+  },
+
+  closeCopyModal() {
+    this.setData({ 'copyModal.show': false })
+  },
+
+  noop() {},
 
   async previewReceipt(e) {
     const submitted = e.currentTarget.dataset.submitted === 'yes'

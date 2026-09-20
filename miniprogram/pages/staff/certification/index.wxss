@@ -56,8 +56,9 @@
 }
 
 .status-notice-card.approved-card {
-  background: #f0faf2;
-  border-color: rgba(0, 180, 42, 0.2);
+  background: linear-gradient(180deg, #f0faf2 0%, #f7fbf8 100%);
+  border: 2rpx solid rgba(0, 180, 42, 0.22);
+  box-shadow: 0 12rpx 32rpx rgba(0, 180, 42, 0.06);
 }
 
 .notice-head {
@@ -82,17 +83,17 @@
 }
 
 .notice-status {
-  margin-top: 10rpx;
-  font-size: 36rpx;
+  margin-top: 12rpx;
+  font-size: 38rpx;
   font-weight: 950;
   color: #e9672f;
 }
 
 .notice-tip {
-  margin-top: 8rpx;
+  margin-top: 10rpx;
   font-size: 24rpx;
-  color: #7a6a5e;
-  line-height: 1.4;
+  color: #6d645e;
+  line-height: 1.55;
 }
 
 .card {
@@ -336,21 +337,104 @@
   line-height: 1;
 }
 
-.back-btn {
-  width: 100%;
-  height: 84rpx;
-  border-radius: 28rpx;
-  background: #fff0e2;
-  color: #7a6a5e;
-  font-size: 28rpx;
-  font-weight: 850;
+/* Approved Card Actions */
+.approved-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+  margin-top: 30rpx;
+}
+
+.cert-btn {
+  width: 100% !important;
+  height: 94rpx !important;
+  border-radius: 28rpx !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 0 32rpx !important;
+  box-sizing: border-box !important;
+  border: none !important;
+  line-height: 1 !important;
+  transition: all 0.2s ease;
+}
+
+.cert-btn:after {
+  display: none !important;
+}
+
+.cert-btn:active {
+  transform: scale(0.985);
+  opacity: 0.92;
+}
+
+.cert-btn-left {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  border: none;
-  line-height: 1;
-  margin-top: 20rpx;
+  gap: 16rpx;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.cert-icon {
+  font-size: 36rpx;
+}
+
+.cert-arrow {
+  font-size: 38rpx;
+  opacity: 0.65;
+}
+
+/* 主按钮：品质感暖橙渐变 */
+.primary-cert-btn {
+  background: linear-gradient(135deg, #ff9447 0%, #fa541c 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10rpx 28rpx rgba(250, 84, 28, 0.28) !important;
+}
+
+.primary-cert-btn .cert-icon {
+  color: #ffe7ba;
+}
+
+/* 次按钮：白底橙边高质感卡片样式 */
+.secondary-cert-btn {
+  background: #ffffff !important;
+  color: #d45f22 !important;
+  border: 2rpx solid #ffd8bf !important;
+  box-shadow: 0 8rpx 20rpx rgba(123, 89, 62, 0.05) !important;
+}
+
+.secondary-cert-btn .cert-icon {
+  color: #fa541c;
+}
+
+/* 返回个人中心按钮：轻量透气质感 */
+.back-profile-btn {
+  width: 100% !important;
+  height: 84rpx !important;
+  margin: 36rpx auto 60rpx !important;
+  border-radius: 26rpx !important;
+  background: #ffffff !important;
+  color: #8a7a70 !important;
+  border: 1.5rpx solid rgba(138, 122, 112, 0.22) !important;
+  box-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.03) !important;
+  font-size: 26rpx !important;
+  font-weight: 850 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10rpx !important;
+  line-height: 1 !important;
+}
+
+.back-profile-btn:after {
+  display: none !important;
+}
+
+.back-profile-btn:active {
+  transform: scale(0.985);
+  background: #fdfaf7 !important;
+  color: #5c4e46 !important;
 }
 
 /* Staff Bottom Nav */

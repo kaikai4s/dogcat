@@ -73,4 +73,28 @@
     <button class="primary-btn" bindtap="submit" loading="{{busy}}" disabled="{{busy || uploading || loading || !receipts.length}}">提交报销申请</button>
   </view>
   <view class="card muted" wx:elif="{{!loading && !loadError}}">当前不可提交新申请。需正式认证、平台开放且服务端确认具备首次报销资格；已有申请请查看上方进度。</view>
+
+  <!-- 自定义长按复制与一键复制弹窗 -->
+  <view class="copy-modal-mask" wx:if="{{copyModal.show}}" catchtouchmove="noop" bindtap="closeCopyModal">
+    <view class="copy-modal-card" catchtap="noop">
+      <view class="copy-modal-header">
+        <view class="copy-modal-title">{{copyModal.title}}</view>
+        <view class="copy-modal-close" bindtap="closeCopyModal">
+          <text class="remix-icon ri-close-line"></text>
+        </view>
+      </view>
+      <view class="copy-modal-tip">{{copyModal.tip}}</view>
+      <view class="copy-modal-content-box">
+        <text class="copy-modal-text" user-select="{{true}}" selectable="{{true}}">{{copyModal.content}}</text>
+      </view>
+      <view class="copy-modal-hint">提示：可直接长按上方文字选择复制，也可点击下方按钮一键复制。</view>
+      <view class="copy-modal-actions">
+        <button class="copy-modal-btn ghost" bindtap="closeCopyModal">关闭</button>
+        <button class="copy-modal-btn primary" bindtap="executeCopyModal">
+          <text class="remix-icon ri-file-copy-line"></text>
+          <text>{{copyModal.btnText || '一键复制'}}</text>
+        </button>
+      </view>
+    </view>
+  </view>
 </view>
