@@ -6,6 +6,20 @@
     </view>
     <view class="hero-title">寻找身边的安心宠托师</view>
     <view class="hero-tip">100% 实名与健康审核 · 附近随时响应 · 服务过程全程记录</view>
+
+    <view class="sitter-location-bar" bindtap="updateLocation">
+      <view class="location-bar-left">
+        <view class="remix-icon ri-map-pin-2-fill location-pin"></view>
+        <view class="location-detail">
+          <view class="location-name-row">
+            <text class="location-name">{{locationName}}</text>
+            <text class="location-change-tag">切换</text>
+          </view>
+          <view class="location-address" wx:if="{{locationAddress}}">{{locationAddress}}</view>
+        </view>
+      </view>
+      <view class="location-arrow remix-icon ri-arrow-right-s-line"></view>
+    </view>
   </view>
 
   <view class="sitter-search-wrap">
@@ -68,6 +82,7 @@
             <text class="sitter-city-tag">{{item.serviceCity}}</text>
           </view>
           <view class="badge-pill orange" wx:if="{{item.isFeatured}}">平台精选</view>
+          <view class="badge-pill blue" wx:elif="{{item.staffLevel === 'intern'}}">实习特惠</view>
           <view class="badge-pill green" wx:else>已认证</view>
         </view>
         <view class="sitter-rating-line">
@@ -88,6 +103,11 @@
       </view>
     </view>
 
+    <view class="intern-discount-banner" wx:if="{{item.staffLevel === 'intern'}}">
+      <text class="remix-icon ri-coupon-3-line intern-banner-icon"></text>
+      <text>实习期考核中 · 专享特惠计费</text>
+    </view>
+
     <view class="sitter-intro" wx:if="{{item.serviceSummary}}">“{{item.serviceSummary}}”</view>
 
     <view class="chip-row area-tags-row" wx:if="{{item.areaTags && item.areaTags.length}}">
@@ -102,10 +122,10 @@
 
   <view class="empty sitter-empty" wx:if="{{!loading && !sitters.length}}">
     <view class="remix-icon ri-emotion-sad-line empty-icon"></view>
-    <view class="empty-title">暂时没有符合条件的宠托师</view>
-    <view class="empty-desc">建议清空筛选条件或直接公开发布需求由附近宠托师响应</view>
+    <view class="empty-title">当前范围内暂无可用宠托师</view>
+    <view class="empty-desc">当前基准位置为「{{locationName || '未定位'}}」，建议切换位置、清空城市筛选或直接公开发布需求</view>
     <view class="empty-actions">
-      <button class="ghost-cute-btn" bindtap="clearFilters">清空筛选</button>
+      <button class="ghost-cute-btn" bindtap="updateLocation">切换位置</button>
       <button class="primary-cute-btn" bindtap="openPublish">公开发布抢单</button>
     </view>
   </view>

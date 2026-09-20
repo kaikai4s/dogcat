@@ -10,6 +10,23 @@ const COUPON_CONTEXT_KEY = 'vip_pet_coupon_select_context'
 const SELECTED_COUPON_KEY = 'vip_pet_selected_coupon'
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'
 
+function calcDistanceKm(lat1, lng1, lat2, lng2) {
+  const nLat1 = Number(lat1)
+  const nLng1 = Number(lng1)
+  const nLat2 = Number(lat2)
+  const nLng2 = Number(lng2)
+  if (!nLat1 || !nLng1 || !nLat2 || !nLng2) return null
+  const R = 6371
+  const toRad = (v) => (Number(v) * Math.PI) / 180
+  const radLat1 = toRad(nLat1)
+  const radLat2 = toRad(nLat2)
+  const dLat = toRad(nLat2 - nLat1)
+  const dLng = toRad(nLng2 - nLng1)
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(radLat1) * Math.cos(radLat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
 const durationOptions = [
   { label: '30分钟', value: 30 },
   { label: '60分钟', value: 60 },
@@ -226,6 +243,9 @@ Page({
     petDurationRows: [],
     timedDurationTotal: 0,
     walkWithoutDog: false,
+    isOutOfRange: false,
+    rangeDistanceText: '',
+    rangeWarningText: '',
     form: {
       petId: '',
       petIds: [],
@@ -457,15 +477,51 @@ Page({
   choosePublishMode(e) {
     const publishMode = e.currentTarget.dataset.mode
     if (publishMode === 'open') {
-      this.setData({ ['form.publishMode']: 'open', ['form.staffProfileId']: '', requestedSitter: null, sitterAvailability: [], selectedAvailability: null, quote: null }, this.prepareTime)
+      this.setData({ ['form.publishMode']: 'open', ['form.staffProfileId']: '', requestedSitter: null, sitterAvailability: [], selectedAvailability: null, isOutOfRange: false, rangeDistanceText: '', rangeWarningText: '', quote: null }, this.prepareTime)
       return
     }
-    this.setData({ ['form.publishMode']: 'direct', quote: null }, this.prepareTime)
+    this.setData({ ['form.publishMode']: 'direct', quote: null }, () => {
+      this.prepareTime()
+      this.checkSitterRange()
+    })
     if (!this.data.form.staffProfileId) this.chooseSitter()
   },
 
   chooseSitter() {
     wx.navigateTo({ url: '/pages/client/sitters/list/index' })
+  },
+
+  checkSitterRange() {
+    const { form, requestedSitter } = this.data
+    if (form.publishMode !== 'direct' || !requestedSitter) {
+      this.setData({ isOutOfRange: false, rangeDistanceText: '', rangeWarningText: '' })
+      return { ok: true }
+    }
+    const orderLat = Number(form.addressLatitude || 0)
+    const orderLng = Number(form.addressLongitude || 0)
+    const sitterLat = Number(requestedSitter.serviceLatitude || 0)
+    const sitterLng = Number(requestedSitter.serviceLongitude || 0)
+    const radiusKm = Math.max(Number(requestedSitter.serviceRadiusKm || 5), 1)
+
+    if (!orderLat || !orderLng) {
+      this.setData({ isOutOfRange: false, rangeDistanceText: '', rangeWarningText: '' })
+      return { ok: true }
+    }
+    if (!sitterLat || !sitterLng) {
+      const warning = '该宠托师尚未设置有效常驻服务地址坐标，无法指定预约'
+      this.setData({ isOutOfRange: true, rangeDistanceText: '', rangeWarningText: warning })
+      return { ok: false, message: warning }
+    }
+    const dist = calcDistanceKm(orderLat, orderLng, sitterLat, sitterLng)
+    if (dist !== null && dist > radiusKm) {
+      const distText = dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`
+      const warning = `服务地址距宠托师常驻地约 ${distText}，超出其设定的 ${radiusKm}km 接单范围，无法指定预约`
+      this.setData({ isOutOfRange: true, rangeDistanceText: distText, rangeWarningText: warning })
+      return { ok: false, message: warning }
+    }
+    const distText = dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`
+    this.setData({ isOutOfRange: false, rangeDistanceText: distText, rangeWarningText: '' })
+    return { ok: true }
   },
 
   loadRequestedSitter(staffProfileId) {
@@ -474,7 +530,10 @@ Page({
       callFunction('staff', 'listScheduleAvailability', { staffProfileId, days: 14 })
     ])
       .then(([requestedSitter, availability]) => {
-        this.setData({ requestedSitter, sitterAvailability: availability || [] }, this.prepareTime)
+        this.setData({ requestedSitter, sitterAvailability: availability || [] }, () => {
+          this.prepareTime()
+          this.checkSitterRange()
+        })
       })
       .catch(showError)
   },
@@ -570,6 +629,8 @@ Page({
       locationReady: Boolean(address.serviceAddress),
       locationTip: address.label ? `已选择常用地址：${address.label}` : '已选择常用地址',
       quote: null
+    }, () => {
+      this.checkSitterRange()
     })
   },
 
@@ -788,6 +849,8 @@ Page({
           locationReady: true,
           locationTip: location.address || '已选择服务位置',
           quote: null
+        }, () => {
+          this.checkSitterRange()
         })
         wx.showToast({ title: '已更新位置' })
       })
@@ -804,7 +867,11 @@ Page({
     if (this.data.walkWithoutDog) return '遛狗服务需至少选择一只狗狗'
     if (this.data.hasTimedServices && !form.petServiceDurations.length) return '请选择计时服务的宠物'
     if (this.data.hasTimedServices && this.data.timedDurationTotal > 240) return '每日合计不能超过240分钟，请减少时长、宠物或服务'
-    if (form.publishMode === 'direct' && !form.staffProfileId) return '请选择指定宠托师'
+    if (form.publishMode === 'direct') {
+      if (!form.staffProfileId) return '请选择指定宠托师'
+      const rangeCheck = this.checkSitterRange()
+      if (!rangeCheck.ok) return rangeCheck.message
+    }
     if (!form.serviceAddress) return '请选择服务地址'
     if (!form.addressDetail) return '请填写详细地址'
     if (!form.doorplate) return '请填写门牌号或入户说明'

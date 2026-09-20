@@ -818,3 +818,83 @@ button:active {
   transform: scale(0.985);
   opacity: 0.86;
 }
+
+.sitter-summary-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+.intern-summary-tip {
+  margin-top: 10rpx;
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  font-size: 22rpx;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  font-weight: 750;
+}
+
+.quote-intern-badge {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 12rpx 16rpx;
+  margin: 14rpx 0 10rpx;
+  border-radius: 16rpx;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 23rpx;
+  font-weight: 750;
+}
+
+.out-of-range-banner {
+  margin: 16rpx 0 12rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 20rpx;
+  background: #fef2f2;
+  border: 1rpx solid #fecaca;
+}
+
+.out-of-range-banner .warning-title {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  color: #dc2626;
+  font-size: 25rpx;
+  font-weight: 900;
+}
+
+.out-of-range-banner .warning-icon {
+  font-size: 28rpx;
+  color: #dc2626;
+}
+
+.out-of-range-banner .warning-desc {
+  margin-top: 6rpx;
+  color: #b91c1c;
+  font-size: 23rpx;
+  line-height: 1.4;
+}
+
+.range-distance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  margin-top: 10rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  background: #f0fdf4;
+  color: #16a34a;
+  font-size: 22rpx;
+  font-weight: 750;
+}
+
+.range-distance-pill.danger {
+  background: #fef2f2;
+  color: #dc2626;
+}

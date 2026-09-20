@@ -16,12 +16,21 @@
         <view class="sitter-name-row">
           <text class="sitter-name">{{sitter.displayName}}</text>
           <view class="chip pink" wx:if="{{sitter.isFeatured}}">平台精选</view>
+          <view class="chip blue" wx:elif="{{sitter.staffLevel === 'intern'}}">实习特惠</view>
         </view>
         <view class="muted">{{sitter.serviceSummary || '专业爱宠、用心照护'}}</view>
         <view class="chip-row">
           <view class="chip pink" wx:for="{{sitter.publicTags}}" wx:key="*this">{{item}}</view>
         </view>
       </view>
+    </view>
+
+    <view class="intern-benefit-box" wx:if="{{sitter.staffLevel === 'intern'}}">
+      <view class="benefit-title">
+        <text class="remix-icon ri-vip-diamond-line benefit-icon"></text>
+        <text>实习宠托师专享特惠</text>
+      </view>
+      <view class="benefit-desc">已通过平台基础考核，现处于实习上岗阶段。指定预约享受实习期专属特惠价，下单自动立减！</view>
     </view>
 
     <view class="stats-grid">

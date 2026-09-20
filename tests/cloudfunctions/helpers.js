@@ -13,7 +13,13 @@ function createCollectionStore(initial = {}) {
   }
 
   function matchWhere(item, where) {
-    return Object.keys(where || {}).every((key) => item[key] === where[key])
+    return Object.keys(where || {}).every((key) => {
+      const condition = where[key]
+      if (condition && typeof condition === 'object' && Array.isArray(condition.$in)) {
+        return condition.$in.includes(item[key]) || (condition.$in.includes('') && item[key] === undefined) || (condition.$in.includes(null) && item[key] === null)
+      }
+      return item[key] === condition
+    })
   }
 
   function collection(name) {
@@ -83,7 +89,7 @@ function createCollectionStore(initial = {}) {
     return chain
   }
 
-  return { collection, state, command: {} }
+  return { collection, state, command: { in: (arr) => ({ $in: arr }) } }
 }
 
 function clearRequireCache(filePath) {

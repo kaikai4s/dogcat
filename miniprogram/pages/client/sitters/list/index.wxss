@@ -51,6 +51,79 @@
   line-height: 1.4;
 }
 
+.sitter-location-bar {
+  margin-top: 24rpx;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 24rpx;
+  padding: 16rpx 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4rpx 16rpx rgba(123, 89, 62, 0.06);
+  border: 1rpx solid rgba(255, 255, 255, 0.95);
+}
+
+.location-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  flex: 1;
+  min-width: 0;
+}
+
+.location-pin {
+  color: #ff5e36;
+  font-size: 34rpx;
+  flex-shrink: 0;
+}
+
+.location-detail {
+  flex: 1;
+  min-width: 0;
+}
+
+.location-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.location-name {
+  font-size: 27rpx;
+  font-weight: 850;
+  color: #2d211a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 420rpx;
+}
+
+.location-change-tag {
+  font-size: 20rpx;
+  color: #ff5e36;
+  background: #fff0eb;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  font-weight: 750;
+  flex-shrink: 0;
+}
+
+.location-address {
+  font-size: 22rpx;
+  color: #8c7c72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 4rpx;
+}
+
+.location-arrow {
+  color: #bfaea5;
+  font-size: 32rpx;
+  margin-left: 8rpx;
+  flex-shrink: 0;
+}
+
 .sitter-search-wrap {
   margin: -28rpx 28rpx 0;
   position: relative;
@@ -377,6 +450,10 @@
 
 .primary-cute-btn,
 .ghost-cute-btn {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
   min-height: 76rpx;
   border-radius: 999rpx;
   display: flex;
@@ -384,6 +461,7 @@
   justify-content: center;
   font-size: 26rpx;
   font-weight: 900;
+  padding: 0 16rpx;
 }
 
 .primary-cute-btn {
@@ -403,6 +481,7 @@
   text-align: center;
   border-radius: 36rpx;
   background: rgba(255, 255, 255, 0.95);
+  box-sizing: border-box;
 }
 
 .empty-icon {
@@ -424,8 +503,27 @@
 }
 
 .empty-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16rpx;
-  justify-content: center;
-  margin-top: 24rpx;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 32rpx;
+}
+
+.intern-discount-banner {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 10rpx 16rpx;
+  margin: 14rpx 0 10rpx;
+  border-radius: 16rpx;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 23rpx;
+  font-weight: 750;
+}
+
+.intern-banner-icon {
+  font-size: 26rpx;
 }

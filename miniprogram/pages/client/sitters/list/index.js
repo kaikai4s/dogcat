@@ -1,4 +1,4 @@
-const { callFunction, showError, getSelectedLocation } = require('../../../../utils/cloud')
+const { callFunction, showError, getSelectedLocation, chooseSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { loadMessageUnread } = require('../../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
@@ -30,6 +30,8 @@ Page({
     sortOptions,
     cityOptions: [ALL],
     areaOptions: [ALL],
+    locationName: '',
+    locationAddress: '',
     allSitters: [],
     sitters: [],
     total: 0,
@@ -40,6 +42,7 @@ Page({
 
   onShow() {
     this.applyCurrentTheme()
+    this.syncCurrentLocation()
     this.loadFacets()
     loadMessageUnread(this)
   },
@@ -49,11 +52,19 @@ Page({
     this.setData(getThemeState(theme.value))
   },
 
+  syncCurrentLocation() {
+    const loc = getSelectedLocation()
+    this.setData({
+      locationName: loc ? (loc.name || '已选择位置') : '未选择定位',
+      locationAddress: loc ? (loc.address || '') : '点击选择具体位置以精准计算服务范围'
+    })
+  },
+
   loadFacets() {
     this.setData({ loading: true })
-    const loc = getSelectedLocation()
-    const locParams = loc ? { latitude: loc.latitude, longitude: loc.longitude } : {}
-    callFunction('staff', 'listApprovedSitters', { pageSize: 50, ...locParams })
+    this.syncCurrentLocation()
+    // 首次拉取城市选项时，不加定位过滤，以便展示系统中全量服务城市
+    callFunction('staff', 'listApprovedSitters', { pageSize: 50 })
       .then((res) => {
         const allSitters = res.list || []
         this.setData({ allSitters }, () => {
@@ -77,6 +88,7 @@ Page({
 
   loadSitters() {
     const { keyword, activeCity, activeArea, sortBy } = this.data
+    this.syncCurrentLocation()
     const loc = getSelectedLocation()
     const locParams = loc ? { latitude: loc.latitude, longitude: loc.longitude } : {}
     this.setData({ loading: true })
@@ -94,6 +106,22 @@ Page({
       .catch((error) => {
         this.setData({ loading: false })
         showError(error)
+      })
+  },
+
+  updateLocation() {
+    chooseSelectedLocation()
+      .then((loc) => {
+        this.setData({
+          locationName: loc.name || '已选择位置',
+          locationAddress: loc.address || '已选择服务附近位置'
+        })
+        this.loadSitters()
+      })
+      .catch((err) => {
+        const errMsg = (err && err.errMsg) || ''
+        if (errMsg.includes('cancel')) return
+        wx.showToast({ title: '获取位置失败', icon: 'none' })
       })
   },
 

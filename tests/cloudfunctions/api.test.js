@@ -3507,3 +3507,263 @@ test('closing incidents resolves frozen earnings by release deduct or keep froze
   assert.equal(keepDb.state.staff_earnings[0].status, 'frozen')
   assert.equal(keepDb.state.incident_actions.some((item) => item.action === 'earning_keep_frozen'), true)
 })
+
+test('intern sitters can be listed, viewed, scheduled and booked with intern discount pricing', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'client1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
+      { _id: 'staff_intern_user', openid: 'openid_intern', nickname: '实习小王', avatarUrl: 'avatar.png', roles: ['client', 'staff'], status: 'active', phone: '13900000000' }
+    ],
+    pets: [
+      { _id: 'pet1', openid: 'openid_client', name: '旺财', species: 'dog', weight: 10 }
+    ],
+    staff_profiles: [
+      {
+        _id: 'sp_intern',
+        userId: 'staff_intern_user',
+        openid: 'openid_intern',
+        realName: '王实习',
+        auditStatus: 'approved',
+        staffLevel: 'intern',
+        onboardingStatus: 'intern',
+        serviceCity: '上海',
+        serviceAreas: '浦东新区',
+        serviceAddress: '上海浦东张江高科',
+        serviceLatitude: 31.2,
+        serviceLongitude: 121.5,
+        serviceRadiusKm: 10,
+        weeklySchedule: { '1': [{ start: 9, end: 18 }], '2': [{ start: 9, end: 18 }] }
+      }
+    ],
+    service_prices: [
+      { key: 'visit_fee', label: '上门服务费', price: 20, internPrice: 15, enabled: true },
+      { key: 'feed', label: '上门喂养', price: 50, internPrice: 35, extraPetFee: 20, internExtraPetFee: 10, extraPetRule: 'all', enabled: true }
+    ],
+    orders: [],
+    order_timeline: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  // 1. 验证在找宠托师列表中能查询到实习宠托师，且具有 intern 标识和特惠标签
+  const listRes = await fn.main({
+    module: 'staff',
+    action: 'listApprovedSitters',
+    data: { latitude: 31.2, longitude: 121.5 }
+  })
+  assert.equal(listRes.ok, true)
+  assert.equal(listRes.data.total, 1)
+  const sitter = listRes.data.list[0]
+  assert.equal(sitter._id, 'sp_intern')
+  assert.equal(sitter.staffLevel, 'intern')
+  assert.equal(sitter.staffLevelText, '实习宠托师')
+  assert.equal(sitter.isIntern, true)
+  assert.equal(sitter.publicTags.includes('实习特惠'), true)
+
+  // 2. 验证可以查看实习宠托师详情
+  const detailRes = await fn.main({
+    module: 'staff',
+    action: 'getPublicSitterDetail',
+    data: { staffProfileId: 'sp_intern' }
+  })
+  assert.equal(detailRes.ok, true)
+  assert.equal(detailRes.data.levelName, '实习宠托师')
+  assert.equal(detailRes.data.isIntern, true)
+
+  // 3. 验证可以拉取实习宠托师排班档期
+  const scheduleRes = await fn.main({
+    module: 'staff',
+    action: 'listScheduleAvailability',
+    data: { staffProfileId: 'sp_intern', days: 7 }
+  })
+  assert.equal(scheduleRes.ok, true)
+
+  // 4. 验证指定实习宠托师时，quoteOrder 自动按实习优惠价计费 (35 + 15 = 50，而非正式价 50 + 20 = 70)
+  const quoteRes = await fn.main({
+    module: 'order',
+    action: 'quoteOrder',
+    data: {
+      publishMode: 'direct',
+      staffProfileId: 'sp_intern',
+      petIds: ['pet1'],
+      serviceTypes: ['visit_fee', 'feed'],
+      serviceAddress: '上海浦东张江某小区',
+      addressLatitude: 31.21,
+      addressLongitude: 121.51,
+      startTime: '2026-09-21 10:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(quoteRes.ok, true)
+  assert.equal(quoteRes.data.priceSnapshot.staffPriceLevel, 'intern')
+  assert.equal(quoteRes.data.priceSnapshot.staffLevelText, '实习宠托师')
+  assert.equal(quoteRes.data.payAmount, 50) // 15 (intern visit_fee) + 35 (intern feed) = 50
+
+  // 5. 验证创建指定实习宠托师订单成功
+  const createRes = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      publishMode: 'direct',
+      staffProfileId: 'sp_intern',
+      petIds: ['pet1'],
+      serviceTypes: ['visit_fee', 'feed'],
+      serviceAddress: '上海浦东张江某小区',
+      addressDetail: '1号楼101',
+      doorplate: '101',
+      addressLatitude: 31.21,
+      addressLongitude: 121.51,
+      startTime: '2026-09-21 10:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(createRes.ok, true)
+  assert.equal(createRes.data.requestedStaffProfileId, 'sp_intern')
+  assert.equal(createRes.data.priceSnapshot.staffPriceLevel, 'intern')
+  assert.equal(createRes.data.payAmount, 50)
+})
+
+test('direct booking strictly validates sitter address, coordinates, city and distance radius', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' },
+      { _id: 'u_staff_sh', openid: 'openid_sh', roles: ['client', 'staff'], status: 'active', phone: '13900000000' },
+      { _id: 'u_staff_no_addr', openid: 'openid_no_addr', roles: ['client', 'staff'], status: 'active', phone: '13700000000' }
+    ],
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '大黄', weight: 8 }],
+    staff_profiles: [
+      {
+        _id: 'sitter_sh',
+        openid: 'openid_sh',
+        realName: '上海宠托师',
+        auditStatus: 'approved',
+        serviceCity: '上海市',
+        serviceAddress: '上海市浦东新区张江高科',
+        serviceLatitude: 31.2,
+        serviceLongitude: 121.5,
+        serviceRadiusKm: 5,
+        weeklySchedule: { '1': [{ start: 9, end: 18 }] }
+      },
+      {
+        _id: 'sitter_no_addr',
+        openid: 'openid_no_addr',
+        realName: '无地址宠托师',
+        auditStatus: 'approved',
+        serviceCity: '',
+        serviceAddress: '',
+        serviceLatitude: 0,
+        serviceLongitude: 0,
+        serviceRadiusKm: 5
+      }
+    ],
+    service_prices: [
+      { key: 'visit_fee', label: '上门服务费', price: 20, enabled: true },
+      { key: 'feed', label: '上门喂养', price: 50, enabled: true }
+    ],
+    orders: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  // 1. 订单缺少精确定位坐标 -> 拦截
+  const resNoCoord = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      publishMode: 'direct',
+      staffProfileId: 'sitter_sh',
+      petIds: ['p1'],
+      serviceTypes: ['visit_fee', 'feed'],
+      serviceAddress: '上海某小区',
+      addressDetail: '1栋',
+      doorplate: '101',
+      startTime: '2026-09-21 10:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(resNoCoord.ok, false)
+  assert.equal(resNoCoord.message.includes('需选择包含精确定位的服务地址'), true)
+
+  // 2. 跨城市预约 -> 拦截
+  const resCrossCity = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      publishMode: 'direct',
+      staffProfileId: 'sitter_sh',
+      petIds: ['p1'],
+      serviceTypes: ['visit_fee', 'feed'],
+      city: '北京市',
+      serviceAddress: '北京市海淀区中关村南大街1号',
+      addressDetail: '1栋',
+      doorplate: '101',
+      addressLatitude: 39.9,
+      addressLongitude: 116.4,
+      startTime: '2026-09-21 10:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(resCrossCity.ok, false)
+  assert.equal(resCrossCity.message.includes('不一致，超出服务范围'), true)
+
+  // 3. 超出该宠托师设定的 5km 服务半径 -> 拦截
+  const resOutOfRadius = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      publishMode: 'direct',
+      staffProfileId: 'sitter_sh',
+      petIds: ['p1'],
+      serviceTypes: ['visit_fee', 'feed'],
+      serviceAddress: '上海市松江大学城某小区',
+      addressDetail: '1栋',
+      doorplate: '101',
+      addressLatitude: 31.05,
+      addressLongitude: 121.2,
+      startTime: '2026-09-21 10:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(resOutOfRadius.ok, false)
+  assert.equal(resOutOfRadius.message.includes('超出宠托师设定的接单范围'), true)
+
+  // 4. quoteOrder 试算价格时同样严格拦截
+  const resQuoteOutOfRadius = await fn.main({
+    module: 'order',
+    action: 'quoteOrder',
+    data: {
+      publishMode: 'direct',
+      staffProfileId: 'sitter_sh',
+      petIds: ['p1'],
+      serviceTypes: ['visit_fee', 'feed'],
+      serviceAddress: '上海市松江大学城某小区',
+      addressLatitude: 31.05,
+      addressLongitude: 121.2,
+      startTime: '2026-09-21 10:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(resQuoteOutOfRadius.ok, false)
+  assert.equal(resQuoteOutOfRadius.message.includes('超出宠托师设定的接单范围'), true)
+
+  // 5. 在范围内（距离约 1.5km） -> 成功创建订单并记录距离
+  const resValid = await fn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      publishMode: 'direct',
+      staffProfileId: 'sitter_sh',
+      petIds: ['p1'],
+      serviceTypes: ['visit_fee', 'feed'],
+      serviceAddress: '上海市浦东新区碧波路某小区',
+      addressDetail: '1栋',
+      doorplate: '101',
+      addressLatitude: 31.21,
+      addressLongitude: 121.51,
+      startTime: '2026-09-21 10:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(resValid.ok, true)
+  assert.equal(resValid.data.requestedStaffProfileId, 'sitter_sh')
+  assert.equal(Number.isFinite(resValid.data.distanceFromSitterKm), true)
+  assert.equal(resValid.data.distanceFromSitterKm <= 5, true)
+})

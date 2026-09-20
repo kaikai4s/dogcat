@@ -27,14 +27,27 @@
         <image class="order-avatar" wx:if="{{requestedSitter && requestedSitter.avatarUrl}}" src="{{requestedSitter.avatarUrl}}" mode="aspectFill" />
         <view class="order-avatar placeholder" wx:else><view class="remix-icon ri-service-line"></view></view>
         <view class="sitter-summary-main">
-          <view class="strong">{{requestedSitter ? requestedSitter.displayName : '还未选择宠托师'}}</view>
+          <view class="sitter-summary-name-row">
+            <text class="strong">{{requestedSitter ? requestedSitter.displayName : '还未选择宠托师'}}</text>
+            <text class="badge-pill blue" wx:if="{{requestedSitter && requestedSitter.staffLevel === 'intern'}}">实习特惠</text>
+          </view>
           <view class="muted">{{requestedSitter ? requestedSitter.serviceSummary : '请从宠托师列表选择指定对象'}}</view>
           <view class="sitter-meta" wx:if="{{requestedSitter && requestedSitter.serviceRadiusKm}}">接单范围：{{requestedSitter.serviceRadiusKm}}km 内</view>
+          <view class="intern-summary-tip" wx:if="{{requestedSitter && requestedSitter.staffLevel === 'intern'}}">
+            <text class="remix-icon ri-discount-percent-fill"></text> 已享受实习专属特惠计费
+          </view>
         </view>
       </view>
       <view class="sitter-schedule-line" wx:if="{{requestedSitter && requestedSitter.weeklyScheduleText}}">
         <view class="schedule-label">可预约时间</view>
         <view class="schedule-text">{{requestedSitter.weeklyScheduleText}}</view>
+      </view>
+      <view class="out-of-range-banner" wx:if="{{isOutOfRange && rangeWarningText}}">
+        <view class="warning-title">
+          <text class="remix-icon ri-error-warning-fill warning-icon"></text>
+          <text>超出接单范围提醒</text>
+        </view>
+        <view class="warning-desc">{{rangeWarningText}}</view>
       </view>
       <button class="ghost compact-btn sitter-change-btn" bindtap="chooseSitter"><text class="remix-icon ri-user-search-line"></text><text>重新选择</text></button>
     </view>
@@ -133,7 +146,17 @@
     </view>
     <view class="address-summary" wx:if="{{locationReady || form.serviceAddress}}">
       <view class="remix-icon ri-map-pin-2-line address-icon"></view>
-      <view><view class="muted">服务位置</view><view class="strong">{{form.serviceAddress}}</view><view class="muted">{{locationTip}}</view></view>
+      <view>
+        <view class="muted">服务位置</view>
+        <view class="strong">{{form.serviceAddress}}</view>
+        <view class="muted">{{locationTip}}</view>
+        <view class="range-distance-pill" wx:if="{{form.publishMode === 'direct' && rangeDistanceText && !isOutOfRange}}">
+          <text class="remix-icon ri-map-pin-range-line"></text> 距宠托师约 {{rangeDistanceText}}（接单范围内）
+        </view>
+        <view class="range-distance-pill danger" wx:if="{{form.publishMode === 'direct' && isOutOfRange}}">
+          <text class="remix-icon ri-close-circle-fill"></text> {{rangeWarningText}}
+        </view>
+      </view>
     </view>
     <input placeholder="详细地址（如 3栋2单元18楼）" value="{{form.addressDetail}}" data-field="addressDetail" bindinput="input" />
     <input placeholder="门牌号 / 入户说明（如 1802，门牌朝南）" value="{{form.doorplate}}" data-field="doorplate" bindinput="input" />
@@ -276,6 +299,10 @@
     <view class="quote-head">
       <view><view class="muted">预计支付</view><view class="price">¥{{quote.payAmount}}</view></view>
       <view class="badge">{{quote.serviceSummary}}</view>
+    </view>
+    <view class="quote-intern-badge" wx:if="{{quote.priceSnapshot && quote.priceSnapshot.staffPriceLevel === 'intern'}}">
+      <text class="remix-icon ri-discount-percent-fill"></text>
+      <text>已应用实习宠托师专享特惠定价</text>
     </view>
     <view class="price-breakdown">
       <view class="info-row"><view class="label">原价</view><view class="value">¥{{quote.amount}}</view></view>
