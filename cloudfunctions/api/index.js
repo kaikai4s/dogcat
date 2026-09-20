@@ -376,7 +376,12 @@ function safeUserSummary(user = {}, extra = {}) {
     rolesText: roleText(roles),
     activeRole: user.activeRole || 'client',
     status: user.status || 'active',
+    memberLevel: user.memberLevel || '',
     memberLevelName: user.memberLevelName || '普通会员',
+    badgeTag: user.badgeTag || 'V1',
+    badgeStyle: user.badgeStyle || 'gold',
+    nameColor: user.nameColor || '',
+    nameEffect: user.nameEffect || '',
     points: Number(user.points || 0),
     totalPoints: Number(user.totalPoints || 0),
     retroCardCount: Number(user.retroCardCount || 0),
@@ -2690,16 +2695,95 @@ function calcMemberLevel(totalPoints, levels) {
   const sorted = levels.slice().sort((a, b) => Number(b.minPoints || 0) - Number(a.minPoints || 0))
   const matched = sorted.find((level) => totalPoints >= Number(level.minPoints || 0))
   if (!matched) return { memberLevel: '', memberLevelName: '普通会员', badgeTag: 'V1', nameColor: '', nameEffect: '', badgeStyle: 'gold', pointMultiplier: 1, description: '', benefits: [] }
+  const idx = levels.findIndex((l) => l._id === matched._id)
   return {
     memberLevel: matched._id,
     memberLevelName: matched.name,
-    badgeTag: normalizeMemberBadgeTag(matched.badgeTag) || 'V1',
+    badgeTag: normalizeMemberBadgeTag(matched.badgeTag) || `V${idx >= 0 ? idx + 1 : 1}`,
     nameColor: normalizeMemberNameColor(matched.nameColor),
     nameEffect: normalizeMemberNameEffect(matched.nameEffect),
     badgeStyle: normalizeMemberBadgeStyle(matched.badgeStyle),
     pointMultiplier: Math.max(Number(matched.pointMultiplier || 1), 1),
     description: safeText(matched.description).trim(),
     benefits: normalizeBenefits(matched.benefits)
+  }
+}
+
+function resolveUserMemberLevel(user = {}, levels = []) {
+  if (!Array.isArray(levels) || !levels.length) {
+    return {
+      memberLevel: safeText(user.memberLevel),
+      memberLevelName: safeText(user.memberLevelName).trim() || '普通会员',
+      badgeTag: normalizeMemberBadgeTag(user.badgeTag) || 'V1',
+      nameColor: normalizeMemberNameColor(user.nameColor),
+      nameEffect: normalizeMemberNameEffect(user.nameEffect),
+      badgeStyle: normalizeMemberBadgeStyle(user.badgeStyle),
+      pointMultiplier: 1,
+      description: safeText(user.description).trim(),
+      benefits: normalizeBenefits(user.benefits)
+    }
+  }
+
+  // 1. 优先按 user.memberLevel 匹配已有的等级ID
+  let matched = user.memberLevel ? levels.find((l) => l._id === user.memberLevel) : null
+
+  // 2. 如果没匹配到，按 user.memberLevelName 匹配等级名称
+  if (!matched && user.memberLevelName) {
+    matched = levels.find((l) => safeText(l.name).trim() === safeText(user.memberLevelName).trim())
+  }
+
+  // 3. 如果没匹配到，按累计积分或当前积分计算最高达标等级
+  if (!matched && (user.totalPoints !== undefined || user.points !== undefined)) {
+    const pointsToUse = Number(user.totalPoints !== undefined ? user.totalPoints : user.points) || 0
+    const sorted = levels.slice().sort((a, b) => Number(b.minPoints || 0) - Number(a.minPoints || 0))
+    matched = sorted.find((l) => pointsToUse >= Number(l.minPoints || 0))
+  }
+
+  if (matched) {
+    const idx = levels.findIndex((l) => l._id === matched._id)
+    return {
+      memberLevel: matched._id,
+      memberLevelName: matched.name,
+      badgeTag: normalizeMemberBadgeTag(matched.badgeTag) || `V${idx >= 0 ? idx + 1 : 1}`,
+      nameColor: normalizeMemberNameColor(matched.nameColor),
+      nameEffect: normalizeMemberNameEffect(matched.nameEffect),
+      badgeStyle: normalizeMemberBadgeStyle(matched.badgeStyle),
+      pointMultiplier: Math.max(Number(matched.pointMultiplier || 1), 1),
+      description: safeText(matched.description).trim(),
+      benefits: normalizeBenefits(matched.benefits)
+    }
+  }
+
+  return {
+    memberLevel: '',
+    memberLevelName: safeText(user.memberLevelName).trim() || '普通会员',
+    badgeTag: normalizeMemberBadgeTag(user.badgeTag) || 'V1',
+    nameColor: normalizeMemberNameColor(user.nameColor),
+    nameEffect: normalizeMemberNameEffect(user.nameEffect),
+    badgeStyle: normalizeMemberBadgeStyle(user.badgeStyle),
+    pointMultiplier: 1,
+    description: '',
+    benefits: []
+  }
+}
+
+async function enrichUserMemberLevel(user, levelsCache = null) {
+  if (!user) return user
+  try {
+    const levels = levelsCache || await getMemberLevels()
+    const levelInfo = resolveUserMemberLevel(user, levels)
+    return {
+      ...user,
+      memberLevel: levelInfo.memberLevel,
+      memberLevelName: levelInfo.memberLevelName,
+      badgeTag: levelInfo.badgeTag,
+      badgeStyle: levelInfo.badgeStyle,
+      nameColor: levelInfo.nameColor,
+      nameEffect: levelInfo.nameEffect,
+      pointMultiplier: levelInfo.pointMultiplier
+    }
+  } catch (e) {
+    return user
   }
 }
 
@@ -3032,9 +3116,19 @@ async function addPoints(openid, userId, delta, sourceType, sourceId, reason, op
     data: { userId: user._id, openid, delta: finalDelta, baseDelta, multiplier, balance: newPoints, reason: reason || '', sourceType: sourceType || '', sourceId: sourceId || '', createdAt: time }
   })
   await db.collection('users').doc(user._id).update({
-    data: { points: newPoints, totalPoints: newTotal, memberLevel: levelInfo.memberLevel, memberLevelName: levelInfo.memberLevelName, updatedAt: time }
+    data: {
+      points: newPoints,
+      totalPoints: newTotal,
+      memberLevel: levelInfo.memberLevel,
+      memberLevelName: levelInfo.memberLevelName,
+      badgeTag: levelInfo.badgeTag,
+      badgeStyle: levelInfo.badgeStyle,
+      nameColor: levelInfo.nameColor,
+      nameEffect: levelInfo.nameEffect,
+      updatedAt: time
+    }
   })
-  return { delta: finalDelta, multiplier, balance: newPoints, totalPoints: newTotal, memberLevelName: levelInfo.memberLevelName }
+  return { delta: finalDelta, multiplier, balance: newPoints, totalPoints: newTotal, memberLevelName: levelInfo.memberLevelName, badgeTag: levelInfo.badgeTag, badgeStyle: levelInfo.badgeStyle, nameColor: levelInfo.nameColor, nameEffect: levelInfo.nameEffect }
 }
 
 async function logAdmin(admin, targetType, targetId, action, detail) {
@@ -3275,14 +3369,21 @@ function maskClientName(value) {
   return name.length <= 1 ? `${name}用户` : `${name.slice(0, 1)}* 用户`
 }
 
-function createClientSnapshot(user) {
+function createClientSnapshot(user = {}, levels = []) {
   const nickname = safeText(user.nickname).trim()
+  const levelInfo = resolveUserMemberLevel(user, levels)
   return {
     userId: safeText(user._id),
     nickname,
     displayName: maskClientName(nickname),
     avatarUrl: safeFileId(user.avatarUrl) || safeText(user.avatarUrl),
-    phoneMasked: mask(safeText(user.phone).trim())
+    phoneMasked: mask(safeText(user.phone).trim()),
+    memberLevel: levelInfo.memberLevel,
+    memberLevelName: levelInfo.memberLevelName,
+    badgeTag: levelInfo.badgeTag,
+    badgeStyle: levelInfo.badgeStyle,
+    nameColor: levelInfo.nameColor,
+    nameEffect: levelInfo.nameEffect
   }
 }
 
@@ -3341,25 +3442,41 @@ async function getAdminStaffContact(order) {
   }
 }
 
-async function attachClientSnapshot(order) {
-  if (order.clientSnapshot && (order.clientSnapshot.displayName || order.clientSnapshot.avatarUrl)) return order
+async function attachClientSnapshot(order, levelsCache = null, userCache = null) {
   if (!order.clientOpenid) return order
   try {
-    const userRes = await db.collection('users').where({ openid: order.clientOpenid }).limit(1).get()
-    const user = userRes.data[0]
+    let user = userCache ? userCache.get(order.clientOpenid) : null
+    if (!user) {
+      const userRes = await db.collection('users').where({ openid: order.clientOpenid }).limit(1).get()
+      user = userRes.data[0]
+      if (user && userCache) userCache.set(order.clientOpenid, user)
+    }
     if (!user) return order
+    const levels = levelsCache || await getMemberLevels()
+    const latestSnapshot = createClientSnapshot(user, levels)
     return {
       ...order,
-      clientSnapshot: createClientSnapshot(user)
+      clientSnapshot: {
+        ...(order.clientSnapshot || {}),
+        ...latestSnapshot,
+        displayName: (order.clientSnapshot && order.clientSnapshot.displayName) || latestSnapshot.displayName,
+        avatarUrl: (order.clientSnapshot && order.clientSnapshot.avatarUrl) || latestSnapshot.avatarUrl,
+        memberLevel: latestSnapshot.memberLevel,
+        memberLevelName: latestSnapshot.memberLevelName,
+        badgeTag: latestSnapshot.badgeTag,
+        badgeStyle: latestSnapshot.badgeStyle,
+        nameColor: latestSnapshot.nameColor,
+        nameEffect: latestSnapshot.nameEffect
+      }
     }
   } catch (error) {
     return order
   }
 }
 
-async function attachOrderDisplayData(order) {
+async function attachOrderDisplayData(order, levelsCache = null, userCache = null) {
   const withPet = await attachPetSnapshot(order)
-  return attachClientSnapshot(withPet)
+  return attachClientSnapshot(withPet, levelsCache, userCache)
 }
 
 async function attachAdminOrderContactData(order) {
@@ -4054,6 +4171,12 @@ async function getReviewStats(staffProfileId) {
       tags: item.tags || [],
       content: item.content || '',
       clientName: maskClientName(item.clientName),
+      clientAvatarUrl: safeFileId(item.clientAvatarUrl) || safeText(item.clientAvatarUrl),
+      memberLevelName: safeText(item.memberLevelName).trim() || '普通会员',
+      badgeTag: safeText(item.badgeTag).trim() || 'V1',
+      badgeStyle: safeText(item.badgeStyle).trim() || 'gold',
+      nameColor: safeText(item.nameColor).trim(),
+      nameEffect: safeText(item.nameEffect).trim(),
       createdAt: item.createdAt
     }))
   return { ratingAverage, reviewCount, recentReviews }
@@ -5022,7 +5145,7 @@ const handlers = {
       }
       if (user.status !== 'active') throw new Error('账号不可用')
       user = await bindInviteRelation(user, data)
-      return user
+      return enrichUserMemberLevel(user)
     }
 
     if (action === 'loginByPhoneCode') {
@@ -5079,10 +5202,13 @@ const handlers = {
         user = { ...user, phone, updatedAt: time }
       }
       user = await bindInviteRelation(user, data)
-      return user
+      return enrichUserMemberLevel(user)
     }
 
-    if (action === 'me') return getUser(openid)
+    if (action === 'me') {
+      const user = await getUser(openid)
+      return enrichUserMemberLevel(user)
+    }
 
     if (action === 'dailyCheckin') {
       const user = await getUser(openid)
@@ -5890,7 +6016,28 @@ const handlers = {
       if (existing.data[0]) throw new Error('该订单已评价')
       const rating = Math.min(Math.max(Number(data.rating || 5), 1), 5)
       const time = now()
-      const review = { orderId: data.orderId, clientUserId: user._id, clientOpenid: openid, clientName: user.nickname || '', staffUserId: order.staffUserId || '', staffOpenid: order.staffOpenid || '', staffProfileId: order.staffProfileId || '', rating, tags: Array.isArray(data.tags) ? data.tags.slice(0, 8) : [], content: String(data.content || '').trim(), status: 'visible', createdAt: time, updatedAt: time }
+      const enrichedUser = await enrichUserMemberLevel(user)
+      const review = {
+        orderId: data.orderId,
+        clientUserId: user._id,
+        clientOpenid: openid,
+        clientName: user.nickname || '',
+        clientAvatarUrl: user.avatarUrl || '',
+        memberLevelName: enrichedUser.memberLevelName || '普通会员',
+        badgeTag: enrichedUser.badgeTag || 'V1',
+        badgeStyle: enrichedUser.badgeStyle || 'gold',
+        nameColor: enrichedUser.nameColor || '',
+        nameEffect: enrichedUser.nameEffect || '',
+        staffUserId: order.staffUserId || '',
+        staffOpenid: order.staffOpenid || '',
+        staffProfileId: order.staffProfileId || '',
+        rating,
+        tags: Array.isArray(data.tags) ? data.tags.slice(0, 8) : [],
+        content: String(data.content || '').trim(),
+        status: 'visible',
+        createdAt: time,
+        updatedAt: time
+      }
       const created = await db.collection('service_reviews').add({ data: review })
       await db.collection('orders').doc(data.orderId).update({ data: { reviewedAt: time, updatedAt: time } })
       await updateStaffRatingStats(order.staffProfileId, time)
@@ -8496,6 +8643,13 @@ const handlers = {
       const activeRole = roles.includes(data.activeRole) ? data.activeRole : (roles.includes(target.activeRole) ? target.activeRole : roles[0])
       const points = Math.max(Math.round(Number(data.points || 0)), 0)
       const totalPoints = Math.max(Math.round(Number(data.totalPoints || 0)), points)
+      const levels = await getMemberLevels()
+      const levelInfo = resolveUserMemberLevel({
+        memberLevel: data.memberLevel,
+        memberLevelName: data.memberLevelName,
+        points,
+        totalPoints
+      }, levels)
       const update = {
         nickname: safeText(data.nickname).trim() || '微信用户',
         phone: safeText(data.phone).trim(),
@@ -8503,7 +8657,12 @@ const handlers = {
         status,
         roles,
         activeRole,
-        memberLevelName: safeText(data.memberLevelName).trim() || '普通会员',
+        memberLevel: levelInfo.memberLevel,
+        memberLevelName: levelInfo.memberLevelName,
+        badgeTag: levelInfo.badgeTag,
+        badgeStyle: levelInfo.badgeStyle,
+        nameColor: levelInfo.nameColor,
+        nameEffect: levelInfo.nameEffect,
         points,
         totalPoints,
         retroCardCount: Math.max(Math.round(Number(data.retroCardCount || 0)), 0),

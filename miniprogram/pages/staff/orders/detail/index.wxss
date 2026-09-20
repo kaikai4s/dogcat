@@ -290,6 +290,12 @@
   font-weight: 900;
 }
 
+.client-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
 .cs-tip {
   margin-top: 14rpx;
   line-height: 1.4;

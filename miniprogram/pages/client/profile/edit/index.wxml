@@ -7,9 +7,12 @@
 
   <view class="card form-card">
     <view class="card-subtitle"><text class="remix-icon ri-image-edit-line sub-icon"></text><text>头像</text></view>
-    <view class="avatar-picker" bindtap="chooseAvatar">
-      <image class="avatar-preview" wx:if="{{form.avatarUrl}}" src="{{form.avatarUrl}}" mode="aspectFill" />
-      <view class="avatar-empty" wx:else><text class="remix-icon ri-camera-line"></text><text>上传头像</text></view>
+    <view class="avatar-picker-wrap">
+      <view class="avatar-picker" bindtap="chooseAvatar">
+        <image class="avatar-preview" wx:if="{{form.avatarUrl}}" src="{{form.avatarUrl}}" mode="aspectFill" />
+        <view class="avatar-empty" wx:else><text class="remix-icon ri-camera-line"></text><text>上传头像</text></view>
+      </view>
+      <view class="avatar-level-badge badge-{{form.badgeStyle || 'gold'}}" wx:if="{{form.badgeTag || form.memberLevelName}}">{{form.badgeTag || form.memberLevelName}}</view>
     </view>
 
     <view class="card-subtitle"><text class="remix-icon ri-profile-line sub-icon"></text><text>基础资料</text></view>

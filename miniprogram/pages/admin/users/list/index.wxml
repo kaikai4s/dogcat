@@ -19,11 +19,17 @@
 
   <view class="card user-card" wx:for="{{users}}" wx:key="_id">
     <view class="user-head">
-      <image wx:if="{{item.avatarUrl}}" class="user-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
-      <view wx:else class="user-avatar avatar-placeholder">{{item.avatarText}}</view>
+      <view class="avatar-level-wrap">
+        <image wx:if="{{item.avatarUrl}}" class="user-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+        <view wx:else class="user-avatar avatar-placeholder">{{item.avatarText}}</view>
+        <view class="avatar-level-badge badge-{{item.badgeStyle || 'gold'}}" wx:if="{{item.badgeTag || item.memberLevelName}}">{{item.badgeTag || item.memberLevelName}}</view>
+      </view>
       <view class="user-main">
         <view class="between">
-          <view class="strong user-name">{{item.nickname}}</view>
+          <view class="strong user-name">
+            <text class="{{item.nameEffect && item.nameEffect !== 'none' ? 'name-effect-' + item.nameEffect : ''}}" style="{{item.nameColor ? 'color: ' + item.nameColor + ';' : ''}}">{{item.nickname}}</text>
+            <text class="member-badge badge-{{item.badgeStyle || 'gold'}}" wx:if="{{item.badgeTag || item.memberLevelName}}">{{item.badgeTag || item.memberLevelName}}</text>
+          </view>
           <view class="badge">{{item.status}}</view>
         </view>
         <view class="muted openid-text">{{item.openid}}</view>

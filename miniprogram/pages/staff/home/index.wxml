@@ -61,12 +61,17 @@
     <view class="order-card" wx:for="{{directOrders}}" wx:key="_id">
       <view class="order-card-head">
         <view class="order-person">
-          <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" />
-          <image class="order-avatar" wx:elif="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-          <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+          <view class="avatar-level-wrap">
+            <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" />
+            <image class="order-avatar" wx:elif="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+            <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+            <view class="avatar-level-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{!(item.petSnapshot && item.petSnapshot.avatarFileId) && item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</view>
+          </view>
           <view class="order-person-info">
             <view class="order-title-row">
-              <text class="order-title">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</text>
+              <text class="order-client-name {{item.clientSnapshot.nameEffect && item.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + item.clientSnapshot.nameEffect : ''}}" style="{{item.clientSnapshot.nameColor ? 'color: ' + item.clientSnapshot.nameColor + ';' : ''}}">{{item.clientSnapshot.displayName || '宠物主'}}</text>
+              <text class="member-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</text>
+              <text class="order-pet-name">· {{item.petName}}</text>
               <view class="pet-title" wx:if="{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}">
                 <text class="remix-icon ri-vip-crown-fill"></text>
                 <text>{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}</text>
@@ -160,12 +165,17 @@
   <view class="order-card" wx:for="{{nearbyOrders}}" wx:key="_id">
     <view class="order-card-head">
       <view class="order-person">
-        <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" />
-        <image class="order-avatar" wx:elif="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-        <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+        <view class="avatar-level-wrap">
+          <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" />
+          <image class="order-avatar" wx:elif="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+          <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+          <view class="avatar-level-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{!(item.petSnapshot && item.petSnapshot.avatarFileId) && item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</view>
+        </view>
         <view class="order-person-info">
           <view class="order-title-row">
-            <text class="order-title">{{item.clientSnapshot.displayName || '宠物主'}} · {{item.petName}}</text>
+            <text class="order-client-name {{item.clientSnapshot.nameEffect && item.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + item.clientSnapshot.nameEffect : ''}}" style="{{item.clientSnapshot.nameColor ? 'color: ' + item.clientSnapshot.nameColor + ';' : ''}}">{{item.clientSnapshot.displayName || '宠物主'}}</text>
+            <text class="member-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</text>
+            <text class="order-pet-name">· {{item.petName}}</text>
             <view class="pet-title" wx:if="{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}">
               <text class="remix-icon ri-vip-crown-fill"></text>
               <text>{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}</text>

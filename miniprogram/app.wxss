@@ -1056,6 +1056,49 @@ textarea {
   color: #d63158;
 }
 
+/* 头像外层容器，支持右下角悬浮会员等级小徽章 */
+.avatar-level-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* 悬浮在头像右下角/底部的等级小徽章 */
+.avatar-level-badge {
+  position: absolute;
+  right: -6rpx;
+  bottom: -4rpx;
+  height: 26rpx;
+  padding: 0 8rpx;
+  border-radius: 999rpx;
+  font-size: 18rpx;
+  font-weight: 900;
+  line-height: 22rpx;
+  border: 2rpx solid #ffffff;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.18);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.profile-avatar-wrap {
+  position: relative;
+}
+
+.profile-avatar-wrap .avatar-level-badge {
+  right: -4rpx;
+  bottom: -2rpx;
+  height: 32rpx;
+  padding: 0 12rpx;
+  font-size: 20rpx;
+  line-height: 26rpx;
+  border: 3rpx solid #ffffff;
+}
+
 /* 会员等级短徽章 short badge tags (V1, V2, VIP...) */
 .member-badge {
   display: inline-flex;
@@ -1073,64 +1116,74 @@ textarea {
   flex-shrink: 0;
 }
 
-.member-badge.badge-gold {
+.member-badge.badge-gold,
+.avatar-level-badge.badge-gold {
   background: linear-gradient(135deg, #ffe259 0%, #ffa751 100%);
   color: #5c3500;
   text-shadow: 0 1rpx 2rpx rgba(255, 255, 255, 0.6);
   border: 1rpx solid rgba(255, 226, 89, 0.8);
 }
 
-.member-badge.badge-silver {
+.member-badge.badge-silver,
+.avatar-level-badge.badge-silver {
   background: linear-gradient(135deg, #e0e0e0 0%, #a8b0b8 100%);
   color: #2b3a4a;
   text-shadow: 0 1rpx 2rpx rgba(255, 255, 255, 0.8);
   border: 1rpx solid rgba(224, 224, 224, 0.9);
 }
 
-.member-badge.badge-bronze {
+.member-badge.badge-bronze,
+.avatar-level-badge.badge-bronze {
   background: linear-gradient(135deg, #e6a15c 0%, #b87333 100%);
   color: #4a2800;
   text-shadow: 0 1rpx 2rpx rgba(255, 255, 255, 0.5);
   border: 1rpx solid rgba(230, 161, 92, 0.8);
 }
 
-.member-badge.badge-purple {
+.member-badge.badge-purple,
+.avatar-level-badge.badge-purple {
   background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
   color: #3b1b68;
   border: 1rpx solid rgba(161, 140, 209, 0.8);
 }
 
-.member-badge.badge-pink {
+.member-badge.badge-pink,
+.avatar-level-badge.badge-pink {
   background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%);
   color: #781c34;
   border: 1rpx solid rgba(255, 154, 158, 0.8);
 }
 
-.member-badge.badge-blue {
+.member-badge.badge-blue,
+.avatar-level-badge.badge-blue {
   background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
   color: #0d3b66;
   border: 1rpx solid rgba(161, 196, 253, 0.8);
 }
 
-.member-badge.badge-dark {
+.member-badge.badge-dark,
+.avatar-level-badge.badge-dark {
   background: linear-gradient(135deg, #434343 0%, #000000 100%);
   color: #ffe259;
   border: 1rpx solid rgba(255, 226, 89, 0.4);
 }
 
-.member-badge.badge-green {
+.member-badge.badge-green,
+.avatar-level-badge.badge-green {
   background: linear-gradient(135deg, #d7ffd9 0%, #67c23a 100%);
   color: #164e18;
   border: 1rpx solid rgba(103, 194, 58, 0.65);
 }
 
-.member-badge.badge-red {
+.member-badge.badge-red,
+.avatar-level-badge.badge-red {
   background: linear-gradient(135deg, #ffb199 0%, #ff3300 100%);
   color: #5a1600;
   border: 1rpx solid rgba(255, 51, 0, 0.55);
 }
 
-.member-badge.badge-rainbow {
+.member-badge.badge-rainbow,
+.avatar-level-badge.badge-rainbow {
   background: linear-gradient(90deg, #ff4e50, #f9d423, #38ef7d, #2575fc, #b5179e, #ff4e50);
   background-size: 300% auto;
   color: #fff;
@@ -1140,6 +1193,11 @@ textarea {
 }
 
 /* 用户名字流光与视效类 */
+[class*="name-effect-"] {
+  display: inline-block;
+  vertical-align: middle;
+}
+
 .name-effect-gold_shine {
   background: linear-gradient(90deg, #d99200 0%, #ffe87c 30%, #d99200 60%, #ffc000 100%);
   background-size: 200% auto;

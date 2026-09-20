@@ -51,6 +51,7 @@
       <view class="profile-avatar-wrap">
         <image class="profile-avatar" wx:if="{{avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />
         <view class="profile-avatar empty" wx:else><view class="remix-icon ri-user-3-line"></view></view>
+        <view class="avatar-level-badge badge-{{badgeStyle || 'gold'}}" wx:if="{{!isGuest && (badgeTag || memberLevelName)}}">{{badgeTag || memberLevelName}}</view>
       </view>
       <view class="profile-main">
         <view class="profile-name-row">

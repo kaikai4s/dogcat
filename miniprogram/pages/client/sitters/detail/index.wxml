@@ -102,8 +102,13 @@
   <view class="card review-card" wx:for="{{sitter.recentReviews}}" wx:key="_id">
     <view class="review-head">
       <view class="review-user">
-        <view class="avatar-placeholder"><text class="remix-icon ri-user-heart-line"></text></view>
-        <text class="strong">{{item.clientName || '宠物主'}}</text>
+        <view class="avatar-level-wrap">
+          <image class="avatar-placeholder" wx:if="{{item.clientAvatarUrl}}" src="{{item.clientAvatarUrl}}" mode="aspectFill" style="padding: 0; overflow: hidden;" />
+          <view class="avatar-placeholder" wx:else><text class="remix-icon ri-user-heart-line"></text></view>
+          <view class="avatar-level-badge badge-{{item.badgeStyle || 'gold'}}" wx:if="{{item.badgeTag || item.memberLevelName}}">{{item.badgeTag || item.memberLevelName}}</view>
+        </view>
+        <text class="strong {{item.nameEffect && item.nameEffect !== 'none' ? 'name-effect-' + item.nameEffect : ''}}" style="{{item.nameColor ? 'color: ' + item.nameColor + ';' : ''}}">{{item.clientName || '宠物主'}}</text>
+        <text class="member-badge badge-{{item.badgeStyle || 'gold'}}" wx:if="{{item.badgeTag || item.memberLevelName}}">{{item.badgeTag || item.memberLevelName}}</text>
       </view>
       <view class="review-rating">
         <text class="remix-icon ri-star-fill star-icon"></text>

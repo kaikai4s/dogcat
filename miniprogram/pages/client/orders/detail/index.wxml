@@ -16,10 +16,16 @@
   <view class="card person-card">
     <view class="card-subtitle"><text class="remix-icon ri-user-heart-line sub-icon"></text><text>客户信息</text></view>
     <view class="order-person">
-      <image class="order-avatar" wx:if="{{order.clientSnapshot && order.clientSnapshot.avatarUrl}}" src="{{order.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-      <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-paw-print-line"></text></view>
+      <view class="avatar-level-wrap">
+        <image class="order-avatar" wx:if="{{order.clientSnapshot && order.clientSnapshot.avatarUrl}}" src="{{order.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+        <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-paw-print-line"></text></view>
+        <view class="avatar-level-badge badge-{{order.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{order.clientSnapshot && (order.clientSnapshot.badgeTag || order.clientSnapshot.memberLevelName)}}">{{order.clientSnapshot.badgeTag || order.clientSnapshot.memberLevelName}}</view>
+      </view>
       <view class="person-info">
-        <view class="person-name">{{order.clientSnapshot.displayName || '宠物主'}}</view>
+        <view class="person-name">
+          <text class="{{order.clientSnapshot.nameEffect && order.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + order.clientSnapshot.nameEffect : ''}}" style="{{order.clientSnapshot.nameColor ? 'color: ' + order.clientSnapshot.nameColor + ';' : ''}}">{{order.clientSnapshot.displayName || '宠物主'}}</text>
+          <text class="member-badge badge-{{order.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{order.clientSnapshot && (order.clientSnapshot.badgeTag || order.clientSnapshot.memberLevelName)}}">{{order.clientSnapshot.badgeTag || order.clientSnapshot.memberLevelName}}</text>
+        </view>
         <view class="person-phone">{{order.clientSnapshot.phoneMasked || '当前下单账号'}}</view>
       </view>
     </view>

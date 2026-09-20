@@ -253,6 +253,10 @@
 .order-main { flex: 1; min-width: 0; }
 
 .order-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8rpx;
   color: #2d211a;
   font-size: 29rpx;
   font-weight: 950;

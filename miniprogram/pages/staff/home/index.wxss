@@ -495,17 +495,18 @@ button.refresh-btn::after {
 .order-title-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10rpx;
   width: 100%;
 }
 
-.order-title {
+.order-title,
+.order-client-name,
+.order-pet-name {
   color: #2d211a;
   font-size: 29rpx;
   font-weight: 950;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.3;
 }
 
 .pet-title {

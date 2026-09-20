@@ -20,7 +20,7 @@
 }
 
 .user-card {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .user-head {
@@ -50,7 +50,15 @@
   min-width: 0;
 }
 
-.user-name,
+.user-name {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .openid-text {
   overflow: hidden;
   text-overflow: ellipsis;

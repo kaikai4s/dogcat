@@ -12,9 +12,12 @@
   <view class="card task-card" wx:for="{{orders}}" wx:key="_id">
     <view class="task-head" data-id="{{item._id}}" bindtap="detail">
       <view class="order-person">
-        <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" />
-        <image class="order-avatar" wx:elif="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-        <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+        <view class="avatar-level-wrap">
+          <image class="order-avatar" wx:if="{{item.petSnapshot && item.petSnapshot.avatarFileId}}" src="{{item.petSnapshot.avatarFileId}}" mode="aspectFill" />
+          <image class="order-avatar" wx:elif="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+          <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-3-line"></text></view>
+          <view class="avatar-level-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{!(item.petSnapshot && item.petSnapshot.avatarFileId) && item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</view>
+        </view>
         <view class="order-info">
           <view class="order-title">
             <text class="pet-name">{{item.petName}}</text>
@@ -22,7 +25,8 @@
               <text class="remix-icon ri-vip-crown-line"></text>{{item.petSnapshot.beautyTitle.title}}
             </view>
             <text class="breed-badge" wx:if="{{item.petSnapshot && item.petSnapshot.breed}}">{{item.petSnapshot.breed}}</text>
-            <text class="owner-name">· {{item.clientSnapshot.displayName || '宠物主'}}</text>
+            <text class="owner-name {{item.clientSnapshot.nameEffect && item.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + item.clientSnapshot.nameEffect : ''}}" style="{{item.clientSnapshot.nameColor ? 'color: ' + item.clientSnapshot.nameColor + ';' : ''}}">· {{item.clientSnapshot.displayName || '宠物主'}}</text>
+            <text class="member-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</text>
           </view>
           <view class="service-type">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
         </view>

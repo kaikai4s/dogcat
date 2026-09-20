@@ -132,6 +132,9 @@
 }
 
 .person-name {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
   color: #2d211a;
   font-size: 30rpx;
   font-weight: 950;

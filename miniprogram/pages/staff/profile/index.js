@@ -102,6 +102,11 @@ Page({
           profile: profileView,
           displayName: nickname || profileView?.realName || '宠托师',
           avatarUrl: user.avatarUrl || '',
+          badgeTag: user.badgeTag || '',
+          badgeStyle: user.badgeStyle || '',
+          memberLevelName: user.memberLevelName || '',
+          nameColor: user.nameColor || '',
+          nameEffect: user.nameEffect || '',
           statusTitle: info.title,
           statusTip: profileView?.auditRemark || info.tip,
           missingAddressNotice: isApproved && !hasAddr

@@ -140,14 +140,22 @@ Page({
     const rawPhone = String(user.phone || '')
     const phone = rawPhone ? `${rawPhone.slice(0, 3)}****${rawPhone.slice(-4)}` : ''
     const roles = Array.isArray(user.roles) ? user.roles : []
-    this.setData({
+    const patch = {
       isGuest: false,
       isAdmin: roles.includes('admin'),
       userName: user.nickname || phone || '宠物主',
       userMeta: phone ? `已绑定手机 ${phone}` : '欢迎回来，今天也要安心宠护',
       avatarUrl: user.avatarUrl || '',
       hidePublicCheckinPhotos: user.hidePublicCheckinPhotos === true || (user.privacySettings && user.privacySettings.hidePublicCheckinPhotos === true)
-    })
+    }
+    if (user.memberLevelName || user.badgeTag || user.nameEffect || user.nameColor) {
+      patch.memberLevelName = user.memberLevelName || '普通会员'
+      patch.badgeTag = user.badgeTag || 'V1'
+      patch.badgeStyle = user.badgeStyle || 'gold'
+      patch.nameColor = user.nameColor || ''
+      patch.nameEffect = user.nameEffect || ''
+    }
+    this.setData(patch)
   },
 
   login() {

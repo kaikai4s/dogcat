@@ -8,10 +8,16 @@
   <view class="admin-card person-card">
     <view class="card-subtitle"><text class="remix-icon ri-user-heart-line sub-icon"></text><text>客户信息</text></view>
     <view class="order-person">
-      <image class="order-avatar" wx:if="{{detail.order.clientSnapshot && detail.order.clientSnapshot.avatarUrl}}" src="{{detail.order.clientSnapshot.avatarUrl}}" mode="aspectFill" />
-      <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-smile-line"></text></view>
+      <view class="avatar-level-wrap">
+        <image class="order-avatar" wx:if="{{detail.order.clientSnapshot && detail.order.clientSnapshot.avatarUrl}}" src="{{detail.order.clientSnapshot.avatarUrl}}" mode="aspectFill" />
+        <view class="order-avatar placeholder" wx:else><text class="remix-icon ri-user-smile-line"></text></view>
+        <view class="avatar-level-badge badge-{{detail.order.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{detail.order.clientSnapshot && (detail.order.clientSnapshot.badgeTag || detail.order.clientSnapshot.memberLevelName)}}">{{detail.order.clientSnapshot.badgeTag || detail.order.clientSnapshot.memberLevelName}}</view>
+      </view>
       <view class="order-main">
-        <view class="order-title">{{detail.order.clientSnapshot.displayName || '宠物主'}}</view>
+        <view class="order-title">
+          <text class="{{detail.order.clientSnapshot.nameEffect && detail.order.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + detail.order.clientSnapshot.nameEffect : ''}}" style="{{detail.order.clientSnapshot.nameColor ? 'color: ' + detail.order.clientSnapshot.nameColor + ';' : ''}}">{{detail.order.clientSnapshot.displayName || '宠物主'}}</text>
+          <text class="member-badge badge-{{detail.order.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{detail.order.clientSnapshot && (detail.order.clientSnapshot.badgeTag || detail.order.clientSnapshot.memberLevelName)}}">{{detail.order.clientSnapshot.badgeTag || detail.order.clientSnapshot.memberLevelName}}</text>
+        </view>
         <view class="order-desc">{{detail.order.clientContact.phone || detail.order.clientSnapshot.phoneMasked || '预约客户'}}</view>
       </view>
     </view>

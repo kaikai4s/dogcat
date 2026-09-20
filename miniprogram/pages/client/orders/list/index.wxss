@@ -163,6 +163,13 @@
   flex: 1;
 }
 
+.order-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
 .order-title {
   color: #2d211a;
   font-size: 30rpx;
