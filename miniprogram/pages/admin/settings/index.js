@@ -174,9 +174,17 @@ function getUploadErrorMessage(error, label, maxSizeText) {
 function normalizeStaffTrainingConfig(training = {}) {
   const sourceQuiz = Array.isArray(training.quiz) ? training.quiz : []
   const sourceVideos = Array.isArray(training.videos) ? training.videos : []
+  const guide = training.videoAuditGuide || {}
   return {
     ...training,
     passScore: Math.min(Math.max(Math.round(Number(training.passScore || 80)), 1), 100),
+    videoAuditGuide: {
+      wechatId: (guide.wechatId || 'pet-service-admin').trim(),
+      remarkTemplate: (guide.remarkTemplate || '宠托师审核 + 姓名 + 手机号').trim(),
+      description: (guide.description || '请添加平台审核微信并按备注格式发送信息，管理员完成线上视频审核后会在后台更新结果。').trim(),
+      requiredItemsNotice: (guide.requiredItemsNotice || '视频通话审核必备用品（须提前自备）：一次性手套、一次性口罩、安全宠物消毒用品。').trim(),
+      strictWarning: (guide.strictWarning || '温馨提醒：平台对审核员有严格要求，存在不通过的风险。备齐物资为必备前提，但不代表必然通过；如因其他原因未正式通过认证，平台不予报销宠物用品。成为认证宠托师后可申请首次用品报销，每人仅限首次申请，后续用品自备且不报销。').trim()
+    },
     quiz: sourceQuiz.map((item, index) => {
       const options = (Array.isArray(item.options) ? item.options : []).slice(0, quizOptionValues.length).map((option, optionIndex) => ({
         ...option,
@@ -297,7 +305,7 @@ function buildSettingSummary(settings = {}) {
     settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · T+${settlement.settlementDelayDays} · ${reliability.enableOfflineQueue ? '离线补传开' : '离线补传关'}`,
     carousel: `${carousel.enabled ? '轮播已启用' : '轮播已关闭'} · ${enabledCarouselCount}/${carouselItems.length} 个素材启用`,
     homePage: `${enabledModuleCount}/${homeModuleOptions.length} 个模块启用 · ${homePage.ctaTitle || '未配置标题'}`,
-    staffTraining: `及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题 · ${enabledVideoCount}/${videos.length} 个视频启用`,
+    staffTraining: `及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题 · ${enabledVideoCount}/${videos.length} 视频 · 审核微信: ${(staffTraining.videoAuditGuide && staffTraining.videoAuditGuide.wechatId) || '未配置'}`,
     configuredTemplateCount,
     enabledCarouselCount,
     carouselCount: carouselItems.length,
@@ -633,6 +641,12 @@ Page({
   trainingPassScoreInput(e) {
     const passScore = Math.min(Math.max(Math.round(Number(e.detail.value || 80)), 1), 100)
     this.setData({ ['settings.staffTraining.passScore']: passScore })
+  },
+
+  trainingAuditGuideInput(e) {
+    const field = e.currentTarget.dataset.field
+    const value = e.detail.value
+    this.setData({ [`settings.staffTraining.videoAuditGuide.${field}`]: value })
   },
 
   addQuizQuestion() {
@@ -1143,7 +1157,8 @@ Page({
         ...staffTraining,
         passScore: staffTraining.passScore,
         quiz: staffTraining.quiz || [],
-        videos: trainingVideos
+        videos: trainingVideos,
+        videoAuditGuide: staffTraining.videoAuditGuide || {}
       },
       homeHeroCarousel: {
         ...carousel,

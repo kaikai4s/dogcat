@@ -348,6 +348,32 @@
             </view>
             <button class="mini-btn primary" data-index="{{qIndex}}" bindtap="addQuizOption">添加选项</button>
           </view>
+
+          <!-- 线上视频审核指引与管理员微信配置 -->
+          <view class="section-title-row"><text class="section-title">线上视频审核指引</text></view>
+          <view class="notice">配置员工端完成答题与视频后，提示添加的审核管理员微信及审核指引文案。</view>
+          <view class="quiz-edit-card">
+            <view class="field-item">
+              <text class="label">审核管理员微信号</text>
+              <input class="input" value="{{settings.staffTraining.videoAuditGuide.wechatId}}" data-field="wechatId" bindinput="trainingAuditGuideInput" placeholder="例如：pet-service-admin" />
+            </view>
+            <view class="field-item">
+              <text class="label">好友申请备注格式</text>
+              <input class="input" value="{{settings.staffTraining.videoAuditGuide.remarkTemplate}}" data-field="remarkTemplate" bindinput="trainingAuditGuideInput" placeholder="例如：宠托师审核 + 姓名 + 手机号" />
+            </view>
+            <view class="field-item">
+              <text class="label">审核流程说明</text>
+              <textarea class="textarea" value="{{settings.staffTraining.videoAuditGuide.description}}" data-field="description" bindinput="trainingAuditGuideInput" placeholder="请添加平台审核微信并按备注格式发送信息..." />
+            </view>
+            <view class="field-item">
+              <text class="label">考核必备用品要求</text>
+              <textarea class="textarea" value="{{settings.staffTraining.videoAuditGuide.requiredItemsNotice}}" data-field="requiredItemsNotice" bindinput="trainingAuditGuideInput" placeholder="视频通话审核必备用品（须提前自备）：一次性手套、一次性口罩..." />
+            </view>
+            <view class="field-item">
+              <text class="label">严审标准与风险提示</text>
+              <textarea class="textarea" value="{{settings.staffTraining.videoAuditGuide.strictWarning}}" data-field="strictWarning" bindinput="trainingAuditGuideInput" placeholder="平台对审核员有严格要求，存在不通过的风险..." />
+            </view>
+          </view>
         </view>
       </scroll-view>
 

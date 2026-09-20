@@ -105,6 +105,17 @@ function enabledTrainingVideos(training = {}) {
   return normalizeTrainingVideos(training.videos).filter((item) => item.enabled !== false)
 }
 
+function normalizeVideoAuditGuide(guide = {}) {
+  const source = guide || {}
+  return {
+    wechatId: safeText(source.wechatId).trim() || STAFF_VIDEO_AUDIT_GUIDE.wechatId,
+    remarkTemplate: safeText(source.remarkTemplate).trim() || STAFF_VIDEO_AUDIT_GUIDE.remarkTemplate,
+    description: safeText(source.description).trim() || STAFF_VIDEO_AUDIT_GUIDE.description,
+    requiredItemsNotice: safeText(source.requiredItemsNotice).trim() || STAFF_VIDEO_AUDIT_GUIDE.requiredItemsNotice,
+    strictWarning: safeText(source.strictWarning).trim() || STAFF_VIDEO_AUDIT_GUIDE.strictWarning
+  }
+}
+
 function normalizeStaffTrainingConfig(training = {}) {
   const passScore = Math.min(Math.max(Math.round(Number(training.passScore ?? DEFAULT_STAFF_TRAINING_PASS_SCORE)), 1), 100)
   const sourceQuiz = Array.isArray(training.quiz) ? training.quiz : []
@@ -128,7 +139,8 @@ function normalizeStaffTrainingConfig(training = {}) {
   return {
     passScore,
     quiz: quiz.length ? quiz : DEFAULT_STAFF_TRAINING_QUIZ,
-    videos: normalizeTrainingVideos(training.videos)
+    videos: normalizeTrainingVideos(training.videos),
+    videoAuditGuide: normalizeVideoAuditGuide(training.videoAuditGuide)
   }
 }
 
@@ -321,18 +333,43 @@ function normalizeStaffWorkflow(profile = {}) {
   }
 }
 
-function staffMoneyEligible(profile = {}) {
-  return !['requested', 'approved', 'exited'].includes(profile.exitStatus) && (!profile.depositRequired || profile.depositStatus === 'paid')
+function staffDepositSatisfied(profile = {}, depositConfig = null) {
+  if (depositConfig && depositConfig.enabled === true && Number(depositConfig.amount) > 0) {
+    return profile.depositStatus === 'paid'
+  }
+  if (profile.depositRequired === true) {
+    return profile.depositStatus === 'paid'
+  }
+  return (!profile.depositRequired || profile.depositStatus === 'paid')
 }
 
-function isCertifiedSitter(profile = {}) {
-  const p = normalizeStaffWorkflow(profile)
-  return Boolean(p && staffMoneyEligible(p) && p.auditStatus === 'approved' && p.staffLevel === 'certified')
+function staffMoneyEligible(profile = {}, depositConfig = null) {
+  if (['requested', 'approved', 'exited'].includes(profile.exitStatus)) return false
+  return staffDepositSatisfied(profile, depositConfig)
 }
 
-function canTakeOrders(profile = {}) {
+function isCertifiedSitter(profile = {}, depositConfig = null) {
   const p = normalizeStaffWorkflow(profile)
-  return Boolean(p && staffMoneyEligible(p) && p.auditStatus === 'approved' && ['intern', 'certified'].includes(p.staffLevel))
+  return Boolean(p && staffMoneyEligible(p, depositConfig) && p.auditStatus === 'approved' && p.staffLevel === 'certified')
+}
+
+function canTakeOrders(profile = {}, depositConfig = null) {
+  const p = normalizeStaffWorkflow(profile)
+  return Boolean(p && staffMoneyEligible(p, depositConfig) && p.auditStatus === 'approved' && ['intern', 'certified'].includes(p.staffLevel))
+}
+
+function validateStaffTakeOrderAbility(profile = {}, depositConfig = null) {
+  const p = normalizeStaffWorkflow(profile)
+  if (!p || p.auditStatus !== 'approved' || !['intern', 'certified'].includes(p.staffLevel)) {
+    return { can: false, reason: 'training_pending', message: '完成培训和视频审核成为实习宠托师后方可接单' }
+  }
+  if (['requested', 'approved', 'exited'].includes(p.exitStatus)) {
+    return { can: false, reason: 'exited', message: '当前宠托师账号已申请退出或已退出，无法接单' }
+  }
+  if (!staffDepositSatisfied(p, depositConfig)) {
+    return { can: false, reason: 'deposit_unpaid', message: '未缴纳宠托师履约保证金，暂不可抢单或接单，请先缴纳保证金' }
+  }
+  return { can: true }
 }
 
 function isTrainingComplete(profile = {}, training = normalizeStaffTrainingConfig()) {
@@ -1741,7 +1778,7 @@ async function getHomePageData(openid, data = {}) {
     safeCollectionData('users')
   ])
 
-  const sittersWithUser = await Promise.all(staffProfiles.filter(canTakeOrders).slice(0, 30).map(withSitterUserProfile))
+  const sittersWithUser = await Promise.all(staffProfiles.filter((item) => canTakeOrders(item, settings.staffDeposit)).slice(0, 30).map(withSitterUserProfile))
   let featuredSitters = sittersWithUser.map((profile) => {
     const item = toPublicSitter(profile)
     if (hasLoc && hasCoordinate(profile.serviceLatitude, profile.serviceLongitude)) {
@@ -3331,7 +3368,14 @@ async function getRequestedStaff(data) {
   if (!staffProfileId) throw new Error('请选择指定宠托师')
   const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
   const profile = normalizeStaffWorkflow(profileRes.data)
-  if (!profile || !canTakeOrders(profile)) throw new Error('指定宠托师未审核通过')
+  const settings = await getSystemSettings()
+  const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
+  if (!ability.can) {
+    if (ability.reason === 'deposit_unpaid') {
+      throw new Error('指定宠托师尚未缴纳履约保证金，暂不可指定接单')
+    }
+    throw new Error('指定宠托师未审核通过')
+  }
   const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
   const staffUser = userRes.data[0]
   if (!staffUser) throw new Error('指定宠托师账号不存在')
@@ -5963,8 +6007,9 @@ const handlers = {
       let staffProfileId = order.requestedStaffProfileId || order.staffProfileId || ''
       if (publishMode === 'direct' && staffProfileId) {
         try {
+          const settings = await getSystemSettings().catch(() => ({}))
           const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
-          if (!profileRes.data || !canTakeOrders(profileRes.data)) {
+          if (!profileRes.data || !canTakeOrders(profileRes.data, settings.staffDeposit)) {
             publishMode = 'open'
             staffProfileId = ''
           }
@@ -7156,8 +7201,9 @@ const handlers = {
 
       const page = Math.max(Number(data.page || 1), 1)
       const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 50)
+      const settings = await getSystemSettings().catch(() => ({}))
       const res = await db.collection('staff_profiles').where({ auditStatus: 'approved' }).orderBy('updatedAt', 'desc').get()
-      let sitters = await Promise.all((res.data || []).filter(canTakeOrders).map(withSitterUserProfile))
+      let sitters = await Promise.all((res.data || []).filter((item) => canTakeOrders(item, settings.staffDeposit)).map(withSitterUserProfile))
 
       sitters = sitters.filter((profile) => {
         const areas = splitServiceAreas(profile.serviceAreas)
@@ -7224,16 +7270,18 @@ const handlers = {
     }
     if (action === 'getPublicSitterDetail') {
       const user = await getOptionalUser(openid)
+      const settings = await getSystemSettings().catch(() => ({}))
       const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
       const profile = profileRes.data
-      if (!profile || !canTakeOrders(profile)) throw new Error('宠托师不可用')
+      if (!profile || !canTakeOrders(profile, settings.staffDeposit)) throw new Error('宠托师不可用')
       return toPublicSitterDetail(user ? openid : '', await withSitterUserProfile(normalizeStaffWorkflow(profile)))
     }
     if (action === 'favoriteSitter') {
       const user = await getUser(openid)
+      const settings = await getSystemSettings().catch(() => ({}))
       const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
       const profile = profileRes.data
-      if (!profile || !canTakeOrders(profile)) throw new Error('宠托师不可用')
+      if (!profile || !canTakeOrders(profile, settings.staffDeposit)) throw new Error('宠托师不可用')
       const existing = await db.collection('sitter_favorites').where({ openid, staffProfileId: data.staffProfileId }).limit(1).get()
       if (existing.data[0]) return { staffProfileId: data.staffProfileId, favorite: true }
       await db.collection('sitter_favorites').add({ data: { userId: user._id, openid, staffProfileId: data.staffProfileId, createdAt: now() } })
@@ -7247,13 +7295,14 @@ const handlers = {
     }
     if (action === 'listFavoriteSitters') {
       await getUser(openid)
+      const settings = await getSystemSettings().catch(() => ({}))
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const favorites = await db.collection('sitter_favorites').where({ openid }).orderBy('createdAt', 'desc').get()
       const list = []
       for (let i = 0; i < favorites.data.length; i += 1) {
         try {
           const profileRes = await db.collection('staff_profiles').doc(favorites.data[i].staffProfileId).get()
-          if (profileRes.data && canTakeOrders(profileRes.data)) {
+          if (profileRes.data && canTakeOrders(profileRes.data, settings.staffDeposit)) {
             const profile = await withSitterUserProfile(normalizeStaffWorkflow(profileRes.data))
             list.push({ ...(await toPublicSitterDetail(openid, profile)), favorite: true })
           }
@@ -7266,7 +7315,28 @@ const handlers = {
     if (action === 'getStaffProfile') {
       await getUser(openid)
       const res = await db.collection('staff_profiles').where({ openid }).limit(1).get()
-      return normalizeStaffWorkflow(res.data[0] || null)
+      const profile = normalizeStaffWorkflow(res.data[0] || null)
+      if (!profile) return null
+      const settings = await getSystemSettings().catch(() => ({}))
+      const depositConfig = settings.staffDeposit || normalizeStaffDepositConfig()
+      const ability = validateStaffTakeOrderAbility(profile, depositConfig)
+      const depositSatisfied = staffDepositSatisfied(profile, depositConfig)
+      return {
+        ...profile,
+        depositConfig: {
+          enabled: depositConfig.enabled,
+          amount: depositConfig.amount
+        },
+        canTakeOrders: ability.can,
+        cannotTakeOrderReason: ability.can ? '' : ability.reason,
+        cannotTakeOrderMessage: ability.can ? '' : ability.message,
+        depositNotice: (!depositSatisfied && depositConfig.enabled && depositConfig.amount > 0) ? {
+          needDeposit: true,
+          amount: depositConfig.amount,
+          title: '未缴纳履约保证金',
+          message: `平台已开启宠托师履约保证金（¥${depositConfig.amount}），请先完成缴纳后再开始抢单/接单。`
+        } : null
+      }
     }
     if (action === 'getTrainingStatus') {
       await getUser(openid)
@@ -7281,12 +7351,12 @@ const handlers = {
         profile,
         quiz: { questions: publicTrainingQuiz(training.quiz), passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
         videos,
-        videoAuditGuide: STAFF_VIDEO_AUDIT_GUIDE,
+        videoAuditGuide: training.videoAuditGuide || STAFF_VIDEO_AUDIT_GUIDE,
         completedInternOrders: completedOrders,
         completedInternOrderCount: completedOrders.length,
         canRequestVideoAudit: profile.auditStatus === 'approved' && isTrainingComplete(profile, training) && profile.videoAuditStatus !== 'pending' && profile.videoAuditStatus !== 'approved',
         canSubmitPromotion: profile.staffLevel === 'intern' && profile.promotionStatus !== 'pending' && completedOrders.length >= 3,
-        canTakeOrders: canTakeOrders(profile)
+        canTakeOrders: canTakeOrders(profile, settings.staffDeposit)
       }
     }
     if (action === 'submitTrainingQuiz') {
@@ -7508,7 +7578,9 @@ const handlers = {
 
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = normalizeStaffWorkflow(profileRes.data[0] || {})
-      if (!canTakeOrders(profile)) throw new Error('完成培训和视频审核成为实习宠托师后方可查看可接订单')
+      const settings = await getSystemSettings().catch(() => ({}))
+      const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
+      if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可查看可接订单')
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
 
@@ -7630,7 +7702,9 @@ const handlers = {
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = normalizeStaffWorkflow(profileRes.data[0] || {})
-      if (!canTakeOrders(profile)) throw new Error('完成培训和视频审核成为实习宠托师后方可查看指定订单')
+      const settings = await getSystemSettings().catch(() => ({}))
+      const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
+      if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可查看指定订单')
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       await expireDueUnacceptedOrders()
@@ -7689,7 +7763,8 @@ const handlers = {
         if (!user.roles.includes('staff')) throw new Error('请选择宠托师')
         profile = (await db.collection('staff_profiles').where({ openid }).limit(1).get()).data[0]
       }
-      if (!profile || !canTakeOrders(profile)) throw new Error('宠托师不可用')
+      const settings = await getSystemSettings().catch(() => ({}))
+      if (!profile || !canTakeOrders(profile, settings.staffDeposit)) throw new Error('宠托师不可用')
       return buildStaffAvailability(profile, data.startDate || data.dateKey || '', data.days || 14)
     }
     if (action === 'listStaffReviews') {
@@ -7737,7 +7812,9 @@ const handlers = {
       if (!user.roles.includes('staff')) throw new Error('仅员工可接单')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = normalizeStaffWorkflow(profileRes.data[0])
-      if (!profile || !canTakeOrders(profile)) throw new Error('完成培训和视频审核成为实习宠托师后方可接单')
+      const settings = await getSystemSettings().catch(() => ({}))
+      const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
+      if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可接单')
       if (!hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) || !profile.serviceAddress) {
         throw new Error('请先在个人中心设置固定服务地址与接单范围，方可接单')
       }
@@ -7761,7 +7838,9 @@ const handlers = {
       if (!user.roles.includes('staff')) throw new Error('仅员工可接单')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = normalizeStaffWorkflow(profileRes.data[0])
-      if (!profile || !canTakeOrders(profile)) throw new Error('完成培训和视频审核成为实习宠托师后方可接单')
+      const settings = await getSystemSettings().catch(() => ({}))
+      const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
+      if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可接单')
       if (!hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) || !profile.serviceAddress) {
         throw new Error('请先在个人中心设置固定服务地址与接单范围，方可接单')
       }
@@ -8602,6 +8681,20 @@ const handlers = {
       await logAdmin(admin, 'platform_config', 'system_settings', 'saveSystemSettings', publicValue)
       return publicValue
     }
+    if (action === 'updateVideoAuditGuide') {
+      const currentSettings = await getSystemSettings({ includeSecrets: true })
+      const guide = normalizeVideoAuditGuide(data.guide || data)
+      const staffTraining = {
+        ...(currentSettings.staffTraining || {}),
+        videoAuditGuide: guide
+      }
+      await saveSystemSettings({
+        ...currentSettings,
+        staffTraining
+      })
+      await logAdmin(admin, 'platform_config', 'video_audit_guide', 'updateVideoAuditGuide', guide)
+      return { success: true, videoAuditGuide: guide }
+    }
     if (action === 'listUsers') {
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const role = safeText(data.role).trim()
@@ -8887,7 +8980,14 @@ const handlers = {
       if (orderRes.data.status !== 'paid') throw new Error('仅已支付订单可派单')
       const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
       const profile = normalizeStaffWorkflow(profileRes.data)
-      if (!canTakeOrders(profile)) throw new Error('该宠托师尚未完成培训/视频审核，不能派单')
+      const settings = await getSystemSettings().catch(() => ({}))
+      const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
+      if (!ability.can) {
+        if (ability.reason === 'deposit_unpaid') {
+          throw new Error('该宠托师尚未缴纳履约保证金，不能派单')
+        }
+        throw new Error(ability.message || '该宠托师尚未完成培训/视频审核，不能派单')
+      }
       await validateStaffAvailability(profile, orderRes.data.startTime, orderRes.data.endTime, { excludeOrderId: data.orderId })
       const staffUserRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = staffUserRes.data[0]

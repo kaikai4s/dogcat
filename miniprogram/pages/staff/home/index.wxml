@@ -14,6 +14,17 @@
     <view class="hero-desc">默认根据选定城市推荐可接订单，支持高级条件筛选与路线导航。</view>
   </view>
 
+  <view class="notice-card deposit-warning-notice" wx:if="{{depositNotice && depositNotice.needDeposit}}">
+    <view class="notice-main">
+      <view class="notice-title">
+        <text class="remix-icon ri-shield-keyhole-fill notice-icon"></text>
+        <text>{{depositNotice.title || '未缴纳履约保证金'}}</text>
+      </view>
+      <view class="notice-desc">{{depositNotice.message || '平台已开启履约保证金，未缴纳暂不可抢单或被指定接单，请先缴纳。'}}</view>
+    </view>
+    <button class="notice-btn deposit-btn" bindtap="goDeposit">去缴纳</button>
+  </view>
+
   <view class="notice-card warning-notice" wx:if="{{missingAddressNotice}}">
     <view class="notice-main">
       <view class="notice-title">

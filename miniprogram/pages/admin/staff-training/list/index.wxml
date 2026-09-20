@@ -3,6 +3,17 @@
     <view class="title">培训视频审核</view>
     <view class="desc">待微信视频审核的宠托师，列表默认只展示关键进度。</view>
   </view>
+  <view class="audit-wechat-banner">
+    <view class="banner-left">
+      <view class="banner-icon-wrap"><text class="remix-icon ri-wechat-fill"></text></view>
+      <view class="banner-info">
+        <view class="banner-label">当前审核管理员微信</view>
+        <view class="banner-val">{{videoAuditGuide.wechatId || '未配置'}}</view>
+      </view>
+    </view>
+    <button class="banner-btn" bindtap="openEditWechatModal">配置微信号</button>
+  </view>
+
   <view class="search-card compact-search-card">
     <input class="search-input" placeholder="搜索姓名/手机号/城市" value="{{keyword}}" bindinput="inputKeyword" />
     <button class="search-btn" bindtap="search">搜索</button>
@@ -23,4 +34,29 @@
   </view>
   <view class="empty" wx:if="{{!list.length && !loading}}">暂无待视频审核记录</view>
   <button class="ghost compact-load-btn" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
+
+  <!-- 快捷修改审核管理员微信弹窗 -->
+  <view class="modal-backdrop" wx:if="{{showWechatModal}}" bindtap="closeEditWechatModal" catchtouchmove="noop">
+    <view class="modal-card" catchtap="noop">
+      <view class="modal-header">
+        <view class="modal-title">配置视频审核微信</view>
+        <view class="modal-close" bindtap="closeEditWechatModal">×</view>
+      </view>
+      <view class="modal-body">
+        <view class="modal-tip">员工端完成答题和培训视频后，将提示添加此微信号进行线上视频通话审核。</view>
+        <view class="form-group">
+          <view class="form-label">管理员微信号</view>
+          <input class="form-input" placeholder="例如：pet-service-admin" value="{{editWechatId}}" bindinput="inputEditWechatId" />
+        </view>
+        <view class="form-group">
+          <view class="form-label">好友申请备注格式</view>
+          <input class="form-input" placeholder="例如：宠托师审核 + 姓名 + 手机号" value="{{editRemarkTemplate}}" bindinput="inputEditRemark" />
+        </view>
+      </view>
+      <view class="modal-actions">
+        <button class="ghost modal-btn" bindtap="closeEditWechatModal">取消</button>
+        <button class="primary modal-btn" loading="{{savingWechat}}" disabled="{{savingWechat}}" bindtap="saveWechatConfig">保存生效</button>
+      </view>
+    </view>
+  </view>
 </view>

@@ -36,3 +36,8 @@ button[disabled] { opacity: .55; }
 .strong-text { font-weight: 900; color: #2d211a; margin-bottom: 8rpx; }
 .warning-text { color: #e9672f; font-weight: 850; margin-top: 8rpx; }
 .warning-box { background: #fff0eb; border: 1rpx solid #ffd1be; color: #8a3c1b; }
+.wechat-row { display: flex; align-items: center; gap: 12rpx; margin-bottom: 6rpx; flex-wrap: wrap; }
+.wechat-val { font-weight: 950; color: #e9672f; font-size: 28rpx; }
+.mini-copy-btn { display: inline-flex; align-items: center; justify-content: center; height: 46rpx; padding: 0 20rpx; border-radius: 999rpx; background: #e9672f; color: #fff; font-size: 22rpx; font-weight: 900; line-height: 1; border: none; }
+.mini-copy-btn:active { transform: scale(0.96); opacity: .9; }
+

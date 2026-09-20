@@ -147,6 +147,8 @@ Page({
     staffSchedule: null,
     messageUnreadCount: 0,
     messageHasUnread: false,
+    depositNotice: null,
+    canTakeOrders: true,
     acceptRisk: null,
     acceptRiskStep: 1,
     acceptRiskAgreed: false,
@@ -186,7 +188,9 @@ Page({
         if (profile) {
           this.setData({
             staffRadiusKm: Math.max(Number(profile.serviceRadiusKm || 5), 1),
-            staffSchedule: profile.weeklySchedule || null
+            staffSchedule: profile.weeklySchedule || null,
+            depositNotice: profile.depositNotice || null,
+            canTakeOrders: profile.canTakeOrders !== false
           })
           if (!this.data.customLocation && !this.cityManuallySelected && profile.serviceCity && profile.serviceCity !== '服务城市待完善') {
             this.setData({ selectedCity: profile.serviceCity })
@@ -228,6 +232,10 @@ Page({
           this.loadNearby({ latitude: 0, longitude: 0, name: '默认位置' }, '城市推荐')
         }
       })
+  },
+
+  goDeposit() {
+    wx.navigateTo({ url: '/pages/staff/training/index' })
   },
 
   go(e) {
@@ -432,6 +440,20 @@ Page({
 
   prepareAcceptOrder(orderId) {
     if (!orderId) return
+    if (this.data.depositNotice && this.data.depositNotice.needDeposit) {
+      wx.showModal({
+        title: '未缴纳履约保证金',
+        content: `根据平台规定，抢单/接单前需缴纳宠托师履约保证金（¥${this.data.depositNotice.amount}），以保障服务履约质量与宠物安全。是否立即前往缴纳？`,
+        confirmText: '去缴纳',
+        cancelText: '暂不接单',
+        success: (res) => {
+          if (res.confirm) {
+            this.goDeposit()
+          }
+        }
+      })
+      return
+    }
     callFunction('staff', 'checkAcceptOrderRisk', { orderId })
       .then((risk) => {
         if (risk && risk.requiresConfirmation) {
@@ -440,7 +462,24 @@ Page({
         }
         this.submitAcceptOrder(orderId, false)
       })
-      .catch(showError)
+      .catch((error) => {
+        const msg = (error && error.message) || String(error || '')
+        if (msg.includes('保证金')) {
+          wx.showModal({
+            title: '履约保证金提醒',
+            content: msg + '。是否立即前往缴纳？',
+            confirmText: '去缴纳',
+            cancelText: '稍后再说',
+            success: (res) => {
+              if (res.confirm) {
+                this.goDeposit()
+              }
+            }
+          })
+          return
+        }
+        showError(error)
+      })
   },
 
   submitAcceptOrder(orderId, riskConfirmed) {
@@ -463,7 +502,24 @@ Page({
             if (location) this.loadNearby(location, '已按工作台位置推荐订单')
             else this.loadNearbyWithSavedLocation()
           })
-          .catch(showError)
+          .catch((error) => {
+            const msg = (error && error.message) || String(error || '')
+            if (msg.includes('保证金')) {
+              wx.showModal({
+                title: '履约保证金提醒',
+                content: msg + '。是否立即前往缴纳？',
+                confirmText: '去缴纳',
+                cancelText: '稍后再说',
+                success: (modalRes) => {
+                  if (modalRes.confirm) {
+                    this.goDeposit()
+                  }
+                }
+              })
+              return
+            }
+            showError(error)
+          })
           .finally(() => this.setData({ acceptingRiskOrder: false }))
       },
       fail: (err) => {

@@ -111,8 +111,12 @@
     <view class="card-title">线上视频通话审核</view>
     <view class="muted">{{videoAuditGuide.description}}</view>
     <view class="guide-box">
-      <view>微信号：{{videoAuditGuide.wechatId}}</view>
-      <view>备注：{{videoAuditGuide.remarkTemplate}}</view>
+      <view class="wechat-row">
+        <text>微信号：</text>
+        <text class="wechat-val">{{videoAuditGuide.wechatId}}</text>
+        <button class="mini-copy-btn" bindtap="copyAuditWechat">复制</button>
+      </view>
+      <view>添加备注：{{videoAuditGuide.remarkTemplate}}</view>
       <view wx:if="{{profile.videoAuditRemark}}">审核备注：{{profile.videoAuditRemark}}</view>
     </view>
     <view class="guide-box">

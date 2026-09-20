@@ -142,6 +142,17 @@ Page({
       })
   },
 
+  copyAuditWechat() {
+    const wechatId = this.data.videoAuditGuide && this.data.videoAuditGuide.wechatId
+    if (!wechatId) return
+    wx.setClipboardData({
+      data: wechatId,
+      success: () => {
+        wx.showToast({ title: '审核微信号已复制', icon: 'success' })
+      }
+    })
+  },
+
   selectAnswer(e) {
     const { questionId, value } = e.currentTarget.dataset
     this.setData({ [`answers.${questionId}`]: value })

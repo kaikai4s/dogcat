@@ -186,6 +186,22 @@ test('staff supplies reimbursement: intern rejected, certified accepted once onl
 
 test('pre-service checkin: sanitization photo required before startService', async () => {
   const db = createTestDb({
+    staff_profiles: [
+      {
+        _id: 'sp_1',
+        openid: 'openid_staff',
+        realName: '李小宠',
+        phone: '13900001111',
+        auditStatus: 'approved',
+        staffLevel: 'intern',
+        serviceCity: '上海',
+        serviceAddress: '服务中心',
+        serviceLatitude: 31.2,
+        serviceLongitude: 121.5,
+        depositStatus: 'paid',
+        exitStatus: 'none'
+      }
+    ],
     pets: [{ _id: 'p1', openid: 'openid_client', name: '大黄', weight: 12 }],
     service_prices: [{ _id: 'sp_feed', key: 'feed', label: '上门喂养', price: 60, enabled: true }]
   })
@@ -369,3 +385,96 @@ test('staff supplies: reimbursement amount capped and admin cannot approve more 
   assert.equal(overApproveRes.ok, false)
   assert.match(overApproveRes.message, /不能大于宠托师申请金额/)
 })
+
+test('staff deposit: unpaid deposit strictly blocks grab order, direct order, client selection and admin assignment; paying deposit restores order eligibility', async () => {
+  const db = createTestDb({
+    pets: [{ _id: 'p1', openid: 'openid_client', name: '咪咪', weight: 4 }],
+    service_prices: [{ _id: 'sp_feed', key: 'feed', label: '上门喂养', price: 60, enabled: true }]
+  })
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+
+  // 1. Staff profile reflects deposit unpaid notice and inability to take orders
+  const profileRes = await staffFn.main({ module: 'staff', action: 'getStaffProfile' })
+  assert.equal(profileRes.ok, true)
+  assert.equal(profileRes.data.canTakeOrders, false)
+  assert.equal(profileRes.data.cannotTakeOrderReason, 'deposit_unpaid')
+  assert.equal(profileRes.data.depositNotice?.needDeposit, true)
+  assert.equal(profileRes.data.depositNotice?.amount, 500)
+
+  // 2. Client sitter list filters out unpaid sitter
+  const sittersRes = await clientFn.main({ module: 'staff', action: 'listApprovedSitters', data: {} })
+  assert.equal(sittersRes.ok, true)
+  assert.equal(sittersRes.data.list.some((s) => s._id === 'sp_1'), false)
+
+  // 3. Client trying to create direct order specifying this unpaid sitter is rejected
+  const directOrderAttempt = await clientFn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      publishMode: 'direct',
+      requestedStaffProfileId: 'sp_1',
+      petId: 'p1',
+      serviceTypes: ['visit_fee', 'feed'],
+      serviceAddress: '幸福小区',
+      addressDetail: '1号楼',
+      doorplate: '101',
+      startTime: '2099-08-01 10:00',
+      endTime: '2099-08-01 11:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(directOrderAttempt.ok, false)
+  assert.match(directOrderAttempt.message, /未缴纳履约保证金/)
+
+  // 4. Create an open order for test
+  const openOrderRes = await clientFn.main({
+    module: 'order',
+    action: 'createOrder',
+    data: {
+      petId: 'p1',
+      serviceTypes: ['visit_fee', 'feed'],
+      serviceAddress: '幸福小区',
+      addressDetail: '1号楼',
+      doorplate: '101',
+      startTime: '2099-08-01 10:00',
+      endTime: '2099-08-01 11:00',
+      durationMinutes: 60
+    }
+  })
+  assert.equal(openOrderRes.ok, true)
+  const orderId = openOrderRes.data._id
+  await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId } })
+
+  // 5. Unpaid staff cannot view nearby orders or grab order
+  const nearbyRes = await staffFn.main({ module: 'staff', action: 'listNearbyOrders', data: {} })
+  assert.equal(nearbyRes.ok, false)
+  assert.match(nearbyRes.message, /未缴纳宠托师履约保证金/)
+
+  const grabRes = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId } })
+  assert.equal(grabRes.ok, false)
+  assert.match(grabRes.message, /未缴纳宠托师履约保证金/)
+
+  // 6. Admin cannot assign order to unpaid staff
+  const assignRes = await adminFn.main({ module: 'admin', action: 'assignOrder', data: { orderId, staffProfileId: 'sp_1' } })
+  assert.equal(assignRes.ok, false)
+  assert.match(assignRes.message, /尚未缴纳履约保证金/)
+
+  // 7. Staff pays deposit
+  const payRes = await staffFn.main({ module: 'staff', action: 'createDepositPayment', data: { agreed: true } })
+  assert.equal(payRes.ok, true)
+  assert.equal(payRes.data.paid, true)
+
+  // 8. Staff profile restored
+  const profileAfter = await staffFn.main({ module: 'staff', action: 'getStaffProfile' })
+  assert.equal(profileAfter.ok, true)
+  assert.equal(profileAfter.data.canTakeOrders, true)
+  assert.equal(profileAfter.data.depositNotice, null)
+
+  // 9. Staff can now grab the order
+  const grabAfter = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId } })
+  assert.equal(grabAfter.ok, true)
+  assert.equal(grabAfter.data.status, 'assigned')
+})
+

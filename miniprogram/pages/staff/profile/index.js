@@ -48,6 +48,7 @@ Page({
     statusTitle: '未入驻',
     statusTip: '完善资料后申请成为宠托师',
     missingAddressNotice: false,
+    depositNotice: null,
     showConfigModal: false,
     weekdays: WEEKDAYS,
     radiusOptions,
@@ -109,7 +110,8 @@ Page({
           nameEffect: user.nameEffect || '',
           statusTitle: info.title,
           statusTip: profileView?.auditRemark || info.tip,
-          missingAddressNotice: isApproved && !hasAddr
+          missingAddressNotice: isApproved && !hasAddr,
+          depositNotice: profileView?.depositNotice || null
         })
       })
       .catch(showError)
