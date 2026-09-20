@@ -2,7 +2,7 @@ const { callFunction, showError, ensureLogin, requestSubscribeTemplates } = requ
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
 
 function calcPreview(items = [], coupon = null) {
-  const totalProductAmount = Math.round(items.reduce((sum, item) => sum + Number(item.price || (item.product && item.product.price) || 0) * Number(item.quantity || 0), 0) * 100) / 100
+  const totalProductAmount = Math.round(items.reduce((sum, item) => sum + Number(item.price == null ? (item.product && item.product.price) || 0 : item.price) * Number(item.quantity || 0), 0) * 100) / 100
   const shippingFee = totalProductAmount >= 99 || totalProductAmount <= 0 ? 0 : 8
   const amount = Math.round((totalProductAmount + shippingFee) * 100) / 100
   const minOrderAmount = Number(coupon && coupon.minOrderAmount || 0)
@@ -14,7 +14,8 @@ function calcPreview(items = [], coupon = null) {
 
 function chooseSku(product = {}, skuId = '') {
   const skus = Array.isArray(product.skus) ? product.skus : []
-  return skus.find((sku) => sku.skuId === skuId) || skus.find((sku) => sku.status !== 'off_sale' && Number(sku.stock || 0) > 0) || skus[0] || null
+  if (skuId) return skus.find((sku) => sku.skuId === skuId) || null
+  return product.specMode !== 'multi' && skus.length === 1 ? skus[0] : null
 }
 
 Page({
@@ -34,13 +35,13 @@ Page({
     if (this.data.productId) {
       return callFunction('mall', 'getProductDetail', { id: this.data.productId }).then((product) => {
         const sku = chooseSku(product, this.data.skuId)
-        if (!sku || Number(sku.stock || 0) <= 0) throw new Error('请选择有库存的规格')
+        if (!sku || product.status === 'off_sale' || sku.status === 'off_sale' || Number(sku.stock || 0) < this.data.quantity) throw new Error('商品规格已失效、下架或库存不足，请返回重新选规格')
         const items = [{ productId: product._id, skuId: sku.skuId, name: product.name, coverFileId: sku.imageFileId || product.coverFileId || (product.imageFileIds || [])[0], price: sku.price, quantity: this.data.quantity, specText: sku.specText }]
         this.setData({ items, skuId: sku.skuId }, () => this.refreshPricing())
-      }).catch(showError)
+      }).catch((error) => { this.setData({ items: [] }, () => this.refreshPricing()); showError(error) })
     }
     return callFunction('mall', 'getCart').then((cart) => {
-      const items = (cart.items || []).filter((item) => item.selected !== false && !item.invalid && !item.soldOut).map((item) => ({ ...item, name: item.snapshot && item.snapshot.name || item.product.name, coverFileId: item.snapshot && item.snapshot.coverFileId || item.product.coverFileId, price: item.price || item.snapshot && item.snapshot.price || item.product.price, specText: item.specText || item.snapshot && item.snapshot.specText || item.product.specText }))
+      const items = (cart.items || []).filter((item) => item.selected !== false && !item.invalid && !item.soldOut).map((item) => ({ ...item, name: item.snapshot && item.snapshot.name || item.product.name, coverFileId: item.snapshot && item.snapshot.coverFileId || item.product.coverFileId, price: item.price == null ? (item.snapshot && item.snapshot.price != null ? item.snapshot.price : item.product.price) : item.price, specText: item.specText || item.snapshot && item.snapshot.specText || item.product.specText }))
       this.setData({ items }, () => this.refreshPricing())
     }).catch(showError)
   },

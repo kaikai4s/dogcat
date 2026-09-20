@@ -4,7 +4,7 @@ function pageList(result) {
   return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
 }
 
-function emptySpecGroup() { return { name: '重量', valuesText: '' } }
+function emptySpecGroup() { return { name: '', valuesText: '' } }
 function emptyProduct() {
   return { _id: '', categoryId: '', categoryName: '', name: '', subtitle: '', coverFileId: '', imageFileIds: [], price: '', originalPrice: '', stock: '', specText: '', specMode: 'single', specGroupsForm: [emptySpecGroup()], skus: [], description: '', sortOrder: 0, status: 'on_sale' }
 }
@@ -12,21 +12,35 @@ function emptyProduct() {
 const emptyCategory = { _id: '', name: '', icon: '', sortOrder: 0, enabled: true }
 
 function splitSpecValues(value = '') {
-  return String(value || '').split(/,|，|、|\n/).map((item) => item.trim()).filter(Boolean)
+  return Array.from(new Set(String(value || '').split(/,|，|、|\n/).map((item) => item.trim()).filter(Boolean)))
 }
 
 function normalizeSpecGroupsForForm(product = {}) {
   const groups = Array.isArray(product.specGroups) ? product.specGroups : []
   if (!groups.length) return [emptySpecGroup()]
-  return groups.map((group) => ({ name: group.name || '规格', valuesText: (group.values || []).join('、') }))
+  const merged = new Map()
+  groups.forEach((group) => {
+    const name = String(group.name || '').trim()
+    const values = (group.values || []).map((value) => String(value || '').trim()).filter(Boolean)
+    if (name && values.length) merged.set(name, Array.from(new Set((merged.get(name) || []).concat(values))))
+  })
+  return Array.from(merged, ([name, values]) => ({ name, valuesText: values.join('、') }))
 }
 
 function buildSpecGroups(form = {}) {
-  return (form.specGroupsForm || []).map((group) => ({ name: String(group.name || '').trim(), values: splitSpecValues(group.valuesText) })).filter((group) => group.name && group.values.length).slice(0, 3)
+  const groups = (form.specGroupsForm || []).map((group) => ({ name: String(group.name || '').trim(), values: splitSpecValues(group.valuesText) })).filter((group) => group.name || group.values.length)
+  if (!groups.length || groups.length > 3) throw new Error('请填写1至3个属性')
+  const names = new Set()
+  groups.forEach((group) => {
+    if (!group.name || names.has(group.name)) throw new Error('属性名称不能为空或重复')
+    if (group.values.length > 20) throw new Error('每个属性最多20个值')
+    names.add(group.name)
+  })
+  return groups
 }
 
 function skuKey(specs = {}) {
-  return Object.keys(specs).sort().map((key) => `${key}:${specs[key]}`).join('|')
+  return JSON.stringify(Object.keys(specs).sort().map((key) => [key, specs[key]]))
 }
 
 function cartesianSpecRows(groups = []) {
@@ -48,7 +62,7 @@ function productPriceText(product = {}) {
 
 function normalizeSkusForForm(product = {}) {
   const skus = Array.isArray(product.skus) ? product.skus : []
-  if (skus.length) return skus.map((sku, index) => ({ skuId: sku.skuId || `sku_${Date.now()}_${index}`, specText: sku.specText || '默认规格', specs: sku.specs || {}, price: sku.price || '', originalPrice: sku.originalPrice || '', stock: sku.stock || '', imageFileId: sku.imageFileId || '', status: sku.status === 'off_sale' ? 'off_sale' : 'on_sale' }))
+  if (skus.length) return skus.map((sku, index) => ({ skuId: sku.skuId || `sku_${Date.now()}_${index}`, specText: sku.specText || '默认规格', specs: sku.specs || {}, price: sku.price == null ? '' : sku.price, originalPrice: sku.originalPrice == null ? '' : sku.originalPrice, stock: sku.stock == null ? '' : sku.stock, imageFileId: sku.imageFileId || '', status: sku.status === 'off_sale' ? 'off_sale' : 'on_sale' }))
   return []
 }
 
@@ -145,22 +159,31 @@ Page({
   hideProduct() { this.setData({ editingProduct: false }) },
   inputProduct(e) { this.setData({ ['productForm.' + e.currentTarget.dataset.field]: e.detail.value }) },
   chooseCategory(e) { const item = this.data.categories[e.detail.value]; if (item) this.setData({ ['productForm.categoryId']: item._id, ['productForm.categoryName']: item.name }) },
-  setSpecMode(e) { this.setData({ ['productForm.specMode']: e.currentTarget.dataset.mode || 'single' }) },
+  setSpecMode(e) {
+    const mode = e.currentTarget.dataset.mode || 'single'
+    if (mode === this.data.productForm.specMode) return
+    wx.showModal({ title: '切换规格模式', content: '切换为单规格保存时将清除多规格；切换为多规格后请同步SKU并核对价格库存。', success: (res) => {
+      if (res.confirm) this.setData({ ['productForm.specMode']: mode, ['productForm.specsDirty']: true })
+    } })
+  },
   inputSpecGroup(e) {
     const index = Number(e.currentTarget.dataset.index)
     const field = e.currentTarget.dataset.field
-    this.setData({ [`productForm.specGroupsForm[${index}].${field}`]: e.detail.value })
+    this.setData({ [`productForm.specGroupsForm[${index}].${field}`]: e.detail.value, ['productForm.specsDirty']: true })
   },
   addSpecGroup() {
     const groups = this.data.productForm.specGroupsForm || []
     if (groups.length >= 3) return wx.showToast({ title: '最多添加3个规格名', icon: 'none' })
-    this.setData({ ['productForm.specGroupsForm']: groups.concat({ name: '', valuesText: '' }) })
+    this.setData({ ['productForm.specGroupsForm']: groups.concat(emptySpecGroup()), ['productForm.specsDirty']: true })
   },
   removeSpecGroup(e) {
     const groups = (this.data.productForm.specGroupsForm || []).slice()
     if (groups.length <= 1) return wx.showToast({ title: '至少保留一个规格名', icon: 'none' })
-    groups.splice(Number(e.currentTarget.dataset.index), 1)
-    this.setData({ ['productForm.specGroupsForm']: groups })
+    wx.showModal({ title: '删除属性', content: '删除后须重新同步SKU，无法对应的旧组合不会保留，请核对价格库存。', success: (res) => {
+      if (!res.confirm) return
+      groups.splice(Number(e.currentTarget.dataset.index), 1)
+      this.setData({ ['productForm.specGroupsForm']: groups, ['productForm.specsDirty']: true })
+    } })
   },
   inputSku(e) {
     const index = Number(e.currentTarget.dataset.index)
@@ -175,16 +198,21 @@ Page({
   },
   generateSkus() {
     const form = this.data.productForm
-    const groups = buildSpecGroups(form)
-    if (!groups.length) return wx.showToast({ title: '请填写规格名和规格值', icon: 'none' })
-    const oldMap = {}
-    ;(form.skus || []).forEach((sku) => { oldMap[skuKey(sku.specs || {}) || sku.specText] = sku })
-    const skus = cartesianSpecRows(groups).slice(0, 80).map((row, index) => {
-      const key = skuKey(row.specs)
-      const old = oldMap[key] || oldMap[row.values.join(' / ')] || {}
-      return { skuId: old.skuId || `sku_${Date.now()}_${index}`, specs: row.specs, specText: row.values.join(' / '), price: old.price || form.price || '', originalPrice: old.originalPrice || form.originalPrice || '', stock: old.stock || form.stock || '', imageFileId: old.imageFileId || '', status: old.status || 'on_sale' }
+    let groups
+    try {
+      groups = buildSpecGroups(form)
+      if (groups.reduce((count, group) => count * group.values.length, 1) > 80) throw new Error('组合超过80个，请减少属性值')
+    } catch (error) { return showError(error) }
+    const oldMap = new Map()
+    ;(form.skus || []).forEach((sku) => {
+      const key = skuKey(sku.specs || {})
+      oldMap.set(key, oldMap.has(key) ? null : sku)
     })
-    this.setData({ ['productForm.skus']: skus })
+    const skus = cartesianSpecRows(groups).map((row, index) => {
+      const old = oldMap.get(skuKey(row.specs)) || {}
+      return { ...old, skuId: old.skuId || `sku_${Date.now()}_${index}`, specs: row.specs, specText: old.specText || row.values.join(' / '), price: old.price == null ? '' : old.price, originalPrice: old.originalPrice == null ? '' : old.originalPrice, stock: old.stock == null ? '' : old.stock, imageFileId: old.imageFileId || '', status: old.status || 'on_sale' }
+    })
+    this.setData({ ['productForm.skus']: skus, ['productForm.specsDirty']: false })
   },
   chooseCoverImage() { this.chooseMallImages('cover') },
   chooseCarouselImages() { this.chooseMallImages('carousel') },
@@ -245,7 +273,12 @@ Page({
     const specMode = form.specMode === 'multi' ? 'multi' : 'single'
     const data = { ...form, id: form._id, price: Number(form.price || 0), originalPrice: Number(form.originalPrice || 0), stock: Number(form.stock || 0), sortOrder: Number(form.sortOrder || 0), imageFileIds, specMode }
     if (specMode === 'multi') {
-      const groups = buildSpecGroups(form)
+      let groups
+      try {
+        groups = buildSpecGroups(form)
+        if (form.specsDirty || !form.skus.length || form.skus.some((sku) => Object.keys(sku.specs || {}).length !== groups.length || groups.some((group) => !group.values.includes((sku.specs || {})[group.name])))) throw new Error('属性已更改，请重新同步SKU')
+        if (form.skus.some((sku) => String(sku.price == null ? '' : sku.price).trim() === '' || String(sku.stock == null ? '' : sku.stock).trim() === '')) throw new Error('请填写每个SKU的价格和库存')
+      } catch (error) { return showError(error) }
       data.specGroups = groups
       data.skus = (form.skus || []).map((sku) => ({ ...sku, specs: sku.specs || {}, price: Number(sku.price || 0), originalPrice: Number(sku.originalPrice || 0), stock: Number(sku.stock || 0), imageFileId: sku.imageFileId || '' }))
     }

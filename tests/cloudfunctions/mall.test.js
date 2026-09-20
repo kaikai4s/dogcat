@@ -191,6 +191,70 @@ test('mall supports multi-sku products in cart, order and payment stock deductio
   assert.equal(savedProduct.totalStock, 11)
 })
 
+test('mall rejects invalid multi-sku definitions and wrong sku ids', async () => {
+  const db = createMallDb()
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const duplicateGroup = await adminFn.main({
+    module: 'adminMall',
+    action: 'saveProduct',
+    data: {
+      name: '狗粮',
+      coverFileId: 'cloud://mall/dog.jpg',
+      specMode: 'multi',
+      specGroups: [{ name: '重量', values: ['2kg'] }, { name: '重量', values: ['5kg'] }],
+      skus: [{ skuId: 'sku_2kg', specs: { 重量: '2kg' }, specText: '2kg', price: 99, stock: 1 }]
+    }
+  })
+  assert.equal(duplicateGroup.ok, false)
+  assert.equal(duplicateGroup.message, '属性名称不能为空或重复')
+
+  const product = await adminFn.main({
+    module: 'adminMall',
+    action: 'saveProduct',
+    data: {
+      name: '猫粮',
+      coverFileId: 'cloud://mall/cat.jpg',
+      specMode: 'multi',
+      specGroups: [{ name: '重量', values: ['2kg', '5kg'] }],
+      skus: [
+        { skuId: 'sku_2kg', specs: { 重量: '2kg' }, specText: '2kg', price: 99, stock: 1 },
+        { skuId: 'sku_5kg', specs: { 重量: '5kg' }, specText: '5kg', price: 199, stock: 1 }
+      ]
+    }
+  })
+  assert.equal(product.ok, true)
+
+  const wrongSku = await clientFn.main({ module: 'mall', action: 'updateCart', data: { productId: product.data._id, skuId: 'sku_missing', quantity: 1, operation: 'add' } })
+  assert.equal(wrongSku.ok, false)
+  assert.equal(wrongSku.message, '商品规格不存在或已下架')
+})
+
+test('mall reads historical duplicate spec groups as one attribute', async () => {
+  const db = createMallDb({
+    mall_products: [{
+      _id: 'p1',
+      name: '狗粮',
+      coverFileId: 'cloud://mall/dog.jpg',
+      status: 'on_sale',
+      specMode: 'multi',
+      specGroups: [{ name: '重量', values: ['2kg'] }, { name: '重量', values: ['5kg'] }, { name: '重量', values: ['10kg'] }],
+      skus: [
+        { skuId: 'sku_2kg', specs: { 重量: '2kg' }, specText: '2kg', price: 39, stock: 1, status: 'on_sale' },
+        { skuId: 'sku_5kg', specs: { 重量: '5kg' }, specText: '5kg', price: 69, stock: 2, status: 'on_sale' },
+        { skuId: 'sku_10kg', specs: { 重量: '10kg' }, specText: '10kg', price: 99, stock: 3, status: 'on_sale' }
+      ]
+    }]
+  })
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+
+  const detail = await clientFn.main({ module: 'mall', action: 'getProductDetail', data: { id: 'p1' } })
+  assert.equal(detail.ok, true)
+  assert.deepEqual(detail.data.specGroups, [{ name: '重量', values: ['2kg', '5kg', '10kg'] }])
+  assert.equal(detail.data.skus.length, 3)
+})
+
 test('mall management rejects non-admin and invalid stock operations', async () => {
   const db = createMallDb({
     mall_products: [{ _id: 'p1', categoryId: '', name: '罐头', coverFileId: 'cloud://mall/can.jpg', price: 20, stock: 1, status: 'on_sale' }]

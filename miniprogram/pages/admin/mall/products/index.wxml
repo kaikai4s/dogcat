@@ -131,38 +131,49 @@
           <view><view class="form-label">库存</view><input type="number" placeholder="库存" value="{{productForm.stock}}" data-field="stock" bindinput="inputProduct" /></view>
         </view>
         <view wx:else>
+          <view class="muted">一个属性填写多个值。例如属性名称：重量；属性值：2kg、5kg、10kg。值用顿号、逗号或换行分隔，最多3个属性、每属性20值、80个SKU。</view>
+          <view class="muted">历史重复属性已合并；丢失的SKU无法恢复，请重新生成并填写缺失组合的价格库存。同步不会推测新组合价格。</view>
+          <view class="muted" wx:if="{{productForm.specsDirty}}">属性已更改，请重新同步SKU后保存。</view>
           <view class="spec-group-editor" wx:for="{{productForm.specGroupsForm}}" wx:key="index" wx:for-item="group">
             <view class="section-head">
-              <view class="strong small">规格名 {{index + 1}}</view>
+              <view class="strong small">属性名称 {{index + 1}}</view>
               <view class="delete" data-index="{{index}}" bindtap="removeSpecGroup">删除</view>
             </view>
             <view class="two-col-form sku-form">
-              <view><view class="form-label">规格名</view><input placeholder="如 重量 / 尺寸 / 颜色" value="{{group.name}}" data-index="{{index}}" data-field="name" bindinput="inputSpecGroup" /></view>
-              <view><view class="form-label">规格值</view><input placeholder="如 2kg、5kg、10kg" value="{{group.valuesText}}" data-index="{{index}}" data-field="valuesText" bindinput="inputSpecGroup" /></view>
+              <view><view class="form-label">属性名称</view><input placeholder="如 重量 / 尺寸 / 颜色" value="{{group.name}}" data-index="{{index}}" data-field="name" bindinput="inputSpecGroup" /></view>
+              <view><view class="form-label">属性值（多个）</view><input placeholder="如 2kg、5kg、10kg" value="{{group.valuesText}}" data-index="{{index}}" data-field="valuesText" bindinput="inputSpecGroup" /></view>
             </view>
           </view>
-          <view class="spec-actions"><button class="ghost sku-generate" bindtap="addSpecGroup">添加规格名</button><button class="ghost sku-generate" bindtap="generateSkus">生成/同步SKU</button></view>
-          <view class="sku-card" wx:for="{{productForm.skus}}" wx:key="skuId">
+          <view class="spec-actions"><button class="ghost sku-generate" bindtap="addSpecGroup">添加属性名称</button><button class="ghost sku-generate" bindtap="generateSkus">生成/同步SKU</button></view>
+          <view class="sku-table-card" wx:if="{{productForm.skus.length}}">
             <view class="section-head">
-              <view class="strong small">{{item.specText}}</view>
+              <view>
+                <view class="strong small">SKU组合表</view>
+                <view class="muted">每一行就是一个可售规格组合，分别维护价格、库存、图片和上下架。</view>
+              </view>
+              <view class="pill light">{{productForm.skus.length}}个SKU</view>
+            </view>
+            <view class="sku-table-head">
+              <text>规格组合</text><text>售价</text><text>库存</text><text>状态</text>
+            </view>
+            <view class="sku-table-row" wx:for="{{productForm.skus}}" wx:key="skuId">
+              <view class="sku-combo">
+                <view class="sku-spec-tags">
+                  <text wx:for="{{productForm.specGroupsForm}}" wx:key="name" wx:for-item="group">{{group.name}}：{{item.specs[group.name]}}</text>
+                </view>
+                <input class="sku-name-input" value="{{item.specText}}" data-index="{{index}}" data-field="specText" bindinput="inputSku" />
+                <view class="sku-image-mini" data-index="{{index}}" bindtap="chooseSkuImage">
+                  <image wx:if="{{item.imageFileId}}" src="{{item.imageFileId}}" mode="aspectFill" data-url="{{item.imageFileId}}" bindtap="previewMallImage" />
+                  <text wx:else>图</text>
+                </view>
+                <text wx:if="{{item.imageFileId}}" class="delete mini-delete" data-index="{{index}}" bindtap="removeSkuImage">移除图</text>
+              </view>
+              <view class="sku-price-fields">
+                <input type="digit" placeholder="售价" value="{{item.price}}" data-index="{{index}}" data-field="price" bindinput="inputSku" />
+                <input type="digit" placeholder="原价" value="{{item.originalPrice}}" data-index="{{index}}" data-field="originalPrice" bindinput="inputSku" />
+              </view>
+              <input class="sku-stock-input" type="number" placeholder="库存" value="{{item.stock}}" data-index="{{index}}" data-field="stock" bindinput="inputSku" />
               <view class="pill {{item.status === 'off_sale' ? 'muted-badge' : 'success'}}" data-index="{{index}}" bindtap="toggleSkuStatus">{{item.status === 'off_sale' ? '停用' : '启用'}}</view>
-            </view>
-            <view class="sku-image-row">
-              <view class="sku-image" data-index="{{index}}" bindtap="chooseSkuImage">
-                <image wx:if="{{item.imageFileId}}" src="{{item.imageFileId}}" mode="aspectFill" data-url="{{item.imageFileId}}" bindtap="previewMallImage" />
-                <view wx:else>SKU图</view>
-              </view>
-              <view class="sku-image-help">
-                <view class="muted">可为该规格配置独立图片，如不同颜色/包装/重量展示图。</view>
-                <button data-index="{{index}}" bindtap="chooseSkuImage">上传规格图</button>
-                <button wx:if="{{item.imageFileId}}" class="danger" data-index="{{index}}" bindtap="removeSkuImage">移除图片</button>
-              </view>
-            </view>
-            <view class="two-col-form sku-form">
-              <view><view class="form-label">售价</view><input type="digit" value="{{item.price}}" data-index="{{index}}" data-field="price" bindinput="inputSku" /></view>
-              <view><view class="form-label">原价</view><input type="digit" value="{{item.originalPrice}}" data-index="{{index}}" data-field="originalPrice" bindinput="inputSku" /></view>
-              <view><view class="form-label">库存</view><input type="number" value="{{item.stock}}" data-index="{{index}}" data-field="stock" bindinput="inputSku" /></view>
-              <view><view class="form-label">展示名</view><input value="{{item.specText}}" data-index="{{index}}" data-field="specText" bindinput="inputSku" /></view>
             </view>
           </view>
         </view>

@@ -31,7 +31,7 @@
         <view class="product-sub">{{item.subtitle || item.specText}}</view>
       </view>
       <view class="product-foot">
-        <view><text class="price">{{item.priceText || item.displayPrice}}</text><text class="stock">库存{{item.totalStock || item.stock}}</text></view>
+        <view class="price-block"><text class="price">{{item.priceText || item.displayPrice}}</text><text class="stock">库存{{item.totalStock || item.stock}}</text></view>
         <button class="cart-btn" data-id="{{item._id}}" data-index="{{index}}" bindtap="addCart" disabled="{{item.soldOut}}">{{item.soldOut ? '售罄' : (item.hasSku ? '选规格' : '加购')}}</button>
       </view>
     </view>

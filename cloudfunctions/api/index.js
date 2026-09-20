@@ -4268,14 +4268,56 @@ function createMallSkuId(index = 0) {
 }
 
 function normalizeMallSpecGroups(groups = []) {
-  return (Array.isArray(groups) ? groups : [])
-    .map((group) => {
+  const merged = new Map()
+  ;(Array.isArray(groups) ? groups : []).forEach((group) => {
+    const name = safeText(group && group.name).trim()
+    const values = group && Array.isArray(group.values) ? group.values.map((item) => safeText(item).trim()).filter(Boolean) : []
+    if (!name || !values.length) return
+    merged.set(name, Array.from(new Set((merged.get(name) || []).concat(values))))
+  })
+  return Array.from(merged, ([name, values]) => ({ name, values }))
+}
+
+// Validate new input before historical normalization can discard invalid data.
+function validateMallProductInput(data) {
+  const validateNumbers = (item) => {
+    for (const field of ['price', 'originalPrice', 'stock']) {
+      const raw = item[field] == null && field === 'originalPrice' ? 0 : item[field]
+      const value = Number(raw)
+      if (!['number', 'string'].includes(typeof raw) || String(raw).trim() === '' || !Number.isFinite(value) || value < 0 || (field === 'price' && value <= 0) || (field === 'stock' && !Number.isSafeInteger(value)) || (field !== 'stock' && Math.abs(value * 100 - Math.round(value * 100)) > 1e-7)) {
+        throw new Error(field === 'stock' ? '库存必须为非负整数' : (field === 'price' ? '售价必须大于0' : '金额必须为非负数且最多两位小数'))
+      }
+    }
+  }
+  if (data.specMode !== 'multi') { validateNumbers(data); return }
+  const groups = data.specGroups
+  if (!Array.isArray(groups) || !groups.length || groups.length > 3) throw new Error('请填写1至3个属性')
+  const names = new Set()
+  groups.forEach((group) => {
+    const name = safeText(group && group.name).trim()
+    if (!name || names.has(name)) throw new Error('属性名称不能为空或重复')
+    names.add(name)
+    if (!Array.isArray(group.values) || !group.values.length || group.values.length > 20) throw new Error('每个属性须有1至20个值')
+    const values = group.values.map((value) => safeText(value).trim())
+    if (values.some((value) => !value) || new Set(values).size !== values.length) throw new Error('属性值不能为空或重复')
+  })
+  if (!Array.isArray(data.skus) || !data.skus.length || data.skus.length > 80) throw new Error('请同步1至80个SKU')
+  const ids = new Set()
+  const combinations = new Set()
+  data.skus.forEach((sku) => {
+    const id = safeText(sku.skuId).trim()
+    if (!id || ids.has(id)) throw new Error('SKU ID不能为空或重复')
+    ids.add(id)
+    const specs = sku.specs
+    if (!specs || Array.isArray(specs) || Object.keys(specs).length !== groups.length || groups.some((group) => {
       const name = safeText(group.name).trim()
-      const values = Array.isArray(group.values) ? group.values.map((item) => safeText(item).trim()).filter(Boolean) : []
-      return name && values.length ? { name, values: Array.from(new Set(values)).slice(0, 20) } : null
-    })
-    .filter(Boolean)
-    .slice(0, 3)
+      return !Object.prototype.hasOwnProperty.call(specs, name) || !group.values.map((value) => safeText(value).trim()).includes(safeText(specs[name]).trim())
+    })) throw new Error('属性与SKU不一致，请重新同步SKU')
+    const key = JSON.stringify(Array.from(names).sort().map((name) => [name, safeText(specs[name]).trim()]))
+    if (combinations.has(key)) throw new Error('SKU组合不能重复')
+    combinations.add(key)
+    validateNumbers(sku)
+  })
 }
 
 function normalizeMallSku(raw = {}, index = 0, specGroups = []) {
@@ -4301,27 +4343,21 @@ function normalizeMallSku(raw = {}, index = 0, specGroups = []) {
 
 function normalizeMallSkus(product = {}, specGroups = []) {
   const rawSkus = Array.isArray(product.skus) ? product.skus : []
-  const sourceSkus = rawSkus.length ? rawSkus : [{ skuId: 'default', specs: {}, specText: product.specText || '默认规格', price: product.price, originalPrice: product.originalPrice, stock: product.stock, salesCount: product.salesCount, status: 'on_sale' }]
-  const seen = new Set()
-  return sourceSkus.map((sku, index) => normalizeMallSku(sku, index, specGroups)).filter((sku) => {
-    const key = JSON.stringify(sku.specs || {}) || sku.specText || sku.skuId
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  }).slice(0, 80)
+  const sourceSkus = product.specMode === 'multi' ? rawSkus : [{ skuId: rawSkus.length === 1 ? rawSkus[0].skuId || 'default' : 'default', specs: {}, specText: product.specText || '默认规格', price: product.price, originalPrice: product.originalPrice, stock: product.stock, salesCount: product.salesCount, status: rawSkus.length === 1 ? rawSkus[0].status : 'on_sale' }]
+  return sourceSkus.map((sku, index) => normalizeMallSku(sku, index, specGroups))
 }
 
 function deriveMallProductFields(product = {}) {
   const skus = normalizeMallSkus(product, product.specGroups || [])
   const activeSkus = skus.filter((sku) => sku.status !== 'off_sale')
   const priceSkus = activeSkus.length ? activeSkus : skus
-  const prices = priceSkus.map((sku) => Number(sku.price || 0)).filter((price) => price > 0)
+  const prices = priceSkus.map((sku) => Number(sku.price || 0)).filter((price) => Number.isFinite(price) && price >= 0)
   const minPrice = prices.length ? Math.min(...prices) : Math.max(Number(product.price || 0), 0)
   const maxPrice = prices.length ? Math.max(...prices) : minPrice
   const totalStock = activeSkus.reduce((sum, sku) => sum + Number(sku.stock || 0), 0)
   const salesCount = skus.reduce((sum, sku) => sum + Number(sku.salesCount || 0), 0) || Math.max(Math.floor(Number(product.salesCount || 0)), 0)
   const firstSku = priceSkus[0] || skus[0] || {}
-  return { skus, minPrice, maxPrice, totalStock, price: minPrice, originalPrice: Number(firstSku.originalPrice || product.originalPrice || 0), stock: totalStock, salesCount, specText: firstSku.specText || product.specText || '默认规格' }
+  return { skus, minPrice, maxPrice, totalStock, price: minPrice, originalPrice: Number(firstSku.originalPrice == null ? product.originalPrice || 0 : firstSku.originalPrice), stock: totalStock, salesCount, specText: firstSku.specText || product.specText || '默认规格' }
 }
 
 function normalizeMallProduct(product = {}) {
@@ -4354,7 +4390,14 @@ function getProductSkus(product = {}) {
 function getSkuById(product = {}, skuId = '') {
   const skus = getProductSkus(product)
   const targetSkuId = safeText(skuId).trim()
-  return skus.find((sku) => sku.skuId === targetSkuId) || skus.find((sku) => sku.skuId === 'default') || skus[0] || null
+  const sku = targetSkuId ? skus.find((item) => item.skuId === targetSkuId) : (product.specMode !== 'multi' ? skus[0] : null)
+  if (!sku) return null
+  if (product.specMode === 'multi') {
+    const groups = normalizeMallSpecGroups(product.specGroups)
+    if (!groups.length || groups.some((group) => !group.values.includes(sku.specs[group.name]))) return null
+    if (skus.filter((item) => item.skuId === sku.skuId).length !== 1) return null
+  }
+  return sku
 }
 
 function formatMallPrice(product = {}) {
@@ -4435,10 +4478,12 @@ async function formatMallCart(openid) {
   const products = []
   for (const item of items) {
     const product = await getDocOrNull('mall_products', item.productId)
-    if (!product) continue
-    const p = publicMallProduct(product)
-    const sku = getSkuById(product, item.skuId)
-    if (!sku) continue
+    const p = product ? publicMallProduct(product) : null
+    const sku = product ? getSkuById(product, item.skuId) : null
+    if (!sku) {
+      products.push({ ...item, product: p || item.snapshot || {}, snapshot: item.snapshot || {}, invalid: true, soldOut: true, subtotal: 0 })
+      continue
+    }
     const invalid = p.status !== 'on_sale' || sku.status === 'off_sale'
     const soldOut = Number(sku.stock || 0) <= 0
     const quantity = Number(item.quantity || 0)
@@ -4482,14 +4527,15 @@ async function deductMallProductStock(item, time) {
   const product = await getDocOrNull('mall_products', item.productId)
   if (!product || product.status !== 'on_sale') throw new Error(`商品已下架：${item.name}`)
   const normalized = normalizeMallProduct(product)
-  const skuId = safeText(item.skuId || 'default').trim() || 'default'
+  const selected = getSkuById(normalized, item.skuId)
   const skus = normalized.skus.map((sku) => ({ ...sku, specs: { ...(sku.specs || {}) } }))
-  const index = skus.findIndex((sku) => sku.skuId === skuId) >= 0 ? skus.findIndex((sku) => sku.skuId === skuId) : 0
+  const index = selected ? skus.findIndex((sku) => sku.skuId === selected.skuId) : -1
   const sku = skus[index]
   if (!sku || sku.status === 'off_sale') throw new Error(`商品已下架：${item.name}`)
   if (Number(sku.stock || 0) < quantity) throw new Error(`商品库存不足：${item.name}`)
   skus[index] = { ...sku, stock: Number(sku.stock || 0) - quantity, salesCount: Number(sku.salesCount || 0) + quantity }
-  const nextProduct = normalizeMallProduct({ ...normalized, skus, updatedAt: time })
+  const singleFields = normalized.specMode === 'single' ? { stock: skus[index].stock, salesCount: skus[index].salesCount } : {}
+  const nextProduct = normalizeMallProduct({ ...normalized, ...singleFields, skus, updatedAt: time })
   await db.collection('mall_products').doc(item.productId).update({ data: { skus: nextProduct.skus, price: nextProduct.price, originalPrice: nextProduct.originalPrice, stock: nextProduct.stock, totalStock: nextProduct.totalStock, minPrice: nextProduct.minPrice, maxPrice: nextProduct.maxPrice, salesCount: nextProduct.salesCount, specText: nextProduct.specText, updatedAt: time } })
 }
 
@@ -6504,6 +6550,11 @@ const handlers = {
       await getUser(openid)
       const productId = safeText(data.productId).trim()
       if (!productId) throw new Error('请选择商品')
+      if (data.operation === 'remove') {
+        const cart = await loadMallCart(openid)
+        await saveMallCart(openid, (cart && cart.items || []).filter((item) => !isSameMallCartItem(item, { productId, skuId: data.skuId })))
+        return formatMallCart(openid)
+      }
       const product = await getDocOrNull('mall_products', productId)
       if (!product || product.status !== 'on_sale') throw new Error('商品不存在或已下架')
       const normalizedProduct = normalizeMallProduct(product)
@@ -6538,7 +6589,7 @@ const handlers = {
       }
       let orderItems = []
       if (data.productId) {
-        orderItems = [{ productId: safeText(data.productId).trim(), skuId: safeText(data.skuId || 'default').trim() || 'default', quantity: Math.max(Math.floor(Number(data.quantity || 1)), 1) }]
+        orderItems = [{ productId: safeText(data.productId).trim(), skuId: safeText(data.skuId).trim(), quantity: Math.max(Math.floor(Number(data.quantity || 1)), 1) }]
       } else {
         const cart = await formatMallCart(openid)
         orderItems = cart.items.filter((item) => item.selected !== false && !item.invalid && !item.soldOut).map((item) => ({ productId: item.productId, skuId: item.skuId || 'default', quantity: Number(item.quantity || 1) }))
@@ -6661,10 +6712,10 @@ const handlers = {
     if (action === 'saveProduct') {
       const id = safeText(data.id || data._id).trim()
       const time = now()
-      const payload = normalizeMallProduct({ ...data, updatedAt: time })
+      validateMallProductInput(data)
+      const payload = normalizeMallProduct({ ...data, ...(data.specMode !== 'multi' ? { specGroups: [], skus: [] } : {}), updatedAt: time })
       delete payload._id
       if (!payload.name) throw new Error('商品名称不能为空')
-      if (payload.price <= 0) throw new Error('商品价格必须大于0')
       if (!payload.coverFileId && !payload.imageFileIds.length) throw new Error('请上传商品图片')
       if (payload.categoryId) {
         const category = await getDocOrNull('mall_categories', payload.categoryId)
