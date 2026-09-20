@@ -1118,6 +1118,27 @@ textarea {
   border: 1rpx solid rgba(255, 226, 89, 0.4);
 }
 
+.member-badge.badge-green {
+  background: linear-gradient(135deg, #d7ffd9 0%, #67c23a 100%);
+  color: #164e18;
+  border: 1rpx solid rgba(103, 194, 58, 0.65);
+}
+
+.member-badge.badge-red {
+  background: linear-gradient(135deg, #ffb199 0%, #ff3300 100%);
+  color: #5a1600;
+  border: 1rpx solid rgba(255, 51, 0, 0.55);
+}
+
+.member-badge.badge-rainbow {
+  background: linear-gradient(90deg, #ff4e50, #f9d423, #38ef7d, #2575fc, #b5179e, #ff4e50);
+  background-size: 300% auto;
+  color: #fff;
+  border: 1rpx solid rgba(255, 255, 255, 0.75);
+  text-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.32);
+  animation: rainbowAnimation 4s linear infinite;
+}
+
 /* 用户名字流光与视效类 */
 .name-effect-gold_shine {
   background: linear-gradient(90deg, #d99200 0%, #ffe87c 30%, #d99200 60%, #ffc000 100%);
@@ -1147,16 +1168,84 @@ textarea {
   100% { background-position: 300% center; }
 }
 
+.name-effect-silver_shine {
+  background: linear-gradient(90deg, #64748b 0%, #cbd5e1 26%, #ffffff 48%, #94a3b8 68%, #64748b 100%);
+  background-size: 260% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shineAnimation 3s linear infinite;
+  font-weight: 850;
+  text-shadow: 0 1rpx 0 rgba(80, 90, 110, 0.12);
+}
+
+.name-effect-bronze_shine {
+  background: linear-gradient(90deg, #7c3f12 0%, #b87333 24%, #ffd19a 48%, #c47a35 70%, #7c3f12 100%);
+  background-size: 260% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shineAnimation 3.1s linear infinite;
+  font-weight: 850;
+  text-shadow: 0 1rpx 0 rgba(90, 44, 10, 0.14);
+}
+
+.name-effect-pink_dream {
+  background: linear-gradient(90deg, #be185d 0%, #ff4d6d 24%, #ffd6e7 48%, #f472b6 70%, #be185d 100%);
+  background-size: 260% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shineAnimation 2.9s linear infinite;
+  font-weight: 850;
+  text-shadow: 0 1rpx 0 rgba(160, 20, 90, 0.12);
+}
+
+.name-effect-blue_diamond {
+  background: linear-gradient(90deg, #0f4c81 0%, #409eff 24%, #d8f4ff 48%, #38bdf8 70%, #0f4c81 100%);
+  background-size: 260% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shineAnimation 2.9s linear infinite;
+  font-weight: 850;
+  text-shadow: 0 1rpx 0 rgba(20, 80, 150, 0.12);
+}
+
+.name-effect-emerald_glow {
+  background: linear-gradient(90deg, #166534 0%, #67c23a 24%, #dcffd6 48%, #22c55e 70%, #166534 100%);
+  background-size: 260% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shineAnimation 3s linear infinite;
+  font-weight: 850;
+  text-shadow: 0 1rpx 0 rgba(20, 110, 50, 0.12);
+}
+
 .name-effect-fire_glow {
-  color: #ff3300 !important;
-  text-shadow: 0 0 4rpx #ff6600, 0 0 10rpx #ff3300, 0 0 16rpx #ff9900;
-  font-weight: 800;
+  background: linear-gradient(90deg, #b91c1c 0%, #ff3300 24%, #ffd166 45%, #fff2a8 52%, #ff7a00 68%, #b91c1c 100%);
+  background-size: 260% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shineAnimation 2.6s linear infinite;
+  font-weight: 850;
+  text-shadow: 0 1rpx 0 rgba(120, 20, 0, 0.16);
 }
 
 .name-effect-purple_neon {
-  color: #b5179e !important;
-  text-shadow: 0 0 4rpx #7209b7, 0 0 10rpx #480ca8, 0 0 16rpx #f72585;
-  font-weight: 800;
+  background: linear-gradient(90deg, #5b21b6 0%, #b5179e 24%, #ffd166 46%, #fff2a8 52%, #7c3cff 70%, #5b21b6 100%);
+  background-size: 260% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shineAnimation 2.8s linear infinite;
+  font-weight: 850;
+  text-shadow: 0 1rpx 0 rgba(80, 20, 120, 0.16);
+}
+
+.name-effect-dark_gold {
+  background: linear-gradient(90deg, #111111 0%, #333333 20%, #d99200 44%, #fff2a8 52%, #8a5a00 72%, #111111 100%);
+  background-size: 260% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shineAnimation 3s linear infinite;
+  font-weight: 900;
+  text-shadow: 0 1rpx 0 rgba(0, 0, 0, 0.18);
 }
 
 .name-effect-3d_emboss {

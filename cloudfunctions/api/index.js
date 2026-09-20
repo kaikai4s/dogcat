@@ -228,11 +228,11 @@ function normalizeMemberNameColor(value) {
 }
 function normalizeMemberNameEffect(value) {
   const effect = safeText(value).trim()
-  return ['none', 'gold_shine', 'gradient_rainbow', 'fire_glow', 'purple_neon', '3d_emboss'].includes(effect) ? effect : 'none'
+  return ['none', 'gold_shine', 'silver_shine', 'bronze_shine', 'pink_dream', 'blue_diamond', 'emerald_glow', 'fire_glow', 'purple_neon', 'dark_gold', 'gradient_rainbow', '3d_emboss'].includes(effect) ? effect : 'none'
 }
 function normalizeMemberBadgeStyle(value) {
   const style = safeText(value).trim()
-  return ['gold', 'silver', 'bronze', 'purple', 'pink', 'blue', 'dark'].includes(style) ? style : 'gold'
+  return ['gold', 'silver', 'bronze', 'purple', 'pink', 'blue', 'green', 'red', 'dark', 'rainbow'].includes(style) ? style : 'gold'
 }
 function normalizeMemberBadgeTag(value) {
   return safeText(value).trim().slice(0, 8)

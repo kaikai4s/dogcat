@@ -9,15 +9,22 @@ const COLOR_PALETTE = [
   { name: '翡翠绿', hex: '#67c23a' },
   { name: '赤焰红', hex: '#ff3300' },
   { name: '霓虹紫', hex: '#b5179e' },
-  { name: '典雅黑', hex: '#333333' }
+  { name: '典雅黑', hex: '#333333' },
+  { name: '终极彩虹', hex: '#7c3cff' }
 ]
 
 const EFFECT_OPTIONS = [
   { key: 'none', name: '无特效' },
   { key: 'gold_shine', name: '金光流耀' },
+  { key: 'silver_shine', name: '银辉流光' },
+  { key: 'bronze_shine', name: '青铜流光' },
+  { key: 'pink_dream', name: '粉梦流光' },
+  { key: 'blue_diamond', name: '蓝钻流光' },
+  { key: 'emerald_glow', name: '翡翠流光' },
+  { key: 'fire_glow', name: '烈焰流金' },
+  { key: 'purple_neon', name: '紫金流光' },
+  { key: 'dark_gold', name: '黑金流光' },
   { key: 'gradient_rainbow', name: '霓虹彩虹' },
-  { key: 'fire_glow', name: '烈焰发光' },
-  { key: 'purple_neon', name: '霓虹紫光' },
   { key: '3d_emboss', name: '3D浮雕' }
 ]
 
@@ -28,7 +35,23 @@ const BADGE_STYLES = [
   { key: 'purple', name: '紫光' },
   { key: 'pink', name: '粉梦' },
   { key: 'blue', name: '蓝钻' },
-  { key: 'dark', name: '黑金' }
+  { key: 'green', name: '翡翠' },
+  { key: 'red', name: '赤焰' },
+  { key: 'dark', name: '黑金' },
+  { key: 'rainbow', name: '终极彩虹' }
+]
+
+const LEVEL_THEME_PRESETS = [
+  { key: 'gold', name: '黄金等级', badgeStyle: 'gold', nameColor: '#d99200', nameEffect: 'gold_shine', badgeTag: 'V1' },
+  { key: 'silver', name: '白银等级', badgeStyle: 'silver', nameColor: '#8e9aaf', nameEffect: 'silver_shine', badgeTag: 'V2' },
+  { key: 'bronze', name: '青铜等级', badgeStyle: 'bronze', nameColor: '#b87333', nameEffect: 'bronze_shine', badgeTag: 'V3' },
+  { key: 'pink', name: '粉梦等级', badgeStyle: 'pink', nameColor: '#ff4d6d', nameEffect: 'pink_dream', badgeTag: 'V4' },
+  { key: 'blue', name: '蓝钻等级', badgeStyle: 'blue', nameColor: '#409eff', nameEffect: 'blue_diamond', badgeTag: 'V5' },
+  { key: 'green', name: '翡翠等级', badgeStyle: 'green', nameColor: '#67c23a', nameEffect: 'emerald_glow', badgeTag: 'V6' },
+  { key: 'red', name: '赤焰等级', badgeStyle: 'red', nameColor: '#ff3300', nameEffect: 'fire_glow', badgeTag: 'V7' },
+  { key: 'purple', name: '紫金等级', badgeStyle: 'purple', nameColor: '#b5179e', nameEffect: 'purple_neon', badgeTag: 'V8' },
+  { key: 'dark', name: '黑金等级', badgeStyle: 'dark', nameColor: '#333333', nameEffect: 'dark_gold', badgeTag: 'V9' },
+  { key: 'rainbow', name: '最终等级 · 霓虹彩虹', badgeStyle: 'rainbow', nameColor: '#7c3cff', nameEffect: 'gradient_rainbow', badgeTag: 'MAX' }
 ]
 
 function emptyLevel() {
@@ -56,7 +79,8 @@ Page({
     form: emptyLevel(),
     colorPalette: COLOR_PALETTE,
     effectOptions: EFFECT_OPTIONS,
-    badgeStyles: BADGE_STYLES
+    badgeStyles: BADGE_STYLES,
+    levelThemePresets: LEVEL_THEME_PRESETS
   },
 
   onShow() {
@@ -106,6 +130,17 @@ Page({
     this.setData({ 'form.badgeStyle': style })
   },
 
+  applyThemePreset(e) {
+    const preset = this.data.levelThemePresets.find((item) => item.key === e.currentTarget.dataset.preset)
+    if (!preset) return
+    this.setData({
+      'form.badgeStyle': preset.badgeStyle,
+      'form.nameColor': preset.nameColor,
+      'form.nameEffect': preset.nameEffect,
+      'form.badgeTag': this.data.form.badgeTag || preset.badgeTag
+    })
+  },
+
   chooseLevel(e) {
     const rawIndex = e.currentTarget.dataset.index
     const index = Number(rawIndex)
@@ -146,7 +181,15 @@ Page({
     }
     this.setData({ saving: true })
     callFunction('admin', 'saveMemberLevel', payload)
-      .then(() => {
+      .then((savedLevel) => {
+        if (payload.nameEffect && savedLevel && savedLevel.nameEffect !== payload.nameEffect) {
+          wx.showModal({
+            title: '特效保存异常',
+            content: '云函数返回的特效与选择不一致，请重新上传部署 api 云函数后再保存。',
+            showCancel: false
+          })
+          return
+        }
         wx.showToast({ title: form._id ? '修改已保存' : '新建已保存' })
         this.closeFormModal()
         this.load()

@@ -72,6 +72,17 @@
           <input placeholder="留空自动推导为 V1/V2/..." value="{{form.badgeTag}}" data-field="badgeTag" bindinput="input" />
         </view>
 
+        <!-- 等级主题套装 -->
+        <view class="form-group">
+          <view class="field-label">等级主题套装（一键应用主题色 + 徽章 + 炫彩特效）</view>
+          <view class="theme-preset-grid">
+            <view wx:for="{{levelThemePresets}}" wx:key="key" class="theme-preset {{form.badgeStyle === item.badgeStyle && form.nameEffect === item.nameEffect ? 'active' : ''}}" data-preset="{{item.key}}" bindtap="applyThemePreset">
+              <text class="member-badge badge-{{item.badgeStyle}}">{{item.badgeTag}}</text>
+              <text class="theme-preset-name name-effect-{{item.nameEffect}}" style="color:{{item.nameColor}};">{{item.name}}</text>
+            </view>
+          </view>
+        </view>
+
         <!-- 徽章配色风格 -->
         <view class="form-group">
           <view class="field-label">徽章配色风格</view>
@@ -113,7 +124,7 @@
           </view>
           <view class="form-group">
             <view class="field-label">消费积分倍数</view>
-            <input type="number" placeholder="如 1, 1.2" value="{{form.pointMultiplier}}" data-field="pointMultiplier" bindinput="input" />
+            <input type="digit" placeholder="如 1, 1.2" value="{{form.pointMultiplier}}" data-field="pointMultiplier" bindinput="input" />
           </view>
         </view>
 
