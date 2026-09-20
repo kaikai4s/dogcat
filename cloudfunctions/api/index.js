@@ -26,14 +26,24 @@ const VISIT_FEE_SERVICE_KEY = 'visit_fee'
 const RETIRED_SERVICE_KEYS = new Set(['extra_pet'])
 const EXTRA_PET_RULES = new Set(['none', 'all', 'dog'])
 
+const defaultServiceCovers = {
+  walk: '/images/services/walk.jpg',
+  clean: '/images/services/clean.jpg',
+  feed: '/images/services/feed.jpg',
+  litter: '/images/services/litter.jpg',
+  play: '/images/services/play.jpg',
+  medicine: '/images/services/medicine.jpg',
+  visit_fee: '/images/services/visit_fee.jpg'
+}
+
 const defaultServicePrices = [
-  { key: VISIT_FEE_SERVICE_KEY, label: '上门费', price: 30, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 5, description: '每次上门服务固定收取，包含基础到店与履约保障' },
-  { key: 'walk', label: '遛狗服务', price: 39, extraPetFee: 30, extraPetRule: 'dog', showOnHome: false, enabled: true, sortOrder: 10, description: '牵引遛狗、轨迹记录、回家安置' },
-  { key: 'feed', label: '喂养服务', price: 29, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 20, description: '换粮换水、基础陪伴' },
-  { key: 'litter', label: '清理宠物厕所', price: 29, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 30, description: '猫砂盆/宠物厕所基础清理' },
-  { key: 'play', label: '陪伴玩耍', price: 39, extraPetFee: 15, extraPetRule: 'all', showOnHome: false, enabled: true, sortOrder: 40, description: '陪伴互动、安抚情绪' },
-  { key: 'medicine', label: '喂药协助', price: 49, extraPetFee: 15, extraPetRule: 'all', showOnHome: false, enabled: true, sortOrder: 50, description: '按主人说明协助喂药' },
-  { key: 'clean', label: '简单清洁', price: 39, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 60, description: '宠物活动区域简单整理' }
+  { key: VISIT_FEE_SERVICE_KEY, label: '上门费', price: 30, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 5, description: '每次上门服务固定收取，包含基础到店与履约保障', coverUrl: defaultServiceCovers.visit_fee },
+  { key: 'walk', label: '遛狗服务', price: 39, extraPetFee: 30, extraPetRule: 'dog', showOnHome: false, enabled: true, sortOrder: 10, description: '牵引遛狗、轨迹记录、回家安置', coverUrl: defaultServiceCovers.walk },
+  { key: 'feed', label: '喂养服务', price: 29, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 20, description: '换粮换水、基础陪伴', coverUrl: defaultServiceCovers.feed },
+  { key: 'litter', label: '清理宠物厕所', price: 29, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 30, description: '猫砂盆/宠物厕所基础清理', coverUrl: defaultServiceCovers.litter },
+  { key: 'play', label: '陪伴玩耍', price: 39, extraPetFee: 15, extraPetRule: 'all', showOnHome: false, enabled: true, sortOrder: 40, description: '陪伴互动、安抚情绪', coverUrl: defaultServiceCovers.play },
+  { key: 'medicine', label: '喂药协助', price: 49, extraPetFee: 15, extraPetRule: 'all', showOnHome: false, enabled: true, sortOrder: 50, description: '按主人说明协助喂药', coverUrl: defaultServiceCovers.medicine },
+  { key: 'clean', label: '简单清洁', price: 39, extraPetFee: 0, extraPetRule: 'none', showOnHome: false, enabled: true, sortOrder: 60, description: '宠物活动区域简单整理', coverUrl: defaultServiceCovers.clean }
 ]
 
 const defaultServiceCheckinRules = [
@@ -1524,6 +1534,7 @@ function normalizeServicePrice(item) {
     description: safeText(item.description || '').trim(),
     detailDescription: safeText(item.detailDescription || '').trim(),
     caseImageFileIds: normalizeServiceCaseImageFileIds(item.caseImageFileIds),
+    coverUrl: safeText(item.coverUrl || (preset && preset.coverUrl) || defaultServiceCovers[key] || '').trim(),
     isPreset: Boolean(preset)
   }
 }
@@ -8796,6 +8807,7 @@ const handlers = {
         description: safeText(data.description || (preset && preset.description)).trim(),
         detailDescription: safeText(data.detailDescription).trim().slice(0, 5000),
         caseImageFileIds: normalizeServiceCaseImageFileIds(data.caseImageFileIds),
+        coverUrl: safeText(data.coverUrl || (preset && preset.coverUrl) || defaultServiceCovers[key] || '').trim(),
         sortOrder: Number(data.sortOrder || (preset && preset.sortOrder) || 100),
         updatedAt: time
       })

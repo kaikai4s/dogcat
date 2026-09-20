@@ -5,17 +5,40 @@ const { applyTheme, getThemeState } = require('../../../utils/theme')
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'
 const RETIRED_SERVICE_KEYS = ['extra_pet']
 
+const defaultServiceCovers = {
+  walk: '/images/services/walk.jpg',
+  clean: '/images/services/clean.jpg',
+  feed: '/images/services/feed.jpg',
+  litter: '/images/services/litter.jpg',
+  play: '/images/services/play.jpg',
+  medicine: '/images/services/medicine.jpg',
+  visit_fee: '/images/services/visit_fee.jpg'
+}
+
+const CUSTOM_SERVICE_COVERS_KEY = 'custom_service_covers'
+
+function getCustomServiceCovers() {
+  try {
+    return wx.getStorageSync(CUSTOM_SERVICE_COVERS_KEY) || {}
+  } catch (e) {
+    return {}
+  }
+}
+
 function normalizeHomeServicePrices(options = []) {
+  const localCovers = getCustomServiceCovers()
   return options
     .filter((item) => item.key !== VISIT_FEE_SERVICE_KEY && !RETIRED_SERVICE_KEYS.includes(item.key) && item.enabled !== false && item.showOnHome === true)
     .map((item) => {
+      const coverUrl = item.coverUrl || localCovers[item.key] || (item.caseImageUrls && item.caseImageUrls[0]) || defaultServiceCovers[item.key] || ''
+      let res = { ...item, coverUrl }
       if (item.key === 'walk' && String(item.label || '').includes('上门')) {
-        return { ...item, label: '遛狗服务', price: 39, description: '牵引遛狗、轨迹记录、回家安置', priceText: '¥39起' }
+        res = { ...res, label: '遛狗服务', price: 39, description: '牵引遛狗、轨迹记录、回家安置', priceText: '¥39起' }
       }
       if (item.key === 'feed' && String(item.label || '').includes('上门')) {
-        return { ...item, label: '喂养服务', price: 29, description: '换粮换水、基础陪伴', priceText: '¥29起' }
+        res = { ...res, label: '喂养服务', price: 29, description: '换粮换水、基础陪伴', priceText: '¥29起' }
       }
-      return item
+      return res
     })
 }
 
@@ -255,18 +278,22 @@ Page({
     callFunction('system', 'getHomePageData', params)
       .then((homeData) => {
         const homePage = homeData.settings && homeData.settings.homePage ? homeData.settings.homePage : this.data.homePage
+        const servicePrices = normalizeHomeServicePrices(homeData.servicePrices || [])
         this.setData({
           homePage: {
             ...homePage,
             modules: { ...defaultModules, ...(homePage.modules || {}) }
           },
-          servicePrices: normalizeHomeServicePrices(homeData.servicePrices || []),
+          servicePrices,
           featuredSitters: homeData.featuredSitters || [],
           coupons: homeData.coupons || [],
           repeatOrder: homeData.repeatOrder || null,
           recentOrders: homeData.recentOrders || [],
           statsData: homeData.statsData || this.data.statsData,
           assuranceItems: homeData.assuranceItems || []
+        })
+        this.resolveHomeServiceCoverUrls(servicePrices).then((resolved) => {
+          if (resolved) this.setData({ servicePrices: resolved })
         })
         this.applyHeroCarousel(homeData.settings && homeData.settings.homeHeroCarousel)
         if (homePage.modules && homePage.modules.lottery === false) {
@@ -281,6 +308,28 @@ Page({
         this.loadHeroCarousel()
         showError(error)
       })
+  },
+
+  resolveHomeServiceCoverUrls(services = []) {
+    const cloudIds = (services || []).map((item) => item.coverUrl).filter((url) => url && url.startsWith('cloud://'))
+    if (!cloudIds.length) return Promise.resolve(services)
+    return new Promise((resolve) => {
+      wx.cloud.getTempFileURL({
+        fileList: Array.from(new Set(cloudIds)),
+        success: (res) => {
+          const map = {}
+          ;(res.fileList || []).forEach((f) => {
+            if (f.fileID && f.tempFileURL) map[f.fileID] = f.tempFileURL
+          })
+          const resolved = services.map((s) => ({
+            ...s,
+            coverUrl: (s.coverUrl && map[s.coverUrl]) || s.coverUrl
+          }))
+          resolve(resolved)
+        },
+        fail: () => resolve(services)
+      })
+    })
   },
 
   loadLottery() {

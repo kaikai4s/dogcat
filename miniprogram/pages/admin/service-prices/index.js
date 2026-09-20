@@ -24,14 +24,51 @@ function extraPetRuleText(value) {
   return item ? item.label : extraPetRuleOptions[0].label
 }
 
+const defaultServiceCovers = {
+  walk: '/images/services/walk.jpg',
+  clean: '/images/services/clean.jpg',
+  feed: '/images/services/feed.jpg',
+  litter: '/images/services/litter.jpg',
+  play: '/images/services/play.jpg',
+  medicine: '/images/services/medicine.jpg',
+  visit_fee: '/images/services/visit_fee.jpg'
+}
+
+const CUSTOM_SERVICE_COVERS_KEY = 'custom_service_covers'
+
+function getCustomServiceCovers() {
+  try {
+    return wx.getStorageSync(CUSTOM_SERVICE_COVERS_KEY) || {}
+  } catch (e) {
+    return {}
+  }
+}
+
+function setCustomServiceCover(key, coverUrl) {
+  if (!key) return
+  try {
+    const covers = getCustomServiceCovers()
+    if (coverUrl && coverUrl !== defaultServiceCovers[key]) {
+      covers[key] = coverUrl
+    } else {
+      delete covers[key]
+    }
+    wx.setStorageSync(CUSTOM_SERVICE_COVERS_KEY, covers)
+  } catch (e) {}
+}
+
 function decoratePrice(item = {}) {
   const key = String(item.key || '').trim()
   const enabled = item.enabled !== false
   const caseImageFileIds = Array.isArray(item.caseImageFileIds) ? item.caseImageFileIds.filter(Boolean).slice(0, 9) : []
+  const customCovers = getCustomServiceCovers()
+  const coverUrl = item.coverUrl || customCovers[key] || defaultServiceCovers[key] || ''
   return {
     ...item,
     key,
     enabled,
+    coverUrl,
+    coverDisplayUrl: item.coverDisplayUrl || (coverUrl.startsWith('cloud://') ? '' : coverUrl),
     extraHalfHourFee: item.extraHalfHourFee || 0,
     internExtraHalfHourFee: item.internExtraHalfHourFee || 0,
     detailDescription: item.detailDescription || '',
@@ -69,7 +106,9 @@ Page({
     showPriceModal: false,
     priceForm: {},
     priceFormIndex: -1,
-    uploadingServiceCase: false
+    uploadingServiceCase: false,
+    uploadingCover: false,
+    defaultCovers: defaultServiceCovers
   },
 
   onShow() {
@@ -84,8 +123,32 @@ Page({
       .then(([prices, rules]) => {
         const decorated = (prices || []).map(decoratePrice)
         this.setData({ prices: decorated, ruleGroups: groupRules(rules, decorated) })
+        return this.resolveServicePricesCoverUrls(decorated)
+      })
+      .then((pricesWithDisplay) => {
+        if (pricesWithDisplay) this.setData({ prices: pricesWithDisplay })
       })
       .catch(showError)
+  },
+
+  resolveServicePricesCoverUrls(prices = []) {
+    const cloudIds = (prices || []).map((item) => item.coverUrl).filter((url) => url && url.startsWith('cloud://'))
+    if (!cloudIds.length) return Promise.resolve(prices)
+    return new Promise((resolve) => {
+      wx.cloud.getTempFileURL({
+        fileList: Array.from(new Set(cloudIds)),
+        success: (res) => {
+          const map = {}
+          ;(res.fileList || []).forEach((item) => { if (item.fileID) map[item.fileID] = item.tempFileURL || item.fileID })
+          const resolved = prices.map((p) => ({
+            ...p,
+            coverDisplayUrl: (p.coverUrl && map[p.coverUrl]) || p.coverUrl
+          }))
+          resolve(resolved)
+        },
+        fail: () => resolve(prices)
+      })
+    })
   },
 
   noop() {},
@@ -210,12 +273,97 @@ Page({
     const item = this.data.prices[index]
     if (!item) return
     const priceForm = decoratePrice({ ...item })
-    this.setData({ priceForm, priceFormIndex: index, showPriceModal: true }, () => this.resolveCaseImageUrls(priceForm.caseImageFileIds))
+    this.setData({ priceForm, priceFormIndex: index, showPriceModal: true }, () => {
+      this.resolveCaseImageUrls(priceForm.caseImageFileIds)
+      this.resolveCoverDisplayUrl(priceForm.coverUrl)
+    })
+  },
+
+  resolveCoverDisplayUrl(url) {
+    if (!url) {
+      this.setData({ 'priceForm.coverDisplayUrl': '' })
+      return
+    }
+    if (url.startsWith('cloud://')) {
+      wx.cloud.getTempFileURL({
+        fileList: [url],
+        success: (res) => {
+          const item = res.fileList && res.fileList[0]
+          this.setData({ 'priceForm.coverDisplayUrl': (item && item.tempFileURL) || url })
+        },
+        fail: () => this.setData({ 'priceForm.coverDisplayUrl': url })
+      })
+    } else {
+      this.setData({ 'priceForm.coverDisplayUrl': url })
+    }
   },
 
   closePriceModal() {
-    if (this.data.uploadingServiceCase) return
+    if (this.data.uploadingServiceCase || this.data.uploadingCover) return
     this.setData({ showPriceModal: false, priceForm: {}, priceFormIndex: -1 })
+  },
+
+  chooseCoverImage() {
+    if (this.data.uploadingCover) return
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const file = res.tempFiles && res.tempFiles[0]
+        if (!file) return
+        this.setData({ uploadingCover: true })
+        wx.showLoading({ title: '上传封面中...' })
+        this.uploadCoverImage(file.tempFilePath)
+          .then((fileID) => {
+            wx.hideLoading()
+            this.setData({
+              uploadingCover: false,
+              'priceForm.coverUrl': fileID,
+              'priceForm.coverDisplayUrl': file.tempFilePath
+            })
+            wx.showToast({ title: '封面已上传，请保存', icon: 'none' })
+          })
+          .catch((error) => {
+            wx.hideLoading()
+            this.setData({ uploadingCover: false })
+            showError(error)
+          })
+      },
+      fail: (error) => {
+        if (error && error.errMsg && !error.errMsg.includes('cancel')) showError(error)
+      }
+    })
+  },
+
+  uploadCoverImage(filePath) {
+    const key = String(this.data.priceForm.key || 'service').replace(/[^a-zA-Z0-9_]/g, '') || 'service'
+    const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+    const cloudPath = `service_covers/${key}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}${ext}`
+    return new Promise((resolve, reject) => {
+      wx.cloud.uploadFile({
+        cloudPath,
+        filePath,
+        success: (upload) => resolve(upload.fileID),
+        fail: reject
+      })
+    })
+  },
+
+  resetCoverToDefault() {
+    const key = this.data.priceForm.key
+    const defaultUrl = defaultServiceCovers[key] || ''
+    setCustomServiceCover(key, '')
+    this.setData({
+      'priceForm.coverUrl': defaultUrl,
+      'priceForm.coverDisplayUrl': defaultUrl
+    })
+    wx.showToast({ title: '已恢复默认封面', icon: 'none' })
+  },
+
+  previewCoverImage() {
+    const url = this.data.priceForm.coverDisplayUrl || this.data.priceForm.coverUrl
+    if (url) wx.previewImage({ current: url, urls: [url] })
   },
 
   addService() {
@@ -226,10 +374,10 @@ Page({
 
   chooseServiceCaseImages() {
     if (this.data.uploadingServiceCase) return
-    const current = this.data.priceForm.caseImageFileIds || []
-    const remain = 9 - current.length
+    const currentCount = (this.data.priceForm.caseImageFileIds || []).length
+    const remain = Math.max(9 - currentCount, 0)
     if (remain <= 0) {
-      wx.showToast({ title: '最多上传9张案例图', icon: 'none' })
+      wx.showToast({ title: '最多上传9张图片', icon: 'none' })
       return
     }
     wx.chooseMedia({
@@ -237,21 +385,20 @@ Page({
       mediaType: ['image'],
       sourceType: ['album', 'camera'],
       success: (res) => {
-        const files = res.tempFiles || []
+        const files = (res.tempFiles || []).filter((item) => item && item.tempFilePath)
         if (!files.length) return
         this.setData({ uploadingServiceCase: true })
-        wx.showLoading({ title: '上传图片中...' })
-        files.reduce((chain, file) => chain.then(() => this.uploadServiceCaseImage(file.tempFilePath)), Promise.resolve())
+        wx.showLoading({ title: '上传案例图片中...' })
+        Promise.all(files.map((file) => this.uploadServiceCaseImage(file.tempFilePath)))
           .then(() => {
             wx.hideLoading()
             this.setData({ uploadingServiceCase: false })
             this.resolveCaseImageUrls(this.data.priceForm.caseImageFileIds)
-            wx.showToast({ title: '图片已上传，请保存服务', icon: 'none' })
+            wx.showToast({ title: '上传成功' })
           })
           .catch((error) => {
             wx.hideLoading()
             this.setData({ uploadingServiceCase: false })
-            this.resolveCaseImageUrls(this.data.priceForm.caseImageFileIds)
             showError(error)
           })
       },
@@ -292,21 +439,33 @@ Page({
   },
 
   savePriceForm() {
-    if (this.data.uploadingServiceCase) return
+    if (this.data.uploadingServiceCase || this.data.uploadingCover) return
     const item = decoratePrice(this.data.priceForm)
+    // 立即持久化封面到本地缓存，即使后端云函数尚未重新部署也能立即生效
+    if (item.coverUrl) {
+      setCustomServiceCover(item.key, item.coverUrl)
+    }
     const doSave = () => {
+      wx.showLoading({ title: '保存中...' })
       callFunction('admin', 'saveServicePrice', item)
         .then(() => Promise.all([
           callFunction('admin', 'listServicePrices'),
           callFunction('admin', 'listServiceCheckinRules')
         ]))
         .then(([prices, rules]) => {
+          wx.hideLoading()
           const decorated = (prices || []).map(decoratePrice)
           this.setData({ prices: decorated, ruleGroups: groupRules(rules, decorated) })
+          this.resolveServicePricesCoverUrls(decorated).then((withDisplay) => {
+            if (withDisplay) this.setData({ prices: withDisplay })
+          })
           this.closePriceModal()
           wx.showToast({ title: '服务已保存' })
         })
-        .catch(showError)
+        .catch((err) => {
+          wx.hideLoading()
+          showError(err)
+        })
     }
     if ((item.key === 'walk' || item.key === 'play') && (!Number(item.extraHalfHourFee) || !Number(item.internExtraHalfHourFee))) {
       wx.showModal({

@@ -14,6 +14,7 @@
 
   <view class="admin-compact-card service-summary-card" wx:for="{{prices}}" wx:key="key">
     <view class="admin-summary-row">
+      <image class="admin-service-thumb" wx:if="{{item.coverDisplayUrl || item.coverUrl}}" src="{{item.coverDisplayUrl || item.coverUrl}}" mode="aspectFill" />
       <view class="admin-summary-main">
         <view class="admin-summary-title">{{item.label || '新服务'}}</view>
         <view class="admin-summary-sub">{{item.key || '待填写标识'}} · {{item.extraPetRuleText}}</view>
@@ -119,6 +120,32 @@
         <input type="number" placeholder="排序，数字越小越靠前" value="{{priceForm.sortOrder}}" data-field="sortOrder" bindinput="input" />
         <textarea placeholder="服务说明（简短展示在服务卡片上）" maxlength="200" value="{{priceForm.description}}" data-field="description" bindinput="input" />
         <textarea class="detail-textarea" placeholder="详细说明（展示在用户下单页，可填写服务流程、包含内容、注意事项等）" maxlength="5000" value="{{priceForm.detailDescription}}" data-field="detailDescription" bindinput="input" />
+
+        <view class="case-section cover-section">
+          <view class="cover-header">
+            <view class="strong">服务封面图片</view>
+            <view class="muted">首页热门服务及预约列表展示（建议4:3比例）</view>
+          </view>
+          <view class="admin-cover-box interactive" wx:if="{{priceForm.coverDisplayUrl || priceForm.coverUrl}}" bindtap="previewCoverImage">
+            <image class="admin-cover-img" mode="aspectFill" src="{{priceForm.coverDisplayUrl || priceForm.coverUrl}}" />
+            <view class="cover-hover-tag">点击大图预览</view>
+          </view>
+          <view class="empty-cover-uploader interactive" wx:else bindtap="chooseCoverImage">
+            <view class="remix-icon ri-image-add-line uploader-icon"></view>
+            <view class="uploader-text">点击上传封面图片</view>
+            <view class="uploader-sub">建议上传 4:3 比例，让人一眼看出服务类型</view>
+          </view>
+          <view class="cover-actions-bar" wx:if="{{priceForm.coverDisplayUrl || priceForm.coverUrl}}">
+            <button class="cover-action-btn primary-soft-btn" loading="{{uploadingCover}}" disabled="{{uploadingCover}}" catchtap="chooseCoverImage">
+              <text class="remix-icon ri-image-edit-line btn-icon"></text>
+              <text>更换封面</text>
+            </button>
+            <button class="cover-action-btn ghost-btn" wx:if="{{defaultCovers[priceForm.key] && priceForm.coverUrl !== defaultCovers[priceForm.key]}}" catchtap="resetCoverToDefault">
+              <text class="remix-icon ri-restart-line btn-icon"></text>
+              <text>恢复默认</text>
+            </button>
+          </view>
+        </view>
 
         <view class="case-section">
           <view class="compact-switch-row case-head">

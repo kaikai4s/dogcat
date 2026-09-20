@@ -56,12 +56,6 @@
   </view>
 
   <view class="home-section service-entry-section">
-    <view class="section-heading">
-      <view>
-        <view class="section-title">今天需要哪种照护？</view>
-        <view class="section-desc">选择服务后，系统会带你完成预约</view>
-      </view>
-    </view>
     <view class="service-entry-grid">
       <view class="service-entry-card cat interactive" data-url="/pages/client/orders/create/index?serviceType=feed" bindtap="goProtected">
         <view class="service-entry-copy"><view class="service-entry-title">上门喂养</view><view class="service-entry-desc">换粮换水、陪伴全记录</view></view>
@@ -117,7 +111,10 @@
     <view class="section-heading"><view><view class="section-title">热门服务</view><view class="section-desc">按常用项目快速了解价格</view></view><view class="section-link" data-url="/pages/client/orders/create/index" bindtap="goProtected">去下单</view></view>
     <scroll-view scroll-x class="service-scroll">
       <view class="service-price-card interactive" wx:for="{{servicePrices}}" wx:key="key" data-url="/pages/client/orders/create/index?serviceType={{item.key}}" bindtap="goProtected">
-        <view class="remix-icon ri-price-tag-3-fill service-price-icon"></view>
+        <view class="service-cover-wrap">
+          <image class="service-cover-img" wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill" />
+          <view class="remix-icon ri-price-tag-3-fill service-price-icon" wx:else></view>
+        </view>
         <view class="service-price-name">{{item.label}}</view>
         <view class="service-price-desc">{{item.description}}</view>
         <view class="service-price-text">{{item.priceText}}</view>

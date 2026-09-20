@@ -934,7 +934,7 @@ button::after { border: none; }
 
 .mini-btn,
 button[size="mini"] {
-  width: auto;
+  width: auto !important;
   min-height: 58rpx;
   padding: 0 28rpx;
   margin: 18rpx 0 0;

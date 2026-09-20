@@ -370,7 +370,6 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18rpx;
-  margin-top: 24rpx;
 }
 
 .service-entry-card {
@@ -541,14 +540,31 @@
 }
 
 .service-price-card {
-  width: 250rpx;
-  min-height: 250rpx;
+  width: 270rpx;
+  min-height: 330rpx;
+}
+
+.service-cover-wrap {
+  width: 100%;
+  height: 168rpx;
+  border-radius: 20rpx;
+  overflow: hidden;
+  margin-bottom: 14rpx;
+  background: #fff5ee;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.service-cover-img {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .service-price-icon {
   width: 58rpx;
   height: 58rpx;
-  margin-bottom: 14rpx;
   border-radius: 22rpx;
   color: #e9672f;
   background: #fff0e2;

@@ -11,8 +11,14 @@
     <view class="points-meta">累计获得 {{totalPoints}} 积分 · 当前 {{pointMultiplier}} 倍积分</view>
     <view class="points-meta">补签卡 {{retroCardCount}} 张</view>
     <view class="quick-actions">
-      <button class="primary-btn" bindtap="openCheckin"><text class="remix-icon ri-calendar-check-line"></text><text>签到中心</text></button>
-      <button class="primary-btn lottery-btn" bindtap="openLottery"><text class="remix-icon ri-gift-line"></text><text>幸运抽奖</text></button>
+      <view class="action-btn checkin-btn" hover-class="action-btn-hover" bindtap="openCheckin">
+        <text class="remix-icon ri-calendar-check-line btn-icon"></text>
+        <text class="btn-text">签到中心</text>
+      </view>
+      <view class="action-btn lottery-btn" hover-class="action-btn-hover" bindtap="openLottery">
+        <text class="remix-icon ri-gift-line btn-icon"></text>
+        <text class="btn-text">幸运抽奖</text>
+      </view>
     </view>
   </view>
 

@@ -1045,6 +1045,7 @@ test('admin can configure extra pet fee home visibility and custom services', as
   const deleted = await adminFn.main({ module: 'admin', action: 'deleteServicePrice', data: { key: 'grooming' } })
 
   assert.equal(saveWalk.ok, true)
+  assert.equal(saveWalk.data.coverUrl, '/images/services/walk.jpg')
   assert.equal(quote.ok, true)
   assert.equal(quote.data.payAmount, 114)
   assert.equal(home.ok, true)
@@ -1053,6 +1054,16 @@ test('admin can configure extra pet fee home visibility and custom services', as
   assert.equal(showWalkOnHome.data.showOnHome, true)
   assert.equal(listAfterShowOnHome.ok, true)
   assert.equal(listAfterShowOnHome.data.find((item) => item.key === 'walk').showOnHome, true)
+
+  // Test admin custom cover upload and fallback
+  const customCover = await adminFn.main({ module: 'admin', action: 'saveServicePrice', data: { key: 'walk', label: '遛狗服务', price: 39, coverUrl: 'cloud://bucket/my_walk_cover.png', showOnHome: true, enabled: true } })
+  assert.equal(customCover.ok, true)
+  assert.equal(customCover.data.coverUrl, 'cloud://bucket/my_walk_cover.png')
+  const homeWithCustomCover = await clientFn.main({ module: 'system', action: 'getHomePageData', data: {} })
+  const walkOnHome = homeWithCustomCover.data.servicePrices.find((item) => item.key === 'walk')
+  assert.ok(walkOnHome)
+  assert.equal(walkOnHome.coverUrl, 'cloud://bucket/my_walk_cover.png')
+
   assert.equal(custom.ok, true)
   assert.equal(custom.data.extraPetFee, 12)
   assert.equal(rules.ok, true)

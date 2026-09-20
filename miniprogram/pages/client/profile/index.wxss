@@ -39,6 +39,7 @@
 
 .settings-hero,
 .profile-hero {
+  position: relative;
   padding: 34rpx 30rpx 42rpx;
   border-bottom-left-radius: 48rpx;
   border-bottom-right-radius: 48rpx;
@@ -199,27 +200,33 @@
 }
 
 .profile-level-tag-row {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 12rpx;
   margin-top: 10rpx;
+  max-width: 100%;
 }
 
 .profile-level-mini-badge {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 4rpx 14rpx;
   border-radius: 999rpx;
   color: #ffffff;
   background: linear-gradient(135deg, #ff8a45 0%, #e9672f 100%);
   font-size: 20rpx;
   font-weight: 900;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .profile-level-mini-detail {
+  flex-shrink: 0;
+  white-space: nowrap;
   color: #d45f22;
   font-size: 22rpx;
   font-weight: 850;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .profile-avatar-wrap {
@@ -256,10 +263,12 @@
 .profile-name-row {
   gap: 12rpx;
   flex-wrap: wrap;
+  padding-right: 150rpx;
+  box-sizing: border-box;
 }
 
 .profile-name {
-  max-width: 360rpx;
+  max-width: 320rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -288,14 +297,19 @@
 }
 
 .checkin-pill {
+  position: absolute;
+  right: 30rpx;
+  top: 36rpx;
+  z-index: 2;
   flex-shrink: 0;
-  padding: 14rpx 18rpx;
+  padding: 12rpx 20rpx;
   border-radius: 999rpx;
   color: #ffffff;
   background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
   font-size: 24rpx;
   font-weight: 900;
   box-shadow: 0 12rpx 28rpx rgba(255, 122, 69, 0.24);
+  white-space: nowrap;
 }
 
 .guest-card {

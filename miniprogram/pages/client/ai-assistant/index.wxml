@@ -10,16 +10,33 @@
     </view>
   </view>
 
+  <view class="ai-disclaimer-strip">
+    <text class="remix-icon ri-shield-check-line strip-icon"></text>
+    <text class="strip-text">免责提示：AI 生成内容可能存在不准确或虚构，仅供参考，不作为专业医疗诊疗建议。</text>
+  </view>
+
   <view class="chat-list">
     <block wx:for="{{messages}}" wx:key="index">
-      <view class="chat-msg {{item.role}}">
-        <text selectable="{{true}}">{{item.content}}</text>
+      <view class="chat-item {{item.role}}">
+        <view class="chat-msg {{item.role}}">
+          <text selectable="{{true}}">{{item.content}}</text>
+        </view>
+        <view class="ai-msg-tip" wx:if="{{item.role === 'ai' && item.content}}">
+          <text class="remix-icon ri-sparkling-fill"></text>
+          <text>AI 生成仅供参考 · 急症请及时就医</text>
+        </view>
       </view>
     </block>
   </view>
 
-  <view class="input-bar">
-    <input placeholder="请输入养宠或服务咨询问题..." value="{{inputText}}" bindinput="onInput" bindconfirm="send" />
-    <button class="send-btn" loading="{{loading}}" bindtap="send"><text class="remix-icon ri-send-plane-fill"></text><text>发送</text></button>
+  <view class="input-wrap">
+    <view class="input-row">
+      <input placeholder="请输入养宠或服务咨询问题..." value="{{inputText}}" bindinput="onInput" bindconfirm="send" />
+      <button class="send-btn" loading="{{loading}}" bindtap="send"><text class="remix-icon ri-send-plane-fill"></text><text>发送</text></button>
+    </view>
+    <view class="input-disclaimer">
+      <text class="remix-icon ri-information-line"></text>
+      <text>AI 技术生成内容仅供参考，涉及疾病诊疗与用药请以专业兽医为准</text>
+    </view>
   </view>
 </view>
