@@ -1,8 +1,30 @@
 <view class="page report-page {{themeClass}} {{fontClass}}" wx:if="{{report}}">
   <view class="report-hero">
-    <view class="hero-badge"><text class="remix-icon ri-file-text-fill hero-icon"></text><text>完成报告</text></view>
+    <view class="hero-top-row">
+      <view class="hero-badge"><text class="remix-icon ri-file-text-fill hero-icon"></text><text>完成报告</text></view>
+      <button class="hero-export-btn" bindtap="openExportModal">
+        <text class="remix-icon ri-share-forward-line"></text>
+        <text>导出海报</text>
+      </button>
+    </view>
     <view class="hero-title">服务报告</view>
     <view class="hero-desc">服务完成后自动汇总轨迹、打卡照片和履约证据。</view>
+  </view>
+
+  <view class="export-banner-card interactive" bindtap="openExportModal">
+    <view class="export-banner-left">
+      <view class="export-magic-icon-wrap">
+        <text class="remix-icon ri-sparkling-fill magic-sparkle"></text>
+      </view>
+      <view class="export-banner-texts">
+        <view class="export-banner-title">导出社交平台精美海报</view>
+        <view class="export-banner-sub">一键生成小红书/抖音图文日记，支持保存相册</view>
+      </view>
+    </view>
+    <view class="export-banner-cta">
+      <text>去生成</text>
+      <text class="remix-icon ri-arrow-right-s-line"></text>
+    </view>
   </view>
 
   <view class="summary-card">
@@ -58,4 +80,147 @@
     </view>
     <view wx:if="{{aiSummary}}" class="ai-summary">{{aiSummary}}</view>
   </view>
+
+  <!-- 导出海报模态抽屉 -->
+  <view class="poster-modal-mask" wx:if="{{showExportModal}}" catchtouchmove="noop">
+    <view class="poster-modal-card" catchtap="noop">
+      <view class="poster-modal-header">
+        <view class="poster-modal-title">导出服务精美海报</view>
+        <view class="poster-modal-close" bindtap="closeExportModal">×</view>
+      </view>
+
+      <!-- 模板选择器 -->
+      <view class="template-tabs">
+        <view class="tab-item {{currentTemplate === 'diary' ? 'active' : ''}}" data-tpl="diary" bindtap="switchTemplate">
+          <text class="tab-icon">🎀</text>
+          <text>小红书日记</text>
+        </view>
+        <view class="tab-item {{currentTemplate === 'magazine' ? 'active' : ''}}" data-tpl="magazine" bindtap="switchTemplate">
+          <text class="tab-icon">🗞️</text>
+          <text>时尚宠刊</text>
+        </view>
+        <view class="tab-item {{currentTemplate === 'certified' ? 'active' : ''}}" data-tpl="certified" bindtap="switchTemplate">
+          <text class="tab-icon">🛡️</text>
+          <text>安心认证</text>
+        </view>
+      </view>
+
+      <!-- 封面挑选横滑栏（若有多张照片） -->
+      <view class="cover-selector-row" wx:if="{{allPhotos.length > 1}}">
+        <view class="selector-label">挑选海报主图：</view>
+        <scroll-view scroll-x class="cover-thumbs-scroll">
+          <view class="thumb-wrap {{selectedPhotoIndex === index ? 'active' : ''}}" wx:for="{{allPhotos}}" wx:key="*this" data-index="{{index}}" bindtap="selectPosterCover">
+            <image class="thumb-img" src="{{item}}" mode="aspectFill" />
+          </view>
+        </scroll-view>
+      </view>
+
+      <!-- 海报核心预览卡片容器 -->
+      <scroll-view scroll-y class="poster-preview-scroll">
+        <view class="poster-render-card theme-{{currentTemplate}}" id="posterPreviewCard">
+          <!-- 胶带装饰（日记风独有） -->
+          <view class="washi-tape" wx:if="{{currentTemplate === 'diary'}}"></view>
+
+          <!-- 海报顶部栏 -->
+          <view class="poster-top-bar">
+            <view class="poster-brand-tag">
+              <text class="brand-dot"></text>
+              <text>{{currentTemplate === 'magazine' ? 'PET LIFE JOURNAL' : (currentTemplate === 'certified' ? '与宠同乐 · 官方履约认证' : '与宠同乐 · 今日托管手账')}}</text>
+            </view>
+            <view class="poster-date-badge">{{serviceDateText || '服务已圆满完成'}}</view>
+          </view>
+
+          <!-- 宠物主副标题 -->
+          <view class="poster-pet-header">
+            <view class="pet-title-row">
+              <text class="pet-main-title">{{petDisplayName}}</text>
+              <text class="pet-species-pill">{{petSpeciesText}}</text>
+              <text class="pet-honor-pill" wx:if="{{petBeautyTitle}}">{{petBeautyTitle}}</text>
+            </view>
+            <view class="poster-sub-slogan">{{currentTemplate === 'magazine' ? 'EXCLUSIVE CARE REPORT · VOL. 2026' : (currentTemplate === 'certified' ? '专业宠托全链服务 · 100% 实名与合规验证' : '又是被宝贝治愈的一天 ✨ 干粮吃光光 乖巧满分')}}</view>
+          </view>
+
+          <!-- 海报 Hero 大图卡片 -->
+          <view class="poster-hero-photo-wrap">
+            <image class="poster-hero-photo" src="{{heroPhotoUrl}}" mode="aspectFill" />
+            <view class="hero-polaroid-caption" wx:if="{{currentTemplate === 'diary'}}">
+              <text class="caption-icon remix-icon ri-heart-3-fill"></text>
+              <text class="caption-text">{{serviceSummaryText}} · 快乐记录</text>
+            </view>
+            <view class="hero-magazine-badge" wx:elif="{{currentTemplate === 'magazine'}}">
+              <text class="badge-big">VERIFIED</text>
+              <text class="badge-small">PLATFORM ASSURED</text>
+            </view>
+            <view class="hero-certified-seal" wx:else>
+              <view class="seal-inner">
+                <text class="seal-top">安心履约</text>
+                <text class="seal-mid">合格</text>
+                <text class="seal-bot">PASS</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 履约亮点多图拼贴（2~4张） -->
+          <view class="poster-checkins-grid" wx:if="{{evidencePhotos.length}}">
+            <view class="grid-item" wx:for="{{evidencePhotos}}" wx:key="*this">
+              <image class="grid-item-photo" src="{{item.url}}" mode="aspectFill" />
+              <view class="grid-item-tag">{{item.label}}</view>
+            </view>
+          </view>
+
+          <!-- 核心指标气泡行 -->
+          <view class="poster-metrics-row">
+            <view class="metric-pill"><text class="metric-val">✅ 准时到达</text></view>
+            <view class="metric-pill"><text class="metric-val">🥣 饮水进食正常</text></view>
+            <view class="metric-pill"><text class="metric-val">🧹 环境清理消毒</text></view>
+            <view class="metric-pill highlight"><text class="metric-val">💯 状态满分</text></view>
+          </view>
+
+          <!-- 宠托师手记/AI总结 -->
+          <view class="poster-notes-card">
+            <view class="notes-quote-mark">“</view>
+            <view class="notes-body">{{displayDiaryContent}}</view>
+            <view class="notes-quote-mark end">”</view>
+          </view>
+
+          <!-- 海报底部背书栏 -->
+          <view class="poster-footer-bar">
+            <view class="footer-staff-info">
+              <view class="staff-avatar-mini remix-icon ri-shield-user-fill"></view>
+              <view class="staff-meta">
+                <view class="staff-name-row">
+                  <text class="staff-name">{{staffDisplayName}}</text>
+                  <text class="staff-role-pill">平台认证宠托师</text>
+                </view>
+                <view class="staff-assurance-tip">服务编号：{{report.order.orderNo}}</view>
+              </view>
+            </view>
+            <view class="footer-seal-wrap">
+              <view class="official-circle-seal">
+                <text class="seal-arc">与宠同乐·品质保障</text>
+                <text class="seal-star">★ ★ ★ ★ ★</text>
+                <text class="seal-code">AUDITED</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+
+      <!-- 底部动作条 -->
+      <view class="poster-actions-bar">
+        <button class="action-btn copy-btn" bindtap="copySocialMediaPost">
+          <text class="remix-icon ri-file-copy-2-line btn-icon"></text>
+          <text>复制社媒文案</text>
+        </button>
+        <button class="action-btn save-btn" loading="{{generatingPoster}}" disabled="{{generatingPoster}}" bindtap="savePosterToAlbum">
+          <text class="remix-icon ri-download-2-line btn-icon"></text>
+          <text>{{generatingPoster ? '正在生成海报...' : '保存高清海报到相册'}}</text>
+        </button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 离屏 Canvas 画布（用于绘制 750x1334 高清海报导出图片） -->
+  <canvas type="2d" id="exportCanvas" class="offscreen-canvas" style="position: fixed; left: -9999px; width: 750px; height: 1334px;"></canvas>
 </view>
+

@@ -16,17 +16,44 @@
   box-shadow: 0 18rpx 44rpx rgba(123, 89, 62, 0.08);
 }
 
+.hero-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
 .hero-badge {
   display: inline-flex;
   align-items: center;
   gap: 8rpx;
-  padding: 6rpx 18rpx;
+  padding: 8rpx 20rpx;
   border-radius: 999rpx;
   color: #d45f22;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.9);
   font-size: 24rpx;
   font-weight: 850;
-  margin-bottom: 16rpx;
+  box-shadow: 0 4rpx 12rpx rgba(212, 95, 34, 0.08);
+}
+
+.hero-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 10rpx 26rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #ff7a45 0%, #ff4d4f 100%);
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 850;
+  box-shadow: 0 6rpx 18rpx rgba(255, 77, 79, 0.25);
+  border: none;
+  line-height: 1.2;
+}
+
+.hero-export-btn:active {
+  transform: scale(0.96);
+  opacity: 0.92;
 }
 
 .hero-icon { font-size: 28rpx; }
@@ -43,6 +70,91 @@
   color: #7a6a5e;
   font-size: 24rpx;
   line-height: 1.4;
+}
+
+/* 导出海报引流 Banner */
+.export-banner-card {
+  margin-bottom: 24rpx;
+  padding: 24rpx 28rpx;
+  border-radius: 32rpx;
+  background: linear-gradient(135deg, #fff6ed 0%, #ffe9d9 45%, #fff1f8 100%);
+  border: 2rpx solid rgba(255, 122, 69, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 12rpx 32rpx rgba(255, 122, 69, 0.12);
+  transition: all 0.2s ease;
+}
+
+.export-banner-card:active {
+  transform: scale(0.98);
+  opacity: 0.95;
+}
+
+.export-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  flex: 1;
+  min-width: 0;
+}
+
+.export-magic-icon-wrap {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 22rpx;
+  background: linear-gradient(135deg, #ff7a45 0%, #fa541c 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 38rpx;
+  box-shadow: 0 8rpx 20rpx rgba(250, 84, 28, 0.3);
+  flex-shrink: 0;
+}
+
+.magic-sparkle {
+  animation: pulse-glow 2s infinite ease-in-out;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.85; }
+}
+
+.export-banner-texts {
+  flex: 1;
+  min-width: 0;
+}
+
+.export-banner-title {
+  font-size: 28rpx;
+  font-weight: 900;
+  color: #2d211a;
+  line-height: 1.3;
+}
+
+.export-banner-sub {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #926b53;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.export-banner-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 10rpx 22rpx;
+  border-radius: 999rpx;
+  background: #ffffff;
+  color: #e9672f;
+  font-size: 24rpx;
+  font-weight: 850;
+  box-shadow: 0 4rpx 14rpx rgba(233, 103, 47, 0.15);
+  flex-shrink: 0;
 }
 
 .summary-card,
@@ -279,3 +391,834 @@
   margin-top: 12rpx;
   font-size: 26rpx;
 }
+
+/* ===================================================
+   服务报告精美海报导出模态抽屉与多主题卡片样式
+   =================================================== */
+
+.poster-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(12, 9, 8, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  animation: modal-fade-in 0.25s ease-out;
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.poster-modal-card {
+  width: 100%;
+  max-height: 92vh;
+  background: #ffffff;
+  border-top-left-radius: 44rpx;
+  border-top-right-radius: 44rpx;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 -16rpx 48rpx rgba(0, 0, 0, 0.25);
+  animation: slide-up 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.poster-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx 36rpx 20rpx;
+}
+
+.poster-modal-title {
+  font-size: 34rpx;
+  font-weight: 950;
+  color: #2d211a;
+  letter-spacing: 0.5rpx;
+}
+
+.poster-modal-close {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  background: #f5efe9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38rpx;
+  color: #8c7c72;
+  font-weight: 300;
+  line-height: 1;
+}
+
+/* 模板切换器 */
+.template-tabs {
+  display: flex;
+  background: #f4eee9;
+  border-radius: 24rpx;
+  padding: 8rpx;
+  margin: 0 36rpx 20rpx;
+  gap: 8rpx;
+}
+
+.tab-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 14rpx 0;
+  border-radius: 18rpx;
+  font-size: 24rpx;
+  font-weight: 850;
+  color: #7d6b60;
+  transition: all 0.22s ease;
+}
+
+.tab-item.active {
+  background: #ffffff;
+  color: #ff5722;
+  box-shadow: 0 6rpx 18rpx rgba(255, 87, 34, 0.15);
+}
+
+.tab-icon {
+  font-size: 26rpx;
+}
+
+/* 封面主图挑选横滑栏 */
+.cover-selector-row {
+  display: flex;
+  align-items: center;
+  padding: 0 36rpx 18rpx;
+  gap: 14rpx;
+}
+
+.selector-label {
+  font-size: 22rpx;
+  font-weight: 850;
+  color: #8e7a6f;
+  flex-shrink: 0;
+}
+
+.cover-thumbs-scroll {
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.thumb-wrap {
+  display: inline-block;
+  width: 78rpx;
+  height: 78rpx;
+  border-radius: 16rpx;
+  margin-right: 14rpx;
+  overflow: hidden;
+  border: 3rpx solid transparent;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.thumb-wrap.active {
+  border-color: #ff5722;
+  box-shadow: 0 4rpx 12rpx rgba(255, 87, 34, 0.35);
+  transform: scale(1.06);
+}
+
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 12rpx;
+}
+
+/* 海报预览滚动区 */
+.poster-preview-scroll {
+  flex: 1;
+  max-height: 58vh;
+  padding: 10rpx 40rpx 36rpx;
+  background: #f7f3ee;
+  box-sizing: border-box;
+}
+
+/* ====================
+   海报卡片核心设计 (3套主题)
+   ==================== */
+.poster-render-card {
+  width: 100%;
+  border-radius: 36rpx;
+  padding: 36rpx 32rpx;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 20rpx 60rpx rgba(84, 53, 30, 0.18);
+  transition: all 0.3s ease;
+}
+
+/* --- 主题 1: 小红书手账日记风 (theme-diary) --- */
+.poster-render-card.theme-diary {
+  background: linear-gradient(180deg, #fffcf7 0%, #fff7ec 42%, #ffefe0 100%);
+  border: 4rpx solid #fff;
+}
+
+.poster-render-card.theme-diary .washi-tape {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 170rpx;
+  height: 32rpx;
+  background: repeating-linear-gradient(45deg, rgba(255, 209, 102, 0.8), rgba(255, 209, 102, 0.8) 10rpx, rgba(255, 178, 56, 0.8) 10rpx, rgba(255, 178, 56, 0.8) 20rpx);
+  box-shadow: 0 4rpx 8rpx rgba(0, 0, 0, 0.08);
+  border-radius: 0 0 6rpx 6rpx;
+  opacity: 0.85;
+}
+
+.poster-render-card.theme-diary .poster-brand-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  background: #ffffff;
+  color: #d46328;
+  font-size: 22rpx;
+  font-weight: 850;
+  box-shadow: 0 4rpx 12rpx rgba(212, 99, 40, 0.08);
+}
+
+.poster-render-card.theme-diary .brand-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #ff7a45;
+}
+
+.poster-render-card.theme-diary .poster-date-badge {
+  font-size: 22rpx;
+  color: #967f70;
+  font-weight: 800;
+}
+
+.poster-render-card.theme-diary .pet-main-title {
+  color: #2e1d13;
+  font-size: 40rpx;
+  font-weight: 950;
+}
+
+.poster-render-card.theme-diary .pet-species-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  background: #ffe3d3;
+  color: #cf5618;
+  font-size: 20rpx;
+  font-weight: 850;
+}
+
+.poster-render-card.theme-diary .pet-honor-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  background: #fff3bf;
+  color: #b46b00;
+  font-size: 20rpx;
+  font-weight: 850;
+}
+
+.poster-render-card.theme-diary .poster-sub-slogan {
+  margin-top: 10rpx;
+  color: #8c7362;
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+
+.poster-render-card.theme-diary .poster-hero-photo-wrap {
+  margin: 22rpx 0;
+  background: #ffffff;
+  padding: 16rpx 16rpx 26rpx;
+  border-radius: 26rpx;
+  box-shadow: 0 14rpx 36rpx rgba(100, 68, 42, 0.12);
+  transform: rotate(-0.6deg);
+  position: relative;
+}
+
+.poster-render-card.theme-diary .poster-hero-photo {
+  width: 100%;
+  height: 380rpx;
+  border-radius: 18rpx;
+  display: block;
+}
+
+.poster-render-card.theme-diary .hero-polaroid-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  margin-top: 18rpx;
+  color: #d45f22;
+  font-size: 24rpx;
+  font-weight: 850;
+}
+
+.poster-render-card.theme-diary .caption-icon {
+  color: #ff4d4f;
+  font-size: 26rpx;
+}
+
+.poster-render-card.theme-diary .metric-pill {
+  background: #ffffff;
+  color: #59473d;
+  border: 1rpx solid rgba(255, 122, 69, 0.15);
+  box-shadow: 0 4rpx 10rpx rgba(100, 68, 42, 0.05);
+}
+
+.poster-render-card.theme-diary .metric-pill.highlight {
+  background: linear-gradient(135deg, #ff9452 0%, #ff6b3d 100%);
+  color: #ffffff;
+  border: none;
+}
+
+.poster-render-card.theme-diary .poster-notes-card {
+  background: #fffdf5;
+  border: 2rpx dashed #ffd591;
+  color: #614d3f;
+  border-radius: 22rpx;
+}
+
+/* --- 主题 2: 时尚宠刊杂志风 (theme-magazine) --- */
+.poster-render-card.theme-magazine {
+  background: linear-gradient(180deg, #191b20 0%, #22252e 45%, #15171b 100%);
+  border: 2rpx solid rgba(255, 255, 255, 0.1);
+  color: #f5f5f7;
+}
+
+.poster-render-card.theme-magazine .poster-brand-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 6rpx 20rpx;
+  border-radius: 6rpx;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1rpx solid rgba(212, 175, 55, 0.4);
+  color: #f7d488;
+  font-size: 20rpx;
+  font-weight: 900;
+  letter-spacing: 2rpx;
+}
+
+.poster-render-card.theme-magazine .brand-dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: #f7d488;
+}
+
+.poster-render-card.theme-magazine .poster-date-badge {
+  font-size: 20rpx;
+  color: #a3a6b2;
+  letter-spacing: 1rpx;
+}
+
+.poster-render-card.theme-magazine .pet-main-title {
+  color: #ffffff;
+  font-size: 44rpx;
+  font-weight: 950;
+  letter-spacing: 1rpx;
+}
+
+.poster-render-card.theme-magazine .pet-species-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 16rpx;
+  border-radius: 6rpx;
+  background: rgba(255, 255, 255, 0.12);
+  color: #e5e7eb;
+  font-size: 20rpx;
+  font-weight: 850;
+}
+
+.poster-render-card.theme-magazine .pet-honor-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 16rpx;
+  border-radius: 6rpx;
+  background: linear-gradient(135deg, #f7d488 0%, #d4af37 100%);
+  color: #1a1c22;
+  font-size: 20rpx;
+  font-weight: 900;
+}
+
+.poster-render-card.theme-magazine .poster-sub-slogan {
+  margin-top: 10rpx;
+  color: #9da0ae;
+  font-size: 20rpx;
+  letter-spacing: 1.5rpx;
+}
+
+.poster-render-card.theme-magazine .poster-hero-photo-wrap {
+  margin: 22rpx 0;
+  position: relative;
+  border-radius: 20rpx;
+  overflow: hidden;
+  box-shadow: 0 16rpx 40rpx rgba(0, 0, 0, 0.4);
+}
+
+.poster-render-card.theme-magazine .poster-hero-photo {
+  width: 100%;
+  height: 400rpx;
+  display: block;
+}
+
+.poster-render-card.theme-magazine .hero-magazine-badge {
+  position: absolute;
+  bottom: 20rpx;
+  right: 20rpx;
+  background: rgba(18, 19, 23, 0.85);
+  border: 1rpx solid #f7d488;
+  backdrop-filter: blur(8px);
+  padding: 8rpx 18rpx;
+  border-radius: 8rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.poster-render-card.theme-magazine .badge-big {
+  color: #f7d488;
+  font-size: 24rpx;
+  font-weight: 950;
+  letter-spacing: 2rpx;
+  line-height: 1.1;
+}
+
+.poster-render-card.theme-magazine .badge-small {
+  color: #a3a6b2;
+  font-size: 16rpx;
+  letter-spacing: 1rpx;
+}
+
+.poster-render-card.theme-magazine .metric-pill {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5e7eb;
+  border: 1rpx solid rgba(255, 255, 255, 0.1);
+}
+
+.poster-render-card.theme-magazine .metric-pill.highlight {
+  background: linear-gradient(135deg, #d4af37 0%, #aa8210 100%);
+  color: #1a1c22;
+  font-weight: 900;
+  border: none;
+}
+
+.poster-render-card.theme-magazine .poster-notes-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1rpx solid rgba(255, 255, 255, 0.1);
+  color: #d1d5db;
+  border-radius: 20rpx;
+}
+
+.poster-render-card.theme-magazine .footer-staff-info .staff-name {
+  color: #ffffff;
+}
+
+.poster-render-card.theme-magazine .staff-assurance-tip {
+  color: #8c909e;
+}
+
+/* --- 主题 3: 安心官方履约认证风 (theme-certified) --- */
+.poster-render-card.theme-certified {
+  background: linear-gradient(180deg, #f0fbf5 0%, #f7fdfa 40%, #ffffff 100%);
+  border: 3rpx solid #cceee0;
+}
+
+.poster-render-card.theme-certified .poster-brand-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 20rpx;
+  border-radius: 999rpx;
+  background: #00b42a;
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 900;
+  box-shadow: 0 4rpx 14rpx rgba(0, 180, 42, 0.2);
+}
+
+.poster-render-card.theme-certified .brand-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.poster-render-card.theme-certified .poster-date-badge {
+  font-size: 22rpx;
+  color: #0d8253;
+  font-weight: 800;
+}
+
+.poster-render-card.theme-certified .pet-main-title {
+  color: #0f382c;
+  font-size: 42rpx;
+  font-weight: 950;
+}
+
+.poster-render-card.theme-certified .pet-species-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  background: #d4f7e5;
+  color: #088c52;
+  font-size: 20rpx;
+  font-weight: 850;
+}
+
+.poster-render-card.theme-certified .pet-honor-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  background: #fff4d1;
+  color: #a86200;
+  font-size: 20rpx;
+  font-weight: 850;
+}
+
+.poster-render-card.theme-certified .poster-sub-slogan {
+  margin-top: 10rpx;
+  color: #3b7160;
+  font-size: 22rpx;
+}
+
+.poster-render-card.theme-certified .poster-hero-photo-wrap {
+  margin: 22rpx 0;
+  position: relative;
+  border-radius: 24rpx;
+  overflow: hidden;
+  border: 4rpx solid #ffffff;
+  box-shadow: 0 14rpx 36rpx rgba(13, 130, 83, 0.14);
+}
+
+.poster-render-card.theme-certified .poster-hero-photo {
+  width: 100%;
+  height: 380rpx;
+  display: block;
+}
+
+.poster-render-card.theme-certified .hero-certified-seal {
+  position: absolute;
+  top: 20rpx;
+  right: 20rpx;
+  width: 130rpx;
+  height: 130rpx;
+  border-radius: 50%;
+  border: 4rpx dashed #d9363e;
+  background: rgba(255, 255, 255, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 20rpx rgba(217, 54, 62, 0.25);
+  transform: rotate(12deg);
+}
+
+.poster-render-card.theme-certified .seal-inner {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.poster-render-card.theme-certified .seal-top {
+  font-size: 16rpx;
+  color: #d9363e;
+  font-weight: 900;
+}
+
+.poster-render-card.theme-certified .seal-mid {
+  font-size: 32rpx;
+  color: #d9363e;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.poster-render-card.theme-certified .seal-bot {
+  font-size: 16rpx;
+  color: #d9363e;
+  font-weight: 800;
+  letter-spacing: 1rpx;
+}
+
+.poster-render-card.theme-certified .metric-pill {
+  background: #eefbf4;
+  color: #0b784a;
+  border: 1rpx solid #c2f0d9;
+}
+
+.poster-render-card.theme-certified .metric-pill.highlight {
+  background: linear-gradient(135deg, #00b42a 0%, #009a24 100%);
+  color: #ffffff;
+  border: none;
+}
+
+.poster-render-card.theme-certified .poster-notes-card {
+  background: #f4fbf7;
+  border: 1rpx solid #c6edd7;
+  color: #275647;
+  border-radius: 20rpx;
+}
+
+/* --- 海报内部通用子组件样式 --- */
+
+.poster-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.poster-pet-header {
+  margin-bottom: 12rpx;
+}
+
+.pet-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+/* 履约打卡拼贴网格 (2~4张) */
+.poster-checkins-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12rpx;
+  margin-bottom: 22rpx;
+}
+
+.grid-item {
+  position: relative;
+  border-radius: 16rpx;
+  overflow: hidden;
+  height: 124rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.08);
+}
+
+.grid-item-photo {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.grid-item-tag {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 4rpx 6rpx;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(4px);
+  color: #ffffff;
+  font-size: 16rpx;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 核心指标气泡行 */
+.poster-metrics-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-bottom: 20rpx;
+}
+
+.metric-pill {
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 850;
+}
+
+/* 宠托师手记/AI总结 */
+.poster-notes-card {
+  padding: 20rpx 24rpx;
+  position: relative;
+  margin-bottom: 24rpx;
+}
+
+.notes-quote-mark {
+  font-size: 36rpx;
+  font-weight: 950;
+  line-height: 1;
+  color: #ff9800;
+}
+
+.notes-quote-mark.end {
+  text-align: right;
+}
+
+.notes-body {
+  font-size: 24rpx;
+  line-height: 1.6;
+  padding: 6rpx 12rpx;
+}
+
+/* 底部认证背书栏 */
+.poster-footer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 20rpx;
+  border-top: 1rpx dashed rgba(160, 140, 120, 0.2);
+}
+
+.footer-staff-info {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.staff-avatar-mini {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 50%;
+  background: #ffecd9;
+  color: #e9672f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34rpx;
+}
+
+.staff-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.staff-name {
+  font-size: 26rpx;
+  font-weight: 900;
+  color: #2d211a;
+}
+
+.staff-role-pill {
+  font-size: 18rpx;
+  color: #e9672f;
+  background: #fff0e8;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  font-weight: 850;
+}
+
+.staff-assurance-tip {
+  margin-top: 4rpx;
+  font-size: 18rpx;
+  color: #928377;
+}
+
+/* 官方圆形防伪印章 */
+.official-circle-seal {
+  width: 104rpx;
+  height: 104rpx;
+  border-radius: 50%;
+  border: 3rpx double #d9363e;
+  color: #d9363e;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-10deg);
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4rpx 12rpx rgba(217, 54, 62, 0.12);
+}
+
+.seal-arc {
+  font-size: 12rpx;
+  font-weight: 900;
+  transform: scale(0.85);
+  letter-spacing: 0.5rpx;
+  white-space: nowrap;
+}
+
+.seal-star {
+  font-size: 12rpx;
+  letter-spacing: 2rpx;
+  margin: 2rpx 0;
+  line-height: 1;
+}
+
+.seal-code {
+  font-size: 14rpx;
+  font-weight: 950;
+  letter-spacing: 1rpx;
+  line-height: 1;
+}
+
+/* 底部操作条 */
+.poster-actions-bar {
+  display: flex;
+  gap: 20rpx;
+  padding: 24rpx 36rpx calc(24rpx + env(safe-area-inset-bottom));
+  background: #ffffff;
+  box-shadow: 0 -8rpx 24rpx rgba(0, 0, 0, 0.06);
+  border-top: 1rpx solid #f2ebe4;
+}
+
+.action-btn {
+  flex: 1;
+  min-height: 84rpx;
+  border-radius: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  font-size: 26rpx;
+  font-weight: 900;
+  border: none;
+  line-height: 1;
+}
+
+.copy-btn {
+  flex: 1;
+  background: #fff5ee;
+  color: #e9672f;
+  border: 2rpx solid rgba(233, 103, 47, 0.3);
+}
+
+.copy-btn:active {
+  background: #ffebe0;
+}
+
+.save-btn {
+  flex: 1.4;
+  background: linear-gradient(135deg, #ff7a45 0%, #ff4d4f 100%);
+  color: #ffffff;
+  box-shadow: 0 10rpx 28rpx rgba(255, 77, 79, 0.35);
+}
+
+.save-btn:active {
+  opacity: 0.92;
+  transform: scale(0.98);
+}
+
+.btn-icon {
+  font-size: 32rpx;
+}
+
