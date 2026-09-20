@@ -71,7 +71,60 @@
   </view>
 
   <view class="bottom-actions">
+    <button class="ghost-btn" bindtap="openStatusModal"><text class="remix-icon ri-edit-box-line"></text><text>修改状态</text></button>
+    <button class="ghost-btn refund-btn" bindtap="openRefundModal" wx:if="{{detail.order.payAmount > 0}}"><text class="remix-icon ri-refund-2-line"></text><text>手动退款</text></button>
     <button class="ghost-btn" bindtap="evidence"><text class="remix-icon ri-shield-check-line"></text><text>证据链</text></button>
     <button class="ghost-btn" bindtap="incidents"><text class="remix-icon ri-customer-service-2-line"></text><text>查看异常 / 纠纷</text></button>
+  </view>
+
+  <!-- 修改状态弹窗 -->
+  <view class="modal-mask" wx:if="{{showStatusModal}}">
+    <view class="modal-card">
+      <view class="modal-title">修改服务订单状态</view>
+      <view class="modal-summary">
+        <view class="strong small">{{detail.order.orderNo}}</view>
+        <view class="muted">当前状态：{{detail.order.statusText}}</view>
+      </view>
+      <view class="form-section">
+        <view class="form-label">目标状态</view>
+        <picker mode="selector" range="{{statusOptions}}" range-key="label" value="{{selectedStatusIndex}}" bindchange="onStatusPickerChange">
+          <view class="picker-line">
+            <text>{{statusOptions[selectedStatusIndex].label}}</text>
+            <text class="remix-icon ri-arrow-down-s-line"></text>
+          </view>
+        </picker>
+        <view class="form-label">操作说明 / 变更原因</view>
+        <textarea placeholder="请填写修改状态的原因或备注（必填，存入时间线与审计日志）" value="{{statusRemark}}" bindinput="inputStatusRemark" />
+      </view>
+      <view class="modal-actions">
+        <button class="ghost-btn" bindtap="closeStatusModal">取消</button>
+        <button class="primary-btn" loading="{{submittingStatus}}" disabled="{{submittingStatus}}" bindtap="submitUpdateStatus">确认修改</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 手动退款弹窗 -->
+  <view class="modal-mask" wx:if="{{showRefundModal}}">
+    <view class="modal-card">
+      <view class="modal-title">手动处理退款</view>
+      <view class="modal-summary">
+        <view class="strong small">{{detail.order.orderNo}}</view>
+        <view class="muted">实付金额：¥{{detail.order.payAmount || 0}} · 已退金额：¥{{detail.order.alreadyRefunded || 0}}</view>
+        <view class="highlight-text">最多可退金额：¥{{detail.order.maxRefundable || 0}}</view>
+      </view>
+      <view class="form-section">
+        <view class="form-label-row">
+          <text class="form-label">退款金额 (元)</text>
+          <text class="quick-link" bindtap="setFullRefund">全额退款 (¥{{detail.order.maxRefundable || 0}})</text>
+        </view>
+        <input type="digit" placeholder="请输入退款金额" value="{{refundAmountInput}}" bindinput="inputRefundAmount" />
+        <view class="form-label">退款说明</view>
+        <input placeholder="请填写退款原因或说明（必填）" value="{{refundReasonInput}}" bindinput="inputRefundReason" />
+      </view>
+      <view class="modal-actions">
+        <button class="ghost-btn" bindtap="closeRefundModal">取消</button>
+        <button class="primary-btn danger-btn" loading="{{submittingRefund}}" disabled="{{submittingRefund}}" bindtap="submitRefund">确认退款</button>
+      </view>
+    </view>
   </view>
 </view>

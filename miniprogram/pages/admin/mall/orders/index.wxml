@@ -66,6 +66,8 @@
       <button wx:if="{{item.canShip}}" class="primary" data-id="{{item._id}}" bindtap="showShip">录入发货</button>
       <button wx:if="{{item.trackingNo}}" data-id="{{item._id}}" bindtap="copyLogistics">复制物流</button>
       <button wx:if="{{item.canAuditRefund}}" class="danger" data-id="{{item._id}}" bindtap="showRefund">售后审核</button>
+      <button data-id="{{item._id}}" bindtap="openStatusModal">修改状态</button>
+      <button wx:if="{{item.canManualRefund}}" class="danger" data-id="{{item._id}}" bindtap="openManualRefundModal">手动退款</button>
     </view>
   </view>
   <view class="empty" wx:if="{{!loading && !orders.length}}">暂无商城订单</view>
@@ -108,6 +110,57 @@
         <textarea placeholder="说明处理原因，用户可据此理解售后结果" value="{{refundForm.remark}}" data-field="remark" bindinput="inputRefund" />
       </view>
       <view class="modal-actions"><button bindtap="hideRefund">取消</button><button class="primary" bindtap="submitRefund">提交审核</button></view>
+    </view>
+  </view>
+
+  <!-- 修改订单状态弹窗 -->
+  <view class="modal-mask" wx:if="{{showStatusModal}}">
+    <view class="modal-card">
+      <view class="modal-title">修改商城订单状态</view>
+      <view class="modal-summary" wx:if="{{statusOrder}}">
+        <view class="strong small">{{statusOrder.orderNo}}</view>
+        <view class="muted">当前状态：{{statusOrder.statusText}}</view>
+      </view>
+      <view class="form-section">
+        <view class="form-label">目标状态</view>
+        <picker mode="selector" range="{{statusOptions}}" range-key="label" value="{{statusIndex}}" bindchange="onStatusPickerChange">
+          <view class="picker-line picker-select">
+            <text>{{statusOptions[statusIndex].label}}</text>
+            <text class="arrow">▼</text>
+          </view>
+        </picker>
+        <view class="form-label">操作说明 / 变更原因</view>
+        <textarea placeholder="请填写修改状态的原因（必填，存入操作日志与说明）" value="{{statusRemark}}" bindinput="inputStatusRemark" />
+      </view>
+      <view class="modal-actions">
+        <button bindtap="closeStatusModal">取消</button>
+        <button class="primary" loading="{{submittingStatus}}" disabled="{{submittingStatus}}" bindtap="submitUpdateStatus">确认修改</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 手动退款弹窗 -->
+  <view class="modal-mask" wx:if="{{showManualRefundModal}}">
+    <view class="modal-card">
+      <view class="modal-title">手动处理退款</view>
+      <view class="modal-summary" wx:if="{{manualRefundOrder}}">
+        <view class="strong small">{{manualRefundOrder.orderNo}}</view>
+        <view class="muted">实付金额：¥{{manualRefundOrder.payAmount || 0}} · 已退金额：¥{{manualRefundOrder.alreadyRefunded || 0}}</view>
+        <view class="highlight-text">最多可退金额：¥{{manualRefundOrder.maxRefundable || 0}}</view>
+      </view>
+      <view class="form-section">
+        <view class="form-label-row">
+          <text class="form-label">退款金额 (元)</text>
+          <text class="quick-link" bindtap="setFullManualRefund">全额退款 (¥{{manualRefundOrder.maxRefundable || 0}})</text>
+        </view>
+        <input type="digit" placeholder="请输入退款金额" value="{{manualRefundAmount}}" data-field="Amount" bindinput="inputManualRefund" />
+        <view class="form-label">退款说明</view>
+        <input placeholder="请填写退款原因或说明（必填）" value="{{manualRefundReason}}" data-field="Reason" bindinput="inputManualRefund" />
+      </view>
+      <view class="modal-actions">
+        <button bindtap="closeManualRefundModal">取消</button>
+        <button class="danger" loading="{{submittingManualRefund}}" disabled="{{submittingManualRefund}}" bindtap="submitManualRefund">确认退款</button>
+      </view>
     </view>
   </view>
 </view>

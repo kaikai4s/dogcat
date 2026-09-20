@@ -583,3 +583,37 @@ button {
   border-radius: 18rpx;
   background: #fff0e2;
 }
+
+.form-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.quick-link {
+  color: #e9672f;
+  font-size: 23rpx;
+  font-weight: 850;
+  text-decoration: underline;
+}
+
+.highlight-text {
+  margin-top: 8rpx;
+  color: #e9672f;
+  font-size: 25rpx;
+  font-weight: 900;
+}
+
+.picker-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #2d211a;
+  font-weight: 850;
+}
+
+.picker-select .arrow {
+  color: #8e8580;
+  font-size: 20rpx;
+}
+

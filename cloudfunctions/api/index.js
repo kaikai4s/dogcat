@@ -6947,12 +6947,30 @@ const handlers = {
       let list = res.data || []
       if (status) list = list.filter((item) => item.status === status)
       if (keyword) list = list.filter((item) => [item.orderNo, item.contactPhone, item.trackingNo, item.expressCompany].some((value) => safeText(value).toLowerCase().includes(keyword)))
-      return paginateList(list.map((item) => ({ ...item, statusText: mallOrderStatusText(item.status) })), data)
+      const enriched = list.map((item) => {
+        const payAmount = Number(item.payAmount || 0)
+        const alreadyRefunded = Number(item.refundAmount || 0)
+        const maxRefundable = Math.max(0, Math.round((payAmount - alreadyRefunded) * 100) / 100)
+        return {
+          ...item,
+          statusText: mallOrderStatusText(item.status),
+          alreadyRefunded,
+          maxRefundable
+        }
+      })
+      return paginateList(enriched, data)
     }
     if (action === 'getOrderDetail') {
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)
       if (!order) throw new Error('订单不存在')
-      return { ...order, statusText: mallOrderStatusText(order.status) }
+      const payAmount = Number(order.payAmount || 0)
+      const existingRefundsRes = await db.collection('refunds').where({ orderId: order._id }).get()
+      const successfulRefundsAmount = (existingRefundsRes.data || [])
+        .filter((r) => ['success', 'processing'].includes(r.status))
+        .reduce((sum, r) => sum + Number(r.refundAmount || 0), 0)
+      const alreadyRefunded = Math.max(Number(order.refundAmount || 0), successfulRefundsAmount)
+      const maxRefundable = Math.max(0, Math.round((payAmount - alreadyRefunded) * 100) / 100)
+      return { ...order, statusText: mallOrderStatusText(order.status), alreadyRefunded, maxRefundable }
     }
     if (action === 'shipOrder') {
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)
@@ -6965,6 +6983,88 @@ const handlers = {
       await db.collection('mall_orders').doc(order._id).update({ data: { status: 'shipped', expressCompany, trackingNo, shippedAt: time, updatedAt: time } })
       await logAdmin(admin, 'mall_order', order._id, 'shipOrder', { expressCompany, trackingNo })
       return { orderId: order._id, status: 'shipped', expressCompany, trackingNo }
+    }
+    if (action === 'updateOrderStatus') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      if (!orderId) throw new Error('缺少订单 ID')
+      const targetStatus = safeText(data.status).trim()
+      const remark = safeText(data.remark || data.reason).trim()
+      if (!remark) throw new Error('请填写操作说明')
+      const allowedStatuses = ['pending_pay', 'pending_ship', 'shipped', 'completed', 'cancelled', 'refunded']
+      if (!allowedStatuses.includes(targetStatus)) throw new Error('目标状态无效')
+
+      const order = await getDocOrNull('mall_orders', orderId)
+      if (!order) throw new Error('订单不存在')
+      const prevStatus = order.status
+      if (prevStatus === targetStatus) throw new Error(`订单当前已处于该状态(${targetStatus})`)
+
+      const time = now()
+      const updateData = {
+        status: targetStatus,
+        adminManualStatusUpdatedAt: time,
+        adminManualStatusRemark: remark,
+        adminManualStatusByOpenid: openid,
+        updatedAt: time
+      }
+      await db.collection('mall_orders').doc(orderId).update({ data: updateData })
+      await logAdmin(admin, 'mall_order', orderId, 'updateOrderStatus', { prevStatus, targetStatus, remark })
+      return { orderId, status: targetStatus, prevStatus, remark }
+    }
+    if (action === 'refundOrder') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      if (!orderId) throw new Error('缺少订单 ID')
+      const order = await getDocOrNull('mall_orders', orderId)
+      if (!order) throw new Error('订单不存在')
+      const payAmount = Number(order.payAmount || 0)
+      if (payAmount <= 0) throw new Error('该订单无需退款（实付金额为0）')
+      if (order.status === 'pending_pay' && order.paymentStatus !== 'paid') {
+        throw new Error('未付款订单不可退款')
+      }
+
+      const existingRefundsRes = await db.collection('refunds').where({ orderId }).get()
+      const successfulRefundsAmount = (existingRefundsRes.data || [])
+        .filter((r) => ['success', 'processing'].includes(r.status))
+        .reduce((sum, r) => sum + Number(r.refundAmount || 0), 0)
+      const alreadyRefunded = Math.max(Number(order.refundAmount || 0), successfulRefundsAmount)
+      const maxRefundable = Math.max(0, Math.round((payAmount - alreadyRefunded) * 100) / 100)
+
+      if (maxRefundable <= 0) throw new Error('该订单已全额退款，无剩余可退金额')
+
+      const refundAmount = Number(data.refundAmount)
+      if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error('请输入有效的退款金额（需大于0）')
+      if (refundAmount > maxRefundable) throw new Error(`退款金额不能超过可退金额上限 ¥${maxRefundable.toFixed(2)}`)
+
+      const reason = safeText(data.reason || data.remark).trim()
+      if (!reason) throw new Error('请填写退款说明')
+
+      const refund = await createRefundForOrder(order, refundAmount, reason, 'admin_mall_manual', openid, getClientRequestId(data))
+      const totalRefundAmount = Math.round((alreadyRefunded + refundAmount) * 100) / 100
+      const isFullRefund = totalRefundAmount >= payAmount
+
+      const time = now()
+      const orderUpdate = {
+        refundAmount: totalRefundAmount,
+        refundNo: refund.refundNo,
+        refundStatus: isFullRefund ? 'approved' : 'partially_refunded',
+        paymentStatus: isFullRefund ? 'refunded' : 'refunding',
+        adminManualRefundRemark: reason,
+        adminManualRefundByOpenid: openid,
+        adminManualRefundAt: time,
+        updatedAt: time
+      }
+      if (isFullRefund && !['completed'].includes(order.status)) {
+        orderUpdate.status = 'refunded'
+      }
+      await db.collection('mall_orders').doc(orderId).update({ data: orderUpdate })
+      await logAdmin(admin, 'mall_order', orderId, 'refundOrder', { refundAmount, reason, refundNo: refund.refundNo, isFullRefund })
+      return {
+        orderId,
+        refundNo: refund.refundNo,
+        refundAmount,
+        totalRefundAmount,
+        isFullRefund,
+        status: orderUpdate.status || order.status
+      }
     }
     if (action === 'auditRefund') {
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)
@@ -8968,10 +9068,21 @@ const handlers = {
     if (action === 'getOrderDetail' || action === 'getEvidence') {
       const id = data.id || data.orderId
       const order = await db.collection('orders').doc(id).get()
+      if (!order.data) throw new Error('订单不存在')
       const tracks = await db.collection('track_logs').where({ orderId: id }).orderBy('recordedAt', 'asc').get()
       const checkins = await db.collection('checkin_logs').where({ orderId: id }).orderBy('createdAt', 'asc').get()
       const unlockLogs = await db.collection('unlock_code_logs').where({ orderId: id }).orderBy('createdAt', 'desc').get()
       const displayOrder = await attachAdminOrderContactData(order.data)
+      const payAmount = Number(order.data.payAmount || 0)
+      const existingRefundsRes = await db.collection('refunds').where({ orderId: id }).get()
+      const successfulRefundsAmount = (existingRefundsRes.data || [])
+        .filter((r) => ['success', 'processing'].includes(r.status))
+        .reduce((sum, r) => sum + Number(r.refundAmount || 0), 0)
+      const alreadyRefunded = Math.max(Number(order.data.refundAmount || 0), successfulRefundsAmount)
+      const maxRefundable = Math.max(0, Math.round((payAmount - alreadyRefunded) * 100) / 100)
+      displayOrder.maxRefundable = maxRefundable
+      displayOrder.alreadyRefunded = alreadyRefunded
+
       if (action === 'getEvidence') await logAdmin(admin, 'order', id, 'getEvidence', { trackCount: (tracks.data || []).length, checkinCount: (checkins.data || []).filter(isActiveCheckin).length })
       return { order: displayOrder, tracks: tracks.data, checkins: (checkins.data || []).filter(isActiveCheckin), unlockLogs: unlockLogs.data }
     }
@@ -9001,6 +9112,117 @@ const handlers = {
       await notifyOrder(orderRes.data.clientOpenid, 'orderAssigned', { ...orderRes.data, _id: data.orderId }, { statusText: '已派单' })
       await logAdmin(admin, 'order', data.orderId, 'assignOrder', { staffProfileId: data.staffProfileId })
       return { orderId: data.orderId }
+    }
+    if (action === 'updateOrderStatus') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      if (!orderId) throw new Error('缺少订单 ID')
+      const targetStatus = safeText(data.status).trim()
+      const remark = safeText(data.remark || data.reason).trim()
+      if (!remark) throw new Error('请填写操作说明')
+      const allowedStatuses = ['pending_pay', 'paid', 'assigned', 'in_service', 'completed', 'cancelled', 'refunded']
+      if (!allowedStatuses.includes(targetStatus)) throw new Error('目标状态无效')
+
+      const orderRes = await db.collection('orders').doc(orderId).get()
+      if (!orderRes.data) throw new Error('订单不存在')
+      const order = orderRes.data
+      const prevStatus = order.status
+      if (prevStatus === targetStatus) throw new Error(`订单当前已处于该状态(${targetStatus})`)
+
+      const time = now()
+      const updateData = {
+        status: targetStatus,
+        adminManualStatusUpdatedAt: time,
+        adminManualStatusRemark: remark,
+        adminManualStatusByOpenid: openid,
+        updatedAt: time
+      }
+      if (targetStatus === 'completed' && !order.completedAt) {
+        updateData.completedAt = time
+      }
+      if (targetStatus === 'cancelled' && !order.cancelledAt) {
+        updateData.cancelledAt = time
+      }
+      await db.collection('orders').doc(orderId).update({ data: updateData })
+
+      const statusLabels = {
+        pending_pay: '待支付',
+        paid: '已支付/待接单',
+        assigned: '已派单/待服务',
+        in_service: '服务中',
+        completed: '已完成',
+        cancelled: '已取消',
+        refunded: '已退款'
+      }
+      const fromLabel = statusLabels[prevStatus] || prevStatus
+      const toLabel = statusLabels[targetStatus] || targetStatus
+
+      await appendOrderTimeline(orderId, 'status_changed', `管理员手动修改状态：${fromLabel} ➔ ${toLabel}`, remark, 'admin')
+      await appendOrderClientMessage({ ...order, _id: orderId }, {
+        eventType: 'status_changed',
+        title: `订单状态更新为：${toLabel}`,
+        detail: `管理员操作说明：${remark}`,
+        actorRole: 'admin'
+      })
+      await logAdmin(admin, 'order', orderId, 'updateOrderStatus', { prevStatus, targetStatus, remark })
+      return { orderId, status: targetStatus, prevStatus, remark }
+    }
+    if (action === 'refundOrder') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      if (!orderId) throw new Error('缺少订单 ID')
+      const orderRes = await db.collection('orders').doc(orderId).get()
+      if (!orderRes.data) throw new Error('订单不存在')
+      const order = orderRes.data
+      const payAmount = Number(order.payAmount || 0)
+      if (payAmount <= 0) throw new Error('该订单无需退款（实付金额为0）')
+      if (order.paymentStatus !== 'paid' && order.paymentStatus !== 'refunding' && order.status !== 'paid' && !order.paidAt) {
+        throw new Error('订单未支付或状态不支持退款')
+      }
+
+      const existingRefundsRes = await db.collection('refunds').where({ orderId }).get()
+      const successfulRefundsAmount = (existingRefundsRes.data || [])
+        .filter((r) => ['success', 'processing'].includes(r.status))
+        .reduce((sum, r) => sum + Number(r.refundAmount || 0), 0)
+      const alreadyRefunded = Math.max(Number(order.refundAmount || 0), successfulRefundsAmount)
+      const maxRefundable = Math.max(0, Math.round((payAmount - alreadyRefunded) * 100) / 100)
+
+      if (maxRefundable <= 0) throw new Error('该订单已全额退款，无剩余可退金额')
+
+      const refundAmount = Number(data.refundAmount)
+      if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error('请输入有效的退款金额（需大于0）')
+      if (refundAmount > maxRefundable) throw new Error(`退款金额不能超过可退金额上限 ¥${maxRefundable.toFixed(2)}`)
+
+      const reason = safeText(data.reason || data.remark).trim()
+      if (!reason) throw new Error('请填写退款说明')
+
+      const refund = await createRefundForOrder(order, refundAmount, reason, 'admin_manual', openid, getClientRequestId(data))
+      const totalRefundAmount = Math.round((alreadyRefunded + refundAmount) * 100) / 100
+      const isFullRefund = totalRefundAmount >= payAmount
+
+      const time = now()
+      const orderUpdate = {
+        refundAmount: totalRefundAmount,
+        refundNo: refund.refundNo,
+        refundStatus: isFullRefund ? 'full_refunded' : 'partially_refunded',
+        paymentStatus: isFullRefund ? 'refunded' : 'refunding',
+        refundRemark: reason,
+        adminManualRefundByOpenid: openid,
+        adminManualRefundAt: time,
+        updatedAt: time
+      }
+      if (isFullRefund && !['completed'].includes(order.status)) {
+        orderUpdate.status = 'refunded'
+      }
+      await db.collection('orders').doc(orderId).update({ data: orderUpdate })
+      await appendOrderTimeline(orderId, 'refund', `管理员手动退款 ¥${refundAmount.toFixed(2)}`, `说明：${reason}${isFullRefund ? '（已全额退款）' : ''}`, 'admin')
+      await logAdmin(admin, 'order', orderId, 'refundOrder', { refundAmount, reason, refundNo: refund.refundNo, isFullRefund })
+      return {
+        orderId,
+        refundNo: refund.refundNo,
+        refundAmount,
+        totalRefundAmount,
+        isFullRefund,
+        status: orderUpdate.status || order.status
+      }
     }
     if (action === 'listServicePrices') {
       return listServicePrices(true)
