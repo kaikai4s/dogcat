@@ -15,6 +15,9 @@
   <view class="admin-compact-card service-summary-card" wx:for="{{prices}}" wx:key="key">
     <view class="admin-summary-row">
       <image class="admin-service-thumb" wx:if="{{item.coverDisplayUrl || item.coverUrl}}" src="{{item.coverDisplayUrl || item.coverUrl}}" mode="aspectFill" />
+      <view class="admin-service-thumb-placeholder" wx:else>
+        <text class="remix-icon ri-image-line"></text>
+      </view>
       <view class="admin-summary-main">
         <view class="admin-summary-title">{{item.label || '新服务'}}</view>
         <view class="admin-summary-sub">{{item.key || '待填写标识'}} · {{item.extraPetRuleText}}</view>
@@ -132,17 +135,17 @@
           </view>
           <view class="empty-cover-uploader interactive" wx:else bindtap="chooseCoverImage">
             <view class="remix-icon ri-image-add-line uploader-icon"></view>
-            <view class="uploader-text">点击上传封面图片</view>
-            <view class="uploader-sub">建议上传 4:3 比例，让人一眼看出服务类型</view>
+            <view class="uploader-text">点击上传封面图片（可选）</view>
+            <view class="uploader-sub">未上传时展示默认图标，上传后展示专属封面图</view>
           </view>
           <view class="cover-actions-bar" wx:if="{{priceForm.coverDisplayUrl || priceForm.coverUrl}}">
             <button class="cover-action-btn primary-soft-btn" loading="{{uploadingCover}}" disabled="{{uploadingCover}}" catchtap="chooseCoverImage">
               <text class="remix-icon ri-image-edit-line btn-icon"></text>
               <text>更换封面</text>
             </button>
-            <button class="cover-action-btn ghost-btn" wx:if="{{defaultCovers[priceForm.key] && priceForm.coverUrl !== defaultCovers[priceForm.key]}}" catchtap="resetCoverToDefault">
-              <text class="remix-icon ri-restart-line btn-icon"></text>
-              <text>恢复默认</text>
+            <button class="cover-action-btn danger-soft-btn" catchtap="removeCoverImage">
+              <text class="remix-icon ri-delete-bin-line btn-icon"></text>
+              <text>删除封面</text>
             </button>
           </view>
         </view>

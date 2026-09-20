@@ -1045,7 +1045,7 @@ test('admin can configure extra pet fee home visibility and custom services', as
   const deleted = await adminFn.main({ module: 'admin', action: 'deleteServicePrice', data: { key: 'grooming' } })
 
   assert.equal(saveWalk.ok, true)
-  assert.equal(saveWalk.data.coverUrl, '/images/services/walk.jpg')
+  assert.equal(saveWalk.data.coverUrl, '')
   assert.equal(quote.ok, true)
   assert.equal(quote.data.payAmount, 114)
   assert.equal(home.ok, true)
@@ -1063,6 +1063,11 @@ test('admin can configure extra pet fee home visibility and custom services', as
   const walkOnHome = homeWithCustomCover.data.servicePrices.find((item) => item.key === 'walk')
   assert.ok(walkOnHome)
   assert.equal(walkOnHome.coverUrl, 'cloud://bucket/my_walk_cover.png')
+
+  // Test admin clearing custom cover back to empty
+  const clearCover = await adminFn.main({ module: 'admin', action: 'saveServicePrice', data: { key: 'walk', label: '遛狗服务', price: 39, coverUrl: '', showOnHome: true, enabled: true } })
+  assert.equal(clearCover.ok, true)
+  assert.equal(clearCover.data.coverUrl, '')
 
   assert.equal(custom.ok, true)
   assert.equal(custom.data.extraPetFee, 12)

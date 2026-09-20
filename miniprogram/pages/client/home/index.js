@@ -5,14 +5,14 @@ const { applyTheme, getThemeState } = require('../../../utils/theme')
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'
 const RETIRED_SERVICE_KEYS = ['extra_pet']
 
-const defaultServiceCovers = {
-  walk: '/images/services/walk.jpg',
-  clean: '/images/services/clean.jpg',
-  feed: '/images/services/feed.jpg',
-  litter: '/images/services/litter.jpg',
-  play: '/images/services/play.jpg',
-  medicine: '/images/services/medicine.jpg',
-  visit_fee: '/images/services/visit_fee.jpg'
+const serviceIconMap = {
+  walk: 'ri-footprint-fill',
+  feed: 'ri-restaurant-fill',
+  clean: 'ri-sparkling-fill',
+  litter: 'ri-delete-bin-fill',
+  play: 'ri-gamepad-fill',
+  medicine: 'ri-capsule-fill',
+  visit_fee: 'ri-map-pin-2-fill'
 }
 
 const CUSTOM_SERVICE_COVERS_KEY = 'custom_service_covers'
@@ -30,8 +30,12 @@ function normalizeHomeServicePrices(options = []) {
   return options
     .filter((item) => item.key !== VISIT_FEE_SERVICE_KEY && !RETIRED_SERVICE_KEYS.includes(item.key) && item.enabled !== false && item.showOnHome === true)
     .map((item) => {
-      const coverUrl = item.coverUrl || localCovers[item.key] || (item.caseImageUrls && item.caseImageUrls[0]) || defaultServiceCovers[item.key] || ''
-      let res = { ...item, coverUrl }
+      let cover = item.coverUrl || localCovers[item.key] || ''
+      if (typeof cover === 'string' && cover.startsWith('/images/services/')) {
+        cover = ''
+      }
+      const icon = serviceIconMap[item.key] || 'ri-price-tag-3-fill'
+      let res = { ...item, coverUrl: cover, serviceIcon: icon }
       if (item.key === 'walk' && String(item.label || '').includes('上门')) {
         res = { ...res, label: '遛狗服务', price: 39, description: '牵引遛狗、轨迹记录、回家安置', priceText: '¥39起' }
       }

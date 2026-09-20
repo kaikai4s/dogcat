@@ -24,16 +24,6 @@ function extraPetRuleText(value) {
   return item ? item.label : extraPetRuleOptions[0].label
 }
 
-const defaultServiceCovers = {
-  walk: '/images/services/walk.jpg',
-  clean: '/images/services/clean.jpg',
-  feed: '/images/services/feed.jpg',
-  litter: '/images/services/litter.jpg',
-  play: '/images/services/play.jpg',
-  medicine: '/images/services/medicine.jpg',
-  visit_fee: '/images/services/visit_fee.jpg'
-}
-
 const CUSTOM_SERVICE_COVERS_KEY = 'custom_service_covers'
 
 function getCustomServiceCovers() {
@@ -48,7 +38,7 @@ function setCustomServiceCover(key, coverUrl) {
   if (!key) return
   try {
     const covers = getCustomServiceCovers()
-    if (coverUrl && coverUrl !== defaultServiceCovers[key]) {
+    if (coverUrl && !coverUrl.startsWith('/images/services/')) {
       covers[key] = coverUrl
     } else {
       delete covers[key]
@@ -62,7 +52,10 @@ function decoratePrice(item = {}) {
   const enabled = item.enabled !== false
   const caseImageFileIds = Array.isArray(item.caseImageFileIds) ? item.caseImageFileIds.filter(Boolean).slice(0, 9) : []
   const customCovers = getCustomServiceCovers()
-  const coverUrl = item.coverUrl || customCovers[key] || defaultServiceCovers[key] || ''
+  let coverUrl = item.coverUrl || customCovers[key] || ''
+  if (typeof coverUrl === 'string' && coverUrl.startsWith('/images/services/')) {
+    coverUrl = ''
+  }
   return {
     ...item,
     key,
@@ -107,8 +100,7 @@ Page({
     priceForm: {},
     priceFormIndex: -1,
     uploadingServiceCase: false,
-    uploadingCover: false,
-    defaultCovers: defaultServiceCovers
+    uploadingCover: false
   },
 
   onShow() {
@@ -350,15 +342,14 @@ Page({
     })
   },
 
-  resetCoverToDefault() {
+  removeCoverImage() {
     const key = this.data.priceForm.key
-    const defaultUrl = defaultServiceCovers[key] || ''
     setCustomServiceCover(key, '')
     this.setData({
-      'priceForm.coverUrl': defaultUrl,
-      'priceForm.coverDisplayUrl': defaultUrl
+      'priceForm.coverUrl': '',
+      'priceForm.coverDisplayUrl': ''
     })
-    wx.showToast({ title: '已恢复默认封面', icon: 'none' })
+    wx.showToast({ title: '已清空封面，点击保存后生效', icon: 'none' })
   },
 
   previewCoverImage() {
@@ -444,6 +435,8 @@ Page({
     // 立即持久化封面到本地缓存，即使后端云函数尚未重新部署也能立即生效
     if (item.coverUrl) {
       setCustomServiceCover(item.key, item.coverUrl)
+    } else {
+      setCustomServiceCover(item.key, '')
     }
     const doSave = () => {
       wx.showLoading({ title: '保存中...' })

@@ -113,7 +113,7 @@
       <view class="service-price-card interactive" wx:for="{{servicePrices}}" wx:key="key" data-url="/pages/client/orders/create/index?serviceType={{item.key}}" bindtap="goProtected">
         <view class="service-cover-wrap">
           <image class="service-cover-img" wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill" />
-          <view class="remix-icon ri-price-tag-3-fill service-price-icon" wx:else></view>
+          <view class="remix-icon {{item.serviceIcon || 'ri-price-tag-3-fill'}} service-price-icon" wx:else></view>
         </view>
         <view class="service-price-name">{{item.label}}</view>
         <view class="service-price-desc">{{item.description}}</view>

@@ -60,8 +60,8 @@
         </view>
         <view class="profile-points">{{userMeta}}</view>
         <view class="profile-level-tag-row" wx:if="{{!isGuest && memberLevelName}}">
-          <text class="profile-level-mini-badge">{{memberLevelName}}</text>
-          <text class="profile-level-mini-detail">{{points}} 积分 · {{pointMultiplier}}倍加速</text>
+          <view class="profile-level-mini-badge">{{memberLevelName}}</view>
+          <view class="profile-level-mini-detail">{{points}} 积分 · {{pointMultiplier}}倍加速</view>
         </view>
       </view>
       <view class="checkin-pill" wx:if="{{!isGuest}}" bindtap="openCheckin">签到中心</view>
