@@ -57,7 +57,7 @@
   <view class="card">
     <view class="card-title">视频审核物资与首次报销</view>
     <view class="guide-box">
-      <view>视频审核必须准备：一次性手套、一次性口罩、宠物安全消毒液。</view>
+      <view>视频审核必须准备：一次性手套、一次性口罩、一次性鞋套宠物安全消毒液。</view>
       <view>审核标准严格，备齐物资不代表必然通过，其他不符合要求的情况也可能导致审核失败。</view>
       <view>未获得正式认证不得报销，实习宠托师不具备报销资格。正式认证后仅首次物资可申请平台报销，后续每次采购均由本人承担。</view>
     </view>
@@ -122,9 +122,19 @@
     <view class="guide-box">
       <view class="strong-text">【视频通话审核必备物品要求】</view>
       <view>视频考核时须在镜头前展示已自备齐备的必备防护用品：</view>
-      <view>• 一次性手套（足量自备）</view>
-      <view>• 一次性口罩（足量自备）</view>
-      <view>• 安全的宠物消毒用品（正规安全宠物消毒液/湿巾）</view>
+      <view class="supply-list" style="margin: 12rpx 0;">
+        <view class="supply-item-row" wx:for="{{supplyItems}}" wx:key="name">
+          <view class="supply-item-info">
+            <text class="supply-dot">•</text>
+            <text class="supply-name">{{item.name}}</text>
+            <text class="supply-desc" wx:if="{{item.description}}">（{{item.description}}）</text>
+          </view>
+          <view class="supply-buy-btn" wx:if="{{item.purchaseUrl}}" data-url="{{item.purchaseUrl}}" data-name="{{item.name}}" bindtap="openPurchaseUrl">
+            <text class="remix-icon ri-shopping-cart-2-line"></text>
+            <text>购买链接</text>
+          </view>
+        </view>
+      </view>
       <view class="warning-text">平台审核要求上述物品为【必备】，缺一不可。</view>
     </view>
     <view class="guide-box warning-box">

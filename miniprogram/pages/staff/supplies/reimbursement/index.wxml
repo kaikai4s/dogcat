@@ -8,7 +8,20 @@
   <view class="card">
     <view class="card-title">申请前请确认</view>
     <view class="guide-box">
-      <view>视频审核必须准备一次性手套、一次性口罩、宠物安全消毒液。</view>
+      <view>视频审核必须准备：一次性手套、一次性口罩、一次性鞋套、宠物安全消毒用品。</view>
+      <view class="supply-list" style="margin: 12rpx 0;" wx:if="{{supplies.items && supplies.items.length}}">
+        <view class="supply-item-row" wx:for="{{supplies.items}}" wx:key="name">
+          <view class="supply-item-info">
+            <text class="supply-dot">•</text>
+            <text class="supply-name">{{item.name}}</text>
+            <text class="supply-desc" wx:if="{{item.description}}">（{{item.description}}）</text>
+          </view>
+          <view class="supply-buy-btn" wx:if="{{item.purchaseUrl}}" data-url="{{item.purchaseUrl}}" data-name="{{item.name}}" bindtap="openPurchaseUrl">
+            <text class="remix-icon ri-shopping-cart-2-line"></text>
+            <text>购买链接</text>
+          </view>
+        </view>
+      </view>
       <view>严格审核可能因其他原因不通过，备齐物资不保证审核通过。</view>
       <view>只有正式认证宠托师可申请首次物资报销，实习人员不可申请；未正式认证不报销。</view>
       <view>后续每次采购均由本人自费。审核通过后由平台另行出资，通过商家转账发放。</view>

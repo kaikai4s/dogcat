@@ -424,3 +424,48 @@
   flex: 1;
   min-width: 0;
 }
+
+.section-subtitle {
+  margin-top: 24rpx;
+  font-size: 28rpx;
+  font-weight: 850;
+  color: #2d211a;
+}
+
+.supply-admin-item {
+  margin-top: 14rpx;
+  padding: 20rpx;
+  border-radius: 20rpx;
+  background: #fff8ec;
+  border: 1rpx solid rgba(255, 153, 102, 0.2);
+}
+
+.supply-admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.supply-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.mini-danger-btn {
+  height: 48rpx;
+  line-height: 48rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: #fee2e2;
+  color: #dc2626;
+  font-size: 22rpx;
+  font-weight: 800;
+  border: none;
+}
+
+.add-supply-btn {
+  margin-top: 16rpx;
+  width: 100%;
+}

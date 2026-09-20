@@ -84,7 +84,13 @@ Page({
     starting: false,
     finishing: false,
     sectionHomeUrl: '',
-    canGoBack: false
+    canGoBack: false,
+    supplyItems: [
+      { name: '一次性手套', description: '佩戴防接触感染', purchaseUrl: '' },
+      { name: '一次性口罩', description: '规范防护', purchaseUrl: '' },
+      { name: '一次性鞋套', description: '进门即穿戴，保护家庭卫生', purchaseUrl: '' },
+      { name: '安全宠物消毒用品', description: '进门及工具消毒', purchaseUrl: '' }
+    ]
   },
 
   onLoad(q) {
@@ -92,6 +98,7 @@ Page({
     this.setData({ ...createPageNav(q), id: q.id })
     this.loadCustomerService()
     this.loadOrder()
+    this.loadSupplies()
   },
 
   onShow() {
@@ -125,6 +132,44 @@ Page({
     callFunction('system', 'getCustomerServiceInfo')
       .then((customerService) => this.setData({ customerService }))
       .catch(() => {})
+  },
+
+  loadSupplies() {
+    callFunction('system', 'getSettings')
+      .then((settings) => {
+        const supplies = (settings && settings.staffSupplies) || {}
+        if (Array.isArray(supplies.items) && supplies.items.length) {
+          this.setData({ supplyItems: supplies.items.filter((i) => i.enabled !== false) })
+        }
+      })
+      .catch(() => {})
+  },
+
+  openPurchaseUrl(e) {
+    const url = e.currentTarget.dataset.url
+    const name = e.currentTarget.dataset.name || '物品'
+    if (!url) {
+      wx.showToast({ title: '暂未配置购买链接', icon: 'none' })
+      return
+    }
+    if (url.startsWith('/')) {
+      wx.navigateTo({ url })
+      return
+    }
+    wx.showModal({
+      title: `${name} 购买链接`,
+      content: `购买地址：${url}\n\n已为您准备好链接，点击“复制链接”后可在微信聊天或浏览器中打开完成购买。`,
+      confirmText: '复制链接',
+      cancelText: '关闭',
+      success: (res) => {
+        if (res.confirm) {
+          wx.setClipboardData({
+            data: url,
+            success: () => wx.showToast({ title: '已复制链接' })
+          })
+        }
+      }
+    })
   },
 
   callCustomerService() {

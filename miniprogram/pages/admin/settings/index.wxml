@@ -157,10 +157,36 @@
           <view class="field-item"><text class="label">保证金说明</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffDeposit.rulesText}}" data-field="staffDeposit.rulesText" bindinput="staffPolicyInput" /></view>
           <view class="field-item"><text class="label">自愿退出退款规则</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffDeposit.refundRulesText}}" data-field="staffDeposit.refundRulesText" bindinput="staffPolicyInput" /></view>
           <view class="field-item"><text class="label">违规没收规则</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffDeposit.forfeitRulesText}}" data-field="staffDeposit.forfeitRulesText" bindinput="staffPolicyInput" /></view>
-          <view class="section-title">平台出资的用品报销</view>
-          <view class="policy-notice">只有正式认证（不是实习）后首次申请可报销。视频审核必查手套、口罩、宠物安全消毒用品；用品齐全不代表考核通过，严格考核未通过不报销。</view>
+          <view class="section-title">平台出资的用品报销与一次性必备物品</view>
+          <view class="policy-notice">只有正式认证（不是实习）后首次申请可报销。视频审核必查手套、口罩、鞋套、宠物安全消毒用品；用品齐全不代表考核通过，严格考核未通过不报销。</view>
           <view class="compact-toggle-row"><text>启用用品报销申请</text><switch checked="{{settings.staffSupplies.reimbursementEnabled}}" data-field="staffSupplies.reimbursementEnabled" bindchange="staffPolicyInput" /></view>
-          <view class="field-item"><text class="label">必备用品（每行一项，三类基础用品不可省略）</text><textarea class="input textarea-input" maxlength="-1" value="{{requiredItemsText}}" data-field="requiredItemsText" bindinput="policyTextInput" /></view>
+          
+          <view class="section-subtitle">一次性防护物品与购买链接配置</view>
+          <view class="muted" style="margin-bottom:12rpx;">配置各项一次性必备物品、使用说明及对应购买链接。用户可在服务准备或审核提示中通过提供的链接购买物品。</view>
+          
+          <view class="supply-admin-item" wx:for="{{settings.staffSupplies.items}}" wx:key="id">
+            <view class="supply-admin-head">
+              <view class="strong">物品 #{{index + 1}}</view>
+              <view class="supply-head-actions">
+                <switch checked="{{item.enabled}}" data-index="{{index}}" bindchange="toggleSupplyItem" />
+                <button class="mini-danger-btn" data-index="{{index}}" bindtap="removeSupplyItem">删除</button>
+              </view>
+            </view>
+            <view class="field-item">
+              <text class="label">物品名称</text>
+              <input class="input" value="{{item.name}}" data-index="{{index}}" data-field="name" bindinput="inputSupplyItem" placeholder="如 一次性鞋套 / 一次性手套" />
+            </view>
+            <view class="field-item">
+              <text class="label">使用说明 / 提示</text>
+              <input class="input" value="{{item.description}}" data-index="{{index}}" data-field="description" bindinput="inputSupplyItem" placeholder="如 进门即穿戴，保护客户家庭卫生" />
+            </view>
+            <view class="field-item">
+              <text class="label">购买链接 (URL / 商城路径)</text>
+              <input class="input" value="{{item.purchaseUrl}}" data-index="{{index}}" data-field="purchaseUrl" bindinput="inputSupplyItem" placeholder="如 https://... 或 /pages/client/mall/detail/index?id=..." />
+            </view>
+          </view>
+          <button class="ghost-btn add-supply-btn" bindtap="addSupplyItem"><text class="remix-icon ri-add-line"></text><text>添加一次性物品</text></button>
+
           <view class="field-item"><text class="label">严格审核说明</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffSupplies.auditNotice}}" data-field="staffSupplies.auditNotice" bindinput="staffPolicyInput" /></view>
           <view class="field-item"><text class="label">服务前用品提醒</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.staffSupplies.serviceReminder}}" data-field="staffSupplies.serviceReminder" bindinput="staffPolicyInput" /></view>
           <view class="section-title">微信商家转账</view>
@@ -367,7 +393,7 @@
             </view>
             <view class="field-item">
               <text class="label">考核必备用品要求</text>
-              <textarea class="textarea" value="{{settings.staffTraining.videoAuditGuide.requiredItemsNotice}}" data-field="requiredItemsNotice" bindinput="trainingAuditGuideInput" placeholder="视频通话审核必备用品（须提前自备）：一次性手套、一次性口罩..." />
+              <textarea class="textarea" value="{{settings.staffTraining.videoAuditGuide.requiredItemsNotice}}" data-field="requiredItemsNotice" bindinput="trainingAuditGuideInput" placeholder="视频通话审核必备用品（须提前自备）：一次性手套、一次性口罩、一次性鞋套..." />
             </view>
             <view class="field-item">
               <text class="label">严审标准与风险提示</text>

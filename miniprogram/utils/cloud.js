@@ -183,7 +183,8 @@ function getCachedSystemSettings() {
     enablePetBreedAi: cached.enablePetBreedAi !== false,
     subscription: normalizeSubscriptionConfig(cached.subscription),
     homeHeroCarousel: normalizeHomeHeroCarousel(cached.homeHeroCarousel),
-    homePage: normalizeHomePageConfig(cached.homePage)
+    homePage: normalizeHomePageConfig(cached.homePage),
+    staffSupplies: cached.staffSupplies || null
   }
 }
 
@@ -194,7 +195,8 @@ function setCachedSystemSettings(settings) {
     enablePetBreedAi: source.enablePetBreedAi !== false,
     subscription: normalizeSubscriptionConfig(source.subscription),
     homeHeroCarousel: normalizeHomeHeroCarousel(source.homeHeroCarousel),
-    homePage: normalizeHomePageConfig(source.homePage)
+    homePage: normalizeHomePageConfig(source.homePage),
+    staffSupplies: source.staffSupplies || null
   }
   wx.setStorageSync(SYSTEM_SETTINGS_STORAGE_KEY, normalized)
   return normalized

@@ -76,9 +76,15 @@ const STAFF_VIDEO_AUDIT_GUIDE = {
   wechatId: 'pet-service-admin',
   remarkTemplate: '宠托师审核 + 姓名 + 手机号',
   description: '请添加平台审核微信并按备注格式发送信息，管理员完成线上视频审核后会在后台更新结果。',
-  requiredItemsNotice: '视频通话审核必备用品（须提前自备）：一次性手套、一次性口罩、安全宠物消毒用品。',
+  requiredItemsNotice: '视频通话审核必备用品（须提前自备）：一次性手套、一次性口罩、一次性鞋套、安全宠物消毒用品。',
   strictWarning: '温馨提醒：平台对审核员有严格要求，存在不通过的风险。备齐物资为必备前提，但不代表必然通过；如因其他原因未正式通过认证，平台不予报销宠物用品。成为认证宠托师后可申请首次用品报销，每人仅限首次申请，后续用品自备且不报销。'
 }
+const DEFAULT_DISPOSABLE_SUPPLY_ITEMS = [
+  { id: 'supply_gloves', name: '一次性手套', description: '佩戴防接触感染，足量自备', purchaseUrl: '', enabled: true },
+  { id: 'supply_mask', name: '一次性口罩', description: '规范防护，入户全程佩戴', purchaseUrl: '', enabled: true },
+  { id: 'supply_shoes', name: '一次性鞋套', description: '进门即穿戴，保护家庭卫生', purchaseUrl: '', enabled: true },
+  { id: 'supply_disinfectant', name: '安全宠物消毒用品', description: '正规安全无毒，进门及工具消毒', purchaseUrl: '', enabled: true }
+]
 const QUIZ_OPTION_VALUES = ['A', 'B', 'C', 'D', 'E', 'F']
 
 function normalizeTrainingVideos(videos = STAFF_TRAINING_VIDEOS) {
@@ -158,10 +164,63 @@ function normalizeStaffDepositConfig(deposit = {}) {
   }
 }
 
+function normalizeStaffSuppliesItems(items = [], fallbackRequired = []) {
+  if (Array.isArray(items) && items.length) {
+    const list = items.map((item, index) => {
+      if (typeof item === 'string') {
+        const name = safeText(item).trim()
+        if (!name) return null
+        const defaultMatch = DEFAULT_DISPOSABLE_SUPPLY_ITEMS.find((d) => d.name === name)
+        return {
+          id: `supply_${index + 1}`,
+          name,
+          description: defaultMatch ? defaultMatch.description : '',
+          purchaseUrl: '',
+          enabled: true
+        }
+      }
+      const name = safeText(item && item.name).trim()
+      if (!name) return null
+      return {
+        id: safeText(item.id).trim() || `supply_${index + 1}`,
+        name,
+        description: safeText(item.description).trim(),
+        purchaseUrl: safeText(item.purchaseUrl).trim(),
+        enabled: item.enabled !== false
+      }
+    }).filter(Boolean)
+    if (!list.some((item) => item.name.includes('鞋套'))) {
+      list.splice(2, 0, { id: 'supply_shoes', name: '一次性鞋套', description: '进门即穿戴，保护家庭卫生', purchaseUrl: '', enabled: true })
+    }
+    return list
+  }
+  if (Array.isArray(fallbackRequired) && fallbackRequired.length) {
+    const list = fallbackRequired.map((name, index) => {
+      const cleanName = safeText(name).trim()
+      if (!cleanName) return null
+      const defaultMatch = DEFAULT_DISPOSABLE_SUPPLY_ITEMS.find((d) => d.name === cleanName)
+      return {
+        id: `supply_${index + 1}`,
+        name: cleanName,
+        description: defaultMatch ? defaultMatch.description : '',
+        purchaseUrl: '',
+        enabled: true
+      }
+    }).filter(Boolean)
+    if (!list.some((item) => item.name.includes('鞋套'))) {
+      list.splice(2, 0, { id: 'supply_shoes', name: '一次性鞋套', description: '进门即穿戴，保护家庭卫生', purchaseUrl: '', enabled: true })
+    }
+    return list
+  }
+  return DEFAULT_DISPOSABLE_SUPPLY_ITEMS.map((item, index) => ({
+    id: `supply_${index + 1}`,
+    ...item
+  }))
+}
+
 function normalizeStaffSuppliesConfig(supplies = {}) {
-  const requiredItems = Array.isArray(supplies.requiredItems) && supplies.requiredItems.length
-    ? supplies.requiredItems.map((item) => safeText(item).trim()).filter(Boolean)
-    : ['一次性手套', '一次性口罩', '安全宠物消毒用品']
+  const items = normalizeStaffSuppliesItems(supplies.items, supplies.requiredItems)
+  const requiredItems = items.filter((i) => i.enabled !== false).map((i) => i.name)
   return {
     reimbursementEnabled: supplies.reimbursementEnabled !== false,
     maxReimbursementAmount: Number.isFinite(Number(supplies.maxReimbursementAmount)) && Number(supplies.maxReimbursementAmount) > 0 ? Number(supplies.maxReimbursementAmount) : 200,
@@ -171,9 +230,10 @@ function normalizeStaffSuppliesConfig(supplies = {}) {
       userRecvPerception: safeText(supplies.transfer?.userRecvPerception).trim(),
       sceneReportInfos: (Array.isArray(supplies.transfer?.sceneReportInfos) ? supplies.transfer.sceneReportInfos : []).map((item) => ({ info_type: safeText(item.info_type).trim(), info_content: safeText(item.info_content).trim() }))
     },
-    requiredItems,
+    items,
+    requiredItems: requiredItems.length ? requiredItems : ['一次性手套', '一次性口罩', '一次性鞋套', '安全宠物消毒用品'],
     auditNotice: safeText(supplies.auditNotice).trim() || '线上视频审核会严格检查必备用品准备情况，用品齐全不代表一定通过；如因其他原因未正式通过，平台不提供报销。',
-    serviceReminder: safeText(supplies.serviceReminder).trim() || '出发前请确认已携带一次性手套、一次性口罩和安全宠物消毒用品；开始服务后请先完成隔离病菌/消毒拍照打卡。'
+    serviceReminder: safeText(supplies.serviceReminder).trim() || '出发前请确认已携带一次性手套、一次性口罩、一次性鞋套和安全宠物消毒用品；开始服务后请先完成隔离病菌/消毒拍照打卡。'
   }
 }
 
@@ -7452,6 +7512,7 @@ const handlers = {
         quiz: { questions: publicTrainingQuiz(training.quiz), passScore: training.passScore, passed: Boolean(profile.quizPassedAt), score: Number(profile.quizScore || 0), passedAt: profile.quizPassedAt || '' },
         videos,
         videoAuditGuide: training.videoAuditGuide || STAFF_VIDEO_AUDIT_GUIDE,
+        supplies: settings.staffSupplies || normalizeStaffSuppliesConfig(),
         completedInternOrders: completedOrders,
         completedInternOrderCount: completedOrders.length,
         canRequestVideoAudit: profile.auditStatus === 'approved' && isTrainingComplete(profile, training) && profile.videoAuditStatus !== 'pending' && profile.videoAuditStatus !== 'approved',

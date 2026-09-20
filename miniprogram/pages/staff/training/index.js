@@ -28,7 +28,13 @@ Page({
     depositError: false,
     depositBusy: false,
     depositAgreed: false,
-    refundReason: ''
+    refundReason: '',
+    supplyItems: [
+      { name: '一次性手套', description: '足量自备', purchaseUrl: '' },
+      { name: '一次性口罩', description: '规范防护', purchaseUrl: '' },
+      { name: '一次性鞋套', description: '进门即穿戴', purchaseUrl: '' },
+      { name: '安全宠物消毒用品', description: '正规安全无毒', purchaseUrl: '' }
+    ]
   },
 
   onShow() {
@@ -126,6 +132,10 @@ Page({
       .then((res) => {
         const profile = withStaffWorkflowText(res.profile)
         const videos = (res.videos || []).map((item) => ({ ...item, watchedAtText: formatDateTime(item.watchedAt), tempUrl: '', posterTempUrl: '' }))
+        const supplies = res.supplies || {}
+        const supplyItems = Array.isArray(supplies.items) && supplies.items.length
+          ? supplies.items.filter((i) => i.enabled !== false)
+          : this.data.supplyItems
         this.setData({
           profile,
           quiz: res.quiz,
@@ -133,6 +143,7 @@ Page({
           steps: buildSteps(profile, videos),
           videoAuditGuide: res.videoAuditGuide,
           canRequestVideoAudit: res.canRequestVideoAudit,
+          supplyItems,
           loading: false
         }, () => this.resolveVideoUrls(videos))
       })
@@ -140,6 +151,33 @@ Page({
         this.setData({ loading: false })
         showError(err)
       })
+  },
+
+  openPurchaseUrl(e) {
+    const url = e.currentTarget.dataset.url
+    const name = e.currentTarget.dataset.name || '物品'
+    if (!url) {
+      wx.showToast({ title: '暂未配置购买链接', icon: 'none' })
+      return
+    }
+    if (url.startsWith('/')) {
+      wx.navigateTo({ url })
+      return
+    }
+    wx.showModal({
+      title: `${name} 购买链接`,
+      content: `购买地址：${url}\n\n已为您准备好链接，点击“复制链接”后可在微信聊天或浏览器中打开完成购买。`,
+      confirmText: '复制链接',
+      cancelText: '关闭',
+      success: (res) => {
+        if (res.confirm) {
+          wx.setClipboardData({
+            data: url,
+            success: () => wx.showToast({ title: '已复制链接' })
+          })
+        }
+      }
+    })
   },
 
   copyAuditWechat() {

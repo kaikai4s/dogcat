@@ -1,7 +1,14 @@
 const { callFunction, showError, setCachedSystemSettings } = require('../../../utils/cloud')
 
 const quizOptionValues = ['A', 'B', 'C', 'D', 'E', 'F']
-const requiredSupplyItems = ['一次性手套', '一次性口罩', '宠物安全消毒用品']
+const requiredSupplyItems = ['一次性手套', '一次性口罩', '一次性鞋套', '宠物安全消毒用品']
+
+const defaultSupplyItemObjects = [
+  { id: 'supply_gloves', name: '一次性手套', description: '佩戴防接触感染，足量自备', purchaseUrl: '', enabled: true },
+  { id: 'supply_mask', name: '一次性口罩', description: '规范防护，入户全程佩戴', purchaseUrl: '', enabled: true },
+  { id: 'supply_shoes', name: '一次性鞋套', description: '进门即穿戴，保护家庭卫生', purchaseUrl: '', enabled: true },
+  { id: 'supply_disinfectant', name: '安全宠物消毒用品', description: '宠物专用安全无毒，进门及工具消毒', purchaseUrl: '', enabled: true }
+]
 
 // Amounts use yuan in the existing settings/API; require exact positive cents.
 function validAmount(value, allowZero = false) {
@@ -23,12 +30,38 @@ function normalizeStaffDeposit(deposit = {}) {
 }
 
 function normalizeStaffSupplies(supplies = {}) {
+  let items = Array.isArray(supplies.items) && supplies.items.length
+    ? supplies.items.map((item, idx) => ({
+        id: item.id || `supply_${idx + 1}`,
+        name: String(item.name || '').trim(),
+        description: String(item.description || '').trim(),
+        purchaseUrl: String(item.purchaseUrl || '').trim(),
+        enabled: item.enabled !== false
+      })).filter((i) => i.name)
+    : (Array.isArray(supplies.requiredItems) ? supplies.requiredItems : requiredSupplyItems).map((name, idx) => {
+        const defaultObj = defaultSupplyItemObjects.find((d) => d.name === name)
+        return {
+          id: `supply_${idx + 1}`,
+          name: String(name || '').trim(),
+          description: defaultObj ? defaultObj.description : '',
+          purchaseUrl: '',
+          enabled: true
+        }
+      }).filter((i) => i.name)
+
+  if (!items.some((i) => i.name.includes('鞋套'))) {
+    items.splice(2, 0, { id: 'supply_shoes', name: '一次性鞋套', description: '进门即穿戴，保护家庭卫生', purchaseUrl: '', enabled: true })
+  }
+
+  const requiredItems = items.filter((i) => i.enabled).map((i) => i.name)
+
   return {
     ...supplies,
     reimbursementEnabled: supplies.reimbursementEnabled === true,
-    requiredItems: Array.isArray(supplies.requiredItems) ? supplies.requiredItems : [...requiredSupplyItems],
-    auditNotice: supplies.auditNotice || '视频审核必须检查手套、口罩、宠物安全消毒用品。严格考核可能不通过；未正式认证不报销。仅正式认证后首次申请可报销，实习阶段不可申请。',
-    serviceReminder: supplies.serviceReminder || '服务前带齐手套、口罩和宠物安全消毒用品，按规范完成消毒。',
+    items,
+    requiredItems: requiredItems.length ? requiredItems : [...requiredSupplyItems],
+    auditNotice: supplies.auditNotice || '视频审核必须检查手套、口罩、鞋套、宠物安全消毒用品。严格考核可能不通过；未正式认证不报销。仅正式认证后首次申请可报销，实习阶段不可申请。',
+    serviceReminder: supplies.serviceReminder || '服务前带齐手套、口罩、鞋套和宠物安全消毒用品，按规范完成消毒。',
     transfer: { enabled: false, sceneId: '', userRecvPerception: '', sceneReportInfos: [], ...(supplies.transfer || {}) }
   }
 }
@@ -182,7 +215,7 @@ function normalizeStaffTrainingConfig(training = {}) {
       wechatId: (guide.wechatId || 'pet-service-admin').trim(),
       remarkTemplate: (guide.remarkTemplate || '宠托师审核 + 姓名 + 手机号').trim(),
       description: (guide.description || '请添加平台审核微信并按备注格式发送信息，管理员完成线上视频审核后会在后台更新结果。').trim(),
-      requiredItemsNotice: (guide.requiredItemsNotice || '视频通话审核必备用品（须提前自备）：一次性手套、一次性口罩、安全宠物消毒用品。').trim(),
+      requiredItemsNotice: (guide.requiredItemsNotice || '视频通话审核必备用品（须提前自备）：一次性手套、一次性口罩、一次性鞋套安全宠物消毒用品。').trim(),
       strictWarning: (guide.strictWarning || '温馨提醒：平台对审核员有严格要求，存在不通过的风险。备齐物资为必备前提，但不代表必然通过；如因其他原因未正式通过认证，平台不予报销宠物用品。成为认证宠托师后可申请首次用品报销，每人仅限首次申请，后续用品自备且不报销。').trim()
     },
     quiz: sourceQuiz.map((item, index) => {
@@ -503,6 +536,59 @@ Page({
 
   toggleCarouselEnabled(e) {
     this.setData({ ['settings.homeHeroCarousel.enabled']: e.detail.value })
+  },
+
+  addSupplyItem() {
+    const items = [...(this.data.settings.staffSupplies.items || [])]
+    items.push({
+      id: `supply_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: '',
+      description: '',
+      purchaseUrl: '',
+      enabled: true
+    })
+    this.setData({ 'settings.staffSupplies.items': items })
+  },
+
+  removeSupplyItem(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const items = [...(this.data.settings.staffSupplies.items || [])]
+    if (items.length <= 1) {
+      wx.showToast({ title: '至少保留一项必备用品', icon: 'none' })
+      return
+    }
+    items.splice(index, 1)
+    const requiredItems = items.filter((i) => i.enabled).map((i) => i.name).filter(Boolean)
+    this.setData({
+      'settings.staffSupplies.items': items,
+      requiredItemsText: requiredItems.join('\n')
+    })
+  },
+
+  inputSupplyItem(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const field = e.currentTarget.dataset.field
+    const value = e.detail.value
+    const items = [...(this.data.settings.staffSupplies.items || [])]
+    if (!items[index]) return
+    items[index] = { ...items[index], [field]: value }
+    const requiredItems = items.filter((i) => i.enabled).map((i) => i.name).filter(Boolean)
+    this.setData({
+      'settings.staffSupplies.items': items,
+      requiredItemsText: requiredItems.join('\n')
+    })
+  },
+
+  toggleSupplyItem(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const items = [...(this.data.settings.staffSupplies.items || [])]
+    if (!items[index]) return
+    items[index] = { ...items[index], enabled: e.detail.value }
+    const requiredItems = items.filter((i) => i.enabled).map((i) => i.name).filter(Boolean)
+    this.setData({
+      'settings.staffSupplies.items': items,
+      requiredItemsText: requiredItems.join('\n')
+    })
   },
 
   toggleCarouselAutoRotate(e) {
@@ -1103,9 +1189,15 @@ Page({
     if (transfer.enabled && (!String(transfer.sceneId).trim() || !String(transfer.userRecvPerception).trim() || !sceneReportInfos.length)) {
       return showError(new Error('启用前请填写商户已获批的真实转账场景、收款感知与对应报备信息'))
     }
-    const requiredItems = this.data.requiredItemsText.split('\n').map((item) => item.trim()).filter(Boolean)
-    if (!requiredItems.length) return showError(new Error('请填写必备用品，必须涵盖手套、口罩和宠物安全消毒用品'))
-    this.setData({ 'settings.staffDeposit.amount': Number(deposit.amount), 'settings.staffSupplies.requiredItems': requiredItems, 'settings.staffSupplies.transfer.sceneReportInfos': sceneReportInfos })
+    const items = (this.data.settings.staffSupplies.items || []).filter((item) => item.name && String(item.name).trim())
+    const requiredItems = items.filter((i) => i.enabled).map((item) => String(item.name).trim())
+    if (!requiredItems.length) return showError(new Error('请配置必备一次性用品，必须涵盖手套、口罩、鞋套和宠物安全消毒用品'))
+    this.setData({
+      'settings.staffDeposit.amount': Number(deposit.amount),
+      'settings.staffSupplies.items': items,
+      'settings.staffSupplies.requiredItems': requiredItems,
+      'settings.staffSupplies.transfer.sceneReportInfos': sceneReportInfos
+    })
     if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster) {
       wx.showToast({ title: '请等待培训素材上传完成', icon: 'none' })
       return

@@ -44,7 +44,7 @@ function createTestDb(overrides = {}) {
           },
           staffSupplies: {
             reimbursementEnabled: true,
-            requiredItems: ['一次性手套', '一次性口罩', '安全宠物消毒用品'],
+            requiredItems: ['一次性手套', '一次性口罩', '一次性鞋套', '安全宠物消毒用品'],
             auditNotice: '严审提示：备齐物资不代表必然通过考核',
             serviceReminder: '服务前请自备并携带必备用品，并进行隔离病菌拍照打卡'
           },

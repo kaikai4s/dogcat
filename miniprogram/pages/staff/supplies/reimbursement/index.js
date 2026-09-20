@@ -123,6 +123,33 @@ Page({
     this.setData({ receipts: this.data.receipts.filter((item, i) => i !== index) })
   },
 
+  openPurchaseUrl(e) {
+    const url = e.currentTarget.dataset.url
+    const name = e.currentTarget.dataset.name || '物品'
+    if (!url) {
+      wx.showToast({ title: '暂未配置购买链接', icon: 'none' })
+      return
+    }
+    if (url.startsWith('/')) {
+      wx.navigateTo({ url })
+      return
+    }
+    wx.showModal({
+      title: `${name} 购买链接`,
+      content: `购买地址：${url}\n\n已为您准备好链接，点击“复制链接”后可在微信聊天或浏览器中打开完成购买。`,
+      confirmText: '复制链接',
+      cancelText: '关闭',
+      success: (res) => {
+        if (res.confirm) {
+          wx.setClipboardData({
+            data: url,
+            success: () => wx.showToast({ title: '已复制链接' })
+          })
+        }
+      }
+    })
+  },
+
   async previewReceipt(e) {
     const submitted = e.currentTarget.dataset.submitted === 'yes'
     const urls = submitted ? this.data.submittedReceipts : this.data.receipts.map((item) => item.preview)

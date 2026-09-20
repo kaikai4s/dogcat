@@ -5,7 +5,7 @@
       <text>现场证据</text>
     </view>
     <view class="hero-title">{{eventTypeText}} 打卡</view>
-    <view class="hero-desc">{{isBeautyCheckin ? '上传服务中拍到的宠物美照，宠物家长可在服务报告中保存或加入宠物相册。' : (eventType === 'sanitization' ? '服务开始前必须自备并佩戴好一次性手套与口罩、手持安全宠物消毒用品现场拍照，做好隔离病菌防护。' : '拍照或上传截图后将保存至订单证据链，服务结束前可删除并重新上传。')}}</view>
+    <view class="hero-desc">{{isBeautyCheckin ? '上传服务中拍到的宠物美照，宠物家长可在服务报告中保存或加入宠物相册。' : (eventType === 'sanitization' ? '服务开始前必须自备并穿戴好一次性手套、口罩与鞋套，手持安全宠物消毒用品现场拍照，做好隔离病菌防护。' : '拍照或上传截图后将保存至订单证据链，服务结束前可删除并重新上传。')}}</view>
   </view>
 
   <view class="card form-card">
