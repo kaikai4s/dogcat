@@ -119,5 +119,9 @@ Page({
   tracking() { wx.navigateTo({ url: '/pages/client/orders/tracking/index?id=' + this.data.id }) },
   report() { wx.navigateTo({ url: '/pages/client/orders/report/index?id=' + this.data.id }) },
   sos() { wx.navigateTo({ url: '/pages/staff/sos/index?id=' + this.data.id }) },
+  openOrderMessages() {
+    if (!this.data.id) return
+    wx.navigateTo({ url: '/pages/staff/messages/thread/index?orderId=' + this.data.id })
+  },
   ...navMethods()
 })

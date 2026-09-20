@@ -77,6 +77,17 @@
     </view>
   </view>
 
+  <view class="card order-message-entry interactive" bindtap="openOrderMessages">
+    <view class="entry-left">
+      <view class="entry-icon remix-icon ri-chat-3-fill"></view>
+      <view class="entry-texts">
+        <view class="entry-title">任务消息记录</view>
+        <view class="entry-desc">查看此订单的历史通知、开门记录与服务提醒</view>
+      </view>
+    </view>
+    <view class="remix-icon ri-arrow-right-s-line entry-arrow"></view>
+  </view>
+
   <view class="card detail-info-card">
     <view class="card-subtitle">
       <text class="remix-icon ri-file-list-3-line sub-icon"></text>
@@ -167,7 +178,10 @@
 
   <view class="bottom-fixed-actions">
     <button class="ghost-btn nav-action-btn" bindtap="openNavigation">
-      <text class="remix-icon ri-map-pin-line"></text>导航到地址
+      <text class="remix-icon ri-map-pin-line"></text>导航
+    </button>
+    <button class="ghost-btn message-action-btn" bindtap="openOrderMessages">
+      <text class="remix-icon ri-chat-3-line"></text>消息
     </button>
     <button class="primary-btn accept-action-btn" wx:if="{{order.status === 'paid'}}" bindtap="accept">确认接单</button>
     <button class="primary-btn service-action-btn" wx:if="{{order.status !== 'paid'}}" bindtap="service">

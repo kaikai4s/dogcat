@@ -59,6 +59,11 @@ Page({
     this.setData({ activeStatus: e.currentTarget.dataset.status, page: 1, hasMore: true }, () => this.load({ reset: true }))
   },
   detail(e) { wx.navigateTo({ url: '/pages/staff/orders/detail/index?id=' + e.currentTarget.dataset.id }) },
+  openOrderMessages(e) {
+    const id = e.currentTarget.dataset.id
+    if (!id) return
+    wx.navigateTo({ url: '/pages/staff/messages/thread/index?orderId=' + id })
+  },
   openNavigation(e) {
     const { latitude, longitude, name, address } = e.currentTarget.dataset
     const lat = Number(latitude)

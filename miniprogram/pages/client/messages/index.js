@@ -1,6 +1,6 @@
 const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
 const { formatDateTime } = require('../../../utils/format')
-const { loadMessageUnread } = require('../../../utils/client-nav')
+const { loadMessageUnread, refreshUnread } = require('../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 function pageList(result) {
@@ -109,6 +109,43 @@ Page({
     const threadId = e.currentTarget.dataset.id
     if (!threadId) return
     wx.navigateTo({ url: '/pages/client/messages/thread/index?id=' + threadId })
+  },
+  deleteThread(e) {
+    const threadId = e.currentTarget.dataset.id || (e.detail && e.detail.id)
+    if (!threadId) return
+    wx.showModal({
+      title: '删除订单消息',
+      content: '确定从消息列表中移除该订单消息吗？\n（仅从消息列表隐藏，对应订单详情中仍可随时查看完整记录）',
+      confirmText: '删除',
+      confirmColor: '#e03131',
+      cancelText: '取消',
+      success: (res) => {
+        if (res.confirm) {
+          wx.showLoading({ title: '正在移除...' })
+          callFunction('message', 'deleteThread', { threadId })
+            .then(() => {
+              wx.hideLoading()
+              const updatedThreads = this.data.threads.filter((item) => item._id !== threadId)
+              this.setData({
+                threads: updatedThreads,
+                total: Math.max(0, this.data.total - 1)
+              })
+              wx.showToast({ title: '已从列表移除', icon: 'success' })
+              refreshUnread('client').catch(() => {})
+              loadMessageUnread(this)
+            })
+            .catch((err) => {
+              wx.hideLoading()
+              showError(err)
+            })
+        }
+      }
+    })
+  },
+  onThreadLongPress(e) {
+    const threadId = e.currentTarget.dataset.id
+    if (!threadId) return
+    this.deleteThread({ currentTarget: { dataset: { id: threadId } } })
   },
   go(e) {
     const url = e.currentTarget.dataset.url

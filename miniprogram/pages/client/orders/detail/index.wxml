@@ -13,6 +13,17 @@
     <view class="summary-price">¥{{order.payAmount}}</view>
   </view>
 
+  <view class="card order-message-entry interactive" bindtap="openOrderMessages">
+    <view class="entry-left">
+      <view class="entry-icon remix-icon ri-chat-3-fill"></view>
+      <view class="entry-texts">
+        <view class="entry-title">订单消息记录</view>
+        <view class="entry-desc">查看此订单的历史通知、服务进度与系统消息</view>
+      </view>
+    </view>
+    <view class="remix-icon ri-arrow-right-s-line entry-arrow"></view>
+  </view>
+
   <view class="card person-card">
     <view class="card-subtitle"><text class="remix-icon ri-user-heart-line sub-icon"></text><text>客户信息</text></view>
     <view class="order-person">
@@ -131,6 +142,7 @@
     <button class="ghost-btn" wx:if="{{order.status === 'completed' && !review}}" bindtap="reviewOrder"><text class="remix-icon ri-star-smile-line"></text><text>评价服务</text></button>
     <button class="ghost-btn" wx:if="{{order.status === 'assigned' || order.status === 'in_service' || order.status === 'completed'}}" bindtap="createIncident"><text class="remix-icon ri-customer-service-2-line"></text><text>发起投诉 / 售后</text></button>
     <button class="ghost-btn" wx:if="{{order.status === 'completed'}}" bindtap="rebook"><text class="remix-icon ri-calendar-check-line"></text><text>再次预约</text></button>
+    <button class="ghost-btn" bindtap="openOrderMessages"><text class="remix-icon ri-chat-3-line"></text><text>消息记录</text></button>
     <button class="ghost-btn" wx:if="{{order.status === 'in_service' || order.status === 'completed'}}" bindtap="tracking"><text class="remix-icon ri-route-line"></text><text>查看轨迹 / 打卡</text></button>
     <button class="ghost-btn" wx:if="{{order.status === 'completed'}}" bindtap="report"><text class="remix-icon ri-file-text-line"></text><text>服务报告</text></button>
   </view>

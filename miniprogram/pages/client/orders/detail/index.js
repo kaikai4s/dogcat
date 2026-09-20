@@ -254,6 +254,10 @@ Page({
         showError(error)
       })
   },
+  openOrderMessages() {
+    if (!this.data.id) return
+    wx.navigateTo({ url: '/pages/client/messages/thread/index?orderId=' + this.data.id })
+  },
   cancelOrder() {
     if (this.data.cancelling) return
     this.setData({ cancelling: true })

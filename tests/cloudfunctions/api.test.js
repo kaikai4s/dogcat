@@ -2120,6 +2120,16 @@ test('order messages list unread summary and mark read work', async () => {
   assert.equal(read.ok, true)
   assert.equal(db.state.order_message_threads[0].unreadCount, 0)
   assert.equal(after.data.totalUnread, 0)
+
+  // Soft delete thread: hidden from message list, but still accessible in order
+  const delRes = await clientFn.main({ module: 'message', action: 'deleteThread', data: { threadId: 'thread1' } })
+  assert.equal(delRes.ok, true)
+  const listAfterDel = await clientFn.main({ module: 'message', action: 'listThreads', data: { page: 1, pageSize: 10 } })
+  assert.equal(listAfterDel.data.list.length, 0)
+  const byOrder = await clientFn.main({ module: 'message', action: 'getThreadMessages', data: { orderId: 'order1' } })
+  assert.equal(byOrder.ok, true)
+  assert.equal(byOrder.data.messages.length, 1)
+  assert.equal(byOrder.data.messages[0].title, '订单已支付')
 })
 
 
@@ -2167,6 +2177,16 @@ test('staff order messages use independent module collections and mark read work
   assert.equal(deniedClient.ok, false)
   assert.equal(read.ok, true)
   assert.equal(db.state.order_staff_message_threads[0].unreadCount, 0)
+
+  // Soft delete staff thread: hidden from message list, but still accessible in order/task
+  const delRes = await staffFn.main({ module: 'staffMessage', action: 'deleteThread', data: { threadId: 'staff_thread' } })
+  assert.equal(delRes.ok, true)
+  const listAfterDel = await staffFn.main({ module: 'staffMessage', action: 'listThreads', data: { page: 1, pageSize: 10 } })
+  assert.equal(listAfterDel.data.list.length, 0)
+  const byOrder = await staffFn.main({ module: 'staffMessage', action: 'getThreadMessages', data: { orderId: 'order1' } })
+  assert.equal(byOrder.ok, true)
+  assert.equal(byOrder.data.messages.length, 1)
+  assert.equal(byOrder.data.messages[0].title, '一次性密码已更新')
 })
 
 

@@ -55,9 +55,37 @@
 .message-card {
   display: flex;
   gap: 20rpx;
-  align-items: flex-start;
+  align-items: center;
   padding: 26rpx;
   margin-top: 18rpx;
+  position: relative;
+}
+
+.message-card-side {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-left: 8rpx;
+}
+
+.message-delete-action {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b5a498;
+  background: #fdf5ef;
+  font-size: 32rpx;
+  transition: all 0.2s ease;
+}
+
+.message-delete-action:active,
+.delete-hover {
+  color: #e03131 !important;
+  background: #ffe3e3 !important;
+  transform: scale(0.92);
 }
 
 .message-icon {

@@ -58,9 +58,12 @@
     </view>
 
     <view class="card-action-row">
-      <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">查看任务详情</button>
+      <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">任务详情</button>
+      <button class="ghost-btn" data-id="{{item._id}}" catchtap="openOrderMessages">
+        <text class="remix-icon ri-chat-3-line"></text>消息记录
+      </button>
       <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
-        <text class="remix-icon ri-map-pin-line"></text>导航到地址
+        <text class="remix-icon ri-map-pin-line"></text>导航
       </button>
     </view>
   </view>

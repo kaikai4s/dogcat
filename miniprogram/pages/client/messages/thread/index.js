@@ -12,12 +12,13 @@ Page({
   data: {
     themeClass: 'theme-day',
     id: '',
+    orderId: '',
     thread: null,
     messages: [],
     loading: false
   },
   onLoad(q) {
-    this.setData({ id: q.id || '' })
+    this.setData({ id: q.id || '', orderId: q.orderId || '' })
   },
   onShow() {
     this.applyCurrentTheme()
@@ -30,16 +31,19 @@ Page({
     this.setData(getThemeState(theme.value))
   },
   load() {
-    if (!this.data.id || this.data.loading) return
+    if ((!this.data.id && !this.data.orderId) || this.data.loading) return
     this.setData({ loading: true })
-    callFunction('message', 'getThreadMessages', { threadId: this.data.id })
+    callFunction('message', 'getThreadMessages', { threadId: this.data.id, orderId: this.data.orderId })
       .then((result) => {
         const thread = result.thread || null
         const messages = (result.messages || []).map(withMessageText)
-        this.setData({ thread, messages, loading: false })
-        return callFunction('message', 'markThreadRead', { threadId: this.data.id })
-          .then(() => refreshUnread('client'))
-          .catch(() => {})
+        this.setData({ thread, messages, loading: false, id: thread ? thread._id : this.data.id })
+        const targetThreadId = thread ? thread._id : this.data.id
+        if (targetThreadId) {
+          return callFunction('message', 'markThreadRead', { threadId: targetThreadId })
+            .then(() => refreshUnread('client'))
+            .catch(() => {})
+        }
       })
       .catch((error) => {
         this.setData({ loading: false })

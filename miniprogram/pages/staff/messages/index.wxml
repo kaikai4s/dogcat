@@ -9,7 +9,7 @@
   </view>
 
   <view class="message-list">
-    <view class="card message-card" wx:for="{{threads}}" wx:key="_id" data-id="{{item._id}}" bindtap="openThread">
+    <view class="card message-card interactive" wx:for="{{threads}}" wx:key="_id" data-id="{{item._id}}" bindtap="openThread" bindlongpress="onThreadLongPress">
       <view class="message-icon">
         <text class="remix-icon ri-chat-3-line"></text>
         <view class="message-card-dot" wx:if="{{item.showUnreadDot}}"></view>
@@ -26,7 +26,11 @@
           <view class="order-no">订单 {{item.orderNo || item.orderId}}</view>
         </view>
       </view>
-      <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
+      <view class="message-card-side">
+        <view class="message-delete-action" data-id="{{item._id}}" catchtap="deleteThread" hover-class="delete-hover" title="删除">
+          <text class="remix-icon ri-delete-bin-line"></text>
+        </view>
+      </view>
     </view>
   </view>
 
