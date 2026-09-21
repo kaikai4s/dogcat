@@ -1295,7 +1295,10 @@ async function validateStaffAvailabilityForSessions(profile, sessions = [], opti
     await validateStaffScheduleOnly(profile, session.startTime, session.endTime)
   }
 
-  const orderRes = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
+  const orderRes = await db.collection('orders').where({
+    staffOpenid: profile.openid,
+    status: db.command.in(['paid', 'assigned', 'in_service'])
+  }).get()
   const candidate = { serviceSessions: sessions }
   const conflict = (orderRes.data || []).find((order) => {
     if (options.excludeOrderId && order._id === options.excludeOrderId) return false
