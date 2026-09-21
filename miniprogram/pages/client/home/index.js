@@ -98,6 +98,9 @@ Page({
     staffEntryTip: '',
     staffEntryStatus: 'none',
 
+    // 服务流程说明折叠状态
+    flowExpanded: false,
+
     // 轮播 hero 相关状态
     heroCarouselEnabled: false,
     heroAutoRotate: true,
@@ -116,6 +119,12 @@ Page({
     this.loadHomePageData()
     this.loadStaffEntryState()
     loadMessageUnread(this)
+  },
+
+  toggleFlowExpand() {
+    this.setData({
+      flowExpanded: !this.data.flowExpanded
+    })
   },
 
   onHide() {

@@ -826,13 +826,71 @@
 
 .service-flow-section {
   background: linear-gradient(135deg, #ffffff 0%, #fffaf4 100%);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.service-flow-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.service-flow-title-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.service-flow-actions {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+.flow-toggle-arrow {
+  font-size: 34rpx;
+  color: #ff7a45;
+  transition: transform 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-block;
+  line-height: 1;
+}
+
+.flow-toggle-arrow.arrow-up {
+  transform: rotate(180deg);
+}
+
+/* 核心平滑折叠容器：采用双重 CSS 原生属性，GPU 硬件加速，绝对丝滑 */
+.service-flow-collapse-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+  overflow: hidden;
+  transition: grid-template-rows 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+              max-height 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.32s ease,
+              margin-top 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: grid-template-rows, max-height, opacity;
+}
+
+.service-flow-section.is-expanded .service-flow-collapse-wrap {
+  grid-template-rows: 1fr;
+  max-height: 600rpx;
+  opacity: 1;
+  margin-top: 24rpx;
+}
+
+.service-flow-collapse-inner {
+  min-height: 0;
+  overflow: hidden;
 }
 
 .service-flow-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16rpx;
-  margin-top: 24rpx;
 }
 
 .service-flow-item {
@@ -841,6 +899,20 @@
   border-radius: 30rpx;
   background: #fffdf9;
   border: 1rpx solid rgba(255, 153, 102, 0.12);
+  transform: translateY(18rpx) scale(0.98);
+  opacity: 0.5;
+  transition: transform 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.35s ease;
+}
+
+.service-flow-section.is-expanded .service-flow-item {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.service-flow-section.is-expanded .service-flow-item:nth-child(3),
+.service-flow-section.is-expanded .service-flow-item:nth-child(4) {
+  transition-delay: 0.05s;
 }
 
 .flow-icon {

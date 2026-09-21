@@ -160,13 +160,26 @@
     </scroll-view>
   </view>
 
-  <view class="home-section service-flow-section">
-    <view class="section-heading"><view><view class="section-title">服务怎么进行？</view><view class="section-desc">从预约到报告，全程清晰可追踪</view></view><view class="section-link" data-url="/pages/client/orders/create/index" bindtap="goProtected">立即预约</view></view>
-    <view class="service-flow-grid">
-      <view class="service-flow-item"><view class="remix-icon ri-calendar-check-line flow-icon"></view><view class="flow-title">确认需求</view><view class="flow-desc">选择宠物、项目和上门时间</view></view>
-      <view class="service-flow-item"><view class="remix-icon ri-user-star-line flow-icon green"></view><view class="flow-title">宠托师接单</view><view class="flow-desc">公开抢单或指定熟悉宠托师</view></view>
-      <view class="service-flow-item"><view class="remix-icon ri-map-pin-time-line flow-icon blue"></view><view class="flow-title">上门打卡</view><view class="flow-desc">轨迹、照片和关键节点可见</view></view>
-      <view class="service-flow-item"><view class="remix-icon ri-file-list-3-line flow-icon purple"></view><view class="flow-title">服务报告</view><view class="flow-desc">完成后查看照护记录和总结</view></view>
+  <view class="home-section service-flow-section {{flowExpanded ? 'is-expanded' : 'is-folded'}}">
+    <view class="section-heading service-flow-head" bindtap="toggleFlowExpand">
+      <view class="service-flow-title-wrap">
+        <view class="section-title">服务怎么进行？</view>
+        <view class="section-desc">从预约到报告，全程清晰可追踪</view>
+      </view>
+      <view class="service-flow-actions">
+        <view class="section-link">{{flowExpanded ? '收起详情' : '展开详情'}}</view>
+        <view class="remix-icon ri-arrow-down-s-line flow-toggle-arrow {{flowExpanded ? 'arrow-up' : ''}}"></view>
+      </view>
+    </view>
+    <view class="service-flow-collapse-wrap">
+      <view class="service-flow-collapse-inner">
+        <view class="service-flow-grid">
+          <view class="service-flow-item"><view class="remix-icon ri-calendar-check-line flow-icon"></view><view class="flow-title">确认需求</view><view class="flow-desc">选择宠物、项目和上门时间</view></view>
+          <view class="service-flow-item"><view class="remix-icon ri-user-star-line flow-icon green"></view><view class="flow-title">宠托师接单</view><view class="flow-desc">公开抢单或指定熟悉宠托师</view></view>
+          <view class="service-flow-item"><view class="remix-icon ri-map-pin-time-line flow-icon blue"></view><view class="flow-title">上门打卡</view><view class="flow-desc">轨迹、照片和关键节点可见</view></view>
+          <view class="service-flow-item"><view class="remix-icon ri-file-list-3-line flow-icon purple"></view><view class="flow-title">服务报告</view><view class="flow-desc">完成后查看照护记录和总结</view></view>
+        </view>
+      </view>
     </view>
   </view>
 
