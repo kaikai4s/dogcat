@@ -4,6 +4,8 @@ const { loadMessageUnread } = require('../../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const ALL = '全部'
+const VISIBLE_CITY_COUNT = 4
+const VISIBLE_AREA_COUNT = 4
 const sortOptions = [
   { label: '推荐', value: 'default' },
   { label: '距离最近', value: 'distance' },
@@ -20,6 +22,14 @@ function areaTags(sitter) {
   return Array.isArray(sitter.areaTags) ? sitter.areaTags : []
 }
 
+function visibleOptions(options, active, count) {
+  const list = options.slice(0, count)
+  if (active && !list.includes(active) && options.includes(active)) {
+    return [options[0], active, ...list.filter((item) => item !== options[0]).slice(0, Math.max(count - 2, 0))]
+  }
+  return list
+}
+
 Page({
   data: {
     themeClass: 'theme-day',
@@ -30,6 +40,12 @@ Page({
     sortOptions,
     cityOptions: [ALL],
     areaOptions: [ALL],
+    visibleCityOptions: [ALL],
+    visibleAreaOptions: [ALL],
+    cityHasMore: false,
+    areaHasMore: false,
+    showCitySelector: false,
+    showAreaSelector: false,
     locationName: '',
     locationAddress: '',
     allSitters: [],
@@ -79,11 +95,18 @@ Page({
   },
 
   refreshOptions() {
-    const { allSitters, activeCity } = this.data
+    const { allSitters, activeCity, activeArea } = this.data
     const cityOptions = [ALL, ...unique(allSitters.map((item) => item.serviceCity).filter((city) => city && city !== '服务城市待完善'))]
     const source = activeCity === ALL ? allSitters : allSitters.filter((item) => item.serviceCity === activeCity)
     const areaOptions = [ALL, ...unique(source.reduce((list, item) => list.concat(areaTags(item)), []))]
-    this.setData({ cityOptions, areaOptions })
+    this.setData({
+      cityOptions,
+      areaOptions,
+      visibleCityOptions: visibleOptions(cityOptions, activeCity, VISIBLE_CITY_COUNT),
+      visibleAreaOptions: visibleOptions(areaOptions, activeArea, VISIBLE_AREA_COUNT),
+      cityHasMore: cityOptions.length > VISIBLE_CITY_COUNT,
+      areaHasMore: areaOptions.length > VISIBLE_AREA_COUNT
+    })
   },
 
   loadSitters() {
@@ -139,8 +162,11 @@ Page({
 
   chooseCity(e) {
     const city = e.currentTarget.dataset.city
-    if (city === this.data.activeCity) return
-    this.setData({ activeCity: city, activeArea: ALL }, () => {
+    if (city === this.data.activeCity) {
+      this.closeCitySelector()
+      return
+    }
+    this.setData({ activeCity: city, activeArea: ALL, showCitySelector: false }, () => {
       this.refreshOptions()
       this.loadSitters()
     })
@@ -148,9 +174,33 @@ Page({
 
   chooseArea(e) {
     const area = e.currentTarget.dataset.area
-    if (area === this.data.activeArea) return
-    this.setData({ activeArea: area }, () => this.loadSitters())
+    if (area === this.data.activeArea) {
+      this.closeAreaSelector()
+      return
+    }
+    this.setData({ activeArea: area, showAreaSelector: false }, () => {
+      this.refreshOptions()
+      this.loadSitters()
+    })
   },
+
+  openCitySelector() {
+    this.setData({ showCitySelector: true })
+  },
+
+  closeCitySelector() {
+    this.setData({ showCitySelector: false })
+  },
+
+  openAreaSelector() {
+    this.setData({ showAreaSelector: true })
+  },
+
+  closeAreaSelector() {
+    this.setData({ showAreaSelector: false })
+  },
+
+  noop() {},
 
   chooseSort(e) {
     const sort = e.currentTarget.dataset.sort

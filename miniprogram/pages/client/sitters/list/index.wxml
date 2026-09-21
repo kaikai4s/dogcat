@@ -32,20 +32,24 @@
 
   <view class="card filter-card">
     <view class="filter-section">
-      <view class="filter-title">服务城市</view>
-      <scroll-view scroll-x class="filter-scroll" show-scrollbar="false" enhanced="true">
-        <view class="filter-row">
-          <view class="filter-chip {{activeCity === item ? 'active' : ''}}" wx:for="{{cityOptions}}" wx:key="*this" data-city="{{item}}" bindtap="chooseCity">{{item}}</view>
-        </view>
-      </scroll-view>
+      <view class="filter-title-row">
+        <view class="filter-title">服务城市</view>
+        <view class="filter-more-text" wx:if="{{cityHasMore}}" bindtap="openCitySelector">更多城市</view>
+      </view>
+      <view class="filter-row wrap compact-filter-row">
+        <view class="filter-chip {{activeCity === item ? 'active' : ''}}" wx:for="{{visibleCityOptions}}" wx:key="*this" data-city="{{item}}" bindtap="chooseCity">{{item}}</view>
+        <view class="filter-chip more-chip" wx:if="{{cityHasMore}}" bindtap="openCitySelector">更多</view>
+      </view>
     </view>
     <view class="filter-section">
-      <view class="filter-title">服务区域</view>
-      <scroll-view scroll-x class="filter-scroll" show-scrollbar="false" enhanced="true">
-        <view class="filter-row">
-          <view class="filter-chip {{activeArea === item ? 'active' : ''}}" wx:for="{{areaOptions}}" wx:key="*this" data-area="{{item}}" bindtap="chooseArea">{{item}}</view>
-        </view>
-      </scroll-view>
+      <view class="filter-title-row">
+        <view class="filter-title">服务区域</view>
+        <view class="filter-more-text" wx:if="{{areaHasMore}}" bindtap="openAreaSelector">更多区域</view>
+      </view>
+      <view class="filter-row wrap compact-filter-row">
+        <view class="filter-chip {{activeArea === item ? 'active' : ''}}" wx:for="{{visibleAreaOptions}}" wx:key="*this" data-area="{{item}}" bindtap="chooseArea">{{item}}</view>
+        <view class="filter-chip more-chip" wx:if="{{areaHasMore}}" bindtap="openAreaSelector">更多</view>
+      </view>
     </view>
     <view class="filter-section last">
       <view class="filter-title">排序方式</view>
@@ -127,6 +131,36 @@
     <view class="empty-actions">
       <button class="ghost-cute-btn" bindtap="updateLocation">切换位置</button>
       <button class="primary-cute-btn" bindtap="openPublish">公开发布抢单</button>
+    </view>
+  </view>
+
+  <view class="selector-mask" wx:if="{{showCitySelector}}" bindtap="closeCitySelector">
+    <view class="selector-sheet" catchtap="noop">
+      <view class="selector-head">
+        <view>
+          <view class="selector-title">选择服务城市</view>
+          <view class="selector-desc">区域会根据城市自动切换</view>
+        </view>
+        <view class="remix-icon ri-close-line selector-close" bindtap="closeCitySelector"></view>
+      </view>
+      <scroll-view scroll-y class="selector-list">
+        <view class="selector-chip {{activeCity === item ? 'active' : ''}}" wx:for="{{cityOptions}}" wx:key="*this" data-city="{{item}}" bindtap="chooseCity">{{item}}</view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <view class="selector-mask" wx:if="{{showAreaSelector}}" bindtap="closeAreaSelector">
+    <view class="selector-sheet" catchtap="noop">
+      <view class="selector-head">
+        <view>
+          <view class="selector-title">选择服务区域</view>
+          <view class="selector-desc">当前城市：{{activeCity}}</view>
+        </view>
+        <view class="remix-icon ri-close-line selector-close" bindtap="closeAreaSelector"></view>
+      </view>
+      <scroll-view scroll-y class="selector-list">
+        <view class="selector-chip {{activeArea === item ? 'active' : ''}}" wx:for="{{areaOptions}}" wx:key="*this" data-area="{{item}}" bindtap="chooseArea">{{item}}</view>
+      </scroll-view>
     </view>
   </view>
 
