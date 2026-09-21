@@ -50,7 +50,7 @@ Page({
   chooseAndCreateCheckins() {
     if (this.data.uploading) return
     const isSanitization = this.data.eventType === 'sanitization'
-    wx.chooseMedia({
+    const chooseMedia = () => wx.chooseMedia({
       count: isSanitization ? 1 : 9,
       mediaType: ['image'],
       sourceType: isSanitization ? ['camera'] : ['camera', 'album'],
@@ -74,6 +74,13 @@ Page({
       },
       fail: showError
     })
+    if (!isSanitization) {
+      chooseMedia()
+      return
+    }
+    callFunction('order', 'checkServiceTimeReadyForCheckin', { id: this.data.orderId })
+      .then(chooseMedia)
+      .catch(showError)
   },
   uploadAndCreate(tempFilePath, loc) {
     const isSanitization = this.data.eventType === 'sanitization'
@@ -91,7 +98,7 @@ Page({
         latitude: loc.latitude,
         longitude: loc.longitude,
         clientRequestId: createClientRequestId('checkin'),
-        recordedAt: Date.now()
+        recordedAt: new Date().toISOString()
       }
       return callFunction('checkin', 'createCheckin', payload)
         .then((checkin) => {

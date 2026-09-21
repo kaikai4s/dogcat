@@ -1,4 +1,5 @@
 <view class="page staff-camera-page {{themeClass}} {{fontClass}}">
+  <staff-active-service-banner />
   <view class="staff-hero">
     <view class="hero-badge">
       <text class="remix-icon ri-camera-lens-fill hero-icon"></text>

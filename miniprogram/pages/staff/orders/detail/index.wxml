@@ -1,4 +1,5 @@
 <view class="page staff-detail-page {{themeClass}} {{fontClass}}" wx:if="{{order}}">
+  <staff-active-service-banner />
   <view class="staff-detail-hero">
     <view class="hero-top">
       <view class="hero-badge">任务名片</view>
@@ -179,9 +180,6 @@
   <view class="bottom-fixed-actions">
     <button class="ghost-btn nav-action-btn" bindtap="openNavigation">
       <text class="remix-icon ri-map-pin-line"></text>导航
-    </button>
-    <button class="ghost-btn message-action-btn" bindtap="openOrderMessages">
-      <text class="remix-icon ri-chat-3-line"></text>消息
     </button>
     <button class="primary-btn accept-action-btn" wx:if="{{order.status === 'paid'}}" bindtap="accept">确认接单</button>
     <button class="primary-btn service-action-btn" wx:if="{{order.status !== 'paid'}}" bindtap="service">

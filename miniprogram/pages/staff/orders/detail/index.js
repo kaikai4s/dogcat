@@ -2,6 +2,7 @@ const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { withOrderText } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
+const { copyText } = require('../../../../utils/clipboard')
 
 Page({
   data: {
@@ -47,9 +48,12 @@ Page({
     wx.makePhoneCall({ phoneNumber: phone })
   },
   copyOrderNo() {
-    const orderNo = this.data.order && this.data.order.orderNo
-    if (!orderNo) return
-    wx.setClipboardData({ data: orderNo })
+    const orderNo = String((this.data.order && this.data.order.orderNo) || '').trim()
+    if (!orderNo) {
+      wx.showToast({ title: '暂无订单号', icon: 'none' })
+      return
+    }
+    copyText(orderNo, { successTitle: '订单号已复制', emptyTitle: '暂无订单号' })
   },
   previewPetPhoto() {
     const photo = this.data.order && this.data.order.petSnapshot && this.data.order.petSnapshot.avatarFileId

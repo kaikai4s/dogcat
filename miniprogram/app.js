@@ -2,6 +2,7 @@
 const { envList } = require('./envList')
 const { getSavedThemeKey, applyTheme, getThemeState } = require('./utils/theme')
 const { getSavedFontKey, applyFont, getFontState } = require('./utils/font')
+const { copyText } = require('./utils/clipboard')
 require('./utils/format')
 require('./utils/nav')
 require('./utils/offlineQueue')
@@ -26,6 +27,7 @@ function installGlobalPreferencePagePatch() {
 installGlobalPreferencePagePatch()
 
 App({
+  copyText,
   onLaunch() {
     const env = envList[0] && envList[0].envId ? envList[0].envId : ''
 

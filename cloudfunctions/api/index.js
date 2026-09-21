@@ -1406,13 +1406,21 @@ async function buildStaffAvailability(profile, startDateKey = '', days = 14) {
 function toTimeValue(value) {
   if (!value) return 0
   if (value instanceof Date) return value.getTime()
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
   const text = String(value).trim()
+  if (/^\d{10,13}$/.test(text)) {
+    const num = Number(text)
+    return Number.isFinite(num) ? (text.length === 10 ? num * 1000 : num) : 0
+  }
   const localMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/)
   if (localMatch) {
     const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch
     return Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 8, Number(minute), Number(second))
   }
-  const parsed = new Date(text.replace(/-/g, '/')).getTime()
+  let parsed = new Date(text).getTime()
+  if (Number.isNaN(parsed)) {
+    parsed = new Date(text.replace(/-/g, '/').replace('T', ' ')).getTime()
+  }
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
@@ -1481,6 +1489,13 @@ function isBeforeServiceStart(order, current = now()) {
 
 async function canStartOrderService(order, current = now()) {
   if (!isBeforeServiceStart(order, current)) return true
+  return Boolean(await getApprovedEarlyStart(order._id))
+}
+
+async function canStartOrderSession(order, session, current = now()) {
+  const sessionStart = session && session.startTime ? session.startTime : order.startTime
+  const start = toTimeValue(sessionStart)
+  if (!start || current.getTime() >= start) return true
   return Boolean(await getApprovedEarlyStart(order._id))
 }
 
@@ -1687,6 +1702,7 @@ const ORDER_STATUS = {
   PAID: 'paid',
   ASSIGNED: 'assigned',
   IN_SERVICE: 'in_service',
+  DAY_COMPLETED: 'day_completed',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
   EXPIRED: 'expired'
@@ -1696,7 +1712,8 @@ const ORDER_TRANSITIONS = {
   [ORDER_STATUS.PENDING_PAY]: [ORDER_STATUS.PAID, ORDER_STATUS.CANCELLED],
   [ORDER_STATUS.PAID]: [ORDER_STATUS.ASSIGNED, ORDER_STATUS.CANCELLED, ORDER_STATUS.EXPIRED],
   [ORDER_STATUS.ASSIGNED]: [ORDER_STATUS.IN_SERVICE, ORDER_STATUS.CANCELLED],
-  [ORDER_STATUS.IN_SERVICE]: [ORDER_STATUS.COMPLETED],
+  [ORDER_STATUS.IN_SERVICE]: [ORDER_STATUS.DAY_COMPLETED, ORDER_STATUS.COMPLETED],
+  [ORDER_STATUS.DAY_COMPLETED]: [ORDER_STATUS.IN_SERVICE, ORDER_STATUS.CANCELLED],
   [ORDER_STATUS.COMPLETED]: [],
   [ORDER_STATUS.CANCELLED]: [],
   [ORDER_STATUS.EXPIRED]: [ORDER_STATUS.CANCELLED]
@@ -1711,7 +1728,7 @@ function assertOrderTransition(fromStatus, toStatus, message) {
 }
 
 function orderStatusText(status) {
-  return ({ pending_pay: '待支付', paid: '待接单', assigned: '已接单', in_service: '服务中', completed: '已完成', cancelled: '已取消', expired: '已过期', refunding: '退款中', refunded: '已退款' })[status] || '处理中'
+  return ({ pending_pay: '待支付', paid: '待接单', assigned: '已接单', in_service: '服务中', day_completed: '当天已完成', completed: '已完成', cancelled: '已取消', expired: '已过期', refunding: '退款中', refunded: '已退款' })[status] || '处理中'
 }
 
 function shouldExpireUnacceptedOrder(order = {}, time = now()) {
@@ -2618,7 +2635,7 @@ function buildOrderSessions(data = {}) {
   if (!startParts || !endParts || endParts.dateObj <= startParts.dateObj) throw new Error('服务时间不正确')
   const orderType = data.orderType === 'multi_day' || data.serviceFrequency === 'multi_day' || (data.endDate && data.endDate > String(data.startTime || '').slice(0, 10)) ? 'multi_day' : 'single'
   const durationMinutes = Math.max(Math.floor(Number(data.durationMinutes || ((endParts.dateObj.getTime() - startParts.dateObj.getTime()) / 60000))), 1)
-  if (orderType !== 'multi_day') return [{ index: 1, date: formatDateKey(startParts.dateObj), startTime: data.startTime, endTime: addMinutesToDateTimeText(data.startTime, durationMinutes) || data.endTime }]
+  if (orderType !== 'multi_day') return [{ index: 1, date: formatDateKey(startParts.dateObj), startTime: data.startTime, endTime: addMinutesToDateTimeText(data.startTime, durationMinutes) || data.endTime, status: 'pending' }]
 
   const endDateText = safeText(data.endDate || data.serviceEndDate).trim()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(endDateText)) throw new Error('请选择连续服务结束日期')
@@ -2635,10 +2652,55 @@ function buildOrderSessions(data = {}) {
   while (current <= finalDay) {
     if (sessions.length >= 31) throw new Error('连续服务最多支持31天')
     const end = new Date(current.getTime() + durationMinutes * 60000)
-    sessions.push({ index: sessions.length + 1, date: formatDateKey(current), startTime: formatDateTimeParts(current), endTime: formatDateTimeParts(end) })
+    sessions.push({ index: sessions.length + 1, date: formatDateKey(current), startTime: formatDateTimeParts(current), endTime: formatDateTimeParts(end), status: 'pending' })
     current = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate() + 1, utcHour, utcMinute))
   }
   return sessions
+}
+
+function normalizeServiceSessions(order = {}) {
+  const source = Array.isArray(order.serviceSessions) && order.serviceSessions.length
+    ? order.serviceSessions
+    : (order.startTime && order.endTime ? [{ index: 1, date: String(order.startTime).slice(0, 10), startTime: order.startTime, endTime: order.endTime }] : [])
+  return source.map((session, index) => ({
+    ...session,
+    index: Number(session.index || index + 1),
+    date: session.date || String(session.startTime || '').slice(0, 10),
+    status: session.status || (Number(order.lastCompletedSessionIndex || 0) >= Number(session.index || index + 1) ? 'completed' : 'pending')
+  }))
+}
+
+function beijingDateKey(value = now()) {
+  return formatDateKey(new Date(toTimeValue(value) + 8 * 60 * 60 * 1000))
+}
+
+function getActiveServiceSession(order = {}) {
+  const activeIndex = Number(order.activeSessionIndex || 0)
+  return normalizeServiceSessions(order).find((session) => session.status === 'in_service' || (activeIndex && Number(session.index) === activeIndex)) || null
+}
+
+function getTodayServiceSession(order = {}, current = now()) {
+  const today = beijingDateKey(current)
+  return normalizeServiceSessions(order).find((session) => session.date === today && session.status !== 'completed') || null
+}
+
+function getNextPendingServiceSession(order = {}, current = now()) {
+  return getTodayServiceSession(order, current) || normalizeServiceSessions(order).find((session) => session.status !== 'completed') || null
+}
+
+function markServiceSession(sessions, targetIndex, patch) {
+  return normalizeServiceSessions({ serviceSessions: sessions }).map((session) => Number(session.index) === Number(targetIndex) ? { ...session, ...patch } : session)
+}
+
+function isFinalServiceSession(order = {}, session = {}) {
+  const sessions = normalizeServiceSessions(order)
+  return sessions.filter((item) => Number(item.index) !== Number(session.index)).every((item) => item.status === 'completed')
+}
+
+async function findActiveStaffService(staffOpenid, excludeOrderId = '') {
+  if (!staffOpenid) return null
+  const res = await db.collection('orders').where({ staffOpenid, status: ORDER_STATUS.IN_SERVICE }).limit(10).get()
+  return (res.data || []).find((order) => !excludeOrderId || order._id !== excludeOrderId) || null
 }
 
 function hasCoordinate(latitude, longitude) {
@@ -3571,7 +3633,7 @@ async function attachClientSnapshot(order, levelsCache = null, userCache = null)
 }
 
 async function attachOrderDisplayData(order, levelsCache = null, userCache = null) {
-  const withPet = await attachPetSnapshot(order)
+  const withPet = await attachPetSnapshot({ ...order, serviceSessions: normalizeServiceSessions(order) })
   return attachClientSnapshot(withPet, levelsCache, userCache)
 }
 
@@ -5828,7 +5890,7 @@ const handlers = {
       try {
         if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
         if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
-        if (!['assigned', 'in_service'].includes(order.status)) throw new Error('订单状态不允许查看')
+        if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) throw new Error('订单状态不允许查看')
         const current = now().getTime()
         const approvedEarlyStart = await getApprovedEarlyStart(data.orderId)
         const regularStart = toTimeValue(order.startTime)
@@ -5858,7 +5920,7 @@ const handlers = {
       if (!user.roles.includes('staff')) throw new Error('仅员工可请求开门')
       const order = (await db.collection('orders').doc(data.orderId).get()).data
       if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
-      if (!['assigned', 'in_service'].includes(order.status)) throw new Error('订单状态不允许请求开门')
+      if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) throw new Error('订单状态不允许请求开门')
       const security = order.orderHomeSecurity || order.homeSecuritySnapshot || {}
       if (security.type !== 'remote_unlock') throw new Error('该订单不是远程开门方式')
       const remoteUnlock = security.remoteUnlock || { requestCount: 0, notifyChannels: ['wechat', 'admin_phone'], lastNotifyStatus: {} }
@@ -6024,7 +6086,7 @@ const handlers = {
       const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
       let list = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
       if (data.status && data.status !== 'all') list = list.filter((order) => order.status === data.status)
-      if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service'].includes(order.status))
+      if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service', 'day_completed'].includes(order.status))
       if (data.startDate) list = list.filter((order) => String(order.startTime || '').slice(0, 10) >= safeText(data.startDate))
       if (data.endDate) list = list.filter((order) => String(order.startTime || '').slice(0, 10) <= safeText(data.endDate))
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
@@ -6045,8 +6107,13 @@ const handlers = {
         db.collection('checkin_logs').where({ orderId }).get(),
         db.collection('track_logs').where({ orderId }).get()
       ])
-      const checkinGroups = groupCheckinsByEventType((checkinsRes.data || []).filter((item) =>
-        item.eventType !== 'sanitization' || isValidSanitization(item, order, order.startedAt || now())))
+      const activeSession = getActiveServiceSession(order)
+      const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
+      const checkinGroups = groupCheckinsByEventType((checkinsRes.data || []).filter((item) => {
+        if (item.eventType === 'sanitization') return isValidSanitization(item, order, order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt || now())
+        if (order.status !== ORDER_STATUS.IN_SERVICE || !sessionStartedAt) return isActiveCheckin(item)
+        return isActiveCheckin(item) && toTimeValue(item.recordedAt || item.serverTime || item.createdAt) >= (sessionStartedAt - 60000)
+      }))
       const baseCheckinRequirements = Array.isArray(displayOrder.checkinRequirements) && displayOrder.checkinRequirements.length
         ? displayOrder.checkinRequirements
         : (Array.isArray(displayOrder.requiredCheckins) ? displayOrder.requiredCheckins : requiredCheckins(displayOrder.serviceType, displayOrder.serviceTypes)).map((eventType, index) => ({ eventType, label: checkinEventText(eventType), required: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: (index + 1) * 10 }))
@@ -6181,7 +6248,7 @@ const handlers = {
 
     if (action === 'requestEarlyStart') {
       const { user, order } = await requireStaffOrder(openid, data.id || data.orderId, '不是该订单员工')
-      if (!['assigned', 'in_service'].includes(order.status)) throw new Error('当前订单不可申请提前开始')
+      if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) throw new Error('当前订单不可申请提前开始')
       if (!isBeforeServiceStart(order)) throw new Error('已到预约时间，无需申请提前开始')
       const existing = await getPendingEarlyStart(order._id)
       if (existing) return toEarlyStartView(existing)
@@ -6232,6 +6299,32 @@ const handlers = {
       return toEarlyStartView(request)
     }
 
+    if (action === 'getActiveService') {
+      const user = await getUser(openid)
+      if (!user.roles.includes('staff')) return null
+      const active = await findActiveStaffService(openid)
+      if (!active) return null
+      return {
+        orderId: active._id,
+        orderNo: active.orderNo || '',
+        petName: active.petName || '',
+        serviceSummary: active.serviceSummary || '',
+        currentSessionStartedAt: active.currentSessionStartedAt || active.startedAt || '',
+        activeSessionIndex: active.activeSessionIndex || 1,
+        sessionCount: active.sessionCount || normalizeServiceSessions(active).length || 1
+      }
+    }
+
+    if (action === 'checkServiceTimeReadyForCheckin') {
+      const { order } = await requireStaffOrder(openid, data.id || data.orderId, '不是该订单员工')
+      if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.DAY_COMPLETED].includes(order.status)) throw new Error('当前订单状态不可进行服务前打卡')
+      const time = now()
+      const session = getNextPendingServiceSession({ ...order, _id: data.id || data.orderId }, time)
+      if (!session) throw new Error('暂无可开始的当天服务任务')
+      if (!(await canStartOrderSession({ ...order, _id: data.id || data.orderId }, session, time))) throw new Error('服务时间未到，可申请提前开始')
+      return { canStart: true, session }
+    }
+
     if (action === 'checkStartServiceReadiness') {
       const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
       const time = now()
@@ -6248,14 +6341,28 @@ const handlers = {
         return readiness
       }
 
-      if (order.status !== 'assigned') {
+      if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.DAY_COMPLETED].includes(order.status)) {
         readiness.canStart = false
         readiness.issues.push({ type: 'wrong_status', message: '订单状态不可开始' })
         return readiness
       }
 
+      const activeConflict = await findActiveStaffService(openid, data.id)
+      if (activeConflict) {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'active_service_conflict', message: '当前已有订单正在服务中，请先完成该订单后再开始新的服务', orderId: activeConflict._id, orderNo: activeConflict.orderNo || '', petName: activeConflict.petName || '' })
+        return readiness
+      }
+
+      const currentSession = getNextPendingServiceSession({ ...order, _id: data.id }, time)
+      if (!currentSession) {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'no_session', message: '暂无可开始的当天服务任务' })
+        return readiness
+      }
+
       // 检查服务时间
-      if (!(await canStartOrderService({ ...order, _id: data.id }, time))) {
+      if (!(await canStartOrderSession({ ...order, _id: data.id }, currentSession, time))) {
         readiness.canStart = false
         readiness.issues.push({ type: 'time_not_ready', message: '服务时间未到，可申请提前开始' })
       }
@@ -6301,10 +6408,14 @@ const handlers = {
 
     if (action === 'startService') {
       const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
-      if (order.status === 'in_service') return { id: data.id }
+      if (order.status === 'in_service') return { id: data.id, status: order.status }
       assertOrderTransition(order.status, ORDER_STATUS.IN_SERVICE, '订单状态不可开始')
       const time = now()
-      if (!(await canStartOrderService({ ...order, _id: data.id }, time))) throw new Error('服务时间未到，可申请提前开始')
+      const activeConflict = await findActiveStaffService(openid, data.id)
+      if (activeConflict) throw new Error(`当前已有订单正在服务中，请先完成${activeConflict.petName ? activeConflict.petName + '的' : ''}订单后再开始新的服务`)
+      const currentSession = getNextPendingServiceSession({ ...order, _id: data.id }, time)
+      if (!currentSession) throw new Error('暂无可开始的当天服务任务')
+      if (!(await canStartOrderSession({ ...order, _id: data.id }, currentSession, time))) throw new Error('服务时间未到，可申请提前开始')
 
       await requireSanitizationEvidence({ ...order, _id: data.id }, time)
 
@@ -6321,12 +6432,16 @@ const handlers = {
         }
       }
 
+      const serviceSessions = markServiceSession(normalizeServiceSessions(order), currentSession.index, { status: 'in_service', startedAt: time, finishedAt: '' })
       const startServiceUpdate = {
-        status: 'in_service',
-        startedAt: time,
+        status: ORDER_STATUS.IN_SERVICE,
+        startedAt: order.startedAt || time,
+        currentSessionStartedAt: time,
+        activeSessionIndex: currentSession.index,
+        activeSessionDate: currentSession.date,
+        serviceSessions,
         updatedAt: time
       }
-      // 只在有有效值时记录位置信息
       if (hasCoordinate(currentLat, currentLng)) {
         startServiceUpdate.startLocationLatitude = currentLat
         startServiceUpdate.startLocationLongitude = currentLng
@@ -6335,22 +6450,28 @@ const handlers = {
         startServiceUpdate.startDistanceKm = distanceToService
       }
 
-      await updateOrderWhenStatus(data.id, ORDER_STATUS.ASSIGNED, startServiceUpdate, '订单状态不可开始服务')
-      const startedOrder = { ...order, _id: data.id, status: 'in_service', startedAt: time, updatedAt: time }
-      await appendOrderTimeline(data.id, 'started', '服务已开始', '', 'staff')
-      await appendOrderClientMessage(startedOrder, { eventType: 'started', title: '服务已开始', detail: '宠护师已开始服务', actorRole: 'staff' })
+      await updateOrderWhenStatus(data.id, order.status, startServiceUpdate, '订单状态不可开始服务')
+      const startedOrder = { ...order, _id: data.id, status: ORDER_STATUS.IN_SERVICE, currentSessionStartedAt: time, serviceSessions, updatedAt: time }
+      await appendOrderTimeline(data.id, 'started', currentSession.index > 1 ? `第${currentSession.index}天服务已开始` : '服务已开始', '', 'staff')
+      await appendOrderClientMessage(startedOrder, { eventType: 'started', title: currentSession.index > 1 ? `第${currentSession.index}天服务已开始` : '服务已开始', detail: '宠护师已开始服务', actorRole: 'staff' })
       await notifyOrder(order.clientOpenid, 'serviceStart', order, { statusText: '服务中' })
-      return { id: data.id }
+      return { id: data.id, status: ORDER_STATUS.IN_SERVICE, activeSessionIndex: currentSession.index, currentSessionStartedAt: time }
     }
 
     if (action === 'finishService') {
       const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
       if (order.status === 'completed') return { id: data.id, completedOrderCount: Number((await getUser(order.clientOpenid)).completedOrderCount || 0) }
       assertOrderTransition(order.status, ORDER_STATUS.COMPLETED, '订单状态不可完成')
-      // Validate against the actual start, not finish day (services may cross midnight).
-      await requireSanitizationEvidence({ ...order, _id: data.id }, order.startedAt || now())
+      const activeSession = getActiveServiceSession(order) || getTodayServiceSession(order, order.currentSessionStartedAt || order.startedAt || now()) || normalizeServiceSessions(order)[0] || { index: 1, date: beijingDateKey(order.startedAt || now()), startedAt: order.currentSessionStartedAt || order.startedAt || '' }
+      // Validate against the actual session start, not finish day (services may cross midnight).
+      await requireSanitizationEvidence({ ...order, _id: data.id }, order.currentSessionStartedAt || activeSession.startedAt || order.startedAt || now())
       const checkins = await db.collection('checkin_logs').where({ orderId: data.id }).get()
-      const eventSet = (checkins.data || []).filter(hasCheckinPhoto).reduce((map, item) => ({ ...map, [item.eventType]: true }), {})
+      const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || activeSession.startedAt || order.startedAt)
+      const eventSet = (checkins.data || []).filter((item) => {
+        if (!hasCheckinPhoto(item)) return false
+        if (item.eventType === 'sanitization') return isValidSanitization(item, { ...order, _id: data.id }, order.currentSessionStartedAt || activeSession.startedAt || order.startedAt || now())
+        return !sessionStartedAt || toTimeValue(item.recordedAt || item.serverTime || item.createdAt) >= (sessionStartedAt - 60000)
+      }).reduce((map, item) => ({ ...map, [item.eventType]: true }), {})
       const requirements = Array.isArray(order.checkinRequirements) && order.checkinRequirements.length
         ? order.checkinRequirements
         : (order.requiredCheckins || []).map((eventType) => ({ eventType, label: checkinEventText(eventType), required: true }))
@@ -6359,8 +6480,18 @@ const handlers = {
       const security = order.orderHomeSecurity || order.homeSecuritySnapshot || {}
       if (security.type === 'key' && security.key && security.key.returnRequired && !security.key.returnedAt) throw new Error('请先完成放回钥匙打卡')
       const time = now()
-      await updateOrderWhenStatus(data.id, ORDER_STATUS.IN_SERVICE, { status: 'completed', completedAt: time, updatedAt: time }, '订单状态不可完成')
-      const completedOrder = { ...order, _id: data.id, status: 'completed', completedAt: time, updatedAt: time }
+      const completedSessions = markServiceSession(normalizeServiceSessions(order), activeSession.index, { status: 'completed', finishedAt: time })
+      const finalSession = isFinalServiceSession({ ...order, serviceSessions: completedSessions }, activeSession)
+      if (!finalSession) {
+        await updateOrderWhenStatus(data.id, ORDER_STATUS.IN_SERVICE, { status: ORDER_STATUS.DAY_COMPLETED, serviceSessions: completedSessions, activeSessionIndex: 0, activeSessionDate: '', currentSessionStartedAt: '', lastCompletedSessionIndex: activeSession.index, updatedAt: time }, '订单状态不可完成当天服务')
+        const dayCompletedOrder = { ...order, _id: data.id, status: ORDER_STATUS.DAY_COMPLETED, serviceSessions: completedSessions, updatedAt: time }
+        await appendOrderTimeline(data.id, 'day_completed', `第${activeSession.index}天服务已完成`, '', 'staff')
+        await appendOrderClientMessage(dayCompletedOrder, { eventType: 'day_completed', title: `第${activeSession.index}天服务已完成`, detail: '今日服务已完成，下一次服务需重新开始履约。', actorRole: 'staff' })
+        await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成' })
+        return { id: data.id, status: ORDER_STATUS.DAY_COMPLETED, activeSessionIndex: 0 }
+      }
+      await updateOrderWhenStatus(data.id, ORDER_STATUS.IN_SERVICE, { status: ORDER_STATUS.COMPLETED, serviceSessions: completedSessions, activeSessionIndex: 0, activeSessionDate: '', currentSessionStartedAt: '', lastCompletedSessionIndex: activeSession.index, completedAt: time, updatedAt: time }, '订单状态不可完成')
+      const completedOrder = { ...order, _id: data.id, status: ORDER_STATUS.COMPLETED, serviceSessions: completedSessions, completedAt: time, updatedAt: time }
       await appendOrderTimeline(data.id, 'completed', '服务已完成', '', 'staff')
       await appendOrderClientMessage(completedOrder, { eventType: 'completed', title: '服务已完成', detail: '服务已完成，可查看服务报告或评价', actorRole: 'staff' })
       await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '已完成' })
@@ -6382,7 +6513,7 @@ const handlers = {
       if (completedOrderCount % 3 === 0) {
         await grantRetroCards(order.clientOpenid, clientUser._id, 1, 'order_complete_milestone', data.id, '完成 3 次订单奖励补签卡 +1')
       }
-      return { id: data.id, completedOrderCount }
+      return { id: data.id, status: ORDER_STATUS.COMPLETED, completedOrderCount }
     }
 
     if (action === 'getServiceReport') {
@@ -7962,7 +8093,7 @@ const handlers = {
       const res = await db.collection('orders').where({ staffOpenid: openid }).orderBy('startTime', 'asc').get()
       let list = res.data || []
       if (data.status && data.status !== 'all') list = list.filter((order) => order.status === data.status)
-      if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service'].includes(order.status))
+      if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service', 'day_completed'].includes(order.status))
       const decorate = async (order) => {
         const enriched = await attachOrderDisplayData(order)
         const distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
@@ -8541,8 +8672,9 @@ const handlers = {
       const { user, order } = await requireStaffOrder(openid, data.orderId, '仅订单员工可打卡')
       const isSanitization = data.eventType === 'sanitization'
       if (isSanitization) {
-        if (order.status !== 'assigned') throw new Error('消毒打卡须在开始服务前完成')
-        if (!(await canStartOrderService(order))) throw new Error('服务时间未到，可申请提前开始')
+        if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.DAY_COMPLETED].includes(order.status)) throw new Error('消毒打卡须在开始服务前完成')
+        const session = getNextPendingServiceSession({ ...order, _id: data.orderId })
+        if (!session || !(await canStartOrderSession({ ...order, _id: data.orderId }, session))) throw new Error('服务时间未到，可申请提前开始')
         if (data.isBackfilled === true) throw new Error('消毒打卡须现场拍照上传，不支持补传')
       } else if (order.status !== 'in_service') throw new Error('仅服务中可打卡')
       if (!data.eventType) throw new Error('请选择打卡类型')

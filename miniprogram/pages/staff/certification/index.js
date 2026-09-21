@@ -180,7 +180,13 @@ Page({
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    wx.navigateTo({ url })
+    const pages = getCurrentPages()
+    const current = pages[pages.length - 1]
+    const currentRoute = current && current.route ? '/' + current.route : ''
+    if (currentRoute === url) return
+    const mainNavUrls = ['/pages/staff/home/index', '/pages/staff/orders/list/index', '/pages/staff/messages/index', '/pages/staff/certification/index', '/pages/staff/profile/index']
+    const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
+    wx[method]({ url })
   },
 
   backProfile() {

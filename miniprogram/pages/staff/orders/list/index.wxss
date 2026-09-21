@@ -242,6 +242,10 @@
   margin-top: 24rpx;
 }
 
+.nav-only-row {
+  grid-template-columns: 1fr;
+}
+
 .ghost-btn {
   height: 72rpx;
   border-radius: 24rpx;

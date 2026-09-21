@@ -1,4 +1,5 @@
 <view class="page staff-orders-page {{themeClass}} {{fontClass}}">
+  <staff-active-service-banner />
   <view class="staff-orders-hero">
     <view class="hero-badge">服务履约</view>
     <view class="hero-title">我的任务</view>
@@ -57,12 +58,8 @@
       </view>
     </view>
 
-    <view class="card-action-row">
-      <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">任务详情</button>
-      <button class="ghost-btn" data-id="{{item._id}}" catchtap="openOrderMessages">
-        <text class="remix-icon ri-chat-3-line"></text>消息记录
-      </button>
-      <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
+    <view class="card-action-row nav-only-row">
+      <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" catchtap="openNavigation">
         <text class="remix-icon ri-map-pin-line"></text>导航
       </button>
     </view>

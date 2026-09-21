@@ -1,6 +1,7 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { withOrderText } = require('../../../../utils/format')
+const { copyText } = require('../../../../utils/clipboard')
 
 const SERVICE_ORDER_STATUS_OPTIONS = [
   { value: 'pending_pay', label: '待支付' },
@@ -70,8 +71,7 @@ Page({
 
   copyOrderNo() {
     const orderNo = this.data.detail && this.data.detail.order && this.data.detail.order.orderNo
-    if (!orderNo) return
-    wx.setClipboardData({ data: orderNo })
+    copyText(orderNo, { successTitle: '订单号已复制', emptyTitle: '暂无订单号' })
   },
 
   evidence() {

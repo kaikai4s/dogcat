@@ -3,6 +3,7 @@ const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, updateOfflineTask } = require('../../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { formatDateTime, toBeijingDate } = require('../../../../utils/format')
+const { copyText } = require('../../../../utils/clipboard')
 
 const TRACK_INTERVAL_MS = 60 * 1000
 const TRACK_MIN_DISTANCE_M = 50
@@ -42,9 +43,23 @@ function toTrackPoint(location) {
 
 function toTimeValue(value) {
   if (!value) return 0
-  const date = toBeijingDate(value)
-  const time = date ? date.getTime() : 0
-  return Number.isFinite(time) ? time : 0
+  if (value instanceof Date) return value.getTime()
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  const text = String(value).trim()
+  if (/^\d{10,13}$/.test(text)) {
+    const num = Number(text)
+    return Number.isFinite(num) ? (text.length === 10 ? num * 1000 : num) : 0
+  }
+  const localMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/)
+  if (localMatch) {
+    const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch
+    return Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 8, Number(minute), Number(second))
+  }
+  let parsed = new Date(text).getTime()
+  if (Number.isNaN(parsed)) {
+    parsed = new Date(text.replace(/-/g, '/').replace('T', ' ')).getTime()
+  }
+  return Number.isNaN(parsed) ? 0 : parsed
 }
 
 function isNetworkError(error) {
@@ -52,15 +67,83 @@ function isNetworkError(error) {
   return /network|timeout|fail/i.test(message)
 }
 
+function formatElapsed(ms) {
+  const total = Math.max(Math.floor(Number(ms || 0) / 1000), 0)
+  const hours = String(Math.floor(total / 3600)).padStart(2, '0')
+  const minutes = String(Math.floor((total % 3600) / 60)).padStart(2, '0')
+  const seconds = String(total % 60).padStart(2, '0')
+  return `${hours}:${minutes}:${seconds}`
+}
+
+function formatServiceTime(startTime, endTime) {
+  const startText = formatDateTime(startTime)
+  const endText = formatDateTime(endTime)
+  if (startText && endText) return `${startText} 至 ${endText}`
+  return startText || endText || '待确认'
+}
+
+function buildDurationRows(order, serviceKey) {
+  return (order.petServiceDurations || [])
+    .filter((item) => item.serviceKey === serviceKey)
+    .map((item) => ({
+      petName: item.petName || '宠物',
+      durationMinutes: Number(item.durationMinutes || 0),
+      text: `${item.petName || '宠物'} · ${Number(item.durationMinutes || 0)}分钟`
+    }))
+}
+
+function buildPetNoticeRows(order) {
+  const snapshots = Array.isArray(order.petSnapshots) && order.petSnapshots.length ? order.petSnapshots : [order.petSnapshot].filter(Boolean)
+  return snapshots.map((pet) => {
+    const notes = [
+      pet.healthNotes ? `健康：${pet.healthNotes}` : '',
+      pet.specialNotes ? `照顾：${pet.specialNotes}` : '',
+      pet.dislikes ? `禁忌：${pet.dislikes}` : ''
+    ].filter(Boolean)
+    return {
+      name: pet.name || '宠物',
+      isDog: pet.species === 'dog',
+      text: notes.join('；') || '暂无特别注意事项'
+    }
+  })
+}
+
 function withServiceActionState(order) {
   if (!order) return order
   const serviceStarted = order.status === 'in_service'
-  const startTime = toTimeValue(order.startTime)
-  const canRequestEarlyStart = order.status === 'assigned' && startTime > Date.now()
+  const sessions = Array.isArray(order.serviceSessions) ? order.serviceSessions : []
+  const activeSession = sessions.find((item) => item.status === 'in_service' || Number(item.index) === Number(order.activeSessionIndex || 0)) || null
+  const nextSession = sessions.find((item) => item.status !== 'completed') || null
+  const startTime = toTimeValue((nextSession && nextSession.startTime) || order.startTime)
+  const canStartService = ['assigned', 'day_completed'].includes(order.status)
+  const canRequestEarlyStart = canStartService && startTime > Date.now()
   const sanitization = (order.checkinRequirements || []).find((item) => item.eventType === 'sanitization')
   const sanitizationRequired = Boolean((sanitization && sanitization.required) || (order.requiredCheckins || []).includes('sanitization'))
   const sanitizationCompleted = Boolean(sanitization && sanitization.completed)
-  return { ...order, serviceStarted, canRequestEarlyStart, sanitizationRequired, sanitizationCompleted }
+  const currentSession = activeSession || nextSession || null
+  const walkDurationRows = buildDurationRows(order, 'walk')
+  const playDurationRows = buildDurationRows(order, 'play')
+  const customerRemarkText = order.clientRemark || order.customerRemark || order.orderRemark || order.remark || (order.orderHomeSecurity && order.orderHomeSecurity.entryNotes) || (order.homeSecuritySnapshot && order.homeSecuritySnapshot.entryNotes) || ''
+  return {
+    ...order,
+    serviceStarted,
+    canStartService,
+    canRequestEarlyStart,
+    sanitizationRequired,
+    sanitizationCompleted,
+    activeSession,
+    nextSession,
+    currentSession,
+    isMultiDay: Number(order.sessionCount || sessions.length || 1) > 1,
+    serviceRequirementText: order.serviceSummary || (order.serviceType === 'walk' ? '遛狗服务' : '上门宠护服务'),
+    serviceTimeText: formatServiceTime((currentSession && currentSession.startTime) || order.startTime, (currentSession && currentSession.endTime) || order.endTime),
+    fullServiceTimeText: formatServiceTime(order.startTime, order.endTime),
+    customerRemarkText,
+    petNoticeRows: buildPetNoticeRows(order),
+    walkDurationRows,
+    playDurationRows,
+    hasServiceRequirementInfo: Boolean(customerRemarkText || walkDurationRows.length || playDurationRows.length || order.serviceSummary || order.startTime || order.endTime)
+  }
 }
 
 Page({
@@ -83,6 +166,7 @@ Page({
     customerService: null,
     starting: false,
     finishing: false,
+    serviceElapsedText: '00:00:00',
     sectionHomeUrl: '',
     canGoBack: false,
     supplyItems: [
@@ -112,17 +196,69 @@ Page({
   },
 
   onUnload() {
+    this.stopServiceElapsedTimer()
     this.stopAutoTracking()
   },
 
+  startServiceElapsedTimer(order) {
+    this.stopServiceElapsedTimer()
+    const startedAt = toTimeValue(order && (order.currentSessionStartedAt || (order.activeSession && order.activeSession.startedAt) || order.startedAt))
+    if (!startedAt) {
+      this.setData({ serviceElapsedText: '00:00:00' })
+      return
+    }
+    const updateElapsed = () => this.setData({ serviceElapsedText: formatElapsed(Date.now() - startedAt) })
+    updateElapsed()
+    this.serviceElapsedTimer = setInterval(updateElapsed, 1000)
+  },
+
+  stopServiceElapsedTimer() {
+    if (this.serviceElapsedTimer) clearInterval(this.serviceElapsedTimer)
+    this.serviceElapsedTimer = null
+  },
+
   loadOrder() {
-    callFunction('order', 'getOrderDetail', { id: this.data.id })
-      .then((order) => {
+    return Promise.all([
+      callFunction('order', 'getOrderDetail', { id: this.data.id }),
+      callFunction('checkin', 'listOrderCheckins', { orderId: this.data.id }).catch(() => [])
+    ])
+      .then(([order, checkins]) => {
         const displayOrder = withServiceActionState(order)
-        this.setData({ order: displayOrder, pointCount: Number(order.trackCount || 0), earlyStartRequest: order.earlyStartRequest || null, offlineTaskCount: getOfflineTaskCount(this.data.id) })
+        if (displayOrder && Array.isArray(displayOrder.checkinRequirements)) {
+          const sessionStartedAt = toTimeValue(displayOrder.currentSessionStartedAt || (displayOrder.activeSession && displayOrder.activeSession.startedAt) || displayOrder.startedAt)
+          const validCheckins = (checkins || []).filter((item) => {
+            if (item.eventType === 'sanitization') return true
+            if (displayOrder.status !== 'in_service' || !sessionStartedAt) return !item.deletedAt
+            return !item.deletedAt && toTimeValue(item.recordedAt || item.serverTime || item.createdAt) >= (sessionStartedAt - 60000)
+          })
+          const countsByType = {}
+          validCheckins.forEach((c) => {
+            if (c.eventType && c.mediaFileId) {
+              countsByType[c.eventType] = (countsByType[c.eventType] || 0) + 1
+            }
+          })
+          displayOrder.checkinRequirements = displayOrder.checkinRequirements.map((req) => {
+            const count = countsByType[req.eventType] !== undefined ? countsByType[req.eventType] : (req.photoCount || 0)
+            return {
+              ...req,
+              photoCount: count,
+              completed: count > 0 || Boolean(req.completed)
+            }
+          })
+        }
+        this.setData({
+          order: displayOrder,
+          pointCount: Number((order && order.trackCount) || 0),
+          earlyStartRequest: (order && order.earlyStartRequest) || null,
+          offlineTaskCount: getOfflineTaskCount(this.data.id)
+        })
         if (order && order.status === 'in_service') {
+          this.startServiceElapsedTimer(displayOrder)
           this.flushOfflineTasks()
           this.startAutoTracking()
+        } else {
+          this.stopServiceElapsedTimer()
+          this.setData({ serviceElapsedText: '00:00:00' })
         }
       })
       .catch(() => {})
@@ -156,25 +292,12 @@ Page({
       wx.navigateTo({ url })
       return
     }
-    wx.setClipboardData({
-      data: url,
-      success: () => {
-        wx.showModal({
-          title: `${name} 购买链接已复制`,
-          content: `购买链接已成功复制到剪贴板！\n\n地址：${url}\n\n可在微信对话框或手机浏览器中长按粘贴打开完成购买。`,
-          showCancel: false,
-          confirmText: '我知道了'
-        })
-      },
-      fail: (err) => {
-        console.warn('setClipboardData fail:', err)
-        wx.showModal({
-          title: `${name} 购买链接`,
-          content: `购买地址：\n${url}\n\n检测到剪贴板权限受限，您可长按上方地址复制，并在浏览器中打开完成购买。`,
-          showCancel: false,
-          confirmText: '关闭'
-        })
-      }
+    copyText(url, {
+      successModal: true,
+      successTitle: `${name} 购买链接已复制`,
+      successModalContent: `购买链接已成功复制到剪贴板！\n\n地址：${url}\n\n可在微信对话框或手机浏览器中长按粘贴打开完成购买。`,
+      failTitle: `${name} 购买链接`,
+      failContent: `购买地址：\n${url}\n\n检测到剪贴板权限受限，您可长按上方地址复制，并在浏览器中打开完成购买。`
     })
   },
 
@@ -188,9 +311,12 @@ Page({
   },
 
   copyOrderNo() {
-    const orderNo = this.data.order && this.data.order.orderNo
-    if (!orderNo) return
-    wx.setClipboardData({ data: orderNo })
+    const orderNo = String((this.data.order && this.data.order.orderNo) || '').trim()
+    if (!orderNo) {
+      wx.showToast({ title: '暂无订单号', icon: 'none' })
+      return
+    }
+    copyText(orderNo, { successTitle: '订单号已复制', emptyTitle: '暂无订单号' })
   },
 
   previewPetPhoto() {
@@ -199,7 +325,7 @@ Page({
   },
 
   start() {
-    if (!this.data.order || this.data.order.status !== 'assigned') return
+    if (!this.data.order || !this.data.order.canStartService) return
     if (this.data.order.sanitizationRequired && !this.data.order.sanitizationCompleted) {
       wx.showToast({ title: '请先完成服务前消毒拍照打卡', icon: 'none', duration: 3000 })
       return
@@ -234,6 +360,16 @@ Page({
                   content: issue.message,
                   showCancel: false
                 })
+              } else if (issue.type === 'active_service_conflict') {
+                wx.showModal({
+                  title: '已有订单服务中',
+                  content: issue.message || '当前已有订单正在服务中，请先完成该订单后再开始新的服务。',
+                  confirmText: '前往服务',
+                  cancelText: '知道了',
+                  success: (res) => {
+                    if (res.confirm && issue.orderId) wx.redirectTo({ url: '/pages/staff/orders/service/index?id=' + issue.orderId })
+                  }
+                })
               } else if (issue.type === 'time_not_ready') {
                 wx.showModal({
                   title: '服务时间未到',
@@ -264,8 +400,8 @@ Page({
           }))
           .then(() => {
             wx.showToast({ title: '已开始服务' })
-            this.setData({ starting: false, order: withServiceActionState({ ...(this.data.order || {}), status: 'in_service' }) })
-            this.startAutoTracking()
+            this.setData({ starting: false })
+            this.loadOrder()
           })
           .catch((error) => {
             if (error && error.message === '前置条件未满足') return // 已经显示了具体的错误提示
@@ -536,9 +672,17 @@ Page({
 
   checkin(e) {
     const order = this.data.order
-    const isSanitization = e.currentTarget.dataset.type === 'sanitization'
-    if (!order || (isSanitization ? !['assigned', 'in_service'].includes(order.status) : !order.serviceStarted)) return
-    wx.navigateTo({ url: '/pages/staff/checkin/camera/index?id=' + this.data.id + '&eventType=' + e.currentTarget.dataset.type })
+    const eventType = e.currentTarget.dataset.type
+    const isSanitization = eventType === 'sanitization'
+    if (!order || (isSanitization ? !['assigned', 'day_completed', 'in_service'].includes(order.status) : !order.serviceStarted)) return
+    const goCamera = () => wx.navigateTo({ url: '/pages/staff/checkin/camera/index?id=' + this.data.id + '&eventType=' + eventType })
+    if (!isSanitization || order.status === 'in_service') {
+      goCamera()
+      return
+    }
+    callFunction('order', 'checkServiceTimeReadyForCheckin', { id: this.data.id })
+      .then(goCamera)
+      .catch(showError)
   },
 
   validateRequiredCheckins() {
@@ -563,10 +707,12 @@ Page({
         if (getOfflineTaskCount(this.data.id) > 0) wx.showToast({ title: '仍有数据待补传，网络恢复后会继续上传', icon: 'none' })
       })
       .then(() => callFunction('order', 'finishService', { id: this.data.id, clientRequestId: createClientRequestId('finish_service') }))
-      .then(() => {
+      .then((res) => {
+        this.stopServiceElapsedTimer()
         this.stopAutoTracking()
-        wx.showToast({ title: '已完成' })
-        this.setData({ finishing: false, order: withServiceActionState({ ...(this.data.order || {}), status: 'completed' }) })
+        wx.showToast({ title: res && res.status === 'day_completed' ? '当天已完成' : '已完成' })
+        this.setData({ finishing: false })
+        this.loadOrder()
       })
       .catch((error) => {
         this.setData({ finishing: false })

@@ -1,5 +1,6 @@
 const { callFunction, showError, requirePrivacyAuthorize } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
+const { copyText } = require('../../../../utils/clipboard')
 
 // Same cloud upload pattern as the existing staff evidence/identity pages.
 function uploadReceipt(filePath) {
@@ -141,13 +142,7 @@ Page({
       wx.navigateTo({ url })
       return
     }
-    wx.setClipboardData({
-      data: url,
-      success: () => {
-        wx.showToast({ title: '已尝试自动复制', icon: 'none' })
-      },
-      fail: () => {}
-    })
+    copyText(url, { successTitle: '已尝试自动复制' })
     this.setData({
       copyModal: {
         show: true,
@@ -161,13 +156,7 @@ Page({
 
   executeCopyModal() {
     const content = this.data.copyModal && this.data.copyModal.content
-    if (!content) return
-    wx.setClipboardData({
-      data: content,
-      success: () => {
-        wx.showToast({ title: '复制成功', icon: 'success' })
-      }
-    })
+    copyText(content, { successTitle: '复制成功', emptyTitle: '暂无可复制内容' })
   },
 
   closeCopyModal() {

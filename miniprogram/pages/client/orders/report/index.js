@@ -3,6 +3,7 @@ const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { withOrderText, withCheckinText } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
+const { copyText } = require('../../../../utils/clipboard')
 
 function groupCheckinPhotos(checkins = []) {
   const map = {}
@@ -388,15 +389,11 @@ Page({
 
 #与宠同乐 #上门喂养 #宠托师 #毛孩子的神仙托儿所 #萌宠日常记录 #铲屎官安心出差 #猫咪上门喂养`
 
-    wx.setClipboardData({
-      data: text,
-      success: () => {
-        wx.showToast({
-          title: '文案已复制！可直接发小红书/抖音',
-          icon: 'none',
-          duration: 2500
-        })
-      }
+    copyText(text, {
+      successTitle: '文案已复制！可直接发小红书/抖音',
+      duration: 2500,
+      failTitle: '社媒文案复制失败',
+      failContent: '当前微信环境未能自动写入剪贴板，请长按下方文案手动复制：'
     })
   },
 

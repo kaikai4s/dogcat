@@ -1,4 +1,5 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
+const { copyText } = require('../../../../utils/clipboard')
 
 const tabs = [
   { label: '全部', value: '' },
@@ -152,7 +153,7 @@ Page({
   copyLogistics(e) {
     const order = this.data.orders.find((item) => item._id === e.currentTarget.dataset.id)
     if (!order || !order.trackingNo) return wx.showToast({ title: '暂无物流单号', icon: 'none' })
-    wx.setClipboardData({ data: `${order.expressCompany || ''} ${order.trackingNo}`.trim() })
+    copyText(`${order.expressCompany || ''} ${order.trackingNo}`.trim(), { successTitle: '物流单号已复制', emptyTitle: '暂无物流单号' })
   },
 
   // 手动修改商城订单状态

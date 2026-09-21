@@ -1,6 +1,7 @@
 const { callFunction, showError } = require('../../../utils/cloud')
 const { withStaffWorkflowText, formatDateTime } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
+const { copyText } = require('../../../utils/clipboard')
 
 function buildSteps(profile = {}, videos = []) {
   return [
@@ -205,14 +206,7 @@ Page({
       wx.navigateTo({ url })
       return
     }
-    // 同步手势中先执行剪贴板复制尝试
-    wx.setClipboardData({
-      data: url,
-      success: () => {
-        wx.showToast({ title: '已尝试自动复制', icon: 'none' })
-      },
-      fail: () => {}
-    })
+    copyText(url, { successTitle: '已尝试自动复制' })
     // 弹出自定义支持长按选择复制与一键复制的交互弹窗
     this.setData({
       copyModal: {
@@ -234,14 +228,7 @@ Page({
       return
     }
     const remark = (this.data.videoAuditGuide && this.data.videoAuditGuide.remarkTemplate) || '宠托师审核'
-    // 同步手势中先执行剪贴板复制尝试
-    wx.setClipboardData({
-      data: wechatId,
-      success: () => {
-        wx.showToast({ title: '已尝试自动复制', icon: 'none' })
-      },
-      fail: () => {}
-    })
+    copyText(wechatId, { successTitle: '已尝试自动复制', emptyTitle: '暂无审核微信号' })
     // 弹出自定义支持长按选择复制与一键复制的交互弹窗
     this.setData({
       copyModal: {
@@ -256,13 +243,7 @@ Page({
 
   executeCopyModal() {
     const content = this.data.copyModal && this.data.copyModal.content
-    if (!content) return
-    wx.setClipboardData({
-      data: content,
-      success: () => {
-        wx.showToast({ title: '复制成功', icon: 'success' })
-      }
-    })
+    copyText(content, { successTitle: '复制成功', emptyTitle: '暂无可复制内容' })
   },
 
   closeCopyModal() {

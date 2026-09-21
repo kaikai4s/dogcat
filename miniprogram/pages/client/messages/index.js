@@ -150,6 +150,12 @@ Page({
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    wx.redirectTo({ url })
+    const pages = getCurrentPages()
+    const current = pages[pages.length - 1]
+    const currentRoute = current && current.route ? '/' + current.route : ''
+    if (currentRoute === url) return
+    const mainNavUrls = ['/pages/client/home/index', '/pages/client/sitters/list/index', '/pages/client/orders/list/index', '/pages/client/messages/index', '/pages/client/profile/index']
+    const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
+    wx[method]({ url })
   }
 })

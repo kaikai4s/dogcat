@@ -239,6 +239,9 @@
       "packages": ["admin"]
     }
   },
+  "usingComponents": {
+    "staff-active-service-banner": "/components/staff-active-service-banner/index"
+  },
   "window": {
     "backgroundColor": "#FFF8EC",
     "backgroundTextStyle": "light",

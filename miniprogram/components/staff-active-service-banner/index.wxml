@@ -1,0 +1,8 @@
+<view class="active-service-banner" wx:if="{{visible}}" bindtap="goService">
+  <view class="banner-icon remix-icon ri-map-pin-time-line"></view>
+  <view class="banner-content">
+    <view class="banner-title">当前有订单正在服务中</view>
+    <view class="banner-desc">需要前往服务界面才能获取轨迹定位</view>
+  </view>
+  <view class="banner-action">前往服务</view>
+</view>

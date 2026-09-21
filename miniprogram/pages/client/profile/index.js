@@ -3,6 +3,7 @@ const { getCurrentUser, loginWithWechat, ensureLogin, setCachedUser, logoutCurre
 const { themeOptions, applyTheme, saveTheme, getThemeState } = require('../../../utils/theme')
 const { fontOptions, applyFont, saveFont, getFontState } = require('../../../utils/font')
 const { loadMessageUnread } = require('../../../utils/client-nav')
+const { copyText } = require('../../../utils/clipboard')
 
 const staffEntryMap = {
   none: { title: '申请成为宠护师', tip: '提交资料后等待平台审核' },
@@ -233,14 +234,28 @@ Page({
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
-    wx.redirectTo({ url })
+    const pages = getCurrentPages()
+    const current = pages[pages.length - 1]
+    const currentRoute = current && current.route ? '/' + current.route : ''
+    if (currentRoute === url) return
+    const mainNavUrls = ['/pages/client/home/index', '/pages/client/sitters/list/index', '/pages/client/orders/list/index', '/pages/client/messages/index', '/pages/client/profile/index']
+    const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
+    wx[method]({ url })
   },
 
   goProtected(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
     ensureLogin({ content: '登录后可查看订单和消息。' })
-      .then(() => wx.redirectTo({ url }))
+      .then(() => {
+        const pages = getCurrentPages()
+        const current = pages[pages.length - 1]
+        const currentRoute = current && current.route ? '/' + current.route : ''
+        if (currentRoute === url) return
+        const mainNavUrls = ['/pages/client/home/index', '/pages/client/sitters/list/index', '/pages/client/orders/list/index', '/pages/client/messages/index', '/pages/client/profile/index']
+        const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
+        wx[method]({ url })
+      })
       .catch(() => {})
   },
 
@@ -463,11 +478,7 @@ Page({
   },
 
   copyCsWechat() {
-    if (!this.data.csInfo.wechatId) return
-    wx.setClipboardData({
-      data: this.data.csInfo.wechatId,
-      success: () => wx.showToast({ title: '已复制微信号' })
-    })
+    copyText(this.data.csInfo.wechatId, { successTitle: '已复制微信号', emptyTitle: '暂无客服微信号' })
   },
 
   openFeedbackModal() {
@@ -516,10 +527,7 @@ Page({
 
   copyOfficialAccountName() {
     const name = this.data.csInfo.officialAccountName || 'VIP宠护'
-    wx.setClipboardData({
-      data: name,
-      success: () => wx.showToast({ title: '已复制公众号名称' })
-    })
+    copyText(name, { successTitle: '已复制公众号名称' })
   },
 
   subscribe() {

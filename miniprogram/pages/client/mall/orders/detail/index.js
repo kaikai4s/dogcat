@@ -1,5 +1,6 @@
 const { callFunction, showError, ensureLogin, requestSubscribeTemplates } = require('../../../../../utils/cloud')
 const { createClientRequestId } = require('../../../../../utils/offlineQueue')
+const { copyText } = require('../../../../../utils/clipboard')
 
 Page({
   data: { id: '', order: null, paying: false, refunding: false, refundReason: '' },
@@ -75,8 +76,7 @@ Page({
 
   copyTracking() {
     const no = this.data.order && this.data.order.trackingNo
-    if (!no) return
-    wx.setClipboardData({ data: no })
+    copyText(no, { successTitle: '物流单号已复制', emptyTitle: '暂无物流单号' })
   },
 
   inputRefundReason(e) { this.setData({ refundReason: e.detail.value }) },

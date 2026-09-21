@@ -1,4 +1,5 @@
 <view class="page staff-service-page {{themeClass}} {{fontClass}}">
+  <staff-active-service-banner />
   <view class="staff-hero">
     <view class="hero-badge">
       <text class="remix-icon ri-shield-check-fill hero-icon"></text>
@@ -25,12 +26,63 @@
     </view>
   </view>
 
+  <view class="card requirement-card" wx:if="{{order}}">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-list-check-3-line sub-icon"></text>
+      <text>服务要求与注意事项</text>
+    </view>
+    <view class="requirement-grid">
+      <view class="requirement-item">
+        <view class="requirement-label">服务要求</view>
+        <view class="requirement-value">{{order.serviceRequirementText}}</view>
+      </view>
+      <view class="requirement-item">
+        <view class="requirement-label">服务时间</view>
+        <view class="requirement-value highlight">{{order.serviceTimeText}}</view>
+      </view>
+      <view class="requirement-item" wx:if="{{order.isMultiDay}}">
+        <view class="requirement-label">订单总时间</view>
+        <view class="requirement-value">{{order.fullServiceTimeText}}</view>
+      </view>
+      <view class="requirement-item">
+        <view class="requirement-label">客户备注</view>
+        <view class="requirement-value">{{order.customerRemarkText || '客户暂无额外备注'}}</view>
+      </view>
+    </view>
+    <view class="duration-section" wx:if="{{order.walkDurationRows && order.walkDurationRows.length}}">
+      <view class="duration-title"><text class="remix-icon ri-walk-line"></text><text>遛狗时间</text></view>
+      <view class="duration-chip" wx:for="{{order.walkDurationRows}}" wx:key="index">{{item.text}}</view>
+    </view>
+    <view class="duration-section" wx:if="{{order.playDurationRows && order.playDurationRows.length}}">
+      <view class="duration-title"><text class="remix-icon ri-gamepad-line"></text><text>陪玩时间</text></view>
+      <view class="duration-chip" wx:for="{{order.playDurationRows}}" wx:key="index">{{item.text}}</view>
+    </view>
+    <view class="pet-notice-section" wx:if="{{order.petNoticeRows && order.petNoticeRows.length}}">
+      <view class="duration-title"><text class="remix-icon ri-error-warning-line"></text><text>狗狗/宠物注意事项</text></view>
+      <view class="pet-notice-row" wx:for="{{order.petNoticeRows}}" wx:key="index">
+        <text class="pet-notice-name">{{item.name}}</text>
+        <text class="pet-notice-text">{{item.text}}</text>
+      </view>
+    </view>
+  </view>
+
   <view class="card operation-card">
     <view class="card-subtitle">
       <text class="remix-icon ri-play-circle-line sub-icon"></text>
       <text>服务操作</text>
     </view>
-    <view class="pre-service-card" wx:if="{{order && order.status === 'assigned'}}">
+    <view class="service-timer-card" wx:if="{{order && order.serviceStarted}}">
+      <text class="remix-icon ri-timer-flash-line timer-icon"></text>
+      <view>
+        <view class="timer-label">当前已服务</view>
+        <view class="timer-value">{{serviceElapsedText}}</view>
+      </view>
+    </view>
+    <view class="multi-day-tip" wx:if="{{order && order.isMultiDay}}">
+      <text class="remix-icon ri-calendar-check-line"></text>
+      <text>连续多天订单：每天需要重新开始服务并完成当天任务。</text>
+    </view>
+    <view class="pre-service-card" wx:if="{{order && order.canStartService}}">
       <view class="guide-box">
         <view class="strong-text">服务必备物品自备提醒：</view>
         <view class="supply-list">
@@ -59,7 +111,7 @@
         </button>
       </view>
     </view>
-    <button class="primary-btn full-btn" wx:if="{{order && order.status === 'assigned'}}" loading="{{starting}}" disabled="{{starting}}" bindtap="start">{{starting ? '处理中...' : '开始服务'}}</button>
+    <button class="primary-btn full-btn" wx:if="{{order && order.canStartService}}" loading="{{starting}}" disabled="{{starting}}" bindtap="start">{{starting ? '处理中...' : '开始服务'}}</button>
     <button class="ghost-btn full-btn" loading="{{requestingEarlyStart}}" disabled="{{requestingEarlyStart || (earlyStartRequest && earlyStartRequest.status === 'pending')}}" wx:if="{{order && order.canRequestEarlyStart}}" bindtap="requestEarlyStart">{{earlyStartRequest && earlyStartRequest.status === 'pending' ? '提前开始申请待确认' : '申请提前开始服务'}}</button>
 
     <view class="notice-card" wx:if="{{earlyStartRequest}}">

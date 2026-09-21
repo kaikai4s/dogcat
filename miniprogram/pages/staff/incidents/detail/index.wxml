@@ -1,4 +1,5 @@
 <view class="page staff-incident-detail-page {{themeClass}} {{fontClass}}" wx:if="{{detail}}">
+  <staff-active-service-banner />
   <view class="staff-hero">
     <view class="hero-badge">
       <text class="remix-icon ri-file-warning-fill hero-icon"></text>

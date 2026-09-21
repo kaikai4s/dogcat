@@ -3625,7 +3625,7 @@ test('intern sitters can be listed, viewed, scheduled and booked with intern dis
       serviceAddress: '上海浦东张江某小区',
       addressLatitude: 31.21,
       addressLongitude: 121.51,
-      startTime: '2026-09-21 10:00',
+      startTime: '2099-08-03 10:00',
       durationMinutes: 60
     }
   })
@@ -3648,7 +3648,7 @@ test('intern sitters can be listed, viewed, scheduled and booked with intern dis
       doorplate: '101',
       addressLatitude: 31.21,
       addressLongitude: 121.51,
-      startTime: '2026-09-21 10:00',
+      startTime: '2099-08-03 10:00',
       durationMinutes: 60
     }
   })
@@ -3711,7 +3711,7 @@ test('direct booking strictly validates sitter address, coordinates, city and di
       serviceAddress: '上海某小区',
       addressDetail: '1栋',
       doorplate: '101',
-      startTime: '2026-09-21 10:00',
+      startTime: '2099-08-03 10:00',
       durationMinutes: 60
     }
   })
@@ -3733,7 +3733,7 @@ test('direct booking strictly validates sitter address, coordinates, city and di
       doorplate: '101',
       addressLatitude: 39.9,
       addressLongitude: 116.4,
-      startTime: '2026-09-21 10:00',
+      startTime: '2099-08-03 10:00',
       durationMinutes: 60
     }
   })
@@ -3754,7 +3754,7 @@ test('direct booking strictly validates sitter address, coordinates, city and di
       doorplate: '101',
       addressLatitude: 31.05,
       addressLongitude: 121.2,
-      startTime: '2026-09-21 10:00',
+      startTime: '2099-08-03 10:00',
       durationMinutes: 60
     }
   })
@@ -3773,7 +3773,7 @@ test('direct booking strictly validates sitter address, coordinates, city and di
       serviceAddress: '上海市松江大学城某小区',
       addressLatitude: 31.05,
       addressLongitude: 121.2,
-      startTime: '2026-09-21 10:00',
+      startTime: '2099-08-03 10:00',
       durationMinutes: 60
     }
   })
@@ -3794,7 +3794,7 @@ test('direct booking strictly validates sitter address, coordinates, city and di
       doorplate: '101',
       addressLatitude: 31.21,
       addressLongitude: 121.51,
-      startTime: '2026-09-21 10:00',
+      startTime: '2099-08-03 10:00',
       durationMinutes: 60
     }
   })

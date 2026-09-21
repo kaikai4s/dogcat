@@ -3,6 +3,7 @@ const { createPageNav, navMethods } = require('../../../utils/nav')
 const { requireSelectedLocation } = require('../../../utils/cloud')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
+const { copyText } = require('../../../utils/clipboard')
 
 Page({
   data: { themeClass: 'theme-day', orderId: '', order: null, customerService: null, description: '', submitting: false, sectionHomeUrl: '', canGoBack: false },
@@ -38,8 +39,7 @@ Page({
   },
   copyOrderNo() {
     const orderNo = (this.data.order && this.data.order.orderNo) || this.data.orderId
-    if (!orderNo) return
-    wx.setClipboardData({ data: orderNo })
+    copyText(orderNo, { successTitle: '订单号已复制', emptyTitle: '暂无订单号' })
   },
   submit() {
     if (this.data.submitting) return

@@ -3,6 +3,7 @@ const orderStatusText = {
   paid: '待接单',
   assigned: '已接单',
   in_service: '服务中',
+  day_completed: '当天已完成',
   completed: '已完成',
   cancelled: '已取消',
   expired: '已过期'
@@ -167,6 +168,10 @@ function toBeijingDate(value) {
   if (value instanceof Date) return new Date(value.getTime() + 8 * 60 * 60 * 1000)
   if (typeof value === 'number') return new Date(value + 8 * 60 * 60 * 1000)
   const text = String(value).trim()
+  if (/^\d{10,13}$/.test(text)) {
+    const num = Number(text)
+    return new Date((text.length === 10 ? num * 1000 : num) + 8 * 60 * 60 * 1000)
+  }
   const localMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/)
   if (localMatch) {
     const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch
