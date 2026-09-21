@@ -1,0 +1,97 @@
+module.exports = function createService({
+  db,
+  formatWeeklyScheduleText,
+  hasCoordinate,
+  isAdminDeletedOrder,
+  normalizeStaffWorkflow,
+  normalizeWeeklySchedule,
+  safeFileId,
+  safeText
+}) {
+  async function getStaffProfileByOpenid(openid) {
+    const res = await db.collection('staff_profiles').where({ openid }).limit(1).get()
+    return normalizeStaffWorkflow(res.data[0] || null)
+  }
+
+  async function getCompletedStaffOrders(staffOpenid, limit = 0) {
+    const res = await db.collection('orders').where({ staffOpenid, status: 'completed' }).orderBy('completedAt', 'desc').get()
+    const list = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
+    return limit > 0 ? list.slice(0, limit) : list
+  }
+
+  function splitServiceAreas(value) {
+    return String(value || '')
+      .split(/[、,，\s\n]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  function maskStaffName(value) {
+    const name = String(value || '').trim()
+    if (!name) return '认证宠托师'
+    return name.length <= 1 ? `${name}宠托师` : `${name.slice(0, 1)}* 宠托师`
+  }
+
+  function sitterDisplayName(profile) {
+    const nickname = String(profile.nickname || '').trim()
+    return nickname || maskStaffName(profile.realName)
+  }
+
+  function toPublicSitter(profile) {
+    const normalized = normalizeStaffWorkflow(profile)
+    const isIntern = normalized && normalized.staffLevel === 'intern'
+    const staffLevel = (normalized && normalized.staffLevel) || 'certified'
+    const staffLevelText = isIntern ? '实习宠托师' : '认证宠托师'
+    const areaTags = splitServiceAreas(profile.serviceAreas)
+    const radius = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+    const hasLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
+    const defaultTags = isIntern ? ['实习特惠', '平台审核', '可上门'] : ['已实名', '平台审核', '可上门']
+    return {
+      _id: profile._id,
+      displayName: sitterDisplayName(profile),
+      avatarUrl: safeFileId(profile.avatarUrl) || safeText(profile.avatarUrl),
+      serviceCity: profile.serviceCity || '服务城市待完善',
+      serviceAreas: profile.serviceAreas || '',
+      serviceAddress: profile.serviceAddress || '',
+      serviceLatitude: Number(profile.serviceLatitude || 0),
+      serviceLongitude: Number(profile.serviceLongitude || 0),
+      serviceRadiusKm: radius,
+      hasServiceAddress: hasLoc,
+      weeklySchedule: normalizeWeeklySchedule(profile.weeklySchedule),
+      weeklyScheduleText: formatWeeklyScheduleText(profile.weeklySchedule),
+      areaTags,
+      publicTags: defaultTags,
+      staffLevel,
+      staffLevelText,
+      isIntern,
+      serviceSummary: areaTags.length ? `可服务：${areaTags.slice(0, 4).join('、')}` : '服务区域待完善',
+      ratingAverage: Number(profile.ratingAverage || 0),
+      reviewCount: Number(profile.reviewCount || 0),
+      ratingUpdatedAt: profile.ratingUpdatedAt || '',
+      isFeatured: profile.isFeatured === true,
+      featuredAt: profile.featuredAt || '',
+      createdAt: profile.createdAt || '',
+      updatedAt: profile.updatedAt || profile.createdAt || ''
+    }
+  }
+
+  async function withSitterUserProfile(profile) {
+    const res = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
+    const user = res.data[0] || {}
+    return {
+      ...profile,
+      nickname: user.nickname || profile.nickname || '',
+      avatarUrl: user.avatarUrl || profile.avatarUrl || ''
+    }
+  }
+
+  return {
+    getStaffProfileByOpenid,
+    getCompletedStaffOrders,
+    splitServiceAreas,
+    maskStaffName,
+    sitterDisplayName,
+    toPublicSitter,
+    withSitterUserProfile
+  }
+}

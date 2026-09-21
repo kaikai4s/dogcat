@@ -1,0 +1,71 @@
+const crypto = require('crypto')
+const https = require('https')
+
+module.exports = function createContext({ cloud, db }) {
+  const context = {
+    cloud,
+    db,
+    crypto,
+    https,
+    ...require('../config/constants'),
+    ...require('../utils/validation'),
+    ...require('../utils/response'),
+    ...require('../utils/time')
+  }
+  // Factories capture dependencies in topological order; no runtime service lookup.
+  Object.assign(context, require('../services/presentation')(context))
+  Object.assign(context, require('../services/orderState')(context))
+  Object.assign(context, require('../services/dashboards')(context))
+  Object.assign(context, require('../services/auth')(context))
+  Object.assign(context, require('../services/pets')(context))
+  Object.assign(context, require('../services/serviceTypes')(context))
+  Object.assign(context, require('../services/checkinMedia')(context))
+  Object.assign(context, require('../services/retroCards')(context))
+  Object.assign(context, require('../services/audit')(context))
+  Object.assign(context, require('../services/repository')(context))
+  Object.assign(context, require('../services/adminUsers')(context))
+  Object.assign(context, require('../services/addresses')(context))
+  Object.assign(context, require('../services/aiRecognition')(context))
+  Object.assign(context, require('../services/contentSecurity')(context))
+  Object.assign(context, require('../services/coupons')(context))
+  Object.assign(context, require('../services/couponIssuance')(context))
+  Object.assign(context, require('../services/financeReports')(context))
+  Object.assign(context, require('../services/geography')(context))
+  Object.assign(context, require('../services/incidents')(context))
+  Object.assign(context, require('../services/memberAppearance')(context))
+  Object.assign(context, require('../services/membership')(context))
+  Object.assign(context, require('../services/rewardMails')(context))
+  Object.assign(context, require('../services/points')(context))
+  Object.assign(context, require('../services/orderMessages')(context))
+  Object.assign(context, require('../services/playground')(context))
+  Object.assign(context, require('../services/schedulingTime')(context))
+  Object.assign(context, require('../services/orderSessions')(context))
+  Object.assign(context, require('../services/scheduling')(context))
+  Object.assign(context, require('../services/serviceCatalog')(context))
+  Object.assign(context, require('../services/checkinRules')(context))
+  Object.assign(context, require('../services/staffTraining')(context))
+  Object.assign(context, require('../services/settings')(context))
+  Object.assign(context, require('../services/earnings')(context))
+  Object.assign(context, require('../services/loyaltyCalendar')(context))
+  Object.assign(context, require('../services/staffEligibility')(context))
+  Object.assign(context, require('../services/staffProfiles')(context))
+  Object.assign(context, require('../services/pricing')(context))
+  Object.assign(context, require('../services/subscriptions')(context))
+  Object.assign(context, require('../services/serviceExecution')(context))
+  Object.assign(context, require('../services/overdueOrders')(context))
+  Object.assign(context, require('../services/wechatPay')(context))
+  Object.assign(context, require('../utils/database')(context))
+  Object.assign(context, require('../services/payableOrders')(context))
+  Object.assign(context, require('../services/mallCatalog')(context))
+  Object.assign(context, require('../services/paymentLifecycle')(context))
+  Object.assign(context, require('../services/petBeauty')(context))
+  Object.assign(context, require('../utils/encryption')(context))
+  Object.assign(context, require('../services/orderViews')(context))
+  Object.assign(context, require('../services/home')(context))
+  Object.assign(context, require('../services/reviews')(context))
+  Object.assign(context, require('../services/homeSecurity')(context))
+  Object.assign(context, require('../scheduled/cancelUnpaidOrders')(context))
+  Object.assign(context, require('../scheduled/expireOrders')(context))
+  Object.assign(context, require('../services/orderAccess')(context))
+  return context
+}

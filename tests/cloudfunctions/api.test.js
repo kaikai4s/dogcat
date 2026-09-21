@@ -2141,11 +2141,11 @@ test('payment callback cannot skip signature verification in production', async 
     })
     const fn = loadCloudFunction('api', db, 'openid_client')
 
-    const result = await fn.main({ module: 'payment', action: 'paymentCallback', data: { headers: {}, rawBody: '{}' } })
+    const callbackFn = loadCloudFunction('api', db, '')
+    const result = await callbackFn.main({ httpMethod: 'POST', headers: {}, rawBody: '{}' })
 
-    assert.equal(result.ok, true)
-    assert.equal(result.data.code, 'FAIL')
-    assert.equal(result.data.message, '正式环境禁止跳过微信支付验签')
+    assert.equal(result.code, 'FAIL')
+    assert.equal(result.message, '正式环境禁止跳过微信支付验签')
   })
 })
 
@@ -2487,12 +2487,12 @@ test('wechat callback marks paid idempotently and rejects amount mismatch', asyn
     const fn = loadCloudFunction('api', db, '')
     const body = JSON.stringify({ resource: { ciphertext: 'mock' } })
 
-    const first = await fn.main({ module: 'payment', action: 'paymentCallback', data: { body, headers: {} } })
-    const second = await fn.main({ module: 'payment', action: 'paymentCallback', data: { body, headers: {} } })
+    const first = await fn.main({ httpMethod: 'POST', body, headers: {} })
+    const second = await fn.main({ httpMethod: 'POST', body, headers: {} })
 
-    assert.equal(first.ok, true)
-    assert.equal(first.data.code, 'SUCCESS')
-    assert.equal(second.data.code, 'SUCCESS')
+    assert.equal(first.ok, undefined)
+    assert.equal(first.code, 'SUCCESS')
+    assert.equal(second.code, 'SUCCESS')
     assert.equal(db.state.orders[0].paymentStatus, 'paid')
     assert.equal(db.state.orders[0].wxTransactionId, 'WX1')
     assert.equal(db.state.finance_logs.length, 1)
@@ -2524,9 +2524,9 @@ test('wechat callback marks paid idempotently and rejects amount mismatch', asyn
       platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { payment: { enabled: true, mode: 'wechat', mchId: 'mch_1', appId: 'app_1', notifyUrl: 'https://pay.example.com/callback', certSerialNo: 'serial_1', apiV3Key: '12345678901234567890123456789012', privateKey: testPrivateKey } } }]
     })
     const fn = loadCloudFunction('api', db, '')
-    const result = await fn.main({ module: 'payment', action: 'paymentCallback', data: { body: JSON.stringify({ resource: { ciphertext: 'mock' } }), headers: {} } })
-    assert.equal(result.data.code, 'FAIL')
-    assert.match(result.data.message, /金额不匹配/)
+    const result = await fn.main({ httpMethod: 'POST', body: JSON.stringify({ resource: { ciphertext: 'mock' } }), headers: {} })
+    assert.equal(result.code, 'FAIL')
+    assert.match(result.message, /金额不匹配/)
   })
 })
 

@@ -1,0 +1,696 @@
+module.exports = function createHandler(context) {
+  const {
+    ORDER_STATUS,
+    addPoints,
+    appendOrderClientMessage,
+    appendOrderStaffMessage,
+    appendOrderTimeline,
+    assertOrderTransition,
+    attachClientSnapshot,
+    attachOrderDisplayData,
+    beijingDateKey,
+    calcDistanceKm,
+    calcOrderPricing,
+    canStartOrderSession,
+    canTakeOrders,
+    checkTextSecurity,
+    checkinEventText,
+    completeOrderService,
+    createClientSnapshot,
+    createPetSnapshot,
+    createRefundForOrder,
+    db,
+    enrichUserMemberLevel,
+    evaluateCheckinCompletion,
+    expireDueUnacceptedOrders,
+    findActiveStaffService,
+    formatDistance,
+    formatPetSummary,
+    getActiveServiceSession,
+    getApprovedEarlyStart,
+    getCancelQuoteForOrder,
+    getClientPetsByIds,
+    getClientRequestId,
+    getLatestEarlyStart,
+    getMemberLevels,
+    getNextPendingServiceSession,
+    getOrderForAccess,
+    getPendingEarlyStart,
+    getRequestedStaff,
+    getSystemSettings,
+    getTodayServiceSession,
+    getUser,
+    groupCheckinsByEventType,
+    hasCoordinate,
+    isActiveCheckin,
+    isAdminDeletedOrder,
+    isBeforeServiceStart,
+    isValidSanitization,
+    listServicePrices,
+    makeIdempotencyKey,
+    markServiceSession,
+    maskOrderClientContact,
+    maskOrderForStaffPreview,
+    normalizeHomeSecurityInput,
+    normalizePetIds,
+    normalizeServiceSessions,
+    notifyOrder,
+    now,
+    paginateList,
+    processOverdueUnfinishedOrders,
+    processOverdueUnstartedOrders,
+    requireClientOrder,
+    requireSanitizationEvidence,
+    requireStaffOrder,
+    requiredCheckins,
+    requiresSanitization,
+    resolveCheckinRequirements,
+    safeCollectionData,
+    safeText,
+    saveUserAddress,
+    shouldHidePublicCheckinPhotos,
+    toEarlyStartView,
+    toHomeOrderActivity,
+    toPublicHomeSecuritySnapshot,
+    toPublicOrderHomeSecurity,
+    toTimeValue,
+    updateOrderWhenStatus,
+    updateStaffRatingStats,
+    validateDirectStaffServiceRange,
+    validateOrderTime,
+    validateStaffAvailabilityForSessions
+  } = context
+  return async function order(openid, action, data) {
+    if (action === 'listServiceOptions') {
+      await getUser(openid)
+      return listServicePrices(false)
+    }
+
+    if (action === 'quoteOrder') {
+      await getUser(openid)
+      let pets = []
+      const petIds = normalizePetIds(data)
+      if (petIds.length) pets = await getClientPetsByIds(openid, petIds)
+      const pricing = await calcOrderPricing(data, pets, { openid })
+      if (data.startTime || data.endTime) validateOrderTime({ ...data, durationMinutes: pricing.durationMinutes, endTime: pricing.sessions[pricing.sessions.length - 1].endTime })
+      const publishMode = data.publishMode === 'direct' ? 'direct' : 'open'
+      const staffProfileId = data.staffProfileId || data.requestedStaffProfileId
+      if (publishMode === 'direct' && staffProfileId) {
+        const staffProfileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
+        const staffProfile = staffProfileRes.data
+        validateDirectStaffServiceRange(staffProfile, data, { isQuote: true })
+        if (data.startTime && data.endTime) {
+          await validateStaffAvailabilityForSessions(staffProfile, pricing.sessions)
+        }
+      }
+      return pricing
+    }
+
+    if (action === 'createOrder') {
+      const user = await getUser(openid)
+      const clientRequestId = getClientRequestId(data)
+      if (clientRequestId) {
+        const existingOrder = (await db.collection('orders').where({ clientOpenid: openid, clientRequestId }).limit(1).get()).data[0]
+        if (existingOrder) return { ...existingOrder, orderHomeSecurity: toPublicOrderHomeSecurity(existingOrder.orderHomeSecurity || existingOrder.homeSecuritySnapshot), savedAddress: null }
+      }
+      if (!safeText(user.phone).trim()) throw new Error('请先绑定手机号')
+      const petIds = normalizePetIds(data)
+      if (!petIds.length) throw new Error('请选择宠物')
+      if (!data.serviceAddress) throw new Error('请选择服务地址')
+      if (!data.addressDetail) throw new Error('请填写详细地址')
+      if (!data.doorplate) throw new Error('请填写门牌号或入户说明')
+      const pets = await getClientPetsByIds(openid, petIds)
+      const pricing = await calcOrderPricing(data, pets, { openid })
+      validateOrderTime({ ...data, durationMinutes: pricing.durationMinutes, endTime: pricing.sessions[pricing.sessions.length - 1].endTime })
+      const serviceSessions = pricing.sessions
+      const primaryPet = pets[0]
+      const petSnapshots = pets.map(createPetSnapshot)
+      const petNames = pets.map((pet) => pet.name || '宠物')
+      const petSummary = formatPetSummary(pets)
+      const requestedStaff = await getRequestedStaff(data)
+      let directDistanceKm = null
+      if (requestedStaff && requestedStaff.requestedStaffProfileId) {
+        const staffProfileRes = await db.collection('staff_profiles').doc(requestedStaff.requestedStaffProfileId).get()
+        const staffProfile = staffProfileRes.data
+        const rangeCheck = validateDirectStaffServiceRange(staffProfile, data, { isQuote: false })
+        directDistanceKm = rangeCheck.dist
+        await validateStaffAvailabilityForSessions(staffProfile, serviceSessions)
+      }
+      const time = now()
+      const homeSecurity = normalizeHomeSecurityInput({ ...data, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime })
+      const checkinRequirements = await resolveCheckinRequirements(pricing.serviceTypes)
+      const memberLevels = await getMemberLevels()
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user, memberLevels), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, distanceFromSitterKm: directDistanceKm, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: primaryPet._id || petIds[0], petIds, petName: petSummary, petNames, petSnapshot: petSnapshots[0], petSnapshots, petSummary, serviceType: pricing.primaryServiceType || pricing.businessServiceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), orderType: pricing.orderType, serviceStartDate: serviceSessions[0].date, serviceEndDate: serviceSessions[serviceSessions.length - 1].date, sessionCount: serviceSessions.length, serviceSessions, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime, durationMinutes: pricing.durationMinutes, petServiceDurations: pricing.petServiceDurations, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      let savedAddress = null
+      if (data.saveAddress === true) {
+        savedAddress = await saveUserAddress(openid, user, {
+          label: data.addressLabel || '预约地址',
+          serviceAddress: data.serviceAddress,
+          addressDetail: data.addressDetail,
+          doorplate: data.doorplate,
+          latitude: data.addressLatitude,
+          longitude: data.addressLongitude,
+          isDefault: true
+        })
+      }
+      const created = await db.collection('orders').add({ data: order })
+      const { doorLockCode, ...securityRecord } = homeSecurity
+      await db.collection('order_home_security').add({
+        data: {
+          orderId: created._id,
+          clientOpenid: openid,
+          ...securityRecord,
+          createdAt: time,
+          updatedAt: time
+        }
+      })
+      if (order.couponId) {
+        await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'locked', lockedOrderId: created._id, lockedAt: time, updatedAt: time } })
+      }
+      const createdOrder = { _id: created._id, ...order }
+      await appendOrderTimeline(created._id, 'created', '订单已创建', order.serviceSummary, 'client')
+      await appendOrderClientMessage(createdOrder, { eventType: 'created', title: '订单已创建', detail: order.serviceSummary, actorRole: 'client', unreadForClient: false })
+      if (order.couponId) {
+        await appendOrderTimeline(created._id, 'coupon_locked', '已使用优惠券', `优惠 ¥${order.discountAmount}`, 'client')
+        await appendOrderClientMessage(createdOrder, { eventType: 'coupon_locked', title: '已使用优惠券', detail: `优惠 ¥${order.discountAmount}`, actorRole: 'client', unreadForClient: false })
+      }
+      return { ...createdOrder, orderHomeSecurity: toPublicOrderHomeSecurity(homeSecurity), savedAddress }
+    }
+
+    if (action === 'listOrders') {
+      const user = await getUser(openid)
+      await expireDueUnacceptedOrders()
+      const role = data.role || user.activeRole || 'client'
+      const where = role === 'staff' ? { staffOpenid: openid } : { clientOpenid: openid }
+      const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
+      let list = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
+      list.sort((a, b) => {
+        const bTime = toTimeValue(b.createdAt || b.startTime)
+        const aTime = toTimeValue(a.createdAt || a.startTime)
+        return bTime - aTime
+      })
+      if (data.status && data.status !== 'all') list = list.filter((order) => order.status === data.status)
+      if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service', 'day_completed'].includes(order.status))
+      const orderKeyword = safeText(data.orderKeyword || data.keyword || data.orderNo).trim().toLowerCase()
+      if (orderKeyword) {
+        list = list.filter((order) => [
+          order._id,
+          order.orderNo,
+          order.petName,
+          order.serviceSummary,
+          order.serviceAddress,
+          order.staffName,
+          order.requestedStaffName
+        ].some((val) => safeText(val).toLowerCase().includes(orderKeyword)))
+      }
+      const startDate = safeText(data.startDate).trim()
+      const endDate = safeText(data.endDate).trim()
+      if (startDate) {
+        list = list.filter((order) => {
+          const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
+          const end = String(order.serviceEndDate || order.endTime || start).slice(0, 10)
+          return end >= startDate
+        })
+      }
+      if (endDate) {
+        list = list.filter((order) => {
+          const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
+          return start <= endDate
+        })
+      }
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      const levels = await getMemberLevels()
+      const userCache = new Map()
+      const isStaffOnly = role === 'staff' && !user.roles.includes('admin')
+      if (wantsPage) {
+        const page = paginateList(list, data)
+        const enrichedList = await Promise.all(page.list.map((order) => attachOrderDisplayData(order, levels, userCache)))
+        return { ...page, list: isStaffOnly ? enrichedList.map(maskOrderClientContact) : enrichedList }
+      }
+      const enrichedList = await Promise.all(list.map((order) => attachOrderDisplayData(order, levels, userCache)))
+      return isStaffOnly ? enrichedList.map(maskOrderClientContact) : enrichedList
+    }
+
+    if (action === 'getOrderDetail') {
+      const orderId = data.id || data.orderId
+      const { user, order } = await getOrderForAccess(openid, orderId)
+      const levels = await getMemberLevels()
+      const displayOrder = await attachOrderDisplayData(order, levels)
+      const [earlyStart, securityRes, checkinsRes, tracksRes] = await Promise.all([
+        getPendingEarlyStart(orderId).then((pending) => pending || getApprovedEarlyStart(orderId) || getLatestEarlyStart(orderId)),
+        db.collection('order_home_security').where({ orderId }).limit(1).get(),
+        db.collection('checkin_logs').where({ orderId }).get(),
+        db.collection('track_logs').where({ orderId }).get()
+      ])
+      const activeSession = getActiveServiceSession(order)
+      const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
+      const checkinGroups = groupCheckinsByEventType((checkinsRes.data || []).filter((item) => {
+        if (item.eventType === 'sanitization') return isValidSanitization(item, order, order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt || now())
+        if (order.status !== ORDER_STATUS.IN_SERVICE || !sessionStartedAt) return isActiveCheckin(item)
+        return isActiveCheckin(item) && toTimeValue(item.recordedAt || item.serverTime || item.createdAt) >= (sessionStartedAt - 60000)
+      }))
+      const baseCheckinRequirements = Array.isArray(displayOrder.checkinRequirements) && displayOrder.checkinRequirements.length
+        ? displayOrder.checkinRequirements
+        : (Array.isArray(displayOrder.requiredCheckins) ? displayOrder.requiredCheckins : requiredCheckins(displayOrder.serviceType, displayOrder.serviceTypes)).map((eventType, index) => ({ eventType, label: checkinEventText(eventType), required: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: (index + 1) * 10 }))
+      const checkinRequirements = baseCheckinRequirements.some((item) => item.eventType === 'pet_beauty_photo')
+        ? baseCheckinRequirements
+        : baseCheckinRequirements.concat([{ eventType: 'pet_beauty_photo', label: checkinEventText('pet_beauty_photo'), required: false, optional: true, serviceTypes: displayOrder.serviceTypes || [displayOrder.serviceType], sortOrder: 999 }])
+      const orderSecurity = securityRes.data[0] || displayOrder.orderHomeSecurity || displayOrder.homeSecuritySnapshot
+      const enrichedRequirements = checkinRequirements.map((item) => {
+        const group = checkinGroups[item.eventType] || { count: 0, photos: [] }
+        return { ...item, completed: group.count > 0, photoCount: group.count, photos: group.photos }
+      })
+      const resultOrder = { ...displayOrder, trackCount: (tracksRes.data || []).length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: toPublicOrderHomeSecurity(orderSecurity) }
+      const requestedRole = safeText(data.role).trim()
+      const isStaffView = requestedRole === 'staff' || user.activeRole === 'staff' || (order.clientOpenid !== openid && user.roles.includes('staff'))
+      const isStaffPreview = isStaffView && (order.status === ORDER_STATUS.PAID || order.staffOpenid !== openid)
+      if (isStaffPreview) return maskOrderForStaffPreview(resultOrder)
+      if (isStaffView || (!user.roles.includes('admin') && order.clientOpenid !== openid)) return maskOrderClientContact(resultOrder)
+      return resultOrder
+    }
+
+    if (action === 'prepareRebook') {
+      const { order } = await requireClientOrder(openid, data.orderId, '无权再次预约')
+      let publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
+      let staffProfileId = order.requestedStaffProfileId || order.staffProfileId || ''
+      if (publishMode === 'direct' && staffProfileId) {
+        try {
+          const settings = await getSystemSettings().catch(() => ({}))
+          const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
+          if (!profileRes.data || !canTakeOrders(profileRes.data, settings.staffDeposit)) {
+            publishMode = 'open'
+            staffProfileId = ''
+          }
+        } catch (error) {
+          publishMode = 'open'
+          staffProfileId = ''
+        }
+      }
+      return {
+        sourceOrderId: order._id,
+        petId: order.petId,
+        petIds: Array.isArray(order.petIds) && order.petIds.length ? order.petIds : [order.petId].filter(Boolean),
+        serviceType: order.serviceType,
+        serviceTypes: order.serviceTypes || [order.serviceType],
+        serviceAddress: order.serviceAddress || '',
+        addressDetail: order.addressDetail || '',
+        doorplate: order.doorplate || '',
+        addressLatitude: Number(order.addressLatitude || 0),
+        addressLongitude: Number(order.addressLongitude || 0),
+        durationMinutes: Number(order.durationMinutes || 60),
+        petServiceDurations: Array.isArray(order.petServiceDurations) ? order.petServiceDurations : (order.priceSnapshot && Array.isArray(order.priceSnapshot.petServiceDurations) ? order.priceSnapshot.petServiceDurations : []),
+        publishMode,
+        staffProfileId
+      }
+    }
+
+    if (action === 'getOrderTimeline') {
+      await getOrderForAccess(openid, data.orderId)
+      const res = await db.collection('order_timeline').where({ orderId: data.orderId }).orderBy('createdAt', 'asc').get()
+      return res.data
+    }
+
+    if (action === 'getOrderReview') {
+      await getOrderForAccess(openid, data.orderId)
+      const res = await db.collection('service_reviews').where({ orderId: data.orderId, status: 'visible' }).limit(1).get()
+      return res.data[0] || null
+    }
+
+    if (action === 'createReview') {
+      const { user, order } = await requireClientOrder(openid, data.orderId, '仅宠物主可评价')
+      if (order.status !== 'completed') throw new Error('订单完成后才可评价')
+      const existing = await db.collection('service_reviews').where({ orderId: data.orderId }).limit(1).get()
+      if (existing.data[0]) throw new Error('该订单已评价')
+      const rating = Math.min(Math.max(Number(data.rating || 5), 1), 5)
+      const tags = Array.isArray(data.tags) ? data.tags.slice(0, 8) : []
+      const content = String(data.content || '').trim()
+      const reviewText = [content, ...tags].filter(Boolean).join(' ')
+      if (reviewText) {
+        await checkTextSecurity(openid, reviewText, { scene: 2, label: '评价内容' })
+      }
+      const time = now()
+      const enrichedUser = await enrichUserMemberLevel(user)
+      const review = {
+        orderId: data.orderId,
+        clientUserId: user._id,
+        clientOpenid: openid,
+        clientName: user.nickname || '',
+        clientAvatarUrl: user.avatarUrl || '',
+        memberLevelName: enrichedUser.memberLevelName || '普通会员',
+        badgeTag: enrichedUser.badgeTag || 'V1',
+        badgeStyle: enrichedUser.badgeStyle || 'gold',
+        nameColor: enrichedUser.nameColor || '',
+        nameEffect: enrichedUser.nameEffect || '',
+        staffUserId: order.staffUserId || '',
+        staffOpenid: order.staffOpenid || '',
+        staffProfileId: order.staffProfileId || '',
+        rating,
+        tags,
+        content,
+        status: 'visible',
+        createdAt: time,
+        updatedAt: time
+      }
+      const created = await db.collection('service_reviews').add({ data: review })
+      await db.collection('orders').doc(data.orderId).update({ data: { reviewedAt: time, updatedAt: time } })
+      await updateStaffRatingStats(order.staffProfileId, time)
+      await appendOrderTimeline(data.orderId, 'reviewed', '宠物主已评价', `${rating}星评价`, 'client')
+      await addPoints(openid, user._id, 10, 'order_review', data.orderId, '评价订单 +10 积分', { applyMultiplier: true, baseDelta: 10 })
+      return { _id: created._id, ...review }
+    }
+
+    if (action === 'getCancelQuote') {
+      const { order } = await requireClientOrder(openid, data.orderId, '无权取消订单')
+      return getCancelQuoteForOrder(order)
+    }
+
+    if (action === 'cancelOrder') {
+      const clientRequestId = getClientRequestId(data)
+      const { order } = await requireClientOrder(openid, data.orderId, '无权取消订单')
+      if (order.status === 'cancelled') return { orderId: data.orderId, status: 'cancelled', refundStatus: order.refundStatus || '', refundAmount: Number(order.refundAmount || 0), refundNo: order.refundNo || '' }
+      assertOrderTransition(order.status, ORDER_STATUS.CANCELLED, '订单状态不可取消')
+      const quote = getCancelQuoteForOrder(order)
+      if (!quote.canCancel) throw new Error(quote.ruleText)
+      const time = now()
+      const update = { status: 'cancelled', cancelReason: data.reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time }
+      let refund = null
+      if (order.paymentStatus === 'paid' && quote.refundAmount > 0) {
+        refund = await createRefundForOrder(order, quote.refundAmount, data.reason || '宠物主取消', 'client_cancel', openid, clientRequestId)
+        update.paymentStatus = 'refunding'
+        update.refundNo = refund.refundNo
+      }
+      await updateOrderWhenStatus(data.orderId, order.status, update, '订单状态不可取消')
+      if (order.paymentStatus !== 'paid' && order.couponId) {
+        const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
+        if (coupon && coupon.status === 'locked' && coupon.lockedOrderId === data.orderId) {
+          await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'available', lockedOrderId: '', lockedAt: null, updatedAt: time } })
+        }
+      }
+      const cancelledOrder = { ...order, _id: data.orderId, ...update }
+      await appendOrderTimeline(data.orderId, 'cancelled', '订单已取消', `${quote.ruleText}，预计退款 ¥${quote.refundAmount}`, 'client')
+      await appendOrderClientMessage(cancelledOrder, { eventType: 'cancelled', title: '订单已取消', detail: `${quote.ruleText}，预计退款 ¥${quote.refundAmount}`, actorRole: 'client', unreadForClient: false })
+      if (refund) await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${quote.refundAmount}`, 'system')
+      return { orderId: data.orderId, status: 'cancelled', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, refundNo: refund ? refund.refundNo : '' }
+    }
+
+    if (action === 'requestEarlyStart') {
+      const { user, order } = await requireStaffOrder(openid, data.id || data.orderId, '不是该订单员工')
+      if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) throw new Error('当前订单不可申请提前开始')
+      if (!isBeforeServiceStart(order)) throw new Error('已到预约时间，无需申请提前开始')
+      const existing = await getPendingEarlyStart(order._id)
+      if (existing) return toEarlyStartView(existing)
+      const time = now()
+      const request = {
+        orderId: order._id,
+        orderNo: order.orderNo || '',
+        clientOpenid: order.clientOpenid,
+        staffOpenid: openid,
+        staffUserId: user._id,
+        status: 'pending',
+        reason: safeText(data.reason).trim() || '宠护师已到达，申请提前开始服务',
+        createdAt: time,
+        updatedAt: time
+      }
+      const created = await db.collection('order_early_start_requests').add({ data: request })
+      await appendOrderTimeline(order._id, 'early_start_requested', '宠护师申请提前开始', request.reason, 'staff')
+      await appendOrderClientMessage(order, { eventType: 'early_start_requested', title: '宠护师申请提前开始', detail: request.reason, actorRole: 'staff' })
+      await notifyOrder(order.clientOpenid, 'serviceStart', order, {
+        statusText: '待确认提前开始',
+        tip: '宠护师已到达，申请提前开始服务，请点击确认'
+      }, 'client')
+      return toEarlyStartView({ _id: created._id, ...request })
+    }
+
+    if (action === 'approveEarlyStart' || action === 'rejectEarlyStart') {
+      const { order } = await requireClientOrder(openid, data.id || data.orderId, '仅宠物主可处理提前开始申请')
+      const request = await getPendingEarlyStart(order._id)
+      if (!request) throw new Error('暂无待处理的提前开始申请')
+      const approved = action === 'approveEarlyStart'
+      const time = now()
+      const update = { status: approved ? 'approved' : 'rejected', clientRemark: safeText(data.remark).trim(), updatedAt: time }
+      if (approved) update.approvedAt = time
+      else update.rejectedAt = time
+      await db.collection('order_early_start_requests').doc(request._id).update({ data: update })
+      await appendOrderTimeline(order._id, approved ? 'early_start_approved' : 'early_start_rejected', approved ? '宠物主已同意提前开始' : '宠物主已拒绝提前开始', update.clientRemark, 'client')
+      await appendOrderStaffMessage(order, {
+        eventType: approved ? 'early_start_approved' : 'early_start_rejected',
+        title: approved ? '宠物主已同意提前开始' : '宠物主已拒绝提前开始',
+        detail: approved ? '宠物主已同意提前开始服务，现在可以开始服务。' : '宠物主已拒绝提前开始服务，请按预约时间开始。',
+        actorRole: 'client',
+        idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, approved ? 'early_start_approved' : 'early_start_rejected', request._id)
+      })
+      await notifyOrder(order.staffOpenid, 'serviceStart', order, {
+        statusText: approved ? '已同意提前开始' : '已拒绝提前开始',
+        tip: approved ? '宠物主已同意提前开始服务，可以开始服务' : '宠物主已拒绝提前开始服务，请按原约定时间开始'
+      }, 'staff')
+      return toEarlyStartView({ ...request, ...update })
+    }
+
+    if (action === 'getEarlyStartStatus') {
+      await getOrderForAccess(openid, data.id || data.orderId)
+      const request = await getPendingEarlyStart(data.id || data.orderId) || await getApprovedEarlyStart(data.id || data.orderId) || await getLatestEarlyStart(data.id || data.orderId)
+      return toEarlyStartView(request)
+    }
+
+    if (action === 'getActiveService') {
+      const user = await getUser(openid)
+      if (!user.roles.includes('staff')) return null
+      const active = await findActiveStaffService(openid)
+      if (!active) return null
+      return {
+        orderId: active._id,
+        orderNo: active.orderNo || '',
+        petName: active.petName || '',
+        serviceSummary: active.serviceSummary || '',
+        currentSessionStartedAt: active.currentSessionStartedAt || active.startedAt || '',
+        activeSessionIndex: active.activeSessionIndex || 1,
+        sessionCount: active.sessionCount || normalizeServiceSessions(active).length || 1
+      }
+    }
+
+    if (action === 'checkServiceTimeReadyForCheckin') {
+      const { order } = await requireStaffOrder(openid, data.id || data.orderId, '不是该订单员工')
+      if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.DAY_COMPLETED].includes(order.status)) throw new Error('当前订单状态不可进行服务前打卡')
+      const time = now()
+      const session = getNextPendingServiceSession({ ...order, _id: data.id || data.orderId }, time)
+      if (!session) throw new Error('暂无可开始的当天服务任务')
+      if (!(await canStartOrderSession({ ...order, _id: data.id || data.orderId }, session, time))) throw new Error('服务时间未到，可申请提前开始')
+      return { canStart: true, session }
+    }
+
+    if (action === 'checkStartServiceReadiness') {
+      const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
+      const time = now()
+      const readiness = {
+        canStart: true,
+        issues: [],
+        order: { id: data.id, status: order.status }
+      }
+
+      // 检查订单状态
+      if (order.status === 'in_service') {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'already_started', message: '服务已开始' })
+        return readiness
+      }
+
+      if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.DAY_COMPLETED].includes(order.status)) {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'wrong_status', message: '订单状态不可开始' })
+        return readiness
+      }
+
+      const activeConflict = await findActiveStaffService(openid, data.id)
+      if (activeConflict) {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'active_service_conflict', message: '当前已有订单正在服务中，请先完成该订单后再开始新的服务', orderId: activeConflict._id, orderNo: activeConflict.orderNo || '', petName: activeConflict.petName || '' })
+        return readiness
+      }
+
+      const currentSession = getNextPendingServiceSession({ ...order, _id: data.id }, time)
+      if (!currentSession) {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'no_session', message: '暂无可开始的当天服务任务' })
+        return readiness
+      }
+
+      // 检查服务时间
+      if (!(await canStartOrderSession({ ...order, _id: data.id }, currentSession, time))) {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'time_not_ready', message: '服务时间未到，可申请提前开始' })
+      }
+
+      // 检查位置
+      const currentLat = Number(data.currentLatitude)
+      const currentLng = Number(data.currentLongitude)
+      if (!hasCoordinate(currentLat, currentLng)) {
+        readiness.canStart = false
+        readiness.issues.push({ type: 'no_location', message: '请允许获取当前位置' })
+      } else {
+        const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
+        const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
+        if (hasCoordinate(orderLat, orderLng)) {
+          const distanceToService = calcDistanceKm(currentLat, currentLng, orderLat, orderLng)
+          const maxStartDistanceKm = 0.5
+          if (distanceToService !== null && distanceToService > maxStartDistanceKm) {
+            readiness.canStart = false
+            readiness.issues.push({
+              type: 'too_far',
+              message: `请到达服务地址附近再开始服务（当前距离约 ${formatDistance(distanceToService)}）`,
+              distance: distanceToService
+            })
+          }
+        }
+      }
+
+      // 检查消毒打卡
+      if (requiresSanitization(order)) {
+        try {
+          await requireSanitizationEvidence({ ...order, _id: data.id }, time)
+        } catch (error) {
+          readiness.canStart = false
+          readiness.issues.push({
+            type: 'missing_sanitization',
+            message: error.message || '请先完成消毒拍照打卡'
+          })
+        }
+      }
+
+      return readiness
+    }
+
+    if (action === 'startService') {
+      const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
+      if (order.status === 'in_service') return { id: data.id, status: order.status }
+      assertOrderTransition(order.status, ORDER_STATUS.IN_SERVICE, '订单状态不可开始')
+      const time = now()
+      const activeConflict = await findActiveStaffService(openid, data.id)
+      if (activeConflict) throw new Error(`当前已有订单正在服务中，请先完成${activeConflict.petName ? activeConflict.petName + '的' : ''}订单后再开始新的服务`)
+      const currentSession = getNextPendingServiceSession({ ...order, _id: data.id }, time)
+      if (!currentSession) throw new Error('暂无可开始的当天服务任务')
+      if (!(await canStartOrderSession({ ...order, _id: data.id }, currentSession, time))) throw new Error('服务时间未到，可申请提前开始')
+
+      await requireSanitizationEvidence({ ...order, _id: data.id }, time)
+
+      const currentLat = Number(data.currentLatitude)
+      const currentLng = Number(data.currentLongitude)
+      const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
+      const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
+      let distanceToService = 0
+      if (hasCoordinate(currentLat, currentLng) && hasCoordinate(orderLat, orderLng)) {
+        distanceToService = calcDistanceKm(currentLat, currentLng, orderLat, orderLng)
+        const maxStartDistanceKm = 0.5 // 500米
+        if (distanceToService !== null && distanceToService > maxStartDistanceKm) {
+          throw new Error(`请到达服务地址附近再开始服务（当前距离约 ${formatDistance(distanceToService)}）`)
+        }
+      }
+
+      const serviceSessions = markServiceSession(normalizeServiceSessions(order), currentSession.index, { status: 'in_service', startedAt: time, finishedAt: '' })
+      const startServiceUpdate = {
+        status: ORDER_STATUS.IN_SERVICE,
+        startedAt: order.startedAt || time,
+        currentSessionStartedAt: time,
+        activeSessionIndex: currentSession.index,
+        activeSessionDate: currentSession.date,
+        serviceSessions,
+        updatedAt: time
+      }
+      if (hasCoordinate(currentLat, currentLng)) {
+        startServiceUpdate.startLocationLatitude = currentLat
+        startServiceUpdate.startLocationLongitude = currentLng
+      }
+      if (distanceToService !== null && !isNaN(distanceToService)) {
+        startServiceUpdate.startDistanceKm = distanceToService
+      }
+
+      await updateOrderWhenStatus(data.id, order.status, startServiceUpdate, '订单状态不可开始服务')
+      const startedOrder = { ...order, _id: data.id, status: ORDER_STATUS.IN_SERVICE, currentSessionStartedAt: time, serviceSessions, updatedAt: time }
+      await appendOrderTimeline(data.id, 'started', currentSession.index > 1 ? `第${currentSession.index}天服务已开始` : '服务已开始', '', 'staff')
+      await appendOrderClientMessage(startedOrder, { eventType: 'started', title: currentSession.index > 1 ? `第${currentSession.index}天服务已开始` : '服务已开始', detail: '宠护师已开始服务', actorRole: 'staff' })
+      await notifyOrder(order.clientOpenid, 'serviceStart', order, { statusText: '服务中' })
+      return { id: data.id, status: ORDER_STATUS.IN_SERVICE, activeSessionIndex: currentSession.index, currentSessionStartedAt: time }
+    }
+
+    if (action === 'finishService') {
+      const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
+      if (order.status === 'completed') return { id: data.id, completedOrderCount: Number((await getUser(order.clientOpenid)).completedOrderCount || 0) }
+      assertOrderTransition(order.status, ORDER_STATUS.COMPLETED, '订单状态不可完成')
+      const activeSession = getActiveServiceSession(order) || getTodayServiceSession(order, order.currentSessionStartedAt || order.startedAt || now()) || normalizeServiceSessions(order)[0] || { index: 1, date: beijingDateKey(order.startedAt || now()), startedAt: order.currentSessionStartedAt || order.startedAt || '' }
+      const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
+      const checkinResult = await evaluateCheckinCompletion({ ...order, _id: data.id }, sessionStartedAt)
+      if (!checkinResult.isComplete) {
+        throw new Error(`缺少必打卡照片：${checkinResult.missing.join('、')}`)
+      }
+      return completeOrderService({ ...order, _id: data.id }, activeSession, now(), { isAuto: false, actor: 'staff' })
+    }
+
+    if (action === 'checkOverdueOrders') {
+      const unstarted = await processOverdueUnstartedOrders()
+      const unfinished = await processOverdueUnfinishedOrders()
+      return { unstartedCount: unstarted.length, unfinishedCount: unfinished.length, unstarted, unfinished }
+    }
+
+    if (action === 'getServiceReport') {
+      const order = (await getOrderForAccess(openid, data.id)).order
+      const tracks = await db.collection('track_logs').where({ orderId: data.id }).orderBy('recordedAt', 'asc').get()
+      const checkins = await db.collection('checkin_logs').where({ orderId: data.id }).orderBy('createdAt', 'asc').get()
+      return { order, tracks: tracks.data, checkins: (checkins.data || []).filter(isActiveCheckin) }
+    }
+    if (action === 'listPublicCompletedOrders') {
+      const serviceType = safeText(data.serviceType).trim()
+      const ordersRes = await db.collection('orders').where({ status: ORDER_STATUS.COMPLETED }).orderBy('completedAt', 'desc').get()
+      let orders = (ordersRes.data || []).filter((order) => !isAdminDeletedOrder(order))
+      if (serviceType) orders = orders.filter((order) => order.serviceType === serviceType || (Array.isArray(order.serviceTypes) && order.serviceTypes.includes(serviceType)))
+      const wantsPage = data.page !== undefined
+      const pageData = wantsPage ? paginateList(orders, data) : { list: orders.slice(0, Math.min(Math.max(Math.round(Number(data.pageSize || 20)), 1), 50)) }
+      const orderIds = pageData.list.map((order) => order._id).filter(Boolean)
+      const [reviews, checkins, staffProfiles, users] = await Promise.all([
+        orderIds.length ? safeCollectionData('service_reviews', (col) => col.where({ status: 'visible' })) : Promise.resolve([]),
+        orderIds.length ? safeCollectionData('checkin_logs') : Promise.resolve([]),
+        safeCollectionData('staff_profiles'),
+        safeCollectionData('users')
+      ])
+      const reviewMap = reviews
+        .filter((review) => orderIds.includes(review.orderId))
+        .reduce((map, review) => ({ ...map, [review.orderId]: review }), {})
+      const checkinMap = checkins
+        .filter((checkin) => orderIds.includes(checkin.orderId))
+        .reduce((map, checkin) => ({ ...map, [checkin.orderId]: [...(map[checkin.orderId] || []), checkin] }), {})
+      const staffProfileMap = staffProfiles.reduce((map, profile) => ({ ...map, [profile._id]: profile }), {})
+      const userMap = users.reduce((map, user) => ({ ...map, [user.openid]: user }), {})
+      const list = await Promise.all(pageData.list.map(async (order) => {
+        const displayOrder = await attachClientSnapshot(order)
+        return toHomeOrderActivity(displayOrder, {
+          review: reviewMap[order._id] || null,
+          checkins: (checkinMap[order._id] || []).filter(isActiveCheckin).sort((a, b) => toTimeValue(a.createdAt || a.recordedAt) - toTimeValue(b.createdAt || b.recordedAt)),
+          staffProfile: staffProfileMap[order.staffProfileId || order.requestedStaffProfileId] || {},
+          hideCheckinPhotos: shouldHidePublicCheckinPhotos(userMap[order.clientOpenid])
+        })
+      }))
+      return wantsPage ? { ...pageData, list } : list
+    }
+    if (action === 'getPublicCompletedOrderDetail') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      const order = (await db.collection('orders').doc(orderId).get()).data
+      if (!order || order.status !== ORDER_STATUS.COMPLETED) throw new Error('订单不可查看')
+      const [reviewRes, checkinsRes, clientRes] = await Promise.all([
+        db.collection('service_reviews').where({ orderId, status: 'visible' }).limit(1).get(),
+        db.collection('checkin_logs').where({ orderId }).orderBy('createdAt', 'asc').get(),
+        order.clientOpenid ? db.collection('users').where({ openid: order.clientOpenid }).limit(1).get() : Promise.resolve({ data: [] })
+      ])
+      const staffProfileId = order.staffProfileId || order.requestedStaffProfileId || ''
+      let staffProfile = {}
+      if (staffProfileId) {
+        staffProfile = (await db.collection('staff_profiles').doc(staffProfileId).get()).data || {}
+      }
+      const displayOrder = await attachClientSnapshot(order)
+      return toHomeOrderActivity(displayOrder, {
+        review: reviewRes.data[0] || null,
+        checkins: (checkinsRes.data || []).filter(isActiveCheckin),
+        staffProfile,
+        hideCheckinPhotos: shouldHidePublicCheckinPhotos(clientRes.data[0])
+      })
+    }
+    throw new Error('未知 order 操作')
+  }
+}

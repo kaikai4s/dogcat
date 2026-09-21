@@ -27,6 +27,7 @@ function createCollectionStore(initial = {}) {
       _where: null,
       _limit: null,
       _order: null,
+      _skip: 0,
       where(where) {
         this._where = where
         return this
@@ -35,20 +36,28 @@ function createCollectionStore(initial = {}) {
         this._limit = limit
         return this
       },
+      skip(offset) {
+        this._skip = offset
+        return this
+      },
       orderBy(field, direction) {
-        this._order = { field, direction }
+        this._order = [...(this._order || []), { field, direction }]
         return this
       },
       async get() {
         let data = ensure(name).filter((item) => matchWhere(item, this._where))
         if (this._order) {
-          const { field, direction } = this._order
           data = data.slice().sort((a, b) => {
-            const av = a[field] || ''
-            const bv = b[field] || ''
-            return direction === 'desc' ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv))
+            for (const { field, direction } of this._order) {
+              const av = a[field] || ''
+              const bv = b[field] || ''
+              const result = direction === 'desc' ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv))
+              if (result) return result
+            }
+            return 0
           })
         }
+        data = data.slice(this._skip)
         if (this._limit !== null) data = data.slice(0, this._limit)
         return { data }
       },

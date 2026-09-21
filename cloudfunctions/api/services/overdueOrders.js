@@ -1,0 +1,223 @@
+module.exports = function createService({
+  ORDER_STATUS,
+  appendOrderClientMessage,
+  appendOrderStaffMessage,
+  appendOrderTimeline,
+  completeOrderService,
+  db,
+  evaluateCheckinCompletion,
+  formatDateTime,
+  getActiveServiceSession,
+  getNextPendingServiceSession,
+  makeIdempotencyKey,
+  normalizeServiceSessions,
+  notifyOrder,
+  now,
+  toTimeValue
+}) {
+  async function processOverdueUnstartedOrders(currentTime = now()) {
+    const currentTs = toTimeValue(currentTime)
+    if (!currentTs) return []
+    const [assignedRes, dayCompletedRes] = await Promise.all([
+      db.collection('orders').where({ status: ORDER_STATUS.ASSIGNED }).get(),
+      db.collection('orders').where({ status: ORDER_STATUS.DAY_COMPLETED }).get()
+    ])
+    const candidates = [...(assignedRes.data || []), ...(dayCompletedRes.data || [])]
+    const processed = []
+
+    for (const order of candidates) {
+      if (!order.staffOpenid) continue
+      const activeSession = getActiveServiceSession(order)
+      const nextSession = getNextPendingServiceSession(order)
+      const targetSession = activeSession || nextSession || (Array.isArray(order.serviceSessions) && order.serviceSessions[0]) || { index: 1, startTime: order.startTime }
+      const sessionIndex = Number(targetSession.index || 1)
+      const sessionStartTime = toTimeValue((targetSession && targetSession.startTime) || order.startTime)
+      if (!sessionStartTime) continue
+
+      const overdueMs = currentTs - sessionStartTime
+      if (overdueMs < 15 * 60 * 1000) continue
+
+      const serviceName = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
+      const timeText = (targetSession && targetSession.startTime) || order.startTime || formatDateTime(sessionStartTime)
+      const remindedSessions = Array.isArray(order.staffOverdueStartRemindedSessions) ? order.staffOverdueStartRemindedSessions : []
+      const clientAlertedSessions = Array.isArray(order.clientOverdueStartAlertedSessions) ? order.clientOverdueStartAlertedSessions : []
+      const updates = {}
+
+      // 阶段 1：超时 15 分钟未开始 -> 催促宠托师尽快履约
+      if (overdueMs >= 15 * 60 * 1000 && !remindedSessions.includes(sessionIndex)) {
+        await notifyOrder(order.staffOpenid, 'serviceStart', order, {
+          statusText: '服务已超时未开始',
+          tip: `约定于 ${timeText} 开始，已超时 15 分钟，请尽快打卡开始`
+        }, 'staff')
+
+        await appendOrderStaffMessage(order, {
+          eventType: 'overdue_unstarted_warning',
+          title: '服务已超时未开始提醒',
+          detail: `您的订单（${serviceName}）约定于 ${timeText} 开始，现已超时超过 15 分钟尚未开始服务。请尽快到达服务地点并打卡开始，以免产生爽约客诉或违约处罚。`,
+          actorRole: 'system',
+          idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_unstarted_warning', String(sessionIndex))
+        })
+
+        await appendOrderTimeline(order._id, 'overdue_unstarted_warning', '服务超时未开始催促', `第${sessionIndex}天服务已超时 15 分钟尚未开始，系统已提醒催促宠托师尽快到场履约。`, 'system')
+
+        updates.staffOverdueStartRemindedSessions = [...remindedSessions, sessionIndex]
+      }
+
+      // 阶段 2：超时 30 分钟未开始 -> 提醒宠物主并标记异常预警
+      if (overdueMs >= 30 * 60 * 1000 && !clientAlertedSessions.includes(sessionIndex)) {
+        await notifyOrder(order.clientOpenid, 'serviceStart', order, {
+          statusText: '服务未按时开始',
+          tip: '宠托师尚未开始服务，平台已介入催促跟进'
+        }, 'client')
+
+        await appendOrderClientMessage(order, {
+          eventType: 'overdue_unstarted_client_notice',
+          title: '服务未按时开始提醒',
+          detail: `您预约于 ${timeText} 的服务（${serviceName}）已超时 30 分钟尚未开始。系统已多次催促宠托师，您可在订单页面联系宠托师或在线客服协助处理。`,
+          actorRole: 'system',
+          unreadForClient: true
+        })
+
+        await appendOrderTimeline(order._id, 'overdue_unstarted_alert', '服务严重超时异常预警', `服务已超时 30 分钟仍未开始，系统已提醒宠物主并触发异常跟进。`, 'system')
+
+        updates.clientOverdueStartAlertedSessions = [...clientAlertedSessions, sessionIndex]
+        updates.isStartOverdue = true
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+        updates.updatedAt = time
+        await db.collection('orders').doc(order._id).update({ data: updates })
+        processed.push({ orderId: order._id, sessionIndex, updates })
+      }
+    }
+
+    return processed
+  }
+
+  async function processOverdueUnfinishedOrders(currentTime = now()) {
+    const currentTs = toTimeValue(currentTime)
+    if (!currentTs) return []
+    const res = await db.collection('orders').where({ status: ORDER_STATUS.IN_SERVICE }).get()
+    const orders = res.data || []
+    const processed = []
+
+    for (const order of orders) {
+      const activeSession = getActiveServiceSession(order) || normalizeServiceSessions(order)[0] || { index: 1 }
+      const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
+      const sessionEndTime = toTimeValue((activeSession && activeSession.endTime) || order.endTime)
+      const durationMs = (Math.max(Number(order.durationMinutes || 60), 30)) * 60 * 1000
+      const estimatedEndTime = sessionEndTime || (sessionStartedAt ? sessionStartedAt + durationMs : 0)
+      if (!estimatedEndTime) continue
+
+      const overdueMs = currentTs - estimatedEndTime
+      if (overdueMs < 15 * 60 * 1000) continue
+
+      const serviceName = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
+      const checkinResult = await evaluateCheckinCompletion({ ...order, _id: order._id }, sessionStartedAt || currentTs)
+
+      // 情况 1：打卡凭证齐全，超时 30 分钟未结束 -> 智能自动完成服务并结算
+      if (overdueMs >= 30 * 60 * 1000 && checkinResult.isComplete && !order.autoCompleted) {
+        const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+        const completeRes = await completeOrderService({ ...order, _id: order._id }, activeSession, time, { isAuto: true, actor: 'system' })
+        processed.push({ orderId: order._id, type: 'auto_completed', result: completeRes })
+        continue
+      }
+
+      // 情况 2：严重超时 60 分钟且打卡缺失 -> 自动创建异常工单介入跟进
+      if (overdueMs >= 60 * 60 * 1000 && !checkinResult.isComplete && !order.finishOverdueIncidentCreated) {
+        const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+        await appendOrderTimeline(order._id, 'finish_overdue_incident', '服务严重超时未结束告警', `服务已超时 60 分钟且打卡凭证缺失（${checkinResult.missing.join('、')}），系统已转平台客服紧急跟进。`, 'system')
+        await appendOrderClientMessage(order, {
+          eventType: 'service_finish_overdue_notice',
+          title: '服务进行中超时提醒',
+          detail: `您的订单（${serviceName}）已超出预计服务时间，平台客服已介入跟进宠托师现场服务进展，确保宠物与家庭安全。`,
+          actorRole: 'system',
+          unreadForClient: true
+        })
+
+        if (order.staffOpenid) {
+          await appendOrderStaffMessage(order, {
+            eventType: 'finish_overdue_incident',
+            title: '服务严重超时警报',
+            detail: `您的订单（${serviceName}）已超出预计结束时间 60 分钟以上，且仍缺少打卡凭证（${checkinResult.missing.join('、')}）。平台已生成客服异常工单跟进，请立即核实打卡或联系客服！`,
+            actorRole: 'system',
+            idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'finish_overdue_incident', String(activeSession.index || 1))
+          })
+        }
+
+        await db.collection('order_incidents').add({
+          data: {
+            orderId: order._id,
+            orderNo: order.orderNo || '',
+            clientOpenid: order.clientOpenid,
+            staffOpenid: order.staffOpenid,
+            type: 'service_finish_overdue',
+            title: '服务严重超时未结束且缺少打卡',
+            detail: `订单已超出预计结束时间 60 分钟以上，仍缺少必要打卡：${checkinResult.missing.join('、')}，请平台客服紧急联系宠托师与客户核实情况。`,
+            status: 'open',
+            createdAt: time,
+            updatedAt: time
+          }
+        })
+
+        await db.collection('orders').doc(order._id).update({
+          data: {
+            finishOverdueIncidentCreated: true,
+            overdueFinishReminded: true,
+            overdueFinishRemindedAt: time,
+            isFinishOverdue: true,
+            updatedAt: time
+          }
+        })
+        processed.push({ orderId: order._id, type: 'incident_created' })
+        continue
+      }
+
+      // 情况 3：超时 15 分钟未结束 -> 发送催促提醒
+      if (overdueMs >= 15 * 60 * 1000 && !order.overdueFinishReminded) {
+        const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+        if (checkinResult.isComplete) {
+          await appendOrderStaffMessage(order, {
+            eventType: 'overdue_finish_reminder',
+            title: '请及时确认完成服务',
+            detail: `您的订单（${serviceName}）已超出约定服务时间，检测到打卡凭证已齐全。请及时在服务页点击【完成服务】进行结算。若超出 30 分钟仍未操作，系统将自动帮您结算完成。`,
+            actorRole: 'system',
+            idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_finish_reminder', String(activeSession.index || 1))
+          })
+          await notifyOrder(order.staffOpenid, 'serviceFinish', order, {
+            statusText: '请及时完成服务',
+            tip: '订单打卡已齐全，请及时点击完成服务进行结算'
+          }, 'staff')
+        } else {
+          await appendOrderStaffMessage(order, {
+            eventType: 'overdue_finish_reminder',
+            title: '服务超时未结束提醒',
+            detail: `您的订单（${serviceName}）已超出预计服务时间，且尚缺少打卡凭证（${checkinResult.missing.join('、')}）。请确认服务进度并及时补全打卡与点击完成服务。`,
+            actorRole: 'system',
+            idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_finish_reminder', String(activeSession.index || 1))
+          })
+        }
+
+        await appendOrderTimeline(order._id, 'overdue_finish_reminder', '服务超时未结束催促', checkinResult.isComplete ? '打卡已齐全，系统已提醒宠托师尽快点击完成服务。' : `服务已超时，尚缺少打卡（${checkinResult.missing.join('、')}），已提醒宠托师。`, 'system')
+
+        await db.collection('orders').doc(order._id).update({
+          data: {
+            overdueFinishReminded: true,
+            overdueFinishRemindedAt: time,
+            updatedAt: time
+          }
+        })
+        processed.push({ orderId: order._id, type: 'reminded', checkinComplete: checkinResult.isComplete })
+        continue
+      }
+    }
+
+    return processed
+  }
+
+  return {
+    processOverdueUnstartedOrders,
+    processOverdueUnfinishedOrders
+  }
+}
