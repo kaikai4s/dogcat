@@ -103,6 +103,12 @@ Page({
       .then(() => this.load())
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
   },
+  onHide() {
+    this.stopEarlyStartPolling()
+  },
+  onUnload() {
+    this.stopEarlyStartPolling()
+  },
   applyCurrentTheme() {
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
@@ -117,8 +123,69 @@ Page({
         const displayOrder = withOrderText(order)
         this.setData({ order: { ...displayOrder, refundText: getRefundText(displayOrder) }, timeline: withTimelineText(timeline), review })
         callFunction('message', 'markOrderThreadRead', { orderId: this.data.id }).catch(() => {})
+        if (displayOrder.earlyStartRequest && displayOrder.earlyStartRequest.status === 'pending') {
+          this.checkPromptEarlyStart(displayOrder.earlyStartRequest)
+        }
+        if (['assigned', 'day_completed'].includes(displayOrder.status)) {
+          this.startEarlyStartPolling()
+        } else {
+          this.stopEarlyStartPolling()
+        }
       })
       .catch(showError)
+  },
+  checkPromptEarlyStart(earlyStartRequest) {
+    if (!earlyStartRequest || earlyStartRequest.status !== 'pending') return
+    const requestId = earlyStartRequest._id || 'pending'
+    if (this.promptedEarlyStartId === requestId) return
+    this.promptedEarlyStartId = requestId
+
+    const staffName = (this.data.order && (this.data.order.staffName || this.data.order.requestedStaffName)) || '宠托师'
+    const reason = earlyStartRequest.reason || '宠护师已到达，申请提前开始服务'
+    wx.showModal({
+      title: '提前开始服务申请',
+      content: `${staffName}已到达并申请提前开始服务：\n"${reason}"\n\n是否同意提前开始？`,
+      confirmText: '同意开始',
+      cancelText: '拒绝',
+      success: (res) => {
+        if (res.confirm) {
+          this.handleEarlyStartAction('approve')
+        } else if (res.cancel) {
+          this.handleEarlyStartAction('reject')
+        }
+      }
+    })
+  },
+  startEarlyStartPolling() {
+    this.stopEarlyStartPolling()
+    const order = this.data.order
+    if (!order || !['assigned', 'day_completed'].includes(order.status)) return
+
+    this.earlyStartPollTimer = setInterval(() => {
+      if (!this.data.id || this.data.handlingEarlyStart || this.data.paying) return
+      callFunction('order', 'getEarlyStartStatus', { id: this.data.id })
+        .then((earlyStart) => {
+          if (!earlyStart) return
+          const currentReq = this.data.order && this.data.order.earlyStartRequest
+          if (!currentReq || currentReq.status !== earlyStart.status || currentReq._id !== earlyStart._id) {
+            this.setData({
+              'order.earlyStartRequest': earlyStart
+            })
+            if (earlyStart.status === 'pending') {
+              this.checkPromptEarlyStart(earlyStart)
+            } else {
+              this.load()
+            }
+          }
+        })
+        .catch(() => {})
+    }, 5000)
+  },
+  stopEarlyStartPolling() {
+    if (this.earlyStartPollTimer) {
+      clearInterval(this.earlyStartPollTimer)
+      this.earlyStartPollTimer = null
+    }
   },
   pay() {
     if (this.data.paying) return
@@ -126,7 +193,7 @@ Page({
     const clientRequestId = createClientRequestId('pay')
 
     // 定义重新授权的函数
-    const requestSubscribe = () => requestSubscribeTemplates(['orderAccepted', 'remoteUnlock', 'refundResult'], 'client_pay')
+    const requestSubscribe = () => requestSubscribeTemplates(['orderAccepted', 'serviceStart', 'remoteUnlock'], 'client_pay')
 
     requestSubscribe()
       .then((subscribeResult) => {
@@ -202,8 +269,12 @@ Page({
       .catch(showError)
   },
   handleEarlyStart(e) {
+    const action = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.action
+    this.handleEarlyStartAction(action || 'approve')
+  },
+  handleEarlyStartAction(action) {
     if (this.data.handlingEarlyStart) return
-    const approve = e.currentTarget.dataset.action === 'approve'
+    const approve = action === 'approve'
     this.setData({ handlingEarlyStart: true })
 
     // 定义重新授权的函数
@@ -215,7 +286,7 @@ Page({
     subscribePromise
       .then((subscribeResult) => {
         // 如果是同意操作且未授权，提示用户
-        if (approve && subscribeResult.requested) {
+        if (approve && subscribeResult && subscribeResult.requested) {
           const index = (subscribeResult.templateKeys || []).indexOf('serviceStart')
           const templateId = index >= 0 ? subscribeResult.templateIds[index] : ''
           const status = templateId ? subscribeResult.results[templateId] : ''

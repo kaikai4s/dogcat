@@ -146,7 +146,8 @@ function normalizeSubscriptionConfig(subscription = {}) {
       remoteUnlock: templates.remoteUnlock || '',
       refundResult: templates.refundResult || '',
       disputeUpdate: templates.disputeUpdate || '',
-      withdrawResult: templates.withdrawResult || ''
+      withdrawResult: templates.withdrawResult || '',
+      upcomingServiceReminder: templates.upcomingServiceReminder || templates.serviceReminder || ''
     }
   }
 }
@@ -214,9 +215,10 @@ function requestSubscribeTemplates(templateKeys = [], scene = '') {
     if (!subscription.enabled) return Promise.resolve({ requested: false, reason: 'subscription_disabled' })
     if (typeof wx.requestSubscribeMessage !== 'function') return Promise.resolve({ requested: false, reason: 'request_api_unavailable' })
     const templates = subscription.templates || {}
-    const requestKeys = templateKeys.filter((key) => templates[key])
+    const resolveTemplateId = (key) => templates[key] || (key === 'upcomingServiceReminder' ? templates.serviceStart : '')
+    const requestKeys = templateKeys.filter(resolveTemplateId)
     const limitedKeys = requestKeys.slice(0, 3)
-    const tmplIds = limitedKeys.map((key) => templates[key])
+    const tmplIds = limitedKeys.map(resolveTemplateId)
     if (!tmplIds.length) return Promise.resolve({ requested: false, reason: 'template_not_configured' })
     return new Promise((resolve) => {
       wx.requestSubscribeMessage({
@@ -227,7 +229,7 @@ function requestSubscribeTemplates(templateKeys = [], scene = '') {
     }).then((result) => {
       if (!result.requested) return result
       const templateIds = {}
-      limitedKeys.forEach((key) => { templateIds[key] = templates[key] })
+      limitedKeys.forEach((key) => { templateIds[key] = resolveTemplateId(key) })
       return callFunction('system', 'recordSubscriptionConsent', { templateKeys: limitedKeys, templateIds, results: result.results, scene })
         .then(() => result)
         .catch(() => result)
@@ -237,7 +239,7 @@ function requestSubscribeTemplates(templateKeys = [], scene = '') {
   const cachedSettings = getCachedSystemSettings()
   const cachedSubscription = cachedSettings.subscription || {}
   const cachedTemplates = cachedSubscription.templates || {}
-  const hasCachedTemplate = templateKeys.some((key) => cachedTemplates[key])
+  const hasCachedTemplate = templateKeys.some((key) => cachedTemplates[key] || (key === 'upcomingServiceReminder' && cachedTemplates.serviceStart))
   if (cachedSubscription.enabled && hasCachedTemplate) return requestWithSettings(cachedSettings)
   return loadSystemSettings().then(requestWithSettings).catch((error) => ({ requested: false, reason: 'settings_load_failed', error: error && (error.message || error.errMsg) || '' }))
 }

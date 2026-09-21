@@ -1,4 +1,4 @@
-const { callFunction, showError } = require('../../../../utils/cloud')
+const { callFunction, showError, requestSubscribeTemplates } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { withOrderText } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
@@ -94,7 +94,7 @@ Page({
   },
   submitAcceptOrder(riskConfirmed) {
     this.setData({ acceptingRiskOrder: true })
-    callFunction('staff', 'acceptOrder', { orderId: this.data.id, riskConfirmed: riskConfirmed === true })
+    const doAccept = () => callFunction('staff', 'acceptOrder', { orderId: this.data.id, riskConfirmed: riskConfirmed === true })
       .then(() => {
         wx.showToast({ title: '接单成功' })
         this.closeAcceptRiskModal()
@@ -102,6 +102,10 @@ Page({
       })
       .catch(showError)
       .finally(() => this.setData({ acceptingRiskOrder: false }))
+
+    requestSubscribeTemplates(['upcomingServiceReminder', 'serviceStart'], 'staff_accept_order')
+      .catch(() => null)
+      .then(doAccept)
   },
   continueAcceptRisk() {
     this.setData({ acceptRiskStep: 2, acceptRiskAgreed: false })

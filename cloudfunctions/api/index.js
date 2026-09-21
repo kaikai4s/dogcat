@@ -676,7 +676,8 @@ function normalizeSystemSettings(value = {}, options = {}) {
         remoteUnlock: safeText(subscription.templates && subscription.templates.remoteUnlock).trim(),
         refundResult: safeText(subscription.templates && subscription.templates.refundResult).trim(),
         disputeUpdate: safeText(subscription.templates && subscription.templates.disputeUpdate).trim(),
-        withdrawResult: safeText(subscription.templates && subscription.templates.withdrawResult).trim()
+        withdrawResult: safeText(subscription.templates && subscription.templates.withdrawResult).trim(),
+        upcomingServiceReminder: safeText(subscription.templates && (subscription.templates.upcomingServiceReminder || subscription.templates.serviceReminder)).trim()
       }
     },
     reliability: {
@@ -1482,8 +1483,14 @@ async function getPendingEarlyStart(orderId) {
   return res.data[0] || null
 }
 
+async function getLatestEarlyStart(orderId) {
+  const res = await db.collection('order_early_start_requests').where({ orderId }).orderBy('createdAt', 'desc').limit(1).get()
+  return res.data[0] || null
+}
+
 function isBeforeServiceStart(order, current = now()) {
-  const start = toTimeValue(order.startTime)
+  const nextSession = getNextPendingServiceSession(order) || getActiveServiceSession(order)
+  const start = toTimeValue((nextSession && nextSession.startTime) || order.startTime)
   return start > 0 && current.getTime() < start
 }
 
@@ -3891,9 +3898,12 @@ async function appendFinanceLog(action, payload = {}) {
   })
 }
 
-function buildSubscriptionPage(order = {}) {
+function buildSubscriptionPage(order = {}, role = 'client') {
   const orderId = order && order._id || ''
-  if (!orderId) return 'pages/client/home/index'
+  if (!orderId) return role === 'staff' ? 'pages/staff/home/index' : 'pages/client/home/index'
+  if (role === 'staff') {
+    return `pages/staff/orders/service/index?id=${orderId}`
+  }
   return isMallOrder(order) ? `pages/client/mall/orders/detail/index?id=${orderId}` : `pages/client/orders/detail/index?id=${orderId}`
 }
 
@@ -3922,6 +3932,15 @@ function buildSubscriptionData(templateKey, order = {}, detail = {}) {
       thing1: { value: safeText(detail.deviceName || '入户门锁').slice(0, 20) },
       character_string2: { value: safeText(orderNo).slice(0, 32) },
       time3: { value: safeText(detail.requestTime || nowText()).slice(0, 20) }
+    }
+  }
+  if (templateKey === 'upcomingServiceReminder') {
+    return {
+      thing9: { value: safeText(detail.tip || '订单即将开始，请前往服务').slice(0, 20) },
+      thing4: { value: '即将开始' },
+      character_string5: { value: safeText(orderNo).slice(0, 32) },
+      thing10: { value: safeText(serviceName).slice(0, 20) },
+      date3: { value: safeText(detail.startTimeText || order.startTime || nowText()).slice(0, 20) }
     }
   }
   return {
@@ -3953,7 +3972,10 @@ async function sendSubscribeMessage(openid, templateKey, page, messageData = {},
   if (!openid || !templateKey) return { status: 'skipped', error: 'missing_recipient_or_template_key' }
   try {
     const settings = await getSystemSettings()
-    const templateId = settings.subscription.templates[templateKey] || ''
+    let templateId = settings.subscription.templates[templateKey] || ''
+    if (!templateId && templateKey === 'upcomingServiceReminder') {
+      templateId = settings.subscription.templates.serviceStart || ''
+    }
     console.log('[subscription] send prepare', { openid, templateKey, templateId, enabled: settings.subscription.enabled, orderId, page, data: messageData })
     if (!settings.subscription.enabled || !templateId) {
       const result = { status: 'skipped', error: !settings.subscription.enabled ? 'subscription_disabled' : 'template_not_configured', templateKey, templateId }
@@ -3979,8 +4001,9 @@ async function sendSubscribeMessage(openid, templateKey, page, messageData = {},
   }
 }
 
-function notifyOrder(openid, templateKey, order, detail = {}) {
-  return sendSubscribeMessage(openid, templateKey, buildSubscriptionPage(order), buildSubscriptionData(templateKey, order, detail), order && order._id)
+function notifyOrder(openid, templateKey, order, detail = {}, role = '') {
+  const targetRole = role || (order && order.staffOpenid && openid === order.staffOpenid ? 'staff' : 'client')
+  return sendSubscribeMessage(openid, templateKey, buildSubscriptionPage(order, targetRole), buildSubscriptionData(templateKey, order, detail), order && order._id)
 }
 
 function notifyOrderAccepted(order, staffName = '') {
@@ -4014,6 +4037,82 @@ function notifyOrderAccepted(order, staffName = '') {
       })
       throw error
     })
+}
+
+async function sendUpcomingServiceRemindersToStaff(currentTime = now()) {
+  const currentTs = toTimeValue(currentTime)
+  if (!currentTs) return []
+  const [assignedRes, dayCompletedRes] = await Promise.all([
+    db.collection('orders').where({ status: ORDER_STATUS.ASSIGNED }).get(),
+    db.collection('orders').where({ status: ORDER_STATUS.DAY_COMPLETED }).get()
+  ])
+  const candidates = [...(assignedRes.data || []), ...(dayCompletedRes.data || [])]
+  const remindedOrders = []
+
+  for (const order of candidates) {
+    if (!order.staffOpenid) continue
+    const activeSession = getActiveServiceSession(order)
+    const nextSession = getNextPendingServiceSession(order)
+    const targetSession = activeSession || nextSession || (Array.isArray(order.serviceSessions) && order.serviceSessions[0]) || { index: 1, startTime: order.startTime }
+    const sessionIndex = Number(targetSession.index || 1)
+    const sessionStartTime = toTimeValue((targetSession && targetSession.startTime) || order.startTime)
+    if (!sessionStartTime) continue
+
+    const diff = sessionStartTime - currentTs
+    // 任务开始前 1 小时内（0 <= diff <= 3600000），或到达开始时间但在30分钟内尚未开始（-1800000 <= diff <= 0）
+    if (diff > 60 * 60 * 1000 || diff < -30 * 60 * 1000) continue
+
+    const remindedSessions = Array.isArray(order.staffUpcomingRemindedSessions) ? order.staffUpcomingRemindedSessions : []
+    if (remindedSessions.includes(sessionIndex)) continue
+    if (order.staffUpcomingRemindedAt && sessionIndex === 1 && toTimeValue(order.staffUpcomingRemindedAt) >= sessionStartTime - 2 * 3600 * 1000) {
+      continue
+    }
+
+    const serviceName = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
+    const address = order.serviceAddress || order.city || '服务地址'
+    const timeText = (targetSession && targetSession.startTime) || order.startTime || formatDateTime(sessionStartTime)
+
+    // 发送订阅消息（指定角色为 staff，跳转服务执行页面）
+    const notifyRes = await notifyOrder(order.staffOpenid, 'upcomingServiceReminder', order, {
+      statusText: '即将开始',
+      tip: '订单即将开始，请前往服务',
+      startTimeText: timeText,
+      serviceAddress: address
+    }, 'staff')
+
+    // 写入宠托师站内消息
+    const messageDetail = `您的订单（${serviceName}）约定于 ${timeText} 开始，距当前已不足 1 小时。请提前规划行程并前往服务地点：${address}。到达后请按要求完成打卡。`
+    await appendOrderStaffMessage(order, {
+      eventType: 'upcoming_service_reminder',
+      title: '订单即将开始，请前往服务',
+      detail: messageDetail,
+      actorRole: 'system',
+      idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'upcoming_service_reminder', String(sessionIndex))
+    })
+
+    // 写入订单时间线
+    await appendOrderTimeline(order._id, 'upcoming_service_reminder', '即将开始服务提醒已发送', `第${sessionIndex}天服务即将在 1 小时内开始，系统已提醒宠托师前往服务。`, 'system')
+
+    // 更新订单防重字段
+    const newRemindedSessions = Array.from(new Set([...remindedSessions, sessionIndex]))
+    const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+    await db.collection('orders').doc(order._id).update({
+      data: {
+        staffUpcomingRemindedSessions: newRemindedSessions,
+        staffUpcomingRemindedAt: time,
+        updatedAt: time
+      }
+    })
+
+    remindedOrders.push({
+      orderId: order._id,
+      sessionIndex,
+      staffOpenid: order.staffOpenid,
+      notifyResult: notifyRes
+    })
+  }
+
+  return remindedOrders
 }
 
 function calculateAvailableAt(completedAt, delayDays) {
@@ -6102,7 +6201,7 @@ const handlers = {
       const { order } = await getOrderForAccess(openid, orderId)
       const displayOrder = await attachOrderDisplayData(order)
       const [earlyStart, securityRes, checkinsRes, tracksRes] = await Promise.all([
-        getPendingEarlyStart(orderId).then((pending) => pending || getApprovedEarlyStart(orderId)),
+        getPendingEarlyStart(orderId).then((pending) => pending || getApprovedEarlyStart(orderId) || getLatestEarlyStart(orderId)),
         db.collection('order_home_security').where({ orderId }).limit(1).get(),
         db.collection('checkin_logs').where({ orderId }).get(),
         db.collection('track_logs').where({ orderId }).get()
@@ -6267,7 +6366,10 @@ const handlers = {
       const created = await db.collection('order_early_start_requests').add({ data: request })
       await appendOrderTimeline(order._id, 'early_start_requested', '宠护师申请提前开始', request.reason, 'staff')
       await appendOrderClientMessage(order, { eventType: 'early_start_requested', title: '宠护师申请提前开始', detail: request.reason, actorRole: 'staff' })
-      await notifyOrder(order.clientOpenid, 'serviceStart', order, { statusText: '待确认提前开始' })
+      await notifyOrder(order.clientOpenid, 'serviceStart', order, {
+        statusText: '待确认提前开始',
+        tip: '宠护师已到达，申请提前开始服务，请点击确认'
+      }, 'client')
       return toEarlyStartView({ _id: created._id, ...request })
     }
 
@@ -6289,13 +6391,16 @@ const handlers = {
         actorRole: 'client',
         idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, approved ? 'early_start_approved' : 'early_start_rejected', request._id)
       })
-      await notifyOrder(order.staffOpenid, 'serviceStart', order, { statusText: approved ? '已同意提前开始' : '已拒绝提前开始' })
+      await notifyOrder(order.staffOpenid, 'serviceStart', order, {
+        statusText: approved ? '已同意提前开始' : '已拒绝提前开始',
+        tip: approved ? '宠物主已同意提前开始服务，可以开始服务' : '宠物主已拒绝提前开始服务，请按原约定时间开始'
+      }, 'staff')
       return toEarlyStartView({ ...request, ...update })
     }
 
     if (action === 'getEarlyStartStatus') {
       await getOrderForAccess(openid, data.id || data.orderId)
-      const request = await getPendingEarlyStart(data.id || data.orderId) || await getApprovedEarlyStart(data.id || data.orderId)
+      const request = await getPendingEarlyStart(data.id || data.orderId) || await getApprovedEarlyStart(data.id || data.orderId) || await getLatestEarlyStart(data.id || data.orderId)
       return toEarlyStartView(request)
     }
 
@@ -8083,7 +8188,12 @@ const handlers = {
       const res = await db.collection('service_reviews').where({ staffProfileId: profile._id, status: 'visible' }).orderBy('createdAt', 'desc').get()
       return res.data.map((item) => ({ ...item, clientName: maskClientName(item.clientName) }))
     }
+    if (action === 'checkUpcomingReminders') {
+      const list = await sendUpcomingServiceRemindersToStaff()
+      return { remindedCount: list.length, list }
+    }
     if (action === 'listStaffOrders') {
+      await sendUpcomingServiceRemindersToStaff()
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
@@ -10616,6 +10726,7 @@ exports.main = async (event = {}) => {
   try {
     if (event.Type === 'Timer') {
       await expireDueUnacceptedOrders()
+      const upcomingReminders = await sendUpcomingServiceRemindersToStaff()
       const today = toCstParts()
       let petBeautySettled = null
       const isLastDayOfMonth = today.dayNumber === getMonthDays(today.monthKey)
@@ -10629,7 +10740,7 @@ exports.main = async (event = {}) => {
         const prevSettled = await settlePetBeautyMonthlyRanking(prevMonth, { source: 'timer_catchup' })
         if (!petBeautySettled) petBeautySettled = prevSettled
       }
-      return ok({ expired: true, petBeautySettled })
+      return ok({ expired: true, upcomingRemindersCount: upcomingReminders.length, petBeautySettled })
     }
     if (isWechatPayHttpCallback(event)) {
       return handlers.payment('', 'paymentCallback', {

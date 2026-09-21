@@ -190,14 +190,65 @@ Page({
     if (this.data.id) this.loadOrder()
   },
 
+  onHide() {
+    this.stopEarlyStartPolling()
+  },
+
   applyCurrentTheme() {
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
   },
 
   onUnload() {
+    this.stopEarlyStartPolling()
     this.stopServiceElapsedTimer()
     this.stopAutoTracking()
+  },
+
+  startEarlyStartPolling() {
+    this.stopEarlyStartPolling()
+    if (!this.data.id) return
+    this.earlyStartPollTimer = setInterval(() => {
+      if (!this.data.id || this.data.starting || this.data.requestingEarlyStart) return
+      callFunction('order', 'getEarlyStartStatus', { id: this.data.id })
+        .then((earlyStart) => {
+          if (!earlyStart) return
+          const currentStatus = this.data.earlyStartRequest && this.data.earlyStartRequest.status
+          if (currentStatus === 'pending' && earlyStart.status !== 'pending') {
+            this.stopEarlyStartPolling()
+            this.setData({ earlyStartRequest: earlyStart })
+            if (earlyStart.status === 'approved') {
+              wx.showModal({
+                title: '宠物主已同意',
+                content: '宠物主已同意提前开始服务，现在可以开始服务。',
+                showCancel: false,
+                confirmText: '立即处理',
+                success: () => {
+                  this.loadOrder()
+                }
+              })
+            } else if (earlyStart.status === 'rejected') {
+              wx.showModal({
+                title: '申请未通过',
+                content: '宠物主已拒绝提前开始服务，请按原约定时间开始服务。',
+                showCancel: false,
+                confirmText: '知道了',
+                success: () => {
+                  this.loadOrder()
+                }
+              })
+            }
+          }
+        })
+        .catch(() => {})
+    }, 4000)
+  },
+
+  stopEarlyStartPolling() {
+    if (this.earlyStartPollTimer) {
+      clearInterval(this.earlyStartPollTimer)
+      this.earlyStartPollTimer = null
+    }
   },
 
   startServiceElapsedTimer(order) {
@@ -246,12 +297,18 @@ Page({
             }
           })
         }
+        const earlyStart = (order && order.earlyStartRequest) || null
         this.setData({
           order: displayOrder,
           pointCount: Number((order && order.trackCount) || 0),
-          earlyStartRequest: (order && order.earlyStartRequest) || null,
+          earlyStartRequest: earlyStart,
           offlineTaskCount: getOfflineTaskCount(this.data.id)
         })
+        if (earlyStart && earlyStart.status === 'pending') {
+          this.startEarlyStartPolling()
+        } else {
+          this.stopEarlyStartPolling()
+        }
         if (order && order.status === 'in_service') {
           this.startServiceElapsedTimer(displayOrder)
           this.flushOfflineTasks()
@@ -390,7 +447,7 @@ Page({
               return Promise.reject(new Error('前置条件未满足'))
             }
             // 所有条件都满足，开始服务
-            return requestSubscribeTemplates(['serviceStart', 'serviceFinish'], 'staff_service')
+            return requestSubscribeTemplates(['upcomingServiceReminder', 'serviceStart', 'serviceFinish'], 'staff_service')
           })
           .then(() => callFunction('order', 'startService', {
             id: this.data.id,
@@ -428,6 +485,9 @@ Page({
       .then((earlyStartRequest) => {
         wx.showToast({ title: '已发送申请', icon: 'none' })
         this.setData({ requestingEarlyStart: false, earlyStartRequest })
+        if (earlyStartRequest && earlyStartRequest.status === 'pending') {
+          this.startEarlyStartPolling()
+        }
       })
       .catch((error) => {
         this.setData({ requestingEarlyStart: false })

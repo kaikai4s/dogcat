@@ -1,4 +1,4 @@
-const { callFunction, showError, requirePrivacyAuthorize } = require('../../../utils/cloud')
+const { callFunction, showError, requirePrivacyAuthorize, requestSubscribeTemplates } = require('../../../utils/cloud')
 const { getSelectedLocation } = require('../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
@@ -495,7 +495,7 @@ Page({
     wx.getLocation({
       type: 'gcj02',
       success: (res) => {
-        callFunction('staff', 'acceptOrder', {
+        const doAccept = () => callFunction('staff', 'acceptOrder', {
           orderId,
           riskConfirmed: riskConfirmed === true,
           currentLatitude: res.latitude,
@@ -527,6 +527,10 @@ Page({
             showError(error)
           })
           .finally(() => this.setData({ acceptingRiskOrder: false }))
+
+        requestSubscribeTemplates(['upcomingServiceReminder', 'serviceStart'], 'staff_grab_order')
+          .catch(() => null)
+          .then(doAccept)
       },
       fail: (err) => {
         this.setData({ acceptingRiskOrder: false })

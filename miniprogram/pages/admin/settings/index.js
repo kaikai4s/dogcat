@@ -143,7 +143,8 @@ function normalizeSubscriptionConfig(subscription = {}) {
       remoteUnlock: templates.remoteUnlock || '',
       refundResult: templates.refundResult || '',
       disputeUpdate: templates.disputeUpdate || '',
-      withdrawResult: templates.withdrawResult || ''
+      withdrawResult: templates.withdrawResult || '',
+      upcomingServiceReminder: templates.upcomingServiceReminder || templates.serviceReminder || ''
     }
   }
 }

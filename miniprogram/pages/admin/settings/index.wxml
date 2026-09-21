@@ -248,6 +248,7 @@
           <view class="field-item"><text class="label">退款结果模板</text><input class="input" value="{{settings.subscription.templates.refundResult}}" data-field="refundResult" bindinput="subscriptionTemplateInput" /></view>
           <view class="field-item"><text class="label">纠纷更新模板</text><input class="input" value="{{settings.subscription.templates.disputeUpdate}}" data-field="disputeUpdate" bindinput="subscriptionTemplateInput" /></view>
           <view class="field-item"><text class="label">提现结果模板</text><input class="input" value="{{settings.subscription.templates.withdrawResult}}" data-field="withdrawResult" bindinput="subscriptionTemplateInput" /></view>
+          <view class="field-item"><text class="label">前往服务提醒模板</text><input class="input" value="{{settings.subscription.templates.upcomingServiceReminder}}" data-field="upcomingServiceReminder" bindinput="subscriptionTemplateInput" placeholder="任务开始前1小时提醒宠托师前往服务模板 ID" /></view>
         </view>
 
         <view wx:if="{{activeSettingPanel === 'customerService'}}" class="setting-modal-section">
