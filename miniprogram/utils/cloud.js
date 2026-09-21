@@ -170,7 +170,7 @@ function normalizeHomePageConfig(homePage = {}) {
     ctaSubtitle: homePage.ctaSubtitle || '填写宠物和服务时间，平台认证宠托师快速响应。',
     ctaText: homePage.ctaText || '立即预约',
     nearbyTitle: homePage.nearbyTitle || '附近宠托师',
-    repeatTitle: homePage.repeatTitle || '再次预约',
+    repeatTitle: homePage.repeatTitle || '一键复购',
     couponTitle: homePage.couponTitle || '新人优惠',
     assuranceTitle: homePage.assuranceTitle || '平台保障',
     modules: Object.keys(defaultModules).reduce((result, key) => ({ ...result, [key]: modules[key] !== false }), {})

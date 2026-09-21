@@ -6,6 +6,41 @@
     <view class="hero-desc">查看已接单与服务中任务，按时前往客户家中打卡履约。</view>
   </view>
 
+  <view class="order-filter-card">
+    <view class="search-input-wrap">
+      <text class="remix-icon ri-search-line search-icon"></text>
+      <input
+        class="filter-input"
+        placeholder="搜索订单号 / 宠物名 / 客户"
+        value="{{orderKeyword}}"
+        bindinput="inputKeyword"
+        bindconfirm="confirmSearch"
+        confirm-type="search"
+      />
+      <text class="remix-icon ri-close-circle-fill clear-icon" wx:if="{{orderKeyword}}" bindtap="clearKeyword"></text>
+      <view class="search-confirm-btn" bindtap="confirmSearch">搜索</view>
+    </view>
+    <view class="date-filter-row">
+      <picker mode="date" value="{{startDate}}" bindchange="changeStartDate" class="date-picker-item">
+        <view class="date-picker-btn {{startDate ? 'has-val' : ''}}">
+          <text class="remix-icon ri-calendar-line picker-icon"></text>
+          <text class="date-text">{{startDate || '开始日期'}}</text>
+        </view>
+      </picker>
+      <text class="date-sep">至</text>
+      <picker mode="date" value="{{endDate}}" bindchange="changeEndDate" class="date-picker-item">
+        <view class="date-picker-btn {{endDate ? 'has-val' : ''}}">
+          <text class="remix-icon ri-calendar-line picker-icon"></text>
+          <text class="date-text">{{endDate || '结束日期'}}</text>
+        </view>
+      </picker>
+      <view class="filter-reset-btn" wx:if="{{orderKeyword || startDate || endDate}}" bindtap="resetFilters">
+        <text class="remix-icon ri-refresh-line"></text>
+        <text>重置</text>
+      </view>
+    </view>
+  </view>
+
   <scroll-view scroll-x class="status-tabs">
     <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
   </scroll-view>

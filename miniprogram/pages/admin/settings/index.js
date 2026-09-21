@@ -66,6 +66,34 @@ function normalizeStaffSupplies(supplies = {}) {
   }
 }
 
+const CAROUSEL_LINK_PRESETS = [
+  { label: '不跳转（仅展示图片/视频）', value: 'none', url: '', title: '' },
+  { label: '快速预约服务', value: 'booking', url: '/pages/client/orders/create/index', title: '去预约' },
+  { label: '附近宠托师', value: 'sitters', url: '/pages/client/sitters/list/index', title: '找宠托师' },
+  { label: '积分商城', value: 'points', url: '/pages/client/points/index', title: '积分商城' },
+  { label: '宠物用品商城', value: 'mall', url: '/pages/client/mall/list/index', title: '逛商城' },
+  { label: '领券中心', value: 'coupons', url: '/pages/client/coupons/list/index', title: '领优惠券' },
+  { label: '幸运大转盘抽奖', value: 'lottery', url: '/pages/client/lottery/index', title: '去抽奖' },
+  { label: '最美宠物评选', value: 'petBeauty', url: '/pages/client/pet-beauty/activity/index', title: '去参赛' },
+  { label: 'AI 宠护管家', value: 'aiAssistant', url: '/pages/client/ai-assistant/index', title: '体验 AI' },
+  { label: '我的订单中心', value: 'orders', url: '/pages/client/orders/list/index', title: '我的订单' },
+  { label: '我的宠物档案', value: 'pets', url: '/pages/client/pets/list/index', title: '宠物档案' },
+  { label: '平台服务与保障', value: 'agreement', url: '/pages/common/agreement/index', title: '服务保障' },
+  { label: '自定义页面路径', value: 'custom', url: '', title: '查看详情' }
+]
+
+function getLinkPresetIndex(url, linkType) {
+  const cleanUrl = String(url || '').trim()
+  if (!cleanUrl && (!linkType || linkType === 'none')) return 0
+  const found = CAROUSEL_LINK_PRESETS.findIndex((p) => p.url && cleanUrl.startsWith(p.url))
+  if (found > 0) return found
+  if (linkType && linkType !== 'none') {
+    const byType = CAROUSEL_LINK_PRESETS.findIndex((p) => p.value === linkType)
+    if (byType > 0) return byType
+  }
+  return cleanUrl ? CAROUSEL_LINK_PRESETS.length - 1 : 0
+}
+
 function createEmptyItem() {
   return {
     id: `hero_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -74,6 +102,9 @@ function createEmptyItem() {
     posterFileId: '',
     title: '',
     subtitle: '',
+    linkType: 'none',
+    linkUrl: '',
+    linkTitle: '',
     enabled: true,
     sort: 10,
     tempUrl: '',
@@ -265,6 +296,9 @@ function normalizeCarouselConfig(carousel = {}) {
     posterFileId: item.posterFileId || '',
     title: item.title || '',
     subtitle: item.subtitle || '',
+    linkType: item.linkType || (item.linkUrl ? 'custom' : 'none'),
+    linkUrl: item.linkUrl || '',
+    linkTitle: item.linkTitle || '',
     enabled: item.enabled !== false,
     sort: Number(item.sort) || (index + 1) * 10,
     tempUrl: '',
@@ -302,7 +336,7 @@ function normalizeHomePageConfig(homePage = {}) {
     ctaSubtitle: homePage.ctaSubtitle || '填写宠物和服务时间，平台认证宠托师快速响应。',
     ctaText: homePage.ctaText || '立即预约',
     nearbyTitle: homePage.nearbyTitle || '附近宠托师',
-    repeatTitle: homePage.repeatTitle || '再次预约',
+    repeatTitle: homePage.repeatTitle || '一键复购',
     couponTitle: homePage.couponTitle || '新人优惠',
     assuranceTitle: homePage.assuranceTitle || '平台保障',
     modules: homeModuleOptions.reduce((result, item) => ({ ...result, [item.key]: modules[item.key] !== false }), { ...modules })
@@ -387,6 +421,9 @@ Page({
     showCarouselEditor: false,
     editingIndex: -1,
     editingItem: createEmptyItem(),
+    carouselLinkPresets: CAROUSEL_LINK_PRESETS,
+    carouselLinkPresetLabels: CAROUSEL_LINK_PRESETS.map((p) => p.label),
+    selectedLinkPresetIndex: 0,
     uploadingMedia: false,
     uploadingPoster: false,
     uploadingCheckinShareImage: false,
@@ -949,6 +986,7 @@ Page({
     this.setData({
       editingIndex: -1,
       editingItem: newItem,
+      selectedLinkPresetIndex: 0,
       showCarouselEditor: true
     })
   },
@@ -956,10 +994,18 @@ Page({
   startEditItem(e) {
     const index = Number(e.currentTarget.dataset.index)
     const items = this.data.settings.homeHeroCarousel.items || []
-    if (items[index]) {
+    const item = items[index]
+    if (item) {
+      const presetIdx = getLinkPresetIndex(item.linkUrl, item.linkType)
       this.setData({
         editingIndex: index,
-        editingItem: { ...items[index] },
+        editingItem: {
+          ...item,
+          linkType: item.linkType || (item.linkUrl ? 'custom' : 'none'),
+          linkUrl: item.linkUrl || '',
+          linkTitle: item.linkTitle || ''
+        },
+        selectedLinkPresetIndex: presetIdx,
         showCarouselEditor: true
       })
     }
@@ -969,7 +1015,41 @@ Page({
     this.setData({
       editingIndex: -1,
       editingItem: createEmptyItem(),
+      selectedLinkPresetIndex: 0,
       showCarouselEditor: false
+    })
+  },
+
+  onLinkPresetChange(e) {
+    const index = Number(e.detail.value) || 0
+    const preset = CAROUSEL_LINK_PRESETS[index] || CAROUSEL_LINK_PRESETS[0]
+    const currentItem = this.data.editingItem || {}
+    const updates = {
+      selectedLinkPresetIndex: index,
+      ['editingItem.linkType']: preset.value
+    }
+    if (preset.value === 'none') {
+      updates['editingItem.linkUrl'] = ''
+      updates['editingItem.linkTitle'] = ''
+    } else if (preset.value !== 'custom') {
+      updates['editingItem.linkUrl'] = preset.url
+      if (!currentItem.linkTitle || CAROUSEL_LINK_PRESETS.some((p) => p.title === currentItem.linkTitle)) {
+        updates['editingItem.linkTitle'] = preset.title
+      }
+    } else {
+      if (!currentItem.linkTitle) {
+        updates['editingItem.linkTitle'] = '查看详情'
+      }
+    }
+    this.setData(updates)
+  },
+
+  editingLinkUrlInput(e) {
+    const value = e.detail.value
+    const presetIdx = getLinkPresetIndex(value, this.data.editingItem.linkType)
+    this.setData({
+      ['editingItem.linkUrl']: value,
+      selectedLinkPresetIndex: presetIdx
     })
   },
 
@@ -1115,7 +1195,7 @@ Page({
   },
 
   saveEditingItem() {
-    const item = this.data.editingItem
+    const item = { ...this.data.editingItem }
     if (!item.fileId) {
       wx.showToast({ title: '请先上传图片或视频', icon: 'none' })
       return
@@ -1123,6 +1203,18 @@ Page({
     if (item.type === 'video' && !item.posterFileId) {
       wx.showToast({ title: '视频素材请传一张封面图', icon: 'none' })
       return
+    }
+
+    if (item.linkType && item.linkType !== 'none') {
+      let cleanUrl = String(item.linkUrl || '').trim()
+      if (cleanUrl && !cleanUrl.startsWith('/') && !cleanUrl.startsWith('http')) {
+        cleanUrl = `/${cleanUrl}`
+      }
+      item.linkUrl = cleanUrl
+    } else {
+      item.linkType = 'none'
+      item.linkUrl = ''
+      item.linkTitle = ''
     }
 
     const items = [...(this.data.settings.homeHeroCarousel.items || [])]
@@ -1137,9 +1229,10 @@ Page({
       ['settings.homeHeroCarousel.items']: items,
       editingIndex: -1,
       editingItem: createEmptyItem(),
+      selectedLinkPresetIndex: 0,
       showCarouselEditor: false
     })
-    wx.showToast({ title: '素材已提交到当前列表，请点击底部“保存设置”' })
+    wx.showToast({ title: '素材已暂存，请点击底部“保存设置”' })
   },
 
   deleteItem(e) {
@@ -1214,6 +1307,9 @@ Page({
       posterFileId: item.posterFileId || '',
       title: item.title || '',
       subtitle: item.subtitle || '',
+      linkType: item.linkType || (item.linkUrl ? 'custom' : 'none'),
+      linkUrl: String(item.linkUrl || '').trim(),
+      linkTitle: String(item.linkTitle || '').trim(),
       enabled: item.enabled !== false,
       sort: Number(item.sort) || 10
     }))

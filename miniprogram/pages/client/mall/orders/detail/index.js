@@ -2,6 +2,18 @@ const { callFunction, showError, ensureLogin, requestSubscribeTemplates } = requ
 const { createClientRequestId } = require('../../../../../utils/offlineQueue')
 const { copyText } = require('../../../../../utils/clipboard')
 
+const refundStatusTextMap = {
+  none: '',
+  applied: '售后申请中',
+  approved: '已同意退款',
+  rejected: '售后已驳回',
+  refunded: '已退款',
+  processing: '退款处理中',
+  full_refunded: '已全额退款',
+  partially_refunded: '已部分退款',
+  pending_manual: '待人工审核'
+}
+
 Page({
   data: { id: '', order: null, paying: false, refunding: false, refundReason: '' },
 
@@ -15,7 +27,13 @@ Page({
   load() {
     if (!this.data.id) return
     callFunction('mall', 'getOrderDetail', { orderId: this.data.id })
-      .then((order) => this.setData({ order }))
+      .then((order) => {
+        if (order) {
+          const refundStatus = String(order.refundStatus || '').toLowerCase()
+          order.refundStatusText = refundStatusTextMap[refundStatus] || (refundStatus && refundStatus !== 'none' ? '售后处理中' : '')
+        }
+        this.setData({ order })
+      })
       .catch(showError)
   },
 

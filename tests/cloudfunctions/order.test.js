@@ -235,3 +235,194 @@ test('order finishService allows completion with active required photo', async (
   assert.equal(result.ok, true)
   assert.equal(db.state.orders[0].status, 'completed')
 })
+
+test('order listOrders enriches clientSnapshot with user level, badge, nameEffect and pet beautyTitle', async () => {
+  const db = createCollectionStore({
+    users: [
+      {
+        _id: 'u_client',
+        openid: 'openid_client',
+        roles: ['client'],
+        status: 'active',
+        nickname: 'ebrook',
+        phone: '13800000000',
+        memberLevelName: '粉梦等级',
+        badgeTag: 'V4',
+        badgeStyle: 'pink',
+        nameColor: '#ff4d6d',
+        nameEffect: 'pink_dream'
+      }
+    ],
+    member_levels: [
+      { _id: 'lvl_1', name: '普通会员', minPoints: 0, badgeTag: 'V1', badgeStyle: 'gold', nameEffect: 'none' },
+      { _id: 'lvl_4', name: '粉梦等级', minPoints: 500, badgeTag: 'V4', badgeStyle: 'pink', nameColor: '#ff4d6d', nameEffect: 'pink_dream' }
+    ],
+    pets: [
+      {
+        _id: 'p_mimi',
+        openid: 'openid_client',
+        name: '咪咪',
+        beautyTitle: { monthKey: '2026-09', rank: 1, title: '9月最美爱宠' }
+      }
+    ],
+    orders: [
+      {
+        _id: 'o_test',
+        clientOpenid: 'openid_client',
+        clientUserId: 'u_client',
+        petId: 'p_mimi',
+        petName: '咪咪',
+        status: 'assigned',
+        clientSnapshot: {
+          memberLevel: 1,
+          badgeTag: 'V1',
+          nameColor: '',
+          nameEffect: 'none',
+          badgeStyle: 'gold'
+        }
+      }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const res = await fn.main({
+    module: 'order',
+    action: 'listOrders',
+    data: { role: 'client', page: 1, pageSize: 10 }
+  })
+
+  assert.equal(res.ok, true)
+  assert.equal(res.data.list.length, 1)
+  const order = res.data.list[0]
+  assert.equal(order.clientSnapshot.badgeTag, 'V4')
+  assert.equal(order.clientSnapshot.badgeStyle, 'pink')
+  assert.equal(order.clientSnapshot.nameEffect, 'pink_dream')
+  assert.equal(order.clientSnapshot.nameColor, '#ff4d6d')
+  assert.equal(order.petSnapshot.beautyTitle.title, '9月最美爱宠')
+})
+
+test('staff listStaffOrders sorts newest orders first, and filters by orderKeyword and date range', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'u_staff', openid: 'openid_staff', roles: ['staff'], status: 'active' },
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '客户小王' }
+    ],
+    staff_profiles: [
+      { _id: 'sp_1', openid: 'openid_staff', status: 'approved', staffLevel: 'gold' }
+    ],
+    orders: [
+      {
+        _id: 'o_old',
+        orderNo: 'ORD_OLD_1001',
+        staffOpenid: 'openid_staff',
+        clientOpenid: 'openid_client',
+        petName: '旺财',
+        status: 'completed',
+        createdAt: '2026-08-01 10:00:00',
+        startTime: '2026-08-02 10:00'
+      },
+      {
+        _id: 'o_mid',
+        orderNo: 'ORD_MID_2002',
+        staffOpenid: 'openid_staff',
+        clientOpenid: 'openid_client',
+        petName: '咪咪',
+        status: 'assigned',
+        createdAt: '2026-09-10 10:00:00',
+        startTime: '2026-09-12 10:00'
+      },
+      {
+        _id: 'o_new',
+        orderNo: 'ORD_NEW_3003',
+        staffOpenid: 'openid_staff',
+        clientOpenid: 'openid_client',
+        petName: '可乐',
+        status: 'assigned',
+        createdAt: '2026-09-21 09:00:00',
+        startTime: '2026-09-21 14:00'
+      }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_staff')
+
+  // 1. 默认排序：最近的订单排在最前面
+  const resDefault = await fn.main({
+    module: 'staff',
+    action: 'listStaffOrders',
+    data: { page: 1, pageSize: 10 }
+  })
+  assert.equal(resDefault.ok, true)
+  assert.equal(resDefault.data.list.length, 3)
+  assert.equal(resDefault.data.list[0].orderNo, 'ORD_NEW_3003')
+  assert.equal(resDefault.data.list[1].orderNo, 'ORD_MID_2002')
+  assert.equal(resDefault.data.list[2].orderNo, 'ORD_OLD_1001')
+
+  // 2. 按订单号/关键词筛选
+  const resSearch = await fn.main({
+    module: 'staff',
+    action: 'listStaffOrders',
+    data: { orderKeyword: 'MID_2002', page: 1, pageSize: 10 }
+  })
+  assert.equal(resSearch.ok, true)
+  assert.equal(resSearch.data.list.length, 1)
+  assert.equal(resSearch.data.list[0].orderNo, 'ORD_MID_2002')
+
+  // 3. 按日期范围筛选
+  const resDate = await fn.main({
+    module: 'staff',
+    action: 'listStaffOrders',
+    data: { startDate: '2026-09-01', endDate: '2026-09-15', page: 1, pageSize: 10 }
+  })
+  assert.equal(resDate.ok, true)
+  assert.equal(resDate.data.list.length, 1)
+  assert.equal(resDate.data.list[0].orderNo, 'ORD_MID_2002')
+})
+
+test('client listOrders filters by orderKeyword and date range', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '测试客户' }
+    ],
+    orders: [
+      {
+        _id: 'o_1',
+        orderNo: 'ORD_CLIENT_001',
+        clientOpenid: 'openid_client',
+        petName: '小白',
+        status: 'completed',
+        createdAt: '2026-08-10 10:00:00',
+        startTime: '2026-08-10 10:00'
+      },
+      {
+        _id: 'o_2',
+        orderNo: 'ORD_CLIENT_002',
+        clientOpenid: 'openid_client',
+        petName: '小黑',
+        status: 'in_service',
+        createdAt: '2026-09-20 10:00:00',
+        startTime: '2026-09-20 10:00'
+      }
+    ]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const resKeyword = await fn.main({
+    module: 'order',
+    action: 'listOrders',
+    data: { role: 'client', orderKeyword: '002', page: 1, pageSize: 10 }
+  })
+  assert.equal(resKeyword.ok, true)
+  assert.equal(resKeyword.data.list.length, 1)
+  assert.equal(resKeyword.data.list[0].orderNo, 'ORD_CLIENT_002')
+
+  const resDate = await fn.main({
+    module: 'order',
+    action: 'listOrders',
+    data: { role: 'client', startDate: '2026-09-01', endDate: '2026-09-25', page: 1, pageSize: 10 }
+  })
+  assert.equal(resDate.ok, true)
+  assert.equal(resDate.data.list.length, 1)
+  assert.equal(resDate.data.list[0].orderNo, 'ORD_CLIENT_002')
+})
+
+

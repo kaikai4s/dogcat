@@ -8,6 +8,8 @@ const tabs = [
   { label: '待服务', value: 'assigned' },
   { label: '服务中', value: 'in_service' },
   { label: '已完成', value: 'completed' },
+  { label: '自动完单', value: 'auto_completed' },
+  { label: '超时订单', value: 'overdue' },
   { label: '已过期', value: 'expired' }
 ]
 
@@ -21,7 +23,7 @@ function applySelected(orders, selectedOrderIds) {
 }
 
 Page({
-  data: { tabs, activeStatus: '', orderKeyword: '', clientPhone: '', staffPhone: '', selectedOrderIds: [], deleting: false, orders: [], page: 1, pageSize: 20, hasMore: true, loading: false, total: 0 },
+  data: { tabs, activeStatus: '', specialFilter: '', orderKeyword: '', clientPhone: '', staffPhone: '', selectedOrderIds: [], deleting: false, orders: [], page: 1, pageSize: 20, hasMore: true, loading: false, total: 0 },
   onShow() { this.load({ reset: true }) },
   onReachBottom() { this.loadMore() },
   load(options = {}) {
@@ -31,7 +33,7 @@ Page({
     const requestSeq = (this._orderListRequestSeq || 0) + 1
     this._orderListRequestSeq = requestSeq
     this.setData({ loading: true })
-    callFunction('admin', 'listOrders', { page, pageSize: this.data.pageSize, status: this.data.activeStatus, orderKeyword: this.data.orderKeyword.trim(), phone: this.data.clientPhone.trim(), clientPhone: this.data.clientPhone.trim(), staffPhone: this.data.staffPhone.trim() })
+    callFunction('admin', 'listOrders', { page, pageSize: this.data.pageSize, status: this.data.activeStatus, specialFilter: this.data.specialFilter, orderKeyword: this.data.orderKeyword.trim(), phone: this.data.clientPhone.trim(), clientPhone: this.data.clientPhone.trim(), staffPhone: this.data.staffPhone.trim() })
       .then((result) => {
         if (requestSeq !== this._orderListRequestSeq) return
         const pageData = pageList(result)
@@ -59,11 +61,15 @@ Page({
   chooseStatus(e) {
     this.setData({ activeStatus: e.currentTarget.dataset.status || '', page: 1, hasMore: true }, () => this.load({ reset: true, force: true }))
   },
+  chooseSpecialFilter(e) {
+    const specialFilter = e.currentTarget.dataset.filter || ''
+    this.setData({ specialFilter, page: 1, hasMore: true }, () => this.load({ reset: true, force: true }))
+  },
   inputOrderKeyword(e) { this.setData({ orderKeyword: e.detail.value }) },
   inputClientPhone(e) { this.setData({ clientPhone: e.detail.value }) },
   inputStaffPhone(e) { this.setData({ staffPhone: e.detail.value }) },
   submitSearch() { this.setData({ page: 1, hasMore: true }, () => this.load({ reset: true, force: true })) },
-  clearSearch() { this.setData({ orderKeyword: '', clientPhone: '', staffPhone: '', page: 1, hasMore: true }, () => this.load({ reset: true, force: true })) },
+  clearSearch() { this.setData({ orderKeyword: '', clientPhone: '', staffPhone: '', specialFilter: '', page: 1, hasMore: true }, () => this.load({ reset: true, force: true })) },
   toggleSelect(e) {
     const id = e.currentTarget.dataset.id
     if (!id) return

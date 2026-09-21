@@ -10,6 +10,14 @@
     <view class="field-item"><text class="label">订单</text><input class="input" value="{{orderKeyword}}" bindinput="inputOrderKeyword" bindconfirm="submitSearch" confirm-type="search" placeholder="搜索订单ID或订单号" /></view>
     <view class="field-item"><text class="label">用户手机号</text><input class="input" type="number" value="{{clientPhone}}" bindinput="inputClientPhone" bindconfirm="submitSearch" confirm-type="search" placeholder="搜索用户手机号" /></view>
     <view class="field-item"><text class="label">宠托师手机号</text><input class="input" type="number" value="{{staffPhone}}" bindinput="inputStaffPhone" bindconfirm="submitSearch" confirm-type="search" placeholder="搜索宠托师手机号" /></view>
+    <view class="field-item filter-chip-field">
+      <text class="label">快捷分类筛选</text>
+      <view class="filter-chip-group">
+        <view class="filter-chip {{specialFilter === '' ? 'active' : ''}}" data-filter="" bindtap="chooseSpecialFilter">全部</view>
+        <view class="filter-chip {{specialFilter === 'auto_completed' ? 'active' : ''}}" data-filter="auto_completed" bindtap="chooseSpecialFilter"><text class="remix-icon ri-sparkling-fill"></text><text>自动完单</text></view>
+        <view class="filter-chip {{specialFilter === 'overdue' ? 'active' : ''}}" data-filter="overdue" bindtap="chooseSpecialFilter"><text class="remix-icon ri-alarm-warning-line"></text><text>超时订单</text></view>
+      </view>
+    </view>
     <view class="filter-actions">
       <button class="primary-btn compact-btn" bindtap="submitSearch"><text class="remix-icon ri-search-line"></text><text>搜索</text></button>
       <button class="ghost-btn compact-btn" bindtap="clearSearch"><text class="remix-icon ri-close-circle-line"></text><text>清空</text></button>
@@ -17,7 +25,11 @@
   </view>
 
   <view class="status-tabs">
-    <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
+    <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">
+      <text class="remix-icon ri-sparkling-fill tab-icon" wx:if="{{item.value === 'auto_completed'}}"></text>
+      <text class="remix-icon ri-alarm-warning-line tab-icon" wx:if="{{item.value === 'overdue'}}"></text>
+      <text>{{item.label}}</text>
+    </view>
   </view>
 
   <view class="admin-card batch-bar" wx:if="{{orders.length}}">
@@ -28,7 +40,7 @@
     </view>
   </view>
 
-  <view class="admin-card order-card {{item.selected ? 'selected' : ''}}" wx:for="{{orders}}" wx:key="_id">
+  <view class="admin-card order-card {{item.selected ? 'selected' : ''}} {{item.autoCompleted ? 'auto-completed-card' : ''}}" wx:for="{{orders}}" wx:key="_id">
     <view class="order-select-row" data-id="{{item._id}}" bindtap="toggleSelect">
       <view class="select-box {{item.selected ? 'checked' : ''}}"><text class="remix-icon ri-check-line" wx:if="{{item.selected}}"></text></view>
       <view class="muted">选择此订单</view>
@@ -52,6 +64,8 @@
       <view class="badge-row">
         <view class="soft-badge mode-badge">{{item.publishMode === 'direct' ? '指定宠托师' : '公开发布'}}</view>
         <view class="soft-badge status-badge">{{item.statusText}}</view>
+        <view class="soft-badge auto-badge" wx:if="{{item.autoCompleted}}"><text class="remix-icon ri-sparkling-fill"></text><text>系统自动结算</text></view>
+        <view class="soft-badge overdue-badge" wx:if="{{item.isOverdue || item.isStartOverdue || item.isFinishOverdue}}"><text class="remix-icon ri-alarm-warning-line"></text><text>超时</text></view>
       </view>
       <view class="info-grid">
         <view class="info-chip"><text class="label">用户电话</text><text class="value">{{item.clientContact.phone || item.clientSnapshot.phoneMasked || '未绑定'}}</text></view>
@@ -60,6 +74,7 @@
         <view class="info-chip"><text class="label">创建</text><text class="value">{{item.createdAtText || '-'}}</text></view>
         <view class="info-chip wide"><text class="label">预约</text><text class="value">{{item.appointmentTimeText || '-'}}</text></view>
         <view class="info-chip wide" wx:if="{{item.publishMode === 'direct'}}"><text class="label">指定</text><text class="value">{{item.requestedStaffName || '已指定宠护师'}}</text></view>
+        <view class="info-chip wide auto-chip" wx:if="{{item.autoCompleted}}"><text class="label">完单类型</text><text class="value auto-text"><text class="remix-icon ri-sparkling-fill"></text> 系统智能自动结算（打卡齐全超时完单）</text></view>
       </view>
     </view>
     <button class="primary-btn mini-assign-btn" wx:if="{{item.status === 'paid'}}" size="mini" data-id="{{item._id}}" bindtap="assign"><text class="remix-icon ri-user-shared-line"></text><text>派单</text></button>

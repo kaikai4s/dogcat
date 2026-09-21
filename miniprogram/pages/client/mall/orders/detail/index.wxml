@@ -19,7 +19,7 @@
     <view wx:if="{{order.discountAmount}}"><text>优惠</text><text>-¥{{order.discountAmount}}</text></view>
     <view class="pay-line"><text>实付</text><text>¥{{order.payAmount}}</text></view>
   </view>
-  <view class="checkout-card" wx:if="{{order.refundStatus && order.refundStatus !== 'none'}}"><view class="card-head">售后状态</view><view class="addr-text">{{order.refundStatus}} {{order.refundReason}}</view></view>
+  <view class="checkout-card" wx:if="{{order.refundStatus && order.refundStatus !== 'none'}}"><view class="card-head">售后状态</view><view class="addr-text">{{order.refundStatusText || '售后处理中'}} {{order.refundReason}}</view></view>
   <view class="bottom-bar">
     <button wx:if="{{order.status === 'pending_pay'}}" bindtap="cancelOrder">取消</button>
     <button class="primary" wx:if="{{order.status === 'pending_pay'}}" loading="{{paying}}" bindtap="pay">去支付</button>

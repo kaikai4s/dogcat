@@ -86,6 +86,38 @@
   font-size: 27rpx;
 }
 
+.filter-chip-field {
+  margin-bottom: 20rpx;
+}
+
+.filter-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 10rpx;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 10rpx 22rpx;
+  border-radius: 999rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.2);
+  color: #7a6a5e;
+  font-size: 24rpx;
+  font-weight: 850;
+  transition: all 0.2s ease;
+}
+
+.filter-chip.active {
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 4rpx 14rpx rgba(255, 122, 69, 0.25);
+}
+
 .filter-actions {
   display: flex;
   align-items: center;
@@ -127,6 +159,9 @@
 
 .status-tab {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
   padding: 14rpx 24rpx;
   border-radius: 999rpx;
   color: #7a6a5e;
@@ -134,6 +169,10 @@
   border: 1rpx solid rgba(255, 153, 102, 0.14);
   font-size: 24rpx;
   font-weight: 850;
+}
+
+.tab-icon {
+  font-size: 24rpx;
 }
 
 .status-tab.active {
@@ -288,6 +327,27 @@
 
 .mode-badge { color: #2563eb; background: #eff6ff; }
 .status-badge { color: #d45f22; background: #fff0e2; }
+.auto-badge { color: #0d9488; background: #ccfbf1; border: 1rpx solid rgba(13, 148, 136, 0.25); gap: 6rpx; }
+.auto-badge .remix-icon { font-size: 22rpx; }
+.overdue-badge { color: #e11d48; background: #ffe4e6; border: 1rpx solid rgba(225, 29, 72, 0.25); gap: 6rpx; }
+.overdue-badge .remix-icon { font-size: 22rpx; }
+
+.auto-completed-card {
+  border-left: 8rpx solid #0d9488;
+}
+
+.auto-chip {
+  background: #f0fdfa !important;
+  border: 1rpx solid rgba(13, 148, 136, 0.2);
+}
+
+.auto-text {
+  color: #0d9488 !important;
+  font-weight: 900 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+}
 
 .info-grid {
   display: grid;

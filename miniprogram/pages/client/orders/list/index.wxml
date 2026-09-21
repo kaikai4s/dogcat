@@ -5,6 +5,41 @@
     <view class="order-list-desc">查看预约进度、服务状态和历史照护记录。</view>
   </view>
 
+  <view class="order-filter-card">
+    <view class="search-input-wrap">
+      <text class="remix-icon ri-search-line search-icon"></text>
+      <input
+        class="filter-input"
+        placeholder="搜索订单号 / 宠物名 / 服务"
+        value="{{orderKeyword}}"
+        bindinput="inputKeyword"
+        bindconfirm="confirmSearch"
+        confirm-type="search"
+      />
+      <text class="remix-icon ri-close-circle-fill clear-icon" wx:if="{{orderKeyword}}" bindtap="clearKeyword"></text>
+      <view class="search-confirm-btn" bindtap="confirmSearch">搜索</view>
+    </view>
+    <view class="date-filter-row">
+      <picker mode="date" value="{{startDate}}" bindchange="changeStartDate" class="date-picker-item">
+        <view class="date-picker-btn {{startDate ? 'has-val' : ''}}">
+          <text class="remix-icon ri-calendar-line picker-icon"></text>
+          <text class="date-text">{{startDate || '开始日期'}}</text>
+        </view>
+      </picker>
+      <text class="date-sep">至</text>
+      <picker mode="date" value="{{endDate}}" bindchange="changeEndDate" class="date-picker-item">
+        <view class="date-picker-btn {{endDate ? 'has-val' : ''}}">
+          <text class="remix-icon ri-calendar-line picker-icon"></text>
+          <text class="date-text">{{endDate || '结束日期'}}</text>
+        </view>
+      </picker>
+      <view class="filter-reset-btn" wx:if="{{orderKeyword || startDate || endDate}}" bindtap="resetFilters">
+        <text class="remix-icon ri-refresh-line"></text>
+        <text>重置</text>
+      </view>
+    </view>
+  </view>
+
   <scroll-view scroll-x class="status-tabs">
     <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">{{item.label}}</view>
   </scroll-view>
@@ -20,12 +55,12 @@
           </view>
           <view class="order-person-main">
             <view class="order-title-row">
-              <text class="order-title {{item.clientSnapshot.nameEffect && item.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + item.clientSnapshot.nameEffect : ''}}" style="{{item.clientSnapshot.nameColor ? 'color: ' + item.clientSnapshot.nameColor + ';' : ''}}">{{item.clientSnapshot.displayName || '宠物主'}}</text>
+              <text class="order-title {{item.clientSnapshot.nameEffect && item.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + item.clientSnapshot.nameEffect : ''}}" style="{{(!item.clientSnapshot.nameEffect || item.clientSnapshot.nameEffect === 'none' || item.clientSnapshot.nameEffect === '3d_emboss') && item.clientSnapshot.nameColor ? 'color: ' + item.clientSnapshot.nameColor + ';' : ''}}">{{item.clientSnapshot.nickname || item.clientSnapshot.displayName || '宠物主'}}</text>
               <text class="member-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</text>
               <text class="order-title">· {{item.petName}}</text>
-              <view class="pet-title" wx:if="{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}">
+              <view class="pet-title" wx:if="{{(item.petSnapshot && item.petSnapshot.beautyTitle && (item.petSnapshot.beautyTitle.title || item.petSnapshot.beautyTitle)) || (item.beautyTitle && (item.beautyTitle.title || item.beautyTitle))}}">
                 <text class="remix-icon ri-vip-crown-fill"></text>
-                <text>{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}</text>
+                <text>{{(item.petSnapshot && item.petSnapshot.beautyTitle && (item.petSnapshot.beautyTitle.title || item.petSnapshot.beautyTitle)) || (item.beautyTitle && (item.beautyTitle.title || item.beautyTitle))}}</text>
               </view>
             </view>
             <view class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>

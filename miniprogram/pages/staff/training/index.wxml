@@ -28,13 +28,13 @@
       <view class="muted" wx:else>平台尚未提供缴纳金额，请勿自行转账。</view>
       <view class="muted" wx:if="{{!depositState.config.enabled}}">保证金缴纳当前未开放。</view>
       <view class="guide-box" wx:if="{{depositState.deposit}}">
-        <view>状态：{{depositState.deposit.statusText || depositState.deposit.status}}</view>
+        <view>状态：{{depositState.deposit.statusText || '已记录'}}</view>
         <view wx:if="{{depositState.deposit.amount != null}}">应缴：¥{{depositState.deposit.amount}}</view>
         <view wx:if="{{depositState.deposit.paidAmount != null}}">已缴：¥{{depositState.deposit.paidAmount}}</view>
         <view wx:if="{{depositState.deposit.refundedAmount != null}}">已退：¥{{depositState.deposit.refundedAmount}}</view>
         <view wx:if="{{depositState.deposit.forfeitedAmount != null}}">已没收：¥{{depositState.deposit.forfeitedAmount}}</view>
         <view wx:if="{{depositState.deposit.availableRefundAmount != null}}">可退：¥{{depositState.deposit.availableRefundAmount}}</view>
-        <view wx:if="{{depositState.deposit.refundStatus}}">退款状态：{{depositState.deposit.refundStatus}}</view>
+        <view wx:if="{{depositState.deposit.refundStatus}}">退款状态：{{depositState.deposit.refundStatusText || '退款处理中'}}</view>
       </view>
       <view class="muted" wx:else>暂无保证金记录。</view>
       <view class="rule-text">{{depositState.config.rulesText}}</view>

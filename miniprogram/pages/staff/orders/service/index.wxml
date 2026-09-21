@@ -111,7 +111,11 @@
         </button>
       </view>
     </view>
-    <button class="primary-btn full-btn" wx:if="{{order && order.canStartService}}" loading="{{starting}}" disabled="{{starting}}" bindtap="start">{{starting ? '处理中...' : '开始服务'}}</button>
+    <view class="overdue-alert-banner" wx:if="{{order && order.isStartOverdue}}">
+      <text class="remix-icon ri-alarm-warning-fill"></text>
+      <text>服务已超出约定开始时间 {{order.startOverdueMinutes}} 分钟，请尽快打卡开始！</text>
+    </view>
+    <button class="primary-btn full-btn" wx:if="{{order && order.canStartService}}" loading="{{starting}}" disabled="{{starting}}" bindtap="start">{{starting ? '处理中...' : (order.isStartOverdue ? '加急开始服务' : '开始服务')}}</button>
     <button class="ghost-btn full-btn" loading="{{requestingEarlyStart}}" disabled="{{requestingEarlyStart || (earlyStartRequest && earlyStartRequest.status === 'pending')}}" wx:if="{{order && order.canRequestEarlyStart}}" bindtap="requestEarlyStart">{{earlyStartRequest && earlyStartRequest.status === 'pending' ? '提前开始申请待确认' : '申请提前开始服务'}}</button>
 
     <view class="notice-card" wx:if="{{earlyStartRequest}}">
@@ -137,7 +141,7 @@
           <button class="ghost-btn" bindtap="copyOrderNo"><text class="remix-icon ri-file-copy-line"></text>复制订单号</button>
         </view>
         <view class="security-desc" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}">最近请求：{{order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}</view>
-        <view class="security-desc" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastNotifyStatus}}">微信通知：{{order.orderHomeSecurity.remoteUnlock.lastNotifyStatus.wechat || '未知'}}</view>
+        <view class="security-desc" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastNotifyStatus}}">微信通知：{{order.orderHomeSecurity.remoteUnlock.lastNotifyStatusText || '已处理'}}</view>
         <view class="security-desc danger" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastNotifyError}}">失败原因：{{order.orderHomeSecurity.remoteUnlock.lastNotifyError}}</view>
       </view>
 
@@ -194,6 +198,10 @@
     </view>
     <view class="empty-state" wx:else>暂无打卡要求</view>
 
-    <button class="primary-btn finish-btn" loading="{{finishing}}" disabled="{{finishing}}" bindtap="finish">{{finishing ? '处理中...' : '完成服务'}}</button>
+    <view class="overdue-alert-banner warning" wx:if="{{order && order.isFinishOverdue}}">
+      <text class="remix-icon ri-time-fill"></text>
+      <text>已超过约定服务时间 {{order.finishOverdueMinutes}} 分钟！{{order.allCheckinsDone ? '打卡已齐全，请点击下方【完成服务】结算收益；若超时30分钟未操作，系统将自动结算。' : '请确认服务进度并尽快补全打卡照片。'}}</text>
+    </view>
+    <button class="primary-btn finish-btn {{order.allCheckinsDone ? 'highlight-btn' : ''}}" loading="{{finishing}}" disabled="{{finishing}}" bindtap="finish">{{finishing ? '处理中...' : (order.allCheckinsDone ? '完成服务（打卡已齐全）' : '完成服务')}}</button>
   </view>
 </view>

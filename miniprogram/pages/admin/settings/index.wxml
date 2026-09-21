@@ -290,7 +290,12 @@
           <view class="carousel-list" wx:if="{{settings.homeHeroCarousel.items.length > 0}}">
             <view class="carousel-compact-item" wx:for="{{settings.homeHeroCarousel.items}}" wx:key="id">
               <view class="item-preview"><image wx:if="{{item.type === 'image'}}" src="{{item.tempUrl}}" mode="aspectFill" class="preview-img" /><view wx:else class="preview-video-box"><image src="{{item.posterTempUrl || item.tempUrl}}" mode="aspectFill" class="preview-img" /><view class="video-tag">视频</view></view></view>
-              <view class="item-info"><view class="item-title-line"><text class="item-title">{{item.title || '(无标题)'}}</text><text class="badge-type">{{item.type === 'video' ? '视频' : '图片'}}</text></view><view class="item-sub" wx:if="{{item.subtitle}}">{{item.subtitle}}</view><view class="item-meta">排序 {{item.sort}} · {{item.enabled !== false ? '已启用' : '已禁用'}}</view></view>
+              <view class="item-info">
+                <view class="item-title-line"><text class="item-title">{{item.title || '(无标题)'}}</text><text class="badge-type">{{item.type === 'video' ? '视频' : '图片'}}</text></view>
+                <view class="item-sub" wx:if="{{item.subtitle}}">{{item.subtitle}}</view>
+                <view class="item-link {{item.linkUrl ? 'linked' : 'unlinked'}}"><text class="remix-icon {{item.linkUrl ? 'ri-links-line' : 'ri-link-unlink-m'}}"></text><text>{{item.linkUrl ? (item.linkTitle ? item.linkTitle + ' (' + item.linkUrl + ')' : item.linkUrl) : '无点击跳转'}}</text></view>
+                <view class="item-meta">排序 {{item.sort}} · {{item.enabled !== false ? '已启用' : '已禁用'}}</view>
+              </view>
               <view class="item-actions"><switch checked="{{item.enabled !== false}}" data-index="{{index}}" bindchange="toggleItemEnabled" class="mini-switch" /><button class="mini-btn" data-index="{{index}}" bindtap="startEditItem">编辑</button><button class="mini-btn danger" data-index="{{index}}" bindtap="deleteItem">删除</button></view>
             </view>
           </view>
@@ -303,6 +308,23 @@
             <view class="field-item" wx:if="{{editingItem.type === 'video'}}"><text class="label">视频封面图 (必填)</text><view class="upload-trigger" bindtap="choosePosterFile"><view wx:if="{{editingItem.posterTempUrl}}" class="upload-preview-box"><image src="{{editingItem.posterTempUrl}}" mode="aspectFill" class="upload-preview" /></view><view wx:else class="upload-placeholder">+ 上传视频封面图片</view></view></view>
             <view class="field-item"><text class="label">主标题</text><input class="input" value="{{editingItem.title}}" placeholder="如：专业的上门宠托服务" data-field="title" bindinput="editingInput" /></view>
             <view class="field-item"><text class="label">副标题</text><input class="input" value="{{editingItem.subtitle}}" placeholder="如：安全 · 贴心 · 实时反馈" data-field="subtitle" bindinput="editingInput" /></view>
+            <view class="field-item">
+              <text class="label">点击跳转设置</text>
+              <picker range="{{carouselLinkPresetLabels}}" value="{{selectedLinkPresetIndex}}" bindchange="onLinkPresetChange">
+                <view class="picker-display">
+                  <text>{{carouselLinkPresets[selectedLinkPresetIndex].label || '选择跳转页面'}}</text>
+                  <text class="remix-icon ri-arrow-down-s-line picker-arrow"></text>
+                </view>
+              </picker>
+            </view>
+            <view class="field-item" wx:if="{{editingItem.linkType !== 'none'}}">
+              <text class="label">跳转页面路径</text>
+              <input class="input" value="{{editingItem.linkUrl}}" placeholder="如：/pages/client/mall/list/index" data-field="linkUrl" bindinput="editingLinkUrlInput" />
+            </view>
+            <view class="field-item" wx:if="{{editingItem.linkType !== 'none'}}">
+              <text class="label">角标/按钮文案 (选填)</text>
+              <input class="input" value="{{editingItem.linkTitle}}" placeholder="如：立即查看 / 逛商城 / 去预约" data-field="linkTitle" bindinput="editingInput" />
+            </view>
             <view class="field-item"><text class="label">排序权重</text><input class="input" type="number" value="{{editingItem.sort}}" placeholder="数字越小越靠前" data-field="sort" bindinput="editingInput" /></view>
             <view class="compact-toggle-row"><text class="label">状态启用</text><switch checked="{{editingItem.enabled !== false}}" bindchange="toggleEditingEnabled" /></view>
             <view class="form-btn-row"><button class="mini-btn default" bindtap="cancelEditItem">取消</button><button class="mini-btn primary" bindtap="saveEditingItem">暂存到列表</button></view>
@@ -313,13 +335,13 @@
           <view class="field-item"><text class="label">预约 CTA 标题</text><input class="input" value="{{settings.homePage.ctaTitle}}" data-field="ctaTitle" bindinput="homePageInput" /></view>
           <view class="field-item"><text class="label">预约 CTA 副标题</text><input class="input" value="{{settings.homePage.ctaSubtitle}}" data-field="ctaSubtitle" bindinput="homePageInput" /></view>
           <view class="field-item"><text class="label">预约按钮文案</text><input class="input" value="{{settings.homePage.ctaText}}" data-field="ctaText" bindinput="homePageInput" /></view>
-          <view class="field-item"><text class="label">再次预约标题</text><input class="input" value="{{settings.homePage.repeatTitle}}" data-field="repeatTitle" bindinput="homePageInput" /></view>
+          <view class="field-item"><text class="label">一键复购标题</text><input class="input" value="{{settings.homePage.repeatTitle}}" data-field="repeatTitle" bindinput="homePageInput" placeholder="一键复购" /></view>
           <view class="field-item"><text class="label">新人优惠标题</text><input class="input" value="{{settings.homePage.couponTitle}}" data-field="couponTitle" bindinput="homePageInput" /></view>
           <view class="field-item"><text class="label">保障说明标题</text><input class="input" value="{{settings.homePage.assuranceTitle}}" data-field="assuranceTitle" bindinput="homePageInput" /></view>
           <view class="section-title-row"><text class="section-title">首页模块开关</text></view>
           <view class="module-switch-row"><text>核心预约 CTA</text><switch checked="{{settings.homePage.modules.quickBooking !== false}}" data-key="quickBooking" bindchange="toggleHomeModule" /></view>
           <view class="module-switch-row"><text>附近宠托师入口</text><switch checked="{{settings.homePage.modules.nearbySitters !== false}}" data-key="nearbySitters" bindchange="toggleHomeModule" /></view>
-          <view class="module-switch-row"><text>再次预约</text><switch checked="{{settings.homePage.modules.repeatBooking !== false}}" data-key="repeatBooking" bindchange="toggleHomeModule" /></view>
+          <view class="module-switch-row"><text>一键复购入口</text><switch checked="{{settings.homePage.modules.repeatBooking !== false}}" data-key="repeatBooking" bindchange="toggleHomeModule" /></view>
           <view class="module-switch-row"><text>热门服务卡</text><switch checked="{{settings.homePage.modules.hotServices !== false}}" data-key="hotServices" bindchange="toggleHomeModule" /></view>
           <view class="module-switch-row"><text>新人优惠</text><switch checked="{{settings.homePage.modules.newbieCoupon !== false}}" data-key="newbieCoupon" bindchange="toggleHomeModule" /></view>
           <view class="module-switch-row"><text>精选宠托师</text><switch checked="{{settings.homePage.modules.featuredSitters !== false}}" data-key="featuredSitters" bindchange="toggleHomeModule" /></view>

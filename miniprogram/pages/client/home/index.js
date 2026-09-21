@@ -74,7 +74,7 @@ Page({
       ctaSubtitle: '填写宠物和服务时间，平台认证宠托师快速响应。',
       ctaText: '立即预约',
       nearbyTitle: '附近宠托师',
-      repeatTitle: '再次预约',
+      repeatTitle: '一键复购',
       couponTitle: '新人优惠',
       assuranceTitle: '平台保障',
       modules: defaultModules
@@ -93,8 +93,8 @@ Page({
     assuranceItems: [],
     messageUnreadCount: 0,
     messageHasUnread: false,
-    staffEntryLoaded: false,
-    staffEntryTitle: '',
+    staffEntryLoaded: true,
+    staffEntryTitle: '宠护端',
     staffEntryTip: '',
     staffEntryStatus: 'none',
 
@@ -162,17 +162,53 @@ Page({
       .catch(() => {})
   },
 
+  onTapQuickRepeat() {
+    ensureLogin({ content: '登录后可一键复购历史订单。' })
+      .then(() => {
+        if (this.data.repeatOrder && this.data.repeatOrder._id) {
+          wx.navigateTo({
+            url: `/pages/client/orders/create/index?rebookOrderId=${this.data.repeatOrder._id}`
+          })
+          return
+        }
+        return callFunction('order', 'getClientOrders', { page: 1, pageSize: 5 })
+          .then((res) => {
+            const list = (res && res.list) || []
+            const validOrder = list.find((o) => ['completed', 'in_service', 'assigned'].includes(o.status)) || list[0]
+            if (validOrder && validOrder._id) {
+              this.setData({ repeatOrder: validOrder })
+              wx.navigateTo({
+                url: `/pages/client/orders/create/index?rebookOrderId=${validOrder._id}`
+              })
+            } else {
+              wx.showToast({ title: '暂无历史订单，直接为您开启预约', icon: 'none' })
+              wx.navigateTo({
+                url: '/pages/client/orders/create/index'
+              })
+            }
+          })
+          .catch(() => {
+            wx.navigateTo({
+              url: '/pages/client/orders/create/index'
+            })
+          })
+      })
+      .catch(() => {})
+  },
+
   loadStaffEntryState() {
-    this.setData({ staffEntryLoaded: false })
+    // 静默刷新宠护师状态，不重置 staffEntryLoaded: false，避免每次页面 onShow 时金刚区图标消失跳动
     getCurrentUser({ silent: true })
       .then((user) => {
         if (!user) {
+          const title = '申请宠护师'
           this.setData({
             staffEntryLoaded: true,
             staffEntryStatus: 'none',
-            staffEntryTitle: '申请成为宠护师',
+            staffEntryTitle: title,
             staffEntryTip: '通过审核后进入安心宠护端接单'
           })
+          try { wx.setStorageSync('cached_staff_entry_title', title) } catch (e) {}
           return
         }
         return callFunction('staff', 'getStaffProfile')
@@ -186,9 +222,9 @@ Page({
     const status = profile && profile.auditStatus
     const stateMap = {
       approved: { title: '宠护端', tip: '查看任务与接单工作台' },
-      pending: { title: '宠护师认证审核中', tip: '资料已提交，请等待平台审核' },
-      rejected: { title: '修改宠护师认证', tip: (profile && profile.auditRemark) || '审核未通过，请修改后重新提交' },
-      none: { title: '申请成为宠护师', tip: '通过审核后进入安心宠护端接单' }
+      pending: { title: '审核中', tip: '资料已提交，请等待平台审核' },
+      rejected: { title: '修改认证', tip: (profile && profile.auditRemark) || '审核未通过，请修改后重新提交' },
+      none: { title: '申请宠护师', tip: '通过审核后进入安心宠护端接单' }
     }
     const entry = stateMap[status] || stateMap.none
     this.setData({
@@ -197,6 +233,7 @@ Page({
       staffEntryTitle: entry.title,
       staffEntryTip: entry.tip
     })
+    try { wx.setStorageSync('cached_staff_entry_title', entry.title) } catch (e) {}
   },
 
   openStaffEntry() {
@@ -414,7 +451,7 @@ Page({
       return
     }
 
-    const carouselKey = validItems.map((item) => [item.id || '', item.fileId, item.posterFileId || '', item.type || 'image', item.title || '', item.subtitle || ''].join(':')).join('|')
+    const carouselKey = validItems.map((item) => [item.id || '', item.fileId, item.posterFileId || '', item.type || 'image', item.title || '', item.subtitle || '', item.linkUrl || '', item.linkTitle || ''].join(':')).join('|')
     const autoRotate = carousel.autoRotate !== false
     const interval = Number(carousel.rotateIntervalMs) || 5000
 
@@ -476,6 +513,45 @@ Page({
       }
     })
   },
+
+  onHeroSlideTap(e) {
+    const item = e.currentTarget.dataset.item
+    if (!item) return
+    const linkUrl = String(item.linkUrl || '').trim()
+    if (linkUrl) {
+      const targetUrl = linkUrl.startsWith('/') ? linkUrl : `/${linkUrl}`
+      const pages = getCurrentPages()
+      const current = pages[pages.length - 1]
+      const currentRoute = current && current.route ? '/' + current.route : ''
+      const targetPath = targetUrl.split('?')[0]
+      if (currentRoute === targetPath) return
+
+      const mainNavUrls = [
+        '/pages/client/home/index',
+        '/pages/client/sitters/list/index',
+        '/pages/client/orders/list/index',
+        '/pages/client/messages/index',
+        '/pages/client/profile/index'
+      ]
+      const method = mainNavUrls.includes(targetPath) ? 'redirectTo' : 'navigateTo'
+      wx[method]({
+        url: targetUrl,
+        fail: (err) => {
+          console.warn('轮播图页面跳转失败:', err, targetUrl)
+          if (item.type === 'image' && item.url) {
+            this.previewHeroMedia(e)
+          } else if (item.type === 'video') {
+            this.playHeroVideo(e)
+          }
+        }
+      })
+      return
+    }
+
+    this.previewHeroMedia(e)
+  },
+
+  noBubble() {},
 
   previewHeroMedia(e) {
     const item = e.currentTarget.dataset.item

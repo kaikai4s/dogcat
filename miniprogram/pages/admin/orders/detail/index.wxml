@@ -38,15 +38,16 @@
     <view class="info-row" wx:if="{{detail.order.assignmentSource}}"><view class="label">派单来源</view><view class="value">{{detail.order.assignmentSourceText}}</view></view>
     <view class="info-row"><view class="label">地址</view><view class="value">{{detail.order.serviceAddress}}</view></view>
     <view class="info-row" wx:if="{{detail.order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{detail.order.addressDetail}}</view></view>
-    <view class="info-row" wx:if="{{detail.order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{detail.order.doorplate}}</view></view>
     <view class="info-row"><view class="label">状态</view><view class="soft-badge status-badge">{{detail.order.statusText}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.autoCompleted}}"><view class="label">完单方式</view><view class="soft-badge auto-badge"><text class="remix-icon ri-sparkling-fill"></text><text>系统超时智能结算</text></view></view>
+    <view class="info-row" wx:if="{{detail.order.isOverdue || detail.order.isStartOverdue || detail.order.isFinishOverdue}}"><view class="label">超时预警</view><view class="soft-badge overdue-badge"><text class="remix-icon ri-alarm-warning-line"></text><text>存在超时履约</text></view></view>
     <view class="info-row"><view class="label">支付状态</view><view class="value">{{detail.order.paymentStatusText}}</view></view>
     <view class="info-row" wx:if="{{detail.order.paymentNo}}"><view class="label">支付单号</view><view class="value">{{detail.order.paymentNo}}</view></view>
     <view class="info-row" wx:if="{{detail.order.wxTransactionId}}"><view class="label">微信交易号</view><view class="value">{{detail.order.wxTransactionId}}</view></view>
     <view class="info-row" wx:if="{{detail.order.paidAt}}"><view class="label">支付时间</view><view class="value">{{detail.order.paidAt}}</view></view>
     <view class="info-row"><view class="label">接单微信通知</view><view class="value">{{detail.order.acceptedNotifyStatusText}}</view></view>
     <view class="info-row"><view class="label">接单通知失败</view><view class="value">{{detail.order.acceptedNotifyErrorText}}</view></view>
-    <view class="info-row" wx:if="{{detail.order.refundStatus}}"><view class="label">退款状态</view><view class="value">{{detail.order.refundStatus}} ¥{{detail.order.refundAmount || 0}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.refundStatus}}"><view class="label">退款状态</view><view class="value">{{detail.order.refundStatusText || '已退款'}} ¥{{detail.order.refundAmount || 0}}</view></view>
     <view class="info-row" wx:if="{{detail.order.refundNo}}"><view class="label">退款单号</view><view class="value">{{detail.order.refundNo}}</view></view>
   </view>
 
@@ -63,7 +64,7 @@
         <view class="timeline-dot"></view>
         <view class="timeline-content">
           <view class="strong">{{item.refundNo}} · ¥{{item.refundAmount}}</view>
-          <view class="muted">{{item.status}} · {{item.reason}}</view>
+          <view class="muted">{{item.statusText || '已记录'}} · {{item.reason}}</view>
           <view class="muted">{{item.createdAt}}</view>
         </view>
       </view>

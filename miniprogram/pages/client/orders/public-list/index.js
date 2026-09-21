@@ -39,14 +39,17 @@ Page({
   },
 
   load(options = {}) {
-    if (this.data.loading) return
     const reset = options.reset === true
+    if (!reset && this.data.loading) return
     const page = reset ? 1 : this.data.page
     const params = { page, pageSize: this.data.pageSize }
     if (this.data.activeServiceType) params.serviceType = this.data.activeServiceType
+    const requestSeq = (this._requestSeq || 0) + 1
+    this._requestSeq = requestSeq
     this.setData({ loading: true })
     callFunction('order', 'listPublicCompletedOrders', params)
       .then((result) => {
+        if (requestSeq !== this._requestSeq) return
         const pageData = pageList(result)
         this.setData({
           orders: reset ? pageData.list : this.data.orders.concat(pageData.list),
@@ -57,6 +60,7 @@ Page({
         })
       })
       .catch((err) => {
+        if (requestSeq !== this._requestSeq) return
         this.setData({ loading: false })
         showError(err)
       })

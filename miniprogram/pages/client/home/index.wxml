@@ -15,18 +15,24 @@
     <view class="hero-media-card" wx:if="{{heroCarouselEnabled && heroSlides.length > 0}}">
       <swiper class="hero-swiper" autoplay="{{heroAutoplay}}" interval="{{heroRotateInterval}}" circular="{{true}}" previous-margin="0rpx" next-margin="0rpx" bindchange="onSwiperChange">
         <swiper-item wx:for="{{heroSlides}}" wx:key="id" class="hero-swiper-item">
-          <view class="hero-slide {{index === heroCurrent ? 'is-active' : 'is-muted'}}">
-            <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="scaleToFill" class="hero-slide-media" data-item="{{item}}" bindtap="previewHeroMedia" />
+          <view class="hero-slide {{index === heroCurrent ? 'is-active' : 'is-muted'}}" data-item="{{item}}" bindtap="onHeroSlideTap">
+            <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="scaleToFill" class="hero-slide-media" />
             <view wx:else class="hero-slide-video">
-              <view wx:if="{{heroPlayingVideoId !== item.id}}" class="hero-video-poster" data-id="{{item.id}}" data-item="{{item}}" bindtap="previewHeroMedia">
+              <view wx:if="{{heroPlayingVideoId !== item.id}}" class="hero-video-poster">
                 <image src="{{item.posterUrl || item.url}}" mode="scaleToFill" class="hero-slide-media" />
-                <view class="hero-play-mask"><view class="remix-icon ri-play-circle-fill hero-play-icon"></view></view>
+                <view class="hero-play-mask" catchtap="playHeroVideo" data-id="{{item.id}}"><view class="remix-icon ri-play-circle-fill hero-play-icon"></view></view>
               </view>
-              <video wx:else id="hero_video_{{item.id}}" src="{{item.url}}" poster="{{item.posterUrl}}" controls="{{true}}" autoplay="{{true}}" show-fullscreen-btn="{{false}}" class="hero-slide-media" data-id="{{item.id}}" bindpause="onVideoPauseOrEnded" bindended="onVideoPauseOrEnded" />
+              <video wx:else id="hero_video_{{item.id}}" src="{{item.url}}" poster="{{item.posterUrl}}" controls="{{true}}" autoplay="{{true}}" show-fullscreen-btn="{{false}}" class="hero-slide-media" data-id="{{item.id}}" bindpause="onVideoPauseOrEnded" bindended="onVideoPauseOrEnded" catchtap="noBubble" />
             </view>
-            <view class="hero-copy-layer">
-              <view class="hero-kicker" wx:if="{{item.title}}">{{item.title}}</view>
-              <view class="hero-subtitle" wx:if="{{item.subtitle}}">{{item.subtitle}}</view>
+            <view class="hero-copy-layer" wx:if="{{item.title || item.subtitle || item.linkUrl}}">
+              <view class="hero-copy-content">
+                <view class="hero-kicker" wx:if="{{item.title}}">{{item.title}}</view>
+                <view class="hero-subtitle" wx:if="{{item.subtitle}}">{{item.subtitle}}</view>
+              </view>
+              <view class="hero-action-pill" wx:if="{{item.linkUrl}}">
+                <text>{{item.linkTitle || '查看详情'}}</text>
+                <text class="remix-icon ri-arrow-right-s-line"></text>
+              </view>
             </view>
           </view>
         </swiper-item>
@@ -72,8 +78,8 @@
     <view class="quick-action-item interactive" data-url="/pages/client/sitters/list/index" bindtap="go" wx:if="{{homePage.modules.nearbySitters}}">
       <view class="remix-icon ri-map-pin-user-fill quick-action-icon green"></view><view class="quick-action-label">附近宠托师</view>
     </view>
-    <view class="quick-action-item interactive" wx:if="{{staffEntryLoaded}}" bindtap="openStaffEntry">
-      <view class="remix-icon ri-shield-user-fill quick-action-icon peach"></view><view class="quick-action-label">{{staffEntryTitle}}</view>
+    <view class="quick-action-item interactive" bindtap="onTapQuickRepeat" wx:if="{{homePage.modules.repeatBooking !== false}}">
+      <view class="remix-icon ri-restart-fill quick-action-icon coral"></view><view class="quick-action-label">一键复购</view>
     </view>
     <view class="quick-action-item interactive" data-url="/pages/client/mall/list/index" bindtap="go">
       <view class="remix-icon ri-store-2-fill quick-action-icon orange"></view><view class="quick-action-label">用品商城</view>
@@ -90,6 +96,9 @@
     <view class="quick-action-item interactive" data-url="/pages/client/home-security/index" bindtap="goProtected">
       <view class="remix-icon ri-shield-keyhole-fill quick-action-icon purple"></view><view class="quick-action-label">家庭安防</view>
     </view>
+    <view class="quick-action-item interactive" bindtap="openStaffEntry">
+      <view class="remix-icon ri-shield-user-fill quick-action-icon peach"></view><view class="quick-action-label">{{staffEntryTitle || '宠护端'}}</view>
+    </view>
   </view>
 
   <view class="home-section pet-beauty-entry interactive" wx:if="{{homePage.modules.petBeautyActivity !== false}}" data-url="/pages/client/pet-beauty/activity/index" bindtap="go">
@@ -99,12 +108,6 @@
       <view class="section-desc">晒出爱宠美照，每天为 TA 投一票</view>
     </view>
     <view class="pet-beauty-btn">去围观</view>
-  </view>
-
-  <view class="home-section repeat-section interactive" wx:if="{{homePage.modules.repeatBooking && repeatOrder}}" data-url="/pages/client/orders/create/index" bindtap="goProtected">
-    <view class="remix-icon ri-restart-fill section-side-icon"></view>
-    <view class="repeat-main"><view class="section-title">{{homePage.repeatTitle}}</view><view class="repeat-title">{{repeatOrder.petName}} · {{repeatOrder.serviceSummary}}</view><view class="section-desc">复用历史服务习惯，快速填写预约</view></view>
-    <view class="section-link">一键复购</view>
   </view>
 
   <view class="home-section" wx:if="{{homePage.modules.hotServices && servicePrices.length}}">

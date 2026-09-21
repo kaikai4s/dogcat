@@ -16,7 +16,22 @@ function pageList(result) {
 }
 
 Page({
-  data: { themeClass: 'theme-day', tabs, activeStatus: 'all', orders: [], page: 1, pageSize: 10, hasMore: true, loading: false, total: 0, messageUnreadCount: 0, messageHasUnread: false },
+  data: {
+    themeClass: 'theme-day',
+    tabs,
+    activeStatus: 'all',
+    orders: [],
+    page: 1,
+    pageSize: 10,
+    hasMore: true,
+    loading: false,
+    total: 0,
+    orderKeyword: '',
+    startDate: '',
+    endDate: '',
+    messageUnreadCount: 0,
+    messageHasUnread: false
+  },
   onShow() {
     this.applyCurrentTheme()
     this.load({ reset: true })
@@ -26,23 +41,37 @@ Page({
     this.loadMore()
   },
   load(options = {}) {
-    if (this.data.loading) return
     const reset = options.reset === true
+    if (!reset && this.data.loading) return
     const page = reset ? 1 : this.data.page
     const location = getSelectedLocation()
     const data = location ? { latitude: location.latitude, longitude: location.longitude } : {}
     data.page = page
     data.pageSize = this.data.pageSize
+    data.orderKeyword = (this.data.orderKeyword || '').trim()
+    data.startDate = (this.data.startDate || '').trim()
+    data.endDate = (this.data.endDate || '').trim()
     if (this.data.activeStatus === 'waiting_service') data.statusGroup = 'waiting_service'
     else if (this.data.activeStatus !== 'all') data.status = this.data.activeStatus
+
+    const requestSeq = (this._requestSeq || 0) + 1
+    this._requestSeq = requestSeq
     this.setData({ loading: true })
     callFunction('staff', 'listStaffOrders', data)
       .then((result) => {
+        if (requestSeq !== this._requestSeq) return
         const pageData = pageList(result)
         const orders = pageData.list.map(withOrderText)
-        this.setData({ orders: reset ? orders : this.data.orders.concat(orders), page: pageData.page, hasMore: pageData.hasMore, total: pageData.total, loading: false })
+        this.setData({
+          orders: reset ? orders : this.data.orders.concat(orders),
+          page: pageData.page,
+          hasMore: pageData.hasMore,
+          total: pageData.total,
+          loading: false
+        })
       })
       .catch((error) => {
+        if (requestSeq !== this._requestSeq) return
         this.setData({ loading: false })
         showError(error)
       })
@@ -56,7 +85,27 @@ Page({
     this.setData({ page: this.data.page + 1 }, () => this.load())
   },
   chooseStatus(e) {
-    this.setData({ activeStatus: e.currentTarget.dataset.status, page: 1, hasMore: true }, () => this.load({ reset: true }))
+    const status = e.currentTarget.dataset.status
+    if (status === this.data.activeStatus) return
+    this.setData({ activeStatus: status, page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+  inputKeyword(e) {
+    this.setData({ orderKeyword: e.detail.value })
+  },
+  confirmSearch() {
+    this.setData({ page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+  clearKeyword() {
+    this.setData({ orderKeyword: '', page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+  changeStartDate(e) {
+    this.setData({ startDate: e.detail.value, page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+  changeEndDate(e) {
+    this.setData({ endDate: e.detail.value, page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+  resetFilters() {
+    this.setData({ orderKeyword: '', startDate: '', endDate: '', page: 1, hasMore: true }, () => this.load({ reset: true }))
   },
   detail(e) { wx.navigateTo({ url: '/pages/staff/orders/detail/index?id=' + e.currentTarget.dataset.id }) },
   openOrderMessages(e) {

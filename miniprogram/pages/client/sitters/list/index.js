@@ -91,6 +91,8 @@ Page({
     this.syncCurrentLocation()
     const loc = getSelectedLocation()
     const locParams = loc ? { latitude: loc.latitude, longitude: loc.longitude } : {}
+    const requestSeq = (this._requestSeq || 0) + 1
+    this._requestSeq = requestSeq
     this.setData({ loading: true })
     callFunction('staff', 'listApprovedSitters', {
       keyword,
@@ -101,9 +103,11 @@ Page({
       ...locParams
     })
       .then((res) => {
+        if (requestSeq !== this._requestSeq) return
         this.setData({ sitters: res.list || [], total: res.total || 0, loading: false })
       })
       .catch((error) => {
+        if (requestSeq !== this._requestSeq) return
         this.setData({ loading: false })
         showError(error)
       })
@@ -134,18 +138,24 @@ Page({
   },
 
   chooseCity(e) {
-    this.setData({ activeCity: e.currentTarget.dataset.city, activeArea: ALL }, () => {
+    const city = e.currentTarget.dataset.city
+    if (city === this.data.activeCity) return
+    this.setData({ activeCity: city, activeArea: ALL }, () => {
       this.refreshOptions()
       this.loadSitters()
     })
   },
 
   chooseArea(e) {
-    this.setData({ activeArea: e.currentTarget.dataset.area }, this.loadSitters)
+    const area = e.currentTarget.dataset.area
+    if (area === this.data.activeArea) return
+    this.setData({ activeArea: area }, () => this.loadSitters())
   },
 
   chooseSort(e) {
-    this.setData({ sortBy: e.currentTarget.dataset.sort }, this.loadSitters)
+    const sort = e.currentTarget.dataset.sort
+    if (sort === this.data.sortBy) return
+    this.setData({ sortBy: sort }, () => this.loadSitters())
   },
 
   clearFilters() {

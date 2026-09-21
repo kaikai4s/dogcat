@@ -1198,6 +1198,35 @@ textarea {
   vertical-align: middle;
 }
 
+[class*="name-effect-"]:not(.name-effect-none):not(.name-effect-3d_emboss) {
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent !important;
+}
+
+/* 宠物月度称号小徽章全局通用样式 */
+.pet-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  color: #b45309;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1rpx solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 2rpx 8rpx rgba(245, 158, 11, 0.15);
+  font-size: 20rpx;
+  font-weight: 900;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+
+.pet-title .remix-icon {
+  font-size: 22rpx;
+  color: #f59e0b;
+}
+
 .name-effect-gold_shine {
   background: linear-gradient(90deg, #d99200 0%, #ffe87c 30%, #d99200 60%, #ffc000 100%);
   background-size: 200% auto;

@@ -124,11 +124,43 @@ function withServiceActionState(order) {
   const walkDurationRows = buildDurationRows(order, 'walk')
   const playDurationRows = buildDurationRows(order, 'play')
   const customerRemarkText = order.clientRemark || order.customerRemark || order.orderRemark || order.remark || (order.orderHomeSecurity && order.orderHomeSecurity.entryNotes) || (order.homeSecuritySnapshot && order.homeSecuritySnapshot.entryNotes) || ''
+  const nowTs = Date.now()
+  const isStartOverdue = canStartService && startTime > 0 && nowTs > startTime
+  const startOverdueMinutes = isStartOverdue ? Math.floor((nowTs - startTime) / 60000) : 0
+  const endTimeVal = toTimeValue((currentSession && currentSession.endTime) || order.endTime)
+  const isFinishOverdue = serviceStarted && endTimeVal > 0 && nowTs > endTimeVal
+  const finishOverdueMinutes = isFinishOverdue ? Math.floor((nowTs - endTimeVal) / 60000) : 0
+  const allCheckinsDone = sanitizationCompleted && (order.checkinRequirements || []).every((req) => !req.required || req.completed)
+  const wechatNotifyMap = {
+    pending: '发送中',
+    sent: '已发送',
+    success: '发送成功',
+    skipped: '无需发送',
+    failed: '发送失败'
+  }
+  let orderHomeSecurity = order.orderHomeSecurity
+  if (orderHomeSecurity && orderHomeSecurity.remoteUnlock && orderHomeSecurity.remoteUnlock.lastNotifyStatus) {
+    const rawWechat = String(orderHomeSecurity.remoteUnlock.lastNotifyStatus.wechat || '').toLowerCase()
+    orderHomeSecurity = {
+      ...orderHomeSecurity,
+      remoteUnlock: {
+        ...orderHomeSecurity.remoteUnlock,
+        lastNotifyStatusText: wechatNotifyMap[rawWechat] || (rawWechat ? '已处理' : '未知')
+      }
+    }
+  }
+
   return {
     ...order,
+    orderHomeSecurity,
     serviceStarted,
     canStartService,
     canRequestEarlyStart,
+    isStartOverdue,
+    startOverdueMinutes,
+    isFinishOverdue,
+    finishOverdueMinutes,
+    allCheckinsDone,
     sanitizationRequired,
     sanitizationCompleted,
     activeSession,

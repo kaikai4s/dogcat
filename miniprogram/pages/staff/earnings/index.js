@@ -3,12 +3,44 @@ const { navMethods } = require('../../../utils/nav')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
+const earningStatusText = {
+  pending: '待结算',
+  available: '可提现',
+  withdrawing: '提现中',
+  withdrawn: '已提现',
+  frozen: '已冻结',
+  settled: '已结算',
+  deducted: '已扣除'
+}
+
+const withdrawStatusText = {
+  pending: '审核中',
+  approved: '已通过',
+  rejected: '已驳回',
+  paid: '已打款'
+}
+
 function money(value) {
   return Number(value || 0).toFixed(2)
 }
 
-function withMoney(item) {
-  return { ...item, amountText: money(item.amount), grossAmountText: money(item.grossAmount) }
+function withEarning(item) {
+  const status = String(item.status || '').toLowerCase()
+  return {
+    ...item,
+    amountText: money(item.amount),
+    grossAmountText: money(item.grossAmount),
+    statusText: earningStatusText[status] || '已记录'
+  }
+}
+
+function withWithdraw(item) {
+  const status = String(item.status || '').toLowerCase()
+  return {
+    ...item,
+    amountText: money(item.amount),
+    statusText: withdrawStatusText[status] || '处理中'
+  }
 }
 
 Page({
@@ -50,8 +82,8 @@ Page({
             minWithdrawAmountText: money(balance.minWithdrawAmount)
           },
           amount: balance.available ? money(balance.available) : '',
-          earnings: (earnings || []).map(withMoney),
-          withdraws: (withdraws || []).map((item) => ({ ...item, amountText: money(item.amount) }))
+          earnings: (earnings || []).map(withEarning),
+          withdraws: (withdraws || []).map(withWithdraw)
         })
       })
       .catch(showError)

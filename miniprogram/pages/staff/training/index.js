@@ -3,6 +3,34 @@ const { withStaffWorkflowText, formatDateTime } = require('../../../utils/format
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { copyText } = require('../../../utils/clipboard')
 
+const depositStatusText = {
+  unpaid: '待缴纳',
+  paid: '已缴纳',
+  partially_refunded: '部分退款',
+  refunded: '已全额退款',
+  forfeited: '已没收'
+}
+
+const depositRefundStatusText = {
+  requested: '退款申请中',
+  processing: '退款处理中',
+  approved: '退款已同意',
+  rejected: '退款已驳回',
+  refunded: '已退款',
+  failed: '退款失败'
+}
+
+function normalizeDeposit(deposit) {
+  if (!deposit) return null
+  const status = String(deposit.status || '').toLowerCase()
+  const refundStatus = String(deposit.refundStatus || '').toLowerCase()
+  return {
+    ...deposit,
+    statusText: depositStatusText[status] || deposit.statusText || (status ? '已记录' : ''),
+    refundStatusText: depositRefundStatusText[refundStatus] || (refundStatus ? '退款处理中' : '')
+  }
+}
+
 function buildSteps(profile = {}, videos = []) {
   return [
     { title: '资料审核', desc: profile.auditStatus === 'approved' ? '已通过' : '待通过', done: profile.auditStatus === 'approved' },
@@ -73,6 +101,9 @@ Page({
     this.setData({ depositLoading: true, depositError: false, depositAgreed: false })
     try {
       const depositState = await callFunction('staff', 'getDepositStatus')
+      if (depositState && depositState.deposit) {
+        depositState.deposit = normalizeDeposit(depositState.deposit)
+      }
       this.setData({ depositState })
     } catch (error) {
       this.setData({ depositState: null, depositError: true })

@@ -167,10 +167,19 @@
   left: 24rpx;
   right: 24rpx;
   bottom: 22rpx;
-  padding: 20rpx 22rpx;
+  padding: 20rpx 24rpx;
   border-radius: 28rpx;
   color: #ffffff;
-  background: linear-gradient(180deg, rgba(45, 33, 26, 0.08) 0%, rgba(45, 33, 26, 0.62) 100%);
+  background: linear-gradient(180deg, rgba(45, 33, 26, 0.08) 0%, rgba(45, 33, 26, 0.72) 100%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.hero-copy-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .hero-kicker {
@@ -184,6 +193,23 @@
   font-size: 24rpx;
   line-height: 1.45;
   opacity: 0.92;
+}
+
+.hero-action-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  background: rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1rpx solid rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 800;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
 }
 
 .hero-play-mask {
@@ -334,7 +360,6 @@
 
 .section-heading,
 .recent-story-head,
-.repeat-main,
 .recent-service-line {
   display: flex;
   align-items: center;
@@ -446,6 +471,7 @@
 .quick-action-icon.orange { color: #ff7d00; background: #fff4df; }
 .quick-action-icon.blue { color: #3b82f6; background: #eff6ff; }
 .quick-action-icon.purple { color: #8b5cf6; background: #f5f0ff; }
+.quick-action-icon.coral { color: #ff5722; background: #fff0eb; }
 
 .quick-action-label {
   max-width: 112rpx;
@@ -488,37 +514,7 @@
   font-weight: 900;
 }
 
-.repeat-section {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
-  background: linear-gradient(135deg, #effbf7 0%, #ffffff 100%);
-  border-color: rgba(114, 211, 183, 0.18);
-}
 
-.section-side-icon {
-  width: 78rpx;
-  height: 78rpx;
-  border-radius: 28rpx;
-  color: #18a87c;
-  background: #eafaf3;
-}
-
-.repeat-main {
-  flex: 1;
-  min-width: 0;
-  display: block;
-}
-
-.repeat-title {
-  margin-top: 8rpx;
-  color: #4b4039;
-  font-size: 27rpx;
-  font-weight: 850;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .service-scroll,
 .sitter-scroll {

@@ -1,12 +1,24 @@
 const orderStatusText = {
   pending_pay: '待支付',
+  unpaid: '待支付',
+  paying: '支付中',
   paid: '待接单',
   assigned: '已接单',
   in_service: '服务中',
   day_completed: '当天已完成',
   completed: '已完成',
   cancelled: '已取消',
-  expired: '已过期'
+  expired: '已过期',
+  refunding: '退款中',
+  refunded: '已退款',
+  refund_applied: '退款申请中',
+  refund_pending: '待退款',
+  partial_refunded: '部分退款',
+  pending_ship: '待发货',
+  shipped: '已发货',
+  auto_completed: '已自动完成',
+  closed: '已关闭',
+  timeout_closed: '超时关闭'
 }
 
 const auditStatusText = {
@@ -21,7 +33,10 @@ const paymentStatusText = {
   paying: '支付中',
   paid: '已支付',
   refunding: '退款中',
-  refunded: '已退款'
+  refunded: '已退款',
+  partial_refunded: '部分退款',
+  failed: '支付失败',
+  closed: '已关闭'
 }
 
 const staffLevelText = {
@@ -113,54 +128,92 @@ const incidentActionText = {
   closed: '工单结案'
 }
 
+const refundStatusText = {
+  none: '无退款',
+  requested: '退款申请中',
+  applied: '退款申请中',
+  pending: '退款申请中',
+  pending_manual: '待人工退款',
+  processing: '退款中',
+  approved: '已同意退款',
+  rejected: '退款已驳回',
+  refunded: '已退款',
+  success: '退款成功',
+  full_refunded: '全额退款',
+  partially_refunded: '部分退款',
+  failed: '退款失败',
+  cancelled: '已取消退款'
+}
+
 function formatOrderStatus(status, order = {}) {
-  if (status === 'paid' && order.publishMode === 'direct') return '待指定宠托师接单'
-  if (status === 'paid') return '待附近宠托师接单'
-  return orderStatusText[status] || status || ''
+  const normalized = String(status || '').toLowerCase().trim()
+  if (normalized === 'paid' && order.publishMode === 'direct') return '待指定宠托师接单'
+  if (normalized === 'paid') return '待附近宠托师接单'
+  if (order.autoCompleted && (normalized === 'completed' || normalized === 'day_completed')) return '已自动完成'
+  if (orderStatusText[normalized]) return orderStatusText[normalized]
+  if (order.refundStatus === 'approved' || order.paymentStatus === 'refunded' || normalized.includes('refund')) return '已退款'
+  if (order.paymentStatus === 'refunding') return '退款中'
+  return normalized ? '处理中' : ''
 }
 
 function formatAuditStatus(status) {
-  return auditStatusText[status] || status || ''
+  const normalized = String(status || '').toLowerCase().trim()
+  return auditStatusText[normalized] || (normalized ? '处理中' : '')
 }
 
 function formatPaymentStatus(status) {
-  return paymentStatusText[status] || status || ''
+  const normalized = String(status || '').toLowerCase().trim()
+  return paymentStatusText[normalized] || (normalized ? '处理中' : '')
+}
+
+function formatRefundStatus(status) {
+  const normalized = String(status || '').toLowerCase().trim()
+  return refundStatusText[normalized] || (normalized ? '退款处理中' : '')
 }
 
 function formatStaffLevel(level) {
-  return staffLevelText[level] || staffLevelText.applicant
+  const normalized = String(level || '').toLowerCase().trim()
+  return staffLevelText[normalized] || staffLevelText.applicant
 }
 
 function formatOnboardingStatus(status) {
-  return onboardingStatusText[status] || onboardingStatusText.application_pending
+  const normalized = String(status || '').toLowerCase().trim()
+  return onboardingStatusText[normalized] || onboardingStatusText.application_pending
 }
 
 function formatVideoAuditStatus(status) {
-  return videoAuditStatusText[status] || videoAuditStatusText.not_started
+  const normalized = String(status || '').toLowerCase().trim()
+  return videoAuditStatusText[normalized] || videoAuditStatusText.not_started
 }
 
 function formatPromotionStatus(status) {
-  return promotionStatusText[status] || promotionStatusText.none
+  const normalized = String(status || '').toLowerCase().trim()
+  return promotionStatusText[normalized] || promotionStatusText.none
 }
 
 function formatIncidentStatus(status) {
-  return incidentStatusText[status] || status || ''
+  const normalized = String(status || '').toLowerCase().trim()
+  return incidentStatusText[normalized] || (normalized ? '处理中' : '')
 }
 
 function formatCheckinEvent(eventType) {
-  return checkinEventText[eventType] || eventType || ''
+  const normalized = String(eventType || '').toLowerCase().trim()
+  return checkinEventText[normalized] || (normalized ? '照护打卡' : '')
 }
 
 function formatAssignmentSource(source) {
-  return assignmentSourceText[source] || source || ''
+  const normalized = String(source || '').toLowerCase().trim()
+  return assignmentSourceText[normalized] || (normalized ? '系统分配' : '')
 }
 
 function formatIncidentType(type) {
-  return incidentTypeText[type] || type || '异常事件'
+  const normalized = String(type || '').toLowerCase().trim()
+  return incidentTypeText[normalized] || '异常事件'
 }
 
 function formatIncidentAction(action) {
-  return incidentActionText[action] || action || '操作记录'
+  const normalized = String(action || '').toLowerCase().trim()
+  return incidentActionText[normalized] || '操作记录'
 }
 
 function toBeijingDate(value) {
@@ -207,10 +260,16 @@ function formatAppointmentTime(order = {}) {
 
 function withOrderText(order) {
   if (!order) return order
+  const autoCompleted = order.autoCompleted === true
+  const isOverdue = order.isOverdue === true || order.isStartOverdue === true || order.isFinishOverdue === true
   return {
     ...order,
+    autoCompleted,
+    isOverdue,
+    autoCompletedText: autoCompleted ? '系统自动结算' : '',
     statusText: formatOrderStatus(order.status, order),
     paymentStatusText: formatPaymentStatus(order.paymentStatus || 'unpaid'),
+    refundStatusText: formatRefundStatus(order.refundStatus),
     assignmentSourceText: formatAssignmentSource(order.assignmentSource),
     createdAtText: formatDateTime(order.createdAt),
     appointmentTimeText: formatAppointmentTime(order)
@@ -269,6 +328,7 @@ module.exports = {
   formatOrderStatus,
   formatAuditStatus,
   formatPaymentStatus,
+  formatRefundStatus,
   formatStaffLevel,
   formatOnboardingStatus,
   formatVideoAuditStatus,

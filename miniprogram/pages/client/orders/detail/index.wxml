@@ -34,7 +34,7 @@
       </view>
       <view class="person-info">
         <view class="person-name">
-          <text class="{{order.clientSnapshot.nameEffect && order.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + order.clientSnapshot.nameEffect : ''}}" style="{{order.clientSnapshot.nameColor ? 'color: ' + order.clientSnapshot.nameColor + ';' : ''}}">{{order.clientSnapshot.displayName || '宠物主'}}</text>
+          <text class="{{order.clientSnapshot.nameEffect && order.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + order.clientSnapshot.nameEffect : ''}}" style="{{(!order.clientSnapshot.nameEffect || order.clientSnapshot.nameEffect === 'none' || order.clientSnapshot.nameEffect === '3d_emboss') && order.clientSnapshot.nameColor ? 'color: ' + order.clientSnapshot.nameColor + ';' : ''}}">{{order.clientSnapshot.nickname || order.clientSnapshot.displayName || '宠物主'}}</text>
           <text class="member-badge badge-{{order.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{order.clientSnapshot && (order.clientSnapshot.badgeTag || order.clientSnapshot.memberLevelName)}}">{{order.clientSnapshot.badgeTag || order.clientSnapshot.memberLevelName}}</text>
         </view>
         <view class="person-phone">{{order.clientSnapshot.phoneMasked || '当前下单账号'}}</view>

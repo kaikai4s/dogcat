@@ -96,6 +96,25 @@
   line-height: 1.45;
 }
 
+.picker-display {
+  width: 100%;
+  box-sizing: border-box;
+  background: #f7f8fa;
+  border-radius: 14rpx;
+  padding: 18rpx 22rpx;
+  font-size: 26rpx;
+  color: #333;
+  min-height: 78rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.picker-arrow {
+  font-size: 32rpx;
+  color: #999;
+}
+
 .radio-group {
   display: flex;
   gap: 28rpx;
@@ -217,6 +236,22 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.item-link {
+  font-size: 21rpx;
+  color: #1890ff;
+  margin-top: 6rpx;
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-link.unlinked {
+  color: #bbb;
 }
 
 .item-meta {

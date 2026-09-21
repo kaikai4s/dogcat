@@ -602,3 +602,30 @@
   transform: scale(0.96);
 }
 
+.overdue-alert-banner {
+  margin: 16rpx 0;
+  padding: 20rpx 24rpx;
+  background: #fff1f0;
+  border: 1rpx solid #ffccc7;
+  border-radius: 20rpx;
+  color: #cf1322;
+  font-size: 26rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  line-height: 1.4;
+}
+
+.overdue-alert-banner.warning {
+  background: #fffbe6;
+  border-color: #ffe58f;
+  color: #d48806;
+}
+
+.highlight-btn {
+  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10rpx 24rpx rgba(82, 196, 26, 0.35) !important;
+}
+

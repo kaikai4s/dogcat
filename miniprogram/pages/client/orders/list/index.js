@@ -28,6 +28,9 @@ Page({
     hasMore: true,
     loading: false,
     total: 0,
+    orderKeyword: '',
+    startDate: '',
+    endDate: '',
     messageUnreadCount: 0,
     messageHasUnread: false
   },
@@ -48,16 +51,27 @@ Page({
     this.setData(getThemeState(theme.value))
   },
   load(options = {}) {
-    if (this.data.loading) return
     const reset = options.reset === true
+    if (!reset && this.data.loading) return
     const page = reset ? 1 : this.data.page
     const activeStatus = this.data.activeStatus
-    const params = { role: 'client', page, pageSize: this.data.pageSize }
+    const params = {
+      role: 'client',
+      page,
+      pageSize: this.data.pageSize,
+      orderKeyword: (this.data.orderKeyword || '').trim(),
+      startDate: (this.data.startDate || '').trim(),
+      endDate: (this.data.endDate || '').trim()
+    }
     if (activeStatus === 'waiting_service') params.statusGroup = 'waiting_service'
     else if (activeStatus !== 'all') params.status = activeStatus
+
+    const requestSeq = (this._requestSeq || 0) + 1
+    this._requestSeq = requestSeq
     this.setData({ loading: true })
     callFunction('order', 'listOrders', params)
       .then((result) => {
+        if (requestSeq !== this._requestSeq) return
         const pageData = pageList(result)
         const orders = pageData.list.map(withOrderText)
         this.setData({
@@ -69,6 +83,7 @@ Page({
         })
       })
       .catch((error) => {
+        if (requestSeq !== this._requestSeq) return
         this.setData({ loading: false })
         showError(error)
       })
@@ -78,7 +93,27 @@ Page({
     this.setData({ page: this.data.page + 1 }, () => this.load())
   },
   chooseStatus(e) {
-    this.setData({ activeStatus: e.currentTarget.dataset.status, page: 1, hasMore: true }, () => this.load({ reset: true }))
+    const status = e.currentTarget.dataset.status
+    if (status === this.data.activeStatus) return
+    this.setData({ activeStatus: status, page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+  inputKeyword(e) {
+    this.setData({ orderKeyword: e.detail.value })
+  },
+  confirmSearch() {
+    this.setData({ page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+  clearKeyword() {
+    this.setData({ orderKeyword: '', page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+  changeStartDate(e) {
+    this.setData({ startDate: e.detail.value, page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+  changeEndDate(e) {
+    this.setData({ endDate: e.detail.value, page: 1, hasMore: true }, () => this.load({ reset: true }))
+  },
+  resetFilters() {
+    this.setData({ orderKeyword: '', startDate: '', endDate: '', page: 1, hasMore: true }, () => this.load({ reset: true }))
   },
   detail(e) { wx.navigateTo({ url: '/pages/client/orders/detail/index?id=' + e.currentTarget.dataset.id }) },
   go(e) {

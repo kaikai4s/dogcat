@@ -3,6 +3,18 @@ const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { copyText } = require('../../../../utils/clipboard')
 
 // Same cloud upload pattern as the existing staff evidence/identity pages.
+const reimbursementStatusText = {
+  PENDING: '审核中',
+  APPROVED: '审核通过，等待平台付款',
+  APPROVED_AWAITING_PAYMENT: '审核通过，等待平台付款',
+  WAITING_PAYMENT: '审核通过，等待平台付款',
+  PENDING_PAYMENT: '审核通过，等待平台付款',
+  REJECTED: '审核未通过',
+  PAID: '已打款',
+  COMPLETED: '已完成',
+  CANCELLED: '已取消'
+}
+
 function uploadReceipt(filePath) {
   const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
   return new Promise((resolve, reject) => {
@@ -75,7 +87,7 @@ Page({
         application,
         supplies: result.supplies || {},
         canApply: Boolean(result.canApply && profile && profile.staffLevel === 'certified' && (!result.supplies || result.supplies.reimbursementEnabled !== false)),
-        statusLabel: application ? (approved ? '审核通过，等待平台付款' : application.statusText || application.status || '处理中') : '暂无申请',
+        statusLabel: application ? (approved ? '审核通过，等待平台付款' : (reimbursementStatusText[status] || application.statusText || '处理中')) : '暂无申请',
         failureReason: application && (application.rejectReason || application.failureReason || application.failReason || application.reason) || '',
         submittedReceipts: application && Array.isArray(application.mediaFileIds) ? application.mediaFileIds : [],
         canConfirmTransfer

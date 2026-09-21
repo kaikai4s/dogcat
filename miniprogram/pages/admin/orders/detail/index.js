@@ -44,9 +44,15 @@ Page({
     ])
       .then(([detail, refunds]) => {
         const order = withOrderText(detail.order)
-        order.acceptedNotifyStatusText = order.acceptedNotifyStatus || '未记录'
+        const notifyMap = { sent: '已发送', success: '发送成功', failed: '发送失败', skipped: '无需发送' }
+        order.acceptedNotifyStatusText = notifyMap[order.acceptedNotifyStatus] || (order.acceptedNotifyStatus ? '已处理' : '未记录')
         order.acceptedNotifyErrorText = order.acceptedNotifyError || '无'
-        this.setData({ detail: { ...detail, order }, refunds: refunds || [] })
+        const refundStatusMap = { success: '退款成功', processing: '处理中', failed: '退款失败', pending: '申请中' }
+        const mappedRefunds = (refunds || []).map((r) => ({
+          ...r,
+          statusText: refundStatusMap[r.status] || '处理中'
+        }))
+        this.setData({ detail: { ...detail, order }, refunds: mappedRefunds })
       })
       .catch(showError)
   },

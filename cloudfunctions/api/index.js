@@ -548,6 +548,9 @@ function normalizeHomeHeroCarousel(carousel = {}) {
         posterFileId: safeText(item && item.posterFileId).trim(),
         title: safeText(item && item.title).trim(),
         subtitle: safeText(item && item.subtitle).trim(),
+        linkType: safeText(item && item.linkType).trim() || (item && item.linkUrl ? 'custom' : 'none'),
+        linkUrl: safeText(item && (item.linkUrl || item.url || item.path)).trim(),
+        linkTitle: safeText(item && item.linkTitle).trim(),
         enabled: item && item.enabled !== false,
         sort: safeNumber(item && item.sort) || (index + 1) * 10
       }
@@ -586,7 +589,7 @@ function normalizeHomePageConfig(homePage = {}) {
     ctaSubtitle: safeText(homePage.ctaSubtitle).trim() || '填写宠物和服务时间，平台认证宠托师快速响应。',
     ctaText: safeText(homePage.ctaText).trim() || '立即预约',
     nearbyTitle: safeText(homePage.nearbyTitle).trim() || '附近宠托师',
-    repeatTitle: safeText(homePage.repeatTitle).trim() || '再次预约',
+    repeatTitle: safeText(homePage.repeatTitle).trim() || '一键复购',
     couponTitle: safeText(homePage.couponTitle).trim() || '新人优惠',
     assuranceTitle: safeText(homePage.assuranceTitle).trim() || '平台保障',
     modules: Object.keys(defaultHomeModules).reduce((result, key) => ({
@@ -1735,7 +1738,30 @@ function assertOrderTransition(fromStatus, toStatus, message) {
 }
 
 function orderStatusText(status) {
-  return ({ pending_pay: '待支付', paid: '待接单', assigned: '已接单', in_service: '服务中', day_completed: '当天已完成', completed: '已完成', cancelled: '已取消', expired: '已过期', refunding: '退款中', refunded: '已退款' })[status] || '处理中'
+  const normalized = String(status || '').toLowerCase().trim()
+  const map = {
+    pending_pay: '待支付',
+    unpaid: '待支付',
+    paying: '支付中',
+    paid: '待接单',
+    assigned: '已接单',
+    in_service: '服务中',
+    day_completed: '当天已完成',
+    completed: '已完成',
+    cancelled: '已取消',
+    expired: '已过期',
+    refunding: '退款中',
+    refunded: '已退款',
+    refund_applied: '退款申请中',
+    refund_pending: '待退款',
+    partial_refunded: '部分退款',
+    pending_ship: '待发货',
+    shipped: '已发货',
+    auto_completed: '已完成',
+    closed: '已关闭',
+    timeout_closed: '超时关闭'
+  }
+  return map[normalized] || '处理中'
 }
 
 function shouldExpireUnacceptedOrder(order = {}, time = now()) {
@@ -2629,6 +2655,12 @@ function formatDateTimeParts(dateObj) {
   return `${beijingTime.getUTCFullYear()}-${String(beijingTime.getUTCMonth() + 1).padStart(2, '0')}-${String(beijingTime.getUTCDate()).padStart(2, '0')} ${String(beijingTime.getUTCHours()).padStart(2, '0')}:${String(beijingTime.getUTCMinutes()).padStart(2, '0')}`
 }
 
+function formatDateTime(val) {
+  const ts = toTimeValue(val)
+  if (!ts) return ''
+  return formatDateTimeParts(new Date(ts))
+}
+
 function addMinutesToDateTimeText(startTime, durationMinutes) {
   const parts = parseDateTimeParts(startTime)
   if (!parts) return ''
@@ -2902,23 +2934,24 @@ function resolveUserMemberLevel(user = {}, levels = []) {
     return {
       memberLevel: matched._id,
       memberLevelName: matched.name,
-      badgeTag: normalizeMemberBadgeTag(matched.badgeTag) || `V${idx >= 0 ? idx + 1 : 1}`,
-      nameColor: normalizeMemberNameColor(matched.nameColor),
-      nameEffect: normalizeMemberNameEffect(matched.nameEffect),
-      badgeStyle: normalizeMemberBadgeStyle(matched.badgeStyle),
+      badgeTag: normalizeMemberBadgeTag(user.badgeTag) || normalizeMemberBadgeTag(matched.badgeTag) || `V${idx >= 0 ? idx + 1 : 1}`,
+      nameColor: normalizeMemberNameColor(user.nameColor) || normalizeMemberNameColor(matched.nameColor),
+      nameEffect: (user.nameEffect && normalizeMemberNameEffect(user.nameEffect) !== 'none') ? normalizeMemberNameEffect(user.nameEffect) : normalizeMemberNameEffect(matched.nameEffect),
+      badgeStyle: normalizeMemberBadgeStyle(user.badgeStyle) || normalizeMemberBadgeStyle(matched.badgeStyle),
       pointMultiplier: Math.max(Number(matched.pointMultiplier || 1), 1),
-      description: safeText(matched.description).trim(),
+      description: safeText(matched.description).trim() || safeText(user.description).trim(),
       benefits: normalizeBenefits(matched.benefits)
     }
   }
 
+  const baselineLevel = levels.length ? levels[0] : null
   return {
     memberLevel: '',
-    memberLevelName: safeText(user.memberLevelName).trim() || '普通会员',
-    badgeTag: normalizeMemberBadgeTag(user.badgeTag) || 'V1',
-    nameColor: normalizeMemberNameColor(user.nameColor),
-    nameEffect: normalizeMemberNameEffect(user.nameEffect),
-    badgeStyle: normalizeMemberBadgeStyle(user.badgeStyle),
+    memberLevelName: safeText(user.memberLevelName).trim() || (baselineLevel ? baselineLevel.name : '普通会员'),
+    badgeTag: normalizeMemberBadgeTag(user.badgeTag) || (baselineLevel ? normalizeMemberBadgeTag(baselineLevel.badgeTag) : 'V1'),
+    nameColor: normalizeMemberNameColor(user.nameColor) || (baselineLevel ? normalizeMemberNameColor(baselineLevel.nameColor) : ''),
+    nameEffect: (user.nameEffect && normalizeMemberNameEffect(user.nameEffect) !== 'none') ? normalizeMemberNameEffect(user.nameEffect) : (baselineLevel ? normalizeMemberNameEffect(baselineLevel.nameEffect) : 'none'),
+    badgeStyle: normalizeMemberBadgeStyle(user.badgeStyle) || (baselineLevel ? normalizeMemberBadgeStyle(baselineLevel.badgeStyle) : 'gold'),
     pointMultiplier: 1,
     description: '',
     benefits: []
@@ -3608,16 +3641,17 @@ async function getAdminStaffContact(order) {
 }
 
 async function attachClientSnapshot(order, levelsCache = null, userCache = null) {
-  if (!order.clientOpenid) return order
+  if (!order || !order.clientOpenid) return order
   try {
-    let user = userCache ? userCache.get(order.clientOpenid) : null
+    const hasMapCache = userCache && typeof userCache.get === 'function'
+    let user = hasMapCache ? userCache.get(order.clientOpenid) : null
     if (!user) {
       const userRes = await db.collection('users').where({ openid: order.clientOpenid }).limit(1).get()
       user = userRes.data[0]
-      if (user && userCache) userCache.set(order.clientOpenid, user)
+      if (user && hasMapCache) userCache.set(order.clientOpenid, user)
     }
     if (!user) return order
-    const levels = levelsCache || await getMemberLevels()
+    const levels = (Array.isArray(levelsCache) && levelsCache.length) ? levelsCache : await getMemberLevels()
     const latestSnapshot = createClientSnapshot(user, levels)
     return {
       ...order,
@@ -3640,14 +3674,46 @@ async function attachClientSnapshot(order, levelsCache = null, userCache = null)
 }
 
 async function attachOrderDisplayData(order, levelsCache = null, userCache = null) {
+  const safeLevels = (Array.isArray(levelsCache) && levelsCache.length) ? levelsCache : null
+  const safeUserCache = (userCache && typeof userCache.get === 'function') ? userCache : null
   const withPet = await attachPetSnapshot({ ...order, serviceSessions: normalizeServiceSessions(order) })
-  return attachClientSnapshot(withPet, levelsCache, userCache)
+  return attachClientSnapshot(withPet, safeLevels, safeUserCache)
+}
+
+function isOrderOverdue(order, currentTime = now()) {
+  if (!order) return false
+  if (order.isStartOverdue || order.isFinishOverdue || order.finishOverdueIncidentCreated) return true
+  const currentTs = toTimeValue(currentTime)
+  if (!currentTs) return false
+
+  if (order.status === ORDER_STATUS.ASSIGNED || order.status === ORDER_STATUS.DAY_COMPLETED) {
+    const activeSession = getActiveServiceSession(order) || getNextPendingServiceSession(order) || (Array.isArray(order.serviceSessions) && order.serviceSessions[0])
+    const sessionStartTime = toTimeValue((activeSession && activeSession.startTime) || order.startTime)
+    if (sessionStartTime && currentTs - sessionStartTime >= 15 * 60 * 1000) {
+      return true
+    }
+  } else if (order.status === ORDER_STATUS.IN_SERVICE) {
+    const activeSession = getActiveServiceSession(order) || (Array.isArray(order.serviceSessions) && order.serviceSessions[0])
+    const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
+    const sessionEndTime = toTimeValue((activeSession && activeSession.endTime) || order.endTime)
+    const durationMs = (Math.max(Number(order.durationMinutes || 60), 30)) * 60 * 1000
+    const estimatedEndTime = sessionEndTime || (sessionStartedAt ? sessionStartedAt + durationMs : 0)
+    if (estimatedEndTime && currentTs - estimatedEndTime >= 15 * 60 * 1000) {
+      return true
+    }
+  }
+  return false
 }
 
 async function attachAdminOrderContactData(order) {
   const displayOrder = await attachOrderDisplayData(order)
+  const isOverdue = isOrderOverdue(order)
   return {
     ...displayOrder,
+    autoCompleted: order.autoCompleted === true,
+    isOverdue,
+    isStartOverdue: order.isStartOverdue === true,
+    isFinishOverdue: order.isFinishOverdue === true,
     clientContact: await getAdminClientContact(order),
     staffContact: await getAdminStaffContact(order)
   }
@@ -4175,6 +4241,336 @@ function summarizeStaffEarnings(earnings = []) {
     if (earning.status === 'frozen') summary.frozen += amount
     return summary
   }, { total: 0, pending: 0, available: 0, withdrawing: 0, withdrawn: 0, frozen: 0 })
+}
+
+async function evaluateCheckinCompletion(order, sessionStartedAt) {
+  try {
+    await requireSanitizationEvidence(order, sessionStartedAt)
+  } catch (error) {
+    return { isComplete: false, missing: ['隔离病菌/消毒打卡'] }
+  }
+
+  const checkins = await db.collection('checkin_logs').where({ orderId: order._id }).get()
+  const eventSet = (checkins.data || []).filter((item) => {
+    if (!hasCheckinPhoto(item)) return false
+    if (item.eventType === 'sanitization') return isValidSanitization(item, order, sessionStartedAt)
+    return !sessionStartedAt || toTimeValue(item.recordedAt || item.serverTime || item.createdAt) >= (sessionStartedAt - 60000)
+  }).reduce((map, item) => ({ ...map, [item.eventType]: true }), {})
+
+  const requirements = Array.isArray(order.checkinRequirements) && order.checkinRequirements.length
+    ? order.checkinRequirements
+    : (order.requiredCheckins || []).map((eventType) => ({ eventType, label: checkinEventText(eventType), required: true }))
+  const missing = requirements.filter((item) => item.required && !eventSet[item.eventType]).map((item) => item.label || checkinEventText(item.eventType))
+
+  const security = order.orderHomeSecurity || order.homeSecuritySnapshot || {}
+  if (security.type === 'key' && security.key && security.key.returnRequired && !security.key.returnedAt) {
+    missing.push('放回钥匙打卡')
+  }
+
+  return {
+    isComplete: missing.length === 0,
+    missing
+  }
+}
+
+async function completeOrderService(order, activeSession, time = now(), options = {}) {
+  const isAuto = options.isAuto === true
+  const actor = options.actor || (isAuto ? 'system' : 'staff')
+  const completedSessions = markServiceSession(normalizeServiceSessions(order), activeSession.index, { status: 'completed', finishedAt: time })
+  const finalSession = isFinalServiceSession({ ...order, serviceSessions: completedSessions }, activeSession)
+  const orderId = order._id
+
+  if (!finalSession) {
+    const dayUpdateData = {
+      status: ORDER_STATUS.DAY_COMPLETED,
+      serviceSessions: completedSessions,
+      activeSessionIndex: 0,
+      activeSessionDate: '',
+      currentSessionStartedAt: '',
+      lastCompletedSessionIndex: activeSession.index,
+      updatedAt: time
+    }
+    if (isAuto) dayUpdateData.autoCompleted = true
+    await updateOrderWhenStatus(orderId, ORDER_STATUS.IN_SERVICE, dayUpdateData, '订单状态不可完成当天服务')
+    const dayCompletedOrder = { ...order, _id: orderId, status: ORDER_STATUS.DAY_COMPLETED, serviceSessions: completedSessions, autoCompleted: isAuto, updatedAt: time }
+    await appendOrderTimeline(orderId, isAuto ? 'system_auto_day_completed' : 'day_completed', isAuto ? `系统自动完成第${activeSession.index}天服务` : `第${activeSession.index}天服务已完成`, isAuto ? '检测到打卡凭证齐全且已超时，系统已自动完成今日服务。' : '', actor)
+    await appendOrderClientMessage(dayCompletedOrder, {
+      eventType: 'day_completed',
+      title: `第${activeSession.index}天服务已完成`,
+      detail: isAuto ? '今日服务打卡已齐全，系统已确认今日服务完成。' : '今日服务已完成，下一次服务需重新开始履约。',
+      actorRole: actor
+    })
+    if (isAuto && order.staffOpenid) {
+      await appendOrderStaffMessage(dayCompletedOrder, {
+        eventType: 'system_auto_day_completed',
+        title: '今日服务已自动完成',
+        detail: `检测到您的第${activeSession.index}天服务打卡已齐全，由于未手动结束，系统已自动帮您确认今日服务完成。`,
+        actorRole: 'system',
+        idempotencyKey: makeIdempotencyKey('order_staff_message', orderId, 'system_auto_day_completed', String(activeSession.index || 1))
+      })
+    }
+    await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成', tip: isAuto ? '今日服务打卡齐全，系统已确认完成' : '今日服务已完成' }, 'client')
+    return { id: orderId, status: ORDER_STATUS.DAY_COMPLETED, activeSessionIndex: 0, autoCompleted: isAuto }
+  }
+
+  const updateData = {
+    status: ORDER_STATUS.COMPLETED,
+    serviceSessions: completedSessions,
+    activeSessionIndex: 0,
+    activeSessionDate: '',
+    currentSessionStartedAt: '',
+    lastCompletedSessionIndex: activeSession.index,
+    completedAt: time,
+    updatedAt: time
+  }
+  if (isAuto) updateData.autoCompleted = true
+
+  await updateOrderWhenStatus(orderId, ORDER_STATUS.IN_SERVICE, updateData, '订单状态不可完成')
+  const completedOrder = { ...order, _id: orderId, status: ORDER_STATUS.COMPLETED, serviceSessions: completedSessions, completedAt: time, updatedAt: time }
+
+  const timelineTitle = isAuto ? '系统智能完成服务' : '服务已完成'
+  const timelineDesc = isAuto ? '检测到宠托师已完成全套离户打卡凭证，因超时未手动结束，系统已自动帮宠托师确认完成服务并结算。' : ''
+  await appendOrderTimeline(orderId, isAuto ? 'system_auto_completed' : 'completed', timelineTitle, timelineDesc, actor)
+
+  await appendOrderClientMessage(completedOrder, {
+    eventType: 'completed',
+    title: '服务已完成',
+    detail: '服务已完成，可查看服务报告或评价',
+    actorRole: actor
+  })
+  if (isAuto && order.staffOpenid) {
+    const serviceName = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
+    await appendOrderStaffMessage(completedOrder, {
+      eventType: 'system_auto_completed',
+      title: '系统已自动完成服务并结算',
+      detail: `检测到您的订单（${serviceName}）打卡凭证已齐全，由于超时未手动点击结束，系统已自动帮您完成服务并结算收益。下次服务请注意及时点击【完成服务】。`,
+      actorRole: 'system',
+      idempotencyKey: makeIdempotencyKey('order_staff_message', orderId, 'system_auto_completed')
+    })
+    await notifyOrder(order.staffOpenid, 'serviceFinish', order, { statusText: '已自动结算完成', tip: '订单已自动完成，收益已结算' }, 'staff')
+  }
+  await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '已完成', tip: isAuto ? '服务打卡齐全，系统已确认完成，可查看服务报告' : '服务已完成，可查看服务报告' }, 'client')
+
+  await ensureStaffEarning({ ...order, _id: orderId }, time)
+  const pointsDelta = Math.max(Math.floor(Number(order.payAmount || 0) / 10), 1)
+  await addPoints(order.clientOpenid, order.clientUserId, pointsDelta, 'order_complete', orderId, `完成订单 +${pointsDelta} 积分`, { applyMultiplier: true, baseDelta: pointsDelta })
+  const clientUser = await getUser(order.clientOpenid)
+  const completedOrderCount = Number(clientUser.completedOrderCount || 0) + 1
+  await db.collection('users').doc(clientUser._id).update({ data: { completedOrderCount, updatedAt: time } })
+  if (order.staffProfileId) {
+    try {
+      const staffProfile = normalizeStaffWorkflow((await db.collection('staff_profiles').doc(order.staffProfileId).get()).data)
+      if (staffProfile && staffProfile.staffLevel === 'intern') {
+        const internOrders = await getCompletedStaffOrders(order.staffOpenid || '')
+        await db.collection('staff_profiles').doc(staffProfile._id).update({ data: { internCompletedOrderCount: internOrders.length, updatedAt: time } })
+      }
+    } catch (error) {}
+  }
+  if (completedOrderCount % 3 === 0) {
+    await grantRetroCards(order.clientOpenid, clientUser._id, 1, 'order_complete_milestone', orderId, '完成 3 次订单奖励补签卡 +1')
+  }
+  return { id: orderId, status: ORDER_STATUS.COMPLETED, completedOrderCount, autoCompleted: isAuto }
+}
+
+async function processOverdueUnstartedOrders(currentTime = now()) {
+  const currentTs = toTimeValue(currentTime)
+  if (!currentTs) return []
+  const [assignedRes, dayCompletedRes] = await Promise.all([
+    db.collection('orders').where({ status: ORDER_STATUS.ASSIGNED }).get(),
+    db.collection('orders').where({ status: ORDER_STATUS.DAY_COMPLETED }).get()
+  ])
+  const candidates = [...(assignedRes.data || []), ...(dayCompletedRes.data || [])]
+  const processed = []
+
+  for (const order of candidates) {
+    if (!order.staffOpenid) continue
+    const activeSession = getActiveServiceSession(order)
+    const nextSession = getNextPendingServiceSession(order)
+    const targetSession = activeSession || nextSession || (Array.isArray(order.serviceSessions) && order.serviceSessions[0]) || { index: 1, startTime: order.startTime }
+    const sessionIndex = Number(targetSession.index || 1)
+    const sessionStartTime = toTimeValue((targetSession && targetSession.startTime) || order.startTime)
+    if (!sessionStartTime) continue
+
+    const overdueMs = currentTs - sessionStartTime
+    if (overdueMs < 15 * 60 * 1000) continue
+
+    const serviceName = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
+    const timeText = (targetSession && targetSession.startTime) || order.startTime || formatDateTime(sessionStartTime)
+    const remindedSessions = Array.isArray(order.staffOverdueStartRemindedSessions) ? order.staffOverdueStartRemindedSessions : []
+    const clientAlertedSessions = Array.isArray(order.clientOverdueStartAlertedSessions) ? order.clientOverdueStartAlertedSessions : []
+    const updates = {}
+
+    // 阶段 1：超时 15 分钟未开始 -> 催促宠托师尽快履约
+    if (overdueMs >= 15 * 60 * 1000 && !remindedSessions.includes(sessionIndex)) {
+      await notifyOrder(order.staffOpenid, 'serviceStart', order, {
+        statusText: '服务已超时未开始',
+        tip: `约定于 ${timeText} 开始，已超时 15 分钟，请尽快打卡开始`
+      }, 'staff')
+
+      await appendOrderStaffMessage(order, {
+        eventType: 'overdue_unstarted_warning',
+        title: '服务已超时未开始提醒',
+        detail: `您的订单（${serviceName}）约定于 ${timeText} 开始，现已超时超过 15 分钟尚未开始服务。请尽快到达服务地点并打卡开始，以免产生爽约客诉或违约处罚。`,
+        actorRole: 'system',
+        idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_unstarted_warning', String(sessionIndex))
+      })
+
+      await appendOrderTimeline(order._id, 'overdue_unstarted_warning', '服务超时未开始催促', `第${sessionIndex}天服务已超时 15 分钟尚未开始，系统已提醒催促宠托师尽快到场履约。`, 'system')
+
+      updates.staffOverdueStartRemindedSessions = [...remindedSessions, sessionIndex]
+    }
+
+    // 阶段 2：超时 30 分钟未开始 -> 提醒宠物主并标记异常预警
+    if (overdueMs >= 30 * 60 * 1000 && !clientAlertedSessions.includes(sessionIndex)) {
+      await notifyOrder(order.clientOpenid, 'serviceStart', order, {
+        statusText: '服务未按时开始',
+        tip: '宠托师尚未开始服务，平台已介入催促跟进'
+      }, 'client')
+
+      await appendOrderClientMessage(order, {
+        eventType: 'overdue_unstarted_client_notice',
+        title: '服务未按时开始提醒',
+        detail: `您预约于 ${timeText} 的服务（${serviceName}）已超时 30 分钟尚未开始。系统已多次催促宠托师，您可在订单页面联系宠托师或在线客服协助处理。`,
+        actorRole: 'system',
+        unreadForClient: true
+      })
+
+      await appendOrderTimeline(order._id, 'overdue_unstarted_alert', '服务严重超时异常预警', `服务已超时 30 分钟仍未开始，系统已提醒宠物主并触发异常跟进。`, 'system')
+
+      updates.clientOverdueStartAlertedSessions = [...clientAlertedSessions, sessionIndex]
+      updates.isStartOverdue = true
+    }
+
+    if (Object.keys(updates).length > 0) {
+      const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+      updates.updatedAt = time
+      await db.collection('orders').doc(order._id).update({ data: updates })
+      processed.push({ orderId: order._id, sessionIndex, updates })
+    }
+  }
+
+  return processed
+}
+
+async function processOverdueUnfinishedOrders(currentTime = now()) {
+  const currentTs = toTimeValue(currentTime)
+  if (!currentTs) return []
+  const res = await db.collection('orders').where({ status: ORDER_STATUS.IN_SERVICE }).get()
+  const orders = res.data || []
+  const processed = []
+
+  for (const order of orders) {
+    const activeSession = getActiveServiceSession(order) || normalizeServiceSessions(order)[0] || { index: 1 }
+    const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
+    const sessionEndTime = toTimeValue((activeSession && activeSession.endTime) || order.endTime)
+    const durationMs = (Math.max(Number(order.durationMinutes || 60), 30)) * 60 * 1000
+    const estimatedEndTime = sessionEndTime || (sessionStartedAt ? sessionStartedAt + durationMs : 0)
+    if (!estimatedEndTime) continue
+
+    const overdueMs = currentTs - estimatedEndTime
+    if (overdueMs < 15 * 60 * 1000) continue
+
+    const serviceName = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
+    const checkinResult = await evaluateCheckinCompletion({ ...order, _id: order._id }, sessionStartedAt || currentTs)
+
+    // 情况 1：打卡凭证齐全，超时 30 分钟未结束 -> 智能自动完成服务并结算
+    if (overdueMs >= 30 * 60 * 1000 && checkinResult.isComplete && !order.autoCompleted) {
+      const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+      const completeRes = await completeOrderService({ ...order, _id: order._id }, activeSession, time, { isAuto: true, actor: 'system' })
+      processed.push({ orderId: order._id, type: 'auto_completed', result: completeRes })
+      continue
+    }
+
+    // 情况 2：严重超时 60 分钟且打卡缺失 -> 自动创建异常工单介入跟进
+    if (overdueMs >= 60 * 60 * 1000 && !checkinResult.isComplete && !order.finishOverdueIncidentCreated) {
+      const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+      await appendOrderTimeline(order._id, 'finish_overdue_incident', '服务严重超时未结束告警', `服务已超时 60 分钟且打卡凭证缺失（${checkinResult.missing.join('、')}），系统已转平台客服紧急跟进。`, 'system')
+      await appendOrderClientMessage(order, {
+        eventType: 'service_finish_overdue_notice',
+        title: '服务进行中超时提醒',
+        detail: `您的订单（${serviceName}）已超出预计服务时间，平台客服已介入跟进宠托师现场服务进展，确保宠物与家庭安全。`,
+        actorRole: 'system',
+        unreadForClient: true
+      })
+
+      if (order.staffOpenid) {
+        await appendOrderStaffMessage(order, {
+          eventType: 'finish_overdue_incident',
+          title: '服务严重超时警报',
+          detail: `您的订单（${serviceName}）已超出预计结束时间 60 分钟以上，且仍缺少打卡凭证（${checkinResult.missing.join('、')}）。平台已生成客服异常工单跟进，请立即核实打卡或联系客服！`,
+          actorRole: 'system',
+          idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'finish_overdue_incident', String(activeSession.index || 1))
+        })
+      }
+
+      await db.collection('order_incidents').add({
+        data: {
+          orderId: order._id,
+          orderNo: order.orderNo || '',
+          clientOpenid: order.clientOpenid,
+          staffOpenid: order.staffOpenid,
+          type: 'service_finish_overdue',
+          title: '服务严重超时未结束且缺少打卡',
+          detail: `订单已超出预计结束时间 60 分钟以上，仍缺少必要打卡：${checkinResult.missing.join('、')}，请平台客服紧急联系宠托师与客户核实情况。`,
+          status: 'open',
+          createdAt: time,
+          updatedAt: time
+        }
+      })
+
+      await db.collection('orders').doc(order._id).update({
+        data: {
+          finishOverdueIncidentCreated: true,
+          overdueFinishReminded: true,
+          overdueFinishRemindedAt: time,
+          isFinishOverdue: true,
+          updatedAt: time
+        }
+      })
+      processed.push({ orderId: order._id, type: 'incident_created' })
+      continue
+    }
+
+    // 情况 3：超时 15 分钟未结束 -> 发送催促提醒
+    if (overdueMs >= 15 * 60 * 1000 && !order.overdueFinishReminded) {
+      const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
+      if (checkinResult.isComplete) {
+        await appendOrderStaffMessage(order, {
+          eventType: 'overdue_finish_reminder',
+          title: '请及时确认完成服务',
+          detail: `您的订单（${serviceName}）已超出约定服务时间，检测到打卡凭证已齐全。请及时在服务页点击【完成服务】进行结算。若超出 30 分钟仍未操作，系统将自动帮您结算完成。`,
+          actorRole: 'system',
+          idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_finish_reminder', String(activeSession.index || 1))
+        })
+        await notifyOrder(order.staffOpenid, 'serviceFinish', order, {
+          statusText: '请及时完成服务',
+          tip: '订单打卡已齐全，请及时点击完成服务进行结算'
+        }, 'staff')
+      } else {
+        await appendOrderStaffMessage(order, {
+          eventType: 'overdue_finish_reminder',
+          title: '服务超时未结束提醒',
+          detail: `您的订单（${serviceName}）已超出预计服务时间，且尚缺少打卡凭证（${checkinResult.missing.join('、')}）。请确认服务进度并及时补全打卡与点击完成服务。`,
+          actorRole: 'system',
+          idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_finish_reminder', String(activeSession.index || 1))
+        })
+      }
+
+      await appendOrderTimeline(order._id, 'overdue_finish_reminder', '服务超时未结束催促', checkinResult.isComplete ? '打卡已齐全，系统已提醒宠托师尽快点击完成服务。' : `服务已超时，尚缺少打卡（${checkinResult.missing.join('、')}），已提醒宠托师。`, 'system')
+
+      await db.collection('orders').doc(order._id).update({
+        data: {
+          overdueFinishReminded: true,
+          overdueFinishRemindedAt: time,
+          updatedAt: time
+        }
+      })
+      processed.push({ orderId: order._id, type: 'reminded', checkinComplete: checkinResult.isComplete })
+      continue
+    }
+  }
+
+  return processed
 }
 
 function buildDateRange(data = {}) {
@@ -6140,7 +6536,8 @@ const handlers = {
       const time = now()
       const homeSecurity = normalizeHomeSecurityInput({ ...data, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime })
       const checkinRequirements = await resolveCheckinRequirements(pricing.serviceTypes)
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, distanceFromSitterKm: directDistanceKm, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: primaryPet._id || petIds[0], petIds, petName: petSummary, petNames, petSnapshot: petSnapshots[0], petSnapshots, petSummary, serviceType: pricing.primaryServiceType || pricing.businessServiceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), orderType: pricing.orderType, serviceStartDate: serviceSessions[0].date, serviceEndDate: serviceSessions[serviceSessions.length - 1].date, sessionCount: serviceSessions.length, serviceSessions, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime, durationMinutes: pricing.durationMinutes, petServiceDurations: pricing.petServiceDurations, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const memberLevels = await getMemberLevels()
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user, memberLevels), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, distanceFromSitterKm: directDistanceKm, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: primaryPet._id || petIds[0], petIds, petName: petSummary, petNames, petSnapshot: petSnapshots[0], petSnapshots, petSummary, serviceType: pricing.primaryServiceType || pricing.businessServiceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude: Number(data.addressLatitude || 0), addressLongitude: Number(data.addressLongitude || 0), orderType: pricing.orderType, serviceStartDate: serviceSessions[0].date, serviceEndDate: serviceSessions[serviceSessions.length - 1].date, sessionCount: serviceSessions.length, serviceSessions, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime, durationMinutes: pricing.durationMinutes, petServiceDurations: pricing.petServiceDurations, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {
@@ -6184,22 +6581,55 @@ const handlers = {
       const where = role === 'staff' ? { staffOpenid: openid } : { clientOpenid: openid }
       const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
       let list = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
+      list.sort((a, b) => {
+        const bTime = toTimeValue(b.createdAt || b.startTime)
+        const aTime = toTimeValue(a.createdAt || a.startTime)
+        return bTime - aTime
+      })
       if (data.status && data.status !== 'all') list = list.filter((order) => order.status === data.status)
       if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service', 'day_completed'].includes(order.status))
-      if (data.startDate) list = list.filter((order) => String(order.startTime || '').slice(0, 10) >= safeText(data.startDate))
-      if (data.endDate) list = list.filter((order) => String(order.startTime || '').slice(0, 10) <= safeText(data.endDate))
+      const orderKeyword = safeText(data.orderKeyword || data.keyword || data.orderNo).trim().toLowerCase()
+      if (orderKeyword) {
+        list = list.filter((order) => [
+          order._id,
+          order.orderNo,
+          order.petName,
+          order.serviceSummary,
+          order.serviceAddress,
+          order.staffName,
+          order.requestedStaffName
+        ].some((val) => safeText(val).toLowerCase().includes(orderKeyword)))
+      }
+      const startDate = safeText(data.startDate).trim()
+      const endDate = safeText(data.endDate).trim()
+      if (startDate) {
+        list = list.filter((order) => {
+          const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
+          const end = String(order.serviceEndDate || order.endTime || start).slice(0, 10)
+          return end >= startDate
+        })
+      }
+      if (endDate) {
+        list = list.filter((order) => {
+          const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
+          return start <= endDate
+        })
+      }
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      const levels = await getMemberLevels()
+      const userCache = new Map()
       if (wantsPage) {
         const page = paginateList(list, data)
-        return { ...page, list: await Promise.all(page.list.map(attachOrderDisplayData)) }
+        return { ...page, list: await Promise.all(page.list.map((order) => attachOrderDisplayData(order, levels, userCache))) }
       }
-      return Promise.all(list.map(attachOrderDisplayData))
+      return Promise.all(list.map((order) => attachOrderDisplayData(order, levels, userCache)))
     }
 
     if (action === 'getOrderDetail') {
       const orderId = data.id || data.orderId
       const { order } = await getOrderForAccess(openid, orderId)
-      const displayOrder = await attachOrderDisplayData(order)
+      const levels = await getMemberLevels()
+      const displayOrder = await attachOrderDisplayData(order, levels)
       const [earlyStart, securityRes, checkinsRes, tracksRes] = await Promise.all([
         getPendingEarlyStart(orderId).then((pending) => pending || getApprovedEarlyStart(orderId) || getLatestEarlyStart(orderId)),
         db.collection('order_home_security').where({ orderId }).limit(1).get(),
@@ -6568,57 +6998,18 @@ const handlers = {
       if (order.status === 'completed') return { id: data.id, completedOrderCount: Number((await getUser(order.clientOpenid)).completedOrderCount || 0) }
       assertOrderTransition(order.status, ORDER_STATUS.COMPLETED, '订单状态不可完成')
       const activeSession = getActiveServiceSession(order) || getTodayServiceSession(order, order.currentSessionStartedAt || order.startedAt || now()) || normalizeServiceSessions(order)[0] || { index: 1, date: beijingDateKey(order.startedAt || now()), startedAt: order.currentSessionStartedAt || order.startedAt || '' }
-      // Validate against the actual session start, not finish day (services may cross midnight).
-      await requireSanitizationEvidence({ ...order, _id: data.id }, order.currentSessionStartedAt || activeSession.startedAt || order.startedAt || now())
-      const checkins = await db.collection('checkin_logs').where({ orderId: data.id }).get()
-      const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || activeSession.startedAt || order.startedAt)
-      const eventSet = (checkins.data || []).filter((item) => {
-        if (!hasCheckinPhoto(item)) return false
-        if (item.eventType === 'sanitization') return isValidSanitization(item, { ...order, _id: data.id }, order.currentSessionStartedAt || activeSession.startedAt || order.startedAt || now())
-        return !sessionStartedAt || toTimeValue(item.recordedAt || item.serverTime || item.createdAt) >= (sessionStartedAt - 60000)
-      }).reduce((map, item) => ({ ...map, [item.eventType]: true }), {})
-      const requirements = Array.isArray(order.checkinRequirements) && order.checkinRequirements.length
-        ? order.checkinRequirements
-        : (order.requiredCheckins || []).map((eventType) => ({ eventType, label: checkinEventText(eventType), required: true }))
-      const missing = requirements.filter((item) => item.required && !eventSet[item.eventType])
-      if (missing.length) throw new Error(`缺少必打卡照片：${missing.map((item) => item.label || checkinEventText(item.eventType)).join('、')}`)
-      const security = order.orderHomeSecurity || order.homeSecuritySnapshot || {}
-      if (security.type === 'key' && security.key && security.key.returnRequired && !security.key.returnedAt) throw new Error('请先完成放回钥匙打卡')
-      const time = now()
-      const completedSessions = markServiceSession(normalizeServiceSessions(order), activeSession.index, { status: 'completed', finishedAt: time })
-      const finalSession = isFinalServiceSession({ ...order, serviceSessions: completedSessions }, activeSession)
-      if (!finalSession) {
-        await updateOrderWhenStatus(data.id, ORDER_STATUS.IN_SERVICE, { status: ORDER_STATUS.DAY_COMPLETED, serviceSessions: completedSessions, activeSessionIndex: 0, activeSessionDate: '', currentSessionStartedAt: '', lastCompletedSessionIndex: activeSession.index, updatedAt: time }, '订单状态不可完成当天服务')
-        const dayCompletedOrder = { ...order, _id: data.id, status: ORDER_STATUS.DAY_COMPLETED, serviceSessions: completedSessions, updatedAt: time }
-        await appendOrderTimeline(data.id, 'day_completed', `第${activeSession.index}天服务已完成`, '', 'staff')
-        await appendOrderClientMessage(dayCompletedOrder, { eventType: 'day_completed', title: `第${activeSession.index}天服务已完成`, detail: '今日服务已完成，下一次服务需重新开始履约。', actorRole: 'staff' })
-        await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成' })
-        return { id: data.id, status: ORDER_STATUS.DAY_COMPLETED, activeSessionIndex: 0 }
+      const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
+      const checkinResult = await evaluateCheckinCompletion({ ...order, _id: data.id }, sessionStartedAt)
+      if (!checkinResult.isComplete) {
+        throw new Error(`缺少必打卡照片：${checkinResult.missing.join('、')}`)
       }
-      await updateOrderWhenStatus(data.id, ORDER_STATUS.IN_SERVICE, { status: ORDER_STATUS.COMPLETED, serviceSessions: completedSessions, activeSessionIndex: 0, activeSessionDate: '', currentSessionStartedAt: '', lastCompletedSessionIndex: activeSession.index, completedAt: time, updatedAt: time }, '订单状态不可完成')
-      const completedOrder = { ...order, _id: data.id, status: ORDER_STATUS.COMPLETED, serviceSessions: completedSessions, completedAt: time, updatedAt: time }
-      await appendOrderTimeline(data.id, 'completed', '服务已完成', '', 'staff')
-      await appendOrderClientMessage(completedOrder, { eventType: 'completed', title: '服务已完成', detail: '服务已完成，可查看服务报告或评价', actorRole: 'staff' })
-      await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '已完成' })
-      await ensureStaffEarning({ ...order, _id: data.id }, time)
-      const pointsDelta = Math.max(Math.floor(Number(order.payAmount || 0) / 10), 1)
-      await addPoints(order.clientOpenid, order.clientUserId, pointsDelta, 'order_complete', data.id, `完成订单 +${pointsDelta} 积分`, { applyMultiplier: true, baseDelta: pointsDelta })
-      const clientUser = await getUser(order.clientOpenid)
-      const completedOrderCount = Number(clientUser.completedOrderCount || 0) + 1
-      await db.collection('users').doc(clientUser._id).update({ data: { completedOrderCount, updatedAt: time } })
-      if (order.staffProfileId) {
-        try {
-          const staffProfile = normalizeStaffWorkflow((await db.collection('staff_profiles').doc(order.staffProfileId).get()).data)
-          if (staffProfile && staffProfile.staffLevel === 'intern') {
-            const internOrders = await getCompletedStaffOrders(order.staffOpenid || openid)
-            await db.collection('staff_profiles').doc(staffProfile._id).update({ data: { internCompletedOrderCount: internOrders.length, updatedAt: time } })
-          }
-        } catch (error) {}
-      }
-      if (completedOrderCount % 3 === 0) {
-        await grantRetroCards(order.clientOpenid, clientUser._id, 1, 'order_complete_milestone', data.id, '完成 3 次订单奖励补签卡 +1')
-      }
-      return { id: data.id, status: ORDER_STATUS.COMPLETED, completedOrderCount }
+      return completeOrderService({ ...order, _id: data.id }, activeSession, now(), { isAuto: false, actor: 'staff' })
+    }
+
+    if (action === 'checkOverdueOrders') {
+      const unstarted = await processOverdueUnstartedOrders()
+      const unfinished = await processOverdueUnfinishedOrders()
+      return { unstartedCount: unstarted.length, unfinishedCount: unfinished.length, unstarted, unfinished }
     }
 
     if (action === 'getServiceReport') {
@@ -8200,10 +8591,43 @@ const handlers = {
       const profile = profileRes.data[0] || {}
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
-      const res = await db.collection('orders').where({ staffOpenid: openid }).orderBy('startTime', 'asc').get()
-      let list = res.data || []
+      const res = await db.collection('orders').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').get()
+      let list = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
+      // 最近的订单排在最前面
+      list.sort((a, b) => {
+        const bTime = toTimeValue(b.createdAt || b.startTime)
+        const aTime = toTimeValue(a.createdAt || a.startTime)
+        return bTime - aTime
+      })
       if (data.status && data.status !== 'all') list = list.filter((order) => order.status === data.status)
       if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service', 'day_completed'].includes(order.status))
+      const orderKeyword = safeText(data.orderKeyword || data.keyword || data.orderNo).trim().toLowerCase()
+      if (orderKeyword) {
+        list = list.filter((order) => [
+          order._id,
+          order.orderNo,
+          order.petName,
+          order.serviceSummary,
+          order.serviceAddress,
+          order.clientSnapshot && order.clientSnapshot.displayName,
+          order.clientSnapshot && order.clientSnapshot.nickname
+        ].some((val) => safeText(val).toLowerCase().includes(orderKeyword)))
+      }
+      const startDate = safeText(data.startDate).trim()
+      const endDate = safeText(data.endDate).trim()
+      if (startDate) {
+        list = list.filter((order) => {
+          const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
+          const end = String(order.serviceEndDate || order.endTime || start).slice(0, 10)
+          return end >= startDate
+        })
+      }
+      if (endDate) {
+        list = list.filter((order) => {
+          const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
+          return start <= endDate
+        })
+      }
       const decorate = async (order) => {
         const enriched = await attachOrderDisplayData(order)
         const distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
@@ -9316,7 +9740,12 @@ const handlers = {
     }
     if (action === 'listOrders') {
       await expireDueUnacceptedOrders()
-      const where = data.status ? { status: data.status } : {}
+      const rawStatus = safeText(data.status).trim()
+      const specialFilter = safeText(data.specialFilter).trim()
+      const isAutoFilter = rawStatus === 'auto_completed' || specialFilter === 'auto_completed'
+      const isOverdueFilter = rawStatus === 'overdue' || specialFilter === 'overdue'
+      const isNormalStatus = rawStatus && !['all', 'overdue', 'auto_completed'].includes(rawStatus)
+      const where = isNormalStatus ? { status: rawStatus } : {}
       const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
       const orderKeyword = safeText(data.orderKeyword || data.keyword).trim().toLowerCase()
       const clientPhone = safeText(data.clientPhone || data.phone).trim()
@@ -9347,6 +9776,12 @@ const handlers = {
         })
       }
       let orders = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
+      if (isAutoFilter) {
+        orders = orders.filter((order) => order.autoCompleted === true)
+      }
+      if (isOverdueFilter) {
+        orders = orders.filter((order) => isOrderOverdue(order))
+      }
       if (orderKeyword) {
         orders = orders.filter((order) => [order._id, order.orderNo].some((value) => safeText(value).toLowerCase().includes(orderKeyword)))
       }
@@ -10727,6 +11162,8 @@ exports.main = async (event = {}) => {
     if (event.Type === 'Timer') {
       await expireDueUnacceptedOrders()
       const upcomingReminders = await sendUpcomingServiceRemindersToStaff()
+      const overdueUnstarted = await processOverdueUnstartedOrders()
+      const overdueUnfinished = await processOverdueUnfinishedOrders()
       const today = toCstParts()
       let petBeautySettled = null
       const isLastDayOfMonth = today.dayNumber === getMonthDays(today.monthKey)
@@ -10740,7 +11177,13 @@ exports.main = async (event = {}) => {
         const prevSettled = await settlePetBeautyMonthlyRanking(prevMonth, { source: 'timer_catchup' })
         if (!petBeautySettled) petBeautySettled = prevSettled
       }
-      return ok({ expired: true, upcomingRemindersCount: upcomingReminders.length, petBeautySettled })
+      return ok({
+        expired: true,
+        upcomingRemindersCount: upcomingReminders.length,
+        overdueUnstartedCount: overdueUnstarted.length,
+        overdueUnfinishedCount: overdueUnfinished.length,
+        petBeautySettled
+      })
     }
     if (isWechatPayHttpCallback(event)) {
       return handlers.payment('', 'paymentCallback', {
