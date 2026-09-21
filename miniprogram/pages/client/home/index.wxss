@@ -474,12 +474,15 @@
 .quick-action-icon.coral { color: #ff5722; background: #fff0eb; }
 
 .quick-action-label {
-  max-width: 112rpx;
+  max-width: 128rpx;
   color: #5f5650;
   font-size: 22rpx;
   font-weight: 760;
   line-height: 1.25;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pet-beauty-entry {

@@ -49,7 +49,7 @@
   <view class="profile-hero">
     <view class="profile-hero-top">
       <view class="profile-avatar-wrap">
-        <image class="profile-avatar" wx:if="{{avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />
+        <image class="profile-avatar" wx:if="{{!isGuest && avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />
         <view class="profile-avatar empty" wx:else><view class="remix-icon ri-user-3-line"></view></view>
         <view class="avatar-level-badge badge-{{badgeStyle || 'gold'}}" wx:if="{{!isGuest && (badgeTag || memberLevelName)}}">{{badgeTag || memberLevelName}}</view>
       </view>
@@ -94,28 +94,108 @@
 
   <view class="menu-section">
     <view class="menu-section-title">我的服务</view>
-    <view class="menu-item interactive" bindtap="editProfile"><view class="menu-left"><view class="remix-icon ri-user-settings-line menu-icon"></view><view>编辑个人资料</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
-    <view class="menu-item interactive" bindtap="openAddresses"><view class="menu-left"><view class="remix-icon ri-map-pin-2-line menu-icon"></view><view>我的地址</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
-    <view class="menu-item interactive" bindtap="openFavorites"><view class="menu-left"><view class="remix-icon ri-star-line menu-icon"></view><view>我的关注</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
-    <view class="menu-item interactive" bindtap="openIncidents"><view class="menu-left"><view class="remix-icon ri-customer-service-line menu-icon"></view><view>我的投诉 / 售后</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="profile-grid-panel cols-4">
+      <view class="profile-grid-item interactive" bindtap="editProfile">
+        <view class="profile-icon-wrap blue">
+          <view class="remix-icon ri-user-settings-fill"></view>
+        </view>
+        <view class="profile-grid-label">编辑资料</view>
+      </view>
+      <view class="profile-grid-item interactive" bindtap="openAddresses">
+        <view class="profile-icon-wrap green">
+          <view class="remix-icon ri-map-pin-2-fill"></view>
+        </view>
+        <view class="profile-grid-label">我的地址</view>
+      </view>
+      <view class="profile-grid-item interactive" bindtap="openFavorites">
+        <view class="profile-icon-wrap orange">
+          <view class="remix-icon ri-star-fill"></view>
+        </view>
+        <view class="profile-grid-label">我的关注</view>
+      </view>
+      <view class="profile-grid-item interactive" bindtap="openIncidents">
+        <view class="profile-icon-wrap purple">
+          <view class="remix-icon ri-shield-cross-fill"></view>
+        </view>
+        <view class="profile-grid-label">投诉/售后</view>
+      </view>
+    </view>
   </view>
 
   <view class="menu-section">
     <view class="menu-section-title">成长权益</view>
-    <view class="menu-item interactive" bindtap="openCoupons"><view class="menu-left"><view class="remix-icon ri-coupon-3-line menu-icon"></view><view>我的优惠券</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
-    <view class="menu-item interactive" bindtap="openCheckin"><view class="menu-left"><view class="remix-icon ri-calendar-check-line menu-icon"></view><view>签到中心</view></view><view class="menu-right-info" wx:if="{{!isGuest}}">补签卡 {{retroCardCount}}</view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
-    <view class="menu-item interactive" bindtap="openRewardMails"><view class="menu-left"><view class="remix-icon ri-mail-star-line menu-icon"></view><view>奖励邮箱</view></view><view class="menu-right-wrap"><view class="menu-right-info" wx:if="{{!isGuest && rewardMailUnclaimedCount}}">待领 {{rewardMailUnclaimedCount}}</view><view class="menu-dot" wx:if="{{!isGuest && rewardMailUnreadCount}}"></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view></view>
-    <view class="menu-item interactive" bindtap="openPoints"><view class="menu-left"><view class="remix-icon ri-coins-line menu-icon"></view><view>我的积分</view></view><view class="menu-right-info" wx:if="{{!isGuest}}">{{points}} 积分</view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
-    <view class="menu-item interactive" bindtap="openOfficialAccountModal"><view class="menu-left"><view class="remix-icon ri-wechat-line menu-icon"></view><view>关注公众号</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="profile-grid-panel cols-5">
+      <view class="profile-grid-item interactive" bindtap="openCoupons">
+        <view class="profile-icon-wrap orange">
+          <view class="remix-icon ri-coupon-3-fill"></view>
+        </view>
+        <view class="profile-grid-label">我的优惠券</view>
+      </view>
+      <view class="profile-grid-item interactive" bindtap="openCheckin">
+        <view class="profile-icon-wrap green">
+          <view class="remix-icon ri-calendar-check-fill"></view>
+          <view class="profile-badge-pill" wx:if="{{!isGuest && retroCardCount}}">卡{{retroCardCount}}</view>
+        </view>
+        <view class="profile-grid-label">签到中心</view>
+      </view>
+      <view class="profile-grid-item interactive" bindtap="openRewardMails">
+        <view class="profile-icon-wrap coral">
+          <view class="remix-icon ri-mail-star-fill"></view>
+          <view class="profile-badge-pill danger" wx:if="{{!isGuest && rewardMailUnclaimedCount}}">待领{{rewardMailUnclaimedCount}}</view>
+          <view class="profile-badge-dot" wx:elif="{{!isGuest && rewardMailUnreadCount}}"></view>
+        </view>
+        <view class="profile-grid-label">奖励邮箱</view>
+      </view>
+      <view class="profile-grid-item interactive" bindtap="openPoints">
+        <view class="profile-icon-wrap peach">
+          <view class="remix-icon ri-coins-fill"></view>
+          <view class="profile-badge-pill info" wx:if="{{!isGuest && points}}">{{points}}</view>
+        </view>
+        <view class="profile-grid-label">我的积分</view>
+      </view>
+      <view class="profile-grid-item interactive" bindtap="openOfficialAccountModal">
+        <view class="profile-icon-wrap teal">
+          <view class="remix-icon ri-wechat-fill"></view>
+        </view>
+        <view class="profile-grid-label">关注公众号</view>
+      </view>
+    </view>
   </view>
 
   <view class="menu-section">
     <view class="menu-section-title">帮助与设置</view>
-    <view class="menu-item interactive" bindtap="openCustomerService"><view class="menu-left"><view class="remix-icon ri-customer-service-line menu-icon"></view><view>客服中心</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
-    <view class="menu-item interactive" bindtap="openFeedbackModal"><view class="menu-left"><view class="remix-icon ri-feedback-line menu-icon"></view><view>意见反馈</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
-    <view class="menu-item interactive" wx:if="{{isAdmin}}" bindtap="openAdmin"><view class="menu-left"><view class="remix-icon ri-admin-line menu-icon"></view><view>进入管理员端</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
-    <view class="menu-item interactive" bindtap="openSettings"><view class="menu-left"><view class="remix-icon ri-settings-3-line menu-icon"></view><view>设置</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
-    <view class="menu-item interactive" wx:if="{{!isGuest}}" bindtap="logout"><view class="menu-left"><view class="remix-icon ri-logout-box-r-line menu-icon danger"></view><view>退出登录</view></view><view class="menu-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="profile-grid-panel cols-4">
+      <view class="profile-grid-item interactive" bindtap="openCustomerService">
+        <view class="profile-icon-wrap blue">
+          <view class="remix-icon ri-customer-service-2-fill"></view>
+        </view>
+        <view class="profile-grid-label">客服中心</view>
+      </view>
+      <view class="profile-grid-item interactive" bindtap="openFeedbackModal">
+        <view class="profile-icon-wrap purple">
+          <view class="remix-icon ri-feedback-fill"></view>
+        </view>
+        <view class="profile-grid-label">意见反馈</view>
+      </view>
+      <view class="profile-grid-item interactive" wx:if="{{isAdmin}}" bindtap="openAdmin">
+        <view class="profile-icon-wrap orange">
+          <view class="remix-icon ri-shield-keyhole-fill"></view>
+        </view>
+        <view class="profile-grid-label">管理员端</view>
+      </view>
+      <view class="profile-grid-item interactive" bindtap="openSettings">
+        <view class="profile-icon-wrap peach">
+          <view class="remix-icon ri-settings-3-fill"></view>
+        </view>
+        <view class="profile-grid-label">设置</view>
+      </view>
+      <view class="profile-grid-item interactive" wx:if="{{!isGuest}}" bindtap="logout">
+        <view class="profile-icon-wrap red">
+          <view class="remix-icon ri-logout-box-r-fill"></view>
+        </view>
+        <view class="profile-grid-label danger-text">退出登录</view>
+      </view>
+    </view>
   </view>
 
   <view class="modal-backdrop" wx:if="{{showCustomerServiceModal}}" bindtap="closeCustomerServiceModal">
