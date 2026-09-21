@@ -1556,6 +1556,121 @@ function toPublicOrderHomeSecurity(security) {
   return toPublicHomeSecuritySnapshot({ ...security, type, lockMethod: type, lockMethodText: security.lockMethodText || lockMethodText(type) })
 }
 
+/**
+ * 微信官方 UGC 内容安全检测：文本审核
+ * @param {string} openid 用户 openid
+ * @param {string} content 待检测文本内容
+ * @param {object} options scene: 场景值 (1: 资料, 2: 评论, 3: 论坛, 4: 社交日志), label: 业务提示前缀
+ */
+async function checkTextSecurity(openid, content, options = {}) {
+  const text = safeText(content).trim()
+  if (!text) return { pass: true }
+
+  if (!cloud.openapi || !cloud.openapi.security) {
+    return { pass: true }
+  }
+
+  const scene = Number(options.scene) || 2
+  const label = options.label || '提交内容'
+
+  try {
+    if (typeof cloud.openapi.security.msgSecCheck === 'function') {
+      const res = await cloud.openapi.security.msgSecCheck({
+        openid,
+        scene,
+        version: 2,
+        content: text
+      })
+      if (res && res.result && (res.result.suggest === 'risky' || (res.result.suggest === 'review' && options.strict === true))) {
+        throw new Error(`${label}包含敏感或不合规信息，请修改后重试`)
+      }
+      if (res && res.errCode === 87014) {
+        throw new Error(`${label}包含敏感或不合规信息，请修改后重试`)
+      }
+      return { pass: true, result: res && res.result }
+    }
+  } catch (err) {
+    const errMsg = (err && (err.message || err.errMsg)) || String(err)
+    const isRisky = (err && err.errCode === 87014) || errMsg.includes('87014') || errMsg.includes('risky') || errMsg.includes('敏感') || errMsg.includes('不合规') || errMsg.includes('违规')
+    if (isRisky) {
+      throw new Error(`${label}包含敏感或不合规信息，请修改后重试`)
+    }
+    console.warn('[security.msgSecCheck] warning:', errMsg)
+  }
+  return { pass: true }
+}
+
+/**
+ * 微信官方 UGC 内容安全检测：图片审核
+ * @param {string} openid 用户 openid
+ * @param {string} fileIdOrUrl 图片 fileID 或 HTTP URL
+ * @param {object} options scene: 场景值, label: 业务提示前缀
+ */
+async function checkImageSecurity(openid, fileIdOrUrl, options = {}) {
+  const media = safeText(fileIdOrUrl).trim()
+  if (!media) return { pass: true }
+
+  if (!cloud.openapi || !cloud.openapi.security) {
+    return { pass: true }
+  }
+
+  const scene = Number(options.scene) || 1
+  const label = options.label || '上传图片'
+
+  try {
+    // 1. 同步校验 imgSecCheck（优先检测 cloud:// 存储文件）
+    if (typeof cloud.openapi.security.imgSecCheck === 'function' && typeof cloud.downloadFile === 'function') {
+      if (media.startsWith('cloud://')) {
+        const fileRes = await cloud.downloadFile({ fileID: media }).catch(() => null)
+        if (fileRes && fileRes.fileContent) {
+          const res = await cloud.openapi.security.imgSecCheck({
+            media: {
+              contentType: 'image/jpeg',
+              value: fileRes.fileContent
+            }
+          })
+          if (res && (res.errCode === 87014 || (res.result && res.result.suggest === 'risky'))) {
+            throw new Error(`${label}包含违规敏感内容，请重新上传`)
+          }
+          return { pass: true }
+        }
+      }
+    }
+
+    // 2. 异步校验 mediaCheckAsync
+    if (typeof cloud.openapi.security.mediaCheckAsync === 'function') {
+      let mediaUrl = media
+      if (media.startsWith('cloud://') && typeof cloud.getTempFileURL === 'function') {
+        const tempRes = await cloud.getTempFileURL({ fileList: [media] }).catch(() => null)
+        const item = tempRes && tempRes.fileList && tempRes.fileList[0]
+        if (item && item.tempFileURL) mediaUrl = item.tempFileURL
+      }
+
+      if (mediaUrl.startsWith('http')) {
+        const res = await cloud.openapi.security.mediaCheckAsync({
+          mediaUrl,
+          mediaType: 2,
+          version: 2,
+          scene,
+          openid
+        })
+        if (res && res.errCode === 87014) {
+          throw new Error(`${label}包含违规敏感内容，请重新上传`)
+        }
+        return { pass: true, traceId: res && res.traceId }
+      }
+    }
+  } catch (err) {
+    const errMsg = (err && (err.message || err.errMsg)) || String(err)
+    const isRisky = (err && err.errCode === 87014) || errMsg.includes('87014') || errMsg.includes('risky') || errMsg.includes('敏感') || errMsg.includes('违规')
+    if (isRisky) {
+      throw new Error(`${label}包含违规敏感内容，请重新上传`)
+    }
+    console.warn('[security.mediaCheck] warning:', errMsg)
+  }
+  return { pass: true }
+}
+
 function maskOrderClientContact(order) {
   if (!order) return order
   const maskedPhone = mask(order.contactPhone || (order.clientSnapshot && (order.clientSnapshot.contactPhone || order.clientSnapshot.phone))) || '受隐私保护'
@@ -4748,6 +4863,9 @@ async function appendIncidentComment(incidentId, actorRole, actorOpenid, content
   const text = safeText(content).trim()
   const files = Array.isArray(mediaFileIds) ? mediaFileIds.filter(Boolean).slice(0, 9) : []
   if (!text && !files.length) throw new Error('请填写留言或上传证据')
+  if (text) {
+    await checkTextSecurity(actorOpenid, text, { scene: 2, label: '留言内容' })
+  }
   const time = now()
   const comment = { incidentId, actorRole, actorOpenid, content: text, mediaFileIds: files, createdAt: time }
   const created = await db.collection('incident_comments').add({ data: comment })
@@ -5791,6 +5909,12 @@ const handlers = {
       const settings = await getSystemSettings()
       return settings.customerService || {}
     }
+    if (action === 'checkTextSecurity') {
+      return checkTextSecurity(openid, data.content, data.options || {})
+    }
+    if (action === 'checkImageSecurity') {
+      return checkImageSecurity(openid, data.fileId || data.mediaUrl, data.options || {})
+    }
     if (action === 'submitFeedback') {
       const user = await getUser(openid)
       const content = safeText(data.content).trim()
@@ -5798,6 +5922,7 @@ const handlers = {
       const contactInfo = safeText(data.contactInfo).trim()
       if (!content) throw new Error('请输入反馈内容')
       if (content.length > 2000) throw new Error('反馈内容不超过 2000 字')
+      await checkTextSecurity(openid, content, { scene: 2, label: '反馈内容' })
       const time = now()
       const feedback = {
         openid,
@@ -5953,9 +6078,16 @@ const handlers = {
       const oldPhone = safeText(user.phone).trim()
       const nickname = safeText(data.nickname).trim()
       if (!nickname) throw new Error('昵称不能为空')
+      if (nickname !== user.nickname) {
+        await checkTextSecurity(openid, nickname, { scene: 1, label: '用户昵称' })
+      }
+      const avatarUrl = safeFileId(data.avatarUrl) || safeText(data.avatarUrl)
+      if (avatarUrl && avatarUrl !== user.avatarUrl) {
+        await checkImageSecurity(openid, avatarUrl, { scene: 1, label: '用户头像' })
+      }
       const payload = {
         nickname,
-        avatarUrl: safeFileId(data.avatarUrl) || safeText(data.avatarUrl),
+        avatarUrl,
         phone: data.phone !== undefined ? safeText(data.phone).trim() : oldPhone,
         updatedAt: now()
       }
@@ -6156,6 +6288,13 @@ const handlers = {
     if (action === 'createPet') {
       if (!data.name) throw new Error('宠物名称不能为空')
       if (!safeFileId(data.avatarFileId) && !safeText(data.avatarFileId)) throw new Error('请上传至少一张宠物照片')
+      const petText = [data.name, data.breed, data.personality, data.specialNotes, data.favoriteFood, data.dislikes, data.healthNotes, data.aiGreeting, data.aiPersona].filter(Boolean).join(' ')
+      if (petText) {
+        await checkTextSecurity(openid, petText, { scene: 1, label: '宠物资料' })
+      }
+      if (data.avatarFileId) {
+        await checkImageSecurity(openid, data.avatarFileId, { scene: 1, label: '宠物头像' })
+      }
       const time = nowText()
       const beautyPhotos = normalizeBeautyPhotos(data.beautyPhotos, data.avatarFileId)
       const avatarFileId = safeFileId(data.avatarFileId) || safeText(data.avatarFileId) || beautyPhotos[0].fileId
@@ -6190,6 +6329,13 @@ const handlers = {
       const existing = await db.collection('pets').doc(data.id).get()
       if (existing.data.openid !== openid) throw new Error('无权访问')
       if (!safeFileId(data.avatarFileId) && !safeText(data.avatarFileId)) throw new Error('请上传至少一张宠物照片')
+      const petText = [data.name, data.breed, data.personality, data.specialNotes, data.favoriteFood, data.dislikes, data.healthNotes, data.aiGreeting, data.aiPersona].filter(Boolean).join(' ')
+      if (petText) {
+        await checkTextSecurity(openid, petText, { scene: 1, label: '宠物资料' })
+      }
+      if (data.avatarFileId && data.avatarFileId !== existing.data.avatarFileId) {
+        await checkImageSecurity(openid, data.avatarFileId, { scene: 1, label: '宠物头像' })
+      }
       const exclusiveId = existing.data.exclusiveId || await generatePetExclusiveId()
       const beautyPhotos = normalizeBeautyPhotos(data.beautyPhotos, data.avatarFileId)
       const existingPhotos = Array.isArray(existing.data.beautyPhotos) && existing.data.beautyPhotos.length ? existing.data.beautyPhotos : normalizeBeautyPhotos([], existing.data.avatarFileId)
@@ -6317,10 +6463,14 @@ const handlers = {
         .map((item, index) => normalizeBeautyPhoto({ fileId: item.mediaFileId, source: 'service_checkin', orderId, checkinId: item._id, createdAt: item.recordedAt || item.createdAt }, index))
         .filter(Boolean)
       const seen = new Set(currentPhotos.map((photo) => photo.fileId))
-      const additions = imported.filter((photo) => !seen.has(photo.fileId))
       const maxAllowed = Math.max(0, 9 - currentPhotos.length)
       if (maxAllowed <= 0) throw new Error('宠物美照已满9张，请先在每月1日删除后再导入')
       const allowedAdditions = additions.slice(0, maxAllowed)
+      for (const item of allowedAdditions) {
+        if (item.fileId) {
+          await checkImageSecurity(openid, item.fileId, { scene: 3, label: '美照' })
+        }
+      }
       const beautyPhotos = currentPhotos.concat(allowedAdditions)
       await db.collection('pets').doc(petId).update({ data: { beautyPhotos, avatarFileId: pet.avatarFileId || beautyPhotos[0].fileId, updatedAt: nowText() } })
       return { petId, importedCount: allowedAdditions.length, beautyPhotos }
@@ -6765,6 +6915,12 @@ const handlers = {
       const existing = await db.collection('service_reviews').where({ orderId: data.orderId }).limit(1).get()
       if (existing.data[0]) throw new Error('该订单已评价')
       const rating = Math.min(Math.max(Number(data.rating || 5), 1), 5)
+      const tags = Array.isArray(data.tags) ? data.tags.slice(0, 8) : []
+      const content = String(data.content || '').trim()
+      const reviewText = [content, ...tags].filter(Boolean).join(' ')
+      if (reviewText) {
+        await checkTextSecurity(openid, reviewText, { scene: 2, label: '评价内容' })
+      }
       const time = now()
       const enrichedUser = await enrichUserMemberLevel(user)
       const review = {
@@ -6782,8 +6938,8 @@ const handlers = {
         staffOpenid: order.staffOpenid || '',
         staffProfileId: order.staffProfileId || '',
         rating,
-        tags: Array.isArray(data.tags) ? data.tags.slice(0, 8) : [],
-        content: String(data.content || '').trim(),
+        tags,
+        content,
         status: 'visible',
         createdAt: time,
         updatedAt: time
@@ -8291,6 +8447,11 @@ const handlers = {
       if (!idCardFrontFileId || !idCardBackFileId) throw new Error('请上传身份证正反面照片')
       if (!facePhotoFileId) throw new Error('请上传自拍/人脸照片')
 
+      const staffText = [realName, serviceCity, serviceAreas, serviceAddress, data.bio, data.intro, data.experience].filter(Boolean).join(' ')
+      if (staffText) {
+        await checkTextSecurity(openid, staffText, { scene: 1, label: '认证资料' })
+      }
+
       const time = now()
       const identitySummary = {
         idCardFrontFileId,
@@ -9262,6 +9423,9 @@ const handlers = {
       if (!data.eventType) throw new Error('请选择打卡类型')
       if (!CHECKIN_EVENT_TYPES.has(data.eventType)) throw new Error('打卡类型无效')
       if (!data.mediaFileId) throw new Error('请先上传打卡照片')
+      if (data.eventType === 'pet_beauty_photo') {
+        await checkImageSecurity(openid, data.mediaFileId, { scene: 3, label: '美照' })
+      }
       const clientRequestId = safeText(data.clientRequestId).trim()
       if (clientRequestId) {
         const existing = await db.collection('checkin_logs').where({ orderId: data.orderId, clientRequestId }).limit(1).get()

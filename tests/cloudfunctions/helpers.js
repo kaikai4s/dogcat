@@ -111,12 +111,15 @@ function loadCloudFunction(functionName, db, openid = 'openid_test', cloudOverri
         getTempFileURL: cloudOverrides.getTempFileURL,
         ai: cloudOverrides.ai,
         extend: cloudOverrides.extend,
+        downloadFile: cloudOverrides.downloadFile,
         openapi: {
           phonenumber: {
             async getPhoneNumber() {
               return { phoneInfo: { phoneNumber: '19900006302', purePhoneNumber: '19900006302' } }
             }
-          }
+          },
+          security: (cloudOverrides.openapi && cloudOverrides.openapi.security) || cloudOverrides.security,
+          ...cloudOverrides.openapi
         }
       }
     }
