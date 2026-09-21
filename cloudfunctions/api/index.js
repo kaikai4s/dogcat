@@ -1962,6 +1962,44 @@ async function expireDueUnacceptedOrders() {
   await Promise.all((res.data || []).map((order) => expireUnacceptedOrder(order._id, order, time)))
 }
 
+async function cancelUnpaidOrders() {
+  const res = await db.collection('orders').where({ status: ORDER_STATUS.PENDING_PAY }).get()
+  const time = now()
+  const timeoutMinutes = 30
+  const timeoutMs = timeoutMinutes * 60 * 1000
+  const cancelledOrders = []
+
+  for (const order of res.data || []) {
+    const createdAt = toTimeValue(order.createdAt)
+    if (createdAt > 0 && time.getTime() - createdAt > timeoutMs) {
+      const update = {
+        status: 'cancelled',
+        cancelReason: `超过${timeoutMinutes}分钟未支付，系统自动取消`,
+        cancelledAt: time,
+        updatedAt: time
+      }
+      await db.collection('orders').doc(order._id).update({ data: update })
+
+      if (order.couponId) {
+        await db.collection('user_coupons').doc(order.couponId).update({
+          data: {
+            status: 'available',
+            lockedOrderId: '',
+            lockedAt: '',
+            unlockedAt: time,
+            updatedAt: time
+          }
+        })
+      }
+
+      await appendOrderTimeline(order._id, 'cancelled', '订单已取消', update.cancelReason, 'system')
+      cancelledOrders.push(order._id)
+    }
+  }
+
+  return cancelledOrders
+}
+
 function checkinEventText(eventType) {
   return ({
     sanitization: '隔离病菌/消毒打卡',
@@ -2309,8 +2347,8 @@ async function settlePetBeautyMonthlyRanking(monthKey = toCstParts().monthKey, o
   monthKey = normalizeMonthKey(monthKey)
   if (!options.force && await isPetBeautyMonthLocked(monthKey)) return { monthKey, locked: true, skipped: true }
   const voteMap = await countPetBeautyVotes(monthKey)
-  const petsRes = await db.collection('pets').get()
-  const ranked = (petsRes.data || [])
+  const allPets = await getAllDocuments('pets', 'createdAt', 'desc')
+  const ranked = allPets
     .filter((pet) => Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length)
     .map((pet) => ({ pet, voteCount: Number(voteMap[pet._id] || 0) }))
     .filter((item) => item.voteCount > 0)
@@ -4740,6 +4778,36 @@ function buildDateRange(data = {}) {
   const start = startText ? parseDateValue(`${startText} 00:00:00`) : null
   const end = endText ? parseDateValue(`${endText} 23:59:59`) : null
   return { start, end, startDate: startText, endDate: endText }
+}
+
+async function getAllDocuments(collectionName, orderByField = 'createdAt', orderDirection = 'desc') {
+  const limit = 100
+  let allData = []
+  let hasMore = true
+  let lastDoc = null
+
+  while (hasMore) {
+    let query = db.collection(collectionName)
+    if (orderByField) {
+      query = query.orderBy(orderByField, orderDirection)
+    }
+    query = query.limit(limit)
+    if (lastDoc) {
+      query = query.startAfter(lastDoc[orderByField])
+    }
+
+    const res = await query.get()
+    const data = res.data || []
+    allData = allData.concat(data)
+
+    if (data.length < limit) {
+      hasMore = false
+    } else {
+      lastDoc = data[data.length - 1]
+    }
+  }
+
+  return allData
 }
 
 function inDateRange(item, range, fields = ['createdAt']) {
@@ -8183,7 +8251,31 @@ const handlers = {
         updatedAt: time
       }
       const created = await db.collection('withdraw_requests').add({ data: request })
-      await Promise.all(selected.map((earning) => db.collection('staff_earnings').doc(earning._id).update({ data: { status: 'withdrawing', withdrawRequestId: created._id, updatedAt: time } })))
+
+      const updateResults = await Promise.all(selected.map(async (earning) => {
+        try {
+          const updateRes = await db.collection('staff_earnings').where({
+            _id: earning._id,
+            status: 'available'
+          }).update({
+            data: {
+              status: 'withdrawing',
+              withdrawRequestId: created._id,
+              updatedAt: time
+            }
+          })
+          return { earningId: earning._id, success: updateRes.stats.updated > 0 }
+        } catch (error) {
+          return { earningId: earning._id, success: false, error: error.message }
+        }
+      }))
+
+      const failedUpdates = updateResults.filter(r => !r.success)
+      if (failedUpdates.length > 0) {
+        await db.collection('withdraw_requests').doc(created._id).remove()
+        throw new Error('提现请求失败：部分收益记录已被其他操作占用，请刷新后重试')
+      }
+
       await appendFinanceLog('withdraw_requested', { targetType: 'withdraw_request', targetId: created._id, staffOpenid: openid, amountDelta: -request.amount, detail: { earningIds: request.earningIds } })
       return { _id: created._id, ...request }
     }
@@ -9659,14 +9751,14 @@ const handlers = {
       await refreshStaffEarnings()
       const range = buildDateRange(data)
       const [orders, payments, refunds, earnings, withdraws, logs] = await Promise.all([
-        db.collection('orders').get(),
-        db.collection('payments').get(),
-        db.collection('refunds').get(),
-        db.collection('staff_earnings').get(),
-        db.collection('withdraw_requests').get(),
-        db.collection('finance_logs').get()
+        getAllDocuments('orders', 'createdAt', 'desc'),
+        getAllDocuments('payments', 'createdAt', 'desc'),
+        getAllDocuments('refunds', 'createdAt', 'desc'),
+        getAllDocuments('staff_earnings', 'createdAt', 'desc'),
+        getAllDocuments('withdraw_requests', 'createdAt', 'desc'),
+        getAllDocuments('finance_logs', 'createdAt', 'desc')
       ])
-      return buildFinanceDashboardData({ orders: orders.data || [], payments: payments.data || [], refunds: refunds.data || [], earnings: earnings.data || [], withdraws: withdraws.data || [], logs: logs.data || [] }, range)
+      return buildFinanceDashboardData({ orders, payments, refunds, earnings, withdraws, logs }, range)
     }
     if (action === 'listFinanceLogs') {
       const range = buildDateRange(data)
@@ -11375,6 +11467,7 @@ function isWechatPayHttpCallback(event = {}) {
 exports.main = async (event = {}) => {
   try {
     if (event.Type === 'Timer') {
+      await cancelUnpaidOrders()
       await expireDueUnacceptedOrders()
       const upcomingReminders = await sendUpcomingServiceRemindersToStaff()
       const overdueUnstarted = await processOverdueUnstartedOrders()
