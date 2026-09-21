@@ -1,4 +1,5 @@
 module.exports = function createService({
+  recordStaffDepositPayment,
   ORDER_STATUS,
   amountYuanToFen,
   appendFinanceLog,
@@ -170,68 +171,7 @@ module.exports = function createService({
   }
 
   async function markStaffDepositPaid(depositId, paymentPayload = {}) {
-    const deposit = (await db.collection('staff_deposits').doc(depositId).get()).data
-    if (!deposit) throw new Error('保证金记录不存在')
-    if (deposit.status === 'paid') return { depositId, status: 'paid' }
-    const time = now()
-    const paymentNo = paymentPayload.paymentNo || createPaymentNo()
-    const amount = Number(deposit.amount || 0)
-    await db.collection('staff_deposits').doc(depositId).update({
-      data: {
-        paidAmount: amount,
-        availableRefundAmount: amount,
-        status: 'paid',
-        statusText: '已缴纳',
-        paymentNo,
-        wxTransactionId: paymentPayload.wxTransactionId || '',
-        paidAt: time,
-        updatedAt: time
-      }
-    })
-    const profileRes = await db.collection('staff_profiles').where({ openid: deposit.staffOpenid }).limit(1).get()
-    if (profileRes.data && profileRes.data[0]) {
-      await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
-        data: {
-          depositStatus: 'paid',
-          depositRequired: true,
-          updatedAt: time
-        }
-      })
-    }
-    await db.collection('staff_deposit_events').add({
-      data: {
-        depositId,
-        staffOpenid: deposit.staffOpenid,
-        staffUserId: deposit.staffUserId,
-        type: 'pay',
-        amount,
-        reason: '缴纳宠托师入驻保证金',
-        operatorOpenid: deposit.staffOpenid,
-        operatorRole: 'staff',
-        createdAt: time
-      }
-    })
-    await appendFinanceLog('deposit_paid', {
-      targetType: 'staff_deposit',
-      targetId: depositId,
-      staffOpenid: deposit.staffOpenid,
-      amountDelta: amount,
-      detail: { amount, paymentNo, channel: paymentPayload.channel || 'mock' }
-    })
-    const existingPayment = (await db.collection('payments').where({ orderId: depositId, targetType: 'staff_deposit' }).limit(1).get()).data[0]
-    if (existingPayment) {
-      await db.collection('payments').doc(existingPayment._id).update({
-        data: {
-          status: 'success',
-          channel: paymentPayload.channel || existingPayment.channel || 'mock',
-          wxTransactionId: paymentPayload.wxTransactionId || existingPayment.wxTransactionId || '',
-          rawCallback: paymentPayload.rawCallback || {},
-          paidAt: time,
-          updatedAt: time
-        }
-      })
-    }
-    return { depositId, status: 'paid', paymentNo }
+    return recordStaffDepositPayment(depositId, { ...paymentPayload, paymentNo: paymentPayload.paymentNo || createPaymentNo() })
   }
 
   async function createRefundForOrder(order, refundAmount, reason, source, operatorOpenid, clientRequestId = '', options = {}) {

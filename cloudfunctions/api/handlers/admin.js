@@ -4,7 +4,6 @@ module.exports = function createHandler(context) {
     RETIRED_SERVICE_KEYS,
     VISIT_FEE_SERVICE_KEY,
     addPoints,
-    appendFinanceLog,
     appendOrderClientMessage,
     appendOrderTimeline,
     assertAdminRoleChangeAllowed,
@@ -72,6 +71,8 @@ module.exports = function createHandler(context) {
     resolveUserMemberLevel,
     safeText,
     settleWithdrawal,
+    settleStaffDeposit,
+    settleSupplyReimbursement,
     safeUserSummary,
     saveSystemSettings,
     sendSubscribeMessage,
@@ -1237,130 +1238,13 @@ module.exports = function createHandler(context) {
       return limitList(list, data.pageSize || 50)
     }
     if (action === 'auditDepositRefund') {
-      const deposit = (await db.collection('staff_deposits').doc(data.id).get()).data
-      if (!deposit) throw new Error('保证金记录不存在')
-      if (deposit.refundStatus !== 'requested') throw new Error('当前状态不可审核退款')
-      const approved = data.approved === true
-      const reason = safeText(data.reason || data.auditRemark).trim()
-      const time = now()
-      if (approved) {
-        const activeOrders = await db.collection('orders').where({ staffOpenid: deposit.staffOpenid }).get()
-        const hasUnfinished = (activeOrders.data || []).some((o) => ['assigned', 'in_service'].includes(o.status))
-        if (hasUnfinished) throw new Error('该宠托师尚有未完成订单，暂不可通过退出退款')
-        const incidents = await db.collection('order_incidents').where({ staffOpenid: deposit.staffOpenid }).get()
-        const hasUnresolvedIncidents = (incidents.data || []).some((inc) => ['open', 'investigating', 'processing'].includes(inc.status))
-        if (hasUnresolvedIncidents) throw new Error('该宠托师存在尚未结案的客诉或纠纷，暂不可通过退出退款')
-        const refundAmount = Number(deposit.availableRefundAmount || 0)
-        await db.collection('staff_deposits').doc(data.id).update({
-          data: {
-            refundedAmount: (deposit.refundedAmount || 0) + refundAmount,
-            availableRefundAmount: 0,
-            status: 'refunded',
-            statusText: '已全额退还',
-            refundStatus: 'approved',
-            refundAuditedAt: time,
-            refundAuditedBy: openid,
-            refundAuditRemark: reason || '审核通过退款',
-            updatedAt: time
-          }
-        })
-        const profileRes = await db.collection('staff_profiles').where({ openid: deposit.staffOpenid }).limit(1).get()
-        if (profileRes.data && profileRes.data[0]) {
-          await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
-            data: {
-              exitStatus: 'exited',
-              depositStatus: 'refunded',
-              auditStatus: 'revoked',
-              updatedAt: time
-            }
-          })
-        }
-        await db.collection('staff_deposit_events').add({
-          data: {
-            depositId: data.id,
-            staffOpenid: deposit.staffOpenid,
-            staffUserId: deposit.staffUserId,
-            type: 'refund',
-            amount: refundAmount,
-            reason: reason || '宠托师自愿退出全额退还保证金',
-            operatorOpenid: openid,
-            operatorRole: 'admin',
-            createdAt: time
-          }
-        })
-        await appendFinanceLog('deposit_refunded', { targetType: 'staff_deposit', targetId: data.id, staffOpenid: deposit.staffOpenid, amountDelta: -refundAmount, detail: { reason } })
-        await logAdmin(admin, 'staff_deposit', data.id, 'auditDepositRefund', { approved: true, refundAmount })
-        return { id: data.id, status: 'refunded' }
-      } else {
-        await db.collection('staff_deposits').doc(data.id).update({
-          data: {
-            status: 'paid',
-            statusText: '已缴纳',
-            refundStatus: 'rejected',
-            refundRejectReason: reason || '退款申请已驳回',
-            refundAuditedAt: time,
-            refundAuditedBy: openid,
-            updatedAt: time
-          }
-        })
-        const profileRes = await db.collection('staff_profiles').where({ openid: deposit.staffOpenid }).limit(1).get()
-        if (profileRes.data && profileRes.data[0]) {
-          await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
-            data: {
-              exitStatus: 'none',
-              depositStatus: 'paid',
-              updatedAt: time
-            }
-          })
-        }
-        await logAdmin(admin, 'staff_deposit', data.id, 'auditDepositRefund', { approved: false, reason })
-        return { id: data.id, status: 'paid', refundStatus: 'rejected' }
-      }
+      return settleStaffDeposit({ ...admin, openid }, action, data)
+    }
+    if (action === 'confirmDepositRefund') {
+      return settleStaffDeposit({ ...admin, openid }, action, data)
     }
     if (action === 'forfeitStaffDeposit') {
-      const deposit = (await db.collection('staff_deposits').doc(data.id).get()).data
-      if (!deposit) throw new Error('保证金记录不存在')
-      const amount = Number(data.amount)
-      if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) {
-        throw new Error('请输入有效的没收金额，最多两位小数')
-      }
-      const available = Number(deposit.availableRefundAmount || 0)
-      if (amount > available) throw new Error(`没收金额不能大于当前可用保证金余额 ¥${available}`)
-      const reason = safeText(data.reason).trim()
-      if (!reason) throw new Error('请填写没收保证金的违规原因（如私单、严重服务违规、虚假打卡等）')
-      const time = now()
-      const newForfeited = (deposit.forfeitedAmount || 0) + amount
-      const newAvailable = available - amount
-      const newStatus = newAvailable <= 0 ? 'forfeited' : deposit.status
-      const newStatusText = newAvailable <= 0 ? '已全额没收' : `部分没收（余¥${newAvailable}）`
-      await db.collection('staff_deposits').doc(data.id).update({
-        data: {
-          forfeitedAmount: newForfeited,
-          availableRefundAmount: newAvailable,
-          status: newStatus,
-          statusText: newStatusText,
-          lastForfeitReason: reason,
-          lastForfeitedAt: time,
-          lastForfeitedBy: openid,
-          updatedAt: time
-        }
-      })
-      await db.collection('staff_deposit_events').add({
-        data: {
-          depositId: data.id,
-          staffOpenid: deposit.staffOpenid,
-          staffUserId: deposit.staffUserId,
-          type: 'forfeit',
-          amount,
-          reason,
-          operatorOpenid: openid,
-          operatorRole: 'admin',
-          createdAt: time
-        }
-      })
-      await appendFinanceLog('deposit_forfeited', { targetType: 'staff_deposit', targetId: data.id, staffOpenid: deposit.staffOpenid, amountDelta: 0, detail: { forfeitAmount: amount, reason } })
-      await logAdmin(admin, 'staff_deposit', data.id, 'forfeitStaffDeposit', { amount, reason })
-      return { id: data.id, status: newStatus, availableRefundAmount: newAvailable }
+      return settleStaffDeposit({ ...admin, openid }, action, data)
     }
     if (action === 'listSupplyReimbursements') {
       const range = buildDateRange(data)
@@ -1386,93 +1270,10 @@ module.exports = function createHandler(context) {
       return limitList(list, data.pageSize || 50)
     }
     if (action === 'auditSupplyReimbursement') {
-      const app = (await db.collection('staff_supply_reimbursements').doc(data.id).get()).data
-      if (!app) throw new Error('报销申请不存在')
-      if (app.status !== 'pending') throw new Error('当前状态不可审核')
-      const approved = data.approved === true
-      const reason = safeText(data.rejectReason || data.reason || data.auditRemark).trim()
-      const time = now()
-      if (approved) {
-        let approvedAmount = Number(data.approvedAmount !== undefined && data.approvedAmount !== null ? data.approvedAmount : app.amount)
-        if (!Number.isFinite(approvedAmount) || approvedAmount <= 0) approvedAmount = Number(app.amount)
-        if (approvedAmount > Number(app.amount)) {
-          throw new Error('审批报销金额不能大于宠托师申请金额')
-        }
-        await db.collection('staff_supply_reimbursements').doc(data.id).update({
-          data: {
-            approvedAmount,
-            status: 'approved',
-            statusText: '审核通过，等待打款',
-            auditedAt: time,
-            auditedBy: openid,
-            auditRemark: reason || '审核通过',
-            updatedAt: time
-          }
-        })
-        const profileRes = await db.collection('staff_profiles').where({ openid: app.staffOpenid }).limit(1).get()
-        if (profileRes.data && profileRes.data[0]) {
-          await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
-            data: {
-              supplyReimbursementStatus: 'approved',
-              updatedAt: time
-            }
-          })
-        }
-        await logAdmin(admin, 'staff_supply_reimbursement', data.id, 'auditSupplyReimbursement', { approved: true, approvedAmount })
-        return { id: data.id, status: 'approved', approvedAmount }
-      } else {
-        if (!reason) throw new Error('请填写驳回原因')
-        await db.collection('staff_supply_reimbursements').doc(data.id).update({
-          data: {
-            status: 'rejected',
-            statusText: '审核驳回',
-            rejectReason: reason,
-            auditedAt: time,
-            auditedBy: openid,
-            updatedAt: time
-          }
-        })
-        const profileRes = await db.collection('staff_profiles').where({ openid: app.staffOpenid }).limit(1).get()
-        if (profileRes.data && profileRes.data[0]) {
-          await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
-            data: {
-              supplyReimbursementStatus: 'rejected',
-              updatedAt: time
-            }
-          })
-        }
-        await logAdmin(admin, 'staff_supply_reimbursement', data.id, 'auditSupplyReimbursement', { approved: false, reason })
-        return { id: data.id, status: 'rejected' }
-      }
+      return settleSupplyReimbursement({ ...admin, openid }, action, data)
     }
     if (action === 'paySupplyReimbursement') {
-      const app = (await db.collection('staff_supply_reimbursements').doc(data.id).get()).data
-      if (!app) throw new Error('报销申请不存在')
-      if (app.status !== 'approved') throw new Error('仅审核通过的报销可进行打款')
-      const time = now()
-      const payAmount = Number(app.approvedAmount || app.amount || 0)
-      await db.collection('staff_supply_reimbursements').doc(data.id).update({
-        data: {
-          status: 'paid',
-          statusText: '已打款',
-          transferStatus: 'SUCCESS',
-          paidAt: time,
-          paidBy: openid,
-          updatedAt: time
-        }
-      })
-      const profileRes = await db.collection('staff_profiles').where({ openid: app.staffOpenid }).limit(1).get()
-      if (profileRes.data && profileRes.data[0]) {
-        await db.collection('staff_profiles').doc(profileRes.data[0]._id).update({
-          data: {
-            supplyReimbursementStatus: 'paid',
-            updatedAt: time
-          }
-        })
-      }
-      await appendFinanceLog('supply_reimbursement_paid', { targetType: 'staff_supply_reimbursement', targetId: data.id, staffOpenid: app.staffOpenid, amountDelta: -payAmount, detail: { payAmount } })
-      await logAdmin(admin, 'staff_supply_reimbursement', data.id, 'paySupplyReimbursement', { payAmount })
-      return { id: data.id, status: 'paid' }
+      return settleSupplyReimbursement({ ...admin, openid }, action, data)
     }
     throw new Error('未知 admin 操作')
   }

@@ -100,7 +100,12 @@ test('staff deposit: status, payment agreement requirement, pay, refund request 
 
   const auditResult = await adminFn.main({ module: 'admin', action: 'auditDepositRefund', data: { id: adminDeposits.data[0]._id, approved: true, reason: '确认退出全额退还' } })
   assert.equal(auditResult.ok, true)
-  assert.equal(auditResult.data.status, 'refunded')
+  assert.equal(auditResult.data.status, 'refund_approved')
+  assert.equal(db.state.staff_deposits[0].refundedAmount, 0)
+  const confirmed = await adminFn.main({ module: 'admin', action: 'confirmDepositRefund', data: {
+    id: adminDeposits.data[0]._id, paymentConfirmed: true, paymentReference: 'bank-refund-001'
+  } })
+  assert.equal(confirmed.ok, true)
 
   const statusAfterRefund = await staffFn.main({ module: 'staff', action: 'getDepositStatus' })
   assert.equal(statusAfterRefund.data.deposit.status, 'refunded')
@@ -128,7 +133,7 @@ test('staff deposit: admin forfeit deposit for non-compliant violations', async 
   assert.equal(forfeitExceed.ok, false)
 
   // Forfeit 200 for private order violation
-  const forfeitResult = await adminFn.main({ module: 'admin', action: 'forfeitStaffDeposit', data: { id: depositId, amount: 200, reason: '发现存在私下交易违规行为，依规没收部分保证金' } })
+  const forfeitResult = await adminFn.main({ module: 'admin', action: 'forfeitStaffDeposit', data: { id: depositId, amount: 200, reason: '发现存在私下交易违规行为，依规没收部分保证金', clientRequestId: 'forfeit-1' } })
   assert.equal(forfeitResult.ok, true)
   assert.equal(forfeitResult.data.availableRefundAmount, 300)
 
@@ -176,7 +181,7 @@ test('staff supplies reimbursement: intern rejected, certified accepted once onl
   assert.equal(auditRes.ok, true)
   assert.equal(auditRes.data.status, 'approved')
 
-  const payRes = await adminFn.main({ module: 'admin', action: 'paySupplyReimbursement', data: { id: adminList.data[0]._id } })
+  const payRes = await adminFn.main({ module: 'admin', action: 'paySupplyReimbursement', data: { id: adminList.data[0]._id, paymentConfirmed: true, paymentReference: 'bank-supply-001' } })
   assert.equal(payRes.ok, true)
   assert.equal(payRes.data.status, 'paid')
 

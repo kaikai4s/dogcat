@@ -7,7 +7,9 @@ const depositStatusText = {
   unpaid: '待缴纳',
   paid: '已缴纳',
   partially_refunded: '部分退款',
-  refunded: '已全额退款',
+  refund_requested: '退款审核中',
+  refund_approved: '审核通过，待实际退款',
+  refunded: '已退款',
   forfeited: '已没收'
 }
 
@@ -17,6 +19,7 @@ const depositRefundStatusText = {
   approved: '退款已同意',
   rejected: '退款已驳回',
   refunded: '已退款',
+  success: '已退款',
   failed: '退款失败'
 }
 

@@ -1,5 +1,7 @@
 module.exports = function createHandler(context) {
   const {
+    requestStaffDepositRefund,
+    submitStaffSupplyOnce,
     DEFAULT_STAFF_TRAINING_QUIZ,
     ORDER_STATUS,
     amountYuanToFen,
@@ -866,7 +868,7 @@ module.exports = function createHandler(context) {
       const clientRequestId = getClientRequestId(data)
       let depositRes = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
       let deposit = depositRes.data && depositRes.data[0]
-      if (deposit && deposit.status === 'paid') throw new Error('您已缴纳保证金，无需重复缴纳')
+      if (deposit && deposit.status !== 'unpaid') throw new Error('您已缴纳保证金或记录正在处理中，无需重复缴纳')
       const time = now()
       const amount = Number(config.amount)
       if (!deposit) {
@@ -966,53 +968,10 @@ module.exports = function createHandler(context) {
     if (action === 'requestDepositRefund') {
       const reason = safeText(data.reason).trim()
       if (!reason) throw new Error('请填写自愿退出及退款原因')
-      const user = await getUser(openid)
-      const profile = await getStaffProfileByOpenid(openid)
-      if (!profile) throw new Error('宠托师资料不存在')
-      const depositRes = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
-      const deposit = depositRes.data && depositRes.data[0]
-      if (!deposit || !['paid', 'partially_refunded'].includes(deposit.status) || (deposit.availableRefundAmount || 0) <= 0) {
-        throw new Error('暂无可退还保证金')
-      }
-      if (deposit.refundStatus === 'requested') throw new Error('已有待审核的退出退款申请')
-      const activeOrders = await db.collection('orders').where({ staffOpenid: openid }).get()
-      const hasUnfinished = (activeOrders.data || []).some((o) => ['assigned', 'in_service'].includes(o.status))
-      if (hasUnfinished) throw new Error('尚有进行中的服务订单，请完成所有订单履约后再申请退出')
-      const incidents = await db.collection('order_incidents').where({ staffOpenid: openid }).get()
-      const hasUnresolvedIncidents = (incidents.data || []).some((inc) => ['open', 'investigating', 'processing'].includes(inc.status))
-      if (hasUnresolvedIncidents) throw new Error('存在尚未处理完毕的订单客诉或纠纷，请待纠纷结案后再申请退还保证金')
-      const time = now()
-      await db.collection('staff_deposits').doc(deposit._id).update({
-        data: {
-          status: 'refund_requested',
-          statusText: '退款审核中',
-          refundStatus: 'requested',
-          refundReason: reason,
-          refundRequestedAt: time,
-          updatedAt: time
-        }
-      })
-      await db.collection('staff_profiles').doc(profile._id).update({
-        data: {
-          exitStatus: 'requested',
-          depositStatus: 'refund_requested',
-          updatedAt: time
-        }
-      })
-      await db.collection('staff_deposit_events').add({
-        data: {
-          depositId: deposit._id,
-          staffOpenid: openid,
-          staffUserId: user._id,
-          type: 'refund_request',
-          amount: deposit.availableRefundAmount,
-          reason,
-          operatorOpenid: openid,
-          operatorRole: 'staff',
-          createdAt: time
-        }
-      })
-      return { success: true, status: 'refund_requested' }
+      await getUser(openid)
+      const res = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
+      if (!res.data[0]) throw new Error('暂无可退还保证金')
+      return requestStaffDepositRefund(openid, res.data[0]._id, reason)
     }
     if (action === 'getSupplyReimbursementStatus') {
       const user = await getUser(openid)
@@ -1074,14 +1033,7 @@ module.exports = function createHandler(context) {
         createdAt: time,
         updatedAt: time
       }
-      const created = await db.collection('staff_supply_reimbursements').add({ data: record })
-      await db.collection('staff_profiles').doc(profile._id).update({
-        data: {
-          supplyReimbursementStatus: 'pending',
-          updatedAt: time
-        }
-      })
-      return { _id: created._id, ...record }
+      return submitStaffSupplyOnce(record)
     }
     if (action === 'querySupplyReimbursement') {
       await getUser(openid)
@@ -1097,7 +1049,7 @@ module.exports = function createHandler(context) {
       const mchId = (settings.payment && settings.payment.mchId) || ''
       const appId = (settings.payment && settings.payment.appId) || ''
       return {
-        status: app.transferStatus || (app.status === 'approved' ? 'WAIT_USER_CONFIRM' : app.status),
+        status: app.transferStatus || app.status,
         mchId,
         appId,
         packageInfo: app.transferPackageInfo || ''

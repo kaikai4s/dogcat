@@ -37,7 +37,7 @@ function decorateStaffFinance(item) {
     result[`${key}Text`] = item[key] === undefined || item[key] === null ? '待核实' : money(item[key])
   })
   result.refundPending = ['pending', 'requested', 'refund_requested', 'refund_pending'].includes(item.refundStatus) || ['refund_requested', 'refund_pending'].includes(item.status)
-  result.canForfeit = parseAmount(item.availableRefundAmount) !== null && !['processing', 'refunding', 'success'].includes(item.refundStatus)
+  result.canForfeit = parseAmount(item.availableRefundAmount) !== null && ['paid', 'partially_refunded'].includes(item.status) && !['requested', 'approved', 'processing', 'refunding', 'success'].includes(item.refundStatus)
   // Unknown states stay visible but never imply successful payment.
   result.transferConfirmed = item.status === 'paid' || item.transferStatus === 'SUCCESS'
   result.mediaFileIds = Array.isArray(item.mediaFileIds) ? item.mediaFileIds : []
@@ -201,7 +201,7 @@ Page({
     const approved = e.currentTarget.dataset.approved === true || e.currentTarget.dataset.approved === 'true'
     wx.showModal({
       title: approved ? '审核通过退还保证金' : '驳回退出退款申请',
-      content: approved ? '确认审核通过？将全额退还该宠托师当前可用保证金。' : '确认驳回该退出退款申请？',
+      content: approved ? '确认审核通过？审核后进入待实际退款状态。' : '确认驳回该退出退款申请？',
       editable: !approved,
       placeholderText: !approved ? '请输入驳回原因' : '',
       success: (res) => {
@@ -227,6 +227,7 @@ Page({
   },
 
   forfeitDeposit(e) {
+    if (this.data.actionBusy) return
     const id = e.currentTarget.dataset.id
     const maxAmount = Number(e.currentTarget.dataset.max || 0)
     wx.showModal({
@@ -248,8 +249,16 @@ Page({
           return
         }
         wx.showLoading({ title: '处理中...', mask: true })
-        callFunction('admin', 'forfeitStaffDeposit', { id, amount, reason })
+        if (this.data.actionBusy) return
+        this.setData({ actionBusy: true })
+        const pendingKey = `deposit_forfeit_${id}`
+        const previous = wx.getStorageSync(pendingKey)
+        const clientRequestId = previous && previous.amount === amount && previous.reason === reason
+          ? previous.clientRequestId : `forfeit_${Date.now()}_${Math.random().toString(36).slice(2)}`
+        wx.setStorageSync(pendingKey, { amount, reason, clientRequestId })
+        callFunction('admin', 'forfeitStaffDeposit', { id, amount, reason, clientRequestId })
           .then(() => {
+            wx.removeStorageSync(pendingKey)
             wx.hideLoading()
             wx.showToast({ title: '已执行没收' })
             this.loadStaffFinance()
@@ -258,6 +267,7 @@ Page({
             wx.hideLoading()
             showError(err)
           })
+          .finally(() => this.setData({ actionBusy: false }))
       }
     })
   },
@@ -268,7 +278,7 @@ Page({
     const defaultAmount = e.currentTarget.dataset.amount || ''
     wx.showModal({
       title: approved ? '审核通过物资报销' : '驳回物资报销申请',
-      content: approved ? `确认审核通过物资报销？核准金额将通过商家转账发放（默认¥${defaultAmount}）：` : '确认驳回该报销申请？',
+      content: approved ? `确认审核通过物资报销？默认核准金额¥${defaultAmount}，审批后待实际付款。` : '确认驳回该报销申请？',
       editable: true,
       placeholderText: approved ? `核准金额（留空默认¥${defaultAmount}）` : '请输入驳回原因',
       success: (res) => {
@@ -305,22 +315,38 @@ Page({
 
   paySupplyReimbursement(e) {
     const id = e.currentTarget.dataset.id
+    this.confirmStaffPayment(id, 'paySupplyReimbursement', '确认报销已付款')
+  },
+
+  confirmDepositRefund(e) {
+    this.confirmStaffPayment(e.currentTarget.dataset.id, 'confirmDepositRefund', '确认保证金已退还')
+  },
+
+  confirmStaffPayment(id, action, title) {
+    if (this.data.actionBusy) return
     wx.showModal({
-      title: '确认发放报销款项',
-      content: '确认执行微信商家转账发放报销？',
+      title,
+      content: '请核实实际付款成功，并填写付款凭证号。',
+      editable: true,
+      placeholderText: '银行或微信付款凭证号',
       success: (res) => {
         if (!res.confirm) return
-        wx.showLoading({ title: '打款中...', mask: true })
-        callFunction('admin', 'paySupplyReimbursement', { id })
+        const paymentReference = String(res.content || '').trim()
+        if (!paymentReference) { wx.showToast({ title: '请填写付款凭证号', icon: 'none' }); return }
+        if (this.data.actionBusy) return
+        this.setData({ actionBusy: true })
+        wx.showLoading({ title: '确认中...', mask: true })
+        callFunction('admin', action, { id, paymentReference, paymentConfirmed: true })
           .then(() => {
             wx.hideLoading()
-            wx.showToast({ title: '已打款' })
+            wx.showToast({ title: '已确认付款' })
             this.loadStaffFinance()
           })
           .catch((err) => {
             wx.hideLoading()
             showError(err)
           })
+          .finally(() => this.setData({ actionBusy: false }))
       }
     })
   },

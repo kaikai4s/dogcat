@@ -13,7 +13,7 @@
 - `handlers/index.js`：固定模块白名单、按需加载与实例内缓存。
 - `handlers/*.js`：业务入口，每个工厂显式声明所需依赖。
 - `services/context.js`：仅负责依赖装配，业务函数已全部迁出；按拓扑顺序构建服务，不做运行时动态依赖查找。
-- `services/*.js`：53 个领域服务工厂，分别负责支付、结算、排班、订单、会员、消息、商城等业务。
+- `services/*.js`：领域服务工厂，分别负责支付、结算、排班、订单、会员、消息、商城等业务。
 - `services/paymentCallback.js`：验签、解密、处理支付通知；不属于 RPC action。
 - `scheduled/index.js`：完整定时编排，包含取消、过期、提醒、超时处理、月度结算与补结算。
 - `scheduled/cancelUnpaidOrders.js`、`scheduled/expireOrders.js`：订单定时处理。
@@ -39,6 +39,7 @@
 | 接单与派单并发控制 | orderAssignment.js |
 | 服务完成、超时处理、收益生成 | serviceExecution.js、overdueOrders.js、earnings.js |
 | 提现申请、审批与纠纷结算事务、支付截止时间 | withdrawals.js、financialSettlement.js、paymentDeadline.js |
+| 保证金缴纳、退出退还、没收与用品报销 | staffFunds.js |
 | 消息及订阅通知 | orderMessages.js、subscriptions.js |
 | 财务聚合、报表工具及售后收益处理 | financeAggregation.js、financeReports.js、incidents.js |
 | 商品与购物车 | mallCatalog.js |
@@ -83,6 +84,21 @@ admin.financeDashboard 调用 financeAggregation，不再读取六个集合的�
 
 ## 后续工作与边界
 
+### 保证金与用品报销
+
+staffFunds 将保证金缴纳、退出申请、退款审批、实际退款确认、没收及报销申请/审批/付款确认迁入事务。财务记录、资料状态、资金流水及相应审计记录一起提交；迟到的缴纳回调不会恢复已经退还或没收的余额。
+
+- 保证金退款分为 requested -> approved（status 为 refund_approved）-> success。审核通过不扣余额、不增加 refundedAmount、不记退款支出；管理员实际付款并核对凭证后，调用 confirmDepositRefund，必须提供 paymentConfirmed: true 和非空 paymentReference。这只是人工账务确认，不发起网关退款，也不自动验证凭证真实性。
+- 没收仅允许 paid/partially_refunded 且没有待审核/待执行退款的记录。按分校验 paidAmount = refundedAmount + forfeitedAmount + availableRefundAmount，余额异常停止处理。没收必须带 clientRequestId；同请求同参数只扣一次，异参拒绝。前端网络失败会保存原请求号，重试同金额同原因复用，成功后清除。
+- 退出申请在事务中重新读取保证金、用户和资料，更新与 orderAssignment 共用的用户 staffAssignmentRevision，以约束新接单竞争。未完成订单、未结纠纷使用状态过滤后 limit(1)，不再读取前 100 条历史记录后过滤；包含 day_completed、waiting_client、waiting_staff、triaging、refund_pending 等状态。
+- 同一员工首次报销使用固定申请 ID，并事务写入资料中的 supplyApplicationId，防止并发重复申请；兼容查询历史随机 ID 记录。审批金额须为有效分精度正数，不超过申请金额，不再把非法审批金额静默替换为全额。
+- paySupplyReimbursement 同样要求实际付款确认及凭证号，只记录 MANUAL_CONFIRMED，不伪造微信 SUCCESS。审批通过本身不生成 WAIT_USER_CONFIRM；只有真实待确认状态及 transferPackageInfo 齐全时，前端才显示微信收款确认入口。
+- 重复退款确认、报销付款确认不重复记账。全额没收同步资料 depositStatus 为 forfeited；保证金退还完成才撤销资料审核资格。历史已被旧逻辑标成 refunded/paid 的记录不会自动重付，必须与真实流水人工对账。
+
+发布时必须同时更新云函数和小程序：旧客户端没收缺少请求号、旧报销打款缺少凭证会被明确拒绝。先在测试环境验证真实 CloudBase 事务冲突及微信开发者工具页面交互。本地已覆盖并发、整体回滚、重复回调、超过 100 条历史记录后的退出阻拦，以及前端凭证必填和网络失败重试；未进行真实资金划拨、部署或小程序真机验收。
+
+建议核查 orders (staffOpenid, status)、order_incidents (staffOpenid, status)、staff_profiles (openid)、staff_supply_reimbursements (staffOpenid) 索引。退出校验的普通查询不是跨集合快照：并发新建纠纷、管理员恢复历史订单、历史重复保证金及原始预支付单创建仍需专项治理。人工付款与本地记账之间无法用数据库事务做到原子性，应在实际付款前核对审批状态，付款后保留凭证并对账；审批后出现新纠纷会阻止退款确认，不能因此再次付款。
+
 ### 提现审批与纠纷结算
 
 financialSettlement 统一提现审批、驳回、标记打款及纠纷冻结、结案的财务写入，旧 incidents 中的非事务扣减实现已移除。
@@ -115,7 +131,7 @@ markWithdrawPaid 仍是管理员对外部付款的本地记账确认，不发起
 
 仍需专项处理：
 
-1. 提现审批、打款确认及纠纷扣减已加入事务；历史孤立冻结及重复收益仍需对账修复，保证金退还/没收、报销打款和真实转账接入仍需专项审查。
+1. 提现、纠纷、保证金及报销主要资金写入已加入事务；历史孤立冻结、重复收益/保证金及旧版虚假付款成功状态仍需对账修复。真实转账/退款接入及回调对账仍需专项设计。
 2. 本次自动超时处理仅针对服务 orders；客户主动取消、管理员取消及商城订单取消仍需统一一致性策略。缺少 createdAt 或支付记录异常的历史订单需人工核对。
 3. 接单后的消息通知仍在事务外，需继续完善发送失败重试；排班规则变更及未来新增改期功能需一并审查并发约束。真实云环境中的查询一致性及事务冲突重试仍需联调验证。
 4. 财务看板已统一 success/paid 并改用聚合；下一步规范账务日期、商城成本和日汇总，修复历史异常字段并完善对账。

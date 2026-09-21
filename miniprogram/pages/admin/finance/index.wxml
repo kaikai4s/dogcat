@@ -78,8 +78,9 @@
       
       <view class="action-row" wx:if="{{item.refundStatus === 'requested'}}">
         <button class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditDepositRefund">驳回退款</button>
-        <button class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" bindtap="auditDepositRefund">通过全额退还</button>
+        <button class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" bindtap="auditDepositRefund">通过退款审核</button>
       </view>
+      <button class="primary-btn full-btn" wx:if="{{item.status === 'refund_approved'}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="confirmDepositRefund">确认已实际退款</button>
       <button class="ghost-btn full-btn" wx:if="{{item.canForfeit}}" data-id="{{item._id}}" data-max="{{item.availableRefundAmount}}" bindtap="forfeitDeposit">违规没收保证金</button>
     </view>
     <view class="empty-state" wx:if="{{!deposits.length}}">暂无宠托师保证金记录。</view>
@@ -111,7 +112,7 @@
         <button class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditSupplyReimbursement">驳回申请</button>
         <button class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" data-amount="{{item.amount}}" bindtap="auditSupplyReimbursement">审核通过</button>
       </view>
-      <button class="primary-btn full-btn" wx:if="{{item.status === 'approved'}}" data-id="{{item._id}}" bindtap="paySupplyReimbursement">确认打款（商家转账）</button>
+      <button class="primary-btn full-btn" wx:if="{{item.status === 'approved'}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="paySupplyReimbursement">确认已实际打款</button>
     </view>
     <view class="empty-state" wx:if="{{!supplies.length}}">暂无用品报销记录。</view>
   </block>
