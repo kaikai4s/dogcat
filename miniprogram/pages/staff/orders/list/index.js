@@ -121,7 +121,8 @@ Page({
       wx.showToast({ title: '订单缺少定位，无法导航', icon: 'none' })
       return
     }
-    wx.openLocation({ latitude: lat, longitude: lng, name: name || '服务地址', address: address || name || '服务地址', scale: 16 })
+    const cleanAddress = address && !address.includes('接单后可见') ? address : (name || '服务地址')
+    wx.openLocation({ latitude: lat, longitude: lng, name: name || '服务地址', address: cleanAddress, scale: 16 })
   },
   go(e) {
     const url = e.currentTarget.dataset.url

@@ -20,7 +20,7 @@ Page({
   input(e) { this.setData({ description: e.detail.value }) },
   loadOrder() {
     if (!this.data.orderId) return
-    callFunction('order', 'getOrderDetail', { id: this.data.orderId })
+    callFunction('order', 'getOrderDetail', { id: this.data.orderId, role: 'staff' })
       .then((order) => this.setData({ order }))
       .catch(() => {})
   },

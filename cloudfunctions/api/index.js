@@ -651,17 +651,23 @@ function normalizeSystemSettings(value = {}, options = {}) {
   const settlement = value.settlement || {}
   const subscription = value.subscription || {}
   const reliability = value.reliability || {}
-  return {
+  const includeSecrets = options.includeSecrets === true
+  const existingSettings = options.existingSettings || options.previousValue || {}
+  const rawQwenApiKey = value.qwenApiKeyInput !== undefined ? value.qwenApiKeyInput : value.qwenApiKey
+  const qwenApiKey = (rawQwenApiKey !== undefined ? safeText(rawQwenApiKey).trim() : '') || safeText(existingSettings.qwenApiKey).trim()
+  const qwenApiKeyConfigured = maskConfigured(qwenApiKey || process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY)
+
+  const normalized = {
     enableTestAddressMode: value.enableTestAddressMode === true,
     enablePetBreedAi: value.enablePetBreedAi !== false,
-    qwenApiKey: safeText(value.qwenApiKey).trim(),
+    qwenApiKeyConfigured,
     qwenModel: safeText(value.qwenModel).trim() || 'qwen3.5-flash',
     staffTraining: normalizeStaffTrainingConfig(value.staffTraining),
     staffDeposit: normalizeStaffDepositConfig(value.staffDeposit),
     staffSupplies: normalizeStaffSuppliesConfig(value.staffSupplies),
     homeHeroCarousel: normalizeHomeHeroCarousel(value.homeHeroCarousel),
     homePage: normalizeHomePageConfig(value.homePage),
-    payment: normalizePaymentConfig(payment, existingPayment, options.includeSecrets === true),
+    payment: normalizePaymentConfig(payment, existingPayment, includeSecrets),
     settlement: {
       staffCommissionRate: Math.min(Math.max(Number(settlement.staffCommissionRate ?? 0.7), 0), 1),
       settlementDelayDays: Math.max(Math.round(Number(settlement.settlementDelayDays ?? 1)), 0),
@@ -699,6 +705,12 @@ function normalizeSystemSettings(value = {}, options = {}) {
       imageUrl: safeText((value.checkinShare || {}).imageUrl).trim()
     }
   }
+
+  if (includeSecrets) {
+    normalized.qwenApiKey = qwenApiKey
+  }
+
+  return normalized
 }
 
 function callQwenVisionApi(apiKey, model, base64Image) {
@@ -956,7 +968,7 @@ async function saveSystemSettings(settings) {
   const time = now()
   const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
   const previousValue = existing.data[0] ? existing.data[0].value : {}
-  const value = normalizeSystemSettings(settings, { includeSecrets: true, existingPayment: previousValue.payment || {} })
+  const value = normalizeSystemSettings(settings, { includeSecrets: true, existingSettings: previousValue, existingPayment: previousValue.payment || {} })
   const payload = { key: 'system_settings', value, updatedAt: time }
   if (existing.data[0]) {
     await db.collection('platform_configs').doc(existing.data[0]._id).update({ data: payload })
@@ -1542,6 +1554,40 @@ function toPublicOrderHomeSecurity(security) {
   if (!security) return null
   const type = security.type || security.lockMethod || 'someone_home'
   return toPublicHomeSecuritySnapshot({ ...security, type, lockMethod: type, lockMethodText: security.lockMethodText || lockMethodText(type) })
+}
+
+function maskOrderClientContact(order) {
+  if (!order) return order
+  const maskedPhone = mask(order.contactPhone || (order.clientSnapshot && (order.clientSnapshot.contactPhone || order.clientSnapshot.phone))) || '受隐私保护'
+  const maskedSnapshot = order.clientSnapshot ? {
+    ...order.clientSnapshot,
+    phone: maskedPhone,
+    phoneMasked: maskedPhone,
+    contactPhone: maskedPhone
+  } : null
+  return {
+    ...order,
+    phone: maskedPhone,
+    clientPhone: maskedPhone,
+    contactPhone: maskedPhone,
+    contactPhoneMasked: maskedPhone,
+    clientSnapshot: maskedSnapshot
+  }
+}
+
+function maskOrderForStaffPreview(order) {
+  if (!order) return order
+  const withMaskedContact = maskOrderClientContact(order)
+  return {
+    ...withMaskedContact,
+    addressDetail: '接单后可见',
+    doorplate: '接单后可见',
+    orderHomeSecurity: null,
+    homeSecuritySnapshot: null,
+    hasDoorLockCode: false,
+    lockMethod: 'hidden',
+    lockMethodText: '接单后可见'
+  }
 }
 
 function toPublicSitter(profile) {
@@ -6618,16 +6664,19 @@ const handlers = {
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       const levels = await getMemberLevels()
       const userCache = new Map()
+      const isStaffOnly = role === 'staff' && !user.roles.includes('admin')
       if (wantsPage) {
         const page = paginateList(list, data)
-        return { ...page, list: await Promise.all(page.list.map((order) => attachOrderDisplayData(order, levels, userCache))) }
+        const enrichedList = await Promise.all(page.list.map((order) => attachOrderDisplayData(order, levels, userCache)))
+        return { ...page, list: isStaffOnly ? enrichedList.map(maskOrderClientContact) : enrichedList }
       }
-      return Promise.all(list.map((order) => attachOrderDisplayData(order, levels, userCache)))
+      const enrichedList = await Promise.all(list.map((order) => attachOrderDisplayData(order, levels, userCache)))
+      return isStaffOnly ? enrichedList.map(maskOrderClientContact) : enrichedList
     }
 
     if (action === 'getOrderDetail') {
       const orderId = data.id || data.orderId
-      const { order } = await getOrderForAccess(openid, orderId)
+      const { user, order } = await getOrderForAccess(openid, orderId)
       const levels = await getMemberLevels()
       const displayOrder = await attachOrderDisplayData(order, levels)
       const [earlyStart, securityRes, checkinsRes, tracksRes] = await Promise.all([
@@ -6654,7 +6703,13 @@ const handlers = {
         const group = checkinGroups[item.eventType] || { count: 0, photos: [] }
         return { ...item, completed: group.count > 0, photoCount: group.count, photos: group.photos }
       })
-      return { ...displayOrder, trackCount: (tracksRes.data || []).length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: toPublicOrderHomeSecurity(orderSecurity) }
+      const resultOrder = { ...displayOrder, trackCount: (tracksRes.data || []).length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: toPublicOrderHomeSecurity(orderSecurity) }
+      const requestedRole = safeText(data.role).trim()
+      const isStaffView = requestedRole === 'staff' || user.activeRole === 'staff' || (order.clientOpenid !== openid && user.roles.includes('staff'))
+      const isStaffPreview = isStaffView && (order.status === ORDER_STATUS.PAID || order.staffOpenid !== openid)
+      if (isStaffPreview) return maskOrderForStaffPreview(resultOrder)
+      if (isStaffView || (!user.roles.includes('admin') && order.clientOpenid !== openid)) return maskOrderClientContact(resultOrder)
+      return resultOrder
     }
 
     if (action === 'prepareRebook') {
@@ -8486,8 +8541,9 @@ const handlers = {
       if (inServiceTime) orders = orders.filter((order) => order.inTime)
 
       const sortedOrders = orders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
+      const maskedOrders = sortedOrders.map(maskOrderForStaffPreview)
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
-      return wantsPage ? paginateList(sortedOrders, data) : sortedOrders.slice(0, 20)
+      return wantsPage ? paginateList(maskedOrders, data) : maskedOrders.slice(0, 20)
     }
     if (action === 'listDirectOrders') {
       const user = await getUser(openid)
@@ -8511,8 +8567,9 @@ const handlers = {
           }
           return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
         }))
+      const maskedDirectOrders = directOrders.map(maskOrderForStaffPreview)
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
-      return wantsPage ? paginateList(directOrders, data) : directOrders
+      return wantsPage ? paginateList(maskedDirectOrders, data) : maskedDirectOrders
     }
     if (action === 'getScheduleCalendar') {
       const user = await getUser(openid)
@@ -9506,7 +9563,7 @@ const handlers = {
       return { id: data.id, status: 'paid' }
     }
     if (action === 'getSystemSettings') {
-      return getSystemSettings()
+      return getSystemSettings({ includeSecrets: data.includeSecrets === true })
     }
     if (action === 'saveSystemSettings') {
       const saved = await saveSystemSettings(data)

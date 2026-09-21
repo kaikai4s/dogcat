@@ -302,7 +302,7 @@ Page({
 
   loadOrder() {
     return Promise.all([
-      callFunction('order', 'getOrderDetail', { id: this.data.id }),
+      callFunction('order', 'getOrderDetail', { id: this.data.id, role: 'staff' }),
       callFunction('checkin', 'listOrderCheckins', { orderId: this.data.id }).catch(() => [])
     ])
       .then(([order, checkins]) => {
@@ -744,7 +744,7 @@ Page({
     }), Promise.resolve()).then(() => {
       this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id) })
       if (!flushed) return null
-      return callFunction('order', 'getOrderDetail', { id: this.data.id })
+      return callFunction('order', 'getOrderDetail', { id: this.data.id, role: 'staff' })
         .then((order) => this.setData({ order: withServiceActionState(order), pointCount: Number(order.trackCount || 0), earlyStartRequest: order.earlyStartRequest || null }))
         .catch(() => null)
     })

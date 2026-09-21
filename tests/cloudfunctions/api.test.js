@@ -1514,6 +1514,8 @@ test('direct createOrder requires approved sitter and keeps requested staff afte
 test('staff visibility and accept permissions respect open and direct publish modes', async () => {
   const db = createCollectionStore({
     users: [
+      { _id: 'client', openid: 'openid_client', phone: '13812345678', roles: ['client'], status: 'active' },
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
       { _id: 'staff_a', openid: 'openid_staff_a', roles: ['client', 'staff'], status: 'active' },
       { _id: 'staff_b', openid: 'openid_staff_b', roles: ['client', 'staff'], status: 'active' }
     ],
@@ -1523,10 +1525,12 @@ test('staff visibility and accept permissions respect open and direct publish mo
     ],
     pets: [{ _id: 'pet1', openid: 'openid_client', name: '可乐', breed: '金毛', weight: 12, birthday: '2024-05-01', personality: '活泼' }],
     orders: [
-      { _id: 'open_order', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'open', staffOpenid: '', requestedStaffOpenid: '', startTime: '2099-07-28 10:00', addressLatitude: 31.2, addressLongitude: 121.5 },
-      { _id: 'direct_order', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'direct', staffOpenid: '', requestedStaffOpenid: 'openid_staff_a', startTime: '2099-07-28 11:00', addressLatitude: 31.2, addressLongitude: 121.5 }
+      { _id: 'open_order', clientOpenid: 'openid_client', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'open', staffOpenid: '', requestedStaffOpenid: '', startTime: '2099-07-28 10:00', serviceAddress: '阳光花园', addressDetail: '1号楼', doorplate: '101', contactPhone: '13812345678', addressLatitude: 31.2, addressLongitude: 121.5 },
+      { _id: 'direct_order', clientOpenid: 'openid_client', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'direct', staffOpenid: '', requestedStaffOpenid: 'openid_staff_a', startTime: '2099-07-28 11:00', serviceAddress: '阳光花园', addressDetail: '2号楼', doorplate: '202', contactPhone: '13812345678', addressLatitude: 31.2, addressLongitude: 121.5 }
     ]
   })
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
   const staffAFn = loadCloudFunction('api', db, 'openid_staff_a')
   const staffBFn = loadCloudFunction('api', db, 'openid_staff_b')
 
@@ -1544,12 +1548,18 @@ test('staff visibility and accept permissions respect open and direct publish mo
 
   assert.equal(nearbyResult.ok, true)
   assert.deepEqual(nearbyResult.data.map((order) => order._id), ['open_order'])
+  assert.equal(nearbyResult.data[0].serviceAddress, '阳光花园')
+  assert.equal(nearbyResult.data[0].addressDetail, '接单后可见')
+  assert.equal(nearbyResult.data[0].doorplate, '接单后可见')
   assert.equal(nearbyPageResult.ok, true)
   assert.equal(nearbyPageResult.data.total, 1)
   assert.equal(nearbyPageResult.data.hasMore, false)
   assert.deepEqual(nearbyPageResult.data.list.map((order) => order._id), ['open_order'])
   assert.equal(directResult.ok, true)
   assert.deepEqual(directResult.data.map((order) => order._id), ['direct_order'])
+  assert.equal(directResult.data[0].serviceAddress, '阳光花园')
+  assert.equal(directResult.data[0].addressDetail, '接单后可见')
+  assert.equal(directResult.data[0].doorplate, '接单后可见')
   assert.equal(directResult.data[0].distanceText, '0m')
   assert.equal(directPageResult.ok, true)
   assert.equal(directPageResult.data.total, 1)
@@ -1557,14 +1567,62 @@ test('staff visibility and accept permissions respect open and direct publish mo
   assert.deepEqual(directPageResult.data.list.map((order) => order._id), ['direct_order'])
   assert.equal(openDetailResult.ok, true)
   assert.equal(openDetailResult.data.petSnapshot.breed, '金毛')
+  assert.equal(openDetailResult.data.serviceAddress, '阳光花园')
+  assert.equal(openDetailResult.data.addressDetail, '接单后可见')
+  assert.equal(openDetailResult.data.doorplate, '接单后可见')
+  assert.equal(openDetailResult.data.contactPhone, '1***8')
+  assert.equal(openDetailResult.data.orderHomeSecurity, null)
   assert.equal(directDetailResult.ok, true)
   assert.equal(directDetailResult.data.petSnapshot.personality, '活泼')
+  assert.equal(directDetailResult.data.serviceAddress, '阳光花园')
+  assert.equal(directDetailResult.data.addressDetail, '接单后可见')
+  assert.equal(directDetailResult.data.doorplate, '接单后可见')
+  assert.equal(directDetailResult.data.contactPhone, '1***8')
+  assert.equal(directDetailResult.data.orderHomeSecurity, null)
   assert.equal(deniedDetailResult.ok, false)
   assert.equal(deniedDetailResult.message, '无权访问订单')
   assert.equal(deniedResult.ok, false)
   assert.equal(deniedResult.message, '该订单指定了其他宠托师')
   assert.equal(directAcceptResult.ok, true)
   assert.equal(db.state.orders.find((order) => order._id === 'direct_order').assignmentSource, 'direct_accept')
+
+  // 接单后再次查询：门牌号与详细地址成功解密展示供上门履约，但客户手机号始终脱敏受保护
+  const directAfterAccept = await staffAFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'direct_order' } })
+  assert.equal(directAfterAccept.ok, true)
+  assert.equal(directAfterAccept.data.doorplate, '202')
+  assert.equal(directAfterAccept.data.addressDetail, '2号楼')
+  assert.equal(directAfterAccept.data.contactPhone, '1***8')
+
+  // 宠托师查看订单列表：客户手机号同样严格脱敏
+  const staffOrders = await staffAFn.main({ module: 'order', action: 'listOrders', data: { role: 'staff' } })
+  assert.equal(staffOrders.ok, true)
+  const staffDirectOrder = staffOrders.data.find((order) => order._id === 'direct_order')
+  assert.ok(staffDirectOrder)
+  assert.equal(staffDirectOrder.contactPhone, '1***8')
+
+  // 宠物主本人查看详情：可查看自己的联系电话
+  const clientDetail = await clientFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'direct_order' } })
+  assert.equal(clientDetail.ok, true)
+  assert.equal(clientDetail.data.contactPhone, '13812345678')
+
+  // 管理员后台查看详情：可查看完整联系电话
+  const adminDetail = await adminFn.main({ module: 'admin', action: 'getOrderDetail', data: { id: 'direct_order' } })
+  assert.equal(adminDetail.ok, true)
+  assert.equal(adminDetail.data.order.clientContact.phone, '13812345678')
+
+  // 即使测试账号拥有管理员角色或即为下单客户，只要在宠托师端预览未接订单，详细地址和门牌号均隐藏
+  const adminStaffPreview = await adminFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'open_order', role: 'staff' } })
+  assert.equal(adminStaffPreview.ok, true)
+  assert.equal(adminStaffPreview.data.doorplate, '接单后可见')
+  assert.equal(adminStaffPreview.data.addressDetail, '接单后可见')
+  assert.equal(adminStaffPreview.data.contactPhone, '1***8')
+
+  const clientStaffPreview = await clientFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'open_order', role: 'staff' } })
+  assert.equal(clientStaffPreview.ok, true)
+  assert.equal(clientStaffPreview.data.doorplate, '接单后可见')
+  assert.equal(clientStaffPreview.data.addressDetail, '接单后可见')
+  assert.equal(clientStaffPreview.data.contactPhone, '1***8')
+
   assert.equal(openAcceptResult.ok, true)
   assert.equal(duplicateOpenAcceptResult.ok, false)
   assert.equal(duplicateOpenAcceptResult.message, '订单状态不可接单')
@@ -2326,6 +2384,63 @@ test('wechat payment settings mask secrets in public responses', async () => {
   assert.equal(preserved.data.payment.enabled, true)
   assert.equal(db.state.platform_configs[0].value.payment.apiV3Key, 'secret_v3_key')
 })
+
+test('system settings protect qwenApiKey from public disclosure and preserve existing key', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u_admin', openid: 'openid_admin', roles: ['admin'], status: 'active' }],
+    platform_configs: []
+  })
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const guestFn = loadCloudFunction('api', db, 'openid_guest')
+
+  const saved = await adminFn.main({
+    module: 'admin',
+    action: 'saveSystemSettings',
+    data: {
+      qwenApiKey: 'sk-test-qwen-secret-key-12345',
+      qwenModel: 'qwen3.5-plus'
+    }
+  })
+
+  const publicSettings = await guestFn.main({ module: 'system', action: 'getSettings' })
+  const adminSettingsDefault = await adminFn.main({ module: 'admin', action: 'getSystemSettings' })
+  const adminSettingsWithSecrets = await adminFn.main({ module: 'admin', action: 'getSystemSettings', data: { includeSecrets: true } })
+
+  assert.equal(saved.ok, true)
+  assert.equal(saved.data.qwenApiKeyConfigured, true)
+  assert.equal(saved.data.qwenApiKey, undefined)
+
+  // Public system.getSettings must NEVER leak qwenApiKey
+  assert.equal(publicSettings.ok, true)
+  assert.equal(publicSettings.data.qwenApiKeyConfigured, true)
+  assert.equal(publicSettings.data.qwenApiKey, undefined)
+  assert.equal(publicSettings.data.qwenModel, 'qwen3.5-plus')
+
+  // Admin getSystemSettings defaults to omitting secrets
+  assert.equal(adminSettingsDefault.ok, true)
+  assert.equal(adminSettingsDefault.data.qwenApiKey, undefined)
+  assert.equal(adminSettingsDefault.data.qwenApiKeyConfigured, true)
+
+  // Admin getSystemSettings with includeSecrets: true returns key
+  assert.equal(adminSettingsWithSecrets.ok, true)
+  assert.equal(adminSettingsWithSecrets.data.qwenApiKey, 'sk-test-qwen-secret-key-12345')
+
+  // Stored in db platform_configs correctly
+  assert.equal(db.state.platform_configs[0].value.qwenApiKey, 'sk-test-qwen-secret-key-12345')
+
+  // Preserves existing qwenApiKey on partial update
+  const updated = await adminFn.main({
+    module: 'admin',
+    action: 'saveSystemSettings',
+    data: { enableTestAddressMode: true }
+  })
+  assert.equal(updated.ok, true)
+  assert.equal(updated.data.qwenApiKey, undefined)
+  assert.equal(updated.data.qwenApiKeyConfigured, true)
+  assert.equal(db.state.platform_configs[0].value.qwenApiKey, 'sk-test-qwen-secret-key-12345')
+})
+
+
 
 
 test('wechat create payment returns pay params and reuses duplicate clientRequestId', async () => {

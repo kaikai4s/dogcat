@@ -27,9 +27,23 @@ Page({
     this.setData(getThemeState(theme.value))
   },
   load() {
-    callFunction('order', 'getOrderDetail', { id: this.data.id })
+    callFunction('order', 'getOrderDetail', { id: this.data.id, role: 'staff' })
       .then((order) => {
-        const displayOrder = withOrderText(order)
+        let displayOrder = withOrderText(order)
+        if (displayOrder && (displayOrder.status === 'paid' || !displayOrder.staffOpenid)) {
+          displayOrder = {
+            ...displayOrder,
+            addressDetail: '接单后可见',
+            doorplate: '接单后可见',
+            orderHomeSecurity: null,
+            contactPhone: displayOrder.contactPhone ? (displayOrder.contactPhone.includes('*') ? displayOrder.contactPhone : displayOrder.contactPhone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2')) : '受隐私保护'
+          }
+        } else if (displayOrder && displayOrder.contactPhone && !displayOrder.contactPhone.includes('*')) {
+          displayOrder = {
+            ...displayOrder,
+            contactPhone: displayOrder.contactPhone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2')
+          }
+        }
         this.setData({ order: displayOrder })
       })
       .catch(showError)
@@ -69,7 +83,9 @@ Page({
       wx.showToast({ title: '订单缺少定位，无法导航', icon: 'none' })
       return
     }
-    wx.openLocation({ latitude, longitude, name: order.serviceAddress || '服务地址', address: `${order.addressDetail || ''} ${order.doorplate || ''}`, scale: 16 })
+    const hasDetailedAddress = order.addressDetail && order.addressDetail !== '接单后可见'
+    const address = hasDetailedAddress ? `${order.addressDetail || ''} ${order.doorplate || ''}`.trim() : (order.serviceAddress || '服务地址')
+    wx.openLocation({ latitude, longitude, name: order.serviceAddress || '服务地址', address, scale: 16 })
   },
   accept() {
     const orderId = this.data.id
