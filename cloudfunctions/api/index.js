@@ -8036,6 +8036,9 @@ const handlers = {
       return { orderId: data.orderId, status: order.status, paymentStatus: order.paymentStatus || 'unpaid', paymentNo: order.paymentNo || '', wxTransactionId: order.wxTransactionId || '', paidAt: order.paidAt || '', payments: payments.data || [] }
     }
     if (action === 'paymentCallback') {
+      if (!data._isInternalHttpCallback) {
+        throw new Error('paymentCallback 仅限内部 HTTP 回调调用')
+      }
       const settings = await getSystemSettings({ includeSecrets: true })
       const config = getWechatPayConfig(settings)
       const headers = data.headers || {}
@@ -11399,6 +11402,7 @@ exports.main = async (event = {}) => {
     }
     if (isWechatPayHttpCallback(event)) {
       return handlers.payment('', 'paymentCallback', {
+        _isInternalHttpCallback: true,
         headers: event.headers || event.header || {},
         rawBody: event.rawBody,
         body: event.body,
