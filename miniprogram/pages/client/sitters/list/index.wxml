@@ -76,7 +76,7 @@
   <view class="card sitter-item-card" wx:for="{{sitters}}" wx:key="_id">
     <view class="sitter-item-head">
       <view class="sitter-avatar-container">
-        <image class="sitter-avatar-img" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+        <image class="sitter-avatar-img" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" lazy-load />
         <view class="sitter-avatar-placeholder" wx:else><view class="remix-icon ri-user-3-line"></view></view>
       </view>
       <view class="sitter-item-main">
