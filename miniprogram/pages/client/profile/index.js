@@ -91,7 +91,7 @@ Page({
 
   applyCurrentTheme(themeKey) {
     const theme = applyTheme(themeKey)
-    this.setData(getThemeState(theme.value))
+    this.setData({ themeOptions, ...getThemeState(theme.value) })
   },
 
   syncUserTheme(user) {

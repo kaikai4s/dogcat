@@ -1,19 +1,19 @@
-/** app.wxss - 粉色宠护全局视觉系统 **/
+/** app.wxss - 橙色宠护全局视觉系统 **/
 @import "assets/fonts/remixicon.wxss";
 
 page {
   --theme-bg: linear-gradient(180deg, #fff8ec 0%, #fffaf6 42%, #f7fbfa 100%);
-  --theme-bg-soft: #fff7fa;
+  --theme-bg-soft: #fffaf4;
   --theme-card-bg: rgba(255, 255, 255, 0.96);
-  --theme-primary: #f43f6b;
-  --theme-primary-2: #ff7a93;
-  --theme-primary-soft: #fff0f5;
-  --theme-text: #2b2528;
-  --theme-title: #1f1b1d;
-  --theme-muted: #969196;
-  --theme-border: rgba(255, 129, 161, 0.12);
-  --theme-shadow: rgba(116, 91, 101, 0.1);
-  --theme-hero: linear-gradient(135deg, #ffd2df 0%, #ffc0d2 58%, #ffe7ef 100%);
+  --theme-primary: #ff7a45;
+  --theme-primary-2: #ffb86c;
+  --theme-primary-soft: #fff0e5;
+  --theme-text: #2d211a;
+  --theme-title: #2d211a;
+  --theme-muted: #7a6a5e;
+  --theme-border: rgba(255, 153, 102, 0.18);
+  --theme-shadow: rgba(123, 89, 62, 0.12);
+  --theme-hero: linear-gradient(135deg, #fff0c9 0%, #ffd9c8 58%, #fff5f0 100%);
   --theme-hero-text: #7c3b12;
   --app-font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
   --app-title-font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
@@ -75,46 +75,11 @@ page {
   --theme-hero-text: #ffffff;
 }
 
-.theme-sunshine {
-  --theme-bg: linear-gradient(180deg, #fff6d8 0%, #fff9eb 46%, #fffef8 100%);
-  --theme-bg-soft: #fff7dc;
-  --theme-card-bg: rgba(255, 255, 255, 0.96);
-  --theme-primary: #f59e0b;
-  --theme-primary-2: #facc15;
-  --theme-primary-soft: #fff3bf;
-  --theme-text: #33270f;
-  --theme-title: #241a08;
-  --theme-muted: #8a7550;
-  --theme-border: rgba(245, 158, 11, 0.22);
-  --theme-shadow: rgba(162, 113, 23, 0.12);
-  --theme-hero: linear-gradient(135deg, #ffe082 0%, #ffc857 58%, #fff1b8 100%);
-  --theme-hero-text: #684100;
-}
-
-.theme-warm {
-  --theme-bg: linear-gradient(180deg, #fff2e8 0%, #fff7ef 48%, #fffaf6 100%);
-  --theme-bg-soft: #fff3ec;
-  --theme-card-bg: rgba(255, 255, 255, 0.96);
-  --theme-primary: #ea6a3d;
-  --theme-primary-2: #fb923c;
-  --theme-primary-soft: #ffe5d6;
-  --theme-text: #332019;
-  --theme-title: #25140f;
-  --theme-muted: #8a6b60;
-  --theme-border: rgba(234, 106, 61, 0.2);
-  --theme-shadow: rgba(144, 79, 54, 0.12);
-  --theme-hero: linear-gradient(135deg, #ffd7c2 0%, #ffb894 58%, #fff0e5 100%);
-  --theme-hero-text: #743018;
-}
 
 .page.theme-day,
 .page.theme-night,
-.page.theme-sunshine,
-.page.theme-warm,
 .profile-settings-page.theme-day,
-.profile-settings-page.theme-night,
-.profile-settings-page.theme-sunshine,
-.profile-settings-page.theme-warm {
+.profile-settings-page.theme-night {
   background: var(--theme-bg);
   color: var(--theme-text);
 }

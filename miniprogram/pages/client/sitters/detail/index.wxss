@@ -1,4 +1,4 @@
-/* Client sitter detail page - Cute warm theme UI redesign */
+/* Client sitter detail page - Cute pet style UI redesign */
 .sitter-detail-page {
   min-height: 100vh;
   padding: 0 28rpx 60rpx;

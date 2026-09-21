@@ -1,4 +1,4 @@
-/* Client checkin page - Cute warm pet style UI redesign */
+/* Client checkin page - Cute pet style UI redesign */
 .checkin-page {
   min-height: 100vh;
   padding: 0 28rpx 60rpx;

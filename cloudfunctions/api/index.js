@@ -309,7 +309,7 @@ function normalizeMemberBadgeStyle(value) {
 function normalizeMemberBadgeTag(value) {
   return safeText(value).trim().slice(0, 8)
 }
-function isValidThemeKey(value) { return ['day', 'night', 'sunshine', 'warm'].includes(safeText(value).trim()) }
+function isValidThemeKey(value) { return ['day', 'night'].includes(safeText(value).trim()) }
 function normalizeThemeKey(value) {
   const key = safeText(value).trim()
   return isValidThemeKey(key) ? key : 'day'
