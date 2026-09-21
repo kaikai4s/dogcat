@@ -91,10 +91,13 @@ module.exports = function createService({
           let json = {}
           try { json = raw ? JSON.parse(raw) : {} } catch (error) { return reject(new Error('微信支付响应解析失败')) }
           if (res.statusCode >= 200 && res.statusCode < 300) return resolve(json)
-          reject(new Error(json.message || json.code || '微信支付请求失败'))
+          const error = new Error(json.message || json.code || '微信支付请求失败')
+          error.code = json.code || 'WECHAT_PAY_ERROR'
+          reject(error)
         })
       })
       req.on('error', reject)
+      req.setTimeout(15000, () => req.destroy(new Error('微信支付请求超时')))
       if (bodyText) req.write(bodyText)
       req.end()
     })

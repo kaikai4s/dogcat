@@ -1,5 +1,35 @@
 const Module = require('module')
 const path = require('path')
+const { Aggregator } = require('mingo/aggregator')
+const { Context, evalExpr } = require('mingo/core')
+
+// Mingo's default date parser only accepts its fixed ISO format. Model the
+// CloudBase dateFromString forms used by our fixtures; cloud integration is separate.
+const aggregateContext = Context.init({
+  accumulator: require('mingo/operators/accumulator'),
+  pipeline: require('mingo/operators/pipeline'),
+  query: require('mingo/operators/query'),
+  expression: {
+    ...require('mingo/operators/expression'),
+    $dateFromString(row, expression, options) {
+      const args = evalExpr(row, expression, options)
+      if (args.dateString == null) return args.onNull
+      let text = args.dateString.replace(' ', 'T')
+      if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?)?$/i.test(text)) return args.onError
+      const hasZone = /(Z|[+-]\d{2}:?\d{2})$/i.test(text)
+      if (hasZone && args.timezone) throw new Error('Duplicate date timezone')
+      if (text.length === 10) text += 'T00:00:00'
+      if (!hasZone) text += args.timezone || 'Z'
+      const date = new Date(text)
+      return Number.isFinite(date.getTime()) ? date : args.onError
+    }
+  }
+})
+
+const aggregateCommand = Object.fromEntries([
+  'eq', 'neq', 'in', 'gte', 'lt', 'or', 'and', 'indexOfBytes', 'cond', 'dateFromString',
+  'ifNull', 'literal', 'floor', 'add', 'multiply', 'sum', 'push'
+].map(name => [name, value => ({ [`$${name === 'neq' ? 'ne' : name}`]: value })]))
 
 function createCollectionStore(initial = {}) {
   const state = {}
@@ -15,6 +45,7 @@ function createCollectionStore(initial = {}) {
   function matchWhere(item, where) {
     return Object.keys(where || {}).every((key) => {
       const condition = where[key]
+      if (condition && typeof condition === 'object' && '$gt' in condition) return item[key] > condition.$gt
       if (condition && typeof condition === 'object' && Array.isArray(condition.$in)) {
         return condition.$in.includes(item[key]) || (condition.$in.includes('') && item[key] === undefined) || (condition.$in.includes(null) && item[key] === null)
       }
@@ -24,6 +55,15 @@ function createCollectionStore(initial = {}) {
 
   function collection(name) {
     const chain = {
+      aggregate() {
+        const stages = []
+        const pipeline = {}
+        for (const stage of ['addFields', 'match', 'group', 'sort', 'limit']) {
+          pipeline[stage] = value => { stages.push({ [`$${stage}`]: value }); return pipeline }
+        }
+        pipeline.end = async () => ({ list: new Aggregator(stages, { context: aggregateContext }).run(ensure(name)).slice(0, 100) })
+        return pipeline
+      },
       _where: null,
       _limit: null,
       _order: null,
@@ -78,8 +118,16 @@ function createCollectionStore(initial = {}) {
         return {
           async get() {
             const item = ensure(name).find((record) => record._id === id)
-            if (!item) throw new Error(`${name}/${id} not found`)
+            if (!item) throw new Error(`document with _id ${id} does not exist`)
             return { data: item }
+          },
+          async set({ data }) {
+            const items = ensure(name)
+            const index = items.findIndex(record => record._id === id)
+            const record = { ...data, _id: id }
+            if (index >= 0) items[index] = record
+            else items.push(record)
+            return { _id: id, stats: { updated: index >= 0 ? 1 : 0, created: index < 0 ? 1 : 0 } }
           },
           async update({ data }) {
             const item = ensure(name).find((record) => record._id === id)
@@ -98,7 +146,23 @@ function createCollectionStore(initial = {}) {
     return chain
   }
 
-  return { collection, state, command: { in: (arr) => ({ $in: arr }) } }
+  let transactionQueue = Promise.resolve()
+  function runTransaction(callback) {
+    const run = transactionQueue.then(async () => {
+      // Isolated snapshots model atomic commit/rollback, not CloudBase conflict retries.
+      const snapshot = createCollectionStore(structuredClone(state))
+      const result = await callback({ collection: snapshot.collection })
+      for (const name of Object.keys(state)) delete state[name]
+      Object.assign(state, snapshot.state)
+      return result
+    })
+    transactionQueue = run.catch(() => {})
+    return run
+  }
+  return { collection, state, runTransaction, command: {
+    in: (arr) => ({ $in: arr }), gt: value => ({ $gt: value }),
+    expr: value => ({ $expr: value }), aggregate: aggregateCommand
+  } }
 }
 
 function clearRequireCache(filePath) {

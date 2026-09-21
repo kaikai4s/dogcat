@@ -57,8 +57,8 @@ module.exports = function createService({
     for (const earning of res.data || []) {
       const availableAt = parseDateValue(earning.availableAt)
       if (availableAt && availableAt.getTime() <= time.getTime()) {
-        await db.collection('staff_earnings').doc(earning._id).update({ data: { status: 'available', updatedAt: time } })
-        earning.status = 'available'
+        const result = await db.collection('staff_earnings').where({ _id: earning._id, status: 'pending' }).update({ data: { status: 'available', updatedAt: time } })
+        if (result.stats.updated) earning.status = 'available'
       }
     }
   }

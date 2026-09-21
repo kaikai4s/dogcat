@@ -50,7 +50,7 @@ module.exports = function createService({
 
   function getDateKeyFromTime(value) {
     const parts = parseDateTimeParts(value)
-    return parts ? formatDateKey(parts.dateObj) : ''
+    return parts ? formatDateKey(new Date(parts.dateObj.getTime() + 8 * 60 * 60 * 1000)) : ''
   }
 
   return {

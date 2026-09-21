@@ -7,6 +7,7 @@ module.exports = function createHandler(context) {
     appendOrderTimeline,
     appendPaymentEvent,
     assertOrderTransition,
+    assignOrderAtomically,
     attachOrderDisplayData,
     buildMiniProgramPayParams,
     buildStaffAvailability,
@@ -21,6 +22,7 @@ module.exports = function createHandler(context) {
     expireDueUnacceptedOrders,
     expireUnacceptedOrder,
     findByClientRequestId,
+    findStaffOrderConflict,
     formatDistance,
     formatWeeklyScheduleText,
     getClientRequestId,
@@ -34,7 +36,6 @@ module.exports = function createHandler(context) {
     hasCoordinate,
     isAdminDeletedOrder,
     isOpenOrder,
-    isOrderConflictCandidate,
     isTrainingComplete,
     makeIdempotencyKey,
     markStaffDepositPaid,
@@ -53,7 +54,6 @@ module.exports = function createHandler(context) {
     notifyOrderAccepted,
     now,
     orderMatchesCity,
-    orderTimeRangesOverlap,
     paginateList,
     parseDateTimeParts,
     publicTrainingQuiz,
@@ -759,11 +759,7 @@ module.exports = function createHandler(context) {
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
-      const orderResForConflict = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
-      const conflict = (orderResForConflict.data || []).find((item) => {
-        if (item._id === data.orderId) return false
-        return isOrderConflictCandidate(item) && orderTimeRangesOverlap(order, item)
-      })
+      const conflict = await findStaffOrderConflict(profile.openid, order, data.orderId)
       if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
       return checkAcceptOrderRisk(profile, order)
     }
@@ -803,11 +799,7 @@ module.exports = function createHandler(context) {
       }
 
       const risk = await checkAcceptOrderRisk(profile, order)
-      const orderResForConflict = await db.collection('orders').where({ staffOpenid: profile.openid }).get()
-      const conflict = (orderResForConflict.data || []).find((item) => {
-        if (item._id === data.orderId) return false
-        return isOrderConflictCandidate(item) && orderTimeRangesOverlap(order, item)
-      })
+      const conflict = await findStaffOrderConflict(profile.openid, order, data.orderId)
       if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
       if (risk.requiresConfirmation && data.riskConfirmed !== true) throw new Error('请先阅读并确认超出接单设置的履约责任')
       const time = now()
@@ -832,15 +824,7 @@ module.exports = function createHandler(context) {
         assignmentUpdate.acceptRiskConfirmedAt = time
         assignmentUpdate.acceptRiskWarnings = risk.warnings
       }
-      const extraWhere = (db.command && typeof db.command.in === 'function') ? { staffOpenid: db.command.in(['', null]) } : {}
-      const updateResult = await updateOrderWhenStatus(data.orderId, ORDER_STATUS.PAID, assignmentUpdate, '订单已被分配', extraWhere)
-
-      // 如果更新失败（没有匹配到订单），说明订单已被其他人抢走
-      if (!updateResult || !updateResult.stats || !updateResult.stats.updated) {
-        throw new Error('订单已被其他宠托师抢走，请查看其他订单')
-      }
-
-      const assignedOrder = { ...order, _id: data.orderId, ...assignmentUpdate }
+      const assignedOrder = await assignOrderAtomically(data.orderId, order, assignmentUpdate, { depositConfig: settings.staffDeposit })
       const assignedTitle = publishMode === 'direct' ? '指定宠托师已接单' : '宠托师已抢单'
       await appendOrderTimeline(data.orderId, 'assigned', assignedTitle, maskStaffName(profile.realName), 'staff')
       await appendOrderClientMessage(assignedOrder, { eventType: 'assigned', title: assignedTitle, detail: maskStaffName(profile.realName), actorRole: 'staff' })

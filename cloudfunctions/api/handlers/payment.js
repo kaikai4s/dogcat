@@ -6,12 +6,14 @@ module.exports = function createHandler(context) {
     appendPaymentEvent,
     assertOrderTransition,
     assertPaymentModeAllowed,
+    assertOrderPaymentOpen,
     buildMiniProgramPayParams,
     createRefundForOrder,
     db,
     ensurePaymentRecord,
     getClientRequestId,
     getPayableOrder,
+    getOrderPaymentDeadline,
     getSystemSettings,
     getUser,
     getWechatPayConfig,
@@ -32,6 +34,7 @@ module.exports = function createHandler(context) {
       if (settings.payment.enabled === false) throw new Error('支付功能暂未开启')
       assertPaymentModeAllowed(settings.payment)
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid', paid: true }
+      if (orderType === 'service') assertOrderPaymentOpen(order)
       if (orderType === 'mall') {
         if (order.status !== 'pending_pay' && order.paymentStatus !== 'paying') throw new Error('订单状态不可支付')
       } else {
@@ -61,6 +64,9 @@ module.exports = function createHandler(context) {
         amount: { total: amountYuanToFen(order.payAmount), currency: 'CNY' },
         payer: { openid }
       }
+      if (orderType === 'service' && getOrderPaymentDeadline(order)) {
+        requestBody.time_expire = new Date(getOrderPaymentDeadline(order)).toISOString().replace(/\.\d{3}Z$/, '+00:00')
+      }
       try {
         const response = await wechatPayRequest('POST', '/v3/pay/transactions/jsapi', requestBody, config)
         if (!response.prepay_id) throw new Error('微信支付未返回 prepay_id')
@@ -79,11 +85,12 @@ module.exports = function createHandler(context) {
     }
     if (action === 'paymentCallback') throw new Error('paymentCallback 仅限 HTTP 回调调用')
     if (action === 'mockPayOrder') {
-      const { order } = await requireClientPayableOrder(openid, data.orderId, '无权支付该订单')
+      const { order, orderType } = await requireClientPayableOrder(openid, data.orderId, '无权支付该订单')
       const settings = await getSystemSettings()
       assertPaymentModeAllowed(settings.payment)
       if (settings.payment.mode !== 'mock') throw new Error('当前未开启模拟支付')
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid' }
+      if (orderType === 'service') assertOrderPaymentOpen(order)
       if (order.status !== 'pending_pay' && order.paymentStatus !== 'paying') throw new Error('订单状态不可支付')
       if (order.couponId) {
         const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data

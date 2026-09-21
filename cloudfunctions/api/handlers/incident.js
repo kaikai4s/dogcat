@@ -5,9 +5,9 @@ module.exports = function createHandler(context) {
     attachOrderDisplayData,
     createRefundForOrder,
     db,
-    finalizeIncidentEarnings,
+    closeIncidentFinancially,
     findByClientRequestId,
-    freezeOrderEarnings,
+    freezeIncidentEarnings,
     getClientRequestId,
     getIncidentForAccess,
     getUser,
@@ -127,12 +127,7 @@ module.exports = function createHandler(context) {
     if (action === 'freezeStaffEarning') {
       await requireAdmin(openid)
       const id = data.id || data.incidentId
-      const incident = (await db.collection('order_incidents').doc(id).get()).data
-      if (!incident) throw new Error('纠纷不存在')
-      const frozen = await freezeOrderEarnings(incident.orderId, id)
-      await db.collection('order_incidents').doc(id).update({ data: { frozenEarningIds: frozen, updatedAt: now() } })
-      await recordIncidentAction(id, 'earning_frozen', 'admin', openid, { earningIds: frozen })
-      return { id, frozenEarningIds: frozen }
+      return freezeIncidentEarnings(id, openid)
     }
     if (action === 'linkRefund') {
       await requireAdmin(openid)
@@ -165,18 +160,8 @@ module.exports = function createHandler(context) {
     if (action === 'closeIncident') {
       await requireAdmin(openid)
       const id = data.id || data.incidentId
-      const incident = (await db.collection('order_incidents').doc(id).get()).data
-      if (!incident) throw new Error('纠纷不存在')
       const status = normalizeIncidentStatus(data.status, 'closed')
-      const closeRemark = safeText(data.closeRemark).trim()
-      const earningResult = await finalizeIncidentEarnings(incident, data.earningDecision, data.deductAmount, safeText(data.earningRemark || closeRemark).trim())
-      const update = { status, closeRemark, closedAt: now(), updatedAt: now() }
-      if (earningResult.decision) update.earningResolution = earningResult
-      await db.collection('order_incidents').doc(id).update({ data: update })
-      if (earningResult.decision) await recordIncidentAction(id, `earning_${earningResult.decision}`, 'admin', openid, earningResult)
-      await recordIncidentAction(id, 'closed', 'admin', openid, { status, closeRemark })
-      await appendOrderTimeline(incident.orderId, 'incident_closed', '纠纷已结案', closeRemark || status, 'admin')
-      return { id, status, earningResolution: earningResult.decision ? earningResult : null }
+      return closeIncidentFinancially(id, { ...data, status }, openid)
     }
     throw new Error('未知 incident 操作')
   }

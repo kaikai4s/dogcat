@@ -1525,8 +1525,8 @@ test('staff visibility and accept permissions respect open and direct publish mo
     ],
     pets: [{ _id: 'pet1', openid: 'openid_client', name: '可乐', breed: '金毛', weight: 12, birthday: '2024-05-01', personality: '活泼' }],
     orders: [
-      { _id: 'open_order', clientOpenid: 'openid_client', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'open', staffOpenid: '', requestedStaffOpenid: '', startTime: '2099-07-28 10:00', serviceAddress: '阳光花园', addressDetail: '1号楼', doorplate: '101', contactPhone: '13812345678', addressLatitude: 31.2, addressLongitude: 121.5 },
-      { _id: 'direct_order', clientOpenid: 'openid_client', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'direct', staffOpenid: '', requestedStaffOpenid: 'openid_staff_a', startTime: '2099-07-28 11:00', serviceAddress: '阳光花园', addressDetail: '2号楼', doorplate: '202', contactPhone: '13812345678', addressLatitude: 31.2, addressLongitude: 121.5 }
+      { _id: 'open_order', clientOpenid: 'openid_client', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'open', staffOpenid: '', requestedStaffOpenid: '', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', serviceAddress: '阳光花园', addressDetail: '1号楼', doorplate: '101', contactPhone: '13812345678', addressLatitude: 31.2, addressLongitude: 121.5 },
+      { _id: 'direct_order', clientOpenid: 'openid_client', petId: 'pet1', petName: '可乐', status: 'paid', publishMode: 'direct', staffOpenid: '', requestedStaffOpenid: 'openid_staff_a', startTime: '2099-07-28 11:00', endTime: '2099-07-28 12:00', serviceAddress: '阳光花园', addressDetail: '2号楼', doorplate: '202', contactPhone: '13812345678', addressLatitude: 31.2, addressLongitude: 121.5 }
     ]
   })
   const clientFn = loadCloudFunction('api', db, 'openid_client')
@@ -2843,7 +2843,7 @@ test('admin finance dashboard summarizes payments refunds earnings and withdraws
       { _id: 'order2', status: 'completed', paymentStatus: 'paid', payAmount: 50, paidAt: '2026-07-29 10:00' }
     ],
     payments: [{ _id: 'pay1', status: 'paid', amount: 100, paidAt: '2099-07-28 10:01' }],
-    refunds: [{ _id: 'refund1', status: 'processing', amount: 20, createdAt: '2099-07-28 11:00' }],
+    refunds: [{ _id: 'refund1', status: 'success', amount: 100, refundAmount: 20, createdAt: '2099-07-28 11:00' }],
     staff_earnings: [{ _id: 'earn1', status: 'available', amount: 70, createdAt: '2099-07-28 12:00' }],
     withdraw_requests: [{ _id: 'withdraw1', status: 'pending', amount: 30, createdAt: '2099-07-28 13:00' }],
     finance_logs: [{ _id: 'log1', action: 'staff_earning_created', targetType: 'staff_earning', amountDelta: 70, createdAt: '2099-07-28 12:00' }]
@@ -2940,7 +2940,8 @@ test('finishService creates staff earning and withdraw workflow locks earnings',
   assert.equal(approved.data.status, 'approved')
   assert.equal(duplicateAudit.ok, false)
   assert.equal(paid.data.status, 'paid')
-  assert.equal(duplicatePaid.ok, false)
+  assert.equal(duplicatePaid.ok, true)
+  assert.equal(db.state.finance_logs.filter(item => item.action === 'withdraw_paid').length, 1)
 })
 
 
@@ -3647,8 +3648,8 @@ test('admin creates incident refund and coupon compensation', async () => {
 test('closing incidents resolves frozen earnings by release deduct or keep frozen', async () => {
   const releaseDb = createCollectionStore({
     users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
-    order_incidents: [{ _id: 'incident_release', orderId: 'order1', frozenEarningIds: ['earning_release'], status: 'processing' }],
-    staff_earnings: [{ _id: 'earning_release', orderId: 'order1', staffOpenid: 'openid_staff', amount: 80, status: 'frozen', frozenFromStatus: 'available' }],
+    order_incidents: [{ _id: 'incident_release', orderId: 'order1', staffOpenid: 'openid_staff', frozenEarningIds: ['earning_release'], status: 'processing' }],
+    staff_earnings: [{ _id: 'earning_release', orderId: 'order1', staffOpenid: 'openid_staff', amount: 80, status: 'frozen', frozenIncidentId: 'incident_release', frozenFromStatus: 'available' }],
     incident_actions: [],
     finance_logs: [],
     order_timeline: []
@@ -3660,8 +3661,8 @@ test('closing incidents resolves frozen earnings by release deduct or keep froze
 
   const deductDb = createCollectionStore({
     users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
-    order_incidents: [{ _id: 'incident_deduct', orderId: 'order1', frozenEarningIds: ['earning_deduct'], status: 'processing' }],
-    staff_earnings: [{ _id: 'earning_deduct', orderId: 'order1', staffOpenid: 'openid_staff', amount: 80, status: 'frozen', frozenFromStatus: 'available' }],
+    order_incidents: [{ _id: 'incident_deduct', orderId: 'order1', staffOpenid: 'openid_staff', frozenEarningIds: ['earning_deduct'], status: 'processing' }],
+    staff_earnings: [{ _id: 'earning_deduct', orderId: 'order1', staffOpenid: 'openid_staff', amount: 80, status: 'frozen', frozenIncidentId: 'incident_deduct', frozenFromStatus: 'available' }],
     incident_actions: [],
     finance_logs: [],
     order_timeline: []
@@ -3675,8 +3676,8 @@ test('closing incidents resolves frozen earnings by release deduct or keep froze
 
   const keepDb = createCollectionStore({
     users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
-    order_incidents: [{ _id: 'incident_keep', orderId: 'order1', frozenEarningIds: ['earning_keep'], status: 'processing' }],
-    staff_earnings: [{ _id: 'earning_keep', orderId: 'order1', staffOpenid: 'openid_staff', amount: 80, status: 'frozen', frozenFromStatus: 'pending' }],
+    order_incidents: [{ _id: 'incident_keep', orderId: 'order1', staffOpenid: 'openid_staff', frozenEarningIds: ['earning_keep'], status: 'processing' }],
+    staff_earnings: [{ _id: 'earning_keep', orderId: 'order1', staffOpenid: 'openid_staff', amount: 80, status: 'frozen', frozenIncidentId: 'incident_keep', frozenFromStatus: 'pending' }],
     incident_actions: [],
     finance_logs: [],
     order_timeline: []

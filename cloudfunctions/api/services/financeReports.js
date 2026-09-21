@@ -1,8 +1,6 @@
 module.exports = function createService({
-  isPaidOrder,
   parseDateValue,
-  safeText,
-  toTimeValue
+  safeText
 }) {
   function buildDateRange(data = {}) {
     const startText = safeText(data.startDate).trim()
@@ -66,45 +64,6 @@ module.exports = function createService({
     })
   }
 
-  function buildFinanceDashboardData({ orders = [], payments = [], refunds = [], earnings = [], withdraws = [], logs = [] }, range) {
-    const paidOrders = orders.filter((order) => isPaidOrder(order) && inDateRange(order, range, ['paidAt', 'createdAt']))
-    const paidPayments = payments.filter((payment) => payment.status === 'paid' && inDateRange(payment, range, ['paidAt', 'updatedAt', 'createdAt']))
-    const refundList = refunds.filter((refund) => inDateRange(refund, range, ['createdAt', 'updatedAt']))
-    const earningList = earnings.filter((earning) => inDateRange(earning, range, ['createdAt', 'completedAt']))
-    const withdrawList = withdraws.filter((withdraw) => inDateRange(withdraw, range, ['createdAt', 'paidAt']))
-    const logList = logs.filter((log) => inDateRange(log, range, ['createdAt']))
-    const gmv = sumAmount(paidOrders, 'payAmount')
-    const received = paidPayments.length ? sumAmount(paidPayments, 'amount') : gmv
-    const refundAmount = sumAmount(refundList, 'amount')
-    const staffEarningAmount = sumAmount(earningList, 'amount')
-    return {
-      range: { startDate: range.startDate, endDate: range.endDate },
-      metrics: {
-        gmv,
-        received,
-        refundAmount,
-        netRevenue: Math.round((received - refundAmount) * 100) / 100,
-        staffEarningAmount,
-        platformGrossProfit: Math.round((received - refundAmount - staffEarningAmount) * 100) / 100,
-        pendingWithdrawAmount: sumAmount(withdrawList.filter((item) => item.status === 'pending'), 'amount'),
-        withdrawingAmount: sumAmount(withdrawList.filter((item) => item.status === 'approved'), 'amount'),
-        paidWithdrawAmount: sumAmount(withdrawList.filter((item) => item.status === 'paid'), 'amount')
-      },
-      counts: {
-        paidOrders: paidOrders.length,
-        payments: paidPayments.length,
-        refunds: refundList.length,
-        earnings: earningList.length,
-        withdraws: withdrawList.length,
-        logs: logList.length,
-        withdrawStatus: statusCount(withdrawList),
-        earningStatus: statusCount(earningList),
-        refundStatus: statusCount(refundList)
-      },
-      recentLogs: limitList(logList.sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt)), 10)
-    }
-  }
-
   return {
     buildDateRange,
     inDateRange,
@@ -113,7 +72,6 @@ module.exports = function createService({
     limitList,
     paginateList,
     messageTimeValue,
-    sortMessageThreads,
-    buildFinanceDashboardData
+    sortMessageThreads
   }
 }

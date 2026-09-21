@@ -142,8 +142,8 @@ module.exports = function createService({
     const startParts = parseDateTimeParts(startTimeStr)
     const endParts = parseDateTimeParts(endTimeStr)
     if (!startParts || !endParts || endParts.dateObj <= startParts.dateObj) throw new Error('服务时间格式无效')
-    const startKey = formatDateKey(startParts.dateObj)
-    const endKey = formatDateKey(endParts.dateObj)
+    const startKey = getDateKeyFromTime(startTimeStr)
+    const endKey = getDateKeyFromTime(endTimeStr)
     if (startKey !== dateKey || endKey !== dateKey) throw new Error('跨日期服务暂不支持日期例外排班')
     if (!slots.length) throw new Error(emptyMessage)
     const startVal = startParts.hour + startParts.minute / 60
@@ -160,7 +160,7 @@ module.exports = function createService({
   }
 
   function isOrderConflictCandidate(order = {}) {
-    return !isAdminDeletedOrder(order) && ['paid', 'assigned', 'in_service'].includes(order.status) && order.status !== 'cancelled'
+    return !isAdminDeletedOrder(order) && ['paid', 'assigned', 'in_service', 'day_completed'].includes(order.status)
   }
 
   function timeRangesOverlap(startA, endA, startB, endB) {
@@ -174,9 +174,10 @@ module.exports = function createService({
   function getOrderTimeRanges(order = {}) {
     const sessions = Array.isArray(order.serviceSessions) ? order.serviceSessions : []
     const ranges = sessions
+      .filter(session => !['completed', 'cancelled'].includes(session.status))
       .map((session) => ({ startTime: session.startTime, endTime: session.endTime }))
       .filter((session) => session.startTime && session.endTime)
-    if (ranges.length) return ranges
+    if (sessions.length) return ranges
     return order.startTime && order.endTime ? [{ startTime: order.startTime, endTime: order.endTime }] : []
   }
 
@@ -207,16 +208,32 @@ module.exports = function createService({
       await validateStaffScheduleOnly(profile, session.startTime, session.endTime)
     }
 
-    const orderRes = await db.collection('orders').where({
-      staffOpenid: profile.openid,
-      status: db.command.in(['paid', 'assigned', 'in_service'])
-    }).get()
     const candidate = { serviceSessions: sessions }
-    const conflict = (orderRes.data || []).find((order) => {
-      if (options.excludeOrderId && order._id === options.excludeOrderId) return false
-      return isOrderConflictCandidate(order) && orderTimeRangesOverlap(candidate, order)
-    })
+    const conflict = await findStaffOrderConflict(profile.openid, candidate, options.excludeOrderId)
     if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
+  }
+
+  async function* staffConflictOrderPages(openid) {
+    let cursor = ''
+    while (true) {
+      const where = { staffOpenid: openid, status: db.command.in(['paid', 'assigned', 'in_service', 'day_completed']) }
+      if (cursor) where._id = db.command.gt(cursor)
+      const page = (await db.collection('orders').where(where).orderBy('_id', 'asc').limit(100).get()).data || []
+      yield page
+      if (page.length < 100) return
+      cursor = page[page.length - 1]._id
+    }
+  }
+
+  async function findStaffOrderConflict(openid, candidate, excludeOrderId = '', transaction = null) {
+    for await (const page of staffConflictOrderPages(openid)) {
+      for (const item of page) {
+        if (item._id === excludeOrderId || !isOrderConflictCandidate(item) || !orderTimeRangesOverlap(candidate, item)) continue
+        const current = transaction ? (await transaction.collection('orders').doc(item._id).get()).data : item
+        if (current && current.staffOpenid === openid && isOrderConflictCandidate(current) && orderTimeRangesOverlap(candidate, current)) return current
+      }
+    }
+    return null
   }
 
   function buildAcceptRiskNotice(warnings = []) {
@@ -303,12 +320,15 @@ module.exports = function createService({
   }
 
   async function buildStaffAvailability(profile, startDateKey = '', days = 14) {
-    const baseParts = parseDateTimeParts(`${startDateKey || formatDateKey(now())} 00:00`)
+    // Use Beijing noon so UTC conversion cannot move the calendar to the previous day.
+    const today = formatDateKey(new Date(now().getTime() + 8 * 60 * 60 * 1000))
+    const baseParts = parseDateTimeParts(`${startDateKey || today} 12:00`)
     const base = baseParts ? baseParts.dateObj : now()
     const normalizedWeekly = normalizeWeeklySchedule(profile.weeklySchedule)
     const maxDays = Math.min(Math.max(Number(days || 14), 1), 31)
     const exceptions = (await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid }).get()).data || []
-    const orders = (await db.collection('orders').where({ staffOpenid: profile.openid }).get()).data || []
+    const orders = []
+    for await (const page of staffConflictOrderPages(profile.openid)) orders.push(...page)
     const availableOrders = orders.filter(isOrderConflictCandidate)
     const list = []
     for (let i = 0; i < maxDays; i += 1) {
@@ -327,8 +347,9 @@ module.exports = function createService({
         remark = exception.remark || ''
       }
       const busyOrders = availableOrders
-        .filter((order) => getDateKeyFromTime(order.startTime) === dateKey)
-        .map((order) => ({ orderId: order._id, startTime: order.startTime, endTime: order.endTime, serviceSummary: order.serviceSummary || '' }))
+        .flatMap(order => getOrderTimeRanges(order)
+          .filter(range => getDateKeyFromTime(range.startTime) === dateKey)
+          .map(range => ({ orderId: order._id, ...range, serviceSummary: order.serviceSummary || '' })))
       list.push({ dateKey, dayOfWeek, dayName: WEEKDAY_NAMES[dayOfWeek], source, status, slots, busyOrders, remark })
     }
     return list
@@ -343,6 +364,7 @@ module.exports = function createService({
     validateSlotsForDate,
     isAdminDeletedOrder,
     isOrderConflictCandidate,
+    findStaffOrderConflict,
     timeRangesOverlap,
     getOrderTimeRanges,
     orderTimeRangesOverlap,

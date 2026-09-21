@@ -12,7 +12,7 @@ module.exports = function createHandler(context) {
     attachAdminOrderContactData,
     auditStatusText,
     buildDateRange,
-    buildFinanceDashboardData,
+    aggregateFinanceDashboard,
     buildMonthlyDashboard,
     buildSubscriptionData,
     cleanupUserPersonalData,
@@ -25,7 +25,6 @@ module.exports = function createHandler(context) {
     detachUserFromHistoricalRecords,
     ensureMonthConfig,
     expireDueUnacceptedOrders,
-    getAllDocuments,
     getClientRequestId,
     getMemberLevels,
     getMonthConfig,
@@ -72,12 +71,16 @@ module.exports = function createHandler(context) {
     resolveTargetLevels,
     resolveUserMemberLevel,
     safeText,
+    settleWithdrawal,
     safeUserSummary,
     saveSystemSettings,
     sendSubscribeMessage,
     syncUsersMemberLevelName,
     updateOrderWhenStatus,
-    validateStaffAvailability,
+    validateStaffAvailabilityForSessions,
+    assignOrderAtomically,
+    updateOrderStatusWithScheduling,
+    getOrderTimeRanges,
     validateStaffTakeOrderAbility
   } = context
   return async function admin(openid, action, data) {
@@ -95,16 +98,7 @@ module.exports = function createHandler(context) {
     }
     if (action === 'financeDashboard') {
       await refreshStaffEarnings()
-      const range = buildDateRange(data)
-      const [orders, payments, refunds, earnings, withdraws, logs] = await Promise.all([
-        getAllDocuments('orders', 'createdAt', 'desc'),
-        getAllDocuments('payments', 'createdAt', 'desc'),
-        getAllDocuments('refunds', 'createdAt', 'desc'),
-        getAllDocuments('staff_earnings', 'createdAt', 'desc'),
-        getAllDocuments('withdraw_requests', 'createdAt', 'desc'),
-        getAllDocuments('finance_logs', 'createdAt', 'desc')
-      ])
-      return buildFinanceDashboardData({ orders, payments, refunds, earnings, withdraws, logs }, range)
+      return aggregateFinanceDashboard(data)
     }
     if (action === 'listFinanceLogs') {
       const range = buildDateRange(data)
@@ -138,33 +132,15 @@ module.exports = function createHandler(context) {
       return limitList((res.data || []).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt'])), data.pageSize || 50)
     }
     if (action === 'auditWithdrawRequest') {
-      const request = (await db.collection('withdraw_requests').doc(data.id).get()).data
-      if (!request) throw new Error('提现申请不存在')
-      if (request.status !== 'pending') throw new Error('当前状态不可审核')
       const approved = data.approved === true
-      const time = now()
       const nextStatus = approved ? 'approved' : 'rejected'
-      const updated = await db.collection('withdraw_requests').where({ _id: data.id, status: 'pending' }).update({ data: { status: nextStatus, auditRemark: safeText(data.auditRemark).trim(), auditedByOpenid: openid, auditedAt: time, updatedAt: time } })
-      if (!updated.stats || !updated.stats.updated) throw new Error('当前状态不可审核，请刷新后重试')
-      if (!approved) {
-        await Promise.all((request.earningIds || []).map((id) => db.collection('staff_earnings').doc(id).update({ data: { status: 'available', withdrawRequestId: '', updatedAt: time } })))
-      }
-      await appendFinanceLog(approved ? 'withdraw_approved' : 'withdraw_rejected', { targetType: 'withdraw_request', targetId: data.id, staffOpenid: request.staffOpenid, amountDelta: 0, detail: { auditRemark: data.auditRemark || '' } })
-      await logAdmin(admin, 'withdraw_request', data.id, 'auditWithdrawRequest', { approved })
-      await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id }, { amount: request.amount, statusText: approved ? '已审核' : '已驳回' }), '')
+      const { request, changed } = await settleWithdrawal({ ...admin, openid }, data)
+      if (changed) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id }, { amount: request.amount, statusText: approved ? '已审核' : '已驳回' }), '')
       return { id: data.id, status: nextStatus }
     }
     if (action === 'markWithdrawPaid') {
-      const request = (await db.collection('withdraw_requests').doc(data.id).get()).data
-      if (!request) throw new Error('提现申请不存在')
-      if (request.status !== 'approved') throw new Error('仅已审核提现可标记打款')
-      const time = now()
-      const updated = await db.collection('withdraw_requests').where({ _id: data.id, status: 'approved' }).update({ data: { status: 'paid', paidAt: time, paidByOpenid: openid, payRemark: safeText(data.payRemark).trim(), updatedAt: time } })
-      if (!updated.stats || !updated.stats.updated) throw new Error('仅已审核提现可标记打款，请刷新后重试')
-      await Promise.all((request.earningIds || []).map((id) => db.collection('staff_earnings').doc(id).update({ data: { status: 'withdrawn', updatedAt: time } })))
-      await appendFinanceLog('withdraw_paid', { targetType: 'withdraw_request', targetId: data.id, staffOpenid: request.staffOpenid, amountDelta: -Number(request.amount || 0), detail: { payRemark: data.payRemark || '' } })
-      await logAdmin(admin, 'withdraw_request', data.id, 'markWithdrawPaid', { amount: request.amount })
-      await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id }, { amount: request.amount, statusText: '已打款' }), '')
+      const { request, changed } = await settleWithdrawal({ ...admin, openid }, data, true)
+      if (changed) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id }, { amount: request.amount, statusText: '已打款' }), '')
       return { id: data.id, status: 'paid' }
     }
     if (action === 'getSystemSettings') {
@@ -505,14 +481,13 @@ module.exports = function createHandler(context) {
         }
         throw new Error(ability.message || '该宠托师尚未完成培训/视频审核，不能派单')
       }
-      await validateStaffAvailability(profile, orderRes.data.startTime, orderRes.data.endTime, { excludeOrderId: data.orderId })
+      await validateStaffAvailabilityForSessions(profile, getOrderTimeRanges(orderRes.data), { excludeOrderId: data.orderId })
       const staffUserRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = staffUserRes.data[0]
       if (!staffUser) throw new Error('员工用户不存在')
       const time = now()
       const assignmentUpdate = { staffUserId: staffUser._id, staffOpenid: staffUser.openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: 'admin_assign', assignedAt: time, updatedAt: time }
-      await updateOrderWhenStatus(data.orderId, ORDER_STATUS.PAID, assignmentUpdate, '订单已被分配', { staffOpenid: '' })
-      const assignedOrder = { ...orderRes.data, _id: data.orderId, ...assignmentUpdate }
+      const assignedOrder = await assignOrderAtomically(data.orderId, orderRes.data, assignmentUpdate, { admin: true, depositConfig: settings.staffDeposit })
       await appendOrderTimeline(data.orderId, 'assigned', '管理员已派单', maskStaffName(profile.realName), 'admin')
       await appendOrderClientMessage(assignedOrder, { eventType: 'assigned', title: '平台已派单', detail: maskStaffName(profile.realName), actorRole: 'admin' })
       await notifyOrder(orderRes.data.clientOpenid, 'orderAssigned', { ...orderRes.data, _id: data.orderId }, { statusText: '已派单' })
@@ -548,7 +523,7 @@ module.exports = function createHandler(context) {
       if (targetStatus === 'cancelled' && !order.cancelledAt) {
         updateData.cancelledAt = time
       }
-      await db.collection('orders').doc(orderId).update({ data: updateData })
+      await updateOrderStatusWithScheduling(orderId, order, updateData)
 
       const statusLabels = {
         pending_pay: '待支付',
