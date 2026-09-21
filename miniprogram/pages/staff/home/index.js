@@ -104,6 +104,10 @@ function parseDateTimeParts(dateStr) {
   return null
 }
 
+function pageList(result) {
+  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
+}
+
 function applyOrderFlags(orders, radiusKm, schedule) {
   const normalized = normalizeScheduleSlots(schedule)
   return orders.map((order) => {
@@ -131,6 +135,9 @@ Page({
     themeClass: 'theme-day',
     directOrders: [],
     nearbyOrders: [],
+    nearbyPage: 1,
+    nearbyPageSize: 10,
+    nearbyHasMore: true,
     locationReady: false,
     locationText: '尚未获取当前位置',
     loadingNearby: false,
@@ -165,6 +172,10 @@ Page({
     this.setData({ customLocation: null }, () => {
       this.initStaffHome()
     })
+  },
+
+  onReachBottom() {
+    this.loadMoreNearby()
   },
 
   applyCurrentTheme() {
@@ -380,18 +391,32 @@ Page({
   },
 
 
-  loadNearby(location, locationText, force = false) {
-    if (this.data.loadingNearby && !force) return
-    this.setData({ loadingNearby: true })
-    const data = {
+  normalizeNearbyOrders(orders, location) {
+    let recalculatedNearbyOrders = applyWorkbenchDistances(applyCityFilter(orders, this.data.selectedCity), location)
+    recalculatedNearbyOrders = applyOrderFlags(recalculatedNearbyOrders, this.data.staffRadiusKm, this.data.staffSchedule)
+    if (this.data.inServiceRange) recalculatedNearbyOrders = recalculatedNearbyOrders.filter((o) => o.inRange)
+    if (this.data.inServiceTime) recalculatedNearbyOrders = recalculatedNearbyOrders.filter((o) => o.inTime)
+    return recalculatedNearbyOrders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
+  },
+
+  getNearbyRequestData(location, page) {
+    return {
       latitude: Number(location ? location.latitude : 0),
       longitude: Number(location ? location.longitude : 0),
       accuracy: Number(location ? location.accuracy : 0),
       city: this.data.selectedCity,
       inServiceRange: this.data.inServiceRange,
       inServiceTime: this.data.inServiceTime,
-      filterDate: this.data.filterDate
+      filterDate: this.data.filterDate,
+      page,
+      pageSize: this.data.nearbyPageSize
     }
+  },
+
+  loadNearby(location, locationText, force = false) {
+    if (this.data.loadingNearby && !force) return
+    const data = this.getNearbyRequestData(location, 1)
+    this.setData({ loadingNearby: true, nearbyPage: 1, nearbyHasMore: true })
 
     // 静默尝试更新宠托师当前定位，不阻断订单列表与距离重算的加载
     callFunction('staff', 'updateCurrentLocation', data).catch(() => {})
@@ -400,19 +425,43 @@ Page({
       callFunction('staff', 'listDirectOrders', data),
       callFunction('staff', 'listNearbyOrders', data)
     ])
-      .then(([directOrders, nearbyOrders]) => {
-        const recalculatedDirectOrders = applyWorkbenchDistances(directOrders, location)
-        let recalculatedNearbyOrders = applyWorkbenchDistances(applyCityFilter(nearbyOrders, this.data.selectedCity), location)
-        recalculatedNearbyOrders = applyOrderFlags(recalculatedNearbyOrders, this.data.staffRadiusKm, this.data.staffSchedule)
-        if (this.data.inServiceRange) recalculatedNearbyOrders = recalculatedNearbyOrders.filter((o) => o.inRange)
-        if (this.data.inServiceTime) recalculatedNearbyOrders = recalculatedNearbyOrders.filter((o) => o.inTime)
-        recalculatedNearbyOrders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
+      .then(([directResult, nearbyResult]) => {
+        const directPage = pageList(directResult)
+        const nearbyPage = pageList(nearbyResult)
+        const recalculatedDirectOrders = applyWorkbenchDistances(directPage.list, location)
+        const recalculatedNearbyOrders = this.normalizeNearbyOrders(nearbyPage.list, location)
         this.setData({
           directOrders: recalculatedDirectOrders,
           nearbyOrders: recalculatedNearbyOrders,
+          nearbyPage: nearbyPage.page,
+          nearbyHasMore: nearbyPage.hasMore,
           locationReady: true,
           currentWorkbenchLocation: location || null,
           locationText: formatWorkbenchLocationText(locationText, location),
+          loadingNearby: false
+        })
+      })
+      .catch((error) => {
+        this.setData({ loadingNearby: false })
+        showError(error)
+      })
+  },
+
+  loadMoreNearby() {
+    if (!this.data.nearbyHasMore || this.data.loadingNearby) return
+    const location = this.data.currentWorkbenchLocation || this.data.customLocation
+    if (!location) return
+    const page = this.data.nearbyPage + 1
+    const data = this.getNearbyRequestData(location, page)
+    this.setData({ loadingNearby: true })
+    callFunction('staff', 'listNearbyOrders', data)
+      .then((result) => {
+        const nearbyPage = pageList(result)
+        const recalculatedNearbyOrders = this.normalizeNearbyOrders(nearbyPage.list, location)
+        this.setData({
+          nearbyOrders: this.data.nearbyOrders.concat(recalculatedNearbyOrders),
+          nearbyPage: nearbyPage.page,
+          nearbyHasMore: nearbyPage.hasMore,
           loadingNearby: false
         })
       })

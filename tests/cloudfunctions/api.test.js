@@ -1532,6 +1532,8 @@ test('staff visibility and accept permissions respect open and direct publish mo
 
   const nearbyResult = await staffAFn.main({ module: 'staff', action: 'listNearbyOrders', data: { latitude: 31.2, longitude: 121.5 } })
   const directResult = await staffAFn.main({ module: 'staff', action: 'listDirectOrders' })
+  const nearbyPageResult = await staffAFn.main({ module: 'staff', action: 'listNearbyOrders', data: { latitude: 31.2, longitude: 121.5, page: 1, pageSize: 1 } })
+  const directPageResult = await staffAFn.main({ module: 'staff', action: 'listDirectOrders', data: { page: 1, pageSize: 1 } })
   const openDetailResult = await staffAFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'open_order' } })
   const directDetailResult = await staffAFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'direct_order' } })
   const deniedDetailResult = await staffBFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'direct_order' } })
@@ -1542,9 +1544,17 @@ test('staff visibility and accept permissions respect open and direct publish mo
 
   assert.equal(nearbyResult.ok, true)
   assert.deepEqual(nearbyResult.data.map((order) => order._id), ['open_order'])
+  assert.equal(nearbyPageResult.ok, true)
+  assert.equal(nearbyPageResult.data.total, 1)
+  assert.equal(nearbyPageResult.data.hasMore, false)
+  assert.deepEqual(nearbyPageResult.data.list.map((order) => order._id), ['open_order'])
   assert.equal(directResult.ok, true)
   assert.deepEqual(directResult.data.map((order) => order._id), ['direct_order'])
   assert.equal(directResult.data[0].distanceText, '0m')
+  assert.equal(directPageResult.ok, true)
+  assert.equal(directPageResult.data.total, 1)
+  assert.equal(directPageResult.data.hasMore, false)
+  assert.deepEqual(directPageResult.data.list.map((order) => order._id), ['direct_order'])
   assert.equal(openDetailResult.ok, true)
   assert.equal(openDetailResult.data.petSnapshot.breed, '金毛')
   assert.equal(directDetailResult.ok, true)
@@ -3204,7 +3214,7 @@ test('updateStaffProfileConfig updates service radius and weekly schedule', asyn
   assert.deepEqual(db.state.staff_profiles[0].weeklySchedule['1'], [{ start: 10, end: 12 }, { start: 16, end: 18 }])
 })
 
-test('listApprovedSitters filters out sitters exceeding user location distance', async () => {
+test('listApprovedSitters marks out-of-range sitters but keeps them visible', async () => {
   const db = createCollectionStore({
     users: [],
     staff_profiles: [
@@ -3222,9 +3232,28 @@ test('listApprovedSitters filters out sitters exceeding user location distance',
   })
 
   assert.equal(result.ok, true)
-  assert.equal(result.data.total, 1)
-  assert.equal(result.data.list[0]._id, 's_near')
-  assert.equal(typeof result.data.list[0].distanceText, 'string')
+  assert.equal(result.data.total, 2)
+  assert.equal(result.data.hasMore, false)
+  const near = result.data.list.find((item) => item._id === 's_near')
+  const far = result.data.list.find((item) => item._id === 's_far')
+  assert.equal(typeof near.distanceText, 'string')
+  assert.equal(near.inServiceRange, true)
+  assert.equal(near.canDirectBook, true)
+  assert.equal(typeof far.distanceText, 'string')
+  assert.equal(far.inServiceRange, false)
+  assert.equal(far.canDirectBook, false)
+
+  const firstPage = await fn.main({ module: 'staff', action: 'listApprovedSitters', data: { latitude: 31.201, longitude: 121.501, page: 1, pageSize: 1 } })
+  const secondPage = await fn.main({ module: 'staff', action: 'listApprovedSitters', data: { latitude: 31.201, longitude: 121.501, page: 2, pageSize: 1 } })
+  assert.equal(firstPage.ok, true)
+  assert.equal(firstPage.data.total, 2)
+  assert.equal(firstPage.data.page, 1)
+  assert.equal(firstPage.data.pageSize, 1)
+  assert.equal(firstPage.data.hasMore, true)
+  assert.equal(secondPage.ok, true)
+  assert.equal(secondPage.data.page, 2)
+  assert.equal(secondPage.data.hasMore, false)
+  assert.notEqual(firstPage.data.list[0]._id, secondPage.data.list[0]._id)
 })
 
 test('createOrder enforces sitter weekly schedule and service radius limits', async () => {

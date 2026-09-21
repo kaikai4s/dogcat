@@ -528,6 +528,7 @@
 .pink-cute { color: #f43f6b; background: #fff0f5; }
 .blue-cute { color: #2563eb; background: #eff6ff; }
 .gray-cute { color: #7a6a5e; background: #f7f5f4; }
+.out-range-cute { color: #9a3412; background: #fff7ed; }
 
 .pin-mini-icon {
   font-size: 22rpx;
@@ -585,9 +586,23 @@
   box-shadow: 0 10rpx 24rpx rgba(255, 122, 69, 0.22);
 }
 
+.primary-cute-btn.disabled,
+.primary-cute-btn[disabled] {
+  color: #9ca3af !important;
+  background: #f3f4f6 !important;
+  box-shadow: none !important;
+}
+
 .ghost-cute-btn {
   color: #d45f22;
   background: #fff0e2;
+}
+
+.list-state {
+  padding: 28rpx 0;
+  color: #8e8580;
+  font-size: 24rpx;
+  text-align: center;
 }
 
 .sitter-empty {

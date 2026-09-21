@@ -221,6 +221,9 @@
     </view>
   </view>
 
+  <view class="list-state" wx:if="{{loadingNearby && nearbyOrders.length}}">正在加载更多可接订单...</view>
+  <view class="list-state" wx:if="{{!loadingNearby && nearbyOrders.length && !nearbyHasMore}}">已显示全部可接订单</view>
+
   <view class="card empty order-empty" wx:if="{{locationReady && !nearbyOrders.length}}">
     <view class="empty-icon remix-icon ri-radar-line"></view>
     <view class="empty-title">附近暂无待抢订单</view>

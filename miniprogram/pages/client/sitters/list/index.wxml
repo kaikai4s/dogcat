@@ -103,6 +103,7 @@
             <view class="remix-icon ri-map-pin-2-fill pin-mini-icon"></view> {{item.distanceText}}
           </view>
           <view class="chip-cute gray-cute" wx:if="{{item.serviceRadiusKm}}">{{item.serviceRadiusKm}}km范围内</view>
+          <view class="chip-cute out-range-cute" wx:if="{{item.canDirectBook === false}}">超出服务范围</view>
         </view>
       </view>
     </view>
@@ -119,10 +120,13 @@
     </view>
 
     <view class="sitter-item-actions">
-      <button class="primary-cute-btn" data-id="{{item._id}}" bindtap="book">指定预约</button>
+      <button class="primary-cute-btn {{item.canDirectBook === false ? 'disabled' : ''}}" data-id="{{item._id}}" data-disabled="{{item.canDirectBook === false}}" disabled="{{item.canDirectBook === false}}" bindtap="book">{{item.canDirectBook === false ? '超出范围' : '指定预约'}}</button>
       <button class="ghost-cute-btn" data-id="{{item._id}}" bindtap="detail">查看资料</button>
     </view>
   </view>
+
+  <view class="list-state" wx:if="{{loading && sitters.length}}">正在加载更多宠托师...</view>
+  <view class="list-state" wx:if="{{!loading && sitters.length && !hasMore}}">已显示全部宠托师</view>
 
   <view class="empty sitter-empty" wx:if="{{!loading && !sitters.length}}">
     <view class="remix-icon ri-emotion-sad-line empty-icon"></view>

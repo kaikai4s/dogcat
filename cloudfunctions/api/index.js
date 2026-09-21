@@ -8002,32 +8002,25 @@ const handlers = {
         if (serviceArea && !areas.includes(serviceArea)) return false
         if (keyword && !(matchText(profile.nickname, keyword) || matchText(profile.realName, keyword) || matchText(profile.serviceCity, keyword) || matchText(profile.serviceAreas, keyword))) return false
 
-        if (userHasLoc) {
-          const sitterLat = Number(profile.serviceLatitude || 0)
-          const sitterLng = Number(profile.serviceLongitude || 0)
-          if (!hasCoordinate(sitterLat, sitterLng) || !profile.serviceAddress) {
-            return false
-          }
-          const dist = calcDistanceKm(userLat, userLng, sitterLat, sitterLng)
-          const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
-          if (dist === null || dist > radiusKm) {
-            return false
-          }
-        }
         return true
       })
 
       const publicList = sitters.map((profile) => {
         const publicData = toPublicSitter(profile)
-        if (userHasLoc && hasCoordinate(profile.serviceLatitude, profile.serviceLongitude)) {
-          const distanceKm = calcDistanceKm(userLat, userLng, profile.serviceLatitude, profile.serviceLongitude)
-          return {
-            ...publicData,
-            distanceKm,
-            distanceText: formatDistance(distanceKm)
-          }
+        if (!userHasLoc) return { ...publicData, inServiceRange: true, canDirectBook: true }
+
+        const hasSitterLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
+        const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+        const distanceKm = hasSitterLoc ? calcDistanceKm(userLat, userLng, profile.serviceLatitude, profile.serviceLongitude) : null
+        const inServiceRange = distanceKm !== null && distanceKm <= radiusKm
+        return {
+          ...publicData,
+          distanceKm,
+          distanceText: formatDistance(distanceKm),
+          inServiceRange,
+          canDirectBook: inServiceRange,
+          rangeStatusText: inServiceRange ? '服务范围内' : '超出服务范围'
         }
-        return publicData
       })
 
       const compareRating = (a, b) => Number(b.ratingAverage || 0) - Number(a.ratingAverage || 0) || Number(b.reviewCount || 0) - Number(a.reviewCount || 0) || toTimeValue(b.ratingUpdatedAt || b.updatedAt) - toTimeValue(a.ratingUpdatedAt || a.updatedAt)
@@ -8047,13 +8040,7 @@ const handlers = {
       }
       publicList.sort((a, b) => compareFeatured(a, b) || compareByMode(a, b))
 
-      const start = (page - 1) * pageSize
-      return {
-        total: publicList.length,
-        page,
-        pageSize,
-        list: publicList.slice(start, start + pageSize)
-      }
+      return paginateList(publicList, { ...data, page, pageSize })
     }
     if (action === 'getPublicSitterDetail') {
       const user = await getOptionalUser(openid)
@@ -8494,11 +8481,13 @@ const handlers = {
         })
       }
 
-      // 3. 服务范围与时间标记（由前端负责筛选，后端只计算标记）
+      // 3. 服务范围与时间筛选需在分页前执行，避免当前页被前端过滤后为空
+      if (inServiceRange) orders = orders.filter((order) => order.inRange)
+      if (inServiceTime) orders = orders.filter((order) => order.inTime)
 
-      return orders
-        .sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
-        .slice(0, 20)
+      const sortedOrders = orders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(sortedOrders, data) : sortedOrders.slice(0, 20)
     }
     if (action === 'listDirectOrders') {
       const user = await getUser(openid)
@@ -8512,7 +8501,7 @@ const handlers = {
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       await expireDueUnacceptedOrders()
       const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
-      return Promise.all((res.data || [])
+      const directOrders = await Promise.all((res.data || [])
         .filter((order) => !isAdminDeletedOrder(order) && order.publishMode === 'direct' && !order.staffOpenid && order.requestedStaffOpenid === openid)
         .map(async (order) => {
           const enriched = await attachOrderDisplayData(order)
@@ -8522,6 +8511,8 @@ const handlers = {
           }
           return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
         }))
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(directOrders, data) : directOrders
     }
     if (action === 'getScheduleCalendar') {
       const user = await getUser(openid)

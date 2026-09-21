@@ -18,6 +18,10 @@ function unique(values) {
   return Array.from(new Set(values.filter(Boolean)))
 }
 
+function pageList(result) {
+  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
+}
+
 function areaTags(sitter) {
   return Array.isArray(sitter.areaTags) ? sitter.areaTags : []
 }
@@ -50,6 +54,9 @@ Page({
     locationAddress: '',
     allSitters: [],
     sitters: [],
+    page: 1,
+    pageSize: 10,
+    hasMore: true,
     total: 0,
     loading: false,
     messageUnreadCount: 0,
@@ -61,6 +68,10 @@ Page({
     this.syncCurrentLocation()
     this.loadFacets()
     loadMessageUnread(this)
+  },
+
+  onReachBottom() {
+    this.loadMore()
   },
 
   applyCurrentTheme() {
@@ -85,7 +96,7 @@ Page({
         const allSitters = res.list || []
         this.setData({ allSitters }, () => {
           this.refreshOptions()
-          this.loadSitters()
+          this.loadSitters({ reset: true })
         })
       })
       .catch((error) => {
@@ -109,8 +120,11 @@ Page({
     })
   },
 
-  loadSitters() {
+  loadSitters(options = {}) {
+    const reset = options.reset === true
+    if (!reset && this.data.loading) return
     const { keyword, activeCity, activeArea, sortBy } = this.data
+    const page = reset ? 1 : this.data.page
     this.syncCurrentLocation()
     const loc = getSelectedLocation()
     const locParams = loc ? { latitude: loc.latitude, longitude: loc.longitude } : {}
@@ -122,18 +136,31 @@ Page({
       serviceCity: activeCity === ALL ? '' : activeCity,
       serviceArea: activeArea === ALL ? '' : activeArea,
       sortBy,
-      pageSize: 50,
+      page,
+      pageSize: this.data.pageSize,
       ...locParams
     })
       .then((res) => {
         if (requestSeq !== this._requestSeq) return
-        this.setData({ sitters: res.list || [], total: res.total || 0, loading: false })
+        const pageData = pageList(res)
+        this.setData({
+          sitters: reset ? pageData.list : this.data.sitters.concat(pageData.list),
+          page: pageData.page,
+          hasMore: pageData.hasMore,
+          total: pageData.total,
+          loading: false
+        })
       })
       .catch((error) => {
         if (requestSeq !== this._requestSeq) return
         this.setData({ loading: false })
         showError(error)
       })
+  },
+
+  loadMore() {
+    if (!this.data.hasMore || this.data.loading) return
+    this.setData({ page: this.data.page + 1 }, () => this.loadSitters())
   },
 
   updateLocation() {
@@ -143,7 +170,7 @@ Page({
           locationName: loc.name || '已选择位置',
           locationAddress: loc.address || '已选择服务附近位置'
         })
-        this.loadSitters()
+        this.setData({ page: 1, hasMore: true }, () => this.loadSitters({ reset: true }))
       })
       .catch((err) => {
         const errMsg = (err && err.errMsg) || ''
@@ -157,7 +184,7 @@ Page({
   },
 
   search() {
-    this.loadSitters()
+    this.setData({ page: 1, hasMore: true }, () => this.loadSitters({ reset: true }))
   },
 
   chooseCity(e) {
@@ -168,7 +195,7 @@ Page({
     }
     this.setData({ activeCity: city, activeArea: ALL, showCitySelector: false }, () => {
       this.refreshOptions()
-      this.loadSitters()
+      this.setData({ page: 1, hasMore: true }, () => this.loadSitters({ reset: true }))
     })
   },
 
@@ -180,7 +207,7 @@ Page({
     }
     this.setData({ activeArea: area, showAreaSelector: false }, () => {
       this.refreshOptions()
-      this.loadSitters()
+      this.setData({ page: 1, hasMore: true }, () => this.loadSitters({ reset: true }))
     })
   },
 
@@ -205,13 +232,13 @@ Page({
   chooseSort(e) {
     const sort = e.currentTarget.dataset.sort
     if (sort === this.data.sortBy) return
-    this.setData({ sortBy: sort }, () => this.loadSitters())
+    this.setData({ sortBy: sort, page: 1, hasMore: true }, () => this.loadSitters({ reset: true }))
   },
 
   clearFilters() {
     this.setData({ keyword: '', activeCity: ALL, activeArea: ALL, sortBy: 'default' }, () => {
       this.refreshOptions()
-      this.loadSitters()
+      this.setData({ page: 1, hasMore: true }, () => this.loadSitters({ reset: true }))
     })
   },
 
@@ -220,6 +247,10 @@ Page({
   },
 
   book(e) {
+    if (e.currentTarget.dataset.disabled) {
+      wx.showToast({ title: '该宠托师超出当前服务范围', icon: 'none' })
+      return
+    }
     const staffProfileId = e.currentTarget.dataset.id
     const url = staffProfileId
       ? `/pages/client/orders/create/index?publishMode=direct&staffProfileId=${staffProfileId}`
