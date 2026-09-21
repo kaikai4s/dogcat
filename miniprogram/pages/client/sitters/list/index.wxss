@@ -151,7 +151,11 @@
   flex: 1;
   min-width: 0;
   height: 60rpx;
+  min-height: 60rpx !important;
+  padding: 0 !important;
+  margin: 0 !important;
   font-size: 26rpx;
+  line-height: 60rpx;
   color: #2d211a;
   background: transparent !important;
   border: none !important;

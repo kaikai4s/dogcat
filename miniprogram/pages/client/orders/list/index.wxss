@@ -76,9 +76,16 @@
 
 .filter-input {
   flex: 1;
+  min-width: 0;
+  height: 60rpx;
+  min-height: 60rpx !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
   font-size: 26rpx;
+  line-height: 60rpx;
   color: #2d211a;
-  height: 100%;
 }
 
 .clear-icon {
@@ -119,7 +126,9 @@
   justify-content: center;
   gap: 8rpx;
   height: 64rpx;
+  min-height: 64rpx;
   padding: 0 16rpx;
+  margin: 0;
   border-radius: 999rpx;
   background: #fbf8f5;
   border: 1rpx solid rgba(255, 153, 102, 0.18);

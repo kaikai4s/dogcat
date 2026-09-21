@@ -494,7 +494,7 @@
 
 .profile-grid-label {
   position: relative;
-  z-index: 20;
+  z-index: 10;
   margin-top: 12rpx;
   max-width: 128rpx;
   color: #5f5650;
