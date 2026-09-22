@@ -57,7 +57,7 @@ class World3D {
   constructor(page, onStatus, overview, onPetsChange) {
     this.page = page
     this.onStatus = onStatus
-    this.overview = overview || {}
+    this.overviewData = overview || {}
     this.onPetsChange = onPetsChange || (() => {})
     this.destroyed = false
     this.scene = new THREE.Scene()
@@ -159,7 +159,7 @@ class World3D {
   }
 
   async buildWorld(house) {
-    const profiles = (this.overview.pets || []).filter((pet) => !pet.deletedAt).slice(0, 8)
+    const profiles = (this.overviewData.pets || []).filter((pet) => !pet.deletedAt).slice(0, 8)
     if (!profiles.length) throw new Error('请先添加宠物档案，再进入宠物乐园')
     const ground = new THREE.Mesh(new THREE.PlaneBufferGeometry(360, 290), new THREE.MeshLambertMaterial({ map: grassTexture(), color: 0xffffff }))
     ground.rotation.x = -Math.PI / 2
