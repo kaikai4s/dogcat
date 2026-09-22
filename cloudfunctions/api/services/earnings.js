@@ -29,17 +29,34 @@ module.exports = function createService({
     return new Date(base.getTime() + Math.max(Number(delayDays || 0), 0) * 86400000)
   }
 
-  async function ensureStaffEarning(order, completedAt = now()) {
+  async function ensureStaffEarning(order, completedAt = now(), options = {}) {
     if (!order || !order._id || !order.staffOpenid) return null
     const existing = await db.collection('staff_earnings').where({ orderId: order._id }).limit(1).get()
     if (existing.data[0]) return existing.data[0]
     const settings = await getSystemSettings()
     const rate = Number(settings.settlement.staffCommissionRate || 0.7)
     const grossAmount = Number(order.payAmount || 0)
-    let earningAmount = Math.round(grossAmount * rate * 100) / 100
+    let baseAmount = Math.round(grossAmount * rate * 100) / 100
     if (order.isUrgent && Number(order.urgentStaffReward) > 0) {
-      earningAmount = Number(order.urgentStaffReward)
+      baseAmount = Number(order.urgentStaffReward)
     }
+
+    const originalAmount = baseAmount
+    let deductAmount = 0
+    let deductReason = ''
+    if (Number(options.deductAmount) > 0) {
+      deductAmount = Math.min(baseAmount, Math.round(Number(options.deductAmount) * 100) / 100)
+      deductReason = String(options.deductReason || options.reason || '').trim()
+    } else if (Number(order.adminManualDeductEarning) > 0) {
+      deductAmount = Math.min(baseAmount, Math.round(Number(order.adminManualDeductEarning) * 100) / 100)
+      deductReason = String(order.adminManualDeductReason || '').trim()
+    }
+
+    let earningAmount = Math.max(0, Math.round((baseAmount - deductAmount) * 100) / 100)
+    if (options.overrideAmount !== undefined && Number(options.overrideAmount) >= 0) {
+      earningAmount = Math.round(Number(options.overrideAmount) * 100) / 100
+    }
+
     const time = now()
     const earning = {
       orderId: order._id,
@@ -51,6 +68,11 @@ module.exports = function createService({
       grossAmount,
       commissionRate: rate,
       amount: earningAmount,
+      originalAmount,
+      deductAmount,
+      deductReason,
+      isDeducted: deductAmount > 0,
+      completionType: order.completionType || options.completionType || 'normal',
       status: settings.settlement.settlementDelayDays > 0 ? 'pending' : 'available',
       availableAt: calculateAvailableAt(completedAt, settings.settlement.settlementDelayDays),
       withdrawRequestId: '',
@@ -59,7 +81,20 @@ module.exports = function createService({
       updatedAt: time
     }
     const created = await db.collection('staff_earnings').add({ data: earning })
-    await appendFinanceLog('staff_earning_created', { targetType: 'staff_earning', targetId: created._id, orderId: order._id, staffOpenid: order.staffOpenid, amountDelta: earningAmount, detail: { commissionRate: rate } })
+    await appendFinanceLog('staff_earning_created', {
+      targetType: 'staff_earning',
+      targetId: created._id,
+      orderId: order._id,
+      staffOpenid: order.staffOpenid,
+      amountDelta: earningAmount,
+      detail: {
+        commissionRate: rate,
+        originalAmount,
+        deductAmount,
+        deductReason,
+        isDeducted: deductAmount > 0
+      }
+    })
     return { _id: created._id, ...earning }
   }
 

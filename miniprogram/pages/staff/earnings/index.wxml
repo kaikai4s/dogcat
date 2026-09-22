@@ -73,8 +73,20 @@
         <view class="label">订单原价</view>
         <view class="value">¥{{item.grossAmountText}}</view>
       </view>
+      <view class="info-row" wx:if="{{item.hasDeduction}}">
+        <view class="label">应得收益</view>
+        <view class="value">¥{{item.originalAmountText}}</view>
+      </view>
+      <view class="info-row" wx:if="{{item.hasDeduction}}">
+        <view class="label">违规扣减</view>
+        <view class="value" style="color: #ef4444; font-weight: 700;">-¥{{item.deductAmountText}}</view>
+      </view>
+      <view class="info-row" wx:if="{{item.hasDeduction && item.deductReason}}">
+        <view class="label">扣减说明</view>
+        <view class="value" style="color: #ef4444;">{{item.deductReason}}</view>
+      </view>
       <view class="info-row">
-        <view class="label">到手收益</view>
+        <view class="label">{{item.hasDeduction ? '实发收益' : '到手收益'}}</view>
         <view class="value price-highlight">¥{{item.amountText}}</view>
       </view>
       <view class="info-row">

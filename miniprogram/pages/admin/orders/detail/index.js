@@ -51,7 +51,14 @@ Page({
     evidenceDeductAmountInput: '50',
     evidenceReasonTextInput: '',
     evidenceImages: [],
-    submittingEvidence: false
+    submittingEvidence: false,
+    showManualCompleteModal: false,
+    standardStaffReward: 0,
+    manualDeductAmountInput: '0',
+    computedFinalReward: '0.00',
+    manualCompleteRemarkInput: '',
+    manualCompleteImages: [],
+    submittingManualComplete: false
   },
 
   onLoad(q) {
@@ -74,7 +81,13 @@ Page({
           ...r,
           statusText: refundStatusMap[r.status] || '处理中'
         }))
-        this.setData({ detail: { ...detail, order }, refunds: mappedRefunds })
+        const standardStaffReward = Number(order.standardStaffReward || 0)
+        this.setData({
+          detail: { ...detail, order },
+          refunds: mappedRefunds,
+          standardStaffReward,
+          computedFinalReward: standardStaffReward.toFixed(2)
+        })
       })
       .catch(showError)
   },
@@ -240,6 +253,10 @@ Page({
   openUrgentModal() {
     const order = this.data.detail && this.data.detail.order
     if (!order) return
+    if (!['paid', 'assigned'].includes(order.status)) {
+      wx.showToast({ title: '订单已开始服务或已结束，无法转加急单', icon: 'none' })
+      return
+    }
     const defaultReward = order.urgentStaffReward || Math.round(Number(order.payAmount || 60) * 0.7 * 100) / 100
     this.setData({
       showUrgentModal: true,
@@ -302,7 +319,10 @@ Page({
             this.closeUrgentModal()
             this.load()
           })
-          .catch(showError)
+          .catch((err) => {
+            showError(err)
+            this.load()
+          })
           .finally(() => this.setData({ submittingUrgent: false }))
       }
     })
@@ -448,6 +468,124 @@ Page({
           })
           .catch(showError)
           .finally(() => this.setData({ submittingEvidence: false }))
+      }
+    })
+  },
+
+  openManualCompleteModal() {
+    const order = this.data.detail && this.data.detail.order
+    if (!order) return
+    const reward = Number(order.standardStaffReward || this.data.standardStaffReward || 0)
+    this.setData({
+      showManualCompleteModal: true,
+      standardStaffReward: reward,
+      manualDeductAmountInput: '0',
+      computedFinalReward: reward.toFixed(2),
+      manualCompleteRemarkInput: '',
+      manualCompleteImages: [],
+      submittingManualComplete: false
+    })
+  },
+
+  closeManualCompleteModal() {
+    this.setData({ showManualCompleteModal: false })
+  },
+
+  inputManualDeductAmount(e) {
+    const val = e.detail.value
+    const deduct = Math.max(0, Number(val || 0))
+    const base = Number(this.data.standardStaffReward || 0)
+    const finalReward = Math.max(0, base - deduct)
+    this.setData({
+      manualDeductAmountInput: val,
+      computedFinalReward: finalReward.toFixed(2)
+    })
+  },
+
+  quickSetDeduct(e) {
+    const type = e.currentTarget.dataset.type
+    const base = Number(this.data.standardStaffReward || 0)
+    let deduct = 0
+    if (type === 'zero') deduct = 0
+    else if (type === 'twenty') deduct = Math.round(base * 0.2 * 100) / 100
+    else if (type === 'half') deduct = Math.round(base * 0.5 * 100) / 100
+    else if (type === 'all') deduct = base
+
+    const finalReward = Math.max(0, base - deduct)
+    this.setData({
+      manualDeductAmountInput: String(deduct),
+      computedFinalReward: finalReward.toFixed(2)
+    })
+  },
+
+  inputManualCompleteRemark(e) {
+    this.setData({ manualCompleteRemarkInput: e.detail.value })
+  },
+
+  chooseManualCompleteImages() {
+    const remain = 4 - (this.data.manualCompleteImages || []).length
+    if (remain <= 0) return
+    wx.chooseMedia({
+      count: remain,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const files = (res.tempFiles || []).map((f) => f.tempFilePath)
+        this.setData({ manualCompleteImages: [...(this.data.manualCompleteImages || []), ...files] })
+      }
+    })
+  },
+
+  removeManualCompleteImage(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const list = [...(this.data.manualCompleteImages || [])]
+    list.splice(index, 1)
+    this.setData({ manualCompleteImages: list })
+  },
+
+  previewManualCompleteImage(e) {
+    const url = e.currentTarget.dataset.url
+    if (!url) return
+    wx.previewImage({ urls: [url] })
+  },
+
+  submitManualComplete() {
+    const order = this.data.detail && this.data.detail.order
+    if (!order) return
+    const remark = String(this.data.manualCompleteRemarkInput || '').trim()
+    if (!remark) {
+      wx.showToast({ title: '请填写核实说明与原因', icon: 'none' })
+      return
+    }
+    const deductAmount = Math.max(0, Number(this.data.manualDeductAmountInput || 0))
+    const base = Number(this.data.standardStaffReward || 0)
+    if (deductAmount > base) {
+      wx.showToast({ title: '扣除金额不可大于应得收益', icon: 'none' })
+      return
+    }
+    const finalReward = Math.max(0, Math.round((base - deductAmount) * 100) / 100)
+
+    wx.showModal({
+      title: '确认核实并完成服务',
+      content: `宠托师原本应得：¥${base.toFixed(2)}\n违规扣除金额：¥${deductAmount.toFixed(2)}\n最终实发收益：¥${finalReward.toFixed(2)}\n确认更新订单为已完成并执行收益结算吗？`,
+      confirmColor: '#10b981',
+      success: (res) => {
+        if (!res.confirm) return
+        this.setData({ submittingManualComplete: true })
+        callFunction('admin', 'manualCompleteOrder', {
+          orderId: this.data.id,
+          remark,
+          deductAmount,
+          deductReason: remark,
+          evidenceImages: this.data.manualCompleteImages
+        })
+          .then(() => {
+            wx.showToast({ title: '已成功核实完单' })
+            this.closeManualCompleteModal()
+            this.load()
+          })
+          .catch(showError)
+          .finally(() => this.setData({ submittingManualComplete: false }))
       }
     })
   },

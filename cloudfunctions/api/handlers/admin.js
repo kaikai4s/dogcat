@@ -25,8 +25,10 @@ module.exports = function createHandler(context) {
     defaultServicePrices,
     detachUserFromHistoricalRecords,
     ensureMonthConfig,
+    ensureStaffEarning,
     expireDueUnacceptedOrders,
     getClientRequestId,
+    getUser,
     getAdminNotificationBadge,
     getMemberLevels,
     getMonthConfig,
@@ -504,6 +506,9 @@ module.exports = function createHandler(context) {
       displayOrder.depositPenaltyEvidences = penaltyEvidences
       displayOrder.hasDepositPenaltyEvidence = penaltyEvidences.length > 0 || displayOrder.hasDepositPenaltyEvidence === true
 
+      const standardEarning = await calculateStaffEarningForOrder(order.data).catch(() => ({ earningAmount: 0 }))
+      displayOrder.standardStaffReward = standardEarning.earningAmount || 0
+
       if (action === 'getEvidence') await logAdmin(admin, 'order', id, 'getEvidence', { trackCount: (tracks.data || []).length, checkinCount: (checkins.data || []).filter(isActiveCheckin) })
       return { order: displayOrder, tracks: tracks.data, checkins: (checkins.data || []).filter(isActiveCheckin), unlockLogs: unlockLogs.data, depositPenaltyEvidences: penaltyEvidences }
     }
@@ -585,6 +590,155 @@ module.exports = function createHandler(context) {
       })
       await logAdmin(admin, 'order', orderId, 'updateOrderStatus', { prevStatus, targetStatus, remark })
       return { orderId, status: targetStatus, prevStatus, remark }
+    }
+    if (action === 'manualCompleteOrder') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      if (!orderId) throw new Error('缺少订单 ID')
+      const orderRes = await db.collection('orders').doc(orderId).get()
+      if (!orderRes.data) throw new Error('订单不存在')
+      const order = orderRes.data
+
+      if (order.status === 'completed') {
+        throw new Error('订单当前已经是已完成状态')
+      }
+      if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) {
+        throw new Error(`当前订单状态（${order.status}）不可执行手动核实完单`)
+      }
+
+      const remark = safeText(data.remark || data.reason).trim()
+      if (!remark) throw new Error('请填写核实完单说明')
+
+      const standardEarning = await calculateStaffEarningForOrder(order).catch(() => ({ earningAmount: 0 }))
+      const baseReward = Number(standardEarning.earningAmount || 0)
+
+      let deductAmount = Number(data.deductAmount)
+      if (isNaN(deductAmount) || deductAmount < 0) deductAmount = 0
+      if (deductAmount > baseReward) {
+        throw new Error(`违规扣除金额（¥${deductAmount.toFixed(2)}）不能大于宠托师原本应得收益（¥${baseReward.toFixed(2)}）`)
+      }
+      const finalStaffReward = Math.max(0, Math.round((baseReward - deductAmount) * 100) / 100)
+      const evidenceImages = Array.isArray(data.evidenceImages) ? data.evidenceImages : []
+
+      const time = now()
+      const updateData = {
+        status: 'completed',
+        completionType: 'admin_manual',
+        completedAt: time,
+        adminManualCompletedAt: time,
+        adminManualCompletedBy: openid,
+        adminManualRemark: remark,
+        adminManualDeductEarning: deductAmount,
+        adminManualDeductReason: deductAmount > 0 ? (safeText(data.deductReason).trim() || remark) : '',
+        adminManualStaffReward: finalStaffReward,
+        adminManualEvidenceImages: evidenceImages,
+        activeSessionIndex: 0,
+        activeSessionDate: '',
+        currentSessionStartedAt: '',
+        isStartOverdue: false,
+        isFinishOverdue: false,
+        updatedAt: time
+      }
+
+      if (evidenceImages.length > 0) {
+        try {
+          await Promise.all(evidenceImages.map((imgUrl, idx) => {
+            return db.collection('checkin_logs').add({
+              data: {
+                orderId,
+                eventType: 'admin_supplement',
+                eventText: '平台核实补录凭证',
+                mediaFileId: imgUrl,
+                remark: `管理员线下核实补录图片 #${idx + 1}`,
+                recordedAt: time,
+                createdAt: time,
+                createdBy: openid,
+                source: 'admin'
+              }
+            })
+          }))
+        } catch (err) {
+          // ignore error
+        }
+      }
+
+      await db.collection('orders').doc(orderId).update({ data: updateData })
+
+      if (order.staffOpenid) {
+        await ensureStaffEarning(
+          { ...order, _id: orderId, completionType: 'admin_manual' },
+          time,
+          {
+            deductAmount,
+            deductReason: deductAmount > 0 ? (safeText(data.deductReason).trim() || remark) : '',
+            overrideAmount: finalStaffReward,
+            completionType: 'admin_manual'
+          }
+        )
+      }
+
+      const pointsDelta = Math.max(Math.floor(Number(order.payAmount || 0) / 10), 1)
+      await addPoints(order.clientOpenid, order.clientUserId, pointsDelta, 'order_complete', orderId, `完成订单 +${pointsDelta} 积分`, { applyMultiplier: true, baseDelta: pointsDelta }).catch(() => {})
+
+      try {
+        const clientUser = await getUser(order.clientOpenid)
+        if (clientUser && clientUser._id) {
+          const completedOrderCount = Number(clientUser.completedOrderCount || 0) + 1
+          await db.collection('users').doc(clientUser._id).update({ data: { completedOrderCount, updatedAt: time } })
+        }
+      } catch (err) {}
+
+      if (order.staffProfileId) {
+        try {
+          const pRes = await db.collection('staff_profiles').doc(order.staffProfileId).get()
+          if (pRes.data) {
+            const completedCount = Number(pRes.data.completedOrderCount || 0) + 1
+            await db.collection('staff_profiles').doc(order.staffProfileId).update({ data: { completedOrderCount: completedCount, updatedAt: time } })
+          }
+        } catch (err) {}
+      }
+
+      const timelineTitle = deductAmount > 0
+        ? `管理员核实并手动完单（扣减收益 ¥${deductAmount.toFixed(2)}）`
+        : `管理员核实并手动完单`
+      const timelineDesc = `核实说明：${remark}。宠托师原应得 ¥${baseReward.toFixed(2)}${deductAmount > 0 ? `，因未规范打卡扣除 ¥${deductAmount.toFixed(2)}，实发收益 ¥${finalStaffReward.toFixed(2)}` : `，全额入账收益 ¥${finalStaffReward.toFixed(2)}`}。`
+      await appendOrderTimeline(orderId, 'admin_manual_completed', timelineTitle, timelineDesc, 'admin')
+
+      await appendOrderClientMessage({ ...order, _id: orderId, status: 'completed' }, {
+        eventType: 'completed',
+        title: '订单已由平台核实完成',
+        detail: `平台管理员已协助核实履约并确认完单：${remark}。您的实付金额与权益不受影响，如有疑问可联系客服。`,
+        actorRole: 'admin'
+      })
+
+      if (order.staffOpenid) {
+        const staffMsgDetail = deductAmount > 0
+          ? `您的订单（${order.serviceSummary || order.orderNo}）由于未按规范在小程序内完成全部打卡，经平台核实后手动确认完单。本单原本应得收益 ¥${baseReward.toFixed(2)}，扣减违规收益 ¥${deductAmount.toFixed(2)}（原因：${safeText(data.deductReason).trim() || remark}），实际入账收益 ¥${finalStaffReward.toFixed(2)} 已结算记入您的收益中心。请在后续履约中规范打卡。`
+          : `您的订单（${order.serviceSummary || order.orderNo}）已由平台管理员核实完成，应得收益 ¥${finalStaffReward.toFixed(2)} 已全额结算记入您的收益中心。`
+        await appendOrderStaffMessage({ ...order, _id: orderId, status: 'completed' }, {
+          eventType: 'admin_manual_completed',
+          title: deductAmount > 0 ? '订单已核实完单（违规扣减收益通知）' : '订单已由管理员核实完单',
+          detail: staffMsgDetail,
+          actorRole: 'admin',
+          idempotencyKey: makeIdempotencyKey('order_staff_message', orderId, 'admin_manual_complete', String(time.getTime()))
+        })
+      }
+
+      await logAdmin(admin, 'order', orderId, 'manualCompleteOrder', {
+        baseReward,
+        deductAmount,
+        finalStaffReward,
+        remark,
+        evidenceImagesCount: evidenceImages.length
+      })
+
+      return {
+        orderId,
+        status: 'completed',
+        baseReward,
+        deductAmount,
+        finalStaffReward,
+        remark
+      }
     }
     if (action === 'refundOrder') {
       const orderId = safeText(data.id || data.orderId).trim()
@@ -1337,8 +1491,14 @@ module.exports = function createHandler(context) {
       const order = orderRes.data
       if (!order) throw new Error('订单不存在')
 
-      if (!['paid', 'assigned', 'in_service', 'day_completed'].includes(order.status)) {
-        throw new Error(`当前订单状态（${order.status}）不可转为加急公共抢单`)
+      if (!['paid', 'assigned'].includes(order.status)) {
+        throw new Error(`当前订单状态（${order.status}）不可转为加急公共抢单，宠托师可能已开始服务或订单状态已变更，请刷新确认`)
+      }
+
+      const checkinRes = await db.collection('checkin_logs').where({ orderId }).get().catch(() => ({ data: [] }))
+      const staffCheckins = (checkinRes.data || []).filter((item) => isActiveCheckin(item) && item.source !== 'admin' && item.eventType !== 'admin_supplement' && (!order.staffOpenid || item.staffOpenid === order.staffOpenid))
+      if (staffCheckins.length > 0) {
+        throw new Error('原宠托师已到场开始打卡履约，不可转为加急公共抢单，请刷新核实')
       }
 
       const staffReward = Number(data.staffReward)
@@ -1417,6 +1577,7 @@ module.exports = function createHandler(context) {
         updateData.notes = order.notes ? `${order.notes}；【平台加急备注】${urgentRemark}` : `【平台加急备注】${urgentRemark}`
       }
 
+      let createdEvidenceId = null
       if (prevStaffOpenid && (data.recordDepositEvidence === true || data.autoRecordDepositEvidence === true)) {
         const profileRes = await db.collection('staff_profiles').where({ openid: prevStaffOpenid }).limit(1).get().catch(() => ({ data: [] }))
         const p = profileRes.data && profileRes.data[0]
@@ -1444,11 +1605,18 @@ module.exports = function createHandler(context) {
           updatedAt: time
         }
         const createdEvidence = await db.collection('staff_deposit_evidences').add({ data: evidenceDoc })
+        createdEvidenceId = createdEvidence._id
         updateData.hasDepositPenaltyEvidence = true
-        updateData.depositPenaltyEvidenceIds = [...(Array.isArray(order.depositPenaltyEvidenceIds) ? order.depositPenaltyEvidenceIds : []), createdEvidence._id]
+        updateData.depositPenaltyEvidenceIds = [...(Array.isArray(order.depositPenaltyEvidenceIds) ? order.depositPenaltyEvidenceIds : []), createdEvidenceId]
       }
 
-      await db.collection('orders').doc(orderId).update({ data: updateData })
+      const updateRes = await db.collection('orders').where({ _id: orderId, status: order.status }).update({ data: updateData })
+      if (!updateRes || !updateRes.stats || updateRes.stats.updated === 0) {
+        if (createdEvidenceId) {
+          await db.collection('staff_deposit_evidences').doc(createdEvidenceId).remove().catch(() => {})
+        }
+        throw new Error('订单状态已被并发更新或已被宠托师抢先开始，转加急单失败，请刷新确认最新状态')
+      }
 
       if (prevStaffOpenid) {
         await appendOrderStaffMessage({ ...order, staffOpenid: prevStaffOpenid }, {

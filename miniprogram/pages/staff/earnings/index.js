@@ -30,6 +30,9 @@ function withEarning(item) {
     ...item,
     amountText: money(item.amount),
     grossAmountText: money(item.grossAmount),
+    originalAmountText: money(item.originalAmount || item.amount),
+    deductAmountText: money(item.deductAmount || 0),
+    hasDeduction: Number(item.deductAmount || 0) > 0,
     statusText: earningStatusText[status] || '已记录'
   }
 }

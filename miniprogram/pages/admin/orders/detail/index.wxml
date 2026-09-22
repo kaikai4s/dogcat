@@ -56,6 +56,9 @@
     <view class="info-row" wx:if="{{detail.order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{detail.order.addressDetail}}</view></view>
     <view class="info-row"><view class="label">状态</view><view class="soft-badge status-badge">{{detail.order.statusText}}</view></view>
     <view class="info-row" wx:if="{{detail.order.autoCompleted}}"><view class="label">完单方式</view><view class="soft-badge auto-badge"><text class="remix-icon ri-sparkling-fill"></text><text>系统超时智能结算</text></view></view>
+    <view class="info-row" wx:if="{{detail.order.completionType === 'admin_manual'}}"><view class="label">完单方式</view><view class="soft-badge status-badge"><text class="remix-icon ri-user-settings-fill"></text><text>管理员核实完单</text></view></view>
+    <view class="info-row" wx:if="{{detail.order.completionType === 'admin_manual' && detail.order.adminManualDeductEarning > 0}}"><view class="label">收益扣罚</view><view class="soft-badge danger-badge"><text class="remix-icon ri-error-warning-fill"></text><text>违规扣减 ¥{{detail.order.adminManualDeductEarning}} · 实发 ¥{{detail.order.adminManualStaffReward}}</text></view></view>
+    <view class="info-row" wx:if="{{detail.order.adminManualRemark}}"><view class="label">核实说明</view><view class="value danger-text">{{detail.order.adminManualRemark}}</view></view>
     <view class="info-row" wx:if="{{detail.order.isOverdue || detail.order.isStartOverdue || detail.order.isFinishOverdue}}"><view class="label">超时预警</view><view class="soft-badge overdue-badge"><text class="remix-icon ri-alarm-warning-line"></text><text>存在超时履约</text></view></view>
     <view class="info-row" wx:if="{{detail.order.isUrgent}}"><view class="label">加急公共单</view><view class="soft-badge urgent-badge"><text class="remix-icon ri-flashlight-fill"></text><text>加急调度 · 宠托师收益 ¥{{detail.order.urgentStaffReward}}</text></view></view>
     <view class="info-row" wx:if="{{detail.order.hasDepositPenaltyEvidence}}"><view class="label">保证金证据</view><view class="soft-badge danger-badge"><text class="remix-icon ri-shield-cross-fill"></text><text>已加入违规留证</text></view></view>
@@ -110,9 +113,10 @@
   </view>
 
   <view class="bottom-actions">
+    <button class="primary-btn complete-btn" style="background: linear-gradient(135deg, #10b981, #059669);" bindtap="openManualCompleteModal" wx:if="{{detail.order.status === 'assigned' || detail.order.status === 'in_service' || detail.order.status === 'day_completed'}}"><text class="remix-icon ri-checkbox-circle-fill"></text><text>核实完成服务</text></button>
     <button class="ghost-btn" bindtap="openStatusModal"><text class="remix-icon ri-edit-box-line"></text><text>修改状态</text></button>
     <button class="ghost-btn refund-btn" bindtap="openRefundModal" wx:if="{{detail.order.payAmount > 0}}"><text class="remix-icon ri-refund-2-line"></text><text>手动退款</text></button>
-    <button class="primary-btn urgent-btn" bindtap="openUrgentModal" wx:if="{{detail.order.status === 'assigned' || detail.order.status === 'in_service' || detail.order.isStartOverdue || detail.order.isUrgent || detail.order.status === 'paid'}}"><text class="remix-icon ri-flashlight-fill"></text><text>转加急公共抢单</text></button>
+    <button class="primary-btn urgent-btn" bindtap="openUrgentModal" wx:if="{{detail.order.status === 'assigned' || detail.order.status === 'paid'}}"><text class="remix-icon ri-flashlight-fill"></text><text>转加急公共抢单</text></button>
     <button class="ghost-btn penalty-btn" bindtap="openEvidenceModal"><text class="remix-icon ri-shield-cross-line"></text><text>扣除保证金留证</text></button>
     <button class="ghost-btn" bindtap="evidence"><text class="remix-icon ri-shield-check-line"></text><text>证据链</text></button>
     <button class="ghost-btn" bindtap="incidents"><text class="remix-icon ri-customer-service-2-line"></text><text>查看异常 / 纠纷</text></button>
@@ -244,6 +248,59 @@
       <view class="modal-actions">
         <button class="ghost-btn" bindtap="closeEvidenceModal">取消</button>
         <button class="danger-btn" loading="{{submittingEvidence}}" disabled="{{submittingEvidence}}" bindtap="submitDepositEvidence">确认录入留证</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 核实并完成服务弹窗 (支持违规扣罚与凭证补录) -->
+  <view class="modal-mask" wx:if="{{showManualCompleteModal}}">
+    <view class="modal-card">
+      <view class="modal-title"><text class="remix-icon ri-checkbox-circle-fill" style="color: #10b981; margin-right: 8rpx;"></text>核实并完成服务</view>
+      <view class="modal-summary">
+        <view class="strong small">{{detail.order.orderNo}} · {{detail.order.serviceSummary}}</view>
+        <view class="muted">责任宠托师：{{detail.order.staffContact.displayName || detail.order.staffName}} · {{detail.order.staffContact.phone || '无电话'}}</view>
+        <view class="muted" style="margin-top: 4rpx;">已完成打卡：{{detail.checkins.length}} 个环节</view>
+      </view>
+      <view class="form-section">
+        <view class="form-label-row" style="display: flex; justify-content: space-between; align-items: center;">
+          <text class="form-label">原本应得收益</text>
+          <text class="strong" style="color: #10b981; font-size: 30rpx;">¥{{standardStaffReward || 0}}</text>
+        </view>
+
+        <view class="form-label" style="margin-top: 14rpx;">扣减违规收益金额 (元)</view>
+        <input type="digit" placeholder="若违规或漏打卡扣除，不扣除填 0" value="{{manualDeductAmountInput}}" bindinput="inputManualDeductAmount" />
+        
+        <!-- 快捷扣除预设按钮 -->
+        <view class="quick-deduct-row" style="display: flex; gap: 10rpx; margin-top: 10rpx;">
+          <button class="mini-btn ghost-mini" size="mini" bindtap="quickSetDeduct" data-type="zero">全额发放(¥0)</button>
+          <button class="mini-btn ghost-mini" size="mini" bindtap="quickSetDeduct" data-type="twenty">扣除20%</button>
+          <button class="mini-btn ghost-mini" size="mini" bindtap="quickSetDeduct" data-type="half">扣除50%</button>
+          <button class="mini-btn ghost-mini" size="mini" bindtap="quickSetDeduct" data-type="all">全部扣除</button>
+        </view>
+
+        <view class="highlight-text" style="margin-top: 14rpx; padding: 12rpx; border-radius: 12rpx; background: #f0fdf4; font-size: 26rpx; display: flex; justify-content: space-between; align-items: center;">
+          <text style="color: #065f46;">最终实发宠托师收益：</text>
+          <text class="strong" style="color: #059669; font-size: 32rpx;">¥{{computedFinalReward}}</text>
+        </view>
+
+        <view class="form-label" style="margin-top: 18rpx;">核实说明 / 扣减原因 (必填)</view>
+        <textarea placeholder="例如：宠托师已线下履约，因地下室无信号未能打卡，经电话核实无误；扣除20元服务费作为漏打卡处罚" value="{{manualCompleteRemarkInput}}" bindinput="inputManualCompleteRemark" />
+
+        <view class="form-label" style="margin-top: 18rpx;">线下打卡凭证截图 (可选，最多4张)</view>
+        <view class="image-uploader-grid" style="display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 8rpx;">
+          <view class="image-thumb" wx:for="{{manualCompleteImages}}" wx:key="*this" style="position: relative; width: 120rpx; height: 120rpx;">
+            <image src="{{item}}" mode="aspectFill" style="width: 100%; height: 100%; border-radius: 8rpx;" data-url="{{item}}" bindtap="previewManualCompleteImage" />
+            <view class="remove-btn" data-index="{{index}}" bindtap="removeManualCompleteImage" style="position: absolute; top: -10rpx; right: -10rpx; background: rgba(0,0,0,0.6); color: #fff; width: 36rpx; height: 36rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24rpx;">×</view>
+          </view>
+          <view class="add-thumb-btn" bindtap="chooseManualCompleteImages" wx:if="{{manualCompleteImages.length < 4}}" style="width: 120rpx; height: 120rpx; border: 2rpx dashed #d1d5db; border-radius: 8rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #9ca3af;">
+            <text class="remix-icon ri-camera-line" style="font-size: 36rpx;"></text>
+            <text style="font-size: 20rpx; margin-top: 4rpx;">加凭证</text>
+          </view>
+        </view>
+      </view>
+      <view class="modal-actions">
+        <button class="ghost-btn" bindtap="closeManualCompleteModal">取消</button>
+        <button class="primary-btn" style="background: linear-gradient(135deg, #10b981, #059669);" loading="{{submittingManualComplete}}" disabled="{{submittingManualComplete}}" bindtap="submitManualComplete">确认核实并完单</button>
       </view>
     </view>
   </view>
