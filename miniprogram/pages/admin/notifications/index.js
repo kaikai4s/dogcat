@@ -85,7 +85,15 @@ Page({
       .then(() => {
         wx.hideLoading()
         wx.showToast({ title: '已全部标为已读' })
+        this.setData({ unreadCount: 0 })
         this.load({ reset: true })
+
+        // 同步清除管理首页右上角小红点角标，保持数字一致性
+        const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+        const adminHome = pages.find((p) => p && p.route && p.route.includes('pages/admin/home/index'))
+        if (adminHome && typeof adminHome.setData === 'function') {
+          adminHome.setData({ unreadNotificationCount: 0, urgentNotice: null })
+        }
       })
       .catch((err) => {
         wx.hideLoading()
@@ -100,7 +108,16 @@ Page({
       callFunction('admin', 'markAdminNotificationRead', { id: item._id }).catch(() => {})
       // 本地乐观更新已读状态
       const list = this.data.list.map((n) => (n._id === item._id ? { ...n, isRead: true } : n))
-      this.setData({ list, unreadCount: Math.max(0, this.data.unreadCount - 1) })
+      const nextUnread = Math.max(0, this.data.unreadCount - 1)
+      this.setData({ list, unreadCount: nextUnread })
+
+      // 同步递减管理首页未读角标
+      const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+      const adminHome = pages.find((p) => p && p.route && p.route.includes('pages/admin/home/index'))
+      if (adminHome && typeof adminHome.setData === 'function') {
+        const currentCount = adminHome.data && adminHome.data.unreadNotificationCount
+        adminHome.setData({ unreadNotificationCount: Math.max(0, (currentCount || 1) - 1) })
+      }
     }
 
     const targetUrl = item.actionUrl || (item.orderId ? `/pages/admin/orders/detail/index?id=${item.orderId}` : '')

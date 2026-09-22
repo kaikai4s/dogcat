@@ -39,7 +39,7 @@
 
     <!-- 按照项目展示所有的打卡拍照 -->
     <view class="checkin-section-list" wx:if="{{detail.checkinSections && detail.checkinSections.length}}">
-      <view class="checkin-section-group" wx:for="{{detail.checkinSections}}" wx:key="eventType" wx:for-item="sec">
+      <view class="checkin-section-group" wx:for="{{detail.checkinSections}}" wx:key="eventType" wx:for-item="sec" wx:for-index="secIndex">
         <view class="section-group-header">
           <view class="section-title-wrap">
             <text class="remix-icon ri-checkbox-circle-fill section-title-icon"></text>
@@ -49,7 +49,7 @@
         </view>
         <view class="section-photo-grid">
           <view class="section-photo-card" wx:for="{{sec.photos}}" wx:key="_id" wx:for-item="photo">
-            <image class="section-photo-img" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewPhoto" />
+            <image class="section-photo-img" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" data-section-index="{{secIndex}}" bindtap="previewPhoto" />
             <view class="section-photo-time" wx:if="{{photo.timeText}}">{{photo.timeText}}</view>
           </view>
         </view>
