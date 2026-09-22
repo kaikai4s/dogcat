@@ -1,0 +1,101 @@
+<view class="{{themeClass}} {{fontClass}} page">
+  <view class="dashboard-header">
+    <view class="header-top-row">
+      <view>
+        <view class="badge">管理端</view>
+        <view class="title">宠物头衔配置</view>
+      </view>
+      <button class="primary add-btn" bindtap="openAddModal">＋ 新增头衔</button>
+    </view>
+    <view class="tip">配置宠物可佩戴的头衔、炫彩特效、重复补偿积分和会员等级自动发放规则。</view>
+  </view>
+
+  <view class="section-title">已配置头衔（{{titles.length}} 个）</view>
+  <view class="title-list">
+    <view class="title-card" wx:for="{{titles}}" wx:for-index="titleIndex" wx:key="_id">
+      <view class="card-main">
+        <view class="pet-equipped-title badge-{{item.badgeStyle || 'gold'}}">
+          <text wx:if="{{item.icon}}">{{item.icon}}</text>
+          <text class="title-text {{item.nameEffect && item.nameEffect !== 'none' ? 'name-effect-' + item.nameEffect : ''}}" style="{{item.nameColor ? 'color:' + item.nameColor + ';' : ''}}">{{item.name}}</text>
+        </view>
+        <view class="status {{item.enabled ? 'on' : 'off'}}">{{item.enabled ? '启用' : '停用'}}</view>
+      </view>
+      <view class="desc" wx:if="{{item.description}}">{{item.description}}</view>
+      <view class="meta-row">
+        <text>重复补偿 {{item.duplicatePoints || 0}} 积分</text>
+        <text>自动等级 {{item.autoGrantLevelIds.length || 0}} 个</text>
+        <text>排序 {{item.sortOrder || 0}}</text>
+      </view>
+      <view class="actions">
+        <button size="mini" bindtap="openMailModal" data-index="{{titleIndex}}">发邮件</button>
+        <button size="mini" bindtap="chooseTitle" data-index="{{titleIndex}}">编辑</button>
+        <button size="mini" type="warn" bindtap="deleteTitle" data-index="{{titleIndex}}">删除</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!titles.length}}">
+    <view>暂无宠物头衔</view>
+    <button class="primary" bindtap="openAddModal">新增第一个头衔</button>
+  </view>
+
+  <view class="modal-backdrop" wx:if="{{showFormModal}}" bindtap="closeFormModal">
+    <view class="modal-card" catchtap="noop">
+      <view class="modal-header">
+        <view class="modal-title">{{form._id ? '编辑宠物头衔' : '新增宠物头衔'}}</view>
+        <view class="modal-close" bindtap="closeFormModal">✕</view>
+      </view>
+      <scroll-view scroll-y class="modal-scroll-body">
+        <view class="preview-box">
+          <view class="preview-label">预览</view>
+          <view class="pet-equipped-title badge-{{form.badgeStyle || 'gold'}}">
+            <text wx:if="{{form.icon}}">{{form.icon}}</text>
+            <text class="title-text {{form.nameEffect && form.nameEffect !== 'none' ? 'name-effect-' + form.nameEffect : ''}}" style="{{form.nameColor ? 'color:' + form.nameColor + ';' : ''}}">{{form.name || '闪耀萌宠'}}</text>
+          </view>
+        </view>
+
+        <view class="form-group"><view class="field-label">头衔名称 *</view><input value="{{form.name}}" data-field="name" bindinput="input" placeholder="例如：闪耀萌宠" /></view>
+        <view class="form-group"><view class="field-label">头衔描述</view><input value="{{form.description}}" data-field="description" bindinput="input" placeholder="用于后台和邮箱说明" /></view>
+        <view class="form-row-2">
+          <view class="form-group"><view class="field-label">图标/符号</view><input value="{{form.icon}}" data-field="icon" bindinput="input" placeholder="如 🏅" /></view>
+          <view class="form-group"><view class="field-label">排序</view><input type="number" value="{{form.sortOrder}}" data-field="sortOrder" bindinput="input" /></view>
+        </view>
+        <view class="form-row-2">
+          <view class="form-group"><view class="field-label">重复获得补偿积分</view><input type="number" value="{{form.duplicatePoints}}" data-field="duplicatePoints" bindinput="input" /></view>
+          <view class="form-group switch-row"><view class="field-label">启用</view><switch checked="{{form.enabled}}" bindchange="switchEnabled" /></view>
+        </view>
+
+        <view class="form-group">
+          <view class="field-label">颜色</view>
+          <view class="color-palette"><view wx:for="{{colorPalette}}" wx:key="hex" class="color-dot-wrap {{form.nameColor === item.hex ? 'active' : ''}}" data-hex="{{item.hex}}" bindtap="selectColor"><view class="color-dot" style="background:{{item.hex}}"></view><text>{{item.name}}</text></view></view>
+          <input value="{{form.nameColor}}" data-field="nameColor" bindinput="input" placeholder="#d99200" />
+        </view>
+
+        <view class="form-group"><view class="field-label">流动特效</view><view class="selector-grid"><view wx:for="{{effectOptions}}" wx:key="key" class="grid-item {{form.nameEffect === item.key ? 'active' : ''}}" data-effect="{{item.key}}" bindtap="selectEffect"><text class="{{item.key !== 'none' ? 'name-effect-' + item.key : ''}}">{{item.name}}</text></view></view></view>
+        <view class="form-group"><view class="field-label">徽章底色</view><view class="selector-grid"><view wx:for="{{badgeStyles}}" wx:key="key" class="grid-item {{form.badgeStyle === item.key ? 'active' : ''}}" data-style="{{item.key}}" bindtap="selectBadgeStyle"><text class="member-badge badge-{{item.key}}">{{item.name}}</text></view></view></view>
+
+        <view class="form-group">
+          <view class="field-label">达到这些会员等级后自动获得</view>
+          <view class="level-grid"><view wx:for="{{levels}}" wx:key="_id" class="level-chip {{form.autoGrantLevelIds.indexOf(item._id) >= 0 ? 'active' : ''}}" data-id="{{item._id}}" bindtap="toggleAutoLevel">{{item.name}}</view></view>
+        </view>
+      </scroll-view>
+      <view class="modal-actions"><button class="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存</button><button class="ghost" bindtap="closeFormModal">取消</button></view>
+    </view>
+  </view>
+
+  <view class="modal-backdrop" wx:if="{{showMailModal}}" bindtap="closeMailModal">
+    <view class="modal-card" catchtap="noop">
+      <view class="modal-header"><view class="modal-title">发送头衔奖励邮件</view><view class="modal-close" bindtap="closeMailModal">✕</view></view>
+      <scroll-view scroll-y class="modal-scroll-body">
+        <view class="tip-card">发放头衔：{{mailForm.titleName}}</view>
+        <view class="form-group"><view class="field-label">邮件标题</view><input value="{{mailForm.title}}" data-field="title" bindinput="mailInput" /></view>
+        <view class="form-group"><view class="field-label">邮件内容</view><textarea value="{{mailForm.content}}" data-field="content" bindinput="mailInput" /></view>
+        <view class="form-group"><view class="field-label">目标用户</view><view class="selector-grid"><view wx:for="{{targetTypes}}" wx:key="key" class="grid-item {{mailForm.targetType === item.key ? 'active' : ''}}" data-type="{{item.key}}" bindtap="setMailTargetType">{{item.name}}</view></view></view>
+        <view class="form-group" wx:if="{{mailForm.targetType === 'openid_list'}}"><view class="field-label">openid 列表</view><textarea placeholder="多个 openid 用换行或逗号分隔" value="{{mailForm.openids}}" data-field="openids" bindinput="mailInput" /></view>
+        <view class="form-group" wx:if="{{mailForm.targetType === 'role'}}"><view class="field-label">角色</view><input value="{{mailForm.role}}" data-field="role" bindinput="mailInput" placeholder="client / staff / admin" /></view>
+        <view class="form-group" wx:if="{{mailForm.targetType === 'member_level'}}"><view class="field-label">会员等级</view><view class="level-grid"><view wx:for="{{levels}}" wx:key="_id" class="level-chip {{mailForm.targetLevelIds.indexOf(item._id) >= 0 ? 'active' : ''}}" data-id="{{item._id}}" bindtap="toggleMailLevel">{{item.name}}</view></view></view>
+      </scroll-view>
+      <view class="modal-actions"><button class="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="sendMail">发送</button><button class="ghost" bindtap="closeMailModal">取消</button></view>
+    </view>
+  </view>
+</view>

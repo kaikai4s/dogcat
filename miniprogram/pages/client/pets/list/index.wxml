@@ -24,7 +24,13 @@
     <view class="pet-photo empty-photo" wx:else><text class="remix-icon ri-paw-print-line"></text></view>
     <view class="pet-main">
       <view class="pet-head">
-        <view class="pet-name">{{item.name}}</view>
+        <view class="pet-name-box">
+          <view class="pet-name">{{item.name}}</view>
+          <view class="pet-title-tag badge-{{item.equippedTitle.badgeStyle || 'gold'}}" wx:if="{{item.equippedTitle && item.equippedTitle.name}}">
+            <text class="title-icon" wx:if="{{item.equippedTitle.icon}}">{{item.equippedTitle.icon}}</text>
+            <text class="title-text {{item.equippedTitle.nameEffect && item.equippedTitle.nameEffect !== 'none' ? 'name-effect-' + item.equippedTitle.nameEffect : ''}}" style="{{item.equippedTitle.nameColor ? 'color:' + item.equippedTitle.nameColor + ';' : ''}}">{{item.equippedTitle.name}}</text>
+          </view>
+        </view>
         <view class="pet-badge">{{item.aiInteractionEnabled ? 'AI互动' : '档案'}}</view>
       </view>
       <view class="pet-meta">{{item.breed || '未填写品种'}} · {{item.birthday || '未填写生日'}} · {{item.weight || 0}}kg</view>

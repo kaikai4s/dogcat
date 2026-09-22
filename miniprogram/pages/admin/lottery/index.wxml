@@ -31,8 +31,8 @@
 
     <!-- 奖品池标签 -->
     <view class="prize-tag-list" wx:if="{{item.prizes && item.prizes.length}}">
-      <view class="prize-pill {{p.type === 'points' ? 'pill-points' : (p.type === 'coupon' ? 'pill-coupon' : 'pill-text')}}" wx:for="{{item.prizes}}" wx:for-item="p" wx:key="index">
-        <text class="pill-type">{{p.type === 'points' ? '积分' : (p.type === 'coupon' ? '卡券' : '文案')}}</text>
+      <view class="prize-pill {{p.type === 'points' ? 'pill-points' : (p.type === 'coupon' ? 'pill-coupon' : (p.type === 'pet_title' ? 'pill-title' : 'pill-text'))}}" wx:for="{{item.prizes}}" wx:for-item="p" wx:key="index">
+        <text class="pill-type">{{p.type === 'points' ? '积分' : (p.type === 'coupon' ? '卡券' : (p.type === 'pet_title' ? '头衔' : '文案'))}}</text>
         <text class="pill-name">{{p.name}}</text>
         <text class="pill-prob">{{p.probability}}%</text>
       </view>
@@ -87,14 +87,15 @@
             <view class="between" style="align-items:center;">
               <view style="flex:1;">
                 <view style="display:flex; align-items:center; gap:10rpx; margin-bottom: 6rpx;">
-                  <view class="badge {{item.type === 'points' ? 'pill-points' : (item.type === 'coupon' ? 'pill-coupon' : 'pill-text')}}">
-                    {{item.type === 'points' ? '积分奖励' : (item.type === 'coupon' ? '优惠券' : '未中奖文案')}}
+                  <view class="badge {{item.type === 'points' ? 'pill-points' : (item.type === 'coupon' ? 'pill-coupon' : (item.type === 'pet_title' ? 'pill-title' : 'pill-text'))}}">
+                    {{item.type === 'points' ? '积分奖励' : (item.type === 'coupon' ? '优惠券' : (item.type === 'pet_title' ? '宠物头衔' : '未中奖文案'))}}
                   </view>
                   <view class="strong">{{item.name}}</view>
                 </view>
                 <view class="muted" style="font-size:23rpx;">
                   <text wx:if="{{item.type === 'points'}}">赠送 {{item.points}} 积分 · </text>
                   <text wx:elif="{{item.type === 'coupon'}}">关联优惠券 · </text>
+                  <text wx:elif="{{item.type === 'pet_title'}}">发放到奖励邮箱 · </text>
                   <text wx:else>显示文案「{{item.text}}」 · </text>
                   <text>中奖概率: {{item.probability}}% · 库存: {{item.stockLeft}} 份</text>
                 </view>
@@ -116,6 +117,7 @@
               <button class="tab {{newPrize.type === 'text' ? 'active-tab' : ''}}" data-type="text" bindtap="setPrizeType">文字 (未中奖)</button>
               <button class="tab {{newPrize.type === 'points' ? 'active-tab' : ''}}" data-type="points" bindtap="setPrizeType">积分奖品</button>
               <button class="tab {{newPrize.type === 'coupon' ? 'active-tab' : ''}}" data-type="coupon" bindtap="setPrizeType">优惠券</button>
+              <button class="tab {{newPrize.type === 'pet_title' ? 'active-tab' : ''}}" data-type="pet_title" bindtap="setPrizeType">宠物头衔</button>
             </view>
 
             <!-- 文字类型 (未中奖) -->
@@ -164,6 +166,15 @@
               </picker>
               <input placeholder="奖品展示名称，如：满100减20优惠券" value="{{newPrize.name}}" data-field="name" bindinput="prizeInput" />
               <view class="notice" style="margin: 8rpx 0 14rpx;">抽中后将自动将所选优惠券发放到用户的个人卡券包。</view>
+            </view>
+
+            <!-- 宠物头衔类型 -->
+            <view wx:if="{{newPrize.type === 'pet_title'}}">
+              <picker range="{{petTitles}}" range-key="name" value="{{selectedPetTitleIndex}}" bindchange="choosePrizePetTitle">
+                <view class="field">选择宠物头衔：{{newPrize.titleName || '点击选择宠物头衔'}}</view>
+              </picker>
+              <input placeholder="奖品展示名称，如：宠物头衔：闪耀萌宠" value="{{newPrize.name}}" data-field="name" bindinput="prizeInput" />
+              <view class="notice" style="margin: 8rpx 0 14rpx;">抽中后将发送到用户奖励邮箱，用户领取后可给宠物佩戴；重复获得会转为补偿积分。</view>
             </view>
 
             <view style="display:flex; gap:16rpx; margin-top:8rpx;">

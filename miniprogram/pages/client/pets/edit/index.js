@@ -21,6 +21,13 @@ function canDeleteBeautyPhotoToday() {
   return new Date().getDate() === 1
 }
 
+function titleOptionLabel(item, currentPetId) {
+  const title = item.title || {}
+  const name = title.name || '宠物头衔'
+  const equippedPetId = item.equippedPetId || ''
+  return equippedPetId && equippedPetId !== currentPetId ? `${name}（已佩戴，选择后将移动）` : name
+}
+
 Page({
   data: {
     id: '',
@@ -36,6 +43,10 @@ Page({
     uploadingBeauty: false,
     canDeleteBeautyPhoto: canDeleteBeautyPhotoToday(),
     aiResultText: '',
+    myTitles: [],
+    titleOptions: [{ label: '不佩戴头衔', inventoryId: '' }],
+    selectedTitleOptionIndex: 0,
+    titleSaving: false,
     form: {
       species: 'dog',
       name: '',
@@ -68,6 +79,7 @@ Page({
         if (this.data.initialized) return
         this.setData({ initialized: true })
         this.load()
+        this.loadMyTitles()
       })
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
   },
@@ -80,9 +92,27 @@ Page({
         const genderIndex = Math.max(genderOptions.indexOf(form.gender || '未知'), 0)
         const nextForm = { ...this.data.form, ...form }
         const beautyPhotos = normalizeBeautyPhotos(nextForm)
-        this.setData({ form: { ...nextForm, beautyPhotos, avatarFileId: nextForm.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '' }, speciesIndex, genderIndex })
+        this.setData({ form: { ...nextForm, beautyPhotos, avatarFileId: nextForm.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '' }, speciesIndex, genderIndex }, () => this.refreshTitleOptions())
       })
       .catch(showError)
+  },
+
+  loadMyTitles() {
+    callFunction('pet', 'listMyTitles')
+      .then((myTitles) => this.setData({ myTitles: myTitles || [] }, () => this.refreshTitleOptions()))
+      .catch(() => {})
+  },
+
+  refreshTitleOptions() {
+    const currentPetId = this.data.id
+    const currentInventoryId = this.data.form.equippedTitleInventoryId || ''
+    const titleOptions = [{ label: '不佩戴头衔', inventoryId: '' }].concat((this.data.myTitles || []).map((item) => ({
+      ...item,
+      inventoryId: item.inventoryId || item._id,
+      label: titleOptionLabel(item, currentPetId)
+    })))
+    const selectedTitleOptionIndex = Math.max(titleOptions.findIndex((item) => item.inventoryId === currentInventoryId), 0)
+    this.setData({ titleOptions, selectedTitleOptionIndex })
   },
 
   input(e) {
@@ -107,6 +137,45 @@ Page({
 
   toggleAi(e) {
     this.setData({ ['form.aiInteractionEnabled']: e.detail.value })
+  },
+
+  chooseTitle(e) {
+    if (!this.data.id) {
+      wx.showToast({ title: '请先保存宠物档案', icon: 'none' })
+      return
+    }
+    const index = Number(e.detail.value)
+    const option = this.data.titleOptions[index]
+    if (!option) return
+    const apply = () => {
+      this.setData({ titleSaving: true })
+      const promise = option.inventoryId
+        ? callFunction('pet', 'equipTitle', { petId: this.data.id, inventoryId: option.inventoryId })
+        : callFunction('pet', 'unequipTitle', { petId: this.data.id })
+      promise.then((res) => {
+        this.setData({
+          titleSaving: false,
+          selectedTitleOptionIndex: index,
+          ['form.equippedTitleInventoryId']: option.inventoryId || '',
+          ['form.equippedTitle']: res.equippedTitle || null
+        })
+        wx.showToast({ title: option.inventoryId ? '已佩戴头衔' : '已卸下头衔', icon: 'none' })
+        this.loadMyTitles()
+      }).catch((err) => {
+        this.setData({ titleSaving: false })
+        showError(err)
+      })
+    }
+    if (option.equippedPetId && option.equippedPetId !== this.data.id) {
+      wx.showModal({
+        title: '移动宠物头衔',
+        content: '该头衔已佩戴在其他宠物身上，继续后会从原宠物移除并佩戴到当前宠物。',
+        confirmText: '继续佩戴',
+        success: (res) => { if (res.confirm) apply() }
+      })
+      return
+    }
+    apply()
   },
 
   previewPhoto(e) {

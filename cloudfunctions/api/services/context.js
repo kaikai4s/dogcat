@@ -40,6 +40,7 @@ module.exports = function createContext({ cloud, db }) {
   Object.assign(context, require('../services/membership')(context))
   Object.assign(context, require('../services/rewardMails')(context))
   Object.assign(context, require('../services/points')(context))
+  Object.assign(context, require('../services/petTitles')(context))
   Object.assign(context, require('../services/orderMessages')(context))
   Object.assign(context, require('../services/playground')(context))
   Object.assign(context, require('../services/schedulingTime')(context))

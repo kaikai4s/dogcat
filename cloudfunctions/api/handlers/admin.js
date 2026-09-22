@@ -44,6 +44,7 @@ module.exports = function createHandler(context) {
     issueCouponToTargetUser,
     limitList,
     listAdminNotifications,
+    listPetTitles,
     listServiceCheckinRules,
     listServicePrices,
     logAdmin,
@@ -61,6 +62,11 @@ module.exports = function createHandler(context) {
     normalizeMemberNameColor,
     normalizeMemberNameEffect,
     normalizeMonthKey,
+    savePetTitle,
+    deletePetTitle,
+    getPetTitle,
+    grantEligiblePetTitlesForUsers,
+    titleSnapshot,
     normalizeServiceCaseImageFileIds,
     normalizeServiceCheckinRule,
     normalizeServicePrice,
@@ -1381,6 +1387,22 @@ module.exports = function createHandler(context) {
       await logAdmin(admin, 'member_level', data._id, 'deleteMemberLevel', {})
       return { _id: data._id }
     }
+    if (action === 'listPetTitles') {
+      return listPetTitles({ includeDeleted: data.includeDeleted === true })
+    }
+    if (action === 'savePetTitle') {
+      const saved = await savePetTitle(data)
+      const usersRes = await db.collection('users').where({ status: 'active' }).get()
+      const grants = await grantEligiblePetTitlesForUsers(usersRes.data || [])
+      await logAdmin(admin, 'pet_title', saved._id, 'savePetTitle', { name: saved.name, autoGrantLevelIds: saved.autoGrantLevelIds, autoGrantCount: grants.length })
+      return { ...saved, autoGrantCount: grants.length }
+    }
+    if (action === 'deletePetTitle') {
+      const id = safeText(data._id || data.id).trim()
+      const deleted = await deletePetTitle(id)
+      await logAdmin(admin, 'pet_title', id, 'deletePetTitle', {})
+      return deleted
+    }
     if (action === 'grantPoints') {
       const targetOpenid = safeText(data.openid).trim()
       if (!targetOpenid) throw new Error('请输入用户 openid')
@@ -1554,33 +1576,86 @@ module.exports = function createHandler(context) {
       await logAdmin(admin, 'reward_mail', title, 'publishRetroCardMail', { targetType: target.targetType, openids: target.openids || [], role: target.role || '', targetLevelIds: target.targetLevelIds || [], targetLevelNamesSnapshot: target.targetLevelNamesSnapshot || [], count, issued })
       return { issued, eligibleCount: target.users.length, targetType: target.targetType, count }
     }
+    if (action === 'publishPetTitleMail') {
+      const titleId = safeText(data.titleId).trim()
+      const petTitle = await getPetTitle(titleId, { includeDeleted: true })
+      if (petTitle.deletedAt || petTitle.enabled === false) throw new Error('宠物头衔已停用，不能发放')
+      const target = await resolveRewardMailTargets(data)
+      if (!target.users.length) throw new Error('没有符合条件的用户')
+      const rewardSnapshot = titleSnapshot(petTitle)
+      const title = safeText(data.title).trim() || `宠物头衔【${petTitle.name}】到账提醒`
+      const content = safeText(data.content).trim() || `平台已向你发放宠物头衔【${petTitle.name}】，请前往奖励邮箱领取。`
+      const reward = { type: 'pet_title', titleId: petTitle._id, titleSnapshot: rewardSnapshot, duplicatePoints: rewardSnapshot.duplicatePoints }
+      const time = now()
+      let issued = 0
+      for (const targetUser of target.users) {
+        await db.collection('reward_mails').add({
+          data: {
+            userId: targetUser._id,
+            openid: targetUser.openid,
+            targetType: target.targetType,
+            targetOpenids: target.openids || [],
+            targetRole: target.role || '',
+            targetLevelIds: target.targetLevelIds || [],
+            targetLevelNamesSnapshot: target.targetLevelNamesSnapshot || [],
+            title,
+            content,
+            reward,
+            sentByAdminUserId: admin._id,
+            sentByAdminOpenid: openid,
+            readAt: null,
+            claimedAt: null,
+            rewardClaimResult: {},
+            createdAt: time,
+            updatedAt: time
+          }
+        })
+        issued++
+      }
+      await logAdmin(admin, 'reward_mail', titleId, 'publishPetTitleMail', { targetType: target.targetType, issued, titleName: petTitle.name })
+      return { issued, eligibleCount: target.users.length, targetType: target.targetType, titleId }
+    }
     if (action === 'saveLotteryActivity') {
       const name = safeText(data.name).trim()
       if (!name) throw new Error('活动名称不能为空')
-      const prizes = Array.isArray(data.prizes) ? data.prizes.map((p) => {
-        const type = ['text', 'points', 'coupon'].includes(p.type)
-          ? p.type
-          : (p.templateId ? 'coupon' : (Number(p.points) > 0 ? 'points' : 'text'))
-        const points = type === 'points' ? Math.max(Math.round(Number(p.points || 0)), 0) : 0
-        const templateId = type === 'coupon' ? safeText(p.templateId).trim() : ''
-        const text = type === 'text' ? safeText(p.text || p.name).trim() : ''
-        let prizeName = safeText(p.name).trim()
-        if (!prizeName) {
-          if (type === 'points') prizeName = `${points} 积分`
-          else if (type === 'text') prizeName = text || '谢谢参与'
-          else prizeName = '优惠券'
+      const prizes = []
+      if (Array.isArray(data.prizes)) {
+        for (const p of data.prizes) {
+          const type = ['text', 'points', 'coupon', 'pet_title'].includes(p.type)
+            ? p.type
+            : (p.titleId ? 'pet_title' : (p.templateId ? 'coupon' : (Number(p.points) > 0 ? 'points' : 'text')))
+          const points = type === 'points' ? Math.max(Math.round(Number(p.points || 0)), 0) : 0
+          const templateId = type === 'coupon' ? safeText(p.templateId).trim() : ''
+          const titleId = type === 'pet_title' ? safeText(p.titleId).trim() : ''
+          const text = type === 'text' ? safeText(p.text || p.name).trim() : ''
+          let petTitle = null
+          if (type === 'pet_title') {
+            petTitle = await getPetTitle(titleId, { includeDeleted: true })
+            if (petTitle.deletedAt || petTitle.enabled === false) throw new Error('请选择有效的宠物头衔奖品')
+          }
+          let prizeName = safeText(p.name).trim()
+          if (!prizeName) {
+            if (type === 'points') prizeName = `${points} 积分`
+            else if (type === 'text') prizeName = text || '谢谢参与'
+            else if (type === 'pet_title') prizeName = `宠物头衔：${petTitle.name}`
+            else prizeName = '优惠券'
+          }
+          if (!prizeName) continue
+          prizes.push({
+            type,
+            name: prizeName,
+            text,
+            points,
+            templateId,
+            couponName: safeText(p.couponName || '').trim(),
+            titleId,
+            titleName: petTitle ? petTitle.name : safeText(p.titleName || '').trim(),
+            titleSnapshot: petTitle ? titleSnapshot(petTitle) : (p.titleSnapshot || null),
+            probability: Math.max(Number(p.probability || 0), 0),
+            stockLeft: Math.max(Math.round(Number(p.stockLeft || 0)), 0)
+          })
         }
-        return {
-          type,
-          name: prizeName,
-          text,
-          points,
-          templateId,
-          couponName: safeText(p.couponName || '').trim(),
-          probability: Math.max(Number(p.probability || 0), 0),
-          stockLeft: Math.max(Math.round(Number(p.stockLeft || 0)), 0)
-        }
-      }).filter((p) => p.name) : []
+      }
       const time = now()
       const payload = { name, description: safeText(data.description).trim(), prizes, enabled: data.enabled === true, updatedAt: time }
       if (data._id) {

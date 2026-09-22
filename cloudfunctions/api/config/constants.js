@@ -7,6 +7,7 @@ const collections = [
   'subscription_consents', 'subscription_logs', 'home_security_notifications',
   'order_message_threads', 'order_messages', 'order_staff_message_threads', 'order_staff_messages',
   'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
+  'pet_titles', 'user_pet_titles', 'pet_title_grants',
   'pet_beauty_votes', 'pet_beauty_month_rankings', 'pet_beauty_month_locks',
   'pet_playgrounds', 'pet_homes', 'pet_playground_entities', 'pet_3d_models',
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',

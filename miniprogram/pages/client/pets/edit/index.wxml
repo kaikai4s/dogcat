@@ -54,6 +54,19 @@
       </view>
     </view>
 
+    <view class="card-subtitle"><text class="remix-icon ri-medal-line sub-icon"></text><text>宠物头衔</text></view>
+    <view class="title-equip-box">
+      <view class="pet-equipped-title badge-{{form.equippedTitle.badgeStyle || 'gold'}}" wx:if="{{form.equippedTitle && form.equippedTitle.name}}">
+        <text wx:if="{{form.equippedTitle.icon}}">{{form.equippedTitle.icon}}</text>
+        <text class="title-text {{form.equippedTitle.nameEffect && form.equippedTitle.nameEffect !== 'none' ? 'name-effect-' + form.equippedTitle.nameEffect : ''}}" style="{{form.equippedTitle.nameColor ? 'color:' + form.equippedTitle.nameColor + ';' : ''}}">{{form.equippedTitle.name}}</text>
+      </view>
+      <view class="field-tip" wx:else>{{id ? '当前未佩戴头衔' : '保存宠物档案后可佩戴已拥有头衔'}}</view>
+      <picker wx:if="{{id}}" range="{{titleOptions}}" range-key="label" value="{{selectedTitleOptionIndex}}" bindchange="chooseTitle" disabled="{{titleSaving}}">
+        <view class="select-field title-select"><text>{{titleSaving ? '更新头衔中...' : ('选择头衔：' + titleOptions[selectedTitleOptionIndex].label)}}</text><text class="remix-icon ri-arrow-down-s-line"></text></view>
+      </picker>
+      <view class="field-tip" wx:if="{{id && titleOptions.length <= 1}}">暂无可佩戴头衔，可通过奖励邮箱或抽奖获得。</view>
+    </view>
+
     <view class="card-subtitle"><text class="remix-icon ri-heart-pulse-line sub-icon"></text><text>照顾资料</text></view>
     <input class="input-field" placeholder="性格特点，如 胆小 / 活泼 / 粘人" value="{{form.personality}}" data-field="personality" bindinput="input" />
     <input class="input-field" placeholder="喜欢的食物或玩具" value="{{form.favoriteFood}}" data-field="favoriteFood" bindinput="input" />

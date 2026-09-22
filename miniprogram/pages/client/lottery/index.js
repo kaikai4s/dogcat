@@ -8,6 +8,8 @@ function decorateRecords(records = []) {
       prizeTag = '积分'
     } else if (item.prizeType === 'coupon' || item.couponId) {
       prizeTag = '优惠券'
+    } else if (item.prizeType === 'pet_title' || item.titleId) {
+      prizeTag = '宠物头衔'
     } else if (!item.prizeText && item.prizeName === '谢谢参与') {
       prizeTag = '参与奖'
     }
@@ -63,6 +65,17 @@ Page({
           wx.showToast({ title: `恭喜获得：${res.prizeName}`, icon: 'success', duration: 3000 })
         } else if (res.prizeType === 'points' || (res.points && res.points > 0)) {
           wx.showToast({ title: `恭喜获得：${res.prizeName}`, icon: 'success', duration: 3000 })
+        } else if (res.prizeType === 'pet_title' || res.titleId) {
+          wx.showModal({
+            title: '恭喜获得宠物头衔',
+            content: `${res.prizeName || '宠物头衔'} 已发送到奖励邮箱，请领取后为宠物佩戴。`,
+            showCancel: true,
+            confirmText: '去邮箱',
+            cancelText: '稍后领取',
+            success: (modalRes) => {
+              if (modalRes.confirm) wx.navigateTo({ url: '/pages/client/reward-mails/index' })
+            }
+          })
         } else {
           // 萌宠文字祝福：以专属弹窗展示暖心文案
           wx.showModal({

@@ -5,6 +5,7 @@ module.exports = function createHandler(context) {
     formatRewardMail,
     getRewardMailRetroCardGrant,
     getUser,
+    grantPetTitleToUser,
     grantRetroCards,
     issueCouponToTargetUser,
     now,
@@ -51,6 +52,7 @@ module.exports = function createHandler(context) {
       let pointsResult = null
       let couponResult = null
       let retroCardResult = null
+      let petTitleResult = null
       try {
         if (reward.type === 'coupon') {
           const templateId = safeText(reward.couponTemplateId).trim()
@@ -67,6 +69,15 @@ module.exports = function createHandler(context) {
           if (!retroCardResult) {
             retroCardResult = await grantRetroCards(openid, user._id, count, 'reward_mail', id, safeText(mail.title).trim() || '奖励邮件补签卡')
           }
+        } else if (reward.type === 'pet_title') {
+          const titleId = safeText(reward.titleId).trim()
+          if (!titleId) throw new Error('宠物头衔奖励不存在')
+          petTitleResult = await grantPetTitleToUser(user, titleId, {
+            sourceType: 'reward_mail',
+            sourceId: id,
+            sourceKey: `mail:${id}`,
+            duplicatePoints: reward.duplicatePoints
+          })
         } else {
           const delta = Math.max(Math.round(Number(reward.points || 0)), 0)
           if (delta > 0) {
@@ -81,10 +92,14 @@ module.exports = function createHandler(context) {
         readAt: mail.readAt || claimTime,
         claimedAt: claimTime,
         rewardClaimResult: {
-          pointsDelta: pointsResult ? pointsResult.delta : 0,
+          pointsDelta: pointsResult ? pointsResult.delta : (petTitleResult ? petTitleResult.compensationPoints : 0),
           couponId: couponResult ? couponResult._id : '',
           retroCardCountDelta: retroCardResult ? Math.max(Math.round(Number(reward.count || 0)), 0) : 0,
-          retroCardBalance: retroCardResult ? retroCardResult.balance : 0
+          retroCardBalance: retroCardResult ? retroCardResult.balance : 0,
+          petTitleInventoryId: petTitleResult ? petTitleResult.inventoryId : '',
+          petTitleId: petTitleResult ? petTitleResult.titleId : '',
+          petTitleOutcome: petTitleResult ? petTitleResult.outcome : '',
+          petTitleSnapshot: petTitleResult ? petTitleResult.titleSnapshot : null
         },
         updatedAt: now()
       }

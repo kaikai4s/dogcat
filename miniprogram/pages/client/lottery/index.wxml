@@ -24,6 +24,7 @@
         <view class="result-name">{{result.prizeName}}</view>
         <view class="status-badge badge-coupon" wx:if="{{result.couponId || result.prizeType === 'coupon'}}">已存入优惠券</view>
         <view class="status-badge badge-points" wx:elif="{{result.points > 0 || result.prizeType === 'points'}}">积分已到账</view>
+        <view class="status-badge badge-pet_title" wx:elif="{{result.titleId || result.prizeType === 'pet_title'}}">已发送邮箱</view>
         <view class="status-badge badge-blessing" wx:else>萌宠祝福</view>
       </view>
       <view class="result-blessing-box" wx:if="{{result.prizeText}}">

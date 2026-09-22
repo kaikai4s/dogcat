@@ -186,6 +186,14 @@
   background: #fbcfe8;
 }
 
+.pill-title {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+.pill-title .pill-type {
+  background: #ddd6fe;
+}
+
 .pill-text {
   background: #f3f4f6;
   color: #4b5563;

@@ -3,6 +3,7 @@ module.exports = function createHandler(context) {
     db,
     getMemberLevels,
     getUser,
+    grantEligiblePetTitlesForUser,
     normalizeBenefits,
     normalizeMemberBadgeStyle,
     normalizeMemberBadgeTag,
@@ -44,6 +45,7 @@ module.exports = function createHandler(context) {
       }))
       const currentLevel = levels.find((level) => level._id === user.memberLevel) || null
       const nextLevel = levels.find((level) => Number(level.minPoints || 0) > Number(user.totalPoints || 0)) || null
+      await grantEligiblePetTitlesForUser(user)
       return {
         points: Number(user.points || 0),
         totalPoints: Number(user.totalPoints || 0),

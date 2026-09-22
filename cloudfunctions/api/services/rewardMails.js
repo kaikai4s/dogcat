@@ -21,6 +21,7 @@ module.exports = function createService({
       reward,
       readAt: mail.readAt || null,
       claimedAt: mail.claimedAt || null,
+      rewardClaimResult: mail.rewardClaimResult || null,
       createdAt: mail.createdAt,
       updatedAt: mail.updatedAt,
       unread: !mail.readAt,

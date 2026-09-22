@@ -203,6 +203,7 @@
         "incidents/detail/index",
         "evidence/detail/index",
         "member-levels/index",
+        "pet-titles/index",
         "checkin-config/index",
         "points/index",
         "lottery/index",

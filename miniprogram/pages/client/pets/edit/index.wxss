@@ -60,6 +60,10 @@
 .ai-card { background: linear-gradient(145deg,#fff 0%,#fff9f0 52%,#fff2ec 100%); }
 .ai-head { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
 .field-tip { margin-top: 8rpx; color: #7a6a5e; font-size: 24rpx; line-height: 1.4; }
+.title-equip-box { margin-bottom: 20rpx; }
+.pet-equipped-title { display: inline-flex; align-items: center; gap: 8rpx; max-width: 100%; padding: 8rpx 16rpx; border-radius: 999rpx; font-size: 26rpx; font-weight: 900; margin-bottom: 16rpx; }
+.title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title-select { margin-top: 12rpx; }
 .generate-btn { width: 100%; margin: 22rpx 0 16rpx; }
 .submit-btn { width: 100%; margin-top: 28rpx; min-height: 84rpx; font-size: 28rpx; }
 button[disabled] { opacity: .62; }

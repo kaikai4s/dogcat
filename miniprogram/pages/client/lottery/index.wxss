@@ -34,6 +34,7 @@
 .status-badge { padding: 6rpx 16rpx; border-radius: 999rpx; background: #e6f8ea; color: #00b42a; font-size: 22rpx; font-weight: 850; white-space: nowrap; }
 .status-badge.badge-coupon { background: #fce7f3; color: #9d174d; }
 .status-badge.badge-points { background: #fef3c7; color: #92400e; }
+.status-badge.badge-pet_title { background: #ede9fe; color: #6d28d9; }
 .status-badge.badge-blessing,
 .status-badge.badge-text { background: #ffedd5; color: #c2410c; }
 .empty-card { min-height: 360rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 44rpx; }

@@ -11,6 +11,7 @@ module.exports = function createHandler(context) {
     getOptionalUser,
     getSystemSettings,
     getUser,
+    grantEligiblePetTitlesForUser,
     isValidFontKey,
     isValidThemeKey,
     normalizeCheckinReward,
@@ -50,7 +51,9 @@ module.exports = function createHandler(context) {
       }
       if (user.status !== 'active') throw new Error('账号不可用')
       user = await bindInviteRelation(user, data)
-      return enrichUserMemberLevel(user)
+      const enriched = await enrichUserMemberLevel(user)
+      await grantEligiblePetTitlesForUser(enriched)
+      return enriched
     }
 
     if (action === 'loginByPhoneCode') {
@@ -107,12 +110,16 @@ module.exports = function createHandler(context) {
         user = { ...user, phone, updatedAt: time }
       }
       user = await bindInviteRelation(user, data)
-      return enrichUserMemberLevel(user)
+      const enriched = await enrichUserMemberLevel(user)
+      await grantEligiblePetTitlesForUser(enriched)
+      return enriched
     }
 
     if (action === 'me') {
       const user = await getUser(openid)
-      return enrichUserMemberLevel(user)
+      const enriched = await enrichUserMemberLevel(user)
+      await grantEligiblePetTitlesForUser(enriched)
+      return enriched
     }
 
     if (action === 'dailyCheckin') {

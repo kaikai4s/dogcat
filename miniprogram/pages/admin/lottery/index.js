@@ -18,6 +18,20 @@ function emptyPrize(type = 'text', defaultTemplate = null) {
       stockLeft: 100
     }
   }
+  if (type === 'pet_title') {
+    return {
+      type: 'pet_title',
+      name: defaultTemplate ? `宠物头衔：${defaultTemplate.name}` : '',
+      text: '',
+      points: 0,
+      templateId: '',
+      couponName: '',
+      titleId: defaultTemplate ? defaultTemplate._id : '',
+      titleName: defaultTemplate ? defaultTemplate.name : '',
+      probability: 20,
+      stockLeft: 50
+    }
+  }
   if (type === 'coupon') {
     return {
       type: 'coupon',
@@ -44,16 +58,18 @@ function emptyPrize(type = 'text', defaultTemplate = null) {
 }
 
 function normalizePrizeItem(p = {}) {
-  const type = ['text', 'points', 'coupon'].includes(p.type)
+  const type = ['text', 'points', 'coupon', 'pet_title'].includes(p.type)
     ? p.type
-    : (p.templateId ? 'coupon' : (Number(p.points) > 0 ? 'points' : 'text'))
+    : (p.titleId ? 'pet_title' : (p.templateId ? 'coupon' : (Number(p.points) > 0 ? 'points' : 'text')))
   const points = type === 'points' ? Math.max(Math.round(Number(p.points || 0)), 0) : 0
   const templateId = type === 'coupon' ? String(p.templateId || '').trim() : ''
+  const titleId = type === 'pet_title' ? String(p.titleId || '').trim() : ''
   const text = type === 'text' ? String(p.text || p.name || '谢谢参与').trim() : ''
   let name = String(p.name || '').trim()
   if (!name) {
     if (type === 'points') name = `${points} 积分`
     else if (type === 'text') name = text || '谢谢参与'
+    else if (type === 'pet_title') name = p.titleName ? `宠物头衔：${p.titleName}` : '宠物头衔'
     else name = '优惠券'
   }
   return {
@@ -63,6 +79,9 @@ function normalizePrizeItem(p = {}) {
     points,
     templateId,
     couponName: String(p.couponName || '').trim(),
+    titleId,
+    titleName: String(p.titleName || '').trim(),
+    titleSnapshot: p.titleSnapshot || null,
     probability: Number(p.probability || 0),
     stockLeft: Math.max(Math.round(Number(p.stockLeft || 0)), 0)
   }
@@ -76,12 +95,14 @@ Page({
   data: {
     activities: [],
     templates: [],
+    petTitles: [],
     showModal: false,
     modalTitle: '新建抽奖活动',
     form: emptyActivity(),
     newPrize: emptyPrize('text'),
     totalProbability: 0,
     selectedTemplateIndex: 0,
+    selectedPetTitleIndex: 0,
     petBlessingList: getFormattedBlessingList(),
     selectedBlessingIndex: 0,
     quickBlessingBreeds: ['大金毛', '大橘猫', '柯基', '布偶猫', '柴犬', '三花猫', '哈士奇', '边境牧羊犬']
@@ -104,6 +125,9 @@ Page({
     callFunction('admin', 'listCouponTemplates')
       .then((templates) => this.setData({ templates: templates || [] }))
       .catch(showError)
+    callFunction('admin', 'listPetTitles')
+      .then((titles) => this.setData({ petTitles: (titles || []).filter((item) => item.enabled !== false && !item.deletedAt) }))
+      .catch(showError)
   },
 
   input(e) {
@@ -116,15 +140,15 @@ Page({
   },
 
   openCreateModal() {
-    const defaultTmpl = this.data.templates[0] || null
     const form = emptyActivity()
     this.setData({
       showModal: true,
       modalTitle: '新建抽奖活动',
       form,
-      newPrize: emptyPrize('text', defaultTmpl),
+      newPrize: emptyPrize('text'),
       totalProbability: 0,
-      selectedTemplateIndex: 0
+      selectedTemplateIndex: 0,
+      selectedPetTitleIndex: 0
     })
   },
 
@@ -140,14 +164,14 @@ Page({
       enabled: activity.enabled !== false,
       prizes
     }
-    const defaultTmpl = this.data.templates[0] || null
     this.setData({
       showModal: true,
       modalTitle: '编辑抽奖活动',
       form,
-      newPrize: emptyPrize('text', defaultTmpl),
+      newPrize: emptyPrize('text'),
       totalProbability: calcTotalProbability(prizes),
-      selectedTemplateIndex: 0
+      selectedTemplateIndex: 0,
+      selectedPetTitleIndex: 0
     })
   },
 
@@ -162,9 +186,15 @@ Page({
 
   setPrizeType(e) {
     const type = e.currentTarget.dataset.type || 'text'
-    const defaultTmpl = this.data.templates[0] || null
-    const base = emptyPrize(type, defaultTmpl)
-    this.setData({ newPrize: base })
+    const defaultItem = type === 'coupon'
+      ? (this.data.templates[0] || null)
+      : (type === 'pet_title' ? (this.data.petTitles[0] || null) : null)
+    const base = emptyPrize(type, defaultItem)
+    this.setData({
+      newPrize: base,
+      selectedTemplateIndex: 0,
+      selectedPetTitleIndex: 0
+    })
   },
 
   choosePetBlessing(e) {
@@ -225,6 +255,19 @@ Page({
     }
   },
 
+  choosePrizePetTitle(e) {
+    const index = Number(e.detail.value)
+    const title = this.data.petTitles[index]
+    if (title) {
+      this.setData({
+        selectedPetTitleIndex: index,
+        ['newPrize.titleId']: title._id,
+        ['newPrize.titleName']: title.name,
+        ['newPrize.name']: `宠物头衔：${title.name}`
+      })
+    }
+  },
+
   addPrize() {
     const prize = this.data.newPrize
     const name = String(prize.name || '').trim()
@@ -237,6 +280,9 @@ Page({
     }
     if (prize.type === 'coupon' && !prize.templateId) {
       return wx.showToast({ title: '请选择关联的优惠券', icon: 'none' })
+    }
+    if (prize.type === 'pet_title' && !prize.titleId) {
+      return wx.showToast({ title: '请选择宠物头衔', icon: 'none' })
     }
     if (prize.type === 'points' && Number(prize.points || 0) <= 0) {
       return wx.showToast({ title: '赠送积分需大于 0', icon: 'none' })
@@ -251,11 +297,13 @@ Page({
 
     const prizes = [...(this.data.form.prizes || []), item]
     const total = calcTotalProbability(prizes)
-    const defaultTmpl = this.data.templates[0] || null
+    const defaultItem = prize.type === 'coupon'
+      ? (this.data.templates[0] || null)
+      : (prize.type === 'pet_title' ? (this.data.petTitles[0] || null) : null)
     this.setData({
       ['form.prizes']: prizes,
       totalProbability: total,
-      newPrize: emptyPrize(prize.type, defaultTmpl)
+      newPrize: emptyPrize(prize.type, defaultItem)
     })
     wx.showToast({ title: '奖品已添加', icon: 'success' })
   },

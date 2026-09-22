@@ -1,0 +1,43 @@
+.page { min-height: 100vh; padding: 28rpx; box-sizing: border-box; }
+.dashboard-header { background: var(--theme-card-bg); border-radius: 28rpx; padding: 28rpx; box-shadow: 0 16rpx 44rpx var(--theme-shadow); margin-bottom: 28rpx; }
+.header-top-row { display: flex; justify-content: space-between; align-items: center; gap: 20rpx; }
+.badge { display: inline-flex; padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--theme-primary-soft); color: var(--theme-primary); font-size: 24rpx; }
+.title { margin-top: 12rpx; font-size: 42rpx; font-weight: 800; color: var(--theme-title); }
+.tip { margin-top: 16rpx; color: var(--theme-muted); line-height: 1.6; }
+.primary { background: linear-gradient(135deg, var(--theme-primary), var(--theme-primary-2)); color: #fff; border: 0; border-radius: 999rpx; }
+.ghost { background: #fff; color: var(--theme-text); border: 1rpx solid var(--theme-border); border-radius: 999rpx; }
+.add-btn { width: auto; padding: 0 28rpx; }
+.section-title { font-size: 32rpx; font-weight: 800; margin: 26rpx 0 18rpx; color: var(--theme-title); }
+.title-list { display: grid; gap: 20rpx; }
+.title-card { background: var(--theme-card-bg); border-radius: 24rpx; padding: 24rpx; box-shadow: 0 12rpx 32rpx var(--theme-shadow); }
+.card-main { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
+.pet-equipped-title { display: inline-flex; align-items: center; gap: 8rpx; max-width: 460rpx; padding: 8rpx 16rpx; border-radius: 999rpx; font-size: 26rpx; font-weight: 800; }
+.title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status { padding: 6rpx 14rpx; border-radius: 999rpx; font-size: 22rpx; }
+.status.on { color: #16a34a; background: #dcfce7; }
+.status.off { color: #9ca3af; background: #f3f4f6; }
+.desc { margin-top: 14rpx; color: var(--theme-muted); line-height: 1.5; }
+.meta-row { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 16rpx; color: var(--theme-muted); font-size: 24rpx; }
+.meta-row text { background: var(--theme-primary-soft); color: var(--theme-primary); border-radius: 999rpx; padding: 6rpx 14rpx; }
+.actions { display: flex; justify-content: flex-end; gap: 12rpx; margin-top: 18rpx; }
+.empty { text-align: center; color: var(--theme-muted); padding: 80rpx 20rpx; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; }
+.modal-card { width: 100%; max-height: 86vh; background: #fff; border-radius: 32rpx 32rpx 0 0; overflow: hidden; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 28rpx; border-bottom: 1rpx solid #f1f1f1; }
+.modal-title { font-size: 34rpx; font-weight: 800; }
+.modal-close { font-size: 36rpx; color: #999; }
+.modal-scroll-body { max-height: 62vh; padding: 28rpx; box-sizing: border-box; }
+.preview-box, .tip-card { background: #fff7ed; border-radius: 22rpx; padding: 22rpx; margin-bottom: 22rpx; }
+.preview-label { font-size: 24rpx; color: #9a6a35; margin-bottom: 12rpx; }
+.form-group { margin-bottom: 24rpx; }
+.field-label { font-size: 26rpx; font-weight: 700; color: #3f3026; margin-bottom: 12rpx; }
+input, textarea { width: 100%; min-height: 76rpx; box-sizing: border-box; border: 1rpx solid #eadfd5; border-radius: 18rpx; padding: 18rpx; background: #fffaf6; }
+textarea { min-height: 160rpx; }
+.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18rpx; }
+.switch-row { display: flex; justify-content: space-between; align-items: center; }
+.color-palette, .selector-grid, .level-grid { display: flex; flex-wrap: wrap; gap: 12rpx; }
+.color-dot-wrap, .grid-item, .level-chip { border: 1rpx solid #eadfd5; border-radius: 18rpx; padding: 12rpx 16rpx; background: #fffaf6; font-size: 24rpx; }
+.color-dot-wrap.active, .grid-item.active, .level-chip.active { border-color: var(--theme-primary); background: var(--theme-primary-soft); color: var(--theme-primary); }
+.color-dot { width: 34rpx; height: 34rpx; border-radius: 50%; margin-bottom: 6rpx; }
+.modal-actions { display: flex; gap: 18rpx; padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom)); border-top: 1rpx solid #f1f1f1; }
+.modal-actions button { flex: 1; }

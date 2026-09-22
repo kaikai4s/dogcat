@@ -7,7 +7,9 @@ module.exports = function createHandler(context) {
     incUpdateValue,
     normalizeCouponSnapshot,
     now,
-    safeText
+    safeText,
+    titleSnapshot,
+    getPetTitle
   } = context
   return async function lottery(openid, action, data) {
     if (action === 'getActiveActivity') {
@@ -58,6 +60,8 @@ module.exports = function createHandler(context) {
           prizeText,
           points: Number(item.points || 0),
           couponId: item.couponId || '',
+          titleId: item.titleId || '',
+          rewardMailId: item.rewardMailId || '',
           createdAt: item.createdAt || ''
         }
       })
@@ -114,6 +118,9 @@ module.exports = function createHandler(context) {
       let couponId = ''
       let templateSnapshot = null
       let pointsAwarded = 0
+      let rewardMailId = ''
+      let titleId = ''
+      let petTitleSnapshot = null
 
       if (prizeType === 'coupon' && prize.templateId) {
         const template = (await db.collection('coupon_templates').doc(prize.templateId).get()).data
@@ -161,6 +168,33 @@ module.exports = function createHandler(context) {
             `抽奖活动【${activity.name}】获得 ${pointsAwarded} 积分`
           )
         }
+      } else if (prizeType === 'pet_title') {
+        titleId = safeText(prize.titleId).trim()
+        const petTitle = await getPetTitle(titleId, { includeDeleted: true })
+        if (petTitle.deletedAt || petTitle.enabled === false) throw new Error('宠物头衔奖品已失效')
+        petTitleSnapshot = prize.titleSnapshot || titleSnapshot(petTitle)
+        const mail = await db.collection('reward_mails').add({
+          data: {
+            userId: user._id,
+            openid,
+            title: `抽奖获得宠物头衔【${petTitle.name}】`,
+            content: `你在抽奖活动【${activity.name}】中获得宠物头衔【${petTitle.name}】，请领取后为宠物佩戴。`,
+            targetType: 'lottery',
+            targetOpenids: [openid],
+            targetRole: '',
+            targetLevelIds: [],
+            targetLevelNamesSnapshot: [],
+            reward: { type: 'pet_title', titleId, titleSnapshot: petTitleSnapshot, duplicatePoints: petTitleSnapshot.duplicatePoints },
+            sentByAdminUserId: '',
+            sentByAdminOpenid: '',
+            readAt: null,
+            claimedAt: null,
+            rewardClaimResult: {},
+            createdAt: time,
+            updatedAt: time
+          }
+        })
+        rewardMailId = mail._id
       }
 
       // 用原子操作更新指定奖品库存，避免竞态超发
@@ -186,6 +220,8 @@ module.exports = function createHandler(context) {
           prizeText,
           points: pointsAwarded,
           couponId,
+          titleId,
+          rewardMailId,
           createdAt: time
         }
       })
@@ -195,6 +231,9 @@ module.exports = function createHandler(context) {
         prizeText,
         points: pointsAwarded,
         couponId,
+        titleId,
+        rewardMailId,
+        titleSnapshot: petTitleSnapshot,
         templateSnapshot
       }
     }

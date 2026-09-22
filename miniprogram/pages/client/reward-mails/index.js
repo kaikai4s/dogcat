@@ -10,7 +10,20 @@ function rewardSummary(item) {
   if (item.rewardType === 'retro_card' || reward.type === 'retro_card') {
     return `补签卡 ${Number(reward.count || 0)} 张`
   }
+  if (item.rewardType === 'pet_title' || reward.type === 'pet_title') {
+    const title = reward.titleSnapshot || {}
+    return `宠物头衔：${title.name || '待领取头衔'}`
+  }
   return `${Number(reward.points || 0)} 积分`
+}
+
+function claimToastTitle(mail) {
+  const result = mail.rewardClaimResult || {}
+  if (result.petTitleOutcome === 'compensated') {
+    return `已转为 ${result.compensationPoints || result.pointsDelta || 0} 积分`
+  }
+  if (result.petTitleOutcome === 'owned') return '头衔已领取'
+  return '奖励已领取'
 }
 
 Page({
@@ -83,7 +96,7 @@ Page({
     this.setData({ claimingId: id })
     callFunction('rewardMail', 'claimReward', { id })
       .then((mail) => {
-        wx.showToast({ title: '奖励已领取', icon: 'none' })
+        wx.showToast({ title: claimToastTitle(mail), icon: 'none' })
         this.setData({
           claimingId: '',
           mails: this.data.mails.map((record) => (record._id === id ? {

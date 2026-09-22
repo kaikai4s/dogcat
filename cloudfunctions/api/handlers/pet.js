@@ -5,19 +5,24 @@ module.exports = function createHandler(context) {
     checkTextSecurity,
     cloud,
     db,
+    decoratePetsWithEquippedTitles,
     ensurePetExclusiveId,
+    equipPetTitle,
     generatePetExclusiveId,
     getSystemSettings,
     getUser,
+    listUserPetTitles,
     normalizeBeautyPhotos,
     nowText,
     paginateList,
+    releasePetTitleForPet,
     parsePetRecognitionText,
     recordAiLog,
     safeFileId,
     safeNumber,
     safeText,
-    toCstParts
+    toCstParts,
+    unequipPetTitle
   } = context
   return async function pet(openid, action, data) {
     const user = await getUser(openid)
@@ -33,15 +38,26 @@ module.exports = function createHandler(context) {
           const beautyPhotos = Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length ? pet.beautyPhotos : normalizeBeautyPhotos([], pet.avatarFileId)
           return { ...pet, exclusiveId, beautyPhotos }
         }))
+      const decorated = await decoratePetsWithEquippedTitles(list)
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
-      return wantsPage ? paginateList(list, data) : list
+      return wantsPage ? paginateList(decorated, data) : decorated
     }
     if (action === 'getPet') {
       const res = await db.collection('pets').doc(data.id).get()
       if (res.data.openid !== openid) throw new Error('无权访问')
       const exclusiveId = await ensurePetExclusiveId(res.data)
       const beautyPhotos = Array.isArray(res.data.beautyPhotos) && res.data.beautyPhotos.length ? res.data.beautyPhotos : normalizeBeautyPhotos([], res.data.avatarFileId)
-      return { ...res.data, exclusiveId, beautyPhotos }
+      const decorated = await decoratePetsWithEquippedTitles([{ ...res.data, exclusiveId, beautyPhotos }])
+      return decorated[0]
+    }
+    if (action === 'listMyTitles') {
+      return listUserPetTitles(openid)
+    }
+    if (action === 'equipTitle') {
+      return equipPetTitle(openid, data.petId || data.id, data.inventoryId)
+    }
+    if (action === 'unequipTitle') {
+      return unequipPetTitle(openid, data.petId || data.id)
     }
     if (action === 'recognizePetBreed') {
       const settings = await getSystemSettings()
@@ -131,6 +147,7 @@ module.exports = function createHandler(context) {
         avatarFileId,
         beautyPhotos,
         beautyTitle: data.beautyTitle || null,
+        equippedTitleInventoryId: '',
         species: safeText(data.species || 'dog'),
         breed: safeText(data.breed),
         gender: safeText(data.gender),
@@ -193,6 +210,7 @@ module.exports = function createHandler(context) {
     if (action === 'deletePet') {
       const existing = await db.collection('pets').doc(data.id).get()
       if (existing.data.openid !== openid) throw new Error('无权访问')
+      await releasePetTitleForPet(data.id)
       await db.collection('pets').doc(data.id).remove()
       return { id: data.id }
     }
