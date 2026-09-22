@@ -22,7 +22,9 @@
       <view class="card-subtitle"><text class="remix-icon ri-award-line sub-icon"></text><text>本次结果</text></view>
       <view class="result-row">
         <view class="result-name">{{result.prizeName}}</view>
-        <view class="status-badge" wx:if="{{result.couponId}}">已存入优惠券</view>
+        <view class="status-badge" wx:if="{{result.couponId || result.prizeType === 'coupon'}}">已存入优惠券</view>
+        <view class="status-badge" wx:elif="{{result.points > 0 || result.prizeType === 'points'}}">积分已到账</view>
+        <view class="status-badge" wx:else>谢谢参与</view>
       </view>
     </view>
   </view>

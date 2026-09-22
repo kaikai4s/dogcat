@@ -20,11 +20,12 @@
       <button class="tab {{form.usageScope === 'all' ? 'active-tab' : ''}}" data-scope="all" bindtap="setUsageScope">通用券</button>
     </view>
     <view class="notice" wx:if="{{form.usageScope === 'mall'}}" style="margin:12rpx 0;padding:18rpx 20rpx;">零售券仅可用于宠物用品商城，不会出现在上门服务下单优惠中。</view>
+    <view class="notice" wx:if="{{form.usageScope === 'all'}}" style="margin:12rpx 0;padding:18rpx 20rpx;">通用券对所有上门服务及宠物商城订单均可用，全场通用，无需单独选择适用服务。</view>
 
-    <view wx:if="{{form.usageScope !== 'mall'}}">
-      <view class="muted" style="margin:12rpx 0 10rpx;">适用服务（可多选）</view>
+    <view wx:if="{{form.usageScope === 'service'}}">
+      <view class="muted" style="margin:12rpx 0 10rpx;">适用服务（可多选；不选则默认所有上门服务均可用）</view>
       <view class="chip-row">
-        <view class="chip {{form.applicableServiceTypes.indexOf(item.key) !== -1 ? 'pink' : ''}}" wx:for="{{servicePrices}}" wx:key="key" data-key="{{item.key}}" bindtap="toggleServiceType">{{item.label}}</view>
+        <view class="chip {{item.selected ? 'pink' : ''}}" wx:for="{{servicePriceRows}}" wx:key="key" data-key="{{item.key}}" bindtap="toggleServiceType">{{item.label}}</view>
       </view>
     </view>
 

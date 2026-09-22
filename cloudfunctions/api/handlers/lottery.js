@@ -1,5 +1,6 @@
 module.exports = function createHandler(context) {
   const {
+    addPoints,
     cstTodayStart,
     db,
     getUser,
@@ -47,7 +48,9 @@ module.exports = function createHandler(context) {
       return (records.data || []).map((item) => ({
         _id: item._id,
         activityId: item.activityId || '',
+        prizeType: item.prizeType || (item.couponId ? 'coupon' : (Number(item.points) > 0 ? 'points' : 'text')),
         prizeName: item.prizeName || '谢谢参与',
+        points: Number(item.points || 0),
         couponId: item.couponId || '',
         createdAt: item.createdAt || ''
       }))
@@ -82,12 +85,12 @@ module.exports = function createHandler(context) {
       }
       const prize = prizes[prizeIndex]
 
-      // 找到该奖品在原始 prizes 数组中的位置（按 name+templateId 精确匹配第一个库存>0的）
+      // 找到该奖品在原始 prizes 数组中的位置（按 name+templateId+type 精确匹配第一个库存>0的）
       let originalIndex = -1
       let matchCount = 0
       for (let i = 0; i < freshActivity.prizes.length; i++) {
         const p = freshActivity.prizes[i]
-        if (p.name === prize.name && p.templateId === prize.templateId && Number(p.stockLeft || 0) > 0) {
+        if (p.name === prize.name && (p.templateId || '') === (prize.templateId || '') && Number(p.stockLeft || 0) > 0) {
           if (matchCount === prizeIndex - prizes.indexOf(prize)) { originalIndex = i; break }
           matchCount++
         }
@@ -95,27 +98,61 @@ module.exports = function createHandler(context) {
       // 降级：找第一个匹配
       if (originalIndex === -1) {
         originalIndex = freshActivity.prizes.findIndex(
-          (p) => p.name === prize.name && p.templateId === prize.templateId && Number(p.stockLeft || 0) > 0
+          (p) => p.name === prize.name && (p.templateId || '') === (prize.templateId || '') && Number(p.stockLeft || 0) > 0
         )
       }
 
+      const prizeType = prize.type || (prize.templateId ? 'coupon' : (Number(prize.points) > 0 ? 'points' : 'text'))
       const time = now()
-      const validDays = 30
-      const validTo = new Date(time.getTime() + validDays * 86400000)
       let couponId = ''
       let templateSnapshot = null
+      let pointsAwarded = 0
 
-      if (prize.templateId) {
+      if (prizeType === 'coupon' && prize.templateId) {
         const template = (await db.collection('coupon_templates').doc(prize.templateId).get()).data
         if (template && template.enabled !== false) {
           templateSnapshot = normalizeCouponSnapshot(template)
+          const validDays = Number(template.validDays || 30)
+          const validTo = template.validType === 'fixed_range' && template.validToFixed
+            ? new Date(template.validToFixed)
+            : new Date(time.getTime() + validDays * 86400000)
+          const validFrom = template.validType === 'fixed_range' && template.validFromFixed
+            ? new Date(template.validFromFixed)
+            : time
           const coupon = await db.collection('user_coupons').add({
-            data: { templateId: prize.templateId, templateSnapshot, userId: user._id, openid, status: 'available', validFrom: time, validTo, lockedOrderId: '', lockedAt: null, usedOrderId: '', usedAt: null, issuedAt: time, createdAt: time, updatedAt: time }
+            data: {
+              templateId: prize.templateId,
+              templateSnapshot,
+              userId: user._id,
+              openid,
+              status: 'available',
+              validFrom,
+              validTo,
+              lockedOrderId: '',
+              lockedAt: null,
+              usedOrderId: '',
+              usedAt: null,
+              issuedAt: time,
+              createdAt: time,
+              updatedAt: time
+            }
           })
           couponId = coupon._id
           await db.collection('coupon_templates').doc(prize.templateId).update({
             data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time }
           })
+        }
+      } else if (prizeType === 'points') {
+        pointsAwarded = Math.max(Math.round(Number(prize.points || 0)), 0)
+        if (pointsAwarded > 0 && typeof addPoints === 'function') {
+          await addPoints(
+            openid,
+            user._id,
+            pointsAwarded,
+            'lottery_reward',
+            activity._id,
+            `抽奖活动【${activity.name}】获得 ${pointsAwarded} 积分`
+          )
         }
       }
 
@@ -129,10 +166,27 @@ module.exports = function createHandler(context) {
         })
       }
 
+      const finalPrizeName = prize.name || (prizeType === 'points' ? `${pointsAwarded} 积分` : (prize.text || '谢谢参与'))
       await db.collection('lottery_records').add({
-        data: { userId: user._id, openid, activityId: activity._id, prizeTemplateId: prize.templateId || '', prizeName: prize.name || '谢谢参与', couponId, createdAt: time }
+        data: {
+          userId: user._id,
+          openid,
+          activityId: activity._id,
+          prizeType,
+          prizeTemplateId: prize.templateId || '',
+          prizeName: finalPrizeName,
+          points: pointsAwarded,
+          couponId,
+          createdAt: time
+        }
       })
-      return { prizeName: prize.name || '谢谢参与', couponId, templateSnapshot }
+      return {
+        prizeName: finalPrizeName,
+        prizeType,
+        points: pointsAwarded,
+        couponId,
+        templateSnapshot
+      }
     }
     throw new Error('未知 lottery 操作')
   }

@@ -75,11 +75,20 @@ function buildLevelRows(levels, levelIds) {
   }))
 }
 
+function buildServicePriceRows(servicePrices = [], applicableServiceTypes = []) {
+  const selected = new Set(applicableServiceTypes || [])
+  return (servicePrices || []).map((item) => ({
+    ...item,
+    selected: selected.has(item.key)
+  }))
+}
+
 Page({
   data: {
     templates: [],
     levels: [],
     servicePrices: [],
+    servicePriceRows: [],
     form: emptyTemplate(),
     issueByLevel: { templateId: '', targetLevelIds: [] },
     issueByOpenid: { templateId: '', openid: '' },
@@ -107,6 +116,8 @@ Page({
     const issueByLevel = nextState.issueByLevel || this.data.issueByLevel
     const issueByOpenid = nextState.issueByOpenid || this.data.issueByOpenid
     const publishMail = nextState.publishMail || this.data.publishMail
+    const servicePrices = nextState.servicePrices || this.data.servicePrices
+    const form = nextState.form || this.data.form
     const { nameCount, labelMap } = buildLevelMeta(levels)
     this.setData({
       issueByLevelTemplateName: getTemplateName(templates, issueByLevel.templateId) || '请选择',
@@ -117,6 +128,7 @@ Page({
       levelLabelMap: labelMap,
       issueLevelRows: buildLevelRows(levels, issueByLevel.targetLevelIds),
       publishMailLevelRows: buildLevelRows(levels, publishMail.targetLevelIds),
+      servicePriceRows: buildServicePriceRows(servicePrices, form.applicableServiceTypes),
       hasDuplicateLevelNames: Object.values(nameCount).some((count) => count > 1)
     })
   },
@@ -139,7 +151,10 @@ Page({
       })
       .catch(showError)
     callFunction('admin', 'listServicePrices')
-      .then((servicePrices) => this.setData({ servicePrices }))
+      .then((servicePrices) => {
+        this.setData({ servicePrices })
+        this.syncDerivedData({ servicePrices })
+      })
       .catch(showError)
   },
 
@@ -162,21 +177,28 @@ Page({
 
   setUsageScope(e) {
     const usageScope = e.currentTarget.dataset.scope || 'service'
-    this.setData({ ['form.usageScope']: usageScope, ['form.applicableServiceTypes']: usageScope === 'mall' ? [] : this.data.form.applicableServiceTypes })
+    const applicableServiceTypes = usageScope === 'service' ? (this.data.form.applicableServiceTypes || []) : []
+    const form = { ...this.data.form, usageScope, applicableServiceTypes }
+    this.setData({ form })
+    this.syncDerivedData({ form })
   },
 
   toggleServiceType(e) {
-    if (this.data.form.usageScope === 'mall') return
+    if (this.data.form.usageScope !== 'service') return
     const key = e.currentTarget.dataset.key
     const current = this.data.form.applicableServiceTypes || []
     const next = current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
-    this.setData({ ['form.applicableServiceTypes']: next })
+    const form = { ...this.data.form, applicableServiceTypes: next }
+    this.setData({ form })
+    this.syncDerivedData({ form })
   },
 
   chooseTemplate(e) {
     const template = this.data.templates[e.currentTarget.dataset.index]
     if (!template) return
-    this.setData({ form: { ...emptyTemplate(), ...template, applicableServiceTypes: template.applicableServiceTypes || [] } })
+    const form = { ...emptyTemplate(), ...template, applicableServiceTypes: template.applicableServiceTypes || [] }
+    this.setData({ form })
+    this.syncDerivedData({ form })
   },
 
   chooseIssueTemplate(e) {
@@ -254,7 +276,9 @@ Page({
   },
 
   resetForm() {
-    this.setData({ form: emptyTemplate() })
+    const form = emptyTemplate()
+    this.setData({ form })
+    this.syncDerivedData({ form })
   },
 
   saveTemplate() {
@@ -368,7 +392,7 @@ Page({
     const current = pages[pages.length - 1]
     const currentRoute = current && current.route ? '/' + current.route : ''
     if (currentRoute === url) return
-    const mainNavUrls = ['/pages/admin/home/index', '/pages/admin/orders/list/index', '/pages/admin/staff-audit/list/index', '/pages/admin/incidents/list/index', '/pages/admin/coupons/index', '/pages/admin/checkin-config/index', '/pages/admin/points/index', '/pages/admin/settings/index']
+    const mainNavUrls = ['/pages/admin/home/index', '/pages/admin/orders/list/index', '/pages/admin/staff-audit/list/index', '/pages/admin/incidents/list/index', '/pages/admin/checkin-config/index', '/pages/admin/points/index', '/pages/admin/settings/index']
     const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
     wx[method]({ url })
   }

@@ -97,7 +97,7 @@ module.exports = function createService({
     const snapshot = normalizeCouponSnapshot(coupon)
     if (!couponBusinessMatches(snapshot, pricing)) return { applicable: false, reason: snapshot.usageScope === 'mall' ? '仅限商城用品订单使用' : '仅限上门服务订单使用' }
     if (pricing.amount < snapshot.minOrderAmount) return { applicable: false, reason: `订单满 ¥${snapshot.minOrderAmount} 可用` }
-    if (snapshot.usageScope !== 'mall' && snapshot.applicableServiceTypes.length && !pricing.serviceTypes.some((key) => snapshot.applicableServiceTypes.includes(key))) return { applicable: false, reason: '当前服务不可用' }
+    if (snapshot.usageScope === 'service' && snapshot.applicableServiceTypes.length && !pricing.serviceTypes.some((key) => snapshot.applicableServiceTypes.includes(key))) return { applicable: false, reason: '当前服务不可用' }
     const discountAmount = Math.min(snapshot.discountAmount, pricing.amount)
     if (discountAmount <= 0) return { applicable: false, reason: '优惠金额无效' }
     return {

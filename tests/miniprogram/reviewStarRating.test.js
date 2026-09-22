@@ -94,7 +94,7 @@ test('admin order detail wxml does not contain invalid expression like (evidence
   assert.ok(content.includes('evidenceImages.length < 4'), 'evidenceImages length condition should be direct')
 })
 
-test('admin notifications and member-levels navigate via navigateTo so left-top displays back arrow instead of home icon', () => {
+test('admin notifications, member-levels and coupons navigate via navigateTo so left-top displays back arrow instead of home icon', () => {
   const adminDir = path.resolve(__dirname, '../../miniprogram/pages/admin')
   const entries = fs.readdirSync(adminDir, { recursive: true })
   const adminJsFiles = entries
@@ -115,6 +115,10 @@ test('admin notifications and member-levels navigate via navigateTo so left-top 
       assert.ok(
         !navStr.includes("'/pages/admin/member-levels/index'"),
         `${file} should not include member-levels/index in mainNavUrls`
+      )
+      assert.ok(
+        !navStr.includes("'/pages/admin/coupons/index'"),
+        `${file} should not include coupons/index in mainNavUrls`
       )
     }
   }

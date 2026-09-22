@@ -1,1 +1,196 @@
 /* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+
+.action-card {
+  margin-bottom: 20rpx;
+  padding: 24rpx 28rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+}
+
+.activity-card {
+  margin-bottom: 20rpx;
+  padding: 28rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+}
+
+.activity-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12rpx;
+  min-width: 140rpx;
+}
+
+.danger-btn {
+  color: #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+}
+
+.prize-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 14rpx;
+}
+
+.prize-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 14rpx;
+  border-radius: 12rpx;
+  font-size: 22rpx;
+}
+
+.pill-type {
+  font-weight: 700;
+  font-size: 20rpx;
+  padding: 2rpx 6rpx;
+  border-radius: 6rpx;
+}
+
+.pill-name {
+  font-weight: 600;
+}
+
+.pill-prob {
+  opacity: 0.85;
+}
+
+.pill-points {
+  background: #fef3c7;
+  color: #92400e;
+}
+.pill-points .pill-type {
+  background: #fde68a;
+}
+
+.pill-coupon {
+  background: #fce7f3;
+  color: #9d174d;
+}
+.pill-coupon .pill-type {
+  background: #fbcfe8;
+}
+
+.pill-text {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+.pill-text .pill-type {
+  background: #e5e7eb;
+}
+
+/* Modal 弹窗体系 */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(30, 20, 15, 0.48);
+  backdrop-filter: blur(4rpx);
+}
+
+.modal-card {
+  width: 100%;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  padding: 32rpx 28rpx 36rpx;
+  border-top-left-radius: 40rpx;
+  border-top-right-radius: 40rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.modal-head {
+  align-items: center;
+  margin-bottom: 20rpx;
+  padding-bottom: 12rpx;
+  border-bottom: 1rpx solid #f3f4f6;
+}
+
+.modal-title {
+  font-size: 34rpx;
+  font-weight: 900;
+  color: #2d211a;
+}
+
+.modal-close {
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  color: #9ca3af;
+  border-radius: 50%;
+  background: #f3f4f6;
+}
+
+.modal-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4rpx;
+  max-height: calc(88vh - 220rpx);
+}
+
+.modal-footer {
+  display: flex;
+  gap: 20rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid #f3f4f6;
+  margin-top: 12rpx;
+}
+
+.field-title {
+  font-size: 28rpx;
+  font-weight: 850;
+  color: #2d211a;
+  margin-bottom: 12rpx;
+}
+
+.prob-summary {
+  font-size: 24rpx;
+  font-weight: 700;
+  padding: 4rpx 14rpx;
+  border-radius: 20rpx;
+}
+
+.prob-valid {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.prob-invalid {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.prize-item-card {
+  padding: 18rpx 20rpx;
+  background: #fafaf9;
+  border: 1rpx solid #f0eeec;
+  border-radius: 18rpx;
+  margin-bottom: 12rpx;
+}
+
+.empty-prize-tip {
+  padding: 24rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #9ca3af;
+  background: #fbf7f4;
+  border-radius: 16rpx;
+  margin-bottom: 16rpx;
+}
+
+.add-prize-box {
+  padding: 22rpx 20rpx;
+  background: #fffbfa;
+  border: 2rpx dashed #fed7aa;
+  border-radius: 20rpx;
+  margin-top: 16rpx;
+}

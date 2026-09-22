@@ -2,11 +2,19 @@ const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
 const { formatDateTime } = require('../../../utils/format')
 
 function decorateRecords(records = []) {
-  return records.map((item) => ({
-    ...item,
-    createdAtText: formatDateTime(item.createdAt),
-    prizeTag: item.couponId ? '优惠券' : '参与奖'
-  }))
+  return records.map((item) => {
+    let prizeTag = '参与奖'
+    if (item.prizeType === 'points' || Number(item.points) > 0) {
+      prizeTag = '积分'
+    } else if (item.prizeType === 'coupon' || item.couponId) {
+      prizeTag = '优惠券'
+    }
+    return {
+      ...item,
+      createdAtText: formatDateTime(item.createdAt),
+      prizeTag
+    }
+  })
 }
 
 Page({
@@ -49,10 +57,12 @@ Page({
     callFunction('lottery', 'draw')
       .then((res) => {
         this.setData({ result: res })
-        if (res.couponId) {
+        if (res.prizeType === 'coupon' || res.couponId) {
+          wx.showToast({ title: `恭喜获得：${res.prizeName}`, icon: 'success', duration: 3000 })
+        } else if (res.prizeType === 'points' || (res.points && res.points > 0)) {
           wx.showToast({ title: `恭喜获得：${res.prizeName}`, icon: 'success', duration: 3000 })
         } else {
-          wx.showToast({ title: res.prizeName || '谢谢参与', icon: 'none', duration: 2000 })
+          wx.showToast({ title: res.prizeName || '谢谢参与', icon: 'none', duration: 2500 })
         }
         this.load()
         this.loadRecords()

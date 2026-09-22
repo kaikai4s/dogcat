@@ -123,8 +123,8 @@ test('admin can republish order as urgent with adjusted reward, modified time & 
     data: {
       orderId: 'order_urgent_1',
       staffReward: 85,
-      startTime: '2026-09-22 15:00',
-      endTime: '2026-09-22 16:00',
+      startTime: '2026-09-22 20:00',
+      endTime: '2026-09-22 21:00',
       urgentRemark: '原宠托师突发状况无法履约，平台加价补贴，请尽快接单'
     }
   })
@@ -140,7 +140,7 @@ test('admin can republish order as urgent with adjusted reward, modified time & 
   assert.equal(orderInDb.isUrgent, true)
   assert.equal(orderInDb.urgentStaffReward, 85)
   assert.equal(orderInDb.staffOpenid, '', 'Must unbind original staff')
-  assert.equal(orderInDb.startTime, '2026-09-22 15:00')
+  assert.equal(orderInDb.startTime, '2026-09-22 20:00')
   assert.equal(orderInDb.payAmount, 60, 'Client payAmount must NEVER change')
 
   assert.equal(orderInDb.originalStaffOpenid, 'openid_staff', 'Must retain original staff openid')

@@ -1066,7 +1066,7 @@ module.exports = function createHandler(context) {
       }
       const usageScope = normalizeCouponUsageScope(data.usageScope || data.businessType)
       const validServiceKeys = (await listServicePrices(true)).map((item) => item.key)
-      const applicableServiceTypes = usageScope === 'mall' ? [] : (Array.isArray(data.applicableServiceTypes) ? data.applicableServiceTypes.map((item) => String(item || '').trim()).filter(Boolean) : [])
+      const applicableServiceTypes = usageScope === 'service' ? (Array.isArray(data.applicableServiceTypes) ? data.applicableServiceTypes.map((item) => String(item || '').trim()).filter(Boolean) : []) : []
       if (applicableServiceTypes.some((key) => !validServiceKeys.includes(key))) throw new Error('适用服务不正确')
       const time = now()
       const payload = {
@@ -1557,12 +1557,30 @@ module.exports = function createHandler(context) {
     if (action === 'saveLotteryActivity') {
       const name = safeText(data.name).trim()
       if (!name) throw new Error('活动名称不能为空')
-      const prizes = Array.isArray(data.prizes) ? data.prizes.map((p) => ({
-        templateId: safeText(p.templateId).trim(),
-        name: safeText(p.name).trim(),
-        probability: Math.max(Number(p.probability || 0), 0),
-        stockLeft: Math.max(Math.round(Number(p.stockLeft || 0)), 0)
-      })).filter((p) => p.name) : []
+      const prizes = Array.isArray(data.prizes) ? data.prizes.map((p) => {
+        const type = ['text', 'points', 'coupon'].includes(p.type)
+          ? p.type
+          : (p.templateId ? 'coupon' : (Number(p.points) > 0 ? 'points' : 'text'))
+        const points = type === 'points' ? Math.max(Math.round(Number(p.points || 0)), 0) : 0
+        const templateId = type === 'coupon' ? safeText(p.templateId).trim() : ''
+        const text = type === 'text' ? safeText(p.text || p.name).trim() : ''
+        let prizeName = safeText(p.name).trim()
+        if (!prizeName) {
+          if (type === 'points') prizeName = `${points} 积分`
+          else if (type === 'text') prizeName = text || '谢谢参与'
+          else prizeName = '优惠券'
+        }
+        return {
+          type,
+          name: prizeName,
+          text,
+          points,
+          templateId,
+          couponName: safeText(p.couponName || '').trim(),
+          probability: Math.max(Number(p.probability || 0), 0),
+          stockLeft: Math.max(Math.round(Number(p.stockLeft || 0)), 0)
+        }
+      }).filter((p) => p.name) : []
       const time = now()
       const payload = { name, description: safeText(data.description).trim(), prizes, enabled: data.enabled === true, updatedAt: time }
       if (data._id) {
