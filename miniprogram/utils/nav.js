@@ -56,8 +56,33 @@ function goBack() {
   wx.redirectTo({ url: fallbackUrl })
 }
 
-function navMethods() {
-  return { goBack }
+/**
+ * 安全的页面导航跳转
+ * 微信小程序限制最大页面栈深度为 10 层。
+ * 当检测到 getCurrentPages().length >= 9 时自动降级为 redirectTo，彻底杜绝栈溢出崩溃。
+ */
+function safeNavigateTo(options) {
+  if (!options || !options.url) return
+  const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+  if (pages.length >= 9) {
+    wx.redirectTo(options)
+  } else {
+    wx.navigateTo({
+      ...options,
+      fail: (err) => {
+        const msg = (err && (err.errMsg || err.message)) || ''
+        if (/limit exceed|exceed/i.test(msg)) {
+          wx.redirectTo(options)
+        } else if (typeof options.fail === 'function') {
+          options.fail(err)
+        }
+      }
+    })
+  }
 }
 
-module.exports = { createPageNav, navMethods, getCurrentRouteFallback }
+function navMethods() {
+  return { goBack, safeNavigateTo }
+}
+
+module.exports = { createPageNav, navMethods, getCurrentRouteFallback, safeNavigateTo }

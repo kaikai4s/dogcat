@@ -46,6 +46,7 @@ function createCollectionStore(initial = {}) {
     return Object.keys(where || {}).every((key) => {
       const condition = where[key]
       if (condition && typeof condition === 'object' && '$gt' in condition) return item[key] > condition.$gt
+      if (condition && typeof condition === 'object' && '$gte' in condition) return item[key] >= condition.$gte
       if (condition && typeof condition === 'object' && Array.isArray(condition.$in)) {
         return condition.$in.includes(item[key]) || (condition.$in.includes('') && item[key] === undefined) || (condition.$in.includes(null) && item[key] === null)
       }
@@ -160,7 +161,7 @@ function createCollectionStore(initial = {}) {
     return run
   }
   return { collection, state, runTransaction, command: {
-    in: (arr) => ({ $in: arr }), gt: value => ({ $gt: value }),
+    in: (arr) => ({ $in: arr }), gt: value => ({ $gt: value }), gte: value => ({ $gte: value }),
     expr: value => ({ $expr: value }), aggregate: aggregateCommand
   } }
 }

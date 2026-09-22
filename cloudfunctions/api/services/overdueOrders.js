@@ -19,9 +19,22 @@ module.exports = function createService({
   async function processOverdueUnstartedOrders(currentTime = now()) {
     const currentTs = toTimeValue(currentTime)
     if (!currentTs) return []
+    const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+    const windowStartTs = currentTs - ACTIVE_WINDOW_MS
+    const windowStartDate = new Date(windowStartTs)
+    const windowStartText = `${windowStartDate.getFullYear()}-${String(windowStartDate.getMonth() + 1).padStart(2, '0')}-${String(windowStartDate.getDate()).padStart(2, '0')} 00:00`
+
+    const _ = db.command
+    const whereAssigned = { status: ORDER_STATUS.ASSIGNED }
+    const whereDayCompleted = { status: ORDER_STATUS.DAY_COMPLETED }
+    if (_ && typeof _.gte === 'function') {
+      whereAssigned.startTime = _.gte(windowStartText)
+      whereDayCompleted.startTime = _.gte(windowStartText)
+    }
+
     const [assignedRes, dayCompletedRes] = await Promise.all([
-      db.collection('orders').where({ status: ORDER_STATUS.ASSIGNED }).get(),
-      db.collection('orders').where({ status: ORDER_STATUS.DAY_COMPLETED }).get()
+      db.collection('orders').where(whereAssigned).get(),
+      db.collection('orders').where(whereDayCompleted).get()
     ])
     const candidates = [...(assignedRes.data || []), ...(dayCompletedRes.data || [])]
     const processed = []
@@ -33,7 +46,7 @@ module.exports = function createService({
       const targetSession = activeSession || nextSession || (Array.isArray(order.serviceSessions) && order.serviceSessions[0]) || { index: 1, startTime: order.startTime }
       const sessionIndex = Number(targetSession.index || 1)
       const sessionStartTime = toTimeValue((targetSession && targetSession.startTime) || order.startTime)
-      if (!sessionStartTime) continue
+      if (!sessionStartTime || sessionStartTime < windowStartTs) continue
 
       const overdueMs = currentTs - sessionStartTime
       if (overdueMs < 15 * 60 * 1000) continue
@@ -128,13 +141,25 @@ module.exports = function createService({
   async function processOverdueUnfinishedOrders(currentTime = now()) {
     const currentTs = toTimeValue(currentTime)
     if (!currentTs) return []
-    const res = await db.collection('orders').where({ status: ORDER_STATUS.IN_SERVICE }).get()
+    const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+    const windowStartTs = currentTs - ACTIVE_WINDOW_MS
+    const windowStartDate = new Date(windowStartTs)
+    const windowStartText = `${windowStartDate.getFullYear()}-${String(windowStartDate.getMonth() + 1).padStart(2, '0')}-${String(windowStartDate.getDate()).padStart(2, '0')} 00:00`
+
+    const _ = db.command
+    const whereInService = { status: ORDER_STATUS.IN_SERVICE }
+    if (_ && typeof _.gte === 'function') {
+      whereInService.startTime = _.gte(windowStartText)
+    }
+
+    const res = await db.collection('orders').where(whereInService).get()
     const orders = res.data || []
     const processed = []
 
     for (const order of orders) {
       const activeSession = getActiveServiceSession(order) || normalizeServiceSessions(order)[0] || { index: 1 }
       const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
+      if (sessionStartedAt && sessionStartedAt < windowStartTs) continue
       const sessionEndTime = toTimeValue((activeSession && activeSession.endTime) || order.endTime)
       const durationMs = (Math.max(Number(order.durationMinutes || 60), 30)) * 60 * 1000
       const estimatedEndTime = sessionEndTime || (sessionStartedAt ? sessionStartedAt + durationMs : 0)

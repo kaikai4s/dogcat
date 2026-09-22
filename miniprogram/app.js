@@ -46,6 +46,30 @@ App({
     applyTheme(this.globalData.themeKey)
     applyFont(this.globalData.fontKey)
 
+    // 全局防页面栈 10 层溢出守护：检测到 getCurrentPages().length >= 9 时自动降级为 redirectTo
+    if (typeof wx !== 'undefined' && wx.navigateTo && !wx.__safeNavigateToPatched) {
+      const rawNavigateTo = wx.navigateTo
+      wx.navigateTo = function patchedNavigateTo(options) {
+        const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+        if (pages.length >= 9) {
+          return wx.redirectTo(options)
+        }
+        return rawNavigateTo.call(wx, {
+          ...options,
+          fail: (err) => {
+            const msg = (err && (err.errMsg || err.message)) || ''
+            if (/limit exceed|exceed/i.test(msg)) {
+              return wx.redirectTo(options)
+            }
+            if (options && typeof options.fail === 'function') {
+              options.fail(err)
+            }
+          }
+        })
+      }
+      wx.__safeNavigateToPatched = true
+    }
+
     if (!wx.cloud) {
       console.error('请使用 2.2.3 或以上的基础库以使用云能力')
       return
