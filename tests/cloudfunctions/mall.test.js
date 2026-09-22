@@ -127,8 +127,8 @@ test('mall refund requires owner application and admin approval', async () => {
   const approved = await adminFn.main({ module: 'adminMall', action: 'auditRefund', data: { orderId: order.data._id, approved: true, remark: '同意退款' } })
   assert.equal(approved.ok, true)
   assert.equal(db.state.refunds.length, 1)
-  assert.equal(db.state.mall_orders[0].status, 'refunded')
-  assert.equal(db.state.mall_orders[0].refundStatus, 'approved')
+  assert.equal(db.state.mall_orders[0].status, 'refund_applied')
+  assert.equal(db.state.mall_orders[0].refundStatus, 'processing')
 })
 
 test('mall supports multi-sku products in cart, order and payment stock deduction', async () => {

@@ -82,10 +82,22 @@ module.exports = function createService({
     }
   }
 
+  async function readUserCoupons(openid) {
+    const rows = []
+    let cursor = ''
+    while (true) {
+      const where = { openid }
+      if (cursor) where._id = db.command.gt(cursor)
+      const page = (await db.collection('user_coupons').where(where).orderBy('_id', 'asc').limit(100).get()).data || []
+      rows.push(...page)
+      if (page.length < 100) return rows
+      cursor = page[page.length - 1]._id
+    }
+  }
+
   async function getAvailableUserCoupons(openid) {
-    const res = await db.collection('user_coupons').where({ openid }).get()
     const time = now()
-    return (res.data || [])
+    return (await readUserCoupons(openid))
       .filter((coupon) => couponDisplayStatus(coupon, time) === 'available')
       .sort((a, b) => String(a.validTo || '').localeCompare(String(b.validTo || '')) || String(b.issuedAt || b.createdAt || '').localeCompare(String(a.issuedAt || a.createdAt || '')))
   }

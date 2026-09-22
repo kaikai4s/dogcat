@@ -19,6 +19,7 @@ module.exports = function createService({
   normalizeStaffWorkflow,
   notifyOrder,
   now,
+  readScopedDocuments,
   requireSanitizationEvidence,
   toTimeValue,
   updateOrderWhenStatus
@@ -30,8 +31,8 @@ module.exports = function createService({
       return { isComplete: false, missing: ['隔离病菌/消毒打卡'] }
     }
 
-    const checkins = await db.collection('checkin_logs').where({ orderId: order._id }).get()
-    const eventSet = (checkins.data || []).filter((item) => {
+    const checkins = await readScopedDocuments('checkin_logs', { orderId: order._id })
+    const eventSet = checkins.filter((item) => {
       if (!hasCheckinPhoto(item)) return false
       if (item.eventType === 'sanitization') return isValidSanitization(item, order, sessionStartedAt)
       return !sessionStartedAt || toTimeValue(item.recordedAt || item.serverTime || item.createdAt) >= (sessionStartedAt - 60000)
@@ -108,6 +109,8 @@ module.exports = function createService({
     await updateOrderWhenStatus(orderId, ORDER_STATUS.IN_SERVICE, updateData, '订单状态不可完成')
     const completedOrder = { ...order, _id: orderId, status: ORDER_STATUS.COMPLETED, serviceSessions: completedSessions, completedAt: time, updatedAt: time }
 
+    await ensureStaffEarning(completedOrder, time)
+
     const timelineTitle = isAuto ? '系统智能完成服务' : '服务已完成'
     const timelineDesc = isAuto ? '检测到宠托师已完成全套离户打卡凭证，因超时未手动结束，系统已自动帮宠托师确认完成服务并结算。' : ''
     await appendOrderTimeline(orderId, isAuto ? 'system_auto_completed' : 'completed', timelineTitle, timelineDesc, actor)
@@ -131,7 +134,6 @@ module.exports = function createService({
     }
     await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '已完成', tip: isAuto ? '服务打卡齐全，系统已确认完成，可查看服务报告' : '服务已完成，可查看服务报告' }, 'client')
 
-    await ensureStaffEarning({ ...order, _id: orderId }, time)
     const pointsDelta = Math.max(Math.floor(Number(order.payAmount || 0) / 10), 1)
     await addPoints(order.clientOpenid, order.clientUserId, pointsDelta, 'order_complete', orderId, `完成订单 +${pointsDelta} 积分`, { applyMultiplier: true, baseDelta: pointsDelta })
     const clientUser = await getUser(order.clientOpenid)

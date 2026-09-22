@@ -36,7 +36,7 @@ test('concurrent payout confirmations are idempotent and cannot be frozen afterw
   const { db, context } = setup('withdrawing', 'approved')
   optimistic(db)
   const results = await Promise.all([
-    context.settleWithdrawal(admin, { id: 'w' }, true), context.settleWithdrawal(admin, { id: 'w' }, true)
+    context.settleWithdrawal(admin, { id: 'w', paymentConfirmed: true, paymentReference: 'receipt-1' }, true), context.settleWithdrawal(admin, { id: 'w', paymentConfirmed: true, paymentReference: 'receipt-1' }, true)
   ])
   assert.equal(results.filter(r => r.changed).length, 1)
   assert.equal(db.state.withdraw_requests[0].status, 'paid')
@@ -174,7 +174,7 @@ test('approval or payout racing a freeze never changes withdrawal-reserved earni
     const { db, context } = setup('withdrawing', paid ? 'approved' : 'pending')
     optimistic(db)
     const results = await Promise.allSettled([
-      context.settleWithdrawal(admin, { id: 'w', approved: true }, paid),
+      context.settleWithdrawal(admin, { id: 'w', approved: true, paymentConfirmed: true, paymentReference: 'receipt-1' }, paid),
       context.freezeIncidentEarnings('i', 'admin')
     ])
     assert.equal(results[0].status, 'fulfilled')

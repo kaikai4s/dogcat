@@ -15,6 +15,17 @@ module.exports = function createHandler(context) {
     validatePaymentCallbackPayload,
     verifyWechatPayCallback
   } = context
+  async function recordNonSuccess(payment, payload, status) {
+    if (payload.trade_state === 'SUCCESS') return
+    await db.runTransaction(async tx => {
+      const current = (await tx.collection('payments').doc(payment._id).get()).data
+      if (!current || ['success', 'paid'].includes(current.status)) return
+      await tx.collection('payments').doc(payment._id).update({ data: {
+        status, wxTransactionId: payload.transaction_id || current.wxTransactionId || '',
+        rawCallback: sanitizeWechatPayload(payload), updatedAt: now()
+      } })
+    })
+  }
   return async function paymentCallback(data) {
       const settings = await getSystemSettings({ includeSecrets: true })
       const config = getWechatPayConfig(settings)
@@ -33,7 +44,7 @@ module.exports = function createHandler(context) {
           if (!deposit) throw new Error('保证金记录不存在')
           validatePaymentCallbackPayload(payload, { payAmount: deposit.amount }, payment, config)
           const status = mapWechatTradeState(payload.trade_state)
-          await db.collection('payments').doc(payment._id).update({ data: { status, wxTransactionId: payload.transaction_id || payment.wxTransactionId || '', rawCallback: sanitizeWechatPayload(payload), updatedAt: now() } })
+          await recordNonSuccess(payment, payload, status)
           await appendPaymentEvent('callback', { orderId: deposit._id, paymentNo, status, detail: { tradeState: payload.trade_state, wxTransactionId: payload.transaction_id || '', targetType: 'staff_deposit' } })
           if (payload.trade_state === 'SUCCESS') {
             await markStaffDepositPaid(deposit._id, { paymentNo, wxTransactionId: payload.transaction_id || '', channel: 'wechat', rawCallback: sanitizeWechatPayload(payload) })
@@ -45,7 +56,7 @@ module.exports = function createHandler(context) {
         if (!order) throw new Error('订单不存在')
         validatePaymentCallbackPayload(payload, order, payment, config)
         const status = mapWechatTradeState(payload.trade_state)
-        await db.collection('payments').doc(payment._id).update({ data: { status, wxTransactionId: payload.transaction_id || payment.wxTransactionId || '', rawCallback: sanitizeWechatPayload(payload), updatedAt: now() } })
+        await recordNonSuccess(payment, payload, status)
         await appendPaymentEvent('callback', { orderId: order._id || payment.orderId, paymentNo, status, detail: { tradeState: payload.trade_state, wxTransactionId: payload.transaction_id || '' } })
         if (payload.trade_state === 'SUCCESS') await markOrderPaid(order._id || payment.orderId, { paymentNo, wxTransactionId: payload.transaction_id || '', channel: 'wechat', rawCallback: sanitizeWechatPayload(payload) })
         return { code: 'SUCCESS', message: '成功' }

@@ -1,6 +1,8 @@
 module.exports = function createHandler(context) {
   const {
     cancelUnpaidOrders,
+    reconcilePendingRefunds,
+    retryFailedSubscriptions,
     expireDueUnacceptedOrders,
     getMonthDays,
     processOverdueUnfinishedOrders,
@@ -10,6 +12,10 @@ module.exports = function createHandler(context) {
     toCstParts
   } = context
   return async function runScheduledTasks() {
+      for (const [name, task] of [['refunds', reconcilePendingRefunds], ['subscriptions', retryFailedSubscriptions]]) {
+        try { await task() }
+        catch (error) { console.error('[scheduled-retry]', { task: name, message: error.message }) }
+      }
       await cancelUnpaidOrders()
       await expireDueUnacceptedOrders()
       const upcomingReminders = await sendUpcomingServiceRemindersToStaff()

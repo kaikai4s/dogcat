@@ -97,7 +97,7 @@ module.exports = function createService({ db, crypto, now }) {
     return { list: rows.slice(0, size).map(project), hasMore: rows.length > size, cursor: rows.length > size ? rows[size - 1]._id : '' }
   }
   async function handleAdminAccess(user, action, data) {
-    if (action === 'getMyAdminAccess') return { ...await access(user), tree }
+    if (action === 'getMyAdminAccess') return { ...await access(user), tree, currentOpenid: user.openid }
     if (action === 'enableAdminPermissions') return db.runTransaction(async tx => {
       const current = await optional(tx, 'admin_access_config', 'policy')
       if (current?.enabled) {
@@ -113,12 +113,19 @@ module.exports = function createService({ db, crypto, now }) {
     if (action === 'saveAdminGroup') {
       const name = String(data.name || '').trim()
       if (!name || name.length > 40) throw new Error('用户组名称为1至40个字符')
-      if (!Array.isArray(data.permissions) || data.permissions.some(key => !permissions.has(key))) throw new Error('权限树包含无效权限')
-      const id = data.id ? String(data.id) : crypto.randomBytes(16).toString('hex')
+      if (!Array.isArray(data.permissions) || data.permissions.some(key => !permissions.has(key) || ownerActions.has(key))) throw new Error('权限树包含无效或仅超级管理员可用的权限')
+      const requestId = String(data.clientRequestId || '').slice(0, 128)
+      const id = data.id ? String(data.id) : requestId
+        ? crypto.createHash('sha256').update(JSON.stringify(['admin_group', user.openid, requestId])).digest('hex').slice(0, 32)
+        : crypto.randomBytes(16).toString('hex')
       return db.runTransaction(async tx => {
         await owner(tx, user)
         const previous = await optional(tx, 'admin_groups', id)
         if (data.id && !previous) throw new Error('用户组不存在')
+        if (!data.id && requestId && previous) {
+          if (previous.name !== name || previous.enabled !== (data.enabled === true) || JSON.stringify([...previous.permissions].sort()) !== JSON.stringify([...new Set(data.permissions)].sort())) throw new Error('该新建请求已保存，请刷新后编辑用户组')
+          return { _id: id, ...previous }
+        }
         if (previous && previous.revision !== data.revision) throw new Error('用户组已被修改，请刷新')
         const group = { name, enabled: data.enabled === true, permissions: [...new Set(data.permissions)], revision: (previous?.revision || 0) + 1, updatedAt: now(), updatedBy: user.openid }
         await tx.collection('admin_groups').doc(id).set({ data: group })
@@ -149,7 +156,9 @@ module.exports = function createService({ db, crypto, now }) {
       await owner(db, user)
       const target = (await db.collection('users').where({ openid: String(data.openid || '') }).limit(1).get()).data[0]
       if (!target) throw new Error('用户不存在')
-      return await optional(db, 'admin_memberships', target._id) || { openid: target.openid, groupIds: [], revision: 0 }
+      const config = await policy()
+      if (config?.ownerOpenid === target.openid) throw new Error('超级管理员拥有全部权限，无需分配用户组')
+      return { ...await optional(db, 'admin_memberships', target._id) || { openid: target.openid, groupIds: [], revision: 0 }, nickname: target.nickname || '' }
     }
     if (action === 'listOperationLogs') {
       const where = {}

@@ -5,6 +5,7 @@ module.exports = function createHandler(context) {
     getSystemSettings,
     hasCoordinate,
     now,
+    readScopedDocuments,
     requireStaffOrder,
     safeText
   } = context
@@ -45,8 +46,7 @@ module.exports = function createHandler(context) {
     }
     if (action === 'getOrderTracks') {
       await getOrderForAccess(openid, data.orderId)
-      const res = await db.collection('track_logs').where({ orderId: data.orderId }).orderBy('recordedAt', 'asc').get()
-      return res.data
+      return readScopedDocuments('track_logs', { orderId: data.orderId }, 'recordedAt', 'asc')
     }
     throw new Error('未知 track 操作')
   }

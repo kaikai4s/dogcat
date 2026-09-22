@@ -2,12 +2,24 @@ module.exports = function createService({
   db,
   now
 }) {
+  async function readUserAddresses(openid) {
+    const rows = []
+    let cursor = ''
+    while (true) {
+      const where = { openid }
+      if (cursor) where._id = db.command.gt(cursor)
+      const page = (await db.collection('user_addresses').where(where).orderBy('_id', 'asc').limit(100).get()).data || []
+      rows.push(...page)
+      if (page.length < 100) return rows
+      cursor = page[page.length - 1]._id
+    }
+  }
   async function saveUserAddress(openid, user, data) {
     if (!data.serviceAddress) throw new Error('请选择服务地址')
     if (!data.addressDetail) throw new Error('请填写详细地址')
     if (!data.doorplate) throw new Error('请填写门牌号或入户说明')
     const time = now()
-    const existingAddresses = await db.collection('user_addresses').where({ openid }).get()
+    const existingAddresses = { data: await readUserAddresses(openid) }
     const isNewAddress = !data.id
     const shouldBeDefault = data.isDefault === true || (isNewAddress && existingAddresses.data.length === 0)
     const payload = {

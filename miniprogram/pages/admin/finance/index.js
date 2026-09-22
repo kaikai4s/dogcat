@@ -200,20 +200,7 @@ Page({
   },
 
   markPaid(e) {
-    const id = e.currentTarget.dataset.id
-    wx.showModal({
-      title: '标记已打款',
-      content: '确认已线下完成打款？',
-      success: (res) => {
-        if (!res.confirm) return
-        callFunction('admin', 'markWithdrawPaid', { id, payRemark: '人工打款完成' })
-          .then(() => {
-            wx.showToast({ title: '已打款' })
-            this.load()
-          })
-          .catch(showError)
-      }
-    })
+    this.confirmStaffPayment(e.currentTarget.dataset.id, 'markWithdrawPaid', '确认提现付款')
   },
 
   clearStaffFilter() {
@@ -589,7 +576,8 @@ Page({
           .then(() => {
             wx.hideLoading()
             wx.showToast({ title: '已确认付款' })
-            this.loadStaffFinance()
+            if (action === 'markWithdrawPaid') this.load()
+            else this.loadStaffFinance()
           })
           .catch((err) => {
             wx.hideLoading()

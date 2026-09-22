@@ -1,6 +1,32 @@
 module.exports = function createService({
-  db
+  db,
+  toTimeValue
 }) {
+  async function* scanDocumentPages(collectionName, where = {}) {
+    if (Object.prototype.hasOwnProperty.call(where, '_id')) throw new Error('分页查询不可覆盖记录 ID 条件')
+    let cursor = ''
+    while (true) {
+      const condition = { ...where }
+      if (cursor) condition._id = db.command.gt(cursor)
+      const rows = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      if (!rows.length) return
+      const nextCursor = rows[rows.length - 1]._id
+      yield rows
+      if (rows.length < 100) return
+      cursor = nextCursor
+    }
+  }
+
+  // Use an ID cursor while reading; timestamp ties cannot skip records.
+  async function readScopedDocuments(collectionName, where, timeField = '', direction = 'asc') {
+    const rows = []
+    for await (const page of scanDocumentPages(collectionName, where)) rows.push(...page)
+    if (timeField) {
+      const sign = direction === 'desc' ? -1 : 1
+      rows.sort((a, b) => sign * (toTimeValue(a[timeField]) - toTimeValue(b[timeField])) || String(a._id).localeCompare(String(b._id)))
+    }
+    return rows
+  }
   function incUpdateValue(currentValue, delta) {
     if (db.command && typeof db.command.inc === 'function') return db.command.inc(delta)
     return Number(currentValue || 0) + Number(delta || 0)
@@ -26,21 +52,15 @@ module.exports = function createService({
   }
 
   async function removeByQuery(collectionName, where) {
-    const res = await db.collection(collectionName).where(where).get()
-    const list = res.data || []
-    await Promise.all(list.map((item) => db.collection(collectionName).doc(item._id).remove()))
-    return list.length
+    return removeAllByQuery(collectionName, where)
   }
 
   async function removeAllByQuery(collectionName, where, filter) {
     let total = 0
-    while (true) {
-      const res = await db.collection(collectionName).where(where).limit(100).get()
-      const list = filter ? (res.data || []).filter(filter) : (res.data || [])
-      if (!list.length) break
+    for await (const page of scanDocumentPages(collectionName, where)) {
+      const list = filter ? page.filter(filter) : page
       await Promise.all(list.map((item) => db.collection(collectionName).doc(item._id).remove()))
       total += list.length
-      if ((res.data || []).length < 100) break
     }
     return total
   }
@@ -51,13 +71,17 @@ module.exports = function createService({
   }
 
   async function updateByQuery(collectionName, where, buildUpdate) {
-    const res = await db.collection(collectionName).where(where).get()
-    const list = res.data || []
-    await Promise.all(list.map((item) => db.collection(collectionName).doc(item._id).update({ data: typeof buildUpdate === 'function' ? buildUpdate(item) : buildUpdate })))
-    return list.length
+    let total = 0
+    for await (const page of scanDocumentPages(collectionName, where)) {
+      await Promise.all(page.map((item) => db.collection(collectionName).doc(item._id).update({ data: typeof buildUpdate === 'function' ? buildUpdate(item) : buildUpdate })))
+      total += page.length
+    }
+    return total
   }
 
   return {
+    scanDocumentPages,
+    readScopedDocuments,
     incUpdateValue,
     safeCollectionData,
     safeCollectionCount,

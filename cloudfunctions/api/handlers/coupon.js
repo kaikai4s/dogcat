@@ -13,12 +13,23 @@ module.exports = function createHandler(context) {
     normalizePetIds,
     safeText
   } = context
+  async function readUserCoupons(openid) {
+    const rows = []
+    let cursor = ''
+    while (true) {
+      const where = { openid }
+      if (cursor) where._id = db.command.gt(cursor)
+      const page = (await db.collection('user_coupons').where(where).orderBy('_id', 'asc').limit(100).get()).data || []
+      rows.push(...page)
+      if (page.length < 100) return rows
+      cursor = page[page.length - 1]._id
+    }
+  }
   return async function coupon(openid, action, data) {
     if (action === 'listMyCoupons') {
       await getUser(openid)
-      const res = await db.collection('user_coupons').where({ openid }).get()
       const statusFilter = data.status || 'available'
-      return (res.data || [])
+      return (await readUserCoupons(openid))
         .map((coupon) => formatUserCoupon(coupon))
         .filter((coupon) => statusFilter === 'all' || coupon.status === statusFilter)
         .sort((a, b) => String(a.validTo || '').localeCompare(String(b.validTo || '')))
@@ -26,7 +37,7 @@ module.exports = function createHandler(context) {
 
     if (action === 'listMallCoupons') {
       await getUser(openid)
-      const coupons = (await db.collection('user_coupons').where({ openid }).get()).data || []
+      const coupons = await readUserCoupons(openid)
       const pricing = calcMallPricing(Array.isArray(data.items) ? data.items : [])
       return coupons
         .filter((coupon) => ['mall', 'all'].includes(normalizeCouponSnapshot(coupon).usageScope))
@@ -58,7 +69,7 @@ module.exports = function createHandler(context) {
       const petIds = normalizePetIds(data)
       if (petIds.length) pets = await getClientPetsByIds(openid, petIds)
       const pricing = await calcOrderPricing({ ...data, couponId: '', autoApplyCoupon: false }, pets, { openid })
-      const coupons = (await db.collection('user_coupons').where({ openid }).get()).data || []
+      const coupons = await readUserCoupons(openid)
       return coupons
         .filter((coupon) => ['service', 'all'].includes(normalizeCouponSnapshot(coupon).usageScope))
         .map((coupon) => {

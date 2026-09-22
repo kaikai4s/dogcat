@@ -14,9 +14,17 @@ module.exports = function createService({
   }
 
   async function getCompletedStaffOrders(staffOpenid, limit = 0) {
-    const res = await db.collection('orders').where({ staffOpenid, status: 'completed' }).orderBy('completedAt', 'desc').get()
-    const list = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
-    return limit > 0 ? list.slice(0, limit) : list
+    const list = []
+    let offset = 0
+    const pageSize = limit > 0 ? Math.min(limit, 100) : 100
+    while (true) {
+      const res = await db.collection('orders').where({ staffOpenid, status: 'completed' }).orderBy('completedAt', 'desc').orderBy('_id', 'asc').skip(offset).limit(pageSize).get()
+      const page = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
+      list.push(...page)
+      if (limit > 0 && list.length >= limit) return list.slice(0, limit)
+      if ((res.data || []).length < pageSize) return list
+      offset += pageSize
+    }
   }
 
   function splitServiceAreas(value) {

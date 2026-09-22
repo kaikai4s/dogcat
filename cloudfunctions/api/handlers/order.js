@@ -16,9 +16,11 @@ module.exports = function createHandler(context) {
     checkTextSecurity,
     checkinEventText,
     completeOrderService,
+    ensureStaffEarning,
     createClientSnapshot,
     createPetSnapshot,
     createRefundForOrder,
+    cancelUnpaidOrder,
     db,
     enrichUserMemberLevel,
     evaluateCheckinCompletion,
@@ -59,6 +61,7 @@ module.exports = function createHandler(context) {
     paginateList,
     processOverdueUnfinishedOrders,
     processOverdueUnstartedOrders,
+    readScopedDocuments,
     requireClientOrder,
     requireSanitizationEvidence,
     requireStaffOrder,
@@ -375,6 +378,11 @@ module.exports = function createHandler(context) {
       const clientRequestId = getClientRequestId(data)
       const { order } = await requireClientOrder(openid, data.orderId, '无权取消订单')
       if (order.status === 'cancelled') return { orderId: data.orderId, status: 'cancelled', refundStatus: order.refundStatus || '', refundAmount: Number(order.refundAmount || 0), refundNo: order.refundNo || '' }
+      if (order.status === 'pending_pay') {
+        const cancelled = await cancelUnpaidOrder(order, { reason: data.reason || '宠物主取消', actorRole: 'client' })
+        if (!cancelled) throw new Error('支付或订单状态已更新，请刷新后重新取消')
+        return { orderId: data.orderId, status: 'cancelled', refundAmount: 0, refundStatus: '', refundNo: '' }
+      }
       assertOrderTransition(order.status, ORDER_STATUS.CANCELLED, '订单状态不可取消')
       const quote = getCancelQuoteForOrder(order)
       if (!quote.canCancel) throw new Error(quote.ruleText)
@@ -382,11 +390,11 @@ module.exports = function createHandler(context) {
       const update = { status: 'cancelled', cancelReason: data.reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time }
       let refund = null
       if (order.paymentStatus === 'paid' && quote.refundAmount > 0) {
-        refund = await createRefundForOrder(order, quote.refundAmount, data.reason || '宠物主取消', 'client_cancel', openid, clientRequestId)
+        refund = await createRefundForOrder(order, quote.refundAmount, data.reason || '宠物主取消', 'client_cancel', openid, clientRequestId, { cancelStatus: 'cancelled' })
         update.paymentStatus = 'refunding'
         update.refundNo = refund.refundNo
       }
-      await updateOrderWhenStatus(data.orderId, order.status, update, '订单状态不可取消')
+      if (!refund) await updateOrderWhenStatus(data.orderId, order.status, update, '订单状态不可取消')
       if (order.paymentStatus !== 'paid' && order.couponId) {
         const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
         if (coupon && coupon.status === 'locked' && coupon.lockedOrderId === data.orderId) {
@@ -620,7 +628,10 @@ module.exports = function createHandler(context) {
 
     if (action === 'finishService') {
       const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
-      if (order.status === 'completed') return { id: data.id, completedOrderCount: Number((await getUser(order.clientOpenid)).completedOrderCount || 0) }
+      if (order.status === 'completed') {
+        await ensureStaffEarning(order, order.completedAt)
+        return { id: data.id, completedOrderCount: Number((await getUser(order.clientOpenid)).completedOrderCount || 0) }
+      }
       assertOrderTransition(order.status, ORDER_STATUS.COMPLETED, '订单状态不可完成')
       const activeSession = getActiveServiceSession(order) || getTodayServiceSession(order, order.currentSessionStartedAt || order.startedAt || now()) || normalizeServiceSessions(order)[0] || { index: 1, date: beijingDateKey(order.startedAt || now()), startedAt: order.currentSessionStartedAt || order.startedAt || '' }
       const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
@@ -639,9 +650,11 @@ module.exports = function createHandler(context) {
 
     if (action === 'getServiceReport') {
       const order = (await getOrderForAccess(openid, data.id)).order
-      const tracks = await db.collection('track_logs').where({ orderId: data.id }).orderBy('recordedAt', 'asc').get()
-      const checkins = await db.collection('checkin_logs').where({ orderId: data.id }).orderBy('createdAt', 'asc').get()
-      return { order, tracks: tracks.data, checkins: (checkins.data || []).filter(isActiveCheckin) }
+      const [tracks, checkins] = await Promise.all([
+        readScopedDocuments('track_logs', { orderId: data.id }, 'recordedAt', 'asc'),
+        readScopedDocuments('checkin_logs', { orderId: data.id }, 'createdAt', 'asc')
+      ])
+      return { order, tracks, checkins: checkins.filter(isActiveCheckin) }
     }
     if (action === 'listPublicCompletedOrders') {
       const serviceType = safeText(data.serviceType).trim()
@@ -682,7 +695,7 @@ module.exports = function createHandler(context) {
       if (!order || order.status !== ORDER_STATUS.COMPLETED) throw new Error('订单不可查看')
       const [reviewRes, checkinsRes, clientRes] = await Promise.all([
         db.collection('service_reviews').where({ orderId, status: 'visible' }).limit(1).get(),
-        db.collection('checkin_logs').where({ orderId }).orderBy('createdAt', 'asc').get(),
+        readScopedDocuments('checkin_logs', { orderId }, 'createdAt', 'asc'),
         order.clientOpenid ? db.collection('users').where({ openid: order.clientOpenid }).limit(1).get() : Promise.resolve({ data: [] })
       ])
       const staffProfileId = order.staffProfileId || order.requestedStaffProfileId || ''
@@ -693,7 +706,7 @@ module.exports = function createHandler(context) {
       const displayOrder = await attachClientSnapshot(order)
       return toHomeOrderActivity(displayOrder, {
         review: reviewRes.data[0] || null,
-        checkins: (checkinsRes.data || []).filter(isActiveCheckin),
+        checkins: checkinsRes.filter(isActiveCheckin),
         staffProfile,
         hideCheckinPhotos: shouldHidePublicCheckinPhotos(clientRes.data[0])
       })

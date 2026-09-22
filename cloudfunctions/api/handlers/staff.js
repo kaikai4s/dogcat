@@ -1,6 +1,9 @@
 module.exports = function createHandler(context) {
   const {
+    saveStaffScheduleException,
     requestStaffDepositRefund,
+    reserveStaffDepositPayment,
+    assertPaymentModeAllowed,
     submitStaffSupplyOnce,
     DEFAULT_STAFF_TRAINING_QUIZ,
     ORDER_STATUS,
@@ -73,6 +76,18 @@ module.exports = function createHandler(context) {
     wechatPayRequest,
     withSitterUserProfile
   } = context
+  async function readAll(collectionName, where = {}) {
+    const rows = []
+    let cursor = ''
+    while (true) {
+      const condition = { ...where }
+      if (cursor) condition._id = db.command.gt(cursor)
+      const page = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      rows.push(...page)
+      if (page.length < 100) return rows
+      cursor = page[page.length - 1]._id
+    }
+  }
   return async function staff(openid, action, data) {
     if (action === 'listApprovedSitters') {
       const keyword = String(data.keyword || '').trim().toLowerCase()
@@ -86,8 +101,9 @@ module.exports = function createHandler(context) {
       const page = Math.max(Number(data.page || 1), 1)
       const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 50)
       const settings = await getSystemSettings().catch(() => ({}))
-      const res = await db.collection('staff_profiles').where({ auditStatus: 'approved' }).orderBy('updatedAt', 'desc').get()
-      let sitters = await Promise.all((res.data || []).filter((item) => canTakeOrders(item, settings.staffDeposit)).map(withSitterUserProfile))
+      let sitters = await Promise.all((await readAll('staff_profiles', { auditStatus: 'approved' }))
+        .sort((a, b) => toTimeValue(b.updatedAt) - toTimeValue(a.updatedAt))
+        .filter((item) => canTakeOrders(item, settings.staffDeposit)).map(withSitterUserProfile))
 
       sitters = sitters.filter((profile) => {
         const areas = splitServiceAreas(profile.serviceAreas)
@@ -486,7 +502,7 @@ module.exports = function createHandler(context) {
       const filterDate = data.filterDate ? String(data.filterDate).trim() : ''
       await expireDueUnacceptedOrders()
 
-      const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
+      const availableOrders = (await readAll('orders', { status: 'paid' })).sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
       const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
       const normalizedSchedule = normalizeWeeklySchedule(profile.weeklySchedule)
 
@@ -554,7 +570,7 @@ module.exports = function createHandler(context) {
         return true
       }
 
-      let orders = await Promise.all((res.data || []).filter((order) => !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent).map(async (order) => {
+      let orders = await Promise.all(availableOrders.filter((order) => !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent).map(async (order) => {
         const enriched = await attachOrderDisplayData(order)
         let distanceKm = null
         if (hasCoordinate(latitude, longitude) && hasCoordinate(enriched.addressLatitude, enriched.addressLongitude)) {
@@ -607,8 +623,8 @@ module.exports = function createHandler(context) {
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       await expireDueUnacceptedOrders()
-      const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
-      const directOrders = await Promise.all((res.data || [])
+      const directOrders = await Promise.all((await readAll('orders', { status: 'paid' }))
+        .sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
         .filter((order) => !isAdminDeletedOrder(order) && order.publishMode === 'direct' && !order.staffOpenid && order.requestedStaffOpenid === openid)
         .map(async (order) => {
           const enriched = await attachOrderDisplayData(order)
@@ -634,8 +650,8 @@ module.exports = function createHandler(context) {
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       await expireDueUnacceptedOrders()
 
-      const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
-      const urgentOrders = await Promise.all((res.data || [])
+      const urgentOrders = await Promise.all((await readAll('orders', { status: 'paid' }))
+        .sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
         .filter((order) => !isAdminDeletedOrder(order) && (order.isUrgent === true || order.assignmentSource === 'admin_urgent_republish') && !order.staffOpenid)
         .map(async (order) => {
           const enriched = await attachOrderDisplayData(order)
@@ -677,22 +693,14 @@ module.exports = function createHandler(context) {
       const profile = profileRes.data[0]
       if (!profile || profile.auditStatus !== 'approved') throw new Error('宠托师认证审核通过后方可设置排班')
       const payload = normalizeScheduleException(data, profile)
-      const time = now()
-      const existing = await db.collection('staff_schedule_exceptions').where({ staffOpenid: openid, dateKey: payload.dateKey }).limit(1).get()
-      if (existing.data[0]) {
-        await db.collection('staff_schedule_exceptions').doc(existing.data[0]._id).update({ data: { ...payload, updatedAt: time } })
-        return { _id: existing.data[0]._id, ...existing.data[0], ...payload, updatedAt: time }
-      }
-      const created = await db.collection('staff_schedule_exceptions').add({ data: { ...payload, createdAt: time, updatedAt: time } })
-      return { _id: created._id, ...payload, createdAt: time, updatedAt: time }
+      return saveStaffScheduleException(user, payload)
     }
     if (action === 'deleteScheduleException') {
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅员工可设置排班')
       const dateKey = safeText(data.dateKey).trim()
-      const existing = await db.collection('staff_schedule_exceptions').where({ staffOpenid: openid, dateKey }).limit(1).get()
-      if (existing.data[0]) await db.collection('staff_schedule_exceptions').doc(existing.data[0]._id).remove()
-      return { dateKey, deleted: true }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) throw new Error('请选择有效日期')
+      return saveStaffScheduleException(user, { dateKey }, true)
     }
     if (action === 'listScheduleAvailability') {
       const profileId = data.staffProfileId || data.requestedStaffProfileId
@@ -883,7 +891,7 @@ module.exports = function createHandler(context) {
         assignmentUpdate.acceptRiskConfirmedAt = time
         assignmentUpdate.acceptRiskWarnings = risk.warnings
       }
-      const assignedOrder = await assignOrderAtomically(data.orderId, order, assignmentUpdate, { depositConfig: settings.staffDeposit })
+      const assignedOrder = await assignOrderAtomically(data.orderId, order, assignmentUpdate, { depositConfig: settings.staffDeposit, riskConfirmed: data.riskConfirmed === true })
       let assignedTitle = publishMode === 'direct' ? '指定宠托师已接单' : (isUrgentGrab ? '加急揭榜抢单' : '宠托师已抢单')
       let timelineDetail = maskStaffName(profile.realName)
       if (isUrgentGrab) {
@@ -966,66 +974,16 @@ module.exports = function createHandler(context) {
       const config = settings.staffDeposit || normalizeStaffDepositConfig()
       if (!config.enabled || !config.amount || config.amount <= 0) throw new Error('保证金缴纳当前未开放')
       const clientRequestId = getClientRequestId(data)
-      let depositRes = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
-      let deposit = depositRes.data && depositRes.data[0]
-      const needsRepay = Boolean(profile && (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited' || (deposit && deposit.status === 'forfeited')))
-      if (deposit && deposit.status !== 'unpaid' && !needsRepay) throw new Error('您已足额缴纳保证金或记录正在处理中，无需重复缴纳')
-      const time = now()
-      const amount = Number(config.amount)
-      if (!deposit || deposit.status !== 'unpaid') {
-        const created = await db.collection('staff_deposits').add({
-          data: {
-            staffOpenid: openid,
-            staffUserId: user._id,
-            staffProfileId: profile._id,
-            amount,
-            paidAmount: 0,
-            refundedAmount: 0,
-            forfeitedAmount: 0,
-            availableRefundAmount: 0,
-            status: 'unpaid',
-            statusText: '待支付',
-            refundStatus: '',
-            clientRequestId,
-            createdAt: time,
-            updatedAt: time
-          }
-        })
-        deposit = { _id: created._id, staffOpenid: openid, staffUserId: user._id, staffProfileId: profile._id, amount, paidAmount: 0, refundedAmount: 0, forfeitedAmount: 0, availableRefundAmount: 0, status: 'unpaid', statusText: '待支付', refundStatus: '', clientRequestId, createdAt: time, updatedAt: time }
-      }
       const paymentMode = (settings.payment && settings.payment.mode) || 'mock'
+      assertPaymentModeAllowed({ ...settings.payment, mode: paymentMode })
+      const { deposit, payment: paymentRecord } = await reserveStaffDepositPayment(user, profile, config.amount, paymentMode, clientRequestId)
+      const amount = deposit.amount
+      if (deposit.status === 'paid') return { paid: true, depositId: deposit._id }
       if (paymentMode === 'mock') {
-        const paymentNo = `dep_mock_${Date.now()}`
-        await markStaffDepositPaid(deposit._id, { paymentNo, channel: 'mock' })
+        await markStaffDepositPaid(deposit._id, { paymentNo: paymentRecord.paymentNo, channel: 'mock' })
         return { paid: true, depositId: deposit._id }
       } else {
         const configWechat = getWechatPayConfig(settings)
-        let paymentRecord = (await db.collection('payments').where({ orderId: deposit._id, targetType: 'staff_deposit', status: 'pending' }).limit(1).get()).data[0]
-        if (!paymentRecord) {
-          const paymentNo = createPaymentNo()
-          const pCreated = await db.collection('payments').add({
-            data: {
-              orderId: deposit._id,
-              depositId: deposit._id,
-              targetType: 'staff_deposit',
-              openid,
-              paymentNo,
-              prepayId: '',
-              wxTransactionId: '',
-              amount,
-              currency: 'CNY',
-              status: 'pending',
-              channel: 'wechat',
-              clientRequestId,
-              idempotencyKey: clientRequestId || makeIdempotencyKey('payment', deposit._id, paymentNo),
-              rawRequest: {},
-              rawCallback: {},
-              createdAt: time,
-              updatedAt: time
-            }
-          })
-          paymentRecord = { _id: pCreated._id, paymentNo, prepayId: '' }
-        }
         if (paymentRecord.prepayId) {
           return {
             paid: false,

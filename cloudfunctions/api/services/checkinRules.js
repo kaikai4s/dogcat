@@ -10,6 +10,7 @@ module.exports = function createService({
   hasCoordinate,
   listServicePrices,
   now,
+  readScopedDocuments,
   safeFileId,
   safeText,
   toTimeValue
@@ -72,8 +73,8 @@ module.exports = function createService({
 
   async function requireSanitizationEvidence(order, current = now()) {
     if (!requiresSanitization(order)) return
-    const res = await db.collection('checkin_logs').where({ orderId: order._id, eventType: 'sanitization' }).get()
-    const candidates = (res.data || []).filter((item) => isValidSanitization(item, order, current))
+    const candidates = (await readScopedDocuments('checkin_logs', { orderId: order._id, eventType: 'sanitization' }))
+      .filter((item) => isValidSanitization(item, order, current))
     for (const item of candidates) {
       try {
         await validateSanitizationMedia(item.mediaFileId, order._id, order.staffOpenid)

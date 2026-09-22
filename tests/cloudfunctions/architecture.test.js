@@ -129,6 +129,8 @@ test('scheduled runner preserves all tasks and previous-month catchup', async ()
   const task = name => async () => { calls.push(name); return [] }
   const run = require('../../cloudfunctions/api/scheduled')({
     cancelUnpaidOrders: task('cancel'),
+    reconcilePendingRefunds: async () => {},
+    retryFailedSubscriptions: async () => {},
     expireDueUnacceptedOrders: task('expire'),
     sendUpcomingServiceRemindersToStaff: task('remind'),
     processOverdueUnstartedOrders: task('unstarted'),

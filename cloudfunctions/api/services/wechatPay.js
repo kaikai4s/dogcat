@@ -4,11 +4,11 @@ module.exports = function createService({
   safeText
 }) {
   function createPaymentNo() {
-    return `P${Date.now()}${Math.floor(Math.random() * 1000)}`
+    return `P${crypto.randomBytes(15).toString('hex')}`
   }
 
   function createRefundNo() {
-    return `R${Date.now()}${Math.floor(Math.random() * 1000)}`
+    return `R${crypto.randomBytes(15).toString('hex')}`
   }
 
   function normalizePem(value) {
@@ -21,7 +21,7 @@ module.exports = function createService({
 
   function amountYuanToFen(amount) {
     const normalized = Math.round(Number(amount || 0) * 100)
-    if (!Number.isFinite(normalized) || normalized <= 0) throw new Error('支付金额不正确')
+    if (!Number.isSafeInteger(normalized) || normalized <= 0 || Math.abs(Number(amount) * 100 - normalized) > 0.000001) throw new Error('支付金额不正确')
     return normalized
   }
 

@@ -5,14 +5,15 @@ module.exports = function createHandler(context) {
     now,
     orderStatusText,
     paginateList,
+    readScopedDocuments,
     safeText,
     sortMessageThreads
   } = context
   return async function message(openid, action, data) {
     await getUser(openid)
     if (action === 'listThreads') {
-      const res = await db.collection('order_message_threads').where({ clientOpenid: openid }).get()
-      const visibleThreads = (res.data || []).filter((thread) => thread.hiddenForClient !== true)
+      const visibleThreads = (await readScopedDocuments('order_message_threads', { clientOpenid: openid }, 'updatedAt', 'desc'))
+        .filter((thread) => thread.hiddenForClient !== true)
       const list = sortMessageThreads(visibleThreads.map((thread) => ({
         ...thread,
         orderStatusText: orderStatusText(thread.orderStatus),
@@ -21,8 +22,8 @@ module.exports = function createHandler(context) {
       return paginateList(list, data)
     }
     if (action === 'getUnreadSummary') {
-      const res = await db.collection('order_message_threads').where({ clientOpenid: openid }).get()
-      const totalUnread = (res.data || [])
+      const threads = await readScopedDocuments('order_message_threads', { clientOpenid: openid })
+      const totalUnread = threads
         .filter((thread) => thread.hiddenForClient !== true)
         .reduce((sum, thread) => sum + Math.max(Number(thread.unreadCount || 0), 0), 0)
       return { totalUnread, hasUnread: totalUnread > 0 }
@@ -40,10 +41,10 @@ module.exports = function createHandler(context) {
         thread = res.data[0]
       }
       if (!thread || thread.clientOpenid !== openid) throw new Error('消息会话不存在')
-      const res = await db.collection('order_messages').where({ threadId: thread._id }).orderBy('createdAt', 'asc').get()
+      const messages = await readScopedDocuments('order_messages', { threadId: thread._id }, 'createdAt', 'asc')
       return {
         thread: { ...thread, orderStatusText: orderStatusText(thread.orderStatus) },
-        messages: (res.data || []).map((message) => ({ ...message }))
+        messages: messages.map((message) => ({ ...message }))
       }
     }
     if (action === 'deleteThread') {

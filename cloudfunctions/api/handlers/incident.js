@@ -146,12 +146,11 @@ module.exports = function createHandler(context) {
         actionName = 'refund_created'
       } else if (data.refundId) {
         refund = (await db.collection('refunds').doc(data.refundId).get()).data
-        if (!refund) throw new Error('退款单不存在')
+        if (!refund || refund.orderId !== incident.orderId) throw new Error('退款单不存在或不属于本订单')
       }
       const update = { refundId: (refund && refund._id) || data.refundId || '', refundNo: (refund && refund.refundNo) || data.refundNo || '', status: 'refund_pending', updatedAt: now() }
       await db.collection('order_incidents').doc(id).update({ data: update })
       if (refund) {
-        await db.collection('orders').doc(incident.orderId).update({ data: { paymentStatus: 'refunding', refundStatus: 'processing', refundAmount: Number(refund.refundAmount || refundAmount || 0), refundNo: refund.refundNo || '', updatedAt: now() } })
         await appendOrderTimeline(incident.orderId, 'refund_processing', '纠纷处理退款中', `退款金额 ¥${Number(refund.refundAmount || refundAmount || 0)}`, 'admin')
       }
       await recordIncidentAction(id, actionName, 'admin', openid, { ...update, refundAmount: refund ? Number(refund.refundAmount || 0) : 0 })

@@ -35,9 +35,9 @@ module.exports = function createHandler(context) {
       if (settings.payment.enabled === false) throw new Error('支付功能暂未开启')
       assertPaymentModeAllowed(settings.payment)
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid', paid: true }
-      if (orderType === 'service') assertOrderPaymentOpen(order)
+      assertOrderPaymentOpen(order)
       if (orderType === 'mall') {
-        if (order.status !== 'pending_pay' && order.paymentStatus !== 'paying') throw new Error('订单状态不可支付')
+        if (order.status !== 'pending_pay' || order.paymentStatus === 'closed') throw new Error('订单状态不可支付')
       } else {
         assertOrderTransition(order.status, ORDER_STATUS.PAID, '订单状态不可支付')
       }
@@ -49,9 +49,6 @@ module.exports = function createHandler(context) {
       }
       const clientRequestId = getClientRequestId(data)
       const payment = await ensurePaymentRecord(order, openid, settings.payment.mode, clientRequestId)
-      const payingUpdate = { paymentStatus: 'paying', paymentNo: payment.paymentNo, paymentClientRequestId: payment.clientRequestId || clientRequestId, updatedAt: now() }
-      if (orderType === 'mall') await db.collection(collectionName).doc(data.orderId).update({ data: payingUpdate })
-      else await updateOrderWhenStatus(data.orderId, ORDER_STATUS.PENDING_PAY, payingUpdate, '订单状态不可支付')
       if (settings.payment.mode === 'mock') return { mock: true, orderId: data.orderId, paymentNo: payment.paymentNo, amount: payment.amount, message: '当前为模拟支付模式' }
 
       const config = getWechatPayConfig(settings)
@@ -65,7 +62,7 @@ module.exports = function createHandler(context) {
         amount: { total: amountYuanToFen(order.payAmount), currency: 'CNY' },
         payer: { openid }
       }
-      if (orderType === 'service' && getOrderPaymentDeadline(order)) {
+      if (getOrderPaymentDeadline(order)) {
         requestBody.time_expire = new Date(getOrderPaymentDeadline(order)).toISOString().replace(/\.\d{3}Z$/, '+00:00')
       }
       try {
@@ -91,15 +88,15 @@ module.exports = function createHandler(context) {
       assertPaymentModeAllowed(settings.payment)
       if (settings.payment.mode !== 'mock') throw new Error('当前未开启模拟支付')
       if (order.paymentStatus === 'paid') return { orderId: data.orderId, status: 'paid' }
-      if (orderType === 'service') assertOrderPaymentOpen(order)
-      if (order.status !== 'pending_pay' && order.paymentStatus !== 'paying') throw new Error('订单状态不可支付')
+      assertOrderPaymentOpen(order)
+      if (order.status !== 'pending_pay' || order.paymentStatus === 'closed') throw new Error('订单状态不可支付')
       if (order.couponId) {
         const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
         if (!coupon || coupon.openid !== openid) throw new Error('优惠券不可用')
         if (coupon.status !== 'locked' || coupon.lockedOrderId !== data.orderId) throw new Error('优惠券状态异常')
       }
       const payment = await ensurePaymentRecord(order, openid, 'mock')
-      return markOrderPaid(data.orderId, { paymentNo: data.paymentNo || payment.paymentNo, channel: 'mock', rawCallback: { mock: true } })
+      return markOrderPaid(data.orderId, { paymentNo: payment.paymentNo, channel: 'mock', rawCallback: { mock: true } })
     }
     if (action === 'createRefund') {
       const admin = await requireAdmin(openid)
@@ -107,11 +104,8 @@ module.exports = function createHandler(context) {
       const order = resolved.order
       if (!order) throw new Error('订单不存在')
       const amount = Number(data.refundAmount || order.payAmount || 0)
-      if (order.paymentStatus !== 'paid' && order.paymentStatus !== 'refunding') throw new Error('订单未支付，不能退款')
       if (amount <= 0 || amount > Number(order.payAmount || 0)) throw new Error('退款金额不正确')
       const refund = await createRefundForOrder(order, amount, data.reason || '管理员退款', 'admin', openid, getClientRequestId(data))
-      const refundUpdate = { paymentStatus: 'refunding', refundStatus: resolved.orderType === 'mall' ? 'approved' : 'processing', refundAmount: amount, refundNo: refund.refundNo, updatedAt: now() }
-      await db.collection(resolved.collectionName).doc(data.orderId).update({ data: refundUpdate })
       await logAdmin(admin, resolved.orderType === 'mall' ? 'mall_order' : 'order', data.orderId, 'createRefund', { refundNo: refund.refundNo, refundAmount: amount })
       if (resolved.orderType !== 'mall') await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${amount}`, 'admin')
       return refund

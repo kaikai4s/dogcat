@@ -69,6 +69,8 @@ test('processOverdueUnstartedOrders notifies admins when order start is overdue 
 })
 
 test('admin can republish order as urgent with adjusted reward, modified time & remark, preserving client payAmount', async () => {
+  const serviceStart = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  const serviceEnd = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
   const db = createCollectionStore({
     users: [
       { _id: 'admin_1', openid: 'openid_admin', roles: ['admin'], status: 'active' },
@@ -90,8 +92,8 @@ test('admin can republish order as urgent with adjusted reward, modified time & 
         staffOpenid: 'openid_staff',
         staffProfileId: 'sp_1',
         clientOpenid: 'openid_client',
-        startTime: '2026-09-22 14:00',
-        endTime: '2026-09-22 15:00',
+      startTime: serviceStart,
+      endTime: serviceEnd,
         payAmount: 60, // 客户实付60元
         serviceLatitude: 31.2,
         serviceLongitude: 121.5,
@@ -123,8 +125,8 @@ test('admin can republish order as urgent with adjusted reward, modified time & 
     data: {
       orderId: 'order_urgent_1',
       staffReward: 85,
-      startTime: '2026-09-22 20:00',
-      endTime: '2026-09-22 21:00',
+      startTime: serviceStart,
+      endTime: serviceEnd,
       urgentRemark: '原宠托师突发状况无法履约，平台加价补贴，请尽快接单'
     }
   })
@@ -140,7 +142,7 @@ test('admin can republish order as urgent with adjusted reward, modified time & 
   assert.equal(orderInDb.isUrgent, true)
   assert.equal(orderInDb.urgentStaffReward, 85)
   assert.equal(orderInDb.staffOpenid, '', 'Must unbind original staff')
-  assert.equal(orderInDb.startTime, '2026-09-22 20:00')
+  assert.equal(orderInDb.startTime, serviceStart)
   assert.equal(orderInDb.payAmount, 60, 'Client payAmount must NEVER change')
 
   assert.equal(orderInDb.originalStaffOpenid, 'openid_staff', 'Must retain original staff openid')
@@ -191,7 +193,7 @@ test('admin can republish order as urgent with adjusted reward, modified time & 
   const acceptRes = await staffFn.main({
     module: 'staff',
     action: 'acceptOrder',
-    data: { orderId: 'order_urgent_1', currentLatitude: 31.2, currentLongitude: 121.5 }
+    data: { orderId: 'order_urgent_1', currentLatitude: 31.2, currentLongitude: 121.5, riskConfirmed: true }
   })
   assert.equal(acceptRes.ok, true)
   assert.equal(acceptRes.data.status, 'assigned')

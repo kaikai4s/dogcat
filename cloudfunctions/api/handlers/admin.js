@@ -1,5 +1,6 @@
 module.exports = function createHandler(context) {
   const {
+    cancelUnpaidOrder,
     handleAdminAccess,
     protectAdminOwner,
     ORDER_STATUS,
@@ -94,6 +95,7 @@ module.exports = function createHandler(context) {
     saveSystemSettings,
     sendSubscribeMessage,
     syncUsersMemberLevelName,
+    toTimeValue,
     updateOrderWhenStatus,
     validateStaffAvailabilityForSessions,
     assignOrderAtomically,
@@ -101,6 +103,18 @@ module.exports = function createHandler(context) {
     getOrderTimeRanges,
     validateStaffTakeOrderAbility
   } = context
+  async function readAll(collectionName, where = {}) {
+    const rows = []
+    let cursor = ''
+    while (true) {
+      const condition = { ...where }
+      if (cursor) condition._id = db.command.gt(cursor)
+      const page = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      rows.push(...page)
+      if (page.length < 100) return rows
+      cursor = page[page.length - 1]._id
+    }
+  }
   return async function admin(openid, action, data) {
     const admin = await requireAdmin(openid)
     if (['getMyAdminAccess', 'enableAdminPermissions', 'listAdminGroups', 'saveAdminGroup', 'setAdminMembership', 'getAdminMembership', 'listAdminMembers', 'listOperationActors', 'listOperationLogs'].includes(action)) {
@@ -113,9 +127,8 @@ module.exports = function createHandler(context) {
       for (let i = 0; i < statuses.length; i += 1) counts[statuses[i]] = (await db.collection('orders').where({ status: statuses[i] }).count()).total
       const staffPending = await db.collection('staff_profiles').where({ auditStatus: 'pending' }).count()
       const incidentsOpen = await db.collection('order_incidents').where({ status: 'open' }).count()
-      const ordersRes = await db.collection('orders').get()
-      const usersRes = await db.collection('users').get()
-      return { orders: counts, staffPending: staffPending.total, incidentsOpen: incidentsOpen.total, monthly: buildMonthlyDashboard(ordersRes.data || [], usersRes.data || []) }
+      const [orders, users] = await Promise.all([readAll('orders'), readAll('users')])
+      return { orders: counts, staffPending: staffPending.total, incidentsOpen: incidentsOpen.total, monthly: buildMonthlyDashboard(orders, users) }
     }
     if (action === 'financeDashboard') {
       await refreshStaffEarnings()
@@ -124,33 +137,33 @@ module.exports = function createHandler(context) {
     if (action === 'listFinanceLogs') {
       const range = buildDateRange(data)
       const targetType = safeText(data.targetType).trim()
-      const res = await db.collection('finance_logs').orderBy('createdAt', 'desc').get()
-      return limitList((res.data || []).filter((item) => (!targetType || item.targetType === targetType) && inDateRange(item, range, ['createdAt'])), data.pageSize || 50)
+      const rows = await readAll('finance_logs')
+      return limitList(rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).filter((item) => (!targetType || item.targetType === targetType) && inDateRange(item, range, ['createdAt'])), data.pageSize || 50)
     }
     if (action === 'listPayments') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const res = await db.collection('payments').orderBy('createdAt', 'desc').get()
-      return limitList((res.data || []).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['paidAt', 'updatedAt', 'createdAt'])), data.pageSize || 50)
+      const rows = await readAll('payments')
+      return limitList(rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['paidAt', 'updatedAt', 'createdAt'])), data.pageSize || 50)
     }
     if (action === 'listRefunds') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const res = await db.collection('refunds').orderBy('createdAt', 'desc').get()
-      return limitList((res.data || []).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'updatedAt'])), data.pageSize || 50)
+      const rows = await readAll('refunds')
+      return limitList(rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'updatedAt'])), data.pageSize || 50)
     }
     if (action === 'listStaffEarnings') {
       await refreshStaffEarnings()
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const res = await db.collection('staff_earnings').orderBy('createdAt', 'desc').get()
-      return limitList((res.data || []).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'completedAt'])), data.pageSize || 50)
+      const rows = await readAll('staff_earnings')
+      return limitList(rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'completedAt'])), data.pageSize || 50)
     }
     if (action === 'listWithdrawRequests') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const res = await db.collection('withdraw_requests').orderBy('createdAt', 'desc').get()
-      return limitList((res.data || []).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt'])), data.pageSize || 50)
+      const rows = await readAll('withdraw_requests')
+      return limitList(rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt'])), data.pageSize || 50)
     }
     if (action === 'auditWithdrawRequest') {
       const approved = data.approved === true
@@ -165,7 +178,7 @@ module.exports = function createHandler(context) {
       return { id: data.id, status: 'paid' }
     }
     if (action === 'getSystemSettings') {
-      return getSystemSettings({ includeSecrets: data.includeSecrets === true })
+      return getSystemSettings()
     }
     if (action === 'saveSystemSettings') {
       const saved = await saveSystemSettings(data)
@@ -556,14 +569,14 @@ module.exports = function createHandler(context) {
       const isOverdueFilter = rawStatus === 'overdue' || specialFilter === 'overdue'
       const isNormalStatus = rawStatus && !['all', 'overdue', 'auto_completed'].includes(rawStatus)
       const where = isNormalStatus ? { status: rawStatus } : {}
-      const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
+      const allOrders = (await readAll('orders', where)).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
       const orderKeyword = safeText(data.orderKeyword || data.keyword).trim().toLowerCase()
       const clientPhone = safeText(data.clientPhone || data.phone).trim()
       const staffPhone = safeText(data.staffPhone).trim()
-      const usersRes = (clientPhone || staffPhone) ? await db.collection('users').get() : { data: [] }
+      const users = (clientPhone || staffPhone) ? await readAll('users') : []
       let clientOpenids = null
       if (clientPhone) {
-        clientOpenids = new Set((usersRes.data || [])
+        clientOpenids = new Set(users
           .filter((user) => safeText(user.phone).includes(clientPhone))
           .map((user) => safeText(user.openid))
           .filter(Boolean))
@@ -571,13 +584,13 @@ module.exports = function createHandler(context) {
       let staffOpenids = null
       let staffProfileIds = null
       if (staffPhone) {
-        staffOpenids = new Set((usersRes.data || [])
+        staffOpenids = new Set(users
           .filter((user) => safeText(user.phone).includes(staffPhone))
           .map((user) => safeText(user.openid))
           .filter(Boolean))
-        const profilesRes = await db.collection('staff_profiles').get()
+        const profiles = await readAll('staff_profiles')
         staffProfileIds = new Set()
-        ;(profilesRes.data || []).forEach((profile) => {
+        profiles.forEach((profile) => {
           if (!safeText(profile.phone).includes(staffPhone)) return
           const profileOpenid = safeText(profile.openid).trim()
           const profileId = safeText(profile._id).trim()
@@ -585,7 +598,7 @@ module.exports = function createHandler(context) {
           if (profileId) staffProfileIds.add(profileId)
         })
       }
-      let orders = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
+      let orders = allOrders.filter((order) => !isAdminDeletedOrder(order))
       if (isAutoFilter) {
         orders = orders.filter((order) => order.autoCompleted === true)
       }
@@ -706,6 +719,16 @@ module.exports = function createHandler(context) {
       const order = orderRes.data
       const prevStatus = order.status
       if (prevStatus === targetStatus) throw new Error(`订单当前已处于该状态(${targetStatus})`)
+
+      if (targetStatus === 'cancelled') {
+        if (order.status !== 'pending_pay') throw new Error('已支付订单请通过退款流程处理，不能直接取消')
+        if (!await cancelUnpaidOrder(order, { collectionName: 'orders', reason: remark, actorRole: 'admin' })) throw new Error('订单状态已变化，请刷新后重试')
+        await logAdmin(admin, 'order', orderId, 'updateOrderStatus', { prevStatus, targetStatus, remark })
+        return { orderId, status: targetStatus, prevStatus, remark }
+      }
+      if (targetStatus === 'refunded' && order.paymentStatus !== 'refunded') throw new Error('退款尚未到账，不能标记已退款')
+      if (targetStatus === 'pending_pay' && order.paymentStatus !== 'unpaid') throw new Error('已创建支付或已付款订单不能恢复待支付')
+      if (['paid', 'pending_ship', 'shipped', 'assigned', 'in_service', 'completed'].includes(targetStatus) && !['paid', 'refunding'].includes(order.paymentStatus)) throw new Error('订单未支付，不能手动推进状态')
 
       const time = now()
       const updateData = {
@@ -911,42 +934,17 @@ module.exports = function createHandler(context) {
         throw new Error('订单未支付或状态不支持退款')
       }
 
-      const existingRefundsRes = await db.collection('refunds').where({ orderId }).get()
-      const successfulRefundsAmount = (existingRefundsRes.data || [])
-        .filter((r) => ['success', 'processing'].includes(r.status))
-        .reduce((sum, r) => sum + Number(r.refundAmount || 0), 0)
-      const alreadyRefunded = Math.max(Number(order.refundAmount || 0), successfulRefundsAmount)
-      const maxRefundable = Math.max(0, Math.round((payAmount - alreadyRefunded) * 100) / 100)
-
-      if (maxRefundable <= 0) throw new Error('该订单已全额退款，无剩余可退金额')
-
       const refundAmount = Number(data.refundAmount)
       if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error('请输入有效的退款金额（需大于0）')
-      if (refundAmount > maxRefundable) throw new Error(`退款金额不能超过可退金额上限 ¥${maxRefundable.toFixed(2)}`)
 
       const reason = safeText(data.reason || data.remark).trim()
       if (!reason) throw new Error('请填写退款说明')
 
       const refund = await createRefundForOrder(order, refundAmount, reason, 'admin_manual', openid, getClientRequestId(data))
-      const totalRefundAmount = Math.round((alreadyRefunded + refundAmount) * 100) / 100
-      const isFullRefund = totalRefundAmount >= payAmount
-
-      const time = now()
-      const orderUpdate = {
-        refundAmount: totalRefundAmount,
-        refundNo: refund.refundNo,
-        refundStatus: isFullRefund ? 'full_refunded' : 'partially_refunded',
-        paymentStatus: isFullRefund ? 'refunded' : 'refunding',
-        refundRemark: reason,
-        adminManualRefundByOpenid: openid,
-        adminManualRefundAt: time,
-        updatedAt: time
-      }
-      if (isFullRefund && !['completed'].includes(order.status)) {
-        orderUpdate.status = 'refunded'
-      }
-      await db.collection('orders').doc(orderId).update({ data: orderUpdate })
-      await appendOrderTimeline(orderId, 'refund', `管理员手动退款 ¥${refundAmount.toFixed(2)}`, `说明：${reason}${isFullRefund ? '（已全额退款）' : ''}`, 'admin')
+      const currentOrder = (await db.collection('orders').doc(orderId).get()).data
+      const totalRefundAmount = Number(currentOrder.refundAmount || 0)
+      const isFullRefund = Number(currentOrder.refundedAmount || 0) >= payAmount
+      await appendOrderTimeline(orderId, 'refund', `管理员发起退款 ¥${refundAmount.toFixed(2)}`, `说明：${reason}${isFullRefund ? '（已全额退款）' : ''}`, 'admin')
       await logAdmin(admin, 'order', orderId, 'refundOrder', { refundAmount, reason, refundNo: refund.refundNo, isFullRefund })
       return {
         orderId,
@@ -954,7 +952,7 @@ module.exports = function createHandler(context) {
         refundAmount,
         totalRefundAmount,
         isFullRefund,
-        status: orderUpdate.status || order.status
+        status: currentOrder.status
       }
     }
     if (action === 'listServicePrices') {
@@ -1190,17 +1188,15 @@ module.exports = function createHandler(context) {
       const status = safeText(data.auditStatus).trim()
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const where = status ? { auditStatus: status } : {}
-      const res = await db.collection('staff_profiles').where(where).orderBy('updatedAt', 'desc').get()
-
-      const evidencesRes = await db.collection('staff_deposit_evidences').orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
-      const allEvidences = evidencesRes.data || []
+      const profiles = (await readAll('staff_profiles', where)).sort((a, b) => toTimeValue(b.updatedAt) - toTimeValue(a.updatedAt))
+      const allEvidences = (await readAll('staff_deposit_evidences')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
       const evidenceByStaff = {}
       for (const ev of allEvidences) {
         if (!evidenceByStaff[ev.staffOpenid]) evidenceByStaff[ev.staffOpenid] = []
         evidenceByStaff[ev.staffOpenid].push(ev)
       }
 
-      const list = (res.data || []).map((p) => {
+      const list = profiles.map((p) => {
         const staffEvidences = evidenceByStaff[p.openid] || []
         return {
           ...p,
@@ -1279,8 +1275,9 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listTrainingAudits') {
       const keyword = safeText(data.keyword).trim().toLowerCase()
-      const res = await db.collection('staff_profiles').where({ auditStatus: 'approved', videoAuditStatus: 'pending' }).orderBy('videoAuditRequestedAt', 'desc').get()
-      const list = (res.data || []).map(normalizeStaffWorkflow).filter((item) => !keyword || [item.realName, item.phone, item.serviceCity, item.serviceAreas].some((value) => safeText(value).toLowerCase().includes(keyword)))
+      const list = (await readAll('staff_profiles', { auditStatus: 'approved', videoAuditStatus: 'pending' }))
+        .sort((a, b) => toTimeValue(b.videoAuditRequestedAt) - toTimeValue(a.videoAuditRequestedAt))
+        .map(normalizeStaffWorkflow).filter((item) => !keyword || [item.realName, item.phone, item.serviceCity, item.serviceAreas].some((value) => safeText(value).toLowerCase().includes(keyword)))
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       return wantsPage ? paginateList(list, data) : list
     }
@@ -1307,10 +1304,10 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listPromotionApplications') {
       const status = safeText(data.status).trim()
-      const appsRes = await db.collection('staff_promotion_applications').orderBy('createdAt', 'desc').get()
-      const profilesRes = await db.collection('staff_profiles').get()
-      const profileMap = new Map((profilesRes.data || []).map((item) => [item._id, normalizeStaffWorkflow(item)]))
-      const list = (appsRes.data || [])
+      const apps = (await readAll('staff_promotion_applications')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+      const profiles = await readAll('staff_profiles')
+      const profileMap = new Map(profiles.map((item) => [item._id, normalizeStaffWorkflow(item)]))
+      const list = apps
         .filter((item) => !status || item.status === status)
         .map((item) => ({ ...item, profile: profileMap.get(item.staffProfileId) || null }))
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
@@ -1715,11 +1712,10 @@ module.exports = function createHandler(context) {
     if (action === 'listStaffDeposits') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const res = await db.collection('staff_deposits').orderBy('createdAt', 'desc').get()
-      const users = (await db.collection('users').get()).data || []
-      const profiles = (await db.collection('staff_profiles').get()).data || []
-      const evidencesRes = await db.collection('staff_deposit_evidences').orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
-      const allEvidences = evidencesRes.data || []
+      const deposits = (await readAll('staff_deposits')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+      const users = await readAll('users')
+      const profiles = await readAll('staff_profiles')
+      const allEvidences = (await readAll('staff_deposit_evidences')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
       const evidenceByStaff = {}
       for (const ev of allEvidences) {
         if (!evidenceByStaff[ev.staffOpenid]) evidenceByStaff[ev.staffOpenid] = []
@@ -1727,7 +1723,7 @@ module.exports = function createHandler(context) {
       }
       const userMap = users.reduce((m, u) => ({ ...m, [u.openid]: u }), {})
       const profileMap = profiles.reduce((m, p) => ({ ...m, [p.openid]: p }), {})
-      const list = (res.data || [])
+      const list = deposits
         .filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt']))
         .map((item) => {
           const u = userMap[item.staffOpenid] || {}
@@ -1776,12 +1772,12 @@ module.exports = function createHandler(context) {
     if (action === 'listSupplyReimbursements') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const res = await db.collection('staff_supply_reimbursements').orderBy('createdAt', 'desc').get()
-      const users = (await db.collection('users').get()).data || []
-      const profiles = (await db.collection('staff_profiles').get()).data || []
+      const reimbursements = (await readAll('staff_supply_reimbursements')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+      const users = await readAll('users')
+      const profiles = await readAll('staff_profiles')
       const userMap = users.reduce((m, u) => ({ ...m, [u.openid]: u }), {})
       const profileMap = profiles.reduce((m, p) => ({ ...m, [p.openid]: p }), {})
-      const list = (res.data || [])
+      const list = reimbursements
         .filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt']))
         .map((item) => {
           const u = userMap[item.staffOpenid] || {}

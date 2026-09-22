@@ -21,6 +21,7 @@ module.exports = function createHandler(context) {
     normalizeCheckinReward,
     normalizeMonthKey,
     now,
+    readScopedDocuments,
     requireStaffOrder,
     safeText,
     toCstParts,
@@ -34,11 +35,11 @@ module.exports = function createHandler(context) {
     }
     if (action === 'getMyRetroCards') {
       const user = await getUser(openid)
-      const logsRes = await db.collection('retro_card_logs').where({ openid }).orderBy('createdAt', 'desc').get()
+      const logs = await readScopedDocuments('retro_card_logs', { openid }, 'createdAt', 'desc')
       return {
         retroCardCount: Number(user.retroCardCount || 0),
         completedOrderCount: Number(user.completedOrderCount || 0),
-        logs: logsRes.data || []
+        logs
       }
     }
     if (action === 'checkinToday') {
@@ -195,8 +196,8 @@ module.exports = function createHandler(context) {
         if (reused.data.length) throw new Error('消毒照片已使用，请重新现场拍照')
       }
       const recordedAt = isSanitization ? time : (data.recordedAt || time)
-      const existingEventPhotos = await db.collection('checkin_logs').where({ orderId: data.orderId, eventType: data.eventType }).get()
-      const shouldWriteTimeline = !(existingEventPhotos.data || []).some(hasCheckinPhoto)
+      const existingEventPhotos = await readScopedDocuments('checkin_logs', { orderId: data.orderId, eventType: data.eventType })
+      const shouldWriteTimeline = !existingEventPhotos.some(hasCheckinPhoto)
       const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientRequestId, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, serverTime: time, recordedAt, isBackfilled: data.isBackfilled === true, remark: data.remark || data.note || '', createdAt: time, updatedAt: time, deletedAt: null, deletedByOpenid: '' }
       if (isSanitization) {
         checkin.preStart = true
@@ -220,8 +221,8 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listOrderCheckins') {
       await getOrderForAccess(openid, data.orderId)
-      const res = await db.collection('checkin_logs').where({ orderId: data.orderId }).orderBy('recordedAt', 'asc').get()
-      return (res.data || []).filter(isActiveCheckin)
+      const logs = await readScopedDocuments('checkin_logs', { orderId: data.orderId }, 'recordedAt', 'asc')
+      return logs.filter(isActiveCheckin)
     }
     throw new Error('未知 checkin 操作')
   }

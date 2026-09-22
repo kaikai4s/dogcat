@@ -6,6 +6,9 @@ module.exports = function createService({
   buildMallOrderTitle,
   cloud,
   db,
+  deliverSubscription,
+  retrySubscriptionDeliveries,
+  readScopedDocuments,
   formatDateTime,
   getActiveServiceSession,
   getNextPendingServiceSession,
@@ -87,7 +90,7 @@ module.exports = function createService({
     })
   }
 
-  async function sendSubscribeMessage(openid, templateKey, page, messageData = {}, orderId = '') {
+  async function sendSubscribeMessageOnce(openid, templateKey, page, messageData = {}, orderId = '') {
     if (!openid || !templateKey) return { status: 'skipped', error: 'missing_recipient_or_template_key' }
     try {
       const settings = await getSystemSettings()
@@ -110,7 +113,7 @@ module.exports = function createService({
       }
       await cloud.openapi.subscribeMessage.send({ touser: openid, templateId, page, data: messageData })
       console.log('[subscription] send success', { openid, templateKey, templateId, orderId })
-      await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: 'sent' })
+      await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: 'sent' }).catch(error => console.error('[subscription-log]', error.message))
       return { status: 'sent', error: '', templateKey, templateId }
     } catch (error) {
       const message = error && (error.message || error.errMsg) || String(error)
@@ -119,6 +122,13 @@ module.exports = function createService({
       return { status: 'failed', error: message, templateKey }
     }
   }
+
+  const sendDelivery = message => sendSubscribeMessageOnce(message.openid, message.templateKey, message.page, message.messageData, message.orderId)
+  async function sendSubscribeMessage(openid, templateKey, page, messageData = {}, orderId = '') {
+    try { return await deliverSubscription({ openid, templateKey, page, messageData, orderId: orderId || '' }, sendDelivery) }
+    catch (error) { return { status: 'failed', error: String(error.message || error), templateKey } }
+  }
+  async function retryFailedSubscriptions() { return retrySubscriptionDeliveries(sendDelivery) }
 
   function notifyOrder(openid, templateKey, order, detail = {}, role = '') {
     const targetRole = role || (order && order.staffOpenid && openid === order.staffOpenid ? 'staff' : 'client')
@@ -162,10 +172,10 @@ module.exports = function createService({
     const currentTs = toTimeValue(currentTime)
     if (!currentTs) return []
     const [assignedRes, dayCompletedRes] = await Promise.all([
-      db.collection('orders').where({ status: ORDER_STATUS.ASSIGNED }).get(),
-      db.collection('orders').where({ status: ORDER_STATUS.DAY_COMPLETED }).get()
+      readScopedDocuments('orders', { status: ORDER_STATUS.ASSIGNED }),
+      readScopedDocuments('orders', { status: ORDER_STATUS.DAY_COMPLETED })
     ])
-    const candidates = [...(assignedRes.data || []), ...(dayCompletedRes.data || [])]
+    const candidates = [...assignedRes, ...dayCompletedRes]
     const remindedOrders = []
 
     for (const order of candidates) {
@@ -240,6 +250,7 @@ module.exports = function createService({
     buildSubscriptionData,
     recordSubscriptionLog,
     sendSubscribeMessage,
+    retryFailedSubscriptions,
     notifyOrder,
     notifyOrderAccepted,
     sendUpcomingServiceRemindersToStaff

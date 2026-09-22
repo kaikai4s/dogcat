@@ -1,34 +1,84 @@
-<view class="page">
-  <view class="heading">用户组与权限</view>
-  <view wx:if="{{access && !access.enabled}}" class="notice">
-    <view>当前为旧版全权限模式</view>
-    <button bindtap="enable" disabled="{{busy}}">启用用户组权限管理</button>
+<view class="access-page">
+  <view class="access-hero">
+    <view class="hero-top"><view class="eyebrow"><text class="ri-shield-keyhole-line"></text> 后台管理</view><text class="hero-status" wx:if="{{access}}">{{access.enabled ? '权限保护已启用' : '待启用分组管理'}}</text></view>
+    <view class="hero-title">让每份职责，各有权限</view>
+    <view class="hero-description">按工作职责建立用户组，为每位成员分配合适的操作范围。</view>
+    <view class="hero-stats" wx:if="{{access.enabled && access.superAdmin}}">
+      <view><text class="stat-value">{{groups.length}}</text><text class="stat-label">用户组</text></view>
+      <view><text class="stat-value">{{enabledCount}}</text><text class="stat-label">启用中</text></view>
+      <view><text class="stat-value">{{members.length}}</text><text class="stat-label">后台人员</text></view>
+    </view>
   </view>
-  <block wx:if="{{access.enabled && access.superAdmin}}">
-    <view class="tabs"><button bindtap="tab" data-tab="groups" class="{{tab === 'groups' ? 'active' : ''}}">用户组</button><button bindtap="tab" data-tab="members" class="{{tab === 'members' ? 'active' : ''}}">后台人员</button></view>
-    <block wx:if="{{tab === 'groups' && !editor}}">
-      <button bindtap="edit">新增用户组</button>
-      <view class="row" wx:for="{{groups}}" wx:key="_id"><view><view>{{item.name}}</view><text class="muted">{{item.enabled ? '启用' : '停用'}} · {{item.permissions.length}} 项权限</text></view><button size="mini" bindtap="edit" data-id="{{item._id}}">编辑</button></view>
-      <view class="empty" wx:if="{{!groups.length}}">暂无用户组</view>
-    </block>
+
+  <view wx:if="{{loading}}" class="state-card"><view class="state-icon ri-loader-4-line"></view><view class="state-title">正在加载权限配置</view><view class="muted">请稍候</view></view>
+  <view wx:elif="{{error}}" class="state-card"><view class="state-icon ri-wifi-off-line"></view><view class="state-title">暂时无法加载</view><view class="muted">{{error}}</view><button class="btn-primary state-button" bindtap="load">重新加载</button></view>
+  <view wx:elif="{{access && !access.superAdmin}}" class="state-card"><view class="state-icon ri-lock-2-line"></view><view class="state-title">仅超级管理员可管理权限</view><view class="muted">如需调整分组，请联系超级管理员。</view></view>
+  <view wx:elif="{{access && !access.enabled}}" class="section-card setup-card">
+    <view class="section-title">开启更清晰的权限分工</view>
+    <view class="setup-step"><text class="step-number">1</text><view>当前账号保留全部管理权限</view></view>
+    <view class="setup-step"><text class="step-number">2</text><view>为运营、客服、财务分别建立用户组</view></view>
+    <view class="setup-step"><text class="step-number">3</text><view>为其他管理员分配用户组后恢复访问</view></view>
+    <view class="notice">当前仍为旧版全权限模式。启用后，其他管理员需重新分配权限。</view>
+    <button class="btn-primary" bindtap="enable" loading="{{busy}}" disabled="{{busy}}">启用用户组权限管理</button>
+  </view>
+
+  <block wx:elif="{{access.enabled && access.superAdmin}}">
+    <view wx:if="{{!editor && !member}}" class="segmented-tabs">
+      <button class="segment {{tab === 'groups' ? 'is-active' : ''}}" bindtap="tab" data-tab="groups">用户组 <text>{{groups.length}}</text></button>
+      <button class="segment {{tab === 'members' ? 'is-active' : ''}}" bindtap="tab" data-tab="members">后台人员 <text>{{members.length}}</text></button>
+    </view>
+
     <block wx:if="{{editor}}">
-      <input value="{{editor.name}}" maxlength="40" placeholder="用户组名称" bindinput="name" />
-      <view class="row"><text>启用用户组</text><switch checked="{{editor.enabled}}" bindchange="enabled" /></view>
-      <view class="branch" wx:for="{{tree}}" wx:key="id" wx:for-item="node">
-        <view class="row"><text>{{node.label}}</text><checkbox-group data-id="{{node.id}}" bindchange="branch"><label><checkbox checked="{{node.checked}}" value="all" />全选</label></checkbox-group></view>
-        <checkbox-group data-id="{{node.id}}" bindchange="permissions"><label class="leaf" wx:for="{{node.children}}" wx:key="id"><checkbox value="{{item.id}}" checked="{{item.checked}}" /><text>{{item.label}}</text></label></checkbox-group>
+      <view class="editor-heading"><button class="back-button" bindtap="cancel" disabled="{{busy}}"><text class="ri-arrow-left-line"></text> 返回</button><text>{{editor._id ? '编辑用户组' : '新建用户组'}}</text></view>
+      <view class="section-card">
+        <view class="field-label">用户组名称 <text class="required">*</text></view>
+        <input class="field-input" value="{{editor.name}}" disabled="{{busy}}" maxlength="40" placeholder="例如：客服、运营、财务" bindinput="name" />
+        <view class="setting-row"><view><view class="field-label">启用用户组</view><view class="muted">停用后，成员将失去本组授予的权限</view></view><switch color="#ed7845" checked="{{editor.enabled}}" disabled="{{busy}}" bindchange="enabled" /></view>
       </view>
-      <view class="actions"><button bindtap="cancel">取消</button><button type="primary" bindtap="save" disabled="{{busy}}">保存权限</button></view>
+      <view class="section-heading"><view><view class="section-title">配置业务权限</view><view class="muted">点击分类展开，按职责选择操作</view></view><text class="count-pill">已选 {{permissionCount}} / {{totalPermissions}}</text></view>
+      <view class="search-box"><text class="ri-search-line"></text><input placeholder="查找权限，如退款、订单" value="{{permissionKeyword}}" bindinput="permissionSearch" /></view>
+      <view class="notice subtle">支付设置和人员授权仅限超级管理员，无法通过用户组授予。</view>
+      <view class="permission-card" wx:for="{{tree}}" wx:key="id" wx:for-item="node">
+        <view class="permission-header">
+          <view class="branch-title" bindtap="expand" data-id="{{node.id}}"><text class="ri-arrow-{{node.expanded ? 'down' : 'right'}}-s-line"></text><text>{{node.label}}</text><text class="branch-count {{node.count ? 'has-selection' : ''}}">{{node.count}} / {{node.total}}</text></view>
+          <button class="branch-select {{node.checked ? 'selected' : ''}}" bindtap="branch" data-id="{{node.id}}" disabled="{{busy}}">{{node.checked ? '取消全选' : '全选'}}</button>
+        </view>
+        <checkbox-group wx:if="{{node.expanded}}" class="permission-options" data-id="{{node.id}}" bindchange="permissions">
+          <label class="permission-option {{item.checked ? 'is-checked' : ''}}" wx:for="{{node.children}}" wx:key="id"><checkbox color="#ed7845" value="{{item.id}}" checked="{{item.checked}}" disabled="{{busy}}" /><text>{{item.label}}</text></label>
+        </checkbox-group>
+      </view>
+      <view class="empty-inline" wx:if="{{!tree.length}}">未找到匹配的权限</view>
+      <view class="save-bar"><button class="btn-secondary" bindtap="cancel" disabled="{{busy}}">取消</button><button class="btn-primary" bindtap="save" loading="{{busy}}" disabled="{{busy}}">保存权限 · {{permissionCount}} 项</button></view>
     </block>
-    <block wx:if="{{tab === 'members'}}">
-      <view wx:if="{{!member}}"><input value="{{targetOpenid}}" placeholder="已注册用户 OpenID" bindinput="inputTarget" /><button bindtap="editMember">添加或编辑后台人员</button></view>
-      <view wx:if="{{member}}">
-        <view class="muted">{{member.openid}}</view>
-        <checkbox-group bindchange="groupsChanged"><label class="leaf" wx:for="{{groupOptions}}" wx:key="_id"><checkbox value="{{item._id}}" checked="{{item.checked}}" />{{item.name}}</label></checkbox-group>
-        <view class="notice">未选择任何用户组时，该人员没有后台业务权限。</view>
-        <view class="actions"><button bindtap="cancel">取消</button><button type="primary" bindtap="saveMember" disabled="{{busy}}">保存分组</button></view>
-      </view>
-      <view class="row" wx:for="{{members}}" wx:key="_id"><view><view>{{item.nickname || '未设置昵称'}}</view><text class="muted">{{item.openid}}</text></view><button size="mini" bindtap="editMember" data-openid="{{item.openid}}">分配用户组</button></view>
+
+    <block wx:elif="{{member}}">
+      <view class="editor-heading"><button class="back-button" bindtap="cancel" disabled="{{busy}}"><text class="ri-arrow-left-line"></text> 返回</button><text>分配用户组</text></view>
+      <view class="section-card"><view class="section-title">{{member.nickname || '后台人员'}}</view><text class="openid" selectable>{{member.openid}}</text><view class="muted member-description">可同时加入多个用户组，权限将合并生效。</view></view>
+      <view class="section-heading"><text class="section-title">选择用户组</text><text class="count-pill">已选 {{selectedGroups.length}} / 10</text></view>
+      <checkbox-group bindchange="groupsChanged"><label class="group-option section-card {{item.checked ? 'chosen' : ''}}" wx:for="{{groupOptions}}" wx:key="_id"><checkbox color="#ed7845" value="{{item._id}}" checked="{{item.checked}}" disabled="{{busy}}" /><view><view class="card-title">{{item.name}}</view><view class="muted">{{item.permissions.length}} 项权限 · {{item.summary}}</view></view></label></checkbox-group>
+      <view class="state-card" wx:if="{{!groupOptions.length}}"><view class="state-title">暂无可分配的用户组</view><view class="muted">请先创建并启用用户组，再回来分配。</view></view>
+      <view class="notice" wx:if="{{inactiveGroupCount}}">{{inactiveGroupCount}} 个原用户组已停用或删除，保存时将移除这些分组。</view>
+      <view class="notice" wx:if="{{!selectedGroups.length}}">未选择用户组：保存后，该人员将没有后台业务权限。</view>
+      <view class="save-bar"><button class="btn-secondary" bindtap="cancel" disabled="{{busy}}">取消</button><button class="btn-primary" bindtap="saveMember" loading="{{busy}}" disabled="{{busy}}">保存分组</button></view>
+    </block>
+
+    <block wx:else>
+      <view class="search-box"><text class="ri-search-line"></text><input placeholder="{{tab === 'groups' ? '搜索用户组名称或业务范围' : '搜索人员昵称或 OpenID'}}" value="{{keyword}}" bindinput="search" /></view>
+      <block wx:if="{{tab === 'groups'}}">
+        <view class="section-heading"><text class="section-title">用户组列表</text><button class="btn-small" bindtap="edit"><text class="ri-add-line"></text> 新建用户组</button></view>
+        <view class="section-card group-card" wx:for="{{filteredGroups}}" wx:key="_id">
+          <view class="card-top"><view class="group-icon ri-team-line"></view><view class="card-heading"><view class="card-title">{{item.name}}</view><text class="status-tag {{item.enabled ? 'enabled' : 'disabled'}}">{{item.enabled ? '已启用' : '已停用'}}</text></view><button class="edit-button" bindtap="edit" data-id="{{item._id}}">编辑 <text class="ri-arrow-right-s-line"></text></button></view>
+          <view class="group-summary">{{item.summary}}</view><view class="card-footer"><text>{{item.permissions.length}} 项业务权限</text><text>{{item.enabled ? '分配后立即生效' : '此组权限暂不生效'}}</text></view>
+        </view>
+        <view class="state-card" wx:if="{{!filteredGroups.length}}"><view class="state-icon ri-team-line"></view><view class="state-title">{{keyword ? '没有匹配的用户组' : '建立第一个用户组'}}</view><view class="muted">{{keyword ? '试试其他名称或业务关键词' : '将相同职责的权限放在一起，分配给需要的成员。'}}</view><button wx:if="{{!keyword}}" class="btn-primary state-button" bindtap="edit">新建用户组</button></view>
+      </block>
+      <block wx:else>
+        <view class="section-card add-member"><view class="section-title">添加后台人员</view><view class="muted">输入已注册用户的 OpenID，选择其所属用户组。</view><input class="field-input" placeholder="粘贴用户 OpenID" value="{{targetOpenid}}" bindinput="inputTarget" /><button class="btn-primary" bindtap="editMember" loading="{{memberLoading}}" disabled="{{memberLoading}}">查找并分配用户组</button></view>
+        <view class="section-heading"><text class="section-title">后台人员</text><text class="muted">{{filteredMembers.length}} 人</text></view>
+        <view class="section-card member-card" wx:for="{{filteredMembers}}" wx:key="_id"><view class="avatar">{{item.initial}}</view><view class="member-info"><view class="card-title">{{item.nickname || '未设置昵称'}}</view><text class="openid" selectable>{{item.openid}}</text><text class="status-tag {{item.isOwner ? 'owner' : item.status === 'active' ? 'enabled' : 'disabled'}}">{{item.isOwner ? '超级管理员 · 当前账号' : item.status === 'active' ? '正常' : '已停用'}}</text></view><button wx:if="{{!item.isOwner}}" class="edit-button" bindtap="editMember" data-openid="{{item.openid}}" disabled="{{memberLoading || item.status !== 'active'}}">分组 <text class="ri-arrow-right-s-line"></text></button></view>
+        <view class="empty-inline" wx:if="{{!filteredMembers.length}}">{{keyword ? '没有找到匹配的人员' : '暂无后台人员'}}</view>
+      </block>
+      <button class="audit-link" bindtap="openLogs"><text class="ri-file-list-3-line"></text> 查看后台操作记录 <text class="ri-arrow-right-s-line"></text></button>
     </block>
   </block>
 </view>

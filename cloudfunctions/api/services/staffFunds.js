@@ -22,6 +22,54 @@ module.exports = function createService({ db, crypto, now, safeText }) {
     if (!profile || profile.openid !== record.staffOpenid) throw new Error('宠托师资料归属不匹配')
     return profile
   }
+  async function reserveStaffDepositPayment(user, snapshot, requestedAmount, channel, clientRequestId = '') {
+    money(requestedAmount, true)
+    return db.runTransaction(async tx => {
+      const profile = await profileFor(tx, { staffOpenid: user.openid, staffProfileId: snapshot._id })
+      if (profile.auditStatus !== 'approved' || ['requested', 'approved', 'exited'].includes(profile.exitStatus)) throw new Error('当前资料状态不支持缴纳保证金')
+      const candidates = (await db.collection('staff_deposits').where({ staffOpenid: user.openid }).orderBy('createdAt', 'desc').limit(2).get()).data
+      let deposit = profile.currentDepositId ? await optional(tx, 'staff_deposits', profile.currentDepositId) : null
+      if (!deposit && candidates[0]) deposit = await optional(tx, 'staff_deposits', candidates[0]._id)
+      if (deposit && deposit.staffOpenid !== user.openid) throw new Error('保证金归属不匹配')
+      for (const candidate of candidates) {
+        if (deposit && candidate._id === deposit._id) continue
+        const other = await optional(tx, 'staff_deposits', candidate._id)
+        if (other && other.status === 'unpaid') throw new Error('存在多笔保证金记录，请先对账')
+      }
+      const repeat = deposit && clientRequestId && deposit.clientRequestId === clientRequestId
+      const needsRepay = profile.requireDepositRepay === true || ['supplement_required', 'forfeited'].includes(profile.depositStatus) || deposit?.status === 'forfeited'
+      if (deposit && deposit.status !== 'unpaid' && !(repeat && deposit.status === 'paid')) {
+        if (!needsRepay || ['refund_requested', 'refund_approved'].includes(deposit.status)) throw new Error('您已足额缴纳保证金或记录正在处理中，无需重复缴纳')
+        deposit = null
+      }
+      const time = now()
+      const revision = Number(profile.depositPaymentRevision || 0) + 1
+      if (!deposit) {
+        deposit = { _id: key('deposit', user.openid, revision), staffOpenid: user.openid, staffUserId: user._id,
+          staffProfileId: profile._id, amount: money(requestedAmount, true) / 100, paidAmount: 0, refundedAmount: 0,
+          forfeitedAmount: 0, availableRefundAmount: 0, status: 'unpaid', statusText: '待支付', refundStatus: '',
+          clientRequestId, createdAt: time, updatedAt: time }
+        const { _id, ...value } = deposit
+        await tx.collection('staff_deposits').doc(_id).set({ data: value })
+      }
+      const payments = (await db.collection('payments').where({ orderId: deposit._id, targetType: 'staff_deposit' }).limit(2).get()).data
+      if (payments.length > 1) throw new Error('保证金支付记录重复，请先对账')
+      let payment = payments[0] ? await optional(tx, 'payments', payments[0]._id) : null
+      if (payment && (payment.channel !== channel || money(payment.amount, true) !== money(deposit.amount, true) || !['pending', 'success'].includes(payment.status))) throw new Error('保证金支付状态异常，请先对账')
+      if (!payment) {
+        payment = { _id: key('deposit_payment', deposit._id), orderId: deposit._id, depositId: deposit._id,
+          targetType: 'staff_deposit', openid: user.openid, paymentNo: `P${crypto.randomBytes(15).toString('hex')}`,
+          prepayId: '', wxTransactionId: '', amount: deposit.amount, currency: 'CNY', status: 'pending', channel,
+          clientRequestId, createdAt: time, updatedAt: time }
+        const { _id, ...value } = payment
+        await tx.collection('payments').doc(_id).set({ data: value })
+      }
+      await tx.collection('staff_profiles').doc(profile._id).update({ data: {
+        currentDepositId: deposit._id, depositPaymentRevision: revision, updatedAt: time
+      } })
+      return { deposit, payment }
+    })
+  }
   async function exitCheck(openid) {
     const orders = await db.collection('orders').where({ staffOpenid: openid,
       status: db.command.in(['paid', 'assigned', 'in_service', 'day_completed']) }).limit(1).get()
@@ -88,9 +136,9 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         deposit = (await tx.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null }))).data
       }
       if (!deposit && data.staffOpenid) {
-        const dRes = await tx.collection('staff_deposits').where({ staffOpenid: data.staffOpenid }).orderBy('createdAt', 'desc').limit(1).get().catch(() => ({ data: [] }))
+        const dRes = await db.collection('staff_deposits').where({ staffOpenid: data.staffOpenid }).orderBy('createdAt', 'desc').limit(1).get()
         if (dRes && dRes.data && dRes.data.length > 0) {
-          deposit = dRes.data[0]
+          deposit = (await tx.collection('staff_deposits').doc(dRes.data[0]._id).get()).data
           depositId = deposit._id
         }
       }
@@ -259,7 +307,8 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       const candidates = (await db.collection('payments').where({ orderId: depositId, targetType: 'staff_deposit' }).limit(2).get()).data
       if (candidates.length > 1) throw new Error('保证金支付记录重复，请核对')
       const payment = candidates[0] ? (await tx.collection('payments').doc(candidates[0]._id).get()).data : null
-      if (payment && (payment.orderId !== depositId || money(payment.amount) !== money(amount))) throw new Error('保证金支付金额不一致')
+      if (payment && (payment.orderId !== depositId || payment.paymentNo !== payload.paymentNo || money(payment.amount) !== money(amount))) throw new Error('保证金支付金额或单号不一致')
+      if (payload.channel === 'wechat' && !payment) throw new Error('保证金支付记录缺失，请先对账')
       const time = now()
       const paymentNo = payload.paymentNo
       await tx.collection('staff_deposits').doc(depositId).update({ data: {
@@ -286,5 +335,5 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       return { depositId, status: 'paid', paymentNo }
     })
   }
-  return { requestStaffDepositRefund, settleStaffDeposit, settleSupplyReimbursement, submitStaffSupplyOnce, recordStaffDepositPayment }
+  return { reserveStaffDepositPayment, requestStaffDepositRefund, settleStaffDeposit, settleSupplyReimbursement, submitStaffSupplyOnce, recordStaffDepositPayment }
 }

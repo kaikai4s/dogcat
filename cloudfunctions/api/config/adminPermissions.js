@@ -7,7 +7,7 @@ const definitions = [
   ['prices', '服务配置', 'admin', 'listServicePrices:查看价格 saveServicePrice:编辑价格 deleteServicePrice:删除价格 resetDefaultServicePrices:重置价格 listServiceCheckinRules:打卡规则 saveServiceCheckinRules:编辑打卡规则 resetDefaultServiceCheckinRules:重置打卡规则'],
   ['marketing', '营销与会员', 'admin', 'listCouponTemplates:优惠券模板 saveCouponTemplate:编辑优惠券 deleteCouponTemplate:删除优惠券 issueCouponToUser:发放优惠券 issueCouponByLevels:分层发券 listMemberLevels:会员等级 saveMemberLevel:编辑会员等级 deleteMemberLevel:删除会员等级 listPetTitles:宠物头衔 savePetTitle:编辑头衔 deletePetTitle:删除头衔 grantPoints:调整积分 listPointLogs:积分流水 getCheckinMonthConfig:签到配置 saveCheckinMonthConfig:编辑签到配置 publishRewardMailByLevels:发放奖励 publishRetroCardMail:发放补签卡 publishPetTitleMail:发放头衔 saveLotteryActivity:编辑抽奖 listLotteryActivities:抽奖列表 toggleLotteryActivity:抽奖开关 deleteLotteryActivity:删除抽奖'],
   ['feedback', '反馈', 'admin', 'listFeedback:查看反馈 replyFeedback:回复反馈'],
-  ['settings', '系统配置', 'admin', 'getSystemSettings:查看配置 saveSystemSettings:修改配置'],
+  ['settings', '系统配置', 'admin', 'getSystemSettings:查看配置'],
   ['mall', '商城', 'adminMall', 'listCategories:查看分类 saveCategory:编辑分类 deleteCategory:删除分类 listProducts:商品列表 saveProduct:编辑商品 toggleProductStatus:上下架 listOrders:订单列表 getOrderDetail:订单详情 shipOrder:发货 updateOrderStatus:修改订单 refundOrder:退款 auditRefund:审核售后'],
   ['incidents', '纠纷', 'incident', 'listIncidents:纠纷列表 getIncidentDetail:纠纷详情 appendIncidentComment:留言 uploadIncidentEvidence:上传证据 updateIncidentStatus:更新状态 resolveIncident:标记解决 proposeResolution:处理方案 freezeStaffEarning:冻结收益 linkRefund:关联退款 closeIncident:结案扣减'],
   ['payments', '支付与活动维护', 'payment', 'createRefund:发起退款 listRefunds:查看退款 queryRefund:查询退款'],
@@ -19,6 +19,6 @@ const tree = definitions.map(([id, label, module, actions]) => ({ id, label, chi
   return { id: `${module}.${action}`, label: name }
 }) }))
 const permissions = new Set(tree.flatMap(node => node.children.map(child => child.id)))
-const ownerActions = new Set(['admin.enableAdminPermissions', 'admin.listAdminGroups', 'admin.saveAdminGroup', 'admin.setAdminMembership',
+const ownerActions = new Set(['admin.saveSystemSettings', 'admin.enableAdminPermissions', 'admin.listAdminGroups', 'admin.saveAdminGroup', 'admin.setAdminMembership',
   'admin.listAdminMembers', 'admin.getAdminMembership', 'admin.grantAdmin', 'admin.revokeAdmin', 'admin.listAdmins', 'initData.checkCollections', 'initData.seedDemoData'])
 module.exports = { tree, permissions, ownerActions }

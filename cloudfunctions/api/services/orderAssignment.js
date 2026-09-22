@@ -1,6 +1,6 @@
 module.exports = function createService({
   crypto, db, findStaffOrderConflict, getOrderTimeRanges, isOrderConflictCandidate,
-  now, toTimeValue, validateStaffTakeOrderAbility
+  now, toTimeValue, validateStaffTakeOrderAbility, validateStaffScheduleOnly
 }) {
   function assignmentTerms(order) {
     return JSON.stringify([
@@ -41,6 +41,10 @@ module.exports = function createService({
       if (toTimeValue(order.startTime) > 0 && toTimeValue(order.startTime) <= now().getTime()) throw new Error('订单服务时间已过，无法接单')
       if (!options.admin && order.requestedStaffOpenid && order.requestedStaffOpenid !== patch.staffOpenid) throw new Error('该订单指定了其他宠托师')
       await assertNoConflict(transaction, patch.staffOpenid, order, orderId)
+      for (const range of getOrderTimeRanges(order)) {
+        try { await validateStaffScheduleOnly(profile, range.startTime, range.endTime) }
+        catch (error) { if (!options.riskConfirmed) throw error }
+      }
       await transaction.collection('users').doc(patch.staffUserId).update({ data: { staffAssignmentRevision: crypto.randomBytes(16).toString('hex') } })
       await transaction.collection('orders').doc(orderId).update({ data: patch })
       return { ...order, ...patch, _id: orderId }
@@ -81,5 +85,23 @@ module.exports = function createService({
     })
   }
 
-  return { assignOrderAtomically, updateOrderStatusWithScheduling }
+  async function saveStaffScheduleException(user, payload, remove = false) {
+    return db.runTransaction(async tx => {
+      await lockStaff(tx, user._id, user.openid)
+      const candidates = (await db.collection('staff_schedule_exceptions').where({ staffOpenid: user.openid, dateKey: payload.dateKey }).limit(2).get()).data || []
+      if (candidates.length > 1) throw new Error('当日排班重复，请先核对')
+      const id = candidates[0]?._id || `schedule_${crypto.createHash('sha256').update(`${user.openid}:${payload.dateKey}`).digest('hex').slice(0, 32)}`
+      const time = now()
+      await tx.collection('users').doc(user._id).update({ data: { staffAssignmentRevision: crypto.randomBytes(16).toString('hex') } })
+      if (remove) {
+        if (candidates[0]) await tx.collection('staff_schedule_exceptions').doc(id).remove()
+        return { dateKey: payload.dateKey, deleted: true }
+      }
+      const value = { ...payload, staffOpenid: user.openid, createdAt: candidates[0]?.createdAt || time, updatedAt: time }
+      await tx.collection('staff_schedule_exceptions').doc(id).set({ data: value })
+      return { _id: id, ...value }
+    })
+  }
+
+  return { assignOrderAtomically, updateOrderStatusWithScheduling, saveStaffScheduleException }
 }

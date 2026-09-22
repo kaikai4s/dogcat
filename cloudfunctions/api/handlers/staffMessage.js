@@ -5,6 +5,7 @@ module.exports = function createHandler(context) {
     now,
     orderStatusText,
     paginateList,
+    readScopedDocuments,
     safeText,
     sortMessageThreads
   } = context
@@ -12,8 +13,8 @@ module.exports = function createHandler(context) {
     const user = await getUser(openid)
     if (!(user.roles || []).includes('staff')) throw new Error('仅宠托师可查看消息')
     if (action === 'listThreads') {
-      const res = await db.collection('order_staff_message_threads').where({ staffOpenid: openid }).get()
-      const visibleThreads = (res.data || []).filter((thread) => thread.hiddenForStaff !== true)
+      const visibleThreads = (await readScopedDocuments('order_staff_message_threads', { staffOpenid: openid }, 'updatedAt', 'desc'))
+        .filter((thread) => thread.hiddenForStaff !== true)
       const list = sortMessageThreads(visibleThreads.map((thread) => ({
         ...thread,
         orderStatusText: orderStatusText(thread.orderStatus),
@@ -22,8 +23,8 @@ module.exports = function createHandler(context) {
       return paginateList(list, data)
     }
     if (action === 'getUnreadSummary') {
-      const res = await db.collection('order_staff_message_threads').where({ staffOpenid: openid }).get()
-      const totalUnread = (res.data || [])
+      const threads = await readScopedDocuments('order_staff_message_threads', { staffOpenid: openid })
+      const totalUnread = threads
         .filter((thread) => thread.hiddenForStaff !== true)
         .reduce((sum, thread) => sum + Math.max(Number(thread.unreadCount || 0), 0), 0)
       return { totalUnread, hasUnread: totalUnread > 0 }
@@ -41,10 +42,10 @@ module.exports = function createHandler(context) {
         thread = res.data[0]
       }
       if (!thread || thread.staffOpenid !== openid) throw new Error('消息会话不存在')
-      const res = await db.collection('order_staff_messages').where({ threadId: thread._id }).orderBy('createdAt', 'asc').get()
+      const messages = await readScopedDocuments('order_staff_messages', { threadId: thread._id }, 'createdAt', 'asc')
       return {
         thread: { ...thread, orderStatusText: orderStatusText(thread.orderStatus) },
-        messages: (res.data || []).map((message) => ({ ...message }))
+        messages: messages.map((message) => ({ ...message }))
       }
     }
     if (action === 'deleteThread') {

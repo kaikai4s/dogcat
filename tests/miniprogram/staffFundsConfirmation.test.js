@@ -20,6 +20,7 @@ function pageWith(callFunction) {
   })
   page.setData = patch => Object.assign(page.data, patch)
   page.loadStaffFinance = () => {}
+  page.load = () => {}
   return { page, modal: () => modal, storage }
 }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -40,6 +41,13 @@ test('manual confirmations require evidence and send explicit payment confirmati
   harness.modal().success({ confirm: true, content: 'bank-002' })
   await tick()
   assert.equal(calls[1][1], 'paySupplyReimbursement')
+  harness.page.markPaid({ currentTarget: { dataset: { id: 'w' } } })
+  harness.modal().success({ confirm: true, content: '' })
+  assert.equal(calls.length, 2)
+  harness.modal().success({ confirm: true, content: 'bank-003' })
+  await tick()
+  assert.equal(calls[2][1], 'markWithdrawPaid')
+  assert.equal(calls[2][2].paymentReference, 'bank-003')
 })
 
 test('forfeiture retries reuse stored request ID after an ambiguous network failure', async () => {

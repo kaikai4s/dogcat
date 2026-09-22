@@ -290,6 +290,8 @@ test('admin listStaffProfiles supports multi-criteria filter by deposit range, v
 
 test('admin batchRequireDepositRepay flags selected sitters, blocking them from taking orders until repaid', async () => {
   const db = createTestDb()
+  const serviceStart = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  const serviceEnd = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
   const adminFn = loadCloudFunction('api', db, 'openid_admin')
 
   // 管理员对 sp_2 执行“要求重新足额缴纳保证金”
@@ -316,8 +318,8 @@ test('admin batchRequireDepositRepay flags selected sitters, blocking them from 
     orderNo: 'O20260922888',
     status: 'paid',
     serviceType: 'walk',
-    startTime: '2026-09-22 18:00',
-    endTime: '2026-09-22 19:00',
+    startTime: serviceStart,
+    endTime: serviceEnd,
     clientOpenid: 'openid_client',
     serviceLatitude: 31.2,
     serviceLongitude: 121.5
@@ -330,7 +332,8 @@ test('admin batchRequireDepositRepay flags selected sitters, blocking them from 
     data: {
       orderId: 'order_test_take_1',
       currentLatitude: 31.2,
-      currentLongitude: 121.5
+      currentLongitude: 121.5,
+      riskConfirmed: true
     }
   })
 
@@ -365,7 +368,8 @@ test('admin batchRequireDepositRepay flags selected sitters, blocking them from 
     data: {
       orderId: 'order_test_take_1',
       currentLatitude: 31.2,
-      currentLongitude: 121.5
+      currentLongitude: 121.5,
+      riskConfirmed: true
     }
   })
   assert.equal(acceptAfterRepay.ok, true)

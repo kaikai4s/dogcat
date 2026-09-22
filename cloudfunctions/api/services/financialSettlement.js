@@ -1,4 +1,10 @@
 module.exports = function createService({ db, now, parseDateValue, safeText }) {
+  async function optionalOrder(tx, id) {
+    try { return (await tx.collection('orders').doc(id).get()).data || null } catch (error) {
+      if (String(error.message || error.errMsg).includes(`document with _id ${id} does not exist`)) return null
+      throw error
+    }
+  }
   function cents(value, positive = false) {
     const amount = Number(value)
     const result = Math.round(amount * 100)
@@ -27,11 +33,16 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
   }
 
   async function settleWithdrawal(admin, data, paid = false) {
+    const paymentReference = safeText(data.paymentReference).trim()
+    if (paid && (data.paymentConfirmed !== true || !paymentReference)) throw new Error('请确认实际付款成功并填写付款凭证号')
     const target = paid ? 'paid' : (data.approved === true ? 'approved' : 'rejected')
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(data.id).get()).data
       if (!request) throw new Error('提现申请不存在')
-      if (request.status === target) return { request, changed: false }
+      if (request.status === target) {
+        if (paid && request.paymentReference && request.paymentReference !== paymentReference) throw new Error('已确认付款凭证不可更改')
+        return { request, changed: false }
+      }
       if (request.status !== (paid ? 'approved' : 'pending')) throw new Error(paid ? '仅已审核提现可标记打款' : '当前状态不可审核')
       const earningIds = ids(request.earningIds, true)
       const earnings = []
@@ -48,7 +59,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
       if (!Number.isSafeInteger(total) || total !== cents(request.amount, true)) throw new Error('提现金额与收益合计不一致')
       const time = now()
       const patch = paid
-        ? { status: target, paidAt: time, paidByOpenid: admin.openid, payRemark: safeText(data.payRemark).trim(), updatedAt: time }
+        ? { status: target, paidAt: time, paidByOpenid: admin.openid, payRemark: safeText(data.payRemark).trim(), paymentReference, paymentChannel: 'MANUAL_CONFIRMED', updatedAt: time }
         : { status: target, auditedAt: time, auditedByOpenid: admin.openid, auditRemark: safeText(data.auditRemark).trim(), updatedAt: time }
       await tx.collection('withdraw_requests').doc(data.id).update({ data: patch })
       // Approval also writes the earnings, making it conflict with concurrent freezes.
@@ -61,7 +72,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
       const action = `withdraw_${target}`
       await financeLog(tx, `${action}_${data.id}`, action, 'withdraw_request', data.id, time, {
         staffOpenid: request.staffOpenid, amountDelta: paid ? -total / 100 : 0,
-        detail: { earningIds, auditRemark: patch.auditRemark || '', payRemark: patch.payRemark || '' }
+        detail: { earningIds, auditRemark: patch.auditRemark || '', payRemark: patch.payRemark || '', paymentReference }
       })
       await tx.collection('admin_operation_logs').doc(`${action}_${data.id}`).set({ data: {
         adminUserId: admin._id, adminOpenid: admin.openid, targetType: 'withdraw_request', targetId: data.id,
@@ -77,6 +88,9 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
       if (!incident) throw new Error('纠纷不存在')
       if (['closed', 'resolved', 'rejected'].includes(incident.status)) throw new Error('已结案纠纷不可新增冻结')
       if (['release', 'deduct'].includes(incident.earningResolution?.decision)) throw new Error('收益已处理，请新建纠纷后再操作')
+      const order = await optionalOrder(tx, incident.orderId)
+      if (order?.frozenEarningIncidentId && order.frozenEarningIncidentId !== incidentId) throw new Error('订单收益已被其他纠纷冻结')
+      if (order && order.staffOpenid !== incident.staffOpenid) throw new Error('收益归属异常')
       // Candidate discovery is bounded; point reads inside the transaction revalidate ownership.
       const rows = (await db.collection('staff_earnings').where({ orderId: incident.orderId }).orderBy('_id', 'asc').limit(51).get()).data || []
       const earningIds = ids([...new Set([...(incident.frozenEarningIds || []), ...rows.map(row => row._id)])])
@@ -89,8 +103,11 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
         if (!['pending', 'available'].includes(earning.status) || earning.frozenIncidentId) throw new Error('收益已被其他纠纷冻结或不可冻结')
         earnings.push(earning)
       }
-      if (!earnings.length) return { id: incidentId, frozenEarningIds: earningIds }
+      if (!earnings.length && (!order || order.frozenEarningIncidentId === incidentId)) return { id: incidentId, frozenEarningIds: earningIds }
       const time = now()
+      if (order) await tx.collection('orders').doc(order._id).update({ data: {
+        frozenEarningIncidentId: incidentId, earningRevision: Number(order.earningRevision || 0) + 1
+      } })
       const revision = Number(incident.earningRevision || 0) + 1
       for (const earning of earnings) {
         await tx.collection('staff_earnings').doc(earning._id).update({ data: {
@@ -123,6 +140,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
         return { id: incidentId, status: incident.status, earningResolution: previous || null }
       }
       const earningIds = ids(incident.frozenEarningIds || [])
+      const order = await optionalOrder(tx, incident.orderId)
       const earnings = []
       let total = 0
       for (const id of earningIds) {
@@ -155,6 +173,9 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
       const resolution = decision ? { decision, earningIds, deductedAmount: deduction / 100 } : null
       const revision = Number(incident.earningRevision || 0) + 1
       const patch = { status: data.status, closeRemark: safeText(data.closeRemark).trim(), closedAt: time, updatedAt: time, earningRevision: revision }
+      if (order?.frozenEarningIncidentId === incidentId && ['release', 'deduct'].includes(decision)) {
+        await tx.collection('orders').doc(order._id).update({ data: { frozenEarningIncidentId: '', earningRevision: Number(order.earningRevision || 0) + 1 } })
+      }
       if (resolution) Object.assign(patch, { earningResolution: resolution, requestedDeductCents: requested })
       await tx.collection('order_incidents').doc(incidentId).update({ data: patch })
       if (resolution) await financeLog(tx, `resolve_${incidentId}_${revision}`, `staff_earning_${decision}`, 'incident', incidentId, time, { orderId: incident.orderId, amountDelta: -deduction / 100, detail: { ...resolution, remark } })

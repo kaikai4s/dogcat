@@ -1,5 +1,6 @@
 module.exports = function createHandler(context) {
   const {
+    cancelUnpaidOrder,
     buildMallCartItem,
     buildMallOrderItemSnapshot,
     calcMallPricing,
@@ -148,10 +149,9 @@ module.exports = function createHandler(context) {
     if (action === 'cancelOrder') {
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)
       if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
+      if (order.status === 'cancelled') return { orderId: order._id, status: 'cancelled' }
       if (order.status !== 'pending_pay') throw new Error('当前订单不可取消')
-      const time = now()
-      await db.collection('mall_orders').doc(order._id).update({ data: { status: 'cancelled', updatedAt: time } })
-      if (order.couponId) await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'available', lockedOrderId: '', lockedAt: null, updatedAt: time } })
+      if (!await cancelUnpaidOrder(order, { collectionName: 'mall_orders', reason: '宠物主取消商城订单', actorRole: 'client' })) throw new Error('支付或订单状态已更新，请刷新后重试')
       return { orderId: order._id, status: 'cancelled' }
     }
     if (action === 'confirmReceipt') {
@@ -170,7 +170,7 @@ module.exports = function createHandler(context) {
       if (!reason) throw new Error('请填写售后原因')
       const time = now()
       const refundImages = Array.isArray(data.images || data.refundImages) ? (data.images || data.refundImages).map(safeFileId).filter(Boolean).slice(0, 6) : []
-      await db.collection('mall_orders').doc(order._id).update({ data: { status: 'refund_applied', refundStatus: 'applied', refundReason: reason, refundImages, refundAmount: Number(order.payAmount || 0), updatedAt: time } })
+      await db.collection('mall_orders').doc(order._id).update({ data: { status: 'refund_applied', refundStatus: 'applied', refundReason: reason, refundImages, refundRequestedAmount: Number(order.payAmount || 0), updatedAt: time } })
       return { orderId: order._id, refundStatus: 'applied' }
     }
     throw new Error('未知 mall 操作')

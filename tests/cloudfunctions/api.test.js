@@ -1931,7 +1931,7 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   const balance = await staffFn.main({ module: 'finance', action: 'getStaffBalance', data: {} })
   const withdraw = await staffFn.main({ module: 'finance', action: 'createWithdrawRequest', data: { accountName: '王小花', accountNo: 'wxid_staff', clientRequestId: 'withdraw_e2e' } })
   const approved = await adminFn.main({ module: 'admin', action: 'auditWithdrawRequest', data: { id: withdraw.data._id, approved: true } })
-  const paidWithdraw = await adminFn.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: withdraw.data._id } })
+  const paidWithdraw = await adminFn.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: withdraw.data._id, paymentConfirmed: true, paymentReference: 'receipt-1' } })
   const finance = await adminFn.main({ module: 'admin', action: 'financeDashboard', data: {} })
   const incident = await clientFn.main({ module: 'incident', action: 'createComplaint', data: { orderId: directOrder.data._id, description: '补充测试投诉', clientRequestId: 'incident_e2e' } })
   const resolution = await adminFn.main({ module: 'incident', action: 'proposeResolution', data: { incidentId: incident.data._id, resolutionType: 'explain', resolutionText: '已跟进说明' } })
@@ -2421,9 +2421,9 @@ test('system settings protect qwenApiKey from public disclosure and preserve exi
   assert.equal(adminSettingsDefault.data.qwenApiKey, undefined)
   assert.equal(adminSettingsDefault.data.qwenApiKeyConfigured, true)
 
-  // Admin getSystemSettings with includeSecrets: true returns key
+  // RPC requests never return raw secrets, including for the owner
   assert.equal(adminSettingsWithSecrets.ok, true)
-  assert.equal(adminSettingsWithSecrets.data.qwenApiKey, 'sk-test-qwen-secret-key-12345')
+  assert.equal(adminSettingsWithSecrets.data.qwenApiKey, undefined)
 
   // Stored in db platform_configs correctly
   assert.equal(db.state.platform_configs[0].value.qwenApiKey, 'sk-test-qwen-secret-key-12345')
@@ -2928,8 +2928,8 @@ test('finishService creates staff earning and withdraw workflow locks earnings',
   const withdraw = await staffFn.main({ module: 'finance', action: 'createWithdrawRequest', data: { accountName: '王小花', accountNo: 'wxid_staff' } })
   const approved = await adminFn.main({ module: 'admin', action: 'auditWithdrawRequest', data: { id: withdraw.data._id, approved: true } })
   const duplicateAudit = await adminFn.main({ module: 'admin', action: 'auditWithdrawRequest', data: { id: withdraw.data._id, approved: false } })
-  const paid = await adminFn.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: withdraw.data._id } })
-  const duplicatePaid = await adminFn.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: withdraw.data._id } })
+  const paid = await adminFn.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: withdraw.data._id, paymentConfirmed: true, paymentReference: 'receipt-1' } })
+  const duplicatePaid = await adminFn.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: withdraw.data._id, paymentConfirmed: true, paymentReference: 'receipt-1' } })
 
   assert.equal(finished.ok, true)
   assert.equal(db.state.staff_earnings.length, 1)
