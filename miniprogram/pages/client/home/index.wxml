@@ -112,8 +112,17 @@
 
   <view class="home-section" wx:if="{{homePage.modules.hotServices && servicePrices.length}}">
     <view class="section-heading"><view><view class="section-title">热门服务</view><view class="section-desc">按常用项目快速了解价格</view></view><view class="section-link" data-url="/pages/client/orders/create/index" bindtap="goProtected">去下单</view></view>
-    <scroll-view scroll-x class="service-scroll">
-      <view class="service-price-card interactive" wx:for="{{servicePrices}}" wx:key="key" data-url="/pages/client/orders/create/index?serviceType={{item.key}}" bindtap="goProtected">
+    <scroll-view scroll-x class="service-scroll"
+      scroll-left="{{hotServicesScrollLeft}}"
+      enhanced="{{true}}"
+      show-scrollbar="{{false}}"
+      bindscroll="onHotServicesScroll"
+      bindtouchstart="onHotServicesTouchStart"
+      bindtouchend="onHotServicesTouchEnd"
+      bindtouchcancel="onHotServicesTouchEnd"
+      binddragstart="onHotServicesTouchStart"
+      binddragend="onHotServicesTouchEnd">
+      <view class="service-price-card interactive" wx:for="{{displayServicePrices.length ? displayServicePrices : servicePrices}}" wx:key="uniqueKey" data-url="/pages/client/orders/create/index?serviceType={{item.key}}" bindtap="goProtected">
         <view class="service-cover-wrap">
           <image class="service-cover-img" wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill" />
           <view class="remix-icon {{item.serviceIcon || 'ri-price-tag-3-fill'}} service-price-icon" wx:else></view>

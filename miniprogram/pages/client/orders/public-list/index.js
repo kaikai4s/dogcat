@@ -85,7 +85,14 @@ Page({
     const url = e.currentTarget.dataset.url
     const orderId = e.currentTarget.dataset.orderId
     const order = this.data.orders.find((item) => item._id === orderId)
-    const urls = (order && order.checkinPhotos || []).map((item) => item.mediaFileId).filter(Boolean)
+    let urls = []
+    if (order) {
+      if (Array.isArray(order.allCheckinPhotos) && order.allCheckinPhotos.length) {
+        urls = order.allCheckinPhotos.map((item) => item.mediaFileId).filter(Boolean)
+      } else if (Array.isArray(order.checkinPhotos) && order.checkinPhotos.length) {
+        urls = order.checkinPhotos.map((item) => item.mediaFileId).filter(Boolean)
+      }
+    }
     if (!url) return
     wx.previewImage({ current: url, urls: urls.length ? urls : [url] })
   }

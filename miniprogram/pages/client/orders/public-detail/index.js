@@ -30,8 +30,19 @@ Page({
 
   previewPhoto(e) {
     const url = e.currentTarget.dataset.url
-    const urls = (this.data.detail && this.data.detail.checkinPhotos || []).map((item) => item.mediaFileId).filter(Boolean)
     if (!url) return
+    const detail = this.data.detail || {}
+    let urls = []
+    if (Array.isArray(detail.allCheckinPhotos) && detail.allCheckinPhotos.length) {
+      urls = detail.allCheckinPhotos.map((item) => item.mediaFileId).filter(Boolean)
+    } else if (Array.isArray(detail.checkinSections) && detail.checkinSections.length) {
+      urls = detail.checkinSections.reduce((acc, sec) => {
+        const pList = (sec.photos || []).map((p) => p.mediaFileId).filter(Boolean)
+        return acc.concat(pList)
+      }, [])
+    } else if (Array.isArray(detail.checkinPhotos) && detail.checkinPhotos.length) {
+      urls = detail.checkinPhotos.map((item) => item.mediaFileId).filter(Boolean)
+    }
     wx.previewImage({ current: url, urls: urls.length ? urls : [url] })
   },
 

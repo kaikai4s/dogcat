@@ -34,16 +34,55 @@ module.exports = function createService({
     const hideCheckinPhotos = context.hideCheckinPhotos === true
     const staffProfile = context.staffProfile || {}
     const clientSnapshot = order.clientSnapshot || {}
-    const checkinPhotos = hideCheckinPhotos ? [] : checkins
-      .map((item) => ({
-        _id: item._id || `${order._id}_${item.eventType || 'checkin'}`,
-        eventType: item.eventType || '',
-        eventText: checkinEventText(item.eventType),
-        mediaFileId: safeFileId(item.watermarkedMediaFileId || item.mediaFileId) || safeText(item.watermarkedMediaFileId || item.mediaFileId),
-        createdAt: item.createdAt || item.recordedAt || ''
-      }))
-      .filter((item) => item.mediaFileId)
-      .slice(0, 3)
+    // 1. 过滤并格式化所有有效打卡照片
+    const validCheckinItems = hideCheckinPhotos ? [] : checkins
+      .map((item, index) => {
+        const mediaFileId = safeFileId(item.watermarkedMediaFileId || item.mediaFileId) || safeText(item.watermarkedMediaFileId || item.mediaFileId)
+        if (!mediaFileId) return null
+        const eventType = item.eventType || 'checkin'
+        const eventText = checkinEventText(eventType) || '服务打卡'
+        const rawTime = item.recordedAt || item.createdAt || ''
+        let timeText = ''
+        if (rawTime) {
+          const parts = String(rawTime).split(' ')
+          timeText = parts[1] ? parts[1].slice(0, 5) : String(rawTime).slice(-5)
+        }
+        return {
+          _id: item._id || `${order._id}_${eventType}_${index}`,
+          eventType,
+          eventText,
+          mediaFileId,
+          timeText,
+          remark: safeText(item.remark || item.note).trim(),
+          createdAt: item.createdAt || item.recordedAt || ''
+        }
+      })
+      .filter(Boolean)
+
+    // 2. 按项目分组（保持打卡记录原有顺序）
+    const sectionMap = new Map()
+    for (const item of validCheckinItems) {
+      if (!sectionMap.has(item.eventType)) {
+        sectionMap.set(item.eventType, {
+          eventType: item.eventType,
+          eventText: item.eventText,
+          photos: []
+        })
+      }
+      sectionMap.get(item.eventType).photos.push(item)
+    }
+
+    const checkinSections = Array.from(sectionMap.values()).map((sec) => ({
+      ...sec,
+      photoCount: sec.photos.length,
+      firstPhoto: sec.photos[0]
+    }))
+
+    // 3. 列表预览照片：提取每个项目打卡的第一张组合起来
+    const checkinPhotos = checkinSections.map((sec) => sec.firstPhoto).filter(Boolean)
+
+    const checkinCount = checkinSections.length || checkins.length
+    const checkinSummary = checkinSections.map((item) => item.eventText).join(' · ') || checkins.slice(0, 4).map((item) => checkinEventText(item.eventType)).join(' · ')
 
     return {
       _id: order._id || '',
@@ -64,9 +103,12 @@ module.exports = function createService({
         tags: Array.isArray(review.tags) ? review.tags.slice(0, 4) : [],
         createdAt: review.createdAt || ''
       } : null,
-      checkinCount: checkins.length,
-      checkinSummary: checkins.slice(0, 4).map((item) => checkinEventText(item.eventType)).join(' · '),
+      checkinCount,
+      totalPhotoCount: validCheckinItems.length,
+      checkinSummary,
       checkinPhotos,
+      checkinSections,
+      allCheckinPhotos: validCheckinItems,
       checkinPhotosHidden: hideCheckinPhotos
     }
   }

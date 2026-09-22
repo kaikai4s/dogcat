@@ -85,6 +85,9 @@ Page({
       ratingCount: '0'
     },
     servicePrices: [],
+    displayServicePrices: [],
+    hotServicesScrollLeft: 0,
+    isHotServicesLooping: false,
     featuredSitters: [],
     coupons: [],
     claimingCouponId: '',
@@ -119,6 +122,9 @@ Page({
     this.loadHomePageData()
     this.loadStaffEntryState()
     loadMessageUnread(this)
+    if (this.data.isHotServicesLooping) {
+      this.startHotServicesAutoScroll()
+    }
   },
 
   toggleFlowExpand() {
@@ -130,12 +136,22 @@ Page({
   onHide() {
     this.stopAllVideos()
     this.clearLotteryFloatTimer()
+    this.stopHotServicesAutoScroll()
+    if (this.hotServicesResumeTimer) {
+      clearTimeout(this.hotServicesResumeTimer)
+      this.hotServicesResumeTimer = null
+    }
     this.setData({ lotteryFloatVisible: false })
   },
 
   onUnload() {
     this.stopAllVideos()
     this.clearLotteryFloatTimer()
+    this.stopHotServicesAutoScroll()
+    if (this.hotServicesResumeTimer) {
+      clearTimeout(this.hotServicesResumeTimer)
+      this.hotServicesResumeTimer = null
+    }
   },
 
   applyCurrentTheme() {
@@ -355,9 +371,15 @@ Page({
           recentOrders: homeData.recentOrders || [],
           statsData: homeData.statsData || this.data.statsData,
           assuranceItems: homeData.assuranceItems || []
+        }, () => {
+          this.initHotServicesScroll()
         })
         this.resolveHomeServiceCoverUrls(servicePrices).then((resolved) => {
-          if (resolved) this.setData({ servicePrices: resolved })
+          if (resolved) {
+            this.setData({ servicePrices: resolved }, () => {
+              this.initHotServicesScroll()
+            })
+          }
         })
         this.applyHeroCarousel(homeData.settings && homeData.settings.homeHeroCarousel)
         if (homePage.modules && homePage.modules.lottery === false) {
@@ -650,5 +672,131 @@ Page({
         if (res.confirm) wx.openSetting()
       }
     })
+  },
+
+  // ==========================================
+  // 热门服务横向跑马灯：>=3个时自动循环平移，触摸暂停，松手5秒后恢复
+  // ==========================================
+  initHotServicesScroll() {
+    const list = this.data.servicePrices || []
+    if (list.length < 3) {
+      this.stopHotServicesAutoScroll()
+      if (this.hotServicesResumeTimer) {
+        clearTimeout(this.hotServicesResumeTimer)
+        this.hotServicesResumeTimer = null
+      }
+      this.setData({
+        displayServicePrices: list.map((item, idx) => ({ ...item, uniqueKey: `${item.key || idx}` })),
+        isHotServicesLooping: false,
+        hotServicesScrollLeft: 0
+      })
+      this.currentHotScrollLeft = 0
+      return
+    }
+
+    // >= 3个时，拼接双份构造无缝循环
+    const displayList = [
+      ...list.map((item, idx) => ({ ...item, uniqueKey: `${item.key || idx}_0` })),
+      ...list.map((item, idx) => ({ ...item, uniqueKey: `${item.key || idx}_1` }))
+    ]
+
+    this.setData({
+      displayServicePrices: displayList,
+      isHotServicesLooping: true
+    }, () => {
+      this.calcHotServicesSingleSetWidth()
+      this.startHotServicesAutoScroll()
+    })
+  },
+
+  calcHotServicesSingleSetWidth() {
+    const list = this.data.servicePrices || []
+    if (!list.length) return
+    let windowWidth = 375
+    try {
+      const sys = typeof wx.getWindowInfo === 'function' ? wx.getWindowInfo() : wx.getSystemInfoSync()
+      if (sys && sys.windowWidth) windowWidth = sys.windowWidth
+    } catch (_) {}
+    const rpx2px = windowWidth / 750
+    // 每个卡片 270rpx + margin-right 18rpx = 288rpx
+    this.singleSetWidth = Math.round(list.length * 288 * rpx2px)
+
+    if (typeof this.createSelectorQuery === 'function') {
+      const query = this.createSelectorQuery()
+      query.selectAll('.service-price-card').boundingClientRect((rects) => {
+        if (rects && rects.length >= list.length + 1) {
+          const first = rects[0]
+          const target = rects[list.length]
+          if (first && target && target.left > first.left) {
+            this.singleSetWidth = Math.round(target.left - first.left)
+          }
+        }
+      }).exec()
+    }
+  },
+
+  startHotServicesAutoScroll() {
+    this.stopHotServicesAutoScroll()
+    if (!this.data.isHotServicesLooping) return
+    if (this.isHotServicesTouching) return
+    if ((this.data.servicePrices || []).length < 3) return
+
+    const STEP = 0.8
+    const INTERVAL = 30
+
+    this.hotServicesScrollTimer = setInterval(() => {
+      if (this.isHotServicesTouching) return
+      let nextLeft = (this.currentHotScrollLeft || 0) + STEP
+      if (this.singleSetWidth && this.singleSetWidth > 0) {
+        if (nextLeft >= this.singleSetWidth) {
+          nextLeft -= this.singleSetWidth
+        }
+      }
+      this.currentHotScrollLeft = nextLeft
+      this.setData({
+        hotServicesScrollLeft: Math.round(nextLeft)
+      })
+    }, INTERVAL)
+  },
+
+  stopHotServicesAutoScroll() {
+    if (this.hotServicesScrollTimer) {
+      clearInterval(this.hotServicesScrollTimer)
+      this.hotServicesScrollTimer = null
+    }
+  },
+
+  onHotServicesTouchStart() {
+    if (!this.data.isHotServicesLooping) return
+    this.isHotServicesTouching = true
+    this.stopHotServicesAutoScroll()
+    if (this.hotServicesResumeTimer) {
+      clearTimeout(this.hotServicesResumeTimer)
+      this.hotServicesResumeTimer = null
+    }
+  },
+
+  onHotServicesScroll(e) {
+    if (!e || !e.detail) return
+    this.currentHotScrollLeft = e.detail.scrollLeft
+    if (this.data.isHotServicesLooping && this.singleSetWidth && this.singleSetWidth > 0) {
+      if (this.currentHotScrollLeft >= this.singleSetWidth * 2) {
+        this.currentHotScrollLeft -= this.singleSetWidth
+      }
+    }
+  },
+
+  onHotServicesTouchEnd() {
+    if (!this.data.isHotServicesLooping) return
+    this.isHotServicesTouching = false
+    if (this.hotServicesResumeTimer) {
+      clearTimeout(this.hotServicesResumeTimer)
+    }
+    // 用户取消操作 5 秒钟后再继续开启循环移动
+    this.hotServicesResumeTimer = setTimeout(() => {
+      if (!this.isHotServicesTouching) {
+        this.startHotServicesAutoScroll()
+      }
+    }, 5000)
   }
 })

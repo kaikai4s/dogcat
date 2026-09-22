@@ -27,10 +27,32 @@
     <view class="tag-row" wx:if="{{detail.review.tags.length}}"><text class="tag-pill" wx:for="{{detail.review.tags}}" wx:key="*this">{{item}}</text></view>
   </view>
 
-  <view class="card">
-    <view class="card-subtitle"><text class="remix-icon ri-camera-lens-line sub-icon"></text><text>宠托师服务拍照打卡</text></view>
-    <view class="muted-text" wx:if="{{detail.checkinCount}}">共完成 {{detail.checkinCount}} 次服务打卡：{{detail.checkinSummary}}</view>
-    <view class="public-checkin-grid" wx:if="{{detail.checkinPhotos.length}}">
+  <view class="card checkin-detail-card">
+    <view class="checkin-head-row">
+      <view class="card-subtitle"><text class="remix-icon ri-camera-lens-line sub-icon"></text><text>宠托师服务拍照打卡</text></view>
+      <view class="photo-total-pill" wx:if="{{detail.totalPhotoCount}}">共 {{detail.totalPhotoCount}} 张打卡照片</view>
+    </view>
+    <view class="muted-text" wx:if="{{detail.checkinCount}}">共完成 {{detail.checkinCount}} 个服务项目：{{detail.checkinSummary}}</view>
+
+    <!-- 按照项目展示所有的打卡拍照 -->
+    <view class="checkin-section-list" wx:if="{{detail.checkinSections && detail.checkinSections.length}}">
+      <view class="checkin-section-group" wx:for="{{detail.checkinSections}}" wx:key="eventType" wx:for-item="sec">
+        <view class="section-group-header">
+          <view class="section-title-wrap">
+            <text class="remix-icon ri-checkbox-circle-fill section-title-icon"></text>
+            <text class="section-title-text">{{sec.eventText}}</text>
+          </view>
+          <text class="section-photo-count">共 {{sec.photos.length}} 张照片</text>
+        </view>
+        <view class="section-photo-grid">
+          <view class="section-photo-card" wx:for="{{sec.photos}}" wx:key="_id" wx:for-item="photo">
+            <image class="section-photo-img" src="{{photo.mediaFileId}}" mode="aspectFill" data-url="{{photo.mediaFileId}}" bindtap="previewPhoto" />
+            <view class="section-photo-time" wx:if="{{photo.timeText}}">{{photo.timeText}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view class="public-checkin-grid" wx:elif="{{detail.checkinPhotos && detail.checkinPhotos.length}}">
       <view class="public-checkin-item" wx:for="{{detail.checkinPhotos}}" wx:key="_id">
         <image class="public-checkin-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewPhoto" />
         <view class="photo-caption">{{item.eventText}}</view>
