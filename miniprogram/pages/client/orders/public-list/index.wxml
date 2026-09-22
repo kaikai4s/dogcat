@@ -26,7 +26,10 @@
       </view>
 
       <view class="review-box" wx:if="{{item.review}}">
-        <view class="stars"><text class="remix-icon ri-star-fill" wx:for="{{[1,2,3,4,5]}}" wx:key="*this"></text><text class="rating-text">{{item.review.ratingText}}</text></view>
+        <view class="stars">
+          <text class="remix-icon {{item.review.rating >= star ? 'ri-star-fill star-active' : 'ri-star-line star-inactive'}}" wx:for="{{[1,2,3,4,5]}}" wx:for-item="star" wx:key="*this"></text>
+          <text class="rating-text">{{item.review.ratingText || item.review.rating + '.0'}}</text>
+        </view>
         <view class="review-content" wx:if="{{item.review.content}}">“{{item.review.content}}”</view>
         <view class="tag-row" wx:if="{{item.review.tags.length}}"><text class="tag-pill" wx:for="{{item.review.tags}}" wx:key="*this">{{item}}</text></view>
       </view>

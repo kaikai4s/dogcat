@@ -11,6 +11,7 @@ module.exports = function createService({
   getNextPendingServiceSession,
   makeIdempotencyKey,
   normalizeServiceSessions,
+  notifyAdmins,
   notifyOrder,
   now,
   toTimeValue
@@ -79,6 +80,35 @@ module.exports = function createService({
         })
 
         await appendOrderTimeline(order._id, 'overdue_unstarted_alert', '服务严重超时异常预警', `服务已超时 30 分钟仍未开始，系统已提醒宠物主并触发异常跟进。`, 'system')
+
+        if (typeof notifyAdmins === 'function') {
+          const staffUserRes = order.staffOpenid ? await db.collection('users').where({ openid: order.staffOpenid }).limit(1).get() : { data: [] }
+          const staffUser = (staffUserRes.data && staffUserRes.data[0]) || {}
+          const staffProfileRes = order.staffProfileId ? await db.collection('staff_profiles').doc(order.staffProfileId).get() : { data: null }
+          const staffProfile = staffProfileRes.data || {}
+          const staffName = staffProfile.name || staffUser.name || order.staffName || '已指派宠托师'
+          const staffPhone = staffProfile.phone || staffUser.phone || '未填写'
+          const clientPhone = (order.clientSnapshot && order.clientSnapshot.phoneMasked) || (order.clientContact && order.clientContact.phone) || '未填写'
+
+          await notifyAdmins({
+            type: 'order_start_overdue',
+            level: 'urgent',
+            title: `【超时未开始预警】订单 ${order.orderNo || order._id} 超时30分钟未开始`,
+            content: `订单（${serviceName}）原约定于 ${timeText} 开始，已超时 30 分钟。当前宠托师：${staffName}（电话：${staffPhone}），客户电话：${clientPhone}。请立即电话联系宠托师；如无法继续履约，可在后台将其转为【加急公共抢单】重新调度！`,
+            orderId: order._id,
+            orderNo: order.orderNo || '',
+            actionUrl: `/pages/admin/orders/detail/index?id=${order._id}`,
+            extra: {
+              sessionIndex,
+              serviceName,
+              startTime: timeText,
+              staffName,
+              staffPhone,
+              clientPhone
+            },
+            idempotencyKey: makeIdempotencyKey('admin_notice_start_overdue', order._id, String(sessionIndex))
+          })
+        }
 
         updates.clientOverdueStartAlertedSessions = [...clientAlertedSessions, sessionIndex]
         updates.isStartOverdue = true
@@ -160,6 +190,19 @@ module.exports = function createService({
             updatedAt: time
           }
         })
+
+        if (typeof notifyAdmins === 'function') {
+          await notifyAdmins({
+            type: 'order_finish_overdue',
+            level: 'urgent',
+            title: `【服务超时未完成告警】订单 ${order.orderNo || order._id} 缺少关键打卡`,
+            content: `订单（${serviceName}）已超出预计时间 60 分钟以上，且缺少必要打卡（${checkinResult.missing.join('、')}），已自动创建异常工单介入跟进。`,
+            orderId: order._id,
+            orderNo: order.orderNo || '',
+            actionUrl: `/pages/admin/orders/detail/index?id=${order._id}`,
+            idempotencyKey: makeIdempotencyKey('admin_notice_finish_overdue', order._id, String(activeSession.index || 1))
+          })
+        }
 
         await db.collection('orders').doc(order._id).update({
           data: {

@@ -248,7 +248,14 @@ module.exports = function createService({
       isStartOverdue: order.isStartOverdue === true,
       isFinishOverdue: order.isFinishOverdue === true,
       clientContact: await getAdminClientContact(order),
-      staffContact: await getAdminStaffContact(order)
+      staffContact: await getAdminStaffContact(order),
+      originalStaffContact: (order.originalStaffOpenid || (Array.isArray(order.previousStaffRecords) && order.previousStaffRecords[0]))
+        ? await getAdminStaffContact({
+            staffOpenid: order.originalStaffOpenid || order.previousStaffRecords[0].staffOpenid,
+            staffProfileId: order.originalStaffProfileId || order.previousStaffRecords[0].staffProfileId,
+            staffName: order.originalStaffName || order.previousStaffRecords[0].staffName
+          })
+        : null
     }
   }
 

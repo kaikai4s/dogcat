@@ -21,7 +21,9 @@
 .person-name { margin-top: 6rpx; color: #2d211a; font-size: 27rpx; font-weight: 950; }
 .card-subtitle { display: flex; align-items: center; gap: 10rpx; color: #2d211a; font-size: 30rpx; font-weight: 950; margin-bottom: 18rpx; }
 .sub-icon { color: #e9672f; font-size: 34rpx; }
-.public-stars { display: flex; align-items: center; gap: 4rpx; margin-bottom: 14rpx; color: #ffb020; font-size: 30rpx; font-weight: 900; }
+.public-stars { display: flex; align-items: center; gap: 4rpx; margin-bottom: 14rpx; font-size: 30rpx; font-weight: 900; }
+.public-stars .star-active { color: #ffb020; }
+.public-stars .star-inactive { color: #d8d3cf; }
 .rating-text { margin-left: 10rpx; color: #d45f22; font-size: 25rpx; }
 .review-content { color: #574b42; font-size: 27rpx; font-weight: 850; line-height: 1.55; }
 .tag-row { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 14rpx; }

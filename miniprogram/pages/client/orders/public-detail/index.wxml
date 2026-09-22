@@ -22,7 +22,10 @@
 
   <view class="card" wx:if="{{detail.review}}">
     <view class="card-subtitle"><text class="remix-icon ri-star-smile-line sub-icon"></text><text>用户评价</text></view>
-    <view class="public-stars"><text class="remix-icon ri-star-fill" wx:for="{{[1,2,3,4,5]}}" wx:key="*this"></text><text class="rating-text">{{detail.review.ratingText}}</text></view>
+    <view class="public-stars">
+      <text class="remix-icon {{detail.review.rating >= star ? 'ri-star-fill star-active' : 'ri-star-line star-inactive'}}" wx:for="{{[1,2,3,4,5]}}" wx:for-item="star" wx:key="*this"></text>
+      <text class="rating-text">{{detail.review.ratingText || detail.review.rating + '.0'}}</text>
+    </view>
     <view class="review-content" wx:if="{{detail.review.content}}">“{{detail.review.content}}”</view>
     <view class="tag-row" wx:if="{{detail.review.tags.length}}"><text class="tag-pill" wx:for="{{detail.review.tags}}" wx:key="*this">{{item}}</text></view>
   </view>

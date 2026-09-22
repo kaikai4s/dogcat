@@ -31,6 +31,7 @@
         <view class="meta-chip-row compact-meta-row">
           <view class="meta-chip chip-primary">{{item.staffLevelText || '申请人'}}</view>
           <view class="meta-chip">{{item.ratingText}}</view>
+          <view class="meta-chip danger-chip" wx:if="{{item.problemOrderCount > 0}}">异常订单 {{item.problemOrderCount}}</view>
           <view class="meta-chip warning" wx:if="{{item.promotionStatus === 'pending'}}">转正审核中</view>
         </view>
       </view>
@@ -52,6 +53,34 @@
         <view class="compact-info-item"><view class="compact-info-label">实习订单</view><view class="compact-info-value">{{item.internCompletedOrderCount || 0}}/3</view></view>
         <view class="compact-info-item"><view class="compact-info-label">账号状态</view><view class="compact-info-value">{{item.userStatus || '未知'}}</view></view>
       </view>
+
+      <!-- 异常与出险违规订单（保证金扣除证据展示） -->
+      <view class="sitter-problem-section" wx:if="{{item.problemOrderCount > 0}}">
+        <view class="problem-section-title">
+          <text class="remix-icon ri-alarm-warning-fill danger-text"></text>
+          <text class="strong danger-text">异常出险与违规留证订单（{{item.problemOrderCount}}笔）</text>
+        </view>
+        <view class="problem-order-card" wx:for="{{item.problemOrders}}" wx:for-item="prob" wx:key="_id">
+          <view class="problem-card-head">
+            <view class="problem-orderno">{{prob.orderNo}} · {{prob.serviceSummary}}</view>
+            <view class="badge {{prob.status === 'forfeited' ? 'green' : 'pink'}}">{{prob.statusText}}</view>
+          </view>
+          <view class="problem-reason-type">{{prob.reasonTypeName}}</view>
+          <view class="problem-desc">{{prob.reasonText}}</view>
+          <view class="problem-footer">
+            <view class="problem-amount" wx:if="{{prob.deductAmount > 0}}">建议扣保证金：<text class="price">¥{{prob.deductAmount}}</text></view>
+            <view class="problem-time">{{prob.createdAt}}</view>
+          </view>
+          <view class="problem-actions">
+            <button class="mini-btn ghost-mini" data-id="{{prob.orderId}}" bindtap="goToOrder">查看出险订单</button>
+            <button class="mini-btn danger-mini" wx:if="{{prob.status === 'pending'}}" bindtap="goToFinanceDeposit">去财务扣保证金</button>
+          </view>
+        </view>
+      </view>
+      <view class="sitter-problem-section clean-section" wx:elif="{{item.auditStatus === 'approved'}}">
+        <view class="clean-tip"><text class="remix-icon ri-checkbox-circle-fill success-text"></text><text>履约良好，暂无出险或违规留证订单</text></view>
+      </view>
+
       <view class="openid-box">{{item.openid}}</view>
     </view>
   </view>

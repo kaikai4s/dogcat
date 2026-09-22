@@ -12,7 +12,8 @@ const collections = [
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',
   'user_feedback', 'staff_promotion_applications',
   'staff_deposits', 'staff_deposit_events', 'staff_supply_reimbursements',
-  'mall_categories', 'mall_products', 'mall_carts', 'mall_orders'
+  'mall_categories', 'mall_products', 'mall_carts', 'mall_orders',
+  'admin_notifications', 'staff_deposit_evidences'
 ]
 
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'

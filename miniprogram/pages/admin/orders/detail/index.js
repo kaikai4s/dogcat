@@ -29,7 +29,29 @@ Page({
     showRefundModal: false,
     refundAmountInput: '',
     refundReasonInput: '',
-    submittingRefund: false
+    submittingRefund: false,
+    showUrgentModal: false,
+    urgentStaffRewardInput: '',
+    urgentStartTimeInput: '',
+    urgentEndTimeInput: '',
+    urgentRemarkInput: '',
+    submittingUrgent: false,
+    showEvidenceModal: false,
+    evidenceStaffList: [],
+    selectedStaffIndex: 0,
+    evidenceReasonTypes: [
+      { key: 'start_overdue', label: '接单超时未开始/爽约' },
+      { key: 'checkin_missing', label: '超期未完成打卡' },
+      { key: 'service_violation', label: '服务质量违规/客诉' },
+      { key: 'private_order', label: '引导私下交易/私单' },
+      { key: 'pet_safety', label: '宠物安全与失职问题' },
+      { key: 'other', label: '其他服务违规' }
+    ],
+    selectedReasonTypeIndex: 0,
+    evidenceDeductAmountInput: '50',
+    evidenceReasonTextInput: '',
+    evidenceImages: [],
+    submittingEvidence: false
   },
 
   onLoad(q) {
@@ -211,6 +233,221 @@ Page({
           })
           .catch(showError)
           .finally(() => this.setData({ submittingRefund: false }))
+      }
+    })
+  },
+
+  openUrgentModal() {
+    const order = this.data.detail && this.data.detail.order
+    if (!order) return
+    const defaultReward = order.urgentStaffReward || Math.round(Number(order.payAmount || 60) * 0.7 * 100) / 100
+    this.setData({
+      showUrgentModal: true,
+      urgentStaffRewardInput: String(defaultReward),
+      urgentStartTimeInput: order.startTime || '',
+      urgentEndTimeInput: order.endTime || '',
+      urgentRemarkInput: order.urgentRemark || ''
+    })
+  },
+
+  closeUrgentModal() {
+    this.setData({ showUrgentModal: false, submittingUrgent: false })
+  },
+
+  inputUrgentReward(e) {
+    this.setData({ urgentStaffRewardInput: e.detail.value })
+  },
+
+  inputUrgentStartTime(e) {
+    this.setData({ urgentStartTimeInput: e.detail.value })
+  },
+
+  inputUrgentEndTime(e) {
+    this.setData({ urgentEndTimeInput: e.detail.value })
+  },
+
+  inputUrgentRemark(e) {
+    this.setData({ urgentRemarkInput: e.detail.value })
+  },
+
+  submitUrgentRepublish() {
+    const order = this.data.detail && this.data.detail.order
+    if (!order) return
+    const staffReward = Number(this.data.urgentStaffRewardInput)
+    if (!Number.isFinite(staffReward) || staffReward <= 0) {
+      wx.showToast({ title: '请输入有效的宠托师收益金额', icon: 'none' })
+      return
+    }
+
+    const startTime = String(this.data.urgentStartTimeInput || '').trim()
+    const endTime = String(this.data.urgentEndTimeInput || '').trim()
+    const urgentRemark = String(this.data.urgentRemarkInput || '').trim()
+
+    wx.showModal({
+      title: '确认转为加急公共抢单',
+      content: `宠托师可获收益：¥${staffReward.toFixed(2)}\n用户支付金额：¥${Number(order.payAmount || 0).toFixed(2)}（保持不变，无需用户补付）\n确定重新发布到加急公共单吗？`,
+      confirmColor: '#ea580c',
+      success: (res) => {
+        if (!res.confirm) return
+        this.setData({ submittingUrgent: true })
+        callFunction('admin', 'republishOrderAsUrgent', {
+          id: this.data.id,
+          staffReward,
+          startTime,
+          endTime,
+          urgentRemark
+        })
+          .then(() => {
+            wx.showToast({ title: '已转为加急公共单' })
+            this.closeUrgentModal()
+            this.load()
+          })
+          .catch(showError)
+          .finally(() => this.setData({ submittingUrgent: false }))
+      }
+    })
+  },
+
+  callOriginalStaff() {
+    const phone = this.data.detail && this.data.detail.order && this.data.detail.order.originalStaffContact && this.data.detail.order.originalStaffContact.phone
+    if (!phone) {
+      wx.showToast({ title: '原宠托师电话未绑定', icon: 'none' })
+      return
+    }
+    wx.makePhoneCall({ phoneNumber: phone })
+  },
+
+  openEvidenceModal() {
+    const order = this.data.detail && this.data.detail.order
+    if (!order) return
+    const staffList = []
+    if (order.originalStaffOpenid) {
+      staffList.push({
+        openid: order.originalStaffOpenid,
+        label: `${order.originalStaffName || '原宠托师'}（原接单人·违规转单）`
+      })
+    }
+    if (order.staffOpenid && order.staffOpenid !== order.originalStaffOpenid) {
+      staffList.push({
+        openid: order.staffOpenid,
+        label: `${(order.staffContact && order.staffContact.displayName) || order.staffName || '当前宠托师'}（当前接单人）`
+      })
+    }
+    if (Array.isArray(order.previousStaffRecords)) {
+      order.previousStaffRecords.forEach((r) => {
+        if (!staffList.some((s) => s.openid === r.staffOpenid)) {
+          staffList.push({
+            openid: r.staffOpenid,
+            label: `${r.staffName || '历史宠托师'}（曾指派）`
+          })
+        }
+      })
+    }
+    if (!staffList.length) {
+      wx.showToast({ title: '该订单暂未关联宠托师', icon: 'none' })
+      return
+    }
+
+    const defaultReason = order.isStartOverdue
+      ? '订单超出预约时间30分钟以上未按时到岗开始服务，严重超时违规'
+      : (order.isFinishOverdue ? '订单超出预计结束时间60分钟以上且未完成必要打卡' : (order.urgentRemark ? `加急调度违约留证：${order.urgentRemark}` : ''))
+
+    this.setData({
+      showEvidenceModal: true,
+      evidenceStaffList: staffList,
+      selectedStaffIndex: 0,
+      selectedReasonTypeIndex: order.isStartOverdue ? 0 : (order.isFinishOverdue ? 1 : 0),
+      evidenceDeductAmountInput: '50',
+      evidenceReasonTextInput: defaultReason,
+      evidenceImages: []
+    })
+  },
+
+  closeEvidenceModal() {
+    this.setData({ showEvidenceModal: false, submittingEvidence: false })
+  },
+
+  onEvidenceStaffChange(e) {
+    this.setData({ selectedStaffIndex: Number(e.detail.value || 0) })
+  },
+
+  onEvidenceReasonTypeChange(e) {
+    this.setData({ selectedReasonTypeIndex: Number(e.detail.value || 0) })
+  },
+
+  inputEvidenceDeductAmount(e) {
+    this.setData({ evidenceDeductAmountInput: e.detail.value })
+  },
+
+  inputEvidenceReasonText(e) {
+    this.setData({ evidenceReasonTextInput: e.detail.value })
+  },
+
+  chooseEvidenceImages() {
+    const remain = 4 - (this.data.evidenceImages || []).length
+    if (remain <= 0) return
+    wx.chooseMedia({
+      count: remain,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const files = (res.tempFiles || []).map((f) => f.tempFilePath)
+        this.setData({ evidenceImages: [...(this.data.evidenceImages || []), ...files] })
+      }
+    })
+  },
+
+  removeEvidenceImage(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const list = [...(this.data.evidenceImages || [])]
+    list.splice(index, 1)
+    this.setData({ evidenceImages: list })
+  },
+
+  previewEvidenceImage(e) {
+    const url = e.currentTarget.dataset.url
+    if (!url) return
+    wx.previewImage({ urls: [url] })
+  },
+
+  submitDepositEvidence() {
+    const order = this.data.detail && this.data.detail.order
+    if (!order) return
+    const targetStaff = this.data.evidenceStaffList[this.data.selectedStaffIndex]
+    if (!targetStaff || !targetStaff.openid) {
+      wx.showToast({ title: '请选择责任宠托师', icon: 'none' })
+      return
+    }
+    const reasonTypeObj = this.data.evidenceReasonTypes[this.data.selectedReasonTypeIndex] || this.data.evidenceReasonTypes[0]
+    const reasonText = String(this.data.evidenceReasonTextInput || '').trim()
+    if (!reasonText) {
+      wx.showToast({ title: '请填写违规留证说明', icon: 'none' })
+      return
+    }
+    const deductAmount = Math.max(0, Number(this.data.evidenceDeductAmountInput || 0))
+
+    wx.showModal({
+      title: '确认录入保证金违规证据',
+      content: `责任宠托师：${targetStaff.label}\n违规类型：${reasonTypeObj.label}\n建议扣除保证金：¥${deductAmount.toFixed(2)}\n确定保存留证并在宠托师管理界面同步展示吗？`,
+      confirmColor: '#ef4444',
+      success: (res) => {
+        if (!res.confirm) return
+        this.setData({ submittingEvidence: true })
+        callFunction('admin', 'addOrderDepositPenaltyEvidence', {
+          orderId: this.data.id,
+          staffOpenid: targetStaff.openid,
+          reasonType: reasonTypeObj.key,
+          reasonText,
+          deductAmount,
+          evidenceImages: this.data.evidenceImages
+        })
+          .then(() => {
+            wx.showToast({ title: '已录入违规留证' })
+            this.closeEvidenceModal()
+            this.load()
+          })
+          .catch(showError)
+          .finally(() => this.setData({ submittingEvidence: false }))
       }
     })
   },

@@ -5,6 +5,7 @@ module.exports = function createHandler(context) {
     VISIT_FEE_SERVICE_KEY,
     addPoints,
     appendOrderClientMessage,
+    appendOrderStaffMessage,
     appendOrderTimeline,
     assertAdminRoleChangeAllowed,
     assertUserDeleteAllowed,
@@ -14,6 +15,7 @@ module.exports = function createHandler(context) {
     aggregateFinanceDashboard,
     buildMonthlyDashboard,
     buildSubscriptionData,
+    calculateStaffEarningForOrder,
     cleanupUserPersonalData,
     couponUsageScopeText,
     createRefundForOrder,
@@ -25,6 +27,7 @@ module.exports = function createHandler(context) {
     ensureMonthConfig,
     expireDueUnacceptedOrders,
     getClientRequestId,
+    getAdminNotificationBadge,
     getMemberLevels,
     getMonthConfig,
     getMonthDays,
@@ -38,10 +41,14 @@ module.exports = function createHandler(context) {
     isPresetServiceKey,
     issueCouponToTargetUser,
     limitList,
+    listAdminNotifications,
     listServiceCheckinRules,
     listServicePrices,
     logAdmin,
+    makeIdempotencyKey,
+    markAdminNotificationRead,
     maskStaffName,
+    notifyAdmins,
     normalizeBenefits,
     normalizeCheckinReward,
     normalizeCouponSnapshot,
@@ -276,11 +283,34 @@ module.exports = function createHandler(context) {
       const profilesRes = await db.collection('staff_profiles').orderBy('updatedAt', 'desc').get()
       const usersRes = await db.collection('users').get()
       const userMap = new Map((usersRes.data || []).map((user) => [user.openid, user]))
+
+      const evidencesRes = await db.collection('staff_deposit_evidences').orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+      const allEvidences = evidencesRes.data || []
+      const evidenceByStaff = {}
+      for (const ev of allEvidences) {
+        if (!evidenceByStaff[ev.staffOpenid]) evidenceByStaff[ev.staffOpenid] = []
+        evidenceByStaff[ev.staffOpenid].push(ev)
+      }
+
       const list = (profilesRes.data || [])
         .filter((profile) => !auditStatus || profile.auditStatus === auditStatus)
         .map((profile) => {
           const user = userMap.get(profile.openid) || {}
           const workflow = normalizeStaffWorkflow(profile)
+          const staffEvidences = evidenceByStaff[profile.openid] || []
+          const problemOrders = staffEvidences.map((e) => ({
+            _id: e._id,
+            orderId: e.orderId,
+            orderNo: e.orderNo || '',
+            serviceSummary: e.serviceSummary || '',
+            reasonType: e.reasonType || '',
+            reasonTypeName: e.reasonTypeName || '',
+            reasonText: e.reasonText || '',
+            deductAmount: e.deductAmount || 0,
+            status: e.status || 'pending',
+            statusText: e.status === 'forfeited' ? '已扣除保证金' : (e.status === 'dismissed' ? '已撤销免除' : '待执行扣除'),
+            createdAt: e.createdAt || ''
+          }))
           return {
             _id: profile._id,
             openid: profile.openid || '',
@@ -309,7 +339,10 @@ module.exports = function createHandler(context) {
             userNickname: user.nickname || '微信用户',
             userAvatarUrl: user.avatarUrl || '',
             userStatus: user.status || '',
-            roles: Array.isArray(user.roles) ? user.roles : []
+            roles: Array.isArray(user.roles) ? user.roles : [],
+            problemOrderCount: staffEvidences.length,
+            pendingPenaltyCount: staffEvidences.filter((e) => e.status === 'pending').length,
+            problemOrders
           }
         })
         .filter((item) => !keyword || [item.openid, item.realName, item.phone, item.serviceCity, item.serviceAreas, item.userNickname].some((value) => safeText(value).toLowerCase().includes(keyword)))
@@ -466,8 +499,13 @@ module.exports = function createHandler(context) {
       displayOrder.maxRefundable = maxRefundable
       displayOrder.alreadyRefunded = alreadyRefunded
 
-      if (action === 'getEvidence') await logAdmin(admin, 'order', id, 'getEvidence', { trackCount: (tracks.data || []).length, checkinCount: (checkins.data || []).filter(isActiveCheckin).length })
-      return { order: displayOrder, tracks: tracks.data, checkins: (checkins.data || []).filter(isActiveCheckin), unlockLogs: unlockLogs.data }
+      const penaltyEvidencesRes = await db.collection('staff_deposit_evidences').where({ orderId: id }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+      const penaltyEvidences = penaltyEvidencesRes.data || []
+      displayOrder.depositPenaltyEvidences = penaltyEvidences
+      displayOrder.hasDepositPenaltyEvidence = penaltyEvidences.length > 0 || displayOrder.hasDepositPenaltyEvidence === true
+
+      if (action === 'getEvidence') await logAdmin(admin, 'order', id, 'getEvidence', { trackCount: (tracks.data || []).length, checkinCount: (checkins.data || []).filter(isActiveCheckin) })
+      return { order: displayOrder, tracks: tracks.data, checkins: (checkins.data || []).filter(isActiveCheckin), unlockLogs: unlockLogs.data, depositPenaltyEvidences: penaltyEvidences }
     }
     if (action === 'assignOrder') {
       const orderRes = await db.collection('orders').doc(data.orderId).get()
@@ -817,7 +855,24 @@ module.exports = function createHandler(context) {
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const where = status ? { auditStatus: status } : {}
       const res = await db.collection('staff_profiles').where(where).orderBy('updatedAt', 'desc').get()
-      const list = (res.data || []).filter((item) => !keyword || [item.realName, item.phone, item.serviceCity, item.serviceAreas].some((value) => safeText(value).toLowerCase().includes(keyword)))
+
+      const evidencesRes = await db.collection('staff_deposit_evidences').orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+      const allEvidences = evidencesRes.data || []
+      const evidenceByStaff = {}
+      for (const ev of allEvidences) {
+        if (!evidenceByStaff[ev.staffOpenid]) evidenceByStaff[ev.staffOpenid] = []
+        evidenceByStaff[ev.staffOpenid].push(ev)
+      }
+
+      const list = (res.data || []).map((p) => {
+        const staffEvidences = evidenceByStaff[p.openid] || []
+        return {
+          ...p,
+          problemOrderCount: staffEvidences.length,
+          pendingPenaltyCount: staffEvidences.filter((e) => e.status === 'pending').length,
+          problemOrders: staffEvidences
+        }
+      }).filter((item) => !keyword || [item.realName, item.phone, item.serviceCity, item.serviceAreas].some((value) => safeText(value).toLowerCase().includes(keyword)))
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       return wantsPage ? paginateList(list, data) : list
     }
@@ -1274,6 +1329,291 @@ module.exports = function createHandler(context) {
     }
     if (action === 'paySupplyReimbursement') {
       return settleSupplyReimbursement({ ...admin, openid }, action, data)
+    }
+    if (action === 'republishOrderAsUrgent') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      if (!orderId) throw new Error('缺少订单 ID')
+      const orderRes = await db.collection('orders').doc(orderId).get()
+      const order = orderRes.data
+      if (!order) throw new Error('订单不存在')
+
+      if (!['paid', 'assigned', 'in_service', 'day_completed'].includes(order.status)) {
+        throw new Error(`当前订单状态（${order.status}）不可转为加急公共抢单`)
+      }
+
+      const staffReward = Number(data.staffReward)
+      if (isNaN(staffReward) || staffReward <= 0) {
+        throw new Error('请设置有效的宠托师加急收益金额')
+      }
+
+      const newStartTime = safeText(data.startTime).trim() || order.startTime
+      const newEndTime = safeText(data.endTime).trim() || order.endTime
+      const urgentRemark = safeText(data.urgentRemark || data.remark || data.notes).trim()
+
+      const time = now()
+      const prevStaffOpenid = order.staffOpenid || ''
+      const prevStaffName = order.staffName || (order.staffContact && order.staffContact.displayName) || ''
+      const prevStaffUserId = order.staffUserId || ''
+      const prevStaffProfileId = order.staffProfileId || ''
+      const prevStaffPhone = (order.staffContact && order.staffContact.phone) || ''
+
+      const previousRecord = prevStaffOpenid ? {
+        staffOpenid: prevStaffOpenid,
+        staffName: prevStaffName,
+        staffUserId: prevStaffUserId,
+        staffProfileId: prevStaffProfileId,
+        staffPhone: prevStaffPhone,
+        assignedAt: order.assignedAt || '',
+        reassignedAt: time,
+        reason: 'admin_urgent_republish',
+        urgentRemark: urgentRemark || '订单超时未按时履约，转加急公共抢单'
+      } : null
+
+      const previousStaffRecords = [
+        ...(Array.isArray(order.previousStaffRecords) ? order.previousStaffRecords : []),
+        ...(previousRecord ? [previousRecord] : [])
+      ]
+
+      const standardEarning = await calculateStaffEarningForOrder({ ...order, isUrgent: false })
+      const originalReward = standardEarning.earningAmount || 0
+      const urgentBonus = Math.max(0, Math.round((staffReward - originalReward) * 100) / 100)
+
+      const updateData = {
+        status: 'paid',
+        publishMode: 'open',
+        assignmentSource: 'admin_urgent_republish',
+        isUrgent: true,
+        urgentStaffReward: staffReward,
+        urgentBonus,
+        urgentRemark,
+        urgentRepublishedAt: time,
+        urgentRepublishedByOpenid: openid,
+        originalStaffOpenid: order.originalStaffOpenid || prevStaffOpenid,
+        originalStaffName: order.originalStaffName || prevStaffName,
+        originalStaffUserId: order.originalStaffUserId || prevStaffUserId,
+        originalStaffProfileId: order.originalStaffProfileId || prevStaffProfileId,
+        originalStaffPhone: order.originalStaffPhone || prevStaffPhone,
+        hasReassignedStaff: Boolean(order.originalStaffOpenid || prevStaffOpenid),
+        previousStaffRecords,
+        staffUserId: '',
+        staffOpenid: '',
+        staffProfileId: '',
+        staffName: '',
+        requestedStaffOpenid: '',
+        requestedStaffProfileId: '',
+        requestedStaffName: '',
+        acceptLocationLatitude: null,
+        acceptLocationLongitude: null,
+        startTime: newStartTime,
+        endTime: newEndTime,
+        isStartOverdue: false,
+        isFinishOverdue: false,
+        staffOverdueStartRemindedSessions: [],
+        clientOverdueStartAlertedSessions: [],
+        overdueFinishReminded: false,
+        updatedAt: time
+      }
+      if (urgentRemark) {
+        updateData.notes = order.notes ? `${order.notes}；【平台加急备注】${urgentRemark}` : `【平台加急备注】${urgentRemark}`
+      }
+
+      if (prevStaffOpenid && (data.recordDepositEvidence === true || data.autoRecordDepositEvidence === true)) {
+        const profileRes = await db.collection('staff_profiles').where({ openid: prevStaffOpenid }).limit(1).get().catch(() => ({ data: [] }))
+        const p = profileRes.data && profileRes.data[0]
+        const evidenceDoc = {
+          orderId,
+          orderNo: order.orderNo || '',
+          clientOpenid: order.clientOpenid || '',
+          serviceSummary: order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养'),
+          serviceType: order.serviceType || 'walk',
+          startTime: order.startTime || '',
+          staffOpenid: prevStaffOpenid,
+          staffUserId: prevStaffUserId || (p && p.userId) || '',
+          staffProfileId: prevStaffProfileId || (p && p._id) || '',
+          staffRealName: prevStaffName || (p && p.realName) || '',
+          staffPhone: prevStaffPhone || (p && p.phone) || '',
+          reasonType: 'start_overdue',
+          reasonTypeName: '接单超时未开始/爽约',
+          reasonText: urgentRemark || '订单严重超时未到岗且无法继续履约，平台已介入并转加急调度',
+          deductAmount: Number(data.deductAmount || 0),
+          evidenceImages: Array.isArray(data.evidenceImages) ? data.evidenceImages : [],
+          status: 'pending',
+          statusText: '待扣除保证金',
+          createdAt: time,
+          createdBy: openid,
+          updatedAt: time
+        }
+        const createdEvidence = await db.collection('staff_deposit_evidences').add({ data: evidenceDoc })
+        updateData.hasDepositPenaltyEvidence = true
+        updateData.depositPenaltyEvidenceIds = [...(Array.isArray(order.depositPenaltyEvidenceIds) ? order.depositPenaltyEvidenceIds : []), createdEvidence._id]
+      }
+
+      await db.collection('orders').doc(orderId).update({ data: updateData })
+
+      if (prevStaffOpenid) {
+        await appendOrderStaffMessage({ ...order, staffOpenid: prevStaffOpenid }, {
+          eventType: 'order_cancelled_by_admin',
+          title: '订单已被平台转加急调度',
+          detail: `您的订单（${order.serviceSummary || order.orderNo}）由于超时未按时开始服务，平台管理员已介入处理并将该单转为加急公共抢单调度。`,
+          actorRole: 'admin',
+          idempotencyKey: makeIdempotencyKey('order_staff_message', orderId, 'admin_urgent_cancel', String(time.getTime()))
+        })
+      }
+
+      await appendOrderTimeline(
+        orderId,
+        'urgent_republished',
+        '已转为加急公共单',
+        `管理员已将订单发布至加急公共抢单池。宠托师收益调整为 ¥${staffReward.toFixed(2)}（含平台补贴加价 ¥${urgentBonus.toFixed(2)}），新服务时间：${newStartTime}。用户支付金额不受影响。`,
+        'admin'
+      )
+
+      await logAdmin(admin, 'order', orderId, 'republishOrderAsUrgent', {
+        prevStaffOpenid,
+        staffReward,
+        urgentBonus,
+        newStartTime,
+        newEndTime,
+        urgentRemark
+      })
+
+      if (typeof notifyAdmins === 'function') {
+        await notifyAdmins({
+          type: 'order_urgent_republished',
+          level: 'info',
+          title: `【加急单发布】订单 ${order.orderNo || orderId} 已发布到加急抢单池`,
+          content: `管理员已将订单重新发布为加急公共抢单。宠托师收益：¥${staffReward.toFixed(2)}（加价补贴 ¥${urgentBonus.toFixed(2)}），约定开始时间调整为 ${newStartTime}。`,
+          orderId,
+          orderNo: order.orderNo || '',
+          actionUrl: `/pages/admin/orders/detail/index?id=${orderId}`
+        })
+      }
+
+      return {
+        orderId,
+        isUrgent: true,
+        status: 'paid',
+        staffReward,
+        urgentBonus,
+        startTime: newStartTime,
+        endTime: newEndTime
+      }
+    }
+    if (action === 'addOrderDepositPenaltyEvidence') {
+      const orderId = safeText(data.orderId || data.id).trim()
+      if (!orderId) throw new Error('缺少订单 ID')
+      const orderRes = await db.collection('orders').doc(orderId).get()
+      const order = orderRes.data
+      if (!order) throw new Error('订单不存在')
+
+      let targetStaffOpenid = safeText(data.staffOpenid).trim()
+      if (!targetStaffOpenid) {
+        targetStaffOpenid = order.originalStaffOpenid || order.staffOpenid || (Array.isArray(order.previousStaffRecords) && order.previousStaffRecords[0] && order.previousStaffRecords[0].staffOpenid) || ''
+      }
+      if (!targetStaffOpenid) throw new Error('该订单未关联有效的宠托师，无法录入证据')
+
+      const profileRes = await db.collection('staff_profiles').where({ openid: targetStaffOpenid }).limit(1).get().catch(() => ({ data: [] }))
+      const profile = profileRes.data && profileRes.data[0] || {}
+      const userRes = await db.collection('users').where({ openid: targetStaffOpenid }).limit(1).get().catch(() => ({ data: [] }))
+      const user = userRes.data && userRes.data[0] || {}
+
+      const reasonType = safeText(data.reasonType).trim() || 'start_overdue'
+      const reasonTypeNames = {
+        start_overdue: '接单超时未开始/爽约',
+        checkin_missing: '超期未完成打卡',
+        service_violation: '服务质量违规/客诉',
+        private_order: '引导私下交易/私单',
+        pet_safety: '宠物安全与失职问题',
+        other: '其他服务违规'
+      }
+      const reasonTypeName = reasonTypeNames[reasonType] || '服务违规留证'
+      const reasonText = safeText(data.reasonText || data.reason || data.remark).trim()
+      if (!reasonText) throw new Error('请填写违规说明与留证原因')
+
+      const deductAmount = Math.max(0, Number(data.deductAmount || 0))
+      const evidenceImages = Array.isArray(data.evidenceImages) ? data.evidenceImages : []
+
+      const time = now()
+      const evidenceDoc = {
+        orderId,
+        orderNo: order.orderNo || '',
+        clientOpenid: order.clientOpenid || '',
+        serviceSummary: order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养'),
+        serviceType: order.serviceType || 'walk',
+        startTime: order.startTime || '',
+        staffOpenid: targetStaffOpenid,
+        staffUserId: user._id || profile.userId || order.originalStaffUserId || '',
+        staffProfileId: profile._id || order.originalStaffProfileId || '',
+        staffRealName: profile.realName || user.realName || order.originalStaffName || order.staffName || '',
+        staffNickname: user.nickname || '',
+        staffPhone: profile.phone || user.phone || order.originalStaffPhone || '',
+        reasonType,
+        reasonTypeName,
+        reasonText,
+        deductAmount,
+        evidenceImages,
+        status: 'pending',
+        statusText: '待扣除保证金',
+        createdAt: time,
+        createdBy: openid,
+        updatedAt: time
+      }
+
+      const created = await db.collection('staff_deposit_evidences').add({ data: evidenceDoc })
+      const evidenceId = created._id
+
+      const existingEvidenceIds = Array.isArray(order.depositPenaltyEvidenceIds) ? order.depositPenaltyEvidenceIds : []
+      await db.collection('orders').doc(orderId).update({
+        data: {
+          hasDepositPenaltyEvidence: true,
+          depositPenaltyEvidenceIds: [...existingEvidenceIds, evidenceId],
+          updatedAt: time
+        }
+      })
+
+      await appendOrderTimeline(
+        orderId,
+        'deposit_evidence_added',
+        '已录入保证金扣除留证',
+        `管理员已将该订单纳入宠托师（${evidenceDoc.staffRealName || targetStaffOpenid}）保证金扣除证据。原因：${reasonTypeName} - ${reasonText}。建议扣除金额：¥${deductAmount.toFixed(2)}。`,
+        'admin'
+      )
+
+      await logAdmin(admin, 'order', orderId, 'addOrderDepositPenaltyEvidence', {
+        evidenceId,
+        targetStaffOpenid,
+        reasonType,
+        reasonText,
+        deductAmount
+      })
+
+      return {
+        evidenceId,
+        ...evidenceDoc,
+        _id: evidenceId
+      }
+    }
+    if (action === 'listOrderDepositPenaltyEvidences') {
+      const orderId = safeText(data.orderId).trim()
+      const staffOpenid = safeText(data.staffOpenid).trim()
+      const status = safeText(data.status).trim()
+      const where = {}
+      if (orderId) where.orderId = orderId
+      if (staffOpenid) where.staffOpenid = staffOpenid
+      if (status) where.status = status
+      const res = await db.collection('staff_deposit_evidences').where(where).orderBy('createdAt', 'desc').get()
+      const list = res.data || []
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(list, data) : list
+    }
+    if (action === 'listAdminNotifications') {
+      return listAdminNotifications(data, openid)
+    }
+    if (action === 'markAdminNotificationRead') {
+      return markAdminNotificationRead(data, openid)
+    }
+    if (action === 'getAdminNotificationBadge') {
+      return getAdminNotificationBadge(openid)
     }
     throw new Error('未知 admin 操作')
   }

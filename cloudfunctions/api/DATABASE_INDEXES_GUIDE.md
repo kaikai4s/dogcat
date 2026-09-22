@@ -282,6 +282,91 @@
 
 ---
 
+## 1️⃣4️⃣ admin_notifications（管理员系统通知表）- 3 个索引
+
+### 索引 14.1：幂等防重查询
+**优先级**：⭐⭐⭐ P0（最高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_admin_notice_idempotency` |
+| 索引属性 | **唯一**（或非唯一） |
+| 字段 1 | `idempotencyKey` - 升序 |
+
+**用途**：定时任务超时扫描、事件触发时通知防重复生成
+
+---
+
+### 索引 14.2：未读待办通知与时间排序
+**优先级**：⭐⭐⭐ P0（最高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_admin_notice_status_created` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `status` - 升序 |
+| 字段 2 | `createdAt` - 降序 |
+
+**用途**：管理后台红点角标统计未读数、通知列表筛选待办项
+
+---
+
+### 索引 14.3：全局通知时间倒序
+**优先级**：⭐⭐ P1（高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_admin_notice_created` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `createdAt` - 降序 |
+
+**用途**：通知中心“全部”列表按时间分页倒序加载
+
+---
+
+## 1️⃣5️⃣ staff_deposit_evidences（宠托师保证金违规留证表）- 3 个索引
+
+### 索引 15.1：宠托师出险与异常订单聚检查询
+**优先级**：⭐⭐⭐ P0（最高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_evidence_staff_created` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `staffOpenid` - 升序 |
+| 字段 2 | `createdAt` - 降序 |
+
+**用途**：宠托师管理列表、审核详情中一眼展示该宠托师所有出险与违规留证订单
+
+---
+
+### 索引 15.2：订单关联留证查询
+**优先级**：⭐⭐⭐ P0（最高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_evidence_order` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `orderId` - 升序 |
+
+**用途**：管理员订单详情页秒级加载该单关联的所有违规证据
+
+---
+
+### 索引 15.3：留证处理状态与时间排序
+**优先级**：⭐⭐ P1（高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_evidence_status_created` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `status` - 升序 |
+| 字段 2 | `createdAt` - 降序 |
+
+**用途**：财务保证金面板筛选待执行扣除、已扣除证据列表
+
+---
+
 ## 🎯 创建优先级总结
 
 ### ⭐⭐⭐ P0 - 立即创建（影响核心业务，极高频查询）
@@ -294,6 +379,10 @@
 | user_coupons | idx_user_coupons | 优惠券查询 |
 | staff_profiles | idx_openid | 宠托师信息查询 |
 | payments | idx_payment_no | 支付回调查询 |
+| admin_notifications | idx_admin_notice_idempotency | 定时预警防重复写入 |
+| admin_notifications | idx_admin_notice_status_created | 管理端未读通知与红点角标 |
+| staff_deposit_evidences | idx_evidence_staff_created | 宠托师出险违规订单即时聚合 |
+| staff_deposit_evidences | idx_evidence_order | 订单详情留证加载 |
 
 **创建时间**：立即创建（今天内完成）
 
@@ -309,6 +398,8 @@
 | staff_earnings | idx_staff_earnings | 可提现收益 |
 | staff_schedule_exceptions | idx_schedule | 排班查询 |
 | pets | idx_user_pets | 宠物列表 |
+| admin_notifications | idx_admin_notice_created | 通知中心全部列表分页 |
+| staff_deposit_evidences | idx_evidence_status_created | 财务保证金待扣除证据筛选 |
 
 **创建时间**：本周内完成
 

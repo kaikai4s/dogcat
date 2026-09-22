@@ -135,6 +135,8 @@ Page({
     themeClass: 'theme-day',
     directOrders: [],
     nearbyOrders: [],
+    urgentOrders: [],
+    grabTab: 'normal',
     nearbyPage: 1,
     nearbyPageSize: 10,
     nearbyHasMore: true,
@@ -423,16 +425,20 @@ Page({
 
     Promise.all([
       callFunction('staff', 'listDirectOrders', data),
-      callFunction('staff', 'listNearbyOrders', data)
+      callFunction('staff', 'listNearbyOrders', data),
+      callFunction('staff', 'listUrgentOrders', data).catch(() => [])
     ])
-      .then(([directResult, nearbyResult]) => {
+      .then(([directResult, nearbyResult, urgentResult]) => {
         const directPage = pageList(directResult)
         const nearbyPage = pageList(nearbyResult)
+        const urgentPage = pageList(urgentResult)
         const recalculatedDirectOrders = applyWorkbenchDistances(directPage.list, location)
         const recalculatedNearbyOrders = this.normalizeNearbyOrders(nearbyPage.list, location)
+        const recalculatedUrgentOrders = applyWorkbenchDistances(urgentPage.list, location)
         this.setData({
           directOrders: recalculatedDirectOrders,
           nearbyOrders: recalculatedNearbyOrders,
+          urgentOrders: recalculatedUrgentOrders,
           nearbyPage: nearbyPage.page,
           nearbyHasMore: nearbyPage.hasMore,
           locationReady: true,
@@ -445,6 +451,11 @@ Page({
         this.setData({ loadingNearby: false })
         showError(error)
       })
+  },
+
+  switchGrabTab(e) {
+    const tab = e.currentTarget.dataset.tab || 'normal'
+    this.setData({ grabTab: tab })
   },
 
   loadMoreNearby() {

@@ -74,7 +74,7 @@ Page({
     const current = pages[pages.length - 1]
     const currentRoute = current && current.route ? '/' + current.route : ''
     if (currentRoute === url) return
-    const mainNavUrls = ['/pages/admin/home/index', '/pages/admin/orders/list/index', '/pages/admin/staff-audit/list/index', '/pages/admin/incidents/list/index', '/pages/admin/coupons/index', '/pages/admin/member-levels/index', '/pages/admin/checkin-config/index', '/pages/admin/points/index', '/pages/admin/settings/index']
+    const mainNavUrls = ['/pages/admin/home/index', '/pages/admin/orders/list/index', '/pages/admin/staff-audit/list/index', '/pages/admin/incidents/list/index', '/pages/admin/coupons/index', '/pages/admin/checkin-config/index', '/pages/admin/points/index', '/pages/admin/settings/index']
     const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
     wx[method]({ url })
   }

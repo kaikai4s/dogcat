@@ -6,7 +6,17 @@ module.exports = function createService({
   parseDateValue
 }) {
   async function calculateStaffEarningForOrder(order) {
-    if (!order || !order.payAmount) return { earningAmount: 0, commissionRate: 0.7 }
+    if (!order) return { earningAmount: 0, commissionRate: 0.7 }
+    if (order.isUrgent && Number(order.urgentStaffReward) > 0) {
+      const urgentReward = Number(order.urgentStaffReward)
+      return {
+        earningAmount: urgentReward,
+        commissionRate: 1,
+        isUrgent: true,
+        urgentBonus: Number(order.urgentBonus || 0)
+      }
+    }
+    if (!order.payAmount) return { earningAmount: 0, commissionRate: 0.7 }
     const settings = await getSystemSettings()
     const rate = Number(settings.settlement.staffCommissionRate || 0.7)
     const grossAmount = Number(order.payAmount || 0)
@@ -26,7 +36,10 @@ module.exports = function createService({
     const settings = await getSystemSettings()
     const rate = Number(settings.settlement.staffCommissionRate || 0.7)
     const grossAmount = Number(order.payAmount || 0)
-    const earningAmount = Math.round(grossAmount * rate * 100) / 100
+    let earningAmount = Math.round(grossAmount * rate * 100) / 100
+    if (order.isUrgent && Number(order.urgentStaffReward) > 0) {
+      earningAmount = Number(order.urgentStaffReward)
+    }
     const time = now()
     const earning = {
       orderId: order._id,

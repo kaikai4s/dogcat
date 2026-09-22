@@ -6,6 +6,7 @@ const adminSections = [
     desc: '派单、服务履约、异常处理',
     items: [
       { icon: 'ri-file-list-3-line', title: '订单管理', desc: '派单与监控', url: '/pages/admin/orders/list/index' },
+      { icon: 'ri-notification-3-line', title: '系统通知', desc: '异常告警与待办', url: '/pages/admin/notifications/index' },
       { icon: 'ri-shopping-bag-3-line', title: '商城订单', desc: '发货与售后', url: '/pages/admin/mall/orders/index' },
       { icon: 'ri-alarm-warning-line', title: '异常事件', desc: 'SOS 与客诉', url: '/pages/admin/incidents/list/index' },
       { icon: 'ri-wallet-3-line', title: '财务提现', desc: '收益与打款审核', url: '/pages/admin/finance/index' }
@@ -76,11 +77,14 @@ Page({
     dashboard: null,
     overviewStats: [],
     revenueStats: [],
-    adminSections
+    adminSections,
+    urgentNotice: null,
+    unreadNotificationCount: 0
   },
 
   onShow() {
     this.loadDashboard()
+    this.loadNotifications()
   },
 
   loadDashboard() {
@@ -95,6 +99,24 @@ Page({
       .catch(showError)
   },
 
+  loadNotifications() {
+    callFunction('admin', 'getAdminNotificationBadge')
+      .then((res) => {
+        this.setData({
+          unreadNotificationCount: res.unreadCount || 0,
+          urgentNotice: res.latestUrgent || null
+        })
+      })
+      .catch(() => {})
+  },
+
+  tapUrgentNotice() {
+    const notice = this.data.urgentNotice
+    if (!notice) return
+    const url = notice.actionUrl || (notice.orderId ? `/pages/admin/orders/detail/index?id=${notice.orderId}` : '')
+    if (url) wx.navigateTo({ url })
+  },
+
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return
@@ -102,7 +124,7 @@ Page({
     const current = pages[pages.length - 1]
     const currentRoute = current && current.route ? '/' + current.route : ''
     if (currentRoute === url) return
-    const mainNavUrls = ['/pages/admin/home/index', '/pages/admin/orders/list/index', '/pages/admin/staff-audit/list/index', '/pages/admin/incidents/list/index', '/pages/admin/coupons/index', '/pages/admin/member-levels/index', '/pages/admin/checkin-config/index', '/pages/admin/points/index', '/pages/admin/settings/index']
+    const mainNavUrls = ['/pages/admin/home/index', '/pages/admin/orders/list/index', '/pages/admin/staff-audit/list/index', '/pages/admin/incidents/list/index', '/pages/admin/coupons/index', '/pages/admin/checkin-config/index', '/pages/admin/points/index', '/pages/admin/settings/index']
     const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
     wx[method]({ url })
   }

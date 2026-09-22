@@ -1,8 +1,28 @@
 <view class="{{themeClass}} {{fontClass}} page dashboard-page admin-home-page">
   <view class="dashboard-header">
-    <view class="badge">管理端</view>
+    <view class="between header-top-line">
+      <view class="badge">管理端</view>
+      <view class="header-notice-pill" data-url="/pages/admin/notifications/index" bindtap="go">
+        <text class="remix-icon ri-notification-3-line"></text>
+        <text>通知待办</text>
+        <view class="notice-dot" wx:if="{{unreadNotificationCount > 0}}">{{unreadNotificationCount}}</view>
+      </view>
+    </view>
     <view class="title">运营控制台</view>
     <view class="tip">按业务域查看订单、人员、营销和平台配置，快速定位运营动作。</view>
+  </view>
+
+  <!-- 紧急待办通知 Banner（如超时30分钟未开始） -->
+  <view class="urgent-notice-banner" wx:if="{{urgentNotice}}" bindtap="tapUrgentNotice">
+    <view class="urgent-banner-left">
+      <view class="pulse-dot"></view>
+      <text class="remix-icon ri-alarm-warning-fill banner-icon"></text>
+      <view class="banner-texts">
+        <view class="banner-title">{{urgentNotice.title}}</view>
+        <view class="banner-sub">宠托师超时未到场，点击立即核实或转加急单 ➔</view>
+      </view>
+    </view>
+    <view class="banner-btn">去调度</view>
   </view>
 
   <view class="stats-grid admin-stats-grid" wx:if="{{dashboard}}">

@@ -101,6 +101,16 @@ Page({
     wx.navigateTo({ url: `/pages/admin/staff-audit/detail/index?id=${id}` })
   },
 
+  goToOrder(e) {
+    const id = e.currentTarget.dataset.id
+    if (!id) return
+    wx.navigateTo({ url: `/pages/admin/orders/detail/index?id=${id}` })
+  },
+
+  goToFinanceDeposit(e) {
+    wx.navigateTo({ url: '/pages/admin/finance/index?tab=deposits' })
+  },
+
   toggleFeatured(e) {
     const staffProfileId = e.currentTarget.dataset.id
     const currentFeatured = e.currentTarget.dataset.featured === true || e.currentTarget.dataset.featured === 'true'
@@ -148,7 +158,7 @@ Page({
     const current = pages[pages.length - 1]
     const currentRoute = current && current.route ? '/' + current.route : ''
     if (currentRoute === url) return
-    const mainNavUrls = ['/pages/admin/home/index', '/pages/admin/orders/list/index', '/pages/admin/staff-audit/list/index', '/pages/admin/incidents/list/index', '/pages/admin/coupons/index', '/pages/admin/member-levels/index', '/pages/admin/checkin-config/index', '/pages/admin/points/index', '/pages/admin/settings/index']
+    const mainNavUrls = ['/pages/admin/home/index', '/pages/admin/orders/list/index', '/pages/admin/staff-audit/list/index', '/pages/admin/incidents/list/index', '/pages/admin/coupons/index', '/pages/admin/checkin-config/index', '/pages/admin/points/index', '/pages/admin/settings/index']
     const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
     wx[method]({ url })
   }

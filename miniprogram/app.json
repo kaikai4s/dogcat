@@ -207,7 +207,8 @@
         "points/index",
         "lottery/index",
         "settings/index",
-        "prices/index"
+        "prices/index",
+        "notifications/index"
       ]
     },
     {

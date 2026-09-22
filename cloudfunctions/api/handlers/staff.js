@@ -550,7 +550,7 @@ module.exports = function createHandler(context) {
         return true
       }
 
-      let orders = await Promise.all((res.data || []).filter((order) => !isAdminDeletedOrder(order) && isOpenOrder(order)).map(async (order) => {
+      let orders = await Promise.all((res.data || []).filter((order) => !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent).map(async (order) => {
         const enriched = await attachOrderDisplayData(order)
         let distanceKm = null
         if (hasCoordinate(latitude, longitude) && hasCoordinate(enriched.addressLatitude, enriched.addressLongitude)) {
@@ -617,6 +617,45 @@ module.exports = function createHandler(context) {
       const maskedDirectOrders = directOrders.map(maskOrderForStaffPreview)
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       return wantsPage ? paginateList(maskedDirectOrders, data) : maskedDirectOrders
+    }
+    if (action === 'listUrgentOrders') {
+      const user = await getUser(openid)
+      if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
+      const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
+      const profile = normalizeStaffWorkflow(profileRes.data[0] || {})
+      const settings = await getSystemSettings().catch(() => ({}))
+      const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
+      if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可查看加急订单')
+      const latitude = Number(data.latitude || profile.currentLatitude || 0)
+      const longitude = Number(data.longitude || profile.currentLongitude || 0)
+      await expireDueUnacceptedOrders()
+
+      const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
+      const urgentOrders = await Promise.all((res.data || [])
+        .filter((order) => !isAdminDeletedOrder(order) && order.isUrgent === true && !order.staffOpenid)
+        .map(async (order) => {
+          const enriched = await attachOrderDisplayData(order)
+          let distanceKm = null
+          if (hasCoordinate(latitude, longitude) && hasCoordinate(enriched.addressLatitude, enriched.addressLongitude)) {
+            distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
+          }
+          const earning = await calculateStaffEarningForOrder(enriched)
+          return {
+            ...enriched,
+            distanceKm,
+            distanceText: formatDistance(distanceKm),
+            isUrgent: true,
+            urgentStaffReward: order.urgentStaffReward || earning.earningAmount,
+            urgentBonus: order.urgentBonus || 0,
+            urgentRemark: order.urgentRemark || '',
+            staffEarning: earning.earningAmount,
+            staffEarningText: `¥${Number(earning.earningAmount).toFixed(2)}`
+          }
+        }))
+      const sorted = urgentOrders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
+      const maskedUrgentOrders = sorted.map(maskOrderForStaffPreview)
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      return wantsPage ? paginateList(maskedUrgentOrders, data) : maskedUrgentOrders
     }
     if (action === 'getScheduleCalendar') {
       const user = await getUser(openid)

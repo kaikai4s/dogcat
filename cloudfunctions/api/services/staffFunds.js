@@ -131,6 +131,23 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         availableRefundAmount: patch.availableRefundAmount ?? deposit.availableRefundAmount }
       await tx.collection('staff_deposits').doc(data.id).update({ data: { ...patch, updatedAt: time } })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: { ...profilePatch, updatedAt: time } })
+      if (action === 'forfeitStaffDeposit' && data.evidenceId) {
+        try {
+          await tx.collection('staff_deposit_evidences').doc(data.evidenceId).update({
+            data: {
+              status: 'forfeited',
+              forfeitedAmount: amount / 100,
+              forfeitedAt: time,
+              forfeitedBy: admin.openid,
+              forfeitDepositId: data.id,
+              forfeitEventId: eventId,
+              updatedAt: time
+            }
+          })
+        } catch (err) {
+          // Non-blocking if evidence record missing
+        }
+      }
       const eventType = action === 'forfeitStaffDeposit' ? 'forfeit' : action === 'confirmDepositRefund' ? 'refund' : 'refund_audit'
       await depositEvent(tx, eventId, deposit, admin.openid, eventType, amount / 100, reason, time, {
         result, request: JSON.stringify([action, data.approved === true, data.amount ?? null, reason, proof])

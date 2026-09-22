@@ -406,8 +406,8 @@
 .review-score {
   display: inline-flex;
   align-items: center;
-  gap: 8rpx;
-  padding: 10rpx 18rpx;
+  gap: 12rpx;
+  padding: 10rpx 20rpx;
   border-radius: 999rpx;
   color: #d45f22;
   background: #fff0e2;
@@ -415,9 +415,28 @@
   font-weight: 900;
 }
 
-.review-score .remix-icon {
+.review-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+}
+
+.review-stars .remix-icon {
+  font-size: 28rpx;
+}
+
+.review-stars .star-active {
   color: #ffb020;
-  font-size: 30rpx;
+}
+
+.review-stars .star-inactive {
+  color: #d8d3cf;
+}
+
+.review-rating-num {
+  font-size: 26rpx;
+  color: #d45f22;
+  font-weight: 900;
 }
 
 .tag-row {

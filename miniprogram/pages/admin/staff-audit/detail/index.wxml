@@ -45,6 +45,21 @@
     <view class="info-row" wx:if="{{staff.auditRemark}}"><view class="label">审核备注</view><view class="value">{{staff.auditRemark}}</view></view>
   </view>
 
+  <view class="admin-card form-card" wx:if="{{staff.problemOrderCount > 0}}">
+    <view class="card-subtitle"><text class="remix-icon ri-alarm-warning-fill sub-icon" style="color: #ef4444;"></text><text style="color: #ef4444;">出险与违规订单留证 ({{staff.problemOrderCount}}笔)</text></view>
+    <view class="timeline" style="margin-top: 14rpx;">
+      <view class="timeline-item" wx:for="{{staff.problemOrders}}" wx:key="_id">
+        <view class="timeline-dot" style="background: #ef4444;"></view>
+        <view class="timeline-content">
+          <view class="strong" style="color: #ef4444;">{{item.orderNo}} · {{item.reasonTypeName}}</view>
+          <view class="muted" style="margin-top: 6rpx;">{{item.reasonText}}</view>
+          <view class="strong small" style="color: #ef4444; margin-top: 6rpx;" wx:if="{{item.deductAmount > 0}}">建议扣除：¥{{item.deductAmount}}</view>
+          <view class="muted small" style="margin-top: 6rpx;">{{item.createdAt}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
   <view class="bottom-actions" wx:if="{{staff.auditStatus === 'pending'}}">
     <button class="primary-btn" data-status="approved" bindtap="audit"><text class="remix-icon ri-check-line"></text><text>审核通过</text></button>
     <button class="danger-btn" data-status="rejected" bindtap="audit"><text class="remix-icon ri-close-line"></text><text>审核拒绝</text></button>

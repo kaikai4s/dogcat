@@ -12,7 +12,7 @@ const tagOptions = [
   { label: '值得推荐', selected: false }
 ]
 
-const ratingTexts = ['', '很差', '不满意', '一般', '满意', '超出预期']
+const ratingTexts = ['', '1分 · 很差', '2分 · 不满意', '3分 · 一般', '4分 · 满意', '5分 · 超出预期']
 
 Page({
   data: {

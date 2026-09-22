@@ -320,7 +320,25 @@
 .review-rating {
   display: flex;
   align-items: center;
-  gap: 6rpx;
+  gap: 8rpx;
+}
+
+.review-stars-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2rpx;
+}
+
+.review-stars-wrap .remix-icon {
+  font-size: 24rpx;
+}
+
+.review-stars-wrap .star-icon-active {
+  color: #ffb020;
+}
+
+.review-stars-wrap .star-icon-inactive {
+  color: #d8d3cf;
 }
 
 .rating-val {

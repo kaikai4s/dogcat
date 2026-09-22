@@ -1,0 +1,58 @@
+<view class="admin-notice-page {{themeClass}} {{fontClass}} page">
+  <view class="admin-notice-hero">
+    <view class="hero-badge"><text class="remix-icon ri-notification-3-fill"></text><text>消息中心</text></view>
+    <view class="hero-row">
+      <view>
+        <view class="hero-title">系统通知与告警</view>
+        <view class="hero-desc">实时监控服务超时、履约异常、退款诉求与待办事项</view>
+      </view>
+      <button class="mark-read-btn" bindtap="markAllRead" wx:if="{{unreadCount > 0}}">全部已读</button>
+    </view>
+  </view>
+
+  <view class="tabs-bar">
+    <view class="tab-item {{activeTab === 'all' ? 'active' : ''}}" data-tab="all" bindtap="switchTab">全部</view>
+    <view class="tab-item {{activeTab === 'unread' ? 'active' : ''}}" data-tab="unread" bindtap="switchTab">
+      <text>未读</text>
+      <text class="tab-badge" wx:if="{{unreadCount > 0}}">{{unreadCount}}</text>
+    </view>
+    <view class="tab-item urgent-tab {{activeTab === 'urgent' ? 'active' : ''}}" data-tab="urgent" bindtap="switchTab">
+      <text class="remix-icon ri-flashlight-fill"></text>
+      <text>加急预警</text>
+    </view>
+  </view>
+
+  <view class="notice-list" wx:if="{{list.length}}">
+    <view class="notice-card {{item.level === 'urgent' ? 'urgent-card' : ''}} {{item.isRead ? 'read' : 'unread'}}" wx:for="{{list}}" wx:key="_id" data-item="{{item}}" bindtap="tapItem">
+      <view class="card-top-row">
+        <view class="level-badge {{item.level}}">
+          <text class="remix-icon {{item.level === 'urgent' ? 'ri-flashlight-fill' : (item.level === 'warning' ? 'ri-alarm-warning-fill' : 'ri-information-fill')}}"></text>
+          <text wx:if="{{item.level === 'urgent'}}">紧急预警</text>
+          <text wx:elif="{{item.level === 'warning'}}">重要提醒</text>
+          <text wx:else>系统通知</text>
+        </view>
+        <view class="time-read-wrap">
+          <text class="notice-time">{{item.createdAt}}</text>
+          <view class="unread-dot" wx:if="{{!item.isRead}}"></view>
+        </view>
+      </view>
+
+      <view class="notice-title">{{item.title}}</view>
+      <view class="notice-content">{{item.content}}</view>
+
+      <view class="notice-footer" wx:if="{{item.actionUrl || item.orderId}}">
+        <text class="footer-action-text">点击立即核实与调度处理</text>
+        <text class="remix-icon ri-arrow-right-s-line footer-arrow"></text>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty-state" wx:elif="{{!loading}}">
+    <text class="remix-icon ri-notification-off-line empty-icon"></text>
+    <view class="empty-title">暂无相关通知消息</view>
+    <view class="empty-desc">系统运行平稳，暂无未处理的超时或异常事项</view>
+  </view>
+
+  <view class="list-state" wx:if="{{loading && list.length}}">正在加载通知...</view>
+  <view class="list-state" wx:if="{{!loading && list.length && !hasMore}}">已显示全部通知</view>
+</view>

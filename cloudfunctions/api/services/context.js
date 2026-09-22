@@ -57,6 +57,7 @@ module.exports = function createContext({ cloud, db }) {
   Object.assign(context, require('../services/pricing')(context))
   Object.assign(context, require('../services/subscriptions')(context))
   Object.assign(context, require('../services/serviceExecution')(context))
+  Object.assign(context, require('../services/adminNotifications')(context))
   Object.assign(context, require('../services/overdueOrders')(context))
   Object.assign(context, require('../services/wechatPay')(context))
   Object.assign(context, require('../utils/database')(context))

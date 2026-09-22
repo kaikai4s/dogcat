@@ -839,3 +839,133 @@ button.refresh-btn::after {
 .risk-action.disabled {
   opacity: .55;
 }
+
+/* 抢单大厅模式切换 Tab */
+.grab-tabs-bar {
+  display: flex;
+  align-items: center;
+  background: #f7f2ed;
+  border-radius: 20rpx;
+  padding: 8rpx;
+  margin-top: 20rpx;
+}
+
+.grab-tab-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 16rpx 0;
+  border-radius: 16rpx;
+  font-size: 27rpx;
+  font-weight: 850;
+  color: #7a6a5e;
+  transition: all 0.2s ease;
+}
+
+.grab-tab-item.active {
+  background: #ffffff;
+  color: #ea580c;
+  box-shadow: 0 4rpx 14rpx rgba(123, 89, 62, 0.08);
+}
+
+.grab-tab-count {
+  font-size: 23rpx;
+  color: #8e8580;
+}
+
+.urgent-tab-icon {
+  color: #ff4d4f;
+  font-size: 30rpx;
+}
+
+.urgent-tab-badge {
+  background: #ff4d4f;
+  color: #ffffff;
+  font-size: 20rpx;
+  font-weight: 900;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  line-height: 1.2;
+}
+
+/* 加急卡片专属样式 */
+.urgent-order-card {
+  border: 2rpx solid #ff7a45 !important;
+  background: linear-gradient(180deg, #fffaf6 0%, #ffffff 100%) !important;
+  box-shadow: 0 10rpx 30rpx rgba(255, 122, 69, 0.12) !important;
+}
+
+.urgent-card-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+  padding-bottom: 12rpx;
+  border-bottom: 1rpx dashed rgba(255, 122, 69, 0.2);
+}
+
+.urgent-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  background: linear-gradient(135deg, #ff4d4f, #ea580c);
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 900;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+}
+
+.urgent-bonus-tag {
+  background: #fff0e6;
+  color: #d4380d;
+  font-size: 22rpx;
+  font-weight: 850;
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid rgba(212, 56, 13, 0.2);
+}
+
+.urgent-dist-badge {
+  background: #fff0e6 !important;
+  color: #d4380d !important;
+  font-weight: 850;
+}
+
+.urgent-remark-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10rpx;
+  margin-top: 14rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 16rpx;
+  background: #fffbe6;
+  border: 1rpx solid #ffe58f;
+  color: #d46b08;
+  font-size: 24rpx;
+  line-height: 1.45;
+  font-weight: 800;
+}
+
+.urgent-remark-icon {
+  font-size: 28rpx;
+  margin-top: 2rpx;
+  flex-shrink: 0;
+}
+
+.urgent-earning-chip {
+  background: #fff2e8 !important;
+  color: #d4380d !important;
+  font-weight: 900 !important;
+  border: 1rpx solid rgba(212, 56, 13, 0.2);
+}
+
+.urgent-grab-btn {
+  background: linear-gradient(135deg, #ff7a45, #f53f3f) !important;
+  color: #ffffff !important;
+  font-weight: 900 !important;
+  box-shadow: 0 8rpx 20rpx rgba(245, 63, 63, 0.3) !important;
+}
+

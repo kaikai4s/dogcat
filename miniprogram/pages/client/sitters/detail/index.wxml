@@ -111,7 +111,9 @@
         <text class="member-badge badge-{{item.badgeStyle || 'gold'}}" wx:if="{{item.badgeTag || item.memberLevelName}}">{{item.badgeTag || item.memberLevelName}}</text>
       </view>
       <view class="review-rating">
-        <text class="remix-icon ri-star-fill star-icon"></text>
+        <view class="review-stars-wrap">
+          <text class="remix-icon {{item.rating >= star ? 'ri-star-fill star-icon-active' : 'ri-star-line star-icon-inactive'}}" wx:for="{{[1,2,3,4,5]}}" wx:for-item="star" wx:key="*this"></text>
+        </view>
         <text class="rating-val">{{item.rating}}分</text>
       </view>
     </view>

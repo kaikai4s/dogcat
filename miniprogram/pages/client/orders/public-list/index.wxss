@@ -23,7 +23,9 @@
 .person-label { color: #8e8580; font-size: 23rpx; }
 .person-name { margin-top: 6rpx; color: #2d211a; font-size: 27rpx; font-weight: 950; }
 .review-box { margin-top: 20rpx; padding: 18rpx; border-radius: 24rpx; background: #fff8ec; }
-.stars { display: flex; align-items: center; gap: 4rpx; margin-bottom: 10rpx; color: #ffb020; font-size: 28rpx; font-weight: 900; }
+.stars { display: flex; align-items: center; gap: 4rpx; margin-bottom: 10rpx; font-size: 28rpx; font-weight: 900; }
+.stars .star-active { color: #ffb020; }
+.stars .star-inactive { color: #d8d3cf; }
 .rating-text { margin-left: 10rpx; color: #d45f22; font-size: 25rpx; }
 .review-content { color: #574b42; font-size: 25rpx; line-height: 1.5; }
 .tag-row { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 12rpx; }

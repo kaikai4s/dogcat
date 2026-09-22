@@ -128,3 +128,115 @@
   background: #fef2f2;
   border: 2rpx solid rgba(220, 38, 38, 0.18);
 }
+
+.danger-chip {
+  background: #fef2f2 !important;
+  color: #ef4444 !important;
+  border: 1rpx solid rgba(239, 68, 68, 0.25) !important;
+  font-weight: 850;
+}
+
+.danger-text {
+  color: #ef4444 !important;
+}
+
+.success-text {
+  color: #10b981 !important;
+}
+
+.sitter-problem-section {
+  margin-top: 18rpx;
+  padding: 16rpx;
+  background: #fffafa;
+  border: 1rpx solid rgba(239, 68, 68, 0.16);
+  border-radius: 18rpx;
+}
+
+.sitter-problem-section.clean-section {
+  background: #f0fdf4;
+  border: 1rpx solid rgba(16, 185, 129, 0.18);
+}
+
+.clean-tip {
+  font-size: 24rpx;
+  color: #065f46;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.problem-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 26rpx;
+  font-weight: 900;
+  margin-bottom: 12rpx;
+}
+
+.problem-order-card {
+  background: #ffffff;
+  border-radius: 14rpx;
+  padding: 14rpx;
+  margin-bottom: 12rpx;
+  border: 1rpx solid rgba(239, 68, 68, 0.12);
+  box-shadow: 0 2rpx 6rpx rgba(239, 68, 68, 0.04);
+}
+
+.problem-order-card:last-child {
+  margin-bottom: 0;
+}
+
+.problem-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.problem-orderno {
+  font-size: 24rpx;
+  font-weight: 850;
+  color: #1f2937;
+}
+
+.problem-reason-type {
+  font-size: 24rpx;
+  font-weight: 800;
+  color: #dc2626;
+  margin-top: 6rpx;
+}
+
+.problem-desc {
+  font-size: 23rpx;
+  color: #4b5563;
+  margin-top: 4rpx;
+  line-height: 1.4;
+}
+
+.problem-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #6b7280;
+}
+
+.problem-amount .price {
+  color: #ef4444;
+  font-weight: 900;
+}
+
+.problem-actions {
+  display: flex;
+  gap: 12rpx;
+  margin-top: 10rpx;
+}
+
+.problem-actions .mini-btn {
+  flex: 1;
+  min-height: 48rpx;
+  font-size: 22rpx;
+  padding: 0 12rpx;
+}
+

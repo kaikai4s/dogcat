@@ -129,7 +129,12 @@
 
   <view class="card review-card" wx:if="{{review}}">
     <view class="card-subtitle"><text class="remix-icon ri-star-smile-line sub-icon"></text><text>服务评价</text></view>
-    <view class="review-score"><text class="remix-icon ri-star-fill"></text><text>{{review.rating}} 星</text></view>
+    <view class="review-score">
+      <view class="review-stars">
+        <text class="remix-icon {{review.rating >= star ? 'ri-star-fill star-active' : 'ri-star-line star-inactive'}}" wx:for="{{[1,2,3,4,5]}}" wx:for-item="star" wx:key="*this"></text>
+      </view>
+      <text class="review-rating-num">{{review.rating}} 分</text>
+    </view>
     <view class="notice-text">{{review.content || '客户未填写文字评价'}}</view>
     <view class="tag-row" wx:if="{{review.tags.length}}">
       <view class="tag" wx:for="{{review.tags}}" wx:key="*this">{{item}}</view>
