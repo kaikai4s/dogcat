@@ -51,7 +51,19 @@
       </view>
     </block>
 
-    <view class="info-row" wx:if="{{detail.order.assignmentSource}}"><view class="label">派单来源</view><view class="value">{{detail.order.assignmentSourceText}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.assignmentSource}}">
+      <view class="label">派单来源</view>
+      <view class="value">
+        <text class="soft-badge {{detail.order.assignmentSource === 'urgent_grab' ? 'urgent-badge' : (detail.order.assignmentSource === 'admin_assign' ? 'status-badge' : '')}}">{{detail.order.assignmentSourceText}}</text>
+      </view>
+    </view>
+    <view class="info-row" wx:if="{{detail.order.urgentGrabDurationText}}">
+      <view class="label">加急响应时效</view>
+      <view class="value" style="color: #ea580c; font-weight: bold;">
+        <text class="remix-icon ri-timer-flash-line" style="margin-right: 4rpx;"></text>
+        <text>{{detail.order.urgentGrabDurationText}}</text>
+      </view>
+    </view>
     <view class="info-row"><view class="label">地址</view><view class="value">{{detail.order.serviceAddress}}</view></view>
     <view class="info-row" wx:if="{{detail.order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{detail.order.addressDetail}}</view></view>
     <view class="info-row"><view class="label">状态</view><view class="soft-badge status-badge">{{detail.order.statusText}}</view></view>

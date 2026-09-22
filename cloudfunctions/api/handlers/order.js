@@ -263,6 +263,13 @@ module.exports = function createHandler(context) {
       const resultOrder = { ...displayOrder, trackCount: (tracksRes.data || []).length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: toPublicOrderHomeSecurity(orderSecurity) }
       const requestedRole = safeText(data.role).trim()
       const isStaffView = requestedRole === 'staff' || user.activeRole === 'staff' || (order.clientOpenid !== openid && user.roles.includes('staff'))
+      const isPreviousStaff = (Array.isArray(order.previousStaffRecords) && order.previousStaffRecords.some((r) => r.staffOpenid === openid)) || order.originalStaffOpenid === openid
+      const isReassignedToOther = Boolean(isPreviousStaff && order.staffOpenid !== openid)
+      if (isReassignedToOther) {
+        resultOrder.isReassignedToOther = true
+        resultOrder.reassignedReason = order.isUrgent ? 'urgent_republish' : 'reassigned'
+        resultOrder.reassignNotice = order.isUrgent ? '该订单因超时未履约已被平台转加急派单' : '该订单已被平台改派给其他宠托师'
+      }
       const isStaffPreview = isStaffView && (order.status === ORDER_STATUS.PAID || order.staffOpenid !== openid)
       if (isStaffPreview) return maskOrderForStaffPreview(resultOrder)
       if (isStaffView || (!user.roles.includes('admin') && order.clientOpenid !== openid)) return maskOrderClientContact(resultOrder)

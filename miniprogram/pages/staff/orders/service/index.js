@@ -300,12 +300,52 @@ Page({
     this.serviceElapsedTimer = null
   },
 
+  handleOrderReassigned(notice) {
+    if (this._reassignModalShown) return
+    this._reassignModalShown = true
+    this.stopServiceElapsedTimer()
+    this.stopEarlyStartPolling()
+    this.stopAutoTracking()
+    wx.showModal({
+      title: '订单已被改派',
+      content: notice || '该订单因超时未履约已被平台转加急派单',
+      showCancel: false,
+      confirmText: '返回工作台',
+      confirmColor: '#ea580c',
+      success: () => {
+        wx.reLaunch({
+          url: '/pages/staff/home/index',
+          fail: () => {
+            wx.redirectTo({ url: '/pages/staff/home/index' })
+          }
+        })
+      }
+    })
+  },
+
   loadOrder() {
     return Promise.all([
       callFunction('order', 'getOrderDetail', { id: this.data.id, role: 'staff' }),
       callFunction('checkin', 'listOrderCheckins', { orderId: this.data.id }).catch(() => [])
     ])
       .then(([order, checkins]) => {
+        if (!order) return
+        const app = typeof getApp === 'function' ? getApp() : null
+        const currentUser = (app && app.globalData && app.globalData.user) || {}
+        const myOpenid = currentUser.openid || ''
+
+        const isReassigned = Boolean(
+          order.isReassignedToOther ||
+          (order.isUrgent && order.status === 'paid' && !order.staffOpenid) ||
+          (order.isUrgent && order.assignmentSource === 'admin_urgent_republish' && !order.staffOpenid) ||
+          (myOpenid && order.staffOpenid && order.staffOpenid !== myOpenid && (order.originalStaffOpenid === myOpenid || (Array.isArray(order.previousStaffRecords) && order.previousStaffRecords.some((r) => r.staffOpenid === myOpenid))))
+        )
+        if (isReassigned) {
+          const notice = order.reassignNotice || (order.isUrgent ? '该订单因超时未履约已被平台转加急派单' : '该订单已被平台改派给其他宠托师')
+          this.handleOrderReassigned(notice)
+          return
+        }
+
         const displayOrder = withServiceActionState(order)
         if (displayOrder && Array.isArray(displayOrder.checkinRequirements)) {
           const sessionStartedAt = toTimeValue(displayOrder.currentSessionStartedAt || (displayOrder.activeSession && displayOrder.activeSession.startedAt) || displayOrder.startedAt)
@@ -350,7 +390,12 @@ Page({
           this.setData({ serviceElapsedText: '00:00:00' })
         }
       })
-      .catch(() => {})
+      .catch((err) => {
+        const msg = (err && (err.message || err.errMsg)) || ''
+        if (/无权访问|不是该订单员工/.test(msg)) {
+          this.handleOrderReassigned('该订单因超时未履约已被平台转加急派单')
+        }
+      })
   },
 
   loadCustomerService() {

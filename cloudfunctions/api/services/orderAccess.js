@@ -18,8 +18,9 @@ module.exports = function createService({
     let order = res.data ? { ...res.data, _id: orderId } : null
     if (!order || (isAdminDeletedOrder(order) && !user.roles.includes('admin'))) throw new Error('订单不存在')
     order = await expireUnacceptedOrder(orderId, order)
+    const isPreviousStaff = user.roles.includes('staff') && ((Array.isArray(order.previousStaffRecords) && order.previousStaffRecords.some((r) => r.staffOpenid === openid)) || order.originalStaffOpenid === openid)
     const canPreviewForStaff = user.roles.includes('staff') && order.status === ORDER_STATUS.PAID && (isOpenOrder(order) || order.requestedStaffOpenid === openid)
-    const allowed = order.clientOpenid === openid || order.staffOpenid === openid || order.requestedStaffOpenid === openid || user.roles.includes('admin') || canPreviewForStaff
+    const allowed = order.clientOpenid === openid || order.staffOpenid === openid || order.requestedStaffOpenid === openid || user.roles.includes('admin') || canPreviewForStaff || isPreviousStaff
     if (!allowed) throw new Error('无权访问订单')
     return { user, order }
   }

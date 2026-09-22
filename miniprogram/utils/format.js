@@ -97,8 +97,11 @@ const checkinEventText = {
 
 const assignmentSourceText = {
   staff_accept: '宠托师抢单',
+  open_grab: '普通抢单',
+  urgent_grab: '加急揭榜抢单',
   admin_assign: '管理员派单',
-  direct_accept: '指定宠托师接单'
+  direct_accept: '指定宠托师接单',
+  admin_urgent_republish: '平台转加急抢单'
 }
 
 const incidentTypeText = {
@@ -271,6 +274,11 @@ function withOrderText(order) {
     paymentStatusText: formatPaymentStatus(order.paymentStatus || 'unpaid'),
     refundStatusText: formatRefundStatus(order.refundStatus),
     assignmentSourceText: formatAssignmentSource(order.assignmentSource),
+    urgentGrabDurationText: order.urgentGrabDurationSeconds != null
+      ? (order.urgentGrabDurationSeconds < 60
+          ? `${order.urgentGrabDurationSeconds}秒`
+          : `${Math.ceil(order.urgentGrabDurationSeconds / 60)}分钟`)
+      : '',
     createdAtText: formatDateTime(order.createdAt),
     appointmentTimeText: formatAppointmentTime(order)
   }

@@ -844,14 +844,28 @@ module.exports = function createHandler(context) {
       if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
       if (risk.requiresConfirmation && data.riskConfirmed !== true) throw new Error('请先阅读并确认超出接单设置的履约责任')
       const time = now()
+      const isUrgentGrab = Boolean(
+        order.isUrgent === true ||
+        order.assignmentSource === 'admin_urgent_republish' ||
+        (Number(order.urgentBonus || 0) > 0) ||
+        (Number(order.urgentStaffReward || 0) > 0)
+      )
+      const assignmentSource = publishMode === 'direct' ? 'direct_accept' : (isUrgentGrab ? 'urgent_grab' : 'open_grab')
+
       const assignmentUpdate = {
         staffUserId: user._id,
         staffOpenid: openid,
         staffProfileId: profile._id,
         status: 'assigned',
-        assignmentSource: publishMode === 'direct' ? 'direct_accept' : 'open_grab',
+        assignmentSource,
         assignedAt: time,
         updatedAt: time
+      }
+      if (isUrgentGrab && order.urgentRepublishedAt) {
+        const urgentTime = toTimeValue(order.urgentRepublishedAt)
+        if (urgentTime > 0) {
+          assignmentUpdate.urgentGrabDurationSeconds = Math.max(0, Math.floor((time.getTime() - urgentTime) / 1000))
+        }
       }
       // 【新增】只在有有效值时记录接单位置信息
       if (hasCoordinate(currentLat, currentLng)) {
@@ -866,12 +880,20 @@ module.exports = function createHandler(context) {
         assignmentUpdate.acceptRiskWarnings = risk.warnings
       }
       const assignedOrder = await assignOrderAtomically(data.orderId, order, assignmentUpdate, { depositConfig: settings.staffDeposit })
-      const assignedTitle = publishMode === 'direct' ? '指定宠托师已接单' : '宠托师已抢单'
-      await appendOrderTimeline(data.orderId, 'assigned', assignedTitle, maskStaffName(profile.realName), 'staff')
-      await appendOrderClientMessage(assignedOrder, { eventType: 'assigned', title: assignedTitle, detail: maskStaffName(profile.realName), actorRole: 'staff' })
+      let assignedTitle = publishMode === 'direct' ? '指定宠托师已接单' : (isUrgentGrab ? '加急揭榜抢单' : '宠托师已抢单')
+      let timelineDetail = maskStaffName(profile.realName)
+      if (isUrgentGrab) {
+        const durationMin = assignmentUpdate.urgentGrabDurationSeconds != null
+          ? Math.ceil(assignmentUpdate.urgentGrabDurationSeconds / 60)
+          : null
+        const durationText = durationMin != null ? `（加急响应耗时：${durationMin}分钟）` : ''
+        timelineDetail = `宠托师（${maskStaffName(profile.realName)}）已加急揭榜抢单${durationText}，平台加价补贴生效中。`
+      }
+      await appendOrderTimeline(data.orderId, 'assigned', assignedTitle, timelineDetail, 'staff')
+      await appendOrderClientMessage(assignedOrder, { eventType: 'assigned', title: assignedTitle, detail: timelineDetail, actorRole: 'staff' })
       const notifyResult = await notifyOrderAccepted(assignedOrder, maskStaffName(profile.realName))
       await db.collection('orders').doc(data.orderId).update({ data: { acceptedNotifyStatus: notifyResult && notifyResult.status || 'skipped', acceptedNotifyError: notifyResult && notifyResult.error || '', updatedAt: time } })
-      return { orderId: data.orderId, status: 'assigned', notifyStatus: notifyResult && notifyResult.status || 'skipped', notifyError: notifyResult && notifyResult.error || '' }
+      return { orderId: data.orderId, status: 'assigned', assignmentSource, notifyStatus: notifyResult && notifyResult.status || 'skipped', notifyError: notifyResult && notifyResult.error || '' }
     }
     if (action === 'getDepositStatus') {
       const user = await getUser(openid)
