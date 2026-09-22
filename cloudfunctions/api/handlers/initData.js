@@ -20,8 +20,8 @@ module.exports = function createHandler(context) {
     }
 
     async function hasActiveAdmin() {
-      const usersRes = await db.collection('users').get()
-      return (usersRes.data || []).some((user) => user.status === 'active' && Array.isArray(user.roles) && user.roles.includes('admin'))
+      const usersRes = await db.collection('users').where({ status: 'active', roles: db.command.in(['admin']) }).limit(1).get()
+      return usersRes.data.length > 0
     }
 
     async function requireInitSecretOrAdmin() {

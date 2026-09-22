@@ -1,5 +1,6 @@
 module.exports = function createService({
-  db
+  db,
+  authorizeAdmin
 }) {
   async function getUser(openid) {
     const res = await db.collection('users').where({ openid }).limit(1).get()
@@ -16,7 +17,7 @@ module.exports = function createService({
   async function requireAdmin(openid) {
     const user = await getUser(openid)
     if (!Array.isArray(user.roles) || !user.roles.includes('admin')) throw new Error('仅管理员可操作')
-    return user
+    return authorizeAdmin(user)
   }
 
   return {

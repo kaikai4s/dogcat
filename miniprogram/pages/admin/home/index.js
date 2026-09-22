@@ -1,4 +1,5 @@
 const { callFunction, showError } = require('../../../utils/cloud')
+const { can, canVisit } = require('../../../utils/adminAccess')
 
 const adminSections = [
   {
@@ -21,7 +22,9 @@ const adminSections = [
       { icon: 'ri-shield-check-line', title: '员工审核', desc: '资质与权限', url: '/pages/admin/staff-audit/list/index' },
       { icon: 'ri-graduation-cap-line', title: '培训视频审核', desc: '微信视频审核', url: '/pages/admin/staff-training/list/index' },
       { icon: 'ri-award-line', title: '实习转正审核', desc: '三单报告质量', url: '/pages/admin/staff-promotion/list/index' },
-      { icon: 'ri-admin-line', title: '管理员管理', desc: '后台权限', url: '/pages/admin/admins/list/index' }
+      { icon: 'ri-admin-line', title: '管理员管理', desc: '后台人员', url: '/pages/admin/admins/list/index' },
+      { icon: 'ri-shield-keyhole-line', title: '用户组与权限', desc: '权限树与人员分组', url: '/pages/admin/permissions/index' },
+      { icon: 'ri-history-line', title: '后台操作日志', desc: '按人员查看记录', url: '/pages/admin/operation-logs/index' }
     ]
   },
   {
@@ -78,14 +81,16 @@ Page({
     dashboard: null,
     overviewStats: [],
     revenueStats: [],
-    adminSections,
+    adminSections: [],
     urgentNotice: null,
     unreadNotificationCount: 0
   },
 
   onShow() {
-    this.loadDashboard()
-    this.loadNotifications()
+    const access = this.data.adminAccess
+    this.setData({ adminSections: adminSections.map(section => ({ ...section, items: section.items.filter(item => canVisit(access, item.url)) })).filter(section => section.items.length), dashboard: null, urgentNotice: null })
+    if (can(access, 'admin.dashboard')) this.loadDashboard()
+    if (can(access, 'admin.getAdminNotificationBadge')) this.loadNotifications()
   },
 
   loadDashboard() {

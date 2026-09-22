@@ -34,7 +34,8 @@ exports.main = async (event = {}) => {
     const moduleName = event.module || event.name
     const handler = getHandler(moduleName)
     if (!handler) throw new Error(`未知模块：${moduleName}`)
-    return context.ok(await handler(OPENID, event.action, event.data || {}))
+    return context.ok(await context.runAdminRequest(moduleName, event.action, event.data || {},
+      () => handler(OPENID, event.action, event.data || {})))
   } catch (error) {
     return context.fail(error.message, error.code)
   }

@@ -185,6 +185,8 @@
         "users/edit/index",
         "sitters/list/index",
         "admins/list/index",
+        "permissions/index",
+        "operation-logs/index",
         "service-prices/index",
         "coupons/index",
         "mall/products/index",

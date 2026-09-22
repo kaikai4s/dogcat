@@ -1,5 +1,6 @@
 module.exports = function createHandler(context) {
   const {
+    authorizeAdmin,
     ORDER_STATUS,
     amountYuanToFen,
     appendOrderTimeline,
@@ -117,6 +118,7 @@ module.exports = function createHandler(context) {
     }
     if (action === 'queryRefund') {
       const user = await getUser(openid)
+      if (user.roles.includes('admin')) await authorizeAdmin(user)
       const res = await db.collection('refunds').where({ refundNo: data.refundNo }).limit(1).get()
       const refund = res.data[0]
       if (!refund) throw new Error('退款单不存在')

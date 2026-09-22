@@ -48,6 +48,7 @@ function createCollectionStore(initial = {}) {
       if (condition && typeof condition === 'object' && '$gt' in condition) return item[key] > condition.$gt
       if (condition && typeof condition === 'object' && '$gte' in condition) return item[key] >= condition.$gte
       if (condition && typeof condition === 'object' && Array.isArray(condition.$in)) {
+        if (Array.isArray(item[key])) return item[key].some(value => condition.$in.includes(value))
         return condition.$in.includes(item[key]) || (condition.$in.includes('') && item[key] === undefined) || (condition.$in.includes(null) && item[key] === null)
       }
       return item[key] === condition

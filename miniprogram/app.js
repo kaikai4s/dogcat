@@ -25,6 +25,7 @@ function installGlobalPreferencePagePatch() {
 }
 
 installGlobalPreferencePagePatch()
+require('./utils/adminAccess').installAdminPageGuard()
 
 App({
   copyText,

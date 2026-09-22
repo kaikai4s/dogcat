@@ -636,7 +636,7 @@ module.exports = function createHandler(context) {
 
       const res = await db.collection('orders').where({ status: 'paid' }).orderBy('startTime', 'asc').get()
       const urgentOrders = await Promise.all((res.data || [])
-        .filter((order) => !isAdminDeletedOrder(order) && order.isUrgent === true && !order.staffOpenid)
+        .filter((order) => !isAdminDeletedOrder(order) && (order.isUrgent === true || order.assignmentSource === 'admin_urgent_republish') && !order.staffOpenid)
         .map(async (order) => {
           const enriched = await attachOrderDisplayData(order)
           let distanceKm = null

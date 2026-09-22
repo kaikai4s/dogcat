@@ -57,6 +57,18 @@ module.exports = function createService({
         throw new Error('订单状态已变化，请刷新后重试')
       }
       const updated = { ...order, ...patch }
+      // 服务开始后订单归属和履约状态只能由正常服务流程推进，禁止管理员
+      // 通过手动回退状态再走派单接口，变相重新指派订单。
+      const serviceStartedStatuses = ['in_service', 'day_completed', 'completed']
+      const assignmentChanged = ['staffOpenid', 'staffUserId', 'staffProfileId'].some((key) =>
+        Object.prototype.hasOwnProperty.call(patch, key) && patch[key] !== order[key]
+      )
+      if (serviceStartedStatuses.includes(order.status) && (assignmentChanged || updated.status !== order.status)) {
+        throw new Error('订单已开始履约，不允许修改状态或重新指派宠托师')
+      }
+      if (order.status === 'assigned' && assignmentChanged && order.staffOpenid) {
+        throw new Error('订单已指派，不允许直接修改宠托师归属，请使用受控改派流程')
+      }
       if (['assigned', 'in_service', 'day_completed'].includes(updated.status) && !updated.staffOpenid) throw new Error('请先为订单分配宠托师')
       if (updated.staffOpenid && isOrderConflictCandidate(updated)) {
         if (!user) throw new Error('宠托师账号不存在')

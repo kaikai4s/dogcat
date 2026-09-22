@@ -1,5 +1,6 @@
 module.exports = function createService({
   ORDER_STATUS,
+  authorizeAdmin,
   db,
   expireUnacceptedOrder,
   getSystemSettings,
@@ -14,6 +15,7 @@ module.exports = function createService({
 }) {
   async function getOrderForAccess(openid, orderId) {
     const user = await getUser(openid)
+    if (user.roles.includes('admin')) await authorizeAdmin(user, 'admin.getOrderDetail')
     const res = await db.collection('orders').doc(orderId).get()
     let order = res.data ? { ...res.data, _id: orderId } : null
     if (!order || (isAdminDeletedOrder(order) && !user.roles.includes('admin'))) throw new Error('订单不存在')

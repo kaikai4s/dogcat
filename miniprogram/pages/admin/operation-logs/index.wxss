@@ -1,0 +1,16 @@
+.page { padding: 32rpx; background: #fff; min-height: 100vh; color: #202824; box-sizing: border-box; }
+.heading { font-size: 38rpx; font-weight: 600; margin-bottom: 24rpx; }
+.filters { display: flex; gap: 16rpx; flex-wrap: wrap; }
+.filters picker { min-width: 0; max-width: 100%; }
+.select { padding: 18rpx; background: #eff4f1; overflow-wrap: anywhere; }
+input { padding: 20rpx 0; border-bottom: 1rpx solid #c4d1ca; margin-bottom: 16rpx; }
+.record { padding: 24rpx 0; border-bottom: 1rpx solid #dfe7e2; line-height: 1.8; overflow-wrap: anywhere; }
+.row { display: flex; justify-content: space-between; gap: 16rpx; }
+.strong { font-weight: 600; }
+.muted { color: #68736d; font-size: 24rpx; }
+.result { font-size: 24rpx; flex-shrink: 0; }
+.succeeded { color: #186943; }
+.failed, .denied { color: #b52e38; }
+.started { color: #86621b; }
+.empty { padding: 40rpx 0; text-align: center; color: #68736d; }
+button { border-radius: 8rpx; }

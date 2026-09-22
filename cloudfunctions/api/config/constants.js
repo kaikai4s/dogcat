@@ -14,7 +14,8 @@ const collections = [
   'user_feedback', 'staff_promotion_applications',
   'staff_deposits', 'staff_deposit_events', 'staff_supply_reimbursements',
   'mall_categories', 'mall_products', 'mall_carts', 'mall_orders',
-  'admin_notifications', 'staff_deposit_evidences'
+  'admin_notifications', 'staff_deposit_evidences',
+  'admin_access_config', 'admin_groups', 'admin_memberships', 'admin_access_logs'
 ]
 
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'

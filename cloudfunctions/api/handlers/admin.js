@@ -1,5 +1,7 @@
 module.exports = function createHandler(context) {
   const {
+    handleAdminAccess,
+    protectAdminOwner,
     ORDER_STATUS,
     RETIRED_SERVICE_KEYS,
     VISIT_FEE_SERVICE_KEY,
@@ -101,6 +103,9 @@ module.exports = function createHandler(context) {
   } = context
   return async function admin(openid, action, data) {
     const admin = await requireAdmin(openid)
+    if (['getMyAdminAccess', 'enableAdminPermissions', 'listAdminGroups', 'saveAdminGroup', 'setAdminMembership', 'getAdminMembership', 'listAdminMembers', 'listOperationActors', 'listOperationLogs'].includes(action)) {
+      return handleAdminAccess(admin, action, data)
+    }
     if (action === 'dashboard') {
       await expireDueUnacceptedOrders()
       const statuses = ['paid', 'assigned', 'in_service', 'completed']
@@ -213,6 +218,7 @@ module.exports = function createHandler(context) {
       const status = safeText(data.status || target.status || 'active').trim()
       if (!['active', 'disabled'].includes(status)) throw new Error('用户状态无效')
       const roles = normalizeEditableRoles(data.roles)
+      await protectAdminOwner(target, roles, status)
       await assertAdminRoleChangeAllowed(target, roles, openid)
       const activeRole = roles.includes(data.activeRole) ? data.activeRole : (roles.includes(target.activeRole) ? target.activeRole : roles[0])
       const points = Math.max(Math.round(Number(data.points || 0)), 0)
@@ -252,6 +258,7 @@ module.exports = function createHandler(context) {
       const target = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
       if (!target) throw new Error('用户不存在')
       await assertUserDeleteAllowed(target, openid)
+      await protectAdminOwner(target, [], 'deleted')
       const cleanup = await cleanupUserPersonalData(targetOpenid)
       const time = now()
       const update = {
@@ -278,6 +285,7 @@ module.exports = function createHandler(context) {
       const target = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
       if (!target) throw new Error('用户不存在')
       await assertUserDeleteAllowed(target, openid, '不能彻底删除自己的账号')
+      await protectAdminOwner(target, [], 'deleted')
       const time = now()
       const cleanup = await cleanupUserPersonalData(targetOpenid)
       cleanup.historicalRecordsDetached = await detachUserFromHistoricalRecords(targetOpenid, time)
@@ -533,6 +541,7 @@ module.exports = function createHandler(context) {
       const target = (usersRes.data || []).find((user) => user.openid === targetOpenid)
       if (!target) throw new Error('目标用户不存在')
       const roles = (Array.isArray(target.roles) ? target.roles : []).filter((role) => role !== 'admin')
+      await protectAdminOwner(target, roles, target.status)
       const update = { roles, updatedAt: now() }
       if (target.activeRole === 'admin') update.activeRole = 'client'
       await db.collection('users').doc(target._id).update({ data: update })
@@ -713,6 +722,11 @@ module.exports = function createHandler(context) {
         updateData.cancelledAt = time
       }
       await updateOrderStatusWithScheduling(orderId, order, updateData)
+      // 管理员核实完单也必须创建收益记录，否则订单已完成但宠托师永远收不到收益。
+      // ensureStaffEarning 按 orderId 幂等，重复操作不会重复入账。
+      if (targetStatus === 'completed' && order.staffOpenid) {
+        await ensureStaffEarning({ ...order, ...updateData, _id: orderId }, time)
+      }
 
       const statusLabels = {
         pending_pay: '待支付',
@@ -1803,6 +1817,10 @@ module.exports = function createHandler(context) {
       const staffCheckins = (checkinRes.data || []).filter((item) => isActiveCheckin(item) && item.source !== 'admin' && item.eventType !== 'admin_supplement' && (!order.staffOpenid || item.staffOpenid === order.staffOpenid))
       if (staffCheckins.length > 0) {
         throw new Error('原宠托师已到场开始打卡履约，不可转为加急公共抢单，请刷新核实')
+      }
+      const earningRes = await db.collection('staff_earnings').where({ orderId }).limit(1).get().catch(() => ({ data: [] }))
+      if ((earningRes.data || []).length > 0) {
+        throw new Error('订单已经生成宠托师收益，不可重新指派')
       }
 
       const staffReward = Number(data.staffReward)

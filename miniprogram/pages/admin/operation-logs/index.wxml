@@ -1,0 +1,14 @@
+<view class="page">
+  <view class="heading">后台操作日志</view>
+  <view class="filters"><picker range="{{actors}}" range-key="label" value="{{actorIndex}}" bindchange="actor"><view class="select">{{actors[actorIndex].label}} ▾</view></picker><picker range="{{statusOptions}}" value="{{statusIndex}}" bindchange="status"><view class="select">{{statusOptions[statusIndex]}} ▾</view></picker></view>
+  <input placeholder="按人员 OpenID 查询（含已移除人员）" value="{{actorOpenid}}" bindinput="actorInput" />
+  <input placeholder="按接口操作名查询" value="{{action}}" bindinput="action" bindconfirm="search" />
+  <button bindtap="search" disabled="{{loading}}">查询</button>
+  <view class="record" wx:for="{{rows}}" wx:key="_id">
+    <view class="row"><text class="strong">{{item.actorName || '未设置昵称'}}</text><text class="result {{item.status}}">{{item.resultText}}</text></view>
+    <view class="muted">{{item.actorOpenid}}</view><view>{{item.actionText}}</view>
+    <view class="muted" wx:if="{{item.targetText}}">对象：{{item.targetText}}</view>
+    <view class="muted">{{item.timeText}}</view><view class="muted" wx:if="{{item.errorCode}}">{{item.errorCode}}</view>
+  </view>
+  <view class="empty">{{loading ? '加载中' : (!rows.length ? '暂无操作记录' : (hasMore ? '上滑加载更多' : '已显示全部'))}}</view>
+</view>
