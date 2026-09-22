@@ -59,7 +59,17 @@
   </block>
 
   <block wx:if="{{activeTab === 'deposits'}}">
-    <view class="card record-card" wx:for="{{deposits}}" wx:key="_id">
+    <view class="deposit-filter-bar" wx:if="{{targetStaffOpenid}}">
+      <view class="filter-bar-content">
+        <text class="remix-icon ri-filter-3-fill filter-icon"></text>
+        <text>已筛选宠托师：<text class="filter-name">{{targetStaffLabel || targetStaffOpenid}}</text></text>
+      </view>
+      <view class="filter-bar-action" bindtap="clearStaffFilter">
+        <text>查看全部</text>
+        <text class="remix-icon ri-close-line"></text>
+      </view>
+    </view>
+    <view class="card record-card {{item.staffOpenid === targetStaffOpenid ? 'target-highlight' : ''}}" wx:for="{{deposits}}" wx:key="_id" wx:if="{{!targetStaffOpenid || item.staffOpenid === targetStaffOpenid}}">
       <view class="record-head">
         <view class="record-title">宠托师保证金</view>
         <view class="badge {{item.status === 'paid' ? 'green' : 'pink'}}">{{item.statusText || item.status}}</view>
@@ -81,7 +91,7 @@
         <button class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" bindtap="auditDepositRefund">通过退款审核</button>
       </view>
       <button class="primary-btn full-btn" wx:if="{{item.status === 'refund_approved'}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="confirmDepositRefund">确认已实际退款</button>
-      <button class="ghost-btn full-btn" wx:if="{{item.canForfeit}}" data-id="{{item._id}}" data-max="{{item.availableRefundAmount}}" bindtap="forfeitDeposit">违规没收保证金</button>
+      <button class="ghost-btn full-btn" wx:if="{{item.canForfeit}}" data-id="{{item._id}}" data-max="{{item.availableRefundAmount}}" data-staff="{{item.staffRealName || item.staffNickname || item.staffOpenid}}" bindtap="forfeitDeposit">违规没收保证金</button>
     </view>
     <view class="empty-state" wx:if="{{!deposits.length}}">暂无宠托师保证金记录。</view>
   </block>
@@ -161,4 +171,39 @@
     </view>
     <view class="empty-state" wx:if="{{!logs.length}}">暂无财务流水。</view>
   </block>
+
+  <!-- 违规扣除保证金弹窗 (扣除金额与扣除描述分设两个独立栏位) -->
+  <view class="modal-mask" wx:if="{{showForfeitModal}}">
+    <view class="modal-card">
+      <view class="modal-title">
+        <text class="remix-icon ri-shield-cross-fill" style="color: #ef4444; margin-right: 8rpx;"></text>
+        <text>违规扣除 / 没收保证金</text>
+      </view>
+      <view class="modal-summary">
+        <view class="forfeit-target-staff" wx:if="{{forfeitStaffName}}">
+          <text class="remix-icon ri-user-star-line"></text>
+          <text>责任宠托师：<text class="strong">{{forfeitStaffName}}</text></text>
+        </view>
+        <view class="evidence-bind-tag" wx:if="{{forfeitEvidenceId}}">
+          <text class="remix-icon ri-link"></text>
+          <text>已联动出险违规证据单，扣款成功后证据将自动核销</text>
+        </view>
+        <view class="muted">当前记录最大可扣金额：<text style="color: #ea580c; font-weight: bold;">¥{{forfeitMaxAmount}}</text>。扣除后将直接核减宠托师可用保证金并记录流水留痕。</view>
+      </view>
+      <view class="form-section">
+        <view class="form-label" style="display: flex; justify-content: space-between;">
+          <text>扣除金额 (元)</text>
+          <text class="muted" style="font-size: 22rpx;">不可超过 ¥{{forfeitMaxAmount}}</text>
+        </view>
+        <input type="digit" placeholder="请输入扣除金额，例如：100" value="{{forfeitAmountInput}}" bindinput="inputForfeitAmount" />
+
+        <view class="form-label" style="margin-top: 18rpx;">扣除原因及违规描述 (必填)</view>
+        <textarea placeholder="请填写具体扣除原因（如：严重违规私单交易、未到岗爽约、虚假打卡等）" value="{{forfeitReasonInput}}" bindinput="inputForfeitReason" />
+      </view>
+      <view class="modal-actions">
+        <button class="ghost-btn" bindtap="closeForfeitModal">取消</button>
+        <button class="danger-btn" loading="{{forfeiting}}" disabled="{{forfeiting}}" bindtap="submitForfeitDeposit">确认扣除</button>
+      </view>
+    </view>
+  </view>
 </view>

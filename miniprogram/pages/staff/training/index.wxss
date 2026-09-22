@@ -216,3 +216,114 @@ button[disabled] { opacity: .55; }
   opacity: 0.9;
 }
 
+.repay-alert-box {
+  margin: 18rpx 0;
+  padding: 22rpx 24rpx;
+  border-radius: 24rpx;
+  background: #fef2f2;
+  border: 1rpx solid #fee2e2;
+  color: #991b1b;
+}
+
+.repay-alert-title {
+  font-size: 28rpx;
+  font-weight: 950;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  color: #dc2626;
+}
+
+.repay-alert-reason {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #b91c1c;
+}
+
+.repay-alert-tip {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #ef4444;
+  font-weight: 850;
+}
+
+.deposit-events-section {
+  margin-top: 24rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx dashed rgba(255, 153, 102, 0.25);
+}
+
+.events-title {
+  font-size: 28rpx;
+  font-weight: 900;
+  color: #2d211a;
+  margin-bottom: 16rpx;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.event-item-card {
+  padding: 16rpx 20rpx;
+  border-radius: 20rpx;
+  background: #fdfaf7;
+  border: 1rpx solid rgba(255, 153, 102, 0.12);
+  margin-bottom: 12rpx;
+}
+
+.event-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.event-type-badge {
+  display: inline-flex;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 850;
+}
+
+.badge-green {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.badge-red {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.badge-gray {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.event-amount {
+  font-size: 28rpx;
+  font-weight: 950;
+}
+
+.amount-plus {
+  color: #16a34a;
+}
+
+.amount-minus {
+  color: #dc2626;
+}
+
+.event-desc {
+  font-size: 24rpx;
+  color: #4b5563;
+  line-height: 1.4;
+  margin-bottom: 6rpx;
+}
+
+.event-time {
+  font-size: 20rpx;
+  color: #9ca3af;
+}
+

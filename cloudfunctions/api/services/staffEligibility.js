@@ -21,6 +21,9 @@ module.exports = function createService({
       onboardingStatus,
       onboardingStatusText: onboardingStatusText(onboardingStatus),
       depositStatus: profile.depositStatus || 'unpaid',
+      requireDepositRepay: profile.requireDepositRepay === true,
+      requireDepositRepayReason: profile.requireDepositRepayReason || '',
+      requireDepositRepayAt: profile.requireDepositRepayAt || '',
       supplyReimbursementStatus: profile.supplyReimbursementStatus || 'not_applied',
       videoAuditStatus: profile.videoAuditStatus || 'not_started',
       videoAuditStatusText: videoAuditStatusText(profile.videoAuditStatus || 'not_started'),
@@ -31,6 +34,9 @@ module.exports = function createService({
   }
 
   function staffDepositSatisfied(profile = {}, depositConfig = null) {
+    if (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited') {
+      return false
+    }
     if (depositConfig && depositConfig.enabled === true && Number(depositConfig.amount) > 0) {
       return profile.depositStatus === 'paid'
     }
@@ -62,6 +68,13 @@ module.exports = function createService({
     }
     if (['requested', 'approved', 'exited'].includes(p.exitStatus)) {
       return { can: false, reason: 'exited', message: '当前宠托师账号已申请退出或已退出，无法接单' }
+    }
+    if (p.requireDepositRepay === true || p.depositStatus === 'supplement_required') {
+      return {
+        can: false,
+        reason: 'deposit_repay_required',
+        message: p.requireDepositRepayReason || '平台管理员已要求您重新足额缴纳保证金后方可继续接单，请先完成缴纳'
+      }
     }
     if (!staffDepositSatisfied(p, depositConfig)) {
       return { can: false, reason: 'deposit_unpaid', message: '未缴纳宠托师履约保证金，暂不可抢单或接单，请先缴纳保证金' }

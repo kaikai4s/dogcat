@@ -379,8 +379,27 @@ Page({
       selectedReasonTypeIndex: order.isStartOverdue ? 0 : (order.isFinishOverdue ? 1 : 0),
       evidenceDeductAmountInput: '50',
       evidenceReasonTextInput: defaultReason,
-      evidenceImages: []
+      evidenceImages: [],
+      currentStaffDepositBalance: null
     })
+    if (staffList[0] && staffList[0].openid) {
+      this.loadStaffDepositBalance(staffList[0].openid)
+    }
+  },
+
+  loadStaffDepositBalance(staffOpenid) {
+    if (!staffOpenid) {
+      this.setData({ currentStaffDepositBalance: 0 })
+      return
+    }
+    callFunction('admin', 'getStaffDepositDetail', { staffOpenid })
+      .then((res) => {
+        const balance = res && res.availableRefundAmount != null ? Number(res.availableRefundAmount) : 0
+        this.setData({ currentStaffDepositBalance: balance })
+      })
+      .catch(() => {
+        this.setData({ currentStaffDepositBalance: 0 })
+      })
   },
 
   closeEvidenceModal() {
@@ -388,7 +407,12 @@ Page({
   },
 
   onEvidenceStaffChange(e) {
-    this.setData({ selectedStaffIndex: Number(e.detail.value || 0) })
+    const idx = Number(e.detail.value || 0)
+    this.setData({ selectedStaffIndex: idx })
+    const staff = this.data.evidenceStaffList && this.data.evidenceStaffList[idx]
+    if (staff && staff.openid) {
+      this.loadStaffDepositBalance(staff.openid)
+    }
   },
 
   onEvidenceReasonTypeChange(e) {
@@ -461,10 +485,28 @@ Page({
           deductAmount,
           evidenceImages: this.data.evidenceImages
         })
-          .then(() => {
+          .then((res) => {
             wx.showToast({ title: '已录入违规留证' })
             this.closeEvidenceModal()
             this.load()
+            if (deductAmount > 0) {
+              const evidenceId = (res && (res.evidenceId || res._id)) || ''
+              const reason = encodeURIComponent(`${reasonTypeObj.label}: ${reasonText}`)
+              wx.showModal({
+                title: '留证已录入',
+                content: `已成功保存违规出险留证记录。是否立即前往财务管理执行保证金扣款？\n责任宠托师：${targetStaff.label}\n建议扣款：¥${deductAmount.toFixed(2)}`,
+                confirmText: '去财务扣款',
+                cancelText: '稍后处理',
+                confirmColor: '#ef4444',
+                success: (mRes) => {
+                  if (mRes.confirm) {
+                    wx.navigateTo({
+                      url: `/pages/admin/finance/index?tab=deposits&staffOpenid=${targetStaff.openid}&evidenceId=${evidenceId}&suggestAmount=${deductAmount}&reason=${reason}`
+                    })
+                  }
+                }
+              })
+            }
           })
           .catch(showError)
           .finally(() => this.setData({ submittingEvidence: false }))

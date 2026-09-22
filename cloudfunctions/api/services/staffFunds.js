@@ -102,7 +102,11 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         patch = { forfeitedAmount: (balance.forfeited + amount) / 100, availableRefundAmount: available,
           status: available === 0 ? 'forfeited' : deposit.status, statusText: available === 0 ? '已全额没收' : `部分没收（余¥${available}）`,
           lastForfeitReason: reason, lastForfeitedAt: time, lastForfeitedBy: admin.openid }
-        if (!available) profilePatch.depositStatus = 'forfeited'
+        if (!available) {
+          profilePatch.depositStatus = 'forfeited'
+          profilePatch.requireDepositRepay = true
+          profilePatch.requireDepositRepayReason = '履约保证金已被全额扣除，需重新足额缴纳后方可继续接单'
+        }
         financeAction = 'deposit_forfeited'; delta = 0
       } else if (action === 'auditDepositRefund') {
         if (deposit.refundStatus !== 'requested' || deposit.status !== 'refund_requested') throw new Error('当前状态不可审核退款')
@@ -222,7 +226,14 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         paidAmount: amount, availableRefundAmount: amount, status: 'paid', statusText: '已缴纳',
         paymentNo, wxTransactionId: payload.wxTransactionId || '', paidAt: time, updatedAt: time
       } })
-      await tx.collection('staff_profiles').doc(profile._id).update({ data: { depositStatus: 'paid', depositRequired: true, updatedAt: time } })
+      await tx.collection('staff_profiles').doc(profile._id).update({ data: {
+        depositStatus: 'paid',
+        depositRequired: true,
+        requireDepositRepay: false,
+        requireDepositRepayReason: '',
+        requireDepositRepayAt: '',
+        updatedAt: time
+      } })
       await depositEvent(tx, key(depositId, 'paid'), deposit, deposit.staffOpenid, 'pay', amount, '缴纳宠托师入驻保证金', time)
       await tx.collection('finance_logs').doc(key(depositId, 'paid')).set({ data: {
         action: 'deposit_paid', targetType: 'staff_deposit', targetId: depositId, staffOpenid: deposit.staffOpenid,

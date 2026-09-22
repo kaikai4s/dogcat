@@ -294,6 +294,13 @@ module.exports = function createHandler(context) {
         evidenceByStaff[ev.staffOpenid].push(ev)
       }
 
+      const depositsRes = await db.collection('staff_deposits').orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+      const allDeposits = depositsRes.data || []
+      const depositByStaff = {}
+      for (const d of allDeposits) {
+        if (!depositByStaff[d.staffOpenid]) depositByStaff[d.staffOpenid] = d
+      }
+
       const list = (profilesRes.data || [])
         .filter((profile) => !auditStatus || profile.auditStatus === auditStatus)
         .map((profile) => {
@@ -311,8 +318,17 @@ module.exports = function createHandler(context) {
             deductAmount: e.deductAmount || 0,
             status: e.status || 'pending',
             statusText: e.status === 'forfeited' ? '已扣除保证金' : (e.status === 'dismissed' ? '已撤销免除' : '待执行扣除'),
-            createdAt: e.createdAt || ''
+            createdAt: e.createdAt || '',
+            staffOpenid: e.staffOpenid || profile.openid
           }))
+
+          const deposit = depositByStaff[profile.openid] || null
+          const depositBalance = deposit ? Number(deposit.availableRefundAmount || 0) : 0
+          const depositPaidAmount = deposit ? Number(deposit.paidAmount || 0) : 0
+          const depositForfeitedAmount = deposit ? Number(deposit.forfeitedAmount || 0) : 0
+          const depositStatus = profile.depositStatus || (deposit ? deposit.status : 'unpaid')
+          const requireDepositRepay = profile.requireDepositRepay === true
+
           return {
             _id: profile._id,
             openid: profile.openid || '',
@@ -344,11 +360,117 @@ module.exports = function createHandler(context) {
             roles: Array.isArray(user.roles) ? user.roles : [],
             problemOrderCount: staffEvidences.length,
             pendingPenaltyCount: staffEvidences.filter((e) => e.status === 'pending').length,
-            problemOrders
+            problemOrders,
+            depositBalance,
+            depositPaidAmount,
+            depositForfeitedAmount,
+            depositStatus,
+            requireDepositRepay,
+            requireDepositRepayReason: profile.requireDepositRepayReason || '',
+            requireDepositRepayAt: profile.requireDepositRepayAt || ''
           }
         })
-        .filter((item) => !keyword || [item.openid, item.realName, item.phone, item.serviceCity, item.serviceAreas, item.userNickname].some((value) => safeText(value).toLowerCase().includes(keyword)))
+        .filter((item) => {
+          if (keyword && ![item.openid, item.realName, item.phone, item.serviceCity, item.serviceAreas, item.userNickname].some((value) => safeText(value).toLowerCase().includes(keyword))) {
+            return false
+          }
+          if (data.minDeposit !== undefined && data.minDeposit !== '' && !isNaN(Number(data.minDeposit))) {
+            if (item.depositBalance < Number(data.minDeposit)) return false
+          }
+          if (data.maxDeposit !== undefined && data.maxDeposit !== '' && !isNaN(Number(data.maxDeposit))) {
+            if (item.depositBalance > Number(data.maxDeposit)) return false
+          }
+          if (data.hasViolations === 'yes' || data.hasViolations === true) {
+            if (item.problemOrderCount <= 0) return false
+          } else if (data.hasViolations === 'no' || data.hasViolations === false) {
+            if (item.problemOrderCount > 0) return false
+          }
+          if (data.requireRepayStatus === 'yes') {
+            if (!item.requireDepositRepay) return false
+          } else if (data.requireRepayStatus === 'no') {
+            if (item.requireDepositRepay) return false
+          }
+          return true
+        })
       return paginateList(list, data)
+    }
+    if (action === 'batchRequireDepositRepay') {
+      const ids = Array.isArray(data.staffProfileIds) ? data.staffProfileIds.filter(Boolean) : (data.staffProfileId ? [data.staffProfileId] : [])
+      const openids = Array.isArray(data.staffOpenids) ? data.staffOpenids.filter(Boolean) : (data.staffOpenid ? [data.staffOpenid] : [])
+      const reason = safeText(data.reason).trim() || '保证金余额不足或存在违规出险记录，平台要求重新足额缴纳履约保证金后方可继续接单'
+      const time = now()
+      let count = 0
+      for (const id of ids) {
+        await db.collection('staff_profiles').doc(id).update({
+          data: {
+            requireDepositRepay: true,
+            requireDepositRepayReason: reason,
+            requireDepositRepayAt: time,
+            depositStatus: 'supplement_required',
+            updatedAt: time
+          }
+        })
+        count++
+      }
+      for (const staffOpenid of openids) {
+        const pRes = await db.collection('staff_profiles').where({ openid: staffOpenid }).limit(1).get().catch(() => ({ data: [] }))
+        if (pRes.data && pRes.data[0]) {
+          await db.collection('staff_profiles').doc(pRes.data[0]._id).update({
+            data: {
+              requireDepositRepay: true,
+              requireDepositRepayReason: reason,
+              requireDepositRepayAt: time,
+              depositStatus: 'supplement_required',
+              updatedAt: time
+            }
+          })
+          count++
+        }
+      }
+      await logAdmin(admin, 'staff_profile', 'batch', 'batchRequireDepositRepay', { count, reason, ids, openids })
+      return { success: true, count, reason }
+    }
+    if (action === 'getStaffDepositDetail') {
+      const targetOpenid = safeText(data.staffOpenid || data.openid).trim()
+      const staffProfileId = safeText(data.staffProfileId || data.id).trim()
+      let staffOpenid = targetOpenid
+      if (!staffOpenid && staffProfileId) {
+        const pRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+        if (pRes.data) staffOpenid = pRes.data.openid
+      }
+      if (!staffOpenid) throw new Error('缺少宠托师身份信息')
+
+      const profileRes = await db.collection('staff_profiles').where({ openid: staffOpenid }).limit(1).get().catch(() => ({ data: [] }))
+      const profile = profileRes.data && profileRes.data[0] || null
+
+      const depositRes = await db.collection('staff_deposits').where({ staffOpenid }).orderBy('createdAt', 'desc').limit(1).get().catch(() => ({ data: [] }))
+      const deposit = depositRes.data && depositRes.data[0] || null
+
+      const eventsRes = await db.collection('staff_deposit_events').where({ staffOpenid }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+      const events = (eventsRes.data || []).map((e) => ({
+        _id: e._id,
+        type: e.type,
+        amount: Number(e.amount || 0),
+        reason: e.reason || '',
+        createdAt: e.createdAt || ''
+      }))
+
+      const availableRefundAmount = deposit ? Number(deposit.availableRefundAmount || 0) : 0
+      const paidAmount = deposit ? Number(deposit.paidAmount || 0) : 0
+      const forfeitedAmount = deposit ? Number(deposit.forfeitedAmount || 0) : 0
+
+      return {
+        staffOpenid,
+        profile,
+        deposit,
+        availableRefundAmount,
+        paidAmount,
+        forfeitedAmount,
+        depositStatus: profile ? profile.depositStatus : (deposit ? deposit.status : 'unpaid'),
+        requireDepositRepay: profile ? profile.requireDepositRepay === true : false,
+        requireDepositRepayReason: profile ? (profile.requireDepositRepayReason || '') : '',
+        events
+      }
     }
     if (action === 'setSitterFeatured') {
       const staffProfileId = safeText(data.staffProfileId).trim()

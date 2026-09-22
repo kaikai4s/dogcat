@@ -885,15 +885,43 @@ module.exports = function createHandler(context) {
         deposit = depositRes.data[0]
       }
       const auditApproved = profile && profile.auditStatus === 'approved'
-      const canPay = Boolean(config.enabled && config.amount > 0 && auditApproved && (!deposit || deposit.status === 'unpaid'))
+      const needsRepay = Boolean(profile && (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited' || (deposit && deposit.status === 'forfeited')))
+      const canPay = Boolean(config.enabled && config.amount > 0 && auditApproved && (!deposit || deposit.status === 'unpaid' || needsRepay))
       const canRequestRefund = Boolean(deposit && ['paid', 'partially_refunded'].includes(deposit.status) && (deposit.availableRefundAmount || 0) > 0 && deposit.refundStatus !== 'requested')
+
+      const eventsRes = await db.collection('staff_deposit_events')
+        .where({ staffOpenid: openid })
+        .orderBy('createdAt', 'desc')
+        .get()
+        .catch(() => ({ data: [] }))
+      const eventTypeMap = {
+        pay: '充值缴纳',
+        forfeit: '违规扣除/没收',
+        refund_request: '申请退还',
+        refund: '退款到账',
+        refund_audit: '退款审核'
+      }
+      const events = (eventsRes.data || []).map((e) => ({
+        _id: e._id,
+        type: e.type,
+        typeName: eventTypeMap[e.type] || e.type,
+        amount: Number(e.amount || 0),
+        amountText: e.type === 'pay' ? `+¥${Number(e.amount || 0).toFixed(2)}` : (e.type === 'forfeit' ? `-¥${Number(e.amount || 0).toFixed(2)}` : `¥${Number(e.amount || 0).toFixed(2)}`),
+        reason: e.reason || '',
+        operatorRole: e.operatorRole || '',
+        createdAt: e.createdAt || ''
+      }))
+
       return {
         config,
         supplies,
         deposit,
         profile,
         canPay,
-        canRequestRefund
+        canRequestRefund,
+        needsRepay,
+        repayReason: profile && profile.requireDepositRepayReason || '',
+        events
       }
     }
     if (action === 'createDepositPayment') {
@@ -907,10 +935,11 @@ module.exports = function createHandler(context) {
       const clientRequestId = getClientRequestId(data)
       let depositRes = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
       let deposit = depositRes.data && depositRes.data[0]
-      if (deposit && deposit.status !== 'unpaid') throw new Error('您已缴纳保证金或记录正在处理中，无需重复缴纳')
+      const needsRepay = Boolean(profile && (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited' || (deposit && deposit.status === 'forfeited')))
+      if (deposit && deposit.status !== 'unpaid' && !needsRepay) throw new Error('您已足额缴纳保证金或记录正在处理中，无需重复缴纳')
       const time = now()
       const amount = Number(config.amount)
-      if (!deposit) {
+      if (!deposit || deposit.status !== 'unpaid') {
         const created = await db.collection('staff_deposits').add({
           data: {
             staffOpenid: openid,

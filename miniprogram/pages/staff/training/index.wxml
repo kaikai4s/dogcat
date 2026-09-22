@@ -24,19 +24,43 @@
     <view class="muted" wx:if="{{depositLoading}}">正在获取保证金状态...</view>
     <view class="muted" wx:if="{{depositError}}">状态获取失败，请刷新后再操作。</view>
     <block wx:if="{{depositState}}">
-      <view wx:if="{{depositState.config.amount != null}}">平台配置金额：¥{{depositState.config.amount}}</view>
+      <!-- 管理员要求重新缴纳警示条 -->
+      <view class="repay-alert-box" wx:if="{{depositState.needsRepay}}">
+        <view class="repay-alert-title"><text class="remix-icon ri-alarm-warning-fill"></text> 管理员已要求重新足额缴纳保证金</view>
+        <view class="repay-alert-reason">原因：{{depositState.repayReason || '保证金余额不足或发生履约出险扣除，重新足额缴纳前暂不可接单'}}</view>
+        <view class="repay-alert-tip">⚠️ 在足额缴纳履约保证金之前，系统将限制接单与抢单资格。</view>
+      </view>
+
+      <view wx:if="{{depositState.config.amount != null}}">平台基准金额：¥{{depositState.config.amount}}</view>
       <view class="muted" wx:else>平台尚未提供缴纳金额，请勿自行转账。</view>
       <view class="muted" wx:if="{{!depositState.config.enabled}}">保证金缴纳当前未开放。</view>
+
       <view class="guide-box" wx:if="{{depositState.deposit}}">
-        <view>状态：{{depositState.deposit.statusText || '已记录'}}</view>
-        <view wx:if="{{depositState.deposit.amount != null}}">应缴：¥{{depositState.deposit.amount}}</view>
-        <view wx:if="{{depositState.deposit.paidAmount != null}}">已缴：¥{{depositState.deposit.paidAmount}}</view>
-        <view wx:if="{{depositState.deposit.refundedAmount != null}}">已退：¥{{depositState.deposit.refundedAmount}}</view>
-        <view wx:if="{{depositState.deposit.forfeitedAmount != null}}">已没收：¥{{depositState.deposit.forfeitedAmount}}</view>
-        <view wx:if="{{depositState.deposit.availableRefundAmount != null}}">可退：¥{{depositState.deposit.availableRefundAmount}}</view>
+        <view style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8rpx;">
+          <text class="strong-text" style="font-size: 30rpx;">当前保证金余额</text>
+          <text class="price" style="font-size: 36rpx; font-weight: 950; color: #ea580c;">¥{{depositState.deposit.availableRefundAmount != null ? depositState.deposit.availableRefundAmount : '0.00'}}</text>
+        </view>
+        <view>当前状态：<text style="font-weight: 850; color: {{depositState.needsRepay ? '#ef4444' : '#10b981'}};">{{depositState.needsRepay ? '需补缴' : (depositState.deposit.statusText || '已缴纳')}}</text></view>
+        <view wx:if="{{depositState.deposit.paidAmount != null}}">已缴总额：¥{{depositState.deposit.paidAmount}}</view>
+        <view wx:if="{{depositState.deposit.forfeitedAmount > 0}}" style="color: #ef4444;">累计违规扣除：¥{{depositState.deposit.forfeitedAmount}}</view>
+        <view wx:if="{{depositState.deposit.refundedAmount > 0}}">已退款金额：¥{{depositState.deposit.refundedAmount}}</view>
         <view wx:if="{{depositState.deposit.refundStatus}}">退款状态：{{depositState.deposit.refundStatusText || '退款处理中'}}</view>
       </view>
-      <view class="muted" wx:else>暂无保证金记录。</view>
+      <view class="muted" wx:else>暂无保证金缴纳记录。</view>
+
+      <!-- 保证金变动明细与变更描述 -->
+      <view class="deposit-events-section" wx:if="{{depositState.events && depositState.events.length}}">
+        <view class="events-title"><text class="remix-icon ri-file-list-3-line"></text> 保证金变动明细与变更描述</view>
+        <view class="event-item-card" wx:for="{{depositState.events}}" wx:key="_id">
+          <view class="event-row-head">
+            <view class="event-type-badge {{item.type === 'pay' ? 'badge-green' : (item.type === 'forfeit' ? 'badge-red' : 'badge-gray')}}">{{item.typeName}}</view>
+            <view class="event-amount {{item.type === 'pay' ? 'amount-plus' : (item.type === 'forfeit' ? 'amount-minus' : '')}}">{{item.amountText}}</view>
+          </view>
+          <view class="event-desc">{{item.reason || '无具体说明'}}</view>
+          <view class="event-time">{{item.createdAt}}</view>
+        </view>
+      </view>
+
       <view class="rule-text">{{depositState.config.rulesText}}</view>
       <view class="rule-text">{{depositState.config.refundRulesText}}</view>
       <view class="rule-text">{{depositState.config.forfeitRulesText}}</view>
@@ -44,7 +68,7 @@
         <checkbox-group bindchange="agreeDeposit">
           <label class="acknowledgement"><checkbox value="agreed" checked="{{depositAgreed}}" disabled="{{depositBusy || depositLoading}}" />我已阅读并同意上述缴纳、退出全额退款及有效管理员没收规则，知悉首次物资报销独立于保证金，需正式认证后申请，后续采购自费。</label>
         </checkbox-group>
-        <button class="primary-btn" bindtap="payDeposit" loading="{{depositBusy}}" disabled="{{!depositAgreed || depositBusy || depositLoading || depositState.config.amount == null}}">微信支付保证金</button>
+        <button class="primary-btn" bindtap="payDeposit" loading="{{depositBusy}}" disabled="{{!depositAgreed || depositBusy || depositLoading || depositState.config.amount == null}}">{{depositState.needsRepay ? '重新足额缴纳保证金' : '微信支付保证金'}}</button>
       </block>
       <block wx:if="{{depositState.canRequestRefund}}">
         <textarea class="refund-input" placeholder="请填写自愿退出及退款原因" value="{{refundReason}}" bindinput="inputRefundReason" maxlength="500" disabled="{{depositBusy}}" />

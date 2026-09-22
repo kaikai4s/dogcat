@@ -9,16 +9,74 @@
     <view class="search-row">
       <input value="{{keyword}}" placeholder="搜索姓名 / 城市 / 手机号 / openid" bindinput="inputKeyword" confirm-type="search" bindconfirm="search" />
       <button class="mini-btn" bindtap="search">搜索</button>
+      <button class="mini-btn ghost-mini filter-toggle-btn {{showFilterPanel ? 'active' : ''}}" bindtap="toggleFilterPanel">
+        <text class="remix-icon ri-filter-3-line"></text>筛选
+      </button>
     </view>
     <view class="status-tabs role-tabs">
       <view wx:for="{{statusTabs}}" wx:key="value" class="status-tab {{auditStatus === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="switchStatus">{{item.label}}</view>
     </view>
+
+    <!-- 多条件筛选面板（支持保证金范围、违规留证、补缴状态等组合筛选） -->
+    <view class="filter-panel" wx:if="{{showFilterPanel}}">
+      <view class="filter-section-title">
+        <text class="remix-icon ri-equalizer-line"></text> 复合条件筛选
+      </view>
+      <view class="filter-row">
+        <view class="filter-label">保证金余额范围 (元)：</view>
+        <view class="range-inputs">
+          <input type="digit" placeholder="最低金额" value="{{minDeposit}}" bindinput="inputMinDeposit" />
+          <text class="range-separator">至</text>
+          <input type="digit" placeholder="最高金额" value="{{maxDeposit}}" bindinput="inputMaxDeposit" />
+        </view>
+      </view>
+
+      <view class="filter-row">
+        <view class="filter-label">异常违规留证：</view>
+        <view class="chip-group">
+          <view class="filter-chip {{hasViolations === '' ? 'active' : ''}}" data-value="" bindtap="selectViolationFilter">全部</view>
+          <view class="filter-chip {{hasViolations === 'yes' ? 'active' : ''}}" data-value="yes" bindtap="selectViolationFilter">⚠️ 有违规出险</view>
+          <view class="filter-chip {{hasViolations === 'no' ? 'active' : ''}}" data-value="no" bindtap="selectViolationFilter">无违规留证</view>
+        </view>
+      </view>
+
+      <view class="filter-row">
+        <view class="filter-label">保证金补缴管控：</view>
+        <view class="chip-group">
+          <view class="filter-chip {{requireRepayStatus === '' ? 'active' : ''}}" data-value="" bindtap="selectRepayFilter">全部</view>
+          <view class="filter-chip {{requireRepayStatus === 'yes' ? 'active' : ''}}" data-value="yes" bindtap="selectRepayFilter">被要求重新缴纳中</view>
+          <view class="filter-chip {{requireRepayStatus === 'no' ? 'active' : ''}}" data-value="no" bindtap="selectRepayFilter">履约正常</view>
+        </view>
+      </view>
+
+      <view class="filter-actions">
+        <button class="mini-btn ghost-mini" bindtap="resetFilter">重置筛选</button>
+        <button class="mini-btn primary-mini" bindtap="applyFilter">应用筛选</button>
+      </view>
+    </view>
   </view>
 
-  <view wx:if="{{!profiles.length && !loading}}" class="empty">暂无宠托师资料</view>
+  <!-- 批量操作控制栏 -->
+  <view class="batch-bar" wx:if="{{profiles.length > 0}}">
+    <view class="batch-left" bindtap="toggleSelectAll">
+      <view class="check-box {{selectedIds.length === profiles.length && profiles.length > 0 ? 'checked' : ''}}">
+        <text class="remix-icon ri-check-line" wx:if="{{selectedIds.length === profiles.length && profiles.length > 0}}"></text>
+      </view>
+      <text class="batch-label">全选 (已选 {{selectedIds.length}}/{{profiles.length}})</text>
+    </view>
+    <button class="mini-btn danger-mini batch-repay-btn" disabled="{{!selectedIds.length}}" bindtap="openRepayModal">
+      <text class="remix-icon ri-shield-cross-fill"></text>要求重新缴纳保证金
+    </button>
+  </view>
 
-  <view class="admin-compact-card sitter-compact-card" wx:for="{{profiles}}" wx:key="_id">
+  <view wx:if="{{!profiles.length && !loading}}" class="empty">暂无匹配的宠托师资料</view>
+
+  <view class="admin-compact-card sitter-compact-card {{item.selected ? 'card-selected' : ''}}" wx:for="{{profiles}}" wx:key="_id">
     <view class="sitter-head compact-sitter-head">
+      <!-- 勾选框 -->
+      <view class="check-box item-check-box {{item.selected ? 'checked' : ''}}" data-id="{{item._id}}" catchtap="toggleSelect">
+        <text class="remix-icon ri-check-line" wx:if="{{item.selected}}"></text>
+      </view>
       <image wx:if="{{item.userAvatarUrl}}" class="sitter-avatar compact-avatar" src="{{item.userAvatarUrl}}" mode="aspectFill" />
       <view wx:else class="sitter-avatar compact-avatar avatar-placeholder">{{item.avatarText}}</view>
       <view class="sitter-main">
@@ -31,6 +89,8 @@
         <view class="meta-chip-row compact-meta-row">
           <view class="meta-chip chip-primary">{{item.staffLevelText || '申请人'}}</view>
           <view class="meta-chip">{{item.ratingText}}</view>
+          <view class="meta-chip deposit-chip {{item.depositBalance < 100 ? 'danger-chip' : ''}}">保证金: {{item.depositBalanceText}}</view>
+          <view class="meta-chip danger-chip" wx:if="{{item.requireDepositRepay}}">需重新缴纳保证金</view>
           <view class="meta-chip danger-chip" wx:if="{{item.problemOrderCount > 0}}">异常订单 {{item.problemOrderCount}}</view>
           <view class="meta-chip warning" wx:if="{{item.promotionStatus === 'pending'}}">转正审核中</view>
         </view>
@@ -48,6 +108,8 @@
       <view class="compact-info-grid">
         <view class="compact-info-item"><view class="compact-info-label">绑定账号</view><view class="compact-info-value">{{item.userNickname}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">服务区域</view><view class="compact-info-value">{{item.serviceAreas || '未填写'}}</view></view>
+        <view class="compact-info-item"><view class="compact-info-label">保证金可用余额</view><view class="compact-info-value strong" style="color: #ea580c;">{{item.depositBalanceText}}</view></view>
+        <view class="compact-info-item"><view class="compact-info-label">保证金管控状态</view><view class="compact-info-value {{item.requireDepositRepay ? 'danger-text' : ''}}">{{item.requireDepositRepay ? '被要求重新缴纳(不可接单)' : (item.depositStatus === 'paid' ? '正常' : item.depositStatus)}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">培训状态</view><view class="compact-info-value">{{item.onboardingStatusText || '-'}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">晋升状态</view><view class="compact-info-value">{{item.promotionStatusText || '-'}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">实习订单</view><view class="compact-info-value">{{item.internCompletedOrderCount || 0}}/3</view></view>
@@ -73,7 +135,7 @@
           </view>
           <view class="problem-actions">
             <button class="mini-btn ghost-mini" data-id="{{prob.orderId}}" bindtap="goToOrder">查看出险订单</button>
-            <button class="mini-btn danger-mini" wx:if="{{prob.status === 'pending'}}" bindtap="goToFinanceDeposit">去财务扣保证金</button>
+            <button class="mini-btn danger-mini" wx:if="{{prob.status === 'pending'}}" data-staff-openid="{{prob.staffOpenid || item.openid}}" data-evidence-id="{{prob._id}}" data-suggest-amount="{{prob.deductAmount || ''}}" data-reason="{{prob.reasonText ? (prob.reasonTypeName + ': ' + prob.reasonText) : prob.reasonTypeName}}" bindtap="goToFinanceDeposit">去财务扣保证金</button>
           </view>
         </view>
       </view>
@@ -86,6 +148,28 @@
   </view>
 
   <button class="ghost" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
+
+  <!-- 批量要求重新缴纳保证金弹窗 -->
+  <view class="modal-mask" wx:if="{{showRepayModal}}">
+    <view class="modal-card">
+      <view class="modal-title">
+        <text class="remix-icon ri-shield-cross-fill" style="color: #ef4444; margin-right: 8rpx;"></text>
+        <text>要求重新足额缴纳保证金</text>
+      </view>
+      <view class="modal-summary">
+        <view class="strong small" style="color: #dc2626;">已选 {{selectedIds.length}} 位宠托师</view>
+        <view class="muted">被标记后，所选宠托师将被系统强制限制接单与抢单资格，直到其在小程序重新足额缴纳履约保证金为止。</view>
+      </view>
+      <view class="form-section">
+        <view class="form-label">管控说明 / 要求重新缴纳原因</view>
+        <textarea placeholder="例如：保证金余额过低且存在服务违规留证，平台要求重新足额缴纳保证金后方可继续接单" value="{{repayReasonInput}}" bindinput="inputRepayReason" />
+      </view>
+      <view class="modal-actions">
+        <button class="ghost-btn" bindtap="closeRepayModal">取消</button>
+        <button class="danger-btn" loading="{{submittingRepay}}" disabled="{{submittingRepay}}" bindtap="confirmBatchRepay">确认并执行管控</button>
+      </view>
+    </view>
+  </view>
 
   <view class="bottom-nav">
     <view class="nav-item" data-url="/pages/admin/home/index" bindtap="go"><view class="nav-icon remix-icon ri-dashboard-3-line"></view><view>控制台</view></view>

@@ -77,6 +77,10 @@ Page({
     eligibilityChecked: false,
     status: '',
     activeTab: 'withdraws',
+    targetStaffOpenid: '',
+    targetStaffLabel: '',
+    forfeitEvidenceId: '',
+    forfeitStaffName: '',
     startDate: monthStart(),
     endDate: today(),
     sectionHomeUrl: '',
@@ -84,7 +88,27 @@ Page({
   },
 
   onLoad(q) {
-    this.setData({ ...createPageNav(q) })
+    const navData = createPageNav(q)
+    const activeTab = (q && q.tab) ? q.tab : this.data.activeTab
+    const targetStaffOpenid = (q && q.staffOpenid) || ''
+    const targetEvidenceId = (q && q.evidenceId) || ''
+    const suggestAmount = (q && q.suggestAmount) || ''
+    const reason = (q && q.reason) ? decodeURIComponent(q.reason) : ''
+
+    if (targetStaffOpenid) {
+      this._autoForfeitParams = {
+        staffOpenid: targetStaffOpenid,
+        evidenceId: targetEvidenceId,
+        suggestAmount,
+        reason
+      }
+    }
+
+    this.setData({
+      ...navData,
+      activeTab,
+      targetStaffOpenid
+    })
   },
 
   onShow() {
@@ -176,6 +200,10 @@ Page({
     })
   },
 
+  clearStaffFilter() {
+    this.setData({ targetStaffOpenid: '', targetStaffLabel: '' })
+  },
+
   loadStaffFinance() {
     this.setData({ staffFinanceLoading: true, staffFinanceError: '' })
     const query = this.query()
@@ -184,11 +212,64 @@ Page({
       callFunction('admin', 'listSupplyReimbursements', query)
     ])
       .then(([deposits, supplies]) => {
+        const rawDeposits = (deposits || []).map(decorateStaffFinance)
+        const targetStaffOpenid = this.data.targetStaffOpenid
+
+        let targetStaffLabel = ''
+        if (targetStaffOpenid) {
+          const matched = rawDeposits.find(d => d.staffOpenid === targetStaffOpenid)
+          if (matched) {
+            targetStaffLabel = matched.staffRealName || matched.staffNickname || targetStaffOpenid
+          }
+        }
+
         this.setData({
-          deposits: (deposits || []).map(decorateStaffFinance),
+          deposits: rawDeposits,
           supplies: (supplies || []).map(decorateStaffFinance),
-          staffFinanceLoading: false
+          staffFinanceLoading: false,
+          targetStaffLabel
         })
+
+        if (this._autoForfeitParams && this._autoForfeitParams.staffOpenid) {
+          const params = this._autoForfeitParams
+          this._autoForfeitParams = null
+
+          const candidateDeposits = rawDeposits.filter(d => d.staffOpenid === params.staffOpenid)
+          const target = candidateDeposits.find(d => d.canForfeit) || candidateDeposits[0]
+
+          if (target) {
+            if (target.canForfeit) {
+              const maxAmount = Number(target.availableRefundAmount || 0)
+              let fillAmount = maxAmount > 0 ? String(maxAmount) : ''
+              if (params.suggestAmount && Number(params.suggestAmount) > 0) {
+                const parsedSuggest = Number(params.suggestAmount)
+                fillAmount = String(Math.min(parsedSuggest, maxAmount))
+              }
+              const fillReason = params.reason || '违规出险扣除保证金'
+              this.setData({
+                showForfeitModal: true,
+                forfeitDepositId: target._id || target.id,
+                forfeitMaxAmount: maxAmount,
+                forfeitAmountInput: fillAmount,
+                forfeitReasonInput: fillReason,
+                forfeitEvidenceId: params.evidenceId || '',
+                forfeitStaffName: target.staffRealName || target.staffNickname || target.staffOpenid
+              })
+            } else {
+              wx.showModal({
+                title: '无法扣除保证金',
+                content: `宠托师（${target.staffRealName || target.staffNickname || params.staffOpenid}）当前保证金可用余额为 ¥${target.availableRefundAmountText || '0.00'}，暂无可扣除额度。`,
+                showCancel: false
+              })
+            }
+          } else {
+            wx.showModal({
+              title: '未找到保证金记录',
+              content: `未找到宠托师（${params.staffOpenid}）的保证金缴纳记录，该宠托师可能尚未缴纳履约保证金。`,
+              showCancel: false
+            })
+          }
+        }
       })
       .catch((err) => {
         this.setData({ staffFinanceLoading: false, staffFinanceError: err.message || '加载宠托师财务失败' })
@@ -230,46 +311,78 @@ Page({
     if (this.data.actionBusy) return
     const id = e.currentTarget.dataset.id
     const maxAmount = Number(e.currentTarget.dataset.max || 0)
-    wx.showModal({
-      title: '违规没收保证金',
-      content: `输入没收金额（不超过 ¥${maxAmount}）与原因：`,
-      editable: true,
-      placeholderText: '格式：金额|违规原因（如：100|私单服务）',
-      success: (res) => {
-        if (!res.confirm || !res.content) return
-        const parts = res.content.split('|')
-        const amount = Number(parts[0].trim())
-        const reason = (parts[1] || '').trim()
-        if (!amount || amount <= 0 || amount > maxAmount) {
-          wx.showToast({ title: `请输入有效金额（≤${maxAmount}）`, icon: 'none' })
-          return
-        }
-        if (!reason) {
-          wx.showToast({ title: '请填写没收原因（如私单/违规）', icon: 'none' })
-          return
-        }
-        wx.showLoading({ title: '处理中...', mask: true })
-        if (this.data.actionBusy) return
-        this.setData({ actionBusy: true })
-        const pendingKey = `deposit_forfeit_${id}`
-        const previous = wx.getStorageSync(pendingKey)
-        const clientRequestId = previous && previous.amount === amount && previous.reason === reason
-          ? previous.clientRequestId : `forfeit_${Date.now()}_${Math.random().toString(36).slice(2)}`
-        wx.setStorageSync(pendingKey, { amount, reason, clientRequestId })
-        callFunction('admin', 'forfeitStaffDeposit', { id, amount, reason, clientRequestId })
-          .then(() => {
-            wx.removeStorageSync(pendingKey)
-            wx.hideLoading()
-            wx.showToast({ title: '已执行没收' })
-            this.loadStaffFinance()
-          })
-          .catch((err) => {
-            wx.hideLoading()
-            showError(err)
-          })
-          .finally(() => this.setData({ actionBusy: false }))
-      }
+    const staffName = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.staff) || ''
+    this.setData({
+      showForfeitModal: true,
+      forfeitDepositId: id,
+      forfeitMaxAmount: maxAmount,
+      forfeitAmountInput: maxAmount > 0 ? String(maxAmount) : '',
+      forfeitReasonInput: '',
+      forfeitEvidenceId: '',
+      forfeitStaffName: staffName
     })
+  },
+
+  closeForfeitModal() {
+    this.setData({
+      showForfeitModal: false,
+      forfeiting: false,
+      forfeitEvidenceId: '',
+      forfeitStaffName: ''
+    })
+  },
+
+  inputForfeitAmount(e) {
+    this.setData({ forfeitAmountInput: e.detail.value })
+  },
+
+  inputForfeitReason(e) {
+    this.setData({ forfeitReasonInput: e.detail.value })
+  },
+
+  submitForfeitDeposit() {
+    const id = this.data.forfeitDepositId
+    const amount = Number(this.data.forfeitAmountInput)
+    const maxAmount = this.data.forfeitMaxAmount
+    const reason = String(this.data.forfeitReasonInput || '').trim()
+    const evidenceId = this.data.forfeitEvidenceId || ''
+
+    if (!amount || isNaN(amount) || amount <= 0) {
+      wx.showToast({ title: '请输入有效的扣除金额', icon: 'none' })
+      return
+    }
+    if (amount > maxAmount) {
+      wx.showToast({ title: `扣除金额不能超出可用余额 ¥${maxAmount}`, icon: 'none' })
+      return
+    }
+    if (!reason) {
+      wx.showToast({ title: '请填写违规扣除描述与原因', icon: 'none' })
+      return
+    }
+
+    if (this.data.forfeiting || this.data.actionBusy) return
+    this.setData({ forfeiting: true })
+
+    const pendingKey = `deposit_forfeit_${id}`
+    const previous = wx.getStorageSync(pendingKey)
+    const clientRequestId = previous && previous.amount === amount && previous.reason === reason
+      ? previous.clientRequestId : `forfeit_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    wx.setStorageSync(pendingKey, { amount, reason, clientRequestId })
+
+    const payload = { id, amount, reason, clientRequestId }
+    if (evidenceId) {
+      payload.evidenceId = evidenceId
+    }
+
+    callFunction('admin', 'forfeitStaffDeposit', payload)
+      .then(() => {
+        wx.removeStorageSync(pendingKey)
+        wx.showToast({ title: '已执行扣除' })
+        this.closeForfeitModal()
+        this.loadStaffFinance()
+      })
+      .catch(showError)
+      .finally(() => this.setData({ forfeiting: false }))
   },
 
   auditSupplyReimbursement(e) {

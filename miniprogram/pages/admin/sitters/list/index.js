@@ -8,17 +8,21 @@ const statusTabs = [
   { label: '已移除', value: 'revoked' }
 ]
 
-function withDisplay(profile) {
+function withDisplay(profile, selectedIds = []) {
   const reviewCount = Number(profile.reviewCount || 0)
+  const depositBalance = profile.depositBalance != null ? Number(profile.depositBalance) : 0
   return {
     ...profile,
     reviewCount,
     ratingText: reviewCount ? `${Number(profile.ratingAverage || 0)}分 / ${reviewCount}条评价` : '暂无评分',
+    depositBalance,
+    depositBalanceText: `¥${depositBalance.toFixed(2)}`,
     featuredActionText: profile.isFeatured ? '取消精选' : '设为精选',
     actionText: profile.auditStatus === 'pending' ? '去审核' : '查看资料',
     canRevokeStaff: profile.auditStatus === 'approved',
     avatarText: (profile.userNickname || profile.realName || '托').slice(0, 1),
-    expanded: false
+    expanded: false,
+    selected: selectedIds.includes(profile._id)
   }
 }
 
@@ -32,6 +36,15 @@ Page({
     keyword: '',
     auditStatus: '',
     statusTabs,
+    minDeposit: '',
+    maxDeposit: '',
+    hasViolations: '', // '' (全部) | 'yes' (仅有违规) | 'no' (无违规)
+    requireRepayStatus: '', // '' (全部) | 'yes' (需补缴) | 'no' (正常)
+    showFilterPanel: false,
+    selectedIds: [],
+    showRepayModal: false,
+    repayReasonInput: '',
+    submittingRepay: false,
     page: 1,
     pageSize: 20,
     hasMore: true,
@@ -52,10 +65,19 @@ Page({
     const reset = options.reset === true
     const page = reset ? 1 : this.data.page
     this.setData({ loading: true })
-    callFunction('admin', 'listStaffProfiles', { keyword: this.data.keyword, auditStatus: this.data.auditStatus, page, pageSize: this.data.pageSize })
+    callFunction('admin', 'listStaffProfiles', {
+      keyword: this.data.keyword,
+      auditStatus: this.data.auditStatus,
+      minDeposit: this.data.minDeposit,
+      maxDeposit: this.data.maxDeposit,
+      hasViolations: this.data.hasViolations,
+      requireRepayStatus: this.data.requireRepayStatus,
+      page,
+      pageSize: this.data.pageSize
+    })
       .then((result) => {
         const pageData = pageList(result)
-        const profiles = pageData.list.map(withDisplay)
+        const profiles = pageData.list.map((p) => withDisplay(p, this.data.selectedIds))
         this.setData({
           profiles: reset ? profiles : this.data.profiles.concat(profiles),
           page: pageData.page,
@@ -88,6 +110,103 @@ Page({
     this.load({ reset: true })
   },
 
+  toggleFilterPanel() {
+    this.setData({ showFilterPanel: !this.data.showFilterPanel })
+  },
+
+  inputMinDeposit(e) {
+    this.setData({ minDeposit: e.detail.value })
+  },
+
+  inputMaxDeposit(e) {
+    this.setData({ maxDeposit: e.detail.value })
+  },
+
+  selectViolationFilter(e) {
+    const val = e.currentTarget.dataset.value || ''
+    this.setData({ hasViolations: val })
+  },
+
+  selectRepayFilter(e) {
+    const val = e.currentTarget.dataset.value || ''
+    this.setData({ requireRepayStatus: val })
+  },
+
+  resetFilter() {
+    this.setData({
+      minDeposit: '',
+      maxDeposit: '',
+      hasViolations: '',
+      requireRepayStatus: ''
+    })
+    this.load({ reset: true })
+  },
+
+  applyFilter() {
+    this.load({ reset: true })
+  },
+
+  toggleSelect(e) {
+    const id = e.currentTarget.dataset.id
+    if (!id) return
+    let list = [...this.data.selectedIds]
+    const idx = list.indexOf(id)
+    if (idx >= 0) list.splice(idx, 1)
+    else list.push(id)
+    this.setData({
+      selectedIds: list,
+      profiles: this.data.profiles.map(p => ({ ...p, selected: list.includes(p._id) }))
+    })
+  },
+
+  toggleSelectAll() {
+    const allIds = this.data.profiles.map(p => p._id)
+    const isAllSelected = this.data.selectedIds.length === allIds.length && allIds.length > 0
+    const nextList = isAllSelected ? [] : allIds
+    this.setData({
+      selectedIds: nextList,
+      profiles: this.data.profiles.map(p => ({ ...p, selected: !isAllSelected }))
+    })
+  },
+
+  openRepayModal() {
+    if (!this.data.selectedIds.length) {
+      wx.showToast({ title: '请至少勾选一位宠托师', icon: 'none' })
+      return
+    }
+    this.setData({
+      showRepayModal: true,
+      repayReasonInput: '保证金余额过低且存在服务违规出险记录，平台要求重新足额缴纳履约保证金后方可继续接单'
+    })
+  },
+
+  closeRepayModal() {
+    this.setData({ showRepayModal: false, submittingRepay: false })
+  },
+
+  inputRepayReason(e) {
+    this.setData({ repayReasonInput: e.detail.value })
+  },
+
+  confirmBatchRepay() {
+    const ids = this.data.selectedIds
+    const reason = String(this.data.repayReasonInput || '').trim()
+    if (!ids.length) return
+    this.setData({ submittingRepay: true })
+    callFunction('admin', 'batchRequireDepositRepay', {
+      staffProfileIds: ids,
+      reason
+    })
+      .then((res) => {
+        wx.showToast({ title: `已成功标记 ${res.count || ids.length} 位宠托师` })
+        this.closeRepayModal()
+        this.setData({ selectedIds: [] })
+        this.load({ reset: true })
+      })
+      .catch(showError)
+      .finally(() => this.setData({ submittingRepay: false }))
+  },
+
   toggleDetails(e) {
     const index = Number(e.currentTarget.dataset.index)
     const profile = this.data.profiles[index]
@@ -108,7 +227,16 @@ Page({
   },
 
   goToFinanceDeposit(e) {
-    wx.navigateTo({ url: '/pages/admin/finance/index?tab=deposits' })
+    const ds = (e && e.currentTarget && e.currentTarget.dataset) || {}
+    const staffOpenid = ds.staffOpenid || ''
+    const evidenceId = ds.evidenceId || ''
+    const suggestAmount = ds.suggestAmount || ''
+    const reason = encodeURIComponent(ds.reason || '')
+    let url = '/pages/admin/finance/index?tab=deposits'
+    if (staffOpenid) {
+      url += `&staffOpenid=${staffOpenid}&evidenceId=${evidenceId}&suggestAmount=${suggestAmount}&reason=${reason}`
+    }
+    wx.navigateTo({ url })
   },
 
   toggleFeatured(e) {

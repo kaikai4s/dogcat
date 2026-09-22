@@ -227,8 +227,15 @@
           </view>
         </picker>
 
-        <view class="form-label" style="margin-top: 18rpx;">建议扣除保证金金额 (元)</view>
+        <view class="form-label" style="margin-top: 18rpx; display: flex; justify-content: space-between; align-items: center;">
+          <text>建议扣除保证金金额 (元)</text>
+          <text class="muted" style="font-size: 22rpx;">当前可用余额：<text style="color: #ea580c; font-weight: bold;">¥{{currentStaffDepositBalance != null ? currentStaffDepositBalance : '0.00'}}</text></text>
+        </view>
         <input type="digit" placeholder="建议扣除金额，例如：50" value="{{evidenceDeductAmountInput}}" bindinput="inputEvidenceDeductAmount" />
+        <view class="evidence-deposit-warning" wx:if="{{currentStaffDepositBalance != null && evidenceDeductAmountInput > currentStaffDepositBalance}}" style="margin-top: 10rpx; padding: 12rpx 16rpx; background: #fffbeb; border: 1rpx solid #fef3c7; border-radius: 8rpx; color: #b45309; font-size: 22rpx; display: flex; align-items: flex-start; line-height: 1.4;">
+          <text class="remix-icon ri-alert-fill" style="margin-right: 8rpx; font-size: 26rpx; flex-shrink: 0; color: #f59e0b;"></text>
+          <text>⚠️ 提示：建议扣款金额（¥{{evidenceDeductAmountInput}}）已超出当前可用余额（¥{{currentStaffDepositBalance}}），后续财务执行扣款时将因余额不足受限！建议同时要求宠托师重新补缴。</text>
+        </view>
 
         <view class="form-label" style="margin-top: 18rpx;">违规事实留证说明 (必填)</view>
         <textarea placeholder="请填写违规细节（如：接单超时30分钟未到岗且失联、导致订单改派加急并由平台补贴费用）" value="{{evidenceReasonTextInput}}" bindinput="inputEvidenceReasonText" />
