@@ -928,6 +928,20 @@ textarea,
   color: var(--theme-text);
 }
 
+.search-field input,
+.search-bar-row input,
+.search-box input {
+  width: auto;
+  min-height: 0 !important;
+  height: 100% !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+
 textarea {
   min-height: 188rpx;
   line-height: 1.5;

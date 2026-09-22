@@ -47,14 +47,72 @@
 .status-tab { flex-shrink: 0; padding: 14rpx 24rpx; border-radius: 999rpx; background: #fff; border: 1rpx solid rgba(255,153,102,.14); color: #7a6a5e; font-size: 25rpx; font-weight: 850; box-shadow: 0 8rpx 18rpx rgba(123,89,62,.04); }
 .status-tab.active { color: #fff; background: linear-gradient(135deg,#ffb86c 0%,#ff7a45 100%); border-color: transparent; }
 
-.search-card,
 .card,
 .empty-state { background: #fff; border: 1rpx solid rgba(255,153,102,.14); box-shadow: 0 14rpx 34rpx rgba(123,89,62,.06); border-radius: 36rpx; }
-.search-card { padding: 22rpx; margin-bottom: 20rpx; }
-.search-field { height: 78rpx; border-radius: 26rpx; background: #fff8ec; border: 1rpx solid rgba(255,153,102,.14); display: flex; align-items: center; gap: 10rpx; padding: 0 22rpx; }
-.search-field .remix-icon { color: #e9672f; font-size: 30rpx; }
-.search-field input { flex: 1; min-width: 0; color: #2d211a; font-size: 26rpx; }
-.search-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14rpx; margin-top: 16rpx; }
+
+.search-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 22rpx;
+}
+
+.search-field {
+  flex: 1;
+  min-width: 0;
+  height: 80rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  border: 1rpx solid rgba(255, 153, 102, 0.18);
+  box-shadow: 0 8rpx 20rpx rgba(123, 89, 62, 0.04);
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 0 24rpx;
+  box-sizing: border-box;
+}
+
+.search-field .search-icon {
+  color: #e9672f;
+  font-size: 32rpx;
+  flex-shrink: 0;
+}
+
+.search-field .clear-icon {
+  color: #b8aba2;
+  font-size: 32rpx;
+  flex-shrink: 0;
+  padding: 4rpx;
+}
+
+.search-field .search-input,
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  height: 100% !important;
+  min-height: 0 !important;
+  line-height: 80rpx;
+  font-size: 26rpx;
+  color: #2d211a;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+
+.search-btn {
+  height: 80rpx !important;
+  min-height: 80rpx !important;
+  line-height: 80rpx !important;
+  padding: 0 36rpx !important;
+  border-radius: 999rpx !important;
+  font-size: 26rpx !important;
+  font-weight: 850;
+  flex-shrink: 0;
+  margin: 0 !important;
+}
 
 .pet-card { display: flex; gap: 20rpx; padding: 24rpx; margin-bottom: 20rpx; }
 .pet-photo { width: 132rpx; height: 132rpx; border-radius: 34rpx; background: #fff0e2; flex-shrink: 0; }

@@ -370,6 +370,53 @@
 
 ---
 
+## 1️⃣6️⃣ pet_playgrounds（宠物乐园主表）- 1 个索引
+
+### 索引 16.1：按主人查询乐园
+**优先级**：⭐⭐ P1（高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_playground_owner` |
+| 索引属性 | 唯一（Unique）或非唯一 |
+| 字段 1 | `ownerOpenid` - 升序 |
+
+**用途**：客户进入宠物乐园首页时根据 `ownerOpenid` 快速检索专属乐园配置（`theme`, `maxVisiblePets` 等）。
+
+---
+
+## 1️⃣7️⃣ pet_homes（宠物小窝表）- 1 个索引
+
+### 索引 17.1：按主人与宠物查询专属小窝
+**优先级**：⭐⭐ P1（高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_home_owner_pet` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `ownerOpenid` - 升序 |
+| 字段 2 | `petId` - 升序 |
+
+**用途**：加载宠物乐园时快速获取指定宠物对应的 3D 小窝配置与坐标。
+
+---
+
+## 1️⃣8️⃣ pet_playground_entities（宠物乐园实例/实体表）- 1 个索引
+
+### 索引 18.1：按主人与宠物查询实体状态
+**优先级**：⭐⭐ P1（高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_entity_owner_pet` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `ownerOpenid` - 升序 |
+| 字段 2 | `petId` - 升序 |
+
+**用途**：加载乐园宠物模型装扮、坐标位置、当前动作（idle/walking）与心情。
+
+---
+
 ## 🎯 创建优先级总结
 
 ### ⭐⭐⭐ P0 - 立即创建（影响核心业务，极高频查询）
@@ -573,6 +620,9 @@ mall_orders          idx_mall_client_orders P2    [ ]      ____-__-__
 refunds              idx_order_refunds     P2     [ ]      ____-__-__
 withdraw_requests    idx_staff_withdraws   P2     [ ]      ____-__-__
 user_addresses       idx_user_addresses    P2     [ ]      ____-__-__
+pet_playgrounds      idx_playground_owner  P1     [ ]      ____-__-__
+pet_homes            idx_home_owner_pet    P1     [ ]      ____-__-__
+pet_playground_entities idx_entity_owner_pet P1    [ ]      ____-__-__
 ```
 
 ---
