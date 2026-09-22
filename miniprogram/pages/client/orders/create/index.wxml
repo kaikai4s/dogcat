@@ -75,7 +75,16 @@
         </view>
       </view>
       <view class="pet-voice" wx:if="{{selectedPets.length && petVoiceMessage}}">
-        <view class="pet-voice-label">{{selectedPetsTitle}}</view>
+        <view class="pet-voice-header">
+          <view class="pet-voice-label">
+            <text>{{selectedPetsTitle}}</text>
+            <text class="pet-voice-tag" wx:if="{{selectedPets.length === 1}}">AI 心声</text>
+          </view>
+          <view class="pet-voice-refresh" wx:if="{{selectedPets.length === 1}}" bindtap="refreshPetVoice" hover-class="pet-voice-refresh-hover">
+            <text class="remix-icon {{loadingPetVoice ? 'ri-loader-4-line rotating' : 'ri-refresh-line'}}"></text>
+            <text>{{loadingPetVoice ? '感应中...' : '换一句'}}</text>
+          </view>
+        </view>
         <view class="pet-voice-text">“{{petVoiceMessage}}”</view>
       </view>
     </view>

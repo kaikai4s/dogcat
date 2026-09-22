@@ -1,6 +1,12 @@
 {
   "permissions": {
-    "openapi": []
+    "openapi": [
+      "phonenumber.getPhoneNumber",
+      "security.msgSecCheck",
+      "security.imgSecCheck",
+      "security.mediaCheckAsync",
+      "subscribeMessage.send"
+    ]
   },
   "timeout": 60,
   "triggers": [

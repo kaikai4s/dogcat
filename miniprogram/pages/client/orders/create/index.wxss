@@ -509,10 +509,51 @@
   border: 2rpx solid rgba(114, 211, 183, 0.18);
 }
 
+.pet-voice-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .pet-voice-label {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
   color: #18a87c;
   font-size: 23rpx;
   font-weight: 900;
+}
+
+.pet-voice-tag {
+  font-size: 19rpx;
+  font-weight: 700;
+  padding: 2rpx 10rpx;
+  border-radius: 99rpx;
+  background: rgba(24, 168, 124, 0.12);
+  color: #128a64;
+}
+
+.pet-voice-refresh {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  color: #18a87c;
+  font-size: 22rpx;
+  font-weight: 600;
+  opacity: 0.88;
+}
+
+.pet-voice-refresh-hover {
+  opacity: 0.6;
+}
+
+.pet-voice-refresh .rotating {
+  animation: pet-voice-spin 1s linear infinite;
+}
+
+@keyframes pet-voice-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .pet-voice-text {

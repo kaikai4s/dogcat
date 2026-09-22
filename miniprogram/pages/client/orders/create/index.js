@@ -180,20 +180,37 @@ function getVoiceWeekday(startDate) {
   return date.getUTCDay()
 }
 
-function buildPetVoiceMessage(pet, startDate) {
+function buildPetVoiceMessage(pet, startDate, seed = 0) {
   if (!pet) return ''
   const name = pet.name || '我'
   const species = getSpeciesLabel(pet.species)
-  const messages = [
-    `主人主人，周日我想和你贴贴放松，预约好服务后你就安心休息吧～`,
-    `主人，周一你要加油工作哦，我会乖乖等宠托师来陪我的！`,
-    `主人，周二我也在想你呢，等我玩开心了就回去抱你～`,
-    `主人，周三快过半啦，今天也要记得想我这个快乐${species}哦！`,
-    `主人，周四我都准备好啦，你帮我安排的服务最贴心了～`,
-    `我是${name}，周五马上放假啦！主人今晚要早点回家陪我玩哦！`,
-    `主人，周六又是美好的一天，谢谢你帮我找了帮手照顾我～`
+  const personality = pet.personality || ''
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  const weekdayLabel = weekdays[getVoiceWeekday(startDate)] || '今天'
+
+  const pools = [
+    `主人，${weekdayLabel}外头阳光暖洋洋的超舒服！有宠托师来陪我，我会超级乖的，你在外头安心工作不用担心我哦～`,
+    `主人主人，${weekdayLabel}天气凉爽微风正好～你帮我约的宠托师马上就到，我会按时吃粮喝水，主人安心忙吧不用惦记我！`,
+    `主人，${weekdayLabel}秋高气爽很适合晒太阳，等宠托师带我玩开心了我就回窝睡觉，你在外面安心拼事业，放一百个心吧～`,
+    `今天天色微凉，主人出门记得多披件外套哦！我在家有宠托师细心照料，很安全很听话，主人放宽心去忙吧～`,
+    `我是${name}！${weekdayLabel}天气晴朗宜人，等宠托师陪我散步放风，我绝不捣乱拆家，主人安心上班，不用牵挂我呀～`,
+    `主人快看，今天天气这么好！家里有贴心的宠托师陪伴，我一点都不孤单，主人就踏踏实实工作，不用操心我哦～`,
+    `主人，${weekdayLabel}微风习习很惬意呢！你给我安排的宠托师最贴心啦，我会乖乖等主人回家，主人安心忙碌别挂念我～`
   ]
-  return messages[getVoiceWeekday(startDate)]
+
+  if (personality.includes('活泼') || personality.includes('调皮') || personality.includes('皮')) {
+    pools.push(`汪！今天外头微风正好阳光舒服，精力充沛的我等宠托师带我跑酷消耗体力，回家就乖乖睡觉，主人放万分心去忙吧！`)
+  }
+  if (personality.includes('粘人') || personality.includes('撒娇') || personality.includes('温顺')) {
+    pools.push(`主人主人，今天外头空气很清新呢！虽然今天不能随时抱着你，但我心里全都是你，会乖乖等主人回家，安心工作哦～`)
+  }
+  if (species === '猫咪' || (pet.species && pet.species.includes('cat'))) {
+    pools.push(`喵呜～今天阳台阳光晒着好舒服呀！主人在外安心忙工作，等宠托师来给我加完罐罐我就去巡视领地，完全不用操心我～`)
+  }
+
+  const s = Math.abs(Number(seed) || 0)
+  const idx = (getVoiceWeekday(startDate) + s * 3) % pools.length
+  return pools[idx]
 }
 
 function normalizeSelectedPetIds(petIds, fallbackPetId = '') {
@@ -288,6 +305,8 @@ Page({
     selectedPets: [],
     selectedPetsTitle: '',
     petVoiceMessage: '',
+    loadingPetVoice: false,
+    petVoiceRequestId: 0,
     requestedSitter: null,
     sitterAvailability: [],
     selectedAvailability: null,
@@ -754,13 +773,133 @@ Page({
     const pets = decoratePets(this.data.pets, petIds)
     const selectedPets = pets.filter((item) => petIds.includes(item._id))
     const selectedPet = selectedPets[0] || null
+    const isSinglePet = selectedPets.length === 1
+    const initialVoice = isSinglePet
+      ? buildPetVoiceMessage(selectedPet, this.data.form.startDate)
+      : (selectedPets.length > 1 ? '多宠物订单会根据服务规则自动计算额外照护费用。' : '')
+
     this.setData({
       pets,
       selectedPet,
       selectedPets,
       selectedPetsTitle: formatSelectedPetsSummary(selectedPets),
-      petVoiceMessage: selectedPets.length > 1 ? '多宠物订单会根据服务规则自动计算额外照护费用。' : buildPetVoiceMessage(selectedPet, this.data.form.startDate)
-    }, this.prepareTime)
+      petVoiceMessage: initialVoice
+    }, () => {
+      this.prepareTime()
+      if (isSinglePet && selectedPet) {
+        this.fetchAiPetVoice(selectedPet, this.data.form.startDate)
+      }
+    })
+  },
+
+  async fetchAiPetVoice(pet, startDate, forceRefresh = false) {
+    if (!pet) return
+    const requestId = (this.data.petVoiceRequestId || 0) + 1
+    this.setData({ petVoiceRequestId: requestId, loadingPetVoice: true })
+
+    const name = pet.name || '宝贝'
+    const speciesLabel = pet.species === 'dog' ? '狗狗' : pet.species === 'cat' ? '猫咪' : '宠物'
+    const personality = pet.personality ? `，性格特点：${pet.personality}` : ''
+    const breed = pet.breed ? `，品种是${pet.breed}` : ''
+    const activeService = (this.data.serviceOptions || []).find((s) => s.value === this.data.form.serviceType)
+    const serviceName = activeService ? activeService.label : '上门宠托'
+    const targetStartDate = startDate || this.data.form.startDate
+
+    // 1. 优先调用微信小程序原生云开发 AI 扩展（同 AI 宠护小助手的 hy3 模型）
+    let aiSuccess = false
+    try {
+      if (typeof wx !== 'undefined' && wx.cloud && wx.cloud.extend && wx.cloud.extend.AI && typeof wx.cloud.extend.AI.createModel === 'function') {
+        const model = wx.cloud.extend.AI.createModel('cloudbase')
+        const response = await model.streamText({
+          data: {
+            model: 'hy3',
+            messages: [
+              {
+                role: 'system',
+                content: `你是一只名为「${name}」的${breed}${speciesLabel}${personality}。主人正在小程序里为你预约${targetStartDate}的${serviceName}服务。
+请以第一人称「我」的萌宠口吻对最爱的主人说一句话。
+必须严格同时包含两个方面：
+1. 【告诉主人今天/预约日天气情况】：结合当季时令告诉主人今天天气如何（例如阳光明媚暖洋洋、秋高气爽微风正好舒服、或者降温微凉提醒主人添衣）；
+2. 【让主人安心放心】：告诉主人待会有宠托师来贴心照顾自己，自己会乖乖听话吃饭休息，让主人在外面安心工作忙碌，完全不用牵挂担心。
+要求：
+- 语气萌趣治愈可爱、充满爱意，35到60字左右；
+- 严禁出现任何双引号、单引号、书名号、markdown标记，只直接输出宠物说的这一句话。`
+              },
+              {
+                role: 'user',
+                content: `主人为你预约了服务，请以萌宠第一人称口吻，告诉主人今天天气情况并让主人安心放心！`
+              }
+            ]
+          }
+        })
+
+        if (response && response.textStream) {
+          let fullText = ''
+          for await (const text of response.textStream) {
+            if (this.data.petVoiceRequestId !== requestId) return
+            fullText += text
+            const cleaned = fullText.replace(/^["“'「]+|["”'」]+$/g, '').trim()
+            if (cleaned) {
+              this.setData({ petVoiceMessage: cleaned })
+            }
+          }
+          const finalClean = fullText.replace(/^["“'「]+|["”'」]+$/g, '').trim()
+          if (finalClean && finalClean.length >= 5) {
+            this.setData({ petVoiceMessage: finalClean, loadingPetVoice: false })
+            aiSuccess = true
+            return
+          }
+        }
+      }
+    } catch (clientAiErr) {
+      console.warn('[client AI] streamText fallback:', (clientAiErr && clientAiErr.message) || clientAiErr)
+    }
+
+    if (this.data.petVoiceRequestId !== requestId) return
+
+    // 2. 尝试调用云函数端 generatePetVoice
+    try {
+      const res = await callFunction('ai', 'generatePetVoice', {
+        petId: pet._id || '',
+        pet: {
+          name: pet.name,
+          species: pet.species,
+          breed: pet.breed,
+          personality: pet.personality,
+          specialNotes: pet.specialNotes
+        },
+        startDate: targetStartDate,
+        serviceName,
+        forceRefresh
+      })
+
+      if (this.data.petVoiceRequestId !== requestId) return
+      if (res && res.voiceMessage) {
+        this.setData({ petVoiceMessage: res.voiceMessage, loadingPetVoice: false })
+        aiSuccess = true
+        return
+      }
+    } catch (cloudFnErr) {
+      console.warn('[cloud function] generatePetVoice fallback:', (cloudFnErr && cloudFnErr.message) || cloudFnErr)
+    }
+
+    if (this.data.petVoiceRequestId !== requestId) return
+
+    // 3. 兜底回退：若 AI 暂未响应，使用多样化的温情随机池
+    const nextSeed = (this.data.voiceRefreshSeed || 0) + 1
+    const fallbackText = buildPetVoiceMessage(pet, targetStartDate, nextSeed)
+    this.setData({
+      petVoiceMessage: fallbackText,
+      loadingPetVoice: false,
+      voiceRefreshSeed: nextSeed
+    })
+  },
+
+  refreshPetVoice() {
+    if (this.data.loadingPetVoice || !this.data.selectedPet) return
+    const nextSeed = (this.data.voiceRefreshSeed || 0) + 1
+    this.setData({ voiceRefreshSeed: nextSeed })
+    this.fetchAiPetVoice(this.data.selectedPet, this.data.form.startDate, true)
   },
 
   choosePet(e) {
