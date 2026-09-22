@@ -18,13 +18,17 @@
       <view wx:else class="draw-disabled">今日抽奖次数已用完</view>
     </view>
 
-    <view class="card" wx:if="{{result}}">
-      <view class="card-subtitle"><text class="remix-icon ri-award-line sub-icon"></text><text>本次结果</text></view>
+    <view class="card result-card" wx:if="{{result}}">
+      <view class="card-subtitle"><text class="remix-icon ri-award-line sub-icon"></text><text>本次抽奖结果</text></view>
       <view class="result-row">
         <view class="result-name">{{result.prizeName}}</view>
-        <view class="status-badge" wx:if="{{result.couponId || result.prizeType === 'coupon'}}">已存入优惠券</view>
-        <view class="status-badge" wx:elif="{{result.points > 0 || result.prizeType === 'points'}}">积分已到账</view>
-        <view class="status-badge" wx:else>谢谢参与</view>
+        <view class="status-badge badge-coupon" wx:if="{{result.couponId || result.prizeType === 'coupon'}}">已存入优惠券</view>
+        <view class="status-badge badge-points" wx:elif="{{result.points > 0 || result.prizeType === 'points'}}">积分已到账</view>
+        <view class="status-badge badge-blessing" wx:else>萌宠祝福</view>
+      </view>
+      <view class="result-blessing-box" wx:if="{{result.prizeText}}">
+        <view class="blessing-quote-title"><text class="remix-icon ri-chat-quote-line"></text><text>萌宠寄语</text></view>
+        <view class="blessing-quote-desc">{{result.prizeText}}</view>
       </view>
     </view>
   </view>
@@ -43,10 +47,17 @@
     <view class="list-tip" wx:if="{{loadingRecords}}">正在加载记录...</view>
     <view class="record-row" wx:for="{{records}}" wx:key="_id">
       <view class="record-main">
-        <view class="record-title">{{item.prizeName}}</view>
+        <view class="between record-header-line">
+          <view class="record-title">{{item.prizeName}}</view>
+          <view class="status-badge badge-{{item.prizeType || 'text'}}">{{item.prizeTag}}</view>
+        </view>
+        <!-- 显示萌宠文字祝福 -->
+        <view class="record-blessing-content" wx:if="{{item.prizeText}}">
+          <text class="blessing-icon">🐾</text>
+          <text class="blessing-quote">“{{item.prizeText}}”</text>
+        </view>
         <view class="record-time">{{item.createdAtText}}</view>
       </view>
-      <view class="status-badge">{{item.prizeTag}}</view>
     </view>
     <view class="empty-record" wx:if="{{!loadingRecords && !records.length}}">暂无抽奖记录</view>
   </view>

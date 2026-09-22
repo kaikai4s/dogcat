@@ -8,36 +8,42 @@
   <view class="action-card card">
     <view class="between" style="align-items:center;">
       <view>
-        <view class="strong" style="font-size:30rpx;">抽奖活动列表</view>
-        <view class="muted" style="font-size:24rpx;">共 {{activities.length}} 个活动</view>
+        <view class="strong" style="font-size:30rpx;color:#2d211a;">抽奖活动列表</view>
+        <view class="muted" style="font-size:24rpx;margin-top:4rpx;">共 {{activities.length}} 个活动</view>
       </view>
-      <button class="primary compact-btn" bindtap="openCreateModal">+ 新建抽奖活动</button>
+      <button class="primary action-create-btn" bindtap="openCreateModal">+ 新建抽奖活动</button>
     </view>
   </view>
 
   <view class="card activity-card" wx:for="{{activities}}" wx:key="_id">
-    <view class="between" style="align-items:flex-start;">
-      <view style="flex:1; margin-right: 20rpx;">
-        <view style="display:flex; align-items:center; gap: 12rpx; margin-bottom: 8rpx;">
-          <view class="strong" style="font-size:30rpx;">{{item.name}}</view>
-          <view class="badge" style="background:{{item.enabled ? '#059669' : '#9ca3af'}}; color:#fff;">{{item.enabled ? '进行中' : '已关闭'}}</view>
-        </view>
-        <view class="muted" wx:if="{{item.description}}" style="margin-bottom:12rpx; font-size:24rpx;">{{item.description}}</view>
-        
-        <view class="prize-tag-list">
-          <view class="prize-pill {{p.type === 'points' ? 'pill-points' : (p.type === 'coupon' ? 'pill-coupon' : 'pill-text')}}" wx:for="{{item.prizes}}" wx:for-item="p" wx:key="index">
-            <text class="pill-type">{{p.type === 'points' ? '积分' : (p.type === 'coupon' ? '卡券' : '文案')}}</text>
-            <text class="pill-name">{{p.name}}</text>
-            <text class="pill-prob">{{p.probability}}%</text>
-          </view>
+    <!-- 卡片头部：标题与状态 -->
+    <view class="activity-head">
+      <view class="activity-title-wrap">
+        <view class="activity-title">{{item.name}}</view>
+        <view class="badge status-badge {{item.enabled ? 'badge-running' : 'badge-closed'}}">
+          {{item.enabled ? '进行中' : '已关闭'}}
         </view>
       </view>
+    </view>
 
-      <view class="activity-actions">
-        <button class="ghost compact-btn" data-index="{{index}}" bindtap="toggle">{{item.enabled ? '关闭' : '开启'}}</button>
-        <button class="ghost compact-btn" data-index="{{index}}" bindtap="openEditModal">编辑</button>
-        <button class="ghost compact-btn danger-btn" data-index="{{index}}" bindtap="deleteActivity">删除</button>
+    <!-- 卡片说明 -->
+    <view class="activity-desc" wx:if="{{item.description}}">{{item.description}}</view>
+
+    <!-- 奖品池标签 -->
+    <view class="prize-tag-list" wx:if="{{item.prizes && item.prizes.length}}">
+      <view class="prize-pill {{p.type === 'points' ? 'pill-points' : (p.type === 'coupon' ? 'pill-coupon' : 'pill-text')}}" wx:for="{{item.prizes}}" wx:for-item="p" wx:key="index">
+        <text class="pill-type">{{p.type === 'points' ? '积分' : (p.type === 'coupon' ? '卡券' : '文案')}}</text>
+        <text class="pill-name">{{p.name}}</text>
+        <text class="pill-prob">{{p.probability}}%</text>
       </view>
+    </view>
+    <view class="prize-tag-empty" wx:else>暂无奖品配置</view>
+
+    <!-- 底部操作按钮栏：水平右对齐 -->
+    <view class="activity-footer">
+      <button class="ghost opt-btn" data-index="{{index}}" bindtap="toggle">{{item.enabled ? '关闭活动' : '开启活动'}}</button>
+      <button class="ghost opt-btn" data-index="{{index}}" bindtap="openEditModal">编辑</button>
+      <button class="ghost opt-btn opt-danger" data-index="{{index}}" bindtap="deleteActivity">删除</button>
     </view>
   </view>
 
@@ -114,9 +120,34 @@
 
             <!-- 文字类型 (未中奖) -->
             <view wx:if="{{newPrize.type === 'text'}}">
-              <input placeholder="未中奖文案，如：谢谢参与 / 祝您下次中奖" value="{{newPrize.text}}" data-field="text" bindinput="prizeInput" />
-              <input placeholder="奖品展示名称，如：谢谢参与" value="{{newPrize.name}}" data-field="name" bindinput="prizeInput" />
-              <view class="notice" style="margin: 8rpx 0 14rpx;">自定义编写文字，抽中相当于未中奖，不发放卡券或积分，仅向用户展示安慰文案。</view>
+              <view class="blessing-picker-card">
+                <view class="between" style="align-items:center; margin-bottom: 12rpx;">
+                  <view class="strong" style="font-size: 26rpx; color: #9a3412;">🐾 萌宠趣味金句库（猫咪/狗狗）</view>
+                  <view class="random-dice-btn" bindtap="pickRandomBlessing">🎲 随机换一句</view>
+                </view>
+
+                <!-- 下拉选择 30 款猫狗品种金句 -->
+                <picker range="{{petBlessingList}}" range-key="label" value="{{selectedBlessingIndex}}" bindchange="choosePetBlessing">
+                  <view class="field blessing-field">
+                    <text style="margin-right:8rpx;">🐾</text>
+                    <text>点击挑选猫咪/狗狗品种金句（共30款）</text>
+                  </view>
+                </picker>
+
+                <!-- 热门萌宠快捷标签 -->
+                <view class="quick-chips-row">
+                  <view class="quick-chip" wx:for="{{quickBlessingBreeds}}" wx:key="*this" data-breed="{{item}}" bindtap="applyQuickBlessing">
+                    {{item}}
+                  </view>
+                </view>
+              </view>
+
+              <view class="muted" style="font-size:24rpx; margin: 10rpx 0 6rpx;">文案内容（抽中后对用户展示）</view>
+              <textarea auto-height placeholder="未中奖文案，如：我是大金毛，你抽中了我今天会有滚滚财运哦～" value="{{newPrize.text}}" data-field="text" bindinput="prizeInput" class="blessing-textarea" />
+
+              <view class="muted" style="font-size:24rpx; margin: 10rpx 0 6rpx;">奖品展示名称</view>
+              <input placeholder="奖品展示名称，如：金毛送财运 / 谢谢参与" value="{{newPrize.name}}" data-field="name" bindinput="prizeInput" />
+              <view class="notice" style="margin: 8rpx 0 14rpx;">抽中文字奖品相当于未中奖，不发放卡券或积分，向用户展示趣味萌宠祝福文案。</view>
             </view>
 
             <!-- 积分类型 -->
@@ -144,14 +175,16 @@
               </view>
             </view>
 
-            <button class="ghost" style="margin-top: 14rpx; width:100%; border-color:#e05c8b; color:#e05c8b;" bindtap="addPrize">+ 添加此奖品至列表</button>
+            <button class="ghost action-add-prize-btn" bindtap="addPrize">+ 添加此奖品至列表</button>
           </view>
+          <!-- 垫底占位，彻底杜绝内容被底部操作栏遮挡 -->
+          <view class="modal-scroll-spacer"></view>
         </view>
       </scroll-view>
 
       <view class="modal-footer">
-        <button class="ghost" style="flex:1;" bindtap="closeModal">取消</button>
-        <button class="primary" style="flex:2;" bindtap="save">保存抽奖活动</button>
+        <button class="ghost modal-footer-btn" style="flex:1;" bindtap="closeModal">取消</button>
+        <button class="primary modal-footer-btn" style="flex:2;" bindtap="save">保存抽奖活动</button>
       </view>
     </view>
   </view>

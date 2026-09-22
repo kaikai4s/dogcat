@@ -3,11 +3,13 @@ const { formatDateTime } = require('../../../utils/format')
 
 function decorateRecords(records = []) {
   return records.map((item) => {
-    let prizeTag = '参与奖'
+    let prizeTag = '祝福'
     if (item.prizeType === 'points' || Number(item.points) > 0) {
       prizeTag = '积分'
     } else if (item.prizeType === 'coupon' || item.couponId) {
       prizeTag = '优惠券'
+    } else if (!item.prizeText && item.prizeName === '谢谢参与') {
+      prizeTag = '参与奖'
     }
     return {
       ...item,
@@ -62,7 +64,14 @@ Page({
         } else if (res.prizeType === 'points' || (res.points && res.points > 0)) {
           wx.showToast({ title: `恭喜获得：${res.prizeName}`, icon: 'success', duration: 3000 })
         } else {
-          wx.showToast({ title: res.prizeName || '谢谢参与', icon: 'none', duration: 2500 })
+          // 萌宠文字祝福：以专属弹窗展示暖心文案
+          wx.showModal({
+            title: `🐾 ${res.prizeName || '萌宠祝福'}`,
+            content: res.prizeText || res.prizeName || '谢谢参与，祝您生活愉快！',
+            showCancel: false,
+            confirmText: '收到祝福',
+            confirmColor: '#e05c8b'
+          })
         }
         this.load()
         this.loadRecords()

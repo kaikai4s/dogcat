@@ -1,4 +1,5 @@
 const { callFunction, showError } = require('../../../utils/cloud')
+const { PET_BLESSINGS, getFormattedBlessingList, getRandomBlessing } = require('./petBlessings')
 
 function emptyActivity() {
   return { _id: '', name: '', description: '', enabled: true, prizes: [] }
@@ -29,10 +30,11 @@ function emptyPrize(type = 'text', defaultTemplate = null) {
       stockLeft: 100
     }
   }
+  const defaultBlessing = PET_BLESSINGS[0]
   return {
     type: 'text',
-    name: '谢谢参与',
-    text: '谢谢参与',
+    name: defaultBlessing ? defaultBlessing.name : '金毛送财运',
+    text: defaultBlessing ? defaultBlessing.text : '我是大金毛，你抽中了我今天会有滚滚财运和满满好心情哦～',
     points: 0,
     templateId: '',
     couponName: '',
@@ -79,7 +81,10 @@ Page({
     form: emptyActivity(),
     newPrize: emptyPrize('text'),
     totalProbability: 0,
-    selectedTemplateIndex: 0
+    selectedTemplateIndex: 0,
+    petBlessingList: getFormattedBlessingList(),
+    selectedBlessingIndex: 0,
+    quickBlessingBreeds: ['大金毛', '大橘猫', '柯基', '布偶猫', '柴犬', '三花猫', '哈士奇', '边境牧羊犬']
   },
 
   onShow() {
@@ -160,6 +165,39 @@ Page({
     const defaultTmpl = this.data.templates[0] || null
     const base = emptyPrize(type, defaultTmpl)
     this.setData({ newPrize: base })
+  },
+
+  choosePetBlessing(e) {
+    const idx = Number(e.detail.value)
+    const item = this.data.petBlessingList[idx]
+    if (!item) return
+    this.setData({
+      selectedBlessingIndex: idx,
+      ['newPrize.text']: item.text,
+      ['newPrize.name']: item.name || item.breed
+    })
+    wx.showToast({ title: `已选：${item.breed}`, icon: 'none' })
+  },
+
+  pickRandomBlessing() {
+    const item = getRandomBlessing()
+    if (!item) return
+    this.setData({
+      ['newPrize.text']: item.text,
+      ['newPrize.name']: item.name || item.breed
+    })
+    wx.showToast({ title: `🎲 随机换：${item.breed}`, icon: 'none' })
+  },
+
+  applyQuickBlessing(e) {
+    const breed = e.currentTarget.dataset.breed
+    const item = this.data.petBlessingList.find((b) => b.breed === breed)
+    if (!item) return
+    this.setData({
+      ['newPrize.text']: item.text,
+      ['newPrize.name']: item.name || item.breed
+    })
+    wx.showToast({ title: `已选：${item.breed}`, icon: 'none' })
   },
 
   prizeInput(e) {

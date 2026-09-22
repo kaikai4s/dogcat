@@ -6,7 +6,8 @@ module.exports = function createHandler(context) {
     getUser,
     incUpdateValue,
     normalizeCouponSnapshot,
-    now
+    now,
+    safeText
   } = context
   return async function lottery(openid, action, data) {
     if (action === 'getActiveActivity') {
@@ -45,15 +46,21 @@ module.exports = function createHandler(context) {
         .orderBy('createdAt', 'desc')
         .limit(pageSize)
         .get()
-      return (records.data || []).map((item) => ({
-        _id: item._id,
-        activityId: item.activityId || '',
-        prizeType: item.prizeType || (item.couponId ? 'coupon' : (Number(item.points) > 0 ? 'points' : 'text')),
-        prizeName: item.prizeName || '谢谢参与',
-        points: Number(item.points || 0),
-        couponId: item.couponId || '',
-        createdAt: item.createdAt || ''
-      }))
+      return (records.data || []).map((item) => {
+        const prizeType = item.prizeType || (item.couponId ? 'coupon' : (Number(item.points) > 0 ? 'points' : 'text'))
+        const prizeName = item.prizeName || '谢谢参与'
+        const prizeText = safeText(item.prizeText || (prizeType === 'text' && prizeName !== '谢谢参与' ? prizeName : '')).trim()
+        return {
+          _id: item._id,
+          activityId: item.activityId || '',
+          prizeType,
+          prizeName,
+          prizeText,
+          points: Number(item.points || 0),
+          couponId: item.couponId || '',
+          createdAt: item.createdAt || ''
+        }
+      })
     }
     if (action === 'draw') {
       const user = await getUser(openid)
@@ -167,6 +174,7 @@ module.exports = function createHandler(context) {
       }
 
       const finalPrizeName = prize.name || (prizeType === 'points' ? `${pointsAwarded} 积分` : (prize.text || '谢谢参与'))
+      const prizeText = safeText(prize.text || (prizeType === 'text' ? prize.name : '')).trim()
       await db.collection('lottery_records').add({
         data: {
           userId: user._id,
@@ -175,6 +183,7 @@ module.exports = function createHandler(context) {
           prizeType,
           prizeTemplateId: prize.templateId || '',
           prizeName: finalPrizeName,
+          prizeText,
           points: pointsAwarded,
           couponId,
           createdAt: time
@@ -183,6 +192,7 @@ module.exports = function createHandler(context) {
       return {
         prizeName: finalPrizeName,
         prizeType,
+        prizeText,
         points: pointsAwarded,
         couponId,
         templateSnapshot

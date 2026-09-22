@@ -1014,6 +1014,8 @@ textarea {
   color: var(--theme-primary);
   font-size: 22rpx;
   font-weight: 850;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .badge.danger {

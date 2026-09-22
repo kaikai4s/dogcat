@@ -255,13 +255,47 @@ test('lottery draw: winning text prize awards no points or coupons, acting as a 
   assert.equal(drawRes.ok, true)
   assert.equal(drawRes.data.prizeType, 'text')
   assert.equal(drawRes.data.prizeName, '下次再来')
+  assert.equal(drawRes.data.prizeText, '下次再来')
   assert.equal(drawRes.data.couponId, '')
+
+  // 验证抽奖记录中持久化了 prizeText
+  const record = db.state.lottery_records.find((r) => r.openid === 'openid_client')
+  assert.ok(record)
+  assert.equal(record.prizeText, '下次再来')
+
+  // 验证 listMyRecords 接口返回了 prizeText
+  const listRes = await clientFn.main({
+    module: 'lottery',
+    action: 'listMyRecords'
+  })
+  assert.equal(listRes.ok, true)
+  assert.ok(listRes.data && listRes.data.length > 0)
+  assert.equal(listRes.data[0].prizeText, '下次再来')
 
   // 验证用户积分没有改变，也没有发券
   const user = db.state.users.find((u) => u.openid === 'openid_client')
   assert.equal(user.points, 100)
   assert.equal(db.state.user_coupons.length, 0)
   assert.equal(db.state.point_logs.length, 0)
+})
+
+test('lottery client view: displays blessing text quotes in lottery records and modal', () => {
+  const clientWxml = fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/client/lottery/index.wxml'), 'utf8')
+  const clientJs = fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/client/lottery/index.js'), 'utf8')
+  const clientWxss = fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/client/lottery/index.wxss'), 'utf8')
+
+  // 验证抽奖记录和结果卡片展示祝福文案
+  assert.ok(clientWxml.includes('record-blessing-content'), 'Client WXML must render record-blessing-content in record list')
+  assert.ok(clientWxml.includes('item.prizeText'), 'Client WXML must bind item.prizeText')
+  assert.ok(clientWxml.includes('result-blessing-box'), 'Client WXML must render result-blessing-box')
+
+  // 验证 JS 中弹窗与标记
+  assert.ok(clientJs.includes('wx.showModal'), 'Client JS must trigger wx.showModal for blessings')
+  assert.ok(clientJs.includes('prizeTag = \'祝福\''), 'Client JS must tag text blessings with 祝福')
+
+  // 验证样式类
+  assert.ok(clientWxss.includes('.record-blessing-content'), 'Client WXSS must define .record-blessing-content')
+  assert.ok(clientWxss.includes('.result-blessing-box'), 'Client WXSS must define .result-blessing-box')
 })
 
 test('frontend files: coupon and lottery wxml and js contain modal popup, servicePriceRows and multi-type prizes bindings', async () => {
@@ -293,3 +327,43 @@ test('frontend files: coupon and lottery wxml and js contain modal popup, servic
   assert.ok(lotteryJs.includes('type === \'text\''), 'Lottery JS must handle text prize type')
   assert.ok(lotteryJs.includes('type === \'coupon\''), 'Lottery JS must handle coupon prize type')
 })
+
+test('pet blessings library: provides rich dog and cat presets and can be chosen in lottery admin', () => {
+  const { PET_BLESSINGS, getFormattedBlessingList, getRandomBlessing } = require('../../miniprogram/pages/admin/lottery/petBlessings')
+  assert.ok(PET_BLESSINGS.length >= 25, 'Must provide at least 25 blessings')
+
+  // 验证包含大金毛与财运祝福
+  const goldenRetriever = PET_BLESSINGS.find((b) => b.breed.includes('金毛'))
+  assert.ok(goldenRetriever, 'Must include golden retriever blessing')
+  assert.ok(goldenRetriever.text.includes('大金毛') && goldenRetriever.text.includes('财运'), 'Golden retriever text must mention 大金毛 and 财运')
+
+  // 验证包含多种猫咪品种
+  const orangeCat = PET_BLESSINGS.find((b) => b.breed.includes('橘'))
+  assert.ok(orangeCat, 'Must include orange cat')
+  const ragdollCat = PET_BLESSINGS.find((b) => b.breed.includes('布偶'))
+  assert.ok(ragdollCat, 'Must include ragdoll cat')
+
+  // 验证包含多种狗狗品种
+  const corgi = PET_BLESSINGS.find((b) => b.breed.includes('柯基'))
+  assert.ok(corgi, 'Must include corgi')
+  const husky = PET_BLESSINGS.find((b) => b.breed.includes('哈士奇'))
+  assert.ok(husky, 'Must include husky')
+
+  const list = getFormattedBlessingList()
+  assert.equal(list.length, PET_BLESSINGS.length)
+  assert.ok(list[0].label.includes('【'), 'Label must format with brackets')
+
+  const random = getRandomBlessing()
+  assert.ok(random && random.text, 'Random blessing must return valid item')
+
+  // 验证 WXML & JS 绑定与避遮挡结构
+  const lotteryWxml = fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/lottery/index.wxml'), 'utf8')
+  const lotteryJs = fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/lottery/index.js'), 'utf8')
+
+  assert.ok(lotteryWxml.includes('choosePetBlessing'), 'WXML must bind choosePetBlessing')
+  assert.ok(lotteryWxml.includes('pickRandomBlessing'), 'WXML must bind pickRandomBlessing')
+  assert.ok(lotteryWxml.includes('modal-scroll-spacer'), 'WXML must have modal-scroll-spacer to avoid footer overlap')
+  assert.ok(lotteryJs.includes('choosePetBlessing('), 'JS must implement choosePetBlessing')
+  assert.ok(lotteryJs.includes('pickRandomBlessing('), 'JS must implement pickRandomBlessing')
+})
+
