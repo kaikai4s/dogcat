@@ -11,6 +11,14 @@ const roleOptions = [
   { label: '管理员', value: 'admin' }
 ]
 
+function decorateRoleOptions(options = [], roles = []) {
+  const set = new Set(roles || [])
+  return (options || []).map((item) => ({
+    ...item,
+    checked: set.has(item.value)
+  }))
+}
+
 function numberText(value) {
   return String(Math.max(Math.round(Number(value || 0)), 0))
 }
@@ -33,7 +41,7 @@ Page({
       roles: ['client']
     },
     statusOptions,
-    roleOptions,
+    roleOptions: decorateRoleOptions(roleOptions, ['client']),
     statusIndex: 0,
     statsRows: []
   },
@@ -51,6 +59,7 @@ Page({
       .then((user) => {
         const status = user.status === 'disabled' ? 'disabled' : (user.status === 'deleted' ? 'deleted' : 'active')
         const statusIndex = Math.max(statusOptions.findIndex((item) => item.value === status), 0)
+        const roles = Array.isArray(user.roles) && user.roles.length ? user.roles : ['client']
         this.setData({
           user,
           form: {
@@ -62,9 +71,10 @@ Page({
             points: numberText(user.points),
             totalPoints: numberText(user.totalPoints),
             retroCardCount: numberText(user.retroCardCount),
-            roles: Array.isArray(user.roles) && user.roles.length ? user.roles : ['client']
+            roles
           },
           statusIndex,
+          roleOptions: decorateRoleOptions(roleOptions, roles),
           statsRows: this.buildStatsRows(user.stats || {}),
           loading: false
         })
@@ -105,7 +115,10 @@ Page({
 
   changeRoles(e) {
     const roles = e.detail.value && e.detail.value.length ? e.detail.value : ['client']
-    this.setData({ 'form.roles': roles })
+    this.setData({
+      'form.roles': roles,
+      roleOptions: decorateRoleOptions(roleOptions, roles)
+    })
   },
 
   save() {

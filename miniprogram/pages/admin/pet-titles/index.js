@@ -44,10 +44,20 @@ function emptyMail() {
   return { titleId: '', titleName: '', targetType: 'openid_list', openids: '', role: 'client', targetLevelIds: [], title: '', content: '' }
 }
 
+function decorateLevels(levels = [], selectedIds = []) {
+  const set = new Set(selectedIds || [])
+  return (levels || []).map((lvl) => ({
+    ...lvl,
+    selected: set.has(lvl._id)
+  }))
+}
+
 Page({
   data: {
     titles: [],
     levels: [],
+    formLevelOptions: [],
+    mailLevelOptions: [],
     form: emptyTitle(),
     mailForm: emptyMail(),
     showFormModal: false,
@@ -70,7 +80,14 @@ Page({
     Promise.all([
       callFunction('admin', 'listPetTitles'),
       callFunction('admin', 'listMemberLevels')
-    ]).then(([titles, levels]) => this.setData({ titles, levels })).catch(showError)
+    ]).then(([titles, levels]) => {
+      this.setData({
+        titles,
+        levels,
+        formLevelOptions: decorateLevels(levels, this.data.form.autoGrantLevelIds),
+        mailLevelOptions: decorateLevels(levels, this.data.mailForm.targetLevelIds)
+      })
+    }).catch(showError)
   },
 
   noop() {},
@@ -85,24 +102,44 @@ Page({
     const id = e.currentTarget.dataset.id
     const current = this.data.form.autoGrantLevelIds || []
     const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
-    this.setData({ 'form.autoGrantLevelIds': next })
+    this.setData({
+      'form.autoGrantLevelIds': next,
+      formLevelOptions: decorateLevels(this.data.levels, next)
+    })
   },
 
   toggleMailLevel(e) {
     const id = e.currentTarget.dataset.id
     const current = this.data.mailForm.targetLevelIds || []
     const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
-    this.setData({ 'mailForm.targetLevelIds': next })
+    this.setData({
+      'mailForm.targetLevelIds': next,
+      mailLevelOptions: decorateLevels(this.data.levels, next)
+    })
   },
 
   setMailTargetType(e) { this.setData({ 'mailForm.targetType': e.currentTarget.dataset.type }) },
 
-  openAddModal() { this.setData({ form: emptyTitle(), showFormModal: true }) },
-  closeFormModal() { this.setData({ form: emptyTitle(), showFormModal: false, saving: false }) },
+  openAddModal() {
+    this.setData({
+      form: emptyTitle(),
+      formLevelOptions: decorateLevels(this.data.levels, []),
+      showFormModal: true
+    })
+  },
+  closeFormModal() {
+    this.setData({
+      form: emptyTitle(),
+      formLevelOptions: decorateLevels(this.data.levels, []),
+      showFormModal: false,
+      saving: false
+    })
+  },
 
   chooseTitle(e) {
     const item = this.data.titles[Number(e.currentTarget.dataset.index)]
     if (!item) return
+    const autoGrantLevelIds = item.autoGrantLevelIds || []
     this.setData({
       form: {
         _id: item._id || '',
@@ -113,10 +150,11 @@ Page({
         nameEffect: item.nameEffect || 'none',
         badgeStyle: item.badgeStyle || 'gold',
         duplicatePoints: Number(item.duplicatePoints || 0),
-        autoGrantLevelIds: item.autoGrantLevelIds || [],
+        autoGrantLevelIds,
         enabled: item.enabled !== false,
         sortOrder: Number(item.sortOrder || 0)
       },
+      formLevelOptions: decorateLevels(this.data.levels, autoGrantLevelIds),
       showFormModal: true
     })
   },

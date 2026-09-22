@@ -96,24 +96,28 @@ module.exports = function createHandler(context) {
       }
       const prize = prizes[prizeIndex]
 
-      // 找到该奖品在原始 prizes 数组中的位置（按 name+templateId+type 精确匹配第一个库存>0的）
+      // 找到该奖品在原始 prizes 数组中的位置（按 name+type+templateId+titleId 精确匹配第一个库存>0的）
+      const isPrizeMatch = (cand) => cand.name === prize.name &&
+        (cand.type || '') === (prize.type || '') &&
+        (cand.templateId || '') === (prize.templateId || '') &&
+        (cand.titleId || '') === (prize.titleId || '') &&
+        Number(cand.stockLeft || 0) > 0
+
       let originalIndex = -1
       let matchCount = 0
       for (let i = 0; i < freshActivity.prizes.length; i++) {
         const p = freshActivity.prizes[i]
-        if (p.name === prize.name && (p.templateId || '') === (prize.templateId || '') && Number(p.stockLeft || 0) > 0) {
+        if (isPrizeMatch(p)) {
           if (matchCount === prizeIndex - prizes.indexOf(prize)) { originalIndex = i; break }
           matchCount++
         }
       }
       // 降级：找第一个匹配
       if (originalIndex === -1) {
-        originalIndex = freshActivity.prizes.findIndex(
-          (p) => p.name === prize.name && (p.templateId || '') === (prize.templateId || '') && Number(p.stockLeft || 0) > 0
-        )
+        originalIndex = freshActivity.prizes.findIndex(isPrizeMatch)
       }
 
-      const prizeType = prize.type || (prize.templateId ? 'coupon' : (Number(prize.points) > 0 ? 'points' : 'text'))
+      const prizeType = prize.type || (prize.templateId ? 'coupon' : (prize.titleId ? 'pet_title' : (Number(prize.points) > 0 ? 'points' : 'text')))
       const time = now()
       let couponId = ''
       let templateSnapshot = null
@@ -121,6 +125,7 @@ module.exports = function createHandler(context) {
       let rewardMailId = ''
       let titleId = ''
       let petTitleSnapshot = null
+      let finalPrizeName = prize.name || (prizeType === 'points' ? `${Math.max(Math.round(Number(prize.points || 0)), 0)} 积分` : (prize.text || '谢谢参与'))
 
       if (prizeType === 'coupon' && prize.templateId) {
         const template = (await db.collection('coupon_templates').doc(prize.templateId).get()).data
@@ -158,7 +163,7 @@ module.exports = function createHandler(context) {
         }
       } else if (prizeType === 'points') {
         pointsAwarded = Math.max(Math.round(Number(prize.points || 0)), 0)
-        if (pointsAwarded > 0 && typeof addPoints === 'function') {
+        if (pointsAwarded > 0) {
           await addPoints(
             openid,
             user._id,
@@ -170,31 +175,42 @@ module.exports = function createHandler(context) {
         }
       } else if (prizeType === 'pet_title') {
         titleId = safeText(prize.titleId).trim()
-        const petTitle = await getPetTitle(titleId, { includeDeleted: true })
-        if (petTitle.deletedAt || petTitle.enabled === false) throw new Error('宠物头衔奖品已失效')
-        petTitleSnapshot = prize.titleSnapshot || titleSnapshot(petTitle)
-        const mail = await db.collection('reward_mails').add({
-          data: {
-            userId: user._id,
-            openid,
-            title: `抽奖获得宠物头衔【${petTitle.name}】`,
-            content: `你在抽奖活动【${activity.name}】中获得宠物头衔【${petTitle.name}】，请领取后为宠物佩戴。`,
-            targetType: 'lottery',
-            targetOpenids: [openid],
-            targetRole: '',
-            targetLevelIds: [],
-            targetLevelNamesSnapshot: [],
-            reward: { type: 'pet_title', titleId, titleSnapshot: petTitleSnapshot, duplicatePoints: petTitleSnapshot.duplicatePoints },
-            sentByAdminUserId: '',
-            sentByAdminOpenid: '',
-            readAt: null,
-            claimedAt: null,
-            rewardClaimResult: {},
-            createdAt: time,
-            updatedAt: time
-          }
-        })
-        rewardMailId = mail._id
+        let petTitle = null
+        try {
+          petTitle = await getPetTitle(titleId, { includeDeleted: true })
+        } catch (e) {
+          petTitle = null
+        }
+        if (petTitle && !petTitle.deletedAt && petTitle.enabled !== false) {
+          petTitleSnapshot = prize.titleSnapshot || titleSnapshot(petTitle)
+          const mail = await db.collection('reward_mails').add({
+            data: {
+              userId: user._id,
+              openid,
+              title: `抽奖获得宠物头衔【${petTitle.name}】`,
+              content: `你在抽奖活动【${activity.name}】中获得宠物头衔【${petTitle.name}】，请领取后为宠物佩戴。`,
+              targetType: 'lottery',
+              targetOpenids: [openid],
+              targetRole: '',
+              targetLevelIds: [],
+              targetLevelNamesSnapshot: [],
+              reward: { type: 'pet_title', titleId, titleSnapshot: petTitleSnapshot, duplicatePoints: petTitleSnapshot.duplicatePoints },
+              sentByAdminUserId: '',
+              sentByAdminOpenid: '',
+              readAt: null,
+              claimedAt: null,
+              rewardClaimResult: {},
+              createdAt: time,
+              updatedAt: time
+            }
+          })
+          rewardMailId = mail._id
+        } else {
+          // 兜底：若头衔已被停用或删除，折算补偿20积分
+          pointsAwarded = 20
+          finalPrizeName = `${finalPrizeName}（已折算20积分）`
+          await addPoints(openid, user._id, pointsAwarded, 'lottery_reward', activity._id, `抽奖活动【${activity.name}】头衔失效补偿 20 积分`)
+        }
       }
 
       // 用原子操作更新指定奖品库存，避免竞态超发
@@ -207,7 +223,9 @@ module.exports = function createHandler(context) {
         })
       }
 
-      const finalPrizeName = prize.name || (prizeType === 'points' ? `${pointsAwarded} 积分` : (prize.text || '谢谢参与'))
+      if (!finalPrizeName) {
+        finalPrizeName = prize.name || (prizeType === 'points' ? `${pointsAwarded} 积分` : (prize.text || '谢谢参与'))
+      }
       const prizeText = safeText(prize.text || (prizeType === 'text' ? prize.name : '')).trim()
       await db.collection('lottery_records').add({
         data: {

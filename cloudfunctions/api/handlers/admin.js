@@ -1392,10 +1392,19 @@ module.exports = function createHandler(context) {
     }
     if (action === 'savePetTitle') {
       const saved = await savePetTitle(data)
-      const usersRes = await db.collection('users').where({ status: 'active' }).get()
-      const grants = await grantEligiblePetTitlesForUsers(usersRes.data || [])
-      await logAdmin(admin, 'pet_title', saved._id, 'savePetTitle', { name: saved.name, autoGrantLevelIds: saved.autoGrantLevelIds, autoGrantCount: grants.length })
-      return { ...saved, autoGrantCount: grants.length }
+      let autoGrantCount = 0
+      if (Array.isArray(saved.autoGrantLevelIds) && saved.autoGrantLevelIds.length > 0) {
+        try {
+          const usersRes = await db.collection('users').where({ status: 'active' }).get()
+          const matchedUsers = (usersRes.data || []).filter((u) => saved.autoGrantLevelIds.includes(u.memberLevel))
+          const grants = await grantEligiblePetTitlesForUsers(matchedUsers)
+          autoGrantCount = grants.length
+        } catch (error) {
+          console.warn('[savePetTitle] 预发会员等级头衔异常（客户端可在登录/进入会员中心时自动补发）:', error.message || error)
+        }
+      }
+      await logAdmin(admin, 'pet_title', saved._id, 'savePetTitle', { name: saved.name, autoGrantLevelIds: saved.autoGrantLevelIds, autoGrantCount })
+      return { ...saved, autoGrantCount }
     }
     if (action === 'deletePetTitle') {
       const id = safeText(data._id || data.id).trim()

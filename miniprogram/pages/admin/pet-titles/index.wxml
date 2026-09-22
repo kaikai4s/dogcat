@@ -76,7 +76,7 @@
 
         <view class="form-group">
           <view class="field-label">达到这些会员等级后自动获得</view>
-          <view class="level-grid"><view wx:for="{{levels}}" wx:key="_id" class="level-chip {{form.autoGrantLevelIds.indexOf(item._id) >= 0 ? 'active' : ''}}" data-id="{{item._id}}" bindtap="toggleAutoLevel">{{item.name}}</view></view>
+          <view class="level-grid"><view wx:for="{{formLevelOptions}}" wx:key="_id" class="level-chip {{item.selected ? 'active' : ''}}" data-id="{{item._id}}" bindtap="toggleAutoLevel">{{item.name}}</view></view>
         </view>
       </scroll-view>
       <view class="modal-actions"><button class="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存</button><button class="ghost" bindtap="closeFormModal">取消</button></view>
@@ -93,7 +93,7 @@
         <view class="form-group"><view class="field-label">目标用户</view><view class="selector-grid"><view wx:for="{{targetTypes}}" wx:key="key" class="grid-item {{mailForm.targetType === item.key ? 'active' : ''}}" data-type="{{item.key}}" bindtap="setMailTargetType">{{item.name}}</view></view></view>
         <view class="form-group" wx:if="{{mailForm.targetType === 'openid_list'}}"><view class="field-label">openid 列表</view><textarea placeholder="多个 openid 用换行或逗号分隔" value="{{mailForm.openids}}" data-field="openids" bindinput="mailInput" /></view>
         <view class="form-group" wx:if="{{mailForm.targetType === 'role'}}"><view class="field-label">角色</view><input value="{{mailForm.role}}" data-field="role" bindinput="mailInput" placeholder="client / staff / admin" /></view>
-        <view class="form-group" wx:if="{{mailForm.targetType === 'member_level'}}"><view class="field-label">会员等级</view><view class="level-grid"><view wx:for="{{levels}}" wx:key="_id" class="level-chip {{mailForm.targetLevelIds.indexOf(item._id) >= 0 ? 'active' : ''}}" data-id="{{item._id}}" bindtap="toggleMailLevel">{{item.name}}</view></view></view>
+        <view class="form-group" wx:if="{{mailForm.targetType === 'member_level'}}"><view class="field-label">会员等级</view><view class="level-grid"><view wx:for="{{mailLevelOptions}}" wx:key="_id" class="level-chip {{item.selected ? 'active' : ''}}" data-id="{{item._id}}" bindtap="toggleMailLevel">{{item.name}}</view></view></view>
       </scroll-view>
       <view class="modal-actions"><button class="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="sendMail">发送</button><button class="ghost" bindtap="closeMailModal">取消</button></view>
     </view>

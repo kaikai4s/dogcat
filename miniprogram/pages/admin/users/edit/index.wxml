@@ -52,7 +52,7 @@
       <view class="label">角色</view>
       <checkbox-group bindchange="changeRoles">
         <label class="role-check" wx:for="{{roleOptions}}" wx:key="value">
-          <checkbox value="{{item.value}}" checked="{{form.roles.indexOf(item.value) >= 0}}" disabled="{{user.status === 'deleted'}}" color="#f4436b" />
+          <checkbox value="{{item.value}}" checked="{{item.checked}}" disabled="{{user.status === 'deleted'}}" color="#f4436b" />
           <text>{{item.label}}</text>
         </label>
       </checkbox-group>

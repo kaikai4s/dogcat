@@ -196,8 +196,8 @@ module.exports = function createService({
   async function decoratePetsWithEquippedTitles(pets = []) {
     const ids = Array.from(new Set((pets || []).map((pet) => safeText(pet.equippedTitleInventoryId).trim()).filter(Boolean)))
     if (!ids.length) return pets.map((pet) => ({ ...pet, equippedTitle: null }))
-    const inventoryRes = await db.collection('user_pet_titles').get()
-    const inventoryMap = new Map((inventoryRes.data || []).filter((item) => ids.includes(item._id)).map((item) => [item._id, item]))
+    const inventoryList = await Promise.all(ids.map((id) => db.collection('user_pet_titles').doc(id).get().then((r) => r.data).catch(() => null)))
+    const inventoryMap = new Map(inventoryList.filter(Boolean).map((item) => [item._id, item]))
     const titles = await listPetTitles({ includeDeleted: true })
     const titleMap = new Map(titles.map((title) => [title._id, title]))
     return pets.map((pet) => {
@@ -216,6 +216,8 @@ module.exports = function createService({
     if (!pet || pet.openid !== openid) throw new Error('无权访问宠物')
     const inventory = (await db.collection('user_pet_titles').doc(iid).get()).data
     if (!inventory || inventory.openid !== openid) throw new Error('无权使用该头衔')
+    const title = await getPetTitle(inventory.titleId, { includeDeleted: true })
+    if (title.deletedAt || title.enabled === false) throw new Error('该宠物头衔已停用或已下架')
     const time = now()
     const previousInventoryId = safeText(pet.equippedTitleInventoryId).trim()
     const previousPetId = safeText(inventory.equippedPetId).trim()
@@ -227,7 +229,6 @@ module.exports = function createService({
     }
     await db.collection('user_pet_titles').doc(iid).update({ data: { equippedPetId: pid, updatedAt: time } })
     await db.collection('pets').doc(pid).update({ data: { equippedTitleInventoryId: iid, updatedAt: time } })
-    const title = await getPetTitle(inventory.titleId, { includeDeleted: true })
     return { petId: pid, inventoryId: iid, equippedTitle: normalizeInventoryTitle({ _id: iid, ...inventory, equippedPetId: pid }, title).title }
   }
 

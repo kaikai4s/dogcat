@@ -462,8 +462,16 @@ test('pet title: equipping, switching, and un-equipping pet titles with single-t
     action: 'deletePet',
     data: { id: 'pet_cat' }
   })
-  assert.equal(deletePetRes.ok, true)
-  assert.equal(db.state.user_pet_titles.find((i) => i._id === 'inv_1').equippedPetId, '')
+  // 6. 验证已停用或已下架的头衔不可佩戴
+  const disabledTitle = db.state.pet_titles.find((t) => t._id === 'title_1')
+  disabledTitle.enabled = false
+  const equipDisabledRes = await clientFn.main({
+    module: 'pet',
+    action: 'equipTitle',
+    data: { petId: 'pet_dog', inventoryId: 'inv_1' }
+  })
+  assert.equal(equipDisabledRes.ok, false)
+  assert.ok(equipDisabledRes.message.includes('已停用或已下架'))
 })
 
 test('pet title UI components: admin and client files consistency check', () => {
@@ -473,6 +481,7 @@ test('pet title UI components: admin and client files consistency check', () => 
   assert.ok(adminTitlesWxml.includes('name-effect-'), 'Admin titles WXML must support name-effect preview')
   assert.ok(adminTitlesWxml.includes('badgeStyle'), 'Admin titles WXML must support badgeStyle selection')
   assert.ok(adminTitlesJs.includes('publishPetTitleMail'), 'Admin titles JS must call publishPetTitleMail')
+  assert.ok(!adminTitlesWxml.includes('.indexOf('), 'Admin titles WXML must not call .indexOf to avoid platform parsing errors')
 
   // 2. 抽奖页面配置头衔
   const adminLotteryWxml = fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/lottery/index.wxml'), 'utf8')
@@ -489,7 +498,11 @@ test('pet title UI components: admin and client files consistency check', () => 
   assert.ok(clientEditJs.includes('equipTitle'), 'Client pet edit JS must call equipTitle')
   assert.ok(clientListWxml.includes('pet-title-tag'), 'Client pet list WXML must render pet-title-tag')
 
-  // 4. 全局样式支持头衔徽章
+  // 4. 用户编辑角色列表避免 .indexOf
+  const userEditWxml = fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/users/edit/index.wxml'), 'utf8')
+  assert.ok(!userEditWxml.includes('.indexOf('), 'User edit WXML must not call .indexOf')
+
+  // 5. 全局样式支持头衔徽章
   const appWxss = fs.readFileSync(path.join(__dirname, '../../miniprogram/app.wxss'), 'utf8')
   assert.ok(appWxss.includes('.pet-equipped-title.badge-gold'), 'app.wxss must define pet-equipped-title badge styles')
   assert.ok(appWxss.includes('.pet-title-tag.badge-gold'), 'app.wxss must define pet-title-tag badge styles')
