@@ -198,8 +198,39 @@
         <view class="muted">当前记录最大可扣金额：<text style="color: #ea580c; font-weight: bold;">¥{{forfeitMaxAmount}}</text>。扣除后将直接核减宠托师可用保证金并记录流水留痕。</view>
       </view>
       <view class="form-section">
+        <!-- 关联扣除建议列表 -->
+        <view wx:if="{{forfeitEvidences && forfeitEvidences.length > 0}}" style="margin-bottom: 16rpx;">
+          <view class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10rpx;">
+            <text class="strong">关联扣除建议（勾选更改为已根据建议扣除）</text>
+          </view>
+          <view class="forfeit-evidences-box" style="display: flex; flex-direction: column; gap: 14rpx; max-height: 35vh; overflow-y: auto;">
+            <view class="evidence-select-card {{item.selected ? 'card-selected' : ''}}" wx:for="{{forfeitEvidences}}" wx:key="_id" style="background: #fbfbfc; border: 2rpx solid {{item.selected ? '#fca5a5' : '#e5e7eb'}}; border-radius: 14rpx; padding: 16rpx;">
+              <view class="evidence-select-top" data-index="{{index}}" bindtap="toggleEvidenceSelect" style="display: flex; align-items: flex-start; gap: 14rpx;">
+                <view class="checkbox-box" style="width: 36rpx; height: 36rpx; border-radius: 6rpx; border: 2rpx solid {{item.selected ? '#ef4444' : '#d1d5db'}}; background: {{item.selected ? '#ef4444' : '#fff'}}; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 24rpx; flex-shrink: 0; margin-top: 4rpx;">
+                  <text class="remix-icon ri-check-line" wx:if="{{item.selected}}"></text>
+                </view>
+                <view class="evidence-meta" style="flex: 1;">
+                  <view class="evidence-reason-name strong" style="font-size: 24rpx; color: #1f2937;">{{item.reasonTypeName}}</view>
+                  <view class="evidence-desc muted small" style="margin-top: 2rpx; color: #4b5563;">{{item.reasonText || '违规留证'}}</view>
+                  <view class="evidence-order muted small" wx:if="{{item.orderNo}}" style="color: #9ca3af;">订单：{{item.orderNo}}</view>
+                </view>
+              </view>
+              <view class="evidence-amount-row" wx:if="{{item.selected}}" style="margin-top: 12rpx; padding-top: 12rpx; border-top: 1rpx dashed #fed7aa; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10rpx;">
+                <text class="suggest-tip muted small" style="color: #dc2626; font-weight: bold;" wx:if="{{item.deductAmount > 0}}">建议扣除：¥{{item.deductAmount}}</text>
+                <view class="actual-input-wrap" style="display: flex; align-items: center; gap: 6rpx;">
+                  <text class="actual-input-label" style="font-size: 22rpx; color: #047857; font-weight: bold;">实际根据建议扣除：</text>
+                  <view class="input-with-symbol" style="display: flex; align-items: center; background: #fff; border: 1rpx solid #a7f3d0; border-radius: 8rpx; padding: 2rpx 8rpx;">
+                    <text style="font-size: 22rpx; color: #059669; font-weight: bold; margin-right: 4rpx;">¥</text>
+                    <input style="width: 120rpx; height: 44rpx; font-size: 24rpx; font-weight: bold; color: #047857;" type="digit" placeholder="金额" value="{{item.actualDeductAmountInput}}" data-index="{{index}}" bindinput="inputEvidenceActualAmount" />
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+
         <view class="form-label" style="display: flex; justify-content: space-between;">
-          <text>扣除金额 (元)</text>
+          <text>扣除总金额 (元) *</text>
           <text class="muted" style="font-size: 22rpx;">不可超过 ¥{{forfeitMaxAmount}}</text>
         </view>
         <input type="digit" placeholder="请输入扣除金额，例如：100" value="{{forfeitAmountInput}}" bindinput="inputForfeitAmount" />

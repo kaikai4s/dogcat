@@ -99,10 +99,13 @@
         <view class="timeline-content">
           <view class="between">
             <view class="strong danger-text">{{item.reasonTypeName}}</view>
-            <view class="soft-badge {{item.status === 'forfeited' ? 'status-badge' : 'danger-badge'}}">{{item.status === 'forfeited' ? '已扣除保证金' : '待执行扣除'}}</view>
+            <view class="soft-badge {{item.status === 'forfeited' ? 'status-badge' : 'danger-badge'}}">{{item.statusText || (item.status === 'forfeited' ? '已根据建议扣除保证金' : '待执行扣除')}}</view>
           </view>
           <view class="muted" style="margin-top: 4rpx;">责任人：{{item.staffRealName || item.staffOpenid}} · {{item.staffPhone || '无电话'}}</view>
-          <view class="strong small" style="margin-top: 4rpx; color: #ef4444;" wx:if="{{item.deductAmount > 0}}">建议扣除：¥{{item.deductAmount}}</view>
+          <view class="strong small" style="margin-top: 4rpx; color: #ef4444; display: flex; flex-wrap: wrap; gap: 12rpx; align-items: baseline;" wx:if="{{item.deductAmount > 0 || item.actualDeductAmount > 0}}">
+            <text wx:if="{{item.deductAmount > 0}}">建议扣除：¥{{item.deductAmount}}</text>
+            <text wx:if="{{item.status === 'forfeited'}}" style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2rpx 10rpx; border-radius: 6rpx; border: 1rpx solid #a7f3d0;">实际根据建议扣除：¥{{item.actualDeductAmountText || item.actualDeductAmount || item.forfeitedAmount || item.deductAmount}}</text>
+          </view>
           <view class="desc-box" style="margin-top: 6rpx; background: #fff5f5; padding: 12rpx; border-radius: 8rpx; font-size: 24rpx; color: #4b5563;">{{item.reasonText}}</view>
           <view class="muted small" style="margin-top: 6rpx;">{{item.createdAt}}</view>
         </view>

@@ -47,6 +47,7 @@
         <view class="badge" style="background:{{item.enabled ? '#e05c8b' : '#ccc'}}">{{item.enabled ? '进行中' : '已关闭'}}</view>
         <button class="ghost compact-btn" data-index="{{index}}" bindtap="toggle">{{item.enabled ? '关闭' : '开启'}}</button>
         <button class="ghost compact-btn" data-index="{{index}}" bindtap="chooseActivity">编辑</button>
+        <button class="ghost compact-btn" style="color:#ef4444;border-color:rgba(239,68,68,0.35);" data-index="{{index}}" bindtap="deleteActivity">删除</button>
       </view>
     </view>
   </view>

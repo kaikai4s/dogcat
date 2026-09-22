@@ -307,20 +307,26 @@ module.exports = function createHandler(context) {
           const user = userMap.get(profile.openid) || {}
           const workflow = normalizeStaffWorkflow(profile)
           const staffEvidences = evidenceByStaff[profile.openid] || []
-          const problemOrders = staffEvidences.map((e) => ({
-            _id: e._id,
-            orderId: e.orderId,
-            orderNo: e.orderNo || '',
-            serviceSummary: e.serviceSummary || '',
-            reasonType: e.reasonType || '',
-            reasonTypeName: e.reasonTypeName || '',
-            reasonText: e.reasonText || '',
-            deductAmount: e.deductAmount || 0,
-            status: e.status || 'pending',
-            statusText: e.status === 'forfeited' ? '已扣除保证金' : (e.status === 'dismissed' ? '已撤销免除' : '待执行扣除'),
-            createdAt: e.createdAt || '',
-            staffOpenid: e.staffOpenid || profile.openid
-          }))
+          const problemOrders = staffEvidences.map((e) => {
+            const actualDeductAmount = Number(e.actualDeductAmount ?? e.forfeitedAmount ?? 0)
+            const status = e.status || 'pending'
+            return {
+              _id: e._id,
+              orderId: e.orderId,
+              orderNo: e.orderNo || '',
+              serviceSummary: e.serviceSummary || '',
+              reasonType: e.reasonType || '',
+              reasonTypeName: e.reasonTypeName || '',
+              reasonText: e.reasonText || '',
+              deductAmount: Number(e.deductAmount || 0),
+              actualDeductAmount,
+              actualDeductAmountText: actualDeductAmount > 0 ? actualDeductAmount.toFixed(2) : '',
+              status,
+              statusText: status === 'forfeited' ? '已根据建议扣除保证金' : (status === 'dismissed' ? '已撤销免除' : '待执行扣除'),
+              createdAt: e.createdAt || '',
+              staffOpenid: e.staffOpenid || profile.openid
+            }
+          })
 
           const deposit = depositByStaff[profile.openid] || null
           const depositBalance = deposit ? Number(deposit.availableRefundAmount || 0) : 0
@@ -331,6 +337,7 @@ module.exports = function createHandler(context) {
 
           return {
             _id: profile._id,
+            depositId: deposit ? (deposit._id || deposit.id) : '',
             openid: profile.openid || '',
             realName: profile.realName || '',
             phone: profile.phone || user.phone || '',
@@ -625,7 +632,16 @@ module.exports = function createHandler(context) {
       displayOrder.alreadyRefunded = alreadyRefunded
 
       const penaltyEvidencesRes = await db.collection('staff_deposit_evidences').where({ orderId: id }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
-      const penaltyEvidences = penaltyEvidencesRes.data || []
+      const penaltyEvidences = (penaltyEvidencesRes.data || []).map((e) => {
+        const actualDeductAmount = Number(e.actualDeductAmount ?? e.forfeitedAmount ?? 0)
+        const s = e.status || 'pending'
+        return {
+          ...e,
+          actualDeductAmount,
+          actualDeductAmountText: actualDeductAmount > 0 ? actualDeductAmount.toFixed(2) : '',
+          statusText: s === 'forfeited' ? '已根据建议扣除保证金' : (s === 'dismissed' ? '已撤销免除' : '待执行扣除')
+        }
+      })
       displayOrder.depositPenaltyEvidences = penaltyEvidences
       displayOrder.hasDepositPenaltyEvidence = penaltyEvidences.length > 0 || displayOrder.hasDepositPenaltyEvidence === true
 
@@ -1085,6 +1101,29 @@ module.exports = function createHandler(context) {
       const created = await db.collection('coupon_templates').add({ data: { ...payload, issuedCount: 0, createdAt: time } })
       await logAdmin(admin, 'coupon_template', created._id, 'saveCouponTemplate', { name, discountAmount, validType })
       return { _id: created._id, ...payload, issuedCount: 0, createdAt: time }
+    }
+    if (action === 'deleteCouponTemplate') {
+      const templateId = safeText(data._id || data.id || data.templateId).trim()
+      if (!templateId) throw new Error('缺少优惠券模板ID')
+      const templateRes = await db.collection('coupon_templates').doc(templateId).get().catch(() => ({ data: null }))
+      const template = templateRes && templateRes.data
+      if (!template) throw new Error('优惠券模板不存在或已被删除')
+
+      // 先检查抽奖活动中是否正在使用该优惠券作为奖品
+      const activities = (await db.collection('lottery_activities').get()).data || []
+      const usedActivities = activities.filter((act) => {
+        const prizes = Array.isArray(act.prizes) ? act.prizes : []
+        return prizes.some((p) => String(p.templateId || p.couponId || '').trim() === templateId)
+      })
+
+      if (usedActivities.length > 0) {
+        const names = usedActivities.map((a) => `【${a.name || '未命名抽奖活动'}】`).join('、')
+        throw new Error(`该优惠券已被抽奖活动 ${names} 配置为奖品，无法直接删除。请先前往抽奖活动中移除该奖品后再删除。`)
+      }
+
+      await db.collection('coupon_templates').doc(templateId).remove()
+      await logAdmin(admin, 'coupon_template', templateId, 'deleteCouponTemplate', { name: template.name })
+      return { _id: templateId, success: true }
     }
     if (action === 'issueCouponToUser') {
       const templateId = safeText(data.templateId).trim()
@@ -1546,12 +1585,30 @@ module.exports = function createHandler(context) {
       await logAdmin(admin, 'lottery_activity', data._id, 'toggleLotteryActivity', { enabled })
       return { _id: data._id, enabled }
     }
+    if (action === 'deleteLotteryActivity') {
+      const activityId = safeText(data._id || data.id).trim()
+      if (!activityId) throw new Error('缺少活动ID')
+      const activityRes = await db.collection('lottery_activities').doc(activityId).get().catch(() => ({ data: null }))
+      const activity = activityRes && activityRes.data
+      if (!activity) throw new Error('抽奖活动不存在或已被删除')
+
+      await db.collection('lottery_activities').doc(activityId).remove()
+      await logAdmin(admin, 'lottery_activity', activityId, 'deleteLotteryActivity', { name: activity.name })
+      return { _id: activityId, success: true }
+    }
     if (action === 'listStaffDeposits') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const res = await db.collection('staff_deposits').orderBy('createdAt', 'desc').get()
       const users = (await db.collection('users').get()).data || []
       const profiles = (await db.collection('staff_profiles').get()).data || []
+      const evidencesRes = await db.collection('staff_deposit_evidences').orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+      const allEvidences = evidencesRes.data || []
+      const evidenceByStaff = {}
+      for (const ev of allEvidences) {
+        if (!evidenceByStaff[ev.staffOpenid]) evidenceByStaff[ev.staffOpenid] = []
+        evidenceByStaff[ev.staffOpenid].push(ev)
+      }
       const userMap = users.reduce((m, u) => ({ ...m, [u.openid]: u }), {})
       const profileMap = profiles.reduce((m, p) => ({ ...m, [p.openid]: p }), {})
       const list = (res.data || [])
@@ -1559,12 +1616,34 @@ module.exports = function createHandler(context) {
         .map((item) => {
           const u = userMap[item.staffOpenid] || {}
           const p = profileMap[item.staffOpenid] || {}
+          const staffEvidences = evidenceByStaff[item.staffOpenid] || []
+          const problemOrders = staffEvidences.map((e) => {
+            const actualDeductAmount = Number(e.actualDeductAmount ?? e.forfeitedAmount ?? 0)
+            const s = e.status || 'pending'
+            return {
+              _id: e._id,
+              orderId: e.orderId,
+              orderNo: e.orderNo || '',
+              serviceSummary: e.serviceSummary || '',
+              reasonType: e.reasonType || '',
+              reasonTypeName: e.reasonTypeName || '',
+              reasonText: e.reasonText || '',
+              deductAmount: Number(e.deductAmount || 0),
+              actualDeductAmount,
+              actualDeductAmountText: actualDeductAmount > 0 ? actualDeductAmount.toFixed(2) : '',
+              status: s,
+              statusText: s === 'forfeited' ? '已根据建议扣除保证金' : (s === 'dismissed' ? '已撤销免除' : '待执行扣除'),
+              createdAt: e.createdAt || '',
+              staffOpenid: e.staffOpenid || item.staffOpenid
+            }
+          })
           return {
             ...item,
             staffNickname: u.nickname || '',
             staffPhone: p.phone || u.phone || '',
             staffRealName: p.realName || '',
-            staffLevel: p.staffLevel || ''
+            staffLevel: p.staffLevel || '',
+            problemOrders
           }
         })
       return limitList(list, data.pageSize || 50)

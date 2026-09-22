@@ -92,5 +92,33 @@ Page({
     callFunction('admin', 'toggleLotteryActivity', { _id: activity._id })
       .then(() => this.load())
       .catch(showError)
+  },
+
+  deleteActivity(e) {
+    const activity = this.data.activities[e.currentTarget.dataset.index]
+    if (!activity) return
+    wx.showModal({
+      title: '确认删除抽奖活动',
+      content: `确定删除抽奖活动「${activity.name}」吗？\n删除后用户将无法再参与该抽奖，历史中奖记录与已发放优惠券不受影响。`,
+      confirmColor: '#ef4444',
+      confirmText: '确认删除',
+      success: (res) => {
+        if (!res.confirm) return
+        wx.showLoading({ title: '删除中...', mask: true })
+        callFunction('admin', 'deleteLotteryActivity', { _id: activity._id })
+          .then(() => {
+            wx.hideLoading()
+            wx.showToast({ title: '已删除活动' })
+            if (this.data.form._id === activity._id) {
+              this.resetForm()
+            }
+            this.load()
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            showError(err)
+          })
+      }
+    })
   }
 })

@@ -82,9 +82,21 @@ module.exports = function createService({ db, crypto, now, safeText }) {
     if (action === 'forfeitStaffDeposit' && (!requestId || !reason)) throw new Error('请提供操作请求号和没收原因')
     if (action === 'confirmDepositRefund' && (!proof || data.paymentConfirmed !== true)) throw new Error('请确认实际退款完成并提供付款凭证号')
     return db.runTransaction(async tx => {
-      const deposit = (await tx.collection('staff_deposits').doc(data.id).get()).data
+      let deposit = null
+      let depositId = safeText(data.id).trim()
+      if (depositId) {
+        deposit = (await tx.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null }))).data
+      }
+      if (!deposit && data.staffOpenid) {
+        const dRes = await tx.collection('staff_deposits').where({ staffOpenid: data.staffOpenid }).orderBy('createdAt', 'desc').limit(1).get().catch(() => ({ data: [] }))
+        if (dRes && dRes.data && dRes.data.length > 0) {
+          deposit = dRes.data[0]
+          depositId = deposit._id
+        }
+      }
       if (!deposit) throw new Error('保证金记录不存在')
-      const eventId = key(data.id, action, action === 'forfeitStaffDeposit' ? requestId : deposit.refundRevision || 0)
+      const targetDepositId = depositId || deposit._id || data.id
+      const eventId = key(targetDepositId, action, action === 'forfeitStaffDeposit' ? requestId : deposit.refundRevision || 0)
       const previous = await optional(tx, 'staff_deposit_events', eventId)
       if (previous?.result) {
         if (previous.request !== JSON.stringify([action, data.approved === true, data.amount ?? null, reason, proof])) throw new Error('重复请求参数不一致')
@@ -134,26 +146,49 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         profilePatch = { exitStatus: 'exited', depositStatus: 'refunded', auditStatus: 'revoked' }
         financeAction = 'deposit_refunded'; delta = -amount / 100
       } else throw new Error('未知保证金操作')
-      const result = { id: data.id, status: patch.status, refundStatus: patch.refundStatus || deposit.refundStatus,
+      const result = { id: targetDepositId, status: patch.status, refundStatus: patch.refundStatus || deposit.refundStatus,
         availableRefundAmount: patch.availableRefundAmount ?? deposit.availableRefundAmount }
-      await tx.collection('staff_deposits').doc(data.id).update({ data: { ...patch, updatedAt: time } })
+      await tx.collection('staff_deposits').doc(targetDepositId).update({ data: { ...patch, updatedAt: time } })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: { ...profilePatch, updatedAt: time } })
-      if (action === 'forfeitStaffDeposit' && data.evidenceId) {
-        try {
-          await tx.collection('staff_deposit_evidences').doc(data.evidenceId).update({
-            data: {
-              status: 'forfeited',
-              forfeitedAmount: amount / 100,
-              forfeitedAt: time,
-              forfeitedBy: admin.openid,
-              forfeitDepositId: data.id,
-              forfeitEventId: eventId,
-              forfeitProofImages: evidenceImages,
-              updatedAt: time
-            }
-          })
-        } catch (err) {
-          // Non-blocking if evidence record missing
+      if (action === 'forfeitStaffDeposit') {
+        const evidencesToUpdate = []
+        if (Array.isArray(data.selectedEvidences) && data.selectedEvidences.length > 0) {
+          for (const item of data.selectedEvidences) {
+            const evId = typeof item === 'string' ? item : (item.evidenceId || item.id || item._id)
+            const evActual = typeof item === 'object' && item.actualDeductAmount !== undefined ? Number(item.actualDeductAmount) : undefined
+            if (evId) evidencesToUpdate.push({ id: evId, actualDeductAmount: evActual })
+          }
+        } else if (Array.isArray(data.evidenceIds) && data.evidenceIds.length > 0) {
+          for (const evId of data.evidenceIds) {
+            if (evId) evidencesToUpdate.push({ id: evId })
+          }
+        } else if (data.evidenceId) {
+          evidencesToUpdate.push({ id: data.evidenceId, actualDeductAmount: data.actualDeductAmount })
+        }
+
+        for (const item of evidencesToUpdate) {
+          try {
+            const evDoc = (await tx.collection('staff_deposit_evidences').doc(item.id).get().catch(() => null))?.data
+            const evActualDeduct = item.actualDeductAmount !== undefined
+              ? Number(item.actualDeductAmount)
+              : (evDoc && evDoc.deductAmount !== undefined ? Number(evDoc.deductAmount) : (amount / 100))
+
+            await tx.collection('staff_deposit_evidences').doc(item.id).update({
+              data: {
+                status: 'forfeited',
+                actualDeductAmount: evActualDeduct,
+                forfeitedAmount: evActualDeduct,
+                forfeitedAt: time,
+                forfeitedBy: admin.openid,
+                forfeitDepositId: targetDepositId,
+                forfeitEventId: eventId,
+                forfeitProofImages: evidenceImages,
+                updatedAt: time
+              }
+            })
+          } catch (err) {
+            // Non-blocking if evidence record missing
+          }
         }
       }
       const eventType = action === 'forfeitStaffDeposit' ? 'forfeit' : action === 'confirmDepositRefund' ? 'refund' : 'refund_audit'
@@ -161,7 +196,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         result, request: JSON.stringify([action, data.approved === true, data.amount ?? null, reason, proof]),
         evidenceImages: action === 'forfeitStaffDeposit' ? evidenceImages : []
       })
-      await log(tx, eventId, admin, action, 'staff_deposit', data.id, deposit, { amount: amount / 100, reason, proof, financeAction, evidenceImages }, time, delta)
+      await log(tx, eventId, admin, action, 'staff_deposit', targetDepositId, deposit, { amount: amount / 100, reason, proof, financeAction, evidenceImages }, time, delta)
       return result
     })
   }

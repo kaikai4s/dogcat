@@ -95,6 +95,7 @@ Page({
     targetStaffLabel: '',
     forfeitEvidenceId: '',
     forfeitStaffName: '',
+    forfeitEvidences: [],
     forfeitImages: [],
     startDate: monthStart(),
     endDate: today(),
@@ -261,6 +262,12 @@ Page({
                 fillAmount = String(Math.min(parsedSuggest, maxAmount))
               }
               const fillReason = params.reason || '违规出险扣除保证金'
+              const pendingEvidences = (target.problemOrders || []).filter((p) => p.status === 'pending')
+              const forfeitEvidences = pendingEvidences.map((ev) => ({
+                ...ev,
+                selected: params.evidenceId ? (ev._id === params.evidenceId) : true,
+                actualDeductAmountInput: String(ev.deductAmount > 0 ? ev.deductAmount : '')
+              }))
               this.setData({
                 showForfeitModal: true,
                 forfeitDepositId: target._id || target.id,
@@ -269,6 +276,7 @@ Page({
                 forfeitReasonInput: fillReason,
                 forfeitEvidenceId: params.evidenceId || '',
                 forfeitStaffName: target.staffRealName || target.staffNickname || target.staffOpenid,
+                forfeitEvidences,
                 forfeitImages: []
               })
             } else {
@@ -328,14 +336,26 @@ Page({
     const id = e.currentTarget.dataset.id
     const maxAmount = Number(e.currentTarget.dataset.max || 0)
     const staffName = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.staff) || ''
+    const target = (this.data.deposits || []).find((d) => (d._id || d.id) === id) || {}
+    const pendingEvidences = (target.problemOrders || []).filter((p) => p.status === 'pending')
+    const forfeitEvidences = pendingEvidences.map((ev) => ({
+      ...ev,
+      selected: true,
+      actualDeductAmountInput: String(ev.deductAmount > 0 ? ev.deductAmount : '')
+    }))
+    const totalSuggest = forfeitEvidences.reduce((sum, item) => sum + (Number(item.actualDeductAmountInput) || 0), 0)
+    const reasons = forfeitEvidences.map((item) => item.reasonText ? `${item.reasonTypeName}: ${item.reasonText}` : item.reasonTypeName).join('；')
+    const fillAmount = totalSuggest > 0 ? Math.min(totalSuggest, maxAmount) : (forfeitEvidences.length ? '' : (maxAmount > 0 ? maxAmount : ''))
+
     this.setData({
       showForfeitModal: true,
       forfeitDepositId: id,
       forfeitMaxAmount: maxAmount,
-      forfeitAmountInput: maxAmount > 0 ? String(maxAmount) : '',
-      forfeitReasonInput: '',
+      forfeitAmountInput: fillAmount > 0 ? String(fillAmount) : (maxAmount > 0 ? String(maxAmount) : ''),
+      forfeitReasonInput: reasons,
       forfeitEvidenceId: '',
       forfeitStaffName: staffName,
+      forfeitEvidences,
       forfeitImages: []
     })
   },
@@ -346,7 +366,46 @@ Page({
       forfeiting: false,
       forfeitEvidenceId: '',
       forfeitStaffName: '',
+      forfeitEvidences: [],
       forfeitImages: []
+    })
+  },
+
+  toggleEvidenceSelect(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const list = [...this.data.forfeitEvidences]
+    if (!list[index]) return
+    list[index].selected = !list[index].selected
+    if (list[index].selected && !list[index].actualDeductAmountInput && list[index].deductAmount > 0) {
+      list[index].actualDeductAmountInput = String(list[index].deductAmount)
+    }
+    const totalSuggest = list
+      .filter((item) => item.selected)
+      .reduce((sum, item) => sum + (Number(item.actualDeductAmountInput) || 0), 0)
+    const reasons = list
+      .filter((item) => item.selected)
+      .map((item) => item.reasonText ? `${item.reasonTypeName}: ${item.reasonText}` : item.reasonTypeName)
+      .join('；')
+    const fillAmount = totalSuggest > 0 ? Math.min(totalSuggest, this.data.forfeitMaxAmount) : ''
+    this.setData({
+      forfeitEvidences: list,
+      forfeitAmountInput: fillAmount > 0 ? String(fillAmount) : this.data.forfeitAmountInput,
+      forfeitReasonInput: reasons || this.data.forfeitReasonInput
+    })
+  },
+
+  inputEvidenceActualAmount(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const val = e.detail.value
+    const list = [...this.data.forfeitEvidences]
+    if (!list[index]) return
+    list[index].actualDeductAmountInput = val
+    const totalSuggest = list
+      .filter((item) => item.selected)
+      .reduce((sum, item) => sum + (Number(item.actualDeductAmountInput) || 0), 0)
+    this.setData({
+      forfeitEvidences: list,
+      forfeitAmountInput: totalSuggest > 0 ? String(Math.min(totalSuggest, this.data.forfeitMaxAmount)) : this.data.forfeitAmountInput
     })
   },
 
@@ -433,9 +492,20 @@ Page({
         ? previous.clientRequestId : `forfeit_${Date.now()}_${Math.random().toString(36).slice(2)}`
       wx.setStorageSync(pendingKey, { amount, reason, clientRequestId })
 
-      const payload = { id, amount, reason, clientRequestId, evidenceImages }
+      const selectedEvidences = (this.data.forfeitEvidences || [])
+        .filter((item) => item.selected)
+        .map((item) => ({
+          evidenceId: item._id,
+          actualDeductAmount: Number(item.actualDeductAmountInput) || item.deductAmount || 0
+        }))
+
+      const payload = { id, amount, reason, clientRequestId, evidenceImages, selectedEvidences }
       if (evidenceId) {
         payload.evidenceId = evidenceId
+      }
+      if (selectedEvidences.length === 1 && !payload.evidenceId) {
+        payload.evidenceId = selectedEvidences[0].evidenceId
+        payload.actualDeductAmount = selectedEvidences[0].actualDeductAmount
       }
 
       await callFunction('admin', 'forfeitStaffDeposit', payload)

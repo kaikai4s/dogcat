@@ -99,6 +99,7 @@
 
     <view class="admin-summary-row sitter-action-row">
       <button class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
+      <button class="mini-btn danger-mini" wx:if="{{item.auditStatus === 'approved' && item.depositBalance > 0}}" data-item="{{item}}" bindtap="openForfeitModal">扣除保证金</button>
       <button class="mini-btn ghost-mini" wx:if="{{item.staffLevel === 'certified'}}" data-id="{{item._id}}" data-featured="{{item.isFeatured}}" bindtap="toggleFeatured">{{item.featuredActionText}}</button>
       <button class="mini-btn danger-mini" wx:if="{{item.canRevokeStaff}}" data-id="{{item._id}}" bindtap="revokeStaff">移除身份</button>
       <button class="mini-btn ghost-mini" data-index="{{index}}" bindtap="toggleDetails">{{item.expanded ? '收起详情' : '展开详情'}}</button>
@@ -130,12 +131,17 @@
           <view class="problem-reason-type">{{prob.reasonTypeName}}</view>
           <view class="problem-desc">{{prob.reasonText}}</view>
           <view class="problem-footer">
-            <view class="problem-amount" wx:if="{{prob.deductAmount > 0}}">建议扣保证金：<text class="price">¥{{prob.deductAmount}}</text></view>
+            <view class="problem-amounts-row" style="display: flex; flex-wrap: wrap; gap: 12rpx; align-items: baseline;">
+              <view class="problem-amount" wx:if="{{prob.deductAmount > 0}}">建议扣除：<text class="price">¥{{prob.deductAmount}}</text></view>
+              <view class="actual-deduct-amount" wx:if="{{prob.status === 'forfeited'}}" style="color: #059669; font-weight: 850; font-size: 24rpx; background: #ecfdf5; padding: 2rpx 10rpx; border-radius: 6rpx; border: 1rpx solid #a7f3d0;">
+                实际根据建议扣除：<text style="color: #047857; font-size: 26rpx;">¥{{prob.actualDeductAmountText || prob.actualDeductAmount || prob.deductAmount}}</text>
+              </view>
+            </view>
             <view class="problem-time">{{prob.createdAt}}</view>
           </view>
           <view class="problem-actions">
             <button class="mini-btn ghost-mini" data-id="{{prob.orderId}}" bindtap="goToOrder">查看出险订单</button>
-            <button class="mini-btn danger-mini" wx:if="{{prob.status === 'pending'}}" data-staff-openid="{{prob.staffOpenid || item.openid}}" data-evidence-id="{{prob._id}}" data-suggest-amount="{{prob.deductAmount || ''}}" data-reason="{{prob.reasonText ? (prob.reasonTypeName + ': ' + prob.reasonText) : prob.reasonTypeName}}" bindtap="goToFinanceDeposit">去财务扣保证金</button>
+            <button class="mini-btn danger-mini" wx:if="{{prob.status === 'pending'}}" data-item="{{item}}" data-evidence-id="{{prob._id}}" bindtap="openForfeitModal">扣除保证金</button>
           </view>
         </view>
       </view>
@@ -176,6 +182,90 @@
       <view class="modal-actions">
         <button class="ghost-btn" bindtap="closeRepayModal">取消</button>
         <button class="danger-btn" loading="{{submittingRepay}}" disabled="{{submittingRepay}}" bindtap="confirmBatchRepay">确认并执行管控</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 扣除保证金弹窗 -->
+  <view class="modal-mask" wx:if="{{showForfeitModal}}">
+    <view class="modal-card">
+      <view class="modal-title">
+        <text class="remix-icon ri-shield-cross-fill" style="color: #ef4444; margin-right: 8rpx;"></text>
+        <text>扣除宠托师履约保证金</text>
+      </view>
+      <view class="modal-summary">
+        <view class="forfeit-target-staff" wx:if="{{forfeitStaff}}">
+          <text class="remix-icon ri-user-star-line" style="color: #ea580c; margin-right: 6rpx;"></text>
+          <text>责任宠托师：<text class="strong">{{forfeitStaff.realName || forfeitStaff.userNickname}}</text> ({{forfeitStaff.phone || '无手机号'}})</text>
+        </view>
+        <view class="forfeit-balance-info" style="margin-top: 8rpx;">
+          当前可用保证金：<text style="color: #ea580c; font-weight: 950; font-size: 28rpx;">¥{{forfeitMaxAmount}}</text>
+        </view>
+      </view>
+
+      <!-- 扣除建议选择区域 -->
+      <view class="form-section" style="margin-top: 10rpx;">
+        <view class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+          <text class="strong">关联扣除建议（勾选更改为已根据建议扣除）</text>
+        </view>
+
+        <view class="forfeit-evidences-box" wx:if="{{forfeitEvidences.length > 0}}">
+          <view class="evidence-select-card {{item.selected ? 'card-selected' : ''}}" wx:for="{{forfeitEvidences}}" wx:key="_id">
+            <view class="evidence-select-top" data-index="{{index}}" bindtap="toggleEvidenceSelect">
+              <view class="checkbox-box {{item.selected ? 'checked' : ''}}">
+                <text class="remix-icon ri-check-line" wx:if="{{item.selected}}"></text>
+              </view>
+              <view class="evidence-meta">
+                <view class="evidence-reason-name strong">{{item.reasonTypeName}}</view>
+                <view class="evidence-desc muted small">{{item.reasonText || '违规留证'}}</view>
+                <view class="evidence-order muted small" wx:if="{{item.orderNo}}">订单：{{item.orderNo}}</view>
+              </view>
+            </view>
+            <view class="evidence-amount-row" wx:if="{{item.selected}}">
+              <text class="suggest-tip muted small" wx:if="{{item.deductAmount > 0}}">建议扣除：¥{{item.deductAmount}}</text>
+              <view class="actual-input-wrap">
+                <text class="actual-input-label">实际根据建议扣除：</text>
+                <view class="input-with-symbol">
+                  <text class="currency">¥</text>
+                  <input class="actual-amount-input" type="digit" placeholder="金额" value="{{item.actualDeductAmountInput}}" data-index="{{index}}" bindinput="inputEvidenceActualAmount" />
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+        <view class="empty-evidence-tip muted small" wx:else style="padding: 16rpx; background: #f9fafb; border-radius: 12rpx; border: 1rpx dashed #d1d5db;">
+          该宠托师暂无待处理扣除建议，可直接输入金额与原因执行扣除。
+        </view>
+
+        <view class="form-label" style="margin-top: 16rpx; display: flex; justify-content: space-between;">
+          <text>扣除总金额 (元) *</text>
+          <text class="muted" style="font-size: 22rpx;">不可超过余额 ¥{{forfeitMaxAmount}}</text>
+        </view>
+        <input class="styled-input" type="digit" placeholder="请输入扣除总金额，例如：50" value="{{forfeitAmountInput}}" bindinput="inputForfeitAmount" />
+
+        <view class="form-label" style="margin-top: 16rpx;">扣除原因及说明 (必填) *</view>
+        <textarea placeholder="请填写具体扣除原因（如：严重违规私单交易、未到岗爽约、虚假打卡等）" value="{{forfeitReasonInput}}" bindinput="inputForfeitReason" />
+
+        <view class="form-label" style="margin-top: 16rpx; display: flex; justify-content: space-between; align-items: center;">
+          <text>违规举证截图 (仅管理可见，只限照片，最多4张)</text>
+          <text class="muted" style="font-size: 22rpx;">{{forfeitImages.length}}/4</text>
+        </view>
+        <view class="forfeit-uploader-grid">
+          <view class="uploader-thumb" wx:for="{{forfeitImages}}" wx:key="*this">
+            <image src="{{item}}" mode="aspectFill" class="thumb-img" data-url="{{item}}" bindtap="previewForfeitModalImage" />
+            <view class="thumb-remove" data-index="{{index}}" bindtap="removeForfeitImage">×</view>
+          </view>
+          <view class="uploader-add-btn" wx:if="{{forfeitImages.length < 4}}" bindtap="chooseForfeitImages">
+            <text class="remix-icon ri-camera-line"></text>
+            <text class="uploader-add-text">上传照片</text>
+          </view>
+        </view>
+        <view class="muted" style="font-size: 22rpx; margin-top: 6rpx;">* 仅限照片/截图。留存仅管理员可见，宠托师不可见；作为后续不认账时的证明凭证。</view>
+      </view>
+
+      <view class="modal-actions">
+        <button class="ghost-btn" bindtap="closeForfeitModal">取消</button>
+        <button class="danger-btn" loading="{{forfeiting}}" disabled="{{forfeiting}}" bindtap="submitForfeitDeposit">确认扣除</button>
       </view>
     </view>
   </view>

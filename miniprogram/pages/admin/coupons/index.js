@@ -267,6 +267,35 @@ Page({
       .catch(showError)
   },
 
+  deleteTemplate(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const template = this.data.templates[index]
+    if (!template) return
+    wx.showModal({
+      title: '确认删除优惠券',
+      content: `确定删除优惠券模板「${template.name}」吗？\n注意：如果抽奖活动中正在使用该优惠券，需先在抽奖活动中移除该奖品。用户已领取的优惠券不受影响。`,
+      confirmColor: '#ef4444',
+      confirmText: '确认删除',
+      success: (res) => {
+        if (!res.confirm) return
+        wx.showLoading({ title: '删除中...', mask: true })
+        callFunction('admin', 'deleteCouponTemplate', { _id: template._id })
+          .then(() => {
+            wx.hideLoading()
+            wx.showToast({ title: '已删除优惠券' })
+            if (this.data.form._id === template._id) {
+              this.resetForm()
+            }
+            this.load()
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            showError(err)
+          })
+      }
+    })
+  },
+
   issueCoupon() {
     if (this.data.issuing) return
     if (this.data.issueMode === 'level') {

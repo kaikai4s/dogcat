@@ -51,9 +51,15 @@
       <view class="timeline-item" wx:for="{{staff.problemOrders}}" wx:key="_id">
         <view class="timeline-dot" style="background: #ef4444;"></view>
         <view class="timeline-content">
-          <view class="strong" style="color: #ef4444;">{{item.orderNo}} · {{item.reasonTypeName}}</view>
+          <view class="strong" style="color: #ef4444; display: flex; justify-content: space-between; align-items: center;">
+            <text>{{item.orderNo}} · {{item.reasonTypeName}}</text>
+            <text class="badge {{item.status === 'forfeited' ? 'green' : 'pink'}}" style="font-size: 20rpx;">{{item.statusText || (item.status === 'forfeited' ? '已根据建议扣除保证金' : '待执行扣除')}}</text>
+          </view>
           <view class="muted" style="margin-top: 6rpx;">{{item.reasonText}}</view>
-          <view class="strong small" style="color: #ef4444; margin-top: 6rpx;" wx:if="{{item.deductAmount > 0}}">建议扣除：¥{{item.deductAmount}}</view>
+          <view class="strong small" style="margin-top: 6rpx; display: flex; flex-wrap: wrap; gap: 12rpx; align-items: baseline;" wx:if="{{item.deductAmount > 0 || item.actualDeductAmount > 0}}">
+            <text style="color: #ef4444;" wx:if="{{item.deductAmount > 0}}">建议扣除：¥{{item.deductAmount}}</text>
+            <text style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2rpx 10rpx; border-radius: 6rpx; border: 1rpx solid #a7f3d0;" wx:if="{{item.status === 'forfeited'}}">实际根据建议扣除：¥{{item.actualDeductAmountText || item.actualDeductAmount || item.forfeitedAmount || item.deductAmount}}</text>
+          </view>
           <view class="muted small" style="margin-top: 6rpx;">{{item.createdAt}}</view>
         </view>
       </view>

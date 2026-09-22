@@ -13,6 +13,7 @@ function withDisplay(profile, selectedIds = []) {
   const depositBalance = profile.depositBalance != null ? Number(profile.depositBalance) : 0
   return {
     ...profile,
+    depositId: profile.depositId || '',
     reviewCount,
     ratingText: reviewCount ? `${Number(profile.ratingAverage || 0)}分 / ${reviewCount}条评价` : '暂无评分',
     depositBalance,
@@ -47,6 +48,15 @@ Page({
     showRepayModal: false,
     repayReasonInput: '',
     submittingRepay: false,
+    showForfeitModal: false,
+    forfeiting: false,
+    forfeitStaff: null,
+    forfeitDepositId: '',
+    forfeitMaxAmount: 0,
+    forfeitAmountInput: '',
+    forfeitReasonInput: '',
+    forfeitEvidences: [],
+    forfeitImages: [],
     page: 1,
     pageSize: 20,
     hasMore: true,
@@ -252,6 +262,209 @@ Page({
       url += `&staffOpenid=${staffOpenid}&evidenceId=${evidenceId}&suggestAmount=${suggestAmount}&reason=${reason}`
     }
     wx.navigateTo({ url })
+  },
+
+  openForfeitModal(e) {
+    const ds = (e && e.currentTarget && e.currentTarget.dataset) || {}
+    let target = ds.item
+    if (!target && ds.id) {
+      target = this.data.profiles.find((p) => p._id === ds.id)
+    }
+    if (!target) return
+    const maxAmount = Number(target.depositBalance || 0)
+    if (maxAmount <= 0) {
+      wx.showModal({
+        title: '无法扣除保证金',
+        content: '该宠托师当前可用保证金余额为 0，无法执行扣除。若有违规可先要求其重新补缴保证金。',
+        showCancel: false
+      })
+      return
+    }
+    const pendingEvidences = (target.problemOrders || []).filter((p) => p.status === 'pending')
+    const clickedEvidenceId = ds.evidenceId || ''
+    const forfeitEvidences = pendingEvidences.map((ev) => {
+      const isSelected = clickedEvidenceId ? (ev._id === clickedEvidenceId) : true
+      return {
+        ...ev,
+        selected: isSelected,
+        actualDeductAmountInput: String(ev.deductAmount > 0 ? ev.deductAmount : '')
+      }
+    })
+    const totalSuggest = forfeitEvidences
+      .filter((item) => item.selected)
+      .reduce((sum, item) => sum + (Number(item.actualDeductAmountInput) || 0), 0)
+    const reasons = forfeitEvidences
+      .filter((item) => item.selected)
+      .map((item) => item.reasonText ? `${item.reasonTypeName}: ${item.reasonText}` : item.reasonTypeName)
+      .join('；')
+    const fillAmount = totalSuggest > 0 ? Math.min(totalSuggest, maxAmount) : (forfeitEvidences.length ? '' : String(maxAmount))
+    this.setData({
+      showForfeitModal: true,
+      forfeiting: false,
+      forfeitStaff: target,
+      forfeitDepositId: target.depositId || '',
+      forfeitMaxAmount: maxAmount,
+      forfeitAmountInput: fillAmount > 0 ? String(fillAmount) : (forfeitEvidences.length ? '' : String(maxAmount)),
+      forfeitReasonInput: reasons,
+      forfeitEvidences,
+      forfeitImages: []
+    })
+  },
+
+  closeForfeitModal() {
+    this.setData({
+      showForfeitModal: false,
+      forfeiting: false,
+      forfeitStaff: null,
+      forfeitDepositId: '',
+      forfeitMaxAmount: 0,
+      forfeitAmountInput: '',
+      forfeitReasonInput: '',
+      forfeitEvidences: [],
+      forfeitImages: []
+    })
+  },
+
+  toggleEvidenceSelect(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const list = [...this.data.forfeitEvidences]
+    if (!list[index]) return
+    list[index].selected = !list[index].selected
+    if (list[index].selected && !list[index].actualDeductAmountInput && list[index].deductAmount > 0) {
+      list[index].actualDeductAmountInput = String(list[index].deductAmount)
+    }
+    const totalSuggest = list
+      .filter((item) => item.selected)
+      .reduce((sum, item) => sum + (Number(item.actualDeductAmountInput) || 0), 0)
+    const reasons = list
+      .filter((item) => item.selected)
+      .map((item) => item.reasonText ? `${item.reasonTypeName}: ${item.reasonText}` : item.reasonTypeName)
+      .join('；')
+    const fillAmount = totalSuggest > 0 ? Math.min(totalSuggest, this.data.forfeitMaxAmount) : ''
+    this.setData({
+      forfeitEvidences: list,
+      forfeitAmountInput: fillAmount > 0 ? String(fillAmount) : this.data.forfeitAmountInput,
+      forfeitReasonInput: reasons || this.data.forfeitReasonInput
+    })
+  },
+
+  inputEvidenceActualAmount(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const val = e.detail.value
+    const list = [...this.data.forfeitEvidences]
+    if (!list[index]) return
+    list[index].actualDeductAmountInput = val
+    const totalSuggest = list
+      .filter((item) => item.selected)
+      .reduce((sum, item) => sum + (Number(item.actualDeductAmountInput) || 0), 0)
+    this.setData({
+      forfeitEvidences: list,
+      forfeitAmountInput: totalSuggest > 0 ? String(Math.min(totalSuggest, this.data.forfeitMaxAmount)) : this.data.forfeitAmountInput
+    })
+  },
+
+  inputForfeitAmount(e) {
+    this.setData({ forfeitAmountInput: e.detail.value })
+  },
+
+  inputForfeitReason(e) {
+    this.setData({ forfeitReasonInput: e.detail.value })
+  },
+
+  chooseForfeitImages() {
+    const remain = 4 - (this.data.forfeitImages || []).length
+    if (remain <= 0) return
+    wx.chooseMedia({
+      count: remain,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const files = (res.tempFiles || []).map((f) => f.tempFilePath).filter(Boolean)
+        this.setData({
+          forfeitImages: [...(this.data.forfeitImages || []), ...files]
+        })
+      }
+    })
+  },
+
+  removeForfeitImage(e) {
+    const idx = Number(e.currentTarget.dataset.index)
+    const list = [...(this.data.forfeitImages || [])]
+    list.splice(idx, 1)
+    this.setData({ forfeitImages: list })
+  },
+
+  previewForfeitModalImage(e) {
+    const url = e.currentTarget.dataset.url
+    const urls = this.data.forfeitImages || []
+    wx.previewImage({ current: url, urls })
+  },
+
+  async submitForfeitDeposit() {
+    if (this.data.forfeiting) return
+    const amount = Number(this.data.forfeitAmountInput)
+    const maxAmount = this.data.forfeitMaxAmount
+    const reason = String(this.data.forfeitReasonInput || '').trim()
+    const staff = this.data.forfeitStaff
+    if (!staff) return
+    if (!amount || isNaN(amount) || amount <= 0) {
+      wx.showToast({ title: '请输入有效扣除金额', icon: 'none' })
+      return
+    }
+    if (amount > maxAmount) {
+      wx.showToast({ title: `不可超过最大可扣余额 ¥${maxAmount}`, icon: 'none' })
+      return
+    }
+    if (!reason) {
+      wx.showToast({ title: '请填写具体扣除原因说明', icon: 'none' })
+      return
+    }
+
+    this.setData({ forfeiting: true })
+    try {
+      let evidenceImages = []
+      const localImages = this.data.forfeitImages || []
+      if (localImages.length > 0) {
+        evidenceImages = await Promise.all(localImages.map((img) => {
+          if (img.startsWith('cloud://') || img.startsWith('http://') || img.startsWith('https://')) return img
+          const extMatch = img.match(/\.[a-zA-Z0-9]+$/)
+          const ext = extMatch ? extMatch[0] : '.jpg'
+          const cloudPath = `deposit_forfeits/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`
+          return wx.cloud.uploadFile({ cloudPath, filePath: img }).then((uploadRes) => uploadRes.fileID)
+        }))
+      }
+
+      const selectedEvidences = (this.data.forfeitEvidences || [])
+        .filter((item) => item.selected)
+        .map((item) => ({
+          evidenceId: item._id,
+          actualDeductAmount: Number(item.actualDeductAmountInput) || item.deductAmount || 0
+        }))
+
+      const clientRequestId = `forfeit_${Date.now()}_${Math.random().toString(36).slice(2)}`
+      const payload = {
+        id: this.data.forfeitDepositId,
+        staffOpenid: staff.openid,
+        amount,
+        reason,
+        clientRequestId,
+        evidenceImages,
+        selectedEvidences
+      }
+      if (selectedEvidences.length === 1) {
+        payload.evidenceId = selectedEvidences[0].evidenceId
+        payload.actualDeductAmount = selectedEvidences[0].actualDeductAmount
+      }
+
+      await callFunction('admin', 'forfeitStaffDeposit', payload)
+      wx.showToast({ title: '扣除成功', icon: 'success' })
+      this.closeForfeitModal()
+      this.load({ reset: true })
+    } catch (err) {
+      showError(err)
+    } finally {
+      this.setData({ forfeiting: false })
+    }
   },
 
   toggleFeatured(e) {
