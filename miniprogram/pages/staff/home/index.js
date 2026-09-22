@@ -449,6 +449,23 @@ Page({
       })
       .catch((error) => {
         this.setData({ loadingNearby: false })
+        const msg = (error && error.message) || String(error || '')
+        if (msg.includes('保证金')) {
+          const notice = this.data.depositNotice
+          const amountTip = notice && notice.amount ? `（需缴纳 ¥${notice.amount}）` : ''
+          wx.showModal({
+            title: notice && notice.title ? notice.title : '履约保证金提醒',
+            content: `${msg}${msg.includes('¥') ? '' : amountTip}。是否立即前往缴纳？`,
+            confirmText: '去缴纳',
+            cancelText: '知道了',
+            success: (res) => {
+              if (res.confirm) {
+                this.goDeposit()
+              }
+            }
+          })
+          return
+        }
         showError(error)
       })
   },
@@ -508,9 +525,16 @@ Page({
   prepareAcceptOrder(orderId) {
     if (!orderId) return
     if (this.data.depositNotice && this.data.depositNotice.needDeposit) {
+      const notice = this.data.depositNotice
+      const isRepay = notice.isRepay || Boolean(notice.reason)
+      const modalTitle = notice.title || (isRepay ? '要求重新足额缴纳保证金' : '未缴纳履约保证金')
+      const modalContent = isRepay
+        ? `平台要求重新足额缴纳履约保证金（¥${notice.amount}）。\n原因：${notice.reason || '存在服务违规出险或保证金过低'}。\n足额缴纳后即可恢复接单与抢单资格，是否立即前往缴纳？`
+        : `根据平台规定，抢单/接单前需足额缴纳宠托师履约保证金（¥${notice.amount}），以保障服务履约质量与宠物安全。是否立即前往缴纳？`
+
       wx.showModal({
-        title: '未缴纳履约保证金',
-        content: `根据平台规定，抢单/接单前需缴纳宠托师履约保证金（¥${this.data.depositNotice.amount}），以保障服务履约质量与宠物安全。是否立即前往缴纳？`,
+        title: modalTitle,
+        content: modalContent,
         confirmText: '去缴纳',
         cancelText: '暂不接单',
         success: (res) => {

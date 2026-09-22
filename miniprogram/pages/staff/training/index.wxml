@@ -28,6 +28,10 @@
       <view class="repay-alert-box" wx:if="{{depositState.needsRepay}}">
         <view class="repay-alert-title"><text class="remix-icon ri-alarm-warning-fill"></text> 管理员已要求重新足额缴纳保证金</view>
         <view class="repay-alert-reason">原因：{{depositState.repayReason || '保证金余额不足或发生履约出险扣除，重新足额缴纳前暂不可接单'}}</view>
+        <view class="repay-alert-amount" style="margin-top: 8rpx; padding: 6rpx 12rpx; background: #fee2e2; border-radius: 8rpx; display: inline-flex; align-items: center; gap: 8rpx;">
+          <text style="color: #991b1b; font-size: 24rpx; font-weight: 850;">需足额缴纳保证金额度：</text>
+          <text style="color: #dc2626; font-size: 30rpx; font-weight: 950;">¥{{depositState.config.amount}}</text>
+        </view>
         <view class="repay-alert-tip">⚠️ 在足额缴纳履约保证金之前，系统将限制接单与抢单资格。</view>
       </view>
 

@@ -2,7 +2,6 @@
 /* 微信小程序 button 默认样式重置 */
 button.ghost-btn,
 button.primary-btn,
-button.notice-btn,
 button.clear-date-btn,
 button.reset-btn,
 button.confirm-btn,
@@ -18,7 +17,6 @@ button.refresh-btn {
 
 button.ghost-btn::after,
 button.primary-btn::after,
-button.notice-btn::after,
 button.clear-date-btn::after,
 button.reset-btn::after,
 button.confirm-btn::after,
@@ -130,7 +128,7 @@ button.refresh-btn::after {
 }
 
 .notice-main {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -143,30 +141,50 @@ button.refresh-btn::after {
   font-weight: 900;
 }
 
+.deposit-amount-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8rpx;
+  padding: 2rpx 14rpx;
+  border-radius: 999rpx;
+  background: #ea580c;
+  color: #ffffff;
+  font-size: 20rpx;
+  font-weight: 850;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
 .notice-icon {
   font-size: 32rpx;
+  flex-shrink: 0;
 }
 
 .notice-desc {
   margin-top: 6rpx;
   color: #7a6a5e;
-  font-size: 22rpx;
+  font-size: 24rpx;
+  line-height: 1.4;
+  word-break: break-all;
 }
 
 .notice-btn {
   flex-shrink: 0;
-  height: 60rpx;
-  padding: 0 24rpx;
+  width: auto !important;
+  min-width: 140rpx;
+  height: 64rpx;
+  padding: 0 28rpx;
   border-radius: 999rpx;
   background: #f53f3f;
   color: #ffffff;
   font-size: 24rpx;
   font-weight: 850;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
   line-height: 1;
+  box-sizing: border-box;
 }
 
 .notice-btn::after {

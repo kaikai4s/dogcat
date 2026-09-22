@@ -42,6 +42,8 @@ Page({
     requireRepayStatus: '', // '' (全部) | 'yes' (需补缴) | 'no' (正常)
     showFilterPanel: false,
     selectedIds: [],
+    selectedProfiles: [],
+    standardDepositAmount: '500.00',
     showRepayModal: false,
     repayReasonInput: '',
     submittingRepay: false,
@@ -54,6 +56,17 @@ Page({
 
   onShow() {
     this.load({ reset: true })
+    this.loadDepositConfig()
+  },
+
+  loadDepositConfig() {
+    callFunction('admin', 'getSystemSettings')
+      .then((res) => {
+        if (res && res.staffDeposit && res.staffDeposit.amount != null) {
+          this.setData({ standardDepositAmount: Number(res.staffDeposit.amount).toFixed(2) })
+        }
+      })
+      .catch(() => {})
   },
 
   onReachBottom() {
@@ -174,8 +187,10 @@ Page({
       wx.showToast({ title: '请至少勾选一位宠托师', icon: 'none' })
       return
     }
+    const selectedProfiles = this.data.profiles.filter(p => this.data.selectedIds.includes(p._id))
     this.setData({
       showRepayModal: true,
+      selectedProfiles,
       repayReasonInput: '保证金余额过低且存在服务违规出险记录，平台要求重新足额缴纳履约保证金后方可继续接单'
     })
   },

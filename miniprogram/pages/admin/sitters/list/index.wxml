@@ -158,7 +158,16 @@
       </view>
       <view class="modal-summary">
         <view class="strong small" style="color: #dc2626;">已选 {{selectedIds.length}} 位宠托师</view>
-        <view class="muted">被标记后，所选宠托师将被系统强制限制接单与抢单资格，直到其在小程序重新足额缴纳履约保证金为止。</view>
+        <view class="repay-amount-box" style="margin: 10rpx 0; padding: 12rpx 16rpx; background: #fff7ed; border-radius: 12rpx; border: 1rpx solid #fed7aa;">
+          <view style="display: flex; justify-content: space-between; align-items: center;">
+            <text style="color: #9a3412; font-weight: 850; font-size: 24rpx;">平台标准应缴保证金：</text>
+            <text style="color: #ea580c; font-weight: 950; font-size: 32rpx;">¥{{standardDepositAmount}}</text>
+          </view>
+          <view wx:if="{{selectedProfiles && selectedProfiles.length === 1}}" style="margin-top: 8rpx; font-size: 22rpx; color: #78350f; border-top: 1rpx dashed #fed7aa; padding-top: 8rpx;">
+            宠托师：<text class="strong">{{selectedProfiles[0].realName || selectedProfiles[0].userNickname}}</text> | 当前余额：<text style="color: #dc2626; font-weight: bold;">{{selectedProfiles[0].depositBalanceText}}</text>
+          </view>
+        </view>
+        <view class="muted">被标记后，所选宠托师将被系统强制限制接单与抢单资格，直到其在小程序足额缴纳履约保证金（¥{{standardDepositAmount}}）为止。</view>
       </view>
       <view class="form-section">
         <view class="form-label">管控说明 / 要求重新缴纳原因</view>

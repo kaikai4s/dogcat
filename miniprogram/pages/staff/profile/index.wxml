@@ -23,8 +23,9 @@
   <view class="notice-card deposit-warning-notice" wx:if="{{depositNotice && depositNotice.needDeposit}}">
     <view class="notice-main">
       <view class="notice-title">
-        <text class="remix-icon ri-shield-keyhole-fill notice-icon"></text>
+        <text class="remix-icon {{depositNotice.isRepay ? 'ri-alarm-warning-fill' : 'ri-shield-keyhole-fill'}} notice-icon"></text>
         <text>{{depositNotice.title || '未缴纳履约保证金'}}</text>
+        <text class="deposit-amount-tag" wx:if="{{depositNotice.amount}}" style="margin-left: 8rpx; padding: 2rpx 14rpx; border-radius: 999rpx; background: #ea580c; color: #fff; font-size: 20rpx; font-weight: 850;">需缴纳 ¥{{depositNotice.amount}}</text>
       </view>
       <view class="notice-desc">{{depositNotice.message || '未缴纳履约保证金暂无法抢单与被指定接单，请尽快完成缴纳。'}}</view>
     </view>

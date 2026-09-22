@@ -18,10 +18,11 @@
   <view class="notice-card deposit-warning-notice" wx:if="{{depositNotice && depositNotice.needDeposit}}">
     <view class="notice-main">
       <view class="notice-title">
-        <text class="remix-icon ri-shield-keyhole-fill notice-icon"></text>
+        <text class="remix-icon {{depositNotice.isRepay ? 'ri-alarm-warning-fill' : 'ri-shield-keyhole-fill'}} notice-icon"></text>
         <text>{{depositNotice.title || '未缴纳履约保证金'}}</text>
+        <text class="deposit-amount-tag" wx:if="{{depositNotice.amount}}">需缴纳 ¥{{depositNotice.amount}}</text>
       </view>
-      <view class="notice-desc">{{depositNotice.message || '平台已开启履约保证金，未缴纳暂不可抢单或被指定接单，请先缴纳。'}}</view>
+      <view class="notice-desc">{{depositNotice.message || ('平台已开启履约保证金（¥' + depositNotice.amount + '），未缴纳暂不可抢单或被指定接单，请先缴纳。')}}</view>
     </view>
     <button class="notice-btn deposit-btn" bindtap="goDeposit">去缴纳</button>
   </view>

@@ -203,9 +203,13 @@ module.exports = function createHandler(context) {
         cannotTakeOrderMessage: ability.can ? '' : ability.message,
         depositNotice: (!depositSatisfied && depositConfig.enabled && depositConfig.amount > 0) ? {
           needDeposit: true,
+          isRepay: Boolean(profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited'),
           amount: depositConfig.amount,
-          title: '未缴纳履约保证金',
-          message: `平台已开启宠托师履约保证金（¥${depositConfig.amount}），请先完成缴纳后再开始抢单/接单。`
+          title: (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited') ? '要求重新足额缴纳保证金' : '未缴纳履约保证金',
+          reason: profile.requireDepositRepayReason || '',
+          message: (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited')
+            ? `平台要求重新足额缴纳履约保证金（¥${depositConfig.amount}）。原因：${profile.requireDepositRepayReason || '保证金余额不足或存在违规出险'}。请先完成足额缴纳后继续接单。`
+            : `平台已开启宠托师履约保证金（¥${depositConfig.amount}），请先完成缴纳后再开始抢单/接单。`
         } : null
       }
     }
