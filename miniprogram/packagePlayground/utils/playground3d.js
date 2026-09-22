@@ -16,6 +16,31 @@ function material(color) {
   return new THREE.MeshLambertMaterial({ color })
 }
 
+function disposeObject(root) {
+  if (!root || typeof root.traverse !== 'function') return
+  const geometries = new Set()
+  const materials = new Set()
+  const textures = new Set()
+  root.traverse((node) => {
+    if (node.geometry) geometries.add(node.geometry)
+    if (node.material) {
+      ;(Array.isArray(node.material) ? node.material : [node.material]).forEach((item) => materials.add(item))
+    }
+  })
+  materials.forEach((item) => {
+    Object.keys(item).forEach((key) => {
+      if (item[key] && item[key].isTexture) textures.add(item[key])
+    })
+    if (typeof item.dispose === 'function') item.dispose()
+  })
+  textures.forEach((item) => {
+    if (typeof item.dispose === 'function') item.dispose()
+  })
+  geometries.forEach((item) => {
+    if (typeof item.dispose === 'function') item.dispose()
+  })
+}
+
 function makeSphere(scale, color, width = 24, height = 16) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, width, height), material(color))
   mesh.scale.set(scale.x, scale.y, scale.z)
@@ -553,13 +578,19 @@ class Playground3D {
   }
 
   destroy() {
+    if (this.destroyed) return
     this.destroyed = true
     if (this.animationId) {
       const caf = this.canvas && this.canvas.cancelAnimationFrame
       if (caf) caf.call(this.canvas, this.animationId)
       else clearTimeout(this.animationId)
+      this.animationId = null
     }
+    disposeObject(this.scene)
     if (this.renderer) this.renderer.dispose()
+    this.scene = null
+    this.renderer = null
+    this.canvas = null
     this.petStates = []
   }
 }
