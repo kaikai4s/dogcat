@@ -452,6 +452,7 @@ module.exports = function createHandler(context) {
         type: e.type,
         amount: Number(e.amount || 0),
         reason: e.reason || '',
+        evidenceImages: Array.isArray(e.evidenceImages) ? e.evidenceImages : [],
         createdAt: e.createdAt || ''
       }))
 

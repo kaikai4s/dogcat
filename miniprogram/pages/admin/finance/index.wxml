@@ -84,6 +84,13 @@
       <view class="info-row" wx:if="{{item.forfeitedAmount > 0}}"><view class="label">已没收金额</view><view class="value danger">¥{{item.forfeitedAmountText}}</view></view>
       <view class="info-row" wx:if="{{item.refundReason}}"><view class="label">退出退款原因</view><view class="value">{{item.refundReason}}</view></view>
       <view class="info-row" wx:if="{{item.lastForfeitReason}}"><view class="label">最近没收原因</view><view class="value">{{item.lastForfeitReason}}</view></view>
+      <view class="info-row" wx:if="{{item.lastForfeitImages && item.lastForfeitImages.length}}">
+        <view class="label">违规举证照片（内部留存）</view>
+        <view class="value">{{item.lastForfeitImages.length}}张（仅管理员可见）</view>
+      </view>
+      <scroll-view scroll-x class="chip-tabs" wx:if="{{item.lastForfeitImages && item.lastForfeitImages.length}}" style="margin-top: 8rpx; margin-bottom: 12rpx;">
+        <image wx:for="{{item.lastForfeitImages}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" style="width: 120rpx; height: 120rpx; border-radius: 12rpx; margin-right: 12rpx; border: 1rpx solid #fed7aa;" data-urls="{{item.lastForfeitImages}}" data-current="{{img}}" bindtap="previewForfeitReceipt" />
+      </scroll-view>
       <view class="info-row"><view class="label">记录时间</view><view class="value">{{item.paidAt || item.createdAt}}</view></view>
       
       <view class="action-row" wx:if="{{item.refundStatus === 'requested'}}">
@@ -199,6 +206,22 @@
 
         <view class="form-label" style="margin-top: 18rpx;">扣除原因及违规描述 (必填)</view>
         <textarea placeholder="请填写具体扣除原因（如：严重违规私单交易、未到岗爽约、虚假打卡等）" value="{{forfeitReasonInput}}" bindinput="inputForfeitReason" />
+
+        <view class="form-label" style="margin-top: 18rpx; display: flex; justify-content: space-between; align-items: center;">
+          <text>违规举证截图 (仅管理可见，只限照片，最多4张)</text>
+          <text class="muted" style="font-size: 22rpx;">{{forfeitImages.length}}/4</text>
+        </view>
+        <view class="forfeit-uploader-grid">
+          <view class="uploader-thumb" wx:for="{{forfeitImages}}" wx:key="*this">
+            <image src="{{item}}" mode="aspectFill" class="thumb-img" data-url="{{item}}" bindtap="previewForfeitModalImage" />
+            <view class="thumb-remove" data-index="{{index}}" bindtap="removeForfeitImage">×</view>
+          </view>
+          <view class="uploader-add-btn" wx:if="{{forfeitImages.length < 4}}" bindtap="chooseForfeitImages">
+            <text class="remix-icon ri-camera-line"></text>
+            <text class="uploader-add-text">上传照片</text>
+          </view>
+        </view>
+        <view class="muted" style="font-size: 22rpx; margin-top: 8rpx;">* 仅限照片/截图。举证留存仅管理员在后台可见，宠托师端不可见；可作为后续不认账时的维权证据。</view>
       </view>
       <view class="modal-actions">
         <button class="ghost-btn" bindtap="closeForfeitModal">取消</button>

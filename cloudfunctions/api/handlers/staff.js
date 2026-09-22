@@ -904,7 +904,14 @@ module.exports = function createHandler(context) {
       let deposit = null
       const depositRes = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
       if (depositRes.data && depositRes.data[0]) {
-        deposit = depositRes.data[0]
+        const rawDeposit = depositRes.data[0]
+        const safeDeposit = { ...rawDeposit }
+        // 严格隔离管理员内部举证照片，仅管理员可见，宠托师端不可见
+        delete safeDeposit.lastForfeitImages
+        delete safeDeposit.evidenceImages
+        delete safeDeposit.forfeitProofImages
+        delete safeDeposit.forfeitImages
+        deposit = safeDeposit
       }
       const auditApproved = profile && profile.auditStatus === 'approved'
       const needsRepay = Boolean(profile && (profile.requireDepositRepay === true || profile.depositStatus === 'supplement_required' || profile.depositStatus === 'forfeited' || (deposit && deposit.status === 'forfeited')))

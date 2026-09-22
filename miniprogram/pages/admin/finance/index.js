@@ -41,7 +41,21 @@ function decorateStaffFinance(item) {
   // Unknown states stay visible but never imply successful payment.
   result.transferConfirmed = item.status === 'paid' || item.transferStatus === 'SUCCESS'
   result.mediaFileIds = Array.isArray(item.mediaFileIds) ? item.mediaFileIds : []
+  result.lastForfeitImages = Array.isArray(item.lastForfeitImages) ? item.lastForfeitImages : []
   return result
+}
+
+async function uploadForfeitImage(filePath) {
+  if (!filePath || filePath.startsWith('cloud://')) return filePath
+  if (!wx.cloud || !wx.cloud.uploadFile) return filePath
+  const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+  const cloudPath = `deposit_forfeits/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`
+  try {
+    const res = await wx.cloud.uploadFile({ cloudPath, filePath })
+    return res.fileID || filePath
+  } catch (err) {
+    return filePath
+  }
 }
 
 function metricCards(metrics = {}) {
@@ -81,6 +95,7 @@ Page({
     targetStaffLabel: '',
     forfeitEvidenceId: '',
     forfeitStaffName: '',
+    forfeitImages: [],
     startDate: monthStart(),
     endDate: today(),
     sectionHomeUrl: '',
@@ -253,7 +268,8 @@ Page({
                 forfeitAmountInput: fillAmount,
                 forfeitReasonInput: fillReason,
                 forfeitEvidenceId: params.evidenceId || '',
-                forfeitStaffName: target.staffRealName || target.staffNickname || target.staffOpenid
+                forfeitStaffName: target.staffRealName || target.staffNickname || target.staffOpenid,
+                forfeitImages: []
               })
             } else {
               wx.showModal({
@@ -319,7 +335,8 @@ Page({
       forfeitAmountInput: maxAmount > 0 ? String(maxAmount) : '',
       forfeitReasonInput: '',
       forfeitEvidenceId: '',
-      forfeitStaffName: staffName
+      forfeitStaffName: staffName,
+      forfeitImages: []
     })
   },
 
@@ -328,7 +345,8 @@ Page({
       showForfeitModal: false,
       forfeiting: false,
       forfeitEvidenceId: '',
-      forfeitStaffName: ''
+      forfeitStaffName: '',
+      forfeitImages: []
     })
   },
 
@@ -340,7 +358,44 @@ Page({
     this.setData({ forfeitReasonInput: e.detail.value })
   },
 
-  submitForfeitDeposit() {
+  chooseForfeitImages() {
+    const remain = 4 - (this.data.forfeitImages || []).length
+    if (remain <= 0) return
+    wx.chooseMedia({
+      count: remain,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const files = (res.tempFiles || []).map((f) => f.tempFilePath).filter(Boolean)
+        this.setData({
+          forfeitImages: [...(this.data.forfeitImages || []), ...files]
+        })
+      }
+    })
+  },
+
+  removeForfeitImage(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const list = [...(this.data.forfeitImages || [])]
+    list.splice(index, 1)
+    this.setData({ forfeitImages: list })
+  },
+
+  previewForfeitModalImage(e) {
+    const current = e.currentTarget.dataset.url
+    const urls = this.data.forfeitImages || []
+    if (!current || !urls.length) return
+    wx.previewImage({ current, urls })
+  },
+
+  previewForfeitReceipt(e) {
+    const current = e.currentTarget.dataset.current
+    const urls = e.currentTarget.dataset.urls || (current ? [current] : [])
+    if (!current || !urls.length) return
+    wx.previewImage({ current, urls })
+  },
+
+  async submitForfeitDeposit() {
     const id = this.data.forfeitDepositId
     const amount = Number(this.data.forfeitAmountInput)
     const maxAmount = this.data.forfeitMaxAmount
@@ -363,26 +418,37 @@ Page({
     if (this.data.forfeiting || this.data.actionBusy) return
     this.setData({ forfeiting: true })
 
-    const pendingKey = `deposit_forfeit_${id}`
-    const previous = wx.getStorageSync(pendingKey)
-    const clientRequestId = previous && previous.amount === amount && previous.reason === reason
-      ? previous.clientRequestId : `forfeit_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    wx.setStorageSync(pendingKey, { amount, reason, clientRequestId })
+    try {
+      let evidenceImages = []
+      const localImages = this.data.forfeitImages || []
+      if (localImages.length > 0) {
+        wx.showLoading({ title: '上传举证照片...', mask: true })
+        evidenceImages = await Promise.all(localImages.map(uploadForfeitImage))
+        wx.hideLoading()
+      }
 
-    const payload = { id, amount, reason, clientRequestId }
-    if (evidenceId) {
-      payload.evidenceId = evidenceId
+      const pendingKey = `deposit_forfeit_${id}`
+      const previous = wx.getStorageSync(pendingKey)
+      const clientRequestId = previous && previous.amount === amount && previous.reason === reason
+        ? previous.clientRequestId : `forfeit_${Date.now()}_${Math.random().toString(36).slice(2)}`
+      wx.setStorageSync(pendingKey, { amount, reason, clientRequestId })
+
+      const payload = { id, amount, reason, clientRequestId, evidenceImages }
+      if (evidenceId) {
+        payload.evidenceId = evidenceId
+      }
+
+      await callFunction('admin', 'forfeitStaffDeposit', payload)
+      wx.removeStorageSync(pendingKey)
+      wx.showToast({ title: '已执行扣除' })
+      this.closeForfeitModal()
+      this.loadStaffFinance()
+    } catch (err) {
+      wx.hideLoading()
+      showError(err)
+    } finally {
+      this.setData({ forfeiting: false })
     }
-
-    callFunction('admin', 'forfeitStaffDeposit', payload)
-      .then(() => {
-        wx.removeStorageSync(pendingKey)
-        wx.showToast({ title: '已执行扣除' })
-        this.closeForfeitModal()
-        this.loadStaffFinance()
-      })
-      .catch(showError)
-      .finally(() => this.setData({ forfeiting: false }))
   },
 
   auditSupplyReimbursement(e) {

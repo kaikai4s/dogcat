@@ -94,6 +94,9 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       const profile = await profileFor(tx, deposit)
       const time = now()
       let patch, profilePatch = {}, amount = 0, financeAction = '', delta = null
+      const evidenceImages = (action === 'forfeitStaffDeposit' && Array.isArray(data.evidenceImages))
+        ? data.evidenceImages.filter((img) => typeof img === 'string' && img.trim())
+        : []
       if (action === 'forfeitStaffDeposit') {
         if (!['paid', 'partially_refunded'].includes(deposit.status) || ['requested', 'approved', 'processing'].includes(deposit.refundStatus)) throw new Error('当前保证金状态不可没收，请先处理退款申请')
         amount = money(data.amount, true)
@@ -101,7 +104,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         const available = (balance.available - amount) / 100
         patch = { forfeitedAmount: (balance.forfeited + amount) / 100, availableRefundAmount: available,
           status: available === 0 ? 'forfeited' : deposit.status, statusText: available === 0 ? '已全额没收' : `部分没收（余¥${available}）`,
-          lastForfeitReason: reason, lastForfeitedAt: time, lastForfeitedBy: admin.openid }
+          lastForfeitReason: reason, lastForfeitedAt: time, lastForfeitedBy: admin.openid, lastForfeitImages: evidenceImages }
         if (!available) {
           profilePatch.depositStatus = 'forfeited'
           profilePatch.requireDepositRepay = true
@@ -145,6 +148,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
               forfeitedBy: admin.openid,
               forfeitDepositId: data.id,
               forfeitEventId: eventId,
+              forfeitProofImages: evidenceImages,
               updatedAt: time
             }
           })
@@ -154,9 +158,10 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       }
       const eventType = action === 'forfeitStaffDeposit' ? 'forfeit' : action === 'confirmDepositRefund' ? 'refund' : 'refund_audit'
       await depositEvent(tx, eventId, deposit, admin.openid, eventType, amount / 100, reason, time, {
-        result, request: JSON.stringify([action, data.approved === true, data.amount ?? null, reason, proof])
+        result, request: JSON.stringify([action, data.approved === true, data.amount ?? null, reason, proof]),
+        evidenceImages: action === 'forfeitStaffDeposit' ? evidenceImages : []
       })
-      await log(tx, eventId, admin, action, 'staff_deposit', data.id, deposit, { amount: amount / 100, reason, proof, financeAction }, time, delta)
+      await log(tx, eventId, admin, action, 'staff_deposit', data.id, deposit, { amount: amount / 100, reason, proof, financeAction, evidenceImages }, time, delta)
       return result
     })
   }
