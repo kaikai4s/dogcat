@@ -35,7 +35,10 @@
   </view>
 
   <view class="card form-card">
-    <view class="subtitle">流水查询</view>
+    <view class="between" style="margin-bottom: 12rpx;">
+      <view class="subtitle" style="margin-bottom: 0;">流水查询</view>
+      <view class="muted" wx:if="{{total > 0}}">共 {{total}} 条记录</view>
+    </view>
     <input placeholder="用户 openid（留空查全部）" value="{{filterOpenid}}" bindinput="filterInput" />
     <button class="ghost" bindtap="search">查询</button>
   </view>
@@ -51,5 +54,7 @@
     </view>
   </view>
 
-  <view class="empty" wx:if="{{!logs.length}}">暂无记录</view>
+  <view class="empty" wx:if="{{!logs.length && !loading}}">暂无记录</view>
+  <view class="list-tip" wx:if="{{loading}}">正在加载流水...</view>
+  <view class="list-tip" wx:elif="{{!hasMore && logs.length > 0}}">已加载全部 {{total}} 条流水</view>
 </view>

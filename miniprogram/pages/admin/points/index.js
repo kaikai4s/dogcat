@@ -11,6 +11,11 @@ function buildRetroMailMemberLevels(levels, selectedIds) {
 Page({
   data: {
     logs: [],
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    hasMore: false,
+    loading: false,
     form: { openid: '', delta: '', reason: '' },
     filterOpenid: '',
     memberLevels: [],
@@ -32,14 +37,44 @@ Page({
   },
 
   onShow() {
-    this.load()
+    this.load(true)
     this.loadMemberLevels()
   },
 
-  load() {
-    callFunction('admin', 'listPointLogs', { openid: this.data.filterOpenid })
-      .then((logs) => this.setData({ logs }))
-      .catch(showError)
+  load(reset = false) {
+    if (this.data.loading) return
+    const page = reset ? 1 : this.data.page
+    this.setData({ loading: true })
+    callFunction('admin', 'listPointLogs', {
+      openid: this.data.filterOpenid,
+      page,
+      pageSize: this.data.pageSize
+    })
+      .then((res) => {
+        const isArr = Array.isArray(res)
+        const incomingList = isArr ? res : ((res && res.list) || [])
+        const total = isArr ? incomingList.length : ((res && res.total) || 0)
+        const hasMore = isArr ? false : Boolean(res && res.hasMore)
+        const logs = reset || isArr ? incomingList : this.data.logs.concat(incomingList)
+        this.setData({
+          logs,
+          total,
+          page,
+          hasMore,
+          loading: false
+        })
+      })
+      .catch((err) => {
+        this.setData({ loading: false })
+        showError(err)
+      })
+  },
+
+  onReachBottom() {
+    if (this.data.loading || !this.data.hasMore) return
+    this.setData({ page: this.data.page + 1 }, () => {
+      this.load(false)
+    })
   },
 
   loadMemberLevels() {
@@ -89,7 +124,7 @@ Page({
   },
 
   search() {
-    this.load()
+    this.load(true)
   },
 
   grant() {
@@ -101,7 +136,7 @@ Page({
       .then(() => {
         wx.showToast({ title: '已操作' })
         this.setData({ form: { openid: '', delta: '', reason: '' } })
-        this.load()
+        this.load(true)
       })
       .catch(showError)
   },

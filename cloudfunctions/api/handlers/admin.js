@@ -1430,12 +1430,37 @@ module.exports = function createHandler(context) {
     if (action === 'listFeedback') {
       const status = safeText(data.status).trim()
       const category = safeText(data.category).trim()
-      const res = await db.collection('user_feedback').orderBy('createdAt', 'desc').get()
-      const list = (res.data || [])
-        .filter((item) => !status || item.status === status)
-        .filter((item) => !category || item.category === category)
+      const where = {}
+      if (status) where.status = status
+      if (category) where.category = category
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
-      return wantsPage ? paginateList(list, data) : list
+      if (wantsPage) {
+        const countRes = await db.collection('user_feedback').where(where).count()
+        const total = (countRes && countRes.total) || 0
+        const page = Math.max(1, Number(data.page || 1))
+        const pageSize = Math.min(100, Math.max(1, Number(data.pageSize || 20)))
+        const offset = (page - 1) * pageSize
+        if (offset >= total) {
+          return { list: [], total, page, pageSize, hasMore: false }
+        }
+        const res = await db.collection('user_feedback')
+          .where(where)
+          .orderBy('createdAt', 'desc')
+          .skip(offset)
+          .limit(pageSize)
+          .get()
+        const list = res.data || []
+        return {
+          list,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + list.length < total
+        }
+      }
+      const allFeedback = (await readAll('user_feedback', where, 2000))
+        .sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+      return allFeedback
     }
     if (action === 'replyFeedback') {
       const id = safeText(data.id || data.feedbackId).trim()
@@ -1726,9 +1751,36 @@ module.exports = function createHandler(context) {
       return { openid: targetOpenid, delta }
     }
     if (action === 'listPointLogs') {
-      const where = data.openid ? { openid: safeText(data.openid).trim() } : {}
-      const res = await db.collection('point_logs').where(where).orderBy('createdAt', 'desc').get()
-      return res.data || []
+      const targetOpenid = safeText(data.openid).trim()
+      const where = targetOpenid ? { openid: targetOpenid } : {}
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      if (wantsPage) {
+        const countRes = await db.collection('point_logs').where(where).count()
+        const total = (countRes && countRes.total) || 0
+        const page = Math.max(1, Number(data.page || 1))
+        const pageSize = Math.min(100, Math.max(1, Number(data.pageSize || 20)))
+        const offset = (page - 1) * pageSize
+        if (offset >= total) {
+          return { list: [], total, page, pageSize, hasMore: false }
+        }
+        const res = await db.collection('point_logs')
+          .where(where)
+          .orderBy('createdAt', 'desc')
+          .skip(offset)
+          .limit(pageSize)
+          .get()
+        const list = res.data || []
+        return {
+          list,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + list.length < total
+        }
+      }
+      const allLogs = (await readAll('point_logs', where, 2000))
+        .sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+      return allLogs
     }
     if (action === 'getCheckinMonthConfig') {
       const monthKey = normalizeMonthKey(data.monthKey)

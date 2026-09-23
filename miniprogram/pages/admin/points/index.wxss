@@ -29,3 +29,11 @@
   color: #2b2528;
   font-size: 28rpx;
 }
+
+.list-tip {
+  text-align: center;
+  font-size: 24rpx;
+  color: #999;
+  padding: 24rpx 0;
+}
+

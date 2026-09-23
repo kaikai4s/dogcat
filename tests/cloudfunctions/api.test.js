@@ -4219,3 +4219,138 @@ test('direct booking strictly validates sitter address, coordinates, city and di
   assert.equal(Number.isFinite(resValid.data.distanceFromSitterKm), true)
   assert.equal(resValid.data.distanceFromSitterKm <= 5, true)
 })
+
+test('admin listFeedback supports database pagination and avoids 100-record truncation', async () => {
+  const feedbacks = Array.from({ length: 120 }, (_, i) => ({
+    _id: `fb_${String(i + 1).padStart(3, '0')}`,
+    openid: `user_${i % 10}`,
+    category: i % 2 === 0 ? 'suggestion' : 'bug',
+    content: `反馈内容 ${i + 1}`,
+    status: i < 50 ? 'resolved' : 'pending',
+    createdAt: `2026-09-01 ${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00`
+  }))
+
+  const db = createCollectionStore({
+    users: [{ _id: 'u_admin', openid: 'admin_openid', roles: ['admin'], status: 'active' }],
+    user_feedback: feedbacks
+  })
+  const fn = loadCloudFunction('api', db, 'admin_openid')
+
+  // 1. 无分页调用：应当通过 readAll 突破 100 条限制获取全部 120 条，并按 createdAt 降序
+  const resAll = await fn.main({
+    module: 'admin',
+    action: 'listFeedback',
+    data: {}
+  })
+  assert.equal(resAll.ok, true)
+  assert.equal(Array.isArray(resAll.data), true)
+  assert.equal(resAll.data.length, 120)
+  assert.equal(resAll.data[0]._id, 'fb_120')
+
+  // 2. 状态筛选：status: 'resolved' 共 50 条
+  const resResolved = await fn.main({
+    module: 'admin',
+    action: 'listFeedback',
+    data: { status: 'resolved' }
+  })
+  assert.equal(resResolved.ok, true)
+  assert.equal(resResolved.data.length, 50)
+
+  // 3. 分页调用：第一页 20 条
+  const resPage1 = await fn.main({
+    module: 'admin',
+    action: 'listFeedback',
+    data: { page: 1, pageSize: 20 }
+  })
+  assert.equal(resPage1.ok, true)
+  assert.equal(resPage1.data.total, 120)
+  assert.equal(resPage1.data.page, 1)
+  assert.equal(resPage1.data.pageSize, 20)
+  assert.equal(resPage1.data.hasMore, true)
+  assert.equal(resPage1.data.list.length, 20)
+  assert.equal(resPage1.data.list[0]._id, 'fb_120')
+
+  // 4. 分页调用：第 6 页（最后 20 条）
+  const resPage6 = await fn.main({
+    module: 'admin',
+    action: 'listFeedback',
+    data: { page: 6, pageSize: 20 }
+  })
+  assert.equal(resPage6.ok, true)
+  assert.equal(resPage6.data.list.length, 20)
+  assert.equal(resPage6.data.hasMore, false)
+
+  // 5. 分页调用：超出总页数
+  const resPage7 = await fn.main({
+    module: 'admin',
+    action: 'listFeedback',
+    data: { page: 7, pageSize: 20 }
+  })
+  assert.equal(resPage7.ok, true)
+  assert.equal(resPage7.data.list.length, 0)
+  assert.equal(resPage7.data.hasMore, false)
+})
+
+test('admin listPointLogs supports database pagination, openid filtering, and avoids 100-record truncation', async () => {
+  const logs = Array.from({ length: 115 }, (_, i) => ({
+    _id: `pl_${String(i + 1).padStart(3, '0')}`,
+    openid: i < 70 ? 'target_user' : 'other_user',
+    delta: (i % 2 === 0 ? 1 : -1) * 10,
+    balance: 100 + i,
+    reason: `积分变动 ${i + 1}`,
+    sourceType: 'admin_grant',
+    createdAt: `2026-09-02 ${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00`
+  }))
+
+  const db = createCollectionStore({
+    users: [{ _id: 'u_admin', openid: 'admin_openid', roles: ['admin'], status: 'active' }],
+    point_logs: logs
+  })
+  const fn = loadCloudFunction('api', db, 'admin_openid')
+
+  // 1. 无分页调用：应当通过 readAll 突破 100 条限制获取全部 115 条，并按 createdAt 降序
+  const resAll = await fn.main({
+    module: 'admin',
+    action: 'listPointLogs',
+    data: {}
+  })
+  assert.equal(resAll.ok, true)
+  assert.equal(Array.isArray(resAll.data), true)
+  assert.equal(resAll.data.length, 115)
+  assert.equal(resAll.data[0]._id, 'pl_115')
+
+  // 2. 指定 openid 无分页查询：应返回 target_user 的全部 70 条
+  const resTarget = await fn.main({
+    module: 'admin',
+    action: 'listPointLogs',
+    data: { openid: 'target_user' }
+  })
+  assert.equal(resTarget.ok, true)
+  assert.equal(Array.isArray(resTarget.data), true)
+  assert.equal(resTarget.data.length, 70)
+
+  // 3. 分页查询第 1 页
+  const resPage1 = await fn.main({
+    module: 'admin',
+    action: 'listPointLogs',
+    data: { openid: 'target_user', page: 1, pageSize: 25 }
+  })
+  assert.equal(resPage1.ok, true)
+  assert.equal(resPage1.data.total, 70)
+  assert.equal(resPage1.data.page, 1)
+  assert.equal(resPage1.data.pageSize, 25)
+  assert.equal(resPage1.data.hasMore, true)
+  assert.equal(resPage1.data.list.length, 25)
+
+  // 4. 分页查询最后一页
+  const resPage3 = await fn.main({
+    module: 'admin',
+    action: 'listPointLogs',
+    data: { openid: 'target_user', page: 3, pageSize: 25 }
+  })
+  assert.equal(resPage3.ok, true)
+  assert.equal(resPage3.data.total, 70)
+  assert.equal(resPage3.data.list.length, 20)
+  assert.equal(resPage3.data.hasMore, false)
+})
+
