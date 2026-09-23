@@ -77,17 +77,56 @@ module.exports = function createHandler(context) {
       const role = data.role === 'staff' ? 'staff' : 'client'
       const where = role === 'staff' && user.roles.includes('staff') ? { staffOpenid: openid } : { clientOpenid: openid }
       const status = safeText(data.status).trim()
-      const res = await db.collection('order_incidents').where(where).orderBy('createdAt', 'desc').get()
-      const list = (res.data || []).filter((item) => !status || item.status === status)
+      if (status) where.status = status
+
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
-      return wantsPage ? paginateList(list, data) : list
+      if (wantsPage) {
+        const page = Math.max(Number(data.page || 1), 1)
+        const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 100)
+        const offset = (page - 1) * pageSize
+        const [countRes, listRes] = await Promise.all([
+          db.collection('order_incidents').where(where).count(),
+          db.collection('order_incidents').where(where).orderBy('createdAt', 'desc').skip(offset).limit(pageSize).get()
+        ])
+        const total = (countRes && typeof countRes.total === 'number') ? countRes.total : 0
+        const list = listRes.data || []
+        return {
+          list,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + list.length < total
+        }
+      }
+
+      const res = await db.collection('order_incidents').where(where).orderBy('createdAt', 'desc').limit(100).get()
+      return res.data || []
     }
     if (action === 'listIncidents') {
       await requireAdmin(openid)
       const status = safeText(data.status).trim()
       const orderId = safeText(data.orderId).trim()
-      const res = await db.collection('order_incidents').orderBy('createdAt', 'desc').get()
-      return paginateList((res.data || []).filter((item) => (!status || item.status === status) && (!orderId || item.orderId === orderId)), data)
+      const where = {}
+      if (status) where.status = status
+      if (orderId) where.orderId = orderId
+
+      const page = Math.max(Number(data.page || 1), 1)
+      const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 100)
+      const offset = (page - 1) * pageSize
+
+      const [countRes, listRes] = await Promise.all([
+        db.collection('order_incidents').where(where).count(),
+        db.collection('order_incidents').where(where).orderBy('createdAt', 'desc').skip(offset).limit(pageSize).get()
+      ])
+      const total = (countRes && typeof countRes.total === 'number') ? countRes.total : 0
+      const list = listRes.data || []
+      return {
+        list,
+        total,
+        page,
+        pageSize,
+        hasMore: offset + list.length < total
+      }
     }
     if (action === 'updateIncidentStatus' || action === 'resolveIncident') {
       await requireAdmin(openid)
