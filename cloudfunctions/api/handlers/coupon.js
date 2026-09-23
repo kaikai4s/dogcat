@@ -57,9 +57,19 @@ module.exports = function createHandler(context) {
       const user = await getUser(openid)
       const templateId = safeText(data.templateId).trim()
       if (!templateId) throw new Error('请选择新人优惠券')
-      const template = (await db.collection('coupon_templates').doc(templateId).get()).data
+      let template = null
+      try {
+        template = (await db.collection('coupon_templates').doc(templateId).get()).data
+      } catch (err) {
+        throw new Error('新人优惠券不可领取')
+      }
       if (!template || template.enabled === false || template.newbieOnly !== true) throw new Error('新人优惠券不可领取')
-      const issued = await issueCouponToTargetUser(template, user)
+      const idempotencyKey = `newbie_${openid}_${templateId}`
+      const issued = await issueCouponToTargetUser(template, user, {
+        idempotencyKey,
+        sourceType: 'newbie_claim',
+        sourceId: templateId
+      })
       return { _id: issued._id, templateId, status: 'available', templateSnapshot: issued.templateSnapshot, validFrom: issued.validFrom, validTo: issued.validTo }
     }
 
