@@ -74,7 +74,27 @@ module.exports = function createService({
     }
   }
 
+  function sanitizeSubscriptionLogData(data = {}) {
+    if (!data || typeof data !== 'object') return {}
+    const sanitized = {}
+    for (const key of Object.keys(data)) {
+      const field = data[key]
+      if (field && typeof field === 'object' && field.value !== undefined) {
+        let val = String(field.value)
+        if (key === 'thing4' || key === 'thing2' || key === 'character_string1') {
+          val = val.replace(/(\d+[-—_号栋幢弄室单元层楼A-Za-z0-9]+.*$)/, '***')
+        }
+        sanitized[key] = { value: val }
+      } else {
+        sanitized[key] = field
+      }
+    }
+    return sanitized
+  }
+
   async function recordSubscriptionLog(log) {
+    const time = now()
+    const expiresAt = new Date(new Date(time).getTime() + 30 * 24 * 60 * 60 * 1000)
     await db.collection('subscription_logs').add({
       data: {
         openid: log.openid || '',
@@ -83,9 +103,10 @@ module.exports = function createService({
         orderId: log.orderId || '',
         status: log.status || 'skipped',
         page: log.page || '',
-        data: log.data || {},
+        data: sanitizeSubscriptionLogData(log.data),
         error: log.error || '',
-        createdAt: now()
+        expiresAt,
+        createdAt: time
       }
     })
   }
@@ -98,26 +119,26 @@ module.exports = function createService({
       if (!templateId && templateKey === 'upcomingServiceReminder') {
         templateId = settings.subscription.templates.serviceStart || ''
       }
-      console.log('[subscription] send prepare', { openid, templateKey, templateId, enabled: settings.subscription.enabled, orderId, page, data: messageData })
       if (!settings.subscription.enabled || !templateId) {
         const result = { status: 'skipped', error: !settings.subscription.enabled ? 'subscription_disabled' : 'template_not_configured', templateKey, templateId }
-        console.log('[subscription] send skipped', { openid, templateKey, templateId, orderId, result })
+        console.log('[subscription] skipped', { orderId, templateKey, status: 'skipped', code: result.error })
         await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: result.status, error: result.error })
         return result
       }
       if (!cloud.openapi || !cloud.openapi.subscribeMessage || typeof cloud.openapi.subscribeMessage.send !== 'function') {
         const result = { status: 'skipped', error: 'openapi_unavailable', templateKey, templateId }
-        console.log('[subscription] send skipped', { openid, templateKey, templateId, orderId, result })
+        console.log('[subscription] skipped', { orderId, templateKey, status: 'skipped', code: result.error })
         await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: result.status, error: result.error })
         return result
       }
+      console.log('[subscription] prepare send', { orderId, templateKey, templateId })
       await cloud.openapi.subscribeMessage.send({ touser: openid, templateId, page, data: messageData })
-      console.log('[subscription] send success', { openid, templateKey, templateId, orderId })
+      console.log('[subscription] sent', { orderId, templateKey, status: 'sent' })
       await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: 'sent' }).catch(error => console.error('[subscription-log]', error.message))
       return { status: 'sent', error: '', templateKey, templateId }
     } catch (error) {
       const message = error && (error.message || error.errMsg) || String(error)
-      console.error('[subscription] send failed', { openid, templateKey, orderId, error: message })
+      console.error('[subscription] failed', { orderId, templateKey, status: 'failed', code: error && (error.errCode || error.code) || 'send_failed' })
       await recordSubscriptionLog({ openid, templateKey, orderId, page, data: messageData, status: 'failed', error: message })
       return { status: 'failed', error: message, templateKey }
     }
@@ -142,27 +163,26 @@ module.exports = function createService({
       serviceArea: order.serviceAddress || order.city || '服务地址',
       serviceTime: getClockText(order.startTime)
     }
-    console.log('[orderAccepted] prepare notify', {
+    console.log('[orderAccepted] notify prepare', {
       orderId: order && order._id,
-      orderNo: order && order.orderNo,
-      clientOpenid: order && order.clientOpenid,
-      templateKey: 'orderAccepted',
-      detail
+      templateKey: 'orderAccepted'
     })
     return notifyOrder(order.clientOpenid, 'orderAccepted', order, detail)
       .then((result) => {
         console.log('[orderAccepted] notify result', {
           orderId: order && order._id,
-          orderNo: order && order.orderNo,
-          result
+          templateKey: 'orderAccepted',
+          status: result && result.status,
+          code: result && result.error || ''
         })
         return result
       })
       .catch((error) => {
         console.error('[orderAccepted] notify error', {
           orderId: order && order._id,
-          orderNo: order && order.orderNo,
-          message: error && (error.message || error.errMsg) || String(error)
+          templateKey: 'orderAccepted',
+          status: 'failed',
+          code: error && (error.errCode || error.code) || 'notify_error'
         })
         throw error
       })
