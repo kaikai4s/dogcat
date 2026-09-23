@@ -83,6 +83,8 @@ function normalizeLocation(location) {
     latitude,
     longitude,
     accuracy: Number(source.accuracy || 0),
+    coordinateType: source.coordinateType || 'gcj02',
+    locationSource: source.locationSource || 'unknown',
     updatedAt: source.updatedAt || Date.now()
   }
 }
@@ -261,7 +263,7 @@ function openChooseLocation() {
   return new Promise((resolve, reject) => {
     wx.chooseLocation({
       success: (location) => {
-        const saved = saveSelectedLocation(location)
+        const saved = saveSelectedLocation({ ...location, locationSource: 'manual' })
         if (saved) resolve(saved)
         else reject(new Error('位置信息无效'))
       },
@@ -282,8 +284,10 @@ function getCurrentLocation() {
     return new Promise((resolve, reject) => {
       wx.getLocation({
         type: 'gcj02',
+        isHighAccuracy: true,
+        highAccuracyExpireTime: 6000,
         success: (location) => {
-          const saved = saveSelectedLocation({ ...location, name: '当前位置' })
+          const saved = saveSelectedLocation({ ...location, name: '当前位置', locationSource: 'gps' })
           if (saved) resolve(saved)
           else reject(new Error('位置信息无效'))
         },

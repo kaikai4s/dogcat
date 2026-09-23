@@ -82,6 +82,7 @@ module.exports = function createService({
     const publicAddress = resolvePublicAddress(profile)
     return {
       _id: profile._id,
+      gender: ['male', 'female'].includes(profile.gender) ? profile.gender : '',
       displayName: sitterDisplayName(profile),
       avatarUrl: safeFileId(profile.avatarUrl) || safeText(profile.avatarUrl),
       serviceCity: profile.serviceCity || '服务城市待完善',

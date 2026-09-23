@@ -939,3 +939,6 @@ button:active {
   background: #fef2f2;
   color: #dc2626;
 }
+.staff-gender-field { margin-top: 24rpx; padding: 24rpx; border-radius: 24rpx; background: #fff8ec; }
+.staff-gender-options { display: flex; align-items: center; flex-wrap: wrap; gap: 28rpx; margin: 22rpx 0; }
+.staff-gender-options label { display: flex; align-items: center; gap: 6rpx; font-size: 27rpx; }

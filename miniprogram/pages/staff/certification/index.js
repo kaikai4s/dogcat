@@ -36,6 +36,7 @@ Page({
     themeClass: 'theme-day',
     form: {
       realName: '',
+      gender: '',
       phone: '',
       serviceCity: '',
       serviceAreas: '',
@@ -52,6 +53,7 @@ Page({
     profile: null,
     statusTip: '',
     isApproved: false,
+    certificationLocked: false,
     canGoBack: false,
     messageUnreadCount: 0,
     messageHasUnread: false
@@ -84,7 +86,8 @@ Page({
             facePhotoFileId: profile.facePhotoFileId || ''
           },
           statusTip: profile.auditRemark || statusText[profile.auditStatus] || '',
-          isApproved: profile.auditStatus === 'approved'
+          isApproved: profile.auditStatus === 'approved',
+          certificationLocked: profile.certificationLocked === true || profile.auditStatus === 'approved'
         })
       })
       .catch(showError)
@@ -96,10 +99,12 @@ Page({
   },
 
   input(e) {
+    if (this.data.certificationLocked) return
     this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value })
   },
 
   chooseAddress() {
+    if (this.data.certificationLocked) return
     chooseSelectedLocation()
       .then((loc) => {
         this.setData({
@@ -115,11 +120,13 @@ Page({
   },
 
   selectRadius(e) {
+    if (this.data.certificationLocked) return
     const radius = Number(e.currentTarget.dataset.radius || 5)
     this.setData({ ['form.serviceRadiusKm']: radius })
   },
 
   chooseIdentityPhoto(e) {
+    if (this.data.certificationLocked) return
     const field = e.currentTarget.dataset.field
     if (!field) return
     wx.chooseMedia({
@@ -143,9 +150,23 @@ Page({
     })
   },
 
+  chooseGender(e) {
+    if (this.data.certificationLocked) return
+    const gender = e.detail.value
+    if (gender === 'male' || gender === 'female') this.setData({ 'form.gender': gender })
+  },
+
   submit() {
     if (this.data.isApproved) {
       wx.navigateTo({ url: '/pages/staff/training/index' })
+      return
+    }
+    if (this.data.certificationLocked) {
+      wx.showToast({ title: '认证资料已锁定，请联系平台', icon: 'none' })
+      return
+    }
+    if (!['male', 'female'].includes(this.data.form.gender)) {
+      wx.showToast({ title: '请选择性别', icon: 'none' })
       return
     }
     const { realName, phone, idCardFrontFileId, idCardBackFileId, facePhotoFileId, serviceAddress, serviceLatitude, serviceLongitude } = this.data.form

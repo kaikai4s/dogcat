@@ -4,10 +4,11 @@ const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTa
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { formatDateTime, toBeijingDate } = require('../../../../utils/format')
 const { copyText } = require('../../../../utils/clipboard')
+const { MAX_GAP_MS, pointTime, isGoodTrackPoint, isPlausibleStep } = require('../../../../utils/trackQuality')
 
-const TRACK_INTERVAL_MS = 60 * 1000
-const TRACK_MIN_DISTANCE_M = 50
-const MAX_ACCEPTABLE_ACCURACY_M = 200
+const TRACK_INTERVAL_MS = 30 * 1000
+const TRACK_MIN_DISTANCE_M = 10
+const TRACK_MIN_INTERVAL_MS = 5 * 1000
 
 function hasCoordinate(latitude, longitude) {
   const lat = Number(latitude)
@@ -37,7 +38,9 @@ function toTrackPoint(location) {
     longitude,
     accuracy: Number(location.accuracy || 0),
     speed: Number(location.speed || 0),
-    recordedAt: Date.now()
+    recordedAt: location.recordedAt || Date.now(),
+    coordinateType: 'gcj02',
+    locationSource: 'gps'
   }
 }
 
@@ -224,6 +227,7 @@ Page({
 
   onHide() {
     this.stopEarlyStartPolling()
+    if (!this.data.backgroundTracking) this.stopAutoTracking()
   },
 
   applyCurrentTheme() {
@@ -654,23 +658,30 @@ Page({
     if (this.trackingStarted || !this.data.id) return
     this.trackingStarted = true
     this.lastTrackPoint = null
+    this.trackWarmupPoint = null
+    this.trackSegmentId = createClientRequestId('segment')
+    const segmentId = this.trackSegmentId
     this.lastTrackUploadedAt = 0
     this.setData({ autoTracking: true, backgroundTracking: false, trackStatusText: '正在开启轨迹记录' })
 
     requirePrivacyAuthorize()
       .then(() => this.startLocationUpdate())
       .then((mode) => {
+        if (!this.trackingStarted || segmentId !== this.trackSegmentId) return
         if (typeof wx.onLocationChange !== 'function') throw new Error('当前微信版本不支持连续定位')
-        this.handleLocationChange = (location) => this.recordTrackPoint(location, false)
+        this.handleLocationChange = (location) => {
+          if (this.trackingStarted && segmentId === this.trackSegmentId) this.recordTrackPoint(location, false)
+        }
         wx.onLocationChange(this.handleLocationChange)
         this.uploadAutoTrackPoint()
         this.trackTimer = setInterval(() => this.uploadAutoTrackPoint(), TRACK_INTERVAL_MS)
         this.setData({
           backgroundTracking: mode === 'background',
-          trackStatusText: mode === 'background' ? '后台轨迹记录中' : '前台轨迹记录中'
+          trackStatusText: mode === 'background' ? '后台采集中，等待稳定定位' : '前台采集中，离开页面将暂停'
         })
       })
       .catch((error) => {
+        if (segmentId !== this.trackSegmentId) return
         this.trackingStarted = false
         this.setData({ autoTracking: false, backgroundTracking: false, trackStatusText: '自动轨迹未开启，请手动记录当前位置' })
         showError(error)
@@ -683,12 +694,13 @@ Page({
         reject(new Error('当前微信版本不支持连续定位'))
         return
       }
-      wx.startLocationUpdate({ success: () => resolve('foreground'), fail: reject })
+      wx.startLocationUpdate({ type: 'gcj02', success: () => resolve('foreground'), fail: reject })
     })
 
     if (typeof wx.startLocationUpdateBackground !== 'function') return startForeground()
     return new Promise((resolve) => {
       wx.startLocationUpdateBackground({
+        type: 'gcj02',
         success: () => resolve('background'),
         fail: () => startForeground().then(resolve).catch(() => resolve('failed'))
       })
@@ -701,6 +713,8 @@ Page({
   stopAutoTracking() {
     if (!this.trackingStarted) return
     this.trackingStarted = false
+    this.trackSegmentId = ''
+    this.trackWarmupPoint = null
     if (this.handleLocationChange && typeof wx.offLocationChange === 'function') {
       wx.offLocationChange(this.handleLocationChange)
     }
@@ -713,18 +727,27 @@ Page({
   },
 
   shouldUploadTrackPoint(point, force) {
-    if (force) return true
-    if (point.accuracy && point.accuracy > MAX_ACCEPTABLE_ACCURACY_M) return false
-    if (!this.lastTrackPoint) return true
-    if (Date.now() - this.lastTrackUploadedAt >= TRACK_INTERVAL_MS) return true
+    if (!isGoodTrackPoint(point) || Math.abs(Date.now() - pointTime(point.recordedAt)) > 15000) return false
+    const previous = this.lastTrackPoint
+    if (!previous || pointTime(point.recordedAt) - pointTime(previous.recordedAt) > MAX_GAP_MS) {
+      const warmup = this.trackWarmupPoint
+      this.trackWarmupPoint = point
+      if (!warmup || pointTime(point.recordedAt) - pointTime(warmup.recordedAt) > 60000 || !isPlausibleStep(warmup, point)) return false
+    } else if (!isPlausibleStep(previous, point)) return false
+    if (force || !previous) return true
+    const elapsed = Date.now() - this.lastTrackUploadedAt
+    if (elapsed < TRACK_MIN_INTERVAL_MS) return false
+    if (elapsed >= TRACK_INTERVAL_MS) return true
     const distance = calcDistanceM(this.lastTrackPoint.latitude, this.lastTrackPoint.longitude, point.latitude, point.longitude)
-    return distance >= TRACK_MIN_DISTANCE_M
+    return distance >= Math.max(TRACK_MIN_DISTANCE_M, (point.accuracy + previous.accuracy) / 2)
   },
 
   getRealtimeLocation() {
     return requirePrivacyAuthorize().then(() => new Promise((resolve, reject) => {
       wx.getLocation({
         type: 'gcj02',
+        isHighAccuracy: true,
+        highAccuracyExpireTime: 6000,
         success: resolve,
         fail: reject
       })
@@ -732,34 +755,58 @@ Page({
   },
 
   uploadAutoTrackPoint() {
-    return this.getRealtimeLocation()
-      .then((loc) => this.recordTrackPoint(loc, false))
+    if (this.autoTrackRequest) return this.autoTrackRequest
+    const segmentId = this.trackSegmentId
+    this.autoTrackRequest = this.getRealtimeLocation()
+      .then((loc) => this.trackingStarted && segmentId === this.trackSegmentId ? this.recordTrackPoint(loc, false) : null)
       .then((res) => this.flushOfflineTasks().then(() => res))
       .catch(() => null)
+      .finally(() => { this.autoTrackRequest = null })
+    return this.autoTrackRequest
   },
 
   recordTrackPoint(location, force) {
+    if (this.trackUploadInFlight || !this.data.order || this.data.order.status !== 'in_service') return Promise.resolve(null)
     const point = toTrackPoint(location)
-    if (!point || !this.shouldUploadTrackPoint(point, force)) return Promise.resolve(null)
+    if (!point || !this.shouldUploadTrackPoint(point, force)) {
+      this.setData({ trackStatusText: '等待稳定定位，低精度或跳跃位置不会记录' })
+      if (force) wx.showToast({ title: '定位尚不稳定，请到开阔处稍后重试', icon: 'none' })
+      return Promise.resolve(null)
+    }
+    point.segmentId = this.trackSegmentId || createClientRequestId('manual_segment')
     point.clientPointId = createClientRequestId('track')
+    this.trackUploadInFlight = true
+    // Preserve the sampling anchor even when the upload is queued offline.
+    this.lastTrackPoint = point
+    this.lastTrackUploadedAt = Date.now()
+    this.trackWarmupPoint = null
     return callFunction('track', 'batchUploadTrack', { orderId: this.data.id, batchId: createClientRequestId('batch'), points: [point] })
       .then((res) => {
-        this.lastTrackPoint = point
-        this.lastTrackUploadedAt = Date.now()
+        if (!Number(res.count || 0)) {
+          if (res.rejectedCount) {
+            this.lastTrackPoint = null
+            this.trackWarmupPoint = null
+            this.lastTrackUploadedAt = 0
+          }
+          this.setData({ trackStatusText: res.rejectedCount ? '定位质量不足，已忽略本次位置' : '位置已记录' })
+          return null
+        }
         const pointCount = this.data.pointCount + Number(res.count || 0)
         this.setData({
           pointCount,
+          trackStatusText: this.data.backgroundTracking ? '后台轨迹记录中' : '前台轨迹记录中',
           latestTrackText: `最近记录：${formatDateTime(point.recordedAt).slice(6)}，精度${Math.round(point.accuracy || 0)}m`,
           offlineTaskCount: getOfflineTaskCount(this.data.id)
         })
         return res
       })
       .catch((error) => {
-        enqueueOfflineTask('track', { orderId: this.data.id, point: { ...point, isBackfilled: true }, clientPointId: point.clientPointId })
+        if (isNetworkError(error)) enqueueOfflineTask('track', { orderId: this.data.id, point: { ...point, isBackfilled: true }, clientPointId: point.clientPointId })
         this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id) })
         if (force) showError(error)
         return null
       })
+      .finally(() => { this.trackUploadInFlight = false })
   },
 
   flushOfflineTasks() {
@@ -797,7 +844,7 @@ Page({
 
   uploadPoint(options = {}) {
     if (!this.data.order || !this.data.order.serviceStarted) return Promise.resolve(null)
-    return getServiceLocation()
+    return this.getRealtimeLocation()
       .then((loc) => this.recordTrackPoint(loc, true))
       .then((res) => {
         if (res && !options.silent) wx.showToast({ title: '已记录位置' })

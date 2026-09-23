@@ -1,3 +1,5 @@
+const { pointTime, isGoodTrackPoint, isPlausibleStep, filterTrackPoints } = require('../utils/trackQuality')
+
 module.exports = function createHandler(context) {
   const {
     db,
@@ -27,26 +29,43 @@ module.exports = function createHandler(context) {
           longitude: Number(point.longitude),
           speed: Number(point.speed || 0),
           accuracy: Number(point.accuracy || 0),
-          recordedAt: point.recordedAt || uploadedAt,
+          recordedAt: pointTime(point.recordedAt),
+          coordinateType: safeText(point.coordinateType || 'gcj02'),
+          locationSource: safeText(point.locationSource || 'gps'),
+          segmentId: safeText(point.segmentId).trim(),
           isBackfilled: point.isBackfilled === true || data.isBackfilled === true,
           uploadedAt
         }))
         .filter((point) => hasCoordinate(point.latitude, point.longitude))
-      if (!points.length) throw new Error('轨迹点定位无效')
+      const accepted = filterTrackPoints(await readScopedDocuments('track_logs', { orderId: data.orderId }, 'recordedAt', 'asc'))
+      const uploadedTime = pointTime(uploadedAt)
+      const serviceStart = pointTime(order.startedAt)
       let count = 0
-      for (const point of points) {
+      let rejectedCount = rawPoints.length - points.length
+      let duplicateCount = 0
+      for (const point of points.sort((a, b) => a.recordedAt - b.recordedAt)) {
         if (point.clientPointId) {
           const existing = await db.collection('track_logs').where({ orderId: data.orderId, clientPointId: point.clientPointId }).limit(1).get()
-          if (existing.data[0]) continue
+          if (existing.data[0]) { duplicateCount += 1; continue }
         }
-        await db.collection('track_logs').add({ data: { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientPointId: point.clientPointId, batchId: point.batchId, latitude: point.latitude, longitude: point.longitude, speed: point.speed, accuracy: point.accuracy, recordedAt: point.recordedAt, isBackfilled: point.isBackfilled, uploadedAt: point.uploadedAt } })
+        const earlier = accepted.filter((item) => pointTime(item.recordedAt) <= point.recordedAt).pop()
+        const later = accepted.find((item) => pointTime(item.recordedAt) > point.recordedAt)
+        if (!isGoodTrackPoint(point) || point.recordedAt > uploadedTime + 30000 ||
+            point.recordedAt < Math.max(serviceStart ? serviceStart - 30000 : 0, uploadedTime - 7 * 24 * 3600000) ||
+            (earlier && !isPlausibleStep(earlier, point)) || (later && !isPlausibleStep(point, later))) {
+          rejectedCount += 1
+          continue
+        }
+        await db.collection('track_logs').add({ data: { ...point, orderId: data.orderId, staffUserId: user._id, staffOpenid: openid } })
+        accepted.push(point)
+        accepted.sort((a, b) => pointTime(a.recordedAt) - pointTime(b.recordedAt))
         count += 1
       }
-      return { count }
+      return { count, rejectedCount, duplicateCount }
     }
     if (action === 'getOrderTracks') {
       await getOrderForAccess(openid, data.orderId)
-      return readScopedDocuments('track_logs', { orderId: data.orderId }, 'recordedAt', 'asc')
+      return filterTrackPoints(await readScopedDocuments('track_logs', { orderId: data.orderId }, 'recordedAt', 'asc'))
     }
     throw new Error('未知 track 操作')
   }

@@ -7,7 +7,7 @@
 
   <view class="stats-grid tracking-stats">
     <view class="stat-card highlight"><view class="stat-number">{{trackSummary.distanceText}}</view><view class="stat-label">轨迹距离</view></view>
-    <view class="stat-card"><view class="stat-number">{{tracks.length}}</view><view class="stat-label">轨迹点</view></view>
+    <view class="stat-card"><view class="stat-number">{{validTrackCount || 0}}</view><view class="stat-label">有效轨迹点</view></view>
     <view class="stat-card"><view class="stat-number">{{checkins.length}}</view><view class="stat-label">打卡记录</view></view>
   </view>
 
@@ -16,6 +16,7 @@
       <view>
         <view class="card-subtitle no-margin"><text class="remix-icon ri-map-pin-line sub-icon"></text><text>服务路径</text></view>
         <view class="card-desc">{{trackSummary.startTimeText}} - {{trackSummary.endTimeText}}</view>
+        <view class="card-desc">仅连接有效定位点；定位中断处分段，打卡位置不计入路线与里程。</view>
       </view>
       <view class="live-pill" wx:if="{{hasMapData}}">轨迹已生成</view>
     </view>
@@ -41,7 +42,7 @@
     <view wx:else class="empty-map">
       <text class="remix-icon ri-map-pin-range-line empty-map-icon"></text>
       <view class="empty-title">暂无有效定位数据</view>
-      <view class="empty-desc">宠托师记录位置或打卡后会自动生成地图路径。</view>
+      <view class="empty-desc">采集到稳定的实时定位后才会生成路径；历史低精度位置无法还原为真实路线。</view>
     </view>
   </view>
 

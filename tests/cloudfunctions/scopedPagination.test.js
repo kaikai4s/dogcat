@@ -68,7 +68,7 @@ for (const staff of [false, true]) {
 test('service reports and checkin requirements include valid evidence after 100 historical photos', async () => {
   const db = cappedStore({
     checkin_logs: rows(205, { orderId: 'order', eventType: 'feed', mediaFileId: 'photo', createdAt: '2026-09-22', recordedAt: '2026-09-22' }),
-    track_logs: rows(205, { orderId: 'order', recordedAt: '2026-09-22' })
+    track_logs: rows(205, { orderId: 'order', latitude: 31.2, longitude: 121.5, accuracy: 10 }).map((row, index) => ({ ...row, recordedAt: Date.UTC(2026, 8, 22) + index * 10000 }))
   })
   db.state.checkin_logs[0].deletedAt = '2026-09-22'
   db.state.checkin_logs.slice(0, 204).forEach(row => { row.eventType = 'arrival' })

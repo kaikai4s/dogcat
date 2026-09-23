@@ -486,3 +486,5 @@
   border-radius: 50%;
   background: #f53f3f;
 }
+.gender-options { display: flex; align-items: center; gap: 48rpx; padding: 20rpx 0; }
+.gender-option { display: flex; align-items: center; gap: 12rpx; font-size: 28rpx; }

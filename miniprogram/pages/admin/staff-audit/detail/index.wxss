@@ -80,3 +80,5 @@
   min-height: 88rpx;
   border-radius: 999rpx;
 }
+.gender-options { display: flex; align-items: center; gap: 48rpx; margin: 24rpx 0; }
+.gender-options label { display: flex; align-items: center; gap: 12rpx; }

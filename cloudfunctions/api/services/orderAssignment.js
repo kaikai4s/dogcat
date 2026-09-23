@@ -1,10 +1,12 @@
+const { assertStaffGenderMatches } = require('../utils/staffGender')
+
 module.exports = function createService({
   crypto, db, findStaffOrderConflict, getOrderTimeRanges, isOrderConflictCandidate,
   now, toTimeValue, validateStaffTakeOrderAbility, validateStaffScheduleOnly
 }) {
   function assignmentTerms(order) {
     return JSON.stringify([
-      getOrderTimeRanges(order), order.publishMode, order.requestedStaffOpenid,
+      getOrderTimeRanges(order), order.publishMode, order.requestedStaffOpenid, order.staffGenderRequirement,
       order.addressLatitude, order.addressLongitude, order.serviceLatitude, order.serviceLongitude
     ])
   }
@@ -37,6 +39,7 @@ module.exports = function createService({
       if (!ability.can) throw new Error(ability.message || '宠托师当前不可接单')
       const order = (await transaction.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data
       if (!order || order.status !== 'paid' || order.staffOpenid || order.adminDeletedAt) throw new Error('订单已被分配或状态不可接单')
+      assertStaffGenderMatches(order, profile)
       if (assignmentTerms(order) !== assignmentTerms(expectedOrder)) throw new Error('订单预约信息已变化，请刷新后重新接单')
       if (toTimeValue(order.startTime) > 0 && toTimeValue(order.startTime) <= now().getTime()) throw new Error('订单服务时间已过，无法接单')
       if (!options.admin && order.requestedStaffOpenid && order.requestedStaffOpenid !== patch.staffOpenid) throw new Error('该订单指定了其他宠托师')

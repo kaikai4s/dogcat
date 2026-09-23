@@ -1,3 +1,5 @@
+const { normalizeStaffGenderRequirement, matchesStaffGender, assertStaffGenderMatches } = require('../utils/staffGender')
+
 module.exports = function createService({
   ORDER_STATUS,
   authorizeAdmin,
@@ -25,6 +27,10 @@ module.exports = function createService({
     const canPreviewForStaff = user.roles.includes('staff') && order.status === ORDER_STATUS.PAID && (isOpenOrder(order) || order.requestedStaffOpenid === openid)
     const allowed = order.clientOpenid === openid || order.staffOpenid === openid || order.requestedStaffOpenid === openid || user.roles.includes('admin') || canPreviewForStaff || isPreviousStaff
     if (!allowed) throw new Error('无权访问订单')
+    if (!user.roles.includes('admin') && order.clientOpenid !== openid && order.staffOpenid !== openid && !isPreviousStaff && user.roles.includes('staff')) {
+      const profiles = await db.collection('staff_profiles').where({ openid }).limit(1).get()
+      if (!matchesStaffGender(order, profiles.data[0] || {})) throw new Error('无权访问订单')
+    }
     return { user, order }
   }
 
@@ -48,10 +54,12 @@ module.exports = function createService({
   }
 
   async function getRequestedStaff(data) {
+    const staffGenderRequirement = normalizeStaffGenderRequirement(data.staffGenderRequirement)
     const publishMode = data.publishMode === 'direct' ? 'direct' : 'open'
     if (publishMode === 'open') {
       return {
         publishMode,
+        staffGenderRequirement,
         requestedStaffProfileId: '',
         requestedStaffUserId: '',
         requestedStaffOpenid: '',
@@ -64,6 +72,7 @@ module.exports = function createService({
     const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
     if (!profileRes || !profileRes.data) throw new Error('指定宠托师档案不存在')
     const profile = normalizeStaffWorkflow(profileRes.data)
+    assertStaffGenderMatches({ staffGenderRequirement }, profile)
     const settings = await getSystemSettings()
     const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
     if (!ability.can) {
@@ -78,6 +87,7 @@ module.exports = function createService({
     const publicSitter = toPublicSitter(await withSitterUserProfile(profile))
     return {
       publishMode,
+      staffGenderRequirement,
       requestedStaffProfileId: profile._id,
       requestedStaffUserId: staffUser._id,
       requestedStaffOpenid: profile.openid,

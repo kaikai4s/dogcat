@@ -37,6 +37,7 @@ function visibleOptions(options, active, count) {
 Page({
   data: {
     themeClass: 'theme-day',
+    staffGenderRequirement: 'any',
     keyword: '',
     activeCity: ALL,
     activeArea: ALL,
@@ -61,6 +62,10 @@ Page({
     loading: false,
     messageUnreadCount: 0,
     messageHasUnread: false
+  },
+
+  onLoad(options = {}) {
+    this.setData({ staffGenderRequirement: ['male', 'female'].includes(options.staffGenderRequirement) ? options.staffGenderRequirement : 'any' })
   },
 
   onShow() {
@@ -91,7 +96,7 @@ Page({
     this.setData({ loading: true })
     this.syncCurrentLocation()
     // 首次拉取城市选项时，不加定位过滤，以便展示系统中全量服务城市
-    callFunction('staff', 'listApprovedSitters', { pageSize: 50 })
+    callFunction('staff', 'listApprovedSitters', { pageSize: 50, staffGenderRequirement: this.data.staffGenderRequirement })
       .then((res) => {
         const allSitters = res.list || []
         this.setData({ allSitters }, () => {
@@ -133,6 +138,7 @@ Page({
     this.setData({ loading: true })
     callFunction('staff', 'listApprovedSitters', {
       keyword,
+      staffGenderRequirement: this.data.staffGenderRequirement,
       serviceCity: activeCity === ALL ? '' : activeCity,
       serviceArea: activeArea === ALL ? '' : activeArea,
       sortBy,
@@ -243,7 +249,7 @@ Page({
   },
 
   detail(e) {
-    wx.navigateTo({ url: '/pages/client/sitters/detail/index?id=' + e.currentTarget.dataset.id })
+    wx.navigateTo({ url: '/pages/client/sitters/detail/index?id=' + e.currentTarget.dataset.id + '&staffGenderRequirement=' + this.data.staffGenderRequirement })
   },
 
   book(e) {
@@ -253,8 +259,8 @@ Page({
     }
     const staffProfileId = e.currentTarget.dataset.id
     const url = staffProfileId
-      ? `/pages/client/orders/create/index?publishMode=direct&staffProfileId=${staffProfileId}`
-      : '/pages/client/orders/create/index?publishMode=open'
+      ? `/pages/client/orders/create/index?publishMode=direct&staffProfileId=${staffProfileId}&staffGenderRequirement=${this.data.staffGenderRequirement}`
+      : '/pages/client/orders/create/index?publishMode=open&staffGenderRequirement=' + this.data.staffGenderRequirement
     ensureLogin({ content: '登录后可预约宠托师。' })
       .then(() => wx.navigateTo({ url }))
       .catch(() => {})
@@ -262,7 +268,7 @@ Page({
 
   openPublish() {
     ensureLogin({ content: '登录后可发布预约。' })
-      .then(() => wx.navigateTo({ url: '/pages/client/orders/create/index?publishMode=open' }))
+      .then(() => wx.navigateTo({ url: '/pages/client/orders/create/index?publishMode=open&staffGenderRequirement=' + this.data.staffGenderRequirement }))
       .catch(() => {})
   },
 

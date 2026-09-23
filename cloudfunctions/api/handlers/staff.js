@@ -1,3 +1,5 @@
+const { requireStaffGender, normalizeStaffGenderRequirement, matchesStaffGender, assertStaffGenderMatches, isStaffProfileLocked } = require('../utils/staffGender')
+
 module.exports = function createHandler(context) {
   const {
     saveStaffScheduleException,
@@ -109,6 +111,7 @@ module.exports = function createHandler(context) {
   }
   return async function staff(openid, action, data) {
     if (action === 'listApprovedSitters') {
+      const staffGenderRequirement = normalizeStaffGenderRequirement(data.staffGenderRequirement)
       const keyword = String(data.keyword || '').trim().toLowerCase()
       const serviceCity = String(data.serviceCity || '').trim()
       const serviceArea = String(data.serviceArea || '').trim()
@@ -123,6 +126,7 @@ module.exports = function createHandler(context) {
 
       // 1. 数据库条件下推：基础状态下推与城市下推
       const whereCondition = { auditStatus: 'approved' }
+      if (staffGenderRequirement !== 'any') whereCondition.gender = staffGenderRequirement
       if (serviceCity) {
         const normFilterCity = normalizeCityName(serviceCity)
         if (normFilterCity) {
@@ -394,6 +398,7 @@ module.exports = function createHandler(context) {
       const depositSatisfied = staffDepositSatisfied(profile, depositConfig)
       return {
         ...profile,
+        certificationLocked: isStaffProfileLocked(profile),
         depositConfig: {
           enabled: depositConfig.enabled,
           amount: depositConfig.amount
@@ -517,6 +522,9 @@ module.exports = function createHandler(context) {
     }
     if (action === 'submitStaffProfile') {
       const user = await getUser(openid)
+      const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get()
+      if (isStaffProfileLocked(existing.data[0])) throw new Error('认证资料已锁定，如需更正请联系平台审核')
+      const gender = requireStaffGender(data.gender)
       const realName = safeText(data.realName).trim()
       const phone = safeText(data.phone || user.phone).trim()
       const serviceCity = safeText(data.serviceCity).trim()
@@ -556,6 +564,7 @@ module.exports = function createHandler(context) {
         userId: user._id,
         openid,
         realName,
+        gender,
         phone,
         avatarUrl: user.avatarUrl || data.avatarUrl || '',
         serviceCity,
@@ -591,18 +600,20 @@ module.exports = function createHandler(context) {
         promotionAppliedAt: null,
         updatedAt: time
       }
-      const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       if (existing.data[0]) {
-        if (existing.data[0].auditStatus === 'approved') throw new Error('已是安心宠护师，认证资料不可重复提交')
-        await db.collection('staff_profiles').doc(existing.data[0]._id).update({ data: profile })
-        const identityPayload = { staffProfileId: existing.data[0]._id, userId: user._id, openid, realName, phone, ...identitySummary, auditStatus: 'pending', updatedAt: time }
+        await db.runTransaction(async (tx) => {
+          const current = (await tx.collection('staff_profiles').doc(existing.data[0]._id).get()).data
+          if (isStaffProfileLocked(current)) throw new Error('认证资料已锁定，如需更正请联系平台审核')
+          await tx.collection('staff_profiles').doc(existing.data[0]._id).update({ data: profile })
+        })
+        const identityPayload = { staffProfileId: existing.data[0]._id, userId: user._id, openid, realName, gender, phone, ...identitySummary, auditStatus: 'pending', updatedAt: time }
         const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId: existing.data[0]._id }).limit(1).get()
         if (identityRes.data[0]) await db.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({ data: identityPayload })
         else await db.collection('staff_identity_verifications').add({ data: { ...identityPayload, createdAt: time } })
         return { _id: existing.data[0]._id, ...profile }
       }
       const created = await db.collection('staff_profiles').add({ data: { ...profile, createdAt: time } })
-      await db.collection('staff_identity_verifications').add({ data: { staffProfileId: created._id, userId: user._id, openid, realName, phone, ...identitySummary, auditStatus: 'pending', createdAt: time, updatedAt: time } })
+      await db.collection('staff_identity_verifications').add({ data: { staffProfileId: created._id, userId: user._id, openid, realName, gender, phone, ...identitySummary, auditStatus: 'pending', createdAt: time, updatedAt: time } })
       return { _id: created._id, ...profile, createdAt: time }
     }
     if (action === 'updateStaffProfileConfig') {
@@ -611,6 +622,10 @@ module.exports = function createHandler(context) {
       const profile = existing && existing.data && existing.data[0]
       if (!profile) throw new Error('请先提交宠托师认证')
       if (profile.auditStatus !== 'approved') throw new Error('宠托师认证审核通过后方可设置接单配置')
+      const identityFields = ['gender', 'realName', 'phone', 'idCardFrontFileId', 'idCardBackFileId', 'facePhotoFileId', 'serviceCity', 'serviceAreas']
+      if (identityFields.some((key) => data[key] !== undefined && data[key] !== profile[key])) {
+        throw new Error('认证资料已锁定，如需更正请联系平台审核')
+      }
 
       const time = now()
       const updateData = { updatedAt: time }
@@ -762,7 +777,7 @@ module.exports = function createHandler(context) {
         return true
       }
 
-      let candidates = availableOrders.filter((order) => !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish')
+      let candidates = availableOrders.filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish')
       if (filterDate) {
         candidates = candidates.filter((order) => {
           if (!order.startTime) return false
@@ -816,7 +831,7 @@ module.exports = function createHandler(context) {
       const directCandidates = await readAll('orders', { status: 'paid', requestedStaffOpenid: openid })
       const directOrders = await Promise.all(directCandidates
         .sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
-        .filter((order) => !isAdminDeletedOrder(order) && order.publishMode === 'direct' && !order.staffOpenid && order.requestedStaffOpenid === openid)
+        .filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && order.publishMode === 'direct' && !order.staffOpenid && order.requestedStaffOpenid === openid)
         .map(async (order) => {
           const enriched = await attachOrderDisplayData(order)
           let distanceKm = null
@@ -857,7 +872,7 @@ module.exports = function createHandler(context) {
 
       const urgentOrders = await Promise.all(rawUrgentOrders
         .sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
-        .filter((order) => !isAdminDeletedOrder(order) && (order.isUrgent === true || order.assignmentSource === 'admin_urgent_republish') && !order.staffOpenid)
+        .filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && (order.isUrgent === true || order.assignmentSource === 'admin_urgent_republish') && !order.staffOpenid)
         .map(async (order) => {
           const enriched = await attachOrderDisplayData(order)
           let distanceKm = null
@@ -1088,6 +1103,7 @@ module.exports = function createHandler(context) {
       const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
       if (!orderRes || !orderRes.data) throw new Error('订单不存在')
       const order = await expireUnacceptedOrder(orderId, orderRes.data)
+      assertStaffGenderMatches(order, profile)
       assertOrderTransition(order.status, ORDER_STATUS.ASSIGNED, '订单状态不可接单')
       if (order.staffOpenid) throw new Error('订单已被分配')
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
@@ -1114,6 +1130,7 @@ module.exports = function createHandler(context) {
       const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
       if (!orderRes || !orderRes.data) throw new Error('订单不存在')
       const order = await expireUnacceptedOrder(orderId, orderRes.data)
+      assertStaffGenderMatches(order, profile)
       assertOrderTransition(order.status, ORDER_STATUS.ASSIGNED, '订单状态不可接单')
       if (order.staffOpenid) throw new Error('订单已被分配')
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'

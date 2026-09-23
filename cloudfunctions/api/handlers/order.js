@@ -1,3 +1,6 @@
+const { normalizeStaffGenderRequirement, assertStaffGenderMatches } = require('../utils/staffGender')
+const { filterTrackPoints } = require('../utils/trackQuality')
+
 module.exports = function createHandler(context) {
   const {
     ORDER_STATUS,
@@ -101,6 +104,7 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'quoteOrder') {
+      const staffGenderRequirement = normalizeStaffGenderRequirement(data.staffGenderRequirement)
       await getUser(openid)
       let pets = []
       const petIds = normalizePetIds(data)
@@ -113,6 +117,7 @@ module.exports = function createHandler(context) {
         const staffProfileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
         const staffProfile = staffProfileRes && staffProfileRes.data
         if (!staffProfile) throw new Error('指定的宠托师不可用')
+        assertStaffGenderMatches({ staffGenderRequirement }, staffProfile)
         validateDirectStaffServiceRange(staffProfile, data, { isQuote: true })
         if (data.startTime && data.endTime) {
           await validateStaffAvailabilityForSessions(staffProfile, pricing.sessions)
@@ -315,7 +320,7 @@ module.exports = function createHandler(context) {
         return { ...item, completed: group.count > 0, photoCount: group.count, photos: group.photos }
       })
       const publicSecurity = toPublicOrderHomeSecurity(orderSecurity)
-      const resultOrder = { ...displayOrder, trackCount: tracksRes.length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: publicSecurity, homeSecuritySnapshot: publicSecurity ? toPublicHomeSecuritySnapshot(publicSecurity) : null }
+      const resultOrder = { ...displayOrder, trackCount: filterTrackPoints(tracksRes).length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: publicSecurity, homeSecuritySnapshot: publicSecurity ? toPublicHomeSecuritySnapshot(publicSecurity) : null }
       const requestedRole = safeText(data.role).trim()
       const isStaffView = requestedRole === 'staff' || user.activeRole === 'staff' || (order.clientOpenid !== openid && user.roles.includes('staff'))
       const isPreviousStaff = (Array.isArray(order.previousStaffRecords) && order.previousStaffRecords.some((r) => r.staffOpenid === openid)) || order.originalStaffOpenid === openid
@@ -362,6 +367,7 @@ module.exports = function createHandler(context) {
         durationMinutes: Number(order.durationMinutes || 60),
         petServiceDurations: Array.isArray(order.petServiceDurations) ? order.petServiceDurations : (order.priceSnapshot && Array.isArray(order.priceSnapshot.petServiceDurations) ? order.priceSnapshot.petServiceDurations : []),
         publishMode,
+        staffGenderRequirement: normalizeStaffGenderRequirement(order.staffGenderRequirement),
         staffProfileId
       }
     }
@@ -724,7 +730,7 @@ module.exports = function createHandler(context) {
         readScopedDocuments('track_logs', { orderId: data.id }, 'recordedAt', 'asc'),
         readScopedDocuments('checkin_logs', { orderId: data.id }, 'createdAt', 'asc')
       ])
-      return { order: toServiceReportOrder(order), tracks, checkins: checkins.filter(isActiveCheckin) }
+      return { order: toServiceReportOrder(order), tracks: filterTrackPoints(tracks), checkins: checkins.filter(isActiveCheckin) }
     }
     if (action === 'listPublicCompletedOrders') {
       const serviceType = safeText(data.serviceType).trim()

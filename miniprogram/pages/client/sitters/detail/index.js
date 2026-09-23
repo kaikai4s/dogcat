@@ -7,6 +7,7 @@ Page({
   data: {
     themeClass: 'theme-day',
     id: '',
+    staffGenderRequirement: 'any',
     sitter: null,
     sectionHomeUrl: '',
     canGoBack: false
@@ -14,6 +15,7 @@ Page({
 
   onLoad(query) {
     this.setData({ ...createPageNav(query), id: query.id || query.staffProfileId || '' })
+    this.setData({ staffGenderRequirement: ['male', 'female'].includes(query.staffGenderRequirement) ? query.staffGenderRequirement : 'any' })
   },
 
   onShow() {
@@ -54,12 +56,12 @@ Page({
   book() {
     if (!this.data.id) return
     ensureLogin({ content: '登录后可预约宠托师。' })
-      .then(() => wx.navigateTo({ url: `/pages/client/orders/create/index?publishMode=direct&staffProfileId=${this.data.id}` }))
+      .then(() => wx.navigateTo({ url: `/pages/client/orders/create/index?publishMode=direct&staffProfileId=${this.data.id}&staffGenderRequirement=${this.data.staffGenderRequirement}` }))
       .catch(() => {})
   },
 
   goList() {
-    wx.redirectTo({ url: '/pages/client/sitters/list/index' })
+    wx.redirectTo({ url: '/pages/client/sitters/list/index?staffGenderRequirement=' + this.data.staffGenderRequirement })
   },
 
   ...navMethods()

@@ -1252,7 +1252,7 @@ test('admin audit approval keeps applicant out of staff role until video audit p
       { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' },
       { _id: 'staff', openid: 'openid_staff', roles: ['client'], status: 'active' }
     ],
-    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'pending' }],
+    staff_profiles: [{ _id: 'sp1', openid: 'openid_staff', auditStatus: 'pending', gender: 'male' }],
     admin_operation_logs: []
   })
   const fn = loadCloudFunction('api', db, 'openid_admin')
@@ -1398,7 +1398,7 @@ test('revoked staff cannot take direct orders and can reapply from scratch', asy
   const reapplied = await staffFn.main({
     module: 'staff',
     action: 'submitStaffProfile',
-    data: {
+    data: { gender: 'male',
       realName: '张三',
       phone: '13800001111',
       serviceCity: '上海',
@@ -2109,8 +2109,8 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId: directOrder.data._id } })
   await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: directOrder.data._id, eventType: 'sanitization', mediaFileId: 'cloud://checkin_sanitization.jpg', remark: '服务前隔离消毒', latitude: 31.21, longitude: 121.49, clientRequestId: 'checkin_sanitization' } })
   const started = await staffFn.main({ module: 'order', action: 'startService', data: { id: directOrder.data._id } })
-  const track = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p1', batchId: 'b1', latitude: 31.21, longitude: 121.49, recordedAt: '2099-07-28 10:05', isBackfilled: false }, { clientPointId: 'p2', batchId: 'b1', latitude: 31.22, longitude: 121.5, recordedAt: '2099-07-28 10:06', isBackfilled: true }] } })
-  const duplicateTrack = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p2', batchId: 'b2', latitude: 31.22, longitude: 121.5, recordedAt: '2099-07-28 10:06', isBackfilled: true }] } })
+  const track = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p1', batchId: 'b1', latitude: 31.21, longitude: 121.49, accuracy: 10, recordedAt: Date.now() - 20000, isBackfilled: false }, { clientPointId: 'p2', batchId: 'b1', latitude: 31.2101, longitude: 121.4901, accuracy: 10, recordedAt: Date.now() - 10000, isBackfilled: true }] } })
+  const duplicateTrack = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p2', batchId: 'b2', latitude: 31.2101, longitude: 121.4901, accuracy: 10, recordedAt: Date.now() - 10000, isBackfilled: true }] } })
   for (const eventType of ['enter_door', 'pet_status', 'feed', 'water', 'leave_door']) {
     await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: directOrder.data._id, eventType, mediaFileId: 'cloud://checkin.jpg', remark: '已完成', latitude: 31.21, longitude: 121.49, clientRequestId: `checkin_${eventType}` } })
   }
@@ -2904,7 +2904,7 @@ test('order detail returns persisted track count and grouped checkin photos', as
       ...Array.from({ length: 105 }, (_, index) => ({ _id: `ck${index + 1}`, orderId: 'order1', eventType: 'enter_door', mediaFileId: `cloud://p${index + 1}.jpg`, recordedAt: `2026-08-28 10:${String(index).padStart(2, '0')}` })),
       { _id: 'ck106', orderId: 'order1', eventType: 'feed', mediaFileId: 'cloud://deleted.jpg', deletedAt: '2026-08-28 12:00' }
     ],
-    track_logs: Array.from({ length: 105 }, (_, index) => ({ _id: `t${index + 1}`, orderId: 'order1' })),
+    track_logs: Array.from({ length: 105 }, (_, index) => ({ _id: `t${index + 1}`, orderId: 'order1', latitude: 31.2 + index * 0.00001, longitude: 121.5, accuracy: 10, recordedAt: Date.UTC(2026, 7, 28) + index * 10000 })),
     order_home_security: []
   })
   const fn = loadCloudFunction('api', db, 'openid_staff')
@@ -2973,8 +2973,8 @@ test('track and checkin backfill are idempotent', async () => {
   })
   const fn = loadCloudFunction('api', db, 'openid_staff')
 
-  const track1 = await fn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: 'order1', batchId: 'batch1', points: [{ clientPointId: 'pt1', latitude: 31.2, longitude: 121.5, recordedAt: 1000, isBackfilled: true }] } })
-  const track2 = await fn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: 'order1', batchId: 'batch1', points: [{ clientPointId: 'pt1', latitude: 31.2, longitude: 121.5, recordedAt: 1000, isBackfilled: true }] } })
+  const track1 = await fn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: 'order1', batchId: 'batch1', points: [{ clientPointId: 'pt1', latitude: 31.2, longitude: 121.5, accuracy: 10, recordedAt: Date.now() - 1000, isBackfilled: true }] } })
+  const track2 = await fn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: 'order1', batchId: 'batch1', points: [{ clientPointId: 'pt1', latitude: 31.2, longitude: 121.5, accuracy: 10, recordedAt: Date.now() - 1000, isBackfilled: true }] } })
   const checkin1 = await fn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: 'order1', eventType: 'feed', mediaFileId: 'cloud://checkin.jpg', latitude: 31.2, longitude: 121.5, clientRequestId: 'ck1', recordedAt: 1000, isBackfilled: true } })
   const checkin2 = await fn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: 'order1', eventType: 'feed', mediaFileId: 'cloud://checkin.jpg', latitude: 31.2, longitude: 121.5, clientRequestId: 'ck1', recordedAt: 1000, isBackfilled: true } })
 
@@ -3517,7 +3517,7 @@ test('submitStaffProfile rejects non-cloud identity file ids', async () => {
   const result = await fn.main({
     module: 'staff',
     action: 'submitStaffProfile',
-    data: {
+    data: { gender: 'male',
       realName: '张三',
       phone: '13800001111',
       serviceCity: '上海',
@@ -3545,7 +3545,7 @@ test('submitStaffProfile requires fixed service address and valid coordinates', 
   const noAddress = await fn.main({
     module: 'staff',
     action: 'submitStaffProfile',
-    data: { realName: '张三', phone: '13800001111', serviceCity: '上海' }
+    data: { gender: 'male', realName: '张三', phone: '13800001111', serviceCity: '上海' }
   })
   assert.equal(noAddress.ok, false)
   assert.equal(noAddress.message, '宠托师认证必须设置固定服务地址及坐标')
@@ -3553,7 +3553,7 @@ test('submitStaffProfile requires fixed service address and valid coordinates', 
   const success = await fn.main({
     module: 'staff',
     action: 'submitStaffProfile',
-    data: {
+    data: { gender: 'male',
       realName: '张三',
       phone: '13800001111',
       serviceCity: '上海',
@@ -4352,4 +4352,3 @@ test('admin listPointLogs supports database pagination, openid filtering, and av
   assert.equal(resPage3.data.list.length, 20)
   assert.equal(resPage3.data.hasMore, false)
 })
-

@@ -3,6 +3,7 @@ const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { withCheckinText, formatDateTime, toBeijingDate } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
+const { filterTrackPoints, isGoodTrackPoint } = require('../../../../utils/trackQuality')
 
 function toMapPoint(item) {
   const latitude = Number(item && item.latitude)
@@ -31,6 +32,7 @@ function formatDistance(distanceKm) {
 function buildTrackSummary(trackPoints) {
   let distanceKm = 0
   for (let i = 1; i < trackPoints.length; i += 1) {
+    if (trackPoints[i].breakBefore) continue
     distanceKm += calcDistanceKm(trackPoints[i - 1].latitude, trackPoints[i - 1].longitude, trackPoints[i].latitude, trackPoints[i].longitude)
   }
   return {
@@ -66,19 +68,20 @@ function groupCheckinPhotos(checkins = []) {
 }
 
 function buildMapData(tracks, checkins) {
-  const trackPoints = (tracks || []).map((item) => {
+  const trackPoints = filterTrackPoints(tracks || []).map((item) => {
     const point = toMapPoint(item)
-    return point ? { ...point, recordedAt: item.recordedAt, recordedAtValue: getPointTimeValue(item.recordedAt), recordedAtText: formatTrackTime(item.recordedAt), pointType: 'track' } : null
+    return point ? { ...point, breakBefore: item.breakBefore, recordedAt: item.recordedAt, recordedAtValue: getPointTimeValue(item.recordedAt), recordedAtText: formatTrackTime(item.recordedAt), pointType: 'track' } : null
   }).filter(Boolean)
   const checkinPoints = (checkins || []).map((item) => {
     const point = toMapPoint(item)
     const recordedAt = item.recordedAt || item.createdAt || item.serverTime
+    if (!isGoodTrackPoint({ ...item, recordedAt })) return null
     return point ? { ...point, recordedAt, recordedAtValue: getPointTimeValue(recordedAt), recordedAtText: formatTrackTime(recordedAt), pointType: 'checkin', checkin: item } : null
   }).filter(Boolean)
-  const routePoints = trackPoints.concat(checkinPoints)
+  const routePoints = trackPoints
     .filter((item) => item.recordedAtValue > 0)
     .sort((a, b) => a.recordedAtValue - b.recordedAtValue)
-  const fallbackPoints = trackPoints.concat(checkinPoints)
+  const fallbackPoints = checkinPoints
   const includePoints = routePoints.length ? routePoints : fallbackPoints
   const center = routePoints[0] || fallbackPoints[0]
   const markers = []
@@ -110,7 +113,7 @@ function buildMapData(tracks, checkins) {
   }
 
   checkinPoints.forEach((item, index) => {
-    const title = item.checkin.eventTypeText || '服务打卡'
+    const title = (item.checkin.eventTypeText || '服务打卡') + (item.checkin.isBackfilled ? '（补传）' : '')
     markers.push({
       id: 100 + index,
       latitude: item.latitude,
@@ -124,6 +127,11 @@ function buildMapData(tracks, checkins) {
   })
 
   const trackSummary = buildTrackSummary(routePoints)
+  const segments = []
+  routePoints.forEach((point) => {
+    if (!segments.length || point.breakBefore) segments.push([])
+    segments[segments.length - 1].push({ latitude: point.latitude, longitude: point.longitude })
+  })
 
   return {
     hasMapData: Boolean(center),
@@ -132,14 +140,15 @@ function buildMapData(tracks, checkins) {
     includePoints,
     markers,
     trackSummary,
-    polyline: routePoints.length > 1 ? [{
-      points: routePoints.map((item) => ({ latitude: item.latitude, longitude: item.longitude })),
+    validTrackCount: trackPoints.length,
+    polyline: segments.filter((points) => points.length > 1).map((points) => ({
+      points,
       color: '#ff4f87cc',
       width: 8,
       borderColor: '#ffffff',
       borderWidth: 2,
       arrowLine: true
-    }] : []
+    }))
   }
 }
 

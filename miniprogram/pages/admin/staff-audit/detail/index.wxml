@@ -8,6 +8,7 @@
   <view class="admin-card detail-card">
     <view class="card-subtitle"><text class="remix-icon ri-profile-line sub-icon"></text><text>入驻资料</text></view>
     <view class="info-row"><view class="label">姓名</view><view class="value">{{staff.realName}}</view></view>
+    <view class="info-row"><view class="label">性别</view><view class="value">{{staff.gender === 'male' ? '男' : (staff.gender === 'female' ? '女' : '未填写')}}</view></view>
     <view class="info-row"><view class="label">手机</view><view class="value">{{staff.phone}}</view></view>
     <view class="info-row"><view class="label">城市</view><view class="value">{{staff.serviceCity}}</view></view>
     <view class="info-row"><view class="label">区域</view><view class="value">{{staff.serviceAreas}}</view></view>
@@ -34,9 +35,21 @@
     </view>
   </view>
 
+  <view class="admin-card form-card" wx:if="{{staff.auditStatus === 'approved' && !staff.gender}}">
+    <view class="card-subtitle">核实补录性别</view>
+    <view class="muted">请核对实名认证材料后补录，仅可补录一次，操作将留档。</view>
+    <radio-group class="gender-options" bindchange="chooseGender">
+      <label><radio value="male" checked="{{gender === 'male'}}" />男</label>
+      <label><radio value="female" checked="{{gender === 'female'}}" />女</label>
+    </radio-group>
+    <textarea class="remark-textarea" placeholder="填写核实依据或说明" value="{{genderReason}}" bindinput="inputGenderReason" />
+    <button class="primary-btn" loading="{{savingGender}}" disabled="{{savingGender}}" bindtap="completeGender">确认核实并补录</button>
+  </view>
+
   <view class="admin-card form-card" wx:if="{{staff.auditStatus === 'pending'}}">
     <view class="card-subtitle"><text class="remix-icon ri-edit-line sub-icon"></text><text>审核备注</text></view>
     <textarea class="remark-textarea" placeholder="审核备注" value="{{remark}}" bindinput="input" />
+    <view class="muted" wx:if="{{!staff.gender}}">申请人未填写性别，请退回补充后再审核。</view>
   </view>
 
   <view class="admin-card form-card" wx:else>

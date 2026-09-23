@@ -22,6 +22,15 @@
         <view class="service-desc">支付后仅指定宠托师可看到并接单</view>
       </view>
     </view>
+    <view class="staff-gender-field">
+      <view class="strong">宠托师性别要求</view>
+      <radio-group class="staff-gender-options" bindchange="chooseStaffGender">
+        <label><radio value="any" checked="{{form.staffGenderRequirement === 'any'}}" color="#e9672f" />不限</label>
+        <label><radio value="male" checked="{{form.staffGenderRequirement === 'male'}}" color="#e9672f" />男</label>
+        <label><radio value="female" checked="{{form.staffGenderRequirement === 'female'}}" color="#e9672f" />女</label>
+      </radio-group>
+      <view class="muted">默认不限；指定性别后，仅符合要求的宠托师可查看并接单。</view>
+    </view>
     <view class="sitter-summary" wx:if="{{form.publishMode === 'direct'}}">
       <view class="sitter-summary-top">
         <image class="order-avatar" wx:if="{{requestedSitter && requestedSitter.avatarUrl}}" src="{{requestedSitter.avatarUrl}}" mode="aspectFill" />
@@ -32,6 +41,7 @@
             <text class="badge-pill blue" wx:if="{{requestedSitter && requestedSitter.staffLevel === 'intern'}}">实习特惠</text>
           </view>
           <view class="muted">{{requestedSitter ? requestedSitter.serviceSummary : '请从宠托师列表选择指定对象'}}</view>
+          <view class="muted" wx:if="{{requestedSitter}}">性别：{{requestedSitter.gender === 'male' ? '男' : (requestedSitter.gender === 'female' ? '女' : '待平台核实')}}</view>
           <view class="sitter-meta" wx:if="{{requestedSitter && requestedSitter.serviceRadiusKm}}">接单范围：{{requestedSitter.serviceRadiusKm}}km 内</view>
           <view class="intern-summary-tip" wx:if="{{requestedSitter && requestedSitter.staffLevel === 'intern'}}">
             <text class="remix-icon ri-discount-percent-fill"></text> 已享受实习专属特惠计费

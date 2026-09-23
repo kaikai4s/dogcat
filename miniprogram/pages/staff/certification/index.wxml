@@ -26,22 +26,32 @@
 
     <view class="form-group">
       <text class="input-label">真实姓名</text>
-      <input class="input-field" placeholder="请输入真实姓名" value="{{form.realName}}" data-field="realName" bindinput="input" />
+      <input class="input-field" placeholder="请输入真实姓名" value="{{form.realName}}" data-field="realName" bindinput="input" disabled="{{certificationLocked}}" />
     </view>
 
     <view class="form-group">
+      <text class="input-label">性别（必填）</text>
+      <radio-group class="gender-options" bindchange="chooseGender">
+        <label class="gender-option"><radio value="male" checked="{{form.gender === 'male'}}" disabled="{{certificationLocked}}" color="#e9672f" />男</label>
+        <label class="gender-option"><radio value="female" checked="{{form.gender === 'female'}}" disabled="{{certificationLocked}}" color="#e9672f" />女</label>
+      </radio-group>
+      <view class="section-sub-tip">请如实填写，审核通过后不可自行修改。</view>
+      <view class="section-sub-tip" wx:if="{{certificationLocked && !form.gender}}">尚未记录性别，请联系平台核实补录；补录前仅可接不限性别的订单。</view>
+    </view>
+    <view class="section-sub-tip" wx:if="{{certificationLocked}}">认证资料已锁定，如需更正请联系平台审核。接单时间和服务范围可在个人中心配置。</view>
+    <view class="form-group">
       <text class="input-label">联系手机号</text>
-      <input class="input-field" placeholder="请输入常用手机号" value="{{form.phone}}" data-field="phone" bindinput="input" />
+      <input class="input-field" placeholder="请输入常用手机号" value="{{form.phone}}" data-field="phone" bindinput="input" disabled="{{certificationLocked}}" />
     </view>
 
     <view class="form-group">
       <text class="input-label">常驻服务城市</text>
-      <input class="input-field" placeholder="如：北京市 / 深圳市" value="{{form.serviceCity}}" data-field="serviceCity" bindinput="input" />
+      <input class="input-field" placeholder="如：北京市 / 深圳市" value="{{form.serviceCity}}" data-field="serviceCity" bindinput="input" disabled="{{certificationLocked}}" />
     </view>
 
     <view class="form-group">
       <text class="input-label">主要服务区域说明</text>
-      <textarea class="textarea-field" placeholder="如：朝阳区建国门街道、CBD商圈周边等" value="{{form.serviceAreas}}" data-field="serviceAreas" bindinput="input" />
+      <textarea class="textarea-field" placeholder="如：朝阳区建国门街道、CBD商圈周边等" value="{{form.serviceAreas}}" data-field="serviceAreas" bindinput="input" disabled="{{certificationLocked}}" />
     </view>
 
     <view class="section-divider"></view>
@@ -97,7 +107,7 @@
         <view class="loc-placeholder" wx:else>📍 点击选择固定服务地址（定位接单点）</view>
         <view class="loc-coord" wx:if="{{form.serviceLatitude}}">坐标：{{form.serviceLatitude}}, {{form.serviceLongitude}}</view>
       </view>
-      <button class="mini-btn">选择位置</button>
+      <button class="mini-btn" disabled="{{certificationLocked}}">{{certificationLocked ? '已锁定' : '选择位置'}}</button>
     </view>
 
     <view class="form-group" style="margin-top: 28rpx;">

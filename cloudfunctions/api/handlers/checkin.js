@@ -236,6 +236,9 @@ module.exports = function createHandler(context) {
       const existingEventPhotos = await readScopedDocuments('checkin_logs', { orderId: data.orderId, eventType: data.eventType })
       const shouldWriteTimeline = !existingEventPhotos.some(hasCheckinPhoto)
       const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientRequestId, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, serverTime: time, recordedAt, isBackfilled: data.isBackfilled === true, remark: data.remark || data.note || '', createdAt: time, updatedAt: time, deletedAt: null, deletedByOpenid: '' }
+      checkin.accuracy = Number.isFinite(Number(data.accuracy)) ? Number(data.accuracy) : 0
+      checkin.coordinateType = data.coordinateType === 'gcj02' ? 'gcj02' : 'unknown'
+      checkin.locationSource = data.locationSource === 'gps' ? 'gps' : 'manual'
       if (isSanitization) {
         checkin.preStart = true
         checkin.sanitizationVersion = 1

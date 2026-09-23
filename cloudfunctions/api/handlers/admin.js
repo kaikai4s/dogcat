@@ -1,3 +1,5 @@
+const { requireStaffGender } = require('../utils/staffGender')
+
 module.exports = function createHandler(context) {
   const {
     cancelUnpaidOrder,
@@ -1559,6 +1561,26 @@ module.exports = function createHandler(context) {
       }
       return list
     }
+    if (action === 'completeStaffGender') {
+      const staffProfileId = safeText(data.staffProfileId).trim()
+      const gender = requireStaffGender(data.gender)
+      const reason = safeText(data.reason).trim()
+      if (!staffProfileId || !reason) throw new Error('请选择宠托师并填写核实说明')
+      const time = now()
+      await db.runTransaction(async (tx) => {
+        const profile = (await tx.collection('staff_profiles').doc(staffProfileId).get()).data
+        if (!profile || profile.auditStatus !== 'approved') throw new Error('仅可为已审核通过的宠托师补录性别')
+        if (['male', 'female'].includes(profile.gender)) throw new Error('性别已设置，不可重复补录')
+        await tx.collection('staff_profiles').doc(staffProfileId).update({ data: {
+          gender, certificationLockedAt: profile.certificationLockedAt || time,
+          genderVerifiedBy: openid, genderVerifiedAt: time, genderVerificationReason: reason, updatedAt: time
+        } })
+      })
+      const identities = await db.collection('staff_identity_verifications').where({ staffProfileId }).get()
+      await Promise.all((identities.data || []).map((identity) => db.collection('staff_identity_verifications').doc(identity._id).update({ data: { gender, updatedAt: time } })))
+      await logAdmin(admin, 'staff_profile', staffProfileId, 'completeStaffGender', { gender, reason })
+      return { staffProfileId, gender }
+    }
     if (action === 'auditStaff') {
       const staffProfileId = safeText(data.staffProfileId).trim()
       if (!staffProfileId) throw new Error('请选择宠托师')
@@ -1566,13 +1588,14 @@ module.exports = function createHandler(context) {
       const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
       const profile = profileRes && profileRes.data
       if (!profile) throw new Error('宠托师档案不存在')
+      if (status === 'approved') requireStaffGender(profile.gender)
       const identityStatus = status === 'approved' ? 'verified' : 'failed'
       const faceVerifyStatus = status === 'approved' ? 'verified' : 'failed'
       const time = now()
       const workflowUpdate = status === 'approved'
         ? { staffLevel: 'applicant', onboardingStatus: 'training_pending', videoAuditStatus: 'not_started', promotionStatus: 'none' }
         : { staffLevel: 'applicant', onboardingStatus: 'application_pending', videoAuditStatus: 'not_started', promotionStatus: 'none' }
-      await db.collection('staff_profiles').doc(staffProfileId).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, ...workflowUpdate, updatedAt: time } })
+      await db.collection('staff_profiles').doc(staffProfileId).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, ...workflowUpdate, ...(status === 'approved' ? { certificationLockedAt: profile.certificationLockedAt || time } : {}), updatedAt: time } })
       const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId }).limit(1).get()
       if (identityRes.data[0]) await db.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, auditedByOpenid: openid, auditedAt: time, updatedAt: time } })
       const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()

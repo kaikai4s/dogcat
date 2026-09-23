@@ -7,6 +7,7 @@
     </view>
     <view class="hero-title">{{order.petName}} 的服务任务</view>
     <view class="hero-desc">核对服务地址、时间与宠物注意事项后进入履约流程。</view>
+    <view class="hero-desc">性别要求：{{order.staffGenderRequirement === 'male' ? '男性宠托师' : (order.staffGenderRequirement === 'female' ? '女性宠托师' : '不限')}}</view>
   </view>
 
   <view class="card pet-card" wx:if="{{order.petSnapshot}}">

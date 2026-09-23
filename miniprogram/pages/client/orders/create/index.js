@@ -270,6 +270,7 @@ Page({
       serviceTypes: [VISIT_FEE_SERVICE_KEY, 'walk'],
       serviceAddress: '',
       publishMode: 'open',
+      staffGenderRequirement: 'any',
       staffProfileId: '',
       addressDetail: '',
       doorplate: '',
@@ -329,6 +330,7 @@ Page({
     const staffProfileId = options.staffProfileId || ''
     const serviceType = options.serviceType || options.serviceKey || ''
     const nextData = { ['form.publishMode']: publishMode, ['form.staffProfileId']: staffProfileId }
+    nextData['form.staffGenderRequirement'] = ['male', 'female'].includes(options.staffGenderRequirement) ? options.staffGenderRequirement : 'any'
     if (serviceType) {
       const serviceTypes = ensureVisitFeeServiceTypes(serviceType === VISIT_FEE_SERVICE_KEY ? [] : [serviceType])
       nextData['form.serviceType'] = getPrimaryBusinessService(serviceTypes)
@@ -507,7 +509,7 @@ Page({
   },
 
   chooseSitter() {
-    wx.navigateTo({ url: '/pages/client/sitters/list/index' })
+    wx.navigateTo({ url: '/pages/client/sitters/list/index?staffGenderRequirement=' + this.data.form.staffGenderRequirement })
   },
 
   checkSitterRange() {
@@ -663,6 +665,7 @@ Page({
           ['form.durationMinutes']: template.durationMinutes,
           ['form.petServiceDurations']: Array.isArray(template.petServiceDurations) ? template.petServiceDurations : [],
           ['form.publishMode']: template.publishMode,
+          ['form.staffGenderRequirement']: template.staffGenderRequirement || 'any',
           ['form.staffProfileId']: template.staffProfileId,
           locationReady: Boolean(template.serviceAddress),
           locationTip: '已从历史订单带入地址',
@@ -1051,6 +1054,7 @@ Page({
     if (this.data.hasTimedServices && this.data.timedDurationTotal > 240) return '每日合计不能超过240分钟，请减少时长、宠物或服务'
     if (form.publishMode === 'direct') {
       if (!form.staffProfileId) return '请选择指定宠托师'
+      if (form.staffGenderRequirement !== 'any' && (!this.data.requestedSitter || this.data.requestedSitter.gender !== form.staffGenderRequirement)) return '指定宠托师性别不符合要求，请重新选择'
       const rangeCheck = this.checkSitterRange()
       if (!rangeCheck.ok) return rangeCheck.message
     }
@@ -1070,6 +1074,12 @@ Page({
     const start = parseDateTime(form.startTime)
     if (!start || start.getTime() < Date.now()) return '服务开始时间不能早于当前时间'
     return ''
+  },
+
+  chooseStaffGender(e) {
+    const value = e.detail.value
+    if (!['any', 'male', 'female'].includes(value)) return
+    this.setData({ 'form.staffGenderRequirement': value, quote: null })
   },
 
   buildOrderPayload() {

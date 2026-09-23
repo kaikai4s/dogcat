@@ -97,8 +97,11 @@ Page({
         remark: this.data.remark || (isSanitization ? '服务前隔离病菌消毒打卡' : ''),
         latitude: loc.latitude,
         longitude: loc.longitude,
+        accuracy: Number(loc.accuracy || 0),
+        coordinateType: loc.coordinateType || 'gcj02',
+        locationSource: loc.locationSource || 'unknown',
         clientRequestId: createClientRequestId('checkin'),
-        recordedAt: new Date().toISOString()
+        recordedAt: new Date(loc.updatedAt || Date.now()).toISOString()
       }
       return callFunction('checkin', 'createCheckin', payload)
         .then((checkin) => {

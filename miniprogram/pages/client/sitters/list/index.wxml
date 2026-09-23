@@ -5,6 +5,7 @@
       <view class="hero-count">{{total}} 位金牌宠托师</view>
     </view>
     <view class="hero-title">寻找身边的安心宠托师</view>
+    <view class="hero-tip" wx:if="{{staffGenderRequirement !== 'any'}}">当前仅展示{{staffGenderRequirement === 'male' ? '男性' : '女性'}}宠托师</view>
     <view class="hero-tip">100% 实名与健康审核 · 附近随时响应 · 服务过程全程记录</view>
 
     <view class="sitter-location-bar" bindtap="updateLocation">
