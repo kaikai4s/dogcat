@@ -169,7 +169,10 @@ function createCollectionStore(initial = {}) {
 
 function clearRequireCache(filePath) {
   const resolved = require.resolve(filePath)
-  delete require.cache[resolved]
+  const dir = path.dirname(resolved)
+  Object.keys(require.cache).forEach(k => {
+    if (k.startsWith(dir)) delete require.cache[k]
+  })
 }
 
 function loadCloudFunction(functionName, db, openid = 'openid_test', cloudOverrides = {}) {

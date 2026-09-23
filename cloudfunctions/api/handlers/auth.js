@@ -8,6 +8,7 @@ module.exports = function createHandler(context) {
     db,
     enrichUserMemberLevel,
     ensureMonthConfig,
+    executeDailyCheckin,
     getOptionalUser,
     getSystemSettings,
     getUser,
@@ -123,39 +124,20 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'dailyCheckin') {
-      const user = await getUser(openid)
-      const todayInfo = toCstParts()
-      const existing = (await db.collection('user_checkins').where({ openid, dateKey: todayInfo.dateKey }).limit(1).get()).data[0]
-      if (existing) {
-        return { checkedIn: true, points: Number(user.points || 0), retroCardCount: Number(user.retroCardCount || 0) }
-      }
-      const config = await ensureMonthConfig(todayInfo.monthKey)
-      const reward = normalizeCheckinReward((config.days || []).find((item) => Number(item.day) === todayInfo.dayNumber) || {}, todayInfo.dayNumber)
-      const claimed = await claimCheckinReward(user, reward, todayInfo, 'normal')
-      const time = now()
-      await db.collection('user_checkins').add({
-        data: {
-          userId: user._id,
-          openid,
-          monthKey: todayInfo.monthKey,
-          dateKey: todayInfo.dateKey,
-          day: todayInfo.dayNumber,
-          checkinType: 'normal',
-          usedRetroCard: false,
-          rewardSnapshot: claimed.rewardSnapshot,
-          pointsDelta: claimed.pointsDelta,
-          couponId: claimed.couponId || '',
-          createdAt: time,
-          updatedAt: time
+      const result = await executeDailyCheckin(openid, { allowAlreadyCheckedIn: true })
+      if (result.alreadyCheckedIn) {
+        return {
+          checkedIn: true,
+          points: Number(result.user.points || 0),
+          retroCardCount: Number(result.user.retroCardCount || 0)
         }
-      })
-      const updated = await getUser(openid)
+      }
       return {
         checkedIn: false,
-        points: Number(updated.points || 0),
-        retroCardCount: Number(updated.retroCardCount || 0),
-        delta: claimed.pointsDelta,
-        rewardSnapshot: claimed.rewardSnapshot
+        points: Number(result.user.points || 0),
+        retroCardCount: Number(result.user.retroCardCount || 0),
+        delta: result.claimed.pointsDelta,
+        rewardSnapshot: result.claimed.rewardSnapshot
       }
     }
 

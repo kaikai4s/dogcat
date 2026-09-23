@@ -33,6 +33,12 @@ module.exports = function createService({
   async function issueCouponToTargetUser(template, targetUser, adminMeta = {}) {
     if (!template || template.enabled === false) throw new Error('优惠券模板不可用')
     const templateId = template._id || template.templateId
+    if (adminMeta.idempotencyKey) {
+      const existingKey = (await db.collection('user_coupons').where({ openid: targetUser.openid, idempotencyKey: adminMeta.idempotencyKey }).limit(1).get()).data[0]
+      if (existingKey) {
+        return { _id: existingKey._id, templateSnapshot: existingKey.templateSnapshot, validFrom: existingKey.validFrom, validTo: existingKey.validTo }
+      }
+    }
     const existing = (await db.collection('user_coupons').where({ openid: targetUser.openid, templateId }).get()).data || []
     const activeCount = existing.filter((coupon) => coupon.status !== 'void').length
     if (activeCount >= Number(template.perUserLimit || 1)) throw new Error('该用户已达到领取上限')
@@ -53,6 +59,9 @@ module.exports = function createService({
         lockedAt: null,
         usedOrderId: '',
         usedAt: null,
+        sourceType: adminMeta.sourceType || '',
+        sourceId: adminMeta.sourceId || '',
+        idempotencyKey: adminMeta.idempotencyKey || '',
         issuedByAdminUserId: adminMeta.adminUserId || '',
         issuedByAdminOpenid: adminMeta.adminOpenid || '',
         issuedAt: time,
@@ -60,8 +69,9 @@ module.exports = function createService({
         updatedAt: time
       }
     })
+    const updatedCount = Number(template.issuedCount || 0) + 1
     await db.collection('coupon_templates').doc(templateId).update({ data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time } })
-    template.issuedCount = Number(template.issuedCount || 0) + 1
+    template.issuedCount = updatedCount
     return { _id: created._id, templateSnapshot: snapshot, validFrom: validRange.validFrom, validTo: validRange.validTo }
   }
 
