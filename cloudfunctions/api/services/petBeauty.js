@@ -110,8 +110,20 @@ module.exports = function createService({
   async function countPetBeautyVotes(monthKey) {
     const start = currentMonthStart(monthKey)
     const end = nextMonthStart(monthKey)
-    const res = await db.collection('pet_beauty_votes').where({ monthKey }).get()
-    return (res.data || []).filter((vote) => {
+    const votes = []
+    let cursor = ''
+    const maxLimit = 5000
+    while (votes.length < maxLimit) {
+      const condition = { monthKey }
+      if (cursor) condition._id = db.command.gt(cursor)
+      const fetchLimit = Math.min(100, maxLimit - votes.length)
+      const res = await db.collection('pet_beauty_votes').where(condition).orderBy('_id', 'asc').limit(fetchLimit).get()
+      const page = res.data || []
+      votes.push(...page)
+      if (page.length < fetchLimit) break
+      cursor = page[page.length - 1]._id
+    }
+    return votes.filter((vote) => {
       const created = parseDateValue(vote.createdAt)
       return !created || (created >= start && created < end)
     }).reduce((map, vote) => {

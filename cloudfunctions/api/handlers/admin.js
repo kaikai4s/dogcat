@@ -154,6 +154,45 @@ module.exports = function createHandler(context) {
     return limitList(sorted.filter((item) => inDateRange(item, dateRange, dateFields)), limit)
   }
 
+  async function fetchUsersByOpenids(openids = []) {
+    const list = Array.from(new Set(openids.filter(Boolean)))
+    if (!list.length) return []
+    const users = []
+    const chunkSize = 50
+    for (let i = 0; i < list.length; i += chunkSize) {
+      const chunk = list.slice(i, i + chunkSize)
+      const res = await db.collection('users').where({ openid: db.command.in(chunk) }).limit(chunk.length).get()
+      users.push(...(res.data || []))
+    }
+    return users
+  }
+
+  async function fetchStaffProfilesByOpenids(openids = []) {
+    const list = Array.from(new Set(openids.filter(Boolean)))
+    if (!list.length) return []
+    const profiles = []
+    const chunkSize = 50
+    for (let i = 0; i < list.length; i += chunkSize) {
+      const chunk = list.slice(i, i + chunkSize)
+      const res = await db.collection('staff_profiles').where({ openid: db.command.in(chunk) }).limit(chunk.length).get()
+      profiles.push(...(res.data || []))
+    }
+    return profiles
+  }
+
+  async function fetchStaffEvidencesByOpenids(openids = []) {
+    const list = Array.from(new Set(openids.filter(Boolean)))
+    if (!list.length) return []
+    const evidences = []
+    const chunkSize = 50
+    for (let i = 0; i < list.length; i += chunkSize) {
+      const chunk = list.slice(i, i + chunkSize)
+      const res = await db.collection('staff_deposit_evidences').where({ staffOpenid: db.command.in(chunk) }).get()
+      evidences.push(...(res.data || []))
+    }
+    return evidences.sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+  }
+
   return async function admin(openid, action, data) {
     const admin = await requireAdmin(openid)
     if (['getMyAdminAccess', 'enableAdminPermissions', 'listAdminGroups', 'saveAdminGroup', 'setAdminMembership', 'getAdminMembership', 'listAdminMembers', 'listOperationActors', 'listOperationLogs'].includes(action)) {
@@ -1761,9 +1800,17 @@ module.exports = function createHandler(context) {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const deposits = (await readAll('staff_deposits')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
-      const users = await readAll('users')
-      const profiles = await readAll('staff_profiles')
-      const allEvidences = (await readAll('staff_deposit_evidences')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+      const filteredDeposits = deposits
+        .filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt']))
+      const pagedDeposits = limitList(filteredDeposits, data.pageSize || 50)
+
+      const targetOpenids = Array.from(new Set(pagedDeposits.map((item) => item.staffOpenid).filter(Boolean)))
+      const [users, profiles, allEvidences] = await Promise.all([
+        fetchUsersByOpenids(targetOpenids),
+        fetchStaffProfilesByOpenids(targetOpenids),
+        fetchStaffEvidencesByOpenids(targetOpenids)
+      ])
+
       const evidenceByStaff = {}
       for (const ev of allEvidences) {
         if (!evidenceByStaff[ev.staffOpenid]) evidenceByStaff[ev.staffOpenid] = []
@@ -1771,42 +1818,40 @@ module.exports = function createHandler(context) {
       }
       const userMap = users.reduce((m, u) => ({ ...m, [u.openid]: u }), {})
       const profileMap = profiles.reduce((m, p) => ({ ...m, [p.openid]: p }), {})
-      const list = deposits
-        .filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt']))
-        .map((item) => {
-          const u = userMap[item.staffOpenid] || {}
-          const p = profileMap[item.staffOpenid] || {}
-          const staffEvidences = evidenceByStaff[item.staffOpenid] || []
-          const problemOrders = staffEvidences.map((e) => {
-            const actualDeductAmount = Number(e.actualDeductAmount ?? e.forfeitedAmount ?? 0)
-            const s = e.status || 'pending'
-            return {
-              _id: e._id,
-              orderId: e.orderId,
-              orderNo: e.orderNo || '',
-              serviceSummary: e.serviceSummary || '',
-              reasonType: e.reasonType || '',
-              reasonTypeName: e.reasonTypeName || '',
-              reasonText: e.reasonText || '',
-              deductAmount: Number(e.deductAmount || 0),
-              actualDeductAmount,
-              actualDeductAmountText: actualDeductAmount > 0 ? actualDeductAmount.toFixed(2) : '',
-              status: s,
-              statusText: s === 'forfeited' ? '已根据建议扣除保证金' : (s === 'dismissed' ? '已撤销免除' : '待执行扣除'),
-              createdAt: e.createdAt || '',
-              staffOpenid: e.staffOpenid || item.staffOpenid
-            }
-          })
+      const list = pagedDeposits.map((item) => {
+        const u = userMap[item.staffOpenid] || {}
+        const p = profileMap[item.staffOpenid] || {}
+        const staffEvidences = evidenceByStaff[item.staffOpenid] || []
+        const problemOrders = staffEvidences.map((e) => {
+          const actualDeductAmount = Number(e.actualDeductAmount ?? e.forfeitedAmount ?? 0)
+          const s = e.status || 'pending'
           return {
-            ...item,
-            staffNickname: u.nickname || '',
-            staffPhone: p.phone || u.phone || '',
-            staffRealName: p.realName || '',
-            staffLevel: p.staffLevel || '',
-            problemOrders
+            _id: e._id,
+            orderId: e.orderId,
+            orderNo: e.orderNo || '',
+            serviceSummary: e.serviceSummary || '',
+            reasonType: e.reasonType || '',
+            reasonTypeName: e.reasonTypeName || '',
+            reasonText: e.reasonText || '',
+            deductAmount: Number(e.deductAmount || 0),
+            actualDeductAmount,
+            actualDeductAmountText: actualDeductAmount > 0 ? actualDeductAmount.toFixed(2) : '',
+            status: s,
+            statusText: s === 'forfeited' ? '已根据建议扣除保证金' : (s === 'dismissed' ? '已撤销免除' : '待执行扣除'),
+            createdAt: e.createdAt || '',
+            staffOpenid: e.staffOpenid || item.staffOpenid
           }
         })
-      return limitList(list, data.pageSize || 50)
+        return {
+          ...item,
+          staffNickname: u.nickname || '',
+          staffPhone: p.phone || u.phone || '',
+          staffRealName: p.realName || '',
+          staffLevel: p.staffLevel || '',
+          problemOrders
+        }
+      })
+      return list
     }
     if (action === 'auditDepositRefund') {
       return settleStaffDeposit({ ...admin, openid }, action, data)
@@ -1821,24 +1866,30 @@ module.exports = function createHandler(context) {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const reimbursements = (await readAll('staff_supply_reimbursements')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
-      const users = await readAll('users')
-      const profiles = await readAll('staff_profiles')
+      const filteredReimbursements = reimbursements
+        .filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt']))
+      const pagedReimbursements = limitList(filteredReimbursements, data.pageSize || 50)
+
+      const targetOpenids = Array.from(new Set(pagedReimbursements.map((item) => item.staffOpenid).filter(Boolean)))
+      const [users, profiles] = await Promise.all([
+        fetchUsersByOpenids(targetOpenids),
+        fetchStaffProfilesByOpenids(targetOpenids)
+      ])
+
       const userMap = users.reduce((m, u) => ({ ...m, [u.openid]: u }), {})
       const profileMap = profiles.reduce((m, p) => ({ ...m, [p.openid]: p }), {})
-      const list = reimbursements
-        .filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt']))
-        .map((item) => {
-          const u = userMap[item.staffOpenid] || {}
-          const p = profileMap[item.staffOpenid] || {}
-          return {
-            ...item,
-            staffNickname: u.nickname || '',
-            staffPhone: p.phone || u.phone || '',
-            staffRealName: p.realName || '',
-            staffLevel: p.staffLevel || ''
-          }
-        })
-      return limitList(list, data.pageSize || 50)
+      const list = pagedReimbursements.map((item) => {
+        const u = userMap[item.staffOpenid] || {}
+        const p = profileMap[item.staffOpenid] || {}
+        return {
+          ...item,
+          staffNickname: u.nickname || '',
+          staffPhone: p.phone || u.phone || '',
+          staffRealName: p.realName || '',
+          staffLevel: p.staffLevel || ''
+        }
+      })
+      return list
     }
     if (action === 'auditSupplyReimbursement') {
       return settleSupplyReimbursement({ ...admin, openid }, action, data)

@@ -24,11 +24,25 @@ module.exports = function createHandler(context) {
     const today = toCstParts()
     const monthKey = normalizeMonthKey(data.monthKey || today.monthKey)
 
+    async function readBeautyCandidatePets(maxLimit = 1000) {
+      const rows = []
+      let cursor = ''
+      while (rows.length < maxLimit) {
+        const condition = {}
+        if (cursor) condition._id = db.command.gt(cursor)
+        const fetchLimit = Math.min(100, maxLimit - rows.length)
+        const page = (await db.collection('pets').where(condition).orderBy('_id', 'asc').limit(fetchLimit).get()).data || []
+        rows.push(...page)
+        if (page.length < fetchLimit) break
+        cursor = page[page.length - 1]._id
+      }
+      return rows.filter((pet) => !pet.deletedAt && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0)
+    }
+
     async function getPublicPetsWithVotes() {
       const voteMap = await countPetBeautyVotes(monthKey)
-      const petsRes = await db.collection('pets').get()
-      const pets = await Promise.all((petsRes.data || [])
-        .filter((pet) => !pet.deletedAt && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length)
+      const candidatePets = await readBeautyCandidatePets()
+      const pets = await Promise.all(candidatePets
         .map(async (pet) => {
           const exclusiveId = await ensurePetExclusiveId(pet)
           return toPetPublicBeautyView({ ...pet, exclusiveId }, voteMap[pet._id] || 0)
@@ -78,16 +92,58 @@ module.exports = function createHandler(context) {
     if (action === 'vote') {
       const user = await getUser(openid)
       if (await isPetBeautyMonthLocked(monthKey)) throw new Error('本月排行榜已锁定')
+
+      // 1. 事前快速查重拦截
       const todayVote = await db.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).limit(1).get()
       if (todayVote.data && todayVote.data[0]) throw new Error('今天已经投过票了')
+
       const petId = safeText(data.petId).trim()
       if (!petId) throw new Error('请选择要投票的宠物')
-      const pet = (await db.collection('pets').doc(petId).get()).data
+      let pet = null
+      try {
+        const petRes = await db.collection('pets').doc(petId).get()
+        pet = petRes ? petRes.data : null
+      } catch (err) {
+        pet = null
+      }
       if (!pet || pet.deletedAt) throw new Error('宠物不存在')
       if (!Array.isArray(pet.beautyPhotos) || !pet.beautyPhotos.length) throw new Error('该宠物还没有美照')
+
       const exclusiveId = await ensurePetExclusiveId({ ...pet, _id: petId })
       const time = now()
-      await db.collection('pet_beauty_votes').add({ data: { openid, userId: user._id, petId, petExclusiveId: exclusiveId, monthKey, dateKey: today.dateKey, createdAt: time } })
+      const voteId = `vote_${openid}_${today.dateKey}`
+
+      // 2. 事务原子查重与写入确定性主键记录，强阻断并发重复刷票
+      await db.runTransaction(async (tx) => {
+        let existingVote = null
+        try {
+          const voteDoc = await tx.collection('pet_beauty_votes').doc(voteId).get()
+          existingVote = voteDoc && voteDoc.data ? voteDoc.data : null
+        } catch (e) {
+          existingVote = null
+        }
+        if (existingVote) throw new Error('今天已经投过票了')
+
+        await tx.collection('pet_beauty_votes').doc(voteId).set({
+          data: {
+            _id: voteId,
+            openid,
+            userId: user._id,
+            petId,
+            petExclusiveId: exclusiveId,
+            monthKey,
+            dateKey: today.dateKey,
+            createdAt: time
+          }
+        })
+      }).catch((err) => {
+        const msg = String(err.message || err.errMsg || '')
+        if (msg.includes('already exists') || msg.includes('duplicate') || msg.includes('-502001') || msg.includes('今天已经投过票了')) {
+          throw new Error('今天已经投过票了')
+        }
+        throw err
+      })
+
       const voteMap = await countPetBeautyVotes(monthKey)
       return { petId, monthKey, dateKey: today.dateKey, hasVotedToday: true, voteCount: Number(voteMap[petId] || 0) }
     }
