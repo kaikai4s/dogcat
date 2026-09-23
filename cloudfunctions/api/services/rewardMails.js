@@ -35,26 +35,80 @@ module.exports = function createService({
     return safeText(value).split(/[\s,，;；]+/).map((item) => item.trim()).filter(Boolean)
   }
 
+  async function readAllUsers(where = {}, maxLimit = 5000) {
+    const rows = []
+    let cursor = ''
+    while (rows.length < maxLimit) {
+      const condition = { ...where }
+      if (cursor && db.command && typeof db.command.gt === 'function') {
+        condition._id = db.command.gt(cursor)
+      }
+      const page = (await db.collection('users').where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      rows.push(...page)
+      if (page.length < 100) break
+      cursor = page[page.length - 1]._id
+    }
+    return rows
+  }
+
   async function resolveRewardMailTargets(data = {}) {
     const targetType = safeText(data.targetType).trim() || 'openid_list'
-    const usersRes = await db.collection('users').where({ status: 'active' }).get()
-    const users = usersRes.data || []
-    if (targetType === 'all_active') return { targetType, users }
+
+    if (targetType === 'all_active') {
+      const users = await readAllUsers({ status: 'active' }, 5000)
+      return { targetType, users }
+    }
+
     if (targetType === 'role') {
       const role = safeText(data.role).trim()
       if (!['client', 'staff', 'admin'].includes(role)) throw new Error('请选择有效角色')
-      return { targetType, role, users: users.filter((user) => Array.isArray(user.roles) && user.roles.includes(role)) }
+      const where = {
+        status: 'active',
+        roles: db.command && typeof db.command.in === 'function' ? db.command.in([role]) : role
+      }
+      const users = await readAllUsers(where, 5000)
+      const filtered = users.filter((user) => Array.isArray(user.roles) && user.roles.includes(role))
+      return { targetType, role, users: filtered }
     }
+
     if (targetType === 'member_level') {
       const targetLevelIds = normalizeTargetLevelIds(data.targetLevelIds)
       if (!targetLevelIds.length) throw new Error('请选择至少一个会员段位')
       const targetLevels = await resolveTargetLevels(targetLevelIds)
       if (!targetLevels.length) throw new Error('所选会员段位不存在')
-      return { targetType, targetLevelIds, targetLevelNamesSnapshot: targetLevels.map((level) => level.name), users: users.filter((user) => targetLevelIds.includes(user.memberLevel || '')) }
+      const targetLevelNamesSnapshot = targetLevels.map((level) => level.name)
+      const where = {
+        status: 'active',
+        memberLevel: db.command && typeof db.command.in === 'function' ? db.command.in(targetLevelIds) : targetLevelIds
+      }
+      const users = await readAllUsers(where, 5000)
+      const filtered = users.filter((user) => targetLevelIds.includes(user.memberLevel || ''))
+      return { targetType, targetLevelIds, targetLevelNamesSnapshot, users: filtered }
     }
+
     const openids = Array.from(new Set(parseOpenidList(data.openids)))
     if (!openids.length) throw new Error('请输入至少一个用户 openid')
-    return { targetType: 'openid_list', openids, users: users.filter((user) => openids.includes(user.openid)) }
+    const targetUsers = []
+    const chunkSize = 50
+    for (let i = 0; i < openids.length; i += chunkSize) {
+      const chunk = openids.slice(i, i + chunkSize)
+      try {
+        const condition = {
+          status: 'active',
+          openid: db.command && typeof db.command.in === 'function' ? db.command.in(chunk) : chunk
+        }
+        const res = await db.collection('users').where(condition).get()
+        targetUsers.push(...(res.data || []))
+      } catch (_) {
+        for (const id of chunk) {
+          try {
+            const single = await db.collection('users').where({ status: 'active', openid: id }).limit(1).get()
+            targetUsers.push(...(single.data || []))
+          } catch (err) {}
+        }
+      }
+    }
+    return { targetType: 'openid_list', openids, users: targetUsers }
   }
 
   return {

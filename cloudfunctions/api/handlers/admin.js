@@ -1694,8 +1694,12 @@ module.exports = function createHandler(context) {
       let autoGrantCount = 0
       if (Array.isArray(saved.autoGrantLevelIds) && saved.autoGrantLevelIds.length > 0) {
         try {
-          const usersRes = await db.collection('users').where({ status: 'active' }).get()
-          const matchedUsers = (usersRes.data || []).filter((u) => saved.autoGrantLevelIds.includes(u.memberLevel))
+          const where = {
+            status: 'active',
+            memberLevel: db.command && typeof db.command.in === 'function' ? db.command.in(saved.autoGrantLevelIds) : saved.autoGrantLevelIds
+          }
+          const allActive = await readAll('users', where, 5000)
+          const matchedUsers = allActive.filter((u) => saved.autoGrantLevelIds.includes(u.memberLevel))
           const grants = await grantEligiblePetTitlesForUsers(matchedUsers)
           autoGrantCount = grants.length
         } catch (error) {
@@ -1781,9 +1785,12 @@ module.exports = function createHandler(context) {
       const targetLevelNamesSnapshot = targetLevels.map((level) => level.name)
       const templateRes = await db.collection('coupon_templates').doc(templateId).get().catch(() => ({ data: null }))
       const template = templateRes && templateRes.data
-      if (!template || template.enabled === false) throw new Error('优惠券模板不可用')
-      const usersRes = await db.collection('users').where({ status: 'active' }).get()
-      const eligible = (usersRes.data || []).filter((u) => targetLevelIds.includes(u.memberLevel || ''))
+      const couponUsersWhere = {
+        status: 'active',
+        memberLevel: db.command && typeof db.command.in === 'function' ? db.command.in(targetLevelIds) : targetLevelIds
+      }
+      const allCouponUsers = await readAll('users', couponUsersWhere, 5000)
+      const eligible = allCouponUsers.filter((u) => targetLevelIds.includes(u.memberLevel || ''))
       let issued = 0; let skipped = 0
       const skippedReasons = {}
       for (const targetUser of eligible) {
@@ -1822,8 +1829,12 @@ module.exports = function createHandler(context) {
         reward.points = Math.max(Math.round(Number(data.points || 0)), 0)
         if (!reward.points) throw new Error('奖励积分必须大于 0')
       }
-      const usersRes = await db.collection('users').where({ status: 'active' }).get()
-      const eligible = (usersRes.data || []).filter((u) => targetLevelIds.includes(u.memberLevel || ''))
+      const mailUsersWhere = {
+        status: 'active',
+        memberLevel: db.command && typeof db.command.in === 'function' ? db.command.in(targetLevelIds) : targetLevelIds
+      }
+      const allMailUsers = await readAll('users', mailUsersWhere, 5000)
+      const eligible = allMailUsers.filter((u) => targetLevelIds.includes(u.memberLevel || ''))
       const time = now()
       let issued = 0
       for (const targetUser of eligible) {

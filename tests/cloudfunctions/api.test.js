@@ -3341,6 +3341,83 @@ test('admin can publish reward mails by target level ids', async () => {
   assert.deepEqual(db.state.reward_mails[0].targetLevelNamesSnapshot, ['黄金会员'])
 })
 
+test('admin reward mail distribution eliminates 100-user cutoff for all_active, openid_list, and member_level targets', async () => {
+  const users = [
+    { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active', nickname: '管理员' }
+  ]
+  for (let i = 1; i <= 150; i++) {
+    const pad = String(i).padStart(3, '0')
+    users.push({
+      _id: `user_${pad}`,
+      openid: `openid_user_${pad}`,
+      roles: ['client'],
+      status: 'active',
+      memberLevel: i <= 120 ? 'level_gold' : 'level_silver',
+      memberLevelName: i <= 120 ? '黄金会员' : '白银会员',
+      nickname: `用户_${pad}`
+    })
+  }
+
+  const db = createCollectionStore({
+    users,
+    member_levels: [
+      { _id: 'level_silver', name: '白银会员', minPoints: 100, pointMultiplier: 1 },
+      { _id: 'level_gold', name: '黄金会员', minPoints: 200, pointMultiplier: 2 }
+    ],
+    reward_mails: [],
+    admin_operation_logs: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  // 1. 发放补签卡 - 目标全员 (all_active) 151 人 (1 admin + 150 users)
+  const allActiveRes = await fn.main({
+    module: 'admin',
+    action: 'publishRetroCardMail',
+    data: {
+      targetType: 'all_active',
+      title: '全员补签卡福利',
+      count: 2
+    }
+  })
+  assert.equal(allActiveRes.ok, true)
+  assert.equal(allActiveRes.data.issued, 151)
+  assert.equal(allActiveRes.data.eligibleCount, 151)
+
+  // 2. 发放补签卡 - 定向发放 (openid_list) 给第 145 号深层用户 (index > 100)
+  const targetedRes = await fn.main({
+    module: 'admin',
+    action: 'publishRetroCardMail',
+    data: {
+      targetType: 'openid_list',
+      openids: ['openid_user_145'],
+      title: '专属补偿',
+      count: 5
+    }
+  })
+  assert.equal(targetedRes.ok, true)
+  assert.equal(targetedRes.data.issued, 1)
+  const user145Mail = db.state.reward_mails.find((m) => m.openid === 'openid_user_145' && m.title === '专属补偿')
+  assert.ok(user145Mail, '深层用户 145 应精准收到邮件')
+  assert.equal(user145Mail.reward.count, 5)
+
+  // 3. 发放段位奖励邮件 (publishRewardMailByLevels) 给 120 名黄金会员 (超出 100 限制)
+  const levelMailRes = await fn.main({
+    module: 'admin',
+    action: 'publishRewardMailByLevels',
+    data: {
+      title: '黄金会员专属积分',
+      rewardType: 'points',
+      points: 100,
+      targetLevelIds: ['level_gold']
+    }
+  })
+  assert.equal(levelMailRes.ok, true)
+  assert.equal(levelMailRes.data.issued, 120)
+  const goldMails = db.state.reward_mails.filter((m) => m.title === '黄金会员专属积分')
+  assert.equal(goldMails.length, 120, '全部 120 名黄金会员均应收到邮件')
+  assert.ok(goldMails.some((m) => m.openid === 'openid_user_120'))
+})
+
 test('saving member level syncs memberLevelName for bound users', async () => {
   const db = createCollectionStore({
     users: [
