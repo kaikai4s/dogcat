@@ -47,6 +47,11 @@ Page({
     titleOptions: [{ label: '不佩戴头衔', inventoryId: '' }],
     selectedTitleOptionIndex: 0,
     titleSaving: false,
+    beautyTitleOptions: [{ label: '不佩戴称号', monthKey: '' }],
+    selectedBeautyTitleIndex: 0,
+    beautyTitleLoading: true,
+    beautyTitleLoadFailed: false,
+    beautyTitleSaving: false,
     form: {
       species: 'dog',
       name: '',
@@ -93,6 +98,7 @@ Page({
         const nextForm = { ...this.data.form, ...form }
         const beautyPhotos = normalizeBeautyPhotos(nextForm)
         this.setData({ form: { ...nextForm, beautyPhotos, avatarFileId: nextForm.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '' }, speciesIndex, genderIndex }, () => this.refreshTitleOptions())
+        this.loadBeautyTitles()
       })
       .catch(showError)
   },
@@ -101,6 +107,41 @@ Page({
     callFunction('pet', 'listMyTitles')
       .then((myTitles) => this.setData({ myTitles: myTitles || [] }, () => this.refreshTitleOptions()))
       .catch(() => {})
+  },
+
+  loadBeautyTitles() {
+    if (!this.data.id) return
+    this.setData({ beautyTitleLoading: true, beautyTitleLoadFailed: false })
+    return callFunction('petBeauty', 'listMyBeautyTitles', { petId: this.data.id })
+      .then((res) => {
+        const beautyTitleOptions = [{ label: '不佩戴称号', monthKey: '' }].concat((res.titles || []).map((award) => ({
+          ...award, label: `${award.monthKey} · ${award.title}`
+        })))
+        const selectedMonth = res.beautyTitle && res.beautyTitle.monthKey || ''
+        this.setData({
+          beautyTitleOptions,
+          selectedBeautyTitleIndex: Math.max(beautyTitleOptions.findIndex((item) => item.monthKey === selectedMonth), 0),
+          ['form.beautyTitle']: res.beautyTitle || null,
+          beautyTitleLoading: false
+        })
+      }).catch((err) => {
+        this.setData({ beautyTitleLoading: false, beautyTitleLoadFailed: true })
+        showError(err)
+      })
+  },
+
+  chooseBeautyTitle(e) {
+    if (!this.data.id || this.data.beautyTitleSaving || this.data.beautyTitleLoading || this.data.beautyTitleLoadFailed) return
+    const index = Number(e.detail.value)
+    const option = this.data.beautyTitleOptions[index]
+    if (!option) return
+    this.setData({ beautyTitleSaving: true })
+    return callFunction('petBeauty', option.monthKey ? 'equipBeautyTitle' : 'unequipBeautyTitle', {
+      petId: this.data.id, awardMonthKey: option.monthKey
+    }).then((res) => {
+      this.setData({ selectedBeautyTitleIndex: index, ['form.beautyTitle']: res.beautyTitle || null })
+      wx.showToast({ title: option.monthKey ? '已佩戴称号' : '已取下称号', icon: 'none' })
+    }).catch(showError).finally(() => this.setData({ beautyTitleSaving: false }))
   },
 
   refreshTitleOptions() {
@@ -341,6 +382,7 @@ Page({
   },
 
   save() {
+    if (this.data.beautyTitleSaving) return
     const beautyPhotos = normalizeBeautyPhotos(this.data.form)
     if (!beautyPhotos.length) {
       wx.showToast({ title: '请上传至少一张宠物美照', icon: 'none' })

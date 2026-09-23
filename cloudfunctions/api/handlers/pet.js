@@ -149,7 +149,7 @@ module.exports = function createHandler(context) {
         name: safeText(data.name),
         avatarFileId,
         beautyPhotos,
-        beautyTitle: data.beautyTitle || null,
+        beautyTitle: null,
         equippedTitleInventoryId: '',
         species: safeText(data.species || 'dog'),
         breed: safeText(data.breed),

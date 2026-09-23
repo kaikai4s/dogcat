@@ -92,7 +92,7 @@ module.exports = function createService({
         const pet = (await db.collection('pets').doc(order.petId).get()).data
         if (pet) {
           const latest = createPetSnapshot({ ...pet, name: pet.name || order.petName || '' })
-          snapshot = snapshot ? { ...snapshot, ...latest, avatarFileId: pet.avatarFileId || snapshot.avatarFileId || '', beautyTitle: pet.beautyTitle || snapshot.beautyTitle || null } : latest
+          snapshot = snapshot ? { ...snapshot, ...latest, avatarFileId: pet.avatarFileId || snapshot.avatarFileId || '', beautyTitle: pet.beautyTitle || null } : latest
         }
       } catch (error) {}
     }

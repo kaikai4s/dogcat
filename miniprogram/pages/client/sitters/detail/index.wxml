@@ -20,6 +20,7 @@
         </view>
         <view class="muted">{{sitter.serviceSummary || '专业爱宠、用心照护'}}</view>
         <view class="chip-row">
+          <view class="chip {{sitter.gender === 'male' ? 'blue' : (sitter.gender === 'female' ? 'pink' : '')}}">{{sitter.gender === 'male' ? '男' : (sitter.gender === 'female' ? '女' : '性别待核实')}}</view>
           <view class="chip pink" wx:for="{{sitter.publicTags}}" wx:key="*this">{{item}}</view>
         </view>
       </view>

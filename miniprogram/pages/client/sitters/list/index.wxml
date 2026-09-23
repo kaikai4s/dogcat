@@ -99,6 +99,7 @@
           <view class="rating-box muted-box" wx:else>暂无评价</view>
         </view>
         <view class="chip-row">
+          <view class="chip-cute {{item.gender === 'male' ? 'blue-cute' : (item.gender === 'female' ? 'pink-cute' : 'gray-cute')}}">{{item.gender === 'male' ? '男' : (item.gender === 'female' ? '女' : '性别待核实')}}</view>
           <view class="chip-cute pink-cute" wx:for="{{item.publicTags}}" wx:for-item="tag" wx:key="*this">{{tag}}</view>
           <view class="chip-cute blue-cute" wx:if="{{item.distanceText}}">
             <view class="remix-icon ri-map-pin-2-fill pin-mini-icon"></view> {{item.distanceText}}

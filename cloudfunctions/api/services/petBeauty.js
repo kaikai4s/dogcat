@@ -138,6 +138,52 @@ module.exports = function createService({
     return Boolean(locked.data && locked.data[0])
   }
 
+  async function requireOwnedPet(openid, petId, source = db) {
+    if (!openid || !petId) throw new Error('请选择自己的宠物')
+    const res = await source.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+    if (!res.data || res.data.deletedAt || res.data.openid !== openid) throw new Error('宠物不存在或无权操作')
+    return res.data
+  }
+
+  async function listPetBeautyTitles(openid, petId) {
+    const pet = await requireOwnedPet(openid, petId)
+    const awards = new Map()
+    // Preserve old awards even when historical ranking records are unavailable.
+    for (const award of [pet.legacyBeautyTitle, pet.beautyTitle]) {
+      if (award && award.monthKey && award.title) awards.set(award.monthKey, award)
+    }
+    let cursor = ''
+    while (true) {
+      const condition = { petId, locked: true }
+      if (cursor) condition._id = db.command.gt(cursor)
+      const { data: rows = [] } = await db.collection('pet_beauty_month_rankings').where(condition).orderBy('_id', 'asc').limit(100).get()
+      for (const row of rows) {
+        if (row.monthKey && row.title) awards.set(row.monthKey, {
+          monthKey: row.monthKey, rank: row.rank, title: row.title, awardedAt: row.lockedAt || row.createdAt || ''
+        })
+      }
+      if (rows.length < 100) break
+      cursor = rows[rows.length - 1]._id
+    }
+    return { titles: [...awards.values()].sort((a, b) => b.monthKey.localeCompare(a.monthKey)), beautyTitle: pet.beautyTitle || null }
+  }
+
+  async function setPetBeautyTitle(openid, petId, selectedMonth) {
+    const { titles } = await listPetBeautyTitles(openid, petId)
+    const beautyTitle = selectedMonth ? titles.find((award) => award.monthKey === selectedMonth) : null
+    if (selectedMonth && !beautyTitle) throw new Error('该宠物尚未获得此月度称号')
+    await db.runTransaction(async (tx) => {
+      const pet = await requireOwnedPet(openid, petId, tx)
+      await tx.collection('pets').doc(petId).update({ data: {
+        legacyBeautyTitle: pet.legacyBeautyTitle || pet.beautyTitle || null,
+        beautyTitle,
+        beautyTitleSelectionSet: true,
+        updatedAt: nowText()
+      } })
+    })
+    return { petId, beautyTitle }
+  }
+
   async function settlePetBeautyMonthlyRanking(monthKey = toCstParts().monthKey, options = {}) {
     monthKey = normalizeMonthKey(monthKey)
     if (!options.force && await isPetBeautyMonthLocked(monthKey)) return { monthKey, locked: true, skipped: true }
@@ -156,7 +202,15 @@ module.exports = function createService({
       const title = formatPetBeautyTitle(monthKey, rank)
       const beautyTitle = { monthKey, rank, title, awardedAt: lockedAt }
       await db.collection('pet_beauty_month_rankings').add({ data: { monthKey, petId: pet._id, petExclusiveId: exclusiveId, rank, voteCount, locked: true, title, petSnapshot: toPetPublicBeautyView({ ...pet, exclusiveId, beautyTitle }, voteCount), lockedAt, createdAt: lockedAt, updatedAt: lockedAt } })
-      await db.collection('pets').doc(pet._id).update({ data: { beautyTitle, updatedAt: nowText() } })
+      await db.runTransaction(async (tx) => {
+        const { data: latest } = await tx.collection('pets').doc(pet._id).get()
+        // Monthly awards must not override an owner's explicit choice, including removal.
+        if (latest.beautyTitleSelectionSet) return
+        await tx.collection('pets').doc(pet._id).update({ data: {
+          legacyBeautyTitle: latest.legacyBeautyTitle || latest.beautyTitle || null,
+          beautyTitle, updatedAt: nowText()
+        } })
+      })
     }))
     await db.collection('pet_beauty_month_locks').add({ data: { monthKey, status: 'locked', topCount: ranked.length, lockedAt, source: options.source || 'manual', createdAt: lockedAt, updatedAt: lockedAt } })
     return { monthKey, locked: true, topCount: ranked.length }
@@ -175,6 +229,8 @@ module.exports = function createService({
     nextMonthStart,
     countPetBeautyVotes,
     isPetBeautyMonthLocked,
+    listPetBeautyTitles,
+    setPetBeautyTitle,
     settlePetBeautyMonthlyRanking
   }
 }

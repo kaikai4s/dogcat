@@ -67,6 +67,18 @@
       <view class="field-tip" wx:if="{{id && titleOptions.length <= 1}}">暂无可佩戴头衔，可通过奖励邮箱或抽奖获得。</view>
     </view>
 
+    <view class="card-subtitle"><text class="remix-icon ri-vip-crown-line sub-icon"></text><text>月度称号</text></view>
+    <view class="title-equip-box">
+      <view class="pet-title-badge" wx:if="{{form.beautyTitle && form.beautyTitle.title}}"><text class="remix-icon ri-vip-crown-line"></text>{{form.beautyTitle.monthKey}} · {{form.beautyTitle.title}}</view>
+      <view class="field-tip" wx:else>{{id ? '当前未佩戴月度称号' : '月榜结算获奖后，可在这里选择佩戴称号'}}</view>
+      <picker wx:if="{{id && !beautyTitleLoadFailed}}" range="{{beautyTitleOptions}}" range-key="label" value="{{selectedBeautyTitleIndex}}" bindchange="chooseBeautyTitle" disabled="{{beautyTitleSaving || beautyTitleLoading}}">
+        <view class="select-field title-select"><text>{{beautyTitleLoading ? '加载称号中...' : beautyTitleSaving ? '更新称号中...' : ('选择称号：' + beautyTitleOptions[selectedBeautyTitleIndex].label)}}</text><text class="remix-icon ri-arrow-down-s-line"></text></view>
+      </picker>
+      <button wx:if="{{id && beautyTitleLoadFailed}}" class="ghost-btn" bindtap="loadBeautyTitles">称号加载失败，点击重试</button>
+      <view class="field-tip" wx:if="{{id && !beautyTitleLoading && !beautyTitleLoadFailed && beautyTitleOptions.length <= 1}}">暂无月度称号，参与宠物颜值月榜即可争取获得。</view>
+      <view class="field-tip">选择后立即生效，可与头衔同时佩戴。取下后仍保留获奖记录，可随时重新佩戴。</view>
+    </view>
+
     <view class="card-subtitle"><text class="remix-icon ri-heart-pulse-line sub-icon"></text><text>照顾资料</text></view>
     <input class="input-field" placeholder="性格特点，如 胆小 / 活泼 / 粘人" value="{{form.personality}}" data-field="personality" bindinput="input" />
     <input class="input-field" placeholder="喜欢的食物或玩具" value="{{form.favoriteFood}}" data-field="favoriteFood" bindinput="input" />

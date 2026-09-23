@@ -6,6 +6,8 @@ module.exports = function createHandler(context) {
     ensurePetExclusiveId,
     getUser,
     isPetBeautyMonthLocked,
+    listPetBeautyTitles,
+    setPetBeautyTitle,
     normalizeBeautyPhoto,
     normalizeBeautyPhotos,
     normalizeMonthKey,
@@ -23,6 +25,18 @@ module.exports = function createHandler(context) {
   return async function petBeauty(openid, action, data) {
     const today = toCstParts()
     const monthKey = normalizeMonthKey(data.monthKey || today.monthKey)
+
+    if (action === 'listMyBeautyTitles') {
+      return listPetBeautyTitles(openid, safeText(data.petId).trim())
+    }
+    if (action === 'equipBeautyTitle') {
+      const selectedMonth = safeText(data.awardMonthKey).trim()
+      if (!selectedMonth) throw new Error('请选择月度称号')
+      return setPetBeautyTitle(openid, safeText(data.petId).trim(), selectedMonth)
+    }
+    if (action === 'unequipBeautyTitle') {
+      return setPetBeautyTitle(openid, safeText(data.petId).trim(), '')
+    }
 
     async function readBeautyCandidatePets(maxLimit = 1000) {
       const rows = []
