@@ -78,17 +78,19 @@ module.exports = function createHandler(context) {
     withSitterUserProfile,
     batchWithSitterUserProfiles
   } = context
-  async function readAll(collectionName, where = {}) {
+  async function readAll(collectionName, where = {}, maxLimit = 2000) {
     const rows = []
     let cursor = ''
-    while (true) {
+    while (rows.length < maxLimit) {
       const condition = { ...where }
       if (cursor) condition._id = db.command.gt(cursor)
-      const page = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      const fetchLimit = Math.min(100, maxLimit - rows.length)
+      const page = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(fetchLimit).get()).data || []
       rows.push(...page)
-      if (page.length < 100) return rows
+      if (page.length < fetchLimit) return rows
       cursor = page[page.length - 1]._id
     }
+    return rows
   }
   async function queryCandidateSitters(whereCondition = {}, maxLimit = 300) {
     const rows = []
@@ -796,7 +798,8 @@ module.exports = function createHandler(context) {
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       await expireDueUnacceptedOrders()
-      const directOrders = await Promise.all((await readAll('orders', { status: 'paid' }))
+      const directCandidates = await readAll('orders', { status: 'paid', requestedStaffOpenid: openid })
+      const directOrders = await Promise.all(directCandidates
         .sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
         .filter((order) => !isAdminDeletedOrder(order) && order.publishMode === 'direct' && !order.staffOpenid && order.requestedStaffOpenid === openid)
         .map(async (order) => {
@@ -823,7 +826,21 @@ module.exports = function createHandler(context) {
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       await expireDueUnacceptedOrders()
 
-      const urgentOrders = await Promise.all((await readAll('orders', { status: 'paid' }))
+      // 仅检索标记为加急或后台转加急重派的待接订单，避免对全平台所有普通 paid 订单做全表扫描
+      const [urgentFlaggedOrders, urgentRepublishedOrders] = await Promise.all([
+        readAll('orders', { status: 'paid', isUrgent: true }),
+        readAll('orders', { status: 'paid', assignmentSource: 'admin_urgent_republish' })
+      ])
+      const urgentCandidateMap = new Map()
+      for (const order of urgentFlaggedOrders) {
+        urgentCandidateMap.set(order._id, order)
+      }
+      for (const order of urgentRepublishedOrders) {
+        urgentCandidateMap.set(order._id, order)
+      }
+      const rawUrgentOrders = Array.from(urgentCandidateMap.values())
+
+      const urgentOrders = await Promise.all(rawUrgentOrders
         .sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
         .filter((order) => !isAdminDeletedOrder(order) && (order.isUrgent === true || order.assignmentSource === 'admin_urgent_republish') && !order.staffOpenid)
         .map(async (order) => {
