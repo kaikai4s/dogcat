@@ -126,7 +126,6 @@ module.exports = function createHandler(context) {
 
         await tx.collection('pet_beauty_votes').doc(voteId).set({
           data: {
-            _id: voteId,
             openid,
             userId: user._id,
             petId,

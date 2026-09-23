@@ -1,5 +1,6 @@
 const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
 const { formatDateTime } = require('../../../utils/format')
+const { resolvePetBlessing } = require('../../admin/lottery/petBlessings')
 
 function decorateRecords(records = []) {
   return records.map((item) => {
@@ -13,8 +14,21 @@ function decorateRecords(records = []) {
     } else if (!item.prizeText && item.prizeName === '谢谢参与') {
       prizeTag = '参与奖'
     }
+
+    let prizeName = item.prizeName || '萌宠祝福'
+    let prizeText = item.prizeText || ''
+    if (item.prizeType === 'text' || (!item.couponId && !item.titleId && Number(item.points || 0) <= 0)) {
+      if (!prizeText || prizeText === prizeName) {
+        const resolved = resolvePetBlessing({ name: prizeName, text: prizeText })
+        prizeName = resolved.name
+        prizeText = resolved.text
+      }
+    }
+
     return {
       ...item,
+      prizeName,
+      prizeText,
       createdAtText: formatDateTime(item.createdAt),
       prizeTag
     }
@@ -60,15 +74,20 @@ Page({
     this.setData({ drawing: true })
     callFunction('lottery', 'draw')
       .then((res) => {
-        this.setData({ result: res })
-        if (res.prizeType === 'coupon' || res.couponId) {
-          wx.showToast({ title: `恭喜获得：${res.prizeName}`, icon: 'success', duration: 3000 })
-        } else if (res.prizeType === 'points' || (res.points && res.points > 0)) {
-          wx.showToast({ title: `恭喜获得：${res.prizeName}`, icon: 'success', duration: 3000 })
-        } else if (res.prizeType === 'pet_title' || res.titleId) {
+        let result = res || {}
+        if (result.prizeType === 'text') {
+          const resolved = resolvePetBlessing({ name: result.prizeName, text: result.prizeText })
+          result = { ...result, prizeName: resolved.name, prizeText: resolved.text }
+        }
+        this.setData({ result })
+        if (result.prizeType === 'coupon' || result.couponId) {
+          wx.showToast({ title: `恭喜获得：${result.prizeName}`, icon: 'success', duration: 3000 })
+        } else if (result.prizeType === 'points' || (result.points && result.points > 0)) {
+          wx.showToast({ title: `恭喜获得：${result.prizeName}`, icon: 'success', duration: 3000 })
+        } else if (result.prizeType === 'pet_title' || result.titleId) {
           wx.showModal({
             title: '恭喜获得宠物头衔',
-            content: `${res.prizeName || '宠物头衔'} 已发送到奖励邮箱，请领取后为宠物佩戴。`,
+            content: `${result.prizeName || '宠物头衔'} 已发送到奖励邮箱，请领取后为宠物佩戴。`,
             showCancel: true,
             confirmText: '去邮箱',
             cancelText: '稍后领取',
@@ -79,8 +98,8 @@ Page({
         } else {
           // 萌宠文字祝福：以专属弹窗展示暖心文案
           wx.showModal({
-            title: `🐾 ${res.prizeName || '萌宠祝福'}`,
-            content: res.prizeText || res.prizeName || '谢谢参与，祝您生活愉快！',
+            title: `🐾 ${result.prizeName || '萌宠祝福'}`,
+            content: result.prizeText || '愿可爱的毛孩子带给你满满的元气与好运！',
             showCancel: false,
             confirmText: '收到祝福',
             confirmColor: '#e05c8b'

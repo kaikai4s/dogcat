@@ -142,6 +142,9 @@ function createCollectionStore(initial = {}) {
             return { data: item }
           },
           async set({ data }) {
+            if (data && Object.prototype.hasOwnProperty.call(data, '_id')) {
+              throw new Error('document.set:fail -501007 invalid parameters. 不能更新_id的值')
+            }
             const items = ensure(name)
             const index = items.findIndex(record => record._id === _id)
             const record = { ...data, _id }

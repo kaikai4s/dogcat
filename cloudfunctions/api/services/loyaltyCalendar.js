@@ -141,7 +141,6 @@ module.exports = function createService({
 
         await tx.collection('user_checkins').doc(checkinId).set({
           data: {
-            _id: checkinId,
             userId: user._id,
             openid,
             monthKey: todayInfo.monthKey,

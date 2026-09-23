@@ -287,16 +287,17 @@ module.exports = function createService(context) {
       }
 
       // 3. 写入订单主表记录
-      const finalOrder = {
+      const cleanOrder = {
         ...order,
-        _id: orderId,
         ...(stockReserved ? { stockReserved: true } : {}),
         createdAt: order.createdAt || time,
         updatedAt: order.updatedAt || time
       }
+      delete cleanOrder._id
       await tx.collection(collectionName).doc(orderId).set({
-        data: finalOrder
+        data: cleanOrder
       })
+      const finalOrder = { _id: orderId, ...cleanOrder }
 
       // 4. 写入附加表（如 order_home_security）
       for (const extra of extraDocuments) {
@@ -309,8 +310,10 @@ module.exports = function createService(context) {
             extraId = `${extraColl}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
           }
         }
+        const cleanExtraData = { ...(extra.data || {}), orderId }
+        delete cleanExtraData._id
         await tx.collection(extraColl).doc(extraId).set({
-          data: { ...extra.data, _id: extraId, orderId }
+          data: cleanExtraData
         })
       }
 

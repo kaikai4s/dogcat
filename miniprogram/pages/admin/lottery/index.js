@@ -1,5 +1,5 @@
 const { callFunction, showError } = require('../../../utils/cloud')
-const { PET_BLESSINGS, getFormattedBlessingList, getRandomBlessing } = require('./petBlessings')
+const { PET_BLESSINGS, getFormattedBlessingList, getRandomBlessing, resolvePetBlessing } = require('./petBlessings')
 
 function emptyActivity() {
   return { _id: '', name: '', description: '', enabled: true, prizes: [] }
@@ -64,11 +64,14 @@ function normalizePrizeItem(p = {}) {
   const points = type === 'points' ? Math.max(Math.round(Number(p.points || 0)), 0) : 0
   const templateId = type === 'coupon' ? String(p.templateId || '').trim() : ''
   const titleId = type === 'pet_title' ? String(p.titleId || '').trim() : ''
-  const text = type === 'text' ? String(p.text || p.name || '谢谢参与').trim() : ''
+  let text = type === 'text' ? String(p.text || '').trim() : ''
   let name = String(p.name || '').trim()
-  if (!name) {
+  if (type === 'text') {
+    const resolved = resolvePetBlessing({ name, text, breed: p.breed })
+    name = name || resolved.name
+    text = resolved.text
+  } else if (!name) {
     if (type === 'points') name = `${points} 积分`
-    else if (type === 'text') name = text || '谢谢参与'
     else if (type === 'pet_title') name = p.titleName ? `宠物头衔：${p.titleName}` : '宠物头衔'
     else name = '优惠券'
   }
@@ -236,8 +239,6 @@ Page({
     const updates = { ['newPrize.' + field]: val }
     if (field === 'points' && this.data.newPrize.type === 'points') {
       updates['newPrize.name'] = `${val || 0} 积分`
-    } else if (field === 'text' && this.data.newPrize.type === 'text') {
-      updates['newPrize.name'] = val || '谢谢参与'
     }
     this.setData(updates)
   },

@@ -367,3 +367,83 @@ test('pet blessings library: provides rich dog and cat presets and can be chosen
   assert.ok(lotteryJs.includes('pickRandomBlessing('), 'JS must implement pickRandomBlessing')
 })
 
+test('lottery: draw text blessing strictly separates title and content, and persists set data without _id', async () => {
+  const db = createTestDb()
+  db.state.lottery_activities.push({
+    _id: 'act_ragdoll_blessing',
+    name: '萌宠祝福活动',
+    enabled: true,
+    prizes: [
+      {
+        type: 'text',
+        name: '布偶仙气好运',
+        text: '我是神仙颜值布偶猫，眨眨清澈蓝眼睛，把满满仙气与贵人运悄悄渡给你～',
+        probability: 100,
+        stockLeft: 50
+      }
+    ],
+    createdAt: '2026-09-23 10:00:00'
+  })
+
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+  const drawRes = await clientFn.main({
+    module: 'lottery',
+    action: 'draw'
+  })
+
+  assert.equal(drawRes.ok, true, 'Draw must succeed without _id set error')
+  assert.equal(drawRes.data.prizeType, 'text')
+  // 标题必须是祝福标题
+  assert.equal(drawRes.data.prizeName, '布偶仙气好运')
+  // 有颜色的寄语内容必须是寄语长句，而非标题
+  assert.equal(drawRes.data.prizeText, '我是神仙颜值布偶猫，眨眨清澈蓝眼睛，把满满仙气与贵人运悄悄渡给你～')
+  assert.notEqual(drawRes.data.prizeText, drawRes.data.prizeName, 'Blessing text must not equal title')
+
+  // 验证抽奖记录中数据持久化正确
+  const record = db.state.lottery_records.find((r) => r.openid === 'openid_client')
+  assert.ok(record, 'Record must be saved')
+  assert.equal(record.prizeName, '布偶仙气好运')
+  assert.equal(record.prizeText, '我是神仙颜值布偶猫，眨眨清澈蓝眼睛，把满满仙气与贵人运悄悄渡给你～')
+  assert.equal(record.status, 'completed')
+
+  // 验证 listMyRecords 正常返回分离的标题与祝福文案
+  const listRes = await clientFn.main({
+    module: 'lottery',
+    action: 'listMyRecords',
+    data: { pageSize: 10 }
+  })
+  assert.equal(listRes.ok, true)
+  assert.equal(listRes.data.length, 1)
+  assert.equal(listRes.data[0].prizeName, '布偶仙气好运')
+  assert.equal(listRes.data[0].prizeText, '我是神仙颜值布偶猫，眨眨清澈蓝眼睛，把满满仙气与贵人运悄悄渡给你～')
+})
+
+test('lottery: listMyRecords automatically resolves blessing text if legacy record has empty or duplicated text', async () => {
+  const db = createTestDb()
+  // 模拟历史脏数据：旧记录中 prizeText 丢失或与 prizeName 相同
+  db.state.lottery_records.push({
+    _id: 'rec_legacy_ragdoll',
+    openid: 'openid_client',
+    activityId: 'act_1',
+    status: 'completed',
+    prizeType: 'text',
+    prizeName: '布偶仙气好运',
+    prizeText: '布偶仙气好运', // 历史旧数据被误写为标题
+    createdAt: '2026-09-23 11:00:00'
+  })
+
+  const clientFn = loadCloudFunction('api', db, 'openid_client')
+  const listRes = await clientFn.main({
+    module: 'lottery',
+    action: 'listMyRecords',
+    data: { pageSize: 10 }
+  })
+
+  assert.equal(listRes.ok, true)
+  const item = listRes.data.find((r) => r._id === 'rec_legacy_ragdoll')
+  assert.ok(item)
+  assert.equal(item.prizeName, '布偶仙气好运')
+  // 智能解析补齐真正的寄语长内容，彩色气泡不再显示标题
+  assert.equal(item.prizeText, '我是神仙颜值布偶猫，眨眨清澈蓝眼睛，把满满仙气与贵人运悄悄渡给你～')
+})
+

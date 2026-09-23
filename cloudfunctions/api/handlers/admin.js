@@ -83,6 +83,7 @@ module.exports = function createHandler(context) {
     recalcUsersForDeletedLevel,
     refreshStaffEarnings,
     removeByQuery,
+    resolvePetBlessing,
     requireAdmin,
     resolveRewardMailTargets,
     resolveTargetLevels,
@@ -1826,16 +1827,19 @@ module.exports = function createHandler(context) {
           const points = type === 'points' ? Math.max(Math.round(Number(p.points || 0)), 0) : 0
           const templateId = type === 'coupon' ? safeText(p.templateId).trim() : ''
           const titleId = type === 'pet_title' ? safeText(p.titleId).trim() : ''
-          const text = type === 'text' ? safeText(p.text || p.name).trim() : ''
+          let text = type === 'text' ? safeText(p.text).trim() : ''
           let petTitle = null
           if (type === 'pet_title') {
             petTitle = await getPetTitle(titleId, { includeDeleted: true })
             if (petTitle.deletedAt || petTitle.enabled === false) throw new Error('请选择有效的宠物头衔奖品')
           }
           let prizeName = safeText(p.name).trim()
-          if (!prizeName) {
+          if (type === 'text') {
+            const resolved = resolvePetBlessing({ name: prizeName, text, breed: p.breed })
+            prizeName = prizeName || resolved.name
+            text = resolved.text
+          } else if (!prizeName) {
             if (type === 'points') prizeName = `${points} 积分`
-            else if (type === 'text') prizeName = text || '谢谢参与'
             else if (type === 'pet_title') prizeName = `宠物头衔：${petTitle.name}`
             else prizeName = '优惠券'
           }

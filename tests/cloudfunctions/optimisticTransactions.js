@@ -15,7 +15,12 @@ function optimistic(db) {
         return {
           async get() { remember(); return snapshot.collection(name).doc(id).get() },
           async update({ data }) { remember(); writes.push({ name, id, data, replace: false }) },
-          async set({ data }) { remember(); writes.push({ name, id, data, replace: true }) }
+          async set({ data }) {
+            if (data && Object.prototype.hasOwnProperty.call(data, '_id')) {
+              throw new Error('document.set:fail -501007 invalid parameters. 不能更新_id的值')
+            }
+            remember(); writes.push({ name, id, data, replace: true })
+          }
         }
       } } } })
       if ([...reads.values()].some(({ name, id, value }) => !isDeepStrictEqual(db.state[name]?.find(row => row._id === id), value))) {

@@ -149,7 +149,6 @@ module.exports = function createService({
       // 6.4 写入流水（使用确定的 logId 在事务内 set）
       await tx.collection('point_logs').doc(logId).set({
         data: {
-          _id: logId,
           userId: latestUser._id,
           openid: targetOpenid,
           delta: finalDelta,

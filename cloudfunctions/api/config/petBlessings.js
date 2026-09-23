@@ -185,28 +185,17 @@ const PET_BLESSINGS = [
   }
 ]
 
-function getFormattedBlessingList() {
-  return PET_BLESSINGS.map((item, index) => {
-    const icon = item.category === 'cat' ? '🐱' : '🐶'
-    return {
-      index,
-      ...item,
-      label: `${icon}【${item.breed}】${item.text.slice(0, 20)}...`
-    }
-  })
-}
-
-function getRandomBlessing() {
-  const idx = Math.floor(Math.random() * PET_BLESSINGS.length)
-  return PET_BLESSINGS[idx]
-}
-
 const DEFAULT_BLESSING_TEXT = '毛孩子给你送来满满元气与好运，愿你今天顺遂无忧、心情如阳光般明媚！'
 
+/**
+ * 智能解析萌宠祝福的标题 (name) 与寄语内容 (text)
+ * 严格确保标题与寄语内容分离，防止有颜色的寄语框错误展示标题
+ */
 function resolvePetBlessing(prize = {}) {
   const name = String(prize.name || '').trim()
   let text = String(prize.text || '').trim()
 
+  // 1. 在萌宠金句库中匹配品种或金句名称
   let matched = null
   if (name) {
     matched = PET_BLESSINGS.find((b) => b.name === name)
@@ -234,6 +223,7 @@ function resolvePetBlessing(prize = {}) {
   }
 
   if (matched) {
+    // 如果匹配到萌宠金句，当 text 为空或等于标题/品种时，必须解析为金句的详细寄语内容
     const useMatchedText = !text || text === name || text === matched.breed || text === matched.name || text.length <= matched.name.length
     return {
       name: name || matched.name,
@@ -241,6 +231,7 @@ function resolvePetBlessing(prize = {}) {
     }
   }
 
+  // 2. 未匹配到预设品种时，若传入了明确的 text 则保留；仅在未填 text 时提供温馨兜底寄语
   const fallbackText = text || DEFAULT_BLESSING_TEXT
 
   return {
@@ -252,7 +243,5 @@ function resolvePetBlessing(prize = {}) {
 module.exports = {
   PET_BLESSINGS,
   DEFAULT_BLESSING_TEXT,
-  getFormattedBlessingList,
-  getRandomBlessing,
   resolvePetBlessing
 }

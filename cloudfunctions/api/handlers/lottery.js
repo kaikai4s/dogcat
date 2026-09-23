@@ -10,7 +10,8 @@ module.exports = function createHandler(context) {
     safeText,
     titleSnapshot,
     toCstParts,
-    getPetTitle
+    getPetTitle,
+    resolvePetBlessing
   } = context
   return async function lottery(openid, action, data) {
     if (action === 'getActiveActivity') {
@@ -73,8 +74,19 @@ module.exports = function createHandler(context) {
         .filter((item) => item.status !== 'failed')
         .map((item) => {
           const prizeType = item.prizeType || (item.couponId ? 'coupon' : (Number(item.points) > 0 ? 'points' : 'text'))
-          const prizeName = item.prizeName || '谢谢参与'
-          const prizeText = safeText(item.prizeText || (prizeType === 'text' && prizeName !== '谢谢参与' ? prizeName : '')).trim()
+          let prizeName = item.prizeName || '谢谢参与'
+          let prizeText = safeText(item.prizeText || (item.prizeSnapshot && item.prizeSnapshot.text) || '').trim()
+          if (prizeType === 'text') {
+            const resolved = resolvePetBlessing({
+              name: prizeName,
+              text: prizeText,
+              snapshot: item.prizeSnapshot
+            })
+            prizeName = resolved.name
+            prizeText = resolved.text
+          } else {
+            prizeText = ''
+          }
           return {
             _id: item._id,
             activityId: item.activityId || '',
@@ -188,16 +200,20 @@ module.exports = function createHandler(context) {
           })
 
           const prizeType = selected.type || (selected.templateId ? 'coupon' : (selected.titleId ? 'pet_title' : (Number(selected.points) > 0 ? 'points' : 'text')))
-          let tentativePrizeName = selected.name || ''
-          if (!tentativePrizeName) {
-            if (prizeType === 'points') tentativePrizeName = `${Math.max(Math.round(Number(selected.points || 0)), 0)} 积分`
-            else if (prizeType === 'text') tentativePrizeName = selected.text || '谢谢参与'
-            else tentativePrizeName = '谢谢参与'
+          let tentativePrizeName = safeText(selected.name).trim()
+          let prizeText = ''
+          if (prizeType === 'text') {
+            const resolved = resolvePetBlessing(selected)
+            tentativePrizeName = tentativePrizeName || resolved.name
+            prizeText = resolved.text
+          } else {
+            if (!tentativePrizeName) {
+              if (prizeType === 'points') tentativePrizeName = `${Math.max(Math.round(Number(selected.points || 0)), 0)} 积分`
+              else tentativePrizeName = '谢谢参与'
+            }
           }
-          const prizeText = safeText(selected.text || (prizeType === 'text' ? selected.name : '')).trim()
 
           const recordData = {
-            _id: recordId,
             userId: user._id,
             openid,
             activityId: activity._id,
@@ -220,8 +236,10 @@ module.exports = function createHandler(context) {
             updatedAt: time
           }
 
+          // 微信云数据库 doc.set 的 data 中不可携带 _id 字段，否则会报错 -501007 不能更新_id的值
+          const { _id, ...cleanRecordData } = recordData
           await tx.collection('lottery_records').doc(recordId).set({
-            data: recordData
+            data: cleanRecordData
           })
 
           return {
@@ -236,12 +254,19 @@ module.exports = function createHandler(context) {
         // 从已占位的 pending 记录恢复
         const snapshot = existingRecord.prizeSnapshot || {}
         const prizeType = existingRecord.prizeType || snapshot.type || (snapshot.templateId ? 'coupon' : (snapshot.titleId ? 'pet_title' : (Number(snapshot.points) > 0 ? 'points' : 'text')))
+        let tentativePrizeName = existingRecord.prizeName || snapshot.name || ''
+        let prizeText = existingRecord.prizeText || snapshot.text || ''
+        if (prizeType === 'text') {
+          const resolved = resolvePetBlessing({ name: tentativePrizeName, text: prizeText, snapshot })
+          tentativePrizeName = resolved.name
+          prizeText = resolved.text
+        }
         drawContext = {
           recordId,
           selectedPrize: snapshot,
           prizeType,
-          tentativePrizeName: existingRecord.prizeName || snapshot.name || '',
-          prizeText: existingRecord.prizeText || snapshot.text || ''
+          tentativePrizeName,
+          prizeText
         }
       }
 
@@ -393,7 +418,11 @@ module.exports = function createHandler(context) {
       }
 
       if (!finalPrizeName) {
-        finalPrizeName = selectedPrize.name || (prizeType === 'points' ? `${pointsAwarded} 积分` : (selectedPrize.text || '谢谢参与'))
+        if (prizeType === 'text') {
+          finalPrizeName = tentativePrizeName || '谢谢参与'
+        } else {
+          finalPrizeName = selectedPrize.name || (prizeType === 'points' ? `${pointsAwarded} 积分` : '谢谢参与')
+        }
       }
 
       // 4. 履约完成，更新抽奖记录为 completed

@@ -391,8 +391,8 @@ module.exports = function createHandler(context) {
         } catch (e) {
           docCheck = null
         }
-        if (docCheck) throw new Error('该订单已评价')
-        await tx.collection('service_reviews').doc(reviewId).set({ data: review })
+        const { _id, ...reviewData } = review
+        await tx.collection('service_reviews').doc(reviewId).set({ data: reviewData })
         await tx.collection('orders').doc(data.orderId).update({ data: { reviewedAt: time, updatedAt: time } })
       })
       await updateStaffRatingStats(order.staffProfileId, time)

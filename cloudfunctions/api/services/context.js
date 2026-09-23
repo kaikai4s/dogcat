@@ -8,6 +8,7 @@ module.exports = function createContext({ cloud, db }) {
     crypto,
     https,
     ...require('../config/constants'),
+    ...require('../config/petBlessings'),
     ...require('../utils/validation'),
     ...require('../utils/response'),
     ...require('../utils/time')
