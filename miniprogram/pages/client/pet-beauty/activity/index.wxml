@@ -1,4 +1,4 @@
-<view class="page pet-beauty-page {{themeClass}}">
+<view class="page pet-beauty-page view-{{rankView}} {{themeClass}}">
   <view class="beauty-hero">
     <view class="hero-badge"><text class="remix-icon ri-heart-3-fill"></text><text>最美宠物活动</text></view>
     <view class="hero-title">{{monthKey}} 最美爱宠榜</view>
@@ -6,7 +6,15 @@
     <view class="hero-state">{{locked ? '本月榜单已锁定' : (hasVotedToday ? '今日已投票' : '今日还可投票')}}</view>
   </view>
 
-  <view class="section-card">
+  <view class="rank-view-toolbar">
+    <view class="rank-view-caption">发现每一份可爱</view>
+    <view class="rank-view-switch">
+      <button class="rank-view-option {{rankView === 'waterfall' ? 'is-active' : ''}}" data-view="waterfall" bindtap="switchRankView" aria-label="大图瀑布流" aria-pressed="{{rankView === 'waterfall'}}"><text class="remix-icon ri-layout-grid-line"></text><text>大图</text></button>
+      <button class="rank-view-option {{rankView === 'list' ? 'is-active' : ''}}" data-view="list" bindtap="switchRankView" aria-label="经典排行" aria-pressed="{{rankView === 'list'}}"><text class="remix-icon ri-list-ordered"></text><text>经典排行</text></button>
+    </view>
+  </view>
+
+  <view class="section-card" wx:if="{{rankView === 'list'}}">
     <view class="section-head">
       <view><view class="section-title">美照墙</view><view class="section-desc">点击卡片查看宠物全部美照</view></view>
       <text class="remix-icon ri-image-fill section-icon"></text>
@@ -62,12 +70,34 @@
       <button class="primary-btn search-btn" bindtap="submitSearch">搜索</button>
     </view>
 
-    <view class="rank-list" wx:if="{{ranking.length}}">
-      <view class="rank-item {{index < 3 ? 'top-three rank-' + (index + 1) : ''}}" wx:for="{{ranking}}" wx:key="petId" data-id="{{item.petId}}" bindtap="previewPet">
+    <view class="rank-waterfall" wx:if="{{ranking.length && rankView === 'waterfall'}}">
+      <view class="rank-column" wx:for="{{rankColumns}}" wx:for-item="column" wx:key="id">
+        <view class="gallery-card" wx:for="{{column.pets}}" wx:key="petId" data-id="{{item.petId}}" bindtap="previewPet">
+          <view class="gallery-cover">
+            <image wx:if="{{item.coverUrl}}" class="gallery-image" src="{{item.coverUrl}}" mode="widthFix" lazy-load />
+            <view class="gallery-placeholder" wx:else><text class="remix-icon ri-image-line"></text><text>美照待更新</text></view>
+            <view class="gallery-photo-count" wx:if="{{item.beautyPhotos.length > 1}}"><text class="remix-icon ri-image-line"></text>{{item.beautyPhotos.length}}</view>
+            <view class="gallery-rank {{item.displayRank <= 3 ? 'gallery-rank-top' : ''}}"><text class="remix-icon ri-vip-crown-fill" wx:if="{{item.displayRank <= 3}}"></text><text>{{isHistory ? '历史月榜' : '本月人气'}} · 第{{item.displayRank}}名</text></view>
+          </view>
+          <view class="gallery-body">
+            <view class="gallery-name">{{item.name}}</view>
+            <view class="gallery-meta">{{item.ageText || '年龄未填写'}} · {{item.speciesText || '毛孩子'}}</view>
+            <view class="gallery-id" wx:if="{{item.exclusiveId}}">ID · {{item.exclusiveId}}</view>
+            <view class="gallery-title" wx:if="{{item.beautyTitle && item.beautyTitle.title}}"><text class="remix-icon ri-medal-line"></text><text>{{item.beautyTitle.title}}</text></view>
+            <view class="gallery-footer">
+              <view class="gallery-votes"><text class="remix-icon ri-heart-3-fill"></text><text class="gallery-vote-number">{{item.voteCount}}</text><text class="gallery-vote-label">票</text></view>
+              <button class="gallery-vote-btn" catchtap="vote" data-id="{{item.petId}}" loading="{{votingPetId === item.petId}}" disabled="{{locked || isHistory || hasVotedToday || votingPetId}}">{{isHistory || locked ? '已封榜' : (votedPetId === item.petId ? '已投票' : '投一票')}}</button>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view class="rank-list" wx:elif="{{ranking.length}}">
+      <view class="rank-item {{(item.rank || index + 1) <= 3 ? 'top-three rank-' + (item.rank || index + 1) : ''}}" wx:for="{{ranking}}" wx:key="petId" data-id="{{item.petId}}" bindtap="previewPet">
         <view class="rank-badge-box">
-          <text class="remix-icon ri-vip-crown-fill crown-icon" wx:if="{{index === 0}}"></text>
-          <text class="remix-icon ri-award-fill crown-icon" wx:elif="{{index < 3}}"></text>
-          <view class="rank-no">{{index + 1}}</view>
+          <text class="remix-icon ri-vip-crown-fill crown-icon" wx:if="{{(item.rank || index + 1) === 1}}"></text>
+          <text class="remix-icon ri-award-fill crown-icon" wx:elif="{{(item.rank || index + 1) <= 3}}"></text>
+          <view class="rank-no">{{item.rank || index + 1}}</view>
         </view>
         <image class="rank-avatar" src="{{item.avatarFileId || item.beautyPhotos[0].fileId}}" mode="aspectFill" />
         <view class="rank-main">
@@ -99,7 +129,7 @@
     </view>
     <view class="empty-state" wx:else>
       <text class="remix-icon ri-trophy-line empty-icon"></text>
-      <view>未搜索到符合条件的宠物</view>
+      <view>{{loading ? '正在加载爱宠榜…' : (keyword ? '未搜索到符合条件的宠物' : '暂无上榜宠物，快去上传美照吧')}}</view>
     </view>
     <button class="ghost-btn load-more" wx:if="{{hasMore}}" loading="{{loading}}" bindtap="loadMore">加载更多排行</button>
   </view>

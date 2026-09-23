@@ -53,9 +53,23 @@
 .weight-field { height: 82rpx; padding: 0 22rpx; margin-bottom: 16rpx; }
 .select-field { display: flex; align-items: center; justify-content: space-between; gap: 10rpx; }
 .select-field .remix-icon { color: #a89b90; font-size: 28rpx; flex-shrink: 0; }
-.weight-field { display: flex; align-items: center; padding-right: 22rpx; }
-.weight-field input { flex: 1; min-width: 0; margin: 0; }
-.weight-unit { color: #e9672f; font-weight: 900; font-size: 26rpx; }
+.weight-field { display: flex; align-items: center; gap: 12rpx; min-width: 0; padding-right: 22rpx; }
+/* The wrapper owns the field chrome; reset the global input styling here. */
+.weight-field input {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+}
+.weight-unit { flex-shrink: 0; white-space: nowrap; color: #e9672f; font-weight: 900; font-size: 26rpx; }
 .textarea-field { min-height: 220rpx; padding: 22rpx; margin-bottom: 16rpx; line-height: 1.55; }
 .ai-card { background: linear-gradient(145deg,#fff 0%,#fff9f0 52%,#fff2ec 100%); }
 .ai-head { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }

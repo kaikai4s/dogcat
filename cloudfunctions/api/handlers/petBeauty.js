@@ -80,12 +80,12 @@ module.exports = function createHandler(context) {
         const histRes = await db.collection('pet_beauty_month_rankings').where({ monthKey: historyMonthKey, locked: true }).orderBy('rank', 'asc').get()
         const histList = (histRes.data || [])
           .filter((item) => !keyword || safeText(item.petExclusiveId).toUpperCase().includes(keyword) || safeText(item.petSnapshot && item.petSnapshot.name).toUpperCase().includes(keyword))
-          .map((item) => ({ petId: item.petId, name: item.petSnapshot && item.petSnapshot.name || '', ageText: item.petSnapshot && item.petSnapshot.ageText || '', species: item.petSnapshot && item.petSnapshot.species || '', speciesText: petSpeciesText(item.petSnapshot && item.petSnapshot.species), exclusiveId: item.petExclusiveId || '', voteCount: item.voteCount || 0, rank: item.rank, beautyTitle: { monthKey: item.monthKey, rank: item.rank, title: item.title } }))
+          .map((item) => ({ petId: item.petId, name: item.petSnapshot && item.petSnapshot.name || '', ageText: item.petSnapshot && item.petSnapshot.ageText || '', species: item.petSnapshot && item.petSnapshot.species || '', speciesText: petSpeciesText(item.petSnapshot && item.petSnapshot.species), avatarFileId: item.petSnapshot && item.petSnapshot.avatarFileId || '', beautyPhotos: item.petSnapshot && item.petSnapshot.beautyPhotos || [], exclusiveId: item.petExclusiveId || '', voteCount: item.voteCount || 0, rank: item.rank, beautyTitle: { monthKey: item.monthKey, rank: item.rank, title: item.title } }))
         return { ...paginateList(histList, data), monthKey: historyMonthKey, locked: true, isHistory: true }
       }
       const pets = (await getPublicPetsWithVotes())
-        .filter((pet) => !keyword || safeText(pet.exclusiveId).toUpperCase().includes(keyword) || safeText(pet.name).toUpperCase().includes(keyword))
         .map((pet, index) => ({ ...pet, rank: index + 1 }))
+        .filter((pet) => !keyword || safeText(pet.exclusiveId).toUpperCase().includes(keyword) || safeText(pet.name).toUpperCase().includes(keyword))
       return paginateList(pets, data)
     }
 

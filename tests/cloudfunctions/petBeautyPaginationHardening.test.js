@@ -106,4 +106,26 @@ test('getPublicPetsWithVotes retrieves candidate pets beyond 100 items under cap
   assert.equal(homeRes.data.candidates.length, 12)
   assert.equal(homeRes.data.ranking.length, 10)
   assert.equal(homeRes.data.ranking[0].petId, 'pet_0105')
+
+  const searchRes = await fn.main({ module: 'petBeauty', action: 'listRanking', data: { monthKey, keyword: '宠物_2' } })
+  assert.equal(searchRes.ok, true)
+  assert.equal(searchRes.data.list[0].petId, 'pet_0002')
+  assert.equal(searchRes.data.list[0].rank, 3, 'Search must retain the overall rank instead of starting from 1')
+})
+
+test('historical rankings expose snapshot photos for gallery display and preview', async () => {
+  const db = createCollectionStore({
+    pet_beauty_month_rankings: [{
+      _id: 'history-1', monthKey: '2026-08', petId: 'pet-1', rank: 7, locked: true,
+      voteCount: 88, petExclusiveId: 'P123', title: '8月第7爱宠',
+      petSnapshot: { name: '豆豆', species: 'dog', avatarFileId: 'cloud://cover', beautyPhotos: [{ id: 'photo-1', fileId: 'cloud://snapshot' }] }
+    }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+  const res = await fn.main({ module: 'petBeauty', action: 'listRanking', data: { monthKey: '2026-09', historyMonthKey: '2026-08' } })
+  assert.equal(res.ok, true)
+  assert.equal(res.data.isHistory, true)
+  assert.equal(res.data.list[0].rank, 7)
+  assert.equal(res.data.list[0].avatarFileId, 'cloud://cover')
+  assert.equal(res.data.list[0].beautyPhotos[0].fileId, 'cloud://snapshot')
 })
