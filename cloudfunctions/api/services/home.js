@@ -4,6 +4,7 @@ module.exports = function createService({
   calcDistanceKm,
   canTakeOrders,
   checkinEventText,
+  db,
   formatDistance,
   formatHomeCount,
   formatHomeCoupon,
@@ -113,6 +114,15 @@ module.exports = function createService({
     }
   }
 
+  function buildInOrEq(field, values) {
+    if (!Array.isArray(values) || !values.length) return null
+    if (values.length === 1) return { [field]: values[0] }
+    const inVal = db && db.command && typeof db.command.in === 'function'
+      ? db.command.in(values)
+      : { $in: values }
+    return { [field]: inVal }
+  }
+
   async function getHomePageData(openid, data = {}) {
     const settings = await getSystemSettings()
     const loc = {
@@ -120,14 +130,31 @@ module.exports = function createService({
       longitude: Number(data.longitude || 0)
     }
     const hasLoc = hasCoordinate(loc.latitude, loc.longitude)
-    const [servicePrices, staffProfiles, couponTemplates, orders, optionalUser, userCoupons, users] = await Promise.all([
+
+    // 第一批并发查询：条件与数量精准下推至数据库，杜绝全表扫描与内存 OOM
+    const [
+      servicePrices,
+      staffProfiles,
+      couponTemplates,
+      optionalUser,
+      userCoupons,
+      completedOrdersRaw,
+      completedCount,
+      userOrders
+    ] = await Promise.all([
       listServicePrices(false),
       safeCollectionData('staff_profiles', (col) => col.where({ auditStatus: 'approved' }).orderBy('updatedAt', 'desc')),
       safeCollectionData('coupon_templates', (col) => col.where({ enabled: true }).orderBy('sortOrder', 'asc')),
-      safeCollectionData('orders', (col) => col.orderBy('createdAt', 'desc')),
       getOptionalUser(openid).catch(() => null),
       openid ? safeCollectionData('user_coupons', (col) => col.where({ openid })) : Promise.resolve([]),
-      safeCollectionData('users')
+      // 条件与条数下推：仅查询最近完成的 6 笔订单，避免全量拉取全表
+      safeCollectionData('orders', (col) => col.where({ status: 'completed' }).orderBy('createdAt', 'desc').limit(6)),
+      // 数量统计下推：直接使用 count()，避免传输全量订单文档
+      safeCollectionCount('orders', { status: 'completed' }),
+      // 精确查询当前用户的最近订单（仅需前几条用于 repeatOrder 与 isNewUser 判断）
+      openid
+        ? safeCollectionData('orders', (col) => col.where({ clientOpenid: openid }).orderBy('createdAt', 'desc').limit(5))
+        : Promise.resolve([])
     ])
 
     const sittersWithUser = await Promise.all(staffProfiles.filter((item) => canTakeOrders(item, settings.staffDeposit)).slice(0, 30).map(withSitterUserProfile))
@@ -147,25 +174,36 @@ module.exports = function createService({
     })
     featuredSitters = featuredSitters.slice(0, 6)
 
-    const userOrders = optionalUser ? orders.filter((order) => order.clientOpenid === openid) : []
-    const repeatOrder = userOrders.find((order) => ['paid', 'assigned', 'in_service', 'completed'].includes(order.status)) || null
-    const completedOrders = orders
-      .filter((order) => order.status === 'completed')
+    const repeatOrder = (userOrders || []).find((order) => ['paid', 'assigned', 'in_service', 'completed'].includes(order.status)) || null
+    const completedOrders = completedOrdersRaw
+      .slice()
       .sort((a, b) => toTimeValue(b.completedAt || b.updatedAt || b.createdAt) - toTimeValue(a.completedAt || a.updatedAt || a.createdAt))
       .slice(0, 6)
     const recentOrderIds = completedOrders.map((order) => order._id).filter(Boolean)
-    const [homeReviews, homeCheckins] = await Promise.all([
-      recentOrderIds.length ? safeCollectionData('service_reviews', (col) => col.where({ status: 'visible' })) : Promise.resolve([]),
-      recentOrderIds.length ? safeCollectionData('checkin_logs') : Promise.resolve([])
+    const recentClientOpenids = Array.from(new Set(completedOrders.map((order) => order.clientOpenid).filter(Boolean)))
+
+    const orderIdCondition = buildInOrEq('orderId', recentOrderIds)
+    const openidCondition = buildInOrEq('openid', recentClientOpenids)
+
+    // 第二批并发查询：精准按这 6 笔完单关联查询，杜绝全表扫描打卡、评价与用户
+    const [homeReviews, homeCheckins, recentUsers] = await Promise.all([
+      orderIdCondition
+        ? safeCollectionData('service_reviews', (col) => col.where({ status: 'visible', ...orderIdCondition }))
+        : Promise.resolve([]),
+      orderIdCondition
+        ? safeCollectionData('checkin_logs', (col) => col.where(orderIdCondition))
+        : Promise.resolve([]),
+      openidCondition
+        ? safeCollectionData('users', (col) => col.where(openidCondition))
+        : Promise.resolve([])
     ])
-    const reviewMap = homeReviews
-      .filter((review) => recentOrderIds.includes(review.orderId))
-      .reduce((map, review) => ({ ...map, [review.orderId]: review }), {})
-    const checkinMap = homeCheckins
-      .filter((checkin) => recentOrderIds.includes(checkin.orderId))
-      .reduce((map, checkin) => ({ ...map, [checkin.orderId]: [...(map[checkin.orderId] || []), checkin] }), {})
+    const reviewMap = homeReviews.reduce((map, review) => ({ ...map, [review.orderId]: review }), {})
+    const checkinMap = homeCheckins.reduce((map, checkin) => ({
+      ...map,
+      [checkin.orderId]: [...(map[checkin.orderId] || []), checkin]
+    }), {})
     const staffProfileMap = staffProfiles.reduce((map, profile) => ({ ...map, [profile._id]: profile }), {})
-    const userMap = users.reduce((map, user) => ({ ...map, [user.openid]: user }), {})
+    const userMap = recentUsers.reduce((map, user) => ({ ...map, [user.openid]: user }), {})
     const recentOrders = (await Promise.all(completedOrders.map(attachClientSnapshot)))
       .map((order) => toHomeOrderActivity(order, {
         review: reviewMap[order._id],
@@ -174,7 +212,6 @@ module.exports = function createService({
         hideCheckinPhotos: shouldHidePublicCheckinPhotos(userMap[order.clientOpenid])
       }))
 
-    const completedCount = orders.filter((order) => order.status === 'completed').length
     const reviewCount = await safeCollectionCount('service_reviews', { status: 'visible' })
     const newbieTemplates = couponTemplates.filter((coupon) => coupon.newbieOnly !== false)
     const newbieTemplateIds = new Set(newbieTemplates.map((coupon) => coupon._id).filter(Boolean))
@@ -183,7 +220,7 @@ module.exports = function createService({
       .map((coupon) => coupon.templateId || (coupon.templateSnapshot && coupon.templateSnapshot.templateId))
       .filter(Boolean))
     const hasClaimedNewbieCoupon = Array.from(claimedNewbieTemplateIds).some((templateId) => newbieTemplateIds.has(templateId))
-    const isNewUser = Boolean(optionalUser) && userOrders.length === 0
+    const isNewUser = Boolean(optionalUser) && (userOrders || []).length === 0
     const newbieCoupons = isNewUser && !hasClaimedNewbieCoupon ? newbieTemplates : []
 
     return {
