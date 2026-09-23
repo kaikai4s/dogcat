@@ -180,6 +180,19 @@ module.exports = function createHandler(context) {
     return profiles
   }
 
+  async function fetchStaffProfilesByIds(ids = []) {
+    const list = Array.from(new Set(ids.filter(Boolean)))
+    if (!list.length) return []
+    const profiles = []
+    const chunkSize = 50
+    for (let i = 0; i < list.length; i += chunkSize) {
+      const chunk = list.slice(i, i + chunkSize)
+      const res = await db.collection('staff_profiles').where({ _id: db.command.in(chunk) }).limit(chunk.length).get()
+      profiles.push(...(res.data || []))
+    }
+    return profiles.map(normalizeStaffWorkflow)
+  }
+
   async function fetchStaffEvidencesByOpenids(openids = []) {
     const list = Array.from(new Set(openids.filter(Boolean)))
     if (!list.length) return []
@@ -1439,21 +1452,33 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listPromotionApplications') {
       const status = safeText(data.status).trim()
-      const apps = (await readAll('staff_promotion_applications')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
-      const profiles = await readAll('staff_profiles')
-      const profileMap = new Map(profiles.map((item) => [item._id, normalizeStaffWorkflow(item)]))
-      const list = apps
-        .filter((item) => !status || item.status === status)
-        .map((item) => ({ ...item, profile: profileMap.get(item.staffProfileId) || null }))
+      const apps = (await readAll('staff_promotion_applications', status ? { status } : {})).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+      const filteredApps = apps.filter((item) => !status || item.status === status)
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
-      return wantsPage ? paginateList(list, data) : list
+      if (wantsPage) {
+        const pageMeta = paginateList(filteredApps, data)
+        const profileIds = Array.from(new Set(pageMeta.list.map((item) => item.staffProfileId).filter(Boolean)))
+        const profiles = await fetchStaffProfilesByIds(profileIds)
+        const profileMap = new Map(profiles.map((item) => [item._id, item]))
+        return {
+          ...pageMeta,
+          list: pageMeta.list.map((item) => ({ ...item, profile: profileMap.get(item.staffProfileId) || null }))
+        }
+      }
+      const pagedList = limitList(filteredApps, data.pageSize || 50)
+      const profileIds = Array.from(new Set(pagedList.map((item) => item.staffProfileId).filter(Boolean)))
+      const profiles = await fetchStaffProfilesByIds(profileIds)
+      const profileMap = new Map(profiles.map((item) => [item._id, item]))
+      return pagedList.map((item) => ({ ...item, profile: profileMap.get(item.staffProfileId) || null }))
     }
     if (action === 'getPromotionApplicationDetail') {
       const applicationId = safeText(data.applicationId || data.id).trim()
       if (!applicationId) throw new Error('请选择晋升申请')
-      const app = (await db.collection('staff_promotion_applications').doc(applicationId).get()).data
+      const appRes = await db.collection('staff_promotion_applications').doc(applicationId).get().catch(() => ({ data: null }))
+      const app = appRes && appRes.data
       if (!app) throw new Error('晋升申请不存在')
-      const profile = normalizeStaffWorkflow((await db.collection('staff_profiles').doc(app.staffProfileId).get()).data)
+      const pRes = await db.collection('staff_profiles').doc(app.staffProfileId).get().catch(() => ({ data: null }))
+      const profile = pRes && pRes.data ? normalizeStaffWorkflow(pRes.data) : null
       const orders = []
       for (const orderId of (app.orderIds || [])) {
         const order = (await db.collection('orders').doc(orderId).get()).data
