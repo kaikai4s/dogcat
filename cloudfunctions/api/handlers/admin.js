@@ -485,28 +485,68 @@ module.exports = function createHandler(context) {
     if (action === 'listStaffProfiles') {
       const auditStatus = safeText(data.auditStatus).trim()
       const keyword = safeText(data.keyword).trim().toLowerCase()
-      const profilesRes = await db.collection('staff_profiles').orderBy('updatedAt', 'desc').get()
-      const usersRes = await db.collection('users').get()
-      const userMap = new Map((usersRes.data || []).map((user) => [user.openid, user]))
+      const page = Math.max(Number(data.page || 1), 1)
+      const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 100)
+      const offset = (page - 1) * pageSize
 
-      const evidencesRes = await db.collection('staff_deposit_evidences').orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
-      const allEvidences = evidencesRes.data || []
-      const evidenceByStaff = {}
-      for (const ev of allEvidences) {
-        if (!evidenceByStaff[ev.staffOpenid]) evidenceByStaff[ev.staffOpenid] = []
-        evidenceByStaff[ev.staffOpenid].push(ev)
+      const where = {}
+      if (auditStatus) where.auditStatus = auditStatus
+
+      const hasAdvancedFilter = Boolean(
+        keyword ||
+        (data.minDeposit !== undefined && data.minDeposit !== '' && !isNaN(Number(data.minDeposit))) ||
+        (data.maxDeposit !== undefined && data.maxDeposit !== '' && !isNaN(Number(data.maxDeposit))) ||
+        (data.hasViolations === 'yes' || data.hasViolations === true || data.hasViolations === 'no' || data.hasViolations === false) ||
+        (data.requireRepayStatus === 'yes' || data.requireRepayStatus === 'no')
+      )
+
+      async function fetchByOpenids(collectionName, fieldName, openids = []) {
+        if (!openids || !openids.length) return []
+        const cleanOpenids = [...new Set(openids.filter(Boolean))]
+        if (!cleanOpenids.length) return []
+        const results = []
+        const chunkSize = 50
+        for (let i = 0; i < cleanOpenids.length; i += chunkSize) {
+          const chunk = cleanOpenids.slice(i, i + chunkSize)
+          try {
+            const condition = {
+              [fieldName]: db.command && typeof db.command.in === 'function' ? db.command.in(chunk) : chunk
+            }
+            const res = await db.collection(collectionName).where(condition).get()
+            results.push(...(res.data || []))
+          } catch (e) {
+            for (const id of chunk) {
+              try {
+                const single = await db.collection(collectionName).where({ [fieldName]: id }).get()
+                results.push(...(single.data || []))
+              } catch (_) {}
+            }
+          }
+        }
+        return results
       }
 
-      const depositsRes = await db.collection('staff_deposits').orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
-      const allDeposits = depositsRes.data || []
-      const depositByStaff = {}
-      for (const d of allDeposits) {
-        if (!depositByStaff[d.staffOpenid]) depositByStaff[d.staffOpenid] = d
-      }
+      function buildDecoratedProfiles(profiles, allUsers, allEvidences, allDeposits) {
+        const userMap = new Map((allUsers || []).map((user) => [user.openid, user]))
 
-      const list = (profilesRes.data || [])
-        .filter((profile) => !auditStatus || profile.auditStatus === auditStatus)
-        .map((profile) => {
+        const evidenceByStaff = {}
+        const sortedEvidences = (allEvidences || []).slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+        for (const ev of sortedEvidences) {
+          const key = ev.staffOpenid || ev.openid
+          if (!key) continue
+          if (!evidenceByStaff[key]) evidenceByStaff[key] = []
+          evidenceByStaff[key].push(ev)
+        }
+
+        const depositByStaff = {}
+        const sortedDeposits = (allDeposits || []).slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+        for (const d of sortedDeposits) {
+          const key = d.staffOpenid || d.openid
+          if (!key) continue
+          if (!depositByStaff[key]) depositByStaff[key] = d
+        }
+
+        return profiles.map((profile) => {
           const user = userMap.get(profile.openid) || {}
           const workflow = normalizeStaffWorkflow(profile)
           const staffEvidences = evidenceByStaff[profile.openid] || []
@@ -580,29 +620,70 @@ module.exports = function createHandler(context) {
             requireDepositRepayAt: profile.requireDepositRepayAt || ''
           }
         })
-        .filter((item) => {
-          if (keyword && ![item.openid, item.realName, item.phone, item.serviceCity, item.serviceAreas, item.userNickname].some((value) => safeText(value).toLowerCase().includes(keyword))) {
-            return false
-          }
-          if (data.minDeposit !== undefined && data.minDeposit !== '' && !isNaN(Number(data.minDeposit))) {
-            if (item.depositBalance < Number(data.minDeposit)) return false
-          }
-          if (data.maxDeposit !== undefined && data.maxDeposit !== '' && !isNaN(Number(data.maxDeposit))) {
-            if (item.depositBalance > Number(data.maxDeposit)) return false
-          }
-          if (data.hasViolations === 'yes' || data.hasViolations === true) {
-            if (item.problemOrderCount <= 0) return false
-          } else if (data.hasViolations === 'no' || data.hasViolations === false) {
-            if (item.problemOrderCount > 0) return false
-          }
-          if (data.requireRepayStatus === 'yes') {
-            if (!item.requireDepositRepay) return false
-          } else if (data.requireRepayStatus === 'no') {
-            if (item.requireDepositRepay) return false
-          }
-          return true
-        })
-      return paginateList(list, data)
+      }
+
+      if (!hasAdvancedFilter) {
+        const countRes = await db.collection('staff_profiles').where(where).count()
+        const total = Number(countRes?.total || 0)
+        const profilesRes = await db.collection('staff_profiles')
+          .where(where)
+          .orderBy('updatedAt', 'desc')
+          .skip(offset)
+          .limit(pageSize)
+          .get()
+        const pageProfiles = profilesRes.data || []
+        const pageOpenids = [...new Set(pageProfiles.map((p) => p.openid).filter(Boolean))]
+
+        const [pageUsers, pageEvidences, pageDeposits] = await Promise.all([
+          fetchByOpenids('users', 'openid', pageOpenids),
+          fetchByOpenids('staff_deposit_evidences', 'staffOpenid', pageOpenids),
+          fetchByOpenids('staff_deposits', 'staffOpenid', pageOpenids)
+        ])
+
+        const list = buildDecoratedProfiles(pageProfiles, pageUsers, pageEvidences, pageDeposits)
+        return {
+          list,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + pageSize < total
+        }
+      }
+
+      const allProfiles = (await readAll('staff_profiles', where, 2000)).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+      const allOpenids = [...new Set(allProfiles.map((p) => p.openid).filter(Boolean))]
+
+      const [allUsers, allEvidences, allDeposits] = await Promise.all([
+        fetchByOpenids('users', 'openid', allOpenids),
+        fetchByOpenids('staff_deposit_evidences', 'staffOpenid', allOpenids),
+        fetchByOpenids('staff_deposits', 'staffOpenid', allOpenids)
+      ])
+
+      const decorated = buildDecoratedProfiles(allProfiles, allUsers, allEvidences, allDeposits)
+      const filtered = decorated.filter((item) => {
+        if (keyword && ![item.openid, item.realName, item.phone, item.serviceCity, item.serviceAreas, item.userNickname].some((value) => safeText(value).toLowerCase().includes(keyword))) {
+          return false
+        }
+        if (data.minDeposit !== undefined && data.minDeposit !== '' && !isNaN(Number(data.minDeposit))) {
+          if (item.depositBalance < Number(data.minDeposit)) return false
+        }
+        if (data.maxDeposit !== undefined && data.maxDeposit !== '' && !isNaN(Number(data.maxDeposit))) {
+          if (item.depositBalance > Number(data.maxDeposit)) return false
+        }
+        if (data.hasViolations === 'yes' || data.hasViolations === true) {
+          if (item.problemOrderCount <= 0) return false
+        } else if (data.hasViolations === 'no' || data.hasViolations === false) {
+          if (item.problemOrderCount > 0) return false
+        }
+        if (data.requireRepayStatus === 'yes') {
+          if (!item.requireDepositRepay) return false
+        } else if (data.requireRepayStatus === 'no') {
+          if (item.requireDepositRepay) return false
+        }
+        return true
+      })
+
+      return paginateList(filtered, data)
     }
     if (action === 'batchRequireDepositRepay') {
       const ids = Array.isArray(data.staffProfileIds) ? data.staffProfileIds.filter(Boolean) : (data.staffProfileId ? [data.staffProfileId] : [])

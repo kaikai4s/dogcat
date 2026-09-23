@@ -2,7 +2,7 @@
   <view class="dashboard-header compact-admin-header">
     <view class="badge">人员管理</view>
     <view class="title">宠托师管理</view>
-    <view class="tip">默认只展示关键身份信息，展开后查看服务区域、培训、晋升和账号详情。</view>
+    <view class="tip">默认只展示关键身份信息，展开后查看服务区域、培训、晋升和账号详情。<text wx:if="{{total > 0}}">（共 {{total}} 位宠托师）</text></view>
   </view>
 
   <view class="card compact">

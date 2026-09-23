@@ -790,6 +790,104 @@ test('admin listStaffProfiles filters status and attaches user display fields', 
   assert.deepEqual(keywordResult.data.list.map((profile) => profile._id), ['sp1'])
 })
 
+test('admin listStaffProfiles eliminates 4-table raw get truncation with targeted batch joins and DB pagination', async () => {
+  // 1 admin + 250 normal users (all staff users are at index 101-220, far beyond the 100 limit!)
+  const users = [
+    { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active', nickname: '管理员' }
+  ]
+  for (let i = 1; i <= 250; i++) {
+    const pad = String(i).padStart(3, '0')
+    users.push({
+      _id: `user_${pad}`,
+      openid: `openid_user_${pad}`,
+      roles: ['client'],
+      status: 'active',
+      nickname: `用户_${pad}`,
+      phone: `13800000${pad}`
+    })
+  }
+
+  // 120 staff profiles (exceeds 100 limit, sorted updatedAt desc)
+  const staff_profiles = []
+  for (let i = 1; i <= 120; i++) {
+    const pad = String(i).padStart(3, '0')
+    const userIndex = String(100 + i).padStart(3, '0')
+    staff_profiles.push({
+      _id: `sp_${pad}`,
+      openid: `openid_user_${userIndex}`,
+      realName: `托师_${pad}`,
+      phone: '',
+      serviceCity: i % 2 === 0 ? '上海' : '北京',
+      serviceAreas: '浦东',
+      auditStatus: 'approved',
+      updatedAt: `2026-08-01T00:00:00.${pad}Z`
+    })
+  }
+
+  // 120 deposits
+  const staff_deposits = []
+  for (let i = 1; i <= 120; i++) {
+    const pad = String(i).padStart(3, '0')
+    const userIndex = String(100 + i).padStart(3, '0')
+    staff_deposits.push({
+      _id: `dep_${pad}`,
+      staffOpenid: `openid_user_${userIndex}`,
+      amount: 500,
+      paidAmount: 500,
+      availableRefundAmount: 500,
+      status: 'paid',
+      createdAt: `2026-08-01T00:00:00.${pad}Z`
+    })
+  }
+
+  // A penalty evidence for staff sp_015 (openid_user_115), which will be on Page 6
+  const staff_deposit_evidences = [
+    {
+      _id: 'ev_special',
+      staffOpenid: 'openid_user_115',
+      orderId: 'ord_999',
+      orderNo: 'ORD999',
+      deductAmount: 100,
+      actualDeductAmount: 100,
+      status: 'forfeited',
+      createdAt: '2026-08-02T00:00:00.000Z'
+    }
+  ]
+
+  const db = createCollectionStore({
+    users,
+    staff_profiles,
+    staff_deposits,
+    staff_deposit_evidences
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  // 1. Page 1 pagination
+  const page1 = await fn.main({ module: 'admin', action: 'listStaffProfiles', data: { page: 1, pageSize: 20 } })
+  assert.equal(page1.ok, true)
+  assert.equal(page1.data.total, 120)
+  assert.equal(page1.data.page, 1)
+  assert.equal(page1.data.hasMore, true)
+  assert.equal(page1.data.list.length, 20)
+
+  // 2. Page 6 pagination (indices 100-119, previously completely truncated!)
+  const page6 = await fn.main({ module: 'admin', action: 'listStaffProfiles', data: { page: 6, pageSize: 20 } })
+  assert.equal(page6.ok, true)
+  assert.equal(page6.data.page, 6)
+  assert.equal(page6.data.hasMore, false)
+  assert.equal(page6.data.list.length, 20)
+
+  // 3. Check staff sp_015 (openid_user_115) on Page 6:
+  const staff15 = page6.data.list.find((s) => s.openid === 'openid_user_115')
+  assert.ok(staff15, 'Staff 15 must be retrieved in page 6')
+  assert.equal(staff15.userNickname, '用户_115')
+  assert.equal(staff15.phone, '13800000115')
+  assert.equal(staff15.depositBalance, 500)
+  assert.equal(staff15.problemOrderCount, 1)
+  assert.equal(staff15.problemOrders[0]._id, 'ev_special')
+  assert.equal(staff15.problemOrders[0].actualDeductAmount, 100)
+})
+
 test('admin large lists return pagination metadata', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
