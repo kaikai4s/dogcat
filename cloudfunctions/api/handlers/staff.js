@@ -75,7 +75,8 @@ module.exports = function createHandler(context) {
     updateOrderWhenStatus,
     validateStaffTakeOrderAbility,
     wechatPayRequest,
-    withSitterUserProfile
+    withSitterUserProfile,
+    batchWithSitterUserProfiles
   } = context
   async function readAll(collectionName, where = {}) {
     const rows = []
@@ -88,6 +89,20 @@ module.exports = function createHandler(context) {
       if (page.length < 100) return rows
       cursor = page[page.length - 1]._id
     }
+  }
+  async function queryCandidateSitters(whereCondition = {}, maxLimit = 300) {
+    const rows = []
+    let cursor = ''
+    while (rows.length < maxLimit) {
+      const condition = { ...whereCondition }
+      if (cursor) condition._id = db.command.gt(cursor)
+      const fetchLimit = Math.min(100, maxLimit - rows.length)
+      const page = (await db.collection('staff_profiles').where(condition).orderBy('_id', 'asc').limit(fetchLimit).get()).data || []
+      rows.push(...page)
+      if (page.length < fetchLimit) break
+      cursor = page[page.length - 1]._id
+    }
+    return rows
   }
   return async function staff(openid, action, data) {
     if (action === 'listApprovedSitters') {
@@ -102,11 +117,23 @@ module.exports = function createHandler(context) {
       const page = Math.max(Number(data.page || 1), 1)
       const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 50)
       const settings = await getSystemSettings().catch(() => ({}))
-      let sitters = await Promise.all((await readAll('staff_profiles', { auditStatus: 'approved' }))
-        .sort((a, b) => toTimeValue(b.updatedAt) - toTimeValue(a.updatedAt))
-        .filter((item) => canTakeOrders(item, settings.staffDeposit)).map(withSitterUserProfile))
 
-      sitters = sitters.filter((profile) => {
+      // 1. 数据库条件下推：基础状态下推与城市下推
+      const whereCondition = { auditStatus: 'approved' }
+      if (serviceCity) {
+        const normFilterCity = normalizeCityName(serviceCity)
+        if (normFilterCity) {
+          const cityCandidates = [serviceCity, normFilterCity, `${normFilterCity}市`].filter(Boolean)
+          whereCondition.serviceCity = db.command.in([...new Set(cityCandidates)])
+        }
+      }
+
+      // 读取候选集（限制最大候选规模，避免全表无节制扫描）
+      let rawCandidates = await queryCandidateSitters(whereCondition, 300)
+
+      // 2. 内存初筛（城市、区域及履约资质过滤）
+      rawCandidates = rawCandidates.filter((profile) => {
+        if (!canTakeOrders(profile, settings.staffDeposit)) return false
         const areas = splitServiceAreas(profile.serviceAreas)
         if (serviceCity) {
           const normFilterCity = normalizeCityName(serviceCity)
@@ -114,47 +141,93 @@ module.exports = function createHandler(context) {
           if (normFilterCity && normSitterCity && normFilterCity !== normSitterCity) return false
         }
         if (serviceArea && !areas.includes(serviceArea)) return false
-        if (keyword && !(matchText(profile.nickname, keyword) || matchText(profile.realName, keyword) || matchText(profile.serviceCity, keyword) || matchText(profile.serviceAreas, keyword))) return false
-
         return true
       })
 
-      const publicList = sitters.map((profile) => {
-        const publicData = toPublicSitter(profile)
-        if (!userHasLoc) return { ...publicData, inServiceRange: true, canDirectBook: true }
+      // 3. 关键词匹配优化：
+      // 若有关键词，仅对初筛后的候选集批量装配用户信息（1次批量查询），再进行匹配；
+      // 若无关键词，此时完全不需要查 users 表，留到分页截断后按需装配！
+      let userEnriched = false
+      if (keyword) {
+        rawCandidates = await batchWithSitterUserProfiles(rawCandidates)
+        userEnriched = true
+        rawCandidates = rawCandidates.filter((profile) => {
+          return matchText(profile.nickname, keyword) ||
+                 matchText(profile.realName, keyword) ||
+                 matchText(profile.serviceCity, keyword) ||
+                 matchText(profile.serviceAreas, keyword)
+        })
+      }
 
+      // 4. 计算距离与中间元数据
+      const candidateList = rawCandidates.map((profile) => {
         const hasSitterLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
         const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
-        const distanceKm = hasSitterLoc ? calcDistanceKm(userLat, userLng, profile.serviceLatitude, profile.serviceLongitude) : null
-        const inServiceRange = distanceKm !== null && distanceKm <= radiusKm
+        const distanceKm = (userHasLoc && hasSitterLoc)
+          ? calcDistanceKm(userLat, userLng, profile.serviceLatitude, profile.serviceLongitude)
+          : null
+        const inServiceRange = !userHasLoc || (distanceKm !== null && distanceKm <= radiusKm)
         return {
-          ...publicData,
+          profile,
           distanceKm,
-          distanceText: formatDistance(distanceKm),
           inServiceRange,
-          canDirectBook: inServiceRange,
-          rangeStatusText: inServiceRange ? '服务范围内' : '超出服务范围'
+          canDirectBook: inServiceRange
         }
       })
 
-      const compareRating = (a, b) => Number(b.ratingAverage || 0) - Number(a.ratingAverage || 0) || Number(b.reviewCount || 0) - Number(a.reviewCount || 0) || toTimeValue(b.ratingUpdatedAt || b.updatedAt) - toTimeValue(a.ratingUpdatedAt || a.updatedAt)
+      // 5. 稳定排序（带有 _id 兜底保证确定性无重复跳变）
+      const compareRating = (a, b) => Number(b.profile.ratingAverage || 0) - Number(a.profile.ratingAverage || 0) || Number(b.profile.reviewCount || 0) - Number(a.profile.reviewCount || 0) || toTimeValue(b.profile.ratingUpdatedAt || b.profile.updatedAt) - toTimeValue(a.profile.ratingUpdatedAt || a.profile.updatedAt)
       const compareFeatured = (a, b) => {
-        const featuredDiff = Number(b.isFeatured === true) - Number(a.isFeatured === true)
+        const featuredDiff = Number(b.profile.isFeatured === true) - Number(a.profile.isFeatured === true)
         if (featuredDiff) return featuredDiff
-        if (a.isFeatured === true && b.isFeatured === true) return toTimeValue(b.featuredAt) - toTimeValue(a.featuredAt)
+        if (a.profile.isFeatured === true && b.profile.isFeatured === true) return toTimeValue(b.profile.featuredAt) - toTimeValue(a.profile.featuredAt)
         return 0
       }
-      const compareDefault = (a, b) => compareRating(a, b) || toTimeValue(b.updatedAt) - toTimeValue(a.updatedAt)
+      const compareDefault = (a, b) => compareRating(a, b) || toTimeValue(b.profile.updatedAt) - toTimeValue(a.profile.updatedAt)
       const compareByMode = (a, b) => {
         if (sortBy === 'distance' && userHasLoc) return (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999) || compareRating(a, b)
-        if (sortBy === 'city') return String(a.serviceCity || '').localeCompare(String(b.serviceCity || '')) || String(a.serviceAreas || '').localeCompare(String(b.serviceAreas || '')) || compareRating(a, b)
-        if (sortBy === 'latest') return toTimeValue(b.updatedAt || b.createdAt) - toTimeValue(a.updatedAt || a.createdAt) || compareRating(a, b)
+        if (sortBy === 'city') return String(a.profile.serviceCity || '').localeCompare(String(b.profile.serviceCity || '')) || String(a.profile.serviceAreas || '').localeCompare(String(b.profile.serviceAreas || '')) || compareRating(a, b)
+        if (sortBy === 'latest') return toTimeValue(b.profile.updatedAt || b.profile.createdAt) - toTimeValue(a.profile.updatedAt || a.profile.createdAt) || compareRating(a, b)
         if (sortBy === 'rating') return compareRating(a, b)
         return compareDefault(a, b)
       }
-      publicList.sort((a, b) => compareFeatured(a, b) || compareByMode(a, b))
+      const compareTieBreaker = (a, b) => String(b.profile._id || '').localeCompare(String(a.profile._id || ''))
 
-      return paginateList(publicList, { ...data, page, pageSize })
+      candidateList.sort((a, b) => compareFeatured(a, b) || compareByMode(a, b) || compareTieBreaker(a, b))
+
+      // 6. 分页截断：仅针对当前页
+      const total = candidateList.length
+      const start = (page - 1) * pageSize
+      const pagedCandidates = candidateList.slice(start, start + pageSize)
+
+      // 7. 当前页按需批量补充用户资料（若前面未查过，此时仅对当前页的至多 20 条发 1 次批量查询）
+      let pagedProfiles = pagedCandidates.map((c) => c.profile)
+      if (!userEnriched) {
+        pagedProfiles = await batchWithSitterUserProfiles(pagedProfiles)
+      }
+
+      // 8. 构造公开 DTO（确保不泄漏坐标与敏感地址）
+      const list = pagedCandidates.map((item, index) => {
+        const fullProfile = pagedProfiles[index] || item.profile
+        const publicData = toPublicSitter(fullProfile)
+        if (!userHasLoc) return { ...publicData, inServiceRange: true, canDirectBook: true }
+        return {
+          ...publicData,
+          distanceKm: item.distanceKm,
+          distanceText: formatDistance(item.distanceKm),
+          inServiceRange: item.inServiceRange,
+          canDirectBook: item.canDirectBook,
+          rangeStatusText: item.inServiceRange ? '服务范围内' : '超出服务范围'
+        }
+      })
+
+      return {
+        list,
+        total,
+        page,
+        pageSize,
+        hasMore: start + pageSize < total
+      }
     }
     if (action === 'getPublicSitterDetail') {
       const user = await getOptionalUser(openid)

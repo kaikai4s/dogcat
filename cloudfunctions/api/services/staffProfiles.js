@@ -118,6 +118,41 @@ module.exports = function createService({
     }
   }
 
+  async function batchWithSitterUserProfiles(profiles = []) {
+    if (!Array.isArray(profiles) || !profiles.length) return []
+    const openids = [...new Set(profiles.map((p) => p && p.openid).filter(Boolean))]
+    if (!openids.length) return profiles
+
+    const userMap = {}
+    try {
+      const userRes = await db.collection('users').where({
+        openid: db.command.in(openids)
+      }).limit(Math.min(openids.length, 100)).get()
+      const users = userRes.data || []
+      users.forEach((user) => {
+        if (user && user.openid) {
+          userMap[user.openid] = user
+        }
+      })
+    } catch (err) {
+      for (const openid of openids) {
+        try {
+          const res = await db.collection('users').where({ openid }).limit(1).get()
+          if (res.data && res.data[0]) userMap[openid] = res.data[0]
+        } catch (_) {}
+      }
+    }
+
+    return profiles.map((profile) => {
+      const user = userMap[profile.openid] || {}
+      return {
+        ...profile,
+        nickname: user.nickname || profile.nickname || '',
+        avatarUrl: user.avatarUrl || profile.avatarUrl || ''
+      }
+    })
+  }
+
   return {
     getStaffProfileByOpenid,
     getCompletedStaffOrders,
@@ -127,6 +162,7 @@ module.exports = function createService({
     resolvePublicAddress,
     sitterDisplayName,
     toPublicSitter,
-    withSitterUserProfile
+    withSitterUserProfile,
+    batchWithSitterUserProfiles
   }
 }
