@@ -37,6 +37,7 @@ test('staff upcoming service reminder: triggered within 1 hour before service st
 
   const clientFn = loadCloudFunction('api', db, 'openid_client')
   const staffFn = loadCloudFunction('api', db, 'openid_staff')
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
 
   // 1. 创建订单 A（距离开始还剩 45 分钟，在 1 小时内）
   const in45Min = new Date(Date.now() + 45 * 60 * 1000)
@@ -85,14 +86,23 @@ test('staff upcoming service reminder: triggered within 1 hour before service st
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: orderIdB } })
   await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: orderIdB } })
 
-  // 3. 执行提醒检查 (checkUpcomingReminders)
-  const checkRes = await staffFn.main({
+  // 3. 普通员工不可触发全平台提醒
+  const deniedCheckRes = await staffFn.main({
+    module: 'staff',
+    action: 'checkUpcomingReminders'
+  })
+  assert.equal(deniedCheckRes.ok, false)
+  assert.equal(deniedCheckRes.message, '仅管理员可操作')
+  assert.equal(db.state.order_staff_messages.length, 0)
+
+  // 4. 管理员执行提醒检查 (checkUpcomingReminders)
+  const checkRes = await adminFn.main({
     module: 'staff',
     action: 'checkUpcomingReminders'
   })
   assert.equal(checkRes.ok, true)
   assert.equal(checkRes.data.remindedCount, 1, '只有在 1 小时内即将开始的订单 A 会被提醒')
-  assert.equal(checkRes.data.list[0].orderId, orderIdA)
+  assert.equal(checkRes.data.list, undefined)
 
   // 4. 验证订阅消息日志：接收人为宠托师，且跳转链接为服务执行页
   const logsRes = await db.collection('subscription_logs').where({ orderId: orderIdA }).get()
@@ -115,7 +125,7 @@ test('staff upcoming service reminder: triggered within 1 hour before service st
   assert.ok(orderDoc.staffUpcomingRemindedSessions.includes(1))
 
   // 7. 再次执行提醒检查，应幂等不重复提醒
-  const secondCheckRes = await staffFn.main({
+  const secondCheckRes = await adminFn.main({
     module: 'staff',
     action: 'checkUpcomingReminders'
   })

@@ -62,6 +62,7 @@ module.exports = function createHandler(context) {
     paginateList,
     parseDateTimeParts,
     publicTrainingQuiz,
+    requireAdmin,
     safeFileId,
     safeText,
     sanitizeWechatPayload,
@@ -721,11 +722,11 @@ module.exports = function createHandler(context) {
       return res.data.map((item) => ({ ...item, clientName: maskClientName(item.clientName) }))
     }
     if (action === 'checkUpcomingReminders') {
+      await requireAdmin(openid)
       const list = await sendUpcomingServiceRemindersToStaff()
-      return { remindedCount: list.length, list }
+      return { remindedCount: list.length }
     }
     if (action === 'listStaffOrders') {
-      await sendUpcomingServiceRemindersToStaff()
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
