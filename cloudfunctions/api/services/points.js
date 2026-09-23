@@ -11,6 +11,12 @@ module.exports = function createService({
     const baseDelta = Number(options.baseDelta !== undefined ? options.baseDelta : delta)
     const currentPoints = Number(user.points || 0)
     const currentTotal = Number(user.totalPoints || 0)
+    if (options.idempotencyKey) {
+      const existing = (await db.collection('point_logs').where({ openid, idempotencyKey: options.idempotencyKey }).limit(1).get()).data[0]
+      if (existing) {
+        return { delta: existing.delta, multiplier: existing.multiplier, balance: existing.balance, totalPoints: currentTotal }
+      }
+    }
     const currentLevels = await getMemberLevels()
     const currentLevelInfo = calcMemberLevel(currentTotal, currentLevels)
     const multiplier = options.applyMultiplier && baseDelta > 0 ? Math.max(Number(currentLevelInfo.pointMultiplier || 1), 1) : 1
@@ -20,7 +26,20 @@ module.exports = function createService({
     const levelInfo = calcMemberLevel(newTotal, currentLevels)
     const time = now()
     await db.collection('point_logs').add({
-      data: { userId: user._id, openid, delta: finalDelta, baseDelta, multiplier, balance: newPoints, reason: reason || '', sourceType: sourceType || '', sourceId: sourceId || '', createdAt: time }
+      data: {
+        userId: user._id,
+        openid,
+        delta: finalDelta,
+        baseDelta,
+        multiplier,
+        balance: newPoints,
+        reason: reason || '',
+        sourceType: sourceType || '',
+        sourceId: sourceId || '',
+        idempotencyKey: options.idempotencyKey || '',
+        lotteryRecordId: options.lotteryRecordId || '',
+        createdAt: time
+      }
     })
     await db.collection('users').doc(user._id).update({
       data: {

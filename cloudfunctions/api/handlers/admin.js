@@ -1662,6 +1662,7 @@ module.exports = function createHandler(context) {
           }
           if (!prizeName) continue
           prizes.push({
+            id: safeText(p.id || p._id || '').trim() || `prize_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             type,
             name: prizeName,
             text,

@@ -9,6 +9,7 @@ module.exports = function createHandler(context) {
     now,
     safeText,
     titleSnapshot,
+    toCstParts,
     getPetTitle
   } = context
   return async function lottery(openid, action, data) {
@@ -20,13 +21,33 @@ module.exports = function createHandler(context) {
 
       let remainingDrawCount = openid ? 1 : 0
       if (openid) {
-        const todayStart = cstTodayStart()
-        const todayRecord = await db.collection('lottery_records')
-          .where({ openid, activityId: activity._id })
-          .orderBy('createdAt', 'desc')
-          .limit(1)
-          .get()
-        if (todayRecord.data[0] && new Date(todayRecord.data[0].createdAt).getTime() >= todayStart.getTime()) {
+        const time = now()
+        const { dateKey } = toCstParts(time)
+        const recordId = `lottery_${activity._id}_${openid}_${dateKey}`
+
+        let hasRecord = false
+        try {
+          const rec = await db.collection('lottery_records').doc(recordId).get()
+          if (rec && rec.data && rec.data.status !== 'failed') {
+            hasRecord = true
+          }
+        } catch (e) {
+          hasRecord = false
+        }
+
+        if (!hasRecord) {
+          const todayStart = cstTodayStart()
+          const todayRecord = await db.collection('lottery_records')
+            .where({ openid, activityId: activity._id })
+            .orderBy('createdAt', 'desc')
+            .limit(1)
+            .get()
+          if (todayRecord.data[0] && new Date(todayRecord.data[0].createdAt).getTime() >= todayStart.getTime()) {
+            hasRecord = true
+          }
+        }
+
+        if (hasRecord) {
           remainingDrawCount = 0
         }
       }
@@ -48,23 +69,25 @@ module.exports = function createHandler(context) {
         .orderBy('createdAt', 'desc')
         .limit(pageSize)
         .get()
-      return (records.data || []).map((item) => {
-        const prizeType = item.prizeType || (item.couponId ? 'coupon' : (Number(item.points) > 0 ? 'points' : 'text'))
-        const prizeName = item.prizeName || '谢谢参与'
-        const prizeText = safeText(item.prizeText || (prizeType === 'text' && prizeName !== '谢谢参与' ? prizeName : '')).trim()
-        return {
-          _id: item._id,
-          activityId: item.activityId || '',
-          prizeType,
-          prizeName,
-          prizeText,
-          points: Number(item.points || 0),
-          couponId: item.couponId || '',
-          titleId: item.titleId || '',
-          rewardMailId: item.rewardMailId || '',
-          createdAt: item.createdAt || ''
-        }
-      })
+      return (records.data || [])
+        .filter((item) => item.status !== 'failed')
+        .map((item) => {
+          const prizeType = item.prizeType || (item.couponId ? 'coupon' : (Number(item.points) > 0 ? 'points' : 'text'))
+          const prizeName = item.prizeName || '谢谢参与'
+          const prizeText = safeText(item.prizeText || (prizeType === 'text' && prizeName !== '谢谢参与' ? prizeName : '')).trim()
+          return {
+            _id: item._id,
+            activityId: item.activityId || '',
+            prizeType,
+            prizeName,
+            prizeText,
+            points: Number(item.points || 0),
+            couponId: item.couponId || '',
+            titleId: item.titleId || '',
+            rewardMailId: item.rewardMailId || '',
+            createdAt: item.createdAt || ''
+          }
+        })
     }
     if (action === 'draw') {
       const user = await getUser(openid)
@@ -72,109 +95,236 @@ module.exports = function createHandler(context) {
       const activity = activityRes.data[0]
       if (!activity) throw new Error('当前没有进行中的抽奖活动')
 
-      // 防竞态：先写抽奖记录占位，再判断今日是否已抽
-      const todayStart = cstTodayStart()
-      const todayRecord = await db.collection('lottery_records')
-        .where({ openid, activityId: activity._id })
-        .orderBy('createdAt', 'desc').limit(1).get()
-      if (todayRecord.data[0] && new Date(todayRecord.data[0].createdAt).getTime() >= todayStart.getTime()) {
-        throw new Error('今天已参与过本次抽奖')
+      const time = now()
+      const { dateKey } = toCstParts(time)
+      const recordId = `lottery_${activity._id}_${openid}_${dateKey}`
+
+      // 1. 检查今日是否已抽过
+      let existingRecord = null
+      try {
+        const rec = await db.collection('lottery_records').doc(recordId).get()
+        existingRecord = rec && rec.data ? rec.data : null
+      } catch (e) {
+        existingRecord = null
       }
 
-      // 重新从数据库读取最新 activity 数据，防止库存基于旧内存
-      const freshActivity = (await db.collection('lottery_activities').doc(activity._id).get()).data
-      const prizes = (freshActivity.prizes || []).filter((p) => Number(p.stockLeft || 0) > 0)
-      if (!prizes.length) throw new Error('奖品已被领完')
-
-      // 按概率抽取，用 index 而非 templateId 匹配，避免同模板多奖品误扣
-      const rand = Math.random() * prizes.reduce((sum, p) => sum + Number(p.probability || 0), 0)
-      let cumulative = 0
-      let prizeIndex = prizes.length - 1
-      for (let i = 0; i < prizes.length; i++) {
-        cumulative += Number(prizes[i].probability || 0)
-        if (rand <= cumulative) { prizeIndex = i; break }
-      }
-      const prize = prizes[prizeIndex]
-
-      // 找到该奖品在原始 prizes 数组中的位置（按 name+type+templateId+titleId 精确匹配第一个库存>0的）
-      const isPrizeMatch = (cand) => cand.name === prize.name &&
-        (cand.type || '') === (prize.type || '') &&
-        (cand.templateId || '') === (prize.templateId || '') &&
-        (cand.titleId || '') === (prize.titleId || '') &&
-        Number(cand.stockLeft || 0) > 0
-
-      let originalIndex = -1
-      let matchCount = 0
-      for (let i = 0; i < freshActivity.prizes.length; i++) {
-        const p = freshActivity.prizes[i]
-        if (isPrizeMatch(p)) {
-          if (matchCount === prizeIndex - prizes.indexOf(prize)) { originalIndex = i; break }
-          matchCount++
+      if (existingRecord) {
+        if (existingRecord.status === 'completed') {
+          throw new Error('今天已参与过本次抽奖')
+        }
+      } else {
+        const todayStart = cstTodayStart()
+        const todayRecord = await db.collection('lottery_records')
+          .where({ openid, activityId: activity._id })
+          .orderBy('createdAt', 'desc').limit(1).get()
+        if (todayRecord.data[0] && new Date(todayRecord.data[0].createdAt).getTime() >= todayStart.getTime()) {
+          throw new Error('今天已参与过本次抽奖')
         }
       }
-      // 降级：找第一个匹配
-      if (originalIndex === -1) {
-        originalIndex = freshActivity.prizes.findIndex(isPrizeMatch)
+
+      let drawContext = null
+
+      if (!existingRecord) {
+        // 2. 事务并发控制：原子占位抽奖记录并扣减奖品库存
+        drawContext = await db.runTransaction(async (tx) => {
+          let txRecord = null
+          try {
+            const rec = await tx.collection('lottery_records').doc(recordId).get()
+            txRecord = rec && rec.data ? rec.data : null
+          } catch (e) {
+            txRecord = null
+          }
+          if (txRecord) {
+            throw new Error('今天已参与过本次抽奖')
+          }
+
+          const freshActivity = (await tx.collection('lottery_activities').doc(activity._id).get()).data
+          if (!freshActivity || freshActivity.enabled === false) {
+            throw new Error('当前没有进行中的抽奖活动')
+          }
+
+          const prizes = freshActivity.prizes || []
+          const availablePrizes = prizes
+            .map((p, index) => ({ ...p, _originalIndex: index }))
+            .filter((p) => Number(p.stockLeft || 0) > 0)
+
+          if (!availablePrizes.length) {
+            throw new Error('奖品已被领完')
+          }
+
+          // 按概率随机抽取
+          const totalProb = availablePrizes.reduce((sum, p) => sum + Number(p.probability || 0), 0)
+          const rand = Math.random() * (totalProb > 0 ? totalProb : availablePrizes.length)
+          let cumulative = 0
+          let selected = availablePrizes[availablePrizes.length - 1]
+          for (let i = 0; i < availablePrizes.length; i++) {
+            cumulative += Number(availablePrizes[i].probability || 0)
+            if (rand <= cumulative) {
+              selected = availablePrizes[i]
+              break
+            }
+          }
+
+          // 定位库存扣减位置（优先按稳定奖品 id 匹配，fallback 按原始数组索引）
+          let targetIndex = -1
+          const prizeStableId = selected.id || selected._id
+          if (prizeStableId) {
+            targetIndex = prizes.findIndex((p) => (p.id || p._id) === prizeStableId && Number(p.stockLeft || 0) > 0)
+          }
+          if (targetIndex === -1) {
+            targetIndex = selected._originalIndex
+          }
+
+          const currentStock = Number(prizes[targetIndex]?.stockLeft || 0)
+          if (currentStock <= 0) {
+            throw new Error('奖品已被领完')
+          }
+
+          const updatedPrizes = prizes.map((p, i) =>
+            i === targetIndex ? { ...p, stockLeft: Math.max(currentStock - 1, 0) } : p
+          )
+          await tx.collection('lottery_activities').doc(activity._id).update({
+            data: { prizes: updatedPrizes, updatedAt: time }
+          })
+
+          const prizeType = selected.type || (selected.templateId ? 'coupon' : (selected.titleId ? 'pet_title' : (Number(selected.points) > 0 ? 'points' : 'text')))
+          let tentativePrizeName = selected.name || ''
+          if (!tentativePrizeName) {
+            if (prizeType === 'points') tentativePrizeName = `${Math.max(Math.round(Number(selected.points || 0)), 0)} 积分`
+            else if (prizeType === 'text') tentativePrizeName = selected.text || '谢谢参与'
+            else tentativePrizeName = '谢谢参与'
+          }
+          const prizeText = safeText(selected.text || (prizeType === 'text' ? selected.name : '')).trim()
+
+          const recordData = {
+            _id: recordId,
+            userId: user._id,
+            openid,
+            activityId: activity._id,
+            dateKey,
+            status: 'pending',
+            prizeType,
+            prizeTemplateId: selected.templateId || '',
+            prizeTitleId: selected.titleId || '',
+            prizeName: tentativePrizeName,
+            prizeText,
+            points: 0,
+            couponId: '',
+            titleId: selected.titleId || '',
+            rewardMailId: '',
+            prizeSnapshot: {
+              ...selected,
+              _originalIndex: undefined
+            },
+            createdAt: time,
+            updatedAt: time
+          }
+
+          await tx.collection('lottery_records').doc(recordId).set({
+            data: recordData
+          })
+
+          return {
+            recordId,
+            selectedPrize: selected,
+            prizeType,
+            tentativePrizeName,
+            prizeText
+          }
+        })
+      } else {
+        // 从已占位的 pending 记录恢复
+        const snapshot = existingRecord.prizeSnapshot || {}
+        const prizeType = existingRecord.prizeType || snapshot.type || (snapshot.templateId ? 'coupon' : (snapshot.titleId ? 'pet_title' : (Number(snapshot.points) > 0 ? 'points' : 'text')))
+        drawContext = {
+          recordId,
+          selectedPrize: snapshot,
+          prizeType,
+          tentativePrizeName: existingRecord.prizeName || snapshot.name || '',
+          prizeText: existingRecord.prizeText || snapshot.text || ''
+        }
       }
 
-      const prizeType = prize.type || (prize.templateId ? 'coupon' : (prize.titleId ? 'pet_title' : (Number(prize.points) > 0 ? 'points' : 'text')))
-      const time = now()
+      const { selectedPrize, prizeType, tentativePrizeName, prizeText } = drawContext
       let couponId = ''
       let templateSnapshot = null
       let pointsAwarded = 0
       let rewardMailId = ''
       let titleId = ''
       let petTitleSnapshot = null
-      let finalPrizeName = prize.name || (prizeType === 'points' ? `${Math.max(Math.round(Number(prize.points || 0)), 0)} 积分` : (prize.text || '谢谢参与'))
+      let finalPrizeName = tentativePrizeName
 
-      if (prizeType === 'coupon' && prize.templateId) {
-        const template = (await db.collection('coupon_templates').doc(prize.templateId).get()).data
-        if (template && template.enabled !== false) {
-          templateSnapshot = normalizeCouponSnapshot(template)
-          const validDays = Number(template.validDays || 30)
-          const validTo = template.validType === 'fixed_range' && template.validToFixed
-            ? new Date(template.validToFixed)
-            : new Date(time.getTime() + validDays * 86400000)
-          const validFrom = template.validType === 'fixed_range' && template.validFromFixed
-            ? new Date(template.validFromFixed)
-            : time
-          const coupon = await db.collection('user_coupons').add({
-            data: {
-              templateId: prize.templateId,
-              templateSnapshot,
-              userId: user._id,
-              openid,
-              status: 'available',
-              validFrom,
-              validTo,
-              lockedOrderId: '',
-              lockedAt: null,
-              usedOrderId: '',
-              usedAt: null,
-              issuedAt: time,
-              createdAt: time,
-              updatedAt: time
-            }
-          })
-          couponId = coupon._id
-          await db.collection('coupon_templates').doc(prize.templateId).update({
-            data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time }
-          })
+      // 3. 履约发奖（添加幂等 key）
+      if (prizeType === 'coupon' && selectedPrize.templateId) {
+        const existingCoupon = (await db.collection('user_coupons').where({
+          openid,
+          lotteryRecordId: recordId
+        }).limit(1).get()).data[0]
+
+        if (existingCoupon) {
+          couponId = existingCoupon._id
+          templateSnapshot = existingCoupon.templateSnapshot || null
+        } else {
+          const template = (await db.collection('coupon_templates').doc(selectedPrize.templateId).get()).data
+          if (template && template.enabled !== false) {
+            templateSnapshot = normalizeCouponSnapshot(template)
+            const validDays = Number(template.validDays || 30)
+            const validTo = template.validType === 'fixed_range' && template.validToFixed
+              ? new Date(template.validToFixed)
+              : new Date(time.getTime() + validDays * 86400000)
+            const validFrom = template.validType === 'fixed_range' && template.validFromFixed
+              ? new Date(template.validFromFixed)
+              : time
+            const coupon = await db.collection('user_coupons').add({
+              data: {
+                templateId: selectedPrize.templateId,
+                templateSnapshot,
+                userId: user._id,
+                openid,
+                status: 'available',
+                validFrom,
+                validTo,
+                lockedOrderId: '',
+                lockedAt: null,
+                usedOrderId: '',
+                usedAt: null,
+                sourceType: 'lottery',
+                sourceId: recordId,
+                lotteryRecordId: recordId,
+                idempotencyKey: recordId,
+                issuedAt: time,
+                createdAt: time,
+                updatedAt: time
+              }
+            })
+            couponId = coupon._id
+            await db.collection('coupon_templates').doc(selectedPrize.templateId).update({
+              data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time }
+            })
+          }
         }
       } else if (prizeType === 'points') {
-        pointsAwarded = Math.max(Math.round(Number(prize.points || 0)), 0)
+        pointsAwarded = Math.max(Math.round(Number(selectedPrize.points || 0)), 0)
         if (pointsAwarded > 0) {
-          await addPoints(
+          const existingPointLog = (await db.collection('point_logs').where({
             openid,
-            user._id,
-            pointsAwarded,
-            'lottery_reward',
-            activity._id,
-            `抽奖活动【${activity.name}】获得 ${pointsAwarded} 积分`
-          )
+            idempotencyKey: recordId
+          }).limit(1).get()).data[0]
+
+          if (!existingPointLog) {
+            await addPoints(
+              openid,
+              user._id,
+              pointsAwarded,
+              'lottery_reward',
+              activity._id,
+              `抽奖活动【${activity.name}】获得 ${pointsAwarded} 积分`,
+              { idempotencyKey: recordId, lotteryRecordId: recordId }
+            )
+          }
         }
       } else if (prizeType === 'pet_title') {
-        titleId = safeText(prize.titleId).trim()
+        titleId = safeText(selectedPrize.titleId).trim()
         let petTitle = null
         try {
           petTitle = await getPetTitle(titleId, { includeDeleted: true })
@@ -182,67 +332,83 @@ module.exports = function createHandler(context) {
           petTitle = null
         }
         if (petTitle && !petTitle.deletedAt && petTitle.enabled !== false) {
-          petTitleSnapshot = prize.titleSnapshot || titleSnapshot(petTitle)
-          const mail = await db.collection('reward_mails').add({
-            data: {
-              userId: user._id,
-              openid,
-              title: `抽奖获得宠物头衔【${petTitle.name}】`,
-              content: `你在抽奖活动【${activity.name}】中获得宠物头衔【${petTitle.name}】，请领取后为宠物佩戴。`,
-              targetType: 'lottery',
-              targetOpenids: [openid],
-              targetRole: '',
-              targetLevelIds: [],
-              targetLevelNamesSnapshot: [],
-              reward: { type: 'pet_title', titleId, titleSnapshot: petTitleSnapshot, duplicatePoints: petTitleSnapshot.duplicatePoints },
-              sentByAdminUserId: '',
-              sentByAdminOpenid: '',
-              readAt: null,
-              claimedAt: null,
-              rewardClaimResult: {},
-              createdAt: time,
-              updatedAt: time
-            }
-          })
-          rewardMailId = mail._id
+          petTitleSnapshot = selectedPrize.titleSnapshot || titleSnapshot(petTitle)
+          const existingMail = (await db.collection('reward_mails').where({
+            openid,
+            lotteryRecordId: recordId
+          }).limit(1).get()).data[0]
+
+          if (existingMail) {
+            rewardMailId = existingMail._id
+          } else {
+            const mail = await db.collection('reward_mails').add({
+              data: {
+                userId: user._id,
+                openid,
+                title: `抽奖获得宠物头衔【${petTitle.name}】`,
+                content: `你在抽奖活动【${activity.name}】中获得宠物头衔【${petTitle.name}】，请领取后为宠物佩戴。`,
+                targetType: 'lottery',
+                targetOpenids: [openid],
+                targetRole: '',
+                targetLevelIds: [],
+                targetLevelNamesSnapshot: [],
+                reward: { type: 'pet_title', titleId, titleSnapshot: petTitleSnapshot, duplicatePoints: petTitleSnapshot.duplicatePoints },
+                sourceType: 'lottery',
+                sourceId: recordId,
+                lotteryRecordId: recordId,
+                idempotencyKey: recordId,
+                sentByAdminUserId: '',
+                sentByAdminOpenid: '',
+                readAt: null,
+                claimedAt: null,
+                rewardClaimResult: {},
+                createdAt: time,
+                updatedAt: time
+              }
+            })
+            rewardMailId = mail._id
+          }
         } else {
-          // 兜底：若头衔已被停用或删除，折算补偿20积分
           pointsAwarded = 20
           finalPrizeName = `${finalPrizeName}（已折算20积分）`
-          await addPoints(openid, user._id, pointsAwarded, 'lottery_reward', activity._id, `抽奖活动【${activity.name}】头衔失效补偿 20 积分`)
+          const compKey = `${recordId}_title_comp`
+          const existingCompLog = (await db.collection('point_logs').where({
+            openid,
+            idempotencyKey: compKey
+          }).limit(1).get()).data[0]
+
+          if (!existingCompLog) {
+            await addPoints(
+              openid,
+              user._id,
+              pointsAwarded,
+              'lottery_reward',
+              activity._id,
+              `抽奖活动【${activity.name}】头衔失效补偿 20 积分`,
+              { idempotencyKey: compKey, lotteryRecordId: recordId }
+            )
+          }
         }
       }
 
-      // 用原子操作更新指定奖品库存，避免竞态超发
-      if (originalIndex !== -1) {
-        const updatedPrizes = freshActivity.prizes.map((p, i) =>
-          i === originalIndex ? { ...p, stockLeft: Math.max(Number(p.stockLeft || 0) - 1, 0) } : p
-        )
-        await db.collection('lottery_activities').doc(activity._id).update({
-          data: { prizes: updatedPrizes, updatedAt: time }
-        })
+      if (!finalPrizeName) {
+        finalPrizeName = selectedPrize.name || (prizeType === 'points' ? `${pointsAwarded} 积分` : (selectedPrize.text || '谢谢参与'))
       }
 
-      if (!finalPrizeName) {
-        finalPrizeName = prize.name || (prizeType === 'points' ? `${pointsAwarded} 积分` : (prize.text || '谢谢参与'))
-      }
-      const prizeText = safeText(prize.text || (prizeType === 'text' ? prize.name : '')).trim()
-      await db.collection('lottery_records').add({
+      // 4. 履约完成，更新抽奖记录为 completed
+      await db.collection('lottery_records').doc(recordId).update({
         data: {
-          userId: user._id,
-          openid,
-          activityId: activity._id,
-          prizeType,
-          prizeTemplateId: prize.templateId || '',
+          status: 'completed',
           prizeName: finalPrizeName,
           prizeText,
           points: pointsAwarded,
           couponId,
           titleId,
           rewardMailId,
-          createdAt: time
+          updatedAt: now()
         }
       })
+
       return {
         prizeName: finalPrizeName,
         prizeType,
@@ -258,3 +424,4 @@ module.exports = function createHandler(context) {
     throw new Error('未知 lottery 操作')
   }
 }
+
