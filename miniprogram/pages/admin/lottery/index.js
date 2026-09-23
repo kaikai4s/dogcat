@@ -1,5 +1,5 @@
 const { callFunction, showError } = require('../../../utils/cloud')
-const { PET_BLESSINGS, getFormattedBlessingList, getRandomBlessing, resolvePetBlessing } = require('./petBlessings')
+const { PET_BLESSINGS, getFormattedBlessingList, getRandomBlessing, resolvePetBlessing } = require('../../../utils/petBlessings')
 
 function emptyActivity() {
   return { _id: '', name: '', description: '', enabled: true, prizes: [] }

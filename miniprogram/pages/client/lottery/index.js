@@ -1,6 +1,6 @@
 const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
 const { formatDateTime } = require('../../../utils/format')
-const { resolvePetBlessing } = require('../../admin/lottery/petBlessings')
+const { resolvePetBlessing } = require('../../../utils/petBlessings')
 
 function decorateRecords(records = []) {
   return records.map((item) => {
