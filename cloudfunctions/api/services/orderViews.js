@@ -5,6 +5,7 @@ module.exports = function createService({
   getActiveServiceSession,
   getMemberLevels,
   readScopedDocuments,
+  updateByQuery,
   getNextPendingServiceSession,
   mask,
   normalizeServiceSessions,
@@ -127,18 +128,15 @@ module.exports = function createService({
 
   async function syncClientOrderPhone(openid, phone) {
     const cleanPhone = safeText(phone).trim()
-    const orders = await readScopedDocuments('orders', { clientOpenid: openid })
     const time = now()
-    await Promise.all(orders.map((order) => db.collection('orders').doc(order._id).update({
-      data: {
-        contactPhone: cleanPhone,
-        clientSnapshot: {
-          ...(order.clientSnapshot || {}),
-          phoneMasked: mask(cleanPhone)
-        },
-        updatedAt: time
-      }
-    })))
+    await updateByQuery('orders', { clientOpenid: openid }, (order) => ({
+      contactPhone: cleanPhone,
+      clientSnapshot: {
+        ...(order.clientSnapshot || {}),
+        phoneMasked: mask(cleanPhone)
+      },
+      updatedAt: time
+    }))
   }
 
   async function getAdminClientContact(order) {

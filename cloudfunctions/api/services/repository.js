@@ -27,23 +27,19 @@ module.exports = function createService({
     }
     return rows
   }
-  async function readAllByQuery(collectionName, where = {}, timeField = '', direction = 'asc') {
-    const rows = []
-    let cursor = ''
-    while (true) {
-      const condition = { ...where }
-      if (cursor) condition._id = db.command.gt(cursor)
-      const page = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
-      if (!page.length) break
-      rows.push(...page)
-      cursor = page[page.length - 1]._id
-      if (page.length < 100) break
+  // Kept as a compatibility alias for callers using the older name.
+  const readAllByQuery = readScopedDocuments
+
+  async function runWithConcurrency(items, worker, concurrency = 10) {
+    let nextIndex = 0
+    async function consume() {
+      while (nextIndex < items.length) {
+        const index = nextIndex++
+        await worker(items[index])
+      }
     }
-    if (timeField) {
-      const sign = direction === 'desc' ? -1 : 1
-      rows.sort((a, b) => sign * (toTimeValue(a[timeField]) - toTimeValue(b[timeField])) || String(a._id).localeCompare(String(b._id)))
-    }
-    return rows
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, consume)
+    await Promise.all(workers)
   }
 
   function incUpdateValue(currentValue, delta) {
@@ -78,7 +74,7 @@ module.exports = function createService({
     let total = 0
     for await (const page of scanDocumentPages(collectionName, where)) {
       const list = filter ? page.filter(filter) : page
-      await Promise.all(list.map((item) => db.collection(collectionName).doc(item._id).remove()))
+      await runWithConcurrency(list, (item) => db.collection(collectionName).doc(item._id).remove())
       total += list.length
     }
     return total
@@ -92,7 +88,7 @@ module.exports = function createService({
   async function updateByQuery(collectionName, where, buildUpdate) {
     let total = 0
     for await (const page of scanDocumentPages(collectionName, where)) {
-      await Promise.all(page.map((item) => db.collection(collectionName).doc(item._id).update({ data: typeof buildUpdate === 'function' ? buildUpdate(item) : buildUpdate })))
+      await runWithConcurrency(page, (item) => db.collection(collectionName).doc(item._id).update({ data: typeof buildUpdate === 'function' ? buildUpdate(item) : buildUpdate }))
       total += page.length
     }
     return total
