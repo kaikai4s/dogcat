@@ -36,19 +36,25 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'deleteAddress') {
-      const existing = await db.collection('user_addresses').doc(data.id).get()
+      const addressId = safeText(data && data.id).trim()
+      if (!addressId) throw new Error('缺少地址ID')
+      const existing = await db.collection('user_addresses').doc(addressId).get().catch(() => ({ data: null }))
+      if (!existing || !existing.data) throw new Error('地址不存在')
       if (existing.data.openid !== openid) throw new Error('无权操作地址')
-      await db.collection('user_addresses').doc(data.id).remove()
-      return { id: data.id }
+      await db.collection('user_addresses').doc(addressId).remove()
+      return { id: addressId }
     }
 
     if (action === 'setDefaultAddress') {
-      const existing = await db.collection('user_addresses').doc(data.id).get()
+      const addressId = safeText(data && data.id).trim()
+      if (!addressId) throw new Error('缺少地址ID')
+      const existing = await db.collection('user_addresses').doc(addressId).get().catch(() => ({ data: null }))
+      if (!existing || !existing.data) throw new Error('地址不存在')
       if (existing.data.openid !== openid) throw new Error('无权操作地址')
       const time = now()
       const addresses = await readUserAddresses(openid)
-      await Promise.all(addresses.map((item) => db.collection('user_addresses').doc(item._id).update({ data: { isDefault: item._id === data.id, updatedAt: time } })))
-      return { id: data.id }
+      await Promise.all(addresses.map((item) => db.collection('user_addresses').doc(item._id).update({ data: { isDefault: item._id === addressId, updatedAt: time } })))
+      return { id: addressId }
     }
 
     throw new Error('未知 client 操作')
