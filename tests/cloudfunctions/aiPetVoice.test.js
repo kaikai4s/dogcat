@@ -7,6 +7,7 @@ test('ai generatePetVoice: successfully generates voice using hy3 model and clea
     pets: [
       {
         _id: 'pet_doudou',
+        openid: 'openid_client',
         name: '豆豆',
         species: 'dog',
         breed: '柯基',
@@ -76,6 +77,7 @@ test('ai generatePetVoice: gracefully falls back to preset when AI is unavailabl
     pets: [
       {
         _id: 'pet_huahua',
+        openid: 'openid_client',
         name: '花花',
         species: 'cat',
         breed: '英短'

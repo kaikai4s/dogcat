@@ -2,6 +2,7 @@ module.exports = function createHandler(context) {
   const {
     cloud,
     db,
+    getOrderForAccess,
     nowText,
     safeText
   } = context
@@ -12,11 +13,10 @@ module.exports = function createHandler(context) {
       const petId = safeText(data.petId).trim()
       let petInfo = ''
       if (petId) {
-        const petRes = await db.collection('pets').doc(petId).get()
-        if (petRes.data) {
-          const p = petRes.data
-          petInfo = `【宠物资料】名称：${p.name}，种类：${p.species === 'dog' ? '狗' : p.species === 'cat' ? '猫' : '其他'}，品种：${p.breed || '未知'}，体重：${p.weight || '未填'}kg。`
-        }
+        const petRes = await db.collection('pets').doc(petId).get().catch(() => null)
+        const p = petRes && petRes.data ? petRes.data : null
+        if (!p || p.openid !== openid) throw new Error('无权访问')
+        petInfo = `【宠物资料】名称：${p.name}，种类：${p.species === 'dog' ? '狗' : p.species === 'cat' ? '猫' : '其他'}，品种：${p.breed || '未知'}，体重：${p.weight || '未填'}kg。`
       }
 
       let answer = ''
@@ -49,8 +49,7 @@ module.exports = function createHandler(context) {
     if (action === 'aiGenerateReport') {
       const orderId = safeText(data.orderId).trim()
       if (!orderId) throw new Error('订单 ID 不能为空')
-      const orderRes = await db.collection('orders').doc(orderId).get()
-      const order = orderRes.data
+      const { order } = await getOrderForAccess(openid, orderId)
       if (!order) throw new Error('订单不存在')
 
       const checkinsRes = await db.collection('checkin_logs').where({ orderId }).get()
@@ -75,14 +74,10 @@ module.exports = function createHandler(context) {
       const petData = data.pet && typeof data.pet === 'object' ? data.pet : {}
       let p = { ...petData }
       if (petId) {
-        try {
-          const petRes = await db.collection('pets').doc(petId).get()
-          if (petRes && petRes.data) {
-            p = { ...petRes.data, ...p }
-          }
-        } catch (e) {
-          // ignore query error
-        }
+        const petRes = await db.collection('pets').doc(petId).get().catch(() => null)
+        const existingPet = petRes && petRes.data ? petRes.data : null
+        if (!existingPet || existingPet.openid !== openid) throw new Error('无权访问')
+        p = { ...existingPet, ...p }
       }
 
       const name = safeText(p.name).trim() || '宝贝'
