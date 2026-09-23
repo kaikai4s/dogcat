@@ -136,7 +136,7 @@ module.exports = function createHandler(context) {
         const cart = await loadMallCart(openid)
         if (cart) await saveMallCart(openid, (cart.items || []).filter((item) => !snapshotItems.some((orderItem) => isSameMallCartItem(item, orderItem))))
       }
-      return { _id: created._id, ...order }
+      return { ...order, ...created }
     }
     if (action === 'listMyOrders') {
       await getUser(openid)

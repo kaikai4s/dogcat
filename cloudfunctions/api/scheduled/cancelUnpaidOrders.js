@@ -1,7 +1,8 @@
 module.exports = function createHelpers({
   db, ORDER_STATUS, now, getOrderPaymentDeadline, getSystemSettings,
   getWechatPayConfig, wechatPayRequest, validatePaymentCallbackPayload,
-  markOrderPaid, sanitizeWechatPayload, couponDisplayStatus
+  markOrderPaid, sanitizeWechatPayload, couponDisplayStatus,
+  normalizeMallProduct, getSkuById
 }) {
   async function reconcilePayment(order, payment, requireExpired = true) {
     if (payment.channel === 'mock') {
@@ -70,9 +71,50 @@ module.exports = function createHelpers({
         ? (await transaction.collection('user_coupons').doc(current.couponId).get()).data
         : null
       const reason = options.reason || '超过30分钟未支付，系统自动取消'
-      await transaction.collection(collectionName).doc(order._id).update({ data: {
+      if (current.stockReserved === true && Array.isArray(current.items) && current.items.length) {
+        const productRestores = new Map()
+        for (const item of current.items) {
+          const quantity = Number(item.quantity)
+          if (!Number.isSafeInteger(quantity) || quantity <= 0) continue
+          let product = productRestores.get(item.productId)
+          if (!product) {
+            const rawProduct = (await transaction.collection('mall_products').doc(item.productId).get()).data
+            if (rawProduct) product = typeof normalizeMallProduct === 'function' ? normalizeMallProduct(rawProduct) : rawProduct
+          }
+          if (product) {
+            const sku = typeof getSkuById === 'function' ? getSkuById(product, item.skuId) : (product.skus && product.skus.find(s => s.skuId === item.skuId))
+            if (sku) {
+              const skus = product.skus.map(row => row.skuId === sku.skuId ? { ...row, stock: Number(row.stock) + quantity } : row)
+              const changed = skus.find(row => row.skuId === sku.skuId)
+              if (typeof normalizeMallProduct === 'function') {
+                product = normalizeMallProduct({
+                  ...product,
+                  ...(product.specMode === 'single' ? { stock: changed.stock } : {}),
+                  skus
+                })
+              } else {
+                product.skus = skus
+                if (product.specMode === 'single') product.stock = changed.stock
+              }
+              productRestores.set(item.productId, product)
+            }
+          }
+        }
+        for (const [id, product] of productRestores) {
+          const { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText } = product
+          await transaction.collection('mall_products').doc(id).update({
+            data: { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText, updatedAt: time }
+          })
+        }
+      }
+      const updateData = {
         status: 'cancelled', paymentStatus: 'closed', cancelReason: reason, cancelledAt: time, updatedAt: time
-      } })
+      }
+      if (current.stockReserved === true) {
+        updateData.stockReserved = false
+        updateData.stockReleasedAt = time
+      }
+      await transaction.collection(collectionName).doc(order._id).update({ data: updateData })
       if (coupon && coupon.status === 'locked' && coupon.lockedOrderId === order._id) {
         await transaction.collection('user_coupons').doc(current.couponId).update({ data: {
           status: couponDisplayStatus({ ...coupon, status: 'available' }, time),
