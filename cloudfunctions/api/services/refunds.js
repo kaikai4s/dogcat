@@ -71,7 +71,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
   }
 
   async function dispatchOrderRefund(refund) {
-    if (refund.status === 'success' || refund.channel === 'mock') return refund
+    if (refund.status === 'success' || refund.status === 'failed' || refund.channel === 'mock') return refund
     const settings = await getSystemSettings({ includeSecrets: true })
     if (settings.payment.mode !== 'wechat' || settings.payment.refundEnabled === false) throw new Error('微信退款功能尚未启用')
     const config = getWechatPayConfig(settings)
@@ -91,27 +91,65 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
     const resolved = await getPayableOrder(refund.orderId)
     return db.runTransaction(async tx => {
       const latest = (await tx.collection('refunds').doc(refund._id).get()).data
-      if (latest.status === 'success') return latest
+      if (latest.status === 'success' || latest.status === 'failed') return latest
       const order = (await tx.collection(resolved.collectionName).doc(refund.orderId).get()).data
       const rows = await totals(tx, refund.orderId)
-      const status = response.status === 'SUCCESS' ? 'success' : 'processing'
+      let status = 'processing'
+      let failReason = ''
+      if (response.status === 'SUCCESS') {
+        status = 'success'
+      } else if (response.status === 'CLOSED') {
+        status = 'failed'
+        failReason = '微信退款已关闭'
+      } else if (response.status === 'ABNORMAL') {
+        status = 'failed'
+        failReason = '微信退款异常'
+      }
       const time = now()
       const patch = { status, wxRefundId: response.refund_id || '', gatewayStatus: response.status || '',
-        rawRequest: sanitizeWechatPayload(body), rawResponse: sanitizeWechatPayload(response), lastError: '', updatedAt: time,
-        ...(status === 'success' ? { succeededAt: time } : {}) }
+        rawRequest: sanitizeWechatPayload(body), rawResponse: sanitizeWechatPayload(response),
+        lastError: status === 'failed' ? (failReason || response.status || '') : '',
+        failReason: status === 'failed' ? (failReason || response.status || '') : '',
+        updatedAt: time,
+        ...(status === 'success' ? { succeededAt: time } : {}),
+        ...(status === 'failed' ? { failedAt: time } : {}) }
       await tx.collection('refunds').doc(refund._id).update({ data: patch })
       const successful = rows.reduce((sum, row) => sum + ((row._id === refund._id ? status : row.status) === 'success' ? amountYuanToFen(row.refundAmount) : 0), 0)
-      const reserved = rows.filter(row => ['success', 'processing'].includes(row.status)).reduce((sum, row) => sum + amountYuanToFen(row.refundAmount), 0)
-      const full = successful >= amountYuanToFen(order.payAmount)
+      const reserved = rows.reduce((sum, row) => sum + (['success', 'processing'].includes(row._id === refund._id ? status : row.status) ? amountYuanToFen(row.refundAmount) : 0), 0)
+      const hasProcessing = rows.some(row => (row._id === refund._id ? status : row.status) === 'processing')
+      const total = amountYuanToFen(order.payAmount)
+      const full = successful >= total
+      let paymentStatus = order.paymentStatus
+      let refundStatus = order.refundStatus
+      if (hasProcessing) {
+        paymentStatus = 'refunding'
+        refundStatus = 'processing'
+      } else if (full) {
+        paymentStatus = 'refunded'
+        refundStatus = 'full_refunded'
+      } else if (successful > 0) {
+        paymentStatus = 'paid'
+        refundStatus = 'partially_refunded'
+      } else {
+        paymentStatus = 'paid'
+        refundStatus = 'failed'
+      }
       await tx.collection(resolved.collectionName).doc(order._id).update({ data: {
         refundAmount: reserved / 100, refundedAmount: successful / 100,
-        paymentStatus: full ? 'refunded' : 'refunding', refundStatus: full ? 'full_refunded' : successful === reserved ? 'partially_refunded' : 'processing',
+        paymentStatus, refundStatus,
         ...(full && order.status !== 'completed' ? { status: 'refunded' } : {}), updatedAt: time
       } })
-      if (status === 'success') await tx.collection('finance_logs').doc(refund._id).set({ data: {
-        action: 'refund_success', targetType: 'refund', targetId: refund._id, orderId: refund.orderId,
-        amountDelta: -Number(refund.refundAmount), detail: { refundNo: refund.refundNo }, createdAt: time
-      } })
+      if (status === 'success') {
+        await tx.collection('finance_logs').doc(refund._id).set({ data: {
+          action: 'refund_success', targetType: 'refund', targetId: refund._id, orderId: refund.orderId,
+          amountDelta: -Number(refund.refundAmount), detail: { refundNo: refund.refundNo }, createdAt: time
+        } })
+      } else if (status === 'failed') {
+        await tx.collection('payment_events').doc(`${refund._id}_failed`).set({ data: {
+          eventType: 'refund_failed', orderId: refund.orderId, refundNo: refund.refundNo, status: 'failed',
+          detail: { gatewayStatus: response.status, failReason, refundAmount: refund.refundAmount }, createdAt: time
+        } })
+      }
       return { ...latest, ...patch }
     })
   }
