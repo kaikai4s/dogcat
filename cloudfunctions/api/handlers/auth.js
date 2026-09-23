@@ -73,11 +73,10 @@ module.exports = function createHandler(context) {
           phone = safeText(phoneInfo.phoneNumber || phoneInfo.purePhoneNumber || phoneInfo.phone_number || phoneInfo.pure_phone_number).trim()
         } catch (error) {
           const message = error.message || error.errMsg || JSON.stringify(error)
-          if (message.includes('40029') || message.includes('mock') || message.includes('invalid code') || message.includes('47001')) {
-            phone = '13800138000'
-          } else {
-            throw new Error(`调用微信手机号接口失败：${message}`)
+          if (message.includes('40029') || message.includes('invalid code')) {
+            throw new Error('手机号授权已过期或失效，请重新授权')
           }
+          throw new Error(`调用微信手机号接口失败：${message}`)
         }
       }
 
