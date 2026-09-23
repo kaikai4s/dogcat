@@ -1522,6 +1522,39 @@ test('client review updates sitter rating stats and blocks duplicates', async ()
   assert.equal(duplicate.message, '该订单已评价')
 })
 
+test('popular sitter review stats eliminates 100-review cutoff and skew', async () => {
+  const reviews = []
+  // 100 reviews of 5-star, 50 reviews of 4-star => 150 reviews total, avg = 700 / 150 = 4.666... => 4.7
+  for (let i = 1; i <= 150; i++) {
+    const pad = String(i).padStart(3, '0')
+    reviews.push({
+      _id: `rev_${pad}`,
+      staffProfileId: 'sp_popular',
+      rating: i <= 100 ? 5 : 4,
+      status: 'visible',
+      content: `第${i}条评价`,
+      clientName: `客户_${pad}`,
+      createdAt: `2026-08-01T00:00:00.${pad}Z`
+    })
+  }
+
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
+    staff_profiles: [{ _id: 'sp_popular', openid: 'openid_staff', auditStatus: 'approved', realName: '金牌托师' }],
+    service_reviews: reviews,
+    sitter_favorites: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+
+  const detailRes = await fn.main({ module: 'staff', action: 'getPublicSitterDetail', data: { staffProfileId: 'sp_popular' } })
+  assert.equal(detailRes.ok, true)
+  assert.equal(detailRes.data.reviewCount, 150)
+  assert.equal(detailRes.data.ratingAverage, 4.7)
+  assert.equal(detailRes.data.recentReviews.length, 5)
+  assert.equal(detailRes.data.recentReviews[0]._id, 'rev_150')
+  assert.equal(detailRes.data.recentReviews[0].content, '第150条评价')
+})
+
 test('client sitter list and detail display current nickname first', async () => {
   const db = createCollectionStore({
     users: [
