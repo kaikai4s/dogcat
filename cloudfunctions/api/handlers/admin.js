@@ -193,6 +193,52 @@ module.exports = function createHandler(context) {
     return evidences.sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
   }
 
+  async function searchUsersByPhoneSafely(phoneKeyword) {
+    const raw = safeText(phoneKeyword).trim()
+    if (!raw) return []
+    if (db && typeof db.RegExp === 'function') {
+      try {
+        const res = await db.collection('users')
+          .where({ phone: db.RegExp({ regexp: raw, options: 'i' }) })
+          .limit(50)
+          .get()
+        if (res.data && res.data.length > 0) return res.data
+      } catch (e) {
+        // 降级保护
+      }
+    }
+    try {
+      const exactRes = await db.collection('users').where({ phone: raw }).limit(50).get()
+      if (exactRes.data && exactRes.data.length > 0) return exactRes.data
+    } catch (e) {
+      // 降级保护
+    }
+    return []
+  }
+
+  async function searchStaffProfilesByPhoneSafely(phoneKeyword) {
+    const raw = safeText(phoneKeyword).trim()
+    if (!raw) return []
+    if (db && typeof db.RegExp === 'function') {
+      try {
+        const res = await db.collection('staff_profiles')
+          .where({ phone: db.RegExp({ regexp: raw, options: 'i' }) })
+          .limit(50)
+          .get()
+        if (res.data && res.data.length > 0) return res.data
+      } catch (e) {
+        // 降级保护
+      }
+    }
+    try {
+      const exactRes = await db.collection('staff_profiles').where({ phone: raw }).limit(50).get()
+      if (exactRes.data && exactRes.data.length > 0) return exactRes.data
+    } catch (e) {
+      // 降级保护
+    }
+    return []
+  }
+
   return async function admin(openid, action, data) {
     const admin = await requireAdmin(openid)
     if (['getMyAdminAccess', 'enableAdminPermissions', 'listAdminGroups', 'saveAdminGroup', 'setAdminMembership', 'getAdminMembership', 'listAdminMembers', 'listOperationActors', 'listOperationLogs'].includes(action)) {
@@ -659,10 +705,10 @@ module.exports = function createHandler(context) {
       const orderKeyword = safeText(data.orderKeyword || data.keyword).trim().toLowerCase()
       const clientPhone = safeText(data.clientPhone || data.phone).trim()
       const staffPhone = safeText(data.staffPhone).trim()
-      const users = (clientPhone || staffPhone) ? await readAll('users') : []
       let clientOpenids = null
       if (clientPhone) {
-        clientOpenids = new Set(users
+        const matchedUsers = await searchUsersByPhoneSafely(clientPhone)
+        clientOpenids = new Set(matchedUsers
           .filter((user) => safeText(user.phone).includes(clientPhone))
           .map((user) => safeText(user.openid))
           .filter(Boolean))
@@ -670,13 +716,16 @@ module.exports = function createHandler(context) {
       let staffOpenids = null
       let staffProfileIds = null
       if (staffPhone) {
-        staffOpenids = new Set(users
+        const [matchedStaffUsers, matchedProfiles] = await Promise.all([
+          searchUsersByPhoneSafely(staffPhone),
+          searchStaffProfilesByPhoneSafely(staffPhone)
+        ])
+        staffOpenids = new Set(matchedStaffUsers
           .filter((user) => safeText(user.phone).includes(staffPhone))
           .map((user) => safeText(user.openid))
           .filter(Boolean))
-        const profiles = await readAll('staff_profiles')
         staffProfileIds = new Set()
-        profiles.forEach((profile) => {
+        matchedProfiles.forEach((profile) => {
           if (!safeText(profile.phone).includes(staffPhone)) return
           const profileOpenid = safeText(profile.openid).trim()
           const profileId = safeText(profile._id).trim()

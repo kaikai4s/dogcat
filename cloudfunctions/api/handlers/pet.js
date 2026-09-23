@@ -43,7 +43,10 @@ module.exports = function createHandler(context) {
       return wantsPage ? paginateList(decorated, data) : decorated
     }
     if (action === 'getPet') {
-      const res = await db.collection('pets').doc(data.id).get()
+      const petId = safeText(data && (data.id || data.petId)).trim()
+      if (!petId) throw new Error('缺少宠物ID')
+      const res = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+      if (!res || !res.data) throw new Error('宠物不存在')
       if (res.data.openid !== openid) throw new Error('无权访问')
       const exclusiveId = await ensurePetExclusiveId(res.data)
       const beautyPhotos = Array.isArray(res.data.beautyPhotos) && res.data.beautyPhotos.length ? res.data.beautyPhotos : normalizeBeautyPhotos([], res.data.avatarFileId)
@@ -168,7 +171,10 @@ module.exports = function createHandler(context) {
       return { _id: created._id, ...pet }
     }
     if (action === 'updatePet') {
-      const existing = await db.collection('pets').doc(data.id).get()
+      const petId = safeText(data && (data.id || data.petId)).trim()
+      if (!petId) throw new Error('缺少宠物ID')
+      const existing = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+      if (!existing || !existing.data) throw new Error('宠物不存在')
       if (existing.data.openid !== openid) throw new Error('无权访问')
       if (!safeFileId(data.avatarFileId) && !safeText(data.avatarFileId)) throw new Error('请上传至少一张宠物照片')
       const petText = [data.name, data.breed, data.personality, data.specialNotes, data.favoriteFood, data.dislikes, data.healthNotes, data.aiGreeting, data.aiPersona].filter(Boolean).join(' ')
@@ -185,7 +191,7 @@ module.exports = function createHandler(context) {
       const hasDeletedPhoto = existingPhotos.some((photo) => !nextFileIds.has(photo.fileId))
       if (hasDeletedPhoto && toCstParts().dayNumber !== 1) throw new Error('每月1日才可以删除宠物美照')
       const avatarFileId = safeFileId(data.avatarFileId) || safeText(data.avatarFileId) || beautyPhotos[0].fileId
-      await db.collection('pets').doc(data.id).update({ data: {
+      await db.collection('pets').doc(petId).update({ data: {
         name: safeText(data.name),
         exclusiveId,
         avatarFileId,
@@ -205,14 +211,17 @@ module.exports = function createHandler(context) {
         specialNotes: safeText(data.specialNotes),
         updatedAt: nowText()
       } })
-      return { id: data.id, exclusiveId, beautyPhotos, avatarFileId }
+      return { id: petId, exclusiveId, beautyPhotos, avatarFileId }
     }
     if (action === 'deletePet') {
-      const existing = await db.collection('pets').doc(data.id).get()
+      const petId = safeText(data && (data.id || data.petId)).trim()
+      if (!petId) throw new Error('缺少宠物ID')
+      const existing = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+      if (!existing || !existing.data) throw new Error('宠物不存在')
       if (existing.data.openid !== openid) throw new Error('无权访问')
-      await releasePetTitleForPet(data.id)
-      await db.collection('pets').doc(data.id).remove()
-      return { id: data.id }
+      await releasePetTitleForPet(petId)
+      await db.collection('pets').doc(petId).remove()
+      return { id: petId }
     }
     throw new Error('未知 pet 操作')
   }

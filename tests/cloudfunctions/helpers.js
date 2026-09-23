@@ -51,6 +51,16 @@ function createCollectionStore(initial = {}) {
         if (Array.isArray(item[key])) return item[key].some(value => condition.$in.includes(value))
         return condition.$in.includes(item[key]) || (condition.$in.includes('') && item[key] === undefined) || (condition.$in.includes(null) && item[key] === null)
       }
+      if (condition && typeof condition === 'object' && ('$regex' in condition || 'regexp' in condition)) {
+        const pattern = condition.$regex || condition.regexp
+        const flags = condition.$options || condition.options || ''
+        try {
+          const re = new RegExp(pattern, flags)
+          return re.test(String(item[key] || ''))
+        } catch {
+          return false
+        }
+      }
       return item[key] === condition
     })
   }
@@ -167,10 +177,16 @@ function createCollectionStore(initial = {}) {
     transactionQueue = run.catch(() => {})
     return run
   }
-  return { collection, state, runTransaction, command: {
-    in: (arr) => ({ $in: arr }), gt: value => ({ $gt: value }), gte: value => ({ $gte: value }),
-    expr: value => ({ $expr: value }), aggregate: aggregateCommand
-  } }
+  return {
+    collection,
+    state,
+    runTransaction,
+    RegExp: ({ regexp, options = 'i' }) => ({ $regex: regexp, $options: options, regexp, options }),
+    command: {
+      in: (arr) => ({ $in: arr }), gt: value => ({ $gt: value }), gte: value => ({ $gte: value }),
+      expr: value => ({ $expr: value }), aggregate: aggregateCommand
+    }
+  }
 }
 
 function clearRequireCache(filePath) {

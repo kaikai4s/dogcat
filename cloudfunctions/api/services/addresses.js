@@ -14,13 +14,21 @@ module.exports = function createService({
       cursor = page[page.length - 1]._id
     }
   }
-  async function saveUserAddress(openid, user, data) {
+  async function saveUserAddress(openid, user, data = {}) {
+    const addressId = String(data.id || data._id || '').trim()
+    let existingRecord = null
+    if (addressId) {
+      const existing = await db.collection('user_addresses').doc(addressId).get().catch(() => ({ data: null }))
+      if (!existing || !existing.data) throw new Error('地址不存在')
+      if (existing.data.openid !== openid) throw new Error('无权操作地址')
+      existingRecord = existing.data
+    }
     if (!data.serviceAddress) throw new Error('请选择服务地址')
     if (!data.addressDetail) throw new Error('请填写详细地址')
     if (!data.doorplate) throw new Error('请填写门牌号或入户说明')
     const time = now()
     const existingAddresses = { data: await readUserAddresses(openid) }
-    const isNewAddress = !data.id
+    const isNewAddress = !addressId
     const shouldBeDefault = data.isDefault === true || (isNewAddress && existingAddresses.data.length === 0)
     const payload = {
       userId: user._id,
@@ -39,11 +47,9 @@ module.exports = function createService({
     if (payload.isDefault) {
       await Promise.all(existingAddresses.data.map((item) => db.collection('user_addresses').doc(item._id).update({ data: { isDefault: false, updatedAt: time } })))
     }
-    if (data.id) {
-      const existing = await db.collection('user_addresses').doc(data.id).get()
-      if (existing.data.openid !== openid) throw new Error('无权操作地址')
-      await db.collection('user_addresses').doc(data.id).update({ data: payload })
-      return { _id: data.id, ...existing.data, ...payload }
+    if (addressId) {
+      await db.collection('user_addresses').doc(addressId).update({ data: payload })
+      return { _id: addressId, ...existingRecord, ...payload }
     }
     const created = await db.collection('user_addresses').add({ data: { ...payload, createdAt: time } })
     return { _id: created._id, ...payload, createdAt: time }

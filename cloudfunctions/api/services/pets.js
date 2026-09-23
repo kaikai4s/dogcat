@@ -9,9 +9,11 @@ module.exports = function createService({
   async function getClientPetsByIds(openid, petIds) {
     if (!petIds.length) throw new Error('请选择宠物')
     const pets = await Promise.all(petIds.map(async (petId) => {
-      const res = await db.collection('pets').doc(petId).get()
-      if (!res.data || res.data.openid !== openid) throw new Error('宠物不存在')
-      return { ...res.data, _id: res.data._id || petId }
+      const safeId = String(petId || '').trim()
+      if (!safeId) throw new Error('宠物不存在')
+      const res = await db.collection('pets').doc(safeId).get().catch(() => ({ data: null }))
+      if (!res || !res.data || res.data.openid !== openid) throw new Error('宠物不存在')
+      return { ...res.data, _id: res.data._id || safeId }
     }))
     return pets
   }
