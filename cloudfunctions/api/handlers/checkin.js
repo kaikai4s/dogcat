@@ -75,8 +75,12 @@ module.exports = function createHandler(context) {
 
       const time = now()
       const checkinId = `checkin_${openid}_${dateKey}`
+      const attemptToken = `token_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
       let cardSpent = false
       let rewardClaimed = false
+      let isPlaceholderCreated = false
+      let claimed = null
+
       try {
         await db.collection('user_checkins').add({
           data: {
@@ -90,6 +94,7 @@ module.exports = function createHandler(context) {
             checkinType: 'retro',
             usedRetroCard: true,
             status: 'processing',
+            attemptToken,
             rewardSnapshot: {},
             pointsDelta: 0,
             couponId: '',
@@ -97,12 +102,16 @@ module.exports = function createHandler(context) {
             updatedAt: time
           }
         })
+        isPlaceholderCreated = true
+
         await grantRetroCards(openid, user._id, -1, 'retro_checkin', dateKey, `补签 ${dateKey} 消耗补签卡 1 张`)
         cardSpent = true
+
         const config = await ensureMonthConfig(monthKey)
         const reward = normalizeCheckinReward((config.days || []).find((item) => Number(item.day) === day) || {}, day)
-        const claimed = await claimCheckinReward(user, reward, { monthKey, dateKey, dayNumber: day }, 'retro')
+        claimed = await claimCheckinReward(user, reward, { monthKey, dateKey, dayNumber: day }, 'retro', { idempotencyKey: checkinId })
         rewardClaimed = true
+
         await db.collection('user_checkins').doc(checkinId).update({
           data: {
             status: 'completed',
@@ -112,6 +121,7 @@ module.exports = function createHandler(context) {
             updatedAt: now()
           }
         })
+
         return {
           _id: checkinId,
           monthKey,
@@ -123,15 +133,64 @@ module.exports = function createHandler(context) {
           retroCardCount: Number((await getUser(openid)).retroCardCount || 0)
         }
       } catch (error) {
+        // 奖励已成功发放时，尝试恢复完成状态，绝不能删除占位
+        if (rewardClaimed && claimed) {
+          try {
+            await db.collection('user_checkins').doc(checkinId).update({
+              data: {
+                status: 'completed',
+                rewardSnapshot: claimed.rewardSnapshot,
+                pointsDelta: claimed.pointsDelta,
+                couponId: claimed.couponId || '',
+                updatedAt: now()
+              }
+            })
+            return {
+              _id: checkinId,
+              monthKey,
+              dateKey,
+              day,
+              rewardSnapshot: claimed.rewardSnapshot,
+              pointsDelta: claimed.pointsDelta,
+              couponId: claimed.couponId || '',
+              retroCardCount: Number((await getUser(openid)).retroCardCount || 0)
+            }
+          } catch (recoverErr) {
+            // 恢复更新失败也保留占位，不能删除
+          }
+        }
+
         const locked = (await db.collection('user_checkins').where({ openid, dateKey }).limit(1).get()).data[0]
-        const isOwnProcessing = locked && locked._id === checkinId && locked.status === 'processing'
+        // 核心：必须同时满足由本请求成功创建 (isPlaceholderCreated) 且 attemptToken 完全一致，才是自己的占位！
+        const isOwnProcessing = Boolean(
+          isPlaceholderCreated &&
+          locked &&
+          locked._id === checkinId &&
+          locked.status === 'processing' &&
+          locked.attemptToken === attemptToken
+        )
+
+        // 仅在卡已扣除且发奖未完成时退还补签卡
         if (cardSpent && !rewardClaimed) {
-          await grantRetroCards(openid, user._id, 1, 'retro_checkin_rollback', dateKey, `补签 ${dateKey} 失败退回补签卡 1 张`)
+          try {
+            await grantRetroCards(openid, user._id, 1, 'retro_checkin_rollback', dateKey, `补签 ${dateKey} 失败退回补签卡 1 张`)
+          } catch (rollbackErr) {
+            // ignore rollback error
+          }
         }
+
+        // 核心：仅当是自己创建的占位且发奖未成功时，才清理自身的占位记录，防止误删别人的正在处理占位！
         if (isOwnProcessing && !rewardClaimed) {
-          await db.collection('user_checkins').doc(checkinId).remove()
+          try {
+            await db.collection('user_checkins').doc(checkinId).remove()
+          } catch (rmErr) {
+            // ignore remove error
+          }
         }
-        if (!isOwnProcessing && locked) throw new Error(locked.status === 'processing' ? '补签处理中，请稍后刷新' : '该日期已签到')
+
+        if (!isOwnProcessing && locked) {
+          throw new Error(locked.status === 'processing' ? '补签处理中，请稍后刷新' : '该日期已签到')
+        }
         throw error
       }
     }

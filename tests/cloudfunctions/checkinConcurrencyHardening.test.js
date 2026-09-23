@@ -178,3 +178,153 @@ test('checkin: coupon reward issuance carries idempotencyKey and does not duplic
   assert.equal(db.state.user_coupons.length, 1)
   assert.equal(db.state.coupon_templates[0].issuedCount, 1)
 })
+
+test('retroCheckin concurrency: concurrent retro checkins for the same day do not delete each other placeholder', async () => {
+  const todayInfo = toCstParts(now())
+  const retroDay = Math.max(1, todayInfo.dayNumber - 1)
+  const db = setupCheckinTest({
+    checkin_month_configs: [
+      {
+        _id: 'cfg_curr',
+        monthKey: todayInfo.monthKey,
+        days: [
+          { day: todayInfo.dayNumber, rewardType: 'points', points: 15, title: '每日积分奖励' },
+          { day: retroDay, rewardType: 'points', points: 20, title: '补签积分奖励' }
+        ],
+        status: 'active'
+      }
+    ]
+  })
+  optimistic(db)
+
+  const fn = loadCloudFunction('api', db, 'openid_client_1')
+
+  // 2 个相同日期的并发补签请求
+  const [res1, res2] = await Promise.allSettled([
+    fn.main({ module: 'checkin', action: 'retroCheckin', data: { monthKey: todayInfo.monthKey, day: retroDay } }),
+    fn.main({ module: 'checkin', action: 'retroCheckin', data: { monthKey: todayInfo.monthKey, day: retroDay } })
+  ])
+
+  const results = [res1.value, res2.value]
+  const successList = results.filter(r => r.ok === true)
+  const failList = results.filter(r => r.ok === false)
+
+  assert.equal(successList.length, 1, 'Exactly one retroCheckin must succeed')
+  assert.equal(failList.length, 1, 'The other retroCheckin must fail safely')
+  assert.ok(
+    failList[0].message.includes('补签处理中') || failList[0].message.includes('已签到'),
+    `Failure message should indicate processing or already checked in, got: ${failList[0].message}`
+  )
+
+  // 补签卡只扣除 1 张（初始 1 张，剩下 0 张）
+  const user = db.state.users.find(u => u.openid === 'openid_client_1')
+  assert.equal(user.retroCardCount, 0, 'Retro card count should decrease by 1')
+
+  // 积分增加 20（初始 10，现在 30）
+  assert.equal(user.points, 10 + 20, 'Points should only increase once (+20)')
+
+  // 补签记录必须存在且状态为 completed，绝未被并发失败的请求误删
+  const expectedCheckinId = `checkin_openid_client_1_${todayInfo.monthKey}-${String(retroDay).padStart(2, '0')}`
+  const checkinDoc = db.state.user_checkins.find(c => c._id === expectedCheckinId)
+  assert.ok(checkinDoc, 'Checkin document must exist and not be removed by concurrent request')
+  assert.equal(checkinDoc.status, 'completed')
+  assert.equal(checkinDoc.pointsDelta, 20)
+  assert.ok(checkinDoc.attemptToken, 'Checkin record should contain attemptToken')
+})
+
+test('retroCheckin rollback: failures prior to reward claim rollback cards and safely clean up own placeholder', async () => {
+  const todayInfo = toCstParts(now())
+  const retroDay = Math.max(1, todayInfo.dayNumber - 1)
+  // 配置一个无效的优惠券模板 ID，使 claimCheckinReward 抛出错误
+  const db = setupCheckinTest({
+    checkin_month_configs: [
+      {
+        _id: 'cfg_curr',
+        monthKey: todayInfo.monthKey,
+        days: [
+          { day: retroDay, rewardType: 'coupon', couponTemplateId: 'non_existent_template', title: '无效券补签' }
+        ],
+        status: 'active'
+      }
+    ]
+  })
+
+  const fn = loadCloudFunction('api', db, 'openid_client_1')
+
+  const res = await fn.main({
+    module: 'checkin',
+    action: 'retroCheckin',
+    data: { monthKey: todayInfo.monthKey, day: retroDay }
+  })
+
+  assert.equal(res.ok, false)
+
+  // 补签卡回滚：原先扣除后又退还，卡数量仍为 1
+  const user = db.state.users.find(u => u.openid === 'openid_client_1')
+  assert.equal(user.retroCardCount, 1, 'Retro card must be rolled back on failure')
+
+  // 补签记录占位由于未发奖且属于自己的占位，安全清除以允许后续重试
+  const expectedCheckinId = `checkin_openid_client_1_${todayInfo.monthKey}-${String(retroDay).padStart(2, '0')}`
+  const checkinDoc = db.state.user_checkins.find(c => c._id === expectedCheckinId)
+  assert.equal(checkinDoc, undefined, 'Placeholder should be cleaned up on early failure')
+})
+
+test('retroCheckin recovery: transient update failure after reward claim recovers completed state instead of deleting placeholder', async () => {
+  const todayInfo = toCstParts(now())
+  const retroDay = Math.max(1, todayInfo.dayNumber - 1)
+  const db = setupCheckinTest({
+    checkin_month_configs: [
+      {
+        _id: 'cfg_curr',
+        monthKey: todayInfo.monthKey,
+        days: [
+          { day: retroDay, rewardType: 'points', points: 25, title: '恢复测试奖励' }
+        ],
+        status: 'active'
+      }
+    ]
+  })
+
+  const expectedCheckinId = `checkin_openid_client_1_${todayInfo.monthKey}-${String(retroDay).padStart(2, '0')}`
+
+  // 模拟第一次 update 抛出瞬时异常（例如网络丢包），第二次（重试恢复）成功
+  let updateAttempts = 0
+  const originalDoc = db.collection('user_checkins').doc
+  db.collection('user_checkins').doc = function (id) {
+    const handle = originalDoc.call(this, id)
+    const originalUpdate = handle.update
+    handle.update = async function (params) {
+      if (id === expectedCheckinId) {
+        updateAttempts++
+        if (updateAttempts === 1) {
+          throw new Error('Simulated transient DB update network timeout')
+        }
+      }
+      return originalUpdate.call(this, params)
+    }
+    return handle
+  }
+
+  const fn = loadCloudFunction('api', db, 'openid_client_1')
+
+  const res = await fn.main({
+    module: 'checkin',
+    action: 'retroCheckin',
+    data: { monthKey: todayInfo.monthKey, day: retroDay }
+  })
+
+  // 异常被捕获且触发 recovery 重试更新成功，返回正常结果
+  assert.equal(res.ok, true)
+  assert.equal(res.data.pointsDelta, 25)
+
+  // 占位记录状态为 completed，且绝未被删除
+  const checkinDoc = db.state.user_checkins.find(c => c._id === expectedCheckinId)
+  assert.ok(checkinDoc, 'Checkin doc must exist')
+  assert.equal(checkinDoc.status, 'completed')
+
+  // 用户积分正常发放
+  const user = db.state.users.find(u => u.openid === 'openid_client_1')
+  assert.equal(user.points, 10 + 25)
+  assert.equal(user.retroCardCount, 0)
+})
+

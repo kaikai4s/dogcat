@@ -115,6 +115,7 @@ module.exports = function createService({
     const reward = normalizeCheckinReward((config.days || []).find((item) => Number(item.day) === todayInfo.dayNumber) || {}, todayInfo.dayNumber)
     const time = now()
 
+    const attemptToken = `token_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
     let isPlaceHolderClaimed = false
     let txExistingDoc = null
 
@@ -147,6 +148,7 @@ module.exports = function createService({
             checkinType: 'normal',
             usedRetroCard: false,
             status: 'processing',
+            attemptToken,
             rewardSnapshot: reward,
             pointsDelta: 0,
             couponId: '',
@@ -194,9 +196,46 @@ module.exports = function createService({
         }
       })
     } catch (err) {
-      const checkDoc = (await db.collection('user_checkins').doc(checkinId).get().catch(() => null))?.data
-      if (checkDoc && checkDoc.status === 'processing' && !checkDoc.couponId && !checkDoc.pointsDelta) {
-        await db.collection('user_checkins').doc(checkinId).remove().catch(() => {})
+      if (claimed) {
+        try {
+          await db.collection('user_checkins').doc(checkinId).update({
+            data: {
+              status: 'completed',
+              rewardSnapshot: claimed.rewardSnapshot,
+              pointsDelta: claimed.pointsDelta,
+              couponId: claimed.couponId || '',
+              updatedAt: now()
+            }
+          })
+          const updatedUser = await getUser(openid)
+          return {
+            alreadyCheckedIn: false,
+            checkinRecord: {
+              _id: checkinId,
+              monthKey: todayInfo.monthKey,
+              dateKey: todayInfo.dateKey,
+              day: todayInfo.dayNumber,
+              checkinType: 'normal',
+              usedRetroCard: false,
+              status: 'completed',
+              rewardSnapshot: claimed.rewardSnapshot,
+              pointsDelta: claimed.pointsDelta,
+              couponId: claimed.couponId || '',
+              createdAt: time,
+              updatedAt: now()
+            },
+            user: updatedUser,
+            claimed
+          }
+        } catch (recoverErr) {
+          // 恢复更新失败也保留占位，绝不能删除已发奖的占位
+        }
+      }
+      if (isPlaceHolderClaimed && !claimed) {
+        const checkDoc = (await db.collection('user_checkins').doc(checkinId).get().catch(() => null))?.data
+        if (checkDoc && checkDoc.status === 'processing' && checkDoc.attemptToken === attemptToken) {
+          await db.collection('user_checkins').doc(checkinId).remove().catch(() => {})
+        }
       }
       throw err
     }

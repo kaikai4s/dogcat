@@ -107,8 +107,11 @@ function createCollectionStore(initial = {}) {
         return { total: ensure(name).filter((item) => matchWhere(item, this._where)).length }
       },
       async add({ data }) {
-        const _id = `${name}_${ensure(name).length + 1}`
-        ensure(name).push({ _id, ...data })
+        if (data && data._id && ensure(name).some((item) => item._id === data._id)) {
+          throw new Error(`document with _id ${data._id} already exists`)
+        }
+        const _id = (data && data._id) || `${name}_${ensure(name).length + 1}`
+        ensure(name).push({ ...data, _id })
         return { _id }
       },
       async update({ data }) {
