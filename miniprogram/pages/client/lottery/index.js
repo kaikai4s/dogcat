@@ -1,6 +1,5 @@
 const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
 const { formatDateTime } = require('../../../utils/format')
-const { resolvePetBlessing } = require('../../../utils/petBlessings')
 
 function decorateRecords(records = []) {
   return records.map((item) => {
@@ -15,15 +14,8 @@ function decorateRecords(records = []) {
       prizeTag = '参与奖'
     }
 
-    let prizeName = item.prizeName || '萌宠祝福'
-    let prizeText = item.prizeText || ''
-    if (item.prizeType === 'text' || (!item.couponId && !item.titleId && Number(item.points || 0) <= 0)) {
-      if (!prizeText || prizeText === prizeName) {
-        const resolved = resolvePetBlessing({ name: prizeName, text: prizeText })
-        prizeName = resolved.name
-        prizeText = resolved.text
-      }
-    }
+    const prizeName = item.prizeName || '萌宠祝福'
+    const prizeText = item.prizeText || (item.prizeType === 'text' ? '毛孩子给你送来满满元气与好运，愿你今天顺遂无忧、心情如阳光般明媚！' : '')
 
     return {
       ...item,
@@ -74,11 +66,7 @@ Page({
     this.setData({ drawing: true })
     callFunction('lottery', 'draw')
       .then((res) => {
-        let result = res || {}
-        if (result.prizeType === 'text') {
-          const resolved = resolvePetBlessing({ name: result.prizeName, text: result.prizeText })
-          result = { ...result, prizeName: resolved.name, prizeText: resolved.text }
-        }
+        const result = res || {}
         this.setData({ result })
         if (result.prizeType === 'coupon' || result.couponId) {
           wx.showToast({ title: `恭喜获得：${result.prizeName}`, icon: 'success', duration: 3000 })
