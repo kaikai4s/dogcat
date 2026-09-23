@@ -343,8 +343,9 @@ module.exports = function createHandler(context) {
     if (action === 'createReview') {
       const { user, order } = await requireClientOrder(openid, data.orderId, '仅宠物主可评价')
       if (order.status !== 'completed') throw new Error('订单完成后才可评价')
+      if (order.reviewedAt) throw new Error('该订单已评价')
       const existing = await db.collection('service_reviews').where({ orderId: data.orderId }).limit(1).get()
-      if (existing.data[0]) throw new Error('该订单已评价')
+      if (existing.data && existing.data[0]) throw new Error('该订单已评价')
       const rating = Math.min(Math.max(Number(data.rating || 5), 1), 5)
       const tags = Array.isArray(data.tags) ? data.tags.slice(0, 8) : []
       const content = String(data.content || '').trim()
@@ -354,7 +355,9 @@ module.exports = function createHandler(context) {
       }
       const time = now()
       const enrichedUser = await enrichUserMemberLevel(user)
+      const reviewId = `review_${data.orderId}`
       const review = {
+        _id: reviewId,
         orderId: data.orderId,
         clientUserId: user._id,
         clientOpenid: openid,
@@ -375,12 +378,25 @@ module.exports = function createHandler(context) {
         createdAt: time,
         updatedAt: time
       }
-      const created = await db.collection('service_reviews').add({ data: review })
-      await db.collection('orders').doc(data.orderId).update({ data: { reviewedAt: time, updatedAt: time } })
+      await db.runTransaction(async (tx) => {
+        const currentOrder = (await tx.collection('orders').doc(data.orderId).get()).data
+        if (!currentOrder || currentOrder.clientOpenid !== openid) throw new Error('仅宠物主可评价')
+        if (currentOrder.status !== 'completed') throw new Error('订单完成后才可评价')
+        if (currentOrder.reviewedAt) throw new Error('该订单已评价')
+        let docCheck = null
+        try {
+          docCheck = (await tx.collection('service_reviews').doc(reviewId).get()).data
+        } catch (e) {
+          docCheck = null
+        }
+        if (docCheck) throw new Error('该订单已评价')
+        await tx.collection('service_reviews').doc(reviewId).set({ data: review })
+        await tx.collection('orders').doc(data.orderId).update({ data: { reviewedAt: time, updatedAt: time } })
+      })
       await updateStaffRatingStats(order.staffProfileId, time)
       await appendOrderTimeline(data.orderId, 'reviewed', '宠物主已评价', `${rating}星评价`, 'client')
       await addPoints(openid, user._id, 10, 'order_review', data.orderId, '评价订单 +10 积分', { applyMultiplier: true, baseDelta: 10 })
-      return { _id: created._id, ...review }
+      return review
     }
 
     if (action === 'getCancelQuote') {
