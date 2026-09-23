@@ -16,6 +16,7 @@ module.exports = function createHandler(context) {
     mask,
     notifyOrder,
     now,
+    readScopedDocuments,
     safeText,
     toPublicHomeSecuritySnapshot,
     toPublicOrderHomeSecurity,
@@ -56,8 +57,8 @@ module.exports = function createHandler(context) {
 
     if (action === 'listHomeSecurityHistory') {
       await getUser(openid)
-      const res = await db.collection('orders').where({ clientOpenid: openid }).orderBy('createdAt', 'desc').get()
-      return (res.data || [])
+      const orders = await readScopedDocuments('orders', { clientOpenid: openid }, 'createdAt', 'desc')
+      return orders
         .filter((order) => !isAdminDeletedOrder(order))
         .map((order) => {
           const security = toPublicOrderHomeSecurity(order.orderHomeSecurity || order.homeSecuritySnapshot)

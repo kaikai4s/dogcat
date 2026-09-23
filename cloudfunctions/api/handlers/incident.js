@@ -18,6 +18,7 @@ module.exports = function createHandler(context) {
     now,
     paginateList,
     recordIncidentAction,
+    readScopedDocuments,
     requireAdmin,
     requireClientOrder,
     requireStaffOrder,
@@ -52,8 +53,10 @@ module.exports = function createHandler(context) {
     }
     if (action === 'getIncidentDetail') {
       const { user, incident } = await getIncidentForAccess(openid, data.id || data.incidentId)
-      const comments = (await db.collection('incident_comments').where({ incidentId: incident._id }).orderBy('createdAt', 'asc').get()).data || []
-      const actions = user.roles.includes('admin') ? ((await db.collection('incident_actions').where({ incidentId: incident._id }).orderBy('createdAt', 'asc').get()).data || []) : []
+      const [comments, actions] = await Promise.all([
+        readScopedDocuments('incident_comments', { incidentId: incident._id }, 'createdAt', 'asc'),
+        user.roles.includes('admin') ? readScopedDocuments('incident_actions', { incidentId: incident._id }, 'createdAt', 'asc') : Promise.resolve([])
+      ])
       const orderRes = incident.orderId ? await db.collection('orders').doc(incident.orderId).get().catch(() => ({ data: null })) : null
       const order = orderRes && orderRes.data
       return { incident, comments, actions, order: order ? await attachOrderDisplayData(order) : null }

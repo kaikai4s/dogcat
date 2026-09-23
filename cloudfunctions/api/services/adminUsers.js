@@ -2,6 +2,7 @@ module.exports = function createService({
   countByQuery,
   db,
   now,
+  readScopedDocuments,
   removeByQuery,
   updateByQuery
 }) {
@@ -80,10 +81,10 @@ module.exports = function createService({
     }
     cleanup.userInvitesAsInviter = await removeByQuery('user_invites', { inviterOpenid: targetOpenid })
     cleanup.userInvitesAsInvited = await removeByQuery('user_invites', { invitedOpenid: targetOpenid })
-    const staffProfiles = (await db.collection('staff_profiles').where({ openid: targetOpenid }).get()).data || []
+    const staffProfiles = await readScopedDocuments('staff_profiles', { openid: targetOpenid })
     await Promise.all(staffProfiles.map((profile) => db.collection('staff_profiles').doc(profile._id).update({ data: { auditStatus: 'rejected', auditRemark: '用户已删除', isFeatured: false, featuredAt: '', featuredByOpenid: '', updatedAt: now() } })))
     cleanup.staffProfilesMarkedDeleted = staffProfiles.length
-    const reviews = (await db.collection('service_reviews').where({ clientOpenid: targetOpenid }).get()).data || []
+    const reviews = await readScopedDocuments('service_reviews', { clientOpenid: targetOpenid })
     await Promise.all(reviews.map((review) => db.collection('service_reviews').doc(review._id).update({ data: { clientName: '已删除用户', updatedAt: now() } })))
     cleanup.reviewsAnonymized = reviews.length
     return cleanup

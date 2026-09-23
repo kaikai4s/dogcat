@@ -23,6 +23,7 @@ module.exports = function createHandler(context) {
     now,
     requireAdmin,
     requireClientPayableOrder,
+    readScopedDocuments,
     safeText,
     sanitizeWechatPayload,
     updateOrderWhenStatus,
@@ -79,8 +80,8 @@ module.exports = function createHandler(context) {
     }
     if (action === 'getPaymentStatus') {
       const { order } = await requireClientPayableOrder(openid, data.orderId, '无权查看支付状态')
-      const payments = await db.collection('payments').where({ orderId: data.orderId }).get()
-      return { orderId: data.orderId, status: order.status, paymentStatus: order.paymentStatus || 'unpaid', paymentNo: order.paymentNo || '', wxTransactionId: order.wxTransactionId || '', paidAt: order.paidAt || '', payments: payments.data || [] }
+      const payments = await readScopedDocuments('payments', { orderId: data.orderId }, 'createdAt', 'desc')
+      return { orderId: data.orderId, status: order.status, paymentStatus: order.paymentStatus || 'unpaid', paymentNo: order.paymentNo || '', wxTransactionId: order.wxTransactionId || '', paidAt: order.paidAt || '', payments }
     }
     if (action === 'paymentCallback') throw new Error('paymentCallback 仅限 HTTP 回调调用')
     if (action === 'mockPayOrder') {
@@ -126,8 +127,7 @@ module.exports = function createHandler(context) {
     if (action === 'listRefunds') {
       await requireAdmin(openid)
       const where = data.orderId ? { orderId: data.orderId } : {}
-      const res = await db.collection('refunds').where(where).orderBy('createdAt', 'desc').get()
-      return res.data || []
+      return readScopedDocuments('refunds', where, 'createdAt', 'desc')
     }
     throw new Error('未知 payment 操作')
   }

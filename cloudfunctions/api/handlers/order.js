@@ -293,12 +293,12 @@ module.exports = function createHandler(context) {
       const [earlyStart, securityRes, checkinsRes, tracksRes] = await Promise.all([
         getPendingEarlyStart(orderId).then((pending) => pending || getApprovedEarlyStart(orderId) || getLatestEarlyStart(orderId)),
         db.collection('order_home_security').where({ orderId }).limit(1).get(),
-        db.collection('checkin_logs').where({ orderId }).get(),
-        db.collection('track_logs').where({ orderId }).get()
+        readScopedDocuments('checkin_logs', { orderId }, 'createdAt', 'asc'),
+        readScopedDocuments('track_logs', { orderId }, 'recordedAt', 'asc')
       ])
       const activeSession = getActiveServiceSession(order)
       const sessionStartedAt = toTimeValue(order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt)
-      const checkinGroups = groupCheckinsByEventType((checkinsRes.data || []).filter((item) => {
+      const checkinGroups = groupCheckinsByEventType(checkinsRes.filter((item) => {
         if (item.eventType === 'sanitization') return isValidSanitization(item, order, order.currentSessionStartedAt || (activeSession && activeSession.startedAt) || order.startedAt || now())
         if (order.status !== ORDER_STATUS.IN_SERVICE || !sessionStartedAt) return isActiveCheckin(item)
         return isActiveCheckin(item) && toTimeValue(item.recordedAt || item.serverTime || item.createdAt) >= (sessionStartedAt - 60000)
@@ -315,7 +315,7 @@ module.exports = function createHandler(context) {
         return { ...item, completed: group.count > 0, photoCount: group.count, photos: group.photos }
       })
       const publicSecurity = toPublicOrderHomeSecurity(orderSecurity)
-      const resultOrder = { ...displayOrder, trackCount: (tracksRes.data || []).length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: publicSecurity, homeSecuritySnapshot: publicSecurity ? toPublicHomeSecuritySnapshot(publicSecurity) : null }
+      const resultOrder = { ...displayOrder, trackCount: tracksRes.length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: publicSecurity, homeSecuritySnapshot: publicSecurity ? toPublicHomeSecuritySnapshot(publicSecurity) : null }
       const requestedRole = safeText(data.role).trim()
       const isStaffView = requestedRole === 'staff' || user.activeRole === 'staff' || (order.clientOpenid !== openid && user.roles.includes('staff'))
       const isPreviousStaff = (Array.isArray(order.previousStaffRecords) && order.previousStaffRecords.some((r) => r.staffOpenid === openid)) || order.originalStaffOpenid === openid
@@ -368,8 +368,7 @@ module.exports = function createHandler(context) {
 
     if (action === 'getOrderTimeline') {
       await getOrderForAccess(openid, data.orderId)
-      const res = await db.collection('order_timeline').where({ orderId: data.orderId }).orderBy('createdAt', 'asc').get()
-      return res.data
+      return readScopedDocuments('order_timeline', { orderId: data.orderId }, 'createdAt', 'asc')
     }
 
     if (action === 'getOrderReview') {

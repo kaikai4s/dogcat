@@ -4,6 +4,7 @@ module.exports = function createHandler(context) {
     db,
     getOrderForAccess,
     nowText,
+    readScopedDocuments,
     safeText
   } = context
   return async function ai(openid, action, data) {
@@ -52,8 +53,7 @@ module.exports = function createHandler(context) {
       const { order } = await getOrderForAccess(openid, orderId)
       if (!order) throw new Error('订单不存在')
 
-      const checkinsRes = await db.collection('checkin_logs').where({ orderId }).get()
-      const checkins = checkinsRes.data || []
+      const checkins = await readScopedDocuments('checkin_logs', { orderId }, 'createdAt', 'asc')
       const eventLabels = checkins.map(c => c.eventType).join('、')
 
       const reportSummary = `【AI 智能宠护报告总结】

@@ -38,6 +38,7 @@ module.exports = function createHandler(context) {
     getSystemSettings,
     getUser,
     getWechatPayConfig,
+    readScopedDocuments,
     hasCoordinate,
     isAdminDeletedOrder,
     isOpenOrder,
@@ -1213,11 +1214,7 @@ module.exports = function createHandler(context) {
       const canPay = Boolean(config.enabled && config.amount > 0 && auditApproved && (!deposit || deposit.status === 'unpaid' || needsRepay))
       const canRequestRefund = Boolean(deposit && ['paid', 'partially_refunded'].includes(deposit.status) && (deposit.availableRefundAmount || 0) > 0 && deposit.refundStatus !== 'requested')
 
-      const eventsRes = await db.collection('staff_deposit_events')
-        .where({ staffOpenid: openid })
-        .orderBy('createdAt', 'desc')
-        .get()
-        .catch(() => ({ data: [] }))
+      const eventsRes = await readScopedDocuments('staff_deposit_events', { staffOpenid: openid }, 'createdAt', 'desc').catch(() => [])
       const eventTypeMap = {
         pay: '充值缴纳',
         forfeit: '违规扣除/没收',
@@ -1225,7 +1222,7 @@ module.exports = function createHandler(context) {
         refund: '退款到账',
         refund_audit: '退款审核'
       }
-      const events = (eventsRes.data || []).map((e) => ({
+      const events = eventsRes.map((e) => ({
         _id: e._id,
         type: e.type,
         typeName: eventTypeMap[e.type] || e.type,

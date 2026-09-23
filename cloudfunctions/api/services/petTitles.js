@@ -6,6 +6,8 @@ module.exports = function createService({
   normalizeMemberNameColor,
   normalizeMemberNameEffect,
   now,
+  readScopedDocuments,
+  scanDocumentPages,
   safeText
 }) {
   function normalizeTitleIcon(value) {
@@ -186,8 +188,7 @@ module.exports = function createService({
   }
 
   async function listUserPetTitles(openid) {
-    const inventoryRes = await db.collection('user_pet_titles').where({ openid }).get()
-    const inventory = inventoryRes.data || []
+    const inventory = await readScopedDocuments('user_pet_titles', { openid })
     if (!inventory.length) return []
     const titles = await listPetTitles({ includeDeleted: true })
     const titleMap = new Map(titles.map((title) => [title._id, title]))
@@ -251,10 +252,9 @@ module.exports = function createService({
   async function releasePetTitleForPet(petId) {
     const pid = safeText(petId).trim()
     if (!pid) return
-    const res = await db.collection('user_pet_titles').where({ equippedPetId: pid }).get()
     const time = now()
-    for (const item of res.data || []) {
-      await db.collection('user_pet_titles').doc(item._id).update({ data: { equippedPetId: '', updatedAt: time } })
+    for await (const page of scanDocumentPages('user_pet_titles', { equippedPetId: pid })) {
+      await Promise.all(page.map((item) => db.collection('user_pet_titles').doc(item._id).update({ data: { equippedPetId: '', updatedAt: time } })))
     }
   }
 

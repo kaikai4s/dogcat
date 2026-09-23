@@ -27,6 +27,25 @@ module.exports = function createService({
     }
     return rows
   }
+  async function readAllByQuery(collectionName, where = {}, timeField = '', direction = 'asc') {
+    const rows = []
+    let cursor = ''
+    while (true) {
+      const condition = { ...where }
+      if (cursor) condition._id = db.command.gt(cursor)
+      const page = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      if (!page.length) break
+      rows.push(...page)
+      cursor = page[page.length - 1]._id
+      if (page.length < 100) break
+    }
+    if (timeField) {
+      const sign = direction === 'desc' ? -1 : 1
+      rows.sort((a, b) => sign * (toTimeValue(a[timeField]) - toTimeValue(b[timeField])) || String(a._id).localeCompare(String(b._id)))
+    }
+    return rows
+  }
+
   function incUpdateValue(currentValue, delta) {
     if (db.command && typeof db.command.inc === 'function') return db.command.inc(delta)
     return Number(currentValue || 0) + Number(delta || 0)
@@ -82,6 +101,7 @@ module.exports = function createService({
   return {
     scanDocumentPages,
     readScopedDocuments,
+    readAllByQuery,
     incUpdateValue,
     safeCollectionData,
     safeCollectionCount,

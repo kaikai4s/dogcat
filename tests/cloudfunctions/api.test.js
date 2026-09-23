@@ -2901,11 +2901,10 @@ test('order detail returns persisted track count and grouped checkin photos', as
     ],
     orders: [{ _id: 'order1', clientOpenid: 'openid_client', staffOpenid: 'openid_staff', status: 'in_service', serviceType: 'feed', checkinRequirements: [{ eventType: 'enter_door', label: '入户打卡', required: true }, { eventType: 'feed', label: '喂食', required: true }] }],
     checkin_logs: [
-      { _id: 'ck1', orderId: 'order1', eventType: 'enter_door', mediaFileId: 'cloud://p1.jpg', recordedAt: '2026-08-28 10:00' },
-      { _id: 'ck2', orderId: 'order1', eventType: 'enter_door', mediaFileId: 'cloud://p2.jpg', recordedAt: '2026-08-28 10:01' },
-      { _id: 'ck3', orderId: 'order1', eventType: 'feed', mediaFileId: 'cloud://deleted.jpg', deletedAt: '2026-08-28 10:02' }
+      ...Array.from({ length: 105 }, (_, index) => ({ _id: `ck${index + 1}`, orderId: 'order1', eventType: 'enter_door', mediaFileId: `cloud://p${index + 1}.jpg`, recordedAt: `2026-08-28 10:${String(index).padStart(2, '0')}` })),
+      { _id: 'ck106', orderId: 'order1', eventType: 'feed', mediaFileId: 'cloud://deleted.jpg', deletedAt: '2026-08-28 12:00' }
     ],
-    track_logs: [{ _id: 't1', orderId: 'order1' }, { _id: 't2', orderId: 'order1' }],
+    track_logs: Array.from({ length: 105 }, (_, index) => ({ _id: `t${index + 1}`, orderId: 'order1' })),
     order_home_security: []
   })
   const fn = loadCloudFunction('api', db, 'openid_staff')
@@ -2913,11 +2912,11 @@ test('order detail returns persisted track count and grouped checkin photos', as
   const result = await fn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'order1' } })
 
   assert.equal(result.ok, true)
-  assert.equal(result.data.trackCount, 2)
-  assert.equal(result.data.checkinPhotoCount, 2)
+  assert.equal(result.data.trackCount, 105)
+  assert.equal(result.data.checkinPhotoCount, 105)
   assert.equal(result.data.checkinRequirements[0].completed, true)
-  assert.equal(result.data.checkinRequirements[0].photoCount, 2)
-  assert.equal(result.data.checkinRequirements[0].photos.length, 2)
+  assert.equal(result.data.checkinRequirements[0].photoCount, 105)
+  assert.equal(result.data.checkinRequirements[0].photos.length, 105)
   assert.equal(result.data.checkinRequirements[1].completed, false)
   assert.equal(result.data.checkinRequirements[1].photoCount, 0)
 })
