@@ -2,7 +2,7 @@
   <view class="dashboard-header">
     <view class="badge">人员管理</view>
     <view class="title">用户管理</view>
-    <view class="tip">查看用户账号、角色、会员等级和积分信息。</view>
+    <view class="tip">查看用户账号、角色、会员等级和积分信息。<text wx:if="{{total > 0}}">（共 {{total}} 位用户）</text></view>
   </view>
 
   <view class="card compact">

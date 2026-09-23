@@ -350,13 +350,43 @@ module.exports = function createHandler(context) {
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const role = safeText(data.role).trim()
       const status = safeText(data.status).trim()
-      const res = await db.collection('users').orderBy('createdAt', 'desc').get()
-      const list = (res.data || [])
+      const page = Math.max(Number(data.page || 1), 1)
+      const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 100)
+      const offset = (page - 1) * pageSize
+
+      const where = {}
+      if (status) where.status = status
+      if (role) {
+        where.roles = db.command && typeof db.command.in === 'function' ? db.command.in([role]) : role
+      }
+
+      if (!keyword) {
+        const countRes = await db.collection('users').where(where).count()
+        const total = Number(countRes?.total || 0)
+        const res = await db.collection('users')
+          .where(where)
+          .orderBy('createdAt', 'desc')
+          .skip(offset)
+          .limit(pageSize)
+          .get()
+        const list = (res.data || []).map((user) => safeUserSummary(user))
+        return {
+          list,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + pageSize < total
+        }
+      }
+
+      const allUsers = await readAll('users', where, 5000)
+      const filtered = allUsers
         .filter((user) => !role || (Array.isArray(user.roles) && user.roles.includes(role)))
         .filter((user) => !status || user.status === status)
-        .filter((user) => !keyword || [user.openid, user.nickname, user.phone].some((value) => safeText(value).toLowerCase().includes(keyword)))
+        .filter((user) => [user.openid, user.nickname, user.phone].some((value) => safeText(value).toLowerCase().includes(keyword)))
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
         .map((user) => safeUserSummary(user))
-      return paginateList(list, data)
+      return paginateList(filtered, data)
     }
     if (action === 'getUserDetail') {
       const targetOpenid = safeText(data.openid).trim()

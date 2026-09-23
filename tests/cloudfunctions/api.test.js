@@ -705,6 +705,64 @@ test('admin listUsers supports role status and keyword filters', async () => {
   assert.deepEqual(disabledResult.data.list.map((user) => user.openid), ['openid_staff'])
 })
 
+test('admin listUsers eliminates 100-item cutoff with database pagination and deep keyword search', async () => {
+  const users = [
+    { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active', nickname: '后台管理员', phone: '13000000000', createdAt: '2026-12-31T00:00:00.000Z' }
+  ]
+  for (let i = 1; i <= 150; i++) {
+    const pad = String(i).padStart(3, '0')
+    users.push({
+      _id: `user_${pad}`,
+      openid: `openid_user_${pad}`,
+      roles: i % 10 === 0 ? ['client', 'staff'] : ['client'],
+      status: i === 50 ? 'disabled' : 'active',
+      nickname: i === 135 ? '测试老用户_135' : `用户_${pad}`,
+      phone: `13800000${pad}`,
+      createdAt: `2026-01-01T00:00:00.${pad}Z`
+    })
+  }
+
+  const db = createCollectionStore({ users })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+
+  // Page 1: first 20 users
+  const page1 = await fn.main({ module: 'admin', action: 'listUsers', data: { page: 1, pageSize: 20 } })
+  assert.equal(page1.ok, true)
+  assert.equal(page1.data.total, 151)
+  assert.equal(page1.data.page, 1)
+  assert.equal(page1.data.pageSize, 20)
+  assert.equal(page1.data.hasMore, true)
+  assert.equal(page1.data.list.length, 20)
+
+  // Page 6: indices 100-119 (beyond the old 100 limit!)
+  const page6 = await fn.main({ module: 'admin', action: 'listUsers', data: { page: 6, pageSize: 20 } })
+  assert.equal(page6.ok, true)
+  assert.equal(page6.data.page, 6)
+  assert.equal(page6.data.hasMore, true)
+  assert.equal(page6.data.list.length, 20)
+  assert.equal(page6.data.list[0].openid, 'openid_user_051')
+
+  // Page 8: remaining 11 users
+  const page8 = await fn.main({ module: 'admin', action: 'listUsers', data: { page: 8, pageSize: 20 } })
+  assert.equal(page8.ok, true)
+  assert.equal(page8.data.page, 8)
+  assert.equal(page8.data.hasMore, false)
+  assert.equal(page8.data.list.length, 11)
+
+  // Role filter at DB level (staff: every 10th user, so 15 users)
+  const staffOnly = await fn.main({ module: 'admin', action: 'listUsers', data: { role: 'staff', pageSize: 50 } })
+  assert.equal(staffOnly.ok, true)
+  assert.equal(staffOnly.data.total, 15)
+  assert.equal(staffOnly.data.list.length, 15)
+
+  // Keyword search for a user beyond index 100
+  const searchResult = await fn.main({ module: 'admin', action: 'listUsers', data: { keyword: '老用户_135' } })
+  assert.equal(searchResult.ok, true)
+  assert.equal(searchResult.data.total, 1)
+  assert.equal(searchResult.data.list[0].openid, 'openid_user_135')
+  assert.equal(searchResult.data.list[0].nickname, '测试老用户_135')
+})
+
 test('admin listStaffProfiles filters status and attaches user display fields', async () => {
   const db = createCollectionStore({
     users: [
