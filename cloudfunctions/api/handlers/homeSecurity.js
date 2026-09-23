@@ -68,22 +68,26 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'getUnlockCode') {
-      const user = await getUser(openid)
-      const orderRes = await db.collection('orders').doc(data.orderId).get()
-      const order = orderRes.data
+      let user = null
       let result = 'forbidden'
       let reason = ''
+      const orderId = safeText(data && data.orderId).trim()
       try {
-        if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
+        user = await getUser(openid)
+        if (!user || !user.roles || !user.roles.includes('staff')) throw new Error('仅员工可查看')
+        if (!orderId) throw new Error('缺少订单ID')
+        const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+        const order = orderRes && orderRes.data
+        if (!order || isAdminDeletedOrder(order)) throw new Error('订单不存在')
         if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
         if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) throw new Error('订单状态不允许查看')
         const current = now().getTime()
-        const approvedEarlyStart = await getApprovedEarlyStart(data.orderId)
+        const approvedEarlyStart = await getApprovedEarlyStart(orderId)
         const regularStart = toTimeValue(order.startTime)
         const start = approvedEarlyStart ? toTimeValue(approvedEarlyStart.approvedAt || approvedEarlyStart.createdAt) : regularStart
         const end = toTimeValue(order.endTime)
         if ((start && current < start) || (end && current > end)) throw new Error('不在服务解锁时间窗口')
-        let security = (await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get()).data[0]
+        let security = (await db.collection('order_home_security').where({ orderId }).limit(1).get()).data[0]
         if (!security) security = order.orderHomeSecurity || order.homeSecuritySnapshot
         if (!security || security.type !== 'one_time_code' || !security.oneTimeCode) throw new Error('该订单未设置一次性密码')
         const effectiveStart = toTimeValue(security.oneTimeCode.effectiveStart)
@@ -92,12 +96,30 @@ module.exports = function createHandler(context) {
         if (current > effectiveEnd) throw new Error('一次性密码已过期，请提醒用户重新设置')
         result = 'success'
         reason = 'ok'
-        return { lockMethod: security.type, lockMethodText: security.lockMethodText || lockMethodText(security.type), doorLockCode: decryptText(security.oneTimeCode.cipher, security.oneTimeCode.iv, security.oneTimeCode.tag), effectiveStart: security.oneTimeCode.effectiveStart, effectiveEnd: security.oneTimeCode.effectiveEnd, entryNotes: security.entryNotes || '' }
+        return {
+          lockMethod: security.type,
+          lockMethodText: security.lockMethodText || lockMethodText(security.type),
+          doorLockCode: decryptText(security.oneTimeCode.cipher, security.oneTimeCode.iv, security.oneTimeCode.tag),
+          effectiveStart: security.oneTimeCode.effectiveStart,
+          effectiveEnd: security.oneTimeCode.effectiveEnd,
+          entryNotes: security.entryNotes || ''
+        }
       } catch (error) {
         reason = error.message
         throw error
       } finally {
-        await db.collection('unlock_code_logs').add({ data: { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, result, reason, createdAt: now() } })
+        await db.collection('unlock_code_logs').add({
+          data: {
+            orderId: orderId || (data && data.orderId) || '',
+            staffUserId: user ? user._id : '',
+            staffOpenid: openid,
+            result,
+            reason,
+            createdAt: now()
+          }
+        }).catch((err) => {
+          console.error('[homeSecurity] failed to write unlock_code_logs', err)
+        })
       }
     }
 

@@ -118,3 +118,59 @@ test('homeSecurity requestRemoteUnlock records wechat and admin phone channels',
   assert.deepEqual(db.state.home_security_notifications[0].channels, ['wechat', 'admin_phone'])
   assert.equal(db.state.home_security_notifications[0].customerServiceSnapshot.phone, '400100200')
 })
+
+test('homeSecurity getUnlockCode records audit log on non-existent orderId, missing orderId, and unauthorized roles', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 's1', openid: 'openid_staff', roles: ['staff'], status: 'active' },
+      { _id: 's2', openid: 'openid_other_staff', roles: ['staff'], status: 'active' },
+      { _id: 'c1', openid: 'openid_client', roles: ['client'], status: 'active' }
+    ],
+    orders: [
+      { _id: 'o_bound', staffOpenid: 'openid_staff', clientOpenid: 'openid_client', status: 'assigned', startTime: '2099-01-01 10:00', endTime: '2099-01-01 11:00' }
+    ],
+    unlock_code_logs: []
+  })
+  const staffFn = loadCloudFunction('homeSecurity', db, 'openid_staff')
+  const otherStaffFn = loadCloudFunction('homeSecurity', db, 'openid_other_staff')
+  const clientFn = loadCloudFunction('homeSecurity', db, 'openid_client')
+
+  // 1. 传入不存在的 orderId：绝不能跳过审计日志
+  const resNonExistent = await staffFn.main({ action: 'getUnlockCode', data: { orderId: 'non_existent_999' } })
+  assert.equal(resNonExistent.ok, false)
+  assert.equal(resNonExistent.message, '订单不存在')
+  assert.equal(db.state.unlock_code_logs.length, 1)
+  assert.equal(db.state.unlock_code_logs[0].orderId, 'non_existent_999')
+  assert.equal(db.state.unlock_code_logs[0].staffOpenid, 'openid_staff')
+  assert.equal(db.state.unlock_code_logs[0].result, 'forbidden')
+  assert.equal(db.state.unlock_code_logs[0].reason, '订单不存在')
+
+  // 2. 缺少 orderId
+  const resMissing = await staffFn.main({ action: 'getUnlockCode', data: {} })
+  assert.equal(resMissing.ok, false)
+  assert.equal(resMissing.message, '缺少订单ID')
+  assert.equal(db.state.unlock_code_logs.length, 2)
+  assert.equal(db.state.unlock_code_logs[1].staffOpenid, 'openid_staff')
+  assert.equal(db.state.unlock_code_logs[1].result, 'forbidden')
+  assert.equal(db.state.unlock_code_logs[1].reason, '缺少订单ID')
+
+  // 3. 跨员工越权访问其他员工的订单
+  const resCrossStaff = await otherStaffFn.main({ action: 'getUnlockCode', data: { orderId: 'o_bound' } })
+  assert.equal(resCrossStaff.ok, false)
+  assert.equal(resCrossStaff.message, '不是该订单绑定员工')
+  assert.equal(db.state.unlock_code_logs.length, 3)
+  assert.equal(db.state.unlock_code_logs[2].orderId, 'o_bound')
+  assert.equal(db.state.unlock_code_logs[2].staffOpenid, 'openid_other_staff')
+  assert.equal(db.state.unlock_code_logs[2].result, 'forbidden')
+  assert.equal(db.state.unlock_code_logs[2].reason, '不是该订单绑定员工')
+
+  // 4. 普通客户无权限查看
+  const resClient = await clientFn.main({ action: 'getUnlockCode', data: { orderId: 'o_bound' } })
+  assert.equal(resClient.ok, false)
+  assert.equal(resClient.message, '仅员工可查看')
+  assert.equal(db.state.unlock_code_logs.length, 4)
+  assert.equal(db.state.unlock_code_logs[3].staffOpenid, 'openid_client')
+  assert.equal(db.state.unlock_code_logs[3].result, 'forbidden')
+  assert.equal(db.state.unlock_code_logs[3].reason, '仅员工可查看')
+})
+
