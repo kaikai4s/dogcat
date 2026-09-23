@@ -4,7 +4,7 @@ const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTa
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { formatDateTime, toBeijingDate } = require('../../../../utils/format')
 const { copyText } = require('../../../../utils/clipboard')
-const { MAX_GAP_MS, pointTime, isGoodTrackPoint, isPlausibleStep } = require('../../../../utils/trackQuality')
+const { MAX_GAP_MS, pointTime, isGoodTrackPoint, isPlausibleStep } = require('../../utils/trackQuality')
 
 const TRACK_INTERVAL_MS = 30 * 1000
 const TRACK_MIN_DISTANCE_M = 10

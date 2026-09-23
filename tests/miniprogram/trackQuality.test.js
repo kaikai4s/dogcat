@@ -3,7 +3,16 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
-const quality = require('../../miniprogram/utils/trackQuality')
+
+test('track quality helpers stay inside their consuming subpackages and match the server rules', () => {
+  const root = path.resolve(__dirname, '../../miniprogram')
+  assert.equal(fs.existsSync(path.join(root, 'utils/trackQuality.js')), false)
+  const server = fs.readFileSync(path.resolve(__dirname, '../../cloudfunctions/api/utils/trackQuality.js'), 'utf8').replace(/\r\n/g, '\n')
+  for (const subpackage of ['pages/staff', 'pages/client/orders']) {
+    const source = fs.readFileSync(path.join(root, subpackage, 'utils/trackQuality.js'), 'utf8').replace(/\r\n/g, '\n')
+    assert.equal(source, server, `${subpackage} must use the same track quality rules`)
+  }
+})
 
 function loadPage(relativePath, overrides = {}, exported = '') {
   let page
@@ -22,7 +31,7 @@ function loadPage(relativePath, overrides = {}, exported = '') {
   const module = { exports: {} }
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram', relativePath), 'utf8') + exported, {
     Page(config) { page = config }, module, wx,
-    require(name) { return name.endsWith('/trackQuality') ? quality : deps },
+    require(name) { return name.endsWith('/trackQuality') ? require(path.resolve(__dirname, '../../miniprogram', path.dirname(relativePath), name)) : deps },
     setInterval, clearInterval, setTimeout, clearTimeout
   })
   page.setData = (updates) => Object.assign(page.data, updates)

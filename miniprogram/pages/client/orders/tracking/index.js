@@ -3,7 +3,7 @@ const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { withCheckinText, formatDateTime, toBeijingDate } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
-const { filterTrackPoints, isGoodTrackPoint } = require('../../../../utils/trackQuality')
+const { filterTrackPoints, isGoodTrackPoint } = require('../utils/trackQuality')
 
 function toMapPoint(item) {
   const latitude = Number(item && item.latitude)

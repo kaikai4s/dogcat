@@ -1,4 +1,4 @@
-// Keep the mini-program and cloud-function copies aligned: both runtimes ship independently.
+// Keep the cloud-function and both mini-program subpackage copies aligned; each ships independently.
 const MAX_ACCURACY_M = 50
 const MAX_GAP_MS = 2 * 60 * 1000
 const MAX_SPEED_MPS = 8

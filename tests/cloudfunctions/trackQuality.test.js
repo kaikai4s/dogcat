@@ -8,7 +8,11 @@ function point(id, seconds = 0, extra = {}) {
     accuracy: 10, recordedAt: time + seconds * 1000, coordinateType: 'gcj02', locationSource: 'gps', ...extra }
 }
 
-for (const path of ['../../cloudfunctions/api/utils/trackQuality', '../../miniprogram/utils/trackQuality']) {
+for (const path of [
+  '../../cloudfunctions/api/utils/trackQuality',
+  '../../miniprogram/pages/staff/utils/trackQuality',
+  '../../miniprogram/pages/client/orders/utils/trackQuality'
+]) {
   const quality = require(path)
   test(`${path}: rejects unknown precision, manual points, wrong coordinate system and isolated jumps`, () => {
     const points = [point('a'), point('b', 10), point('jump', 15, { latitude: 40 }), point('c', 20)]
