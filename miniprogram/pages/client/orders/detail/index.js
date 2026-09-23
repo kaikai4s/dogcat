@@ -120,6 +120,7 @@ Page({
       callFunction('order', 'getOrderReview', { orderId: this.data.id })
     ])
       .then(([order, timeline, review]) => {
+        if (!order) return
         const displayOrder = withOrderText(order)
         this.setData({ order: { ...displayOrder, refundText: getRefundText(displayOrder) }, timeline: withTimelineText(timeline), review })
         callFunction('message', 'markOrderThreadRead', { orderId: this.data.id }).catch(() => {})

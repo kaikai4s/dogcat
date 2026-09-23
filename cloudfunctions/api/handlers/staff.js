@@ -606,8 +606,8 @@ module.exports = function createHandler(context) {
     }
     if (action === 'updateStaffProfileConfig') {
       await getUser(openid)
-      const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get()
-      const profile = existing.data[0]
+      const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
+      const profile = existing && existing.data && existing.data[0]
       if (!profile) throw new Error('请先提交宠托师认证')
       if (profile.auditStatus !== 'approved') throw new Error('宠托师认证审核通过后方可设置接单配置')
 
@@ -659,11 +659,12 @@ module.exports = function createHandler(context) {
       const latitude = Number(data.latitude || 0)
       const longitude = Number(data.longitude || 0)
       if (!hasCoordinate(latitude, longitude)) throw new Error('定位信息无效')
-      const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get()
-      if (!existing.data[0]) throw new Error('请先提交员工认证')
+      const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
+      const profile = existing && existing.data && existing.data[0]
+      if (!profile) throw new Error('请先提交员工认证')
       const location = { currentLatitude: latitude, currentLongitude: longitude, locationAccuracy: Number(data.accuracy || 0), locationUpdatedAt: now(), updatedAt: now() }
-      await db.collection('staff_profiles').doc(existing.data[0]._id).update({ data: location })
-      return { _id: existing.data[0]._id, ...location }
+      await db.collection('staff_profiles').doc(profile._id).update({ data: location })
+      return { _id: profile._id, ...location }
     }
     if (action === 'listNearbyOrders' || action === 'listAvailableOrders') {
       const user = await getUser(openid)
@@ -1238,9 +1239,10 @@ module.exports = function createHandler(context) {
       const reason = safeText(data.reason).trim()
       if (!reason) throw new Error('请填写自愿退出及退款原因')
       await getUser(openid)
-      const res = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
-      if (!res.data[0]) throw new Error('暂无可退还保证金')
-      return requestStaffDepositRefund(openid, res.data[0]._id, reason)
+      const res = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get().catch(() => ({ data: [] }))
+      const deposit = res && res.data && res.data[0]
+      if (!deposit) throw new Error('暂无可退还保证金')
+      return requestStaffDepositRefund(openid, deposit._id, reason)
     }
     if (action === 'getSupplyReimbursementStatus') {
       const user = await getUser(openid)

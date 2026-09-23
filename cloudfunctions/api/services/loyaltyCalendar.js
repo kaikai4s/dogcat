@@ -55,7 +55,9 @@ module.exports = function createService({
       rewardSnapshot.multiplier = result.multiplier
     }
     if (reward.rewardType === 'coupon' && reward.couponTemplateId) {
-      const template = (await db.collection('coupon_templates').doc(reward.couponTemplateId).get()).data
+      const templateRes = await db.collection('coupon_templates').doc(reward.couponTemplateId).get().catch(() => ({ data: null }))
+      const template = templateRes && templateRes.data
+      if (!template || template.enabled === false) throw new Error('签到奖励优惠券不存在或已下架')
       const issued = await issueCouponToTargetUser(template, user, {
         idempotencyKey,
         sourceType: 'checkin',

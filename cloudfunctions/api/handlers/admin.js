@@ -361,8 +361,8 @@ module.exports = function createHandler(context) {
       const targetOpenid = safeText(data.openid).trim()
       const targetUserId = safeText(data.userId || data._id).trim()
       let target = null
-      if (targetOpenid) target = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
-      else if (targetUserId) target = (await db.collection('users').doc(targetUserId).get()).data
+      if (targetOpenid) target = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get().catch(() => ({ data: [] }))).data[0]
+      else if (targetUserId) target = (await db.collection('users').doc(targetUserId).get().catch(() => ({ data: null }))).data
       if (!target) throw new Error('用户不存在')
       const stats = await getUserManageStats(target)
       return { ...safeUserSummary(target, { isSelf: target.openid === openid }), inviteCode: target.inviteCode || '', retroCardCount: Number(target.retroCardCount || 0), completedOrderCount: Number(target.completedOrderCount || 0), stats }
@@ -655,8 +655,8 @@ module.exports = function createHandler(context) {
     if (action === 'setSitterFeatured') {
       const staffProfileId = safeText(data.staffProfileId).trim()
       if (!staffProfileId) throw new Error('请选择宠托师')
-      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
-      const profile = profileRes.data
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+      const profile = profileRes && profileRes.data
       if (!profile) throw new Error('宠托师不存在')
       if (!isCertifiedSitter(profile)) throw new Error('仅已审核通过的宠托师可设为精选')
       const time = now()
@@ -790,9 +790,10 @@ module.exports = function createHandler(context) {
       return { deletedIds, skippedIds, count: deletedIds.length }
     }
     if (action === 'getOrderDetail' || action === 'getEvidence') {
-      const id = data.id || data.orderId
-      const order = await db.collection('orders').doc(id).get()
-      if (!order.data) throw new Error('订单不存在')
+      const id = safeText(data.id || data.orderId).trim()
+      if (!id) throw new Error('订单不存在')
+      const order = await db.collection('orders').doc(id).get().catch(() => ({ data: null }))
+      if (!order || !order.data) throw new Error('订单不存在')
       const tracks = await db.collection('track_logs').where({ orderId: id }).orderBy('recordedAt', 'asc').get()
       const checkins = await db.collection('checkin_logs').where({ orderId: id }).orderBy('createdAt', 'asc').get()
       const unlockLogs = await db.collection('unlock_code_logs').where({ orderId: id }).orderBy('createdAt', 'desc').get()
@@ -1173,9 +1174,10 @@ module.exports = function createHandler(context) {
         sortOrder: Number(data.sortOrder || (preset && preset.sortOrder) || 100),
         updatedAt: time
       })
-      const existing = await db.collection('service_prices').where({ key }).limit(1).get()
-      if (existing.data[0]) {
-        await db.collection('service_prices').doc(existing.data[0]._id).update({ data: { ...payload, updatedAt: time } })
+      const existing = await db.collection('service_prices').where({ key }).limit(1).get().catch(() => ({ data: [] }))
+      const existingDoc = existing && existing.data && existing.data[0]
+      if (existingDoc) {
+        await db.collection('service_prices').doc(existingDoc._id).update({ data: { ...payload, updatedAt: time } })
       } else {
         await db.collection('service_prices').add({ data: { ...payload, createdAt: time, updatedAt: time } })
       }
@@ -1187,13 +1189,14 @@ module.exports = function createHandler(context) {
       if (!key) throw new Error('服务标识不能为空')
       if (key === VISIT_FEE_SERVICE_KEY) throw new Error('上门费不能删除')
       const time = now()
-      const existing = await db.collection('service_prices').where({ key }).limit(1).get()
+      const existing = await db.collection('service_prices').where({ key }).limit(1).get().catch(() => ({ data: [] }))
+      const existingDoc = existing && existing.data && existing.data[0]
       if (isPresetServiceKey(key)) {
         const payload = { enabled: false, showOnHome: false, updatedAt: time }
-        if (existing.data[0]) await db.collection('service_prices').doc(existing.data[0]._id).update({ data: payload })
+        if (existingDoc) await db.collection('service_prices').doc(existingDoc._id).update({ data: payload })
         else await db.collection('service_prices').add({ data: { key, label: (defaultServicePrices.find((item) => item.key === key) || {}).label || key, price: 0, ...payload, createdAt: time } })
-      } else if (existing.data[0]) {
-        await db.collection('service_prices').doc(existing.data[0]._id).remove()
+      } else if (existingDoc) {
+        await db.collection('service_prices').doc(existingDoc._id).remove()
         await removeByQuery('service_checkin_rules', { serviceType: key })
       }
       await logAdmin(admin, 'service_price', key, 'deleteServicePrice', {})
@@ -1202,8 +1205,8 @@ module.exports = function createHandler(context) {
     if (action === 'resetDefaultServicePrices') {
       const time = now()
       await Promise.all(defaultServicePrices.map(async (preset) => {
-        const existing = await db.collection('service_prices').where({ key: preset.key }).limit(1).get()
-        const existingItem = existing.data[0] || {}
+        const existing = await db.collection('service_prices').where({ key: preset.key }).limit(1).get().catch(() => ({ data: [] }))
+        const existingItem = (existing && existing.data && existing.data[0]) || {}
         const payload = {
           ...normalizeServicePrice({
             ...preset,
@@ -1212,7 +1215,7 @@ module.exports = function createHandler(context) {
           }),
           updatedAt: time
         }
-        if (existing.data[0]) return db.collection('service_prices').doc(existing.data[0]._id).update({ data: payload })
+        if (existingItem._id) return db.collection('service_prices').doc(existingItem._id).update({ data: payload })
         return db.collection('service_prices').add({ data: { ...payload, createdAt: time } })
       }))
       await logAdmin(admin, 'service_price', 'defaults', 'resetDefaultServicePrices', {})
@@ -1265,7 +1268,8 @@ module.exports = function createHandler(context) {
         updatedAt: time
       }
       if (data._id) {
-        const existing = await db.collection('coupon_templates').doc(data._id).get()
+        const existing = await db.collection('coupon_templates').doc(data._id).get().catch(() => ({ data: null }))
+        if (!existing || !existing.data) throw new Error('优惠券模板不存在或已被删除')
         await db.collection('coupon_templates').doc(data._id).update({ data: payload })
         await logAdmin(admin, 'coupon_template', data._id, 'saveCouponTemplate', { name, discountAmount, validType })
         return { ...existing.data, ...payload, _id: data._id }
@@ -1302,7 +1306,8 @@ module.exports = function createHandler(context) {
       const targetOpenid = safeText(data.openid).trim()
       if (!templateId) throw new Error('请选择优惠券模板')
       if (!targetOpenid) throw new Error('请输入用户 openid')
-      const template = (await db.collection('coupon_templates').doc(templateId).get()).data
+      const templateRes = await db.collection('coupon_templates').doc(templateId).get().catch(() => ({ data: null }))
+      const template = templateRes && templateRes.data
       if (!template || template.enabled === false) throw new Error('优惠券模板不可用')
       const targetUser = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
       if (!targetUser || targetUser.status !== 'active') throw new Error('目标用户不存在')
@@ -1363,17 +1368,20 @@ module.exports = function createHandler(context) {
       return wantsPage ? paginateList(list, data) : list
     }
     if (action === 'auditStaff') {
+      const staffProfileId = safeText(data.staffProfileId).trim()
+      if (!staffProfileId) throw new Error('请选择宠托师')
       const status = data.auditStatus === 'approved' ? 'approved' : 'rejected'
-      const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
-      const profile = profileRes.data
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+      const profile = profileRes && profileRes.data
+      if (!profile) throw new Error('宠托师档案不存在')
       const identityStatus = status === 'approved' ? 'verified' : 'failed'
       const faceVerifyStatus = status === 'approved' ? 'verified' : 'failed'
       const time = now()
       const workflowUpdate = status === 'approved'
         ? { staffLevel: 'applicant', onboardingStatus: 'training_pending', videoAuditStatus: 'not_started', promotionStatus: 'none' }
         : { staffLevel: 'applicant', onboardingStatus: 'application_pending', videoAuditStatus: 'not_started', promotionStatus: 'none' }
-      await db.collection('staff_profiles').doc(data.staffProfileId).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, ...workflowUpdate, updatedAt: time } })
-      const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId: data.staffProfileId }).limit(1).get()
+      await db.collection('staff_profiles').doc(staffProfileId).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, ...workflowUpdate, updatedAt: time } })
+      const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId }).limit(1).get()
       if (identityRes.data[0]) await db.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, auditedByOpenid: openid, auditedAt: time, updatedAt: time } })
       const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = userRes.data[0]
@@ -1384,14 +1392,14 @@ module.exports = function createHandler(context) {
         if (staffUser.activeRole === 'staff') userUpdate.activeRole = 'client'
         await db.collection('users').doc(staffUser._id).update({ data: userUpdate })
       }
-      await logAdmin(admin, 'staff_profile', data.staffProfileId, 'auditStaff', { status })
-      return { staffProfileId: data.staffProfileId, auditStatus: status }
+      await logAdmin(admin, 'staff_profile', staffProfileId, 'auditStaff', { status })
+      return { staffProfileId, auditStatus: status }
     }
     if (action === 'revokeStaff') {
       const staffProfileId = safeText(data.staffProfileId || data.id).trim()
       if (!staffProfileId) throw new Error('请选择宠托师')
-      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
-      const profile = profileRes.data
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+      const profile = profileRes && profileRes.data
       if (!profile) throw new Error('宠托师不存在')
       const time = now()
       const auditRemark = safeText(data.auditRemark || data.remark).trim() || '管理员移除宠托师身份'
@@ -1439,8 +1447,8 @@ module.exports = function createHandler(context) {
       const staffProfileId = safeText(data.staffProfileId).trim()
       const status = data.status === 'approved' ? 'approved' : 'rejected'
       if (!staffProfileId) throw new Error('请选择宠托师')
-      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
-      const profile = profileRes.data
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+      const profile = profileRes && profileRes.data
       if (!profile) throw new Error('宠托师不存在')
       const time = now()
       const update = status === 'approved'
@@ -1487,7 +1495,8 @@ module.exports = function createHandler(context) {
       const profile = pRes && pRes.data ? normalizeStaffWorkflow(pRes.data) : null
       const orders = []
       for (const orderId of (app.orderIds || [])) {
-        const order = (await db.collection('orders').doc(orderId).get()).data
+        const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+        const order = orderRes && orderRes.data
         if (!order) continue
         const tracks = await db.collection('track_logs').where({ orderId }).orderBy('recordedAt', 'asc').get()
         const checkins = await db.collection('checkin_logs').where({ orderId }).orderBy('createdAt', 'asc').get()
@@ -1500,7 +1509,8 @@ module.exports = function createHandler(context) {
       const applicationId = safeText(data.applicationId || data.id).trim()
       const status = data.status === 'approved' ? 'approved' : 'rejected'
       if (!applicationId) throw new Error('请选择晋升申请')
-      const app = (await db.collection('staff_promotion_applications').doc(applicationId).get()).data
+      const appRes = await db.collection('staff_promotion_applications').doc(applicationId).get().catch(() => ({ data: null }))
+      const app = appRes && appRes.data
       if (!app) throw new Error('晋升申请不存在')
       const time = now()
       const appUpdate = { status, adminRemark: safeText(data.remark).trim(), reviewedByOpenid: openid, reviewedAt: time, updatedAt: time }
@@ -1618,7 +1628,8 @@ module.exports = function createHandler(context) {
       const couponIds = Array.from(new Set((Array.isArray(data.days) ? data.days : []).map((item) => safeText(item.couponTemplateId).trim()).filter(Boolean)))
       const couponTemplates = {}
       for (const couponId of couponIds) {
-        const template = (await db.collection('coupon_templates').doc(couponId).get()).data
+        const templateRes = await db.collection('coupon_templates').doc(couponId).get().catch(() => ({ data: null }))
+        const template = templateRes && templateRes.data
         if (!template || template.enabled === false) throw new Error('签到奖励优惠券不可用')
         couponTemplates[couponId] = normalizeCouponSnapshot(template)
       }
@@ -1656,7 +1667,8 @@ module.exports = function createHandler(context) {
       const targetLevels = await resolveTargetLevels(targetLevelIds)
       if (!targetLevels.length) throw new Error('所选会员段位不存在')
       const targetLevelNamesSnapshot = targetLevels.map((level) => level.name)
-      const template = (await db.collection('coupon_templates').doc(templateId).get()).data
+      const templateRes = await db.collection('coupon_templates').doc(templateId).get().catch(() => ({ data: null }))
+      const template = templateRes && templateRes.data
       if (!template || template.enabled === false) throw new Error('优惠券模板不可用')
       const usersRes = await db.collection('users').where({ status: 'active' }).get()
       const eligible = (usersRes.data || []).filter((u) => targetLevelIds.includes(u.memberLevel || ''))
@@ -1689,7 +1701,8 @@ module.exports = function createHandler(context) {
       if (rewardType === 'coupon') {
         const couponTemplateId = safeText(data.couponTemplateId).trim()
         if (!couponTemplateId) throw new Error('请选择奖励优惠券')
-        const template = (await db.collection('coupon_templates').doc(couponTemplateId).get()).data
+        const templateRes = await db.collection('coupon_templates').doc(couponTemplateId).get().catch(() => ({ data: null }))
+        const template = templateRes && templateRes.data
         if (!template || template.enabled === false) throw new Error('奖励优惠券不可用')
         reward.couponTemplateId = couponTemplateId
         reward.couponSnapshot = normalizeCouponSnapshot(template)
@@ -1859,11 +1872,14 @@ module.exports = function createHandler(context) {
       return res.data || []
     }
     if (action === 'toggleLotteryActivity') {
-      const activityRes = await db.collection('lottery_activities').doc(data._id).get()
+      const activityId = safeText(data._id || data.id).trim()
+      if (!activityId) throw new Error('缺少活动ID')
+      const activityRes = await db.collection('lottery_activities').doc(activityId).get().catch(() => ({ data: null }))
+      if (!activityRes || !activityRes.data) throw new Error('抽奖活动不存在')
       const enabled = !activityRes.data.enabled
-      await db.collection('lottery_activities').doc(data._id).update({ data: { enabled, updatedAt: now() } })
-      await logAdmin(admin, 'lottery_activity', data._id, 'toggleLotteryActivity', { enabled })
-      return { _id: data._id, enabled }
+      await db.collection('lottery_activities').doc(activityId).update({ data: { enabled, updatedAt: now() } })
+      await logAdmin(admin, 'lottery_activity', activityId, 'toggleLotteryActivity', { enabled })
+      return { _id: activityId, enabled }
     }
     if (action === 'deleteLotteryActivity') {
       const activityId = safeText(data._id || data.id).trim()
@@ -1980,8 +1996,8 @@ module.exports = function createHandler(context) {
     if (action === 'republishOrderAsUrgent') {
       const orderId = safeText(data.id || data.orderId).trim()
       if (!orderId) throw new Error('缺少订单 ID')
-      const orderRes = await db.collection('orders').doc(orderId).get()
-      const order = orderRes.data
+      const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+      const order = orderRes && orderRes.data
       if (!order) throw new Error('订单不存在')
 
       if (!['paid', 'assigned'].includes(order.status)) {
@@ -2167,8 +2183,8 @@ module.exports = function createHandler(context) {
     if (action === 'addOrderDepositPenaltyEvidence') {
       const orderId = safeText(data.orderId || data.id).trim()
       if (!orderId) throw new Error('缺少订单 ID')
-      const orderRes = await db.collection('orders').doc(orderId).get()
-      const order = orderRes.data
+      const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+      const order = orderRes && orderRes.data
       if (!order) throw new Error('订单不存在')
 
       let targetStaffOpenid = safeText(data.staffOpenid).trim()

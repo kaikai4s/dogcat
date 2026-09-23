@@ -80,7 +80,8 @@ module.exports = function createService({
   async function getPetTitle(titleId, options = {}) {
     const id = safeText(titleId).trim()
     if (!id) throw new Error('缺少头衔 ID')
-    const title = (await db.collection('pet_titles').doc(id).get()).data
+    const titleRes = await db.collection('pet_titles').doc(id).get().catch(() => ({ data: null }))
+    const title = titleRes && titleRes.data
     if (!title || (!options.includeDeleted && title.deletedAt)) throw new Error('宠物头衔不存在')
     if (options.onlyEnabled && title.enabled === false) throw new Error('宠物头衔已停用')
     return { _id: id, ...title }
@@ -212,9 +213,11 @@ module.exports = function createService({
     const iid = safeText(inventoryId).trim()
     if (!pid) throw new Error('缺少宠物 ID')
     if (!iid) throw new Error('请选择要佩戴的头衔')
-    const pet = (await db.collection('pets').doc(pid).get()).data
+    const petRes = await db.collection('pets').doc(pid).get().catch(() => ({ data: null }))
+    const pet = petRes && petRes.data
     if (!pet || pet.openid !== openid) throw new Error('无权访问宠物')
-    const inventory = (await db.collection('user_pet_titles').doc(iid).get()).data
+    const inventoryRes = await db.collection('user_pet_titles').doc(iid).get().catch(() => ({ data: null }))
+    const inventory = inventoryRes && inventoryRes.data
     if (!inventory || inventory.openid !== openid) throw new Error('无权使用该头衔')
     const title = await getPetTitle(inventory.titleId, { includeDeleted: true })
     if (title.deletedAt || title.enabled === false) throw new Error('该宠物头衔已停用或已下架')
@@ -235,7 +238,8 @@ module.exports = function createService({
   async function unequipPetTitle(openid, petId) {
     const pid = safeText(petId).trim()
     if (!pid) throw new Error('缺少宠物 ID')
-    const pet = (await db.collection('pets').doc(pid).get()).data
+    const petRes = await db.collection('pets').doc(pid).get().catch(() => ({ data: null }))
+    const pet = petRes && petRes.data
     if (!pet || pet.openid !== openid) throw new Error('无权访问宠物')
     const inventoryId = safeText(pet.equippedTitleInventoryId).trim()
     const time = now()

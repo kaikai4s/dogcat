@@ -58,17 +58,17 @@ module.exports = function createHelpers({
     // Bound transaction size explicitly rather than partially cancelling an order.
     if (payments.length > 50) throw new Error('订单支付记录过多，需人工核对')
     return db.runTransaction(async transaction => {
-      const current = (await transaction.collection(collectionName).doc(order._id).get()).data
+      const current = (await transaction.collection(collectionName).doc(order._id).get().catch(() => ({ data: null }))).data
       if (!current || current.status !== ORDER_STATUS.PENDING_PAY || current.paymentStatus === 'paid') return false
       if (current.paymentNo !== order.paymentNo || current.paymentStatus !== order.paymentStatus) return false
       const deadline = getOrderPaymentDeadline(current)
       if (requireExpired && (!deadline || time.getTime() < deadline)) return false
       for (const payment of payments.filter(item => item._id)) {
-        const fresh = (await transaction.collection('payments').doc(payment._id).get()).data
+        const fresh = (await transaction.collection('payments').doc(payment._id).get().catch(() => ({ data: null }))).data
         if (fresh && ['success', 'paid'].includes(fresh.status)) return false
       }
       const coupon = current.couponId
-        ? (await transaction.collection('user_coupons').doc(current.couponId).get()).data
+        ? (await transaction.collection('user_coupons').doc(current.couponId).get().catch(() => ({ data: null }))).data
         : null
       const reason = options.reason || '超过30分钟未支付，系统自动取消'
       if (current.stockReserved === true && Array.isArray(current.items) && current.items.length) {
@@ -78,7 +78,7 @@ module.exports = function createHelpers({
           if (!Number.isSafeInteger(quantity) || quantity <= 0) continue
           let product = productRestores.get(item.productId)
           if (!product) {
-            const rawProduct = (await transaction.collection('mall_products').doc(item.productId).get()).data
+            const rawProduct = (await transaction.collection('mall_products').doc(item.productId).get().catch(() => ({ data: null }))).data
             if (rawProduct) product = typeof normalizeMallProduct === 'function' ? normalizeMallProduct(rawProduct) : rawProduct
           }
           if (product) {

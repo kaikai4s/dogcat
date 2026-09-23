@@ -12,7 +12,7 @@ module.exports = function createService(context) {
     const resolved = await getPayableOrder(order._id)
     if (!resolved.order) throw new Error('订单不存在')
     return db.runTransaction(async tx => {
-      const current = (await tx.collection(resolved.collectionName).doc(order._id).get()).data
+      const current = (await tx.collection(resolved.collectionName).doc(order._id).get().catch(() => ({ data: null }))).data
       if (!current || current.clientOpenid !== openid || current.status !== 'pending_pay' || current.paymentStatus === 'closed') throw new Error('订单状态不可支付')
       assertOrderPaymentOpen(current)
       amountYuanToFen(current.payAmount)
@@ -48,7 +48,7 @@ module.exports = function createService(context) {
     const resolved = await getPayableOrder(orderId)
     if (!resolved.order) throw new Error('订单不存在')
     const result = await db.runTransaction(async tx => {
-      const order = (await tx.collection(resolved.collectionName).doc(orderId).get()).data
+      const order = (await tx.collection(resolved.collectionName).doc(orderId).get().catch(() => ({ data: null }))).data
       if (!order) throw new Error('订单不存在')
       const paymentNo = payload.paymentNo || order.paymentNo
       if (!paymentNo) throw new Error('支付单号缺失')
@@ -253,7 +253,7 @@ module.exports = function createService(context) {
           if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new Error('商品数量不正确')
           let product = productUpdates.get(item.productId)
           if (!product) {
-            const rawProduct = (await tx.collection('mall_products').doc(item.productId).get()).data
+            const rawProduct = (await tx.collection('mall_products').doc(item.productId).get().catch(() => ({ data: null }))).data
             if (!rawProduct || rawProduct.status !== 'on_sale') throw new Error(`商品不存在或已下架：${item.name || ''}`)
             product = typeof normalizeMallProduct === 'function' ? normalizeMallProduct(rawProduct) : rawProduct
           }

@@ -43,7 +43,7 @@ module.exports = function createService({
         ratingUpdatedAt: time,
         updatedAt: time
       }
-    })
+    }).catch(() => {})
     return stats
   }
 

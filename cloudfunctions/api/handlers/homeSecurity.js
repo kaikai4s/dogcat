@@ -35,10 +35,11 @@ module.exports = function createHandler(context) {
       const user = await getUser(openid)
       const encrypted = encryptText(data.doorLockCode || '')
       const payload = { userId: user._id, openid, doorLockCodeCipher: encrypted.cipher, doorLockCodeIv: encrypted.iv, doorLockCodeTag: encrypted.tag, keyLocation: data.keyLocation || '', entryNotes: data.entryNotes || '', cameraLocations: data.cameraLocations || '', forbiddenAreas: data.forbiddenAreas || '', emergencyContactName: data.emergencyContactName || '', emergencyContactPhone: data.emergencyContactPhone || '', updatedAt: now() }
-      const existing = await db.collection('home_security').where({ openid }).limit(1).get()
-      if (existing.data[0]) {
-        await db.collection('home_security').doc(existing.data[0]._id).update({ data: payload })
-        return { _id: existing.data[0]._id, ...payload, doorLockCodeMasked: mask(data.doorLockCode || '') }
+      const existing = await db.collection('home_security').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
+      const existingDoc = existing && existing.data && existing.data[0]
+      if (existingDoc) {
+        await db.collection('home_security').doc(existingDoc._id).update({ data: payload })
+        return { _id: existingDoc._id, ...payload, doorLockCodeMasked: mask(data.doorLockCode || '') }
       }
       const created = await db.collection('home_security').add({ data: payload })
       return { _id: created._id, ...payload, doorLockCodeMasked: mask(data.doorLockCode || '') }
@@ -46,8 +47,8 @@ module.exports = function createHandler(context) {
 
     if (action === 'getMaskedHomeSecurity') {
       await getUser(openid)
-      const res = await db.collection('home_security').where({ openid }).limit(1).get()
-      const record = res.data[0]
+      const res = await db.collection('home_security').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
+      const record = res && res.data && res.data[0]
       if (!record) return null
       const plain = decryptText(record.doorLockCodeCipher, record.doorLockCodeIv, record.doorLockCodeTag)
       return { ...record, doorLockCodeCipher: undefined, doorLockCodeIv: undefined, doorLockCodeTag: undefined, doorLockCodeMasked: mask(plain) }
@@ -142,15 +143,16 @@ module.exports = function createHandler(context) {
       const customerServiceSnapshot = settings.customerService || {}
       const updatedSecurity = { ...security, remoteUnlock: { ...remoteUnlock, lastRequestedAt: time.toISOString(), requestCount: Number(remoteUnlock.requestCount || 0) + 1, notifyChannels: ['wechat', 'admin_phone'], lastNotifyStatus: { wechat: 'pending', admin_phone: 'available' }, customerServiceSnapshot }, updatedAt: time }
       await db.collection('orders').doc(orderId).update({ data: { orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time } })
-      const securityRes = await db.collection('order_home_security').where({ orderId }).limit(1).get()
-      if (securityRes.data[0]) await db.collection('order_home_security').doc(securityRes.data[0]._id).update({ data: removeLegacySecretFields({ ...updatedSecurity, updatedAt: time }) })
+      const securityRes = await db.collection('order_home_security').where({ orderId }).limit(1).get().catch(() => ({ data: [] }))
+      const secDoc = securityRes && securityRes.data && securityRes.data[0]
+      if (secDoc) await db.collection('order_home_security').doc(secDoc._id).update({ data: removeLegacySecretFields({ ...updatedSecurity, updatedAt: time }) })
       const notification = await db.collection('home_security_notifications').add({ data: { orderId, type: 'remote_unlock', clientOpenid: order.clientOpenid, staffOpenid: openid, channels: ['wechat', 'admin_phone'], status: { wechat: 'pending', admin_phone: 'available' }, customerServiceSnapshot, createdAt: time } })
       const updatedOrder = { ...order, _id: orderId, orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time }
       await appendOrderClientMessage(updatedOrder, { eventType: 'remote_unlock_requested', title: '宠托师请求远程开门', detail: '宠托师已到达服务地点，请及时远程开门。', actorRole: 'staff', idempotencyKey: makeIdempotencyKey('order_message', orderId, 'remote_unlock_requested', notification._id || time.toISOString()) })
       const notifyResult = await notifyOrder(order.clientOpenid, 'remoteUnlock', updatedOrder, { deviceName: '宠托师请求远程开门', requestTime: beijingClockText(time) })
       const finalSecurity = { ...updatedSecurity, remoteUnlock: { ...updatedSecurity.remoteUnlock, lastNotifyStatus: { wechat: notifyResult && notifyResult.status || 'skipped', admin_phone: 'available' }, lastNotifyError: notifyResult && notifyResult.error || '' } }
       await db.collection('orders').doc(orderId).update({ data: { orderHomeSecurity: finalSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(finalSecurity), updatedAt: time } })
-      if (securityRes.data[0]) await db.collection('order_home_security').doc(securityRes.data[0]._id).update({ data: removeLegacySecretFields({ ...finalSecurity, updatedAt: time }) })
+      if (secDoc) await db.collection('order_home_security').doc(secDoc._id).update({ data: removeLegacySecretFields({ ...finalSecurity, updatedAt: time }) })
       await db.collection('home_security_notifications').doc(notification._id).update({ data: { status: finalSecurity.remoteUnlock.lastNotifyStatus, error: finalSecurity.remoteUnlock.lastNotifyError, updatedAt: time } })
       await appendOrderStaffMessage({ ...updatedOrder, orderHomeSecurity: finalSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(finalSecurity) }, { eventType: 'remote_unlock_reminder_sent', title: '已提醒宠物主远程开门', detail: '开门提醒已发送给宠物主，请等待对方处理。', actorRole: 'system', idempotencyKey: makeIdempotencyKey('order_staff_message', orderId, 'remote_unlock_reminder_sent', notification._id || time.toISOString()) })
       return toPublicOrderHomeSecurity(finalSecurity)
@@ -174,8 +176,9 @@ module.exports = function createHandler(context) {
       const existingSecurity = stripLegacyHomeSecuritySecrets(order.orderHomeSecurity || {})
       const security = { ...existingSecurity, type: 'one_time_code', lockMethod: 'one_time_code', lockMethodText: lockMethodText('one_time_code'), entryNotes: data.entryNotes || existingSecurity.entryNotes || '', hasDoorLockCode: true, oneTimeCode: { cipher: encrypted.cipher, iv: encrypted.iv, tag: encrypted.tag, masked: mask(code), effectiveStart: data.effectiveStart, effectiveEnd: data.effectiveEnd, coversServiceTime: isTimeRangeCovered(order.startTime, order.endTime, data.effectiveStart, data.effectiveEnd) }, updatedAt: time }
       await db.collection('orders').doc(orderId).update({ data: { orderHomeSecurity: security, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(security), updatedAt: time } })
-      const securityRes = await db.collection('order_home_security').where({ orderId }).limit(1).get()
-      if (securityRes.data[0]) await db.collection('order_home_security').doc(securityRes.data[0]._id).update({ data: removeLegacySecretFields({ ...security, updatedAt: time }) })
+      const securityRes = await db.collection('order_home_security').where({ orderId }).limit(1).get().catch(() => ({ data: [] }))
+      const secDoc = securityRes && securityRes.data && securityRes.data[0]
+      if (secDoc) await db.collection('order_home_security').doc(secDoc._id).update({ data: removeLegacySecretFields({ ...security, updatedAt: time }) })
       await appendOrderStaffMessage({ ...order, _id: orderId, orderHomeSecurity: security, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(security), updatedAt: time }, { eventType: 'one_time_code_updated', title: '一次性密码已更新', detail: '宠物主已重新填写一次性门锁密码，请在服务时间内查看。', actorRole: 'client', idempotencyKey: makeIdempotencyKey('order_staff_message', orderId, 'one_time_code_updated', time.toISOString()) })
       return toPublicOrderHomeSecurity(security)
     }
@@ -196,8 +199,9 @@ module.exports = function createHandler(context) {
       const time = now()
       const updatedSecurity = { ...security, key: { ...security.key, returnedAt: time.toISOString(), returnImageFileIds: imageFileIds, returnNote: data.note || '' }, updatedAt: time }
       await db.collection('orders').doc(data.orderId).update({ data: { orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time } })
-      const securityRes = await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get()
-      if (securityRes.data[0]) await db.collection('order_home_security').doc(securityRes.data[0]._id).update({ data: removeLegacySecretFields({ ...updatedSecurity, updatedAt: time }) })
+      const returnSecRes = await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get().catch(() => ({ data: [] }))
+      const returnSecDoc = returnSecRes && returnSecRes.data && returnSecRes.data[0]
+      if (returnSecDoc) await db.collection('order_home_security').doc(returnSecDoc._id).update({ data: removeLegacySecretFields({ ...updatedSecurity, updatedAt: time }) })
       return toPublicOrderHomeSecurity(updatedSecurity)
     }
     throw new Error('未知 homeSecurity 操作')

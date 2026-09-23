@@ -286,3 +286,77 @@ test('finance: readAll safely paginates and avoids infinite loop with maxLimit a
   assert.equal(res.totalEarnings, 1100)
 })
 
+test('admin: getUserDetail, setSitterFeatured, getOrderDetail return friendly error instead of unhandled crash on invalid ID', async () => {
+  const { db, context } = createTestContext({
+    users: [
+      { _id: 'u_admin', openid: 'admin_1', roles: ['admin'], status: 'active' }
+    ],
+    orders: [],
+    staff_profiles: []
+  })
+
+  const adminHandler = require('../../cloudfunctions/api/handlers/admin')({
+    ...context,
+    getUser: async () => ({ _id: 'u_admin', openid: 'admin_1', roles: ['admin'], status: 'active' })
+  })
+
+  await assert.rejects(
+    () => adminHandler('admin_1', 'getUserDetail', { userId: 'not_exist_user' }),
+    { message: '用户不存在' }
+  )
+
+  await assert.rejects(
+    () => adminHandler('admin_1', 'setSitterFeatured', { staffProfileId: 'not_exist_profile' }),
+    { message: '宠托师不存在' }
+  )
+
+  await assert.rejects(
+    () => adminHandler('admin_1', 'getOrderDetail', { orderId: 'not_exist_order' }),
+    { message: '订单不存在' }
+  )
+})
+
+test('staff: updateStaffProfileConfig and updateCurrentLocation throw friendly error when profile is missing', async () => {
+  const { db, context } = createTestContext({
+    users: [
+      { _id: 'u_staff', openid: 'staff_1', roles: ['staff'], status: 'active' }
+    ],
+    staff_profiles: []
+  })
+
+  const staffHandler = require('../../cloudfunctions/api/handlers/staff')({
+    ...context,
+    getUser: async () => ({ _id: 'u_staff', openid: 'staff_1', roles: ['staff'], status: 'active' })
+  })
+
+  await assert.rejects(
+    () => staffHandler('staff_1', 'updateStaffProfileConfig', { weeklySchedule: {} }),
+    { message: '请先提交宠托师认证' }
+  )
+
+  await assert.rejects(
+    () => staffHandler('staff_1', 'updateCurrentLocation', { latitude: 30.123, longitude: 120.456 }),
+    { message: '请先提交员工认证' }
+  )
+})
+
+test('adminMall: updateOrderStatus safely handles non-existent order in transaction', async () => {
+  const { db, context } = createTestContext({
+    users: [
+      { _id: 'u_admin', openid: 'admin_1', roles: ['admin'], status: 'active' }
+    ],
+    mall_orders: []
+  })
+
+  const adminMallHandler = require('../../cloudfunctions/api/handlers/adminMall')({
+    ...context,
+    getUser: async () => ({ _id: 'u_admin', openid: 'admin_1', roles: ['admin'], status: 'active' }),
+    getDocOrNull: async () => ({ _id: 'mo_1', status: 'paid', paymentStatus: 'paid' })
+  })
+
+  await assert.rejects(
+    () => adminMallHandler('admin_1', 'updateOrderStatus', { id: 'mo_1', status: 'shipped', remark: '管理员发货' }),
+    { message: '订单状态已变化，请刷新后重试' }
+  )
+})
+

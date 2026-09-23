@@ -115,7 +115,8 @@ module.exports = function createService({
 
     const id = safeText(data.id || data.notificationId).trim()
     if (!id) throw new Error('通知 ID 不能为空')
-    const item = (await db.collection('admin_notifications').doc(id).get()).data
+    const itemRes = await db.collection('admin_notifications').doc(id).get().catch(() => ({ data: null }))
+    const item = itemRes && itemRes.data
     if (!item) throw new Error('通知不存在')
 
     const readBy = Array.isArray(item.readBy) ? Array.from(new Set([...item.readBy, currentAdminOpenid])) : [currentAdminOpenid]

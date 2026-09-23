@@ -124,7 +124,7 @@ module.exports = function createService({
       }
 
       // 6.2 事务内读取用户最新余额，杜绝并发覆盖
-      const userDocRes = await tx.collection('users').doc(targetUserId).get()
+      const userDocRes = await tx.collection('users').doc(targetUserId).get().catch(() => null)
       const latestUser = userDocRes && userDocRes.data ? userDocRes.data : null
       if (!latestUser) {
         throw new Error(`用户不存在：${targetUserId}`)

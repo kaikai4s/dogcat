@@ -108,10 +108,11 @@ module.exports = function createHandler(context) {
       const pricing = await calcOrderPricing(data, pets, { openid })
       if (data.startTime || data.endTime) validateOrderTime({ ...data, durationMinutes: pricing.durationMinutes, endTime: pricing.sessions[pricing.sessions.length - 1].endTime })
       const publishMode = data.publishMode === 'direct' ? 'direct' : 'open'
-      const staffProfileId = data.staffProfileId || data.requestedStaffProfileId
+      const staffProfileId = safeText(data.staffProfileId || data.requestedStaffProfileId).trim()
       if (publishMode === 'direct' && staffProfileId) {
-        const staffProfileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
-        const staffProfile = staffProfileRes.data
+        const staffProfileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+        const staffProfile = staffProfileRes && staffProfileRes.data
+        if (!staffProfile) throw new Error('指定的宠托师不可用')
         validateDirectStaffServiceRange(staffProfile, data, { isQuote: true })
         if (data.startTime && data.endTime) {
           await validateStaffAvailabilityForSessions(staffProfile, pricing.sessions)
@@ -144,8 +145,9 @@ module.exports = function createHandler(context) {
       const requestedStaff = await getRequestedStaff(data)
       let directDistanceKm = null
       if (requestedStaff && requestedStaff.requestedStaffProfileId) {
-        const staffProfileRes = await db.collection('staff_profiles').doc(requestedStaff.requestedStaffProfileId).get()
-        const staffProfile = staffProfileRes.data
+        const staffProfileRes = await db.collection('staff_profiles').doc(requestedStaff.requestedStaffProfileId).get().catch(() => ({ data: null }))
+        const staffProfile = staffProfileRes && staffProfileRes.data
+        if (!staffProfile) throw new Error('指定的宠托师不可用')
         const rangeCheck = validateDirectStaffServiceRange(staffProfile, data, { isQuote: false })
         directDistanceKm = rangeCheck.dist
         await validateStaffAvailabilityForSessions(staffProfile, serviceSessions)
@@ -379,7 +381,7 @@ module.exports = function createHandler(context) {
         updatedAt: time
       }
       await db.runTransaction(async (tx) => {
-        const currentOrder = (await tx.collection('orders').doc(data.orderId).get()).data
+        const currentOrder = (await tx.collection('orders').doc(data.orderId).get().catch(() => ({ data: null }))).data
         if (!currentOrder || currentOrder.clientOpenid !== openid) throw new Error('仅宠物主可评价')
         if (currentOrder.status !== 'completed') throw new Error('订单完成后才可评价')
         if (currentOrder.reviewedAt) throw new Error('该订单已评价')

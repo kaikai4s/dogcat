@@ -14,7 +14,7 @@ const tabs = [
 ]
 
 function pageList(result) {
-  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
+  return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result ? { ...result, list: Array.isArray(result.list) ? result.list : [] } : { list: [], hasMore: false, page: 1, total: 0 })
 }
 
 Page({
@@ -73,7 +73,7 @@ Page({
       .then((result) => {
         if (requestSeq !== this._requestSeq) return
         const pageData = pageList(result)
-        const orders = pageData.list.map(withOrderText)
+        const orders = (pageData.list || []).map(withOrderText)
         this.setData({
           orders: reset ? orders : this.data.orders.concat(orders),
           page: pageData.page,

@@ -265,7 +265,8 @@ module.exports = function createHandler(context) {
           couponId = existingCoupon._id
           templateSnapshot = existingCoupon.templateSnapshot || null
         } else {
-          const template = (await db.collection('coupon_templates').doc(selectedPrize.templateId).get()).data
+          const templateRes = await db.collection('coupon_templates').doc(selectedPrize.templateId).get().catch(() => ({ data: null }))
+          const template = templateRes && templateRes.data
           if (template && template.enabled !== false) {
             templateSnapshot = normalizeCouponSnapshot(template)
             const validDays = Number(template.validDays || 30)

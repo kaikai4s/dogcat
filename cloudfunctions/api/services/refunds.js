@@ -27,7 +27,8 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
     if (!resolved.order) throw new Error('订单不存在')
     const id = idFor(`${resolved.collectionName}:${order._id}:${operatorOpenid}:${requestId || crypto.randomBytes(16).toString('hex')}`)
     const refund = await db.runTransaction(async tx => {
-      const current = (await tx.collection(resolved.collectionName).doc(order._id).get()).data
+      const current = (await tx.collection(resolved.collectionName).doc(order._id).get().catch(() => ({ data: null }))).data
+      if (!current) throw new Error('订单不存在')
       const previous = await optional(tx, 'refunds', id)
       const rows = await totals(tx, order._id)
       const existing = previous || (requestId && rows.find(row => row.clientRequestId === requestId && row.openid === order.clientOpenid))
@@ -90,9 +91,10 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
     }
     const resolved = await getPayableOrder(refund.orderId)
     return db.runTransaction(async tx => {
-      const latest = (await tx.collection('refunds').doc(refund._id).get()).data
-      if (latest.status === 'success' || latest.status === 'failed') return latest
-      const order = (await tx.collection(resolved.collectionName).doc(refund.orderId).get()).data
+      const latest = (await tx.collection('refunds').doc(refund._id).get().catch(() => ({ data: null }))).data
+      if (!latest || latest.status === 'success' || latest.status === 'failed') return latest || refund
+      const order = (await tx.collection(resolved.collectionName).doc(refund.orderId).get().catch(() => ({ data: null }))).data
+      if (!order) throw new Error('订单不存在')
       const rows = await totals(tx, refund.orderId)
       let status = 'processing'
       let failReason = ''

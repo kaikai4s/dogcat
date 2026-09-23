@@ -8,9 +8,9 @@ module.exports = function createService({ db, crypto, now, safeText }) {
     return cents
   }
   async function optional(tx, collection, id) {
+    if (!id) return null
     try { return (await tx.collection(collection).doc(id).get()).data || null } catch (error) {
-      if (String(error.message).includes(`document with _id ${id} does not exist`)) return null
-      throw error
+      return null
     }
   }
   async function profileFor(tx, record) {
@@ -18,7 +18,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
     const candidates = record.staffProfileId ? [{ _id: record.staffProfileId }]
       : (await db.collection('staff_profiles').where({ openid: record.staffOpenid }).limit(2).get()).data
     if (candidates.length !== 1) throw new Error('宠托师资料缺失或重复，请核对')
-    const profile = (await tx.collection('staff_profiles').doc(candidates[0]._id).get()).data
+    const profile = (await tx.collection('staff_profiles').doc(candidates[0]._id).get().catch(() => ({ data: null }))).data
     if (!profile || profile.openid !== record.staffOpenid) throw new Error('宠托师资料归属不匹配')
     return profile
   }
@@ -103,12 +103,12 @@ module.exports = function createService({ db, crypto, now, safeText }) {
   }
   async function requestStaffDepositRefund(openid, depositId, reason) {
     return db.runTransaction(async tx => {
-      const deposit = (await tx.collection('staff_deposits').doc(depositId).get()).data
+      const deposit = (await tx.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null }))).data
       if (!deposit || deposit.staffOpenid !== openid) throw new Error('保证金归属不匹配')
       if (deposit.refundStatus === 'requested') return { success: true, status: deposit.status }
       if (!['paid', 'partially_refunded'].includes(deposit.status) || !balances(deposit).available) throw new Error('暂无可退还保证金')
       const profile = await profileFor(tx, deposit)
-      const user = (await tx.collection('users').doc(deposit.staffUserId).get()).data
+      const user = (await tx.collection('users').doc(deposit.staffUserId).get().catch(() => ({ data: null }))).data
       if (!user || user.openid !== openid) throw new Error('用户归属不匹配')
       await exitCheck(openid)
       const time = now()
@@ -138,8 +138,8 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       if (!deposit && data.staffOpenid) {
         const dRes = await db.collection('staff_deposits').where({ staffOpenid: data.staffOpenid }).orderBy('createdAt', 'desc').limit(1).get()
         if (dRes && dRes.data && dRes.data.length > 0) {
-          deposit = (await tx.collection('staff_deposits').doc(dRes.data[0]._id).get()).data
-          depositId = deposit._id
+          deposit = (await tx.collection('staff_deposits').doc(dRes.data[0]._id).get().catch(() => ({ data: null }))).data
+          depositId = deposit && deposit._id
         }
       }
       if (!deposit) throw new Error('保证金记录不存在')
@@ -252,7 +252,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
     const proof = safeText(data.paymentReference).trim()
     if (action === 'paySupplyReimbursement' && (!proof || data.paymentConfirmed !== true)) throw new Error('请确认实际打款完成并提供付款凭证号')
     return db.runTransaction(async tx => {
-      const app = (await tx.collection('staff_supply_reimbursements').doc(data.id).get()).data
+      const app = (await tx.collection('staff_supply_reimbursements').doc(data.id).get().catch(() => ({ data: null }))).data
       if (!app) throw new Error('报销申请不存在')
       const paying = action === 'paySupplyReimbursement'
       const target = paying ? 'paid' : data.approved === true ? 'approved' : 'rejected'
@@ -295,7 +295,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
   }
   async function recordStaffDepositPayment(depositId, payload) {
     return db.runTransaction(async tx => {
-      const deposit = (await tx.collection('staff_deposits').doc(depositId).get()).data
+      const deposit = (await tx.collection('staff_deposits').doc(depositId).get().catch(() => ({ data: null }))).data
       if (!deposit) throw new Error('保证金记录不存在')
       // Late payment callbacks must never replenish refunded/forfeited balances.
       if (deposit.status !== 'unpaid') {
@@ -306,7 +306,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       const profile = await profileFor(tx, deposit)
       const candidates = (await db.collection('payments').where({ orderId: depositId, targetType: 'staff_deposit' }).limit(2).get()).data
       if (candidates.length > 1) throw new Error('保证金支付记录重复，请核对')
-      const payment = candidates[0] ? (await tx.collection('payments').doc(candidates[0]._id).get()).data : null
+      const payment = candidates[0] ? (await tx.collection('payments').doc(candidates[0]._id).get().catch(() => ({ data: null }))).data : null
       if (payment && (payment.orderId !== depositId || payment.paymentNo !== payload.paymentNo || money(payment.amount) !== money(amount))) throw new Error('保证金支付金额或单号不一致')
       if (payload.channel === 'wechat' && !payment) throw new Error('保证金支付记录缺失，请先对账')
       const time = now()

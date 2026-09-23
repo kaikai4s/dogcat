@@ -9,6 +9,7 @@ module.exports = function createService({
   isOpenOrder,
   normalizeStaffWorkflow,
   now,
+  safeText,
   toPublicSitter,
   validateStaffTakeOrderAbility,
   withSitterUserProfile
@@ -16,8 +17,8 @@ module.exports = function createService({
   async function getOrderForAccess(openid, orderId) {
     const user = await getUser(openid)
     if (user.roles.includes('admin')) await authorizeAdmin(user, 'admin.getOrderDetail')
-    const res = await db.collection('orders').doc(orderId).get()
-    let order = res.data ? { ...res.data, _id: orderId } : null
+    const res = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+    let order = res && res.data ? { ...res.data, _id: orderId } : null
     if (!order || (isAdminDeletedOrder(order) && !user.roles.includes('admin'))) throw new Error('订单不存在')
     order = await expireUnacceptedOrder(orderId, order)
     const isPreviousStaff = user.roles.includes('staff') && ((Array.isArray(order.previousStaffRecords) && order.previousStaffRecords.some((r) => r.staffOpenid === openid)) || order.originalStaffOpenid === openid)
@@ -58,9 +59,10 @@ module.exports = function createService({
         requestedStaffSnapshot: null
       }
     }
-    const staffProfileId = data.staffProfileId || data.requestedStaffProfileId
+    const staffProfileId = safeText(data.staffProfileId || data.requestedStaffProfileId).trim()
     if (!staffProfileId) throw new Error('请选择指定宠托师')
-    const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
+    const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+    if (!profileRes || !profileRes.data) throw new Error('指定宠托师档案不存在')
     const profile = normalizeStaffWorkflow(profileRes.data)
     const settings = await getSystemSettings()
     const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)

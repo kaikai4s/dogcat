@@ -10,7 +10,7 @@ module.exports = function createService({
   }
 
   async function lockStaff(transaction, id, openid) {
-    const user = (await transaction.collection('users').doc(id).get()).data
+    const user = (await transaction.collection('users').doc(id).get().catch(() => ({ data: null }))).data
     if (!user || user.openid !== openid || user.status !== 'active' || !Array.isArray(user.roles) || !user.roles.includes('staff')) {
       throw new Error('宠托师账号不可接单')
     }
@@ -31,11 +31,11 @@ module.exports = function createService({
     return db.runTransaction(async transaction => {
       // All assignment paths write the same user document, preventing cross-order write skew.
       await lockStaff(transaction, patch.staffUserId, patch.staffOpenid)
-      const profile = (await transaction.collection('staff_profiles').doc(patch.staffProfileId).get()).data
+      const profile = (await transaction.collection('staff_profiles').doc(patch.staffProfileId).get().catch(() => ({ data: null }))).data
       if (!profile || profile.openid !== patch.staffOpenid) throw new Error('宠托师资料不匹配')
       const ability = validateStaffTakeOrderAbility(profile, options.depositConfig)
       if (!ability.can) throw new Error(ability.message || '宠托师当前不可接单')
-      const order = (await transaction.collection('orders').doc(orderId).get()).data
+      const order = (await transaction.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data
       if (!order || order.status !== 'paid' || order.staffOpenid || order.adminDeletedAt) throw new Error('订单已被分配或状态不可接单')
       if (assignmentTerms(order) !== assignmentTerms(expectedOrder)) throw new Error('订单预约信息已变化，请刷新后重新接单')
       if (toTimeValue(order.startTime) > 0 && toTimeValue(order.startTime) <= now().getTime()) throw new Error('订单服务时间已过，无法接单')
@@ -56,7 +56,7 @@ module.exports = function createService({
       ? (await db.collection('users').where({ openid: expectedOrder.staffOpenid }).limit(1).get()).data[0]
       : null
     return db.runTransaction(async transaction => {
-      const order = (await transaction.collection('orders').doc(orderId).get()).data
+      const order = (await transaction.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data
       if (!order || order.status !== expectedOrder.status || order.staffOpenid !== expectedOrder.staffOpenid || assignmentTerms(order) !== assignmentTerms(expectedOrder)) {
         throw new Error('订单状态已变化，请刷新后重试')
       }

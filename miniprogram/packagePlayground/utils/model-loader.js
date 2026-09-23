@@ -46,7 +46,12 @@ function requestArrayBuffer(url) {
 async function loadCloudGltfModel(config) {
   const [gltfUrl, binUrl, textureUrl] = await requestTempUrls([config.gltf, config.bin, config.texture])
   const [gltfText, binData] = await Promise.all([requestText(gltfUrl), requestArrayBuffer(binUrl)])
-  const json = JSON.parse(gltfText)
+  let json
+  try {
+    json = JSON.parse(gltfText)
+  } catch (error) {
+    throw new Error('解析 3D 模型配置失败：数据格式不正确')
+  }
   if (json.buffers && json.buffers[0]) json.buffers[0].uri = `data:application/octet-stream;base64,${wx.arrayBufferToBase64(binData)}`
   if (json.images && json.images[0]) json.images[0].uri = textureUrl
   return new Promise((resolve, reject) => {

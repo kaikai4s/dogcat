@@ -56,7 +56,7 @@ module.exports = function createService({
       }
       // Read every record before writing. A competing transaction must retry and revalidate.
       for (const earning of selected) {
-        const current = (await transaction.collection('staff_earnings').doc(earning._id).get()).data
+        const current = (await transaction.collection('staff_earnings').doc(earning._id).get().catch(() => ({ data: null }))).data
         if (!current || current.staffOpenid !== openid || current.status !== 'available' || current.withdrawRequestId || current.frozenIncidentId || cents(current.amount) !== cents(earning.amount)) {
           throw new Error('收益状态已变化，请刷新后重试')
         }

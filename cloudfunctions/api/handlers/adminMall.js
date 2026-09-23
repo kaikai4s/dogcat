@@ -206,8 +206,8 @@ module.exports = function createHandler(context) {
         updatedAt: time
       }
       await db.runTransaction(async tx => {
-        const current = (await tx.collection('mall_orders').doc(orderId).get()).data
-        if (current.status !== order.status || current.paymentStatus !== order.paymentStatus) throw new Error('订单状态已变化，请刷新后重试')
+        const current = (await tx.collection('mall_orders').doc(orderId).get().catch(() => ({ data: null }))).data
+        if (!current || current.status !== order.status || current.paymentStatus !== order.paymentStatus) throw new Error('订单状态已变化，请刷新后重试')
         await tx.collection('mall_orders').doc(orderId).update({ data: updateData })
       })
       await logAdmin(admin, 'mall_order', orderId, 'updateOrderStatus', { prevStatus, targetStatus, remark })
@@ -231,7 +231,7 @@ module.exports = function createHandler(context) {
       if (!reason) throw new Error('请填写退款说明')
 
       const refund = await createRefundForOrder(order, refundAmount, reason, 'admin_mall_manual', openid, getClientRequestId(data))
-      const currentOrder = (await db.collection('mall_orders').doc(orderId).get()).data
+      const currentOrder = ((await db.collection('mall_orders').doc(orderId).get().catch(() => ({ data: null }))).data) || order
       const totalRefundAmount = Number(currentOrder.refundAmount || 0)
       const isFullRefund = Number(currentOrder.refundedAmount || 0) >= payAmount
       await logAdmin(admin, 'mall_order', orderId, 'refundOrder', { refundAmount, reason, refundNo: refund.refundNo, isFullRefund })

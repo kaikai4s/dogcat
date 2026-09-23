@@ -55,10 +55,11 @@ module.exports = function createHandler(context) {
       let query = { staffOpenid: openid }
       if (threadId) query._id = threadId
       else if (orderId) query.orderId = orderId
-      const res = await db.collection('order_staff_message_threads').where(query).limit(1).get()
-      if (res.data[0]) {
+      const res = await db.collection('order_staff_message_threads').where(query).limit(1).get().catch(() => ({ data: [] }))
+      const resDoc = res && res.data && res.data[0]
+      if (resDoc) {
         const time = now()
-        await db.collection('order_staff_message_threads').doc(res.data[0]._id).update({
+        await db.collection('order_staff_message_threads').doc(resDoc._id).update({
           data: { hiddenForStaff: true, hiddenAt: time, unreadCount: 0, updatedAt: time }
         })
       }

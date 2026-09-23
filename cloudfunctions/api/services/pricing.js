@@ -31,7 +31,8 @@ module.exports = function createService({
     if (data.publishMode !== 'direct') return 'certified'
     const staffProfileId = safeText(data.staffProfileId || data.requestedStaffProfileId).trim()
     if (!staffProfileId) return 'certified'
-    const staffProfile = normalizeStaffWorkflow((await db.collection('staff_profiles').doc(staffProfileId).get()).data)
+    const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+    const staffProfile = profileRes && profileRes.data ? normalizeStaffWorkflow(profileRes.data) : null
     return staffProfile && staffProfile.staffLevel === 'intern' ? 'intern' : 'certified'
   }
 
@@ -204,7 +205,8 @@ module.exports = function createService({
     const openid = options.openid || ''
     if (!openid) return basePricing
     if (data.couponId) {
-      const coupon = (await db.collection('user_coupons').doc(data.couponId).get()).data
+      const couponRes = await db.collection('user_coupons').doc(data.couponId).get().catch(() => ({ data: null }))
+      const coupon = couponRes && couponRes.data
       const result = evaluateCoupon(coupon, basePricing, openid)
       if (!result.applicable) throw new Error(result.reason)
       return applyCouponToPricing(basePricing, result)

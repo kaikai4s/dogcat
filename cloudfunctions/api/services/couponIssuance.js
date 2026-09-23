@@ -81,7 +81,12 @@ module.exports = function createService({
 
     if (typeof db.runTransaction === 'function') {
       const txResult = await db.runTransaction(async (tx) => {
-        const templateDoc = (await tx.collection('coupon_templates').doc(templateId).get()).data
+        let templateDoc = null
+        try {
+          templateDoc = (await tx.collection('coupon_templates').doc(templateId).get()).data
+        } catch (err) {
+          templateDoc = null
+        }
         if (!templateDoc || templateDoc.enabled === false) throw new Error('优惠券模板不可用')
         const currentTotalLimit = Number(templateDoc.totalIssueLimit || 0)
         const currentIssuedCount = Number(templateDoc.issuedCount || 0)

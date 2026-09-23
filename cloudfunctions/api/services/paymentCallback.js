@@ -40,7 +40,8 @@ module.exports = function createHandler(context) {
         const payment = (await db.collection('payments').where({ paymentNo }).limit(1).get()).data[0]
         if (!payment) throw new Error('支付单不存在')
         if (payment.targetType === 'staff_deposit') {
-          const deposit = (await db.collection('staff_deposits').doc(payment.depositId || payment.orderId).get()).data
+          const depositRes = await db.collection('staff_deposits').doc(payment.depositId || payment.orderId).get().catch(() => ({ data: null }))
+          const deposit = depositRes && depositRes.data
           if (!deposit) throw new Error('保证金记录不存在')
           validatePaymentCallbackPayload(payload, { payAmount: deposit.amount }, payment, config)
           const status = mapWechatTradeState(payload.trade_state)
