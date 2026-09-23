@@ -95,6 +95,7 @@ module.exports = function createHandler(context) {
     saveSystemSettings,
     sendSubscribeMessage,
     syncUsersMemberLevelName,
+    toCstParts,
     toTimeValue,
     updateOrderWhenStatus,
     validateStaffAvailabilityForSessions,
@@ -103,10 +104,10 @@ module.exports = function createHandler(context) {
     getOrderTimeRanges,
     validateStaffTakeOrderAbility
   } = context
-  async function readAll(collectionName, where = {}) {
+  async function readAll(collectionName, where = {}, maxLimit = 2000) {
     const rows = []
     let cursor = ''
-    while (true) {
+    while (rows.length < maxLimit) {
       const condition = { ...where }
       if (cursor) condition._id = db.command.gt(cursor)
       const page = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
@@ -114,7 +115,45 @@ module.exports = function createHandler(context) {
       if (page.length < 100) return rows
       cursor = page[page.length - 1]._id
     }
+    return rows
   }
+
+  async function queryFinanceListSafely(collectionName, { baseWhere = {}, dateRange, dateFields = ['createdAt'], pageSize = 50 }) {
+    const limit = Math.min(Math.max(Number(pageSize || 50), 1), 100)
+    const primaryDateField = dateFields[0] || 'createdAt'
+    const where = { ...baseWhere }
+
+    if (dateRange && dateRange.startDate && db.command && typeof db.command.gte === 'function') {
+      where[primaryDateField] = db.command.gte(`${dateRange.startDate} 00:00:00`)
+    }
+
+    try {
+      const res = await db.collection(collectionName)
+        .where(where)
+        .orderBy(primaryDateField, 'desc')
+        .limit(limit)
+        .get()
+      const list = (res.data || []).filter((item) => inDateRange(item, dateRange, dateFields))
+      if (list.length > 0 || !dateRange || (!dateRange.startDate && !dateRange.endDate)) {
+        return limitList(list, limit)
+      }
+    } catch (e) {
+      // 降级保护
+    }
+
+    const candidates = (await db.collection(collectionName)
+      .where(baseWhere)
+      .limit(Math.min(limit * 3, 150))
+      .get()).data || []
+
+    const sorted = candidates.sort((a, b) => {
+      const aDate = dateFields.map(f => parseDateValue(a[f])).find(Boolean) || 0
+      const bDate = dateFields.map(f => parseDateValue(b[f])).find(Boolean) || 0
+      return new Date(bDate) - new Date(aDate)
+    })
+    return limitList(sorted.filter((item) => inDateRange(item, dateRange, dateFields)), limit)
+  }
+
   return async function admin(openid, action, data) {
     const admin = await requireAdmin(openid)
     if (['getMyAdminAccess', 'enableAdminPermissions', 'listAdminGroups', 'saveAdminGroup', 'setAdminMembership', 'getAdminMembership', 'listAdminMembers', 'listOperationActors', 'listOperationLogs'].includes(action)) {
@@ -127,7 +166,15 @@ module.exports = function createHandler(context) {
       for (let i = 0; i < statuses.length; i += 1) counts[statuses[i]] = (await db.collection('orders').where({ status: statuses[i] }).count()).total
       const staffPending = await db.collection('staff_profiles').where({ auditStatus: 'pending' }).count()
       const incidentsOpen = await db.collection('order_incidents').where({ status: 'open' }).count()
-      const [orders, users] = await Promise.all([readAll('orders'), readAll('users')])
+      const todayParts = toCstParts()
+      const monthStartText = `${todayParts.monthKey}-01 00:00:00`
+      const monthCondition = db.command && typeof db.command.gte === 'function'
+        ? { createdAt: db.command.gte(monthStartText) }
+        : {}
+      const [orders, users] = await Promise.all([
+        readAll('orders', monthCondition),
+        readAll('users', monthCondition)
+      ])
       return { orders: counts, staffPending: staffPending.total, incidentsOpen: incidentsOpen.total, monthly: buildMonthlyDashboard(orders, users) }
     }
     if (action === 'financeDashboard') {
@@ -137,33 +184,33 @@ module.exports = function createHandler(context) {
     if (action === 'listFinanceLogs') {
       const range = buildDateRange(data)
       const targetType = safeText(data.targetType).trim()
-      const rows = await readAll('finance_logs')
-      return limitList(rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).filter((item) => (!targetType || item.targetType === targetType) && inDateRange(item, range, ['createdAt'])), data.pageSize || 50)
+      const baseWhere = targetType ? { targetType } : {}
+      return queryFinanceListSafely('finance_logs', { baseWhere, dateRange: range, dateFields: ['createdAt'], pageSize: data.pageSize })
     }
     if (action === 'listPayments') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const rows = await readAll('payments')
-      return limitList(rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['paidAt', 'updatedAt', 'createdAt'])), data.pageSize || 50)
+      const baseWhere = status ? { status } : {}
+      return queryFinanceListSafely('payments', { baseWhere, dateRange: range, dateFields: ['paidAt', 'updatedAt', 'createdAt'], pageSize: data.pageSize })
     }
     if (action === 'listRefunds') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const rows = await readAll('refunds')
-      return limitList(rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'updatedAt'])), data.pageSize || 50)
+      const baseWhere = status ? { status } : {}
+      return queryFinanceListSafely('refunds', { baseWhere, dateRange: range, dateFields: ['createdAt', 'updatedAt'], pageSize: data.pageSize })
     }
     if (action === 'listStaffEarnings') {
       await refreshStaffEarnings()
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const rows = await readAll('staff_earnings')
-      return limitList(rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'completedAt'])), data.pageSize || 50)
+      const baseWhere = status ? { status } : {}
+      return queryFinanceListSafely('staff_earnings', { baseWhere, dateRange: range, dateFields: ['createdAt', 'completedAt'], pageSize: data.pageSize })
     }
     if (action === 'listWithdrawRequests') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const rows = await readAll('withdraw_requests')
-      return limitList(rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt'])), data.pageSize || 50)
+      const baseWhere = status ? { status } : {}
+      return queryFinanceListSafely('withdraw_requests', { baseWhere, dateRange: range, dateFields: ['createdAt', 'paidAt'], pageSize: data.pageSize })
     }
     if (action === 'auditWithdrawRequest') {
       const approved = data.approved === true
