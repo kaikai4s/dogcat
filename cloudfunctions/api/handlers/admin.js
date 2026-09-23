@@ -828,9 +828,15 @@ module.exports = function createHandler(context) {
       return { order: displayOrder, tracks: tracks.data, checkins: (checkins.data || []).filter(isActiveCheckin), unlockLogs: unlockLogs.data, depositPenaltyEvidences: penaltyEvidences }
     }
     if (action === 'assignOrder') {
-      const orderRes = await db.collection('orders').doc(data.orderId).get()
+      const orderId = safeText(data.orderId).trim()
+      if (!orderId) throw new Error('缺少订单 ID')
+      const staffProfileId = safeText(data.staffProfileId).trim()
+      if (!staffProfileId) throw new Error('请选择宠托师')
+      const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+      if (!orderRes || !orderRes.data) throw new Error('订单不存在')
       if (orderRes.data.status !== 'paid') throw new Error('仅已支付订单可派单')
-      const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+      if (!profileRes || !profileRes.data) throw new Error('宠托师档案不存在')
       const profile = normalizeStaffWorkflow(profileRes.data)
       const settings = await getSystemSettings().catch(() => ({}))
       const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
@@ -840,18 +846,18 @@ module.exports = function createHandler(context) {
         }
         throw new Error(ability.message || '该宠托师尚未完成培训/视频审核，不能派单')
       }
-      await validateStaffAvailabilityForSessions(profile, getOrderTimeRanges(orderRes.data), { excludeOrderId: data.orderId })
+      await validateStaffAvailabilityForSessions(profile, getOrderTimeRanges(orderRes.data), { excludeOrderId: orderId })
       const staffUserRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = staffUserRes.data[0]
       if (!staffUser) throw new Error('员工用户不存在')
       const time = now()
       const assignmentUpdate = { staffUserId: staffUser._id, staffOpenid: staffUser.openid, staffProfileId: profile._id, status: 'assigned', assignmentSource: 'admin_assign', assignedAt: time, updatedAt: time }
-      const assignedOrder = await assignOrderAtomically(data.orderId, orderRes.data, assignmentUpdate, { admin: true, depositConfig: settings.staffDeposit })
-      await appendOrderTimeline(data.orderId, 'assigned', '管理员已派单', maskStaffName(profile.realName), 'admin')
+      const assignedOrder = await assignOrderAtomically(orderId, orderRes.data, assignmentUpdate, { admin: true, depositConfig: settings.staffDeposit })
+      await appendOrderTimeline(orderId, 'assigned', '管理员已派单', maskStaffName(profile.realName), 'admin')
       await appendOrderClientMessage(assignedOrder, { eventType: 'assigned', title: '平台已派单', detail: maskStaffName(profile.realName), actorRole: 'admin' })
-      await notifyOrder(orderRes.data.clientOpenid, 'orderAssigned', { ...orderRes.data, _id: data.orderId }, { statusText: '已派单' })
-      await logAdmin(admin, 'order', data.orderId, 'assignOrder', { staffProfileId: data.staffProfileId })
-      return { orderId: data.orderId }
+      await notifyOrder(orderRes.data.clientOpenid, 'orderAssigned', { ...orderRes.data, _id: orderId }, { statusText: '已派单' })
+      await logAdmin(admin, 'order', orderId, 'assignOrder', { staffProfileId })
+      return { orderId }
     }
     if (action === 'updateOrderStatus') {
       const orderId = safeText(data.id || data.orderId).trim()
@@ -862,8 +868,8 @@ module.exports = function createHandler(context) {
       const allowedStatuses = ['pending_pay', 'paid', 'assigned', 'in_service', 'completed', 'cancelled', 'refunded']
       if (!allowedStatuses.includes(targetStatus)) throw new Error('目标状态无效')
 
-      const orderRes = await db.collection('orders').doc(orderId).get()
-      if (!orderRes.data) throw new Error('订单不存在')
+      const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+      if (!orderRes || !orderRes.data) throw new Error('订单不存在')
       const order = orderRes.data
       const prevStatus = order.status
       if (prevStatus === targetStatus) throw new Error(`订单当前已处于该状态(${targetStatus})`)
@@ -924,8 +930,8 @@ module.exports = function createHandler(context) {
     if (action === 'manualCompleteOrder') {
       const orderId = safeText(data.id || data.orderId).trim()
       if (!orderId) throw new Error('缺少订单 ID')
-      const orderRes = await db.collection('orders').doc(orderId).get()
-      if (!orderRes.data) throw new Error('订单不存在')
+      const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+      if (!orderRes || !orderRes.data) throw new Error('订单不存在')
       const order = orderRes.data
 
       if (order.status === 'completed') {
@@ -1073,8 +1079,8 @@ module.exports = function createHandler(context) {
     if (action === 'refundOrder') {
       const orderId = safeText(data.id || data.orderId).trim()
       if (!orderId) throw new Error('缺少订单 ID')
-      const orderRes = await db.collection('orders').doc(orderId).get()
-      if (!orderRes.data) throw new Error('订单不存在')
+      const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+      if (!orderRes || !orderRes.data) throw new Error('订单不存在')
       const order = orderRes.data
       const payAmount = Number(order.payAmount || 0)
       if (payAmount <= 0) throw new Error('该订单无需退款（实付金额为0）')
@@ -1089,7 +1095,7 @@ module.exports = function createHandler(context) {
       if (!reason) throw new Error('请填写退款说明')
 
       const refund = await createRefundForOrder(order, refundAmount, reason, 'admin_manual', openid, getClientRequestId(data))
-      const currentOrder = (await db.collection('orders').doc(orderId).get()).data
+      const currentOrder = ((await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data) || order
       const totalRefundAmount = Number(currentOrder.refundAmount || 0)
       const isFullRefund = Number(currentOrder.refundedAmount || 0) >= payAmount
       await appendOrderTimeline(orderId, 'refund', `管理员发起退款 ¥${refundAmount.toFixed(2)}`, `说明：${reason}${isFullRefund ? '（已全额退款）' : ''}`, 'admin')

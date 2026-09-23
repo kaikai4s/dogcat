@@ -247,8 +247,10 @@ module.exports = function createHandler(context) {
     if (action === 'deleteCheckin') {
       const { order } = await requireStaffOrder(openid, data.orderId, '仅订单员工可删除打卡照片')
       if (order.status !== 'in_service') throw new Error('仅服务中可删除打卡照片')
-      if (!data.checkinId) throw new Error('请选择要删除的照片')
-      const checkin = (await db.collection('checkin_logs').doc(data.checkinId).get()).data
+      const checkinId = safeText(data.checkinId).trim()
+      if (!checkinId) throw new Error('请选择要删除的照片')
+      const checkinRes = await db.collection('checkin_logs').doc(checkinId).get().catch(() => ({ data: null }))
+      const checkin = checkinRes && checkinRes.data
       if (!checkin || checkin.orderId !== data.orderId) throw new Error('打卡照片不存在')
       if (checkin.eventType === 'sanitization') throw new Error('服务前消毒凭证不可删除')
       if (checkin.deletedAt) return { _id: data.checkinId, deletedAt: checkin.deletedAt }

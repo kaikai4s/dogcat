@@ -138,7 +138,8 @@ module.exports = function createHandler(context) {
       let couponResult = null
       const basePricing = calcMallPricing(snapshotItems)
       if (data.couponId) {
-        const coupon = (await db.collection('user_coupons').doc(data.couponId).get()).data
+        const couponRes = await db.collection('user_coupons').doc(data.couponId).get().catch(() => ({ data: null }))
+        const coupon = couponRes && couponRes.data
         const result = evaluateCoupon(coupon, { ...basePricing, serviceTypes: ['mall'] }, openid)
         if (!result.applicable) throw new Error(result.reason)
         couponResult = result

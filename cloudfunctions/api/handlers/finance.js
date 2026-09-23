@@ -8,17 +8,22 @@ module.exports = function createHandler(context) {
     safeText,
     summarizeStaffEarnings
   } = context
-  async function readAll(collectionName, where = {}) {
+  async function readAll(collectionName, where = {}, maxLimit = 2000) {
     const rows = []
     let cursor = ''
-    while (true) {
+    while (rows.length < maxLimit) {
       const condition = { ...where }
-      if (cursor) condition._id = db.command.gt(cursor)
+      if (cursor && db.command && typeof db.command.gt === 'function') {
+        condition._id = db.command.gt(cursor)
+      }
       const page = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
       rows.push(...page)
       if (page.length < 100) return rows
-      cursor = page[page.length - 1]._id
+      const nextCursor = page[page.length - 1] && page[page.length - 1]._id
+      if (!nextCursor || nextCursor === cursor) return rows
+      cursor = nextCursor
     }
+    return rows
   }
   return async function finance(openid, action, data) {
     if (action === 'getStaffBalance') {

@@ -31,7 +31,8 @@ module.exports = function createHandler(context) {
       await getUser(openid)
       const id = safeText(data.id).trim()
       if (!id) throw new Error('缺少邮件 ID')
-      const mail = (await db.collection('reward_mails').doc(id).get()).data
+      const mailRes = await db.collection('reward_mails').doc(id).get().catch(() => ({ data: null }))
+      const mail = mailRes && mailRes.data
       if (!mail || mail.openid !== openid) throw new Error('奖励邮件不存在')
       if (mail.readAt) return formatRewardMail(mail)
       const updated = { readAt: now(), updatedAt: now() }
@@ -42,7 +43,8 @@ module.exports = function createHandler(context) {
       const user = await getUser(openid)
       const id = safeText(data.id).trim()
       if (!id) throw new Error('缺少邮件 ID')
-      const mail = (await db.collection('reward_mails').doc(id).get()).data
+      const mailRes = await db.collection('reward_mails').doc(id).get().catch(() => ({ data: null }))
+      const mail = mailRes && mailRes.data
       if (!mail || mail.openid !== openid) throw new Error('奖励邮件不存在')
       if (mail.claimedAt) return formatRewardMail(mail)
       const claimTime = now()
@@ -57,7 +59,9 @@ module.exports = function createHandler(context) {
         if (reward.type === 'coupon') {
           const templateId = safeText(reward.couponTemplateId).trim()
           if (!templateId) throw new Error('奖励优惠券不存在')
-          const template = (await db.collection('coupon_templates').doc(templateId).get()).data
+          const templateRes = await db.collection('coupon_templates').doc(templateId).get().catch(() => ({ data: null }))
+          const template = templateRes && templateRes.data
+          if (!template) throw new Error('奖励优惠券不存在')
           couponResult = await issueCouponToTargetUser(template, user, {
             adminUserId: safeText(mail.sentByAdminUserId).trim(),
             adminOpenid: safeText(mail.sentByAdminOpenid).trim()

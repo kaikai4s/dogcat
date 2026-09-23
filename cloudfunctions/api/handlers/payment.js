@@ -43,7 +43,8 @@ module.exports = function createHandler(context) {
       }
       if (Number(order.payAmount || 0) <= 0) throw new Error('订单金额不正确')
       if (order.couponId) {
-        const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
+        const couponRes = await db.collection('user_coupons').doc(order.couponId).get().catch(() => ({ data: null }))
+        const coupon = couponRes && couponRes.data
         if (!coupon || coupon.openid !== openid) throw new Error('优惠券不可用')
         if (coupon.status !== 'locked' || coupon.lockedOrderId !== data.orderId) throw new Error('优惠券状态异常')
       }
@@ -91,7 +92,8 @@ module.exports = function createHandler(context) {
       assertOrderPaymentOpen(order)
       if (order.status !== 'pending_pay' || order.paymentStatus === 'closed') throw new Error('订单状态不可支付')
       if (order.couponId) {
-        const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
+        const couponRes = await db.collection('user_coupons').doc(order.couponId).get().catch(() => ({ data: null }))
+        const coupon = couponRes && couponRes.data
         if (!coupon || coupon.openid !== openid) throw new Error('优惠券不可用')
         if (coupon.status !== 'locked' || coupon.lockedOrderId !== data.orderId) throw new Error('优惠券状态异常')
       }

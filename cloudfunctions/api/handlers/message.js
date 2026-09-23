@@ -34,8 +34,8 @@ module.exports = function createHandler(context) {
       if (!threadId && !orderId) throw new Error('消息会话不存在')
       let thread = null
       if (threadId) {
-        const doc = await db.collection('order_message_threads').doc(threadId).get()
-        thread = doc.data
+        const doc = await db.collection('order_message_threads').doc(threadId).get().catch(() => ({ data: null }))
+        thread = doc && doc.data
       } else if (orderId) {
         const res = await db.collection('order_message_threads').where({ orderId, clientOpenid: openid }).limit(1).get()
         thread = res.data[0]
@@ -66,7 +66,8 @@ module.exports = function createHandler(context) {
     if (action === 'markThreadRead') {
       const threadId = safeText(data.threadId).trim()
       if (!threadId) throw new Error('消息会话不存在')
-      const thread = (await db.collection('order_message_threads').doc(threadId).get()).data
+      const threadRes = await db.collection('order_message_threads').doc(threadId).get().catch(() => ({ data: null }))
+      const thread = threadRes && threadRes.data
       if (!thread || thread.clientOpenid !== openid) throw new Error('消息会话不存在')
       const time = now()
       await db.collection('order_message_threads').doc(threadId).update({ data: { unreadCount: 0, readAt: time } })

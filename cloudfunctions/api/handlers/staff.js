@@ -234,8 +234,10 @@ module.exports = function createHandler(context) {
     if (action === 'getPublicSitterDetail') {
       const user = await getOptionalUser(openid)
       const settings = await getSystemSettings().catch(() => ({}))
-      const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
-      const profile = profileRes.data
+      const staffProfileId = safeText(data.staffProfileId).trim()
+      if (!staffProfileId) throw new Error('宠托师不可用')
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+      const profile = profileRes && profileRes.data
       if (!profile || !canTakeOrders(profile, settings.staffDeposit)) throw new Error('宠托师不可用')
       const detail = await toPublicSitterDetail(user ? openid : '', await withSitterUserProfile(normalizeStaffWorkflow(profile)))
 
@@ -274,8 +276,8 @@ module.exports = function createHandler(context) {
     if (action === 'checkSitterRange') {
       const staffProfileId = safeText(data.staffProfileId).trim()
       if (!staffProfileId) throw new Error('请选择宠托师')
-      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
-      const profile = profileRes.data
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+      const profile = profileRes && profileRes.data
       if (!profile) throw new Error('宠托师档案不存在')
 
       const userLat = Number(data.latitude !== undefined ? data.latitude : (data.addressLatitude || 0))
@@ -323,19 +325,23 @@ module.exports = function createHandler(context) {
     if (action === 'favoriteSitter') {
       const user = await getUser(openid)
       const settings = await getSystemSettings().catch(() => ({}))
-      const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
-      const profile = profileRes.data
+      const staffProfileId = safeText(data.staffProfileId).trim()
+      if (!staffProfileId) throw new Error('请选择宠托师')
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+      const profile = profileRes && profileRes.data
       if (!profile || !canTakeOrders(profile, settings.staffDeposit)) throw new Error('宠托师不可用')
-      const existing = await db.collection('sitter_favorites').where({ openid, staffProfileId: data.staffProfileId }).limit(1).get()
-      if (existing.data[0]) return { staffProfileId: data.staffProfileId, favorite: true }
-      await db.collection('sitter_favorites').add({ data: { userId: user._id, openid, staffProfileId: data.staffProfileId, createdAt: now() } })
-      return { staffProfileId: data.staffProfileId, favorite: true }
+      const existing = await db.collection('sitter_favorites').where({ openid, staffProfileId }).limit(1).get()
+      if (existing.data[0]) return { staffProfileId, favorite: true }
+      await db.collection('sitter_favorites').add({ data: { userId: user._id, openid, staffProfileId, createdAt: now() } })
+      return { staffProfileId, favorite: true }
     }
     if (action === 'unfavoriteSitter') {
       await getUser(openid)
-      const existing = await db.collection('sitter_favorites').where({ openid, staffProfileId: data.staffProfileId }).limit(1).get()
+      const staffProfileId = safeText(data.staffProfileId).trim()
+      if (!staffProfileId) return { staffProfileId: '', favorite: false }
+      const existing = await db.collection('sitter_favorites').where({ openid, staffProfileId }).limit(1).get()
       if (existing.data[0]) await db.collection('sitter_favorites').doc(existing.data[0]._id).remove()
-      return { staffProfileId: data.staffProfileId, favorite: false }
+      return { staffProfileId, favorite: false }
     }
     if (action === 'listFavoriteSitters') {
       await getUser(openid)
@@ -900,10 +906,11 @@ module.exports = function createHandler(context) {
       return saveStaffScheduleException(user, { dateKey }, true)
     }
     if (action === 'listScheduleAvailability') {
-      const profileId = data.staffProfileId || data.requestedStaffProfileId
+      const profileId = safeText(data.staffProfileId || data.requestedStaffProfileId).trim()
       let profile = null
       if (profileId) {
-        profile = (await db.collection('staff_profiles').doc(profileId).get()).data
+        const profileRes = await db.collection('staff_profiles').doc(profileId).get().catch(() => ({ data: null }))
+        profile = profileRes && profileRes.data
       } else {
         const user = await getUser(openid)
         if (!user.roles.includes('staff')) throw new Error('请选择宠托师')
@@ -1002,14 +1009,17 @@ module.exports = function createHandler(context) {
       if (!hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) || !profile.serviceAddress) {
         throw new Error('请先在个人中心设置固定服务地址与接单范围，方可接单')
       }
-      const orderRes = await db.collection('orders').doc(data.orderId).get()
-      const order = await expireUnacceptedOrder(data.orderId, orderRes.data)
+      const orderId = safeText(data.orderId).trim()
+      if (!orderId) throw new Error('订单不存在')
+      const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+      if (!orderRes || !orderRes.data) throw new Error('订单不存在')
+      const order = await expireUnacceptedOrder(orderId, orderRes.data)
       assertOrderTransition(order.status, ORDER_STATUS.ASSIGNED, '订单状态不可接单')
       if (order.staffOpenid) throw new Error('订单已被分配')
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
-      const conflict = await findStaffOrderConflict(profile.openid, order, data.orderId)
+      const conflict = await findStaffOrderConflict(profile.openid, order, orderId)
       if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
       return checkAcceptOrderRisk(profile, order)
     }
@@ -1025,8 +1035,11 @@ module.exports = function createHandler(context) {
         throw new Error('请先在个人中心设置固定服务地址与接单范围，方可接单')
       }
 
-      const orderRes = await db.collection('orders').doc(data.orderId).get()
-      const order = await expireUnacceptedOrder(data.orderId, orderRes.data)
+      const orderId = safeText(data.orderId).trim()
+      if (!orderId) throw new Error('订单不存在')
+      const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+      if (!orderRes || !orderRes.data) throw new Error('订单不存在')
+      const order = await expireUnacceptedOrder(orderId, orderRes.data)
       assertOrderTransition(order.status, ORDER_STATUS.ASSIGNED, '订单状态不可接单')
       if (order.staffOpenid) throw new Error('订单已被分配')
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'

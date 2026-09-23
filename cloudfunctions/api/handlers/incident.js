@@ -54,7 +54,8 @@ module.exports = function createHandler(context) {
       const { user, incident } = await getIncidentForAccess(openid, data.id || data.incidentId)
       const comments = (await db.collection('incident_comments').where({ incidentId: incident._id }).orderBy('createdAt', 'asc').get()).data || []
       const actions = user.roles.includes('admin') ? ((await db.collection('incident_actions').where({ incidentId: incident._id }).orderBy('createdAt', 'asc').get()).data || []) : []
-      const order = incident.orderId ? (await db.collection('orders').doc(incident.orderId).get()).data : null
+      const orderRes = incident.orderId ? await db.collection('orders').doc(incident.orderId).get().catch(() => ({ data: null })) : null
+      const order = orderRes && orderRes.data
       return { incident, comments, actions, order: order ? await attachOrderDisplayData(order) : null }
     }
     if (action === 'appendIncidentComment') {
@@ -140,17 +141,22 @@ module.exports = function createHandler(context) {
     if (action === 'proposeResolution') {
       const admin = await requireAdmin(openid)
       const id = data.id || data.incidentId
-      const incident = (await db.collection('order_incidents').doc(id).get()).data
+      const incidentRes = await db.collection('order_incidents').doc(id).get().catch(() => ({ data: null }))
+      const incident = incidentRes && incidentRes.data
       if (!incident) throw new Error('纠纷不存在')
       const type = safeText(data.resolutionType || data.type).trim() || 'explain'
       const resolution = { type, content: safeText(data.content).trim(), refundAmount: Number(data.refundAmount || 0), couponTemplateId: '', couponId: '', couponSnapshot: null, createdByOpenid: openid, createdAt: now() }
       if (type === 'coupon') {
         const couponTemplateId = safeText(data.couponTemplateId).trim()
         if (!couponTemplateId) throw new Error('请选择补偿优惠券')
-        const order = (await db.collection('orders').doc(incident.orderId).get()).data
+        const orderRes = await db.collection('orders').doc(incident.orderId).get().catch(() => ({ data: null }))
+        const order = orderRes && orderRes.data
+        if (!order) throw new Error('订单不存在')
         const targetUser = (await db.collection('users').where({ openid: order.clientOpenid || incident.clientOpenid }).limit(1).get()).data[0]
         if (!targetUser) throw new Error('目标用户不存在')
-        const template = (await db.collection('coupon_templates').doc(couponTemplateId).get()).data
+        const templateRes = await db.collection('coupon_templates').doc(couponTemplateId).get().catch(() => ({ data: null }))
+        const template = templateRes && templateRes.data
+        if (!template) throw new Error('补偿优惠券不存在')
         const issued = await issueCouponToTargetUser(template, targetUser, { adminUserId: admin._id, adminOpenid: openid })
         resolution.couponTemplateId = couponTemplateId
         resolution.couponId = issued._id
@@ -171,9 +177,11 @@ module.exports = function createHandler(context) {
     if (action === 'linkRefund') {
       await requireAdmin(openid)
       const id = data.id || data.incidentId
-      const incident = (await db.collection('order_incidents').doc(id).get()).data
+      const incidentRes = await db.collection('order_incidents').doc(id).get().catch(() => ({ data: null }))
+      const incident = incidentRes && incidentRes.data
       if (!incident) throw new Error('纠纷不存在')
-      const order = (await db.collection('orders').doc(incident.orderId).get()).data
+      const orderRes = await db.collection('orders').doc(incident.orderId).get().catch(() => ({ data: null }))
+      const order = orderRes && orderRes.data
       if (!order) throw new Error('订单不存在')
       let refund = null
       let actionName = 'refund_linked'
@@ -184,7 +192,8 @@ module.exports = function createHandler(context) {
         refund = await createRefundForOrder({ ...order, _id: incident.orderId }, refundAmount, safeText(data.reason).trim() || '纠纷处理退款', 'incident', openid, getClientRequestId(data))
         actionName = 'refund_created'
       } else if (data.refundId) {
-        refund = (await db.collection('refunds').doc(data.refundId).get()).data
+        const refundRes = await db.collection('refunds').doc(data.refundId).get().catch(() => ({ data: null }))
+        refund = refundRes && refundRes.data
         if (!refund || refund.orderId !== incident.orderId) throw new Error('退款单不存在或不属于本订单')
       }
       const update = { refundId: (refund && refund._id) || data.refundId || '', refundNo: (refund && refund.refundNo) || data.refundNo || '', status: 'refund_pending', updatedAt: now() }

@@ -426,7 +426,8 @@ module.exports = function createHandler(context) {
       }
       if (!refund) await updateOrderWhenStatus(data.orderId, order.status, update, '订单状态不可取消')
       if (order.paymentStatus !== 'paid' && order.couponId) {
-        const coupon = (await db.collection('user_coupons').doc(order.couponId).get()).data
+        const couponRes = await db.collection('user_coupons').doc(order.couponId).get().catch(() => ({ data: null }))
+        const coupon = couponRes && couponRes.data
         if (coupon && coupon.status === 'locked' && coupon.lockedOrderId === data.orderId) {
           await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'available', lockedOrderId: '', lockedAt: null, updatedAt: time } })
         }
@@ -740,7 +741,9 @@ module.exports = function createHandler(context) {
     }
     if (action === 'getPublicCompletedOrderDetail') {
       const orderId = safeText(data.id || data.orderId).trim()
-      const order = (await db.collection('orders').doc(orderId).get()).data
+      if (!orderId) throw new Error('订单不可查看')
+      const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+      const order = orderRes && orderRes.data
       if (!order || order.status !== ORDER_STATUS.COMPLETED) throw new Error('订单不可查看')
       const [reviewRes, checkinsRes, clientRes] = await Promise.all([
         db.collection('service_reviews').where({ orderId, status: 'visible' }).limit(1).get(),
@@ -750,7 +753,8 @@ module.exports = function createHandler(context) {
       const staffProfileId = order.staffProfileId || order.requestedStaffProfileId || ''
       let staffProfile = {}
       if (staffProfileId) {
-        staffProfile = (await db.collection('staff_profiles').doc(staffProfileId).get()).data || {}
+        const staffRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
+        staffProfile = (staffRes && staffRes.data) || {}
       }
       const displayOrder = await attachClientSnapshot(order)
       return toHomeOrderActivity(displayOrder, {

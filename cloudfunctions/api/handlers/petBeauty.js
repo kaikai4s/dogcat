@@ -156,10 +156,19 @@ module.exports = function createHandler(context) {
       const { order } = await requireClientOrder(openid, orderId, '仅宠物主可导入美照')
       const orderPetIds = Array.isArray(order.petIds) && order.petIds.length ? order.petIds : [order.petId].filter(Boolean)
       if (!orderPetIds.includes(petId)) throw new Error('该宠物不属于此订单')
-      const pet = (await db.collection('pets').doc(petId).get()).data
-      if (!pet || pet.openid !== openid) throw new Error('宠物不存在')
-      const currentPhotos = Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length ? pet.beautyPhotos : normalizeBeautyPhotos([], pet.avatarFileId)
-      const checkins = await Promise.all(checkinIds.map(async (id) => ({ ...(await db.collection('checkin_logs').doc(id).get()).data, _id: id })))
+      const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+      const pet = petRes && petRes.data
+      let currentPhotos = []
+      if (Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length) {
+        currentPhotos = pet.beautyPhotos
+      } else if (pet.avatarFileId) {
+        try {
+          currentPhotos = normalizeBeautyPhotos([], pet.avatarFileId)
+        } catch (e) {
+          currentPhotos = []
+        }
+      }
+      const checkins = await Promise.all(checkinIds.map(async (id) => ({ ...((await db.collection('checkin_logs').doc(id).get().catch(() => ({ data: null }))).data || {}), _id: id })))
       const imported = checkins
         .filter((item) => item.orderId === orderId && item.eventType === 'pet_beauty_photo' && !item.deletedAt && item.mediaFileId)
         .map((item, index) => normalizeBeautyPhoto({ fileId: item.mediaFileId, source: 'service_checkin', orderId, checkinId: item._id, createdAt: item.recordedAt || item.createdAt }, index))
@@ -167,6 +176,7 @@ module.exports = function createHandler(context) {
       const seen = new Set(currentPhotos.map((photo) => photo.fileId))
       const maxAllowed = Math.max(0, 9 - currentPhotos.length)
       if (maxAllowed <= 0) throw new Error('宠物美照已满9张，请先在每月1日删除后再导入')
+      const additions = imported.filter((item) => item.fileId && !seen.has(item.fileId))
       const allowedAdditions = additions.slice(0, maxAllowed)
       for (const item of allowedAdditions) {
         if (item.fileId) {
@@ -174,7 +184,7 @@ module.exports = function createHandler(context) {
         }
       }
       const beautyPhotos = currentPhotos.concat(allowedAdditions)
-      await db.collection('pets').doc(petId).update({ data: { beautyPhotos, avatarFileId: pet.avatarFileId || beautyPhotos[0].fileId, updatedAt: nowText() } })
+      await db.collection('pets').doc(petId).update({ data: { beautyPhotos, avatarFileId: pet.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '', updatedAt: nowText() } })
       return { petId, importedCount: allowedAdditions.length, beautyPhotos }
     }
 
@@ -182,9 +192,11 @@ module.exports = function createHandler(context) {
       const todayInfo = toCstParts()
       if (todayInfo.dayNumber !== 1) throw new Error('每月1日才可以删除宠物美照')
       const petId = safeText(data.petId).trim()
+      if (!petId) throw new Error('请选择宠物')
       const photoId = safeText(data.photoId).trim()
       const fileId = safeText(data.fileId).trim()
-      const pet = (await db.collection('pets').doc(petId).get()).data
+      const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+      const pet = petRes && petRes.data
       if (!pet || pet.openid !== openid) throw new Error('宠物不存在')
       const currentPhotos = Array.isArray(pet.beautyPhotos) ? pet.beautyPhotos : []
       const beautyPhotos = currentPhotos.filter((photo) => (photoId && photo.id !== photoId) || (fileId && photo.fileId !== fileId))
