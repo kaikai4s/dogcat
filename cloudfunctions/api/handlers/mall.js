@@ -27,6 +27,25 @@ module.exports = function createHandler(context) {
     safeText,
     saveMallCart
   } = context
+
+  async function readAll(collectionName, where = {}, maxLimit = 2000) {
+    const rows = []
+    let cursor = ''
+    while (rows.length < maxLimit) {
+      const condition = { ...where }
+      if (cursor && db.command && typeof db.command.gt === 'function') {
+        condition._id = db.command.gt(cursor)
+      }
+      const page = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      rows.push(...page)
+      if (page.length < 100) return rows
+      const nextCursor = page[page.length - 1] && page[page.length - 1]._id
+      if (!nextCursor || nextCursor === cursor) return rows
+      cursor = nextCursor
+    }
+    return rows
+  }
+
   return async function mall(openid, action, data) {
     if (action === 'listCategories') {
       const res = await db.collection('mall_categories').where({ enabled: true }).get()
@@ -35,9 +54,10 @@ module.exports = function createHandler(context) {
     if (action === 'listProducts') {
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const categoryId = safeText(data.categoryId).trim()
-      const res = await db.collection('mall_products').where({ status: 'on_sale' }).get()
-      let list = (res.data || []).map(publicMallProduct).filter((item) => item.name)
-      if (categoryId) list = list.filter((item) => item.categoryId === categoryId)
+      const where = { status: 'on_sale' }
+      if (categoryId) where.categoryId = categoryId
+      const products = await readAll('mall_products', where)
+      let list = (products || []).map(publicMallProduct).filter((item) => item.name)
       if (keyword) list = list.filter((item) => [item.name, item.subtitle, item.specText].some((value) => safeText(value).toLowerCase().includes(keyword)))
       if (data.sort === 'price_asc') list.sort((a, b) => a.minPrice - b.minPrice)
       else if (data.sort === 'price_desc') list.sort((a, b) => b.maxPrice - a.maxPrice)
@@ -141,10 +161,28 @@ module.exports = function createHandler(context) {
     if (action === 'listMyOrders') {
       await getUser(openid)
       const status = safeText(data.status).trim()
-      const res = await db.collection('mall_orders').where({ clientOpenid: openid }).orderBy('createdAt', 'desc').get()
-      let list = res.data || []
-      if (status && status !== 'all') list = list.filter((item) => status === 'after_sale' ? ['refund_applied', 'refunded'].includes(item.status) : item.status === status)
-      return paginateList(list.map((item) => ({ ...item, statusText: mallOrderStatusText(item.status) })), data)
+      const where = { clientOpenid: openid }
+      if (status && status !== 'all') {
+        if (status === 'after_sale') {
+          where.status = db.command && typeof db.command.in === 'function' ? db.command.in(['refund_applied', 'refunded']) : 'refund_applied'
+        } else {
+          where.status = status
+        }
+      }
+      const page = Math.max(Number(data.page || 1), 1)
+      const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 100)
+      const offset = (page - 1) * pageSize
+      const countRes = await db.collection('mall_orders').where(where).count()
+      const total = (countRes && countRes.total) || 0
+      const res = await db.collection('mall_orders').where(where).orderBy('createdAt', 'desc').skip(offset).limit(pageSize).get()
+      const list = (res.data || []).map((item) => ({ ...item, statusText: mallOrderStatusText(item.status) }))
+      return {
+        list,
+        total,
+        page,
+        pageSize,
+        hasMore: offset + pageSize < total
+      }
     }
     if (action === 'getOrderDetail') {
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)

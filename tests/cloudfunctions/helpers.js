@@ -61,6 +61,8 @@ function createCollectionStore(initial = {}) {
           return false
         }
       }
+      if (condition && typeof condition === 'object' && '$ne' in condition) return item[key] !== condition.$ne
+      if (condition === false) return item[key] === false || item[key] === undefined || item[key] === null
       return item[key] === condition
     })
   }
@@ -184,6 +186,7 @@ function createCollectionStore(initial = {}) {
     RegExp: ({ regexp, options = 'i' }) => ({ $regex: regexp, $options: options, regexp, options }),
     command: {
       in: (arr) => ({ $in: arr }), gt: value => ({ $gt: value }), gte: value => ({ $gte: value }),
+      neq: value => ({ $ne: value }),
       expr: value => ({ $expr: value }), aggregate: aggregateCommand
     }
   }

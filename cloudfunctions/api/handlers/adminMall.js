@@ -16,6 +16,25 @@ module.exports = function createHandler(context) {
     safeText,
     validateMallProductInput
   } = context
+
+  async function readAll(collectionName, where = {}, maxLimit = 2000) {
+    const rows = []
+    let cursor = ''
+    while (rows.length < maxLimit) {
+      const condition = { ...where }
+      if (cursor && db.command && typeof db.command.gt === 'function') {
+        condition._id = db.command.gt(cursor)
+      }
+      const page = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      rows.push(...page)
+      if (page.length < 100) return rows
+      const nextCursor = page[page.length - 1] && page[page.length - 1]._id
+      if (!nextCursor || nextCursor === cursor) return rows
+      cursor = nextCursor
+    }
+    return rows
+  }
+
   return async function adminMall(openid, action, data) {
     const admin = await requireAdmin(openid)
     if (action === 'listCategories') {
@@ -48,9 +67,10 @@ module.exports = function createHandler(context) {
     if (action === 'listProducts') {
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const status = safeText(data.status).trim()
-      const res = await db.collection('mall_products').get()
-      let list = (res.data || []).map(publicMallProduct)
-      if (status) list = list.filter((item) => item.status === status)
+      const where = {}
+      if (status) where.status = status
+      const products = await readAll('mall_products', where)
+      let list = (products || []).map(publicMallProduct)
       if (keyword) list = list.filter((item) => [item.name, item.subtitle, item.specText].some((value) => safeText(value).toLowerCase().includes(keyword)))
       list.sort((a, b) => a.sortOrder - b.sortOrder || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
       return paginateList(list, data)
@@ -87,11 +107,10 @@ module.exports = function createHandler(context) {
     if (action === 'listOrders') {
       const status = safeText(data.status).trim()
       const keyword = safeText(data.keyword).trim().toLowerCase()
-      const res = await db.collection('mall_orders').orderBy('createdAt', 'desc').get()
-      let list = res.data || []
-      if (status) list = list.filter((item) => item.status === status)
-      if (keyword) list = list.filter((item) => [item.orderNo, item.contactPhone, item.trackingNo, item.expressCompany].some((value) => safeText(value).toLowerCase().includes(keyword)))
-      const enriched = list.map((item) => {
+      const where = {}
+      if (status) where.status = status
+
+      const enrichOrder = (item) => {
         const payAmount = Number(item.payAmount || 0)
         const alreadyRefunded = Number(item.refundAmount || 0)
         const maxRefundable = Math.max(0, Math.round((payAmount - alreadyRefunded) * 100) / 100)
@@ -101,7 +120,33 @@ module.exports = function createHandler(context) {
           alreadyRefunded,
           maxRefundable
         }
-      })
+      }
+
+      if (!keyword) {
+        const page = Math.max(Number(data.page || 1), 1)
+        const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 100)
+        const offset = (page - 1) * pageSize
+        const countRes = await db.collection('mall_orders').where(where).count()
+        const total = (countRes && countRes.total) || 0
+        const res = await db.collection('mall_orders')
+          .where(where)
+          .orderBy('createdAt', 'desc')
+          .skip(offset)
+          .limit(pageSize)
+          .get()
+        const list = (res.data || []).map(enrichOrder)
+        return {
+          list,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + pageSize < total
+        }
+      }
+
+      const allOrders = (await readAll('mall_orders', where, 2000)).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      const filtered = allOrders.filter((item) => [item.orderNo, item.contactPhone, item.trackingNo, item.expressCompany].some((value) => safeText(value).toLowerCase().includes(keyword)))
+      const enriched = filtered.map(enrichOrder)
       return paginateList(enriched, data)
     }
     if (action === 'getOrderDetail') {

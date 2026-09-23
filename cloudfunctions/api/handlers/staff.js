@@ -659,7 +659,7 @@ module.exports = function createHandler(context) {
       await db.collection('staff_profiles').doc(existing.data[0]._id).update({ data: location })
       return { _id: existing.data[0]._id, ...location }
     }
-    if (action === 'listNearbyOrders') {
+    if (action === 'listNearbyOrders' || action === 'listAvailableOrders') {
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
 
@@ -677,7 +677,16 @@ module.exports = function createHandler(context) {
       const filterDate = data.filterDate ? String(data.filterDate).trim() : ''
       await expireDueUnacceptedOrders()
 
-      const availableOrders = (await readAll('orders', { status: 'paid' })).sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
+      const openWhere = {
+        status: 'paid',
+        publishMode: 'open'
+      }
+      if (db.command && typeof db.command.neq === 'function') {
+        openWhere.isUrgent = db.command.neq(true)
+      } else {
+        openWhere.isUrgent = false
+      }
+      const availableOrders = (await readAll('orders', openWhere)).sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
       const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
       const normalizedSchedule = normalizeWeeklySchedule(profile.weeklySchedule)
 
@@ -745,7 +754,18 @@ module.exports = function createHandler(context) {
         return true
       }
 
-      let orders = await Promise.all(availableOrders.filter((order) => !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent).map(async (order) => {
+      let candidates = availableOrders.filter((order) => !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish')
+      if (filterDate) {
+        candidates = candidates.filter((order) => {
+          if (!order.startTime) return false
+          return String(order.startTime).startsWith(filterDate)
+        })
+      }
+      if (filterCity) {
+        candidates = candidates.filter((order) => orderMatchesCity(order, filterCity))
+      }
+
+      let orders = await Promise.all(candidates.map(async (order) => {
         const enriched = await attachOrderDisplayData(order)
         let distanceKm = null
         if (hasCoordinate(latitude, longitude) && hasCoordinate(enriched.addressLatitude, enriched.addressLongitude)) {
@@ -764,19 +784,6 @@ module.exports = function createHandler(context) {
         result.inTime = isOrderInTime(result)
         return result
       }))
-
-      // 1. 城市筛选：优先用订单 city 字段，历史订单无 city 时从服务地址解析；解析不到城市的旧数据默认保留。
-      if (filterCity) {
-        orders = orders.filter((order) => orderMatchesCity(order, filterCity))
-      }
-
-      // 2. 服务日期筛选 (Date Filter: YYYY-MM-DD)
-      if (filterDate) {
-        orders = orders.filter((order) => {
-          if (!order.startTime) return false
-          return String(order.startTime).startsWith(filterDate)
-        })
-      }
 
       // 3. 服务范围与时间筛选需在分页前执行，避免当前页被前端过滤后为空
       if (inServiceRange) orders = orders.filter((order) => order.inRange)
