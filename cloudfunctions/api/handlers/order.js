@@ -62,8 +62,10 @@ module.exports = function createHandler(context) {
     processOverdueUnfinishedOrders,
     processOverdueUnstartedOrders,
     readScopedDocuments,
+    requireAdmin,
     requireClientOrder,
     requireSanitizationEvidence,
+    requireServiceReportAccess,
     requireStaffOrder,
     requiredCheckins,
     requiresSanitization,
@@ -76,6 +78,7 @@ module.exports = function createHandler(context) {
     toHomeOrderActivity,
     toPublicHomeSecuritySnapshot,
     toPublicOrderHomeSecurity,
+    toServiceReportOrder,
     toTimeValue,
     updateOrderWhenStatus,
     updateStaffRatingStats,
@@ -83,6 +86,12 @@ module.exports = function createHandler(context) {
     validateOrderTime,
     validateStaffAvailabilityForSessions
   } = context
+  function sanitizeOrderSecurityFields(order) {
+    if (!order) return order
+    const security = order.orderHomeSecurity || order.homeSecuritySnapshot
+    const publicSecurity = toPublicOrderHomeSecurity(security)
+    return { ...order, orderHomeSecurity: publicSecurity, homeSecuritySnapshot: publicSecurity ? toPublicHomeSecuritySnapshot(publicSecurity) : null }
+  }
   return async function order(openid, action, data) {
     if (action === 'listServiceOptions') {
       await getUser(openid)
@@ -114,7 +123,7 @@ module.exports = function createHandler(context) {
       const clientRequestId = getClientRequestId(data)
       if (clientRequestId) {
         const existingOrder = (await db.collection('orders').where({ clientOpenid: openid, clientRequestId }).limit(1).get()).data[0]
-        if (existingOrder) return { ...existingOrder, orderHomeSecurity: toPublicOrderHomeSecurity(existingOrder.orderHomeSecurity || existingOrder.homeSecuritySnapshot), savedAddress: null }
+        if (existingOrder) return { ...sanitizeOrderSecurityFields(existingOrder), savedAddress: null }
       }
       if (!safeText(user.phone).trim()) throw new Error('请先绑定手机号')
       const petIds = normalizePetIds(data)
@@ -157,12 +166,11 @@ module.exports = function createHandler(context) {
         })
       }
       const created = await db.collection('orders').add({ data: order })
-      const { doorLockCode, ...securityRecord } = homeSecurity
       await db.collection('order_home_security').add({
         data: {
           orderId: created._id,
           clientOpenid: openid,
-          ...securityRecord,
+          ...homeSecurity,
           createdAt: time,
           updatedAt: time
         }
@@ -177,7 +185,7 @@ module.exports = function createHandler(context) {
         await appendOrderTimeline(created._id, 'coupon_locked', '已使用优惠券', `优惠 ¥${order.discountAmount}`, 'client')
         await appendOrderClientMessage(createdOrder, { eventType: 'coupon_locked', title: '已使用优惠券', detail: `优惠 ¥${order.discountAmount}`, actorRole: 'client', unreadForClient: false })
       }
-      return { ...createdOrder, orderHomeSecurity: toPublicOrderHomeSecurity(homeSecurity), savedAddress }
+      return { ...sanitizeOrderSecurityFields(createdOrder), savedAddress }
     }
 
     if (action === 'listOrders') {
@@ -227,10 +235,10 @@ module.exports = function createHandler(context) {
       const isStaffOnly = role === 'staff' && !user.roles.includes('admin')
       if (wantsPage) {
         const page = paginateList(list, data)
-        const enrichedList = await Promise.all(page.list.map((order) => attachOrderDisplayData(order, levels, userCache)))
+        const enrichedList = (await Promise.all(page.list.map((order) => attachOrderDisplayData(order, levels, userCache)))).map(sanitizeOrderSecurityFields)
         return { ...page, list: isStaffOnly ? enrichedList.map(maskOrderClientContact) : enrichedList }
       }
-      const enrichedList = await Promise.all(list.map((order) => attachOrderDisplayData(order, levels, userCache)))
+      const enrichedList = (await Promise.all(list.map((order) => attachOrderDisplayData(order, levels, userCache)))).map(sanitizeOrderSecurityFields)
       return isStaffOnly ? enrichedList.map(maskOrderClientContact) : enrichedList
     }
 
@@ -263,7 +271,8 @@ module.exports = function createHandler(context) {
         const group = checkinGroups[item.eventType] || { count: 0, photos: [] }
         return { ...item, completed: group.count > 0, photoCount: group.count, photos: group.photos }
       })
-      const resultOrder = { ...displayOrder, trackCount: (tracksRes.data || []).length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: toPublicOrderHomeSecurity(orderSecurity) }
+      const publicSecurity = toPublicOrderHomeSecurity(orderSecurity)
+      const resultOrder = { ...displayOrder, trackCount: (tracksRes.data || []).length, checkinPhotoCount: Object.values(checkinGroups).reduce((sum, group) => sum + group.count, 0), checkinRequirements: enrichedRequirements, earlyStartRequest: toEarlyStartView(earlyStart), orderHomeSecurity: publicSecurity, homeSecuritySnapshot: publicSecurity ? toPublicHomeSecuritySnapshot(publicSecurity) : null }
       const requestedRole = safeText(data.role).trim()
       const isStaffView = requestedRole === 'staff' || user.activeRole === 'staff' || (order.clientOpenid !== openid && user.roles.includes('staff'))
       const isPreviousStaff = (Array.isArray(order.previousStaffRecords) && order.previousStaffRecords.some((r) => r.staffOpenid === openid)) || order.originalStaffOpenid === openid
@@ -643,32 +652,50 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'checkOverdueOrders') {
+      await requireAdmin(openid)
       const unstarted = await processOverdueUnstartedOrders()
       const unfinished = await processOverdueUnfinishedOrders()
       return { unstartedCount: unstarted.length, unfinishedCount: unfinished.length, unstarted, unfinished }
     }
 
     if (action === 'getServiceReport') {
-      const order = (await getOrderForAccess(openid, data.id)).order
+      const { order } = await requireServiceReportAccess(openid, data.id)
       const [tracks, checkins] = await Promise.all([
         readScopedDocuments('track_logs', { orderId: data.id }, 'recordedAt', 'asc'),
         readScopedDocuments('checkin_logs', { orderId: data.id }, 'createdAt', 'asc')
       ])
-      return { order, tracks, checkins: checkins.filter(isActiveCheckin) }
+      return { order: toServiceReportOrder(order), tracks, checkins: checkins.filter(isActiveCheckin) }
     }
     if (action === 'listPublicCompletedOrders') {
       const serviceType = safeText(data.serviceType).trim()
-      const ordersRes = await db.collection('orders').where({ status: ORDER_STATUS.COMPLETED }).orderBy('completedAt', 'desc').get()
-      let orders = (ordersRes.data || []).filter((order) => !isAdminDeletedOrder(order))
-      if (serviceType) orders = orders.filter((order) => order.serviceType === serviceType || (Array.isArray(order.serviceTypes) && order.serviceTypes.includes(serviceType)))
       const wantsPage = data.page !== undefined
-      const pageData = wantsPage ? paginateList(orders, data) : { list: orders.slice(0, Math.min(Math.max(Math.round(Number(data.pageSize || 20)), 1), 50)) }
+      const page = Math.max(Math.floor(Number(data.page) || 1), 1)
+      const pageSize = Math.min(Math.max(Math.floor(Number(data.pageSize || 20)), 1), wantsPage ? 100 : 50)
+      const start = wantsPage ? (page - 1) * pageSize : 0
+      const targetCount = start + pageSize + 1
+      const chunkSize = Math.max(pageSize + 1, 50)
+      let offset = 0
+      let candidates = []
+      let hasMoreSource = true
+      while (candidates.length < targetCount && hasMoreSource) {
+        const batch = (await db.collection('orders').where({ status: ORDER_STATUS.COMPLETED }).orderBy('completedAt', 'desc').skip(offset).limit(chunkSize).get()).data || []
+        hasMoreSource = batch.length === chunkSize
+        offset += batch.length
+        candidates = candidates.concat(batch.filter((order) => !isAdminDeletedOrder(order) && (!serviceType || order.serviceType === serviceType || (Array.isArray(order.serviceTypes) && order.serviceTypes.includes(serviceType)))))
+        if (!batch.length) break
+      }
+      const pageList = candidates.slice(start, start + pageSize)
+      const hasMore = candidates.length > start + pageSize || hasMoreSource
+      const pageData = wantsPage ? { list: pageList, total: hasMore ? start + pageList.length + 1 : start + pageList.length, page, pageSize, hasMore } : { list: pageList }
       const orderIds = pageData.list.map((order) => order._id).filter(Boolean)
+      const staffProfileIds = [...new Set(pageData.list.map((order) => order.staffProfileId || order.requestedStaffProfileId).filter(Boolean))]
+      const clientOpenids = [...new Set(pageData.list.map((order) => order.clientOpenid).filter(Boolean))]
+      const inCommand = db.command && typeof db.command.in === 'function' ? db.command.in.bind(db.command) : null
       const [reviews, checkins, staffProfiles, users] = await Promise.all([
-        orderIds.length ? safeCollectionData('service_reviews', (col) => col.where({ status: 'visible' })) : Promise.resolve([]),
-        orderIds.length ? safeCollectionData('checkin_logs') : Promise.resolve([]),
-        safeCollectionData('staff_profiles'),
-        safeCollectionData('users')
+        orderIds.length ? safeCollectionData('service_reviews', (col) => inCommand ? col.where({ status: 'visible', orderId: inCommand(orderIds) }) : col.where({ status: 'visible' })) : Promise.resolve([]),
+        orderIds.length ? safeCollectionData('checkin_logs', (col) => inCommand ? col.where({ orderId: inCommand(orderIds) }) : col) : Promise.resolve([]),
+        staffProfileIds.length ? safeCollectionData('staff_profiles', (col) => inCommand ? col.where({ _id: inCommand(staffProfileIds) }) : col) : Promise.resolve([]),
+        clientOpenids.length ? safeCollectionData('users', (col) => inCommand ? col.where({ openid: inCommand(clientOpenids) }) : col) : Promise.resolve([])
       ])
       const reviewMap = reviews
         .filter((review) => orderIds.includes(review.orderId))

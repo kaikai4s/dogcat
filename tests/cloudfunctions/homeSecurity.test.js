@@ -68,6 +68,10 @@ test('homeSecurity getUnlockCode reads order-level one-time code and logs succes
   const update = await clientFn.main({ action: 'updateOrderOneTimeCode', data: { orderId: 'o1', code: '654321', effectiveStart: '2000-01-01 10:00', effectiveEnd: '2999-01-01 11:00' } })
   assert.equal(update.ok, true)
   assert.equal(update.data.oneTimeCode.masked, '6***1')
+  assert.equal(update.data.doorLockCode, undefined)
+  assert.equal(update.data.oneTimeCode.cipher, undefined)
+  assert.equal(db.state.orders[0].orderHomeSecurity.doorLockCode, undefined)
+  assert.equal(db.state.orders[0].homeSecuritySnapshot.doorLockCode, undefined)
   assert.equal(db.state.orders[0].orderHomeSecurity.oneTimeCode.cipher.includes('654321'), false)
 
   const staffFn = loadCloudFunction('homeSecurity', db, 'openid_staff')

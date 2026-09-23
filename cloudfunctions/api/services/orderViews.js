@@ -259,6 +259,55 @@ module.exports = function createService({
     }
   }
 
+  function toServiceReportOrder(order) {
+    if (!order) return null
+    const petSnapshot = order.petSnapshot || (Array.isArray(order.petSnapshots) && order.petSnapshots[0]) || null
+    return {
+      _id: order._id || '',
+      orderNo: order.orderNo || '',
+      status: order.status || '',
+      autoCompleted: order.autoCompleted === true,
+      petId: order.petId || '',
+      petIds: Array.isArray(order.petIds) ? order.petIds : [order.petId].filter(Boolean),
+      petName: order.petName || order.petSummary || '',
+      petNames: Array.isArray(order.petNames) ? order.petNames : [],
+      petSummary: order.petSummary || order.petName || '',
+      petCategory: order.petCategory || (petSnapshot && petSnapshot.species) || '',
+      pet: petSnapshot ? {
+        name: petSnapshot.name || order.petName || '',
+        species: petSnapshot.species || '',
+        breed: petSnapshot.breed || '',
+        avatarFileId: petSnapshot.avatarFileId || '',
+        beautyTitle: petSnapshot.beautyTitle || null
+      } : null,
+      serviceType: order.serviceType || '',
+      serviceTypes: Array.isArray(order.serviceTypes) ? order.serviceTypes : [order.serviceType].filter(Boolean),
+      serviceLabels: Array.isArray(order.serviceLabels) ? order.serviceLabels : [],
+      serviceSummary: order.serviceSummary || '',
+      businessTypeText: order.businessTypeText || order.serviceSummary || '',
+      serviceTime: order.serviceTime || `${order.startTime || ''}${order.endTime ? ` - ${order.endTime}` : ''}`,
+      serviceStartDate: order.serviceStartDate || '',
+      serviceEndDate: order.serviceEndDate || '',
+      startTime: order.startTime || '',
+      endTime: order.endTime || '',
+      durationMinutes: Number(order.durationMinutes || 0),
+      sessionCount: Number(order.sessionCount || 0),
+      serviceSessions: Array.isArray(order.serviceSessions) ? order.serviceSessions.map((session) => ({
+        index: session.index,
+        date: session.date || '',
+        startTime: session.startTime || '',
+        endTime: session.endTime || '',
+        status: session.status || '',
+        startedAt: session.startedAt || '',
+        finishedAt: session.finishedAt || ''
+      })) : [],
+      staffName: order.staffName || order.requestedStaffName || '',
+      staffNickName: order.staffNickName || order.staffName || order.requestedStaffName || '',
+      completedAt: order.completedAt || '',
+      createdAt: order.createdAt || ''
+    }
+  }
+
   return {
     safeUserSummary,
     maskOrderClientContact,
@@ -272,6 +321,7 @@ module.exports = function createService({
     attachClientSnapshot,
     attachOrderDisplayData,
     isOrderOverdue,
-    attachAdminOrderContactData
+    attachAdminOrderContactData,
+    toServiceReportOrder
   }
 }

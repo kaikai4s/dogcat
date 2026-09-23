@@ -9,7 +9,8 @@ test('processOverdueUnstartedOrders sends warning to staff at T+15min and alerts
   const db = createCollectionStore({
     users: [
       { _id: 'u_staff', openid: 'openid_staff', roles: ['staff'], status: 'active' },
-      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 }
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 },
+      { _id: 'u_admin', openid: 'openid_admin', roles: ['admin'], status: 'active' }
     ],
     orders: [
       {
@@ -37,7 +38,7 @@ test('processOverdueUnstartedOrders sends warning to staff at T+15min and alerts
     subscription_logs: []
   })
 
-  const fn = loadCloudFunction('api', db, 'openid_staff')
+  const fn = loadCloudFunction('api', db, 'openid_admin')
 
   // Case 1: At 10:05 (5 minutes after start) - should not trigger
   let res = await fn.main({
@@ -47,6 +48,31 @@ test('processOverdueUnstartedOrders sends warning to staff at T+15min and alerts
   })
   // Overdue check with simulated time: let's test directly via Timer or calling checkOverdueOrders
   // In checkOverdueOrders, currentTime is now(). Let's test by setting scheduledStart to past time!
+})
+
+test('callable checkOverdueOrders rejects non-admin callers without side effects', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'u_staff', openid: 'openid_staff', roles: ['staff'], status: 'active' },
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active' }
+    ],
+    orders: [{ _id: 'order_overdue_start', status: 'assigned', staffOpenid: 'openid_staff', clientOpenid: 'openid_client', startTime: '2000-01-01 10:00', endTime: '2000-01-01 11:00', serviceSessions: [{ index: 1, startTime: '2000-01-01 10:00', endTime: '2000-01-01 11:00', status: 'pending' }] }],
+    order_timeline: [],
+    order_messages: [],
+    order_message_threads: [],
+    order_staff_messages: [],
+    order_staff_message_threads: [],
+    subscription_logs: []
+  })
+  const staffFn = loadCloudFunction('api', db, 'openid_staff')
+
+  const result = await staffFn.main({ module: 'order', action: 'checkOverdueOrders', data: {} })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.message, '仅管理员可操作')
+  assert.equal(db.state.order_staff_messages.length, 0)
+  assert.equal(db.state.order_messages.length, 0)
+  assert.equal(db.state.orders[0].isStartOverdue, undefined)
 })
 
 test('overdue unstarted orders flow: triggers staff warning at 15min and client alert at 30min', async () => {
@@ -59,7 +85,8 @@ test('overdue unstarted orders flow: triggers staff warning at 15min and client 
   const db = createCollectionStore({
     users: [
       { _id: 'u_staff', openid: 'openid_staff', roles: ['staff'], status: 'active' },
-      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 }
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 },
+      { _id: 'u_admin', openid: 'openid_admin', roles: ['admin'], status: 'active' }
     ],
     orders: [
       {
@@ -88,7 +115,7 @@ test('overdue unstarted orders flow: triggers staff warning at 15min and client 
     subscription_logs: []
   })
 
-  const fn = loadCloudFunction('api', db, 'openid_staff')
+  const fn = loadCloudFunction('api', db, 'openid_admin')
   const result = await fn.main({ module: 'order', action: 'checkOverdueOrders', data: {} })
 
   assert.equal(result.ok, true)
@@ -121,7 +148,8 @@ test('overdue unfinished orders flow: auto-completes when checkins are complete 
   const db = createCollectionStore({
     users: [
       { _id: 'u_staff', openid: 'openid_staff', roles: ['staff'], status: 'active' },
-      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 }
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 },
+      { _id: 'u_admin', openid: 'openid_admin', roles: ['admin'], status: 'active' }
     ],
     orders: [
       {
@@ -159,7 +187,7 @@ test('overdue unfinished orders flow: auto-completes when checkins are complete 
     point_logs: []
   })
 
-  const fn = loadCloudFunction('api', db, 'openid_staff')
+  const fn = loadCloudFunction('api', db, 'openid_admin')
   const result = await fn.main({ module: 'order', action: 'checkOverdueOrders', data: {} })
 
   assert.equal(result.ok, true)
@@ -201,7 +229,8 @@ test('overdue unfinished orders flow: creates incident when missing checkins and
   const db = createCollectionStore({
     users: [
       { _id: 'u_staff', openid: 'openid_staff', roles: ['staff'], status: 'active' },
-      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 }
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', points: 0, totalPoints: 0, completedOrderCount: 0 },
+      { _id: 'u_admin', openid: 'openid_admin', roles: ['admin'], status: 'active' }
     ],
     orders: [
       {
@@ -234,7 +263,7 @@ test('overdue unfinished orders flow: creates incident when missing checkins and
     subscription_logs: []
   })
 
-  const fn = loadCloudFunction('api', db, 'openid_staff')
+  const fn = loadCloudFunction('api', db, 'openid_admin')
   const result = await fn.main({ module: 'order', action: 'checkOverdueOrders', data: {} })
 
   assert.equal(result.ok, true)

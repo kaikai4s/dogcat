@@ -44,7 +44,7 @@ module.exports = function createService({
       const coversServiceTime = isTimeRangeCovered(data.startTime, data.endTime, effectiveStart, effectiveEnd)
       if (!coversServiceTime) throw new Error('一次性密码有效期需要覆盖完整服务时间')
       const encrypted = encryptText(doorLockCode)
-      return { ...base, hasDoorLockCode: true, oneTimeCode: { cipher: encrypted.cipher, iv: encrypted.iv, tag: encrypted.tag, masked: mask(doorLockCode), effectiveStart, effectiveEnd, coversServiceTime }, doorLockCode }
+      return { ...base, hasDoorLockCode: true, oneTimeCode: { cipher: encrypted.cipher, iv: encrypted.iv, tag: encrypted.tag, masked: mask(doorLockCode), effectiveStart, effectiveEnd, coversServiceTime } }
     }
     if (type === 'key') {
       const location = safeText(source.location || data.keyLocation).trim()
@@ -105,15 +105,43 @@ module.exports = function createService({
 
   function toPublicHomeSecuritySnapshot(security) {
     if (!security) return null
-    const safe = { ...security, doorLockCode: undefined }
-    if (safe.oneTimeCode) {
+    const type = normalizeLockMethod(security.type || security.lockMethod)
+    const safe = {
+      type,
+      lockMethod: type,
+      lockMethodText: security.lockMethodText || lockMethodText(type),
+      entryNotes: security.entryNotes || '',
+      createdAt: security.createdAt || '',
+      updatedAt: security.updatedAt || ''
+    }
+    if (security.oneTimeCode) {
       safe.oneTimeCode = {
-        masked: safe.oneTimeCode.masked || '',
-        effectiveStart: safe.oneTimeCode.effectiveStart || '',
-        effectiveEnd: safe.oneTimeCode.effectiveEnd || '',
-        coversServiceTime: safe.oneTimeCode.coversServiceTime === true
+        masked: security.oneTimeCode.masked || '',
+        effectiveStart: security.oneTimeCode.effectiveStart || '',
+        effectiveEnd: security.oneTimeCode.effectiveEnd || '',
+        coversServiceTime: security.oneTimeCode.coversServiceTime === true
       }
       safe.hasDoorLockCode = true
+    }
+    if (security.remoteUnlock) {
+      safe.remoteUnlock = {
+        lastRequestedAt: security.remoteUnlock.lastRequestedAt || '',
+        requestCount: Number(security.remoteUnlock.requestCount || 0),
+        notifyChannels: Array.isArray(security.remoteUnlock.notifyChannels) ? security.remoteUnlock.notifyChannels : [],
+        lastNotifyStatus: security.remoteUnlock.lastNotifyStatus || {},
+        lastNotifyError: security.remoteUnlock.lastNotifyError || ''
+      }
+    }
+    if (security.key) {
+      safe.key = {
+        location: security.key.location || security.keyLocation || '',
+        imageFileIds: Array.isArray(security.key.imageFileIds) ? security.key.imageFileIds : [],
+        returnRequired: security.key.returnRequired !== false,
+        returnedAt: security.key.returnedAt || '',
+        returnImageFileIds: Array.isArray(security.key.returnImageFileIds) ? security.key.returnImageFileIds : [],
+        returnNote: security.key.returnNote || ''
+      }
+      safe.keyLocation = safe.key.location
     }
     return safe
   }

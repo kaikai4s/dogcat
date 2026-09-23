@@ -39,6 +39,13 @@ module.exports = function createService({
     return { user, order }
   }
 
+  async function requireServiceReportAccess(openid, orderId) {
+    const { user, order } = await getOrderForAccess(openid, orderId)
+    const allowed = order.clientOpenid === openid || user.roles.includes('admin') || (user.roles.includes('staff') && order.staffOpenid === openid)
+    if (!allowed) throw new Error('无权查看服务报告')
+    return { user, order }
+  }
+
   async function getRequestedStaff(data) {
     const publishMode = data.publishMode === 'direct' ? 'direct' : 'open'
     if (publishMode === 'open') {
@@ -126,6 +133,7 @@ module.exports = function createService({
     getOrderForAccess,
     requireClientOrder,
     requireStaffOrder,
+    requireServiceReportAccess,
     getRequestedStaff,
     getCancelQuoteForOrder
   }

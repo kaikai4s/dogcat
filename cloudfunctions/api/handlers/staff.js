@@ -427,8 +427,6 @@ module.exports = function createHandler(context) {
       if (!profile) throw new Error('请先提交宠托师认证')
       if (profile.auditStatus !== 'approved') throw new Error('宠托师认证审核通过后方可设置接单配置')
 
-      console.log('【调试-updateStaffProfileConfig】接收到的 data:', JSON.stringify(data))
-
       const time = now()
       const updateData = { updatedAt: time }
 
@@ -442,7 +440,6 @@ module.exports = function createHandler(context) {
       if (isOnlyWeeklyScheduleUpdate) {
         // 只更新按周服务时间规则
         const weeklySchedule = normalizeWeeklySchedule(data.weeklySchedule)
-        console.log('【调试-updateStaffProfileConfig】只更新 weeklySchedule:', JSON.stringify(weeklySchedule))
         updateData.weeklySchedule = weeklySchedule
       } else {
         // 完整更新（从个人中心调用）
@@ -466,8 +463,6 @@ module.exports = function createHandler(context) {
         updateData.serviceRadiusKm = serviceRadiusKm
         updateData.weeklySchedule = weeklySchedule
       }
-
-      console.log('【调试-updateStaffProfileConfig】准备保存的 updateData:', JSON.stringify(updateData))
 
       await db.collection('staff_profiles').doc(profile._id).update({ data: updateData })
       return { _id: profile._id, ...profile, ...updateData }

@@ -9,7 +9,7 @@
 
 ---
 
-## 1️⃣ orders（订单表）- 4 个索引
+## 1️⃣ orders（订单表）- 5 个索引
 
 ### 索引 1.1：客户订单查询
 **优先级**：⭐⭐⭐ P0（最高优先级）
@@ -66,6 +66,20 @@
 | 字段 2 | `status` - 升序 |
 
 **用途**：查询指派订单（direct 模式）
+
+---
+
+### 索引 1.5：公开已完成订单分页
+**优先级**：⭐⭐ P1（高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_completed_public` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `status` - 升序 |
+| 字段 2 | `completedAt` - 降序 |
+
+**用途**：公开案例/已完成订单列表按完成时间倒序分页，避免一次性读取全部已完成订单。
 
 ---
 
@@ -327,7 +341,83 @@
 
 ---
 
-## 1️⃣5️⃣ staff_deposit_evidences（宠托师保证金违规留证表）- 3 个索引
+## 1️⃣5️⃣ admin_access_logs（后台权限审计日志表）- 5 个索引
+
+### 索引 15.1：审计日志默认倒序分页
+**优先级**：⭐⭐ P1（高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_admin_access_logs_created` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `createdAt` - 降序 |
+| 字段 2 | `_id` - 降序 |
+
+**用途**：后台操作日志默认按时间倒序分页。
+
+---
+
+### 索引 15.2：按操作人筛选审计日志
+**优先级**：⭐⭐ P1（高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_admin_access_logs_actor` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `actorOpenid` - 升序 |
+| 字段 2 | `createdAt` - 降序 |
+| 字段 3 | `_id` - 降序 |
+
+**用途**：按管理员筛选操作日志并倒序分页。
+
+---
+
+### 索引 15.3：按状态筛选审计日志
+**优先级**：⭐⭐ P1（高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_admin_access_logs_status` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `status` - 升序 |
+| 字段 2 | `createdAt` - 降序 |
+| 字段 3 | `_id` - 降序 |
+
+**用途**：按 succeeded/denied/failed 等状态筛选操作日志。
+
+---
+
+### 索引 15.4：按模块筛选审计日志
+**优先级**：⭐⭐ P1（高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_admin_access_logs_module` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `module` - 升序 |
+| 字段 2 | `createdAt` - 降序 |
+| 字段 3 | `_id` - 降序 |
+
+**用途**：按业务模块筛选后台操作日志。
+
+---
+
+### 索引 15.5：按动作筛选审计日志
+**优先级**：⭐⭐ P1（高优先级）
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| 索引名称 | `idx_admin_access_logs_action` |
+| 索引属性 | 非唯一 |
+| 字段 1 | `action` - 升序 |
+| 字段 2 | `createdAt` - 降序 |
+| 字段 3 | `_id` - 降序 |
+
+**用途**：按具体后台动作筛选操作日志。
+
+---
+
+## 1️⃣6️⃣ staff_deposit_evidences（宠托师保证金违规留证表）- 3 个索引
 
 ### 索引 15.1：宠托师出险与异常订单聚检查询
 **优先级**：⭐⭐⭐ P0（最高优先级）
@@ -443,6 +533,12 @@
 | 表名 | 索引 | 用途 |
 |------|------|------|
 | orders | idx_publish_mode | 指派订单查询 |
+| orders | idx_completed_public | 公开已完成订单分页 |
+| admin_access_logs | idx_admin_access_logs_created | 后台审计日志默认分页 |
+| admin_access_logs | idx_admin_access_logs_actor | 后台审计日志按操作人筛选 |
+| admin_access_logs | idx_admin_access_logs_status | 后台审计日志按状态筛选 |
+| admin_access_logs | idx_admin_access_logs_module | 后台审计日志按模块筛选 |
+| admin_access_logs | idx_admin_access_logs_action | 后台审计日志按动作筛选 |
 | staff_profiles | idx_audit_status | 审核状态筛选 |
 | payments | idx_order_id | 订单支付查询 |
 | staff_earnings | idx_staff_earnings | 可提现收益 |
@@ -606,6 +702,12 @@ orders               idx_client_orders     P0     [ ]      ____-__-__
 orders               idx_staff_orders      P0     [ ]      ____-__-__
 orders               idx_status            P0     [ ]      ____-__-__
 orders               idx_publish_mode      P1     [ ]      ____-__-__
+orders               idx_completed_public  P1     [ ]      ____-__-__
+admin_access_logs    idx_admin_access_logs_created P1 [ ]   ____-__-__
+admin_access_logs    idx_admin_access_logs_actor P1   [ ]   ____-__-__
+admin_access_logs    idx_admin_access_logs_status P1  [ ]   ____-__-__
+admin_access_logs    idx_admin_access_logs_module P1  [ ]   ____-__-__
+admin_access_logs    idx_admin_access_logs_action P1  [ ]   ____-__-__
 user_coupons         idx_user_coupons      P0     [ ]      ____-__-__
 staff_profiles       idx_openid            P0     [ ]      ____-__-__
 staff_profiles       idx_audit_status      P1     [ ]      ____-__-__

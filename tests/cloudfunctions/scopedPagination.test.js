@@ -74,7 +74,7 @@ test('service reports and checkin requirements include valid evidence after 100 
   db.state.checkin_logs.slice(0, 204).forEach(row => { row.eventType = 'arrival' })
   const context = createContext({ db, cloud: {} })
   const order = { _id: 'order' }
-  const handler = require('../../cloudfunctions/api/handlers/order')({ ...context, getOrderForAccess: async () => ({ order }) })
+  const handler = require('../../cloudfunctions/api/handlers/order')({ ...context, requireServiceReportAccess: async () => ({ order }) })
   const report = await handler('owner', 'getServiceReport', { id: 'order' })
   assert.equal(report.tracks.length, 205)
   assert.equal(report.checkins.length, 204)
