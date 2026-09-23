@@ -162,7 +162,88 @@ module.exports = function createHandler(context) {
       const profileRes = await db.collection('staff_profiles').doc(data.staffProfileId).get()
       const profile = profileRes.data
       if (!profile || !canTakeOrders(profile, settings.staffDeposit)) throw new Error('宠托师不可用')
-      return toPublicSitterDetail(user ? openid : '', await withSitterUserProfile(normalizeStaffWorkflow(profile)))
+      const detail = await toPublicSitterDetail(user ? openid : '', await withSitterUserProfile(normalizeStaffWorkflow(profile)))
+
+      const userLat = Number(data.latitude !== undefined ? data.latitude : (data.addressLatitude || 0))
+      const userLng = Number(data.longitude !== undefined ? data.longitude : (data.addressLongitude || 0))
+      const userHasLoc = hasCoordinate(userLat, userLng)
+      const hasSitterLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
+      const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+
+      let distanceKm = null
+      let inServiceRange = true
+      let canDirectBook = true
+      let rangeStatusText = ''
+      if (userHasLoc) {
+        if (hasSitterLoc) {
+          distanceKm = calcDistanceKm(userLat, userLng, profile.serviceLatitude, profile.serviceLongitude)
+          inServiceRange = distanceKm !== null && distanceKm <= radiusKm
+          canDirectBook = inServiceRange
+          rangeStatusText = inServiceRange ? '服务范围内' : '超出服务范围'
+        } else {
+          inServiceRange = false
+          canDirectBook = false
+          rangeStatusText = '宠托师未设置有效常驻坐标'
+        }
+      }
+
+      return {
+        ...detail,
+        distanceKm,
+        distanceText: distanceKm !== null ? formatDistance(distanceKm) : '',
+        inServiceRange,
+        canDirectBook,
+        rangeStatusText
+      }
+    }
+    if (action === 'checkSitterRange') {
+      const staffProfileId = safeText(data.staffProfileId).trim()
+      if (!staffProfileId) throw new Error('请选择宠托师')
+      const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get()
+      const profile = profileRes.data
+      if (!profile) throw new Error('宠托师档案不存在')
+
+      const userLat = Number(data.latitude !== undefined ? data.latitude : (data.addressLatitude || 0))
+      const userLng = Number(data.longitude !== undefined ? data.longitude : (data.addressLongitude || 0))
+      const userHasLoc = hasCoordinate(userLat, userLng)
+      const hasSitterLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
+      const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+
+      if (!hasSitterLoc) {
+        return {
+          ok: false,
+          inServiceRange: false,
+          canDirectBook: false,
+          serviceRadiusKm: radiusKm,
+          distanceKm: null,
+          distanceText: '',
+          message: '该宠托师尚未设置有效常驻服务地址坐标，无法指定预约'
+        }
+      }
+      if (!userHasLoc) {
+        return {
+          ok: true,
+          inServiceRange: true,
+          canDirectBook: true,
+          serviceRadiusKm: radiusKm,
+          distanceKm: null,
+          distanceText: '',
+          message: ''
+        }
+      }
+
+      const dist = calcDistanceKm(userLat, userLng, profile.serviceLatitude, profile.serviceLongitude)
+      const inRange = dist !== null && dist <= radiusKm
+      const distText = dist !== null ? formatDistance(dist) : ''
+      return {
+        ok: inRange,
+        inServiceRange: inRange,
+        canDirectBook: inRange,
+        serviceRadiusKm: radiusKm,
+        distanceKm: dist,
+        distanceText: distText,
+        message: inRange ? '' : `服务地址距宠托师服务区域约 ${distText}，超出其设定的 ${radiusKm}km 接单范围，无法指定预约`
+      }
     }
     if (action === 'favoriteSitter') {
       const user = await getUser(openid)
@@ -185,14 +266,34 @@ module.exports = function createHandler(context) {
       await getUser(openid)
       const settings = await getSystemSettings().catch(() => ({}))
       const keyword = safeText(data.keyword).trim().toLowerCase()
+      const userLat = Number(data.latitude !== undefined ? data.latitude : (data.addressLatitude || 0))
+      const userLng = Number(data.longitude !== undefined ? data.longitude : (data.addressLongitude || 0))
+      const userHasLoc = hasCoordinate(userLat, userLng)
+
       const favorites = await db.collection('sitter_favorites').where({ openid }).orderBy('createdAt', 'desc').get()
       const list = []
       for (let i = 0; i < favorites.data.length; i += 1) {
         try {
           const profileRes = await db.collection('staff_profiles').doc(favorites.data[i].staffProfileId).get()
           if (profileRes.data && canTakeOrders(profileRes.data, settings.staffDeposit)) {
-            const profile = await withSitterUserProfile(normalizeStaffWorkflow(profileRes.data))
-            list.push({ ...(await toPublicSitterDetail(openid, profile)), favorite: true })
+            const rawProfile = profileRes.data
+            const profile = await withSitterUserProfile(normalizeStaffWorkflow(rawProfile))
+            const detail = await toPublicSitterDetail(openid, profile)
+            let distanceKm = null
+            let inServiceRange = true
+            if (userHasLoc && hasCoordinate(rawProfile.serviceLatitude, rawProfile.serviceLongitude)) {
+              distanceKm = calcDistanceKm(userLat, userLng, rawProfile.serviceLatitude, rawProfile.serviceLongitude)
+              const radiusKm = Math.max(Number(rawProfile.serviceRadiusKm || 5), 1)
+              inServiceRange = distanceKm !== null && distanceKm <= radiusKm
+            }
+            list.push({
+              ...detail,
+              distanceKm,
+              distanceText: distanceKm !== null ? formatDistance(distanceKm) : '',
+              inServiceRange,
+              canDirectBook: inServiceRange,
+              favorite: true
+            })
           }
         } catch (error) {}
       }
@@ -378,6 +479,7 @@ module.exports = function createHandler(context) {
         serviceCity,
         serviceAreas,
         serviceAddress,
+        publicServiceAddress: safeText(data.publicServiceAddress || '').trim(),
         serviceLatitude,
         serviceLongitude,
         serviceRadiusKm,
@@ -453,12 +555,14 @@ module.exports = function createHandler(context) {
         }
         const serviceRadiusKm = Math.max(Number(data.serviceRadiusKm !== undefined ? data.serviceRadiusKm : (profile.serviceRadiusKm || 5)), 1)
         const weeklySchedule = data.weeklySchedule !== undefined ? normalizeWeeklySchedule(data.weeklySchedule) : profile.weeklySchedule
+        const publicServiceAddress = safeText(data.publicServiceAddress !== undefined ? data.publicServiceAddress : (profile.publicServiceAddress || '')).trim()
 
         if (!serviceAddress || !hasCoordinate(serviceLatitude, serviceLongitude)) {
           throw new Error('请选择有效的固定服务地址及坐标')
         }
 
         updateData.serviceAddress = serviceAddress
+        updateData.publicServiceAddress = publicServiceAddress
         updateData.serviceLatitude = serviceLatitude
         updateData.serviceLongitude = serviceLongitude
         updateData.serviceRadiusKm = serviceRadiusKm

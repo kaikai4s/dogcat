@@ -45,6 +45,31 @@ module.exports = function createService({
     return nickname || maskStaffName(profile.realName)
   }
 
+  function maskServiceAddress(value) {
+    const text = String(value || '').trim()
+    if (!text) return ''
+    const pattern = /(\d+[-—_号栋幢弄室单元层楼A-Za-z0-9]+.*$)/
+    if (pattern.test(text)) {
+      return text.replace(pattern, '***')
+    }
+    if (text.length > 10) {
+      return `${text.slice(0, 6)}***`
+    }
+    return text
+  }
+
+  function resolvePublicAddress(profile) {
+    if (!profile) return ''
+    const pub = safeText(profile.publicServiceAddress).trim()
+    if (pub) return pub
+    const raw = safeText(profile.serviceAddress).trim()
+    if (raw) return maskServiceAddress(raw)
+    const city = safeText(profile.serviceCity).trim()
+    const areas = splitServiceAreas(profile.serviceAreas)
+    if (city && areas.length) return `${city} ${areas[0]}`
+    return city || ''
+  }
+
   function toPublicSitter(profile) {
     const normalized = normalizeStaffWorkflow(profile)
     const isIntern = normalized && normalized.staffLevel === 'intern'
@@ -54,15 +79,15 @@ module.exports = function createService({
     const radius = Math.max(Number(profile.serviceRadiusKm || 5), 1)
     const hasLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
     const defaultTags = isIntern ? ['实习特惠', '平台审核', '可上门'] : ['已实名', '平台审核', '可上门']
+    const publicAddress = resolvePublicAddress(profile)
     return {
       _id: profile._id,
       displayName: sitterDisplayName(profile),
       avatarUrl: safeFileId(profile.avatarUrl) || safeText(profile.avatarUrl),
       serviceCity: profile.serviceCity || '服务城市待完善',
       serviceAreas: profile.serviceAreas || '',
-      serviceAddress: profile.serviceAddress || '',
-      serviceLatitude: Number(profile.serviceLatitude || 0),
-      serviceLongitude: Number(profile.serviceLongitude || 0),
+      serviceAddress: publicAddress,
+      publicServiceAddress: safeText(profile.publicServiceAddress).trim(),
       serviceRadiusKm: radius,
       hasServiceAddress: hasLoc,
       weeklySchedule: normalizeWeeklySchedule(profile.weeklySchedule),
@@ -98,6 +123,8 @@ module.exports = function createService({
     getCompletedStaffOrders,
     splitServiceAreas,
     maskStaffName,
+    maskServiceAddress,
+    resolvePublicAddress,
     sitterDisplayName,
     toPublicSitter,
     withSitterUserProfile

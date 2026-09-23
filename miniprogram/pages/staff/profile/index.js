@@ -126,6 +126,7 @@ Page({
       showConfigModal: true,
       configForm: {
         serviceAddress: p.serviceAddress || '',
+        publicServiceAddress: p.publicServiceAddress || '',
         serviceLatitude: Number(p.serviceLatitude || 0),
         serviceLongitude: Number(p.serviceLongitude || 0),
         serviceRadiusKm: Number(p.serviceRadiusKm || 5),
@@ -133,6 +134,11 @@ Page({
       },
       activeDay: 1
     })
+  },
+
+  onConfigInput(e) {
+    const field = e.currentTarget.dataset.field
+    this.setData({ [`configForm.${field}`]: e.detail.value })
   },
 
   closeConfigModal() {

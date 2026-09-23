@@ -48,6 +48,15 @@ module.exports = function createService({
     return orderCity.includes(filterCity) || filterCity.includes(orderCity)
   }
 
+  function maskServiceAddress(value) {
+    const text = String(value || '').trim()
+    if (!text) return ''
+    const pattern = /(\d+[-—_号栋幢弄室单元层楼A-Za-z0-9]+.*$)/
+    if (pattern.test(text)) return text.replace(pattern, '***')
+    if (text.length > 10) return `${text.slice(0, 6)}***`
+    return text
+  }
+
   function validateDirectStaffServiceRange(staffProfile, data = {}, options = {}) {
     if (!staffProfile) throw new Error('指定宠托师不存在')
     const sitterLat = Number(staffProfile.serviceLatitude || 0)
@@ -79,7 +88,8 @@ module.exports = function createService({
         const dist = calcDistanceKm(orderLat, orderLng, sitterLat, sitterLng)
         if (dist !== null && dist > radiusKm) {
           const distText = `约 ${formatDistance(dist)}`
-          throw new Error(`订单服务地址距离宠托师常驻服务地址${sitterAddress ? `（${sitterAddress}）` : ''}${distText}，超出宠托师设定的接单范围（${radiusKm}公里内），无法预约`)
+          const displayAddr = staffProfile.publicServiceAddress || maskServiceAddress(sitterAddress)
+          throw new Error(`订单服务地址距离宠托师常驻服务地址${displayAddr ? `（${displayAddr}）` : ''}${distText}，超出宠托师设定的接单范围（${radiusKm}公里内），无法预约`)
         }
         return { dist, radiusKm, sitterAddress, sitterLat, sitterLng }
       }

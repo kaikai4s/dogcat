@@ -175,6 +175,20 @@
         </view>
       </view>
 
+      <!-- 公开服务网点 -->
+      <view class="modal-section">
+        <view class="modal-section-title">公开服务/营业网点（选填，保护私人住址）</view>
+        <view class="input-card">
+          <input
+            class="public-addr-input"
+            placeholder="如：某某服务驿站/门店（留空则自动脱敏展示区域）"
+            value="{{configForm.publicServiceAddress}}"
+            data-field="publicServiceAddress"
+            bindinput="onConfigInput"
+          />
+        </view>
+      </view>
+
       <!-- 2. 服务半径 -->
       <view class="modal-section">
         <view class="modal-section-title">2. 接单服务半径（公里）</view>

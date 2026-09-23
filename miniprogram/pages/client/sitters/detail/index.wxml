@@ -76,9 +76,9 @@
       <view class="label">服务区域</view>
       <view class="value">{{sitter.serviceAreas || '覆盖周边主要小区'}}</view>
     </view>
-    <view class="info-row" wx:if="{{sitter.serviceAddress}}">
-      <view class="label">常用出发行程</view>
-      <view class="value">{{sitter.serviceAddress}}</view>
+    <view class="info-row" wx:if="{{sitter.publicServiceAddress || sitter.serviceAddress}}">
+      <view class="label">{{sitter.publicServiceAddress ? '服务网点' : '常用出发行程'}}</view>
+      <view class="value">{{sitter.publicServiceAddress || sitter.serviceAddress}}</view>
     </view>
   </view>
 

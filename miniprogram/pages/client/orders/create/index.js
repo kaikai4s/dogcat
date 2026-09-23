@@ -518,34 +518,77 @@ Page({
     }
     const orderLat = Number(form.addressLatitude || 0)
     const orderLng = Number(form.addressLongitude || 0)
-    const sitterLat = Number(requestedSitter.serviceLatitude || 0)
-    const sitterLng = Number(requestedSitter.serviceLongitude || 0)
     const radiusKm = Math.max(Number(requestedSitter.serviceRadiusKm || 5), 1)
 
     if (!orderLat || !orderLng) {
       this.setData({ isOutOfRange: false, rangeDistanceText: '', rangeWarningText: '' })
       return { ok: true }
     }
-    if (!sitterLat || !sitterLng) {
+
+    if (requestedSitter.hasServiceAddress === false) {
       const warning = '该宠托师尚未设置有效常驻服务地址坐标，无法指定预约'
       this.setData({ isOutOfRange: true, rangeDistanceText: '', rangeWarningText: warning })
       return { ok: false, message: warning }
     }
-    const dist = calcDistanceKm(orderLat, orderLng, sitterLat, sitterLng)
-    if (dist !== null && dist > radiusKm) {
-      const distText = dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`
-      const warning = `服务地址距宠托师常驻地约 ${distText}，超出其设定的 ${radiusKm}km 接单范围，无法指定预约`
-      this.setData({ isOutOfRange: true, rangeDistanceText: distText, rangeWarningText: warning })
-      return { ok: false, message: warning }
+
+    // 优先调用服务端安全距离校验接口（不暴露宠托师私人坐标）
+    if (requestedSitter._id && orderLat && orderLng) {
+      callFunction('staff', 'checkSitterRange', {
+        staffProfileId: requestedSitter._id,
+        latitude: orderLat,
+        longitude: orderLng
+      }).then((res) => {
+        if (res && res.inServiceRange !== undefined) {
+          const inRange = Boolean(res.inServiceRange)
+          const distText = res.distanceText || ''
+          if (!inRange) {
+            const warning = `服务地址距宠托师服务区域${distText ? `约 ${distText}` : ''}，超出其设定的 ${radiusKm}km 接单范围，无法指定预约`
+            this.setData({ isOutOfRange: true, rangeDistanceText: distText, rangeWarningText: warning })
+          } else {
+            this.setData({ isOutOfRange: false, rangeDistanceText: distText, rangeWarningText: '' })
+          }
+        }
+      }).catch(() => {})
     }
-    const distText = dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`
-    this.setData({ isOutOfRange: false, rangeDistanceText: distText, rangeWarningText: '' })
+
+    // 若服务端已返回服务范围判定结果，同步使用
+    if (requestedSitter.inServiceRange !== undefined) {
+      const inRange = Boolean(requestedSitter.inServiceRange)
+      const distText = requestedSitter.distanceText || ''
+      if (!inRange) {
+        const warning = `服务地址距宠托师服务区域${distText ? `约 ${distText}` : ''}，超出其设定的 ${radiusKm}km 接单范围，无法指定预约`
+        this.setData({ isOutOfRange: true, rangeDistanceText: distText, rangeWarningText: warning })
+        return { ok: false, message: warning }
+      }
+      this.setData({ isOutOfRange: false, rangeDistanceText: distText, rangeWarningText: '' })
+      return { ok: true }
+    }
+
+    // 若对象中存在历史明文坐标，降级兼容
+    const sitterLat = Number(requestedSitter.serviceLatitude || 0)
+    const sitterLng = Number(requestedSitter.serviceLongitude || 0)
+    if (sitterLat && sitterLng) {
+      const dist = calcDistanceKm(orderLat, orderLng, sitterLat, sitterLng)
+      if (dist !== null && dist > radiusKm) {
+        const distText = dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`
+        const warning = `服务地址距宠托师服务区域约 ${distText}，超出其设定的 ${radiusKm}km 接单范围，无法指定预约`
+        this.setData({ isOutOfRange: true, rangeDistanceText: distText, rangeWarningText: warning })
+        return { ok: false, message: warning }
+      }
+      const distText = dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`
+      this.setData({ isOutOfRange: false, rangeDistanceText: distText, rangeWarningText: '' })
+      return { ok: true }
+    }
+
+    this.setData({ isOutOfRange: false, rangeDistanceText: '', rangeWarningText: '' })
     return { ok: true }
   },
 
   loadRequestedSitter(staffProfileId) {
+    const lat = this.data.form.addressLatitude
+    const lng = this.data.form.addressLongitude
     Promise.all([
-      callFunction('staff', 'getPublicSitterDetail', { staffProfileId }),
+      callFunction('staff', 'getPublicSitterDetail', { staffProfileId, latitude: lat, longitude: lng }),
       callFunction('staff', 'listScheduleAvailability', { staffProfileId, days: 14 })
     ])
       .then(([requestedSitter, availability]) => {
