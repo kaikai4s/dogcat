@@ -119,8 +119,10 @@ module.exports = function createHandler(context) {
     return rows
   }
 
-  async function queryFinanceListSafely(collectionName, { baseWhere = {}, dateRange, dateFields = ['createdAt'], pageSize = 50 }) {
+  async function queryFinanceListSafely(collectionName, { baseWhere = {}, dateRange, dateFields = ['createdAt'], pageSize = 50, page = 1 }) {
     const limit = Math.min(Math.max(Number(pageSize || 50), 1), 100)
+    const pageNum = Math.max(Number(page || 1), 1)
+    const offset = (pageNum - 1) * limit
     const primaryDateField = dateFields[0] || 'createdAt'
     const where = { ...baseWhere }
 
@@ -132,6 +134,7 @@ module.exports = function createHandler(context) {
       const res = await db.collection(collectionName)
         .where(where)
         .orderBy(primaryDateField, 'desc')
+        .skip(offset)
         .limit(limit)
         .get()
       const list = (res.data || []).filter((item) => inDateRange(item, dateRange, dateFields))
@@ -144,6 +147,7 @@ module.exports = function createHandler(context) {
 
     const candidates = (await db.collection(collectionName)
       .where(baseWhere)
+      .skip(offset)
       .limit(Math.min(limit * 3, 150))
       .get()).data || []
 
@@ -1483,16 +1487,58 @@ module.exports = function createHandler(context) {
     if (action === 'listStaffAudits') {
       const status = safeText(data.auditStatus).trim()
       const keyword = safeText(data.keyword).trim().toLowerCase()
-      const where = status ? { auditStatus: status } : {}
-      const profiles = (await readAll('staff_profiles', where)).sort((a, b) => toTimeValue(b.updatedAt) - toTimeValue(a.updatedAt))
-      const allEvidences = (await readAll('staff_deposit_evidences')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+      const where = {}
+      if (status) where.auditStatus = status
+      if (data.staffProfileId || data.id) {
+        where._id = safeText(data.staffProfileId || data.id).trim()
+      }
+
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+      let pagedProfiles = []
+      let total = 0
+      const page = Math.max(1, Number(data.page || 1))
+      const pageSize = Math.min(100, Math.max(1, Number(data.pageSize || 20)))
+      const offset = (page - 1) * pageSize
+
+      if (!keyword) {
+        if (wantsPage) {
+          const countRes = await db.collection('staff_profiles').where(where).count()
+          total = (countRes && countRes.total) || 0
+          if (offset < total) {
+            const res = await db.collection('staff_profiles')
+              .where(where)
+              .orderBy('updatedAt', 'desc')
+              .skip(offset)
+              .limit(pageSize)
+              .get()
+            pagedProfiles = res.data || []
+          }
+        } else {
+          const res = await db.collection('staff_profiles')
+            .where(where)
+            .orderBy('updatedAt', 'desc')
+            .limit(100)
+            .get()
+          pagedProfiles = res.data || []
+          total = pagedProfiles.length
+        }
+      } else {
+        const allMatching = (await readAll('staff_profiles', where, 1000))
+          .filter((item) => [item.realName, item.phone, item.serviceCity, item.serviceAreas].some((value) => safeText(value).toLowerCase().includes(keyword)))
+          .sort((a, b) => toTimeValue(b.updatedAt) - toTimeValue(a.updatedAt))
+        total = allMatching.length
+        pagedProfiles = wantsPage ? allMatching.slice(offset, offset + pageSize) : allMatching
+      }
+
+      const targetOpenids = Array.from(new Set(pagedProfiles.map((p) => p.openid).filter(Boolean)))
+      const evidences = await fetchStaffEvidencesByOpenids(targetOpenids)
       const evidenceByStaff = {}
-      for (const ev of allEvidences) {
+      for (const ev of evidences) {
         if (!evidenceByStaff[ev.staffOpenid]) evidenceByStaff[ev.staffOpenid] = []
         evidenceByStaff[ev.staffOpenid].push(ev)
       }
 
-      const list = profiles.map((p) => {
+      const list = pagedProfiles.map((p) => {
         const staffEvidences = evidenceByStaff[p.openid] || []
         return {
           ...p,
@@ -1500,9 +1546,18 @@ module.exports = function createHandler(context) {
           pendingPenaltyCount: staffEvidences.filter((e) => e.status === 'pending').length,
           problemOrders: staffEvidences
         }
-      }).filter((item) => !keyword || [item.realName, item.phone, item.serviceCity, item.serviceAreas].some((value) => safeText(value).toLowerCase().includes(keyword)))
-      const wantsPage = data.page !== undefined || data.pageSize !== undefined
-      return wantsPage ? paginateList(list, data) : list
+      })
+
+      if (wantsPage) {
+        return {
+          list,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + pagedProfiles.length < total
+        }
+      }
+      return list
     }
     if (action === 'auditStaff') {
       const staffProfileId = safeText(data.staffProfileId).trim()
@@ -2073,10 +2128,14 @@ module.exports = function createHandler(context) {
     if (action === 'listStaffDeposits') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const deposits = (await readAll('staff_deposits')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
-      const filteredDeposits = deposits
-        .filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt']))
-      const pagedDeposits = limitList(filteredDeposits, data.pageSize || 50)
+      const baseWhere = status ? { status } : {}
+      const pagedDeposits = await queryFinanceListSafely('staff_deposits', {
+        baseWhere,
+        dateRange: range,
+        dateFields: ['createdAt', 'paidAt'],
+        pageSize: data.pageSize || 50,
+        page: data.page || 1
+      })
 
       const targetOpenids = Array.from(new Set(pagedDeposits.map((item) => item.staffOpenid).filter(Boolean)))
       const [users, profiles, allEvidences] = await Promise.all([
@@ -2139,10 +2198,14 @@ module.exports = function createHandler(context) {
     if (action === 'listSupplyReimbursements') {
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
-      const reimbursements = (await readAll('staff_supply_reimbursements')).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
-      const filteredReimbursements = reimbursements
-        .filter((item) => (!status || item.status === status) && inDateRange(item, range, ['createdAt', 'paidAt']))
-      const pagedReimbursements = limitList(filteredReimbursements, data.pageSize || 50)
+      const baseWhere = status ? { status } : {}
+      const pagedReimbursements = await queryFinanceListSafely('staff_supply_reimbursements', {
+        baseWhere,
+        dateRange: range,
+        dateFields: ['createdAt', 'paidAt'],
+        pageSize: data.pageSize || 50,
+        page: data.page || 1
+      })
 
       const targetOpenids = Array.from(new Set(pagedReimbursements.map((item) => item.staffOpenid).filter(Boolean)))
       const [users, profiles] = await Promise.all([
