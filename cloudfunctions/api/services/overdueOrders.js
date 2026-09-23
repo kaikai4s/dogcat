@@ -16,6 +16,22 @@ module.exports = function createService({
   now,
   toTimeValue
 }) {
+  async function readActiveOrders(condition = {}, maxLimit = 1000) {
+    const rows = []
+    let cursor = ''
+    while (rows.length < maxLimit) {
+      const query = { ...condition }
+      if (cursor && db.command && typeof db.command.gt === 'function') {
+        query._id = db.command.gt(cursor)
+      }
+      const page = (await db.collection('orders').where(query).orderBy('_id', 'asc').limit(100).get()).data || []
+      rows.push(...page)
+      if (page.length < 100) break
+      cursor = page[page.length - 1]._id
+    }
+    return rows
+  }
+
   async function processOverdueUnstartedOrders(currentTime = now()) {
     const currentTs = toTimeValue(currentTime)
     if (!currentTs) return []
@@ -32,11 +48,11 @@ module.exports = function createService({
       whereDayCompleted.startTime = _.gte(windowStartText)
     }
 
-    const [assignedRes, dayCompletedRes] = await Promise.all([
-      db.collection('orders').where(whereAssigned).get(),
-      db.collection('orders').where(whereDayCompleted).get()
+    const [assignedOrders, dayCompletedOrders] = await Promise.all([
+      readActiveOrders(whereAssigned),
+      readActiveOrders(whereDayCompleted)
     ])
-    const candidates = [...(assignedRes.data || []), ...(dayCompletedRes.data || [])]
+    const candidates = [...assignedOrders, ...dayCompletedOrders]
     const processed = []
 
     for (const order of candidates) {
@@ -152,8 +168,7 @@ module.exports = function createService({
       whereInService.startTime = _.gte(windowStartText)
     }
 
-    const res = await db.collection('orders').where(whereInService).get()
-    const orders = res.data || []
+    const orders = await readActiveOrders(whereInService)
     const processed = []
 
     for (const order of orders) {

@@ -130,29 +130,44 @@ module.exports = function createService({
   }
 
   async function syncUsersMemberLevelName(levelId, levelName) {
-    const usersRes = await db.collection('users').where({ memberLevel: levelId }).get()
-    const users = usersRes.data || []
+    let cursor = ''
     const time = now()
-    for (const user of users) {
-      await db.collection('users').doc(user._id).update({ data: { memberLevelName: levelName || '普通会员', updatedAt: time } })
+    while (true) {
+      const condition = { memberLevel: levelId }
+      if (cursor && db.command && typeof db.command.gt === 'function') {
+        condition._id = db.command.gt(cursor)
+      }
+      const page = (await db.collection('users').where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      for (const user of page) {
+        await db.collection('users').doc(user._id).update({ data: { memberLevelName: levelName || '普通会员', updatedAt: time } })
+      }
+      if (page.length < 100) break
+      cursor = page[page.length - 1]._id
     }
   }
 
   async function recalcUsersForDeletedLevel(levelId) {
-    const usersRes = await db.collection('users').where({ memberLevel: levelId }).get()
-    const users = usersRes.data || []
-    if (!users.length) return
     const levels = await getMemberLevels()
     const time = now()
-    for (const user of users) {
-      const levelInfo = calcMemberLevel(Number(user.totalPoints || 0), levels)
-      await db.collection('users').doc(user._id).update({
-        data: {
-          memberLevel: levelInfo.memberLevel,
-          memberLevelName: levelInfo.memberLevelName,
-          updatedAt: time
-        }
-      })
+    let cursor = ''
+    while (true) {
+      const condition = { memberLevel: levelId }
+      if (cursor && db.command && typeof db.command.gt === 'function') {
+        condition._id = db.command.gt(cursor)
+      }
+      const page = (await db.collection('users').where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      for (const user of page) {
+        const levelInfo = calcMemberLevel(Number(user.totalPoints || 0), levels)
+        await db.collection('users').doc(user._id).update({
+          data: {
+            memberLevel: levelInfo.memberLevel,
+            memberLevelName: levelInfo.memberLevelName,
+            updatedAt: time
+          }
+        })
+      }
+      if (page.length < 100) break
+      cursor = page[page.length - 1]._id
     }
   }
 

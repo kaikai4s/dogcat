@@ -927,14 +927,66 @@ module.exports = function createHandler(context) {
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = profileRes.data[0]
       if (!profile) throw new Error('请先提交员工认证')
-      const res = await db.collection('service_reviews').where({ staffProfileId: profile._id, status: 'visible' }).orderBy('createdAt', 'desc').get()
-      return res.data.map((item) => ({ ...item, clientName: maskClientName(item.clientName) }))
+      const where = { staffProfileId: profile._id, status: 'visible' }
+      const wantsPage = data && (data.page !== undefined || data.pageSize !== undefined)
+      if (wantsPage) {
+        const countRes = await db.collection('service_reviews').where(where).count()
+        const total = (countRes && countRes.total) || 0
+        const page = Math.max(1, Number(data.page || 1))
+        const pageSize = Math.min(100, Math.max(1, Number(data.pageSize || 20)))
+        const offset = (page - 1) * pageSize
+        if (offset >= total) {
+          return { list: [], total, page, pageSize, hasMore: false }
+        }
+        const res = await db.collection('service_reviews')
+          .where(where)
+          .orderBy('createdAt', 'desc')
+          .skip(offset)
+          .limit(pageSize)
+          .get()
+        const list = (res.data || []).map((item) => ({ ...item, clientName: maskClientName(item.clientName) }))
+        return {
+          list,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + list.length < total
+        }
+      }
+      const rows = []
+      let cursor = ''
+      while (rows.length < 1000) {
+        const cond = { ...where }
+        if (cursor && db.command && typeof db.command.gt === 'function') cond._id = db.command.gt(cursor)
+        const batch = (await db.collection('service_reviews').where(cond).orderBy('_id', 'asc').limit(100).get()).data || []
+        rows.push(...batch)
+        if (batch.length < 100) break
+        cursor = batch[batch.length - 1]._id
+      }
+      rows.sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+      return rows.map((item) => ({ ...item, clientName: maskClientName(item.clientName) }))
     }
     if (action === 'checkUpcomingReminders') {
       await requireAdmin(openid)
       const list = await sendUpcomingServiceRemindersToStaff()
       return { remindedCount: list.length }
     }
+    async function readAllStaffOrders(where = {}, maxLimit = 2000) {
+      const rows = []
+      let cursor = ''
+      while (rows.length < maxLimit) {
+        const condition = { ...where }
+        if (cursor && db.command && typeof db.command.gt === 'function') {
+          condition._id = db.command.gt(cursor)
+        }
+        const page = (await db.collection('orders').where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+        rows.push(...page)
+        if (page.length < 100) break
+        cursor = page[page.length - 1]._id
+      }
+      return rows
+    }
+
     if (action === 'listStaffOrders') {
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
@@ -942,17 +994,28 @@ module.exports = function createHandler(context) {
       const profile = profileRes.data[0] || {}
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
-      const res = await db.collection('orders').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').get()
-      let list = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
-      // 最近的订单排在最前面
-      list.sort((a, b) => {
-        const bTime = toTimeValue(b.createdAt || b.startTime)
-        const aTime = toTimeValue(a.createdAt || a.startTime)
-        return bTime - aTime
-      })
-      if (data.status && data.status !== 'all') list = list.filter((order) => order.status === data.status)
-      if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service', 'day_completed'].includes(order.status))
+
+      const where = { staffOpenid: openid }
+      if (data.status && data.status !== 'all') {
+        where.status = data.status
+      } else if (data.statusGroup === 'waiting_service') {
+        where.status = db.command.in(['assigned', 'in_service', 'day_completed'])
+      }
+
       const orderKeyword = safeText(data.orderKeyword || data.keyword || data.orderNo).trim().toLowerCase()
+      const startDate = safeText(data.startDate).trim()
+      const endDate = safeText(data.endDate).trim()
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+
+      let pagedOrders = []
+      const page = Math.max(1, Number(data.page || 1))
+      const pageSize = Math.min(100, Math.max(1, Number(data.pageSize || 10)))
+      const offset = (page - 1) * pageSize
+
+      const allCandidates = await readAllStaffOrders(where, 2000)
+      let list = allCandidates.filter((order) => !isAdminDeletedOrder(order))
+      list.sort((a, b) => toTimeValue(b.createdAt || b.startTime) - toTimeValue(a.createdAt || a.startTime))
+
       if (orderKeyword) {
         list = list.filter((order) => [
           order._id,
@@ -964,8 +1027,7 @@ module.exports = function createHandler(context) {
           order.clientSnapshot && order.clientSnapshot.nickname
         ].some((val) => safeText(val).toLowerCase().includes(orderKeyword)))
       }
-      const startDate = safeText(data.startDate).trim()
-      const endDate = safeText(data.endDate).trim()
+
       if (startDate) {
         list = list.filter((order) => {
           const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
@@ -973,16 +1035,20 @@ module.exports = function createHandler(context) {
           return end >= startDate
         })
       }
+
       if (endDate) {
         list = list.filter((order) => {
           const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
           return start <= endDate
         })
       }
+
+      const total = list.length
+      pagedOrders = wantsPage ? list.slice(offset, offset + pageSize) : list
+
       const decorate = async (order) => {
         const enriched = await attachOrderDisplayData(order)
         const distanceKm = calcDistanceKm(latitude, longitude, enriched.addressLatitude, enriched.addressLongitude)
-        // 【新增】添加收益信息
         const earning = await calculateStaffEarningForOrder(enriched)
         return {
           ...enriched,
@@ -992,12 +1058,18 @@ module.exports = function createHandler(context) {
           staffEarningText: `¥${earning.earningAmount.toFixed(2)}`
         }
       }
-      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+
+      const decoratedList = await Promise.all(pagedOrders.map(decorate))
       if (wantsPage) {
-        const page = paginateList(list, data)
-        return { ...page, list: await Promise.all(page.list.map(decorate)) }
+        return {
+          list: decoratedList,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + pagedOrders.length < total
+        }
       }
-      return Promise.all(list.map(decorate))
+      return decoratedList
     }
     if (action === 'checkAcceptOrderRisk') {
       const user = await getUser(openid)

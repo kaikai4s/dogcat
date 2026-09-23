@@ -12,11 +12,26 @@ module.exports = function createHandler(context) {
     resetRewardClaimResultField,
     safeText
   } = context
+  async function readUserMails(userOpenid, maxLimit = 1000) {
+    const rows = []
+    let cursor = ''
+    while (rows.length < maxLimit) {
+      const condition = { openid: userOpenid }
+      if (cursor && db.command && typeof db.command.gt === 'function') {
+        condition._id = db.command.gt(cursor)
+      }
+      const page = (await db.collection('reward_mails').where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      rows.push(...page)
+      if (page.length < 100) break
+      cursor = page[page.length - 1]._id
+    }
+    return rows
+  }
+
   return async function rewardMail(openid, action, data) {
     if (action === 'getUnreadCount') {
       await getUser(openid)
-      const mailsRes = await db.collection('reward_mails').where({ openid }).get()
-      const mails = mailsRes.data || []
+      const mails = await readUserMails(openid, 1000)
       return {
         unreadCount: mails.filter((mail) => !mail.readAt).length,
         unclaimedCount: mails.filter((mail) => !mail.claimedAt).length
@@ -24,8 +39,34 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listMyMails') {
       await getUser(openid)
-      const mailsRes = await db.collection('reward_mails').where({ openid }).orderBy('createdAt', 'desc').get()
-      return (mailsRes.data || []).map(formatRewardMail)
+      const wantsPage = data && (data.page !== undefined || data.pageSize !== undefined)
+      if (wantsPage) {
+        const countRes = await db.collection('reward_mails').where({ openid }).count()
+        const total = (countRes && countRes.total) || 0
+        const page = Math.max(1, Number(data.page || 1))
+        const pageSize = Math.min(100, Math.max(1, Number(data.pageSize || 20)))
+        const offset = (page - 1) * pageSize
+        if (offset >= total) {
+          return { list: [], total, page, pageSize, hasMore: false }
+        }
+        const res = await db.collection('reward_mails')
+          .where({ openid })
+          .orderBy('createdAt', 'desc')
+          .skip(offset)
+          .limit(pageSize)
+          .get()
+        const list = (res.data || []).map(formatRewardMail)
+        return {
+          list,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + list.length < total
+        }
+      }
+      const mails = (await readUserMails(openid, 1000))
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      return mails.map(formatRewardMail)
     }
     if (action === 'markRead') {
       await getUser(openid)

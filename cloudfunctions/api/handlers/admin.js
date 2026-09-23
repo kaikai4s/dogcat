@@ -2523,10 +2523,34 @@ module.exports = function createHandler(context) {
       if (orderId) where.orderId = orderId
       if (staffOpenid) where.staffOpenid = staffOpenid
       if (status) where.status = status
-      const res = await db.collection('staff_deposit_evidences').where(where).orderBy('createdAt', 'desc').get()
-      const list = res.data || []
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
-      return wantsPage ? paginateList(list, data) : list
+      if (wantsPage) {
+        const countRes = await db.collection('staff_deposit_evidences').where(where).count()
+        const total = (countRes && countRes.total) || 0
+        const page = Math.max(1, Number(data.page || 1))
+        const pageSize = Math.min(100, Math.max(1, Number(data.pageSize || 20)))
+        const offset = (page - 1) * pageSize
+        if (offset >= total) {
+          return { list: [], total, page, pageSize, hasMore: false }
+        }
+        const res = await db.collection('staff_deposit_evidences')
+          .where(where)
+          .orderBy('createdAt', 'desc')
+          .skip(offset)
+          .limit(pageSize)
+          .get()
+        const list = res.data || []
+        return {
+          list,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + list.length < total
+        }
+      }
+      const allEvidences = (await readAll('staff_deposit_evidences', where, 2000))
+        .sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+      return allEvidences
     }
     if (action === 'listAdminNotifications') {
       return listAdminNotifications(data, openid)

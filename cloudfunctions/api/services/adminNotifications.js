@@ -50,31 +50,49 @@ module.exports = function createService({
     return { _id: created._id, ...notification }
   }
 
+  async function readAllNotifications(where = {}, maxLimit = 2000) {
+    const rows = []
+    let cursor = ''
+    while (rows.length < maxLimit) {
+      const condition = { ...where }
+      if (cursor && db.command && typeof db.command.gt === 'function') {
+        condition._id = db.command.gt(cursor)
+      }
+      const page = (await db.collection('admin_notifications').where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      rows.push(...page)
+      if (page.length < 100) break
+      cursor = page[page.length - 1]._id
+    }
+    return rows
+  }
+
   /**
    * 管理员查询系统通知列表
    */
   async function listAdminNotifications(data = {}, currentAdminOpenid = '') {
-    const res = await db.collection('admin_notifications').orderBy('createdAt', 'desc').get()
-    let list = res.data || []
-
     const type = safeText(data.type).trim()
-    if (type && type !== 'all') {
-      list = list.filter((item) => item.type === type)
-    }
-
     const level = safeText(data.level).trim()
-    if (level && level !== 'all') {
-      list = list.filter((item) => item.level === level)
-    }
-
     const status = safeText(data.status).trim() // unread | read
+
+    const where = {}
+    if (type && type !== 'all') where.type = type
+    if (level && level !== 'all') where.level = level
+
+    const allNotifications = (await readAllNotifications(where, 2000))
+      .sort((a, b) => {
+        const bTime = a && b ? new Date(b.createdAt || 0).getTime() : 0
+        const aTime = a ? new Date(a.createdAt || 0).getTime() : 0
+        return bTime - aTime
+      })
+
+    let list = allNotifications
     if (status === 'unread') {
       list = list.filter((item) => !item.read && !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
     } else if (status === 'read') {
       list = list.filter((item) => item.read || (Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
     }
 
-    const unreadCount = (res.data || []).filter((item) => !item.read && !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid))).length
+    const unreadCount = allNotifications.filter((item) => !item.read && !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid))).length
 
     const enriched = list.map((item) => {
       const isRead = item.read === true || (Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid))
@@ -98,8 +116,8 @@ module.exports = function createService({
   async function markAdminNotificationRead(data = {}, currentAdminOpenid = '') {
     const time = now()
     if (data.all === true) {
-      const res = await db.collection('admin_notifications').where({ read: false }).get()
-      for (const item of res.data || []) {
+      const unreads = await readAllNotifications({ read: false }, 2000)
+      for (const item of unreads) {
         const readBy = Array.isArray(item.readBy) ? Array.from(new Set([...item.readBy, currentAdminOpenid])) : [currentAdminOpenid]
         await db.collection('admin_notifications').doc(item._id).update({
           data: {
@@ -110,7 +128,7 @@ module.exports = function createService({
           }
         })
       }
-      return { success: true, count: (res.data || []).length }
+      return { success: true, count: unreads.length }
     }
 
     const id = safeText(data.id || data.notificationId).trim()
@@ -135,8 +153,8 @@ module.exports = function createService({
    * 获取未读通知总数
    */
   async function getAdminNotificationBadge(currentAdminOpenid = '') {
-    const res = await db.collection('admin_notifications').where({ read: false }).get()
-    const list = (res.data || []).filter((item) => !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
+    const unreads = await readAllNotifications({ read: false }, 1000)
+    const list = unreads.filter((item) => !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
     const urgentCount = list.filter((item) => item.level === 'urgent').length
     const latestUrgent = list.find((item) => item.level === 'urgent') || null
     return {

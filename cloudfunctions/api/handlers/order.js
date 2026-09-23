@@ -195,21 +195,48 @@ module.exports = function createHandler(context) {
       return { ...sanitizeOrderSecurityFields(createdOrder), savedAddress }
     }
 
+    async function readAllOrders(where = {}, maxLimit = 2000) {
+      const rows = []
+      let cursor = ''
+      while (rows.length < maxLimit) {
+        const condition = { ...where }
+        if (cursor && db.command && typeof db.command.gt === 'function') {
+          condition._id = db.command.gt(cursor)
+        }
+        const page = (await db.collection('orders').where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+        rows.push(...page)
+        if (page.length < 100) break
+        cursor = page[page.length - 1]._id
+      }
+      return rows
+    }
+
     if (action === 'listOrders') {
       const user = await getUser(openid)
       await expireDueUnacceptedOrders()
       const role = data.role || user.activeRole || 'client'
       const where = role === 'staff' ? { staffOpenid: openid } : { clientOpenid: openid }
-      const res = await db.collection('orders').where(where).orderBy('createdAt', 'desc').get()
-      let list = (res.data || []).filter((order) => !isAdminDeletedOrder(order))
-      list.sort((a, b) => {
-        const bTime = toTimeValue(b.createdAt || b.startTime)
-        const aTime = toTimeValue(a.createdAt || a.startTime)
-        return bTime - aTime
-      })
-      if (data.status && data.status !== 'all') list = list.filter((order) => order.status === data.status)
-      if (data.statusGroup === 'waiting_service') list = list.filter((order) => ['assigned', 'in_service', 'day_completed'].includes(order.status))
+
+      if (data.status && data.status !== 'all') {
+        where.status = data.status
+      } else if (data.statusGroup === 'waiting_service') {
+        where.status = db.command.in(['assigned', 'in_service', 'day_completed'])
+      }
+
       const orderKeyword = safeText(data.orderKeyword || data.keyword || data.orderNo).trim().toLowerCase()
+      const startDate = safeText(data.startDate).trim()
+      const endDate = safeText(data.endDate).trim()
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+
+      let pagedOrders = []
+      const page = Math.max(1, Number(data.page || 1))
+      const pageSize = Math.min(100, Math.max(1, Number(data.pageSize || 10)))
+      const offset = (page - 1) * pageSize
+
+      const allCandidates = await readAllOrders(where, 2000)
+      let list = allCandidates.filter((order) => !isAdminDeletedOrder(order))
+      list.sort((a, b) => toTimeValue(b.createdAt || b.startTime) - toTimeValue(a.createdAt || a.startTime))
+
       if (orderKeyword) {
         list = list.filter((order) => [
           order._id,
@@ -221,8 +248,7 @@ module.exports = function createHandler(context) {
           order.requestedStaffName
         ].some((val) => safeText(val).toLowerCase().includes(orderKeyword)))
       }
-      const startDate = safeText(data.startDate).trim()
-      const endDate = safeText(data.endDate).trim()
+
       if (startDate) {
         list = list.filter((order) => {
           const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
@@ -230,23 +256,33 @@ module.exports = function createHandler(context) {
           return end >= startDate
         })
       }
+
       if (endDate) {
         list = list.filter((order) => {
           const start = String(order.serviceStartDate || order.startTime || order.createdAt || '').slice(0, 10)
           return start <= endDate
         })
       }
-      const wantsPage = data.page !== undefined || data.pageSize !== undefined
+
+      const total = list.length
+      pagedOrders = wantsPage ? list.slice(offset, offset + pageSize) : list
+
       const levels = await getMemberLevels()
       const userCache = new Map()
       const isStaffOnly = role === 'staff' && !user.roles.includes('admin')
+      const enrichedList = (await Promise.all(pagedOrders.map((order) => attachOrderDisplayData(order, levels, userCache)))).map(sanitizeOrderSecurityFields)
+      const finalEnriched = isStaffOnly ? enrichedList.map(maskOrderClientContact) : enrichedList
+
       if (wantsPage) {
-        const page = paginateList(list, data)
-        const enrichedList = (await Promise.all(page.list.map((order) => attachOrderDisplayData(order, levels, userCache)))).map(sanitizeOrderSecurityFields)
-        return { ...page, list: isStaffOnly ? enrichedList.map(maskOrderClientContact) : enrichedList }
+        return {
+          list: finalEnriched,
+          total,
+          page,
+          pageSize,
+          hasMore: offset + pagedOrders.length < total
+        }
       }
-      const enrichedList = (await Promise.all(list.map((order) => attachOrderDisplayData(order, levels, userCache)))).map(sanitizeOrderSecurityFields)
-      return isStaffOnly ? enrichedList.map(maskOrderClientContact) : enrichedList
+      return finalEnriched
     }
 
     if (action === 'getOrderDetail') {

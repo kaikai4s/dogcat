@@ -32,14 +32,34 @@ module.exports = function createService({
     return Array.from(new Set(next.length ? next : ['client']))
   }
 
+  async function countActiveAdmins(minRequired = 2) {
+    let count = 0
+    let cursor = ''
+    while (true) {
+      const query = {}
+      if (cursor && db.command && typeof db.command.gt === 'function') {
+        query._id = db.command.gt(cursor)
+      }
+      const page = (await db.collection('users').where(query).orderBy('_id', 'asc').limit(100).get()).data || []
+      for (const user of page) {
+        if (user.status !== 'deleted' && Array.isArray(user.roles) && user.roles.includes('admin')) {
+          count++
+          if (count >= minRequired) return count
+        }
+      }
+      if (page.length < 100) break
+      cursor = page[page.length - 1]._id
+    }
+    return count
+  }
+
   async function assertAdminRoleChangeAllowed(target, roles, currentOpenid) {
     const hadAdmin = Array.isArray(target.roles) && target.roles.includes('admin')
     const hasAdmin = roles.includes('admin')
     if (target.openid === currentOpenid && hadAdmin !== hasAdmin) throw new Error('不能修改自己的管理员权限')
     if (hadAdmin && !hasAdmin) {
-      const usersRes = await db.collection('users').get()
-      const admins = (usersRes.data || []).filter((user) => user.status !== 'deleted' && Array.isArray(user.roles) && user.roles.includes('admin'))
-      if (admins.length <= 1) throw new Error('至少保留一个管理员')
+      const adminCount = await countActiveAdmins(2)
+      if (adminCount <= 1) throw new Error('至少保留一个管理员')
     }
   }
 
@@ -47,9 +67,8 @@ module.exports = function createService({
     if (target.openid === currentOpenid) throw new Error(message)
     const targetRoles = Array.isArray(target.roles) ? target.roles : []
     if (targetRoles.includes('admin')) {
-      const usersRes = await db.collection('users').get()
-      const admins = (usersRes.data || []).filter((user) => user.status !== 'deleted' && Array.isArray(user.roles) && user.roles.includes('admin'))
-      if (admins.length <= 1) throw new Error('至少保留一个管理员')
+      const adminCount = await countActiveAdmins(2)
+      if (adminCount <= 1) throw new Error('至少保留一个管理员')
     }
   }
 
