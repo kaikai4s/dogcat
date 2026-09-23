@@ -18,6 +18,7 @@ module.exports = function createHandler(context) {
     completeOrderService,
     ensureStaffEarning,
     createClientSnapshot,
+    createOrderWithCouponLock,
     createPetSnapshot,
     createRefundForOrder,
     cancelUnpaidOrder,
@@ -165,24 +166,27 @@ module.exports = function createHandler(context) {
           isDefault: true
         })
       }
-      const created = await db.collection('orders').add({ data: order })
-      await db.collection('order_home_security').add({
-        data: {
-          orderId: created._id,
-          clientOpenid: openid,
-          ...homeSecurity,
-          createdAt: time,
-          updatedAt: time
-        }
+      const createdOrder = await createOrderWithCouponLock({
+        collectionName: 'orders',
+        order,
+        couponId: order.couponId,
+        openid,
+        extraDocuments: [
+          {
+            collection: 'order_home_security',
+            data: {
+              clientOpenid: openid,
+              ...homeSecurity,
+              createdAt: time,
+              updatedAt: time
+            }
+          }
+        ]
       })
-      if (order.couponId) {
-        await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'locked', lockedOrderId: created._id, lockedAt: time, updatedAt: time } })
-      }
-      const createdOrder = { _id: created._id, ...order }
-      await appendOrderTimeline(created._id, 'created', '订单已创建', order.serviceSummary, 'client')
+      await appendOrderTimeline(createdOrder._id, 'created', '订单已创建', order.serviceSummary, 'client')
       await appendOrderClientMessage(createdOrder, { eventType: 'created', title: '订单已创建', detail: order.serviceSummary, actorRole: 'client', unreadForClient: false })
       if (order.couponId) {
-        await appendOrderTimeline(created._id, 'coupon_locked', '已使用优惠券', `优惠 ¥${order.discountAmount}`, 'client')
+        await appendOrderTimeline(createdOrder._id, 'coupon_locked', '已使用优惠券', `优惠 ¥${order.discountAmount}`, 'client')
         await appendOrderClientMessage(createdOrder, { eventType: 'coupon_locked', title: '已使用优惠券', detail: `优惠 ¥${order.discountAmount}`, actorRole: 'client', unreadForClient: false })
       }
       return { ...sanitizeOrderSecurityFields(createdOrder), savedAddress }

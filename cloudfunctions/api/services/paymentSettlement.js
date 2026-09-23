@@ -107,5 +107,80 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, crea
       return { order: { ...order, ...patch }, changed: true, orderType: resolved.orderType }
     })
   }
-  return { reserveOrderPayment, settleOrderPayment }
+
+  async function createOrderWithCouponLock({
+    collectionName,
+    order,
+    couponId,
+    openid,
+    extraDocuments = []
+  }) {
+    const time = now()
+    let candidateId = (typeof db.collection === 'function' && typeof db.collection(collectionName).doc === 'function' && db.collection(collectionName).doc().id)
+    if (!candidateId || (db.state && db.state[collectionName] && db.state[collectionName].some(row => row._id === candidateId))) {
+      const count = db.state && db.state[collectionName] ? db.state[collectionName].length : 0
+      candidateId = `${collectionName}_${count + 1}`
+      while (db.state && db.state[collectionName] && db.state[collectionName].some(row => row._id === candidateId)) {
+        candidateId = `${collectionName}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      }
+    }
+    const orderId = candidateId
+
+    const execute = async (tx) => {
+      // 1. 如果使用了优惠券，在同一事务内进行严格原子校验和锁定
+      if (couponId) {
+        const coupon = await optional(tx, 'user_coupons', couponId)
+        if (!coupon || coupon.openid !== openid) {
+          throw new Error('优惠券不存在或不属于当前用户')
+        }
+        if (coupon.status !== 'available') {
+          throw new Error(coupon.status === 'locked' ? '优惠券已被其他订单锁定' : (coupon.status === 'used' ? '优惠券已被使用' : '优惠券不可用'))
+        }
+        const validTo = new Date(coupon.validTo || 0).getTime()
+        if (validTo && validTo < new Date(time).getTime()) {
+          throw new Error('优惠券已过期')
+        }
+        await tx.collection('user_coupons').doc(couponId).update({
+          data: {
+            status: 'locked',
+            lockedOrderId: orderId,
+            lockedAt: time,
+            updatedAt: time
+          }
+        })
+      }
+
+      // 2. 写入订单主表记录
+      const finalOrder = { ...order, _id: orderId, createdAt: order.createdAt || time, updatedAt: order.updatedAt || time }
+      await tx.collection(collectionName).doc(orderId).set({
+        data: finalOrder
+      })
+
+      // 3. 写入附加表（如 order_home_security）
+      for (const extra of extraDocuments) {
+        const extraColl = extra.collection
+        let extraId = extra._id || (typeof db.collection === 'function' && typeof db.collection(extraColl).doc === 'function' && db.collection(extraColl).doc().id)
+        if (!extraId || (db.state && db.state[extraColl] && db.state[extraColl].some(row => row._id === extraId))) {
+          const count = db.state && db.state[extraColl] ? db.state[extraColl].length : 0
+          extraId = `${extraColl}_${count + 1}`
+          while (db.state && db.state[extraColl] && db.state[extraColl].some(row => row._id === extraId)) {
+            extraId = `${extraColl}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+          }
+        }
+        await tx.collection(extraColl).doc(extraId).set({
+          data: { ...extra.data, _id: extraId, orderId }
+        })
+      }
+
+      return finalOrder
+    }
+
+    if (typeof db.runTransaction === 'function') {
+      return await db.runTransaction(execute)
+    } else {
+      return await execute(db)
+    }
+  }
+
+  return { reserveOrderPayment, settleOrderPayment, createOrderWithCouponLock }
 }

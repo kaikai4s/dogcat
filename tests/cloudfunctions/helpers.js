@@ -120,28 +120,31 @@ function createCollectionStore(initial = {}) {
         return { stats: { updated: items.length } }
       },
       doc(id) {
+        const _id = id || `${name}_${ensure(name).length + 1}`
         return {
+          id: _id,
+          _id,
           async get() {
-            const item = ensure(name).find((record) => record._id === id)
-            if (!item) throw new Error(`document with _id ${id} does not exist`)
+            const item = ensure(name).find((record) => record._id === _id)
+            if (!item) throw new Error(`document with _id ${_id} does not exist`)
             return { data: item }
           },
           async set({ data }) {
             const items = ensure(name)
-            const index = items.findIndex(record => record._id === id)
-            const record = { ...data, _id: id }
+            const index = items.findIndex(record => record._id === _id)
+            const record = { ...data, _id }
             if (index >= 0) items[index] = record
             else items.push(record)
-            return { _id: id, stats: { updated: index >= 0 ? 1 : 0, created: index < 0 ? 1 : 0 } }
+            return { _id, stats: { updated: index >= 0 ? 1 : 0, created: index < 0 ? 1 : 0 } }
           },
           async update({ data }) {
-            const item = ensure(name).find((record) => record._id === id)
-            if (!item) throw new Error(`${name}/${id} not found`)
+            const item = ensure(name).find((record) => record._id === _id)
+            if (!item) throw new Error(`${name}/${_id} not found`)
             Object.assign(item, data)
             return { stats: { updated: 1 } }
           },
           async remove() {
-            const index = ensure(name).findIndex((record) => record._id === id)
+            const index = ensure(name).findIndex((record) => record._id === _id)
             if (index >= 0) ensure(name).splice(index, 1)
             return { stats: { removed: index >= 0 ? 1 : 0 } }
           }
