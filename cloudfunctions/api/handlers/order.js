@@ -17,6 +17,7 @@ module.exports = function createHandler(context) {
     checkinEventText,
     completeOrderService,
     ensureStaffEarning,
+    ensureOrderCompletionRewards,
     createClientSnapshot,
     createOrderWithCouponLock,
     createPetSnapshot,
@@ -642,8 +643,9 @@ module.exports = function createHandler(context) {
     if (action === 'finishService') {
       const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
       if (order.status === 'completed') {
-        await ensureStaffEarning(order, order.completedAt)
-        return { id: data.id, completedOrderCount: Number((await getUser(order.clientOpenid)).completedOrderCount || 0) }
+        await ensureStaffEarning(order, order.completedAt || order.updatedAt || now())
+        const rewardResult = await ensureOrderCompletionRewards(order, now())
+        return { id: data.id, completedOrderCount: rewardResult.completedOrderCount }
       }
       assertOrderTransition(order.status, ORDER_STATUS.COMPLETED, '订单状态不可完成')
       const activeSession = getActiveServiceSession(order) || getTodayServiceSession(order, order.currentSessionStartedAt || order.startedAt || now()) || normalizeServiceSessions(order)[0] || { index: 1, date: beijingDateKey(order.startedAt || now()), startedAt: order.currentSessionStartedAt || order.startedAt || '' }

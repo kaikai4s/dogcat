@@ -134,28 +134,93 @@ module.exports = function createService({
     }
     await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '已完成', tip: isAuto ? '服务打卡齐全，系统已确认完成，可查看服务报告' : '服务已完成，可查看服务报告' }, 'client')
 
-    const pointsDelta = Math.max(Math.floor(Number(order.payAmount || 0) / 10), 1)
-    await addPoints(order.clientOpenid, order.clientUserId, pointsDelta, 'order_complete', orderId, `完成订单 +${pointsDelta} 积分`, { applyMultiplier: true, baseDelta: pointsDelta })
-    const clientUser = await getUser(order.clientOpenid)
-    const completedOrderCount = Number(clientUser.completedOrderCount || 0) + 1
-    await db.collection('users').doc(clientUser._id).update({ data: { completedOrderCount, updatedAt: time } })
-    if (order.staffProfileId) {
+    const rewardsRes = await ensureOrderCompletionRewards(completedOrder, time)
+    return { id: orderId, status: ORDER_STATUS.COMPLETED, completedOrderCount: rewardsRes.completedOrderCount, autoCompleted: isAuto }
+  }
+
+  async function ensureOrderCompletionRewards(order, time = now()) {
+    const orderId = order._id
+    const currentOrderRes = await db.collection('orders').doc(orderId).get().catch(() => null)
+    const currentOrder = currentOrderRes && currentOrderRes.data ? currentOrderRes.data : order
+    const clientOpenid = currentOrder.clientOpenid
+    const clientUser = await getUser(clientOpenid)
+    if (!clientUser) {
+      return { completedOrderCount: 0, pointsAwarded: false }
+    }
+
+    const orderPatch = {}
+
+    // 1. 积分补偿与发放（addPoints 内部依据 order_complete_${orderId} 进行日志查重防重）
+    if (!currentOrder.pointsAwarded) {
+      const pointsDelta = Math.max(Math.floor(Number(currentOrder.payAmount || 0) / 10), 1)
+      await addPoints(
+        clientOpenid,
+        currentOrder.clientUserId || clientUser._id,
+        pointsDelta,
+        'order_complete',
+        orderId,
+        `完成订单 +${pointsDelta} 积分`,
+        { applyMultiplier: true, baseDelta: pointsDelta }
+      )
+      orderPatch.pointsAwarded = true
+    }
+
+    // 2. 客户完单数防重累加
+    let completedOrderCount = Number(clientUser.completedOrderCount || 0)
+    if (!currentOrder.clientOrderCounted) {
+      completedOrderCount += 1
+      await db.collection('users').doc(clientUser._id).update({
+        data: { completedOrderCount, updatedAt: time }
+      })
+      orderPatch.clientOrderCounted = true
+    }
+
+    // 3. 实习生完单量同步
+    if (currentOrder.staffProfileId) {
       try {
-        const staffProfile = normalizeStaffWorkflow((await db.collection('staff_profiles').doc(order.staffProfileId).get()).data)
+        const staffProfile = normalizeStaffWorkflow((await db.collection('staff_profiles').doc(currentOrder.staffProfileId).get()).data)
         if (staffProfile && staffProfile.staffLevel === 'intern') {
-          const internOrders = await getCompletedStaffOrders(order.staffOpenid || '')
-          await db.collection('staff_profiles').doc(staffProfile._id).update({ data: { internCompletedOrderCount: internOrders.length, updatedAt: time } })
+          const internOrders = await getCompletedStaffOrders(currentOrder.staffOpenid || '')
+          await db.collection('staff_profiles').doc(staffProfile._id).update({
+            data: { internCompletedOrderCount: internOrders.length, updatedAt: time }
+          })
         }
       } catch (error) {}
     }
-    if (completedOrderCount % 3 === 0) {
-      await grantRetroCards(order.clientOpenid, clientUser._id, 1, 'order_complete_milestone', orderId, '完成 3 次订单奖励补签卡 +1')
+
+    // 4. 里程碑补签卡补偿与发放（每满 3 单奖励 1 张补签卡，严格查重避免重试多发）
+    if (completedOrderCount > 0 && completedOrderCount % 3 === 0 && !currentOrder.retroCardAwarded) {
+      const existingCardLog = (await db.collection('retro_card_logs').where({
+        openid: clientOpenid,
+        sourceType: 'order_complete_milestone',
+        sourceId: orderId
+      }).limit(1).get()).data?.[0]
+
+      if (!existingCardLog) {
+        await grantRetroCards(
+          clientOpenid,
+          clientUser._id,
+          1,
+          'order_complete_milestone',
+          orderId,
+          '完成 3 次订单奖励补签卡 +1'
+        )
+      }
+      orderPatch.retroCardAwarded = true
     }
-    return { id: orderId, status: ORDER_STATUS.COMPLETED, completedOrderCount, autoCompleted: isAuto }
+
+    // 5. 将副作用打标持久化到订单表
+    if (Object.keys(orderPatch).length > 0) {
+      orderPatch.updatedAt = time
+      await db.collection('orders').doc(orderId).update({ data: orderPatch })
+    }
+
+    return { completedOrderCount, pointsAwarded: true }
   }
 
   return {
     evaluateCheckinCompletion,
-    completeOrderService
+    completeOrderService,
+    ensureOrderCompletionRewards
   }
 }
