@@ -101,3 +101,31 @@ test('staff/orders/service displays session-aware unlock code label and guidance
   assert.match(wxml, /unlock\.sessionIndex \? '第' \+ unlock\.sessionIndex \+ '天门锁密码' : '门锁密码'/)
   assert.match(wxml, /此密码为客户在智能门锁 App 中生成的本场次临时开门密码，仅在当前服务时间窗口内有效/)
 })
+
+test('orders/create & detail & staff/orders/service comprehensive guidance for remote_unlock and key entry', () => {
+  const createWxml = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/client/orders/create/index.wxml'), 'utf8')
+  const createJs = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/client/orders/create/index.js'), 'utf8')
+  const detailWxml = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/client/orders/detail/index.wxml'), 'utf8')
+  const staffWxml = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/staff/orders/service/index.wxml'), 'utf8')
+
+  // 1. 验证创建页各方式描述与步骤指引
+  assert.match(createJs, /需智能锁网关支持App开锁/)
+  assert.match(createJs, /密码盒或隐蔽位置存放拍照/)
+  assert.match(createWxml, /上门后远程开门使用指引/)
+  assert.match(createWxml, /联网智能门锁.*已配网关保持在线.*远程开锁功能/)
+  assert.match(createWxml, /微信提醒.*点击“请求开门”.*推送服务开门提醒/)
+  assert.match(createWxml, /钥匙入户与存放安全指引/)
+  assert.match(createWxml, /门边机械密码盒\/钥匙箱/)
+  assert.match(createWxml, /原样放回原位置并强制拍照打卡/)
+  assert.match(createWxml, /有人在家接待指引/)
+
+  // 2. 验证订单详情页展示与存证说明
+  assert.match(detailWxml, /发起远程开门请求，请注意查看微信通知/)
+  assert.match(detailWxml, /待宠托师放回打卡/)
+  assert.match(detailWxml, /宠托师必须在服务完成离开前将钥匙放回原位置并拍照打卡，平台全程留痕存证/)
+
+  // 3. 验证员工服务打卡与指引
+  assert.match(staffWxml, /请到达客户门前确认环境安全后，点击下方“请求开门”/)
+  assert.match(staffWxml, /钥匙安全责任：请核对照片寻匙开门；服务结束离开前必须原位放回并拍照打卡，确保锁闭/)
+})
+

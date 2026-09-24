@@ -131,7 +131,7 @@
       <view class="security-desc" wx:if="{{order.orderHomeSecurity.type === 'someone_home'}}">有人在家，到达后敲门即可。</view>
 
       <view wx:if="{{order.orderHomeSecurity.type === 'remote_unlock'}}">
-        <view class="security-desc">到达服务地点后请求远程开门，系统会给宠物主发送微信提醒；如需电话催办，请联系客服并报订单号。</view>
+        <view class="security-desc">请到达客户门前确认环境安全后，点击下方“请求开门”。系统将向宠物主发送微信提醒，由宠物主在智能锁 App 远程开门；如需电话催办可联系平台客服协助。</view>
         <view class="info-row"><view class="label">订单号</view><view class="value">{{order.orderNo}}</view></view>
         <view class="info-row"><view class="label">客服电话</view><view class="value">{{customerService.phone || '暂未配置'}}</view></view>
         <view class="info-row" wx:if="{{customerService.workHours}}"><view class="label">服务时间</view><view class="value">{{customerService.workHours}}</view></view>
@@ -153,7 +153,7 @@
       <view wx:if="{{order.orderHomeSecurity.type === 'key'}}">
         <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{order.orderHomeSecurity.key.location}}</view></view>
         <view class="image-list" wx:if="{{order.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
-        <view class="security-desc">{{order.orderHomeSecurity.key.returnedAt ? '已完成放回钥匙打卡' : '完成服务前必须打卡放回钥匙位置'}}</view>
+        <view class="security-desc">{{order.orderHomeSecurity.key.returnedAt ? '已完成放回钥匙打卡，照片已留存' : '钥匙安全责任：请核对照片寻匙开门；服务结束离开前必须原位放回并拍照打卡，确保锁闭'}}</view>
         <button class="ghost-btn full-btn" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="chooseKeyReturnImage">上传放回钥匙图片</button>
         <view class="image-list" wx:if="{{keyReturnImageFileIds.length}}"><image wx:for="{{keyReturnImageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
         <button class="primary-btn full-btn" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}" loading="{{returningKey}}" disabled="{{returningKey}}" bindtap="recordKeyReturned">确认已放回钥匙</button>

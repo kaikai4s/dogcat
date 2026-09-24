@@ -36,10 +36,10 @@ const durationOptions = [
 ]
 
 const lockMethodOptions = [
-  { label: '有人在家', value: 'someone_home', desc: '宠托师到达后敲门即可' },
-  { label: '远程开门', value: 'remote_unlock', desc: '到达后请求你远程开门' },
+  { label: '有人在家', value: 'someone_home', desc: '服务时段内有人配合开门' },
+  { label: '远程开门', value: 'remote_unlock', desc: '需智能锁网关支持App开锁' },
   { label: '一次性密码', value: 'one_time_code', desc: '需智能锁App生成临时密码' },
-  { label: '钥匙', value: 'key', desc: '说明钥匙位置并上传图片' }
+  { label: '钥匙入户', value: 'key', desc: '密码盒或隐蔽位置存放拍照' }
 ]
 
 function formatDate(date) {

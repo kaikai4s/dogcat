@@ -78,10 +78,15 @@
   <view class="card security-card" wx:if="{{order.orderHomeSecurity}}">
     <view class="card-subtitle"><text class="remix-icon ri-door-lock-line sub-icon"></text><text>家庭安防</text></view>
     <view class="info-row"><view class="label">方式</view><view class="value">{{order.orderHomeSecurity.lockMethodText}}</view></view>
-    <view wx:if="{{order.orderHomeSecurity.type === 'someone_home'}}" class="notice-text">有人在家，宠托师到达后敲门即可。</view>
-    <view wx:if="{{order.orderHomeSecurity.type === 'remote_unlock'}}">
-      <view class="notice-text">宠托师到达后可请求你远程开门，系统会发送微信提醒；电话催办由平台客服转接。</view>
+    <view wx:if="{{order.orderHomeSecurity.type === 'someone_home'}}" class="security-block">
+      <view class="info-row"><view class="label">入户方式</view><view class="value">有人在家</view></view>
+      <view class="notice-text">服务时段内家中有人，宠托师到达后敲门即可进门；若宠物易激动请提前协助安抚。</view>
+    </view>
+    <view wx:if="{{order.orderHomeSecurity.type === 'remote_unlock'}}" class="security-block">
+      <view class="info-row"><view class="label">入户方式</view><view class="value">上门后远程开门</view></view>
+      <view class="notice-text">宠托师到达后会发起远程开门请求，请注意查看微信通知，并在智能锁 App 中为宠托师远程开门。</view>
       <view class="info-row" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}"><view class="label">最近请求</view><view class="value">{{order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}</view></view>
+      <view class="info-row" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.requestCount}}"><view class="label">请求次数</view><view class="value">{{order.orderHomeSecurity.remoteUnlock.requestCount}} 次</view></view>
     </view>
     <view wx:if="{{order.orderHomeSecurity.oneTimeCode}}" class="security-block">
       <view class="info-row"><view class="label">入户方式</view><view class="value">智能门锁一次性密码</view></view>
@@ -101,10 +106,13 @@
       <button class="ghost-btn inline-btn" bindtap="showResetOneTimeCode"><text class="remix-icon ri-key-2-line"></text><text>重新设置一次性密码</text></button>
     </view>
     <view wx:if="{{order.orderHomeSecurity.key}}" class="security-block">
+      <view class="info-row"><view class="label">入户方式</view><view class="value">钥匙入户</view></view>
       <view class="info-row"><view class="label">钥匙位置</view><view class="value">{{order.orderHomeSecurity.key.location}}</view></view>
       <view class="image-list" wx:if="{{order.orderHomeSecurity.key.imageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.imageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
-      <view class="info-row"><view class="label">放回状态</view><view class="value">{{order.orderHomeSecurity.key.returnedAt ? '已放回' : '待宠托师放回打卡'}}</view></view>
+      <view class="info-row"><view class="label">放回状态</view><view class="value {{order.orderHomeSecurity.key.returnedAt ? 'status-green' : 'status-orange'}}">{{order.orderHomeSecurity.key.returnedAt ? '已放回原位' : '服务中 · 待宠托师放回打卡'}}</view></view>
       <view class="image-list" wx:if="{{order.orderHomeSecurity.key.returnImageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.returnImageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
+      <view class="notice-text" wx:if="{{!order.orderHomeSecurity.key.returnedAt}}">宠托师必须在服务完成离开前将钥匙放回原位置并拍照打卡，平台全程留痕存证。</view>
+      <view class="notice-text" wx:if="{{order.orderHomeSecurity.key.returnedAt}}">钥匙已于 {{order.orderHomeSecurity.key.returnedAt}} 放回原位置并拍照留存。</view>
     </view>
     <view class="reset-panel" wx:if="{{resettingCode}}">
       <view class="reset-tip-box">

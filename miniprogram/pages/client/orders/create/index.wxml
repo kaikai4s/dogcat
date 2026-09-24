@@ -198,14 +198,42 @@
       </view>
     </view>
 
-    <view class="notice" wx:if="{{form.lockMethod === 'someone_home'}}">
-      <view class="strong">有人在家</view>
-      <view class="muted">宠托师到达后敲门即可，不需要提供密码或钥匙。</view>
+    <view class="notice notice-smartlock" wx:if="{{form.lockMethod === 'someone_home'}}">
+      <view class="smartlock-header">
+        <text class="remix-icon ri-home-heart-line smartlock-icon"></text>
+        <text class="strong">有人在家接待指引</text>
+      </view>
+      <view class="smartlock-steps">
+        <view class="smartlock-step-item">
+          <text class="step-badge">1</text>
+          <view class="step-text"><text class="strong">配合开门：</text>预约服务时段内请确保家中有人协助开门，宠托师到达后敲门即可，无需提供密码或钥匙。</view>
+        </view>
+        <view class="smartlock-step-item">
+          <text class="step-badge">2</text>
+          <view class="step-text"><text class="strong">宠物安抚：</text>若家中有大型犬或易激惹护卫宠物，请提前系好牵引绳或做好安抚配合，方便宠托师安全进门。</view>
+        </view>
+      </view>
     </view>
 
-    <view class="notice" wx:if="{{form.lockMethod === 'remote_unlock'}}">
-      <view class="strong">上门后远程开门</view>
-      <view class="muted">宠托师到达服务地点后可请求开门，你会收到微信提醒；电话催办由平台客服转接。</view>
+    <view class="notice notice-smartlock" wx:if="{{form.lockMethod === 'remote_unlock'}}">
+      <view class="smartlock-header">
+        <text class="remix-icon ri-cellphone-line smartlock-icon"></text>
+        <text class="strong">上门后远程开门使用指引</text>
+      </view>
+      <view class="smartlock-steps">
+        <view class="smartlock-step-item">
+          <text class="step-badge">1</text>
+          <view class="step-text"><text class="strong">门锁要求：</text>需家中门锁为<text class="highlight-text">联网智能门锁</text>（已配网关保持在线），且门锁手机 App 支持远程开锁功能。</view>
+        </view>
+        <view class="smartlock-step-item">
+          <text class="step-badge">2</text>
+          <view class="step-text"><text class="strong">微信提醒：</text>宠托师到达家门口后会在小程序中点击“请求开门”，系统会立即向您的微信推送服务开门提醒。</view>
+        </view>
+        <view class="smartlock-step-item">
+          <text class="step-badge">3</text>
+          <view class="step-text"><text class="strong">手机开锁：</text>收到提醒后，请打开您门锁对应的手机 App（如米家、鹿客、华为、德施曼、凯迪仕等）完成远程开锁；请确保服务时段内手机畅通、网关在线。</view>
+        </view>
+      </view>
     </view>
 
     <view class="lock-panel" wx:if="{{form.lockMethod === 'one_time_code'}}">
@@ -247,12 +275,32 @@
     </view>
 
     <view class="lock-panel" wx:if="{{form.lockMethod === 'key'}}">
-      <input placeholder="钥匙放置位置（如门垫下、密码盒位置）" value="{{form.keyLocation}}" data-field="keyLocation" bindinput="input" />
-      <button class="ghost upload-btn" loading="{{uploadingKeyImage}}" disabled="{{uploadingKeyImage}}" bindtap="chooseKeyImage">上传钥匙位置图片</button>
+      <view class="notice notice-smartlock">
+        <view class="smartlock-header">
+          <text class="remix-icon ri-key-2-line smartlock-icon"></text>
+          <text class="strong">钥匙入户与存放安全指引</text>
+        </view>
+        <view class="smartlock-steps">
+          <view class="smartlock-step-item">
+            <text class="step-badge">1</text>
+            <view class="step-text"><text class="strong">安全存放：</text>推荐使用<text class="highlight-text">门边机械密码盒/钥匙箱</text>（挂于门把手或隐蔽处更安全防丢），并在下方详细说明存放位置及开盒密码；也可放置于地垫、消防栓等隐蔽处。</view>
+          </view>
+          <view class="smartlock-step-item">
+            <text class="step-badge">2</text>
+            <view class="step-text"><text class="strong">拍照存证：</text>请点击下方按钮上传存放位置清晰照片（建议包含周边参照物），便于宠托师准确寻匙，避免在楼道过多走动。</view>
+          </view>
+          <view class="smartlock-step-item">
+            <text class="step-badge">3</text>
+            <view class="step-text"><text class="strong">归还闭环：</text>服务完成离开前，宠托师必须将钥匙<text class="highlight-text">原样放回原位置并强制拍照打卡</text>，平台全程记录存证，确保钥匙安全归位。</view>
+          </view>
+        </view>
+      </view>
+
+      <input placeholder="钥匙存放详细位置（若为密码盒请注明开盒密码）" value="{{form.keyLocation}}" data-field="keyLocation" bindinput="input" />
+      <button class="ghost upload-btn" loading="{{uploadingKeyImage}}" disabled="{{uploadingKeyImage}}" bindtap="chooseKeyImage"><text class="remix-icon ri-camera-line"></text> 上传钥匙位置参考图片</button>
       <view class="image-list" wx:if="{{form.keyImageFileIds.length}}">
         <view class="image-chip" wx:for="{{form.keyImageFileIds}}" wx:key="*this" data-index="{{index}}" bindtap="removeKeyImage">图片{{index + 1}} · 点击移除</view>
       </view>
-      <view class="notice"><view class="muted">服务完成前，宠托师必须打卡确认已把钥匙放回原位置。</view></view>
     </view>
 
     <textarea placeholder="入户备注（如敲门说明、安防提示、注意事项）" value="{{form.entryNotes}}" data-field="entryNotes" bindinput="input" />
