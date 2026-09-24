@@ -156,11 +156,16 @@ module.exports = function createHandler(context) {
         const order = orderRes && orderRes.data
         if (!order) throw new Error('订单不存在')
         const targetUser = (await db.collection('users').where({ openid: order.clientOpenid || incident.clientOpenid }).limit(1).get()).data[0]
-        if (!targetUser) throw new Error('目标用户不存在')
         const templateRes = await db.collection('coupon_templates').doc(couponTemplateId).get().catch(() => ({ data: null }))
         const template = templateRes && templateRes.data
         if (!template) throw new Error('补偿优惠券不存在')
-        const issued = await issueCouponToTargetUser(template, targetUser, { adminUserId: admin._id, adminOpenid: openid })
+        const issued = await issueCouponToTargetUser(template, targetUser, {
+          adminUserId: admin._id,
+          adminOpenid: openid,
+          idempotencyKey: `incident_coupon_${id}`,
+          sourceType: 'incident_resolution',
+          sourceId: id
+        })
         resolution.couponTemplateId = couponTemplateId
         resolution.couponId = issued._id
         resolution.couponSnapshot = issued.templateSnapshot
