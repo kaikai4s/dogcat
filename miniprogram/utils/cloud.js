@@ -1,4 +1,4 @@
-const { envList } = require('../envList')
+const { envList, getActiveEnvId } = require('../envList')
 const { getSavedThemeKey, saveTheme } = require('./theme')
 const { getSavedFontKey, saveFont } = require('./font')
 
@@ -6,7 +6,8 @@ function getCloudEnv() {
   const app = getApp()
   if (app && !app.globalData) app.globalData = {}
   const globalData = app && app.globalData ? app.globalData : {}
-  const env = globalData.env || (envList[0] && envList[0].envId ? envList[0].envId : '')
+  const activeEnv = typeof getActiveEnvId === 'function' ? getActiveEnvId() : ''
+  const env = globalData.env || activeEnv || (envList[0] && envList[0].envId ? envList[0].envId : '')
   if (env && app && app.globalData && !app.globalData.env) {
     app.globalData.env = env
     if (wx.cloud) wx.cloud.init({ env, traceUser: true })
