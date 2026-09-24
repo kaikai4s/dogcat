@@ -38,12 +38,25 @@ module.exports = function createService({
       contactPhone: data.contactPhone || '',
       serviceAddress: data.serviceAddress || '',
       addressDetail: data.addressDetail || '',
-      doorplate: data.doorplate || '',
-      latitude: Number(data.latitude || data.addressLatitude || 0),
-      longitude: Number(data.longitude || data.addressLongitude || 0),
-      isDefault: shouldBeDefault,
-      updatedAt: time
+      doorplate: data.doorplate || ''
     }
+    const rawLat = data.latitude !== undefined ? data.latitude : data.addressLatitude
+    const rawLng = data.longitude !== undefined ? data.longitude : data.addressLongitude
+    let latitude = 0
+    let longitude = 0
+    if (rawLat !== undefined || rawLng !== undefined) {
+      const numLat = Number(rawLat || 0)
+      const numLng = Number(rawLng || 0)
+      if (!Number.isFinite(numLat) || !Number.isFinite(numLng) || numLat < -90 || numLat > 90 || numLng < -180 || numLng > 180) {
+        throw new Error('地址经纬度坐标无效')
+      }
+      latitude = numLat
+      longitude = numLng
+    }
+    payload.latitude = latitude
+    payload.longitude = longitude
+    payload.isDefault = shouldBeDefault
+    payload.updatedAt = time
     if (payload.isDefault) {
       await Promise.all(existingAddresses.data.map((item) => db.collection('user_addresses').doc(item._id).update({ data: { isDefault: false, updatedAt: time } })))
     }
