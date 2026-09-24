@@ -223,6 +223,18 @@ test('adminMall & mall: zero-pay coupon order refund approval settles safely wit
       { _id: 'u_client', openid: 'client_open', roles: ['client'], status: 'active', phone: '13800138000' },
       { _id: 'u_admin', openid: 'admin_open', roles: ['admin'], status: 'active' }
     ],
+    mall_products: [
+      {
+        _id: 'p_zero',
+        name: '猫玩具',
+        price: 50,
+        stock: 5,
+        totalStock: 5,
+        salesCount: 1,
+        specMode: 'single',
+        skus: [{ skuId: 'default', price: 50, stock: 5, salesCount: 1 }]
+      }
+    ],
     mall_orders: [
       {
         _id: 'ord_mall_zero',
@@ -230,13 +242,16 @@ test('adminMall & mall: zero-pay coupon order refund approval settles safely wit
         clientOpenid: 'client_open',
         status: 'refund_applied',
         refundStatus: 'applied',
-        preRefundStatus: 'shipped',
+        preRefundStatus: 'pending_ship',
         paymentStatus: 'paid',
         payAmount: 0,
         amount: 50,
         couponId: 'coup_mall_zero',
         couponAmount: 50,
-        refundReason: '商品缺货，申请退货'
+        refundReason: '商品缺货，申请退货',
+        items: [
+          { productId: 'p_zero', skuId: 'default', quantity: 1, price: 50 }
+        ]
       }
     ],
     user_coupons: [
@@ -276,6 +291,12 @@ test('adminMall & mall: zero-pay coupon order refund approval settles safely wit
   assert.equal(updatedOrder.refundStatus, 'full_refunded')
   assert.equal(updatedOrder.refundAmount, 0)
   assert.equal(updatedOrder.refundedAmount, 0)
+  assert.equal(updatedOrder.stockRestored, true, '0元单未发货全额退款成功后应标记 stockRestored')
+
+  // 验证商品库存与销量恢复
+  const updatedProd = db.state.mall_products.find(p => p._id === 'p_zero')
+  assert.equal(updatedProd.stock, 6, '商品库存应从 5 恢复为 6')
+  assert.equal(updatedProd.salesCount, 0, '商品销量应从 1 恢复为 0')
 
   // 验证优惠券被原路恢复为 available
   const updatedCoupon = db.state.user_coupons.find(c => c._id === 'coup_mall_zero')
