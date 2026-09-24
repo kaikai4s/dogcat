@@ -104,6 +104,9 @@ module.exports = function createHandler(context) {
           const template = templateRes && templateRes.data
           if (!template) throw new Error('奖励优惠券不存在')
           couponResult = await issueCouponToTargetUser(template, user, {
+            idempotencyKey: `reward_mail_${id}`,
+            sourceType: 'reward_mail',
+            sourceId: id,
             adminUserId: safeText(mail.sentByAdminUserId).trim(),
             adminOpenid: safeText(mail.sentByAdminOpenid).trim()
           })

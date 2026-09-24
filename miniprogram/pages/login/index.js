@@ -1,10 +1,10 @@
 const { loginWithWechat } = require('../../utils/cloud')
-const { envList } = require('../../envList')
+const { envList, getActiveEnvId } = require('../../envList')
 
 Page({
   data: {
     loading: false,
-    envReady: Boolean(envList[0] && envList[0].envId),
+    envReady: Boolean((typeof getActiveEnvId === 'function' && getActiveEnvId()) || (envList[0] && envList[0].envId)),
     errorText: ''
   },
 

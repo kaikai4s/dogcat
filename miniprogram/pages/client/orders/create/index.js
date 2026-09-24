@@ -36,10 +36,10 @@ const durationOptions = [
 ]
 
 const lockMethodOptions = [
-  { label: '有人在家', value: 'someone_home', desc: '宠托师到达后敲门即可' },
-  { label: '远程开门', value: 'remote_unlock', desc: '到达后请求你远程开门' },
-  { label: '一次性密码', value: 'one_time_code', desc: '设置本单专用密码和有效期' },
-  { label: '钥匙', value: 'key', desc: '说明钥匙位置并上传图片' }
+  { label: '有人在家', value: 'someone_home', desc: '服务时段内有人配合开门' },
+  { label: '远程开门', value: 'remote_unlock', desc: '需智能锁网关支持App开锁' },
+  { label: '一次性密码', value: 'one_time_code', desc: '需智能锁App生成临时密码' },
+  { label: '钥匙入户', value: 'key', desc: '密码盒或隐蔽位置存放拍照' }
 ]
 
 function formatDate(date) {
@@ -101,6 +101,102 @@ function buildDailySessions(form) {
     current = new Date(current.getTime() + 24 * 60 * 60 * 1000)
   }
   return sessions
+}
+
+const WEEKDAY_NAMES_MAP = {
+  1: '周一',
+  2: '周二',
+  3: '周三',
+  4: '周四',
+  5: '周五',
+  6: '周六',
+  7: '周日'
+}
+
+function getSitterScheduleForDate(dateStr, requestedSitter, sitterAvailability = []) {
+  if (!requestedSitter) return { available: true, slots: null, busyOrders: [], reason: '' }
+
+  // 0. 优先检查宠托师设置的最远接单截止日期
+  if (requestedSitter.bookableUntilDate && dateStr > requestedSitter.bookableUntilDate) {
+    return { available: false, slots: [], busyOrders: [], reason: `宠托师接单截止至 ${requestedSitter.bookableUntilDate}` }
+  }
+
+  // 1. 优先匹配具体日期排班（例外或日历数据）
+  const dayAvail = (sitterAvailability || []).find((item) => item.dateKey === dateStr)
+  if (dayAvail) {
+    if (dayAvail.status === 'unavailable') {
+      return { available: false, slots: [], busyOrders: [], reason: '宠托师当天休息' }
+    }
+    const slots = Array.isArray(dayAvail.slots) ? dayAvail.slots : []
+    if (slots.length === 0) {
+      return { available: false, slots: [], busyOrders: [], reason: '宠托师当天未开启接单' }
+    }
+    return {
+      available: true,
+      slots,
+      busyOrders: Array.isArray(dayAvail.busyOrders) ? dayAvail.busyOrders : [],
+      reason: ''
+    }
+  }
+
+  // 2. 无具体日期排班时，回退到按周常规排班 weeklySchedule
+  const weekly = requestedSitter.weeklySchedule
+  if (!weekly || typeof weekly !== 'object') {
+    return { available: true, slots: null, busyOrders: [], reason: '' }
+  }
+
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const dateObj = new Date(y, m - 1, d)
+  const jsDay = dateObj.getDay()
+  const dayKey = String(jsDay === 0 ? 7 : jsDay)
+  const slots = Array.isArray(weekly[dayKey]) ? weekly[dayKey] : []
+
+  if (slots.length === 0) {
+    const dayName = WEEKDAY_NAMES_MAP[dayKey] || ''
+    return { available: false, slots: [], busyOrders: [], reason: `宠托师${dayName}不接单` }
+  }
+
+  return { available: true, slots, busyOrders: [], reason: '' }
+}
+
+function formatSitterSlotsText(slots) {
+  if (!slots || !slots.length) return '全天可预约'
+  return slots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
+}
+
+function checkTimeFitsSitterSchedule(startTimeStr, endTimeStr, schedule) {
+  if (!schedule || !schedule.available) {
+    return { ok: false, reason: schedule ? (schedule.reason || '宠托师当天不可预约') : '不可预约' }
+  }
+  if (schedule.slots === null) {
+    return { ok: true }
+  }
+
+  const [sh, sm] = startTimeStr.slice(11, 16).split(':').map(Number)
+  const [eh, em] = endTimeStr.slice(11, 16).split(':').map(Number)
+  const startVal = sh + sm / 60
+  const endVal = eh + em / 60
+
+  const fitsInSlot = schedule.slots.some((slot) => startVal >= slot.start && endVal <= slot.end)
+  if (!fitsInSlot) {
+    const allowedText = formatSitterSlotsText(schedule.slots)
+    return { ok: false, reason: `不在接单时段（${allowedText}）内`, allowedText }
+  }
+
+  const startObj = parseDateTime(startTimeStr)
+  const endObj = parseDateTime(endTimeStr)
+  if (startObj && endObj && Array.isArray(schedule.busyOrders)) {
+    const conflict = schedule.busyOrders.some((order) => {
+      const orderStart = parseDateTime(order.startTime)
+      const orderEnd = parseDateTime(order.endTime)
+      return orderStart && orderEnd && orderStart < endObj && orderEnd > startObj
+    })
+    if (conflict) {
+      return { ok: false, reason: '宠托师该时段已被预约' }
+    }
+  }
+
+  return { ok: true }
 }
 
 function getBusinessServiceTypes(serviceTypes) {
@@ -243,7 +339,7 @@ function getInitialServiceTime() {
   return { startDate: formatDate(nextTime), endDate: formatDate(nextTime), startClock: formatTime(nextTime) }
 }
 
-Page({
+typeof Page === 'function' ? Page({
   data: {
     themeClass: 'theme-day',
     user: null,
@@ -310,6 +406,7 @@ Page({
     sitterAvailability: [],
     selectedAvailability: null,
     saveAddress: false,
+    agreeAgreement: false,
     creating: false,
     locationReady: false,
     locationTip: '',
@@ -318,9 +415,32 @@ Page({
     sectionHomeUrl: '',
     canGoBack: false,
     minDate: formatDate(new Date()),
-    minClock: ''
+    minClock: '',
+    showCalendarModal: false,
+    calendarYear: new Date().getFullYear(),
+    calendarMonth: new Date().getMonth() + 1,
+    calendarDays: [],
+    calendarEmptyDays: [],
+    canPrevMonth: false,
+    canNextMonth: true,
+    calendarTempOrderType: 'single',
+    calendarTempStartDate: '',
+    calendarTempEndDate: '',
+    calendarTempStartClock: '',
+    timeSlotOptions: [],
+    calendarSummaryText: '',
+    calendarTempSurchargeTotal: 0,
+    currentDateSurchargeTotal: 0,
+    currentTimeSlotSurcharge: 0,
+    currentDateSurchargeName: '',
+    currentTimeSlotSurchargeName: '',
+    surchargeDateMap: {},
+    surchargeSlotList: [],
+    sitterScheduleWarningText: '',
+    currentSitterScheduleTip: ''
   },
 
+<<<<<<< HEAD
   onLoad(options = {}) {
     const initialTime = getInitialServiceTime()
     this.setData({
@@ -331,6 +451,12 @@ Page({
       'form.doorLockCodeEndDate': initialTime.endDate
     })
     loadSystemSettings().catch(() => null)
+=======
+  onLoad(options) {
+    loadSystemSettings().then((settings) => {
+      this.initPricingSurcharges(settings && settings.pricingSurcharges)
+    }).catch(() => null)
+>>>>>>> b1578c0487c548b4437f40cc321a0fe6a7d4fd68
     this.setData({ ...createPageNav(options), pendingOptions: options || {} })
     const publishMode = options.publishMode === 'direct' ? 'direct' : 'open'
     const staffProfileId = options.staffProfileId || ''
@@ -349,7 +475,14 @@ Page({
     this.applyCurrentTheme()
     this.consumeSelectedCoupon()
     this.updateMinTime()
+<<<<<<< HEAD
     return ensureLogin({ content: '登录后可创建预约订单。' })
+=======
+    loadSystemSettings().then((settings) => {
+      this.initPricingSurcharges(settings && settings.pricingSurcharges)
+    }).catch(() => null)
+    ensureLogin({ content: '登录后可创建预约订单。' })
+>>>>>>> b1578c0487c548b4437f40cc321a0fe6a7d4fd68
       .then((user) => {
         this.setData({ user })
         return this.loadPageData()
@@ -486,6 +619,37 @@ Page({
     this.setData({ ['form.endDate']: safeEndDate, ['form.startTime']: startTime, ['form.endTime']: endTime, ['form.doorLockCodeStartTime']: doorLockCodeStartTime, ['form.doorLockCodeEndTime']: doorLockCodeEndTime }, () => {
       this.syncSecurityCoverage()
       this.syncSelectedAvailability()
+      this.syncCurrentSurchargesUI()
+      this.syncSitterScheduleWarning()
+    })
+  },
+
+  checkSitterScheduleTime(candidateForm) {
+    const form = candidateForm || this.data.form
+    if (form.publishMode !== 'direct') return { ok: true }
+    const sitter = this.data.requestedSitter
+    if (!sitter) return { ok: true }
+
+    const sessions = buildDailySessions(form)
+    if (!sessions.length) return { ok: false, message: '请选择有效的服务时间' }
+
+    for (const session of sessions) {
+      const schedule = getSitterScheduleForDate(session.date, sitter, this.data.sitterAvailability)
+      const res = checkTimeFitsSitterSchedule(session.startTime, session.endTime, schedule)
+      if (!res.ok) {
+        return {
+          ok: false,
+          message: `${session.date} 预约时间${res.reason}，请修改时间`
+        }
+      }
+    }
+    return { ok: true }
+  },
+
+  syncSitterScheduleWarning() {
+    const check = this.checkSitterScheduleTime()
+    this.setData({
+      sitterScheduleWarningText: check.ok ? '' : check.message
     })
   },
 
@@ -602,12 +766,13 @@ Page({
     const lng = this.data.form.addressLongitude
     Promise.all([
       callFunction('staff', 'getPublicSitterDetail', { staffProfileId, latitude: lat, longitude: lng }),
-      callFunction('staff', 'listScheduleAvailability', { staffProfileId, days: 14 })
+      callFunction('staff', 'listScheduleAvailability', { staffProfileId, days: 31 })
     ])
       .then(([requestedSitter, availability]) => {
         this.setData({ requestedSitter, sitterAvailability: availability || [] }, () => {
           this.prepareTime()
           this.checkSitterRange()
+          this.syncSitterScheduleWarning()
         })
       })
       .catch(showError)
@@ -1002,6 +1167,445 @@ Page({
     }, this.prepareTime)
   },
 
+  initPricingSurcharges(surcharges) {
+    const config = surcharges || {}
+    const enabled = config.enabled !== false
+    const dateList = enabled && Array.isArray(config.dateSurcharges) ? config.dateSurcharges.filter((d) => d && d.enabled !== false) : []
+    const slotList = enabled && Array.isArray(config.timeSlotSurcharges) ? config.timeSlotSurcharges.filter((s) => s && s.enabled !== false) : []
+    const dateMap = {}
+    dateList.forEach((d) => {
+      if (d.date) dateMap[d.date] = d
+    })
+    this.setData({
+      surchargeDateMap: dateMap,
+      surchargeSlotList: slotList
+    }, () => {
+      this.syncCurrentSurchargesUI()
+    })
+  },
+
+  syncCurrentSurchargesUI() {
+    const form = this.data.form || {}
+    const dateMap = this.data.surchargeDateMap || {}
+    const slotList = this.data.surchargeSlotList || []
+    let dateSurchargeTotal = 0
+    let dateSurchargeName = ''
+
+    if (form.orderType === 'single') {
+      const match = dateMap[form.startDate]
+      if (match) {
+        dateSurchargeTotal = match.surcharge
+        dateSurchargeName = match.name
+      }
+    } else if (form.startDate && form.endDate && form.endDate >= form.startDate) {
+      const sessions = buildDailySessions(form)
+      sessions.forEach((s) => {
+        const match = dateMap[s.date]
+        if (match) {
+          dateSurchargeTotal += match.surcharge
+          if (!dateSurchargeName) dateSurchargeName = match.name
+        }
+      })
+      dateSurchargeTotal = Math.round(dateSurchargeTotal * 100) / 100
+    }
+
+    let timeSurcharge = 0
+    let timeSurchargeName = ''
+    const clock = form.startClock
+    if (clock && slotList.length) {
+      const match = slotList.find((s) => clock >= s.startTime && clock <= s.endTime)
+      if (match) {
+        timeSurcharge = match.surcharge
+        timeSurchargeName = match.name
+      }
+    }
+
+    this.setData({
+      currentDateSurchargeTotal: dateSurchargeTotal,
+      currentTimeSlotSurcharge: timeSurcharge,
+      currentDateSurchargeName: dateSurchargeName,
+      currentTimeSlotSurchargeName: timeSurchargeName
+    })
+  },
+
+  openCalendarModal() {
+    const now = new Date()
+    const form = this.data.form
+    const startDate = form.startDate || formatDate(now)
+    const [startYear, startMonth] = startDate.split('-').map(Number)
+    const calendarYear = startYear || now.getFullYear()
+    const calendarMonth = startMonth || (now.getMonth() + 1)
+
+    this.setData({
+      showCalendarModal: true,
+      calendarYear,
+      calendarMonth,
+      calendarTempOrderType: form.orderType || 'single',
+      calendarTempStartDate: startDate,
+      calendarTempEndDate: form.endDate || startDate,
+      calendarTempStartClock: form.startClock || '09:00'
+    }, () => {
+      this.refreshCalendarUI()
+    })
+  },
+
+  closeCalendarModal() {
+    this.setData({ showCalendarModal: false })
+  },
+
+  changeCalendarOrderType(e) {
+    const type = e.currentTarget.dataset.type
+    if (!type || type === this.data.calendarTempOrderType) return
+    const startDate = this.data.calendarTempStartDate || formatDate(new Date())
+    this.setData({
+      calendarTempOrderType: type,
+      calendarTempEndDate: type === 'single' ? startDate : (this.data.calendarTempEndDate && this.data.calendarTempEndDate >= startDate ? this.data.calendarTempEndDate : startDate)
+    }, () => {
+      this.refreshCalendarUI()
+    })
+  },
+
+  prevCalendarMonth() {
+    if (!this.data.canPrevMonth) return
+    let { calendarYear, calendarMonth } = this.data
+    calendarMonth -= 1
+    if (calendarMonth < 1) {
+      calendarMonth = 12
+      calendarYear -= 1
+    }
+    this.setData({ calendarYear, calendarMonth }, () => {
+      this.refreshCalendarUI()
+    })
+  },
+
+  nextCalendarMonth() {
+    if (!this.data.canNextMonth) return
+    let { calendarYear, calendarMonth } = this.data
+    calendarMonth += 1
+    if (calendarMonth > 12) {
+      calendarMonth = 1
+      calendarYear += 1
+    }
+    this.setData({ calendarYear, calendarMonth }, () => {
+      this.refreshCalendarUI()
+    })
+  },
+
+  refreshCalendarUI() {
+    const { calendarYear, calendarMonth, calendarTempOrderType, calendarTempStartDate, calendarTempEndDate, calendarTempStartClock } = this.data
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth() + 1
+    const todayStr = formatDate(now)
+
+    const canPrevMonth = calendarYear > currentYear || (calendarYear === currentYear && calendarMonth > currentMonth)
+    const monthDiff = (calendarYear - currentYear) * 12 + (calendarMonth - currentMonth)
+    const canNextMonth = monthDiff < 3
+
+    const firstDayWeek = new Date(calendarYear, calendarMonth - 1, 1).getDay()
+    const daysCount = new Date(calendarYear, calendarMonth, 0).getDate()
+    const dateMap = this.data.surchargeDateMap || {}
+
+    const isDirect = this.data.form.publishMode === 'direct' && Boolean(this.data.requestedSitter)
+    const sitter = this.data.requestedSitter
+    const availability = this.data.sitterAvailability || []
+
+    const calendarEmptyDays = Array.from({ length: firstDayWeek }, (_, i) => i)
+    const calendarDays = []
+
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = `${calendarYear}-${String(calendarMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      const isPast = dateStr < todayStr
+      const isToday = dateStr === todayStr
+      const surchargeRule = dateMap[dateStr]
+      const surcharge = surchargeRule ? surchargeRule.surcharge : 0
+      const surchargeName = surchargeRule ? surchargeRule.name : ''
+
+      let isSitterUnavailable = false
+      let sitterUnavailableReason = ''
+      if (isDirect) {
+        const schedule = getSitterScheduleForDate(dateStr, sitter, availability)
+        if (!schedule.available) {
+          isSitterUnavailable = true
+          sitterUnavailableReason = schedule.reason || '宠托师当天休息'
+        }
+      }
+
+      const disabled = isPast || isSitterUnavailable
+
+      let isSelected = false
+      let isRangeStart = false
+      let isRangeEnd = false
+      let isInRange = false
+
+      if (calendarTempOrderType === 'single') {
+        isSelected = (dateStr === calendarTempStartDate)
+      } else {
+        isRangeStart = (dateStr === calendarTempStartDate)
+        isRangeEnd = Boolean(calendarTempEndDate && dateStr === calendarTempEndDate)
+        isInRange = Boolean(calendarTempEndDate && dateStr >= calendarTempStartDate && dateStr <= calendarTempEndDate)
+      }
+
+      calendarDays.push({
+        day: d,
+        date: dateStr,
+        isPast,
+        isToday,
+        isSitterUnavailable,
+        sitterUnavailableReason,
+        disabled,
+        surcharge,
+        surchargeName,
+        isSelected,
+        isRangeStart,
+        isRangeEnd,
+        isInRange
+      })
+    }
+
+    const allClocks = [
+      '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
+      '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
+      '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
+      '16:00', '16:30', '17:00', '17:30', '18:00', '18:30',
+      '19:00', '19:30', '20:00', '20:30', '21:00'
+    ]
+    const slotList = this.data.surchargeSlotList || []
+    const isSelectedDayToday = calendarTempStartDate === todayStr
+    const currentClock = formatTime(now)
+    const durationMinutes = Number(this.data.form.durationMinutes || 60)
+
+    // 计算当前用户选中的所有服务日期列表
+    const selectedDates = []
+    if (calendarTempStartDate) {
+      if (calendarTempOrderType === 'single' || !calendarTempEndDate || calendarTempEndDate <= calendarTempStartDate) {
+        selectedDates.push(calendarTempStartDate)
+      } else {
+        const dummyForm = { orderType: 'multi_day', startDate: calendarTempStartDate, endDate: calendarTempEndDate, startClock: '12:00', durationMinutes: 60 }
+        const sessions = buildDailySessions(dummyForm)
+        sessions.forEach((s) => selectedDates.push(s.date))
+      }
+    }
+
+    // 宠托师当前接单时段提示文案
+    let currentSitterScheduleTip = ''
+    if (isDirect && calendarTempStartDate) {
+      const curSched = getSitterScheduleForDate(calendarTempStartDate, sitter, availability)
+      if (!curSched.available) {
+        currentSitterScheduleTip = `宠托师该日休息（${curSched.reason || '不接单'}）`
+      } else if (curSched.slots) {
+        currentSitterScheduleTip = `接单时间：${formatSitterSlotsText(curSched.slots)}`
+      } else {
+        currentSitterScheduleTip = '全天均可预约'
+      }
+    }
+
+    const timeSlotOptions = allClocks.map((clock) => {
+      const match = slotList.find((s) => clock >= s.startTime && clock <= s.endTime)
+      const surcharge = match ? match.surcharge : 0
+      const surchargeName = match ? match.name : ''
+      let disabled = false
+      let disabledReason = ''
+      let outsideSitterSchedule = false
+      let busyConflict = false
+      let sitterScheduleText = ''
+
+      if (isSelectedDayToday && clock <= currentClock) {
+        disabled = true
+        disabledReason = '该时间已过，请选择后续时间'
+      }
+
+      if (!disabled && isDirect && selectedDates.length > 0) {
+        for (const curDate of selectedDates) {
+          const startTimeStr = `${curDate} ${clock}`
+          const endTimeStr = addMinutes(curDate, clock, durationMinutes)
+          const curSched = getSitterScheduleForDate(curDate, sitter, availability)
+          const fitRes = checkTimeFitsSitterSchedule(startTimeStr, endTimeStr, curSched)
+          if (!fitRes.ok) {
+            disabled = true
+            disabledReason = fitRes.reason
+            if (fitRes.reason.includes('已有订单')) {
+              busyConflict = true
+            } else {
+              outsideSitterSchedule = true
+            }
+            sitterScheduleText = fitRes.allowedText || formatSitterSlotsText(curSched.slots)
+            break
+          }
+        }
+      }
+
+      return {
+        clock,
+        disabled,
+        disabledReason,
+        outsideSitterSchedule,
+        busyConflict,
+        sitterScheduleText,
+        surcharge,
+        surchargeName
+      }
+    })
+
+    // 若当前高亮的时间已不可选，自动切换到当天首个可用时段
+    let nextStartClock = calendarTempStartClock
+    const currentOption = timeSlotOptions.find((o) => o.clock === nextStartClock)
+    if (!currentOption || currentOption.disabled) {
+      const firstAvailable = timeSlotOptions.find((o) => !o.disabled)
+      if (firstAvailable) {
+        nextStartClock = firstAvailable.clock
+      }
+    }
+
+    let summaryText = ''
+    let totalSurcharge = 0
+    if (calendarTempOrderType === 'single') {
+      summaryText = `${calendarTempStartDate} ${nextStartClock}`
+      if (dateMap[calendarTempStartDate]) {
+        totalSurcharge += dateMap[calendarTempStartDate].surcharge
+      }
+    } else {
+      const endText = calendarTempEndDate ? ` 至 ${calendarTempEndDate}` : ' (请选结束日期)'
+      summaryText = `${calendarTempStartDate}${endText} 每天 ${nextStartClock}`
+      if (calendarTempStartDate && calendarTempEndDate) {
+        const dummyForm = { orderType: 'multi_day', startDate: calendarTempStartDate, endDate: calendarTempEndDate, startClock: nextStartClock }
+        const sessions = buildDailySessions(dummyForm)
+        sessions.forEach((s) => {
+          if (dateMap[s.date]) totalSurcharge += dateMap[s.date].surcharge
+        })
+      }
+    }
+
+    if (nextStartClock && slotList.length) {
+      const match = slotList.find((s) => nextStartClock >= s.startTime && nextStartClock <= s.endTime)
+      if (match) {
+        const times = calendarTempOrderType === 'multi_day' && calendarTempEndDate ? buildDailySessions({ orderType: 'multi_day', startDate: calendarTempStartDate, endDate: calendarTempEndDate, startClock: nextStartClock }).length : 1
+        totalSurcharge += match.surcharge * Math.max(times, 1)
+      }
+    }
+    totalSurcharge = Math.round(totalSurcharge * 100) / 100
+
+    this.setData({
+      canPrevMonth,
+      canNextMonth,
+      calendarEmptyDays,
+      calendarDays,
+      timeSlotOptions,
+      calendarTempStartClock: nextStartClock,
+      currentSitterScheduleTip,
+      calendarSummaryText: summaryText,
+      calendarTempSurchargeTotal: totalSurcharge
+    })
+  },
+
+  onTapCalendarDay(e) {
+    if (e.currentTarget.dataset.disabled) {
+      const reason = e.currentTarget.dataset.reason
+      if (reason) {
+        wx.showToast({ title: reason, icon: 'none' })
+      }
+      return
+    }
+    const dateStr = e.currentTarget.dataset.date
+    if (!dateStr) return
+    const { calendarTempOrderType, calendarTempStartDate, calendarTempEndDate } = this.data
+
+    if (calendarTempOrderType === 'single') {
+      this.setData({
+        calendarTempStartDate: dateStr,
+        calendarTempEndDate: dateStr
+      }, () => {
+        this.refreshCalendarUI()
+      })
+    } else {
+      if (!calendarTempStartDate || (calendarTempStartDate && calendarTempEndDate)) {
+        this.setData({
+          calendarTempStartDate: dateStr,
+          calendarTempEndDate: ''
+        }, () => {
+          this.refreshCalendarUI()
+        })
+      } else if (calendarTempStartDate && !calendarTempEndDate) {
+        if (dateStr >= calendarTempStartDate) {
+          // 检查选中的多天区间是否包含宠托师不可接单日期
+          if (this.data.form.publishMode === 'direct' && this.data.requestedSitter) {
+            const dummyForm = { orderType: 'multi_day', startDate: calendarTempStartDate, endDate: dateStr, startClock: '12:00', durationMinutes: 60 }
+            const sessions = buildDailySessions(dummyForm)
+            const badDay = sessions.find((s) => !getSitterScheduleForDate(s.date, this.data.requestedSitter, this.data.sitterAvailability).available)
+            if (badDay) {
+              const badSched = getSitterScheduleForDate(badDay.date, this.data.requestedSitter, this.data.sitterAvailability)
+              return wx.showToast({ title: `所选区间包含宠托师不可约日期（${badDay.date} ${badSched.reason || '休息'}）`, icon: 'none' })
+            }
+          }
+          this.setData({ calendarTempEndDate: dateStr }, () => {
+            this.refreshCalendarUI()
+          })
+        } else {
+          this.setData({ calendarTempStartDate: dateStr, calendarTempEndDate: '' }, () => {
+            this.refreshCalendarUI()
+          })
+        }
+      }
+    }
+  },
+
+  onTapTimeSlot(e) {
+    if (e.currentTarget.dataset.disabled) {
+      const reason = e.currentTarget.dataset.disabledReason
+      if (reason) {
+        wx.showToast({ title: reason, icon: 'none' })
+      }
+      return
+    }
+    const clock = e.currentTarget.dataset.clock
+    if (!clock) return
+    this.setData({ calendarTempStartClock: clock }, () => {
+      this.refreshCalendarUI()
+    })
+  },
+
+  confirmCalendarSelection() {
+    const { calendarTempOrderType, calendarTempStartDate, calendarTempEndDate, calendarTempStartClock } = this.data
+    if (!calendarTempStartDate) return wx.showToast({ title: '请选择服务日期', icon: 'none' })
+    if (calendarTempOrderType === 'multi_day' && !calendarTempEndDate) {
+      return wx.showToast({ title: '请选择连续服务结束日期', icon: 'none' })
+    }
+    if (!calendarTempStartClock) return wx.showToast({ title: '请选择开始时间', icon: 'none' })
+
+    const candidateForm = {
+      ...this.data.form,
+      orderType: calendarTempOrderType,
+      startDate: calendarTempStartDate,
+      endDate: calendarTempEndDate || calendarTempStartDate,
+      startClock: calendarTempStartClock
+    }
+    const scheduleCheck = this.checkSitterScheduleTime(candidateForm)
+    if (!scheduleCheck.ok) {
+      return wx.showToast({ title: scheduleCheck.message, icon: 'none' })
+    }
+
+    const nextForm = {
+      'form.orderType': calendarTempOrderType,
+      'form.startDate': calendarTempStartDate,
+      'form.endDate': calendarTempEndDate || calendarTempStartDate,
+      'form.startClock': calendarTempStartClock
+    }
+
+    this.setData({
+      ...nextForm,
+      showCalendarModal: false,
+      quote: null
+    }, () => {
+      this.updateMinTime()
+      this.prepareTime()
+      this.syncSelectedPetUI()
+      this.syncSelectedAvailability()
+      this.syncCurrentSurchargesUI()
+      this.syncSitterScheduleWarning()
+      this.quoteOrder()
+    })
+  },
+
   chooseOrderType(e) {
     const orderType = e.currentTarget.dataset.type === 'multi_day' ? 'multi_day' : 'single'
     const next = { ['form.orderType']: orderType, quote: null }
@@ -1068,12 +1672,14 @@ Page({
       if (form.staffGenderRequirement !== 'any' && (!this.data.requestedSitter || this.data.requestedSitter.gender !== form.staffGenderRequirement)) return '指定宠托师性别不符合要求，请重新选择'
       const rangeCheck = this.checkSitterRange()
       if (!rangeCheck.ok) return rangeCheck.message
+      const timeCheck = this.checkSitterScheduleTime()
+      if (!timeCheck.ok) return timeCheck.message
     }
     if (!form.serviceAddress) return '请选择服务地址'
     if (!form.addressDetail) return '请填写详细地址'
     if (!form.doorplate) return '请填写门牌号或入户说明'
     if (!form.lockMethod) return '请选择入户与门锁方式'
-    if (form.lockMethod === 'one_time_code' && !String(form.doorLockCode || '').trim()) return '请填写一次性开门密码'
+    if (form.lockMethod === 'one_time_code' && !String(form.doorLockCode || '').trim()) return '请填写智能门锁App生成的一次性开门密码'
     if (form.lockMethod === 'one_time_code' && !coversServiceTime(form.startTime, form.endTime, form.doorLockCodeStartTime, form.doorLockCodeEndTime)) return '一次性密码有效期需要覆盖完整服务时间'
     if (form.lockMethod === 'key' && !String(form.keyLocation || '').trim()) return '请填写钥匙放置位置'
     if (form.lockMethod === 'key' && !(form.keyImageFileIds || []).length) return '请上传钥匙放置位置图片'
@@ -1147,6 +1753,10 @@ Page({
       .catch(showError)
   },
 
+  toggleAgreement() {
+    this.setData({ agreeAgreement: !this.data.agreeAgreement })
+  },
+
   openAgreement(e) {
     const type = e.currentTarget.dataset.type
     if (!type) return
@@ -1155,6 +1765,10 @@ Page({
 
   create() {
     if (this.creatingOrder || this.data.creating) return
+    if (!this.data.agreeAgreement) {
+      wx.showToast({ title: '请先阅读并勾选同意服务保障协议与取消规则', icon: 'none' })
+      return
+    }
     this.creatingOrder = true
     this.setData({ creating: true })
     this.prepareTime()
@@ -1185,4 +1799,12 @@ Page({
   },
 
   ...navMethods()
-})
+}) : null
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    getSitterScheduleForDate,
+    formatSitterSlotsText,
+    checkTimeFitsSitterSchedule
+  }
+}

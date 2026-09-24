@@ -14,17 +14,23 @@ module.exports = function createHandler(context) {
     lockMethodText,
     makeIdempotencyKey,
     mask,
+    notifyAdmins,
     notifyOrder,
     now,
     readScopedDocuments,
     safeText,
     toPublicHomeSecuritySnapshot,
     toPublicOrderHomeSecurity,
-    toTimeValue
+    toTimeValue,
+    getActiveServiceSession,
+    getNextPendingServiceSession
   } = context
   const removeField = db.command && typeof db.command.remove === 'function' ? db.command.remove() : undefined
   function stripLegacyHomeSecuritySecrets(security = {}) {
     const { doorLockCode, code, doorLockCodeCipher, doorLockCodeIv, doorLockCodeTag, ...safe } = security || {}
+    if (Array.isArray(safe.sessionCodes)) {
+      safe.sessionCodes = safe.sessionCodes.map(({ cipher, iv, tag, ...sessionSafe }) => sessionSafe)
+    }
     return safe
   }
   function removeLegacySecretFields(data = {}) {
@@ -71,6 +77,7 @@ module.exports = function createHandler(context) {
 
     if (action === 'getUnlockCode') {
       let user = null
+      let order = null
       let result = 'forbidden'
       let reason = ''
       const orderId = safeText(data && data.orderId).trim()
@@ -79,35 +86,109 @@ module.exports = function createHandler(context) {
         if (!user || !user.roles || !user.roles.includes('staff')) throw new Error('仅员工可查看')
         if (!orderId) throw new Error('缺少订单ID')
         const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
-        const order = orderRes && orderRes.data
+        order = orderRes && orderRes.data
         if (!order || isAdminDeletedOrder(order)) throw new Error('订单不存在')
         if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
         if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) throw new Error('订单状态不允许查看')
         const current = now().getTime()
+
+        // 频次控制：单订单 1 分钟内最多查看 3 次，防止恶意自动化探测与算力滥用
+        const oneMinuteAgo = current - 60 * 1000
+        const recentLogsRes = await db.collection('unlock_code_logs')
+          .where({ orderId })
+          .orderBy('createdAt', 'desc')
+          .limit(10)
+          .get()
+          .catch(() => ({ data: [] }))
+        const recentLogs = recentLogsRes.data || []
+        const attemptsInLastMinute = recentLogs.filter((log) => {
+          if (!log || !log.createdAt) return false
+          const logTime = log.createdAt instanceof Date ? log.createdAt.getTime() : new Date(log.createdAt).getTime()
+          return Number.isFinite(logTime) && logTime >= oneMinuteAgo
+        }).length
+
+        const MAX_UNLOCK_ATTEMPTS_PER_MINUTE = 3
+        if (attemptsInLastMinute >= MAX_UNLOCK_ATTEMPTS_PER_MINUTE) {
+          result = 'rate_limited'
+          throw new Error('密码查看过于频繁，请稍后再试（1分钟内限查看3次）')
+        }
+
         const approvedEarlyStart = await getApprovedEarlyStart(orderId)
         const regularStart = toTimeValue(order.startTime)
         const start = approvedEarlyStart ? toTimeValue(approvedEarlyStart.approvedAt || approvedEarlyStart.createdAt) : regularStart
         const end = toTimeValue(order.endTime)
-        if ((start && current < start) || (end && current > end)) throw new Error('不在服务解锁时间窗口')
+
+        const sessions = Array.isArray(order.serviceSessions) ? order.serviceSessions.filter(s => s.status !== 'cancelled') : []
+        let targetSession = null
+        if (sessions.length > 0) {
+          const reqSessionIndex = data && data.sessionIndex !== undefined && data.sessionIndex !== null && String(data.sessionIndex).trim() !== ''
+            ? Number(data.sessionIndex)
+            : null
+          if (reqSessionIndex) {
+            targetSession = sessions.find(s => Number(s.index) === reqSessionIndex) || null
+          }
+          if (!targetSession) {
+            const activeSession = typeof getActiveServiceSession === 'function' ? getActiveServiceSession(order) : null
+            targetSession = activeSession || sessions.find(s => {
+              const sStart = toTimeValue(s.startTime)
+              const sEnd = toTimeValue(s.endTime)
+              return current >= sStart && current <= sEnd
+            }) || null
+          }
+          if (!targetSession && approvedEarlyStart) {
+            const nextSession = typeof getNextPendingServiceSession === 'function' ? getNextPendingServiceSession(order) : null
+            targetSession = nextSession || sessions[0]
+          }
+          if (!targetSession) {
+            throw new Error('不在服务解锁时间窗口')
+          }
+
+          const sessionRegularStart = toTimeValue(targetSession.startTime)
+          const sessionStart = (approvedEarlyStart && (!order.activeSessionIndex || Number(order.activeSessionIndex) === Number(targetSession.index)))
+            ? toTimeValue(approvedEarlyStart.approvedAt || approvedEarlyStart.createdAt)
+            : sessionRegularStart
+          const sessionEnd = toTimeValue(targetSession.endTime)
+          if ((sessionStart && current < sessionStart) || (sessionEnd && current > sessionEnd)) {
+            throw new Error('不在服务解锁时间窗口')
+          }
+        } else {
+          if ((start && current < start) || (end && current > end)) throw new Error('不在服务解锁时间窗口')
+        }
+
         let security = (await db.collection('order_home_security').where({ orderId }).limit(1).get()).data[0]
         if (!security) security = order.orderHomeSecurity || order.homeSecuritySnapshot
-        if (!security || security.type !== 'one_time_code' || !security.oneTimeCode) throw new Error('该订单未设置一次性密码')
-        const effectiveStart = toTimeValue(security.oneTimeCode.effectiveStart)
-        const effectiveEnd = toTimeValue(security.oneTimeCode.effectiveEnd)
-        if (current < effectiveStart) throw new Error('一次性密码尚未生效，请提醒用户重新设置或等待生效')
-        if (current > effectiveEnd) throw new Error('一次性密码已过期，请提醒用户重新设置')
+        if (!security || security.type !== 'one_time_code') throw new Error('该订单未设置一次性密码')
+
+        let targetCodeObj = null
+        if (targetSession && Array.isArray(security.sessionCodes) && security.sessionCodes.length) {
+          targetCodeObj = security.sessionCodes.find(item => Number(item.sessionIndex || item.index) === Number(targetSession.index) || (item.date && item.date === targetSession.date))
+        }
+        if (!targetCodeObj) {
+          targetCodeObj = security.oneTimeCode
+        }
+        if (!targetCodeObj || !targetCodeObj.cipher) throw new Error('该订单未设置一次性密码')
+
+        const effectiveStart = toTimeValue(targetCodeObj.effectiveStart)
+        const effectiveEnd = toTimeValue(targetCodeObj.effectiveEnd)
+        if (effectiveStart && current < effectiveStart) throw new Error('一次性密码尚未生效，请提醒用户重新设置或等待生效')
+        if (effectiveEnd && current > effectiveEnd) throw new Error('一次性密码已过期，请提醒用户重新设置')
         result = 'success'
         reason = 'ok'
         return {
           lockMethod: security.type,
           lockMethodText: security.lockMethodText || lockMethodText(security.type),
-          doorLockCode: decryptText(security.oneTimeCode.cipher, security.oneTimeCode.iv, security.oneTimeCode.tag),
-          effectiveStart: security.oneTimeCode.effectiveStart,
-          effectiveEnd: security.oneTimeCode.effectiveEnd,
+          doorLockCode: decryptText(targetCodeObj.cipher, targetCodeObj.iv, targetCodeObj.tag),
+          sessionIndex: targetSession ? targetSession.index : undefined,
+          date: targetSession ? targetSession.date : undefined,
+          effectiveStart: targetCodeObj.effectiveStart,
+          effectiveEnd: targetCodeObj.effectiveEnd,
           entryNotes: security.entryNotes || ''
         }
       } catch (error) {
         reason = error.message
+        if (error.message && error.message.includes('过于频繁')) {
+          result = 'rate_limited'
+        }
         throw error
       } finally {
         await db.collection('unlock_code_logs').add({
@@ -117,11 +198,26 @@ module.exports = function createHandler(context) {
             staffOpenid: openid,
             result,
             reason,
+            isRateLimited: result === 'rate_limited',
             createdAt: now()
           }
         }).catch((err) => {
           console.error('[homeSecurity] failed to write unlock_code_logs', err)
         })
+        if (result === 'rate_limited') {
+          console.warn(`[homeSecurity] rate limit exceeded for unlock code: orderId=${orderId}, staffOpenid=${openid}`)
+          if (typeof notifyAdmins === 'function') {
+            notifyAdmins({
+              type: 'unlock_code_rate_limit_warning',
+              title: '门锁一次性密码查看频次超限告警',
+              content: `订单 ${order && order.orderNo ? order.orderNo : orderId} 门锁一次性密码在1分钟内查看超过3次，已触发防暴力频控拦截`,
+              level: 'warning',
+              orderId,
+              orderNo: order && order.orderNo ? order.orderNo : '',
+              extra: { orderId, staffOpenid: openid, staffUserId: user ? user._id : '', reason }
+            }).catch(() => {})
+          }
+        }
       }
     }
 
@@ -168,14 +264,76 @@ module.exports = function createHandler(context) {
       if (!order) throw new Error('订单不存在')
       if (order.clientOpenid !== openid) throw new Error('无权修改该订单')
       if (!['pending_pay', 'paid', 'assigned', 'in_service'].includes(order.status)) throw new Error('当前订单状态不可修改密码')
-      const code = safeText(data.code).trim()
-      if (!code) throw new Error('请填写一次性开门密码')
-      if (!data.effectiveStart || !data.effectiveEnd) throw new Error('请选择一次性密码有效时间')
-      if (toTimeValue(data.effectiveEnd) <= toTimeValue(data.effectiveStart)) throw new Error('一次性密码结束时间必须晚于开始时间')
-      const encrypted = encryptText(code)
       const time = now()
       const existingSecurity = stripLegacyHomeSecuritySecrets(order.orderHomeSecurity || {})
-      const security = { ...existingSecurity, type: 'one_time_code', lockMethod: 'one_time_code', lockMethodText: lockMethodText('one_time_code'), entryNotes: data.entryNotes || existingSecurity.entryNotes || '', hasDoorLockCode: true, oneTimeCode: { cipher: encrypted.cipher, iv: encrypted.iv, tag: encrypted.tag, masked: mask(code), effectiveStart: data.effectiveStart, effectiveEnd: data.effectiveEnd, coversServiceTime: isTimeRangeCovered(order.startTime, order.endTime, data.effectiveStart, data.effectiveEnd) }, updatedAt: time }
+      let security = { ...existingSecurity, type: 'one_time_code', lockMethod: 'one_time_code', lockMethodText: lockMethodText('one_time_code'), entryNotes: data.entryNotes || existingSecurity.entryNotes || '', hasDoorLockCode: true, updatedAt: time }
+
+      if (Array.isArray(data.sessionCodes) && data.sessionCodes.length) {
+        const sessionCodes = data.sessionCodes.map((item, idx) => {
+          const itemCode = safeText(item.code || item.doorLockCode).trim()
+          if (!itemCode) throw new Error(`请填写第${idx + 1}天的一次性开门密码`)
+          if (!item.effectiveStart || !item.effectiveEnd) throw new Error(`请选择第${idx + 1}天一次性密码有效时间`)
+          if (toTimeValue(item.effectiveEnd) <= toTimeValue(item.effectiveStart)) throw new Error(`第${idx + 1}天一次性密码结束时间必须晚于开始时间`)
+          const enc = encryptText(itemCode)
+          return {
+            sessionIndex: Number(item.sessionIndex || item.index || (idx + 1)),
+            date: safeText(item.date).trim(),
+            cipher: enc.cipher,
+            iv: enc.iv,
+            tag: enc.tag,
+            masked: mask(itemCode),
+            effectiveStart: item.effectiveStart,
+            effectiveEnd: item.effectiveEnd,
+            coversServiceTime: true
+          }
+        })
+        security.sessionCodes = sessionCodes
+        if (!security.oneTimeCode && sessionCodes[0]) {
+          security.oneTimeCode = { ...sessionCodes[0] }
+        }
+      } else if (data.sessionIndex !== undefined && data.sessionIndex !== null && String(data.sessionIndex).trim() !== '') {
+        const sessionIndex = Number(data.sessionIndex)
+        const code = safeText(data.code).trim()
+        if (!code) throw new Error('请填写一次性开门密码')
+        if (!data.effectiveStart || !data.effectiveEnd) throw new Error('请选择一次性密码有效时间')
+        if (toTimeValue(data.effectiveEnd) <= toTimeValue(data.effectiveStart)) throw new Error('一次性密码结束时间必须晚于开始时间')
+        const enc = encryptText(code)
+        const currentSessionCodes = Array.isArray(existingSecurity.sessionCodes) ? existingSecurity.sessionCodes.slice() : []
+        const existIdx = currentSessionCodes.findIndex(item => Number(item.sessionIndex || item.index) === sessionIndex)
+        const sessionItem = {
+          sessionIndex,
+          date: safeText(data.date).trim(),
+          cipher: enc.cipher,
+          iv: enc.iv,
+          tag: enc.tag,
+          masked: mask(code),
+          effectiveStart: data.effectiveStart,
+          effectiveEnd: data.effectiveEnd,
+          coversServiceTime: true
+        }
+        if (existIdx >= 0) currentSessionCodes[existIdx] = sessionItem
+        else currentSessionCodes.push(sessionItem)
+        security.sessionCodes = currentSessionCodes
+        if (!security.oneTimeCode) {
+          security.oneTimeCode = { ...sessionItem }
+        }
+      } else {
+        const code = safeText(data.code).trim()
+        if (!code) throw new Error('请填写一次性开门密码')
+        if (!data.effectiveStart || !data.effectiveEnd) throw new Error('请选择一次性密码有效时间')
+        if (toTimeValue(data.effectiveEnd) <= toTimeValue(data.effectiveStart)) throw new Error('一次性密码结束时间必须晚于开始时间')
+        const encrypted = encryptText(code)
+        security.oneTimeCode = {
+          cipher: encrypted.cipher,
+          iv: encrypted.iv,
+          tag: encrypted.tag,
+          masked: mask(code),
+          effectiveStart: data.effectiveStart,
+          effectiveEnd: data.effectiveEnd,
+          coversServiceTime: isTimeRangeCovered(order.startTime, order.endTime, data.effectiveStart, data.effectiveEnd)
+        }
+      }
+
       await db.collection('orders').doc(orderId).update({ data: { orderHomeSecurity: security, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(security), updatedAt: time } })
       const securityRes = await db.collection('order_home_security').where({ orderId }).limit(1).get().catch(() => ({ data: [] }))
       const secDoc = securityRes && securityRes.data && securityRes.data[0]

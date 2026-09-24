@@ -128,6 +128,17 @@
       </view>
       <view class="setting-summary-line">配置宠托师培训视频、题目、选项、正确答案和及格分数。</view>
     </view>
+
+    <view class="admin-compact-card setting-overview-card" data-panel="pricingSurcharges" bindtap="openSettingModal">
+      <view class="admin-summary-row">
+        <view class="admin-summary-main">
+          <view class="admin-summary-title">特殊日期与时段加价</view>
+          <view class="admin-summary-sub">{{settingSummary.pricingSurcharges}}</view>
+        </view>
+        <view class="meta-chip chip-primary">配置</view>
+      </view>
+      <view class="setting-summary-line">配置法定节假日、特定高峰日及早晚高峰等特殊时段服务加价规则。</view>
+    </view>
   </view>
 
   <button class="primary save-settings-btn" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>
@@ -135,6 +146,7 @@
   <view class="modal-backdrop" wx:if="{{showSettingModal}}" bindtap="closeSettingModal" catchtouchmove="noop">
     <view class="modal-card settings-modal-card" catchtap="noop">
       <view class="modal-header">
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'pricingSurcharges'}}">特殊日期与时段加价</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffPolicy'}}">保证金与用品报销</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'debug'}}">开发调试</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'petBreedAi'}}">宠物档案 AI</view>
@@ -421,6 +433,97 @@
             <view class="field-item">
               <text class="label">严审标准与风险提示</text>
               <textarea class="textarea" value="{{settings.staffTraining.videoAuditGuide.strictWarning}}" data-field="strictWarning" bindinput="trainingAuditGuideInput" placeholder="平台对审核员有严格要求，存在不通过的风险..." />
+            </view>
+          </view>
+        </view>
+
+        <!-- 高峰与特殊加价面板 -->
+        <view wx:if="{{activeSettingPanel === 'pricingSurcharges'}}" class="setting-modal-section">
+          <view class="setting-block-card">
+            <view class="module-switch-row">
+              <view>
+                <view class="strong">启用高峰与特殊时段加价</view>
+                <view class="muted">开启后，用户在所选日期或时段下单将自动计算相应加价</view>
+              </view>
+              <switch checked="{{settings.pricingSurcharges.enabled !== false}}" bindchange="togglePricingSurchargesEnabled" />
+            </view>
+          </view>
+
+          <!-- 1. 特殊日期加价列表 -->
+          <view class="setting-block-card">
+            <view class="strong-title-row">
+              <view class="strong">特殊日期加价规则</view>
+              <view class="badge">{{(settings.pricingSurcharges.dateSurcharges || []).length}} 条</view>
+            </view>
+            <view class="muted" style="margin-bottom: 16rpx;">例如法定节假日、特定周末等全天加价</view>
+
+            <view class="surcharge-rule-item" wx:for="{{settings.pricingSurcharges.dateSurcharges}}" wx:key="id">
+              <view class="rule-main">
+                <view class="rule-title-line">
+                  <text class="rule-tag">{{item.name}}</text>
+                  <text class="rule-date">{{item.date}}</text>
+                </view>
+                <view class="rule-price">加价 +¥{{item.surcharge}}</view>
+              </view>
+              <view class="rule-actions">
+                <switch checked="{{item.enabled !== false}}" data-id="{{item.id}}" bindchange="toggleDateSurchargeItem" />
+                <view class="remix-icon ri-delete-bin-line delete-icon" data-id="{{item.id}}" bindtap="deleteDateSurchargeItem"></view>
+              </view>
+            </view>
+            <view class="empty-tip" wx:if="{{!settings.pricingSurcharges.dateSurcharges.length}}">暂无特殊日期加价规则</view>
+
+            <!-- 添加日期加价表单 -->
+            <view class="add-rule-panel">
+              <view class="form-row-grid">
+                <picker mode="date" value="{{newDateRule.date}}" start="{{todayDate}}" bindchange="newDateRuleDateChange">
+                  <view class="picker-input-field">{{newDateRule.date || '选择日期'}}</view>
+                </picker>
+                <input class="input" placeholder="名称(如国庆节)" value="{{newDateRule.name}}" bindinput="newDateRuleNameInput" />
+                <input class="input" type="digit" placeholder="金额(¥)" value="{{newDateRule.surcharge}}" bindinput="newDateRuleAmountInput" />
+              </view>
+              <button class="ghost compact-btn add-btn" bindtap="addDateSurchargeItem">+ 添加日期加价</button>
+            </view>
+          </view>
+
+          <!-- 2. 特殊时段加价列表 -->
+          <view class="setting-block-card">
+            <view class="strong-title-row">
+              <view class="strong">特殊时段加价规则</view>
+              <view class="badge">{{(settings.pricingSurcharges.timeSlotSurcharges || []).length}} 条</view>
+            </view>
+            <view class="muted" style="margin-bottom: 16rpx;">例如清晨 07:00-09:00 早高峰、晚间 20:00-22:00 等</view>
+
+            <view class="surcharge-rule-item" wx:for="{{settings.pricingSurcharges.timeSlotSurcharges}}" wx:key="id">
+              <view class="rule-main">
+                <view class="rule-title-line">
+                  <text class="rule-tag">{{item.name}}</text>
+                  <text class="rule-time">{{item.startTime}} ~ {{item.endTime}}</text>
+                </view>
+                <view class="rule-price">加价 +¥{{item.surcharge}}</view>
+              </view>
+              <view class="rule-actions">
+                <switch checked="{{item.enabled !== false}}" data-id="{{item.id}}" bindchange="toggleTimeSlotSurchargeItem" />
+                <view class="remix-icon ri-delete-bin-line delete-icon" data-id="{{item.id}}" bindtap="deleteTimeSlotSurchargeItem"></view>
+              </view>
+            </view>
+            <view class="empty-tip" wx:if="{{!settings.pricingSurcharges.timeSlotSurcharges.length}}">暂无特殊时段加价规则</view>
+
+            <!-- 添加时段加价表单 -->
+            <view class="add-rule-panel">
+              <view class="form-row-grid-slot">
+                <picker mode="time" value="{{newTimeSlotRule.startTime}}" bindchange="newTimeSlotRuleStartTimeChange">
+                  <view class="picker-input-field">{{newTimeSlotRule.startTime || '开始时间'}}</view>
+                </picker>
+                <text class="time-sep">~</text>
+                <picker mode="time" value="{{newTimeSlotRule.endTime}}" bindchange="newTimeSlotRuleEndTimeChange">
+                  <view class="picker-input-field">{{newTimeSlotRule.endTime || '结束时间'}}</view>
+                </picker>
+              </view>
+              <view class="form-row-grid-inputs">
+                <input class="input" placeholder="名称(如清晨早高峰)" value="{{newTimeSlotRule.name}}" bindinput="newTimeSlotRuleNameInput" />
+                <input class="input" type="digit" placeholder="金额(¥)" value="{{newTimeSlotRule.surcharge}}" bindinput="newTimeSlotRuleAmountInput" />
+              </view>
+              <button class="ghost compact-btn add-btn" bindtap="addTimeSlotSurchargeItem">+ 添加时段加价</button>
             </view>
           </view>
         </view>

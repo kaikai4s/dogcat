@@ -666,6 +666,14 @@ module.exports = function createHandler(context) {
         updateData.weeklySchedule = weeklySchedule
       }
 
+      if (data.bookableUntilDate !== undefined) {
+        const untilDate = safeText(data.bookableUntilDate).trim()
+        if (untilDate && !/^\d{4}-\d{2}-\d{2}$/.test(untilDate)) {
+          throw new Error('请选择有效的截止日期')
+        }
+        updateData.bookableUntilDate = untilDate
+      }
+
       await db.collection('staff_profiles').doc(profile._id).update({ data: updateData })
       return { _id: profile._id, ...profile, ...updateData }
     }
@@ -858,8 +866,13 @@ module.exports = function createHandler(context) {
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = profileRes.data[0]
       if (!profile) throw new Error('请先提交宠托师认证')
-      const availability = await buildStaffAvailability(profile, data.startDate || data.dateKey || '', data.days || 14)
-      return { weeklySchedule: normalizeWeeklySchedule(profile.weeklySchedule), weeklyScheduleText: formatWeeklyScheduleText(profile.weeklySchedule), availability }
+      const availability = await buildStaffAvailability(profile, data.startDate || data.dateKey || '', data.days || 31)
+      return {
+        weeklySchedule: normalizeWeeklySchedule(profile.weeklySchedule),
+        weeklyScheduleText: formatWeeklyScheduleText(profile.weeklySchedule),
+        bookableUntilDate: safeText(profile.bookableUntilDate).trim(),
+        availability
+      }
     }
     if (action === 'saveScheduleException') {
       const user = await getUser(openid)

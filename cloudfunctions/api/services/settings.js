@@ -61,6 +61,48 @@ module.exports = function createService({
     }
   }
 
+  function normalizePricingSurcharges(config = {}) {
+    const source = typeof config === 'object' && config !== null ? config : {}
+    const rawDates = Array.isArray(source.dateSurcharges) ? source.dateSurcharges : []
+    const rawSlots = Array.isArray(source.timeSlotSurcharges) ? source.timeSlotSurcharges : []
+
+    const dateSurcharges = rawDates.map((item, idx) => {
+      if (!item) return null
+      const date = safeText(item.date).trim()
+      const surcharge = Number(item.surcharge ?? 0)
+      if (!date || !Number.isFinite(surcharge) || surcharge < 0) return null
+      return {
+        id: safeText(item.id).trim() || `ds_${Date.now()}_${idx}`,
+        date,
+        name: safeText(item.name || item.tag).trim() || '特殊日期加价',
+        surcharge: Math.round(surcharge * 100) / 100,
+        enabled: item.enabled !== false
+      }
+    }).filter(Boolean)
+
+    const timeSlotSurcharges = rawSlots.map((item, idx) => {
+      if (!item) return null
+      const startTime = safeText(item.startTime).trim()
+      const endTime = safeText(item.endTime).trim()
+      const surcharge = Number(item.surcharge ?? 0)
+      if (!startTime || !endTime || !Number.isFinite(surcharge) || surcharge < 0) return null
+      return {
+        id: safeText(item.id).trim() || `ts_${Date.now()}_${idx}`,
+        startTime,
+        endTime,
+        name: safeText(item.name || item.tag).trim() || '特殊时段加价',
+        surcharge: Math.round(surcharge * 100) / 100,
+        enabled: item.enabled !== false
+      }
+    }).filter(Boolean)
+
+    return {
+      enabled: source.enabled !== false,
+      dateSurcharges,
+      timeSlotSurcharges
+    }
+  }
+
   function pickPaymentSecret(payment, existingPayment, field, inputField) {
     const directValue = payment[field]
     const inputValue = inputField ? payment[inputField] : undefined
@@ -165,7 +207,8 @@ module.exports = function createService({
       checkinShare: {
         title: safeText((value.checkinShare || {}).title).trim() || '来签到领福利，补签卡也能拿',
         imageUrl: safeText((value.checkinShare || {}).imageUrl).trim()
-      }
+      },
+      pricingSurcharges: normalizePricingSurcharges(value.pricingSurcharges)
     }
 
     if (includeSecrets) {
@@ -218,6 +261,7 @@ module.exports = function createService({
     pickPaymentSecret,
     maskConfigured,
     normalizePaymentConfig,
+    normalizePricingSurcharges,
     normalizeSystemSettings,
     getSystemSettings,
     saveSystemSettings

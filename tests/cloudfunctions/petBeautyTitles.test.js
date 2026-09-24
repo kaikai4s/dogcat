@@ -31,6 +31,15 @@ test('monthly titles can be removed and historical awards re-equipped without lo
   assert.equal(ranking.data.list[0].beautyTitle.title, oldAward.title)
 })
 
+test('monthly title can be equipped when current beautyTitle is null', async () => {
+  const { db, call } = setup({ beautyTitle: null })
+  const result = await call('equipBeautyTitle', { awardMonthKey: oldAward.monthKey })
+  assert.equal(result.ok, true)
+  assert.equal(result.data.beautyTitle.title, oldAward.title)
+  assert.equal(db.state.pets[0].beautyTitle.title, oldAward.title)
+  assert.equal(db.state.pets[0].beautyTitleSelectionSet, true)
+})
+
 test('monthly title operations enforce pet ownership and earned awards', async () => {
   const { db, call } = setup()
   db.state.pets.push({ _id: 'other', openid: 'someone_else', beautyTitle: oldAward })

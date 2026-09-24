@@ -184,16 +184,22 @@ module.exports = function createService({
       const serviceName = order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务'
       const checkinResult = await evaluateCheckinCompletion({ ...order, _id: order._id }, sessionStartedAt || currentTs)
 
+      const sessionIndex = Number(activeSession.index || 1)
+      const autoCompletedSessions = Array.isArray(order.autoCompletedSessions) ? order.autoCompletedSessions : []
+      const isAutoCompletedForSession = autoCompletedSessions.includes(sessionIndex) || (sessionIndex === 1 && order.autoCompleted === true && !order.autoCompletedSessions)
+
       // 情况 1：打卡凭证齐全，超时 30 分钟未结束 -> 智能自动完成服务并结算
-      if (overdueMs >= 30 * 60 * 1000 && checkinResult.isComplete && !order.autoCompleted) {
+      if (overdueMs >= 30 * 60 * 1000 && checkinResult.isComplete && !isAutoCompletedForSession) {
         const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
         const completeRes = await completeOrderService({ ...order, _id: order._id }, activeSession, time, { isAuto: true, actor: 'system' })
-        processed.push({ orderId: order._id, type: 'auto_completed', result: completeRes })
+        processed.push({ orderId: order._id, sessionIndex, type: 'auto_completed', result: completeRes })
         continue
       }
 
       // 情况 2：严重超时 60 分钟且打卡缺失 -> 自动创建异常工单介入跟进
-      if (overdueMs >= 60 * 60 * 1000 && !checkinResult.isComplete && !order.finishOverdueIncidentCreated) {
+      const incidentSessions = Array.isArray(order.finishOverdueIncidentSessions) ? order.finishOverdueIncidentSessions : []
+      const hasCreatedIncidentForSession = incidentSessions.includes(sessionIndex) || (sessionIndex === 1 && order.finishOverdueIncidentCreated === true && !order.finishOverdueIncidentSessions)
+      if (overdueMs >= 60 * 60 * 1000 && !checkinResult.isComplete && !hasCreatedIncidentForSession) {
         const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
         await appendOrderTimeline(order._id, 'finish_overdue_incident', '服务严重超时未结束告警', `服务已超时 60 分钟且打卡凭证缺失（${checkinResult.missing.join('、')}），系统已转平台客服紧急跟进。`, 'system')
         await appendOrderClientMessage(order, {
@@ -210,19 +216,21 @@ module.exports = function createService({
             title: '服务严重超时警报',
             detail: `您的订单（${serviceName}）已超出预计结束时间 60 分钟以上，且仍缺少打卡凭证（${checkinResult.missing.join('、')}）。平台已生成客服异常工单跟进，请立即核实打卡或联系客服！`,
             actorRole: 'system',
-            idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'finish_overdue_incident', String(activeSession.index || 1))
+            idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'finish_overdue_incident', String(sessionIndex))
           })
         }
 
-        await db.collection('order_incidents').add({
+        const incidentId = `inc_${order._id}_${sessionIndex}_finish_overdue`
+        await db.collection('order_incidents').doc(incidentId).set({
           data: {
             orderId: order._id,
             orderNo: order.orderNo || '',
+            sessionIndex,
             clientOpenid: order.clientOpenid,
             staffOpenid: order.staffOpenid,
             type: 'service_finish_overdue',
             title: '服务严重超时未结束且缺少打卡',
-            detail: `订单已超出预计结束时间 60 分钟以上，仍缺少必要打卡：${checkinResult.missing.join('、')}，请平台客服紧急联系宠托师与客户核实情况。`,
+            detail: `订单第${sessionIndex}场服务已超出预计结束时间 60 分钟以上，仍缺少必要打卡：${checkinResult.missing.join('、')}，请平台客服紧急联系宠托师与客户核实情况。`,
             status: 'open',
             createdAt: time,
             updatedAt: time
@@ -233,17 +241,23 @@ module.exports = function createService({
           await notifyAdmins({
             type: 'order_finish_overdue',
             level: 'urgent',
-            title: `【服务超时未完成告警】订单 ${order.orderNo || order._id} 缺少关键打卡`,
-            content: `订单（${serviceName}）已超出预计时间 60 分钟以上，且缺少必要打卡（${checkinResult.missing.join('、')}），已自动创建异常工单介入跟进。`,
+            title: `【服务超时未完成告警】订单 ${order.orderNo || order._id} 第${sessionIndex}场服务缺少关键打卡`,
+            content: `订单（${serviceName}）第${sessionIndex}场服务已超出预计时间 60 分钟以上，且缺少必要打卡（${checkinResult.missing.join('、')}），已自动创建异常工单介入跟进。`,
             orderId: order._id,
             orderNo: order.orderNo || '',
             actionUrl: `/pages/admin/orders/detail/index?id=${order._id}`,
-            idempotencyKey: makeIdempotencyKey('admin_notice_finish_overdue', order._id, String(activeSession.index || 1))
+            idempotencyKey: makeIdempotencyKey('admin_notice_finish_overdue', order._id, String(sessionIndex))
           })
         }
 
+        const nextIncidentSessions = Array.from(new Set([...incidentSessions, sessionIndex]))
+        const remindedSessions = Array.isArray(order.overdueFinishRemindedSessions) ? order.overdueFinishRemindedSessions : []
+        const nextRemindedSessions = Array.from(new Set([...remindedSessions, sessionIndex]))
+
         await db.collection('orders').doc(order._id).update({
           data: {
+            finishOverdueIncidentSessions: nextIncidentSessions,
+            overdueFinishRemindedSessions: nextRemindedSessions,
             finishOverdueIncidentCreated: true,
             overdueFinishReminded: true,
             overdueFinishRemindedAt: time,
@@ -251,12 +265,14 @@ module.exports = function createService({
             updatedAt: time
           }
         })
-        processed.push({ orderId: order._id, type: 'incident_created' })
+        processed.push({ orderId: order._id, sessionIndex, type: 'incident_created' })
         continue
       }
 
       // 情况 3：超时 15 分钟未结束 -> 发送催促提醒
-      if (overdueMs >= 15 * 60 * 1000 && !order.overdueFinishReminded) {
+      const remindedSessions = Array.isArray(order.overdueFinishRemindedSessions) ? order.overdueFinishRemindedSessions : []
+      const hasRemindedForSession = remindedSessions.includes(sessionIndex) || (sessionIndex === 1 && order.overdueFinishReminded === true && !order.overdueFinishRemindedSessions)
+      if (overdueMs >= 15 * 60 * 1000 && !hasRemindedForSession) {
         const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
         if (checkinResult.isComplete) {
           await appendOrderStaffMessage(order, {
@@ -264,7 +280,7 @@ module.exports = function createService({
             title: '请及时确认完成服务',
             detail: `您的订单（${serviceName}）已超出约定服务时间，检测到打卡凭证已齐全。请及时在服务页点击【完成服务】进行结算。若超出 30 分钟仍未操作，系统将自动帮您结算完成。`,
             actorRole: 'system',
-            idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_finish_reminder', String(activeSession.index || 1))
+            idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_finish_reminder', String(sessionIndex))
           })
           await notifyOrder(order.staffOpenid, 'serviceFinish', order, {
             statusText: '请及时完成服务',
@@ -276,20 +292,23 @@ module.exports = function createService({
             title: '服务超时未结束提醒',
             detail: `您的订单（${serviceName}）已超出预计服务时间，且尚缺少打卡凭证（${checkinResult.missing.join('、')}）。请确认服务进度并及时补全打卡与点击完成服务。`,
             actorRole: 'system',
-            idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_finish_reminder', String(activeSession.index || 1))
+            idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_finish_reminder', String(sessionIndex))
           })
         }
 
         await appendOrderTimeline(order._id, 'overdue_finish_reminder', '服务超时未结束催促', checkinResult.isComplete ? '打卡已齐全，系统已提醒宠托师尽快点击完成服务。' : `服务已超时，尚缺少打卡（${checkinResult.missing.join('、')}），已提醒宠托师。`, 'system')
 
+        const nextRemindedSessions = Array.from(new Set([...remindedSessions, sessionIndex]))
         await db.collection('orders').doc(order._id).update({
           data: {
+            overdueFinishRemindedSessions: nextRemindedSessions,
             overdueFinishReminded: true,
             overdueFinishRemindedAt: time,
+            isFinishOverdue: true,
             updatedAt: time
           }
         })
-        processed.push({ orderId: order._id, type: 'reminded', checkinComplete: checkinResult.isComplete })
+        processed.push({ orderId: order._id, sessionIndex, type: 'reminded', checkinComplete: checkinResult.isComplete })
         continue
       }
     }

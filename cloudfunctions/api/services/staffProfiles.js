@@ -93,6 +93,7 @@ module.exports = function createService({
       hasServiceAddress: hasLoc,
       weeklySchedule: normalizeWeeklySchedule(profile.weeklySchedule),
       weeklyScheduleText: formatWeeklyScheduleText(profile.weeklySchedule),
+      bookableUntilDate: safeText(profile.bookableUntilDate).trim(),
       areaTags,
       publicTags: defaultTags,
       staffLevel,

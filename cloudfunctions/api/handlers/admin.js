@@ -1429,8 +1429,15 @@ module.exports = function createHandler(context) {
       if (!template || template.enabled === false) throw new Error('优惠券模板不可用')
       const targetUser = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
       if (!targetUser || targetUser.status !== 'active') throw new Error('目标用户不存在')
-      const issued = await issueCouponToTargetUser(template, targetUser, { adminUserId: admin._id, adminOpenid: openid })
-      await logAdmin(admin, 'coupon_template', templateId, 'issueCouponToUser', { targetOpenid, couponId: issued._id })
+      const clientRequestId = getClientRequestId(data)
+      const issued = await issueCouponToTargetUser(template, targetUser, {
+        adminUserId: admin._id,
+        adminOpenid: openid,
+        idempotencyKey: clientRequestId || '',
+        sourceType: 'admin_issue',
+        sourceId: clientRequestId || templateId
+      })
+      await logAdmin(admin, 'coupon_template', templateId, 'issueCouponToUser', { targetOpenid, couponId: issued._id, clientRequestId })
       return { _id: issued._id, templateId, openid: targetOpenid, status: 'available', templateSnapshot: issued.templateSnapshot, validFrom: issued.validFrom, validTo: issued.validTo }
     }
     if (action === 'listFeedback') {
@@ -1616,6 +1623,34 @@ module.exports = function createHandler(context) {
       const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
       const profile = profileRes && profileRes.data
       if (!profile) throw new Error('宠托师不存在')
+
+      const _ = db.command
+      const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
+      const activeStaffStatuses = [
+        (ORDER_STATUS && ORDER_STATUS.ASSIGNED) || 'assigned',
+        (ORDER_STATUS && ORDER_STATUS.IN_SERVICE) || 'in_service',
+        (ORDER_STATUS && ORDER_STATUS.DAY_COMPLETED) || 'day_completed'
+      ]
+
+      const activeOrdersRes = await db.collection('orders').where({
+        staffOpenid: profile.openid,
+        status: inOp(activeStaffStatuses)
+      }).limit(1).get().catch(() => ({ data: [] }))
+
+      if (activeOrdersRes.data && activeOrdersRes.data.length > 0) {
+        throw new Error('该宠托师尚有未完成的履约订单，请先在订单管理中改派或处理相关订单后再撤销身份')
+      }
+
+      const activeIncidentStatuses = ['open', 'investigating', 'triaging', 'waiting_client', 'waiting_staff', 'processing', 'refund_pending']
+      const activeIncidentsRes = await db.collection('order_incidents').where({
+        staffOpenid: profile.openid,
+        status: inOp(activeIncidentStatuses)
+      }).limit(1).get().catch(() => ({ data: [] }))
+
+      if (activeIncidentsRes.data && activeIncidentsRes.data.length > 0) {
+        throw new Error('该宠托师存在尚未结案的客诉或纠纷，暂不可撤销身份')
+      }
+
       const time = now()
       const auditRemark = safeText(data.auditRemark || data.remark).trim() || '管理员移除宠托师身份'
       const update = {
@@ -1824,7 +1859,12 @@ module.exports = function createHandler(context) {
       const delta = Math.round(Number(data.delta || 0))
       if (!delta) throw new Error('积分变动不能为 0')
       const reason = safeText(data.reason).trim() || '管理员操作'
-      await addPoints(targetOpenid, '', delta, 'admin_grant', admin._id, reason)
+      const targetUser = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
+      if (!targetUser) throw new Error('目标用户不存在')
+      if (delta < 0 && Number(targetUser.points || 0) + delta < 0) {
+        throw new Error(`用户当前可用积分不足（当前剩余 ${Number(targetUser.points || 0)} 分），无法扣除 ${Math.abs(delta)} 积分`)
+      }
+      await addPoints(targetOpenid, targetUser._id, delta, 'admin_grant', admin._id, reason)
       await logAdmin(admin, 'user', targetOpenid, 'grantPoints', { delta, reason })
       return { openid: targetOpenid, delta }
     }
@@ -1921,11 +1961,20 @@ module.exports = function createHandler(context) {
       }
       const allCouponUsers = await readAll('users', couponUsersWhere, 5000)
       const eligible = allCouponUsers.filter((u) => targetLevelIds.includes(u.memberLevel || ''))
+      const clientRequestId = getClientRequestId(data)
+      const batchKey = clientRequestId || safeText(data.batchKey).trim()
       let issued = 0; let skipped = 0
       const skippedReasons = {}
       for (const targetUser of eligible) {
         try {
-          await issueCouponToTargetUser(template, targetUser, { adminUserId: admin._id, adminOpenid: openid })
+          const idempotencyKey = batchKey ? `level_issue_${templateId}_${targetUser._id}_${batchKey}` : ''
+          await issueCouponToTargetUser(template, targetUser, {
+            adminUserId: admin._id,
+            adminOpenid: openid,
+            idempotencyKey,
+            sourceType: 'admin_level_batch',
+            sourceId: batchKey || templateId
+          })
           issued++
         } catch (error) {
           skipped++
@@ -1934,7 +1983,7 @@ module.exports = function createHandler(context) {
         }
       }
       const skippedReasonText = Object.keys(skippedReasons).map((reason) => `${reason}：${skippedReasons[reason]}人`).join('\n')
-      await logAdmin(admin, 'coupon_template', templateId, 'issueCouponByLevels', { targetLevelIds, targetLevelNamesSnapshot, issued, skipped, skippedReasons, eligibleCount: eligible.length })
+      await logAdmin(admin, 'coupon_template', templateId, 'issueCouponByLevels', { targetLevelIds, targetLevelNamesSnapshot, issued, skipped, skippedReasons, eligibleCount: eligible.length, batchKey })
       return { issued, skipped, targetLevelIds, targetLevelNamesSnapshot, eligibleCount: eligible.length, skippedReasons, skippedReasonText }
     }
     if (action === 'publishRewardMailByLevels') {

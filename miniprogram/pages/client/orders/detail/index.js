@@ -92,7 +92,7 @@ function showRemoteUnlockSubscribeTip(result, retryCallback) {
 }
 
 Page({
-  data: { themeClass: 'theme-day', id: '', order: null, timeline: [], review: null, paying: false, cancelling: false, handlingEarlyStart: false, resettingCode: false, resetCodeForm: { code: '', effectiveStart: '', effectiveEnd: '' }, sectionHomeUrl: '', canGoBack: false },
+  data: { themeClass: 'theme-day', id: '', order: null, timeline: [], review: null, paying: false, cancelling: false, handlingEarlyStart: false, resettingCode: false, resetSessionOptions: [], selectedResetSessionIdx: 0, resetCodeForm: { code: '', effectiveStart: '', effectiveEnd: '' }, sectionHomeUrl: '', canGoBack: false },
   onLoad(q) {
     loadSystemSettings().catch(() => null)
     this.setData({ ...createPageNav(q), id: q.id })
@@ -243,27 +243,59 @@ Page({
   createIncident() { wx.navigateTo({ url: '/pages/client/incidents/create/index?id=' + this.data.id }) },
   inputResetCode(e) { this.setData({ ['resetCodeForm.' + e.currentTarget.dataset.field]: e.detail.value }) },
   showResetOneTimeCode() {
-    const security = this.data.order && this.data.order.orderHomeSecurity
-    const code = security && security.oneTimeCode
+    const order = this.data.order || {}
+    const security = order.orderHomeSecurity || {}
+    const code = security.oneTimeCode
+    const sessions = Array.isArray(order.serviceSessions) ? order.serviceSessions.filter(s => s.status !== 'cancelled') : []
+    const resetSessionOptions = [{ label: sessions.length > 1 ? '整单通用/首场密码' : '本次服务开门密码', sessionIndex: null, date: '', startTime: (code && code.effectiveStart) || order.startTime || '', endTime: (code && code.effectiveEnd) || order.endTime || '' }]
+    if (sessions.length > 1) {
+      sessions.forEach(s => {
+        const existingSessionCode = Array.isArray(security.sessionCodes) ? security.sessionCodes.find(item => Number(item.sessionIndex || item.index) === Number(s.index)) : null
+        resetSessionOptions.push({
+          label: `第${s.index}天专属密码 (${s.date || ''})`,
+          sessionIndex: s.index,
+          date: s.date || '',
+          startTime: (existingSessionCode && existingSessionCode.effectiveStart) || s.startTime || '',
+          endTime: (existingSessionCode && existingSessionCode.effectiveEnd) || s.endTime || ''
+        })
+      })
+    }
+
     this.setData({
       resettingCode: true,
+      resetSessionOptions,
+      selectedResetSessionIdx: 0,
       resetCodeForm: {
+        sessionIndex: null,
+        date: '',
         code: '',
-        effectiveStart: code && code.effectiveStart ? code.effectiveStart : (this.data.order && this.data.order.startTime) || '',
-        effectiveEnd: code && code.effectiveEnd ? code.effectiveEnd : (this.data.order && this.data.order.endTime) || ''
+        effectiveStart: resetSessionOptions[0].startTime,
+        effectiveEnd: resetSessionOptions[0].endTime
       }
+    })
+  },
+  chooseResetSession(e) {
+    const idx = Number(e.detail.value) || 0
+    const opt = this.data.resetSessionOptions[idx] || this.data.resetSessionOptions[0]
+    this.setData({
+      selectedResetSessionIdx: idx,
+      ['resetCodeForm.sessionIndex']: opt.sessionIndex,
+      ['resetCodeForm.date']: opt.date || '',
+      ['resetCodeForm.code']: '',
+      ['resetCodeForm.effectiveStart']: opt.startTime || '',
+      ['resetCodeForm.effectiveEnd']: opt.endTime || ''
     })
   },
   cancelResetOneTimeCode() { this.setData({ resettingCode: false }) },
   saveResetOneTimeCode() {
     const form = this.data.resetCodeForm
     if (!form.code || !form.effectiveStart || !form.effectiveEnd) {
-      wx.showToast({ title: '请填写密码和有效区间', icon: 'none' })
+      wx.showToast({ title: '请填写智能锁临时密码和有效区间', icon: 'none' })
       return
     }
     callFunction('homeSecurity', 'updateOrderOneTimeCode', { orderId: this.data.id, ...form })
       .then(() => {
-        wx.showToast({ title: '已更新' })
+        wx.showToast({ title: '密码已更新' })
         this.setData({ resettingCode: false })
         this.load()
       })

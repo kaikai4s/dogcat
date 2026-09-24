@@ -1,9 +1,17 @@
 const { assertStaffGenderMatches } = require('../utils/staffGender')
 
-module.exports = function createService({
-  crypto, db, findStaffOrderConflict, getOrderTimeRanges, isOrderConflictCandidate,
-  now, toTimeValue, validateStaffTakeOrderAbility, validateStaffScheduleOnly
-}) {
+module.exports = function createService(context) {
+  const {
+    crypto, db, findStaffOrderConflict, getOrderTimeRanges, isOrderConflictCandidate,
+    now, toTimeValue, validateStaffTakeOrderAbility, validateStaffScheduleOnly,
+    getDateKeyFromTime, parseDateTimeParts, validateSitterScheduleTime
+  } = context
+
+  const safeGetDateKey = typeof getDateKeyFromTime === 'function' ? getDateKeyFromTime : (val) => String(val || '').slice(0, 10)
+  const safeParseDateTimeParts = typeof parseDateTimeParts === 'function' ? parseDateTimeParts : (val) => {
+    const m = String(val || '').match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/)
+    return m ? { hour: Number(m[4]), minute: Number(m[5]) } : null
+  }
   function assignmentTerms(order) {
     return JSON.stringify([
       getOrderTimeRanges(order), order.publishMode, order.requestedStaffOpenid, order.staffGenderRequirement,
@@ -93,6 +101,69 @@ module.exports = function createService({
       await lockStaff(tx, user._id, user.openid)
       const candidates = (await db.collection('staff_schedule_exceptions').where({ staffOpenid: user.openid, dateKey: payload.dateKey }).limit(2).get()).data || []
       if (candidates.length > 1) throw new Error('当日排班重复，请先核对')
+
+      const activeStatuses = ['assigned', 'in_service', 'day_completed']
+      const _ = db.command
+      const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
+      const activeOrdersRes = await db.collection('orders').where({
+        staffOpenid: user.openid,
+        status: inOp(activeStatuses)
+      }).limit(100).get().catch(() => ({ data: [] }))
+
+      const activeOrdersOnDate = (activeOrdersRes.data || []).filter(order => {
+        if (order.adminDeletedAt) return false
+        const ranges = typeof getOrderTimeRanges === 'function' ? getOrderTimeRanges(order) : (order.startTime && order.endTime ? [{ startTime: order.startTime, endTime: order.endTime }] : [])
+        return ranges.some(range => {
+          const sKey = safeGetDateKey(range.startTime)
+          const eKey = safeGetDateKey(range.endTime)
+          return sKey === payload.dateKey || eKey === payload.dateKey
+        })
+      })
+
+      if (activeOrdersOnDate.length > 0) {
+        if (remove) {
+          const profileRes = await db.collection('staff_profiles').where({ openid: user.openid }).limit(1).get().catch(() => ({ data: [] }))
+          const profile = profileRes.data && profileRes.data[0]
+          if (profile && typeof validateSitterScheduleTime === 'function') {
+            for (const order of activeOrdersOnDate) {
+              const ranges = typeof getOrderTimeRanges === 'function' ? getOrderTimeRanges(order) : (order.startTime && order.endTime ? [{ startTime: order.startTime, endTime: order.endTime }] : [])
+              for (const range of ranges) {
+                const sKey = safeGetDateKey(range.startTime)
+                if (sKey === payload.dateKey) {
+                  try {
+                    validateSitterScheduleTime(profile.weeklySchedule, range.startTime, range.endTime)
+                  } catch (err) {
+                    throw new Error('当日已有待履约服务订单，清除例外排班后常规周排班无法覆盖已有订单时段')
+                  }
+                }
+              }
+            }
+          }
+        } else if (payload.status === 'unavailable') {
+          throw new Error('当日已有待履约服务订单，无法设置为休息，请先联系平台协调改派')
+        } else if (payload.status === 'available') {
+          const slots = Array.isArray(payload.slots) ? payload.slots : []
+          for (const order of activeOrdersOnDate) {
+            const ranges = typeof getOrderTimeRanges === 'function' ? getOrderTimeRanges(order) : (order.startTime && order.endTime ? [{ startTime: order.startTime, endTime: order.endTime }] : [])
+            for (const range of ranges) {
+              const sKey = safeGetDateKey(range.startTime)
+              if (sKey === payload.dateKey) {
+                const sParts = safeParseDateTimeParts(range.startTime)
+                const eParts = safeParseDateTimeParts(range.endTime)
+                if (sParts && eParts) {
+                  const sVal = sParts.hour + sParts.minute / 60
+                  const eVal = eParts.hour + eParts.minute / 60
+                  const fits = slots.some(slot => sVal >= slot.start && eVal <= slot.end)
+                  if (!fits) {
+                    throw new Error('当日已有待履约服务订单不在调整后的接单时段内，无法修改排班')
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
       const id = candidates[0]?._id || `schedule_${crypto.createHash('sha256').update(`${user.openid}:${payload.dateKey}`).digest('hex').slice(0, 32)}`
       const time = now()
       await tx.collection('users').doc(user._id).update({ data: { staffAssignmentRevision: crypto.randomBytes(16).toString('hex') } })

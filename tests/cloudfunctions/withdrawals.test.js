@@ -15,7 +15,15 @@ function setup(count = 2) {
     getUser: async () => ({}), refreshStaffEarnings: async () => {},
     getSystemSettings: async () => ({ settlement: { minWithdrawAmount: 10 } }), now: () => new Date()
   })
-  return { db, ...service }
+  const originalCreate = service.createWithdrawRequest
+  const wrappedCreate = (openid, data = {}) => {
+    return originalCreate(openid, {
+      accountName: data.accountName !== undefined ? data.accountName : '测试宠托师',
+      accountNo: data.accountNo !== undefined ? data.accountNo : '6222021234567890',
+      ...data
+    })
+  }
+  return { db, ...service, createWithdrawRequest: wrappedCreate, rawCreateWithdrawRequest: originalCreate }
 }
 
 test('concurrent withdrawal requests can reserve each earning only once', async () => {
@@ -105,3 +113,24 @@ test('transaction callback retry does not duplicate request or finance log', asy
   assert.equal(db.state.withdraw_requests.length, 1)
   assert.equal(db.state.finance_logs.length, 1)
 })
+
+test('accountName and accountNo validation prevents invalid withdrawal requests', async () => {
+  const { rawCreateWithdrawRequest } = setup()
+  await assert.rejects(
+    rawCreateWithdrawRequest('staff', { accountName: '', accountNo: '6222021234567890' }),
+    /请填写正确的提现收款人姓名/
+  )
+  await assert.rejects(
+    rawCreateWithdrawRequest('staff', { accountName: 'a', accountNo: '6222021234567890' }),
+    /请填写正确的提现收款人姓名/
+  )
+  await assert.rejects(
+    rawCreateWithdrawRequest('staff', { accountName: '测试宠托师', accountNo: '' }),
+    /请填写正确的提现收款账号/
+  )
+  await assert.rejects(
+    rawCreateWithdrawRequest('staff', { accountName: '测试宠托师', accountNo: '123' }),
+    /请填写正确的提现收款账号/
+  )
+})
+

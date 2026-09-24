@@ -14,17 +14,30 @@ const WEEKDAYS = [
   { day: 7, label: '周日' }
 ]
 
+function formatTodayDate() {
+  const d = new Date()
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 Page({
   data: {
     themeClass: 'theme-day',
     loading: false,
     saving: false,
+    scheduleTab: 'weekly', // 'weekly' 或 'exceptions'
     weekdays: WEEKDAYS,
     hourLabels,
     activeDay: 1,
     startHourIndex: 8,
     endHourIndex: 22,
     weeklySchedule: { '1': [], '2': [], '3': [], '4': [], '5': [], '6': [], '7': [] },
+    bookableUntilDate: '', // 接单截止日期（只接单到该日期）
+    todayDate: formatTodayDate(),
+    restPickerDate: formatTodayDate(),
+    restDateList: [], // 已设置的特殊休息日列表
     canGoBack: false
   },
 
@@ -32,7 +45,7 @@ Page({
     const { createPageNav } = require('../../../utils/nav')
     this.setData(createPageNav(q))
     this.applyCurrentTheme()
-    this.loadWeeklySchedule()
+    this.loadScheduleData()
   },
 
   ...navMethods(),
@@ -42,20 +55,17 @@ Page({
     this.setData(getThemeState(theme.value))
   },
 
-  loadWeeklySchedule() {
-    this.setData({ loading: true })
-    callFunction('staff', 'getStaffProfile')
-      .then((profile) => {
-        if (!profile || profile.auditStatus !== 'approved') {
-          wx.showToast({ title: '未通过宠托师认证', icon: 'none' })
-          setTimeout(() => {
-            wx.navigateBack()
-          }, 1200)
-          return
-        }
+  switchScheduleTab(e) {
+    const tab = e.currentTarget.dataset.tab
+    if (!tab || tab === this.data.scheduleTab) return
+    this.setData({ scheduleTab: tab })
+  },
 
-        // 加载当前的按周规则
-        const weeklySchedule = profile.weeklySchedule || {}
+  loadScheduleData() {
+    this.setData({ loading: true })
+    callFunction('staff', 'getScheduleCalendar', { days: 31 })
+      .then((res) => {
+        const weeklySchedule = res.weeklySchedule || {}
         const defaultSchedule = { '1': [], '2': [], '3': [], '4': [], '5': [], '6': [], '7': [] }
         const normalizedSchedule = { ...defaultSchedule }
         for (let day = 1; day <= 7; day++) {
@@ -63,8 +73,19 @@ Page({
           normalizedSchedule[key] = Array.isArray(weeklySchedule[key]) ? weeklySchedule[key] : []
         }
 
+        const availability = Array.isArray(res.availability) ? res.availability : []
+        const restDateList = availability
+          .filter((item) => item.source === 'exception' && item.status === 'unavailable')
+          .map((item) => ({
+            dateKey: item.dateKey,
+            dayName: item.dayName,
+            remark: item.remark || '休息不接单'
+          }))
+
         this.setData({
           weeklySchedule: normalizedSchedule,
+          bookableUntilDate: res.bookableUntilDate || '',
+          restDateList,
           loading: false
         })
       })
@@ -74,6 +95,90 @@ Page({
       })
   },
 
+  // 1. 接单截止日期操作
+  bindUntilDateChange(e) {
+    const date = e.detail.value
+    this.setData({ bookableUntilDate: date })
+  },
+
+  clearUntilDate() {
+    this.setData({ bookableUntilDate: '' })
+  },
+
+  saveUntilDate() {
+    this.setData({ saving: true })
+    callFunction('staff', 'updateStaffProfileConfig', {
+      bookableUntilDate: this.data.bookableUntilDate
+    })
+      .then(() => {
+        this.setData({ saving: false })
+        wx.showToast({
+          title: this.data.bookableUntilDate ? `已设置接单至 ${this.data.bookableUntilDate}` : '已清除截止限制（长期开放）',
+          icon: 'none'
+        })
+        this.loadScheduleData()
+      })
+      .catch((err) => {
+        this.setData({ saving: false })
+        showError(err)
+      })
+  },
+
+  // 2. 特殊休息日（不接单日期）操作
+  bindRestPickerChange(e) {
+    this.setData({ restPickerDate: e.detail.value })
+  },
+
+  addRestDate() {
+    const dateKey = this.data.restPickerDate
+    if (!dateKey) return wx.showToast({ title: '请选择日期', icon: 'none' })
+    if (this.data.restDateList.some((item) => item.dateKey === dateKey)) {
+      return wx.showToast({ title: '该日期已在不接单列表中', icon: 'none' })
+    }
+
+    wx.showLoading({ title: '设置中...' })
+    callFunction('staff', 'saveScheduleException', {
+      dateKey,
+      status: 'unavailable',
+      remark: '宠托师设置休息'
+    })
+      .then(() => {
+        wx.hideLoading()
+        wx.showToast({ title: `已设置 ${dateKey} 为休息不接单`, icon: 'none' })
+        this.loadScheduleData()
+      })
+      .catch((err) => {
+        wx.hideLoading()
+        showError(err)
+      })
+  },
+
+  deleteRestDate(e) {
+    const dateKey = e.currentTarget.dataset.date
+    if (!dateKey) return
+
+    wx.showModal({
+      title: '确认恢复接单',
+      content: `确定恢复 ${dateKey} 正常接单吗？`,
+      success: (res) => {
+        if (res.confirm) {
+          wx.showLoading({ title: '处理中...' })
+          callFunction('staff', 'deleteScheduleException', { dateKey })
+            .then(() => {
+              wx.hideLoading()
+              wx.showToast({ title: `已恢复 ${dateKey} 正常接单`, icon: 'none' })
+              this.loadScheduleData()
+            })
+            .catch((err) => {
+              wx.hideLoading()
+              showError(err)
+            })
+        }
+      }
+    })
+  },
+
+  // 3. 常规按周接单时间操作
   switchDay(e) {
     const day = Number(e.currentTarget.dataset.day || 1)
     this.setData({ activeDay: day })
@@ -152,12 +257,8 @@ Page({
       weeklySchedule: this.data.weeklySchedule
     })
       .then(() => {
-        wx.showToast({ title: '保存成功', icon: 'success' })
+        wx.showToast({ title: '按周排班已保存', icon: 'success' })
         this.setData({ saving: false })
-        // 1秒后返回上一页
-        setTimeout(() => {
-          wx.navigateBack()
-        }, 1000)
       })
       .catch((error) => {
         this.setData({ saving: false })

@@ -188,6 +188,7 @@ module.exports = function createService({
 
   async function validateStaffScheduleOnly(profile, startTimeStr, endTimeStr, options = {}) {
     if (!profile || !profile.openid) throw new Error('宠托师不可用')
+<<<<<<< HEAD
     const start = parseDateTimeParts(startTimeStr)
     const end = parseDateTimeParts(endTimeStr)
     if (!start || !end || end.dateObj <= start.dateObj) throw new Error('服务时间格式无效')
@@ -209,6 +210,20 @@ module.exports = function createService({
         validateSitterScheduleTime(profile.weeklySchedule, segmentStart, segmentEnd)
       }
       cursor = segmentEndTs
+=======
+    const dateKey = getDateKeyFromTime(startTimeStr)
+    if (!dateKey) throw new Error('请选择服务时间')
+    if (profile.bookableUntilDate && dateKey > profile.bookableUntilDate) {
+      throw new Error(`宠托师暂未开放 ${profile.bookableUntilDate} 之后的预约服务`)
+    }
+    const exceptionRes = await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid, dateKey }).limit(1).get()
+    const exception = exceptionRes.data[0]
+    if (exception) {
+      if (exception.status === 'unavailable') throw new Error('宠托师当天设置为休息，无法预约')
+      validateSlotsForDate(normalizeScheduleSlots(exception.slots), startTimeStr, endTimeStr, dateKey, '宠托师当天未设置可接单时间段')
+    } else {
+      validateSitterScheduleTime(profile.weeklySchedule, startTimeStr, endTimeStr)
+>>>>>>> b1578c0487c548b4437f40cc321a0fe6a7d4fd68
     }
   }
 
@@ -353,11 +368,15 @@ module.exports = function createService({
       let slots = normalizedWeekly ? (normalizedWeekly[String(dayOfWeek)] || []) : [{ start: 0, end: 24 }]
       let status = slots.length ? 'available' : 'unavailable'
       let remark = ''
-      if (exception) {
+      if (profile.bookableUntilDate && dateKey > profile.bookableUntilDate) {
+        status = 'unavailable'
+        slots = []
+        remark = `接单截止至 ${profile.bookableUntilDate}`
+      } else if (exception) {
         source = 'exception'
         status = exception.status === 'available' ? 'available' : 'unavailable'
         slots = status === 'available' ? normalizeScheduleSlots(exception.slots) : []
-        remark = exception.remark || ''
+        remark = exception.remark || (status === 'unavailable' ? '休息不接单' : '')
       }
       const busyOrders = availableOrders
         .flatMap(order => getOrderTimeRanges(order)

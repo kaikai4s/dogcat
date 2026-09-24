@@ -14,6 +14,7 @@ module.exports = function createHandler(context) {
     listUserPetTitles,
     normalizeBeautyPhotos,
     nowText,
+    ORDER_STATUS,
     paginateList,
     releasePetTitleForPet,
     parsePetRecognitionText,
@@ -219,6 +220,45 @@ module.exports = function createHandler(context) {
       const existing = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
       if (!existing || !existing.data) throw new Error('宠物不存在')
       if (existing.data.openid !== openid) throw new Error('无权访问')
+
+      const _ = db.command
+      const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
+      const activeClientStatuses = [
+        (ORDER_STATUS && ORDER_STATUS.PENDING_PAY) || 'pending_pay',
+        (ORDER_STATUS && ORDER_STATUS.PAID) || 'paid',
+        (ORDER_STATUS && ORDER_STATUS.ASSIGNED) || 'assigned',
+        (ORDER_STATUS && ORDER_STATUS.IN_SERVICE) || 'in_service',
+        (ORDER_STATUS && ORDER_STATUS.DAY_COMPLETED) || 'day_completed'
+      ]
+
+      const activeOrdersRes = await db.collection('orders').where({
+        clientOpenid: openid,
+        status: inOp(activeClientStatuses)
+      }).limit(100).get().catch(() => ({ data: [] }))
+
+      const hasActiveOrder = (activeOrdersRes.data || []).some((o) => {
+        if (o.petId === petId) return true
+        if (Array.isArray(o.petIds) && o.petIds.includes(petId)) return true
+        return false
+      })
+      if (hasActiveOrder) {
+        throw new Error('该宠物有待支付或履约中的服务订单，暂不可删除')
+      }
+
+      const refundingOrdersRes = await db.collection('orders').where({
+        clientOpenid: openid,
+        paymentStatus: 'refunding'
+      }).limit(50).get().catch(() => ({ data: [] }))
+
+      const hasRefundingOrder = (refundingOrdersRes.data || []).some((o) => {
+        if (o.petId === petId) return true
+        if (Array.isArray(o.petIds) && o.petIds.includes(petId)) return true
+        return false
+      })
+      if (hasRefundingOrder) {
+        throw new Error('该宠物有关联退款处理中的订单，暂不可删除')
+      }
+
       await releasePetTitleForPet(petId)
       await db.collection('pets').doc(petId).remove()
       return { id: petId }

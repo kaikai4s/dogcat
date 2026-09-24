@@ -71,6 +71,67 @@ module.exports = function createService({
       const adminCount = await countActiveAdmins(2)
       if (adminCount <= 1) throw new Error('至少保留一个管理员')
     }
+
+    const _ = db.command
+    const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
+
+    // 1. 检查作为客户是否存在未完结或履约中的订单
+    const activeClientStatuses = ['pending_pay', 'paid', 'assigned', 'in_service', 'day_completed']
+    const activeClientOrderCount = await countByQuery('orders', {
+      clientOpenid: target.openid,
+      status: inOp(activeClientStatuses)
+    }).catch(() => 0)
+
+    if (activeClientOrderCount > 0) {
+      throw new Error('该用户存在履约中或未完结的服务订单，无法删除')
+    }
+
+    // 检查是否存在退款处理中的订单
+    const refundingOrderCount = await countByQuery('orders', {
+      clientOpenid: target.openid,
+      paymentStatus: 'refunding'
+    }).catch(() => 0)
+
+    if (refundingOrderCount > 0) {
+      throw new Error('该用户存在退款处理中的订单，无法删除')
+    }
+
+    // 2. 检查作为宠托师是否存在尚未完成履约的订单
+    const activeStaffStatuses = ['assigned', 'in_service', 'day_completed']
+    const activeStaffOrderCount = await countByQuery('orders', {
+      staffOpenid: target.openid,
+      status: inOp(activeStaffStatuses)
+    }).catch(() => 0)
+
+    if (activeStaffOrderCount > 0) {
+      throw new Error('该宠托师有尚未完成的履约订单，无法删除')
+    }
+
+    // 3. 检查是否存在待处理纠纷
+    const activeIncidentStatuses = ['pending', 'processing']
+    const clientIncidentCount = await countByQuery('order_incidents', {
+      clientOpenid: target.openid,
+      status: inOp(activeIncidentStatuses)
+    }).catch(() => 0)
+    const staffIncidentCount = await countByQuery('order_incidents', {
+      staffOpenid: target.openid,
+      status: inOp(activeIncidentStatuses)
+    }).catch(() => 0)
+
+    if (clientIncidentCount > 0 || staffIncidentCount > 0) {
+      throw new Error('该用户存在处理中的纠纷或投诉，无法删除')
+    }
+
+    // 4. 检查作为宠托师是否存在待处理的提现申请
+    const activeWithdrawStatuses = ['pending', 'approved']
+    const activeWithdrawCount = await countByQuery('withdraw_requests', {
+      staffOpenid: target.openid,
+      status: inOp(activeWithdrawStatuses)
+    }).catch(() => 0)
+
+    if (activeWithdrawCount > 0) {
+      throw new Error('该宠托师存在待处理的提现申请，无法删除')
+    }
   }
 
   async function cleanupUserPersonalData(targetOpenid) {

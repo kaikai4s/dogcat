@@ -110,7 +110,10 @@ module.exports = function createService({
     if (!couponBusinessMatches(snapshot, pricing)) return { applicable: false, reason: snapshot.usageScope === 'mall' ? '仅限商城用品订单使用' : '仅限上门服务订单使用' }
     if (pricing.amount < snapshot.minOrderAmount) return { applicable: false, reason: `订单满 ¥${snapshot.minOrderAmount} 可用` }
     if (snapshot.usageScope === 'service' && snapshot.applicableServiceTypes.length && !pricing.serviceTypes.some((key) => snapshot.applicableServiceTypes.includes(key))) return { applicable: false, reason: '当前服务不可用' }
-    const discountAmount = Math.min(snapshot.discountAmount, pricing.amount)
+    const amountCents = Math.round(Number(pricing.amount || 0) * 100)
+    const couponDiscountCents = Math.round(Number(snapshot.discountAmount || 0) * 100)
+    const effectiveDiscountCents = Math.min(couponDiscountCents, amountCents)
+    const discountAmount = effectiveDiscountCents / 100
     if (discountAmount <= 0) return { applicable: false, reason: '优惠金额无效' }
     return {
       applicable: true,
@@ -127,8 +130,12 @@ module.exports = function createService({
     if (!couponResult || !couponResult.applicable) {
       return { ...pricing, discountAmount: 0, coupon: null, payAmount: pricing.amount, priceSnapshot: { ...pricing.priceSnapshot, originalAmount: pricing.amount, discountAmount: 0, payAmount: pricing.amount } }
     }
-    const discountAmount = couponResult.discountAmount
-    const payAmount = Math.max(pricing.amount - discountAmount, 0)
+    const amountCents = Math.round(Number(pricing.amount || 0) * 100)
+    const discountCents = Math.round(Number(couponResult.discountAmount || 0) * 100)
+    const actualDiscountCents = Math.min(discountCents, amountCents)
+    const payAmountCents = Math.max(amountCents - actualDiscountCents, 0)
+    const discountAmount = actualDiscountCents / 100
+    const payAmount = payAmountCents / 100
     const coupon = {
       couponId: couponResult.couponId,
       templateId: couponResult.templateId,
@@ -147,6 +154,49 @@ module.exports = function createService({
     }
   }
 
+  async function restoreOrderCoupon(couponId, orderId, tx = null) {
+    const id = safeText(couponId).trim()
+    if (!id) return null
+    const time = now()
+    const targetOrderId = safeText(orderId).trim()
+
+    const execute = async (client) => {
+      const docRef = client.collection('user_coupons').doc(id)
+      let coupon = null
+      try {
+        const res = await docRef.get()
+        coupon = res && res.data
+      } catch (e) {
+        coupon = null
+      }
+      if (!coupon) return null
+
+      // 仅当优惠券为 used 或 locked 状态，且确实归属该订单时才恢复
+      const isLinkedToOrder = !targetOrderId ||
+        coupon.usedOrderId === targetOrderId ||
+        coupon.lockedOrderId === targetOrderId ||
+        (!coupon.usedOrderId && !coupon.lockedOrderId)
+
+      if (['used', 'locked'].includes(coupon.status) && isLinkedToOrder) {
+        const updateData = {
+          status: 'available',
+          lockedOrderId: '',
+          lockedAt: null,
+          usedOrderId: '',
+          usedAt: null,
+          refundedFromOrderId: targetOrderId || coupon.usedOrderId || coupon.lockedOrderId || '',
+          refundedAt: time,
+          updatedAt: time
+        }
+        await docRef.update({ data: updateData })
+        return { _id: id, ...coupon, ...updateData }
+      }
+      return null
+    }
+
+    return tx ? execute(tx) : execute(db)
+  }
+
   return {
     normalizeCouponUsageScope,
     couponUsageScopeText,
@@ -158,6 +208,7 @@ module.exports = function createService({
     formatUserCoupon,
     getAvailableUserCoupons,
     evaluateCoupon,
-    applyCouponToPricing
+    applyCouponToPricing,
+    restoreOrderCoupon
   }
 }

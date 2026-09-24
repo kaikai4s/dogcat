@@ -77,6 +77,22 @@ Page({
 
   save() {
     const form = this.data.form
+    if (!form.serviceAddress) {
+      wx.showToast({ title: '请选择服务地址', icon: 'none' })
+      return
+    }
+    if (!form.latitude || !form.longitude || (Number(form.latitude) === 0 && Number(form.longitude) === 0)) {
+      wx.showToast({ title: '请点击定位选择地图位置', icon: 'none' })
+      return
+    }
+    if (!form.addressDetail) {
+      wx.showToast({ title: '请填写详细地址', icon: 'none' })
+      return
+    }
+    if (!form.doorplate) {
+      wx.showToast({ title: '请填写门牌号或入户说明', icon: 'none' })
+      return
+    }
     callFunction('client', 'saveAddress', { ...form, id: this.data.id })
       .then(() => {
         wx.showToast({ title: '已保存' })

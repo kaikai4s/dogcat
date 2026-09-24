@@ -1,5 +1,6 @@
 module.exports = function createService({ db, crypto, now, getPayableOrder, getSystemSettings,
-  assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo }) {
+  assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo, restoreOrderCoupon,
+  normalizeMallProduct, getSkuById }) {
   const idFor = value => `refund_${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`
   async function optional(tx, name, id) {
     try { return (await tx.collection(name).doc(id).get()).data || null } catch (error) {
@@ -37,6 +38,9 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         return existing
       }
       if (!['paid', 'refunding'].includes(current.paymentStatus)) throw new Error('订单未支付或状态不支持退款')
+      if (source === 'mall_after_sale' && current.refundStatus !== 'applied') {
+        throw new Error('售后状态已变化，请刷新后重试')
+      }
       // Reusing a pending request is allowed only for the same business operation.
       const pending = !requestId && rows.find(row => row.status === 'processing' && row.source === source && row.reason === (reason || '') && amountYuanToFen(row.refundAmount) === requested)
       if (pending) return pending
@@ -66,6 +70,11 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       } })
       await tx.collection('payment_events').doc(id).set({ data: { eventType: 'refund_create', orderId: order._id,
         refundNo: value.refundNo, status: 'processing', detail: { refundAmount: value.refundAmount, source }, createdAt: time } })
+      if (current.couponId && (reserved + requested >= total)) {
+        if (typeof restoreOrderCoupon === 'function') {
+          await restoreOrderCoupon(current.couponId, order._id, tx)
+        }
+      }
       return { _id: id, ...value }
     })
     return dispatchOrderRefund(refund)
@@ -136,12 +145,72 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         paymentStatus = 'paid'
         refundStatus = 'failed'
       }
+      const isMallOrder = resolved.collectionName === 'mall_orders' || order.orderType === 'mall'
+      let shouldRestoreStock = false
+      if (status === 'success' && full && isMallOrder && order.status !== 'completed' && order.oversoldRefundRequired !== true && order.stockRestored !== true && Array.isArray(order.items) && order.items.length) {
+        shouldRestoreStock = true
+      }
+
+      if (shouldRestoreStock) {
+        const productRestores = new Map()
+        for (const item of order.items) {
+          const quantity = Number(item.quantity)
+          if (!Number.isSafeInteger(quantity) || quantity <= 0) continue
+          let product = productRestores.get(item.productId)
+          if (!product) {
+            const rawProduct = (await tx.collection('mall_products').doc(item.productId).get().catch(() => ({ data: null }))).data
+            if (rawProduct) product = typeof normalizeMallProduct === 'function' ? normalizeMallProduct(rawProduct) : rawProduct
+          }
+          if (product) {
+            let sku = typeof getSkuById === 'function' ? getSkuById(product, item.skuId) : null
+            if (!sku && Array.isArray(product.skus)) {
+              sku = product.skus.find(s => s.skuId === item.skuId)
+            }
+            if (sku) {
+              const skus = product.skus.map(row => row.skuId === sku.skuId
+                ? {
+                  ...row,
+                  stock: Number(row.stock || 0) + quantity,
+                  salesCount: Math.max(0, Number(row.salesCount || 0) - quantity)
+                }
+                : row)
+              const changed = skus.find(row => row.skuId === sku.skuId)
+              if (typeof normalizeMallProduct === 'function') {
+                product = normalizeMallProduct({
+                  ...product,
+                  ...(product.specMode === 'single' ? { stock: changed.stock, salesCount: changed.salesCount } : {}),
+                  skus
+                })
+              } else {
+                product.skus = skus
+                if (product.specMode === 'single') {
+                  product.stock = changed.stock
+                  product.salesCount = changed.salesCount
+                }
+              }
+              productRestores.set(item.productId, product)
+            }
+          }
+        }
+        for (const [id, product] of productRestores) {
+          const { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText } = product
+          await tx.collection('mall_products').doc(id).update({
+            data: { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText, updatedAt: time }
+          })
+        }
+      }
+
       await tx.collection(resolved.collectionName).doc(order._id).update({ data: {
         refundAmount: reserved / 100, refundedAmount: successful / 100,
         paymentStatus, refundStatus,
-        ...(full && order.status !== 'completed' ? { status: 'refunded' } : {}), updatedAt: time
+        ...(full && order.status !== 'completed' ? { status: 'refunded' } : {}),
+        ...(shouldRestoreStock ? { stockRestored: true, stockRestoredAt: time } : {}),
+        updatedAt: time
       } })
       if (status === 'success') {
+        if (full && order.couponId && typeof restoreOrderCoupon === 'function') {
+          await restoreOrderCoupon(order.couponId, order._id, tx)
+        }
         await tx.collection('finance_logs').doc(refund._id).set({ data: {
           action: 'refund_success', targetType: 'refund', targetId: refund._id, orderId: refund.orderId,
           amountDelta: -Number(refund.refundAmount), detail: { refundNo: refund.refundNo }, createdAt: time
@@ -157,12 +226,70 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
   }
 
   async function reconcilePendingRefunds() {
-    // Oldest checked first; one failure must not block the remaining refunds.
+    // 1. 处理 processing 中的退款记录（对微信端重试 dispatch）
     const rows = (await db.collection('refunds').where({ status: 'processing', channel: 'wechat' }).orderBy('updatedAt', 'asc').limit(30).get()).data || []
     for (const row of rows) {
-      try { await dispatchOrderRefund(row) } catch (error) { console.error('[refund-reconcile]', { id: row._id, message: error.message }) }
+      try {
+        const updated = await dispatchOrderRefund(row)
+        if (updated && updated.status === 'success') {
+          const resolved = await getPayableOrder(row.orderId)
+          if (resolved && resolved.order && resolved.order.oversoldRefundFailed) {
+            await db.collection(resolved.collectionName).doc(row.orderId).update({
+              data: {
+                oversoldRefundFailed: false,
+                oversoldRefundRecoveredAt: now(),
+                updatedAt: now()
+              }
+            }).catch(() => {})
+          }
+        }
+      } catch (error) {
+        console.error('[refund-reconcile]', { id: row._id, message: error.message })
+      }
     }
-    return rows.length
+
+    // 2. 补偿重试：处理因前置异常未能成功发起退款单的超卖订单（oversoldRefundFailed: true）
+    const failedMallOrders = (await db.collection('mall_orders').where({ oversoldRefundFailed: true }).limit(20).get()).data || []
+    const failedServiceOrders = (await db.collection('orders').where({ oversoldRefundFailed: true }).limit(20).get()).data || []
+    const allFailed = [
+      ...failedMallOrders.map(o => ({ order: o, collection: 'mall_orders' })),
+      ...failedServiceOrders.map(o => ({ order: o, collection: 'orders' }))
+    ]
+    for (const { order: failedOrder, collection } of allFailed) {
+      try {
+        const refundRows = (await db.collection('refunds').where({ orderId: failedOrder._id }).limit(10).get()).data || []
+        const hasSuccess = refundRows.some(r => r.status === 'success')
+        if (hasSuccess) {
+          await db.collection(collection).doc(failedOrder._id).update({
+            data: { oversoldRefundFailed: false, oversoldRefundRecoveredAt: now(), updatedAt: now() }
+          }).catch(() => {})
+          continue
+        }
+        const hasProcessing = refundRows.some(r => r.status === 'processing')
+        if (hasProcessing) {
+          continue
+        }
+        // 重新拉起退款请求
+        await requestOrderRefund(
+          failedOrder,
+          Number(failedOrder.payAmount),
+          failedOrder.refundReason || '商品库存不足，系统自动全额退款',
+          'system_auto_refund',
+          'system'
+        )
+        await db.collection(collection).doc(failedOrder._id).update({
+          data: {
+            oversoldRefundFailed: false,
+            oversoldRefundRecoveredAt: now(),
+            updatedAt: now()
+          }
+        }).catch(() => {})
+      } catch (retryErr) {
+        console.error('[refund-reconcile-oversold]', { id: failedOrder._id, message: retryErr.message })
+      }
+    }
+
+    return rows.length + allFailed.length
   }
   return { requestOrderRefund, dispatchOrderRefund, reconcilePendingRefunds }
 }

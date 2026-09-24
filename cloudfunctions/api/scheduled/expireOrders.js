@@ -1,4 +1,4 @@
-module.exports = function createHelpers({ now, toTimeValue, ORDER_STATUS, safeText, createRefundForOrder, makeIdempotencyKey, db, appendOrderTimeline, appendOrderClientMessage }) {
+module.exports = function createHelpers({ now, toTimeValue, ORDER_STATUS, safeText, createRefundForOrder, makeIdempotencyKey, db, appendOrderTimeline, appendOrderClientMessage, restoreOrderCoupon }) {
 function shouldExpireUnacceptedOrder(order = {}, time = now()) {
   const start = toTimeValue(order.startTime)
   return order.status === ORDER_STATUS.PAID && !safeText(order.staffOpenid).trim() && start > 0 && start <= time.getTime()
@@ -16,7 +16,7 @@ async function expireUnacceptedOrder(orderId, order, time = now()) {
 
   let refund = null
   if (isPaid) {
-    refund = await createRefundForOrder(order, order.payAmount, '服务开始时间前无人接单，系统自动全额退款', 'system_expire', order.clientOpenid, makeIdempotencyKey('expire_refund', orderId, time.getTime()), { unreadForClient: false, cancelStatus: 'expired' })
+    refund = await createRefundForOrder(order, order.payAmount, '服务开始时间前无人接单，系统自动全额退款', 'system_expire', order.clientOpenid, makeIdempotencyKey('expire_refund', orderId), { unreadForClient: false, cancelStatus: 'expired' })
     update.paymentStatus = 'refunding'
     update.refundStatus = 'processing'
     update.refundNo = refund.refundNo
@@ -28,6 +28,9 @@ async function expireUnacceptedOrder(orderId, order, time = now()) {
       const current = (await tx.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data
       if (!current || !shouldExpireUnacceptedOrder(current, time) || current.paymentStatus === 'paid') return false
       await tx.collection('orders').doc(orderId).update({ data: update })
+      if (current.couponId && typeof restoreOrderCoupon === 'function') {
+        await restoreOrderCoupon(current.couponId, orderId, tx)
+      }
       return true
     })
     if (!changed) return order

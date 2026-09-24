@@ -67,6 +67,14 @@ function createCollectionStore(initial = {}) {
     })
   }
 
+  function applyUpdateData(target, data) {
+    const next = {}
+    for (const [key, value] of Object.entries(data || {})) {
+      next[key] = value && value.__cloudCommand === 'set' ? value.value : value
+    }
+    Object.assign(target, next)
+  }
+
   function collection(name) {
     const chain = {
       aggregate() {
@@ -128,7 +136,7 @@ function createCollectionStore(initial = {}) {
       },
       async update({ data }) {
         const items = ensure(name).filter((item) => matchWhere(item, this._where))
-        items.forEach((item) => Object.assign(item, data))
+        items.forEach((item) => applyUpdateData(item, data))
         return { stats: { updated: items.length } }
       },
       doc(id) {
@@ -158,7 +166,7 @@ function createCollectionStore(initial = {}) {
           async update({ data }) {
             const item = ensure(name).find((record) => record._id === _id)
             if (!item) throw new Error(`${name}/${_id} not found`)
-            Object.assign(item, data)
+            applyUpdateData(item, data)
             return { stats: { updated: 1 } }
           },
           async remove() {
@@ -192,6 +200,7 @@ function createCollectionStore(initial = {}) {
     RegExp: ({ regexp, options = 'i' }) => ({ $regex: regexp, $options: options, regexp, options }),
     command: {
       in: (arr) => ({ $in: arr }), gt: value => ({ $gt: value }), gte: value => ({ $gte: value }),
+      set: value => ({ __cloudCommand: 'set', value }),
       neq: value => ({ $ne: value }),
       expr: value => ({ $expr: value }), aggregate: aggregateCommand
     }

@@ -18,8 +18,9 @@ module.exports = function createService({
     if (!order.payAmount) return { earningAmount: 0, commissionRate: 0.7 }
     const settings = await getSystemSettings()
     const rate = Number(settings.settlement.staffCommissionRate ?? 0.7)
-    const grossAmount = Number(order.payAmount || 0)
-    const earningAmount = Math.round(grossAmount * rate * 100) / 100
+    const grossCents = Math.round(Number(order.payAmount || 0) * 100)
+    const grossAmount = grossCents / 100
+    const earningAmount = Math.round(grossCents * rate) / 100
     return { earningAmount, commissionRate: rate }
   }
 
@@ -32,27 +33,30 @@ module.exports = function createService({
     if (!order || !order._id || !order.staffOpenid) return null
     const settings = await getSystemSettings()
     const rate = Number(settings.settlement.staffCommissionRate ?? 0.7)
-    const grossAmount = Number(order.payAmount || 0)
-    let baseAmount = Math.round(grossAmount * rate * 100) / 100
+    const grossCents = Math.round(Number(order.payAmount || 0) * 100)
+    const grossAmount = grossCents / 100
+    let baseCents = Math.round(grossCents * rate)
     if (order.isUrgent && Number(order.urgentStaffReward) > 0) {
-      baseAmount = Number(order.urgentStaffReward)
+      baseCents = Math.round(Number(order.urgentStaffReward) * 100)
     }
 
+    const baseAmount = baseCents / 100
     const originalAmount = baseAmount
-    let deductAmount = 0
+    let deductCents = 0
     let deductReason = ''
     if (Number(options.deductAmount) > 0) {
-      deductAmount = Math.min(baseAmount, Math.round(Number(options.deductAmount) * 100) / 100)
+      deductCents = Math.min(baseCents, Math.round(Number(options.deductAmount) * 100))
       deductReason = String(options.deductReason || options.reason || '').trim()
     } else if (Number(order.adminManualDeductEarning) > 0) {
-      deductAmount = Math.min(baseAmount, Math.round(Number(order.adminManualDeductEarning) * 100) / 100)
+      deductCents = Math.min(baseCents, Math.round(Number(order.adminManualDeductEarning) * 100))
       deductReason = String(order.adminManualDeductReason || '').trim()
     }
+    const deductAmount = deductCents / 100
 
-    let earningAmount = Math.max(0, Math.round((baseAmount - deductAmount) * 100) / 100)
-    if (options.overrideAmount !== undefined && Number(options.overrideAmount) >= 0) {
-      earningAmount = Math.round(Number(options.overrideAmount) * 100) / 100
-    }
+    const finalCents = Math.max(0, baseCents - deductCents)
+    let earningAmount = options.overrideAmount !== undefined && Number(options.overrideAmount) >= 0
+      ? Math.round(Number(options.overrideAmount) * 100) / 100
+      : finalCents / 100
 
     const time = now()
     if (![grossAmount, baseAmount, earningAmount].every(value => Number.isFinite(value) && value >= 0 && Number.isSafeInteger(Math.round(value * 100))) ||

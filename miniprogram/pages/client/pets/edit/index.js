@@ -133,16 +133,19 @@ Page({
 
   chooseBeautyTitle(e) {
     if (!this.data.id || this.data.beautyTitleSaving || this.data.beautyTitleLoading || this.data.beautyTitleLoadFailed) return
-    const index = Number(e.detail.value)
+    const index = Math.max(0, Number(e && e.detail && e.detail.value) || 0)
     const option = this.data.beautyTitleOptions[index]
     if (!option) return
     this.setData({ beautyTitleSaving: true })
     return callFunction('petBeauty', option.monthKey ? 'equipBeautyTitle' : 'unequipBeautyTitle', {
       petId: this.data.id, awardMonthKey: option.monthKey
     }).then((res) => {
-      this.setData({ selectedBeautyTitleIndex: index, ['form.beautyTitle']: res.beautyTitle || null })
+      this.setData({ selectedBeautyTitleIndex: index, ['form.beautyTitle']: res.beautyTitle || null, beautyTitleSaving: false })
       wx.showToast({ title: option.monthKey ? '已佩戴称号' : '已取下称号', icon: 'none' })
-    }).catch(showError).finally(() => this.setData({ beautyTitleSaving: false }))
+    }).catch((err) => {
+      this.setData({ beautyTitleSaving: false })
+      showError(err)
+    })
   },
 
   refreshTitleOptions() {

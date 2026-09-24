@@ -61,6 +61,10 @@ module.exports = function createService({
     const finalSession = isFinalServiceSession({ ...order, serviceSessions: completedSessions }, activeSession)
     const orderId = order._id
 
+    const sessionIndex = Number(activeSession.index || 1)
+    const autoCompletedSessions = Array.isArray(order.autoCompletedSessions) ? order.autoCompletedSessions : []
+    const nextAutoCompletedSessions = isAuto ? Array.from(new Set([...autoCompletedSessions, sessionIndex])) : autoCompletedSessions
+
     if (!finalSession) {
       const dayUpdateData = {
         status: ORDER_STATUS.DAY_COMPLETED,
@@ -69,11 +73,15 @@ module.exports = function createService({
         activeSessionDate: '',
         currentSessionStartedAt: '',
         lastCompletedSessionIndex: activeSession.index,
+        isFinishOverdue: false,
         updatedAt: time
       }
-      if (isAuto) dayUpdateData.autoCompleted = true
+      if (isAuto) {
+        dayUpdateData.autoCompleted = true
+        dayUpdateData.autoCompletedSessions = nextAutoCompletedSessions
+      }
       await updateOrderWhenStatus(orderId, ORDER_STATUS.IN_SERVICE, dayUpdateData, '订单状态不可完成当天服务')
-      const dayCompletedOrder = { ...order, _id: orderId, status: ORDER_STATUS.DAY_COMPLETED, serviceSessions: completedSessions, autoCompleted: isAuto, updatedAt: time }
+      const dayCompletedOrder = { ...order, _id: orderId, status: ORDER_STATUS.DAY_COMPLETED, serviceSessions: completedSessions, autoCompletedSessions: nextAutoCompletedSessions, autoCompleted: isAuto, updatedAt: time }
       await appendOrderTimeline(orderId, isAuto ? 'system_auto_day_completed' : 'day_completed', isAuto ? `系统自动完成第${activeSession.index}天服务` : `第${activeSession.index}天服务已完成`, isAuto ? '检测到打卡凭证齐全且已超时，系统已自动完成今日服务。' : '', actor)
       await appendOrderClientMessage(dayCompletedOrder, {
         eventType: 'day_completed',
@@ -91,7 +99,7 @@ module.exports = function createService({
         })
       }
       await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成', tip: isAuto ? '今日服务打卡齐全，系统已确认完成' : '今日服务已完成' }, 'client')
-      return { id: orderId, status: ORDER_STATUS.DAY_COMPLETED, activeSessionIndex: 0, autoCompleted: isAuto }
+      return { id: orderId, status: ORDER_STATUS.DAY_COMPLETED, activeSessionIndex: 0, autoCompleted: isAuto, autoCompletedSessions: nextAutoCompletedSessions }
     }
 
     const updateData = {
@@ -101,10 +109,14 @@ module.exports = function createService({
       activeSessionDate: '',
       currentSessionStartedAt: '',
       lastCompletedSessionIndex: activeSession.index,
+      isFinishOverdue: false,
       completedAt: time,
       updatedAt: time
     }
-    if (isAuto) updateData.autoCompleted = true
+    if (isAuto) {
+      updateData.autoCompleted = true
+      updateData.autoCompletedSessions = nextAutoCompletedSessions
+    }
 
     await updateOrderWhenStatus(orderId, ORDER_STATUS.IN_SERVICE, updateData, '订单状态不可完成')
     const completedOrder = { ...order, _id: orderId, status: ORDER_STATUS.COMPLETED, serviceSessions: completedSessions, completedAt: time, updatedAt: time }

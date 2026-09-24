@@ -171,6 +171,7 @@ module.exports = function createHandler(context) {
       if (!orderPetIds.includes(petId)) throw new Error('该宠物不属于此订单')
       const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
       const pet = petRes && petRes.data
+      if (!pet || pet.deletedAt || (pet.openid && pet.openid !== openid)) throw new Error('宠物不存在或无权操作')
       let currentPhotos = []
       if (Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length) {
         currentPhotos = pet.beautyPhotos
@@ -190,6 +191,7 @@ module.exports = function createHandler(context) {
       const maxAllowed = Math.max(0, 9 - currentPhotos.length)
       if (maxAllowed <= 0) throw new Error('宠物美照已满9张，请先在每月1日删除后再导入')
       const additions = imported.filter((item) => item.fileId && !seen.has(item.fileId))
+      if (!additions.length) throw new Error('未找到可导入的新美照')
       const allowedAdditions = additions.slice(0, maxAllowed)
       for (const item of allowedAdditions) {
         if (item.fileId) {
@@ -210,7 +212,7 @@ module.exports = function createHandler(context) {
       const fileId = safeText(data.fileId).trim()
       const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
       const pet = petRes && petRes.data
-      if (!pet || pet.openid !== openid) throw new Error('宠物不存在')
+      if (!pet || pet.deletedAt || pet.openid !== openid) throw new Error('宠物不存在')
       const currentPhotos = Array.isArray(pet.beautyPhotos) ? pet.beautyPhotos : []
       const beautyPhotos = currentPhotos.filter((photo) => (photoId && photo.id !== photoId) || (fileId && photo.fileId !== fileId))
       if (beautyPhotos.length === currentPhotos.length) throw new Error('美照不存在')

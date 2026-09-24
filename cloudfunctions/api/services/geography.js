@@ -19,8 +19,10 @@ module.exports = function createService({
     const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
               Math.cos(radLat1) * Math.cos(radLat2) *
               Math.sin(dLng / 2) * Math.sin(dLng / 2)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-    return R * c
+    const safeA = Math.min(Math.max(a, 0), 1)
+    const c = 2 * Math.atan2(Math.sqrt(safeA), Math.sqrt(1 - safeA))
+    const dist = R * c
+    return Number.isFinite(dist) ? dist : null
   }
 
   function formatDistance(distanceKm) {

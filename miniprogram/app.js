@@ -1,5 +1,5 @@
 // app.js
-const { envList } = require('./envList')
+const { envList, getActiveEnvId } = require('./envList')
 const { getSavedThemeKey, applyTheme, getThemeState } = require('./utils/theme')
 const { getSavedFontKey, applyFont, getFontState } = require('./utils/font')
 const { copyText } = require('./utils/clipboard')
@@ -30,7 +30,7 @@ require('./utils/adminAccess').installAdminPageGuard()
 App({
   copyText,
   onLaunch() {
-    const env = envList[0] && envList[0].envId ? envList[0].envId : ''
+    const env = (typeof getActiveEnvId === 'function' ? getActiveEnvId() : '') || (envList[0] && envList[0].envId ? envList[0].envId : '')
 
     this.globalData = {
       env,

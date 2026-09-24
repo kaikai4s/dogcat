@@ -198,18 +198,67 @@
       </view>
     </view>
 
-    <view class="notice" wx:if="{{form.lockMethod === 'someone_home'}}">
-      <view class="strong">有人在家</view>
-      <view class="muted">宠托师到达后敲门即可，不需要提供密码或钥匙。</view>
+    <view class="notice notice-smartlock" wx:if="{{form.lockMethod === 'someone_home'}}">
+      <view class="smartlock-header">
+        <text class="remix-icon ri-home-heart-line smartlock-icon"></text>
+        <text class="strong">有人在家接待指引</text>
+      </view>
+      <view class="smartlock-steps">
+        <view class="smartlock-step-item">
+          <text class="step-badge">1</text>
+          <view class="step-text"><text class="strong">配合开门：</text>预约服务时段内请确保家中有人协助开门，宠托师到达后敲门即可，无需提供密码或钥匙。</view>
+        </view>
+        <view class="smartlock-step-item">
+          <text class="step-badge">2</text>
+          <view class="step-text"><text class="strong">宠物安抚：</text>若家中有大型犬或易激惹护卫宠物，请提前系好牵引绳或做好安抚配合，方便宠托师安全进门。</view>
+        </view>
+      </view>
     </view>
 
-    <view class="notice" wx:if="{{form.lockMethod === 'remote_unlock'}}">
-      <view class="strong">上门后远程开门</view>
-      <view class="muted">宠托师到达服务地点后可请求开门，你会收到微信提醒；电话催办由平台客服转接。</view>
+    <view class="notice notice-smartlock" wx:if="{{form.lockMethod === 'remote_unlock'}}">
+      <view class="smartlock-header">
+        <text class="remix-icon ri-cellphone-line smartlock-icon"></text>
+        <text class="strong">上门后远程开门使用指引</text>
+      </view>
+      <view class="smartlock-steps">
+        <view class="smartlock-step-item">
+          <text class="step-badge">1</text>
+          <view class="step-text"><text class="strong">门锁要求：</text>需家中门锁为<text class="highlight-text">联网智能门锁</text>（已配网关保持在线），且门锁手机 App 支持远程开锁功能。</view>
+        </view>
+        <view class="smartlock-step-item">
+          <text class="step-badge">2</text>
+          <view class="step-text"><text class="strong">微信提醒：</text>宠托师到达家门口后会在小程序中点击“请求开门”，系统会立即向您的微信推送服务开门提醒。</view>
+        </view>
+        <view class="smartlock-step-item">
+          <text class="step-badge">3</text>
+          <view class="step-text"><text class="strong">手机开锁：</text>收到提醒后，请打开您门锁对应的手机 App（如米家、鹿客、华为、德施曼、凯迪仕等）完成远程开锁；请确保服务时段内手机畅通、网关在线。</view>
+        </view>
+      </view>
     </view>
 
     <view class="lock-panel" wx:if="{{form.lockMethod === 'one_time_code'}}">
-      <input password placeholder="一次性开门密码（本订单专用）" value="{{form.doorLockCode}}" data-field="doorLockCode" bindinput="input" />
+      <view class="notice notice-smartlock">
+        <view class="smartlock-header">
+          <text class="remix-icon ri-shield-check-line smartlock-icon"></text>
+          <text class="strong">智能门锁一次性密码设置指引</text>
+        </view>
+        <view class="smartlock-steps">
+          <view class="smartlock-step-item">
+            <text class="step-badge">1</text>
+            <view class="step-text"><text class="strong">门锁要求：</text>需家中门锁为<text class="highlight-text">智能门锁</text>且支持在门锁手机 App 中设置“一次性临时密码”。普通机械锁请选择“钥匙”或“有人在家”。</view>
+          </view>
+          <view class="smartlock-step-item">
+            <text class="step-badge">2</text>
+            <view class="step-text"><text class="strong">生成密码：</text>请先打开您家智能锁对应的手机 App（如米家、鹿客、凯迪仕、华为智慧生活、德施曼、Aqara等），根据下方服务时间生成一次性临时有效密码。</view>
+          </view>
+          <view class="smartlock-step-item">
+            <text class="step-badge">3</text>
+            <view class="step-text"><text class="strong">填入生效：</text>将 App 生成的密码及有效时间填入下方。若为多天服务，建议每日分别生成专属临时密码（可在下单后于“订单详情”按天逐日更新），更享安全保障。</view>
+          </view>
+        </view>
+      </view>
+
+      <input password placeholder="智能门锁App生成的一次性密码（本单专用）" value="{{form.doorLockCode}}" data-field="doorLockCode" bindinput="input" />
       <view class="picker-grid">
         <picker mode="date" value="{{form.doorLockCodeStartDate}}" bindchange="chooseCodeStartDate"><view class="field">生效日期：{{form.doorLockCodeStartDate}}</view></picker>
         <picker mode="time" value="{{form.doorLockCodeStartClock}}" bindchange="chooseCodeStartClock"><view class="field">生效时间：{{form.doorLockCodeStartClock}}</view></picker>
@@ -226,12 +275,32 @@
     </view>
 
     <view class="lock-panel" wx:if="{{form.lockMethod === 'key'}}">
-      <input placeholder="钥匙放置位置（如门垫下、密码盒位置）" value="{{form.keyLocation}}" data-field="keyLocation" bindinput="input" />
-      <button class="ghost upload-btn" loading="{{uploadingKeyImage}}" disabled="{{uploadingKeyImage}}" bindtap="chooseKeyImage">上传钥匙位置图片</button>
+      <view class="notice notice-smartlock">
+        <view class="smartlock-header">
+          <text class="remix-icon ri-key-2-line smartlock-icon"></text>
+          <text class="strong">钥匙入户与存放安全指引</text>
+        </view>
+        <view class="smartlock-steps">
+          <view class="smartlock-step-item">
+            <text class="step-badge">1</text>
+            <view class="step-text"><text class="strong">安全存放：</text>推荐使用<text class="highlight-text">门边机械密码盒/钥匙箱</text>（挂于门把手或隐蔽处更安全防丢），并在下方详细说明存放位置及开盒密码；也可放置于地垫、消防栓等隐蔽处。</view>
+          </view>
+          <view class="smartlock-step-item">
+            <text class="step-badge">2</text>
+            <view class="step-text"><text class="strong">拍照存证：</text>请点击下方按钮上传存放位置清晰照片（建议包含周边参照物），便于宠托师准确寻匙，避免在楼道过多走动。</view>
+          </view>
+          <view class="smartlock-step-item">
+            <text class="step-badge">3</text>
+            <view class="step-text"><text class="strong">归还闭环：</text>服务完成离开前，宠托师必须将钥匙<text class="highlight-text">原样放回原位置并强制拍照打卡</text>，平台全程记录存证，确保钥匙安全归位。</view>
+          </view>
+        </view>
+      </view>
+
+      <input placeholder="钥匙存放详细位置（若为密码盒请注明开盒密码）" value="{{form.keyLocation}}" data-field="keyLocation" bindinput="input" />
+      <button class="ghost upload-btn" loading="{{uploadingKeyImage}}" disabled="{{uploadingKeyImage}}" bindtap="chooseKeyImage"><text class="remix-icon ri-camera-line"></text> 上传钥匙位置参考图片</button>
       <view class="image-list" wx:if="{{form.keyImageFileIds.length}}">
         <view class="image-chip" wx:for="{{form.keyImageFileIds}}" wx:key="*this" data-index="{{index}}" bindtap="removeKeyImage">图片{{index + 1}} · 点击移除</view>
       </view>
-      <view class="notice"><view class="muted">服务完成前，宠托师必须打卡确认已把钥匙放回原位置。</view></view>
     </view>
 
     <textarea placeholder="入户备注（如敲门说明、安防提示、注意事项）" value="{{form.entryNotes}}" data-field="entryNotes" bindinput="input" />
@@ -252,10 +321,29 @@
         <view class="service-desc">每天同一时间上门服务</view>
       </view>
     </view>
-    <view class="picker-grid">
-      <picker mode="date" value="{{form.startDate}}" start="{{minDate}}" bindchange="chooseDate"><view class="field">开始日期：{{form.startDate}}</view></picker>
-      <picker mode="date" wx:if="{{form.orderType === 'multi_day'}}" value="{{form.endDate}}" start="{{form.startDate}}" bindchange="chooseEndDate"><view class="field">结束日期：{{form.endDate}}</view></picker>
-      <picker mode="time" value="{{form.startClock}}" start="{{minClock}}" bindchange="chooseClock"><view class="field">开始：{{form.startClock}}</view></picker>
+    <view class="service-time-card interactive" bindtap="openCalendarModal">
+      <view class="time-card-icon-col">
+        <view class="remix-icon ri-calendar-schedule-line time-card-icon"></view>
+      </view>
+      <view class="time-card-main-col">
+        <view class="time-card-row">
+          <text class="time-card-label">服务日期：</text>
+          <text class="time-card-value">{{form.orderType === 'multi_day' ? (form.startDate + ' 至 ' + form.endDate) : form.startDate}}</text>
+          <text class="surcharge-pill" wx:if="{{currentDateSurchargeTotal > 0}}">🔥 特殊日期加价 +¥{{currentDateSurchargeTotal}}</text>
+        </view>
+        <view class="time-card-row">
+          <text class="time-card-label">开始时间：</text>
+          <text class="time-card-value">{{form.startClock}} 开始</text>
+          <text class="surcharge-pill slot-pill" wx:if="{{currentTimeSlotSurcharge > 0}}">⏰ 特殊时段加价 +¥{{currentTimeSlotSurcharge}}</text>
+        </view>
+        <view class="time-card-row time-warning-row" wx:if="{{sitterScheduleWarningText}}">
+          <text class="time-warning-pill">⚠️ {{sitterScheduleWarningText}}</text>
+        </view>
+      </view>
+      <view class="time-card-arrow-col">
+        <text class="time-change-btn">修改</text>
+        <view class="menu-arrow remix-icon ri-arrow-right-s-line"></view>
+      </view>
     </view>
     <view class="pet-duration-panel" wx:if="{{hasTimedServices}}">
       <view class="strong">逐宠物服务时长 · 每日配置</view>
@@ -306,14 +394,6 @@
     <view><view class="strong">下单后你能看到什么？</view><view class="muted">服务轨迹、关键打卡、服务报告都会在订单详情里持续更新。</view></view>
   </view>
 
-  <view class="booking-side-card trust-note">
-    <view class="remix-icon ri-file-shield-2-line side-icon"></view>
-    <view>
-      <view class="strong">下单协议提醒</view>
-      <view class="muted">创建订单即表示你已阅读并同意 <text data-type="user_service" bindtap="openAgreement">《用户服务协议》</text>、<text data-type="trade_rules" bindtap="openAgreement">《平台交易规则》</text>、<text data-type="refund_cancel" bindtap="openAgreement">《退款/取消订单规则》</text>。</view>
-    </view>
-  </view>
-
   <view class="quote-card" wx:if="{{quote}}">
     <view class="quote-head">
       <view><view class="muted">预计支付</view><view class="price">¥{{quote.payAmount}}</view></view>
@@ -338,12 +418,144 @@
         <view class="muted" wx:if="{{quote.sessionCount > 1}}">以下宠物时长每天相同，费用按{{quote.sessionCount}}次累计。</view>
         <view class="duration-task" wx:for="{{quote.petServiceDurations}}" wx:key="index">{{item.petName}} · {{item.serviceLabel}} · {{item.durationMinutes}}分钟</view>
       </view>
+      <block wx:for="{{quote.priceItems}}" wx:key="key">
+        <view class="info-row" wx:if="{{item.type === 'date_surcharge' || item.type === 'time_surcharge'}}">
+          <view class="label" style="color: #ea580c; font-weight: 600;">
+            <text class="remix-icon {{item.type === 'date_surcharge' ? 'ri-calendar-event-line' : 'ri-time-line'}}" style="margin-right: 6rpx;"></text>
+            <text>{{item.label}}</text>
+          </view>
+          <view class="value" style="color: #ea580c; font-weight: 700;">+¥{{item.price}}</view>
+        </view>
+      </block>
       <view class="info-row" wx:if="{{quote.discountAmount}}"><view class="label">优惠券</view><view class="value">-¥{{quote.discountAmount}}</view></view>
+    </view>
+  </view>
+
+  <view class="booking-side-card trust-note agreement-confirm-card">
+    <view class="agreement-check-cell" bindtap="toggleAgreement">
+      <checkbox checked="{{agreeAgreement}}" color="#ff7a45" class="agreement-checkbox" />
+    </view>
+    <view class="agreement-main-cell">
+      <view class="agreement-header-row" bindtap="toggleAgreement">
+        <text class="remix-icon ri-file-shield-2-line agreement-shield-icon"></text>
+        <text class="strong">服务保障与取消规则</text>
+      </view>
+      <view class="muted agreement-desc-row">
+        <text bindtap="toggleAgreement">我已阅读并同意 </text>
+        <text class="agreement-link-text" data-type="care_guarantee" catchtap="openAgreement">《喂养服务保障协议》</text>
+        <text class="agreement-sep">、</text>
+        <text class="agreement-link-text" data-type="refund_cancel" catchtap="openAgreement">《退款/取消订单规则》</text>
+        <text class="agreement-sep">、</text>
+        <text class="agreement-link-text" data-type="user_service" catchtap="openAgreement">《用户服务协议》</text>
+        <text class="agreement-sep">与</text>
+        <text class="agreement-link-text" data-type="trade_rules" catchtap="openAgreement">《平台交易规则》</text>
+      </view>
     </view>
   </view>
 
   <view class="booking-submit-bar">
     <button class="ghost quote-btn" bindtap="quoteOrder">试算价格</button>
     <button class="primary create-btn" loading="{{creating}}" disabled="{{creating}}" bindtap="create">{{creating ? '创建中...' : '创建订单'}}</button>
+  </view>
+
+  <!-- 预约日历与时间段弹框 -->
+  <view class="modal-backdrop calendar-modal-backdrop" wx:if="{{showCalendarModal}}" bindtap="closeCalendarModal" catchtouchmove="noop">
+    <view class="calendar-modal-sheet" catchtap="noop">
+      <view class="calendar-modal-head">
+        <view class="modal-sheet-title">选择预约日期与开始时间</view>
+        <view class="remix-icon ri-close-line close-sheet-icon" bindtap="closeCalendarModal"></view>
+      </view>
+
+      <scroll-view scroll-y class="calendar-sheet-body">
+        <!-- 1. 服务频次模式 -->
+        <view class="sheet-order-type-tabs">
+          <view class="sheet-tab {{calendarTempOrderType === 'single' ? 'active' : ''}}" data-type="single" bindtap="changeCalendarOrderType">
+            <view class="strong">单次服务</view>
+            <view class="muted">预约当天一次</view>
+          </view>
+          <view class="sheet-tab {{calendarTempOrderType === 'multi_day' ? 'active' : ''}}" data-type="multi_day" bindtap="changeCalendarOrderType">
+            <view class="strong">连续多天</view>
+            <view class="muted">连续日期每天一次</view>
+          </view>
+        </view>
+
+        <!-- 2. 日历视图 -->
+        <view class="calendar-panel">
+          <view class="calendar-month-bar">
+            <view class="month-nav-btn remix-icon ri-arrow-left-s-line {{canPrevMonth ? '' : 'disabled'}}" bindtap="prevCalendarMonth"></view>
+            <view class="current-month-label">{{calendarYear}}年{{calendarMonth}}月</view>
+            <view class="month-nav-btn remix-icon ri-arrow-right-s-line {{canNextMonth ? '' : 'disabled'}}" bindtap="nextCalendarMonth"></view>
+          </view>
+
+          <view class="calendar-weekdays">
+            <text class="weekday-col" wx:for="{{['日', '一', '二', '三', '四', '五', '六']}}" wx:key="*this">{{item}}</text>
+          </view>
+
+          <view class="calendar-days-grid">
+            <view class="calendar-day-cell calendar-empty-cell" wx:for="{{calendarEmptyDays}}" wx:key="*this"></view>
+            <view
+              wx:for="{{calendarDays}}"
+              wx:key="date"
+              class="calendar-day-cell {{item.isPast ? 'past' : ''}} {{item.isSitterUnavailable ? 'sitter-disabled' : ''}} {{item.isSelected ? 'selected' : ''}} {{item.isInRange ? 'in-range' : ''}} {{item.isRangeStart ? 'range-start' : ''}} {{item.isRangeEnd ? 'range-end' : ''}}"
+              data-date="{{item.date}}"
+              data-disabled="{{item.disabled}}"
+              data-reason="{{item.sitterUnavailableReason}}"
+              bindtap="onTapCalendarDay"
+            >
+              <view class="day-cell-inner">
+                <view class="day-number">{{item.day}}</view>
+                <view class="day-sub-row">
+                  <text class="day-rest-badge" wx:if="{{item.isSitterUnavailable}}">休</text>
+                  <text class="day-today" wx:elif="{{item.isToday && item.surcharge <= 0}}">今天</text>
+                  <text class="day-surcharge-badge" wx:elif="{{item.surcharge > 0}}">+¥{{item.surcharge}}</text>
+                </view>
+                <view class="day-today-dot" wx:if="{{item.isToday && item.surcharge > 0 && !item.isSitterUnavailable}}"></view>
+              </view>
+            </view>
+          </view>
+          <view class="calendar-hint-bar" wx:if="{{calendarTempOrderType === 'multi_day'}}">
+            <text wx:if="{{!calendarTempEndDate}}">请在日历上点击结束日期</text>
+            <text wx:else>已选区间：{{calendarTempStartDate}} 至 {{calendarTempEndDate}}</text>
+          </view>
+        </view>
+
+        <!-- 3. 开始时间网格 -->
+        <view class="time-slot-panel">
+          <view class="time-slot-head">
+            <view>
+              <view class="strong">选择上门开始时间</view>
+              <view class="sitter-schedule-tip" wx:if="{{currentSitterScheduleTip}}">{{currentSitterScheduleTip}}</view>
+            </view>
+            <view class="muted">建议预留30分钟缓冲时间</view>
+          </view>
+          <view class="time-slots-grid">
+            <view
+              wx:for="{{timeSlotOptions}}"
+              wx:key="clock"
+              class="time-slot-chip {{item.disabled ? 'disabled' : ''}} {{item.outsideSitterSchedule ? 'outside-schedule' : ''}} {{item.clock === calendarTempStartClock ? 'selected' : ''}} {{item.surcharge > 0 ? 'has-surcharge' : ''}}"
+              data-clock="{{item.clock}}"
+              data-disabled="{{item.disabled}}"
+              data-disabled-reason="{{item.disabledReason}}"
+              data-sitter-schedule-text="{{item.sitterScheduleText}}"
+              bindtap="onTapTimeSlot"
+            >
+              <view class="clock-label">{{item.clock}}</view>
+              <view class="slot-surcharge-tag" wx:if="{{item.surcharge > 0}}">+¥{{item.surcharge}}</view>
+              <view class="slot-disabled-tag" wx:elif="{{item.outsideSitterSchedule}}">不可约</view>
+              <view class="slot-disabled-tag" wx:elif="{{item.busyConflict}}">已约满</view>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+
+      <!-- 4. 底部确定栏 -->
+      <view class="calendar-sheet-foot">
+        <view class="sheet-summary">
+          <view class="sheet-date-text">已选：{{calendarSummaryText}}</view>
+          <view class="sheet-surcharge-text" wx:if="{{calendarTempSurchargeTotal > 0}}">包含特殊日期/时段加价共 +¥{{calendarTempSurchargeTotal}}</view>
+        </view>
+        <button class="primary confirm-sheet-btn" bindtap="confirmCalendarSelection">确定选择</button>
+      </view>
+    </view>
   </view>
 </view>

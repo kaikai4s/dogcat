@@ -2,8 +2,15 @@ module.exports = function createHandler(context) {
   const {
     collections,
     db,
+<<<<<<< HEAD
     formatDateTime,
+=======
+    defaultServiceCheckinRules,
+    defaultServicePrices,
+>>>>>>> b1578c0487c548b4437f40cc321a0fe6a7d4fd68
     getUser,
+    normalizeServiceCheckinRule,
+    normalizeServicePrice,
     now,
     requireAdmin,
     requiredCheckins,
@@ -29,6 +36,186 @@ module.exports = function createHandler(context) {
       if (await hasActiveAdmin()) return requireAdmin(openid)
       assertInitAdminSecret()
       return null
+    }
+
+    if (action === 'setupDatabase' || action === 'initAllCollections') {
+      const createdCollections = []
+      const existingCollections = []
+      const errors = []
+
+      // 1. 批量创建全量 73 个集合
+      for (const colName of collections) {
+        try {
+          if (typeof db.createCollection === 'function') {
+            await db.createCollection(colName)
+            createdCollections.push(colName)
+          } else {
+            await db.collection(colName).limit(1).get().catch(() => null)
+            existingCollections.push(colName)
+          }
+        } catch (err) {
+          const msg = String(err.message || err.errMsg || err)
+          if (msg.includes('already exists') || msg.includes('exist') || msg.includes('已存在')) {
+            existingCollections.push(colName)
+          } else {
+            try {
+              await db.collection(colName).limit(1).get()
+              existingCollections.push(colName)
+            } catch (probeErr) {
+              errors.push({ collection: colName, error: msg })
+            }
+          }
+        }
+      }
+
+      // 2. 顺带自动创建全量核心业务索引
+      const REQUIRED_INDEXES = [
+        { collection: 'orders', name: 'idx_client_orders', keys: { clientOpenid: 1, createdAt: -1 }, unique: false },
+        { collection: 'orders', name: 'idx_staff_orders', keys: { staffOpenid: 1, status: 1 }, unique: false },
+        { collection: 'orders', name: 'idx_order_no', keys: { orderNo: 1 }, unique: true },
+        { collection: 'orders', name: 'idx_order_status', keys: { status: 1 }, unique: false },
+        { collection: 'mall_orders', name: 'idx_mall_client_orders', keys: { clientOpenid: 1, createdAt: -1 }, unique: false },
+        { collection: 'mall_orders', name: 'idx_mall_order_no', keys: { orderNo: 1 }, unique: true },
+        { collection: 'users', name: 'idx_user_openid', keys: { openid: 1 }, unique: true },
+        { collection: 'users', name: 'idx_user_phone', keys: { phone: 1 }, unique: false },
+        { collection: 'staff_profiles', name: 'idx_staff_openid', keys: { openid: 1 }, unique: true },
+        { collection: 'staff_profiles', name: 'idx_staff_audit_status', keys: { auditStatus: 1 }, unique: false },
+        { collection: 'user_coupons', name: 'idx_user_coupons', keys: { openid: 1, status: 1 }, unique: false },
+        { collection: 'payments', name: 'idx_payment_no', keys: { paymentNo: 1 }, unique: true },
+        { collection: 'payments', name: 'idx_payment_order_id', keys: { orderId: 1 }, unique: false },
+        { collection: 'staff_earnings', name: 'idx_staff_earnings', keys: { staffOpenid: 1, status: 1 }, unique: false },
+        { collection: 'staff_schedule_exceptions', name: 'idx_staff_schedule', keys: { staffOpenid: 1, dateKey: 1 }, unique: false },
+        { collection: 'pets', name: 'idx_client_pets', keys: { openid: 1 }, unique: false },
+        { collection: 'refunds', name: 'idx_refund_order_id', keys: { orderId: 1 }, unique: false },
+        { collection: 'refunds', name: 'idx_refund_no', keys: { refundNo: 1 }, unique: false },
+        { collection: 'order_incidents', name: 'idx_incident_order_id', keys: { orderId: 1 }, unique: false },
+        { collection: 'order_messages', name: 'idx_order_messages', keys: { conversationId: 1, createdAt: -1 }, unique: false },
+        { collection: 'point_logs', name: 'idx_point_logs', keys: { openid: 1, createdAt: -1 }, unique: false },
+        { collection: 'withdraw_requests', name: 'idx_withdraw_staff', keys: { staffOpenid: 1, createdAt: -1 }, unique: false }
+      ]
+
+      const indexResults = []
+      let indexesCreated = 0
+      for (const item of REQUIRED_INDEXES) {
+        try {
+          const col = db.collection(item.collection)
+          if (typeof col.createIndex === 'function') {
+            await col.createIndex({
+              name: item.name,
+              keys: item.keys,
+              unique: item.unique === true
+            })
+            indexesCreated++
+            indexResults.push({ collection: item.collection, name: item.name, status: 'created' })
+          } else {
+            indexResults.push({ collection: item.collection, name: item.name, status: 'skipped_mock_env' })
+          }
+        } catch (idxErr) {
+          const msg = String(idxErr.message || idxErr.errMsg || idxErr)
+          if (msg.includes('already exists') || msg.includes('exist') || msg.includes('已存在')) {
+            indexResults.push({ collection: item.collection, name: item.name, status: 'already_exists' })
+          } else {
+            try {
+              const col = db.collection(item.collection)
+              if (typeof col.createIndex === 'function') {
+                const legacyKeys = Object.entries(item.keys).map(([name, dir]) => ({ name, direction: dir === -1 || dir === 'desc' ? 'desc' : 'asc' }))
+                await col.createIndex({ keys: legacyKeys, name: item.name, unique: item.unique === true })
+                indexesCreated++
+                indexResults.push({ collection: item.collection, name: item.name, status: 'created_legacy' })
+                continue
+              }
+            } catch (legacyErr) {
+              // ignore
+            }
+            indexResults.push({ collection: item.collection, name: item.name, status: 'failed', error: msg })
+          }
+        }
+      }
+
+      // 2. 初始化核心服务定价 (service_prices)
+      const time = now()
+      let pricesInitialized = 0
+      const pricesToSeed = Array.isArray(defaultServicePrices) ? defaultServicePrices : (context.defaultServicePrices || [])
+      for (const preset of pricesToSeed) {
+        const existing = await db.collection('service_prices').where({ key: preset.key }).limit(1).get().catch(() => ({ data: [] }))
+        if (!existing.data || existing.data.length === 0) {
+          const payload = typeof normalizeServicePrice === 'function' ? normalizeServicePrice(preset) : preset
+          await db.collection('service_prices').add({ data: { ...payload, createdAt: time, updatedAt: time } })
+          pricesInitialized++
+        }
+      }
+
+      // 3. 初始化服务打卡规则 (service_checkin_rules)
+      let checkinRulesInitialized = 0
+      const rulesToSeed = Array.isArray(defaultServiceCheckinRules) ? defaultServiceCheckinRules : (context.defaultServiceCheckinRules || [])
+      for (const rule of rulesToSeed) {
+        const existing = await db.collection('service_checkin_rules').where({ serviceType: rule.serviceType, eventType: rule.eventType }).limit(1).get().catch(() => ({ data: [] }))
+        if (!existing.data || existing.data.length === 0) {
+          const payload = typeof normalizeServiceCheckinRule === 'function' ? normalizeServiceCheckinRule(rule) : rule
+          await db.collection('service_checkin_rules').add({ data: { ...payload, createdAt: time, updatedAt: time } })
+          checkinRulesInitialized++
+        }
+      }
+
+      // 4. 初始化全局系统配置
+      const existingSettings = await db.collection('system_settings').doc('global').get().catch(() => ({ data: null }))
+      let settingsInitialized = false
+      if (!existingSettings || !existingSettings.data) {
+        await db.collection('system_settings').doc('global').set({
+          data: {
+            payment: { mode: 'wechat', refundEnabled: true },
+            settlement: { minWithdrawAmount: 10 },
+            enableTestAddressMode: false,
+            enablePetBreedAi: true,
+            createdAt: time,
+            updatedAt: time
+          }
+        }).catch(() => null)
+        settingsInitialized = true
+      }
+
+      // 5. 若指定了首个管理员 openid 或当前执行者有 openid 且库中无管理员，则自动绑定首位超级管理员
+      let initialAdminBound = null
+      const targetAdminOpenid = safeText(data.adminOpenid || openid).trim()
+      const hasAdmin = await hasActiveAdmin()
+      if (!hasAdmin && targetAdminOpenid) {
+        const uRes = await db.collection('users').where({ openid: targetAdminOpenid }).limit(1).get().catch(() => ({ data: [] }))
+        const u = uRes.data && uRes.data[0]
+        if (u) {
+          const roles = Array.from(new Set([...(Array.isArray(u.roles) ? u.roles : ['client']), 'admin']))
+          await db.collection('users').doc(u._id).update({ data: { roles, activeRole: 'admin', status: 'active', updatedAt: time } })
+          initialAdminBound = targetAdminOpenid
+        } else {
+          await db.collection('users').add({
+            data: {
+              openid: targetAdminOpenid,
+              roles: ['admin', 'client'],
+              activeRole: 'admin',
+              status: 'active',
+              createdAt: time,
+              updatedAt: time
+            }
+          })
+          initialAdminBound = targetAdminOpenid
+        }
+      }
+
+      return {
+        success: true,
+        message: '正式环境数据库与业务索引初始化成功',
+        totalCollections: collections.length,
+        createdCount: createdCollections.length,
+        existingCount: existingCollections.length,
+        totalIndexesConfigured: REQUIRED_INDEXES.length,
+        indexesCreated,
+        indexResults,
+        errors,
+        pricesInitialized,
+        checkinRulesInitialized,
+        settingsInitialized,
+        initialAdminBound,
+        securityRuleNotice: '重要提示：所有集合数据权限均需在云开发控制台保持为【所有用户不可读写】以确保安全'
+      }
     }
 
     if (action === 'checkCollections') {

@@ -7,6 +7,7 @@ module.exports = function createService({
   evaluateCoupon,
   getAvailableUserCoupons,
   getBusinessServiceTypes,
+  getSystemSettings,
   listServicePrices,
   normalizePetIds,
   normalizeServiceTypes,
@@ -59,6 +60,16 @@ module.exports = function createService({
     return `${value}分钟`
   }
 
+  function toCents(yuan) {
+    const val = Number(yuan || 0)
+    return Number.isFinite(val) ? Math.round(val * 100) : 0
+  }
+
+  function toYuan(cents) {
+    const val = Number(cents || 0)
+    return Number.isFinite(val) ? Math.round(val) / 100 : 0
+  }
+
   function normalizePetServiceDurations(data = {}, pets = [], serviceTypes = [], catalogMap = {}, isInternPrice = false) {
     const selectedTimedKeys = PET_TIMED_SERVICE_KEYS.filter((key) => serviceTypes.includes(key))
     const raw = Array.isArray(data.petServiceDurations) ? data.petServiceDurations : []
@@ -99,7 +110,9 @@ module.exports = function createService({
         const item = catalogMap[serviceKey] || {}
         const durationMinutes = configured[key] || legacyDefaultDuration
         const extraUnits = Math.max(durationMinutes / 30 - 1, 0)
-        const unitPrice = isInternPrice ? Number(item.internExtraHalfHourFee || 0) : Number(item.extraHalfHourFee || 0)
+        const rawUnitPrice = isInternPrice ? Number(item.internExtraHalfHourFee || 0) : Number(item.extraHalfHourFee || 0)
+        const unitPriceCents = Math.max(toCents(rawUnitPrice), 0)
+        const extraAmountCents = extraUnits * unitPriceCents
         durations.push({
           serviceKey,
           serviceLabel: item.label || (serviceKey === 'walk' ? '遛狗' : '陪伴玩耍'),
@@ -108,8 +121,8 @@ module.exports = function createService({
           durationMinutes,
           durationText: formatMinutesText(durationMinutes),
           extraUnits,
-          unitPrice: Math.max(Number.isFinite(unitPrice) ? unitPrice : 0, 0),
-          extraAmount: Math.round(extraUnits * Math.max(Number.isFinite(unitPrice) ? unitPrice : 0, 0) * 100) / 100
+          unitPrice: toYuan(unitPriceCents),
+          extraAmount: toYuan(extraAmountCents)
         })
       })
     })
@@ -140,8 +153,8 @@ module.exports = function createService({
       if (!item) throw new Error('服务项目不可用')
       const unitBasePrice = isInternPrice ? item.internPrice : item.price
       const basePrice = key === 'walk' ? getWalkPrice(unitBasePrice, weight) : unitBasePrice
-      const price = Math.round(basePrice * 100) / 100
-      return { key, label: item.label, price }
+      const priceCents = toCents(basePrice)
+      return { key, label: item.label, price: toYuan(priceCents) }
     })
     const unitExtraPetItems = getBusinessServiceTypes(serviceTypes).map((key) => {
       const item = catalogMap[key]
@@ -150,14 +163,19 @@ module.exports = function createService({
       if (item.extraPetRule === 'none' || !Number(extraPetFee || 0)) return null
       const extraCount = item.extraPetRule === 'dog' ? Math.max(dogCount - 1, 0) : Math.max(petCount - 1, 0)
       if (!extraCount) return null
+<<<<<<< HEAD
       const price = Math.round(extraCount * Number(extraPetFee || 0) * 100) / 100
+=======
+      const extraFeeCents = toCents(extraPetFee)
+      const priceCents = extraCount * extraFeeCents
+>>>>>>> b1578c0487c548b4437f40cc321a0fe6a7d4fd68
       return {
         key: `${key}_extra_pet`,
         serviceKey: key,
         label: `${item.label} · 额外${item.extraPetRule === 'dog' ? '狗狗' : '宠物'} x${extraCount}`,
-        price,
+        price: toYuan(priceCents),
         quantity: extraCount,
-        unitPrice: Number(extraPetFee || 0),
+        unitPrice: toYuan(extraFeeCents),
         type: 'extra_pet_fee',
         extraPetRule: item.extraPetRule
       }
@@ -177,10 +195,99 @@ module.exports = function createService({
         type: 'pet_time_extra_fee'
       }))
     const unitPriceItems = [...unitBasePriceItems, ...unitExtraPetItems, ...unitTimedExtraItems]
-    const priceItems = sessionCount > 1
-      ? unitPriceItems.map((item) => ({ ...item, unitPrice: item.price, price: Math.round(item.price * sessionCount * 100) / 100, label: `${item.label} × ${sessionCount}次` }))
+    const basePriceItems = sessionCount > 1
+      ? unitPriceItems.map((item) => {
+          const unitCents = toCents(item.price)
+          const totalCents = unitCents * sessionCount
+          return {
+            ...item,
+            unitPrice: item.price,
+            price: toYuan(totalCents),
+            label: `${item.label} × ${sessionCount}次`
+          }
+        })
       : unitPriceItems
-    const amount = Math.round(priceItems.reduce((sum, item) => sum + Math.round(item.price * 100), 0)) / 100
+
+    let settings = null
+    try {
+      if (typeof getSystemSettings === 'function') {
+        settings = await getSystemSettings()
+      }
+    } catch (e) {
+      settings = null
+    }
+
+    const surchargeConfig = (settings && settings.pricingSurcharges) || {}
+    const surchargeEnabled = surchargeConfig.enabled !== false
+    const dateSurchargeRules = surchargeEnabled && Array.isArray(surchargeConfig.dateSurcharges) ? surchargeConfig.dateSurcharges.filter((r) => r && r.enabled !== false && Number(r.surcharge) > 0) : []
+    const timeSlotSurchargeRules = surchargeEnabled && Array.isArray(surchargeConfig.timeSlotSurcharges) ? surchargeConfig.timeSlotSurcharges.filter((r) => r && r.enabled !== false && Number(r.surcharge) > 0) : []
+
+    const surchargePriceItems = []
+    if (surchargeEnabled && sessions && sessions.length && data.startTime) {
+      const dateRuleMatches = {}
+      sessions.forEach((session) => {
+        const sessionDate = session.date || (session.startTime ? String(session.startTime).slice(0, 10) : '')
+        if (!sessionDate) return
+        const matched = dateSurchargeRules.find((rule) => rule.date === sessionDate)
+        if (matched) {
+          const ruleKey = matched.id || matched.date
+          if (!dateRuleMatches[ruleKey]) {
+            dateRuleMatches[ruleKey] = { rule: matched, dates: [], count: 0 }
+          }
+          dateRuleMatches[ruleKey].dates.push(sessionDate)
+          dateRuleMatches[ruleKey].count += 1
+        }
+      })
+      Object.values(dateRuleMatches).forEach(({ rule, dates, count }) => {
+        const unitCents = toCents(rule.surcharge)
+        const totalCents = unitCents * count
+        surchargePriceItems.push({
+          key: `date_surcharge_${rule.id || rule.date}`,
+          label: count > 1 ? `特殊日期加价 · ${rule.name} (${count}天)` : `特殊日期加价 · ${rule.name} (${dates[0]})`,
+          price: toYuan(totalCents),
+          unitPrice: toYuan(unitCents),
+          quantity: count,
+          type: 'date_surcharge',
+          dateRule: rule,
+          dates
+        })
+      })
+
+      const timeSlotRuleMatches = {}
+      sessions.forEach((session) => {
+        const startClock = session.startTime && session.startTime.length >= 16 ? session.startTime.slice(11, 16) : (data.startClock || '')
+        if (!startClock) return
+        const matched = timeSlotSurchargeRules.find((rule) => {
+          const s = String(rule.startTime || '').trim()
+          const e = String(rule.endTime || '').trim()
+          return s && e && startClock >= s && startClock <= e
+        })
+        if (matched) {
+          const ruleKey = matched.id || `${matched.startTime}_${matched.endTime}`
+          if (!timeSlotRuleMatches[ruleKey]) {
+            timeSlotRuleMatches[ruleKey] = { rule: matched, count: 0 }
+          }
+          timeSlotRuleMatches[ruleKey].count += 1
+        }
+      })
+      Object.values(timeSlotRuleMatches).forEach(({ rule, count }) => {
+        const unitCents = toCents(rule.surcharge)
+        const totalCents = unitCents * count
+        surchargePriceItems.push({
+          key: `time_surcharge_${rule.id || rule.startTime}`,
+          label: count > 1 ? `特殊时段加价 · ${rule.name} (${rule.startTime}-${rule.endTime} × ${count}次)` : `特殊时段加价 · ${rule.name} (${rule.startTime}-${rule.endTime})`,
+          price: toYuan(totalCents),
+          unitPrice: toYuan(unitCents),
+          quantity: count,
+          type: 'time_surcharge',
+          timeRule: rule
+        })
+      })
+    }
+
+    const priceItems = [...basePriceItems, ...surchargePriceItems]
+    const totalAmountCents = priceItems.reduce((sumCents, item) => sumCents + toCents(item.price), 0)
+    const amount = toYuan(totalAmountCents)
     const serviceLabels = unitBasePriceItems.map((item) => item.label)
     const businessServiceTypes = getBusinessServiceTypes(serviceTypes)
     const basePricing = {
@@ -200,7 +307,8 @@ module.exports = function createService({
       sessions,
       orderType: sessionCount > 1 ? 'multi_day' : 'single',
       priceItems,
-      priceSnapshot: { services: priceItems, unitServices: unitPriceItems, extraPetItems: unitExtraPetItems, timedExtraItems: unitTimedExtraItems, petServiceDurations: petDurationResult.durations, durationMinutes, sessionCount, sessions, weight, petCount, dogCount, staffPriceLevel, staffLevelText: isInternPrice ? '实习宠托师' : '认证宠托师', originalAmount: amount, discountAmount: 0, payAmount: amount }
+      surchargeItems: surchargePriceItems,
+      priceSnapshot: { services: priceItems, unitServices: unitPriceItems, extraPetItems: unitExtraPetItems, timedExtraItems: unitTimedExtraItems, surchargeItems: surchargePriceItems, petServiceDurations: petDurationResult.durations, durationMinutes, sessionCount, sessions, weight, petCount, dogCount, staffPriceLevel, staffLevelText: isInternPrice ? '实习宠托师' : '认证宠托师', originalAmount: amount, discountAmount: 0, payAmount: amount }
     }
     const openid = options.openid || ''
     if (!openid) return basePricing
