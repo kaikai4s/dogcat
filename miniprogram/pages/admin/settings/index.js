@@ -283,6 +283,30 @@ function normalizeStaffTrainingConfig(training = {}) {
   }
 }
 
+function normalizePricingSurcharges(config = {}) {
+  const source = config || {}
+  const dateSurcharges = Array.isArray(source.dateSurcharges) ? source.dateSurcharges : []
+  const timeSlotSurcharges = Array.isArray(source.timeSlotSurcharges) ? source.timeSlotSurcharges : []
+  return {
+    enabled: source.enabled !== false,
+    dateSurcharges: dateSurcharges.map((d, i) => ({
+      id: d.id || `ds_${Date.now()}_${i}`,
+      date: String(d.date || '').trim(),
+      name: String(d.name || d.tag || '特殊日期加价').trim(),
+      surcharge: Number(d.surcharge || 0),
+      enabled: d.enabled !== false
+    })).filter((d) => d.date),
+    timeSlotSurcharges: timeSlotSurcharges.map((s, i) => ({
+      id: s.id || `ts_${Date.now()}_${i}`,
+      startTime: String(s.startTime || '').trim(),
+      endTime: String(s.endTime || '').trim(),
+      name: String(s.name || s.tag || '特殊时段加价').trim(),
+      surcharge: Number(s.surcharge || 0),
+      enabled: s.enabled !== false
+    })).filter((s) => s.startTime && s.endTime)
+  }
+}
+
 function normalizeCarouselConfig(carousel = {}) {
   const source = carousel || {}
   const rotateIntervalMs = Number(source.rotateIntervalMs || 5000)
@@ -374,6 +398,9 @@ function buildSettingSummary(settings = {}) {
     carousel: `${carousel.enabled ? '轮播已启用' : '轮播已关闭'} · ${enabledCarouselCount}/${carouselItems.length} 个素材启用`,
     homePage: `${enabledModuleCount}/${homeModuleOptions.length} 个模块启用 · ${homePage.ctaTitle || '未配置标题'}`,
     staffTraining: `及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题 · ${enabledVideoCount}/${videos.length} 视频 · 审核微信: ${(staffTraining.videoAuditGuide && staffTraining.videoAuditGuide.wechatId) || '未配置'}`,
+    pricingSurcharges: (settings.pricingSurcharges && settings.pricingSurcharges.enabled !== false)
+      ? `${((settings.pricingSurcharges && settings.pricingSurcharges.dateSurcharges) || []).filter((d) => d.enabled !== false).length} 个日期加价 · ${((settings.pricingSurcharges && settings.pricingSurcharges.timeSlotSurcharges) || []).filter((s) => s.enabled !== false).length} 个时段加价`
+      : '特殊加价已停用',
     configuredTemplateCount,
     enabledCarouselCount,
     carouselCount: carouselItems.length,
@@ -387,6 +414,9 @@ Page({
     loaded: false,
     requiredItemsText: '',
     sceneReportInfosText: '[]',
+    todayDate: new Date().toISOString().slice(0, 10),
+    newDateRule: { date: '', name: '', surcharge: '' },
+    newTimeSlotRule: { startTime: '07:00', endTime: '09:00', name: '', surcharge: '' },
     settings: {
       staffDeposit: normalizeStaffDeposit(),
       staffSupplies: normalizeStaffSupplies(),
@@ -400,7 +430,8 @@ Page({
       checkinShare: normalizeCheckinShareConfig(),
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig(),
-      staffTraining: normalizeStaffTrainingConfig()
+      staffTraining: normalizeStaffTrainingConfig(),
+      pricingSurcharges: normalizePricingSurcharges()
     },
     homeModuleOptions,
     settingSummary: buildSettingSummary({
@@ -414,7 +445,8 @@ Page({
       checkinShare: normalizeCheckinShareConfig(),
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig(),
-      staffTraining: normalizeStaffTrainingConfig()
+      staffTraining: normalizeStaffTrainingConfig(),
+      pricingSurcharges: normalizePricingSurcharges()
     }),
     showSettingModal: false,
     activeSettingPanel: '',
@@ -453,7 +485,8 @@ Page({
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage),
-          staffTraining: normalizeStaffTrainingConfig(settings.staffTraining)
+          staffTraining: normalizeStaffTrainingConfig(settings.staffTraining),
+          pricingSurcharges: normalizePricingSurcharges(settings.pricingSurcharges)
         }
         this.setData({ loaded: true, requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'), sceneReportInfosText: JSON.stringify(normalized.staffSupplies.transfer.sceneReportInfos, null, 2) })
         setCachedSystemSettings(normalized)
@@ -1374,7 +1407,8 @@ Page({
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage),
-          staffTraining: normalizeStaffTrainingConfig(settings.staffTraining)
+          staffTraining: normalizeStaffTrainingConfig(settings.staffTraining),
+          pricingSurcharges: normalizePricingSurcharges(settings.pricingSurcharges)
         }
         this.setData({ loaded: true, requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'), sceneReportInfosText: JSON.stringify(normalized.staffSupplies.transfer.sceneReportInfos, null, 2) })
         setCachedSystemSettings(normalized)
@@ -1388,6 +1422,109 @@ Page({
         this.setData({ saving: false })
         showError(err)
       })
+  },
+
+  togglePricingSurchargesEnabled(e) {
+    this.setData({ ['settings.pricingSurcharges.enabled']: e.detail.value })
+  },
+
+  toggleDateSurchargeItem(e) {
+    const id = e.currentTarget.dataset.id
+    const list = [...(this.data.settings.pricingSurcharges.dateSurcharges || [])]
+    const item = list.find((it) => it.id === id)
+    if (item) item.enabled = e.detail.value
+    this.setData({ ['settings.pricingSurcharges.dateSurcharges']: list })
+  },
+
+  deleteDateSurchargeItem(e) {
+    const id = e.currentTarget.dataset.id
+    const list = (this.data.settings.pricingSurcharges.dateSurcharges || []).filter((it) => it.id !== id)
+    this.setData({ ['settings.pricingSurcharges.dateSurcharges']: list })
+  },
+
+  newDateRuleDateChange(e) {
+    this.setData({ ['newDateRule.date']: e.detail.value })
+  },
+
+  newDateRuleNameInput(e) {
+    this.setData({ ['newDateRule.name']: e.detail.value })
+  },
+
+  newDateRuleAmountInput(e) {
+    this.setData({ ['newDateRule.surcharge']: e.detail.value })
+  },
+
+  addDateSurchargeItem() {
+    const { date, name, surcharge } = this.data.newDateRule
+    if (!date) return wx.showToast({ title: '请选择日期', icon: 'none' })
+    const amount = Number(surcharge)
+    if (!Number.isFinite(amount) || amount <= 0) return wx.showToast({ title: '请输入有效加价金额', icon: 'none' })
+    const list = [...(this.data.settings.pricingSurcharges.dateSurcharges || [])]
+    if (list.some((d) => d.date === date)) return wx.showToast({ title: '该日期已存在加价规则', icon: 'none' })
+    list.push({
+      id: `ds_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      date,
+      name: (name || '特殊日期加价').trim(),
+      surcharge: Math.round(amount * 100) / 100,
+      enabled: true
+    })
+    this.setData({
+      ['settings.pricingSurcharges.dateSurcharges']: list,
+      newDateRule: { date: '', name: '', surcharge: '' }
+    })
+    wx.showToast({ title: '已添加日期加价', icon: 'success' })
+  },
+
+  toggleTimeSlotSurchargeItem(e) {
+    const id = e.currentTarget.dataset.id
+    const list = [...(this.data.settings.pricingSurcharges.timeSlotSurcharges || [])]
+    const item = list.find((it) => it.id === id)
+    if (item) item.enabled = e.detail.value
+    this.setData({ ['settings.pricingSurcharges.timeSlotSurcharges']: list })
+  },
+
+  deleteTimeSlotSurchargeItem(e) {
+    const id = e.currentTarget.dataset.id
+    const list = (this.data.settings.pricingSurcharges.timeSlotSurcharges || []).filter((it) => it.id !== id)
+    this.setData({ ['settings.pricingSurcharges.timeSlotSurcharges']: list })
+  },
+
+  newTimeSlotRuleStartTimeChange(e) {
+    this.setData({ ['newTimeSlotRule.startTime']: e.detail.value })
+  },
+
+  newTimeSlotRuleEndTimeChange(e) {
+    this.setData({ ['newTimeSlotRule.endTime']: e.detail.value })
+  },
+
+  newTimeSlotRuleNameInput(e) {
+    this.setData({ ['newTimeSlotRule.name']: e.detail.value })
+  },
+
+  newTimeSlotRuleAmountInput(e) {
+    this.setData({ ['newTimeSlotRule.surcharge']: e.detail.value })
+  },
+
+  addTimeSlotSurchargeItem() {
+    const { startTime, endTime, name, surcharge } = this.data.newTimeSlotRule
+    if (!startTime || !endTime) return wx.showToast({ title: '请选择完整时段', icon: 'none' })
+    if (startTime >= endTime) return wx.showToast({ title: '开始时间须早于结束时间', icon: 'none' })
+    const amount = Number(surcharge)
+    if (!Number.isFinite(amount) || amount <= 0) return wx.showToast({ title: '请输入有效加价金额', icon: 'none' })
+    const list = [...(this.data.settings.pricingSurcharges.timeSlotSurcharges || [])]
+    list.push({
+      id: `ts_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      startTime,
+      endTime,
+      name: (name || '特殊时段加价').trim(),
+      surcharge: Math.round(amount * 100) / 100,
+      enabled: true
+    })
+    this.setData({
+      ['settings.pricingSurcharges.timeSlotSurcharges']: list,
+      newTimeSlotRule: { startTime: '07:00', endTime: '09:00', name: '', surcharge: '' }
+    })
+    wx.showToast({ title: '已添加时段加价', icon: 'success' })
   },
 
   go(e) {

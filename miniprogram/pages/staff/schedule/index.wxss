@@ -357,3 +357,220 @@
   font-size: 28rpx;
   color: #8e8580;
 }
+
+/* Schedule Type Tabs */
+.schedule-type-tabs {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+
+.schedule-tab {
+  flex: 1;
+  height: 84rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+  border: 2rpx solid rgba(255, 153, 102, 0.16);
+  font-size: 27rpx;
+  font-weight: 850;
+  color: #7a6a5e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.schedule-tab.active {
+  background: linear-gradient(135deg, #fff2e6 0%, #ffe6d4 100%);
+  border-color: #ff8848;
+  color: #ea580c;
+  box-shadow: 0 6rpx 18rpx rgba(234, 88, 12, 0.14);
+}
+
+.schedule-tab .tab-icon {
+  font-size: 32rpx;
+}
+
+.schedule-tab .tab-badge {
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  background: #ea580c;
+  color: #ffffff;
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+/* Card desc */
+.card-desc {
+  font-size: 24rpx;
+  color: #8a7a70;
+  line-height: 1.45;
+  margin-bottom: 22rpx;
+}
+
+.card-icon {
+  color: #ea580c;
+  margin-right: 8rpx;
+  font-size: 34rpx;
+}
+
+/* Until date card */
+.until-status-box {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  padding: 24rpx 28rpx;
+  border-radius: 24rpx;
+  background: #faf7f4;
+  border: 1rpx solid #eedecf;
+  margin-bottom: 24rpx;
+}
+
+.until-status-box.has-until {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.until-status-box .status-icon {
+  font-size: 42rpx;
+  color: #9a8a7e;
+  flex-shrink: 0;
+}
+
+.until-status-box.has-until .status-icon {
+  color: #ea580c;
+}
+
+.until-status-box .status-title {
+  font-size: 28rpx;
+  font-weight: 850;
+  color: #2d211a;
+}
+
+.until-status-box.has-until .status-title {
+  color: #c2410c;
+}
+
+.until-status-box .status-sub {
+  font-size: 22rpx;
+  color: #8a7a70;
+  margin-top: 4rpx;
+}
+
+.until-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+}
+
+.until-actions-row .preset-btn {
+  flex: none;
+  padding: 0 28rpx;
+}
+
+.until-actions-row .save-until-btn {
+  margin-left: auto;
+}
+
+.danger-ghost {
+  color: #dc2626 !important;
+  background: #fef2f2 !important;
+}
+
+/* Rest dates card */
+.add-rest-section {
+  padding-top: 10rpx;
+  margin-bottom: 28rpx;
+}
+
+.add-rest-row {
+  display: flex;
+  gap: 16rpx;
+  align-items: center;
+}
+
+.rest-picker-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #2d211a;
+}
+
+.rest-picker-field .remix-icon {
+  color: #ea580c;
+  font-size: 32rpx;
+}
+
+.add-rest-btn {
+  flex: none;
+  min-width: 220rpx;
+}
+
+.rest-list-title {
+  font-size: 26rpx;
+  font-weight: 850;
+  color: #4a3e36;
+  margin-bottom: 16rpx;
+}
+
+.rest-dates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+}
+
+.rest-date-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 24rpx;
+  border-radius: 22rpx;
+  background: #fff9f6;
+  border: 1rpx solid rgba(234, 88, 12, 0.2);
+}
+
+.rest-item-info {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.rest-date-text {
+  font-size: 28rpx;
+  font-weight: 850;
+  color: #2d211a;
+}
+
+.rest-badge {
+  font-size: 20rpx;
+  font-weight: 850;
+  color: #dc2626;
+  background: #fee2e2;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+}
+
+.resume-work-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  height: 60rpx;
+  padding: 0 20rpx;
+  border-radius: 16rpx;
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1rpx solid rgba(22, 163, 74, 0.25);
+  font-size: 23rpx;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.empty-icon.green {
+  color: #16a34a !important;
+}

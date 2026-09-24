@@ -7,6 +7,7 @@ module.exports = function createService({
   evaluateCoupon,
   getAvailableUserCoupons,
   getBusinessServiceTypes,
+  getSystemSettings,
   listServicePrices,
   normalizePetIds,
   normalizeServiceTypes,
@@ -190,7 +191,7 @@ module.exports = function createService({
         type: 'pet_time_extra_fee'
       }))
     const unitPriceItems = [...unitBasePriceItems, ...unitExtraPetItems, ...unitTimedExtraItems]
-    const priceItems = sessionCount > 1
+    const basePriceItems = sessionCount > 1
       ? unitPriceItems.map((item) => {
           const unitCents = toCents(item.price)
           const totalCents = unitCents * sessionCount
@@ -202,6 +203,85 @@ module.exports = function createService({
           }
         })
       : unitPriceItems
+
+    let settings = null
+    try {
+      if (typeof getSystemSettings === 'function') {
+        settings = await getSystemSettings()
+      }
+    } catch (e) {
+      settings = null
+    }
+
+    const surchargeConfig = (settings && settings.pricingSurcharges) || {}
+    const surchargeEnabled = surchargeConfig.enabled !== false
+    const dateSurchargeRules = surchargeEnabled && Array.isArray(surchargeConfig.dateSurcharges) ? surchargeConfig.dateSurcharges.filter((r) => r && r.enabled !== false && Number(r.surcharge) > 0) : []
+    const timeSlotSurchargeRules = surchargeEnabled && Array.isArray(surchargeConfig.timeSlotSurcharges) ? surchargeConfig.timeSlotSurcharges.filter((r) => r && r.enabled !== false && Number(r.surcharge) > 0) : []
+
+    const surchargePriceItems = []
+    if (surchargeEnabled && sessions && sessions.length && data.startTime) {
+      const dateRuleMatches = {}
+      sessions.forEach((session) => {
+        const sessionDate = session.date || (session.startTime ? String(session.startTime).slice(0, 10) : '')
+        if (!sessionDate) return
+        const matched = dateSurchargeRules.find((rule) => rule.date === sessionDate)
+        if (matched) {
+          const ruleKey = matched.id || matched.date
+          if (!dateRuleMatches[ruleKey]) {
+            dateRuleMatches[ruleKey] = { rule: matched, dates: [], count: 0 }
+          }
+          dateRuleMatches[ruleKey].dates.push(sessionDate)
+          dateRuleMatches[ruleKey].count += 1
+        }
+      })
+      Object.values(dateRuleMatches).forEach(({ rule, dates, count }) => {
+        const unitCents = toCents(rule.surcharge)
+        const totalCents = unitCents * count
+        surchargePriceItems.push({
+          key: `date_surcharge_${rule.id || rule.date}`,
+          label: count > 1 ? `特殊日期加价 · ${rule.name} (${count}天)` : `特殊日期加价 · ${rule.name} (${dates[0]})`,
+          price: toYuan(totalCents),
+          unitPrice: toYuan(unitCents),
+          quantity: count,
+          type: 'date_surcharge',
+          dateRule: rule,
+          dates
+        })
+      })
+
+      const timeSlotRuleMatches = {}
+      sessions.forEach((session) => {
+        const startClock = session.startTime && session.startTime.length >= 16 ? session.startTime.slice(11, 16) : (data.startClock || '')
+        if (!startClock) return
+        const matched = timeSlotSurchargeRules.find((rule) => {
+          const s = String(rule.startTime || '').trim()
+          const e = String(rule.endTime || '').trim()
+          return s && e && startClock >= s && startClock <= e
+        })
+        if (matched) {
+          const ruleKey = matched.id || `${matched.startTime}_${matched.endTime}`
+          if (!timeSlotRuleMatches[ruleKey]) {
+            timeSlotRuleMatches[ruleKey] = { rule: matched, count: 0 }
+          }
+          timeSlotRuleMatches[ruleKey].count += 1
+        }
+      })
+      Object.values(timeSlotRuleMatches).forEach(({ rule, count }) => {
+        const unitCents = toCents(rule.surcharge)
+        const totalCents = unitCents * count
+        surchargePriceItems.push({
+          key: `time_surcharge_${rule.id || rule.startTime}`,
+          label: count > 1 ? `特殊时段加价 · ${rule.name} (${rule.startTime}-${rule.endTime} × ${count}次)` : `特殊时段加价 · ${rule.name} (${rule.startTime}-${rule.endTime})`,
+          price: toYuan(totalCents),
+          unitPrice: toYuan(unitCents),
+          quantity: count,
+          type: 'time_surcharge',
+          timeRule: rule
+        })
+      })
+    }
+
+    const priceItems = [...basePriceItems, ...surchargePriceItems]
     const totalAmountCents = priceItems.reduce((sumCents, item) => sumCents + toCents(item.price), 0)
     const amount = toYuan(totalAmountCents)
     const serviceLabels = unitBasePriceItems.map((item) => item.label)
@@ -223,7 +303,8 @@ module.exports = function createService({
       sessions,
       orderType: sessionCount > 1 ? 'multi_day' : 'single',
       priceItems,
-      priceSnapshot: { services: priceItems, unitServices: unitPriceItems, extraPetItems: unitExtraPetItems, timedExtraItems: unitTimedExtraItems, petServiceDurations: petDurationResult.durations, durationMinutes, sessionCount, sessions, weight, petCount, dogCount, staffPriceLevel, staffLevelText: isInternPrice ? '实习宠托师' : '认证宠托师', originalAmount: amount, discountAmount: 0, payAmount: amount }
+      surchargeItems: surchargePriceItems,
+      priceSnapshot: { services: priceItems, unitServices: unitPriceItems, extraPetItems: unitExtraPetItems, timedExtraItems: unitTimedExtraItems, surchargeItems: surchargePriceItems, petServiceDurations: petDurationResult.durations, durationMinutes, sessionCount, sessions, weight, petCount, dogCount, staffPriceLevel, staffLevelText: isInternPrice ? '实习宠托师' : '认证宠托师', originalAmount: amount, discountAmount: 0, payAmount: amount }
     }
     const openid = options.openid || ''
     if (!openid) return basePricing

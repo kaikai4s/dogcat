@@ -189,6 +189,9 @@ module.exports = function createService({
     if (!profile || !profile.openid) throw new Error('宠托师不可用')
     const dateKey = getDateKeyFromTime(startTimeStr)
     if (!dateKey) throw new Error('请选择服务时间')
+    if (profile.bookableUntilDate && dateKey > profile.bookableUntilDate) {
+      throw new Error(`宠托师暂未开放 ${profile.bookableUntilDate} 之后的预约服务`)
+    }
     const exceptionRes = await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid, dateKey }).limit(1).get()
     const exception = exceptionRes.data[0]
     if (exception) {
@@ -340,11 +343,15 @@ module.exports = function createService({
       let slots = normalizedWeekly ? (normalizedWeekly[String(dayOfWeek)] || []) : [{ start: 0, end: 24 }]
       let status = slots.length ? 'available' : 'unavailable'
       let remark = ''
-      if (exception) {
+      if (profile.bookableUntilDate && dateKey > profile.bookableUntilDate) {
+        status = 'unavailable'
+        slots = []
+        remark = `接单截止至 ${profile.bookableUntilDate}`
+      } else if (exception) {
         source = 'exception'
         status = exception.status === 'available' ? 'available' : 'unavailable'
         slots = status === 'available' ? normalizeScheduleSlots(exception.slots) : []
-        remark = exception.remark || ''
+        remark = exception.remark || (status === 'unavailable' ? '休息不接单' : '')
       }
       const busyOrders = availableOrders
         .flatMap(order => getOrderTimeRanges(order)

@@ -4,11 +4,12 @@ const { themeOptions, applyTheme, saveTheme, getThemeState } = require('../../..
 const { fontOptions, applyFont, saveFont, getFontState } = require('../../../utils/font')
 
 const agreementLinks = [
+  { type: 'care_guarantee', title: '喂养服务保障协议' },
+  { type: 'refund_cancel', title: '退款/取消订单规则' },
   { type: 'user_service', title: '用户服务协议' },
   { type: 'staff_application', title: '宠托师/服务者入驻协议' },
   { type: 'privacy', title: '隐私政策' },
   { type: 'trade_rules', title: '平台交易规则' },
-  { type: 'refund_cancel', title: '退款/取消订单规则' },
   { type: 'complaint_dispute', title: '投诉与纠纷处理规则' }
 ]
 

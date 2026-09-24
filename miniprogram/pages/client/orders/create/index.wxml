@@ -321,10 +321,29 @@
         <view class="service-desc">每天同一时间上门服务</view>
       </view>
     </view>
-    <view class="picker-grid">
-      <picker mode="date" value="{{form.startDate}}" start="{{minDate}}" bindchange="chooseDate"><view class="field">开始日期：{{form.startDate}}</view></picker>
-      <picker mode="date" wx:if="{{form.orderType === 'multi_day'}}" value="{{form.endDate}}" start="{{form.startDate}}" bindchange="chooseEndDate"><view class="field">结束日期：{{form.endDate}}</view></picker>
-      <picker mode="time" value="{{form.startClock}}" start="{{minClock}}" bindchange="chooseClock"><view class="field">开始：{{form.startClock}}</view></picker>
+    <view class="service-time-card interactive" bindtap="openCalendarModal">
+      <view class="time-card-icon-col">
+        <view class="remix-icon ri-calendar-schedule-line time-card-icon"></view>
+      </view>
+      <view class="time-card-main-col">
+        <view class="time-card-row">
+          <text class="time-card-label">服务日期：</text>
+          <text class="time-card-value">{{form.orderType === 'multi_day' ? (form.startDate + ' 至 ' + form.endDate) : form.startDate}}</text>
+          <text class="surcharge-pill" wx:if="{{currentDateSurchargeTotal > 0}}">🔥 特殊日期加价 +¥{{currentDateSurchargeTotal}}</text>
+        </view>
+        <view class="time-card-row">
+          <text class="time-card-label">开始时间：</text>
+          <text class="time-card-value">{{form.startClock}} 开始</text>
+          <text class="surcharge-pill slot-pill" wx:if="{{currentTimeSlotSurcharge > 0}}">⏰ 特殊时段加价 +¥{{currentTimeSlotSurcharge}}</text>
+        </view>
+        <view class="time-card-row time-warning-row" wx:if="{{sitterScheduleWarningText}}">
+          <text class="time-warning-pill">⚠️ {{sitterScheduleWarningText}}</text>
+        </view>
+      </view>
+      <view class="time-card-arrow-col">
+        <text class="time-change-btn">修改</text>
+        <view class="menu-arrow remix-icon ri-arrow-right-s-line"></view>
+      </view>
     </view>
     <view class="pet-duration-panel" wx:if="{{hasTimedServices}}">
       <view class="strong">逐宠物服务时长 · 每日配置</view>
@@ -375,14 +394,6 @@
     <view><view class="strong">下单后你能看到什么？</view><view class="muted">服务轨迹、关键打卡、服务报告都会在订单详情里持续更新。</view></view>
   </view>
 
-  <view class="booking-side-card trust-note">
-    <view class="remix-icon ri-file-shield-2-line side-icon"></view>
-    <view>
-      <view class="strong">下单协议提醒</view>
-      <view class="muted">创建订单即表示你已阅读并同意 <text data-type="user_service" bindtap="openAgreement">《用户服务协议》</text>、<text data-type="trade_rules" bindtap="openAgreement">《平台交易规则》</text>、<text data-type="refund_cancel" bindtap="openAgreement">《退款/取消订单规则》</text>。</view>
-    </view>
-  </view>
-
   <view class="quote-card" wx:if="{{quote}}">
     <view class="quote-head">
       <view><view class="muted">预计支付</view><view class="price">¥{{quote.payAmount}}</view></view>
@@ -407,12 +418,144 @@
         <view class="muted" wx:if="{{quote.sessionCount > 1}}">以下宠物时长每天相同，费用按{{quote.sessionCount}}次累计。</view>
         <view class="duration-task" wx:for="{{quote.petServiceDurations}}" wx:key="index">{{item.petName}} · {{item.serviceLabel}} · {{item.durationMinutes}}分钟</view>
       </view>
+      <block wx:for="{{quote.priceItems}}" wx:key="key">
+        <view class="info-row" wx:if="{{item.type === 'date_surcharge' || item.type === 'time_surcharge'}}">
+          <view class="label" style="color: #ea580c; font-weight: 600;">
+            <text class="remix-icon {{item.type === 'date_surcharge' ? 'ri-calendar-event-line' : 'ri-time-line'}}" style="margin-right: 6rpx;"></text>
+            <text>{{item.label}}</text>
+          </view>
+          <view class="value" style="color: #ea580c; font-weight: 700;">+¥{{item.price}}</view>
+        </view>
+      </block>
       <view class="info-row" wx:if="{{quote.discountAmount}}"><view class="label">优惠券</view><view class="value">-¥{{quote.discountAmount}}</view></view>
+    </view>
+  </view>
+
+  <view class="booking-side-card trust-note agreement-confirm-card">
+    <view class="agreement-check-cell" bindtap="toggleAgreement">
+      <checkbox checked="{{agreeAgreement}}" color="#ff7a45" class="agreement-checkbox" />
+    </view>
+    <view class="agreement-main-cell">
+      <view class="agreement-header-row" bindtap="toggleAgreement">
+        <text class="remix-icon ri-file-shield-2-line agreement-shield-icon"></text>
+        <text class="strong">服务保障与取消规则</text>
+      </view>
+      <view class="muted agreement-desc-row">
+        <text bindtap="toggleAgreement">我已阅读并同意 </text>
+        <text class="agreement-link-text" data-type="care_guarantee" catchtap="openAgreement">《喂养服务保障协议》</text>
+        <text class="agreement-sep">、</text>
+        <text class="agreement-link-text" data-type="refund_cancel" catchtap="openAgreement">《退款/取消订单规则》</text>
+        <text class="agreement-sep">、</text>
+        <text class="agreement-link-text" data-type="user_service" catchtap="openAgreement">《用户服务协议》</text>
+        <text class="agreement-sep">与</text>
+        <text class="agreement-link-text" data-type="trade_rules" catchtap="openAgreement">《平台交易规则》</text>
+      </view>
     </view>
   </view>
 
   <view class="booking-submit-bar">
     <button class="ghost quote-btn" bindtap="quoteOrder">试算价格</button>
     <button class="primary create-btn" loading="{{creating}}" disabled="{{creating}}" bindtap="create">{{creating ? '创建中...' : '创建订单'}}</button>
+  </view>
+
+  <!-- 预约日历与时间段弹框 -->
+  <view class="modal-backdrop calendar-modal-backdrop" wx:if="{{showCalendarModal}}" bindtap="closeCalendarModal" catchtouchmove="noop">
+    <view class="calendar-modal-sheet" catchtap="noop">
+      <view class="calendar-modal-head">
+        <view class="modal-sheet-title">选择预约日期与开始时间</view>
+        <view class="remix-icon ri-close-line close-sheet-icon" bindtap="closeCalendarModal"></view>
+      </view>
+
+      <scroll-view scroll-y class="calendar-sheet-body">
+        <!-- 1. 服务频次模式 -->
+        <view class="sheet-order-type-tabs">
+          <view class="sheet-tab {{calendarTempOrderType === 'single' ? 'active' : ''}}" data-type="single" bindtap="changeCalendarOrderType">
+            <view class="strong">单次服务</view>
+            <view class="muted">预约当天一次</view>
+          </view>
+          <view class="sheet-tab {{calendarTempOrderType === 'multi_day' ? 'active' : ''}}" data-type="multi_day" bindtap="changeCalendarOrderType">
+            <view class="strong">连续多天</view>
+            <view class="muted">连续日期每天一次</view>
+          </view>
+        </view>
+
+        <!-- 2. 日历视图 -->
+        <view class="calendar-panel">
+          <view class="calendar-month-bar">
+            <view class="month-nav-btn remix-icon ri-arrow-left-s-line {{canPrevMonth ? '' : 'disabled'}}" bindtap="prevCalendarMonth"></view>
+            <view class="current-month-label">{{calendarYear}}年{{calendarMonth}}月</view>
+            <view class="month-nav-btn remix-icon ri-arrow-right-s-line {{canNextMonth ? '' : 'disabled'}}" bindtap="nextCalendarMonth"></view>
+          </view>
+
+          <view class="calendar-weekdays">
+            <text class="weekday-col" wx:for="{{['日', '一', '二', '三', '四', '五', '六']}}" wx:key="*this">{{item}}</text>
+          </view>
+
+          <view class="calendar-days-grid">
+            <view class="calendar-day-cell calendar-empty-cell" wx:for="{{calendarEmptyDays}}" wx:key="*this"></view>
+            <view
+              wx:for="{{calendarDays}}"
+              wx:key="date"
+              class="calendar-day-cell {{item.isPast ? 'past' : ''}} {{item.isSitterUnavailable ? 'sitter-disabled' : ''}} {{item.isSelected ? 'selected' : ''}} {{item.isInRange ? 'in-range' : ''}} {{item.isRangeStart ? 'range-start' : ''}} {{item.isRangeEnd ? 'range-end' : ''}}"
+              data-date="{{item.date}}"
+              data-disabled="{{item.disabled}}"
+              data-reason="{{item.sitterUnavailableReason}}"
+              bindtap="onTapCalendarDay"
+            >
+              <view class="day-cell-inner">
+                <view class="day-number">{{item.day}}</view>
+                <view class="day-sub-row">
+                  <text class="day-rest-badge" wx:if="{{item.isSitterUnavailable}}">休</text>
+                  <text class="day-today" wx:elif="{{item.isToday && item.surcharge <= 0}}">今天</text>
+                  <text class="day-surcharge-badge" wx:elif="{{item.surcharge > 0}}">+¥{{item.surcharge}}</text>
+                </view>
+                <view class="day-today-dot" wx:if="{{item.isToday && item.surcharge > 0 && !item.isSitterUnavailable}}"></view>
+              </view>
+            </view>
+          </view>
+          <view class="calendar-hint-bar" wx:if="{{calendarTempOrderType === 'multi_day'}}">
+            <text wx:if="{{!calendarTempEndDate}}">请在日历上点击结束日期</text>
+            <text wx:else>已选区间：{{calendarTempStartDate}} 至 {{calendarTempEndDate}}</text>
+          </view>
+        </view>
+
+        <!-- 3. 开始时间网格 -->
+        <view class="time-slot-panel">
+          <view class="time-slot-head">
+            <view>
+              <view class="strong">选择上门开始时间</view>
+              <view class="sitter-schedule-tip" wx:if="{{currentSitterScheduleTip}}">{{currentSitterScheduleTip}}</view>
+            </view>
+            <view class="muted">建议预留30分钟缓冲时间</view>
+          </view>
+          <view class="time-slots-grid">
+            <view
+              wx:for="{{timeSlotOptions}}"
+              wx:key="clock"
+              class="time-slot-chip {{item.disabled ? 'disabled' : ''}} {{item.outsideSitterSchedule ? 'outside-schedule' : ''}} {{item.clock === calendarTempStartClock ? 'selected' : ''}} {{item.surcharge > 0 ? 'has-surcharge' : ''}}"
+              data-clock="{{item.clock}}"
+              data-disabled="{{item.disabled}}"
+              data-disabled-reason="{{item.disabledReason}}"
+              data-sitter-schedule-text="{{item.sitterScheduleText}}"
+              bindtap="onTapTimeSlot"
+            >
+              <view class="clock-label">{{item.clock}}</view>
+              <view class="slot-surcharge-tag" wx:if="{{item.surcharge > 0}}">+¥{{item.surcharge}}</view>
+              <view class="slot-disabled-tag" wx:elif="{{item.outsideSitterSchedule}}">不可约</view>
+              <view class="slot-disabled-tag" wx:elif="{{item.busyConflict}}">已约满</view>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+
+      <!-- 4. 底部确定栏 -->
+      <view class="calendar-sheet-foot">
+        <view class="sheet-summary">
+          <view class="sheet-date-text">已选：{{calendarSummaryText}}</view>
+          <view class="sheet-surcharge-text" wx:if="{{calendarTempSurchargeTotal > 0}}">包含特殊日期/时段加价共 +¥{{calendarTempSurchargeTotal}}</view>
+        </view>
+        <button class="primary confirm-sheet-btn" bindtap="confirmCalendarSelection">确定选择</button>
+      </view>
+    </view>
   </view>
 </view>

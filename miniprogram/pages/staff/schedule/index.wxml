@@ -4,88 +4,190 @@
   <view class="staff-hero">
     <view class="hero-badge">
       <text class="remix-icon ri-calendar-event-fill hero-icon"></text>
-      <text>按周服务时间设置</text>
+      <text>服务排班与接单设置</text>
     </view>
-    <view class="hero-title">设置每周接单时间</view>
-    <view class="hero-desc">配置每周一至周日的服务时间段，用于判断订单是否在服务时间内</view>
+    <view class="hero-title">服务排班管理</view>
+    <view class="hero-desc">配置常规按周接单时段、接单截止日期以及特殊休息日期</view>
   </view>
 
-  <view class="preset-actions">
-    <button class="preset-btn primary" bindtap="presetWeeklySchedule">
-      <text class="remix-icon ri-checkbox-circle-line"></text>
-      <text>一键设置全周 08:00-22:00</text>
-    </button>
-    <button class="preset-btn ghost" bindtap="clearWeeklySchedule">
-      <text class="remix-icon ri-close-circle-line"></text>
-      <text>清空所有时间</text>
-    </button>
+  <!-- 排班模式Tab切换 -->
+  <view class="schedule-type-tabs">
+    <view class="schedule-tab {{scheduleTab === 'weekly' ? 'active' : ''}}" data-tab="weekly" bindtap="switchScheduleTab">
+      <text class="remix-icon ri-time-line tab-icon"></text>
+      <text>按周常规时间</text>
+    </view>
+    <view class="schedule-tab {{scheduleTab === 'exceptions' ? 'active' : ''}}" data-tab="exceptions" bindtap="switchScheduleTab">
+      <text class="remix-icon ri-calendar-todo-line tab-icon"></text>
+      <text>休假与截止日期</text>
+      <text class="tab-badge" wx:if="{{restDateList.length || bookableUntilDate}}">{{(restDateList.length || 0) + (bookableUntilDate ? 1 : 0)}}</text>
+    </view>
   </view>
 
-  <!-- 星期切换 -->
-  <scroll-view scroll-x class="weekday-tabs">
-    <view
-      wx:for="{{weekdays}}"
-      wx:key="day"
-      bindtap="switchDay"
-      data-day="{{item.day}}"
-      class="weekday-tab {{activeDay === item.day ? 'active' : ''}}"
-    >
-      <text>{{item.label}}</text>
-      <text class="count" wx:if="{{weeklySchedule[item.day] && weeklySchedule[item.day].length > 0}}">({{weeklySchedule[item.day].length}})</text>
-    </view>
-  </scroll-view>
-
-  <!-- 当前星期的时间段编辑 -->
-  <view class="card schedule-editor-card">
-    <view class="editor-head">
-      <view class="editor-title">{{weekdays[activeDay - 1].label}} 服务时间段</view>
-      <view class="clear-link" bindtap="clearCurrentDay">清空本日</view>
+  <!-- TAB 1: 按周服务时间 -->
+  <block wx:if="{{scheduleTab === 'weekly'}}">
+    <view class="preset-actions">
+      <button class="preset-btn primary" bindtap="presetWeeklySchedule">
+        <text class="remix-icon ri-checkbox-circle-line"></text>
+        <text>一键设置全周 08:00-22:00</text>
+      </button>
+      <button class="preset-btn ghost" bindtap="clearWeeklySchedule">
+        <text class="remix-icon ri-close-circle-line"></text>
+        <text>清空所有时间</text>
+      </button>
     </view>
 
-    <!-- 时间段列表 -->
-    <view class="slot-list" wx:if="{{weeklySchedule[activeDay] && weeklySchedule[activeDay].length > 0}}">
+    <!-- 星期切换 -->
+    <scroll-view scroll-x class="weekday-tabs">
       <view
-        wx:for="{{weeklySchedule[activeDay]}}"
-        wx:key="index"
-        class="slot-item"
+        wx:for="{{weekdays}}"
+        wx:key="day"
+        bindtap="switchDay"
+        data-day="{{item.day}}"
+        class="weekday-tab {{activeDay === item.day ? 'active' : ''}}"
       >
-        <view class="slot-text">
-          <text class="remix-icon ri-time-fill slot-icon"></text>
-          <text>{{item.start}}:00 - {{item.end}}:00</text>
-        </view>
-        <view class="del-btn" data-index="{{index}}" bindtap="removeSlot">
-          <text class="remix-icon ri-delete-bin-line"></text> 删除
+        <text>{{item.label}}</text>
+        <text class="count" wx:if="{{weeklySchedule[item.day] && weeklySchedule[item.day].length > 0}}">({{weeklySchedule[item.day].length}})</text>
+      </view>
+    </scroll-view>
+
+    <!-- 当前星期的时间段编辑 -->
+    <view class="card schedule-editor-card">
+      <view class="editor-head">
+        <view class="editor-title">{{weekdays[activeDay - 1].label}} 服务时间段</view>
+        <view class="clear-link" bindtap="clearCurrentDay">清空本日</view>
+      </view>
+
+      <!-- 时间段列表 -->
+      <view class="slot-list" wx:if="{{weeklySchedule[activeDay] && weeklySchedule[activeDay].length > 0}}">
+        <view
+          wx:for="{{weeklySchedule[activeDay]}}"
+          wx:key="index"
+          class="slot-item"
+        >
+          <view class="slot-text">
+            <text class="remix-icon ri-time-fill slot-icon"></text>
+            <text>{{item.start}}:00 - {{item.end}}:00</text>
+          </view>
+          <view class="del-btn" data-index="{{index}}" bindtap="removeSlot">
+            <text class="remix-icon ri-delete-bin-line"></text> 删除
+          </view>
         </view>
       </view>
-    </view>
-    <view class="empty-slot" wx:else>
-      <text class="remix-icon ri-information-line empty-icon"></text>
-      <text>{{weekdays[activeDay - 1].label}} 暂无服务时间段（该天不接单）</text>
-    </view>
+      <view class="empty-slot" wx:else>
+        <text class="remix-icon ri-information-line empty-icon"></text>
+        <text>{{weekdays[activeDay - 1].label}} 暂无服务时间段（该天不接单）</text>
+      </view>
 
-    <!-- 添加时间段 -->
-    <view class="add-slot-section">
-      <view class="add-slot-title">添加时间段</view>
-      <view class="add-slot-row">
-        <picker mode="selector" range="{{hourLabels}}" value="{{startHourIndex}}" bindchange="bindStartHourChange">
-          <view class="picker-field">{{hourLabels[startHourIndex]}}</view>
+      <!-- 添加时间段 -->
+      <view class="add-slot-section">
+        <view class="add-slot-title">添加时间段</view>
+        <view class="add-slot-row">
+          <picker mode="selector" range="{{hourLabels}}" value="{{startHourIndex}}" bindchange="bindStartHourChange">
+            <view class="picker-field">{{hourLabels[startHourIndex]}}</view>
+          </picker>
+          <text class="to-text">至</text>
+          <picker mode="selector" range="{{hourLabels}}" value="{{endHourIndex}}" bindchange="bindEndHourChange">
+            <view class="picker-field">{{hourLabels[endHourIndex]}}</view>
+          </picker>
+          <button class="add-btn" bindtap="addSlot">
+            <text class="remix-icon ri-add-line"></text> 添加
+          </button>
+        </view>
+      </view>
+
+      <!-- 保存按钮 -->
+      <button class="save-btn primary-btn" bindtap="saveWeeklySchedule" disabled="{{saving}}">
+        <text class="remix-icon ri-save-line"></text>
+        <text>{{saving ? '保存中...' : '保存按周服务时间'}}</text>
+      </button>
+    </view>
+  </block>
+
+  <!-- TAB 2: 休假与截止日期管理 -->
+  <block wx:if="{{scheduleTab === 'exceptions'}}">
+    <!-- 1. 只接单到什么日期 -->
+    <view class="card schedule-editor-card until-date-card">
+      <view class="editor-head">
+        <view class="editor-title">
+          <text class="remix-icon ri-calendar-check-line card-icon"></text>
+          <text>只接单到什么日期（接单截止设置）</text>
+        </view>
+      </view>
+      <view class="card-desc">若您近期只打算工作到某一天，可设置最远接单截止日期。超出该日期的预约用户将无法选择并自动拦截。</view>
+
+      <view class="until-status-box {{bookableUntilDate ? 'has-until' : ''}}">
+        <view class="status-icon remix-icon {{bookableUntilDate ? 'ri-alarm-warning-fill' : 'ri-calendar-line'}}"></view>
+        <view class="status-content">
+          <view class="status-title">{{bookableUntilDate ? ('当前只接单至：' + bookableUntilDate) : '未设置截止日期（长期开放预约）'}}</view>
+          <view class="status-sub">{{bookableUntilDate ? '该日期之后的所有预约将自动被系统关闭' : '用户可根据常规按周排班预约未来日期'}}</view>
+        </view>
+      </view>
+
+      <view class="until-actions-row">
+        <picker mode="date" value="{{bookableUntilDate || todayDate}}" start="{{todayDate}}" bindchange="bindUntilDateChange">
+          <button class="preset-btn ghost">
+            <text class="remix-icon ri-calendar-event-line"></text>
+            <text>{{bookableUntilDate ? '修改截止日期' : '选择截止日期'}}</text>
+          </button>
         </picker>
-        <text class="to-text">至</text>
-        <picker mode="selector" range="{{hourLabels}}" value="{{endHourIndex}}" bindchange="bindEndHourChange">
-          <view class="picker-field">{{hourLabels[endHourIndex]}}</view>
-        </picker>
-        <button class="add-btn" bindtap="addSlot">
-          <text class="remix-icon ri-add-line"></text> 添加
+        <button class="preset-btn ghost danger-ghost" wx:if="{{bookableUntilDate}}" bindtap="clearUntilDate">
+          <text class="remix-icon ri-delete-bin-line"></text>
+          <text>清除截止限制</text>
+        </button>
+        <button class="preset-btn primary save-until-btn" bindtap="saveUntilDate" disabled="{{saving}}">
+          <text class="remix-icon ri-save-line"></text>
+          <text>{{saving ? '保存中...' : '保存截止设置'}}</text>
         </button>
       </view>
     </view>
 
-    <!-- 保存按钮 -->
-    <button class="save-btn primary-btn" bindtap="saveWeeklySchedule" disabled="{{saving}}">
-      <text class="remix-icon ri-save-line"></text>
-      <text>{{saving ? '保存中...' : '保存按周服务时间'}}</text>
-    </button>
-  </view>
+    <!-- 2. 设置哪些日期不接单（特殊休息日） -->
+    <view class="card schedule-editor-card rest-dates-card">
+      <view class="editor-head">
+        <view class="editor-title">
+          <text class="remix-icon ri-cup-line card-icon"></text>
+          <text>设置哪些日期不接单（休假设置）</text>
+        </view>
+      </view>
+      <view class="card-desc">如遇个人休假、出行或特殊安排，可在此将具体日期设为休息日。设置后用户在日历上将无法预约该日期。</view>
+
+      <!-- 快速添加休息日 -->
+      <view class="add-rest-section">
+        <view class="add-slot-title">添加休息不接单日期</view>
+        <view class="add-rest-row">
+          <picker mode="date" value="{{restPickerDate}}" start="{{todayDate}}" bindchange="bindRestPickerChange">
+            <view class="picker-field rest-picker-field">
+              <text class="remix-icon ri-calendar-line"></text>
+              <text>{{restPickerDate}}</text>
+            </view>
+          </picker>
+          <button class="preset-btn primary add-rest-btn" bindtap="addRestDate">
+            <text class="remix-icon ri-forbid-line"></text>
+            <text>设为休息日</text>
+          </button>
+        </view>
+      </view>
+
+      <!-- 已设置休息日列表 -->
+      <view class="rest-list-title">已设置的不接单日期（未来30天）</view>
+      <view class="rest-dates-list" wx:if="{{restDateList.length > 0}}">
+        <view class="rest-date-item" wx:for="{{restDateList}}" wx:key="dateKey">
+          <view class="rest-item-info">
+            <view class="rest-date-text">{{item.dateKey}} ({{item.dayName || '休息日'}})</view>
+            <view class="rest-badge">休息不接单</view>
+          </view>
+          <button class="resume-work-btn" data-date="{{item.dateKey}}" bindtap="deleteRestDate">
+            <text class="remix-icon ri-restart-line"></text>
+            <text>恢复接单</text>
+          </button>
+        </view>
+      </view>
+      <view class="empty-slot" wx:else>
+        <text class="remix-icon ri-checkbox-circle-line empty-icon green"></text>
+        <text>近期暂无设置休息日（按周排班正常接单）</text>
+      </view>
+    </view>
+  </block>
 
   <view class="empty-state" wx:if="{{loading}}">
     <text class="remix-icon ri-loader-4-line empty-icon rotating"></text>
