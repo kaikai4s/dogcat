@@ -453,7 +453,7 @@
           <view class="setting-block-card">
             <view class="strong-title-row">
               <view class="strong">特殊日期加价规则</view>
-              <view class="badge">{{(settings.pricingSurcharges.dateSurcharges || []).length}} 条</view>
+              <view class="badge">{{settings.pricingSurcharges.dateSurcharges.length || 0}} 条</view>
             </view>
             <view class="muted" style="margin-bottom: 16rpx;">例如法定节假日、特定周末等全天加价</view>
 
@@ -489,7 +489,7 @@
           <view class="setting-block-card">
             <view class="strong-title-row">
               <view class="strong">特殊时段加价规则</view>
-              <view class="badge">{{(settings.pricingSurcharges.timeSlotSurcharges || []).length}} 条</view>
+              <view class="badge">{{settings.pricingSurcharges.timeSlotSurcharges.length || 0}} 条</view>
             </view>
             <view class="muted" style="margin-bottom: 16rpx;">例如清晨 07:00-09:00 早高峰、晚间 20:00-22:00 等</view>
 

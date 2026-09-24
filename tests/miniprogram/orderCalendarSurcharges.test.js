@@ -38,6 +38,7 @@ test('admin/settings has pricing surcharges configuration panel and handlers', (
   const adminJs = fs.readFileSync(adminJsPath, 'utf8')
 
   // 1. WXML 结构验证
+  assert.ok(!adminWxml.includes(').'), 'admin settings WXML must not contain invalid bracket property access like ).')
   assert.ok(adminWxml.includes('data-panel="pricingSurcharges"'), 'admin settings WXML must include pricingSurcharges card')
   assert.ok(adminWxml.includes('特殊日期加价规则'), 'admin settings WXML must show 特殊日期加价规则')
   assert.ok(adminWxml.includes('特殊时段加价规则'), 'admin settings WXML must show 特殊时段加价规则')
