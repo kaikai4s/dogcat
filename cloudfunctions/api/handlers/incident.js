@@ -147,6 +147,9 @@ module.exports = function createHandler(context) {
       const incidentRes = await db.collection('order_incidents').doc(id).get().catch(() => ({ data: null }))
       const incident = incidentRes && incidentRes.data
       if (!incident) throw new Error('纠纷不存在')
+      if (['closed', 'resolved', 'rejected'].includes(incident.status)) {
+        throw new Error('已结案纠纷不可变更处理方案')
+      }
       const type = safeText(data.resolutionType || data.type).trim() || 'explain'
       const resolution = { type, content: safeText(data.content).trim(), refundAmount: Number(data.refundAmount || 0), couponTemplateId: '', couponId: '', couponSnapshot: null, createdByOpenid: openid, createdAt: now() }
       if (type === 'coupon') {
@@ -188,6 +191,16 @@ module.exports = function createHandler(context) {
       const incidentRes = await db.collection('order_incidents').doc(id).get().catch(() => ({ data: null }))
       const incident = incidentRes && incidentRes.data
       if (!incident) throw new Error('纠纷不存在')
+      if (['closed', 'resolved', 'rejected'].includes(incident.status)) {
+        throw new Error('已结案纠纷不可再关联或发起退款')
+      }
+      const clientRequestId = getClientRequestId(data)
+      if (incident.refundId) {
+        if ((data.refundId && data.refundId === incident.refundId) || (clientRequestId && incident.clientRequestId === clientRequestId)) {
+          return { id, refundId: incident.refundId, refundNo: incident.refundNo || '', status: incident.status }
+        }
+        throw new Error('该纠纷已关联退款单，请勿重复发起退款')
+      }
       const orderRes = await db.collection('orders').doc(incident.orderId).get().catch(() => ({ data: null }))
       const order = orderRes && orderRes.data
       if (!order) throw new Error('订单不存在')
@@ -196,15 +209,21 @@ module.exports = function createHandler(context) {
       const refundAmount = Number(data.refundAmount || 0)
       if (refundAmount > 0) {
         if (order.paymentStatus !== 'paid' && order.paymentStatus !== 'refunding') throw new Error('订单未支付，不能退款')
-        if (refundAmount > Number(order.payAmount || 0)) throw new Error('退款金额不正确')
-        refund = await createRefundForOrder({ ...order, _id: incident.orderId }, refundAmount, safeText(data.reason).trim() || '纠纷处理退款', 'incident', openid, getClientRequestId(data))
+        const payAmount = Number(order.payAmount || 0)
+        const currentRefunded = Number(order.refundAmount || 0)
+        const maxRefundable = Math.max(0, Math.round((payAmount - currentRefunded) * 100) / 100)
+        if (refundAmount > payAmount) throw new Error('退款金额不正确')
+        if (refundAmount > maxRefundable) throw new Error(`退款金额超出订单剩余可退上限（当前最大可退 ¥${maxRefundable}）`)
+        refund = await createRefundForOrder({ ...order, _id: incident.orderId }, refundAmount, safeText(data.reason).trim() || '纠纷处理退款', 'incident', openid, clientRequestId)
         actionName = 'refund_created'
       } else if (data.refundId) {
         const refundRes = await db.collection('refunds').doc(data.refundId).get().catch(() => ({ data: null }))
         refund = refundRes && refundRes.data
         if (!refund || refund.orderId !== incident.orderId) throw new Error('退款单不存在或不属于本订单')
+      } else {
+        throw new Error('请输入有效的退款金额或选择已有退款单')
       }
-      const update = { refundId: (refund && refund._id) || data.refundId || '', refundNo: (refund && refund.refundNo) || data.refundNo || '', status: 'refund_pending', updatedAt: now() }
+      const update = { refundId: (refund && refund._id) || data.refundId || '', refundNo: (refund && refund.refundNo) || data.refundNo || '', status: 'refund_pending', clientRequestId: clientRequestId || '', updatedAt: now() }
       await db.collection('order_incidents').doc(id).update({ data: update })
       if (refund) {
         await appendOrderTimeline(incident.orderId, 'refund_processing', '纠纷处理退款中', `退款金额 ¥${Number(refund.refundAmount || refundAmount || 0)}`, 'admin')
