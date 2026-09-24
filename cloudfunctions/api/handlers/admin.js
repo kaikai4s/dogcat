@@ -1824,7 +1824,12 @@ module.exports = function createHandler(context) {
       const delta = Math.round(Number(data.delta || 0))
       if (!delta) throw new Error('积分变动不能为 0')
       const reason = safeText(data.reason).trim() || '管理员操作'
-      await addPoints(targetOpenid, '', delta, 'admin_grant', admin._id, reason)
+      const targetUser = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
+      if (!targetUser) throw new Error('目标用户不存在')
+      if (delta < 0 && Number(targetUser.points || 0) + delta < 0) {
+        throw new Error(`用户当前可用积分不足（当前剩余 ${Number(targetUser.points || 0)} 分），无法扣除 ${Math.abs(delta)} 积分`)
+      }
+      await addPoints(targetOpenid, targetUser._id, delta, 'admin_grant', admin._id, reason)
       await logAdmin(admin, 'user', targetOpenid, 'grantPoints', { delta, reason })
       return { openid: targetOpenid, delta }
     }

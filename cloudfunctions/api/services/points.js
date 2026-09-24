@@ -141,7 +141,10 @@ module.exports = function createService({
       const finalDelta = baseDelta > 0
         ? Math.max(Math.round(baseDelta * multiplier), 1)
         : Number(delta || 0)
-      const newPoints = Math.max(currentPoints + finalDelta, 0)
+      if (finalDelta < 0 && currentPoints + finalDelta < 0) {
+        throw new Error(`用户当前可用积分不足（当前剩余 ${currentPoints} 分），无法扣除 ${Math.abs(finalDelta)} 积分`)
+      }
+      const newPoints = currentPoints + finalDelta
       const newTotal = finalDelta > 0 ? currentTotal + finalDelta : currentTotal
       const levelInfo = calcMemberLevel(newTotal, currentLevels)
       const time = now()
