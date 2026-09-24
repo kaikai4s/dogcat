@@ -59,6 +59,16 @@ module.exports = function createService({
     return `${value}分钟`
   }
 
+  function toCents(yuan) {
+    const val = Number(yuan || 0)
+    return Number.isFinite(val) ? Math.round(val * 100) : 0
+  }
+
+  function toYuan(cents) {
+    const val = Number(cents || 0)
+    return Number.isFinite(val) ? Math.round(val) / 100 : 0
+  }
+
   function normalizePetServiceDurations(data = {}, pets = [], serviceTypes = [], catalogMap = {}, isInternPrice = false) {
     const selectedTimedKeys = PET_TIMED_SERVICE_KEYS.filter((key) => serviceTypes.includes(key))
     const raw = Array.isArray(data.petServiceDurations) ? data.petServiceDurations : []
@@ -99,7 +109,9 @@ module.exports = function createService({
         const item = catalogMap[serviceKey] || {}
         const durationMinutes = configured[key] || legacyDefaultDuration
         const extraUnits = Math.max(durationMinutes / 30 - 1, 0)
-        const unitPrice = isInternPrice ? Number(item.internExtraHalfHourFee || 0) : Number(item.extraHalfHourFee || 0)
+        const rawUnitPrice = isInternPrice ? Number(item.internExtraHalfHourFee || 0) : Number(item.extraHalfHourFee || 0)
+        const unitPriceCents = Math.max(toCents(rawUnitPrice), 0)
+        const extraAmountCents = extraUnits * unitPriceCents
         durations.push({
           serviceKey,
           serviceLabel: item.label || (serviceKey === 'walk' ? '遛狗' : '陪伴玩耍'),
@@ -108,8 +120,8 @@ module.exports = function createService({
           durationMinutes,
           durationText: formatMinutesText(durationMinutes),
           extraUnits,
-          unitPrice: Math.max(Number.isFinite(unitPrice) ? unitPrice : 0, 0),
-          extraAmount: Math.round(extraUnits * Math.max(Number.isFinite(unitPrice) ? unitPrice : 0, 0) * 100) / 100
+          unitPrice: toYuan(unitPriceCents),
+          extraAmount: toYuan(extraAmountCents)
         })
       })
     })
@@ -140,8 +152,8 @@ module.exports = function createService({
       if (!item) throw new Error('服务项目不可用')
       const unitBasePrice = isInternPrice ? item.internPrice : item.price
       const basePrice = key === 'walk' ? getWalkPrice(unitBasePrice, weight) : unitBasePrice
-      const price = Math.round(basePrice * 100) / 100
-      return { key, label: item.label, price }
+      const priceCents = toCents(basePrice)
+      return { key, label: item.label, price: toYuan(priceCents) }
     })
     const unitExtraPetItems = getBusinessServiceTypes(serviceTypes).map((key) => {
       const item = catalogMap[key]
@@ -150,14 +162,15 @@ module.exports = function createService({
       if (item.extraPetRule === 'none' || !Number(extraPetFee || 0)) return null
       const extraCount = item.extraPetRule === 'dog' ? Math.max(dogCount - 1, 0) : Math.max(petCount - 1, 0)
       if (!extraCount) return null
-      const price = Math.round(extraCount * Number(extraPetFee || 0))
+      const extraFeeCents = toCents(extraPetFee)
+      const priceCents = extraCount * extraFeeCents
       return {
         key: `${key}_extra_pet`,
         serviceKey: key,
         label: `${item.label} · 额外${item.extraPetRule === 'dog' ? '狗狗' : '宠物'} x${extraCount}`,
-        price,
+        price: toYuan(priceCents),
         quantity: extraCount,
-        unitPrice: Number(extraPetFee || 0),
+        unitPrice: toYuan(extraFeeCents),
         type: 'extra_pet_fee',
         extraPetRule: item.extraPetRule
       }
@@ -178,9 +191,19 @@ module.exports = function createService({
       }))
     const unitPriceItems = [...unitBasePriceItems, ...unitExtraPetItems, ...unitTimedExtraItems]
     const priceItems = sessionCount > 1
-      ? unitPriceItems.map((item) => ({ ...item, unitPrice: item.price, price: Math.round(item.price * sessionCount * 100) / 100, label: `${item.label} × ${sessionCount}次` }))
+      ? unitPriceItems.map((item) => {
+          const unitCents = toCents(item.price)
+          const totalCents = unitCents * sessionCount
+          return {
+            ...item,
+            unitPrice: item.price,
+            price: toYuan(totalCents),
+            label: `${item.label} × ${sessionCount}次`
+          }
+        })
       : unitPriceItems
-    const amount = Math.round(priceItems.reduce((sum, item) => sum + Math.round(item.price * 100), 0)) / 100
+    const totalAmountCents = priceItems.reduce((sumCents, item) => sumCents + toCents(item.price), 0)
+    const amount = toYuan(totalAmountCents)
     const serviceLabels = unitBasePriceItems.map((item) => item.label)
     const businessServiceTypes = getBusinessServiceTypes(serviceTypes)
     const basePricing = {

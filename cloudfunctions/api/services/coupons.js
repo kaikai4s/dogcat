@@ -110,7 +110,10 @@ module.exports = function createService({
     if (!couponBusinessMatches(snapshot, pricing)) return { applicable: false, reason: snapshot.usageScope === 'mall' ? '仅限商城用品订单使用' : '仅限上门服务订单使用' }
     if (pricing.amount < snapshot.minOrderAmount) return { applicable: false, reason: `订单满 ¥${snapshot.minOrderAmount} 可用` }
     if (snapshot.usageScope === 'service' && snapshot.applicableServiceTypes.length && !pricing.serviceTypes.some((key) => snapshot.applicableServiceTypes.includes(key))) return { applicable: false, reason: '当前服务不可用' }
-    const discountAmount = Math.min(snapshot.discountAmount, pricing.amount)
+    const amountCents = Math.round(Number(pricing.amount || 0) * 100)
+    const couponDiscountCents = Math.round(Number(snapshot.discountAmount || 0) * 100)
+    const effectiveDiscountCents = Math.min(couponDiscountCents, amountCents)
+    const discountAmount = effectiveDiscountCents / 100
     if (discountAmount <= 0) return { applicable: false, reason: '优惠金额无效' }
     return {
       applicable: true,
@@ -127,8 +130,12 @@ module.exports = function createService({
     if (!couponResult || !couponResult.applicable) {
       return { ...pricing, discountAmount: 0, coupon: null, payAmount: pricing.amount, priceSnapshot: { ...pricing.priceSnapshot, originalAmount: pricing.amount, discountAmount: 0, payAmount: pricing.amount } }
     }
-    const discountAmount = couponResult.discountAmount
-    const payAmount = Math.max(pricing.amount - discountAmount, 0)
+    const amountCents = Math.round(Number(pricing.amount || 0) * 100)
+    const discountCents = Math.round(Number(couponResult.discountAmount || 0) * 100)
+    const actualDiscountCents = Math.min(discountCents, amountCents)
+    const payAmountCents = Math.max(amountCents - actualDiscountCents, 0)
+    const discountAmount = actualDiscountCents / 100
+    const payAmount = payAmountCents / 100
     const coupon = {
       couponId: couponResult.couponId,
       templateId: couponResult.templateId,
