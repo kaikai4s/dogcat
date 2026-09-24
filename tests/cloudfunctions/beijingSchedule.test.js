@@ -38,6 +38,13 @@ test('cross-midnight service accepts matching date exceptions on both calendar d
   await assert.rejects(context.validateStaffScheduleOnly(profile, '2099-08-03 23:00', '2099-08-04 02:30'), /可接单时间段/)
 })
 
+test('booking cutoff survives schedule merge and applies to each occupied Beijing day', async () => {
+  const { context, profile } = setup([], { '1': [{ start: 22, end: 24 }], '2': [{ start: 0, end: 6 }] })
+  profile.bookableUntilDate = '2099-08-03'
+  await context.validateStaffScheduleOnly(profile, '2099-08-03 23:00', '2099-08-04 00:00')
+  await assert.rejects(context.validateStaffScheduleOnly(profile, '2099-08-03 23:00', '2099-08-04 01:00'), /暂未开放/)
+})
+
 test('multi-day services validate every visit, while existing bookings still block conflicts', async () => {
   const { context, profile, db } = setup()
   const sessions = [{ startTime: '2099-08-03 17:00', endTime: '2099-08-03 18:00' }, { startTime: '2099-08-04 03:30', endTime: '2099-08-04 04:30' }]

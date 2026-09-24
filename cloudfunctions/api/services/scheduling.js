@@ -188,7 +188,6 @@ module.exports = function createService({
 
   async function validateStaffScheduleOnly(profile, startTimeStr, endTimeStr, options = {}) {
     if (!profile || !profile.openid) throw new Error('宠托师不可用')
-<<<<<<< HEAD
     const start = parseDateTimeParts(startTimeStr)
     const end = parseDateTimeParts(endTimeStr)
     if (!start || !end || end.dateObj <= start.dateObj) throw new Error('服务时间格式无效')
@@ -198,6 +197,9 @@ module.exports = function createService({
     while (cursor < finish) {
       const segmentStart = formatDateTimeParts(new Date(cursor))
       const dateKey = getDateKeyFromTime(segmentStart)
+      if (profile.bookableUntilDate && dateKey > profile.bookableUntilDate) {
+        throw new Error(`宠托师暂未开放 ${profile.bookableUntilDate} 之后的预约服务`)
+      }
       const segmentEndTs = Math.min(finish, toTimeValue(dateKey) + 86400000)
       const segmentEnd = formatDateTimeParts(new Date(segmentEndTs))
       const exception = Array.isArray(options.exceptions)
@@ -210,20 +212,6 @@ module.exports = function createService({
         validateSitterScheduleTime(profile.weeklySchedule, segmentStart, segmentEnd)
       }
       cursor = segmentEndTs
-=======
-    const dateKey = getDateKeyFromTime(startTimeStr)
-    if (!dateKey) throw new Error('请选择服务时间')
-    if (profile.bookableUntilDate && dateKey > profile.bookableUntilDate) {
-      throw new Error(`宠托师暂未开放 ${profile.bookableUntilDate} 之后的预约服务`)
-    }
-    const exceptionRes = await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid, dateKey }).limit(1).get()
-    const exception = exceptionRes.data[0]
-    if (exception) {
-      if (exception.status === 'unavailable') throw new Error('宠托师当天设置为休息，无法预约')
-      validateSlotsForDate(normalizeScheduleSlots(exception.slots), startTimeStr, endTimeStr, dateKey, '宠托师当天未设置可接单时间段')
-    } else {
-      validateSitterScheduleTime(profile.weeklySchedule, startTimeStr, endTimeStr)
->>>>>>> b1578c0487c548b4437f40cc321a0fe6a7d4fd68
     }
   }
 

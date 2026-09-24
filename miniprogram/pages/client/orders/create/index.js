@@ -440,7 +440,6 @@ typeof Page === 'function' ? Page({
     currentSitterScheduleTip: ''
   },
 
-<<<<<<< HEAD
   onLoad(options = {}) {
     const initialTime = getInitialServiceTime()
     this.setData({
@@ -450,13 +449,9 @@ typeof Page === 'function' ? Page({
       'form.doorLockCodeStartDate': initialTime.startDate,
       'form.doorLockCodeEndDate': initialTime.endDate
     })
-    loadSystemSettings().catch(() => null)
-=======
-  onLoad(options) {
     loadSystemSettings().then((settings) => {
       this.initPricingSurcharges(settings && settings.pricingSurcharges)
     }).catch(() => null)
->>>>>>> b1578c0487c548b4437f40cc321a0fe6a7d4fd68
     this.setData({ ...createPageNav(options), pendingOptions: options || {} })
     const publishMode = options.publishMode === 'direct' ? 'direct' : 'open'
     const staffProfileId = options.staffProfileId || ''
@@ -475,14 +470,10 @@ typeof Page === 'function' ? Page({
     this.applyCurrentTheme()
     this.consumeSelectedCoupon()
     this.updateMinTime()
-<<<<<<< HEAD
-    return ensureLogin({ content: '登录后可创建预约订单。' })
-=======
     loadSystemSettings().then((settings) => {
       this.initPricingSurcharges(settings && settings.pricingSurcharges)
     }).catch(() => null)
-    ensureLogin({ content: '登录后可创建预约订单。' })
->>>>>>> b1578c0487c548b4437f40cc321a0fe6a7d4fd68
+    return ensureLogin({ content: '登录后可创建预约订单。' })
       .then((user) => {
         this.setData({ user })
         return this.loadPageData()

@@ -2,12 +2,9 @@ module.exports = function createHandler(context) {
   const {
     collections,
     db,
-<<<<<<< HEAD
     formatDateTime,
-=======
     defaultServiceCheckinRules,
     defaultServicePrices,
->>>>>>> b1578c0487c548b4437f40cc321a0fe6a7d4fd68
     getUser,
     normalizeServiceCheckinRule,
     normalizeServicePrice,

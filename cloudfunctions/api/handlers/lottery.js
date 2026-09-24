@@ -290,54 +290,11 @@ module.exports = function createHandler(context) {
 
       // 3. 履约发奖（添加幂等 key）
       if (prizeType === 'coupon' && selectedPrize.templateId) {
-<<<<<<< HEAD
-        const existingCoupon = (await db.collection('user_coupons').where({
-          openid,
-          lotteryRecordId: recordId
-        }).limit(1).get()).data[0]
-
-        if (existingCoupon) {
-          couponId = existingCoupon._id
-          templateSnapshot = existingCoupon.templateSnapshot || null
-        } else {
-          const templateRes = await db.collection('coupon_templates').doc(selectedPrize.templateId).get().catch(() => ({ data: null }))
-          const template = templateRes && templateRes.data
-          if (template && template.enabled !== false) {
-            templateSnapshot = normalizeCouponSnapshot(template)
-            const { validFrom, validTo } = getCouponValidRange(template, time)
-            const coupon = await db.collection('user_coupons').add({
-              data: {
-                templateId: selectedPrize.templateId,
-                templateSnapshot,
-                userId: user._id,
-                openid,
-                status: 'available',
-                validFrom,
-                validTo,
-                lockedOrderId: '',
-                lockedAt: null,
-                usedOrderId: '',
-                usedAt: null,
-                sourceType: 'lottery',
-                sourceId: recordId,
-                lotteryRecordId: recordId,
-                idempotencyKey: recordId,
-                issuedAt: time,
-                createdAt: time,
-                updatedAt: time
-              }
-            })
-            couponId = coupon._id
-            await db.collection('coupon_templates').doc(selectedPrize.templateId).update({
-              data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time }
-            })
-=======
         const deterministicCouponId = deterministicRewardId('lottery_coupon', recordId)
         const issued = await db.runTransaction(async (tx) => {
           const existingDoc = await tx.collection('user_coupons').doc(deterministicCouponId).get().catch(() => ({ data: null }))
           if (existingDoc && existingDoc.data) {
             return { couponId: deterministicCouponId, templateSnapshot: existingDoc.data.templateSnapshot || null }
->>>>>>> b1578c0487c548b4437f40cc321a0fe6a7d4fd68
           }
 
           const templateRes = await tx.collection('coupon_templates').doc(selectedPrize.templateId).get().catch(() => ({ data: null }))
@@ -345,13 +302,7 @@ module.exports = function createHandler(context) {
           if (!template || template.enabled === false) return { couponId: '', templateSnapshot: null }
 
           const snapshot = normalizeCouponSnapshot(template)
-          const validDays = Number(template.validDays || 30)
-          const validTo = template.validType === 'fixed_range' && template.validToFixed
-            ? new Date(template.validToFixed)
-            : new Date(time.getTime() + validDays * 86400000)
-          const validFrom = template.validType === 'fixed_range' && template.validFromFixed
-            ? new Date(template.validFromFixed)
-            : time
+          const { validFrom, validTo } = getCouponValidRange(template, time)
           await tx.collection('user_coupons').doc(deterministicCouponId).set({
             data: {
               templateId: selectedPrize.templateId,

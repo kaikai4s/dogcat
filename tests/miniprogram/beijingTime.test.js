@@ -104,6 +104,7 @@ test('retry after a lost create response reuses the request ID and freezes the s
     }
   })
   page.prepareTime = () => {}
+  page.data.agreeAgreement = true
   page.validateRequired = () => ''
   page.buildOrderPayload = () => ({ petId: 'p1' })
   await page.create()

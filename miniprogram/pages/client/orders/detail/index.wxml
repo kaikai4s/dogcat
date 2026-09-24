@@ -79,16 +79,6 @@
   <view class="card security-card" wx:if="{{order.orderHomeSecurity}}">
     <view class="card-subtitle"><text class="remix-icon ri-door-lock-line sub-icon"></text><text>家庭安防</text></view>
     <view class="info-row"><view class="label">方式</view><view class="value">{{order.orderHomeSecurity.lockMethodText}}</view></view>
-<<<<<<< HEAD
-    <view wx:if="{{order.orderHomeSecurity.type === 'someone_home'}}" class="notice-text">有人在家，宠托师到达后敲门即可。</view>
-    <view wx:if="{{order.orderHomeSecurity.type === 'remote_unlock'}}">
-      <view class="notice-text">宠托师到达后可请求你远程开门，系统会发送微信提醒；电话催办由平台客服转接。</view>
-      <view class="info-row" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}"><view class="label">最近请求</view><view class="value">{{beijingTime.format(order.orderHomeSecurity.remoteUnlock.lastRequestedAt)}}</view></view>
-    </view>
-    <view wx:if="{{order.orderHomeSecurity.oneTimeCode}}" class="security-block">
-      <view class="info-row"><view class="label">密码状态</view><view class="value">已设置 {{order.orderHomeSecurity.oneTimeCode.masked}}</view></view>
-      <view class="info-row"><view class="label">有效区间</view><view class="value">{{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveStart)}} 至 {{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveEnd)}}</view></view>
-=======
     <view wx:if="{{order.orderHomeSecurity.type === 'someone_home'}}" class="security-block">
       <view class="info-row"><view class="label">入户方式</view><view class="value">有人在家</view></view>
       <view class="notice-text">服务时段内家中有人，宠托师到达后敲门即可进门；若宠物易激动请提前协助安抚。</view>
@@ -96,14 +86,13 @@
     <view wx:if="{{order.orderHomeSecurity.type === 'remote_unlock'}}" class="security-block">
       <view class="info-row"><view class="label">入户方式</view><view class="value">上门后远程开门</view></view>
       <view class="notice-text">宠托师到达后会发起远程开门请求，请注意查看微信通知，并在智能锁 App 中为宠托师远程开门。</view>
-      <view class="info-row" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}"><view class="label">最近请求</view><view class="value">{{order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}</view></view>
+      <view class="info-row" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}"><view class="label">最近请求</view><view class="value">{{beijingTime.format(order.orderHomeSecurity.remoteUnlock.lastRequestedAt)}}</view></view>
       <view class="info-row" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.requestCount}}"><view class="label">请求次数</view><view class="value">{{order.orderHomeSecurity.remoteUnlock.requestCount}} 次</view></view>
     </view>
     <view wx:if="{{order.orderHomeSecurity.oneTimeCode}}" class="security-block">
       <view class="info-row"><view class="label">入户方式</view><view class="value">智能门锁一次性密码</view></view>
       <view class="info-row"><view class="label">首场密码</view><view class="value">已设置 {{order.orderHomeSecurity.oneTimeCode.masked}}</view></view>
-      <view class="info-row"><view class="label">有效区间</view><view class="value">{{order.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{order.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view></view>
->>>>>>> b1578c0487c548b4437f40cc321a0fe6a7d4fd68
+      <view class="info-row"><view class="label">有效区间</view><view class="value">{{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveStart)}} 至 {{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveEnd)}}</view></view>
       <view class="notice-text">{{order.orderHomeSecurity.oneTimeCode.coversServiceTime ? '已覆盖全程服务时间' : '未覆盖全程服务时间，请重新设置'}}</view>
       <view wx:if="{{order.orderHomeSecurity.sessionCodes && order.orderHomeSecurity.sessionCodes.length}}" class="session-codes-wrap">
         <view class="session-codes-title"><text class="remix-icon ri-calendar-check-line"></text> 各天专属智能锁密码：</view>
@@ -112,7 +101,7 @@
             <text class="session-code-day">第{{item.sessionIndex}}天 ({{item.date}})</text>
             <text class="session-code-val">{{item.masked || '已设置'}}</text>
           </view>
-          <view class="session-code-time">有效时间：{{item.effectiveStart}} 至 {{item.effectiveEnd}}</view>
+          <view class="session-code-time">有效时间：{{beijingTime.format(item.effectiveStart)}} 至 {{beijingTime.format(item.effectiveEnd)}}</view>
         </view>
       </view>
       <button class="ghost-btn inline-btn" bindtap="showResetOneTimeCode"><text class="remix-icon ri-key-2-line"></text><text>重新设置一次性密码</text></button>
