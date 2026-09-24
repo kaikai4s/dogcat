@@ -39,7 +39,7 @@ module.exports = function createHandler(context) {
       const existingCollections = []
       const errors = []
 
-      // 1. 批量创建全量 72 个集合
+      // 1. 批量创建全量 73 个集合
       for (const colName of collections) {
         try {
           if (typeof db.createCollection === 'function') {
@@ -60,6 +60,70 @@ module.exports = function createHandler(context) {
             } catch (probeErr) {
               errors.push({ collection: colName, error: msg })
             }
+          }
+        }
+      }
+
+      // 2. 顺带自动创建全量核心业务索引
+      const REQUIRED_INDEXES = [
+        { collection: 'orders', name: 'idx_client_orders', keys: { clientOpenid: 1, createdAt: -1 }, unique: false },
+        { collection: 'orders', name: 'idx_staff_orders', keys: { staffOpenid: 1, status: 1 }, unique: false },
+        { collection: 'orders', name: 'idx_order_no', keys: { orderNo: 1 }, unique: true },
+        { collection: 'orders', name: 'idx_order_status', keys: { status: 1 }, unique: false },
+        { collection: 'mall_orders', name: 'idx_mall_client_orders', keys: { clientOpenid: 1, createdAt: -1 }, unique: false },
+        { collection: 'mall_orders', name: 'idx_mall_order_no', keys: { orderNo: 1 }, unique: true },
+        { collection: 'users', name: 'idx_user_openid', keys: { openid: 1 }, unique: true },
+        { collection: 'users', name: 'idx_user_phone', keys: { phone: 1 }, unique: false },
+        { collection: 'staff_profiles', name: 'idx_staff_openid', keys: { openid: 1 }, unique: true },
+        { collection: 'staff_profiles', name: 'idx_staff_audit_status', keys: { auditStatus: 1 }, unique: false },
+        { collection: 'user_coupons', name: 'idx_user_coupons', keys: { openid: 1, status: 1 }, unique: false },
+        { collection: 'payments', name: 'idx_payment_no', keys: { paymentNo: 1 }, unique: true },
+        { collection: 'payments', name: 'idx_payment_order_id', keys: { orderId: 1 }, unique: false },
+        { collection: 'staff_earnings', name: 'idx_staff_earnings', keys: { staffOpenid: 1, status: 1 }, unique: false },
+        { collection: 'staff_schedule_exceptions', name: 'idx_staff_schedule', keys: { staffOpenid: 1, dateKey: 1 }, unique: false },
+        { collection: 'pets', name: 'idx_client_pets', keys: { openid: 1 }, unique: false },
+        { collection: 'refunds', name: 'idx_refund_order_id', keys: { orderId: 1 }, unique: false },
+        { collection: 'refunds', name: 'idx_refund_no', keys: { refundNo: 1 }, unique: false },
+        { collection: 'order_incidents', name: 'idx_incident_order_id', keys: { orderId: 1 }, unique: false },
+        { collection: 'order_messages', name: 'idx_order_messages', keys: { conversationId: 1, createdAt: -1 }, unique: false },
+        { collection: 'point_logs', name: 'idx_point_logs', keys: { openid: 1, createdAt: -1 }, unique: false },
+        { collection: 'withdraw_requests', name: 'idx_withdraw_staff', keys: { staffOpenid: 1, createdAt: -1 }, unique: false }
+      ]
+
+      const indexResults = []
+      let indexesCreated = 0
+      for (const item of REQUIRED_INDEXES) {
+        try {
+          const col = db.collection(item.collection)
+          if (typeof col.createIndex === 'function') {
+            await col.createIndex({
+              name: item.name,
+              keys: item.keys,
+              unique: item.unique === true
+            })
+            indexesCreated++
+            indexResults.push({ collection: item.collection, name: item.name, status: 'created' })
+          } else {
+            indexResults.push({ collection: item.collection, name: item.name, status: 'skipped_mock_env' })
+          }
+        } catch (idxErr) {
+          const msg = String(idxErr.message || idxErr.errMsg || idxErr)
+          if (msg.includes('already exists') || msg.includes('exist') || msg.includes('已存在')) {
+            indexResults.push({ collection: item.collection, name: item.name, status: 'already_exists' })
+          } else {
+            try {
+              const col = db.collection(item.collection)
+              if (typeof col.createIndex === 'function') {
+                const legacyKeys = Object.entries(item.keys).map(([name, dir]) => ({ name, direction: dir === -1 || dir === 'desc' ? 'desc' : 'asc' }))
+                await col.createIndex({ keys: legacyKeys, name: item.name, unique: item.unique === true })
+                indexesCreated++
+                indexResults.push({ collection: item.collection, name: item.name, status: 'created_legacy' })
+                continue
+              }
+            } catch (legacyErr) {
+              // ignore
+            }
+            indexResults.push({ collection: item.collection, name: item.name, status: 'failed', error: msg })
           }
         }
       }
@@ -134,10 +198,13 @@ module.exports = function createHandler(context) {
 
       return {
         success: true,
-        message: '正式环境数据库初始化成功',
+        message: '正式环境数据库与业务索引初始化成功',
         totalCollections: collections.length,
         createdCount: createdCollections.length,
         existingCount: existingCollections.length,
+        totalIndexesConfigured: REQUIRED_INDEXES.length,
+        indexesCreated,
+        indexResults,
         errors,
         pricesInitialized,
         checkinRulesInitialized,
