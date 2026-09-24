@@ -1,5 +1,6 @@
 module.exports = function createService({ db, crypto, now, getPayableOrder, getSystemSettings,
-  assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo, restoreOrderCoupon }) {
+  assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo, restoreOrderCoupon,
+  normalizeMallProduct, getSkuById }) {
   const idFor = value => `refund_${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`
   async function optional(tx, name, id) {
     try { return (await tx.collection(name).doc(id).get()).data || null } catch (error) {
@@ -141,10 +142,67 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         paymentStatus = 'paid'
         refundStatus = 'failed'
       }
+      const isMallOrder = resolved.collectionName === 'mall_orders' || order.orderType === 'mall'
+      let shouldRestoreStock = false
+      if (status === 'success' && full && isMallOrder && order.status !== 'completed' && order.oversoldRefundRequired !== true && order.stockRestored !== true && Array.isArray(order.items) && order.items.length) {
+        shouldRestoreStock = true
+      }
+
+      if (shouldRestoreStock) {
+        const productRestores = new Map()
+        for (const item of order.items) {
+          const quantity = Number(item.quantity)
+          if (!Number.isSafeInteger(quantity) || quantity <= 0) continue
+          let product = productRestores.get(item.productId)
+          if (!product) {
+            const rawProduct = (await tx.collection('mall_products').doc(item.productId).get().catch(() => ({ data: null }))).data
+            if (rawProduct) product = typeof normalizeMallProduct === 'function' ? normalizeMallProduct(rawProduct) : rawProduct
+          }
+          if (product) {
+            let sku = typeof getSkuById === 'function' ? getSkuById(product, item.skuId) : null
+            if (!sku && Array.isArray(product.skus)) {
+              sku = product.skus.find(s => s.skuId === item.skuId)
+            }
+            if (sku) {
+              const skus = product.skus.map(row => row.skuId === sku.skuId
+                ? {
+                  ...row,
+                  stock: Number(row.stock || 0) + quantity,
+                  salesCount: Math.max(0, Number(row.salesCount || 0) - quantity)
+                }
+                : row)
+              const changed = skus.find(row => row.skuId === sku.skuId)
+              if (typeof normalizeMallProduct === 'function') {
+                product = normalizeMallProduct({
+                  ...product,
+                  ...(product.specMode === 'single' ? { stock: changed.stock, salesCount: changed.salesCount } : {}),
+                  skus
+                })
+              } else {
+                product.skus = skus
+                if (product.specMode === 'single') {
+                  product.stock = changed.stock
+                  product.salesCount = changed.salesCount
+                }
+              }
+              productRestores.set(item.productId, product)
+            }
+          }
+        }
+        for (const [id, product] of productRestores) {
+          const { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText } = product
+          await tx.collection('mall_products').doc(id).update({
+            data: { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText, updatedAt: time }
+          })
+        }
+      }
+
       await tx.collection(resolved.collectionName).doc(order._id).update({ data: {
         refundAmount: reserved / 100, refundedAmount: successful / 100,
         paymentStatus, refundStatus,
-        ...(full && order.status !== 'completed' ? { status: 'refunded' } : {}), updatedAt: time
+        ...(full && order.status !== 'completed' ? { status: 'refunded' } : {}),
+        ...(shouldRestoreStock ? { stockRestored: true, stockRestoredAt: time } : {}),
+        updatedAt: time
       } })
       if (status === 'success') {
         if (full && order.couponId && typeof restoreOrderCoupon === 'function') {
