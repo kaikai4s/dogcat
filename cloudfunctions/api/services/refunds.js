@@ -38,6 +38,9 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         return existing
       }
       if (!['paid', 'refunding'].includes(current.paymentStatus)) throw new Error('订单未支付或状态不支持退款')
+      if (source === 'mall_after_sale' && current.refundStatus !== 'applied') {
+        throw new Error('售后状态已变化，请刷新后重试')
+      }
       // Reusing a pending request is allowed only for the same business operation.
       const pending = !requestId && rows.find(row => row.status === 'processing' && row.source === source && row.reason === (reason || '') && amountYuanToFen(row.refundAmount) === requested)
       if (pending) return pending

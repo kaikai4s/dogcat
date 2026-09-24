@@ -198,6 +198,23 @@ module.exports = function createService({ db, crypto, now, safeText }) {
         availableRefundAmount: patch.availableRefundAmount ?? deposit.availableRefundAmount }
       await tx.collection('staff_deposits').doc(targetDepositId).update({ data: { ...patch, updatedAt: time } })
       await tx.collection('staff_profiles').doc(profile._id).update({ data: { ...profilePatch, updatedAt: time } })
+      if (action === 'confirmDepositRefund') {
+        const staffUserId = deposit.staffUserId || (profile && profile.userId)
+        let staffUser = null
+        if (staffUserId) {
+          staffUser = (await tx.collection('users').doc(staffUserId).get().catch(() => ({ data: null }))).data
+        }
+        if (!staffUser && deposit.staffOpenid) {
+          const userRes = await tx.collection('users').where({ openid: deposit.staffOpenid }).limit(1).get().catch(() => ({ data: [] }))
+          staffUser = userRes.data && userRes.data[0]
+        }
+        if (staffUser) {
+          const roles = (Array.isArray(staffUser.roles) ? staffUser.roles : ['client']).filter((r) => r !== 'staff')
+          const userUpdate = { roles: roles.length ? roles : ['client'], updatedAt: time }
+          if (staffUser.activeRole === 'staff') userUpdate.activeRole = 'client'
+          await tx.collection('users').doc(staffUser._id).update({ data: userUpdate })
+        }
+      }
       if (action === 'forfeitStaffDeposit') {
         const evidencesToUpdate = []
         if (Array.isArray(data.selectedEvidences) && data.selectedEvidences.length > 0) {

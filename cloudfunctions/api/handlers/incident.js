@@ -135,9 +135,29 @@ module.exports = function createHandler(context) {
     if (action === 'updateIncidentStatus' || action === 'resolveIncident') {
       await requireAdmin(openid)
       const id = data.id || data.incidentId
+      if (!id) throw new Error('缺少纠纷 ID')
+      const incidentRes = await db.collection('order_incidents').doc(id).get().catch(() => ({ data: null }))
+      const incident = incidentRes && incidentRes.data
+      if (!incident) throw new Error('纠纷不存在')
+
       const status = action === 'resolveIncident' ? normalizeIncidentStatus(data.status, 'resolved') : normalizeIncidentStatus(data.status, 'processing')
-      const update = { status, updatedAt: now() }
-      await db.collection('order_incidents').doc(id).update({ data: update })
+
+      if (['closed', 'resolved', 'rejected'].includes(incident.status)) {
+        if (incident.status === status) return { id, status }
+        throw new Error('已结案纠纷不可变更状态')
+      }
+
+      const hasFrozenEarnings = Array.isArray(incident.frozenEarningIds) && incident.frozenEarningIds.length > 0
+      const hasEarningSettled = incident.earningResolution && ['release', 'deduct'].includes(incident.earningResolution.decision)
+      if (hasFrozenEarnings && !hasEarningSettled && ['resolved', 'closed', 'rejected'].includes(status)) {
+        throw new Error('纠纷存在未处理的冻结收益，请通过结案流程结算收益')
+      }
+
+      const time = now()
+      const update = { status, updatedAt: time }
+      const res = await db.collection('order_incidents').where({ _id: id, status: incident.status }).update({ data: update })
+      if (!res.stats || !res.stats.updated) throw new Error('纠纷状态已变化，请刷新后重试')
+
       await recordIncidentAction(id, 'status_updated', 'admin', openid, { status })
       return { id, status }
     }
