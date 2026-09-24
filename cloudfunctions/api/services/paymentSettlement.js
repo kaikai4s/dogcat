@@ -128,6 +128,7 @@ module.exports = function createService(context) {
           paymentStatus: 'paid',
           status: 'refund_applied',
           refundStatus: 'applied',
+          preRefundStatus: 'pending_ship',
           refundReason: shortageReason || '商品库存不足，系统自动全额退款',
           refundAmount: Number(order.payAmount),
           paymentNo,

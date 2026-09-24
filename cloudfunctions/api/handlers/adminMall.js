@@ -251,9 +251,27 @@ module.exports = function createHandler(context) {
       const approved = data.approved === true
       const time = now()
       if (!approved) {
-        await db.collection('mall_orders').doc(order._id).update({ data: { status: order.trackingNo ? 'shipped' : 'pending_ship', refundStatus: 'rejected', refundRejectReason: safeText(data.remark).trim(), updatedAt: time } })
-        await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: false })
-        return { orderId: order._id, refundStatus: 'rejected' }
+        let restoredStatus = order.preRefundStatus
+        if (!restoredStatus || !['pending_ship', 'shipped', 'completed'].includes(restoredStatus)) {
+          if (order.receivedAt) {
+            restoredStatus = 'completed'
+          } else if (order.trackingNo || order.shippedAt) {
+            restoredStatus = 'shipped'
+          } else {
+            restoredStatus = 'pending_ship'
+          }
+        }
+        await db.collection('mall_orders').doc(order._id).update({
+          data: {
+            status: restoredStatus,
+            refundStatus: 'rejected',
+            refundRejectReason: safeText(data.remark).trim(),
+            refundAuditedAt: time,
+            updatedAt: time
+          }
+        })
+        await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: false, remark: safeText(data.remark).trim(), restoredStatus })
+        return { orderId: order._id, refundStatus: 'rejected', status: restoredStatus }
       }
       const refund = await createRefundForOrder(order, Number(data.refundAmount || order.payAmount || 0), data.remark || order.refundReason || '商城售后退款', 'mall_after_sale', openid, getClientRequestId(data))
       await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: true, refundNo: refund.refundNo })

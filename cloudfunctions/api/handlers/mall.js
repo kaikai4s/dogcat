@@ -214,8 +214,18 @@ module.exports = function createHandler(context) {
       if (!reason) throw new Error('请填写售后原因')
       const time = now()
       const refundImages = Array.isArray(data.images || data.refundImages) ? (data.images || data.refundImages).map(safeFileId).filter(Boolean).slice(0, 6) : []
-      await db.collection('mall_orders').doc(order._id).update({ data: { status: 'refund_applied', refundStatus: 'applied', refundReason: reason, refundImages, refundRequestedAmount: Number(order.payAmount || 0), updatedAt: time } })
-      return { orderId: order._id, refundStatus: 'applied' }
+      await db.collection('mall_orders').doc(order._id).update({
+        data: {
+          status: 'refund_applied',
+          refundStatus: 'applied',
+          preRefundStatus: order.status,
+          refundReason: reason,
+          refundImages,
+          refundRequestedAmount: Number(order.payAmount || 0),
+          updatedAt: time
+        }
+      })
+      return { orderId: order._id, refundStatus: 'applied', preRefundStatus: order.status }
     }
     throw new Error('未知 mall 操作')
   }
