@@ -13,6 +13,7 @@ module.exports = function createHandler(context) {
     paginateList,
     publicMallProduct,
     requireAdmin,
+    restoreOrderCoupon,
     safeText,
     validateMallProductInput
   } = context
@@ -261,7 +262,7 @@ module.exports = function createHandler(context) {
             restoredStatus = 'pending_ship'
           }
         }
-        await db.collection('mall_orders').doc(order._id).update({
+        const updated = await db.collection('mall_orders').where({ _id: order._id, refundStatus: 'applied' }).update({
           data: {
             status: restoredStatus,
             refundStatus: 'rejected',
@@ -270,12 +271,41 @@ module.exports = function createHandler(context) {
             updatedAt: time
           }
         })
+        if (!updated.stats || !updated.stats.updated) throw new Error('售后状态已变化，请刷新后重试')
         await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: false, remark: safeText(data.remark).trim(), restoredStatus })
         return { orderId: order._id, refundStatus: 'rejected', status: restoredStatus }
       }
-      const refund = await createRefundForOrder(order, Number(data.refundAmount || order.payAmount || 0), data.remark || order.refundReason || '商城售后退款', 'mall_after_sale', openid, getClientRequestId(data))
-      await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: true, refundNo: refund.refundNo })
-      return { orderId: order._id, refundStatus: 'approved', refundNo: refund.refundNo }
+      const payAmount = Number(order.payAmount || 0)
+      const refundAmount = data.refundAmount !== undefined && data.refundAmount !== null && String(data.refundAmount).trim() !== ''
+        ? Number(data.refundAmount)
+        : payAmount
+      if (payAmount > 0) {
+        if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error('请输入有效的退款金额（需大于0）')
+        if (refundAmount > payAmount) throw new Error('退款金额不能超过订单实付金额')
+        const refund = await createRefundForOrder(order, refundAmount, data.remark || order.refundReason || '商城售后退款', 'mall_after_sale', openid, getClientRequestId(data))
+        await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: true, refundNo: refund.refundNo, refundAmount })
+        return { orderId: order._id, refundStatus: 'approved', refundNo: refund.refundNo, refundAmount }
+      }
+      // 0 元券单售后通过：无需调用微信支付退款，直接在事务中流转为全额退款完成并恢复优惠券
+      await db.runTransaction(async (tx) => {
+        const current = (await tx.collection('mall_orders').doc(order._id).get().catch(() => ({ data: null }))).data
+        if (!current || current.refundStatus !== 'applied') throw new Error('售后状态已变化，请刷新后重试')
+        await tx.collection('mall_orders').doc(order._id).update({
+          data: {
+            status: 'refunded',
+            refundStatus: 'full_refunded',
+            refundAmount: 0,
+            refundedAmount: 0,
+            refundAuditedAt: time,
+            updatedAt: time
+          }
+        })
+        if (current.couponId && typeof restoreOrderCoupon === 'function') {
+          await restoreOrderCoupon(current.couponId, order._id, tx)
+        }
+      })
+      await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: true, refundAmount: 0, zeroPayAmount: true })
+      return { orderId: order._id, refundStatus: 'approved', zeroPayAmount: true }
     }
     throw new Error('未知 adminMall 操作')
   }

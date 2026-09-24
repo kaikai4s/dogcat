@@ -203,7 +203,8 @@ module.exports = function createHandler(context) {
       if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
       if (order.status !== 'shipped') throw new Error('当前订单不可确认收货')
       const time = now()
-      await db.collection('mall_orders').doc(order._id).update({ data: { status: 'completed', receivedAt: time, updatedAt: time } })
+      const res = await db.collection('mall_orders').where({ _id: order._id, clientOpenid: openid, status: 'shipped' }).update({ data: { status: 'completed', receivedAt: time, updatedAt: time } })
+      if (!res.stats || !res.stats.updated) throw new Error('订单状态已更新，请刷新后重试')
       return { orderId: order._id, status: 'completed' }
     }
     if (action === 'applyRefund') {
@@ -214,7 +215,7 @@ module.exports = function createHandler(context) {
       if (!reason) throw new Error('请填写售后原因')
       const time = now()
       const refundImages = Array.isArray(data.images || data.refundImages) ? (data.images || data.refundImages).map(safeFileId).filter(Boolean).slice(0, 6) : []
-      await db.collection('mall_orders').doc(order._id).update({
+      const res = await db.collection('mall_orders').where({ _id: order._id, clientOpenid: openid, status: order.status }).update({
         data: {
           status: 'refund_applied',
           refundStatus: 'applied',
@@ -225,6 +226,7 @@ module.exports = function createHandler(context) {
           updatedAt: time
         }
       })
+      if (!res.stats || !res.stats.updated) throw new Error('订单状态已更新，请刷新后重试')
       return { orderId: order._id, refundStatus: 'applied', preRefundStatus: order.status }
     }
     throw new Error('未知 mall 操作')

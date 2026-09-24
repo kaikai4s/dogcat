@@ -35,16 +35,61 @@ module.exports = function createService({
       return { ...base, remoteUnlock: { lastRequestedAt: '', requestCount: 0, notifyChannels: ['wechat', 'admin_phone'], lastNotifyStatus: { wechat: '', admin_phone: '' } } }
     }
     if (type === 'one_time_code') {
+      const sessionCodesInput = Array.isArray(source.sessionCodes) ? source.sessionCodes : (Array.isArray(data.sessionCodes) ? data.sessionCodes : [])
+      let sessionCodes = []
+      if (sessionCodesInput.length > 0) {
+        sessionCodes = sessionCodesInput.map((item, idx) => {
+          const itemCode = safeText(item.code || item.doorLockCode).trim()
+          if (!itemCode) throw new Error(`请填写第${idx + 1}天的一次性开门密码`)
+          const itemEffectiveStart = item.effectiveStart || item.doorLockCodeStartTime
+          const itemEffectiveEnd = item.effectiveEnd || item.doorLockCodeEndTime
+          if (!itemEffectiveStart || !itemEffectiveEnd) throw new Error(`请选择第${idx + 1}天一次性密码有效时间`)
+          if (toTimeValue(itemEffectiveEnd) <= toTimeValue(itemEffectiveStart)) throw new Error(`第${idx + 1}天一次性密码结束时间必须晚于开始时间`)
+          const enc = encryptText(itemCode)
+          return {
+            sessionIndex: Number(item.sessionIndex || item.index || (idx + 1)),
+            date: safeText(item.date).trim(),
+            cipher: enc.cipher,
+            iv: enc.iv,
+            tag: enc.tag,
+            masked: mask(itemCode),
+            effectiveStart: itemEffectiveStart,
+            effectiveEnd: itemEffectiveEnd,
+            coversServiceTime: true
+          }
+        })
+      }
+
       const doorLockCode = safeText(source.code || source.doorLockCode || data.doorLockCode).trim()
-      const effectiveStart = source.effectiveStart || data.doorLockCodeStartTime
-      const effectiveEnd = source.effectiveEnd || data.doorLockCodeEndTime
-      if (!doorLockCode) throw new Error('请填写一次性开门密码')
-      if (!effectiveStart || !effectiveEnd) throw new Error('请选择一次性密码有效时间')
-      if (toTimeValue(effectiveEnd) <= toTimeValue(effectiveStart)) throw new Error('一次性密码结束时间必须晚于开始时间')
-      const coversServiceTime = isTimeRangeCovered(data.startTime, data.endTime, effectiveStart, effectiveEnd)
-      if (!coversServiceTime) throw new Error('一次性密码有效期需要覆盖完整服务时间')
-      const encrypted = encryptText(doorLockCode)
-      return { ...base, hasDoorLockCode: true, oneTimeCode: { cipher: encrypted.cipher, iv: encrypted.iv, tag: encrypted.tag, masked: mask(doorLockCode), effectiveStart, effectiveEnd, coversServiceTime } }
+      const effectiveStart = source.effectiveStart || data.doorLockCodeStartTime || (sessionCodes[0] && sessionCodes[0].effectiveStart)
+      const effectiveEnd = source.effectiveEnd || data.doorLockCodeEndTime || (sessionCodes[sessionCodes.length - 1] && sessionCodes[sessionCodes.length - 1].effectiveEnd)
+
+      if (!sessionCodes.length) {
+        if (!doorLockCode) throw new Error('请填写一次性开门密码')
+        if (!effectiveStart || !effectiveEnd) throw new Error('请选择一次性密码有效时间')
+        if (toTimeValue(effectiveEnd) <= toTimeValue(effectiveStart)) throw new Error('一次性密码结束时间必须晚于开始时间')
+        const coversServiceTime = isTimeRangeCovered(data.startTime, data.endTime, effectiveStart, effectiveEnd)
+        if (!coversServiceTime) throw new Error('一次性密码有效期需要覆盖完整服务时间')
+        const encrypted = encryptText(doorLockCode)
+        return { ...base, hasDoorLockCode: true, oneTimeCode: { cipher: encrypted.cipher, iv: encrypted.iv, tag: encrypted.tag, masked: mask(doorLockCode), effectiveStart, effectiveEnd, coversServiceTime } }
+      }
+
+      const defaultCode = doorLockCode || (sessionCodesInput[0] && safeText(sessionCodesInput[0].code || sessionCodesInput[0].doorLockCode).trim()) || ''
+      const defaultEnc = encryptText(defaultCode)
+      return {
+        ...base,
+        hasDoorLockCode: true,
+        sessionCodes,
+        oneTimeCode: {
+          cipher: defaultEnc.cipher,
+          iv: defaultEnc.iv,
+          tag: defaultEnc.tag,
+          masked: sessionCodes[0] ? sessionCodes[0].masked : mask(defaultCode),
+          effectiveStart: effectiveStart || '',
+          effectiveEnd: effectiveEnd || '',
+          coversServiceTime: true
+        }
+      }
     }
     if (type === 'key') {
       const location = safeText(source.location || data.keyLocation).trim()
@@ -121,6 +166,17 @@ module.exports = function createService({
         effectiveEnd: security.oneTimeCode.effectiveEnd || '',
         coversServiceTime: security.oneTimeCode.coversServiceTime === true
       }
+      safe.hasDoorLockCode = true
+    }
+    if (Array.isArray(security.sessionCodes) && security.sessionCodes.length) {
+      safe.sessionCodes = security.sessionCodes.map((item) => ({
+        sessionIndex: item.sessionIndex || item.index,
+        date: item.date || '',
+        masked: item.masked || (item.cipher ? mask('******') : ''),
+        effectiveStart: item.effectiveStart || '',
+        effectiveEnd: item.effectiveEnd || '',
+        coversServiceTime: item.coversServiceTime === true
+      }))
       safe.hasDoorLockCode = true
     }
     if (security.remoteUnlock) {

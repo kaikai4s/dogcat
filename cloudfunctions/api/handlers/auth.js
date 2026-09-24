@@ -209,6 +209,7 @@ module.exports = function createHandler(context) {
       const oldPhone = safeText(user.phone).trim()
       const phone = String(data.phone || '').trim()
       if (!phone) throw new Error('手机号不能为空')
+      if (!/^1\d{10}$/.test(phone)) throw new Error('请输入有效的11位手机号码')
       await db.collection('users').doc(user._id).update({ data: { phone, updatedAt: now() } })
       if (phone !== oldPhone) await syncClientOrderPhone(openid, phone)
       return { ...user, phone }
