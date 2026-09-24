@@ -38,7 +38,7 @@ const durationOptions = [
 const lockMethodOptions = [
   { label: '有人在家', value: 'someone_home', desc: '宠托师到达后敲门即可' },
   { label: '远程开门', value: 'remote_unlock', desc: '到达后请求你远程开门' },
-  { label: '一次性密码', value: 'one_time_code', desc: '设置本单专用密码和有效期' },
+  { label: '一次性密码', value: 'one_time_code', desc: '需智能锁App生成临时密码' },
   { label: '钥匙', value: 'key', desc: '说明钥匙位置并上传图片' }
 ]
 
@@ -1062,7 +1062,7 @@ Page({
     if (!form.addressDetail) return '请填写详细地址'
     if (!form.doorplate) return '请填写门牌号或入户说明'
     if (!form.lockMethod) return '请选择入户与门锁方式'
-    if (form.lockMethod === 'one_time_code' && !String(form.doorLockCode || '').trim()) return '请填写一次性开门密码'
+    if (form.lockMethod === 'one_time_code' && !String(form.doorLockCode || '').trim()) return '请填写智能门锁App生成的一次性开门密码'
     if (form.lockMethod === 'one_time_code' && !coversServiceTime(form.startTime, form.endTime, form.doorLockCodeStartTime, form.doorLockCodeEndTime)) return '一次性密码有效期需要覆盖完整服务时间'
     if (form.lockMethod === 'key' && !String(form.keyLocation || '').trim()) return '请填写钥匙放置位置'
     if (form.lockMethod === 'key' && !(form.keyImageFileIds || []).length) return '请上传钥匙放置位置图片'

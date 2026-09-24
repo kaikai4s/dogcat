@@ -163,7 +163,8 @@
 
   <view class="security-card unlock-result" wx:if="{{order && order.serviceStarted && unlock}}">
     <view class="info-row"><view class="label">入户方式</view><view class="value">{{unlock.lockMethodText || '服务入户'}}</view></view>
-    <view class="info-row" wx:if="{{unlock.doorLockCode}}"><view class="label">门锁密码</view><view class="value code-text">{{unlock.doorLockCode}}</view></view>
+    <view class="info-row" wx:if="{{unlock.doorLockCode}}"><view class="label">{{unlock.sessionIndex ? '第' + unlock.sessionIndex + '天门锁密码' : '门锁密码'}}</view><view class="value code-text">{{unlock.doorLockCode}}</view></view>
+    <view class="security-desc" wx:if="{{unlock.doorLockCode}}">此密码为客户在智能门锁 App 中生成的本场次临时开门密码，仅在当前服务时间窗口内有效。</view>
     <view class="info-row" wx:if="{{unlock.keyLocation}}"><view class="label">钥匙位置</view><view class="value">{{unlock.keyLocation}}</view></view>
     <view class="info-row" wx:if="{{unlock.entryNotes}}"><view class="label">入户备注</view><view class="value">{{unlock.entryNotes}}</view></view>
   </view>

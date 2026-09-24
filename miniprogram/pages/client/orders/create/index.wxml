@@ -209,7 +209,28 @@
     </view>
 
     <view class="lock-panel" wx:if="{{form.lockMethod === 'one_time_code'}}">
-      <input password placeholder="一次性开门密码（本订单专用）" value="{{form.doorLockCode}}" data-field="doorLockCode" bindinput="input" />
+      <view class="notice notice-smartlock">
+        <view class="smartlock-header">
+          <text class="remix-icon ri-shield-check-line smartlock-icon"></text>
+          <text class="strong">智能门锁一次性密码设置指引</text>
+        </view>
+        <view class="smartlock-steps">
+          <view class="smartlock-step-item">
+            <text class="step-badge">1</text>
+            <view class="step-text"><text class="strong">门锁要求：</text>需家中门锁为<text class="highlight-text">智能门锁</text>且支持在门锁手机 App 中设置“一次性临时密码”。普通机械锁请选择“钥匙”或“有人在家”。</view>
+          </view>
+          <view class="smartlock-step-item">
+            <text class="step-badge">2</text>
+            <view class="step-text"><text class="strong">生成密码：</text>请先打开您家智能锁对应的手机 App（如米家、鹿客、凯迪仕、华为智慧生活、德施曼、Aqara等），根据下方服务时间生成一次性临时有效密码。</view>
+          </view>
+          <view class="smartlock-step-item">
+            <text class="step-badge">3</text>
+            <view class="step-text"><text class="strong">填入生效：</text>将 App 生成的密码及有效时间填入下方。若为多天服务，建议每日分别生成专属临时密码（可在下单后于“订单详情”按天逐日更新），更享安全保障。</view>
+          </view>
+        </view>
+      </view>
+
+      <input password placeholder="智能门锁App生成的一次性密码（本单专用）" value="{{form.doorLockCode}}" data-field="doorLockCode" bindinput="input" />
       <view class="picker-grid">
         <picker mode="date" value="{{form.doorLockCodeStartDate}}" bindchange="chooseCodeStartDate"><view class="field">生效日期：{{form.doorLockCodeStartDate}}</view></picker>
         <picker mode="time" value="{{form.doorLockCodeStartClock}}" bindchange="chooseCodeStartClock"><view class="field">生效时间：{{form.doorLockCodeStartClock}}</view></picker>

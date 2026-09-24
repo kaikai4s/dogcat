@@ -84,9 +84,20 @@
       <view class="info-row" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}"><view class="label">最近请求</view><view class="value">{{order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}</view></view>
     </view>
     <view wx:if="{{order.orderHomeSecurity.oneTimeCode}}" class="security-block">
-      <view class="info-row"><view class="label">密码状态</view><view class="value">已设置 {{order.orderHomeSecurity.oneTimeCode.masked}}</view></view>
+      <view class="info-row"><view class="label">入户方式</view><view class="value">智能门锁一次性密码</view></view>
+      <view class="info-row"><view class="label">首场密码</view><view class="value">已设置 {{order.orderHomeSecurity.oneTimeCode.masked}}</view></view>
       <view class="info-row"><view class="label">有效区间</view><view class="value">{{order.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{order.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view></view>
       <view class="notice-text">{{order.orderHomeSecurity.oneTimeCode.coversServiceTime ? '已覆盖全程服务时间' : '未覆盖全程服务时间，请重新设置'}}</view>
+      <view wx:if="{{order.orderHomeSecurity.sessionCodes && order.orderHomeSecurity.sessionCodes.length}}" class="session-codes-wrap">
+        <view class="session-codes-title"><text class="remix-icon ri-calendar-check-line"></text> 各天专属智能锁密码：</view>
+        <view class="session-code-row" wx:for="{{order.orderHomeSecurity.sessionCodes}}" wx:key="sessionIndex">
+          <view class="session-code-header">
+            <text class="session-code-day">第{{item.sessionIndex}}天 ({{item.date}})</text>
+            <text class="session-code-val">{{item.masked || '已设置'}}</text>
+          </view>
+          <view class="session-code-time">有效时间：{{item.effectiveStart}} 至 {{item.effectiveEnd}}</view>
+        </view>
+      </view>
       <button class="ghost-btn inline-btn" bindtap="showResetOneTimeCode"><text class="remix-icon ri-key-2-line"></text><text>重新设置一次性密码</text></button>
     </view>
     <view wx:if="{{order.orderHomeSecurity.key}}" class="security-block">
@@ -96,7 +107,16 @@
       <view class="image-list" wx:if="{{order.orderHomeSecurity.key.returnImageFileIds.length}}"><image wx:for="{{order.orderHomeSecurity.key.returnImageFileIds}}" wx:key="*this" class="security-image" src="{{item}}" mode="aspectFill" /></view>
     </view>
     <view class="reset-panel" wx:if="{{resettingCode}}">
-      <input password placeholder="新的开门密码" value="{{resetCodeForm.code}}" data-field="code" bindinput="inputResetCode" />
+      <view class="reset-tip-box">
+        <view class="reset-tip-title"><text class="remix-icon ri-shield-check-line"></text> 智能门锁一次性密码设置指引</view>
+        <view class="reset-tip-desc">请确认家中为智能门锁，并在门锁手机 App（如米家、鹿客、凯迪仕等）中生成服务时间段对应的临时密码后填入保存：</view>
+      </view>
+      <view class="session-picker-wrap" wx:if="{{resetSessionOptions.length > 1}}">
+        <picker range="{{resetSessionOptions}}" range-key="label" value="{{selectedResetSessionIdx}}" bindchange="chooseResetSession">
+          <view class="field picker-field">设置目标：{{resetSessionOptions[selectedResetSessionIdx].label}} <text class="remix-icon ri-arrow-down-s-line"></text></view>
+        </picker>
+      </view>
+      <input password placeholder="智能门锁App生成的临时密码" value="{{resetCodeForm.code}}" data-field="code" bindinput="inputResetCode" />
       <input placeholder="生效时间，如 2026-08-25 09:30" value="{{resetCodeForm.effectiveStart}}" data-field="effectiveStart" bindinput="inputResetCode" />
       <input placeholder="失效时间，如 2026-08-25 12:00" value="{{resetCodeForm.effectiveEnd}}" data-field="effectiveEnd" bindinput="inputResetCode" />
       <button class="primary-btn" bindtap="saveResetOneTimeCode"><text class="remix-icon ri-save-3-line"></text><text>保存新密码</text></button>
