@@ -98,16 +98,36 @@ Page({
 
   withdraw() {
     if (this.data.submitting) return
+    const amount = Number(this.data.amount || 0)
+    const minWithdraw = Number(this.data.balance?.minWithdrawAmount || 0)
+    const available = Number(this.data.balance?.available || 0)
+    if (!amount || amount <= 0) {
+      return wx.showToast({ title: '请输入正确的提现金额', icon: 'none' })
+    }
+    if (available > 0 && amount > available) {
+      return wx.showToast({ title: '提现金额超出可用余额', icon: 'none' })
+    }
+    if (minWithdraw > 0 && amount < minWithdraw) {
+      return wx.showToast({ title: `最低提现金额为 ¥${minWithdraw}`, icon: 'none' })
+    }
+    const accountName = String(this.data.accountName || '').trim()
+    if (!accountName || accountName.length < 2) {
+      return wx.showToast({ title: '请填写收款人真实姓名', icon: 'none' })
+    }
+    const accountNo = String(this.data.accountNo || '').trim()
+    if (!accountNo || accountNo.length < 4) {
+      return wx.showToast({ title: '请填写完整收款账号', icon: 'none' })
+    }
     this.setData({ submitting: true })
     callFunction('finance', 'createWithdrawRequest', {
-      amount: Number(this.data.amount || 0),
-      accountName: this.data.accountName,
-      accountNo: this.data.accountNo,
+      amount,
+      accountName,
+      accountNo,
       clientRequestId: createClientRequestId('withdraw')
     })
       .then(() => {
-        wx.showToast({ title: '已提交提现' })
-        this.setData({ submitting: false })
+        wx.showToast({ title: '已提交提现', icon: 'success' })
+        this.setData({ submitting: false, amount: '', accountName: '', accountNo: '' })
         this.load()
       })
       .catch((error) => {

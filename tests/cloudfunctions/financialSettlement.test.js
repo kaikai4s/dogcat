@@ -59,7 +59,7 @@ test('withdrawal reservation and incident freeze cannot both reserve an earning'
     return run(callback)
   }
   const results = await Promise.allSettled([
-    context.createWithdrawRequest('staff', { amount: 80, clientRequestId: 'race' }),
+    context.createWithdrawRequest('staff', { amount: 80, clientRequestId: 'race', accountName: '测试宠托师', accountNo: '6222021234567890' }),
     context.freezeIncidentEarnings('i', 'admin')
   ])
   assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)

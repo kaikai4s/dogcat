@@ -27,6 +27,16 @@ module.exports = function createService({
     // Preserve idempotency for requests created before deterministic IDs were introduced.
     const previous = await findByClientRequestId('withdraw_requests', { staffOpenid: openid, clientRequestId })
     if (previous) return previous
+
+    const accountName = safeText(data.accountName).trim()
+    const accountNo = safeText(data.accountNo).trim()
+    if (!accountName || accountName.length < 2 || accountName.length > 50) {
+      throw new Error('请填写正确的提现收款人姓名（2-50个字符）')
+    }
+    if (!accountNo || accountNo.length < 4 || accountNo.length > 50) {
+      throw new Error('请填写正确的提现收款账号（4-50个字符）')
+    }
+
     const id = `w_${clientRequestId
       ? crypto.createHash('sha256').update(JSON.stringify([openid, clientRequestId])).digest('hex').slice(0, 32)
       : crypto.randomBytes(16).toString('hex')}`
@@ -64,7 +74,8 @@ module.exports = function createService({
       const request = {
         staffOpenid: openid, openid, clientRequestId, idempotencyKey: clientRequestId || id,
         amount: totalCents / 100, status: 'pending', earningIds: selected.map(item => item._id),
-        accountName: safeText(data.accountName).trim(), accountNo: safeText(data.accountNo).trim(),
+        accountName,
+        accountNo,
         remark: safeText(data.remark).trim(), auditRemark: '', createdAt: time, updatedAt: time
       }
       await transaction.collection('withdraw_requests').doc(id).set({ data: request })
