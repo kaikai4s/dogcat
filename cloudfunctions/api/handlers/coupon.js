@@ -25,6 +25,15 @@ module.exports = function createHandler(context) {
       cursor = page[page.length - 1]._id
     }
   }
+  function isEffectiveOrder(order) {
+    if (!order) return false
+    if (order.paymentStatus === 'paid') return true
+    if (['cancelled', 'closed', 'expired'].includes(order.status) && order.paymentStatus !== 'paid') {
+      return false
+    }
+    return true
+  }
+
   return async function coupon(openid, action, data) {
     if (action === 'listMyCoupons') {
       await getUser(openid)
@@ -64,6 +73,17 @@ module.exports = function createHandler(context) {
         throw new Error('新人优惠券不可领取')
       }
       if (!template || template.enabled === false || template.newbieOnly !== true) throw new Error('新人优惠券不可领取')
+
+      const [serviceOrdersRes, mallOrdersRes] = await Promise.all([
+        db.collection('orders').where({ clientOpenid: openid }).limit(50).get().catch(() => ({ data: [] })),
+        db.collection('mall_orders').where({ clientOpenid: openid }).limit(50).get().catch(() => ({ data: [] }))
+      ])
+      const serviceOrders = (serviceOrdersRes && serviceOrdersRes.data) || []
+      const mallOrders = (mallOrdersRes && mallOrdersRes.data) || []
+      if ([...serviceOrders, ...mallOrders].some(isEffectiveOrder)) {
+        throw new Error('新人专享券仅限未下单的新用户领取')
+      }
+
       const idempotencyKey = `newbie_${openid}_${templateId}`
       const issued = await issueCouponToTargetUser(template, user, {
         idempotencyKey,
