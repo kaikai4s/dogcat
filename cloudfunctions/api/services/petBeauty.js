@@ -63,9 +63,9 @@ module.exports = function createService({
     const birth = parseDateValue(birthday)
     if (!birth) return '年龄未知'
     const today = toCstParts()
-    const nowDate = new Date(`${today.monthKey}-${today.day}T00:00:00+08:00`)
-    let months = (nowDate.getFullYear() - birth.getFullYear()) * 12 + nowDate.getMonth() - birth.getMonth()
-    if (nowDate.getDate() < birth.getDate()) months -= 1
+    const birthParts = toCstParts(birth)
+    let months = (today.year - birthParts.year) * 12 + Number(today.month) - Number(birthParts.month)
+    if (today.dayNumber < birthParts.dayNumber) months -= 1
     if (months < 1) return '未满1个月'
     if (months < 12) return `${months}个月`
     const years = Math.floor(months / 12)

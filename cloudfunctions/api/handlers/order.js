@@ -174,7 +174,7 @@ module.exports = function createHandler(context) {
           isDefault: true
         })
       }
-      const createdOrder = await createOrderWithCouponLock({
+      const { order: createdOrder, created } = await createOrderWithCouponLock({
         collectionName: 'orders',
         order,
         couponId: order.couponId,
@@ -191,6 +191,7 @@ module.exports = function createHandler(context) {
           }
         ]
       })
+      if (!created) return { ...sanitizeOrderSecurityFields(createdOrder), savedAddress }
       await appendOrderTimeline(createdOrder._id, 'created', '订单已创建', order.serviceSummary, 'client')
       await appendOrderClientMessage(createdOrder, { eventType: 'created', title: '订单已创建', detail: order.serviceSummary, actorRole: 'client', unreadForClient: false })
       if (order.couponId) {

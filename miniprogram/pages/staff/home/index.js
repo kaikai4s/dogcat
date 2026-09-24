@@ -2,7 +2,6 @@ const { callFunction, showError, requirePrivacyAuthorize, requestSubscribeTempla
 const { getSelectedLocation } = require('../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
-const { toBeijingDate } = require('../../../utils/format')
 
 function hasCoordinate(latitude, longitude) {
   return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && Math.abs(Number(latitude)) > 0.000001 && Math.abs(Number(longitude)) > 0.000001
@@ -70,64 +69,16 @@ function applyWorkbenchDistances(orders, location) {
   })
 }
 
-function normalizeScheduleSlots(raw) {
-  if (!raw || typeof raw !== 'object') return null
-  const result = {}
-  let hasAny = false
-  for (let day = 1; day <= 7; day++) {
-    const list = Array.isArray(raw[String(day)]) ? raw[String(day)] : []
-    const slots = list
-      .map((s) => ({ start: Math.max(0, Math.min(23, Math.floor(Number(s.start || 0)))), end: Math.max(1, Math.min(24, Math.floor(Number(s.end || 0)))) }))
-      .filter((s) => s.end > s.start)
-    result[String(day)] = slots
-    if (slots.length) hasAny = true
-  }
-  return hasAny ? result : null
-}
-
-function parseDateTimeParts(dateStr) {
-  if (!dateStr) return null
-  const text = String(dateStr).trim()
-  const match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{1,2})/)
-  if (match) {
-    const year = Number(match[1])
-    const month = Number(match[2]) - 1
-    const day = Number(match[3])
-    const hour = Number(match[4])
-    const minute = Number(match[5])
-    // 使用 UTC 正午时间计算星期几，避免时区问题
-    const dateForDayOfWeek = new Date(Date.UTC(year, month, day, 12, 0))
-    const jsDay = dateForDayOfWeek.getUTCDay()
-    const dayOfWeek = jsDay === 0 ? 7 : jsDay
-    return { dayOfWeek, hour, minute }
-  }
-  return null
-}
-
 function pageList(result) {
   return Array.isArray(result) ? { list: result, hasMore: false, page: 1, total: result.length } : (result || { list: [], hasMore: false, page: 1, total: 0 })
 }
 
-function applyOrderFlags(orders, radiusKm, schedule) {
-  const normalized = normalizeScheduleSlots(schedule)
-  return orders.map((order) => {
-    const inRange = order.distanceKm !== null && order.distanceKm <= radiusKm
-    let inTime = true
-    if (normalized && order.startTime) {
-      const parts = parseDateTimeParts(order.startTime)
-      if (parts) {
-        const dayKey = String(parts.dayOfWeek)
-        const slots = normalized[dayKey]
-        if (!Array.isArray(slots) || !slots.length) {
-          inTime = false
-        } else {
-          const hour = parts.hour + parts.minute / 60
-          inTime = slots.some((s) => hour >= s.start && hour < s.end)
-        }
-      }
-    }
-    return { ...order, inRange, inTime }
-  })
+function applyOrderFlags(orders, radiusKm) {
+  // Keep the server's full schedule verdict, including every visit and date exceptions.
+  return orders.map((order) => ({
+    ...order,
+    inRange: order.distanceKm !== null && order.distanceKm <= radiusKm
+  }))
 }
 
 Page({
@@ -395,7 +346,7 @@ Page({
 
   normalizeNearbyOrders(orders, location) {
     let recalculatedNearbyOrders = applyWorkbenchDistances(applyCityFilter(orders, this.data.selectedCity), location)
-    recalculatedNearbyOrders = applyOrderFlags(recalculatedNearbyOrders, this.data.staffRadiusKm, this.data.staffSchedule)
+    recalculatedNearbyOrders = applyOrderFlags(recalculatedNearbyOrders, this.data.staffRadiusKm)
     if (this.data.inServiceRange) recalculatedNearbyOrders = recalculatedNearbyOrders.filter((o) => o.inRange)
     if (this.data.inServiceTime) recalculatedNearbyOrders = recalculatedNearbyOrders.filter((o) => o.inTime)
     return recalculatedNearbyOrders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))

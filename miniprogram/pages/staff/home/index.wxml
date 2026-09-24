@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../utils/beijing-time.wxs" />
 <view class="page staff-home-page {{themeClass}} {{fontClass}}">
   <staff-active-service-banner />
   <view class="staff-home-hero">
@@ -102,7 +103,7 @@
       </view>
 
       <view class="chip-row">
-        <view class="chip"><text class="remix-icon ri-time-line"></text>{{item.startTime}}</view>
+        <view class="chip"><text class="remix-icon ri-time-line"></text>{{beijingTime.format(item.startTime)}}</view>
         <view class="chip green" wx:if="{{item.staffEarning}}"><text class="remix-icon ri-money-cny-circle-line"></text>{{item.staffEarningText}}</view>
         <view class="chip blue"><text class="remix-icon ri-navigation-line"></text>{{item.distanceText || '未定位'}}</view>
       </view>
@@ -230,7 +231,7 @@
       </view>
 
       <view class="chip-row">
-        <view class="chip"><text class="remix-icon ri-time-line"></text>{{item.startTime}}</view>
+        <view class="chip"><text class="remix-icon ri-time-line"></text>{{beijingTime.format(item.startTime)}}</view>
         <view class="chip green" wx:if="{{item.staffEarning}}"><text class="remix-icon ri-money-cny-circle-line"></text>{{item.staffEarningText}}</view>
         <view class="chip blue">待抢单</view>
         <view class="chip warn" wx:if="{{!item.inRange}}">超出范围</view>
@@ -299,7 +300,7 @@
       </view>
 
       <view class="chip-row">
-        <view class="chip"><text class="remix-icon ri-time-line"></text>{{item.startTime}}</view>
+        <view class="chip"><text class="remix-icon ri-time-line"></text>{{beijingTime.format(item.startTime)}}</view>
         <view class="chip urgent-earning-chip"><text class="remix-icon ri-money-cny-circle-line"></text>收益 {{item.staffEarningText}} (含补贴)</view>
       </view>
 

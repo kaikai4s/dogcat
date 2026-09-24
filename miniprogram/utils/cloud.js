@@ -2,6 +2,50 @@ const { envList } = require('../envList')
 const { getSavedThemeKey, saveTheme } = require('./theme')
 const { getSavedFontKey, saveFont } = require('./font')
 
+const ENTRY_READ_TIMEOUT_MS = 15000
+const entryReads = new Set(['auth.me', 'auth.checkSession', 'system.getHomePageData', 'system.getSettings', 'order.listServiceOptions', 'pet.listPets', 'client.listAddresses'])
+const pendingEntryReads = new Set()
+const pendingUserRequests = new Map()
+let foregroundListenerInstalled = false
+let authRevision = 0
+
+function isCloudResultExpired(error) {
+  return Number(error && (error.errCode || error.code)) === -404010 || /-404010|result expired|timeout for result fetching/i.test(error && (error.errMsg || error.message) || '')
+}
+
+function boundedEntryRead(invoke, name, action) {
+  if (!foregroundListenerInstalled && typeof wx.onAppShow === 'function') {
+    wx.onAppShow(() => pendingEntryReads.forEach((check) => check()))
+    foregroundListenerInstalled = true
+  }
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + ENTRY_READ_TIMEOUT_MS
+    let settled = false
+    let timer
+    const finish = (error, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      pendingEntryReads.delete(expire)
+      if (error) reject(error)
+      else resolve(value)
+    }
+    const expire = () => {
+      if (Date.now() < deadline) return false
+      const error = new Error('连接超时，请检查网络后重试')
+      Object.assign(error, { code: 'ENTRY_READ_TIMEOUT', module: name, action })
+      finish(error)
+      return true
+    }
+    pendingEntryReads.add(expire)
+    timer = setTimeout(expire, ENTRY_READ_TIMEOUT_MS)
+    Promise.resolve().then(invoke).then(
+      (value) => { if (!expire()) finish(null, value) },
+      (error) => { if (!expire()) finish(error) }
+    )
+  })
+}
+
 function getCloudEnv() {
   const app = getApp()
   if (app && !app.globalData) app.globalData = {}
@@ -16,19 +60,22 @@ function getCloudEnv() {
 
 function callFunction(name, action, data = {}) {
   const env = getCloudEnv()
+  const requestAuthRevision = authRevision
 
   if (!env) {
     return Promise.reject(new Error('请先在 miniprogram/envList.js 配置云开发环境 ID'))
   }
 
-  return wx.cloud.callFunction({
+  const invoke = () => wx.cloud.callFunction({
     name: 'api',
     data: {
       module: name,
       action,
       data
     }
-  }).then((res) => {
+  })
+  const request = entryReads.has(`${name}.${action}`) ? boundedEntryRead(invoke, name, action) : invoke()
+  return request.then((res) => {
     const result = res.result || {}
     if (!result.ok) {
       const err = new Error(result.message || '云函数调用失败')
@@ -37,7 +84,7 @@ function callFunction(name, action, data = {}) {
       err.module = name
       err.action = action
       // session 失效时清除缓存，下次操作重新验证
-      if (result.message && result.message.includes('登录')) {
+      if (result.message && result.message.includes('登录') && requestAuthRevision === authRevision) {
         setCachedUser(null)
       }
       throw err
@@ -51,7 +98,9 @@ function showError(error) {
   if (!message || message.includes('cancel') || message.includes('canceled')) {
     return
   }
-  const title = message.includes('collection.get') || message.includes('-501003')
+  const title = isCloudResultExpired(error)
+    ? '连接已过期，请重试；如刚返回小程序，请重新打开页面。'
+    : message.includes('collection.get') || message.includes('-501003')
     ? '请先在云开发中创建数据库集合并部署 api 云函数'
     : message
   const shouldUseModal = title.length > 18 || /AI|模型|图片|照片|云开发/.test(title)
@@ -211,33 +260,36 @@ function loadSystemSettings() {
     .catch(() => getCachedSystemSettings())
 }
 
-function requestSubscribeTemplates(templateKeys = [], scene = '') {
+function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) {
   const requestWithSettings = (settings) => {
     const subscription = settings.subscription || {}
     if (!subscription.enabled) return Promise.resolve({ requested: false, reason: 'subscription_disabled' })
     if (typeof wx.requestSubscribeMessage !== 'function') return Promise.resolve({ requested: false, reason: 'request_api_unavailable' })
     const templates = subscription.templates || {}
     const resolveTemplateId = (key) => templates[key] || (key === 'upcomingServiceReminder' ? templates.serviceStart : '')
-    const requestKeys = templateKeys.filter(resolveTemplateId)
-    const limitedKeys = requestKeys.slice(0, 3)
-    const tmplIds = limitedKeys.map(resolveTemplateId)
+    const requestKeys = Array.from(new Set(templateKeys)).filter(resolveTemplateId)
+    const tmplIds = Array.from(new Set(requestKeys.map(resolveTemplateId))).slice(0, 5)
+    const limitedKeys = requestKeys.filter((key) => tmplIds.includes(resolveTemplateId(key)))
     if (!tmplIds.length) return Promise.resolve({ requested: false, reason: 'template_not_configured' })
     return new Promise((resolve) => {
       wx.requestSubscribeMessage({
         tmplIds,
         success: (res) => resolve({ requested: true, templateKeys: limitedKeys, templateIds: tmplIds, results: res || {} }),
-        fail: (error) => resolve({ requested: false, reason: 'request_failed', error: error && (error.errMsg || error.message) || '' })
+        fail: (error) => resolve({ requested: false, reason: 'request_failed', errorCode: error && error.errCode, error: error && (error.errMsg || error.message) || '' })
       })
     }).then((result) => {
       if (!result.requested) return result
       const templateIds = {}
       limitedKeys.forEach((key) => { templateIds[key] = resolveTemplateId(key) })
-      return callFunction('system', 'recordSubscriptionConsent', { templateKeys: limitedKeys, templateIds, results: result.results, scene })
-        .then(() => result)
-        .catch(() => result)
+      const recording = callFunction('system', 'recordSubscriptionConsent', { templateKeys: limitedKeys, templateIds, results: result.results, scene })
+          .then(() => result)
+          .catch(() => result)
+      return options.waitForConsent === false ? result : recording
     })
   }
 
+  // Prepared settings keep the native authorization call inside the tap gesture.
+  if (options.settings) return requestWithSettings(options.settings)
   const cachedSettings = getCachedSystemSettings()
   const cachedSubscription = cachedSettings.subscription || {}
   const cachedTemplates = cachedSubscription.templates || {}
@@ -343,6 +395,8 @@ function getCachedUser() {
 }
 
 function setCachedUser(user) {
+  authRevision += 1
+  pendingUserRequests.clear()
   const globalData = getAppData()
   globalData.user = user || null
   globalData.isGuest = !user
@@ -359,6 +413,8 @@ function setCachedUser(user) {
 }
 
 function logoutCurrentUser() {
+  authRevision += 1
+  pendingUserRequests.clear()
   wx.setStorageSync(AUTH_LOGGED_OUT_KEY, true)
   const globalData = getAppData()
   globalData.user = null
@@ -399,13 +455,23 @@ function getCurrentUser(options = {}) {
   const cached = getCachedUser()
   if (cached) return Promise.resolve(cached)
   if (options.silent !== false && wx.getStorageSync(AUTH_LOGGED_OUT_KEY)) return Promise.resolve(null)
-  return callFunction('auth', 'me')
-    .then(setCachedUser)
-    .catch((error) => {
-      setCachedUser(null)
-      if (options.silent !== false && isLoginRequiredError(error)) return null
-      throw error
-    })
+  const action = options.sessionOnly ? 'checkSession' : 'me'
+  let pending = pendingUserRequests.get(action)
+  if (!pending || pending.deadline <= Date.now()) {
+    const revision = authRevision
+    pending = { deadline: Date.now() + ENTRY_READ_TIMEOUT_MS }
+    pending.promise = callFunction('auth', action)
+      .then((user) => revision === authRevision ? setCachedUser(user) : getCachedUser())
+      .finally(() => {
+        if (pendingUserRequests.get(action) === pending) pendingUserRequests.delete(action)
+      })
+    pendingUserRequests.set(action, pending)
+  }
+  return pending.promise.catch((error) => {
+    // Transport failures do not mean the user has logged out.
+    if (options.silent !== false && isLoginRequiredError(error)) return null
+    throw error
+  })
 }
 
 function loginWithWechat(extraData = {}) {
@@ -436,15 +502,18 @@ function showLoginModal(options = {}) {
 function ensureLogin(options = {}) {
   const cached = getCachedUser()
   if (cached) return Promise.resolve(cached)
-  return getCurrentUser({ silent: true })
+  return getCurrentUser({ silent: true, sessionOnly: true })
     .then((user) => {
+      if (options.isActive && !options.isActive()) throw { code: LOGIN_CANCEL_CODE, message: '操作已结束' }
       if (user) return user
       return showLoginModal(options).then(() => {
+        if (options.isActive && !options.isActive()) throw { code: LOGIN_CANCEL_CODE, message: '操作已结束' }
         wx.navigateTo({ url: '/pages/client/profile/index' })
         throw { code: LOGIN_CANCEL_CODE, message: '请先完成微信登录' }
       })
     })
     .catch((error) => {
+      if (options.isActive && !options.isActive()) throw { code: LOGIN_CANCEL_CODE, message: '操作已结束' }
       if (error && error.code === LOGIN_CANCEL_CODE) throw error
       showError(error)
       throw error

@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="incident-detail-page {{themeClass}} {{fontClass}} page" wx:if="{{detail}}">
   <view class="incident-hero">
     <view class="hero-badge"><text class="remix-icon ri-customer-service-2-fill hero-icon"></text><text>纠纷详情</text></view>
@@ -10,7 +11,7 @@
     <view class="info-row"><view class="label">类型</view><view class="value">{{detail.incident.incidentTypeText}}</view></view>
     <view class="info-row"><view class="label">状态</view><view class="status-badge">{{detail.incident.statusText}}</view></view>
     <view class="info-row"><view class="label">订单</view><view class="value">{{detail.incident.orderId}}</view></view>
-    <view class="info-row"><view class="label">提交时间</view><view class="value">{{detail.incident.createdAt}}</view></view>
+    <view class="info-row"><view class="label">提交时间</view><view class="value">{{beijingTime.format(detail.incident.createdAt)}}</view></view>
     <view class="info-row" wx:if="{{detail.incident.refundNo}}"><view class="label">关联退款</view><view class="value">{{detail.incident.refundNo}}</view></view>
   </view>
 
@@ -40,7 +41,7 @@
           <view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}">
             <image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
           </view>
-          <view class="timeline-time">{{item.createdAt}}</view>
+          <view class="timeline-time">{{beijingTime.format(item.createdAt)}}</view>
         </view>
       </view>
     </view>

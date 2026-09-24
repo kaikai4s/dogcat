@@ -1,0 +1,34 @@
+.subscription-page { min-height: 100vh; box-sizing: border-box; padding: 36rpx 28rpx calc(48rpx + env(safe-area-inset-bottom)); background: #f6f6f6; color: #322b25; }
+.subscription-intro { text-align: center; padding: 8rpx 0 36rpx; }
+.intro-icon { display: inline-flex; align-items: center; justify-content: center; width: 82rpx; height: 82rpx; border-radius: 26rpx; color: #ec7908; background: #fff0db; font-size: 42rpx; }
+.intro-title { font-size: 38rpx; font-weight: 800; margin-top: 18rpx; }
+.intro-desc { font-size: 24rpx; color: #8b8177; margin-top: 10rpx; }
+.switch-card, .all-card { display: flex; justify-content: space-between; align-items: center; gap: 16rpx; padding: 26rpx; margin-bottom: 22rpx; border-radius: 26rpx; background: #fff; }
+.switch-title, .all-title { font-size: 28rpx; font-weight: 700; }
+.switch-desc, .all-desc { margin-top: 8rpx; font-size: 23rpx; line-height: 1.5; color: #8b8177; }
+.subscription-page button { margin: 0; box-sizing: border-box; display: inline-flex; justify-content: center; align-items: center; flex-shrink: 0; font-weight: 600; line-height: 1.3; }
+.subscription-page button::after { border: 0; }
+.settings-link { padding: 12rpx 4rpx; color: #e8770b; background: transparent; font-size: 26rpx; }
+.subscribe-button { padding: 20rpx 25rpx; min-height: 70rpx; border-radius: 999rpx; background: #ee7c06; color: #fff; font-size: 25rpx; }
+.subscribe-button.small { min-height: 62rpx; padding: 15rpx 25rpx; }
+.group-card { padding: 0 26rpx; margin-bottom: 24rpx; border-radius: 30rpx; background: #fff; }
+.group-header { display: flex; align-items: center; justify-content: space-between; padding: 24rpx 0; gap: 14rpx; border-bottom: 1rpx solid #eeece9; }
+.group-title { font-size: 32rpx; font-weight: 750; }
+.notification-row { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; padding: 30rpx 0; }
+.notification-row + .notification-row { border-top: 1rpx solid #f5f3f1; }
+.notification-copy { flex: 1; min-width: 0; }
+.notification-title { font-size: 29rpx; font-weight: 600; line-height: 1.5; }
+.notification-desc { font-size: 23rpx; color: #93897f; line-height: 1.6; margin-top: 8rpx; }
+.notification-status { color: #a99580; font-size: 21rpx; margin-top: 9rpx; line-height: 1.5; }
+.notification-status.accepted { color: #438569; }
+.outline-button { min-width: 108rpx; padding: 14rpx 18rpx; min-height: 62rpx; color: #d7791e; background: transparent; border: 2rpx solid #dc923f; border-radius: 999rpx; font-size: 25rpx; }
+.subscription-page button[disabled] { background: #efeeeb; color: #aca49b; border-color: #e1ddd7; }
+.subscription-page .open-settings-button { display: flex; width: 100%; min-height: 90rpx; padding: 22rpx; margin-top: 36rpx; gap: 18rpx; border-radius: 999rpx; font-size: 30rpx; color: #fff; background: linear-gradient(110deg, #ffb500, #ff9406); }
+.footnote { padding: 22rpx 12rpx 0; font-size: 22rpx; color: #958d85; line-height: 1.8; text-align: center; }
+.notice, .feedback { font-size: 25rpx; line-height: 1.6; padding: 22rpx; border-radius: 20rpx; background: #fff1dc; color: #9b6124; margin-bottom: 22rpx; }
+.page-state { text-align: center; padding: 48rpx 20rpx; color: #93897f; font-size: 26rpx; }
+.page-state .outline-button { margin-top: 22rpx; }
+.theme-night.subscription-page { background: #17151f; color: #f0e8df; }
+.theme-night .switch-card, .theme-night .all-card, .theme-night .group-card { background: #25212e; }
+.theme-night .group-header, .theme-night .notification-row { border-color: #393140; }
+.theme-night .intro-desc, .theme-night .notification-desc, .theme-night .switch-desc, .theme-night .all-desc { color: #b9ada2; }

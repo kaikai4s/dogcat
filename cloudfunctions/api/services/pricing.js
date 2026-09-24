@@ -150,7 +150,7 @@ module.exports = function createService({
       if (item.extraPetRule === 'none' || !Number(extraPetFee || 0)) return null
       const extraCount = item.extraPetRule === 'dog' ? Math.max(dogCount - 1, 0) : Math.max(petCount - 1, 0)
       if (!extraCount) return null
-      const price = Math.round(extraCount * Number(extraPetFee || 0))
+      const price = Math.round(extraCount * Number(extraPetFee || 0) * 100) / 100
       return {
         key: `${key}_extra_pet`,
         serviceKey: key,

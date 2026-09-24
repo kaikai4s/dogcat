@@ -1,4 +1,9 @@
 <view class="messages-page {{themeClass}} {{fontClass}} page">
+  <navigator class="subscription-entry" url="/pages/common/subscriptions/index?role=client">
+    <view class="subscription-entry-icon"><text class="remix-icon ri-notification-3-line"></text></view>
+    <view class="subscription-entry-copy"><view class="subscription-entry-title">订阅消息通知</view><view class="subscription-entry-desc">及时接收接单、服务进度等提醒</view></view>
+    <view class="subscription-entry-action">去开启 <text class="remix-icon ri-arrow-right-s-line"></text></view>
+  </navigator>
   <view class="messages-hero">
     <view class="hero-badge"><text class="remix-icon ri-message-3-fill hero-icon"></text><text>消息中心</text></view>
     <view class="hero-title">订单消息</view>

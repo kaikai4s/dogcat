@@ -132,7 +132,10 @@ function createCollectionStore(initial = {}) {
         return { stats: { updated: items.length } }
       },
       doc(id) {
-        const _id = id || `${name}_${ensure(name).length + 1}`
+        if (typeof id !== 'string' && typeof id !== 'number') {
+          throw new Error('docId必须为字符串或数字')
+        }
+        const _id = id
         return {
           id: _id,
           _id,

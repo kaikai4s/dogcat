@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="admin-order-page {{themeClass}} {{fontClass}}" wx:if="{{detail}}">
   <view class="admin-order-hero">
     <view class="hero-badge"><text class="remix-icon ri-file-text-fill"></text><text>订单详情</text></view>
@@ -77,7 +78,7 @@
     <view class="info-row"><view class="label">支付状态</view><view class="value">{{detail.order.paymentStatusText}}</view></view>
     <view class="info-row" wx:if="{{detail.order.paymentNo}}"><view class="label">支付单号</view><view class="value">{{detail.order.paymentNo}}</view></view>
     <view class="info-row" wx:if="{{detail.order.wxTransactionId}}"><view class="label">微信交易号</view><view class="value">{{detail.order.wxTransactionId}}</view></view>
-    <view class="info-row" wx:if="{{detail.order.paidAt}}"><view class="label">支付时间</view><view class="value">{{detail.order.paidAt}}</view></view>
+    <view class="info-row" wx:if="{{detail.order.paidAt}}"><view class="label">支付时间</view><view class="value">{{beijingTime.format(detail.order.paidAt)}}</view></view>
     <view class="info-row"><view class="label">接单微信通知</view><view class="value">{{detail.order.acceptedNotifyStatusText}}</view></view>
     <view class="info-row"><view class="label">接单通知失败</view><view class="value">{{detail.order.acceptedNotifyErrorText}}</view></view>
     <view class="info-row" wx:if="{{detail.order.refundStatus}}"><view class="label">退款状态</view><view class="value">{{detail.order.refundStatusText || '已退款'}} ¥{{detail.order.refundAmount || 0}}</view></view>
@@ -107,7 +108,7 @@
             <text wx:if="{{item.status === 'forfeited'}}" style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2rpx 10rpx; border-radius: 6rpx; border: 1rpx solid #a7f3d0;">实际根据建议扣除：¥{{item.actualDeductAmountText || item.actualDeductAmount || item.forfeitedAmount || item.deductAmount}}</text>
           </view>
           <view class="desc-box" style="margin-top: 6rpx; background: #fff5f5; padding: 12rpx; border-radius: 8rpx; font-size: 24rpx; color: #4b5563;">{{item.reasonText}}</view>
-          <view class="muted small" style="margin-top: 6rpx;">{{item.createdAt}}</view>
+          <view class="muted small" style="margin-top: 6rpx;">{{beijingTime.format(item.createdAt)}}</view>
         </view>
       </view>
     </view>
@@ -121,7 +122,7 @@
         <view class="timeline-content">
           <view class="strong">{{item.refundNo}} · ¥{{item.refundAmount}}</view>
           <view class="muted">{{item.statusText || '已记录'}} · {{item.reason}}</view>
-          <view class="muted">{{item.createdAt}}</view>
+          <view class="muted">{{beijingTime.format(item.createdAt)}}</view>
         </view>
       </view>
     </view>

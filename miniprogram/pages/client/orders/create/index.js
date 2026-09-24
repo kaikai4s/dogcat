@@ -4,7 +4,7 @@ const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { getSelectedLocation, chooseSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
-const { toBeijingDate } = require('../../../../utils/format')
+const { toBeijingDate, parseBeijingDate } = require('../../../../utils/format')
 
 const COUPON_CONTEXT_KEY = 'vip_pet_coupon_select_context'
 const SELECTED_COUPON_KEY = 'vip_pet_selected_coupon'
@@ -43,20 +43,22 @@ const lockMethodOptions = [
 ]
 
 function formatDate(date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
+  const beijing = toBeijingDate(date)
+  const year = beijing.getUTCFullYear()
+  const month = String(beijing.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(beijing.getUTCDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
 
 function formatTime(date) {
-  const hour = String(date.getHours()).padStart(2, '0')
-  const minute = String(date.getMinutes()).padStart(2, '0')
+  const beijing = toBeijingDate(date)
+  const hour = String(beijing.getUTCHours()).padStart(2, '0')
+  const minute = String(beijing.getUTCMinutes()).padStart(2, '0')
   return `${hour}:${minute}`
 }
 
 function addMinutes(startDate, startClock, minutes) {
-  const start = toBeijingDate(`${startDate} ${startClock}:00`)
+  const start = parseBeijingDate(`${startDate} ${startClock}:00`)
   if (!start) return ''
   const end = new Date(start.getTime() + Number(minutes) * 60 * 1000)
   return `${formatDate(end)} ${formatTime(end)}`
@@ -67,7 +69,7 @@ function formatDateTime(date) {
 }
 
 function parseDateTime(value) {
-  return toBeijingDate(value)
+  return parseBeijingDate(value)
 }
 
 function coversServiceTime(startTime, endTime, effectiveStart, effectiveEnd) {
@@ -89,16 +91,14 @@ function buildDailySessions(form) {
   const endDateStr = form.orderType === 'multi_day' ? form.endDate : form.startDate
   if (!endDateStr || endDateStr < form.startDate) return []
   const durationMinutes = Number(form.durationMinutes || 60)
-  const dateParts = form.startDate.split('-').map(Number)
-  const endDateParts = endDateStr.split('-').map(Number)
-  const clockParts = form.startClock.split(':').map(Number)
-  let current = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], clockParts[0], clockParts[1])
-  const finalDay = new Date(endDateParts[0], endDateParts[1] - 1, endDateParts[2], clockParts[0], clockParts[1])
+  let current = parseBeijingDate(`${form.startDate} ${form.startClock}`)
+  const finalDay = parseBeijingDate(`${endDateStr} ${form.startClock}`)
+  if (!current || !finalDay) return []
   const sessions = []
-  while (current <= finalDay && sessions.length < 31) {
+  while (current <= finalDay && sessions.length < 32) {
     const end = new Date(current.getTime() + durationMinutes * 60000)
     sessions.push({ date: formatDate(current), startTime: formatDateTime(current), endTime: formatDateTime(end) })
-    current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1, clockParts[0], clockParts[1])
+    current = new Date(current.getTime() + 24 * 60 * 60 * 1000)
   }
   return sessions
 }
@@ -235,12 +235,12 @@ function decoratePets(pets, selectedPetIds) {
   }))
 }
 
-function getInitialStartClock() {
+function getInitialServiceTime() {
   const now = new Date()
-  const minutes = now.getMinutes()
+  const minutes = toBeijingDate(now).getUTCMinutes()
   // 向上取整到下一个30分钟，再留出30分钟缓冲时间
   const nextTime = new Date(now.getTime() + (30 - (minutes % 30) + 30) * 60 * 1000)
-  return formatTime(nextTime)
+  return { startDate: formatDate(nextTime), endDate: formatDate(nextTime), startClock: formatTime(nextTime) }
 }
 
 Page({
@@ -286,9 +286,7 @@ Page({
       keyImageFileIds: [],
       entryNotes: '',
       orderType: 'single',
-      startDate: formatDate(new Date()),
-      endDate: formatDate(new Date()),
-      startClock: getInitialStartClock(),
+      ...getInitialServiceTime(),
       startTime: '',
       endTime: '',
       durationMinutes: 60,
@@ -323,7 +321,15 @@ Page({
     minClock: ''
   },
 
-  onLoad(options) {
+  onLoad(options = {}) {
+    const initialTime = getInitialServiceTime()
+    this.setData({
+      'form.startDate': initialTime.startDate,
+      'form.endDate': initialTime.endDate,
+      'form.startClock': initialTime.startClock,
+      'form.doorLockCodeStartDate': initialTime.startDate,
+      'form.doorLockCodeEndDate': initialTime.endDate
+    })
     loadSystemSettings().catch(() => null)
     this.setData({ ...createPageNav(options), pendingOptions: options || {} })
     const publishMode = options.publishMode === 'direct' ? 'direct' : 'open'
@@ -343,12 +349,17 @@ Page({
     this.applyCurrentTheme()
     this.consumeSelectedCoupon()
     this.updateMinTime()
-    ensureLogin({ content: '登录后可创建预约订单。' })
+    return ensureLogin({ content: '登录后可创建预约订单。' })
       .then((user) => {
         this.setData({ user })
         return this.loadPageData()
+      }, () => {
+        // Let ensureLogin finish its login navigation; data errors must not send users home.
       })
-      .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
+      .catch((error) => {
+        console.error('[booking initialization failed]', error)
+        showError(error)
+      })
   },
 
   updateMinTime() {
@@ -382,7 +393,7 @@ Page({
       if (options.rebookOrderId) this.loadRebook(options.rebookOrderId)
       else this.loadDefaultAddress()
     }
-    Promise.all([
+    return Promise.all([
       callFunction('pet', 'listPets'),
       callFunction('order', 'listServiceOptions')
     ])
@@ -1154,12 +1165,17 @@ Page({
       wx.showToast({ title: error, icon: 'none' })
       return
     }
-    const clientRequestId = createClientRequestId('create_order')
-    requestSubscribeTemplates(['orderAccepted', 'serviceStart', 'remoteUnlock'], 'client_create_order')
-      .then(() => callFunction('order', 'createOrder', { ...this.buildOrderPayload(), saveAddress: this.data.saveAddress, clientRequestId }))
+    const payload = { ...this.buildOrderPayload(), saveAddress: this.data.saveAddress }
+    const signature = JSON.stringify(payload)
+    if (!this.pendingOrderRequest || this.pendingOrderRequest.signature !== signature) {
+      this.pendingOrderRequest = { signature, id: createClientRequestId('create_order') }
+    }
+    const clientRequestId = this.pendingOrderRequest.id
+    return requestSubscribeTemplates(['orderAccepted', 'serviceStart', 'remoteUnlock'], 'client_create_order')
+      .then(() => callFunction('order', 'createOrder', { ...payload, clientRequestId }))
       .then((order) => {
         if (this.data.saveAddress && order.savedAddress) wx.showToast({ title: '已保存常用地址' })
-        wx.redirectTo({ url: '/pages/client/orders/detail/index?id=' + order._id })
+        return new Promise((resolve, reject) => wx.redirectTo({ url: '/pages/client/orders/detail/index?id=' + order._id, success: resolve, fail: reject }))
       })
       .catch((error) => {
         this.creatingOrder = false

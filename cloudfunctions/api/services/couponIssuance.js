@@ -8,8 +8,8 @@ module.exports = function createService({
     const snapshot = normalizeCouponSnapshot(template)
     if (snapshot.validType === 'fixed_range' && snapshot.validFromFixed && snapshot.validToFixed) {
       return {
-        validFrom: new Date(`${snapshot.validFromFixed} 00:00:00`),
-        validTo: new Date(`${snapshot.validToFixed} 23:59:59`)
+        validFrom: new Date(`${snapshot.validFromFixed}T00:00:00+08:00`),
+        validTo: new Date(`${snapshot.validToFixed}T23:59:59+08:00`)
       }
     }
     return {

@@ -219,23 +219,31 @@ function formatIncidentAction(action) {
   return incidentActionText[normalized] || '操作记录'
 }
 
-function toBeijingDate(value) {
-  if (!value) return null
-  if (value instanceof Date) return new Date(value.getTime() + 8 * 60 * 60 * 1000)
-  if (typeof value === 'number') return new Date(value + 8 * 60 * 60 * 1000)
+// Return the actual instant for comparisons; timezone-free service times are Beijing time.
+function parseBeijingDate(value) {
+  if (value === undefined || value === null || value === '') return null
+  if (value instanceof Date || typeof value === 'number') {
+    const date = new Date(value instanceof Date ? value.getTime() : value)
+    return Number.isFinite(date.getTime()) ? date : null
+  }
   const text = String(value).trim()
   if (/^\d{10,13}$/.test(text)) {
     const num = Number(text)
-    return new Date((text.length === 10 ? num * 1000 : num) + 8 * 60 * 60 * 1000)
+    return new Date(text.length === 10 ? num * 1000 : num)
   }
   const localMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/)
   if (localMatch) {
     const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch
-    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)))
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 8, Number(minute), Number(second)))
   }
-  const normalizedText = text.replace(/-/g, '/').replace('T', ' ')
-  const time = new Date(normalizedText).getTime()
-  return Number.isFinite(time) ? new Date(time + 8 * 60 * 60 * 1000) : null
+  const time = new Date(text).getTime()
+  return Number.isFinite(time) ? new Date(time) : null
+}
+
+// Display-only shifted Date. Read UTC fields; never compare its timestamp to Date.now().
+function toBeijingDate(value) {
+  const date = parseBeijingDate(value)
+  return date ? new Date(date.getTime() + 8 * 60 * 60 * 1000) : null
 }
 
 function formatDateTime(value) {
@@ -258,7 +266,11 @@ function formatAppointmentTime(order = {}) {
   const endText = formatDateTime(end)
   if (!startText) return endText
   if (!endText) return startText
-  return `${startText} 至 ${endText.slice(6)}`
+  const startDate = toBeijingDate(start)
+  const endDate = toBeijingDate(end)
+  const sameDate = startDate && endDate &&
+    startDate.toISOString().slice(0, 10) === endDate.toISOString().slice(0, 10)
+  return `${startText} 至 ${sameDate ? endText.slice(6) : endText}`
 }
 
 function withOrderText(order) {
@@ -347,6 +359,7 @@ module.exports = {
   formatIncidentType,
   formatIncidentAction,
   toBeijingDate,
+  parseBeijingDate,
   formatDateTime,
   formatAppointmentTime,
   withOrderText,

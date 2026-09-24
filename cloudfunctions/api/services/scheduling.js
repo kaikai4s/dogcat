@@ -144,10 +144,11 @@ module.exports = function createService({
     if (!startParts || !endParts || endParts.dateObj <= startParts.dateObj) throw new Error('服务时间格式无效')
     const startKey = getDateKeyFromTime(startTimeStr)
     const endKey = getDateKeyFromTime(endTimeStr)
-    if (startKey !== dateKey || endKey !== dateKey) throw new Error('跨日期服务暂不支持日期例外排班')
+    const endsAtMidnight = endParts.dateObj.getTime() === toTimeValue(dateKey) + 86400000
+    if (startKey !== dateKey || (endKey !== dateKey && !endsAtMidnight)) throw new Error('跨日期服务需按天校验排班')
     if (!slots.length) throw new Error(emptyMessage)
     const startVal = startParts.hour + startParts.minute / 60
-    const endVal = endParts.hour + endParts.minute / 60
+    const endVal = endsAtMidnight ? 24 : endParts.hour + endParts.minute / 60
     const fits = slots.some((slot) => startVal >= slot.start && endVal <= slot.end)
     if (!fits) {
       const allowedText = slots.map((s) => `${String(s.start).padStart(2, '0')}:00-${String(s.end).padStart(2, '0')}:00`).join('、')
@@ -185,17 +186,29 @@ module.exports = function createService({
     return getOrderTimeRanges(orderA).some((rangeA) => getOrderTimeRanges(orderB).some((rangeB) => timeRangesOverlap(rangeA.startTime, rangeA.endTime, rangeB.startTime, rangeB.endTime)))
   }
 
-  async function validateStaffScheduleOnly(profile, startTimeStr, endTimeStr) {
+  async function validateStaffScheduleOnly(profile, startTimeStr, endTimeStr, options = {}) {
     if (!profile || !profile.openid) throw new Error('宠托师不可用')
-    const dateKey = getDateKeyFromTime(startTimeStr)
-    if (!dateKey) throw new Error('请选择服务时间')
-    const exceptionRes = await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid, dateKey }).limit(1).get()
-    const exception = exceptionRes.data[0]
-    if (exception) {
-      if (exception.status === 'unavailable') throw new Error('宠托师当天设置为休息，无法预约')
-      validateSlotsForDate(normalizeScheduleSlots(exception.slots), startTimeStr, endTimeStr, dateKey, '宠托师当天未设置可接单时间段')
-    } else {
-      validateSitterScheduleTime(profile.weeklySchedule, startTimeStr, endTimeStr)
+    const start = parseDateTimeParts(startTimeStr)
+    const end = parseDateTimeParts(endTimeStr)
+    if (!start || !end || end.dateObj <= start.dateObj) throw new Error('服务时间格式无效')
+    let cursor = start.dateObj.getTime()
+    const finish = end.dateObj.getTime()
+    // Split at Beijing midnight so each day's exception overrides its weekly schedule.
+    while (cursor < finish) {
+      const segmentStart = formatDateTimeParts(new Date(cursor))
+      const dateKey = getDateKeyFromTime(segmentStart)
+      const segmentEndTs = Math.min(finish, toTimeValue(dateKey) + 86400000)
+      const segmentEnd = formatDateTimeParts(new Date(segmentEndTs))
+      const exception = Array.isArray(options.exceptions)
+        ? options.exceptions.find(item => item.staffOpenid === profile.openid && item.dateKey === dateKey)
+        : (await db.collection('staff_schedule_exceptions').where({ staffOpenid: profile.openid, dateKey }).limit(1).get()).data[0]
+      if (exception) {
+        if (exception.status === 'unavailable') throw new Error('宠托师当天设置为休息，无法预约')
+        validateSlotsForDate(normalizeScheduleSlots(exception.slots), segmentStart, segmentEnd, dateKey, '宠托师当天未设置可接单时间段')
+      } else {
+        validateSitterScheduleTime(profile.weeklySchedule, segmentStart, segmentEnd)
+      }
+      cursor = segmentEndTs
     }
   }
 

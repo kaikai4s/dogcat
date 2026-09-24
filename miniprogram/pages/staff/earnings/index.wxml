@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../utils/beijing-time.wxs" />
 <view class="page staff-earnings-page {{themeClass}} {{fontClass}}">
   <staff-active-service-banner />
   <view class="staff-hero">
@@ -91,7 +92,7 @@
       </view>
       <view class="info-row">
         <view class="label">可提现时间</view>
-        <view class="value muted">{{item.availableAt}}</view>
+        <view class="value muted">{{beijingTime.format(item.availableAt)}}</view>
       </view>
     </view>
   </view>
@@ -113,7 +114,7 @@
     <view class="info-list">
       <view class="info-row">
         <view class="label">申请时间</view>
-        <view class="value muted">{{item.createdAt}}</view>
+        <view class="value muted">{{beijingTime.format(item.createdAt)}}</view>
       </view>
       <view class="info-row" wx:if="{{item.auditRemark}}">
         <view class="label">审核备注</view>

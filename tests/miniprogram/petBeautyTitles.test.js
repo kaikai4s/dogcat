@@ -10,7 +10,7 @@ function createPage(respond) {
   const calls = []
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/client/pets/edit/index.js'), 'utf8'), {
     Page(config) { page = config },
-    require() { return {
+    require(name) { if (name.endsWith('/format')) return require('../../miniprogram/utils/format'); return {
       navMethods: () => ({}),
       showError: (error) => errors.push(error.message),
       callFunction: async (module, action, data) => { calls.push({ module, action, data }); return respond(action, data) }

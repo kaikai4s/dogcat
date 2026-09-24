@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="admin-audit-page audit-detail-page {{themeClass}} {{fontClass}}" wx:if="{{staff}}">
   <view class="audit-hero">
     <view class="hero-badge"><text class="remix-icon ri-user-star-fill"></text><text>审核详情</text></view>
@@ -73,7 +74,7 @@
             <text style="color: #ef4444;" wx:if="{{item.deductAmount > 0}}">建议扣除：¥{{item.deductAmount}}</text>
             <text style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2rpx 10rpx; border-radius: 6rpx; border: 1rpx solid #a7f3d0;" wx:if="{{item.status === 'forfeited'}}">实际根据建议扣除：¥{{item.actualDeductAmountText || item.actualDeductAmount || item.forfeitedAmount || item.deductAmount}}</text>
           </view>
-          <view class="muted small" style="margin-top: 6rpx;">{{item.createdAt}}</view>
+          <view class="muted small" style="margin-top: 6rpx;">{{beijingTime.format(item.createdAt)}}</view>
         </view>
       </view>
     </view>

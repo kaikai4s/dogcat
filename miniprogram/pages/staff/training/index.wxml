@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../utils/beijing-time.wxs" />
 <view class="page training-page {{themeClass}} {{fontClass}}">
   <staff-active-service-banner />
   <view class="hero">
@@ -61,7 +62,7 @@
             <view class="event-amount {{item.type === 'pay' ? 'amount-plus' : (item.type === 'forfeit' ? 'amount-minus' : '')}}">{{item.amountText}}</view>
           </view>
           <view class="event-desc">{{item.reason || '无具体说明'}}</view>
-          <view class="event-time">{{item.createdAt}}</view>
+          <view class="event-time">{{beijingTime.format(item.createdAt)}}</view>
         </view>
       </view>
 

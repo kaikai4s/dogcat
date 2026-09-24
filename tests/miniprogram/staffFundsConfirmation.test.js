@@ -15,6 +15,7 @@ function pageWith(callFunction) {
     wx, Page(value) { page = value }, require(name) {
       if (name.endsWith('/cloud')) return { callFunction, showError() {} }
       if (name.endsWith('/nav')) return { createPageNav() {}, navMethods() { return {} } }
+      if (name.endsWith('/format')) return require('../../miniprogram/utils/format')
       throw new Error(`Unexpected dependency ${name}`)
     }
   })

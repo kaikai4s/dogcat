@@ -37,8 +37,7 @@ module.exports = function createService({
     if (!currentTs) return []
     const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
     const windowStartTs = currentTs - ACTIVE_WINDOW_MS
-    const windowStartDate = new Date(windowStartTs)
-    const windowStartText = `${windowStartDate.getFullYear()}-${String(windowStartDate.getMonth() + 1).padStart(2, '0')}-${String(windowStartDate.getDate()).padStart(2, '0')} 00:00`
+    const windowStartText = `${formatDateTime(windowStartTs).slice(0, 10)} 00:00`
 
     const _ = db.command
     const whereAssigned = { status: ORDER_STATUS.ASSIGNED }
@@ -159,8 +158,7 @@ module.exports = function createService({
     if (!currentTs) return []
     const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
     const windowStartTs = currentTs - ACTIVE_WINDOW_MS
-    const windowStartDate = new Date(windowStartTs)
-    const windowStartText = `${windowStartDate.getFullYear()}-${String(windowStartDate.getMonth() + 1).padStart(2, '0')}-${String(windowStartDate.getDate()).padStart(2, '0')} 00:00`
+    const windowStartText = `${formatDateTime(windowStartTs).slice(0, 10)} 00:00`
 
     const _ = db.command
     const whereInService = { status: ORDER_STATUS.IN_SERVICE }

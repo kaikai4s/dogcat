@@ -1,22 +1,23 @@
 const { callFunction, showError } = require('../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../utils/nav')
+const { toBeijingDate } = require('../../../utils/format')
 
 function money(value) {
   return Number(value || 0).toFixed(2)
 }
 
 function today() {
-  const d = new Date()
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
+  const d = toBeijingDate(new Date())
+  const year = d.getUTCFullYear()
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
 
 function monthStart() {
-  const d = new Date()
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const d = toBeijingDate(new Date())
+  const year = d.getUTCFullYear()
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0')
   return `${year}-${month}-01`
 }
 

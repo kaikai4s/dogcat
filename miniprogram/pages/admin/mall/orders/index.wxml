@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="admin-mall-page">
   <view class="admin-hero">
     <view class="hero-copy">
@@ -25,7 +26,7 @@
     <view class="order-head">
       <view class="order-title-block">
         <view class="strong">{{item.orderNo}}</view>
-        <view class="muted">{{item.createdAt}}</view>
+        <view class="muted">{{beijingTime.format(item.createdAt)}}</view>
       </view>
       <view class="badge {{item.statusClass}}">{{item.statusText}}</view>
     </view>

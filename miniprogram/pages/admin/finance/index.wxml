@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../utils/beijing-time.wxs" />
 <view class="page admin-finance-page {{themeClass}} {{fontClass}}">
   <view class="admin-hero">
     <view class="hero-badge"><text class="remix-icon ri-wallet-3-fill hero-icon"></text><text>财务管理</text></view>
@@ -47,7 +48,7 @@
       <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>
       <view class="info-row"><view class="label">收款人</view><view class="value">{{item.accountName || '未填写'}}</view></view>
       <view class="info-row"><view class="label">收款账号</view><view class="value">{{item.accountNo || '未填写'}}</view></view>
-      <view class="info-row"><view class="label">申请时间</view><view class="value">{{item.createdAt}}</view></view>
+      <view class="info-row"><view class="label">申请时间</view><view class="value">{{beijingTime.format(item.createdAt)}}</view></view>
       <view class="info-row" wx:if="{{item.auditRemark}}"><view class="label">审核备注</view><view class="value">{{item.auditRemark}}</view></view>
       <view class="action-row" wx:if="{{item.status === 'pending'}}">
         <button class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="audit">驳回</button>
@@ -91,7 +92,7 @@
       <scroll-view scroll-x class="chip-tabs" wx:if="{{item.lastForfeitImages && item.lastForfeitImages.length}}" style="margin-top: 8rpx; margin-bottom: 12rpx;">
         <image wx:for="{{item.lastForfeitImages}}" wx:for-item="img" wx:key="*this" src="{{img}}" mode="aspectFill" style="width: 120rpx; height: 120rpx; border-radius: 12rpx; margin-right: 12rpx; border: 1rpx solid #fed7aa;" data-urls="{{item.lastForfeitImages}}" data-current="{{img}}" bindtap="previewForfeitReceipt" />
       </scroll-view>
-      <view class="info-row"><view class="label">记录时间</view><view class="value">{{item.paidAt || item.createdAt}}</view></view>
+      <view class="info-row"><view class="label">记录时间</view><view class="value">{{beijingTime.format(item.paidAt || item.createdAt)}}</view></view>
       
       <view class="action-row" wx:if="{{item.refundStatus === 'requested'}}">
         <button class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditDepositRefund">驳回退款</button>
@@ -115,7 +116,7 @@
       <view class="info-row" wx:if="{{item.approvedAmount != null}}"><view class="label">核准金额</view><view class="price">¥{{item.approvedAmountText}}</view></view>
       <view class="info-row" wx:if="{{item.remark}}"><view class="label">申请备注</view><view class="value">{{item.remark}}</view></view>
       <view class="info-row" wx:if="{{item.rejectReason}}"><view class="label">驳回原因</view><view class="value">{{item.rejectReason}}</view></view>
-      <view class="info-row"><view class="label">申请时间</view><view class="value">{{item.createdAt}}</view></view>
+      <view class="info-row"><view class="label">申请时间</view><view class="value">{{beijingTime.format(item.createdAt)}}</view></view>
       
       <view class="info-row" wx:if="{{item.mediaFileIds && item.mediaFileIds.length}}">
         <view class="label">凭证截图（点击预览）</view>
@@ -141,7 +142,7 @@
       <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
       <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>
       <view class="info-row"><view class="label">渠道</view><view class="value">{{item.channel || 'mock'}}</view></view>
-      <view class="info-row"><view class="label">时间</view><view class="value">{{item.paidAt || item.createdAt}}</view></view>
+      <view class="info-row"><view class="label">时间</view><view class="value">{{beijingTime.format(item.paidAt || item.createdAt)}}</view></view>
     </view>
     <view class="empty-state" wx:if="{{!payments.length}}">暂无支付流水。</view>
   </block>
@@ -153,7 +154,7 @@
       <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
       <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>
       <view class="info-row"><view class="label">原因</view><view class="value">{{item.reason || '-'}}</view></view>
-      <view class="info-row"><view class="label">时间</view><view class="value">{{item.createdAt}}</view></view>
+      <view class="info-row"><view class="label">时间</view><view class="value">{{beijingTime.format(item.createdAt)}}</view></view>
     </view>
     <view class="empty-state" wx:if="{{!refunds.length}}">暂无退款记录。</view>
   </block>
@@ -164,7 +165,7 @@
       <view class="info-row"><view class="label">宠托师</view><view class="value">{{item.staffOpenid}}</view></view>
       <view class="info-row"><view class="label">订单</view><view class="value">{{item.orderId}}</view></view>
       <view class="info-row"><view class="label">收益</view><view class="price">¥{{item.amountText}}</view></view>
-      <view class="info-row"><view class="label">可提现时间</view><view class="value">{{item.availableAt}}</view></view>
+      <view class="info-row"><view class="label">可提现时间</view><view class="value">{{beijingTime.format(item.availableAt)}}</view></view>
     </view>
     <view class="empty-state" wx:if="{{!earnings.length}}">暂无收益明细。</view>
   </block>
@@ -174,7 +175,7 @@
       <view class="record-head"><view class="record-title">{{item.action}}</view><view class="badge gray">流水</view></view>
       <view class="info-row"><view class="label">对象</view><view class="value">{{item.targetType}} / {{item.targetId}}</view></view>
       <view class="info-row"><view class="label">金额变动</view><view class="price">¥{{item.amountDelta || 0}}</view></view>
-      <view class="info-row"><view class="label">时间</view><view class="value">{{item.createdAt}}</view></view>
+      <view class="info-row"><view class="label">时间</view><view class="value">{{beijingTime.format(item.createdAt)}}</view></view>
     </view>
     <view class="empty-state" wx:if="{{!logs.length}}">暂无财务流水。</view>
   </block>

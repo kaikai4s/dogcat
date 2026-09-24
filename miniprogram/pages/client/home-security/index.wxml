@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../utils/beijing-time.wxs" />
 <view class="home-security-page {{themeClass}} {{fontClass}} page">
   <view class="security-hero">
     <view class="hero-badge"><text class="remix-icon ri-door-lock-fill hero-icon"></text><text>家庭安全</text></view>
@@ -32,7 +33,7 @@
 
     <view wx:if="{{item.orderHomeSecurity.oneTimeCode}}" class="security-block">
       <view class="info-row"><view class="label">历史密码</view><view class="value">{{item.orderHomeSecurity.oneTimeCode.masked}}</view></view>
-      <view class="info-row"><view class="label">有效区间</view><view class="value">{{item.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{item.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view></view>
+      <view class="info-row"><view class="label">有效区间</view><view class="value">{{beijingTime.format(item.orderHomeSecurity.oneTimeCode.effectiveStart)}} 至 {{beijingTime.format(item.orderHomeSecurity.oneTimeCode.effectiveEnd)}}</view></view>
     </view>
 
     <view wx:if="{{item.orderHomeSecurity.key}}" class="security-block">

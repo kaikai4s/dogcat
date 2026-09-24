@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="incident-list-page {{themeClass}} {{fontClass}} page">
   <view class="incident-hero">
     <view class="hero-badge"><text class="remix-icon ri-customer-service-2-fill hero-icon"></text><text>售后中心</text></view>
@@ -24,7 +25,7 @@
       </view>
       <view class="status-badge">{{item.statusText}}</view>
     </view>
-    <view class="incident-meta"><text class="remix-icon ri-file-list-3-line"></text><text>订单 {{item.orderId}}</text><text>·</text><text>{{item.createdAt}}</text></view>
+    <view class="incident-meta"><text class="remix-icon ri-file-list-3-line"></text><text>订单 {{item.orderId}}</text><text>·</text><text>{{beijingTime.format(item.createdAt)}}</text></view>
     <view class="chip-row">
       <view class="chip pink">{{item.incidentTypeText}}</view>
       <view class="chip" wx:if="{{item.refundNo}}">退款处理中</view>

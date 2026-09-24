@@ -1,6 +1,7 @@
 const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, ensureLogin, getCurrentUser } = require('../../../utils/cloud')
 const { loadMessageUnread } = require('../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
+const { safeNavigateTo } = require('../../../utils/nav')
 
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'
 const RETIRED_SERVICE_KEYS = ['extra_pet']
@@ -62,6 +63,7 @@ const defaultModules = {
 Page({
   data: {
     themeClass: 'theme-day',
+    protectedNavigationUrl: '',
     locationName: '选择位置',
     locationTip: '点击选择当前位置或常用地址',
     latitude: 0,
@@ -134,6 +136,9 @@ Page({
   },
 
   onHide() {
+    this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
+    this._protectedNavigationSeq = (this._protectedNavigationSeq || 0) + 1
+    this.setData({ protectedNavigationUrl: '' })
     this.stopAllVideos()
     this.clearLotteryFloatTimer()
     this.stopHotServicesAutoScroll()
@@ -145,6 +150,8 @@ Page({
   },
 
   onUnload() {
+    this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
+    this._protectedNavigationSeq = (this._protectedNavigationSeq || 0) + 1
     this.stopAllVideos()
     this.clearLotteryFloatTimer()
     this.stopHotServicesAutoScroll()
@@ -173,18 +180,32 @@ Page({
 
   goProtected(e) {
     const url = e.currentTarget.dataset.url
-    if (!url) return
-    ensureLogin({ content: '登录后可预约服务、管理宠物、查看订单和消息。' })
+    if (!url || this.data.protectedNavigationUrl) return
+    const requestSeq = this._protectedNavigationSeq = (this._protectedNavigationSeq || 0) + 1
+    const isActive = () => requestSeq === this._protectedNavigationSeq
+    this.setData({ protectedNavigationUrl: url })
+    return ensureLogin({ content: '登录后可预约服务、管理宠物、查看订单和消息。', isActive })
       .then(() => {
+        if (!isActive()) return
         const pages = getCurrentPages()
         const current = pages[pages.length - 1]
         const currentRoute = current && current.route ? '/' + current.route : ''
         if (currentRoute === url) return
         const mainNavUrls = ['/pages/client/home/index', '/pages/client/sitters/list/index', '/pages/client/orders/list/index', '/pages/client/messages/index', '/pages/client/profile/index']
-        const method = mainNavUrls.includes(url) ? 'redirectTo' : 'navigateTo'
-        wx[method]({ url })
+        return new Promise((resolve, reject) => {
+          const options = { url, success: resolve, fail: reject }
+          if (mainNavUrls.includes(url)) wx.redirectTo(options)
+          else safeNavigateTo(options)
+        })
+      }, () => {
+        // ensureLogin already presents authentication errors or opens the login page.
       })
-      .catch(() => {})
+      .catch((error) => {
+        if (!isActive()) return
+        console.error('[home navigation failed]', url, error)
+        showError(error)
+      })
+      .finally(() => { if (isActive()) this.setData({ protectedNavigationUrl: '' }) })
   },
 
   onTapQuickRepeat() {
@@ -223,7 +244,7 @@ Page({
 
   loadStaffEntryState() {
     // 静默刷新宠护师状态，不重置 staffEntryLoaded: false，避免每次页面 onShow 时金刚区图标消失跳动
-    getCurrentUser({ silent: true })
+    getCurrentUser({ silent: true, sessionOnly: true })
       .then((user) => {
         if (!user) {
           const title = '申请宠护师'
@@ -353,10 +374,12 @@ Page({
   },
 
   loadHomePageData() {
+    const requestSeq = this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
     const location = getSelectedLocation()
     const params = location ? { latitude: location.latitude, longitude: location.longitude } : {}
-    callFunction('system', 'getHomePageData', params)
+    return callFunction('system', 'getHomePageData', params)
       .then((homeData) => {
+        if (requestSeq !== this._homeDataRequestSeq) return
         const homePage = homeData.settings && homeData.settings.homePage ? homeData.settings.homePage : this.data.homePage
         const servicePrices = normalizeHomeServicePrices(homeData.servicePrices || [])
         this.setData({
@@ -390,6 +413,7 @@ Page({
         }
       })
       .catch((error) => {
+        if (requestSeq !== this._homeDataRequestSeq) return
         this.loadLottery()
         this.loadHeroCarousel()
         showError(error)

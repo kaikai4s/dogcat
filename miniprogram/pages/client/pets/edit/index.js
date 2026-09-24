@@ -1,5 +1,6 @@
 const { callFunction, showError, ensureLogin, loadSystemSettings, getCachedSystemSettings } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
+const { toBeijingDate } = require('../../../../utils/format')
 
 const speciesOptions = [
   { label: '狗狗', value: 'dog' },
@@ -18,7 +19,7 @@ function normalizeBeautyPhotos(form = {}) {
 }
 
 function canDeleteBeautyPhotoToday() {
-  return new Date().getDate() === 1
+  return toBeijingDate(new Date()).getUTCDate() === 1
 }
 
 function titleOptionLabel(item, currentPetId) {

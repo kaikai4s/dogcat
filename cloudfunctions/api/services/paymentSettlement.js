@@ -210,17 +210,21 @@ module.exports = function createService(context) {
     extraDocuments = []
   }) {
     const time = now()
-    let candidateId = (typeof db.collection === 'function' && typeof db.collection(collectionName).doc === 'function' && db.collection(collectionName).doc().id)
-    if (!candidateId || (db.state && db.state[collectionName] && db.state[collectionName].some(row => row._id === candidateId))) {
-      const count = db.state && db.state[collectionName] ? db.state[collectionName].length : 0
-      candidateId = `${collectionName}_${count + 1}`
-      while (db.state && db.state[collectionName] && db.state[collectionName].some(row => row._id === candidateId)) {
-        candidateId = `${collectionName}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      }
-    }
-    const orderId = candidateId
+    // wx-server-sdk requires an explicit doc ID. Allocate IDs before the
+    // transaction so concurrent requests differ and retries keep the same IDs.
+    const orderId = order.clientRequestId
+      ? key('order', JSON.stringify([collectionName, openid, order.clientRequestId]))
+      : crypto.randomBytes(16).toString('hex')
+    const extraRecords = extraDocuments.map(extra => ({
+      ...extra,
+      _id: extra._id || crypto.randomBytes(16).toString('hex')
+    }))
 
     const execute = async (tx) => {
+      if (order.clientRequestId) {
+        const existing = await optional(tx, collectionName, orderId)
+        if (existing) return { order: existing, created: false }
+      }
       // 1. 如果使用了优惠券，在同一事务内进行严格原子校验和锁定
       if (couponId) {
         const coupon = await optional(tx, 'user_coupons', couponId)
@@ -300,16 +304,9 @@ module.exports = function createService(context) {
       const finalOrder = { _id: orderId, ...cleanOrder }
 
       // 4. 写入附加表（如 order_home_security）
-      for (const extra of extraDocuments) {
+      for (const extra of extraRecords) {
         const extraColl = extra.collection
-        let extraId = extra._id || (typeof db.collection === 'function' && typeof db.collection(extraColl).doc === 'function' && db.collection(extraColl).doc().id)
-        if (!extraId || (db.state && db.state[extraColl] && db.state[extraColl].some(row => row._id === extraId))) {
-          const count = db.state && db.state[extraColl] ? db.state[extraColl].length : 0
-          extraId = `${extraColl}_${count + 1}`
-          while (db.state && db.state[extraColl] && db.state[extraColl].some(row => row._id === extraId)) {
-            extraId = `${extraColl}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-          }
-        }
+        const extraId = extra._id
         const cleanExtraData = { ...(extra.data || {}), orderId }
         delete cleanExtraData._id
         await tx.collection(extraColl).doc(extraId).set({
@@ -317,7 +314,7 @@ module.exports = function createService(context) {
         })
       }
 
-      return finalOrder
+      return { order: finalOrder, created: true }
     }
 
     if (typeof db.runTransaction === 'function') {

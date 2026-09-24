@@ -63,7 +63,6 @@ module.exports = function createHandler(context) {
     now,
     orderMatchesCity,
     paginateList,
-    parseDateTimeParts,
     publicTrainingQuiz,
     requireAdmin,
     safeFileId,
@@ -77,6 +76,7 @@ module.exports = function createHandler(context) {
     toTimeValue,
     updateOrderWhenStatus,
     validateStaffTakeOrderAbility,
+    validateStaffScheduleOnly,
     wechatPayRequest,
     withSitterUserProfile,
     batchWithSitterUserProfiles
@@ -711,70 +711,22 @@ module.exports = function createHandler(context) {
       }
       const availableOrders = (await readAll('orders', openWhere)).sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
       const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
-      const normalizedSchedule = normalizeWeeklySchedule(profile.weeklySchedule)
 
       function isOrderInRange(order) {
         return order.distanceKm !== null && order.distanceKm <= radiusKm
       }
 
-      function isOrderInTime(order) {
-        if (!normalizedSchedule) {
-          console.log('【调试-isOrderInTime】normalizedSchedule 为空，返回 true')
-          return true
-        }
-
-        // 获取订单的所有时间段（支持单次和多次服务）
+      async function isOrderInTime(order, exceptions) {
         const sessions = getOrderTimeRanges(order)
-        console.log('【调试-isOrderInTime】订单时间段:', JSON.stringify(sessions))
-        if (!sessions || sessions.length === 0) return true
-
-        console.log('【调试-isOrderInTime】normalizedSchedule:', JSON.stringify(normalizedSchedule))
-
-        // 检查每个时间段是否都在接单时间内
-        for (const session of sessions) {
-          if (!session.startTime) continue
-
-          // 使用 parseDateTimeParts 正确解析北京时间
-          const startParts = parseDateTimeParts(session.startTime)
-          console.log('【调试-isOrderInTime】解析时间 session.startTime:', session.startTime)
-          console.log('【调试-isOrderInTime】startParts:', JSON.stringify(startParts))
-          console.log('【调试-isOrderInTime】dayOfWeek:', startParts.dayOfWeek, 'hour:', startParts.hour, 'minute:', startParts.minute)
-          if (!startParts) continue
-
-          const dayKey = String(startParts.dayOfWeek)
-          const slots = normalizedSchedule[dayKey]
-          console.log('【调试-isOrderInTime】dayKey:', dayKey)
-          console.log('【调试-isOrderInTime】slots:', JSON.stringify(slots))
-
-          // 如果某一天没有配置接单时间，视为不在时间内
-          if (!Array.isArray(slots) || !slots.length) {
-            console.log('【调试-isOrderInTime】该天未配置接单时间，返回 false')
-            return false
+        if (!sessions.length) return false
+        try {
+          for (const session of sessions) {
+            await validateStaffScheduleOnly(profile, session.startTime, session.endTime, { exceptions })
           }
-
-          // 使用北京时间的小时和分钟
-          const orderHour = startParts.hour + startParts.minute / 60
-          console.log('【调试-isOrderInTime】orderHour:', orderHour)
-
-          // 检查是否在该天的任一时间段内
-          const inSlot = slots.some((slot) => {
-            const result = orderHour >= slot.start && orderHour < slot.end
-            console.log('【调试-isOrderInTime】检查时间段 [', slot.start, '-', slot.end, ']:', result)
-            return result
-          })
-
-          console.log('【调试-isOrderInTime】inSlot:', inSlot)
-
-          // 如果任一时间段不在接单时间内，返回 false
-          if (!inSlot) {
-            console.log('【调试-isOrderInTime】订单时间不在接单时间段内，返回 false')
-            return false
-          }
+          return true
+        } catch (error) {
+          return false
         }
-
-        // 所有时间段都在接单时间内
-        console.log('【调试-isOrderInTime】所有时间段都在接单时间内，返回 true')
-        return true
       }
 
       let candidates = availableOrders.filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish')
@@ -788,6 +740,9 @@ module.exports = function createHandler(context) {
         candidates = candidates.filter((order) => orderMatchesCity(order, filterCity))
       }
 
+      const scheduleExceptions = candidates.length
+        ? await readAll('staff_schedule_exceptions', { staffOpenid: openid })
+        : []
       let orders = await Promise.all(candidates.map(async (order) => {
         const enriched = await attachOrderDisplayData(order)
         let distanceKm = null
@@ -804,7 +759,7 @@ module.exports = function createHandler(context) {
           staffEarningText: `¥${earning.earningAmount.toFixed(2)}`
         }
         result.inRange = isOrderInRange(result)
-        result.inTime = isOrderInTime(result)
+        result.inTime = await isOrderInTime(result, scheduleExceptions)
         return result
       }))
 

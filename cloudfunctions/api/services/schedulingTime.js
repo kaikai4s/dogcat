@@ -24,7 +24,7 @@ module.exports = function createService({
       // 返回北京时间的 dayOfWeek, hour, minute，用于时间段判断
       return { dayOfWeek, hour, minute, day, dateObj }
     }
-    const d = new Date(text.replace(/-/g, '/'))
+    const d = new Date(text)
     if (Number.isNaN(d.getTime())) return null
     // 修复：从UTC时间转换为北京时间
     const beijingTime = new Date(d.getTime() + 8 * 60 * 60 * 1000)
