@@ -14,6 +14,7 @@ module.exports = function createHandler(context) {
     lockMethodText,
     makeIdempotencyKey,
     mask,
+    notifyAdmins,
     notifyOrder,
     now,
     readScopedDocuments,
@@ -71,6 +72,7 @@ module.exports = function createHandler(context) {
 
     if (action === 'getUnlockCode') {
       let user = null
+      let order = null
       let result = 'forbidden'
       let reason = ''
       const orderId = safeText(data && data.orderId).trim()
@@ -79,11 +81,33 @@ module.exports = function createHandler(context) {
         if (!user || !user.roles || !user.roles.includes('staff')) throw new Error('仅员工可查看')
         if (!orderId) throw new Error('缺少订单ID')
         const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
-        const order = orderRes && orderRes.data
+        order = orderRes && orderRes.data
         if (!order || isAdminDeletedOrder(order)) throw new Error('订单不存在')
         if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
         if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) throw new Error('订单状态不允许查看')
         const current = now().getTime()
+
+        // 频次控制：单订单 1 分钟内最多查看 3 次，防止恶意自动化探测与算力滥用
+        const oneMinuteAgo = current - 60 * 1000
+        const recentLogsRes = await db.collection('unlock_code_logs')
+          .where({ orderId })
+          .orderBy('createdAt', 'desc')
+          .limit(10)
+          .get()
+          .catch(() => ({ data: [] }))
+        const recentLogs = recentLogsRes.data || []
+        const attemptsInLastMinute = recentLogs.filter((log) => {
+          if (!log || !log.createdAt) return false
+          const logTime = log.createdAt instanceof Date ? log.createdAt.getTime() : new Date(log.createdAt).getTime()
+          return Number.isFinite(logTime) && logTime >= oneMinuteAgo
+        }).length
+
+        const MAX_UNLOCK_ATTEMPTS_PER_MINUTE = 3
+        if (attemptsInLastMinute >= MAX_UNLOCK_ATTEMPTS_PER_MINUTE) {
+          result = 'rate_limited'
+          throw new Error('密码查看过于频繁，请稍后再试（1分钟内限查看3次）')
+        }
+
         const approvedEarlyStart = await getApprovedEarlyStart(orderId)
         const regularStart = toTimeValue(order.startTime)
         const start = approvedEarlyStart ? toTimeValue(approvedEarlyStart.approvedAt || approvedEarlyStart.createdAt) : regularStart
@@ -108,6 +132,9 @@ module.exports = function createHandler(context) {
         }
       } catch (error) {
         reason = error.message
+        if (error.message && error.message.includes('过于频繁')) {
+          result = 'rate_limited'
+        }
         throw error
       } finally {
         await db.collection('unlock_code_logs').add({
@@ -117,11 +144,26 @@ module.exports = function createHandler(context) {
             staffOpenid: openid,
             result,
             reason,
+            isRateLimited: result === 'rate_limited',
             createdAt: now()
           }
         }).catch((err) => {
           console.error('[homeSecurity] failed to write unlock_code_logs', err)
         })
+        if (result === 'rate_limited') {
+          console.warn(`[homeSecurity] rate limit exceeded for unlock code: orderId=${orderId}, staffOpenid=${openid}`)
+          if (typeof notifyAdmins === 'function') {
+            notifyAdmins({
+              type: 'unlock_code_rate_limit_warning',
+              title: '门锁一次性密码查看频次超限告警',
+              content: `订单 ${order && order.orderNo ? order.orderNo : orderId} 门锁一次性密码在1分钟内查看超过3次，已触发防暴力频控拦截`,
+              level: 'warning',
+              orderId,
+              orderNo: order && order.orderNo ? order.orderNo : '',
+              extra: { orderId, staffOpenid: openid, staffUserId: user ? user._id : '', reason }
+            }).catch(() => {})
+          }
+        }
       }
     }
 
