@@ -2,7 +2,11 @@ module.exports = function createHandler(context) {
   const {
     collections,
     db,
+    defaultServiceCheckinRules,
+    defaultServicePrices,
     getUser,
+    normalizeServiceCheckinRule,
+    normalizeServicePrice,
     now,
     requireAdmin,
     requiredCheckins,
@@ -28,6 +32,119 @@ module.exports = function createHandler(context) {
       if (await hasActiveAdmin()) return requireAdmin(openid)
       assertInitAdminSecret()
       return null
+    }
+
+    if (action === 'setupDatabase' || action === 'initAllCollections') {
+      const createdCollections = []
+      const existingCollections = []
+      const errors = []
+
+      // 1. 批量创建全量 72 个集合
+      for (const colName of collections) {
+        try {
+          if (typeof db.createCollection === 'function') {
+            await db.createCollection(colName)
+            createdCollections.push(colName)
+          } else {
+            await db.collection(colName).limit(1).get().catch(() => null)
+            existingCollections.push(colName)
+          }
+        } catch (err) {
+          const msg = String(err.message || err.errMsg || err)
+          if (msg.includes('already exists') || msg.includes('exist') || msg.includes('已存在')) {
+            existingCollections.push(colName)
+          } else {
+            try {
+              await db.collection(colName).limit(1).get()
+              existingCollections.push(colName)
+            } catch (probeErr) {
+              errors.push({ collection: colName, error: msg })
+            }
+          }
+        }
+      }
+
+      // 2. 初始化核心服务定价 (service_prices)
+      const time = now()
+      let pricesInitialized = 0
+      const pricesToSeed = Array.isArray(defaultServicePrices) ? defaultServicePrices : (context.defaultServicePrices || [])
+      for (const preset of pricesToSeed) {
+        const existing = await db.collection('service_prices').where({ key: preset.key }).limit(1).get().catch(() => ({ data: [] }))
+        if (!existing.data || existing.data.length === 0) {
+          const payload = typeof normalizeServicePrice === 'function' ? normalizeServicePrice(preset) : preset
+          await db.collection('service_prices').add({ data: { ...payload, createdAt: time, updatedAt: time } })
+          pricesInitialized++
+        }
+      }
+
+      // 3. 初始化服务打卡规则 (service_checkin_rules)
+      let checkinRulesInitialized = 0
+      const rulesToSeed = Array.isArray(defaultServiceCheckinRules) ? defaultServiceCheckinRules : (context.defaultServiceCheckinRules || [])
+      for (const rule of rulesToSeed) {
+        const existing = await db.collection('service_checkin_rules').where({ serviceType: rule.serviceType, eventType: rule.eventType }).limit(1).get().catch(() => ({ data: [] }))
+        if (!existing.data || existing.data.length === 0) {
+          const payload = typeof normalizeServiceCheckinRule === 'function' ? normalizeServiceCheckinRule(rule) : rule
+          await db.collection('service_checkin_rules').add({ data: { ...payload, createdAt: time, updatedAt: time } })
+          checkinRulesInitialized++
+        }
+      }
+
+      // 4. 初始化全局系统配置
+      const existingSettings = await db.collection('system_settings').doc('global').get().catch(() => ({ data: null }))
+      let settingsInitialized = false
+      if (!existingSettings || !existingSettings.data) {
+        await db.collection('system_settings').doc('global').set({
+          data: {
+            payment: { mode: 'wechat', refundEnabled: true },
+            settlement: { minWithdrawAmount: 10 },
+            enableTestAddressMode: false,
+            enablePetBreedAi: true,
+            createdAt: time,
+            updatedAt: time
+          }
+        }).catch(() => null)
+        settingsInitialized = true
+      }
+
+      // 5. 若指定了首个管理员 openid 或当前执行者有 openid 且库中无管理员，则自动绑定首位超级管理员
+      let initialAdminBound = null
+      const targetAdminOpenid = safeText(data.adminOpenid || openid).trim()
+      const hasAdmin = await hasActiveAdmin()
+      if (!hasAdmin && targetAdminOpenid) {
+        const uRes = await db.collection('users').where({ openid: targetAdminOpenid }).limit(1).get().catch(() => ({ data: [] }))
+        const u = uRes.data && uRes.data[0]
+        if (u) {
+          const roles = Array.from(new Set([...(Array.isArray(u.roles) ? u.roles : ['client']), 'admin']))
+          await db.collection('users').doc(u._id).update({ data: { roles, activeRole: 'admin', status: 'active', updatedAt: time } })
+          initialAdminBound = targetAdminOpenid
+        } else {
+          await db.collection('users').add({
+            data: {
+              openid: targetAdminOpenid,
+              roles: ['admin', 'client'],
+              activeRole: 'admin',
+              status: 'active',
+              createdAt: time,
+              updatedAt: time
+            }
+          })
+          initialAdminBound = targetAdminOpenid
+        }
+      }
+
+      return {
+        success: true,
+        message: '正式环境数据库初始化成功',
+        totalCollections: collections.length,
+        createdCount: createdCollections.length,
+        existingCount: existingCollections.length,
+        errors,
+        pricesInitialized,
+        checkinRulesInitialized,
+        settingsInitialized,
+        initialAdminBound,
+        securityRuleNotice: '重要提示：所有集合数据权限均需在云开发控制台保持为【所有用户不可读写】以确保安全'
+      }
     }
 
     if (action === 'checkCollections') {
