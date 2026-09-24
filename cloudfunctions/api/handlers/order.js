@@ -704,6 +704,8 @@ module.exports = function createHandler(context) {
         activeSessionIndex: currentSession.index,
         activeSessionDate: currentSession.date,
         serviceSessions,
+        isStartOverdue: false,
+        isFinishOverdue: false,
         updatedAt: time
       }
       if (hasCoordinate(currentLat, currentLng)) {
