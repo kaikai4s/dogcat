@@ -4,12 +4,14 @@ module.exports = function createHandler(context) {
     ORDER_STATUS,
     appendOrderTimeline,
     buildMonthCalendar,
+    calcDistanceKm,
     canStartOrderSession,
     checkImageSecurity,
     claimCheckinReward,
     db,
     ensureMonthConfig,
     executeDailyCheckin,
+    formatDistance,
     getMonthDays,
     getNextPendingServiceSession,
     getOrderForAccess,
@@ -221,6 +223,17 @@ module.exports = function createHandler(context) {
       const latitude = Number(data.latitude || 0)
       const longitude = Number(data.longitude || 0)
       if (!hasCoordinate(latitude, longitude)) throw new Error('打卡定位无效')
+      const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
+      const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
+      let distanceKm = null
+      if (hasCoordinate(orderLat, orderLng)) {
+        distanceKm = calcDistanceKm(latitude, longitude, orderLat, orderLng)
+        const MAX_CHECKIN_DISTANCE_KM = 1.0
+        if (distanceKm !== null && distanceKm > MAX_CHECKIN_DISTANCE_KM && (isSanitization || data.isBackfilled !== true)) {
+          const distText = formatDistance(distanceKm)
+          throw new Error(`打卡位置距离服务地址约 ${distText}，已超出服务现场范围，请到达客户服务现场后打卡`)
+        }
+      }
       const time = now()
       if (isSanitization) {
         await validateSanitizationMedia(data.mediaFileId, data.orderId, openid)
@@ -235,7 +248,7 @@ module.exports = function createHandler(context) {
       const recordedAt = isSanitization ? time : (data.recordedAt || time)
       const existingEventPhotos = await readScopedDocuments('checkin_logs', { orderId: data.orderId, eventType: data.eventType })
       const shouldWriteTimeline = !existingEventPhotos.some(hasCheckinPhoto)
-      const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientRequestId, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, serverTime: time, recordedAt, isBackfilled: data.isBackfilled === true, remark: data.remark || data.note || '', createdAt: time, updatedAt: time, deletedAt: null, deletedByOpenid: '' }
+      const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientRequestId, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, distanceKm: distanceKm !== null ? Number(distanceKm.toFixed(3)) : null, serverTime: time, recordedAt, isBackfilled: data.isBackfilled === true, remark: data.remark || data.note || '', createdAt: time, updatedAt: time, deletedAt: null, deletedByOpenid: '' }
       checkin.accuracy = Number.isFinite(Number(data.accuracy)) ? Number(data.accuracy) : 0
       checkin.coordinateType = data.coordinateType === 'gcj02' ? 'gcj02' : 'unknown'
       checkin.locationSource = data.locationSource === 'gps' ? 'gps' : 'manual'
