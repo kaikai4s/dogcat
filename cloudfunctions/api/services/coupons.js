@@ -147,6 +147,49 @@ module.exports = function createService({
     }
   }
 
+  async function restoreOrderCoupon(couponId, orderId, tx = null) {
+    const id = safeText(couponId).trim()
+    if (!id) return null
+    const time = now()
+    const targetOrderId = safeText(orderId).trim()
+
+    const execute = async (client) => {
+      const docRef = client.collection('user_coupons').doc(id)
+      let coupon = null
+      try {
+        const res = await docRef.get()
+        coupon = res && res.data
+      } catch (e) {
+        coupon = null
+      }
+      if (!coupon) return null
+
+      // 仅当优惠券为 used 或 locked 状态，且确实归属该订单时才恢复
+      const isLinkedToOrder = !targetOrderId ||
+        coupon.usedOrderId === targetOrderId ||
+        coupon.lockedOrderId === targetOrderId ||
+        (!coupon.usedOrderId && !coupon.lockedOrderId)
+
+      if (['used', 'locked'].includes(coupon.status) && isLinkedToOrder) {
+        const updateData = {
+          status: 'available',
+          lockedOrderId: '',
+          lockedAt: null,
+          usedOrderId: '',
+          usedAt: null,
+          refundedFromOrderId: targetOrderId || coupon.usedOrderId || coupon.lockedOrderId || '',
+          refundedAt: time,
+          updatedAt: time
+        }
+        await docRef.update({ data: updateData })
+        return { _id: id, ...coupon, ...updateData }
+      }
+      return null
+    }
+
+    return tx ? execute(tx) : execute(db)
+  }
+
   return {
     normalizeCouponUsageScope,
     couponUsageScopeText,
@@ -158,6 +201,7 @@ module.exports = function createService({
     formatUserCoupon,
     getAvailableUserCoupons,
     evaluateCoupon,
-    applyCouponToPricing
+    applyCouponToPricing,
+    restoreOrderCoupon
   }
 }

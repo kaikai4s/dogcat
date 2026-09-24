@@ -168,6 +168,11 @@ module.exports = function createService({
     return { titles: [...awards.values()].sort((a, b) => b.monthKey.localeCompare(a.monthKey)), beautyTitle: pet.beautyTitle || null }
   }
 
+  function setWholeField(value) {
+    const command = db.command || {}
+    return typeof command.set === 'function' ? command.set(value) : value
+  }
+
   async function setPetBeautyTitle(openid, petId, selectedMonth) {
     const { titles } = await listPetBeautyTitles(openid, petId)
     const beautyTitle = selectedMonth ? titles.find((award) => award.monthKey === selectedMonth) : null
@@ -175,8 +180,8 @@ module.exports = function createService({
     await db.runTransaction(async (tx) => {
       const pet = await requireOwnedPet(openid, petId, tx)
       await tx.collection('pets').doc(petId).update({ data: {
-        legacyBeautyTitle: pet.legacyBeautyTitle || pet.beautyTitle || null,
-        beautyTitle,
+        legacyBeautyTitle: setWholeField(pet.legacyBeautyTitle || pet.beautyTitle || null),
+        beautyTitle: setWholeField(beautyTitle),
         beautyTitleSelectionSet: true,
         updatedAt: nowText()
       } })
@@ -207,8 +212,8 @@ module.exports = function createService({
         // Monthly awards must not override an owner's explicit choice, including removal.
         if (latest.beautyTitleSelectionSet) return
         await tx.collection('pets').doc(pet._id).update({ data: {
-          legacyBeautyTitle: latest.legacyBeautyTitle || latest.beautyTitle || null,
-          beautyTitle, updatedAt: nowText()
+          legacyBeautyTitle: setWholeField(latest.legacyBeautyTitle || latest.beautyTitle || null),
+          beautyTitle: setWholeField(beautyTitle), updatedAt: nowText()
         } })
       })
     }))

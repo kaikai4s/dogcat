@@ -63,6 +63,7 @@ module.exports = function createHandler(context) {
     normalizeServiceSessions,
     notifyOrder,
     now,
+    restoreOrderCoupon,
     paginateList,
     processOverdueUnfinishedOrders,
     processOverdueUnstartedOrders,
@@ -468,11 +469,19 @@ module.exports = function createHandler(context) {
         update.refundNo = refund.refundNo
       }
       if (!refund) await updateOrderWhenStatus(data.orderId, order.status, update, '订单状态不可取消')
-      if (order.paymentStatus !== 'paid' && order.couponId) {
-        const couponRes = await db.collection('user_coupons').doc(order.couponId).get().catch(() => ({ data: null }))
-        const coupon = couponRes && couponRes.data
-        if (coupon && coupon.status === 'locked' && coupon.lockedOrderId === data.orderId) {
-          await db.collection('user_coupons').doc(order.couponId).update({ data: { status: 'available', lockedOrderId: '', lockedAt: null, updatedAt: time } })
+      if (order.couponId) {
+        if (!refund || quote.refundAmount >= Number(order.payAmount || 0)) {
+          if (typeof restoreOrderCoupon === 'function') {
+            await restoreOrderCoupon(order.couponId, data.orderId)
+          } else {
+            const couponRes = await db.collection('user_coupons').doc(order.couponId).get().catch(() => ({ data: null }))
+            const coupon = couponRes && couponRes.data
+            if (coupon && ['locked', 'used'].includes(coupon.status)) {
+              await db.collection('user_coupons').doc(order.couponId).update({
+                data: { status: 'available', lockedOrderId: '', lockedAt: null, usedOrderId: '', usedAt: null, updatedAt: time }
+              })
+            }
+          }
         }
       }
       const cancelledOrder = { ...order, _id: data.orderId, ...update }

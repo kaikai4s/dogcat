@@ -1,5 +1,5 @@
 module.exports = function createService({ db, crypto, now, getPayableOrder, getSystemSettings,
-  assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo }) {
+  assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo, restoreOrderCoupon }) {
   const idFor = value => `refund_${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`
   async function optional(tx, name, id) {
     try { return (await tx.collection(name).doc(id).get()).data || null } catch (error) {
@@ -66,6 +66,11 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       } })
       await tx.collection('payment_events').doc(id).set({ data: { eventType: 'refund_create', orderId: order._id,
         refundNo: value.refundNo, status: 'processing', detail: { refundAmount: value.refundAmount, source }, createdAt: time } })
+      if (current.couponId && (reserved + requested >= total)) {
+        if (typeof restoreOrderCoupon === 'function') {
+          await restoreOrderCoupon(current.couponId, order._id, tx)
+        }
+      }
       return { _id: id, ...value }
     })
     return dispatchOrderRefund(refund)
@@ -142,6 +147,9 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         ...(full && order.status !== 'completed' ? { status: 'refunded' } : {}), updatedAt: time
       } })
       if (status === 'success') {
+        if (full && order.couponId && typeof restoreOrderCoupon === 'function') {
+          await restoreOrderCoupon(order.couponId, order._id, tx)
+        }
         await tx.collection('finance_logs').doc(refund._id).set({ data: {
           action: 'refund_success', targetType: 'refund', targetId: refund._id, orderId: refund.orderId,
           amountDelta: -Number(refund.refundAmount), detail: { refundNo: refund.refundNo }, createdAt: time
