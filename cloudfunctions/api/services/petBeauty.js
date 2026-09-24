@@ -195,7 +195,7 @@ module.exports = function createService({
     const voteMap = await countPetBeautyVotes(monthKey)
     const allPets = await getAllDocuments('pets', 'createdAt', 'desc')
     const ranked = allPets
-      .filter((pet) => Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length)
+      .filter((pet) => !pet.deletedAt && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length)
       .map((pet) => ({ pet, voteCount: Number(voteMap[pet._id] || 0) }))
       .filter((item) => item.voteCount > 0)
       .sort((a, b) => b.voteCount - a.voteCount || String(a.pet.createdAt || '').localeCompare(String(b.pet.createdAt || '')))
@@ -206,9 +206,25 @@ module.exports = function createService({
       const exclusiveId = await ensurePetExclusiveId(pet)
       const title = formatPetBeautyTitle(monthKey, rank)
       const beautyTitle = { monthKey, rank, title, awardedAt: lockedAt }
-      await db.collection('pet_beauty_month_rankings').add({ data: { monthKey, petId: pet._id, petExclusiveId: exclusiveId, rank, voteCount, locked: true, title, petSnapshot: toPetPublicBeautyView({ ...pet, exclusiveId, beautyTitle }, voteCount), lockedAt, createdAt: lockedAt, updatedAt: lockedAt } })
+      const rankingDocId = `${monthKey}_${pet._id}`
+      await db.collection('pet_beauty_month_rankings').doc(rankingDocId).set({
+        data: {
+          monthKey,
+          petId: pet._id,
+          petExclusiveId: exclusiveId,
+          rank,
+          voteCount,
+          locked: true,
+          title,
+          petSnapshot: toPetPublicBeautyView({ ...pet, exclusiveId, beautyTitle }, voteCount),
+          lockedAt,
+          createdAt: lockedAt,
+          updatedAt: lockedAt
+        }
+      })
       await db.runTransaction(async (tx) => {
         const { data: latest } = await tx.collection('pets').doc(pet._id).get()
+        if (!latest || latest.deletedAt) return
         // Monthly awards must not override an owner's explicit choice, including removal.
         if (latest.beautyTitleSelectionSet) return
         await tx.collection('pets').doc(pet._id).update({ data: {
@@ -217,7 +233,18 @@ module.exports = function createService({
         } })
       })
     }))
-    await db.collection('pet_beauty_month_locks').add({ data: { monthKey, status: 'locked', topCount: ranked.length, lockedAt, source: options.source || 'manual', createdAt: lockedAt, updatedAt: lockedAt } })
+    const lockDocId = `lock_${monthKey}`
+    await db.collection('pet_beauty_month_locks').doc(lockDocId).set({
+      data: {
+        monthKey,
+        status: 'locked',
+        topCount: ranked.length,
+        lockedAt,
+        source: options.source || 'manual',
+        createdAt: lockedAt,
+        updatedAt: lockedAt
+      }
+    })
     return { monthKey, locked: true, topCount: ranked.length }
   }
 
