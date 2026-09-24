@@ -1623,6 +1623,34 @@ module.exports = function createHandler(context) {
       const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
       const profile = profileRes && profileRes.data
       if (!profile) throw new Error('宠托师不存在')
+
+      const _ = db.command
+      const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
+      const activeStaffStatuses = [
+        (ORDER_STATUS && ORDER_STATUS.ASSIGNED) || 'assigned',
+        (ORDER_STATUS && ORDER_STATUS.IN_SERVICE) || 'in_service',
+        (ORDER_STATUS && ORDER_STATUS.DAY_COMPLETED) || 'day_completed'
+      ]
+
+      const activeOrdersRes = await db.collection('orders').where({
+        staffOpenid: profile.openid,
+        status: inOp(activeStaffStatuses)
+      }).limit(1).get().catch(() => ({ data: [] }))
+
+      if (activeOrdersRes.data && activeOrdersRes.data.length > 0) {
+        throw new Error('该宠托师尚有未完成的履约订单，请先在订单管理中改派或处理相关订单后再撤销身份')
+      }
+
+      const activeIncidentStatuses = ['open', 'investigating', 'triaging', 'waiting_client', 'waiting_staff', 'processing', 'refund_pending']
+      const activeIncidentsRes = await db.collection('order_incidents').where({
+        staffOpenid: profile.openid,
+        status: inOp(activeIncidentStatuses)
+      }).limit(1).get().catch(() => ({ data: [] }))
+
+      if (activeIncidentsRes.data && activeIncidentsRes.data.length > 0) {
+        throw new Error('该宠托师存在尚未结案的客诉或纠纷，暂不可撤销身份')
+      }
+
       const time = now()
       const auditRemark = safeText(data.auditRemark || data.remark).trim() || '管理员移除宠托师身份'
       const update = {

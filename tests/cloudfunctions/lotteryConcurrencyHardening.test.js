@@ -253,6 +253,111 @@ test('lottery: reward issuance uses idempotencyKey and recovers pending reservat
   assert.ok(res2.message.includes('今天已参与过本次抽奖'))
 })
 
+test('lottery: concurrent pending coupon recovery creates one coupon and increments template once', async () => {
+  const { dateKey } = toCstParts(now())
+  const recordId = `lottery_act_concurrency_openid_a_${dateKey}`
+  const db = setupLotteryTest({
+    lottery_activities: [
+      {
+        _id: 'act_concurrency',
+        name: '并发抽奖活动测试',
+        enabled: true,
+        prizes: [
+          { id: 'prize_coupon_1', type: 'coupon', name: '立减50元券', templateId: 'tmpl_test_50', probability: 100, stockLeft: 9 }
+        ]
+      }
+    ],
+    lottery_records: [
+      {
+        _id: recordId,
+        userId: 'u_user_a',
+        openid: 'openid_a',
+        activityId: 'act_concurrency',
+        dateKey,
+        status: 'pending',
+        prizeType: 'coupon',
+        prizeTemplateId: 'tmpl_test_50',
+        prizeName: '立减50元券',
+        prizeText: '',
+        points: 0,
+        couponId: '',
+        titleId: '',
+        rewardMailId: '',
+        prizeSnapshot: { id: 'prize_coupon_1', type: 'coupon', name: '立减50元券', templateId: 'tmpl_test_50', stockLeft: 9 },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    ]
+  })
+  optimistic(db)
+
+  const fnA1 = loadCloudFunction('api', db, 'openid_a')
+  const fnA2 = loadCloudFunction('api', db, 'openid_a')
+  const [res1, res2] = await Promise.all([
+    fnA1.main({ module: 'lottery', action: 'draw' }),
+    fnA2.main({ module: 'lottery', action: 'draw' })
+  ])
+
+  assert.equal(res1.ok, true)
+  assert.equal(res2.ok, true)
+  assert.equal(res1.data.couponId, res2.data.couponId)
+  assert.equal(db.state.user_coupons.length, 1)
+  assert.equal(db.state.user_coupons[0].lotteryRecordId, recordId)
+  assert.equal(db.state.coupon_templates[0].issuedCount, 1)
+})
+
+test('lottery: concurrent pending pet title recovery creates one reward mail', async () => {
+  const { dateKey } = toCstParts(now())
+  const recordId = `lottery_act_title_test_openid_a_${dateKey}`
+  const db = setupLotteryTest({
+    lottery_activities: [
+      {
+        _id: 'act_title_test',
+        name: '头衔抽奖活动',
+        enabled: true,
+        prizes: [
+          { id: 'prize_title_1', type: 'pet_title', name: '宠物头衔：锦鲤本鲤', titleId: 'title_lucky', probability: 100, stockLeft: 4 }
+        ]
+      }
+    ],
+    lottery_records: [
+      {
+        _id: recordId,
+        userId: 'u_user_a',
+        openid: 'openid_a',
+        activityId: 'act_title_test',
+        dateKey,
+        status: 'pending',
+        prizeType: 'pet_title',
+        prizeTemplateId: '',
+        prizeName: '宠物头衔：锦鲤本鲤',
+        prizeText: '',
+        points: 0,
+        couponId: '',
+        titleId: 'title_lucky',
+        rewardMailId: '',
+        prizeSnapshot: { id: 'prize_title_1', type: 'pet_title', name: '宠物头衔：锦鲤本鲤', titleId: 'title_lucky', stockLeft: 4 },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    ]
+  })
+  optimistic(db)
+
+  const fnA1 = loadCloudFunction('api', db, 'openid_a')
+  const fnA2 = loadCloudFunction('api', db, 'openid_a')
+  const [res1, res2] = await Promise.all([
+    fnA1.main({ module: 'lottery', action: 'draw' }),
+    fnA2.main({ module: 'lottery', action: 'draw' })
+  ])
+
+  assert.equal(res1.ok, true)
+  assert.equal(res2.ok, true)
+  assert.equal(res1.data.rewardMailId, res2.data.rewardMailId)
+  assert.equal(db.state.reward_mails.length, 1)
+  assert.equal(db.state.reward_mails[0].lotteryRecordId, recordId)
+})
+
 test('lottery: pet_title prize and fallback compensation both carry idempotency identifiers', async () => {
   const db = setupLotteryTest({
     lottery_activities: [
