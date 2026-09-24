@@ -157,6 +157,7 @@ module.exports = function createService(context) {
           order: { ...order, ...patch },
           changed: true,
           orderType: resolved.orderType,
+          collectionName: resolved.collectionName,
           oversoldRefundRequired: true,
           shortageReason
         }
@@ -197,6 +198,39 @@ module.exports = function createService(context) {
         )
       } catch (refundError) {
         console.error('[paymentSettlement] oversold auto refund trigger error:', refundError)
+        const collection = result.collectionName || (result.orderType === 'mall' ? 'mall_orders' : 'orders')
+        const failTime = now()
+        const failMsg = String(refundError.message || refundError).slice(0, 300)
+        await db.collection(collection).doc(result.order._id).update({
+          data: {
+            oversoldRefundFailed: true,
+            oversoldRefundError: failMsg,
+            oversoldRefundFailedAt: failTime,
+            updatedAt: failTime
+          }
+        }).catch((updateErr) => {
+          console.error('[paymentSettlement] update oversoldRefundFailed error:', updateErr)
+        })
+        if (typeof context.notifyAdmins === 'function') {
+          await context.notifyAdmins({
+            type: 'oversold_refund_failed',
+            title: '商城超卖自动退款异常预警',
+            content: `订单 ${result.order.orderNo || result.order._id} 因库存不足触发自动退款失败：${failMsg}，请尽快核实退款账户或人工处理`,
+            level: 'urgent',
+            orderId: result.order._id,
+            orderNo: result.order.orderNo,
+            actionUrl: `/pages/admin/orders/detail?id=${result.order._id}`,
+            extra: {
+              orderId: result.order._id,
+              orderType: result.orderType,
+              collectionName: collection,
+              errorMessage: failMsg,
+              shortageReason: result.shortageReason
+            }
+          }).catch((notifyErr) => {
+            console.error('[paymentSettlement] notifyAdmins error:', notifyErr)
+          })
+        }
       }
     }
     return result

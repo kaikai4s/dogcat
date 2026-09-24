@@ -165,12 +165,70 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
   }
 
   async function reconcilePendingRefunds() {
-    // Oldest checked first; one failure must not block the remaining refunds.
+    // 1. 处理 processing 中的退款记录（对微信端重试 dispatch）
     const rows = (await db.collection('refunds').where({ status: 'processing', channel: 'wechat' }).orderBy('updatedAt', 'asc').limit(30).get()).data || []
     for (const row of rows) {
-      try { await dispatchOrderRefund(row) } catch (error) { console.error('[refund-reconcile]', { id: row._id, message: error.message }) }
+      try {
+        const updated = await dispatchOrderRefund(row)
+        if (updated && updated.status === 'success') {
+          const resolved = await getPayableOrder(row.orderId)
+          if (resolved && resolved.order && resolved.order.oversoldRefundFailed) {
+            await db.collection(resolved.collectionName).doc(row.orderId).update({
+              data: {
+                oversoldRefundFailed: false,
+                oversoldRefundRecoveredAt: now(),
+                updatedAt: now()
+              }
+            }).catch(() => {})
+          }
+        }
+      } catch (error) {
+        console.error('[refund-reconcile]', { id: row._id, message: error.message })
+      }
     }
-    return rows.length
+
+    // 2. 补偿重试：处理因前置异常未能成功发起退款单的超卖订单（oversoldRefundFailed: true）
+    const failedMallOrders = (await db.collection('mall_orders').where({ oversoldRefundFailed: true }).limit(20).get()).data || []
+    const failedServiceOrders = (await db.collection('orders').where({ oversoldRefundFailed: true }).limit(20).get()).data || []
+    const allFailed = [
+      ...failedMallOrders.map(o => ({ order: o, collection: 'mall_orders' })),
+      ...failedServiceOrders.map(o => ({ order: o, collection: 'orders' }))
+    ]
+    for (const { order: failedOrder, collection } of allFailed) {
+      try {
+        const refundRows = (await db.collection('refunds').where({ orderId: failedOrder._id }).limit(10).get()).data || []
+        const hasSuccess = refundRows.some(r => r.status === 'success')
+        if (hasSuccess) {
+          await db.collection(collection).doc(failedOrder._id).update({
+            data: { oversoldRefundFailed: false, oversoldRefundRecoveredAt: now(), updatedAt: now() }
+          }).catch(() => {})
+          continue
+        }
+        const hasProcessing = refundRows.some(r => r.status === 'processing')
+        if (hasProcessing) {
+          continue
+        }
+        // 重新拉起退款请求
+        await requestOrderRefund(
+          failedOrder,
+          Number(failedOrder.payAmount),
+          failedOrder.refundReason || '商品库存不足，系统自动全额退款',
+          'system_auto_refund',
+          'system'
+        )
+        await db.collection(collection).doc(failedOrder._id).update({
+          data: {
+            oversoldRefundFailed: false,
+            oversoldRefundRecoveredAt: now(),
+            updatedAt: now()
+          }
+        }).catch(() => {})
+      } catch (retryErr) {
+        console.error('[refund-reconcile-oversold]', { id: failedOrder._id, message: retryErr.message })
+      }
+    }
+
+    return rows.length + allFailed.length
   }
   return { requestOrderRefund, dispatchOrderRefund, reconcilePendingRefunds }
 }
