@@ -1,4 +1,5 @@
 const { requireStaffGender, normalizeStaffGenderRequirement, matchesStaffGender, assertStaffGenderMatches, isStaffProfileLocked } = require('../utils/staffGender')
+const { CARD_STYLE_FIELDS, validateCardStyleUpdate } = require('../utils/profileCardStyle')
 
 module.exports = function createHandler(context) {
   const {
@@ -640,8 +641,8 @@ module.exports = function createHandler(context) {
       }
 
       const time = now()
-      const updateData = { updatedAt: time }
-      const hasProfileDisplayUpdate = data.profileBackgroundFileId !== undefined || data.profileIntro !== undefined
+      const updateData = { updatedAt: time, ...validateCardStyleUpdate(data) }
+      const hasProfileDisplayUpdate = data.profileBackgroundFileId !== undefined || data.profileIntro !== undefined || CARD_STYLE_FIELDS.some((key) => data[key] !== undefined)
 
       // 判断是否只更新 weeklySchedule（从排班日历调用）
       const isOnlyWeeklyScheduleUpdate = data.weeklySchedule !== undefined &&

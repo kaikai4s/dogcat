@@ -62,7 +62,8 @@ function applyWorkbenchDistances(orders, location) {
   if (!hasCoordinate(location && location.latitude, location && location.longitude)) return orders || []
   return (orders || []).map((order) => {
     if (!hasCoordinate(order.addressLatitude, order.addressLongitude)) {
-      return { ...order, distanceKm: null, distanceText: '未定位' }
+      // 抢单预览会隐藏客户坐标；保留服务端在脱敏前计算的距离。
+      return order
     }
     const distanceKm = calcDistanceKm(location.latitude, location.longitude, order.addressLatitude, order.addressLongitude)
     return { ...order, distanceKm, distanceText: formatDistance(distanceKm) }
@@ -74,10 +75,12 @@ function pageList(result) {
 }
 
 function applyOrderFlags(orders, radiusKm) {
-  // Keep the server's full schedule verdict, including every visit and date exceptions.
+  // 服务端使用未脱敏的地址判断范围与排班，前端不能用隐藏后的坐标覆盖结果。
   return orders.map((order) => ({
     ...order,
-    inRange: order.distanceKm !== null && order.distanceKm <= radiusKm
+    inRange: typeof order.inRange === 'boolean' ? order.inRange
+      : (typeof order.distanceKm === 'number' && Number.isFinite(order.distanceKm)
+        ? order.distanceKm <= radiusKm : null)
   }))
 }
 

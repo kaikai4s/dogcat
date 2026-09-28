@@ -2,7 +2,7 @@
   <view class="sitter-hero {{sitter.profileBackgroundFileId ? 'has-bg' : 'plain'}} {{heroExpanded ? 'expanded' : ''}}" bindtap="toggleHeroExpand">
     <image class="hero-bg" wx:if="{{sitter.profileBackgroundFileId}}" src="{{sitter.profileBackgroundFileId}}" mode="aspectFill" />
     <view class="hero-shade" wx:if="{{sitter.profileBackgroundFileId}}"></view>
-    <view class="hero-info-panel">
+    <view class="hero-info-panel" style="{{profileCardStyle}}">
       <view class="hero-topline">
         <view class="badge">宠托师名片</view>
         <view class="hero-count">{{sitter.isFeatured ? '平台精选' : (sitter.favorite ? '已收藏' : '可收藏')}}</view>

@@ -93,7 +93,7 @@ function coversServiceTime(startTime, endTime, effectiveStart, effectiveEnd) {
 
 function isDogPet(pet = {}) {
   const species = String(pet.species || pet.type || pet.petType || '').trim().toLowerCase()
-  if (!species) return true
+  if (!species) return false
   return species === 'dog' || species === 'dogs' || species === '狗' || species === '狗狗'
 }
 
@@ -244,10 +244,10 @@ function getBusinessServiceTypes(serviceTypes) {
 }
 
 function getPrimaryBusinessService(serviceTypes) {
-  return getBusinessServiceTypes(serviceTypes)[0] || 'walk'
+  return getBusinessServiceTypes(serviceTypes)[0] || ''
 }
 
-function ensureVisitFeeServiceTypes(serviceTypes, fallbackBusinessKey = 'walk') {
+function ensureVisitFeeServiceTypes(serviceTypes, fallbackBusinessKey = '') {
   const selected = Array.from(new Set([VISIT_FEE_SERVICE_KEY, ...(serviceTypes || []).filter(Boolean)]))
   if (!getBusinessServiceTypes(selected).length && fallbackBusinessKey && fallbackBusinessKey !== VISIT_FEE_SERVICE_KEY) selected.push(fallbackBusinessKey)
   return selected
@@ -396,14 +396,17 @@ typeof Page === 'function' ? Page({
     petDurationRows: [],
     timedDurationTotal: 0,
     walkWithoutDog: false,
+    autoSelectWalk: true,
+    bookingNotice: '',
+    agreementRequired: false,
     isOutOfRange: false,
     rangeDistanceText: '',
     rangeWarningText: '',
     form: {
       petId: '',
       petIds: [],
-      serviceType: 'walk',
-      serviceTypes: [VISIT_FEE_SERVICE_KEY, 'walk'],
+      serviceType: '',
+      serviceTypes: [VISIT_FEE_SERVICE_KEY],
       serviceAddress: '',
       publishMode: 'open',
       staffGenderRequirement: 'any',
@@ -496,6 +499,7 @@ typeof Page === 'function' ? Page({
     const publishMode = options.publishMode === 'direct' ? 'direct' : 'open'
     const staffProfileId = options.staffProfileId || ''
     const serviceType = options.serviceType || options.serviceKey || ''
+    this.setData({ autoSelectWalk: (!serviceType || serviceType === 'walk') && !options.rebookOrderId })
     const nextData = { ['form.publishMode']: publishMode, ['form.staffProfileId']: staffProfileId }
     nextData['form.staffGenderRequirement'] = ['male', 'female'].includes(options.staffGenderRequirement) ? options.staffGenderRequirement : 'any'
     if (serviceType) {
@@ -563,9 +567,8 @@ typeof Page === 'function' ? Page({
     ])
       .then(([pets, serviceOptions]) => {
         const enabled = normalizeServiceOptions(serviceOptions || [])
-        const fallbackBusinessKey = (enabled.find((item) => item.key !== VISIT_FEE_SERVICE_KEY) || {}).key || 'walk'
         const selected = this.data.form.serviceTypes.filter((key) => enabled.some((item) => item.key === key))
-        const serviceTypes = ensureVisitFeeServiceTypes(selected, fallbackBusinessKey).filter((key) => enabled.some((item) => item.key === key))
+        const serviceTypes = ensureVisitFeeServiceTypes(selected).filter((key) => enabled.some((item) => item.key === key))
         const selectedPetIds = normalizeSelectedPetIds(this.data.form.petIds, this.data.form.petId).filter((id) => pets.some((pet) => pet._id === id))
         const petIds = selectedPetIds.length ? selectedPetIds : [pets[0]?._id].filter(Boolean)
         const serviceOptionsWithSelected = markSelected(enabled, serviceTypes)
@@ -631,7 +634,7 @@ typeof Page === 'function' ? Page({
     const durationMinutes = row.durationMinutes + Number(step)
     if (durationMinutes < 30 || durationMinutes > 240) return
     if (Number(step) > 0 && this.data.timedDurationTotal + Number(step) > 240) {
-      wx.showToast({ title: '每日合计不能超过240分钟', icon: 'none' })
+      this.showBookingNotice({ title: '每日合计不能超过240分钟', icon: 'none' })
       return
     }
     const durations = this.data.form.petServiceDurations.map((item) => item.petId === row.petId && item.serviceKey === row.serviceKey ? { ...item, durationMinutes } : item)
@@ -907,7 +910,7 @@ typeof Page === 'function' ? Page({
   },
 
   chooseSavedAddress() {
-    wx.showToast({ title: '正在打开常用地址', icon: 'none' })
+    this.showBookingNotice({ title: '正在打开常用地址', icon: 'none' })
     wx.navigateTo({
       url: '/pages/client/addresses/list/index?select=1',
       fail: (error) => {
@@ -939,7 +942,7 @@ typeof Page === 'function' ? Page({
       quote: null
     }, () => {
       this.prepareTime()
-      wx.showToast({ title: '已应用推荐有效区间', icon: 'success' })
+      this.showBookingNotice({ title: '已应用推荐有效区间', icon: 'success' })
     })
   },
 
@@ -1047,7 +1050,7 @@ typeof Page === 'function' ? Page({
     if (!detail) return
     const urls = (detail.caseImageUrls && detail.caseImageUrls.length ? detail.caseImageUrls : detail.caseImageFileIds || []).filter(Boolean)
     if (!urls.length) {
-      wx.showToast({ title: '暂无服务案例图片', icon: 'none' })
+      this.showBookingNotice({ title: '暂无服务案例图片', icon: 'none' })
       return
     }
     wx.previewImage({ current: urls[0], urls })
@@ -1058,6 +1061,17 @@ typeof Page === 'function' ? Page({
     const pets = decoratePets(this.data.pets, petIds)
     const selectedPets = pets.filter((item) => petIds.includes(item._id))
     const selectedPet = selectedPets[0] || null
+    // 宠物列表就绪后才应用默认服务；保留用户主动取消遛狗的选择。
+    let serviceTypes = this.data.form.serviceTypes
+    if (this.data.petsLoaded) {
+      const hasDog = selectedPets.some(isDogPet)
+      serviceTypes = serviceTypes.filter((key) => key !== 'walk' || hasDog)
+      if (hasDog && this.data.autoSelectWalk && this.data.serviceOptions.some((item) => item.key === 'walk')) {
+        serviceTypes = [...serviceTypes, 'walk']
+      }
+      serviceTypes = ensureVisitFeeServiceTypes(serviceTypes)
+    }
+    const serviceOptions = markSelected(this.data.serviceOptions, serviceTypes)
     const isSinglePet = selectedPets.length === 1
     const initialVoice = isSinglePet
       ? buildPetVoiceMessage(selectedPet, this.data.form.startDate)
@@ -1067,6 +1081,11 @@ typeof Page === 'function' ? Page({
       pets,
       selectedPet,
       selectedPets,
+      'form.serviceTypes': serviceTypes,
+      'form.serviceType': getPrimaryBusinessService(serviceTypes),
+      serviceOptions,
+      selectedServiceDetails: buildSelectedServiceDetails(serviceOptions, serviceTypes, this.data.serviceDetailExpanded, this.data.serviceCaseUrlMap),
+      quote: null,
       selectedPetsTitle: formatSelectedPetsSummary(selectedPets),
       petVoiceMessage: initialVoice
     }, () => {
@@ -1195,7 +1214,7 @@ typeof Page === 'function' ? Page({
     if (index >= 0) selected.splice(index, 1)
     else selected.push(petId)
     if (!selected.length) {
-      wx.showToast({ title: '至少选择一只宠物', icon: 'none' })
+      this.showBookingNotice({ title: '至少选择一只宠物', icon: 'none' })
       return
     }
     this.setData({ ['form.petId']: selected[0], ['form.petIds']: selected, quote: null }, this.syncSelectedPetUI)
@@ -1208,7 +1227,11 @@ typeof Page === 'function' ? Page({
   toggleService(e) {
     const key = e.currentTarget.dataset.key
     if (key === VISIT_FEE_SERVICE_KEY) {
-      wx.showToast({ title: '上门费为固定必选', icon: 'none' })
+      this.showBookingNotice({ title: '上门费为固定必选', icon: 'none' })
+      return
+    }
+    if (key === 'walk' && !this.data.selectedPets.some(isDogPet)) {
+      this.showBookingNotice({ title: '遛狗服务需至少选择一只狗狗' })
       return
     }
     const selected = ensureVisitFeeServiceTypes(this.data.form.serviceTypes.slice())
@@ -1216,12 +1239,9 @@ typeof Page === 'function' ? Page({
     if (index >= 0) selected.splice(index, 1)
     else selected.push(key)
     const serviceTypes = ensureVisitFeeServiceTypes(selected, '')
-    if (!getBusinessServiceTypes(serviceTypes).length) {
-      wx.showToast({ title: '至少选择一项照护服务', icon: 'none' })
-      return
-    }
     const serviceOptionsWithSelected = markSelected(this.data.serviceOptions, serviceTypes)
     this.setData({
+      autoSelectWalk: key === 'walk' ? false : this.data.autoSelectWalk,
       ['form.serviceTypes']: serviceTypes,
       ['form.serviceType']: getPrimaryBusinessService(serviceTypes),
       serviceOptions: serviceOptionsWithSelected,
@@ -1565,7 +1585,7 @@ typeof Page === 'function' ? Page({
     if (e.currentTarget.dataset.disabled) {
       const reason = e.currentTarget.dataset.reason
       if (reason) {
-        wx.showToast({ title: reason, icon: 'none' })
+        this.showBookingNotice({ title: reason, icon: 'none' })
       }
       return
     }
@@ -1597,7 +1617,7 @@ typeof Page === 'function' ? Page({
             const badDay = sessions.find((s) => !getSitterScheduleForDate(s.date, this.data.requestedSitter, this.data.sitterAvailability).available)
             if (badDay) {
               const badSched = getSitterScheduleForDate(badDay.date, this.data.requestedSitter, this.data.sitterAvailability)
-              return wx.showToast({ title: `所选区间包含宠托师不可约日期（${badDay.date} ${badSched.reason || '休息'}）`, icon: 'none' })
+              return this.showBookingNotice({ title: `所选区间包含宠托师不可约日期（${badDay.date} ${badSched.reason || '休息'}）`, icon: 'none' })
             }
           }
           this.setData({ calendarTempEndDate: dateStr }, () => {
@@ -1616,7 +1636,7 @@ typeof Page === 'function' ? Page({
     if (e.currentTarget.dataset.disabled) {
       const reason = e.currentTarget.dataset.disabledReason
       if (reason) {
-        wx.showToast({ title: reason, icon: 'none' })
+        this.showBookingNotice({ title: reason, icon: 'none' })
       }
       return
     }
@@ -1629,11 +1649,11 @@ typeof Page === 'function' ? Page({
 
   confirmCalendarSelection() {
     const { calendarTempOrderType, calendarTempStartDate, calendarTempEndDate, calendarTempStartClock } = this.data
-    if (!calendarTempStartDate) return wx.showToast({ title: '请选择服务日期', icon: 'none' })
+    if (!calendarTempStartDate) return this.showBookingNotice({ title: '请选择服务日期', icon: 'none' })
     if (calendarTempOrderType === 'multi_day' && !calendarTempEndDate) {
-      return wx.showToast({ title: '请选择连续服务结束日期', icon: 'none' })
+      return this.showBookingNotice({ title: '请选择连续服务结束日期', icon: 'none' })
     }
-    if (!calendarTempStartClock) return wx.showToast({ title: '请选择开始时间', icon: 'none' })
+    if (!calendarTempStartClock) return this.showBookingNotice({ title: '请选择开始时间', icon: 'none' })
 
     const candidateForm = {
       ...this.data.form,
@@ -1644,7 +1664,7 @@ typeof Page === 'function' ? Page({
     }
     const scheduleCheck = this.checkSitterScheduleTime(candidateForm)
     if (!scheduleCheck.ok) {
-      return wx.showToast({ title: scheduleCheck.message, icon: 'none' })
+      return this.showBookingNotice({ title: scheduleCheck.message, icon: 'none' })
     }
 
     const nextForm = {
@@ -1715,7 +1735,7 @@ typeof Page === 'function' ? Page({
         }, () => {
           this.checkSitterRange()
         })
-        wx.showToast({ title: '已更新位置' })
+        this.showBookingNotice({ title: '已更新位置' })
       })
       .catch(showError)
   },
@@ -1801,7 +1821,7 @@ typeof Page === 'function' ? Page({
     this.prepareTime()
     const error = this.validateRequired()
     if (error) {
-      wx.showToast({ title: error, icon: 'none' })
+      this.showBookingNotice({ title: error, icon: 'none' })
       return
     }
     wx.setStorageSync(COUPON_CONTEXT_KEY, this.buildOrderPayload())
@@ -1812,7 +1832,7 @@ typeof Page === 'function' ? Page({
     this.prepareTime()
     const error = this.validateRequired()
     if (error) {
-      wx.showToast({ title: error, icon: 'none' })
+      this.showBookingNotice({ title: error, icon: 'none' })
       return
     }
     callFunction('order', 'quoteOrder', this.buildOrderPayload())
@@ -1820,8 +1840,31 @@ typeof Page === 'function' ? Page({
       .catch(showError)
   },
 
+  showBookingNotice({ title }) {
+    clearTimeout(this.bookingNoticeTimer)
+    const message = String(title || '')
+    this.setData({ bookingNotice: message })
+    this.bookingNoticeTimer = setTimeout(() => {
+      this.setData({ bookingNotice: '' })
+    }, Math.max(4000, Math.min(message.length * 180, 15000)))
+  },
+
+  dismissBookingNotice() {
+    clearTimeout(this.bookingNoticeTimer)
+    this.setData({ bookingNotice: '' })
+  },
+
+  onHide() {
+    this.dismissBookingNotice()
+  },
+
+  onUnload() {
+    clearTimeout(this.bookingNoticeTimer)
+  },
+
   toggleAgreement() {
-    this.setData({ agreeAgreement: !this.data.agreeAgreement })
+    this.dismissBookingNotice()
+    this.setData({ agreeAgreement: !this.data.agreeAgreement, agreementRequired: false })
   },
 
   openAgreement(e) {
@@ -1833,7 +1876,10 @@ typeof Page === 'function' ? Page({
   create() {
     if (this.creatingOrder || this.data.creating) return
     if (!this.data.agreeAgreement) {
-      wx.showToast({ title: '请先阅读并勾选同意服务保障协议与取消规则', icon: 'none' })
+      this.showBookingNotice({ title: '请先阅读并勾选同意服务保障协议与取消规则', icon: 'none' })
+      this.setData({ agreementRequired: true }, () => {
+        wx.pageScrollTo({ selector: '#booking-agreement', offsetTop: -24, duration: 300 })
+      })
       return
     }
     this.creatingOrder = true
@@ -1843,7 +1889,7 @@ typeof Page === 'function' ? Page({
     if (error) {
       this.creatingOrder = false
       this.setData({ creating: false })
-      wx.showToast({ title: error, icon: 'none' })
+      this.showBookingNotice({ title: error, icon: 'none' })
       return
     }
     showLoading({ title: '正在创建订单...', mask: true })

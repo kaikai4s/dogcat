@@ -1,6 +1,18 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createCollectionStore, loadCloudFunction } = require('./helpers')
+const fs = require('node:fs')
+const path = require('node:path')
+const vm = require('node:vm')
+
+function loadStaffHome() {
+  let page
+  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/staff/home/index.js'), 'utf8'), {
+    require: () => ({}), Page(config) { page = config }
+  })
+  page.data.selectedCity = '上海市'
+  return page
+}
 
 function createStaffPrivacyDb() {
   return createCollectionStore({
@@ -84,6 +96,17 @@ test('staff order preview privacy: listNearbyOrders masks GPS coordinates while 
   // 验证距离已在服务端正确计算并返回
   assert.ok(previewOrder.distanceText, 'distanceText must be calculated and returned')
   assert.ok(previewOrder.distanceKm > 0, 'distanceKm must be computed')
+  assert.equal(previewOrder.inRange, true)
+
+  // 页面消费真实脱敏响应时，必须保留距离和范围，开启范围筛选也不能误删订单。
+  const home = loadStaffHome()
+  home.data.inServiceRange = true
+  const visibleOrders = home.normalizeNearbyOrders(nearbyRes.data, { latitude: 31.2, longitude: 121.5 })
+  assert.equal(visibleOrders.length, 1)
+  assert.equal(visibleOrders[0].inRange, true)
+  assert.equal(visibleOrders[0].distanceKm, previewOrder.distanceKm)
+  assert.equal(visibleOrders[0].distanceText, previewOrder.distanceText)
+  assert.equal(visibleOrders[0].addressLatitude, null)
 
   // 核心安全验证：尚未接单前，客户的精确家庭经纬度必须被严格脱敏清空
   assert.equal(previewOrder.addressLatitude, null, 'addressLatitude must be masked to null in staff preview')
@@ -121,4 +144,31 @@ test('staff order preview privacy: listNearbyOrders masks GPS coordinates while 
   assert.equal(acceptedDetailRes.data.addressLongitude, 121.520000, 'Real longitude must be visible after accepted')
   assert.equal(acceptedDetailRes.data.addressDetail, '8栋2单元1602室', 'Real address must be visible after accepted')
   assert.equal(acceptedDetailRes.data.doorplate, '1602')
+})
+
+test('staff range flags follow each refreshed server response and still exclude genuinely distant orders', async () => {
+  const staffFn = loadCloudFunction('api', createStaffPrivacyDb(), 'openid_staff')
+  const home = loadStaffHome()
+  for (const [location, expectedInRange] of [
+    [{ latitude: 31.2, longitude: 121.5 }, true],
+    [{ latitude: 30.8, longitude: 121.0 }, false],
+    [{ latitude: 31.2, longitude: 121.5 }, true]
+  ]) {
+    const response = await staffFn.main({ module: 'staff', action: 'listNearbyOrders', data: location })
+    assert.equal(response.ok, true)
+    home.data.inServiceRange = false
+    const visible = home.normalizeNearbyOrders(response.data, location)
+    assert.equal(visible.length, 1)
+    assert.equal(visible[0].inRange, expectedInRange)
+    assert.equal(visible[0].distanceText, response.data[0].distanceText)
+    assert.equal(visible[0].addressLatitude, null)
+    home.data.inServiceRange = true
+    assert.equal(home.normalizeNearbyOrders(response.data, location).length, expectedInRange ? 1 : 0)
+  }
+})
+
+test('staff preview without a range verdict or distance remains unknown instead of claiming out of range', () => {
+  const home = loadStaffHome()
+  const orders = home.normalizeNearbyOrders([{ _id: 'unknown', addressLatitude: null, addressLongitude: null }], { latitude: 31.2, longitude: 121.5 })
+  assert.equal(orders[0].inRange, null)
 })

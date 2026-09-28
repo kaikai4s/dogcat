@@ -94,7 +94,7 @@
     <view class="menu-item" bindtap="openConfigModal">
       <view class="menu-left">
         <text class="remix-icon ri-settings-4-line menu-icon"></text>
-        <text>接单地址与按周时间段设置</text>
+        <text>主页名片、地址与接单时间设置</text>
       </view>
       <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
     </view>
@@ -157,7 +157,7 @@
       <view class="modal-head">
         <view class="modal-title">
           <text class="remix-icon ri-settings-4-line modal-icon"></text>
-          <text>服务地址与按周接单时间设置</text>
+          <text>主页名片与接单设置</text>
         </view>
         <view class="close-btn" bindtap="closeConfigModal">✕</view>
       </view>
@@ -202,7 +202,7 @@
               <text class="remix-icon ri-image-add-line"></text>
               <text>上传一张照片作为宠托师主页背景</text>
             </view>
-            <view class="homepage-preview-card">
+            <view class="homepage-preview-card" style="{{profileCardStyle}}">
               <view class="preview-badge">宠托师名片预览</view>
               <view class="preview-name">{{displayName}}</view>
               <view class="preview-intro">{{configForm.profileIntro || '一句话介绍会展示在这里'}}</view>
@@ -226,6 +226,22 @@
           <view class="intro-count">{{configForm.profileIntro.length || 0}}/60</view>
         </view>
         <view class="field-tip">这句话会展示在宠托师主页名片里，最多 60 字。</view>
+        <view class="card-style-settings">
+          <view class="modal-section-title">名片背景颜色</view>
+          <view class="card-color-options">
+            <view wx:for="{{cardColorOptions}}" wx:key="*this" class="card-color-swatch {{configForm.profileCardColor === item ? 'selected' : ''}}" style="background: {{item}};" data-field="profileCardColor" data-color="{{item}}" bindtap="selectCardColor"></view>
+          </view>
+          <view class="card-color-input-row"><text>自定义色值</text><input value="{{configForm.profileCardColor}}" maxlength="7" placeholder="#ffffff" data-field="profileCardColor" bindinput="inputCardColor" /></view>
+          <view class="modal-section-title">名片背景不透明度：{{configForm.profileCardOpacity}}%</view>
+          <slider min="0" max="100" step="1" value="{{configForm.profileCardOpacity}}" activeColor="#ff7a45" bindchanging="changeCardOpacity" bindchange="changeCardOpacity" />
+          <view class="field-tip">0% 完全透明，100% 不透明，仅调整背景，不影响文字。</view>
+          <view class="modal-section-title">名片文字颜色</view>
+          <view class="card-color-options">
+            <view wx:for="{{cardTextColorOptions}}" wx:key="*this" class="card-color-swatch {{configForm.profileCardTextColor === item ? 'selected' : ''}}" style="background: {{item}};" data-field="profileCardTextColor" data-color="{{item}}" bindtap="selectCardColor"></view>
+          </view>
+          <view class="card-color-input-row"><text>自定义色值</text><input value="{{configForm.profileCardTextColor}}" maxlength="7" placeholder="#2d211a" data-field="profileCardTextColor" bindinput="inputCardColor" /></view>
+          <button class="mini-btn" bindtap="resetCardStyle">恢复默认样式</button>
+        </view>
       </view>
 
       <!-- 2. 服务半径 -->

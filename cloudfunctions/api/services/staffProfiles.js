@@ -1,3 +1,5 @@
+const { normalizeCardStyle } = require('../utils/profileCardStyle')
+
 module.exports = function createService({
   db,
   formatWeeklyScheduleText,
@@ -87,6 +89,7 @@ module.exports = function createService({
       avatarUrl: safeFileId(profile.avatarUrl) || safeText(profile.avatarUrl),
       profileBackgroundFileId: safeFileId(profile.profileBackgroundFileId),
       profileIntro: safeText(profile.profileIntro).trim(),
+      ...normalizeCardStyle(profile),
       serviceCity: profile.serviceCity || '服务城市待完善',
       serviceAreas: profile.serviceAreas || '',
       serviceAddress: publicAddress,

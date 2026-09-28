@@ -75,8 +75,7 @@
 .sitter-hero.plain .hero-info-panel {
   width: 100%;
   margin: 0;
-  padding: 0;
-  background: transparent;
+  padding: 30rpx 32rpx;
   border: none;
   box-shadow: none;
   backdrop-filter: none;
@@ -86,6 +85,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.sitter-hero .hero-info-panel .badge,
+.sitter-hero .hero-info-panel .hero-count,
+.sitter-hero .hero-info-panel .title,
+.sitter-hero .hero-info-panel .tip,
+.sitter-hero .hero-info-panel .hero-meta,
+.sitter-hero .hero-info-panel .hero-expand-tip {
+  color: inherit;
+  white-space: normal;
+  word-break: break-all;
 }
 
 .badge {

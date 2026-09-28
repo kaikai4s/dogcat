@@ -1668,3 +1668,26 @@ button:active {
   border-radius: 24rpx !important;
   margin: 0 !important;
 }
+.booking-notice {
+  position: fixed;
+  z-index: 10000;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  width: 650rpx;
+  max-width: 90vw;
+  box-sizing: border-box;
+  padding: 28rpx 32rpx 20rpx;
+  border-radius: 20rpx;
+  background: rgba(35, 35, 35, 0.94);
+  color: #fff;
+  font-size: 28rpx;
+  line-height: 1.6;
+  text-align: center;
+  box-shadow: 0 8rpx 30rpx rgba(0, 0, 0, 0.18);
+}
+.booking-notice-scroll { max-height: 50vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.booking-notice-text { white-space: pre-wrap; word-break: break-all; overflow-wrap: anywhere; }
+.booking-notice-dismiss { padding: 16rpx 0 4rpx; color: #ffd5b5; }
+.agreement-confirm-card.agreement-required { border: 2rpx solid #e56830; }
+.agreement-required-tip { color: #c74d1b; font-size: 25rpx; line-height: 1.5; margin-bottom: 12rpx; }

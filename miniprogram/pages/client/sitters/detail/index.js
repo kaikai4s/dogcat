@@ -2,6 +2,7 @@ const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
+const { normalizeCardStyle, buildCardStyle } = require('../../../../utils/profileCardStyle')
 
 Page({
   data: {
@@ -32,7 +33,7 @@ Page({
   load() {
     if (!this.data.id) return
     callFunction('staff', 'getPublicSitterDetail', { staffProfileId: this.data.id })
-      .then((sitter) => this.setData({ sitter, heroExpanded: false }))
+      .then((sitter) => this.setData({ sitter: { ...sitter, ...normalizeCardStyle(sitter) }, profileCardStyle: buildCardStyle(sitter), heroExpanded: false }))
       .catch(showError)
   },
 

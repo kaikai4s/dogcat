@@ -440,11 +440,12 @@
     </view>
   </view>
 
-  <view class="booking-side-card trust-note agreement-confirm-card">
+  <view id="booking-agreement" class="booking-side-card trust-note agreement-confirm-card {{agreementRequired ? 'agreement-required' : ''}}">
     <view class="agreement-check-cell" bindtap="toggleAgreement">
       <checkbox checked="{{agreeAgreement}}" color="#ff7a45" class="agreement-checkbox" />
     </view>
     <view class="agreement-main-cell">
+      <view class="agreement-required-tip" wx:if="{{agreementRequired}}">请先阅读以下协议，并勾选同意后再创建订单</view>
       <view class="agreement-header-row" bindtap="toggleAgreement">
         <text class="remix-icon ri-file-shield-2-line agreement-shield-icon"></text>
         <text class="strong">服务保障与取消规则</text>
@@ -567,5 +568,9 @@
       </view>
     </view>
   </view>
+</view>
+<view wx:if="{{bookingNotice}}" class="booking-notice" role="alert">
+  <view class="booking-notice-scroll"><text class="booking-notice-text">{{bookingNotice}}</text></view>
+  <view class="booking-notice-dismiss" bindtap="dismissBookingNotice">知道了</view>
 </view>
 <global-loading />

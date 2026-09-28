@@ -82,13 +82,13 @@
   </view>
 
   <view class="quick-card-grid">
-    <view class="quick-card interactive" wx:if="{{staffEntryReady}}" bindtap="openStaffEntry">
-      <view class="remix-icon ri-shield-user-line quick-icon green"></view>
-      <view><view class="strong">{{staffEntryTitle}}</view><view class="muted">{{staffEntryTip}}</view></view>
-    </view>
     <view class="quick-card interactive" bindtap="openAiAssistant">
       <view class="remix-icon ri-robot-2-line quick-icon orange"></view>
       <view><view class="strong">AI 宠护小助手</view><view class="muted">养宠知识、健康建议与服务咨询</view></view>
+    </view>
+    <view class="quick-card interactive" wx:if="{{staffEntryReady}}" bindtap="openStaffEntry">
+      <view class="remix-icon ri-shield-user-line quick-icon green"></view>
+      <view><view class="strong">{{staffEntryTitle}}</view><view class="muted">{{staffEntryTip}}</view></view>
     </view>
   </view>
 

@@ -2,6 +2,7 @@ const { callFunction, showError, chooseSelectedLocation } = require('../../../ut
 const { withStaffWorkflowText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
+const { DEFAULT_CARD_STYLE, CARD_COLOR_OPTIONS, TEXT_COLOR_OPTIONS, isHexColor, normalizeCardStyle, buildCardStyle } = require('../../../utils/profileCardStyle')
 
 const statusMap = {
   pending: { title: '审核中', tip: '资料已提交，请等待平台审核' },
@@ -65,7 +66,11 @@ Page({
     weekdays: WEEKDAYS,
     radiusOptions,
     hourLabels,
+    cardColorOptions: CARD_COLOR_OPTIONS,
+    cardTextColorOptions: TEXT_COLOR_OPTIONS,
+    profileCardStyle: buildCardStyle(DEFAULT_CARD_STYLE),
     configForm: {
+      ...DEFAULT_CARD_STYLE,
       serviceAddress: '',
       publicServiceAddress: '',
       serviceLatitude: 0,
@@ -139,7 +144,9 @@ Page({
 
     this.setData({
       showConfigModal: true,
+      profileCardStyle: buildCardStyle(p),
       configForm: {
+        ...normalizeCardStyle(p),
         serviceAddress: p.serviceAddress || '',
         publicServiceAddress: p.publicServiceAddress || '',
         serviceLatitude: Number(p.serviceLatitude || 0),
@@ -157,6 +164,30 @@ Page({
     const field = e.currentTarget.dataset.field
     const value = field === 'profileIntro' ? String(e.detail.value || '').slice(0, 60) : e.detail.value
     this.setData({ [`configForm.${field}`]: value })
+  },
+
+  selectCardColor(e) {
+    const { field, color } = e.currentTarget.dataset
+    if (!['profileCardColor', 'profileCardTextColor'].includes(field) || !isHexColor(color)) return
+    this.setData({ [`configForm.${field}`]: color }, this.updateCardPreview)
+  },
+
+  inputCardColor(e) {
+    const { field } = e.currentTarget.dataset
+    if (!['profileCardColor', 'profileCardTextColor'].includes(field)) return
+    this.setData({ [`configForm.${field}`]: String(e.detail.value || '').trim() }, this.updateCardPreview)
+  },
+
+  changeCardOpacity(e) {
+    this.setData({ 'configForm.profileCardOpacity': Number(e.detail.value) }, this.updateCardPreview)
+  },
+
+  updateCardPreview() {
+    this.setData({ profileCardStyle: buildCardStyle(this.data.configForm) })
+  },
+
+  resetCardStyle() {
+    this.setData({ configForm: { ...this.data.configForm, ...DEFAULT_CARD_STYLE } }, this.updateCardPreview)
   },
 
   chooseProfileBackground() {
@@ -271,6 +302,10 @@ Page({
   },
 
   saveConfig() {
+    if (!isHexColor(this.data.configForm.profileCardColor) || !isHexColor(this.data.configForm.profileCardTextColor)) {
+      wx.showToast({ title: '请输入完整色值，如 #ffffff', icon: 'none' })
+      return
+    }
     const { serviceAddress, serviceLatitude, serviceLongitude } = this.data.configForm
     if (!serviceAddress || !serviceLatitude || !serviceLongitude) {
       wx.showToast({ title: '请选择固定服务地址', icon: 'none' })
