@@ -159,6 +159,12 @@ module.exports = function createHandler(context) {
         const rangeCheck = validateDirectStaffServiceRange(staffProfile, data, { isQuote: false })
         directDistanceKm = rangeCheck.dist
         await validateStaffAvailabilityForSessions(staffProfile, serviceSessions)
+        const firstSessionStartTs = toTimeValue(serviceSessions[0] && serviceSessions[0].startTime)
+        const currentMoment = now()
+        const currentTs = (currentMoment instanceof Date ? currentMoment.getTime() : new Date(currentMoment || 0).getTime()) || Date.now()
+        if (firstSessionStartTs && firstSessionStartTs < currentTs + 2 * 60 * 60 * 1000 - 60000) {
+          throw new Error('指定预约宠托师的订单，服务开始时间至少需在当前时间的2小时后')
+        }
       }
       const rawOrderLat = data.addressLatitude !== undefined ? data.addressLatitude : data.latitude
       const rawOrderLng = data.addressLongitude !== undefined ? data.addressLongitude : data.longitude

@@ -38,6 +38,18 @@ const radiusOptions = [
 
 const hourLabels = Array.from({ length: 25 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
 
+function uploadProfileBackground(filePath) {
+  const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+  return new Promise((resolve, reject) => {
+    wx.cloud.uploadFile({
+      cloudPath: `staff_profile_backgrounds/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`,
+      filePath,
+      success: (res) => resolve(res.fileID),
+      fail: reject
+    })
+  })
+}
+
 Page({
   data: {
     themeClass: 'theme-day',
@@ -55,9 +67,12 @@ Page({
     hourLabels,
     configForm: {
       serviceAddress: '',
+      publicServiceAddress: '',
       serviceLatitude: 0,
       serviceLongitude: 0,
       serviceRadiusKm: 5,
+      profileBackgroundFileId: '',
+      profileIntro: '',
       weeklySchedule: { '1': [], '2': [], '3': [], '4': [], '5': [], '6': [], '7': [] }
     },
     activeDay: 1,
@@ -130,6 +145,8 @@ Page({
         serviceLatitude: Number(p.serviceLatitude || 0),
         serviceLongitude: Number(p.serviceLongitude || 0),
         serviceRadiusKm: Number(p.serviceRadiusKm || 5),
+        profileBackgroundFileId: p.profileBackgroundFileId || '',
+        profileIntro: p.profileIntro || '',
         weeklySchedule: JSON.parse(JSON.stringify(schedule))
       },
       activeDay: 1
@@ -138,7 +155,38 @@ Page({
 
   onConfigInput(e) {
     const field = e.currentTarget.dataset.field
-    this.setData({ [`configForm.${field}`]: e.detail.value })
+    const value = field === 'profileIntro' ? String(e.detail.value || '').slice(0, 60) : e.detail.value
+    this.setData({ [`configForm.${field}`]: value })
+  },
+
+  chooseProfileBackground() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const filePath = res.tempFiles && res.tempFiles[0] && res.tempFiles[0].tempFilePath
+        if (!filePath) return
+        wx.showLoading({ title: '上传背景中...' })
+        uploadProfileBackground(filePath)
+          .then((fileId) => {
+            wx.hideLoading()
+            this.setData({ ['configForm.profileBackgroundFileId']: fileId })
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            showError(err)
+          })
+      },
+      fail: (err) => {
+        if (err && err.errMsg && err.errMsg.includes('cancel')) return
+        showError(err)
+      }
+    })
+  },
+
+  removeProfileBackground() {
+    this.setData({ ['configForm.profileBackgroundFileId']: '' })
   },
 
   closeConfigModal() {

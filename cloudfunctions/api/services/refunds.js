@@ -37,6 +37,12 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         if (amountYuanToFen(existing.refundAmount) !== requested || existing.reason !== (reason || '') || existing.source !== source) throw new Error('同一退款请求不可更改金额或原因')
         return existing
       }
+      // Internal function hook only (never spread request data into options). The
+      // guard and its writes share the refund reservation transaction and rollback.
+      if (source === 'staff_cancel' && typeof options.beforeReserve !== 'function') throw new Error('缺少宠托师取消校验')
+      const cancellationPatch = typeof options.beforeReserve === 'function'
+        ? await options.beforeReserve(tx, current, { collectionName: resolved.collectionName, requested })
+        : {}
       if (!['paid', 'refunding'].includes(current.paymentStatus)) throw new Error('订单未支付或状态不支持退款')
       if (source === 'mall_after_sale' && current.refundStatus !== 'applied') {
         throw new Error('售后状态已变化，请刷新后重试')
@@ -66,7 +72,8 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         paymentStatus: 'refunding', refundStatus: 'processing', refundAmount: (reserved + requested) / 100,
         refundNo: value.refundNo, refundRevision: Number(current.refundRevision || 0) + 1, updatedAt: time,
         ...(options.cancelStatus ? { status: options.cancelStatus, cancelReason: reason || '', cancelledAt: time } : {}),
-        ...(options.cancelStatus === 'expired' ? { expiredAt: time, expireReason: '服务开始时间前无人接单' } : {})
+        ...(options.cancelStatus === 'expired' ? { expiredAt: time, expireReason: '服务开始时间前无人接单' } : {}),
+        ...cancellationPatch
       } })
       await tx.collection('payment_events').doc(id).set({ data: { eventType: 'refund_create', orderId: order._id,
         refundNo: value.refundNo, status: 'processing', detail: { refundAmount: value.refundAmount, source }, createdAt: time } })

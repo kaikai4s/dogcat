@@ -203,6 +203,7 @@ Page({
     returningKey: false,
     keyReturnImageFileIds: [],
     customerService: null,
+    cancelling: false,
     starting: false,
     finishing: false,
     departing: false,
@@ -1140,6 +1141,75 @@ Page({
           content: msg,
           showCancel: false
         })
+      })
+  },
+
+  cancelAcceptedOrder() {
+    if (this.data.cancelling) return
+    const orderId = this.data.id
+    if (!orderId) return
+    showLoading('正在获取取消规则...')
+    callFunction('staff', 'getStaffCancellationQuote', { orderId })
+      .then((quote) => {
+        hideLoading()
+        if (!quote.canCancel) {
+          wx.showModal({
+            title: '不可取消',
+            content: quote.ruleText || '当前订单不可取消，请联系平台客服协助处理',
+            showCancel: false
+          })
+          return
+        }
+
+        const isDirect = quote.publishMode === 'direct'
+        const title = isDirect ? '确认取消指定订单？' : '确认取消接单？'
+        const content = isDirect
+          ? '这是客户指定预约您的订单。您享有接单1小时内免责取消容错时间，取消后订单将关闭并全额退款给客户，不会进入公共抢单池。\n\n确认取消该订单吗？'
+          : (quote.amountPendingReview
+            ? '接单已超过10分钟，取消后订单将返回接单大厅供其他宠托师接单，您将无法再次抢该订单，且可能扣除保证金（需平台审核）。\n\n确认取消接单吗？'
+            : '取消后订单将返回接单大厅供其他宠托师接单，您将无法再次抢该订单。\n\n确认取消接单吗？')
+
+        wx.showModal({
+          title,
+          content,
+          confirmText: '确认取消',
+          confirmColor: '#ef4444',
+          cancelText: '再想想',
+          success: (res) => {
+            if (res.confirm) {
+              this.setData({ cancelling: true })
+              showLoading('正在处理取消...')
+              const requestId = `cancel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+              callFunction('staff', 'cancelStaffAcceptedOrder', {
+                orderId,
+                assignmentToken: quote.assignmentToken,
+                reason: '宠托师主动取消',
+                requestId
+              })
+                .then(() => {
+                  hideLoading()
+                  this.setData({ cancelling: false })
+                  wx.showToast({ title: isDirect ? '已取消并全额退款' : '已取消并返回抢单池', icon: 'success' })
+                  setTimeout(() => {
+                    wx.navigateBack({
+                      fail: () => {
+                        wx.redirectTo({ url: '/pages/staff/orders/list/index' })
+                      }
+                    })
+                  }, 1200)
+                })
+                .catch((err) => {
+                  hideLoading()
+                  this.setData({ cancelling: false })
+                  showError(err)
+                })
+            }
+          }
+        })
+      })
+      .catch((err) => {
+        hideLoading()
+        showError(err)
       })
   },
 

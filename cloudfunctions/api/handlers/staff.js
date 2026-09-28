@@ -36,6 +36,8 @@ module.exports = function createHandler(context) {
     getCompletedStaffOrders,
     getOptionalUser,
     getOrderTimeRanges,
+    getStaffCancellationQuote,
+    cancelStaffAcceptedOrder,
     getStaffProfileByOpenid,
     getSystemSettings,
     getUser,
@@ -639,13 +641,17 @@ module.exports = function createHandler(context) {
 
       const time = now()
       const updateData = { updatedAt: time }
+      const hasProfileDisplayUpdate = data.profileBackgroundFileId !== undefined || data.profileIntro !== undefined
 
       // 判断是否只更新 weeklySchedule（从排班日历调用）
       const isOnlyWeeklyScheduleUpdate = data.weeklySchedule !== undefined &&
                                           data.serviceAddress === undefined &&
                                           data.serviceLatitude === undefined &&
                                           data.serviceLongitude === undefined &&
-                                          data.serviceRadiusKm === undefined
+                                          data.serviceRadiusKm === undefined &&
+                                          data.publicServiceAddress === undefined &&
+                                          data.bookableUntilDate === undefined &&
+                                          !hasProfileDisplayUpdate
 
       if (isOnlyWeeklyScheduleUpdate) {
         // 只更新按周服务时间规则
@@ -682,6 +688,15 @@ module.exports = function createHandler(context) {
           throw new Error('请选择有效的截止日期')
         }
         updateData.bookableUntilDate = untilDate
+      }
+
+      if (data.profileBackgroundFileId !== undefined) {
+        updateData.profileBackgroundFileId = safeFileId(data.profileBackgroundFileId)
+      }
+      if (data.profileIntro !== undefined) {
+        const profileIntro = safeText(data.profileIntro).trim().slice(0, 60)
+        if (profileIntro) await checkTextSecurity(openid, profileIntro, { scene: 1, label: '宠托师主页介绍' })
+        updateData.profileIntro = profileIntro
       }
 
       await db.collection('staff_profiles').doc(profile._id).update({ data: updateData })
@@ -747,7 +762,7 @@ module.exports = function createHandler(context) {
         }
       }
 
-      let candidates = availableOrders.filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish' && !isStaffPreviouslyAssignedToOrder(order, profile.openid))
+      let candidates = availableOrders.filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish' && !isStaffPreviouslyAssignedToOrder(order, profile.openid) && !(Array.isArray(order.cancelledStaffOpenids) && order.cancelledStaffOpenids.includes(profile.openid)))
       if (filterDate) {
         candidates = candidates.filter((order) => {
           if (!order.startTime) return false
@@ -845,7 +860,7 @@ module.exports = function createHandler(context) {
 
       const urgentOrders = await Promise.all(rawUrgentOrders
         .sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
-        .filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && (order.isUrgent === true || order.assignmentSource === 'admin_urgent_republish') && !order.staffOpenid && !isStaffPreviouslyAssignedToOrder(order, profile.openid))
+        .filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && (order.isUrgent === true || order.assignmentSource === 'admin_urgent_republish') && !order.staffOpenid && !isStaffPreviouslyAssignedToOrder(order, profile.openid) && !(Array.isArray(order.cancelledStaffOpenids) && order.cancelledStaffOpenids.includes(profile.openid)))
         .map(async (order) => {
           const enriched = await attachOrderDisplayData(order)
           let distanceKm = null
@@ -1008,7 +1023,7 @@ module.exports = function createHandler(context) {
 
       const allCandidates = await readAllStaffOrders(where, 2000)
       let list = allCandidates.filter((order) => !isAdminDeletedOrder(order))
-      list.sort((a, b) => toTimeValue(b.createdAt || b.startTime) - toTimeValue(a.createdAt || a.startTime))
+      list.sort((a, b) => toTimeValue(b.assignedAt || b.updatedAt || b.createdAt || b.startTime) - toTimeValue(a.assignedAt || a.updatedAt || a.createdAt || a.startTime))
 
       if (orderKeyword) {
         list = list.filter((order) => [
@@ -1114,6 +1129,9 @@ module.exports = function createHandler(context) {
       if (isStaffPreviouslyAssignedToOrder(order, openid)) {
         throw new Error('您是该订单的历史接单宠托师，因超时未按时履约转加急调度，不可重复抢单')
       }
+      if (Array.isArray(order.cancelledStaffOpenids) && order.cancelledStaffOpenids.includes(openid)) {
+        throw new Error('您此前已取消过该订单，无法再次抢单')
+      }
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
@@ -1188,6 +1206,12 @@ module.exports = function createHandler(context) {
       const notifyResult = await notifyOrderAccepted(assignedOrder, maskStaffName(profile.realName))
       await db.collection('orders').doc(data.orderId).update({ data: { acceptedNotifyStatus: notifyResult && notifyResult.status || 'skipped', acceptedNotifyError: notifyResult && notifyResult.error || '', updatedAt: time } })
       return { orderId: data.orderId, status: 'assigned', assignmentSource, notifyStatus: notifyResult && notifyResult.status || 'skipped', notifyError: notifyResult && notifyResult.error || '' }
+    }
+    if (action === 'getStaffCancellationQuote') {
+      return getStaffCancellationQuote(openid, data)
+    }
+    if (action === 'cancelStaffAcceptedOrder') {
+      return cancelStaffAcceptedOrder(openid, data)
     }
     if (action === 'getDepositStatus') {
       const user = await getUser(openid)

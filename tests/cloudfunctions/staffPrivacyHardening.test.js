@@ -22,6 +22,11 @@ test('staff privacy hardening: public sitters list and detail do not leak privat
         serviceLatitude: 31.205,
         serviceLongitude: 121.505,
         serviceRadiusKm: 5,
+        phone: '13800001111',
+        idCardFrontFileId: 'cloud://test/id-front.jpg',
+        facePhotoFileId: 'cloud://test/face.jpg',
+        profileBackgroundFileId: 'cloud://test/staff-bg.jpg',
+        profileIntro: '温柔陪伴每一只毛孩子',
         updatedAt: '2026-08-01 12:00:00'
       },
       {
@@ -37,6 +42,8 @@ test('staff privacy hardening: public sitters list and detail do not leak privat
         serviceLatitude: 31.190,
         serviceLongitude: 121.430,
         serviceRadiusKm: 10,
+        profileBackgroundFileId: 'https://example.com/unsafe.jpg',
+        profileIntro: '细心照护，认真记录',
         updatedAt: '2026-08-02 12:00:00'
       }
     ],
@@ -79,6 +86,14 @@ test('staff privacy hardening: public sitters list and detail do not leak privat
   assert.equal(sitter1.inServiceRange, true)
   assert.equal(sitter1.canDirectBook, true)
   assert.equal(typeof sitter1.distanceText, 'string')
+  assert.equal(sitter1.profileBackgroundFileId, 'cloud://test/staff-bg.jpg')
+  assert.equal(sitter1.profileIntro, '温柔陪伴每一只毛孩子')
+  assert.equal(sitter1.openid, undefined)
+  assert.equal(sitter1.phone, undefined)
+  assert.equal(sitter1.idCardFrontFileId, undefined)
+  assert.equal(sitter1.facePhotoFileId, undefined)
+  assert.equal(sitter2.profileBackgroundFileId, '')
+  assert.equal(sitter2.profileIntro, '细心照护，认真记录')
 
   // 2. 验证 getPublicSitterDetail 详情接口脱敏
   const detailRes1 = await clientApi.main({
@@ -95,6 +110,12 @@ test('staff privacy hardening: public sitters list and detail do not leak privat
   assert.equal(detail1.hasServiceAddress, true)
   assert.equal(detail1.inServiceRange, true)
   assert.equal(typeof detail1.distanceText, 'string')
+  assert.equal(detail1.profileBackgroundFileId, 'cloud://test/staff-bg.jpg')
+  assert.equal(detail1.profileIntro, '温柔陪伴每一只毛孩子')
+  assert.equal(detail1.openid, undefined)
+  assert.equal(detail1.phone, undefined)
+  assert.equal(detail1.idCardFrontFileId, undefined)
+  assert.equal(detail1.facePhotoFileId, undefined)
 
   // 3. 验证 checkSitterRange 接口在服务端进行安全判定
   // 近处地址 (31.200, 121.500) 距离 sp_1 (31.205, 121.505) 约 700米，在 5km 范围内
@@ -134,11 +155,15 @@ test('staff privacy hardening: public sitters list and detail do not leak privat
     module: 'staff',
     action: 'updateStaffProfileConfig',
     data: {
-      publicServiceAddress: '张江高科宠物服务驿站'
+      publicServiceAddress: '张江高科宠物服务驿站',
+      profileBackgroundFileId: 'cloud://test/new-staff-bg.jpg',
+      profileIntro: '擅长照护胆小猫咪，温柔记录每次服务'
     }
   })
   assert.equal(updateRes.ok, true)
   assert.equal(updateRes.data.publicServiceAddress, '张江高科宠物服务驿站')
+  assert.equal(updateRes.data.profileBackgroundFileId, 'cloud://test/new-staff-bg.jpg')
+  assert.equal(updateRes.data.profileIntro, '擅长照护胆小猫咪，温柔记录每次服务')
 
   // 再次通过公开详情接口获取，此时展示刚刚配置的公开服务地址
   const detailAfter = await clientApi.main({
@@ -149,6 +174,13 @@ test('staff privacy hardening: public sitters list and detail do not leak privat
   assert.equal(detailAfter.ok, true)
   assert.equal(detailAfter.data.publicServiceAddress, '张江高科宠物服务驿站')
   assert.equal(detailAfter.data.serviceAddress, '张江高科宠物服务驿站')
+  assert.equal(detailAfter.data.profileBackgroundFileId, 'cloud://test/new-staff-bg.jpg')
+  assert.equal(detailAfter.data.profileIntro, '擅长照护胆小猫咪，温柔记录每次服务')
+
+  const profileAfterConfig = await staffApi.main({ module: 'staff', action: 'getStaffProfile' })
+  assert.equal(profileAfterConfig.ok, true)
+  assert.equal(profileAfterConfig.data.profileBackgroundFileId, 'cloud://test/new-staff-bg.jpg')
+  assert.equal(profileAfterConfig.data.profileIntro, '擅长照护胆小猫咪，温柔记录每次服务')
 
   // 6. 验证 listFavoriteSitters 也脱敏且不暴露经纬度
   await clientApi.main({

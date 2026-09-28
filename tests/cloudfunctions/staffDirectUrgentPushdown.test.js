@@ -123,6 +123,51 @@ test('listUrgentOrders pushes down isUrgent and admin_urgent_republish filters w
   assert.deepEqual(result.map((o) => o._id), ['repub_1', 'urgent_1'])
 })
 
+test('listStaffOrders sorts newly grabbed urgent orders by assignedAt before old createdAt', async () => {
+  const { context } = createTestContext({
+    users: [{ _id: 'u_staff_alice', openid: 'staff_alice', roles: ['staff'], status: 'active' }],
+    staff_profiles: [{ _id: 'sp_alice', openid: 'staff_alice', auditStatus: 'approved' }],
+    orders: [
+      {
+        _id: 'old_urgent_grabbed_now',
+        status: 'assigned',
+        staffOpenid: 'staff_alice',
+        assignmentSource: 'urgent_grab',
+        isUrgent: true,
+        createdAt: '2026-09-20 10:00:00',
+        assignedAt: '2026-09-28 10:00:00',
+        updatedAt: '2026-09-28 10:00:00',
+        startTime: '2026-09-28 12:00',
+        endTime: '2026-09-28 13:00'
+      },
+      {
+        _id: 'newer_normal_created_first',
+        status: 'assigned',
+        staffOpenid: 'staff_alice',
+        assignmentSource: 'open_grab',
+        createdAt: '2026-09-27 10:00:00',
+        assignedAt: '2026-09-27 10:00:00',
+        updatedAt: '2026-09-27 10:00:00',
+        startTime: '2026-09-27 12:00',
+        endTime: '2026-09-27 13:00'
+      }
+    ]
+  })
+
+  const handler = require('../../cloudfunctions/api/handlers/staff')({
+    ...context,
+    getUser: async () => ({ roles: ['staff'] }),
+    getSystemSettings: async () => ({ staffDeposit: 0 }),
+    attachOrderDisplayData: async (order) => ({ ...order, petName: '豆豆' }),
+    calculateStaffEarningForOrder: async () => ({ earningAmount: 60 })
+  })
+
+  const result = await handler('staff_alice', 'listStaffOrders', { page: 1, pageSize: 1 })
+  assert.equal(result.total, 2)
+  assert.equal(result.list.length, 1)
+  assert.equal(result.list[0]._id, 'old_urgent_grabbed_now')
+})
+
 test('readAll enforces maxLimit ceiling to prevent runaway reads', async () => {
   const totalRows = 250
   const orders = Array.from({ length: totalRows }, (_, i) => ({

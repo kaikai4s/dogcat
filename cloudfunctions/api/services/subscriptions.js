@@ -70,7 +70,7 @@ module.exports = function createService({
       thing4: { value: statusText.slice(0, 20) },
       character_string5: { value: safeText(orderNo).slice(0, 32) },
       thing10: { value: safeText(serviceName).slice(0, 20) },
-      date3: { value: safeText(order.startTime || nowText()).slice(0, 20) }
+      date3: { value: safeText(templateKey === 'staffCancellation' ? formatDateTime(detail.cancelledAt) : (order.startTime || nowText())).slice(0, 20) }
     }
   }
 
@@ -116,6 +116,10 @@ module.exports = function createService({
     try {
       const settings = await getSystemSettings()
       let templateId = settings.subscription.templates[templateKey] || ''
+      // Cancellation is an assignment-status update, not a service-start or payment-success event.
+      if (!templateId && templateKey === 'staffCancellation') {
+        templateId = settings.subscription.templates.orderAssigned || ''
+      }
       if (!templateId && templateKey === 'upcomingServiceReminder') {
         templateId = settings.subscription.templates.serviceStart || ''
       }

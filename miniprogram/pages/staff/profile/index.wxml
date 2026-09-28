@@ -192,6 +192,42 @@
         </view>
       </view>
 
+      <!-- 公开主页展示 -->
+      <view class="modal-section">
+        <view class="modal-section-title">公开主页展示</view>
+        <view class="homepage-display-box">
+          <view class="homepage-bg-preview {{configForm.profileBackgroundFileId ? 'has-image' : ''}}">
+            <image wx:if="{{configForm.profileBackgroundFileId}}" class="homepage-bg-image" src="{{configForm.profileBackgroundFileId}}" mode="aspectFill" />
+            <view class="homepage-bg-placeholder" wx:else>
+              <text class="remix-icon ri-image-add-line"></text>
+              <text>上传一张照片作为宠托师主页背景</text>
+            </view>
+            <view class="homepage-preview-card">
+              <view class="preview-badge">宠托师名片预览</view>
+              <view class="preview-name">{{displayName}}</view>
+              <view class="preview-intro">{{configForm.profileIntro || '一句话介绍会展示在这里'}}</view>
+              <view class="preview-meta">{{profile.serviceCity || '服务城市'}} · {{profile.staffLevelText || statusTitle}}</view>
+            </view>
+          </view>
+          <view class="homepage-actions">
+            <button class="mini-btn" bindtap="chooseProfileBackground">{{configForm.profileBackgroundFileId ? '更换背景' : '上传背景'}}</button>
+            <button class="mini-btn remove" wx:if="{{configForm.profileBackgroundFileId}}" bindtap="removeProfileBackground">移除</button>
+          </view>
+        </view>
+        <view class="input-card intro-card">
+          <input
+            class="public-addr-input"
+            maxlength="60"
+            placeholder="一句话介绍自己，如：温柔陪伴每一只胆小猫咪"
+            value="{{configForm.profileIntro}}"
+            data-field="profileIntro"
+            bindinput="onConfigInput"
+          />
+          <view class="intro-count">{{configForm.profileIntro.length || 0}}/60</view>
+        </view>
+        <view class="field-tip">这句话会展示在宠托师主页名片里，最多 60 字。</view>
+      </view>
+
       <!-- 2. 服务半径 -->
       <view class="modal-section">
         <view class="modal-section-title">2. 接单服务半径（公里）</view>

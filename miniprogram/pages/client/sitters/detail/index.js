@@ -9,6 +9,7 @@ Page({
     id: '',
     staffGenderRequirement: 'any',
     sitter: null,
+    heroExpanded: false,
     sectionHomeUrl: '',
     canGoBack: false
   },
@@ -31,8 +32,13 @@ Page({
   load() {
     if (!this.data.id) return
     callFunction('staff', 'getPublicSitterDetail', { staffProfileId: this.data.id })
-      .then((sitter) => this.setData({ sitter }))
+      .then((sitter) => this.setData({ sitter, heroExpanded: false }))
       .catch(showError)
+  },
+
+  toggleHeroExpand() {
+    if (!this.data.sitter || !this.data.sitter.profileBackgroundFileId) return
+    this.setData({ heroExpanded: !this.data.heroExpanded })
   },
 
   toggleFavorite() {

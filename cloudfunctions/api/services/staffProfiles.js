@@ -85,6 +85,8 @@ module.exports = function createService({
       gender: ['male', 'female'].includes(profile.gender) ? profile.gender : '',
       displayName: sitterDisplayName(profile),
       avatarUrl: safeFileId(profile.avatarUrl) || safeText(profile.avatarUrl),
+      profileBackgroundFileId: safeFileId(profile.profileBackgroundFileId),
+      profileIntro: safeText(profile.profileIntro).trim(),
       serviceCity: profile.serviceCity || '服务城市待完善',
       serviceAreas: profile.serviceAreas || '',
       serviceAddress: publicAddress,

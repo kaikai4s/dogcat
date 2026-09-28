@@ -1737,6 +1737,10 @@ typeof Page === 'function' ? Page({
       if (!rangeCheck.ok) return rangeCheck.message
       const timeCheck = this.checkSitterScheduleTime()
       if (!timeCheck.ok) return timeCheck.message
+      const start = parseDateTime(form.startTime)
+      if (start && start.getTime() < Date.now() + 2 * 60 * 60 * 1000 - 60000) {
+        return '指定预约宠托师的订单，服务开始时间至少需在当前时间的2小时后'
+      }
     }
     if (!form.serviceAddress) return '请选择服务地址'
     if (!form.addressDetail) return '请填写详细地址'

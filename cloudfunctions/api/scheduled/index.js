@@ -3,6 +3,7 @@ module.exports = function createHandler(context) {
     cancelUnpaidOrders,
     reconcilePendingRefunds,
     retryFailedSubscriptions,
+    retryStaffCancellationNotifications,
     expireDueUnacceptedOrders,
     getMonthDays,
     processOverdueUnfinishedOrders,
@@ -13,7 +14,7 @@ module.exports = function createHandler(context) {
   } = context
   return async function runScheduledTasks() {
     console.log('[scheduled] timer triggered, running scheduled tasks...')
-    for (const [name, task] of [['refunds', reconcilePendingRefunds], ['subscriptions', retryFailedSubscriptions]]) {
+    for (const [name, task] of [['refunds', reconcilePendingRefunds], ['subscriptions', retryFailedSubscriptions], ['staffCancellationNotifications', retryStaffCancellationNotifications]]) {
       try { await task() }
       catch (error) { console.error('[scheduled-retry]', { task: name, message: error.message }) }
     }
