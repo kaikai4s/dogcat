@@ -26,6 +26,7 @@ module.exports = function createHandler(context) {
     createRefundForOrder,
     db,
     defaultCheckinDays,
+    destroyOrderHomeSecuritySecrets,
     defaultServiceCheckinRules,
     defaultServicePrices,
     detachUserFromHistoricalRecords,
@@ -1026,6 +1027,13 @@ module.exports = function createHandler(context) {
       if (targetStatus === 'completed' && order.staffOpenid) {
         await ensureStaffEarning({ ...order, ...updateData, _id: orderId }, time)
       }
+      if (targetStatus === 'completed' && typeof destroyOrderHomeSecuritySecrets === 'function') {
+        await destroyOrderHomeSecuritySecrets(orderId, {
+          reason: 'admin_manual_status_completed',
+          actor: 'admin',
+          time
+        }).catch(() => {})
+      }
 
       const statusLabels = {
         pending_pay: '待支付',
@@ -1120,6 +1128,14 @@ module.exports = function createHandler(context) {
       }
 
       await db.collection('orders').doc(orderId).update({ data: updateData })
+
+      if (typeof destroyOrderHomeSecuritySecrets === 'function') {
+        await destroyOrderHomeSecuritySecrets(orderId, {
+          reason: 'admin_manual_completed',
+          actor: 'admin',
+          time
+        }).catch((err) => console.error('[manualCompleteOrder] destroy secrets failed:', err))
+      }
 
       if (order.staffOpenid) {
         await ensureStaffEarning(

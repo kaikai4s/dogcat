@@ -89,6 +89,10 @@ module.exports = function createHandler(context) {
         order = orderRes && orderRes.data
         if (!order || isAdminDeletedOrder(order)) throw new Error('订单不存在')
         if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
+        if (order.isDoorLockCodeDestroyed || order.status === 'completed') {
+          result = 'destroyed'
+          throw new Error('门锁一次性密码已在服务完成并确认离户后自动脱敏销毁，不可再次查看')
+        }
         if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) throw new Error('订单状态不允许查看')
         const current = now().getTime()
 
@@ -159,6 +163,11 @@ module.exports = function createHandler(context) {
         if (!security) security = order.orderHomeSecurity || order.homeSecuritySnapshot
         if (!security || security.type !== 'one_time_code') throw new Error('该订单未设置一次性密码')
 
+        if (security.destroyed || security.isPasswordDestroyed) {
+          result = 'destroyed'
+          throw new Error('门锁一次性密码已在服务完成并确认离户后自动脱敏销毁，不可再次查看')
+        }
+
         let targetCodeObj = null
         if (targetSession && Array.isArray(security.sessionCodes) && security.sessionCodes.length) {
           targetCodeObj = security.sessionCodes.find(item => Number(item.sessionIndex || item.index) === Number(targetSession.index) || (item.date && item.date === targetSession.date))
@@ -166,7 +175,17 @@ module.exports = function createHandler(context) {
         if (!targetCodeObj) {
           targetCodeObj = security.oneTimeCode
         }
-        if (!targetCodeObj || !targetCodeObj.cipher) throw new Error('该订单未设置一次性密码')
+        if (targetCodeObj && targetCodeObj.destroyed) {
+          result = 'destroyed'
+          throw new Error('门锁一次性密码已在服务完成并确认离户后自动脱敏销毁，不可再次查看')
+        }
+        if (!targetCodeObj || !targetCodeObj.cipher) {
+          if (security.destroyed || (targetCodeObj && targetCodeObj.destroyed)) {
+            result = 'destroyed'
+            throw new Error('门锁一次性密码已在服务完成并确认离户后自动脱敏销毁，不可再次查看')
+          }
+          throw new Error('该订单未设置一次性密码')
+        }
 
         const effectiveStart = toTimeValue(targetCodeObj.effectiveStart)
         const effectiveEnd = toTimeValue(targetCodeObj.effectiveEnd)
@@ -188,6 +207,8 @@ module.exports = function createHandler(context) {
         reason = error.message
         if (error.message && error.message.includes('过于频繁')) {
           result = 'rate_limited'
+        } else if (error.message && error.message.includes('销毁')) {
+          result = 'destroyed'
         }
         throw error
       } finally {

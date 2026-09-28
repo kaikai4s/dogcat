@@ -899,6 +899,19 @@ Page({
       wx.showToast({ title: missingTip, icon: 'none' })
       return
     }
+    wx.showModal({
+      title: '确认离开并完成服务？',
+      content: '请确认已妥善关好门窗并离开客户家中。确认后系统将对门锁密码进行自动脱敏销毁，您将无法再次查看门锁密码。',
+      confirmText: '确认离开',
+      cancelText: '再检查下',
+      success: (modalRes) => {
+        if (!modalRes.confirm) return
+        this._doFinish()
+      }
+    })
+  },
+
+  _doFinish() {
     if (this._finishingLock || this.data.finishing) return
     this._finishingLock = true
     this.setData({ finishing: true })
@@ -914,8 +927,8 @@ Page({
         this._finishingLock = false
         this.stopServiceElapsedTimer()
         this.stopAutoTracking()
-        wx.showToast({ title: res && res.status === 'day_completed' ? '当天已完成' : '已完成' })
-        this.setData({ finishing: false })
+        wx.showToast({ title: res && res.status === 'day_completed' ? '服务已完成，密码已销毁' : '服务已完成，密码已销毁', icon: 'success' })
+        this.setData({ finishing: false, unlock: null })
         this.loadOrder()
       })
       .catch((error) => {

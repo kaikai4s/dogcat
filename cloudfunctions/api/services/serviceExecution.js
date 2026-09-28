@@ -6,6 +6,7 @@ module.exports = function createService({
   appendOrderTimeline,
   checkinEventText,
   db,
+  destroyOrderHomeSecuritySecrets,
   ensureStaffEarning,
   getCompletedStaffOrders,
   getUser,
@@ -99,6 +100,14 @@ module.exports = function createService({
         })
       }
       await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成', tip: isAuto ? '今日服务打卡齐全，系统已确认完成' : '今日服务已完成' }, 'client')
+      if (typeof destroyOrderHomeSecuritySecrets === 'function') {
+        await destroyOrderHomeSecuritySecrets(orderId, {
+          sessionIndex,
+          reason: isAuto ? 'system_auto_day_completed' : 'day_completed',
+          actor,
+          time
+        }).catch((err) => console.error('[completeOrderService] destroy session secrets failed:', err))
+      }
       return { id: orderId, status: ORDER_STATUS.DAY_COMPLETED, activeSessionIndex: 0, autoCompleted: isAuto, autoCompletedSessions: nextAutoCompletedSessions }
     }
 
@@ -120,6 +129,16 @@ module.exports = function createService({
 
     await updateOrderWhenStatus(orderId, ORDER_STATUS.IN_SERVICE, updateData, '订单状态不可完成')
     const completedOrder = { ...order, _id: orderId, status: ORDER_STATUS.COMPLETED, serviceSessions: completedSessions, completedAt: time, updatedAt: time }
+
+    if (typeof destroyOrderHomeSecuritySecrets === 'function') {
+      await destroyOrderHomeSecuritySecrets(orderId, {
+        sessionIndex,
+        isFinal: true,
+        reason: isAuto ? 'system_auto_completed' : 'service_completed',
+        actor,
+        time
+      }).catch((err) => console.error('[completeOrderService] destroy final secrets failed:', err))
+    }
 
     await ensureStaffEarning(completedOrder, time)
 

@@ -151,33 +151,46 @@ module.exports = function createService({
   function toPublicHomeSecuritySnapshot(security) {
     if (!security) return null
     const type = normalizeLockMethod(security.type || security.lockMethod)
+    const isDestroyed = security.destroyed === true || security.isPasswordDestroyed === true
     const safe = {
       type,
       lockMethod: type,
       lockMethodText: security.lockMethodText || lockMethodText(type),
       entryNotes: security.entryNotes || '',
+      destroyed: isDestroyed,
+      isPasswordDestroyed: isDestroyed,
+      passwordDestroyedAt: security.destroyedAt || security.passwordDestroyedAt || '',
+      passwordDestroyReason: security.destroyReason || '',
       createdAt: security.createdAt || '',
       updatedAt: security.updatedAt || ''
     }
     if (security.oneTimeCode) {
+      const codeDestroyed = isDestroyed || security.oneTimeCode.destroyed === true
       safe.oneTimeCode = {
-        masked: security.oneTimeCode.masked || '',
+        masked: security.oneTimeCode.masked || '******',
         effectiveStart: security.oneTimeCode.effectiveStart || '',
         effectiveEnd: security.oneTimeCode.effectiveEnd || '',
-        coversServiceTime: security.oneTimeCode.coversServiceTime === true
+        coversServiceTime: security.oneTimeCode.coversServiceTime === true,
+        destroyed: codeDestroyed,
+        destroyedAt: security.oneTimeCode.destroyedAt || security.destroyedAt || ''
       }
-      safe.hasDoorLockCode = true
+      safe.hasDoorLockCode = !codeDestroyed
     }
     if (Array.isArray(security.sessionCodes) && security.sessionCodes.length) {
-      safe.sessionCodes = security.sessionCodes.map((item) => ({
-        sessionIndex: item.sessionIndex || item.index,
-        date: item.date || '',
-        masked: item.masked || (item.cipher ? mask('******') : ''),
-        effectiveStart: item.effectiveStart || '',
-        effectiveEnd: item.effectiveEnd || '',
-        coversServiceTime: item.coversServiceTime === true
-      }))
-      safe.hasDoorLockCode = true
+      safe.sessionCodes = security.sessionCodes.map((item) => {
+        const itemDestroyed = isDestroyed || item.destroyed === true
+        return {
+          sessionIndex: item.sessionIndex || item.index,
+          date: item.date || '',
+          masked: item.masked || (item.cipher ? mask('******') : '******'),
+          effectiveStart: item.effectiveStart || '',
+          effectiveEnd: item.effectiveEnd || '',
+          coversServiceTime: item.coversServiceTime === true,
+          destroyed: itemDestroyed,
+          destroyedAt: item.destroyedAt || security.destroyedAt || ''
+        }
+      })
+      safe.hasDoorLockCode = !isDestroyed && safe.sessionCodes.some(s => !s.destroyed)
     }
     if (security.remoteUnlock) {
       safe.remoteUnlock = {
@@ -208,6 +221,135 @@ module.exports = function createService({
     return toPublicHomeSecuritySnapshot({ ...security, type, lockMethod: type, lockMethodText: security.lockMethodText || lockMethodText(type) })
   }
 
+  async function destroyOrderHomeSecuritySecrets(orderId, options = {}) {
+    if (!orderId) return null
+    const time = options.time || now()
+    const sessionIndex = options.sessionIndex ? Number(options.sessionIndex) : null
+    const reason = options.reason || 'service_completed_auto_destroyed'
+    const actor = options.actor || 'staff'
+
+    // 1. 查询 order_home_security 独立集合
+    const secRes = await db.collection('order_home_security').where({ orderId }).limit(1).get().catch(() => ({ data: [] }))
+    const secDoc = secRes.data && secRes.data[0]
+
+    // 2. 查询 orders 集合
+    const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+    const order = orderRes && orderRes.data
+    const existingSecurity = secDoc || (order && (order.orderHomeSecurity || order.homeSecuritySnapshot)) || null
+    if (!existingSecurity) return null
+
+    const updatedSec = { ...existingSecurity }
+
+    const hasSessionCodes = Array.isArray(updatedSec.sessionCodes) && updatedSec.sessionCodes.length > 0
+    // 销毁多日订单中特定场次
+    let isAllDestroyed = false
+    if (sessionIndex && hasSessionCodes) {
+      updatedSec.sessionCodes = updatedSec.sessionCodes.map((item) => {
+        if (Number(item.sessionIndex || item.index) === sessionIndex) {
+          return {
+            ...item,
+            cipher: '',
+            iv: '',
+            tag: '',
+            destroyed: true,
+            destroyedAt: time,
+            destroyReason: reason,
+            masked: item.masked || '******'
+          }
+        }
+        return item
+      })
+      isAllDestroyed = updatedSec.sessionCodes.every((item) => item.destroyed === true)
+    }
+
+    // 全单完结或单日完单或全部场次已销毁
+    const isFullyDestroyed = !hasSessionCodes || !sessionIndex || isAllDestroyed || options.isFinal === true
+    if (isFullyDestroyed) {
+      if (updatedSec.oneTimeCode) {
+        updatedSec.oneTimeCode = {
+          ...updatedSec.oneTimeCode,
+          cipher: '',
+          iv: '',
+          tag: '',
+          destroyed: true,
+          destroyedAt: time,
+          destroyReason: reason,
+          masked: updatedSec.oneTimeCode.masked || '******'
+        }
+      }
+      if (Array.isArray(updatedSec.sessionCodes)) {
+        updatedSec.sessionCodes = updatedSec.sessionCodes.map((item) => ({
+          ...item,
+          cipher: '',
+          iv: '',
+          tag: '',
+          destroyed: true,
+          destroyedAt: time,
+          destroyReason: reason,
+          masked: item.masked || '******'
+        }))
+      }
+      updatedSec.doorLockCodeCipher = ''
+      updatedSec.doorLockCodeIv = ''
+      updatedSec.doorLockCodeTag = ''
+      updatedSec.doorLockCode = ''
+      updatedSec.code = ''
+      updatedSec.destroyed = true
+      updatedSec.destroyedAt = time
+      updatedSec.destroyReason = reason
+      updatedSec.destroyedBy = actor
+      updatedSec.isPasswordDestroyed = true
+    }
+
+    updatedSec.updatedAt = time
+
+    // 更新 order_home_security 集合
+    if (secDoc) {
+      await db.collection('order_home_security').doc(secDoc._id).update({
+        data: updatedSec
+      }).catch((err) => {
+        console.error('[destroyOrderHomeSecuritySecrets] failed to update order_home_security:', err)
+      })
+    }
+
+    // 更新 orders 集合中的快照与安防对象
+    const hasRemainingCodes = !isFullyDestroyed && Array.isArray(updatedSec.sessionCodes) && updatedSec.sessionCodes.some(s => !s.destroyed)
+    updatedSec.hasDoorLockCode = hasRemainingCodes
+    const publicSnapshot = toPublicHomeSecuritySnapshot(updatedSec)
+
+    const orderUpdateData = {
+      orderHomeSecurity: updatedSec,
+      homeSecuritySnapshot: publicSnapshot,
+      hasDoorLockCode: hasRemainingCodes,
+      updatedAt: time
+    }
+    if (isFullyDestroyed) {
+      orderUpdateData.isDoorLockCodeDestroyed = true
+      orderUpdateData.doorLockCodeDestroyedAt = time
+    }
+
+    await db.collection('orders').doc(orderId).update({
+      data: orderUpdateData
+    }).catch((err) => {
+      console.error('[destroyOrderHomeSecuritySecrets] failed to update orders:', err)
+    })
+
+    // 写入安全审计流水
+    await db.collection('unlock_code_logs').add({
+      data: {
+        orderId,
+        staffOpenid: (order && order.staffOpenid) || '',
+        result: 'destroyed',
+        reason,
+        actor,
+        sessionIndex: sessionIndex || undefined,
+        createdAt: time
+      }
+    }).catch(() => {})
+
+    return updatedSec
+  }
+
   return {
     normalizeLockMethod,
     lockMethodText,
@@ -221,6 +363,7 @@ module.exports = function createService({
     canStartOrderSession,
     toEarlyStartView,
     toPublicHomeSecuritySnapshot,
-    toPublicOrderHomeSecurity
+    toPublicOrderHomeSecurity,
+    destroyOrderHomeSecuritySecrets
   }
 }

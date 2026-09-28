@@ -129,3 +129,31 @@ test('orders/create & detail & staff/orders/service comprehensive guidance for r
   assert.match(staffWxml, /钥匙安全责任：请核对照片寻匙开门；服务结束离开前必须原位放回并拍照打卡，确保锁闭/)
 })
 
+test('orders/create, detail, and staff service implement auto-destruction mechanism and one-time password optimization', () => {
+  const createWxml = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/client/orders/create/index.wxml'), 'utf8')
+  const createJs = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/client/orders/create/index.js'), 'utf8')
+  const detailWxml = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/client/orders/detail/index.wxml'), 'utf8')
+  const staffWxml = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/staff/orders/service/index.wxml'), 'utf8')
+  const staffJs = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/staff/orders/service/index.js'), 'utf8')
+
+  // 1. 创建页：完单自动脱敏销毁说明与一键推荐区间
+  assert.match(createWxml, /完单自动脱敏销毁机制/)
+  assert.match(createWxml, /服务完成并点击“确认离开”后，系统自动在云端对门锁密码抹除销毁/)
+  assert.match(createWxml, /一键对齐推荐有效区间/)
+  assert.match(createJs, /applyRecommendedCodeTimes/)
+  assert.match(createJs, /getRecommendedCodeTimesForSessions/)
+
+  // 2. 详情页：密码脱敏销毁存证与已销毁标识
+  assert.match(detailWxml, /门锁密码已脱敏销毁存证/)
+  assert.match(detailWxml, /已自动在云端对门锁密码进行脱敏抹除，宠托师端已永久不可见/)
+  assert.match(detailWxml, /item\.destroyed \? '已脱敏销毁' :/)
+
+  // 3. 宠托师端：确认离开并完成服务与离户脱敏销毁
+  assert.match(staffWxml, /确认离开并完成服务/)
+  assert.match(staffWxml, /门锁密码已安全销毁（已确认离户脱敏抹除，不可再查看）/)
+  assert.match(staffJs, /确认离开并完成服务？/)
+  assert.match(staffJs, /请确认已妥善关好门窗并离开客户家中。确认后系统将对门锁密码进行自动脱敏销毁/)
+  assert.match(staffJs, /服务已完成，密码已销毁/)
+})
+
+

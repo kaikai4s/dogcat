@@ -27,6 +27,7 @@ module.exports = function createHandler(context) {
     createRefundForOrder,
     cancelUnpaidOrder,
     db,
+    destroyOrderHomeSecuritySecrets,
     enrichUserMemberLevel,
     evaluateCheckinCompletion,
     expireDueUnacceptedOrders,
@@ -499,6 +500,13 @@ module.exports = function createHandler(context) {
         }
       }
       const cancelledOrder = { ...order, _id: data.orderId, ...update }
+      if (typeof destroyOrderHomeSecuritySecrets === 'function') {
+        await destroyOrderHomeSecuritySecrets(data.orderId, {
+          reason: 'order_cancelled',
+          actor: 'client',
+          time
+        }).catch(() => {})
+      }
       await appendOrderTimeline(data.orderId, 'cancelled', '订单已取消', `${quote.ruleText}，预计退款 ¥${quote.refundAmount}`, 'client')
       await appendOrderClientMessage(cancelledOrder, { eventType: 'cancelled', title: '订单已取消', detail: `${quote.ruleText}，预计退款 ¥${quote.refundAmount}`, actorRole: 'client', unreadForClient: false })
       if (refund) await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${quote.refundAmount}`, 'system')

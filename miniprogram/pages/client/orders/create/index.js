@@ -114,6 +114,35 @@ function buildDailySessions(form) {
   return sessions
 }
 
+function getRecommendedCodeTimesForSessions(sessions, form) {
+  if (sessions && sessions.length > 0) {
+    const firstStart = parseDateTime(sessions[0].startTime)
+    const lastEnd = parseDateTime(sessions[sessions.length - 1].endTime)
+    if (firstStart && lastEnd) {
+      const recStart = new Date(firstStart.getTime() - 15 * 60 * 1000)
+      const recEnd = new Date(lastEnd.getTime() + 30 * 60 * 1000)
+      return {
+        startDate: formatDate(recStart),
+        startClock: formatTime(recStart),
+        endDate: formatDate(recEnd),
+        endClock: formatTime(recEnd)
+      }
+    }
+  }
+  const startDate = (form && form.startDate) || formatDate(new Date())
+  const startClock = (form && form.startClock) || '09:30'
+  const duration = Number((form && form.durationMinutes) || 60)
+  const startDt = parseDateTime(`${startDate} ${startClock}`) || new Date()
+  const recStart = new Date(startDt.getTime() - 15 * 60 * 1000)
+  const recEnd = new Date(startDt.getTime() + (duration + 30) * 60 * 1000)
+  return {
+    startDate: formatDate(recStart),
+    startClock: formatTime(recStart),
+    endDate: formatDate(recEnd),
+    endClock: formatTime(recEnd)
+  }
+}
+
 const WEEKDAY_NAMES_MAP = {
   1: '周一',
   2: '周二',
@@ -895,9 +924,41 @@ typeof Page === 'function' ? Page({
     this.setData({ saveAddress: e.detail.value })
   },
 
+  getRecommendedCodeTimes() {
+    const sessions = buildDailySessions(this.data.form)
+    return getRecommendedCodeTimesForSessions(sessions, this.data.form)
+  },
+
+  applyRecommendedCodeTimes() {
+    const rec = this.getRecommendedCodeTimes()
+    this.setData({
+      'form.doorLockCodeStartDate': rec.startDate,
+      'form.doorLockCodeStartClock': rec.startClock,
+      'form.doorLockCodeEndDate': rec.endDate,
+      'form.doorLockCodeEndClock': rec.endClock,
+      quote: null
+    }, () => {
+      this.prepareTime()
+      wx.showToast({ title: '已应用推荐有效区间', icon: 'success' })
+    })
+  },
+
   chooseLockMethod(e) {
     const lockMethod = e.currentTarget.dataset.value || 'someone_home'
-    this.setData({ ['form.lockMethod']: lockMethod, quote: null }, this.syncSecurityCoverage)
+    const patch = { ['form.lockMethod']: lockMethod, quote: null }
+    if (lockMethod === 'one_time_code') {
+      const form = this.data.form
+      if (!coversServiceTime(form.startTime, form.endTime, form.doorLockCodeStartTime, form.doorLockCodeEndTime)) {
+        const rec = this.getRecommendedCodeTimes()
+        patch['form.doorLockCodeStartDate'] = rec.startDate
+        patch['form.doorLockCodeStartClock'] = rec.startClock
+        patch['form.doorLockCodeEndDate'] = rec.endDate
+        patch['form.doorLockCodeEndClock'] = rec.endClock
+      }
+    }
+    this.setData(patch, () => {
+      this.prepareTime()
+    })
   },
 
   chooseCodeStartDate(e) {

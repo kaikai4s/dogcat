@@ -147,8 +147,12 @@
       </view>
 
       <view wx:if="{{order.orderHomeSecurity.type === 'one_time_code'}}">
-        <view class="security-desc">密码区间：{{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveStart)}} 至 {{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveEnd)}}</view>
-        <button class="ghost-btn full-btn" bindtap="unlock"><text class="remix-icon ri-eye-line"></text>查看一次性开门密码</button>
+        <view class="security-desc" wx:if="{{order.orderHomeSecurity.oneTimeCode && order.orderHomeSecurity.oneTimeCode.effectiveStart}}">密码区间：{{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveStart)}} 至 {{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveEnd)}}</view>
+        <view class="security-desc success-desc" wx:if="{{order.isDoorLockCodeDestroyed || order.orderHomeSecurity.destroyed || order.orderHomeSecurity.isPasswordDestroyed || (order.orderHomeSecurity.oneTimeCode && order.orderHomeSecurity.oneTimeCode.destroyed)}}">
+          <text class="remix-icon ri-shield-check-fill"></text>
+          <text>门锁密码已安全销毁（已确认离户脱敏抹除，不可再查看）</text>
+        </view>
+        <button class="ghost-btn full-btn" wx:if="{{!order.isDoorLockCodeDestroyed && !order.orderHomeSecurity.destroyed && !order.orderHomeSecurity.isPasswordDestroyed && (!order.orderHomeSecurity.oneTimeCode || !order.orderHomeSecurity.oneTimeCode.destroyed)}}" bindtap="unlock"><text class="remix-icon ri-eye-line"></text>查看一次性开门密码</button>
       </view>
 
       <view wx:if="{{order.orderHomeSecurity.type === 'key'}}">
@@ -162,7 +166,7 @@
     </view>
   </view>
 
-  <view class="security-card unlock-result" wx:if="{{order && order.serviceStarted && unlock}}">
+  <view class="security-card unlock-result" wx:if="{{order && order.serviceStarted && unlock && !order.isDoorLockCodeDestroyed && !order.orderHomeSecurity.destroyed && !order.orderHomeSecurity.isPasswordDestroyed}}">
     <view class="info-row"><view class="label">入户方式</view><view class="value">{{unlock.lockMethodText || '服务入户'}}</view></view>
     <view class="info-row" wx:if="{{unlock.doorLockCode}}"><view class="label">{{unlock.sessionIndex ? '第' + unlock.sessionIndex + '天门锁密码' : '门锁密码'}}</view><view class="value code-text">{{unlock.doorLockCode}}</view></view>
     <view class="security-desc" wx:if="{{unlock.doorLockCode}}">此密码为客户在智能门锁 App 中生成的本场次临时开门密码，仅在当前服务时间窗口内有效。</view>
@@ -204,7 +208,7 @@
       <text class="remix-icon ri-time-fill"></text>
       <text>已超过约定服务时间 {{order.finishOverdueMinutes}} 分钟！{{order.allCheckinsDone ? '打卡已齐全，请点击下方【完成服务】结算收益；若超时30分钟未操作，系统将自动结算。' : '请确认服务进度并尽快补全打卡照片。'}}</text>
     </view>
-    <button class="primary-btn finish-btn {{order.allCheckinsDone ? 'highlight-btn' : ''}}" loading="{{finishing}}" disabled="{{finishing}}" bindtap="finish">{{finishing ? '处理中...' : (order.allCheckinsDone ? '完成服务（打卡已齐全）' : '完成服务')}}</button>
+    <button class="primary-btn finish-btn {{order.allCheckinsDone ? 'highlight-btn' : ''}}" loading="{{finishing}}" disabled="{{finishing}}" bindtap="finish">{{finishing ? '处理中...' : (order.allCheckinsDone ? '确认离开并完成服务' : '完成服务')}}</button>
   </view>
 </view>
 <global-loading />

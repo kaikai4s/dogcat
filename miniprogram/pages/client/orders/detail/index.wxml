@@ -91,20 +91,25 @@
     </view>
     <view wx:if="{{order.orderHomeSecurity.oneTimeCode}}" class="security-block">
       <view class="info-row"><view class="label">入户方式</view><view class="value">智能门锁一次性密码</view></view>
-      <view class="info-row"><view class="label">首场密码</view><view class="value">已设置 {{order.orderHomeSecurity.oneTimeCode.masked}}</view></view>
+      <view class="info-row"><view class="label">首场密码</view><view class="value">{{order.orderHomeSecurity.oneTimeCode.destroyed ? '已脱敏销毁' : ('已设置 ' + order.orderHomeSecurity.oneTimeCode.masked)}}</view></view>
       <view class="info-row"><view class="label">有效区间</view><view class="value">{{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveStart)}} 至 {{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveEnd)}}</view></view>
-      <view class="notice-text">{{order.orderHomeSecurity.oneTimeCode.coversServiceTime ? '已覆盖全程服务时间' : '未覆盖全程服务时间，请重新设置'}}</view>
+      <view class="notice-text" wx:if="{{!order.orderHomeSecurity.destroyed && !order.isDoorLockCodeDestroyed}}">{{order.orderHomeSecurity.oneTimeCode.coversServiceTime ? '已覆盖全程服务时间' : '未覆盖全程服务时间，请重新设置'}}</view>
+      <view class="security-destroyed-banner" wx:if="{{order.orderHomeSecurity.destroyed || order.isDoorLockCodeDestroyed || order.orderHomeSecurity.isPasswordDestroyed}}">
+        <view class="destroyed-title"><text class="remix-icon ri-shield-check-fill"></text> 门锁密码已脱敏销毁存证</view>
+        <view class="destroyed-desc">服务完成并点击“确认离开”后，系统已自动在云端对门锁密码进行脱敏抹除，宠托师端已永久不可见，严密守护您的家庭安全。</view>
+        <view class="destroyed-time" wx:if="{{order.doorLockCodeDestroyedAt || order.orderHomeSecurity.passwordDestroyedAt}}">销毁时间：{{beijingTime.format(order.doorLockCodeDestroyedAt || order.orderHomeSecurity.passwordDestroyedAt)}}</view>
+      </view>
       <view wx:if="{{order.orderHomeSecurity.sessionCodes && order.orderHomeSecurity.sessionCodes.length}}" class="session-codes-wrap">
         <view class="session-codes-title"><text class="remix-icon ri-calendar-check-line"></text> 各天专属智能锁密码：</view>
         <view class="session-code-row" wx:for="{{order.orderHomeSecurity.sessionCodes}}" wx:key="sessionIndex">
           <view class="session-code-header">
             <text class="session-code-day">第{{item.sessionIndex}}天 ({{item.date}})</text>
-            <text class="session-code-val">{{item.masked || '已设置'}}</text>
+            <text class="session-code-val {{item.destroyed ? 'destroyed' : ''}}">{{item.destroyed ? '已脱敏销毁' : (item.masked || '已设置')}}</text>
           </view>
           <view class="session-code-time">有效时间：{{beijingTime.format(item.effectiveStart)}} 至 {{beijingTime.format(item.effectiveEnd)}}</view>
         </view>
       </view>
-      <button class="ghost-btn inline-btn" bindtap="showResetOneTimeCode"><text class="remix-icon ri-key-2-line"></text><text>重新设置一次性密码</text></button>
+      <button class="ghost-btn inline-btn" wx:if="{{!order.orderHomeSecurity.destroyed && !order.orderHomeSecurity.isPasswordDestroyed && !order.isDoorLockCodeDestroyed && order.status !== 'completed' && order.status !== 'cancelled'}}" bindtap="showResetOneTimeCode"><text class="remix-icon ri-key-2-line"></text><text>重新设置一次性密码</text></button>
     </view>
     <view wx:if="{{order.orderHomeSecurity.key}}" class="security-block">
       <view class="info-row"><view class="label">入户方式</view><view class="value">钥匙入户</view></view>

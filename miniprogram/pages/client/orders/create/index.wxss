@@ -763,6 +763,58 @@ textarea {
   color: #5f5650;
 }
 
+.smartlock-security-badge {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+  background: #ecfdf5;
+  border: 1rpx solid #a7f3d0;
+  border-radius: 18rpx;
+  padding: 16rpx 20rpx;
+  margin-bottom: 20rpx;
+}
+
+.security-badge-icon {
+  font-size: 32rpx;
+  color: #059669;
+  flex-shrink: 0;
+  margin-top: 2rpx;
+}
+
+.security-badge-body {
+  flex: 1;
+}
+
+.security-badge-title {
+  font-size: 24rpx;
+  font-weight: 800;
+  color: #065f46;
+  margin-bottom: 4rpx;
+}
+
+.security-badge-desc {
+  font-size: 22rpx;
+  line-height: 1.4;
+  color: #047857;
+}
+
+.rec-time-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  margin-top: 14rpx;
+  margin-bottom: 14rpx;
+  background: #fff7ed;
+  color: #ea580c;
+  border: 1rpx dashed #fdba74;
+  font-size: 24rpx;
+  font-weight: 700;
+  height: 68rpx;
+  line-height: 68rpx;
+  border-radius: 14rpx;
+}
+
 .step-text .strong {
   color: #2d211a;
   font-weight: 800;

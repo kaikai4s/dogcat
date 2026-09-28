@@ -320,6 +320,19 @@
   line-height: 1.45;
 }
 
+.security-desc.success-desc {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  color: #059669;
+  background: #ecfdf5;
+  border: 1rpx solid #a7f3d0;
+  padding: 14rpx 20rpx;
+  border-radius: 12rpx;
+  font-weight: 600;
+  margin-top: 14rpx;
+}
+
 .security-head {
   display: flex;
   align-items: center;
