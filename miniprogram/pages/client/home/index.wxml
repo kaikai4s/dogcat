@@ -217,3 +217,4 @@
   <view class="nav-item" data-url="/pages/client/messages/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-unread-count" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCountText}}</view></view><view>消息</view></view>
   <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
 </view>
+<global-loading />

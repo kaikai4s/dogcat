@@ -30,3 +30,4 @@
   </view>
 </view>
 <view class="mall-page empty" wx:else>商品加载中...</view>
+<global-loading />

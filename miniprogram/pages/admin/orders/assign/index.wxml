@@ -20,3 +20,4 @@
 
   <button class="primary-btn submit-btn" bindtap="assign"><text class="remix-icon ri-checkbox-circle-line"></text><text>确认派单</text></button>
 </view>
+<global-loading />

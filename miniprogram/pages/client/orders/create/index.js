@@ -1,4 +1,15 @@
-const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings } = require('../../../../utils/cloud')
+const cloud = require('../../../../utils/cloud') || {}
+const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings } = cloud
+const showLoading = (opts) => {
+  if (typeof cloud.showLoading === 'function') return cloud.showLoading(opts)
+  if (typeof wx !== 'undefined' && typeof wx.showLoading === 'function') return wx.showLoading(opts)
+}
+const hideLoading = () => {
+  if (typeof cloud.hideLoading === 'function') return cloud.hideLoading()
+  if (typeof wx !== 'undefined' && typeof wx.hideLoading === 'function') {
+    try { wx.hideLoading() } catch (_) {}
+  }
+}
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { getSelectedLocation, chooseSelectedLocation } = require('../../../../utils/cloud')
@@ -1770,6 +1781,7 @@ typeof Page === 'function' ? Page({
       wx.showToast({ title: error, icon: 'none' })
       return
     }
+    showLoading({ title: '正在创建订单...', mask: true })
     const payload = { ...this.buildOrderPayload(), saveAddress: this.data.saveAddress }
     const signature = JSON.stringify(payload)
     if (!this.pendingOrderRequest || this.pendingOrderRequest.signature !== signature) {
@@ -1779,10 +1791,12 @@ typeof Page === 'function' ? Page({
     return requestSubscribeTemplates(['orderAccepted', 'serviceStart', 'remoteUnlock'], 'client_create_order')
       .then(() => callFunction('order', 'createOrder', { ...payload, clientRequestId }))
       .then((order) => {
+        hideLoading()
         if (this.data.saveAddress && order.savedAddress) wx.showToast({ title: '已保存常用地址' })
         return new Promise((resolve, reject) => wx.redirectTo({ url: '/pages/client/orders/detail/index?id=' + order._id, success: resolve, fail: reject }))
       })
       .catch((error) => {
+        hideLoading()
         this.creatingOrder = false
         this.setData({ creating: false })
         showError(error)

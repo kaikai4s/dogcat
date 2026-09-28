@@ -85,3 +85,4 @@
     <button class="danger-btn" data-status="rejected" bindtap="audit"><text class="remix-icon ri-close-line"></text><text>审核拒绝</text></button>
   </view>
 </view>
+<global-loading />

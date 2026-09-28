@@ -40,3 +40,4 @@
   <view class="list-state" wx:if="{{loading}}">加载中...</view>
   <view class="empty" wx:if="{{!loading && !products.length}}">暂无商品</view>
 </view>
+<global-loading />

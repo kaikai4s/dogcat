@@ -67,3 +67,4 @@
     <button class="ghost-btn" bindtap="goOrder"><text class="remix-icon ri-file-list-3-line"></text><text>查看订单</text></button>
   </view>
 </view>
+<global-loading />

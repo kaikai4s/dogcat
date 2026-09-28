@@ -1,0 +1,8 @@
+<view wx:if="{{visible}}" class="global-loading-mask" catchtouchmove="preventTouchMove" catchtap="preventTouchMove">
+  <view class="global-loading-box">
+    <view class="global-loading-img-wrapper">
+      <image class="global-loading-cat" src="/images/loading-cat.gif" mode="aspectFit"></image>
+    </view>
+    <view class="global-loading-title">{{title || '加载中...'}}</view>
+  </view>
+</view>

@@ -165,3 +165,4 @@
     </view>
   </view>
 </view>
+<global-loading />

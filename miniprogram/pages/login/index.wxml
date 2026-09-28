@@ -12,3 +12,4 @@
 
   <button class="primary" disabled="{{!envReady}}" loading="{{loading}}" bindtap="login">微信登录</button>
 </view>
+<global-loading />

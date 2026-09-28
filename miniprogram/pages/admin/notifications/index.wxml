@@ -57,3 +57,4 @@
   <view class="list-state" wx:if="{{loading && list.length}}">正在加载通知...</view>
   <view class="list-state" wx:if="{{!loading && list.length && !hasMore}}">已显示全部通知</view>
 </view>
+<global-loading />

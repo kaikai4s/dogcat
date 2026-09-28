@@ -12,3 +12,4 @@
   </view>
   <view class="empty">{{loading ? '加载中' : (!rows.length ? '暂无操作记录' : (hasMore ? '上滑加载更多' : '已显示全部'))}}</view>
 </view>
+<global-loading />

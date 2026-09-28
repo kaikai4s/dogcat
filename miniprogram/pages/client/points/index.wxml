@@ -66,3 +66,4 @@
     <view class="list-tip" wx:if="{{logs.length >= total && logs.length > 0}}">已显示全部记录</view>
   </view>
 </view>
+<global-loading />

@@ -1,4 +1,4 @@
-const { callFunction, showError } = require('../../../utils/cloud')
+const { callFunction, showError, showLoading, hideLoading } = require('../../../utils/cloud')
 const { navMethods } = require('../../../utils/nav')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
@@ -97,7 +97,7 @@ Page({
   },
 
   withdraw() {
-    if (this.data.submitting) return
+    if (this._submittingLock || this.data.submitting) return
     const amount = Number(this.data.amount || 0)
     const minWithdraw = Number(this.data.balance?.minWithdrawAmount || 0)
     const available = Number(this.data.balance?.available || 0)
@@ -118,7 +118,10 @@ Page({
     if (!accountNo || accountNo.length < 4) {
       return wx.showToast({ title: '请填写完整收款账号', icon: 'none' })
     }
+
+    this._submittingLock = true
     this.setData({ submitting: true })
+    showLoading({ title: '正在提交提现...', mask: true })
     callFunction('finance', 'createWithdrawRequest', {
       amount,
       accountName,
@@ -126,11 +129,15 @@ Page({
       clientRequestId: createClientRequestId('withdraw')
     })
       .then(() => {
+        hideLoading()
+        this._submittingLock = false
         wx.showToast({ title: '已提交提现', icon: 'success' })
         this.setData({ submitting: false, amount: '', accountName: '', accountNo: '' })
         this.load()
       })
       .catch((error) => {
+        hideLoading()
+        this._submittingLock = false
         this.setData({ submitting: false })
         showError(error)
       })

@@ -137,3 +137,4 @@
     </button>
   </view>
 </view>
+<global-loading />

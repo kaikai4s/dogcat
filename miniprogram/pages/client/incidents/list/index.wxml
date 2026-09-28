@@ -35,3 +35,4 @@
   <view class="list-tip" wx:if="{{loading && incidents.length}}">正在加载更多...</view>
   <view class="list-tip" wx:if="{{!loading && incidents.length && !hasMore}}">已显示全部工单</view>
 </view>
+<global-loading />

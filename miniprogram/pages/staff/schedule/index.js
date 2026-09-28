@@ -1,4 +1,4 @@
-const { callFunction, showError } = require('../../../utils/cloud')
+const { callFunction, showError, showLoading, hideLoading } = require('../../../utils/cloud')
 const { navMethods } = require('../../../utils/nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
@@ -106,11 +106,16 @@ Page({
   },
 
   saveUntilDate() {
+    if (this._savingLock || this.data.saving) return
+    this._savingLock = true
     this.setData({ saving: true })
+    showLoading({ title: '正在保存设置...', mask: true })
     callFunction('staff', 'updateStaffProfileConfig', {
       bookableUntilDate: this.data.bookableUntilDate
     })
       .then(() => {
+        hideLoading()
+        this._savingLock = false
         this.setData({ saving: false })
         wx.showToast({
           title: this.data.bookableUntilDate ? `已设置接单至 ${this.data.bookableUntilDate}` : '已清除截止限制（长期开放）',
@@ -119,6 +124,8 @@ Page({
         this.loadScheduleData()
       })
       .catch((err) => {
+        hideLoading()
+        this._savingLock = false
         this.setData({ saving: false })
         showError(err)
       })
@@ -136,19 +143,19 @@ Page({
       return wx.showToast({ title: '该日期已在不接单列表中', icon: 'none' })
     }
 
-    wx.showLoading({ title: '设置中...' })
+    showLoading({ title: '设置中...', mask: true })
     callFunction('staff', 'saveScheduleException', {
       dateKey,
       status: 'unavailable',
       remark: '宠托师设置休息'
     })
       .then(() => {
-        wx.hideLoading()
+        hideLoading()
         wx.showToast({ title: `已设置 ${dateKey} 为休息不接单`, icon: 'none' })
         this.loadScheduleData()
       })
       .catch((err) => {
-        wx.hideLoading()
+        hideLoading()
         showError(err)
       })
   },
@@ -162,15 +169,15 @@ Page({
       content: `确定恢复 ${dateKey} 正常接单吗？`,
       success: (res) => {
         if (res.confirm) {
-          wx.showLoading({ title: '处理中...' })
+          showLoading({ title: '处理中...', mask: true })
           callFunction('staff', 'deleteScheduleException', { dateKey })
             .then(() => {
-              wx.hideLoading()
+              hideLoading()
               wx.showToast({ title: `已恢复 ${dateKey} 正常接单`, icon: 'none' })
               this.loadScheduleData()
             })
             .catch((err) => {
-              wx.hideLoading()
+              hideLoading()
               showError(err)
             })
         }
@@ -251,16 +258,23 @@ Page({
   },
 
   saveWeeklySchedule() {
+    if (this._savingLock || this.data.saving) return
+    this._savingLock = true
     this.setData({ saving: true })
+    showLoading({ title: '正在保存按周排班...', mask: true })
 
     callFunction('staff', 'updateStaffProfileConfig', {
       weeklySchedule: this.data.weeklySchedule
     })
       .then(() => {
+        hideLoading()
+        this._savingLock = false
         wx.showToast({ title: '按周排班已保存', icon: 'success' })
         this.setData({ saving: false })
       })
       .catch((error) => {
+        hideLoading()
+        this._savingLock = false
         this.setData({ saving: false })
         showError(error)
       })

@@ -127,3 +127,4 @@
     <view class="empty-text">暂无提现记录</view>
   </view>
 </view>
+<global-loading />

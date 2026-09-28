@@ -1,4 +1,4 @@
-const { callFunction, showError, ensureLogin, requestSubscribeTemplates } = require('../../../../utils/cloud')
+const { callFunction, showError, ensureLogin, requestSubscribeTemplates, showLoading, hideLoading } = require('../../../../utils/cloud')
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
 
 function calcPreview(items = [], coupon = null) {
@@ -84,7 +84,7 @@ Page({
   },
 
   submit() {
-    if (this.data.submitting) return
+    if (this._submittingLock || this.data.submitting) return
     if (!this.data.items.length) {
       wx.showToast({ title: '请选择商品', icon: 'none' })
       return
@@ -93,9 +93,11 @@ Page({
       wx.showToast({ title: '请选择收货地址', icon: 'none' })
       return
     }
+    this._submittingLock = true
     const data = { shippingAddress: this.data.address, couponId: this.data.couponId, clientRequestId: createClientRequestId('mall_order') }
     if (this.data.productId) Object.assign(data, { productId: this.data.productId, skuId: this.data.skuId, quantity: this.data.quantity })
     this.setData({ submitting: true })
+    showLoading({ title: '正在提交订单...', mask: true })
     callFunction('mall', 'createOrder', data)
       .then((order) => {
         this.setData({ pendingOrderId: order._id })
@@ -106,13 +108,18 @@ Page({
         if (payment.paid) return order
         if (payment.mock) return callFunction('payment', 'mockPayOrder', { orderId: order._id, paymentNo: payment.paymentNo }).then(() => order)
         if (!payment.payParams) throw new Error(payment.message || '微信支付参数未配置')
+        hideLoading()
         return new Promise((resolve, reject) => wx.requestPayment({ ...payment.payParams, success: resolve, fail: reject })).then(() => order)
       })
       .then((order) => {
+        hideLoading()
+        this._submittingLock = false
         wx.showToast({ title: '下单成功' })
         wx.redirectTo({ url: '/pages/client/mall/orders/detail/index?id=' + order._id })
       })
       .catch((error) => {
+        hideLoading()
+        this._submittingLock = false
         this.setData({ submitting: false })
         const msg = error && (error.errMsg || error.message) || ''
         if (msg.includes('cancel') && this.data.pendingOrderId) {

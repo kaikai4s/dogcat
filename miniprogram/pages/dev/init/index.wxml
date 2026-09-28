@@ -20,3 +20,4 @@
     <view wx:if="{{result.order}}">演示订单：{{result.order.orderNo}}</view>
   </view>
 </view>
+<global-loading />

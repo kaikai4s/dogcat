@@ -240,7 +240,7 @@
 
       <view class="order-actions">
         <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">订单详情</button>
-        <button class="primary-btn" data-id="{{item._id}}" bindtap="accept">立即抢单</button>
+        <button class="primary-btn" data-id="{{item._id}}" disabled="{{acceptingOrderId}}" loading="{{acceptingOrderId === item._id}}" bindtap="accept">{{acceptingOrderId === item._id ? '抢单中...' : '立即抢单'}}</button>
         <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
           <text class="remix-icon ri-map-pin-line"></text>导航
         </button>
@@ -306,8 +306,8 @@
 
       <view class="order-actions">
         <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">订单详情</button>
-        <button class="primary-btn urgent-grab-btn" data-id="{{item._id}}" bindtap="accept">
-          <text class="remix-icon ri-flashlight-fill"></text>加急抢单
+        <button class="primary-btn urgent-grab-btn" data-id="{{item._id}}" disabled="{{acceptingOrderId}}" loading="{{acceptingOrderId === item._id}}" bindtap="accept">
+          <text class="remix-icon ri-flashlight-fill" wx:if="{{acceptingOrderId !== item._id}}"></text>{{acceptingOrderId === item._id ? '抢单中...' : '加急抢单'}}
         </button>
         <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
           <text class="remix-icon ri-map-pin-line"></text>导航
@@ -366,3 +366,4 @@
     <view class="nav-item" bindtap="backProfile"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
   </view>
 </view>
+<global-loading />

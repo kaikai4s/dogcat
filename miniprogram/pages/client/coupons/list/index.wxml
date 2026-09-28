@@ -30,3 +30,4 @@
     <view class="empty-title">暂无优惠券</view>
   </view>
 </view>
+<global-loading />

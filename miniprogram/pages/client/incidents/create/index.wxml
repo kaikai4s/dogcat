@@ -46,3 +46,4 @@
 
   <button class="primary-btn submit-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit"><text class="remix-icon ri-send-plane-fill"></text><text>提交投诉</text></button>
 </view>
+<global-loading />

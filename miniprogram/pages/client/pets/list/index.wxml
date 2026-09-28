@@ -57,3 +57,4 @@
     <view class="empty-desc">先添加一个宠物，预约服务时会更方便。</view>
   </view>
 </view>
+<global-loading />

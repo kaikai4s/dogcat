@@ -134,3 +134,4 @@
     <button class="ghost-btn load-more" wx:if="{{hasMore}}" loading="{{loading}}" bindtap="loadMore">加载更多排行</button>
   </view>
 </view>
+<global-loading />

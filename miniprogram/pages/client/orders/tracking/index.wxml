@@ -66,3 +66,4 @@
     <view wx:else class="empty-state">暂无打卡记录。</view>
   </view>
 </view>
+<global-loading />

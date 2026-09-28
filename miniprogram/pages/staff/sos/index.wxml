@@ -52,3 +52,4 @@
     <text>提交 SOS</text>
   </button>
 </view>
+<global-loading />

@@ -62,9 +62,11 @@ Page({
   },
 
   submit() {
-    if (this.data.submitting) return
+    if (this._submittingLock || this.data.submitting) return
+    this._submittingLock = true
     const tags = this.data.tags.filter((item) => item.selected).map((item) => item.label)
     this.setData({ submitting: true })
+    wx.showLoading({ title: '正在提交评价...', mask: true })
     callFunction('order', 'createReview', {
       orderId: this.data.id,
       rating: this.data.rating,
@@ -72,10 +74,14 @@ Page({
       content: this.data.content
     })
       .then(() => {
-        wx.showToast({ title: '已评价' })
+        wx.hideLoading()
+        this._submittingLock = false
+        wx.showToast({ title: '已评价', icon: 'success' })
         wx.navigateBack()
       })
       .catch((error) => {
+        wx.hideLoading()
+        this._submittingLock = false
         this.setData({ submitting: false })
         showError(error)
       })

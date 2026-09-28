@@ -52,3 +52,4 @@
     <button class="primary-btn" bindtap="add"><text class="remix-icon ri-add-circle-line"></text><text>新增常用地址</text></button>
   </view>
 </view>
+<global-loading />

@@ -46,3 +46,4 @@
     <view class="notice-text" wx:if="{{item.orderHomeSecurity.type === 'someone_home'}}">有人在家，宠托师敲门即可。</view>
   </view>
 </view>
+<global-loading />

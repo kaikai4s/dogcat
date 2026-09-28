@@ -67,3 +67,4 @@
   <button class="primary-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitComment">提交补充</button>
   <button class="ghost-btn" bindtap="goOrder">查看订单</button>
 </view>
+<global-loading />

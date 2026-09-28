@@ -56,3 +56,4 @@
   <view class="list-tip" wx:if="{{loading && orders.length}}">正在加载更多...</view>
   <view class="list-tip" wx:if="{{!loading && orders.length && !hasMore}}">已显示全部评价</view>
 </view>
+<global-loading />

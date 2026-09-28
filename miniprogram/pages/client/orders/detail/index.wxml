@@ -182,3 +182,4 @@
     <button class="ghost-btn" wx:if="{{order.status === 'completed'}}" bindtap="report"><text class="remix-icon ri-file-text-line"></text><text>服务报告</text></button>
   </view>
 </view>
+<global-loading />

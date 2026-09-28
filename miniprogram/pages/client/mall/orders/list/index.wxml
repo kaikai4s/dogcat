@@ -9,3 +9,4 @@
   </view>
   <view class="empty" wx:if="{{!loading && !orders.length}}"><view>暂无商城订单</view><button bindtap="goMall">去逛逛</button></view>
 </view>
+<global-loading />

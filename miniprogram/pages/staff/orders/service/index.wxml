@@ -207,3 +207,4 @@
     <button class="primary-btn finish-btn {{order.allCheckinsDone ? 'highlight-btn' : ''}}" loading="{{finishing}}" disabled="{{finishing}}" bindtap="finish">{{finishing ? '处理中...' : (order.allCheckinsDone ? '完成服务（打卡已齐全）' : '完成服务')}}</button>
   </view>
 </view>
+<global-loading />

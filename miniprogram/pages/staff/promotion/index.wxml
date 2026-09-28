@@ -37,3 +37,4 @@
     <button class="ghost-btn" wx:else>完成 3 单后可申请</button>
   </view>
 </view>
+<global-loading />

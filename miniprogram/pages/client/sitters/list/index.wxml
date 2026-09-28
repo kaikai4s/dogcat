@@ -178,3 +178,4 @@
     <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
   </view>
 </view>
+<global-loading />

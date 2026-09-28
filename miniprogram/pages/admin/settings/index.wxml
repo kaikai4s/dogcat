@@ -543,3 +543,4 @@
     <view class="nav-item active"><view class="nav-icon remix-icon ri-settings-4-line"></view><view>设置</view></view>
   </view>
 </view>
+<global-loading />

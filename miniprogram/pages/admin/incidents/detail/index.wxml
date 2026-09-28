@@ -84,3 +84,4 @@
     <button class="ghost-btn" bindtap="goOrder">查看订单详情</button>
   </view>
 </view>
+<global-loading />

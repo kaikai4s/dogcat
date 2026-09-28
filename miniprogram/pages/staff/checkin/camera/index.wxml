@@ -55,3 +55,4 @@
     <text>完成返回</text>
   </button>
 </view>
+<global-loading />

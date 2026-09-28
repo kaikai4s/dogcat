@@ -102,3 +102,4 @@
 
   <button class="primary-btn submit-btn" bindtap="save"><text class="remix-icon ri-save-3-line"></text><text>保存宠物档案</text></button>
 </view>
+<global-loading />

@@ -2094,3 +2094,22 @@ textarea {
   margin: 0;
   min-height: 76rpx;
 }
+
+/* 全局按钮禁用与加载防触控穿透 */
+button[disabled],
+.btn-disabled,
+[disabled] {
+  opacity: 0.58 !important;
+  pointer-events: none !important;
+  cursor: not-allowed !important;
+}
+
+/* 全局点击防抖高亮反馈与微缩过渡 */
+.primary-btn:active,
+.ghost-btn:active,
+button.primary:active,
+button.ghost:active {
+  opacity: 0.82;
+  transform: scale(0.985);
+}
+

@@ -1,4 +1,4 @@
-const { callFunction, showError, requirePrivacyAuthorize, requestSubscribeTemplates } = require('../../../utils/cloud')
+const { callFunction, showError, requirePrivacyAuthorize, requestSubscribeTemplates, showLoading, hideLoading } = require('../../../utils/cloud')
 const { getSelectedLocation } = require('../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
@@ -113,7 +113,8 @@ Page({
     acceptRiskStep: 1,
     acceptRiskAgreed: false,
     pendingAcceptOrderId: '',
-    acceptingRiskOrder: false
+    acceptingRiskOrder: false,
+    acceptingOrderId: ''
   },
 
   onShow() {
@@ -470,11 +471,15 @@ Page({
 
   accept(e) {
     const orderId = e.currentTarget.dataset.id
+    if (!orderId) return
+    if (this._isAccepting || this.data.acceptingOrderId) return
     this.prepareAcceptOrder(orderId)
   },
 
   prepareAcceptOrder(orderId) {
     if (!orderId) return
+    if (this._isAccepting || this.data.acceptingOrderId) return
+
     if (this.data.depositNotice && this.data.depositNotice.needDeposit) {
       const notice = this.data.depositNotice
       const isRepay = notice.isRepay || Boolean(notice.reason)
@@ -496,15 +501,32 @@ Page({
       })
       return
     }
+
+    // 立即加锁并展示全局加载特效与防触控穿透遮罩，防止连续点击
+    this._isAccepting = true
+    this.setData({ acceptingOrderId: orderId })
+    showLoading({ title: '正在抢单...', mask: true })
+
     callFunction('staff', 'checkAcceptOrderRisk', { orderId })
       .then((risk) => {
         if (risk && risk.requiresConfirmation) {
-          this.setData({ acceptRisk: risk, acceptRiskStep: 1, acceptRiskAgreed: false, pendingAcceptOrderId: orderId })
+          hideLoading()
+          this._isAccepting = false
+          this.setData({
+            acceptingOrderId: '',
+            acceptRisk: risk,
+            acceptRiskStep: 1,
+            acceptRiskAgreed: false,
+            pendingAcceptOrderId: orderId
+          })
           return
         }
         this.submitAcceptOrder(orderId, false)
       })
       .catch((error) => {
+        hideLoading()
+        this._isAccepting = false
+        this.setData({ acceptingOrderId: '' })
         const msg = (error && error.message) || String(error || '')
         if (msg.includes('保证金')) {
           wx.showModal({
@@ -525,7 +547,9 @@ Page({
   },
 
   submitAcceptOrder(orderId, riskConfirmed) {
-    this.setData({ acceptingRiskOrder: true })
+    this._isAccepting = true
+    this.setData({ acceptingRiskOrder: true, acceptingOrderId: orderId })
+    showLoading({ title: riskConfirmed ? '正在接单...' : '正在抢单...', mask: true })
 
     // 获取实时位置用于抢单验证
     wx.getLocation({
@@ -538,13 +562,19 @@ Page({
           currentLongitude: res.longitude
         })
           .then(() => {
-            wx.showToast({ title: '接单成功' })
+            hideLoading()
+            this._isAccepting = false
+            this.setData({ acceptingRiskOrder: false, acceptingOrderId: '' })
+            wx.showToast({ title: '接单成功', icon: 'success' })
             this.closeAcceptRiskModal()
             const location = this.data.customLocation || this.data.currentWorkbenchLocation
             if (location) this.loadNearby(location, '已按工作台位置推荐订单')
             else this.loadNearbyWithSavedLocation()
           })
           .catch((error) => {
+            hideLoading()
+            this._isAccepting = false
+            this.setData({ acceptingRiskOrder: false, acceptingOrderId: '' })
             const msg = (error && error.message) || String(error || '')
             if (msg.includes('保证金')) {
               wx.showModal({
@@ -562,14 +592,15 @@ Page({
             }
             showError(error)
           })
-          .finally(() => this.setData({ acceptingRiskOrder: false }))
 
         requestSubscribeTemplates(['upcomingServiceReminder', 'serviceStart'], 'staff_grab_order')
           .catch(() => null)
           .then(doAccept)
       },
       fail: (err) => {
-        this.setData({ acceptingRiskOrder: false })
+        hideLoading()
+        this._isAccepting = false
+        this.setData({ acceptingRiskOrder: false, acceptingOrderId: '' })
         showError(new Error('请允许获取位置信息后再抢单'))
       }
     })
@@ -584,6 +615,7 @@ Page({
   },
 
   confirmRiskAccept() {
+    if (this._isAccepting || this.data.acceptingRiskOrder) return
     if (!this.data.acceptRiskAgreed) {
       wx.showToast({ title: '请先确认已阅读并会遵守规定', icon: 'none' })
       return
@@ -592,6 +624,7 @@ Page({
   },
 
   closeAcceptRiskModal() {
-    this.setData({ acceptRisk: null, acceptRiskStep: 1, acceptRiskAgreed: false, pendingAcceptOrderId: '' })
+    if (this._isAccepting || this.data.acceptingRiskOrder) return
+    this.setData({ acceptRisk: null, acceptRiskStep: 1, acceptRiskAgreed: false, pendingAcceptOrderId: '', acceptingOrderId: '' })
   }
 })

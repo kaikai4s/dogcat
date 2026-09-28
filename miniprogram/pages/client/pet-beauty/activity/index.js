@@ -1,4 +1,15 @@
-const { callFunction, showError, ensureLogin } = require('../../../../utils/cloud')
+const cloud = require('../../../../utils/cloud') || {}
+const { callFunction, showError, ensureLogin } = cloud
+const showLoading = (opts) => {
+  if (typeof cloud.showLoading === 'function') return cloud.showLoading(opts)
+  if (typeof wx !== 'undefined' && typeof wx.showLoading === 'function') return wx.showLoading(opts)
+}
+const hideLoading = () => {
+  if (typeof cloud.hideLoading === 'function') return cloud.hideLoading()
+  if (typeof wx !== 'undefined' && typeof wx.hideLoading === 'function') {
+    try { wx.hideLoading() } catch (_) {}
+  }
+}
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const RANK_VIEW_STORAGE_KEY = 'petBeautyRankView'
@@ -182,13 +193,15 @@ Page({
 
   vote(e) {
     const petId = e.currentTarget.dataset.id
-    if (!petId || this.data.votingPetId || this.data.hasVotedToday || this.data.locked || this.data.isHistory) return
+    if (!petId || this._votingLock || this.data.votingPetId || this.data.hasVotedToday || this.data.locked || this.data.isHistory) return
+    this._votingLock = true
+    this.setData({ votingPetId: petId })
+    showLoading({ title: '正在投票...', mask: true })
     ensureLogin({ content: '登录后可为喜欢的宠物投票。' })
-      .then(() => {
-        this.setData({ votingPetId: petId })
-        return callFunction('petBeauty', 'vote', { petId })
-      })
+      .then(() => callFunction('petBeauty', 'vote', { petId }))
       .then((res) => {
+        hideLoading()
+        this._votingLock = false
         const updateVote = (item) => item.petId === petId ? { ...item, voteCount: res.voteCount } : item
         this.setData({
           hasVotedToday: true,
@@ -197,10 +210,12 @@ Page({
           candidates: this.data.candidates.map(updateVote),
           ...rankingViewData(this.data.ranking.map(updateVote))
         })
-        wx.showToast({ title: '投票成功' })
+        wx.showToast({ title: '投票成功', icon: 'success' })
         this.loadRanking(true)
       })
       .catch((err) => {
+        hideLoading()
+        this._votingLock = false
         this.setData({ votingPetId: '' })
         showError(err)
       })

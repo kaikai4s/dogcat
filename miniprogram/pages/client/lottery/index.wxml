@@ -63,3 +63,4 @@
     <view class="empty-record" wx:if="{{!loadingRecords && !records.length}}">暂无抽奖记录</view>
   </view>
 </view>
+<global-loading />

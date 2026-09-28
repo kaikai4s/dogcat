@@ -30,3 +30,4 @@
     <view class="modal-card"><view class="page-title">申请售后</view><textarea placeholder="请填写退款/售后原因" value="{{refundReason}}" bindinput="inputRefundReason" /><view class="modal-actions"><button bindtap="hideRefund">取消</button><button class="primary" bindtap="submitRefund">提交</button></view></view>
   </view>
 </view>
+<global-loading />

@@ -52,3 +52,4 @@
     <view class="empty-actions"><button class="primary-cute-btn" bindtap="goList"><text class="remix-icon ri-search-eye-line"></text><text>去找宠托师</text></button></view>
   </view>
 </view>
+<global-loading />

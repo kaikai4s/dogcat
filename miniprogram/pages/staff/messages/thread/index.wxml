@@ -42,3 +42,4 @@
     <view class="empty-text">{{loading ? '正在加载消息...' : '消息会话不存在'}}</view>
   </view>
 </view>
+<global-loading />

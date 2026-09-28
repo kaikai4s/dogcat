@@ -101,3 +101,4 @@
     <text>查看积分与打卡明细</text>
   </button>
 </view>
+<global-loading />

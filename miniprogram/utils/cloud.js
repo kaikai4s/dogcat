@@ -119,6 +119,53 @@ function showError(error) {
   })
 }
 
+let loadingBus
+try {
+  loadingBus = require('./loadingBus').loadingBus
+} catch (_) {}
+
+function showLoading(options = '加载中...') {
+  const opts = typeof options === 'string' ? { title: options } : (options || {})
+  const title = opts.title || '加载中...'
+  if (loadingBus && typeof loadingBus.show === 'function') {
+    loadingBus.show({ title })
+  }
+  if (typeof wx !== 'undefined' && typeof wx.showLoading === 'function') {
+    try {
+      if (!loadingBus || !loadingBus.hasActiveListener()) {
+        wx.showLoading({
+          title,
+          mask: true,
+          ...opts
+        })
+      }
+    } catch (_) {}
+  }
+}
+
+function hideLoading() {
+  if (loadingBus && typeof loadingBus.hide === 'function') {
+    try {
+      loadingBus.hide()
+    } catch (_) {}
+  }
+  if (typeof wx !== 'undefined' && typeof wx.hideLoading === 'function') {
+    try {
+      wx.hideLoading()
+    } catch (_) {}
+  }
+}
+
+function withLoading(actionPromiseOrFn, title = '加载中...', options = {}) {
+  showLoading(title, options)
+  const promise = typeof actionPromiseOrFn === 'function'
+    ? Promise.resolve().then(actionPromiseOrFn)
+    : Promise.resolve(actionPromiseOrFn)
+  return promise.finally(() => {
+    hideLoading()
+  })
+}
+
 const LOCATION_STORAGE_KEY = 'vip_pet_selected_location'
 const SYSTEM_SETTINGS_STORAGE_KEY = 'vip_pet_system_settings'
 
@@ -542,5 +589,8 @@ module.exports = {
   savePendingInvite,
   loginWithWechat,
   ensureLogin,
-  isLoginRequiredError
+  isLoginRequiredError,
+  showLoading,
+  hideLoading,
+  withLoading
 }

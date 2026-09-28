@@ -249,7 +249,8 @@
     }
   },
   "usingComponents": {
-    "staff-active-service-banner": "/components/staff-active-service-banner/index"
+    "staff-active-service-banner": "/components/staff-active-service-banner/index",
+    "global-loading": "/components/global-loading/index"
   },
   "window": {
     "backgroundColor": "#FFF8EC",

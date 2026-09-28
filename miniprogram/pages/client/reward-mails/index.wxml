@@ -31,3 +31,4 @@
     <view class="empty-desc">后续活动和会员奖励会在这里发放。</view>
   </view>
 </view>
+<global-loading />

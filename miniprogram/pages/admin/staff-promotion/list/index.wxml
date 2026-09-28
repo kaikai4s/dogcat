@@ -23,3 +23,4 @@
   <view class="empty" wx:if="{{!list.length && !loading}}">暂无晋升申请</view>
   <button class="ghost compact-load-btn" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>
 </view>
+<global-loading />

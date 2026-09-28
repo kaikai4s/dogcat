@@ -1,4 +1,4 @@
-const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings } = require('../../../../utils/cloud')
+const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings, showLoading, hideLoading } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
 const { ensureLogin } = require('../../../../utils/cloud')
@@ -189,8 +189,10 @@ Page({
     }
   },
   pay() {
-    if (this.data.paying) return
+    if (this._payingLock || this.data.paying) return
+    this._payingLock = true
     this.setData({ paying: true })
+    showLoading({ title: '准备支付中...', mask: true })
     const clientRequestId = createClientRequestId('pay')
 
     // 定义重新授权的函数
@@ -208,21 +210,29 @@ Page({
           return callFunction('payment', 'mockPayOrder', { orderId: this.data.id, paymentNo: payment.paymentNo })
         }
         if (!payment.payParams) throw new Error(payment.message || '微信支付参数未配置')
+        hideLoading()
         return new Promise((resolve, reject) => {
           wx.requestPayment({
             ...payment.payParams,
             success: resolve,
             fail: reject
           })
-        }).then(() => callFunction('payment', 'getPaymentStatus', { orderId: this.data.id }))
+        }).then(() => {
+          showLoading({ title: '正在同步支付结果...', mask: true })
+          return callFunction('payment', 'getPaymentStatus', { orderId: this.data.id })
+        })
       })
       .then((result) => {
+        hideLoading()
+        this._payingLock = false
         const paid = result && (result.paid || result.paymentStatus === 'paid' || result.status === 'paid')
         wx.showToast({ title: paid ? '已支付' : '支付处理中，请稍后刷新订单状态', icon: paid ? 'success' : 'none' })
         this.setData({ paying: false })
         this.load()
       })
       .catch((error) => {
+        hideLoading()
+        this._payingLock = false
         this.setData({ paying: false })
         const errorMessage = (error && (error.errMsg || error.message)) || ''
         if (errorMessage.includes('cancel') || errorMessage.includes('取消')) {
@@ -288,18 +298,27 @@ Page({
   },
   cancelResetOneTimeCode() { this.setData({ resettingCode: false }) },
   saveResetOneTimeCode() {
+    if (this._savingCodeLock) return
     const form = this.data.resetCodeForm
     if (!form.code || !form.effectiveStart || !form.effectiveEnd) {
       wx.showToast({ title: '请填写智能锁临时密码和有效区间', icon: 'none' })
       return
     }
+    this._savingCodeLock = true
+    showLoading({ title: '正在保存密码...', mask: true })
     callFunction('homeSecurity', 'updateOrderOneTimeCode', { orderId: this.data.id, ...form })
       .then(() => {
+        hideLoading()
+        this._savingCodeLock = false
         wx.showToast({ title: '密码已更新' })
         this.setData({ resettingCode: false })
         this.load()
       })
-      .catch(showError)
+      .catch((err) => {
+        hideLoading()
+        this._savingCodeLock = false
+        showError(err)
+      })
   },
   handleEarlyStart(e) {
     const action = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.action

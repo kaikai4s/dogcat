@@ -223,4 +223,4 @@
   <!-- 离屏 Canvas 画布（用于绘制 750x1334 高清海报导出图片） -->
   <canvas type="2d" id="exportCanvas" class="offscreen-canvas" style="position: fixed; left: -9999px; width: 750px; height: 1334px;"></canvas>
 </view>
-
+<global-loading />

@@ -16,3 +16,4 @@
     <button class="primary" bindtap="checkout" disabled="{{!cart.selectedCount}}">去结算</button>
   </view>
 </view>
+<global-loading />

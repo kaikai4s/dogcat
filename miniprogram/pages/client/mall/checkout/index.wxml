@@ -21,3 +21,4 @@
   </view>
   <view class="bottom-bar"><view class="sum-price">¥{{pricing.payAmount}}</view><button class="primary" loading="{{submitting}}" bindtap="submit">提交并支付</button></view>
 </view>
+<global-loading />

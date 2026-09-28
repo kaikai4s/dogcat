@@ -1,4 +1,4 @@
-const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, requestSubscribeTemplates } = require('../../../../utils/cloud')
+const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, requestSubscribeTemplates, showLoading, hideLoading } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, updateOfflineTask } = require('../../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
@@ -468,8 +468,10 @@ Page({
       wx.showToast({ title: '请先完成服务前消毒拍照打卡', icon: 'none', duration: 3000 })
       return
     }
-    if (this.data.starting) return
+    if (this._startingLock || this.data.starting) return
+    this._startingLock = true
     this.setData({ starting: true })
+    showLoading({ title: '正在准备开始服务...', mask: true })
 
     // 【新增】获取实时位置并检查前置条件
     wx.getLocation({
@@ -483,6 +485,8 @@ Page({
         })
           .then((readiness) => {
             if (!readiness.canStart) {
+              hideLoading()
+              this._startingLock = false
               this.setData({ starting: false })
               // 找到最重要的问题并提示
               const issue = readiness.issues[0]
@@ -537,17 +541,23 @@ Page({
             clientRequestId: createClientRequestId('start_service')
           }))
           .then(() => {
-            wx.showToast({ title: '已开始服务' })
+            hideLoading()
+            this._startingLock = false
+            wx.showToast({ title: '已开始服务', icon: 'success' })
             this.setData({ starting: false })
             this.loadOrder()
           })
           .catch((error) => {
-            if (error && error.message === '前置条件未满足') return // 已经显示了具体的错误提示
+            hideLoading()
+            this._startingLock = false
             this.setData({ starting: false })
+            if (error && error.message === '前置条件未满足') return // 已经显示了具体的错误提示
             showError(error)
           })
       },
       fail: (err) => {
+        hideLoading()
+        this._startingLock = false
         this.setData({ starting: false })
         wx.showModal({
           title: '需要位置权限',
@@ -559,20 +569,26 @@ Page({
   },
 
   requestEarlyStart() {
-    if (this.data.requestingEarlyStart) return
+    if (this._requestingEarlyStartLock || this.data.requestingEarlyStart) return
+    this._requestingEarlyStartLock = true
     this.setData({ requestingEarlyStart: true })
+    showLoading({ title: '正在申请提前开始...', mask: true })
     requestSubscribeTemplates(['serviceStart'], 'staff_early_start')
       .then(() => callFunction('order', 'requestEarlyStart', { id: this.data.id, reason: '宠护师已到达，申请提前开始服务' }))
       .then((earlyStartRequest) => {
+        hideLoading()
+        this._requestingEarlyStartLock = false
         wx.showToast({ title: '已发送申请', icon: 'none' })
         this.setData({ requestingEarlyStart: false, earlyStartRequest })
         if (earlyStartRequest && earlyStartRequest.status === 'pending') {
           this.startEarlyStartPolling()
         }
       })
-      .catch((error) => {
+      .catch((err) => {
+        hideLoading()
+        this._requestingEarlyStartLock = false
         this.setData({ requestingEarlyStart: false })
-        showError(error)
+        showError(err)
       })
   },
 
@@ -883,8 +899,10 @@ Page({
       wx.showToast({ title: missingTip, icon: 'none' })
       return
     }
-    if (this.data.finishing) return
+    if (this._finishingLock || this.data.finishing) return
+    this._finishingLock = true
     this.setData({ finishing: true })
+    showLoading({ title: '正在完成服务...', mask: true })
     this.uploadAutoTrackPoint()
       .then(() => this.flushOfflineTasks())
       .then(() => {
@@ -892,6 +910,8 @@ Page({
       })
       .then(() => callFunction('order', 'finishService', { id: this.data.id, clientRequestId: createClientRequestId('finish_service') }))
       .then((res) => {
+        hideLoading()
+        this._finishingLock = false
         this.stopServiceElapsedTimer()
         this.stopAutoTracking()
         wx.showToast({ title: res && res.status === 'day_completed' ? '当天已完成' : '已完成' })
@@ -899,6 +919,8 @@ Page({
         this.loadOrder()
       })
       .catch((error) => {
+        hideLoading()
+        this._finishingLock = false
         this.setData({ finishing: false })
         showError(error)
       })
