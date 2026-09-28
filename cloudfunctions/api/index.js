@@ -7,6 +7,15 @@ const getHandler = createRegistry(context)
 let scheduled
 let paymentCallback
 
+function isTimerTriggerEvent(event) {
+  if (!event || typeof event !== 'object') return false
+  return event.Type === 'Timer' ||
+    event.Type === 'timer' ||
+    event.type === 'timer' ||
+    Boolean(event.TriggerName) ||
+    Boolean(event.triggerName)
+}
+
 function isWechatPayHttpCallback(event) {
   return !event.module && !event.name && !event.action &&
     Boolean(event.httpMethod || event.requestContext) &&
@@ -16,7 +25,7 @@ function isWechatPayHttpCallback(event) {
 exports.main = async (event = {}) => {
   try {
     const { OPENID } = cloud.getWXContext()
-    if (event.Type === 'Timer') {
+    if (isTimerTriggerEvent(event)) {
       if (OPENID) throw new Error('客户端不可触发定时任务')
       if (!scheduled) scheduled = require('./scheduled')(context)
       return context.ok(await scheduled())

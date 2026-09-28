@@ -2,6 +2,9 @@ module.exports = function createHandler(context) {
   const {
     db,
     getUser,
+    getUserSystemNotificationUnreadCount,
+    listUserSystemNotifications,
+    markSystemNotificationRead,
     now,
     orderStatusText,
     paginateList,
@@ -24,10 +27,15 @@ module.exports = function createHandler(context) {
     }
     if (action === 'getUnreadSummary') {
       const threads = await readScopedDocuments('order_staff_message_threads', { staffOpenid: openid })
-      const totalUnread = threads
+      const orderUnread = threads
         .filter((thread) => thread.hiddenForStaff !== true)
         .reduce((sum, thread) => sum + Math.max(Number(thread.unreadCount || 0), 0), 0)
-      return { totalUnread, hasUnread: totalUnread > 0 }
+      let systemUnread = 0
+      if (typeof getUserSystemNotificationUnreadCount === 'function') {
+        systemUnread = await getUserSystemNotificationUnreadCount(openid, 'staff', user)
+      }
+      const totalUnread = orderUnread + systemUnread
+      return { totalUnread, orderUnread, systemUnread, hasUnread: totalUnread > 0 }
     }
     if (action === 'getThreadMessages') {
       const threadId = safeText(data.threadId).trim()
@@ -84,6 +92,12 @@ module.exports = function createHandler(context) {
       const time = now()
       await db.collection('order_staff_message_threads').doc(thread._id).update({ data: { unreadCount: 0, readAt: time } })
       return { threadId: thread._id, orderId, unreadCount: 0 }
+    }
+    if (action === 'listSystemNotifications') {
+      return listUserSystemNotifications(openid, 'staff', data)
+    }
+    if (action === 'markSystemNotificationRead') {
+      return markSystemNotificationRead(openid, 'staff', data)
     }
     throw new Error('未知 staffMessage 操作')
   }

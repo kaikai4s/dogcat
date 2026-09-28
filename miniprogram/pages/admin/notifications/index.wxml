@@ -2,59 +2,193 @@
 <view class="admin-notice-page {{themeClass}} {{fontClass}} page">
   <view class="admin-notice-hero">
     <view class="hero-badge"><text class="remix-icon ri-notification-3-fill"></text><text>消息中心</text></view>
-    <view class="hero-row">
-      <view>
-        <view class="hero-title">系统通知与告警</view>
-        <view class="hero-desc">实时监控服务超时、履约异常、退款诉求与待办事项</view>
-      </view>
-      <button class="mark-read-btn" bindtap="markAllRead" wx:if="{{unreadCount > 0}}">全部已读</button>
+    <view class="hero-main">
+      <view class="hero-title">系统消息与通知</view>
+      <view class="hero-desc">监控服务预警待办，并支持向宠托师与用户发布系统通知</view>
+    </view>
+    <view class="hero-actions">
+      <button class="send-notice-btn primary-btn" bindtap="openSendModal">
+        <text class="remix-icon ri-send-plane-fill"></text> 发送通知
+      </button>
+      <button class="mark-read-btn" bindtap="markAllRead" wx:if="{{activeTab !== 'broadcast' && unreadCount > 0}}">全部已读</button>
     </view>
   </view>
 
   <view class="tabs-bar">
-    <view class="tab-item {{activeTab === 'all' ? 'active' : ''}}" data-tab="all" bindtap="switchTab">全部</view>
+    <view class="tab-item {{activeTab === 'all' ? 'active' : ''}}" data-tab="all" bindtap="switchTab">全部告警</view>
     <view class="tab-item {{activeTab === 'unread' ? 'active' : ''}}" data-tab="unread" bindtap="switchTab">
-      <text>未读</text>
+      <text>未读告警</text>
       <text class="tab-badge" wx:if="{{unreadCount > 0}}">{{unreadCount}}</text>
     </view>
     <view class="tab-item urgent-tab {{activeTab === 'urgent' ? 'active' : ''}}" data-tab="urgent" bindtap="switchTab">
       <text class="remix-icon ri-flashlight-fill"></text>
       <text>加急预警</text>
     </view>
-  </view>
-
-  <view class="notice-list" wx:if="{{list.length}}">
-    <view class="notice-card {{item.level === 'urgent' ? 'urgent-card' : ''}} {{item.isRead ? 'read' : 'unread'}}" wx:for="{{list}}" wx:key="_id" data-item="{{item}}" bindtap="tapItem">
-      <view class="card-top-row">
-        <view class="level-badge {{item.level}}">
-          <text class="remix-icon {{item.level === 'urgent' ? 'ri-flashlight-fill' : (item.level === 'warning' ? 'ri-alarm-warning-fill' : 'ri-information-fill')}}"></text>
-          <text wx:if="{{item.level === 'urgent'}}">紧急预警</text>
-          <text wx:elif="{{item.level === 'warning'}}">重要提醒</text>
-          <text wx:else>系统通知</text>
-        </view>
-        <view class="time-read-wrap">
-          <text class="notice-time">{{beijingTime.format(item.createdAt)}}</text>
-          <view class="unread-dot" wx:if="{{!item.isRead}}"></view>
-        </view>
-      </view>
-
-      <view class="notice-title">{{item.title}}</view>
-      <view class="notice-content">{{item.content}}</view>
-
-      <view class="notice-footer" wx:if="{{item.actionUrl || item.orderId}}">
-        <text class="footer-action-text">点击立即核实与调度处理</text>
-        <text class="remix-icon ri-arrow-right-s-line footer-arrow"></text>
-      </view>
+    <view class="tab-item broadcast-tab {{activeTab === 'broadcast' ? 'active' : ''}}" data-tab="broadcast" bindtap="switchTab">
+      <text class="remix-icon ri-broadcast-line"></text>
+      <text>系统广播</text>
     </view>
   </view>
 
-  <view class="empty-state" wx:elif="{{!loading}}">
-    <text class="remix-icon ri-notification-off-line empty-icon"></text>
-    <view class="empty-title">暂无相关通知消息</view>
-    <view class="empty-desc">系统运行平稳，暂无未处理的超时或异常事项</view>
-  </view>
+  <!-- 待办与告警通知列表 -->
+  <block wx:if="{{activeTab !== 'broadcast'}}">
+    <view class="notice-list" wx:if="{{list.length}}">
+      <view class="notice-card {{item.level === 'urgent' ? 'urgent-card' : ''}} {{item.isRead ? 'read' : 'unread'}}" wx:for="{{list}}" wx:key="_id" data-item="{{item}}" bindtap="tapItem">
+        <view class="card-top-row">
+          <view class="level-badge {{item.level}}">
+            <text class="remix-icon {{item.level === 'urgent' ? 'ri-flashlight-fill' : (item.level === 'warning' ? 'ri-alarm-warning-fill' : 'ri-information-fill')}}"></text>
+            <text wx:if="{{item.level === 'urgent'}}">紧急预警</text>
+            <text wx:elif="{{item.level === 'warning'}}">重要提醒</text>
+            <text wx:else>系统通知</text>
+          </view>
+          <view class="time-read-wrap">
+            <text class="notice-time">{{beijingTime.format(item.createdAt)}}</text>
+            <view class="unread-dot" wx:if="{{!item.isRead}}"></view>
+          </view>
+        </view>
 
-  <view class="list-state" wx:if="{{loading && list.length}}">正在加载通知...</view>
-  <view class="list-state" wx:if="{{!loading && list.length && !hasMore}}">已显示全部通知</view>
+        <view class="notice-title">{{item.title}}</view>
+        <view class="notice-content">{{item.content}}</view>
+
+        <view class="notice-footer" wx:if="{{item.actionUrl || item.orderId}}">
+          <text class="footer-action-text">点击立即核实与调度处理</text>
+          <text class="remix-icon ri-arrow-right-s-line footer-arrow"></text>
+        </view>
+      </view>
+    </view>
+
+    <view class="empty-state" wx:elif="{{!loading}}">
+      <text class="remix-icon ri-notification-off-line empty-icon"></text>
+      <view class="empty-title">暂无相关通知消息</view>
+      <view class="empty-desc">系统运行平稳，暂无未处理的超时或异常事项</view>
+    </view>
+
+    <view class="list-state" wx:if="{{loading && list.length}}">正在加载通知...</view>
+    <view class="list-state" wx:if="{{!loading && list.length && !hasMore}}">已显示全部通知</view>
+  </block>
+
+  <!-- 系统广播历史记录列表 -->
+  <block wx:else>
+    <view class="broadcast-list" wx:if="{{broadcastList.length}}">
+      <view class="broadcast-card card {{item.status === 'revoked' ? 'revoked' : ''}}" wx:for="{{broadcastList}}" wx:key="_id">
+        <view class="card-top-row">
+          <view class="badge-group">
+            <view class="target-badge target-{{item.target}}">{{item.targetText}}</view>
+            <view class="type-badge type-{{item.type}}">{{item.typeText}}</view>
+            <view class="level-badge-sm urgent" wx:if="{{item.level === 'urgent'}}">重要加急</view>
+          </view>
+          <view class="status-tag status-{{item.status}}">{{item.statusText}}</view>
+        </view>
+
+        <view class="broadcast-title">{{item.title}}</view>
+        <view class="broadcast-content">{{item.content}}</view>
+
+        <view class="broadcast-link" wx:if="{{item.targetUrl}}">
+          <text class="remix-icon ri-links-line"></text> 跳转链接：{{item.targetUrl}}
+        </view>
+
+        <view class="broadcast-bottom">
+          <view class="sender-info">
+            <text class="remix-icon ri-user-star-line"></text> {{item.senderAdminName || '管理员'}} · {{beijingTime.format(item.createdAt)}}
+          </view>
+          <button class="revoke-btn" wx:if="{{item.status !== 'revoked'}}" data-item="{{item}}" bindtap="revokeNotification">撤回</button>
+        </view>
+      </view>
+    </view>
+
+    <view class="empty-state" wx:elif="{{!broadcastLoading}}">
+      <text class="remix-icon ri-mail-send-line empty-icon"></text>
+      <view class="empty-title">暂未发布系统通知</view>
+      <view class="empty-desc">点击右上角“发送通知”即可向宠托师与用户发布公告</view>
+      <button class="primary-btn mt-20" bindtap="openSendModal">立即发布通知</button>
+    </view>
+
+    <view class="list-state" wx:if="{{broadcastLoading && broadcastList.length}}">正在加载系统通知...</view>
+    <view class="list-state" wx:if="{{!broadcastLoading && broadcastList.length && !broadcastHasMore}}">已显示全部系统通知</view>
+  </block>
+
+  <!-- 发送系统通知弹窗 -->
+  <view class="modal-mask" wx:if="{{showSendModal}}" catchtouchmove="true">
+    <view class="modal-panel send-notice-modal">
+      <view class="modal-header">
+        <view class="modal-title">
+          <text class="remix-icon ri-send-plane-2-fill title-icon"></text> 发送系统通知
+        </view>
+        <view class="modal-close" bindtap="closeSendModal">
+          <text class="remix-icon ri-close-line"></text>
+        </view>
+      </view>
+
+      <scroll-view class="modal-body" scroll-y="true">
+        <!-- 接收人群 -->
+        <view class="form-group">
+          <view class="form-label">接收人群 <text class="required">*</text></view>
+          <view class="chip-selector">
+            <view class="chip-item {{sendForm.target === 'all' ? 'active' : ''}}" data-target="all" bindtap="changeTarget">
+              <text class="remix-icon ri-group-line"></text> 全员广播
+            </view>
+            <view class="chip-item {{sendForm.target === 'client' ? 'active' : ''}}" data-target="client" bindtap="changeTarget">
+              <text class="remix-icon ri-user-smile-line"></text> 仅用户端
+            </view>
+            <view class="chip-item {{sendForm.target === 'staff' ? 'active' : ''}}" data-target="staff" bindtap="changeTarget">
+              <text class="remix-icon ri-team-line"></text> 仅宠托师端
+            </view>
+          </view>
+        </view>
+
+        <!-- 通知分类 -->
+        <view class="form-group">
+          <view class="form-label">通知类型</view>
+          <view class="chip-selector">
+            <view class="chip-item {{sendForm.type === 'system' ? 'active' : ''}}" data-type="system" bindtap="changeType">
+              <text class="remix-icon ri-volume-up-line"></text> 系统公告
+            </view>
+            <view class="chip-item {{sendForm.type === 'notice' ? 'active' : ''}}" data-type="notice" bindtap="changeType">
+              <text class="remix-icon ri-alarm-warning-line"></text> 服务通知
+            </view>
+            <view class="chip-item {{sendForm.type === 'activity' ? 'active' : ''}}" data-type="activity" bindtap="changeType">
+              <text class="remix-icon ri-gift-line"></text> 活动福利
+            </view>
+          </view>
+        </view>
+
+        <!-- 紧急程度 -->
+        <view class="form-group">
+          <view class="form-label">重要级别</view>
+          <view class="chip-selector">
+            <view class="chip-item {{sendForm.level === 'normal' ? 'active' : ''}}" data-level="normal" bindtap="changeLevel">
+              常规通知
+            </view>
+            <view class="chip-item urgent-chip {{sendForm.level === 'urgent' ? 'active' : ''}}" data-level="urgent" bindtap="changeLevel">
+              <text class="remix-icon ri-flashlight-fill"></text> 重要加急
+            </view>
+          </view>
+        </view>
+
+        <!-- 标题 -->
+        <view class="form-group">
+          <view class="form-label">通知标题 <text class="required">*</text></view>
+          <input class="form-input" placeholder="例如：平台节假日服务排班与加价通知" maxlength="60" value="{{sendForm.title}}" data-field="title" bindinput="onInputForm" />
+        </view>
+
+        <!-- 跳转链接 -->
+        <view class="form-group">
+          <view class="form-label">页面跳转路径 <text class="optional">（选填）</text></view>
+          <input class="form-input" placeholder="例如：/pages/client/coupons/list/index" maxlength="120" value="{{sendForm.targetUrl}}" data-field="targetUrl" bindinput="onInputForm" />
+        </view>
+
+        <!-- 正文内容 -->
+        <view class="form-group">
+          <view class="form-label">通知内容 <text class="required">*</text></view>
+          <textarea class="form-textarea" placeholder="详细输入要告知宠托师或用户的通知内容、时间节点与注意事项..." maxlength="1000" value="{{sendForm.content}}" data-field="content" bindinput="onInputForm" auto-height="{{false}}" />
+        </view>
+      </scroll-view>
+
+      <view class="modal-footer">
+        <button class="ghost-btn cancel-btn" bindtap="closeSendModal" disabled="{{sending}}">取消</button>
+        <button class="primary-btn submit-btn" bindtap="submitSend" loading="{{sending}}" disabled="{{sending}}">确认发布通知</button>
+      </view>
+    </view>
+  </view>
 </view>
 <global-loading />

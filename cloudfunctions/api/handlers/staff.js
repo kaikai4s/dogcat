@@ -109,6 +109,16 @@ module.exports = function createHandler(context) {
     }
     return rows
   }
+  function isStaffPreviouslyAssignedToOrder(order = {}, staffOpenid = '') {
+    if (!order || !staffOpenid) return false
+    const target = safeText(staffOpenid).trim()
+    if (!target) return false
+    if (safeText(order.originalStaffOpenid).trim() === target) return true
+    if (Array.isArray(order.previousStaffRecords)) {
+      return order.previousStaffRecords.some((r) => safeText(r && r.staffOpenid).trim() === target)
+    }
+    return false
+  }
   return async function staff(openid, action, data) {
     if (action === 'listApprovedSitters') {
       const staffGenderRequirement = normalizeStaffGenderRequirement(data.staffGenderRequirement)
@@ -737,7 +747,7 @@ module.exports = function createHandler(context) {
         }
       }
 
-      let candidates = availableOrders.filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish')
+      let candidates = availableOrders.filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish' && !isStaffPreviouslyAssignedToOrder(order, profile.openid))
       if (filterDate) {
         candidates = candidates.filter((order) => {
           if (!order.startTime) return false
@@ -835,7 +845,7 @@ module.exports = function createHandler(context) {
 
       const urgentOrders = await Promise.all(rawUrgentOrders
         .sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
-        .filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && (order.isUrgent === true || order.assignmentSource === 'admin_urgent_republish') && !order.staffOpenid)
+        .filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && (order.isUrgent === true || order.assignmentSource === 'admin_urgent_republish') && !order.staffOpenid && !isStaffPreviouslyAssignedToOrder(order, profile.openid))
         .map(async (order) => {
           const enriched = await attachOrderDisplayData(order)
           let distanceKm = null
@@ -1101,6 +1111,9 @@ module.exports = function createHandler(context) {
       assertStaffGenderMatches(order, profile)
       assertOrderTransition(order.status, ORDER_STATUS.ASSIGNED, '订单状态不可接单')
       if (order.staffOpenid) throw new Error('订单已被分配')
+      if (isStaffPreviouslyAssignedToOrder(order, openid)) {
+        throw new Error('您是该订单的历史接单宠托师，因超时未按时履约转加急调度，不可重复抢单')
+      }
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')

@@ -1,6 +1,10 @@
 const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
 const { formatDateTime } = require('../../../utils/format')
-const { loadMessageUnread, refreshUnread } = require('../../../utils/client-nav')
+const clientNav = require('../../../utils/client-nav')
+const loadMessageUnread = clientNav.loadMessageUnread || (() => Promise.resolve())
+const refreshUnread = clientNav.refreshUnread || (() => Promise.resolve())
+const setCachedUnread = clientNav.setCachedUnread || (() => {})
+const applyUnreadState = clientNav.applyUnreadState || (() => {})
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
 function pageList(result) {
@@ -52,32 +56,70 @@ function withThreadText(thread) {
 Page({
   data: {
     themeClass: 'theme-day',
+    activeTab: 'order', // 'order' | 'system'
+    // 订单消息
     threads: [],
     page: 1,
     pageSize: 20,
     hasMore: true,
     loading: false,
     total: 0,
+    // 系统通知
+    systemNotices: [],
+    systemPage: 1,
+    systemPageSize: 20,
+    systemHasMore: true,
+    systemLoading: false,
+    systemTotal: 0,
+    // 全局与分类未读数
     messageUnreadCount: 0,
     messageHasUnread: false,
     messageShowUnreadDot: false,
-    messageUnreadCountText: '0'
+    messageUnreadCountText: '0',
+    orderUnreadCount: 0,
+    orderHasUnread: false,
+    orderUnreadCountText: '0',
+    systemUnreadCount: 0,
+    systemHasUnread: false,
+    systemUnreadCountText: '0',
+    // 弹窗查看通知详情
+    selectedNotice: null,
+    showNoticeModal: false
   },
   onShow() {
     this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看消息。' })
       .then(() => {
-        this.load({ reset: true })
+        if (this.data.activeTab === 'order') {
+          this.load({ reset: true })
+        } else {
+          this.loadSystemNotices({ reset: true })
+        }
         loadMessageUnread(this)
       })
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
   },
   onReachBottom() {
-    this.loadMore()
+    if (this.data.activeTab === 'order') {
+      this.loadMore()
+    } else {
+      this.loadMoreSystemNotices()
+    }
   },
   applyCurrentTheme() {
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
+  },
+  switchTab(e) {
+    const tab = e.currentTarget.dataset.tab
+    if (!tab || tab === this.data.activeTab) return
+    this.setData({ activeTab: tab })
+    if (tab === 'system' && (!this.data.systemNotices.length || this.data.systemHasUnread)) {
+      this.loadSystemNotices({ reset: true })
+    } else if (tab === 'order' && (!this.data.threads.length || this.data.orderHasUnread)) {
+      this.load({ reset: true })
+    }
+    loadMessageUnread(this)
   },
   load(options = {}) {
     if (this.data.loading) return
@@ -104,6 +146,145 @@ Page({
   loadMore() {
     if (!this.data.hasMore || this.data.loading) return
     this.setData({ page: this.data.page + 1 }, () => this.load())
+  },
+  loadSystemNotices(options = {}) {
+    if (this.data.systemLoading) return
+    const reset = options.reset === true
+    const page = reset ? 1 : this.data.systemPage
+    this.setData({ systemLoading: true })
+    callFunction('message', 'listSystemNotifications', { page, pageSize: this.data.systemPageSize })
+      .then((result) => {
+        const pageData = pageList(result)
+        const unreadCount = Number(result && result.unreadCount || 0)
+        const orderUnread = Number(this.data.orderUnreadCount || 0)
+        const total = orderUnread + unreadCount
+        this.setData({
+          systemNotices: reset ? pageData.list : this.data.systemNotices.concat(pageData.list),
+          systemPage: pageData.page,
+          systemHasMore: pageData.hasMore,
+          systemTotal: pageData.total,
+          systemUnreadCount: unreadCount,
+          systemHasUnread: unreadCount > 0,
+          systemUnreadCountText: unreadCount > 99 ? '99+' : String(unreadCount),
+          messageUnreadCount: total,
+          messageHasUnread: total > 0,
+          messageUnreadCountText: total > 99 ? '99+' : String(total),
+          systemLoading: false
+        })
+        setCachedUnread('client', {
+          totalUnread: total,
+          orderUnread,
+          systemUnread: unreadCount,
+          hasUnread: total > 0
+        })
+      })
+      .catch((error) => {
+        this.setData({ systemLoading: false })
+        showError(error)
+      })
+  },
+  loadMoreSystemNotices() {
+    if (!this.data.systemHasMore || this.data.systemLoading) return
+    this.setData({ systemPage: this.data.systemPage + 1 }, () => this.loadSystemNotices())
+  },
+  tapNotice(e) {
+    const id = e.currentTarget.dataset.id
+    if (!id) return
+    const notice = this.data.systemNotices.find((n) => n._id === id)
+    if (!notice) return
+
+    this.setData({
+      selectedNotice: notice,
+      showNoticeModal: true
+    })
+
+    if (!notice.isRead) {
+      callFunction('message', 'markSystemNotificationRead', { id })
+        .then(() => {
+          const updated = this.data.systemNotices.map((n) => {
+            if (n._id === id) return { ...n, isRead: true }
+            return n
+          })
+          const unreadCount = Math.max(0, this.data.systemUnreadCount - 1)
+          const orderUnread = Number(this.data.orderUnreadCount || 0)
+          const total = orderUnread + unreadCount
+          this.setData({
+            systemNotices: updated,
+            systemUnreadCount: unreadCount,
+            systemHasUnread: unreadCount > 0,
+            systemUnreadCountText: unreadCount > 99 ? '99+' : String(unreadCount),
+            messageUnreadCount: total,
+            messageHasUnread: total > 0,
+            messageUnreadCountText: total > 99 ? '99+' : String(total),
+            selectedNotice: { ...notice, isRead: true }
+          })
+          setCachedUnread('client', {
+            totalUnread: total,
+            orderUnread,
+            systemUnread: unreadCount,
+            hasUnread: total > 0
+          })
+          refreshUnread('client').then((summary) => applyUnreadState(this, summary)).catch(() => {})
+        })
+        .catch(() => {})
+    }
+  },
+  closeNoticeModal() {
+    this.setData({
+      showNoticeModal: false,
+      selectedNotice: null
+    })
+  },
+  handleNoticeAction() {
+    const notice = this.data.selectedNotice
+    this.closeNoticeModal()
+    if (notice && notice.targetUrl) {
+      this.go({ currentTarget: { dataset: { url: notice.targetUrl } } })
+    }
+  },
+  markAllSystemRead() {
+    if (!this.data.systemHasUnread && this.data.systemUnreadCount === 0) {
+      wx.showToast({ title: '没有未读通知', icon: 'none' })
+      return
+    }
+    wx.showModal({
+      title: '全部已读',
+      content: '确定将所有系统通知标为已读吗？',
+      confirmText: '标为已读',
+      cancelText: '取消',
+      success: (res) => {
+        if (res.confirm) {
+          wx.showLoading({ title: '正在处理...' })
+          callFunction('message', 'markSystemNotificationRead', { all: true })
+            .then(() => {
+              wx.hideLoading()
+              const updated = this.data.systemNotices.map((n) => ({ ...n, isRead: true }))
+              const orderUnread = Number(this.data.orderUnreadCount || 0)
+              this.setData({
+                systemNotices: updated,
+                systemUnreadCount: 0,
+                systemHasUnread: false,
+                systemUnreadCountText: '0',
+                messageUnreadCount: orderUnread,
+                messageHasUnread: orderUnread > 0,
+                messageUnreadCountText: orderUnread > 99 ? '99+' : String(orderUnread)
+              })
+              setCachedUnread('client', {
+                totalUnread: orderUnread,
+                orderUnread,
+                systemUnread: 0,
+                hasUnread: orderUnread > 0
+              })
+              wx.showToast({ title: '已全部标为已读', icon: 'success' })
+              refreshUnread('client').then((summary) => applyUnreadState(this, summary)).catch(() => {})
+            })
+            .catch((err) => {
+              wx.hideLoading()
+              showError(err)
+            })
+        }
+      }
+    })
   },
   openThread(e) {
     const threadId = e.currentTarget.dataset.id

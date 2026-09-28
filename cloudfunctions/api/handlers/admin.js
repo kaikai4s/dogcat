@@ -49,6 +49,7 @@ module.exports = function createHandler(context) {
     issueCouponToTargetUser,
     limitList,
     listAdminNotifications,
+    listAdminSystemNotifications,
     listPetTitles,
     listServiceCheckinRules,
     listServicePrices,
@@ -90,7 +91,9 @@ module.exports = function createHandler(context) {
     resolveRewardMailTargets,
     resolveTargetLevels,
     resolveUserMemberLevel,
+    revokeSystemNotification,
     safeText,
+    sendSystemNotification,
     settleWithdrawal,
     settleStaffDeposit,
     settleSupplyReimbursement,
@@ -2333,10 +2336,39 @@ module.exports = function createHandler(context) {
       }
 
       const newStartTime = safeText(data.startTime).trim() || order.startTime
-      const newEndTime = safeText(data.endTime).trim() || order.endTime
+      let newEndTime = safeText(data.endTime).trim() || order.endTime
       const urgentRemark = safeText(data.urgentRemark || data.remark || data.notes).trim()
 
+      if (!newStartTime) {
+        throw new Error('请设置加急服务开始时间')
+      }
+      const startTs = toTimeValue(newStartTime)
+      if (!startTs) {
+        throw new Error('加急服务开始时间格式不正确')
+      }
+
       const time = now()
+      const currentTs = (time instanceof Date ? time.getTime() : new Date(time || 0).getTime()) || Date.now()
+      if (startTs < currentTs) {
+        throw new Error('加急服务开始时间不能早于当前时间')
+      }
+      // 至少是现在时间的30分钟后（预留1分钟网络传输宽限）
+      if (startTs < currentTs + 30 * 60 * 1000 - 60000) {
+        throw new Error('加急服务开始时间至少需在当前时间的30分钟后')
+      }
+
+      if (newEndTime) {
+        const endTs = toTimeValue(newEndTime)
+        if (endTs && endTs <= startTs) {
+          throw new Error('加急服务结束时间必须晚于开始时间')
+        }
+      } else {
+        const origDurationMs = (toTimeValue(order.endTime) - toTimeValue(order.startTime)) || (Number(order.durationMinutes || 60) * 60000)
+        const durationMs = origDurationMs > 0 ? origDurationMs : 3600000
+        const endBej = new Date(startTs + durationMs + 8 * 3600 * 1000)
+        newEndTime = `${endBej.getUTCFullYear()}-${String(endBej.getUTCMonth() + 1).padStart(2, '0')}-${String(endBej.getUTCDate()).padStart(2, '0')} ${String(endBej.getUTCHours()).padStart(2, '0')}:${String(endBej.getUTCMinutes()).padStart(2, '0')}`
+      }
+
       const prevStaffOpenid = order.staffOpenid || ''
       const prevStaffName = order.staffName || (order.staffContact && order.staffContact.displayName) || ''
       const prevStaffUserId = order.staffUserId || ''
@@ -2374,6 +2406,7 @@ module.exports = function createHandler(context) {
         urgentRemark,
         urgentRepublishedAt: time,
         urgentRepublishedByOpenid: openid,
+        urgentRepublishCount: (Number(order.urgentRepublishCount) || (order.isUrgent ? 1 : 0)) + 1,
         originalStaffOpenid: order.originalStaffOpenid || prevStaffOpenid,
         originalStaffName: order.originalStaffName || prevStaffName,
         originalStaffUserId: order.originalStaffUserId || prevStaffUserId,
@@ -2392,12 +2425,31 @@ module.exports = function createHandler(context) {
         acceptLocationLongitude: null,
         startTime: newStartTime,
         endTime: newEndTime,
+        serviceStartDate: newStartTime.slice(0, 10),
+        serviceEndDate: newEndTime ? newEndTime.slice(0, 10) : newStartTime.slice(0, 10),
         isStartOverdue: false,
         isFinishOverdue: false,
         staffOverdueStartRemindedSessions: [],
         clientOverdueStartAlertedSessions: [],
         overdueFinishReminded: false,
         updatedAt: time
+      }
+      if (Array.isArray(order.serviceSessions) && order.serviceSessions.length > 0) {
+        updateData.serviceSessions = order.serviceSessions.map((session, idx) => idx === 0 ? {
+          ...session,
+          date: newStartTime.slice(0, 10),
+          startTime: newStartTime,
+          endTime: newEndTime,
+          status: 'pending'
+        } : session)
+      } else {
+        updateData.serviceSessions = [{
+          index: 1,
+          date: newStartTime.slice(0, 10),
+          startTime: newStartTime,
+          endTime: newEndTime,
+          status: 'pending'
+        }]
       }
       if (urgentRemark) {
         updateData.notes = order.notes ? `${order.notes}；【平台加急备注】${urgentRemark}` : `【平台加急备注】${urgentRemark}`
@@ -2454,13 +2506,21 @@ module.exports = function createHandler(context) {
         })
       }
 
+      const isReUrgent = Boolean(order.isUrgent || order.assignmentSource === 'admin_urgent_republish')
       await appendOrderTimeline(
         orderId,
         'urgent_republished',
-        '已转为加急公共单',
+        isReUrgent ? '已重新发布加急抢单' : '已转为加急公共单',
         `管理员已将订单发布至加急公共抢单池。宠托师收益调整为 ¥${staffReward.toFixed(2)}（含平台补贴加价 ¥${urgentBonus.toFixed(2)}），新服务时间：${newStartTime}。用户支付金额不受影响。`,
         'admin'
       )
+
+      await appendOrderClientMessage({ ...order, _id: orderId }, {
+        eventType: 'urgent_republished',
+        title: isReUrgent ? '加急订单重新调度中' : '平台加急调度中',
+        detail: `您的订单约定服务时间已调整为 ${newStartTime}，平台正在加急调度更合适的宠托师上门服务，请耐心等待。`,
+        actorRole: 'admin'
+      })
 
       await logAdmin(admin, 'order', orderId, 'republishOrderAsUrgent', {
         prevStaffOpenid,
@@ -2468,15 +2528,18 @@ module.exports = function createHandler(context) {
         urgentBonus,
         newStartTime,
         newEndTime,
-        urgentRemark
+        urgentRemark,
+        isReUrgent
       })
 
       if (typeof notifyAdmins === 'function') {
         await notifyAdmins({
           type: 'order_urgent_republished',
           level: 'info',
-          title: `【加急单发布】订单 ${order.orderNo || orderId} 已发布到加急抢单池`,
-          content: `管理员已将订单重新发布为加急公共抢单。宠托师收益：¥${staffReward.toFixed(2)}（加价补贴 ¥${urgentBonus.toFixed(2)}），约定开始时间调整为 ${newStartTime}。`,
+          title: isReUrgent
+            ? `【加急单重新发布】订单 ${order.orderNo || orderId} 已重新发布到加急抢单池`
+            : `【加急单发布】订单 ${order.orderNo || orderId} 已发布到加急抢单池`,
+          content: `管理员已将订单${isReUrgent ? '重新发布' : '转'}为加急公共抢单。宠托师收益：¥${staffReward.toFixed(2)}（加价补贴 ¥${urgentBonus.toFixed(2)}），约定开始时间调整为 ${newStartTime}。`,
           orderId,
           orderNo: order.orderNo || '',
           actionUrl: `/pages/admin/orders/detail/index?id=${orderId}`
@@ -2632,6 +2695,18 @@ module.exports = function createHandler(context) {
     }
     if (action === 'getAdminNotificationBadge') {
       return getAdminNotificationBadge(openid)
+    }
+    if (action === 'sendSystemNotification') {
+      const admin = await requireAdmin(openid)
+      return sendSystemNotification(data, admin)
+    }
+    if (action === 'listSystemNotifications') {
+      await requireAdmin(openid)
+      return listAdminSystemNotifications(data)
+    }
+    if (action === 'revokeSystemNotification') {
+      const admin = await requireAdmin(openid)
+      return revokeSystemNotification(data, admin)
     }
     throw new Error('未知 admin 操作')
   }

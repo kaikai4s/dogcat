@@ -147,3 +147,12 @@ test('hot services auto-scroll: <= 2 items does not loop, >= 3 items enables aut
   assert.equal(pageThree.isHotServicesTouching, false)
   assert.ok(pageThree.hotServicesResumeTimer !== null, 'Resume timer must be scheduled for 5s')
 })
+
+test('hot services auto-scroll: page unmount or hide stops scroll timer and prevents setData crashes', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/client/home/index.js'), 'utf8')
+  assert.match(source, /this\._isPageActive\s*=\s*true/, 'onShow must set _isPageActive = true')
+  assert.match(source, /this\._isPageActive\s*=\s*false/, 'onHide/onUnload must set _isPageActive = false')
+  assert.match(source, /if\s*\(!this\._isPageActive\)/, 'startHotServicesAutoScroll must guard on _isPageActive')
+  assert.match(source, /this\.stopHotServicesAutoScroll\(\)/, 'Must stop timer when inactive')
+})
+

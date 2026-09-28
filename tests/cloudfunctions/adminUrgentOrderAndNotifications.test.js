@@ -78,7 +78,7 @@ test('admin can republish order as urgent with adjusted reward, modified time & 
       { _id: 'staff_2', openid: 'openid_staff_2', roles: ['staff'], status: 'active', name: '李托师', phone: '13900002222' }
     ],
     staff_profiles: [
-      { _id: 'sp_1', openid: 'openid_staff', name: '张托师', phone: '13900001111' },
+      { _id: 'sp_1', openid: 'openid_staff', name: '张托师', phone: '13900001111', serviceLatitude: 31.2, serviceLongitude: 121.5, serviceAddress: '浦东', serviceRadiusKm: 10, auditStatus: 'approved' },
       { _id: 'sp_2', openid: 'openid_staff_2', name: '李托师', phone: '13900002222', serviceLatitude: 31.2, serviceLongitude: 121.5, serviceAddress: '浦东', serviceRadiusKm: 10, auditStatus: 'approved' }
     ],
     orders: [
@@ -177,6 +177,24 @@ test('admin can republish order as urgent with adjusted reward, modified time & 
   const foundInUrgent = (urgentRes.data || []).find((o) => o._id === 'order_urgent_1')
   assert.ok(foundInUrgent, 'Must appear in urgent orders')
   assert.equal(foundInUrgent.staffEarning, 85)
+
+  // 原违约宠托师 openid_staff 受到风控拦截：加急列表中不可见，且接单直接抛错
+  const originalStaffFn = loadCloudFunction('api', db, 'openid_staff')
+  const originalStaffUrgentRes = await originalStaffFn.main({
+    module: 'staff',
+    action: 'listUrgentOrders',
+    data: { latitude: 31.2, longitude: 121.5 }
+  })
+  assert.equal(originalStaffUrgentRes.ok, true)
+  assert.equal((originalStaffUrgentRes.data || []).some((o) => o._id === 'order_urgent_1'), false, 'Original staff must NOT see urgent order in listUrgentOrders')
+
+  const originalStaffAcceptRes = await originalStaffFn.main({
+    module: 'staff',
+    action: 'acceptOrder',
+    data: { orderId: 'order_urgent_1', currentLatitude: 31.2, currentLongitude: 121.5, riskConfirmed: true }
+  })
+  assert.equal(originalStaffAcceptRes.ok, false)
+  assert.ok(originalStaffAcceptRes.message.includes('不可重复抢单'))
 
   // 3. 管理员端系统通知：验证转加急派单已向管理员生成系统通知
   const urgentAdminNotice = (db.state.admin_notifications || []).find((n) => n.type === 'order_urgent_republished')
@@ -541,6 +559,8 @@ test('republishOrderAsUrgent blocks republishing on concurrent status update via
     data: {
       orderId: 'order_concurrent_1',
       staffReward: 90,
+      startTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      endTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
       recordDepositEvidence: true,
       deductAmount: 50
     }
@@ -553,4 +573,235 @@ test('republishOrderAsUrgent blocks republishing on concurrent status update via
   assert.equal(checkOrder.status, 'in_service')
   // 确认保证金证据已被安全回滚清理，没有脏数据
   assert.equal(db.state.staff_deposit_evidences.length, 0)
+})
+
+test('republishOrderAsUrgent strictly enforces startTime logic: not in past and at least 30 minutes later', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin_1', openid: 'openid_admin', roles: ['admin'], status: 'active' }
+    ],
+    orders: [
+      {
+        _id: 'order_time_check_1',
+        orderNo: 'O20260928001',
+        status: 'assigned',
+        staffOpenid: 'openid_staff',
+        payAmount: 60,
+        startTime: '2026-09-28 09:00',
+        endTime: '2026-09-28 10:00'
+      }
+    ],
+    admin_notifications: [],
+    order_timeline: []
+  })
+
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+
+  // 1. 开始时间早于当前时间（在过去）
+  const pastTime = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+  const pastRes = await adminFn.main({
+    module: 'admin',
+    action: 'republishOrderAsUrgent',
+    data: {
+      orderId: 'order_time_check_1',
+      staffReward: 80,
+      startTime: pastTime
+    }
+  })
+  assert.equal(pastRes.ok, false)
+  assert.ok(pastRes.message.includes('不能早于当前时间'))
+
+  // 2. 开始时间在未来，但不足30分钟（例如15分钟后）
+  const tooSoonTime = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+  const tooSoonRes = await adminFn.main({
+    module: 'admin',
+    action: 'republishOrderAsUrgent',
+    data: {
+      orderId: 'order_time_check_1',
+      staffReward: 80,
+      startTime: tooSoonTime
+    }
+  })
+  assert.equal(tooSoonRes.ok, false)
+  assert.ok(tooSoonRes.message.includes('30分钟后'))
+
+  // 3. 结束时间早于开始时间
+  const validStart = new Date(Date.now() + 45 * 60 * 1000).toISOString()
+  const invalidEnd = new Date(Date.now() + 35 * 60 * 1000).toISOString()
+  const invalidEndRes = await adminFn.main({
+    module: 'admin',
+    action: 'republishOrderAsUrgent',
+    data: {
+      orderId: 'order_time_check_1',
+      staffReward: 80,
+      startTime: validStart,
+      endTime: invalidEnd
+    }
+  })
+  assert.equal(invalidEndRes.ok, false)
+  assert.ok(invalidEndRes.message.includes('结束时间必须晚于开始时间'))
+
+  // 4. 正确的合规加急时间（45分钟后开始，1小时45分钟后结束）
+  const validEnd = new Date(Date.now() + 105 * 60 * 1000).toISOString()
+  const validRes = await adminFn.main({
+    module: 'admin',
+    action: 'republishOrderAsUrgent',
+    data: {
+      orderId: 'order_time_check_1',
+      staffReward: 85,
+      startTime: validStart,
+      endTime: validEnd
+    }
+  })
+  assert.equal(validRes.ok, true)
+  assert.equal(validRes.data.isUrgent, true)
+  assert.equal(validRes.data.status, 'paid')
+  const updatedOrder = db.state.orders.find((o) => o._id === 'order_time_check_1')
+  assert.equal(updatedOrder.isUrgent, true)
+  assert.equal(updatedOrder.startTime, validStart)
+  assert.equal(updatedOrder.endTime, validEnd)
+  assert.equal(updatedOrder.serviceSessions[0].startTime, validStart)
+})
+
+test('admin can republish already-urgent order when 2nd staff defaults, blocking both sitters from re-grabbing', async () => {
+  const time1 = new Date(Date.now() + 40 * 60 * 1000).toISOString()
+  const time1End = new Date(Date.now() + 100 * 60 * 1000).toISOString()
+  const time2 = new Date(Date.now() + 50 * 60 * 1000).toISOString()
+  const time2End = new Date(Date.now() + 110 * 60 * 1000).toISOString()
+
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin_1', openid: 'openid_admin', roles: ['admin'], status: 'active' },
+      { _id: 'staff_1', openid: 'openid_staff_1', roles: ['staff'], status: 'active', name: '张托师' },
+      { _id: 'staff_2', openid: 'openid_staff_2', roles: ['staff'], status: 'active', name: '李托师' },
+      { _id: 'staff_3', openid: 'openid_staff_3', roles: ['staff'], status: 'active', name: '王托师' }
+    ],
+    staff_profiles: [
+      { _id: 'sp_1', openid: 'openid_staff_1', name: '张托师', serviceLatitude: 31.2, serviceLongitude: 121.5, serviceAddress: '张江', serviceRadiusKm: 10, auditStatus: 'approved' },
+      { _id: 'sp_2', openid: 'openid_staff_2', name: '李托师', serviceLatitude: 31.2, serviceLongitude: 121.5, serviceAddress: '陆家嘴', serviceRadiusKm: 10, auditStatus: 'approved' },
+      { _id: 'sp_3', openid: 'openid_staff_3', name: '王托师', serviceLatitude: 31.2, serviceLongitude: 121.5, serviceAddress: '金桥', serviceRadiusKm: 10, auditStatus: 'approved' }
+    ],
+    orders: [
+      {
+        _id: 'order_multi_urgent',
+        orderNo: 'O20260928009',
+        serviceType: 'walk',
+        serviceSummary: '上门遛狗服务',
+        status: 'assigned',
+        staffOpenid: 'openid_staff_1',
+        staffProfileId: 'sp_1',
+        staffName: '张托师',
+        clientOpenid: 'openid_client_9',
+        startTime: time1,
+        endTime: time1End,
+        payAmount: 70,
+        serviceLatitude: 31.2,
+        serviceLongitude: 121.5,
+        addressLatitude: 31.2,
+        addressLongitude: 121.5
+      }
+    ],
+    admin_notifications: [],
+    order_timeline: [],
+    order_messages: [],
+    order_staff_messages: []
+  })
+
+  const adminFn = loadCloudFunction('api', db, 'openid_admin')
+  const staff1Fn = loadCloudFunction('api', db, 'openid_staff_1')
+  const staff2Fn = loadCloudFunction('api', db, 'openid_staff_2')
+  const staff3Fn = loadCloudFunction('api', db, 'openid_staff_3')
+
+  // 第一轮：管理员发布为加急单（收益 90 元）
+  const round1Res = await adminFn.main({
+    module: 'admin',
+    action: 'republishOrderAsUrgent',
+    data: {
+      orderId: 'order_multi_urgent',
+      staffReward: 90,
+      startTime: time1,
+      endTime: time1End,
+      urgentRemark: '宠托师1未按时履约转加急'
+    }
+  })
+  assert.equal(round1Res.ok, true)
+  assert.equal(round1Res.data.isUrgent, true)
+  assert.equal(round1Res.data.status, 'paid')
+
+  // 宠托师2接单成功
+  const accept2Res = await staff2Fn.main({
+    module: 'staff',
+    action: 'acceptOrder',
+    data: { orderId: 'order_multi_urgent', currentLatitude: 31.2, currentLongitude: 121.5, riskConfirmed: true }
+  })
+  assert.equal(accept2Res.ok, true)
+  assert.equal(accept2Res.data.status, 'assigned')
+
+  let orderInDb = db.state.orders.find((o) => o._id === 'order_multi_urgent')
+  assert.equal(orderInDb.staffOpenid, 'openid_staff_2')
+  assert.equal(orderInDb.isUrgent, true)
+
+  // 宠托师2也突发状况无法开始履约，管理员进行【第二轮重新发布加急单】（宠托师收益提升至 110 元）
+  const round2Res = await adminFn.main({
+    module: 'admin',
+    action: 'republishOrderAsUrgent',
+    data: {
+      orderId: 'order_multi_urgent',
+      staffReward: 110,
+      startTime: time2,
+      endTime: time2End,
+      urgentRemark: '宠托师2因故无法到场，重新发布加急抢单'
+    }
+  })
+  assert.equal(round2Res.ok, true)
+  assert.equal(round2Res.data.isUrgent, true)
+  assert.equal(round2Res.data.staffReward, 110)
+
+  orderInDb = db.state.orders.find((o) => o._id === 'order_multi_urgent')
+  assert.equal(orderInDb.status, 'paid')
+  assert.equal(orderInDb.staffOpenid, '', 'Must unbind staff 2')
+  assert.equal(orderInDb.urgentRepublishCount, 2)
+  assert.equal(orderInDb.previousStaffRecords.length, 2, 'Must record both staff 1 and staff 2 in history')
+  assert.equal(orderInDb.previousStaffRecords[0].staffOpenid, 'openid_staff_1')
+  assert.equal(orderInDb.previousStaffRecords[1].staffOpenid, 'openid_staff_2')
+
+  // 验证第二轮时间线及通知文案
+  const timeline = db.state.order_timeline.filter((t) => t.orderId === 'order_multi_urgent')
+  const lastTimeline = timeline[timeline.length - 1]
+  assert.equal(lastTimeline.title, '已重新发布加急抢单')
+
+  const clientMsgs = db.state.order_messages || []
+  const urgentClientMsg = clientMsgs.find((m) => m.title === '加急订单重新调度中')
+  assert.ok(urgentClientMsg, 'Must inform client that urgent order is being rescheduled')
+
+  // 验证违约宠托师1和宠托师2均不能在加急池看到此单，且接单都会被拦截
+  const listStaff1 = await staff1Fn.main({ module: 'staff', action: 'listUrgentOrders', data: { latitude: 31.2, longitude: 121.5 } })
+  const listStaff2 = await staff2Fn.main({ module: 'staff', action: 'listUrgentOrders', data: { latitude: 31.2, longitude: 121.5 } })
+  assert.equal((listStaff1.data || []).some((o) => o._id === 'order_multi_urgent'), false, 'Staff 1 must NOT see order')
+  assert.equal((listStaff2.data || []).some((o) => o._id === 'order_multi_urgent'), false, 'Staff 2 must NOT see order')
+
+  const acceptStaff1Err = await staff1Fn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'order_multi_urgent', currentLatitude: 31.2, currentLongitude: 121.5, riskConfirmed: true } })
+  const acceptStaff2Err = await staff2Fn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'order_multi_urgent', currentLatitude: 31.2, currentLongitude: 121.5, riskConfirmed: true } })
+  assert.equal(acceptStaff1Err.ok, false)
+  assert.ok(acceptStaff1Err.message.includes('不可重复抢单'))
+  assert.equal(acceptStaff2Err.ok, false)
+  assert.ok(acceptStaff2Err.message.includes('不可重复抢单'))
+
+  // 宠托师3可以正常看到该单并抢单成功
+  const listStaff3 = await staff3Fn.main({ module: 'staff', action: 'listUrgentOrders', data: { latitude: 31.2, longitude: 121.5 } })
+  const foundBy3 = (listStaff3.data || []).find((o) => o._id === 'order_multi_urgent')
+  assert.ok(foundBy3, 'Staff 3 must see the re-published urgent order')
+  assert.equal(foundBy3.staffEarning, 110)
+
+  const acceptStaff3Res = await staff3Fn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'order_multi_urgent', currentLatitude: 31.2, currentLongitude: 121.5, riskConfirmed: true } })
+  assert.equal(acceptStaff3Res.ok, true)
+  assert.equal(acceptStaff3Res.data.status, 'assigned')
+
+  // 验证结算时，宠托师3按最新设定的110元结算
+  const createContext = require('../../cloudfunctions/api/services/context')
+  const ctx = createContext({ cloud: {}, db })
+  const finalOrder = (await db.collection('orders').doc('order_multi_urgent').get()).data
+  assert.equal(finalOrder.staffOpenid, 'openid_staff_3')
+  const earning = await ctx.ensureStaffEarning(finalOrder)
+  assert.equal(earning.amount, 110, 'Staff 3 earning must equal latest urgent reward 110')
 })

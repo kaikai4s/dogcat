@@ -16,8 +16,8 @@ test('setupDatabase: initializes collections and seeds default prices and checki
 
   assert.equal(res.ok, true)
   assert.equal(res.data.success, true)
-  assert.equal(res.data.totalCollections, 73)
-  assert.equal(res.data.totalIndexesConfigured, 22)
+  assert.equal(res.data.totalCollections, 75)
+  assert.equal(res.data.totalIndexesConfigured, 25)
   assert.ok(res.data.pricesInitialized > 0)
   assert.ok(res.data.checkinRulesInitialized > 0)
   assert.equal(res.data.settingsInitialized, true)
@@ -34,3 +34,24 @@ test('setupDatabase: initializes collections and seeds default prices and checki
   // 验证打卡规则已初始化
   assert.ok(db.state.service_checkin_rules.length > 0)
 })
+
+test('buildNotificationIndexes: builds indexes specifically for system_notifications and user_notification_reads', async () => {
+  const db = createCollectionStore({
+    users: [{ openid: 'admin_openid', roles: ['admin'], activeRole: 'admin', status: 'active' }]
+  })
+  const api = loadCloudFunction('api', db, 'admin_openid')
+
+  const res = await api.main({
+    module: 'initData',
+    action: 'buildNotificationIndexes'
+  })
+
+  assert.equal(res.ok, true)
+  assert.equal(res.data.success, true)
+  assert.equal(res.data.total, 3)
+  assert.equal(res.data.results.length, 3)
+  const collectionsCovered = res.data.results.map(r => r.collection)
+  assert.ok(collectionsCovered.includes('system_notifications'))
+  assert.ok(collectionsCovered.includes('user_notification_reads'))
+})
+

@@ -119,6 +119,7 @@ Page({
   },
 
   onShow() {
+    this._isPageActive = true
     this.applyCurrentTheme()
     this.applySavedLocation()
     this.loadHomePageData()
@@ -136,6 +137,7 @@ Page({
   },
 
   onHide() {
+    this._isPageActive = false
     this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
     this._protectedNavigationSeq = (this._protectedNavigationSeq || 0) + 1
     this.setData({ protectedNavigationUrl: '' })
@@ -150,6 +152,7 @@ Page({
   },
 
   onUnload() {
+    this._isPageActive = false
     this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
     this._protectedNavigationSeq = (this._protectedNavigationSeq || 0) + 1
     this.stopAllVideos()
@@ -728,6 +731,7 @@ Page({
       displayServicePrices: displayList,
       isHotServicesLooping: true
     }, () => {
+      if (!this._isPageActive) return
       this.calcHotServicesSingleSetWidth()
       this.startHotServicesAutoScroll()
     })
@@ -761,6 +765,7 @@ Page({
 
   startHotServicesAutoScroll() {
     this.stopHotServicesAutoScroll()
+    if (!this._isPageActive) return
     if (!this.data.isHotServicesLooping) return
     if (this.isHotServicesTouching) return
     if ((this.data.servicePrices || []).length < 3) return
@@ -769,6 +774,10 @@ Page({
     const INTERVAL = 30
 
     this.hotServicesScrollTimer = setInterval(() => {
+      if (!this._isPageActive) {
+        this.stopHotServicesAutoScroll()
+        return
+      }
       if (this.isHotServicesTouching) return
       let nextLeft = (this.currentHotScrollLeft || 0) + STEP
       if (this.singleSetWidth && this.singleSetWidth > 0) {
@@ -777,9 +786,13 @@ Page({
         }
       }
       this.currentHotScrollLeft = nextLeft
-      this.setData({
-        hotServicesScrollLeft: Math.round(nextLeft)
-      })
+      try {
+        this.setData({
+          hotServicesScrollLeft: Math.round(nextLeft)
+        })
+      } catch (_) {
+        this.stopHotServicesAutoScroll()
+      }
     }, INTERVAL)
   },
 
@@ -815,9 +828,12 @@ Page({
     this.isHotServicesTouching = false
     if (this.hotServicesResumeTimer) {
       clearTimeout(this.hotServicesResumeTimer)
+      this.hotServicesResumeTimer = null
     }
+    if (!this._isPageActive) return
     // 用户取消操作 5 秒钟后再继续开启循环移动
     this.hotServicesResumeTimer = setTimeout(() => {
+      if (!this._isPageActive) return
       if (!this.isHotServicesTouching) {
         this.startHotServicesAutoScroll()
       }

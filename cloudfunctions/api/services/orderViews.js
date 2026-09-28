@@ -260,7 +260,20 @@ module.exports = function createService({
             staffProfileId: order.originalStaffProfileId || order.previousStaffRecords[0].staffProfileId,
             staffName: order.originalStaffName || order.previousStaffRecords[0].staffName
           })
-        : null
+        : null,
+      previousStaffRecords: Array.isArray(order.previousStaffRecords)
+        ? await Promise.all(order.previousStaffRecords.map(async (rec) => {
+            const contact = await getAdminStaffContact({
+              staffOpenid: rec.staffOpenid,
+              staffProfileId: rec.staffProfileId,
+              staffName: rec.staffName
+            })
+            return {
+              ...rec,
+              contact
+            }
+          }))
+        : []
     }
   }
 

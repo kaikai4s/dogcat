@@ -13,6 +13,60 @@ const SERVICE_ORDER_STATUS_OPTIONS = [
   { value: 'refunded', label: '已退款' }
 ]
 
+function parseBeijingDate(value) {
+  if (!value) return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  const text = String(value).trim()
+  if (/^\d{10,13}$/.test(text)) {
+    const num = Number(text)
+    return new Date(text.length === 10 ? num * 1000 : num)
+  }
+  const localMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/)
+  if (localMatch) {
+    const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 8, Number(minute), Number(second)))
+  }
+  const time = new Date(text).getTime()
+  return Number.isFinite(time) ? new Date(time) : null
+}
+
+function formatFullBeijingDateTime(date) {
+  if (!date || Number.isNaN(date.getTime())) return ''
+  const beijing = new Date(date.getTime() + 8 * 60 * 60 * 1000)
+  const y = beijing.getUTCFullYear()
+  const m = String(beijing.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(beijing.getUTCDate()).padStart(2, '0')
+  const h = String(beijing.getUTCHours()).padStart(2, '0')
+  const min = String(beijing.getUTCMinutes()).padStart(2, '0')
+  return `${y}-${m}-${d} ${h}:${min}`
+}
+
+function computeInitialUrgentTime(order, durationMinutes = 60) {
+  const now = new Date()
+  const cstDate = new Date(now.getTime() + 8 * 3600 * 1000)
+  const minutes = cstDate.getUTCMinutes()
+  // 向上对齐到下一个整点或半点，并预留至少30分钟
+  const deltaMinutes = (30 - (minutes % 30)) + 30
+  const startObj = new Date(now.getTime() + deltaMinutes * 60 * 1000)
+  const endObj = new Date(startObj.getTime() + durationMinutes * 60 * 1000)
+
+  // 如果原订单开始时间有效且在当前时间30分钟之后，可优先使用原时间，否则使用计算出的合规加急时间
+  if (order && order.startTime) {
+    const origStart = parseBeijingDate(order.startTime)
+    if (origStart && origStart.getTime() >= now.getTime() + 30 * 60 * 1000) {
+      return {
+        startTime: order.startTime,
+        endTime: order.endTime || formatFullBeijingDateTime(new Date(origStart.getTime() + durationMinutes * 60 * 1000))
+      }
+    }
+  }
+
+  return {
+    startTime: formatFullBeijingDateTime(startObj),
+    endTime: formatFullBeijingDateTime(endObj)
+  }
+}
+
 Page({
   data: {
     id: '',
@@ -258,11 +312,13 @@ Page({
       return
     }
     const defaultReward = order.urgentStaffReward || Math.round(Number(order.payAmount || 60) * 0.7 * 100) / 100
+    const durationMinutes = Number(order.durationMinutes || 60) || 60
+    const initialTimes = computeInitialUrgentTime(order, durationMinutes)
     this.setData({
       showUrgentModal: true,
       urgentStaffRewardInput: String(defaultReward),
-      urgentStartTimeInput: order.startTime || '',
-      urgentEndTimeInput: order.endTime || '',
+      urgentStartTimeInput: initialTimes.startTime,
+      urgentEndTimeInput: initialTimes.endTime,
       urgentRemarkInput: order.urgentRemark || ''
     })
   },
@@ -276,7 +332,15 @@ Page({
   },
 
   inputUrgentStartTime(e) {
-    this.setData({ urgentStartTimeInput: e.detail.value })
+    const val = String(e.detail.value || '').trim()
+    this.setData({ urgentStartTimeInput: val })
+    const parsed = parseBeijingDate(val)
+    if (parsed) {
+      const order = this.data.detail && this.data.detail.order
+      const durationMinutes = Number((order && order.durationMinutes) || 60) || 60
+      const endObj = new Date(parsed.getTime() + durationMinutes * 60 * 1000)
+      this.setData({ urgentEndTimeInput: formatFullBeijingDateTime(endObj) })
+    }
   },
 
   inputUrgentEndTime(e) {
@@ -300,9 +364,39 @@ Page({
     const endTime = String(this.data.urgentEndTimeInput || '').trim()
     const urgentRemark = String(this.data.urgentRemarkInput || '').trim()
 
+    if (!startTime) {
+      wx.showToast({ title: '请填写服务开始时间', icon: 'none' })
+      return
+    }
+    const startDateObj = parseBeijingDate(startTime)
+    if (!startDateObj) {
+      wx.showToast({ title: '开始时间格式有误，需为 YYYY-MM-DD HH:mm', icon: 'none' })
+      return
+    }
+    const nowMs = Date.now()
+    if (startDateObj.getTime() < nowMs) {
+      wx.showToast({ title: '服务开始时间不能早于当前时间', icon: 'none' })
+      return
+    }
+    if (startDateObj.getTime() < nowMs + 30 * 60 * 1000) {
+      wx.showToast({ title: '加急开始时间至少需在当前时间的30分钟后', icon: 'none' })
+      return
+    }
+    if (endTime) {
+      const endDateObj = parseBeijingDate(endTime)
+      if (endDateObj && endDateObj.getTime() <= startDateObj.getTime()) {
+        wx.showToast({ title: '服务结束时间必须晚于开始时间', icon: 'none' })
+        return
+      }
+    }
+
+    const isReUrgent = Boolean(order.isUrgent)
+    const modalTitle = isReUrgent ? '确认重新发布加急抢单' : '确认转为加急公共抢单'
+    const modalContent = `服务开始时间：${startTime}\n宠托师可获收益：¥${staffReward.toFixed(2)}\n用户支付金额：¥${Number(order.payAmount || 0).toFixed(2)}（保持不变，无需用户补付）\n确定${isReUrgent ? '重新发布加急单' : '重新发布到加急公共单'}吗？`
+
     wx.showModal({
-      title: '确认转为加急公共抢单',
-      content: `宠托师可获收益：¥${staffReward.toFixed(2)}\n用户支付金额：¥${Number(order.payAmount || 0).toFixed(2)}（保持不变，无需用户补付）\n确定重新发布到加急公共单吗？`,
+      title: modalTitle,
+      content: modalContent,
       confirmColor: '#ea580c',
       success: (res) => {
         if (!res.confirm) return
@@ -315,7 +409,7 @@ Page({
           urgentRemark
         })
           .then(() => {
-            wx.showToast({ title: '已转为加急公共单' })
+            wx.showToast({ title: isReUrgent ? '已重新发布加急单' : '已转为加急公共单' })
             this.closeUrgentModal()
             this.load()
           })
@@ -332,6 +426,15 @@ Page({
     const phone = this.data.detail && this.data.detail.order && this.data.detail.order.originalStaffContact && this.data.detail.order.originalStaffContact.phone
     if (!phone) {
       wx.showToast({ title: '原宠托师电话未绑定', icon: 'none' })
+      return
+    }
+    wx.makePhoneCall({ phoneNumber: phone })
+  },
+
+  callPreviousStaff(e) {
+    const phone = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.phone
+    if (!phone) {
+      wx.showToast({ title: '该宠托师电话未绑定', icon: 'none' })
       return
     }
     wx.makePhoneCall({ phoneNumber: phone })

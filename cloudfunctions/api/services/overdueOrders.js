@@ -52,6 +52,12 @@ module.exports = function createService({
       readActiveOrders(whereDayCompleted)
     ])
     const candidates = [...assignedOrders, ...dayCompletedOrders]
+    console.log('[processOverdueUnstartedOrders] scanning candidates:', {
+      assignedCount: assignedOrders.length,
+      dayCompletedCount: dayCompletedOrders.length,
+      currentTime: formatDateTime(currentTs),
+      windowStartText
+    })
     const processed = []
 
     for (const order of candidates) {
@@ -61,6 +67,13 @@ module.exports = function createService({
       const targetSession = activeSession || nextSession || (Array.isArray(order.serviceSessions) && order.serviceSessions[0]) || { index: 1, startTime: order.startTime }
       const sessionIndex = Number(targetSession.index || 1)
       const sessionStartTime = toTimeValue((targetSession && targetSession.startTime) || order.startTime)
+      const overdueMinutes = sessionStartTime ? Math.round((currentTs - sessionStartTime) / 60000) : null
+      console.log('[processOverdueUnstartedOrders] candidate inspection:', {
+        orderId: order._id,
+        orderNo: order.orderNo,
+        sessionStartTime: targetSession && targetSession.startTime,
+        overdueMinutes
+      })
       if (!sessionStartTime || sessionStartTime < windowStartTs) continue
 
       const overdueMs = currentTs - sessionStartTime
@@ -74,68 +87,96 @@ module.exports = function createService({
 
       // 阶段 1：超时 15 分钟未开始 -> 催促宠托师尽快履约
       if (overdueMs >= 15 * 60 * 1000 && !remindedSessions.includes(sessionIndex)) {
-        await notifyOrder(order.staffOpenid, 'serviceStart', order, {
-          statusText: '服务已超时未开始',
-          tip: `约定于 ${timeText} 开始，已超时 15 分钟，请尽快打卡开始`
-        }, 'staff')
+        try {
+          await notifyOrder(order.staffOpenid, 'serviceStart', order, {
+            statusText: '服务已超时未开始',
+            tip: `约定于 ${timeText} 开始，已超时 15 分钟，请尽快打卡开始`
+          }, 'staff')
+        } catch (notifyErr) {
+          console.error('[processOverdueUnstartedOrders] staff notifyOrder error:', notifyErr.message)
+        }
 
-        await appendOrderStaffMessage(order, {
-          eventType: 'overdue_unstarted_warning',
-          title: '服务已超时未开始提醒',
-          detail: `您的订单（${serviceName}）约定于 ${timeText} 开始，现已超时超过 15 分钟尚未开始服务。请尽快到达服务地点并打卡开始，以免产生爽约客诉或违约处罚。`,
-          actorRole: 'system',
-          idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_unstarted_warning', String(sessionIndex))
-        })
+        try {
+          await appendOrderStaffMessage(order, {
+            eventType: 'overdue_unstarted_warning',
+            title: '服务已超时未开始提醒',
+            detail: `您的订单（${serviceName}）约定于 ${timeText} 开始，现已超时超过 15 分钟尚未开始服务。请尽快到达服务地点并打卡开始，以免产生爽约客诉或违约处罚。`,
+            actorRole: 'system',
+            idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_unstarted_warning', String(sessionIndex))
+          })
+        } catch (msgErr) {
+          console.error('[processOverdueUnstartedOrders] appendOrderStaffMessage error:', msgErr.message)
+        }
 
-        await appendOrderTimeline(order._id, 'overdue_unstarted_warning', '服务超时未开始催促', `第${sessionIndex}天服务已超时 15 分钟尚未开始，系统已提醒催促宠托师尽快到场履约。`, 'system')
+        try {
+          await appendOrderTimeline(order._id, 'overdue_unstarted_warning', '服务超时未开始催促', `第${sessionIndex}天服务已超时 15 分钟尚未开始，系统已提醒催促宠托师尽快到场履约。`, 'system')
+        } catch (tlErr) {
+          console.error('[processOverdueUnstartedOrders] appendOrderTimeline error:', tlErr.message)
+        }
 
         updates.staffOverdueStartRemindedSessions = [...remindedSessions, sessionIndex]
       }
 
       // 阶段 2：超时 30 分钟未开始 -> 提醒宠物主并标记异常预警
       if (overdueMs >= 30 * 60 * 1000 && !clientAlertedSessions.includes(sessionIndex)) {
-        await notifyOrder(order.clientOpenid, 'serviceStart', order, {
-          statusText: '服务未按时开始',
-          tip: '宠托师尚未开始服务，平台已介入催促跟进'
-        }, 'client')
+        try {
+          await notifyOrder(order.clientOpenid, 'serviceStart', order, {
+            statusText: '服务未按时开始',
+            tip: '宠托师尚未开始服务，平台已介入催促跟进'
+          }, 'client')
+        } catch (notifyErr) {
+          console.error('[processOverdueUnstartedOrders] client notifyOrder error:', notifyErr.message)
+        }
 
-        await appendOrderClientMessage(order, {
-          eventType: 'overdue_unstarted_client_notice',
-          title: '服务未按时开始提醒',
-          detail: `您预约于 ${timeText} 的服务（${serviceName}）已超时 30 分钟尚未开始。系统已多次催促宠托师，您可在订单页面联系宠托师或在线客服协助处理。`,
-          actorRole: 'system',
-          unreadForClient: true
-        })
+        try {
+          await appendOrderClientMessage(order, {
+            eventType: 'overdue_unstarted_client_notice',
+            title: '服务未按时开始提醒',
+            detail: `您预约于 ${timeText} 的服务（${serviceName}）已超时 30 分钟尚未开始。系统已多次催促宠托师，您可在订单页面联系宠托师或在线客服协助处理。`,
+            actorRole: 'system',
+            unreadForClient: true
+          })
+        } catch (msgErr) {
+          console.error('[processOverdueUnstartedOrders] appendOrderClientMessage error:', msgErr.message)
+        }
 
-        await appendOrderTimeline(order._id, 'overdue_unstarted_alert', '服务严重超时异常预警', `服务已超时 30 分钟仍未开始，系统已提醒宠物主并触发异常跟进。`, 'system')
+        try {
+          await appendOrderTimeline(order._id, 'overdue_unstarted_alert', '服务严重超时异常预警', `服务已超时 30 分钟仍未开始，系统已提醒宠物主并触发异常跟进。`, 'system')
+        } catch (tlErr) {
+          console.error('[processOverdueUnstartedOrders] appendOrderTimeline error:', tlErr.message)
+        }
 
         if (typeof notifyAdmins === 'function') {
-          const staffUserRes = order.staffOpenid ? await db.collection('users').where({ openid: order.staffOpenid }).limit(1).get() : { data: [] }
-          const staffUser = (staffUserRes.data && staffUserRes.data[0]) || {}
-          const staffProfileRes = order.staffProfileId ? await db.collection('staff_profiles').doc(order.staffProfileId).get() : { data: null }
-          const staffProfile = staffProfileRes.data || {}
-          const staffName = staffProfile.name || staffUser.name || order.staffName || '已指派宠托师'
-          const staffPhone = staffProfile.phone || staffUser.phone || '未填写'
-          const clientPhone = (order.clientSnapshot && order.clientSnapshot.phoneMasked) || (order.clientContact && order.clientContact.phone) || '未填写'
+          try {
+            const staffUserRes = order.staffOpenid ? await db.collection('users').where({ openid: order.staffOpenid }).limit(1).get() : { data: [] }
+            const staffUser = (staffUserRes.data && staffUserRes.data[0]) || {}
+            const staffProfileRes = order.staffProfileId ? await db.collection('staff_profiles').doc(order.staffProfileId).get() : { data: null }
+            const staffProfile = staffProfileRes.data || {}
+            const staffName = staffProfile.name || staffUser.name || order.staffName || '已指派宠托师'
+            const staffPhone = staffProfile.phone || staffUser.phone || '未填写'
+            const clientPhone = (order.clientSnapshot && order.clientSnapshot.phoneMasked) || (order.clientContact && order.clientContact.phone) || '未填写'
 
-          await notifyAdmins({
-            type: 'order_start_overdue',
-            level: 'urgent',
-            title: `【超时未开始预警】订单 ${order.orderNo || order._id} 超时30分钟未开始`,
-            content: `订单（${serviceName}）原约定于 ${timeText} 开始，已超时 30 分钟。当前宠托师：${staffName}（电话：${staffPhone}），客户电话：${clientPhone}。请立即电话联系宠托师；如无法继续履约，可在后台将其转为【加急公共抢单】重新调度！`,
-            orderId: order._id,
-            orderNo: order.orderNo || '',
-            actionUrl: `/pages/admin/orders/detail/index?id=${order._id}`,
-            extra: {
-              sessionIndex,
-              serviceName,
-              startTime: timeText,
-              staffName,
-              staffPhone,
-              clientPhone
-            },
-            idempotencyKey: makeIdempotencyKey('admin_notice_start_overdue', order._id, String(sessionIndex))
-          })
+            await notifyAdmins({
+              type: 'order_start_overdue',
+              level: 'urgent',
+              title: `【超时未开始预警】订单 ${order.orderNo || order._id} 超时30分钟未开始`,
+              content: `订单（${serviceName}）原约定于 ${timeText} 开始，已超时 30 分钟。当前宠托师：${staffName}（电话：${staffPhone}），客户电话：${clientPhone}。请立即电话联系宠托师；如无法继续履约，可在后台将其转为【加急公共抢单】重新调度！`,
+              orderId: order._id,
+              orderNo: order.orderNo || '',
+              actionUrl: `/pages/admin/orders/detail/index?id=${order._id}`,
+              extra: {
+                sessionIndex,
+                serviceName,
+                startTime: timeText,
+                staffName,
+                staffPhone,
+                clientPhone
+              },
+              idempotencyKey: makeIdempotencyKey('admin_notice_start_overdue', order._id, String(sessionIndex))
+            })
+          } catch (adminErr) {
+            console.error('[processOverdueUnstartedOrders] notifyAdmins error:', adminErr.message)
+          }
         }
 
         updates.clientOverdueStartAlertedSessions = [...clientAlertedSessions, sessionIndex]

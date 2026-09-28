@@ -1,5 +1,5 @@
 const definitions = [
-  ['overview', '控制台与通知', 'admin', 'dashboard:查看统计 listAdminNotifications:查看通知 getAdminNotificationBadge:通知角标 markAdminNotificationRead:标记已读'],
+  ['overview', '控制台与通知', 'admin', 'dashboard:查看统计 listAdminNotifications:查看通知 getAdminNotificationBadge:通知角标 markAdminNotificationRead:标记已读 sendSystemNotification:发送系统通知 listSystemNotifications:系统通知列表 revokeSystemNotification:撤回系统通知'],
   ['orders', '服务订单', 'admin', 'listOrders:订单列表 getOrderDetail:订单详情 getEvidence:服务证据 assignOrder:派单 updateOrderStatus:修改状态 manualCompleteOrder:人工完单 refundOrder:退款 batchDeleteOrders:删除订单 republishOrderAsUrgent:加急重发 addOrderDepositPenaltyEvidence:录入扣罚证据 listOrderDepositPenaltyEvidences:查看扣罚证据'],
   ['users', '用户资料', 'admin', 'listUsers:用户列表 getUserDetail:用户详情 updateUserProfile:编辑用户 deleteUser:删除用户 hardDeleteUser:彻底删除用户'],
   ['staff', '宠托师', 'admin', 'listStaffProfiles:宠托师列表 setSitterFeatured:推荐设置 listStaffAudits:资质列表 auditStaff:审核资质 completeStaffGender:核实补录性别 revokeStaff:撤销资格 listTrainingAudits:培训列表 auditTrainingVideo:培训审核 updateVideoAuditGuide:审核指引 listPromotionApplications:转正列表 getPromotionApplicationDetail:转正详情 auditPromotionApplication:转正审核'],

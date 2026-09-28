@@ -52,6 +52,23 @@
       </view>
     </block>
 
+    <!-- 存在多次改派/重发加急时的其他历史宠托师记录 -->
+    <block wx:if="{{detail.order.previousStaffRecords && detail.order.previousStaffRecords.length > 1}}">
+      <block wx:for="{{detail.order.previousStaffRecords}}" wx:key="index">
+        <view class="info-row warning-row" style="margin-top: 8rpx;" wx:if="{{index > 0 || item.staffOpenid !== detail.order.originalStaffOpenid}}">
+          <view class="label">历史加急宠托师 #{{index + 1}}</view>
+          <view class="value danger-text">{{item.staffName || item.staffOpenid}}（违规转单）</view>
+        </view>
+        <view class="info-row" wx:if="{{(index > 0 || item.staffOpenid !== detail.order.originalStaffOpenid) && (item.contact && item.contact.phone || item.staffPhone)}}">
+          <view class="label">联系电话</view>
+          <view class="value">{{item.contact.phone || item.staffPhone}}</view>
+        </view>
+        <view class="button-row" wx:if="{{(index > 0 || item.staffOpenid !== detail.order.originalStaffOpenid) && (item.contact && item.contact.phone || item.staffPhone)}}">
+          <button class="ghost-btn danger-ghost" data-phone="{{item.contact.phone || item.staffPhone}}" bindtap="callPreviousStaff"><text class="remix-icon ri-phone-line"></text><text>拨打该宠托师电话</text></button>
+        </view>
+      </block>
+    </block>
+
     <view class="info-row" wx:if="{{detail.order.assignmentSource}}">
       <view class="label">派单来源</view>
       <view class="value">
@@ -132,7 +149,7 @@
     <button class="primary-btn complete-btn" style="background: linear-gradient(135deg, #10b981, #059669);" bindtap="openManualCompleteModal" wx:if="{{detail.order.status === 'assigned' || detail.order.status === 'in_service' || detail.order.status === 'day_completed'}}"><text class="remix-icon ri-checkbox-circle-fill"></text><text>核实完成服务</text></button>
     <button class="ghost-btn" bindtap="openStatusModal"><text class="remix-icon ri-edit-box-line"></text><text>修改状态</text></button>
     <button class="ghost-btn refund-btn" bindtap="openRefundModal" wx:if="{{detail.order.payAmount > 0}}"><text class="remix-icon ri-refund-2-line"></text><text>手动退款</text></button>
-    <button class="primary-btn urgent-btn" bindtap="openUrgentModal" wx:if="{{detail.order.status === 'assigned' || detail.order.status === 'paid'}}"><text class="remix-icon ri-flashlight-fill"></text><text>转加急公共抢单</text></button>
+    <button class="primary-btn urgent-btn" bindtap="openUrgentModal" wx:if="{{detail.order.status === 'assigned' || detail.order.status === 'paid'}}"><text class="remix-icon ri-flashlight-fill"></text><text>{{detail.order.isUrgent ? '重新发布加急抢单' : '转加急公共抢单'}}</text></button>
     <button class="ghost-btn penalty-btn" bindtap="openEvidenceModal"><text class="remix-icon ri-shield-cross-line"></text><text>扣除保证金留证</text></button>
     <button class="ghost-btn" bindtap="evidence"><text class="remix-icon ri-shield-check-line"></text><text>证据链</text></button>
     <button class="ghost-btn" bindtap="incidents"><text class="remix-icon ri-customer-service-2-line"></text><text>查看异常 / 纠纷</text></button>
@@ -192,7 +209,7 @@
   <!-- 转加急公共抢单弹窗 -->
   <view class="modal-mask" wx:if="{{showUrgentModal}}">
     <view class="modal-card">
-      <view class="modal-title"><text class="remix-icon ri-flashlight-fill" style="color: #ea580c; margin-right: 8rpx;"></text>转为加急公共抢单</view>
+      <view class="modal-title"><text class="remix-icon ri-flashlight-fill" style="color: #ea580c; margin-right: 8rpx;"></text>{{detail.order.isUrgent ? '重新发布加急抢单' : '转为加急公共抢单'}}</view>
       <view class="modal-summary">
         <view class="strong small">{{detail.order.orderNo}} · {{detail.order.serviceSummary}}</view>
         <view class="muted">客户支付：¥{{detail.order.payAmount}}（保持不变，无需客户补款）</view>
@@ -204,6 +221,7 @@
 
         <view class="form-label" style="margin-top: 18rpx;">服务开始时间</view>
         <input placeholder="YYYY-MM-DD HH:mm" value="{{urgentStartTimeInput}}" bindinput="inputUrgentStartTime" />
+        <view class="muted" style="font-size: 22rpx; margin-top: 6rpx; color: #ea580c;">* 与下单时间逻辑一致：不能早于当前时间，且至少在当前时间的30分钟后</view>
 
         <view class="form-label" style="margin-top: 18rpx;">服务结束时间</view>
         <input placeholder="YYYY-MM-DD HH:mm" value="{{urgentEndTimeInput}}" bindinput="inputUrgentEndTime" />
@@ -213,7 +231,7 @@
       </view>
       <view class="modal-actions">
         <button class="ghost-btn" bindtap="closeUrgentModal">取消</button>
-        <button class="primary-btn" style="background: linear-gradient(135deg, #ff7849, #ea580c);" loading="{{submittingUrgent}}" disabled="{{submittingUrgent}}" bindtap="submitUrgentRepublish">发布加急单</button>
+        <button class="primary-btn" style="background: linear-gradient(135deg, #ff7849, #ea580c);" loading="{{submittingUrgent}}" disabled="{{submittingUrgent}}" bindtap="submitUrgentRepublish">{{detail.order.isUrgent ? '确认重新发布加急单' : '发布加急单'}}</button>
       </view>
     </view>
   </view>

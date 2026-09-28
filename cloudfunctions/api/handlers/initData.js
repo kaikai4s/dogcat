@@ -88,7 +88,10 @@ module.exports = function createHandler(context) {
         { collection: 'order_incidents', name: 'idx_incident_order_id', keys: { orderId: 1 }, unique: false },
         { collection: 'order_messages', name: 'idx_order_messages', keys: { conversationId: 1, createdAt: -1 }, unique: false },
         { collection: 'point_logs', name: 'idx_point_logs', keys: { openid: 1, createdAt: -1 }, unique: false },
-        { collection: 'withdraw_requests', name: 'idx_withdraw_staff', keys: { staffOpenid: 1, createdAt: -1 }, unique: false }
+        { collection: 'withdraw_requests', name: 'idx_withdraw_staff', keys: { staffOpenid: 1, createdAt: -1 }, unique: false },
+        { collection: 'system_notifications', name: 'idx_sys_notice_status_time', keys: { status: 1, createdAt: -1 }, unique: false },
+        { collection: 'system_notifications', name: 'idx_sys_notice_created', keys: { createdAt: -1 }, unique: false },
+        { collection: 'user_notification_reads', name: 'idx_user_notice_read_unique', keys: { openid: 1, role: 1, notificationId: 1 }, unique: true }
       ]
 
       const indexResults = []
@@ -228,6 +231,51 @@ module.exports = function createHandler(context) {
         }
       }
       return result
+    }
+
+    if (action === 'buildNotificationIndexes' || action === 'setupNotificationIndexes') {
+      await requireInitSecretOrAdmin()
+      const notificationIndexes = [
+        { collection: 'system_notifications', name: 'idx_sys_notice_status_time', keys: { status: 1, createdAt: -1 }, unique: false },
+        { collection: 'system_notifications', name: 'idx_sys_notice_created', keys: { createdAt: -1 }, unique: false },
+        { collection: 'user_notification_reads', name: 'idx_user_notice_read_unique', keys: { openid: 1, role: 1, notificationId: 1 }, unique: true }
+      ]
+      const results = []
+      let createdCount = 0
+      for (const item of notificationIndexes) {
+        try {
+          const col = db.collection(item.collection)
+          if (typeof col.createIndex === 'function') {
+            await col.createIndex({
+              name: item.name,
+              keys: item.keys,
+              unique: item.unique === true
+            })
+            createdCount++
+            results.push({ collection: item.collection, name: item.name, status: 'created' })
+          } else {
+            results.push({ collection: item.collection, name: item.name, status: 'skipped_mock_env' })
+          }
+        } catch (err) {
+          const msg = String(err.message || err.errMsg || err)
+          if (msg.includes('already exists') || msg.includes('exist') || msg.includes('已存在')) {
+            results.push({ collection: item.collection, name: item.name, status: 'already_exists' })
+          } else {
+            try {
+              const col = db.collection(item.collection)
+              if (typeof col.createIndex === 'function') {
+                const legacyKeys = Object.entries(item.keys).map(([name, dir]) => ({ name, direction: dir === -1 || dir === 'desc' ? 'desc' : 'asc' }))
+                await col.createIndex({ keys: legacyKeys, name: item.name, unique: item.unique === true })
+                createdCount++
+                results.push({ collection: item.collection, name: item.name, status: 'created_legacy' })
+                continue
+              }
+            } catch (_) {}
+            results.push({ collection: item.collection, name: item.name, status: 'failed', error: msg })
+          }
+        }
+      }
+      return { success: true, total: notificationIndexes.length, createdCount, results }
     }
 
     async function claimInitialAdmin() {

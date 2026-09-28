@@ -2,6 +2,9 @@ module.exports = function createHandler(context) {
   const {
     db,
     getUser,
+    getUserSystemNotificationUnreadCount,
+    listUserSystemNotifications,
+    markSystemNotificationRead,
     now,
     orderStatusText,
     paginateList,
@@ -23,10 +26,16 @@ module.exports = function createHandler(context) {
     }
     if (action === 'getUnreadSummary') {
       const threads = await readScopedDocuments('order_message_threads', { clientOpenid: openid })
-      const totalUnread = threads
+      const orderUnread = threads
         .filter((thread) => thread.hiddenForClient !== true)
         .reduce((sum, thread) => sum + Math.max(Number(thread.unreadCount || 0), 0), 0)
-      return { totalUnread, hasUnread: totalUnread > 0 }
+      const user = await getUser(openid).catch(() => ({ roles: [] }))
+      let systemUnread = 0
+      if (typeof getUserSystemNotificationUnreadCount === 'function') {
+        systemUnread = await getUserSystemNotificationUnreadCount(openid, 'client', user)
+      }
+      const totalUnread = orderUnread + systemUnread
+      return { totalUnread, orderUnread, systemUnread, hasUnread: totalUnread > 0 }
     }
     if (action === 'getThreadMessages') {
       const threadId = safeText(data.threadId).trim()
@@ -83,6 +92,12 @@ module.exports = function createHandler(context) {
       const time = now()
       await db.collection('order_message_threads').doc(thread._id).update({ data: { unreadCount: 0, readAt: time } })
       return { threadId: thread._id, orderId, unreadCount: 0 }
+    }
+    if (action === 'listSystemNotifications') {
+      return listUserSystemNotifications(openid, 'client', data)
+    }
+    if (action === 'markSystemNotificationRead') {
+      return markSystemNotificationRead(openid, 'client', data)
     }
     throw new Error('未知 message 操作')
   }

@@ -222,6 +222,63 @@
 
 ---
 
+### 10. system_notifications 集合（系统通知与公告主表）
+
+**索引 1：有效通知按时间倒序查询（客户端/宠托师端拉取）**
+```json
+{
+  "name": "idx_sys_notice_status_time",
+  "unique": false,
+  "keys": [
+    { "name": "status", "direction": "asc" },
+    { "name": "createdAt", "direction": "desc" }
+  ]
+}
+```
+- **用途**：用户端与宠托师端消息中心拉取有效通知并倒序排列
+- **对应代码**：`systemNotifications.js:97` - `readScopedDocuments('system_notifications', { status: 'active' }, 'createdAt', 'desc')`
+- **查询频率**：高（每个用户/宠托师进入消息中心时触发）
+
+**索引 2：全量广播历史时间索引（管理端查看历史列表）**
+```json
+{
+  "name": "idx_sys_notice_created",
+  "unique": false,
+  "keys": [
+    { "name": "createdAt", "direction": "desc" }
+  ]
+}
+```
+- **用途**：管理后台分页查看系统广播与历史下线记录
+- **对应代码**：`systemNotifications.js:62` - `readScopedDocuments('system_notifications', {}, 'createdAt', 'desc')`
+- **查询频率**：中等
+
+---
+
+### 11. user_notification_reads 集合（用户通知已读状态表）
+
+**索引：用户在指定角色下的通知阅读唯一索引（防重复已读+极速检索已读列表）**
+```json
+{
+  "name": "idx_user_notice_read_unique",
+  "unique": true,
+  "keys": [
+    { "name": "openid", "direction": "asc" },
+    { "name": "role", "direction": "asc" },
+    { "name": "notificationId", "direction": "asc" }
+  ]
+}
+```
+- **用途**：
+  1. 用户/宠托师打开消息列表时，根据最左前缀 `(openid, role)` 毫秒级返回用户已读过的 notificationId 集合。
+  2. 点击通知标为已读时，数据库层原子防止多终端并发造成重复插入。
+- **对应代码**：
+  - `systemNotifications.js:101` - `readScopedDocuments('user_notification_reads', { openid, role })`
+  - `systemNotifications.js:139` - `where({ openid, role, notificationId })`
+- **查询频率**：极高（每次获取消息列表及点击标为已读）
+
+---
+
 ## 实施步骤
 
 ### 方式一：通过控制台创建（推荐）
