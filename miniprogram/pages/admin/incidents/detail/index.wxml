@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="admin-incident-page incident-detail-page {{themeClass}} {{fontClass}}" wx:if="{{detail}}">
   <view class="incident-hero">
     <view class="hero-badge"><text class="remix-icon ri-auction-fill"></text><text>纠纷处理</text></view>
@@ -12,7 +13,7 @@
     <view class="info-row"><view class="label">订单</view><view class="value">{{detail.incident.orderId}}</view></view>
     <view class="info-row"><view class="label">宠物主</view><view class="value">{{detail.incident.clientOpenid}}</view></view>
     <view class="info-row"><view class="label">宠托师</view><view class="value">{{detail.incident.staffOpenid || '未接单'}}</view></view>
-    <view class="info-row"><view class="label">提交时间</view><view class="value">{{detail.incident.createdAt}}</view></view>
+    <view class="info-row"><view class="label">提交时间</view><view class="value">{{beijingTime.format(detail.incident.createdAt)}}</view></view>
     <view class="info-row" wx:if="{{detail.incident.frozenEarningIds.length}}"><view class="label">冻结收益</view><view class="value">{{detail.incident.frozenEarningIds.length}} 条</view></view>
     <view class="info-row" wx:if="{{detail.incident.refundNo}}"><view class="label">关联退款</view><view class="value">{{detail.incident.refundNo}}</view></view>
   </view>
@@ -63,12 +64,12 @@
 
   <view class="admin-card" wx:if="{{detail.comments.length}}">
     <view class="card-subtitle"><text class="remix-icon ri-chat-3-line sub-icon"></text><text>沟通记录</text></view>
-    <view class="timeline"><view class="timeline-item" wx:for="{{detail.comments}}" wx:key="_id"><view class="strong">{{item.actorRole}}</view><view class="muted">{{item.content}}</view><view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}"><image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" /></view><view class="muted">{{item.createdAt}}</view></view></view>
+    <view class="timeline"><view class="timeline-item" wx:for="{{detail.comments}}" wx:key="_id"><view class="strong">{{item.actorRole}}</view><view class="muted">{{item.content}}</view><view class="evidence-grid" wx:if="{{item.mediaFileIds.length}}"><image class="evidence-image" wx:for="{{item.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" /></view><view class="muted">{{beijingTime.format(item.createdAt)}}</view></view></view>
   </view>
 
   <view class="admin-card" wx:if="{{detail.actions.length}}">
     <view class="card-subtitle"><text class="remix-icon ri-history-line sub-icon"></text><text>操作日志</text></view>
-    <view class="timeline"><view class="timeline-item" wx:for="{{detail.actions}}" wx:key="_id"><view class="log-head"><view class="strong">{{item.actionText}}</view><view class="soft-badge status-badge">{{item.actorRoleText}}</view></view><view class="muted" wx:if="{{item.detailText}}">{{item.detailText}}</view><view class="muted">{{item.createdAt}}</view></view></view>
+    <view class="timeline"><view class="timeline-item" wx:for="{{detail.actions}}" wx:key="_id"><view class="log-head"><view class="strong">{{item.actionText}}</view><view class="soft-badge status-badge">{{item.actorRoleText}}</view></view><view class="muted" wx:if="{{item.detailText}}">{{item.detailText}}</view><view class="muted">{{beijingTime.format(item.createdAt)}}</view></view></view>
   </view>
 
   <view class="admin-card form-card">

@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="coupon-page {{themeClass}} {{fontClass}} page">
   <view class="coupon-hero">
     <view class="hero-badge"><text class="remix-icon ri-coupon-3-fill hero-icon"></text><text>福利中心</text></view>
@@ -19,7 +20,7 @@
         <view class="status-badge">{{item.statusText}}</view>
       </view>
       <view class="coupon-rule">{{item.ruleText}}</view>
-      <view class="coupon-meta"><text class="remix-icon ri-time-line"></text><text>有效期至 {{item.validTo}}</text></view>
+      <view class="coupon-meta"><text class="remix-icon ri-time-line"></text><text>有效期至 {{beijingTime.format(item.validTo)}}</text></view>
       <view class="coupon-desc" wx:if="{{item.description}}">{{item.description}}</view>
     </view>
   </view>

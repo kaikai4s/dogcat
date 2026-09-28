@@ -115,6 +115,11 @@ module.exports = function createHandler(context) {
       return enriched
     }
 
+    if (action === 'checkSession') {
+      // Page entry must not wait for reward checks or grant writes.
+      return enrichUserMemberLevel(await getUser(openid))
+    }
+
     if (action === 'me') {
       const user = await getUser(openid)
       const enriched = await enrichUserMemberLevel(user)

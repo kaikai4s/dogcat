@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="page staff-detail-page {{themeClass}} {{fontClass}}" wx:if="{{order}}">
   <staff-active-service-banner />
   <view class="staff-detail-hero">
@@ -100,7 +101,7 @@
     <view class="info-row"><view class="label">服务地址</view><view class="value">{{order.serviceAddress}}</view></view>
     <view class="info-row" wx:if="{{order.addressDetail}}"><view class="label">详细地址</view><view class="value">{{order.addressDetail}}</view></view>
     <view class="info-row" wx:if="{{order.doorplate}}"><view class="label">门牌说明</view><view class="value">{{order.doorplate}}</view></view>
-    <view class="info-row"><view class="label">预约时间</view><view class="value">{{order.startTime}} - {{order.endTime}}</view></view>
+    <view class="info-row"><view class="label">预约时间</view><view class="value">{{beijingTime.format(order.startTime)}} - {{beijingTime.format(order.endTime)}}</view></view>
     <view wx:if="{{order.petServiceDurations && order.petServiceDurations.length}}" class="session-list">
       <view class="session-label">每日履约任务{{order.sessionCount > 1 ? '（每天相同）' : ''}}</view>
       <view class="session-item" wx:for="{{order.petServiceDurations}}" wx:key="index">{{index + 1}}. {{item.petName}}｜{{item.serviceLabel}}｜{{item.durationMinutes}}分钟</view>
@@ -108,7 +109,7 @@
     <view class="info-row" wx:if="{{order.durationMinutes}}"><view class="label">{{order.petServiceDurations.length ? '每日合计' : '每次时长'}}</view><view class="value">{{order.durationMinutes}}分钟{{order.sessionCount > 1 ? ' × ' + order.sessionCount + '次' : ''}}</view></view>
     <view wx:if="{{order.serviceSessions.length > 1}}" class="session-list">
       <view class="session-label">每日服务安排</view>
-      <view class="session-item" wx:for="{{order.serviceSessions}}" wx:key="index">第{{item.index}}天 · {{item.date}} · {{item.startTime}} 至 {{item.endTime}}</view>
+      <view class="session-item" wx:for="{{order.serviceSessions}}" wx:key="index">第{{item.index}}天 · {{item.date}} · {{beijingTime.format(item.startTime)}} 至 {{beijingTime.format(item.endTime)}}</view>
     </view>
   </view>
 

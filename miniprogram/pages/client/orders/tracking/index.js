@@ -1,7 +1,7 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
-const { withCheckinText, formatDateTime, toBeijingDate } = require('../../../../utils/format')
+const { withCheckinText, formatDateTime, parseBeijingDate } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { filterTrackPoints, isGoodTrackPoint } = require('../utils/trackQuality')
 
@@ -49,7 +49,7 @@ function formatTrackTime(value) {
 function getPointTimeValue(value) {
   if (!value) return 0
   if (typeof value === 'number') return value
-  const date = toBeijingDate(value)
+  const date = parseBeijingDate(value)
   const time = date ? date.getTime() : 0
   return Number.isNaN(time) ? 0 : time
 }

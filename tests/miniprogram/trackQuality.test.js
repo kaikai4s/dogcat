@@ -25,7 +25,7 @@ function loadPage(relativePath, overrides = {}, exported = '') {
   const deps = {
     navMethods: () => ({}), requirePrivacyAuthorize: () => Promise.resolve(),
     createClientRequestId: () => 'point-id', callFunction: () => Promise.resolve({ count: 1 }),
-    formatDateTime: () => '2026-09-24 10:00', toBeijingDate: (value) => new Date(value),
+    formatDateTime: () => '2026-09-24 10:00', parseBeijingDate: require('../../miniprogram/utils/format').parseBeijingDate,
     getOfflineTaskCount: () => 0, showError() {}, ...overrides
   }
   const module = { exports: {} }

@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="admin-incident-page {{themeClass}} {{fontClass}}">
   <view class="incident-hero">
     <view class="hero-badge"><text class="remix-icon ri-alarm-warning-fill"></text><text>风险处理</text></view>
@@ -15,7 +16,7 @@
       <view class="incident-main">
         <view class="strong">{{item.title || item.incidentTypeText}}</view>
         <view class="muted">{{item.description}}</view>
-        <view class="muted">订单 {{item.orderId}} · {{item.createdAt}}</view>
+        <view class="muted">订单 {{item.orderId}} · {{beijingTime.format(item.createdAt)}}</view>
       </view>
       <view class="soft-badge status-badge">{{item.statusText}}</view>
     </view>

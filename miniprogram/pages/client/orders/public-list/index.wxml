@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="public-list-page {{themeClass}} {{fontClass}} page">
   <view class="public-hero">
     <view class="hero-badge"><text class="remix-icon ri-star-smile-fill hero-icon"></text><text>真实服务记录</text></view>
@@ -14,7 +15,7 @@
       <view class="order-head">
         <view class="order-main">
           <view class="order-title">{{item.orderTitle}} · {{item.petName}}</view>
-          <view class="order-time">{{item.startTime || item.completedAt}}</view>
+          <view class="order-time">{{beijingTime.format(item.startTime || item.completedAt)}}</view>
         </view>
         <view class="status-badge">{{item.statusText}}</view>
       </view>

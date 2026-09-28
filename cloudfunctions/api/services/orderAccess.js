@@ -13,6 +13,7 @@ module.exports = function createService({
   now,
   safeText,
   toPublicSitter,
+  toTimeValue,
   validateStaffTakeOrderAbility,
   withSitterUserProfile
 }) {
@@ -106,7 +107,7 @@ module.exports = function createService({
     if (order.status === 'paid') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'processing', ruleText: '已支付未接单订单可全额退款' }
     if (order.status === 'expired') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'processing', ruleText: '过期未接单订单可全额退款' }
     if (order.status === 'assigned') {
-      const start = new Date(String(order.startTime || '').replace(/-/g, '/')).getTime()
+      const start = toTimeValue(order.startTime)
       const hoursBeforeStart = start ? (start - now().getTime()) / 36e5 : 0
 
       // 【新增】指定订单免责取消机制
@@ -132,7 +133,7 @@ module.exports = function createService({
       const rate = hoursBeforeStart >= 24 ? 1 : 0.8
       return {
         canCancel: true,
-        refundAmount: Math.round(Number(order.payAmount || 0) * rate),
+        refundAmount: Math.round(Number(order.payAmount || 0) * rate * 100) / 100,
         refundStatus: 'processing',
         ruleText: hoursBeforeStart >= 24 ? '距服务开始超过24小时，可全额退款' : '距服务开始不足24小时，可退80%',
         needsNegotiation: isDirectOrder && hoursBeforeStart < 24 // 指定订单超时取消需要协商

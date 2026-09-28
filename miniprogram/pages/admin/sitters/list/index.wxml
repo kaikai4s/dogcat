@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="{{themeClass}} {{fontClass}} page admin-sitters-page">
   <view class="dashboard-header compact-admin-header">
     <view class="badge">人员管理</view>
@@ -137,7 +138,7 @@
                 实际根据建议扣除：<text style="color: #047857; font-size: 26rpx;">¥{{prob.actualDeductAmountText || prob.actualDeductAmount || prob.deductAmount}}</text>
               </view>
             </view>
-            <view class="problem-time">{{prob.createdAt}}</view>
+            <view class="problem-time">{{beijingTime.format(prob.createdAt)}}</view>
           </view>
           <view class="problem-actions">
             <button class="mini-btn ghost-mini" data-id="{{prob.orderId}}" bindtap="goToOrder">查看出险订单</button>

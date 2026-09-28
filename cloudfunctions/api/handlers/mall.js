@@ -147,17 +147,17 @@ module.exports = function createHandler(context) {
       const pricing = calcMallPricing(snapshotItems, couponResult)
       const time = now()
       const order = { orderType: 'mall', orderNo: createMallOrderNo(), clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user), contactPhone: safeText(user.phone).trim(), items: snapshotItems, totalProductAmount: pricing.totalProductAmount, shippingFee: pricing.shippingFee, discountAmount: pricing.discountAmount || 0, amount: pricing.amount, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, shippingAddress: address, status: 'pending_pay', paymentStatus: 'unpaid', paymentNo: '', wxTransactionId: '', refundStatus: 'none', refundReason: '', refundImages: [], refundAmount: 0, refundNo: '', expressCompany: '', trackingNo: '', shippedAt: null, receivedAt: null, createdAt: time, updatedAt: time }
-      const created = await createOrderWithCouponLock({
+      const { order: createdOrder, created } = await createOrderWithCouponLock({
         collectionName: 'mall_orders',
         order,
         couponId: order.couponId,
         openid
       })
-      if (!data.productId) {
+      if (created && !data.productId) {
         const cart = await loadMallCart(openid)
         if (cart) await saveMallCart(openid, (cart.items || []).filter((item) => !snapshotItems.some((orderItem) => isSameMallCartItem(item, orderItem))))
       }
-      return { ...order, ...created }
+      return createdOrder
     }
     if (action === 'listMyOrders') {
       await getUser(openid)

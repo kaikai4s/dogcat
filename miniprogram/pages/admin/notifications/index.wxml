@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../utils/beijing-time.wxs" />
 <view class="admin-notice-page {{themeClass}} {{fontClass}} page">
   <view class="admin-notice-hero">
     <view class="hero-badge"><text class="remix-icon ri-notification-3-fill"></text><text>消息中心</text></view>
@@ -32,7 +33,7 @@
           <text wx:else>系统通知</text>
         </view>
         <view class="time-read-wrap">
-          <text class="notice-time">{{item.createdAt}}</text>
+          <text class="notice-time">{{beijingTime.format(item.createdAt)}}</text>
           <view class="unread-dot" wx:if="{{!item.isRead}}"></view>
         </view>
       </view>

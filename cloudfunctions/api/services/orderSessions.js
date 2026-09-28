@@ -42,7 +42,7 @@ module.exports = function createService({
     if (!startParts || !endParts || endParts.dateObj <= startParts.dateObj) throw new Error('服务时间不正确')
     const orderType = data.orderType === 'multi_day' || data.serviceFrequency === 'multi_day' || (data.endDate && data.endDate > String(data.startTime || '').slice(0, 10)) ? 'multi_day' : 'single'
     const durationMinutes = Math.max(Math.floor(Number(data.durationMinutes || ((endParts.dateObj.getTime() - startParts.dateObj.getTime()) / 60000))), 1)
-    if (orderType !== 'multi_day') return [{ index: 1, date: formatDateKey(startParts.dateObj), startTime: data.startTime, endTime: addMinutesToDateTimeText(data.startTime, durationMinutes) || data.endTime, status: 'pending' }]
+    if (orderType !== 'multi_day') return [{ index: 1, date: beijingDateKey(startParts.dateObj), startTime: data.startTime, endTime: addMinutesToDateTimeText(data.startTime, durationMinutes) || data.endTime, status: 'pending' }]
 
     const endDateText = safeText(data.endDate || data.serviceEndDate).trim()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(endDateText)) throw new Error('请选择连续服务结束日期')
@@ -59,8 +59,8 @@ module.exports = function createService({
     while (current <= finalDay) {
       if (sessions.length >= 31) throw new Error('连续服务最多支持31天')
       const end = new Date(current.getTime() + durationMinutes * 60000)
-      sessions.push({ index: sessions.length + 1, date: formatDateKey(current), startTime: formatDateTimeParts(current), endTime: formatDateTimeParts(end), status: 'pending' })
-      current = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate() + 1, utcHour, utcMinute))
+      sessions.push({ index: sessions.length + 1, date: beijingDateKey(current), startTime: formatDateTimeParts(current), endTime: formatDateTimeParts(end), status: 'pending' })
+      current = new Date(current.getTime() + 24 * 60 * 60 * 1000)
     }
     return sessions
   }

@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="page staff-incidents-page {{themeClass}} {{fontClass}}">
   <staff-active-service-banner />
   <view class="staff-hero">
@@ -25,7 +26,7 @@
       <view class="incident-main">
         <view class="incident-title">{{item.title || item.incidentTypeText}}</view>
         <view class="incident-desc">{{item.description}}</view>
-        <view class="incident-meta">订单 {{item.orderId}} · {{item.createdAt}}</view>
+        <view class="incident-meta">订单 {{item.orderId}} · {{beijingTime.format(item.createdAt)}}</view>
       </view>
       <view class="badge pink">{{item.statusText}}</view>
     </view>

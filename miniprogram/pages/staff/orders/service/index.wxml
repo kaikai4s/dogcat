@@ -1,3 +1,4 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="page staff-service-page {{themeClass}} {{fontClass}}">
   <staff-active-service-banner />
   <view class="staff-hero">
@@ -140,13 +141,13 @@
           <button class="ghost-btn" bindtap="callCustomerService"><text class="remix-icon ri-phone-line"></text>联系客服</button>
           <button class="ghost-btn" bindtap="copyOrderNo"><text class="remix-icon ri-file-copy-line"></text>复制订单号</button>
         </view>
-        <view class="security-desc" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}">最近请求：{{order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}</view>
+        <view class="security-desc" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastRequestedAt}}">最近请求：{{beijingTime.format(order.orderHomeSecurity.remoteUnlock.lastRequestedAt)}}</view>
         <view class="security-desc" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastNotifyStatus}}">微信通知：{{order.orderHomeSecurity.remoteUnlock.lastNotifyStatusText || '已处理'}}</view>
         <view class="security-desc danger" wx:if="{{order.orderHomeSecurity.remoteUnlock && order.orderHomeSecurity.remoteUnlock.lastNotifyError}}">失败原因：{{order.orderHomeSecurity.remoteUnlock.lastNotifyError}}</view>
       </view>
 
       <view wx:if="{{order.orderHomeSecurity.type === 'one_time_code'}}">
-        <view class="security-desc">密码区间：{{order.orderHomeSecurity.oneTimeCode.effectiveStart}} 至 {{order.orderHomeSecurity.oneTimeCode.effectiveEnd}}</view>
+        <view class="security-desc">密码区间：{{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveStart)}} 至 {{beijingTime.format(order.orderHomeSecurity.oneTimeCode.effectiveEnd)}}</view>
         <button class="ghost-btn full-btn" bindtap="unlock"><text class="remix-icon ri-eye-line"></text>查看一次性开门密码</button>
       </view>
 

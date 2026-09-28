@@ -222,6 +222,11 @@
       ]
     },
     {
+      "root": "pages/common/subscriptions",
+      "name": "common-subscriptions",
+      "pages": ["index"]
+    },
+    {
       "root": "pages/common/agreement",
       "name": "common-agreement",
       "pages": [

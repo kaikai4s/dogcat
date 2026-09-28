@@ -57,7 +57,7 @@
         <view class="primary-booking-title">{{homePage.ctaTitle}}</view>
         <view class="primary-booking-subtitle">{{homePage.ctaSubtitle}}</view>
       </view>
-      <button class="primary-booking-btn" data-url="/pages/client/orders/create/index" bindtap="goProtected">{{homePage.ctaText}}</button>
+      <button class="primary-booking-btn" data-url="/pages/client/orders/create/index" bindtap="goProtected" loading="{{protectedNavigationUrl === '/pages/client/orders/create/index'}}" disabled="{{!!protectedNavigationUrl}}">{{protectedNavigationUrl === '/pages/client/orders/create/index' ? '正在打开' : homePage.ctaText}}</button>
     </view>
   </view>
 

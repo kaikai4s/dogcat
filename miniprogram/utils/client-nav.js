@@ -38,7 +38,7 @@ function setCachedUnread(role, summary) {
 }
 
 function fetchUnreadSummary(role = 'client') {
-  return getCurrentUser({ silent: true })
+  return getCurrentUser({ silent: true, sessionOnly: true })
     .then((user) => {
       if (!user) {
         const empty = { totalUnread: 0, hasUnread: false }

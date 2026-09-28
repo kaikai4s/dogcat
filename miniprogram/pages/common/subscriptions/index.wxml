@@ -1,0 +1,30 @@
+<view class="subscription-page {{themeClass}} {{fontClass}}">
+  <view class="subscription-intro">
+    <view class="intro-icon"><text class="remix-icon ri-notification-3-line"></text></view>
+    <view class="intro-title">重要消息，及时知晓</view>
+    <view class="intro-desc">接收与你的订单和服务有关的微信提醒</view>
+  </view>
+  <view class="switch-card">
+    <view><view class="switch-title">微信订阅消息</view><view class="switch-desc">{{mainSwitch === false ? '总开关已关闭，开启后可接收提醒' : mainSwitch === true ? '总开关已开启，选择需要的通知' : '在微信设置中查看通知权限'}}</view></view>
+    <button class="settings-link" bindtap="openSettings">{{mainSwitch === false ? '去开启' : '设置'}} <text class="remix-icon ri-arrow-right-s-line"></text></button>
+  </view>
+  <view class="page-state" wx:if="{{loading}}">正在加载通知选项...</view>
+  <view class="page-state" wx:elif="{{loadFailed}}"><view>暂时无法加载通知选项</view><button class="outline-button" bindtap="load">重新加载</button></view>
+  <block wx:else>
+    <view class="all-card">
+      <view><view class="all-title">开启消息提醒</view><view class="all-desc">{{availableCount}} 项通知可订阅</view></view>
+      <button class="subscribe-button" data-scope="all" bindtap="subscribe" disabled="{{busy || !availableCount}}" loading="{{busy}}">{{pendingScope === 'all' && pendingKeys.length ? '继续订阅' : '一键订阅全部'}}</button>
+    </view>
+    <view class="notice" wx:if="{{!enabled}}">订阅通知暂未开放，订单进度仍可在消息中心查看。</view>
+    <view class="feedback" wx:if="{{feedback}}">{{feedback}}</view>
+    <view class="group-card" wx:for="{{groups}}" wx:key="id" wx:for-item="group">
+      <view class="group-header"><text class="group-title">{{group.title}}</text><button class="subscribe-button small" data-scope="{{group.id}}" bindtap="subscribe" disabled="{{busy || !group.available}}">{{pendingScope === group.id && pendingKeys.length ? '继续订阅' : '一键订阅'}}</button></view>
+      <view class="notification-row" wx:for="{{group.items}}" wx:key="key">
+        <view class="notification-copy"><view class="notification-title">{{item.title}}</view><view class="notification-desc">{{item.desc}}</view><view class="notification-status {{item.accepted ? 'accepted' : ''}}">{{item.statusText}}</view></view>
+        <button class="outline-button" data-scope="{{item.key}}" bindtap="subscribe" disabled="{{busy || !item.available}}">{{item.accepted ? '再订阅' : '订阅'}}</button>
+      </view>
+    </view>
+  </block>
+  <button class="open-settings-button" bindtap="openSettings">打开微信通知设置 <text class="remix-icon ri-arrow-right-line"></text></button>
+  <view class="footnote">每次授权最多选择 5 个通知模板，更多通知可继续订阅。一次性订阅通常对应一次提醒，已允许不代表永久接收，实际送达以微信授权为准。</view>
+</view>

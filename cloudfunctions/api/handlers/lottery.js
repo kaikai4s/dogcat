@@ -12,6 +12,7 @@ module.exports = function createHandler(context) {
     cstTodayStart,
     db,
     getUser,
+    getCouponValidRange,
     incUpdateValue,
     normalizeCouponSnapshot,
     now,
@@ -301,13 +302,7 @@ module.exports = function createHandler(context) {
           if (!template || template.enabled === false) return { couponId: '', templateSnapshot: null }
 
           const snapshot = normalizeCouponSnapshot(template)
-          const validDays = Number(template.validDays || 30)
-          const validTo = template.validType === 'fixed_range' && template.validToFixed
-            ? new Date(template.validToFixed)
-            : new Date(time.getTime() + validDays * 86400000)
-          const validFrom = template.validType === 'fixed_range' && template.validFromFixed
-            ? new Date(template.validFromFixed)
-            : time
+          const { validFrom, validTo } = getCouponValidRange(template, time)
           await tx.collection('user_coupons').doc(deterministicCouponId).set({
             data: {
               templateId: selectedPrize.templateId,
