@@ -1,24 +1,30 @@
+<template name="heroCopy">
+  <view class="hero-topline"><view class="badge">宠托师名片</view><view class="hero-count">{{sitter.isFeatured ? '平台精选' : (sitter.favorite ? '已收藏' : '可收藏')}}</view></view>
+  <view class="title">{{sitter.displayName}}</view>
+  <view class="tip" wx:if="{{sitter.profileIntro}}">{{sitter.profileIntro}}</view>
+  <view class="tip" wx:else>{{sitter.serviceCity}} · {{sitter.levelName}}</view>
+  <view class="hero-meta" wx:if="{{sitter.profileIntro}}">{{sitter.serviceCity}} · {{sitter.levelName}}</view>
+  <view class="hero-expand-tip" wx:if="{{sitter.profileBackgroundFileId}}">{{compact ? '点击收起主页背景' : '点击展开主页背景'}}</view>
+</template>
 <view class="page sitter-detail-page {{themeClass}} {{fontClass}}" wx:if="{{sitter}}">
-  <view class="sitter-hero {{sitter.profileBackgroundFileId ? 'has-bg' : 'plain'}} {{heroExpanded ? 'expanded' : ''}}" style="{{heroLayoutStyle}}" bindtap="toggleHeroExpand">
-    <view class="hero-media" wx:if="{{sitter.profileBackgroundFileId}}">
-      <image class="hero-bg" src="{{sitter.profileBackgroundFileId}}" mode="aspectFill" />
-      <view class="hero-shade"></view>
-    </view>
-    <view class="hero-card-track">
-    <view class="hero-info-panel" style="{{profileCardStyle}}">
-      <view class="hero-topline">
-        <view class="badge">宠托师名片</view>
-        <view class="hero-count">{{sitter.isFeatured ? '平台精选' : (sitter.favorite ? '已收藏' : '可收藏')}}</view>
+  <view wx:if="{{sitter.profileBackgroundFileId}}" class="sitter-hero hero-slot {{heroExpanded ? 'expanded' : ''}} {{heroCommittedExpanded ? 'committed-expanded' : ''}} {{heroReady ? 'motion-ready' : ''}} {{heroMoving ? 'is-moving' : ''}}" style="{{heroLayoutStyle}} --hero-blur: {{sitter.profileCardBlur * 0.24}}rpx;" bindtap="toggleHeroExpand">
+    <view class="hero-reveal-mask">
+      <view class="hero-reveal-scene">
+        <view class="hero-media"><image class="hero-bg" src="{{sitter.profileBackgroundFileId}}" mode="aspectFill" /><view class="hero-shade"></view></view>
+        <view class="hero-card-surface">
+          <block wx:if="{{sitter.profileCardBlur > 0}}">
+            <view class="hero-glass hero-glass-normal"><image class="hero-glass-photo" src="{{sitter.profileBackgroundFileId}}" mode="aspectFill" /><view class="hero-glass-shade"></view></view>
+            <view class="hero-glass hero-glass-compact"><image class="hero-glass-photo" src="{{sitter.profileBackgroundFileId}}" mode="aspectFill" /><view class="hero-glass-shade"></view></view>
+          </block>
+          <view class="hero-card-tint" style="{{heroSurfaceStyle}}"></view>
+        </view>
+        <view class="hero-info-panel hero-copy hero-copy-normal" style="color: {{sitter.profileCardTextColor}};" aria-hidden="{{heroExpanded}}"><template is="heroCopy" data="{{sitter, compact: false}}" /></view>
+        <view class="hero-info-panel hero-copy hero-copy-compact" style="color: {{sitter.profileCardTextColor}};" aria-hidden="{{!heroExpanded}}"><template is="heroCopy" data="{{sitter, compact: true}}" /></view>
       </view>
-      <view class="title">{{sitter.displayName}}</view>
-      <view class="tip" wx:if="{{sitter.profileIntro}}">{{sitter.profileIntro}}</view>
-      <view class="tip" wx:else>{{sitter.serviceCity}} · {{sitter.levelName}}</view>
-      <view class="hero-meta" wx:if="{{sitter.profileIntro}}">{{sitter.serviceCity}} · {{sitter.levelName}}</view>
-      <view class="hero-expand-tip" wx:if="{{sitter.profileBackgroundFileId}}">{{heroExpanded ? '点击收起主页背景' : '点击展开主页背景'}}</view>
-    </view>
     </view>
   </view>
-
+  <view wx:else class="sitter-hero plain"><view class="hero-info-panel" style="{{profileCardStyle}}"><template is="heroCopy" data="{{sitter, compact: false}}" /></view></view>
+  <view class="sitter-body" style="{{heroBodyStyle}}">
   <view class="card sitter-main-card">
     <view class="sitter-head">
       <image class="sitter-avatar" wx:if="{{sitter.avatarUrl}}" src="{{sitter.avatarUrl}}" mode="aspectFill" />
@@ -147,5 +153,6 @@
       <text>返回宠托师列表</text>
     </button>
   </view>
+</view>
 </view>
 <global-loading />
