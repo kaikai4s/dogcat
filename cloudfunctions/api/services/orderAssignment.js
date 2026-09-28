@@ -81,10 +81,10 @@ module.exports = function createService(context) {
       if (serviceStartedStatuses.includes(order.status) && (assignmentChanged || updated.status !== order.status)) {
         throw new Error('订单已开始履约，不允许修改状态或重新指派宠托师')
       }
-      if (order.status === 'assigned' && assignmentChanged && order.staffOpenid) {
+      if (['assigned', 'on_the_way'].includes(order.status) && assignmentChanged && order.staffOpenid) {
         throw new Error('订单已指派，不允许直接修改宠托师归属，请使用受控改派流程')
       }
-      if (['assigned', 'in_service', 'day_completed'].includes(updated.status) && !updated.staffOpenid) throw new Error('请先为订单分配宠托师')
+      if (['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(updated.status) && !updated.staffOpenid) throw new Error('请先为订单分配宠托师')
       if (updated.staffOpenid && isOrderConflictCandidate(updated)) {
         if (!user) throw new Error('宠托师账号不存在')
         await lockStaff(transaction, user._id, updated.staffOpenid)
@@ -102,7 +102,7 @@ module.exports = function createService(context) {
       const candidates = (await db.collection('staff_schedule_exceptions').where({ staffOpenid: user.openid, dateKey: payload.dateKey }).limit(2).get()).data || []
       if (candidates.length > 1) throw new Error('当日排班重复，请先核对')
 
-      const activeStatuses = ['assigned', 'in_service', 'day_completed']
+      const activeStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
       const _ = db.command
       const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
       const activeOrdersRes = await db.collection('orders').where({

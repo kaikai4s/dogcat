@@ -66,7 +66,7 @@ module.exports = function createService({
     if (!thread || !thread._id) return null
     const time = event.createdAt || now()
     const actorRole = event.actorRole || ''
-    const forceUnreadTypes = new Set(['paid', 'expired', 'refund_processing', 'refund_result', 'assigned', 'started', 'completed', 'early_start_requested', 'remote_unlock_requested'])
+    const forceUnreadTypes = new Set(['paid', 'expired', 'refund_processing', 'refund_result', 'assigned', 'on_the_way', 'radar_proximity', 'live_checkin', 'started', 'completed', 'early_start_requested', 'remote_unlock_requested'])
     const unreadForClient = event.unreadForClient !== undefined ? event.unreadForClient === true : (actorRole !== 'client' || forceUnreadTypes.has(eventType))
     const message = {
       threadId: thread._id,
@@ -78,6 +78,9 @@ module.exports = function createService({
       eventType,
       title,
       detail,
+      mediaFileId: event.mediaFileId || '',
+      remark: event.remark || '',
+      actionType: event.actionType || '',
       actorRole,
       unreadForClient,
       idempotencyKey,
@@ -96,6 +99,7 @@ module.exports = function createService({
         lastMessageType: eventType,
         lastMessageTitle: title,
         lastMessageDetail: detail,
+        lastMediaFileId: event.mediaFileId || '',
         lastMessageAt: time,
         lastActorRole: actorRole,
         unreadCount,

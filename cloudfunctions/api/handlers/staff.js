@@ -993,7 +993,7 @@ module.exports = function createHandler(context) {
       if (data.status && data.status !== 'all') {
         where.status = data.status
       } else if (data.statusGroup === 'waiting_service') {
-        where.status = db.command.in(['assigned', 'in_service', 'day_completed'])
+        where.status = db.command.in(['assigned', 'on_the_way', 'in_service', 'day_completed'])
       }
 
       const orderKeyword = safeText(data.orderKeyword || data.keyword || data.orderNo).trim().toLowerCase()

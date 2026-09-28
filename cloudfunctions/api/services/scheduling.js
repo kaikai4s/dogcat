@@ -161,7 +161,7 @@ module.exports = function createService({
   }
 
   function isOrderConflictCandidate(order = {}) {
-    return !isAdminDeletedOrder(order) && ['paid', 'assigned', 'in_service', 'day_completed'].includes(order.status)
+    return !isAdminDeletedOrder(order) && ['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)
   }
 
   function timeRangesOverlap(startA, endA, startB, endB) {

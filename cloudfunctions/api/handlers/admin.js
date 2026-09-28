@@ -835,7 +835,14 @@ module.exports = function createHandler(context) {
       const isAutoFilter = rawStatus === 'auto_completed' || specialFilter === 'auto_completed'
       const isOverdueFilter = rawStatus === 'overdue' || specialFilter === 'overdue'
       const isNormalStatus = rawStatus && !['all', 'overdue', 'auto_completed'].includes(rawStatus)
-      const where = isNormalStatus ? { status: rawStatus } : {}
+      let where = {}
+      if (rawStatus === 'assigned') {
+        const _ = db.command
+        const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
+        where = { status: inOp(['assigned', 'on_the_way']) }
+      } else if (isNormalStatus) {
+        where = { status: rawStatus }
+      }
       const allOrders = (await readAll('orders', where)).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
       const orderKeyword = safeText(data.orderKeyword || data.keyword).trim().toLowerCase()
       const clientPhone = safeText(data.clientPhone || data.phone).trim()
@@ -947,8 +954,30 @@ module.exports = function createHandler(context) {
       const standardEarning = await calculateStaffEarningForOrder(order.data).catch(() => ({ earningAmount: 0 }))
       displayOrder.standardStaffReward = standardEarning.earningAmount || 0
 
+      const sessionMessagesRes = await db.collection('order_session_messages').where({ orderId: id }).orderBy('createdAt', 'asc').get().catch(() => ({ data: [] }))
+      const riskBypassLogsRes = await db.collection('risk_bypass_logs').where({ orderId: id }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+
       if (action === 'getEvidence') await logAdmin(admin, 'order', id, 'getEvidence', { trackCount: (tracks.data || []).length, checkinCount: (checkins.data || []).filter(isActiveCheckin) })
-      return { order: displayOrder, tracks: tracks.data, checkins: (checkins.data || []).filter(isActiveCheckin), unlockLogs: unlockLogs.data, depositPenaltyEvidences: penaltyEvidences }
+      return {
+        order: displayOrder,
+        tracks: tracks.data,
+        checkins: (checkins.data || []).filter(isActiveCheckin),
+        unlockLogs: unlockLogs.data,
+        depositPenaltyEvidences: penaltyEvidences,
+        sessionMessages: sessionMessagesRes.data || [],
+        riskBypassLogs: riskBypassLogsRes.data || []
+      }
+    }
+
+    if (action === 'listOrderSessionMessages') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      if (!orderId) throw new Error('缺少订单ID')
+      const sessionMessagesRes = await db.collection('order_session_messages').where({ orderId }).orderBy('createdAt', 'asc').get().catch(() => ({ data: [] }))
+      const riskBypassLogsRes = await db.collection('risk_bypass_logs').where({ orderId }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+      return {
+        sessionMessages: sessionMessagesRes.data || [],
+        riskBypassLogs: riskBypassLogsRes.data || []
+      }
     }
     if (action === 'assignOrder') {
       const orderId = safeText(data.orderId).trim()
@@ -988,7 +1017,7 @@ module.exports = function createHandler(context) {
       const targetStatus = safeText(data.status).trim()
       const remark = safeText(data.remark || data.reason).trim()
       if (!remark) throw new Error('请填写操作说明')
-      const allowedStatuses = ['pending_pay', 'paid', 'assigned', 'in_service', 'completed', 'cancelled', 'refunded']
+      const allowedStatuses = ['pending_pay', 'paid', 'assigned', 'on_the_way', 'in_service', 'completed', 'cancelled', 'refunded']
       if (!allowedStatuses.includes(targetStatus)) throw new Error('目标状态无效')
 
       const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
@@ -1005,7 +1034,7 @@ module.exports = function createHandler(context) {
       }
       if (targetStatus === 'refunded' && order.paymentStatus !== 'refunded') throw new Error('退款尚未到账，不能标记已退款')
       if (targetStatus === 'pending_pay' && order.paymentStatus !== 'unpaid') throw new Error('已创建支付或已付款订单不能恢复待支付')
-      if (['paid', 'pending_ship', 'shipped', 'assigned', 'in_service', 'completed'].includes(targetStatus) && !['paid', 'refunding'].includes(order.paymentStatus)) throw new Error('订单未支付，不能手动推进状态')
+      if (['paid', 'pending_ship', 'shipped', 'assigned', 'on_the_way', 'in_service', 'completed'].includes(targetStatus) && !['paid', 'refunding'].includes(order.paymentStatus)) throw new Error('订单未支付，不能手动推进状态')
 
       const time = now()
       const updateData = {
@@ -1647,6 +1676,7 @@ module.exports = function createHandler(context) {
       const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
       const activeStaffStatuses = [
         (ORDER_STATUS && ORDER_STATUS.ASSIGNED) || 'assigned',
+        (ORDER_STATUS && ORDER_STATUS.ON_THE_WAY) || 'on_the_way',
         (ORDER_STATUS && ORDER_STATUS.IN_SERVICE) || 'in_service',
         (ORDER_STATUS && ORDER_STATUS.DAY_COMPLETED) || 'day_completed'
       ]
@@ -2332,7 +2362,7 @@ module.exports = function createHandler(context) {
       const order = orderRes && orderRes.data
       if (!order) throw new Error('订单不存在')
 
-      if (!['paid', 'assigned'].includes(order.status)) {
+      if (!['paid', 'assigned', 'on_the_way', 'day_completed'].includes(order.status)) {
         throw new Error(`当前订单状态（${order.status}）不可转为加急公共抢单，宠托师可能已开始服务或订单状态已变更，请刷新确认`)
       }
 
@@ -2439,6 +2469,11 @@ module.exports = function createHandler(context) {
         requestedStaffName: '',
         acceptLocationLatitude: null,
         acceptLocationLongitude: null,
+        travelDeparted: false,
+        travelDepartedAt: null,
+        travelLocation: null,
+        travelEtaMinutes: 0,
+        radarProximityNotified: false,
         startTime: newStartTime,
         endTime: newEndTime,
         serviceStartDate: newStartTime.slice(0, 10),

@@ -92,7 +92,29 @@ function showRemoteUnlockSubscribeTip(result, retryCallback) {
 }
 
 Page({
-  data: { themeClass: 'theme-day', id: '', order: null, timeline: [], review: null, paying: false, cancelling: false, handlingEarlyStart: false, resettingCode: false, resetSessionOptions: [], selectedResetSessionIdx: 0, resetCodeForm: { code: '', effectiveStart: '', effectiveEnd: '' }, sectionHomeUrl: '', canGoBack: false },
+  data: {
+    themeClass: 'theme-day',
+    id: '',
+    order: null,
+    timeline: [],
+    review: null,
+    liveCheckins: [],
+    sessionMessages: [],
+    sessionInputText: '',
+    showChatModal: false,
+    sendingChatMessage: false,
+    privacyCallInfo: null,
+    showCallModal: false,
+    paying: false,
+    cancelling: false,
+    handlingEarlyStart: false,
+    resettingCode: false,
+    resetSessionOptions: [],
+    selectedResetSessionIdx: 0,
+    resetCodeForm: { code: '', effectiveStart: '', effectiveEnd: '' },
+    sectionHomeUrl: '',
+    canGoBack: false
+  },
   onLoad(q) {
     loadSystemSettings().catch(() => null)
     this.setData({ ...createPageNav(q), id: q.id })
@@ -117,17 +139,24 @@ Page({
     Promise.all([
       callFunction('order', 'getOrderDetail', { id: this.data.id }),
       callFunction('order', 'getOrderTimeline', { orderId: this.data.id }),
-      callFunction('order', 'getOrderReview', { orderId: this.data.id })
+      callFunction('order', 'getOrderReview', { orderId: this.data.id }),
+      callFunction('checkin', 'listOrderCheckins', { orderId: this.data.id }).catch(() => [])
     ])
-      .then(([order, timeline, review]) => {
+      .then(([order, timeline, review, checkins]) => {
         if (!order) return
         const displayOrder = withOrderText(order)
-        this.setData({ order: { ...displayOrder, refundText: getRefundText(displayOrder) }, timeline: withTimelineText(timeline), review })
+        const liveCheckins = (checkins || []).filter(item => item.mediaFileId)
+        this.setData({
+          order: { ...displayOrder, refundText: getRefundText(displayOrder) },
+          timeline: withTimelineText(timeline),
+          review,
+          liveCheckins
+        })
         callFunction('message', 'markOrderThreadRead', { orderId: this.data.id }).catch(() => {})
         if (displayOrder.earlyStartRequest && displayOrder.earlyStartRequest.status === 'pending') {
           this.checkPromptEarlyStart(displayOrder.earlyStartRequest)
         }
-        if (['assigned', 'day_completed'].includes(displayOrder.status)) {
+        if (['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(displayOrder.status)) {
           this.startEarlyStartPolling()
         } else {
           this.stopEarlyStartPolling()
@@ -160,27 +189,31 @@ Page({
   startEarlyStartPolling() {
     this.stopEarlyStartPolling()
     const order = this.data.order
-    if (!order || !['assigned', 'day_completed'].includes(order.status)) return
+    if (!order || !['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)) return
 
     this.earlyStartPollTimer = setInterval(() => {
       if (!this.data.id || this.data.handlingEarlyStart || this.data.paying) return
-      callFunction('order', 'getEarlyStartStatus', { id: this.data.id })
-        .then((earlyStart) => {
-          if (!earlyStart) return
-          const currentReq = this.data.order && this.data.order.earlyStartRequest
-          if (!currentReq || currentReq.status !== earlyStart.status || currentReq._id !== earlyStart._id) {
-            this.setData({
-              'order.earlyStartRequest': earlyStart
-            })
-            if (earlyStart.status === 'pending') {
-              this.checkPromptEarlyStart(earlyStart)
-            } else {
-              this.load()
-            }
+      callFunction('order', 'getOrderDetail', { id: this.data.id })
+        .then((latestOrder) => {
+          if (!latestOrder) return
+          const displayOrder = withOrderText(latestOrder)
+          this.setData({ 'order': { ...displayOrder, refundText: getRefundText(displayOrder) } })
+          if (displayOrder.earlyStartRequest && displayOrder.earlyStartRequest.status === 'pending') {
+            this.checkPromptEarlyStart(displayOrder.earlyStartRequest)
           }
         })
         .catch(() => {})
-    }, 5000)
+
+      if (this.data.order && ['on_the_way', 'in_service'].includes(this.data.order.status)) {
+        callFunction('checkin', 'listOrderCheckins', { orderId: this.data.id })
+          .then((checkins) => {
+            if (Array.isArray(checkins)) {
+              this.setData({ liveCheckins: checkins.filter(item => item.mediaFileId) })
+            }
+          })
+          .catch(() => {})
+      }
+    }, 6000)
   },
   stopEarlyStartPolling() {
     if (this.earlyStartPollTimer) {
@@ -416,6 +449,92 @@ Page({
       .catch((error) => {
         this.setData({ cancelling: false })
         showError(error)
+      })
+  },
+
+  previewLiveCheckinPhoto(e) {
+    const current = e.currentTarget.dataset.url
+    const urls = (this.data.liveCheckins || []).map(item => item.mediaFileId).filter(Boolean)
+    if (current && urls.length) {
+      wx.previewImage({ current, urls })
+    }
+  },
+
+  openPrivacyCall() {
+    if (!this.data.id) return
+    showLoading('获取虚拟隐私通话...')
+    callFunction('order', 'getPrivacyCallInfo', { orderId: this.data.id })
+      .then((info) => {
+        hideLoading()
+        this.setData({ privacyCallInfo: info, showCallModal: true })
+      })
+      .catch((err) => {
+        hideLoading()
+        showError(err)
+      })
+  },
+
+  confirmPrivacyCall() {
+    const info = this.data.privacyCallInfo
+    if (!info || !info.privacyNumber) return
+    wx.makePhoneCall({
+      phoneNumber: info.privacyNumber,
+      complete: () => {
+        this.setData({ showCallModal: false })
+      }
+    })
+  },
+
+  closePrivacyCallModal() {
+    this.setData({ showCallModal: false })
+  },
+
+  openSessionChat() {
+    this.setData({ showChatModal: true })
+    this.loadSessionMessages()
+  },
+
+  closeSessionChat() {
+    this.setData({ showChatModal: false })
+  },
+
+  loadSessionMessages() {
+    if (!this.data.id) return
+    callFunction('order', 'listOrderSessionMessages', { orderId: this.data.id })
+      .then((list) => {
+        this.setData({ sessionMessages: list || [] })
+      })
+      .catch((err) => console.error('loadSessionMessages err:', err))
+  },
+
+  onChatInput(e) {
+    this.setData({ sessionInputText: e.detail.value })
+  },
+
+  sendChatMessage() {
+    const content = (this.data.sessionInputText || '').trim()
+    if (!content) {
+      wx.showToast({ title: '请输入消息内容', icon: 'none' })
+      return
+    }
+    this.setData({ sendingChatMessage: true })
+    callFunction('order', 'sendOrderSessionMessage', {
+      orderId: this.data.id,
+      content
+    })
+      .then(() => {
+        this.setData({ sendingChatMessage: false, sessionInputText: '' })
+        this.loadSessionMessages()
+      })
+      .catch((err) => {
+        this.setData({ sendingChatMessage: false })
+        const msg = (err && (err.message || err.errMsg)) || '发送失败，请稍后重试'
+        const isRisk = msg.includes('平台安全拦截') || msg.includes('风控')
+        wx.showModal({
+          title: isRisk ? '风控合规拦截' : '发送失败',
+          content: msg,
+          showCancel: false
+        })
       })
   },
 

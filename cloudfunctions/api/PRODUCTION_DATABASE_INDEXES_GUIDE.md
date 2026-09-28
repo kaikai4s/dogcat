@@ -147,10 +147,20 @@
 | `idx_incident_client` | `clientOpenid: 1`, `createdAt: -1` | 否 | **宠物主维权记录列表** |
 | `idx_incident_staff` | `staffOpenid: 1`, `createdAt: -1` | 否 | **宠托师被诉/SOS记录** |
 
-#### 集合：`order_messages` / `order_staff_messages` (聊天消息表)
+#### 集合：`order_messages` / `order_staff_messages` (通知流消息表)
 | 索引名称 | 字段配置 (Keys) | 唯一索引 (Unique) | 业务查询场景与收益 |
 | :--- | :--- | :---: | :--- |
-| `idx_im_conversation` | `conversationId: 1`, `createdAt: -1` | 否 | **聊天窗口极速渲染**：历史消息倒序分页拉取，消除卡顿 |
+| `idx_im_conversation` | `conversationId: 1`, `createdAt: -1` | 否 | **通知会话极速渲染**：历史通知倒序分页拉取，消除卡顿 |
+
+#### 集合：`order_session_messages` (宠客即时沟通记录表)
+| 索引名称 | 字段配置 (Keys) | 唯一索引 (Unique) | 业务查询场景与收益 |
+| :--- | :--- | :---: | :--- |
+| `idx_session_order_created` | `orderId: 1`, `createdAt: 1` | 否 | **宠客即时会话气泡流**：按订单 ID 筛选，按时间升序快速按序渲染聊天消息 |
+
+#### 集合：`risk_bypass_logs` (防跳单风控拦截审计日志表)
+| 索引名称 | 字段配置 (Keys) | 唯一索引 (Unique) | 业务查询场景与收益 |
+| :--- | :--- | :---: | :--- |
+| `idx_risk_order_created` | `orderId: 1`, `createdAt: -1` | 否 | **管理后台风控审计审查**：按订单 ID 筛选违规拦截记录，倒序优先查看最新违规 |
 
 ---
 

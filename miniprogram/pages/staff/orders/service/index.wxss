@@ -642,3 +642,303 @@
   box-shadow: 0 10rpx 24rpx rgba(82, 196, 26, 0.35) !important;
 }
 
+/* 快捷联系栏 */
+.contact-actions-bar {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 20rpx;
+  margin-bottom: 8rpx;
+}
+.contact-btn {
+  flex: 1;
+  font-size: 26rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  background: #ffffff !important;
+  border: 1rpx solid #ffd0b3 !important;
+  color: #d45f22 !important;
+  border-radius: 20rpx !important;
+  height: 76rpx !important;
+  line-height: 76rpx !important;
+}
+
+/* 出发前往服务卡片 */
+.depart-card {
+  background: linear-gradient(135deg, #fff7e6 0%, #ffffff 100%);
+  border: 2rpx solid #ffd591;
+}
+.depart-desc {
+  font-size: 26rpx;
+  color: #873800;
+  line-height: 1.5;
+  margin: 16rpx 0 24rpx;
+}
+
+/* 时空雷达运行卡片 */
+.radar-transit-card {
+  background: linear-gradient(135deg, #e6f7ff 0%, #ffffff 100%);
+  border: 2rpx solid #91d5ff;
+}
+.radar-pulse-icon {
+  color: #1890ff;
+  font-size: 34rpx;
+}
+.radar-stats-grid {
+  display: flex;
+  gap: 20rpx;
+  margin: 20rpx 0;
+}
+.radar-stat-item {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 20rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid #bae7ff;
+  text-align: center;
+}
+.radar-stat-label {
+  font-size: 24rpx;
+  color: #595959;
+}
+.radar-stat-val {
+  font-size: 36rpx;
+  font-weight: 900;
+  color: #096dd9;
+  margin-top: 8rpx;
+}
+.radar-proximity-notice {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 16rpx 20rpx;
+  background: #f6ffed;
+  border: 1rpx solid #b7eb8f;
+  border-radius: 16rpx;
+  color: #389e0d;
+  font-size: 26rpx;
+  font-weight: 750;
+  margin-bottom: 20rpx;
+}
+.refresh-eta-btn {
+  margin-bottom: 16rpx;
+}
+.radar-hint {
+  font-size: 24rpx;
+  color: #8c8c8c;
+  line-height: 1.4;
+}
+
+/* 通用弹窗蒙层与内容 */
+.custom-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 32rpx;
+  box-sizing: border-box;
+}
+.custom-modal-box {
+  width: 100%;
+  max-width: 640rpx;
+  background: #ffffff;
+  border-radius: 36rpx;
+  padding: 36rpx;
+  box-sizing: border-box;
+}
+.custom-modal-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  font-size: 34rpx;
+  font-weight: 900;
+  color: #262626;
+  margin-bottom: 24rpx;
+}
+.security-badge-icon {
+  color: #52c41a;
+  font-size: 38rpx;
+}
+.privacy-warning-box {
+  background: #fffbe6;
+  border: 1rpx solid #ffe58f;
+  border-radius: 20rpx;
+  padding: 20rpx;
+  margin-bottom: 24rpx;
+}
+.warning-title {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #d48806;
+  margin-bottom: 10rpx;
+}
+.warning-text {
+  font-size: 24rpx;
+  color: #8c6d1f;
+  line-height: 1.5;
+}
+.privacy-phone-card {
+  background: #f5f5f5;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  text-align: center;
+  margin-bottom: 28rpx;
+}
+.phone-label {
+  font-size: 24rpx;
+  color: #8c8c8c;
+}
+.phone-number {
+  font-size: 44rpx;
+  font-weight: 950;
+  color: #d45f22;
+  margin: 10rpx 0;
+}
+.phone-ext {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #262626;
+}
+.phone-target {
+  font-size: 24rpx;
+  color: #595959;
+  margin-top: 10rpx;
+}
+.custom-modal-actions {
+  display: flex;
+  gap: 20rpx;
+}
+.call-action-btn {
+  flex: 1.4;
+}
+.cancel-action-btn {
+  flex: 1;
+}
+
+/* 聊天弹窗 */
+.chat-modal-box {
+  width: 100%;
+  max-width: 680rpx;
+  height: 820rpx;
+  background: #ffffff;
+  border-radius: 36rpx;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+.chat-title {
+  font-size: 32rpx;
+  font-weight: 850;
+  color: #262626;
+}
+.close-btn {
+  font-size: 38rpx;
+  color: #8c8c8c;
+  padding: 8rpx;
+}
+.chat-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 12rpx 24rpx;
+  background: #fff2e8;
+  color: #d4380d;
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+.chat-body {
+  flex: 1;
+  padding: 24rpx;
+  box-sizing: border-box;
+  background: #fafafa;
+}
+.chat-empty {
+  text-align: center;
+  color: #bfbfbf;
+  font-size: 26rpx;
+  margin-top: 100rpx;
+}
+.chat-msg-row {
+  margin-bottom: 20rpx;
+  display: flex;
+  flex-direction: column;
+}
+.chat-msg-row.self {
+  align-items: flex-end;
+}
+.chat-msg-row.other {
+  align-items: flex-start;
+}
+.msg-sender {
+  font-size: 22rpx;
+  color: #8c8c8c;
+  margin-bottom: 6rpx;
+}
+.msg-bubble {
+  max-width: 75%;
+  padding: 16rpx 24rpx;
+  border-radius: 24rpx;
+  font-size: 28rpx;
+  line-height: 1.4;
+  word-break: break-all;
+}
+.chat-msg-row.self .msg-bubble {
+  background: #ff7d38;
+  color: #ffffff;
+  border-bottom-right-radius: 4rpx;
+}
+.chat-msg-row.other .msg-bubble {
+  background: #ffffff;
+  color: #262626;
+  border: 1rpx solid #e8e8e8;
+  border-bottom-left-radius: 4rpx;
+}
+.msg-time {
+  font-size: 20rpx;
+  color: #bfbfbf;
+  margin-top: 6rpx;
+}
+.chat-footer {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 20rpx 24rpx;
+  border-top: 1rpx solid #f0f0f0;
+  background: #ffffff;
+}
+.chat-input {
+  flex: 1;
+  background: #f5f5f5;
+  border-radius: 32rpx;
+  height: 72rpx;
+  padding: 0 24rpx;
+  font-size: 26rpx;
+}
+.chat-send-btn {
+  width: 140rpx !important;
+  height: 72rpx !important;
+  line-height: 72rpx !important;
+  font-size: 26rpx !important;
+  padding: 0 !important;
+}
+
+

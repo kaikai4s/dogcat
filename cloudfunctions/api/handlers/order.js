@@ -28,6 +28,7 @@ module.exports = function createHandler(context) {
     cancelUnpaidOrder,
     db,
     destroyOrderHomeSecuritySecrets,
+    detectRiskContactBypass,
     enrichUserMemberLevel,
     evaluateCheckinCompletion,
     expireDueUnacceptedOrders,
@@ -241,7 +242,7 @@ module.exports = function createHandler(context) {
       if (data.status && data.status !== 'all') {
         where.status = data.status
       } else if (data.statusGroup === 'waiting_service') {
-        where.status = db.command.in(['assigned', 'in_service', 'day_completed'])
+        where.status = db.command.in(['assigned', 'on_the_way', 'in_service', 'day_completed'])
       }
 
       const orderKeyword = safeText(data.orderKeyword || data.keyword || data.orderNo).trim().toLowerCase()
@@ -515,7 +516,7 @@ module.exports = function createHandler(context) {
 
     if (action === 'requestEarlyStart') {
       const { user, order } = await requireStaffOrder(openid, data.id || data.orderId, '不是该订单员工')
-      if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) throw new Error('当前订单不可申请提前开始')
+      if (!['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)) throw new Error('当前订单不可申请提前开始')
       if (!isBeforeServiceStart(order)) throw new Error('已到预约时间，无需申请提前开始')
       const existing = await getPendingEarlyStart(order._id)
       if (existing) return toEarlyStartView(existing)
@@ -590,7 +591,7 @@ module.exports = function createHandler(context) {
 
     if (action === 'checkServiceTimeReadyForCheckin') {
       const { order } = await requireStaffOrder(openid, data.id || data.orderId, '不是该订单员工')
-      if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.DAY_COMPLETED].includes(order.status)) throw new Error('当前订单状态不可进行服务前打卡')
+      if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.ON_THE_WAY, ORDER_STATUS.DAY_COMPLETED].includes(order.status)) throw new Error('当前订单状态不可进行服务前打卡')
       const time = now()
       const session = getNextPendingServiceSession({ ...order, _id: data.id || data.orderId }, time)
       if (!session) throw new Error('暂无可开始的当天服务任务')
@@ -614,7 +615,7 @@ module.exports = function createHandler(context) {
         return readiness
       }
 
-      if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.DAY_COMPLETED].includes(order.status)) {
+      if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.ON_THE_WAY, ORDER_STATUS.DAY_COMPLETED].includes(order.status)) {
         readiness.canStart = false
         readiness.issues.push({ type: 'wrong_status', message: '订单状态不可开始' })
         return readiness
@@ -677,6 +678,319 @@ module.exports = function createHandler(context) {
       }
 
       return readiness
+    }
+
+    if (action === 'departForService') {
+      const { user, order } = await requireStaffOrder(openid, data.id || data.orderId, '不是该订单员工')
+      if (!['assigned', 'day_completed', 'on_the_way'].includes(order.status)) {
+        throw new Error('当前订单状态不可出发前往')
+      }
+      const time = now()
+      const currentLat = Number(data.currentLatitude || data.latitude || 0)
+      const currentLng = Number(data.currentLongitude || data.longitude || 0)
+      const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
+      const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
+
+      let distanceKm = null
+      let estimatedTravelMinutes = 15
+      if (hasCoordinate(currentLat, currentLng) && hasCoordinate(orderLat, orderLng)) {
+        distanceKm = calcDistanceKm(currentLat, currentLng, orderLat, orderLng)
+        if (distanceKm !== null && !isNaN(distanceKm)) {
+          estimatedTravelMinutes = Math.max(Math.ceil(distanceKm * 2.4 + 3), 3)
+        }
+      }
+      const estimatedArrivalTime = new Date(time.getTime() + estimatedTravelMinutes * 60 * 1000)
+      const isProximity = (distanceKm !== null && distanceKm <= 1.0) || estimatedTravelMinutes <= 10
+
+      const updateData = {
+        status: ORDER_STATUS.ON_THE_WAY,
+        departedAt: order.departedAt || time,
+        departureLocation: hasCoordinate(currentLat, currentLng) ? { latitude: currentLat, longitude: currentLng } : null,
+        currentLocation: hasCoordinate(currentLat, currentLng) ? { latitude: currentLat, longitude: currentLng, updatedAt: time } : null,
+        distanceFromDestinationKm: distanceKm !== null ? Number(distanceKm.toFixed(2)) : null,
+        travelDistanceKm: distanceKm !== null ? Number(distanceKm.toFixed(2)) : null,
+        estimatedTravelMinutes,
+        travelEtaMinutes: estimatedTravelMinutes,
+        estimatedArrivalTime,
+        travelDeparted: true,
+        radarProximityNotified: isProximity,
+        updatedAt: time
+      }
+
+      let triggerRadar = false
+      if (isProximity && !order.radarApproachingNotified) {
+        updateData.radarApproachingNotified = true
+        updateData.radarApproachingNotifiedAt = time
+        triggerRadar = true
+      }
+
+      await db.collection('orders').doc(order._id).update({ data: updateData })
+      const updatedOrder = { ...order, ...updateData }
+
+      const distStr = distanceKm !== null ? `，距目的地约 ${distanceKm.toFixed(1)} km` : ''
+      await appendOrderTimeline(order._id, 'on_the_way', '宠托师已出发前往服务地点', `预计 ${estimatedTravelMinutes} 分钟后到达${distStr}。`, 'staff')
+      await appendOrderClientMessage(updatedOrder, {
+        eventType: 'on_the_way',
+        title: '宠托师已出发',
+        detail: `宠托师已在前往服务地点的路上，预计 ${estimatedTravelMinutes} 分钟后到达您家。`,
+        actorRole: 'staff'
+      })
+
+      if (triggerRadar) {
+        await appendOrderTimeline(order._id, 'radar_approaching', '宠托师临近到家提醒', '时空雷达：宠托师距离您家约 1 公里内，预计 10 分钟内到达。', 'system')
+        await appendOrderClientMessage(updatedOrder, {
+          eventType: 'radar_proximity',
+          title: '【时空雷达】宠托师即将到达',
+          detail: '宠托师已在路上，预计10分钟后到达您家，请注意门铃/电话，提前安抚毛孩子。',
+          actorRole: 'system',
+          unreadForClient: true
+        })
+        await notifyOrder(order.clientOpenid, 'serviceStart', updatedOrder, {
+          statusText: '宠托师即将到达',
+          tip: '宠托师已在路上，预计10分钟后到达您家'
+        }, 'client').catch(() => {})
+      } else {
+        await notifyOrder(order.clientOpenid, 'serviceStart', updatedOrder, {
+          statusText: '前往服务中',
+          tip: `宠托师已在路上，预计${estimatedTravelMinutes}分钟后到达您家`
+        }, 'client').catch(() => {})
+      }
+
+      return {
+        orderId: order._id,
+        status: ORDER_STATUS.ON_THE_WAY,
+        estimatedTravelMinutes,
+        travelEtaMinutes: estimatedTravelMinutes,
+        estimatedArrivalTime,
+        distanceFromDestinationKm: distanceKm !== null ? Number(distanceKm.toFixed(2)) : null,
+        travelDistanceKm: distanceKm !== null ? Number(distanceKm.toFixed(2)) : null,
+        triggerRadar,
+        radarProximityNotified: isProximity
+      }
+    }
+
+    if (action === 'updateTravelLocation') {
+      const { user, order } = await requireStaffOrder(openid, data.id || data.orderId, '不是该订单员工')
+      if (order.status !== ORDER_STATUS.ON_THE_WAY) {
+        return { updated: false, reason: '订单非前往中状态' }
+      }
+      const time = now()
+      const currentLat = Number(data.currentLatitude || data.latitude || 0)
+      const currentLng = Number(data.currentLongitude || data.longitude || 0)
+      const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
+      const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
+
+      if (!hasCoordinate(currentLat, currentLng)) return { updated: false }
+      let distanceKm = null
+      let estimatedTravelMinutes = order.estimatedTravelMinutes || 10
+      if (hasCoordinate(orderLat, orderLng)) {
+        distanceKm = calcDistanceKm(currentLat, currentLng, orderLat, orderLng)
+        if (distanceKm !== null && !isNaN(distanceKm)) {
+          estimatedTravelMinutes = Math.max(Math.ceil(distanceKm * 2.4 + 2), 2)
+        }
+      }
+      const estimatedArrivalTime = new Date(time.getTime() + estimatedTravelMinutes * 60 * 1000)
+      const isProximity = (distanceKm !== null && distanceKm <= 1.0) || estimatedTravelMinutes <= 10
+
+      const updateData = {
+        currentLocation: { latitude: currentLat, longitude: currentLng, updatedAt: time },
+        distanceFromDestinationKm: distanceKm !== null ? Number(distanceKm.toFixed(2)) : null,
+        estimatedTravelMinutes,
+        estimatedArrivalTime,
+        updatedAt: time
+      }
+
+      let triggerRadar = false
+      if (isProximity && !order.radarApproachingNotified) {
+        updateData.radarApproachingNotified = true
+        updateData.radarApproachingNotifiedAt = time
+        triggerRadar = true
+      }
+
+      await db.collection('orders').doc(order._id).update({ data: updateData })
+      const updatedOrder = { ...order, ...updateData }
+
+      if (triggerRadar) {
+        await appendOrderTimeline(order._id, 'radar_approaching', '宠托师临近到家提醒', '时空雷达：宠托师距离您家约 1 公里内，预计 10 分钟内到达。', 'system')
+        await appendOrderClientMessage(updatedOrder, {
+          eventType: 'radar_proximity',
+          title: '【时空雷达】宠托师即将到达',
+          detail: '宠托师已在路上，预计10分钟后到达您家，请注意门铃/电话，提前安抚毛孩子。',
+          actorRole: 'system',
+          unreadForClient: true
+        })
+        await notifyOrder(order.clientOpenid, 'serviceStart', updatedOrder, {
+          statusText: '宠托师即将到达',
+          tip: '宠托师已在路上，预计10分钟后到达您家'
+        }, 'client').catch(() => {})
+      }
+
+      return {
+        orderId: order._id,
+        distanceFromDestinationKm: distanceKm !== null ? Number(distanceKm.toFixed(2)) : null,
+        estimatedTravelMinutes,
+        estimatedArrivalTime,
+        triggerRadar
+      }
+    }
+
+    if (action === 'getPrivacyCallInfo') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      if (!orderId) throw new Error('缺少订单ID')
+      const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
+      const order = orderRes && orderRes.data
+      if (!order || isAdminDeletedOrder(order)) throw new Error('订单不存在')
+      const isClient = order.clientOpenid === openid
+      const isStaff = order.staffOpenid === openid
+      if (!isClient && !isStaff) throw new Error('无权访问该订单呼叫信息')
+
+      const settings = await getSystemSettings().catch(() => ({}))
+      const virtualNumber = (settings && settings.customerService && settings.customerService.phone) || '400-800-8820'
+      const extensionCode = String(Math.abs(orderId.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 9000 + 1000))
+
+      const targetRole = isStaff ? 'client' : 'staff'
+      let targetPhone = isStaff
+        ? (order.contactPhone || (order.clientSnapshot && order.clientSnapshot.phone) || '')
+        : (order.staffPhone || '')
+      if (!targetPhone) {
+        const targetOpenid = isStaff ? order.clientOpenid : order.staffOpenid
+        const targetUser = await getUser(targetOpenid).catch(() => null)
+        targetPhone = targetUser && targetUser.phone || ''
+      }
+      const maskedPhone = targetPhone && targetPhone.length >= 7
+        ? `${targetPhone.slice(0, 3)}****${targetPhone.slice(-4)}`
+        : '双向隐私保护号'
+
+      const targetName = isStaff
+        ? ((order.clientSnapshot && order.clientSnapshot.nickName) || '客户')
+        : (order.staffName || '宠托师')
+
+      return {
+        orderId,
+        targetRole,
+        targetName,
+        maskedPhone,
+        maskedTargetPhone: maskedPhone,
+        virtualNumber,
+        privacyNumber: virtualNumber,
+        extensionCode,
+        complianceNotice: '为保障双方人身、财产与履约安全，本次通话由平台双向隐私虚拟号保护并开启全程录音质检。严禁在通话中私下索取联系方式或脱单私下交易。',
+        warningNotice: '为保障双方人身、财产与履约安全，本次通话由平台双向隐私虚拟号保护并开启全程录音质检。严禁在通话中私下索取联系方式或脱单私下交易。'
+      }
+    }
+
+    if (action === 'sendOrderSessionMessage') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      if (!orderId) throw new Error('缺少订单ID')
+      const { user, order } = await getOrderForAccess(openid, orderId).catch(() => {
+        throw new Error('无权参与该订单会话')
+      })
+
+      const isClient = order.clientOpenid === openid || (user._id && order.clientUserId === user._id)
+      const isStaff = order.staffOpenid === openid || (user._id && order.staffUserId === user._id) || (user.roles && user.roles.includes('staff') && !isClient)
+      const isAdmin = user.roles && user.roles.includes('admin')
+      if (!isClient && !isStaff && !isAdmin) throw new Error('无权参与该订单会话')
+
+      const content = safeText(data.content || data.message || data.text).trim()
+      const mediaUrl = safeText(data.mediaUrl || data.imageUrl || '').trim()
+      if (!content && !mediaUrl) throw new Error('请输入会话内容或上传图片')
+
+      const senderRole = isStaff ? 'staff' : (isClient ? 'client' : 'staff')
+
+      const saveToCollection = async (colName, docData) => {
+        try {
+          return await db.collection(colName).add({ data: docData })
+        } catch (addErr) {
+          const errMsg = String(addErr.message || addErr.errMsg || '')
+          if (errMsg.includes('not exist') || errMsg.includes('-502001')) {
+            if (typeof db.createCollection === 'function') {
+              await db.createCollection(colName).catch(() => {})
+              return await db.collection(colName).add({ data: docData })
+            }
+          }
+          throw addErr
+        }
+      }
+
+      // 智能防跳单风控引擎检测
+      if (content) {
+        const riskCheck = detectRiskContactBypass(content)
+        if (riskCheck.isRisk) {
+          // 记录违规拦截日志
+          await saveToCollection('risk_bypass_logs', {
+            orderId,
+            orderNo: order.orderNo || '',
+            senderOpenid: openid,
+            senderRole,
+            content,
+            riskReason: riskCheck.reason,
+            hitKeyword: riskCheck.keyword,
+            action: 'blocked',
+            createdAt: now()
+          }).catch(() => {})
+
+          throw new Error('【平台安全拦截】消息包含疑似微信号、手机号或私下交易引流词汇。为保障您的财产安全与服务履约保障，严禁脱单私聊，所有服务沟通请直接在平台内完成。')
+        }
+      }
+
+      const time = now()
+      const sessionMsg = {
+        orderId,
+        orderNo: order.orderNo || '',
+        senderOpenid: openid,
+        senderRole,
+        content,
+        mediaUrl,
+        createdAt: time
+      }
+      const created = await saveToCollection('order_session_messages', sessionMsg)
+
+      // 异步尝试写入订单消息通知流，即使通知流异常也不阻塞即时消息发送
+      try {
+        if (senderRole === 'staff') {
+          await appendOrderClientMessage(order, {
+            eventType: 'order_chat_message',
+            title: '宠托师发来即时消息',
+            detail: content || '[现场图片]',
+            actorRole: 'staff'
+          })
+        } else {
+          await appendOrderStaffMessage(order, {
+            eventType: 'order_chat_message',
+            title: '宠物主发来即时消息',
+            detail: content || '[图片消息]',
+            actorRole: 'client'
+          })
+        }
+      } catch (notifyErr) {
+        console.warn('appendOrderMessage notification failed, ignored:', notifyErr)
+      }
+
+      return {
+        _id: created._id,
+        ...sessionMsg
+      }
+    }
+
+    if (action === 'listOrderSessionMessages') {
+      const orderId = safeText(data.id || data.orderId).trim()
+      if (!orderId) throw new Error('缺少订单ID')
+      const { user, order } = await getOrderForAccess(openid, orderId).catch(() => {
+        throw new Error('无权查看该订单会话')
+      })
+      const isClient = order.clientOpenid === openid || (user._id && order.clientUserId === user._id)
+      const isStaff = order.staffOpenid === openid || (user._id && order.staffUserId === user._id) || (user.roles && user.roles.includes('staff'))
+      const isAuthorized = isClient || isStaff || (user.roles && user.roles.includes('admin'))
+      if (!isAuthorized) {
+        throw new Error('无权查看该订单会话')
+      }
+      const res = await db.collection('order_session_messages')
+        .where({ orderId })
+        .orderBy('createdAt', 'asc')
+        .limit(100)
+        .get()
+        .catch(() => ({ data: [] }))
+      return res.data || []
     }
 
     if (action === 'startService') {

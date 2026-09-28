@@ -40,20 +40,21 @@ module.exports = function createService({
     const windowStartText = `${formatDateTime(windowStartTs).slice(0, 10)} 00:00`
 
     const _ = db.command
-    const whereAssigned = { status: ORDER_STATUS.ASSIGNED }
+    const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
+    const wherePendingService = { status: inOp([ORDER_STATUS.ASSIGNED, (ORDER_STATUS && ORDER_STATUS.ON_THE_WAY) || 'on_the_way']) }
     const whereDayCompleted = { status: ORDER_STATUS.DAY_COMPLETED }
     if (_ && typeof _.gte === 'function') {
-      whereAssigned.startTime = _.gte(windowStartText)
+      wherePendingService.startTime = _.gte(windowStartText)
       whereDayCompleted.startTime = _.gte(windowStartText)
     }
 
-    const [assignedOrders, dayCompletedOrders] = await Promise.all([
-      readActiveOrders(whereAssigned),
+    const [pendingOrders, dayCompletedOrders] = await Promise.all([
+      readActiveOrders(wherePendingService),
       readActiveOrders(whereDayCompleted)
     ])
-    const candidates = [...assignedOrders, ...dayCompletedOrders]
+    const candidates = [...pendingOrders, ...dayCompletedOrders]
     console.log('[processOverdueUnstartedOrders] scanning candidates:', {
-      assignedCount: assignedOrders.length,
+      pendingCount: pendingOrders.length,
       dayCompletedCount: dayCompletedOrders.length,
       currentTime: formatDateTime(currentTs),
       windowStartText
@@ -96,11 +97,19 @@ module.exports = function createService({
           console.error('[processOverdueUnstartedOrders] staff notifyOrder error:', notifyErr.message)
         }
 
+        const isOnTheWay = order.status === ORDER_STATUS.ON_THE_WAY || order.status === 'on_the_way'
+        const staffMsgDetail = isOnTheWay
+          ? `您的订单（${serviceName}）约定于 ${timeText} 开始，您虽已点击前往，但现已超时超过 15 分钟尚未开始服务。请尽快到达服务地点并打卡开始，以免产生爽约客诉或违约处罚。`
+          : `您的订单（${serviceName}）约定于 ${timeText} 开始，现已超时超过 15 分钟尚未开始服务。请尽快到达服务地点并打卡开始，以免产生爽约客诉或违约处罚。`
+        const staffTlDetail = isOnTheWay
+          ? `第${sessionIndex}天服务已超时 15 分钟尚未打卡开始（宠托师前往中），系统已提醒催促宠托师尽快到场履约。`
+          : `第${sessionIndex}天服务已超时 15 分钟尚未开始，系统已提醒催促宠托师尽快到场履约。`
+
         try {
           await appendOrderStaffMessage(order, {
             eventType: 'overdue_unstarted_warning',
             title: '服务已超时未开始提醒',
-            detail: `您的订单（${serviceName}）约定于 ${timeText} 开始，现已超时超过 15 分钟尚未开始服务。请尽快到达服务地点并打卡开始，以免产生爽约客诉或违约处罚。`,
+            detail: staffMsgDetail,
             actorRole: 'system',
             idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_unstarted_warning', String(sessionIndex))
           })
@@ -109,7 +118,7 @@ module.exports = function createService({
         }
 
         try {
-          await appendOrderTimeline(order._id, 'overdue_unstarted_warning', '服务超时未开始催促', `第${sessionIndex}天服务已超时 15 分钟尚未开始，系统已提醒催促宠托师尽快到场履约。`, 'system')
+          await appendOrderTimeline(order._id, 'overdue_unstarted_warning', '服务超时未开始催促', staffTlDetail, 'system')
         } catch (tlErr) {
           console.error('[processOverdueUnstartedOrders] appendOrderTimeline error:', tlErr.message)
         }
@@ -140,8 +149,12 @@ module.exports = function createService({
           console.error('[processOverdueUnstartedOrders] appendOrderClientMessage error:', msgErr.message)
         }
 
+        const isOnTheWay = order.status === ORDER_STATUS.ON_THE_WAY || order.status === 'on_the_way'
+        const alertTlDetail = isOnTheWay
+          ? `服务已超时 30 分钟仍未打卡开始（宠托师处于前往中），系统已提醒宠物主并触发异常跟进。`
+          : `服务已超时 30 分钟仍未开始，系统已提醒宠物主并触发异常跟进。`
         try {
-          await appendOrderTimeline(order._id, 'overdue_unstarted_alert', '服务严重超时异常预警', `服务已超时 30 分钟仍未开始，系统已提醒宠物主并触发异常跟进。`, 'system')
+          await appendOrderTimeline(order._id, 'overdue_unstarted_alert', '服务严重超时异常预警', alertTlDetail, 'system')
         } catch (tlErr) {
           console.error('[processOverdueUnstartedOrders] appendOrderTimeline error:', tlErr.message)
         }
@@ -152,15 +165,16 @@ module.exports = function createService({
             const staffUser = (staffUserRes.data && staffUserRes.data[0]) || {}
             const staffProfileRes = order.staffProfileId ? await db.collection('staff_profiles').doc(order.staffProfileId).get() : { data: null }
             const staffProfile = staffProfileRes.data || {}
-            const staffName = staffProfile.name || staffUser.name || order.staffName || '已指派宠托师'
+            const staffName = staffProfile.name || staffProfile.realName || staffUser.name || order.staffName || '已指派宠托师'
             const staffPhone = staffProfile.phone || staffUser.phone || '未填写'
             const clientPhone = (order.clientSnapshot && order.clientSnapshot.phoneMasked) || (order.clientContact && order.clientContact.phone) || '未填写'
+            const statusLabel = isOnTheWay ? '前往中但未打卡' : '待服务'
 
             await notifyAdmins({
               type: 'order_start_overdue',
               level: 'urgent',
               title: `【超时未开始预警】订单 ${order.orderNo || order._id} 超时30分钟未开始`,
-              content: `订单（${serviceName}）原约定于 ${timeText} 开始，已超时 30 分钟。当前宠托师：${staffName}（电话：${staffPhone}），客户电话：${clientPhone}。请立即电话联系宠托师；如无法继续履约，可在后台将其转为【加急公共抢单】重新调度！`,
+              content: `订单（${serviceName}）原约定于 ${timeText} 开始，已超时 30 分钟。当前状态：${statusLabel}，宠托师：${staffName}（电话：${staffPhone}），客户电话：${clientPhone}。请立即电话联系宠托师；如无法继续履约，可在后台将其转为【加急公共抢单】重新调度！`,
               orderId: order._id,
               orderNo: order.orderNo || '',
               actionUrl: `/pages/admin/orders/detail/index?id=${order._id}`,
@@ -170,7 +184,8 @@ module.exports = function createService({
                 startTime: timeText,
                 staffName,
                 staffPhone,
-                clientPhone
+                clientPhone,
+                status: order.status
               },
               idempotencyKey: makeIdempotencyKey('admin_notice_start_overdue', order._id, String(sessionIndex))
             })

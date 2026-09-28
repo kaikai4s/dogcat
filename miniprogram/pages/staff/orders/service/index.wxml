@@ -10,6 +10,58 @@
     <view class="hero-desc">按流程上传轨迹并完成打卡；门锁密码仅在服务窗口内展示并记录访问日志。</view>
   </view>
 
+  <!-- 隐私沟通与通话快捷栏 -->
+  <view class="contact-actions-bar" wx:if="{{order}}">
+    <button class="ghost-btn contact-btn" bindtap="openPrivacyCall">
+      <text class="remix-icon ri-phone-lock-fill"></text>
+      <text>双向隐私通话</text>
+    </button>
+    <button class="ghost-btn contact-btn" bindtap="openSessionChat">
+      <text class="remix-icon ri-message-3-fill"></text>
+      <text>在线安全沟通</text>
+    </button>
+  </view>
+
+  <!-- 出发前往服务地点卡片（已接单但尚未出发） -->
+  <view class="card depart-card" wx:if="{{order && order.canDepart}}">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-riding-line sub-icon"></text>
+      <text>准备出发</text>
+    </view>
+    <view class="depart-desc">出发前往服务地点时，请点击下方按钮。系统将开启“时空雷达”，向宠物主实时同步预计到达时间，临近1公里时自动推送微信提醒。</view>
+    <button class="primary-btn full-btn" loading="{{departing}}" disabled="{{departing}}" bindtap="departForService">
+      <text class="remix-icon ri-navigation-fill"></text>
+      <text>现在出发前往服务地点</text>
+    </button>
+  </view>
+
+  <!-- 时空雷达运行中卡片（正在前往服务地点中） -->
+  <view class="card radar-transit-card" wx:if="{{order && order.isOnTheWay}}">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-radar-fill sub-icon radar-pulse-icon"></text>
+      <text>时空雷达运行中 · 正在前往客户家</text>
+    </view>
+    <view class="radar-stats-grid">
+      <view class="radar-stat-item">
+        <view class="radar-stat-label">预计到达时间</view>
+        <view class="radar-stat-val">{{order.travelEtaMinutes !== undefined ? order.travelEtaMinutes + ' 分钟' : '计算中'}}</view>
+      </view>
+      <view class="radar-stat-item">
+        <view class="radar-stat-label">距客户家</view>
+        <view class="radar-stat-val">{{order.travelDistanceKm !== undefined ? order.travelDistanceKm + ' 公里' : '计算中'}}</view>
+      </view>
+    </view>
+    <view class="radar-proximity-notice" wx:if="{{order.radarProximityNotified || (order.travelDistanceKm && order.travelDistanceKm <= 1.0)}}">
+      <text class="remix-icon ri-notification-3-fill"></text>
+      <text>已触发临近到家提醒（距客户家1公里内/10分钟）</text>
+    </view>
+    <button class="ghost-btn full-btn refresh-eta-btn" loading="{{updatingTravelLocation}}" disabled="{{updatingTravelLocation}}" bindtap="updateTravelLocation">
+      <text class="remix-icon ri-refresh-line"></text>
+      <text>更新当前行程与到达时间</text>
+    </button>
+    <view class="radar-hint">到达现场后，请先佩戴手套鞋套完成隔离消毒拍照，即可点击下方“开始服务”。</view>
+  </view>
+
   <view class="card pet-card" wx:if="{{order && order.petSnapshot}}">
     <view class="card-subtitle">
       <text class="remix-icon ri-footprint-line sub-icon"></text>
@@ -211,4 +263,58 @@
     <button class="primary-btn finish-btn {{order.allCheckinsDone ? 'highlight-btn' : ''}}" loading="{{finishing}}" disabled="{{finishing}}" bindtap="finish">{{finishing ? '处理中...' : (order.allCheckinsDone ? '确认离开并完成服务' : '完成服务')}}</button>
   </view>
 </view>
+
+<!-- 双向隐私通话合规弹窗 -->
+<view class="custom-modal-mask" wx:if="{{showCallModal}}">
+  <view class="custom-modal-box">
+    <view class="custom-modal-title">
+      <text class="remix-icon ri-shield-check-fill security-badge-icon"></text>
+      <text>双向隐私保护通话</text>
+    </view>
+    <view class="privacy-warning-box">
+      <view class="warning-title">
+        <text class="remix-icon ri-alarm-warning-fill"></text>
+        <text>通话全程录音与质检提醒</text>
+      </view>
+      <view class="warning-text">{{privacyCallInfo.warningNotice || '平台提示：通话全程已录音并开启AI风控质检。请严格遵守平台规范，严禁私下索要或告知电话、微信、私下交易等跳单导流行为，违者将被扣除保证金并永久封禁。'}}</view>
+    </view>
+    <view class="privacy-phone-card">
+      <view class="phone-label">平台分配隐私保护号：</view>
+      <view class="phone-number">{{privacyCallInfo.privacyNumber || '400-888-9999'}}</view>
+      <view class="phone-ext" wx:if="{{privacyCallInfo.extensionCode}}">分机号：{{privacyCallInfo.extensionCode}}</view>
+      <view class="phone-target">接听方：客户（{{privacyCallInfo.maskedTargetPhone || '号码已隐藏'}}）</view>
+    </view>
+    <view class="custom-modal-actions">
+      <button class="primary-btn call-action-btn" bindtap="confirmPrivacyCall">拨打虚拟号</button>
+      <button class="ghost-btn cancel-action-btn" bindtap="closePrivacyCallModal">取消</button>
+    </view>
+  </view>
+</view>
+
+<!-- 在线即时安全沟通弹窗 -->
+<view class="custom-modal-mask" wx:if="{{showChatModal}}">
+  <view class="chat-modal-box">
+    <view class="chat-header">
+      <view class="chat-title">订单安全即时会话</view>
+      <view class="remix-icon ri-close-line close-btn" bindtap="closeSessionChat"></view>
+    </view>
+    <view class="chat-warning-banner">
+      <text class="remix-icon ri-shield-alert-fill"></text>
+      <text>严禁索要或发送微信号/手机号/私下转账，系统AI实时风控拦截。</text>
+    </view>
+    <scroll-view class="chat-body" scroll-y>
+      <view class="chat-empty" wx:if="{{!sessionMessages.length}}">暂无沟通记录，若有突发情况请在此与客户联系</view>
+      <view class="chat-msg-row {{item.senderRole === 'staff' ? 'self' : 'other'}}" wx:for="{{sessionMessages}}" wx:key="_id">
+        <view class="msg-sender">{{item.senderRole === 'staff' ? '我 (宠托师)' : '客户'}}</view>
+        <view class="msg-bubble">{{item.content}}</view>
+        <view class="msg-time">{{beijingTime.format(item.createdAt)}}</view>
+      </view>
+    </scroll-view>
+    <view class="chat-footer">
+      <input class="chat-input" placeholder="输入沟通信息（自动风控过滤）" value="{{sessionInputText}}" bindinput="onChatInput" />
+      <button class="primary-btn chat-send-btn" loading="{{sendingChatMessage}}" disabled="{{sendingChatMessage}}" bindtap="sendChatMessage">发送</button>
+    </view>
+  </view>
+</view>
+
 <global-loading />

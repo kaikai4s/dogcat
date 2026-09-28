@@ -72,7 +72,7 @@ module.exports = function createService({ db, crypto, now, safeText }) {
   }
   async function exitCheck(openid) {
     const orders = await db.collection('orders').where({ staffOpenid: openid,
-      status: db.command.in(['paid', 'assigned', 'in_service', 'day_completed']) }).limit(1).get()
+      status: db.command.in(['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed']) }).limit(1).get()
     if (orders.data.length) throw new Error('尚有未完成订单，暂不可退出退款')
     const incidents = await db.collection('order_incidents').where({ staffOpenid: openid,
       status: db.command.in(['open', 'investigating', 'triaging', 'waiting_client', 'waiting_staff', 'processing', 'refund_pending']) }).limit(1).get()

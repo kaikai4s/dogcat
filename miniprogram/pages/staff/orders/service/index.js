@@ -118,8 +118,10 @@ function withServiceActionState(order) {
   const activeSession = sessions.find((item) => item.status === 'in_service' || Number(item.index) === Number(order.activeSessionIndex || 0)) || null
   const nextSession = sessions.find((item) => item.status !== 'completed') || null
   const startTime = toTimeValue((nextSession && nextSession.startTime) || order.startTime)
-  const canStartService = ['assigned', 'day_completed'].includes(order.status)
-  const canRequestEarlyStart = canStartService && startTime > Date.now()
+  const canDepart = order.status === 'assigned'
+  const isOnTheWay = order.status === 'on_the_way'
+  const canStartService = ['assigned', 'on_the_way', 'day_completed'].includes(order.status)
+  const canRequestEarlyStart = ['assigned', 'on_the_way', 'day_completed'].includes(order.status) && startTime > Date.now()
   const sanitization = (order.checkinRequirements || []).find((item) => item.eventType === 'sanitization')
   const sanitizationRequired = Boolean((sanitization && sanitization.required) || (order.requiredCheckins || []).includes('sanitization'))
   const sanitizationCompleted = Boolean(sanitization && sanitization.completed)
@@ -157,6 +159,8 @@ function withServiceActionState(order) {
     ...order,
     orderHomeSecurity,
     serviceStarted,
+    canDepart,
+    isOnTheWay,
     canStartService,
     canRequestEarlyStart,
     isStartOverdue,
@@ -201,6 +205,14 @@ Page({
     customerService: null,
     starting: false,
     finishing: false,
+    departing: false,
+    updatingTravelLocation: false,
+    sessionMessages: [],
+    sessionInputText: '',
+    showChatModal: false,
+    sendingChatMessage: false,
+    privacyCallInfo: null,
+    showCallModal: false,
     serviceElapsedText: '00:00:00',
     sectionHomeUrl: '',
     canGoBack: false,
@@ -936,6 +948,198 @@ Page({
         this._finishingLock = false
         this.setData({ finishing: false })
         showError(error)
+      })
+  },
+
+  departForService() {
+    if (this.data.departing || !this.data.id) return
+    wx.showModal({
+      title: '出发前往服务地点',
+      content: '点击出发后，系统将开启“时空雷达”，向宠物主实时同步您的预计到达时间。请确保准时出行。',
+      confirmText: '现在出发',
+      cancelText: '稍后再去',
+      success: (modalRes) => {
+        if (!modalRes.confirm) return
+        this.setData({ departing: true })
+        showLoading({ title: '获取当前定位中...', mask: true })
+
+        const doDepart = (loc) => {
+          showLoading({ title: '正在开启行程雷达...', mask: true })
+          return callFunction('order', 'departForService', {
+            orderId: this.data.id,
+            latitude: loc && loc.latitude,
+            longitude: loc && loc.longitude
+          })
+            .then(() => {
+              wx.showToast({ title: '已出发前往，雷达已启动', icon: 'success' })
+              this.loadOrder()
+            })
+            .catch((err) => {
+              showError(err)
+            })
+            .finally(() => {
+              hideLoading()
+              this.setData({ departing: false })
+            })
+        }
+
+        // 优先使用页面内置的 getRealtimeLocation，带 4 秒超时防护
+        const locationTimeout = new Promise((resolve) => setTimeout(() => resolve(null), 4000))
+        Promise.race([
+          this.getRealtimeLocation().catch(() => null),
+          locationTimeout
+        ])
+          .then((loc) => {
+            if (loc && loc.latitude && loc.longitude) {
+              return doDepart(loc)
+            }
+            // 降级尝试普通的 wx.getLocation
+            return new Promise((resolve) => {
+              wx.getLocation({
+                type: 'gcj02',
+                success: (fallbackLoc) => resolve(fallbackLoc),
+                fail: () => resolve(null)
+              })
+            }).then((fallbackLoc) => {
+              if (fallbackLoc && fallbackLoc.latitude && fallbackLoc.longitude) {
+                return doDepart(fallbackLoc)
+              }
+              // 定位不可用时（模拟器或未开GPS），允许免定位直接出发（后端雷达会自动默认估算时间）
+              return doDepart(null)
+            })
+          })
+          .catch(() => {
+            return doDepart(null)
+          })
+      }
+    })
+  },
+
+  updateTravelLocation() {
+    if (this.data.updatingTravelLocation || !this.data.id) return
+    this.setData({ updatingTravelLocation: true })
+    showLoading({ title: '正在更新行程位置...', mask: true })
+
+    const locationTimeout = new Promise((resolve) => setTimeout(() => resolve(null), 4000))
+    Promise.race([
+      this.getRealtimeLocation().catch(() => null),
+      locationTimeout
+    ])
+      .then((loc) => {
+        if (!loc || !loc.latitude) {
+          return new Promise((resolve) => {
+            wx.getLocation({
+              type: 'gcj02',
+              success: resolve,
+              fail: () => resolve(null)
+            })
+          })
+        }
+        return loc
+      })
+      .then((loc) => {
+        if (!loc || !loc.latitude) {
+          hideLoading()
+          this.setData({ updatingTravelLocation: false })
+          wx.showToast({ title: '无法获取当前位置', icon: 'none' })
+          return
+        }
+        return callFunction('order', 'updateTravelLocation', {
+          orderId: this.data.id,
+          latitude: loc.latitude,
+          longitude: loc.longitude
+        })
+          .then(() => {
+            wx.showToast({ title: '位置与ETA已更新', icon: 'none' })
+            this.loadOrder()
+          })
+          .catch(showError)
+          .finally(() => {
+            hideLoading()
+            this.setData({ updatingTravelLocation: false })
+          })
+      })
+      .catch(() => {
+        hideLoading()
+        this.setData({ updatingTravelLocation: false })
+      })
+  },
+
+  openPrivacyCall() {
+    if (!this.data.id) return
+    showLoading('获取虚拟隐私通话...')
+    callFunction('order', 'getPrivacyCallInfo', { orderId: this.data.id })
+      .then((info) => {
+        hideLoading()
+        this.setData({ privacyCallInfo: info, showCallModal: true })
+      })
+      .catch((err) => {
+        hideLoading()
+        showError(err)
+      })
+  },
+
+  confirmPrivacyCall() {
+    const info = this.data.privacyCallInfo
+    if (!info || !info.privacyNumber) return
+    wx.makePhoneCall({
+      phoneNumber: info.privacyNumber,
+      complete: () => {
+        this.setData({ showCallModal: false })
+      }
+    })
+  },
+
+  closePrivacyCallModal() {
+    this.setData({ showCallModal: false })
+  },
+
+  openSessionChat() {
+    this.setData({ showChatModal: true })
+    this.loadSessionMessages()
+  },
+
+  closeSessionChat() {
+    this.setData({ showChatModal: false })
+  },
+
+  loadSessionMessages() {
+    if (!this.data.id) return
+    callFunction('order', 'listOrderSessionMessages', { orderId: this.data.id })
+      .then((list) => {
+        this.setData({ sessionMessages: list || [] })
+      })
+      .catch((err) => console.error('loadSessionMessages err:', err))
+  },
+
+  onChatInput(e) {
+    this.setData({ sessionInputText: e.detail.value })
+  },
+
+  sendChatMessage() {
+    const content = (this.data.sessionInputText || '').trim()
+    if (!content) {
+      wx.showToast({ title: '请输入消息内容', icon: 'none' })
+      return
+    }
+    this.setData({ sendingChatMessage: true })
+    callFunction('order', 'sendOrderSessionMessage', {
+      orderId: this.data.id,
+      content
+    })
+      .then(() => {
+        this.setData({ sendingChatMessage: false, sessionInputText: '' })
+        this.loadSessionMessages()
+      })
+      .catch((err) => {
+        this.setData({ sendingChatMessage: false })
+        const msg = (err && (err.message || err.errMsg)) || '发送失败，请稍后重试'
+        const isRisk = msg.includes('平台安全拦截') || msg.includes('风控')
+        wx.showModal({
+          title: isRisk ? '风控合规拦截' : '发送失败',
+          content: msg,
+          showCancel: false
+        })
       })
   },
 

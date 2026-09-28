@@ -224,7 +224,7 @@ module.exports = function createService({
     const currentTs = toTimeValue(currentTime)
     if (!currentTs) return false
 
-    if (order.status === ORDER_STATUS.ASSIGNED || order.status === ORDER_STATUS.DAY_COMPLETED) {
+    if (order.status === ORDER_STATUS.ASSIGNED || order.status === ORDER_STATUS.ON_THE_WAY || order.status === 'on_the_way' || order.status === ORDER_STATUS.DAY_COMPLETED) {
       const activeSession = getActiveServiceSession(order) || getNextPendingServiceSession(order) || (Array.isArray(order.serviceSessions) && order.serviceSessions[0])
       const sessionStartTime = toTimeValue((activeSession && activeSession.startTime) || order.startTime)
       if (sessionStartTime && currentTs - sessionStartTime >= 15 * 60 * 1000) {

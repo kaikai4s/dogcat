@@ -11,7 +11,8 @@ module.exports = function createContext({ cloud, db }) {
     ...require('../config/petBlessings'),
     ...require('../utils/validation'),
     ...require('../utils/response'),
-    ...require('../utils/time')
+    ...require('../utils/time'),
+    ...require('../utils/antiBypass')
   }
   // Factories capture dependencies in topological order; no runtime service lookup.
   Object.assign(context, require('../services/paymentDeadline')(context))

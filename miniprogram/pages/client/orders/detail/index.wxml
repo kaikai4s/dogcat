@@ -14,6 +14,64 @@
     <view class="summary-price">¥{{order.payAmount}}</view>
   </view>
 
+  <!-- 隐私沟通与通话快捷栏 -->
+  <view class="contact-actions-bar" wx:if="{{order.staffOpenid}}">
+    <button class="ghost-btn contact-btn" bindtap="openPrivacyCall">
+      <text class="remix-icon ri-phone-lock-fill"></text>
+      <text>双向隐私通话</text>
+    </button>
+    <button class="ghost-btn contact-btn" bindtap="openSessionChat">
+      <text class="remix-icon ri-message-3-fill"></text>
+      <text>在线即时沟通</text>
+    </button>
+  </view>
+
+  <!-- 时空雷达提醒卡片（宠托师在路上或已触发临近提醒） -->
+  <view class="card radar-card" wx:if="{{order.status === 'on_the_way' || order.travelEtaMinutes !== undefined}}">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-radar-fill sub-icon radar-pulse-icon"></text>
+      <text>时空雷达：宠托师正赶往中</text>
+    </view>
+    <view class="radar-stats-grid">
+      <view class="radar-stat-item">
+        <view class="radar-stat-label">预计到达时间</view>
+        <view class="radar-stat-val">约 {{order.travelEtaMinutes !== undefined ? order.travelEtaMinutes : 10}} 分钟</view>
+      </view>
+      <view class="radar-stat-item">
+        <view class="radar-stat-label">距离您家</view>
+        <view class="radar-stat-val">约 {{order.travelDistanceKm !== undefined ? order.travelDistanceKm : 1.0}} 公里</view>
+      </view>
+    </view>
+    <view class="radar-proximity-banner" wx:if="{{order.radarProximityNotified || (order.travelDistanceKm !== undefined && order.travelDistanceKm <= 1.0)}}">
+      <text class="remix-icon ri-alarm-warning-fill"></text>
+      <text>【临近到家提醒】宠托师已进入您家1公里范围（预计10分钟内到达），请留意门铃或查看开门提醒！</text>
+    </view>
+    <view class="radar-tip-text">系统基于实时GPS测距计算预计到达时间，宠托师到达后将先进行隔离消毒拍照。</view>
+  </view>
+
+  <!-- 现场照料实时流（即拍即达） -->
+  <view class="card live-stream-card" wx:if="{{liveCheckins && liveCheckins.length}}">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-live-fill sub-icon live-stream-icon"></text>
+      <text>现场照料实时流（即拍即达）</text>
+    </view>
+    <view class="live-stream-desc">宠托师现场打卡即时同步，如同现场图文直播</view>
+    <view class="live-stream-list">
+      <view class="live-stream-item" wx:for="{{liveCheckins}}" wx:key="_id">
+        <view class="live-photo-wrap">
+          <image class="live-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewLiveCheckinPhoto" />
+        </view>
+        <view class="live-info">
+          <view class="live-header">
+            <text class="live-tag">{{item.eventType === 'sanitization' ? '进门消毒' : (item.eventType === 'feed' ? '添加粮食' : (item.eventType === 'water' ? '更换饮水' : (item.eventType === 'litter' ? '清理猫砂' : (item.eventType === 'play' ? '陪伴玩耍' : (item.eventType === 'medicine' ? '喂药照料' : (item.eventType === 'pet_beauty_photo' ? '毛孩子美照' : '现场打卡'))))))}}</text>
+            <text class="live-time">{{beijingTime.format(item.recordedAt || item.createdAt)}}</text>
+          </view>
+          <view class="live-remark">{{item.remark || '宠托师已完成该项照料打卡'}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
   <view class="card order-message-entry interactive" bindtap="openOrderMessages">
     <view class="entry-left">
       <view class="entry-icon remix-icon ri-chat-3-fill"></view>
@@ -187,4 +245,58 @@
     <button class="ghost-btn" wx:if="{{order.status === 'completed'}}" bindtap="report"><text class="remix-icon ri-file-text-line"></text><text>服务报告</text></button>
   </view>
 </view>
+
+<!-- 双向隐私通话合规弹窗 -->
+<view class="custom-modal-mask" wx:if="{{showCallModal}}">
+  <view class="custom-modal-box">
+    <view class="custom-modal-title">
+      <text class="remix-icon ri-shield-check-fill security-badge-icon"></text>
+      <text>双向隐私保护通话</text>
+    </view>
+    <view class="privacy-warning-box">
+      <view class="warning-title">
+        <text class="remix-icon ri-alarm-warning-fill"></text>
+        <text>通话全程录音与质检提醒</text>
+      </view>
+      <view class="warning-text">{{privacyCallInfo.warningNotice || '平台提示：通话全程已录音并开启AI风控质检。请严格遵守平台规范，严禁私下索要或告知电话、微信、私下交易等跳单导流行为，违者将被取消保障并按平台规则处理。'}}</view>
+    </view>
+    <view class="privacy-phone-card">
+      <view class="phone-label">平台分配隐私保护号：</view>
+      <view class="phone-number">{{privacyCallInfo.privacyNumber || '400-888-9999'}}</view>
+      <view class="phone-ext" wx:if="{{privacyCallInfo.extensionCode}}">分机号：{{privacyCallInfo.extensionCode}}</view>
+      <view class="phone-target">接听方：宠托师（{{privacyCallInfo.maskedTargetPhone || '号码已隐藏'}}）</view>
+    </view>
+    <view class="custom-modal-actions">
+      <button class="primary-btn call-action-btn" bindtap="confirmPrivacyCall">拨打虚拟号</button>
+      <button class="ghost-btn cancel-action-btn" bindtap="closePrivacyCallModal">取消</button>
+    </view>
+  </view>
+</view>
+
+<!-- 在线即时安全沟通弹窗 -->
+<view class="custom-modal-mask" wx:if="{{showChatModal}}">
+  <view class="chat-modal-box">
+    <view class="chat-header">
+      <view class="chat-title">订单安全即时沟通</view>
+      <view class="remix-icon ri-close-line close-btn" bindtap="closeSessionChat"></view>
+    </view>
+    <view class="chat-warning-banner">
+      <text class="remix-icon ri-shield-alert-fill"></text>
+      <text>严禁索要或发送微信号/手机号/私下转账，系统AI实时风控拦截。</text>
+    </view>
+    <scroll-view class="chat-body" scroll-y>
+      <view class="chat-empty" wx:if="{{!sessionMessages.length}}">暂无沟通记录，可在此与宠托师即时沟通服务细节</view>
+      <view class="chat-msg-row {{item.senderRole === 'client' ? 'self' : 'other'}}" wx:for="{{sessionMessages}}" wx:key="_id">
+        <view class="msg-sender">{{item.senderRole === 'client' ? '我 (宠物主)' : '宠托师'}}</view>
+        <view class="msg-bubble">{{item.content}}</view>
+        <view class="msg-time">{{beijingTime.format(item.createdAt)}}</view>
+      </view>
+    </scroll-view>
+    <view class="chat-footer">
+      <input class="chat-input" placeholder="输入沟通信息（自动风控过滤）" value="{{sessionInputText}}" bindinput="onChatInput" />
+      <button class="primary-btn chat-send-btn" loading="{{sendingChatMessage}}" disabled="{{sendingChatMessage}}" bindtap="sendChatMessage">发送</button>
+    </view>
+  </view>
+</view>
+
 <global-loading />

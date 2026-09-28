@@ -4,7 +4,7 @@ module.exports = function createService({
   safeText
 }) {
   function isPaidOrder(order = {}) {
-    return order.paymentStatus === 'paid' || ['paid', 'assigned', 'in_service', 'completed'].includes(order.status)
+    return order.paymentStatus === 'paid' || ['paid', 'assigned', 'on_the_way', 'in_service', 'completed'].includes(order.status)
   }
 
   function canTransitionOrder(fromStatus, toStatus) {
@@ -23,6 +23,7 @@ module.exports = function createService({
       paying: '支付中',
       paid: '待接单',
       assigned: '已接单',
+      on_the_way: '前往服务地点中',
       in_service: '服务中',
       day_completed: '当天已完成',
       completed: '已完成',

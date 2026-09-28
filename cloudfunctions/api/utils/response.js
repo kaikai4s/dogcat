@@ -10,6 +10,6 @@ function inferErrorCode(message = '') {
   return 'UNKNOWN_ERROR'
 }
 
-function fail(message, code) { return { ok: false, code: code || inferErrorCode(message), message } }
+function fail(message, code) { return { ok: false, code: code || inferErrorCode(message), message, error: message } }
 
 module.exports = { ok, inferErrorCode, fail }

@@ -43,7 +43,9 @@ module.exports = function createService({
 
   async function requireStaffOrder(openid, orderId, message = '仅订单员工可操作') {
     const { user, order } = await getOrderForAccess(openid, orderId)
-    if (!user.roles.includes('staff') || order.staffOpenid !== openid) throw new Error(message)
+    if (user.roles.includes('admin')) return { user, order }
+    const isStaffMatch = order.staffOpenid === openid || (user._id && order.staffUserId === user._id)
+    if (!user.roles.includes('staff') || !isStaffMatch) throw new Error(message)
     return { user, order }
   }
 

@@ -7,6 +7,7 @@ const SERVICE_ORDER_STATUS_OPTIONS = [
   { value: 'pending_pay', label: '待支付' },
   { value: 'paid', label: '待接单（已支付）' },
   { value: 'assigned', label: '待服务（已派单/接单）' },
+  { value: 'on_the_way', label: '前往服务地点中' },
   { value: 'in_service', label: '服务中' },
   { value: 'completed', label: '已完成' },
   { value: 'cancelled', label: '已取消' },
@@ -88,6 +89,11 @@ Page({
     urgentStaffRewardInput: '',
     urgentStartTimeInput: '',
     urgentEndTimeInput: '',
+    urgentStartDate: '',
+    urgentStartTimeClock: '',
+    urgentEndDate: '',
+    urgentEndTimeClock: '',
+    minUrgentDate: '',
     urgentRemarkInput: '',
     submittingUrgent: false,
     showEvidenceModal: false,
@@ -112,7 +118,10 @@ Page({
     computedFinalReward: '0.00',
     manualCompleteRemarkInput: '',
     manualCompleteImages: [],
-    submittingManualComplete: false
+    submittingManualComplete: false,
+    sessionMessages: [],
+    riskBypassLogs: [],
+    showChatModal: false
   },
 
   onLoad(q) {
@@ -139,6 +148,8 @@ Page({
         this.setData({
           detail: { ...detail, order },
           refunds: mappedRefunds,
+          sessionMessages: detail.sessionMessages || [],
+          riskBypassLogs: detail.riskBypassLogs || [],
           standardStaffReward,
           computedFinalReward: standardStaffReward.toFixed(2)
         })
@@ -307,18 +318,34 @@ Page({
   openUrgentModal() {
     const order = this.data.detail && this.data.detail.order
     if (!order) return
-    if (!['paid', 'assigned'].includes(order.status)) {
+    if (!['paid', 'assigned', 'on_the_way', 'day_completed'].includes(order.status)) {
       wx.showToast({ title: '订单已开始服务或已结束，无法转加急单', icon: 'none' })
       return
     }
     const defaultReward = order.urgentStaffReward || Math.round(Number(order.payAmount || 60) * 0.7 * 100) / 100
     const durationMinutes = Number(order.durationMinutes || 60) || 60
     const initialTimes = computeInitialUrgentTime(order, durationMinutes)
+
+    const [startDate = '', startTimeClock = ''] = (initialTimes.startTime || '').split(' ')
+    const [endDate = '', endTimeClock = ''] = (initialTimes.endTime || '').split(' ')
+
+    const now = new Date()
+    const beijing = new Date(now.getTime() + 8 * 3600 * 1000)
+    const y = beijing.getUTCFullYear()
+    const m = String(beijing.getUTCMonth() + 1).padStart(2, '0')
+    const d = String(beijing.getUTCDate()).padStart(2, '0')
+    const todayStr = `${y}-${m}-${d}`
+
     this.setData({
       showUrgentModal: true,
       urgentStaffRewardInput: String(defaultReward),
       urgentStartTimeInput: initialTimes.startTime,
       urgentEndTimeInput: initialTimes.endTime,
+      urgentStartDate: startDate,
+      urgentStartTimeClock: startTimeClock,
+      urgentEndDate: endDate,
+      urgentEndTimeClock: endTimeClock,
+      minUrgentDate: todayStr,
       urgentRemarkInput: order.urgentRemark || ''
     })
   },
@@ -331,20 +358,121 @@ Page({
     this.setData({ urgentStaffRewardInput: e.detail.value })
   },
 
+  onUrgentStartDateChange(e) {
+    const dateVal = e.detail.value
+    const timeVal = this.data.urgentStartTimeClock || '12:00'
+    const newStart = `${dateVal} ${timeVal}`
+    this.setData({
+      urgentStartDate: dateVal,
+      urgentStartTimeClock: timeVal,
+      urgentStartTimeInput: newStart
+    })
+    this.syncUrgentEndTime(newStart)
+  },
+
+  onUrgentStartTimeClockChange(e) {
+    const dateVal = this.data.urgentStartDate || this.data.minUrgentDate
+    const timeVal = e.detail.value
+    const newStart = `${dateVal} ${timeVal}`
+    this.setData({
+      urgentStartDate: dateVal,
+      urgentStartTimeClock: timeVal,
+      urgentStartTimeInput: newStart
+    })
+    this.syncUrgentEndTime(newStart)
+  },
+
+  onUrgentEndDateChange(e) {
+    const dateVal = e.detail.value
+    const timeVal = this.data.urgentEndTimeClock || '13:00'
+    this.setData({
+      urgentEndDate: dateVal,
+      urgentEndTimeClock: timeVal,
+      urgentEndTimeInput: `${dateVal} ${timeVal}`
+    })
+  },
+
+  onUrgentEndTimeClockChange(e) {
+    const dateVal = this.data.urgentEndDate || this.data.urgentStartDate || this.data.minUrgentDate
+    const timeVal = e.detail.value
+    this.setData({
+      urgentEndDate: dateVal,
+      urgentEndTimeClock: timeVal,
+      urgentEndTimeInput: `${dateVal} ${timeVal}`
+    })
+  },
+
+  syncUrgentEndTime(startTimeStr) {
+    const parsed = parseBeijingDate(startTimeStr)
+    if (!parsed) return
+    const order = this.data.detail && this.data.detail.order
+    const durationMinutes = Number((order && order.durationMinutes) || 60) || 60
+    const endObj = new Date(parsed.getTime() + durationMinutes * 60 * 1000)
+    const endFull = formatFullBeijingDateTime(endObj)
+    const [endDate = '', endTimeClock = ''] = endFull.split(' ')
+    this.setData({
+      urgentEndTimeInput: endFull,
+      urgentEndDate: endDate,
+      urgentEndTimeClock: endTimeClock
+    })
+  },
+
+  quickSetUrgentTime(e) {
+    const type = e.currentTarget.dataset.type
+    const now = new Date()
+    const order = this.data.detail && this.data.detail.order
+    const durationMinutes = Number((order && order.durationMinutes) || 60) || 60
+    let startObj
+
+    if (type === '30m') {
+      startObj = new Date(now.getTime() + 30 * 60 * 1000)
+    } else if (type === '1h') {
+      startObj = new Date(now.getTime() + 60 * 60 * 1000)
+    } else if (type === '2h') {
+      startObj = new Date(now.getTime() + 120 * 60 * 1000)
+    } else if (type === 'tomorrow_9') {
+      const tomorrow = new Date(now.getTime() + 24 * 3600 * 1000 + 8 * 3600 * 1000)
+      const y = tomorrow.getUTCFullYear()
+      const m = tomorrow.getUTCMonth()
+      const d = tomorrow.getUTCDate()
+      startObj = new Date(Date.UTC(y, m, d, 9 - 8, 0, 0))
+    }
+    if (!startObj) return
+    const endObj = new Date(startObj.getTime() + durationMinutes * 60 * 1000)
+    const startFull = formatFullBeijingDateTime(startObj)
+    const endFull = formatFullBeijingDateTime(endObj)
+    const [startDate = '', startTimeClock = ''] = startFull.split(' ')
+    const [endDate = '', endTimeClock = ''] = endFull.split(' ')
+
+    this.setData({
+      urgentStartTimeInput: startFull,
+      urgentEndTimeInput: endFull,
+      urgentStartDate: startDate,
+      urgentStartTimeClock: startTimeClock,
+      urgentEndDate: endDate,
+      urgentEndTimeClock: endTimeClock
+    })
+  },
+
   inputUrgentStartTime(e) {
     const val = String(e.detail.value || '').trim()
     this.setData({ urgentStartTimeInput: val })
     const parsed = parseBeijingDate(val)
     if (parsed) {
-      const order = this.data.detail && this.data.detail.order
-      const durationMinutes = Number((order && order.durationMinutes) || 60) || 60
-      const endObj = new Date(parsed.getTime() + durationMinutes * 60 * 1000)
-      this.setData({ urgentEndTimeInput: formatFullBeijingDateTime(endObj) })
+      const [startDate = '', startTimeClock = ''] = val.split(' ')
+      this.setData({ urgentStartDate: startDate, urgentStartTimeClock: startTimeClock })
+      this.syncUrgentEndTime(val)
     }
   },
 
   inputUrgentEndTime(e) {
-    this.setData({ urgentEndTimeInput: e.detail.value })
+    const val = String(e.detail.value || '').trim()
+    this.setData({ urgentEndTimeInput: val })
+    const parsed = parseBeijingDate(val)
+    if (parsed) {
+      const [endDate = '', endTimeClock = ''] = val.split(' ')
+      this.setData({ urgentEndDate: endDate, urgentEndTimeClock: endTimeClock })
+    }
   },
 
   inputUrgentRemark(e) {
@@ -733,6 +861,27 @@ Page({
           .finally(() => this.setData({ submittingManualComplete: false }))
       }
     })
+  },
+
+  openChatModal() {
+    this.setData({ showChatModal: true })
+    this.refreshChatRecords()
+  },
+
+  closeChatModal() {
+    this.setData({ showChatModal: false })
+  },
+
+  refreshChatRecords() {
+    if (!this.data.id) return
+    callFunction('admin', 'listOrderSessionMessages', { orderId: this.data.id })
+      .then((res) => {
+        this.setData({
+          sessionMessages: (res && res.sessionMessages) || [],
+          riskBypassLogs: (res && res.riskBypassLogs) || []
+        })
+      })
+      .catch((err) => console.error('refreshChatRecords err:', err))
   },
 
   ...navMethods()

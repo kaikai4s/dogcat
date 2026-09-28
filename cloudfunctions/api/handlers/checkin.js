@@ -2,6 +2,7 @@ module.exports = function createHandler(context) {
   const {
     CHECKIN_EVENT_TYPES,
     ORDER_STATUS,
+    appendOrderClientMessage,
     appendOrderTimeline,
     buildMonthCalendar,
     calcDistanceKm,
@@ -200,7 +201,7 @@ module.exports = function createHandler(context) {
       const { user, order } = await requireStaffOrder(openid, data.orderId, '仅订单员工可打卡')
       const isSanitization = data.eventType === 'sanitization'
       if (isSanitization) {
-        if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.DAY_COMPLETED].includes(order.status)) throw new Error('消毒打卡须在开始服务前完成')
+        if (![ORDER_STATUS.ASSIGNED, ORDER_STATUS.ON_THE_WAY, ORDER_STATUS.DAY_COMPLETED].includes(order.status)) throw new Error('消毒打卡须在开始服务前完成')
         const session = getNextPendingServiceSession({ ...order, _id: data.orderId })
         if (!session || !(await canStartOrderSession({ ...order, _id: data.orderId }, session))) throw new Error('服务时间未到，可申请提前开始')
         if (data.isBackfilled === true) throw new Error('消毒打卡须现场拍照上传，不支持补传')
@@ -258,6 +259,40 @@ module.exports = function createHandler(context) {
       }
       const created = await db.collection('checkin_logs').add({ data: checkin })
       if (shouldWriteTimeline) await appendOrderTimeline(data.orderId, 'checkin', data.isBackfilled === true ? '服务打卡已补传' : '服务打卡', data.eventType, 'staff')
+
+      const eventNameMap = {
+        sanitization: '进门消毒',
+        enter_door: '进入家门',
+        leash_on: '佩戴牵引绳',
+        pet_status: '毛孩子状态',
+        return_home: '安全回到家',
+        leave_door: '确认离家',
+        feed: '添加粮食',
+        water: '更换饮水',
+        litter: '清理猫砂',
+        clean: '现场清洁',
+        medicine: '喂药照护',
+        play: '陪伴玩耍',
+        pet_beauty_photo: '毛孩子美照'
+      }
+      const actionLabel = eventNameMap[data.eventType] || '现场照料'
+      const detailText = checkin.remark ? `${actionLabel}：${checkin.remark}` : `宠托师已完成${actionLabel}，现场照片已上传`
+      try {
+        await appendOrderClientMessage(order, {
+          eventType: 'live_checkin',
+          title: `【现场动态】${actionLabel}`,
+          detail: detailText,
+          mediaFileId: data.mediaFileId || '',
+          remark: checkin.remark || '',
+          actionType: data.eventType,
+          actorRole: 'staff',
+          unreadForClient: true,
+          idempotencyKey: `live_checkin_${created._id}`
+        })
+      } catch (liveMsgErr) {
+        console.error('[createCheckin] appendOrderClientMessage live_checkin error:', liveMsgErr.message)
+      }
+
       return { _id: created._id, ...checkin }
     }
     if (action === 'deleteCheckin') {

@@ -93,7 +93,7 @@ module.exports = function createHandler(context) {
           result = 'destroyed'
           throw new Error('门锁一次性密码已在服务完成并确认离户后自动脱敏销毁，不可再次查看')
         }
-        if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) throw new Error('订单状态不允许查看')
+        if (!['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)) throw new Error('订单状态不允许查看')
         const current = now().getTime()
 
         // 频次控制：单订单 1 分钟内最多查看 3 次，防止恶意自动化探测与算力滥用
@@ -251,7 +251,7 @@ module.exports = function createHandler(context) {
       const order = orderRes && orderRes.data
       if (!order) throw new Error('订单不存在')
       if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
-      if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) throw new Error('订单状态不允许请求开门')
+      if (!['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)) throw new Error('订单状态不允许请求开门')
       const security = stripLegacyHomeSecuritySecrets(order.orderHomeSecurity || order.homeSecuritySnapshot || {})
       if (security.type !== 'remote_unlock') throw new Error('该订单不是远程开门方式')
       const remoteUnlock = security.remoteUnlock || { requestCount: 0, notifyChannels: ['wechat', 'admin_phone'], lastNotifyStatus: {} }
@@ -284,7 +284,7 @@ module.exports = function createHandler(context) {
       const order = orderRes && orderRes.data
       if (!order) throw new Error('订单不存在')
       if (order.clientOpenid !== openid) throw new Error('无权修改该订单')
-      if (!['pending_pay', 'paid', 'assigned', 'in_service'].includes(order.status)) throw new Error('当前订单状态不可修改密码')
+      if (!['pending_pay', 'paid', 'assigned', 'on_the_way', 'in_service'].includes(order.status)) throw new Error('当前订单状态不可修改密码')
       const time = now()
       const existingSecurity = stripLegacyHomeSecuritySecrets(order.orderHomeSecurity || {})
       let security = { ...existingSecurity, type: 'one_time_code', lockMethod: 'one_time_code', lockMethodText: lockMethodText('one_time_code'), entryNotes: data.entryNotes || existingSecurity.entryNotes || '', hasDoorLockCode: true, updatedAt: time }

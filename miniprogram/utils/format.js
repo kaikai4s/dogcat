@@ -4,6 +4,7 @@ const orderStatusText = {
   paying: '支付中',
   paid: '待接单',
   assigned: '已接单',
+  on_the_way: '前往服务地点中',
   in_service: '服务中',
   day_completed: '当天已完成',
   completed: '已完成',

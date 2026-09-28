@@ -87,6 +87,8 @@ module.exports = function createHandler(context) {
         { collection: 'refunds', name: 'idx_refund_no', keys: { refundNo: 1 }, unique: false },
         { collection: 'order_incidents', name: 'idx_incident_order_id', keys: { orderId: 1 }, unique: false },
         { collection: 'order_messages', name: 'idx_order_messages', keys: { conversationId: 1, createdAt: -1 }, unique: false },
+        { collection: 'order_session_messages', name: 'idx_session_order_created', keys: { orderId: 1, createdAt: 1 }, unique: false },
+        { collection: 'risk_bypass_logs', name: 'idx_risk_order_created', keys: { orderId: 1, createdAt: -1 }, unique: false },
         { collection: 'point_logs', name: 'idx_point_logs', keys: { openid: 1, createdAt: -1 }, unique: false },
         { collection: 'withdraw_requests', name: 'idx_withdraw_staff', keys: { staffOpenid: 1, createdAt: -1 }, unique: false },
         { collection: 'system_notifications', name: 'idx_sys_notice_status_time', keys: { status: 1, createdAt: -1 }, unique: false },

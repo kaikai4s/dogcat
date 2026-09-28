@@ -76,7 +76,7 @@ module.exports = function createService({
     const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
 
     // 1. 检查作为客户是否存在未完结或履约中的订单
-    const activeClientStatuses = ['pending_pay', 'paid', 'assigned', 'in_service', 'day_completed']
+    const activeClientStatuses = ['pending_pay', 'paid', 'assigned', 'on_the_way', 'in_service', 'day_completed']
     const activeClientOrderCount = await countByQuery('orders', {
       clientOpenid: target.openid,
       status: inOp(activeClientStatuses)
@@ -97,7 +97,7 @@ module.exports = function createService({
     }
 
     // 2. 检查作为宠托师是否存在尚未完成履约的订单
-    const activeStaffStatuses = ['assigned', 'in_service', 'day_completed']
+    const activeStaffStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
     const activeStaffOrderCount = await countByQuery('orders', {
       staffOpenid: target.openid,
       status: inOp(activeStaffStatuses)
