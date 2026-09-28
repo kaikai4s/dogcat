@@ -10,6 +10,8 @@ Page({
     id: '',
     staffGenderRequirement: 'any',
     sitter: null,
+    heroExpanded: false,
+    heroLayoutStyle: '',
     sectionHomeUrl: '',
     canGoBack: false
   },
@@ -32,14 +34,33 @@ Page({
   load() {
     if (!this.data.id) return
     callFunction('staff', 'getPublicSitterDetail', { staffProfileId: this.data.id })
-      .then((sitter) => this.setData({ sitter: { ...sitter, ...normalizeCardStyle(sitter) }, profileCardStyle: buildCardStyle(sitter) }))
+      .then((sitter) => this.setData({ sitter: { ...sitter, ...normalizeCardStyle(sitter) }, profileCardStyle: buildCardStyle(sitter) }, () => this.measureHeroLayout()))
       .catch(showError)
   },
 
   toggleHeroExpand() {
     if (!this.data.sitter || !this.data.sitter.profileBackgroundFileId) return
-    const url = this.data.sitter.profileBackgroundFileId
-    wx.previewImage({ current: url, urls: [url] })
+    this.setData({ heroExpanded: !this.data.heroExpanded })
+  },
+
+  onResize() {
+    this.measureHeroLayout()
+  },
+
+  measureHeroLayout() {
+    if (!this.data.sitter || !this.data.sitter.profileBackgroundFileId || typeof wx.createSelectorQuery !== 'function') return
+    const query = wx.createSelectorQuery().in(this)
+    query.select('.sitter-hero').boundingClientRect()
+    query.select('.hero-info-panel').boundingClientRect()
+    query.selectViewport().fields({ size: true })
+    query.exec(([hero, panel, viewport]) => {
+      if (!hero || !panel || !viewport || !viewport.width || !viewport.height) return
+      const unit = viewport.width / 750
+      // 仅在内容加载/屏幕尺寸变化后测量；动画期间不逐帧 setData 或测量布局。
+      const collapsed = Math.max(520 * unit, panel.height + 80 * unit)
+      const expanded = Math.max(collapsed, viewport.height * 0.92)
+      this.setData({ heroLayoutStyle: `--hero-collapsed-height: ${collapsed}px; --hero-expanded-height: ${expanded}px;` })
+    })
   },
 
   toggleFavorite() {

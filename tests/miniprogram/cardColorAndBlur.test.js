@@ -41,14 +41,44 @@ test('touch palette reads mobile viewport coordinates and emits the selected col
   assert.equal(changes.at(-1), '#ffffff')
 })
 
-test('tapping the card opens native photo preview without changing page layout', () => {
+test('tapping the card toggles the inline homepage expansion and preserves card styling', () => {
   let page
-  let preview
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/client/sitters/detail/index.js'), 'utf8'), {
-    require: () => ({ navMethods: () => ({}) }), Page(config) { page = config }, wx: { previewImage(options) { preview = options } }
+    require: () => ({ navMethods: () => ({}) }), Page(config) { page = config }, wx: { previewImage() { assert.fail('homepage expansion must stay inline') } }
   })
-  page.data.sitter = { profileBackgroundFileId: 'cloud://photo' }
-  page.setData = () => assert.fail('preview must not trigger a layout change')
+  page.setData = (update) => Object.assign(page.data, update)
   page.toggleHeroExpand()
-  assert.equal(preview.current, 'cloud://photo')
+  assert.equal(page.data.heroExpanded, false)
+  page.data.sitter = { profileBackgroundFileId: 'cloud://photo' }
+  page.data.profileCardStyle = buildCardStyle({ profileCardOpacity: 20, profileCardBlur: 30 })
+  const style = page.data.profileCardStyle
+  page.toggleHeroExpand()
+  assert.equal(page.data.heroExpanded, true)
+  assert.equal(page.data.profileCardStyle, style)
+  page.toggleHeroExpand()
+  assert.equal(page.data.heroExpanded, false)
+  page.toggleHeroExpand()
+  assert.equal(page.data.heroExpanded, true, 'rapid toggles remain reversible without animation locks')
+})
+
+test('hero measurements reserve enough space for long text and adapt on screen resize', () => {
+  let page
+  let viewport = { width: 375, height: 800 }
+  const query = {
+    in() { return this }, select() { return this }, boundingClientRect() { return this },
+    selectViewport() { return this }, fields() { return this },
+    exec(callback) { callback([{}, { height: 410 }, viewport]) }
+  }
+  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/client/sitters/detail/index.js'), 'utf8'), {
+    require: () => ({ navMethods: () => ({}) }), Page(config) { page = config }, wx: { createSelectorQuery: () => query }
+  })
+  page.setData = (update) => Object.assign(page.data, update)
+  page.data.sitter = { profileBackgroundFileId: 'cloud://photo' }
+  page.measureHeroLayout()
+  assert.match(page.data.heroLayoutStyle, /--hero-collapsed-height: 450px/)
+  assert.match(page.data.heroLayoutStyle, /--hero-expanded-height: 736px/)
+  viewport = { width: 750, height: 400 }
+  page.onResize()
+  assert.match(page.data.heroLayoutStyle, /--hero-collapsed-height: 520px/)
+  assert.match(page.data.heroLayoutStyle, /--hero-expanded-height: 520px/)
 })

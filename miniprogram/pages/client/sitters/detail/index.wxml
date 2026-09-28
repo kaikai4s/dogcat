@@ -1,7 +1,10 @@
 <view class="page sitter-detail-page {{themeClass}} {{fontClass}}" wx:if="{{sitter}}">
-  <view class="sitter-hero {{sitter.profileBackgroundFileId ? 'has-bg' : 'plain'}}" bindtap="toggleHeroExpand">
-    <image class="hero-bg" wx:if="{{sitter.profileBackgroundFileId}}" src="{{sitter.profileBackgroundFileId}}" mode="aspectFill" />
-    <view class="hero-shade" wx:if="{{sitter.profileBackgroundFileId}}"></view>
+  <view class="sitter-hero {{sitter.profileBackgroundFileId ? 'has-bg' : 'plain'}} {{heroExpanded ? 'expanded' : ''}}" style="{{heroLayoutStyle}}" bindtap="toggleHeroExpand">
+    <view class="hero-media" wx:if="{{sitter.profileBackgroundFileId}}">
+      <image class="hero-bg" src="{{sitter.profileBackgroundFileId}}" mode="aspectFill" />
+      <view class="hero-shade"></view>
+    </view>
+    <view class="hero-card-track">
     <view class="hero-info-panel" style="{{profileCardStyle}}">
       <view class="hero-topline">
         <view class="badge">宠托师名片</view>
@@ -11,7 +14,8 @@
       <view class="tip" wx:if="{{sitter.profileIntro}}">{{sitter.profileIntro}}</view>
       <view class="tip" wx:else>{{sitter.serviceCity}} · {{sitter.levelName}}</view>
       <view class="hero-meta" wx:if="{{sitter.profileIntro}}">{{sitter.serviceCity}} · {{sitter.levelName}}</view>
-      <view class="hero-expand-tip" wx:if="{{sitter.profileBackgroundFileId}}">点击查看大图，可双指缩放</view>
+      <view class="hero-expand-tip" wx:if="{{sitter.profileBackgroundFileId}}">{{heroExpanded ? '点击收起主页背景' : '点击展开主页背景'}}</view>
+    </view>
     </view>
   </view>
 

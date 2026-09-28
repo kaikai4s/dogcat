@@ -19,9 +19,54 @@
 }
 
 .sitter-hero.has-bg {
-  min-height: 520rpx;
-  display: flex;
-  align-items: center;
+  height: var(--hero-collapsed-height, 520rpx);
+  padding: 0;
+  box-sizing: border-box;
+  transition: height 360ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  isolation: isolate;
+}
+
+.sitter-hero.has-bg.expanded {
+  height: var(--hero-expanded-height, 92vh);
+}
+
+/* 图片使用固定的展开尺寸，只改变可见区域，避免每帧重新缩放/裁切图片。 */
+.hero-media {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--hero-expanded-height, 92vh);
+  transform: translate3d(0, calc((var(--hero-collapsed-height, 520rpx) - var(--hero-expanded-height, 92vh)) / 2), 0);
+  transition: transform 360ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+  pointer-events: none;
+}
+
+.has-bg.expanded .hero-media {
+  transform: translate3d(0, 0, 0);
+}
+
+.has-bg .hero-card-track {
+  position: absolute;
+  left: 34rpx;
+  right: 34rpx;
+  top: 0;
+  height: var(--hero-expanded-height, 92vh);
+}
+
+.has-bg .hero-info-panel {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  margin: 0;
+  transform: translate3d(-50%, calc(var(--hero-collapsed-height, 520rpx) / 2 - 50%), 0);
+  will-change: transform;
+  transition: transform 360ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.has-bg.expanded .hero-info-panel {
+  transform: translate3d(-50%, calc(var(--hero-expanded-height, 92vh) - 100% - 38rpx), 0);
 }
 
 .hero-bg,
