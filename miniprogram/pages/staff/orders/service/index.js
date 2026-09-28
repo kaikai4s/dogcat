@@ -1,3 +1,4 @@
+const { sessionChatMethods } = require('../../utils/sessionChat')
 const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, requestSubscribeTemplates, showLoading, hideLoading } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, updateOfflineTask } = require('../../../../utils/offlineQueue')
@@ -209,6 +210,9 @@ Page({
     departing: false,
     updatingTravelLocation: false,
     sessionMessages: [],
+    sessionScrollTarget: '',
+    sessionUnreadCount: 0,
+    sessionChatError: '',
     sessionInputText: '',
     showChatModal: false,
     sendingChatMessage: false,
@@ -234,11 +238,15 @@ Page({
   },
 
   onShow() {
+    this._chatPageVisible = true
     this.applyCurrentTheme()
     if (this.data.id) this.loadOrder()
+    if (this.data.showChatModal) this.startSessionChatRefresh()
   },
 
   onHide() {
+    this._chatPageVisible = false
+    this.stopSessionChatRefresh()
     this.stopEarlyStartPolling()
     if (!this.data.backgroundTracking) this.stopAutoTracking()
   },
@@ -249,6 +257,8 @@ Page({
   },
 
   onUnload() {
+    this._chatPageVisible = false
+    this.stopSessionChatRefresh()
     this.stopEarlyStartPolling()
     this.stopServiceElapsedTimer()
     this.stopAutoTracking()
@@ -1095,29 +1105,14 @@ Page({
     this.setData({ showCallModal: false })
   },
 
-  openSessionChat() {
-    this.setData({ showChatModal: true })
-    this.loadSessionMessages()
-  },
-
-  closeSessionChat() {
-    this.setData({ showChatModal: false })
-  },
-
-  loadSessionMessages() {
-    if (!this.data.id) return
-    callFunction('order', 'listOrderSessionMessages', { orderId: this.data.id })
-      .then((list) => {
-        this.setData({ sessionMessages: list || [] })
-      })
-      .catch((err) => console.error('loadSessionMessages err:', err))
-  },
+  ...sessionChatMethods(callFunction),
 
   onChatInput(e) {
     this.setData({ sessionInputText: e.detail.value })
   },
 
   sendChatMessage() {
+    if (this.data.sendingChatMessage) return
     const content = (this.data.sessionInputText || '').trim()
     if (!content) {
       wx.showToast({ title: '请输入消息内容', icon: 'none' })
@@ -1129,6 +1124,7 @@ Page({
       content
     })
       .then(() => {
+        this._chatForceScroll = true
         this.setData({ sendingChatMessage: false, sessionInputText: '' })
         this.loadSessionMessages()
       })

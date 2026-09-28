@@ -992,11 +992,12 @@ module.exports = function createHandler(context) {
       }
       const res = await db.collection('order_session_messages')
         .where({ orderId })
-        .orderBy('createdAt', 'asc')
+        .orderBy('createdAt', 'desc')
+        .orderBy('_id', 'desc')
         .limit(100)
         .get()
-        .catch(() => ({ data: [] }))
-      return res.data || []
+      // 返回最新消息，避免会话超过100条后永远看不到新消息。
+      return (res.data || []).reverse()
     }
 
     if (action === 'startService') {

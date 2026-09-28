@@ -10,7 +10,6 @@ Page({
     id: '',
     staffGenderRequirement: 'any',
     sitter: null,
-    heroExpanded: false,
     sectionHomeUrl: '',
     canGoBack: false
   },
@@ -33,13 +32,14 @@ Page({
   load() {
     if (!this.data.id) return
     callFunction('staff', 'getPublicSitterDetail', { staffProfileId: this.data.id })
-      .then((sitter) => this.setData({ sitter: { ...sitter, ...normalizeCardStyle(sitter) }, profileCardStyle: buildCardStyle(sitter), heroExpanded: false }))
+      .then((sitter) => this.setData({ sitter: { ...sitter, ...normalizeCardStyle(sitter) }, profileCardStyle: buildCardStyle(sitter) }))
       .catch(showError)
   },
 
   toggleHeroExpand() {
     if (!this.data.sitter || !this.data.sitter.profileBackgroundFileId) return
-    this.setData({ heroExpanded: !this.data.heroExpanded })
+    const url = this.data.sitter.profileBackgroundFileId
+    wx.previewImage({ current: url, urls: [url] })
   },
 
   toggleFavorite() {

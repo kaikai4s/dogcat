@@ -1,3 +1,4 @@
+const { sessionChatMethods } = require('../utils/sessionChat')
 const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings, showLoading, hideLoading } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
@@ -100,6 +101,9 @@ Page({
     review: null,
     liveCheckins: [],
     sessionMessages: [],
+    sessionScrollTarget: '',
+    sessionUnreadCount: 0,
+    sessionChatError: '',
     sessionInputText: '',
     showChatModal: false,
     sendingChatMessage: false,
@@ -120,15 +124,23 @@ Page({
     this.setData({ ...createPageNav(q), id: q.id })
   },
   onShow() {
+    this._chatPageVisible = true
     this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看订单详情。' })
-      .then(() => this.load())
+      .then(() => {
+        this.load()
+        if (this._chatPageVisible && this.data.showChatModal) this.startSessionChatRefresh()
+      })
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
   },
   onHide() {
+    this._chatPageVisible = false
+    this.stopSessionChatRefresh()
     this.stopEarlyStartPolling()
   },
   onUnload() {
+    this._chatPageVisible = false
+    this.stopSessionChatRefresh()
     this.stopEarlyStartPolling()
   },
   applyCurrentTheme() {
@@ -489,29 +501,14 @@ Page({
     this.setData({ showCallModal: false })
   },
 
-  openSessionChat() {
-    this.setData({ showChatModal: true })
-    this.loadSessionMessages()
-  },
-
-  closeSessionChat() {
-    this.setData({ showChatModal: false })
-  },
-
-  loadSessionMessages() {
-    if (!this.data.id) return
-    callFunction('order', 'listOrderSessionMessages', { orderId: this.data.id })
-      .then((list) => {
-        this.setData({ sessionMessages: list || [] })
-      })
-      .catch((err) => console.error('loadSessionMessages err:', err))
-  },
+  ...sessionChatMethods(callFunction),
 
   onChatInput(e) {
     this.setData({ sessionInputText: e.detail.value })
   },
 
   sendChatMessage() {
+    if (this.data.sendingChatMessage) return
     const content = (this.data.sessionInputText || '').trim()
     if (!content) {
       wx.showToast({ title: '请输入消息内容', icon: 'none' })
@@ -523,6 +520,7 @@ Page({
       content
     })
       .then(() => {
+        this._chatForceScroll = true
         this.setData({ sendingChatMessage: false, sessionInputText: '' })
         this.loadSessionMessages()
       })

@@ -1,0 +1,10 @@
+<view class="picker">
+  <view class="color-plane" style="background-color: {{hueColor}};" catchtouchstart="startPicking" catchtouchmove="movePicking" catchtouchend="endPicking" catchtouchcancel="endPicking">
+    <view class="white-layer"></view><view class="black-layer"></view>
+    <view class="color-cursor" style="left: {{s}}%; top: {{100 - v}}%; background: {{selectedColor}};"></view>
+  </view>
+  <view class="hue-track">
+    <slider min="0" max="360" step="1" value="{{h}}" block-size="20" backgroundColor="transparent" activeColor="transparent" bindchanging="changeHue" bindchange="changeHue" />
+  </view>
+  <view class="picker-tip">拖动上方色板选择深浅，滑动彩虹条选择色相</view>
+</view>

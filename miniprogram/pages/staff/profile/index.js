@@ -2,7 +2,7 @@ const { callFunction, showError, chooseSelectedLocation } = require('../../../ut
 const { withStaffWorkflowText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
-const { DEFAULT_CARD_STYLE, CARD_COLOR_OPTIONS, TEXT_COLOR_OPTIONS, isHexColor, normalizeCardStyle, buildCardStyle } = require('../utils/profileCardStyle')
+const { DEFAULT_CARD_STYLE, isHexColor, normalizeCardStyle, buildCardStyle } = require('../utils/profileCardStyle')
 
 const statusMap = {
   pending: { title: '审核中', tip: '资料已提交，请等待平台审核' },
@@ -66,8 +66,6 @@ Page({
     weekdays: WEEKDAYS,
     radiusOptions,
     hourLabels,
-    cardColorOptions: CARD_COLOR_OPTIONS,
-    cardTextColorOptions: TEXT_COLOR_OPTIONS,
     profileCardStyle: buildCardStyle(DEFAULT_CARD_STYLE),
     configForm: {
       ...DEFAULT_CARD_STYLE,
@@ -166,12 +164,6 @@ Page({
     this.setData({ [`configForm.${field}`]: value })
   },
 
-  selectCardColor(e) {
-    const { field, color } = e.currentTarget.dataset
-    if (!['profileCardColor', 'profileCardTextColor'].includes(field) || !isHexColor(color)) return
-    this.setData({ [`configForm.${field}`]: color }, this.updateCardPreview)
-  },
-
   inputCardColor(e) {
     const { field } = e.currentTarget.dataset
     if (!['profileCardColor', 'profileCardTextColor'].includes(field)) return
@@ -179,7 +171,21 @@ Page({
   },
 
   changeCardOpacity(e) {
-    this.setData({ 'configForm.profileCardOpacity': Number(e.detail.value) }, this.updateCardPreview)
+    const configForm = { ...this.data.configForm, profileCardOpacity: Number(e.detail.value) }
+    this.setData({ 'configForm.profileCardOpacity': configForm.profileCardOpacity, profileCardStyle: buildCardStyle(configForm) })
+  },
+
+  changeCardBlur(e) {
+    const configForm = { ...this.data.configForm, profileCardBlur: Number(e.detail.value) }
+    this.setData({ 'configForm.profileCardBlur': configForm.profileCardBlur, profileCardStyle: buildCardStyle(configForm) })
+  },
+
+  onPaletteColorChange(e) {
+    const field = e.currentTarget.dataset.field
+    const color = e.detail.value
+    if (!['profileCardColor', 'profileCardTextColor'].includes(field) || !isHexColor(color)) return
+    const configForm = { ...this.data.configForm, [field]: color }
+    this.setData({ [`configForm.${field}`]: color, profileCardStyle: buildCardStyle(configForm) })
   },
 
   updateCardPreview() {

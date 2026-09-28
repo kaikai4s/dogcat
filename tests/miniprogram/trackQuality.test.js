@@ -31,7 +31,7 @@ function loadPage(relativePath, overrides = {}, exported = '') {
   const module = { exports: {} }
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram', relativePath), 'utf8') + exported, {
     Page(config) { page = config }, module, wx,
-    require(name) { return name.endsWith('/trackQuality') ? require(path.resolve(__dirname, '../../miniprogram', path.dirname(relativePath), name)) : deps },
+    require(name) { return /\/(trackQuality|sessionChat)$/.test(name) ? require(path.resolve(__dirname, '../../miniprogram', path.dirname(relativePath), name)) : deps },
     setInterval, clearInterval, setTimeout, clearTimeout
   })
   page.setData = (updates) => Object.assign(page.data, updates)

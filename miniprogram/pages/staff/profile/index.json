@@ -1,5 +1,6 @@
 {
   "navigationBarTitleText": "宠托师个人中心",
   "navigationBarBackgroundColor": "#FFF8EC",
-  "backgroundColor": "#FFF8EC"
+  "backgroundColor": "#FFF8EC",
+  "usingComponents": { "color-picker": "../components/color-picker/index" }
 }

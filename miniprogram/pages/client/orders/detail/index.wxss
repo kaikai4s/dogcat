@@ -848,6 +848,7 @@ button[disabled] { opacity: 0.62; }
   width: 100%;
   max-width: 680rpx;
   height: 820rpx;
+  max-height: 90vh;
   background: #ffffff;
   border-radius: 36rpx;
   display: flex;
@@ -883,6 +884,8 @@ button[disabled] { opacity: 0.62; }
 }
 .chat-body {
   flex: 1;
+  height: 0;
+  min-height: 0;
   padding: 24rpx;
   box-sizing: border-box;
   background: #fafafa;
@@ -957,3 +960,5 @@ button[disabled] { opacity: 0.62; }
   padding: 0 !important;
 }
 
+.chat-header, .chat-warning-banner, .chat-footer, .chat-sync-status, .chat-new-messages { flex-shrink: 0; }
+.chat-sync-status, .chat-new-messages { padding: 14rpx 24rpx; font-size: 24rpx; line-height: 1.5; text-align: center; color: #a65127; background: #fff4e8; }

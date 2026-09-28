@@ -52,6 +52,24 @@ function createFixture() {
   return { db, staffOpenid, clientOpenid, adminOpenid }
 }
 
+test('ongoing chat returns the newest 100 messages chronologically after a long conversation', async () => {
+  const { db, clientOpenid, staffOpenid } = createFixture()
+  for (let i = 0; i < 120; i++) {
+    await db.collection('order_session_messages').add({ data: {
+      _id: `message_${String(i).padStart(3, '0')}`, orderId: 'order_transit_1', content: `消息${i}`,
+      senderRole: i % 2 ? 'staff' : 'client', createdAt: new Date(1800000000000 + Math.floor(i / 2) * 1000)
+    } })
+  }
+  for (const openid of [clientOpenid, staffOpenid]) {
+    const api = loadCloudFunction('api', db, openid)
+    const result = await api.main({ module: 'order', action: 'listOrderSessionMessages', data: { orderId: 'order_transit_1' } })
+    assert.equal(result.ok, true, result.message)
+    assert.equal(result.data.length, 100)
+    assert.equal(result.data[0]._id, 'message_020')
+    assert.equal(result.data.at(-1)._id, 'message_119')
+  }
+})
+
 test('Spatio-Temporal Radar: departForService transitions status to on_the_way and calculates ETA', async () => {
   const { db, staffOpenid } = createFixture()
   const api = loadCloudFunction('api', db, staffOpenid)
