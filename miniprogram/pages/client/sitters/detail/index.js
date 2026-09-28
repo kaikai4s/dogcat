@@ -2,7 +2,7 @@ const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
-const { normalizeCardStyle, buildCardStyle } = require('../../../../utils/profileCardStyle')
+const { normalizeCardStyle, buildCardStyle } = require('../utils/profileCardStyle')
 
 Page({
   data: {

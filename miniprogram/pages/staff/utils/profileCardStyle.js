@@ -1,3 +1,4 @@
+// 两个使用名片的分包各自携带此文件，避免占用主包；修改时保持两份实现一致。
 const DEFAULT_CARD_STYLE = {
   profileCardColor: '#ffffff',
   profileCardOpacity: 46,

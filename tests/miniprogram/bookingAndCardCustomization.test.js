@@ -3,7 +3,18 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
-const cardStyle = require('../../miniprogram/utils/profileCardStyle')
+const cardStyle = require('../../miniprogram/pages/staff/utils/profileCardStyle')
+
+test('card styling stays inside its consuming subpackages with consistent preview and public rendering', () => {
+  const root = path.resolve(__dirname, '../../miniprogram')
+  assert.equal(fs.existsSync(path.join(root, 'utils/profileCardStyle.js')), false)
+  const config = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'))
+  const sources = ['pages/staff', 'pages/client/sitters'].map((subpackage) => {
+    assert.ok(config.subpackages.some((item) => item.root === subpackage))
+    return fs.readFileSync(path.join(root, subpackage, 'utils/profileCardStyle.js'), 'utf8').replace(/\r\n/g, '\n')
+  })
+  assert.equal(sources[0], sources[1])
+})
 
 function loadPage(file, callFunction = async () => ({})) {
   let page
@@ -18,7 +29,7 @@ function loadPage(file, callFunction = async () => ({})) {
   }
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram', file), 'utf8'), {
     Page(config) { page = config },
-    require: (name) => name.endsWith('/profileCardStyle') ? cardStyle : deps,
+    require: (name) => name.endsWith('/profileCardStyle') ? require(path.resolve(__dirname, '../../miniprogram', path.dirname(file), name)) : deps,
     wx: { pageScrollTo: (options) => scrolls.push(options), showToast() {} },
     setTimeout(callback) { timers.set(++timerId, callback); return timerId },
     clearTimeout(id) { timers.delete(id) }, console
