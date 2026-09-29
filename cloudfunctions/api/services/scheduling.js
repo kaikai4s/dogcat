@@ -161,7 +161,13 @@ module.exports = function createService({
   }
 
   function isOrderConflictCandidate(order = {}) {
-    return !isAdminDeletedOrder(order) && ['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)
+    if (isAdminDeletedOrder(order)) return false
+    if (['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)) return true
+    if (order.status === 'pending_pay' && order.publishMode === 'direct') {
+      const created = toTimeValue(order.createdAt)
+      return created > 0 && (now().getTime() - created) <= 15 * 60 * 1000
+    }
+    return false
   }
 
   function timeRangesOverlap(startA, endA, startB, endB) {
@@ -230,23 +236,37 @@ module.exports = function createService({
   }
 
   async function* staffConflictOrderPages(openid) {
-    let cursor = ''
+    let cursor1 = ''
     while (true) {
-      const where = { staffOpenid: openid, status: db.command.in(['paid', 'assigned', 'in_service', 'day_completed']) }
-      if (cursor) where._id = db.command.gt(cursor)
-      const page = (await db.collection('orders').where(where).orderBy('_id', 'asc').limit(100).get()).data || []
-      yield page
-      if (page.length < 100) return
-      cursor = page[page.length - 1]._id
+      const where1 = { staffOpenid: openid, status: db.command.in(['paid', 'assigned', 'in_service', 'day_completed']) }
+      if (cursor1) where1._id = db.command.gt(cursor1)
+      const page1 = (await db.collection('orders').where(where1).orderBy('_id', 'asc').limit(100).get()).data || []
+      if (page1.length) yield page1
+      if (page1.length < 100) break
+      cursor1 = page1[page1.length - 1]._id
+    }
+    let cursor2 = ''
+    while (true) {
+      const where2 = { requestedStaffOpenid: openid, publishMode: 'direct', status: db.command.in(['paid', 'pending_pay']) }
+      if (cursor2) where2._id = db.command.gt(cursor2)
+      const page2 = (await db.collection('orders').where(where2).orderBy('_id', 'asc').limit(100).get()).data || []
+      if (page2.length) yield page2
+      if (page2.length < 100) break
+      cursor2 = page2[page2.length - 1]._id
     }
   }
 
   async function findStaffOrderConflict(openid, candidate, excludeOrderId = '', transaction = null) {
+    const seenIds = new Set()
     for await (const page of staffConflictOrderPages(openid)) {
       for (const item of page) {
-        if (item._id === excludeOrderId || !isOrderConflictCandidate(item) || !orderTimeRangesOverlap(candidate, item)) continue
-        const current = transaction ? (await transaction.collection('orders').doc(item._id).get()).data : item
-        if (current && current.staffOpenid === openid && isOrderConflictCandidate(current) && orderTimeRangesOverlap(candidate, current)) return current
+        if (item._id === excludeOrderId || seenIds.has(item._id)) continue
+        seenIds.add(item._id)
+        if (!isOrderConflictCandidate(item) || !orderTimeRangesOverlap(candidate, item)) continue
+        const current = transaction ? (await transaction.collection('orders').doc(item._id).get().catch(() => ({ data: null }))).data : item
+        if (!current) continue
+        const isMatch = current.staffOpenid === openid || (current.requestedStaffOpenid === openid && current.publishMode === 'direct')
+        if (isMatch && isOrderConflictCandidate(current) && orderTimeRangesOverlap(candidate, current)) return current
       }
     }
     return null

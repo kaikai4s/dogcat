@@ -10,7 +10,8 @@ const earningStatusText = {
   withdrawn: '已提现',
   frozen: '已冻结',
   settled: '已结算',
-  deducted: '已扣除'
+  deducted: '已扣除',
+  refunded_void: '已退款作废'
 }
 
 const withdrawStatusText = {

@@ -103,7 +103,9 @@ Page({
       callFunction('finance', 'getStaffBalance').catch(() => null)
     ])
       .then(([user, profile, balance]) => {
-        if (!profile || profile.auditStatus !== 'approved') {
+        const isStaffActive = user && Array.isArray(user.roles) && user.roles.includes('staff')
+        const isProfileValid = profile && (profile.auditStatus === 'approved' || profile.auditStatus === 'intern' || profile.videoAuditStatus === 'approved')
+        if (!profile || (!isStaffActive && !isProfileValid)) {
           wx.showToast({ title: '未通过宠托师认证，即将返回', icon: 'none' })
           setTimeout(() => {
             wx.redirectTo({ url: '/pages/staff/certification/index' })
@@ -159,12 +161,17 @@ Page({
         serviceLatitude: Number(p.serviceLatitude || 0),
         serviceLongitude: Number(p.serviceLongitude || 0),
         serviceRadiusKm: Number(p.serviceRadiusKm || 5),
+        acceptDirectOrders: p.acceptDirectOrders !== false,
         profileBackgroundFileId: p.profileBackgroundFileId || '',
         profileIntro: p.profileIntro || '',
         weeklySchedule: JSON.parse(JSON.stringify(schedule))
       },
       activeDay: 1
     })
+  },
+
+  toggleAcceptDirectOrders(e) {
+    this.setData({ 'configForm.acceptDirectOrders': Boolean(e.detail.value) })
   },
 
   onConfigInput(e) {

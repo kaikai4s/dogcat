@@ -5,6 +5,7 @@ module.exports = function createHandler(context) {
     retryFailedSubscriptions,
     retryStaffCancellationNotifications,
     expireDueUnacceptedOrders,
+    autoAcceptDueDirectOrders,
     getMonthDays,
     processOverdueUnfinishedOrders,
     processOverdueUnstartedOrders,
@@ -23,6 +24,11 @@ module.exports = function createHandler(context) {
 
     try { await expireDueUnacceptedOrders() }
     catch (error) { console.error('[scheduled-error] expireDueUnacceptedOrders:', error.message) }
+
+    if (typeof autoAcceptDueDirectOrders === 'function') {
+      try { await autoAcceptDueDirectOrders() }
+      catch (error) { console.error('[scheduled-error] autoAcceptDueDirectOrders:', error.message) }
+    }
 
     let upcomingReminders = []
     try { upcomingReminders = (await sendUpcomingServiceRemindersToStaff()) || [] }

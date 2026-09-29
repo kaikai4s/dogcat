@@ -177,5 +177,66 @@ module.exports = function createService(context) {
     })
   }
 
-  return { assignOrderAtomically, updateOrderStatusWithScheduling, saveStaffScheduleException }
+  async function autoAcceptDueDirectOrders() {
+    const time = now()
+    const currentTs = time.getTime()
+    const ordersRes = await db.collection('orders').where({
+      publishMode: 'direct',
+      status: 'paid'
+    }).limit(50).get().catch(() => ({ data: [] }))
+    const orders = ordersRes.data || []
+    const acceptedList = []
+
+    for (const order of orders) {
+      if (!order.requestedStaffOpenid || order.staffOpenid) continue
+      const paidTs = toTimeValue(order.paidAt || order.createdAt)
+      if (!paidTs) continue
+      if (currentTs - paidTs >= 3600000) {
+        const startTs = toTimeValue(order.startTime)
+        if (startTs > 0 && startTs <= currentTs) continue
+
+        try {
+          const profileRes = await db.collection('staff_profiles').where({ openid: order.requestedStaffOpenid }).limit(1).get().catch(() => ({ data: [] }))
+          const profile = profileRes.data && profileRes.data[0]
+          if (!profile) continue
+          const userRes = await db.collection('users').where({ openid: order.requestedStaffOpenid }).limit(1).get().catch(() => ({ data: [] }))
+          const staffUser = userRes.data && userRes.data[0]
+          if (!staffUser) continue
+
+          const assignmentUpdate = {
+            staffUserId: staffUser._id,
+            staffOpenid: order.requestedStaffOpenid,
+            staffProfileId: profile._id,
+            staffName: profile.realName || order.requestedStaffName || '宠托师',
+            staffPhone: profile.phone || '',
+            status: 'assigned',
+            assignmentSource: 'direct_auto_accept',
+            assignedAt: time,
+            updatedAt: time
+          }
+
+          const assigned = await assignOrderAtomically(order._id, order, assignmentUpdate, { admin: true })
+          if (assigned) {
+            const title = '指定预约超时已自动接单'
+            const detail = '指定宠托师超过1小时未手动操作，系统已自动接单。'
+            if (typeof context.appendOrderTimeline === 'function') {
+              await context.appendOrderTimeline(order._id, 'assigned', title, detail, 'system').catch(() => {})
+            }
+            if (typeof context.appendOrderClientMessage === 'function') {
+              await context.appendOrderClientMessage(assigned, { eventType: 'assigned', title, detail, actorRole: 'system' }).catch(() => {})
+            }
+            if (typeof context.notifyOrderAccepted === 'function') {
+              await context.notifyOrderAccepted(assigned, profile.realName || '').catch(() => {})
+            }
+            acceptedList.push(order._id)
+          }
+        } catch (e) {
+          console.error('[autoAcceptDueDirectOrders] failed to accept', { orderId: order._id, error: e.message })
+        }
+      }
+    }
+    return acceptedList
+  }
+
+  return { assignOrderAtomically, updateOrderStatusWithScheduling, saveStaffScheduleException, autoAcceptDueDirectOrders }
 }

@@ -21,19 +21,19 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
     if (!order || order.adminDeletedAt || order.staffOpenid !== openid) throw new Error('仅订单当前宠托师可取消接单')
     const assigned = toTimeValue(order.assignedAt)
     const elapsed = time.getTime() - assigned
-    const direct = order.publishMode === 'direct' || order.assignmentSource === 'direct_accept'
+    const direct = order.publishMode === 'direct' || order.assignmentSource === 'direct_accept' || order.assignmentSource === 'direct_auto_accept'
     const start = toTimeValue(order.startTime)
     let blocked = ''
     if (order.status !== 'assigned' || order.paymentStatus !== 'paid') blocked = '仅已支付且未开始履约的已接单订单可取消'
     else if (!assigned || elapsed < 0) blocked = '接单时间异常，请联系平台'
-    else if (direct && elapsed > 3600000) blocked = '指定订单接单超过1小时，请联系平台'
-    else if (!direct && (!start || start - time.getTime() <= 1800000)) blocked = '距服务开始不足或等于30分钟，请联系平台'
+    else if (direct && elapsed > 600000) blocked = '指定订单接单已超过10分钟，不可取消，请联系平台客服'
+    else if (!start || start - time.getTime() <= 1800000) blocked = '距服务开始不足或等于30分钟，请联系平台'
     const pending = !blocked && !direct && elapsed > 600000
     return {
       orderId: order._id, assignmentToken: assigned ? tokenFor(order) : '', publishMode: direct ? 'direct' : 'open',
       canCancel: !blocked, isFree: !blocked && !pending, amountPendingReview: pending,
       deductAmount: 0, refundAmount: direct && !blocked ? Number(order.payAmount || 0) : 0,
-      returnsToPool: !direct, ruleText: blocked || (direct ? '接单1小时内免费取消，订单全额退款' : pending ? '取消后订单返回接单大厅，保证金扣除金额待平台审核' : '接单10分钟内免费取消，订单返回接单大厅')
+      returnsToPool: !direct, ruleText: blocked || (direct ? '接单10分钟内免费取消，订单全额退款' : pending ? '取消后订单返回接单大厅，保证金扣除金额待平台审核' : '接单10分钟内免费取消，订单返回接单大厅')
     }
   }
   async function getStaffCancellationQuote(openid, data = {}) {

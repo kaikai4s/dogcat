@@ -128,6 +128,10 @@ Page({
 
   book() {
     if (!this.data.id) return
+    if (this.data.sitter && this.data.sitter.acceptDirectOrders === false) {
+      wx.showToast({ title: '该宠托师当前暂不接受指定预约，可发布公共抢单', icon: 'none', duration: 2500 })
+      return
+    }
     ensureLogin({ content: '登录后可预约宠托师。' })
       .then(() => wx.navigateTo({ url: `/pages/client/orders/create/index?publishMode=direct&staffProfileId=${this.data.id}&staffGenderRequirement=${this.data.staffGenderRequirement}` }))
       .catch(() => {})

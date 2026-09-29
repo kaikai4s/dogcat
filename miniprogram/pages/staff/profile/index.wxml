@@ -45,7 +45,7 @@
   </view>
 
   <!-- 收益钱包专属卡片 -->
-  <view class="card earnings-wallet-card" wx:if="{{profile && profile.auditStatus === 'approved'}}" data-url="/pages/staff/earnings/index" bindtap="go">
+  <view class="card earnings-wallet-card" wx:if="{{profile && (profile.auditStatus === 'approved' || profile.auditStatus === 'intern' || profile.videoAuditStatus === 'approved' || (balance && (balance.available > 0 || balance.pending > 0)))}}" data-url="/pages/staff/earnings/index" bindtap="go">
     <view class="wallet-head">
       <view class="wallet-title">
         <text class="remix-icon ri-wallet-3-fill wallet-icon"></text>
@@ -115,7 +115,7 @@
   </view>
 
   <view class="card menu-list-card">
-    <view class="menu-item" wx:if="{{profile && profile.auditStatus === 'approved'}}" data-url="/pages/staff/earnings/index" bindtap="go">
+    <view class="menu-item" wx:if="{{profile && (profile.auditStatus === 'approved' || profile.auditStatus === 'intern' || profile.videoAuditStatus === 'approved' || (balance && (balance.available > 0 || balance.pending > 0)))}}" data-url="/pages/staff/earnings/index" bindtap="go">
       <view class="menu-left">
         <text class="remix-icon ri-wallet-3-line menu-icon active" style="color: #e9672f;"></text>
         <text>我的收益与提现</text>
@@ -291,10 +291,21 @@
         </view>
       </view>
 
-      <!-- 3. 按周接单时间段 -->
+      <!-- 3. 是否接受指定预约 -->
       <view class="modal-section">
         <view class="section-head-between">
-          <view class="modal-section-title">3. 按周接单可预约时间段</view>
+          <view style="flex: 1; padding-right: 24rpx;">
+            <view class="modal-section-title">3. 接受客户指定预约</view>
+            <view class="field-tip">开启后用户可直接在宠托师主页指定你预约服务；关闭后仅可接取公共抢单</view>
+          </view>
+          <switch checked="{{configForm.acceptDirectOrders}}" color="#e9672f" bindchange="toggleAcceptDirectOrders" />
+        </view>
+      </view>
+
+      <!-- 4. 按周接单时间段 -->
+      <view class="modal-section">
+        <view class="section-head-between">
+          <view class="modal-section-title">4. 按周接单可预约时间段</view>
           <button class="preset-btn" bindtap="presetWeekdaySchedule">一键 08:00-22:00</button>
         </view>
 

@@ -16,6 +16,7 @@ module.exports = function createHandler(context) {
     appendPaymentEvent,
     assertOrderTransition,
     assignOrderAtomically,
+    autoAcceptDueDirectOrders,
     attachOrderDisplayData,
     buildMiniProgramPayParams,
     buildStaffAvailability,
@@ -635,7 +636,9 @@ module.exports = function createHandler(context) {
       const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
       const profile = existing && existing.data && existing.data[0]
       if (!profile) throw new Error('请先提交宠托师认证')
-      if (profile.auditStatus !== 'approved') throw new Error('宠托师认证审核通过后方可设置接单配置')
+      if (profile.auditStatus !== 'approved' && profile.auditStatus !== 'intern' && profile.videoAuditStatus !== 'approved') {
+        throw new Error('宠托师认证审核通过后方可设置接单配置')
+      }
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅宠托师可更新接单配置')
       const identityFields = ['gender', 'realName', 'phone', 'idCardFrontFileId', 'idCardBackFileId', 'facePhotoFileId', 'serviceCity', 'serviceAreas']
@@ -645,6 +648,9 @@ module.exports = function createHandler(context) {
 
       const time = now()
       const updateData = { updatedAt: time, ...validateCardStyleUpdate(data) }
+      if (data.acceptDirectOrders !== undefined) {
+        updateData.acceptDirectOrders = Boolean(data.acceptDirectOrders)
+      }
       const hasProfileDisplayUpdate = data.profileBackgroundFileId !== undefined || data.profileIntro !== undefined || data.careProfile !== undefined || CARD_STYLE_FIELDS.some((key) => data[key] !== undefined)
 
       // 判断是否只更新 weeklySchedule（从排班日历调用）
@@ -823,6 +829,7 @@ module.exports = function createHandler(context) {
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
       const longitude = Number(data.longitude || profile.currentLongitude || 0)
       await expireDueUnacceptedOrders()
+      if (typeof autoAcceptDueDirectOrders === 'function') await autoAcceptDueDirectOrders()
       const directCandidates = await readAll('orders', { status: 'paid', requestedStaffOpenid: openid })
       const directOrders = await Promise.all(directCandidates
         .sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))

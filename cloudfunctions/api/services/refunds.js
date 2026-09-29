@@ -1,5 +1,6 @@
 module.exports = function createService({ db, crypto, now, getPayableOrder, getSystemSettings,
   assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo, restoreOrderCoupon,
+  adjustStaffEarningsForRefund,
   normalizeMallProduct, getSkuById }) {
   const idFor = value => `refund_${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`
   async function optional(tx, name, id) {
@@ -81,6 +82,9 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         if (typeof restoreOrderCoupon === 'function') {
           await restoreOrderCoupon(current.couponId, order._id, tx)
         }
+      }
+      if (typeof adjustStaffEarningsForRefund === 'function') {
+        await adjustStaffEarningsForRefund(order._id, requested / 100, total / 100, reason, tx)
       }
       return { _id: id, ...value }
     })

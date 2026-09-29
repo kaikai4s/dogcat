@@ -260,7 +260,7 @@ test('Open order cancellation: returns to public pool, cancelled staff cannot re
   assert.equal(order.staffOpenid, staffOpenid2)
 })
 
-test('Direct sitter cancellation: 1h grace period allows cancel & full refund, order does NOT return to pool', async () => {
+test('Direct sitter cancellation: 10m grace period allows cancel & full refund, order does NOT return to pool', async () => {
   const { db, staffOpenid1, clientOpenid } = createFixture()
   const staff1Api = loadCloudFunction('api', db, staffOpenid1)
 
@@ -269,9 +269,9 @@ test('Direct sitter cancellation: 1h grace period allows cancel & full refund, o
   const startTime = `${dateStr} ${String(futureStart.getUTCHours()).padStart(2, '0')}:00`
   const endTime = `${dateStr} ${String(futureStart.getUTCHours()).padStart(2, '0')}:30`
 
-  // 创建一个指定宠托师的已接单订单，指派时间为 10 分钟前（在 1 小时免责容错时间内）
+  // 创建一个指定宠托师的已接单订单，指派时间为 3 分钟前（在 10 分钟免责容错时间内）
   const orderId = 'order_direct_test_1'
-  const assignedAt = new Date(Date.now() - 10 * 60 * 1000)
+  const assignedAt = new Date(Date.now() - 3 * 60 * 1000)
   db.state.orders.push({
     _id: orderId,
     orderNo: 'ORD_DIRECT_001',
@@ -335,9 +335,9 @@ test('Direct sitter cancellation: 1h grace period allows cancel & full refund, o
   assert.ok(refund)
   assert.equal(refund.refundAmount, 100)
 
-  // 3. 测试若超过 1 小时（例如 70 分钟前接单） -> 禁止取消
+  // 3. 测试若超过 10 分钟（例如 20 分钟前接单） -> 禁止取消
   const orderIdLate = 'order_direct_test_late'
-  const assignedAtLate = new Date(Date.now() - 70 * 60 * 1000)
+  const assignedAtLate = new Date(Date.now() - 20 * 60 * 1000)
   db.state.orders.push({
     _id: orderIdLate,
     orderNo: 'ORD_DIRECT_002',
@@ -366,7 +366,7 @@ test('Direct sitter cancellation: 1h grace period allows cancel & full refund, o
   })
   assert.equal(quoteLateRes.ok, true, quoteLateRes.error || '')
   assert.equal(quoteLateRes.data.canCancel, false)
-  assert.match(quoteLateRes.data.ruleText, /1小时/)
+  assert.match(quoteLateRes.data.ruleText, /10分钟/)
 
   const cancelLateRes = await staff1Api.main({
     module: 'staff',
@@ -379,7 +379,7 @@ test('Direct sitter cancellation: 1h grace period allows cancel & full refund, o
     }
   })
   assert.equal(cancelLateRes.ok, false)
-  assert.match(cancelLateRes.error, /1小时/)
+  assert.match(cancelLateRes.error, /10分钟/)
 })
 
 test('cancellation closed loop: timeline logging and client cancel during on_the_way', async () => {

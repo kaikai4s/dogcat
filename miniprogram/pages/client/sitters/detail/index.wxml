@@ -80,9 +80,9 @@
         <text class="remix-icon {{sitter.favorite ? 'ri-star-fill' : 'ri-star-line'}} action-icon {{sitter.favorite ? 'favorited' : ''}}"></text>
         <text>{{sitter.favorite ? '取消收藏' : '收藏宠托师'}}</text>
       </button>
-      <button class="primary compact-btn" bindtap="book">
+      <button class="primary compact-btn {{sitter.acceptDirectOrders === false ? 'disabled' : ''}}" bindtap="book">
         <text class="remix-icon ri-hand-heart-line action-icon"></text>
-        <text>指定预约</text>
+        <text>{{sitter.acceptDirectOrders === false ? '暂不接指定单' : '指定预约'}}</text>
       </button>
     </view>
   </view>

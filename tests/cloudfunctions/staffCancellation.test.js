@@ -111,8 +111,8 @@ test('admin role alone, other staff, revoked role and non-assigned statuses cann
   }
 })
 
-test('direct exact hour is free, later blocked; concurrent calls reserve one full refund', async () => {
-  const s = setup({ publishMode: 'direct', assignedAt: new Date('2026-09-28T03:00:00Z'), requestedStaffOpenid: 'staff' })
+test('direct exact 10 min is free, later blocked; concurrent calls reserve one full refund', async () => {
+  const s = setup({ publishMode: 'direct', assignedAt: new Date('2026-09-28T03:50:00Z'), requestedStaffOpenid: 'staff' })
   assert.equal((await s.service.getStaffCancellationQuote('staff', { orderId: 'o' })).isFree, true)
   const data = await s.data()
   await Promise.all([s.service.cancelStaffAcceptedOrder('staff', data), s.service.cancelStaffAcceptedOrder('staff', data)])
@@ -124,8 +124,8 @@ test('direct exact hour is free, later blocked; concurrent calls reserve one ful
   assert.equal(s.db.state.orders[0].requestedStaffOpenid, '')
   assert.equal(s.db.state.staff_deposit_evidences.length, 0)
   const event = s.db.state.payment_events.find(e => e.eventType === 'staff_cancellation')
-  assert.deepEqual(event.assignedAt, new Date('2026-09-28T03:00:00Z'))
-  const t = setup({ publishMode: 'direct', assignedAt: new Date('2026-09-28T02:59:59.999Z') })
+  assert.deepEqual(event.assignedAt, new Date('2026-09-28T03:50:00Z'))
+  const t = setup({ publishMode: 'direct', assignedAt: new Date('2026-09-28T03:49:59.999Z') })
   assert.equal((await t.service.getStaffCancellationQuote('staff', { orderId: 'o' })).canCancel, false)
 })
 

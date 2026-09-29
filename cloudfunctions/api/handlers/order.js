@@ -120,6 +120,9 @@ module.exports = function createHandler(context) {
         const staffProfileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
         const staffProfile = staffProfileRes && staffProfileRes.data
         if (!staffProfile) throw new Error('指定的宠托师不可用')
+        if (staffProfile.acceptDirectOrders === false) {
+          throw new Error('该宠托师当前暂不接受指定预约')
+        }
         assertStaffGenderMatches({ staffGenderRequirement }, staffProfile)
         validateDirectStaffServiceRange(staffProfile, data, { isQuote: true })
         if (data.startTime && data.endTime) {
@@ -156,6 +159,9 @@ module.exports = function createHandler(context) {
         const staffProfileRes = await db.collection('staff_profiles').doc(requestedStaff.requestedStaffProfileId).get().catch(() => ({ data: null }))
         const staffProfile = staffProfileRes && staffProfileRes.data
         if (!staffProfile) throw new Error('指定的宠托师不可用')
+        if (staffProfile.acceptDirectOrders === false) {
+          throw new Error('该宠托师当前暂不接受指定预约')
+        }
         const rangeCheck = validateDirectStaffServiceRange(staffProfile, data, { isQuote: false })
         directDistanceKm = rangeCheck.dist
         await validateStaffAvailabilityForSessions(staffProfile, serviceSessions)

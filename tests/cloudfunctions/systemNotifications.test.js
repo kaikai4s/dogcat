@@ -75,7 +75,9 @@ test('admin can send system notification with role targeting and validation', as
   const adminListRes = await adminHandler('admin_openid', 'listSystemNotifications', { page: 1, pageSize: 10 })
   assert.equal(adminListRes.total, 3)
   assert.equal(adminListRes.list.length, 3)
-  assert.equal(adminListRes.list[0].typeText, '服务通知')
+  assert.ok(adminListRes.list.some(item => item.typeText === '服务通知'))
+  assert.ok(adminListRes.list.some(item => item.typeText === '活动福利'))
+  assert.ok(adminListRes.list.some(item => item.typeText === '系统公告'))
 })
 
 test('client and staff receive corresponding system notifications and track unread status', async () => {
