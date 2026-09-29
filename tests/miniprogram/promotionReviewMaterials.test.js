@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const { createRequire } = require('node:module')
-const { buildPromotionOrder } = require('../../miniprogram/utils/promotionReview')
+const { buildPromotionOrder } = require('../../miniprogram/pages/admin/staff-promotion/detail/promotionReview')
 
 function material() {
   return {
@@ -42,6 +42,67 @@ function setup(callFunction = async () => ({ application: { status: 'pending' },
   return { page, previews, locations, routes, errors }
 }
 const event = (dataset = {}) => ({ currentTarget: { dataset } })
+const routePoint = (seconds, extra = {}) => ({ latitude: 31.2 + seconds / 100000, longitude: 121.5, accuracy: 10, coordinateType: 'gcj02', locationSource: 'gps', recordedAt: Date.UTC(2026, 8, 21, 14) + seconds * 1000, ...extra })
+
+test('review map plots the whole route beyond the first page and labels endpoints', () => {
+  const tracks = Array.from({ length: 125 }, (_, i) => routePoint(i * 5))
+  const result = buildPromotionOrder({ order: {}, tracks: tracks.slice().reverse() }, 0)
+  const map = result.routeMap
+  assert.equal(result.trackPreview.length, 20)
+  assert.equal(map.validCount, 125)
+  assert.equal(map.polyline[0].points.length, 125)
+  assert.equal(map.markers[0].title, '起点')
+  assert.equal(map.markers[1].title, '终点')
+  assert.equal(map.markers[1].latitude, tracks[124].latitude)
+  assert.equal(map.startedAt, tracks[0].recordedAt)
+  assert.equal(map.endedAt, tracks[124].recordedAt)
+  assert.equal(map.hasData, true)
+})
+
+test('review map splits collection gaps and rejects drift without counting checkins as route distance', () => {
+  const tracks = [routePoint(0), routePoint(10), routePoint(15, { latitude: 40 }), routePoint(300), routePoint(310)]
+  const checkins = [{ ...routePoint(5, { latitude: 31.4 }), eventType: 'enter_door', isBackfilled: true }]
+  const map = buildPromotionOrder({ order: {}, tracks, checkins }, 0).routeMap
+  const noCheckins = buildPromotionOrder({ order: {}, tracks }, 0).routeMap
+  assert.equal(map.validCount, 4)
+  assert.equal(map.excludedCount, 1)
+  assert.equal(map.polyline.length, 2)
+  assert.equal(map.distanceText, '22 米')
+  assert.equal(map.distanceText, noCheckins.distanceText)
+  assert.ok(map.markers.some(m => m.title === '入户打卡（补传）'))
+  assert.ok(map.includePoints.some(p => p.latitude === 31.4))
+  assert.ok(map.includePoints.every(p => p.latitude !== 40))
+})
+
+test('review map distinguishes single points, checkin-only locations and unusable historical data', () => {
+  const single = buildPromotionOrder({ order: {}, tracks: [routePoint(0)] }, 0).routeMap
+  assert.equal(single.hasData, true)
+  assert.equal(single.polyline.length, 0)
+  assert.equal(single.markers[0].title, '唯一有效轨迹点')
+  const fallback = buildPromotionOrder({ order: {}, tracks: [routePoint(0, { accuracy: 200 })], checkins: [routePoint(10)] }, 0).routeMap
+  assert.equal(fallback.hasData, true)
+  assert.equal(fallback.validCount, 0)
+  assert.equal(fallback.polyline.length, 0)
+  assert.match(fallback.notice, /仅展示打卡位置/)
+  const invalid = buildPromotionOrder({ order: {}, tracks: [
+    routePoint(0, { latitude: null }), routePoint(5, { coordinateType: 'unknown' }),
+    routePoint(10, { accuracy: 0 }), routePoint(15, { locationSource: 'manual' })
+  ] }, 0).routeMap
+  assert.equal(invalid.hasData, false)
+  assert.equal(invalid.excludedCount, 4)
+  assert.equal(invalid.markers.length, 0)
+  assert.match(invalid.notice, /原始记录/)
+})
+
+test('review map does not connect separate collection segments', () => {
+  const map = buildPromotionOrder({ order: {}, tracks: [
+    routePoint(0, { segmentId: 'a' }), routePoint(10, { segmentId: 'a' }),
+    routePoint(20, { segmentId: 'b' }), routePoint(30, { segmentId: 'b' })
+  ] }, 0).routeMap
+  assert.equal(map.polyline.length, 2)
+  assert.equal(map.polyline[0].points.length, 2)
+  assert.equal(map.polyline[1].points.length, 2)
+})
 
 test('promotion materials preserve original photos, remarks, zero payment and full pet/session details', () => {
   const result = buildPromotionOrder(material(), 0)

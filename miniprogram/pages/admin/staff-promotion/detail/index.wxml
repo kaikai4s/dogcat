@@ -121,6 +121,23 @@
       </view>
 
       </block>
+      <view class="report-section route-map-section">
+        <view class="report-section-title">服务轨迹图</view>
+        <view class="route-map-stats">
+          <text>有效轨迹 {{item.routeMap.validCount}} / {{item.trackCount}} 点</text>
+          <text>路线长度 {{item.routeMap.distanceText}}</text>
+        </view>
+        <map wx:if="{{item.routeMap.hasData && !showAuditModal}}" id="review-route-{{index}}" class="review-route-map"
+          latitude="{{item.routeMap.latitude}}" longitude="{{item.routeMap.longitude}}"
+          markers="{{item.routeMap.markers}}" polyline="{{item.routeMap.polyline}}" include-points="{{item.routeMap.includePoints}}"
+          scale="15" enable-zoom enable-scroll show-compass />
+        <view wx:elif="{{!item.routeMap.hasData}}" class="route-map-empty">暂无可绘制的轨迹图</view>
+        <view class="muted" wx:if="{{item.routeMap.startedAt}}">起点时间：{{beijingTime.format(item.routeMap.startedAt)}}</view>
+        <view class="muted" wx:if="{{item.routeMap.endedAt}}">终点时间：{{beijingTime.format(item.routeMap.endedAt)}}</view>
+        <view class="muted">{{item.routeMap.notice}}</view>
+        <view class="muted" wx:if="{{item.routeMap.hasData}}">双指缩放、拖动查看地图 · {{item.routeMap.checkinLocationCount}} 个打卡位置</view>
+        <view class="muted" wx:if="{{item.routeMap.excludedCount}}">{{item.routeMap.excludedCount}} 个定位不完整、低精度或异常轨迹点未参与绘图，原始记录仍保留。</view>
+      </view>
       <view class="report-section">
         <view class="report-section-title">现场打卡材料 · {{item.checkinCount}} 条</view>
         <view class="muted" wx:if="{{item.backfilledCount}}">其中 {{item.backfilledCount}} 条为补传记录，请核对打卡时间与上传时间。</view>
@@ -155,8 +172,8 @@
 
       <view class="report-section">
         <view class="section-heading">
-          <view class="report-section-title">服务轨迹 · {{item.trackCount}} 个点</view>
-          <button wx:if="{{item.trackCount}}" class="text-button" data-index="{{index}}" bindtap="toggleTracks">{{item.tracksExpanded ? '收起轨迹' : '查看轨迹'}}</button>
+          <view class="report-section-title">原始轨迹记录 · {{item.trackCount}} 个点</view>
+          <button wx:if="{{item.trackCount}}" class="text-button" data-index="{{index}}" bindtap="toggleTracks">{{item.tracksExpanded ? '收起明细' : '查看明细'}}</button>
         </view>
         <view class="muted" wx:if="{{!item.trackCount}}">暂无轨迹记录</view>
         <view wx:if="{{item.tracksExpanded}}">

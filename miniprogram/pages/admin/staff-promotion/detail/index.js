@@ -1,6 +1,6 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { formatDateTime, formatPromotionStatus } = require('../../../../utils/format')
-const { buildPromotionOrder } = require('../../../../utils/promotionReview')
+const { buildPromotionOrder } = require('./promotionReview')
 const { copyText } = require('../../../../utils/clipboard')
 const { can } = require('../../../../utils/adminAccess')
 

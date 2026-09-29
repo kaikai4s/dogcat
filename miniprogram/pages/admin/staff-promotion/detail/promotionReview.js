@@ -1,4 +1,5 @@
-const { withOrderText, withCheckinText, formatCheckinEvent, formatOrderStatus, parseBeijingDate } = require('./format')
+const { withOrderText, withCheckinText, formatCheckinEvent, formatOrderStatus, parseBeijingDate } = require('../../../../utils/format')
+const { filterTrackPoints, isGoodTrackPoint, distanceM } = require('../../utils/trackQuality')
 
 function hasNumber(value) {
   return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))
@@ -27,6 +28,45 @@ function timeValue(value) {
 
 function money(value) {
   return hasNumber(value) ? `¥${Number(value).toFixed(2)}` : '未记录'
+}
+
+function buildReviewMap(tracks, checkins) {
+  const route = filterTrackPoints(tracks.filter(p => p.hasLocation).map(p => ({ ...p, recordedAt: p.recordedTime })))
+  const locations = checkins.filter(p => p.hasLocation && isGoodTrackPoint({ ...p, recordedAt: p.recordedTime }))
+  const point = p => ({ latitude: p.latitude, longitude: p.longitude })
+  const segments = []
+  let distance = 0
+  route.forEach((p, i) => {
+    if (!segments.length || p.breakBefore) segments.push([])
+    else distance += distanceM(route[i - 1], p)
+    segments[segments.length - 1].push(point(p))
+  })
+  const marker = (p, id, title, color) => ({
+    ...point(p), id, title, width: 28, height: 28,
+    callout: { content: title, color, bgColor: '#ffffff', borderRadius: 8, padding: 8, display: 'ALWAYS' }
+  })
+  const markers = []
+  if (route.length) markers.push(marker(route[0], 1, route.length === 1 ? '唯一有效轨迹点' : '起点', '#15803d'))
+  if (route.length > 1) markers.push(marker(route[route.length - 1], 2, '终点', '#c2410c'))
+  locations.forEach((p, i) => {
+    const m = marker(p, 100 + i, `${p.eventTypeText || '服务打卡'}${p.isBackfilled ? '（补传）' : ''}`, '#a855f7')
+    m.callout.display = 'BYCLICK'
+    markers.push(m)
+  })
+  const includePoints = [...route, ...locations].map(point)
+  const center = includePoints[0]
+  const polyline = segments.filter(s => s.length > 1).map(points => ({ points, color: '#ff7a45', width: 6, borderColor: '#ffffff', borderWidth: 2, arrowLine: true }))
+  return {
+    hasData: Boolean(center), latitude: center ? center.latitude : 0, longitude: center ? center.longitude : 0,
+    markers, includePoints, polyline, validCount: route.length, excludedCount: tracks.length - route.length,
+    checkinLocationCount: locations.length, segmentCount: polyline.length,
+    distanceText: polyline.length ? (distance < 1000 ? `${Math.round(distance)} 米` : `${(distance / 1000).toFixed(2)} 公里`) : '暂无连续路线',
+    startedAt: route.length ? route[0].recordedAt : '', endedAt: route.length ? route[route.length - 1].recordedAt : '',
+    notice: polyline.length ? '橙色线为有效服务轨迹，点击标记查看打卡位置；定位中断处不连线。' :
+      (route.length ? '有效轨迹点不足或采集中断，当前仅能显示独立定位点，无法还原连续路线。' :
+        (locations.length ? '暂无可绘制的有效轨迹，仅展示打卡位置；打卡位置不代表实际行走路线。' :
+          (tracks.length ? '现有轨迹点的定位精度、坐标或时间信息不足，暂时无法绘图；可在下方查看原始记录。' : '本单尚无可绘图的定位记录。')))
+  }
 }
 
 function buildPromotionOrder(item, index) {
@@ -69,6 +109,7 @@ function buildPromotionOrder(item, index) {
   if (order.isOverdue) warnings.push('该订单存在超时履约记录')
   return {
     ...item, order, orderId: order._id, pets, sessions, requirements, warnings, checkins, tracks,
+    routeMap: buildReviewMap(tracks, checkins),
     checkinCount: checkins.length, photoCount: checkins.filter(c => c.photoUrl).length,
     backfilledCount: checkins.filter(c => c.isBackfilled).length, trackCount: tracks.length,
     photoUrls: checkins.map(c => c.photoUrl).filter(Boolean),

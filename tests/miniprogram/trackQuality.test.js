@@ -8,7 +8,7 @@ test('track quality helpers stay inside their consuming subpackages and match th
   const root = path.resolve(__dirname, '../../miniprogram')
   assert.equal(fs.existsSync(path.join(root, 'utils/trackQuality.js')), false)
   const server = fs.readFileSync(path.resolve(__dirname, '../../cloudfunctions/api/utils/trackQuality.js'), 'utf8').replace(/\r\n/g, '\n')
-  for (const subpackage of ['pages/staff', 'pages/client/orders']) {
+  for (const subpackage of ['pages/staff', 'pages/client/orders', 'pages/admin']) {
     const source = fs.readFileSync(path.join(root, subpackage, 'utils/trackQuality.js'), 'utf8').replace(/\r\n/g, '\n')
     assert.equal(source, server, `${subpackage} must use the same track quality rules`)
   }
