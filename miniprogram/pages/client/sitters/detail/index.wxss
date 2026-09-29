@@ -534,3 +534,17 @@
   font-size: 23rpx;
   line-height: 1.45;
 }
+
+.intern-benefit-box .chip-row {
+  margin-top: 12rpx;
+  gap: 12rpx;
+}
+
+.intern-benefit-box .chip {
+  background: rgba(255, 255, 255, 0.9);
+  color: #1d4ed8;
+  border: 1rpx solid rgba(37, 99, 235, 0.25);
+  font-weight: 800;
+  box-shadow: 0 2rpx 8rpx rgba(37, 99, 235, 0.08);
+}
+

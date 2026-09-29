@@ -5,7 +5,8 @@ const { createCollectionStore } = require('./helpers')
 
 function createTestContext(initial = {}) {
   const db = createCollectionStore(initial)
-  return createContext({ db, cloud: {} })
+  let t = 1717236000000
+  return createContext({ db, cloud: {}, now: () => new Date(t += 1000) })
 }
 
 test('admin can send system notification with role targeting and validation', async () => {

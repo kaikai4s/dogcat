@@ -87,8 +87,8 @@
             <text class="sitter-city-tag">{{item.serviceCity}}</text>
           </view>
           <view class="badge-pill orange" wx:if="{{item.isFeatured}}">平台精选</view>
-          <view class="badge-pill blue" wx:elif="{{item.staffLevel === 'intern'}}">实习特惠</view>
-          <view class="badge-pill green" wx:else>已认证</view>
+          <view class="badge-pill blue" wx:if="{{item.staffLevel === 'intern'}}">实习宠托师</view>
+          <view class="badge-pill green" wx:elif="{{!item.isFeatured}}">已认证</view>
         </view>
         <view class="sitter-rating-line">
           <view class="rating-box" wx:if="{{item.reviewCount}}">
@@ -111,8 +111,8 @@
     </view>
 
     <view class="intern-discount-banner" wx:if="{{item.staffLevel === 'intern'}}">
-      <text class="remix-icon ri-coupon-3-line intern-banner-icon"></text>
-      <text>实习期考核中 · 专享特惠计费</text>
+      <text class="remix-icon ri-information-line intern-banner-icon"></text>
+      <text>平台服务经验积累中 · 查看资料了解更多</text>
     </view>
 
     <view class="sitter-intro" wx:if="{{item.serviceSummary}}">“{{item.serviceSummary}}”</view>

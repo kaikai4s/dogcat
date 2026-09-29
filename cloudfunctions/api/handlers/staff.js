@@ -630,11 +630,14 @@ module.exports = function createHandler(context) {
       return { _id: created._id, ...profile, createdAt: time }
     }
     if (action === 'updateStaffProfileConfig') {
-      await getUser(openid)
+      const protectedFields = ['auditStatus', 'staffLevel', 'quizPassedAt', 'videoAuditStatus', 'verifiedServiceTags', 'verificationItems', 'completedOrderCount', 'internCompletedOrderCount', 'promotionStatus']
+      if (protectedFields.some((key) => data[key] !== undefined)) throw new Error('审核、服务记录与转正信息不可自行修改')
       const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
       const profile = existing && existing.data && existing.data[0]
       if (!profile) throw new Error('请先提交宠托师认证')
       if (profile.auditStatus !== 'approved') throw new Error('宠托师认证审核通过后方可设置接单配置')
+      const user = await getUser(openid)
+      if (!user.roles.includes('staff')) throw new Error('仅宠托师可更新接单配置')
       const identityFields = ['gender', 'realName', 'phone', 'idCardFrontFileId', 'idCardBackFileId', 'facePhotoFileId', 'serviceCity', 'serviceAreas']
       if (identityFields.some((key) => data[key] !== undefined && data[key] !== profile[key])) {
         throw new Error('认证资料已锁定，如需更正请联系平台审核')
@@ -642,7 +645,7 @@ module.exports = function createHandler(context) {
 
       const time = now()
       const updateData = { updatedAt: time, ...validateCardStyleUpdate(data) }
-      const hasProfileDisplayUpdate = data.profileBackgroundFileId !== undefined || data.profileIntro !== undefined || CARD_STYLE_FIELDS.some((key) => data[key] !== undefined)
+      const hasProfileDisplayUpdate = data.profileBackgroundFileId !== undefined || data.profileIntro !== undefined || data.careProfile !== undefined || CARD_STYLE_FIELDS.some((key) => data[key] !== undefined)
 
       // 判断是否只更新 weeklySchedule（从排班日历调用）
       const isOnlyWeeklyScheduleUpdate = data.weeklySchedule !== undefined &&
@@ -698,6 +701,9 @@ module.exports = function createHandler(context) {
         const profileIntro = safeText(data.profileIntro).trim().slice(0, 60)
         if (profileIntro) await checkTextSecurity(openid, profileIntro, { scene: 1, label: '宠托师主页介绍' })
         updateData.profileIntro = profileIntro
+      }
+      if (data.careProfile !== undefined) {
+        updateData.careProfile = data.careProfile
       }
 
       await db.collection('staff_profiles').doc(profile._id).update({ data: updateData })

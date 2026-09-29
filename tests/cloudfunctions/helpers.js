@@ -42,11 +42,30 @@ function createCollectionStore(initial = {}) {
     return state[name]
   }
 
+  function toTimestamp(val) {
+    if (val instanceof Date) return val.getTime()
+    if (typeof val === 'string' && val.trim().length >= 10) {
+      const parsed = new Date(val.replace(/-/g, '/')).getTime()
+      if (!Number.isNaN(parsed)) return parsed
+    }
+    return null
+  }
+
   function matchWhere(item, where) {
     return Object.keys(where || {}).every((key) => {
       const condition = where[key]
-      if (condition && typeof condition === 'object' && '$gt' in condition) return item[key] > condition.$gt
-      if (condition && typeof condition === 'object' && '$gte' in condition) return item[key] >= condition.$gte
+      if (condition && typeof condition === 'object' && '$gt' in condition) {
+        const itemTs = toTimestamp(item[key])
+        const condTs = toTimestamp(condition.$gt)
+        if (itemTs !== null && condTs !== null) return itemTs > condTs
+        return item[key] > condition.$gt
+      }
+      if (condition && typeof condition === 'object' && '$gte' in condition) {
+        const itemTs = toTimestamp(item[key])
+        const condTs = toTimestamp(condition.$gte)
+        if (itemTs !== null && condTs !== null) return itemTs >= condTs
+        return item[key] >= condition.$gte
+      }
       if (condition && typeof condition === 'object' && Array.isArray(condition.$in)) {
         if (Array.isArray(item[key])) return item[key].some(value => condition.$in.includes(value))
         return condition.$in.includes(item[key]) || (condition.$in.includes('') && item[key] === undefined) || (condition.$in.includes(null) && item[key] === null)
@@ -111,9 +130,16 @@ function createCollectionStore(initial = {}) {
         if (this._order) {
           data = data.slice().sort((a, b) => {
             for (const { field, direction } of this._order) {
-              const av = a[field] || ''
-              const bv = b[field] || ''
-              const result = direction === 'desc' ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv))
+              const av = a[field]
+              const bv = b[field]
+              let result = 0
+              if (av instanceof Date && bv instanceof Date) {
+                result = direction === 'desc' ? bv.getTime() - av.getTime() : av.getTime() - bv.getTime()
+              } else if (typeof av === 'number' && typeof bv === 'number') {
+                result = direction === 'desc' ? bv - av : av - bv
+              } else {
+                result = direction === 'desc' ? String(bv || '').localeCompare(String(av || '')) : String(av || '').localeCompare(String(bv || ''))
+              }
               if (result) return result
             }
             return 0

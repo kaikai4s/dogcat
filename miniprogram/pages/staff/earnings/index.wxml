@@ -34,6 +34,7 @@
       </view>
     </view>
     <view class="withdraw-limit-tip">💡 单次最低提现金额：¥{{balance.minWithdrawAmountText}}</view>
+    <view class="withdraw-limit-tip" style="margin-top: 8rpx; color: #78716c;">⏳ 平台结算保护期：订单完成后收益先进入【待结算】，到达缓冲期且无未决售后纠纷后自动转入【可提现余额】。</view>
   </view>
 
   <view class="card form-card">

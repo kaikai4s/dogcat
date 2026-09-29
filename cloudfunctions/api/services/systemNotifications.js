@@ -29,7 +29,8 @@ module.exports = function createService({
     const type = ['system', 'notice', 'activity'].includes(data.type) ? data.type : 'system'
     const level = ['urgent', 'normal'].includes(data.level) ? data.level : 'normal'
     const targetUrl = safeText(data.targetUrl).trim()
-    const time = nowText ? nowText() : (now() instanceof Date ? now().toISOString() : String(now()))
+    const rawTime = typeof now === 'function' ? now() : (typeof nowText === 'function' ? nowText() : new Date())
+    const time = rawTime instanceof Date ? rawTime.toISOString() : String(rawTime)
 
     const doc = {
       title,

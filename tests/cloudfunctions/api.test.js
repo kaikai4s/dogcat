@@ -4008,7 +4008,8 @@ test('intern sitters can be listed, viewed, scheduled and booked with intern dis
   assert.equal(sitter.staffLevel, 'intern')
   assert.equal(sitter.staffLevelText, '实习宠托师')
   assert.equal(sitter.isIntern, true)
-  assert.equal(sitter.publicTags.includes('实习特惠'), true)
+  assert.equal(sitter.publicTags.includes('入驻审核已通过'), true)
+  assert.equal(sitter.verifiedServiceTags.includes('入驻审核已通过'), true)
 
   // 2. 验证可以查看实习宠托师详情
   const detailRes = await fn.main({

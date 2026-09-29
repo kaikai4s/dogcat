@@ -67,6 +67,7 @@ module.exports = function createService({
   function maskOrderForStaffPreview(order) {
     if (!order) return order
     const withMaskedContact = maskOrderClientContact(order)
+    delete withMaskedContact.cancelledStaffOpenids
     return {
       ...withMaskedContact,
       addressDetail: '接单后可见',

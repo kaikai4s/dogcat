@@ -101,6 +101,18 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
       patch.depositPenaltyEvidenceIds = [...new Set([...(order.depositPenaltyEvidenceIds || []), eventId])]
     }
     await tx.collection('payment_events').doc(eventId).set({ data: event })
+    const timelineTitle = q.publishMode === 'direct' ? '宠托师已取消预约' : '宠托师已取消接单'
+    const timelineDetail = q.publishMode === 'direct' ? '指定宠托师取消接单，订单已关闭并发起全额退款' : '宠托师取消接单，订单已重新放回抢单大厅等待接单'
+    await tx.collection('order_timeline').doc(`cancel_${eventId}`).set({
+      data: {
+        orderId: data.orderId,
+        type: 'staff_cancellation',
+        title: timelineTitle,
+        detail: timelineDetail,
+        actorRole: 'staff',
+        createdAt: time
+      }
+    })
     // Serialize with assignment and role revocation on the same staff document.
     await tx.collection('users').doc(user._id).update({ data: { staffAssignmentRevision: eventId } })
     return { patch, event }

@@ -84,6 +84,7 @@ module.exports = function createHandler(context) {
     notifyOrder,
     now,
     paginateList,
+    parseDateValue,
     recalcUsersForDeletedLevel,
     refreshStaffEarnings,
     removeByQuery,
@@ -125,6 +126,34 @@ module.exports = function createHandler(context) {
     return rows
   }
 
+  async function readMonthlyEntities(collectionName, monthStartDate, monthStartText) {
+    if (!db.command || typeof db.command.gte !== 'function') {
+      return readAll(collectionName, {})
+    }
+    let dateRows = []
+    let textRows = []
+    try {
+      dateRows = await readAll(collectionName, { createdAt: db.command.gte(monthStartDate) })
+    } catch (e) {
+      // 降级保护
+    }
+    try {
+      textRows = await readAll(collectionName, { createdAt: db.command.gte(monthStartText) })
+    } catch (e) {
+      // 降级保护
+    }
+
+    const map = new Map()
+    for (const item of [...dateRows, ...textRows]) {
+      if (item && item._id) map.set(item._id, item)
+    }
+
+    if (map.size > 0) return Array.from(map.values())
+
+    // 兜底保护：如果基于条件的读取未获取到任何记录，兜底读取表数据交由 buildMonthlyDashboard 进行准确的内存日期过滤
+    return readAll(collectionName, {})
+  }
+
   async function queryFinanceListSafely(collectionName, { baseWhere = {}, dateRange, dateFields = ['createdAt'], pageSize = 50, page = 1 }) {
     const limit = Math.min(Math.max(Number(pageSize || 50), 1), 100)
     const pageNum = Math.max(Number(page || 1), 1)
@@ -132,8 +161,8 @@ module.exports = function createHandler(context) {
     const primaryDateField = dateFields[0] || 'createdAt'
     const where = { ...baseWhere }
 
-    if (dateRange && dateRange.startDate && db.command && typeof db.command.gte === 'function') {
-      where[primaryDateField] = db.command.gte(`${dateRange.startDate} 00:00:00`)
+    if (dateRange && (dateRange.start || dateRange.startDate) && db.command && typeof db.command.gte === 'function') {
+      where[primaryDateField] = db.command.gte(dateRange.start || `${dateRange.startDate} 00:00:00`)
     }
 
     try {
@@ -277,12 +306,10 @@ module.exports = function createHandler(context) {
       const incidentsOpen = await db.collection('order_incidents').where({ status: 'open' }).count()
       const todayParts = toCstParts()
       const monthStartText = `${todayParts.monthKey}-01 00:00:00`
-      const monthCondition = db.command && typeof db.command.gte === 'function'
-        ? { createdAt: db.command.gte(monthStartText) }
-        : {}
+      const monthStartDate = parseDateValue(monthStartText) || new Date(`${todayParts.monthKey}-01T00:00:00.000Z`)
       const [orders, users] = await Promise.all([
-        readAll('orders', monthCondition),
-        readAll('users', monthCondition)
+        readMonthlyEntities('orders', monthStartDate, monthStartText),
+        readMonthlyEntities('users', monthStartDate, monthStartText)
       ])
       return { orders: counts, staffPending: staffPending.total, incidentsOpen: incidentsOpen.total, monthly: buildMonthlyDashboard(orders, users) }
     }

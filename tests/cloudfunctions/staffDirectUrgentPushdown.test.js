@@ -10,6 +10,14 @@ function createTestContext(initial = {}) {
   return { db, context }
 }
 
+test('staff preview omits cancelled staff identities without changing the stored order', () => {
+  const { context } = createTestContext()
+  const order = { _id: 'o1', cancelledStaffOpenids: ['former_staff'], contactPhone: '13800138000' }
+  const preview = context.maskOrderForStaffPreview(order)
+  assert.equal(preview.cancelledStaffOpenids, undefined)
+  assert.deepEqual(order.cancelledStaffOpenids, ['former_staff'])
+})
+
 test('listDirectOrders pushes down requestedStaffOpenid filter to database and avoids scanning other staff orders', async () => {
   const queryFilters = []
   const { db, context } = createTestContext({

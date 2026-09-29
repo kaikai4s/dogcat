@@ -50,6 +50,31 @@ test('admin dashboard pushes down monthly date predicate avoiding full table his
   assert.equal(result.data.monthly.totals.registrations, 3) // admin + 2 current users
 })
 
+test('admin dashboard handles Date object createdAt timestamps without returning zeroes', async () => {
+  const nowDate = new Date()
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active', createdAt: nowDate },
+      { _id: 'u1', openid: 'u1', roles: ['client'], status: 'active', createdAt: nowDate }
+    ],
+    orders: [
+      { _id: 'o1', status: 'paid', paymentStatus: 'paid', payAmount: 150, createdAt: nowDate, paidAt: nowDate },
+      { _id: 'o2', status: 'completed', paymentStatus: 'paid', payAmount: 250, createdAt: nowDate, paidAt: nowDate }
+    ],
+    staff_profiles: [{ _id: 'sp1', auditStatus: 'pending' }],
+    order_incidents: [{ _id: 'i1', status: 'open' }]
+  })
+
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+  const result = await fn.main({ module: 'admin', action: 'dashboard', data: {} })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.data.monthly.totals.orders, 2)
+  assert.equal(result.data.monthly.totals.revenue, 400)
+  assert.equal(result.data.monthly.totals.paidOrders, 2)
+  assert.equal(result.data.monthly.totals.registrations, 2)
+})
+
 test('admin finance list queries use bounded database pagination without full table readAll', async () => {
   const rangeDate = '2026-09-20'
   const payments = Array.from({ length: 80 }, (_, i) => ({

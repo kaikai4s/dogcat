@@ -99,9 +99,10 @@ Page({
   loadProfile() {
     Promise.all([
       callFunction('auth', 'me'),
-      callFunction('staff', 'getStaffProfile')
+      callFunction('staff', 'getStaffProfile'),
+      callFunction('finance', 'getStaffBalance').catch(() => null)
     ])
-      .then(([user, profile]) => {
+      .then(([user, profile, balance]) => {
         if (!profile || profile.auditStatus !== 'approved') {
           wx.showToast({ title: '未通过宠托师认证，即将返回', icon: 'none' })
           setTimeout(() => {
@@ -116,9 +117,17 @@ Page({
         const hasAddr = Boolean(profileView?.serviceAddress && profileView?.serviceLatitude && profileView?.serviceLongitude)
         const isApproved = status === 'approved'
 
+        const balanceData = balance ? {
+          ...balance,
+          availableText: Number(balance.available || 0).toFixed(2),
+          pendingText: Number(balance.pending || 0).toFixed(2),
+          withdrawnText: Number(balance.withdrawn || 0).toFixed(2)
+        } : null
+
         this.setData({
           user,
           profile: profileView,
+          balance: balanceData,
           displayName: nickname || profileView?.realName || '宠托师',
           avatarUrl: user.avatarUrl || '',
           badgeTag: user.badgeTag || '',

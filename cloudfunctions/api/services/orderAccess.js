@@ -108,7 +108,7 @@ module.exports = function createService({
     if (order.status === 'pending_pay') return { canCancel: true, refundAmount: 0, refundStatus: 'not_required', ruleText: '待支付订单可直接取消' }
     if (order.status === 'paid') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'processing', ruleText: '已支付未接单订单可全额退款' }
     if (order.status === 'expired') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'processing', ruleText: '过期未接单订单可全额退款' }
-    if (order.status === 'assigned') {
+    if (order.status === 'assigned' || order.status === 'on_the_way') {
       const start = toTimeValue(order.startTime)
       const hoursBeforeStart = start ? (start - now().getTime()) / 36e5 : 0
 

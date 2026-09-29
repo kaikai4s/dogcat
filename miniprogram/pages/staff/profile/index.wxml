@@ -44,6 +44,30 @@
     <button class="notice-btn" bindtap="openConfigModal">去设置</button>
   </view>
 
+  <!-- 收益钱包专属卡片 -->
+  <view class="card earnings-wallet-card" wx:if="{{profile && profile.auditStatus === 'approved'}}" data-url="/pages/staff/earnings/index" bindtap="go">
+    <view class="wallet-head">
+      <view class="wallet-title">
+        <text class="remix-icon ri-wallet-3-fill wallet-icon"></text>
+        <text>我的收益钱包</text>
+      </view>
+      <view class="wallet-link">
+        <text>去提现 / 明细</text>
+        <text class="remix-icon ri-arrow-right-s-line"></text>
+      </view>
+    </view>
+    <view class="wallet-stats">
+      <view class="wallet-stat-item">
+        <view class="wallet-stat-num">¥{{balance ? balance.availableText : '0.00'}}</view>
+        <view class="wallet-stat-label">可提现余额</view>
+      </view>
+      <view class="wallet-stat-item">
+        <view class="wallet-stat-num">¥{{balance ? balance.pendingText : '0.00'}}</view>
+        <view class="wallet-stat-label">待结算 (缓冲中)</view>
+      </view>
+    </view>
+  </view>
+
   <!-- 接单服务设置卡片 -->
   <view class="card config-summary-card" wx:if="{{profile}}">
     <view class="card-head-between">
@@ -91,6 +115,14 @@
   </view>
 
   <view class="card menu-list-card">
+    <view class="menu-item" wx:if="{{profile && profile.auditStatus === 'approved'}}" data-url="/pages/staff/earnings/index" bindtap="go">
+      <view class="menu-left">
+        <text class="remix-icon ri-wallet-3-line menu-icon active" style="color: #e9672f;"></text>
+        <text>我的收益与提现</text>
+      </view>
+      <view class="badge orange" wx:if="{{balance && balance.available > 0}}">可提 ¥{{balance.availableText}}</view>
+      <text class="remix-icon ri-arrow-right-s-line arrow-icon" wx:else></text>
+    </view>
     <view class="menu-item" bindtap="openConfigModal">
       <view class="menu-left">
         <text class="remix-icon ri-settings-4-line menu-icon"></text>

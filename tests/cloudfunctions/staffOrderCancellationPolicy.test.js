@@ -381,3 +381,117 @@ test('Direct sitter cancellation: 1h grace period allows cancel & full refund, o
   assert.equal(cancelLateRes.ok, false)
   assert.match(cancelLateRes.error, /1小时/)
 })
+
+test('cancellation closed loop: timeline logging and client cancel during on_the_way', async () => {
+  const { db, staffOpenid1, staffOpenid2, clientOpenid } = createFixture()
+  const staff1Api = loadCloudFunction('api', db, staffOpenid1)
+  const clientApi = loadCloudFunction('api', db, clientOpenid)
+
+  const dateStr = '2099-10-01'
+  const startTime = `${dateStr} 15:00`
+  const endTime = `${dateStr} 16:00`
+  const orderId = 'order_timeline_cancel_1'
+
+  // 创建一个处于 assigned 状态的公开订单
+  const assignedAt = new Date(Date.now() - 5 * 60 * 1000)
+  db.state.orders.push({
+    _id: orderId,
+    orderNo: 'ORD_TL_001',
+    clientOpenid,
+    staffOpenid: staffOpenid1,
+    staffUserId: 'u_staff_1',
+    staffProfileId: 'sp_1',
+    staffName: '张宠托',
+    status: 'assigned',
+    paymentStatus: 'paid',
+    payAmount: 80,
+    publishMode: 'open',
+    assignmentSource: 'open_grab',
+    assignedAt,
+    startTime,
+    endTime,
+    serviceSessions: [{ index: 1, date: dateStr, startTime, endTime, status: 'pending' }],
+    checkinRequirements: []
+  })
+
+  // 1. 验证宠托师获取取消报价
+  const quoteRes = await staff1Api.main({
+    module: 'staff',
+    action: 'getStaffCancellationQuote',
+    data: { orderId }
+  })
+  assert.equal(quoteRes.ok, true, quoteRes.error || '')
+  assert.equal(quoteRes.data.canCancel, true)
+  assert.equal(quoteRes.data.returnsToPool, true)
+
+  // 2. 宠托师执行取消
+  const cancelRes = await staff1Api.main({
+    module: 'staff',
+    action: 'cancelStaffAcceptedOrder',
+    data: {
+      orderId,
+      assignmentToken: quoteRes.data.assignmentToken,
+      reason: '突发情况无法按时履约',
+      requestId: 'req_tl_cancel_1'
+    }
+  })
+  assert.equal(cancelRes.ok, true, cancelRes.error || '')
+  assert.equal(cancelRes.data.returnsToPool, true)
+
+  // 3. 验证订单回到 paid 状态并记录 cancelledStaffOpenids
+  const updatedOrder = db.state.orders.find(o => o._id === orderId)
+  assert.equal(updatedOrder.status, 'paid')
+  assert.equal(updatedOrder.staffOpenid, '')
+  assert.deepEqual(updatedOrder.cancelledStaffOpenids, [staffOpenid1])
+
+  // 4. 验证 order_timeline 记录了取消节点
+  const timelineItem = db.state.order_timeline.find(t => t.orderId === orderId && t.type === 'staff_cancellation')
+  assert.ok(timelineItem, 'order_timeline must contain cancellation event')
+  assert.match(timelineItem.title, /宠托师已取消接单/)
+  assert.match(timelineItem.detail, /重新放回抢单大厅/)
+
+  // 5. 验证宠托师在 on_the_way 状态下获取取消报价被安全拦截
+  const otwOrderId = 'order_otw_staff_test'
+  db.state.orders.push({
+    _id: otwOrderId,
+    orderNo: 'ORD_OTW_003',
+    clientOpenid,
+    staffOpenid: staffOpenid1,
+    staffUserId: 'u_staff_1',
+    status: 'on_the_way',
+    paymentStatus: 'paid',
+    assignedAt: new Date(Date.now() - 5 * 60 * 1000),
+    startTime,
+    endTime
+  })
+  const otwStaffQuote = await staff1Api.main({
+    module: 'staff',
+    action: 'getStaffCancellationQuote',
+    data: { orderId: otwOrderId }
+  })
+  assert.equal(otwStaffQuote.ok, true)
+  assert.equal(otwStaffQuote.data.canCancel, false)
+
+  // 6. 验证客户在 on_the_way 状态下获取取消报价与退款试算允许取消
+  const otwClientOrderId = 'order_otw_client_test'
+  db.state.orders.push({
+    _id: otwClientOrderId,
+    orderNo: 'ORD_OTW_002',
+    clientOpenid,
+    staffOpenid: staffOpenid2,
+    staffUserId: 'u_staff_2',
+    status: 'on_the_way',
+    paymentStatus: 'paid',
+    payAmount: 100,
+    startTime: '2099-10-02 18:00',
+    serviceSessions: [{ index: 1, date: '2099-10-02', startTime: '2099-10-02 18:00', endTime: '2099-10-02 19:00', status: 'pending' }]
+  })
+  const clientQuote = await clientApi.main({
+    module: 'order',
+    action: 'getCancelQuote',
+    data: { orderId: otwClientOrderId }
+  })
+  assert.equal(clientQuote.ok, true, clientQuote.error || '')
+  assert.equal(clientQuote.data.canCancel, true)
+})
+

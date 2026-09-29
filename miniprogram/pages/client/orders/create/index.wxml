@@ -38,7 +38,7 @@
         <view class="sitter-summary-main">
           <view class="sitter-summary-name-row">
             <text class="strong">{{requestedSitter ? requestedSitter.displayName : '还未选择宠托师'}}</text>
-            <text class="badge-pill blue" wx:if="{{requestedSitter && requestedSitter.staffLevel === 'intern'}}">实习特惠</text>
+            <text class="badge-pill blue" wx:if="{{requestedSitter && requestedSitter.staffLevel === 'intern'}}">实习宠托师</text>
           </view>
           <view class="muted">{{requestedSitter ? requestedSitter.serviceSummary : '请从宠托师列表选择指定对象'}}</view>
           <view class="muted" wx:if="{{requestedSitter}}">性别：{{requestedSitter.gender === 'male' ? '男' : (requestedSitter.gender === 'female' ? '女' : '待平台核实')}}</view>

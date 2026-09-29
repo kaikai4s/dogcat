@@ -236,7 +236,7 @@
 
   <view class="bottom-actions">
     <button class="primary-btn" wx:if="{{order.status === 'pending_pay'}}" loading="{{paying}}" disabled="{{paying}}" bindtap="pay"><text class="remix-icon ri-bank-card-line"></text><text>立即支付</text></button>
-    <button class="ghost-btn" wx:if="{{order.status === 'pending_pay' || order.status === 'paid' || order.status === 'assigned'}}" loading="{{cancelling}}" disabled="{{cancelling}}" bindtap="cancelOrder"><text class="remix-icon ri-refund-2-line"></text><text>{{cancelling ? '处理中...' : '取消订单 / 查看退款'}}</text></button>
+    <button class="ghost-btn" wx:if="{{order.status === 'pending_pay' || order.status === 'paid' || order.status === 'assigned' || order.status === 'on_the_way'}}" loading="{{cancelling}}" disabled="{{cancelling}}" bindtap="cancelOrder"><text class="remix-icon ri-refund-2-line"></text><text>{{cancelling ? '处理中...' : '取消订单 / 查看退款'}}</text></button>
     <button class="ghost-btn" wx:if="{{order.status === 'completed' && !review}}" bindtap="reviewOrder"><text class="remix-icon ri-star-smile-line"></text><text>评价服务</text></button>
     <button class="ghost-btn" wx:if="{{order.status === 'assigned' || order.status === 'in_service' || order.status === 'completed'}}" bindtap="createIncident"><text class="remix-icon ri-customer-service-2-line"></text><text>发起投诉 / 售后</text></button>
     <button class="ghost-btn" wx:if="{{order.status === 'completed'}}" bindtap="rebook"><text class="remix-icon ri-calendar-check-line"></text><text>再次预约</text></button>

@@ -80,7 +80,11 @@ module.exports = function createService({
     const areaTags = splitServiceAreas(profile.serviceAreas)
     const radius = Math.max(Number(profile.serviceRadiusKm || 5), 1)
     const hasLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
-    const defaultTags = isIntern ? ['实习特惠', '平台审核', '可上门'] : ['已实名', '平台审核', '可上门']
+    const verifiedServiceTags = []
+    if (profile.auditStatus === 'approved') verifiedServiceTags.push('入驻审核已通过')
+    if (profile.quizPassedAt) verifiedServiceTags.push('基础考核已通过')
+    if (profile.videoAuditStatus === 'approved') verifiedServiceTags.push('实操视频已审核')
+    const defaultTags = isIntern ? verifiedServiceTags : ['已实名', '平台审核', '可上门']
     const publicAddress = resolvePublicAddress(profile)
     return {
       _id: profile._id,
@@ -101,6 +105,7 @@ module.exports = function createService({
       bookableUntilDate: safeText(profile.bookableUntilDate).trim(),
       areaTags,
       publicTags: defaultTags,
+      verifiedServiceTags,
       staffLevel,
       staffLevelText,
       isIntern,

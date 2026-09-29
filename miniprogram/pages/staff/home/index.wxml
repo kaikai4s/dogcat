@@ -55,10 +55,10 @@
       <view class="action-title">排班日历</view>
       <view class="action-sub">休息与接单设置</view>
     </view>
-    <view class="action-card" data-url="/pages/staff/incidents/list/index" bindtap="go">
-      <view class="icon-box"><text class="remix-icon ri-alarm-warning-line action-icon"></text></view>
-      <view class="action-title">纠纷 / SOS</view>
-      <view class="action-sub">异常上报与处置</view>
+    <view class="action-card" data-url="/pages/staff/earnings/index" bindtap="go">
+      <view class="icon-box"><text class="remix-icon ri-wallet-3-line action-icon"></text></view>
+      <view class="action-title">收益提现</view>
+      <view class="action-sub">钱包与明细</view>
     </view>
   </view>
 

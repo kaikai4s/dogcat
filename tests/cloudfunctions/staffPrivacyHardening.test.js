@@ -2,6 +2,21 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createCollectionStore, loadCloudFunction } = require('./helpers')
 
+test('intern public tags only describe recorded checks, not assumed qualifications', () => {
+  const context = require('../../cloudfunctions/api/services/context')({ db: createCollectionStore({}), cloud: {} })
+  const profile = { _id: 'intern', staffLevel: 'intern', auditStatus: 'approved' }
+  const sitter = context.toPublicSitter(profile)
+  assert.equal(sitter.staffLevelText, '实习宠托师')
+  assert.deepEqual(sitter.verifiedServiceTags, ['入驻审核已通过'])
+  assert.deepEqual(sitter.publicTags, sitter.verifiedServiceTags)
+  const checked = context.toPublicSitter({ ...profile, quizPassedAt: '2026-09-01', videoAuditStatus: 'approved' })
+  assert.deepEqual(checked.verifiedServiceTags, ['入驻审核已通过', '基础考核已通过', '实操视频已审核'])
+  const pending = context.toPublicSitter({ ...profile, auditStatus: 'pending', videoAuditStatus: 'pending' })
+  assert.deepEqual(pending.verifiedServiceTags, [])
+  assert.equal(checked.quizPassedAt, undefined)
+  assert.equal(checked.videoAuditStatus, undefined)
+})
+
 test('staff privacy hardening: public sitters list and detail do not leak private coordinates or detailed address', async () => {
   const db = createCollectionStore({
     users: [
