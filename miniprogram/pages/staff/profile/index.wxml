@@ -92,6 +92,10 @@
         <view class="label">按周接单时间</view>
         <view class="value muted">{{profile.weeklyScheduleText || '全天可预约'}}</view>
       </view>
+      <view class="info-row">
+        <view class="label">疫苗服务偏好</view>
+        <view class="value {{profile.rejectUnvaccinatedPets ? 'green-text' : 'muted'}}">{{profile.rejectUnvaccinatedPets ? '仅服务已接种认证宠物' : '可服务未认证宠物'}}</view>
+      </view>
     </view>
   </view>
 
@@ -302,7 +306,17 @@
         </view>
       </view>
 
-      <!-- 4. 按周接单时间段 -->
+      <view class="modal-section">
+        <view class="section-head-between">
+          <view style="flex: 1; padding-right: 24rpx;">
+            <view class="modal-section-title">4. 不服务未接种认证宠物</view>
+            <view class="field-tip">开启后，未通过疫苗认证的宠物不能指定预约你；抢单时系统也会阻止接取包含未认证宠物的订单。</view>
+          </view>
+          <switch checked="{{configForm.rejectUnvaccinatedPets}}" color="#16a34a" bindchange="toggleRejectUnvaccinatedPets" />
+        </view>
+      </view>
+
+      <!-- 5. 按周接单时间段 -->
       <view class="modal-section">
         <view class="section-head-between">
           <view class="modal-section-title">4. 按周接单可预约时间段</view>

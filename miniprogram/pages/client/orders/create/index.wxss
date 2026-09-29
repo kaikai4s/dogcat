@@ -498,6 +498,12 @@
   color: #3b82f6;
   background: #eff6ff;
 }
+.chip.vaccine-chip { color: #8e8580; background: #f4f4f5; }
+.chip.vaccine-chip.certified,
+.chip.vaccine-chip.success { color: #16a34a; background: #ecfdf3; }
+.chip.vaccine-chip.warning { color: #d97706; background: #fff7ed; }
+.chip.vaccine-chip.danger { color: #dc2626; background: #fef2f2; }
+.vaccine-notice { margin-top: 16rpx; padding: 16rpx 20rpx; border-radius: 22rpx; background: #fff7ed; color: #9a3412; font-size: 24rpx; line-height: 1.45; }
 
 .pet-voice {
   position: relative;

@@ -16,6 +16,7 @@ module.exports = function createHandler(context) {
     appendPaymentEvent,
     assertOrderTransition,
     assignOrderAtomically,
+    assertStaffCanAcceptOrderVaccines,
     autoAcceptDueDirectOrders,
     attachOrderDisplayData,
     buildMiniProgramPayParams,
@@ -651,6 +652,9 @@ module.exports = function createHandler(context) {
       if (data.acceptDirectOrders !== undefined) {
         updateData.acceptDirectOrders = Boolean(data.acceptDirectOrders)
       }
+      if (data.rejectUnvaccinatedPets !== undefined) {
+        updateData.rejectUnvaccinatedPets = Boolean(data.rejectUnvaccinatedPets)
+      }
       const hasProfileDisplayUpdate = data.profileBackgroundFileId !== undefined || data.profileIntro !== undefined || data.careProfile !== undefined || CARD_STYLE_FIELDS.some((key) => data[key] !== undefined)
 
       // 判断是否只更新 weeklySchedule（从排班日历调用）
@@ -812,6 +816,7 @@ module.exports = function createHandler(context) {
       // 3. 服务范围与时间筛选需在分页前执行，避免当前页被前端过滤后为空
       if (inServiceRange) orders = orders.filter((order) => order.inRange)
       if (inServiceTime) orders = orders.filter((order) => order.inTime)
+      if (profile.rejectUnvaccinatedPets === true) orders = orders.filter((order) => !order.hasUnvaccinatedPets)
 
       const sortedOrders = orders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
       const maskedOrders = sortedOrders.map(maskOrderForStaffPreview)
@@ -842,7 +847,8 @@ module.exports = function createHandler(context) {
           }
           return { ...enriched, distanceKm, distanceText: formatDistance(distanceKm) }
         }))
-      const maskedDirectOrders = directOrders.map(maskOrderForStaffPreview)
+      const visibleDirectOrders = profile.rejectUnvaccinatedPets === true ? directOrders.filter((order) => !order.hasUnvaccinatedPets) : directOrders
+      const maskedDirectOrders = visibleDirectOrders.map(maskOrderForStaffPreview)
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       return wantsPage ? paginateList(maskedDirectOrders, data) : maskedDirectOrders
     }
@@ -894,7 +900,8 @@ module.exports = function createHandler(context) {
             staffEarningText: `¥${Number(earning.earningAmount).toFixed(2)}`
           }
         }))
-      const sorted = urgentOrders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
+      const visibleUrgentOrders = profile.rejectUnvaccinatedPets === true ? urgentOrders.filter((order) => !order.hasUnvaccinatedPets) : urgentOrders
+      const sorted = visibleUrgentOrders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
       const maskedUrgentOrders = sorted.map(maskOrderForStaffPreview)
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       return wantsPage ? paginateList(maskedUrgentOrders, data) : maskedUrgentOrders
@@ -1116,6 +1123,7 @@ module.exports = function createHandler(context) {
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
+      assertStaffCanAcceptOrderVaccines(profile, await attachOrderDisplayData(order))
       const conflict = await findStaffOrderConflict(profile.openid, order, orderId)
       if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
 
@@ -1178,6 +1186,7 @@ module.exports = function createHandler(context) {
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
+      assertStaffCanAcceptOrderVaccines(profile, await attachOrderDisplayData(order))
 
       // 校验进行中订单总数上限（防止名下在途订单积压）
       const inOp = db.command && typeof db.command.in === 'function' ? db.command.in : (list) => list

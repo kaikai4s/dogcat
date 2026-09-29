@@ -1,5 +1,8 @@
 module.exports = function createService({
-  db
+  createPetVaccineSnapshot,
+  db,
+  decoratePetWithVaccineStatus,
+  summarizeOrderPetVaccines
 }) {
   function normalizePetIds(data = {}) {
     const raw = Array.isArray(data.petIds) && data.petIds.length ? data.petIds : [data.petId]
@@ -19,6 +22,7 @@ module.exports = function createService({
   }
 
   function createPetSnapshot(pet = {}) {
+    const decorated = decoratePetWithVaccineStatus ? decoratePetWithVaccineStatus(pet) : pet
     return {
       name: pet.name || '',
       avatarFileId: pet.avatarFileId || '',
@@ -33,13 +37,30 @@ module.exports = function createService({
       healthNotes: pet.healthNotes || '',
       specialNotes: pet.specialNotes || '',
       exclusiveId: pet.exclusiveId || '',
-      beautyTitle: pet.beautyTitle || null
+      beautyTitle: pet.beautyTitle || null,
+      vaccineCertification: createPetVaccineSnapshot ? createPetVaccineSnapshot(pet) : (pet.vaccineCertification || { status: 'none' }),
+      vaccineCertified: decorated.vaccineCertified === true,
+      vaccineStatus: decorated.vaccineStatus || 'none',
+      vaccineStatusText: decorated.vaccineStatusText || '未接种认证',
+      vaccineBadgeText: decorated.vaccineBadgeText || '未接种认证',
+      vaccineBadgeClass: decorated.vaccineBadgeClass || 'muted'
+    }
+  }
+
+  function createOrderVaccineSummary(petSnapshots = []) {
+    const summary = summarizeOrderPetVaccines ? summarizeOrderPetVaccines(petSnapshots) : { certifiedCount: 0, uncertifiedCount: petSnapshots.length, pendingCount: 0, rejectedCount: 0, expiredCount: 0 }
+    const total = Array.isArray(petSnapshots) ? petSnapshots.length : 0
+    return {
+      vaccinePetSummary: summary,
+      hasUnvaccinatedPets: total === 0 || summary.certifiedCount < total,
+      allPetsVaccineCertified: total > 0 && summary.certifiedCount === total
     }
   }
 
   return {
     normalizePetIds,
     getClientPetsByIds,
-    createPetSnapshot
+    createPetSnapshot,
+    createOrderVaccineSummary
   }
 }

@@ -61,6 +61,7 @@
               <text class="remix-icon ri-vip-crown-line"></text>{{item.petSnapshot.beautyTitle.title}}
             </view>
             <text class="breed-badge" wx:if="{{item.petSnapshot && item.petSnapshot.breed}}">{{item.petSnapshot.breed}}</text>
+            <text class="vaccine-badge {{item.petSnapshot.vaccineCertified ? 'certified' : item.petSnapshot.vaccineBadgeClass}}" wx:if="{{item.petSnapshot}}">{{item.petSnapshot.vaccineStatusText || '未接种认证'}}</text>
             <text class="owner-name {{item.clientSnapshot.nameEffect && item.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + item.clientSnapshot.nameEffect : ''}}" style="{{item.clientSnapshot.nameColor ? 'color: ' + item.clientSnapshot.nameColor + ';' : ''}}">· {{item.clientSnapshot.displayName || '宠物主'}}</text>
             <text class="member-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</text>
           </view>
@@ -83,6 +84,11 @@
         <text class="remix-icon ri-navigation-line icon"></text>
         <text class="val">距当前位置 {{item.distanceText || '未定位'}}</text>
       </view>
+    </view>
+
+    <view class="pet-note-card vaccine-warning" wx:if="{{item.hasUnvaccinatedPets}}">
+      <text class="remix-icon ri-shield-cross-line note-icon"></text>
+      <view class="note-text">请注意：该宠物未完成疫苗接种认证，服务前建议与宠物主确认免疫情况并做好防护。</view>
     </view>
 
     <view class="pet-note-card" wx:if="{{item.petSnapshot && (item.petSnapshot.personality || item.petSnapshot.specialNotes)}}">

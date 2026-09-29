@@ -79,6 +79,27 @@
       <view class="field-tip">选择后立即生效，可与头衔同时佩戴。取下后仍保留获奖记录，可随时重新佩戴。</view>
     </view>
 
+    <view class="card-subtitle"><text class="remix-icon ri-shield-check-line sub-icon"></text><text>疫苗接种认证</text></view>
+    <view class="vaccine-box">
+      <view class="vaccine-status {{form.vaccineCertified ? 'certified' : form.vaccineBadgeClass}}">{{form.vaccineStatusText || (id ? '未接种认证' : '保存宠物档案后可申请认证')}}</view>
+      <view class="field-tip" wx:if="{{form.vaccineCertification && form.vaccineCertification.validUntil}}">有效期至：{{form.vaccineCertification.validUntil}}</view>
+      <view class="field-tip" wx:if="{{form.vaccineCertification && form.vaccineCertification.rejectReason}}">未通过原因：{{form.vaccineCertification.rejectReason}}</view>
+      <view class="field-tip">认证后将在宠物资料、订单和宠托师抢单页显示绿色“已接种认证”，并可预约仅服务认证宠物的宠托师。</view>
+      <view wx:if="{{id}}">
+        <view class="vaccine-files">
+          <view class="vaccine-file" wx:for="{{vaccineFileIds}}" wx:key="*this">
+            <image src="{{item}}" mode="aspectFill" />
+            <view class="delete-photo" data-index="{{index}}" catchtap="removeVaccineFile"><text class="remix-icon ri-close-line"></text></view>
+          </view>
+          <view class="vaccine-add" wx:if="{{vaccineFileIds.length < 9}}" bindtap="chooseVaccineFiles"><text class="remix-icon ri-upload-cloud-2-line"></text><text>{{uploadingVaccine ? '上传中' : '上传凭证'}}</text></view>
+        </view>
+        <input class="input-field" placeholder="疫苗本编号/证明编号（选填）" value="{{vaccineForm.certificateNo}}" data-field="certificateNo" bindinput="inputVaccine" />
+        <picker mode="date" value="{{vaccineForm.validUntil}}" bindchange="inputVaccine" data-field="validUntil"><view class="select-field"><text>有效期：{{vaccineForm.validUntil || '请选择（选填）'}}</text><text class="remix-icon ri-calendar-event-line"></text></view></picker>
+        <textarea class="textarea-field" placeholder="补充说明（选填）" value="{{vaccineForm.ownerRemark}}" data-field="ownerRemark" bindinput="inputVaccine" />
+        <button class="primary-btn" bindtap="submitVaccineCertification" loading="{{vaccineSubmitting}}" disabled="{{uploadingVaccine || vaccineSubmitting}}">提交疫苗认证审核</button>
+      </view>
+    </view>
+
     <view class="card-subtitle"><text class="remix-icon ri-heart-pulse-line sub-icon"></text><text>照顾资料</text></view>
     <input class="input-field" placeholder="性格特点，如 胆小 / 活泼 / 粘人" value="{{form.personality}}" data-field="personality" bindinput="input" />
     <input class="input-field" placeholder="喜欢的食物或玩具" value="{{form.favoriteFood}}" data-field="favoriteFood" bindinput="input" />

@@ -293,6 +293,11 @@
   font-size: 20rpx;
   font-weight: 850;
 }
+.vaccine-badge { padding: 4rpx 12rpx; border-radius: 999rpx; background: #f4f4f5; color: #8e8580; font-size: 20rpx; font-weight: 900; }
+.vaccine-badge.certified,
+.vaccine-badge.success { color: #16a34a; background: #ecfdf3; }
+.vaccine-badge.warning { color: #d97706; background: #fff7ed; }
+.vaccine-badge.danger { color: #dc2626; background: #fef2f2; }
 
 .owner-name {
   color: #7a6a5e;
@@ -349,6 +354,9 @@
   align-items: flex-start;
   gap: 10rpx;
 }
+
+.pet-note-card.vaccine-warning { background: #fff7ed; border-color: rgba(217,119,6,.18); }
+.pet-note-card.vaccine-warning .note-icon { color: #d97706; }
 
 .note-icon {
   color: #f43f6b;

@@ -23,6 +23,7 @@ module.exports = function createHandler(context) {
     ensureOrderCompletionRewards,
     createClientSnapshot,
     createOrderWithCouponLock,
+    createOrderVaccineSummary,
     createPetSnapshot,
     createRefundForOrder,
     cancelUnpaidOrder,
@@ -90,6 +91,7 @@ module.exports = function createHandler(context) {
     toTimeValue,
     updateOrderWhenStatus,
     updateStaffRatingStats,
+    assertStaffCanServeOrderVaccines,
     validateDirectStaffServiceRange,
     validateOrderTime,
     validateStaffAvailabilityForSessions
@@ -124,6 +126,7 @@ module.exports = function createHandler(context) {
           throw new Error('该宠托师当前暂不接受指定预约')
         }
         assertStaffGenderMatches({ staffGenderRequirement }, staffProfile)
+        assertStaffCanServeOrderVaccines(staffProfile, pets)
         validateDirectStaffServiceRange(staffProfile, data, { isQuote: true })
         if (data.startTime && data.endTime) {
           await validateStaffAvailabilityForSessions(staffProfile, pricing.sessions)
@@ -151,6 +154,7 @@ module.exports = function createHandler(context) {
       const serviceSessions = pricing.sessions
       const primaryPet = pets[0]
       const petSnapshots = pets.map(createPetSnapshot)
+      const orderVaccineSummary = createOrderVaccineSummary(petSnapshots)
       const petNames = pets.map((pet) => pet.name || '宠物')
       const petSummary = formatPetSummary(pets)
       const requestedStaff = await getRequestedStaff(data)
@@ -162,6 +166,7 @@ module.exports = function createHandler(context) {
         if (staffProfile.acceptDirectOrders === false) {
           throw new Error('该宠托师当前暂不接受指定预约')
         }
+        assertStaffCanServeOrderVaccines(staffProfile, pets)
         const rangeCheck = validateDirectStaffServiceRange(staffProfile, data, { isQuote: false })
         directDistanceKm = rangeCheck.dist
         await validateStaffAvailabilityForSessions(staffProfile, serviceSessions)
@@ -189,7 +194,7 @@ module.exports = function createHandler(context) {
       const homeSecurity = normalizeHomeSecurityInput({ ...data, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime })
       const checkinRequirements = await resolveCheckinRequirements(pricing.serviceTypes)
       const memberLevels = await getMemberLevels()
-      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user, memberLevels), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, distanceFromSitterKm: directDistanceKm, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: primaryPet._id || petIds[0], petIds, petName: petSummary, petNames, petSnapshot: petSnapshots[0], petSnapshots, petSummary, serviceType: pricing.primaryServiceType || pricing.businessServiceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude, addressLongitude, orderType: pricing.orderType, serviceStartDate: serviceSessions[0].date, serviceEndDate: serviceSessions[serviceSessions.length - 1].date, sessionCount: serviceSessions.length, serviceSessions, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime, durationMinutes: pricing.durationMinutes, petServiceDurations: pricing.petServiceDurations, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', isUrgent: false, checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
+      const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user, memberLevels), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, distanceFromSitterKm: directDistanceKm, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: primaryPet._id || petIds[0], petIds, petName: petSummary, petNames, petSnapshot: petSnapshots[0], petSnapshots, petSummary, ...orderVaccineSummary, serviceType: pricing.primaryServiceType || pricing.businessServiceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude, addressLongitude, orderType: pricing.orderType, serviceStartDate: serviceSessions[0].date, serviceEndDate: serviceSessions[serviceSessions.length - 1].date, sessionCount: serviceSessions.length, serviceSessions, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime, durationMinutes: pricing.durationMinutes, petServiceDurations: pricing.petServiceDurations, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', isUrgent: false, checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {

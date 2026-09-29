@@ -53,6 +53,10 @@ Page({
     beautyTitleLoading: true,
     beautyTitleLoadFailed: false,
     beautyTitleSaving: false,
+    uploadingVaccine: false,
+    vaccineSubmitting: false,
+    vaccineFileIds: [],
+    vaccineForm: { certificateNo: '', validUntil: '', ownerRemark: '' },
     form: {
       species: 'dog',
       name: '',
@@ -98,7 +102,7 @@ Page({
         const genderIndex = Math.max(genderOptions.indexOf(form.gender || '未知'), 0)
         const nextForm = { ...this.data.form, ...form }
         const beautyPhotos = normalizeBeautyPhotos(nextForm)
-        this.setData({ form: { ...nextForm, beautyPhotos, avatarFileId: nextForm.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '' }, speciesIndex, genderIndex }, () => this.refreshTitleOptions())
+        this.setData({ form: { ...nextForm, beautyPhotos, avatarFileId: nextForm.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '' }, vaccineFileIds: Array.isArray(nextForm.vaccineCertification && nextForm.vaccineCertification.fileIds) ? nextForm.vaccineCertification.fileIds : [], speciesIndex, genderIndex }, () => this.refreshTitleOptions())
         this.loadBeautyTitles()
       })
       .catch(showError)
@@ -370,6 +374,88 @@ Page({
     } else {
       executeRecognize(avatarFileId, '')
     }
+  },
+
+  inputVaccine(e) {
+    const field = e.currentTarget.dataset.field
+    this.setData({ ['vaccineForm.' + field]: e.detail.value })
+  },
+
+  chooseVaccineFiles() {
+    if (!this.data.id) {
+      wx.showToast({ title: '请先保存宠物档案', icon: 'none' })
+      return
+    }
+    wx.chooseMedia({
+      count: Math.max(1, 9 - this.data.vaccineFileIds.length),
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const files = res.tempFiles || []
+        if (!files.length) return
+        this.setData({ uploadingVaccine: true })
+        wx.showLoading({ title: '上传凭证中...' })
+        files.reduce((chain, file) => chain.then(() => this.uploadVaccineFile(file.tempFilePath)), Promise.resolve())
+          .then(() => {
+            wx.hideLoading()
+            this.setData({ uploadingVaccine: false })
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            this.setData({ uploadingVaccine: false })
+            showError(err)
+          })
+      }
+    })
+  },
+
+  uploadVaccineFile(filePath) {
+    const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+    const cloudPath = `pet_vaccine_certifications/${this.data.id}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}${ext}`
+    return new Promise((resolve, reject) => {
+      wx.cloud.uploadFile({
+        cloudPath,
+        filePath,
+        success: (upload) => {
+          this.setData({ vaccineFileIds: this.data.vaccineFileIds.concat(upload.fileID).slice(0, 9) })
+          resolve()
+        },
+        fail: reject
+      })
+    })
+  },
+
+  removeVaccineFile(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const next = this.data.vaccineFileIds.slice()
+    next.splice(index, 1)
+    this.setData({ vaccineFileIds: next })
+  },
+
+  submitVaccineCertification() {
+    if (!this.data.id) {
+      wx.showToast({ title: '请先保存宠物档案', icon: 'none' })
+      return
+    }
+    if (!this.data.vaccineFileIds.length) {
+      wx.showToast({ title: '请先上传疫苗凭证', icon: 'none' })
+      return
+    }
+    this.setData({ vaccineSubmitting: true })
+    callFunction('pet', 'submitVaccineCertification', {
+      petId: this.data.id,
+      fileIds: this.data.vaccineFileIds,
+      certificateNo: this.data.vaccineForm.certificateNo,
+      validUntil: this.data.vaccineForm.validUntil,
+      ownerRemark: this.data.vaccineForm.ownerRemark
+    }).then((res) => {
+      this.setData({ vaccineSubmitting: false, ['form.vaccineCertification']: res.vaccineCertification || {}, ['form.vaccineStatusText']: '疫苗认证审核中' })
+      wx.showToast({ title: '已提交审核', icon: 'success' })
+      this.load()
+    }).catch((err) => {
+      this.setData({ vaccineSubmitting: false })
+      showError(err)
+    })
   },
 
   generateAiProfile() {

@@ -251,6 +251,7 @@
   color: #8e8580;
   font-weight: 400;
 }
+.info-row .value.green-text { color: #16a34a; font-weight: 850; }
 
 .action-grid {
   display: grid;

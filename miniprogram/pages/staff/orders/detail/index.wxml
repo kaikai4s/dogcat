@@ -29,10 +29,16 @@
           <text class="species-badge" wx:elif="{{order.petSnapshot.species === 'other'}}"><text class="remix-icon ri-paw-print-line"></text><text>异宠</text></text>
           <text class="species-badge" wx:else><text class="remix-icon ri-footprint-line"></text><text>狗狗</text></text>
           <text class="species-badge title-badge" wx:if="{{order.petSnapshot.beautyTitle && order.petSnapshot.beautyTitle.title}}"><text class="remix-icon ri-vip-crown-line"></text><text>{{order.petSnapshot.beautyTitle.title}}</text></text>
+          <text class="vaccine-badge {{order.petSnapshot.vaccineCertified ? 'certified' : order.petSnapshot.vaccineBadgeClass}}">{{order.petSnapshot.vaccineStatusText || '未接种认证'}}</text>
         </view>
         <view class="muted">{{order.petSnapshot.breed || '未知品种'}} · {{order.petSnapshot.gender || '未知性别'}} · {{order.petSnapshot.weight || 0}}kg</view>
         <view class="muted" wx:if="{{order.petSnapshot.birthday}}">生日：{{order.petSnapshot.birthday}}</view>
       </view>
+    </view>
+
+    <view class="vaccine-warning" wx:if="{{order.hasUnvaccinatedPets}}">
+      <text class="remix-icon ri-shield-cross-line"></text>
+      <text>请注意：该宠物未完成疫苗接种认证，服务前建议与宠物主确认免疫情况并做好防护。</text>
     </view>
 
     <view class="info-list pet-info-list">

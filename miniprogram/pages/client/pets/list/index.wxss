@@ -123,6 +123,11 @@
 .pet-name { color: #2d211a; font-size: 30rpx; font-weight: 950; }
 .pet-title-tag { display: inline-flex; align-items: center; gap: 6rpx; padding: 4rpx 14rpx; border-radius: 999rpx; font-size: 22rpx; font-weight: 900; line-height: 1.2; box-shadow: 0 2rpx 6rpx rgba(0,0,0,0.1); }
 .pet-title-tag .title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220rpx; }
+.vaccine-tag { display: inline-flex; align-items: center; padding: 4rpx 12rpx; border-radius: 999rpx; font-size: 21rpx; font-weight: 900; color: #8e8580; background: #f4f4f5; }
+.vaccine-tag.certified,
+.vaccine-tag.success { color: #16a34a; background: #ecfdf3; }
+.vaccine-tag.warning { color: #d97706; background: #fff7ed; }
+.vaccine-tag.danger { color: #dc2626; background: #fef2f2; }
 .pet-badge { padding: 6rpx 16rpx; border-radius: 999rpx; background: #e6f8ea; color: #00b42a; font-size: 22rpx; font-weight: 850; white-space: nowrap; }
 .pet-meta,
 .pet-desc { margin-top: 8rpx; color: #7a6a5e; font-size: 24rpx; line-height: 1.45; }

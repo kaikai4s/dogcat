@@ -76,6 +76,7 @@ Page({
       serviceRadiusKm: 5,
       profileBackgroundFileId: '',
       profileIntro: '',
+      rejectUnvaccinatedPets: false,
       weeklySchedule: { '1': [], '2': [], '3': [], '4': [], '5': [], '6': [], '7': [] }
     },
     activeDay: 1,
@@ -162,6 +163,7 @@ Page({
         serviceLongitude: Number(p.serviceLongitude || 0),
         serviceRadiusKm: Number(p.serviceRadiusKm || 5),
         acceptDirectOrders: p.acceptDirectOrders !== false,
+        rejectUnvaccinatedPets: p.rejectUnvaccinatedPets === true,
         profileBackgroundFileId: p.profileBackgroundFileId || '',
         profileIntro: p.profileIntro || '',
         weeklySchedule: JSON.parse(JSON.stringify(schedule))
@@ -172,6 +174,10 @@ Page({
 
   toggleAcceptDirectOrders(e) {
     this.setData({ 'configForm.acceptDirectOrders': Boolean(e.detail.value) })
+  },
+
+  toggleRejectUnvaccinatedPets(e) {
+    this.setData({ 'configForm.rejectUnvaccinatedPets': Boolean(e.detail.value) })
   },
 
   onConfigInput(e) {

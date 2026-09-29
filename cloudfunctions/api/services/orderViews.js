@@ -2,6 +2,7 @@ module.exports = function createService({
   ORDER_STATUS,
   createPetSnapshot,
   db,
+  decorateOrderWithVaccineSummary,
   getActiveServiceSession,
   getMemberLevels,
   readScopedDocuments,
@@ -87,20 +88,27 @@ module.exports = function createService({
   }
 
   async function attachPetSnapshot(order) {
-    let snapshot = order.petSnapshot || null
-    if (order.petId) {
+    const existingSnapshots = Array.isArray(order.petSnapshots) && order.petSnapshots.length ? order.petSnapshots : [order.petSnapshot].filter(Boolean)
+    let snapshots = existingSnapshots
+    const petIds = Array.isArray(order.petIds) && order.petIds.length ? order.petIds : [order.petId].filter(Boolean)
+    if (petIds.length) {
       try {
-        const pet = (await db.collection('pets').doc(order.petId).get()).data
-        if (pet) {
-          const latest = createPetSnapshot({ ...pet, name: pet.name || order.petName || '' })
-          snapshot = snapshot ? { ...snapshot, ...latest, avatarFileId: pet.avatarFileId || snapshot.avatarFileId || '', beautyTitle: pet.beautyTitle || null } : latest
-        }
+        const latestSnapshots = await Promise.all(petIds.map(async (petId, index) => {
+          const pet = (await db.collection('pets').doc(petId).get()).data
+          const fallback = existingSnapshots[index] || order.petSnapshot || {}
+          if (!pet) return fallback
+          const latest = createPetSnapshot({ ...pet, name: pet.name || fallback.name || order.petName || '' })
+          return { ...fallback, ...latest, avatarFileId: pet.avatarFileId || fallback.avatarFileId || '', beautyTitle: pet.beautyTitle || null }
+        }))
+        snapshots = latestSnapshots.filter(Boolean)
       } catch (error) {}
     }
-    return {
+    const withSnapshots = {
       ...order,
-      petSnapshot: snapshot
+      petSnapshot: snapshots[0] || order.petSnapshot || null,
+      petSnapshots: snapshots.length ? snapshots : order.petSnapshots
     }
+    return decorateOrderWithVaccineSummary ? decorateOrderWithVaccineSummary(withSnapshots) : withSnapshots
   }
 
   function maskClientName(value) {

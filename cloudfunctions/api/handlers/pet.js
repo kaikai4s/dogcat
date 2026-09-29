@@ -6,6 +6,7 @@ module.exports = function createHandler(context) {
     cloud,
     db,
     decoratePetsWithEquippedTitles,
+    decoratePetsWithVaccineStatus,
     ensurePetExclusiveId,
     equipPetTitle,
     generatePetExclusiveId,
@@ -39,7 +40,7 @@ module.exports = function createHandler(context) {
           const beautyPhotos = Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length ? pet.beautyPhotos : normalizeBeautyPhotos([], pet.avatarFileId)
           return { ...pet, exclusiveId, beautyPhotos }
         }))
-      const decorated = await decoratePetsWithEquippedTitles(list)
+      const decorated = decoratePetsWithVaccineStatus(await decoratePetsWithEquippedTitles(list))
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       return wantsPage ? paginateList(decorated, data) : decorated
     }
@@ -51,8 +52,85 @@ module.exports = function createHandler(context) {
       if (res.data.openid !== openid) throw new Error('无权访问')
       const exclusiveId = await ensurePetExclusiveId(res.data)
       const beautyPhotos = Array.isArray(res.data.beautyPhotos) && res.data.beautyPhotos.length ? res.data.beautyPhotos : normalizeBeautyPhotos([], res.data.avatarFileId)
-      const decorated = await decoratePetsWithEquippedTitles([{ ...res.data, exclusiveId, beautyPhotos }])
+      const decorated = decoratePetsWithVaccineStatus(await decoratePetsWithEquippedTitles([{ ...res.data, exclusiveId, beautyPhotos }]))
       return decorated[0]
+    }
+    if (action === 'submitVaccineCertification') {
+      const petId = safeText(data && (data.id || data.petId)).trim()
+      if (!petId) throw new Error('缺少宠物ID')
+      const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+      const currentPet = petRes && petRes.data
+      if (!currentPet || currentPet.openid !== openid) throw new Error('宠物不存在')
+      const fileIds = Array.from(new Set((Array.isArray(data.fileIds) ? data.fileIds : [data.fileId]).map((item) => safeFileId(item) || safeText(item).trim()).filter(Boolean))).slice(0, 9)
+      if (!fileIds.length) throw new Error('请上传疫苗接种证明文件')
+      const pendingRes = await db.collection('pet_vaccine_certifications').where({ petId, openid, status: 'pending' }).limit(1).get().catch(() => ({ data: [] }))
+      if (pendingRes.data && pendingRes.data[0]) throw new Error('已有疫苗认证待审核申请，请勿重复提交')
+      const vaccineTypes = Array.isArray(data.vaccineTypes) ? data.vaccineTypes.map((item) => safeText(item).trim()).filter(Boolean).slice(0, 12) : []
+      const certificateNo = safeText(data.certificateNo).trim().slice(0, 40)
+      const validUntil = safeText(data.validUntil).trim()
+      if (validUntil && !/^\d{4}-\d{2}-\d{2}$/.test(validUntil)) throw new Error('请选择有效的疫苗有效期')
+      const ownerRemark = safeText(data.ownerRemark || data.remark).trim().slice(0, 200)
+      const textForCheck = [certificateNo, ownerRemark, ...vaccineTypes].filter(Boolean).join(' ')
+      if (textForCheck) await checkTextSecurity(openid, textForCheck, { scene: 1, label: '宠物疫苗认证资料' })
+      await Promise.all(fileIds.map((fileId) => checkImageSecurity(openid, fileId, { scene: 1, label: '宠物疫苗认证文件' })))
+      const time = nowText()
+      const application = {
+        petId,
+        userId: safeText(user._id),
+        openid,
+        petSnapshot: {
+          name: currentPet.name || '',
+          species: currentPet.species || '',
+          breed: currentPet.breed || '',
+          avatarFileId: currentPet.avatarFileId || '',
+          exclusiveId: currentPet.exclusiveId || ''
+        },
+        fileIds,
+        vaccineTypes,
+        certificateNo,
+        validUntil,
+        ownerRemark,
+        status: 'pending',
+        adminRemark: '',
+        rejectReason: '',
+        reviewedByOpenid: '',
+        reviewedAt: '',
+        createdAt: time,
+        updatedAt: time
+      }
+      const created = await db.collection('pet_vaccine_certifications').add({ data: application })
+      const previous = currentPet.vaccineCertification || {}
+      const nextCertification = {
+        ...(previous.status === 'approved' ? previous : {}),
+        status: previous.status === 'approved' ? 'approved' : 'pending',
+        renewalPending: previous.status === 'approved',
+        fileIds,
+        submittedAt: time,
+        reviewedAt: previous.status === 'approved' ? (previous.reviewedAt || '') : '',
+        reviewedByOpenid: previous.status === 'approved' ? (previous.reviewedByOpenid || '') : '',
+        reviewRemark: '',
+        rejectReason: '',
+        validUntil: validUntil || previous.validUntil || '',
+        vaccineTypes,
+        certificateNo,
+        latestApplicationId: created._id
+      }
+      await db.collection('pets').doc(petId).update({ data: { vaccineCertification: nextCertification, updatedAt: time } })
+      return { applicationId: created._id, vaccineCertification: nextCertification }
+    }
+    if (action === 'getVaccineCertification') {
+      const petId = safeText(data && (data.id || data.petId)).trim()
+      if (!petId) throw new Error('缺少宠物ID')
+      const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+      const currentPet = petRes && petRes.data
+      if (!currentPet || currentPet.openid !== openid) throw new Error('宠物不存在')
+      const historyRes = await db.collection('pet_vaccine_certifications').where({ petId, openid }).orderBy('createdAt', 'desc').limit(20).get().catch(() => ({ data: [] }))
+      return {
+        petId,
+        vaccineCertification: decoratePetsWithVaccineStatus([currentPet])[0].vaccineCertification,
+        vaccineStatusText: decoratePetsWithVaccineStatus([currentPet])[0].vaccineStatusText,
+        applications: historyRes.data || []
+      }
     }
     if (action === 'listMyTitles') {
       return listUserPetTitles(openid)

@@ -207,6 +207,13 @@
   font-size: 24rpx;
   line-height: 1;
 }
+.vaccine-badge { display: inline-flex; align-items: center; padding: 4rpx 16rpx; border-radius: 999rpx; background: #f4f4f5; color: #8e8580; font-size: 22rpx; font-weight: 900; }
+.vaccine-badge.certified,
+.vaccine-badge.success { color: #16a34a; background: #ecfdf3; }
+.vaccine-badge.warning { color: #d97706; background: #fff7ed; }
+.vaccine-badge.danger { color: #dc2626; background: #fef2f2; }
+.vaccine-warning { display: flex; gap: 10rpx; align-items: flex-start; margin-top: 20rpx; padding: 16rpx 20rpx; border-radius: 20rpx; background: #fff7ed; color: #9a3412; font-size: 24rpx; line-height: 1.45; }
+.vaccine-warning .remix-icon { color: #d97706; font-size: 28rpx; flex-shrink: 0; }
 
 .muted {
   margin-top: 6rpx;

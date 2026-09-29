@@ -103,6 +103,8 @@ module.exports = function createService({
       weeklySchedule: normalizeWeeklySchedule(profile.weeklySchedule),
       weeklyScheduleText: formatWeeklyScheduleText(profile.weeklySchedule),
       bookableUntilDate: safeText(profile.bookableUntilDate).trim(),
+      rejectUnvaccinatedPets: profile.rejectUnvaccinatedPets === true,
+      vaccineServicePolicyText: profile.rejectUnvaccinatedPets === true ? '仅服务已接种认证宠物' : '可服务未认证宠物',
       areaTags,
       publicTags: defaultTags,
       verifiedServiceTags,

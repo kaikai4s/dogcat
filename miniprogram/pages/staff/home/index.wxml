@@ -90,6 +90,7 @@
                 <text class="remix-icon ri-vip-crown-fill"></text>
                 <text>{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}</text>
               </view>
+              <view class="vaccine-badge {{item.petSnapshot.vaccineCertified ? 'certified' : item.petSnapshot.vaccineBadgeClass}}" wx:if="{{item.petSnapshot}}">{{item.petSnapshot.vaccineStatusText || '未接种认证'}}</view>
             </view>
             <view class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
           </view>
@@ -218,6 +219,7 @@
                 <text class="remix-icon ri-vip-crown-fill"></text>
                 <text>{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}</text>
               </view>
+              <view class="vaccine-badge {{item.petSnapshot.vaccineCertified ? 'certified' : item.petSnapshot.vaccineBadgeClass}}" wx:if="{{item.petSnapshot}}">{{item.petSnapshot.vaccineStatusText || '未接种认证'}}</view>
             </view>
             <view class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
           </view>
@@ -281,6 +283,7 @@
             <view class="order-title-row">
               <text class="order-client-name">{{item.clientSnapshot.displayName || '客户'}}</text>
               <text class="order-pet-name">· {{item.petName}}</text>
+              <view class="vaccine-badge {{item.petSnapshot.vaccineCertified ? 'certified' : item.petSnapshot.vaccineBadgeClass}}" wx:if="{{item.petSnapshot}}">{{item.petSnapshot.vaccineStatusText || '未接种认证'}}</view>
             </view>
             <view class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
           </view>

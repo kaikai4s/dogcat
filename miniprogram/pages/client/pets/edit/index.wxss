@@ -81,3 +81,15 @@
 .generate-btn { width: 100%; margin: 22rpx 0 16rpx; }
 .submit-btn { width: 100%; margin-top: 28rpx; min-height: 84rpx; font-size: 28rpx; }
 button[disabled] { opacity: .62; }
+.vaccine-box { padding: 20rpx; border-radius: 28rpx; background: #f8fafc; border: 1rpx solid rgba(22,163,74,.14); margin-bottom: 20rpx; }
+.vaccine-status { display: inline-flex; padding: 8rpx 18rpx; border-radius: 999rpx; background: #f4f4f5; color: #7a6a5e; font-size: 24rpx; font-weight: 900; margin-bottom: 8rpx; }
+.vaccine-status.certified,
+.vaccine-status.success { color: #16a34a; background: #ecfdf3; }
+.vaccine-status.warning { color: #d97706; background: #fff7ed; }
+.vaccine-status.danger { color: #dc2626; background: #fef2f2; }
+.vaccine-files { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14rpx; margin: 18rpx 0; }
+.vaccine-file,
+.vaccine-add { position: relative; height: 160rpx; border-radius: 24rpx; overflow: hidden; background: #fff; border: 1rpx solid rgba(22,163,74,.16); }
+.vaccine-file image { width: 100%; height: 100%; }
+.vaccine-add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6rpx; color: #16a34a; font-size: 23rpx; font-weight: 900; border-style: dashed; }
+.vaccine-add .remix-icon { font-size: 42rpx; }

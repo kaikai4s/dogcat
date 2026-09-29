@@ -442,6 +442,7 @@ typeof Page === 'function' ? Page({
     selectedPet: null,
     selectedPets: [],
     selectedPetsTitle: '',
+    hasSelectedUnvaccinatedPets: false,
     petVoiceMessage: '',
     loadingPetVoice: false,
     petVoiceRequestId: 0,
@@ -1087,6 +1088,7 @@ typeof Page === 'function' ? Page({
       selectedServiceDetails: buildSelectedServiceDetails(serviceOptions, serviceTypes, this.data.serviceDetailExpanded, this.data.serviceCaseUrlMap),
       quote: null,
       selectedPetsTitle: formatSelectedPetsSummary(selectedPets),
+      hasSelectedUnvaccinatedPets: selectedPets.some((pet) => pet.vaccineCertified !== true),
       petVoiceMessage: initialVoice
     }, () => {
       this.prepareTime()

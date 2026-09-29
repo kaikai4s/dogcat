@@ -13,6 +13,7 @@ module.exports = function createHandler(context) {
     appendOrderStaffMessage,
     appendOrderTimeline,
     assertAdminRoleChangeAllowed,
+    assertStaffCanServeOrderVaccines,
     assertUserDeleteAllowed,
     attachAdminOrderContactData,
     auditStatusText,
@@ -1032,6 +1033,7 @@ module.exports = function createHandler(context) {
         }
         throw new Error(ability.message || '该宠托师尚未完成培训/视频审核，不能派单')
       }
+      assertStaffCanServeOrderVaccines(profile, orderRes.data)
       await validateStaffAvailabilityForSessions(profile, getOrderTimeRanges(orderRes.data), { excludeOrderId: orderId })
       const staffUserRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = staffUserRes.data[0]
@@ -1574,6 +1576,91 @@ module.exports = function createHandler(context) {
       await db.collection('user_feedback').doc(id).update({ data: updateData })
       await logAdmin(admin, 'user_feedback', id, 'replyFeedback', { status })
       return { id, status }
+    }
+    if (action === 'listPetVaccineCertifications') {
+      const status = safeText(data.status).trim()
+      const keyword = safeText(data.keyword).trim().toLowerCase()
+      const where = {}
+      if (status) where.status = status
+      const page = Math.max(1, Number(data.page || 1))
+      const pageSize = Math.min(100, Math.max(1, Number(data.pageSize || 20)))
+      const offset = (page - 1) * pageSize
+      let applications = []
+      let total = 0
+      if (!keyword) {
+        const countRes = await db.collection('pet_vaccine_certifications').where(where).count().catch(() => ({ total: 0 }))
+        total = countRes.total || 0
+        if (offset < total) {
+          const res = await db.collection('pet_vaccine_certifications').where(where).orderBy('createdAt', 'desc').skip(offset).limit(pageSize).get().catch(() => ({ data: [] }))
+          applications = res.data || []
+        }
+      } else {
+        const all = await readAll('pet_vaccine_certifications', where, 1000)
+        const matched = all.filter((item) => [item.certificateNo, item.ownerRemark, item.rejectReason, item.adminRemark, item.petSnapshot && item.petSnapshot.name, item.petSnapshot && item.petSnapshot.breed].some((value) => safeText(value).toLowerCase().includes(keyword))).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
+        total = matched.length
+        applications = matched.slice(offset, offset + pageSize)
+      }
+      const openids = Array.from(new Set(applications.map((item) => item.openid).filter(Boolean)))
+      const userMap = {}
+      await Promise.all(openids.map(async (targetOpenid) => {
+        const userRes = await db.collection('users').where({ openid: targetOpenid }).limit(1).get().catch(() => ({ data: [] }))
+        if (userRes.data && userRes.data[0]) userMap[targetOpenid] = safeUserSummary(userRes.data[0])
+      }))
+      return {
+        list: applications.map((item) => ({ ...item, owner: userMap[item.openid] || {} })),
+        total,
+        page,
+        pageSize,
+        hasMore: offset + applications.length < total
+      }
+    }
+    if (action === 'auditPetVaccineCertification') {
+      const applicationId = safeText(data.applicationId || data.id).trim()
+      if (!applicationId) throw new Error('请选择疫苗认证申请')
+      const approved = data.status === 'approved' || data.auditStatus === 'approved'
+      const status = approved ? 'approved' : 'rejected'
+      const rejectReason = safeText(data.rejectReason || data.reason).trim().slice(0, 200)
+      const adminRemark = safeText(data.adminRemark || data.remark).trim().slice(0, 200)
+      const validUntil = safeText(data.validUntil).trim()
+      if (validUntil && !/^\d{4}-\d{2}-\d{2}$/.test(validUntil)) throw new Error('请选择有效的疫苗有效期')
+      if (!approved && !rejectReason) throw new Error('请填写驳回原因')
+      const applicationRes = await db.collection('pet_vaccine_certifications').doc(applicationId).get().catch(() => ({ data: null }))
+      const application = applicationRes && applicationRes.data
+      if (!application) throw new Error('疫苗认证申请不存在')
+      if (application.status !== 'pending') throw new Error('该申请已审核，请勿重复操作')
+      const petRes = await db.collection('pets').doc(application.petId).get().catch(() => ({ data: null }))
+      const pet = petRes && petRes.data
+      if (!pet) throw new Error('宠物不存在')
+      const time = now()
+      const appUpdate = { status, adminRemark, rejectReason: approved ? '' : rejectReason, reviewedByOpenid: openid, reviewedAt: time, updatedAt: time }
+      await db.collection('pet_vaccine_certifications').doc(applicationId).update({ data: appUpdate })
+      const previous = pet.vaccineCertification || {}
+      const vaccineCertification = approved ? {
+        status: 'approved',
+        fileIds: application.fileIds || [],
+        submittedAt: application.createdAt || previous.submittedAt || '',
+        reviewedAt: time,
+        reviewedByOpenid: openid,
+        reviewRemark: adminRemark,
+        rejectReason: '',
+        validUntil: validUntil || application.validUntil || previous.validUntil || '',
+        vaccineTypes: application.vaccineTypes || [],
+        certificateNo: application.certificateNo || '',
+        latestApplicationId: applicationId,
+        renewalPending: false
+      } : {
+        ...previous,
+        status: previous.status === 'approved' && previous.renewalPending === true ? 'approved' : 'rejected',
+        reviewedAt: previous.status === 'approved' && previous.renewalPending === true ? previous.reviewedAt : time,
+        reviewedByOpenid: previous.status === 'approved' && previous.renewalPending === true ? previous.reviewedByOpenid : openid,
+        reviewRemark: adminRemark,
+        rejectReason,
+        latestApplicationId: applicationId,
+        renewalPending: false
+      }
+      await db.collection('pets').doc(application.petId).update({ data: { vaccineCertification, updatedAt: time } })
+      await logAdmin(admin, 'pet_vaccine_certification', applicationId, 'auditPetVaccineCertification', { status, petId: application.petId })
+      return { applicationId, status, petId: application.petId }
     }
     if (action === 'listStaffAudits') {
       const status = safeText(data.auditStatus).trim()
