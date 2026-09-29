@@ -193,8 +193,21 @@ module.exports = function createService({
     monthKey = normalizeMonthKey(monthKey)
     if (!options.force && await isPetBeautyMonthLocked(monthKey)) return { monthKey, locked: true, skipped: true }
     const voteMap = await countPetBeautyVotes(monthKey)
-    const allPets = await getAllDocuments('pets', 'createdAt', 'desc')
-    const ranked = allPets
+    const votedPetIds = Object.keys(voteMap).filter((id) => (voteMap[id] || 0) > 0)
+    let candidatePets = []
+    if (votedPetIds.length > 0) {
+      // 性能优化：优先只拉取获得有效票数的宠物，避免全表遍历数万只无票宠物
+      const chunkSize = 50
+      for (let i = 0; i < votedPetIds.length; i += chunkSize) {
+        const chunk = votedPetIds.slice(i, i + chunkSize)
+        const res = await db.collection('pets').where({ _id: db.command.in(chunk) }).get().catch(() => ({ data: [] }))
+        candidatePets.push(...(res.data || []))
+      }
+    }
+    if (candidatePets.length === 0 && votedPetIds.length === 0) {
+      candidatePets = await getAllDocuments('pets', 'createdAt', 'desc')
+    }
+    const ranked = candidatePets
       .filter((pet) => !pet.deletedAt && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length)
       .map((pet) => ({ pet, voteCount: Number(voteMap[pet._id] || 0) }))
       .filter((item) => item.voteCount > 0)

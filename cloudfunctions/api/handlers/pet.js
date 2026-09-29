@@ -143,6 +143,8 @@ module.exports = function createHandler(context) {
       const time = nowText()
       const beautyPhotos = normalizeBeautyPhotos(data.beautyPhotos, data.avatarFileId)
       const avatarFileId = safeFileId(data.avatarFileId) || safeText(data.avatarFileId) || beautyPhotos[0].fileId
+      const hasBeautyPhotos = Boolean(Array.isArray(beautyPhotos) && beautyPhotos.length > 0)
+      const beautyPhotoCount = Array.isArray(beautyPhotos) ? beautyPhotos.length : 0
       const pet = {
         userId: safeText(user._id),
         openid: safeText(openid),
@@ -150,6 +152,8 @@ module.exports = function createHandler(context) {
         name: safeText(data.name),
         avatarFileId,
         beautyPhotos,
+        hasBeautyPhotos,
+        beautyPhotoCount,
         beautyTitle: null,
         equippedTitleInventoryId: '',
         species: safeText(data.species || 'dog'),
@@ -192,11 +196,15 @@ module.exports = function createHandler(context) {
       const hasDeletedPhoto = existingPhotos.some((photo) => !nextFileIds.has(photo.fileId))
       if (hasDeletedPhoto && toCstParts().dayNumber !== 1) throw new Error('每月1日才可以删除宠物美照')
       const avatarFileId = safeFileId(data.avatarFileId) || safeText(data.avatarFileId) || beautyPhotos[0].fileId
+      const hasBeautyPhotos = Boolean(Array.isArray(beautyPhotos) && beautyPhotos.length > 0)
+      const beautyPhotoCount = Array.isArray(beautyPhotos) ? beautyPhotos.length : 0
       await db.collection('pets').doc(petId).update({ data: {
         name: safeText(data.name),
         exclusiveId,
         avatarFileId,
         beautyPhotos,
+        hasBeautyPhotos,
+        beautyPhotoCount,
         species: safeText(data.species || 'dog'),
         breed: safeText(data.breed),
         gender: safeText(data.gender),

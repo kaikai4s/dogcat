@@ -39,18 +39,36 @@ module.exports = function createHandler(context) {
     }
 
     async function readBeautyCandidatePets(maxLimit = 1000) {
-      const rows = []
+      // 1. 优先使用索引打标字段 hasBeautyPhotos: true 定向检索已参赛宠物，避免无索引全表扫表
+      const indexedRows = []
       let cursor = ''
-      while (rows.length < maxLimit) {
-        const condition = {}
+      while (indexedRows.length < maxLimit) {
+        const condition = { hasBeautyPhotos: true }
         if (cursor) condition._id = db.command.gt(cursor)
-        const fetchLimit = Math.min(100, maxLimit - rows.length)
+        const fetchLimit = Math.min(100, maxLimit - indexedRows.length)
         const page = (await db.collection('pets').where(condition).orderBy('_id', 'asc').limit(fetchLimit).get()).data || []
-        rows.push(...page)
+        indexedRows.push(...page)
         if (page.length < fetchLimit) break
         cursor = page[page.length - 1]._id
       }
-      return rows.filter((pet) => !pet.deletedAt && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0)
+      const validIndexed = indexedRows.filter((pet) => !pet.deletedAt && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0)
+      if (validIndexed.length > 0) {
+        return validIndexed
+      }
+
+      // 2. 平滑兼容存量历史数据：若系统中尚未对旧宠物打标 hasBeautyPhotos，降级使用扫描兜底，并在内存中筛选
+      const legacyRows = []
+      cursor = ''
+      while (legacyRows.length < maxLimit) {
+        const condition = {}
+        if (cursor) condition._id = db.command.gt(cursor)
+        const fetchLimit = Math.min(100, maxLimit - legacyRows.length)
+        const page = (await db.collection('pets').where(condition).orderBy('_id', 'asc').limit(fetchLimit).get()).data || []
+        legacyRows.push(...page)
+        if (page.length < fetchLimit) break
+        cursor = page[page.length - 1]._id
+      }
+      return legacyRows.filter((pet) => !pet.deletedAt && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0)
     }
 
     async function getPublicPetsWithVotes() {
@@ -199,7 +217,17 @@ module.exports = function createHandler(context) {
         }
       }
       const beautyPhotos = currentPhotos.concat(allowedAdditions)
-      await db.collection('pets').doc(petId).update({ data: { beautyPhotos, avatarFileId: pet.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '', updatedAt: nowText() } })
+      const hasBeautyPhotos = Boolean(beautyPhotos.length > 0)
+      const beautyPhotoCount = beautyPhotos.length
+      await db.collection('pets').doc(petId).update({
+        data: {
+          beautyPhotos,
+          hasBeautyPhotos,
+          beautyPhotoCount,
+          avatarFileId: pet.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '',
+          updatedAt: nowText()
+        }
+      })
       return { petId, importedCount: allowedAdditions.length, beautyPhotos }
     }
 
@@ -218,13 +246,48 @@ module.exports = function createHandler(context) {
       if (beautyPhotos.length === currentPhotos.length) throw new Error('美照不存在')
       if (!beautyPhotos.length) throw new Error('至少保留一张宠物美照')
       const avatarFileId = beautyPhotos.some((photo) => photo.fileId === pet.avatarFileId) ? pet.avatarFileId : beautyPhotos[0].fileId
-      await db.collection('pets').doc(petId).update({ data: { beautyPhotos, avatarFileId, updatedAt: nowText() } })
+      const hasBeautyPhotos = Boolean(beautyPhotos.length > 0)
+      const beautyPhotoCount = beautyPhotos.length
+      await db.collection('pets').doc(petId).update({
+        data: {
+          beautyPhotos,
+          hasBeautyPhotos,
+          beautyPhotoCount,
+          avatarFileId,
+          updatedAt: nowText()
+        }
+      })
       return { petId, beautyPhotos, avatarFileId }
     }
 
     if (action === 'settleMonthlyRanking') {
       await requireAdmin(openid)
       return settlePetBeautyMonthlyRanking(monthKey, { force: data.force === true, source: 'admin_repair' })
+    }
+
+    if (action === 'syncBeautyPhotoFlags') {
+      await requireAdmin(openid)
+      let updatedCount = 0
+      let cursor = ''
+      while (true) {
+        const condition = {}
+        if (cursor) condition._id = db.command.gt(cursor)
+        const page = (await db.collection('pets').where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+        if (!page.length) break
+        for (const p of page) {
+          const hasBeautyPhotos = Boolean(!p.deletedAt && Array.isArray(p.beautyPhotos) && p.beautyPhotos.length > 0)
+          const beautyPhotoCount = Array.isArray(p.beautyPhotos) ? p.beautyPhotos.length : 0
+          if (p.hasBeautyPhotos !== hasBeautyPhotos || p.beautyPhotoCount !== beautyPhotoCount) {
+            await db.collection('pets').doc(p._id).update({
+              data: { hasBeautyPhotos, beautyPhotoCount, updatedAt: nowText() }
+            })
+            updatedCount += 1
+          }
+        }
+        if (page.length < 100) break
+        cursor = page[page.length - 1]._id
+      }
+      return { updatedCount }
     }
 
     throw new Error('未知 petBeauty 操作')
