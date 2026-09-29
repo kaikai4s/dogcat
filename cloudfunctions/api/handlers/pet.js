@@ -100,17 +100,25 @@ module.exports = function createHandler(context) {
       }
       const created = await db.collection('pet_vaccine_certifications').add({ data: application })
       const previous = currentPet.vaccineCertification || {}
-      const nextCertification = {
-        ...(previous.status === 'approved' ? previous : {}),
-        status: previous.status === 'approved' ? 'approved' : 'pending',
-        renewalPending: previous.status === 'approved',
-        fileIds,
-        submittedAt: time,
-        reviewedAt: previous.status === 'approved' ? (previous.reviewedAt || '') : '',
-        reviewedByOpenid: previous.status === 'approved' ? (previous.reviewedByOpenid || '') : '',
+      const isRenewal = previous.status === 'approved'
+      const nextCertification = isRenewal ? {
+        ...previous,
+        status: 'approved',
+        renewalPending: true,
+        submittedAt: previous.submittedAt || time,
         reviewRemark: '',
         rejectReason: '',
-        validUntil: validUntil || previous.validUntil || '',
+        latestApplicationId: created._id
+      } : {
+        status: 'pending',
+        renewalPending: false,
+        fileIds,
+        submittedAt: time,
+        reviewedAt: '',
+        reviewedByOpenid: '',
+        reviewRemark: '',
+        rejectReason: '',
+        validUntil,
         vaccineTypes,
         certificateNo,
         latestApplicationId: created._id

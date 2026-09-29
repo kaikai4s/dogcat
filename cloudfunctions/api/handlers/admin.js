@@ -14,6 +14,7 @@ module.exports = function createHandler(context) {
     appendOrderTimeline,
     assertAdminRoleChangeAllowed,
     assertStaffCanServeOrderVaccines,
+    attachOrderDisplayData,
     assertUserDeleteAllowed,
     attachAdminOrderContactData,
     auditStatusText,
@@ -1033,7 +1034,7 @@ module.exports = function createHandler(context) {
         }
         throw new Error(ability.message || '该宠托师尚未完成培训/视频审核，不能派单')
       }
-      assertStaffCanServeOrderVaccines(profile, orderRes.data)
+      assertStaffCanServeOrderVaccines(profile, await attachOrderDisplayData(orderRes.data))
       await validateStaffAvailabilityForSessions(profile, getOrderTimeRanges(orderRes.data), { excludeOrderId: orderId })
       const staffUserRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = staffUserRes.data[0]

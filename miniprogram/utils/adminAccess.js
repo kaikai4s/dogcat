@@ -13,7 +13,7 @@ const routes = {
   'finance/index': ['admin.financeDashboard', 'admin.listWithdrawRequests', 'admin.listPayments', 'admin.listRefunds', 'admin.listStaffEarnings', 'admin.listFinanceLogs', 'admin.listStaffDeposits', 'admin.listSupplyReimbursements'],
   'service-prices/index': ['admin.listServicePrices'], 'prices/index': ['admin.listServicePrices'],
   'coupons/index': ['admin.listCouponTemplates'], 'member-levels/index': ['admin.listMemberLevels'],
-  'pet-titles/index': ['admin.listPetTitles'], 'checkin-config/index': ['admin.getCheckinMonthConfig'],
+  'pet-titles/index': ['admin.listPetTitles'], 'pet-vaccine/list/index': ['admin.listPetVaccineCertifications'], 'checkin-config/index': ['admin.getCheckinMonthConfig'],
   'points/index': ['admin.listPointLogs'], 'lottery/index': ['admin.listLotteryActivities'],
   'settings/index': ['admin.getSystemSettings']
 }

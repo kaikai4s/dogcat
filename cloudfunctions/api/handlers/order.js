@@ -126,7 +126,7 @@ module.exports = function createHandler(context) {
           throw new Error('该宠托师当前暂不接受指定预约')
         }
         assertStaffGenderMatches({ staffGenderRequirement }, staffProfile)
-        assertStaffCanServeOrderVaccines(staffProfile, pets)
+        if (pets.length) assertStaffCanServeOrderVaccines(staffProfile, pets)
         validateDirectStaffServiceRange(staffProfile, data, { isQuote: true })
         if (data.startTime && data.endTime) {
           await validateStaffAvailabilityForSessions(staffProfile, pricing.sessions)
