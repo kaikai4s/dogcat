@@ -490,6 +490,9 @@ module.exports = function createHandler(context) {
       if (!quote.canCancel) throw new Error(quote.ruleText)
       const time = now()
       const update = { status: 'cancelled', cancelReason: data.reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time }
+      if (order.status === 'day_completed') {
+        update.serviceSessions = (order.serviceSessions || []).map((s) => s.status === 'completed' ? s : { ...s, status: 'cancelled', cancelledAt: time })
+      }
       let refund = null
       if (order.paymentStatus === 'paid' && quote.refundAmount > 0) {
         refund = await createRefundForOrder(order, quote.refundAmount, data.reason || '宠物主取消', 'client_cancel', openid, clientRequestId, { cancelStatus: 'cancelled' })
@@ -497,6 +500,23 @@ module.exports = function createHandler(context) {
         update.refundNo = refund.refundNo
       }
       if (!refund) await updateOrderWhenStatus(data.orderId, order.status, update, '订单状态不可取消')
+      if (order.status === 'day_completed') {
+        await db.collection('orders').doc(data.orderId).update({
+          data: {
+            serviceSessions: update.serviceSessions,
+            updatedAt: time
+          }
+        }).catch(() => {})
+        if (order.staffOpenid && typeof ensureStaffEarning === 'function') {
+          const retainedAmount = Math.max(0, Number(order.payAmount || 0) - Number(quote.refundAmount || 0))
+          const settings = await getSystemSettings().catch(() => ({}))
+          const rate = Number(settings.settlement && settings.settlement.staffCommissionRate !== undefined ? settings.settlement.staffCommissionRate : 0.7)
+          const staffEarningAmount = Math.round(retainedAmount * rate * 100) / 100
+          if (staffEarningAmount > 0) {
+            await ensureStaffEarning(order, time, { overrideAmount: staffEarningAmount, reason: '多天订单取消剩余服务，结算已履约天数收益' }).catch((e) => console.error('[cancelOrder] staff earning settlement error:', e))
+          }
+        }
+      }
       if (order.couponId) {
         if (!refund || quote.refundAmount >= Number(order.payAmount || 0)) {
           if (typeof restoreOrderCoupon === 'function') {
@@ -522,6 +542,14 @@ module.exports = function createHandler(context) {
       }
       await appendOrderTimeline(data.orderId, 'cancelled', '订单已取消', `${quote.ruleText}，预计退款 ¥${quote.refundAmount}`, 'client')
       await appendOrderClientMessage(cancelledOrder, { eventType: 'cancelled', title: '订单已取消', detail: `${quote.ruleText}，预计退款 ¥${quote.refundAmount}`, actorRole: 'client', unreadForClient: false })
+      if (order.staffOpenid && typeof appendOrderStaffMessage === 'function') {
+        await appendOrderStaffMessage(cancelledOrder, {
+          eventType: 'cancelled',
+          title: order.status === 'day_completed' ? '客户已取消后续未履约服务' : '订单已取消',
+          detail: order.status === 'day_completed' ? `客户取消了后续未履约服务。${quote.ruleText}` : '客户已取消预约。',
+          actorRole: 'system'
+        }).catch(() => {})
+      }
       if (refund) await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${quote.refundAmount}`, 'system')
       return { orderId: data.orderId, status: 'cancelled', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, refundNo: refund ? refund.refundNo : '' }
     }

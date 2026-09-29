@@ -84,6 +84,13 @@ module.exports = function createHandler(context) {
       try {
         user = await getUser(openid)
         if (!user || !user.roles || !user.roles.includes('staff')) throw new Error('仅员工可查看')
+        if (user.status && user.status !== 'active') throw new Error('账号已被停用，无法查看门锁密码')
+        const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
+        const profile = profileRes && profileRes.data && profileRes.data[0]
+        if (profile && ['revoked', 'suspended', 'rejected', 'banned'].includes(profile.auditStatus)) {
+          result = 'forbidden'
+          throw new Error('宠托师资质已被平台暂停或撤销，无法查看门锁密码')
+        }
         if (!orderId) throw new Error('缺少订单ID')
         const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
         order = orderRes && orderRes.data

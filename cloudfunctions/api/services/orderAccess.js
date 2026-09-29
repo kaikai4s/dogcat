@@ -46,7 +46,13 @@ module.exports = function createService({
     if (user.roles.includes('admin')) return { user, order }
     const isStaffMatch = order.staffOpenid === openid || (user._id && order.staffUserId === user._id)
     if (!user.roles.includes('staff') || !isStaffMatch) throw new Error(message)
-    return { user, order }
+    if (user.status && user.status !== 'active') throw new Error('宠托师账号异常，已被禁用')
+    const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
+    const profile = profileRes && profileRes.data && profileRes.data[0]
+    if (profile && ['revoked', 'suspended', 'rejected', 'banned'].includes(profile.auditStatus)) {
+      throw new Error('宠托师资质已被平台暂停或撤销，不可操作订单')
+    }
+    return { user, order, profile }
   }
 
   async function requireServiceReportAccess(openid, orderId) {
@@ -139,6 +145,59 @@ module.exports = function createService({
         refundStatus: 'processing',
         ruleText: hoursBeforeStart >= 24 ? '距服务开始超过24小时，可全额退款' : '距服务开始不足24小时，可退80%',
         needsNegotiation: isDirectOrder && hoursBeforeStart < 24 // 指定订单超时取消需要协商
+      }
+    }
+    if (order.status === 'day_completed') {
+      const sessions = Array.isArray(order.serviceSessions) && order.serviceSessions.length > 0
+        ? order.serviceSessions
+        : [{ index: 1, status: 'completed' }]
+      const totalSessions = sessions.length
+      const completedSessions = sessions.filter(s => s.status === 'completed')
+      const unservedSessions = sessions.filter(s => s.status !== 'completed' && s.status !== 'cancelled')
+
+      if (unservedSessions.length === 0) {
+        return { canCancel: false, refundAmount: 0, refundStatus: 'not_required', ruleText: '所有服务场次均已完成，不可取消' }
+      }
+
+      const payAmount = Number(order.payAmount || 0)
+      const perSessionAmount = totalSessions > 0 ? (payAmount / totalSessions) : 0
+
+      // 计算未履约场次的退款金额
+      let refundTotal = 0
+      let nextSessionDeducted = false
+      const currentTime = now().getTime()
+
+      unservedSessions.forEach((session, idx) => {
+        const sessionStart = toTimeValue(session.startTime)
+        const hoursBefore = sessionStart ? (sessionStart - currentTime) / 36e5 : 0
+        if (idx === 0) {
+          // 下一场次服务
+          if (hoursBefore >= 24) {
+            refundTotal += perSessionAmount
+          } else {
+            // 不足24小时扣除20%违约金，退80%
+            refundTotal += perSessionAmount * 0.8
+            nextSessionDeducted = true
+          }
+        } else {
+          // 更后面的场次，距离时间充分，全额退还
+          refundTotal += perSessionAmount
+        }
+      })
+
+      const finalRefundAmount = Math.max(0, Math.round(refundTotal * 100) / 100)
+      const ruleText = nextSessionDeducted
+        ? `已完成${completedSessions.length}天服务不予退还；距下次服务不足24小时扣除20%，剩余${unservedSessions.length}天退款 ¥${finalRefundAmount.toFixed(2)}`
+        : `已完成${completedSessions.length}天服务不予退还，剩余${unservedSessions.length}天未履约服务退款 ¥${finalRefundAmount.toFixed(2)}`
+
+      return {
+        canCancel: true,
+        refundAmount: finalRefundAmount,
+        refundStatus: 'processing',
+        ruleText,
+        isMultiDayPartialCancel: true,
+        completedSessionsCount: completedSessions.length,
+        unservedSessionsCount: unservedSessions.length
       }
     }
     return { canCancel: false, refundAmount: 0, refundStatus: 'pending_manual', ruleText: '服务中或已完成订单需申请平台介入' }

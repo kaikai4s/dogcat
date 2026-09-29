@@ -22,7 +22,19 @@ module.exports = function createService({
   }
 
   async function createWithdrawRequest(openid, data = {}) {
-    await getUser(openid)
+    const user = await getUser(openid)
+    if (user && Array.isArray(user.roles) && !user.roles.includes('staff')) {
+      throw new Error('仅宠托师可申请提现')
+    }
+    if (user && user.status && user.status !== 'active') {
+      throw new Error('账号已被停用，无法申请提现')
+    }
+    const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
+    const profile = profileRes && profileRes.data && profileRes.data[0]
+    if (profile && ['revoked', 'suspended', 'rejected', 'banned'].includes(profile.auditStatus)) {
+      throw new Error('宠托师资质已被平台暂停或撤销，暂不可申请提现')
+    }
+
     const clientRequestId = getClientRequestId(data)
     // Preserve idempotency for requests created before deterministic IDs were introduced.
     const previous = await findByClientRequestId('withdraw_requests', { staffOpenid: openid, clientRequestId })
