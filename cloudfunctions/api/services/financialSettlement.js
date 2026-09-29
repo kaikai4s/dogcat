@@ -34,6 +34,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
 
   async function settleWithdrawal(admin, data, paid = false) {
     const paymentReference = safeText(data.paymentReference).trim()
+    const paymentProofImage = safeText(data.paymentProofImage || data.paymentProof || '').trim()
     if (paid && (data.paymentConfirmed !== true || !paymentReference)) throw new Error('请确认实际付款成功并填写付款凭证号')
     const target = paid ? 'paid' : (data.approved === true ? 'approved' : 'rejected')
     return db.runTransaction(async tx => {
@@ -44,6 +45,21 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
         return { request, changed: false }
       }
       if (request.status !== (paid ? 'approved' : 'pending')) throw new Error(paid ? '仅已审核提现可标记打款' : '当前状态不可审核')
+
+      // 双人复核校验
+      let isSameAuditorAndPayer = false
+      if (paid) {
+        const settingsRes = await tx.collection('system_settings').doc('default').get().catch(() => ({ data: null }))
+        const settings = settingsRes && settingsRes.data
+        const strictDualReview = settings?.finance?.strictDualReview === true
+        if (request.auditedByOpenid && request.auditedByOpenid === admin.openid) {
+          if (strictDualReview) {
+            throw new Error('系统已开启严格财务双人复核，审核人与打款出款人不能为同一管理员')
+          }
+          isSameAuditorAndPayer = true
+        }
+      }
+
       const earningIds = ids(request.earningIds, true)
       const earnings = []
       let total = 0
@@ -59,8 +75,26 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
       if (!Number.isSafeInteger(total) || total !== cents(request.amount, true)) throw new Error('提现金额与收益合计不一致')
       const time = now()
       const patch = paid
-        ? { status: target, paidAt: time, paidByOpenid: admin.openid, payRemark: safeText(data.payRemark).trim(), paymentReference, paymentChannel: 'MANUAL_CONFIRMED', updatedAt: time }
-        : { status: target, auditedAt: time, auditedByOpenid: admin.openid, auditRemark: safeText(data.auditRemark).trim(), updatedAt: time }
+        ? {
+            status: target,
+            paidAt: time,
+            paidByOpenid: admin.openid,
+            paidByUserId: admin._id || '',
+            payRemark: safeText(data.payRemark).trim(),
+            paymentReference,
+            paymentProofImage: paymentProofImage || request.paymentProofImage || '',
+            paymentChannel: 'MANUAL_CONFIRMED',
+            isSameAuditorAndPayer,
+            updatedAt: time
+          }
+        : {
+            status: target,
+            auditedAt: time,
+            auditedByOpenid: admin.openid,
+            auditedByUserId: admin._id || '',
+            auditRemark: safeText(data.auditRemark).trim(),
+            updatedAt: time
+          }
       await tx.collection('withdraw_requests').doc(data.id).update({ data: patch })
       // Approval also writes the earnings, making it conflict with concurrent freezes.
       for (const earning of earnings) {
@@ -72,11 +106,11 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
       const action = `withdraw_${target}`
       await financeLog(tx, `${action}_${data.id}`, action, 'withdraw_request', data.id, time, {
         staffOpenid: request.staffOpenid, amountDelta: paid ? -total / 100 : 0,
-        detail: { earningIds, auditRemark: patch.auditRemark || '', payRemark: patch.payRemark || '', paymentReference }
+        detail: { earningIds, auditRemark: patch.auditRemark || '', payRemark: patch.payRemark || '', paymentReference, paymentProofImage: patch.paymentProofImage || '', isSameAuditorAndPayer }
       })
       await tx.collection('admin_operation_logs').doc(`${action}_${data.id}`).set({ data: {
         adminUserId: admin._id, adminOpenid: admin.openid, targetType: 'withdraw_request', targetId: data.id,
-        action: paid ? 'markWithdrawPaid' : 'auditWithdrawRequest', detail: { amount: total / 100, approved: data.approved === true }, createdAt: time
+        action: paid ? 'markWithdrawPaid' : 'auditWithdrawRequest', detail: { amount: total / 100, approved: data.approved === true, paymentReference: patch.paymentReference, paymentProofImage: patch.paymentProofImage, isSameAuditorAndPayer }, createdAt: time
       } })
       return { request: { ...request, ...patch }, changed: true }
     })

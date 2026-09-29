@@ -50,6 +50,10 @@
       <view class="info-row"><view class="label">收款账号</view><view class="value">{{item.accountNo || '未填写'}}</view></view>
       <view class="info-row"><view class="label">申请时间</view><view class="value">{{beijingTime.format(item.createdAt)}}</view></view>
       <view class="info-row" wx:if="{{item.auditRemark}}"><view class="label">审核备注</view><view class="value">{{item.auditRemark}}</view></view>
+      <view class="info-row" wx:if="{{item.auditedByOpenid}}"><view class="label">审核人</view><view class="value">{{item.auditedByOpenid}}</view></view>
+      <view class="info-row" wx:if="{{item.paidByOpenid}}"><view class="label">打款人</view><view class="value">{{item.paidByOpenid}}</view></view>
+      <view class="info-row" wx:if="{{item.paymentReference}}"><view class="label">打款凭证号</view><view class="value">{{item.paymentReference}}</view></view>
+      <view class="info-row" wx:if="{{item.paymentProofImage}}"><view class="label">电子水单</view><view class="value preview-link" data-urls="{{[item.paymentProofImage]}}" data-current="{{item.paymentProofImage}}" bindtap="previewReceipt">查看水单凭证</view></view>
       <view class="action-row" wx:if="{{item.status === 'pending'}}">
         <button class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="audit">驳回</button>
         <button class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" bindtap="audit">通过</button>

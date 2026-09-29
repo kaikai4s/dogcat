@@ -112,13 +112,17 @@ module.exports = function createHandler(context) {
     getOrderTimeRanges,
     validateStaffTakeOrderAbility
   } = context
-  async function readAll(collectionName, where = {}, maxLimit = 2000) {
+  async function readAll(collectionName, where = {}, maxLimit = 2000, projection = null) {
     const rows = []
     let cursor = ''
     while (rows.length < maxLimit) {
       const condition = { ...where }
-      if (cursor) condition._id = db.command.gt(cursor)
-      const page = (await db.collection(collectionName).where(condition).orderBy('_id', 'asc').limit(100).get()).data || []
+      if (cursor && db.command && typeof db.command.gt === 'function') condition._id = db.command.gt(cursor)
+      let query = db.collection(collectionName).where(condition)
+      if (projection && typeof query.field === 'function') {
+        query = query.field(projection)
+      }
+      const page = (await query.orderBy('_id', 'asc').limit(100).get()).data || []
       rows.push(...page)
       if (page.length < 100) return rows
       cursor = page[page.length - 1]._id
@@ -126,21 +130,22 @@ module.exports = function createHandler(context) {
     return rows
   }
 
-  async function readMonthlyEntities(collectionName, monthStartDate, monthStartText) {
+  async function readMonthlyEntities(collectionName, monthStartDate, monthStartText, projection = null) {
     if (!db.command || typeof db.command.gte !== 'function') {
-      return readAll(collectionName, {})
+      return readAll(collectionName, {}, 2000, projection)
     }
     let dateRows = []
     let textRows = []
+    let queryFailed = false
     try {
-      dateRows = await readAll(collectionName, { createdAt: db.command.gte(monthStartDate) })
+      dateRows = await readAll(collectionName, { createdAt: db.command.gte(monthStartDate) }, 2000, projection)
     } catch (e) {
-      // 降级保护
+      queryFailed = true
     }
     try {
-      textRows = await readAll(collectionName, { createdAt: db.command.gte(monthStartText) })
+      textRows = await readAll(collectionName, { createdAt: db.command.gte(monthStartText) }, 2000, projection)
     } catch (e) {
-      // 降级保护
+      queryFailed = true
     }
 
     const map = new Map()
@@ -148,10 +153,10 @@ module.exports = function createHandler(context) {
       if (item && item._id) map.set(item._id, item)
     }
 
-    if (map.size > 0) return Array.from(map.values())
+    if (map.size > 0 || !queryFailed) return Array.from(map.values())
 
-    // 兜底保护：如果基于条件的读取未获取到任何记录，兜底读取表数据交由 buildMonthlyDashboard 进行准确的内存日期过滤
-    return readAll(collectionName, {})
+    // 仅在条件读取抛出异常时，降级兜底读取表数据
+    return readAll(collectionName, {}, 2000, projection)
   }
 
   async function queryFinanceListSafely(collectionName, { baseWhere = {}, dateRange, dateFields = ['createdAt'], pageSize = 50, page = 1 }) {
@@ -307,9 +312,11 @@ module.exports = function createHandler(context) {
       const todayParts = toCstParts()
       const monthStartText = `${todayParts.monthKey}-01 00:00:00`
       const monthStartDate = parseDateValue(monthStartText) || new Date(`${todayParts.monthKey}-01T00:00:00.000Z`)
+      const orderProjection = { _id: true, createdAt: true, paidAt: true, paymentStatus: true, status: true, payAmount: true }
+      const userProjection = { _id: true, createdAt: true }
       const [orders, users] = await Promise.all([
-        readMonthlyEntities('orders', monthStartDate, monthStartText),
-        readMonthlyEntities('users', monthStartDate, monthStartText)
+        readMonthlyEntities('orders', monthStartDate, monthStartText, orderProjection),
+        readMonthlyEntities('users', monthStartDate, monthStartText, userProjection)
       ])
       return { orders: counts, staffPending: staffPending.total, incidentsOpen: incidentsOpen.total, monthly: buildMonthlyDashboard(orders, users) }
     }
@@ -2534,10 +2541,11 @@ module.exports = function createHandler(context) {
       }
 
       let createdEvidenceId = null
+      let evidenceDoc = null
       if (prevStaffOpenid && (data.recordDepositEvidence === true || data.autoRecordDepositEvidence === true)) {
         const profileRes = await db.collection('staff_profiles').where({ openid: prevStaffOpenid }).limit(1).get().catch(() => ({ data: [] }))
         const p = profileRes.data && profileRes.data[0]
-        const evidenceDoc = {
+        evidenceDoc = {
           orderId,
           orderNo: order.orderNo || '',
           clientOpenid: order.clientOpenid || '',
@@ -2560,18 +2568,40 @@ module.exports = function createHandler(context) {
           createdBy: openid,
           updatedAt: time
         }
-        const createdEvidence = await db.collection('staff_deposit_evidences').add({ data: evidenceDoc })
-        createdEvidenceId = createdEvidence._id
-        updateData.hasDepositPenaltyEvidence = true
-        updateData.depositPenaltyEvidenceIds = [...(Array.isArray(order.depositPenaltyEvidenceIds) ? order.depositPenaltyEvidenceIds : []), createdEvidenceId]
       }
 
-      const updateRes = await db.collection('orders').where({ _id: orderId, status: order.status }).update({ data: updateData })
-      if (!updateRes || !updateRes.stats || updateRes.stats.updated === 0) {
-        if (createdEvidenceId) {
-          await db.collection('staff_deposit_evidences').doc(createdEvidenceId).remove().catch(() => {})
+      if (typeof db.runTransaction === 'function') {
+        await db.runTransaction(async (tx) => {
+          const currentOrder = (await tx.collection('orders').doc(orderId).get()).data
+          if (!currentOrder || currentOrder.status !== order.status) {
+            throw new Error('订单状态已被并发更新或已被宠托师抢先开始，转加急单失败，请刷新确认最新状态')
+          }
+          if (evidenceDoc) {
+            const createdEvidence = await tx.collection('staff_deposit_evidences').add({ data: evidenceDoc })
+            createdEvidenceId = createdEvidence._id
+            updateData.hasDepositPenaltyEvidence = true
+            updateData.depositPenaltyEvidenceIds = [...(Array.isArray(currentOrder.depositPenaltyEvidenceIds) ? currentOrder.depositPenaltyEvidenceIds : []), createdEvidenceId]
+          }
+          await tx.collection('orders').doc(orderId).update({ data: updateData })
+        })
+      } else {
+        try {
+          if (evidenceDoc) {
+            const createdEvidence = await db.collection('staff_deposit_evidences').add({ data: evidenceDoc })
+            createdEvidenceId = createdEvidence._id
+            updateData.hasDepositPenaltyEvidence = true
+            updateData.depositPenaltyEvidenceIds = [...(Array.isArray(order.depositPenaltyEvidenceIds) ? order.depositPenaltyEvidenceIds : []), createdEvidenceId]
+          }
+          const updateRes = await db.collection('orders').where({ _id: orderId, status: order.status }).update({ data: updateData })
+          if (!updateRes || !updateRes.stats || updateRes.stats.updated === 0) {
+            throw new Error('订单状态已被并发更新或已被宠托师抢先开始，转加急单失败，请刷新确认最新状态')
+          }
+        } catch (err) {
+          if (createdEvidenceId) {
+            await db.collection('staff_deposit_evidences').doc(createdEvidenceId).remove().catch(() => {})
+          }
+          throw err
         }
-        throw new Error('订单状态已被并发更新或已被宠托师抢先开始，转加急单失败，请刷新确认最新状态')
       }
 
       if (prevStaffOpenid) {
