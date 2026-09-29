@@ -69,12 +69,20 @@ module.exports = function createService({
     if (!order) return order
     const withMaskedContact = maskOrderClientContact(order)
     delete withMaskedContact.cancelledStaffOpenids
+    // 抢单前提供约 1 公里范围的区域导航，避免暴露客户家庭精确位置。
+    const rawLatitude = Number(order.addressLatitude)
+    const rawLongitude = Number(order.addressLongitude)
+    const hasCoordinate = Number.isFinite(rawLatitude) && Number.isFinite(rawLongitude) && rawLatitude !== 0 && rawLongitude !== 0 && Math.abs(rawLatitude) <= 90 && Math.abs(rawLongitude) <= 180
+    const approximateLatitude = hasCoordinate ? Number(rawLatitude.toFixed(2)) : null
+    const approximateLongitude = hasCoordinate ? Number(rawLongitude.toFixed(2)) : null
     return {
       ...withMaskedContact,
       addressDetail: '接单后可见',
       doorplate: '接单后可见',
-      addressLatitude: null,
-      addressLongitude: null,
+      addressLatitude: approximateLatitude,
+      addressLongitude: approximateLongitude,
+      locationIsApproximate: hasCoordinate,
+      locationPrecisionText: hasCoordinate ? '约 1 公里范围' : '暂无区域定位',
       serviceLatitude: null,
       serviceLongitude: null,
       latitude: null,

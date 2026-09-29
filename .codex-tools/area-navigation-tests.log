@@ -1,0 +1,70 @@
+✔ staff preview omits cancelled staff identities without changing the stored order (419.5802ms)
+✔ listDirectOrders pushes down requestedStaffOpenid filter to database and avoids scanning other staff orders (77.9712ms)
+✔ listUrgentOrders pushes down isUrgent and admin_urgent_republish filters without full table scan (4.2657ms)
+✔ listStaffOrders sorts newly grabbed urgent orders by assignedAt before old createdAt (3.5002ms)
+✔ readAll enforces maxLimit ceiling to prevent runaway reads (12.6424ms)
+✔ listNearbyOrders & listAvailableOrders: pushes down publishMode: open and non-urgent filter to database and pre-filters candidates (101.2796ms)
+【调试】开始风险检测
+【调试】宠托师信息: {
+  openid: 'openid_staff',
+  serviceLatitude: 31.2,
+  serviceLongitude: 121.5,
+  serviceRadiusKm: undefined,
+  hasWeeklySchedule: false,
+  weeklySchedule: undefined
+}
+【调试】订单信息: {
+  orderId: 'ord_open_pool',
+  startTime: '2099-09-24 10:00',
+  endTime: '2099-09-24 11:00',
+  addressLatitude: 31.215,
+  addressLongitude: 121.52
+}
+【调试】距离检测: { distanceKm: 2.52980749874136, radiusKm: 5, '超出': false }
+【调试】订单时间段: [ { startTime: '2099-09-24 10:00', endTime: '2099-09-24 11:00' } ]
+【调试】是否配置接单时间: false
+【调试】时间段验证通过: 2099-09-24 10:00
+【调试】最终warnings数量: 0
+【调试】warnings内容: []
+【调试】风险通知结果: {
+  "requiresConfirmation": false,
+  "warnings": [],
+  "noticeTitle": "超出接单设置确认",
+  "noticeItems": [
+    "接单后必须按订单约定时间准时出发并完成服务，不得因距离较远或非本人常规接单时间擅自迟到、爽约或降低服务质量。",
+    "未按规定时间服务、未及时出发、无法按时到达或服务缺失，可能导致客户投诉、订单退款、差评、收益扣减或保证金/信用处罚。",
+    "若服务过程中发生异常，应第一时间联系客户并在平台内留痕，必要时联系平台客服协助处理。",
+    "继续接单即表示你已充分评估交通、时间、服务距离和自身安排，并承诺遵守平台履约规范。"
+  ]
+}
+[orderAccepted] notify prepare { orderId: 'ord_open_pool', templateKey: 'orderAccepted' }
+[subscription] skipped {
+  orderId: 'ord_open_pool',
+  templateKey: 'orderAccepted',
+  status: 'skipped',
+  code: 'subscription_disabled'
+}
+[orderAccepted] notify result {
+  orderId: 'ord_open_pool',
+  templateKey: 'orderAccepted',
+  status: 'skipped',
+  code: 'subscription_disabled'
+}
+✔ preview area coordinates are stable, coarse, bounded and do not modify stored coordinates (559.3728ms)
+✔ staff order preview privacy: listNearbyOrders returns coarse GPS coordinates while preserving distanceText (268.4416ms)
+✔ staff range flags follow each refreshed server response and still exclude genuinely distant orders (217.3339ms)
+✔ staff preview without a range verdict or distance remains unknown instead of claiming out of range (65.0092ms)
+✔ intern public tags only describe recorded checks, not assumed qualifications (292.7388ms)
+✔ staff privacy hardening: public sitters list and detail do not leak private coordinates or detailed address (574.5633ms)
+✔ shipped source contains no merge conflict markers and JavaScript parses (1814.6521ms)
+✔ home: private previews, invalid coordinates and map failures are handled (61.6607ms)
+✔ orders/list: private previews, invalid coordinates and map failures are handled (9.5645ms)
+✔ orders/detail: private previews, invalid coordinates and map failures are handled (15.2953ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5047.0301

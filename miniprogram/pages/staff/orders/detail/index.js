@@ -79,13 +79,13 @@ Page({
     const order = this.data.order || {}
     const latitude = Number(order.addressLatitude)
     const longitude = Number(order.addressLongitude)
-    if (!latitude || !longitude) {
+    if (order.addressLatitude == null || order.addressLongitude == null || String(order.addressLatitude).trim() === '' || String(order.addressLongitude).trim() === '' || !Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 || (latitude === 0 && longitude === 0)) {
       wx.showToast({ title: '订单缺少定位，无法导航', icon: 'none' })
       return
     }
     const hasDetailedAddress = order.addressDetail && order.addressDetail !== '接单后可见'
-    const address = hasDetailedAddress ? `${order.addressDetail || ''} ${order.doorplate || ''}`.trim() : (order.serviceAddress || '服务地址')
-    wx.openLocation({ latitude, longitude, name: order.serviceAddress || '服务地址', address, scale: 16 })
+    const address = order.locationIsApproximate ? '约 1 公里范围的参考位置，非实际上门地点；接单后可见精确位置' : hasDetailedAddress ? `${order.addressDetail || ''} ${order.doorplate || ''}`.trim() : (order.serviceAddress || '服务地址')
+    wx.openLocation({ latitude, longitude, name: order.locationIsApproximate ? '服务区域（模糊位置）' : (order.serviceAddress || '服务地址'), address, scale: order.locationIsApproximate ? 14 : 16, fail: () => wx.showToast({ title: '地图打开失败，请稍后重试', icon: 'none' }) })
   },
   accept() {
     const orderId = this.data.id

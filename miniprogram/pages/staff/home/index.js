@@ -61,8 +61,8 @@ function applyCityFilter(orders, selectedCity) {
 function applyWorkbenchDistances(orders, location) {
   if (!hasCoordinate(location && location.latitude, location && location.longitude)) return orders || []
   return (orders || []).map((order) => {
-    if (!hasCoordinate(order.addressLatitude, order.addressLongitude)) {
-      // 抢单预览会隐藏客户坐标；保留服务端在脱敏前计算的距离。
+    if (order.locationIsApproximate || !hasCoordinate(order.addressLatitude, order.addressLongitude)) {
+      // 区域导航坐标不能用于精确测距；保留服务端脱敏前计算的距离。
       return order
     }
     const distanceKm = calcDistanceKm(location.latitude, location.longitude, order.addressLatitude, order.addressLongitude)
@@ -455,20 +455,22 @@ Page({
   },
 
   openNavigation(e) {
-    const { latitude, longitude, name, address } = e.currentTarget.dataset
+    const { latitude, longitude, name, address, approximate } = e.currentTarget.dataset
     const lat = Number(latitude)
     const lng = Number(longitude)
-    if (!lat || !lng) {
+    if (latitude == null || longitude == null || String(latitude).trim() === '' || String(longitude).trim() === '' || !Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180 || (lat === 0 && lng === 0)) {
       wx.showToast({ title: '订单缺少定位，无法导航', icon: 'none' })
       return
     }
-    const cleanAddress = address && !address.includes('接单后可见') ? address : (name || '服务地址')
+    const isApproximate = approximate === true || approximate === 'true'
+    const cleanAddress = isApproximate ? '约 1 公里范围的参考位置，非实际上门地点；接单后可见精确位置' : (address && !address.includes('接单后可见') ? address : (name || '服务地址'))
     wx.openLocation({
       latitude: lat,
       longitude: lng,
-      name: name || '服务地址',
+      name: isApproximate ? '服务区域（模糊位置）' : (name || '服务地址'),
       address: cleanAddress,
-      scale: 16
+      scale: isApproximate ? 14 : 16,
+      fail: () => wx.showToast({ title: '地图打开失败，请稍后重试', icon: 'none' })
     })
   },
 

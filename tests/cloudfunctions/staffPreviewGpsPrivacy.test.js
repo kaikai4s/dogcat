@@ -4,6 +4,31 @@ const { createCollectionStore, loadCloudFunction } = require('./helpers')
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
+const createContext = require('../../cloudfunctions/api/services/context')
+
+test('preview area coordinates are stable, coarse, bounded and do not modify stored coordinates', () => {
+  const context = createContext({ db: createStaffPrivacyDb(), cloud: {} })
+  const order = { addressLatitude: 31.213456, addressLongitude: 121.523456, addressDetail: '101室' }
+  const preview = context.maskOrderForStaffPreview(order)
+  assert.equal(preview.addressLatitude, 31.21)
+  assert.equal(preview.addressLongitude, 121.52)
+  assert.equal(preview.locationIsApproximate, true)
+  assert.equal(preview.addressDetail, '接单后可见')
+  assert.equal(preview.serviceLatitude, null)
+  assert.equal(preview.latitude, null)
+  assert.deepEqual(context.maskOrderForStaffPreview(order), preview)
+  const sameArea = context.maskOrderForStaffPreview({ addressLatitude: 31.2139, addressLongitude: 121.5239 })
+  assert.equal(sameArea.addressLatitude, preview.addressLatitude)
+  assert.equal(sameArea.addressLongitude, preview.addressLongitude)
+  assert.equal(order.addressLatitude, 31.213456)
+  assert.equal(order.addressDetail, '101室')
+  for (const latitude of [null, undefined, '', 'bad', 0, 91, Infinity]) {
+    const invalid = context.maskOrderForStaffPreview({ addressLatitude: latitude, addressLongitude: 121 })
+    assert.equal(invalid.addressLatitude, null)
+    assert.equal(invalid.addressLongitude, null)
+    assert.equal(invalid.locationIsApproximate, false)
+  }
+})
 
 function loadStaffHome() {
   let page
@@ -75,7 +100,7 @@ function createStaffPrivacyDb() {
   })
 }
 
-test('staff order preview privacy: listNearbyOrders masks GPS coordinates while preserving distanceText', async () => {
+test('staff order preview privacy: listNearbyOrders returns coarse GPS coordinates while preserving distanceText', async () => {
   const db = createStaffPrivacyDb()
   const staffFn = loadCloudFunction('api', db, 'openid_staff')
 
@@ -106,11 +131,12 @@ test('staff order preview privacy: listNearbyOrders masks GPS coordinates while 
   assert.equal(visibleOrders[0].inRange, true)
   assert.equal(visibleOrders[0].distanceKm, previewOrder.distanceKm)
   assert.equal(visibleOrders[0].distanceText, previewOrder.distanceText)
-  assert.equal(visibleOrders[0].addressLatitude, null)
+  assert.equal(visibleOrders[0].addressLatitude, previewOrder.addressLatitude)
 
-  // 核心安全验证：尚未接单前，客户的精确家庭经纬度必须被严格脱敏清空
-  assert.equal(previewOrder.addressLatitude, null, 'addressLatitude must be masked to null in staff preview')
-  assert.equal(previewOrder.addressLongitude, null, 'addressLongitude must be masked to null in staff preview')
+  // 核心安全验证：尚未接单前，客户的家庭经纬度必须被量化为区域坐标
+  assert.equal(previewOrder.addressLatitude, Number((31.215).toFixed(2)))
+  assert.equal(previewOrder.locationIsApproximate, true)
+  assert.equal(previewOrder.addressLongitude, 121.52)
   assert.equal(previewOrder.addressDetail, '接单后可见', 'addressDetail must remain masked')
   assert.equal(previewOrder.doorplate, '接单后可见', 'doorplate must remain masked')
 
@@ -121,8 +147,9 @@ test('staff order preview privacy: listNearbyOrders masks GPS coordinates while 
     data: { id: 'ord_open_pool', role: 'staff' }
   })
   assert.equal(detailPreviewRes.ok, true)
-  assert.equal(detailPreviewRes.data.addressLatitude, null, 'Detail preview must mask addressLatitude')
-  assert.equal(detailPreviewRes.data.addressLongitude, null, 'Detail preview must mask addressLongitude')
+  assert.equal(detailPreviewRes.data.addressLatitude, previewOrder.addressLatitude)
+  assert.equal(detailPreviewRes.data.addressLongitude, previewOrder.addressLongitude)
+  assert.equal(detailPreviewRes.data.locationIsApproximate, true)
   assert.equal(detailPreviewRes.data.addressDetail, '接单后可见')
 
   // 3. 员工确认接单
@@ -140,6 +167,7 @@ test('staff order preview privacy: listNearbyOrders masks GPS coordinates while 
     data: { id: 'ord_open_pool', role: 'staff' }
   })
   assert.equal(acceptedDetailRes.ok, true)
+  assert.notEqual(acceptedDetailRes.data.locationIsApproximate, true)
   assert.equal(acceptedDetailRes.data.addressLatitude, 31.215000, 'Real latitude must be visible after accepted')
   assert.equal(acceptedDetailRes.data.addressLongitude, 121.520000, 'Real longitude must be visible after accepted')
   assert.equal(acceptedDetailRes.data.addressDetail, '8栋2单元1602室', 'Real address must be visible after accepted')
@@ -161,7 +189,7 @@ test('staff range flags follow each refreshed server response and still exclude 
     assert.equal(visible.length, 1)
     assert.equal(visible[0].inRange, expectedInRange)
     assert.equal(visible[0].distanceText, response.data[0].distanceText)
-    assert.equal(visible[0].addressLatitude, null)
+    assert.equal(visible[0].locationIsApproximate, true)
     home.data.inServiceRange = true
     assert.equal(home.normalizeNearbyOrders(response.data, location).length, expectedInRange ? 1 : 0)
   }

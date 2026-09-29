@@ -112,8 +112,8 @@
       <view class="order-actions">
         <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">详情</button>
         <button class="primary-btn" data-id="{{item._id}}" bindtap="accept">接单</button>
-        <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
-          <text class="remix-icon ri-map-pin-line"></text>导航
+        <button class="ghost-btn nav-btn" data-approximate="{{item.locationIsApproximate}}" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
+          <text class="remix-icon ri-map-pin-line"></text>{{item.locationIsApproximate ? '区域导航' : '导航'}}
         </button>
       </view>
     </view>
@@ -243,8 +243,8 @@
       <view class="order-actions">
         <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">订单详情</button>
         <button class="primary-btn" data-id="{{item._id}}" disabled="{{acceptingOrderId}}" loading="{{acceptingOrderId === item._id}}" bindtap="accept">{{acceptingOrderId === item._id ? '抢单中...' : '立即抢单'}}</button>
-        <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
-          <text class="remix-icon ri-map-pin-line"></text>导航
+        <button class="ghost-btn nav-btn" data-approximate="{{item.locationIsApproximate}}" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
+          <text class="remix-icon ri-map-pin-line"></text>{{item.locationIsApproximate ? '区域导航' : '导航'}}
         </button>
       </view>
     </view>
@@ -312,8 +312,8 @@
         <button class="primary-btn urgent-grab-btn" data-id="{{item._id}}" disabled="{{acceptingOrderId}}" loading="{{acceptingOrderId === item._id}}" bindtap="accept">
           <text class="remix-icon ri-flashlight-fill" wx:if="{{acceptingOrderId !== item._id}}"></text>{{acceptingOrderId === item._id ? '抢单中...' : '加急抢单'}}
         </button>
-        <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
-          <text class="remix-icon ri-map-pin-line"></text>导航
+        <button class="ghost-btn nav-btn" data-approximate="{{item.locationIsApproximate}}" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
+          <text class="remix-icon ri-map-pin-line"></text>{{item.locationIsApproximate ? '区域导航' : '导航'}}
         </button>
       </view>
     </view>

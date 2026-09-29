@@ -14,8 +14,9 @@
 .primary-btn { background: linear-gradient(135deg,#ffb86c 0%,#ff7a45 100%); color: #fff; box-shadow: 0 10rpx 26rpx rgba(255,122,69,.22); }
 .ghost-btn { background: #fff0e2; color: #7a6a5e; }
 .ghost-btn.danger { color: #be123c; background: #fff1f2; }
-.compact-btn { flex: 1; min-height: 68rpx; font-size: 23rpx; margin: 0; padding: 0 12rpx; }
+.compact-btn { flex: 1; min-width: 0; width: 100% !important; min-height: 68rpx; font-size: 23rpx; margin: 0; padding: 0 12rpx; white-space: nowrap; overflow: hidden; }
 .address-actions { display: flex; gap: 16rpx; margin-bottom: 20rpx; }
+.address-actions > button { min-width: 0; }
 .search-card,
 .card,
 .loading-card,
@@ -54,7 +55,8 @@
 .select-badge { background: #fff0e2; color: #d45f22; }
 .address-line { margin-top: 8rpx; color: #574b42; font-size: 25rpx; line-height: 1.45; }
 .address-detail { margin-top: 8rpx; color: #8e8580; font-size: 24rpx; line-height: 1.45; }
-.card-actions { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12rpx; margin-top: 20rpx; }
+.card-actions { display: flex; gap: 12rpx; margin-top: 20rpx; width: 100%; }
+.card-actions > button { flex: 1 1 0; min-width: 0; width: 0 !important; box-shadow: none; }
 .list-tip { text-align: center; padding: 26rpx 0; color: #8e8580; font-size: 24rpx; }
 .empty-state { min-height: 420rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 44rpx; }
 .empty-icon { color: #e9672f; font-size: 100rpx; margin-bottom: 16rpx; }

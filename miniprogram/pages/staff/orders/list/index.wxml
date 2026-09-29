@@ -100,8 +100,8 @@
     </view>
 
     <view class="card-action-row nav-only-row">
-      <button class="ghost-btn nav-btn" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" catchtap="openNavigation">
-        <text class="remix-icon ri-map-pin-line"></text>导航
+      <button class="ghost-btn nav-btn" data-approximate="{{item.locationIsApproximate}}" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" catchtap="openNavigation">
+        <text class="remix-icon ri-map-pin-line"></text>{{item.locationIsApproximate ? '区域导航' : '导航'}}
       </button>
     </view>
   </view>
