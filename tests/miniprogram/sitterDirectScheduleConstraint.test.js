@@ -132,4 +132,5 @@ test('orders/create page implements sitter schedule constraints in WXML, WXSS an
   assert.ok(js.includes('confirmCalendarSelection()'), 'JS must implement confirmCalendarSelection')
   assert.ok(js.includes('checkSitterScheduleTime(candidateForm)'), 'confirmCalendarSelection must validate candidateForm')
   assert.ok(js.includes('const timeCheck = this.checkSitterScheduleTime()'), 'validateRequired must call checkSitterScheduleTime')
+  assert.ok(js.includes('指定预约需至少提前2小时'), 'JS refreshCalendarUI must disable slots within 2 hours for direct bookings')
 })

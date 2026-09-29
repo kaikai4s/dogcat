@@ -105,6 +105,8 @@ module.exports = function createService({
         page: log.page || '',
         data: sanitizeSubscriptionLogData(log.data),
         error: log.error || '',
+        code: log.code || '',
+        isQuotaExhausted: Boolean(log.isQuotaExhausted),
         expiresAt,
         createdAt: time
       }
@@ -142,9 +144,11 @@ module.exports = function createService({
       return { status: 'sent', error: '', templateKey, templateId }
     } catch (error) {
       const message = error && (error.message || error.errMsg) || String(error)
-      console.error('[subscription] failed', { orderId, templateKey, status: 'failed', code: error && (error.errCode || error.code) || 'send_failed' })
-      await recordSubscriptionLog({ openid, templateKey, orderId, page, data: messageData, status: 'failed', error: message })
-      return { status: 'failed', error: message, templateKey }
+      const errCode = error && (error.errCode || error.code)
+      const isQuotaExhausted = errCode === 43101 || String(message).includes('43101')
+      console.error('[subscription] failed', { orderId, templateKey, status: 'failed', code: errCode || 'send_failed', isQuotaExhausted })
+      await recordSubscriptionLog({ openid, templateKey, orderId, page, data: messageData, status: 'failed', error: message, code: errCode, isQuotaExhausted })
+      return { status: 'failed', error: message, templateKey, code: errCode, isQuotaExhausted }
     }
   }
 

@@ -962,3 +962,38 @@ button[disabled] { opacity: 0.62; }
 
 .chat-header, .chat-warning-banner, .chat-footer, .chat-sync-status, .chat-new-messages { flex-shrink: 0; }
 .chat-sync-status, .chat-new-messages { padding: 14rpx 24rpx; font-size: 24rpx; line-height: 1.5; text-align: center; color: #a65127; background: #fff4e8; }
+
+.subscribe-notice-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #fff7eb 0%, #fff1df 100%);
+  border: 1rpx solid rgba(245, 154, 35, 0.3);
+  border-radius: 20rpx;
+  padding: 18rpx 24rpx;
+  margin-bottom: 20rpx;
+}
+.subscribe-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex: 1;
+}
+.subscribe-icon {
+  font-size: 32rpx;
+  color: #ea7019;
+}
+.subscribe-text {
+  font-size: 24rpx;
+  color: #8c4c16;
+  font-weight: 500;
+}
+.subscribe-btn-text {
+  font-size: 22rpx;
+  color: #ffffff;
+  background: #ea7019;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  font-weight: bold;
+}
+

@@ -1501,6 +1501,13 @@ typeof Page === 'function' ? Page({
       if (!disabled && isDirect && selectedDates.length > 0) {
         for (const curDate of selectedDates) {
           const startTimeStr = `${curDate} ${clock}`
+          const parsedStart = parseDateTime(startTimeStr)
+          if (curDate === todayStr && parsedStart && parsedStart.getTime() < Date.now() + 2 * 60 * 60 * 1000 - 60000) {
+            disabled = true
+            disabledReason = '指定预约需至少提前2小时，请选择2小时后的时间'
+            outsideSitterSchedule = true
+            break
+          }
           const endTimeStr = addMinutes(curDate, clock, durationMinutes)
           const curSched = getSitterScheduleForDate(curDate, sitter, availability)
           const fitRes = checkTimeFitsSitterSchedule(startTimeStr, endTimeStr, curSched)
@@ -1665,6 +1672,12 @@ typeof Page === 'function' ? Page({
     const scheduleCheck = this.checkSitterScheduleTime(candidateForm)
     if (!scheduleCheck.ok) {
       return this.showBookingNotice({ title: scheduleCheck.message, icon: 'none' })
+    }
+    if (candidateForm.publishMode === 'direct') {
+      const start = parseDateTime(`${candidateForm.startDate} ${candidateForm.startClock}`)
+      if (start && start.getTime() < Date.now() + 2 * 60 * 60 * 1000 - 60000) {
+        return this.showBookingNotice({ title: '指定预约宠托师的订单，服务开始时间至少需在当前时间的2小时后', icon: 'none' })
+      }
     }
 
     const nextForm = {

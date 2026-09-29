@@ -233,6 +233,17 @@ Page({
       this.earlyStartPollTimer = null
     }
   },
+  subscribeServiceUpdates() {
+    requestSubscribeTemplates(['orderAccepted', 'serviceStart', 'serviceFinish', 'staffCancellation'], 'client_order_detail_recharge')
+      .then((res) => {
+        if (res && res.requested) {
+          wx.showToast({ title: '已开启微信动态提醒', icon: 'success' })
+        } else {
+          wx.showToast({ title: '已同步通知设置', icon: 'none' })
+        }
+      })
+      .catch(() => {})
+  },
   pay() {
     if (this._payingLock || this.data.paying) return
     this._payingLock = true

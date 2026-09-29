@@ -178,8 +178,11 @@ module.exports = function createService({
         (!coupon.usedOrderId && !coupon.lockedOrderId)
 
       if (['used', 'locked'].includes(coupon.status) && isLinkedToOrder) {
+        const validToTs = new Date(coupon.validTo || 0).getTime()
+        const isExpired = Boolean(validToTs && validToTs < time.getTime())
+        const targetStatus = isExpired ? 'expired' : 'available'
         const updateData = {
-          status: 'available',
+          status: targetStatus,
           lockedOrderId: '',
           lockedAt: null,
           usedOrderId: '',
