@@ -97,6 +97,7 @@ module.exports = function createHandler(context) {
     resolveUserMemberLevel,
     revokeSystemNotification,
     safeText,
+    readScopedDocuments,
     sendSystemNotification,
     settleWithdrawal,
     settleStaffDeposit,
@@ -1918,11 +1919,17 @@ module.exports = function createHandler(context) {
       for (const orderId of (app.orderIds || [])) {
         const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
         const order = orderRes && orderRes.data
-        if (!order) continue
-        const tracks = await db.collection('track_logs').where({ orderId }).orderBy('recordedAt', 'asc').get()
-        const checkins = await db.collection('checkin_logs').where({ orderId }).orderBy('createdAt', 'asc').get()
-        const reviews = await db.collection('service_reviews').where({ orderId }).get()
-        orders.push({ order: await attachAdminOrderContactData({ ...order, _id: orderId }), tracks: tracks.data || [], checkins: (checkins.data || []).filter(isActiveCheckin), review: (reviews.data || [])[0] || null })
+        if (!order) {
+          orders.push({ order: { _id: orderId }, unavailable: true, tracks: [], checkins: [], review: null })
+          continue
+        }
+        // Read every page: the default database limit hides later evidence.
+        const [tracks, checkins, reviews] = await Promise.all([
+          readScopedDocuments('track_logs', { orderId }, 'recordedAt'),
+          readScopedDocuments('checkin_logs', { orderId }, 'createdAt'),
+          readScopedDocuments('service_reviews', { orderId }, 'createdAt', 'desc')
+        ])
+        orders.push({ order: await attachAdminOrderContactData({ ...order, _id: orderId }), tracks, checkins: checkins.filter(isActiveCheckin), review: reviews[0] || null })
       }
       return { application: app, profile, orders }
     }

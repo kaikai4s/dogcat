@@ -1,7 +1,12 @@
+<wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
+<view class="load-state" wx:if="{{!application}}">
+  <view>{{loadError ? '审核材料加载失败，请重试' : '正在加载审核材料…'}}</view>
+  <button wx:if="{{loadError}}" class="material-button" bindtap="load" loading="{{loading}}">重新加载</button>
+</view>
 <view class="page detail-page" wx:if="{{application}}">
   <view class="header compact-header">
     <view class="title">{{profile.realName || '宠托师'}}的晋升申请</view>
-    <view class="desc">{{profile.phone}} · 提交于 {{application.createdAtText}}</view>
+    <view class="desc">{{profile.phone || '未记录联系电话'}} · 提交于 {{beijingTime.format(application.createdAt)}}</view>
   </view>
 
   <view class="admin-compact-card">
@@ -10,16 +15,30 @@
         <view class="admin-summary-title">申请信息</view>
         <view class="admin-summary-sub">{{application.staffRemark || '无申请说明'}}</view>
       </view>
-      <view class="meta-chip warning">{{application.status}}</view>
+      <view class="meta-chip {{application.status === 'approved' ? 'success' : 'warning'}}">{{application.statusText}}</view>
     </view>
     <view class="meta-chip-row">
       <view class="meta-chip chip-primary">{{profile.staffLevelText}}</view>
       <view class="meta-chip success">{{orders.length}} 单服务报告</view>
     </view>
+    <view class="review-history" wx:if="{{application.reviewedAt || application.adminRemark}}">
+      <view class="muted">审核时间：{{beijingTime.format(application.reviewedAt) || '未记录'}}</view>
+      <view class="long-text">审核意见：{{application.adminRemark || '未填写审核意见'}}</view>
+    </view>
   </view>
 
-  <view class="admin-section-title">三单服务报告质量</view>
-  <view class="collapse-card order-report-card" wx:for="{{orders}}" wx:key="order._id">
+  <view class="material-overview">
+    <view><text class="overview-number">{{totalCheckins}}</text><text>条有效打卡</text></view>
+    <view><text class="overview-number">{{totalPhotos}}</text><text>张现场照片</text></view>
+    <view><text class="overview-number">{{warningOrders}}</text><text>单需重点核实</text></view>
+  </view>
+  <view class="section-heading">
+    <view class="admin-section-title">三单服务报告质量</view>
+    <button class="text-button" bindtap="toggleAllOrders" wx:if="{{orders.length}}">{{allExpanded ? '全部收起' : '全部展开'}}</button>
+  </view>
+  <view class="muted section-hint">点击照片可放大并左右切换；时间均为北京时间。逐单核对服务内容、现场材料及客户评价。</view>
+  <view class="empty compact-empty" wx:if="{{!orders.length}}">本次申请未关联服务订单，暂无可审核的服务材料。</view>
+  <view class="collapse-card order-report-card" wx:for="{{orders}}" wx:key="orderId">
     <view class="collapse-header" data-index="{{index}}" bindtap="toggleOrder">
       <view class="collapse-title">{{index + 1}}. {{item.order.serviceSummary || item.order.petName || '服务订单'}}</view>
       <view class="collapse-arrow">{{item.expanded ? '收起' : '展开'}}</view>
@@ -28,19 +47,142 @@
       <view class="meta-chip">{{item.order.appointmentTimeText}}</view>
       <view class="meta-chip chip-primary">{{item.order.statusText}}</view>
       <view class="meta-chip success">打卡 {{item.checkinCount}}</view>
+      <view class="meta-chip success">照片 {{item.photoCount}}</view>
       <view class="meta-chip">轨迹 {{item.trackCount}}</view>
       <view class="meta-chip warning">{{item.reviewText}}</view>
     </view>
+    <view class="material-warning" wx:if="{{item.warnings.length}}">
+      <view wx:for="{{item.warnings}}" wx:for-item="warning" wx:key="*this">{{warning}}</view>
+    </view>
     <view class="collapse-body" wx:if="{{item.expanded}}">
-      <view class="empty compact-empty" wx:if="{{!item.checkins.length}}">暂无打卡记录</view>
-      <view class="checkin" wx:for="{{item.checkins}}" wx:key="_id" wx:for-item="c">
-        <view class="strong">{{c.eventTypeText}}</view>
-        <view class="muted">{{c.recordedAtText}}</view>
+      <view class="muted" selectable>订单：{{item.order.orderNo || item.orderId}}</view>
+      <view class="material-actions order-entry">
+        <button class="material-button primary-link" data-index="{{index}}" bindtap="toggleDetails">{{item.detailsExpanded ? '收起订单资料' : '查看关联订单资料'}} {{item.detailsExpanded ? '⌃' : '⌄'}}</button>
+        <button class="material-button" wx:if="{{!item.unavailable && (adminSuper || adminPermissions.admin_getOrderDetail)}}" data-index="{{index}}" bindtap="openOrder">完整订单详情 ›</button>
+      </view>
+      <block wx:if="{{item.detailsExpanded}}">
+      <view class="report-section">
+        <view class="report-section-title">关联服务订单</view>
+        <view class="detail-row"><text class="field-label">订单编号</text><text class="field-value" selectable>{{item.order.orderNo || item.orderId}}</text></view>
+        <block wx:if="{{!item.unavailable}}">
+          <view class="detail-row"><text class="field-label">服务内容</text><text class="field-value">{{item.order.serviceSummary || '未记录'}}</text></view>
+          <view class="detail-row"><text class="field-label">预约开始</text><text class="field-value">{{beijingTime.format(item.order.startTime) || '未记录'}}</text></view>
+          <view class="detail-row"><text class="field-label">预约结束</text><text class="field-value">{{beijingTime.format(item.order.endTime) || '未记录'}}</text></view>
+          <view class="detail-row"><text class="field-label">预约时长</text><text class="field-value">{{item.order.durationMinutes ? item.order.durationMinutes + ' 分钟 / 次' : '未记录'}} · {{item.order.sessionCount || item.sessions.length || 1}} 次服务</text></view>
+          <view class="detail-row"><text class="field-label">服务宠物</text><text class="field-value">{{item.order.petSummary || item.order.petName || '未记录'}}</text></view>
+          <view class="detail-row"><text class="field-label">客户</text><text class="field-value">{{item.order.clientContact.displayName || item.order.clientSnapshot.displayName || '未记录'}} · {{item.order.clientContact.phone || '未记录电话'}}</text></view>
+          <view class="detail-row"><text class="field-label">履约宠托师</text><text class="field-value">{{item.order.staffContact.displayName || item.order.staffName || '未记录'}} · {{item.order.staffContact.phone || '未记录电话'}}</text></view>
+          <view class="detail-row"><text class="field-label">服务地址</text><text class="field-value" selectable>{{item.order.serviceAddress || '未记录'}} {{item.order.addressDetail}} {{item.order.doorplate}}</text></view>
+          <view class="detail-row"><text class="field-label">订单金额</text><text class="field-value">{{item.amountText}} · 优惠 {{item.discountText}}</text></view>
+          <view class="detail-row"><text class="field-label">实付 / 支付</text><text class="field-value">{{item.payAmountText}} · {{item.order.paymentStatusText}}</text></view>
+          <view class="detail-row" wx:if="{{item.order.refundStatus}}"><text class="field-label">退款状态</text><text class="field-value">{{item.order.refundStatusText}} · ¥{{item.order.refundAmount || 0}}</text></view>
+          <view class="detail-row"><text class="field-label">下单时间</text><text class="field-value">{{beijingTime.format(item.order.createdAt) || '未记录'}}</text></view>
+          <view class="detail-row"><text class="field-label">完成时间</text><text class="field-value">{{beijingTime.format(item.order.completedAt) || '未记录'}} · {{item.completionText}}</text></view>
+          <view class="long-text detail-note" wx:if="{{item.order.remark || item.order.clientRemark}}">订单备注：{{item.order.remark || item.order.clientRemark}}</view>
+          <view class="long-text material-warning" wx:if="{{item.order.adminManualRemark}}">人工核实说明：{{item.order.adminManualRemark}}</view>
+        </block>
+        <view class="material-actions">
+          <button class="material-button" data-index="{{index}}" bindtap="copyOrderNo">复制订单号</button>
+          <button class="material-button primary-link" wx:if="{{!item.unavailable && (adminSuper || adminPermissions.admin_getOrderDetail)}}" data-index="{{index}}" bindtap="openOrder">打开完整订单详情 ›</button>
+        </view>
+      </view>
+
+      <view class="report-section" wx:if="{{item.pets.length}}">
+        <view class="report-section-title">宠物资料与照护要求</view>
+        <view class="pet-material" wx:for="{{item.pets}}" wx:for-item="pet" wx:for-index="petIndex" wx:key="petIndex">
+          <view class="strong">{{pet.name || '未记录名称'}} <text class="muted">{{pet.detailText}}</text></view>
+          <view class="muted">疫苗：{{pet.vaccineStatusText || '未记录认证状态'}}</view>
+          <view class="long-text">性格：{{pet.personality || '未填写'}}</view>
+          <view class="long-text">喜爱食物：{{pet.favoriteFood || '未填写'}}</view>
+          <view class="long-text">忌讳 / 不喜欢：{{pet.dislikes || '未填写'}}</view>
+          <view class="long-text">健康情况：{{pet.healthNotes || '未填写'}}</view>
+          <view class="long-text">特别注意：{{pet.specialNotes || '未填写'}}</view>
+        </view>
+      </view>
+
+      <view class="report-section" wx:if="{{item.sessions.length}}">
+        <view class="report-section-title">逐次服务时间</view>
+        <view class="session-material" wx:for="{{item.sessions}}" wx:for-item="session" wx:key="index">
+          <view class="strong">第 {{session.index}} 次 · {{session.statusText}}</view>
+          <view class="muted">预约：{{beijingTime.format(session.startTime)}} 至 {{beijingTime.format(session.endTime)}}</view>
+          <view class="muted">实际开始：{{beijingTime.format(session.startedAt) || '未记录'}}</view>
+          <view class="muted">实际结束：{{beijingTime.format(session.finishedAt) || '未记录'}}</view>
+          <view class="muted">实际时长：{{session.actualDurationText}}</view>
+        </view>
+      </view>
+
+      <view class="report-section" wx:if="{{item.requirements.length}}">
+        <view class="report-section-title">服务打卡要求</view>
+        <view class="muted">以下为全单照片数量；多次服务请结合打卡日期逐次核实。</view>
+        <view class="requirement-row" wx:for="{{item.requirements}}" wx:for-item="req" wx:key="eventType">
+          <text>{{req.label}} <text class="muted">{{req.required ? '必需' : '选填'}}</text></text>
+          <text class="{{req.required && !req.photoCount ? 'missing-text' : ''}}">{{req.photoCount}} 张照片</text>
+        </view>
+      </view>
+
+      </block>
+      <view class="report-section">
+        <view class="report-section-title">现场打卡材料 · {{item.checkinCount}} 条</view>
+        <view class="muted" wx:if="{{item.backfilledCount}}">其中 {{item.backfilledCount}} 条为补传记录，请核对打卡时间与上传时间。</view>
+        <view class="empty compact-empty" wx:if="{{!item.checkins.length}}">暂无有效打卡记录，无法核对现场服务。</view>
+        <view class="checkin" wx:for="{{item.checkins}}" wx:key="_id" wx:for-item="c" wx:for-index="ci">
+          <view class="checkin-heading"><view class="strong">{{ci + 1}}. {{c.eventTypeText}}</view><text class="meta-chip warning" wx:if="{{c.isBackfilled}}">补传</text></view>
+          <view class="muted">打卡时间：{{beijingTime.format(c.recordedTime) || '未记录'}}</view>
+          <view class="muted">上传时间：{{beijingTime.format(c.uploadedTime) || '未记录'}}</view>
+          <view class="muted">材料来源：{{c.sourceText}}</view>
+          <view class="photo-frame" wx:if="{{c.photoUrl}}">
+            <image wx:if="{{!c.photoFailed}}" class="checkin-photo" src="{{c.photoUrl}}" mode="widthFix" lazy-load show-menu-by-longpress data-index="{{index}}" data-checkin="{{ci}}" bindtap="previewPhoto" binderror="photoError" />
+            <view class="photo-failed" wx:else>
+              <view>照片加载失败，请重试或查看原图</view>
+              <button class="text-button" data-index="{{index}}" data-checkin="{{ci}}" bindtap="retryPhoto">重新加载照片</button>
+            </view>
+          </view>
+          <view class="missing-photo" wx:else>本条打卡未附照片</view>
+          <view class="photo-caption" wx:if="{{c.photoUrl}}">
+            <text>{{c.watermarkedMediaFileId ? '留证照片 · 点击放大' : '现场照片 · 点击放大'}}</text>
+            <button class="text-button" data-index="{{index}}" data-checkin="{{ci}}" data-original="{{true}}" bindtap="previewPhoto">查看原图</button>
+          </view>
+          <view class="checkin-remark long-text">{{c.remarkText}}</view>
+          <view class="location-material">
+            <view class="muted">坐标：{{c.coordinateText}}</view>
+            <view class="muted">{{c.locationSourceText}} · 定位精度 {{c.accuracyText}}</view>
+            <view class="muted">距服务地址：{{c.distanceText}}</view>
+            <button wx:if="{{c.canOpenLocation}}" class="text-button" data-index="{{index}}" data-checkin="{{ci}}" bindtap="openLocation">在地图查看打卡位置 ›</button>
+            <view class="muted" wx:elif="{{c.hasLocation}}">坐标系未确认，仅展示原始坐标</view>
+          </view>
+        </view>
+      </view>
+
+      <view class="report-section">
+        <view class="section-heading">
+          <view class="report-section-title">服务轨迹 · {{item.trackCount}} 个点</view>
+          <button wx:if="{{item.trackCount}}" class="text-button" data-index="{{index}}" bindtap="toggleTracks">{{item.tracksExpanded ? '收起轨迹' : '查看轨迹'}}</button>
+        </view>
+        <view class="muted" wx:if="{{!item.trackCount}}">暂无轨迹记录</view>
+        <view wx:if="{{item.tracksExpanded}}">
+          <view class="track-point" wx:for="{{item.trackPreview}}" wx:for-item="track" wx:for-index="ti" wx:key="_id">
+            <view class="strong">{{ti + 1}}. {{beijingTime.format(track.recordedTime) || '时间未记录'}}</view>
+            <view class="muted">{{track.coordinateText}} · 精度 {{track.accuracyText}}</view>
+            <button wx:if="{{track.canOpenLocation}}" class="text-button" data-index="{{index}}" data-track="{{ti}}" bindtap="openLocation">查看位置 ›</button>
+          </view>
+          <button wx:if="{{item.trackVisibleCount < item.trackCount}}" class="material-button" data-index="{{index}}" bindtap="moreTracks">继续查看轨迹（{{item.trackVisibleCount}} / {{item.trackCount}}）</button>
+        </view>
+      </view>
+
+      <view class="report-section">
+        <view class="report-section-title">客户服务评价</view>
+        <view class="muted" wx:if="{{!item.review}}">客户暂未评价，不代表服务质量已通过审核。</view>
+        <block wx:else>
+          <view class="review-rating">{{item.reviewText}}</view>
+          <view class="muted">{{beijingTime.format(item.review.createdAt) || '评价时间未记录'}}</view>
+          <view class="muted" wx:if="{{item.reviewTagsText}}">{{item.reviewTagsText}}</view>
+          <view class="long-text detail-note">{{item.review.content || '客户未填写文字评价'}}</view>
+        </block>
       </view>
     </view>
   </view>
 
-  <view class="audit-sticky-actions" wx:if="{{application.status === 'pending'}}">
+  <view class="audit-sticky-actions" wx:if="{{application.status === 'pending' && (adminSuper || adminPermissions.admin_auditPromotionApplication)}}">
     <button class="reject" data-status="rejected" bindtap="openAuditModal">拒绝</button>
     <button class="approve" data-status="approved" bindtap="openAuditModal">通过认证</button>
   </view>
@@ -56,8 +198,8 @@
         <textarea class="textarea" placeholder="填写审核备注（拒绝时建议填写原因）" value="{{remark}}" bindinput="inputRemark" />
       </scroll-view>
       <view class="modal-actions">
-        <button class="primary" style="flex: 2;" bindtap="audit">确认处理</button>
-        <button class="ghost" style="flex: 1;" bindtap="closeAuditModal">取消</button>
+        <button class="primary" style="flex: 2;" bindtap="audit" loading="{{submitting}}" disabled="{{submitting}}">确认处理</button>
+        <button class="ghost" style="flex: 1;" bindtap="closeAuditModal" disabled="{{submitting}}">取消</button>
       </view>
     </view>
   </view>

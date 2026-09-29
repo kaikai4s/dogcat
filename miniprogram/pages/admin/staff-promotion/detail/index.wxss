@@ -4,7 +4,7 @@
 .desc, .muted { margin-top: 8rpx; font-size: 24rpx; color: #7a6a5e; line-height: 1.5; }
 .admin-section-title { margin: 24rpx 4rpx 16rpx; font-size: 30rpx; font-weight: 950; color: #2d211a; }
 .order-report-card { padding-bottom: 18rpx; }
-.checkin { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; padding: 14rpx 0; border-bottom: 1rpx solid rgba(255,153,102,.12); }
+.checkin { padding: 24rpx 0; border-bottom: 1rpx solid rgba(255,153,102,.18); }
 .checkin:last-child { border-bottom: none; }
 .compact-empty { padding: 22rpx 0; }
 .textarea { width: 100%; min-height: 150rpx; margin-top: 20rpx; padding: 20rpx; border-radius: 24rpx; background: #fff8ec; box-sizing: border-box; font-size: 26rpx; }
@@ -12,3 +12,41 @@
 .reject, .approve { flex: 1; height: 76rpx; border: none; border-radius: 999rpx; font-size: 25rpx; font-weight: 900; }
 .reject { color: #d45f22; background: #fff0e2; }
 .approve { color: #fff; background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%); }
+.detail-page { padding-bottom: calc(190rpx + env(safe-area-inset-bottom)); }
+.audit-sticky-actions { bottom: calc(20rpx + env(safe-area-inset-bottom)); }
+.load-state { padding: 100rpx 32rpx; text-align: center; color: #7a6a5e; }
+.material-overview { display: flex; padding: 26rpx 12rpx; margin-top: 20rpx; border: 1rpx solid #f3dfc9; border-radius: 24rpx; background: #fff2df; }
+.material-overview > view { flex: 1; text-align: center; font-size: 22rpx; color: #7a6a5e; }
+.overview-number { display: block; margin-bottom: 6rpx; color: #a94819; font-size: 40rpx; font-weight: 800; }
+.section-heading, .checkin-heading, .photo-caption { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; }
+.section-heading .admin-section-title { flex: 1; }
+.section-hint { margin: 0 4rpx 20rpx; }
+.report-section { padding: 24rpx 0; border-top: 1rpx solid #f0e4d7; }
+.report-section:first-child { margin-top: 18rpx; }
+.report-section-title { font-size: 28rpx; font-weight: 800; line-height: 1.5; }
+.detail-row { display: flex; align-items: flex-start; gap: 20rpx; margin-top: 18rpx; font-size: 24rpx; line-height: 1.6; }
+.field-label { flex-shrink: 0; width: 144rpx; color: #8b7767; }
+.field-value { flex: 1; min-width: 0; text-align: right; word-break: break-all; white-space: pre-wrap; }
+.long-text { white-space: pre-wrap; word-break: break-word; font-size: 25rpx; line-height: 1.7; }
+.detail-note, .review-history { margin-top: 20rpx; }
+.material-warning { margin-top: 18rpx; padding: 18rpx 20rpx; border-radius: 16rpx; background: #fff0e7; color: #a23e16; font-size: 24rpx; line-height: 1.7; word-break: break-word; }
+.material-actions { display: flex; flex-wrap: wrap; gap: 14rpx; margin-top: 24rpx; }
+.material-button { margin: 0; padding: 16rpx 22rpx; min-height: 66rpx; height: auto; border: 1rpx solid #f0d5bc; border-radius: 18rpx; background: #fff9f1; color: #9d4a23; font-size: 24rpx; line-height: 1.4; }
+.material-button::after, .text-button::after { border: 0; }
+.primary-link { background: #fff0e3; font-weight: 700; }
+.text-button { flex-shrink: 0; margin: 0; padding: 10rpx 0; border: 0; height: auto; min-height: 48rpx; background: transparent; color: #ae4c20; font-size: 24rpx; line-height: 1.4; text-align: left; }
+.pet-material, .session-material { padding: 20rpx; margin-top: 18rpx; border-radius: 18rpx; background: #fff9f2; }
+.pet-material .long-text { margin-top: 10rpx; }
+.requirement-row { display: flex; justify-content: space-between; gap: 16rpx; margin-top: 16rpx; font-size: 24rpx; line-height: 1.5; }
+.missing-text { color: #bb402b; }
+.photo-frame { margin-top: 20rpx; overflow: hidden; border-radius: 18rpx; background: #f6eee4; }
+.checkin-photo { display: block; width: 100%; min-height: 180rpx; }
+.photo-failed, .missing-photo { padding: 38rpx 20rpx; color: #a23e16; font-size: 24rpx; line-height: 1.6; background: #fff5ed; }
+.missing-photo { margin-top: 20rpx; border: 1rpx dashed #e8b48f; border-radius: 18rpx; text-align: center; }
+.photo-caption { color: #8b7767; font-size: 22rpx; padding-top: 4rpx; }
+.checkin-remark { padding: 18rpx 20rpx; margin-top: 14rpx; background: #fff8ee; border-radius: 14rpx; }
+.location-material { margin-top: 14rpx; }
+.track-point { padding: 18rpx 0; border-bottom: 1rpx solid #f0e4d7; font-size: 24rpx; }
+.review-rating { margin-top: 16rpx; color: #b34c1d; font-size: 34rpx; font-weight: 800; }
+.order-entry { margin: 18rpx 0 24rpx; }
+.order-report-card .collapse-title { white-space: normal; word-break: break-word; line-height: 1.5; }
