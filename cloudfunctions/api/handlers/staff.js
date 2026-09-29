@@ -1118,6 +1118,35 @@ module.exports = function createHandler(context) {
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
       const conflict = await findStaffOrderConflict(profile.openid, order, orderId)
       if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
+
+      const inOp = db.command && typeof db.command.in === 'function' ? db.command.in : (list) => list
+      const activeStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
+      const activeOrdersRes = await db.collection('orders').where({
+        staffOpenid: openid,
+        status: inOp(activeStatuses)
+      }).count().catch(() => ({ total: 0 }))
+      const currentActiveCount = activeOrdersRes.total || 0
+      const maxActiveOrders = Number(settings.dispatch && settings.dispatch.maxStaffActiveOrders || 8)
+      if (currentActiveCount >= maxActiveOrders) {
+        throw new Error(`您当前进行中订单已有 ${currentActiveCount} 笔，已达接单上限（最多 ${maxActiveOrders} 笔），请先履约完成后再接新单`)
+      }
+
+      const targetDate = String(order.serviceStartDate || order.startTime || '').slice(0, 10)
+      if (targetDate) {
+        const dailyOrdersRes = await db.collection('orders').where({
+          staffOpenid: openid,
+          status: inOp(['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed'])
+        }).get().catch(() => ({ data: [] }))
+        const sameDayOrders = (dailyOrdersRes.data || []).filter((o) => {
+          const oDate = String(o.serviceStartDate || o.startTime || '').slice(0, 10)
+          return oDate === targetDate && o._id !== orderId
+        })
+        const maxDailyOrders = Number(settings.dispatch && settings.dispatch.maxStaffDailyOrders || 6)
+        if (sameDayOrders.length >= maxDailyOrders) {
+          throw new Error(`您在 ${targetDate} 已接单 ${sameDayOrders.length} 笔，已达单日接单上限（${maxDailyOrders} 笔），请合理规划时间避免服务延误`)
+        }
+      }
+
       return checkAcceptOrderRisk(profile, order)
     }
     if (action === 'acceptOrder') {
@@ -1149,6 +1178,36 @@ module.exports = function createHandler(context) {
       const publishMode = order.publishMode === 'direct' ? 'direct' : 'open'
       if (publishMode === 'direct' && order.requestedStaffOpenid !== openid) throw new Error('该订单指定了其他宠托师')
       if (publishMode === 'open' && order.requestedStaffOpenid) throw new Error('该订单指定了其他宠托师')
+
+      // 校验进行中订单总数上限（防止名下在途订单积压）
+      const inOp = db.command && typeof db.command.in === 'function' ? db.command.in : (list) => list
+      const activeStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
+      const activeOrdersRes = await db.collection('orders').where({
+        staffOpenid: openid,
+        status: inOp(activeStatuses)
+      }).count().catch(() => ({ total: 0 }))
+      const currentActiveCount = activeOrdersRes.total || 0
+      const maxActiveOrders = Number(settings.dispatch && settings.dispatch.maxStaffActiveOrders || 8)
+      if (currentActiveCount >= maxActiveOrders) {
+        throw new Error(`您当前进行中订单已有 ${currentActiveCount} 笔，已达接单上限（最多 ${maxActiveOrders} 笔），请先履约完成后再接新单`)
+      }
+
+      // 校验目标服务日期的单日接单上限（防止单日接单过多导致疲劳超时违约）
+      const targetDate = String(order.serviceStartDate || order.startTime || '').slice(0, 10)
+      if (targetDate) {
+        const dailyOrdersRes = await db.collection('orders').where({
+          staffOpenid: openid,
+          status: inOp(['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed'])
+        }).get().catch(() => ({ data: [] }))
+        const sameDayOrders = (dailyOrdersRes.data || []).filter((o) => {
+          const oDate = String(o.serviceStartDate || o.startTime || '').slice(0, 10)
+          return oDate === targetDate && o._id !== orderId
+        })
+        const maxDailyOrders = Number(settings.dispatch && settings.dispatch.maxStaffDailyOrders || 6)
+        if (sameDayOrders.length >= maxDailyOrders) {
+          throw new Error(`您在 ${targetDate} 已接单 ${sameDayOrders.length} 笔，已达单日接单上限（${maxDailyOrders} 笔），请合理规划时间避免服务延误`)
+        }
+      }
 
       // 验证抢单时的实时位置与订单距离
       const currentLat = Number(data.currentLatitude)

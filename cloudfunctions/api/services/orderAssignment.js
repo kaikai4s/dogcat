@@ -203,6 +203,25 @@ module.exports = function createService(context) {
           const staffUser = userRes.data && userRes.data[0]
           if (!staffUser) continue
 
+          const settings = typeof context.getSystemSettings === 'function' ? await context.getSystemSettings().catch(() => ({})) : {}
+          const ability = typeof validateStaffTakeOrderAbility === 'function' ? validateStaffTakeOrderAbility(profile, settings.staffDeposit) : { can: true }
+          if (!ability.can || profile.auditStatus !== 'approved' || staffUser.status !== 'active') {
+            await db.collection('orders').doc(order._id).update({
+              data: {
+                publishMode: 'open',
+                requestedStaffOpenid: '',
+                requestedStaffProfileId: '',
+                requestedStaffUserId: '',
+                requestedStaffName: '',
+                updatedAt: time
+              }
+            }).catch(() => {})
+            if (typeof context.appendOrderTimeline === 'function') {
+              await context.appendOrderTimeline(order._id, 'republished_open', '指定单转公开派单', '指定宠托师资质状态变动或不可接单，系统已自动转为公开派单', 'system').catch(() => {})
+            }
+            continue
+          }
+
           const assignmentUpdate = {
             staffUserId: staffUser._id,
             staffOpenid: order.requestedStaffOpenid,
@@ -215,7 +234,7 @@ module.exports = function createService(context) {
             updatedAt: time
           }
 
-          const assigned = await assignOrderAtomically(order._id, order, assignmentUpdate, { admin: true })
+          const assigned = await assignOrderAtomically(order._id, order, assignmentUpdate, { admin: true, riskConfirmed: true, depositConfig: settings.staffDeposit })
           if (assigned) {
             const title = '指定预约超时已自动接单'
             const detail = '指定宠托师超过1小时未手动操作，系统已自动接单。'

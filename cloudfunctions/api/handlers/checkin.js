@@ -8,6 +8,7 @@ module.exports = function createHandler(context) {
     calcDistanceKm,
     canStartOrderSession,
     checkImageSecurity,
+    checkTextSecurity,
     claimCheckinReward,
     db,
     ensureMonthConfig,
@@ -209,8 +210,11 @@ module.exports = function createHandler(context) {
       if (!data.eventType) throw new Error('请选择打卡类型')
       if (!CHECKIN_EVENT_TYPES.has(data.eventType)) throw new Error('打卡类型无效')
       if (!data.mediaFileId) throw new Error('请先上传打卡照片')
-      if (data.eventType === 'pet_beauty_photo') {
-        await checkImageSecurity(openid, data.mediaFileId, { scene: 3, label: '美照' })
+      const photoLabel = data.eventType === 'pet_beauty_photo' ? '美照' : '服务打卡照片'
+      await checkImageSecurity(openid, data.mediaFileId, { scene: 3, label: photoLabel })
+      const checkinRemark = safeText(data.remark || data.note).trim()
+      if (checkinRemark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, checkinRemark, { scene: 2, label: '打卡备注' })
       }
       const clientRequestId = safeText(data.clientRequestId).trim()
       if (clientRequestId) {
