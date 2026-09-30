@@ -159,6 +159,11 @@ module.exports = function createHandler(context) {
 
       if (!avatarFileId && !imageUrl && !imageBase64) throw new Error('请先上传宠物照片再进行AI识别')
 
+      const targetMedia = avatarFileId || imageUrl
+      if (targetMedia && typeof checkImageSecurity === 'function') {
+        await checkImageSecurity(openid, targetMedia, { scene: 1, label: 'AI识别宠物照片' })
+      }
+
       if (!imageUrl && avatarFileId && avatarFileId.startsWith('cloud://')) {
         try {
           if (typeof cloud.getTempFileURL !== 'function') throw new Error('当前云函数 SDK 不支持 getTempFileURL')
@@ -197,6 +202,9 @@ module.exports = function createHandler(context) {
       }
 
       const parsedResult = parsePetRecognitionText(aiResponse.rawAiContent)
+      if (parsedResult.aiResultText && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, parsedResult.aiResultText, { scene: 1, label: 'AI识别结果' })
+      }
       const aiMessage = `微信云开发 AI (${aiResponse.modelName}) 识别分析完成`
       await recordAiLog(openid, {
         avatarFileId,

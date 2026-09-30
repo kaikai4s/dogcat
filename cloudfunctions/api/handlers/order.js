@@ -149,6 +149,17 @@ module.exports = function createHandler(context) {
       if (!data.serviceAddress) throw new Error('请选择服务地址')
       if (!data.addressDetail) throw new Error('请填写详细地址')
       if (!data.doorplate) throw new Error('请填写门牌号或入户说明')
+      const addressTextToCheck = [
+        data.serviceAddress,
+        data.addressDetail,
+        data.doorplate,
+        data.entryNotes,
+        data.orderHomeSecurity && data.orderHomeSecurity.entryNotes,
+        data.homeSecurity && data.homeSecurity.entryNotes
+      ].filter(Boolean).join(' ').trim()
+      if (addressTextToCheck && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, addressTextToCheck, { scene: 1, label: '服务地址及入户说明' })
+      }
       const pets = await getClientPetsByIds(openid, petIds)
       const pricing = await calcOrderPricing(data, pets, { openid })
       validateOrderTime({ ...data, durationMinutes: pricing.durationMinutes, endTime: pricing.sessions[pricing.sessions.length - 1].endTime })

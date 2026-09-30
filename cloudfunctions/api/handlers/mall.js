@@ -137,6 +137,10 @@ module.exports = function createHandler(context) {
         snapshotItems.push(buildMallOrderItemSnapshot(normalizedProduct, sku, quantity))
       }
       const address = normalizeShippingAddress(data.shippingAddress || data)
+      const shippingTextToCheck = [address.contactName, address.serviceAddress, address.addressDetail, address.doorplate].filter(Boolean).join(' ').trim()
+      if (shippingTextToCheck && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, shippingTextToCheck, { scene: 1, label: '商城收货地址' })
+      }
       let couponResult = null
       const basePricing = calcMallPricing(snapshotItems)
       if (data.couponId) {

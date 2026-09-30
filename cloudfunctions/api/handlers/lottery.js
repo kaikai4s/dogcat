@@ -301,6 +301,12 @@ module.exports = function createHandler(context) {
           const template = templateRes && templateRes.data
           if (!template || template.enabled === false) return { couponId: '', templateSnapshot: null }
 
+          const totalLimit = Number(template.totalIssueLimit || 0)
+          const currentIssued = Number(template.issuedCount || 0)
+          if (totalLimit > 0 && currentIssued >= totalLimit) {
+            return { couponId: '', templateSnapshot: null, exhausted: true }
+          }
+
           const snapshot = normalizeCouponSnapshot(template)
           const { validFrom, validTo } = getCouponValidRange(template, time)
           await tx.collection('user_coupons').doc(deterministicCouponId).set({
@@ -332,6 +338,27 @@ module.exports = function createHandler(context) {
         })
         couponId = issued.couponId
         templateSnapshot = issued.templateSnapshot
+        if (!couponId) {
+          pointsAwarded = 10
+          finalPrizeName = `${finalPrizeName}（券已发完折算10积分）`
+          const compKey = `${recordId}_coupon_comp`
+          const existingCompLog = (await db.collection('point_logs').where({
+            openid,
+            idempotencyKey: compKey
+          }).limit(1).get()).data[0]
+
+          if (!existingCompLog) {
+            await addPoints(
+              openid,
+              user._id,
+              pointsAwarded,
+              'lottery_reward',
+              activity._id,
+              `抽奖活动【${activity.name}】优惠券已发完，补偿 10 积分`,
+              { idempotencyKey: compKey, lotteryRecordId: recordId }
+            )
+          }
+        }
       } else if (prizeType === 'points') {
         pointsAwarded = Math.max(Math.round(Number(selectedPrize.points || 0)), 0)
         if (pointsAwarded > 0) {

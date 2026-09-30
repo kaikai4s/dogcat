@@ -1,5 +1,6 @@
 module.exports = function createHandler(context) {
   const {
+    checkTextSecurity,
     cloud,
     db,
     getOrderForAccess,
@@ -11,6 +12,9 @@ module.exports = function createHandler(context) {
     if (action === 'aiPetAssistant') {
       const question = safeText(data.question).trim()
       if (!question) throw new Error('请填写咨询问题')
+      if (typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, question, { scene: 2, label: 'AI提问内容' })
+      }
       const petId = safeText(data.petId).trim()
       let petInfo = ''
       if (petId) {
@@ -37,6 +41,10 @@ module.exports = function createHandler(context) {
         answer = res.text
       } else {
         answer = JSON.stringify(res)
+      }
+
+      if (answer && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, answer, { scene: 2, label: 'AI回答内容' })
       }
 
       return {
@@ -143,8 +151,18 @@ module.exports = function createHandler(context) {
 
             text = safeText(text).trim().replace(/^["“'「]+|["”'」]+$/g, '').replace(/[\r\n]+/g, ' ').trim()
             if (text && text.length >= 5 && text.length <= 80) {
-              voiceMessage = text
-              source = 'hy3'
+              if (typeof checkTextSecurity === 'function') {
+                try {
+                  await checkTextSecurity(openid, text, { scene: 2, label: 'AI宠物心声' })
+                  voiceMessage = text
+                  source = 'hy3'
+                } catch (_) {
+                  // Fallback to preset if AI generated text is blocked
+                }
+              } else {
+                voiceMessage = text
+                source = 'hy3'
+              }
             }
           }
         }

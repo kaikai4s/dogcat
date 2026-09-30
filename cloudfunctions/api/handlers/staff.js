@@ -1457,6 +1457,9 @@ module.exports = function createHandler(context) {
       }
       const mediaFileIds = Array.isArray(data.mediaFileIds) ? data.mediaFileIds.filter(Boolean) : []
       if (!mediaFileIds.length) throw new Error('请上传首次购买凭证截图')
+      if (mediaFileIds.length && typeof checkImageSecurity === 'function') {
+        await Promise.all(mediaFileIds.map((fileId) => checkImageSecurity(openid, fileId, { scene: 1, label: '用品报销凭证' })))
+      }
       const amount = Number(data.amount)
       if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) {
         throw new Error('请填写有效的报销金额，最多两位小数')
@@ -1466,6 +1469,9 @@ module.exports = function createHandler(context) {
         throw new Error(`首次用品报销金额不能超过上限 ¥${maxCap}`)
       }
       const remark = safeText(data.remark).trim()
+      if (remark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, remark, { scene: 1, label: '用品报销备注' })
+      }
       const time = now()
       const record = {
         staffOpenid: openid,
