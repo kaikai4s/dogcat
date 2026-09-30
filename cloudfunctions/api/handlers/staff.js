@@ -125,6 +125,34 @@ module.exports = function createHandler(context) {
     }
     return false
   }
+  const quizSubmitTimestamps = new Map()
+  function checkQuizSubmitRateLimit(userOpenid, maxInWindow = 3, windowMs = 10 * 60 * 1000) {
+    if (!userOpenid) return
+    const nowTs = Date.now()
+    const cutoff = nowTs - windowMs
+    let userTimestamps = quizSubmitTimestamps.get(userOpenid) || []
+    userTimestamps = userTimestamps.filter((t) => t >= cutoff)
+    if (userTimestamps.length >= maxInWindow) {
+      throw new Error('答题提交过于频繁，请稍后复习培训资料后再试（10分钟内限提交3次）')
+    }
+    userTimestamps.push(nowTs)
+    quizSubmitTimestamps.set(userOpenid, userTimestamps)
+  }
+
+  const videoWatchedTimestamps = new Map()
+  function checkVideoWatchedRateLimit(userOpenid, maxPerMinute = 10) {
+    if (!userOpenid) return
+    const nowTs = Date.now()
+    const cutoff = nowTs - 60 * 1000
+    let userTimestamps = videoWatchedTimestamps.get(userOpenid) || []
+    userTimestamps = userTimestamps.filter((t) => t >= cutoff)
+    if (userTimestamps.length >= maxPerMinute) {
+      throw new Error('培训进度同步过于频繁，请稍后再试')
+    }
+    userTimestamps.push(nowTs)
+    videoWatchedTimestamps.set(userOpenid, userTimestamps)
+  }
+
   return async function staff(openid, action, data) {
     if (action === 'listApprovedSitters') {
       const staffGenderRequirement = normalizeStaffGenderRequirement(data.staffGenderRequirement)
@@ -457,6 +485,7 @@ module.exports = function createHandler(context) {
       }
     }
     if (action === 'submitTrainingQuiz') {
+      checkQuizSubmitRateLimit(openid, 3, 10 * 60 * 1000)
       await getUser(openid)
       const profile = await getStaffProfileByOpenid(openid)
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可参加培训答题')
@@ -477,6 +506,7 @@ module.exports = function createHandler(context) {
       return { score, passed, passScore: training.passScore }
     }
     if (action === 'markTrainingVideoWatched') {
+      checkVideoWatchedRateLimit(openid, 10)
       await getUser(openid)
       const profile = await getStaffProfileByOpenid(openid)
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可观看培训视频')
@@ -484,12 +514,15 @@ module.exports = function createHandler(context) {
       const training = settings.staffTraining || normalizeStaffTrainingConfig()
       const videos = enabledTrainingVideos(training)
       const videoKey = safeText(data.videoKey).trim()
-      if (!videos.some((item) => item.key === videoKey)) throw new Error('培训视频不存在')
+      const matchedVideo = videos.find((item) => item.key === videoKey)
+      if (!matchedVideo) throw new Error('培训视频不存在')
 
-      // 全程观看防作弊校验：如果前端传递了视频时长，必须观看达到90%以上
+      // 全程观看防作弊校验：优先使用服务端配置时长，不完全信任前端上报
       const watchedSeconds = Number(data.watchedSeconds)
-      const duration = Number(data.duration)
-      if (Number.isFinite(duration) && duration > 5) {
+      const clientDuration = Number(data.duration)
+      const serverDuration = matchedVideo.durationSeconds || 0
+      const duration = serverDuration > 5 ? serverDuration : (Number.isFinite(clientDuration) ? clientDuration : 0)
+      if (duration > 5) {
         if (!Number.isFinite(watchedSeconds) || watchedSeconds < duration * 0.9) {
           throw new Error('培训视频须全程完整观看，当前播放时长未达标')
         }

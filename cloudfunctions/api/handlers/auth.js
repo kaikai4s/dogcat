@@ -24,6 +24,20 @@ module.exports = function createHandler(context) {
     syncClientOrderPhone,
     toCstParts
   } = context
+  const profileUpdateTimestamps = new Map()
+  function checkProfileUpdateRateLimit(userOpenid, maxPerMinute = 15) {
+    if (!userOpenid) return
+    const nowTs = Date.now()
+    const oneMinuteAgo = nowTs - 60 * 1000
+    let userTimestamps = profileUpdateTimestamps.get(userOpenid) || []
+    userTimestamps = userTimestamps.filter((t) => t >= oneMinuteAgo)
+    if (userTimestamps.length >= maxPerMinute) {
+      throw new Error('个人资料更新过于频繁，请稍后再试')
+    }
+    userTimestamps.push(nowTs)
+    profileUpdateTimestamps.set(userOpenid, userTimestamps)
+  }
+
   return async function auth(openid, action, data) {
     if (action === 'login') {
       let user = await getOptionalUser(openid)
@@ -146,6 +160,7 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'updateProfile') {
+      checkProfileUpdateRateLimit(openid, 15)
       const user = await getUser(openid)
       const oldPhone = safeText(user.phone).trim()
       const nickname = safeText(data.nickname).trim()
@@ -159,7 +174,27 @@ module.exports = function createHandler(context) {
         await checkImageSecurity(openid, avatarUrl, { scene: 1, label: '用户头像' })
       }
       const rawPhone = data.phone !== undefined ? safeText(data.phone).trim() : oldPhone
-      if (rawPhone && rawPhone.length > 20) throw new Error('手机号格式不正确')
+      if (rawPhone && rawPhone !== oldPhone) {
+        if (!/^1[3-9]\d{9}$/.test(rawPhone)) throw new Error('手机号格式不正确（请输入有效11位手机号码）')
+
+        const initAdminPhones = safeText(process.env.INIT_ADMIN_PHONES)
+          .split(',')
+          .map(p => p.trim())
+          .filter(Boolean)
+        if (initAdminPhones.includes(rawPhone) && (!Array.isArray(user.roles) || !user.roles.includes('admin'))) {
+          const secret = safeText(process.env.INIT_ADMIN_SECRET).trim()
+          const providedSecret = safeText(data.secret).trim()
+          if (!secret || providedSecret !== secret) {
+            throw new Error('该手机号受系统安全保护，禁止直接绑定')
+          }
+        }
+
+        const existingRes = await db.collection('users').where({ phone: rawPhone, status: 'active' }).limit(1).get().catch(() => ({ data: [] }))
+        const existingUser = existingRes && existingRes.data && existingRes.data[0]
+        if (existingUser && existingUser.openid && existingUser.openid !== openid) {
+          throw new Error('该手机号码已被其他账号绑定')
+        }
+      }
       const payload = {
         nickname,
         avatarUrl,
@@ -239,7 +274,7 @@ module.exports = function createHandler(context) {
       }
 
       if (!phone) throw new Error('手机号不能为空')
-      if (!/^1\d{10}$/.test(phone)) throw new Error('请输入有效的11位手机号码')
+      if (!/^1[3-9]\d{9}$/.test(phone)) throw new Error('请输入有效的11位手机号码')
 
       const initAdminPhones = safeText(process.env.INIT_ADMIN_PHONES)
         .split(',')

@@ -7,6 +7,17 @@ module.exports = function createService({
   STAFF_VIDEO_AUDIT_GUIDE,
   safeText
 }) {
+  function parseDurationSeconds(item = {}) {
+    const explicit = Number(item.durationSeconds)
+    if (Number.isFinite(explicit) && explicit > 0) return Math.round(explicit)
+    const text = safeText(item.durationText).trim()
+    const minuteMatch = text.match(/(\d+(?:\.\d+)?)\s*分钟/)
+    if (minuteMatch) return Math.round(Number(minuteMatch[1]) * 60)
+    const secondMatch = text.match(/(\d+(?:\.\d+)?)\s*秒/)
+    if (secondMatch) return Math.round(Number(secondMatch[1]))
+    return 0
+  }
+
   function normalizeTrainingVideos(videos = STAFF_TRAINING_VIDEOS) {
     const source = Array.isArray(videos) ? videos : []
     const normalized = source.map((item, index) => {
@@ -17,6 +28,7 @@ module.exports = function createService({
         key,
         title,
         durationText: safeText(item.durationText).trim(),
+        durationSeconds: parseDurationSeconds(item),
         description: safeText(item.description).trim(),
         fileId: safeText(item.fileId).trim(),
         posterFileId: safeText(item.posterFileId).trim(),
@@ -24,7 +36,7 @@ module.exports = function createService({
         sort: Number(item.sort) || (index + 1) * 10
       }
     }).filter(Boolean).sort((a, b) => a.sort - b.sort)
-    return normalized.length ? normalized : STAFF_TRAINING_VIDEOS.map((item, index) => ({ ...item, fileId: '', posterFileId: '', enabled: true, sort: (index + 1) * 10 }))
+    return normalized.length ? normalized : STAFF_TRAINING_VIDEOS.map((item, index) => ({ ...item, durationSeconds: parseDurationSeconds(item), fileId: '', posterFileId: '', enabled: true, sort: (index + 1) * 10 }))
   }
 
   function enabledTrainingVideos(training = {}) {

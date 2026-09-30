@@ -188,9 +188,16 @@ module.exports = function createHandler(context) {
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)
       if (!order) throw new Error('订单不存在')
       if (order.status !== 'pending_ship') throw new Error('当前订单不可发货')
+      if (order.refundStatus === 'applied' || order.refundStatus === 'processing') throw new Error('该订单存在退款申请，请先处理退款后再发货')
       const expressCompany = safeText(data.expressCompany).trim()
       const trackingNo = safeText(data.trackingNo).trim()
       if (!expressCompany || !trackingNo) throw new Error('请填写快递公司和单号')
+      if (expressCompany.length > 50) throw new Error('快递公司名称不能超过 50 字')
+      if (trackingNo.length > 50) throw new Error('快递单号不能超过 50 字')
+      const shipTextToCheck = [expressCompany, trackingNo].join(' ')
+      if (typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, shipTextToCheck, { scene: 2, label: '发货快递信息' })
+      }
       const time = now()
       await db.collection('mall_orders').doc(order._id).update({ data: { status: 'shipped', expressCompany, trackingNo, shippedAt: time, updatedAt: time } })
       await logAdmin(admin, 'mall_order', order._id, 'shipOrder', { expressCompany, trackingNo })

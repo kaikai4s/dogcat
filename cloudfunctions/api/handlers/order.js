@@ -97,6 +97,18 @@ module.exports = function createHandler(context) {
     validateOrderTime,
     validateStaffAvailabilityForSessions
   } = context
+
+  const sessionMessageTimestamps = new Map()
+  function checkSessionMessageRateLimit(userOpenid, maxPerMinute = 30) {
+    const nowTs = Date.now()
+    const oneMinuteAgo = nowTs - 60 * 1000
+    let userTs = sessionMessageTimestamps.get(userOpenid) || []
+    userTs = userTs.filter((t) => t >= oneMinuteAgo)
+    if (userTs.length >= maxPerMinute) throw new Error('会话消息发送过于频繁，请稍后再试')
+    userTs.push(nowTs)
+    sessionMessageTimestamps.set(userOpenid, userTs)
+  }
+
   function sanitizeOrderSecurityFields(order) {
     if (!order) return order
     const security = order.orderHomeSecurity || order.homeSecuritySnapshot
@@ -952,6 +964,7 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'sendOrderSessionMessage') {
+      checkSessionMessageRateLimit(openid, 30)
       const orderId = safeText(data.id || data.orderId).trim()
       if (!orderId) throw new Error('缺少订单ID')
       const { user, order } = await getOrderForAccess(openid, orderId).catch(() => {

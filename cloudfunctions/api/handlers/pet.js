@@ -26,6 +26,18 @@ module.exports = function createHandler(context) {
     toCstParts,
     unequipPetTitle
   } = context
+
+  const petBreedTimestamps = new Map()
+  function checkPetBreedRateLimit(userOpenid, maxPerMinute = 10) {
+    const nowTs = Date.now()
+    const oneMinuteAgo = nowTs - 60 * 1000
+    let userTs = petBreedTimestamps.get(userOpenid) || []
+    userTs = userTs.filter((t) => t >= oneMinuteAgo)
+    if (userTs.length >= maxPerMinute) throw new Error('AI识别请求过于频繁，请稍后再试')
+    userTs.push(nowTs)
+    petBreedTimestamps.set(userOpenid, userTs)
+  }
+
   return async function pet(openid, action, data) {
     const user = await getUser(openid)
     if (action === 'listPets') {
@@ -187,11 +199,13 @@ module.exports = function createHandler(context) {
       return unequipPetTitle(openid, data.petId || data.id)
     }
     if (action === 'recognizePetBreed') {
+      checkPetBreedRateLimit(openid, 10)
       const settings = await getSystemSettings()
       if (settings.enablePetBreedAi === false) throw new Error('AI 识别功能已关闭')
       const avatarFileId = safeText(data.avatarFileId || data.photoFileId)
       let imageUrl = safeText(data.imageUrl).trim()
       const imageBase64 = safeText(data.imageBase64).trim()
+      if (imageBase64.length > 2500000) throw new Error('图片数据过大，请压缩后重试')
       let imageSource = imageUrl ? 'imageUrl' : ''
 
       if (!avatarFileId && !imageUrl && !imageBase64) throw new Error('请先上传宠物照片再进行AI识别')

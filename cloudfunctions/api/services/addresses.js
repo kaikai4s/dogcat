@@ -42,7 +42,7 @@ module.exports = function createService({
     if (doorplate.length > 100) throw new Error('门牌号或入户说明不能超过 100 字')
     if (label.length > 20) throw new Error('地址标签不能超过 20 字')
     if (contactName.length > 30) throw new Error('联系人姓名不能超过 30 字')
-    if (contactPhone.length > 20) throw new Error('联系电话格式不正确')
+    if (contactPhone && !/^1[3-9]\d{9}$/.test(contactPhone) && !/^0\d{2,3}-?\d{7,8}$/.test(contactPhone)) throw new Error('联系电话格式不正确（请输入有效的手机号或座机号）')
 
     const textToCheck = [label, contactName, serviceAddress, addressDetail, doorplate].filter(Boolean).join(' ').trim()
     if (textToCheck && typeof checkTextSecurity === 'function') {

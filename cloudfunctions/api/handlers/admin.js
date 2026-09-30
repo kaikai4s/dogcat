@@ -2269,6 +2269,7 @@ module.exports = function createHandler(context) {
       } else {
         reward.points = Math.max(Math.round(Number(data.points || 0)), 0)
         if (!reward.points) throw new Error('奖励积分必须大于 0')
+        if (reward.points > 50000) throw new Error('单次奖励积分不能超过 50000')
       }
       const mailUsersWhere = {
         status: 'active',

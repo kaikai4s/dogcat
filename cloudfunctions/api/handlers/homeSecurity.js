@@ -39,23 +39,58 @@ module.exports = function createHandler(context) {
     if (removeField === undefined) return data
     return { ...data, doorLockCode: removeField, code: removeField }
   }
+  const homeSecurityTimestamps = new Map()
+  function checkHomeSecurityRateLimit(userOpenid, maxPerMinute = 10) {
+    if (!userOpenid) return
+    const nowTs = Date.now()
+    const oneMinuteAgo = nowTs - 60 * 1000
+    let userTimestamps = homeSecurityTimestamps.get(userOpenid) || []
+    userTimestamps = userTimestamps.filter((t) => t >= oneMinuteAgo)
+    if (userTimestamps.length >= maxPerMinute) {
+      throw new Error('家庭安防操作过于频繁，请稍后再试')
+    }
+    userTimestamps.push(nowTs)
+    homeSecurityTimestamps.set(userOpenid, userTimestamps)
+  }
+
   return async function homeSecurity(openid, action, data) {
     if (action === 'saveHomeSecurity') {
+      checkHomeSecurityRateLimit(openid, 10)
       const user = await getUser(openid)
-      const textToCheck = [data.keyLocation, data.entryNotes, data.cameraLocations, data.forbiddenAreas, data.emergencyContactName].filter(Boolean).join(' ').trim()
+      const doorLockCode = safeText(data.doorLockCode).trim()
+      const keyLocation = safeText(data.keyLocation).trim()
+      const entryNotes = safeText(data.entryNotes).trim()
+      const cameraLocations = safeText(data.cameraLocations).trim()
+      const forbiddenAreas = safeText(data.forbiddenAreas).trim()
+      const emergencyContactName = safeText(data.emergencyContactName).trim()
+      const emergencyContactPhone = safeText(data.emergencyContactPhone).trim()
+
+      if (doorLockCode.length > 50) throw new Error('门锁密码不能超过 50 个字符')
+      if (keyLocation.length > 200) throw new Error('钥匙位置说明不能超过 200 字')
+      if (entryNotes.length > 500) throw new Error('入户指引不能超过 500 字')
+      if (cameraLocations.length > 200) throw new Error('摄像头位置说明不能超过 200 字')
+      if (forbiddenAreas.length > 200) throw new Error('禁入区域说明不能超过 200 字')
+      if (emergencyContactName.length > 30) throw new Error('紧急联系人姓名不能超过 30 字')
+      if (emergencyContactPhone) {
+        if (emergencyContactPhone.length > 20 || !/^1\d{10}$/.test(emergencyContactPhone)) {
+          throw new Error('紧急联系电话格式不正确（请输入11位手机号）')
+        }
+      }
+
+      const textToCheck = [keyLocation, entryNotes, cameraLocations, forbiddenAreas, emergencyContactName].filter(Boolean).join(' ').trim()
       if (textToCheck && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, textToCheck, { scene: 1, label: '家庭安防设置' })
       }
-      const encrypted = encryptText(data.doorLockCode || '')
-      const payload = { userId: user._id, openid, doorLockCodeCipher: encrypted.cipher, doorLockCodeIv: encrypted.iv, doorLockCodeTag: encrypted.tag, keyLocation: data.keyLocation || '', entryNotes: data.entryNotes || '', cameraLocations: data.cameraLocations || '', forbiddenAreas: data.forbiddenAreas || '', emergencyContactName: data.emergencyContactName || '', emergencyContactPhone: data.emergencyContactPhone || '', updatedAt: now() }
+      const encrypted = encryptText(doorLockCode || '')
+      const payload = { userId: user._id, openid, doorLockCodeCipher: encrypted.cipher, doorLockCodeIv: encrypted.iv, doorLockCodeTag: encrypted.tag, keyLocation, entryNotes, cameraLocations, forbiddenAreas, emergencyContactName, emergencyContactPhone, updatedAt: now() }
       const existing = await db.collection('home_security').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
       const existingDoc = existing && existing.data && existing.data[0]
       if (existingDoc) {
         await db.collection('home_security').doc(existingDoc._id).update({ data: payload })
-        return { _id: existingDoc._id, ...payload, doorLockCodeMasked: mask(data.doorLockCode || '') }
+        return { _id: existingDoc._id, ...payload, doorLockCodeMasked: mask(doorLockCode || '') }
       }
       const created = await db.collection('home_security').add({ data: payload })
-      return { _id: created._id, ...payload, doorLockCodeMasked: mask(data.doorLockCode || '') }
+      return { _id: created._id, ...payload, doorLockCodeMasked: mask(doorLockCode || '') }
     }
 
     if (action === 'getMaskedHomeSecurity') {
@@ -290,6 +325,7 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'updateOrderOneTimeCode') {
+      checkHomeSecurityRateLimit(openid, 10)
       await getUser(openid)
       const orderId = safeText(data.orderId).trim()
       if (!orderId) throw new Error('订单不存在')
@@ -299,6 +335,7 @@ module.exports = function createHandler(context) {
       if (order.clientOpenid !== openid) throw new Error('无权修改该订单')
       if (!['pending_pay', 'paid', 'assigned', 'on_the_way', 'in_service'].includes(order.status)) throw new Error('当前订单状态不可修改密码')
       const entryNotes = safeText(data.entryNotes).trim()
+      if (entryNotes.length > 500) throw new Error('一次性开门指引不能超过 500 字')
       if (entryNotes && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, entryNotes, { scene: 1, label: '一次性开门指引' })
       }
@@ -310,6 +347,7 @@ module.exports = function createHandler(context) {
         const sessionCodes = data.sessionCodes.map((item, idx) => {
           const itemCode = safeText(item.code || item.doorLockCode).trim()
           if (!itemCode) throw new Error(`请填写第${idx + 1}天的一次性开门密码`)
+          if (itemCode.length > 50) throw new Error('一次性密码不能超过 50 个字符')
           if (!item.effectiveStart || !item.effectiveEnd) throw new Error(`请选择第${idx + 1}天一次性密码有效时间`)
           if (toTimeValue(item.effectiveEnd) <= toTimeValue(item.effectiveStart)) throw new Error(`第${idx + 1}天一次性密码结束时间必须晚于开始时间`)
           const enc = encryptText(itemCode)
@@ -333,6 +371,7 @@ module.exports = function createHandler(context) {
         const sessionIndex = Number(data.sessionIndex)
         const code = safeText(data.code).trim()
         if (!code) throw new Error('请填写一次性开门密码')
+        if (code.length > 50) throw new Error('一次性密码不能超过 50 个字符')
         if (!data.effectiveStart || !data.effectiveEnd) throw new Error('请选择一次性密码有效时间')
         if (toTimeValue(data.effectiveEnd) <= toTimeValue(data.effectiveStart)) throw new Error('一次性密码结束时间必须晚于开始时间')
         const enc = encryptText(code)
@@ -358,6 +397,7 @@ module.exports = function createHandler(context) {
       } else {
         const code = safeText(data.code).trim()
         if (!code) throw new Error('请填写一次性开门密码')
+        if (code.length > 50) throw new Error('一次性密码不能超过 50 个字符')
         if (!data.effectiveStart || !data.effectiveEnd) throw new Error('请选择一次性密码有效时间')
         if (toTimeValue(data.effectiveEnd) <= toTimeValue(data.effectiveStart)) throw new Error('一次性密码结束时间必须晚于开始时间')
         const encrypted = encryptText(code)
