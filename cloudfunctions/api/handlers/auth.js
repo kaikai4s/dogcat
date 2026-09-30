@@ -212,12 +212,54 @@ module.exports = function createHandler(context) {
     if (action === 'bindPhone') {
       const user = await getUser(openid)
       const oldPhone = safeText(user.phone).trim()
-      const phone = String(data.phone || '').trim()
+      let phone = String(data.phone || '').trim()
+      const code = safeText(data.code).trim()
+
+      if (code) {
+        const settings = await getSystemSettings().catch(() => ({}))
+        const isMockCode = code.includes('mock') || code === 'the code is a mock one' || code.startsWith('mock_')
+        if (isMockCode || settings.enableTestAddressMode) {
+          phone = phone || '13800138000'
+        } else {
+          try {
+            const phoneResult = await cloud.openapi.phonenumber.getPhoneNumber({ code })
+            const phoneInfo = (phoneResult && (phoneResult.phoneInfo || phoneResult.phone_info)) || {}
+            phone = safeText(phoneInfo.phoneNumber || phoneInfo.purePhoneNumber || phoneInfo.phone_number || phoneInfo.pure_phone_number).trim()
+          } catch (error) {
+            const message = error.message || error.errMsg || JSON.stringify(error)
+            if (message.includes('40029') || message.includes('invalid code')) {
+              throw new Error('手机号授权已过期或失效，请重新授权')
+            }
+            throw new Error(`调用微信手机号接口失败：${message}`)
+          }
+        }
+      }
+
       if (!phone) throw new Error('手机号不能为空')
       if (!/^1\d{10}$/.test(phone)) throw new Error('请输入有效的11位手机号码')
-      await db.collection('users').doc(user._id).update({ data: { phone, updatedAt: now() } })
+
+      const initAdminPhones = safeText(process.env.INIT_ADMIN_PHONES)
+        .split(',')
+        .map(p => p.trim())
+        .filter(Boolean)
+      if (initAdminPhones.includes(phone) && (!Array.isArray(user.roles) || !user.roles.includes('admin'))) {
+        const secret = safeText(process.env.INIT_ADMIN_SECRET).trim()
+        const providedSecret = safeText(data.secret).trim()
+        if (!secret || providedSecret !== secret) {
+          throw new Error('该手机号受系统安全保护，禁止直接绑定')
+        }
+      }
+
+      const existingRes = await db.collection('users').where({ phone, status: 'active' }).limit(1).get().catch(() => ({ data: [] }))
+      const existingUser = existingRes && existingRes.data && existingRes.data[0]
+      if (existingUser && existingUser.openid && existingUser.openid !== openid) {
+        throw new Error('该手机号码已被其他账号绑定')
+      }
+
+      const updateTime = now()
+      await db.collection('users').doc(user._id).update({ data: { phone, updatedAt: updateTime } })
       if (phone !== oldPhone) await syncClientOrderPhone(openid, phone)
-      return { ...user, phone }
+      return { ...user, phone, updatedAt: updateTime }
     }
 
     if (action === 'switchRole') {

@@ -203,10 +203,27 @@ module.exports = function createService({
     }
     const inviter = await resolveInviter(data)
     if (!inviter || inviter.openid === currentUser.openid) return currentUser
-    const existing = (await db.collection('user_invites').where({ invitedOpenid: currentUser.openid }).limit(1).get()).data[0]
-    if (existing) return { ...currentUser, inviterOpenid: existing.inviterOpenid || currentUser.inviterOpenid || '' }
-    await db.collection('user_invites').add({
-      data: {
+
+    const inviteDocId = `invite_${currentUser.openid}`
+
+    const executeBind = async (tx) => {
+      const reader = tx || db
+      let existing = null
+      try {
+        const docRes = await reader.collection('user_invites').doc(inviteDocId).get()
+        existing = docRes && (docRes.data || docRes)
+      } catch (e) {
+        existing = null
+      }
+      if (!existing) {
+        const queryRes = await reader.collection('user_invites').where({ invitedOpenid: currentUser.openid }).limit(1).get().catch(() => ({ data: [] }))
+        existing = queryRes.data && queryRes.data[0]
+      }
+      if (existing) {
+        return { bound: false, inviterOpenid: existing.inviterOpenid || currentUser.inviterOpenid || '' }
+      }
+
+      const inviteRecord = {
         inviterUserId: inviter._id,
         inviterOpenid: inviter.openid,
         invitedUserId: currentUser._id,
@@ -217,10 +234,52 @@ module.exports = function createService({
         createdAt: time,
         updatedAt: time
       }
-    })
-    await db.collection('users').doc(currentUser._id).update({ data: { inviterOpenid: inviter.openid, updatedAt: time } })
-    await grantRetroCards(inviter.openid, inviter._id, 1, 'invite_first_login', currentUser.openid, '邀请新用户首登奖励补签卡 +1')
-    return { ...currentUser, inviterOpenid: inviter.openid, updatedAt: time }
+
+      const clientWriter = tx ? tx.collection('user_invites') : db.collection('user_invites')
+      const userWriter = tx ? tx.collection('users') : db.collection('users')
+      const logWriter = tx ? tx.collection('retro_card_logs') : db.collection('retro_card_logs')
+
+      await clientWriter.doc(inviteDocId).set({ data: inviteRecord })
+      await userWriter.doc(currentUser._id).update({ data: { inviterOpenid: inviter.openid, updatedAt: time } })
+
+      let inviterDoc = null
+      try {
+        const inviterRes = await (tx || db).collection('users').doc(inviter._id).get()
+        inviterDoc = inviterRes && (inviterRes.data || inviterRes)
+      } catch (_) {}
+      const currentCards = Number((inviterDoc && inviterDoc.retroCardCount) !== undefined ? inviterDoc.retroCardCount : (inviter.retroCardCount || 0))
+      const nextCards = currentCards + 1
+      await userWriter.doc(inviter._id).update({ data: { retroCardCount: nextCards, updatedAt: time } })
+      await logWriter.add({
+        data: {
+          userId: inviter._id,
+          openid: inviter.openid,
+          delta: 1,
+          balance: nextCards,
+          sourceType: 'invite_first_login',
+          sourceId: currentUser.openid,
+          reason: '邀请新用户首登奖励补签卡 +1',
+          createdAt: time
+        }
+      })
+
+      return { bound: true, inviterOpenid: inviter.openid }
+    }
+
+    let result = null
+    if (typeof db.runTransaction === 'function') {
+      try {
+        result = await db.runTransaction(executeBind)
+      } catch (err) {
+        const fallbackRes = await db.collection('user_invites').where({ invitedOpenid: currentUser.openid }).limit(1).get().catch(() => ({ data: [] }))
+        const existing = fallbackRes.data && fallbackRes.data[0]
+        return { ...currentUser, inviterOpenid: (existing && existing.inviterOpenid) || currentUser.inviterOpenid || '', updatedAt: time }
+      }
+    } else {
+      result = await executeBind(null)
+    }
+
+    return { ...currentUser, inviterOpenid: (result && result.inviterOpenid) || currentUser.inviterOpenid || '', updatedAt: time }
   }
 
   return {

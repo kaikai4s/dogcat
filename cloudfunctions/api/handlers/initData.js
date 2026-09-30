@@ -31,11 +31,14 @@ module.exports = function createHandler(context) {
 
     async function requireInitSecretOrAdmin() {
       if (await hasActiveAdmin()) return requireAdmin(openid)
-      assertInitAdminSecret()
+      if (getInitAdminSecret()) {
+        assertInitAdminSecret()
+      }
       return null
     }
 
     if (action === 'setupDatabase' || action === 'initAllCollections') {
+      await requireInitSecretOrAdmin()
       const createdCollections = []
       const existingCollections = []
       const errors = []

@@ -36,7 +36,7 @@ test('1. paid order full refund on cancellation restores used coupon to availabl
         discountAmount: 20,
         payAmount: 80,
         couponId,
-        startTime: '2026-10-01 10:00', // 远期订单，取消可全额退款
+        startTime: '2026-11-01 10:00', // 远期订单，取消可全额退款
         createdAt: time
       }
     ],
@@ -158,7 +158,7 @@ test('3. zero-yuan order (100% coupon discount) cancellation restores coupon', a
         discountAmount: 50,
         payAmount: 0, // 0 元单
         couponId,
-        startTime: '2026-10-01 10:00',
+        startTime: '2026-11-01 10:00',
         createdAt: time
       }
     ],

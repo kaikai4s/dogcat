@@ -561,7 +561,7 @@ module.exports = function createHandler(context) {
       if (!idCardFrontFileId || !idCardBackFileId) throw new Error('请上传身份证正反面照片')
       if (!facePhotoFileId) throw new Error('请上传自拍/人脸照片')
 
-      const staffText = [realName, serviceCity, serviceAreas, serviceAddress, data.bio, data.intro, data.experience].filter(Boolean).join(' ')
+      const staffText = [realName, serviceCity, serviceAreas, serviceAddress, data.publicServiceAddress, data.bio, data.intro, data.experience].filter(Boolean).join(' ')
       if (staffText) {
         await checkTextSecurity(openid, staffText, { scene: 1, label: '认证资料' })
       }
@@ -684,6 +684,9 @@ module.exports = function createHandler(context) {
         const serviceRadiusKm = Math.max(Number(data.serviceRadiusKm !== undefined ? data.serviceRadiusKm : (profile.serviceRadiusKm || 5)), 1)
         const weeklySchedule = data.weeklySchedule !== undefined ? normalizeWeeklySchedule(data.weeklySchedule) : profile.weeklySchedule
         const publicServiceAddress = safeText(data.publicServiceAddress !== undefined ? data.publicServiceAddress : (profile.publicServiceAddress || '')).trim()
+        if (publicServiceAddress && publicServiceAddress !== (profile.publicServiceAddress || '') && typeof checkTextSecurity === 'function') {
+          await checkTextSecurity(openid, publicServiceAddress, { scene: 1, label: '公开服务地址' })
+        }
 
         if (!serviceAddress || !hasCoordinate(serviceLatitude, serviceLongitude)) {
           throw new Error('请选择有效的固定服务地址及坐标')
@@ -1416,6 +1419,9 @@ module.exports = function createHandler(context) {
     if (action === 'requestDepositRefund') {
       const reason = safeText(data.reason).trim()
       if (!reason) throw new Error('请填写自愿退出及退款原因')
+      if (typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '保证金退款原因' })
+      }
       await getUser(openid)
       const res = await db.collection('staff_deposits').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get().catch(() => ({ data: [] }))
       const deposit = res && res.data && res.data[0]
