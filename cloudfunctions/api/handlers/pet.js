@@ -98,6 +98,43 @@ module.exports = function createHandler(context) {
         createdAt: time,
         updatedAt: time
       }
+      if (typeof db.runTransaction === 'function') {
+        return await db.runTransaction(async (tx) => {
+          const pRes = await tx.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+          const petInTx = pRes && pRes.data
+          if (!petInTx || petInTx.openid !== openid) throw new Error('宠物不存在')
+          const prev = petInTx.vaccineCertification || {}
+          if (prev.status === 'pending' || prev.renewalPending === true) {
+            throw new Error('已有疫苗认证待审核申请，请勿重复提交')
+          }
+          const isRenew = prev.status === 'approved'
+          const created = await tx.collection('pet_vaccine_certifications').add({ data: application })
+          const nextCert = isRenew ? {
+            ...prev,
+            status: 'approved',
+            renewalPending: true,
+            submittedAt: prev.submittedAt || time,
+            reviewRemark: '',
+            rejectReason: '',
+            latestApplicationId: created._id
+          } : {
+            status: 'pending',
+            renewalPending: false,
+            fileIds,
+            submittedAt: time,
+            reviewedAt: '',
+            reviewedByOpenid: '',
+            reviewRemark: '',
+            rejectReason: '',
+            validUntil,
+            vaccineTypes,
+            certificateNo,
+            latestApplicationId: created._id
+          }
+          await tx.collection('pets').doc(petId).update({ data: { vaccineCertification: nextCert, updatedAt: time } })
+          return { applicationId: created._id, vaccineCertification: nextCert }
+        })
+      }
       const created = await db.collection('pet_vaccine_certifications').add({ data: application })
       const previous = currentPet.vaccineCertification || {}
       const isRenewal = previous.status === 'approved'

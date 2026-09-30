@@ -1630,6 +1630,10 @@ module.exports = function createHandler(context) {
       const validUntil = safeText(data.validUntil).trim()
       if (validUntil && !/^\d{4}-\d{2}-\d{2}$/.test(validUntil)) throw new Error('请选择有效的疫苗有效期')
       if (!approved && !rejectReason) throw new Error('请填写驳回原因')
+      const textToCheck = [adminRemark, rejectReason].filter(Boolean).join(' ')
+      if (textToCheck && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, textToCheck, { scene: 2, label: '疫苗审核备注' })
+      }
       const applicationRes = await db.collection('pet_vaccine_certifications').doc(applicationId).get().catch(() => ({ data: null }))
       const application = applicationRes && applicationRes.data
       if (!application) throw new Error('疫苗认证申请不存在')
@@ -1767,9 +1771,17 @@ module.exports = function createHandler(context) {
       const staffProfileId = safeText(data.staffProfileId).trim()
       if (!staffProfileId) throw new Error('请选择宠托师')
       const status = data.auditStatus === 'approved' ? 'approved' : 'rejected'
+      const auditRemark = safeText(data.auditRemark || data.remark).trim()
+      if (auditRemark.length > 500) throw new Error('审核备注不能超过 500 字')
+      if (auditRemark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, auditRemark, { scene: 2, label: '资质审核备注' })
+      }
       const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
       const profile = profileRes && profileRes.data
       if (!profile) throw new Error('宠托师档案不存在')
+      if (profile.auditStatus === status) {
+        throw new Error('该宠托师资质已处于该审核状态，请勿重复操作')
+      }
       if (status === 'approved') requireStaffGender(profile.gender)
       const identityStatus = status === 'approved' ? 'verified' : 'failed'
       const faceVerifyStatus = status === 'approved' ? 'verified' : 'failed'
@@ -1777,9 +1789,9 @@ module.exports = function createHandler(context) {
       const workflowUpdate = status === 'approved'
         ? { staffLevel: 'applicant', onboardingStatus: 'training_pending', videoAuditStatus: 'not_started', promotionStatus: 'none' }
         : { staffLevel: 'applicant', onboardingStatus: 'application_pending', videoAuditStatus: 'not_started', promotionStatus: 'none' }
-      await db.collection('staff_profiles').doc(staffProfileId).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, ...workflowUpdate, ...(status === 'approved' ? { certificationLockedAt: profile.certificationLockedAt || time } : {}), updatedAt: time } })
+      await db.collection('staff_profiles').doc(staffProfileId).update({ data: { auditStatus: status, auditRemark, identityStatus, faceVerifyStatus, ...workflowUpdate, ...(status === 'approved' ? { certificationLockedAt: profile.certificationLockedAt || time } : {}), updatedAt: time } })
       const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId }).limit(1).get()
-      if (identityRes.data[0]) await db.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({ data: { auditStatus: status, auditRemark: data.auditRemark || '', identityStatus, faceVerifyStatus, auditedByOpenid: openid, auditedAt: time, updatedAt: time } })
+      if (identityRes.data[0]) await db.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({ data: { auditStatus: status, auditRemark, identityStatus, faceVerifyStatus, auditedByOpenid: openid, auditedAt: time, updatedAt: time } })
       const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = userRes.data[0]
       if (staffUser && status === 'rejected') {
