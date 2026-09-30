@@ -2,6 +2,7 @@ module.exports = function createService({
   db,
   getOptionalUser,
   grantRetroCards,
+  incUpdateValue,
   normalizeMemberBadgeStyle,
   normalizeMemberBadgeTag,
   normalizeMemberNameColor,
@@ -249,7 +250,10 @@ module.exports = function createService({
       } catch (_) {}
       const currentCards = Number((inviterDoc && inviterDoc.retroCardCount) !== undefined ? inviterDoc.retroCardCount : (inviter.retroCardCount || 0))
       const nextCards = currentCards + 1
-      await userWriter.doc(inviter._id).update({ data: { retroCardCount: nextCards, updatedAt: time } })
+      const updateValue = typeof incUpdateValue === 'function'
+        ? incUpdateValue(inviterDoc && inviterDoc.retroCardCount, 1)
+        : (db.command && typeof db.command.inc === 'function' ? db.command.inc(1) : nextCards)
+      await userWriter.doc(inviter._id).update({ data: { retroCardCount: updateValue, updatedAt: time } })
       await logWriter.add({
         data: {
           userId: inviter._id,

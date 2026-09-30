@@ -498,8 +498,13 @@ module.exports = function createHandler(context) {
       const clientRequestId = getClientRequestId(data)
       const { order } = await requireClientOrder(openid, data.orderId, '无权取消订单')
       if (order.status === 'cancelled') return { orderId: data.orderId, status: 'cancelled', refundStatus: order.refundStatus || '', refundAmount: Number(order.refundAmount || 0), refundNo: order.refundNo || '' }
+      const reason = safeText(data.reason).trim()
+      if (reason.length > 200) throw new Error('取消原因不能超过 200 字')
+      if (reason && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '订单取消原因' })
+      }
       if (order.status === 'pending_pay') {
-        const cancelled = await cancelUnpaidOrder(order, { reason: data.reason || '宠物主取消', actorRole: 'client' })
+        const cancelled = await cancelUnpaidOrder(order, { reason: reason || '宠物主取消', actorRole: 'client' })
         if (!cancelled) throw new Error('支付或订单状态已更新，请刷新后重新取消')
         return { orderId: data.orderId, status: 'cancelled', refundAmount: 0, refundStatus: '', refundNo: '' }
       }
@@ -507,13 +512,13 @@ module.exports = function createHandler(context) {
       const quote = getCancelQuoteForOrder(order)
       if (!quote.canCancel) throw new Error(quote.ruleText)
       const time = now()
-      const update = { status: 'cancelled', cancelReason: data.reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time }
+      const update = { status: 'cancelled', cancelReason: reason || '', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, canceledAt: time, updatedAt: time }
       if (order.status === 'day_completed') {
         update.serviceSessions = (order.serviceSessions || []).map((s) => s.status === 'completed' ? s : { ...s, status: 'cancelled', cancelledAt: time })
       }
       let refund = null
       if (order.paymentStatus === 'paid' && quote.refundAmount > 0) {
-        refund = await createRefundForOrder(order, quote.refundAmount, data.reason || '宠物主取消', 'client_cancel', openid, clientRequestId, { cancelStatus: 'cancelled' })
+        refund = await createRefundForOrder(order, quote.refundAmount, reason || '宠物主取消', 'client_cancel', openid, clientRequestId, { cancelStatus: 'cancelled' })
         update.paymentStatus = 'refunding'
         update.refundNo = refund.refundNo
       }

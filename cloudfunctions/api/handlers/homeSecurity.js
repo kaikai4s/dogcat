@@ -391,9 +391,18 @@ module.exports = function createHandler(context) {
       if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
       const security = stripLegacyHomeSecuritySecrets(order.orderHomeSecurity || order.homeSecuritySnapshot || {})
       if (security.type !== 'key' || !security.key) throw new Error('该订单不是钥匙入户方式')
+      if (security.key && security.key.returnedAt) {
+        const prevImages = Array.isArray(security.key.returnImageFileIds) ? security.key.returnImageFileIds : []
+        const inputImages = Array.isArray(data.imageFileIds) ? data.imageFileIds.filter(Boolean) : []
+        if (inputImages.length && prevImages.length && inputImages.join(',') === prevImages.join(',')) {
+          return toPublicOrderHomeSecurity(security)
+        }
+        throw new Error('钥匙已完成放回登记，不可重复覆盖归还记录')
+      }
       const imageFileIds = Array.isArray(data.imageFileIds) ? data.imageFileIds.filter(Boolean) : []
       if (!imageFileIds.length) throw new Error('请上传放回钥匙位置图片')
       const returnNote = safeText(data.note || data.returnNote).trim()
+      if (returnNote.length > 200) throw new Error('钥匙放回说明不能超过 200 字')
       if (returnNote && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, returnNote, { scene: 2, label: '钥匙放回说明' })
       }

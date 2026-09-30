@@ -219,6 +219,7 @@ module.exports = function createHandler(context) {
       if (!['pending_ship', 'shipped', 'completed'].includes(order.status) || order.paymentStatus !== 'paid') throw new Error('当前订单不可申请售后')
       const reason = safeText(data.reason).trim()
       if (!reason) throw new Error('请填写售后原因')
+      if (reason.length > 500) throw new Error('售后原因不能超过 500 字')
       if (typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, reason, { scene: 2, label: '商城售后原因' })
       }

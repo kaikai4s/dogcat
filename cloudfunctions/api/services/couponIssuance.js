@@ -94,15 +94,26 @@ module.exports = function createService({
           throw new Error('优惠券已达到发放上限')
         }
 
-        if (couponDocId) {
+        const userLimit = Number(templateDoc.perUserLimit || 1)
+        let effectiveCouponDocId = couponDocId
+        let isDefaultPerUserSlot = false
+        if (!effectiveCouponDocId && userLimit === 1) {
+          effectiveCouponDocId = `uc_userlimit_${templateId}_${targetUser.openid}`
+          isDefaultPerUserSlot = true
+        }
+
+        if (effectiveCouponDocId) {
           let existingDoc = null
           try {
-            const got = await tx.collection('user_coupons').doc(couponDocId).get()
+            const got = await tx.collection('user_coupons').doc(effectiveCouponDocId).get()
             existingDoc = got && got.data
           } catch (err) {
             existingDoc = null
           }
           if (existingDoc) {
+            if (isDefaultPerUserSlot) {
+              throw new Error('该用户已达到领取上限')
+            }
             return {
               _id: existingDoc._id,
               templateSnapshot: existingDoc.templateSnapshot,
@@ -113,9 +124,9 @@ module.exports = function createService({
           }
         }
 
-        let finalCouponId = couponDocId
-        if (couponDocId) {
-          await tx.collection('user_coupons').doc(couponDocId).set({ data: couponRecord })
+        let finalCouponId = effectiveCouponDocId
+        if (effectiveCouponDocId) {
+          await tx.collection('user_coupons').doc(effectiveCouponDocId).set({ data: couponRecord })
         } else {
           finalCouponId = `uc_${templateId}_${targetUser._id || targetUser.openid}_${time.getTime()}_${Math.random().toString(36).slice(2, 8)}`
           await tx.collection('user_coupons').doc(finalCouponId).set({ data: couponRecord })

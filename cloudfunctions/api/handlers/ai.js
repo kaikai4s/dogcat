@@ -8,10 +8,27 @@ module.exports = function createHandler(context) {
     readScopedDocuments,
     safeText
   } = context
+
+  const aiRequestTimestamps = new Map()
+  function checkAiRateLimit(userOpenid, maxPerMinute = 10) {
+    if (!userOpenid) return
+    const nowTs = Date.now()
+    const oneMinuteAgo = nowTs - 60 * 1000
+    let userTimestamps = aiRequestTimestamps.get(userOpenid) || []
+    userTimestamps = userTimestamps.filter((t) => t >= oneMinuteAgo)
+    if (userTimestamps.length >= maxPerMinute) {
+      throw new Error('AI 咨询过于频繁，请稍后再试（1分钟内限10次）')
+    }
+    userTimestamps.push(nowTs)
+    aiRequestTimestamps.set(userOpenid, userTimestamps)
+  }
+
   return async function ai(openid, action, data) {
     if (action === 'aiPetAssistant') {
       const question = safeText(data.question).trim()
       if (!question) throw new Error('请填写咨询问题')
+      if (question.length > 300) throw new Error('咨询问题不能超过 300 字')
+      checkAiRateLimit(openid, 10)
       if (typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, question, { scene: 2, label: 'AI提问内容' })
       }

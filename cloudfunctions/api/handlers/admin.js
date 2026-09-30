@@ -2508,13 +2508,31 @@ module.exports = function createHandler(context) {
       return list
     }
     if (action === 'auditDepositRefund') {
-      return settleStaffDeposit({ ...admin, openid }, action, data)
+      const reason = safeText(data.reason || data.auditRemark).trim()
+      if (reason.length > 200) throw new Error('审核说明不能超过 200 字')
+      if (reason && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '保证金退款审核说明' })
+      }
+      return settleStaffDeposit({ ...admin, openid }, action, { ...data, reason })
     }
     if (action === 'confirmDepositRefund') {
+      const proof = safeText(data.paymentReference).trim()
+      if (proof.length > 100) throw new Error('付款凭证号不能超过 100 字')
       return settleStaffDeposit({ ...admin, openid }, action, data)
     }
     if (action === 'forfeitStaffDeposit') {
-      return settleStaffDeposit({ ...admin, openid }, action, data)
+      const reason = safeText(data.reason || data.auditRemark).trim()
+      if (reason.length > 200) throw new Error('没收原因不能超过 200 字')
+      if (reason && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '保证金没收原因' })
+      }
+      const evidenceImages = Array.isArray(data.evidenceImages) ? data.evidenceImages.filter(Boolean) : []
+      if (evidenceImages.length && typeof checkImageSecurity === 'function') {
+        for (const img of evidenceImages) {
+          await checkImageSecurity(openid, img, { scene: 1, label: '保证金没收凭证' })
+        }
+      }
+      return settleStaffDeposit({ ...admin, openid }, action, { ...data, reason, evidenceImages })
     }
     if (action === 'listSupplyReimbursements') {
       const range = buildDateRange(data)
@@ -2550,9 +2568,16 @@ module.exports = function createHandler(context) {
       return list
     }
     if (action === 'auditSupplyReimbursement') {
-      return settleSupplyReimbursement({ ...admin, openid }, action, data)
+      const reason = safeText(data.rejectReason || data.reason || data.auditRemark).trim()
+      if (reason.length > 200) throw new Error('审核说明不能超过 200 字')
+      if (reason && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '报销审核说明' })
+      }
+      return settleSupplyReimbursement({ ...admin, openid }, action, { ...data, rejectReason: reason, auditRemark: reason })
     }
     if (action === 'paySupplyReimbursement') {
+      const proof = safeText(data.paymentReference).trim()
+      if (proof.length > 100) throw new Error('付款凭证号不能超过 100 字')
       return settleSupplyReimbursement({ ...admin, openid }, action, data)
     }
     if (action === 'republishOrderAsUrgent') {
