@@ -49,7 +49,16 @@ module.exports = function createHandler(context) {
       const contactInfo = safeText(data.contactInfo).trim()
       if (!content) throw new Error('请输入反馈内容')
       if (content.length > 2000) throw new Error('反馈内容不超过 2000 字')
-      await checkTextSecurity(openid, content, { scene: 2, label: '反馈内容' })
+      if (typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, content, { scene: 2, label: '反馈内容' })
+        if (contactInfo) {
+          await checkTextSecurity(openid, contactInfo, { scene: 2, label: '联系方式' })
+        }
+      }
+      const mediaFileIds = Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9).map(safeFileId).filter(Boolean) : []
+      if (mediaFileIds.length && typeof checkImageSecurity === 'function') {
+        await Promise.all(mediaFileIds.map((fileId) => checkImageSecurity(openid, fileId, { scene: 2, label: '反馈附件图片' })))
+      }
       const time = now()
       const feedback = {
         openid,
@@ -59,7 +68,7 @@ module.exports = function createHandler(context) {
         category,
         content,
         contactInfo,
-        mediaFileIds: Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9).map(safeFileId).filter(Boolean) : [],
+        mediaFileIds,
         status: 'pending',
         createdAt: time,
         updatedAt: time

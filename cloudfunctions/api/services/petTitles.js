@@ -1,3 +1,5 @@
+const crypto = require('crypto')
+
 module.exports = function createService({
   addPoints,
   db,
@@ -116,6 +118,12 @@ module.exports = function createService({
   }
 
   async function findOwnedTitle(openid, titleId) {
+    if (!openid || !titleId) return null
+    const docId = `upt_${crypto.createHash('md5').update(`${openid}_${titleId}`).digest('hex')}`
+    try {
+      const docRes = await db.collection('user_pet_titles').doc(docId).get()
+      if (docRes && docRes.data) return docRes.data
+    } catch (_) {}
     const res = await db.collection('user_pet_titles').where({ openid, titleId }).limit(1).get()
     return res.data[0] || null
   }
@@ -123,6 +131,11 @@ module.exports = function createService({
   async function findGrant(sourceKey) {
     const key = safeText(sourceKey).trim()
     if (!key) return null
+    const docId = `ptg_${crypto.createHash('md5').update(key).digest('hex')}`
+    try {
+      const docRes = await db.collection('pet_title_grants').doc(docId).get()
+      if (docRes && docRes.data) return docRes.data
+    } catch (_) {}
     const res = await db.collection('pet_title_grants').where({ sourceKey: key }).limit(1).get()
     return res.data[0] || null
   }
@@ -132,11 +145,51 @@ module.exports = function createService({
     const sourceType = safeText(options.sourceType).trim() || 'admin'
     const sourceId = safeText(options.sourceId).trim()
     const sourceKey = safeText(options.sourceKey).trim() || `${sourceType}:${sourceId || user.openid}:${title._id}`
+    const grantDocId = `ptg_${crypto.createHash('md5').update(sourceKey).digest('hex')}`
+    const inventoryDocId = `upt_${crypto.createHash('md5').update(`${user.openid}_${title._id}`).digest('hex')}`
+
     const previousGrant = await findGrant(sourceKey)
     if (previousGrant) return previousGrant
+
     const time = now()
-    const existing = await findOwnedTitle(user.openid, title._id)
+    let existing = await findOwnedTitle(user.openid, title._id)
     let result
+
+    if (!existing) {
+      const inventoryData = {
+        userId: user._id,
+        openid: user.openid,
+        titleId: title._id,
+        titleSnapshot: titleSnapshot(title),
+        equippedPetId: '',
+        sourceType,
+        sourceId,
+        createdAt: time,
+        updatedAt: time
+      }
+      try {
+        await db.collection('user_pet_titles').add({ data: { ...inventoryData, _id: inventoryDocId } })
+        result = {
+          _id: grantDocId,
+          openid: user.openid,
+          userId: user._id,
+          titleId: title._id,
+          sourceType,
+          sourceId,
+          sourceKey,
+          outcome: 'owned',
+          inventoryId: inventoryDocId,
+          compensationPoints: 0,
+          titleSnapshot: inventoryData.titleSnapshot,
+          createdAt: time
+        }
+      } catch (err) {
+        // 并发冲突：另一个并发操作已占位成功，重新拉取已有记录并转入补偿分支
+        existing = await findOwnedTitle(user.openid, title._id)
+        if (!existing) throw err
+      }
+    }
+
     if (existing) {
       const compensationPoints = normalizeDuplicatePoints(options.duplicatePoints !== undefined ? options.duplicatePoints : title.duplicatePoints)
       let pointsResult = null
@@ -144,6 +197,7 @@ module.exports = function createService({
         pointsResult = await addPoints(user.openid, user._id, compensationPoints, 'pet_title_duplicate', sourceKey, `重复获得宠物头衔【${title.name}】补偿`, { baseDelta: compensationPoints })
       }
       result = {
+        _id: grantDocId,
         openid: user.openid,
         userId: user._id,
         titleId: title._id,
@@ -156,34 +210,15 @@ module.exports = function createService({
         titleSnapshot: titleSnapshot(title),
         createdAt: time
       }
-    } else {
-      const inventoryData = {
-        userId: user._id,
-        openid: user.openid,
-        titleId: title._id,
-        titleSnapshot: titleSnapshot(title),
-        equippedPetId: '',
-        sourceType,
-        sourceId,
-        createdAt: time,
-        updatedAt: time
-      }
-      const created = await db.collection('user_pet_titles').add({ data: inventoryData })
-      result = {
-        openid: user.openid,
-        userId: user._id,
-        titleId: title._id,
-        sourceType,
-        sourceId,
-        sourceKey,
-        outcome: 'owned',
-        inventoryId: created._id,
-        compensationPoints: 0,
-        titleSnapshot: inventoryData.titleSnapshot,
-        createdAt: time
-      }
     }
-    await db.collection('pet_title_grants').add({ data: result })
+
+    try {
+      await db.collection('pet_title_grants').add({ data: result })
+    } catch (err) {
+      const grantAgain = await findGrant(sourceKey)
+      if (grantAgain) return grantAgain
+      throw err
+    }
     return result
   }
 

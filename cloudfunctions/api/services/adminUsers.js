@@ -167,6 +167,7 @@ module.exports = function createService({
   }
 
   return {
+    countActiveAdmins,
     getUserManageStats,
     normalizeEditableRoles,
     assertAdminRoleChangeAllowed,

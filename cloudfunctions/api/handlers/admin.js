@@ -20,6 +20,7 @@ module.exports = function createHandler(context) {
     auditStatusText,
     buildDateRange,
     aggregateFinanceDashboard,
+    countActiveAdmins,
     buildMonthlyDashboard,
     buildSubscriptionData,
     calculateStaffEarningForOrder,
@@ -829,8 +830,9 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listAdmins') {
       const keyword = safeText(data.keyword).trim().toLowerCase()
-      const usersRes = await db.collection('users').get()
-      const list = (usersRes.data || [])
+      const inOp = db.command && typeof db.command.in === 'function' ? db.command.in(['admin']) : 'admin'
+      const users = await readAll('users', { roles: inOp })
+      const list = users
         .filter((user) => Array.isArray(user.roles) && user.roles.includes('admin'))
         .filter((user) => !keyword || [user.openid, user.nickname, user.phone, user.status].some((value) => safeText(value).toLowerCase().includes(keyword)))
         .map((user) => safeUserSummary(user, { isSelf: user.openid === openid }))
@@ -852,12 +854,13 @@ module.exports = function createHandler(context) {
       const targetOpenid = safeText(data.openid).trim()
       if (!targetOpenid) throw new Error('请输入用户 openid')
       if (targetOpenid === openid) throw new Error('不能移除自己的管理员权限')
-      const usersRes = await db.collection('users').get()
-      const admins = (usersRes.data || []).filter((user) => Array.isArray(user.roles) && user.roles.includes('admin'))
-      if (admins.length <= 1) throw new Error('至少保留一个管理员')
-      const target = (usersRes.data || []).find((user) => user.openid === targetOpenid)
+      const adminCount = typeof countActiveAdmins === 'function' ? await countActiveAdmins(2) : 2
+      if (adminCount <= 1) throw new Error('至少保留一个管理员')
+      const targetRes = await db.collection('users').where({ openid: targetOpenid }).limit(1).get()
+      const target = targetRes.data && targetRes.data[0]
       if (!target) throw new Error('目标用户不存在')
       const roles = (Array.isArray(target.roles) ? target.roles : []).filter((role) => role !== 'admin')
+      await assertAdminRoleChangeAllowed(target, roles, openid)
       await protectAdminOwner(target, roles, target.status)
       const update = { roles, updatedAt: now() }
       if (target.activeRole === 'admin') update.activeRole = 'client'
@@ -2042,9 +2045,11 @@ module.exports = function createHandler(context) {
       if (delta < 0 && Number(targetUser.points || 0) + delta < 0) {
         throw new Error(`用户当前可用积分不足（当前剩余 ${Number(targetUser.points || 0)} 分），无法扣除 ${Math.abs(delta)} 积分`)
       }
-      await addPoints(targetOpenid, targetUser._id, delta, 'admin_grant', admin._id, reason)
-      await logAdmin(admin, 'user', targetOpenid, 'grantPoints', { delta, reason })
-      return { openid: targetOpenid, delta }
+      const clientRequestId = getClientRequestId(data)
+      const options = clientRequestId ? { idempotencyKey: clientRequestId } : {}
+      const pointResult = await addPoints(targetOpenid, targetUser._id, delta, 'admin_grant', admin._id, reason, options)
+      await logAdmin(admin, 'user', targetOpenid, 'grantPoints', { delta, reason, clientRequestId })
+      return { openid: targetOpenid, delta, balance: pointResult.balance }
     }
     if (action === 'listPointLogs') {
       const targetOpenid = safeText(data.openid).trim()
