@@ -210,6 +210,46 @@ test('payment: createRefund reason length and text security validation', async (
   assert.equal(normalRefundRes.ok, true)
 })
 
+test('payment.getPaymentStatus: 不返回原始回调和内部支付敏感字段', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u_client', openid: 'openid_payment_client', roles: ['client'], status: 'active' }],
+    orders: [{
+      _id: 'order_payment_status',
+      clientOpenid: 'openid_payment_client',
+      status: 'paid',
+      paymentStatus: 'paid',
+      paymentNo: 'PAY_PUBLIC_1',
+      wxTransactionId: 'WX_TX_SECRET',
+      paidAt: '2026-09-30 10:00:00'
+    }],
+    payments: [{
+      _id: 'pay_secret_1',
+      orderId: 'order_payment_status',
+      paymentNo: 'PAY_PUBLIC_1',
+      amount: 88,
+      status: 'success',
+      channel: 'wechat',
+      wxTransactionId: 'WX_TX_SECRET',
+      rawCallback: { payer: { openid: 'openid_payment_client' }, transaction_id: 'WX_TX_SECRET' },
+      rawRequest: { privateInternal: true },
+      rawResponse: { prepay_id: 'SECRET_PREPAY' },
+      createdAt: '2026-09-30 09:59:00',
+      updatedAt: '2026-09-30 10:00:00',
+      paidAt: '2026-09-30 10:00:00'
+    }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_payment_client', { security: securityMock })
+  const res = await fn.main({ module: 'payment', action: 'getPaymentStatus', data: { orderId: 'order_payment_status' } })
+  assert.equal(res.ok, true)
+  assert.equal(res.data.wxTransactionId, undefined)
+  assert.equal(res.data.payments.length, 1)
+  assert.equal(res.data.payments[0].paymentNo, 'PAY_PUBLIC_1')
+  assert.equal(res.data.payments[0].rawCallback, undefined)
+  assert.equal(res.data.payments[0].rawRequest, undefined)
+  assert.equal(res.data.payments[0].rawResponse, undefined)
+  assert.equal(res.data.payments[0].wxTransactionId, undefined)
+})
+
 test('admin: reward mails publish text security and length limits', async () => {
   const db = createCollectionStore({
     users: [

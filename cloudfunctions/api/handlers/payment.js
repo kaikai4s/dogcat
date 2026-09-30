@@ -30,6 +30,18 @@ module.exports = function createHandler(context) {
     updateOrderWhenStatus,
     wechatPayRequest
   } = context
+  function publicPaymentStatus(payment = {}) {
+    return {
+      paymentNo: payment.paymentNo || '',
+      amount: Number(payment.amount || 0),
+      status: payment.status || 'pending',
+      channel: payment.channel || '',
+      createdAt: payment.createdAt || '',
+      updatedAt: payment.updatedAt || '',
+      paidAt: payment.paidAt || ''
+    }
+  }
+
   return async function payment(openid, action, data) {
     if (action === 'createPayment') {
       const { order, collectionName, orderType } = await requireClientPayableOrder(openid, data.orderId, '无权支付该订单')
@@ -82,7 +94,7 @@ module.exports = function createHandler(context) {
     if (action === 'getPaymentStatus') {
       const { order } = await requireClientPayableOrder(openid, data.orderId, '无权查看支付状态')
       const payments = await readScopedDocuments('payments', { orderId: data.orderId }, 'createdAt', 'desc')
-      return { orderId: data.orderId, status: order.status, paymentStatus: order.paymentStatus || 'unpaid', paymentNo: order.paymentNo || '', wxTransactionId: order.wxTransactionId || '', paidAt: order.paidAt || '', payments }
+      return { orderId: data.orderId, status: order.status, paymentStatus: order.paymentStatus || 'unpaid', paymentNo: order.paymentNo || '', paidAt: order.paidAt || '', payments: payments.map(publicPaymentStatus) }
     }
     if (action === 'paymentCallback') throw new Error('paymentCallback 仅限 HTTP 回调调用')
     if (action === 'mockPayOrder') {
