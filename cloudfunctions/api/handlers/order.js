@@ -17,6 +17,7 @@ module.exports = function createHandler(context) {
     canStartOrderSession,
     canTakeOrders,
     checkImageSecurity,
+    checkRateLimit,
     checkTextSecurity,
     checkinEventText,
     completeOrderService,
@@ -965,6 +966,7 @@ module.exports = function createHandler(context) {
 
     if (action === 'sendOrderSessionMessage') {
       checkSessionMessageRateLimit(openid, 30)
+      if (typeof checkRateLimit === 'function') await checkRateLimit(openid, 'order.sendOrderSessionMessage', { max: 30, windowMs: 60 * 1000, message: '会话消息发送过于频繁，请稍后再试' })
       const orderId = safeText(data.id || data.orderId).trim()
       if (!orderId) throw new Error('缺少订单ID')
       const { user, order } = await getOrderForAccess(openid, orderId).catch(() => {

@@ -4,6 +4,7 @@ module.exports = function createHandler(context) {
     appendOrderStaffMessage,
     beijingClockText,
     checkImageSecurity,
+    checkRateLimit,
     checkTextSecurity,
     db,
     decryptText,
@@ -20,6 +21,7 @@ module.exports = function createHandler(context) {
     notifyOrder,
     now,
     readScopedDocuments,
+    isValidMobilePhone,
     safeText,
     toPublicHomeSecuritySnapshot,
     toPublicOrderHomeSecurity,
@@ -56,6 +58,7 @@ module.exports = function createHandler(context) {
   return async function homeSecurity(openid, action, data) {
     if (action === 'saveHomeSecurity') {
       checkHomeSecurityRateLimit(openid, 10)
+      if (typeof checkRateLimit === 'function') await checkRateLimit(openid, 'homeSecurity.saveHomeSecurity', { max: 10, windowMs: 60 * 1000, message: '家庭安防操作过于频繁，请稍后再试' })
       const user = await getUser(openid)
       const doorLockCode = safeText(data.doorLockCode).trim()
       const keyLocation = safeText(data.keyLocation).trim()
@@ -72,7 +75,7 @@ module.exports = function createHandler(context) {
       if (forbiddenAreas.length > 200) throw new Error('禁入区域说明不能超过 200 字')
       if (emergencyContactName.length > 30) throw new Error('紧急联系人姓名不能超过 30 字')
       if (emergencyContactPhone) {
-        if (emergencyContactPhone.length > 20 || !/^1\d{10}$/.test(emergencyContactPhone)) {
+        if (!isValidMobilePhone(emergencyContactPhone)) {
           throw new Error('紧急联系电话格式不正确（请输入11位手机号）')
         }
       }
@@ -326,6 +329,7 @@ module.exports = function createHandler(context) {
 
     if (action === 'updateOrderOneTimeCode') {
       checkHomeSecurityRateLimit(openid, 10)
+      if (typeof checkRateLimit === 'function') await checkRateLimit(openid, 'homeSecurity.updateOrderOneTimeCode', { max: 10, windowMs: 60 * 1000, message: '家庭安防操作过于频繁，请稍后再试' })
       await getUser(openid)
       const orderId = safeText(data.orderId).trim()
       if (!orderId) throw new Error('订单不存在')

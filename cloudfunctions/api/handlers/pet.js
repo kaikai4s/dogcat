@@ -2,6 +2,7 @@ module.exports = function createHandler(context) {
   const {
     callCloudbaseExtendAi,
     checkImageSecurity,
+    checkRateLimit,
     checkTextSecurity,
     cloud,
     db,
@@ -200,6 +201,7 @@ module.exports = function createHandler(context) {
     }
     if (action === 'recognizePetBreed') {
       checkPetBreedRateLimit(openid, 10)
+      if (typeof checkRateLimit === 'function') await checkRateLimit(openid, 'pet.recognizePetBreed', { max: 10, windowMs: 60 * 1000, message: 'AI识别请求过于频繁，请稍后再试' })
       const settings = await getSystemSettings()
       if (settings.enablePetBreedAi === false) throw new Error('AI 识别功能已关闭')
       const avatarFileId = safeText(data.avatarFileId || data.photoFileId)

@@ -2,6 +2,7 @@ module.exports = function createHandler(context) {
   const {
     bindInviteRelation,
     checkImageSecurity,
+    checkRateLimit,
     checkTextSecurity,
     claimCheckinReward,
     cloud,
@@ -19,6 +20,8 @@ module.exports = function createHandler(context) {
     normalizeFontKey,
     normalizeThemeKey,
     now,
+    isProductionPaymentEnv,
+    isValidMobilePhone,
     safeFileId,
     safeText,
     syncClientOrderPhone,
@@ -36,6 +39,54 @@ module.exports = function createHandler(context) {
     }
     userTimestamps.push(nowTs)
     profileUpdateTimestamps.set(userOpenid, userTimestamps)
+  }
+
+  function mockPhoneCodeAllowed(settings = {}) {
+    if (typeof isProductionPaymentEnv === 'function' && isProductionPaymentEnv()) return false
+    if (process.env.NODE_ENV === 'production' || process.env.PAYMENT_ENV === 'production') return false
+    if (settings.enableTestAddressMode === true) return true
+    if (process.env.ALLOW_MOCK_PHONE_CODE === 'true') return true
+    return true
+  }
+
+  async function resolveWechatPhone(code, settings = {}) {
+    const isMockCode = code.includes('mock') || code === 'the code is a mock one' || code.startsWith('mock_')
+    if (isMockCode) {
+      if (!mockPhoneCodeAllowed(settings)) throw new Error('正式环境禁止使用模拟手机号授权码')
+      return '13800138000'
+    }
+    if (settings.enableTestAddressMode) return '13800138000'
+    try {
+      const phoneResult = await cloud.openapi.phonenumber.getPhoneNumber({ code })
+      const phoneInfo = (phoneResult && (phoneResult.phoneInfo || phoneResult.phone_info)) || {}
+      return safeText(phoneInfo.phoneNumber || phoneInfo.purePhoneNumber || phoneInfo.phone_number || phoneInfo.pure_phone_number).trim()
+    } catch (error) {
+      const message = error.message || error.errMsg || JSON.stringify(error)
+      if (message.includes('40029') || message.includes('invalid code')) {
+        throw new Error('手机号授权已过期或失效，请重新授权')
+      }
+      throw new Error(`调用微信手机号接口失败：${message}`)
+    }
+  }
+
+  async function validatePhoneBinding(phone, user, data = {}) {
+    if (!isValidMobilePhone(phone)) throw new Error('手机号格式不正确，请输入有效的11位手机号码')
+    const initAdminPhones = safeText(process.env.INIT_ADMIN_PHONES)
+      .split(',')
+      .map(p => p.trim())
+      .filter(Boolean)
+    if (initAdminPhones.includes(phone) && (!Array.isArray(user.roles) || !user.roles.includes('admin'))) {
+      const secret = safeText(process.env.INIT_ADMIN_SECRET).trim()
+      const providedSecret = safeText(data.secret).trim()
+      if (!secret || providedSecret !== secret) {
+        throw new Error('该手机号受系统安全保护，禁止直接绑定')
+      }
+    }
+    const existingRes = await db.collection('users').where({ phone, status: 'active' }).limit(1).get().catch(() => ({ data: [] }))
+    const existingUser = existingRes && existingRes.data && existingRes.data[0]
+    if (existingUser && existingUser.openid && existingUser.openid !== user.openid) {
+      throw new Error('该手机号码已被其他账号绑定')
+    }
   }
 
   return async function auth(openid, action, data) {
@@ -74,29 +125,13 @@ module.exports = function createHandler(context) {
     if (action === 'loginByPhoneCode') {
       const code = safeText(data.code).trim()
       if (!code) throw new Error('未获取到手机号授权码')
-      let phone = ''
       const settings = await getSystemSettings().catch(() => ({}))
-      const isMockCode = code.includes('mock') || code === 'the code is a mock one' || code.startsWith('mock_')
-
-      if (isMockCode || settings.enableTestAddressMode) {
-        phone = '13800138000'
-      } else {
-        try {
-          const phoneResult = await cloud.openapi.phonenumber.getPhoneNumber({ code })
-          const phoneInfo = (phoneResult && (phoneResult.phoneInfo || phoneResult.phone_info)) || {}
-          phone = safeText(phoneInfo.phoneNumber || phoneInfo.purePhoneNumber || phoneInfo.phone_number || phoneInfo.pure_phone_number).trim()
-        } catch (error) {
-          const message = error.message || error.errMsg || JSON.stringify(error)
-          if (message.includes('40029') || message.includes('invalid code')) {
-            throw new Error('手机号授权已过期或失效，请重新授权')
-          }
-          throw new Error(`调用微信手机号接口失败：${message}`)
-        }
-      }
-
+      const phone = await resolveWechatPhone(code, settings)
       if (!phone) throw new Error('手机号授权获取失败')
-      let user = await getOptionalUser(openid)
       const time = now()
+      let user = await getOptionalUser(openid)
+      const userForValidation = user || { openid, roles: ['client'], status: 'active' }
+      await validatePhoneBinding(phone, userForValidation, data)
       if (!user) {
         const userData = {
           openid,
@@ -120,7 +155,9 @@ module.exports = function createHandler(context) {
         user = { _id: created._id, ...userData }
       } else {
         if (user.status !== 'active') throw new Error('账号不可用')
+        const oldPhone = safeText(user.phone).trim()
         await db.collection('users').doc(user._id).update({ data: { phone, updatedAt: time } })
+        if (phone !== oldPhone) await syncClientOrderPhone(openid, phone)
         user = { ...user, phone, updatedAt: time }
       }
       user = await bindInviteRelation(user, data)
@@ -161,6 +198,7 @@ module.exports = function createHandler(context) {
 
     if (action === 'updateProfile') {
       checkProfileUpdateRateLimit(openid, 15)
+      if (typeof checkRateLimit === 'function') await checkRateLimit(openid, 'auth.updateProfile', { max: 15, windowMs: 60 * 1000, message: '个人资料更新过于频繁，请稍后再试' })
       const user = await getUser(openid)
       const oldPhone = safeText(user.phone).trim()
       const nickname = safeText(data.nickname).trim()
@@ -175,25 +213,7 @@ module.exports = function createHandler(context) {
       }
       const rawPhone = data.phone !== undefined ? safeText(data.phone).trim() : oldPhone
       if (rawPhone && rawPhone !== oldPhone) {
-        if (!/^1[3-9]\d{9}$/.test(rawPhone)) throw new Error('手机号格式不正确（请输入有效11位手机号码）')
-
-        const initAdminPhones = safeText(process.env.INIT_ADMIN_PHONES)
-          .split(',')
-          .map(p => p.trim())
-          .filter(Boolean)
-        if (initAdminPhones.includes(rawPhone) && (!Array.isArray(user.roles) || !user.roles.includes('admin'))) {
-          const secret = safeText(process.env.INIT_ADMIN_SECRET).trim()
-          const providedSecret = safeText(data.secret).trim()
-          if (!secret || providedSecret !== secret) {
-            throw new Error('该手机号受系统安全保护，禁止直接绑定')
-          }
-        }
-
-        const existingRes = await db.collection('users').where({ phone: rawPhone, status: 'active' }).limit(1).get().catch(() => ({ data: [] }))
-        const existingUser = existingRes && existingRes.data && existingRes.data[0]
-        if (existingUser && existingUser.openid && existingUser.openid !== openid) {
-          throw new Error('该手机号码已被其他账号绑定')
-        }
+        await validatePhoneBinding(rawPhone, user, data)
       }
       const payload = {
         nickname,
@@ -255,44 +275,11 @@ module.exports = function createHandler(context) {
 
       if (code) {
         const settings = await getSystemSettings().catch(() => ({}))
-        const isMockCode = code.includes('mock') || code === 'the code is a mock one' || code.startsWith('mock_')
-        if (isMockCode || settings.enableTestAddressMode) {
-          phone = phone || '13800138000'
-        } else {
-          try {
-            const phoneResult = await cloud.openapi.phonenumber.getPhoneNumber({ code })
-            const phoneInfo = (phoneResult && (phoneResult.phoneInfo || phoneResult.phone_info)) || {}
-            phone = safeText(phoneInfo.phoneNumber || phoneInfo.purePhoneNumber || phoneInfo.phone_number || phoneInfo.pure_phone_number).trim()
-          } catch (error) {
-            const message = error.message || error.errMsg || JSON.stringify(error)
-            if (message.includes('40029') || message.includes('invalid code')) {
-              throw new Error('手机号授权已过期或失效，请重新授权')
-            }
-            throw new Error(`调用微信手机号接口失败：${message}`)
-          }
-        }
+        phone = phone || await resolveWechatPhone(code, settings)
       }
 
       if (!phone) throw new Error('手机号不能为空')
-      if (!/^1[3-9]\d{9}$/.test(phone)) throw new Error('请输入有效的11位手机号码')
-
-      const initAdminPhones = safeText(process.env.INIT_ADMIN_PHONES)
-        .split(',')
-        .map(p => p.trim())
-        .filter(Boolean)
-      if (initAdminPhones.includes(phone) && (!Array.isArray(user.roles) || !user.roles.includes('admin'))) {
-        const secret = safeText(process.env.INIT_ADMIN_SECRET).trim()
-        const providedSecret = safeText(data.secret).trim()
-        if (!secret || providedSecret !== secret) {
-          throw new Error('该手机号受系统安全保护，禁止直接绑定')
-        }
-      }
-
-      const existingRes = await db.collection('users').where({ phone, status: 'active' }).limit(1).get().catch(() => ({ data: [] }))
-      const existingUser = existingRes && existingRes.data && existingRes.data[0]
-      if (existingUser && existingUser.openid && existingUser.openid !== openid) {
-        throw new Error('该手机号码已被其他账号绑定')
-      }
+      await validatePhoneBinding(phone, user, data)
 
       const updateTime = now()
       await db.collection('users').doc(user._id).update({ data: { phone, updatedAt: updateTime } })

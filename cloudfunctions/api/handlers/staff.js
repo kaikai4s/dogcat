@@ -26,6 +26,7 @@ module.exports = function createHandler(context) {
     canTakeOrders,
     checkAcceptOrderRisk,
     checkImageSecurity,
+    checkRateLimit,
     checkTextSecurity,
     createPaymentNo,
     db,
@@ -486,6 +487,7 @@ module.exports = function createHandler(context) {
     }
     if (action === 'submitTrainingQuiz') {
       checkQuizSubmitRateLimit(openid, 3, 10 * 60 * 1000)
+      if (typeof checkRateLimit === 'function') await checkRateLimit(openid, 'staff.submitTrainingQuiz', { max: 3, windowMs: 10 * 60 * 1000, message: '答题提交过于频繁，请稍后复习培训资料后再试（10分钟内限提交3次）' })
       await getUser(openid)
       const profile = await getStaffProfileByOpenid(openid)
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可参加培训答题')
@@ -507,6 +509,7 @@ module.exports = function createHandler(context) {
     }
     if (action === 'markTrainingVideoWatched') {
       checkVideoWatchedRateLimit(openid, 10)
+      if (typeof checkRateLimit === 'function') await checkRateLimit(openid, 'staff.markTrainingVideoWatched', { max: 10, windowMs: 60 * 1000, message: '培训进度同步过于频繁，请稍后再试' })
       await getUser(openid)
       const profile = await getStaffProfileByOpenid(openid)
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可观看培训视频')
@@ -1351,7 +1354,7 @@ module.exports = function createHandler(context) {
         assignmentUpdate.acceptRiskConfirmedAt = time
         assignmentUpdate.acceptRiskWarnings = risk.warnings
       }
-      const assignedOrder = await assignOrderAtomically(data.orderId, order, assignmentUpdate, { depositConfig: settings.staffDeposit, riskConfirmed: data.riskConfirmed === true })
+      const assignedOrder = await assignOrderAtomically(data.orderId, order, assignmentUpdate, { depositConfig: settings.staffDeposit, dispatchConfig: settings.dispatch || {}, enforceAcceptLimits: true, riskConfirmed: data.riskConfirmed === true })
       let assignedTitle = publishMode === 'direct' ? '指定宠托师已接单' : (isUrgentGrab ? '加急揭榜抢单' : '宠托师已抢单')
       let timelineDetail = maskStaffName(profile.realName)
       if (isUrgentGrab) {

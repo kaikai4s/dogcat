@@ -2,6 +2,7 @@ const { assertStaffGenderMatches } = require('../utils/staffGender')
 
 module.exports = function createService(context) {
   const {
+    assertStaffCanAcceptOrderVaccines, attachOrderDisplayData,
     crypto, db, findStaffOrderConflict, getOrderTimeRanges, isOrderConflictCandidate,
     now, toTimeValue, validateStaffTakeOrderAbility, validateStaffScheduleOnly,
     getDateKeyFromTime, parseDateTimeParts, validateSitterScheduleTime
@@ -37,6 +38,38 @@ module.exports = function createService(context) {
     }
   }
 
+  async function assertStaffAssignmentLimits(transaction, staffOpenid, order, orderId, dispatchConfig = {}) {
+    const _ = db.command
+    const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
+    const activeStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
+    const activeOrdersRes = await transaction.collection('orders').where({ staffOpenid, status: inOp(activeStatuses) }).limit(100).get().catch(() => ({ data: [] }))
+    const activeOrders = (activeOrdersRes.data || []).filter(o => o && !o.adminDeletedAt && o._id !== orderId)
+    const maxActiveOrders = Number(dispatchConfig.maxStaffActiveOrders || 8)
+    if (activeOrders.length >= maxActiveOrders) {
+      throw new Error(`您当前进行中订单已有 ${activeOrders.length} 笔，已达接单上限（最多 ${maxActiveOrders} 笔），请先履约完成后再接新单`)
+    }
+
+    const targetDate = String(order.serviceStartDate || order.startTime || '').slice(0, 10)
+    if (!targetDate) return
+    const dailyStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed']
+    const dailyOrdersRes = await transaction.collection('orders').where({ staffOpenid, status: inOp(dailyStatuses) }).limit(200).get().catch(() => ({ data: [] }))
+    const sameDayOrders = (dailyOrdersRes.data || []).filter((o) => {
+      if (!o || o.adminDeletedAt || o._id === orderId) return false
+      const oDate = String(o.serviceStartDate || o.startTime || '').slice(0, 10)
+      return oDate === targetDate
+    })
+    const maxDailyOrders = Number(dispatchConfig.maxStaffDailyOrders || 6)
+    if (sameDayOrders.length >= maxDailyOrders) {
+      throw new Error(`您在 ${targetDate} 已接单 ${sameDayOrders.length} 笔，已达单日接单上限（${maxDailyOrders} 笔），请合理规划时间避免服务延误`)
+    }
+  }
+
+  async function assertVaccinesStillAllowed(profile, order) {
+    if (typeof assertStaffCanAcceptOrderVaccines !== 'function') return
+    const orderForVaccineCheck = typeof attachOrderDisplayData === 'function' ? await attachOrderDisplayData(order) : order
+    assertStaffCanAcceptOrderVaccines(profile, orderForVaccineCheck)
+  }
+
   async function assignOrderAtomically(orderId, expectedOrder, patch, options = {}) {
     return db.runTransaction(async transaction => {
       // All assignment paths write the same user document, preventing cross-order write skew.
@@ -48,10 +81,12 @@ module.exports = function createService(context) {
       const order = (await transaction.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data
       if (!order || order.status !== 'paid' || order.staffOpenid || order.adminDeletedAt) throw new Error('订单已被分配或状态不可接单')
       assertStaffGenderMatches(order, profile)
+      await assertVaccinesStillAllowed(profile, order)
       if (assignmentTerms(order) !== assignmentTerms(expectedOrder)) throw new Error('订单预约信息已变化，请刷新后重新接单')
       if (toTimeValue(order.startTime) > 0 && toTimeValue(order.startTime) <= now().getTime()) throw new Error('订单服务时间已过，无法接单')
       if (!options.admin && order.requestedStaffOpenid && order.requestedStaffOpenid !== patch.staffOpenid) throw new Error('该订单指定了其他宠托师')
       await assertNoConflict(transaction, patch.staffOpenid, order, orderId)
+      if (options.enforceAcceptLimits) await assertStaffAssignmentLimits(transaction, patch.staffOpenid, order, orderId, options.dispatchConfig || {})
       for (const range of getOrderTimeRanges(order)) {
         try { await validateStaffScheduleOnly(profile, range.startTime, range.endTime) }
         catch (error) { if (!options.riskConfirmed) throw error }
@@ -234,7 +269,7 @@ module.exports = function createService(context) {
             updatedAt: time
           }
 
-          const assigned = await assignOrderAtomically(order._id, order, assignmentUpdate, { admin: true, riskConfirmed: true, depositConfig: settings.staffDeposit })
+          const assigned = await assignOrderAtomically(order._id, order, assignmentUpdate, { admin: true, riskConfirmed: true, depositConfig: settings.staffDeposit, dispatchConfig: settings.dispatch || {}, enforceAcceptLimits: true })
           if (assigned) {
             const title = '指定预约超时已自动接单'
             const detail = '指定宠托师超过1小时未手动操作，系统已自动接单。'

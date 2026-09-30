@@ -199,7 +199,14 @@ module.exports = function createHandler(context) {
         await checkTextSecurity(openid, shipTextToCheck, { scene: 2, label: '发货快递信息' })
       }
       const time = now()
-      await db.collection('mall_orders').doc(order._id).update({ data: { status: 'shipped', expressCompany, trackingNo, shippedAt: time, updatedAt: time } })
+      await db.runTransaction(async tx => {
+        const current = (await tx.collection('mall_orders').doc(order._id).get().catch(() => ({ data: null }))).data
+        if (!current) throw new Error('订单不存在')
+        if (current.status !== 'pending_ship') throw new Error('当前订单不可发货')
+        if (current.paymentStatus && current.paymentStatus !== 'paid') throw new Error('订单未支付，不能发货')
+        if (current.refundStatus === 'applied' || current.refundStatus === 'processing') throw new Error('该订单存在退款申请，请先处理退款后再发货')
+        await tx.collection('mall_orders').doc(order._id).update({ data: { status: 'shipped', expressCompany, trackingNo, shippedAt: time, updatedAt: time } })
+      })
       await logAdmin(admin, 'mall_order', order._id, 'shipOrder', { expressCompany, trackingNo })
       return { orderId: order._id, status: 'shipped', expressCompany, trackingNo }
     }

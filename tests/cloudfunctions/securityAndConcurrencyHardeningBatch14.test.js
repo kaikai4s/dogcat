@@ -53,6 +53,20 @@ test('auth.updateProfile: 频率限制生效', async () => {
   assert.match(res.error, /频繁|限制/)
 })
 
+test('auth.updateProfile: 数据库限流跨实例生效', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_rate_db', status: 'active', roles: ['client'] }]
+  })
+  const fn1 = loadCloudFunction('api', db, 'openid_rate_db', { security: securityMock })
+  for (let i = 0; i < 15; i++) {
+    await fn1.main({ module: 'auth', action: 'updateProfile', data: { nickname: `db${i}` } })
+  }
+  const fn2 = loadCloudFunction('api', db, 'openid_rate_db', { security: securityMock })
+  const res = await fn2.main({ module: 'auth', action: 'updateProfile', data: { nickname: 'overflow-db' } })
+  assert.equal(res.ok, false)
+  assert.match(res.error, /频繁|限制/)
+})
+
 // ========== homeSecurity.saveHomeSecurity ==========
 
 test('homeSecurity.saveHomeSecurity: 字段长度超限被拒', async () => {
@@ -83,6 +97,14 @@ test('homeSecurity.saveHomeSecurity: emergencyContactPhone格式验证', async (
   })
   assert.equal(res.ok, false)
   assert.match(res.error, /紧急联系电话格式不正确/)
+
+  const invalidSegment = await fn.main({
+    module: 'homeSecurity',
+    action: 'saveHomeSecurity',
+    data: { orderId: 'order_hs2', emergencyContactPhone: '11112345678' }
+  })
+  assert.equal(invalidSegment.ok, false)
+  assert.match(invalidSegment.error, /紧急联系电话格式不正确/)
 })
 
 // ========== homeSecurity.updateOrderOneTimeCode ==========

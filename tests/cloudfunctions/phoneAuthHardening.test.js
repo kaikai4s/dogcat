@@ -88,6 +88,65 @@ test('phone auth network or server failure throws error and blocks dirty data cr
   assert.equal(db.state.users.length, 0)
 })
 
+test('production rejects explicit mock phone authorization code', async () => {
+  const previousPaymentEnv = process.env.PAYMENT_ENV
+  process.env.PAYMENT_ENV = 'production'
+  try {
+    const db = createCollectionStore({
+      users: [],
+      platform_configs: [
+        { _id: 'cfg_1', key: 'system_settings', value: { enableTestAddressMode: false } }
+      ]
+    })
+    const fn = loadCloudFunction('api', db, 'openid_prod_mock')
+    const res = await fn.main({ module: 'auth', action: 'loginByPhoneCode', data: { code: 'the code is a mock one' } })
+    assert.equal(res.ok, false)
+    assert.match(res.error || res.message, /正式环境禁止使用模拟手机号授权码/)
+    assert.equal(db.state.users.length, 0)
+  } finally {
+    if (previousPaymentEnv === undefined) delete process.env.PAYMENT_ENV
+    else process.env.PAYMENT_ENV = previousPaymentEnv
+  }
+})
+
+test('loginByPhoneCode rejects phone already bound by another active account', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'u_existing', openid: 'openid_existing', phone: '19900006302', roles: ['client'], status: 'active' }],
+    platform_configs: [{ _id: 'cfg_1', key: 'system_settings', value: { enableTestAddressMode: false } }]
+  })
+  const fn = loadCloudFunction('api', db, 'openid_new_duplicate')
+  const res = await fn.main({ module: 'auth', action: 'loginByPhoneCode', data: { code: 'real_wx_code' } })
+  assert.equal(res.ok, false)
+  assert.match(res.error || res.message, /已被其他账号绑定/)
+  assert.equal(db.state.users.length, 1)
+})
+
+test('loginByPhoneCode protects initial admin whitelist phone with secret', async () => {
+  const previousPhones = process.env.INIT_ADMIN_PHONES
+  const previousSecret = process.env.INIT_ADMIN_SECRET
+  process.env.INIT_ADMIN_PHONES = '19900006302'
+  process.env.INIT_ADMIN_SECRET = 'admin-secret'
+  try {
+    const db = createCollectionStore({
+      users: [],
+      platform_configs: [{ _id: 'cfg_1', key: 'system_settings', value: { enableTestAddressMode: false } }]
+    })
+    const fn = loadCloudFunction('api', db, 'openid_admin_phone_claim')
+    const blocked = await fn.main({ module: 'auth', action: 'loginByPhoneCode', data: { code: 'real_wx_code' } })
+    assert.equal(blocked.ok, false)
+    assert.match(blocked.error || blocked.message, /受系统安全保护/)
+
+    const allowed = await fn.main({ module: 'auth', action: 'loginByPhoneCode', data: { code: 'real_wx_code_2', secret: 'admin-secret' } })
+    assert.equal(allowed.ok, true)
+    assert.equal(allowed.data.phone, '19900006302')
+  } finally {
+    if (previousPhones === undefined) delete process.env.INIT_ADMIN_PHONES
+    else process.env.INIT_ADMIN_PHONES = previousPhones
+    if (previousSecret === undefined) delete process.env.INIT_ADMIN_SECRET
+    else process.env.INIT_ADMIN_SECRET = previousSecret
+  }
+})
+
 test('explicit mock code or enableTestAddressMode still allows test phone fallback for dev/testing', async () => {
   const db = createCollectionStore({
     users: [],
