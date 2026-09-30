@@ -1586,10 +1586,17 @@ module.exports = function createHandler(context) {
     }
     if (action === 'replyFeedback') {
       const id = safeText(data.id || data.feedbackId).trim()
-      const replyContent = safeText(data.replyContent || data.reply).trim()
-      const status = safeText(data.status).trim() || 'resolved'
       if (!id) throw new Error('请选择反馈')
+      const feedbackRes = await db.collection('user_feedback').doc(id).get().catch(() => null)
+      const feedbackDoc = feedbackRes && feedbackRes.data
+      if (!feedbackDoc) throw new Error('反馈记录不存在')
+      const replyContent = safeText(data.replyContent || data.reply).trim()
       if (!replyContent) throw new Error('请输入回复内容')
+      if (replyContent.length > 1000) throw new Error('回复内容不能超过 1000 字')
+      if (typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, replyContent, { scene: 2, label: '反馈回复内容' })
+      }
+      const status = safeText(data.status).trim() || 'resolved'
       const time = now()
       const updateData = {
         replyContent,
@@ -2100,7 +2107,12 @@ module.exports = function createHandler(context) {
       if (!targetOpenid) throw new Error('请输入用户 openid')
       const delta = Math.round(Number(data.delta || 0))
       if (!delta) throw new Error('积分变动不能为 0')
+      if (delta > 50000 || delta < -50000) throw new Error('单次积分调整幅度不能超过 50000 分')
       const reason = safeText(data.reason).trim() || '管理员操作'
+      if (reason.length > 200) throw new Error('操作原因不能超过 200 字')
+      if (reason && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '积分变动原因' })
+      }
       const targetUser = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
       if (!targetUser) throw new Error('目标用户不存在')
       if (delta < 0 && Number(targetUser.points || 0) + delta < 0) {

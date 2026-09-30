@@ -33,11 +33,16 @@ module.exports = function createHandler(context) {
       const existingByRequest = await findByClientRequestId('order_incidents', { orderId: data.orderId, staffOpenid: openid, clientRequestId })
       if (existingByRequest) return existingByRequest
       const { user, order } = await requireStaffOrder(openid, data.orderId, '不是该订单员工')
-      if (data.description && typeof checkTextSecurity === 'function') {
-        await checkTextSecurity(openid, data.description, { scene: 2, label: 'SOS求助说明' })
+      const title = safeText(data.title).trim() || '宠托师 SOS'
+      if (title.length > 50) throw new Error('求助标题不能超过 50 字')
+      const description = safeText(data.description).trim()
+      if (description.length > 500) throw new Error('SOS求助说明不能超过 500 字')
+      if (description && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, description, { scene: 2, label: 'SOS求助说明' })
       }
+      const mediaFileIds = Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9) : []
       const time = now()
-      const incident = { orderId: data.orderId, clientOpenid: order.clientOpenid || '', staffUserId: user._id, staffOpenid: openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident_sos', data.orderId, openid, time.getTime()), incidentType: normalizeIncidentType(data.incidentType, 'sos'), title: data.title || '宠托师 SOS', description: data.description || '', latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds: data.mediaFileIds || [], status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'staff', createdAt: time, updatedAt: time }
+      const incident = { orderId: data.orderId, clientOpenid: order.clientOpenid || '', staffUserId: user._id, staffOpenid: openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident_sos', data.orderId, openid, time.getTime()), incidentType: normalizeIncidentType(data.incidentType, 'sos'), title, description, latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds, status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'staff', createdAt: time, updatedAt: time }
       const created = await db.collection('order_incidents').add({ data: incident })
       await recordIncidentAction(created._id, 'created_sos', 'staff', openid, { orderId: data.orderId })
       await appendOrderTimeline(data.orderId, 'incident_open', '宠托师发起 SOS', incident.description, 'staff')
@@ -63,22 +68,26 @@ module.exports = function createHandler(context) {
       const existingByRequest = await findByClientRequestId('order_incidents', { orderId: data.orderId, openid, clientRequestId })
       if (existingByRequest) return existingByRequest
       const { user, order } = await requireClientOrder(openid, data.orderId, '仅宠物主可发起投诉')
+      const title = safeText(data.title).trim() || '订单投诉'
+      if (title.length > 50) throw new Error('投诉标题不能超过 50 字')
       const description = safeText(data.description).trim()
       if (!description) throw new Error('请填写投诉说明')
+      if (description.length > 1000) throw new Error('投诉说明不能超过 1000 字')
 
       // 内容安全风控审查
-      const complaintText = [data.title, description].filter(Boolean).join(' ')
+      const complaintText = [title, description].filter(Boolean).join(' ')
       if (complaintText && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, complaintText, { scene: 2, label: '投诉说明' })
       }
-      if (Array.isArray(data.mediaFileIds) && typeof checkImageSecurity === 'function') {
-        for (const fileId of data.mediaFileIds) {
+      const mediaFileIds = Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9) : []
+      if (mediaFileIds.length && typeof checkImageSecurity === 'function') {
+        for (const fileId of mediaFileIds) {
           if (fileId) await checkImageSecurity(openid, fileId, { scene: 2, label: '投诉证据图片' })
         }
       }
 
       const time = now()
-      const incident = { orderId: data.orderId, clientUserId: user._id, clientOpenid: openid, openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident', data.orderId, openid, time.getTime()), staffOpenid: order.staffOpenid || '', staffProfileId: order.staffProfileId || '', incidentType: normalizeIncidentType(data.incidentType, 'complaint'), title: safeText(data.title).trim() || '订单投诉', description, latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds: Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9) : [], status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'client', createdAt: time, updatedAt: time }
+      const incident = { orderId: data.orderId, clientUserId: user._id, clientOpenid: openid, openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident', data.orderId, openid, time.getTime()), staffOpenid: order.staffOpenid || '', staffProfileId: order.staffProfileId || '', incidentType: normalizeIncidentType(data.incidentType, 'complaint'), title, description, latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds, status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'client', createdAt: time, updatedAt: time }
       const created = await db.collection('order_incidents').add({ data: incident })
       await recordIncidentAction(created._id, 'created_complaint', 'client', openid, { orderId: data.orderId })
       await appendOrderTimeline(data.orderId, 'incident_open', '宠物主发起投诉', incident.title, 'client')
@@ -97,16 +106,18 @@ module.exports = function createHandler(context) {
     if (action === 'appendIncidentComment') {
       const { user, incident } = await getIncidentForAccess(openid, data.incidentId)
       const content = safeText(data.content).trim()
+      if (content.length > 500) throw new Error('留言内容不能超过 500 字')
       if (content && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, content, { scene: 2, label: '纠纷留言' })
       }
-      if (Array.isArray(data.mediaFileIds) && typeof checkImageSecurity === 'function') {
-        for (const fileId of data.mediaFileIds) {
+      const mediaFileIds = Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9) : []
+      if (mediaFileIds.length && typeof checkImageSecurity === 'function') {
+        for (const fileId of mediaFileIds) {
           if (fileId) await checkImageSecurity(openid, fileId, { scene: 2, label: '纠纷证据图片' })
         }
       }
       const actorRole = user.roles.includes('admin') ? 'admin' : (incident.staffOpenid === openid ? 'staff' : 'client')
-      const comment = await appendIncidentComment(data.incidentId, actorRole, openid, content, data.mediaFileIds)
+      const comment = await appendIncidentComment(data.incidentId, actorRole, openid, content, mediaFileIds)
       await db.collection('order_incidents').doc(data.incidentId).update({ data: { updatedAt: now() } })
       await recordIncidentAction(data.incidentId, 'commented', actorRole, openid, { commentId: comment._id })
       return comment
@@ -114,16 +125,18 @@ module.exports = function createHandler(context) {
     if (action === 'uploadIncidentEvidence') {
       const { user, incident } = await getIncidentForAccess(openid, data.incidentId)
       const remark = safeText(data.remark).trim() || '补充证据'
+      if (remark.length > 200) throw new Error('证据备注不能超过 200 字')
       if (remark && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, remark, { scene: 2, label: '证据备注' })
       }
-      if (Array.isArray(data.mediaFileIds) && typeof checkImageSecurity === 'function') {
-        for (const fileId of data.mediaFileIds) {
+      const mediaFileIds = Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9) : []
+      if (mediaFileIds.length && typeof checkImageSecurity === 'function') {
+        for (const fileId of mediaFileIds) {
           if (fileId) await checkImageSecurity(openid, fileId, { scene: 2, label: '补充证据图片' })
         }
       }
       const actorRole = user.roles.includes('admin') ? 'admin' : (incident.staffOpenid === openid ? 'staff' : 'client')
-      const comment = await appendIncidentComment(data.incidentId, actorRole, openid, remark, data.mediaFileIds)
+      const comment = await appendIncidentComment(data.incidentId, actorRole, openid, remark, mediaFileIds)
       await recordIncidentAction(data.incidentId, 'evidence_uploaded', actorRole, openid, { commentId: comment._id })
       return comment
     }

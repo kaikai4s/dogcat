@@ -1,4 +1,5 @@
 module.exports = function createService({
+  checkTextSecurity,
   db,
   getUser,
   logAdmin,
@@ -23,12 +24,21 @@ module.exports = function createService({
     const title = safeText(data.title).trim()
     const content = safeText(data.content).trim()
     if (!title) throw new Error('请输入通知标题')
+    if (title.length > 50) throw new Error('通知标题不能超过 50 字')
     if (!content) throw new Error('请输入通知内容')
+    if (content.length > 1000) throw new Error('通知内容不能超过 1000 字')
 
     const target = ['all', 'client', 'staff'].includes(data.target) ? data.target : 'all'
     const type = ['system', 'notice', 'activity'].includes(data.type) ? data.type : 'system'
     const level = ['urgent', 'normal'].includes(data.level) ? data.level : 'normal'
     const targetUrl = safeText(data.targetUrl).trim()
+    if (targetUrl && targetUrl.length > 200) throw new Error('跳转链接不能超过 200 字')
+
+    const textToCheck = [title, content].filter(Boolean).join(' ')
+    if (textToCheck && typeof checkTextSecurity === 'function') {
+      const openid = adminUser.openid || (adminUser && adminUser.data && adminUser.data.openid) || ''
+      await checkTextSecurity(openid, textToCheck, { scene: 2, label: '系统通知内容' })
+    }
     const rawTime = typeof now === 'function' ? now() : (typeof nowText === 'function' ? nowText() : new Date())
     const time = rawTime instanceof Date ? rawTime.toISOString() : String(rawTime)
 

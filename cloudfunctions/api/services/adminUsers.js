@@ -96,6 +96,17 @@ module.exports = function createService({
       throw new Error('该用户存在退款处理中的订单，无法删除')
     }
 
+    // 检查是否存在履约中或售后处理中的商城订单
+    const activeMallStatuses = ['pending_pay', 'paid', 'shipped', 'refund_applied']
+    const activeMallOrderCount = await countByQuery('mall_orders', {
+      clientOpenid: target.openid,
+      status: inOp(activeMallStatuses)
+    }).catch(() => 0)
+
+    if (activeMallOrderCount > 0) {
+      throw new Error('该用户存在履约中或售后处理中的商城订单，无法删除')
+    }
+
     // 2. 检查作为宠托师是否存在尚未完成履约的订单
     const activeStaffStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
     const activeStaffOrderCount = await countByQuery('orders', {
@@ -154,6 +165,7 @@ module.exports = function createService({
   async function detachUserFromHistoricalRecords(targetOpenid, deletedAt) {
     const cleanup = {}
     cleanup.ordersAsClient = await updateByQuery('orders', { clientOpenid: targetOpenid }, { deletedClientOpenid: targetOpenid, clientOpenid: '', clientUserId: '', clientDeletedAt: deletedAt, updatedAt: deletedAt })
+    cleanup.mallOrdersAsClient = await updateByQuery('mall_orders', { clientOpenid: targetOpenid }, { deletedClientOpenid: targetOpenid, clientOpenid: '', clientUserId: '', clientDeletedAt: deletedAt, updatedAt: deletedAt })
     cleanup.ordersAsStaff = await updateByQuery('orders', { staffOpenid: targetOpenid }, { deletedStaffOpenid: targetOpenid, staffOpenid: '', staffUserId: '', staffDeletedAt: deletedAt, updatedAt: deletedAt })
     cleanup.ordersAsRequestedStaff = await updateByQuery('orders', { requestedStaffOpenid: targetOpenid }, { deletedRequestedStaffOpenid: targetOpenid, requestedStaffOpenid: '', updatedAt: deletedAt })
     cleanup.incidentsAsClient = await updateByQuery('order_incidents', { clientOpenid: targetOpenid }, { deletedClientOpenid: targetOpenid, clientOpenid: '', updatedAt: deletedAt })

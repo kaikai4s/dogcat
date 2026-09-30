@@ -95,6 +95,7 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'generatePetVoice') {
+      checkAiRateLimit(openid, 10)
       const petId = safeText(data.petId).trim()
       const petData = data.pet && typeof data.pet === 'object' ? data.pet : {}
       let p = { ...petData }

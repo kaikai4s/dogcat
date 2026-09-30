@@ -10,6 +10,21 @@ module.exports = function createHandler(context) {
     safeFileId,
     safeText
   } = context
+
+  const feedbackTimestamps = new Map()
+  function checkFeedbackRateLimit(userOpenid, maxPerMinute = 5) {
+    if (!userOpenid) return
+    const nowTs = Date.now()
+    const oneMinuteAgo = nowTs - 60 * 1000
+    let userTimestamps = feedbackTimestamps.get(userOpenid) || []
+    userTimestamps = userTimestamps.filter((t) => t >= oneMinuteAgo)
+    if (userTimestamps.length >= maxPerMinute) {
+      throw new Error('反馈提交过于频繁，请稍后再试')
+    }
+    userTimestamps.push(nowTs)
+    feedbackTimestamps.set(userOpenid, userTimestamps)
+  }
+
   return async function system(openid, action, data) {
     if (action === 'getSettings') return getSystemSettings()
     if (action === 'getHomePageData') return getHomePageData(openid, data)
@@ -44,11 +59,13 @@ module.exports = function createHandler(context) {
     }
     if (action === 'submitFeedback') {
       const user = await getUser(openid)
+      checkFeedbackRateLimit(openid, 5)
       const content = safeText(data.content).trim()
       const category = safeText(data.category).trim() || 'general'
       const contactInfo = safeText(data.contactInfo).trim()
       if (!content) throw new Error('请输入反馈内容')
       if (content.length > 2000) throw new Error('反馈内容不超过 2000 字')
+      if (contactInfo.length > 100) throw new Error('联系方式不能超过 100 字')
       if (typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, content, { scene: 2, label: '反馈内容' })
         if (contactInfo) {

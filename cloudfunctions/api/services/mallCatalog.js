@@ -191,9 +191,14 @@ module.exports = function createService({
     const addressDetail = safeText(data.addressDetail || data.detail).trim()
     const doorplate = safeText(data.doorplate).trim()
     if (!contactName) throw new Error('请填写收货人')
+    if (contactName.length > 30) throw new Error('收货人姓名不能超过 30 字')
     if (!contactPhone) throw new Error('请填写收货手机号')
+    if (contactPhone.length > 20) throw new Error('收货手机号格式不正确')
     if (!serviceAddress) throw new Error('请选择收货地址')
+    if (serviceAddress.length > 200) throw new Error('收货地址不能超过 200 字')
     if (!addressDetail) throw new Error('请填写详细地址')
+    if (addressDetail.length > 200) throw new Error('详细地址不能超过 200 字')
+    if (doorplate.length > 100) throw new Error('门牌号不能超过 100 字')
     return { contactName, contactPhone, serviceAddress, addressDetail, doorplate, fullAddress: [serviceAddress, addressDetail, doorplate].filter(Boolean).join(' ') }
   }
 
