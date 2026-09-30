@@ -175,9 +175,37 @@ module.exports = function createService({
     }
 
     const updatedCount = Number(template.issuedCount || 0) + 1
-    await db.collection('coupon_templates').doc(templateId).update({
-      data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time }
-    })
+    const totalLimit = Number(template.totalIssueLimit || 0)
+    let updateSuccess = true
+    if (totalLimit > 0 && db.command && typeof db.command.lt === 'function') {
+      try {
+        const updateRes = await db.collection('coupon_templates').where({
+          _id: templateId,
+          issuedCount: db.command.lt(totalLimit)
+        }).update({
+          data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time }
+        })
+        if (updateRes && updateRes.stats && updateRes.stats.updated === 0) {
+          updateSuccess = false
+        }
+      } catch (whereErr) {
+        await db.collection('coupon_templates').doc(templateId).update({
+          data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time }
+        })
+      }
+    } else {
+      await db.collection('coupon_templates').doc(templateId).update({
+        data: { issuedCount: incUpdateValue(template.issuedCount, 1), updatedAt: time }
+      })
+    }
+
+    if (!updateSuccess) {
+      if (createdId) {
+        await db.collection('user_coupons').doc(createdId).remove().catch(() => {})
+      }
+      throw new Error('优惠券已达到发放上限')
+    }
+
     template.issuedCount = updatedCount
 
     return { _id: createdId, templateSnapshot: snapshot, validFrom: validRange.validFrom, validTo: validRange.validTo }

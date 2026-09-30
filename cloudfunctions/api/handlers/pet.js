@@ -229,6 +229,12 @@ module.exports = function createHandler(context) {
       const time = nowText()
       const beautyPhotos = normalizeBeautyPhotos(data.beautyPhotos, data.avatarFileId)
       const avatarFileId = safeFileId(data.avatarFileId) || safeText(data.avatarFileId) || beautyPhotos[0].fileId
+      if (typeof checkImageSecurity === 'function') {
+        const extraPhotos = beautyPhotos.filter((p) => p.fileId && p.fileId !== data.avatarFileId)
+        if (extraPhotos.length) {
+          await Promise.all(extraPhotos.map((p) => checkImageSecurity(openid, p.fileId, { scene: 1, label: '宠物相册照片' })))
+        }
+      }
       const hasBeautyPhotos = Boolean(Array.isArray(beautyPhotos) && beautyPhotos.length > 0)
       const beautyPhotoCount = Array.isArray(beautyPhotos) ? beautyPhotos.length : 0
       const pet = {
@@ -282,6 +288,13 @@ module.exports = function createHandler(context) {
       const hasDeletedPhoto = existingPhotos.some((photo) => !nextFileIds.has(photo.fileId))
       if (hasDeletedPhoto && toCstParts().dayNumber !== 1) throw new Error('每月1日才可以删除宠物美照')
       const avatarFileId = safeFileId(data.avatarFileId) || safeText(data.avatarFileId) || beautyPhotos[0].fileId
+      if (typeof checkImageSecurity === 'function') {
+        const existingPhotoIds = new Set(existingPhotos.map((p) => p.fileId).filter(Boolean))
+        const newExtraPhotos = beautyPhotos.filter((p) => p.fileId && !existingPhotoIds.has(p.fileId) && p.fileId !== data.avatarFileId)
+        if (newExtraPhotos.length) {
+          await Promise.all(newExtraPhotos.map((p) => checkImageSecurity(openid, p.fileId, { scene: 1, label: '宠物相册照片' })))
+        }
+      }
       const hasBeautyPhotos = Boolean(Array.isArray(beautyPhotos) && beautyPhotos.length > 0)
       const beautyPhotoCount = Array.isArray(beautyPhotos) ? beautyPhotos.length : 0
       await db.collection('pets').doc(petId).update({ data: {

@@ -25,6 +25,7 @@ module.exports = function createHandler(context) {
     calculateStaffEarningForOrder,
     canTakeOrders,
     checkAcceptOrderRisk,
+    checkImageSecurity,
     checkTextSecurity,
     createPaymentNo,
     db,
@@ -705,7 +706,11 @@ module.exports = function createHandler(context) {
       }
 
       if (data.profileBackgroundFileId !== undefined) {
-        updateData.profileBackgroundFileId = safeFileId(data.profileBackgroundFileId)
+        const bgId = safeFileId(data.profileBackgroundFileId)
+        if (bgId && bgId !== profile.profileBackgroundFileId && typeof checkImageSecurity === 'function') {
+          await checkImageSecurity(openid, bgId, { scene: 1, label: '宠托师主页背景图' })
+        }
+        updateData.profileBackgroundFileId = bgId
       }
       if (data.profileIntro !== undefined) {
         const profileIntro = safeText(data.profileIntro).trim().slice(0, 60)

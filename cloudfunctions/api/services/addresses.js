@@ -1,4 +1,5 @@
 module.exports = function createService({
+  checkTextSecurity,
   db,
   now
 }) {
@@ -26,6 +27,10 @@ module.exports = function createService({
     if (!data.serviceAddress) throw new Error('请选择服务地址')
     if (!data.addressDetail) throw new Error('请填写详细地址')
     if (!data.doorplate) throw new Error('请填写门牌号或入户说明')
+    const textToCheck = [data.label, data.contactName, data.serviceAddress, data.addressDetail, data.doorplate].filter(Boolean).join(' ').trim()
+    if (textToCheck && typeof checkTextSecurity === 'function') {
+      await checkTextSecurity(openid, textToCheck, { scene: 1, label: '服务地址信息' })
+    }
     const time = now()
     const existingAddresses = { data: await readUserAddresses(openid) }
     const isNewAddress = !addressId

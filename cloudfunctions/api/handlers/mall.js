@@ -1,6 +1,8 @@
 module.exports = function createHandler(context) {
   const {
     cancelUnpaidOrder,
+    checkImageSecurity,
+    checkTextSecurity,
     buildMallCartItem,
     buildMallOrderItemSnapshot,
     calcMallPricing,
@@ -213,8 +215,14 @@ module.exports = function createHandler(context) {
       if (!['pending_ship', 'shipped', 'completed'].includes(order.status) || order.paymentStatus !== 'paid') throw new Error('当前订单不可申请售后')
       const reason = safeText(data.reason).trim()
       if (!reason) throw new Error('请填写售后原因')
+      if (typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '商城售后原因' })
+      }
       const time = now()
       const refundImages = Array.isArray(data.images || data.refundImages) ? (data.images || data.refundImages).map(safeFileId).filter(Boolean).slice(0, 6) : []
+      if (refundImages.length && typeof checkImageSecurity === 'function') {
+        await Promise.all(refundImages.map((fileId) => checkImageSecurity(openid, fileId, { scene: 1, label: '商城售后凭证' })))
+      }
       const res = await db.collection('mall_orders').where({ _id: order._id, clientOpenid: openid, status: order.status }).update({
         data: {
           status: 'refund_applied',
