@@ -516,6 +516,8 @@ module.exports = function createHandler(context) {
       await getUser(openid)
       const profile = await getStaffProfileByOpenid(openid)
       if (!profile || profile.auditStatus !== 'approved') throw new Error('资料审核通过后方可提交视频审核')
+      if (profile.videoAuditStatus === 'pending') throw new Error('视频审核正在处理中，请勿重复提交')
+      if (profile.videoAuditStatus === 'approved') throw new Error('视频审核已通过，无需重复提交')
       const settings = await getSystemSettings()
       const training = settings.staffTraining || normalizeStaffTrainingConfig()
       if (!isTrainingComplete(profile, training)) throw new Error('请先完成答题和全部培训视频')
@@ -531,8 +533,43 @@ module.exports = function createHandler(context) {
       if (profile.promotionStatus === 'pending') throw new Error('已有待审核晋升申请')
       const completedOrders = await getCompletedStaffOrders(openid, 3)
       if (completedOrders.length < 3) throw new Error('完成 3 单实习服务后才可申请晋升')
+      const remark = safeText(data.remark).trim()
+      if (remark.length > 500) throw new Error('申请备注不能超过 500 字')
+      if (remark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, remark, { scene: 1, label: '晋升申请备注' })
+      }
       const time = now()
-      const created = await db.collection('staff_promotion_applications').add({ data: { staffProfileId: profile._id, staffOpenid: openid, staffUserId: user._id, orderIds: completedOrders.map((order) => order._id), status: 'pending', staffRemark: safeText(data.remark).trim(), adminRemark: '', createdAt: time, updatedAt: time } })
+      if (typeof db.runTransaction === 'function') {
+        return await db.runTransaction(async (tx) => {
+          const pDocRes = await tx.collection('staff_profiles').doc(profile._id).get().catch(() => ({ data: null }))
+          const pDoc = pDocRes && pDocRes.data
+          if (!pDoc || pDoc.staffLevel !== 'intern') throw new Error('仅实习宠托师可申请晋升')
+          if (pDoc.promotionStatus === 'pending') throw new Error('已有待审核晋升申请')
+          const created = await tx.collection('staff_promotion_applications').add({
+            data: {
+              staffProfileId: profile._id,
+              staffOpenid: openid,
+              staffUserId: user._id,
+              orderIds: completedOrders.map((order) => order._id),
+              status: 'pending',
+              staffRemark: remark,
+              adminRemark: '',
+              createdAt: time,
+              updatedAt: time
+            }
+          })
+          await tx.collection('staff_profiles').doc(profile._id).update({
+            data: {
+              promotionStatus: 'pending',
+              promotionApplicationId: created._id,
+              promotionAppliedAt: time,
+              updatedAt: time
+            }
+          })
+          return { applicationId: created._id, status: 'pending' }
+        })
+      }
+      const created = await db.collection('staff_promotion_applications').add({ data: { staffProfileId: profile._id, staffOpenid: openid, staffUserId: user._id, orderIds: completedOrders.map((order) => order._id), status: 'pending', staffRemark: remark, adminRemark: '', createdAt: time, updatedAt: time } })
       await db.collection('staff_profiles').doc(profile._id).update({ data: { promotionStatus: 'pending', promotionApplicationId: created._id, promotionAppliedAt: time, updatedAt: time } })
       return { applicationId: created._id, status: 'pending' }
     }

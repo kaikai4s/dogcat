@@ -20,6 +20,7 @@ module.exports = function createHandler(context) {
     auditStatusText,
     buildDateRange,
     aggregateFinanceDashboard,
+    checkTextSecurity,
     countActiveAdmins,
     buildMonthlyDashboard,
     buildSubscriptionData,
@@ -1872,13 +1873,21 @@ module.exports = function createHandler(context) {
       const staffProfileId = safeText(data.staffProfileId).trim()
       const status = data.status === 'approved' ? 'approved' : 'rejected'
       if (!staffProfileId) throw new Error('请选择宠托师')
+      const remark = safeText(data.remark).trim()
+      if (remark.length > 500) throw new Error('审核备注不能超过 500 字')
+      if (remark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, remark, { scene: 2, label: '培训审核备注' })
+      }
       const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
       const profile = profileRes && profileRes.data
       if (!profile) throw new Error('宠托师不存在')
+      if (profile.videoAuditStatus !== 'pending') {
+        throw new Error('当前宠托师未处于视频待审核状态')
+      }
       const time = now()
       const update = status === 'approved'
-        ? { videoAuditStatus: 'approved', onboardingStatus: 'intern', staffLevel: 'intern', internStartedAt: profile.internStartedAt || time, videoAuditRemark: safeText(data.remark).trim(), updatedAt: time }
-        : { videoAuditStatus: 'rejected', onboardingStatus: 'videos_completed', videoAuditRemark: safeText(data.remark).trim(), updatedAt: time }
+        ? { videoAuditStatus: 'approved', onboardingStatus: 'intern', staffLevel: 'intern', internStartedAt: profile.internStartedAt || time, videoAuditRemark: remark, updatedAt: time }
+        : { videoAuditStatus: 'rejected', onboardingStatus: 'videos_completed', videoAuditRemark: remark, updatedAt: time }
       await db.collection('staff_profiles').doc(staffProfileId).update({ data: update })
       const staffUserRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
       const staffUser = staffUserRes.data[0]
@@ -1940,15 +1949,23 @@ module.exports = function createHandler(context) {
       const applicationId = safeText(data.applicationId || data.id).trim()
       const status = data.status === 'approved' ? 'approved' : 'rejected'
       if (!applicationId) throw new Error('请选择晋升申请')
+      const remark = safeText(data.remark).trim()
+      if (remark.length > 500) throw new Error('审核备注不能超过 500 字')
+      if (remark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, remark, { scene: 2, label: '晋升审核备注' })
+      }
       const appRes = await db.collection('staff_promotion_applications').doc(applicationId).get().catch(() => ({ data: null }))
       const app = appRes && appRes.data
       if (!app) throw new Error('晋升申请不存在')
+      if (app.status !== 'pending') {
+        throw new Error('该晋升申请已完成审核，无法重复处理')
+      }
       const time = now()
-      const appUpdate = { status, adminRemark: safeText(data.remark).trim(), reviewedByOpenid: openid, reviewedAt: time, updatedAt: time }
+      const appUpdate = { status, adminRemark: remark, reviewedByOpenid: openid, reviewedAt: time, updatedAt: time }
       await db.collection('staff_promotion_applications').doc(applicationId).update({ data: appUpdate })
       const profileUpdate = status === 'approved'
         ? { staffLevel: 'certified', promotionStatus: 'approved', certifiedAt: time, updatedAt: time }
-        : { promotionStatus: 'rejected', promotionRejectReason: safeText(data.remark).trim(), updatedAt: time }
+        : { promotionStatus: 'rejected', promotionRejectReason: remark, updatedAt: time }
       await db.collection('staff_profiles').doc(app.staffProfileId).update({ data: profileUpdate })
       await logAdmin(admin, 'staff_promotion_application', applicationId, 'auditPromotionApplication', { status })
       return { applicationId, status }
