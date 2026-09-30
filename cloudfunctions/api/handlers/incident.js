@@ -222,7 +222,12 @@ module.exports = function createHandler(context) {
         throw new Error('已结案纠纷不可变更处理方案')
       }
       const type = safeText(data.resolutionType || data.type).trim() || 'explain'
-      const resolution = { type, content: safeText(data.content).trim(), refundAmount: Number(data.refundAmount || 0), couponTemplateId: '', couponId: '', couponSnapshot: null, createdByOpenid: openid, createdAt: now() }
+      const content = safeText(data.content).trim()
+      if (content.length > 500) throw new Error('方案说明不能超过 500 字')
+      if (content && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, content, { scene: 2, label: '纠纷方案说明' })
+      }
+      const resolution = { type, content, refundAmount: Number(data.refundAmount || 0), couponTemplateId: '', couponId: '', couponSnapshot: null, createdByOpenid: openid, createdAt: now() }
       if (type === 'coupon') {
         const couponTemplateId = safeText(data.couponTemplateId).trim()
         if (!couponTemplateId) throw new Error('请选择补偿优惠券')
@@ -285,7 +290,12 @@ module.exports = function createHandler(context) {
         const maxRefundable = Math.max(0, Math.round((payAmount - currentRefunded) * 100) / 100)
         if (refundAmount > payAmount) throw new Error('退款金额不正确')
         if (refundAmount > maxRefundable) throw new Error(`退款金额超出订单剩余可退上限（当前最大可退 ¥${maxRefundable}）`)
-        refund = await createRefundForOrder({ ...order, _id: incident.orderId }, refundAmount, safeText(data.reason).trim() || '纠纷处理退款', 'incident', openid, clientRequestId)
+        const reason = safeText(data.reason).trim()
+        if (reason.length > 200) throw new Error('退款说明不能超过 200 字')
+        if (reason && typeof checkTextSecurity === 'function') {
+          await checkTextSecurity(openid, reason, { scene: 2, label: '纠纷退款说明' })
+        }
+        refund = await createRefundForOrder({ ...order, _id: incident.orderId }, refundAmount, reason || '纠纷处理退款', 'incident', openid, clientRequestId)
         actionName = 'refund_created'
       } else if (data.refundId) {
         const refundRes = await db.collection('refunds').doc(data.refundId).get().catch(() => ({ data: null }))
@@ -306,7 +316,12 @@ module.exports = function createHandler(context) {
       await requireAdmin(openid)
       const id = data.id || data.incidentId
       const status = normalizeIncidentStatus(data.status, 'closed')
-      return closeIncidentFinancially(id, { ...data, status }, openid)
+      const closeRemark = safeText(data.closeRemark || data.earningRemark).trim()
+      if (closeRemark.length > 500) throw new Error('结案说明不能超过 500 字')
+      if (closeRemark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, closeRemark, { scene: 2, label: '纠纷结案说明' })
+      }
+      return closeIncidentFinancially(id, { ...data, status, closeRemark }, openid)
     }
     throw new Error('未知 incident 操作')
   }

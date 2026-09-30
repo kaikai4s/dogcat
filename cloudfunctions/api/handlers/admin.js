@@ -2405,6 +2405,11 @@ module.exports = function createHandler(context) {
           })
         }
       }
+      const prizeTexts = prizes.map((p) => [p.name, p.text].filter(Boolean).join(' ')).filter(Boolean)
+      const activityText = [name, data.description, ...prizeTexts].filter(Boolean).join(' ')
+      if (activityText && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, activityText, { scene: 2, label: '抽奖活动资料' })
+      }
       const time = now()
       const payload = { name, description: safeText(data.description).trim(), prizes, enabled: data.enabled === true, updatedAt: time }
       if (data._id) {

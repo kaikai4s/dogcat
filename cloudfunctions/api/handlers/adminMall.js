@@ -1,6 +1,8 @@
 module.exports = function createHandler(context) {
   const {
     cancelUnpaidOrder,
+    checkImageSecurity,
+    checkTextSecurity,
     createRefundForOrder,
     db,
     getClientRequestId,
@@ -46,8 +48,12 @@ module.exports = function createHandler(context) {
     if (action === 'saveCategory') {
       const id = safeText(data.id || data._id).trim()
       const time = now()
-      const payload = { name: safeText(data.name).trim(), icon: safeText(data.icon).trim(), enabled: data.enabled !== false, sortOrder: Number(data.sortOrder || 0), updatedAt: time }
-      if (!payload.name) throw new Error('分类名称不能为空')
+      const name = safeText(data.name).trim()
+      if (!name) throw new Error('分类名称不能为空')
+      if (typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, name, { scene: 2, label: '商品分类名称' })
+      }
+      const payload = { name, icon: safeText(data.icon).trim(), enabled: data.enabled !== false, sortOrder: Number(data.sortOrder || 0), updatedAt: time }
       if (id) {
         await db.collection('mall_categories').doc(id).update({ data: payload })
         await logAdmin(admin, 'mall_category', id, 'saveCategory', payload)
@@ -85,6 +91,21 @@ module.exports = function createHandler(context) {
       delete payload._id
       if (!payload.name) throw new Error('商品名称不能为空')
       if (!payload.coverFileId && !payload.imageFileIds.length) throw new Error('请上传商品图片')
+
+      // 内容与图片风控安全审查
+      const specTexts = (payload.specGroups || []).flatMap((g) => [g.name, ...(g.values || [])]).filter(Boolean)
+      const productText = [payload.name, payload.subtitle, payload.description, ...specTexts].filter(Boolean).join(' ')
+      if (productText && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, productText, { scene: 2, label: '商城商品资料' })
+      }
+      if (typeof checkImageSecurity === 'function') {
+        const productImages = [payload.coverFileId, ...(payload.imageFileIds || []), ...(payload.detailImageFileIds || [])].filter(Boolean)
+        const uniqueImages = Array.from(new Set(productImages))
+        for (const img of uniqueImages) {
+          await checkImageSecurity(openid, img, { scene: 1, label: '商城商品图片' })
+        }
+      }
+
       if (payload.categoryId) {
         const category = await getDocOrNull('mall_categories', payload.categoryId)
         if (!category) throw new Error('商品分类不存在')
@@ -181,6 +202,10 @@ module.exports = function createHandler(context) {
       const targetStatus = safeText(data.status).trim()
       const remark = safeText(data.remark || data.reason).trim()
       if (!remark) throw new Error('请填写操作说明')
+      if (remark.length > 200) throw new Error('操作说明不能超过 200 字')
+      if (typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, remark, { scene: 2, label: '订单状态变更说明' })
+      }
       const allowedStatuses = ['pending_pay', 'pending_ship', 'shipped', 'completed', 'cancelled', 'refunded']
       if (!allowedStatuses.includes(targetStatus)) throw new Error('目标状态无效')
 
@@ -231,6 +256,10 @@ module.exports = function createHandler(context) {
 
       const reason = safeText(data.reason || data.remark).trim()
       if (!reason) throw new Error('请填写退款说明')
+      if (reason.length > 200) throw new Error('退款说明不能超过 200 字')
+      if (typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '手动退款说明' })
+      }
 
       const refund = await createRefundForOrder(order, refundAmount, reason, 'admin_mall_manual', openid, getClientRequestId(data))
       const currentOrder = ((await db.collection('mall_orders').doc(orderId).get().catch(() => ({ data: null }))).data) || order
@@ -251,6 +280,11 @@ module.exports = function createHandler(context) {
       if (!order) throw new Error('订单不存在')
       if (order.refundStatus !== 'applied') throw new Error('当前订单没有待审核售后')
       const approved = data.approved === true
+      const auditRemark = safeText(data.remark).trim()
+      if (auditRemark.length > 200) throw new Error('审核说明不能超过 200 字')
+      if (auditRemark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, auditRemark, { scene: 2, label: '售后审核说明' })
+      }
       const time = now()
       if (!approved) {
         let restoredStatus = order.preRefundStatus
@@ -267,13 +301,13 @@ module.exports = function createHandler(context) {
           data: {
             status: restoredStatus,
             refundStatus: 'rejected',
-            refundRejectReason: safeText(data.remark).trim(),
+            refundRejectReason: auditRemark,
             refundAuditedAt: time,
             updatedAt: time
           }
         })
         if (!updated.stats || !updated.stats.updated) throw new Error('售后状态已变化，请刷新后重试')
-        await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: false, remark: safeText(data.remark).trim(), restoredStatus })
+        await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: false, remark: auditRemark, restoredStatus })
         return { orderId: order._id, refundStatus: 'rejected', status: restoredStatus }
       }
       const payAmount = Number(order.payAmount || 0)
@@ -283,7 +317,7 @@ module.exports = function createHandler(context) {
       if (payAmount > 0) {
         if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error('请输入有效的退款金额（需大于0）')
         if (refundAmount > payAmount) throw new Error('退款金额不能超过订单实付金额')
-        const refund = await createRefundForOrder(order, refundAmount, data.remark || order.refundReason || '商城售后退款', 'mall_after_sale', openid, getClientRequestId(data))
+        const refund = await createRefundForOrder(order, refundAmount, auditRemark || order.refundReason || '商城售后退款', 'mall_after_sale', openid, getClientRequestId(data))
         await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: true, refundNo: refund.refundNo, refundAmount })
         return { orderId: order._id, refundStatus: 'approved', refundNo: refund.refundNo, refundAmount }
       }
