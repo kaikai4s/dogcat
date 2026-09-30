@@ -1,5 +1,5 @@
 module.exports = function createService({
-  crypto, db, findByClientRequestId, getClientRequestId, getSystemSettings,
+  checkTextSecurity, crypto, db, findByClientRequestId, getClientRequestId, getSystemSettings,
   getUser, now, refreshStaffEarnings, safeText
 }) {
   const maxEarnings = 50
@@ -39,6 +39,11 @@ module.exports = function createService({
     // Preserve idempotency for requests created before deterministic IDs were introduced.
     const previous = await findByClientRequestId('withdraw_requests', { staffOpenid: openid, clientRequestId })
     if (previous) return previous
+
+    const remark = safeText(data.remark).trim()
+    if (remark && typeof checkTextSecurity === 'function') {
+      await checkTextSecurity(openid, remark, { scene: 2, label: '提现申请备注' })
+    }
 
     const accountName = safeText(data.accountName).trim()
     const accountNo = safeText(data.accountNo).trim()
@@ -88,7 +93,7 @@ module.exports = function createService({
         amount: totalCents / 100, status: 'pending', earningIds: selected.map(item => item._id),
         accountName,
         accountNo,
-        remark: safeText(data.remark).trim(), auditRemark: '', createdAt: time, updatedAt: time
+        remark, auditRemark: '', createdAt: time, updatedAt: time
       }
       await transaction.collection('withdraw_requests').doc(id).set({ data: request })
       for (const earning of selected) {

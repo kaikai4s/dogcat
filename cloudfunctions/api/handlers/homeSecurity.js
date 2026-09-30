@@ -3,6 +3,8 @@ module.exports = function createHandler(context) {
     appendOrderClientMessage,
     appendOrderStaffMessage,
     beijingClockText,
+    checkImageSecurity,
+    checkTextSecurity,
     db,
     decryptText,
     encryptText,
@@ -40,6 +42,10 @@ module.exports = function createHandler(context) {
   return async function homeSecurity(openid, action, data) {
     if (action === 'saveHomeSecurity') {
       const user = await getUser(openid)
+      const textToCheck = [data.keyLocation, data.entryNotes, data.cameraLocations, data.forbiddenAreas, data.emergencyContactName].filter(Boolean).join(' ').trim()
+      if (textToCheck && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, textToCheck, { scene: 1, label: '家庭安防设置' })
+      }
       const encrypted = encryptText(data.doorLockCode || '')
       const payload = { userId: user._id, openid, doorLockCodeCipher: encrypted.cipher, doorLockCodeIv: encrypted.iv, doorLockCodeTag: encrypted.tag, keyLocation: data.keyLocation || '', entryNotes: data.entryNotes || '', cameraLocations: data.cameraLocations || '', forbiddenAreas: data.forbiddenAreas || '', emergencyContactName: data.emergencyContactName || '', emergencyContactPhone: data.emergencyContactPhone || '', updatedAt: now() }
       const existing = await db.collection('home_security').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
@@ -292,9 +298,13 @@ module.exports = function createHandler(context) {
       if (!order) throw new Error('订单不存在')
       if (order.clientOpenid !== openid) throw new Error('无权修改该订单')
       if (!['pending_pay', 'paid', 'assigned', 'on_the_way', 'in_service'].includes(order.status)) throw new Error('当前订单状态不可修改密码')
+      const entryNotes = safeText(data.entryNotes).trim()
+      if (entryNotes && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, entryNotes, { scene: 1, label: '一次性开门指引' })
+      }
       const time = now()
       const existingSecurity = stripLegacyHomeSecuritySecrets(order.orderHomeSecurity || {})
-      let security = { ...existingSecurity, type: 'one_time_code', lockMethod: 'one_time_code', lockMethodText: lockMethodText('one_time_code'), entryNotes: data.entryNotes || existingSecurity.entryNotes || '', hasDoorLockCode: true, updatedAt: time }
+      let security = { ...existingSecurity, type: 'one_time_code', lockMethod: 'one_time_code', lockMethodText: lockMethodText('one_time_code'), entryNotes: entryNotes || existingSecurity.entryNotes || '', hasDoorLockCode: true, updatedAt: time }
 
       if (Array.isArray(data.sessionCodes) && data.sessionCodes.length) {
         const sessionCodes = data.sessionCodes.map((item, idx) => {
@@ -381,10 +391,19 @@ module.exports = function createHandler(context) {
       if (order.staffOpenid !== openid) throw new Error('不是该订单绑定员工')
       const security = stripLegacyHomeSecuritySecrets(order.orderHomeSecurity || order.homeSecuritySnapshot || {})
       if (security.type !== 'key' || !security.key) throw new Error('该订单不是钥匙入户方式')
-      const imageFileIds = Array.isArray(data.imageFileIds) ? data.imageFileIds : []
+      const imageFileIds = Array.isArray(data.imageFileIds) ? data.imageFileIds.filter(Boolean) : []
       if (!imageFileIds.length) throw new Error('请上传放回钥匙位置图片')
+      const returnNote = safeText(data.note || data.returnNote).trim()
+      if (returnNote && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, returnNote, { scene: 2, label: '钥匙放回说明' })
+      }
+      if (typeof checkImageSecurity === 'function') {
+        for (const fileId of imageFileIds) {
+          if (fileId) await checkImageSecurity(openid, fileId, { scene: 1, label: '钥匙放回凭证' })
+        }
+      }
       const time = now()
-      const updatedSecurity = { ...security, key: { ...security.key, returnedAt: time.toISOString(), returnImageFileIds: imageFileIds, returnNote: data.note || '' }, updatedAt: time }
+      const updatedSecurity = { ...security, key: { ...security.key, returnedAt: time.toISOString(), returnImageFileIds: imageFileIds, returnNote }, updatedAt: time }
       await db.collection('orders').doc(data.orderId).update({ data: { orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time } })
       const returnSecRes = await db.collection('order_home_security').where({ orderId: data.orderId }).limit(1).get().catch(() => ({ data: [] }))
       const returnSecDoc = returnSecRes && returnSecRes.data && returnSecRes.data[0]

@@ -478,6 +478,7 @@ module.exports = function createHandler(context) {
         } catch (e) {
           docCheck = null
         }
+        if (docCheck) throw new Error('该订单已评价')
         const { _id, ...reviewData } = review
         await tx.collection('service_reviews').doc(reviewId).set({ data: reviewData })
         await tx.collection('orders').doc(data.orderId).update({ data: { reviewedAt: time, updatedAt: time } })
@@ -578,6 +579,10 @@ module.exports = function createHandler(context) {
       const existing = await getPendingEarlyStart(order._id)
       if (existing) return toEarlyStartView(existing)
       const time = now()
+      const reason = safeText(data.reason).trim() || '宠护师已到达，申请提前开始服务'
+      if (reason && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '提前开始申请原因' })
+      }
       const request = {
         orderId: order._id,
         orderNo: order.orderNo || '',
@@ -585,7 +590,7 @@ module.exports = function createHandler(context) {
         staffOpenid: openid,
         staffUserId: user._id,
         status: 'pending',
-        reason: safeText(data.reason).trim() || '宠护师已到达，申请提前开始服务',
+        reason,
         createdAt: time,
         updatedAt: time
       }
@@ -605,7 +610,11 @@ module.exports = function createHandler(context) {
       if (!request) throw new Error('暂无待处理的提前开始申请')
       const approved = action === 'approveEarlyStart'
       const time = now()
-      const update = { status: approved ? 'approved' : 'rejected', clientRemark: safeText(data.remark).trim(), updatedAt: time }
+      const clientRemark = safeText(data.remark).trim()
+      if (clientRemark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, clientRemark, { scene: 2, label: '提前开始审核备注' })
+      }
+      const update = { status: approved ? 'approved' : 'rejected', clientRemark, updatedAt: time }
       if (approved) update.approvedAt = time
       else update.rejectedAt = time
       await db.collection('order_early_start_requests').doc(request._id).update({ data: update })
