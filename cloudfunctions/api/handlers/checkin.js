@@ -213,6 +213,7 @@ module.exports = function createHandler(context) {
       const photoLabel = data.eventType === 'pet_beauty_photo' ? '美照' : '服务打卡照片'
       await checkImageSecurity(openid, data.mediaFileId, { scene: 3, label: photoLabel })
       const checkinRemark = safeText(data.remark || data.note).trim()
+      if (checkinRemark.length > 200) throw new Error('打卡备注不能超过 200 字')
       if (checkinRemark && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, checkinRemark, { scene: 2, label: '打卡备注' })
       }
@@ -253,7 +254,7 @@ module.exports = function createHandler(context) {
       const recordedAt = isSanitization ? time : (data.recordedAt || time)
       const existingEventPhotos = await readScopedDocuments('checkin_logs', { orderId: data.orderId, eventType: data.eventType })
       const shouldWriteTimeline = !existingEventPhotos.some(hasCheckinPhoto)
-      const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientRequestId, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, distanceKm: distanceKm !== null ? Number(distanceKm.toFixed(3)) : null, serverTime: time, recordedAt, isBackfilled: data.isBackfilled === true, remark: data.remark || data.note || '', createdAt: time, updatedAt: time, deletedAt: null, deletedByOpenid: '' }
+      const checkin = { orderId: data.orderId, staffUserId: user._id, staffOpenid: openid, clientRequestId, eventType: data.eventType, mediaFileId: data.mediaFileId || '', watermarkedMediaFileId: '', latitude, longitude, distanceKm: distanceKm !== null ? Number(distanceKm.toFixed(3)) : null, serverTime: time, recordedAt, isBackfilled: data.isBackfilled === true, remark: checkinRemark, createdAt: time, updatedAt: time, deletedAt: null, deletedByOpenid: '' }
       checkin.accuracy = Number.isFinite(Number(data.accuracy)) ? Number(data.accuracy) : 0
       checkin.coordinateType = data.coordinateType === 'gcj02' ? 'gcj02' : 'unknown'
       checkin.locationSource = data.locationSource === 'gps' ? 'gps' : 'manual'

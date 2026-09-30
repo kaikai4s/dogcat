@@ -262,9 +262,16 @@ module.exports = function createHandler(context) {
       }
     }
     if (action === 'createPet') {
-      if (!data.name) throw new Error('宠物名称不能为空')
+      const petName = safeText(data.name).trim()
+      if (!petName) throw new Error('宠物名称不能为空')
+      if (petName.length > 30) throw new Error('宠物名称不能超过 30 字')
+      const existingPetsRes = await db.collection('pets').where({ openid, deletedAt: null }).count().catch(() => null)
+      const existingPetCount = existingPetsRes && typeof existingPetsRes.total === 'number' ? existingPetsRes.total : null
+      if (existingPetCount !== null && existingPetCount >= 20) {
+        throw new Error('最多添加 20 只宠物档案，请整理已有档案后再添加')
+      }
       if (!safeFileId(data.avatarFileId) && !safeText(data.avatarFileId)) throw new Error('请上传至少一张宠物照片')
-      const petText = [data.name, data.breed, data.personality, data.specialNotes, data.favoriteFood, data.dislikes, data.healthNotes, data.aiGreeting, data.aiPersona].filter(Boolean).join(' ')
+      const petText = [petName, data.breed, data.personality, data.specialNotes, data.favoriteFood, data.dislikes, data.healthNotes, data.aiGreeting, data.aiPersona].filter(Boolean).join(' ')
       if (petText) {
         await checkTextSecurity(openid, petText, { scene: 1, label: '宠物资料' })
       }
@@ -318,8 +325,11 @@ module.exports = function createHandler(context) {
       const existing = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
       if (!existing || !existing.data) throw new Error('宠物不存在')
       if (existing.data.openid !== openid) throw new Error('无权访问')
+      const petName = safeText(data.name).trim()
+      if (!petName) throw new Error('宠物名称不能为空')
+      if (petName.length > 30) throw new Error('宠物名称不能超过 30 字')
       if (!safeFileId(data.avatarFileId) && !safeText(data.avatarFileId)) throw new Error('请上传至少一张宠物照片')
-      const petText = [data.name, data.breed, data.personality, data.specialNotes, data.favoriteFood, data.dislikes, data.healthNotes, data.aiGreeting, data.aiPersona].filter(Boolean).join(' ')
+      const petText = [petName, data.breed, data.personality, data.specialNotes, data.favoriteFood, data.dislikes, data.healthNotes, data.aiGreeting, data.aiPersona].filter(Boolean).join(' ')
       if (petText) {
         await checkTextSecurity(openid, petText, { scene: 1, label: '宠物资料' })
       }

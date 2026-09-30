@@ -1500,6 +1500,7 @@ module.exports = function createHandler(context) {
       }
       const mediaFileIds = Array.isArray(data.mediaFileIds) ? data.mediaFileIds.filter(Boolean) : []
       if (!mediaFileIds.length) throw new Error('请上传首次购买凭证截图')
+      if (mediaFileIds.length > 9) throw new Error('凭证截图最多上传 9 张')
       if (mediaFileIds.length && typeof checkImageSecurity === 'function') {
         await Promise.all(mediaFileIds.map((fileId) => checkImageSecurity(openid, fileId, { scene: 1, label: '用品报销凭证' })))
       }
@@ -1512,6 +1513,7 @@ module.exports = function createHandler(context) {
         throw new Error(`首次用品报销金额不能超过上限 ¥${maxCap}`)
       }
       const remark = safeText(data.remark).trim()
+      if (remark.length > 500) throw new Error('报销备注不能超过 500 字')
       if (remark && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, remark, { scene: 1, label: '用品报销备注' })
       }

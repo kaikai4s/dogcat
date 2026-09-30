@@ -437,7 +437,8 @@ module.exports = function createHandler(context) {
       if (existing.data && existing.data[0]) throw new Error('该订单已评价')
       const rating = Math.min(Math.max(Number(data.rating || 5), 1), 5)
       const tags = Array.isArray(data.tags) ? data.tags.slice(0, 8) : []
-      const content = String(data.content || '').trim()
+      const content = safeText(data.content || '').trim()
+      if (content.length > 500) throw new Error('评价内容不能超过 500 字')
       const reviewText = [content, ...tags].filter(Boolean).join(' ')
       if (reviewText) {
         await checkTextSecurity(openid, reviewText, { scene: 2, label: '评价内容' })
@@ -963,6 +964,7 @@ module.exports = function createHandler(context) {
       if (!isClient && !isStaff && !isAdmin) throw new Error('无权参与该订单会话')
 
       const content = safeText(data.content || data.message || data.text).trim()
+      if (content.length > 500) throw new Error('会话内容不能超过 500 字')
       const mediaUrl = safeText(data.mediaUrl || data.imageUrl || '').trim()
       if (!content && !mediaUrl) throw new Error('请输入会话内容或上传图片')
 

@@ -2238,7 +2238,13 @@ module.exports = function createHandler(context) {
       const targetLevelNamesSnapshot = targetLevels.map((level) => level.name)
       const rewardType = data.rewardType === 'coupon' ? 'coupon' : 'points'
       const title = safeText(data.title).trim() || '会员奖励到账'
+      if (title.length > 50) throw new Error('邮件标题不能超过 50 字')
       const content = safeText(data.content).trim()
+      if (content.length > 500) throw new Error('邮件内容不能超过 500 字')
+      const mailTextToCheck = [title, content].filter(Boolean).join(' ')
+      if (mailTextToCheck && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, mailTextToCheck, { scene: 2, label: '会员奖励邮件内容' })
+      }
       const reward = { type: rewardType }
       if (rewardType === 'coupon') {
         const couponTemplateId = safeText(data.couponTemplateId).trim()
@@ -2287,10 +2293,17 @@ module.exports = function createHandler(context) {
     if (action === 'publishRetroCardMail') {
       const count = Math.max(Math.round(Number(data.count || 0)), 0)
       if (!count) throw new Error('补签卡数量必须大于 0')
+      if (count > 100) throw new Error('单次群发补签卡数量不能超过 100 张')
       const target = await resolveRewardMailTargets(data)
       if (!target.users.length) throw new Error('没有符合条件的用户')
       const title = safeText(data.title).trim() || '补签卡奖励到账'
+      if (title.length > 50) throw new Error('邮件标题不能超过 50 字')
       const content = safeText(data.content).trim() || `你获得 ${count} 张补签卡，请及时领取。`
+      if (content.length > 500) throw new Error('邮件内容不能超过 500 字')
+      const mailTextToCheck = [title, content].filter(Boolean).join(' ')
+      if (mailTextToCheck && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, mailTextToCheck, { scene: 2, label: '补签卡邮件内容' })
+      }
       const reward = { type: 'retro_card', count }
       const time = now()
       let issued = 0
@@ -2329,7 +2342,13 @@ module.exports = function createHandler(context) {
       if (!target.users.length) throw new Error('没有符合条件的用户')
       const rewardSnapshot = titleSnapshot(petTitle)
       const title = safeText(data.title).trim() || `宠物头衔【${petTitle.name}】到账提醒`
+      if (title.length > 50) throw new Error('邮件标题不能超过 50 字')
       const content = safeText(data.content).trim() || `平台已向你发放宠物头衔【${petTitle.name}】，请前往奖励邮箱领取。`
+      if (content.length > 500) throw new Error('邮件内容不能超过 500 字')
+      const mailTextToCheck = [title, content].filter(Boolean).join(' ')
+      if (mailTextToCheck && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, mailTextToCheck, { scene: 2, label: '宠物头衔邮件内容' })
+      }
       const reward = { type: 'pet_title', titleId: petTitle._id, titleSnapshot: rewardSnapshot, duplicatePoints: rewardSnapshot.duplicatePoints }
       const time = now()
       let issued = 0

@@ -150,6 +150,7 @@ module.exports = function createHandler(context) {
       const oldPhone = safeText(user.phone).trim()
       const nickname = safeText(data.nickname).trim()
       if (!nickname) throw new Error('昵称不能为空')
+      if (nickname.length > 30) throw new Error('昵称不能超过 30 字')
       if (nickname !== user.nickname) {
         await checkTextSecurity(openid, nickname, { scene: 1, label: '用户昵称' })
       }
@@ -157,10 +158,12 @@ module.exports = function createHandler(context) {
       if (avatarUrl && avatarUrl !== user.avatarUrl) {
         await checkImageSecurity(openid, avatarUrl, { scene: 1, label: '用户头像' })
       }
+      const rawPhone = data.phone !== undefined ? safeText(data.phone).trim() : oldPhone
+      if (rawPhone && rawPhone.length > 20) throw new Error('手机号格式不正确')
       const payload = {
         nickname,
         avatarUrl,
-        phone: data.phone !== undefined ? safeText(data.phone).trim() : oldPhone,
+        phone: rawPhone,
         updatedAt: now()
       }
       await db.collection('users').doc(user._id).update({ data: payload })

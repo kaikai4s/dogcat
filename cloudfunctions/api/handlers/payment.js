@@ -9,6 +9,7 @@ module.exports = function createHandler(context) {
     assertPaymentModeAllowed,
     assertOrderPaymentOpen,
     buildMiniProgramPayParams,
+    checkTextSecurity,
     createRefundForOrder,
     db,
     ensurePaymentRecord,
@@ -108,7 +109,12 @@ module.exports = function createHandler(context) {
       if (!order) throw new Error('订单不存在')
       const amount = Number(data.refundAmount || order.payAmount || 0)
       if (amount <= 0 || amount > Number(order.payAmount || 0)) throw new Error('退款金额不正确')
-      const refund = await createRefundForOrder(order, amount, data.reason || '管理员退款', 'admin', openid, getClientRequestId(data))
+      const reason = safeText(data.reason || '管理员退款').trim()
+      if (reason.length > 200) throw new Error('退款原因不能超过 200 字')
+      if (reason && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, reason, { scene: 2, label: '退款原因' })
+      }
+      const refund = await createRefundForOrder(order, amount, reason, 'admin', openid, getClientRequestId(data))
       await logAdmin(admin, resolved.orderType === 'mall' ? 'mall_order' : 'order', data.orderId, 'createRefund', { refundNo: refund.refundNo, refundAmount: amount })
       if (resolved.orderType !== 'mall') await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${amount}`, 'admin')
       return refund
