@@ -20,6 +20,7 @@ module.exports = function createHandler(context) {
     auditStatusText,
     buildDateRange,
     aggregateFinanceDashboard,
+    checkImageSecurity,
     checkTextSecurity,
     countActiveAdmins,
     buildMonthlyDashboard,
@@ -363,12 +364,26 @@ module.exports = function createHandler(context) {
     if (action === 'auditWithdrawRequest') {
       const approved = data.approved === true
       const nextStatus = approved ? 'approved' : 'rejected'
-      const { request, changed } = await settleWithdrawal({ ...admin, openid }, data)
+      const auditRemark = safeText(data.auditRemark || data.remark).trim()
+      if (auditRemark.length > 500) throw new Error('审核备注不能超过 500 字')
+      if (auditRemark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, auditRemark, { scene: 2, label: '提现审核备注' })
+      }
+      const { request, changed } = await settleWithdrawal({ ...admin, openid }, { ...data, auditRemark })
       if (changed) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id }, { amount: request.amount, statusText: approved ? '已审核' : '已驳回' }), '')
       return { id: data.id, status: nextStatus }
     }
     if (action === 'markWithdrawPaid') {
-      const { request, changed } = await settleWithdrawal({ ...admin, openid }, data, true)
+      const payRemark = safeText(data.payRemark || data.remark).trim()
+      if (payRemark.length > 500) throw new Error('打款备注不能超过 500 字')
+      if (payRemark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, payRemark, { scene: 2, label: '提现打款备注' })
+      }
+      const paymentProofImage = safeText(data.paymentProofImage || data.paymentProof || '').trim()
+      if (paymentProofImage && typeof checkImageSecurity === 'function') {
+        await checkImageSecurity(openid, paymentProofImage, { scene: 1, label: '付款凭证截图' })
+      }
+      const { request, changed } = await settleWithdrawal({ ...admin, openid }, { ...data, payRemark, paymentProofImage }, true)
       if (changed) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id }, { amount: request.amount, statusText: '已打款' }), '')
       return { id: data.id, status: 'paid' }
     }
@@ -1436,6 +1451,10 @@ module.exports = function createHandler(context) {
     if (action === 'saveCouponTemplate') {
       const name = safeText(data.name).trim()
       if (!name) throw new Error('优惠券名称不能为空')
+      const couponText = [name, data.description, data.displayTag, data.claimNotice, data.useNotice].filter(Boolean).join(' ')
+      if (couponText && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, couponText, { scene: 2, label: '优惠券模板资料' })
+      }
       const discountAmount = Math.round(Number(data.discountAmount || 0))
       const minOrderAmount = Math.max(Math.round(Number(data.minOrderAmount || 0)), 0)
       const validType = data.validType === 'fixed_range' ? 'fixed_range' : 'relative_days'
@@ -1998,6 +2017,13 @@ module.exports = function createHandler(context) {
     if (action === 'saveMemberLevel') {
       const name = safeText(data.name).trim()
       if (!name) throw new Error('等级名称不能为空')
+      const benefitTexts = Array.isArray(data.benefits)
+        ? data.benefits.map((b) => (typeof b === 'string' ? b : (b && (b.title || b.description || b.name)))).filter(Boolean)
+        : []
+      const memberLevelText = [name, data.badgeTag, data.description, ...benefitTexts].filter(Boolean).join(' ')
+      if (memberLevelText && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, memberLevelText, { scene: 2, label: '会员等级资料' })
+      }
       const existingLevels = await getMemberLevels()
       const duplicate = existingLevels.find((item) => item.name === name && item._id !== data._id)
       if (duplicate) throw new Error('已存在同名会员等级，请先编辑原等级或换一个名称')
@@ -2038,6 +2064,12 @@ module.exports = function createHandler(context) {
       return listPetTitles({ includeDeleted: data.includeDeleted === true })
     }
     if (action === 'savePetTitle') {
+      const titleName = safeText(data.name).trim()
+      const titleDesc = safeText(data.description).trim()
+      const petTitleText = [titleName, titleDesc].filter(Boolean).join(' ')
+      if (petTitleText && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, petTitleText, { scene: 2, label: '宠物头衔资料' })
+      }
       const saved = await savePetTitle(data)
       let autoGrantCount = 0
       if (Array.isArray(saved.autoGrantLevelIds) && saved.autoGrantLevelIds.length > 0) {
