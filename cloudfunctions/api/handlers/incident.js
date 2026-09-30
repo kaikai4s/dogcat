@@ -3,6 +3,8 @@ module.exports = function createHandler(context) {
     appendIncidentComment,
     appendOrderTimeline,
     attachOrderDisplayData,
+    checkImageSecurity,
+    checkTextSecurity,
     createRefundForOrder,
     db,
     closeIncidentFinancially,
@@ -15,6 +17,7 @@ module.exports = function createHandler(context) {
     makeIdempotencyKey,
     normalizeIncidentStatus,
     normalizeIncidentType,
+    notifyAdmins,
     now,
     paginateList,
     recordIncidentAction,
@@ -30,11 +33,29 @@ module.exports = function createHandler(context) {
       const existingByRequest = await findByClientRequestId('order_incidents', { orderId: data.orderId, staffOpenid: openid, clientRequestId })
       if (existingByRequest) return existingByRequest
       const { user, order } = await requireStaffOrder(openid, data.orderId, '不是该订单员工')
+      if (data.description && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, data.description, { scene: 2, label: 'SOS求助说明' })
+      }
       const time = now()
       const incident = { orderId: data.orderId, clientOpenid: order.clientOpenid || '', staffUserId: user._id, staffOpenid: openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident_sos', data.orderId, openid, time.getTime()), incidentType: normalizeIncidentType(data.incidentType, 'sos'), title: data.title || '宠托师 SOS', description: data.description || '', latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds: data.mediaFileIds || [], status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'staff', createdAt: time, updatedAt: time }
       const created = await db.collection('order_incidents').add({ data: incident })
       await recordIncidentAction(created._id, 'created_sos', 'staff', openid, { orderId: data.orderId })
       await appendOrderTimeline(data.orderId, 'incident_open', '宠托师发起 SOS', incident.description, 'staff')
+
+      // 最高优先级紧急告警实时推送给管理员端
+      if (typeof notifyAdmins === 'function') {
+        await notifyAdmins({
+          type: 'sos_alert',
+          title: '【紧急求助】宠托师现场发起 SOS！',
+          content: `订单 ${order.orderNo || data.orderId} 现场宠托师发起紧急求助：${incident.description || '现场突发紧急情况'}，请立即协调处理！`,
+          level: 'urgent',
+          orderId: data.orderId,
+          orderNo: order.orderNo || '',
+          actionUrl: `/pages/admin/incidents/detail/index?id=${created._id}`,
+          extra: { incidentId: created._id, staffOpenid: openid, latitude: incident.latitude, longitude: incident.longitude }
+        }).catch((err) => console.error('[createSosIncident notifyAdmins error]', err))
+      }
+
       return { _id: created._id, ...incident }
     }
     if (action === 'createComplaint') {
@@ -44,6 +65,18 @@ module.exports = function createHandler(context) {
       const { user, order } = await requireClientOrder(openid, data.orderId, '仅宠物主可发起投诉')
       const description = safeText(data.description).trim()
       if (!description) throw new Error('请填写投诉说明')
+
+      // 内容安全风控审查
+      const complaintText = [data.title, description].filter(Boolean).join(' ')
+      if (complaintText && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, complaintText, { scene: 2, label: '投诉说明' })
+      }
+      if (Array.isArray(data.mediaFileIds) && typeof checkImageSecurity === 'function') {
+        for (const fileId of data.mediaFileIds) {
+          if (fileId) await checkImageSecurity(openid, fileId, { scene: 2, label: '投诉证据图片' })
+        }
+      }
+
       const time = now()
       const incident = { orderId: data.orderId, clientUserId: user._id, clientOpenid: openid, openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident', data.orderId, openid, time.getTime()), staffOpenid: order.staffOpenid || '', staffProfileId: order.staffProfileId || '', incidentType: normalizeIncidentType(data.incidentType, 'complaint'), title: safeText(data.title).trim() || '订单投诉', description, latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds: Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9) : [], status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'client', createdAt: time, updatedAt: time }
       const created = await db.collection('order_incidents').add({ data: incident })
@@ -63,16 +96,34 @@ module.exports = function createHandler(context) {
     }
     if (action === 'appendIncidentComment') {
       const { user, incident } = await getIncidentForAccess(openid, data.incidentId)
+      const content = safeText(data.content).trim()
+      if (content && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, content, { scene: 2, label: '纠纷留言' })
+      }
+      if (Array.isArray(data.mediaFileIds) && typeof checkImageSecurity === 'function') {
+        for (const fileId of data.mediaFileIds) {
+          if (fileId) await checkImageSecurity(openid, fileId, { scene: 2, label: '纠纷证据图片' })
+        }
+      }
       const actorRole = user.roles.includes('admin') ? 'admin' : (incident.staffOpenid === openid ? 'staff' : 'client')
-      const comment = await appendIncidentComment(data.incidentId, actorRole, openid, data.content, data.mediaFileIds)
+      const comment = await appendIncidentComment(data.incidentId, actorRole, openid, content, data.mediaFileIds)
       await db.collection('order_incidents').doc(data.incidentId).update({ data: { updatedAt: now() } })
       await recordIncidentAction(data.incidentId, 'commented', actorRole, openid, { commentId: comment._id })
       return comment
     }
     if (action === 'uploadIncidentEvidence') {
       const { user, incident } = await getIncidentForAccess(openid, data.incidentId)
+      const remark = safeText(data.remark).trim() || '补充证据'
+      if (remark && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, remark, { scene: 2, label: '证据备注' })
+      }
+      if (Array.isArray(data.mediaFileIds) && typeof checkImageSecurity === 'function') {
+        for (const fileId of data.mediaFileIds) {
+          if (fileId) await checkImageSecurity(openid, fileId, { scene: 2, label: '补充证据图片' })
+        }
+      }
       const actorRole = user.roles.includes('admin') ? 'admin' : (incident.staffOpenid === openid ? 'staff' : 'client')
-      const comment = await appendIncidentComment(data.incidentId, actorRole, openid, data.remark || '补充证据', data.mediaFileIds)
+      const comment = await appendIncidentComment(data.incidentId, actorRole, openid, remark, data.mediaFileIds)
       await recordIncidentAction(data.incidentId, 'evidence_uploaded', actorRole, openid, { commentId: comment._id })
       return comment
     }

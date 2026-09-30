@@ -1,4 +1,5 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
+const { formatDateTime } = require('../../../../utils/format')
 
 const tabs = [
   { label: '全部', value: '' },
@@ -48,7 +49,7 @@ Page({
       pageSize: this.data.pageSize
     }).then((result) => {
       const pageData = pageList(result)
-      const list = (pageData.list || []).map((item) => ({ ...item, statusText: statusText(item.status) }))
+      const list = (pageData.list || []).map((item) => ({ ...item, statusText: statusText(item.status), createdAtText: formatDateTime(item.createdAt) }))
       this.setData({
         applications: reset ? list : this.data.applications.concat(list),
         page: pageData.page,

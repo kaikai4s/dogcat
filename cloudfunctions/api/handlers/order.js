@@ -16,6 +16,7 @@ module.exports = function createHandler(context) {
     calcOrderPricing,
     canStartOrderSession,
     canTakeOrders,
+    checkImageSecurity,
     checkTextSecurity,
     checkinEventText,
     completeOrderService,
@@ -957,7 +958,15 @@ module.exports = function createHandler(context) {
         }
       }
 
-      // 智能防跳单风控引擎检测
+      // 1. 微信内容安全风控审查
+      if (content && typeof checkTextSecurity === 'function') {
+        await checkTextSecurity(openid, content, { scene: 2, label: '会话内容' })
+      }
+      if (mediaUrl && typeof checkImageSecurity === 'function') {
+        await checkImageSecurity(openid, mediaUrl, { scene: 2, label: '会话图片' })
+      }
+
+      // 2. 智能防跳单风控引擎检测
       if (content) {
         const riskCheck = detectRiskContactBypass(content)
         if (riskCheck.isRisk) {
