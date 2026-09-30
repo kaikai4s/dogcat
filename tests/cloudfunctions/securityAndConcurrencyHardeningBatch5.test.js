@@ -256,8 +256,8 @@ test('order: requestEarlyStart and approveEarlyStart validate text security', as
         clientOpenid: 'openid_client',
         staffOpenid: 'openid_staff',
         status: 'assigned',
-        startTime: '2026-09-30 14:00',
-        endTime: '2026-09-30 15:00',
+        startTime: '2026-10-01 14:00',
+        endTime: '2026-10-01 15:00',
         createdAt: time
       }
     ],

@@ -82,6 +82,10 @@ module.exports = function createHandler(context) {
         throw new Error('该手机号受系统安全保护，禁止直接绑定')
       }
     }
+    const settings = await getSystemSettings().catch(() => ({}))
+    if (phone === '13800138000' && mockPhoneCodeAllowed(settings)) {
+      return
+    }
     const existingRes = await db.collection('users').where({ phone, status: 'active' }).limit(1).get().catch(() => ({ data: [] }))
     const existingUser = existingRes && existingRes.data && existingRes.data[0]
     if (existingUser && existingUser.openid && existingUser.openid !== user.openid) {

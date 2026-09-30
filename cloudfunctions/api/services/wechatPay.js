@@ -26,7 +26,10 @@ module.exports = function createService({
   }
 
   function isProductionPaymentEnv() {
-    return process.env.NODE_ENV === 'production' || process.env.PAYMENT_ENV === 'production'
+    if (process.env.NODE_ENV === 'production' || process.env.PAYMENT_ENV === 'production') return true
+    const tcbEnv = String(process.env.TCB_ENV || process.env.WX_ENV_ID || process.env.SCF_NAMESPACE || '').trim().toLowerCase()
+    if (tcbEnv && (tcbEnv.includes('prod') || tcbEnv.includes('production'))) return true
+    return false
   }
 
   function assertPaymentModeAllowed(payment) {
