@@ -112,9 +112,21 @@
     </view>
     <view class="pet-notice-section" wx:if="{{order.petNoticeRows && order.petNoticeRows.length}}">
       <view class="duration-title"><text class="remix-icon ri-error-warning-line"></text><text>狗狗/宠物注意事项</text></view>
-      <view class="pet-notice-row" wx:for="{{order.petNoticeRows}}" wx:key="index">
-        <text class="pet-notice-name">{{item.name}}</text>
-        <text class="pet-notice-text">{{item.text}}</text>
+      <view class="pet-notice-row" wx:for="{{order.petNoticeRows}}" wx:for-item="petNotice" wx:key="index">
+        <view class="pet-notice-head">
+          <text class="pet-notice-name">{{petNotice.name}}</text>
+          <text class="pet-risk-pill risk-{{petNotice.riskClass}}">{{petNotice.riskLevelText}}</text>
+        </view>
+        <view class="pet-notice-tags" wx:if="{{petNotice.tags && petNotice.tags.length}}">
+          <text class="pet-notice-tag" wx:for="{{petNotice.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
+        </view>
+        <view wx:if="{{petNotice.sections && petNotice.sections.length}}">
+          <view class="pet-notice-line" wx:for="{{petNotice.sections}}" wx:for-item="section" wx:key="label">
+            <text class="pet-notice-label">{{section.label}}</text>
+            <text class="pet-notice-text">{{section.text}}</text>
+          </view>
+        </view>
+        <view class="pet-notice-empty" wx:else>暂无特别注意事项</view>
       </view>
     </view>
   </view>

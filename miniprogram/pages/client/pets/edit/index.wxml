@@ -106,6 +106,26 @@
     <input class="input-field" placeholder="不喜欢/害怕什么" value="{{form.dislikes}}" data-field="dislikes" bindinput="input" />
     <textarea class="textarea-field" placeholder="健康情况：过敏、用药、疫苗、绝育、慢性病等" value="{{form.healthNotes}}" data-field="healthNotes" bindinput="input" />
     <textarea class="textarea-field" placeholder="照顾备注：爆冲、护食、攻击倾向、外出习惯、喂食要求等" value="{{form.specialNotes}}" data-field="specialNotes" bindinput="input" />
+
+    <view class="care-card">
+      <view class="care-card-head">
+        <view>
+          <view class="care-title">服务照护卡</view>
+          <view class="field-tip">这些信息会同步给接单宠托师，减少上门照护风险。</view>
+        </view>
+        <picker range="{{riskLevelOptions}}" range-key="label" value="{{riskLevelIndex}}" bindchange="chooseRiskLevel">
+          <view class="risk-pill risk-{{form.riskLevel || 'normal'}}">{{riskLevelOptions[riskLevelIndex].label}}</view>
+        </picker>
+      </view>
+      <view class="care-tags">
+        <view wx:for="{{careTagOptions}}" wx:key="*this" class="care-tag {{form.careTags.indexOf(item) >= 0 ? 'active' : ''}}" data-tag="{{item}}" bindtap="toggleCareTag">{{item}}</view>
+      </view>
+      <textarea class="textarea-field compact" placeholder="喂食说明：食量、频次、禁食内容" value="{{form.feedingNotes}}" data-field="feedingNotes" bindinput="input" />
+      <textarea class="textarea-field compact" placeholder="如厕/清洁说明：猫砂、尿垫、清理要求" value="{{form.toiletNotes}}" data-field="toiletNotes" bindinput="input" />
+      <textarea class="textarea-field compact" placeholder="遛狗说明：牵引方式、路线偏好、避让事项" value="{{form.walkingNotes}}" data-field="walkingNotes" bindinput="input" />
+      <textarea class="textarea-field compact" placeholder="用药/过敏说明：药量、时间、过敏源" value="{{form.medicalCareNotes}}" data-field="medicalCareNotes" bindinput="input" />
+      <textarea class="textarea-field compact" placeholder="紧急情况备注：联系顺序、就近医院、特殊处置" value="{{form.emergencyContactNote}}" data-field="emergencyContactNote" bindinput="input" />
+    </view>
   </view>
 
   <view class="card form-card ai-card">

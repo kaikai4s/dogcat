@@ -98,15 +98,31 @@ function buildDurationRows(order, serviceKey) {
 
 function buildPetNoticeRows(order) {
   const snapshots = Array.isArray(order.petSnapshots) && order.petSnapshots.length ? order.petSnapshots : [order.petSnapshot].filter(Boolean)
+  const riskMap = {
+    normal: { text: '常规照护', className: 'normal' },
+    caution: { text: '需要留意', className: 'caution' },
+    high: { text: '高风险照护', className: 'high' }
+  }
   return snapshots.map((pet) => {
-    const notes = [
-      pet.healthNotes ? `健康：${pet.healthNotes}` : '',
-      pet.specialNotes ? `照顾：${pet.specialNotes}` : '',
-      pet.dislikes ? `禁忌：${pet.dislikes}` : ''
-    ].filter(Boolean)
+    const sections = [
+      { label: '健康/用药', text: pet.medicalCareNotes || pet.healthNotes || '' },
+      { label: '喂食', text: pet.feedingNotes || pet.favoriteFood || '' },
+      { label: '如厕/清洁', text: pet.toiletNotes || '' },
+      { label: '遛狗', text: pet.walkingNotes || '' },
+      { label: '禁忌', text: pet.dislikes || '' },
+      { label: '特殊备注', text: pet.specialNotes || '' },
+      { label: '紧急备注', text: pet.emergencyContactNote || '' }
+    ].filter((item) => item.text)
+    const notes = sections.map((item) => `${item.label}：${item.text}`)
+    const risk = riskMap[pet.riskLevel] || riskMap.normal
     return {
       name: pet.name || '宠物',
       isDog: pet.species === 'dog',
+      riskLevel: pet.riskLevel || 'normal',
+      riskLevelText: risk.text,
+      riskClass: risk.className,
+      tags: Array.isArray(pet.careTags) ? pet.careTags.slice(0, 12) : [],
+      sections,
       text: notes.join('；') || '暂无特别注意事项'
     }
   })

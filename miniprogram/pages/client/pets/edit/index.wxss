@@ -71,6 +71,17 @@
 }
 .weight-unit { flex-shrink: 0; white-space: nowrap; color: #e9672f; font-weight: 900; font-size: 26rpx; }
 .textarea-field { min-height: 220rpx; padding: 22rpx; margin-bottom: 16rpx; line-height: 1.55; }
+.textarea-field.compact { min-height: 140rpx; }
+.care-card { margin-top: 22rpx; padding: 22rpx; border-radius: 30rpx; background: linear-gradient(145deg,#f7fbfa 0%,#fff8ec 100%); border: 1rpx solid rgba(34,197,94,.12); }
+.care-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18rpx; margin-bottom: 18rpx; }
+.care-title { color: #2d211a; font-size: 28rpx; font-weight: 950; }
+.risk-pill { min-width: 132rpx; padding: 10rpx 16rpx; border-radius: 999rpx; text-align: center; font-size: 23rpx; font-weight: 900; }
+.risk-normal { color: #15803d; background: #ecfdf3; }
+.risk-caution { color: #d97706; background: #fff7ed; }
+.risk-high { color: #be123c; background: #fff1f2; }
+.care-tags { display: flex; flex-wrap: wrap; gap: 12rpx; margin-bottom: 18rpx; }
+.care-tag { padding: 10rpx 18rpx; border-radius: 999rpx; color: #7a6a5e; background: #fff; border: 1rpx solid rgba(255,153,102,.16); font-size: 24rpx; font-weight: 850; }
+.care-tag.active { color: #fff; background: linear-gradient(135deg,#22c55e 0%,#16a34a 100%); border-color: transparent; }
 .ai-card { background: linear-gradient(145deg,#fff 0%,#fff9f0 52%,#fff2ec 100%); }
 .ai-head { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
 .field-tip { margin-top: 8rpx; color: #7a6a5e; font-size: 24rpx; line-height: 1.4; }

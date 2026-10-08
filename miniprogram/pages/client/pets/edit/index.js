@@ -10,6 +10,13 @@ const speciesOptions = [
 
 const genderOptions = ['妹妹', '弟弟', '已绝育妹妹', '已绝育弟弟', '未知']
 
+const careTagOptions = ['胆小怕生', '护食', '需短牵', '爆冲', '怕噪音', '需喂药', '不可洗澡', '多宠同住']
+const riskLevelOptions = [
+  { label: '常规照护', value: 'normal' },
+  { label: '需要留意', value: 'caution' },
+  { label: '高风险照护', value: 'high' }
+]
+
 function normalizeBeautyPhotos(form = {}) {
   const photos = Array.isArray(form.beautyPhotos) ? form.beautyPhotos.filter((item) => item && item.fileId) : []
   if (!photos.length && form.avatarFileId) {
@@ -37,8 +44,11 @@ Page({
     canGoBack: false,
     speciesOptions,
     genderOptions,
+    careTagOptions,
+    riskLevelOptions,
     speciesIndex: 0,
     genderIndex: 4,
+    riskLevelIndex: 0,
     recognizingBreed: false,
     enablePetBreedAi: true,
     uploadingBeauty: false,
@@ -71,6 +81,13 @@ Page({
       dislikes: '',
       healthNotes: '',
       specialNotes: '',
+      careTags: [],
+      feedingNotes: '',
+      toiletNotes: '',
+      walkingNotes: '',
+      medicalCareNotes: '',
+      emergencyContactNote: '',
+      riskLevel: 'normal',
       aiInteractionEnabled: true,
       aiPersona: '',
       aiGreeting: ''
@@ -100,9 +117,10 @@ Page({
       .then((form) => {
         const speciesIndex = Math.max(speciesOptions.findIndex((item) => item.value === form.species), 0)
         const genderIndex = Math.max(genderOptions.indexOf(form.gender || '未知'), 0)
-        const nextForm = { ...this.data.form, ...form }
+        const riskLevelIndex = Math.max(riskLevelOptions.findIndex((item) => item.value === form.riskLevel), 0)
+        const nextForm = { ...this.data.form, ...form, careTags: Array.isArray(form.careTags) ? form.careTags : [] }
         const beautyPhotos = normalizeBeautyPhotos(nextForm)
-        this.setData({ form: { ...nextForm, beautyPhotos, avatarFileId: nextForm.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '' }, vaccineFileIds: Array.isArray(nextForm.vaccineCertification && nextForm.vaccineCertification.fileIds) ? nextForm.vaccineCertification.fileIds : [], speciesIndex, genderIndex }, () => this.refreshTitleOptions())
+        this.setData({ form: { ...nextForm, beautyPhotos, avatarFileId: nextForm.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '' }, vaccineFileIds: Array.isArray(nextForm.vaccineCertification && nextForm.vaccineCertification.fileIds) ? nextForm.vaccineCertification.fileIds : [], speciesIndex, genderIndex, riskLevelIndex }, () => this.refreshTitleOptions())
         this.loadBeautyTitles()
       })
       .catch(showError)
@@ -178,6 +196,22 @@ Page({
   chooseGender(e) {
     const genderIndex = Number(e.detail.value)
     this.setData({ genderIndex, ['form.gender']: genderOptions[genderIndex] })
+  },
+
+  chooseRiskLevel(e) {
+    const riskLevelIndex = Number(e.detail.value)
+    const option = riskLevelOptions[riskLevelIndex] || riskLevelOptions[0]
+    this.setData({ riskLevelIndex, ['form.riskLevel']: option.value })
+  },
+
+  toggleCareTag(e) {
+    const tag = e.currentTarget.dataset.tag
+    if (!tag) return
+    const current = Array.isArray(this.data.form.careTags) ? this.data.form.careTags.slice() : []
+    const index = current.indexOf(tag)
+    if (index >= 0) current.splice(index, 1)
+    else current.push(tag)
+    this.setData({ ['form.careTags']: current })
   },
 
   chooseBirthday(e) {
@@ -500,6 +534,13 @@ Page({
       dislikes: form.dislikes || '',
       healthNotes: form.healthNotes || '',
       specialNotes: form.specialNotes || '',
+      careTags: Array.isArray(form.careTags) ? form.careTags : [],
+      feedingNotes: form.feedingNotes || '',
+      toiletNotes: form.toiletNotes || '',
+      walkingNotes: form.walkingNotes || '',
+      medicalCareNotes: form.medicalCareNotes || '',
+      emergencyContactNote: form.emergencyContactNote || '',
+      riskLevel: form.riskLevel || 'normal',
       aiInteractionEnabled: form.aiInteractionEnabled === true,
       aiPersona: form.aiPersona || '',
       aiGreeting: form.aiGreeting || ''

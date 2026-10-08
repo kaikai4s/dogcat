@@ -28,6 +28,35 @@ module.exports = function createHandler(context) {
     unequipPetTitle
   } = context
 
+  const careTagAllowList = ['胆小怕生', '护食', '需短牵', '爆冲', '怕噪音', '需喂药', '不可洗澡', '多宠同住']
+  const riskLevelAllowList = ['normal', 'caution', 'high']
+
+  function limitText(value, max = 300) {
+    return safeText(value).trim().slice(0, max)
+  }
+
+  function normalizeCareTags(value) {
+    const raw = Array.isArray(value) ? value : []
+    return Array.from(new Set(raw.map((item) => safeText(item).trim()).filter((item) => careTagAllowList.includes(item)))).slice(0, 12)
+  }
+
+  function normalizeRiskLevel(value) {
+    const level = safeText(value).trim()
+    return riskLevelAllowList.includes(level) ? level : 'normal'
+  }
+
+  function normalizeCareProfile(data = {}) {
+    return {
+      careTags: normalizeCareTags(data.careTags),
+      feedingNotes: limitText(data.feedingNotes),
+      toiletNotes: limitText(data.toiletNotes),
+      walkingNotes: limitText(data.walkingNotes),
+      medicalCareNotes: limitText(data.medicalCareNotes),
+      emergencyContactNote: limitText(data.emergencyContactNote),
+      riskLevel: normalizeRiskLevel(data.riskLevel)
+    }
+  }
+
   const petBreedTimestamps = new Map()
   function checkPetBreedRateLimit(userOpenid, maxPerMinute = 10) {
     const nowTs = Date.now()
@@ -287,7 +316,8 @@ module.exports = function createHandler(context) {
         throw new Error('最多添加 20 只宠物档案，请整理已有档案后再添加')
       }
       if (!safeFileId(data.avatarFileId) && !safeText(data.avatarFileId)) throw new Error('请上传至少一张宠物照片')
-      const petText = [petName, data.breed, data.personality, data.specialNotes, data.favoriteFood, data.dislikes, data.healthNotes, data.aiGreeting, data.aiPersona].filter(Boolean).join(' ')
+      const careProfile = normalizeCareProfile(data)
+      const petText = [petName, data.breed, data.personality, data.specialNotes, data.favoriteFood, data.dislikes, data.healthNotes, data.aiGreeting, data.aiPersona, ...careProfile.careTags, careProfile.feedingNotes, careProfile.toiletNotes, careProfile.walkingNotes, careProfile.medicalCareNotes, careProfile.emergencyContactNote].filter(Boolean).join(' ')
       if (petText) {
         await checkTextSecurity(openid, petText, { scene: 1, label: '宠物资料' })
       }
@@ -325,6 +355,7 @@ module.exports = function createHandler(context) {
         favoriteFood: safeText(data.favoriteFood),
         dislikes: safeText(data.dislikes),
         healthNotes: safeText(data.healthNotes),
+        ...careProfile,
         aiInteractionEnabled: data.aiInteractionEnabled === true,
         aiPersona: safeText(data.aiPersona),
         aiGreeting: safeText(data.aiGreeting),
@@ -345,7 +376,8 @@ module.exports = function createHandler(context) {
       if (!petName) throw new Error('宠物名称不能为空')
       if (petName.length > 30) throw new Error('宠物名称不能超过 30 字')
       if (!safeFileId(data.avatarFileId) && !safeText(data.avatarFileId)) throw new Error('请上传至少一张宠物照片')
-      const petText = [petName, data.breed, data.personality, data.specialNotes, data.favoriteFood, data.dislikes, data.healthNotes, data.aiGreeting, data.aiPersona].filter(Boolean).join(' ')
+      const careProfile = normalizeCareProfile(data)
+      const petText = [petName, data.breed, data.personality, data.specialNotes, data.favoriteFood, data.dislikes, data.healthNotes, data.aiGreeting, data.aiPersona, ...careProfile.careTags, careProfile.feedingNotes, careProfile.toiletNotes, careProfile.walkingNotes, careProfile.medicalCareNotes, careProfile.emergencyContactNote].filter(Boolean).join(' ')
       if (petText) {
         await checkTextSecurity(openid, petText, { scene: 1, label: '宠物资料' })
       }
@@ -384,6 +416,7 @@ module.exports = function createHandler(context) {
         favoriteFood: safeText(data.favoriteFood),
         dislikes: safeText(data.dislikes),
         healthNotes: safeText(data.healthNotes),
+        ...careProfile,
         aiInteractionEnabled: data.aiInteractionEnabled === true,
         aiPersona: safeText(data.aiPersona),
         aiGreeting: safeText(data.aiGreeting),
