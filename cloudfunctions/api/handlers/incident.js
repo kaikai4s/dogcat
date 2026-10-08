@@ -27,6 +27,39 @@ module.exports = function createHandler(context) {
     requireStaffOrder,
     safeText
   } = context
+
+  function buildCareContextSnapshot(order = {}) {
+    const snapshots = Array.isArray(order.petSnapshots) && order.petSnapshots.length ? order.petSnapshots : [order.petSnapshot].filter(Boolean)
+    const riskMap = { normal: '常规照护', caution: '需要留意', high: '高风险照护' }
+    const highRiskTags = ['护食', '需短牵', '爆冲', '怕噪音', '需喂药', '不可洗澡']
+    const cards = snapshots.map((pet) => {
+      const tags = Array.isArray(pet.careTags) ? pet.careTags.filter(Boolean).slice(0, 12) : []
+      const sections = [
+        { label: '健康/用药', text: safeText(pet.medicalCareNotes || pet.healthNotes).trim() },
+        { label: '喂食', text: safeText(pet.feedingNotes || pet.favoriteFood).trim() },
+        { label: '如厕/清洁', text: safeText(pet.toiletNotes).trim() },
+        { label: '遛狗', text: safeText(pet.walkingNotes).trim() },
+        { label: '禁忌', text: safeText(pet.dislikes).trim() },
+        { label: '特殊备注', text: safeText(pet.specialNotes).trim() },
+        { label: '紧急备注', text: safeText(pet.emergencyContactNote).trim() }
+      ].filter((item) => item.text)
+      const riskLevel = safeText(pet.riskLevel).trim() || 'normal'
+      return {
+        name: safeText(pet.name).trim() || '宠物',
+        riskLevel,
+        riskLevelText: riskMap[riskLevel] || riskMap.normal,
+        tags,
+        sections,
+        isHighRisk: riskLevel === 'high' || tags.some((tag) => highRiskTags.includes(tag)),
+        text: sections.slice(0, 3).map((item) => `${item.label}：${item.text}`).join('；') || '暂无特别注意事项'
+      }
+    })
+    return {
+      snapshotText: cards.map((card) => `${card.name}｜${card.riskLevelText}${card.tags.length ? '｜' + card.tags.join('、') : ''}｜${card.text}`).join('\n'),
+      cards
+    }
+  }
+
   return async function incident(openid, action, data) {
     if (action === 'createSosIncident') {
       const clientRequestId = getClientRequestId(data)
@@ -41,8 +74,9 @@ module.exports = function createHandler(context) {
         await checkTextSecurity(openid, description, { scene: 2, label: 'SOS求助说明' })
       }
       const mediaFileIds = Array.isArray(data.mediaFileIds) ? data.mediaFileIds.slice(0, 9) : []
+      const careContextSnapshot = buildCareContextSnapshot(order)
       const time = now()
-      const incident = { orderId: data.orderId, clientOpenid: order.clientOpenid || '', staffUserId: user._id, staffOpenid: openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident_sos', data.orderId, openid, time.getTime()), incidentType: normalizeIncidentType(data.incidentType, 'sos'), title, description, latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds, status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'staff', createdAt: time, updatedAt: time }
+      const incident = { orderId: data.orderId, clientOpenid: order.clientOpenid || '', staffUserId: user._id, staffOpenid: openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident_sos', data.orderId, openid, time.getTime()), incidentType: normalizeIncidentType(data.incidentType, 'sos'), title, description, latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds, careContextSnapshot, status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'staff', createdAt: time, updatedAt: time }
       const created = await db.collection('order_incidents').add({ data: incident })
       await recordIncidentAction(created._id, 'created_sos', 'staff', openid, { orderId: data.orderId })
       await appendOrderTimeline(data.orderId, 'incident_open', '宠托师发起 SOS', incident.description, 'staff')
@@ -86,8 +120,9 @@ module.exports = function createHandler(context) {
         }
       }
 
+      const careContextSnapshot = buildCareContextSnapshot(order)
       const time = now()
-      const incident = { orderId: data.orderId, clientUserId: user._id, clientOpenid: openid, openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident', data.orderId, openid, time.getTime()), staffOpenid: order.staffOpenid || '', staffProfileId: order.staffProfileId || '', incidentType: normalizeIncidentType(data.incidentType, 'complaint'), title, description, latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds, status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'client', createdAt: time, updatedAt: time }
+      const incident = { orderId: data.orderId, clientUserId: user._id, clientOpenid: openid, openid, clientRequestId, idempotencyKey: clientRequestId || makeIdempotencyKey('incident', data.orderId, openid, time.getTime()), staffOpenid: order.staffOpenid || '', staffProfileId: order.staffProfileId || '', incidentType: normalizeIncidentType(data.incidentType, 'complaint'), title, description, latitude: Number(data.latitude || 0), longitude: Number(data.longitude || 0), mediaFileIds, careContextSnapshot, status: 'open', resolution: null, refundId: '', refundNo: '', frozenEarningIds: [], createdByRole: 'client', createdAt: time, updatedAt: time }
       const created = await db.collection('order_incidents').add({ data: incident })
       await recordIncidentAction(created._id, 'created_complaint', 'client', openid, { orderId: data.orderId })
       await appendOrderTimeline(data.orderId, 'incident_open', '宠物主发起投诉', incident.title, 'client')

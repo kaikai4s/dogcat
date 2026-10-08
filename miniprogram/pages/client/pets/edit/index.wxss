@@ -82,6 +82,12 @@
 .care-tags { display: flex; flex-wrap: wrap; gap: 12rpx; margin-bottom: 18rpx; }
 .care-tag { padding: 10rpx 18rpx; border-radius: 999rpx; color: #7a6a5e; background: #fff; border: 1rpx solid rgba(255,153,102,.16); font-size: 24rpx; font-weight: 850; }
 .care-tag.active { color: #fff; background: linear-gradient(135deg,#22c55e 0%,#16a34a 100%); border-color: transparent; }
+.care-progress { margin-bottom: 18rpx; padding: 16rpx; border-radius: 22rpx; background: rgba(255,255,255,.72); }
+.care-progress-top { display: flex; justify-content: space-between; color: #2d211a; font-size: 24rpx; font-weight: 900; }
+.care-progress-track { height: 12rpx; margin-top: 12rpx; border-radius: 999rpx; background: #eef2e8; overflow: hidden; }
+.care-progress-bar { height: 100%; border-radius: 999rpx; background: linear-gradient(135deg,#22c55e 0%,#16a34a 100%); }
+.template-chips { display: flex; flex-wrap: wrap; gap: 10rpx; margin: -4rpx 0 16rpx; }
+.template-chip { padding: 8rpx 14rpx; border-radius: 999rpx; color: #d45f22; background: #fff7ed; font-size: 22rpx; font-weight: 850; }
 .ai-card { background: linear-gradient(145deg,#fff 0%,#fff9f0 52%,#fff2ec 100%); }
 .ai-head { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
 .field-tip { margin-top: 8rpx; color: #7a6a5e; font-size: 24rpx; line-height: 1.4; }

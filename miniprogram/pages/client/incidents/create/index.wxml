@@ -13,6 +13,16 @@
     </view>
   </view>
 
+  <view class="card care-context-card" wx:if="{{careCards.length}}">
+    <view class="card-subtitle"><text class="remix-icon ri-shield-heart-line sub-icon"></text><text>本订单照护快照</text></view>
+    <view class="notice-desc">平台处理时会同步参考下单时照护信息。</view>
+    <view class="care-context-pet" wx:for="{{careCards}}" wx:for-item="care" wx:key="name">
+      <view class="care-context-head"><text class="care-name">{{care.name}}</text><text class="care-risk risk-{{care.riskClass}}">{{care.riskLevelText}}</text></view>
+      <view class="care-tags" wx:if="{{care.tags.length}}"><text class="care-tag" wx:for="{{care.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text></view>
+      <view class="care-text">{{care.text}}</view>
+    </view>
+  </view>
+
   <view class="card form-card">
     <view class="field-group">
       <view class="card-subtitle"><text class="remix-icon ri-price-tag-3-line sub-icon"></text><text>问题类型</text></view>

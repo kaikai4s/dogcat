@@ -1,6 +1,8 @@
 const { callFunction, showError, ensureLogin, loadSystemSettings, getCachedSystemSettings } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { toBeijingDate } = require('../../../../utils/format')
+const petCare = require('../../../../utils/petCare') || {}
+const getCareCompleteness = typeof petCare.getCareCompleteness === 'function' ? petCare.getCareCompleteness : () => ({ score: 0, missing: [], complete: false })
 
 const speciesOptions = [
   { label: '狗狗', value: 'dog' },
@@ -10,12 +12,30 @@ const speciesOptions = [
 
 const genderOptions = ['妹妹', '弟弟', '已绝育妹妹', '已绝育弟弟', '未知']
 
-const careTagOptions = ['胆小怕生', '护食', '需短牵', '爆冲', '怕噪音', '需喂药', '不可洗澡', '多宠同住']
+const careTagLabels = ['胆小怕生', '护食', '需短牵', '爆冲', '怕噪音', '需喂药', '不可洗澡', '多宠同住']
 const riskLevelOptions = [
   { label: '常规照护', value: 'normal' },
   { label: '需要留意', value: 'caution' },
   { label: '高风险照护', value: 'high' }
 ]
+
+function buildCareTagOptions(selectedTags = []) {
+  const selected = new Set(Array.isArray(selectedTags) ? selectedTags : [])
+  return careTagLabels.map((label) => ({ label, selected: selected.has(label) }))
+}
+
+function calculateCareCompleteness(form = {}) {
+  const result = getCareCompleteness(form)
+  return { score: result.score, missingText: result.missing.length ? result.missing.join('、') : '照护信息已较完整' }
+}
+
+const careQuickTemplates = {
+  feedingNotes: ['早晚各一次', '只吃自带粮', '不能吃人食'],
+  toiletNotes: ['每日铲屎', '尿垫在卫生间', '需要清理食盆水碗'],
+  walkingNotes: ['必须短牵', '见狗会激动', '避开车流/噪音'],
+  medicalCareNotes: ['按说明随粮喂药', '有过敏史需确认'],
+  emergencyContactNote: ['优先电话联系主人', '必要时联系平台客服']
+}
 
 function normalizeBeautyPhotos(form = {}) {
   const photos = Array.isArray(form.beautyPhotos) ? form.beautyPhotos.filter((item) => item && item.fileId) : []
@@ -44,11 +64,14 @@ Page({
     canGoBack: false,
     speciesOptions,
     genderOptions,
-    careTagOptions,
+    careTagOptions: buildCareTagOptions(),
+    careQuickTemplates,
+    careCompleteness: calculateCareCompleteness(),
     riskLevelOptions,
     speciesIndex: 0,
     genderIndex: 4,
     riskLevelIndex: 0,
+    riskLevelText: riskLevelOptions[0].label,
     recognizingBreed: false,
     enablePetBreedAi: true,
     uploadingBeauty: false,
@@ -118,9 +141,11 @@ Page({
         const speciesIndex = Math.max(speciesOptions.findIndex((item) => item.value === form.species), 0)
         const genderIndex = Math.max(genderOptions.indexOf(form.gender || '未知'), 0)
         const riskLevelIndex = Math.max(riskLevelOptions.findIndex((item) => item.value === form.riskLevel), 0)
-        const nextForm = { ...this.data.form, ...form, careTags: Array.isArray(form.careTags) ? form.careTags : [] }
+        const riskLevel = riskLevelOptions[riskLevelIndex] || riskLevelOptions[0]
+        const nextForm = { ...this.data.form, ...form, careTags: Array.isArray(form.careTags) ? form.careTags : [], riskLevel: riskLevel.value }
         const beautyPhotos = normalizeBeautyPhotos(nextForm)
-        this.setData({ form: { ...nextForm, beautyPhotos, avatarFileId: nextForm.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '' }, vaccineFileIds: Array.isArray(nextForm.vaccineCertification && nextForm.vaccineCertification.fileIds) ? nextForm.vaccineCertification.fileIds : [], speciesIndex, genderIndex, riskLevelIndex }, () => this.refreshTitleOptions())
+        const mergedForm = { ...nextForm, beautyPhotos, avatarFileId: nextForm.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '' }
+        this.setData({ form: mergedForm, careCompleteness: calculateCareCompleteness(mergedForm), careTagOptions: buildCareTagOptions(nextForm.careTags), vaccineFileIds: Array.isArray(nextForm.vaccineCertification && nextForm.vaccineCertification.fileIds) ? nextForm.vaccineCertification.fileIds : [], speciesIndex, genderIndex, riskLevelIndex, riskLevelText: riskLevel.label }, () => this.refreshTitleOptions())
         this.loadBeautyTitles()
       })
       .catch(showError)
@@ -182,10 +207,14 @@ Page({
     this.setData({ titleOptions, selectedTitleOptionIndex })
   },
 
+  refreshCareCompleteness() {
+    this.setData({ careCompleteness: calculateCareCompleteness(this.data.form) })
+  },
+
   input(e) {
     const field = e.currentTarget.dataset.field
     const value = field === 'weight' ? String(e.detail.value || '').replace(/[^0-9.]/g, '') : e.detail.value
-    this.setData({ ['form.' + field]: value })
+    this.setData({ ['form.' + field]: value }, () => this.refreshCareCompleteness())
   },
 
   chooseSpecies(e) {
@@ -201,7 +230,7 @@ Page({
   chooseRiskLevel(e) {
     const riskLevelIndex = Number(e.detail.value)
     const option = riskLevelOptions[riskLevelIndex] || riskLevelOptions[0]
-    this.setData({ riskLevelIndex, ['form.riskLevel']: option.value })
+    this.setData({ riskLevelIndex, riskLevelText: option.label, ['form.riskLevel']: option.value }, () => this.refreshCareCompleteness())
   },
 
   toggleCareTag(e) {
@@ -211,7 +240,16 @@ Page({
     const index = current.indexOf(tag)
     if (index >= 0) current.splice(index, 1)
     else current.push(tag)
-    this.setData({ ['form.careTags']: current })
+    this.setData({ ['form.careTags']: current, careTagOptions: buildCareTagOptions(current) }, () => this.refreshCareCompleteness())
+  },
+
+  applyCareTemplate(e) {
+    const field = e.currentTarget.dataset.field
+    const text = e.currentTarget.dataset.text
+    if (!field || !text) return
+    const parts = String(this.data.form[field] || '').split('；').map((item) => item.trim()).filter(Boolean)
+    if (!parts.includes(text)) parts.push(text)
+    this.setData({ ['form.' + field]: parts.join('；') }, () => this.refreshCareCompleteness())
   },
 
   chooseBirthday(e) {

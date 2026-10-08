@@ -5,6 +5,7 @@ const { createClientRequestId } = require('../../../../utils/offlineQueue')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { withOrderText, formatCheckinEvent } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
+const { buildOrderCareCards } = require('../../../../utils/petCare')
 
 function getRefundText(order = {}) {
   if (!order.refundStatus || order.refundStatus === 'not_required') return ''
@@ -157,9 +158,10 @@ Page({
       .then(([order, timeline, review, checkins]) => {
         if (!order) return
         const displayOrder = withOrderText(order)
+        const careCards = buildOrderCareCards(displayOrder)
         const liveCheckins = (checkins || []).filter(item => item.mediaFileId)
         this.setData({
-          order: { ...displayOrder, refundText: getRefundText(displayOrder) },
+          order: { ...displayOrder, refundText: getRefundText(displayOrder), careCards, hasHighRiskCare: careCards.some((card) => card.isHighRisk) },
           timeline: withTimelineText(timeline),
           review,
           liveCheckins
@@ -209,7 +211,8 @@ Page({
         .then((latestOrder) => {
           if (!latestOrder) return
           const displayOrder = withOrderText(latestOrder)
-          this.setData({ 'order': { ...displayOrder, refundText: getRefundText(displayOrder) } })
+          const careCards = buildOrderCareCards(displayOrder)
+          this.setData({ order: { ...displayOrder, refundText: getRefundText(displayOrder), careCards, hasHighRiskCare: careCards.some((card) => card.isHighRisk) } })
           if (displayOrder.earlyStartRequest && displayOrder.earlyStartRequest.status === 'pending') {
             this.checkPromptEarlyStart(displayOrder.earlyStartRequest)
           }

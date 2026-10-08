@@ -17,6 +17,19 @@
     <view class="notice-desc">描述现场情况并提交平台处理；如需电话联络宠物主，请联系平台客服并报订单号，由管理员转接。</view>
   </view>
 
+  <view class="card care-context-card" wx:if="{{careCards.length}}">
+    <view class="card-subtitle">
+      <text class="remix-icon ri-shield-heart-line sub-icon danger-icon"></text>
+      <text>本订单照护快照</text>
+    </view>
+    <view class="notice-desc">平台处理 SOS 时会同步参考下单时照护信息。</view>
+    <view class="care-context-pet" wx:for="{{careCards}}" wx:for-item="care" wx:key="name">
+      <view class="care-context-head"><text class="care-name">{{care.name}}</text><text class="care-risk risk-{{care.riskClass}}">{{care.riskLevelText}}</text></view>
+      <view class="care-tags" wx:if="{{care.tags.length}}"><text class="care-tag" wx:for="{{care.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text></view>
+      <view class="care-text">{{care.text}}</view>
+    </view>
+  </view>
+
   <view class="card cs-card">
     <view class="card-subtitle">
       <text class="remix-icon ri-customer-service-2-line sub-icon"></text>

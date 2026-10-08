@@ -3,6 +3,7 @@ const { withOrderText } = require('../../../../utils/format')
 const { getSelectedLocation } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { loadMessageUnread } = require('../../../../utils/client-nav')
+const { buildOrderCareCards } = require('../../../../utils/petCare')
 
 const tabs = [
   { label: '全部', value: 'all' },
@@ -61,7 +62,11 @@ Page({
       .then((result) => {
         if (requestSeq !== this._requestSeq) return
         const pageData = pageList(result)
-        const orders = (pageData.list || []).map(withOrderText)
+        const orders = (pageData.list || []).map((order) => {
+          const display = withOrderText(order)
+          const careCards = buildOrderCareCards(display)
+          return { ...display, careCards, hasHighRiskCare: careCards.some((card) => card.isHighRisk) }
+        })
         this.setData({
           orders: reset ? orders : this.data.orders.concat(orders),
           page: pageData.page,

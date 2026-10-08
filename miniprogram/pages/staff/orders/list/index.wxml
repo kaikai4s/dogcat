@@ -99,6 +99,15 @@
       </view>
     </view>
 
+    <view class="care-preview-card {{item.hasHighRiskCare ? 'high' : ''}}" wx:if="{{item.careCards && item.careCards.length}}">
+      <view class="care-preview-title"><text class="remix-icon ri-shield-heart-line"></text><text>接单前照护风险预览</text></view>
+      <view class="care-preview-row" wx:for="{{item.careCards}}" wx:for-item="care" wx:key="name">
+        <view class="care-preview-head"><text class="care-name">{{care.name}}</text><text class="care-risk risk-{{care.riskClass}}">{{care.riskLevelText}}</text></view>
+        <view class="care-preview-tags" wx:if="{{care.tags.length}}"><text class="care-tag" wx:for="{{care.tags}}" wx:key="*this">{{item}}</text></view>
+        <view class="care-preview-text">{{care.text}}</view>
+      </view>
+    </view>
+
     <view class="card-action-row nav-only-row">
       <button class="ghost-btn nav-btn" data-approximate="{{item.locationIsApproximate}}" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" catchtap="openNavigation">
         <text class="remix-icon ri-map-pin-line"></text>{{item.locationIsApproximate ? '区域导航' : '导航'}}

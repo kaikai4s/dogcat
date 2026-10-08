@@ -4,9 +4,10 @@ const { requireSelectedLocation } = require('../../../utils/cloud')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { copyText } = require('../../../utils/clipboard')
+const { buildOrderCareCards } = require('../../../utils/petCare')
 
 Page({
-  data: { themeClass: 'theme-day', orderId: '', order: null, customerService: null, description: '', submitting: false, sectionHomeUrl: '', canGoBack: false },
+  data: { themeClass: 'theme-day', orderId: '', order: null, careCards: [], customerService: null, description: '', submitting: false, sectionHomeUrl: '', canGoBack: false },
   onLoad(q) {
     this.applyCurrentTheme()
     this.setData({ ...createPageNav(q), orderId: q.id })
@@ -21,7 +22,7 @@ Page({
   loadOrder() {
     if (!this.data.orderId) return
     callFunction('order', 'getOrderDetail', { id: this.data.orderId, role: 'staff' })
-      .then((order) => this.setData({ order }))
+      .then((order) => this.setData({ order, careCards: buildOrderCareCards(order) }))
       .catch(() => {})
   },
   loadCustomerService() {
@@ -50,6 +51,7 @@ Page({
         description: this.data.description,
         latitude: loc.latitude,
         longitude: loc.longitude,
+        careContext: this.data.careCards,
         clientRequestId: createClientRequestId('sos')
       }))
       .then((incident) => {

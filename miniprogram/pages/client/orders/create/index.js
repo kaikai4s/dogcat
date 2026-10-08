@@ -16,6 +16,9 @@ const { getSelectedLocation, chooseSelectedLocation } = require('../../../../uti
 const { ensureLogin } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { toBeijingDate, parseBeijingDate } = require('../../../../utils/format')
+const petCare = require('../../../../utils/petCare') || {}
+const buildPetCareSummary = typeof petCare.buildPetCareSummary === 'function' ? petCare.buildPetCareSummary : (pet) => ({ name: pet && pet.name || '宠物', riskLevelText: '常规照护', riskClass: 'normal', tags: [], sections: [], highlights: [], text: '暂无特别注意事项', isHighRisk: false })
+const getCareCompleteness = typeof petCare.getCareCompleteness === 'function' ? petCare.getCareCompleteness : () => ({ score: 0, missing: [], complete: false })
 
 const COUPON_CONTEXT_KEY = 'vip_pet_coupon_select_context'
 const SELECTED_COUPON_KEY = 'vip_pet_selected_coupon'
@@ -441,6 +444,8 @@ typeof Page === 'function' ? Page({
     selectedCoupon: null,
     selectedPet: null,
     selectedPets: [],
+    selectedPetCareCards: [],
+    careSyncConfirmed: false,
     selectedPetsTitle: '',
     hasSelectedUnvaccinatedPets: false,
     petVoiceMessage: '',
@@ -1073,6 +1078,10 @@ typeof Page === 'function' ? Page({
       serviceTypes = ensureVisitFeeServiceTypes(serviceTypes)
     }
     const serviceOptions = markSelected(this.data.serviceOptions, serviceTypes)
+    const selectedPetCareCards = selectedPets.map((pet) => {
+      const completeness = getCareCompleteness(pet)
+      return { ...buildPetCareSummary(pet, serviceTypes), completeness, missingText: completeness.missing.join('、') }
+    })
     const isSinglePet = selectedPets.length === 1
     const initialVoice = isSinglePet
       ? buildPetVoiceMessage(selectedPet, this.data.form.startDate)
@@ -1082,6 +1091,8 @@ typeof Page === 'function' ? Page({
       pets,
       selectedPet,
       selectedPets,
+      selectedPetCareCards,
+      careSyncConfirmed: false,
       'form.serviceTypes': serviceTypes,
       'form.serviceType': getPrimaryBusinessService(serviceTypes),
       serviceOptions,
@@ -1882,6 +1893,10 @@ typeof Page === 'function' ? Page({
     this.setData({ agreeAgreement: !this.data.agreeAgreement, agreementRequired: false })
   },
 
+  toggleCareSyncConfirmed() {
+    this.setData({ careSyncConfirmed: !this.data.careSyncConfirmed })
+  },
+
   openAgreement(e) {
     const type = e.currentTarget.dataset.type
     if (!type) return
@@ -1905,6 +1920,13 @@ typeof Page === 'function' ? Page({
       this.creatingOrder = false
       this.setData({ creating: false })
       this.showBookingNotice({ title: error, icon: 'none' })
+      return
+    }
+    if (this.data.selectedPetCareCards.length && !this.data.careSyncConfirmed) {
+      this.creatingOrder = false
+      this.setData({ creating: false })
+      this.showBookingNotice({ title: '请先确认宠物照护卡会同步给接单宠托师', icon: 'none' })
+      wx.pageScrollTo({ selector: '#care-sync-confirm', offsetTop: -24, duration: 300 })
       return
     }
     showLoading({ title: '正在创建订单...', mask: true })

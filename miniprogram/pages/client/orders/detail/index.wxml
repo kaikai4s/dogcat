@@ -143,6 +143,17 @@
     <view class="info-row" wx:if="{{order.refundNo}}"><view class="label">退款单号</view><view class="value">{{order.refundNo}}</view></view>
   </view>
 
+  <view class="card care-snapshot-card" wx:if="{{order.careCards && order.careCards.length}}">
+    <view class="card-subtitle"><text class="remix-icon ri-shield-heart-line sub-icon"></text><text>下单时照护快照</text></view>
+    <view class="notice-text">后续修改宠物档案不会影响本订单已同步给宠托师的信息。</view>
+    <view class="care-snapshot-pet" wx:for="{{order.careCards}}" wx:for-item="care" wx:key="name">
+      <view class="care-snapshot-head"><text class="care-name">{{care.name}}</text><text class="care-risk risk-{{care.riskClass}}">{{care.riskLevelText}}</text></view>
+      <view class="care-tags" wx:if="{{care.tags.length}}"><text class="care-tag" wx:for="{{care.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text></view>
+      <view class="care-line" wx:for="{{care.sections}}" wx:for-item="section" wx:key="label"><text class="care-label">{{section.label}}</text><text class="care-text">{{section.text}}</text></view>
+      <view class="care-empty" wx:if="{{!care.sections.length && !care.tags.length}}">暂无特别注意事项</view>
+    </view>
+  </view>
+
   <view class="card security-card" wx:if="{{order.orderHomeSecurity}}">
     <view class="card-subtitle"><text class="remix-icon ri-door-lock-line sub-icon"></text><text>家庭安防</text></view>
     <view class="info-row"><view class="label">方式</view><view class="value">{{order.orderHomeSecurity.lockMethodText}}</view></view>

@@ -5,6 +5,7 @@ const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTa
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { formatDateTime, toBeijingDate } = require('../../../../utils/format')
 const { copyText } = require('../../../../utils/clipboard')
+const { buildOrderCareCards } = require('../../../../utils/petCare')
 const { MAX_GAP_MS, pointTime, isGoodTrackPoint, isPlausibleStep } = require('../../utils/trackQuality')
 
 const TRACK_INTERVAL_MS = 30 * 1000
@@ -97,35 +98,7 @@ function buildDurationRows(order, serviceKey) {
 }
 
 function buildPetNoticeRows(order) {
-  const snapshots = Array.isArray(order.petSnapshots) && order.petSnapshots.length ? order.petSnapshots : [order.petSnapshot].filter(Boolean)
-  const riskMap = {
-    normal: { text: '常规照护', className: 'normal' },
-    caution: { text: '需要留意', className: 'caution' },
-    high: { text: '高风险照护', className: 'high' }
-  }
-  return snapshots.map((pet) => {
-    const sections = [
-      { label: '健康/用药', text: pet.medicalCareNotes || pet.healthNotes || '' },
-      { label: '喂食', text: pet.feedingNotes || pet.favoriteFood || '' },
-      { label: '如厕/清洁', text: pet.toiletNotes || '' },
-      { label: '遛狗', text: pet.walkingNotes || '' },
-      { label: '禁忌', text: pet.dislikes || '' },
-      { label: '特殊备注', text: pet.specialNotes || '' },
-      { label: '紧急备注', text: pet.emergencyContactNote || '' }
-    ].filter((item) => item.text)
-    const notes = sections.map((item) => `${item.label}：${item.text}`)
-    const risk = riskMap[pet.riskLevel] || riskMap.normal
-    return {
-      name: pet.name || '宠物',
-      isDog: pet.species === 'dog',
-      riskLevel: pet.riskLevel || 'normal',
-      riskLevelText: risk.text,
-      riskClass: risk.className,
-      tags: Array.isArray(pet.careTags) ? pet.careTags.slice(0, 12) : [],
-      sections,
-      text: notes.join('；') || '暂无特别注意事项'
-    }
-  })
+  return buildOrderCareCards(order)
 }
 
 function withServiceActionState(order) {
@@ -146,6 +119,8 @@ function withServiceActionState(order) {
   const walkDurationRows = buildDurationRows(order, 'walk')
   const playDurationRows = buildDurationRows(order, 'play')
   const customerRemarkText = order.clientRemark || order.customerRemark || order.orderRemark || order.remark || (order.orderHomeSecurity && order.orderHomeSecurity.entryNotes) || (order.homeSecuritySnapshot && order.homeSecuritySnapshot.entryNotes) || ''
+  const petNoticeRows = buildPetNoticeRows(order)
+  const highRiskCareCards = petNoticeRows.filter((card) => card.isHighRisk)
   const nowTs = Date.now()
   const isStartOverdue = canStartService && startTime > 0 && nowTs > startTime
   const startOverdueMinutes = isStartOverdue ? Math.floor((nowTs - startTime) / 60000) : 0
@@ -195,7 +170,9 @@ function withServiceActionState(order) {
     serviceTimeText: formatServiceTime((currentSession && currentSession.startTime) || order.startTime, (currentSession && currentSession.endTime) || order.endTime),
     fullServiceTimeText: formatServiceTime(order.startTime, order.endTime),
     customerRemarkText,
-    petNoticeRows: buildPetNoticeRows(order),
+    petNoticeRows,
+    hasHighRiskCare: highRiskCareCards.length > 0,
+    highRiskCareCards,
     walkDurationRows,
     playDurationRows,
     hasServiceRequirementInfo: Boolean(customerRemarkText || walkDurationRows.length || playDurationRows.length || order.serviceSummary || order.startTime || order.endTime)
@@ -234,6 +211,9 @@ Page({
     sendingChatMessage: false,
     privacyCallInfo: null,
     showCallModal: false,
+    showCareCard: true,
+    showCareRiskModal: false,
+    careRiskStartConfirmed: false,
     serviceElapsedText: '00:00:00',
     sectionHomeUrl: '',
     canGoBack: false,
@@ -501,8 +481,24 @@ Page({
     if (photo) wx.previewImage({ urls: [photo] })
   },
 
+  toggleCareCard() {
+    this.setData({ showCareCard: !this.data.showCareCard })
+  },
+
+  closeCareRiskModal() {
+    this.setData({ showCareRiskModal: false })
+  },
+
+  confirmCareRiskStart() {
+    this.setData({ showCareRiskModal: false, careRiskStartConfirmed: true }, () => this.start())
+  },
+
   start() {
     if (!this.data.order || !this.data.order.canStartService) return
+    if (this.data.order.hasHighRiskCare && !this.data.careRiskStartConfirmed) {
+      this.setData({ showCareRiskModal: true, showCareCard: true })
+      return
+    }
     if (this.data.order.sanitizationRequired && !this.data.order.sanitizationCompleted) {
       wx.showToast({ title: '请先完成服务前消毒拍照打卡', icon: 'none', duration: 3000 })
       return

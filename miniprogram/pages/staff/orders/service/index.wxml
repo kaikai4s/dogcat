@@ -22,6 +22,17 @@
     </button>
   </view>
 
+  <view class="care-quick-card {{order.hasHighRiskCare ? 'high' : ''}}" wx:if="{{order && order.petNoticeRows && order.petNoticeRows.length}}" bindtap="toggleCareCard">
+    <view class="care-quick-left">
+      <text class="remix-icon ri-shield-heart-fill care-quick-icon"></text>
+      <view>
+        <view class="care-quick-title">{{order.hasHighRiskCare ? '高风险照护 · 点击查看' : '照护卡快捷查看'}}</view>
+        <view class="care-quick-desc">下单时照护快照，服务前请核对喂食/用药/禁忌。</view>
+      </view>
+    </view>
+    <text class="remix-icon {{showCareCard ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}} care-quick-arrow"></text>
+  </view>
+
   <!-- 出发前往服务地点卡片（已接单但尚未出发） -->
   <view class="card depart-card" wx:if="{{order && order.canDepart}}">
     <view class="card-subtitle">
@@ -110,8 +121,9 @@
       <view class="duration-title"><text class="remix-icon ri-gamepad-line"></text><text>陪玩时间</text></view>
       <view class="duration-chip" wx:for="{{order.playDurationRows}}" wx:key="index">{{item.text}}</view>
     </view>
-    <view class="pet-notice-section" wx:if="{{order.petNoticeRows && order.petNoticeRows.length}}">
-      <view class="duration-title"><text class="remix-icon ri-error-warning-line"></text><text>狗狗/宠物注意事项</text></view>
+    <view class="pet-notice-section" wx:if="{{showCareCard && order.petNoticeRows && order.petNoticeRows.length}}">
+      <view class="duration-title"><text class="remix-icon ri-error-warning-line"></text><text>下单时照护快照</text></view>
+      <view class="care-snapshot-tip">后续修改宠物档案不会影响本订单已同步的信息。</view>
       <view class="pet-notice-row" wx:for="{{order.petNoticeRows}}" wx:for-item="petNotice" wx:key="index">
         <view class="pet-notice-head">
           <text class="pet-notice-name">{{petNotice.name}}</text>
@@ -329,6 +341,28 @@
       <input class="chat-input" placeholder="输入沟通信息（自动风控过滤）" value="{{sessionInputText}}" bindinput="onChatInput" />
       <button class="primary-btn chat-send-btn" loading="{{sendingChatMessage}}" disabled="{{sendingChatMessage}}" bindtap="sendChatMessage">发送</button>
     </view>
+  </view>
+</view>
+
+<view class="care-risk-modal-mask" wx:if="{{showCareRiskModal}}" catchtap="closeCareRiskModal">
+  <view class="care-risk-modal" catchtap="true">
+    <view class="care-risk-title">高风险照护确认</view>
+    <view class="care-risk-desc">开始服务前，请确认已阅读以下宠物的喂食、用药、禁忌和紧急备注。</view>
+    <view class="care-risk-pet" wx:for="{{order.highRiskCareCards}}" wx:for-item="care" wx:key="name">
+      <view class="pet-notice-head">
+        <text class="pet-notice-name">{{care.name}}</text>
+        <text class="pet-risk-pill risk-{{care.riskClass}}">{{care.riskLevelText}}</text>
+      </view>
+      <view class="pet-notice-tags" wx:if="{{care.tags && care.tags.length}}">
+        <text class="pet-notice-tag" wx:for="{{care.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
+      </view>
+      <view class="pet-notice-line" wx:for="{{care.sections}}" wx:for-item="section" wx:key="label">
+        <text class="pet-notice-label">{{section.label}}</text>
+        <text class="pet-notice-text">{{section.text}}</text>
+      </view>
+    </view>
+    <button class="primary-btn full-btn" bindtap="confirmCareRiskStart">我已阅读，继续开始服务</button>
+    <button class="ghost-btn full-btn" bindtap="closeCareRiskModal">取消</button>
   </view>
 </view>
 

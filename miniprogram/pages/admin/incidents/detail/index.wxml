@@ -24,6 +24,15 @@
     <view class="evidence-grid" wx:if="{{detail.incident.mediaFileIds.length}}"><image class="evidence-image" wx:for="{{detail.incident.mediaFileIds}}" wx:key="*this" src="{{item}}" mode="aspectFill" /></view>
   </view>
 
+  <view class="admin-card care-context-card" wx:if="{{detail.incident.careContextSnapshot && detail.incident.careContextSnapshot.cards && detail.incident.careContextSnapshot.cards.length}}">
+    <view class="card-subtitle"><text class="remix-icon ri-shield-heart-line sub-icon"></text><text>订单照护快照</text></view>
+    <view class="care-context-pet" wx:for="{{detail.incident.careContextSnapshot.cards}}" wx:for-item="care" wx:key="name">
+      <view class="care-context-head"><text class="care-name">{{care.name}}</text><text class="care-risk risk-{{care.riskLevel}}">{{care.riskLevelText}}</text></view>
+      <view class="care-tags" wx:if="{{care.tags.length}}"><text class="care-tag" wx:for="{{care.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text></view>
+      <view class="care-text">{{care.text}}</view>
+    </view>
+  </view>
+
   <view class="admin-card form-card">
     <view class="card-subtitle"><text class="remix-icon ri-loop-right-line sub-icon"></text><text>状态流转</text></view>
     <picker mode="selector" range="{{statusOptions}}" range-key="label" value="{{statusIndex}}" bindchange="chooseStatus"><view class="picker-field">{{statusOptions[statusIndex].label}}</view></picker>

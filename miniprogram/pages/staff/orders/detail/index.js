@@ -3,6 +3,7 @@ const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { withOrderText } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { copyText } = require('../../../../utils/clipboard')
+const { buildOrderCareCards } = require('../../../../utils/petCare')
 
 Page({
   data: {
@@ -44,7 +45,8 @@ Page({
             contactPhone: displayOrder.contactPhone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2')
           }
         }
-        this.setData({ order: displayOrder })
+        const careCards = buildOrderCareCards(displayOrder)
+        this.setData({ order: { ...displayOrder, careCards, hasHighRiskCare: careCards.some((card) => card.isHighRisk) } })
       })
       .catch(showError)
   },

@@ -99,6 +99,20 @@
         </view>
         <view class="pet-voice-text">“{{petVoiceMessage}}”</view>
       </view>
+      <view class="order-care-card" id="care-sync-confirm" wx:if="{{selectedPetCareCards.length}}">
+        <view class="order-care-title"><text class="remix-icon ri-shield-heart-line"></text><text>下单照护确认</text></view>
+        <view class="order-care-desc">以下为当前宠物档案照护信息，下单后会作为订单快照同步给接单宠托师。</view>
+        <view class="order-care-pet" wx:for="{{selectedPetCareCards}}" wx:key="name">
+          <view class="order-care-head"><text class="order-care-name">{{item.name}}</text><text class="care-risk-pill risk-{{item.riskClass}}">{{item.riskLevelText}}</text></view>
+          <view class="order-care-tags" wx:if="{{item.tags.length}}"><text class="order-care-tag" wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view>
+          <view class="order-care-line" wx:for="{{item.highlights}}" wx:key="*this">{{item}}</view>
+          <view class="order-care-missing" wx:if="{{item.missingText}}">建议补充：{{item.missingText}}</view>
+        </view>
+        <label class="care-confirm-row" bindtap="toggleCareSyncConfirmed">
+          <checkbox checked="{{careSyncConfirmed}}" color="#ff7a45" />
+          <text>我确认以上照护信息会同步给接单宠托师</text>
+        </label>
+      </view>
     </view>
     <view class="pet-empty" wx:else>
       <view class="pet-empty-icon"><view class="remix-icon ri-file-user-line"></view></view>

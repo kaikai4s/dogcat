@@ -1,6 +1,7 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
+const { buildOrderCareCards } = require('../../../../utils/petCare')
 
 const typeOptions = [
   { label: '服务问题', value: 'service_issue' },
@@ -29,6 +30,8 @@ Page({
     title: '',
     description: '',
     mediaFileIds: [],
+    order: null,
+    careCards: [],
     submitting: false,
     sectionHomeUrl: '',
     canGoBack: false
@@ -36,6 +39,14 @@ Page({
 
   onLoad(q) {
     this.setData({ ...createPageNav(q), orderId: q.id || q.orderId || '' })
+    this.loadOrder()
+  },
+
+  loadOrder() {
+    if (!this.data.orderId) return
+    callFunction('order', 'getOrderDetail', { id: this.data.orderId })
+      .then((order) => this.setData({ order, careCards: buildOrderCareCards(order) }))
+      .catch(() => {})
   },
 
   chooseType(e) {
@@ -84,6 +95,7 @@ Page({
         title: this.data.title,
         description: this.data.description,
         mediaFileIds,
+        careContext: this.data.careCards,
         clientRequestId: createClientRequestId('complaint')
       }))
       .then((incident) => {
