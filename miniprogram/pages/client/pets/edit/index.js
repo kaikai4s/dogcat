@@ -1,7 +1,7 @@
 const { callFunction, showError, ensureLogin, loadSystemSettings, getCachedSystemSettings } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { toBeijingDate } = require('../../../../utils/format')
-const petCare = require('../../../../utils/petCare') || {}
+const petCare = require('../../../../utils/format') || {}
+const { toBeijingDate } = petCare
 const getCareCompleteness = typeof petCare.getCareCompleteness === 'function' ? petCare.getCareCompleteness : () => ({ score: 0, missing: [], complete: false })
 
 const speciesOptions = [

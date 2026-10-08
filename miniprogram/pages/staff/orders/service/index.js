@@ -3,9 +3,8 @@ const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, re
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, updateOfflineTask } = require('../../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
-const { formatDateTime, toBeijingDate } = require('../../../../utils/format')
+const { formatDateTime, toBeijingDate, buildOrderCareCards } = require('../../../../utils/format')
 const { copyText } = require('../../../../utils/clipboard')
-const { buildOrderCareCards } = require('../../../../utils/petCare')
 const { MAX_GAP_MS, pointTime, isGoodTrackPoint, isPlausibleStep } = require('../../utils/trackQuality')
 
 const TRACK_INTERVAL_MS = 30 * 1000

@@ -4,7 +4,7 @@ const { requireSelectedLocation } = require('../../../utils/cloud')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { copyText } = require('../../../utils/clipboard')
-const { buildOrderCareCards } = require('../../../utils/petCare')
+const { buildOrderCareCards } = require('../../../utils/format')
 
 Page({
   data: { themeClass: 'theme-day', orderId: '', order: null, careCards: [], customerService: null, description: '', submitting: false, sectionHomeUrl: '', canGoBack: false },

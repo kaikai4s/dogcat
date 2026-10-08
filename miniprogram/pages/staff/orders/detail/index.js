@@ -1,9 +1,8 @@
 const { callFunction, showError, requestSubscribeTemplates } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { withOrderText } = require('../../../../utils/format')
+const { withOrderText, buildOrderCareCards } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { copyText } = require('../../../../utils/clipboard')
-const { buildOrderCareCards } = require('../../../../utils/petCare')
 
 Page({
   data: {

@@ -3,9 +3,8 @@ const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings, 
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
 const { ensureLogin } = require('../../../../utils/cloud')
-const { withOrderText, formatCheckinEvent } = require('../../../../utils/format')
+const { withOrderText, formatCheckinEvent, buildOrderCareCards } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
-const { buildOrderCareCards } = require('../../../../utils/petCare')
 
 function getRefundText(order = {}) {
   if (!order.refundStatus || order.refundStatus === 'not_required') return ''

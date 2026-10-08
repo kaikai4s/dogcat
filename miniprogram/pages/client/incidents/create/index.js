@@ -1,7 +1,7 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
-const { buildOrderCareCards } = require('../../../../utils/petCare')
+const { buildOrderCareCards } = require('../../../../utils/format')
 
 const typeOptions = [
   { label: '服务问题', value: 'service_issue' },

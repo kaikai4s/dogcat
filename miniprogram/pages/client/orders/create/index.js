@@ -15,8 +15,8 @@ const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { getSelectedLocation, chooseSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
-const { toBeijingDate, parseBeijingDate } = require('../../../../utils/format')
-const petCare = require('../../../../utils/petCare') || {}
+const petCare = require('../../../../utils/format') || {}
+const { toBeijingDate, parseBeijingDate } = petCare
 const buildPetCareSummary = typeof petCare.buildPetCareSummary === 'function' ? petCare.buildPetCareSummary : (pet) => ({ name: pet && pet.name || '宠物', riskLevelText: '常规照护', riskClass: 'normal', tags: [], sections: [], highlights: [], text: '暂无特别注意事项', isHighRisk: false })
 const getCareCompleteness = typeof petCare.getCareCompleteness === 'function' ? petCare.getCareCompleteness : () => ({ score: 0, missing: [], complete: false })
 

@@ -1,9 +1,8 @@
 const { callFunction, showError } = require('../../../../utils/cloud')
-const { withOrderText } = require('../../../../utils/format')
+const { withOrderText, buildOrderCareCards } = require('../../../../utils/format')
 const { getSelectedLocation } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { loadMessageUnread } = require('../../../../utils/client-nav')
-const { buildOrderCareCards } = require('../../../../utils/petCare')
 
 const tabs = [
   { label: '全部', value: 'all' },
