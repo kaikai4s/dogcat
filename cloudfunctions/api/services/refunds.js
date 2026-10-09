@@ -1,6 +1,7 @@
 module.exports = function createService({ db, crypto, now, getPayableOrder, getSystemSettings,
   assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo, restoreOrderCoupon,
   adjustStaffEarningsForRefund,
+  enqueueOrderNotification,
   normalizeMallProduct, getSkuById }) {
   const idFor = value => `refund_${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`
   async function optional(tx, name, id) {
@@ -219,6 +220,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         updatedAt: time
       } })
       if (status === 'success') {
+        await enqueueOrderNotification(tx, order.clientOpenid, 'refundResult', order, { statusText: '退款成功', tip: `退款 ${refund.refundAmount} 元已完成` }, 'client', refund._id)
         if (full && order.couponId && typeof restoreOrderCoupon === 'function') {
           await restoreOrderCoupon(order.couponId, order._id, tx)
         }

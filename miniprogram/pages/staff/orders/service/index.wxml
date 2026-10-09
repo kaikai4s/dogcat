@@ -263,7 +263,9 @@
       <button class="ghost-btn full-btn" bindtap="uploadPoint">手动补记当前位置</button>
       <view class="track-tips">服务期间会定时记录当前位置，用户端会按时间生成路径。</view>
       <view class="track-count">已上传轨迹点：{{pointCount}}</view>
-      <view class="track-tips danger" wx:if="{{offlineTaskCount}}">待补传数据：{{offlineTaskCount}} 条，网络恢复后自动上传。</view>
+      <view class="track-tips danger" wx:if="{{offlineTaskCount}}">待补传：{{offlineTaskCount}} 条；需核对：{{offlineBlockedCount || 0}} 条。</view>
+      <button class="ghost-btn full-btn" wx:if="{{offlineTaskCount}}" bindtap="retryOfflineUploads">重试补传</button>
+      <view class="track-tips danger" wx:if="{{offlineUnownedCount}}">历史待补传：{{offlineUnownedCount}} 条，请联系管理员核对原账号。</view>
     </view>
 
     <view class="section-title">

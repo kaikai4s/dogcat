@@ -104,7 +104,7 @@ module.exports = function createService({
           const logRes = await tx.collection('point_logs').doc(logId).get()
           existingLog = logRes && logRes.data ? logRes.data : null
         } catch (e) {
-          existingLog = null
+          if (!String(e.message || e.errMsg).includes(`document with _id ${logId} does not exist`)) throw e
         }
         if (existingLog) {
           const freshUser = (await tx.collection('users').doc(targetUserId).get().catch(() => null))?.data || targetUser
@@ -195,6 +195,7 @@ module.exports = function createService({
       }
     }
 
+    if (options.transaction) return executeTx(options.transaction)
     if (typeof db.runTransaction === 'function') {
       return await db.runTransaction(executeTx)
     } else {

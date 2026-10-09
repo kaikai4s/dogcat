@@ -86,7 +86,7 @@ module.exports = function createService({
     // 固定订单级 ID + 事务，避免重复点击完单、定时任务和人工完单并发时重复入账。
     // 历史随机 ID 由普通查询发现，再进行事务点读；事务写入统一使用文档操作。
     const earningId = `earning_order_${order._id}`
-    return db.runTransaction(async transaction => {
+    const execute = async transaction => {
       async function readEarning(id) {
         try {
           return (await transaction.collection('staff_earnings').doc(id).get()).data || null
@@ -135,7 +135,8 @@ module.exports = function createService({
         createdAt: time
       } })
       return { _id: earningId, ...value }
-    })
+    }
+    return options.transaction ? execute(options.transaction) : db.runTransaction(execute)
   }
 
   async function refreshStaffEarnings(openid = '') {

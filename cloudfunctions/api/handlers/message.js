@@ -7,28 +7,18 @@ module.exports = function createHandler(context) {
     markSystemNotificationRead,
     now,
     orderStatusText,
-    paginateList,
-    readScopedDocuments,
     safeText,
-    sortMessageThreads
+    queryMessageThreads,
+    queryThreadMessages,
+    queryOrderMessageUnread
   } = context
   return async function message(openid, action, data) {
     await getUser(openid)
     if (action === 'listThreads') {
-      const visibleThreads = (await readScopedDocuments('order_message_threads', { clientOpenid: openid }, 'updatedAt', 'desc'))
-        .filter((thread) => thread.hiddenForClient !== true)
-      const list = sortMessageThreads(visibleThreads.map((thread) => ({
-        ...thread,
-        orderStatusText: orderStatusText(thread.orderStatus),
-        hasUnread: Number(thread.unreadCount || 0) > 0
-      })))
-      return paginateList(list, data)
+      return queryMessageThreads(openid, 'client', data)
     }
     if (action === 'getUnreadSummary') {
-      const threads = await readScopedDocuments('order_message_threads', { clientOpenid: openid })
-      const orderUnread = threads
-        .filter((thread) => thread.hiddenForClient !== true)
-        .reduce((sum, thread) => sum + Math.max(Number(thread.unreadCount || 0), 0), 0)
+      const orderUnread = await queryOrderMessageUnread(openid, 'client')
       const user = await getUser(openid).catch(() => ({ roles: [] }))
       let systemUnread = 0
       if (typeof getUserSystemNotificationUnreadCount === 'function') {
@@ -50,10 +40,10 @@ module.exports = function createHandler(context) {
         thread = res.data[0]
       }
       if (!thread || thread.clientOpenid !== openid) throw new Error('消息会话不存在')
-      const messages = await readScopedDocuments('order_messages', { threadId: thread._id }, 'createdAt', 'asc')
+      const result = await queryThreadMessages(thread._id, 'client', data)
       return {
         thread: { ...thread, orderStatusText: orderStatusText(thread.orderStatus) },
-        messages: messages.map((message) => ({ ...message }))
+        ...result
       }
     }
     if (action === 'deleteThread') {

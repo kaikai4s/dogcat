@@ -108,6 +108,8 @@ module.exports = function createHandler(context) {
     safeUserSummary,
     saveSystemSettings,
     sendSubscribeMessage,
+    listSubscriptionDeliveries,
+    requeueSubscriptionDelivery,
     syncUsersMemberLevelName,
     toCstParts,
     toTimeValue,
@@ -305,6 +307,8 @@ module.exports = function createHandler(context) {
 
   return async function admin(openid, action, data) {
     const admin = await requireAdmin(openid)
+    if (action === 'listSubscriptionDeliveries') return listSubscriptionDeliveries(data)
+    if (action === 'retrySubscriptionDelivery') return requeueSubscriptionDelivery(safeText(data.id).trim(), openid)
     if (['getMyAdminAccess', 'enableAdminPermissions', 'listAdminGroups', 'saveAdminGroup', 'setAdminMembership', 'getAdminMembership', 'listAdminMembers', 'listOperationActors', 'listOperationLogs'].includes(action)) {
       return handleAdminAccess(admin, action, data)
     }
@@ -370,7 +374,7 @@ module.exports = function createHandler(context) {
         await checkTextSecurity(openid, auditRemark, { scene: 2, label: '提现审核备注' })
       }
       const { request, changed } = await settleWithdrawal({ ...admin, openid }, { ...data, auditRemark })
-      if (changed) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id }, { amount: request.amount, statusText: approved ? '已审核' : '已驳回' }), '')
+      if (changed) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id, startTime: request.createdAt }, { amount: request.amount, statusText: approved ? '已审核' : '已驳回' }), '', `withdraw:${data.id}:${approved ? 'approved' : 'rejected'}`)
       return { id: data.id, status: nextStatus }
     }
     if (action === 'markWithdrawPaid') {
@@ -384,7 +388,7 @@ module.exports = function createHandler(context) {
         await checkImageSecurity(openid, paymentProofImage, { scene: 1, label: '付款凭证截图' })
       }
       const { request, changed } = await settleWithdrawal({ ...admin, openid }, { ...data, payRemark, paymentProofImage }, true)
-      if (changed) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id }, { amount: request.amount, statusText: '已打款' }), '')
+      if (changed) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id, startTime: request.createdAt }, { amount: request.amount, statusText: '已打款' }), '', `withdraw:${data.id}:paid`)
       return { id: data.id, status: 'paid' }
     }
     if (action === 'getSystemSettings') {

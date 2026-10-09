@@ -1,3 +1,5 @@
+const aggregateDate = require('../utils/aggregateDate')
+
 module.exports = function createService({ db, safeText }) {
   function buildFinanceRange(data = {}) {
     function boundary(value) {
@@ -22,20 +24,10 @@ module.exports = function createService({ db, safeText }) {
     const $ = db.command.aggregate
     const eq = (field, value) => $.eq([`$${field}`, value])
     const isIn = (field, values) => $.in([`$${field}`, values])
-    // $type is a native aggregation expression not wrapped by SDK 4.0.2.
-    function dateValue(field) {
-      const value = `$${field}`
-      const type = { $type: value }
-      const zoned = $.or(['Z', 'z', '+', '-'].map(token => $.gte([$.indexOfBytes([value, token, 10]), 0])))
-      return $.cond([$.eq([type, 'date']), value,
-        $.cond([$.eq([type, 'string']), $.cond([zoned,
-          $.dateFromString({ dateString: value, onError: null, onNull: null }),
-          $.dateFromString({ dateString: value, timezone: '+08:00', onError: null, onNull: null })]), null])])
-    }
     function dated(collection, fields) {
       let pipeline = db.collection(collection).aggregate()
       if (range.start || range.end || collection === 'finance_logs') {
-        const date = fields.reduceRight((fallback, field) => $.ifNull([dateValue(field), fallback]), null)
+        const date = fields.reduceRight((fallback, field) => $.ifNull([aggregateDate(field), fallback]), null)
         pipeline = pipeline.addFields({ reportDate: date })
         const conditions = [$.neq(['$reportDate', null])]
         if (range.start) conditions.push($.gte(['$reportDate', range.start]))
@@ -64,12 +56,13 @@ module.exports = function createService({ db, safeText }) {
     }
     const paidOrder = $.or([eq('paymentStatus', 'paid'), isIn('status', ['paid', 'assigned', 'in_service', 'day_completed', 'completed'])])
     const paidPayment = $.and([isIn('status', ['success', 'paid']), $.neq([$.ifNull(['$targetType', '']), 'staff_deposit'])])
-    const [orders, payments, refunds, earnings, withdraws, logResult, recent] = await Promise.all([
+    const [orders, payments, refunds, earnings, withdraws, paidWithdraws, logResult, recent] = await Promise.all([
       summarize('orders', ['paidAt', 'createdAt'], 'payAmount', paidOrder),
       summarize('payments', ['paidAt', 'updatedAt', 'createdAt'], 'amount', paidPayment),
-      summarize('refunds', ['createdAt', 'updatedAt'], 'refundAmount', null, eq('status', 'success')),
+      summarize('refunds', ['succeededAt', 'updatedAt', 'createdAt'], 'refundAmount', null, eq('status', 'success')),
       summarize('staff_earnings', ['createdAt', 'completedAt'], 'amount'),
       summarize('withdraw_requests', ['createdAt', 'paidAt'], 'amount'),
+      summarize('withdraw_requests', ['paidAt', 'createdAt'], 'amount', eq('status', 'paid')),
       dated('finance_logs', ['createdAt']).group({ _id: null, count: $.sum(1) }).end(),
       dated('finance_logs', ['createdAt']).sort({ reportDate: -1, _id: -1 }).limit(10).end()
     ])
@@ -82,8 +75,12 @@ module.exports = function createService({ db, safeText }) {
         netRevenue: (payments.cents - refunds.cents) / 100, staffEarningAmount: earnings.cents / 100,
         platformGrossProfit: (payments.cents - refunds.cents - earnings.cents) / 100,
         pendingWithdrawAmount: withdrawAmount('pending'), withdrawingAmount: withdrawAmount('approved'),
-        paidWithdrawAmount: withdrawAmount('paid')
+        paidWithdrawAmount: paidWithdraws.cents / 100
       },
+      accountingScope: { timezone: 'Asia/Shanghai', depositsIncluded: false, actualProfit: null,
+        missingCosts: ['mallCost', 'paymentFee', 'tax', 'marketing', 'reimbursement', 'operatingCost'],
+        refundDate: 'succeededAt', paidWithdrawDate: 'paidAt', pendingWithdrawDate: 'createdAt',
+        historicalDateFallback: true, snapshotConsistent: false },
       counts: { paidOrders: orders.count, payments: payments.count, refunds: refunds.count,
         earnings: earnings.count, withdraws: withdraws.count, logs: logResult.list[0]?.count || 0,
         withdrawStatus: statuses(withdraws), earningStatus: statuses(earnings), refundStatus: statuses(refunds) },

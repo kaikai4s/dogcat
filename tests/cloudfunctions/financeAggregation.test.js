@@ -90,3 +90,15 @@ test('finance dashboard still requires administrator permission', async () => {
   const result = await loadCloudFunction('api', db, 'client').main({ module: 'admin', action: 'financeDashboard', data: {} })
   assert.equal(result.ok, false)
 })
+
+test('refund and paid withdrawal reporting follow success dates and numeric timestamps', async () => {
+  const result = await report({
+    refunds: [{ status: 'success', refundAmount: 20, createdAt: '2026-09-30 12:00', succeededAt: Date.parse('2026-10-01T00:00:00+08:00') }],
+    withdraw_requests: [{ status: 'paid', amount: 30, createdAt: '2026-09-30 12:00', paidAt: '2026-10-01 23:00' }]
+  }, { startDate: '2026-10-01', endDate: '2026-10-01' })
+  assert.equal(result.metrics.refundAmount, 20)
+  assert.equal(result.metrics.paidWithdrawAmount, 30)
+  assert.equal(result.counts.withdraws, 0)
+  assert.equal(result.accountingScope.actualProfit, null)
+  assert.equal(result.accountingScope.depositsIncluded, false)
+})

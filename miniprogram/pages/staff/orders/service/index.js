@@ -1,7 +1,7 @@
 const { sessionChatMethods } = require('../../utils/sessionChat')
 const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, requestSubscribeTemplates, showLoading, hideLoading } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, updateOfflineTask } = require('../../../../utils/offlineQueue')
+const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, failOfflineTask, retryOfflineTasks, withOfflineFlush, isOfflineOwner, getUnownedOfflineTaskCount } = require('../../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { formatDateTime, toBeijingDate, buildOrderCareCards } = require('../../../../utils/format')
 const { copyText } = require('../../../../utils/clipboard')
@@ -860,31 +860,51 @@ Page({
   },
 
   flushOfflineTasks() {
-    const tasks = getOfflineTasks(this.data.id)
+    return withOfflineFlush(this.data.id, ownerId => this.flushOwnedOfflineTasks(ownerId))
+  },
+
+  retryOfflineUploads() {
+    wx.showModal({ title: '重试补传', content: '重新上传当前订单的待补传数据？', success: result => {
+      if (!result.confirm) return
+      retryOfflineTasks(this.data.id)
+      this.flushOfflineTasks()
+    } })
+  },
+
+  flushOwnedOfflineTasks(ownerId) {
+    const allTasks = getOfflineTasks(this.data.id)
+    const tasks = allTasks.filter(task => task.status !== 'blocked' && Number(task.nextAttemptAt || 0) <= Date.now())
+    this.setData({ offlineBlockedCount: allTasks.filter(task => task.status === 'blocked').length,
+      offlineUnownedCount: getUnownedOfflineTaskCount(this.data.id) })
     if (!tasks.length) {
-      this.setData({ offlineTaskCount: 0 })
+      this.setData({ offlineTaskCount: allTasks.length })
       return Promise.resolve()
     }
     let flushed = false
     return tasks.reduce((chain, task) => chain.then(() => {
+      if (!isOfflineOwner(ownerId)) return null
       if (task.type === 'track') {
         return callFunction('track', 'batchUploadTrack', { orderId: task.orderId, batchId: createClientRequestId('backfill'), points: [task.payload.point] })
-          .then(() => { flushed = true; removeOfflineTask(task.id) })
+          .then(result => {
+            if (!Number(result.count || 0) && !Number(result.duplicateCount || 0)) throw new Error('轨迹未通过校验，请核对记录')
+            flushed = true; removeOfflineTask(task.id, ownerId)
+          })
       }
       if (task.type === 'checkin') {
         return callFunction('checkin', 'createCheckin', { ...task.payload, isBackfilled: true })
-          .then(() => { flushed = true; removeOfflineTask(task.id) })
+          .then(() => { flushed = true; removeOfflineTask(task.id, ownerId) })
       }
       if (task.type === 'key_return') {
         return callFunction('homeSecurity', 'recordKeyReturned', task.payload)
-          .then(() => { flushed = true; removeOfflineTask(task.id) })
+          .then(() => { flushed = true; removeOfflineTask(task.id, ownerId) })
       }
-      removeOfflineTask(task.id)
-      return Promise.resolve()
-    }).catch(() => {
-      updateOfflineTask({ ...task, retryTimes: Number(task.retryTimes || 0) + 1 })
+      throw new Error('待补传数据类型无法识别，请联系管理员')
+    }).catch(error => {
+      failOfflineTask(task, error, isNetworkError(error))
     }), Promise.resolve()).then(() => {
-      this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id) })
+      if (!isOfflineOwner(ownerId)) return null
+      this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id),
+        offlineBlockedCount: getOfflineTasks(this.data.id).filter(task => task.status === 'blocked').length })
       if (!flushed) return null
       return callFunction('order', 'getOrderDetail', { id: this.data.id, role: 'staff' })
         .then((order) => this.setData({ order: withServiceActionState(order), pointCount: Number(order.trackCount || 0), earlyStartRequest: order.earlyStartRequest || null }))

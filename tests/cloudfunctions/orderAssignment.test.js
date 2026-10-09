@@ -47,13 +47,20 @@ function useOptimisticTransactions(db) {
               reads.set(`${name}/${id}`, { name, id, value: JSON.stringify(item) })
               return { data: structuredClone(item) }
             },
-            async update({ data }) { writes.push({ name, id, data }); return { stats: { updated: 1 } } }
+            async update({ data }) { writes.push({ name, id, data }); return { stats: { updated: 1 } } },
+            async set({ data }) { writes.push({ name, id, data, replace: true }) }
           }
         } }
       } })
       const conflicted = [...reads.values()].some(({ name, id, value }) => JSON.stringify(db.state[name]?.find(row => row._id === id)) !== value)
       if (conflicted) { retries++; continue }
-      for (const { name, id, data } of writes) Object.assign(db.state[name].find(row => row._id === id), data)
+      for (const { name, id, data, replace } of writes) {
+        const rows = db.state[name] || (db.state[name] = [])
+        const index = rows.findIndex(row => row._id === id)
+        if (replace && index < 0) rows.push({ ...data, _id: id })
+        else if (replace) rows[index] = { ...data, _id: id }
+        else Object.assign(rows[index], data)
+      }
       return result
     }
     throw new Error('transaction retries exhausted')

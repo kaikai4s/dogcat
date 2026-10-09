@@ -66,6 +66,8 @@ function createCollectionStore(initial = {}) {
         if (itemTs !== null && condTs !== null) return itemTs >= condTs
         return item[key] >= condition.$gte
       }
+      if (condition && typeof condition === 'object' && '$lte' in condition) return item[key] <= condition.$lte
+      if (condition && typeof condition === 'object' && '$lt' in condition) return item[key] < condition.$lt
       if (condition && typeof condition === 'object' && Array.isArray(condition.$in)) {
         if (Array.isArray(item[key])) return item[key].some(value => condition.$in.includes(value))
         return condition.$in.includes(item[key]) || (condition.$in.includes('') && item[key] === undefined) || (condition.$in.includes(null) && item[key] === null)
@@ -89,6 +91,10 @@ function createCollectionStore(initial = {}) {
   function applyUpdateData(target, data) {
     const next = {}
     for (const [key, value] of Object.entries(data || {})) {
+      if (value && value.__cloudCommand === 'remove') {
+        delete target[key]
+        continue
+      }
       next[key] = value && value.__cloudCommand === 'set' ? value.value : value
     }
     Object.assign(target, next)
@@ -99,7 +105,7 @@ function createCollectionStore(initial = {}) {
       aggregate() {
         const stages = []
         const pipeline = {}
-        for (const stage of ['addFields', 'match', 'group', 'sort', 'limit']) {
+        for (const stage of ['addFields', 'match', 'group', 'sort', 'skip', 'limit']) {
           pipeline[stage] = value => { stages.push({ [`$${stage}`]: value }); return pipeline }
         }
         pipeline.end = async () => ({ list: new Aggregator(stages, { context: aggregateContext }).run(ensure(name)).slice(0, 100) })
@@ -226,7 +232,9 @@ function createCollectionStore(initial = {}) {
     RegExp: ({ regexp, options = 'i' }) => ({ $regex: regexp, $options: options, regexp, options }),
     command: {
       in: (arr) => ({ $in: arr }), gt: value => ({ $gt: value }), gte: value => ({ $gte: value }),
+      lte: value => ({ $lte: value }), lt: value => ({ $lt: value }),
       set: value => ({ __cloudCommand: 'set', value }),
+      remove: () => ({ __cloudCommand: 'remove' }),
       neq: value => ({ $ne: value }),
       expr: value => ({ $expr: value }), aggregate: aggregateCommand
     }

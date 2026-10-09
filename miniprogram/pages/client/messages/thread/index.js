@@ -15,7 +15,10 @@ Page({
     orderId: '',
     thread: null,
     messages: [],
-    loading: false
+    loading: false,
+    hasOlder: false,
+    before: null,
+    after: null
   },
   onLoad(q) {
     this.setData({ id: q.id || '', orderId: q.orderId || '' })
@@ -30,14 +33,21 @@ Page({
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
   },
-  load() {
+  load(older = false) {
     if ((!this.data.id && !this.data.orderId) || this.data.loading) return
     this.setData({ loading: true })
-    callFunction('message', 'getThreadMessages', { threadId: this.data.id, orderId: this.data.orderId })
+    const after = !older && this.data.after
+    return callFunction('message', 'getThreadMessages', { threadId: this.data.id, orderId: this.data.orderId,
+      pageSize: 30, ...(older ? { before: this.data.before } : after ? { after } : {}) })
       .then((result) => {
         const thread = result.thread || null
-        const messages = (result.messages || []).map(withMessageText)
-        this.setData({ thread, messages, loading: false, id: thread ? thread._id : this.data.id })
+        const incoming = (result.messages || []).map(withMessageText)
+        const messages = Array.from(new Map((older ? [...incoming, ...this.data.messages] : [...this.data.messages, ...incoming]).map(item => [item._id, item])).values())
+        this.setData({ thread, messages, loading: false, id: thread ? thread._id : this.data.id,
+          before: older || !after ? result.before || this.data.before : this.data.before,
+          after: older ? this.data.after : result.after || this.data.after,
+          hasOlder: older || !after ? result.hasMore === true : this.data.hasOlder })
+        if (after && result.hasMore) return this.load()
         const targetThreadId = thread ? thread._id : this.data.id
         if (targetThreadId) {
           return callFunction('message', 'markThreadRead', { threadId: targetThreadId })
@@ -50,6 +60,7 @@ Page({
         showError(error)
       })
   },
+  loadOlder() { if (this.data.hasOlder) return this.load(true) },
   viewOrder() {
     const orderId = this.data.thread && this.data.thread.orderId
     if (!orderId) return

@@ -64,9 +64,9 @@ function metricCards(metrics = {}) {
     { label: 'GMV', value: `¥${money(metrics.gmv)}`, highlight: true },
     { label: '实收', value: `¥${money(metrics.received)}` },
     { label: '退款', value: `¥${money(metrics.refundAmount)}` },
-    { label: '净收入', value: `¥${money(metrics.netRevenue)}`, highlight: true },
+    { label: '实收扣退款', value: `¥${money(metrics.netRevenue)}`, highlight: true },
     { label: '宠托师收益', value: `¥${money(metrics.staffEarningAmount)}` },
-    { label: '平台毛利', value: `¥${money(metrics.platformGrossProfit)}`, highlight: true },
+    { label: '扣员工收益结余', value: `¥${money(metrics.platformGrossProfit)}`, highlight: true },
     { label: '待审核提现', value: `¥${money(metrics.pendingWithdrawAmount)}` },
     { label: '待打款提现', value: `¥${money(metrics.withdrawingAmount)}` }
   ]

@@ -228,9 +228,9 @@ test('direct order locks time slot preventing another user from booking even bef
         status: 'paid',
         paymentStatus: 'paid',
         publishMode: 'direct',
-        startTime: '2026-10-01 10:00',
-        endTime: '2026-10-01 11:00',
-        serviceSessions: [{ index: 1, date: '2026-10-01', startTime: '2026-10-01 10:00', endTime: '2026-10-01 11:00', status: 'pending' }]
+        startTime: '2099-10-01 10:00',
+        endTime: '2099-10-01 11:00',
+        serviceSessions: [{ index: 1, date: '2099-10-01', startTime: '2099-10-01 10:00', endTime: '2099-10-01 11:00', status: 'pending' }]
       }
     ],
     system_settings: [{
@@ -254,8 +254,8 @@ test('direct order locks time slot preventing another user from booking even bef
       serviceAddress: '测试服务中心',
       addressLatitude: 31.23,
       addressLongitude: 121.47,
-      startTime: '2026-10-01 10:00',
-      endTime: '2026-10-01 11:00'
+      startTime: '2099-10-01 10:00',
+      endTime: '2099-10-01 11:00'
     }
   })
 

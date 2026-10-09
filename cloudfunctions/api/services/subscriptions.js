@@ -7,6 +7,7 @@ module.exports = function createService({
   cloud,
   db,
   deliverSubscription,
+  enqueueSubscription,
   retrySubscriptionDeliveries,
   readScopedDocuments,
   formatDateTime,
@@ -153,15 +154,29 @@ module.exports = function createService({
   }
 
   const sendDelivery = message => sendSubscribeMessageOnce(message.openid, message.templateKey, message.page, message.messageData, message.orderId)
-  async function sendSubscribeMessage(openid, templateKey, page, messageData = {}, orderId = '') {
-    try { return await deliverSubscription({ openid, templateKey, page, messageData, orderId: orderId || '' }, sendDelivery) }
+  async function sendSubscribeMessage(openid, templateKey, page, messageData = {}, orderId = '', deliveryKey = '') {
+    try { return await deliverSubscription({ openid, templateKey, page, messageData, orderId: orderId || '', ...(deliveryKey ? { deliveryKey } : {}) }, sendDelivery) }
     catch (error) { return { status: 'failed', error: String(error.message || error), templateKey } }
   }
   async function retryFailedSubscriptions() { return retrySubscriptionDeliveries(sendDelivery) }
 
-  function notifyOrder(openid, templateKey, order, detail = {}, role = '') {
+  function notifyOrder(openid, templateKey, order, detail = {}, role = '', deliveryKey = '') {
     const targetRole = role || (order && order.staffOpenid && openid === order.staffOpenid ? 'staff' : 'client')
-    return sendSubscribeMessage(openid, templateKey, buildSubscriptionPage(order, targetRole), buildSubscriptionData(templateKey, order, detail), order && order._id)
+    return sendSubscribeMessage(openid, templateKey, buildSubscriptionPage(order, targetRole), buildSubscriptionData(templateKey, order, detail), order && order._id, deliveryKey)
+  }
+
+  function enqueueOrderNotification(tx, openid, templateKey, order, detail = {}, role = '', deliveryKey = '') {
+    const targetRole = role || (order && order.staffOpenid && openid === order.staffOpenid ? 'staff' : 'client')
+    return enqueueSubscription(tx, { openid, templateKey, page: buildSubscriptionPage(order, targetRole),
+      messageData: buildSubscriptionData(templateKey, order, detail), orderId: order && order._id || '', ...(deliveryKey ? { deliveryKey } : {}) })
+  }
+
+  function enqueueOrderAccepted(tx, order, staffName = '') {
+    return enqueueOrderNotification(tx, order.clientOpenid, 'orderAccepted', order, {
+      staffName: staffName || order.staffName || order.requestedStaffName || '宠托师',
+      orderDemand: order.serviceSummary || '宠护服务', serviceArea: order.serviceAddress || order.city || '服务地址',
+      serviceTime: getClockText(order.startTime)
+    })
   }
 
   function notifyOrderAccepted(order, staffName = '') {
@@ -273,6 +288,8 @@ module.exports = function createService({
   }
 
   return {
+    enqueueOrderNotification,
+    enqueueOrderAccepted,
     buildSubscriptionPage,
     getClockText,
     buildSubscriptionData,

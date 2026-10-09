@@ -5,7 +5,8 @@ module.exports = function createService(context) {
     assertStaffCanAcceptOrderVaccines, attachOrderDisplayData,
     crypto, db, findStaffOrderConflict, getOrderTimeRanges, isOrderConflictCandidate,
     now, toTimeValue, validateStaffTakeOrderAbility, validateStaffScheduleOnly,
-    getDateKeyFromTime, parseDateTimeParts, validateSitterScheduleTime
+    getDateKeyFromTime, parseDateTimeParts, validateSitterScheduleTime,
+    enqueueOrderAccepted, enqueueOrderNotification
   } = context
 
   const safeGetDateKey = typeof getDateKeyFromTime === 'function' ? getDateKeyFromTime : (val) => String(val || '').slice(0, 10)
@@ -93,6 +94,9 @@ module.exports = function createService(context) {
       }
       await transaction.collection('users').doc(patch.staffUserId).update({ data: { staffAssignmentRevision: crypto.randomBytes(16).toString('hex') } })
       await transaction.collection('orders').doc(orderId).update({ data: patch })
+      const assigned = { ...order, ...patch, _id: orderId }
+      if (options.admin) await enqueueOrderNotification(transaction, order.clientOpenid, 'orderAssigned', assigned, { statusText: '已派单' })
+      else await enqueueOrderAccepted(transaction, assigned)
       return { ...order, ...patch, _id: orderId }
     })
   }

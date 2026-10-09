@@ -4,7 +4,12 @@
   "private": true,
   "scripts": {
     "test": "node --test tests/**/*.test.js",
-    "test:cloud": "node --test tests/cloudfunctions/*.test.js"
+    "test:cloud": "node --test tests/cloudfunctions/*.test.js",
+    "optimize:icons": "node scripts/optimize-icons.js",
+    "check:icons": "node scripts/optimize-icons.js --check",
+    "benchmark:local": "node scripts/local-performance.js",
+    "audit:finance": "node scripts/audit-financial-snapshot.js",
+    "reconcile:finance": "node scripts/reconcile-financial-snapshot.js"
   },
   "devDependencies": {
     "mingo": "^7.2.4"

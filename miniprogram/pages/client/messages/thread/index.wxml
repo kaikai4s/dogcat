@@ -6,6 +6,7 @@
   </view>
 
   <view class="chat-list">
+    <button wx:if="{{hasOlder}}" class="ghost-btn" bindtap="loadOlder" disabled="{{loading}}"><text class="remix-icon ri-history-line"></text><text>{{loading ? '加载中' : '更早消息'}}</text></button>
     <view class="chat-row" wx:for="{{messages}}" wx:key="_id">
       <view class="chat-avatar"><text class="remix-icon ri-notification-3-line"></text></view>
       <view class="chat-content">

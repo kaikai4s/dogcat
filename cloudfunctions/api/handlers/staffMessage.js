@@ -7,29 +7,19 @@ module.exports = function createHandler(context) {
     markSystemNotificationRead,
     now,
     orderStatusText,
-    paginateList,
-    readScopedDocuments,
     safeText,
-    sortMessageThreads
+    queryMessageThreads,
+    queryThreadMessages,
+    queryOrderMessageUnread
   } = context
   return async function staffMessage(openid, action, data) {
     const user = await getUser(openid)
     if (!(user.roles || []).includes('staff')) throw new Error('仅宠托师可查看消息')
     if (action === 'listThreads') {
-      const visibleThreads = (await readScopedDocuments('order_staff_message_threads', { staffOpenid: openid }, 'updatedAt', 'desc'))
-        .filter((thread) => thread.hiddenForStaff !== true)
-      const list = sortMessageThreads(visibleThreads.map((thread) => ({
-        ...thread,
-        orderStatusText: orderStatusText(thread.orderStatus),
-        hasUnread: Number(thread.unreadCount || 0) > 0
-      })))
-      return paginateList(list, data)
+      return queryMessageThreads(openid, 'staff', data)
     }
     if (action === 'getUnreadSummary') {
-      const threads = await readScopedDocuments('order_staff_message_threads', { staffOpenid: openid })
-      const orderUnread = threads
-        .filter((thread) => thread.hiddenForStaff !== true)
-        .reduce((sum, thread) => sum + Math.max(Number(thread.unreadCount || 0), 0), 0)
+      const orderUnread = await queryOrderMessageUnread(openid, 'staff')
       let systemUnread = 0
       if (typeof getUserSystemNotificationUnreadCount === 'function') {
         systemUnread = await getUserSystemNotificationUnreadCount(openid, 'staff', user)
@@ -50,10 +40,10 @@ module.exports = function createHandler(context) {
         thread = res.data[0]
       }
       if (!thread || thread.staffOpenid !== openid) throw new Error('消息会话不存在')
-      const messages = await readScopedDocuments('order_staff_messages', { threadId: thread._id }, 'createdAt', 'asc')
+      const result = await queryThreadMessages(thread._id, 'staff', data)
       return {
         thread: { ...thread, orderStatusText: orderStatusText(thread.orderStatus) },
-        messages: messages.map((message) => ({ ...message }))
+        ...result
       }
     }
     if (action === 'deleteThread') {

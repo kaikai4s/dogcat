@@ -1,3 +1,5 @@
+const crypto = require('crypto')
+
 module.exports = function createService({
   db,
   now
@@ -21,36 +23,39 @@ module.exports = function createService({
     await db.collection('reward_mails').doc(mailId).update({ data: { rewardClaimResult: {} } })
   }
 
-  async function grantRetroCards(openid, userId, delta, sourceType, sourceId, reason) {
+  async function grantRetroCards(openid, userId, delta, sourceType, sourceId, reason, options = {}) {
     const userRes = await db.collection('users').where({ openid }).limit(1).get()
     const user = userRes.data[0]
     if (!user) return { balance: 0 }
     const amount = Number(delta || 0)
     if (!amount) return { balance: Number(user.retroCardCount || 0) }
-    const time = now()
-    const command = db.command || {}
-    const hasAtomicInc = typeof command.inc === 'function'
-    const currentBalance = Number(user.retroCardCount || 0)
-
-    if (amount < 0 && hasAtomicInc && typeof command.gte === 'function') {
-      const updated = await db.collection('users').where({ openid, retroCardCount: command.gte(Math.abs(amount)) }).update({
-        data: { retroCardCount: command.inc(amount), updatedAt: time }
+    if (!Number.isSafeInteger(amount)) throw new Error('补签卡数量不正确')
+    const businessKey = options.idempotencyKey || (amount > 0 && sourceType && sourceId ? `${sourceType}:${sourceId}` : '')
+    const id = `rc_${businessKey ? crypto.createHash('sha256').update(JSON.stringify([openid, businessKey])).digest('hex').slice(0, 32) : crypto.randomBytes(16).toString('hex')}`
+    const execute = async tx => {
+      const latest = (await tx.collection('users').doc(user._id).get()).data
+      if (!latest || latest.openid !== openid) throw new Error('补签卡用户不存在')
+      if (businessKey) {
+        let existing
+        try { existing = (await tx.collection('retro_card_logs').doc(id).get()).data } catch (error) {
+          if (!String(error.message || error.errMsg).includes(`document with _id ${id} does not exist`)) throw error
+        }
+        if (!existing) {
+          const legacy = (await db.collection('retro_card_logs').where({ openid, sourceType, sourceId }).limit(1).get()).data[0]
+          if (legacy) existing = (await tx.collection('retro_card_logs').doc(legacy._id).get()).data
+        }
+        if (existing) return { balance: existing.balance, duplicate: true }
+      }
+      const balance = Number(latest.retroCardCount || 0) + amount
+      if (!Number.isSafeInteger(balance) || balance < 0) throw new Error('补签卡不足或余额异常')
+      const time = now()
+      await tx.collection('users').doc(user._id).update({ data: { retroCardCount: balance, updatedAt: time } })
+      await tx.collection('retro_card_logs').doc(id).set({
+        data: { userId: latest._id, openid, delta: amount, balance, sourceType: sourceType || '', sourceId: sourceId || '', reason: reason || '', createdAt: time }
       })
-      if (!updated.stats || Number(updated.stats.updated || 0) <= 0) throw new Error('补签卡不足')
-    } else {
-      if (amount < 0 && currentBalance < Math.abs(amount)) throw new Error('补签卡不足')
-      const nextBalance = Math.max(currentBalance + amount, 0)
-      await db.collection('users').doc(user._id).update({
-        data: { retroCardCount: hasAtomicInc ? command.inc(amount) : nextBalance, updatedAt: time }
-      })
+      return { balance }
     }
-
-    const latest = (await db.collection('users').doc(user._id).get()).data || {}
-    const balance = Number(latest.retroCardCount || 0)
-    await db.collection('retro_card_logs').add({
-      data: { userId: userId || user._id, openid, delta: amount, balance, sourceType: sourceType || '', sourceId: sourceId || '', reason: reason || '', createdAt: time }
-    })
-    return { balance }
+    return options.transaction ? execute(options.transaction) : db.runTransaction(execute)
   }
 
   return {

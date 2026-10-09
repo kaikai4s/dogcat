@@ -250,6 +250,13 @@
         </view>
 
         <view wx:if="{{activeSettingPanel === 'subscription'}}" class="setting-modal-section">
+          <picker mode="selector" range="{{deliveryStatusLabels}}" value="{{deliveryStatusIndex}}" bindchange="changeDeliveryStatus" disabled="{{deliveryLoading}}"><view class="input">通知状态：{{deliveryStatusLabels[deliveryStatusIndex]}}</view></picker>
+          <button class="ghost-btn" bindtap="loadSubscriptionDeliveries" disabled="{{deliveryLoading}}"><text class="remix-icon ri-refresh-line"></text><text>刷新通知</text></button>
+          <view wx:for="{{subscriptionDeliveries}}" wx:key="id" class="compact-toggle-row">
+            <view class="compact-toggle-main"><view>{{item.templateKey}}</view><view class="muted">{{item.orderId || '资金通知'}} · {{item.attempts}} 次尝试</view></view>
+            <button wx:if="{{item.status === 'failed' || item.status === 'skipped'}}" class="ghost-btn" data-id="{{item.id}}" bindtap="retrySubscriptionDelivery"><text class="remix-icon ri-restart-line"></text><text>重试</text></button>
+          </view>
+          <button wx:if="{{deliveryHasMore}}" class="ghost-btn" data-more="{{true}}" bindtap="loadSubscriptionDeliveries" disabled="{{deliveryLoading}}">更多</button>
           <view class="compact-toggle-row"><view class="compact-toggle-main"><view class="strong">启用订阅消息</view><view class="muted">模板未配置时只记录 skipped 日志。</view></view><switch checked="{{settings.subscription.enabled}}" bindchange="toggleSubscriptionEnabled" /></view>
           <view class="field-item"><text class="label">支付成功模板</text><input class="input" value="{{settings.subscription.templates.orderPaid}}" data-field="orderPaid" bindinput="subscriptionTemplateInput" /></view>
           <view class="field-item"><text class="label">接单/派单模板</text><input class="input" value="{{settings.subscription.templates.orderAssigned}}" data-field="orderAssigned" bindinput="subscriptionTemplateInput" /></view>

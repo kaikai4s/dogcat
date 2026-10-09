@@ -148,7 +148,7 @@ test('petBeauty: settlePetBeautyMonthlyRanking excludes soft-deleted pets and en
   const settleRes1 = await adminFn.main({
     module: 'petBeauty',
     action: 'settleMonthlyRanking',
-    data: { force: true }
+    data: { force: true, monthKey: '2026-09' }
   })
   assert.equal(settleRes1.ok, true)
   assert.equal(settleRes1.data.topCount, 1) // 幽灵狗必须被过滤，只有 active 狗上榜
@@ -162,7 +162,7 @@ test('petBeauty: settlePetBeautyMonthlyRanking excludes soft-deleted pets and en
   const settleRes2 = await adminFn.main({
     module: 'petBeauty',
     action: 'settleMonthlyRanking',
-    data: { force: true }
+    data: { force: true, monthKey: '2026-09' }
   })
   assert.equal(settleRes2.ok, true)
   assert.equal(db.state.pet_beauty_month_rankings.length, 1)

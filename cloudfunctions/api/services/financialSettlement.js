@@ -1,4 +1,4 @@
-module.exports = function createService({ db, now, parseDateValue, safeText }) {
+module.exports = function createService({ db, now, parseDateValue, safeText, enqueueSubscription, buildSubscriptionData }) {
   async function optionalOrder(tx, id) {
     try { return (await tx.collection('orders').doc(id).get()).data || null } catch (error) {
       if (String(error.message || error.errMsg).includes(`document with _id ${id} does not exist`)) return null
@@ -104,6 +104,8 @@ module.exports = function createService({ db, now, parseDateValue, safeText }) {
         } })
       }
       const action = `withdraw_${target}`
+      await enqueueSubscription(tx, { openid: request.staffOpenid, templateKey: 'withdrawResult', page: 'pages/staff/earnings/index',
+        messageData: buildSubscriptionData('withdrawResult', { orderNo: data.id, startTime: request.createdAt }, { amount: request.amount, statusText: paid ? '已打款' : target === 'approved' ? '已审核' : '已驳回' }), orderId: '', deliveryKey: `withdraw:${data.id}:${target}` })
       await financeLog(tx, `${action}_${data.id}`, action, 'withdraw_request', data.id, time, {
         staffOpenid: request.staffOpenid, amountDelta: paid ? -total / 100 : 0,
         detail: { earningIds, auditRemark: patch.auditRemark || '', payRemark: patch.payRemark || '', paymentReference, paymentProofImage: patch.paymentProofImage || '', isSameAuditorAndPayer }

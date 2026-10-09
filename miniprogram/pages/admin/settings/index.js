@@ -450,6 +450,13 @@ Page({
     }),
     showSettingModal: false,
     activeSettingPanel: '',
+    subscriptionDeliveries: [],
+    deliveryCursor: '',
+    deliveryHasMore: false,
+    deliveryLoading: false,
+    deliveryStatusIndex: 0,
+    deliveryStatusLabels: ['失败', '跳过', '待发送', '已发送'],
+    deliveryStatuses: ['failed', 'skipped', 'queued', 'sent'],
     showCarouselEditor: false,
     editingIndex: -1,
     editingItem: createEmptyItem(),
@@ -497,6 +504,29 @@ Page({
         })
       })
       .catch(showError)
+  },
+
+  loadSubscriptionDeliveries(e) {
+    if (this.data.deliveryLoading) return
+    const append = !!(e && e.currentTarget && e.currentTarget.dataset.more)
+    this.setData({ deliveryLoading: true })
+    return callFunction('admin', 'listSubscriptionDeliveries', { status: this.data.deliveryStatuses[this.data.deliveryStatusIndex], cursor: append ? this.data.deliveryCursor : '' })
+      .then(result => this.setData({ subscriptionDeliveries: append ? [...this.data.subscriptionDeliveries, ...result.list] : result.list,
+        deliveryCursor: result.cursor, deliveryHasMore: result.hasMore }))
+      .catch(showError).finally(() => this.setData({ deliveryLoading: false }))
+  },
+  changeDeliveryStatus(e) {
+    if (this.data.deliveryLoading) return
+    this.setData({ deliveryStatusIndex: Number(e.detail.value), deliveryCursor: '', deliveryHasMore: false, subscriptionDeliveries: [] })
+    this.loadSubscriptionDeliveries()
+  },
+  retrySubscriptionDelivery(e) {
+    const id = e.currentTarget.dataset.id
+    wx.showModal({ title: '重新发送通知', content: '通知将重新进入发送队列，请先确认模板配置和用户订阅额度。', success: result => {
+      if (!result.confirm) return
+      callFunction('admin', 'retrySubscriptionDelivery', { id })
+        .then(() => { wx.showToast({ title: '已加入队列', icon: 'success' }); this.loadSubscriptionDeliveries() }).catch(showError)
+    } })
   },
 
   resolveMediaUrls(items = []) {
