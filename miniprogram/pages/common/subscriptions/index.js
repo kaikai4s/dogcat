@@ -2,6 +2,7 @@ const { callFunction, setCachedSystemSettings, ensureLogin, requestSubscribeTemp
 
 const catalog = {
   orderAccepted: ['接单成功通知', '宠托师接单后，及时了解服务安排'],
+  staffDeparture: ['宠托师出发通知', '宠托师出发时，接收预约时间、出发时间和姓名'],
   serviceStart: ['服务进度通知', '接收服务开始、时间调整等重要提醒'],
   serviceFinish: ['服务完成通知', '服务完成后，及时查看服务报告'],
   orderPaid: ['支付成功通知', '订单支付成功后接收确认消息'],
@@ -48,7 +49,7 @@ Page({
   updateGroups() {
     const sections = this.data.role === 'staff'
       ? [['common', '常用消息', ['upcomingServiceReminder', 'serviceStart', 'serviceFinish']], ['other', '其他消息', ['withdrawResult', 'disputeUpdate']]]
-      : [['common', '常用消息', ['orderAccepted', 'serviceStart', 'serviceFinish']], ['other', '其他消息', ['orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate']]]
+      : [['common', '常用消息', ['orderAccepted', 'staffDeparture', 'serviceStart', 'serviceFinish']], ['other', '其他消息', ['orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate']]]
     const setting = this._wechatSettings || {}
     const groups = sections.map(([id, title, keys]) => {
       const items = keys.map((key) => {
@@ -90,7 +91,7 @@ Page({
     if (this.data.pendingScope === scope && this.data.pendingKeys.length) keys = this.data.pendingKeys
     else keys = this.data.groups.filter((group) => scope === 'all' || scope === group.id || group.items.some((item) => item.key === scope))
       .flatMap((group) => group.items.filter((item) => item.available && (scope === 'all' || scope === group.id || item.key === scope)).map((item) => item.key))
-    const ids = Array.from(new Set(keys.map((key) => this.templateId(key)))).slice(0, 5)
+    const ids = Array.from(new Set(keys.map((key) => this.templateId(key)))).slice(0, 3)
     const batch = keys.filter((key) => ids.includes(this.templateId(key)))
     if (!batch.length) return
     this.setData({ busy: true, feedback: '' })

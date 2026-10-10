@@ -50,6 +50,14 @@ module.exports = function createService({
         time17: { value: safeText(detail.serviceTime || getClockText(order.startTime) || beijingClockText()).slice(0, 20) }
       }
     }
+    if (templateKey === 'staffDeparture') {
+      return {
+        thing1: { value: safeText(serviceName).slice(0, 20) },
+        time2: { value: formatDateTime(detail.appointmentTime || order.startTime) },
+        time3: { value: formatDateTime(detail.departedAt || order.departedAt) },
+        thing4: { value: safeText(detail.staffName || order.staffName || '宠托师').slice(0, 20) }
+      }
+    }
     if (templateKey === 'remoteUnlock') {
       return {
         thing1: { value: safeText(detail.deviceName || '入户门锁').slice(0, 20) },

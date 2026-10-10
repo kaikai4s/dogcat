@@ -236,15 +236,18 @@ Page({
     }
   },
   subscribeServiceUpdates() {
-    requestSubscribeTemplates(['orderAccepted', 'serviceStart', 'serviceFinish', 'staffCancellation'], 'client_order_detail_recharge')
+    if (this._subscribingUpdates) return
+    this._subscribingUpdates = true
+    return requestSubscribeTemplates(['staffDeparture', 'orderAccepted', 'serviceStart'], 'client_order_detail_recharge', { waitForConsent: false })
       .then((res) => {
-        if (res && res.requested) {
-          wx.showToast({ title: '已开启微信动态提醒', icon: 'success' })
-        } else {
-          wx.showToast({ title: '已同步通知设置', icon: 'none' })
-        }
+        const accepted = res && res.requested && (res.templateIds || []).filter(id => res.results && res.results[id] === 'accept').length || 0
+        const departureId = res && res.templateIdByKey && res.templateIdByKey.staffDeparture
+        const departureAccepted = departureId && res.results && res.results[departureId] === 'accept'
+        const title = departureAccepted ? '已同意出发提醒' : accepted ? '部分提醒已同意' : '未开启提醒，可重新订阅'
+        wx.showToast({ title, icon: departureAccepted ? 'success' : 'none' })
       })
-      .catch(() => {})
+      .catch(showError)
+      .finally(() => { this._subscribingUpdates = false })
   },
   pay() {
     if (this._payingLock || this.data.paying) return
@@ -254,7 +257,7 @@ Page({
     const clientRequestId = createClientRequestId('pay')
 
     // 定义重新授权的函数
-    const requestSubscribe = () => requestSubscribeTemplates(['orderAccepted', 'serviceStart', 'remoteUnlock'], 'client_pay')
+    const requestSubscribe = () => requestSubscribeTemplates(['staffDeparture', 'serviceStart', 'remoteUnlock'], 'client_pay')
 
     requestSubscribe()
       .then((subscribeResult) => {

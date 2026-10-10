@@ -7,7 +7,7 @@ test('client order detail pay requests serviceStart template to guarantee early 
   const code = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/client/orders/detail/index.js'), 'utf8')
 
   // Verify that pay() contains 'serviceStart'
-  assert.match(code, /requestSubscribeTemplates\(\[['"]orderAccepted['"],\s*['"]serviceStart['"],\s*['"]remoteUnlock['"]\]/)
+  assert.match(code, /requestSubscribeTemplates\(\[['"]staffDeparture['"],\s*['"]serviceStart['"],\s*['"]remoteUnlock['"]\]/)
 })
 
 test('client order detail has checkPromptEarlyStart and polling lifecycle', () => {

@@ -240,6 +240,7 @@ function normalizeSubscriptionConfig(subscription = {}) {
       orderPaid: templates.orderPaid || '',
       orderAssigned: templates.orderAssigned || '',
       orderAccepted: templates.orderAccepted || '',
+      staffDeparture: templates.staffDeparture || '',
       serviceStart: templates.serviceStart || '',
       serviceFinish: templates.serviceFinish || '',
       remoteUnlock: templates.remoteUnlock || '',
@@ -316,13 +317,13 @@ function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) 
     const templates = subscription.templates || {}
     const resolveTemplateId = (key) => templates[key] || (key === 'upcomingServiceReminder' ? templates.serviceStart : '')
     const requestKeys = Array.from(new Set(templateKeys)).filter(resolveTemplateId)
-    const tmplIds = Array.from(new Set(requestKeys.map(resolveTemplateId))).slice(0, 5)
+    const tmplIds = Array.from(new Set(requestKeys.map(resolveTemplateId))).slice(0, 3)
     const limitedKeys = requestKeys.filter((key) => tmplIds.includes(resolveTemplateId(key)))
     if (!tmplIds.length) return Promise.resolve({ requested: false, reason: 'template_not_configured' })
     return new Promise((resolve) => {
       wx.requestSubscribeMessage({
         tmplIds,
-        success: (res) => resolve({ requested: true, templateKeys: limitedKeys, templateIds: tmplIds, results: res || {} }),
+        success: (res) => resolve({ requested: true, templateKeys: limitedKeys, templateIds: tmplIds, templateIdByKey: Object.fromEntries(limitedKeys.map(key => [key, resolveTemplateId(key)])), results: res || {} }),
         fail: (error) => resolve({ requested: false, reason: 'request_failed', errorCode: error && error.errCode, error: error && (error.errMsg || error.message) || '' })
       })
     }).then((result) => {

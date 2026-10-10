@@ -1936,7 +1936,7 @@ typeof Page === 'function' ? Page({
       this.pendingOrderRequest = { signature, id: createClientRequestId('create_order') }
     }
     const clientRequestId = this.pendingOrderRequest.id
-    return requestSubscribeTemplates(['orderAccepted', 'serviceStart', 'remoteUnlock'], 'client_create_order')
+    return requestSubscribeTemplates(['orderAccepted', 'staffDeparture', 'serviceStart'], 'client_create_order')
       .then(() => callFunction('order', 'createOrder', { ...payload, clientRequestId }))
       .then((order) => {
         hideLoading()

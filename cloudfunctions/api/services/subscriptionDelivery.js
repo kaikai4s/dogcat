@@ -42,7 +42,8 @@ module.exports = function createService({ db, crypto, now }) {
       if (!row || row.leaseToken !== token) return
       const retry = result.status === 'failed' && row.attempts < 6
       await tx.collection('subscription_logs').doc(id).update({ data: {
-        status: retry ? 'queued' : result.status, error: result.error || '', templateId: result.templateId || '', leaseToken: '',
+        status: retry ? 'queued' : result.status, error: result.error || '', code: result.code || '',
+        isQuotaExhausted: Boolean(result.isQuotaExhausted), templateId: result.templateId || '', leaseToken: '',
         nextAttemptAt: new Date(now().getTime() + Math.min(3600000, 60000 * Math.pow(2, row.attempts))), updatedAt: now(),
         ...(!retry ? { expiresAt: new Date(now().getTime() + 30 * 24 * 3600000) } : {})
       } })
@@ -59,13 +60,25 @@ module.exports = function createService({ db, crypto, now }) {
     }
     return rows.length
   }
+  const templateLabels = {
+    staffDeparture: '宠托师出发通知', orderAccepted: '接单成功通知', orderAssigned: '派单通知',
+    orderPaid: '支付成功通知', serviceStart: '服务进度通知', serviceFinish: '服务完成通知',
+    remoteUnlock: '开锁请求通知', upcomingServiceReminder: '即将服务提醒', refundResult: '退款结果通知',
+    disputeUpdate: '售后进度通知', withdrawResult: '提现结果通知', staffCancellation: '宠托师取消通知'
+  }
+  function deliveryReason(row) {
+    if (row.isQuotaExhausted || Number(row.code) === 43101 || /43101/.test(row.error || '')) return '用户未同意或订阅次数已用完，请用户重新订阅'
+    return ({ subscription_disabled: '后台订阅消息开关未开启', template_not_configured: '尚未配置该通知模板 ID',
+      openapi_unavailable: '微信发送接口不可用' })[row.error] || (row.error ? '发送失败，请核对模板字段或稍后重试' : '')
+  }
   async function listSubscriptionDeliveries(data = {}) {
     const status = ['queued', 'failed', 'sent', 'skipped'].includes(data.status) ? data.status : 'failed'
     const where = { delivery: true, status }
     if (data.cursor) where._id = db.command.gt(String(data.cursor))
     const rows = (await db.collection('subscription_logs').where(where).orderBy('_id', 'asc').limit(31).get()).data || []
     return { list: rows.slice(0, 30).map(row => ({ id: row._id, orderId: row.orderId || '', templateKey: row.templateKey,
-      status: row.status, attempts: row.attempts, nextAttemptAt: row.nextAttemptAt, updatedAt: row.updatedAt })),
+      status: row.status, templateName: templateLabels[row.templateKey] || row.templateKey, reasonText: deliveryReason(row),
+      attempts: row.attempts, nextAttemptAt: row.nextAttemptAt, updatedAt: row.updatedAt })),
       hasMore: rows.length > 30, cursor: rows.length > 30 ? rows[29]._id : '' }
   }
   async function requeueSubscriptionDelivery(id, actorOpenid) {

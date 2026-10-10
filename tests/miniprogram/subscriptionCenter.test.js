@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const flush = () => new Promise(resolve => setImmediate(resolve))
-const templateKeys = ['orderAccepted', 'serviceStart', 'serviceFinish', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate', 'upcomingServiceReminder', 'withdrawResult']
+const templateKeys = ['orderAccepted', 'staffDeparture', 'serviceStart', 'serviceFinish', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate', 'upcomingServiceReminder', 'withdrawResult']
 
 async function setup({ templates = Object.fromEntries(templateKeys.map(key => [key, `tpl_${key}`])), enabled = true, mainSwitch = true, role = 'client', subscribe, holdConsent = false } = {}) {
   const requests = []
@@ -47,19 +47,22 @@ async function setup({ templates = Object.fromEntries(templateKeys.map(key => [k
 }
 const tap = scope => ({ currentTarget: { dataset: { scope } } })
 
-test('all notifications request at most five templates per tap and continue with the remainder', async () => {
+test('all notifications request at most three templates per tap and continue with the remainder', async () => {
   const { page, requests } = await setup()
-  assert.equal(page.data.availableCount, 8)
+  assert.equal(page.data.availableCount, 9)
   const pending = page.subscribe(tap('all'))
   assert.equal(requests.length, 1, 'native authorization must start synchronously in the tap')
-  assert.equal(requests[0].length, 5)
+  assert.equal(requests[0].length, 3)
   await pending
-  assert.equal(page.data.pendingKeys.length, 3)
+  assert.equal(page.data.pendingKeys.length, 6)
   assert.equal(requests.length, 1, 'do not automatically invoke another prompt without a gesture')
   await page.subscribe(tap('all'))
   assert.equal(requests[1].length, 3)
+  assert.equal(page.data.pendingKeys.length, 3)
+  await page.subscribe(tap('all'))
+  assert.equal(requests[2].length, 3)
   assert.equal(page.data.pendingKeys.length, 0)
-  assert.equal(new Set(requests.flat()).size, 8)
+  assert.equal(new Set(requests.flat()).size, 9)
 })
 
 test('templates shared by multiple notification types are requested once and update both statuses', async () => {
@@ -124,4 +127,17 @@ test('subscription request guard prevents rapid duplicate native prompts', async
   authorize({})
   await pending
   assert.equal(page.data.busy, false)
+})
+
+test('client can explicitly authorize departure template and record consent; staff does not subscribe to it', async () => {
+  const { page, requests, calls } = await setup()
+  const item = page.data.groups.flatMap(g => g.items).find(i => i.key === 'staffDeparture')
+  assert.equal(item.title, '宠托师出发通知')
+  await page.subscribe(tap('staffDeparture'))
+  assert.deepEqual([...requests[0]], ['tpl_staffDeparture'])
+  const consent = calls.find(c => c.action === 'recordSubscriptionConsent')
+  assert.equal(consent.data.templateIds.staffDeparture, 'tpl_staffDeparture')
+  assert.equal(consent.data.results.tpl_staffDeparture, 'accept')
+  const staff = await setup({ role: 'staff' })
+  assert.equal(staff.page.data.groups.flatMap(g => g.items).some(i => i.key === 'staffDeparture'), false)
 })

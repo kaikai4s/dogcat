@@ -67,6 +67,7 @@ module.exports = function createHandler(context) {
     normalizePetIds,
     normalizeServiceSessions,
     notifyOrder,
+    enqueueOrderNotification,
     now,
     restoreOrderCoupon,
     paginateList,
@@ -787,9 +788,13 @@ module.exports = function createHandler(context) {
       const estimatedArrivalTime = new Date(time.getTime() + estimatedTravelMinutes * 60 * 1000)
       const isProximity = (distanceKm !== null && distanceKm <= 1.0) || estimatedTravelMinutes <= 10
 
+      const departureSession = getNextPendingServiceSession(order, time) || { index: 1, startTime: order.startTime }
+      const departureKey = makeIdempotencyKey('staff_departure', order._id, order.staffOpenid, String(departureSession.index), departureSession.startTime)
+      const departureDetail = { appointmentTime: departureSession.startTime, departedAt: time, staffName: order.staffName || user.realName || user.name || user.nickname || '宠托师' }
       const updateData = {
         status: ORDER_STATUS.ON_THE_WAY,
-        departedAt: order.departedAt || time,
+        departedAt: time,
+        departureSessionIndex: departureSession.index,
         departureLocation: hasCoordinate(currentLat, currentLng) ? { latitude: currentLat, longitude: currentLng } : null,
         currentLocation: hasCoordinate(currentLat, currentLng) ? { latitude: currentLat, longitude: currentLng, updatedAt: time } : null,
         distanceFromDestinationKm: distanceKm !== null ? Number(distanceKm.toFixed(2)) : null,
@@ -809,8 +814,27 @@ module.exports = function createHandler(context) {
         triggerRadar = true
       }
 
-      await db.collection('orders').doc(order._id).update({ data: updateData })
-      const updatedOrder = { ...order, ...updateData }
+      const departure = await db.runTransaction(async tx => {
+        const latest = (await tx.collection('orders').doc(order._id).get()).data
+        if (!latest || latest.staffOpenid !== openid) throw new Error('订单指派已变化，请刷新后重试')
+        if (latest.status === ORDER_STATUS.ON_THE_WAY) return { repeated: true, order: latest }
+        if (!['assigned', 'day_completed'].includes(latest.status)) throw new Error('当前订单状态不可出发前往')
+        const latestSession = getNextPendingServiceSession(latest, time) || { index: 1, startTime: latest.startTime }
+        if (latestSession.index !== departureSession.index || latestSession.startTime !== departureSession.startTime) throw new Error('服务场次已变化，请刷新后重试')
+        const nextOrder = { ...latest, ...updateData }
+        await tx.collection('orders').doc(order._id).update({ data: updateData })
+        await enqueueOrderNotification(tx, latest.clientOpenid, 'staffDeparture', nextOrder, departureDetail, 'client', departureKey)
+        return { repeated: false, order: nextOrder }
+      })
+      const updatedOrder = departure.order
+      if (departure.repeated) return {
+        orderId: order._id, status: updatedOrder.status,
+        estimatedTravelMinutes: updatedOrder.estimatedTravelMinutes, travelEtaMinutes: updatedOrder.travelEtaMinutes,
+        estimatedArrivalTime: updatedOrder.estimatedArrivalTime,
+        distanceFromDestinationKm: updatedOrder.distanceFromDestinationKm, travelDistanceKm: updatedOrder.travelDistanceKm,
+        triggerRadar: false, radarProximityNotified: updatedOrder.radarProximityNotified
+      }
+      await notifyOrder(updatedOrder.clientOpenid, 'staffDeparture', updatedOrder, departureDetail, 'client', departureKey)
 
       const distStr = distanceKm !== null ? `，距目的地约 ${distanceKm.toFixed(1)} km` : ''
       await appendOrderTimeline(order._id, 'on_the_way', '宠托师已出发前往服务地点', `预计 ${estimatedTravelMinutes} 分钟后到达${distStr}。`, 'staff')
@@ -833,11 +857,6 @@ module.exports = function createHandler(context) {
         await notifyOrder(order.clientOpenid, 'serviceStart', updatedOrder, {
           statusText: '宠托师即将到达',
           tip: '宠托师已在路上，预计10分钟后到达您家'
-        }, 'client').catch(() => {})
-      } else {
-        await notifyOrder(order.clientOpenid, 'serviceStart', updatedOrder, {
-          statusText: '前往服务中',
-          tip: `宠托师已在路上，预计${estimatedTravelMinutes}分钟后到达您家`
         }, 'client').catch(() => {})
       }
 
