@@ -1,4 +1,5 @@
 const { callFunction, showError, setCachedSystemSettings } = require('../../../utils/cloud')
+const { subscriptionTemplateIssue } = require('../../../utils/subscription-options')
 
 const quizOptionValues = ['A', 'B', 'C', 'D', 'E', 'F']
 const requiredSupplyItems = ['一次性手套', '一次性口罩', '一次性鞋套', '宠物安全消毒用品']
@@ -374,7 +375,7 @@ function buildSettingSummary(settings = {}) {
   const payment = settings.payment || normalizePaymentConfig()
   const subscription = settings.subscription || normalizeSubscriptionConfig()
   const templates = subscription.templates || {}
-  const configuredTemplateCount = Object.keys(templates).filter((key) => String(templates[key] || '').trim()).length
+  const configuredTemplateCount = Object.keys(templates).filter(key => !subscriptionTemplateIssue(templates[key])).length
   const carousel = settings.homeHeroCarousel || normalizeCarouselConfig()
   const carouselItems = carousel.items || []
   const enabledCarouselCount = carouselItems.filter((item) => item.enabled !== false).length
@@ -1338,6 +1339,9 @@ Page({
   save() {
     if (this.data.saving) return
     if (!this.data.loaded) return showError(new Error('请等待设置加载成功后再保存'))
+    const templates = this.data.settings.subscription.templates || {}
+    const invalidKeys = Object.keys(templates).filter(key => String(templates[key] || '').trim() && subscriptionTemplateIssue(templates[key]))
+    if (invalidKeys.length) return showError(new Error('【订阅消息设置】存在模板编号、占位值或格式错误的 ID。请从当前小程序「订阅消息 → 我的模板」复制完整 ID；暂未配置的项目请留空。'))
     const deposit = this.data.settings.staffDeposit
     if (!validAmount(deposit.amount, !deposit.enabled)) return showError(new Error('保证金金额须为有效金额，最多两位小数；启用时必须大于 0'))
     let sceneReportInfos

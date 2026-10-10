@@ -27,7 +27,7 @@ function setup() {
     module, wx, getApp: () => app, Date: { now: () => now },
     setTimeout(callback, delay) { const id = ++timerId; timers.set(id, { callback, at: now + delay }); return id },
     clearTimeout: id => timers.delete(id),
-    require: () => ({ envList: [], saveTheme() {}, saveFont() {} })
+    require: name => name.endsWith('/subscription-options') ? require('../../miniprogram/utils/subscription-options') : { envList: [], saveTheme() {}, saveFont() {} }
   })
   return {
     api: module.exports, app, requests, messages,

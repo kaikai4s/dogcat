@@ -1,4 +1,5 @@
 const { envList, getActiveEnvId } = require('../envList')
+const { subscriptionTemplateIssue } = require('./subscription-options')
 const { getSavedThemeKey, saveTheme } = require('./theme')
 const { getSavedFontKey, saveFont } = require('./font')
 
@@ -326,7 +327,7 @@ function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) 
     if (typeof wx.requestSubscribeMessage !== 'function') return Promise.resolve({ requested: false, reason: 'request_api_unavailable' })
     const templates = subscription.templates || {}
     const resolveTemplateId = (key) => String(templates[key] || '').trim()
-    const requestKeys = Array.from(new Set(templateKeys)).filter(resolveTemplateId)
+    const requestKeys = Array.from(new Set(templateKeys)).filter(key => !subscriptionTemplateIssue(resolveTemplateId(key)))
     const tmplIds = Array.from(new Set(requestKeys.map(resolveTemplateId))).slice(0, 3)
     const limitedKeys = requestKeys.filter((key) => tmplIds.includes(resolveTemplateId(key)))
     if (!tmplIds.length) return Promise.resolve({ requested: false, reason: 'template_not_configured' })

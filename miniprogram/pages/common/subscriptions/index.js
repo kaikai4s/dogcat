@@ -1,5 +1,5 @@
 const { callFunction, setCachedSystemSettings, ensureLogin, requestSubscribeTemplates, showError } = require('../../../utils/cloud')
-const { subscriptionSections } = require('../../../utils/subscription-options')
+const { subscriptionSections, subscriptionTemplateIssue } = require('../../../utils/subscription-options')
 
 const catalog = {
   staffDirectOrder: ['指定单通知', '客户指定预约或平台派单后，及时查看服务安排'],
@@ -22,11 +22,12 @@ Page({
     role: 'client', loading: true, loadFailed: false, ready: false,
     enabled: false, mainSwitch: null, groups: [], busy: false,
     pendingKeys: [], pendingScope: '', feedback: '', availableCount: 0,
-    singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0
+    singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0, invalidCount: 0
   },
   onLoad(query = {}) {
     this.setData({ role: query.role === 'staff' ? 'staff' : 'client' })
     this._lastResults = {}
+    this._invalidTemplateIds = new Set()
     this._wechatSettings = {}
     this.load()
   },
@@ -59,6 +60,14 @@ Page({
     const templates = this._settings && this._settings.subscription.templates || {}
     return String(templates[key] || '').trim()
   },
+  reloadConfiguration() {
+    if (this.data.busy) return
+    this._invalidTemplateIds = new Set()
+    this._lastResults = {}
+    this._batchAcceptedIds = new Set()
+    this.setData({ pendingKeys: [], pendingScope: '', singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0, feedback: '' })
+    return this.load()
+  },
   updateGroups() {
     const sections = subscriptionSections(this.data.role)
     const setting = this._wechatSettings || {}
@@ -66,19 +75,24 @@ Page({
       const items = keys.map((key) => {
         const templateId = this.templateId(key)
         const status = this._lastResults[templateId] || setting.itemsSetting && setting.itemsSetting[templateId] || ''
+        const issue = subscriptionTemplateIssue(templateId)
+        const invalid = !!templateId && (!!issue || this._invalidTemplateIds.has(templateId))
         // This legacy key is configurable but has no business sender yet.
-        const available = key !== 'disputeUpdate' && this.data.enabled && !!templateId
-        const statusText = !available ? '暂未开放' : this.data.mainSwitch === false ? '微信订阅开关已关闭'
+        const available = key !== 'disputeUpdate' && this.data.enabled && !issue && !invalid
+        const statusText = key === 'disputeUpdate' ? '暂未开放'
+          : invalid ? '模板不可用，请联系平台核对配置'
+          : issue ? issue : !this.data.enabled ? '平台暂未开启订阅通知' : this.data.mainSwitch === false ? '微信订阅开关已关闭'
           : status === 'accept' ? '已允许接收，可再次订阅'
           : status === 'reject' ? '暂未允许，可重新订阅'
           : status === 'ban' ? '通知已被关闭，请检查微信设置'
           : status === 'invalid' ? '模板不可用，请联系平台核对配置'
           : status === 'filter' ? '本次未获授权，可单独订阅' : '等待订阅授权'
-        return { key, title: catalog[key][0], desc: catalog[key][1], available, statusText, accepted: available && status === 'accept' && this.data.mainSwitch !== false }
+        return { key, title: catalog[key][0], desc: catalog[key][1], available, invalid, statusText, accepted: available && status === 'accept' && this.data.mainSwitch !== false }
       })
       return { id, title, items, available: items.some((item) => item.available) }
     })
-    this.setData({ groups, availableCount: groups.reduce((sum, group) => sum + group.items.filter((item) => item.available).length, 0) })
+    this.setData({ groups, availableCount: groups.reduce((sum, group) => sum + group.items.filter((item) => item.available).length, 0),
+      invalidCount: groups.reduce((sum, group) => sum + group.items.filter(item => item.key !== 'disputeUpdate' && item.invalid).length, 0) })
   },
   applyWechatSettings(result = {}) {
     this._wechatSettings = result.subscriptionsSetting || {}
@@ -112,7 +126,7 @@ Page({
     }
     const scope = e.currentTarget.dataset.scope || 'all'
     let keys
-    if (this.data.pendingScope === scope && this.data.pendingKeys.length) keys = this.data.pendingKeys
+    if (this.data.pendingScope === scope && this.data.pendingKeys.length) keys = this.data.pendingKeys.filter(key => !this._invalidTemplateIds.has(this.templateId(key)))
     else {
       keys = this.data.groups.filter((group) => scope === 'all' || scope === group.id || group.items.some((item) => item.key === scope))
         .flatMap((group) => group.items.filter((item) => item.available && (scope === 'all' || scope === group.id || item.key === scope)).map((item) => item.key))
@@ -146,7 +160,10 @@ Page({
           this.setData({ pendingKeys, pendingScope: pendingKeys.length ? scope : '', singleMode: invalidBatch || this.data.singleMode,
             batchRemaining: new Set(pendingKeys.map(key => this.templateId(key))).size,
             feedback: `${feedback}${Number.isFinite(code) ? `（微信错误码 ${code}）` : ''}` })
-          if (invalidBatch && ids.length === 1) ids.forEach(id => { this._lastResults[id] = 'invalid' })
+          if (code === 20001 && ids.length === 1) ids.forEach(id => {
+            this._lastResults[id] = 'invalid'
+            this._invalidTemplateIds.add(id)
+          })
           return
         }
         const results = result.results || {}

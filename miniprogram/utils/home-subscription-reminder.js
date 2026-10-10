@@ -7,7 +7,7 @@ function reminderState(settings, wechat, role) {
   const setting = wechat || {}
   const allowed = ids.filter(id => setting.itemsSetting && setting.itemsSetting[id] === 'accept').length
   const description = !subscription.enabled ? '平台暂未开启通知，可进入订阅中心查看'
-    : !ids.length ? '平台尚未配置通知模板，可进入订阅中心查看'
+    : !ids.length ? '平台尚未配置可用通知模板，可进入订阅中心查看'
     : setting.mainSwitch === false ? '微信订阅消息已关闭，打开设置后才能接收提醒'
     : allowed === ids.length ? '微信已允许通知；一次订阅对应一次提醒，可继续补充'
     : `有 ${ids.length} 项通知可订阅，请授权以免错过重要提醒`

@@ -33,7 +33,7 @@ async function setup({ templates = Object.fromEntries(templateKeys.map(key => [k
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/utils/cloud.js'), 'utf8'), {
     module, wx, setTimeout, clearTimeout,
     getApp: () => ({ globalData: { env: 'test', user: { _id: 'user' } } }),
-    require: () => ({ envList: [] })
+    require: name => name.endsWith('/subscription-options') ? require('../../miniprogram/utils/subscription-options') : { envList: [] }
   })
   let page
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/common/subscriptions/index.js'), 'utf8'), {
@@ -331,4 +331,51 @@ test('concurrent settings preloads share the same read and retain carousel navig
   assert.equal(calls.filter(call => call.action === 'getSettings').length, before + 1)
   assert.equal(api.getCachedSystemSettings().homeHeroCarousel.items[0].linkUrl, '/pages/client/mall/list/index')
   assert.equal(api.getCachedSystemSettings().homeHeroCarousel.items[0].linkTitle, '选购')
+})
+
+test('blank IDs, template numbers and placeholders never appear available or open a native prompt', async () => {
+  const templates = { orderAccepted: '', staffDeparture: 'YOUR_TEMPLATE_ID', serviceStart: '71479', refundResult: 'template_id' }
+  const { page, requests, api } = await setup({ templates })
+  assert.equal(page.data.availableCount, 0)
+  assert.equal(page.data.invalidCount, 3)
+  await page.subscribe(tap('all'))
+  assert.equal(requests.length, 0)
+  const result = await api.requestSubscribeTemplates(Object.keys(templates), 'missing-config')
+  assert.equal(result.requested, false)
+  assert.equal(result.reason, 'template_not_configured')
+  assert.equal(requests.length, 0)
+})
+
+test('known invalid templates do not reenter the batch when switching between all, common and settings', async () => {
+  const { page, requests } = await setup({ templates: { orderAccepted: 'invalid-accepted', staffDeparture: 'invalid-departure', serviceStart: 'invalid-start' },
+    subscribe(options) { options.fail({ errCode: 20001, errMsg: 'template not found' }) } })
+  await page.subscribe(tap('orderAccepted'))
+  assert.equal(page.data.availableCount, 2)
+  await page.subscribe(tap('all'))
+  assert.ok(!requests[1].includes('invalid-accepted'))
+  await page.subscribe(tap('all'))
+  assert.equal(page.data.availableCount, 1)
+  page.onShow()
+  await flush()
+  page.openSettings()
+  await page.subscribe(tap('common'))
+  assert.deepEqual([...requests.at(-1)], ['invalid-start'])
+  assert.equal(page.data.availableCount, 0)
+  assert.equal(page.data.invalidCount, 3)
+  assert.equal(page.data.pendingKeys.length, 0)
+  const count = requests.length
+  await page.subscribe(tap('all'))
+  assert.equal(requests.length, count)
+  assert.match(page.data.feedback, /配置/)
+})
+
+test('explicit configuration recheck recovers after the administrator adds real IDs', async () => {
+  const { page, settings, requests } = await setup({ templates: {} })
+  assert.equal(page.data.availableCount, 0)
+  settings.subscription.templates = { staffDeparture: 'Ok3GmyPJUxBvOWG7RdFVhBLrpbVMvkiY2-d-IlJPI_0' }
+  await page.reloadConfiguration()
+  assert.equal(page.data.availableCount, 1)
+  await page.subscribe(tap('all'))
+  assert.deepEqual([...requests[0]], [settings.subscription.templates.staffDeparture])
+  assert.equal(page.data.batchAccepted, 1)
 })
