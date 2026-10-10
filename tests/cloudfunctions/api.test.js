@@ -2500,7 +2500,7 @@ test('home security actions create staff order messages', async () => {
   assert.equal(db.state.order_messages.filter((item) => item.eventType === 'remote_unlock_requested' && item.title === '宠托师请求远程开门').length, 2)
   assert.equal(db.state.order_message_threads[0].unreadCount, 2)
   assert.equal(clientSummary.data.totalUnread, 2)
-  assert.equal(db.state.subscription_logs.some((item) => item.templateKey === 'remoteUnlock' && item.data.thing1.value === '宠托师请求远程开门'), true)
+  assert.equal(db.state.subscription_logs.some((item) => item.templateKey === 'remoteUnlock' && item.data.thing4.value === '宠托师请求远程开门'), true)
   assert.equal(db.state.order_staff_messages.some((item) => item.eventType === 'remote_unlock_reminder_sent' && item.title === '已提醒宠物主远程开门'), true)
   assert.equal(db.state.order_staff_messages.some((item) => item.eventType === 'one_time_code_updated' && item.title === '一次性密码已更新'), true)
   assert.equal(summary.data.totalUnread, 3)

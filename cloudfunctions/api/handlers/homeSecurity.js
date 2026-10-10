@@ -19,6 +19,7 @@ module.exports = function createHandler(context) {
     mask,
     notifyAdmins,
     notifyOrder,
+    enqueueOrderNotification,
     now,
     readScopedDocuments,
     isValidMobilePhone,
@@ -311,14 +312,24 @@ module.exports = function createHandler(context) {
       const settings = await getSystemSettings()
       const customerServiceSnapshot = settings.customerService || {}
       const updatedSecurity = { ...security, remoteUnlock: { ...remoteUnlock, lastRequestedAt: time.toISOString(), requestCount: Number(remoteUnlock.requestCount || 0) + 1, notifyChannels: ['wechat', 'admin_phone'], lastNotifyStatus: { wechat: 'pending', admin_phone: 'available' }, customerServiceSnapshot }, updatedAt: time }
-      await db.collection('orders').doc(orderId).update({ data: { orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time } })
+      const deliveryKey = makeIdempotencyKey('remote_unlock', orderId, openid, time.toISOString())
+      await db.runTransaction(async tx => {
+        const latest = (await tx.collection('orders').doc(orderId).get()).data
+        if (!latest || latest.staffOpenid !== openid || !['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(latest.status)) throw new Error('订单状态不允许请求开门')
+        const latestSecurity = latest.orderHomeSecurity || latest.homeSecuritySnapshot || {}
+        if (latestSecurity.type !== 'remote_unlock') throw new Error('该订单不是远程开门方式')
+        const lastRequestedAt = latestSecurity.remoteUnlock && latestSecurity.remoteUnlock.lastRequestedAt
+        if (lastRequestedAt && time.getTime() - toTimeValue(lastRequestedAt) < 2 * 60 * 1000) throw new Error('开门请求发送过于频繁，请稍后再试')
+        await tx.collection('orders').doc(orderId).update({ data: { orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time } })
+        await enqueueOrderNotification(tx, latest.clientOpenid, 'remoteUnlock', latest, { requestTime: time }, 'client', deliveryKey)
+      })
       const securityRes = await db.collection('order_home_security').where({ orderId }).limit(1).get().catch(() => ({ data: [] }))
       const secDoc = securityRes && securityRes.data && securityRes.data[0]
       if (secDoc) await db.collection('order_home_security').doc(secDoc._id).update({ data: removeLegacySecretFields({ ...updatedSecurity, updatedAt: time }) })
       const notification = await db.collection('home_security_notifications').add({ data: { orderId, type: 'remote_unlock', clientOpenid: order.clientOpenid, staffOpenid: openid, channels: ['wechat', 'admin_phone'], status: { wechat: 'pending', admin_phone: 'available' }, customerServiceSnapshot, createdAt: time } })
       const updatedOrder = { ...order, _id: orderId, orderHomeSecurity: updatedSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(updatedSecurity), updatedAt: time }
-      await appendOrderClientMessage(updatedOrder, { eventType: 'remote_unlock_requested', title: '宠托师请求远程开门', detail: '宠托师已到达服务地点，请及时远程开门。', actorRole: 'staff', idempotencyKey: makeIdempotencyKey('order_message', orderId, 'remote_unlock_requested', notification._id || time.toISOString()) })
-      const notifyResult = await notifyOrder(order.clientOpenid, 'remoteUnlock', updatedOrder, { deviceName: '宠托师请求远程开门', requestTime: beijingClockText(time) })
+      await appendOrderClientMessage(updatedOrder, { eventType: 'remote_unlock_requested', title: '宠托师请求远程开门', detail: '宠托师请求远程开门，请先核实到访人员，再在门锁应用中操作。', actorRole: 'staff', idempotencyKey: makeIdempotencyKey('order_message', orderId, 'remote_unlock_requested', notification._id || time.toISOString()) })
+      const notifyResult = await notifyOrder(order.clientOpenid, 'remoteUnlock', updatedOrder, { requestTime: time }, 'client', deliveryKey)
       const finalSecurity = { ...updatedSecurity, remoteUnlock: { ...updatedSecurity.remoteUnlock, lastNotifyStatus: { wechat: notifyResult && notifyResult.status || 'skipped', admin_phone: 'available' }, lastNotifyError: notifyResult && notifyResult.error || '' } }
       await db.collection('orders').doc(orderId).update({ data: { orderHomeSecurity: finalSecurity, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(finalSecurity), updatedAt: time } })
       if (secDoc) await db.collection('order_home_security').doc(secDoc._id).update({ data: removeLegacySecretFields({ ...finalSecurity, updatedAt: time }) })

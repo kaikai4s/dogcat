@@ -316,7 +316,7 @@ function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) 
     if (!subscription.enabled) return Promise.resolve({ requested: false, reason: 'subscription_disabled' })
     if (typeof wx.requestSubscribeMessage !== 'function') return Promise.resolve({ requested: false, reason: 'request_api_unavailable' })
     const templates = subscription.templates || {}
-    const resolveTemplateId = (key) => templates[key] || (key === 'upcomingServiceReminder' ? templates.serviceProgress : '')
+    const resolveTemplateId = (key) => templates[key] || ''
     const requestKeys = Array.from(new Set(templateKeys)).filter(resolveTemplateId)
     const tmplIds = Array.from(new Set(requestKeys.map(resolveTemplateId))).slice(0, 3)
     const limitedKeys = requestKeys.filter((key) => tmplIds.includes(resolveTemplateId(key)))
@@ -343,7 +343,7 @@ function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) 
   const cachedSettings = getCachedSystemSettings()
   const cachedSubscription = cachedSettings.subscription || {}
   const cachedTemplates = cachedSubscription.templates || {}
-  const hasCachedTemplate = templateKeys.some((key) => cachedTemplates[key] || (key === 'upcomingServiceReminder' && cachedTemplates.serviceProgress))
+  const hasCachedTemplate = templateKeys.some((key) => cachedTemplates[key])
   if (cachedSubscription.enabled && hasCachedTemplate) return requestWithSettings(cachedSettings)
   return loadSystemSettings().then(requestWithSettings).catch((error) => ({ requested: false, reason: 'settings_load_failed', error: error && (error.message || error.errMsg) || '' }))
 }

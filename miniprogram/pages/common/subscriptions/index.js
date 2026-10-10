@@ -11,7 +11,7 @@ const catalog = {
   remoteUnlock: ['远程开门通知', '宠托师到达并请求开门时通知你'],
   refundResult: ['退款结果通知', '及时了解订单退款处理结果'],
   disputeUpdate: ['售后进度通知', '售后处理有新进展时通知你'],
-  upcomingServiceReminder: ['即将服务提醒', '服务开始前提醒你提前做好准备'],
+  upcomingServiceReminder: ['服务订单提醒', '服务前提醒时间段、地点和宠物信息'],
   withdrawResult: ['提现结果通知', '提现审核或打款后接收结果提醒']
 }
 
@@ -45,7 +45,7 @@ Page({
   },
   templateId(key) {
     const templates = this._settings && this._settings.subscription.templates || {}
-    return templates[key] || (key === 'upcomingServiceReminder' ? templates.serviceProgress : '') || ''
+    return templates[key] || '' || ''
   },
   updateGroups() {
     const sections = this.data.role === 'staff'

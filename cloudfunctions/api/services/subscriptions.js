@@ -74,20 +74,27 @@ module.exports = function createService({
     }
     if (templateKey === 'remoteUnlock') {
       return {
-        thing1: { value: safeText(detail.deviceName || '入户门锁').slice(0, 20) },
-        character_string2: { value: safeText(orderNo).slice(0, 32) },
-        time3: { value: safeText(detail.requestTime || nowText()).slice(0, 20) }
+        character_string1: { value: safeText(orderNo).slice(0, 32) },
+        thing4: { value: '宠托师请求远程开门' },
+        thing10: { value: '请核实到访人员后，在门锁应用远程开门' },
+        time5: { value: formatDateTime(detail.requestTime || order.orderHomeSecurity?.remoteUnlock?.lastRequestedAt) }
       }
     }
     if (templateKey === 'upcomingServiceReminder') {
+      const pets = Array.isArray(order.petSnapshots) && order.petSnapshots.length ? order.petSnapshots : [order.petSnapshot].filter(Boolean)
+      const types = [...new Set(pets.map(pet => ({ cat: '猫', dog: '狗', 猫: '猫', 狗: '狗' })[pet.species] || '其他'))]
+      const names = pets.map(pet => pet.name).filter(Boolean).join('、') || order.petName || '请查看订单'
+      const start = detail.startTimeText || order.startTime
+      const end = detail.endTimeText || order.endTime
       return {
-        thing9: { value: safeText(detail.tip || '订单即将开始，请前往服务').slice(0, 20) },
-        thing4: { value: '即将开始' },
-        character_string5: { value: safeText(orderNo).slice(0, 32) },
-        thing10: { value: safeText(serviceName).slice(0, 20) },
-        date3: { value: safeText(detail.startTimeText || order.startTime || nowText()).slice(0, 20) }
+        time3: { value: beijingClockText(toTimeValue(start)) + '~' + beijingClockText(toTimeValue(end)) },
+        thing4: { value: safeText(detail.serviceAddress || order.serviceAddress || order.city || '请查看订单地址').slice(0, 20) },
+        short_thing6: { value: (types.join('、') || ({ cat: '猫', dog: '狗' })[order.petCategory] || '宠物').slice(0, 5) },
+        thing7: { value: safeText(names).slice(0, 20) },
+        thing5: { value: safeText(detail.tip || '请按时前往，完整地址及照护要求见订单').slice(0, 20) }
       }
     }
+
     return {
       thing9: { value: safeText(detail.tip || '订单状态已更新').slice(0, 20) },
       thing4: { value: statusText.slice(0, 20) },
@@ -145,13 +152,16 @@ module.exports = function createService({
       if (!templateId && templateKey === 'staffCancellation') {
         templateId = settings.subscription.templates.orderAssigned || ''
       }
-      if (!templateId && templateKey === 'upcomingServiceReminder') {
-        templateId = settings.subscription.templates.serviceProgress || ''
-      }
       if (!settings.subscription.enabled || !templateId) {
         const result = { status: 'skipped', error: !settings.subscription.enabled ? 'subscription_disabled' : 'template_not_configured', templateKey, templateId }
         console.log('[subscription] skipped', { orderId, templateKey, status: 'skipped', code: result.error })
         await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: result.status, error: result.error })
+        return result
+      }
+      if ((templateKey === 'upcomingServiceReminder' && !messageData.short_thing6) ||
+          (templateKey === 'remoteUnlock' && !messageData.time5)) {
+        const result = { status: 'skipped', error: 'legacy_reminder_payload', templateKey, templateId }
+        await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, ...result })
         return result
       }
       if (templateKey === 'serviceFinish' && !messageData.character_string14) {
@@ -296,10 +306,11 @@ module.exports = function createService({
     const remindedOrders = []
 
     for (const order of candidates) {
-      if (!order.staffOpenid) continue
+      if (!order.staffOpenid || order.adminDeletedAt) continue
       const activeSession = getActiveServiceSession(order)
-      const nextSession = getNextPendingServiceSession(order)
+      const nextSession = getNextPendingServiceSession(order, currentTime)
       const targetSession = activeSession || nextSession || (Array.isArray(order.serviceSessions) && order.serviceSessions[0]) || { index: 1, startTime: order.startTime }
+      if (targetSession.status === 'completed') continue
       const sessionIndex = Number(targetSession.index || 1)
       const sessionStartTime = toTimeValue((targetSession && targetSession.startTime) || order.startTime)
       if (!sessionStartTime) continue
@@ -318,13 +329,24 @@ module.exports = function createService({
       const address = order.serviceAddress || order.city || '服务地址'
       const timeText = (targetSession && targetSession.startTime) || order.startTime || formatDateTime(sessionStartTime)
 
-      // 发送订阅消息（指定角色为 staff，跳转服务执行页面）
-      const notifyRes = await notifyOrder(order.staffOpenid, 'upcomingServiceReminder', order, {
-        statusText: '即将开始',
-        tip: '订单即将开始，请前往服务',
-        startTimeText: timeText,
-        serviceAddress: address
-      }, 'staff')
+      const detail = { startTimeText: timeText, endTimeText: targetSession.endTime || order.endTime,
+        serviceAddress: address, tip: '请按时前往，完整地址及照护要求见订单' }
+      const deliveryKey = makeIdempotencyKey('upcoming_service', order._id, order.staffOpenid, String(sessionIndex), timeText)
+      const claimed = await db.runTransaction(async tx => {
+        const latest = (await tx.collection('orders').doc(order._id).get()).data
+        if (!latest || latest.adminDeletedAt || ![ORDER_STATUS.ASSIGNED, ORDER_STATUS.DAY_COMPLETED].includes(latest.status) || latest.staffOpenid !== order.staffOpenid) return false
+        if ((latest.staffUpcomingRemindedSessions || []).includes(sessionIndex)) return false
+        const session = getNextPendingServiceSession(latest, currentTime)
+        if (!session || session.status === 'completed' || Number(session.index) !== sessionIndex || toTimeValue(session.startTime) !== sessionStartTime) return false
+        await enqueueOrderNotification(tx, latest.staffOpenid, 'upcomingServiceReminder', latest, detail, 'staff', deliveryKey)
+        await tx.collection('orders').doc(order._id).update({ data: {
+          staffUpcomingRemindedSessions: [...(latest.staffUpcomingRemindedSessions || []), sessionIndex],
+          staffUpcomingRemindedAt: currentTime, updatedAt: currentTime
+        } })
+        return true
+      })
+      if (!claimed) continue
+      const notifyRes = await notifyOrder(order.staffOpenid, 'upcomingServiceReminder', order, detail, 'staff', deliveryKey)
 
       // 写入宠托师站内消息
       const messageDetail = `您的订单（${serviceName}）约定于 ${timeText} 开始，距当前已不足 1 小时。请提前规划行程并前往服务地点：${address}。到达后请按要求完成打卡。`
@@ -338,17 +360,6 @@ module.exports = function createService({
 
       // 写入订单时间线
       await appendOrderTimeline(order._id, 'upcoming_service_reminder', '即将开始服务提醒已发送', `第${sessionIndex}天服务即将在 1 小时内开始，系统已提醒宠托师前往服务。`, 'system')
-
-      // 更新订单防重字段
-      const newRemindedSessions = Array.from(new Set([...remindedSessions, sessionIndex]))
-      const time = currentTime instanceof Date ? currentTime : new Date(currentTime)
-      await db.collection('orders').doc(order._id).update({
-        data: {
-          staffUpcomingRemindedSessions: newRemindedSessions,
-          staffUpcomingRemindedAt: time,
-          updatedAt: time
-        }
-      })
 
       remindedOrders.push({
         orderId: order._id,

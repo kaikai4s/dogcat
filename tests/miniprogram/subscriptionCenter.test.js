@@ -69,7 +69,7 @@ test('all notifications request at most three templates per tap and continue wit
 })
 
 test('templates shared by multiple notification types are requested once and update both statuses', async () => {
-  const { page, requests, calls } = await setup({ role: 'staff', templates: { serviceProgress: 'shared', serviceFinish: 'finish' } })
+  const { page, requests, calls } = await setup({ role: 'staff', templates: { upcomingServiceReminder: 'shared', serviceProgress: 'shared', serviceFinish: 'finish' } })
   await page.subscribe(tap('common'))
   assert.deepEqual(Array.from(requests[0]), ['shared', 'finish'])
   assert.ok(page.data.groups[0].items.every(item => item.accepted))
@@ -158,4 +158,20 @@ test('client authorizes started template separately; staff never subscribes to i
   assert.equal(staff.page.data.groups.flatMap(group => group.items).some(item => item.key === 'serviceStart'), false)
   staff.page.subscribe(tap('all'))
   assert.equal(staff.requests.length, 0)
+})
+
+test('staff reminder and client remote unlock use their own configured consent IDs', async () => {
+  const staff = await setup({ role: 'staff' })
+  await staff.page.subscribe(tap('upcomingServiceReminder'))
+  assert.deepEqual([...staff.requests[0]], ['tpl_upcomingServiceReminder'])
+  const client = await setup()
+  await client.page.subscribe(tap('remoteUnlock'))
+  assert.deepEqual([...client.requests[0]], ['tpl_remoteUnlock'])
+  assert.equal(client.calls.find(call => call.action === 'recordSubscriptionConsent').data.templateIds.remoteUnlock, 'tpl_remoteUnlock')
+})
+test('missing staff reminder template is unavailable despite configured progress template', async () => {
+  const { page, requests } = await setup({ role: 'staff', templates: { serviceProgress: 'progress' } })
+  assert.equal(page.data.groups[0].items.find(item => item.key === 'upcomingServiceReminder').available, false)
+  await page.subscribe(tap('upcomingServiceReminder'))
+  assert.equal(requests.length, 0)
 })
