@@ -268,7 +268,8 @@
           <view class="notice">模板 71479：订单编号 character_string1、温馨提示 thing2。仅正式开始每场服务时通知下单用户。</view>
           <view class="field-item"><text class="label">服务进度模板</text><input class="input" value="{{settings.subscription.templates.serviceProgress}}" data-field="serviceProgress" bindinput="subscriptionTemplateInput" placeholder="提前开始、到达、超时等进度通知模板 ID" /></view>
           <view class="notice">原服务进度模板请填在此处，字段需为 thing9、thing4、character_string5、thing10、date3，不可使用开始服务模板 71479。</view>
-          <view class="field-item"><text class="label">服务完成模板</text><input class="input" value="{{settings.subscription.templates.serviceFinish}}" data-field="serviceFinish" bindinput="subscriptionTemplateInput" /></view>
+          <view class="field-item"><text class="label">服务完成模板</text><input class="input" value="{{settings.subscription.templates.serviceFinish}}" data-field="serviceFinish" bindinput="subscriptionTemplateInput" placeholder="服务完成通知模板 ID（18325）" /></view>
+          <view class="notice">模板 18325：服务订单号 character_string14、服务项目 thing6、温馨提示 thing5、完成时间 time3。每场服务完成及管理员核实完单后通知下单用户。</view>
           <view class="field-item"><text class="label">开锁请求模板</text><input class="input" value="{{settings.subscription.templates.remoteUnlock}}" data-field="remoteUnlock" bindinput="subscriptionTemplateInput" /></view>
           <view class="field-item"><text class="label">退款结果模板</text><input class="input" value="{{settings.subscription.templates.refundResult}}" data-field="refundResult" bindinput="subscriptionTemplateInput" /></view>
           <view class="field-item"><text class="label">纠纷更新模板</text><input class="input" value="{{settings.subscription.templates.disputeUpdate}}" data-field="disputeUpdate" bindinput="subscriptionTemplateInput" /></view>

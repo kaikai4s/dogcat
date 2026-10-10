@@ -238,12 +238,15 @@ Page({
   subscribeServiceUpdates() {
     if (this._subscribingUpdates) return
     this._subscribingUpdates = true
-    return requestSubscribeTemplates(['staffDeparture', 'orderAccepted', 'serviceStart'], 'client_order_detail_recharge', { waitForConsent: false })
+    const keys = this.data.order && this.data.order.status === 'in_service'
+      ? ['serviceFinish', 'serviceProgress', 'remoteUnlock']
+      : ['staffDeparture', 'serviceStart', 'serviceFinish']
+    return requestSubscribeTemplates(keys, 'client_order_detail_recharge', { waitForConsent: false })
       .then((res) => {
         const accepted = res && res.requested && (res.templateIds || []).filter(id => res.results && res.results[id] === 'accept').length || 0
         const departureId = res && res.templateIdByKey && res.templateIdByKey.staffDeparture
         const departureAccepted = departureId && res.results && res.results[departureId] === 'accept'
-        const title = departureAccepted ? '已同意出发提醒' : accepted ? '部分提醒已同意' : '未开启提醒，可重新订阅'
+        const title = departureAccepted ? '已同意出发提醒' : accepted ? (accepted === (res.templateIds || []).length ? '已同意服务提醒' : '部分提醒已同意') : '未开启提醒，可重新订阅'
         wx.showToast({ title, icon: departureAccepted ? 'success' : 'none' })
       })
       .catch(showError)

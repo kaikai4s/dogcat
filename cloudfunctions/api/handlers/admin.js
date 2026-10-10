@@ -88,6 +88,7 @@ module.exports = function createHandler(context) {
     normalizeTargetLevelIds,
     normalizeVideoAuditGuide,
     notifyOrder,
+    enqueueOrderNotification,
     now,
     paginateList,
     parseDateValue,
@@ -1218,7 +1219,15 @@ module.exports = function createHandler(context) {
         }
       }
 
-      await db.collection('orders').doc(orderId).update({ data: updateData })
+      const completedOrder = await db.runTransaction(async tx => {
+        const latest = (await tx.collection('orders').doc(orderId).get()).data
+        if (!latest || !['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(latest.status) || latest.status !== order.status || latest.staffOpenid !== order.staffOpenid) throw new Error('订单状态已变化，请刷新后重试')
+        const completed = { ...latest, ...updateData, _id: orderId }
+        await tx.collection('orders').doc(orderId).update({ data: updateData })
+        await enqueueOrderNotification(tx, latest.clientOpenid, 'serviceFinish', completed, { completedAt: time, tip: '平台已核实完成，可查看订单详情' }, 'client', 'finish:final')
+        return completed
+      })
+      await notifyOrder(completedOrder.clientOpenid, 'serviceFinish', completedOrder, { completedAt: time, tip: '平台已核实完成，可查看订单详情' }, 'client', 'finish:final')
       await resolveOrderDispatchNotifications(orderId, { reason: 'admin_manual_completed', actor: openid, time })
         .catch((err) => console.error('[manualCompleteOrder] resolve dispatch notifications failed:', err))
 

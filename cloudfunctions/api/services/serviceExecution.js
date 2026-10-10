@@ -86,7 +86,7 @@ module.exports = function createService({
         if (!current || current.status !== ORDER_STATUS.IN_SERVICE || current.staffOpenid !== order.staffOpenid) throw new Error('订单状态不可完成当天服务')
         if (Number(current.activeSessionIndex || 0) && Number(current.activeSessionIndex) !== sessionIndex) throw new Error('服务日期已变化，请刷新订单')
         await tx.collection('orders').doc(orderId).update({ data: dayUpdateData })
-        await enqueueOrderNotification(tx, order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成', tip: isAuto ? '今日服务打卡齐全，系统已确认完成' : '今日服务已完成' }, 'client', `finish:day:${sessionIndex}`)
+        await enqueueOrderNotification(tx, order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成', completedAt: time, tip: isAuto ? '今日服务打卡齐全，系统已确认完成' : '今日服务已完成' }, 'client', `finish:day:${sessionIndex}`)
       })
       const dayCompletedOrder = { ...order, _id: orderId, status: ORDER_STATUS.DAY_COMPLETED, serviceSessions: completedSessions, autoCompletedSessions: nextAutoCompletedSessions, autoCompleted: isAuto, updatedAt: time }
       await appendOrderTimeline(orderId, isAuto ? 'system_auto_day_completed' : 'day_completed', isAuto ? `系统自动完成第${activeSession.index}天服务` : `第${activeSession.index}天服务已完成`, isAuto ? '检测到打卡凭证齐全且已超时，系统已自动完成今日服务。' : '', actor)
@@ -105,7 +105,7 @@ module.exports = function createService({
           idempotencyKey: makeIdempotencyKey('order_staff_message', orderId, 'system_auto_day_completed', String(activeSession.index || 1))
         })
       }
-      await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成', tip: isAuto ? '今日服务打卡齐全，系统已确认完成' : '今日服务已完成' }, 'client', `finish:day:${sessionIndex}`)
+      await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '当天已完成', completedAt: time, tip: isAuto ? '今日服务打卡齐全，系统已确认完成' : '今日服务已完成' }, 'client', `finish:day:${sessionIndex}`)
       if (typeof destroyOrderHomeSecuritySecrets === 'function') {
         await destroyOrderHomeSecuritySecrets(orderId, {
           sessionIndex,
@@ -134,8 +134,8 @@ module.exports = function createService({
     }
 
     const completedOrder = { ...order, _id: orderId, status: ORDER_STATUS.COMPLETED, serviceSessions: completedSessions, completedAt: time, updatedAt: time }
-    const notifications = [{ openid: order.clientOpenid, detail: { statusText: '已完成', tip: isAuto ? '服务打卡齐全，系统已确认完成，可查看服务报告' : '服务已完成，可查看服务报告' }, role: 'client' }]
-    if (isAuto && order.staffOpenid) notifications.push({ openid: order.staffOpenid, detail: { statusText: '已自动结算完成', tip: '订单已自动完成，收益已结算' }, role: 'staff' })
+    const notifications = [{ openid: order.clientOpenid, detail: { statusText: '已完成', completedAt: time, tip: isAuto ? '服务打卡齐全，系统已确认完成，可查看服务报告' : '服务已完成，可查看服务报告' }, role: 'client' }]
+    if (isAuto && order.staffOpenid) notifications.push({ openid: order.staffOpenid, detail: { statusText: '已自动结算完成', completedAt: time, tip: '订单已自动完成，收益已结算' }, role: 'staff' })
     const rewardsRes = await ensureOrderCompletionRewards(completedOrder, time, { completionPatch: updateData, notifications })
     if (rewardsRes.alreadyCompleted) return { id: orderId, status: ORDER_STATUS.COMPLETED, completedOrderCount: rewardsRes.completedOrderCount, autoCompleted: isAuto }
 
@@ -168,9 +168,9 @@ module.exports = function createService({
         actorRole: 'system',
         idempotencyKey: makeIdempotencyKey('order_staff_message', orderId, 'system_auto_completed')
       })
-      await notifyOrder(order.staffOpenid, 'serviceFinish', order, { statusText: '已自动结算完成', tip: '订单已自动完成，收益已结算' }, 'staff', 'finish:final')
+      await notifyOrder(order.staffOpenid, 'serviceFinish', order, { statusText: '已自动结算完成', completedAt: time, tip: '订单已自动完成，收益已结算' }, 'staff', 'finish:final')
     }
-    await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '已完成', tip: isAuto ? '服务打卡齐全，系统已确认完成，可查看服务报告' : '服务已完成，可查看服务报告' }, 'client', 'finish:final')
+    await notifyOrder(order.clientOpenid, 'serviceFinish', order, { statusText: '已完成', completedAt: time, tip: isAuto ? '服务打卡齐全，系统已确认完成，可查看服务报告' : '服务已完成，可查看服务报告' }, 'client', 'finish:final')
 
     return { id: orderId, status: ORDER_STATUS.COMPLETED, completedOrderCount: rewardsRes.completedOrderCount, autoCompleted: isAuto }
   }

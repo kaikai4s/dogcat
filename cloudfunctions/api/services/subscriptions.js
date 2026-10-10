@@ -50,6 +50,14 @@ module.exports = function createService({
         thing5: { value: safeText(detail.orderDemand || serviceName).slice(0, 20) }
       }
     }
+    if (templateKey === 'serviceFinish') {
+      return {
+        character_string14: { value: safeText(orderNo).slice(0, 32) },
+        thing6: { value: safeText(serviceName).slice(0, 20) },
+        thing5: { value: safeText(detail.tip || '服务已完成，可查看服务报告').slice(0, 20) },
+        time3: { value: formatDateTime(detail.completedAt || order.completedAt) }
+      }
+    }
     if (templateKey === 'serviceStart') {
       return {
         character_string1: { value: safeText(orderNo).slice(0, 32) },
@@ -145,6 +153,26 @@ module.exports = function createService({
         console.log('[subscription] skipped', { orderId, templateKey, status: 'skipped', code: result.error })
         await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: result.status, error: result.error })
         return result
+      }
+      if (templateKey === 'serviceFinish' && !messageData.character_string14) {
+        const status = messageData.thing4 && messageData.thing4.value
+        const completed = ['当天已完成', '已完成', '已自动结算完成'].includes(status)
+        const order = completed && orderId ? (await db.collection('orders').doc(orderId).get()).data : null
+        const finishedSessions = order && (order.serviceSessions || []).filter(item => item.finishedAt) || []
+        // Old messages did not store a session index: do not guess once multiple sessions have completed.
+        const session = finishedSessions.length === 1 ? finishedSessions[0] : null
+        const completedAt = order && (status === '当天已完成' ? session && session.finishedAt : order.completedAt)
+        if (!completed || !completedAt) {
+          const result = { status: 'skipped', error: completed ? 'completion_time_missing' : 'legacy_service_finish_not_completed', templateKey, templateId }
+          await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, ...result })
+          return result
+        }
+        messageData = {
+          character_string14: messageData.character_string5,
+          thing6: messageData.thing10,
+          thing5: { value: status === '当天已完成' ? '本场服务已完成，可查看服务记录' : '服务已完成，可查看订单详情' },
+          time3: { value: formatDateTime(completedAt) }
+        }
       }
       if (templateKey === 'serviceStart' && !messageData.character_string1) {
         // Old queued serviceStart messages also contained pre-start and overdue events.

@@ -69,6 +69,8 @@ module.exports = function createService({ db, crypto, now }) {
   function deliveryReason(row) {
     if (row.isQuotaExhausted || Number(row.code) === 43101 || /43101/.test(row.error || '')) return '用户未同意或订阅次数已用完，请用户重新订阅'
     return ({ subscription_disabled: '后台订阅消息开关未开启', template_not_configured: '尚未配置该通知模板 ID',
+      completion_time_missing: '缺少历史实际完成时间，未发送完成通知',
+      legacy_service_finish_not_completed: '旧记录为未完单催促，已跳过完成通知发送',
       legacy_service_start_not_started: '旧记录属于提前开始、到达或超时提醒，已跳过开始服务模板发送',
       platform_phone_not_configured: '尚未配置平台客服电话，请在系统设置中填写客服电话后重试',
       openapi_unavailable: '微信发送接口不可用' })[row.error] || (row.error ? '发送失败，请核对模板字段或稍后重试' : '')

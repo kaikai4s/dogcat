@@ -18,7 +18,7 @@
   <view class="subscribe-notice-banner" wx:if="{{order.status === 'paid' || order.status === 'assigned' || order.status === 'on_the_way' || order.status === 'in_service' || order.status === 'day_completed'}}" bindtap="subscribeServiceUpdates">
     <view class="subscribe-banner-content">
       <text class="remix-icon ri-notification-3-line subscribe-icon"></text>
-      <text class="subscribe-text">开启微信服务动态提醒（接单、出发与打卡通知）</text>
+      <text class="subscribe-text">开启微信服务提醒（出发、开始与完成）</text>
     </view>
     <text class="subscribe-btn-text">开启提醒</text>
   </view>

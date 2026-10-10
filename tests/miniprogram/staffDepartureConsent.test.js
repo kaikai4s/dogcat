@@ -47,3 +47,13 @@ test('failed authorization releases duplicate-click guard and does not show succ
   assert.equal(page._subscribingUpdates, false)
   assert.equal(toasts[0].icon, 'none')
 })
+
+test('in-service client can authorize finish notification and rejection never reports success', async () => {
+  for (const status of ['accept', 'reject']) {
+    const { page, toasts, requests } = setup({ requested: true, templateIds: ['finish'], templateIdByKey: { serviceFinish: 'finish' }, results: { finish: status } })
+    page.data.order = { status: 'in_service' }
+    await page.subscribeServiceUpdates()
+    assert.deepEqual([...requests[0][0]], ['serviceFinish', 'serviceProgress', 'remoteUnlock'])
+    assert.equal(toasts[0].title, status === 'accept' ? '已同意服务提醒' : '未开启提醒，可重新订阅')
+  }
+})

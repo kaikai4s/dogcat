@@ -338,7 +338,7 @@ module.exports = function createService({
             actorRole: 'system',
             idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, 'overdue_finish_reminder', String(sessionIndex))
           })
-          await notifyOrder(order.staffOpenid, 'serviceFinish', order, {
+          await notifyOrder(order.staffOpenid, 'serviceProgress', order, {
             statusText: '请及时完成服务',
             tip: '订单打卡已齐全，请及时点击完成服务进行结算'
           }, 'staff')
