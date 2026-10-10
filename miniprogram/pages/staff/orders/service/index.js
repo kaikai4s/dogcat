@@ -201,6 +201,7 @@ Page({
     finishing: false,
     departing: false,
     updatingTravelLocation: false,
+    openingCheckinType: '',
     sessionMessages: [],
     sessionScrollTarget: '',
     sessionUnreadCount: 0,
@@ -241,6 +242,8 @@ Page({
 
   onHide() {
     this._chatPageVisible = false
+    this._checkinNavigationSeq = (this._checkinNavigationSeq || 0) + 1
+    if (this.data.openingCheckinType) this.setData({ openingCheckinType: '' })
     this.stopSessionChatRefresh()
     this.stopEarlyStartPolling()
     if (!this.data.backgroundTracking) this.stopAutoTracking()
@@ -253,6 +256,7 @@ Page({
 
   onUnload() {
     this._chatPageVisible = false
+    this._checkinNavigationSeq = (this._checkinNavigationSeq || 0) + 1
     this.stopSessionChatRefresh()
     this.stopEarlyStartPolling()
     this.stopServiceElapsedTimer()
@@ -924,19 +928,40 @@ Page({
       })
   },
 
-  checkin(e) {
+  async checkin(e) {
+    if (this.data.openingCheckinType) return
     const order = this.data.order
     const eventType = e.currentTarget.dataset.type
-    const isSanitization = eventType === 'sanitization'
-    if (!order || (isSanitization ? !['assigned', 'day_completed', 'in_service'].includes(order.status) : !order.serviceStarted)) return
-    const goCamera = () => wx.navigateTo({ url: '/pages/staff/checkin/camera/index?id=' + this.data.id + '&eventType=' + eventType })
-    if (!isSanitization || order.status === 'in_service') {
-      goCamera()
+    if (!order || !this.data.id || !eventType) {
+      wx.showToast({ title: '订单信息未就绪，请刷新后重试', icon: 'none' })
       return
     }
-    callFunction('order', 'checkServiceTimeReadyForCheckin', { id: this.data.id })
-      .then(goCamera)
-      .catch(showError)
+    const isSanitization = eventType === 'sanitization'
+    if (isSanitization ? !['assigned', 'on_the_way', 'day_completed', 'in_service'].includes(order.status) : !order.serviceStarted) {
+      wx.showToast({ title: isSanitization ? '当前订单状态不可进行消毒打卡' : '请先开始服务再进行打卡', icon: 'none' })
+      return
+    }
+    const requestSeq = this._checkinNavigationSeq = (this._checkinNavigationSeq || 0) + 1
+    const isActive = () => requestSeq === this._checkinNavigationSeq
+    const orderId = this.data.id
+    this.setData({ openingCheckinType: eventType })
+    try {
+      if (isSanitization && order.status !== 'in_service') {
+        await callFunction('order', 'checkServiceTimeReadyForCheckin', { id: orderId })
+      }
+      if (!isActive()) return
+      await new Promise((resolve, reject) => {
+        wx.navigateTo({
+          url: '/pages/staff/checkin/camera/index?id=' + encodeURIComponent(orderId) + '&eventType=' + encodeURIComponent(eventType),
+          success: resolve,
+          fail: reject
+        })
+      })
+    } catch (error) {
+      if (isActive()) showError(error)
+    } finally {
+      if (isActive()) this.setData({ openingCheckinType: '' })
+    }
   },
 
   validateRequiredCheckins() {

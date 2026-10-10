@@ -182,9 +182,9 @@
           <text>{{order.sanitizationCompleted ? '已完成隔离病菌拍照打卡' : '服务前必须进行隔离病菌拍照打卡'}}</text>
         </view>
         <view class="status-desc">{{order.sanitizationCompleted ? '已现场拍摄手套口罩鞋套与消毒用品照片，符合服务开始要求。' : '根据服务规范，开始服务前必须现场佩戴手套口罩鞋套、手持消毒用品拍照打卡，未打卡无法开始服务。'}}</view>
-        <button class="{{order.sanitizationCompleted ? 'ghost-btn' : 'primary-btn'}} full-btn" data-type="sanitization" bindtap="checkin">
+        <button class="{{order.sanitizationCompleted ? 'ghost-btn' : 'primary-btn'}} full-btn" data-type="sanitization" loading="{{openingCheckinType === 'sanitization'}}" disabled="{{!!openingCheckinType}}" bindtap="checkin">
           <text class="remix-icon ri-camera-lens-line"></text>
-          <text>{{order.sanitizationCompleted ? '查看 / 补拍隔离病菌照片' : '立即拍摄：隔离病菌打卡'}}</text>
+          <text>{{openingCheckinType === 'sanitization' ? '正在打开拍照...' : (order.sanitizationCompleted ? '查看 / 补拍隔离病菌照片' : '立即拍摄：隔离病菌打卡')}}</text>
         </button>
       </view>
     </view>
@@ -273,7 +273,7 @@
       <text>打卡证据</text>
     </view>
     <view class="checkin-grid" wx:if="{{order.checkinRequirements && order.checkinRequirements.length}}">
-      <button class="checkin-btn" wx:for="{{order.checkinRequirements}}" wx:key="eventType" data-type="{{item.eventType}}" bindtap="checkin">
+      <button class="checkin-btn" wx:for="{{order.checkinRequirements}}" wx:key="eventType" data-type="{{item.eventType}}" loading="{{openingCheckinType === item.eventType}}" disabled="{{!!openingCheckinType}}" bindtap="checkin">
         <text class="remix-icon {{item.photoCount ? 'ri-checkbox-circle-fill' : 'ri-camera-lens-line'}} checkin-icon"></text>
         <text>{{item.label}}</text>
         <text class="checkin-meta" wx:if="{{item.photoCount}}">{{item.photoCount}}张</text>
