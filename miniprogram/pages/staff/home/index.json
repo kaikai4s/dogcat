@@ -1,6 +1,5 @@
 {
   "navigationBarTitleText": "宠托师工作台",
   "navigationBarBackgroundColor": "#FFF8EC",
-  "backgroundColor": "#FFF8EC",
-  "usingComponents": { "subscription-reminder": "/components/subscription-reminder/index" }
+  "backgroundColor": "#FFF8EC"
 }

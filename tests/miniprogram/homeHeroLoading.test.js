@@ -28,6 +28,7 @@ function setup({ storage = {}, cached = {}, resolveFiles, now = { value: Date.no
   })
   const deps = {
     getSelectedLocation: () => null, getCachedSystemSettings: () => cached,
+    refreshHomeSubscriptionReminder: async () => {}, invalidateHomeSubscriptionReminder: () => {},
     loadSystemSettings: () => { calls.push('settings'); return settings.promise },
     callFunction: (_, action) => { calls.push(action); return home.promise },
     getCurrentUser: async () => null, loadMessageUnread: () => {},

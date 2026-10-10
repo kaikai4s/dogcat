@@ -1,3 +1,0 @@
-@import "../../styles/subscription-entry.wxss";
-:host { display: block; }
-.subscription-entry { position: relative; margin: 22rpx 0; min-height: 116rpx; }

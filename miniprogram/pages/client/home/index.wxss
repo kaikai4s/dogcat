@@ -1,3 +1,4 @@
+@import "../../../styles/subscription-entry.wxss";
 /* Client home: rebuilt pet-care information architecture */
 .client-home-page {
   padding: 0 0 178rpx;

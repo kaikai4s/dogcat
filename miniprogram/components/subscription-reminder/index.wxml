@@ -1,6 +1,0 @@
-<view class="reminder {{themeClass}}">
-  <view class="subscription-entry" bindtap="openCenter" role="button" aria-label="订阅消息提醒，查看通知授权">
-    <view class="subscription-entry-copy"><view class="subscription-entry-title">订阅消息提醒</view><view class="subscription-entry-desc">{{description}}</view></view>
-    <view class="subscription-entry-action">{{actionText}} ›</view>
-  </view>
-</view>
