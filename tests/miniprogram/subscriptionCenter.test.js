@@ -379,3 +379,86 @@ test('explicit configuration recheck recovers after the administrator adds real 
   assert.deepEqual([...requests[0]], [settings.subscription.templates.staffDeparture])
   assert.equal(page.data.batchAccepted, 1)
 })
+
+test('common batch keeps omitted results after accepting only one template and completes the missing notifications on later taps', async () => {
+  let count = 0
+  const { page, requests } = await setup({ subscribe(options) {
+    if (++count === 1) options.success({ [options.tmplIds[0]]: 'accept' })
+    else options.success(Object.fromEntries(options.tmplIds.map(id => [id, 'accept'])))
+  } })
+  await page.subscribe(tap('common'))
+  assert.equal(requests.length, 1, 'no automatic follow-up without another user tap')
+  assert.equal(page.data.batchTotal, 4)
+  assert.equal(page.data.batchAccepted, 1)
+  assert.equal(page.data.batchRemaining, 3)
+  assert.deepEqual([...page.data.pendingKeys], ['serviceFinish', 'staffDeparture', 'serviceStart'])
+  assert.match(page.data.pendingNames, /宠托师出发通知.*服务开始通知/)
+  assert.match(page.data.feedback, /还有 3 项未完成/)
+  await page.subscribe(tap('common'))
+  assert.deepEqual([...requests[1]], ['tpl_serviceFinish'])
+  assert.equal(page.data.batchAccepted, 2)
+  assert.equal(page.data.batchRemaining, 2)
+  assert.equal(page.data.pendingScope, 'common')
+  assert.doesNotMatch(page.data.feedback, /全部订阅/)
+  page.onShow()
+  await flush()
+  await page.subscribe(tap(page.data.pendingScope))
+  assert.deepEqual([...requests[2]], ['tpl_staffDeparture'])
+  await page.subscribe(tap(page.data.pendingScope))
+  assert.deepEqual([...requests[3]], ['tpl_serviceStart'])
+  assert.equal(page.data.batchAccepted, 4)
+  assert.equal(page.data.batchRemaining, 0)
+  assert.equal(page.data.pendingNames, '')
+  assert.match(page.data.feedback, /全部订阅/)
+})
+
+test('rejected and filtered templates remain pending, with single-template retries and no repeat for accepted ones', async () => {
+  let count = 0
+  const { page, requests } = await setup({ templates: { orderAccepted: 'accepted', staffDeparture: 'rejected', serviceStart: 'filtered' }, subscribe(options) {
+    if (++count === 1) options.success({ accepted: 'accept', rejected: 'reject', filtered: 'filter' })
+    else options.success({ [options.tmplIds[0]]: options.tmplIds[0] === 'rejected' ? 'reject' : 'accept' })
+  } })
+  await page.subscribe(tap('all'))
+  assert.equal(page.data.batchRemaining, 2)
+  assert.match(page.data.feedback, /微信通知设置/)
+  await page.subscribe(tap('all'))
+  assert.deepEqual([...requests[1]], ['rejected'])
+  assert.equal(page.data.batchRemaining, 2)
+  await page.subscribe(tap('all'))
+  assert.deepEqual([...requests[2]], ['filtered'])
+  assert.equal(page.data.batchRemaining, 1)
+  assert.equal(page.data.batchAccepted, 2)
+  assert.deepEqual([...page.data.pendingKeys], ['staffDeparture'])
+  assert.doesNotMatch(page.data.feedback, /全部订阅/)
+})
+
+test('all-notification retries do not slow down unattempted batches or lose multiple keys sharing one filtered template', async () => {
+  let count = 0
+  const all = await setup({ subscribe(options) {
+    if (++count === 1) options.success({ [options.tmplIds[0]]: 'accept' })
+    else options.success(Object.fromEntries(options.tmplIds.map(id => [id, 'accept'])))
+  } })
+  await all.page.subscribe(tap('all'))
+  await all.page.subscribe(tap('all'))
+  await all.page.subscribe(tap('all'))
+  assert.equal(all.requests[1].length, 3)
+  assert.equal(all.requests[2].length, 3)
+  assert.equal(all.page.data.batchAccepted, 7)
+  assert.equal(all.page.data.batchRemaining, 2)
+  await all.page.subscribe(tap('all'))
+  await all.page.subscribe(tap('all'))
+  assert.equal(all.page.data.batchAccepted, 9)
+
+  let first = true
+  const shared = await setup({ role: 'staff', templates: { upcomingServiceReminder: 'shared', serviceProgress: 'shared', serviceFinish: 'finish' }, subscribe(options) {
+    options.success(first ? { shared: 'filter', finish: 'accept' } : { shared: 'accept' })
+    first = false
+  } })
+  await shared.page.subscribe(tap('common'))
+  assert.equal(shared.page.data.batchRemaining, 1)
+  assert.deepEqual([...shared.page.data.pendingKeys], ['upcomingServiceReminder', 'serviceProgress'])
+  await shared.page.subscribe(tap('common'))
+  assert.deepEqual([...shared.requests[1]], ['shared'])
+  assert.equal(shared.page.data.batchAccepted, 2)
+  assert.equal(shared.page.data.batchRemaining, 0)
+})

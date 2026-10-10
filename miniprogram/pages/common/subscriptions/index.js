@@ -22,12 +22,14 @@ Page({
     role: 'client', loading: true, loadFailed: false, ready: false,
     enabled: false, mainSwitch: null, groups: [], busy: false,
     pendingKeys: [], pendingScope: '', feedback: '', availableCount: 0,
-    singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0, invalidCount: 0
+    singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0, invalidCount: 0,
+    pendingNames: '', pendingTitle: ''
   },
   onLoad(query = {}) {
     this.setData({ role: query.role === 'staff' ? 'staff' : 'client' })
     this._lastResults = {}
     this._invalidTemplateIds = new Set()
+    this._retryTemplateIds = new Set()
     this._wechatSettings = {}
     this.load()
   },
@@ -46,9 +48,12 @@ Page({
         const previous = JSON.stringify(this._settings && this._settings.subscription)
         this._settings = setCachedSystemSettings(settings)
         const changed = previous !== JSON.stringify(this._settings.subscription)
-        if (changed) this._batchAcceptedIds = new Set()
+        if (changed) {
+          this._batchAcceptedIds = new Set()
+          this._retryTemplateIds = new Set()
+        }
         this.setData({ loading: false, ready: true, enabled: !!this._settings.subscription.enabled,
-          ...(changed ? { pendingKeys: [], pendingScope: '', feedback: '', singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0 } : {}) })
+          ...(changed ? { pendingKeys: [], pendingScope: '', pendingNames: '', pendingTitle: '', feedback: '', singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0 } : {}) })
         this.updateGroups()
       }).catch((error) => {
         this.setData({ loading: false, loadFailed: true, ready: false })
@@ -65,8 +70,17 @@ Page({
     this._invalidTemplateIds = new Set()
     this._lastResults = {}
     this._batchAcceptedIds = new Set()
-    this.setData({ pendingKeys: [], pendingScope: '', singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0, feedback: '' })
+    this._retryTemplateIds = new Set()
+    this.setData({ pendingKeys: [], pendingScope: '', pendingNames: '', pendingTitle: '', singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0, feedback: '' })
     return this.load()
+  },
+  pendingState(keys, scope) {
+    return {
+      pendingKeys: keys, pendingScope: keys.length ? scope : '',
+      batchRemaining: new Set(keys.map(key => this.templateId(key))).size,
+      pendingNames: keys.map(key => catalog[key][0]).join('、'),
+      pendingTitle: scope === 'all' ? '全部通知' : scope === 'common' ? '常用消息' : scope === 'other' ? '其他消息' : catalog[scope] && catalog[scope][0] || '通知'
+    }
   },
   updateGroups() {
     const sections = subscriptionSections(this.data.role)
@@ -86,6 +100,7 @@ Page({
           : status === 'reject' ? '暂未允许，可重新订阅'
           : status === 'ban' ? '通知已被关闭，请检查微信设置'
           : status === 'invalid' ? '模板不可用，请联系平台核对配置'
+          : status === 'unknown' ? '微信未返回授权结果，请继续订阅'
           : status === 'filter' ? '本次未获授权，可单独订阅' : '等待订阅授权'
         return { key, title: catalog[key][0], desc: catalog[key][1], available, invalid, statusText, accepted: available && status === 'accept' && this.data.mainSwitch !== false }
       })
@@ -131,9 +146,14 @@ Page({
       keys = this.data.groups.filter((group) => scope === 'all' || scope === group.id || group.items.some((item) => item.key === scope))
         .flatMap((group) => group.items.filter((item) => item.available && (scope === 'all' || scope === group.id || item.key === scope)).map((item) => item.key))
       this._batchAcceptedIds = new Set()
+      this._retryTemplateIds = new Set()
       this.setData({ singleMode: false, batchTotal: new Set(keys.map(key => this.templateId(key))).size, batchAccepted: 0, batchRemaining: 0 })
     }
-    const ids = Array.from(new Set(keys.map((key) => this.templateId(key)))).slice(0, this.data.singleMode ? 1 : 3)
+    const remainingIds = Array.from(new Set(keys.map(key => this.templateId(key))))
+    const unattemptedIds = remainingIds.filter(id => !this._retryTemplateIds.has(id))
+    // Finish new templates in batches, then retry incomplete results individually.
+    // WeChat may filter similar templates or omit IDs even in a success callback.
+    const ids = (unattemptedIds.length ? unattemptedIds : remainingIds).slice(0, this.data.singleMode || !unattemptedIds.length ? 1 : 3)
     const batch = keys.filter((key) => ids.includes(this.templateId(key)))
     if (!batch.length) {
       this.setData({ feedback: '暂无可订阅的通知，请联系平台配置模板。' })
@@ -157,8 +177,7 @@ Page({
             : result.reason === 'request_api_unavailable' ? '当前微信版本不支持订阅消息，请更新微信后重试。'
             : result.reason === 'request_in_progress' ? '另一个订阅申请正在处理中，请稍后重试。'
             : '微信未完成授权，请再次点击重试；若已记住拒绝选择，请在微信通知设置中调整。'
-          this.setData({ pendingKeys, pendingScope: pendingKeys.length ? scope : '', singleMode: invalidBatch || this.data.singleMode,
-            batchRemaining: new Set(pendingKeys.map(key => this.templateId(key))).size,
+          this.setData({ ...this.pendingState(pendingKeys, scope), singleMode: invalidBatch || this.data.singleMode,
             feedback: `${feedback}${Number.isFinite(code) ? `（微信错误码 ${code}）` : ''}` })
           if (code === 20001 && ids.length === 1) ids.forEach(id => {
             this._lastResults[id] = 'invalid'
@@ -172,14 +191,19 @@ Page({
         ids.forEach((id) => {
           this._lastResults[id] = itemsSetting[id] = results[id] || 'unknown'
           if (results[id] === 'accept') this._batchAcceptedIds.add(id)
+          else this._retryTemplateIds.add(id)
         })
         this._wechatSettings.itemsSetting = itemsSetting
         const accepted = ids.filter((id) => results[id] === 'accept').length
-        const pendingKeys = keys.filter((key) => !batch.includes(key))
+        // Only an explicit accept completes a template. A successful API call is
+        // not equivalent to the user authorizing every template in that call.
+        const incompleteKeys = batch.filter(key => results[this.templateId(key)] !== 'accept')
+        const pendingKeys = keys.filter(key => !batch.includes(key)).concat(incompleteKeys)
+        const remaining = new Set(pendingKeys.map(key => this.templateId(key))).size
+        const needsSettings = ids.some(id => ['reject', 'ban'].includes(results[id]))
         this.setData({
-          pendingKeys, pendingScope: pendingKeys.length ? scope : '',
-          batchAccepted: this._batchAcceptedIds.size, batchRemaining: new Set(pendingKeys.map(key => this.templateId(key))).size,
-          feedback: `本次已同意 ${accepted} 项通知。${accepted < ids.length ? '未同意的通知可单独重新订阅，或打开微信通知设置调整拒绝选择。' : ''}${pendingKeys.length ? '还有其他通知，请点击继续订阅。' : this._batchAcceptedIds.size === this.data.batchTotal ? '本轮所选通知已全部订阅。' : '本轮尚有未授权通知，请查看下方状态。'}`
+          ...this.pendingState(pendingKeys, scope), batchAccepted: this._batchAcceptedIds.size,
+          feedback: `本次已同意 ${accepted} 项通知，本轮累计 ${this._batchAcceptedIds.size} / ${this.data.batchTotal} 项。${pendingKeys.length ? `还有 ${remaining} 项未完成，请点击下方继续订阅。` : this._batchAcceptedIds.size === this.data.batchTotal ? '本轮所选通知已全部订阅。' : '本轮尚有未授权通知，请查看下方状态。'}${needsSettings ? '若微信已记住拒绝选择，请先打开微信通知设置调整。' : ''}`
         })
       }).catch(showError).finally(() => {
         this.setData({ busy: false })

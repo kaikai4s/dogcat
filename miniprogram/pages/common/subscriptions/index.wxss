@@ -26,9 +26,14 @@
 .subscription-page .open-settings-button { display: flex; width: 100%; min-height: 90rpx; padding: 22rpx; margin-top: 36rpx; gap: 18rpx; border-radius: 999rpx; font-size: 30rpx; color: #fff; background: linear-gradient(110deg, #ffb500, #ff9406); }
 .footnote { padding: 22rpx 12rpx 0; font-size: 22rpx; color: #958d85; line-height: 1.8; text-align: center; }
 .notice, .feedback { font-size: 25rpx; line-height: 1.6; padding: 22rpx; border-radius: 20rpx; background: #fff1dc; color: #9b6124; margin-bottom: 22rpx; }
+.continue-card { padding: 26rpx; margin-bottom: 24rpx; border-radius: 26rpx; border: 2rpx solid #eead62; background: #fff8eb; }
+.remaining-names { margin: 16rpx 0 22rpx; font-size: 24rpx; line-height: 1.6; color: #8a6235; }
+.subscription-page .continue-card .subscribe-button { display: flex; width: 100%; }
 .page-state { text-align: center; padding: 48rpx 20rpx; color: #93897f; font-size: 26rpx; }
 .page-state .outline-button { margin-top: 22rpx; }
 .theme-night.subscription-page { background: #17151f; color: #f0e8df; }
 .theme-night .switch-card, .theme-night .all-card, .theme-night .group-card { background: #25212e; }
+.theme-night .continue-card { background: #30271f; border-color: #8a6235; }
+.theme-night .remaining-names { color: #d3b38d; }
 .theme-night .group-header, .theme-night .notification-row { border-color: #393140; }
 .theme-night .intro-desc, .theme-night .notification-desc, .theme-night .switch-desc, .theme-night .all-desc { color: #b9ada2; }

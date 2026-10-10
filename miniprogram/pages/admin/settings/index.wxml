@@ -278,7 +278,7 @@
           <view class="notice">模板 7272：退款金额 amount2、退款说明 thing3、退款时间 date4、退款商品 thing5、订单号 character_string6。服务及商城订单退款成功或失败后通知客户，处理中不发送结果通知。</view>
           <view class="field-item"><text class="label">宠托师指定单通知模板</text><input class="input" value="{{settings.subscription.templates.staffDirectOrder}}" data-field="staffDirectOrder" bindinput="subscriptionTemplateInput" placeholder="新订单通知模板 ID（8560）" /></view>
           <view class="notice">模板 8560：订单号 character_string2、备注 thing5、服务名称 thing9、服务时间 time10、订单总价 amount3。指定预约支付成功、平台派单或改派成功后通知对应宠托师；宠托师需在订阅中心同意此模板。</view>
-          <view class="notice">保存后，两端进入订阅中心会刷新模板配置。更换模板 ID 后需重新授权；一键订阅每次最多 3 个模板，其余需点击继续订阅。指定预约付款不会提前发送接单成功通知，实际接单后才发送。</view>
+          <view class="notice">保存后，两端进入订阅中心会刷新模板配置。更换模板 ID 后需重新授权；微信每次最多申请 3 个模板，前台使用分批订阅，未同意或未返回结果的项目需再次点击继续订阅。指定预约付款不会提前发送接单成功通知，实际接单后才发送。</view>
           <view class="field-item"><text class="label">纠纷更新模板（预留）</text><input class="input" value="{{settings.subscription.templates.disputeUpdate}}" data-field="disputeUpdate" bindinput="subscriptionTemplateInput" /></view>
           <view class="notice">该历史配置尚未接入业务发送，两端订阅中心显示暂未开放，不计入一键订阅。退款结果通知已独立接入，不受影响。</view>
           <view class="field-item"><text class="label">提现结果模板</text><input class="input" value="{{settings.subscription.templates.withdrawResult}}" data-field="withdrawResult" bindinput="subscriptionTemplateInput" /></view>
