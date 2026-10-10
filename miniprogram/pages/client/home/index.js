@@ -1,6 +1,5 @@
 const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, ensureLogin, getCurrentUser, getCachedSystemSettings, loadSystemSettings } = require('../../../utils/cloud')
 const { getCachedHeroMedia, resolveHeroMedia } = require('../../../utils/hero-media')
-const { refreshHomeSubscriptionReminder, invalidateHomeSubscriptionReminder } = require('../../../utils/home-subscription-reminder')
 const { loadMessageUnread } = require('../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { safeNavigateTo } = require('../../../utils/nav')
@@ -65,7 +64,6 @@ const defaultModules = {
 Page({
   data: {
     themeClass: 'theme-day',
-    subscriptionReminder: { description: '及时接收订单和服务提醒，点击查看订阅状态', actionText: '去订阅' },
     protectedNavigationUrl: '',
     locationName: '选择位置',
     locationTip: '点击选择当前位置或常用地址',
@@ -126,7 +124,6 @@ Page({
     this._isPageActive = true
     this.applyCurrentTheme()
     this.applySavedLocation()
-    refreshHomeSubscriptionReminder(this, 'client')
     if (!this._heroRestored) {
       this._heroRestored = true
       const cached = getCachedSystemSettings()
@@ -148,12 +145,11 @@ Page({
   },
 
   onPullDownRefresh() {
-    return Promise.all([this.loadHeroCarousel(), this.loadHomePageData(), refreshHomeSubscriptionReminder(this, 'client')])
+    return Promise.all([this.loadHeroCarousel(), this.loadHomePageData()])
       .finally(() => wx.stopPullDownRefresh())
   },
 
   onHide() {
-    invalidateHomeSubscriptionReminder(this)
     this._isPageActive = false
     this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
     this._heroSettingsRequestSeq = (this._heroSettingsRequestSeq || 0) + 1
@@ -171,7 +167,6 @@ Page({
   },
 
   onUnload() {
-    invalidateHomeSubscriptionReminder(this)
     this._isPageActive = false
     this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
     this._heroSettingsRequestSeq = (this._heroSettingsRequestSeq || 0) + 1

@@ -265,20 +265,19 @@ test('legacy after-sale slot is explicitly unavailable for both roles, never con
   }
 })
 
-test('a batch rejected before a dialog falls back to single templates on fresh taps and does not block valid notifications', async () => {
+test('an invalid template only splits its failed batch, while unrelated notifications still request three at a time', async () => {
   const { page, requests } = await setup({ subscribe(options) {
-    if (options.tmplIds.length > 1 || options.tmplIds.includes('tpl_staffDeparture')) {
+    if (options.tmplIds.includes('tpl_staffDeparture')) {
       options.fail({ errCode: 20001, errMsg: 'template id invalid' })
-    } else options.success({ [options.tmplIds[0]]: 'accept' })
+    } else options.success(Object.fromEntries(options.tmplIds.map(id => [id, 'accept'])))
   } })
   await page.subscribe(tap('all'))
   assert.equal(requests.length, 1)
   assert.equal(page.data.batchRemaining, 9)
   assert.match(page.data.feedback, /20001/)
-  assert.equal(page.data.singleMode, true)
-  for (let i = 0; i < 9; i++) await page.subscribe(tap('all'))
-  assert.equal(requests.length, 10)
-  assert.ok(requests.slice(1).every(ids => ids.length === 1))
+  assert.equal(page.data.nextBatchCount, 3)
+  for (let i = 0; i < 5; i++) await page.subscribe(tap('all'))
+  assert.deepEqual(requests.map(ids => ids.length), [3, 3, 3, 1, 1, 1])
   assert.equal(page.data.batchAccepted, 8)
   assert.equal(page.data.batchRemaining, 0)
   assert.match(page.data.feedback, /尚有未授权/)
@@ -292,7 +291,7 @@ test('network rejection preserves the batch and remembered accepts can finish wi
     else options.success(Object.fromEntries(options.tmplIds.map(id => [id, 'accept'])))
   } })
   await page.subscribe(tap('all'))
-  assert.equal(page.data.singleMode, false)
+  assert.equal(page.data.nextBatchCount, 3)
   assert.equal(page.data.batchRemaining, 9)
   assert.match(page.data.feedback, /10002/)
   await page.subscribe(tap('all'))
@@ -318,7 +317,7 @@ test('synchronous native errors retain diagnostics and release the guard for ret
   await page.subscribe(tap('all'))
   assert.match(page.data.feedback, /20001/)
   assert.equal(page.data.busy, false)
-  assert.equal(page.data.singleMode, true)
+  assert.equal(page.data.nextBatchCount, 3, 'unrelated templates retain batch authorization')
 })
 
 test('concurrent settings preloads share the same read and retain carousel navigation metadata', async () => {
@@ -380,7 +379,7 @@ test('explicit configuration recheck recovers after the administrator adds real 
   assert.equal(page.data.batchAccepted, 1)
 })
 
-test('common batch keeps omitted results after accepting only one template and completes the missing notifications on later taps', async () => {
+test('partial authorization fills the next batch with all three remaining templates and completes in two taps', async () => {
   let count = 0
   const { page, requests } = await setup({ subscribe(options) {
     if (++count === 1) options.success({ [options.tmplIds[0]]: 'accept' })
@@ -394,25 +393,21 @@ test('common batch keeps omitted results after accepting only one template and c
   assert.deepEqual([...page.data.pendingKeys], ['serviceFinish', 'staffDeparture', 'serviceStart'])
   assert.match(page.data.pendingNames, /宠托师出发通知.*服务开始通知/)
   assert.match(page.data.feedback, /还有 3 项未完成/)
-  await page.subscribe(tap('common'))
-  assert.deepEqual([...requests[1]], ['tpl_serviceFinish'])
-  assert.equal(page.data.batchAccepted, 2)
-  assert.equal(page.data.batchRemaining, 2)
+  assert.equal(page.data.nextBatchCount, 3)
   assert.equal(page.data.pendingScope, 'common')
   assert.doesNotMatch(page.data.feedback, /全部订阅/)
   page.onShow()
   await flush()
   await page.subscribe(tap(page.data.pendingScope))
-  assert.deepEqual([...requests[2]], ['tpl_staffDeparture'])
-  await page.subscribe(tap(page.data.pendingScope))
-  assert.deepEqual([...requests[3]], ['tpl_serviceStart'])
+  assert.deepEqual([...requests[1]], ['tpl_serviceFinish', 'tpl_staffDeparture', 'tpl_serviceStart'])
+  assert.equal(requests.length, 2)
   assert.equal(page.data.batchAccepted, 4)
   assert.equal(page.data.batchRemaining, 0)
   assert.equal(page.data.pendingNames, '')
   assert.match(page.data.feedback, /全部订阅/)
 })
 
-test('rejected and filtered templates remain pending, with single-template retries and no repeat for accepted ones', async () => {
+test('a filtered combination is separated on retry without repeating an accepted template', async () => {
   let count = 0
   const { page, requests } = await setup({ templates: { orderAccepted: 'accepted', staffDeparture: 'rejected', serviceStart: 'filtered' }, subscribe(options) {
     if (++count === 1) options.success({ accepted: 'accept', rejected: 'reject', filtered: 'filter' })
@@ -446,7 +441,7 @@ test('all-notification retries do not slow down unattempted batches or lose mult
   assert.equal(all.page.data.batchAccepted, 7)
   assert.equal(all.page.data.batchRemaining, 2)
   await all.page.subscribe(tap('all'))
-  await all.page.subscribe(tap('all'))
+  assert.equal(all.requests[3].length, 2)
   assert.equal(all.page.data.batchAccepted, 9)
 
   let first = true
@@ -461,4 +456,67 @@ test('all-notification retries do not slow down unattempted batches or lose mult
   assert.deepEqual([...shared.requests[1]], ['shared'])
   assert.equal(shared.page.data.batchAccepted, 2)
   assert.equal(shared.page.data.batchRemaining, 0)
+})
+
+test('ordinary rejections and missing results remain batched for both recipient roles', async () => {
+  for (const role of ['client', 'staff']) {
+    let count = 0
+    const { page, requests } = await setup({ role, subscribe(options) {
+      if (++count === 1) options.success({ [options.tmplIds[0]]: 'reject', [options.tmplIds[1]]: 'ban' })
+      else options.success(Object.fromEntries(options.tmplIds.map(id => [id, 'accept'])))
+    } })
+    await page.subscribe(tap('all'))
+    assert.equal(page.data.nextBatchCount, 3)
+    await page.subscribe(tap('all'))
+    assert.equal(requests[1].length, 3)
+    for (let i = 0; page.data.pendingKeys.length && i < 4; i++) await page.subscribe(tap('all'))
+    assert.equal(page.data.batchAccepted, role === 'client' ? 9 : 5)
+    assert.ok(requests.slice(1, -1).every(ids => ids.length === 3))
+  }
+})
+
+test('filtered templates can join a different batch instead of all being forced to individual requests', async () => {
+  let count = 0
+  const { page, requests } = await setup({ subscribe(options) {
+    if (++count === 1) options.success({ tpl_orderAccepted: 'accept', tpl_staffDeparture: 'filter', tpl_serviceStart: 'filter' })
+    else options.success(Object.fromEntries(options.tmplIds.map(id => [id, 'accept'])))
+  } })
+  await page.subscribe(tap('common'))
+  assert.equal(page.data.nextBatchCount, 2)
+  await page.subscribe(tap('common'))
+  assert.deepEqual([...requests[1]], ['tpl_serviceFinish', 'tpl_staffDeparture'])
+  assert.equal(page.data.batchRemaining, 1)
+  await page.subscribe(tap('common'))
+  assert.deepEqual([...requests[2]], ['tpl_serviceStart'])
+  assert.equal(page.data.batchAccepted, 4)
+})
+
+test('valid client and staff templates finish in the minimum number of batches without automatic prompts', async () => {
+  for (const [role, sizes] of [['client', [3, 3, 3]], ['staff', [3, 2]]]) {
+    const { page, requests } = await setup({ role })
+    for (let i = 0; i < sizes.length; i++) {
+      await page.subscribe(tap('all'))
+      assert.equal(requests.length, i + 1)
+      assert.equal(requests[i].length, sizes[i])
+    }
+    assert.equal(page.data.batchRemaining, 0)
+    assert.equal(new Set(requests.flat()).size, requests.flat().length)
+    assert.match(page.data.feedback, /全部订阅/)
+  }
+})
+
+test('a single template type error stays pending while other failed-batch candidates can complete', async () => {
+  const { page, requests } = await setup({ templates: { orderAccepted: 'bad-type', staffDeparture: 'valid' }, subscribe(options) {
+    if (options.tmplIds.includes('bad-type')) options.fail({ errCode: 20003, errMsg: 'template type error' })
+    else options.success({ valid: 'accept' })
+  } })
+  await page.subscribe(tap('all'))
+  await page.subscribe(tap('all'))
+  assert.equal(page.data.batchRemaining, 2)
+  assert.equal(page.data.invalidCount, 0, 'a type error alone does not prove the ID is invalid')
+  await page.subscribe(tap('all'))
+  assert.deepEqual([...requests[2]], ['valid'])
+  assert.equal(page.data.batchAccepted, 1)
+  assert.deepEqual([...page.data.pendingKeys], ['orderAccepted'])
+  assert.doesNotMatch(page.data.feedback, /全部订阅/)
 })

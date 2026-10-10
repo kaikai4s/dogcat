@@ -11,10 +11,6 @@
       </view>
       <view class="home-top-badge">上门宠护</view>
     </view>
-    <view class="subscription-entry" bindtap="go" data-url="/pages/common/subscriptions/index?role=client" role="button" aria-label="订阅消息提醒，查看通知授权">
-      <view class="subscription-entry-copy"><view class="subscription-entry-title">订阅消息提醒</view><view class="subscription-entry-desc">{{subscriptionReminder.description}}</view></view>
-      <view class="subscription-entry-action">{{subscriptionReminder.actionText}} ›</view>
-    </view>
 
     <view class="hero-media-card" wx:if="{{heroCarouselEnabled && heroSlides.length > 0}}">
       <swiper class="hero-swiper" autoplay="{{heroAutoplay}}" interval="{{heroRotateInterval}}" circular="{{true}}" previous-margin="0rpx" next-margin="0rpx" bindchange="onSwiperChange">

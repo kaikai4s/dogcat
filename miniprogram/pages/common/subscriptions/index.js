@@ -22,14 +22,14 @@ Page({
     role: 'client', loading: true, loadFailed: false, ready: false,
     enabled: false, mainSwitch: null, groups: [], busy: false,
     pendingKeys: [], pendingScope: '', feedback: '', availableCount: 0,
-    singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0, invalidCount: 0,
-    pendingNames: '', pendingTitle: ''
+    batchTotal: 0, batchAccepted: 0, batchRemaining: 0, invalidCount: 0,
+    pendingNames: '', pendingTitle: '', nextBatchCount: 0
   },
   onLoad(query = {}) {
     this.setData({ role: query.role === 'staff' ? 'staff' : 'client' })
     this._lastResults = {}
     this._invalidTemplateIds = new Set()
-    this._retryTemplateIds = new Set()
+    this.resetBatchPlan()
     this._wechatSettings = {}
     this.load()
   },
@@ -50,10 +50,10 @@ Page({
         const changed = previous !== JSON.stringify(this._settings.subscription)
         if (changed) {
           this._batchAcceptedIds = new Set()
-          this._retryTemplateIds = new Set()
+          this.resetBatchPlan()
         }
         this.setData({ loading: false, ready: true, enabled: !!this._settings.subscription.enabled,
-          ...(changed ? { pendingKeys: [], pendingScope: '', pendingNames: '', pendingTitle: '', feedback: '', singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0 } : {}) })
+          ...(changed ? { pendingKeys: [], pendingScope: '', pendingNames: '', pendingTitle: '', feedback: '', nextBatchCount: 0, batchTotal: 0, batchAccepted: 0, batchRemaining: 0 } : {}) })
         this.updateGroups()
       }).catch((error) => {
         this.setData({ loading: false, loadFailed: true, ready: false })
@@ -70,14 +70,42 @@ Page({
     this._invalidTemplateIds = new Set()
     this._lastResults = {}
     this._batchAcceptedIds = new Set()
-    this._retryTemplateIds = new Set()
-    this.setData({ pendingKeys: [], pendingScope: '', pendingNames: '', pendingTitle: '', singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0, feedback: '' })
+    this.resetBatchPlan()
+    this.setData({ pendingKeys: [], pendingScope: '', pendingNames: '', pendingTitle: '', nextBatchCount: 0, batchTotal: 0, batchAccepted: 0, batchRemaining: 0, feedback: '' })
     return this.load()
+  },
+  resetBatchPlan() {
+    this._diagnosticTemplateIds = new Set()
+    this._templateConflicts = new Map()
+  },
+  selectBatchIds(keys) {
+    const remaining = Array.from(new Set(keys.map(key => this.templateId(key))))
+    const ids = []
+    // Fill each request, including ordinary retries. Only a failed batch needs
+    // individual diagnosis; a partial success must not switch everything to singles.
+    for (const id of remaining) {
+      if (this._diagnosticTemplateIds.has(id)) continue
+      if (ids.some(other => this._templateConflicts.get(id)?.has(other))) continue
+      ids.push(id)
+      if (ids.length === 3) break
+    }
+    return ids.length ? ids : remaining.slice(0, 1)
+  },
+  rememberFilteredBatch(ids, results) {
+    for (const id of ids.filter(id => results[id] === 'filter')) {
+      for (const other of ids.filter(other => other !== id)) {
+        if (!this._templateConflicts.has(id)) this._templateConflicts.set(id, new Set())
+        if (!this._templateConflicts.has(other)) this._templateConflicts.set(other, new Set())
+        this._templateConflicts.get(id).add(other)
+        this._templateConflicts.get(other).add(id)
+      }
+    }
   },
   pendingState(keys, scope) {
     return {
       pendingKeys: keys, pendingScope: keys.length ? scope : '',
       batchRemaining: new Set(keys.map(key => this.templateId(key))).size,
+      nextBatchCount: this.selectBatchIds(keys).length,
       pendingNames: keys.map(key => catalog[key][0]).join('、'),
       pendingTitle: scope === 'all' ? '全部通知' : scope === 'common' ? '常用消息' : scope === 'other' ? '其他消息' : catalog[scope] && catalog[scope][0] || '通知'
     }
@@ -101,7 +129,7 @@ Page({
           : status === 'ban' ? '通知已被关闭，请检查微信设置'
           : status === 'invalid' ? '模板不可用，请联系平台核对配置'
           : status === 'unknown' ? '微信未返回授权结果，请继续订阅'
-          : status === 'filter' ? '本次未获授权，可单独订阅' : '等待订阅授权'
+          : status === 'filter' ? '微信已过滤，继续订阅时自动调整组合' : '等待订阅授权'
         return { key, title: catalog[key][0], desc: catalog[key][1], available, invalid, statusText, accepted: available && status === 'accept' && this.data.mainSwitch !== false }
       })
       return { id, title, items, available: items.some((item) => item.available) }
@@ -146,14 +174,10 @@ Page({
       keys = this.data.groups.filter((group) => scope === 'all' || scope === group.id || group.items.some((item) => item.key === scope))
         .flatMap((group) => group.items.filter((item) => item.available && (scope === 'all' || scope === group.id || item.key === scope)).map((item) => item.key))
       this._batchAcceptedIds = new Set()
-      this._retryTemplateIds = new Set()
-      this.setData({ singleMode: false, batchTotal: new Set(keys.map(key => this.templateId(key))).size, batchAccepted: 0, batchRemaining: 0 })
+      this.resetBatchPlan()
+      this.setData({ batchTotal: new Set(keys.map(key => this.templateId(key))).size, batchAccepted: 0, batchRemaining: 0 })
     }
-    const remainingIds = Array.from(new Set(keys.map(key => this.templateId(key))))
-    const unattemptedIds = remainingIds.filter(id => !this._retryTemplateIds.has(id))
-    // Finish new templates in batches, then retry incomplete results individually.
-    // WeChat may filter similar templates or omit IDs even in a success callback.
-    const ids = (unattemptedIds.length ? unattemptedIds : remainingIds).slice(0, this.data.singleMode || !unattemptedIds.length ? 1 : 3)
+    const ids = this.selectBatchIds(keys)
     const batch = keys.filter((key) => ids.includes(this.templateId(key)))
     if (!batch.length) {
       this.setData({ feedback: '暂无可订阅的通知，请联系平台配置模板。' })
@@ -167,17 +191,19 @@ Page({
         if (!result.requested) {
           const code = Number(result.errorCode)
           if (code === 20004) this.setData({ mainSwitch: false })
-          // Invalid/mixed templates can make WeChat reject the entire request before
-          // showing a dialog. Retry individually on the NEXT tap, never automatically.
+          // Diagnose only the failing batch. Unrelated templates keep batching.
           const invalidBatch = [20001, 20002, 20003].includes(code)
-          const pendingKeys = invalidBatch && ids.length === 1 ? keys.filter(key => !batch.includes(key)) : keys
+          if (invalidBatch && ids.length > 1) ids.forEach(id => this._diagnosticTemplateIds.add(id))
+          const invalidTemplate = code === 20001 && ids.length === 1
+          const pendingKeys = invalidTemplate ? keys.filter(key => !batch.includes(key))
+            : invalidBatch && ids.length === 1 ? keys.filter(key => !batch.includes(key)).concat(batch) : keys
           const feedback = code === 20004 ? '微信订阅消息总开关已关闭，请先打开微信通知设置，再回来点击订阅。'
-            : invalidBatch ? (ids.length > 1 ? '微信未弹出授权窗口：本批模板配置异常，点击继续订阅将逐项申请。'
-              : `${batch.map(key => catalog[key][0]).join('、')}的模板不可用，请平台核对模板 ID 是否属于当前小程序。${pendingKeys.length ? '可继续订阅其他通知。' : ''}`)
+            : invalidBatch ? (ids.length > 1 ? '本批模板配置异常，将先批量订阅其他通知，再单独检查出错项。'
+              : `${batch.map(key => catalog[key][0]).join('、')}的模板申请失败，请平台核对模板配置。${pendingKeys.length ? '可继续订阅其他通知。' : ''}`)
             : result.reason === 'request_api_unavailable' ? '当前微信版本不支持订阅消息，请更新微信后重试。'
             : result.reason === 'request_in_progress' ? '另一个订阅申请正在处理中，请稍后重试。'
             : '微信未完成授权，请再次点击重试；若已记住拒绝选择，请在微信通知设置中调整。'
-          this.setData({ ...this.pendingState(pendingKeys, scope), singleMode: invalidBatch || this.data.singleMode,
+          this.setData({ ...this.pendingState(pendingKeys, scope),
             feedback: `${feedback}${Number.isFinite(code) ? `（微信错误码 ${code}）` : ''}` })
           if (code === 20001 && ids.length === 1) ids.forEach(id => {
             this._lastResults[id] = 'invalid'
@@ -186,12 +212,13 @@ Page({
           return
         }
         const results = result.results || {}
+        this.rememberFilteredBatch(ids, results)
         this._lastResults = { ...this._lastResults, ...results }
         const itemsSetting = { ...(this._wechatSettings.itemsSetting || {}) }
         ids.forEach((id) => {
           this._lastResults[id] = itemsSetting[id] = results[id] || 'unknown'
+          this._diagnosticTemplateIds.delete(id)
           if (results[id] === 'accept') this._batchAcceptedIds.add(id)
-          else this._retryTemplateIds.add(id)
         })
         this._wechatSettings.itemsSetting = itemsSetting
         const accepted = ids.filter((id) => results[id] === 'accept').length

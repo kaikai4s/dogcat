@@ -14,10 +14,6 @@
     </view>
     <view class="hero-title">服务履约工作台</view>
     <view class="hero-desc">默认根据选定城市推荐可接订单，支持高级条件筛选与路线导航。</view>
-    <view class="subscription-entry" bindtap="go" data-url="/pages/common/subscriptions/index?role=staff" role="button" aria-label="订阅消息提醒，查看通知授权">
-      <view class="subscription-entry-copy"><view class="subscription-entry-title">订阅消息提醒</view><view class="subscription-entry-desc">{{subscriptionReminder.description}}</view></view>
-      <view class="subscription-entry-action">{{subscriptionReminder.actionText}} ›</view>
-    </view>
   </view>
 
   <view class="notice-card deposit-warning-notice" wx:if="{{depositNotice && depositNotice.needDeposit}}">

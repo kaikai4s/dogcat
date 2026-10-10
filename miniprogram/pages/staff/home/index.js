@@ -2,7 +2,6 @@ const { callFunction, showError, requirePrivacyAuthorize, requestSubscribeTempla
 const { getSelectedLocation } = require('../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
-const { refreshHomeSubscriptionReminder, invalidateHomeSubscriptionReminder } = require('../../../utils/home-subscription-reminder')
 
 function hasCoordinate(latitude, longitude) {
   return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && Math.abs(Number(latitude)) > 0.000001 && Math.abs(Number(longitude)) > 0.000001
@@ -88,7 +87,6 @@ function applyOrderFlags(orders, radiusKm) {
 Page({
   data: {
     themeClass: 'theme-day',
-    subscriptionReminder: { description: '及时接收指定单和服务提醒，点击查看订阅状态', actionText: '去订阅' },
     directOrders: [],
     nearbyOrders: [],
     urgentOrders: [],
@@ -123,7 +121,6 @@ Page({
   },
 
   onShow() {
-    refreshHomeSubscriptionReminder(this, 'staff')
     loadSystemSettings().catch(() => null)
     this.applyCurrentTheme()
     loadMessageUnread(this, 'staff')
@@ -137,14 +134,6 @@ Page({
 
   onReachBottom() {
     this.loadMoreNearby()
-  },
-
-  onHide() {
-    invalidateHomeSubscriptionReminder(this)
-  },
-
-  onUnload() {
-    invalidateHomeSubscriptionReminder(this)
   },
 
   applyCurrentTheme() {
