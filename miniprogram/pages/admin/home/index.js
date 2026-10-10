@@ -88,27 +88,56 @@ Page({
   },
 
   onShow() {
+    return this.refreshHome()
+  },
+
+  onHide() {
+    this.invalidateRequests()
+  },
+
+  onUnload() {
+    this.invalidateRequests()
+  },
+
+  invalidateRequests() {
+    this._dashboardRequest = (this._dashboardRequest || 0) + 1
+    this._notificationRequest = (this._notificationRequest || 0) + 1
+  },
+
+  onPullDownRefresh() {
+    return this.refreshHome().finally(() => wx.stopPullDownRefresh())
+  },
+
+  refreshHome() {
+    this.invalidateRequests()
     const access = this.data.adminAccess
-    this.setData({ adminSections: adminSections.map(section => ({ ...section, items: section.items.filter(item => canVisit(access, item.url)) })).filter(section => section.items.length), dashboard: null, urgentNotice: null })
-    if (can(access, 'admin.dashboard')) this.loadDashboard()
-    if (can(access, 'admin.getAdminNotificationBadge')) this.loadNotifications()
+    this.setData({ adminSections: adminSections.map(section => ({ ...section, items: section.items.filter(item => canVisit(access, item.url)) })).filter(section => section.items.length), dashboard: null, urgentNotice: null, unreadNotificationCount: 0 })
+    const requests = []
+    if (can(access, 'admin.dashboard')) requests.push(this.loadDashboard())
+    if (can(access, 'admin.getAdminNotificationBadge')) requests.push(this.loadNotifications())
+    return Promise.all(requests)
   },
 
   loadDashboard() {
-    callFunction('admin', 'dashboard')
+    const requestId = this._dashboardRequest = (this._dashboardRequest || 0) + 1
+    return callFunction('admin', 'dashboard')
       .then((dashboard) => {
+        if (requestId !== this._dashboardRequest) return
         this.setData({
           dashboard,
           overviewStats: buildOverviewStats(dashboard),
           revenueStats: buildRevenueStats(dashboard)
         })
       })
-      .catch(showError)
+      .catch((err) => { if (requestId === this._dashboardRequest) showError(err) })
   },
 
   loadNotifications() {
-    callFunction('admin', 'getAdminNotificationBadge')
+    const requestId = this._notificationRequest = (this._notificationRequest || 0) + 1
+    this.setData({ urgentNotice: null, unreadNotificationCount: 0 })
+    return callFunction('admin', 'getAdminNotificationBadge')
       .then((res) => {
+        if (requestId !== this._notificationRequest) return
         this.setData({
           unreadNotificationCount: res.unreadCount || 0,
           urgentNotice: res.latestUrgent || null

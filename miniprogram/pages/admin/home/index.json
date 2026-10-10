@@ -1,3 +1,4 @@
 {
-  "navigationBarTitleText": "管理端"
+  "navigationBarTitleText": "管理端",
+  "enablePullDownRefresh": true
 }

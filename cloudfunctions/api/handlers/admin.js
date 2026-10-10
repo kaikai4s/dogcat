@@ -41,6 +41,7 @@ module.exports = function createHandler(context) {
     getClientRequestId,
     getUser,
     getAdminNotificationBadge,
+    resolveOrderDispatchNotifications,
     getMemberLevels,
     getMonthConfig,
     getMonthDays,
@@ -1218,6 +1219,8 @@ module.exports = function createHandler(context) {
       }
 
       await db.collection('orders').doc(orderId).update({ data: updateData })
+      await resolveOrderDispatchNotifications(orderId, { reason: 'admin_manual_completed', actor: openid, time })
+        .catch((err) => console.error('[manualCompleteOrder] resolve dispatch notifications failed:', err))
 
       if (typeof destroyOrderHomeSecuritySecrets === 'function') {
         await destroyOrderHomeSecuritySecrets(orderId, {

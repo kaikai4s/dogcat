@@ -144,13 +144,13 @@ Page({
       callFunction('admin', 'markAdminNotificationRead', { id: item._id }).catch(() => {})
       // 本地乐观更新已读状态
       const list = this.data.list.map((n) => (n._id === item._id ? { ...n, isRead: true } : n))
-      const nextUnread = Math.max(0, this.data.unreadCount - 1)
+      const nextUnread = Math.max(0, this.data.unreadCount - (item.isResolved ? 0 : 1))
       this.setData({ list, unreadCount: nextUnread })
 
       // 同步递减管理首页未读角标
       const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
       const adminHome = pages.find((p) => p && p.route && p.route.includes('pages/admin/home/index'))
-      if (adminHome && typeof adminHome.setData === 'function') {
+      if (!item.isResolved && adminHome && typeof adminHome.setData === 'function') {
         const currentCount = adminHome.data && adminHome.data.unreadNotificationCount
         adminHome.setData({ unreadNotificationCount: Math.max(0, (currentCount || 1) - 1) })
       }

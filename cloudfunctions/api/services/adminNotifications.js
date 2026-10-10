@@ -66,6 +66,38 @@ module.exports = function createService({
     return rows
   }
 
+  // 处理状态独立于阅读状态；历史通知保留，待办必须以订单当前状态为准。
+  async function attachResolutionState(notifications) {
+    const dispatchTypes = ['order_start_overdue', 'order_urgent_republished']
+    const orderIds = [...new Set(notifications.filter(item => dispatchTypes.includes(item.type) && !item.resolved).map(item => item.orderId).filter(Boolean))]
+    const orders = new Map()
+    for (let i = 0; i < orderIds.length; i += 100) {
+      const result = await db.collection('orders').where({ _id: db.command.in(orderIds.slice(i, i + 100)) }).limit(100).get()
+      for (const order of result.data || []) orders.set(order._id, order)
+    }
+    return notifications.map(item => {
+      let isResolved = item.resolved === true
+      if (!isResolved && dispatchTypes.includes(item.type)) {
+        const order = orders.get(item.orderId)
+        const activeStatuses = item.type === 'order_start_overdue'
+          ? ['assigned', 'on_the_way', 'day_completed']
+          : ['paid']
+        isResolved = !order || !activeStatuses.includes(order.status) ||
+          (item.type === 'order_start_overdue' && order.isStartOverdue === false)
+      }
+      return { ...item, isResolved }
+    })
+  }
+
+  async function resolveOrderDispatchNotifications(orderId, { reason = 'order_completed', actor = '', time = now() } = {}) {
+    if (!orderId) return
+    return db.collection('admin_notifications').where({
+      orderId,
+      type: db.command.in(['order_start_overdue', 'order_urgent_republished']),
+      resolved: db.command.neq(true)
+    }).update({ data: { resolved: true, resolvedAt: time, resolvedBy: actor, resolutionReason: reason, updatedAt: time } })
+  }
+
   /**
    * 管理员查询系统通知列表
    */
@@ -78,7 +110,7 @@ module.exports = function createService({
     if (type && type !== 'all') where.type = type
     if (level && level !== 'all') where.level = level
 
-    const allNotifications = (await readAllNotifications(where, 2000))
+    const allNotifications = (await attachResolutionState(await readAllNotifications(where, 2000)))
       .sort((a, b) => {
         const bTime = a && b ? new Date(b.createdAt || 0).getTime() : 0
         const aTime = a ? new Date(a.createdAt || 0).getTime() : 0
@@ -87,12 +119,12 @@ module.exports = function createService({
 
     let list = allNotifications
     if (status === 'unread') {
-      list = list.filter((item) => !item.read && !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
+      list = list.filter((item) => !item.isResolved && !item.read && !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
     } else if (status === 'read') {
       list = list.filter((item) => item.read || (Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
     }
 
-    const unreadCount = allNotifications.filter((item) => !item.read && !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid))).length
+    const unreadCount = allNotifications.filter((item) => !item.isResolved && !item.read && !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid))).length
 
     const enriched = list.map((item) => {
       const isRead = item.read === true || (Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid))
@@ -154,7 +186,9 @@ module.exports = function createService({
    */
   async function getAdminNotificationBadge(currentAdminOpenid = '') {
     const unreads = await readAllNotifications({ read: false }, 1000)
-    const list = unreads.filter((item) => !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
+    const list = (await attachResolutionState(unreads))
+      .filter((item) => !item.isResolved && !(Array.isArray(item.readBy) && item.readBy.includes(currentAdminOpenid)))
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
     const urgentCount = list.filter((item) => item.level === 'urgent').length
     const latestUrgent = list.find((item) => item.level === 'urgent') || null
     return {
@@ -166,6 +200,7 @@ module.exports = function createService({
 
   return {
     notifyAdmins,
+    resolveOrderDispatchNotifications,
     listAdminNotifications,
     markAdminNotificationRead,
     getAdminNotificationBadge

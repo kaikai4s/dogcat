@@ -33,17 +33,18 @@
   <!-- 待办与告警通知列表 -->
   <block wx:if="{{activeTab !== 'broadcast'}}">
     <view class="notice-list" wx:if="{{list.length}}">
-      <view class="notice-card {{item.level === 'urgent' ? 'urgent-card' : ''}} {{item.isRead ? 'read' : 'unread'}}" wx:for="{{list}}" wx:key="_id" data-item="{{item}}" bindtap="tapItem">
+      <view class="notice-card {{item.level === 'urgent' && !item.isResolved ? 'urgent-card' : ''}} {{item.isRead || item.isResolved ? 'read' : 'unread'}}" wx:for="{{list}}" wx:key="_id" data-item="{{item}}" bindtap="tapItem">
         <view class="card-top-row">
           <view class="level-badge {{item.level}}">
             <text class="remix-icon {{item.level === 'urgent' ? 'ri-flashlight-fill' : (item.level === 'warning' ? 'ri-alarm-warning-fill' : 'ri-information-fill')}}"></text>
-            <text wx:if="{{item.level === 'urgent'}}">紧急预警</text>
+            <text wx:if="{{item.isResolved}}">已处理</text>
+            <text wx:elif="{{item.level === 'urgent'}}">紧急预警</text>
             <text wx:elif="{{item.level === 'warning'}}">重要提醒</text>
             <text wx:else>系统通知</text>
           </view>
           <view class="time-read-wrap">
             <text class="notice-time">{{beijingTime.format(item.createdAt)}}</text>
-            <view class="unread-dot" wx:if="{{!item.isRead}}"></view>
+            <view class="unread-dot" wx:if="{{!item.isRead && !item.isResolved}}"></view>
           </view>
         </view>
 
@@ -51,7 +52,7 @@
         <view class="notice-content">{{item.content}}</view>
 
         <view class="notice-footer" wx:if="{{item.actionUrl || item.orderId}}">
-          <text class="footer-action-text">点击立即核实与调度处理</text>
+          <text class="footer-action-text">{{item.isResolved ? '查看历史记录' : '点击立即核实与调度处理'}}</text>
           <text class="remix-icon ri-arrow-right-s-line footer-arrow"></text>
         </view>
       </view>
