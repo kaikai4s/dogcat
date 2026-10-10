@@ -1,9 +1,4 @@
 <view class="page client-home-page {{themeClass}} {{fontClass}}">
-  <navigator class="subscription-entry" url="/pages/common/subscriptions/index?role=client">
-    <view class="subscription-entry-icon"><text class="remix-icon ri-notification-3-line"></text></view>
-    <view class="subscription-entry-copy"><view class="subscription-entry-title">开启订单与服务提醒</view><view class="subscription-entry-desc">接收接单、出发、服务完成和退款通知</view></view>
-    <view class="subscription-entry-action">去开启 <text class="remix-icon ri-arrow-right-s-line"></text></view>
-  </navigator>
   <view class="home-hero-section">
     <view class="home-topbar">
       <view class="home-location-card interactive" bindtap="updateLocation">
@@ -16,15 +11,16 @@
       </view>
       <view class="home-top-badge">上门宠护</view>
     </view>
+    <subscription-reminder role="client" theme-class="{{themeClass}}" />
 
     <view class="hero-media-card" wx:if="{{heroCarouselEnabled && heroSlides.length > 0}}">
       <swiper class="hero-swiper" autoplay="{{heroAutoplay}}" interval="{{heroRotateInterval}}" circular="{{true}}" previous-margin="0rpx" next-margin="0rpx" bindchange="onSwiperChange">
         <swiper-item wx:for="{{heroSlides}}" wx:key="id" class="hero-swiper-item">
           <view class="hero-slide {{index === heroCurrent ? 'is-active' : 'is-muted'}}" data-item="{{item}}" bindtap="onHeroSlideTap">
-            <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="scaleToFill" class="hero-slide-media" />
+            <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="scaleToFill" class="hero-slide-media" data-id="{{item.id}}" data-url="{{item.url}}" binderror="onHeroMediaError" />
             <view wx:else class="hero-slide-video">
               <view wx:if="{{heroPlayingVideoId !== item.id}}" class="hero-video-poster">
-                <image src="{{item.posterUrl || item.url}}" mode="scaleToFill" class="hero-slide-media" />
+                <image src="{{item.posterUrl || item.url}}" mode="scaleToFill" class="hero-slide-media" data-id="{{item.id}}" data-url="{{item.posterUrl || item.url}}" binderror="onHeroMediaError" />
                 <view class="hero-play-mask" catchtap="playHeroVideo" data-id="{{item.id}}"><view class="remix-icon ri-play-circle-fill hero-play-icon"></view></view>
               </view>
               <video wx:else id="hero_video_{{item.id}}" src="{{item.url}}" poster="{{item.posterUrl}}" controls="{{true}}" autoplay="{{true}}" show-fullscreen-btn="{{false}}" class="hero-slide-media" data-id="{{item.id}}" bindpause="onVideoPauseOrEnded" bindended="onVideoPauseOrEnded" catchtap="noBubble" />
@@ -47,6 +43,7 @@
       </view>
     </view>
 
+    <view class="hero-loading-card" wx:elif="{{heroLoading}}">精彩内容加载中…</view>
     <view class="hero-static-card" wx:else>
       <view class="hero-static-copy">
         <view class="hero-kicker">高信任上门宠护</view>

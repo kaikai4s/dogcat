@@ -12,10 +12,12 @@
   <view class="page-state" wx:elif="{{loadFailed}}"><view>暂时无法加载通知选项</view><button class="outline-button" bindtap="load">重新加载</button></view>
   <block wx:else>
     <view class="all-card">
-      <view><view class="all-title">开启消息提醒</view><view class="all-desc">{{availableCount}} 项通知可订阅</view></view>
-      <button class="subscribe-button" data-scope="all" bindtap="subscribe" disabled="{{busy || !availableCount}}" loading="{{busy}}">{{pendingScope === 'all' && pendingKeys.length ? '继续订阅' : '一键订阅全部'}}</button>
+      <view><view class="all-title">开启消息提醒</view><view class="all-desc">{{availableCount}} 项通知可订阅，每次最多 3 项</view><view class="all-desc" wx:if="{{batchTotal}}">本轮已同意 {{batchAccepted}} / {{batchTotal}} 项，待申请 {{batchRemaining}} 项</view></view>
+      <button class="subscribe-button" data-scope="all" bindtap="subscribe" disabled="{{busy || !ready || !availableCount}}" loading="{{busy}}">{{mainSwitch === false ? '去打开设置' : pendingScope === 'all' && pendingKeys.length ? '继续订阅' : '一键订阅全部'}}</button>
     </view>
     <view class="notice" wx:if="{{!enabled}}">订阅通知暂未开放，订单进度仍可在消息中心查看。</view>
+    <view class="notice" wx:elif="{{!availableCount}}">平台尚未配置可用通知模板，请联系平台管理员。</view>
+    <view class="notice" wx:else>超过 3 项时，请分次点击「继续订阅」。若微信已记住你的选择，可能直接返回授权结果，不再弹出窗口。</view>
     <view class="feedback" wx:if="{{feedback}}">{{feedback}}</view>
     <view class="group-card" wx:for="{{groups}}" wx:key="id" wx:for-item="group">
       <view class="group-header"><text class="group-title">{{group.title}}</text><button class="subscribe-button small" data-scope="{{group.id}}" bindtap="subscribe" disabled="{{busy || !group.available}}">{{pendingScope === group.id && pendingKeys.length ? '继续订阅' : '一键订阅'}}</button></view>

@@ -1,4 +1,5 @@
-const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, ensureLogin, getCurrentUser } = require('../../../utils/cloud')
+const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, ensureLogin, getCurrentUser, getCachedSystemSettings, loadSystemSettings } = require('../../../utils/cloud')
+const { getCachedHeroMedia, resolveHeroMedia } = require('../../../utils/hero-media')
 const { loadMessageUnread } = require('../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { safeNavigateTo } = require('../../../utils/nav')
@@ -108,6 +109,7 @@ Page({
 
     // 轮播 hero 相关状态
     heroCarouselEnabled: false,
+    heroLoading: true,
     heroAutoRotate: true,
     heroRotateInterval: 5000,
     heroSlides: [],
@@ -122,6 +124,12 @@ Page({
     this._isPageActive = true
     this.applyCurrentTheme()
     this.applySavedLocation()
+    if (!this._heroRestored) {
+      this._heroRestored = true
+      const cached = getCachedSystemSettings()
+      if (cached.homeHeroCarousel && cached.homeHeroCarousel.enabled) this.applyHeroCarousel(cached.homeHeroCarousel)
+    }
+    this.loadHeroCarousel()
     this.loadHomePageData()
     this.loadStaffEntryState()
     loadMessageUnread(this)
@@ -136,9 +144,16 @@ Page({
     })
   },
 
+  onPullDownRefresh() {
+    return Promise.all([this.loadHeroCarousel(), this.loadHomePageData()])
+      .finally(() => wx.stopPullDownRefresh())
+  },
+
   onHide() {
     this._isPageActive = false
     this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
+    this._heroSettingsRequestSeq = (this._heroSettingsRequestSeq || 0) + 1
+    this._heroCarouselRequestSeq = (this._heroCarouselRequestSeq || 0) + 1
     this._protectedNavigationSeq = (this._protectedNavigationSeq || 0) + 1
     this.setData({ protectedNavigationUrl: '' })
     this.stopAllVideos()
@@ -154,6 +169,8 @@ Page({
   onUnload() {
     this._isPageActive = false
     this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
+    this._heroSettingsRequestSeq = (this._heroSettingsRequestSeq || 0) + 1
+    this._heroCarouselRequestSeq = (this._heroCarouselRequestSeq || 0) + 1
     this._protectedNavigationSeq = (this._protectedNavigationSeq || 0) + 1
     this.stopAllVideos()
     this.clearLotteryFloatTimer()
@@ -401,13 +418,12 @@ Page({
           this.initHotServicesScroll()
         })
         this.resolveHomeServiceCoverUrls(servicePrices).then((resolved) => {
-          if (resolved) {
+          if (resolved && requestSeq === this._homeDataRequestSeq) {
             this.setData({ servicePrices: resolved }, () => {
               this.initHotServicesScroll()
             })
           }
         })
-        this.applyHeroCarousel(homeData.settings && homeData.settings.homeHeroCarousel)
         if (homePage.modules && homePage.modules.lottery === false) {
           this.clearLotteryFloatTimer()
           this.setData({ lotteryActivity: null, lotteryLoaded: false, lotteryFloatVisible: false })
@@ -418,7 +434,6 @@ Page({
       .catch((error) => {
         if (requestSeq !== this._homeDataRequestSeq) return
         this.loadLottery()
-        this.loadHeroCarousel()
         showError(error)
       })
   },
@@ -487,25 +502,28 @@ Page({
   },
 
   loadHeroCarousel() {
-    callFunction('system', 'getSettings')
-      .then((settings) => this.applyHeroCarousel(settings.homeHeroCarousel))
+    const seq = this._heroSettingsRequestSeq = (this._heroSettingsRequestSeq || 0) + 1
+    return loadSystemSettings()
+      .then((settings) => {
+        if (seq === this._heroSettingsRequestSeq) return this.applyHeroCarousel(settings.homeHeroCarousel)
+      })
       .catch(() => {
-        this.setData({ heroCarouselEnabled: false, heroSlides: [] })
+        if (seq === this._heroSettingsRequestSeq) this.setData({ heroLoading: false })
       })
   },
 
-  applyHeroCarousel(carousel = {}) {
+  applyHeroCarousel(carousel = {}, force = false) {
     this._heroCarouselRequestSeq = (this._heroCarouselRequestSeq || 0) + 1
     const requestSeq = this._heroCarouselRequestSeq
 
     if (!carousel.enabled || !Array.isArray(carousel.items) || !carousel.items.length) {
-      this.setData({ heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
+      this.setData({ heroLoading: false, heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
       return
     }
 
     const validItems = carousel.items.filter((item) => item && item.enabled !== false && item.fileId)
     if (!validItems.length) {
-      this.setData({ heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
+      this.setData({ heroLoading: false, heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
       return
     }
 
@@ -513,11 +531,13 @@ Page({
     const autoRotate = carousel.autoRotate !== false
     const interval = Number(carousel.rotateIntervalMs) || 5000
 
-    if (this.data.heroCarouselEnabled && this.data.heroCarouselKey === carouselKey && this.data.heroSlides.length) {
+    this._heroConfig = carousel
+    if (!force && this.data.heroCarouselEnabled && this.data.heroCarouselKey === carouselKey && this.data.heroSlides.length === validItems.length) {
       this.setData({
+        heroLoading: false,
         heroAutoRotate: autoRotate,
         heroRotateInterval: interval,
-        heroAutoplay: autoRotate && this.data.heroSlides.length > 1
+        heroAutoplay: autoRotate && this.data.heroSlides.length > 1 && !this.data.heroPausedByVideo
       })
       return
     }
@@ -529,47 +549,51 @@ Page({
     })
 
     const uniqueIds = Array.from(new Set(fileIds))
-    if (!uniqueIds.length) {
-      this.setData({ heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
-      return
-    }
+    const applyUrls = (urlMap) => {
+      if (requestSeq !== this._heroCarouselRequestSeq) return
+      const slides = validItems.map((item) => ({
+        ...item,
+        url: urlMap[item.fileId] || '',
+        posterUrl: urlMap[item.posterFileId] || urlMap[item.fileId] || ''
+      })).filter(item => item.url)
 
-    wx.cloud.getTempFileURL({
-      fileList: uniqueIds,
-      success: (res) => {
-        if (requestSeq !== this._heroCarouselRequestSeq) return
-
-        const urlMap = {}
-        ;(res.fileList || []).forEach((f) => {
-          if (f.fileID && f.tempFileURL) urlMap[f.fileID] = f.tempFileURL
-        })
-
-        const slides = validItems.map((item) => ({
-          ...item,
-          url: urlMap[item.fileId] || '',
-          posterUrl: urlMap[item.posterFileId] || urlMap[item.fileId] || ''
-        })).filter(item => item.url)
-
-        if (!slides.length) {
-          this.setData({ heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
-          return
-        }
-
-        this.setData({
-          heroCarouselEnabled: true,
-          heroAutoRotate: autoRotate,
-          heroRotateInterval: interval,
-          heroSlides: slides,
-          heroCarouselKey: carouselKey,
-          heroCurrent: Math.min(this.data.heroCurrent || 0, slides.length - 1),
-          heroAutoplay: autoRotate && slides.length > 1
-        })
-      },
-      fail: () => {
-        if (requestSeq !== this._heroCarouselRequestSeq) return
-        this.setData({ heroCarouselEnabled: false, heroSlides: [], heroCarouselKey: '', heroCurrent: 0 })
+      if (!slides.length) {
+        // Keep the displayed media during a transient refresh failure.
+        this.setData({ heroLoading: false })
+        return
       }
-    })
+
+      this.setData({
+        heroLoading: false,
+        heroCarouselEnabled: true,
+        heroAutoRotate: autoRotate,
+        heroRotateInterval: interval,
+        heroSlides: slides,
+        heroCarouselKey: carouselKey,
+        heroCurrent: Math.min(this.data.heroCurrent || 0, slides.length - 1),
+        heroAutoplay: autoRotate && slides.length > 1 && !this.data.heroPausedByVideo
+      })
+    }
+    // Render reusable URLs immediately, before any network request. HTTP caching
+    // can then reuse the same image across redirectTo-created home instances.
+    const cached = force ? {} : getCachedHeroMedia(uniqueIds)
+    if (validItems.every(item => cached[item.fileId] && (!item.posterFileId || cached[item.posterFileId]))) {
+      applyUrls(cached)
+      return Promise.resolve()
+    }
+    return resolveHeroMedia(uniqueIds, { force }).then(applyUrls)
+  },
+
+  onHeroMediaError(e) {
+    const id = e.currentTarget.dataset.id
+    const url = e.currentTarget.dataset.url
+    if (!this._heroConfig || !this.data.heroSlides.some(item => item.id === id && (item.url === url || item.posterUrl === url))) return
+    // A revoked/expired signed URL can fail before its conservative cache TTL.
+    const key = `${this.data.heroCarouselKey}:${id}`
+    this._heroRetriedKeys = this._heroRetriedKeys || new Set()
+    if (this._heroRetriedKeys.has(key)) return
+    this._heroRetriedKeys.add(key)
+    this.applyHeroCarousel(this._heroConfig, true)
   },
 
   onHeroSlideTap(e) {

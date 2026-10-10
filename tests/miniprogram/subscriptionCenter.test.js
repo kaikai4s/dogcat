@@ -37,7 +37,7 @@ async function setup({ templates = Object.fromEntries(templateKeys.map(key => [k
   })
   let page
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/common/subscriptions/index.js'), 'utf8'), {
-    Page(config) { page = config }, require: () => module.exports, wx
+    Page(config) { page = config }, require: name => name.endsWith('/subscription-options') ? require('../../miniprogram/utils/subscription-options') : module.exports, wx
   })
   page.setData = function (data) { Object.assign(this.data, data) }
   page.onLoad({ role })
@@ -263,4 +263,72 @@ test('legacy after-sale slot is explicitly unavailable for both roles, never con
     await page.subscribe(tap('all'))
     assert.equal(requests.length, 0)
   }
+})
+
+test('a batch rejected before a dialog falls back to single templates on fresh taps and does not block valid notifications', async () => {
+  const { page, requests } = await setup({ subscribe(options) {
+    if (options.tmplIds.length > 1 || options.tmplIds.includes('tpl_staffDeparture')) {
+      options.fail({ errCode: 20001, errMsg: 'template id invalid' })
+    } else options.success({ [options.tmplIds[0]]: 'accept' })
+  } })
+  await page.subscribe(tap('all'))
+  assert.equal(requests.length, 1)
+  assert.equal(page.data.batchRemaining, 9)
+  assert.match(page.data.feedback, /20001/)
+  assert.equal(page.data.singleMode, true)
+  for (let i = 0; i < 9; i++) await page.subscribe(tap('all'))
+  assert.equal(requests.length, 10)
+  assert.ok(requests.slice(1).every(ids => ids.length === 1))
+  assert.equal(page.data.batchAccepted, 8)
+  assert.equal(page.data.batchRemaining, 0)
+  assert.match(page.data.feedback, /尚有未授权/)
+  assert.match(page.data.groups[0].items.find(item => item.key === 'staffDeparture').statusText, /模板不可用/)
+})
+
+test('network rejection preserves the batch and remembered accepts can finish without a visible dialog', async () => {
+  let failed = false
+  const { page, requests } = await setup({ subscribe(options) {
+    if (!failed) { failed = true; options.fail({ errCode: 10002, errMsg: 'network error' }) }
+    else options.success(Object.fromEntries(options.tmplIds.map(id => [id, 'accept'])))
+  } })
+  await page.subscribe(tap('all'))
+  assert.equal(page.data.singleMode, false)
+  assert.equal(page.data.batchRemaining, 9)
+  assert.match(page.data.feedback, /10002/)
+  await page.subscribe(tap('all'))
+  assert.deepEqual([...requests[0]], [...requests[1]])
+  await page.subscribe(tap('all'))
+  await page.subscribe(tap('all'))
+  assert.equal(page.data.batchAccepted, 9)
+  assert.match(page.data.feedback, /全部订阅/)
+})
+
+test('late getSetting cannot overwrite a fresh rejection and restore an accepted label', async () => {
+  const { page, wx } = await setup({ subscribe(options) { options.success({ tpl_refundResult: 'reject' }) } })
+  let finishRead
+  wx.getSetting = options => { finishRead = options.success }
+  page.refreshWechatSettings()
+  await page.subscribe(tap('refundResult'))
+  finishRead({ subscriptionsSetting: { mainSwitch: true, itemsSetting: { tpl_refundResult: 'accept' } } })
+  assert.equal(page.data.groups.flatMap(g => g.items).find(item => item.key === 'refundResult').accepted, false)
+})
+
+test('synchronous native errors retain diagnostics and release the guard for retry', async () => {
+  const { page } = await setup({ subscribe() { throw { errCode: 20001, errMsg: 'invalid template' } } })
+  await page.subscribe(tap('all'))
+  assert.match(page.data.feedback, /20001/)
+  assert.equal(page.data.busy, false)
+  assert.equal(page.data.singleMode, true)
+})
+
+test('concurrent settings preloads share the same read and retain carousel navigation metadata', async () => {
+  const { api, settings, calls } = await setup()
+  settings.homeHeroCarousel = { enabled: true, items: [{ id: 'hero', fileId: 'cloud://hero', linkUrl: '/pages/client/mall/list/index', linkTitle: '选购' }] }
+  const before = calls.filter(call => call.action === 'getSettings').length
+  const first = api.loadSystemSettings()
+  assert.equal(first, api.loadSystemSettings())
+  await first
+  assert.equal(calls.filter(call => call.action === 'getSettings').length, before + 1)
+  assert.equal(api.getCachedSystemSettings().homeHeroCarousel.items[0].linkUrl, '/pages/client/mall/list/index')
+  assert.equal(api.getCachedSystemSettings().homeHeroCarousel.items[0].linkTitle, '选购')
 })

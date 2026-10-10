@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "毛孩家庭端"
+  "navigationBarTitleText": "毛孩家庭端",
+  "enablePullDownRefresh": true,
+  "usingComponents": { "subscription-reminder": "/components/subscription-reminder/index" }
 }

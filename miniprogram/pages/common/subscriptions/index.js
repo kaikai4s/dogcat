@@ -1,4 +1,5 @@
 const { callFunction, setCachedSystemSettings, ensureLogin, requestSubscribeTemplates, showError } = require('../../../utils/cloud')
+const { subscriptionSections } = require('../../../utils/subscription-options')
 
 const catalog = {
   staffDirectOrder: ['指定单通知', '客户指定预约或平台派单后，及时查看服务安排'],
@@ -20,7 +21,8 @@ Page({
   data: {
     role: 'client', loading: true, loadFailed: false, ready: false,
     enabled: false, mainSwitch: null, groups: [], busy: false,
-    pendingKeys: [], pendingScope: '', feedback: '', availableCount: 0
+    pendingKeys: [], pendingScope: '', feedback: '', availableCount: 0,
+    singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0
   },
   onLoad(query = {}) {
     this.setData({ role: query.role === 'staff' ? 'staff' : 'client' })
@@ -29,8 +31,10 @@ Page({
     this.load()
   },
   onShow() {
-    this.refreshWechatSettings()
-    if (!this.data.busy) this.load()
+    if (!this.data.busy) {
+      this.refreshWechatSettings()
+      this.load()
+    }
   },
   load() {
     if (this._loadingSettings) return this._loadingSettings
@@ -41,8 +45,9 @@ Page({
         const previous = JSON.stringify(this._settings && this._settings.subscription)
         this._settings = setCachedSystemSettings(settings)
         const changed = previous !== JSON.stringify(this._settings.subscription)
+        if (changed) this._batchAcceptedIds = new Set()
         this.setData({ loading: false, ready: true, enabled: !!this._settings.subscription.enabled,
-          ...(changed ? { pendingKeys: [], pendingScope: '', feedback: '' } : {}) })
+          ...(changed ? { pendingKeys: [], pendingScope: '', feedback: '', singleMode: false, batchTotal: 0, batchAccepted: 0, batchRemaining: 0 } : {}) })
         this.updateGroups()
       }).catch((error) => {
         this.setData({ loading: false, loadFailed: true, ready: false })
@@ -52,23 +57,22 @@ Page({
   },
   templateId(key) {
     const templates = this._settings && this._settings.subscription.templates || {}
-    return templates[key] || ''
+    return String(templates[key] || '').trim()
   },
   updateGroups() {
-    const sections = this.data.role === 'staff'
-      ? [['common', '常用消息', ['staffDirectOrder', 'upcomingServiceReminder', 'serviceProgress', 'serviceFinish']], ['other', '其他消息', ['withdrawResult', 'disputeUpdate']]]
-      : [['common', '常用消息', ['orderAccepted', 'staffDeparture', 'serviceStart', 'serviceFinish']], ['other', '其他消息', ['serviceProgress', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate']]]
+    const sections = subscriptionSections(this.data.role)
     const setting = this._wechatSettings || {}
     const groups = sections.map(([id, title, keys]) => {
       const items = keys.map((key) => {
         const templateId = this.templateId(key)
-        const status = setting.itemsSetting && setting.itemsSetting[templateId] || this._lastResults[templateId] || ''
+        const status = this._lastResults[templateId] || setting.itemsSetting && setting.itemsSetting[templateId] || ''
         // This legacy key is configurable but has no business sender yet.
         const available = key !== 'disputeUpdate' && this.data.enabled && !!templateId
         const statusText = !available ? '暂未开放' : this.data.mainSwitch === false ? '微信订阅开关已关闭'
           : status === 'accept' ? '已允许接收，可再次订阅'
           : status === 'reject' ? '暂未允许，可重新订阅'
           : status === 'ban' ? '通知已被关闭，请检查微信设置'
+          : status === 'invalid' ? '模板不可用，请联系平台核对配置'
           : status === 'filter' ? '本次未获授权，可单独订阅' : '等待订阅授权'
         return { key, title: catalog[key][0], desc: catalog[key][1], available, statusText, accepted: available && status === 'accept' && this.data.mainSwitch !== false }
       })
@@ -84,13 +88,24 @@ Page({
   },
   refreshWechatSettings() {
     if (typeof wx.getSetting !== 'function') return
-    wx.getSetting({ withSubscriptions: true, success: (result) => this.applyWechatSettings(result) })
+    const seq = this._wechatReadSeq = (this._wechatReadSeq || 0) + 1
+    wx.getSetting({ withSubscriptions: true, success: (result) => {
+      if (seq === this._wechatReadSeq) this.applyWechatSettings(result)
+    } })
   },
   openSettings() {
-    wx.openSetting({ withSubscriptions: true, success: (result) => this.applyWechatSettings(result), fail: showError })
+    wx.openSetting({ withSubscriptions: true, success: (result) => {
+      this._lastResults = {}
+      this.applyWechatSettings(result)
+      this.setData({ feedback: '返回后请点击订阅按钮申请通知；开启总开关不会自动完成订阅。' })
+    }, fail: showError })
   },
   subscribe(e) {
-    if (!this.data.ready || this.data.busy || !this.data.enabled) return
+    if (this.data.busy) return
+    if (!this.data.ready || !this.data.enabled) {
+      this.setData({ feedback: this.data.ready ? '平台暂未开启订阅通知，请联系平台确认后台配置。' : '通知配置正在加载，请稍后点击订阅。' })
+      return
+    }
     if (this.data.mainSwitch === false) {
       this.openSettings()
       return
@@ -98,30 +113,56 @@ Page({
     const scope = e.currentTarget.dataset.scope || 'all'
     let keys
     if (this.data.pendingScope === scope && this.data.pendingKeys.length) keys = this.data.pendingKeys
-    else keys = this.data.groups.filter((group) => scope === 'all' || scope === group.id || group.items.some((item) => item.key === scope))
-      .flatMap((group) => group.items.filter((item) => item.available && (scope === 'all' || scope === group.id || item.key === scope)).map((item) => item.key))
-    const ids = Array.from(new Set(keys.map((key) => this.templateId(key)))).slice(0, 3)
+    else {
+      keys = this.data.groups.filter((group) => scope === 'all' || scope === group.id || group.items.some((item) => item.key === scope))
+        .flatMap((group) => group.items.filter((item) => item.available && (scope === 'all' || scope === group.id || item.key === scope)).map((item) => item.key))
+      this._batchAcceptedIds = new Set()
+      this.setData({ singleMode: false, batchTotal: new Set(keys.map(key => this.templateId(key))).size, batchAccepted: 0, batchRemaining: 0 })
+    }
+    const ids = Array.from(new Set(keys.map((key) => this.templateId(key)))).slice(0, this.data.singleMode ? 1 : 3)
     const batch = keys.filter((key) => ids.includes(this.templateId(key)))
-    if (!batch.length) return
+    if (!batch.length) {
+      this.setData({ feedback: '暂无可订阅的通知，请联系平台配置模板。' })
+      return
+    }
+    this._wechatReadSeq = (this._wechatReadSeq || 0) + 1
     this.setData({ busy: true, feedback: '' })
     // This call must run synchronously within the user's tap; no login/network await here.
     return requestSubscribeTemplates(batch, `notification_center_${this.data.role}`, { settings: this._settings, waitForConsent: false })
       .then((result) => {
         if (!result.requested) {
-          if (Number(result.errorCode) === 20004) this.setData({ mainSwitch: false })
-          this.setData({ feedback: Number(result.errorCode) === 20004 ? '请先打开微信订阅消息开关，再回来订阅。' : '本次订阅未完成，请重试或在微信设置中检查通知权限。' })
+          const code = Number(result.errorCode)
+          if (code === 20004) this.setData({ mainSwitch: false })
+          // Invalid/mixed templates can make WeChat reject the entire request before
+          // showing a dialog. Retry individually on the NEXT tap, never automatically.
+          const invalidBatch = [20001, 20002, 20003].includes(code)
+          const pendingKeys = invalidBatch && ids.length === 1 ? keys.filter(key => !batch.includes(key)) : keys
+          const feedback = code === 20004 ? '微信订阅消息总开关已关闭，请先打开微信通知设置，再回来点击订阅。'
+            : invalidBatch ? (ids.length > 1 ? '微信未弹出授权窗口：本批模板配置异常，点击继续订阅将逐项申请。'
+              : `${batch.map(key => catalog[key][0]).join('、')}的模板不可用，请平台核对模板 ID 是否属于当前小程序。${pendingKeys.length ? '可继续订阅其他通知。' : ''}`)
+            : result.reason === 'request_api_unavailable' ? '当前微信版本不支持订阅消息，请更新微信后重试。'
+            : result.reason === 'request_in_progress' ? '另一个订阅申请正在处理中，请稍后重试。'
+            : '微信未完成授权，请再次点击重试；若已记住拒绝选择，请在微信通知设置中调整。'
+          this.setData({ pendingKeys, pendingScope: pendingKeys.length ? scope : '', singleMode: invalidBatch || this.data.singleMode,
+            batchRemaining: new Set(pendingKeys.map(key => this.templateId(key))).size,
+            feedback: `${feedback}${Number.isFinite(code) ? `（微信错误码 ${code}）` : ''}` })
+          if (invalidBatch && ids.length === 1) ids.forEach(id => { this._lastResults[id] = 'invalid' })
           return
         }
         const results = result.results || {}
         this._lastResults = { ...this._lastResults, ...results }
         const itemsSetting = { ...(this._wechatSettings.itemsSetting || {}) }
-        ids.forEach((id) => { itemsSetting[id] = results[id] || 'unknown' })
+        ids.forEach((id) => {
+          this._lastResults[id] = itemsSetting[id] = results[id] || 'unknown'
+          if (results[id] === 'accept') this._batchAcceptedIds.add(id)
+        })
         this._wechatSettings.itemsSetting = itemsSetting
         const accepted = ids.filter((id) => results[id] === 'accept').length
         const pendingKeys = keys.filter((key) => !batch.includes(key))
         this.setData({
           pendingKeys, pendingScope: pendingKeys.length ? scope : '',
-          feedback: `本次已同意 ${accepted} 项通知。${accepted < ids.length ? '未同意的通知可单独重新订阅。' : ''}${pendingKeys.length ? '还有其他通知，请点击继续订阅。' : ''}`
+          batchAccepted: this._batchAcceptedIds.size, batchRemaining: new Set(pendingKeys.map(key => this.templateId(key))).size,
+          feedback: `本次已同意 ${accepted} 项通知。${accepted < ids.length ? '未同意的通知可单独重新订阅，或打开微信通知设置调整拒绝选择。' : ''}${pendingKeys.length ? '还有其他通知，请点击继续订阅。' : this._batchAcceptedIds.size === this.data.batchTotal ? '本轮所选通知已全部订阅。' : '本轮尚有未授权通知，请查看下方状态。'}`
         })
       }).catch(showError).finally(() => {
         this.setData({ busy: false })

@@ -258,6 +258,7 @@
           </view>
           <button wx:if="{{deliveryHasMore}}" class="ghost-btn" data-more="{{true}}" bindtap="loadSubscriptionDeliveries" disabled="{{deliveryLoading}}">更多</button>
           <view class="compact-toggle-row"><view class="compact-toggle-main"><view class="strong">启用订阅消息</view><view class="muted">模板未配置时只记录 skipped 日志。</view></view><switch checked="{{settings.subscription.enabled}}" bindchange="toggleSubscriptionEnabled" /></view>
+          <view class="notice">请从当前小程序的微信公众平台「订阅消息 → 我的模板」复制完整模板 ID。7272、8560 等数字是模板编号，不能作为模板 ID 填入；其他小程序的 ID 也不可用。前台出现微信错误码 20001 时请优先核对此处配置，20002 时检查是否混用了不同类型的模板。</view>
           <view class="field-item"><text class="label">支付成功模板</text><input class="input" value="{{settings.subscription.templates.orderPaid}}" data-field="orderPaid" bindinput="subscriptionTemplateInput" /></view>
           <view class="field-item"><text class="label">接单/派单模板</text><input class="input" value="{{settings.subscription.templates.orderAssigned}}" data-field="orderAssigned" bindinput="subscriptionTemplateInput" /></view>
           <view class="field-item"><text class="label">师傅接单模板</text><input class="input" value="{{settings.subscription.templates.orderAccepted}}" data-field="orderAccepted" bindinput="subscriptionTemplateInput" placeholder="伴宠师接单通知模板 ID（44245）" /></view>

@@ -1,4 +1,3 @@
-@import "../../../styles/subscription-entry.wxss";
 /* Staff Workstation / Home page - Warm Cute Pet Style UI redesign */
 /* 微信小程序 button 默认样式重置 */
 button.ghost-btn,

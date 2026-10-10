@@ -214,6 +214,8 @@ function normalizeHomeHeroCarousel(carousel = {}) {
         posterFileId: String(item && item.posterFileId || '').trim(),
         title: String(item && item.title || '').trim(),
         subtitle: String(item && item.subtitle || '').trim(),
+        linkUrl: String(item && item.linkUrl || '').trim(),
+        linkTitle: String(item && item.linkTitle || '').trim(),
         enabled: item && item.enabled !== false,
         sort: Number(item && item.sort) || (index + 1) * 10
       }
@@ -305,10 +307,14 @@ function setCachedSystemSettings(settings) {
   return normalized
 }
 
+let systemSettingsRequest = null
 function loadSystemSettings() {
-  return callFunction('system', 'getSettings')
+  if (systemSettingsRequest) return systemSettingsRequest
+  systemSettingsRequest = callFunction('system', 'getSettings')
     .then(setCachedSystemSettings)
     .catch(() => getCachedSystemSettings())
+    .finally(() => { systemSettingsRequest = null })
+  return systemSettingsRequest
 }
 
 let subscriptionRequestInFlight = false
@@ -319,7 +325,7 @@ function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) 
     if (!subscription.enabled) return Promise.resolve({ requested: false, reason: 'subscription_disabled' })
     if (typeof wx.requestSubscribeMessage !== 'function') return Promise.resolve({ requested: false, reason: 'request_api_unavailable' })
     const templates = subscription.templates || {}
-    const resolveTemplateId = (key) => templates[key] || ''
+    const resolveTemplateId = (key) => String(templates[key] || '').trim()
     const requestKeys = Array.from(new Set(templateKeys)).filter(resolveTemplateId)
     const tmplIds = Array.from(new Set(requestKeys.map(resolveTemplateId))).slice(0, 3)
     const limitedKeys = requestKeys.filter((key) => tmplIds.includes(resolveTemplateId(key)))
@@ -331,7 +337,7 @@ function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) 
         success: (res) => resolve({ requested: true, templateKeys: limitedKeys, templateIds: tmplIds, templateIdByKey: Object.fromEntries(limitedKeys.map(key => [key, resolveTemplateId(key)])), results: res || {} }),
         fail: (error) => resolve({ requested: false, reason: 'request_failed', errorCode: error && error.errCode, error: error && (error.errMsg || error.message) || '' })
       })
-    }).catch(error => ({ requested: false, reason: 'request_failed', error: error && (error.errMsg || error.message) || '' }))
+    }).catch(error => ({ requested: false, reason: 'request_failed', errorCode: error && error.errCode, error: error && (error.errMsg || error.message) || '' }))
       .then((result) => {
         if (!result.requested) return result
         const templateIds = {}
