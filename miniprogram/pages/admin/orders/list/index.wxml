@@ -65,7 +65,7 @@
         <view class="soft-badge mode-badge">{{item.publishMode === 'direct' ? '指定宠托师' : '公开发布'}}</view>
         <view class="soft-badge status-badge">{{item.statusText}}</view>
         <view class="soft-badge auto-badge" wx:if="{{item.autoCompleted}}"><text class="remix-icon ri-sparkling-fill"></text><text>系统自动结算</text></view>
-        <view class="soft-badge overdue-badge" wx:if="{{item.isOverdue || item.isStartOverdue || item.isFinishOverdue}}"><text class="remix-icon ri-alarm-warning-line"></text><text>超时</text></view>
+        <view class="soft-badge overdue-badge" wx:if="{{item.status !== 'completed' && (item.isOverdue || item.isStartOverdue || item.isFinishOverdue)}}"><text class="remix-icon ri-alarm-warning-line"></text><text>超时</text></view>
       </view>
       <view class="info-grid">
         <view class="info-chip"><text class="label">用户电话</text><text class="value">{{item.clientContact.phone || item.clientSnapshot.phoneMasked || '未绑定'}}</text></view>

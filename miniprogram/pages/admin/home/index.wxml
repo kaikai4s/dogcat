@@ -19,10 +19,10 @@
       <text class="remix-icon ri-alarm-warning-fill banner-icon"></text>
       <view class="banner-texts">
         <view class="banner-title">{{urgentNotice.title}}</view>
-        <view class="banner-sub">宠托师超时未到场，点击立即核实或转加急单 ➔</view>
+        <view class="banner-sub">{{urgentNotice.tip}}</view>
       </view>
     </view>
-    <view class="banner-btn">去调度</view>
+    <view class="banner-btn">{{urgentNotice.actionText}}</view>
   </view>
 
   <view class="stats-grid admin-stats-grid" wx:if="{{dashboard}}">

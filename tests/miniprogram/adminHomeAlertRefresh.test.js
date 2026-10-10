@@ -86,3 +86,41 @@ test('opening resolved history does not decrement other pending notification cou
   assert.equal(home.data.unreadNotificationCount, 2)
   assert.equal(page.data.list[0].isRead, true)
 })
+
+test('urgent banner distinguishes dispatch alerts from finish alerts and unrelated notifications', async () => {
+  for (const [type, actionText, tip] of [
+    ['order_start_overdue', '去调度', '宠托师超时未到场'],
+    ['order_finish_overdue', '去查看', '服务超时未完成'],
+    ['order_urgent_republished', '去调度', '订单已转加急公共单'],
+    ['refund_failure', '去查看', '点击查看通知详情']
+  ]) {
+    const { page, requests } = setup()
+    const pending = page.loadNotifications()
+    answer(requests, { type, orderId: 'order' })
+    await pending
+    assert.equal(page.data.urgentNotice.actionText, actionText)
+    assert.ok(page.data.urgentNotice.tip.includes(tip))
+  }
+})
+
+test('resolved payload cannot display an actionable home banner', async () => {
+  const { page, requests } = setup()
+  const pending = page.loadNotifications()
+  answer(requests, { type: 'order_finish_overdue', isResolved: true })
+  await pending
+  assert.equal(page.data.urgentNotice, null)
+})
+
+test('order formatter suppresses terminal warnings without changing stored history', () => {
+  const { withOrderText } = require('../../miniprogram/utils/format')
+  for (const status of ['completed', 'auto_completed', 'cancelled', 'refunded', 'closed', 'expired', 'timeout_closed']) {
+    const order = { status, isOverdue: true, isStartOverdue: true, isFinishOverdue: true, finishOverdueIncidentCreated: true }
+    const display = withOrderText(order)
+    assert.equal(display.isOverdue, false, status)
+    assert.equal(display.isStartOverdue, false, status)
+    assert.equal(display.isFinishOverdue, false, status)
+    assert.equal(display.finishOverdueIncidentCreated, true)
+    assert.equal(order.isOverdue, true)
+  }
+  assert.equal(withOrderText({ status: 'in_service', isFinishOverdue: true }).isOverdue, true)
+})

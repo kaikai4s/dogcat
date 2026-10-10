@@ -140,7 +140,17 @@ Page({
         if (requestId !== this._notificationRequest) return
         this.setData({
           unreadNotificationCount: res.unreadCount || 0,
-          urgentNotice: res.latestUrgent || null
+          urgentNotice: res.latestUrgent && !res.latestUrgent.isResolved && !res.latestUrgent.resolved
+            ? { ...res.latestUrgent,
+                actionText: ['order_start_overdue', 'order_urgent_republished'].includes(res.latestUrgent.type) ? '去调度' : '去查看',
+                tip: res.latestUrgent.type === 'order_start_overdue'
+                  ? '宠托师超时未到场，点击立即核实或转加急单 ➔'
+                  : res.latestUrgent.type === 'order_urgent_republished'
+                    ? '订单已转加急公共单，点击查看接单进展 ➔'
+                    : res.latestUrgent.type === 'order_finish_overdue'
+                      ? '服务超时未完成，点击立即核实处理 ➔'
+                      : '点击查看通知详情 ➔' }
+            : null
         })
       })
       .catch(() => {})

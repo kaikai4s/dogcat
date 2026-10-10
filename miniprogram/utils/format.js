@@ -277,11 +277,16 @@ function formatAppointmentTime(order = {}) {
 function withOrderText(order) {
   if (!order) return order
   const autoCompleted = order.autoCompleted === true
-  const isOverdue = order.isOverdue === true || order.isStartOverdue === true || order.isFinishOverdue === true
+  const terminal = ['completed', 'auto_completed', 'cancelled', 'refunded', 'closed', 'expired', 'timeout_closed'].includes(String(order.status || '').toLowerCase())
+  const isStartOverdue = !terminal && order.isStartOverdue === true
+  const isFinishOverdue = !terminal && order.isFinishOverdue === true
+  const isOverdue = !terminal && (order.isOverdue === true || isStartOverdue || isFinishOverdue)
   return {
     ...order,
     autoCompleted,
     isOverdue,
+    isStartOverdue,
+    isFinishOverdue,
     autoCompletedText: autoCompleted ? '系统自动结算' : '',
     statusText: formatOrderStatus(order.status, order),
     paymentStatusText: formatPaymentStatus(order.paymentStatus || 'unpaid'),

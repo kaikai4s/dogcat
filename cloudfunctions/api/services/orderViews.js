@@ -235,8 +235,12 @@ module.exports = function createService({
     return attachClientSnapshot(withPet, safeLevels, safeUserCache)
   }
 
+  function isOrderTerminal(order = {}) {
+    return ['completed', 'auto_completed', 'cancelled', 'refunded', 'closed', 'expired', 'timeout_closed'].includes(String(order.status || '').toLowerCase())
+  }
+
   function isOrderOverdue(order, currentTime = now()) {
-    if (!order) return false
+    if (!order || isOrderTerminal(order)) return false
     if (order.isStartOverdue || order.isFinishOverdue || order.finishOverdueIncidentCreated) return true
     const currentTs = toTimeValue(currentTime)
     if (!currentTs) return false
@@ -262,13 +266,14 @@ module.exports = function createService({
 
   async function attachAdminOrderContactData(order) {
     const displayOrder = await attachOrderDisplayData(order)
+    const isTerminal = isOrderTerminal(order)
     const isOverdue = isOrderOverdue(order)
     return {
       ...displayOrder,
       autoCompleted: order.autoCompleted === true,
       isOverdue,
-      isStartOverdue: order.isStartOverdue === true,
-      isFinishOverdue: order.isFinishOverdue === true,
+      isStartOverdue: !isTerminal && order.isStartOverdue === true,
+      isFinishOverdue: !isTerminal && order.isFinishOverdue === true,
       clientContact: await getAdminClientContact(order),
       staffContact: await getAdminStaffContact(order),
       originalStaffContact: (order.originalStaffOpenid || (Array.isArray(order.previousStaffRecords) && order.previousStaffRecords[0]))
@@ -356,6 +361,7 @@ module.exports = function createService({
     attachClientSnapshot,
     attachOrderDisplayData,
     isOrderOverdue,
+    isOrderTerminal,
     attachAdminOrderContactData,
     toServiceReportOrder
   }

@@ -68,7 +68,7 @@ module.exports = function createService({
 
   // 处理状态独立于阅读状态；历史通知保留，待办必须以订单当前状态为准。
   async function attachResolutionState(notifications) {
-    const dispatchTypes = ['order_start_overdue', 'order_urgent_republished']
+    const dispatchTypes = ['order_start_overdue', 'order_finish_overdue', 'order_urgent_republished']
     const orderIds = [...new Set(notifications.filter(item => dispatchTypes.includes(item.type) && !item.resolved).map(item => item.orderId).filter(Boolean))]
     const orders = new Map()
     for (let i = 0; i < orderIds.length; i += 100) {
@@ -81,9 +81,12 @@ module.exports = function createService({
         const order = orders.get(item.orderId)
         const activeStatuses = item.type === 'order_start_overdue'
           ? ['assigned', 'on_the_way', 'day_completed']
-          : ['paid']
+          : item.type === 'order_finish_overdue'
+            ? ['in_service']
+            : ['paid']
         isResolved = !order || !activeStatuses.includes(order.status) ||
-          (item.type === 'order_start_overdue' && order.isStartOverdue === false)
+          (item.type === 'order_start_overdue' && order.isStartOverdue === false) ||
+          (item.type === 'order_finish_overdue' && order.isFinishOverdue === false)
       }
       return { ...item, isResolved }
     })
@@ -93,7 +96,7 @@ module.exports = function createService({
     if (!orderId) return
     return db.collection('admin_notifications').where({
       orderId,
-      type: db.command.in(['order_start_overdue', 'order_urgent_republished']),
+      type: db.command.in(['order_start_overdue', 'order_finish_overdue', 'order_urgent_republished']),
       resolved: db.command.neq(true)
     }).update({ data: { resolved: true, resolvedAt: time, resolvedBy: actor, resolutionReason: reason, updatedAt: time } })
   }
