@@ -6,7 +6,7 @@ module.exports = function createService(context) {
     crypto, db, findStaffOrderConflict, getOrderTimeRanges, isOrderConflictCandidate,
     now, toTimeValue, validateStaffTakeOrderAbility, validateStaffScheduleOnly, maskStaffName,
     getDateKeyFromTime, parseDateTimeParts, validateSitterScheduleTime,
-    enqueueOrderAccepted, enqueueOrderNotification
+    enqueueOrderAccepted, enqueueOrderNotification, enqueueStaffDirectOrder, notifyStaffDirectOrder
   } = context
 
   const safeGetDateKey = typeof getDateKeyFromTime === 'function' ? getDateKeyFromTime : (val) => String(val || '').slice(0, 10)
@@ -72,7 +72,7 @@ module.exports = function createService(context) {
   }
 
   async function assignOrderAtomically(orderId, expectedOrder, patch, options = {}) {
-    return db.runTransaction(async transaction => {
+    const assignedOrder = await db.runTransaction(async transaction => {
       // All assignment paths write the same user document, preventing cross-order write skew.
       await lockStaff(transaction, patch.staffUserId, patch.staffOpenid)
       const profile = (await transaction.collection('staff_profiles').doc(patch.staffProfileId).get().catch(() => ({ data: null }))).data
@@ -93,12 +93,16 @@ module.exports = function createService(context) {
         catch (error) { if (!options.riskConfirmed) throw error }
       }
       await transaction.collection('users').doc(patch.staffUserId).update({ data: { staffAssignmentRevision: crypto.randomBytes(16).toString('hex') } })
-      await transaction.collection('orders').doc(orderId).update({ data: patch })
-      const assigned = { ...order, ...patch, _id: orderId }
+      const assignmentPatch = { ...patch, assignmentNoticeRevision: Number(order.assignmentNoticeRevision || 0) + 1 }
+      await transaction.collection('orders').doc(orderId).update({ data: assignmentPatch })
+      const assigned = { ...order, ...assignmentPatch, _id: orderId }
       if (options.admin) await enqueueOrderNotification(transaction, order.clientOpenid, 'orderAssigned', assigned, { statusText: '已派单' })
       else await enqueueOrderAccepted(transaction, assigned, maskStaffName(profile.realName))
-      return { ...order, ...patch, _id: orderId }
+      if (options.admin) await enqueueStaffDirectOrder(transaction, assigned, 'assignment')
+      return assigned
     })
+    if (options.admin) await notifyStaffDirectOrder(assignedOrder, 'assignment')
+    return assignedOrder
   }
 
   async function updateOrderStatusWithScheduling(orderId, expectedOrder, patch) {

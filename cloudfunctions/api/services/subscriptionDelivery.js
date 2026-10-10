@@ -61,6 +61,7 @@ module.exports = function createService({ db, crypto, now }) {
     return rows.length
   }
   const templateLabels = {
+    staffDirectOrder: '宠托师指定单通知',
     staffDeparture: '宠托师出发通知', orderAccepted: '接单成功通知', orderAssigned: '派单通知',
     orderPaid: '支付成功通知', serviceStart: '服务开始通知', serviceProgress: '服务进度通知', serviceFinish: '服务完成通知',
     remoteUnlock: '开锁请求通知', upcomingServiceReminder: '即将服务提醒', refundResult: '退款结果通知',
@@ -69,6 +70,8 @@ module.exports = function createService({ db, crypto, now }) {
   function deliveryReason(row) {
     if (row.isQuotaExhausted || Number(row.code) === 43101 || /43101/.test(row.error || '')) return '用户未同意或订阅次数已用完，请用户重新订阅'
     return ({ subscription_disabled: '后台订阅消息开关未开启', template_not_configured: '尚未配置该通知模板 ID',
+      legacy_refund_payload: '历史退款通知缺少本次金额和结果时间，已保留记录并跳过发送',
+      staff_assignment_obsolete: '订单已取消、开始服务或指定关系已变更，已跳过过期指定单通知',
       legacy_reminder_payload: '旧提醒字段不匹配新模板，已保留记录并跳过发送，请从订单重新发起',
       completion_time_missing: '缺少历史实际完成时间，未发送完成通知',
       legacy_service_finish_not_completed: '旧记录为未完单催促，已跳过完成通知发送',

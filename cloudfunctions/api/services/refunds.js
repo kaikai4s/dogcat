@@ -1,9 +1,12 @@
 module.exports = function createService({ db, crypto, now, getPayableOrder, getSystemSettings,
   assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo, restoreOrderCoupon,
   adjustStaffEarningsForRefund,
-  enqueueOrderNotification,
+  enqueueOrderNotification, notifyOrder,
   normalizeMallProduct, getSkuById }) {
   const idFor = value => `refund_${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`
+  const notificationDetail = refund => ({ refundAmount: refund.refundAmount, refundStatus: refund.status,
+    refundTime: refund.succeededAt || refund.failedAt, failReason: refund.failReason })
+  const notificationKey = refund => `refund_result:${refund._id}:${refund.status}`
   async function optional(tx, name, id) {
     try { return (await tx.collection(name).doc(id).get()).data || null } catch (error) {
       if (String(error.message || error.errMsg).includes(`document with _id ${id} does not exist`)) return null
@@ -111,7 +114,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       throw new Error(`微信退款结果待核实，请使用原请求重试：${error.message}`)
     }
     const resolved = await getPayableOrder(refund.orderId)
-    return db.runTransaction(async tx => {
+    const result = await db.runTransaction(async tx => {
       const latest = (await tx.collection('refunds').doc(refund._id).get().catch(() => ({ data: null }))).data
       if (!latest || latest.status === 'success' || latest.status === 'failed') return latest || refund
       const order = (await tx.collection(resolved.collectionName).doc(refund.orderId).get().catch(() => ({ data: null }))).data
@@ -134,7 +137,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         lastError: status === 'failed' ? (failReason || response.status || '') : '',
         failReason: status === 'failed' ? (failReason || response.status || '') : '',
         updatedAt: time,
-        ...(status === 'success' ? { succeededAt: time } : {}),
+        ...(status === 'success' ? { succeededAt: response.success_time && Number.isFinite(Date.parse(response.success_time)) ? new Date(response.success_time) : time } : {}),
         ...(status === 'failed' ? { failedAt: time } : {}) }
       await tx.collection('refunds').doc(refund._id).update({ data: patch })
       const successful = rows.reduce((sum, row) => sum + ((row._id === refund._id ? status : row.status) === 'success' ? amountYuanToFen(row.refundAmount) : 0), 0)
@@ -219,8 +222,11 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         ...(shouldRestoreStock ? { stockRestored: true, stockRestoredAt: time } : {}),
         updatedAt: time
       } })
+      if (status === 'success' || status === 'failed') {
+        const completedRefund = { ...latest, ...patch }
+        await enqueueOrderNotification(tx, order.clientOpenid, 'refundResult', order, notificationDetail(completedRefund), 'client', notificationKey(completedRefund))
+      }
       if (status === 'success') {
-        await enqueueOrderNotification(tx, order.clientOpenid, 'refundResult', order, { statusText: '退款成功', tip: `退款 ${refund.refundAmount} 元已完成` }, 'client', refund._id)
         if (full && order.couponId && typeof restoreOrderCoupon === 'function') {
           await restoreOrderCoupon(order.couponId, order._id, tx)
         }
@@ -236,6 +242,12 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       }
       return { ...latest, ...patch }
     })
+    if (result && ['success', 'failed'].includes(result.status)) {
+      // The committed queue survives a send failure or a process restart.
+      await notifyOrder(resolved.order.clientOpenid, 'refundResult', resolved.order, notificationDetail(result), 'client', notificationKey(result))
+        .catch(error => console.error('[refund-notification]', { refundId: result._id, message: error.message }))
+    }
+    return result
   }
 
   async function reconcilePendingRefunds() {

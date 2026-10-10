@@ -598,7 +598,7 @@ Page({
             showError(error)
           })
 
-        requestSubscribeTemplates(['upcomingServiceReminder', 'serviceProgress'], 'staff_grab_order')
+        requestSubscribeTemplates(['staffDirectOrder', 'upcomingServiceReminder', 'serviceProgress'], 'staff_grab_order')
           .catch(() => null)
           .then(doAccept)
       },

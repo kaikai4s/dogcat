@@ -183,6 +183,7 @@ module.exports = function createService({
         templates: {
           orderPaid: safeText(subscription.templates && subscription.templates.orderPaid).trim(),
           orderAssigned: safeText(subscription.templates && subscription.templates.orderAssigned).trim(),
+          staffDirectOrder: safeText(subscription.templates && subscription.templates.staffDirectOrder).trim(),
           orderAccepted: safeText(subscription.templates && subscription.templates.orderAccepted).trim(),
           staffDeparture: safeText(subscription.templates && subscription.templates.staffDeparture).trim(),
           serviceProgress: safeText(subscription.templates && subscription.templates.serviceProgress).trim(),

@@ -120,7 +120,7 @@ Page({
       .catch(showError)
       .finally(() => this.setData({ acceptingRiskOrder: false }))
 
-    requestSubscribeTemplates(['upcomingServiceReminder', 'serviceProgress'], 'staff_accept_order')
+    requestSubscribeTemplates(['staffDirectOrder', 'upcomingServiceReminder', 'serviceProgress'], 'staff_accept_order')
       .catch(() => null)
       .then(doAccept)
   },

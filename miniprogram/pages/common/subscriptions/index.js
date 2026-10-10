@@ -1,6 +1,7 @@
 const { callFunction, setCachedSystemSettings, ensureLogin, requestSubscribeTemplates, showError } = require('../../../utils/cloud')
 
 const catalog = {
+  staffDirectOrder: ['指定单通知', '客户指定预约或平台派单后，及时查看服务安排'],
   orderAccepted: ['接单成功通知', '宠托师接单后，及时了解服务安排'],
   staffDeparture: ['宠托师出发通知', '宠托师出发时，接收预约时间、出发时间和姓名'],
   serviceStart: ['服务开始通知', '宠托师正式开始服务后，及时接收提醒'],
@@ -9,7 +10,7 @@ const catalog = {
   orderPaid: ['支付成功通知', '订单支付成功后接收确认消息'],
   orderAssigned: ['订单派单通知', '平台为订单安排宠托师时通知你'],
   remoteUnlock: ['远程开门通知', '宠托师到达并请求开门时通知你'],
-  refundResult: ['退款结果通知', '及时了解订单退款处理结果'],
+  refundResult: ['退款结果通知', '服务及商城订单退款成功或失败后，接收本次金额和处理结果'],
   disputeUpdate: ['售后进度通知', '售后处理有新进展时通知你'],
   upcomingServiceReminder: ['服务订单提醒', '服务前提醒时间段、地点和宠物信息'],
   withdrawResult: ['提现结果通知', '提现审核或打款后接收结果提醒']
@@ -49,7 +50,7 @@ Page({
   },
   updateGroups() {
     const sections = this.data.role === 'staff'
-      ? [['common', '常用消息', ['upcomingServiceReminder', 'serviceProgress', 'serviceFinish']], ['other', '其他消息', ['withdrawResult', 'disputeUpdate']]]
+      ? [['common', '常用消息', ['staffDirectOrder', 'upcomingServiceReminder', 'serviceProgress', 'serviceFinish']], ['other', '其他消息', ['withdrawResult', 'disputeUpdate']]]
       : [['common', '常用消息', ['orderAccepted', 'staffDeparture', 'serviceStart', 'serviceFinish']], ['other', '其他消息', ['serviceProgress', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate']]]
     const setting = this._wechatSettings || {}
     const groups = sections.map(([id, title, keys]) => {

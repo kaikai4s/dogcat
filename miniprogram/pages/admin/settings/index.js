@@ -168,6 +168,7 @@ function normalizeSubscriptionConfig(subscription = {}) {
       ...templates,
       orderPaid: templates.orderPaid || '',
       orderAssigned: templates.orderAssigned || '',
+      staffDirectOrder: templates.staffDirectOrder || '',
       orderAccepted: templates.orderAccepted || '',
       staffDeparture: templates.staffDeparture || '',
       serviceStart: templates.serviceStart || '',

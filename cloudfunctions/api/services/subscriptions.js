@@ -41,6 +41,24 @@ module.exports = function createService({
     const serviceName = isMallOrder(order) ? buildMallOrderTitle(order) : (order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务')
     const orderNo = order.orderNo || order._id || ''
     const statusText = safeText(detail.statusText || templateKey)
+    if (templateKey === 'refundResult') {
+      return {
+        amount2: { value: Number(detail.refundAmount).toFixed(2) },
+        thing3: { value: safeText(detail.refundStatus === 'success' ? '退款成功，请留意原支付账户' : (detail.failReason || '退款未成功，请联系平台处理')).slice(0, 20) },
+        date4: { value: formatDateTime(detail.refundTime) },
+        thing5: { value: safeText(serviceName).slice(0, 20) },
+        character_string6: { value: safeText(orderNo).slice(0, 32) }
+      }
+    }
+    if (templateKey === 'staffDirectOrder') {
+      return {
+        character_string2: { value: safeText(orderNo).slice(0, 32) },
+        thing5: { value: safeText(detail.tip || '您有新的指定预约，请及时查看并确认').slice(0, 20) },
+        thing9: { value: safeText(serviceName).slice(0, 20) },
+        time10: { value: formatDateTime(order.startTime) },
+        amount3: { value: Number(order.payAmount).toFixed(2) }
+      }
+    }
     if (templateKey === 'orderAccepted') {
       return {
         character_string1: { value: safeText(orderNo).slice(0, 32) },
@@ -158,6 +176,12 @@ module.exports = function createService({
         await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: result.status, error: result.error })
         return result
       }
+      if (templateKey === 'refundResult' && !messageData.amount2) {
+        // Old queued messages have neither the per-refund amount nor the result time.
+        const result = { status: 'skipped', error: 'legacy_refund_payload', templateKey, templateId }
+        await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, ...result })
+        return result
+      }
       if ((templateKey === 'upcomingServiceReminder' && !messageData.short_thing6) ||
           (templateKey === 'remoteUnlock' && !messageData.time5)) {
         const result = { status: 'skipped', error: 'legacy_reminder_payload', templateKey, templateId }
@@ -233,7 +257,16 @@ module.exports = function createService({
     }
   }
 
-  const sendDelivery = message => sendSubscribeMessageOnce(message.openid, message.templateKey, message.page, message.messageData, message.orderId)
+  const sendDelivery = async message => {
+    if (message.templateKey === 'staffDirectOrder') {
+      const order = (await db.collection('orders').doc(message.orderId).get()).data
+      const current = order && !order.adminDeletedAt && order.paymentStatus === 'paid' && (message.assignmentKind === 'request'
+        ? order.status === 'paid' && !order.staffOpenid && order.publishMode === 'direct' && order.requestedStaffOpenid === message.openid && order.paymentNo === message.assignmentVersion
+        : order.status === 'assigned' && order.staffOpenid === message.openid && order.assignmentNoticeRevision === message.assignmentVersion)
+      if (!current) return { status: 'skipped', error: 'staff_assignment_obsolete', templateKey: message.templateKey }
+    }
+    return sendSubscribeMessageOnce(message.openid, message.templateKey, message.page, message.messageData, message.orderId)
+  }
   async function sendSubscribeMessage(openid, templateKey, page, messageData = {}, orderId = '', deliveryKey = '') {
     try { return await deliverSubscription({ openid, templateKey, page, messageData, orderId: orderId || '', ...(deliveryKey ? { deliveryKey } : {}) }, sendDelivery) }
     catch (error) { return { status: 'failed', error: String(error.message || error), templateKey } }
@@ -249,6 +282,31 @@ module.exports = function createService({
     const targetRole = role || (order && order.staffOpenid && openid === order.staffOpenid ? 'staff' : 'client')
     return enqueueSubscription(tx, { openid, templateKey, page: buildSubscriptionPage(order, targetRole),
       messageData: buildSubscriptionData(templateKey, order, detail), orderId: order && order._id || '', ...(deliveryKey ? { deliveryKey } : {}) })
+  }
+
+  function staffDirectOrderMessage(order, kind) {
+    const request = kind === 'request'
+    const version = request ? order.paymentNo : order.assignmentNoticeRevision
+    const reassigned = Array.isArray(order.previousStaffRecords) && order.previousStaffRecords.length > 0
+    const tip = request ? '您有新的指定预约，请及时查看并确认'
+      : reassigned ? '您收到一笔改派订单，请查看并按时赴约' : '您有新的服务安排，请查看并按时赴约'
+    return {
+      openid: request ? order.requestedStaffOpenid : order.staffOpenid,
+      templateKey: 'staffDirectOrder', orderId: order._id,
+      page: request ? `pages/staff/orders/detail/index?id=${order._id}` : buildSubscriptionPage(order, 'staff'),
+      messageData: buildSubscriptionData('staffDirectOrder', order, { tip }),
+      assignmentKind: kind, assignmentVersion: version,
+      deliveryKey: `staff_direct:${kind}:${version}`
+    }
+  }
+
+  function enqueueStaffDirectOrder(tx, order, kind) {
+    return enqueueSubscription(tx, staffDirectOrderMessage(order, kind))
+  }
+
+  async function notifyStaffDirectOrder(order, kind) {
+    try { return await deliverSubscription(staffDirectOrderMessage(order, kind), sendDelivery) }
+    catch (error) { return { status: 'failed', error: String(error.message || error) } }
   }
 
   function orderAcceptedDeliveryKey(order) {
@@ -373,6 +431,8 @@ module.exports = function createService({
   }
 
   return {
+    enqueueStaffDirectOrder,
+    notifyStaffDirectOrder,
     enqueueOrderNotification,
     enqueueOrderAccepted,
     buildSubscriptionPage,

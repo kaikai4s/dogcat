@@ -463,7 +463,10 @@ Page({
               this.setData({ cancelling: false })
               return
             }
-            callFunction('order', 'cancelOrder', { orderId: this.data.id, reason: '宠物主取消', clientRequestId: createClientRequestId('cancel') })
+            const consent = Number(quote.refundAmount) > 0
+              ? requestSubscribeTemplates(['refundResult'], 'client_cancel_refund', { waitForConsent: false }).catch(() => null)
+              : Promise.resolve()
+            consent.then(() => callFunction('order', 'cancelOrder', { orderId: this.data.id, reason: '宠物主取消', clientRequestId: createClientRequestId('cancel') }))
               .then(() => {
                 wx.showToast({ title: '已取消' })
                 this.setData({ cancelling: false })

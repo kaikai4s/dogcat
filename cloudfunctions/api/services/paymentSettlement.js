@@ -1,6 +1,7 @@
 module.exports = function createService(context) {
   const { db, crypto, now, getPayableOrder, createPaymentNo,
-    normalizeMallProduct, getSkuById, assertOrderPaymentOpen, amountYuanToFen, enqueueOrderNotification, enqueueOrderAccepted } = context
+    normalizeMallProduct, getSkuById, assertOrderPaymentOpen, amountYuanToFen, enqueueOrderNotification, enqueueOrderAccepted,
+    enqueueStaffDirectOrder, notifyStaffDirectOrder } = context
   const key = (prefix, value) => `${prefix}_${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`
   async function optional(tx, name, id) {
     try { return (await tx.collection(name).doc(id).get()).data || null } catch (error) {
@@ -189,6 +190,7 @@ module.exports = function createService(context) {
         const paid = { ...order, ...patch }
         await enqueueOrderNotification(tx, order.clientOpenid, 'orderPaid', paid, { amount: Number(order.payAmount), statusText: '已支付' })
         if (order.publishMode === 'direct' && order.requestedStaffOpenid) await enqueueOrderAccepted(tx, paid, order.requestedStaffName)
+        if (order.publishMode === 'direct' && order.requestedStaffOpenid) await enqueueStaffDirectOrder(tx, paid, 'request')
       }
       return { order: { ...order, ...patch }, changed: true, orderType: resolved.orderType }
     })
@@ -238,6 +240,9 @@ module.exports = function createService(context) {
           })
         }
       }
+    }
+    if (result.changed && result.orderType === 'service' && result.order.publishMode === 'direct' && result.order.requestedStaffOpenid) {
+      await notifyStaffDirectOrder(result.order, 'request')
     }
     return result
   }

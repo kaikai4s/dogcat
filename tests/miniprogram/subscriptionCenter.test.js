@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const flush = () => new Promise(resolve => setImmediate(resolve))
-const templateKeys = ['orderAccepted', 'staffDeparture', 'serviceStart', 'serviceProgress', 'serviceFinish', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate', 'upcomingServiceReminder', 'withdrawResult']
+const templateKeys = ['staffDirectOrder', 'orderAccepted', 'staffDeparture', 'serviceStart', 'serviceProgress', 'serviceFinish', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate', 'upcomingServiceReminder', 'withdrawResult']
 
 async function setup({ templates = Object.fromEntries(templateKeys.map(key => [key, `tpl_${key}`])), enabled = true, mainSwitch = true, role = 'client', subscribe, holdConsent = false } = {}) {
   const requests = []
@@ -72,7 +72,7 @@ test('templates shared by multiple notification types are requested once and upd
   const { page, requests, calls } = await setup({ role: 'staff', templates: { upcomingServiceReminder: 'shared', serviceProgress: 'shared', serviceFinish: 'finish' } })
   await page.subscribe(tap('common'))
   assert.deepEqual(Array.from(requests[0]), ['shared', 'finish'])
-  assert.ok(page.data.groups[0].items.every(item => item.accepted))
+  assert.ok(page.data.groups[0].items.filter(item => item.available).every(item => item.accepted))
   const consent = calls.find(call => call.action === 'recordSubscriptionConsent')
   assert.ok(consent.data.templateKeys.includes('upcomingServiceReminder'))
   assert.ok(consent.data.templateKeys.includes('serviceProgress'))
@@ -174,4 +174,26 @@ test('missing staff reminder template is unavailable despite configured progress
   assert.equal(page.data.groups[0].items.find(item => item.key === 'upcomingServiceReminder').available, false)
   await page.subscribe(tap('upcomingServiceReminder'))
   assert.equal(requests.length, 0)
+})
+
+test('refund and direct-order consent use configured IDs and are separated by recipient role', async () => {
+  const client = await setup()
+  await client.page.subscribe(tap('refundResult'))
+  assert.deepEqual([...client.requests[0]], ['tpl_refundResult'])
+  assert.equal(client.calls.find(call => call.action === 'recordSubscriptionConsent').data.templateIds.refundResult, 'tpl_refundResult')
+  assert.equal(client.page.data.groups.flatMap(group => group.items).some(item => item.key === 'staffDirectOrder'), false)
+  const staff = await setup({ role: 'staff' })
+  await staff.page.subscribe(tap('staffDirectOrder'))
+  assert.deepEqual([...staff.requests[0]], ['tpl_staffDirectOrder'])
+  assert.equal(staff.calls.find(call => call.action === 'recordSubscriptionConsent').data.templateIds.staffDirectOrder, 'tpl_staffDirectOrder')
+  assert.equal(staff.page.data.groups.flatMap(group => group.items).some(item => item.key === 'refundResult'), false)
+})
+
+test('staff common reminders require a fresh gesture for the fourth template', async () => {
+  const { page, requests } = await setup({ role: 'staff' })
+  await page.subscribe(tap('common'))
+  assert.deepEqual([...requests[0]], ['tpl_staffDirectOrder', 'tpl_upcomingServiceReminder', 'tpl_serviceProgress'])
+  assert.deepEqual([...page.data.pendingKeys], ['serviceFinish'])
+  await page.subscribe(tap('common'))
+  assert.deepEqual([...requests[1]], ['tpl_serviceFinish'])
 })

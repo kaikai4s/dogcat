@@ -2,7 +2,9 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createCollectionStore, loadCloudFunction } = require('./helpers')
 
-test('sitter schedule restrictions: bookableUntilDate and unavailable exceptions prevent bookings', async () => {
+test('sitter schedule restrictions: bookableUntilDate and unavailable exceptions prevent bookings', async (t) => {
+  // Keep booking fixtures in the future regardless of the machine's current date.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-01T00:00:00Z') })
   const db = createCollectionStore({
     users: [
       { _id: 'u_staff', openid: 'staff_1', roles: ['staff'], phone: '13800000001', status: 'active' },
