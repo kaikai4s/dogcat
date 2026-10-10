@@ -321,7 +321,8 @@ test('admin can record deposit penalty evidence on problematic order and see iss
   assert.equal(badProfile.problemOrders[0].deductAmount, 50)
 })
 
-test('admin can manually complete order with violation deduction, supplement photos and staff earning settlement', async () => {
+for (const initialStatus of ['assigned', 'on_the_way', 'in_service', 'day_completed']) {
+test('admin manually completes ' + initialStatus + ' with deduction, evidence, settlement and alert closure', async () => {
   const db = createCollectionStore({
     users: [
       { _id: 'u_admin', openid: 'openid_admin', roles: ['admin'], status: 'active' },
@@ -337,7 +338,7 @@ test('admin can manually complete order with violation deduction, supplement pho
         orderNo: 'OMANUAL2026',
         serviceType: 'feed',
         serviceSummary: '上门喂猫服务',
-        status: 'in_service',
+        status: initialStatus,
         clientOpenid: 'openid_client_v',
         clientUserId: 'u_client',
         staffOpenid: 'openid_staff_v',
@@ -348,6 +349,7 @@ test('admin can manually complete order with violation deduction, supplement pho
         endTime: '2026-09-22 11:00'
       }
     ],
+    admin_notifications: [{ _id: 'overdue_notice', orderId: 'order_manual_1', type: 'order_start_overdue', level: 'urgent', read: false }],
     staff_earnings: [],
     finance_logs: [],
     order_timeline: [],
@@ -419,7 +421,16 @@ test('admin can manually complete order with violation deduction, supplement pho
   const manualTimeline = timelines.find((t) => t.type === 'admin_manual_completed')
   assert.ok(manualTimeline)
   assert.ok(manualTimeline.title.includes('扣减收益 ¥20.00'))
+  assert.equal(db.state.admin_notifications[0].resolved, true)
+  const badge = await adminFn.main({ module: 'admin', action: 'getAdminNotificationBadge', data: {} })
+  assert.equal(badge.ok, true)
+  assert.equal(badge.data.latestUrgent, null)
+  const retry = await adminFn.main({ module: 'admin', action: 'manualCompleteOrder', data: { id: 'order_manual_1', remark: '重复核实' } })
+  assert.equal(retry.ok, false)
+  assert.equal(db.state.staff_earnings.length, 1)
+  assert.equal(db.state.order_timeline.filter(t => t.type === 'admin_manual_completed').length, 1)
 })
+}
 
 test('republishOrderAsUrgent blocks republishing if order status is already in_service', async () => {
   const db = createCollectionStore({

@@ -1158,7 +1158,7 @@ module.exports = function createHandler(context) {
       if (order.status === 'completed') {
         throw new Error('订单当前已经是已完成状态')
       }
-      if (!['assigned', 'in_service', 'day_completed'].includes(order.status)) {
+      if (!['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)) {
         throw new Error(`当前订单状态（${order.status}）不可执行手动核实完单`)
       }
 
