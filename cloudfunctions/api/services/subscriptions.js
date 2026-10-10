@@ -44,10 +44,10 @@ module.exports = function createService({
     if (templateKey === 'orderAccepted') {
       return {
         character_string1: { value: safeText(orderNo).slice(0, 32) },
-        thing2: { value: safeText(detail.orderDemand || serviceName).slice(0, 20) },
-        name3: { value: safeText(detail.staffName || order.staffName || order.requestedStaffName || '宠托师').slice(0, 10) },
-        thing4: { value: safeText(detail.serviceArea || order.serviceAddress || '服务地址').slice(0, 20) },
-        time17: { value: safeText(detail.serviceTime || getClockText(order.startTime) || beijingClockText()).slice(0, 20) }
+        thing2: { value: safeText(detail.staffName || order.staffName || order.requestedStaffName || '宠托师').slice(0, 20) },
+        // The platform phone is resolved from settings at delivery time, including retries.
+        phone_number4: { value: '' },
+        thing5: { value: safeText(detail.orderDemand || serviceName).slice(0, 20) }
       }
     }
     if (templateKey === 'staffDeparture') {
@@ -140,6 +140,22 @@ module.exports = function createService({
         await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: result.status, error: result.error })
         return result
       }
+      if (templateKey === 'orderAccepted') {
+        const platformPhone = safeText(settings.customerService && settings.customerService.phone).trim()
+        // Translate old queued payloads without changing their delivery identity.
+        const legacy = !!messageData.name3
+        messageData = {
+          character_string1: messageData.character_string1,
+          thing2: legacy ? messageData.name3 : messageData.thing2,
+          phone_number4: { value: platformPhone },
+          thing5: legacy ? messageData.thing2 : messageData.thing5
+        }
+        if (!platformPhone) {
+          const result = { status: 'skipped', error: 'platform_phone_not_configured', templateKey, templateId }
+          await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, ...result })
+          return result
+        }
+      }
       if (!cloud.openapi || !cloud.openapi.subscribeMessage || typeof cloud.openapi.subscribeMessage.send !== 'function') {
         const result = { status: 'skipped', error: 'openapi_unavailable', templateKey, templateId }
         console.log('[subscription] skipped', { orderId, templateKey, status: 'skipped', code: result.error })
@@ -179,12 +195,16 @@ module.exports = function createService({
       messageData: buildSubscriptionData(templateKey, order, detail), orderId: order && order._id || '', ...(deliveryKey ? { deliveryKey } : {}) })
   }
 
+  function orderAcceptedDeliveryKey(order) {
+    return makeIdempotencyKey('order_accepted', order._id, order.staffOpenid || '', String(toTimeValue(order.assignedAt) || ''))
+  }
+
   function enqueueOrderAccepted(tx, order, staffName = '') {
     return enqueueOrderNotification(tx, order.clientOpenid, 'orderAccepted', order, {
       staffName: staffName || order.staffName || order.requestedStaffName || '宠托师',
       orderDemand: order.serviceSummary || '宠护服务', serviceArea: order.serviceAddress || order.city || '服务地址',
       serviceTime: getClockText(order.startTime)
-    })
+    }, 'client', orderAcceptedDeliveryKey(order))
   }
 
   function notifyOrderAccepted(order, staffName = '') {
@@ -198,7 +218,7 @@ module.exports = function createService({
       orderId: order && order._id,
       templateKey: 'orderAccepted'
     })
-    return notifyOrder(order.clientOpenid, 'orderAccepted', order, detail)
+    return notifyOrder(order.clientOpenid, 'orderAccepted', order, detail, 'client', orderAcceptedDeliveryKey(order))
       .then((result) => {
         console.log('[orderAccepted] notify result', {
           orderId: order && order._id,

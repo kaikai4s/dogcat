@@ -4,7 +4,7 @@ module.exports = function createService(context) {
   const {
     assertStaffCanAcceptOrderVaccines, attachOrderDisplayData,
     crypto, db, findStaffOrderConflict, getOrderTimeRanges, isOrderConflictCandidate,
-    now, toTimeValue, validateStaffTakeOrderAbility, validateStaffScheduleOnly,
+    now, toTimeValue, validateStaffTakeOrderAbility, validateStaffScheduleOnly, maskStaffName,
     getDateKeyFromTime, parseDateTimeParts, validateSitterScheduleTime,
     enqueueOrderAccepted, enqueueOrderNotification
   } = context
@@ -96,7 +96,7 @@ module.exports = function createService(context) {
       await transaction.collection('orders').doc(orderId).update({ data: patch })
       const assigned = { ...order, ...patch, _id: orderId }
       if (options.admin) await enqueueOrderNotification(transaction, order.clientOpenid, 'orderAssigned', assigned, { statusText: '已派单' })
-      else await enqueueOrderAccepted(transaction, assigned)
+      else await enqueueOrderAccepted(transaction, assigned, maskStaffName(profile.realName))
       return { ...order, ...patch, _id: orderId }
     })
   }

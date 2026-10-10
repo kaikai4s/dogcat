@@ -101,6 +101,7 @@ test('sendSubscribeMessage records isQuotaExhausted when error code is 43101', a
       _id: 'cfg1',
       key: 'system_settings',
       value: {
+        customerService: { phone: '400-800-1234' },
         subscription: {
           enabled: true,
           templates: { orderAccepted: 'tmpl_order_accepted' }
