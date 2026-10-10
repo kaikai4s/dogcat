@@ -96,7 +96,7 @@ module.exports = function createService(context) {
       const assignmentPatch = { ...patch, assignmentNoticeRevision: Number(order.assignmentNoticeRevision || 0) + 1 }
       await transaction.collection('orders').doc(orderId).update({ data: assignmentPatch })
       const assigned = { ...order, ...assignmentPatch, _id: orderId }
-      if (options.admin) await enqueueOrderNotification(transaction, order.clientOpenid, 'orderAssigned', assigned, { statusText: '已派单' })
+      if (options.admin && assigned.assignmentSource !== 'direct_auto_accept') await enqueueOrderNotification(transaction, order.clientOpenid, 'orderAssigned', assigned, { statusText: '已派单' })
       else await enqueueOrderAccepted(transaction, assigned, maskStaffName(profile.realName))
       if (options.admin) await enqueueStaffDirectOrder(transaction, assigned, 'assignment')
       return assigned

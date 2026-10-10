@@ -23,68 +23,24 @@ function withTimelineText(list = []) {
 }
 
 function showRemoteUnlockSubscribeTip(result, retryCallback) {
-  // 如果未发起订阅请求，显示原因但允许继续
-  if (!result || !result.requested) {
-    const reasonMap = {
-      subscription_disabled: '后台未启用订阅消息，你将无法收到服务通知。',
-      request_api_unavailable: '当前微信版本不支持订阅消息接口，你将无法收到服务通知。',
-      template_not_configured: '后台未配置开锁请求模板，你将无法收到服务通知。',
-      request_failed: '微信订阅授权接口调用失败，你将无法收到服务通知。',
-      settings_load_failed: '系统设置加载失败，你将无法收到服务通知。'
-    }
-    const message = reasonMap[result && result.reason] || '未能发起订阅授权，你将无法收到服务通知。'
-    return new Promise((resolve, reject) => {
+  if (!result || !result.requested) return Promise.resolve()
+  // Keys may share an ID, so their indexes do not match the deduplicated ID list.
+  const templateId = result.templateIdByKey && result.templateIdByKey.remoteUnlock
+  if (templateId && result.results && result.results[templateId] !== 'accept') {
+    return new Promise((resolve) => {
       wx.showModal({
-        title: '提醒',
-        content: message + '\n\n是否继续支付？',
-        confirmText: '继续支付',
-        cancelText: '取消',
-        success: (res) => {
-          if (res.confirm) resolve()
-          else reject(new Error('用户取消支付'))
-        },
-        fail: reject
-      })
-    })
-  }
-
-  // 检查开锁通知是否授权
-  const index = (result.templateKeys || []).indexOf('remoteUnlock')
-  const templateId = index >= 0 ? result.templateIds[index] : ''
-  const status = templateId ? result.results[templateId] : ''
-
-  if (templateId && status !== 'accept') {
-    return new Promise((resolve, reject) => {
-      wx.showModal({
-        title: '开锁通知未授权',
-        content: '你没有允许”开锁请求通知”，宠托师请求开门时微信不会推送通知。\n\n建议授权以便及时收到开锁提醒。',
+        title: '远程开门提醒未开启',
+        content: '可重新订阅，及时收到宠托师的开门请求；也可继续支付，稍后在消息中心开启。',
         confirmText: '重新授权',
-        cancelText: '暂不授权',
+        cancelText: '继续支付',
         success: (res) => {
           if (res.confirm && typeof retryCallback === 'function') {
-            // 用户选择重新授权，重新发起订阅请求
-            retryCallback()
-              .then(resolve)
-              .catch(reject)
-          } else if (res.confirm) {
-            // 没有回调函数，继续支付
-            resolve()
+            retryCallback().then(resolve).catch(() => resolve())
           } else {
-            // 用户选择暂不授权，显示二次确认
-            wx.showModal({
-              title: '确认继续',
-              content: '不授权将无法收到宠托师的开锁通知，可能影响服务体验。\n\n确定继续支付吗？',
-              confirmText: '继续支付',
-              cancelText: '取消支付',
-              success: (res2) => {
-                if (res2.confirm) resolve()
-                else reject(new Error('用户取消支付'))
-              },
-              fail: reject
-            })
+            resolve()
           }
         },
-        fail: reject
+        fail: () => resolve()
       })
     })
   }
@@ -120,10 +76,10 @@ Page({
     canGoBack: false
   },
   onLoad(q) {
-    loadSystemSettings().catch(() => null)
     this.setData({ ...createPageNav(q), id: q.id })
   },
   onShow() {
+    loadSystemSettings().catch(() => null)
     this._chatPageVisible = true
     this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看订单详情。' })
@@ -260,12 +216,12 @@ Page({
     const clientRequestId = createClientRequestId('pay')
 
     // 定义重新授权的函数
-    const requestSubscribe = () => requestSubscribeTemplates(['staffDeparture', 'serviceStart', 'remoteUnlock'], 'client_pay')
+    const requestSubscribe = () => requestSubscribeTemplates(['serviceFinish', 'remoteUnlock', 'refundResult'], 'client_pay')
 
     requestSubscribe()
       .then((subscribeResult) => {
         // 传入重新授权的回调函数
-        return showRemoteUnlockSubscribeTip(subscribeResult, requestSubscribe)
+        return showRemoteUnlockSubscribeTip(subscribeResult, () => requestSubscribeTemplates(['remoteUnlock'], 'client_pay_remote_retry'))
       })
       .then(() => callFunction('payment', 'createPayment', { orderId: this.data.id, clientRequestId }))
       .then((payment) => {

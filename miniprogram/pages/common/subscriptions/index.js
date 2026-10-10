@@ -11,7 +11,7 @@ const catalog = {
   orderAssigned: ['订单派单通知', '平台为订单安排宠托师时通知你'],
   remoteUnlock: ['远程开门通知', '宠托师到达并请求开门时通知你'],
   refundResult: ['退款结果通知', '服务及商城订单退款成功或失败后，接收本次金额和处理结果'],
-  disputeUpdate: ['售后进度通知', '售后处理有新进展时通知你'],
+  disputeUpdate: ['售后进度通知', '暂未开放，请在订单售后详情查看处理进度'],
   upcomingServiceReminder: ['服务订单提醒', '服务前提醒时间段、地点和宠物信息'],
   withdrawResult: ['提现结果通知', '提现审核或打款后接收结果提醒']
 }
@@ -30,23 +30,29 @@ Page({
   },
   onShow() {
     this.refreshWechatSettings()
+    if (!this.data.busy) this.load()
   },
   load() {
-    this.setData({ loading: true, loadFailed: false })
-    return ensureLogin({ content: '登录后可管理订阅消息通知。' })
+    if (this._loadingSettings) return this._loadingSettings
+    this.setData({ loading: true, loadFailed: false, ready: false })
+    this._loadingSettings = ensureLogin({ content: '登录后可管理订阅消息通知。' })
       .then(() => callFunction('system', 'getSettings'))
       .then((settings) => {
+        const previous = JSON.stringify(this._settings && this._settings.subscription)
         this._settings = setCachedSystemSettings(settings)
-        this.setData({ loading: false, ready: true, enabled: !!this._settings.subscription.enabled })
+        const changed = previous !== JSON.stringify(this._settings.subscription)
+        this.setData({ loading: false, ready: true, enabled: !!this._settings.subscription.enabled,
+          ...(changed ? { pendingKeys: [], pendingScope: '', feedback: '' } : {}) })
         this.updateGroups()
       }).catch((error) => {
         this.setData({ loading: false, loadFailed: true, ready: false })
         if (!error || error.code !== 'LOGIN_CANCELLED') showError(error)
-      })
+      }).finally(() => { this._loadingSettings = null })
+    return this._loadingSettings
   },
   templateId(key) {
     const templates = this._settings && this._settings.subscription.templates || {}
-    return templates[key] || '' || ''
+    return templates[key] || ''
   },
   updateGroups() {
     const sections = this.data.role === 'staff'
@@ -57,7 +63,8 @@ Page({
       const items = keys.map((key) => {
         const templateId = this.templateId(key)
         const status = setting.itemsSetting && setting.itemsSetting[templateId] || this._lastResults[templateId] || ''
-        const available = this.data.enabled && !!templateId
+        // This legacy key is configurable but has no business sender yet.
+        const available = key !== 'disputeUpdate' && this.data.enabled && !!templateId
         const statusText = !available ? '暂未开放' : this.data.mainSwitch === false ? '微信订阅开关已关闭'
           : status === 'accept' ? '已允许接收，可再次订阅'
           : status === 'reject' ? '暂未允许，可重新订阅'
@@ -108,7 +115,7 @@ Page({
         const results = result.results || {}
         this._lastResults = { ...this._lastResults, ...results }
         const itemsSetting = { ...(this._wechatSettings.itemsSetting || {}) }
-        ids.forEach((id) => { if (results[id]) itemsSetting[id] = results[id] })
+        ids.forEach((id) => { itemsSetting[id] = results[id] || 'unknown' })
         this._wechatSettings.itemsSetting = itemsSetting
         const accepted = ids.filter((id) => results[id] === 'accept').length
         const pendingKeys = keys.filter((key) => !batch.includes(key))

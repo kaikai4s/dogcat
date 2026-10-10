@@ -71,6 +71,8 @@ module.exports = function createService({ db, crypto, now }) {
     if (row.isQuotaExhausted || Number(row.code) === 43101 || /43101/.test(row.error || '')) return '用户未同意或订阅次数已用完，请用户重新订阅'
     return ({ subscription_disabled: '后台订阅消息开关未开启', template_not_configured: '尚未配置该通知模板 ID',
       legacy_refund_payload: '历史退款通知缺少本次金额和结果时间，已保留记录并跳过发送',
+      legacy_order_not_accepted: '旧记录在宠托师接单前生成，已跳过提前发送的接单通知',
+      service_reminder_obsolete: '订单已出发、开始、完成或改派，已跳过过期的前往服务提醒',
       staff_assignment_obsolete: '订单已取消、开始服务或指定关系已变更，已跳过过期指定单通知',
       legacy_reminder_payload: '旧提醒字段不匹配新模板，已保留记录并跳过发送，请从订单重新发起',
       completion_time_missing: '缺少历史实际完成时间，未发送完成通知',

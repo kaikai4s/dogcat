@@ -1,4 +1,4 @@
-const { callFunction, showError, ensureLogin, requestSubscribeTemplates, showLoading, hideLoading } = require('../../../../utils/cloud')
+const { callFunction, showError, ensureLogin, requestSubscribeTemplates, loadSystemSettings, showLoading, hideLoading } = require('../../../../utils/cloud')
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
 
 function calcPreview(items = [], coupon = null) {
@@ -26,6 +26,7 @@ Page({
   },
 
   onShow() {
+    loadSystemSettings().catch(() => null)
     ensureLogin({ content: '登录后可结算商品。' })
       .then(() => Promise.all([this.loadItems().then(() => this.loadCoupons()), this.loadAddress()]))
       .catch(() => wx.navigateBack())
@@ -98,10 +99,11 @@ Page({
     if (this.data.productId) Object.assign(data, { productId: this.data.productId, skuId: this.data.skuId, quantity: this.data.quantity })
     this.setData({ submitting: true })
     showLoading({ title: '正在提交订单...', mask: true })
-    callFunction('mall', 'createOrder', data)
+    requestSubscribeTemplates(['refundResult'], 'mall_pay').catch(() => null)
+      .then(() => callFunction('mall', 'createOrder', data))
       .then((order) => {
         this.setData({ pendingOrderId: order._id })
-        return requestSubscribeTemplates(['refundResult'], 'mall_pay').catch(() => null).then(() => order)
+        return order
       })
       .then((order) => callFunction('payment', 'createPayment', { orderId: order._id, clientRequestId: createClientRequestId('mall_pay') }).then((payment) => ({ order, payment })))
       .then(({ order, payment }) => {

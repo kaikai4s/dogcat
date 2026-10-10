@@ -43,29 +43,26 @@ async function setup({ templates = Object.fromEntries(templateKeys.map(key => [k
   page.onLoad({ role })
   page.onShow()
   await flush()
-  return { page, requests, calls, settingsCalls, errors }
+  return { page, requests, calls, settingsCalls, errors, settings, wx, api: module.exports }
 }
 const tap = scope => ({ currentTarget: { dataset: { scope } } })
 
 test('all notifications request at most three templates per tap and continue with the remainder', async () => {
   const { page, requests } = await setup()
-  assert.equal(page.data.availableCount, 10)
+  assert.equal(page.data.availableCount, 9)
   const pending = page.subscribe(tap('all'))
   assert.equal(requests.length, 1, 'native authorization must start synchronously in the tap')
   assert.equal(requests[0].length, 3)
   await pending
-  assert.equal(page.data.pendingKeys.length, 7)
+  assert.equal(page.data.pendingKeys.length, 6)
   assert.equal(requests.length, 1, 'do not automatically invoke another prompt without a gesture')
   await page.subscribe(tap('all'))
   assert.equal(requests[1].length, 3)
-  assert.equal(page.data.pendingKeys.length, 4)
+  assert.equal(page.data.pendingKeys.length, 3)
   await page.subscribe(tap('all'))
   assert.equal(requests[2].length, 3)
-  assert.equal(page.data.pendingKeys.length, 1)
-  await page.subscribe(tap('all'))
-  assert.equal(requests[3].length, 1)
   assert.equal(page.data.pendingKeys.length, 0)
-  assert.equal(new Set(requests.flat()).size, 10)
+  assert.equal(new Set(requests.flat()).size, 9)
 })
 
 test('templates shared by multiple notification types are requested once and update both statuses', async () => {
@@ -196,4 +193,74 @@ test('staff common reminders require a fresh gesture for the fourth template', a
   assert.deepEqual([...page.data.pendingKeys], ['serviceFinish'])
   await page.subscribe(tap('common'))
   assert.deepEqual([...requests[1]], ['tpl_serviceFinish'])
+})
+
+test('returning to subscription center refreshes backend IDs and discards old pending batches', async () => {
+  const { page, requests, settings } = await setup()
+  await page.subscribe(tap('all'))
+  assert.ok(page.data.pendingKeys.length)
+  settings.subscription.templates = { refundResult: 'new-refund' }
+  page.onShow()
+  assert.equal(page.data.ready, false)
+  page.subscribe(tap('all'))
+  assert.equal(requests.length, 1, 'no stale IDs while settings are refreshing')
+  await flush()
+  assert.equal(page.data.availableCount, 1)
+  assert.equal(page.data.pendingKeys.length, 0)
+  await page.subscribe(tap('all'))
+  assert.deepEqual([...requests[1]], ['new-refund'])
+})
+
+test('no cached config never triggers a native prompt after a network response', async () => {
+  const { api, wx, calls, requests } = await setup()
+  wx.getStorageSync = () => undefined
+  const before = calls.length
+  const result = await api.requestSubscribeTemplates(['refundResult'], 'cold-tap')
+  assert.equal(result.requested, false)
+  assert.equal(requests.length, 0)
+  assert.equal(calls.length, before, 'preload config on show instead of awaiting it inside a tap')
+})
+
+test('native prompts share a guard across entry points and consent logging never blocks business', async () => {
+  let finish
+  const { api, requests } = await setup({ holdConsent: true, subscribe(options) { finish = options.success } })
+  const first = api.requestSubscribeTemplates(['refundResult'], 'refund')
+  const second = await api.requestSubscribeTemplates(['staffDirectOrder'], 'staff')
+  assert.equal(second.reason, 'request_in_progress')
+  assert.equal(requests.length, 1)
+  finish({ tpl_refundResult: 'accept' })
+  assert.equal((await first).requested, true)
+  const next = api.requestSubscribeTemplates(['staffDirectOrder'], 'staff')
+  finish({ tpl_staffDirectOrder: 'accept' })
+  await next
+  assert.equal(requests.length, 2)
+})
+
+test('an omitted authorization result cannot inherit previously accepted display state', async () => {
+  let count = 0
+  const { page } = await setup({ subscribe(options) { options.success(++count === 1 ? { tpl_refundResult: 'accept' } : {}) } })
+  await page.subscribe(tap('refundResult'))
+  await page.subscribe(tap('refundResult'))
+  assert.equal(page.data.groups.flatMap(g => g.items).find(item => item.key === 'refundResult').accepted, false)
+})
+
+test('native prompt return keeps the remaining batch if the configured templates have not changed', async () => {
+  const { page, requests } = await setup()
+  await page.subscribe(tap('all'))
+  const remaining = [...page.data.pendingKeys]
+  page.onShow()
+  await flush()
+  assert.deepEqual([...page.data.pendingKeys], remaining)
+  await page.subscribe(tap('all'))
+  assert.ok(requests[1].every(id => !requests[0].includes(id)))
+})
+
+test('legacy after-sale slot is explicitly unavailable for both roles, never consuming consent', async () => {
+  for (const role of ['client', 'staff']) {
+    const { page, requests } = await setup({ role, templates: { disputeUpdate: 'unused' } })
+    assert.equal(page.data.availableCount, 0)
+    assert.equal(page.data.groups.flatMap(g => g.items).find(item => item.key === 'disputeUpdate').available, false)
+    await page.subscribe(tap('all'))
+    assert.equal(requests.length, 0)
+  }
 })

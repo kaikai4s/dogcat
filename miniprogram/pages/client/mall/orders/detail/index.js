@@ -1,4 +1,4 @@
-const { callFunction, showError, ensureLogin, requestSubscribeTemplates } = require('../../../../../utils/cloud')
+const { callFunction, showError, ensureLogin, requestSubscribeTemplates, loadSystemSettings } = require('../../../../../utils/cloud')
 const { createClientRequestId } = require('../../../../../utils/offlineQueue')
 const { copyText } = require('../../../../../utils/clipboard')
 
@@ -19,6 +19,7 @@ Page({
 
   onLoad(query) { this.setData({ id: query.id || query.orderId || '' }) },
   onShow() {
+    loadSystemSettings().catch(() => null)
     ensureLogin({ content: '登录后可查看商城订单。' })
       .then(() => this.load())
       .catch(() => wx.navigateBack())
@@ -40,7 +41,8 @@ Page({
   pay() {
     if (this.data.paying) return
     this.setData({ paying: true })
-    callFunction('payment', 'createPayment', { orderId: this.data.id, clientRequestId: createClientRequestId('mall_pay') })
+    requestSubscribeTemplates(['refundResult'], 'mall_pay').catch(() => null)
+      .then(() => callFunction('payment', 'createPayment', { orderId: this.data.id, clientRequestId: createClientRequestId('mall_pay') }))
       .then((payment) => {
         if (payment.paid) return payment
         if (payment.mock) return callFunction('payment', 'mockPayOrder', { orderId: this.data.id, paymentNo: payment.paymentNo })

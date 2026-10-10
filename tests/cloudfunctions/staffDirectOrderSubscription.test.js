@@ -4,7 +4,7 @@ const { createCollectionStore, loadCloudFunction } = require('./helpers')
 const createContext = require('../../cloudfunctions/api/services/context')
 const optimistic = require('./optimisticTransactions')
 
-function fixture({ template = 'direct-8560', publishMode = 'direct' } = {}) {
+function fixture({ template = 'direct-8560', publishMode = 'direct', concurrent = true } = {}) {
   const db = createCollectionStore({
     platform_configs: [{ _id: 'config', key: 'system_settings', value: { subscription: { enabled: true, templates: { staffDirectOrder: template } } } }],
     users: [{ _id: 'staff', openid: 'staff', roles: ['staff'], status: 'active' },
@@ -16,7 +16,7 @@ function fixture({ template = 'direct-8560', publishMode = 'direct' } = {}) {
       publishMode, requestedStaffOpenid: publishMode === 'direct' ? 'staff' : '', staffOpenid: '',
       payAmount: 89.9, serviceSummary: '上门遛狗', startTime: '2099-10-11 10:00', endTime: '2099-10-11 11:00', createdAt: new Date() }]
   })
-  optimistic(db)
+  if (concurrent) optimistic(db)
   const sent = []
   const cloud = { openapi: { subscribeMessage: { send: async message => { sent.push(message) } } } }
   const ctx = createContext({ db, cloud })
@@ -45,6 +45,33 @@ test('only paid designated bookings notify the requested staff with exact 8560 f
   await ctx.retryFailedSubscriptions()
   assert.equal(sent.length, 1)
   assert.equal(deliveries().length, 1)
+  assert.equal(db.state.subscription_logs.some(row => row.templateKey === 'orderAccepted'), false, 'payment is not staff acceptance')
+})
+
+test('direct payment never consumes client acceptance quota; actual staff acceptance sends it once', async () => {
+  const { db, ctx, cloud, order, assign, sent } = fixture()
+  db.state.platform_configs[0].value.customerService = { phone: '4008001234' }
+  db.state.platform_configs[0].value.subscription.templates.orderAccepted = 'accepted'
+  const payment = await ctx.reserveOrderPayment(order(), 'client', 'wechat', 'pay1')
+  await ctx.markOrderPaid('order', { paymentNo: payment.paymentNo, wxTransactionId: 'wx1' })
+  assert.equal(sent.filter(row => row.templateId === 'accepted').length, 0)
+  const assigned = await assign('staff', false)
+  await ctx.notifyOrderAccepted(assigned)
+  await ctx.retryFailedSubscriptions()
+  assert.equal(sent.filter(row => row.templateId === 'accepted').length, 1)
+  assert.equal(sent.find(row => row.templateId === 'accepted').touser, 'client')
+})
+
+test('system automatic acceptance persists the client acceptance notification in the same transaction', async () => {
+  const { db, ctx, pay, sent } = fixture({ concurrent: false })
+  db.state.platform_configs[0].value.customerService = { phone: '4008001234' }
+  db.state.platform_configs[0].value.subscription.templates.orderAccepted = 'accepted'
+  await pay()
+  db.state.orders[0].paidAt = new Date(Date.now() - 3605000)
+  assert.deepEqual(await ctx.autoAcceptDueDirectOrders(), ['order'])
+  await ctx.retryFailedSubscriptions()
+  assert.equal(sent.filter(row => row.templateId === 'accepted').length, 1)
+  assert.equal(db.state.subscription_logs.filter(row => row.delivery && row.templateKey === 'orderAccepted').length, 1)
 })
 
 test('concurrent payment settlement produces one designated booking notification', async () => {
@@ -174,4 +201,57 @@ test('admin save and public configuration preserve independent refund and staff 
   assert.equal(settings.data.subscription.templates.staffDirectOrder, 'custom-8560')
   assert.equal(settings.data.subscription.templates.refundResult, 'custom-7272')
   assert.equal(settings.data.subscription.templates.orderAssigned, 'existing-client')
+})
+
+test('all adapted template IDs survive admin save and public configuration', async () => {
+  const { db } = fixture()
+  const api = loadCloudFunction('api', db, 'admin')
+  const keys = ['orderAccepted', 'staffDeparture', 'serviceStart', 'serviceFinish', 'upcomingServiceReminder', 'remoteUnlock', 'refundResult', 'staffDirectOrder']
+  const templates = Object.fromEntries(keys.map(key => [key, '  ' + key + '-new-id  ']))
+  const saved = await api.main({ module: 'admin', action: 'saveSystemSettings', data: { subscription: { enabled: true, templates } } })
+  assert.equal(saved.ok, true, saved.message)
+  const settings = await api.main({ module: 'system', action: 'getSettings', data: {} })
+  for (const key of keys) assert.equal(settings.data.subscription.templates[key], key + '-new-id')
+})
+
+test('legacy premature acceptance delivery is skipped and kept as history', async () => {
+  const { db, ctx, order, sent } = fixture()
+  await db.runTransaction(tx => ctx.enqueueOrderNotification(tx, 'client', 'orderAccepted', order(), {}, 'client', 'order_accepted:order'))
+  await ctx.retryFailedSubscriptions()
+  assert.equal(sent.length, 0)
+  const row = db.state.subscription_logs.find(row => row.delivery)
+  assert.equal(row.status, 'skipped')
+  assert.equal(row.error, 'legacy_order_not_accepted')
+})
+
+for (const status of ['on_the_way', 'in_service', 'completed', 'cancelled']) {
+  test('delayed upcoming reminder does not ask staff to go to an order already ' + status, async () => {
+    const { db, ctx, order, sent } = fixture()
+    await db.runTransaction(tx => ctx.enqueueOrderNotification(tx, 'staff', 'upcomingServiceReminder', order(), {}, 'staff', 'upcoming_service:order:staff:1'))
+    Object.assign(db.state.orders[0], { staffOpenid: 'staff', status })
+    await ctx.retryFailedSubscriptions()
+    assert.equal(sent.length, 0)
+    const row = db.state.subscription_logs.find(row => row.delivery)
+    assert.equal(row.status, 'skipped')
+    assert.equal(row.error, 'service_reminder_obsolete')
+  })
+}
+
+test('multi-day completed sessions never replay an old reminder while another session is pending', async () => {
+  const { db, ctx, order, sent } = fixture()
+  db.state.platform_configs[0].value.subscription.templates.upcomingServiceReminder = 'upcoming'
+  Object.assign(db.state.orders[0], { status: 'day_completed', staffOpenid: 'staff', serviceSessions: [
+    { index: 1, startTime: '2099-10-11 10:00', endTime: '2099-10-11 11:00', status: 'completed' },
+    { index: 2, startTime: '2099-10-12 10:00', endTime: '2099-10-12 11:00', status: 'pending' }
+  ] })
+  await db.runTransaction(tx => ctx.enqueueOrderNotification(tx, 'staff', 'upcomingServiceReminder', order(), {}, 'staff', 'upcoming_service:order:staff:1:2099-10-11 10:00'))
+  await ctx.retryFailedSubscriptions()
+  assert.equal(sent.length, 0)
+  assert.equal(db.state.subscription_logs.find(row => row.delivery).error, 'service_reminder_obsolete')
+  await db.runTransaction(tx => ctx.enqueueOrderNotification(tx, 'staff', 'upcomingServiceReminder', order(), {
+    startTimeText: '2099-10-12 10:00', endTimeText: '2099-10-12 11:00'
+  }, 'staff', 'upcoming_service:order:staff:2:2099-10-12 10:00'))
+  await ctx.retryFailedSubscriptions()
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].templateId, 'upcoming')
 })

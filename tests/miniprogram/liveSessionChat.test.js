@@ -15,7 +15,7 @@ function loadChat(file, fetch) {
     setTimeout(fn, delay) { timers.set(++timerId, { fn, delay }); return timerId },
     clearTimeout(id) { timers.delete(id) }
   }
-  const deps = { navMethods: () => ({}), ensureLogin: async () => ({}), callFunction: fetch }
+  const deps = { navMethods: () => ({}), ensureLogin: async () => ({}), loadSystemSettings: async () => ({}), callFunction: fetch }
   vm.runInNewContext(fs.readFileSync(path.join(root, file), 'utf8'), {
     Page(config) { page = config }, ...clock, console,
     require(name) {

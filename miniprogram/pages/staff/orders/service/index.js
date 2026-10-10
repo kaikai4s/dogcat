@@ -1,5 +1,5 @@
 const { sessionChatMethods } = require('../../utils/sessionChat')
-const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, requestSubscribeTemplates, showLoading, hideLoading } = require('../../../../utils/cloud')
+const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, requestSubscribeTemplates, loadSystemSettings, showLoading, hideLoading } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, failOfflineTask, retryOfflineTasks, withOfflineFlush, isOfflineOwner, getUnownedOfflineTaskCount } = require('../../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
@@ -234,6 +234,7 @@ Page({
   },
 
   onShow() {
+    loadSystemSettings().catch(() => null)
     this._chatPageVisible = true
     this.applyCurrentTheme()
     if (this.data.id) this.loadOrder()
@@ -493,7 +494,8 @@ Page({
   },
 
   confirmCareRiskStart() {
-    this.setData({ showCareRiskModal: false, careRiskStartConfirmed: true }, () => this.start())
+    this.setData({ showCareRiskModal: false, careRiskStartConfirmed: true })
+    this.start()
   },
 
   start() {
@@ -511,8 +513,7 @@ Page({
     this.setData({ starting: true })
     showLoading({ title: '正在准备开始服务...', mask: true })
 
-    // 【新增】获取实时位置并检查前置条件
-    wx.getLocation({
+    const checkLocation = () => wx.getLocation({
       type: 'gcj02',
       success: (locationRes) => {
         // 先检查开始服务的准备情况
@@ -570,7 +571,6 @@ Page({
               return Promise.reject(new Error('前置条件未满足'))
             }
             // 所有条件都满足，开始服务
-            return requestSubscribeTemplates(['upcomingServiceReminder', 'serviceProgress', 'serviceFinish'], 'staff_service')
           })
           .then(() => callFunction('order', 'startService', {
             id: this.data.id,
@@ -604,6 +604,15 @@ Page({
         })
       }
     })
+    // Ask within the tap, before location and readiness network callbacks.
+    return requestSubscribeTemplates(['serviceProgress', 'serviceFinish'], 'staff_service').catch(() => null)
+      .then(checkLocation)
+      .catch(error => {
+        hideLoading()
+        this._startingLock = false
+        this.setData({ starting: false })
+        showError(error)
+      })
   },
 
   requestEarlyStart() {
@@ -648,8 +657,7 @@ Page({
     if (!this.data.order || !this.data.order.serviceStarted) return
     if (this.data.requestingRemoteUnlock) return
     this.setData({ requestingRemoteUnlock: true })
-    requestSubscribeTemplates(['serviceProgress'], 'staff_remote_unlock')
-      .then(() => callFunction('homeSecurity', 'requestRemoteUnlock', { orderId: this.data.id }))
+    callFunction('homeSecurity', 'requestRemoteUnlock', { orderId: this.data.id })
       .then((security) => {
         wx.showToast({ title: '已请求开门', icon: 'none' })
         this.setData({ requestingRemoteUnlock: false, order: { ...(this.data.order || {}), orderHomeSecurity: security } })

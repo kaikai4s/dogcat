@@ -1,4 +1,4 @@
-const { callFunction, showError, requestSubscribeTemplates } = require('../../../../utils/cloud')
+const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { withOrderText, buildOrderCareCards } = require('../../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
@@ -19,6 +19,7 @@ Page({
   },
   onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }); this.loadCustomerService() },
   onShow() {
+    loadSystemSettings().catch(() => null)
     this.applyCurrentTheme()
     this.load()
   },
@@ -89,9 +90,13 @@ Page({
     wx.openLocation({ latitude, longitude, name: order.locationIsApproximate ? '服务区域（模糊位置）' : (order.serviceAddress || '服务地址'), address, scale: order.locationIsApproximate ? 14 : 16, fail: () => wx.showToast({ title: '地图打开失败，请稍后重试', icon: 'none' }) })
   },
   accept() {
+    if (this._checkingAccept || this.data.acceptingRiskOrder) return
+    this._checkingAccept = true
     const orderId = this.data.id
     console.log('【调试】开始接单，订单ID:', orderId)
-    callFunction('staff', 'checkAcceptOrderRisk', { orderId })
+    requestSubscribeTemplates(['staffDirectOrder', 'upcomingServiceReminder', 'serviceProgress'], 'staff_accept_order')
+      .catch(() => null)
+      .then(() => callFunction('staff', 'checkAcceptOrderRisk', { orderId }))
       .then((risk) => {
         console.log('【调试】风险检测结果:', JSON.stringify(risk, null, 2))
         console.log('【调试】requiresConfirmation:', risk?.requiresConfirmation)
@@ -108,8 +113,10 @@ Page({
         console.error('【调试】风险检测失败:', error)
         showError(error)
       })
+      .finally(() => { this._checkingAccept = false })
   },
   submitAcceptOrder(riskConfirmed) {
+    if (this.data.acceptingRiskOrder) return
     this.setData({ acceptingRiskOrder: true })
     const doAccept = () => callFunction('staff', 'acceptOrder', { orderId: this.data.id, riskConfirmed: riskConfirmed === true })
       .then(() => {
@@ -120,9 +127,7 @@ Page({
       .catch(showError)
       .finally(() => this.setData({ acceptingRiskOrder: false }))
 
-    requestSubscribeTemplates(['staffDirectOrder', 'upcomingServiceReminder', 'serviceProgress'], 'staff_accept_order')
-      .catch(() => null)
-      .then(doAccept)
+    return doAccept()
   },
   continueAcceptRisk() {
     this.setData({ acceptRiskStep: 2, acceptRiskAgreed: false })

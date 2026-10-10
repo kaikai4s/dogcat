@@ -258,6 +258,19 @@ module.exports = function createService({
   }
 
   const sendDelivery = async message => {
+    // Earlier versions queued acceptance at payment time, before assigning staff.
+    if (message.templateKey === 'orderAccepted' && message.deliveryKey === `order_accepted:${message.orderId}`) {
+      return { status: 'skipped', error: 'legacy_order_not_accepted', templateKey: message.templateKey }
+    }
+    if (message.templateKey === 'upcomingServiceReminder' && (message.deliveryKey || '').startsWith('upcoming_service:')) {
+      const order = (await db.collection('orders').doc(message.orderId).get()).data
+      const session = order && getNextPendingServiceSession(order)
+      const currentKey = session && makeIdempotencyKey('upcoming_service', order._id, order.staffOpenid, String(session.index), session.startTime || order.startTime)
+      if (!order || order.adminDeletedAt || !['assigned', 'day_completed'].includes(order.status) || order.staffOpenid !== message.openid ||
+          !session || session.status === 'completed' || currentKey !== message.deliveryKey) {
+        return { status: 'skipped', error: 'service_reminder_obsolete', templateKey: message.templateKey }
+      }
+    }
     if (message.templateKey === 'staffDirectOrder') {
       const order = (await db.collection('orders').doc(message.orderId).get()).data
       const current = order && !order.adminDeletedAt && order.paymentStatus === 'paid' && (message.assignmentKind === 'request'

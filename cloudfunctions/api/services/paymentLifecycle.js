@@ -1,6 +1,6 @@
 module.exports = function createService({
   recordStaffDepositPayment, reserveOrderPayment, settleOrderPayment, requestOrderRefund,
-  appendOrderClientMessage, createPaymentNo, notifyOrder, notifyOrderAccepted
+  appendOrderClientMessage, createPaymentNo, notifyOrder
 }) {
   function buildMallOrderItemSnapshot(product, sku, quantity) {
     return { productId: product._id, skuId: sku.skuId, name: product.name, coverFileId: sku.imageFileId || product.coverFileId || '', price: Number(sku.price || 0), quantity, specText: sku.specText || '', specs: sku.specs || {}, skuSnapshot: { skuId: sku.skuId, specs: sku.specs || {}, specText: sku.specText || '', price: Number(sku.price || 0), originalPrice: Number(sku.originalPrice || 0), imageFileId: sku.imageFileId || '' } }
@@ -22,7 +22,6 @@ module.exports = function createService({
       try {
         await appendOrderClientMessage(order, { eventType: 'paid', title: '订单已支付', detail: `支付金额 ¥${order.payAmount}`, actorRole: 'system', unreadForClient: true })
         await notifyOrder(order.clientOpenid, 'orderPaid', order, { amount: Number(order.payAmount), statusText: '已支付' })
-        if (order.publishMode === 'direct' && order.requestedStaffOpenid) await notifyOrderAccepted(order, order.requestedStaffName)
       } catch (error) { console.error('[paid-notification]', { orderId, message: error.message }) }
     }
     return { orderId, status: 'paid', paymentNo: order.paymentNo }

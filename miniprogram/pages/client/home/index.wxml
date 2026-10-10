@@ -1,4 +1,9 @@
 <view class="page client-home-page {{themeClass}} {{fontClass}}">
+  <navigator class="subscription-entry" url="/pages/common/subscriptions/index?role=client">
+    <view class="subscription-entry-icon"><text class="remix-icon ri-notification-3-line"></text></view>
+    <view class="subscription-entry-copy"><view class="subscription-entry-title">开启订单与服务提醒</view><view class="subscription-entry-desc">接收接单、出发、服务完成和退款通知</view></view>
+    <view class="subscription-entry-action">去开启 <text class="remix-icon ri-arrow-right-s-line"></text></view>
+  </navigator>
   <view class="home-hero-section">
     <view class="home-topbar">
       <view class="home-location-card interactive" bindtap="updateLocation">

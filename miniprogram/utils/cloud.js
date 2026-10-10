@@ -311,8 +311,10 @@ function loadSystemSettings() {
     .catch(() => getCachedSystemSettings())
 }
 
+let subscriptionRequestInFlight = false
 function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) {
   const requestWithSettings = (settings) => {
+    if (subscriptionRequestInFlight) return Promise.resolve({ requested: false, reason: 'request_in_progress' })
     const subscription = settings.subscription || {}
     if (!subscription.enabled) return Promise.resolve({ requested: false, reason: 'subscription_disabled' })
     if (typeof wx.requestSubscribeMessage !== 'function') return Promise.resolve({ requested: false, reason: 'request_api_unavailable' })
@@ -322,31 +324,31 @@ function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) 
     const tmplIds = Array.from(new Set(requestKeys.map(resolveTemplateId))).slice(0, 3)
     const limitedKeys = requestKeys.filter((key) => tmplIds.includes(resolveTemplateId(key)))
     if (!tmplIds.length) return Promise.resolve({ requested: false, reason: 'template_not_configured' })
+    subscriptionRequestInFlight = true
     return new Promise((resolve) => {
       wx.requestSubscribeMessage({
         tmplIds,
         success: (res) => resolve({ requested: true, templateKeys: limitedKeys, templateIds: tmplIds, templateIdByKey: Object.fromEntries(limitedKeys.map(key => [key, resolveTemplateId(key)])), results: res || {} }),
         fail: (error) => resolve({ requested: false, reason: 'request_failed', errorCode: error && error.errCode, error: error && (error.errMsg || error.message) || '' })
       })
-    }).then((result) => {
-      if (!result.requested) return result
-      const templateIds = {}
-      limitedKeys.forEach((key) => { templateIds[key] = resolveTemplateId(key) })
-      const recording = callFunction('system', 'recordSubscriptionConsent', { templateKeys: limitedKeys, templateIds, results: result.results, scene })
+    }).catch(error => ({ requested: false, reason: 'request_failed', error: error && (error.errMsg || error.message) || '' }))
+      .then((result) => {
+        if (!result.requested) return result
+        const templateIds = {}
+        limitedKeys.forEach((key) => { templateIds[key] = resolveTemplateId(key) })
+        const recording = callFunction('system', 'recordSubscriptionConsent', { templateKeys: limitedKeys, templateIds, results: result.results, scene })
           .then(() => result)
           .catch(() => result)
-      return options.waitForConsent === false ? result : recording
-    })
+        return options.waitForConsent === true ? recording : result
+      }).finally(() => { subscriptionRequestInFlight = false })
   }
 
   // Prepared settings keep the native authorization call inside the tap gesture.
   if (options.settings) return requestWithSettings(options.settings)
   const cachedSettings = getCachedSystemSettings()
-  const cachedSubscription = cachedSettings.subscription || {}
-  const cachedTemplates = cachedSubscription.templates || {}
-  const hasCachedTemplate = templateKeys.some((key) => cachedTemplates[key])
-  if (cachedSubscription.enabled && hasCachedTemplate) return requestWithSettings(cachedSettings)
-  return loadSystemSettings().then(requestWithSettings).catch((error) => ({ requested: false, reason: 'settings_load_failed', error: error && (error.message || error.errMsg) || '' }))
+  // Pages refresh settings on show. Never put a network await before the native
+  // prompt: WeChat requires a user gesture (or payment callback) to authorize it.
+  return requestWithSettings(cachedSettings)
 }
 
 function requirePrivacyAuthorize() {

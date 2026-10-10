@@ -1,6 +1,6 @@
 module.exports = function createService(context) {
   const { db, crypto, now, getPayableOrder, createPaymentNo,
-    normalizeMallProduct, getSkuById, assertOrderPaymentOpen, amountYuanToFen, enqueueOrderNotification, enqueueOrderAccepted,
+    normalizeMallProduct, getSkuById, assertOrderPaymentOpen, amountYuanToFen, enqueueOrderNotification,
     enqueueStaffDirectOrder, notifyStaffDirectOrder } = context
   const key = (prefix, value) => `${prefix}_${crypto.createHash('sha256').update(value).digest('hex').slice(0, 32)}`
   async function optional(tx, name, id) {
@@ -189,7 +189,6 @@ module.exports = function createService(context) {
       if (resolved.orderType === 'service') {
         const paid = { ...order, ...patch }
         await enqueueOrderNotification(tx, order.clientOpenid, 'orderPaid', paid, { amount: Number(order.payAmount), statusText: '已支付' })
-        if (order.publishMode === 'direct' && order.requestedStaffOpenid) await enqueueOrderAccepted(tx, paid, order.requestedStaffName)
         if (order.publishMode === 'direct' && order.requestedStaffOpenid) await enqueueStaffDirectOrder(tx, paid, 'request')
       }
       return { order: { ...order, ...patch }, changed: true, orderType: resolved.orderType }

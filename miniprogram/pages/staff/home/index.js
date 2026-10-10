@@ -1,4 +1,4 @@
-const { callFunction, showError, requirePrivacyAuthorize, requestSubscribeTemplates, showLoading, hideLoading } = require('../../../utils/cloud')
+const { callFunction, showError, requirePrivacyAuthorize, requestSubscribeTemplates, loadSystemSettings, showLoading, hideLoading } = require('../../../utils/cloud')
 const { getSelectedLocation } = require('../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
@@ -121,6 +121,7 @@ Page({
   },
 
   onShow() {
+    loadSystemSettings().catch(() => null)
     this.applyCurrentTheme()
     loadMessageUnread(this, 'staff')
     const justUpdatedWorkbenchLocation = this.lastWorkbenchLocationUpdatedAt && Date.now() - this.lastWorkbenchLocationUpdatedAt < 10000
@@ -512,7 +513,9 @@ Page({
     this.setData({ acceptingOrderId: orderId })
     showLoading({ title: '正在抢单...', mask: true })
 
-    callFunction('staff', 'checkAcceptOrderRisk', { orderId })
+    requestSubscribeTemplates(['staffDirectOrder', 'upcomingServiceReminder', 'serviceProgress'], 'staff_grab_order')
+      .catch(() => null)
+      .then(() => callFunction('staff', 'checkAcceptOrderRisk', { orderId }))
       .then((risk) => {
         if (risk && risk.requiresConfirmation) {
           hideLoading()
@@ -598,9 +601,7 @@ Page({
             showError(error)
           })
 
-        requestSubscribeTemplates(['staffDirectOrder', 'upcomingServiceReminder', 'serviceProgress'], 'staff_grab_order')
-          .catch(() => null)
-          .then(doAccept)
+        doAccept()
       },
       fail: (err) => {
         hideLoading()
