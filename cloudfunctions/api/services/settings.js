@@ -185,6 +185,7 @@ module.exports = function createService({
           orderAssigned: safeText(subscription.templates && subscription.templates.orderAssigned).trim(),
           orderAccepted: safeText(subscription.templates && subscription.templates.orderAccepted).trim(),
           staffDeparture: safeText(subscription.templates && subscription.templates.staffDeparture).trim(),
+          serviceProgress: safeText(subscription.templates && subscription.templates.serviceProgress).trim(),
           serviceStart: safeText(subscription.templates && subscription.templates.serviceStart).trim(),
           serviceFinish: safeText(subscription.templates && subscription.templates.serviceFinish).trim(),
           remoteUnlock: safeText(subscription.templates && subscription.templates.remoteUnlock).trim(),

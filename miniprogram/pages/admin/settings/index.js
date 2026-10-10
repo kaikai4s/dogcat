@@ -171,6 +171,7 @@ function normalizeSubscriptionConfig(subscription = {}) {
       orderAccepted: templates.orderAccepted || '',
       staffDeparture: templates.staffDeparture || '',
       serviceStart: templates.serviceStart || '',
+      serviceProgress: templates.serviceProgress || '',
       serviceFinish: templates.serviceFinish || '',
       remoteUnlock: templates.remoteUnlock || '',
       refundResult: templates.refundResult || '',

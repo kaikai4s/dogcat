@@ -72,6 +72,6 @@ test('staff service page has startEarlyStartPolling and stopEarlyStartPolling li
 
   assert.match(code, /startEarlyStartPolling/)
   assert.match(code, /stopEarlyStartPolling/)
-  assert.match(code, /requestSubscribeTemplates\(\[['"]serviceStart['"]\],\s*['"]staff_early_start['"]\)/)
+  assert.match(code, /requestSubscribeTemplates\(\[['"]serviceProgress['"]\],\s*['"]staff_early_start['"]\)/)
 })
 

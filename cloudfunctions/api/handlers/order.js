@@ -617,7 +617,7 @@ module.exports = function createHandler(context) {
       const created = await db.collection('order_early_start_requests').add({ data: request })
       await appendOrderTimeline(order._id, 'early_start_requested', '宠护师申请提前开始', request.reason, 'staff')
       await appendOrderClientMessage(order, { eventType: 'early_start_requested', title: '宠护师申请提前开始', detail: request.reason, actorRole: 'staff' })
-      await notifyOrder(order.clientOpenid, 'serviceStart', order, {
+      await notifyOrder(order.clientOpenid, 'serviceProgress', order, {
         statusText: '待确认提前开始',
         tip: '宠护师已到达，申请提前开始服务，请点击确认'
       }, 'client')
@@ -646,7 +646,7 @@ module.exports = function createHandler(context) {
         actorRole: 'client',
         idempotencyKey: makeIdempotencyKey('order_staff_message', order._id, approved ? 'early_start_approved' : 'early_start_rejected', request._id)
       })
-      await notifyOrder(order.staffOpenid, 'serviceStart', order, {
+      await notifyOrder(order.staffOpenid, 'serviceProgress', order, {
         statusText: approved ? '已同意提前开始' : '已拒绝提前开始',
         tip: approved ? '宠物主已同意提前开始服务，可以开始服务' : '宠物主已拒绝提前开始服务，请按原约定时间开始'
       }, 'staff')
@@ -854,7 +854,7 @@ module.exports = function createHandler(context) {
           actorRole: 'system',
           unreadForClient: true
         })
-        await notifyOrder(order.clientOpenid, 'serviceStart', updatedOrder, {
+        await notifyOrder(order.clientOpenid, 'serviceProgress', updatedOrder, {
           statusText: '宠托师即将到达',
           tip: '宠托师已在路上，预计10分钟后到达您家'
         }, 'client').catch(() => {})
@@ -923,7 +923,7 @@ module.exports = function createHandler(context) {
           actorRole: 'system',
           unreadForClient: true
         })
-        await notifyOrder(order.clientOpenid, 'serviceStart', updatedOrder, {
+        await notifyOrder(order.clientOpenid, 'serviceProgress', updatedOrder, {
           statusText: '宠托师即将到达',
           tip: '宠托师已在路上，预计10分钟后到达您家'
         }, 'client').catch(() => {})
@@ -1155,11 +1155,20 @@ module.exports = function createHandler(context) {
         startServiceUpdate.startDistanceKm = distanceToService
       }
 
-      await updateOrderWhenStatus(data.id, order.status, startServiceUpdate, '订单状态不可开始服务')
-      const startedOrder = { ...order, _id: data.id, status: ORDER_STATUS.IN_SERVICE, currentSessionStartedAt: time, serviceSessions, updatedAt: time }
+      const startNotificationKey = makeIdempotencyKey('service_start', data.id, String(currentSession.index), currentSession.startTime)
+      const startedOrder = await db.runTransaction(async tx => {
+        const latest = (await tx.collection('orders').doc(data.id).get()).data
+        if (!latest || latest.status !== order.status || latest.staffOpenid !== openid) throw new Error('订单状态不可开始服务')
+        const latestSession = getNextPendingServiceSession(latest, time)
+        if (!latestSession || latestSession.index !== currentSession.index || latestSession.startTime !== currentSession.startTime) throw new Error('服务场次已变化，请刷新后重试')
+        const nextOrder = { ...latest, ...startServiceUpdate, _id: data.id }
+        await tx.collection('orders').doc(data.id).update({ data: startServiceUpdate })
+        await enqueueOrderNotification(tx, latest.clientOpenid, 'serviceStart', nextOrder, {}, 'client', startNotificationKey)
+        return nextOrder
+      })
+      await notifyOrder(startedOrder.clientOpenid, 'serviceStart', startedOrder, {}, 'client', startNotificationKey)
       await appendOrderTimeline(data.id, 'started', currentSession.index > 1 ? `第${currentSession.index}天服务已开始` : '服务已开始', '', 'staff')
       await appendOrderClientMessage(startedOrder, { eventType: 'started', title: currentSession.index > 1 ? `第${currentSession.index}天服务已开始` : '服务已开始', detail: '宠护师已开始服务', actorRole: 'staff' })
-      await notifyOrder(order.clientOpenid, 'serviceStart', order, { statusText: '服务中' })
       return { id: data.id, status: ORDER_STATUS.IN_SERVICE, activeSessionIndex: currentSession.index, currentSessionStartedAt: time }
     }
 

@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const flush = () => new Promise(resolve => setImmediate(resolve))
-const templateKeys = ['orderAccepted', 'staffDeparture', 'serviceStart', 'serviceFinish', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate', 'upcomingServiceReminder', 'withdrawResult']
+const templateKeys = ['orderAccepted', 'staffDeparture', 'serviceStart', 'serviceProgress', 'serviceFinish', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate', 'upcomingServiceReminder', 'withdrawResult']
 
 async function setup({ templates = Object.fromEntries(templateKeys.map(key => [key, `tpl_${key}`])), enabled = true, mainSwitch = true, role = 'client', subscribe, holdConsent = false } = {}) {
   const requests = []
@@ -49,30 +49,33 @@ const tap = scope => ({ currentTarget: { dataset: { scope } } })
 
 test('all notifications request at most three templates per tap and continue with the remainder', async () => {
   const { page, requests } = await setup()
-  assert.equal(page.data.availableCount, 9)
+  assert.equal(page.data.availableCount, 10)
   const pending = page.subscribe(tap('all'))
   assert.equal(requests.length, 1, 'native authorization must start synchronously in the tap')
   assert.equal(requests[0].length, 3)
   await pending
-  assert.equal(page.data.pendingKeys.length, 6)
+  assert.equal(page.data.pendingKeys.length, 7)
   assert.equal(requests.length, 1, 'do not automatically invoke another prompt without a gesture')
   await page.subscribe(tap('all'))
   assert.equal(requests[1].length, 3)
-  assert.equal(page.data.pendingKeys.length, 3)
+  assert.equal(page.data.pendingKeys.length, 4)
   await page.subscribe(tap('all'))
   assert.equal(requests[2].length, 3)
+  assert.equal(page.data.pendingKeys.length, 1)
+  await page.subscribe(tap('all'))
+  assert.equal(requests[3].length, 1)
   assert.equal(page.data.pendingKeys.length, 0)
-  assert.equal(new Set(requests.flat()).size, 9)
+  assert.equal(new Set(requests.flat()).size, 10)
 })
 
 test('templates shared by multiple notification types are requested once and update both statuses', async () => {
-  const { page, requests, calls } = await setup({ role: 'staff', templates: { serviceStart: 'shared', serviceFinish: 'finish' } })
+  const { page, requests, calls } = await setup({ role: 'staff', templates: { serviceProgress: 'shared', serviceFinish: 'finish' } })
   await page.subscribe(tap('common'))
   assert.deepEqual(Array.from(requests[0]), ['shared', 'finish'])
   assert.ok(page.data.groups[0].items.every(item => item.accepted))
   const consent = calls.find(call => call.action === 'recordSubscriptionConsent')
   assert.ok(consent.data.templateKeys.includes('upcomingServiceReminder'))
-  assert.ok(consent.data.templateKeys.includes('serviceStart'))
+  assert.ok(consent.data.templateKeys.includes('serviceProgress'))
 })
 
 test('rejected or filtered notification templates are not shown as accepted', async () => {
@@ -140,4 +143,19 @@ test('client can explicitly authorize departure template and record consent; sta
   assert.equal(consent.data.results.tpl_staffDeparture, 'accept')
   const staff = await setup({ role: 'staff' })
   assert.equal(staff.page.data.groups.flatMap(g => g.items).some(i => i.key === 'staffDeparture'), false)
+})
+
+test('client authorizes started template separately; staff never subscribes to it as progress', async () => {
+  const client = await setup()
+  const items = client.page.data.groups.flatMap(group => group.items)
+  assert.equal(items.find(item => item.key === 'serviceStart').title, '服务开始通知')
+  await client.page.subscribe(tap('serviceStart'))
+  assert.deepEqual([...client.requests[0]], ['tpl_serviceStart'])
+  const consent = client.calls.find(call => call.action === 'recordSubscriptionConsent')
+  assert.equal(consent.data.templateIds.serviceStart, 'tpl_serviceStart')
+  const staff = await setup({ role: 'staff', templates: { serviceStart: 'start-only' } })
+  assert.equal(staff.page.data.availableCount, 0)
+  assert.equal(staff.page.data.groups.flatMap(group => group.items).some(item => item.key === 'serviceStart'), false)
+  staff.page.subscribe(tap('all'))
+  assert.equal(staff.requests.length, 0)
 })

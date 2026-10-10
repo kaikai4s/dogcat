@@ -570,7 +570,7 @@ Page({
               return Promise.reject(new Error('前置条件未满足'))
             }
             // 所有条件都满足，开始服务
-            return requestSubscribeTemplates(['upcomingServiceReminder', 'serviceStart', 'serviceFinish'], 'staff_service')
+            return requestSubscribeTemplates(['upcomingServiceReminder', 'serviceProgress', 'serviceFinish'], 'staff_service')
           })
           .then(() => callFunction('order', 'startService', {
             id: this.data.id,
@@ -611,7 +611,7 @@ Page({
     this._requestingEarlyStartLock = true
     this.setData({ requestingEarlyStart: true })
     showLoading({ title: '正在申请提前开始...', mask: true })
-    requestSubscribeTemplates(['serviceStart'], 'staff_early_start')
+    requestSubscribeTemplates(['serviceProgress'], 'staff_early_start')
       .then(() => callFunction('order', 'requestEarlyStart', { id: this.data.id, reason: '宠护师已到达，申请提前开始服务' }))
       .then((earlyStartRequest) => {
         hideLoading()
@@ -648,7 +648,7 @@ Page({
     if (!this.data.order || !this.data.order.serviceStarted) return
     if (this.data.requestingRemoteUnlock) return
     this.setData({ requestingRemoteUnlock: true })
-    requestSubscribeTemplates(['serviceStart'], 'staff_remote_unlock')
+    requestSubscribeTemplates(['serviceProgress'], 'staff_remote_unlock')
       .then(() => callFunction('homeSecurity', 'requestRemoteUnlock', { orderId: this.data.id }))
       .then((security) => {
         wx.showToast({ title: '已请求开门', icon: 'none' })

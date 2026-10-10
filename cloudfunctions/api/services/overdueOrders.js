@@ -89,7 +89,7 @@ module.exports = function createService({
       // 阶段 1：超时 15 分钟未开始 -> 催促宠托师尽快履约
       if (overdueMs >= 15 * 60 * 1000 && !remindedSessions.includes(sessionIndex)) {
         try {
-          await notifyOrder(order.staffOpenid, 'serviceStart', order, {
+          await notifyOrder(order.staffOpenid, 'serviceProgress', order, {
             statusText: '服务已超时未开始',
             tip: `约定于 ${timeText} 开始，已超时 15 分钟，请尽快打卡开始`
           }, 'staff')
@@ -129,7 +129,7 @@ module.exports = function createService({
       // 阶段 2：超时 30 分钟未开始 -> 提醒宠物主并标记异常预警
       if (overdueMs >= 30 * 60 * 1000 && !clientAlertedSessions.includes(sessionIndex)) {
         try {
-          await notifyOrder(order.clientOpenid, 'serviceStart', order, {
+          await notifyOrder(order.clientOpenid, 'serviceProgress', order, {
             statusText: '服务未按时开始',
             tip: '宠托师尚未开始服务，平台已介入催促跟进'
           }, 'client')

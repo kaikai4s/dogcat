@@ -50,6 +50,12 @@ module.exports = function createService({
         thing5: { value: safeText(detail.orderDemand || serviceName).slice(0, 20) }
       }
     }
+    if (templateKey === 'serviceStart') {
+      return {
+        character_string1: { value: safeText(orderNo).slice(0, 32) },
+        thing2: { value: '服务已开始，毛孩子正被贴心照顾' }
+      }
+    }
     if (templateKey === 'staffDeparture') {
       return {
         thing1: { value: safeText(serviceName).slice(0, 20) },
@@ -132,13 +138,25 @@ module.exports = function createService({
         templateId = settings.subscription.templates.orderAssigned || ''
       }
       if (!templateId && templateKey === 'upcomingServiceReminder') {
-        templateId = settings.subscription.templates.serviceStart || ''
+        templateId = settings.subscription.templates.serviceProgress || ''
       }
       if (!settings.subscription.enabled || !templateId) {
         const result = { status: 'skipped', error: !settings.subscription.enabled ? 'subscription_disabled' : 'template_not_configured', templateKey, templateId }
         console.log('[subscription] skipped', { orderId, templateKey, status: 'skipped', code: result.error })
         await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, status: result.status, error: result.error })
         return result
+      }
+      if (templateKey === 'serviceStart' && !messageData.character_string1) {
+        // Old queued serviceStart messages also contained pre-start and overdue events.
+        if (!messageData.thing4 || messageData.thing4.value !== '服务中') {
+          const result = { status: 'skipped', error: 'legacy_service_start_not_started', templateKey, templateId }
+          await recordSubscriptionLog({ openid, templateKey, templateId, orderId, page, data: messageData, ...result })
+          return result
+        }
+        messageData = {
+          character_string1: messageData.character_string5,
+          thing2: { value: '服务已开始，毛孩子正被贴心照顾' }
+        }
       }
       if (templateKey === 'orderAccepted') {
         const platformPhone = safeText(settings.customerService && settings.customerService.phone).trim()

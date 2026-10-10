@@ -264,7 +264,10 @@
           <view class="notice">接单通知使用模板 44245：订单编号 character_string1、伴宠师名 thing2、联系电话 phone_number4、商品名称 thing5。联系电话读取本页客服配置中的客服电话；更换模板后需用户重新订阅。</view>
           <view class="field-item"><text class="label">宠托师出发通知模板</text><input class="input" value="{{settings.subscription.templates.staffDeparture}}" data-field="staffDeparture" bindinput="subscriptionTemplateInput" placeholder="填写宠托师出发通知模板 ID" /></view>
           <view class="notice">模板编号 77732：服务项目 thing1、预约时间 time2、出发时间 time3、宠托师 thing4。宠托师点击出发后通知下单用户，每场服务发送一次；用户需单独同意此模板。</view>
-          <view class="field-item"><text class="label">服务开始模板</text><input class="input" value="{{settings.subscription.templates.serviceStart}}" data-field="serviceStart" bindinput="subscriptionTemplateInput" /></view>
+          <view class="field-item"><text class="label">服务开始模板</text><input class="input" value="{{settings.subscription.templates.serviceStart}}" data-field="serviceStart" bindinput="subscriptionTemplateInput" placeholder="开始服务通知模板 ID（71479）" /></view>
+          <view class="notice">模板 71479：订单编号 character_string1、温馨提示 thing2。仅正式开始每场服务时通知下单用户。</view>
+          <view class="field-item"><text class="label">服务进度模板</text><input class="input" value="{{settings.subscription.templates.serviceProgress}}" data-field="serviceProgress" bindinput="subscriptionTemplateInput" placeholder="提前开始、到达、超时等进度通知模板 ID" /></view>
+          <view class="notice">原服务进度模板请填在此处，字段需为 thing9、thing4、character_string5、thing10、date3，不可使用开始服务模板 71479。</view>
           <view class="field-item"><text class="label">服务完成模板</text><input class="input" value="{{settings.subscription.templates.serviceFinish}}" data-field="serviceFinish" bindinput="subscriptionTemplateInput" /></view>
           <view class="field-item"><text class="label">开锁请求模板</text><input class="input" value="{{settings.subscription.templates.remoteUnlock}}" data-field="remoteUnlock" bindinput="subscriptionTemplateInput" /></view>
           <view class="field-item"><text class="label">退款结果模板</text><input class="input" value="{{settings.subscription.templates.refundResult}}" data-field="refundResult" bindinput="subscriptionTemplateInput" /></view>
