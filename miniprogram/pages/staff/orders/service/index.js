@@ -7,9 +7,12 @@ const { formatDateTime, toBeijingDate, buildOrderCareCards } = require('../../..
 const { copyText } = require('../../../../utils/clipboard')
 const { MAX_GAP_MS, pointTime, isGoodTrackPoint, isPlausibleStep } = require('../../utils/trackQuality')
 
-const TRACK_INTERVAL_MS = 30 * 1000
-const TRACK_MIN_DISTANCE_M = 10
-const TRACK_MIN_INTERVAL_MS = 5 * 1000
+// Keep the route dense enough to represent a walking path. The continuous
+// location callback remains the primary source; this timer is a fallback for
+// devices that do not emit a callback while the user is moving slowly.
+const TRACK_INTERVAL_MS = 5 * 1000
+const TRACK_MIN_DISTANCE_M = 3
+const TRACK_MIN_INTERVAL_MS = 2 * 1000
 
 function hasCoordinate(latitude, longitude) {
   const lat = Number(latitude)
@@ -34,12 +37,20 @@ function toTrackPoint(location) {
   const latitude = Number(location && location.latitude)
   const longitude = Number(location && location.longitude)
   if (!hasCoordinate(latitude, longitude)) return null
+  const rawRecordedAt = location && (location.recordedAt || location.timestamp)
+  const numericRecordedAt = Number(rawRecordedAt)
+  const recordedAt = Number.isFinite(numericRecordedAt) && numericRecordedAt > 0
+    ? (numericRecordedAt < 100000000000 ? numericRecordedAt * 1000 : numericRecordedAt)
+    : (rawRecordedAt || Date.now())
   return {
     latitude,
     longitude,
-    accuracy: Number(location.accuracy || 0),
+    accuracy: Number(location.accuracy || location.horizontalAccuracy || 0),
     speed: Number(location.speed || 0),
-    recordedAt: location.recordedAt || Date.now(),
+    // Some WeChat versions expose a capture timestamp on the continuous
+    // callback. Keep it when available so delayed background callbacks retain
+    // their real position time instead of being stamped at upload time.
+    recordedAt,
     coordinateType: 'gcj02',
     locationSource: 'gps'
   }
@@ -234,6 +245,7 @@ Page({
   },
 
   onShow() {
+    this._pageHidden = false
     loadSystemSettings().catch(() => null)
     this._chatPageVisible = true
     this.applyCurrentTheme()
@@ -242,12 +254,16 @@ Page({
   },
 
   onHide() {
+    this._pageHidden = true
     this._chatPageVisible = false
     this._checkinNavigationSeq = (this._checkinNavigationSeq || 0) + 1
     if (this.data.openingCheckinType) this.setData({ openingCheckinType: '' })
     this.stopSessionChatRefresh()
     this.stopEarlyStartPolling()
-    if (!this.data.backgroundTracking) this.stopAutoTracking()
+    // Keep the native background location session alive while a service is in
+    // progress. During startup backgroundTracking is set optimistically so a
+    // quick app switch cannot race the async permission/API callback.
+    if (!this.data.backgroundTracking && !this.trackingBackgroundRequested) this.stopAutoTracking()
   },
 
   applyCurrentTheme() {
@@ -414,6 +430,7 @@ Page({
           this.startAutoTracking()
         } else {
           this.stopServiceElapsedTimer()
+          this.stopAutoTracking()
           this.setData({ serviceElapsedText: '00:00:00' })
         }
       })
@@ -724,7 +741,9 @@ Page({
     this.trackSegmentId = createClientRequestId('segment')
     const segmentId = this.trackSegmentId
     this.lastTrackUploadedAt = 0
-    this.setData({ autoTracking: true, backgroundTracking: false, trackStatusText: '正在开启轨迹记录' })
+    this.trackingBackgroundRequested = true
+    this.trackUploadQueue = []
+    this.setData({ autoTracking: true, backgroundTracking: true, trackStatusText: '正在开启后台轨迹记录' })
 
     requirePrivacyAuthorize()
       .then(() => this.startLocationUpdate())
@@ -737,14 +756,23 @@ Page({
         wx.onLocationChange(this.handleLocationChange)
         this.uploadAutoTrackPoint()
         this.trackTimer = setInterval(() => this.uploadAutoTrackPoint(), TRACK_INTERVAL_MS)
+        this.trackingBackgroundRequested = false
+        this.trackingMode = mode
+        if (mode === 'foreground' && this._pageHidden) {
+          this.stopAutoTracking()
+          return
+        }
         this.setData({
           backgroundTracking: mode === 'background',
-          trackStatusText: mode === 'background' ? '后台采集中，等待稳定定位' : '前台采集中，离开页面将暂停'
+          trackStatusText: mode === 'background' ? '后台采集中，持续记录精确轨迹' : '前台采集中，离开页面将暂停'
         })
       })
       .catch((error) => {
         if (segmentId !== this.trackSegmentId) return
+        this.trackingBackgroundRequested = false
         this.trackingStarted = false
+        if (typeof wx.stopLocationUpdate === 'function') wx.stopLocationUpdate({})
+        if (typeof wx.stopLocationUpdateBackground === 'function') wx.stopLocationUpdateBackground({})
         this.setData({ autoTracking: false, backgroundTracking: false, trackStatusText: '自动轨迹未开启，请手动记录当前位置' })
         showError(error)
       })
@@ -775,6 +803,8 @@ Page({
   stopAutoTracking() {
     if (!this.trackingStarted) return
     this.trackingStarted = false
+    this.trackingBackgroundRequested = false
+    this.trackingMode = ''
     this.trackSegmentId = ''
     this.trackWarmupPoint = null
     if (this.handleLocationChange && typeof wx.offLocationChange === 'function') {
@@ -801,7 +831,10 @@ Page({
     if (elapsed < TRACK_MIN_INTERVAL_MS) return false
     if (elapsed >= TRACK_INTERVAL_MS) return true
     const distance = calcDistanceM(this.lastTrackPoint.latitude, this.lastTrackPoint.longitude, point.latitude, point.longitude)
-    return distance >= Math.max(TRACK_MIN_DISTANCE_M, (point.accuracy + previous.accuracy) / 2)
+    // Accuracy is an uncertainty radius, not a reason to wait for a whole
+    // accuracy radius of movement. Cap its contribution so slow walking still
+    // produces enough vertices for a faithful polyline.
+    return distance >= Math.max(TRACK_MIN_DISTANCE_M, Math.min(6, (point.accuracy + previous.accuracy) / 3))
   },
 
   getRealtimeLocation() {
@@ -828,7 +861,7 @@ Page({
   },
 
   recordTrackPoint(location, force) {
-    if (this.trackUploadInFlight || !this.data.order || this.data.order.status !== 'in_service') return Promise.resolve(null)
+    if (!this.data.order || this.data.order.status !== 'in_service') return Promise.resolve(null)
     const point = toTrackPoint(location)
     if (!point || !this.shouldUploadTrackPoint(point, force)) {
       this.setData({ trackStatusText: '等待稳定定位，低精度或跳跃位置不会记录' })
@@ -837,12 +870,25 @@ Page({
     }
     point.segmentId = this.trackSegmentId || createClientRequestId('manual_segment')
     point.clientPointId = createClientRequestId('track')
-    this.trackUploadInFlight = true
+    point.forceUpload = Boolean(force)
     // Preserve the sampling anchor even when the upload is queued offline.
     this.lastTrackPoint = point
     this.lastTrackUploadedAt = Date.now()
     this.trackWarmupPoint = null
-    return callFunction('track', 'batchUploadTrack', { orderId: this.data.id, batchId: createClientRequestId('batch'), points: [point] })
+    if (!Array.isArray(this.trackUploadQueue)) this.trackUploadQueue = []
+    this.trackUploadQueue.push(point)
+    return this.flushTrackUploadQueue()
+  },
+
+  flushTrackUploadQueue() {
+    if (this.trackUploadInFlight) return this.trackUploadDrainPromise || Promise.resolve(null)
+    const point = this.trackUploadQueue && this.trackUploadQueue.shift()
+    if (!point) return Promise.resolve(null)
+    const forceUpload = Boolean(point.forceUpload)
+    const uploadPoint = { ...point }
+    delete uploadPoint.forceUpload
+    this.trackUploadInFlight = true
+    this.trackUploadDrainPromise = callFunction('track', 'batchUploadTrack', { orderId: this.data.id, batchId: createClientRequestId('batch'), points: [uploadPoint] })
       .then((res) => {
         if (!Number(res.count || 0)) {
           if (res.rejectedCount) {
@@ -865,10 +911,17 @@ Page({
       .catch((error) => {
         if (isNetworkError(error)) enqueueOfflineTask('track', { orderId: this.data.id, point: { ...point, isBackfilled: true }, clientPointId: point.clientPointId })
         this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id) })
-        if (force) showError(error)
+        if (forceUpload) showError(error)
         return null
       })
-      .finally(() => { this.trackUploadInFlight = false })
+      .then(() => {
+        this.trackUploadInFlight = false
+        this.trackUploadDrainPromise = null
+        // Return the next drain promise so callers such as finishService wait
+        // for every location already captured, instead of only the first one.
+        return this.trackUploadQueue && this.trackUploadQueue.length ? this.flushTrackUploadQueue() : null
+      })
+    return this.trackUploadDrainPromise
   },
 
   flushOfflineTasks() {

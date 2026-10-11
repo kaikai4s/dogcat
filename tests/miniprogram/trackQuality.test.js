@@ -59,6 +59,33 @@ test('foreground stream and one-shot sampling both use GCJ-02 and request precis
   assert.equal(requests[1].isHighAccuracy, true)
 })
 
+test('location callbacks queue while an upload is in flight so no precise point is dropped', async () => {
+  const calls = []
+  let releaseFirst
+  const firstUpload = new Promise((resolve) => { releaseFirst = resolve })
+  const { page } = loadPage('pages/staff/orders/service/index.js', {
+    callFunction: (_module, _action, payload) => {
+      calls.push(payload.points[0])
+      return calls.length === 1 ? firstUpload : Promise.resolve({ count: 1 })
+    }
+  })
+  page.setData({ id: 'order', order: { status: 'in_service' }, pointCount: 0, backgroundTracking: true })
+  page.trackSegmentId = 'segment'
+  const now = Date.now()
+  await page.recordTrackPoint({ latitude: 31.2, longitude: 121.5, accuracy: 5, recordedAt: now })
+  const second = page.recordTrackPoint({ latitude: 31.20005, longitude: 121.5, accuracy: 5, recordedAt: now + 3000 })
+  // The real callback is several seconds apart; advance the local sampling
+  // clock to model that interval while the first network request is pending.
+  page.lastTrackUploadedAt = Date.now() - 3000
+  const third = page.recordTrackPoint({ latitude: 31.2001, longitude: 121.5, accuracy: 5, recordedAt: now + 6000 })
+  assert.equal(calls.length, 1)
+  assert.equal(page.trackUploadQueue.length, 1)
+  releaseFirst({ count: 1 })
+  await Promise.all([second, third])
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1].latitude, 31.2001)
+})
+
 test('map excludes checkins from distance, rejects drift and splits background gaps', () => {
   const { exported } = loadPage('pages/client/orders/tracking/index.js', {}, '\nmodule.exports = { buildMapData }')
   const t = Date.now() - 600000
