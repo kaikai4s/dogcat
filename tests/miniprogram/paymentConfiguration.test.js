@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const { generateKeyPairSync } = require('node:crypto')
-const { paymentKeyInputIssue } = require('../../miniprogram/utils/payment-config')
+const { paymentKeyInputIssue } = require('../../miniprogram/pages/admin/settings/payment-config')
 
 const keys = generateKeyPairSync('rsa', {
   modulusLength: 2048,
@@ -39,7 +39,7 @@ function loadPage(relativePath, cloud, wx = {}) {
     Page(value) { page = value },
     require(name) {
       if (name.endsWith('/cloud')) return cloud
-      if (name.endsWith('/payment-config')) return { paymentKeyInputIssue }
+      if (name.endsWith('/payment-config')) return require(path.resolve(__dirname, '../../miniprogram', path.dirname(relativePath), name))
       if (name.endsWith('/offlineQueue')) return { createClientRequestId: () => 'test-payment' }
       if (name.endsWith('/subscription-options')) return require('../../miniprogram/utils/subscription-options')
       if (name.endsWith('/sessionChat')) return { sessionChatMethods: () => ({}) }

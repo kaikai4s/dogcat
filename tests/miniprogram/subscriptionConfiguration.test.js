@@ -21,7 +21,7 @@ test('administrator cannot save template numbers or placeholders, but can leave 
     let page
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/settings/index.js'), 'utf8'), {
       Page(config) { page = config }, wx: {},
-      require: name => name.endsWith('/subscription-options') ? options : name.endsWith('/payment-config') ? require('../../miniprogram/utils/payment-config') : {
+      require: name => name.endsWith('/subscription-options') ? options : name.endsWith('/payment-config') ? require('../../miniprogram/pages/admin/settings/payment-config') : {
         callFunction: (...args) => { calls.push(args); return new Promise(() => {}) }, showError: error => errors.push(error.message)
       }
     })

@@ -1,6 +1,6 @@
 const { callFunction, showError, setCachedSystemSettings } = require('../../../utils/cloud')
 const { subscriptionTemplateIssue } = require('../../../utils/subscription-options')
-const { paymentKeyInputIssue } = require('../../../utils/payment-config')
+const { paymentKeyInputIssue } = require('./payment-config')
 
 const quizOptionValues = ['A', 'B', 'C', 'D', 'E', 'F']
 const requiredSupplyItems = ['一次性手套', '一次性口罩', '一次性鞋套', '宠物安全消毒用品']
