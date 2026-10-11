@@ -64,3 +64,12 @@ test('withOrderText: attaches Chinese statusText and refundStatusText', () => {
   assert.equal(result.paymentStatusText, '已退款')
   assert.equal(result.refundStatusText, '已同意退款')
 })
+
+test('refund badges follow payment results even when fulfillment status remains cancelled or completed', () => {
+  for (const status of ['cancelled', 'expired', 'completed', 'paid']) {
+    assert.equal(withOrderText({ status, paymentStatus: 'refunding', refundStatus: 'processing' }).statusText, '退款中')
+    assert.equal(withOrderText({ status, paymentStatus: 'refunded', refundStatus: 'full_refunded' }).statusText, '已退款')
+    assert.equal(withOrderText({ status, paymentStatus: 'paid', refundStatus: 'partially_refunded', refundedAmount: 20 }).statusText, '部分退款')
+    assert.equal(withOrderText({ status, paymentStatus: 'refunding', refundedAmount: 20 }).statusText, '退款中')
+  }
+})

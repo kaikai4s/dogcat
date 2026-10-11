@@ -1,5 +1,6 @@
 const { normalizeStaffGenderRequirement, assertStaffGenderMatches } = require('../utils/staffGender')
 const { filterTrackPoints } = require('../utils/trackQuality')
+const { getOrderRefundState } = require('../utils/orderRefundState')
 
 module.exports = function createHandler(context) {
   const {
@@ -74,6 +75,7 @@ module.exports = function createHandler(context) {
     processOverdueUnfinishedOrders,
     processOverdueUnstartedOrders,
     readScopedDocuments,
+    refreshOrderRefunds,
     requireAdmin,
     requireClientOrder,
     requireSanitizationEvidence,
@@ -281,10 +283,11 @@ module.exports = function createHandler(context) {
       await expireDueUnacceptedOrders()
       const role = data.role || user.activeRole || 'client'
       const where = role === 'staff' ? { staffOpenid: openid } : { clientOpenid: openid }
+      const refundFilter = ['refunding', 'refunded'].includes(data.status) ? data.status : ''
 
-      if (data.status && data.status !== 'all') {
+      if (data.status && data.status !== 'all' && !refundFilter) {
         where.status = data.status
-      } else if (data.statusGroup === 'waiting_service') {
+      } else if (!refundFilter && data.statusGroup === 'waiting_service') {
         where.status = db.command.in(['assigned', 'on_the_way', 'in_service', 'day_completed'])
       }
 
@@ -329,6 +332,10 @@ module.exports = function createHandler(context) {
         })
       }
 
+      if (role === 'client') list = await refreshOrderRefunds(list)
+      if (refundFilter) list = list.filter(order => getOrderRefundState(order) === refundFilter)
+      else if (data.status && data.status !== 'all') list = list.filter(order => order.status === data.status)
+
       const total = list.length
       pagedOrders = wantsPage ? list.slice(offset, offset + pageSize) : list
 
@@ -352,7 +359,9 @@ module.exports = function createHandler(context) {
 
     if (action === 'getOrderDetail') {
       const orderId = data.id || data.orderId
-      const { user, order } = await getOrderForAccess(openid, orderId)
+      const access = await getOrderForAccess(openid, orderId)
+      const user = access.user
+      const [order] = await refreshOrderRefunds([access.order])
       const levels = await getMemberLevels()
       const displayOrder = await attachOrderDisplayData(order, levels)
       const [earlyStart, securityRes, checkinsRes, tracksRes] = await Promise.all([

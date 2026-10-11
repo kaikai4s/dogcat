@@ -1,4 +1,5 @@
 const { requireStaffGender } = require('../utils/staffGender')
+const { getOrderRefundState } = require('../utils/orderRefundState')
 
 module.exports = function createHandler(context) {
   const {
@@ -103,6 +104,7 @@ module.exports = function createHandler(context) {
     revokeSystemNotification,
     safeText,
     readScopedDocuments,
+    refreshOrderRefunds,
     sendSystemNotification,
     settleWithdrawal,
     settleStaffDeposit,
@@ -893,6 +895,7 @@ module.exports = function createHandler(context) {
     if (action === 'listOrders') {
       await expireDueUnacceptedOrders()
       const rawStatus = safeText(data.status).trim()
+      const refundFilter = ['refunding', 'refunded'].includes(rawStatus) ? rawStatus : ''
       const specialFilter = safeText(data.specialFilter).trim()
       const isAutoFilter = rawStatus === 'auto_completed' || specialFilter === 'auto_completed'
       const isOverdueFilter = rawStatus === 'overdue' || specialFilter === 'overdue'
@@ -902,7 +905,7 @@ module.exports = function createHandler(context) {
         const _ = db.command
         const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
         where = { status: inOp(['assigned', 'on_the_way']) }
-      } else if (isNormalStatus) {
+      } else if (isNormalStatus && !refundFilter) {
         where = { status: rawStatus }
       }
       const allOrders = (await readAll('orders', where)).sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
@@ -953,6 +956,9 @@ module.exports = function createHandler(context) {
       if (staffOpenids && staffProfileIds) {
         orders = orders.filter((order) => staffOpenids.has(safeText(order.staffOpenid)) || staffOpenids.has(safeText(order.requestedStaffOpenid)) || staffProfileIds.has(safeText(order.staffProfileId)) || staffProfileIds.has(safeText(order.requestedStaffProfileId)))
       }
+      orders = await refreshOrderRefunds(orders)
+      if (refundFilter) orders = orders.filter(order => getOrderRefundState(order) === refundFilter)
+      else if (isNormalStatus) orders = orders.filter(order => rawStatus === 'assigned' ? ['assigned', 'on_the_way'].includes(order.status) : order.status === rawStatus)
       const page = paginateList(orders, data)
       return { ...page, list: await Promise.all(page.list.map(attachAdminOrderContactData)) }
     }
@@ -985,6 +991,7 @@ module.exports = function createHandler(context) {
       if (!id) throw new Error('订单不存在')
       const order = await db.collection('orders').doc(id).get().catch(() => ({ data: null }))
       if (!order || !order.data) throw new Error('订单不存在')
+      if (action === 'getOrderDetail') [order.data] = await refreshOrderRefunds([order.data])
       const tracks = await db.collection('track_logs').where({ orderId: id }).orderBy('recordedAt', 'asc').get()
       const checkins = await db.collection('checkin_logs').where({ orderId: id }).orderBy('createdAt', 'asc').get()
       const unlockLogs = await db.collection('unlock_code_logs').where({ orderId: id }).orderBy('createdAt', 'desc').get()

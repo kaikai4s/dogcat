@@ -124,17 +124,22 @@ test('wechat refund ABNORMAL terminal failure atomically releases quota and mark
 
 test('reconcilePendingRefunds heals stuck processing refund when gateway reports CLOSED', async () => {
   let callCount = 0
+  let originalBody
   const { db, requestOrderRefund, reconcilePendingRefunds } = setupRefunds({
     wechatPayRequest: async (method, path, body) => {
       callCount++
       if (callCount === 1) {
+        originalBody = body
         throw new Error('ETIMEDOUT: network glitch during refund request')
       }
+      assert.equal(method, 'GET')
+      assert.equal(path, `/v3/refund/domestic/refunds/${originalBody.out_refund_no}`)
+      assert.equal(body, null)
       return {
         status: 'CLOSED',
-        out_refund_no: body.out_refund_no,
+        out_refund_no: originalBody.out_refund_no,
         refund_id: 'WX_REF_POLL_CLOSED',
-        amount: body.amount
+        amount: originalBody.amount
       }
     }
   })

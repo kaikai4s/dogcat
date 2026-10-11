@@ -23,7 +23,9 @@ function fixture({ mall = false, template = 'refund-7272', mode = 'wechat', stat
     assertPaymentModeAllowed: () => {}, getWechatPayConfig: () => ({}),
     wechatPayRequest: async (method, path, body) => {
       if (gateway.error) throw gateway.error
-      return { status: gateway.status, out_refund_no: body.out_refund_no, amount: body.amount, success_time: successTime }
+      const row = method === 'GET' && db.state.refunds.find(row => path.endsWith(`/${row.refundNo}`))
+      return { status: gateway.status, out_refund_no: row ? row.refundNo : body.out_refund_no,
+        amount: row ? { total: Math.round(row.amount * 100), refund: Math.round(row.refundAmount * 100) } : body.amount, success_time: successTime }
     }
   })
   const refund = (amount = 25.5, id = 'first') => refunds.requestOrderRefund(structuredClone(db.state[collection][0]), amount, '用户申请退款', 'admin', 'admin', id)

@@ -101,14 +101,17 @@ test('refund idempotency rejects changed parameters and does not label submitted
 
 test('ambiguous gateway failure retries the same refund number and records success atomically', async () => {
   const sent = []
+  let originalBody
   let unavailable = true
   const { db, requestOrderRefund, reconcilePendingRefunds } = refunds({
     getSystemSettings: async () => ({ payment: { mode: 'wechat', refundEnabled: true } }),
     getWechatPayConfig: () => ({}),
     wechatPayRequest: async (method, path, body) => {
-      sent.push(body.out_refund_no)
+      if (method === 'POST') originalBody = body
+      else assert.equal(path, `/v3/refund/domestic/refunds/${originalBody.out_refund_no}`)
+      sent.push(originalBody.out_refund_no)
       if (unavailable) throw new Error('timeout after remote commit')
-      return { status: 'SUCCESS', out_refund_no: body.out_refund_no, refund_id: 'WX-R', amount: body.amount }
+      return { status: 'SUCCESS', out_refund_no: originalBody.out_refund_no, refund_id: 'WX-R', amount: originalBody.amount }
     }
   })
   const order = structuredClone(db.state.orders[0])

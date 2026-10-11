@@ -8,6 +8,8 @@ const tabs = [
   { label: '待服务', value: 'assigned' },
   { label: '服务中', value: 'in_service' },
   { label: '已完成', value: 'completed' },
+  { label: '退款中', value: 'refunding' },
+  { label: '已退款', value: 'refunded' },
   { label: '自动完单', value: 'auto_completed' },
   { label: '超时订单', value: 'overdue' },
   { label: '已过期', value: 'expired' }
@@ -26,6 +28,7 @@ Page({
   data: { tabs, activeStatus: '', specialFilter: '', orderKeyword: '', clientPhone: '', staffPhone: '', selectedOrderIds: [], deleting: false, orders: [], page: 1, pageSize: 20, hasMore: true, loading: false, total: 0 },
   onShow() { this.load({ reset: true }) },
   onReachBottom() { this.loadMore() },
+  onPullDownRefresh() { return this.load({ reset: true, force: true }).finally(() => wx.stopPullDownRefresh()) },
   load(options = {}) {
     if (this.data.loading && options.force !== true) return
     const reset = options.reset === true
@@ -33,7 +36,7 @@ Page({
     const requestSeq = (this._orderListRequestSeq || 0) + 1
     this._orderListRequestSeq = requestSeq
     this.setData({ loading: true })
-    callFunction('admin', 'listOrders', { page, pageSize: this.data.pageSize, status: this.data.activeStatus, specialFilter: this.data.specialFilter, orderKeyword: this.data.orderKeyword.trim(), phone: this.data.clientPhone.trim(), clientPhone: this.data.clientPhone.trim(), staffPhone: this.data.staffPhone.trim() })
+    return callFunction('admin', 'listOrders', { page, pageSize: this.data.pageSize, status: this.data.activeStatus, specialFilter: this.data.specialFilter, orderKeyword: this.data.orderKeyword.trim(), phone: this.data.clientPhone.trim(), clientPhone: this.data.clientPhone.trim(), staffPhone: this.data.staffPhone.trim() })
       .then((result) => {
         if (requestSeq !== this._orderListRequestSeq) return
         const pageData = pageList(result)

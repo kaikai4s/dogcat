@@ -10,6 +10,8 @@ const tabs = [
   { label: '待派单', value: 'paid' },
   { label: '待服务', value: 'waiting_service' },
   { label: '已完成', value: 'completed' },
+  { label: '退款中', value: 'refunding' },
+  { label: '已退款', value: 'refunded' },
   { label: '已过期', value: 'expired' }
 ]
 
@@ -46,6 +48,9 @@ Page({
   onReachBottom() {
     this.loadMore()
   },
+  onPullDownRefresh() {
+    return this.load({ reset: true }).finally(() => wx.stopPullDownRefresh())
+  },
   applyCurrentTheme() {
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))
@@ -69,7 +74,7 @@ Page({
     const requestSeq = (this._requestSeq || 0) + 1
     this._requestSeq = requestSeq
     this.setData({ loading: true })
-    callFunction('order', 'listOrders', params)
+    return callFunction('order', 'listOrders', params)
       .then((result) => {
         if (requestSeq !== this._requestSeq) return
         const pageData = pageList(result)

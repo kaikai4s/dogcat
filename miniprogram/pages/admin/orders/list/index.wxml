@@ -24,13 +24,13 @@
     </view>
   </view>
 
-  <view class="status-tabs">
+  <scroll-view scroll-x class="status-tabs">
     <view class="status-tab {{activeStatus === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-status="{{item.value}}" bindtap="chooseStatus">
       <text class="remix-icon ri-sparkling-fill tab-icon" wx:if="{{item.value === 'auto_completed'}}"></text>
       <text class="remix-icon ri-alarm-warning-line tab-icon" wx:if="{{item.value === 'overdue'}}"></text>
       <text>{{item.label}}</text>
     </view>
-  </view>
+  </scroll-view>
 
   <view class="admin-card batch-bar" wx:if="{{orders.length}}">
     <view class="batch-main"><view class="batch-title">批量管理</view><view class="batch-count">共 {{total}} 单，已选 {{selectedOrderIds.length}} 单</view></view>

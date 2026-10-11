@@ -74,6 +74,7 @@ Page({
     detail: null,
     paymentStatus: null,
     refunds: [],
+    syncingRefundNo: '',
     sectionHomeUrl: '',
     canGoBack: false,
     showStatusModal: false,
@@ -126,14 +127,15 @@ Page({
 
   onLoad(q) {
     this.setData({ ...createPageNav(q), id: q.id })
+  },
+
+  onShow() {
     this.load()
   },
 
   load() {
-    Promise.all([
-      callFunction('admin', 'getOrderDetail', { id: this.data.id }),
-      callFunction('payment', 'listRefunds', { orderId: this.data.id })
-    ])
+    return callFunction('admin', 'getOrderDetail', { id: this.data.id })
+      .then(detail => callFunction('payment', 'listRefunds', { orderId: this.data.id }).then(refunds => [detail, refunds]))
       .then(([detail, refunds]) => {
         const order = withOrderText(detail.order)
         const notifyMap = { sent: '已发送', success: '发送成功', failed: '发送失败', skipped: '无需发送' }
@@ -246,7 +248,11 @@ Page({
     const order = this.data.detail && this.data.detail.order
     const maxRefundable = order ? order.maxRefundable || 0 : 0
     if (maxRefundable <= 0) {
-      wx.showToast({ title: '该订单已无剩余可退金额', icon: 'none' })
+      if (this.data.refunds.some(refund => refund.status === 'processing')) {
+        wx.showModal({ title: '已有退款正在处理', content: '可退金额已被原退款申请占用，请在下方退款记录中点击“同步退款状态”查看或恢复原退款。', showCancel: false })
+      } else {
+        wx.showToast({ title: '该订单已无剩余可退金额', icon: 'none' })
+      }
       return
     }
     this.setData({
@@ -254,6 +260,22 @@ Page({
       refundAmountInput: String(maxRefundable),
       refundReasonInput: ''
     })
+  },
+
+  async syncRefundStatus(e) {
+    const refundNo = e.currentTarget.dataset.refundNo
+    if (!refundNo || this.data.syncingRefundNo) return
+    this.setData({ syncingRefundNo: refundNo })
+    try {
+      const refund = await callFunction('payment', 'queryRefund', { refundNo })
+      const message = refund.status === 'success' ? '退款已成功' : refund.status === 'failed' ? (refund.failReason || '退款失败，请核对原因') : '原退款单处理中，请稍后查询'
+      wx.showToast({ title: message, icon: 'none' })
+    } catch (error) {
+      showError(error)
+    } finally {
+      await this.load()
+      this.setData({ syncingRefundNo: '' })
+    }
   },
 
   closeRefundModal() {

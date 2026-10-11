@@ -9,7 +9,7 @@ const { applyTheme, getThemeState } = require('../../../../utils/theme')
 function getRefundText(order = {}) {
   if (!order.refundStatus || order.refundStatus === 'not_required') return ''
   if (order.refundStatus === 'processing') return `退款处理中 ¥${order.refundAmount || 0}`
-  if (order.refundStatus === 'success') return `已退款 ¥${order.refundAmount || 0}`
+  if (['success', 'full_refunded', 'partially_refunded'].includes(order.refundStatus)) return `${order.refundStatus === 'partially_refunded' ? '已部分退款' : '已退款'} ¥${order.refundedAmount == null ? (order.refundAmount || 0) : order.refundedAmount}`
   if (order.refundStatus === 'failed') return '退款失败，请联系平台'
   return '退款待处理'
 }

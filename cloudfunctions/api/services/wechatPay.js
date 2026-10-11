@@ -84,6 +84,7 @@ module.exports = function createService({
         headers: {
           Authorization: authorization,
           Accept: 'application/json',
+          'User-Agent': 'VipPetCare-WechatPay/1.0',
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(bodyText)
         }

@@ -149,15 +149,13 @@
 .danger-btn { color: #ffffff; background: #f53f3f; box-shadow: 0 8rpx 20rpx rgba(245, 63, 63, 0.18); }
 
 .status-tabs {
-  display: flex;
-  gap: 14rpx;
-  overflow-x: auto;
   white-space: nowrap;
   margin: 24rpx 0 0;
   padding-bottom: 4rpx;
 }
 
 .status-tab {
+  margin-right: 14rpx;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;

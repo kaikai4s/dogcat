@@ -27,6 +27,7 @@ module.exports = function createHandler(context) {
     readScopedDocuments,
     safeText,
     sanitizeWechatPayload,
+    syncOrderRefund,
     updateOrderWhenStatus,
     wechatPayRequest
   } = context
@@ -140,7 +141,7 @@ module.exports = function createHandler(context) {
       const resolved = await getPayableOrder(refund.orderId)
       const order = resolved.order
       if (!order || (order.clientOpenid !== openid && !user.roles.includes('admin'))) throw new Error('无权查看退款')
-      return refund
+      return syncOrderRefund(refund)
     }
     if (action === 'listRefunds') {
       await requireAdmin(openid)

@@ -187,6 +187,9 @@
         <view class="timeline-content">
           <view class="strong">{{item.refundNo}} · ¥{{item.refundAmount}}</view>
           <view class="muted">{{item.statusText || '已记录'}} · {{item.reason}}</view>
+          <view class="muted" wx:if="{{item.lastError}}">最近处理提示：{{item.lastError}}</view>
+          <view class="muted" wx:if="{{item.status === 'processing'}}">该金额已预留，尚未确认到账。</view>
+          <button class="ghost-btn" size="mini" wx:if="{{item.status === 'processing' && item.channel === 'wechat'}}" data-refund-no="{{item.refundNo}}" bindtap="syncRefundStatus" loading="{{syncingRefundNo === item.refundNo}}" disabled="{{!!syncingRefundNo}}">同步退款状态</button>
           <view class="muted">{{beijingTime.format(item.createdAt)}}</view>
         </view>
       </view>
