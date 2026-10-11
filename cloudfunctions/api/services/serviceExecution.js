@@ -25,6 +25,8 @@ module.exports = function createService({
   requireSanitizationEvidence,
   toTimeValue
 }) {
+  const TRACK_BACKFILL_WINDOW_MS = 10 * 60 * 1000
+
   async function evaluateCheckinCompletion(order, sessionStartedAt) {
     try {
       await requireSanitizationEvidence(order, sessionStartedAt)
@@ -74,6 +76,10 @@ module.exports = function createService({
         activeSessionDate: '',
         currentSessionStartedAt: '',
         lastCompletedSessionIndex: activeSession.index,
+        trackBackfillSessionIndex: Number(activeSession.index || 1),
+        trackBackfillStartedAt: activeSession.startedAt || order.currentSessionStartedAt || order.startedAt || '',
+        trackBackfillFinishedAt: time,
+        trackBackfillUntil: new Date(time.getTime() + TRACK_BACKFILL_WINDOW_MS),
         isFinishOverdue: false,
         updatedAt: time
       }
@@ -124,6 +130,10 @@ module.exports = function createService({
       activeSessionDate: '',
       currentSessionStartedAt: '',
       lastCompletedSessionIndex: activeSession.index,
+      trackBackfillSessionIndex: Number(activeSession.index || 1),
+      trackBackfillStartedAt: activeSession.startedAt || order.currentSessionStartedAt || order.startedAt || '',
+      trackBackfillFinishedAt: time,
+      trackBackfillUntil: new Date(time.getTime() + TRACK_BACKFILL_WINDOW_MS),
       isFinishOverdue: false,
       completedAt: time,
       updatedAt: time

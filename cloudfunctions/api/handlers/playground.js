@@ -1,12 +1,17 @@
 module.exports = function createHandler(context) {
   const {
     db,
-    getOrCreateClientPlayground,
-    getOrCreatePetHome,
-    getOrCreatePlaygroundEntity,
     getUser,
     safeText
   } = context
+  // The 3D playground is an isolated, opt-in feature. Load its database
+  // service only when the playground handler is first invoked so normal API
+  // cold starts do not pay for it.
+  const {
+    getOrCreateClientPlayground,
+    getOrCreatePetHome,
+    getOrCreatePlaygroundEntity
+  } = require('../services/playground')(context)
   return async function playground(openid, action, data) {
     await getUser(openid)
     if (action === 'getOverview') {

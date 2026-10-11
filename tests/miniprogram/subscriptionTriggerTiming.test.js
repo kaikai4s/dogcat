@@ -26,8 +26,8 @@ function setup(file, result = { requested: false, reason: 'request_failed' }) {
   }
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages', file, 'index.js'), 'utf8'), {
     Page(config) { page = config }, console,
-    wx: { showToast() {}, getLocation() { events.push('location') },
-      showModal(options) { modals.push(options); options.success({ confirm: false }) },
+    wx: { showToast() {}, getLocation(options) { events.push('location'); if (options && options.fail) options.fail(new Error('mock location failure')) },
+      showModal(options) { modals.push(options); if (options.success) options.success({ confirm: false }) },
       redirectTo(options) { events.push('redirect'); if (options.success) options.success() } },
     require(name) {
       if (name.endsWith('/cloud')) return cloud

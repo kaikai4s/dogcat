@@ -22,6 +22,22 @@ function withTimelineText(list = []) {
   })
 }
 
+const TRANSIT_FIELDS = [
+  'travelLocation', 'travelDeparted', 'travelDepartedAt',
+  'currentLocation', 'departureLocation', 'distanceFromDestinationKm',
+  'travelDistanceKm', 'estimatedTravelMinutes', 'travelEtaMinutes',
+  'estimatedArrivalTime', 'radarProximityNotifiedAt', 'radarProximityNotified',
+  'radarApproachingNotifiedAt', 'radarApproachingNotified'
+]
+
+function clearTransitFields(order) {
+  if (!order || order.status === 'on_the_way') return order
+  return TRANSIT_FIELDS.reduce((next, key) => {
+    next[key] = ['travelDeparted', 'radarProximityNotified', 'radarApproachingNotified'].includes(key) ? false : null
+    return next
+  }, { ...order })
+}
+
 function showRemoteUnlockSubscribeTip(result, retryCallback) {
   if (!result || !result.requested) return Promise.resolve()
   // Keys may share an ID, so their indexes do not match the deduplicated ID list.
@@ -161,35 +177,44 @@ Page({
     if (!order || !['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)) return
 
     this.earlyStartPollTimer = setInterval(() => {
-      if (!this.data.id || this.data.handlingEarlyStart || this.data.paying) return
-      callFunction('order', 'getOrderDetail', { id: this.data.id })
-        .then((latestOrder) => {
-          if (!latestOrder) return
-          const displayOrder = withOrderText(latestOrder)
+      if (!this.data.id || this.data.handlingEarlyStart || this.data.paying || this._earlyStartPollRequest) return
+      const pollSeq = this._earlyStartPollSeq = (this._earlyStartPollSeq || 0) + 1
+      this._earlyStartPollRequest = callFunction('order', 'getOrderProgress', { id: this.data.id })
+        .then((progress) => {
+          if (!progress || pollSeq !== this._earlyStartPollSeq) return
+          const currentOrder = this.data.order || {}
+          const mergedOrder = clearTransitFields({
+            ...currentOrder,
+            status: progress.status || currentOrder.status,
+            earlyStartRequest: progress.earlyStartRequest || null,
+            trackRevision: progress.trackRevision,
+            checkinRevision: progress.checkinRevision,
+            currentSessionStartedAt: progress.currentSessionStartedAt || currentOrder.currentSessionStartedAt,
+            activeSessionIndex: progress.activeSessionIndex || currentOrder.activeSessionIndex,
+            serviceStarted: progress.serviceStarted === true
+          })
+          const displayOrder = withOrderText(mergedOrder)
           const careCards = buildOrderCareCards(displayOrder)
-          this.setData({ order: { ...displayOrder, refundText: getRefundText(displayOrder), careCards, hasHighRiskCare: careCards.some((card) => card.isHighRisk) } })
+          const nextData = { order: { ...displayOrder, refundText: getRefundText(displayOrder), careCards, hasHighRiskCare: careCards.some((card) => card.isHighRisk) } }
+          if (Array.isArray(progress.liveCheckins)) nextData.liveCheckins = progress.liveCheckins.filter(item => item.mediaFileId)
+          this.setData(nextData)
           if (displayOrder.earlyStartRequest && displayOrder.earlyStartRequest.status === 'pending') {
             this.checkPromptEarlyStart(displayOrder.earlyStartRequest)
           }
+          if (!['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(displayOrder.status)) {
+            this.stopEarlyStartPolling()
+          }
         })
         .catch(() => {})
-
-      if (this.data.order && ['on_the_way', 'in_service'].includes(this.data.order.status)) {
-        callFunction('checkin', 'listOrderCheckins', { orderId: this.data.id })
-          .then((checkins) => {
-            if (Array.isArray(checkins)) {
-              this.setData({ liveCheckins: checkins.filter(item => item.mediaFileId) })
-            }
-          })
-          .catch(() => {})
-      }
-    }, 6000)
+        .finally(() => { this._earlyStartPollRequest = null })
+    }, 10000)
   },
   stopEarlyStartPolling() {
     if (this.earlyStartPollTimer) {
       clearInterval(this.earlyStartPollTimer)
       this.earlyStartPollTimer = null
     }
+    this._earlyStartPollSeq = (this._earlyStartPollSeq || 0) + 1
   },
   subscribeServiceUpdates() {
     if (this._subscribingUpdates) return

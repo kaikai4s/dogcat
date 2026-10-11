@@ -119,6 +119,30 @@ module.exports = function createHandler(context) {
     const publicSecurity = toPublicOrderHomeSecurity(security)
     return { ...order, orderHomeSecurity: publicSecurity, homeSecuritySnapshot: publicSecurity ? toPublicHomeSecuritySnapshot(publicSecurity) : null }
   }
+
+  // Transit coordinates are useful only while the sitter is travelling. Keep
+  // them in the database for audit, but never expose stale precise locations
+  // after the service has started or the order has reached a terminal state.
+  function sanitizeClientTransitFields(order) {
+    if (!order || order.status === ORDER_STATUS.ON_THE_WAY) return order
+    return {
+      ...order,
+      travelLocation: null,
+      travelDeparted: false,
+      travelDepartedAt: null,
+      currentLocation: null,
+      departureLocation: null,
+      distanceFromDestinationKm: null,
+      travelDistanceKm: null,
+      estimatedTravelMinutes: null,
+      travelEtaMinutes: null,
+      estimatedArrivalTime: null,
+      radarProximityNotifiedAt: null,
+      radarProximityNotified: false,
+      radarApproachingNotifiedAt: null,
+      radarApproachingNotified: false
+    }
+  }
   return async function order(openid, action, data) {
     if (action === 'listServiceOptions') {
       await getUser(openid)
@@ -402,7 +426,41 @@ module.exports = function createHandler(context) {
       const isStaffPreview = isStaffView && (order.status === ORDER_STATUS.PAID || order.staffOpenid !== openid)
       if (isStaffPreview) return maskOrderForStaffPreview(resultOrder)
       if (isStaffView || (!user.roles.includes('admin') && order.clientOpenid !== openid)) return maskOrderClientContact(resultOrder)
-      return resultOrder
+      return sanitizeClientTransitFields(resultOrder)
+    }
+
+    if (action === 'getOrderProgress') {
+      const orderId = data.id || data.orderId
+      const access = await getOrderForAccess(openid, orderId)
+      const order = access.order
+      const isLive = [ORDER_STATUS.ON_THE_WAY, ORDER_STATUS.IN_SERVICE].includes(order.status)
+      let liveCheckins = []
+      if (isLive) {
+        const checkinsRes = await db.collection('checkin_logs')
+          .where({ orderId })
+          .orderBy('recordedAt', 'desc')
+          .limit(20)
+          .get()
+        liveCheckins = (checkinsRes.data || [])
+          .filter(isActiveCheckin)
+          .filter((item) => item.mediaFileId)
+          .reverse()
+      }
+      const earlyStart = await getPendingEarlyStart(orderId)
+        .then((pending) => pending || getApprovedEarlyStart(orderId) || getLatestEarlyStart(orderId))
+      const latestCheckin = liveCheckins[liveCheckins.length - 1]
+      return {
+        id: orderId,
+        status: order.status,
+        earlyStartRequest: toEarlyStartView(earlyStart),
+        trackRevision: Number(order.trackRevision || 0),
+        checkinRevision: Number(order.checkinRevision || 0),
+        latestCheckinAt: latestCheckin ? (latestCheckin.recordedAt || latestCheckin.createdAt || latestCheckin.serverTime || null) : null,
+        liveCheckins,
+        activeSessionIndex: Number(order.activeSessionIndex || 0),
+        currentSessionStartedAt: order.currentSessionStartedAt || '',
+        serviceStarted: order.status === ORDER_STATUS.IN_SERVICE
+      }
     }
 
     if (action === 'prepareRebook') {

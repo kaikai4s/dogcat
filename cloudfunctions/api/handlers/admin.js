@@ -992,13 +992,18 @@ module.exports = function createHandler(context) {
       const order = await db.collection('orders').doc(id).get().catch(() => ({ data: null }))
       if (!order || !order.data) throw new Error('订单不存在')
       if (action === 'getOrderDetail') [order.data] = await refreshOrderRefunds([order.data])
-      const tracks = await db.collection('track_logs').where({ orderId: id }).orderBy('recordedAt', 'asc').get()
-      const checkins = await db.collection('checkin_logs').where({ orderId: id }).orderBy('createdAt', 'asc').get()
-      const unlockLogs = await db.collection('unlock_code_logs').where({ orderId: id }).orderBy('createdAt', 'desc').get()
       const displayOrder = await attachAdminOrderContactData(order.data)
       const payAmount = Number(order.data.payAmount || 0)
-      const existingRefundsRes = await db.collection('refunds').where({ orderId: id }).get()
-      const successfulRefundsAmount = (existingRefundsRes.data || [])
+      const [trackRows, checkinRows, unlockRows, refundRows, penaltyRows, sessionMessageRows, riskBypassRows] = await Promise.all([
+        readScopedDocuments('track_logs', { orderId: id }, 'recordedAt', 'asc').catch(() => []),
+        readScopedDocuments('checkin_logs', { orderId: id }, 'createdAt', 'asc').catch(() => []),
+        readScopedDocuments('unlock_code_logs', { orderId: id }, 'createdAt', 'desc').catch(() => []),
+        readScopedDocuments('refunds', { orderId: id }, 'createdAt', 'desc').catch(() => []),
+        readScopedDocuments('staff_deposit_evidences', { orderId: id }, 'createdAt', 'desc').catch(() => []),
+        readScopedDocuments('order_session_messages', { orderId: id }, 'createdAt', 'asc').catch(() => []),
+        readScopedDocuments('risk_bypass_logs', { orderId: id }, 'createdAt', 'desc').catch(() => [])
+      ])
+      const successfulRefundsAmount = refundRows
         .filter((r) => ['success', 'processing'].includes(r.status))
         .reduce((sum, r) => sum + Number(r.refundAmount || 0), 0)
       const alreadyRefunded = Math.max(Number(order.data.refundAmount || 0), successfulRefundsAmount)
@@ -1006,8 +1011,7 @@ module.exports = function createHandler(context) {
       displayOrder.maxRefundable = maxRefundable
       displayOrder.alreadyRefunded = alreadyRefunded
 
-      const penaltyEvidencesRes = await db.collection('staff_deposit_evidences').where({ orderId: id }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
-      const penaltyEvidences = (penaltyEvidencesRes.data || []).map((e) => {
+      const penaltyEvidences = penaltyRows.map((e) => {
         const actualDeductAmount = Number(e.actualDeductAmount ?? e.forfeitedAmount ?? 0)
         const s = e.status || 'pending'
         return {
@@ -1023,29 +1027,42 @@ module.exports = function createHandler(context) {
       const standardEarning = await calculateStaffEarningForOrder(order.data).catch(() => ({ earningAmount: 0 }))
       displayOrder.standardStaffReward = standardEarning.earningAmount || 0
 
-      const sessionMessagesRes = await db.collection('order_session_messages').where({ orderId: id }).orderBy('createdAt', 'asc').get().catch(() => ({ data: [] }))
-      const riskBypassLogsRes = await db.collection('risk_bypass_logs').where({ orderId: id }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
-
-      if (action === 'getEvidence') await logAdmin(admin, 'order', id, 'getEvidence', { trackCount: (tracks.data || []).length, checkinCount: (checkins.data || []).filter(isActiveCheckin) })
+      if (action === 'getEvidence') await logAdmin(admin, 'order', id, 'getEvidence', { trackCount: trackRows.length, checkinCount: checkinRows.filter(isActiveCheckin).length })
       return {
         order: displayOrder,
-        tracks: tracks.data,
-        checkins: (checkins.data || []).filter(isActiveCheckin),
-        unlockLogs: unlockLogs.data,
+        tracks: trackRows,
+        checkins: checkinRows.filter(isActiveCheckin),
+        unlockLogs: unlockRows,
         depositPenaltyEvidences: penaltyEvidences,
-        sessionMessages: sessionMessagesRes.data || [],
-        riskBypassLogs: riskBypassLogsRes.data || []
+        sessionMessages: sessionMessageRows,
+        riskBypassLogs: riskBypassRows
       }
     }
 
     if (action === 'listOrderSessionMessages') {
       const orderId = safeText(data.id || data.orderId).trim()
       if (!orderId) throw new Error('缺少订单ID')
-      const sessionMessagesRes = await db.collection('order_session_messages').where({ orderId }).orderBy('createdAt', 'asc').get().catch(() => ({ data: [] }))
-      const riskBypassLogsRes = await db.collection('risk_bypass_logs').where({ orderId }).orderBy('createdAt', 'desc').get().catch(() => ({ data: [] }))
+      const [allSessionMessages, riskBypassLogs] = await Promise.all([
+        readScopedDocuments('order_session_messages', { orderId }, 'createdAt', 'asc').catch(() => []),
+        readScopedDocuments('risk_bypass_logs', { orderId }, 'createdAt', 'desc').catch(() => [])
+      ])
+      const wantsPage = data.page !== undefined || data.pageSize !== undefined || data.before || data.after
+      const page = Math.max(1, Math.floor(Number(data.page) || 1))
+      const pageSize = Math.min(100, Math.max(1, Math.floor(Number(data.pageSize) || 50)))
+      const cursorTime = data.before || data.after ? toTimeValue(data.before || data.after) : 0
+      let sessionMessages = allSessionMessages
+      if (cursorTime) {
+        sessionMessages = sessionMessages.filter((item) => {
+          const time = toTimeValue(item.createdAt)
+          return data.before ? time < cursorTime : time > cursorTime
+        })
+      }
+      const total = sessionMessages.length
+      if (wantsPage) sessionMessages = sessionMessages.slice((page - 1) * pageSize, page * pageSize)
       return {
-        sessionMessages: sessionMessagesRes.data || [],
-        riskBypassLogs: riskBypassLogsRes.data || []
+        sessionMessages,
+        riskBypassLogs,
+        ...(wantsPage ? { page, pageSize, total, hasMore: page * pageSize < total } : {})
       }
     }
     if (action === 'assignOrder') {

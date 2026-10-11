@@ -15,7 +15,9 @@ module.exports = function createHandler(context) {
   return async function track(openid, action, data) {
     if (action === 'batchUploadTrack') {
       const { user, order } = await requireStaffOrder(openid, data.orderId, '仅订单员工可上传轨迹')
-      if (order.status !== 'in_service') throw new Error('仅服务中可上传轨迹')
+      const isCompletedStatus = ['day_completed', 'completed'].includes(order.status)
+      const isBackfillRequest = data.isBackfilled === true || (Array.isArray(data.points) && data.points.some((point) => point && point.isBackfilled === true))
+      if (order.status !== 'in_service' && !(isCompletedStatus && isBackfillRequest)) throw new Error('仅服务中或结束后的补传窗口内可上传轨迹')
       const uploadedAt = now()
       const settings = await getSystemSettings()
       const batchSize = settings.reliability.maxTrackBatchSize || 50
@@ -42,8 +44,16 @@ module.exports = function createHandler(context) {
       const uploadedTime = pointTime(uploadedAt)
       return db.runTransaction(async tx => {
         const current = (await tx.collection('orders').doc(data.orderId).get()).data
-        if (!current || current.staffOpenid !== openid || current.status !== 'in_service') throw new Error('仅服务中可上传轨迹')
-        const serviceStart = pointTime(current.startedAt)
+        const currentIsCompleted = current && ['day_completed', 'completed'].includes(current.status)
+        const currentIsBackfill = currentIsCompleted && isBackfillRequest
+        const backfillUntil = pointTime(current && current.trackBackfillUntil)
+        if (!current || current.staffOpenid !== openid ||
+            (current.status !== 'in_service' && !currentIsBackfill) ||
+            (currentIsBackfill && (!backfillUntil || uploadedTime > backfillUntil))) {
+          throw new Error('仅服务中或结束后的补传窗口内可上传轨迹')
+        }
+        const serviceStart = pointTime(current.trackBackfillStartedAt || current.currentSessionStartedAt || current.startedAt)
+        const serviceFinish = pointTime(current.trackBackfillFinishedAt || current.completedAt || current.updatedAt)
         let count = 0
         let rejectedCount = rawPoints.length - points.length
         let duplicateCount = 0
@@ -70,8 +80,10 @@ module.exports = function createHandler(context) {
           const earlier = neighbors.filter((item) => pointTime(item.recordedAt) <= point.recordedAt).pop()
           const later = neighbors.find((item) => pointTime(item.recordedAt) > point.recordedAt)
           if ((before.data.length === 20 && !earlier) || (after.data.length === 20 && !later)) throw new Error('历史轨迹质量异常，请核对后补传')
-          if (!isGoodTrackPoint(point) || point.recordedAt > uploadedTime + 30000 ||
-              point.recordedAt < Math.max(serviceStart ? serviceStart - 30000 : 0, uploadedTime - 7 * 24 * 3600000) ||
+          const lowerBound = Math.max(serviceStart ? serviceStart - 30000 : 0, uploadedTime - 7 * 24 * 3600000)
+          const upperBound = currentIsBackfill && serviceFinish ? serviceFinish + 30000 : uploadedTime + 30000
+          if ((currentIsBackfill && point.isBackfilled !== true) || !isGoodTrackPoint(point) || point.recordedAt > upperBound ||
+              point.recordedAt < lowerBound ||
               (earlier && !isPlausibleStep(earlier, point)) || (later && !isPlausibleStep(point, later))) {
             rejectedCount += 1
             continue

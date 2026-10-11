@@ -13,6 +13,7 @@ const { MAX_GAP_MS, pointTime, isGoodTrackPoint, isPlausibleStep } = require('..
 const TRACK_INTERVAL_MS = 5 * 1000
 const TRACK_MIN_DISTANCE_M = 3
 const TRACK_MIN_INTERVAL_MS = 2 * 1000
+const TRACK_UPLOAD_BATCH_SIZE = 20
 
 function hasCoordinate(latitude, longitude) {
   const lat = Number(latitude)
@@ -882,15 +883,28 @@ Page({
 
   flushTrackUploadQueue() {
     if (this.trackUploadInFlight) return this.trackUploadDrainPromise || Promise.resolve(null)
-    const point = this.trackUploadQueue && this.trackUploadQueue.shift()
-    if (!point) return Promise.resolve(null)
-    const forceUpload = Boolean(point.forceUpload)
-    const uploadPoint = { ...point }
-    delete uploadPoint.forceUpload
+    const queue = this.trackUploadQueue || []
+    if (!queue.length) return Promise.resolve(null)
+    const batch = queue.splice(0, TRACK_UPLOAD_BATCH_SIZE)
+    const forceUpload = batch.some((point) => point.forceUpload)
+    const uploadPoints = batch.map((point) => {
+      const uploadPoint = { ...point }
+      delete uploadPoint.forceUpload
+      return uploadPoint
+    })
     this.trackUploadInFlight = true
-    this.trackUploadDrainPromise = callFunction('track', 'batchUploadTrack', { orderId: this.data.id, batchId: createClientRequestId('batch'), points: [uploadPoint] })
-      .then((res) => {
-        if (!Number(res.count || 0)) {
+    let uploadRequest
+    try {
+      // Invoke immediately so a precise point captured in the native callback
+      // is handed to the network layer before another callback can arrive.
+      uploadRequest = callFunction('track', 'batchUploadTrack', { orderId: this.data.id, batchId: createClientRequestId('batch'), points: uploadPoints })
+    } catch (error) {
+      uploadRequest = Promise.reject(error)
+    }
+    this.trackUploadDrainPromise = Promise.resolve(uploadRequest)
+      .then((res = {}) => {
+        const acceptedCount = Number(res.count || 0)
+        if (!acceptedCount) {
           if (res.rejectedCount) {
             this.lastTrackPoint = null
             this.trackWarmupPoint = null
@@ -899,17 +913,24 @@ Page({
           this.setData({ trackStatusText: res.rejectedCount ? '定位质量不足，已忽略本次位置' : '位置已记录' })
           return null
         }
-        const pointCount = this.data.pointCount + Number(res.count || 0)
+        const latestPoint = batch[batch.length - 1]
+        const pointCount = this.data.pointCount + acceptedCount
         this.setData({
           pointCount,
           trackStatusText: this.data.backgroundTracking ? '后台轨迹记录中' : '前台轨迹记录中',
-          latestTrackText: `最近记录：${formatDateTime(point.recordedAt).slice(6)}，精度${Math.round(point.accuracy || 0)}m`,
+          latestTrackText: `最近记录：${formatDateTime(latestPoint.recordedAt).slice(6)}，精度${Math.round(latestPoint.accuracy || 0)}m`,
           offlineTaskCount: getOfflineTaskCount(this.data.id)
         })
         return res
       })
       .catch((error) => {
-        if (isNetworkError(error)) enqueueOfflineTask('track', { orderId: this.data.id, point: { ...point, isBackfilled: true }, clientPointId: point.clientPointId })
+        if (isNetworkError(error)) {
+          batch.forEach((point) => enqueueOfflineTask('track', {
+            orderId: this.data.id,
+            point: { ...point, isBackfilled: true },
+            clientPointId: point.clientPointId
+          }))
+        }
         this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id) })
         if (forceUpload) showError(error)
         return null

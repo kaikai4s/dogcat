@@ -161,6 +161,25 @@ module.exports = function createService({
     })
   }
 
+  function getQueuedReminderSession(order, deliveryKey) {
+    const parts = String(deliveryKey || '').split(':')
+    if (parts.length < 4 || parts[0] !== 'upcoming_service') return null
+    const sessionIndex = Number(parts[3])
+    if (!Number.isInteger(sessionIndex) || sessionIndex < 1) return null
+    const startTime = parts.length > 4 ? parts.slice(4).join(':') : ''
+    const sessions = Array.isArray(order && order.serviceSessions) ? order.serviceSessions : []
+    const session = sessions.find(item => Number(item && item.index) === sessionIndex) ||
+      (!sessions.length && sessionIndex === 1 && order && order.startTime
+        ? { index: 1, startTime: order.startTime, endTime: order.endTime, status: order.status === 'completed' ? 'completed' : 'pending' }
+        : null)
+    if (!session || session.status === 'completed' || session.status === 'cancelled') return null
+    // New reminders carry the exact session start. Requiring it prevents a delayed
+    // message for an earlier session from being sent after the order advances.
+    if (startTime && String(session.startTime || '') !== startTime) return null
+    if (!startTime && sessionIndex !== 1) return null
+    return session
+  }
+
   async function sendSubscribeMessageOnce(openid, templateKey, page, messageData = {}, orderId = '') {
     if (!openid || !templateKey) return { status: 'skipped', error: 'missing_recipient_or_template_key' }
     try {
@@ -264,10 +283,14 @@ module.exports = function createService({
     }
     if (message.templateKey === 'upcomingServiceReminder' && (message.deliveryKey || '').startsWith('upcoming_service:')) {
       const order = (await db.collection('orders').doc(message.orderId).get()).data
-      const session = order && getNextPendingServiceSession(order)
-      const currentKey = session && makeIdempotencyKey('upcoming_service', order._id, order.staffOpenid, String(session.index), session.startTime || order.startTime)
+      const session = order && getQueuedReminderSession(order, message.deliveryKey)
+      const parts = String(message.deliveryKey || '').split(':')
+      const sessionIndex = Number(parts[3])
+      const startTime = parts.length > 4 ? parts.slice(4).join(':') : ''
+      const currentKey = session && makeIdempotencyKey('upcoming_service', order._id, order.staffOpenid,
+        String(session.index || sessionIndex), session.startTime || order.startTime)
       if (!order || order.adminDeletedAt || !['assigned', 'day_completed'].includes(order.status) || order.staffOpenid !== message.openid ||
-          !session || session.status === 'completed' || currentKey !== message.deliveryKey) {
+          !session || (startTime && String(session.startTime || '') !== startTime) || currentKey !== message.deliveryKey) {
         return { status: 'skipped', error: 'service_reminder_obsolete', templateKey: message.templateKey }
       }
     }

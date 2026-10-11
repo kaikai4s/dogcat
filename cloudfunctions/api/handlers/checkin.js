@@ -263,6 +263,16 @@ module.exports = function createHandler(context) {
         checkin.sanitizationVersion = 1
       }
       const created = await db.collection('checkin_logs').add({ data: checkin })
+      try {
+        const revision = db.command && typeof db.command.inc === 'function'
+          ? db.command.inc(1)
+          : Number(order.checkinRevision || 0) + 1
+        await db.collection('orders').doc(data.orderId).update({ data: { checkinRevision: revision, updatedAt: time } })
+      } catch (revisionError) {
+        // The check-in itself is already durable; a missed revision only
+        // causes the client to refresh one poll later.
+        console.warn('[createCheckin] revision update failed:', revisionError.message)
+      }
       if (shouldWriteTimeline) await appendOrderTimeline(data.orderId, 'checkin', data.isBackfilled === true ? '服务打卡已补传' : '服务打卡', data.eventType, 'staff')
 
       const eventNameMap = {
@@ -312,6 +322,14 @@ module.exports = function createHandler(context) {
       if (checkin.deletedAt) return { _id: data.checkinId, deletedAt: checkin.deletedAt }
       const time = now()
       await db.collection('checkin_logs').doc(data.checkinId).update({ data: { deletedAt: time, deletedByOpenid: openid, updatedAt: time } })
+      try {
+        const revision = db.command && typeof db.command.inc === 'function'
+          ? db.command.inc(1)
+          : Number(order.checkinRevision || 0) + 1
+        await db.collection('orders').doc(data.orderId).update({ data: { checkinRevision: revision, updatedAt: time } })
+      } catch (revisionError) {
+        console.warn('[deleteCheckin] revision update failed:', revisionError.message)
+      }
       return { _id: data.checkinId, deletedAt: time }
     }
     if (action === 'listOrderCheckins') {
