@@ -40,7 +40,7 @@
   </view>
 
   <!-- 时空雷达提醒卡片（宠托师在路上或已触发临近提醒） -->
-  <view class="card radar-card" wx:if="{{order.status === 'on_the_way' || order.travelEtaMinutes !== undefined}}">
+  <view class="card radar-card" wx:if="{{order.status === 'on_the_way'}}">
     <view class="card-subtitle">
       <text class="remix-icon ri-radar-fill sub-icon radar-pulse-icon"></text>
       <text>时空雷达：宠托师正赶往中</text>
