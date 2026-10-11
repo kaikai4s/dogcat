@@ -257,10 +257,6 @@ Page({
         const errorMessage = (error && (error.errMsg || error.message)) || ''
         if (errorMessage.includes('cancel') || errorMessage.includes('取消')) {
           wx.showToast({ title: '已取消支付', icon: 'none' })
-        } else if (errorMessage.includes('配置') || errorMessage.includes('未完成')) {
-          wx.showToast({ title: '微信支付暂未配置完成', icon: 'none' })
-        } else if (errorMessage.includes('微信支付下单失败')) {
-          wx.showToast({ title: '微信支付下单失败，请稍后重试', icon: 'none' })
         } else {
           showError(error)
         }

@@ -318,6 +318,34 @@ function loadSystemSettings() {
   return systemSettingsRequest
 }
 
+// These are authorization results, not a balance of remaining message sends.
+function subscriptionResultsStorageKey() {
+  const user = getCachedUser()
+  const userId = user && (user._id || user.openid || user._openid)
+  const env = getCloudEnv()
+  return userId && env ? `vip_pet_subscription_results_v1:${encodeURIComponent(env)}:${encodeURIComponent(userId)}` : ''
+}
+
+function normalizeSubscriptionResults(results) {
+  return Object.fromEntries(Object.entries(results && typeof results === 'object' ? results : {})
+    .filter(([id, status]) => !subscriptionTemplateIssue(id) && ['accept', 'reject', 'ban', 'filter', 'unknown'].includes(status)))
+}
+
+function getCachedSubscriptionResults(storageKey = subscriptionResultsStorageKey()) {
+  if (!storageKey) return {}
+  try { return normalizeSubscriptionResults(wx.getStorageSync(storageKey)) } catch (_) { return {} }
+}
+
+function setCachedSubscriptionResults(results, storageKey = subscriptionResultsStorageKey()) {
+  const updates = normalizeSubscriptionResults(results)
+  const saved = { ...getCachedSubscriptionResults(storageKey), ...updates }
+  if (storageKey && Object.keys(updates).length) {
+    // Storage or consent-log failures must not block a successful native request.
+    try { wx.setStorageSync(storageKey, saved) } catch (_) {}
+  }
+  return saved
+}
+
 let subscriptionRequestInFlight = false
 function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) {
   const requestWithSettings = (settings) => {
@@ -331,6 +359,7 @@ function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) 
     const tmplIds = Array.from(new Set(requestKeys.map(resolveTemplateId))).slice(0, 3)
     const limitedKeys = requestKeys.filter((key) => tmplIds.includes(resolveTemplateId(key)))
     if (!tmplIds.length) return Promise.resolve({ requested: false, reason: 'template_not_configured' })
+    const resultsStorageKey = subscriptionResultsStorageKey()
     subscriptionRequestInFlight = true
     return new Promise((resolve) => {
       wx.requestSubscribeMessage({
@@ -341,6 +370,7 @@ function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) 
     }).catch(error => ({ requested: false, reason: 'request_failed', errorCode: error && error.errCode, error: error && (error.errMsg || error.message) || '' }))
       .then((result) => {
         if (!result.requested) return result
+        setCachedSubscriptionResults(Object.fromEntries(tmplIds.map(id => [id, result.results[id] || 'unknown'])), resultsStorageKey)
         const templateIds = {}
         limitedKeys.forEach((key) => { templateIds[key] = resolveTemplateId(key) })
         const recording = callFunction('system', 'recordSubscriptionConsent', { templateKeys: limitedKeys, templateIds, results: result.results, scene })
@@ -590,6 +620,8 @@ module.exports = {
   loadSystemSettings,
   setCachedSystemSettings,
   getCachedSystemSettings,
+  getCachedSubscriptionResults,
+  setCachedSubscriptionResults,
   requestSubscribeTemplates,
   chooseSelectedLocation,
   requireSelectedLocation,

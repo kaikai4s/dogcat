@@ -18,7 +18,7 @@
       </view>
       <switch checked="{{item.enabled}}" data-index="{{index}}" bindchange="toggleEnabled" />
     </view>
-    <input type="number" placeholder="价格" value="{{item.price}}" data-index="{{index}}" data-field="price" bindinput="input" />
+    <input type="digit" placeholder="价格" value="{{item.price}}" data-index="{{index}}" data-field="price" bindinput="input" />
     <textarea placeholder="服务说明" value="{{item.description}}" data-index="{{index}}" data-field="description" bindinput="input" />
     <button class="primary" data-index="{{index}}" bindtap="save">保存价格</button>
   </view>

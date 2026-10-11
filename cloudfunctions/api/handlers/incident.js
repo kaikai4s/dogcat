@@ -88,6 +88,7 @@ module.exports = function createHandler(context) {
           title: '【紧急求助】宠托师现场发起 SOS！',
           content: `订单 ${order.orderNo || data.orderId} 现场宠托师发起紧急求助：${incident.description || '现场突发紧急情况'}，请立即协调处理！`,
           level: 'urgent',
+          idempotencyKey: makeIdempotencyKey('admin_notification', 'sos_alert', created._id),
           orderId: data.orderId,
           orderNo: order.orderNo || '',
           actionUrl: `/pages/admin/incidents/detail/index?id=${created._id}`,

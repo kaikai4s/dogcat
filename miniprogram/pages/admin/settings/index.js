@@ -1,5 +1,6 @@
 const { callFunction, showError, setCachedSystemSettings } = require('../../../utils/cloud')
 const { subscriptionTemplateIssue } = require('../../../utils/subscription-options')
+const { paymentKeyInputIssue } = require('../../../utils/payment-config')
 
 const quizOptionValues = ['A', 'B', 'C', 'D', 'E', 'F']
 const requiredSupplyItems = ['一次性手套', '一次性口罩', '一次性鞋套', '宠物安全消毒用品']
@@ -1339,6 +1340,8 @@ Page({
   save() {
     if (this.data.saving) return
     if (!this.data.loaded) return showError(new Error('请等待设置加载成功后再保存'))
+    const paymentIssue = paymentKeyInputIssue(this.data.settings.payment)
+    if (paymentIssue) return showError(new Error(paymentIssue))
     const templates = this.data.settings.subscription.templates || {}
     const invalidKeys = Object.keys(templates).filter(key => String(templates[key] || '').trim() && subscriptionTemplateIssue(templates[key]))
     if (invalidKeys.length) return showError(new Error('【订阅消息设置】存在模板编号、占位值或格式错误的 ID。请从当前小程序「订阅消息 → 我的模板」复制完整 ID；暂未配置的项目请留空。'))

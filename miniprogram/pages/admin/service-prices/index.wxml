@@ -92,10 +92,10 @@
       <scroll-view scroll-y class="modal-scroll-body">
         <input placeholder="服务名称" value="{{priceForm.label}}" data-field="label" bindinput="input" />
         <input placeholder="服务标识，如 grooming" value="{{priceForm.key}}" data-field="key" bindinput="input" disabled="{{priceForm.keyReadonly}}" />
-        <input type="number" placeholder="标准基础价格" value="{{priceForm.price}}" data-field="price" bindinput="input" />
-        <input type="number" placeholder="实习宠托师基础价" value="{{priceForm.internPrice}}" data-field="internPrice" bindinput="input" />
-        <input type="number" placeholder="标准多宠物加价金额" value="{{priceForm.extraPetFee}}" data-field="extraPetFee" bindinput="input" />
-        <input type="number" placeholder="实习宠托师多宠物加价" value="{{priceForm.internExtraPetFee}}" data-field="internExtraPetFee" bindinput="input" />
+        <input type="digit" placeholder="标准基础价格" value="{{priceForm.price}}" data-field="price" bindinput="input" />
+        <input type="digit" placeholder="实习宠托师基础价" value="{{priceForm.internPrice}}" data-field="internPrice" bindinput="input" />
+        <input type="digit" placeholder="标准多宠物加价金额" value="{{priceForm.extraPetFee}}" data-field="extraPetFee" bindinput="input" />
+        <input type="digit" placeholder="实习宠托师多宠物加价" value="{{priceForm.internExtraPetFee}}" data-field="internExtraPetFee" bindinput="input" />
 
         <view class="notice" wx:if="{{priceForm.key === 'walk' || priceForm.key === 'play'}}">
           <view class="strong">按宠物续时计费</view>

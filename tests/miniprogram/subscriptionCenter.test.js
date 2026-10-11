@@ -6,12 +6,11 @@ const vm = require('node:vm')
 const flush = () => new Promise(resolve => setImmediate(resolve))
 const templateKeys = ['staffDirectOrder', 'orderAccepted', 'staffDeparture', 'serviceStart', 'serviceProgress', 'serviceFinish', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate', 'upcomingServiceReminder', 'withdrawResult']
 
-async function setup({ templates = Object.fromEntries(templateKeys.map(key => [key, `tpl_${key}`])), enabled = true, mainSwitch = true, role = 'client', subscribe, holdConsent = false } = {}) {
+async function setup({ templates = Object.fromEntries(templateKeys.map(key => [key, `tpl_${key}`])), enabled = true, mainSwitch = true, role = 'client', subscribe, holdConsent = false, storage = {}, app = { globalData: { env: 'test', user: { _id: 'user' } } } } = {}) {
   const requests = []
   const calls = []
   const settingsCalls = []
   const errors = []
-  const storage = {}
   const settings = { subscription: { enabled, templates } }
   const wx = {
     getStorageSync: key => storage[key], setStorageSync: (key, value) => { storage[key] = value },
@@ -32,20 +31,136 @@ async function setup({ templates = Object.fromEntries(templateKeys.map(key => [k
   const module = { exports: {} }
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/utils/cloud.js'), 'utf8'), {
     module, wx, setTimeout, clearTimeout,
-    getApp: () => ({ globalData: { env: 'test', user: { _id: 'user' } } }),
+    getApp: () => app,
     require: name => name.endsWith('/subscription-options') ? require('../../miniprogram/utils/subscription-options') : { envList: [] }
   })
-  let page
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/common/subscriptions/index.js'), 'utf8'), {
-    Page(config) { page = config }, require: name => name.endsWith('/subscription-options') ? require('../../miniprogram/utils/subscription-options') : module.exports, wx
-  })
-  page.setData = function (data) { Object.assign(this.data, data) }
-  page.onLoad({ role })
-  page.onShow()
-  await flush()
-  return { page, requests, calls, settingsCalls, errors, settings, wx, api: module.exports }
+  async function reopen() {
+    let page
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/common/subscriptions/index.js'), 'utf8'), {
+      Page(config) { page = config }, require: name => name.endsWith('/subscription-options') ? require('../../miniprogram/utils/subscription-options') : module.exports, wx
+    })
+    page.setData = function (data) { Object.assign(this.data, data) }
+    page.onLoad({ role })
+    page.onShow()
+    await flush()
+    return page
+  }
+  return { page: await reopen(), reopen, storage, app, requests, calls, settingsCalls, errors, settings, wx, api: module.exports }
 }
 const tap = scope => ({ currentTarget: { dataset: { scope } } })
+const itemFor = (page, key) => page.data.groups.flatMap(group => group.items).find(item => item.key === key)
+
+test('all authorized client and staff notifications survive page recreation and app restart with empty WeChat settings', async () => {
+  for (const role of ['client', 'staff']) {
+    const context = await setup({ role, holdConsent: true })
+    for (let batch = 0; batch < (role === 'client' ? 3 : 2); batch++) await context.page.subscribe(tap('all'))
+    assert.equal(context.page.data.pendingKeys.length, 0)
+    const count = context.requests.length
+    const reopened = await context.reopen()
+    assert.ok(reopened.data.groups.flatMap(group => group.items).filter(item => item.available).every(item => item.accepted))
+    assert.equal(context.requests.length, count, 'returning must not request authorization again')
+    const restarted = await setup({ role, storage: context.storage })
+    assert.ok(restarted.page.data.groups.flatMap(group => group.items).filter(item => item.available).every(item => item.accepted))
+    assert.equal(restarted.requests.length, 0)
+  }
+})
+
+test('empty settings, configuration rechecks and temporary master switch closure retain authorization history', async () => {
+  const { page, wx, reopen } = await setup()
+  await page.subscribe(tap('refundResult'))
+  page.openSettings()
+  assert.equal(itemFor(page, 'refundResult').accepted, true)
+  await page.reloadConfiguration()
+  assert.equal(itemFor(page, 'refundResult').accepted, true)
+  wx.getSetting = options => options.success({ subscriptionsSetting: { mainSwitch: false, itemsSetting: {} } })
+  page.refreshWechatSettings()
+  assert.equal(itemFor(page, 'refundResult').accepted, false)
+  assert.match(itemFor(page, 'refundResult').statusText, /开关已关闭/)
+  page.openSettings()
+  assert.equal(itemFor(page, 'refundResult').accepted, true)
+  wx.getSetting = options => options.success({ subscriptionsSetting: { mainSwitch: true } })
+  assert.equal(itemFor(await reopen(), 'refundResult').accepted, true)
+})
+
+test('explicit WeChat settings replace saved consent while missing template entries retain it', async () => {
+  const { page, wx, reopen } = await setup()
+  await page.subscribe(tap('common'))
+  wx.getSetting = options => options.success({ subscriptionsSetting: { mainSwitch: true, itemsSetting: { tpl_orderAccepted: 'reject', tpl_staffDeparture: 'ban' } } })
+  page.refreshWechatSettings()
+  assert.equal(itemFor(page, 'orderAccepted').accepted, false)
+  assert.equal(itemFor(page, 'staffDeparture').accepted, false)
+  assert.equal(itemFor(page, 'serviceStart').accepted, true)
+  wx.getSetting = options => options.success({ subscriptionsSetting: { mainSwitch: true, itemsSetting: {} } })
+  const reopened = await reopen()
+  assert.equal(itemFor(reopened, 'orderAccepted').accepted, false)
+  assert.equal(itemFor(reopened, 'staffDeparture').accepted, false)
+  assert.equal(itemFor(reopened, 'serviceStart').accepted, true)
+  wx.openSetting = options => options.success({ subscriptionsSetting: { mainSwitch: true, itemsSetting: { tpl_orderAccepted: 'accept' } } })
+  reopened.openSettings()
+  assert.equal(itemFor(await reopen(), 'orderAccepted').accepted, true)
+})
+
+test('authorizations from other entry points update the center across page recreation', async () => {
+  let response = 'accept'
+  const { api, reopen } = await setup({ subscribe(options) {
+    options.success(response ? { [options.tmplIds[0]]: response } : {})
+  } })
+  for (const status of ['accept', 'reject', 'accept', '']) {
+    response = status
+    await api.requestSubscribeTemplates(['refundResult'], 'order_payment')
+    assert.equal(itemFor(await reopen(), 'refundResult').accepted, status === 'accept')
+  }
+})
+
+test('saved authorizations are isolated by account, cloud environment and template ID', async () => {
+  const { page, app, settings, reopen } = await setup()
+  await page.subscribe(tap('refundResult'))
+  app.globalData.user = { _id: 'another-user' }
+  assert.equal(itemFor(await reopen(), 'refundResult').accepted, false)
+  app.globalData.user = { _id: 'user' }
+  app.globalData.env = 'another-env'
+  assert.equal(itemFor(await reopen(), 'refundResult').accepted, false)
+  app.globalData.env = 'test'
+  assert.equal(itemFor(await reopen(), 'refundResult').accepted, true)
+  settings.subscription.templates.refundResult = 'replacement-refund'
+  assert.equal(itemFor(await reopen(), 'refundResult').accepted, false)
+})
+
+test('delayed native consent is saved for the account that requested it', async () => {
+  let finish
+  const { api, app, reopen } = await setup({ subscribe(options) { finish = options.success } })
+  const pending = api.requestSubscribeTemplates(['refundResult'], 'order_payment')
+  app.globalData.user = { _id: 'another-user' }
+  finish({ tpl_refundResult: 'accept' })
+  await pending
+  assert.equal(itemFor(await reopen(), 'refundResult').accepted, false)
+  app.globalData.user = { _id: 'user' }
+  assert.equal(itemFor(await reopen(), 'refundResult').accepted, true)
+})
+
+test('unavailable local storage cannot block native authorization or consent logging', async () => {
+  const { page, wx, calls, requests } = await setup()
+  wx.getStorageSync = () => { throw new Error('storage unavailable') }
+  wx.setStorageSync = () => { throw new Error('storage full') }
+  await page.subscribe(tap('refundResult'))
+  assert.equal(itemFor(page, 'refundResult').accepted, true)
+  assert.equal(page.data.busy, false)
+  await page.subscribe(tap('serviceStart'))
+  assert.equal(requests.length, 2)
+  assert.equal(calls.filter(call => call.action === 'recordSubscriptionConsent').length, 2)
+})
+
+test('a failed repeat request does not erase a previously saved authorization', async () => {
+  let failed = false
+  const { page, reopen } = await setup({ subscribe(options) {
+    if (failed) options.fail({ errCode: 10002, errMsg: 'network error' })
+    else options.success({ tpl_refundResult: 'accept' })
+  } })
+  await page.subscribe(tap('refundResult'))
+  failed = true
+  await page.subscribe(tap('refundResult'))
+  assert.equal(itemFor(await reopen(), 'refundResult').accepted, true)
+})
 
 test('all notifications request at most three templates per tap and continue with the remainder', async () => {
   const { page, requests } = await setup()
@@ -303,13 +418,15 @@ test('network rejection preserves the batch and remembered accepts can finish wi
 })
 
 test('late getSetting cannot overwrite a fresh rejection and restore an accepted label', async () => {
-  const { page, wx } = await setup({ subscribe(options) { options.success({ tpl_refundResult: 'reject' }) } })
+  const { page, wx, reopen } = await setup({ subscribe(options) { options.success({ tpl_refundResult: 'reject' }) } })
   let finishRead
   wx.getSetting = options => { finishRead = options.success }
   page.refreshWechatSettings()
   await page.subscribe(tap('refundResult'))
   finishRead({ subscriptionsSetting: { mainSwitch: true, itemsSetting: { tpl_refundResult: 'accept' } } })
   assert.equal(page.data.groups.flatMap(g => g.items).find(item => item.key === 'refundResult').accepted, false)
+  wx.getSetting = options => options.success({ subscriptionsSetting: { mainSwitch: true, itemsSetting: {} } })
+  assert.match(itemFor(await reopen(), 'refundResult').statusText, /暂未允许/)
 })
 
 test('synchronous native errors retain diagnostics and release the guard for retry', async () => {

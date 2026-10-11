@@ -36,6 +36,6 @@
     </view>
   </block>
   <button class="open-settings-button" bindtap="openSettings">打开微信通知设置 <text class="remix-icon ri-arrow-right-line"></text></button>
-  <view class="footnote">每次授权最多选择 3 个通知模板，更多通知可继续订阅。一次性订阅通常对应一次提醒，已允许不代表永久接收，实际送达以微信授权为准。</view>
+  <view class="footnote">每次授权最多选择 3 个通知模板，更多通知可继续订阅。已授权状态会保留在当前设备，表示曾同意订阅，不代表永久接收或剩余提醒次数；一次性订阅通常对应一次提醒，实际送达以微信授权为准。</view>
 </view>
 <global-loading />

@@ -66,7 +66,17 @@ module.exports = function createService({
     return rows
   }
 
-  // 处理状态独立于阅读状态；历史通知保留，待办必须以订单当前状态为准。
+  function sosIncidentId(notification) {
+    const id = safeText(notification.extra && notification.extra.incidentId).trim()
+    if (id) return id
+    // Older notifications may retain only the incident detail link.
+    const [path, query = ''] = safeText(notification.actionUrl).split('?')
+    if (path !== '/pages/admin/incidents/detail/index') return ''
+    const match = query.match(/(?:^|&)id=([^&#]+)/)
+    try { return match ? decodeURIComponent(match[1]) : '' } catch (_) { return '' }
+  }
+
+  // 阅读与处理状态独立；保留历史，待办以对应订单或事件的当前状态为准。
   async function attachResolutionState(notifications) {
     const dispatchTypes = ['order_start_overdue', 'order_finish_overdue', 'order_urgent_republished']
     const orderIds = [...new Set(notifications.filter(item => dispatchTypes.includes(item.type) && !item.resolved).map(item => item.orderId).filter(Boolean))]
@@ -74,6 +84,12 @@ module.exports = function createService({
     for (let i = 0; i < orderIds.length; i += 100) {
       const result = await db.collection('orders').where({ _id: db.command.in(orderIds.slice(i, i + 100)) }).limit(100).get()
       for (const order of result.data || []) orders.set(order._id, order)
+    }
+    const incidentIds = [...new Set(notifications.filter(item => item.type === 'sos_alert' && !item.resolved).map(sosIncidentId).filter(Boolean))]
+    const incidents = new Map()
+    for (let i = 0; i < incidentIds.length; i += 100) {
+      const result = await db.collection('order_incidents').where({ _id: db.command.in(incidentIds.slice(i, i + 100)) }).limit(100).get()
+      for (const incident of result.data || []) incidents.set(incident._id, incident)
     }
     return notifications.map(item => {
       let isResolved = item.resolved === true
@@ -87,6 +103,12 @@ module.exports = function createService({
         isResolved = !order || !activeStatuses.includes(order.status) ||
           (item.type === 'order_start_overdue' && order.isStartOverdue === false) ||
           (item.type === 'order_finish_overdue' && order.isFinishOverdue === false)
+      }
+      if (!isResolved && item.type === 'sos_alert') {
+        const incident = incidents.get(sosIncidentId(item))
+        // An order can have several incidents. Only this incident's confirmed
+        // terminal state resolves its SOS; missing records must not hide alerts.
+        isResolved = !!incident && ['resolved', 'rejected', 'closed'].includes(incident.status)
       }
       return { ...item, isResolved }
     })

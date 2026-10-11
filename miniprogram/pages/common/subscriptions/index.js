@@ -1,4 +1,4 @@
-const { callFunction, setCachedSystemSettings, ensureLogin, requestSubscribeTemplates, showError } = require('../../../utils/cloud')
+const { callFunction, setCachedSystemSettings, getCachedSubscriptionResults, setCachedSubscriptionResults, ensureLogin, requestSubscribeTemplates, showError } = require('../../../utils/cloud')
 const { subscriptionSections, subscriptionTemplateIssue } = require('../../../utils/subscription-options')
 
 const catalog = {
@@ -27,7 +27,7 @@ Page({
   },
   onLoad(query = {}) {
     this.setData({ role: query.role === 'staff' ? 'staff' : 'client' })
-    this._lastResults = {}
+    this._lastResults = getCachedSubscriptionResults()
     this._invalidTemplateIds = new Set()
     this.resetBatchPlan()
     this._wechatSettings = {}
@@ -47,6 +47,7 @@ Page({
       .then((settings) => {
         const previous = JSON.stringify(this._settings && this._settings.subscription)
         this._settings = setCachedSystemSettings(settings)
+        this._lastResults = getCachedSubscriptionResults()
         const changed = previous !== JSON.stringify(this._settings.subscription)
         if (changed) {
           this._batchAcceptedIds = new Set()
@@ -68,7 +69,7 @@ Page({
   reloadConfiguration() {
     if (this.data.busy) return
     this._invalidTemplateIds = new Set()
-    this._lastResults = {}
+    this._lastResults = getCachedSubscriptionResults()
     this._batchAcceptedIds = new Set()
     this.resetBatchPlan()
     this.setData({ pendingKeys: [], pendingScope: '', pendingNames: '', pendingTitle: '', nextBatchCount: 0, batchTotal: 0, batchAccepted: 0, batchRemaining: 0, feedback: '' })
@@ -124,12 +125,12 @@ Page({
         const statusText = key === 'disputeUpdate' ? '暂未开放'
           : invalid ? '模板不可用，请联系平台核对配置'
           : issue ? issue : !this.data.enabled ? '平台暂未开启订阅通知' : this.data.mainSwitch === false ? '微信订阅开关已关闭'
-          : status === 'accept' ? '已允许接收，可再次订阅'
+          : status === 'accept' ? '已授权订阅，可再次订阅'
           : status === 'reject' ? '暂未允许，可重新订阅'
           : status === 'ban' ? '通知已被关闭，请检查微信设置'
           : status === 'invalid' ? '模板不可用，请联系平台核对配置'
           : status === 'unknown' ? '微信未返回授权结果，请继续订阅'
-          : status === 'filter' ? '微信已过滤，继续订阅时自动调整组合' : '等待订阅授权'
+          : status === 'filter' ? '微信已过滤，继续订阅时自动调整组合' : '暂无订阅授权记录'
         return { key, title: catalog[key][0], desc: catalog[key][1], available, invalid, statusText, accepted: available && status === 'accept' && this.data.mainSwitch !== false }
       })
       return { id, title, items, available: items.some((item) => item.available) }
@@ -139,6 +140,9 @@ Page({
   },
   applyWechatSettings(result = {}) {
     this._wechatSettings = result.subscriptionsSetting || {}
+    // WeChat omits templates whose choices were not remembered. An absent item
+    // does not undo a completed request; explicit settings still take precedence.
+    this._lastResults = { ...this._lastResults, ...setCachedSubscriptionResults(this._wechatSettings.itemsSetting) }
     const mainSwitch = this._wechatSettings.mainSwitch
     this.setData({ mainSwitch: typeof mainSwitch === 'boolean' ? mainSwitch : null })
     this.updateGroups()
@@ -151,8 +155,9 @@ Page({
     } })
   },
   openSettings() {
+    const seq = this._wechatReadSeq = (this._wechatReadSeq || 0) + 1
     wx.openSetting({ withSubscriptions: true, success: (result) => {
-      this._lastResults = {}
+      if (seq !== this._wechatReadSeq) return
       this.applyWechatSettings(result)
       this.setData({ feedback: '返回后请点击订阅按钮申请通知；开启总开关不会自动完成订阅。' })
     }, fail: showError })
