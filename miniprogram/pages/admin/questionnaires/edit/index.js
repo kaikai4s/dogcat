@@ -163,6 +163,31 @@ Page({
     })
   },
 
+  selectQuestionType(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const type = e.currentTarget.dataset.type
+    this.setData({
+      [`form.questions[${index}].type`]: type,
+      [`form.questions[${index}].typeName`]: TYPE_MAP[type] || type
+    })
+  },
+
+  appendOtherOption(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const q = this.data.form.questions[index]
+    const currentText = String(q.optionsText || '').trim()
+    const lines = currentText ? currentText.split('\n').map(s => s.trim()).filter(Boolean) : []
+    if (lines.includes('其他')) {
+      wx.showToast({ title: '选项中已包含「其他」', icon: 'none' })
+      return
+    }
+    lines.push('其他')
+    this.setData({
+      [`form.questions[${index}].optionsText`]: lines.join('\n')
+    })
+    wx.showToast({ title: '已追加「其他」选项', icon: 'success' })
+  },
+
   changeCoupon(e) {
     const index = Number(e.detail.value || 0)
     const template = this.data.couponTemplates[index - 1]

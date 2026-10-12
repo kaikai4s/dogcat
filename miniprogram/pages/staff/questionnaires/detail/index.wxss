@@ -603,3 +603,50 @@
   color: #fff;
   box-shadow: 0 8rpx 24rpx rgba(255, 107, 53, 0.28);
 }
+
+/* 其他选项展开输入框卡片 */
+.other-input-card {
+  margin-top: -6rpx;
+  margin-bottom: 8rpx;
+  padding: 18rpx 22rpx;
+  border-radius: 20rpx;
+  background: #fff8f2;
+  border: 1.5rpx dashed #ff9c6e;
+  animation: fadeInDown 0.2s ease-out;
+}
+.other-input-header {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-bottom: 12rpx;
+}
+.other-icon {
+  font-size: 24rpx;
+  color: #ff7a45;
+}
+.other-label {
+  font-size: 22rpx;
+  font-weight: 800;
+  color: #c45a27;
+}
+.other-text-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14rpx 18rpx;
+  border-radius: 14rpx;
+  background: #ffffff;
+  border: 1.5rpx solid #ffd591;
+  font-size: 26rpx;
+  color: #2d211a;
+  min-height: 64rpx;
+}
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

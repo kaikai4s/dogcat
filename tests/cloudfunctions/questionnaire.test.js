@@ -345,3 +345,85 @@ test('questionnaire notification lifecycle: publish creates notification, close 
   assert.match(detailRes.error, /该问卷已结束征集/)
 })
 
+test('questionnaire handles text questions and other:custom input in single/multiple choices', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin_1', openid: 'admin_openid', roles: ['admin'], status: 'active' },
+      { _id: 'client_1', openid: 'client_openid', roles: ['client'], status: 'active' }
+    ],
+    questionnaires: [],
+    questionnaire_responses: [],
+    questionnaire_ai_reports: [],
+    system_notifications: [],
+    user_notification_reads: []
+  })
+
+  const adminFn = loadCloudFunction('api', db, 'admin_openid')
+  const clientFn = loadCloudFunction('api', db, 'client_openid')
+
+  // 1. 创建包含单选(含其他)、多选(含其他)、问答题的问卷
+  const createRes = await adminFn.main({
+    module: 'questionnaire',
+    action: 'create',
+    data: {
+      title: '混合题型及其他选项测试问卷',
+      targetRoles: ['client'],
+      questions: [
+        { id: 'q_1', type: 'single', title: '如何了解我们的？', required: true, options: ['小红书', '朋友介绍', '其他'] },
+        { id: 'q_2', type: 'multiple', title: '主要喂养偏好', required: true, options: ['进口猫粮', '主食冻干', '其他'] },
+        { id: 'q_3', type: 'long_text', title: '您的改进建议', required: true, placeholder: '请在此输入建议' }
+      ]
+    }
+  })
+  const qId = createRes.data._id
+  await adminFn.main({ module: 'questionnaire', action: 'publish', data: { id: qId } })
+
+  // 2. 用户提交问卷，单选和多选均选了“其他”并附带自定义文本输入
+  const submitRes = await clientFn.main({
+    module: 'questionnaire',
+    action: 'submit',
+    data: {
+      id: qId,
+      role: 'client',
+      answers: [
+        { questionId: 'q_1', type: 'single', value: '其他:电梯广告看到的' },
+        { questionId: 'q_2', type: 'multiple', value: ['进口猫粮', '其他:自制新鲜猫饭'] },
+        { questionId: 'q_3', type: 'long_text', value: '希望能增加更多节假日的宠托师预约名额！' }
+      ]
+    }
+  })
+  assert.equal(submitRes.ok, true)
+  assert.equal(submitRes.data.answers[0].value, '其他:电梯广告看到的')
+  assert.deepEqual(submitRes.data.answers[1].value, ['进口猫粮', '其他:自制新鲜猫饭'])
+  assert.equal(submitRes.data.answers[2].value, '希望能增加更多节假日的宠托师预约名额！')
+
+  // 3. 管理员分析 AI 图表报告
+  const analyzeRes = await adminFn.main({
+    module: 'questionnaire',
+    action: 'analyzeAI',
+    data: { id: qId }
+  })
+  assert.equal(analyzeRes.ok, true)
+  const charts = analyzeRes.data.charts
+  const q1Chart = charts.find(c => c.questionId === 'q_1')
+  const q2Chart = charts.find(c => c.questionId === 'q_2')
+  const q3Chart = charts.find(c => c.questionId === 'q_3')
+
+  // 单选 q1 中，“其他”选项计入 1 票，且 otherSamples 记录了电梯广告
+  const q1OtherRow = q1Chart.rows.find(r => r.label === '其他')
+  assert.ok(q1OtherRow)
+  assert.equal(q1OtherRow.value, 1)
+  assert.ok(q1Chart.otherSamples.some(s => s.includes('电梯广告')))
+
+  // 多选 q2 中，“其他”选项计入 1 票，“进口猫粮”计入 1 票，otherSamples 记录了自制新鲜猫饭
+  const q2OtherRow = q2Chart.rows.find(r => r.label === '其他')
+  assert.ok(q2OtherRow)
+  assert.equal(q2OtherRow.value, 1)
+  assert.ok(q2Chart.otherSamples.some(s => s.includes('自制新鲜猫饭')))
+
+  // 问答题 q3 为文本类型，样本中包含提交内容
+  assert.equal(q3Chart.type, 'text')
+  assert.ok(q3Chart.sampleAnswers.some(s => s.includes('希望能增加更多节假日')))
+})
+
+

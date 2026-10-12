@@ -163,6 +163,14 @@
             "{{ans}}"
           </view>
         </view>
+
+        <!-- 选择题【其他】用户补充内容摘录 -->
+        <view class="text-samples-box" wx:if="{{item.otherSamples && item.otherSamples.length}}">
+          <view class="samples-title">【其他】选项用户补充内容：</view>
+          <view class="sample-pill" wx:for="{{item.otherSamples}}" wx:for-item="ans" wx:key="*this">
+            "{{ans}}"
+          </view>
+        </view>
       </view>
     </view>
   </block>

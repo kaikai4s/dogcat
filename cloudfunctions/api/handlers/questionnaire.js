@@ -66,13 +66,27 @@ module.exports = function createHandler(context) {
       const answers = responses.map(response => (response.answers || []).find(item => item.questionId === question.id)).filter(Boolean)
       if (['single', 'multiple'].includes(question.type)) {
         const counts = {}
+        const otherSamples = []
         ;(question.options || []).forEach(option => { counts[option] = 0 })
         let totalVotes = 0
         answers.forEach(answer => {
           const value = answer.value
           const list = Array.isArray(value) ? value : [value]
           list.filter(Boolean).forEach(item => {
-            counts[item] = Number(counts[item] || 0) + 1
+            const rawStr = String(item).trim()
+            let matchedOption = rawStr
+            const colonIndex = rawStr.indexOf(':')
+            if (colonIndex > 0) {
+              const prefix = rawStr.slice(0, colonIndex).trim()
+              const detailContent = rawStr.slice(colonIndex + 1).trim()
+              if (question.options && question.options.includes(prefix)) {
+                matchedOption = prefix
+              }
+              if (detailContent) {
+                otherSamples.push(`${matchedOption}: ${detailContent}`)
+              }
+            }
+            counts[matchedOption] = Number(counts[matchedOption] || 0) + 1
             totalVotes++
           })
         })
@@ -91,7 +105,8 @@ module.exports = function createHandler(context) {
           totalVotes,
           labels,
           values,
-          rows
+          rows,
+          otherSamples: otherSamples.slice(0, 30)
         })
       } else if (question.type === 'rating') {
         const max = Number(question.max || 5)

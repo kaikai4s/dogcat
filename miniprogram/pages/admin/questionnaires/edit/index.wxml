@@ -104,15 +104,10 @@
   </view>
 
   <view class="question-card" wx:for="{{form.questions}}" wx:key="id">
-    <!-- 题目卡片顶部条：序号、题型与操作栏 -->
+    <!-- 题目卡片顶部条：序号与操作栏 -->
     <view class="q-header">
       <view class="q-index-pill">#{{index + 1}}</view>
-      <picker mode="selector" range="{{typeNames}}" data-index="{{index}}" bindchange="changeType">
-        <view class="type-pill">
-          <text class="type-name">{{item.typeName || '单选'}}</text>
-          <text class="remix-icon ri-arrow-down-s-line type-arrow"></text>
-        </view>
-      </picker>
+      <text class="q-current-type-label">题型: {{item.typeName || '单选'}}</text>
       <view class="q-actions">
         <view class="icon-btn" data-index="{{index}}" bindtap="moveUp" wx:if="{{index > 0}}" title="上移">
           <text class="remix-icon ri-arrow-up-s-line"></text>
@@ -129,6 +124,30 @@
       </view>
     </view>
 
+    <!-- 显式题型分段切换条 -->
+    <view class="type-selector-segmented">
+      <view class="type-segment-btn {{item.type === 'single' ? 'active' : ''}}"
+            data-index="{{index}}" data-type="single" bindtap="selectQuestionType">
+        <text class="remix-icon ri-radio-button-line"></text>
+        <text>单选</text>
+      </view>
+      <view class="type-segment-btn {{item.type === 'multiple' ? 'active' : ''}}"
+            data-index="{{index}}" data-type="multiple" bindtap="selectQuestionType">
+        <text class="remix-icon ri-checkbox-line"></text>
+        <text>多选</text>
+      </view>
+      <view class="type-segment-btn {{item.type === 'rating' ? 'active' : ''}}"
+            data-index="{{index}}" data-type="rating" bindtap="selectQuestionType">
+        <text class="remix-icon ri-star-line"></text>
+        <text>评分</text>
+      </view>
+      <view class="type-segment-btn {{item.type === 'short_text' || item.type === 'long_text' ? 'active' : ''}}"
+            data-index="{{index}}" data-type="long_text" bindtap="selectQuestionType">
+        <text class="remix-icon ri-edit-box-line"></text>
+        <text>问答填空</text>
+      </view>
+    </view>
+
     <!-- 题目题干 -->
     <view class="form-item">
       <view class="form-label required">题目标题</view>
@@ -138,7 +157,7 @@
         data-index="{{index}}"
         data-field="title"
         bindinput="inputQuestion"
-        placeholder="例如：您对本次宠托师的服务准时性评价如何？"
+        placeholder="例如：您对本次宠托师的服务满意吗？"
       />
     </view>
 
@@ -166,6 +185,17 @@
         bindinput="inputQuestion"
         placeholder="选项1&#10;选项2&#10;选项3"
       />
+      <!-- “其他”选项快捷辅助与智能提示 -->
+      <view class="other-option-helper">
+        <view class="helper-tips">
+          <text class="remix-icon ri-lightbulb-line helper-icon"></text>
+          <text class="helper-text">选项中若包含「其他」，前台用户选中时将自动弹出文本框供用户填写，并以「其他:输入内容」上传。</text>
+        </view>
+        <view class="add-other-pill" data-index="{{index}}" bindtap="appendOtherOption">
+          <text class="remix-icon ri-add-line"></text>
+          <text>快捷添加「其他」选项</text>
+        </view>
+      </view>
     </view>
 
     <!-- 评分题最高分 -->
@@ -179,17 +209,23 @@
       </picker>
     </view>
 
-    <!-- 文本题占位说明 -->
-    <view wx:if="{{item.type === 'short_text' || item.type === 'long_text'}}" class="form-item">
-      <view class="form-label">输入框占位提示 (Placeholder)</view>
-      <input
-        class="form-input"
-        value="{{item.placeholder}}"
-        data-index="{{index}}"
-        data-field="placeholder"
-        bindinput="inputQuestion"
-        placeholder="例如：请具体描述您遇到的问题或建议..."
-      />
+    <!-- 问答填空题配置说明 -->
+    <view wx:if="{{item.type === 'short_text' || item.type === 'long_text'}}" class="text-type-box">
+      <view class="text-type-badge-tip">
+        <text class="remix-icon ri-chat-smile-2-line"></text>
+        <text>问答/填空题：前台将展示大文本框供用户自由输入观点、建议或文字反馈</text>
+      </view>
+      <view class="form-item" style="margin-top: 14rpx;">
+        <view class="form-label">输入框提示语 (Placeholder)</view>
+        <input
+          class="form-input"
+          value="{{item.placeholder}}"
+          data-index="{{index}}"
+          data-field="placeholder"
+          bindinput="inputQuestion"
+          placeholder="例如：请具体描述您的建议或遇到的问题（10字以上更佳）..."
+        />
+      </view>
     </view>
   </view>
 

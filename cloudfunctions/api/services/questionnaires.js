@@ -116,18 +116,29 @@ module.exports = function createService({
     }
   }
 
+  function matchOptionOrPrefix(val, options) {
+    if (!val || !Array.isArray(options)) return false
+    if (options.includes(val)) return true
+    const colonIndex = val.indexOf(':')
+    if (colonIndex > 0) {
+      const prefix = val.slice(0, colonIndex).trim()
+      if (options.includes(prefix)) return true
+    }
+    return false
+  }
+
   function normalizeAnswer(question, rawAnswer) {
     const value = rawAnswer && Object.prototype.hasOwnProperty.call(rawAnswer, 'value') ? rawAnswer.value : rawAnswer
     if (question.type === 'single') {
       const text = cleanText(value, 120)
       if (!text && question.required) throw new Error(`请填写：${question.title}`)
-      if (text && !question.options.includes(text)) throw new Error(`选项无效：${question.title}`)
+      if (text && !matchOptionOrPrefix(text, question.options)) throw new Error(`选项无效：${question.title}`)
       return text
     }
     if (question.type === 'multiple') {
       const list = Array.isArray(value) ? value.map(item => cleanText(item, 120)).filter(Boolean) : []
       if (!list.length && question.required) throw new Error(`请填写：${question.title}`)
-      if (list.some(item => !question.options.includes(item))) throw new Error(`选项无效：${question.title}`)
+      if (list.some(item => !matchOptionOrPrefix(item, question.options))) throw new Error(`选项无效：${question.title}`)
       return Array.from(new Set(list))
     }
     if (question.type === 'rating') {

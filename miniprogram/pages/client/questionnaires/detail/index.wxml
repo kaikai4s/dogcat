@@ -3,8 +3,32 @@ function inArray(arr, val) {
   if (!arr || !arr.indexOf) return false;
   return arr.indexOf(val) !== -1;
 }
+function isOptionSelected(answerVal, opt) {
+  if (!answerVal || !opt) return false;
+  if (answerVal === opt) return true;
+  if (typeof answerVal === 'string' && answerVal.indexOf(opt + ':') === 0) return true;
+  return false;
+}
+function inArrayOrPrefix(arr, opt) {
+  if (!arr || !arr.length || !opt) return false;
+  for (var i = 0; i < arr.length; i++) {
+    var item = arr[i];
+    if (item === opt || (typeof item === 'string' && item.indexOf(opt + ':') === 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+function isOtherOpt(opt) {
+  if (!opt) return false;
+  var s = '' + opt;
+  return s === '其他' || s === '其它' || s.indexOf('其他') === 0 || s.indexOf('其它') === 0;
+}
 module.exports = {
-  inArray: inArray
+  inArray: inArray,
+  isOptionSelected: isOptionSelected,
+  inArrayOrPrefix: inArrayOrPrefix,
+  isOtherOpt: isOtherOpt
 };
 </wxs>
 
@@ -87,20 +111,22 @@ module.exports = {
 
   <!-- 题目卡片列表 -->
   <view class="questions-list">
-    <view class="question-card {{errorQuestionIndex === index ? 'card-error' : ''}} {{detail.answered ? 'card-readonly' : ''}}"
+    <view class="question-card {{errorQuestionIndex === qIndex ? 'card-error' : ''}} {{detail.answered ? 'card-readonly' : ''}}"
           wx:for="{{detail.questions}}"
+          wx:for-index="qIndex"
+          wx:for-item="item"
           wx:key="id"
-          id="question-{{index}}">
+          id="question-{{qIndex}}">
       <!-- 题目头部 -->
       <view class="question-header">
         <view class="header-left">
-          <text class="q-seq-badge">Q{{index + 1}}</text>
+          <text class="q-seq-badge">Q{{qIndex + 1}}</text>
           <text class="q-type-badge type-{{item.type}}">
             {{item.type === 'single' ? '单选' : (item.type === 'multiple' ? '多选' : (item.type === 'rating' ? '评分' : '问答'))}}
           </text>
           <text class="required-star" wx:if="{{item.required}}">*</text>
         </view>
-        <view class="header-right" wx:if="{{errorQuestionIndex === index}}">
+        <view class="header-right" wx:if="{{errorQuestionIndex === qIndex}}">
           <text class="missing-hint">请完成此项</text>
         </view>
       </view>
@@ -109,71 +135,108 @@ module.exports = {
 
       <!-- 1. 单选类型 -->
       <view class="options-group" wx:if="{{item.type === 'single'}}">
-        <view class="option-row {{answers[index].value === opt ? 'selected' : ''}}"
-              wx:for="{{item.options}}"
-              wx:for-item="opt"
-              wx:key="*this"
-              data-qindex="{{index}}"
-              data-option="{{opt}}"
-              bindtap="selectSingle">
-          <view class="radio-indicator">
-            <view class="radio-inner" wx:if="{{answers[index].value === opt}}"></view>
+        <block wx:for="{{item.options}}" wx:for-item="opt" wx:for-index="optIndex" wx:key="*this">
+          <view class="option-row {{tools.isOptionSelected(answers[qIndex].value, opt) ? 'selected' : ''}}"
+                data-qindex="{{qIndex}}"
+                data-option="{{opt}}"
+                bindtap="selectSingle">
+            <view class="radio-indicator">
+              <view class="radio-inner" wx:if="{{tools.isOptionSelected(answers[qIndex].value, opt)}}"></view>
+            </view>
+            <text class="option-text">{{opt}}</text>
+            <text class="remix-icon ri-check-line check-badge" wx:if="{{tools.isOptionSelected(answers[qIndex].value, opt)}}"></text>
           </view>
-          <text class="option-text">{{opt}}</text>
-          <text class="remix-icon ri-check-line check-badge" wx:if="{{answers[index].value === opt}}"></text>
-        </view>
+          <!-- 若该选项为“其他”，且当前已被选中，展开输入框 -->
+          <view class="other-input-card"
+                wx:if="{{tools.isOtherOpt(opt) && tools.isOptionSelected(answers[qIndex].value, opt)}}"
+                catchtap="noop">
+            <view class="other-input-header">
+              <text class="remix-icon ri-edit-2-line other-icon"></text>
+              <text class="other-label">请补充说明【{{opt}}】的具体内容：</text>
+            </view>
+            <input class="other-text-input"
+                   type="text"
+                   value="{{answers[qIndex].otherText || ''}}"
+                   data-qindex="{{qIndex}}"
+                   data-option="{{opt}}"
+                   bindinput="onOtherInput"
+                   disabled="{{detail.answered}}"
+                   placeholder="请输入具体内容（必填）..."
+                   placeholder-class="placeholder-dim"
+                   maxlength="100" />
+          </view>
+        </block>
       </view>
 
       <!-- 2. 多选类型 -->
       <view class="options-group" wx:elif="{{item.type === 'multiple'}}">
-        <view class="option-row {{tools.inArray(answers[index].value, opt) ? 'selected' : ''}}"
-              wx:for="{{item.options}}"
-              wx:for-item="opt"
-              wx:key="*this"
-              data-qindex="{{index}}"
-              data-option="{{opt}}"
-              bindtap="toggleMultiple">
-          <view class="checkbox-indicator">
-            <text class="remix-icon ri-check-line checkbox-icon" wx:if="{{tools.inArray(answers[index].value, opt)}}"></text>
+        <block wx:for="{{item.options}}" wx:for-item="opt" wx:for-index="optIndex" wx:key="*this">
+          <view class="option-row {{tools.inArrayOrPrefix(answers[qIndex].value, opt) ? 'selected' : ''}}"
+                data-qindex="{{qIndex}}"
+                data-option="{{opt}}"
+                bindtap="toggleMultiple">
+            <view class="checkbox-indicator">
+              <text class="remix-icon ri-check-line checkbox-icon" wx:if="{{tools.inArrayOrPrefix(answers[qIndex].value, opt)}}"></text>
+            </view>
+            <text class="option-text">{{opt}}</text>
+            <text class="multiple-check-tag" wx:if="{{tools.inArrayOrPrefix(answers[qIndex].value, opt)}}">已选</text>
           </view>
-          <text class="option-text">{{opt}}</text>
-          <text class="multiple-check-tag" wx:if="{{tools.inArray(answers[index].value, opt)}}">已选</text>
-        </view>
+          <!-- 若该选项为“其他”，且当前已被选中，展开输入框 -->
+          <view class="other-input-card"
+                wx:if="{{tools.isOtherOpt(opt) && tools.inArrayOrPrefix(answers[qIndex].value, opt)}}"
+                catchtap="noop">
+            <view class="other-input-header">
+              <text class="remix-icon ri-edit-2-line other-icon"></text>
+              <text class="other-label">请补充说明【{{opt}}】的具体内容：</text>
+            </view>
+            <input class="other-text-input"
+                   type="text"
+                   value="{{answers[qIndex].otherText || ''}}"
+                   data-qindex="{{qIndex}}"
+                   data-option="{{opt}}"
+                   bindinput="onOtherInput"
+                   disabled="{{detail.answered}}"
+                   placeholder="请输入具体内容（必填）..."
+                   placeholder-class="placeholder-dim"
+                   maxlength="100" />
+          </view>
+        </block>
       </view>
 
       <!-- 3. 评分类型 -->
       <view class="rating-container" wx:elif="{{item.type === 'rating'}}">
         <view class="rating-scale-row">
-          <view class="scale-btn {{answers[index].value >= score ? 'active' : ''}} {{answers[index].value === score ? 'current' : ''}}"
+          <view class="scale-btn {{answers[qIndex].value >= score ? 'active' : ''}} {{answers[qIndex].value === score ? 'current' : ''}}"
                 wx:for="{{item.scores}}"
                 wx:for-item="score"
+                wx:for-index="scoreIndex"
                 wx:key="*this"
-                data-qindex="{{index}}"
+                data-qindex="{{qIndex}}"
                 data-score="{{score}}"
                 bindtap="setRating">
-            <text class="remix-icon ri-star-fill star-icon" wx:if="{{answers[index].value >= score}}"></text>
+            <text class="remix-icon ri-star-fill star-icon" wx:if="{{answers[qIndex].value >= score}}"></text>
             <text class="remix-icon ri-star-line star-icon" wx:else></text>
             <text class="score-text">{{score}}分</text>
           </view>
         </view>
-        <view class="rating-feedback" wx:if="{{answers[index].value}}">
+        <view class="rating-feedback" wx:if="{{answers[qIndex].value}}">
           <text class="remix-icon ri-heart-pulse-fill feedback-icon"></text>
-          <text class="feedback-text">{{answers[index].value}} 分 · {{ratingDescMap[answers[index].value] || '已打分'}}</text>
+          <text class="feedback-text">{{answers[qIndex].value}} 分 · {{ratingDescMap[answers[qIndex].value] || '已打分'}}</text>
         </view>
       </view>
 
-      <!-- 4. 文本输入类型 -->
+      <!-- 4. 文本输入类型 (问答/短文本/长文本) -->
       <view class="text-container" wx:else>
         <textarea class="text-input"
-                  value="{{answers[index].value}}"
-                  data-qindex="{{index}}"
+                  value="{{answers[qIndex].value}}"
+                  data-qindex="{{qIndex}}"
                   bindinput="onTextInput"
                   disabled="{{detail.answered}}"
                   placeholder="{{item.placeholder || '请在此分享您的真实想法与建议（10字以上更佳）...'}}"
                   placeholder-class="placeholder-dim"
                   maxlength="500" />
         <view class="text-counter">
-          <text class="counter-num">{{answers[index].value ? answers[index].value.length : 0}}</text>
+          <text class="counter-num">{{answers[qIndex].value ? answers[qIndex].value.length : 0}}</text>
           <text class="counter-total">/ 500字</text>
         </view>
       </view>
