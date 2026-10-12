@@ -216,13 +216,6 @@
       ]
     },
     {
-      "root": "pages/dev",
-      "name": "dev",
-      "pages": [
-        "init/index"
-      ]
-    },
-    {
       "root": "pages/common/subscriptions",
       "name": "common-subscriptions",
       "pages": ["index"]

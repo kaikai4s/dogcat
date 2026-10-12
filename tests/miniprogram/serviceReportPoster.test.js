@@ -106,7 +106,7 @@ test('service report poster export modal extracts and formats poster data correc
   assert.ok(clipboardData.includes('【汤圆】· 银渐层'))
   assert.ok(clipboardData.includes('O202609208888'))
   assert.ok(clipboardData.includes('王牌宠托师·小李'))
-  assert.ok(clipboardData.includes('#与宠同乐'))
+  assert.ok(clipboardData.includes('#Dovelin多芙琳'))
   assert.ok(clipboardData.includes('#上门喂养'))
   assert.ok(clipboardData.includes('#宠托师'))
   assert.ok(toastMessage.includes('文案已复制'))
