@@ -465,7 +465,7 @@ module.exports = function createHandler(context) {
         const userRes = await db.collection('users').doc(response.userId).get().catch(() => ({ data: null }))
         const user = userRes && userRes.data
         if (!user) throw new Error('用户不存在')
-        const mailIds = await createRewardMails(questionnaire, { ...response, _id: responseId }, user)
+        const mailIds = await createRewardMails(questionnaire, { ...response, _id: responseId }, { ...user, openid: response.openid }, { force: true })
         await db.collection('questionnaire_responses').doc(responseId).update({ data: { rewardStatus: mailIds.length ? 'sent' : 'skipped', rewardMailIds: mailIds, updatedAt: now() } })
         return { rewardMailIds: mailIds }
       }
@@ -473,14 +473,14 @@ module.exports = function createHandler(context) {
         const questionnaireId = text(data.id || data.questionnaireId, 80)
         const questionnaire = await getQuestionnaire(questionnaireId)
         const rows = await readScopedDocuments('questionnaire_responses', { questionnaireId }, 'createdAt', 'desc')
-        const toRetry = rows.filter(r => r.rewardStatus === 'failed' || (r.rewardStatus === 'skipped' && r.aiQuality && r.aiQuality.verdict === 'fake'))
+        const toRetry = rows.filter(r => ['pending', 'failed'].includes(r.rewardStatus) && (!r.aiQuality || r.aiQuality.verdict !== 'fake'))
         let retriedCount = 0
         for (const item of toRetry) {
           try {
             const userRes = await db.collection('users').doc(item.userId).get().catch(() => ({ data: null }))
             const u = userRes && userRes.data
             if (u) {
-              const mailIds = await createRewardMails(questionnaire, item, u)
+              const mailIds = await createRewardMails(questionnaire, item, { ...u, openid: item.openid })
               await db.collection('questionnaire_responses').doc(item._id).update({
                 data: { rewardStatus: mailIds.length ? 'sent' : 'skipped', rewardMailIds: mailIds, updatedAt: now() }
               })

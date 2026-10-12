@@ -13,6 +13,10 @@ module.exports = function createService({
     return safeText(value).trim().slice(0, maxLength)
   }
 
+  function deterministicId(...parts) {
+    return parts.map(part => cleanText(part, 120).replace(/[^a-zA-Z0-9_-]/g, '_')).filter(Boolean).join('_').slice(0, 500)
+  }
+
   function normalizeRoles(value) {
     const list = Array.isArray(value) ? value : [value]
     return Array.from(new Set(list.map(item => cleanText(item, 20)).filter(item => ROLE_TYPES.includes(item))))
@@ -208,9 +212,9 @@ module.exports = function createService({
     return { verdict, score, reasons, suspiciousQuestions: [] }
   }
 
-  async function createRewardMails(questionnaire, response, user) {
+  async function createRewardMails(questionnaire, response, user, options = {}) {
     const reward = questionnaire.rewardConfig || {}
-    if (!reward.enabled) return []
+    if (!reward.enabled || (!options.force && response.aiQuality && response.aiQuality.verdict === 'fake')) return []
     const time = now()
     const mailIds = []
     const base = {
@@ -226,6 +230,24 @@ module.exports = function createService({
       createdAt: time,
       updatedAt: time
     }
+
+    async function upsertMail(type, mail) {
+      const mailId = deterministicId('questionnaire_reward', response._id, type)
+      if (typeof db.runTransaction === 'function') {
+        return await db.runTransaction(async (tx) => {
+          const existing = await tx.collection('reward_mails').doc(mailId).get().catch(() => ({ data: null }))
+          if (existing && existing.data) return mailId
+          await tx.collection('reward_mails').doc(mailId).set({ data: { ...mail, idempotencyKey: mailId } })
+          return mailId
+        })
+      }
+      const existing = await db.collection('reward_mails').doc(mailId).get().catch(() => ({ data: null }))
+      if (!existing || !existing.data) {
+        await db.collection('reward_mails').doc(mailId).set({ data: { ...mail, idempotencyKey: mailId } })
+      }
+      return mailId
+    }
+
     if (Number(reward.points || 0) > 0) {
       const mail = {
         ...base,
@@ -233,8 +255,7 @@ module.exports = function createService({
         content: `感谢完成「${questionnaire.title}」，请领取 ${reward.points} 积分奖励。`,
         reward: { type: 'points', points: Number(reward.points || 0) }
       }
-      const res = await db.collection('reward_mails').add({ data: mail })
-      mailIds.push(res._id)
+      mailIds.push(await upsertMail('points', mail))
     }
     if (reward.couponTemplateId) {
       let couponSnapshot = null
@@ -259,8 +280,7 @@ module.exports = function createService({
           couponSnapshot: couponSnapshot || { name: '问卷专享优惠券' }
         }
       }
-      const res = await db.collection('reward_mails').add({ data: mail })
-      mailIds.push(res._id)
+      mailIds.push(await upsertMail('coupon', mail))
     }
     return mailIds
   }
@@ -287,14 +307,18 @@ module.exports = function createService({
     if (questionnaire.status !== 'published') throw new Error('问卷暂不可填写')
     const role = getUserRole(user, data.role)
     if (!Array.isArray(questionnaire.targetRoles) || !questionnaire.targetRoles.includes(role)) throw new Error('当前身份不可填写该问卷')
-    const existing = await getExistingResponse(questionnaire._id, user.openid)
-    if (existing) throw new Error('你已提交过该问卷')
     const answers = await normalizeAnswers(user.openid, questionnaire, data.answers)
     const aiQuality = localQualityJudge(answers)
     const time = now()
+    const responseId = deterministicId('qresp', questionnaire._id, user.openid)
     const response = {
       questionnaireId: questionnaire._id,
       questionnaireTitle: questionnaire.title,
+      questionnaireSnapshot: {
+        title: questionnaire.title,
+        questions: questionnaire.questions || []
+      },
+      rewardConfigSnapshot: questionnaire.rewardConfig || { enabled: false, points: 0, couponTemplateId: '' },
       openid: user.openid,
       userId: user._id,
       role,
@@ -305,24 +329,46 @@ module.exports = function createService({
       createdAt: time,
       updatedAt: time
     }
-    const addRes = await db.collection('questionnaire_responses').add({ data: response })
-    const responseId = addRes._id
+
+    if (typeof db.runTransaction === 'function') {
+      await db.runTransaction(async (tx) => {
+        const existing = await tx.collection('questionnaire_responses').doc(responseId).get().catch(() => ({ data: null }))
+        if (existing && existing.data) throw new Error('你已提交过该问卷')
+        const latestQDoc = await tx.collection('questionnaires').doc(questionnaire._id).get().catch(() => ({ data: null }))
+        const latestQ = latestQDoc && latestQDoc.data ? latestQDoc.data : questionnaire
+        if (latestQ.status !== 'published') throw new Error('问卷暂不可填写')
+        if (!Array.isArray(latestQ.targetRoles) || !latestQ.targetRoles.includes(role)) throw new Error('当前身份不可填写该问卷')
+        await tx.collection('questionnaire_responses').doc(responseId).set({ data: response })
+        await tx.collection('questionnaires').doc(questionnaire._id).update({
+          data: {
+            responseCount: incUpdateValue(latestQ.responseCount, 1),
+            validResponseCount: incUpdateValue(latestQ.validResponseCount, aiQuality.verdict === 'valid' ? 1 : 0),
+            updatedAt: time
+          }
+        })
+      })
+    } else {
+      const existing = await getExistingResponse(questionnaire._id, user.openid)
+      if (existing) throw new Error('你已提交过该问卷')
+      await db.collection('questionnaire_responses').doc(responseId).set({ data: response })
+      await db.collection('questionnaires').doc(questionnaire._id).update({
+        data: {
+          responseCount: incUpdateValue(questionnaire.responseCount, 1),
+          validResponseCount: incUpdateValue(questionnaire.validResponseCount, aiQuality.verdict === 'valid' ? 1 : 0),
+          updatedAt: time
+        }
+      })
+    }
+
     let rewardStatus = 'skipped'
     let rewardMailIds = []
     try {
-      rewardMailIds = aiQuality.verdict === 'fake' ? [] : await createRewardMails(questionnaire, { ...response, _id: responseId }, user)
+      rewardMailIds = await createRewardMails(questionnaire, { ...response, _id: responseId }, user)
       rewardStatus = rewardMailIds.length ? 'sent' : 'skipped'
     } catch (error) {
       rewardStatus = 'failed'
     }
     await db.collection('questionnaire_responses').doc(responseId).update({ data: { rewardStatus, rewardMailIds, updatedAt: now() } })
-    await db.collection('questionnaires').doc(questionnaire._id).update({
-      data: {
-        responseCount: incUpdateValue(questionnaire.responseCount, 1),
-        validResponseCount: incUpdateValue(questionnaire.validResponseCount, aiQuality.verdict === 'valid' ? 1 : 0),
-        updatedAt: now()
-      }
-    })
     return formatResponse({ ...response, _id: responseId, rewardStatus, rewardMailIds })
   }
 
