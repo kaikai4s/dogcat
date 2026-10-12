@@ -134,3 +134,68 @@ test('accountName and accountNo validation prevents invalid withdrawal requests'
   )
 })
 
+test('mock payment earnings cannot be withdrawn and are excluded from withdrawal requests', async () => {
+  // 1. 只有 mock 收益，申请提现直接被拒绝
+  const db1 = createCollectionStore({
+    staff_earnings: [
+      { _id: 'mock_e1', staffOpenid: 'staff', status: 'available', amount: 50, isMock: true, paymentChannel: 'mock' },
+      { _id: 'mock_e2', staffOpenid: 'staff', status: 'mock_settled', amount: 50, isMock: true, paymentChannel: 'mock' }
+    ],
+    withdraw_requests: [], finance_logs: []
+  })
+  const service1 = createService({
+    db: db1, crypto: require('node:crypto'), ...validation,
+    findByClientRequestId: async () => null,
+    getUser: async () => ({}), refreshStaffEarnings: async () => {},
+    getSystemSettings: async () => ({ settlement: { minWithdrawAmount: 10 } }), now: () => new Date()
+  })
+  await assert.rejects(
+    service1.createWithdrawRequest('staff', { accountName: '张三', accountNo: '6222021234567890' }),
+    /暂无可提现收益/
+  )
+  assert.equal(db1.state.withdraw_requests.length, 0)
+
+  // 2. 真实收益与 mock 收益共存，只提取真实收益
+  const db2 = createCollectionStore({
+    staff_earnings: [
+      { _id: 'mock_e1', staffOpenid: 'staff', status: 'available', amount: 50, isMock: true, paymentChannel: 'mock' },
+      { _id: 'real_e1', staffOpenid: 'staff', status: 'available', amount: 30, isMock: false, paymentChannel: 'wechat' }
+    ],
+    withdraw_requests: [], finance_logs: []
+  })
+  const service2 = createService({
+    db: db2, crypto: require('node:crypto'), ...validation,
+    findByClientRequestId: async () => null,
+    getUser: async () => ({}), refreshStaffEarnings: async () => {},
+    getSystemSettings: async () => ({ settlement: { minWithdrawAmount: 10 } }), now: () => new Date()
+  })
+  const req = await service2.createWithdrawRequest('staff', { accountName: '张三', accountNo: '6222021234567890' })
+  assert.equal(req.amount, 30)
+  assert.deepEqual(req.earningIds, ['real_e1'])
+  assert.equal(db2.state.staff_earnings.find(e => e._id === 'real_e1').status, 'withdrawing')
+  assert.equal(db2.state.staff_earnings.find(e => e._id === 'mock_e1').status, 'available') // mock 收益未被锁定或扣减
+
+  // 3. 事务二次校验：若有人试图将 mock 收益混入，事务强制拒绝
+  const db3 = createCollectionStore({
+    staff_earnings: [
+      { _id: 'tampered_e1', staffOpenid: 'staff', status: 'available', amount: 30, isMock: false, paymentChannel: 'wechat' }
+    ],
+    withdraw_requests: [], finance_logs: []
+  })
+  const service3 = createService({
+    db: db3, crypto: require('node:crypto'), ...validation,
+    findByClientRequestId: async () => null,
+    getUser: async () => ({}), refreshStaffEarnings: async () => {},
+    getSystemSettings: async () => ({ settlement: { minWithdrawAmount: 10 } }), now: () => new Date()
+  })
+  const origRun = db3.runTransaction
+  db3.runTransaction = callback => {
+    db3.state.staff_earnings[0].isMock = true
+    return origRun(callback)
+  }
+  await assert.rejects(
+    service3.createWithdrawRequest('staff', { accountName: '张三', accountNo: '6222021234567890' }),
+    /收益状态已变化或包含不可提现的模拟测试收益/
+  )
+})
+

@@ -18,6 +18,10 @@ Page({
   data: { id: '', order: null, paying: false, refunding: false, refundReason: '' },
 
   onLoad(query) { this.setData({ id: query.id || query.orderId || '' }) },
+    onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     loadSystemSettings().catch(() => null)
     ensureLogin({ content: '登录后可查看商城订单。' })

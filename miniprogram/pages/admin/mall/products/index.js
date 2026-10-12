@@ -112,6 +112,10 @@ function categoryStats(categories = [], products = []) {
 Page({
   data: { categories: [], products: [], stats: categoryStats(), keyword: '', status: '', page: 1, pageSize: 10, hasMore: true, loading: false, uploadingImage: false, editingProduct: false, productForm: emptyProduct(), editingCategory: false, categoryForm: emptyCategory },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.loadAll()).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() { this.loadAll() },
   onReachBottom() { this.loadMore() },
 

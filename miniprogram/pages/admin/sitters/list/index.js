@@ -64,6 +64,13 @@ Page({
     loading: false
   },
 
+    onPullDownRefresh() {
+    Promise.all([
+      Promise.resolve(this.load({ reset: true })),
+      Promise.resolve(this.loadDepositConfig())
+    ]).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     this.load({ reset: true })
     this.loadDepositConfig()

@@ -66,6 +66,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
       for (const id of earningIds) {
         const earning = (await tx.collection('staff_earnings').doc(id).get()).data
         if (!earning || !request.staffOpenid || earning.staffOpenid !== request.staffOpenid ||
+            earning.isMock === true || earning.paymentChannel === 'mock' ||
             earning.withdrawRequestId !== data.id || earning.status !== 'withdrawing' || earning.frozenIncidentId) {
           throw new Error('收益状态或提现归属异常，请核对后重试')
         }

@@ -19,6 +19,10 @@ Page({
     this.setData({ orderId: q.orderId || '' })
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load({ reset: true })).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     this.load({ reset: true })
   },

@@ -1,1 +1,4 @@
-{"navigationBarTitleText":"后台操作日志"}
+{
+  "navigationBarTitleText": "后台操作日志",
+  "enablePullDownRefresh": true
+}

@@ -67,6 +67,21 @@ Page({
     this.setData({ showSettings: query.settings === '1' })
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(
+      getCurrentUser({ force: true })
+        .then((user) => {
+          if (!user) { this.applyGuest(); return; }
+          this.applyUser(user)
+          this.loadStaffProfile()
+          this.loadPoints()
+          this.loadRewardMailUnread()
+          loadMessageUnread(this)
+        })
+        .catch(() => this.applyGuest())
+    ).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     wx.setNavigationBarTitle({ title: this.data.showSettings ? '设置' : '我的' })
     this.setData({ staffEntryReady: false })
@@ -171,6 +186,22 @@ Page({
         this.loadRewardMailUnread()
         loadMessageUnread(this)
         wx.showToast({ title: '已登录' })
+        const isNewUser = !user || user.nickname === '微信用户' || !user.avatarUrl
+        if (isNewUser) {
+          setTimeout(() => {
+            wx.showModal({
+              title: '欢迎加入多芙琳',
+              content: '检测到您尚未完善资料，是否立即一键同步微信头像、昵称与手机号？',
+              confirmText: '立即完善',
+              cancelText: '暂不完善',
+              success: (res) => {
+                if (res.confirm) {
+                  wx.navigateTo({ url: '/pages/client/profile/edit/index' })
+                }
+              }
+            })
+          }, 400)
+        }
       })
       .catch(showError)
       .finally(() => this.setData({ loadingLogin: false }))

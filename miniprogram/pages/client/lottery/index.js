@@ -36,6 +36,13 @@ Page({
     loadingRecords: false
   },
 
+    onPullDownRefresh() {
+    Promise.all([
+      Promise.resolve(this.load()),
+      Promise.resolve(this.loadRecords())
+    ]).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     ensureLogin({ content: '登录后可参与抽奖。' })
       .then(() => {

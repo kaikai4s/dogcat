@@ -33,6 +33,10 @@ Page({
     claimingId: ''
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     ensureLogin({ content: '登录后可查看奖励邮箱。' })
       .then(() => this.load())

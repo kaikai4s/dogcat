@@ -106,6 +106,10 @@ Page({
     hasDuplicateLevelNames: false
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     this.load()
   },

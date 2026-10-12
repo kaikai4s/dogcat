@@ -24,6 +24,10 @@ Page({
     this.setData({ ...createPageNav(query), select: query.select === '1' })
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load({ reset: true })).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     ensureLogin({ content: '登录后可管理常用地址。' })
       .then(() => this.load({ reset: true }))

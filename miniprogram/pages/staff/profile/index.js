@@ -86,6 +86,13 @@ Page({
     messageHasUnread: false
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.loadProfile()).finally(() => {
+      loadMessageUnread(this, "staff")
+      wx.stopPullDownRefresh()
+    })
+  },
+
   onShow() {
     this.applyCurrentTheme()
     this.loadProfile()

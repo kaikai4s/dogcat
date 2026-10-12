@@ -1148,6 +1148,28 @@ module.exports = function createHandler(context) {
         console.warn('appendOrderMessage notification failed, ignored:', notifyErr)
       }
 
+      // 异步尝试向对方推送微信服务通知（未读消息提醒），防刷节流
+      try {
+        const receiverOpenid = senderRole === 'staff' ? order.clientOpenid : order.staffOpenid
+        const receiverRole = senderRole === 'staff' ? 'client' : 'staff'
+        const senderName = senderRole === 'staff'
+          ? (user.realName || user.nickName || order.staffName || '宠托师')
+          : (user.nickName || user.realName || order.clientName || '宠物主')
+        if (receiverOpenid && receiverOpenid !== openid && typeof notifyOrder === 'function') {
+          // 2 分钟窗口聚合，避免短时间内连续发多条消息快速耗尽一次性订阅配额
+          const windowKey = Math.floor(new Date(time).getTime() / 120000)
+          const deliveryKey = `chat:${orderId}:${receiverRole}:${windowKey}`
+          await notifyOrder(receiverOpenid, 'orderChat', order, {
+            senderName,
+            content: content || (mediaUrl ? '[图片消息]' : '发来一条新消息'),
+            time,
+            senderRole
+          }, receiverRole, deliveryKey)
+        }
+      } catch (chatSubErr) {
+        console.warn('notifyOrder orderChat failed, ignored:', chatSubErr)
+      }
+
       return {
         _id: created._id,
         ...sessionMsg

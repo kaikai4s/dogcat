@@ -129,6 +129,10 @@ Page({
     this.setData({ ...createPageNav(q), id: q.id })
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     this.load()
   },

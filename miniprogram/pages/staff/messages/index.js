@@ -86,6 +86,16 @@ Page({
     selectedNotice: null,
     showNoticeModal: false
   },
+    onPullDownRefresh() {
+    const p = this.data.activeTab === "order"
+      ? this.load({ reset: true })
+      : this.loadSystemNotices({ reset: true })
+    Promise.resolve(p).finally(() => {
+      loadMessageUnread(this, "staff")
+      wx.stopPullDownRefresh()
+    })
+  },
+
   onShow() {
     this.applyCurrentTheme()
     if (this.data.activeTab === 'order') {

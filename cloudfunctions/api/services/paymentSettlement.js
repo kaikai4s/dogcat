@@ -125,8 +125,12 @@ module.exports = function createService(context) {
         if (!hasRealPayment) {
           throw new Error(shortageReason || '商品库存不足')
         }
+        const paymentChannel = payload.channel || payment.channel || 'mock'
+        const isMockPayment = paymentChannel === 'mock'
         const patch = {
           paymentStatus: 'paid',
+          paymentChannel,
+          isMockPayment,
           status: 'refund_applied',
           refundStatus: 'applied',
           preRefundStatus: 'pending_ship',
@@ -169,7 +173,9 @@ module.exports = function createService(context) {
         const { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText } = product
         await tx.collection('mall_products').doc(id).update({ data: { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText, updatedAt: time } })
       }
-      const patch = { paymentStatus: 'paid', status: resolved.orderType === 'mall' ? 'pending_ship' : 'paid', paymentNo,
+      const paymentChannel = payload.channel || payment.channel || 'mock'
+      const isMockPayment = paymentChannel === 'mock'
+      const patch = { paymentStatus: 'paid', paymentChannel, isMockPayment, status: resolved.orderType === 'mall' ? 'pending_ship' : 'paid', paymentNo,
         wxTransactionId: payload.wxTransactionId || '', paidAt: time, updatedAt: time }
       await tx.collection(resolved.collectionName).doc(orderId).update({ data: patch })
       await tx.collection('payments').doc(payment._id).update({ data: {

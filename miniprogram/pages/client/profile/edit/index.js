@@ -64,6 +64,33 @@ Page({
       })
   },
 
+  onChooseAvatar(e) {
+    const avatarUrl = e.detail && e.detail.avatarUrl
+    if (!avatarUrl) return
+    wx.showLoading({ title: '处理头像中...' })
+    const ext = avatarUrl.includes('.') ? avatarUrl.substring(avatarUrl.lastIndexOf('.')) : '.jpg'
+    wx.cloud.uploadFile({
+      cloudPath: `users/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`,
+      filePath: avatarUrl,
+      success: (upload) => {
+        wx.hideLoading()
+        this.setData({ ['form.avatarUrl']: upload.fileID })
+        wx.showToast({ title: '已选择头像', icon: 'success' })
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        showError(err)
+      }
+    })
+  },
+
+  onNicknameBlur(e) {
+    const value = e.detail && e.detail.value
+    if (value !== undefined) {
+      this.setData({ ['form.nickname']: value })
+    }
+  },
+
   chooseAvatar() {
     wx.chooseMedia({
       count: 1,

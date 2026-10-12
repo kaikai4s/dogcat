@@ -32,6 +32,10 @@ Page({
     this.setData(createPageNav(query))
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load({ reset: true })).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     ensureLogin({ content: '登录后可管理宠物档案。' })
       .then(() => this.load({ reset: true }))

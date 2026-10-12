@@ -1,5 +1,6 @@
 {
   "navigationBarTitleText": "任务详情",
   "navigationBarBackgroundColor": "#FFF8EC",
-  "backgroundColor": "#FFF8EC"
+  "backgroundColor": "#FFF8EC",
+  "enablePullDownRefresh": true
 }

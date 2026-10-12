@@ -252,7 +252,8 @@ function normalizeSubscriptionConfig(subscription = {}) {
       refundResult: templates.refundResult || '',
       disputeUpdate: templates.disputeUpdate || '',
       withdrawResult: templates.withdrawResult || '',
-      upcomingServiceReminder: templates.upcomingServiceReminder || templates.serviceReminder || ''
+      upcomingServiceReminder: templates.upcomingServiceReminder || templates.serviceReminder || '',
+      orderChat: templates.orderChat || ''
     }
   }
 }

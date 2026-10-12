@@ -25,6 +25,10 @@ Page({
     total: 0
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load({ reset: true })).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     this.load({ reset: true })
   },

@@ -1,1 +1,4 @@
-{ "navigationBarTitleText": "幸运抽奖" }
+{
+  "navigationBarTitleText": "幸运抽奖",
+  "enablePullDownRefresh": true
+}

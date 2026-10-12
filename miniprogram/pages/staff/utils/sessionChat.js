@@ -1,7 +1,11 @@
 // 分包内使用；与 pages/client/orders/utils/sessionChat.js 保持一致。
-function sessionChatMethods(callFunction) {
+function sessionChatMethods(callFunction, requestSubscribeTemplates) {
   return {
-    openSessionChat() {
+    openSessionChat(options = {}) {
+      const silent = options && options.silent === true
+      if (!silent && typeof requestSubscribeTemplates === 'function') {
+        requestSubscribeTemplates(['orderChat'], 'order_chat_session').catch(() => null)
+      }
       this._chatAtBottom = true
       this._chatScrollTop = 0
       this._chatForceScroll = true

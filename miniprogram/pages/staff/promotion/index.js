@@ -13,6 +13,10 @@ Page({
     loading: false
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     const theme = applyTheme()
     this.setData(getThemeState(theme.value))

@@ -106,12 +106,32 @@ module.exports = function createService({
       try { currentOrder = (await transaction.collection('orders').doc(order._id).get()).data } catch (error) {
         if (!String(error.message || error.errMsg).includes(`document with _id ${order._id} does not exist`)) throw error
       }
-      const value = { ...earning }
+      const channelCandidate = order.paymentChannel || currentOrder?.paymentChannel || ''
+      let isMock = order.isMockPayment === true || currentOrder?.isMockPayment === true || channelCandidate === 'mock'
+      if (!isMock && !channelCandidate) {
+        try {
+          const paymentsRes = await transaction.collection('payments').where({ orderId: order._id }).limit(2).get()
+          const paymentList = paymentsRes.data || []
+          const succPayment = paymentList.find(p => p.status === 'success' || p.status === 'paid')
+          if (succPayment && succPayment.channel === 'mock') {
+            isMock = true
+          }
+        } catch (_) {}
+      }
+      const paymentChannel = isMock ? 'mock' : (channelCandidate || 'wechat')
+      const value = {
+        ...earning,
+        paymentChannel,
+        isMock,
+        isWithdrawable: !isMock,
+        mockReason: isMock ? '模拟支付测试订单，不计入真实可提现资金池' : '',
+        status: isMock ? 'mock_settled' : earning.status
+      }
       if (currentOrder?.frozenEarningIncidentId) {
         const incidentId = currentOrder.frozenEarningIncidentId
         const incident = (await transaction.collection('order_incidents').doc(incidentId).get()).data
         if (!incident || incident.orderId !== order._id || incident.staffOpenid !== order.staffOpenid) throw new Error('预冻结纠纷归属异常')
-        Object.assign(value, { status: 'frozen', frozenIncidentId: incidentId, frozenFromStatus: earning.status })
+        Object.assign(value, { status: 'frozen', frozenIncidentId: incidentId, frozenFromStatus: value.status })
         await transaction.collection('order_incidents').doc(incidentId).update({ data: {
           frozenEarningIds: [...new Set([...(incident.frozenEarningIds || []), earningId])], updatedAt: time
         } })
@@ -119,18 +139,21 @@ module.exports = function createService({
       if (currentOrder) await transaction.collection('orders').doc(order._id).update({ data: { earningRevision: Number(currentOrder.earningRevision || 0) + 1 } })
       await transaction.collection('staff_earnings').doc(earningId).set({ data: value })
       await transaction.collection('finance_logs').doc(earningId).set({ data: {
-        action: 'staff_earning_created',
+        action: isMock ? 'staff_earning_mock_created' : 'staff_earning_created',
         targetType: 'staff_earning',
         targetId: earningId,
         orderId: order._id,
         staffOpenid: order.staffOpenid,
-        amountDelta: earningAmount,
+        amountDelta: isMock ? 0 : earningAmount,
         detail: {
           commissionRate: rate,
           originalAmount,
           deductAmount,
           deductReason,
-          isDeducted: deductAmount > 0
+          isDeducted: deductAmount > 0,
+          paymentChannel,
+          isMock,
+          isWithdrawable: !isMock
         },
         createdAt: time
       } })
@@ -140,8 +163,47 @@ module.exports = function createService({
   }
 
   async function refreshStaffEarnings(openid = '') {
-    const query = openid ? { staffOpenid: openid, status: 'pending' } : { status: 'pending' }
     const time = now()
+
+    // 1. 回溯清洗存量被误标或历史遗留的模拟收益（状态为 available，但实为 mock 支付）
+    try {
+      const availQuery = openid ? { staffOpenid: openid, status: 'available' } : { status: 'available' }
+      const availableRows = (await db.collection('staff_earnings').where(availQuery).limit(100).get()).data || []
+      for (const earning of availableRows) {
+        let isMockEarning = earning.isMock === true || earning.paymentChannel === 'mock'
+        if (!isMockEarning && earning.isMock === undefined && earning.orderId) {
+          try {
+            const payments = (await db.collection('payments').where({ orderId: earning.orderId }).limit(2).get()).data || []
+            const succPayment = payments.find(p => p.status === 'success' || p.status === 'paid')
+            if (succPayment && succPayment.channel === 'mock') {
+              isMockEarning = true
+            } else {
+              const orderRes = await db.collection('orders').doc(earning.orderId).get().catch(() => ({ data: null }))
+              const orderData = orderRes && orderRes.data
+              if (orderData && (orderData.paymentChannel === 'mock' || orderData.isMockPayment === true)) {
+                isMockEarning = true
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (isMockEarning) {
+          await db.collection('staff_earnings').doc(earning._id).update({
+            data: {
+              status: 'mock_settled',
+              isMock: true,
+              paymentChannel: 'mock',
+              isWithdrawable: false,
+              mockReason: '历史模拟测试订单自动订正隔离',
+              updatedAt: time
+            }
+          }).catch(() => {})
+        }
+      }
+    } catch (_) {}
+
+    // 2. 正常处理 pending 收益的延期到期转 available 及 pending mock 清洗
+    const query = openid ? { staffOpenid: openid, status: 'pending' } : { status: 'pending' }
     let cursor = ''
     while (true) {
       const where = { ...query }
@@ -149,6 +211,36 @@ module.exports = function createService({
       const res = await db.collection('staff_earnings').where(where).orderBy('_id', 'asc').limit(100).get()
       const rows = res.data || []
       for (const earning of rows) {
+        let isMockEarning = earning.isMock === true || earning.paymentChannel === 'mock'
+        if (!isMockEarning && earning.isMock === undefined && earning.orderId) {
+          try {
+            const payments = (await db.collection('payments').where({ orderId: earning.orderId }).limit(2).get()).data || []
+            const succPayment = payments.find(p => p.status === 'success' || p.status === 'paid')
+            if (succPayment && succPayment.channel === 'mock') {
+              isMockEarning = true
+            } else {
+              const orderRes = await db.collection('orders').doc(earning.orderId).get().catch(() => ({ data: null }))
+              const orderData = orderRes && orderRes.data
+              if (orderData && (orderData.paymentChannel === 'mock' || orderData.isMockPayment === true)) {
+                isMockEarning = true
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (isMockEarning) {
+          await db.collection('staff_earnings').where({ _id: earning._id, status: 'pending' }).update({
+            data: {
+              status: 'mock_settled',
+              isMock: true,
+              paymentChannel: 'mock',
+              isWithdrawable: false,
+              mockReason: '历史模拟测试订单自动订正隔离',
+              updatedAt: time
+            }
+          })
+          continue
+        }
         const availableAt = parseDateValue(earning.availableAt)
         if (availableAt && availableAt.getTime() <= time.getTime()) {
           await db.collection('staff_earnings').where({ _id: earning._id, status: 'pending' }).update({ data: { status: 'available', updatedAt: time } })
@@ -162,14 +254,19 @@ module.exports = function createService({
   function summarizeStaffEarnings(earnings = []) {
     return earnings.reduce((summary, earning) => {
       const amount = Number(earning.amount || 0)
-      summary.total += amount
-      if (earning.status === 'pending') summary.pending += amount
-      if (earning.status === 'available') summary.available += amount
-      if (earning.status === 'withdrawing') summary.withdrawing += amount
-      if (earning.status === 'withdrawn') summary.withdrawn += amount
-      if (earning.status === 'frozen') summary.frozen += amount
+      const isMock = earning.isMock === true || earning.paymentChannel === 'mock' || earning.status === 'mock_settled'
+      if (isMock) {
+        summary.mockTotal = Math.round((summary.mockTotal + amount) * 100) / 100
+        return summary
+      }
+      summary.total = Math.round((summary.total + amount) * 100) / 100
+      if (earning.status === 'pending') summary.pending = Math.round((summary.pending + amount) * 100) / 100
+      if (earning.status === 'available') summary.available = Math.round((summary.available + amount) * 100) / 100
+      if (earning.status === 'withdrawing') summary.withdrawing = Math.round((summary.withdrawing + amount) * 100) / 100
+      if (earning.status === 'withdrawn') summary.withdrawn = Math.round((summary.withdrawn + amount) * 100) / 100
+      if (earning.status === 'frozen') summary.frozen = Math.round((summary.frozen + amount) * 100) / 100
       return summary
-    }, { total: 0, pending: 0, available: 0, withdrawing: 0, withdrawn: 0, frozen: 0 })
+    }, { total: 0, pending: 0, available: 0, withdrawing: 0, withdrawn: 0, frozen: 0, mockTotal: 0 })
   }
 
   async function adjustStaffEarningsForRefund(orderId, refundAmount, totalPayAmount, reason = '', transaction = null) {

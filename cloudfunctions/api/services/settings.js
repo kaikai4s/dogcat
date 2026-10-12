@@ -193,7 +193,8 @@ module.exports = function createService({
           refundResult: safeText(subscription.templates && subscription.templates.refundResult).trim(),
           disputeUpdate: safeText(subscription.templates && subscription.templates.disputeUpdate).trim(),
           withdrawResult: safeText(subscription.templates && subscription.templates.withdrawResult).trim(),
-          upcomingServiceReminder: safeText(subscription.templates && (subscription.templates.upcomingServiceReminder || subscription.templates.serviceReminder)).trim()
+          upcomingServiceReminder: safeText(subscription.templates && (subscription.templates.upcomingServiceReminder || subscription.templates.serviceReminder)).trim(),
+          orderChat: safeText(subscription.templates && (subscription.templates.orderChat || subscription.templates.unreadMessage)).trim()
         }
       },
       reliability: {

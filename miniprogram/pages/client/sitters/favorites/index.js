@@ -25,6 +25,10 @@ Page({
     this.setData(createPageNav(query))
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load({ reset: true })).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看关注的宠托师。' })

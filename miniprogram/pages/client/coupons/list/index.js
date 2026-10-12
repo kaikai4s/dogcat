@@ -20,6 +20,10 @@ Page({
     this.setData(createPageNav(query))
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     ensureLogin({ content: '登录后可查看优惠券。' })
       .then(() => this.load())

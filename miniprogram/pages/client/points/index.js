@@ -25,6 +25,10 @@ Page({
     loading: false
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load(1)).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     ensureLogin({ content: '登录后可查看积分。' })
       .then(() => this.load(1))

@@ -3,6 +3,10 @@ const { callFunction, showError, ensureLogin } = require('../../../../utils/clou
 Page({
   data: { cart: { items: [], selectedCount: 0, totalAmount: 0 }, loading: false, updatingId: '' },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     ensureLogin({ content: '登录后可查看购物车。' })
       .then(() => this.load())

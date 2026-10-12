@@ -2102,6 +2102,11 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   const directOrder = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: pet.data._id, serviceTypes: ['visit_fee', 'feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.49, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60, publishMode: 'direct', staffProfileId: 'sp1', saveAddress: true } })
   const openOrder = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: pet.data._id, serviceTypes: ['visit_fee', 'feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.49, startTime: '2099-07-29 10:00', endTime: '2099-07-29 11:00', durationMinutes: 60, publishMode: 'open' } })
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: directOrder.data._id } })
+  const directEarningOrder = db.state.orders.find(o => o._id === directOrder.data._id)
+  if (directEarningOrder) {
+    directEarningOrder.paymentChannel = 'wechat'
+    directEarningOrder.isMockPayment = false
+  }
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: openOrder.data._id } })
   const openAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: openOrder.data._id } })
   const directAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: directOrder.data._id } })

@@ -108,3 +108,30 @@ test('earning refresh traverses 205 changing rows without releasing frozen, with
     assert.equal(db.state.staff_earnings.find(row => row._id === id).status, status)
   }
 })
+
+test('mock payment orders create mock_settled non-withdrawable earnings without contaminating ledger balance', async () => {
+  const { db, ensureStaffEarning, summarizeStaffEarnings } = setup()
+  const mockOrder = { _id: 'mock_order_1', staffOpenid: 'staff', payAmount: 100, paymentChannel: 'mock', isMockPayment: true }
+  const earning = await ensureStaffEarning(mockOrder)
+  assert.equal(earning.isMock, true)
+  assert.equal(earning.paymentChannel, 'mock')
+  assert.equal(earning.isWithdrawable, false)
+  assert.equal(earning.status, 'mock_settled')
+  assert.equal(earning.amount, 70)
+
+  // 检查财务流水
+  const log = db.state.finance_logs.find(l => l.orderId === 'mock_order_1')
+  assert.ok(log)
+  assert.equal(log.action, 'staff_earning_mock_created')
+  assert.equal(log.amountDelta, 0)
+  assert.equal(log.detail.isMock, true)
+
+  // 检查汇总：不能进入 available、pending 或 total
+  const summary = summarizeStaffEarnings([
+    earning,
+    { _id: 'real_1', amount: 50, status: 'available', isMock: false, paymentChannel: 'wechat' }
+  ])
+  assert.equal(summary.available, 50)
+  assert.equal(summary.total, 50)
+  assert.equal(summary.mockTotal, 70)
+})

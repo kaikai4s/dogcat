@@ -284,6 +284,8 @@
           <view class="field-item"><text class="label">提现结果模板</text><input class="input" value="{{settings.subscription.templates.withdrawResult}}" data-field="withdrawResult" bindinput="subscriptionTemplateInput" /></view>
           <view class="field-item"><text class="label">前往服务提醒模板</text><input class="input" value="{{settings.subscription.templates.upcomingServiceReminder}}" data-field="upcomingServiceReminder" bindinput="subscriptionTemplateInput" placeholder="服务订单提醒模板 ID（19425）" /></view>
           <view class="notice">模板 19425：服务时间段 time3、服务地点 thing4、宠物类型 short_thing6、宠物名字 thing7、备注 thing5。服务前 1 小时提醒宠托师，完整地址和照护要求请进入订单查看。</view>
+          <view class="field-item"><text class="label">在线沟通未读提醒模板</text><input class="input" value="{{settings.subscription.templates.orderChat}}" data-field="orderChat" bindinput="subscriptionTemplateInput" placeholder="在线聊天未读提醒模板 ID（43667）" /></view>
+          <view class="notice">模板 43667：发送人 thing1、发送内容 thing2、发送时间 time3。宠托师或宠物主在订单服务会话中发送即时消息时，向离线对方推送微信服务通知。</view>
         </view>
 
         <view wx:if="{{activeSettingPanel === 'customerService'}}" class="setting-modal-section">

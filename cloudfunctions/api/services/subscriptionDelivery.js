@@ -65,7 +65,8 @@ module.exports = function createService({ db, crypto, now }) {
     staffDeparture: '宠托师出发通知', orderAccepted: '接单成功通知', orderAssigned: '派单通知',
     orderPaid: '支付成功通知', serviceStart: '服务开始通知', serviceProgress: '服务进度通知', serviceFinish: '服务完成通知',
     remoteUnlock: '开锁请求通知', upcomingServiceReminder: '即将服务提醒', refundResult: '退款结果通知',
-    disputeUpdate: '售后进度通知', withdrawResult: '提现结果通知', staffCancellation: '宠托师取消通知'
+    disputeUpdate: '售后进度通知', withdrawResult: '提现结果通知', staffCancellation: '宠托师取消通知',
+    orderChat: '在线沟通未读提醒'
   }
   function deliveryReason(row) {
     if (row.isQuotaExhausted || Number(row.code) === 43101 || /43101/.test(row.error || '')) return '用户未同意或订阅次数已用完，请用户重新订阅'

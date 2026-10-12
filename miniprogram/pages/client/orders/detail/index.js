@@ -101,7 +101,14 @@ Page({
   },
   onLoad(q) {
     this.setData({ ...createPageNav(q), id: q.id })
+    if (q.openChat === '1' || q.openChat === 'true' || q.openChat === true) {
+      this._autoOpenChat = true
+    }
   },
+    onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     loadSystemSettings().catch(() => null)
     this._chatPageVisible = true
@@ -109,6 +116,12 @@ Page({
     ensureLogin({ content: '登录后可查看订单详情。' })
       .then(() => {
         this.load()
+        if (this._autoOpenChat) {
+          this._autoOpenChat = false
+          setTimeout(() => {
+            if (typeof this.openSessionChat === 'function') this.openSessionChat({ silent: true })
+          }, 400)
+        }
         if (this._chatPageVisible && this.data.showChatModal) this.startSessionChatRefresh()
       })
       .catch(() => wx.redirectTo({ url: '/pages/client/home/index' }))
@@ -531,7 +544,7 @@ Page({
     this.setData({ showCallModal: false })
   },
 
-  ...sessionChatMethods(callFunction),
+  ...sessionChatMethods(callFunction, requestSubscribeTemplates),
 
   onChatInput(e) {
     this.setData({ sessionInputText: e.detail.value })

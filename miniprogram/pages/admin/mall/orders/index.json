@@ -1,1 +1,4 @@
-{"navigationBarTitleText":"商城订单管理"}
+{
+  "navigationBarTitleText": "商城订单管理",
+  "enablePullDownRefresh": true
+}

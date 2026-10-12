@@ -33,6 +33,10 @@ Page({
     this.setData(createPageNav(q))
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load({ reset: true })).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     ensureLogin({ content: '登录后可查看投诉和售后进度。' })
       .then(() => this.load({ reset: true }))

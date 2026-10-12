@@ -66,6 +66,7 @@ module.exports = function createService({
     const selected = []
     let totalCents = 0
     for (const earning of earnings) {
+      if (earning.isMock === true || earning.paymentChannel === 'mock' || earning.status === 'mock_settled') continue
       if (totalCents >= targetCents) break
       selected.push(earning)
       totalCents += cents(earning.amount)
@@ -84,8 +85,10 @@ module.exports = function createService({
       // Read every record before writing. A competing transaction must retry and revalidate.
       for (const earning of selected) {
         const current = (await transaction.collection('staff_earnings').doc(earning._id).get().catch(() => ({ data: null }))).data
-        if (!current || current.staffOpenid !== openid || current.status !== 'available' || current.withdrawRequestId || current.frozenIncidentId || cents(current.amount) !== cents(earning.amount)) {
-          throw new Error('收益状态已变化，请刷新后重试')
+        if (!current || current.staffOpenid !== openid || current.status !== 'available' ||
+            current.isMock === true || current.paymentChannel === 'mock' || current.status === 'mock_settled' ||
+            current.withdrawRequestId || current.frozenIncidentId || cents(current.amount) !== cents(earning.amount)) {
+          throw new Error('收益状态已变化或包含不可提现的模拟测试收益，请刷新后重试')
         }
       }
       const request = {

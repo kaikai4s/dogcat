@@ -35,6 +35,7 @@
     </view>
     <view class="withdraw-limit-tip">💡 单次最低提现金额：¥{{balance.minWithdrawAmountText}}</view>
     <view class="withdraw-limit-tip" style="margin-top: 8rpx; color: #78716c;">⏳ 平台结算保护期：订单完成后收益先进入【待结算】，到达缓冲期且无未决售后纠纷后自动转入【可提现余额】。</view>
+    <view class="withdraw-limit-tip" wx:if="{{balance.hasMockEarnings}}" style="margin-top: 8rpx; color: #d97706;">🧪 模拟测试收益：¥{{balance.mockTotalText}}（模拟支付订单未发生真实微信支付交易，不计入可提现余额与对账结算）。</view>
   </view>
 
   <view class="card form-card">
@@ -68,9 +69,13 @@
   <view class="card record-card" wx:for="{{earnings}}" wx:key="_id">
     <view class="record-head">
       <view class="record-title">订单 {{item.orderNo || item.orderId}}</view>
-      <view class="badge pink">{{item.statusText || '已记录'}}</view>
+      <view class="badge {{item.isMock ? 'muted' : 'pink'}}">{{item.statusText || '已记录'}}</view>
     </view>
     <view class="info-list">
+      <view class="info-row" wx:if="{{item.isMock}}">
+        <view class="label">支付属性</view>
+        <view class="value" style="color: #d97706; font-weight: 500;">模拟支付测试单（不可提现）</view>
+      </view>
       <view class="info-row">
         <view class="label">订单原价</view>
         <view class="value">¥{{item.grossAmountText}}</view>
@@ -91,9 +96,13 @@
         <view class="label">{{item.hasDeduction ? '实发收益' : '到手收益'}}</view>
         <view class="value price-highlight">¥{{item.amountText}}</view>
       </view>
-      <view class="info-row">
+      <view class="info-row" wx:if="{{!item.isMock}}">
         <view class="label">可提现时间</view>
         <view class="value muted">{{beijingTime.format(item.availableAt)}}</view>
+      </view>
+      <view class="info-row" wx:else>
+        <view class="label">结算说明</view>
+        <view class="value muted">模拟测试订单，不计入可提现资金池</view>
       </view>
     </view>
   </view>

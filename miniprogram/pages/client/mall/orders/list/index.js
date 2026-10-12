@@ -16,6 +16,10 @@ function pageList(result) {
 Page({
   data: { tabs, activeStatus: 'all', orders: [], page: 1, pageSize: 10, hasMore: true, loading: false },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load({ reset: true })).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     ensureLogin({ content: '登录后可查看商城订单。' })
       .then(() => this.load({ reset: true }))

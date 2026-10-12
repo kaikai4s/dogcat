@@ -35,6 +35,10 @@ Page({
     this.setData(createPageNav(q))
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load({ reset: true })).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     this.applyCurrentTheme()
     this.load({ reset: true })

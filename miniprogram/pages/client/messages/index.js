@@ -86,6 +86,16 @@ Page({
     selectedNotice: null,
     showNoticeModal: false
   },
+    onPullDownRefresh() {
+    const p = this.data.activeTab === "order"
+      ? this.load({ reset: true })
+      : this.loadSystemNotices({ reset: true })
+    Promise.resolve(p).finally(() => {
+      loadMessageUnread(this)
+      wx.stopPullDownRefresh()
+    })
+  },
+
   onShow() {
     this.applyCurrentTheme()
     ensureLogin({ content: '登录后可查看消息。' })

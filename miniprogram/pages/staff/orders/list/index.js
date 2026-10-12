@@ -32,6 +32,13 @@ Page({
     messageUnreadCount: 0,
     messageHasUnread: false
   },
+    onPullDownRefresh() {
+    Promise.resolve(this.load({ reset: true })).finally(() => {
+      loadMessageUnread(this, "staff")
+      wx.stopPullDownRefresh()
+    })
+  },
+
   onShow() {
     this.applyCurrentTheme()
     this.load({ reset: true })

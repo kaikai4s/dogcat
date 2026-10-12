@@ -4,6 +4,10 @@ const statuses = { started: '结果待核实', succeeded: '成功', failed: '失
 Page({
   data: { actors: [{ label: '全部人员', openid: '' }], actorIndex: 0, actorOpenid: '', status: '', action: '', rows: [], page: 1, hasMore: false, loading: false,
     statusOptions: ['全部结果', '成功', '失败', '无权限', '结果待核实'], statusIndex: 0 },
+  onPullDownRefresh() {
+    Promise.resolve(this.load(true)).finally(() => wx.stopPullDownRefresh())
+  },
+
   async onShow() {
     try {
       const access = this.data.adminAccess

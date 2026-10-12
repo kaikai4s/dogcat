@@ -21,13 +21,14 @@ module.exports = function createService({
   safeText,
   toTimeValue
 }) {
-  function buildSubscriptionPage(order = {}, role = 'client') {
+  function buildSubscriptionPage(order = {}, role = 'client', templateKey = '') {
     const orderId = order && order._id || ''
+    const chatParam = templateKey === 'orderChat' ? '&openChat=1' : ''
     if (!orderId) return role === 'staff' ? 'pages/staff/home/index' : 'pages/client/home/index'
     if (role === 'staff') {
-      return `pages/staff/orders/service/index?id=${orderId}`
+      return `pages/staff/orders/service/index?id=${orderId}${chatParam}`
     }
-    return isMallOrder(order) ? `pages/client/mall/orders/detail/index?id=${orderId}` : `pages/client/orders/detail/index?id=${orderId}`
+    return isMallOrder(order) ? `pages/client/mall/orders/detail/index?id=${orderId}` : `pages/client/orders/detail/index?id=${orderId}${chatParam}`
   }
 
   function getClockText(value) {
@@ -110,6 +111,19 @@ module.exports = function createService({
         short_thing6: { value: (types.join('、') || ({ cat: '猫', dog: '狗' })[order.petCategory] || '宠物').slice(0, 5) },
         thing7: { value: safeText(names).slice(0, 20) },
         thing5: { value: safeText(detail.tip || '请按时前往，完整地址及照护要求见订单').slice(0, 20) }
+      }
+    }
+
+    if (templateKey === 'orderChat') {
+      const rawSender = safeText(detail.senderName || (detail.senderRole === 'staff' ? '宠托师' : '宠物主'))
+      const sender = rawSender.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 20) || '服务沟通'
+      const rawContent = safeText(detail.content || '您有一条新的未读留言')
+      const content = rawContent.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 20) || '您有一条未读留言'
+      const sendTime = formatDateTime(detail.time || now()) || formatDateTime(now())
+      return {
+        thing1: { value: sender },
+        thing2: { value: content },
+        time3: { value: sendTime }
       }
     }
 
@@ -311,12 +325,12 @@ module.exports = function createService({
 
   function notifyOrder(openid, templateKey, order, detail = {}, role = '', deliveryKey = '') {
     const targetRole = role || (order && order.staffOpenid && openid === order.staffOpenid ? 'staff' : 'client')
-    return sendSubscribeMessage(openid, templateKey, buildSubscriptionPage(order, targetRole), buildSubscriptionData(templateKey, order, detail), order && order._id, deliveryKey)
+    return sendSubscribeMessage(openid, templateKey, buildSubscriptionPage(order, targetRole, templateKey), buildSubscriptionData(templateKey, order, detail), order && order._id, deliveryKey)
   }
 
   function enqueueOrderNotification(tx, openid, templateKey, order, detail = {}, role = '', deliveryKey = '') {
     const targetRole = role || (order && order.staffOpenid && openid === order.staffOpenid ? 'staff' : 'client')
-    return enqueueSubscription(tx, { openid, templateKey, page: buildSubscriptionPage(order, targetRole),
+    return enqueueSubscription(tx, { openid, templateKey, page: buildSubscriptionPage(order, targetRole, templateKey),
       messageData: buildSubscriptionData(templateKey, order, detail), orderId: order && order._id || '', ...(deliveryKey ? { deliveryKey } : {}) })
   }
 

@@ -55,6 +55,10 @@ Page({
     }
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.load(true)).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     this.setData(getThemeState(applyTheme().value))
     if (!this.data.busy && !this.data.uploading) this.load(true)

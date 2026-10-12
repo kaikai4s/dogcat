@@ -68,6 +68,13 @@ Page({
     this.setData({ staffGenderRequirement: ['male', 'female'].includes(options.staffGenderRequirement) ? options.staffGenderRequirement : 'any' })
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.loadFacets()).finally(() => {
+      loadMessageUnread(this)
+      wx.stopPullDownRefresh()
+    })
+  },
+
   onShow() {
     this.applyCurrentTheme()
     this.syncCurrentLocation()

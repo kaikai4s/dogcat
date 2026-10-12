@@ -11,7 +11,9 @@ const earningStatusText = {
   frozen: '已冻结',
   settled: '已结算',
   deducted: '已扣除',
-  refunded_void: '已退款作废'
+  refunded_void: '已退款作废',
+  mock_settled: '模拟测试(不可提现)',
+  mock: '模拟测试(不可提现)'
 }
 
 const withdrawStatusText = {
@@ -27,14 +29,16 @@ function money(value) {
 
 function withEarning(item) {
   const status = String(item.status || '').toLowerCase()
+  const isMock = item.isMock === true || item.paymentChannel === 'mock' || status === 'mock_settled' || status === 'mock'
   return {
     ...item,
+    isMock,
     amountText: money(item.amount),
     grossAmountText: money(item.grossAmount),
     originalAmountText: money(item.originalAmount || item.amount),
     deductAmountText: money(item.deductAmount || 0),
     hasDeduction: Number(item.deductAmount || 0) > 0,
-    statusText: earningStatusText[status] || '已记录'
+    statusText: isMock ? '模拟测试(不可提现)' : (earningStatusText[status] || '已记录')
   }
 }
 
@@ -57,6 +61,10 @@ Page({
     accountName: '',
     accountNo: '',
     submitting: false
+  },
+
+    onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
   },
 
   onShow() {
@@ -83,6 +91,8 @@ Page({
             pendingText: money(balance.pending),
             withdrawingText: money(balance.withdrawing),
             withdrawnText: money(balance.withdrawn),
+            mockTotalText: money(balance.mockTotal || 0),
+            hasMockEarnings: Number(balance.mockTotal || 0) > 0,
             minWithdrawAmountText: money(balance.minWithdrawAmount)
           },
           amount: balance.available ? money(balance.available) : '',

@@ -18,6 +18,10 @@ Page({
     acceptingRiskOrder: false
   },
   onLoad(q) { this.setData({ ...createPageNav(q), id: q.id }); this.loadCustomerService() },
+    onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
+  },
+
   onShow() {
     loadSystemSettings().catch(() => null)
     this.applyCurrentTheme()

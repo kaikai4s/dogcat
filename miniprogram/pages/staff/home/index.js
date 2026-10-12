@@ -120,6 +120,13 @@ Page({
     acceptingOrderId: ''
   },
 
+    onPullDownRefresh() {
+    Promise.resolve(this.initStaffHome()).finally(() => {
+      loadMessageUnread(this, "staff")
+      wx.stopPullDownRefresh()
+    })
+  },
+
   onShow() {
     loadSystemSettings().catch(() => null)
     this.applyCurrentTheme()

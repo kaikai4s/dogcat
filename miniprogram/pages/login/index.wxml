@@ -1,15 +1,76 @@
 <view class="login-simple {{themeClass}} {{fontClass}}">
-  <view class="login-title">Dovelin 多芙琳宠物上门服务</view>
-  <view class="login-subtitle">登录后可预约上门喂猫、遛狗，并查看轨迹与服务报告。</view>
+  <block wx:if="{{step === 'login'}}">
+    <view class="login-brand">
+      <view class="brand-badge">
+        <text class="remix-icon ri-heart-3-fill badge-icon"></text>
+        <text>专业宠物上门服务</text>
+      </view>
+      <view class="login-title">Dovelin 多芙琳</view>
+      <view class="login-subtitle">登录后可预约专业宠托师上门喂猫、遛狗，实时查看打卡轨迹与专属服务报告。</view>
+    </view>
 
-  <view class="login-error" wx:if="{{!envReady}}">
-    云环境未初始化，请重新编译并检查 envList.js。
-  </view>
+    <view class="login-error" wx:if="{{!envReady}}">
+      云环境未初始化，请重新编译并检查 envList.js。
+    </view>
 
-  <view class="login-error" wx:if="{{errorText}}">
-    登录失败：{{errorText}}
-  </view>
+    <view class="login-error" wx:if="{{errorText}}">
+      登录失败：{{errorText}}
+    </view>
 
-  <button class="primary" disabled="{{!envReady}}" loading="{{loading}}" bindtap="login">微信登录</button>
+    <button class="primary login-btn" disabled="{{!envReady}}" loading="{{loading}}" bindtap="login">
+      <text class="remix-icon ri-wechat-fill btn-icon"></text>
+      <text>微信一键快捷登录</text>
+    </button>
+  </block>
+
+  <block wx:elif="{{step === 'profile'}}">
+    <view class="profile-step-card">
+      <view class="step-header">
+        <view class="step-badge">
+          <text class="remix-icon ri-user-heart-line"></text>
+          <text>新用户注册</text>
+        </view>
+        <view class="step-title">完善您的宠护资料</view>
+        <view class="step-desc">一键选用微信头像与昵称，为您提供贴心上门宠护服务</view>
+      </view>
+
+      <view class="avatar-section">
+        <button class="avatar-picker-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+          <image class="avatar-preview" wx:if="{{form.avatarUrl}}" src="{{form.avatarUrl}}" mode="aspectFill" />
+          <view class="avatar-empty" wx:else>
+            <text class="remix-icon ri-camera-line avatar-icon"></text>
+            <text class="avatar-text">微信头像</text>
+          </view>
+        </button>
+        <view class="avatar-hint">点击一键选用微信头像</view>
+      </view>
+
+      <view class="field-group">
+        <view class="field-label">
+          <text class="remix-icon ri-user-3-line field-icon"></text>
+          <text>用户昵称</text>
+        </view>
+        <input class="input-field" type="nickname" placeholder="点击键盘上方一键填入微信昵称" value="{{form.nickname}}" bindinput="inputNickname" bindblur="onNicknameBlur" />
+      </view>
+
+      <view class="field-group">
+        <view class="field-label">
+          <text class="remix-icon ri-phone-line field-icon"></text>
+          <text>联系电话</text>
+        </view>
+        <view class="phone-input-card">
+          <input class="input-field phone-input" placeholder="输入11位手机号" type="number" maxlength="11" value="{{form.phone}}" bindinput="inputPhone" />
+          <button class="phone-auth-btn" open-type="getPhoneNumber" bindgetphonenumber="bindPhone">一键授权</button>
+        </view>
+        <view class="field-tip">点击一键授权微信绑定的手机号，或手动输入</view>
+      </view>
+
+      <button class="primary submit-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="saveAndEnter">
+        <text class="remix-icon ri-check-double-line"></text>
+        <text>完成并进入小程序</text>
+      </button>
+      <view class="skip-btn" bindtap="skipAndEnter">暂不完善，直接进入 ›</view>
+    </view>
+  </block>
 </view>
 <global-loading />

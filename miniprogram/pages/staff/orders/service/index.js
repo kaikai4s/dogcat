@@ -240,6 +240,11 @@ Page({
   onLoad(q) {
     this.applyCurrentTheme()
     this.setData({ ...createPageNav(q), id: q.id })
+    if (q.openChat === '1' || q.openChat === 'true' || q.openChat === true) {
+      setTimeout(() => {
+        if (typeof this.openSessionChat === 'function') this.openSessionChat({ silent: true })
+      }, 500)
+    }
     this.loadCustomerService()
     this.loadOrder()
     this.loadSupplies()
@@ -1243,7 +1248,7 @@ Page({
     this.setData({ showCallModal: false })
   },
 
-  ...sessionChatMethods(callFunction),
+  ...sessionChatMethods(callFunction, requestSubscribeTemplates),
 
   onChatInput(e) {
     this.setData({ sessionInputText: e.detail.value })
