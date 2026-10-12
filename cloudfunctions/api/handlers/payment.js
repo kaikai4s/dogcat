@@ -29,6 +29,7 @@ module.exports = function createHandler(context) {
     sanitizeWechatPayload,
     syncOrderRefund,
     updateOrderWhenStatus,
+    validatePaymentCallbackPayload,
     wechatPayRequest
   } = context
   function publicPaymentStatus(payment = {}) {
@@ -41,6 +42,35 @@ module.exports = function createHandler(context) {
       updatedAt: payment.updatedAt || '',
       paidAt: payment.paidAt || ''
     }
+  }
+
+  async function syncWechatPaidOrder(order, payments) {
+    if (!order || order.paymentStatus === 'paid') return order
+    const paymentNo = order.paymentNo || (payments.find(item => item.channel === 'wechat' && item.paymentNo) || {}).paymentNo
+    if (!paymentNo) return order
+    const payment = payments.find(item => item.paymentNo === paymentNo) || { paymentNo, orderId: order._id, channel: 'wechat' }
+    if (payment.channel === 'mock' || ['success', 'paid'].includes(payment.status)) return order
+    const settings = await getSystemSettings({ includeSecrets: true })
+    const config = getWechatPayConfig(settings)
+    const path = `/v3/pay/transactions/out-trade-no/${encodeURIComponent(paymentNo)}?mchid=${encodeURIComponent(config.mchId)}`
+    let response
+    try {
+      response = await wechatPayRequest('GET', path, null, config)
+    } catch (error) {
+      await appendPaymentEvent('query_failed', { orderId: order._id, paymentNo, status: 'failed', detail: { message: error.message, code: error.code || '' } })
+      return order
+    }
+    await appendPaymentEvent('query', { orderId: order._id, paymentNo, status: response.trade_state || 'UNKNOWN', detail: sanitizeWechatPayload(response) })
+    if (response.trade_state !== 'SUCCESS') return order
+    validatePaymentCallbackPayload(response, order, payment, config)
+    await markOrderPaid(order._id, {
+      paymentNo,
+      wxTransactionId: response.transaction_id || '',
+      channel: 'wechat',
+      rawCallback: sanitizeWechatPayload(response)
+    })
+    const fresh = await getPayableOrder(order._id)
+    return fresh.order || order
   }
 
   return async function payment(openid, action, data) {
@@ -94,8 +124,13 @@ module.exports = function createHandler(context) {
     }
     if (action === 'getPaymentStatus') {
       const { order } = await requireClientPayableOrder(openid, data.orderId, '无权查看支付状态')
-      const payments = await readScopedDocuments('payments', { orderId: data.orderId }, 'createdAt', 'desc')
-      return { orderId: data.orderId, status: order.status, paymentStatus: order.paymentStatus || 'unpaid', paymentNo: order.paymentNo || '', paidAt: order.paidAt || '', payments: payments.map(publicPaymentStatus) }
+      let payments = await readScopedDocuments('payments', { orderId: data.orderId }, 'createdAt', 'desc')
+      let currentOrder = order
+      if (currentOrder.paymentStatus !== 'paid' && payments.some(item => item.channel === 'wechat' && item.paymentNo)) {
+        currentOrder = await syncWechatPaidOrder(currentOrder, payments)
+        payments = await readScopedDocuments('payments', { orderId: data.orderId }, 'createdAt', 'desc')
+      }
+      return { orderId: data.orderId, status: currentOrder.status, paymentStatus: currentOrder.paymentStatus || 'unpaid', paymentNo: currentOrder.paymentNo || '', paidAt: currentOrder.paidAt || '', payments: payments.map(publicPaymentStatus) }
     }
     if (action === 'paymentCallback') throw new Error('paymentCallback 仅限 HTTP 回调调用')
     if (action === 'mockPayOrder') {

@@ -38,6 +38,14 @@ function clearTransitFields(order) {
   }, { ...order })
 }
 
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function isPaidResult(result) {
+  return result && (result.paid || result.paymentStatus === 'paid' || result.status === 'paid')
+}
+
 function showRemoteUnlockSubscribeTip(result, retryCallback) {
   if (!result || !result.requested) return Promise.resolve()
   // Keys may share an ID, so their indexes do not match the deduplicated ID list.
@@ -216,6 +224,29 @@ Page({
     }
     this._earlyStartPollSeq = (this._earlyStartPollSeq || 0) + 1
   },
+  syncPaymentStatusWithRetry() {
+    const delays = [0, 800, 1600, 2500]
+    let lastResult = null
+    const run = (index) => {
+      const delay = delays[index] || 0
+      return wait(delay)
+        .then(() => {
+          if (index > 0) showLoading({ title: '正在确认支付结果...', mask: true })
+          return callFunction('payment', 'getPaymentStatus', { orderId: this.data.id })
+        })
+        .then((result) => {
+          lastResult = result
+          if (isPaidResult(result) || index >= delays.length - 1) return result
+          return run(index + 1)
+        })
+        .catch((error) => {
+          if (index >= delays.length - 1) throw error
+          lastResult = lastResult || { paymentStatus: 'paying' }
+          return run(index + 1)
+        })
+    }
+    return run(0)
+  },
   subscribeServiceUpdates() {
     if (this._subscribingUpdates) return
     this._subscribingUpdates = true
@@ -264,13 +295,13 @@ Page({
           })
         }).then(() => {
           showLoading({ title: '正在同步支付结果...', mask: true })
-          return callFunction('payment', 'getPaymentStatus', { orderId: this.data.id })
+          return this.syncPaymentStatusWithRetry()
         })
       })
       .then((result) => {
         hideLoading()
         this._payingLock = false
-        const paid = result && (result.paid || result.paymentStatus === 'paid' || result.status === 'paid')
+        const paid = isPaidResult(result)
         wx.showToast({ title: paid ? '已支付' : '支付处理中，请稍后刷新订单状态', icon: paid ? 'success' : 'none' })
         this.setData({ paying: false })
         this.load()
