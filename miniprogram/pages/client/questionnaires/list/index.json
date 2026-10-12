@@ -1,1 +1,5 @@
-{"navigationBarTitleText":"问卷中心"}
+{
+  "navigationBarTitleText": "问卷中心",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark"
+}

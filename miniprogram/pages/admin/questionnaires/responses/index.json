@@ -1,1 +1,5 @@
-{"navigationBarTitleText":"问卷回收"}
+{
+  "navigationBarTitleText": "问卷回收明细",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark"
+}

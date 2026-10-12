@@ -12,6 +12,7 @@ const definitions = [
   ['incidents', '纠纷', 'incident', 'listIncidents:纠纷列表 getIncidentDetail:纠纷详情 appendIncidentComment:留言 uploadIncidentEvidence:上传证据 updateIncidentStatus:更新状态 resolveIncident:标记解决 proposeResolution:处理方案 freezeStaffEarning:冻结收益 linkRefund:关联退款 closeIncident:结案扣减'],
   ['payments', '支付与活动维护', 'payment', 'createRefund:发起退款 listRefunds:查看退款 queryRefund:查询退款'],
   ['beauty', '选美结算', 'petBeauty', 'settleMonthlyRanking:结算排名'],
+  ['questionnaires', '问卷调查', 'questionnaire', 'listAdmin:问卷列表 detailAdmin:问卷详情 create:新建问卷 update:编辑问卷 publish:发布问卷 close:关闭问卷 delete:删除问卷 clone:克隆问卷 responses:回收记录 analyzeAI:AI分析 retryReward:补发奖励 retryAllRewards:批量补发'],
   ['logs', '后台审计', 'admin', 'listOperationLogs:查看操作日志 listOperationActors:查看后台人员筛选项']
 ]
 const tree = definitions.map(([id, label, module, actions]) => ({ id, label, children: actions.split(' ').map(item => {

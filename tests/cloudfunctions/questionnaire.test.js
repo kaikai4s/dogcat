@@ -280,3 +280,68 @@ test('questionnaire targetRoles isolation between client and staff', async () =>
   assert.match(crossSubmit.error, /当前身份不可填写该问卷/)
 })
 
+test('questionnaire notification lifecycle: publish creates notification, close revokes it and disappears from client messages', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin_1', openid: 'admin_openid', roles: ['admin'], status: 'active' },
+      { _id: 'client_1', openid: 'client_openid', roles: ['client'], status: 'active' }
+    ],
+    questionnaires: [],
+    questionnaire_responses: [],
+    system_notifications: [],
+    user_notification_reads: []
+  })
+
+  const adminFn = loadCloudFunction('api', db, 'admin_openid')
+  const clientFn = loadCloudFunction('api', db, 'client_openid')
+
+  // 1. 创建并发布问卷
+  const createRes = await adminFn.main({
+    module: 'questionnaire',
+    action: 'create',
+    data: {
+      title: '客户满意度通知联动调研',
+      targetRoles: ['client'],
+      questions: [{ type: 'single', title: '体验评分', options: ['满意', '不满意'] }]
+    }
+  })
+  const qId = createRes.data._id
+  await adminFn.main({ module: 'questionnaire', action: 'publish', data: { id: qId } })
+
+  // 2. 前台用户查询系统通知，应该收到一条针对此问卷的通知
+  const clientNoticesBeforeClose = await clientFn.main({
+    module: 'message',
+    action: 'listSystemNotifications',
+    data: { page: 1, pageSize: 10 }
+  })
+  assert.equal(clientNoticesBeforeClose.ok, true)
+  assert.equal(clientNoticesBeforeClose.data.list.length, 1)
+  assert.match(clientNoticesBeforeClose.data.list[0].title, /客户满意度通知联动调研/)
+
+  // 3. 管理员关闭问卷
+  const closeRes = await adminFn.main({
+    module: 'questionnaire',
+    action: 'close',
+    data: { id: qId }
+  })
+  assert.equal(closeRes.ok, true)
+
+  // 4. 前台用户再次刷新系统通知，此通知已自动下线消失
+  const clientNoticesAfterClose = await clientFn.main({
+    module: 'message',
+    action: 'listSystemNotifications',
+    data: { page: 1, pageSize: 10 }
+  })
+  assert.equal(clientNoticesAfterClose.ok, true)
+  assert.equal(clientNoticesAfterClose.data.list.length, 0)
+
+  // 5. 若用户尝试直接请求已关闭问卷详情，提示已结束征集
+  const detailRes = await clientFn.main({
+    module: 'questionnaire',
+    action: 'detail',
+    data: { id: qId, role: 'client' }
+  })
+  assert.equal(detailRes.ok, false)
+  assert.match(detailRes.error, /该问卷已结束征集/)
+})
+

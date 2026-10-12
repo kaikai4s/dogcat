@@ -86,7 +86,9 @@
           <text class="remix-icon ri-checkbox-circle-line"></text>
           <text>有效 <text class="strong green">{{item.validResponseCount || 0}}</text> 份</text>
         </view>
-        <view class="meta-time">{{item.createdAtText}}</view>
+        <view class="meta-time">
+          <text class="remix-icon ri-time-line"></text> {{item.displayTimeText || item.createdAtText}}
+        </view>
       </view>
 
       <!-- 操作按钮条 -->

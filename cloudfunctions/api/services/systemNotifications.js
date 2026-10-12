@@ -66,6 +66,19 @@ module.exports = function createService({
     return { _id: notificationId, ...doc }
   }
 
+  function toBeijingString(value) {
+    if (!value) return ''
+    const date = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(date.getTime())) return String(value || '')
+    const cst = new Date(date.getTime() + 8 * 60 * 60 * 1000)
+    const year = cst.getUTCFullYear()
+    const month = String(cst.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(cst.getUTCDate()).padStart(2, '0')
+    const hour = String(cst.getUTCHours()).padStart(2, '0')
+    const minute = String(cst.getUTCMinutes()).padStart(2, '0')
+    return `${year}-${month}-${day} ${hour}:${minute}`
+  }
+
   /**
    * 管理后台查询历史发送的系统通知
    */
@@ -76,7 +89,8 @@ module.exports = function createService({
       typeText: formatNotificationType(item.type),
       targetText: item.target === 'all' ? '全员广播' : (item.target === 'client' ? '用户端' : '宠托师端'),
       levelText: item.level === 'urgent' ? '加急预警' : '普通通知',
-      statusText: item.status === 'revoked' ? '已撤回' : '正常'
+      statusText: item.status === 'revoked' ? '已撤回' : '正常',
+      createdAtText: toBeijingString(item.createdAt)
     }))
     return paginateList(list, data)
   }
@@ -106,7 +120,33 @@ module.exports = function createService({
   async function listUserSystemNotifications(openid, role = 'client', data = {}) {
     const user = await getUser(openid).catch(() => ({ roles: [] }))
     const activeNotices = await readScopedDocuments('system_notifications', { status: 'active' }, 'createdAt', 'desc')
-    const visible = activeNotices.filter((n) => n.target === 'all' || n.target === role)
+    let visible = activeNotices.filter((n) => n.target === 'all' || n.target === role)
+
+    // 动态防御与自动修补：若通知指向问卷详情，校验问卷是否处于已发布状态。已关闭或已删除的问卷通知在前台自动屏蔽并下线
+    const questionnaireNotices = visible.filter((n) => n.targetUrl && n.targetUrl.includes('questionnaires/detail'))
+    if (questionnaireNotices.length > 0) {
+      const questionnaires = await readScopedDocuments('questionnaires', {}).catch(() => [])
+      const qMap = new Map(questionnaires.map((q) => [String(q._id), q]))
+      const invalidNoticeIds = new Set()
+
+      for (const n of questionnaireNotices) {
+        const match = n.targetUrl.match(/[?&]id=([^&#]+)/)
+        const qId = match ? match[1] : null
+        const q = qId ? qMap.get(String(qId)) : null
+        if (!q || q.status !== 'published') {
+          invalidNoticeIds.add(n._id)
+          const rawTime = typeof now === 'function' ? now() : (typeof nowText === 'function' ? nowText() : new Date())
+          const timeStr = rawTime instanceof Date ? rawTime.toISOString() : String(rawTime)
+          db.collection('system_notifications').doc(n._id).update({
+            data: { status: 'revoked', revokedAt: timeStr, updatedAt: timeStr }
+          }).catch(() => {})
+        }
+      }
+
+      if (invalidNoticeIds.size > 0) {
+        visible = visible.filter((n) => !invalidNoticeIds.has(n._id))
+      }
+    }
 
     const allReadAt = (role === 'staff' ? user.staffSystemNoticeAllReadAt : user.clientSystemNoticeAllReadAt) || user.systemNoticeAllReadAt || ''
     const userReads = await readScopedDocuments('user_notification_reads', { openid, role }).catch(() => [])
@@ -119,7 +159,7 @@ module.exports = function createService({
         isRead,
         typeText: formatNotificationType(item.type),
         levelText: item.level === 'urgent' ? '重要' : '常规',
-        createdAtText: item.createdAt ? String(item.createdAt).replace('T', ' ').slice(0, 16) : ''
+        createdAtText: toBeijingString(item.createdAt)
       }
     })
 

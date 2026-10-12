@@ -58,15 +58,22 @@ Page({
             if (reward.couponTemplateId) parts.push('送优惠券')
             rewardDesc = parts.join(' ') || '有奖励'
           }
-          return {
-            ...item,
-            statusText: statusText(item.status),
-            roleText: roleText(item.targetRoles),
-            rewardDesc,
-            questionCount: (item.questions || []).length,
-            createdAtText: formatDateTime(item.createdAt)
-          }
-        })
+          const publishedAtText = item.publishedAt ? formatDateTime(item.publishedAt) : ''
+            const createdAtText = formatDateTime(item.createdAt)
+            const displayTimeText = item.status === 'published' && publishedAtText
+              ? `发布于 ${publishedAtText}`
+              : (item.status === 'closed' ? `关闭于 ${formatDateTime(item.closedAt || item.updatedAt)}` : `创建于 ${createdAtText}`)
+            return {
+              ...item,
+              statusText: statusText(item.status),
+              roleText: roleText(item.targetRoles),
+              rewardDesc,
+              questionCount: (item.questions || []).length,
+              createdAtText,
+              publishedAtText,
+              displayTimeText
+            }
+          })
 
         const publishedCount = formatted.filter(i => i.status === 'published').length
         const responseCount = formatted.reduce((acc, cur) => acc + (cur.responseCount || 0), 0)

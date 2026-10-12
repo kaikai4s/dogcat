@@ -14,6 +14,7 @@ module.exports = function createHandler(context) {
     readScopedDocuments,
     requireAdmin,
     safeText,
+    sendSystemNotification,
     submitQuestionnaire
   } = context
 
@@ -221,6 +222,72 @@ module.exports = function createHandler(context) {
     }
   }
 
+  async function notifyPublish(questionnaireDoc, admin) {
+    if (!questionnaireDoc || questionnaireDoc.notificationSent) return
+    const id = questionnaireDoc._id
+    const targetRoles = Array.isArray(questionnaireDoc.targetRoles) ? questionnaireDoc.targetRoles : ['client']
+    const target = targetRoles.includes('client') && targetRoles.includes('staff')
+      ? 'all'
+      : (targetRoles.includes('staff') ? 'staff' : 'client')
+    const reward = questionnaireDoc.rewardConfig || {}
+    let rewardTip = ''
+    if (reward.enabled) {
+      const parts = []
+      if (reward.points > 0) parts.push(`+${reward.points}积分`)
+      if (reward.couponSnapshot && reward.couponSnapshot.name) parts.push(reward.couponSnapshot.name)
+      else if (reward.couponTemplateId) parts.push('专属优惠券')
+      rewardTip = parts.length ? `（参与领${parts.join('、')}）` : ''
+    }
+    const targetUrl = target === 'staff'
+      ? `/pages/staff/questionnaires/detail/index?id=${id}`
+      : `/pages/client/questionnaires/detail/index?id=${id}`
+    if (typeof sendSystemNotification === 'function') {
+      try {
+        const noticeRes = await sendSystemNotification({
+          title: `【调研邀请】${text(questionnaireDoc.title, 40)}`,
+          content: `${text(questionnaireDoc.description || '诚邀您参与本次体验调研', 200)}。${rewardTip}请点击本通知或前往问卷中心作答～`,
+          target,
+          type: 'activity',
+          level: 'normal',
+          targetUrl
+        }, admin)
+        const notificationId = (noticeRes && (noticeRes._id || (noticeRes.data && noticeRes.data._id))) || ''
+        await db.collection('questionnaires').doc(id).update({
+          data: {
+            notificationSent: true,
+            notificationId
+          }
+        }).catch(() => {})
+      } catch (err) {
+        console.error('[questionnaire] notify publish error', err)
+      }
+    }
+  }
+
+  async function revokeQuestionnaireNotification(questionnaireId, questionnaireDoc, admin) {
+    if (!questionnaireId) return
+    const id = String(questionnaireId)
+    const notificationId = questionnaireDoc && questionnaireDoc.notificationId
+    const time = now()
+    if (notificationId) {
+      await db.collection('system_notifications').doc(notificationId).update({
+        data: { status: 'revoked', revokedAt: time, updatedAt: time }
+      }).catch(() => {})
+    }
+    try {
+      const activeNotices = await readScopedDocuments('system_notifications', { status: 'active' }).catch(() => [])
+      for (const notice of activeNotices) {
+        if (notice.targetUrl && (notice.targetUrl.includes(`id=${id}`) || notice.targetUrl.includes(id))) {
+          await db.collection('system_notifications').doc(notice._id).update({
+            data: { status: 'revoked', revokedAt: time, updatedAt: time }
+          }).catch(() => {})
+        }
+      }
+    } catch (err) {
+      console.error('[questionnaire] revoke notices error', err)
+    }
+  }
+
   async function listAvailableForUser(user, data = {}) {
     const role = getUserRole(user, data.role)
     const rows = await readScopedDocuments('questionnaires', { status: 'published' }, 'publishedAt', 'desc')
@@ -245,28 +312,66 @@ module.exports = function createHandler(context) {
       if (action === 'create') {
         const payload = normalizeQuestionnairePayload(data)
         const time = now()
-        const res = await db.collection('questionnaires').add({ data: { ...payload, status: 'draft', responseCount: 0, validResponseCount: 0, createdBy: admin._id, createdByOpenid: openid, createdAt: time, updatedAt: time, publishedAt: null, closedAt: null } })
-        return { _id: res._id, ...payload, status: 'draft' }
+        const publishImmediately = data.publishImmediately === true || data.status === 'published'
+        const initialStatus = publishImmediately ? 'published' : 'draft'
+        const res = await db.collection('questionnaires').add({
+          data: {
+            ...payload,
+            status: initialStatus,
+            responseCount: 0,
+            validResponseCount: 0,
+            createdBy: admin._id,
+            createdByOpenid: openid,
+            createdAt: time,
+            updatedAt: time,
+            publishedAt: publishImmediately ? time : null,
+            closedAt: null,
+            notificationSent: false
+          }
+        })
+        const createdDoc = { _id: res._id, ...payload, status: initialStatus }
+        if (publishImmediately) {
+          await notifyPublish(createdDoc, admin)
+        }
+        return createdDoc
       }
       if (action === 'update') {
         const id = text(data.id || data.questionnaireId, 80)
         const current = await getQuestionnaire(id)
         if (current.status === 'closed') throw new Error('已关闭问卷不可编辑')
         const payload = normalizeQuestionnairePayload(data)
-        await db.collection('questionnaires').doc(id).update({ data: { ...payload, updatedAt: now() } })
-        return formatQuestionnaire({ ...current, ...payload, updatedAt: now() }, { includeQuestions: true })
+        const time = now()
+        const publishImmediately = data.publishImmediately === true || data.status === 'published'
+        const nextStatus = publishImmediately ? 'published' : current.status
+        const publishedAt = publishImmediately ? (current.publishedAt || time) : current.publishedAt
+        await db.collection('questionnaires').doc(id).update({
+          data: {
+            ...payload,
+            status: nextStatus,
+            publishedAt,
+            updatedAt: time
+          }
+        })
+        const updatedDoc = { ...current, ...payload, status: nextStatus, updatedAt: time }
+        if (publishImmediately && current.status !== 'published') {
+          await notifyPublish({ _id: id, ...updatedDoc }, admin)
+        }
+        return formatQuestionnaire(updatedDoc, { includeQuestions: true })
       }
       if (action === 'publish') {
         const id = text(data.id || data.questionnaireId, 80)
         const current = await getQuestionnaire(id)
         const time = now()
         await db.collection('questionnaires').doc(id).update({ data: { status: 'published', publishedAt: current.publishedAt || time, closedAt: null, updatedAt: time } })
+        await notifyPublish({ _id: id, ...current }, admin)
         return { success: true }
       }
       if (action === 'close') {
         const id = text(data.id || data.questionnaireId, 80)
+        const current = await getQuestionnaire(id)
         const time = now()
         await db.collection('questionnaires').doc(id).update({ data: { status: 'closed', closedAt: time, updatedAt: time } })
+        await revokeQuestionnaireNotification(id, current, admin)
         return { success: true }
       }
       if (action === 'delete') {
@@ -275,6 +380,7 @@ module.exports = function createHandler(context) {
         if (current.status !== 'draft' && Number(current.responseCount || 0) > 0) {
           throw new Error('已有提交数据的问卷不可删除，请关闭问卷')
         }
+        await revokeQuestionnaireNotification(id, current, admin)
         await db.collection('questionnaires').doc(id).remove()
         return { success: true }
       }
@@ -376,7 +482,9 @@ module.exports = function createHandler(context) {
     if (action === 'detail') {
       const item = await getQuestionnaire(data.id || data.questionnaireId)
       const role = getUserRole(user, data.role)
-      if (item.status !== 'published' || !Array.isArray(item.targetRoles) || !item.targetRoles.includes(role)) throw new Error('问卷不存在或不可填写')
+      if (item.status !== 'published' || !Array.isArray(item.targetRoles) || !item.targetRoles.includes(role)) {
+        throw new Error(item.status === 'closed' ? '该问卷已结束征集，感谢关注！' : '问卷不存在或不可填写')
+      }
       const existing = (await db.collection('questionnaire_responses').where({ questionnaireId: item._id, openid }).limit(1).get()).data[0]
       return { ...formatQuestionnaire(item, { includeQuestions: true }), answered: !!existing }
     }

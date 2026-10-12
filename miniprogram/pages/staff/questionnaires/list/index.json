@@ -1,1 +1,5 @@
-{"navigationBarTitleText":"问卷中心"}
+{
+  "navigationBarTitleText": "宠托师问卷调研",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark"
+}

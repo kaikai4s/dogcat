@@ -93,7 +93,8 @@ Page({
     couponIndex: 0,
     typeNames: ['单选', '多选', '评分', '短文本', '长文本'],
     typeValues: ['single', 'multiple', 'rating', 'short_text', 'long_text'],
-    saving: false
+    savingDraft: false,
+    publishing: false
   },
 
   onLoad(query) {
@@ -255,18 +256,45 @@ Page({
     return true
   },
 
-  save() {
-    if (this.data.saving) return
+  saveDraft() {
+    this.save(false)
+  },
+
+  saveAndPublish() {
+    wx.showModal({
+      title: '确认立即发布？',
+      content: '发布后将向指定受众开放填写，并自动向目标用户/宠托师发送调研通知。',
+      confirmText: '立即发布',
+      cancelText: '再看看'
+    }).then(res => {
+      if (res.confirm) {
+        this.save(true)
+      }
+    })
+  },
+
+  save(publishImmediately = false) {
+    if (this.data.savingDraft || this.data.publishing) return
     if (!this.validate()) return
-    this.setData({ saving: true })
+    this.setData({
+      savingDraft: !publishImmediately,
+      publishing: publishImmediately
+    })
     const payload = buildPayload(this.data.form)
     const action = this.data.id ? 'update' : 'create'
-    callFunction('questionnaire', action, { ...payload, id: this.data.id })
-      .then((res) => {
-        wx.showToast({ title: '保存成功', icon: 'success' })
-        setTimeout(() => wx.navigateBack(), 600)
+    callFunction('questionnaire', action, {
+      ...payload,
+      id: this.data.id,
+      publishImmediately
+    })
+      .then(() => {
+        wx.showToast({
+          title: publishImmediately ? '问卷已发布上线！' : '草稿保存成功',
+          icon: 'success'
+        })
+        setTimeout(() => wx.navigateBack(), 800)
       })
       .catch(showError)
-      .finally(() => this.setData({ saving: false }))
+      .finally(() => this.setData({ savingDraft: false, publishing: false }))
   }
 })

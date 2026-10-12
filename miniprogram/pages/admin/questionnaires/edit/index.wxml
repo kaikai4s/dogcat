@@ -196,10 +196,13 @@
   <!-- 底部吸底操作栏 -->
   <view class="footer-bar">
     <button class="add-btn" bindtap="addQuestion">
-      <text class="remix-icon ri-add-circle-line"></text>添加题目
+      <text class="remix-icon ri-add-circle-line"></text>加题
     </button>
-    <button class="save-btn" loading="{{saving}}" bindtap="save">
-      <text class="remix-icon ri-save-line"></text>保存问卷
+    <button class="draft-btn" loading="{{savingDraft}}" disabled="{{savingDraft || publishing}}" bindtap="saveDraft">
+      <text class="remix-icon ri-draft-line"></text>存草稿
+    </button>
+    <button class="publish-btn" loading="{{publishing}}" disabled="{{savingDraft || publishing}}" bindtap="saveAndPublish">
+      <text class="remix-icon ri-send-plane-fill"></text>保存并立即发布
     </button>
   </view>
 </view>
