@@ -1,0 +1,205 @@
+<view class="page questionnaire-edit">
+  <!-- 头部介绍 -->
+  <view class="hero">
+    <view class="hero-badge">
+      <text class="remix-icon ri-edit-box-line"></text>
+      <text>{{id ? '问卷编辑' : '问卷创建'}}</text>
+    </view>
+    <view class="hero-title">{{id ? '修改问卷调研' : '新建问卷调研'}}</view>
+    <view class="hero-desc">配置受众角色、奖励规则及各题型题目，支持题目排序与快速克隆。</view>
+  </view>
+
+  <!-- 基本信息卡片 -->
+  <view class="card">
+    <view class="section-title">
+      <text class="remix-icon ri-information-line"></text>基本信息
+    </view>
+    <view class="form-item">
+      <view class="form-label required">问卷标题</view>
+      <input
+        class="form-input"
+        value="{{form.title}}"
+        data-field="title"
+        bindinput="input"
+        placeholder="例如：2026宠托师上门服务体验深度调研"
+      />
+    </view>
+    <view class="form-item">
+      <view class="form-label">背景说明 / 引导文案</view>
+      <textarea
+        class="form-textarea"
+        value="{{form.description}}"
+        data-field="description"
+        bindinput="input"
+        placeholder="向参与者说明问卷调研背景、目的或奖励领取说明..."
+      />
+    </view>
+    <view class="form-item">
+      <view class="form-label required">发布对象（可多选）</view>
+      <view class="target-roles-grid">
+        <label class="role-checkbox {{form.targetClient ? 'checked' : ''}}">
+          <switch checked="{{form.targetClient}}" data-field="targetClient" bindchange="toggle" color="#ff7a45" />
+          <view class="role-text">
+            <text class="role-name">普通用户 (宠物主)</text>
+            <text class="role-desc">发布至宠物主个人中心问卷区</text>
+          </view>
+        </label>
+        <label class="role-checkbox {{form.targetStaff ? 'checked' : ''}}">
+          <switch checked="{{form.targetStaff}}" data-field="targetStaff" bindchange="toggle" color="#ff7a45" />
+          <view class="role-text">
+            <text class="role-name">宠托师 (入驻接单员)</text>
+            <text class="role-desc">发布至宠托师端服务中心问卷区</text>
+          </view>
+        </label>
+      </view>
+    </view>
+  </view>
+
+  <!-- 填写奖励卡片 -->
+  <view class="card">
+    <view class="card-head-row">
+      <view class="section-title">
+        <text class="remix-icon ri-gift-line"></text>完成奖励设置
+      </view>
+      <view class="switch-wrap">
+        <text class="switch-label">{{form.rewardEnabled ? '已开启奖励' : '未开启'}}</text>
+        <switch checked="{{form.rewardEnabled}}" data-field="rewardEnabled" bindchange="toggle" color="#ff7a45" />
+      </view>
+    </view>
+    <view class="reward-tip">用户完成问卷且未被 AI 判定为恶意乱填时，系统将自动通过「奖励邮箱」发放奖励邮件。</view>
+
+    <view wx:if="{{form.rewardEnabled}}" class="reward-fields-box">
+      <view class="form-item">
+        <view class="form-label">积分奖励 (0表示不发积分)</view>
+        <view class="input-with-unit">
+          <input
+            type="number"
+            class="form-input"
+            value="{{form.rewardPoints}}"
+            data-field="rewardPoints"
+            bindinput="input"
+            placeholder="0"
+          />
+          <text class="unit-text">积分</text>
+        </view>
+      </view>
+      <view class="form-item">
+        <view class="form-label">优惠券奖励</view>
+        <picker mode="selector" range="{{couponNames}}" value="{{couponIndex}}" bindchange="changeCoupon">
+          <view class="picker-box">
+            <text class="picker-value">{{couponNames[couponIndex]}}</text>
+            <text class="remix-icon ri-arrow-down-s-line picker-arrow"></text>
+          </view>
+        </picker>
+      </view>
+    </view>
+  </view>
+
+  <!-- 题目列表 -->
+  <view class="section-divider">
+    <view class="divider-title">
+      <text class="remix-icon ri-questionnaire-line"></text>调研题目 (共 {{form.questions.length}} 题)
+    </view>
+    <view class="divider-tip">支持自由配置单选、多选、评分及长短文本题目</view>
+  </view>
+
+  <view class="question-card" wx:for="{{form.questions}}" wx:key="id">
+    <!-- 题目卡片顶部条：序号、题型与操作栏 -->
+    <view class="q-header">
+      <view class="q-index-pill">#{{index + 1}}</view>
+      <picker mode="selector" range="{{typeNames}}" data-index="{{index}}" bindchange="changeType">
+        <view class="type-pill">
+          <text class="type-name">{{item.typeName || '单选'}}</text>
+          <text class="remix-icon ri-arrow-down-s-line type-arrow"></text>
+        </view>
+      </picker>
+      <view class="q-actions">
+        <view class="icon-btn" data-index="{{index}}" bindtap="moveUp" wx:if="{{index > 0}}" title="上移">
+          <text class="remix-icon ri-arrow-up-s-line"></text>
+        </view>
+        <view class="icon-btn" data-index="{{index}}" bindtap="moveDown" wx:if="{{index < form.questions.length - 1}}" title="下移">
+          <text class="remix-icon ri-arrow-down-s-line"></text>
+        </view>
+        <view class="icon-btn" data-index="{{index}}" bindtap="cloneQuestion" title="复制">
+          <text class="remix-icon ri-file-copy-line"></text>
+        </view>
+        <view class="icon-btn danger" data-index="{{index}}" bindtap="removeQuestion" title="删除">
+          <text class="remix-icon ri-delete-bin-line"></text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 题目题干 -->
+    <view class="form-item">
+      <view class="form-label required">题目标题</view>
+      <input
+        class="form-input"
+        value="{{item.title}}"
+        data-index="{{index}}"
+        data-field="title"
+        bindinput="inputQuestion"
+        placeholder="例如：您对本次宠托师的服务准时性评价如何？"
+      />
+    </view>
+
+    <view class="switch-row-inline">
+      <text class="inline-label">此题是否为必填项</text>
+      <switch checked="{{item.required}}" data-index="{{index}}" bindchange="toggleQuestion" color="#ff7a45" />
+    </view>
+
+    <!-- 单选 / 多选题选项配置 -->
+    <view wx:if="{{item.type === 'single' || item.type === 'multiple'}}" class="options-box">
+      <view class="options-head">
+        <view class="form-label required">选项列表 (每行一个选项)</view>
+        <view class="preset-group">
+          <text class="preset-label">快速预设:</text>
+          <text class="preset-pill" data-index="{{index}}" data-preset="satisfaction" bindtap="applyPreset">满意度</text>
+          <text class="preset-pill" data-index="{{index}}" data-preset="nps" bindtap="applyPreset">推荐度</text>
+          <text class="preset-pill" data-index="{{index}}" data-preset="yesno" bindtap="applyPreset">是否</text>
+        </view>
+      </view>
+      <textarea
+        class="form-textarea options-textarea"
+        value="{{item.optionsText}}"
+        data-index="{{index}}"
+        data-field="optionsText"
+        bindinput="inputQuestion"
+        placeholder="选项1&#10;选项2&#10;选项3"
+      />
+    </view>
+
+    <!-- 评分题最高分 -->
+    <view wx:if="{{item.type === 'rating'}}" class="form-item">
+      <view class="form-label">最高分级</view>
+      <picker mode="selector" range="{{['3分制', '5分制 (推荐)', '10分制']}}" value="{{item.max === 10 ? 2 : (item.max === 3 ? 0 : 1)}}" data-index="{{index}}" bindchange="inputQuestion" data-field="max">
+        <view class="picker-box">
+          <text class="picker-value">{{item.max || 5}} 分制</text>
+          <text class="remix-icon ri-arrow-down-s-line picker-arrow"></text>
+        </view>
+      </picker>
+    </view>
+
+    <!-- 文本题占位说明 -->
+    <view wx:if="{{item.type === 'short_text' || item.type === 'long_text'}}" class="form-item">
+      <view class="form-label">输入框占位提示 (Placeholder)</view>
+      <input
+        class="form-input"
+        value="{{item.placeholder}}"
+        data-index="{{index}}"
+        data-field="placeholder"
+        bindinput="inputQuestion"
+        placeholder="例如：请具体描述您遇到的问题或建议..."
+      />
+    </view>
+  </view>
+
+  <!-- 底部吸底操作栏 -->
+  <view class="footer-bar">
+    <button class="add-btn" bindtap="addQuestion">
+      <text class="remix-icon ri-add-circle-line"></text>添加题目
+    </button>
+    <button class="save-btn" loading="{{saving}}" bindtap="save">
+      <text class="remix-icon ri-save-line"></text>保存问卷
+    </button>
+  </view>
+</view>

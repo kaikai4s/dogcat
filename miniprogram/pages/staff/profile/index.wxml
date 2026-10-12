@@ -178,6 +178,20 @@
       </view>
       <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
     </view>
+    <view class="menu-item" data-url="/pages/staff/questionnaires/list/index" bindtap="go">
+      <view class="menu-left">
+        <text class="remix-icon ri-survey-line menu-icon active"></text>
+        <text>问卷调查与反馈</text>
+      </view>
+      <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
+    </view>
+    <view class="menu-item" data-url="/pages/client/reward-mails/index" bindtap="go">
+      <view class="menu-left">
+        <text class="remix-icon ri-mail-gift-line menu-icon active"></text>
+        <text>奖励邮箱</text>
+      </view>
+      <text class="remix-icon ri-arrow-right-s-line arrow-icon"></text>
+    </view>
     <view class="menu-item" bindtap="backClientProfile">
       <view class="menu-left">
         <text class="remix-icon ri-swap-line menu-icon"></text>

@@ -231,6 +231,12 @@ Page({
       .catch(() => {})
   },
 
+  openQuestionnaires() {
+    ensureLogin({ content: '登录后可参与问卷调研。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/questionnaires/list/index' }))
+      .catch(() => {})
+  },
+
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return

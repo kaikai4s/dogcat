@@ -65,7 +65,8 @@ function optimize(check = false) {
     if (!embedded || !Buffer.from(embedded[1], 'base64').equals(fs.readFileSync(outputFont))) throw new Error('字体与嵌入文件不一致')
     return { icons: names.length, cssBytes: fs.statSync(outputCss).size, fontBytes: fs.statSync(outputFont).size }
   }
-  const result = spawnSync(process.env.ICON_PYTHON || 'python', ['-m', 'fontTools.subset', sourceFont,
+  const pyCmd = process.env.ICON_PYTHON || (spawnSync('python', ['--version']).error ? 'python3' : 'python')
+  const result = spawnSync(pyCmd, ['-m', 'fontTools.subset', sourceFont,
     `--output-file=${outputFont}`, '--flavor=woff2', `--unicodes=${names.map(name => `U+${mapping.get(name).code}`).join(',')}`], { encoding: 'utf8' })
   if (result.error || result.status !== 0) throw new Error(result.error?.message || result.stderr || '请安装 fonttools 和 brotli')
   const data = fs.readFileSync(outputFont).toString('base64')

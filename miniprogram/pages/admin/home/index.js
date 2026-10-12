@@ -32,6 +32,7 @@ const adminSections = [
     desc: '优惠、积分、签到和抽奖',
     items: [
       { icon: 'ri-coupon-3-line', title: '优惠券管理', desc: '模板与发券', url: '/pages/admin/coupons/index' },
+      { icon: 'ri-survey-line', title: '问卷调查', desc: '发布调研与AI分析', url: '/pages/admin/questionnaires/list/index' },
       { icon: 'ri-store-2-line', title: '商城商品', desc: '分类与商品', url: '/pages/admin/mall/products/index' },
       { icon: 'ri-vip-crown-line', title: '会员等级', desc: '积分升级规则', url: '/pages/admin/member-levels/index' },
       { icon: 'ri-medal-line', title: '宠物头衔', desc: '称号与自动发放', url: '/pages/admin/pet-titles/index' },

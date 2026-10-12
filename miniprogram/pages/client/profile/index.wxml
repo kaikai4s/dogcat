@@ -94,7 +94,7 @@
 
   <view class="menu-section">
     <view class="menu-section-title">我的服务</view>
-    <view class="profile-grid-panel cols-4">
+    <view class="profile-grid-panel cols-5">
       <view class="profile-grid-item interactive" bindtap="editProfile">
         <view class="profile-icon-wrap blue">
           <view class="remix-icon ri-user-settings-fill"></view>
@@ -118,6 +118,12 @@
           <view class="remix-icon ri-shield-cross-fill"></view>
         </view>
         <view class="profile-grid-label">投诉/售后</view>
+      </view>
+      <view class="profile-grid-item interactive" bindtap="openQuestionnaires">
+        <view class="profile-icon-wrap teal">
+          <view class="remix-icon ri-survey-line"></view>
+        </view>
+        <view class="profile-grid-label">问卷调研</view>
       </view>
     </view>
   </view>

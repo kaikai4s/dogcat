@@ -16,6 +16,7 @@ const collections = [
   'mall_categories', 'mall_products', 'mall_carts', 'mall_orders',
   'admin_notifications', 'staff_deposit_evidences',
   'system_notifications', 'user_notification_reads',
+  'questionnaires', 'questionnaire_responses',
   'admin_access_config', 'admin_groups', 'admin_memberships', 'admin_access_logs'
 ]
 

@@ -96,7 +96,11 @@ module.exports = function createHandler(context) {
         { collection: 'withdraw_requests', name: 'idx_withdraw_staff', keys: { staffOpenid: 1, createdAt: -1 }, unique: false },
         { collection: 'system_notifications', name: 'idx_sys_notice_status_time', keys: { status: 1, createdAt: -1 }, unique: false },
         { collection: 'system_notifications', name: 'idx_sys_notice_created', keys: { createdAt: -1 }, unique: false },
-        { collection: 'user_notification_reads', name: 'idx_user_notice_read_unique', keys: { openid: 1, role: 1, notificationId: 1 }, unique: true }
+        { collection: 'user_notification_reads', name: 'idx_user_notice_read_unique', keys: { openid: 1, role: 1, notificationId: 1 }, unique: true },
+        { collection: 'questionnaires', name: 'idx_questionnaire_status', keys: { status: 1, createdAt: -1 }, unique: false },
+        { collection: 'questionnaires', name: 'idx_questionnaire_roles', keys: { targetRoles: 1, status: 1 }, unique: false },
+        { collection: 'questionnaire_responses', name: 'idx_response_questionnaire_user', keys: { questionnaireId: 1, openid: 1 }, unique: false },
+        { collection: 'questionnaire_responses', name: 'idx_response_quality', keys: { questionnaireId: 1, qualityStatus: 1, createdAt: -1 }, unique: false }
       ]
 
       const indexResults = []

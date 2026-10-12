@@ -1,0 +1,176 @@
+<view class="page analysis-page">
+  <!-- 头部看板 -->
+  <view class="hero">
+    <view class="hero-top">
+      <view>
+        <view class="hero-badge">
+          <text class="remix-icon ri-robot-2-line"></text>
+          <text>AI 智能整理与分析</text>
+        </view>
+        <view class="hero-title">{{detail.title || '问卷数据分析'}}</view>
+        <view class="hero-desc">AI 自动提炼反馈洞察、生成统计图表并识别乱填情况。</view>
+      </view>
+      <button class="refresh-btn" loading="{{loading}}" bindtap="analyze">
+        <text class="remix-icon ri-refresh-line" wx:if="{{!loading}}"></text>
+        {{report ? '重新生成' : '一键生成分析'}}
+      </button>
+    </view>
+  </view>
+
+  <!-- 报告存在时的内容 -->
+  <block wx:if="{{report}}">
+    <!-- 质量防乱填大卡片 -->
+    <view class="card quality-overview-card" wx:if="{{report.qualityStats}}">
+      <view class="card-head">
+        <view class="section-title">
+          <text class="remix-icon ri-shield-check-line"></text>作答质量与防乱填诊断
+        </view>
+        <view class="valid-rate-badge">
+          有效率 <text class="rate-num">{{report.qualityStats.validRate || 100}}%</text>
+        </view>
+      </view>
+
+      <view class="quality-grid">
+        <view class="quality-cell valid">
+          <view class="cell-num">{{report.qualityStats.valid || 0}}</view>
+          <view class="cell-lbl">有效真实作答</view>
+        </view>
+        <view class="quality-cell suspicious">
+          <view class="cell-num">{{report.qualityStats.suspicious || 0}}</view>
+          <view class="cell-lbl">疑似敷衍作答</view>
+        </view>
+        <view class="quality-cell fake">
+          <view class="cell-num">{{report.qualityStats.fake || 0}}</view>
+          <view class="cell-lbl">判定无效乱填</view>
+        </view>
+      </view>
+
+      <view class="quality-diagnosis" wx:if="{{report.qualityAnalysis}}">
+        <text class="diag-icon remix-icon ri-error-warning-line"></text>
+        <text class="diag-text">{{report.qualityAnalysis}}</text>
+      </view>
+    </view>
+
+    <!-- Tab 切换栏 -->
+    <view class="tab-bar">
+      <view class="tab-item {{activeTab === 'insights' ? 'active' : ''}}" data-tab="insights" bindtap="switchTab">
+        <text class="remix-icon ri-lightbulb-line"></text>AI 洞察与建议
+      </view>
+      <view class="tab-item {{activeTab === 'charts' ? 'active' : ''}}" data-tab="charts" bindtap="switchTab">
+        <text class="remix-icon ri-bar-chart-box-line"></text>各题详细图表 ({{charts.length}})
+      </view>
+    </view>
+
+    <!-- Tab 1: AI 洞察与建议 -->
+    <view wx:if="{{activeTab === 'insights'}}">
+      <!-- 总体宏观总结 -->
+      <view class="card summary-card">
+        <view class="section-title">
+          <text class="remix-icon ri-file-text-line"></text>宏观分析总结
+        </view>
+        <view class="summary-text">{{report.summary}}</view>
+      </view>
+
+      <!-- 核心提炼洞察 -->
+      <view class="card" wx:if="{{report.insights && report.insights.length}}">
+        <view class="section-title">
+          <text class="remix-icon ri-sparkling-fill orange-text"></text>核心提炼洞察
+        </view>
+        <view class="insight-list">
+          <view class="insight-item" wx:for="{{report.insights}}" wx:key="*this">
+            <view class="insight-badge">{{index + 1}}</view>
+            <view class="insight-content">{{item}}</view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 好评亮点 vs 痛点改进 -->
+      <view class="dual-card-row">
+        <view class="card sub-card green-border" wx:if="{{report.strengths && report.strengths.length}}">
+          <view class="sub-card-title green">
+            <text class="remix-icon ri-thumb-up-line"></text>优势与好评亮点
+          </view>
+          <view class="bullet-list">
+            <view class="bullet-item" wx:for="{{report.strengths}}" wx:key="*this">
+              <text class="bullet-dot green">✓</text>
+              <text>{{item}}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="card sub-card red-border" wx:if="{{report.painPoints && report.painPoints.length}}">
+          <view class="sub-card-title red">
+            <text class="remix-icon ri-thumb-down-line"></text>痛点与负面反馈
+          </view>
+          <view class="bullet-list">
+            <view class="bullet-item" wx:for="{{report.painPoints}}" wx:key="*this">
+              <text class="bullet-dot red">!</text>
+              <text>{{item}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 落地改进措施建议 -->
+      <view class="card suggestions-card" wx:if="{{report.suggestions && report.suggestions.length}}">
+        <view class="section-title">
+          <text class="remix-icon ri-guide-line"></text>针对性运营改进建议
+        </view>
+        <view class="suggestion-list">
+          <view class="suggestion-item" wx:for="{{report.suggestions}}" wx:key="*this">
+            <view class="sugg-icon-box"><text class="remix-icon ri-arrow-right-circle-fill"></text></view>
+            <view class="sugg-text">{{item}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Tab 2: 各题详细图表 -->
+    <view wx:if="{{activeTab === 'charts'}}">
+      <view class="card chart-card" wx:for="{{charts}}" wx:key="questionId">
+        <view class="chart-head">
+          <view class="chart-type-tag">{{item.typeName || '图表'}}</view>
+          <view class="chart-title">{{item.title}}</view>
+        </view>
+
+        <!-- 评分题特有评分徽标 -->
+        <view class="rating-highlight" wx:if="{{item.type === 'rating'}}">
+          <view class="rating-num">{{item.average}}</view>
+          <view class="rating-label">平均分 (最高{{item.maxScore || 5}}分)</view>
+          <view class="rating-sub">共 {{item.count || 0}} 人参与评分</view>
+        </view>
+
+        <!-- 单选 / 多选 / 评分题目柱状图与百分比 -->
+        <view class="bar-rows" wx:if="{{item.rows && item.rows.length}}">
+          <view class="bar-row" wx:for="{{item.rows}}" wx:for-item="row" wx:key="label">
+            <view class="bar-label-group">
+              <text class="bar-label">{{row.label}}</text>
+              <text class="bar-count-tag">{{row.value}} 票 ({{row.percentage || 0}}%)</text>
+            </view>
+            <view class="bar-track">
+              <view
+                class="bar-fill {{item.type === 'quality' ? (index === 0 ? 'green' : (index === 1 ? 'orange' : 'red')) : ''}}"
+                style="width: {{row.percentage > 0 ? row.percentage : (row.value > 0 ? 4 : 0)}}%;"
+              ></view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 文本题摘录列表 -->
+        <view class="text-samples-box" wx:if="{{item.type === 'text' && item.sampleAnswers && item.sampleAnswers.length}}">
+          <view class="samples-title">精选代表性回答摘录：</view>
+          <view class="sample-pill" wx:for="{{item.sampleAnswers}}" wx:for-item="ans" wx:key="*this">
+            "{{ans}}"
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 空状态：尚未生成分析 -->
+  <view class="empty-state" wx:if="{{!report && !loading}}">
+    <view class="empty-icon remix-icon ri-bubble-chart-line"></view>
+    <view class="empty-title">尚未生成 AI 报告</view>
+    <view class="empty-desc">点击右上角“一键生成分析”，AI 将全自动清洗数据并生成深度报告。</view>
+  </view>
+</view>

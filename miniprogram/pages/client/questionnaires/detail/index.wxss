@@ -1,0 +1,605 @@
+.questionnaire-detail-page {
+  min-height: 100vh;
+  padding: 24rpx 24rpx calc(180rpx + env(safe-area-inset-bottom));
+  background: #fff8ec;
+  box-sizing: border-box;
+}
+
+/* 顶部已提交完成横幅 */
+.completed-hero-banner {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 28rpx;
+  margin-bottom: 24rpx;
+  border-radius: 32rpx;
+  background: linear-gradient(135deg, #e8f9ef, #d3f3e2);
+  border: 2rpx solid #a8e5c1;
+  box-shadow: 0 8rpx 24rpx rgba(46, 139, 87, 0.08);
+}
+.completed-icon-wrap {
+  margin-right: 20rpx;
+}
+.banner-check-icon {
+  font-size: 52rpx;
+  color: #2e8b57;
+}
+.completed-content {
+  flex: 1;
+}
+.completed-title {
+  font-size: 30rpx;
+  font-weight: 900;
+  color: #1e6940;
+}
+.completed-sub {
+  margin-top: 6rpx;
+  font-size: 23rpx;
+  color: #3b7c58;
+  line-height: 1.4;
+}
+.completed-mail-btn {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-left: 16rpx;
+  padding: 12rpx 24rpx;
+  border-radius: 999rpx;
+  background: #2e8b57;
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 850;
+  border: none;
+}
+
+/* 问卷头图大卡片 */
+.hero-card {
+  padding: 36rpx 32rpx;
+  border-radius: 36rpx;
+  background: linear-gradient(135deg, #fff2dd 0%, #ffe3d3 100%);
+  box-shadow: 0 12rpx 32rpx rgba(212, 95, 34, 0.1);
+  border: 2rpx solid rgba(255, 255, 255, 0.8);
+}
+.hero-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  background: rgba(212, 95, 34, 0.12);
+  color: #c85319;
+  font-size: 22rpx;
+  font-weight: 850;
+}
+.status-pill {
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 850;
+}
+.status-pill.active {
+  background: #ff7a45;
+  color: #fff;
+}
+.status-pill.done {
+  background: #52c41a;
+  color: #fff;
+}
+.hero-title {
+  margin-top: 18rpx;
+  font-size: 38rpx;
+  font-weight: 950;
+  color: #2d211a;
+  line-height: 1.35;
+}
+.hero-desc {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #6e5e52;
+  line-height: 1.5;
+}
+
+/* 专属奖励礼包胶囊 */
+.reward-box {
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(8px);
+  border: 1.5rpx dashed #ffa678;
+}
+.reward-header {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+.reward-icon {
+  font-size: 32rpx;
+  color: #ff5e28;
+}
+.reward-lead {
+  font-size: 26rpx;
+  font-weight: 900;
+  color: #d45f22;
+}
+.reward-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  margin-top: 14rpx;
+}
+.reward-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 850;
+}
+.points-chip {
+  background: #fff4e5;
+  color: #d46b08;
+  border: 1.5rpx solid #ffd591;
+}
+.coupon-chip {
+  background: #fff0f6;
+  color: #c41d7f;
+  border: 1.5rpx solid #ffadd2;
+}
+.reward-footnote {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-top: 14rpx;
+  font-size: 22rpx;
+  color: #927e70;
+}
+
+/* 答题进度卡片 */
+.progress-card {
+  margin-top: 24rpx;
+  padding: 24rpx 28rpx;
+  border-radius: 30rpx;
+  background: #ffffff;
+  box-shadow: 0 10rpx 26rpx rgba(123, 89, 62, 0.05);
+}
+.progress-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.progress-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+.progress-icon {
+  font-size: 32rpx;
+  color: #ff7a45;
+}
+.progress-title {
+  font-size: 28rpx;
+  font-weight: 900;
+  color: #2d211a;
+}
+.progress-count-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 6rpx;
+  font-size: 26rpx;
+}
+.count-now {
+  font-size: 32rpx;
+  font-weight: 950;
+  color: #ff6b35;
+}
+.count-divider, .count-total {
+  font-weight: 700;
+  color: #8c7b6f;
+}
+.percent-tag {
+  margin-left: 6rpx;
+  font-size: 22rpx;
+  color: #a49487;
+  font-weight: 700;
+}
+.progress-track {
+  width: 100%;
+  height: 16rpx;
+  border-radius: 999rpx;
+  background: #f7ede2;
+  margin-top: 18rpx;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999rpx;
+  background: linear-gradient(90deg, #ffb86c, #ff6b35);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.progress-tips {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 16rpx;
+  padding: 10rpx 16rpx;
+  border-radius: 16rpx;
+  background: #fff8ec;
+  color: #d46b08;
+  font-size: 23rpx;
+  font-weight: 800;
+}
+.tips-icon {
+  font-size: 28rpx;
+}
+
+/* 题目卡片 */
+.questions-list {
+  margin-top: 24rpx;
+}
+.question-card {
+  padding: 30rpx 28rpx;
+  margin-bottom: 24rpx;
+  border-radius: 32rpx;
+  background: #ffffff;
+  box-shadow: 0 10rpx 28rpx rgba(123, 89, 62, 0.05);
+  border: 2rpx solid transparent;
+  transition: all 0.25s ease;
+}
+.question-card.card-error {
+  border-color: #ff4d4f;
+  background: #fffafa;
+  box-shadow: 0 10rpx 28rpx rgba(255, 77, 79, 0.12);
+}
+.question-card.card-readonly {
+  opacity: 0.9;
+}
+.question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.q-seq-badge {
+  padding: 4rpx 14rpx;
+  border-radius: 12rpx;
+  background: #ff7a45;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+.q-type-badge {
+  padding: 4rpx 14rpx;
+  border-radius: 12rpx;
+  font-size: 22rpx;
+  font-weight: 850;
+  background: #f4ecdf;
+  color: #7b6552;
+}
+.q-type-badge.type-single {
+  background: #e6f7ff;
+  color: #096dd9;
+}
+.q-type-badge.type-multiple {
+  background: #f6ffed;
+  color: #389e0d;
+}
+.q-type-badge.type-rating {
+  background: #fff7e6;
+  color: #d46b08;
+}
+.q-type-badge.type-text {
+  background: #f9f0ff;
+  color: #722ed1;
+}
+.required-star {
+  color: #ff4d4f;
+  font-size: 32rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+.missing-hint {
+  font-size: 22rpx;
+  color: #ff4d4f;
+  font-weight: 800;
+}
+.question-title-text {
+  margin-top: 18rpx;
+  font-size: 30rpx;
+  font-weight: 900;
+  color: #2d211a;
+  line-height: 1.45;
+}
+
+/* 单选与多选选项条 */
+.options-group {
+  margin-top: 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+.option-row {
+  display: flex;
+  align-items: center;
+  padding: 22rpx 24rpx;
+  border-radius: 24rpx;
+  background: #fffbf5;
+  border: 2rpx solid #f3e5d8;
+  transition: all 0.2s ease;
+}
+.option-row:active {
+  transform: scale(0.99);
+}
+.option-row.selected {
+  background: #fff3ec;
+  border-color: #ff7a45;
+  box-shadow: 0 4rpx 16rpx rgba(255, 122, 69, 0.12);
+}
+.radio-indicator {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  border: 3rpx solid #c9b8aa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+.option-row.selected .radio-indicator {
+  border-color: #ff7a45;
+}
+.radio-inner {
+  width: 20rpx;
+  height: 20rpx;
+  border-radius: 50%;
+  background: #ff7a45;
+}
+.checkbox-indicator {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 10rpx;
+  border: 3rpx solid #c9b8aa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+.option-row.selected .checkbox-indicator {
+  border-color: #ff7a45;
+  background: #ff7a45;
+}
+.checkbox-icon {
+  font-size: 24rpx;
+  color: #fff;
+  font-weight: 900;
+}
+.option-text {
+  flex: 1;
+  font-size: 27rpx;
+  color: #4b3d33;
+  line-height: 1.4;
+  font-weight: 600;
+}
+.option-row.selected .option-text {
+  color: #ff6b35;
+  font-weight: 850;
+}
+.check-badge {
+  font-size: 34rpx;
+  color: #ff7a45;
+  font-weight: 900;
+}
+.multiple-check-tag {
+  font-size: 20rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  background: #ff7a45;
+  color: #fff;
+  font-weight: 850;
+}
+
+/* 评分容器 */
+.rating-container {
+  margin-top: 24rpx;
+}
+.rating-scale-row {
+  display: flex;
+  gap: 14rpx;
+  flex-wrap: wrap;
+}
+.scale-btn {
+  flex: 1;
+  min-width: 90rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 18rpx 8rpx;
+  border-radius: 22rpx;
+  background: #fff8ec;
+  border: 2rpx solid #f2e3d3;
+  transition: all 0.2s ease;
+}
+.scale-btn:active {
+  transform: scale(0.96);
+}
+.star-icon {
+  font-size: 38rpx;
+  color: #c9b8aa;
+  transition: color 0.2s;
+}
+.score-text {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #7b6a5d;
+  font-weight: 800;
+}
+.scale-btn.active .star-icon {
+  color: #ff9a44;
+}
+.scale-btn.current {
+  background: linear-gradient(135deg, #ff9a44, #ff6b35);
+  border-color: #ff6b35;
+  box-shadow: 0 6rpx 20rpx rgba(255, 107, 53, 0.25);
+}
+.scale-btn.current .star-icon {
+  color: #fff;
+}
+.scale-btn.current .score-text {
+  color: #fff;
+}
+.rating-feedback {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 18rpx;
+  padding: 12rpx 20rpx;
+  border-radius: 18rpx;
+  background: #fff3ec;
+  border: 1.5rpx solid #ffcca8;
+}
+.feedback-icon {
+  font-size: 28rpx;
+  color: #ff6b35;
+}
+.feedback-text {
+  font-size: 24rpx;
+  color: #d45f22;
+  font-weight: 850;
+}
+
+/* 文本域 */
+.text-container {
+  margin-top: 20rpx;
+  position: relative;
+}
+.text-input {
+  width: 100%;
+  min-height: 200rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 24rpx;
+  background: #fffbf5;
+  border: 2rpx solid #f3e5d8;
+  font-size: 27rpx;
+  color: #3f3228;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+.placeholder-dim {
+  color: #b5a496;
+  font-size: 26rpx;
+}
+.text-counter {
+  margin-top: 10rpx;
+  text-align: right;
+  font-size: 22rpx;
+}
+.counter-num {
+  font-weight: 850;
+  color: #ff7a45;
+}
+.counter-total {
+  color: #a49487;
+}
+
+/* 底部吸底悬浮操作条 */
+.fixed-bottom-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 -8rpx 32rpx rgba(123, 89, 62, 0.08);
+  padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  z-index: 100;
+}
+.bottom-submit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+.bottom-brief-info {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  flex: 1;
+}
+.brief-icon {
+  font-size: 40rpx;
+  color: #ff7a45;
+}
+.brief-text-col {
+  display: flex;
+  flex-direction: column;
+}
+.brief-status {
+  font-size: 27rpx;
+  font-weight: 900;
+  color: #2d211a;
+}
+.brief-sub {
+  font-size: 22rpx;
+  color: #8c7b6f;
+  margin-top: 2rpx;
+}
+.submit-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  padding: 0 44rpx;
+  height: 84rpx;
+  border-radius: 999rpx;
+  border: none;
+  background: linear-gradient(135deg, #ff9a44, #ff6b35);
+  color: #ffffff;
+  font-size: 29rpx;
+  font-weight: 950;
+  box-shadow: 0 8rpx 24rpx rgba(255, 107, 53, 0.28);
+}
+.submit-action-btn.glow {
+  background: linear-gradient(135deg, #ff8533, #ff4c1a);
+  box-shadow: 0 10rpx 28rpx rgba(255, 76, 26, 0.35);
+}
+
+.bottom-actions-row {
+  display: flex;
+  gap: 20rpx;
+}
+.action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  height: 84rpx;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  font-weight: 900;
+  border: none;
+}
+.back-btn {
+  background: #f7ede2;
+  color: #6d5b4e;
+}
+.mail-btn {
+  background: linear-gradient(135deg, #ff9a44, #ff6b35);
+  color: #fff;
+  box-shadow: 0 8rpx 24rpx rgba(255, 107, 53, 0.28);
+}

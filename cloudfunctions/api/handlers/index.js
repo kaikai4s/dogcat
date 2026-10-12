@@ -21,6 +21,7 @@ const loaders = {
   incident: () => require('./incident'),
   admin: () => require('./admin'),
   ai: () => require('./ai'),
+  questionnaire: () => require('./questionnaire'),
   message: () => require('./message'),
   staffMessage: () => require('./staffMessage'),
   initData: () => require('./initData')

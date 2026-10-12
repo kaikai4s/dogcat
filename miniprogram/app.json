@@ -125,6 +125,14 @@
       ]
     },
     {
+      "root": "pages/client/questionnaires",
+      "name": "client-questionnaires",
+      "pages": [
+        "list/index",
+        "detail/index"
+      ]
+    },
+    {
       "root": "pages/client/lottery",
       "name": "client-lottery",
       "pages": [
@@ -173,6 +181,8 @@
         "sos/index",
         "incidents/list/index",
         "incidents/detail/index",
+        "questionnaires/list/index",
+        "questionnaires/detail/index",
         "supplies/reimbursement/index"
       ]
     },
@@ -212,7 +222,11 @@
         "lottery/index",
         "settings/index",
         "prices/index",
-        "notifications/index"
+        "notifications/index",
+        "questionnaires/list/index",
+        "questionnaires/edit/index",
+        "questionnaires/responses/index",
+        "questionnaires/analysis/index"
       ]
     },
     {

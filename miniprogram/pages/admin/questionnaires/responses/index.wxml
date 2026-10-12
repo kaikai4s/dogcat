@@ -1,0 +1,131 @@
+<view class="page responses-page">
+  <!-- 头部看板 -->
+  <view class="hero">
+    <view class="hero-top">
+      <view>
+        <view class="hero-badge">
+          <text class="remix-icon ri-inbox-archive-line"></text>
+          <text>回收与质检核查</text>
+        </view>
+        <view class="hero-title">{{detail.title || '问卷回收'}}</view>
+        <view class="hero-desc">共回收 {{counts.all}} 份提交 · AI 质检有效率 {{validRate}}%</view>
+      </view>
+      <button class="analysis-btn" bindtap="analysis">
+        <text class="remix-icon ri-bar-chart-2-line"></text>查看 AI 分析
+      </button>
+    </view>
+
+    <!-- 快捷统计指标 -->
+    <view class="stats-bar">
+      <view class="stat-cell" data-filter="all" bindtap="setFilter">
+        <view class="stat-val">{{counts.all}}</view>
+        <view class="stat-lbl">全部回收</view>
+      </view>
+      <view class="stat-cell green" data-filter="valid" bindtap="setFilter">
+        <view class="stat-val">{{counts.valid}}</view>
+        <view class="stat-lbl">有效作答</view>
+      </view>
+      <view class="stat-cell orange" data-filter="suspicious" bindtap="setFilter">
+        <view class="stat-val">{{counts.suspicious}}</view>
+        <view class="stat-lbl">疑似敷衍</view>
+      </view>
+      <view class="stat-cell red" data-filter="fake" bindtap="setFilter">
+        <view class="stat-val">{{counts.fake}}</view>
+        <view class="stat-lbl">判定乱填</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 搜索与筛选工具条 -->
+  <view class="toolbar-card">
+    <view class="search-box">
+      <text class="remix-icon ri-search-line search-icon"></text>
+      <input
+        class="search-input"
+        placeholder="搜索用户作答内容或身份..."
+        value="{{searchKeyword}}"
+        bindinput="onSearchInput"
+      />
+    </view>
+
+    <view class="filter-tabs">
+      <view class="filter-tab {{qualityFilter === 'all' ? 'active' : ''}}" data-filter="all" bindtap="setFilter">全部 ({{counts.all}})</view>
+      <view class="filter-tab {{qualityFilter === 'valid' ? 'active' : ''}}" data-filter="valid" bindtap="setFilter">有效 ({{counts.valid}})</view>
+      <view class="filter-tab {{qualityFilter === 'suspicious' ? 'active' : ''}}" data-filter="suspicious" bindtap="setFilter">疑似 ({{counts.suspicious}})</view>
+      <view class="filter-tab {{qualityFilter === 'fake' ? 'active' : ''}}" data-filter="fake" bindtap="setFilter">乱填 ({{counts.fake}})</view>
+    </view>
+
+    <view class="batch-bar" wx:if="{{counts.fake > 0}}">
+      <text class="batch-tip">发现 {{counts.fake}} 份被拦截乱填，可复核或一键补发</text>
+      <button class="batch-btn" loading="{{retryingAll}}" bindtap="retryAll">批量补发奖励</button>
+    </view>
+  </view>
+
+  <!-- 空状态 -->
+  <view class="empty-state" wx:if="{{!loading && !displayResponses.length}}">
+    <view class="empty-icon remix-icon ri-inbox-line"></view>
+    <view class="empty-title">暂无符合条件的作答记录</view>
+    <view class="empty-desc">{{searchKeyword ? '尝试换个关键词搜索' : '待用户提交问卷后将在此实时展示'}}</view>
+  </view>
+
+  <!-- 作答详情卡片列表 -->
+  <view class="response-list" wx:if="{{displayResponses.length}}">
+    <view class="response-card" wx:for="{{displayResponses}}" wx:key="_id">
+      <!-- 卡片头部：身份标签、时间与质量评定 -->
+      <view class="resp-head">
+        <view class="resp-user-box">
+          <view class="user-avatar-tag {{item.role === 'staff' ? 'staff' : 'client'}}">
+            <text class="remix-icon {{item.role === 'staff' ? 'ri-shield-user-fill' : 'ri-user-smile-fill'}}"></text>
+          </view>
+          <view class="user-meta">
+            <view class="user-role-text">{{item.role === 'staff' ? '宠托师接单员' : '宠物主客户'}}</view>
+            <view class="user-time">{{item.createdAtText}}</view>
+          </view>
+        </view>
+        <view class="quality-badge badge-{{item.verdict}}">
+          <text class="remix-icon {{item.verdict === 'fake' ? 'ri-close-circle-fill' : (item.verdict === 'suspicious' ? 'ri-alert-fill' : 'ri-checkbox-circle-fill')}}"></text>
+          <text>{{item.qualityText}}</text>
+        </view>
+      </view>
+
+      <!-- AI 质检判定原因条（若有异常） -->
+      <view class="quality-callout {{item.verdict}}" wx:if="{{item.qualityReasons}}">
+        <view class="callout-head">
+          <text class="remix-icon ri-robot-2-line"></text>
+          <text class="callout-title">AI 质检诊断：</text>
+        </view>
+        <view class="callout-text">{{item.qualityReasons}}</view>
+      </view>
+
+      <!-- 问答题目列表明细 -->
+      <view class="answers-container">
+        <view class="answer-item" wx:for="{{item.answerRows}}" wx:for-item="answer" wx:key="questionId">
+          <view class="q-title-row">
+            <text class="q-num">Q{{index + 1}}.</text>
+            <text class="q-text">{{answer.title}}</text>
+          </view>
+          <view class="q-ans-box">
+            <text class="ans-value">{{answer.displayValue || '（未作答）'}}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 底部奖励发放条 -->
+      <view class="reward-footer">
+        <view class="reward-info">
+          <text class="remix-icon ri-mail-star-line"></text>
+          <text class="reward-lbl">奖励状态：</text>
+          <text class="reward-status-val {{item.rewardStatus}}">{{item.rewardText}}</text>
+        </view>
+        <button
+          class="retry-btn"
+          wx:if="{{item.rewardStatus === 'failed' || (item.rewardStatus === 'skipped' && item.verdict === 'fake')}}"
+          data-id="{{item._id}}"
+          bindtap="retryReward"
+        >
+          手动补发奖励
+        </button>
+      </view>
+    </view>
+  </view>
+</view>

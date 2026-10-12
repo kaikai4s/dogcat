@@ -1,0 +1,219 @@
+<wxs module="tools">
+function inArray(arr, val) {
+  if (!arr || !arr.indexOf) return false;
+  return arr.indexOf(val) !== -1;
+}
+module.exports = {
+  inArray: inArray
+};
+</wxs>
+
+<view class="questionnaire-detail-page page" wx:if="{{detail}}">
+  <!-- 已提交状态提示横幅 -->
+  <view class="completed-hero-banner" wx:if="{{detail.answered}}">
+    <view class="completed-icon-wrap">
+      <text class="remix-icon ri-checkbox-circle-fill banner-check-icon"></text>
+    </view>
+    <view class="completed-content">
+      <view class="completed-title">您已成功提交本次调研</view>
+      <view class="completed-sub">感谢宠托师伙伴的真实反馈！奖励已发放至奖励邮箱，快去查收吧～</view>
+    </view>
+    <button class="completed-mail-btn" bindtap="goToRewardMails">
+      <text class="remix-icon ri-mail-star-line"></text>
+      <text>领奖励</text>
+    </button>
+  </view>
+
+  <!-- 问卷基本信息卡片 -->
+  <view class="hero-card">
+    <view class="hero-top-row">
+      <view class="hero-tag">
+        <text class="remix-icon ri-survey-line"></text>
+        <text>宠托师专属调研</text>
+      </view>
+      <view class="status-pill {{detail.answered ? 'done' : 'active'}}">
+        <text>{{detail.answered ? '已作答' : '进行中'}}</text>
+      </view>
+    </view>
+
+    <view class="hero-title">{{detail.title}}</view>
+    <view class="hero-desc" wx:if="{{detail.description}}">{{detail.description}}</view>
+
+    <!-- 奖励激励胶囊 -->
+    <view class="reward-box" wx:if="{{detail.rewardConfig && detail.rewardConfig.enabled}}">
+      <view class="reward-header">
+        <text class="remix-icon ri-gift-2-line reward-icon"></text>
+        <text class="reward-lead">答题专属礼遇</text>
+      </view>
+      <view class="reward-tags">
+        <view class="reward-chip points-chip" wx:if="{{detail.rewardConfig.points > 0}}">
+          <text class="remix-icon ri-coin-line"></text>
+          <text>+{{detail.rewardConfig.points}} 萌宠积分</text>
+        </view>
+        <view class="reward-chip coupon-chip" wx:if="{{detail.rewardConfig.couponSnapshot && detail.rewardConfig.couponSnapshot.name}}">
+          <text class="remix-icon ri-coupon-3-line"></text>
+          <text>{{detail.rewardConfig.couponSnapshot.name}}</text>
+        </view>
+      </view>
+      <view class="reward-footnote">
+        <text class="remix-icon ri-mail-send-line"></text>
+        <text>提交并通过质检后，系统邮件将自动发送至「奖励邮箱」</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 答题实时进度条 (未作答时展示) -->
+  <view class="progress-card" wx:if="{{!detail.answered}}">
+    <view class="progress-info-row">
+      <view class="progress-title-wrap">
+        <text class="remix-icon ri-pie-chart-2-fill progress-icon"></text>
+        <text class="progress-title">答题进度</text>
+      </view>
+      <view class="progress-count-pill">
+        <text class="count-now">{{answeredCount}}</text>
+        <text class="count-divider">/</text>
+        <text class="count-total">{{detail.questions.length}} 题</text>
+        <text class="percent-tag">({{progressPercent}}%)</text>
+      </view>
+    </view>
+    <view class="progress-track">
+      <view class="progress-fill" style="width: {{progressPercent}}%"></view>
+    </view>
+    <view class="progress-tips" wx:if="{{answeredCount === detail.questions.length && detail.questions.length > 0}}">
+      <text class="remix-icon ri-sparkling-fill tips-icon"></text>
+      <text>太棒了！所有题目已填写完毕，快点击下方提交吧～</text>
+    </view>
+  </view>
+
+  <!-- 题目卡片列表 -->
+  <view class="questions-list">
+    <view class="question-card {{errorQuestionIndex === index ? 'card-error' : ''}} {{detail.answered ? 'card-readonly' : ''}}"
+          wx:for="{{detail.questions}}"
+          wx:key="id"
+          id="question-{{index}}">
+      <!-- 题目头部 -->
+      <view class="question-header">
+        <view class="header-left">
+          <text class="q-seq-badge">Q{{index + 1}}</text>
+          <text class="q-type-badge type-{{item.type}}">
+            {{item.type === 'single' ? '单选' : (item.type === 'multiple' ? '多选' : (item.type === 'rating' ? '评分' : '问答'))}}
+          </text>
+          <text class="required-star" wx:if="{{item.required}}">*</text>
+        </view>
+        <view class="header-right" wx:if="{{errorQuestionIndex === index}}">
+          <text class="missing-hint">请完成此项</text>
+        </view>
+      </view>
+
+      <view class="question-title-text">{{item.title}}</view>
+
+      <!-- 1. 单选类型 -->
+      <view class="options-group" wx:if="{{item.type === 'single'}}">
+        <view class="option-row {{answers[index].value === opt ? 'selected' : ''}}"
+              wx:for="{{item.options}}"
+              wx:for-item="opt"
+              wx:key="*this"
+              data-qindex="{{index}}"
+              data-option="{{opt}}"
+              bindtap="selectSingle">
+          <view class="radio-indicator">
+            <view class="radio-inner" wx:if="{{answers[index].value === opt}}"></view>
+          </view>
+          <text class="option-text">{{opt}}</text>
+          <text class="remix-icon ri-check-line check-badge" wx:if="{{answers[index].value === opt}}"></text>
+        </view>
+      </view>
+
+      <!-- 2. 多选类型 -->
+      <view class="options-group" wx:elif="{{item.type === 'multiple'}}">
+        <view class="option-row {{tools.inArray(answers[index].value, opt) ? 'selected' : ''}}"
+              wx:for="{{item.options}}"
+              wx:for-item="opt"
+              wx:key="*this"
+              data-qindex="{{index}}"
+              data-option="{{opt}}"
+              bindtap="toggleMultiple">
+          <view class="checkbox-indicator">
+            <text class="remix-icon ri-check-line checkbox-icon" wx:if="{{tools.inArray(answers[index].value, opt)}}"></text>
+          </view>
+          <text class="option-text">{{opt}}</text>
+          <text class="multiple-check-tag" wx:if="{{tools.inArray(answers[index].value, opt)}}">已选</text>
+        </view>
+      </view>
+
+      <!-- 3. 评分类型 -->
+      <view class="rating-container" wx:elif="{{item.type === 'rating'}}">
+        <view class="rating-scale-row">
+          <view class="scale-btn {{answers[index].value >= score ? 'active' : ''}} {{answers[index].value === score ? 'current' : ''}}"
+                wx:for="{{item.scores}}"
+                wx:for-item="score"
+                wx:key="*this"
+                data-qindex="{{index}}"
+                data-score="{{score}}"
+                bindtap="setRating">
+            <text class="remix-icon ri-star-fill star-icon" wx:if="{{answers[index].value >= score}}"></text>
+            <text class="remix-icon ri-star-line star-icon" wx:else></text>
+            <text class="score-text">{{score}}分</text>
+          </view>
+        </view>
+        <view class="rating-feedback" wx:if="{{answers[index].value}}">
+          <text class="remix-icon ri-heart-pulse-fill feedback-icon"></text>
+          <text class="feedback-text">{{answers[index].value}} 分 · {{ratingDescMap[answers[index].value] || '已打分'}}</text>
+        </view>
+      </view>
+
+      <!-- 4. 文本输入类型 -->
+      <view class="text-container" wx:else>
+        <textarea class="text-input"
+                  value="{{answers[index].value}}"
+                  data-qindex="{{index}}"
+                  bindinput="onTextInput"
+                  disabled="{{detail.answered}}"
+                  placeholder="{{item.placeholder || '请在此分享您的真实想法与一线经验（10字以上更佳）...'}}"
+                  placeholder-class="placeholder-dim"
+                  maxlength="500" />
+        <view class="text-counter">
+          <text class="counter-num">{{answers[index].value ? answers[index].value.length : 0}}</text>
+          <text class="counter-total">/ 500字</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 底部固定吸底操作条 -->
+  <view class="fixed-bottom-bar">
+    <!-- 已提交状态：返回与去邮箱 -->
+    <view class="bottom-actions-row" wx:if="{{detail.answered}}">
+      <button class="action-btn back-btn" bindtap="goBack">返回列表</button>
+      <button class="action-btn mail-btn" bindtap="goToRewardMails">
+        <text class="remix-icon ri-mail-star-line"></text>
+        <text>奖励邮箱</text>
+      </button>
+    </view>
+
+    <!-- 作答状态：完成进度与立即提交 -->
+    <view class="bottom-submit-row" wx:else>
+      <view class="bottom-brief-info">
+        <text class="remix-icon ri-question-answer-line brief-icon"></text>
+        <view class="brief-text-col">
+          <view class="brief-status">
+            <text wx:if="{{answeredCount === detail.questions.length}}">已全部作答完成</text>
+            <text wx:else>已完成 {{answeredCount}} / {{detail.questions.length}} 题</text>
+          </view>
+          <view class="brief-sub">
+            <text wx:if="{{answeredCount === detail.questions.length}}">您的经验反馈对优化服务流程至关重要</text>
+            <text wx:else>还剩 {{detail.questions.length - answeredCount}} 题待作答</text>
+          </view>
+        </view>
+      </view>
+
+      <button class="submit-action-btn {{answeredCount === detail.questions.length ? 'glow' : ''}}"
+              loading="{{submitting}}"
+              disabled="{{submitting}}"
+              bindtap="submit">
+        <text class="remix-icon ri-send-plane-fill" wx:if="{{!submitting}}"></text>
+        <text>提交问卷</text>
+      </button>
+    </view>
+  </view>
+</view>

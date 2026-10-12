@@ -16,8 +16,8 @@ test('setupDatabase: initializes collections and seeds default prices and checki
 
   assert.equal(res.ok, true)
   assert.equal(res.data.success, true)
-  assert.equal(res.data.totalCollections, 77)
-  assert.equal(res.data.totalIndexesConfigured, 27)
+  assert.equal(res.data.totalCollections, 79)
+  assert.equal(res.data.totalIndexesConfigured, 31)
   assert.ok(res.data.pricesInitialized > 0)
   assert.ok(res.data.checkinRulesInitialized > 0)
   assert.equal(res.data.settingsInitialized, true)
@@ -33,6 +33,9 @@ test('setupDatabase: initializes collections and seeds default prices and checki
   assert.ok(db.state.service_prices.length >= 7)
   // 验证打卡规则已初始化
   assert.ok(db.state.service_checkin_rules.length > 0)
+  // 验证问卷集合已初始化
+  assert.ok(Array.isArray(db.state.questionnaires))
+  assert.ok(Array.isArray(db.state.questionnaire_responses))
 })
 
 test('buildNotificationIndexes: builds indexes specifically for system_notifications and user_notification_reads', async () => {

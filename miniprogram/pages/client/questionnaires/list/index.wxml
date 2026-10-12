@@ -1,0 +1,67 @@
+<view class="questionnaire-list page">
+  <!-- 头部 Hero -->
+  <view class="hero">
+    <view class="hero-badge">
+      <text class="remix-icon ri-survey-line"></text>
+      <text>多芙琳调研中心</text>
+    </view>
+    <view class="hero-title">参与调研 · 领专属福利</view>
+    <view class="hero-desc">您的真实反馈是多芙琳提升宠护服务品质的最强动力，完成调研即可获得积分与优惠券奖励。</view>
+  </view>
+
+  <!-- Tab 切换栏 -->
+  <view class="tab-bar">
+    <view
+      class="tab-item {{activeTab === 'todo' ? 'active' : ''}}"
+      data-tab="todo"
+      bindtap="switchTab"
+    >
+      待完成调研
+    </view>
+    <view
+      class="tab-item {{activeTab === 'done' ? 'active' : ''}}"
+      data-tab="done"
+      bindtap="switchTab"
+    >
+      已完成调研
+    </view>
+  </view>
+
+  <!-- 空状态 -->
+  <view class="empty-state" wx:if="{{!loading && !displayList.length}}">
+    <view class="empty-icon remix-icon ri-cup-line"></view>
+    <view class="empty-title">{{activeTab === 'todo' ? '暂无可填写的问卷' : '暂无已完成的问卷'}}</view>
+    <view class="empty-desc">{{activeTab === 'todo' ? '新调研发布后将第一时间通知您，敬请期待～' : '参与上方调研即可在已完成中查看记录'}}</view>
+  </view>
+
+  <!-- 列表 -->
+  <view class="card-list" wx:if="{{displayList.length}}">
+    <view class="q-card" wx:for="{{displayList}}" wx:key="_id" data-id="{{item._id}}" bindtap="open">
+      <view class="card-head">
+        <view class="card-title">{{item.title}}</view>
+        <view class="status-pill {{item.answered ? 'done' : 'todo'}}">
+          {{item.answered ? '已提交' : '待参与'}}
+        </view>
+      </view>
+
+      <view class="card-desc">{{item.description || '点击进入快速完成调研'}}</view>
+
+      <!-- 奖励标签与动作行 -->
+      <view class="card-foot">
+        <view class="reward-box" wx:if="{{item.rewardDesc}}">
+          <text class="remix-icon ri-gift-line"></text>
+          <text class="reward-text">奖励：{{item.rewardDesc}}</text>
+        </view>
+        <view class="reward-box empty" wx:else>
+          <text class="reward-text">体验调研</text>
+        </view>
+
+        <view class="btn-wrap">
+          <button class="fill-btn {{item.answered ? 'done-btn' : ''}}">
+            {{item.answered ? '查看详情' : '立即填写'}}
+          </button>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

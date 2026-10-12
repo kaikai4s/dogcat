@@ -15,7 +15,9 @@ const routes = {
   'coupons/index': ['admin.listCouponTemplates'], 'member-levels/index': ['admin.listMemberLevels'],
   'pet-titles/index': ['admin.listPetTitles'], 'pet-vaccine/list/index': ['admin.listPetVaccineCertifications'], 'checkin-config/index': ['admin.getCheckinMonthConfig'],
   'points/index': ['admin.listPointLogs'], 'lottery/index': ['admin.listLotteryActivities'],
-  'settings/index': ['admin.getSystemSettings']
+  'settings/index': ['admin.getSystemSettings'],
+  'questionnaires/list/index': ['questionnaire.listAdmin'], 'questionnaires/edit/index': ['questionnaire.listAdmin'],
+  'questionnaires/responses/index': ['questionnaire.listAdmin'], 'questionnaires/analysis/index': ['questionnaire.listAdmin']
 }
 function can(access, permission) { return !!access && (access.superAdmin || (access.permissions || []).includes(permission)) }
 function canVisit(access, url) {
