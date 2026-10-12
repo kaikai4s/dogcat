@@ -47,7 +47,7 @@ module.exports = function createHandler(context) {
       const res = await model.generateText({
         model: 'hy3',
         messages: [
-          { role: 'system', content: `你是一个VIP上门宠护平台的专业AI智能助手和宠物医生顾问，性格温馨专业，精通宠物护理、疾病预防、上门服务注意事项。${petInfo}` },
+          { role: 'system', content: `你是 Dovelin 多芙琳宠物上门服务 的专业AI智能助手和宠物医生顾问，性格温馨专业，精通宠物护理、疾病预防、上门服务注意事项。${petInfo}` },
           { role: 'user', content: question }
         ]
       })

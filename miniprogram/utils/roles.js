@@ -8,7 +8,7 @@ const roleMeta = {
   },
   staff: {
     value: 'staff',
-    label: '安心宠护端',
+    label: '多芙琳宠护端',
     icon: '😺',
     tip: '查看任务，上传打卡证据',
     homeUrl: '/pages/staff/home/index'

@@ -9,7 +9,7 @@ const staffEntryMap = {
   none: { title: '申请成为宠护师', tip: '提交资料后等待平台审核' },
   pending: { title: '宠护师认证审核中', tip: '资料已提交，请等待平台审核' },
   rejected: { title: '审核未通过，重新提交', tip: '修改资料后再次提交审核' },
-  approved: { title: '进入安心宠护端', tip: '查看任务并开始接单' }
+  approved: { title: '进入多芙琳宠护端', tip: '查看任务并开始接单' }
 }
 
 Page({
@@ -59,7 +59,7 @@ Page({
       phone: '',
       wechatId: '',
       workHours: '每天 9:00 - 21:00',
-      officialAccountName: 'VIP宠护'
+      officialAccountName: 'Dovelin 多芙琳宠物上门服务'
     }
   },
 
@@ -145,7 +145,7 @@ Page({
       isGuest: false,
       isAdmin: roles.includes('admin'),
       userName: user.nickname || phone || '宠物主',
-      userMeta: phone ? `已绑定手机 ${phone}` : '欢迎回来，今天也要安心宠护',
+      userMeta: phone ? `已绑定手机 ${phone}` : '欢迎回来，Dovelin 多芙琳陪你安心照护',
       avatarUrl: user.avatarUrl || '',
       hidePublicCheckinPhotos: user.hidePublicCheckinPhotos === true || (user.privacySettings && user.privacySettings.hidePublicCheckinPhotos === true)
     }
@@ -260,7 +260,7 @@ Page({
   },
 
   openStaffEntry() {
-    ensureLogin({ content: '登录后可申请或进入安心宠护端。' })
+    ensureLogin({ content: '登录后可申请或进入多芙琳宠护端。' })
       .then(() => callFunction('staff', 'getStaffProfile'))
       .then((profile) => {
         this.setData({ staffProfile: profile })
@@ -268,7 +268,7 @@ Page({
         if (status === 'approved') {
           const app = getApp()
           if (app && app.globalData) app.globalData.activeRole = 'staff'
-          wx.showToast({ title: '你已是安心宠护师', icon: 'none' })
+          wx.showToast({ title: '你已是多芙琳宠护师', icon: 'none' })
           wx.reLaunch({ url: '/pages/staff/home/index' })
           return
         }
@@ -362,7 +362,7 @@ Page({
   },
 
   openAbout() {
-    wx.showModal({ title: '关于我们', content: 'VIP 宠护提供上门喂养、遛狗、宠托师预约、订单跟踪与服务报告等宠物照护服务。', showCancel: false })
+    wx.showModal({ title: '关于我们', content: 'Dovelin 多芙琳宠物上门服务提供上门喂养、遛狗、宠托师预约、订单跟踪与服务报告等宠物照护服务。', showCancel: false })
   },
 
   openInfoCollection() {
@@ -455,7 +455,7 @@ Page({
               phone: csInfo.phone || '',
               wechatId: csInfo.wechatId || '',
               workHours: csInfo.workHours || '每天 9:00 - 21:00',
-              officialAccountName: csInfo.officialAccountName || 'VIP宠护'
+              officialAccountName: csInfo.officialAccountName || 'Dovelin 多芙琳宠物上门服务'
             }
           })
         }
@@ -526,7 +526,7 @@ Page({
   },
 
   copyOfficialAccountName() {
-    const name = this.data.csInfo.officialAccountName || 'VIP宠护'
+    const name = this.data.csInfo.officialAccountName || 'Dovelin 多芙琳宠物上门服务'
     copyText(name, { successTitle: '已复制公众号名称' })
   },
 

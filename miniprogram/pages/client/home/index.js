@@ -272,7 +272,7 @@ Page({
             staffEntryLoaded: true,
             staffEntryStatus: 'none',
             staffEntryTitle: title,
-            staffEntryTip: '通过审核后进入安心宠护端接单'
+            staffEntryTip: '通过审核后进入多芙琳宠护端接单'
           })
           try { wx.setStorageSync('cached_staff_entry_title', title) } catch (e) {}
           return
@@ -290,7 +290,7 @@ Page({
       approved: { title: '宠护端', tip: '查看任务与接单工作台' },
       pending: { title: '审核中', tip: '资料已提交，请等待平台审核' },
       rejected: { title: '修改认证', tip: (profile && profile.auditRemark) || '审核未通过，请修改后重新提交' },
-      none: { title: '申请宠护师', tip: '通过审核后进入安心宠护端接单' }
+      none: { title: '申请宠护师', tip: '通过审核后进入多芙琳宠护端接单' }
     }
     const entry = stateMap[status] || stateMap.none
     this.setData({
@@ -303,14 +303,14 @@ Page({
   },
 
   openStaffEntry() {
-    ensureLogin({ content: '登录后可申请或进入安心宠护端。' })
+    ensureLogin({ content: '登录后可申请或进入多芙琳宠护端。' })
       .then(() => callFunction('staff', 'getStaffProfile'))
       .then((profile) => {
         const status = profile && profile.auditStatus
         if (status === 'approved') {
           const app = getApp()
           if (app && app.globalData) app.globalData.activeRole = 'staff'
-          wx.showToast({ title: '你已是安心宠护师', icon: 'none' })
+          wx.showToast({ title: '你已是多芙琳宠护师', icon: 'none' })
           wx.reLaunch({ url: '/pages/staff/home/index' })
           return
         }

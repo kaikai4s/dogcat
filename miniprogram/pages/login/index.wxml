@@ -1,5 +1,5 @@
 <view class="login-simple {{themeClass}} {{fontClass}}">
-  <view class="login-title">VIP 宠护</view>
+  <view class="login-title">Dovelin 多芙琳宠物上门服务</view>
   <view class="login-subtitle">登录后可预约上门喂猫、遛狗，并查看轨迹与服务报告。</view>
 
   <view class="login-error" wx:if="{{!envReady}}">

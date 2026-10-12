@@ -1,7 +1,7 @@
 <view class="page staff-profile-page {{themeClass}} {{fontClass}}">
   <staff-active-service-banner />
   <view class="staff-hero">
-    <view class="hero-badge">安心宠护 · 宠托师中心</view>
+    <view class="hero-badge">多芙琳宠护 · 宠托师中心</view>
     <view class="profile-user-row">
       <view class="avatar-level-wrap">
         <image class="profile-avatar" wx:if="{{avatarUrl}}" src="{{avatarUrl}}" mode="aspectFill" />

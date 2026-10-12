@@ -134,7 +134,7 @@ Page({
     serviceSummaryText: '上门照料服务',
     serviceDateText: '',
     displayDiaryContent: '',
-    staffDisplayName: '平台认证宠托师',
+    staffDisplayName: '多芙琳认证宠托师',
     evidencePhotos: [],
     generatingPoster: false
   },
@@ -316,7 +316,7 @@ Page({
     }
 
     // 5. 宠托师姓名与服务时间
-    const staffDisplayName = order.staffName || order.staffNickName || '平台专业宠托师'
+    const staffDisplayName = order.staffName || order.staffNickName || '多芙琳专业宠托师'
     const serviceDateText = order.serviceTime || order.startTime || '今日圆满履约'
     const serviceSummaryText = order.businessTypeText || '上门照料服务'
 
@@ -387,7 +387,7 @@ Page({
 【宠托师手记】
 “${displayDiaryContent}”
 
-#与宠同乐 #上门喂养 #宠托师 #毛孩子的神仙托儿所 #萌宠日常记录 #铲屎官安心出差 #猫咪上门喂养`
+#Dovelin多芙琳 #上门喂养 #宠托师 #毛孩子的神仙托儿所 #萌宠日常记录 #铲屎官安心出差 #猫咪上门喂养`
 
     copyText(text, {
       successTitle: '文案已复制！可直接发小红书/抖音',
@@ -467,7 +467,7 @@ Page({
             drawRoundedRect(ctx, 40, 48, 260, 42, 6, 'rgba(255,255,255,0.08)', 'rgba(212,175,55,0.5)', 1)
             ctx.fillStyle = '#f7d488'
             ctx.font = 'bold 20px sans-serif'
-            ctx.fillText('PET LIFE JOURNAL', 60, 76)
+            ctx.fillText('DOVELIN PET CARE', 60, 76)
 
             ctx.fillStyle = '#9da0ae'
             ctx.font = '18px sans-serif'
@@ -485,7 +485,7 @@ Page({
 
             ctx.fillStyle = '#8e92a4'
             ctx.font = '18px sans-serif'
-            ctx.fillText('EXCLUSIVE CARE REPORT · PLATFORM ASSURED', 40, 184)
+            ctx.fillText('EXCLUSIVE DOVELIN CARE REPORT', 40, 184)
 
             // Hero 大图
             const heroY = 210
@@ -510,7 +510,7 @@ Page({
             ctx.fillText('VERIFIED', 545, heroY + heroH - 46)
             ctx.fillStyle = '#a3a6b2'
             ctx.font = '12px sans-serif'
-            ctx.fillText('QUALITY ASSURED', 535, heroY + heroH - 28)
+            ctx.fillText('DOVELIN ASSURED', 526, heroY + heroH - 28)
 
             // 拼图网格
             if (gridImgs.length) {
@@ -582,10 +582,10 @@ Page({
             ctx.font = 'bold 18px sans-serif'
             ctx.fillText('AUDITED', 594, footY + 52)
             ctx.font = '14px sans-serif'
-            ctx.fillText('与宠同乐认证', 586, footY + 80)
+            ctx.fillText('多芙琳认证', 590, footY + 80)
           } else if (tpl === 'certified') {
             // ========================
-            // 模版 3：安心履约认证风 (Certified)
+            // 模版 3：多芙琳履约认证风 (Certified)
             // ========================
             const bgGrad = ctx.createLinearGradient(0, 0, 0, height)
             bgGrad.addColorStop(0, '#eefaf4')
@@ -598,11 +598,11 @@ Page({
             drawRoundedRect(ctx, 40, 48, 320, 44, 22, '#00b42a', null)
             ctx.fillStyle = '#ffffff'
             ctx.font = 'bold 22px sans-serif'
-            ctx.fillText('🛡️ 官方履约安心认证', 64, 78)
+            ctx.fillText('🛡️ 多芙琳履约认证', 64, 78)
 
             ctx.fillStyle = '#088c52'
             ctx.font = 'bold 18px sans-serif'
-            ctx.fillText(serviceDateText || '品质履约·全链溯源', 460, 78)
+            ctx.fillText(serviceDateText || '多芙琳品质履约', 460, 78)
 
             // 标题区
             ctx.fillStyle = '#0f382c'
@@ -616,7 +616,7 @@ Page({
 
             ctx.fillStyle = '#3b7160'
             ctx.font = '20px sans-serif'
-            ctx.fillText('专业宠托全流程打卡 · 100% 实名背书与合规检测', 40, 186)
+            ctx.fillText('多芙琳专业宠托全流程打卡 · 100% 实名背书与合规检测', 40, 186)
 
             // Hero 大图
             const heroY = 210
@@ -638,7 +638,7 @@ Page({
             drawRoundedRect(ctx, 550, heroY + 20, 130, 130, 65, 'rgba(255,255,255,0.92)', '#d9363e', 3)
             ctx.fillStyle = '#d9363e'
             ctx.font = 'bold 16px sans-serif'
-            ctx.fillText('安心履约', 582, heroY + 62)
+            ctx.fillText('多芙琳履约', 574, heroY + 62)
             ctx.font = '900 32px sans-serif'
             ctx.fillText('合格', 580, heroY + 98)
             ctx.font = 'bold 14px sans-serif'
@@ -712,7 +712,7 @@ Page({
             drawRoundedRect(ctx, 580, footY + 10, 106, 106, 53, 'rgba(255,255,255,0.9)', '#d9363e', 3)
             ctx.fillStyle = '#d9363e'
             ctx.font = '900 12px sans-serif'
-            ctx.fillText('与宠同乐·质保', 592, footY + 42)
+            ctx.fillText('多芙琳·质保', 596, footY + 42)
             ctx.font = 'bold 12px sans-serif'
             ctx.fillText('★★★★★', 594, footY + 66)
             ctx.font = '900 14px sans-serif'
@@ -740,7 +740,7 @@ Page({
 
             ctx.fillStyle = '#d46328'
             ctx.font = 'bold 20px sans-serif'
-            ctx.fillText('与宠同乐 · 今日托养手账', 80, 80)
+            ctx.fillText('Dovelin 多芙琳 · 今日照护手账', 80, 80)
 
             ctx.fillStyle = '#967f70'
             ctx.font = 'bold 18px sans-serif'
@@ -856,7 +856,7 @@ Page({
             drawRoundedRect(ctx, 580, footY + 10, 106, 106, 53, 'rgba(255,255,255,0.9)', '#d9363e', 3)
             ctx.fillStyle = '#d9363e'
             ctx.font = '900 12px sans-serif'
-            ctx.fillText('与宠同乐·质保', 592, footY + 42)
+            ctx.fillText('多芙琳·质保', 596, footY + 42)
             ctx.font = 'bold 12px sans-serif'
             ctx.fillText('★★★★★', 594, footY + 66)
             ctx.font = '900 14px sans-serif'

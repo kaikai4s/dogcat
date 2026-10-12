@@ -125,7 +125,7 @@
           <view class="poster-top-bar">
             <view class="poster-brand-tag">
               <text class="brand-dot"></text>
-              <text>{{currentTemplate === 'magazine' ? 'PET LIFE JOURNAL' : (currentTemplate === 'certified' ? '与宠同乐 · 官方履约认证' : '与宠同乐 · 今日托管手账')}}</text>
+              <text>{{currentTemplate === 'magazine' ? 'DOVELIN PET CARE' : (currentTemplate === 'certified' ? 'Dovelin · 官方履约认证' : 'Dovelin 多芙琳 · 今日照护手账')}}</text>
             </view>
             <view class="poster-date-badge">{{serviceDateText || '服务已圆满完成'}}</view>
           </view>
@@ -137,7 +137,7 @@
               <text class="pet-species-pill">{{petSpeciesText}}</text>
               <text class="pet-honor-pill" wx:if="{{petBeautyTitle}}">{{petBeautyTitle}}</text>
             </view>
-            <view class="poster-sub-slogan">{{currentTemplate === 'magazine' ? 'EXCLUSIVE CARE REPORT · VOL. 2026' : (currentTemplate === 'certified' ? '专业宠托全链服务 · 100% 实名与合规验证' : '又是被宝贝治愈的一天 ✨ 干粮吃光光 乖巧满分')}}</view>
+            <view class="poster-sub-slogan">{{currentTemplate === 'magazine' ? 'EXCLUSIVE DOVELIN CARE REPORT · VOL. 2026' : (currentTemplate === 'certified' ? '多芙琳专业宠托全链服务 · 100% 实名与合规验证' : '又是被宝贝治愈的一天 ✨ 干粮吃光光 乖巧满分')}}</view>
           </view>
 
           <!-- 海报 Hero 大图卡片 -->
@@ -149,11 +149,11 @@
             </view>
             <view class="hero-magazine-badge" wx:elif="{{currentTemplate === 'magazine'}}">
               <text class="badge-big">VERIFIED</text>
-              <text class="badge-small">PLATFORM ASSURED</text>
+              <text class="badge-small">DOVELIN ASSURED</text>
             </view>
             <view class="hero-certified-seal" wx:else>
               <view class="seal-inner">
-                <text class="seal-top">安心履约</text>
+                <text class="seal-top">多芙琳履约</text>
                 <text class="seal-mid">合格</text>
                 <text class="seal-bot">PASS</text>
               </view>
@@ -190,14 +190,14 @@
               <view class="staff-meta">
                 <view class="staff-name-row">
                   <text class="staff-name">{{staffDisplayName}}</text>
-                  <text class="staff-role-pill">平台认证宠托师</text>
+                  <text class="staff-role-pill">多芙琳认证宠托师</text>
                 </view>
                 <view class="staff-assurance-tip">服务编号：{{report.order.orderNo}}</view>
               </view>
             </view>
             <view class="footer-seal-wrap">
               <view class="official-circle-seal">
-                <text class="seal-arc">与宠同乐·品质保障</text>
+                <text class="seal-arc">多芙琳·品质保障</text>
                 <text class="seal-star">★ ★ ★ ★ ★</text>
                 <text class="seal-code">AUDITED</text>
               </view>

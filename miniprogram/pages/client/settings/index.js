@@ -130,7 +130,7 @@ Page({
   openAbout() {
     wx.showModal({
       title: '关于我们',
-      content: 'VIP 宠护提供上门喂养、遛狗、宠托师预约、订单跟踪与服务报告等宠物照护服务。',
+      content: 'Dovelin 多芙琳宠物上门服务提供上门喂养、遛狗、宠托师预约、订单跟踪与服务报告等宠物照护服务。',
       showCancel: false
     })
   },

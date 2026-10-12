@@ -2,7 +2,7 @@
   <view class="profile-hero">
     <view class="hero-badge"><text class="remix-icon ri-user-3-fill hero-icon"></text><text>个人资料</text></view>
     <view class="hero-title">编辑个人资料</view>
-    <view class="hero-desc">设置昵称、头像和手机号，安心宠护端会优先显示昵称。</view>
+    <view class="hero-desc">设置昵称、头像和手机号，多芙琳宠护端会优先显示昵称。</view>
   </view>
 
   <view class="card form-card">

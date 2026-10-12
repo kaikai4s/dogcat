@@ -106,7 +106,7 @@ const AGREEMENT_CONFIGS = {
     title: '服务协议与阅读规范',
     subtitle: '进入操作前请仔细阅读以下协议及规范。',
     agreementTitle: '《平台服务与安全告知协议》',
-    sections: [section('服务条款', ['感谢使用安心宠护平台服务，请在继续操作前认真阅读并遵守相关服务规范与安全准则。'])]
+    sections: [section('服务条款', ['感谢使用 Dovelin 多芙琳宠物上门服务，请在继续操作前认真阅读并遵守相关服务规范与安全准则。'])]
   }
 }
 

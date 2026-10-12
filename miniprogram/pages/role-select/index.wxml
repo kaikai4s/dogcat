@@ -2,7 +2,7 @@
   <view class="dashboard-header">
     <view class="badge">选择身份</view>
     <view class="title">进入你的宠护工作台</view>
-    <view class="tip">毛孩家庭预约服务，安心宠护师通过个人中心申请并执行任务。</view>
+    <view class="tip">毛孩家庭预约服务，多芙琳宠护师通过个人中心申请并执行任务。</view>
   </view>
 
   <view class="role interactive" wx:for="{{roles}}" wx:key="value" data-role="{{item.value}}" bindtap="chooseRole">

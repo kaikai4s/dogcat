@@ -230,7 +230,7 @@
   <view class="modal-backdrop" wx:if="{{showOfficialAccountModal}}" bindtap="closeOfficialAccountModal">
     <view class="modal-card" catchtap="true">
       <view class="modal-title">关注公众号</view>
-      <view class="modal-tip">搜索并关注“{{csInfo.officialAccountName || 'VIP宠护'}}”微信公众号，即可第一时间接收订单进度、打卡提醒和优惠福利推送。</view>
+      <view class="modal-tip">搜索并关注“{{csInfo.officialAccountName || 'Dovelin 多芙琳宠物上门服务'}}”微信公众号，即可第一时间接收订单进度、打卡提醒和优惠福利推送。</view>
       <view class="modal-actions">
         <button class="profile-primary-btn" bindtap="copyOfficialAccountName">复制公众号名称并去微信搜索</button>
         <button class="profile-ghost-btn" bindtap="closeOfficialAccountModal">关闭</button>
