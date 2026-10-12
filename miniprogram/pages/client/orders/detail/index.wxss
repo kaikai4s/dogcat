@@ -712,6 +712,20 @@ button[disabled] { opacity: 0.62; }
 .radar-pulse-icon {
   color: #1890ff;
   font-size: 34rpx;
+  flex-shrink: 0;
+}
+.radar-title-row {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8rpx;
+}
+.radar-title-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  font-size: 28rpx;
+  line-height: 1.25;
+  letter-spacing: -0.4rpx;
 }
 .radar-stats-grid {
   display: flex;

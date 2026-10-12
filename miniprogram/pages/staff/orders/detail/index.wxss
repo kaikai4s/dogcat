@@ -450,10 +450,19 @@
 }
 
 .action-btn-group .ghost-btn {
+  width: 100%;
   min-width: 0;
-  padding: 0 12rpx;
-  white-space: normal;
-  line-height: 1.2;
+  margin: 0;
+  padding: 0 10rpx;
+  box-sizing: border-box;
+  white-space: nowrap;
+  line-height: 1;
+  font-size: 24rpx;
+}
+
+.action-btn-group .ghost-btn .remix-icon {
+  flex-shrink: 0;
+  font-size: 24rpx;
 }
 
 .ghost-btn {
@@ -476,21 +485,36 @@
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom));
+  padding: 18rpx 18rpx calc(18rpx + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.96);
   border-top: 1rpx solid rgba(255, 153, 102, 0.14);
   backdrop-filter: blur(10px);
-  display: flex;
-  gap: 14rpx;
+  display: grid;
+  grid-template-columns: 112rpx minmax(0, 1fr) 128rpx;
+  gap: 12rpx;
   z-index: 100;
   box-sizing: border-box;
 }
 
-.nav-action-btn {
-  flex: 0.9;
+.bottom-fixed-actions button {
+  width: 100%;
   min-width: 0;
-  height: 84rpx;
-  border-radius: 26rpx;
+  margin: 0;
+  padding: 0 10rpx;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.bottom-fixed-actions .remix-icon {
+  flex-shrink: 0;
+  font-size: 24rpx;
+}
+
+.nav-action-btn {
+  height: 76rpx;
+  border-radius: 24rpx;
+  font-size: 22rpx;
 }
 
 .primary-btn {
@@ -527,6 +551,25 @@
   border: none;
   box-shadow: 0 8rpx 20rpx rgba(245, 63, 63, 0.2);
   line-height: 1;
+}
+
+.bottom-fixed-actions .accept-action-btn {
+  grid-column: span 2;
+  height: 76rpx;
+  border-radius: 24rpx;
+  font-size: 24rpx;
+}
+
+.bottom-fixed-actions .service-action-btn,
+.bottom-fixed-actions .sos-action-btn {
+  height: 76rpx;
+  border-radius: 24rpx;
+  font-size: 24rpx;
+  gap: 6rpx;
+}
+
+.bottom-fixed-actions .sos-action-btn {
+  font-size: 23rpx;
 }
 
 .risk-modal-mask {
