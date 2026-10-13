@@ -11,7 +11,7 @@ const collections = [
   'pet_beauty_votes', 'pet_beauty_month_rankings', 'pet_beauty_month_locks',
   'pet_playgrounds', 'pet_homes', 'pet_playground_entities', 'pet_3d_models',
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',
-  'user_feedback', 'staff_promotion_applications',
+  'user_feedback', 'staff_promotion_applications', 'pet_voice_daily_cache',
   'staff_deposits', 'staff_deposit_events', 'staff_supply_reimbursements',
   'mall_categories', 'mall_products', 'mall_carts', 'mall_orders',
   'admin_notifications', 'staff_deposit_evidences',

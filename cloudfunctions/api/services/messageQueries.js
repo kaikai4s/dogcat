@@ -6,6 +6,30 @@ module.exports = function createService({ db, orderStatusText, readScopedDocumen
     : { threads: 'order_message_threads', messages: 'order_messages', owner: 'clientOpenid', hidden: 'hiddenForClient' }
   const dateFallback = fields => fields.reduceRight((fallback, field) => ({ $ifNull: [aggregateDate(field), fallback] }), new Date(0))
   const integer = (value, fallback, max) => Math.max(1, Math.min(max, Math.floor(Number(value) || fallback)))
+
+  async function hydrateThreadOrderStatus(thread) {
+    if (!thread || !thread.orderId) return thread
+    const orderDoc = await db.collection('orders').doc(thread.orderId).get().catch(() => ({ data: null }))
+    const order = orderDoc && orderDoc.data
+    if (!order || !order.status) return thread
+    return {
+      ...thread,
+      orderStatus: order.status,
+      orderNo: order.orderNo || thread.orderNo || '',
+      petName: order.petName || thread.petName || '',
+      serviceSummary: order.serviceSummary || thread.serviceSummary || '',
+      orderTitle: thread.orderTitle || order.serviceSummary || thread.orderTitle || ''
+    }
+  }
+
+  async function hydrateThreadsOrderStatus(rows) {
+    return Promise.all(rows.map(hydrateThreadOrderStatus))
+  }
+
+  function withThreadStatusText(row, hasUnread) {
+    return { ...row, hasUnread, orderStatusText: orderStatusText(row.orderStatus) }
+  }
+
   async function queryMessageThreads(openid, role, data = {}) {
     const config = collections(role)
     const where = { [config.owner]: openid, [config.hidden]: db.command.neq(true) }
@@ -18,8 +42,8 @@ module.exports = function createService({ db, orderStatusText, readScopedDocumen
       }).sort({ _unread: -1, _sortTime: -1, _id: 1 }).skip((page - 1) * pageSize).limit(pageSize).end(),
       db.collection(config.threads).where(where).count()
     ])
-    return { list: result.list.map(({ _sortTime, _unread, ...row }) => ({ ...row,
-      hasUnread: _unread === 1, orderStatusText: orderStatusText(row.orderStatus) })),
+    const rows = await hydrateThreadsOrderStatus(result.list.map(({ _sortTime, ...row }) => row))
+    return { list: rows.map(({ _unread, ...row }) => withThreadStatusText(row, _unread === 1)),
       page, pageSize, total: count.total, hasMore: page * pageSize < count.total }
   }
   async function queryThreadMessages(threadId, role, data = {}) {
@@ -56,5 +80,5 @@ module.exports = function createService({ db, orderStatusText, readScopedDocumen
       .group({ _id: null, total: { $sum: { $max: [{ $ifNull: ['$unreadCount', 0] }, 0] } } }).end()
     return Number(result.list[0]?.total || 0)
   }
-  return { queryMessageThreads, queryThreadMessages, queryOrderMessageUnread }
+  return { queryMessageThreads, queryThreadMessages, queryOrderMessageUnread, hydrateThreadOrderStatus }
 }

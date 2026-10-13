@@ -85,7 +85,8 @@ Page({
     revenueStats: [],
     adminSections: [],
     urgentNotice: null,
-    unreadNotificationCount: 0
+    unreadNotificationCount: 0,
+    staffAuditTodo: null
   },
 
   onShow() {
@@ -112,7 +113,7 @@ Page({
   refreshHome() {
     this.invalidateRequests()
     const access = this.data.adminAccess
-    this.setData({ adminSections: adminSections.map(section => ({ ...section, items: section.items.filter(item => canVisit(access, item.url)) })).filter(section => section.items.length), dashboard: null, urgentNotice: null, unreadNotificationCount: 0 })
+    this.setData({ adminSections: adminSections.map(section => ({ ...section, items: section.items.filter(item => canVisit(access, item.url)) })).filter(section => section.items.length), dashboard: null, urgentNotice: null, unreadNotificationCount: 0, staffAuditTodo: null })
     const requests = []
     if (can(access, 'admin.dashboard')) requests.push(this.loadDashboard())
     if (can(access, 'admin.getAdminNotificationBadge')) requests.push(this.loadNotifications())
@@ -124,10 +125,15 @@ Page({
     return callFunction('admin', 'dashboard')
       .then((dashboard) => {
         if (requestId !== this._dashboardRequest) return
+        const staffPending = Number(dashboard.staffPending || 0)
+        const staffAuditUrl = '/pages/admin/staff-audit/list/index'
         this.setData({
           dashboard,
           overviewStats: buildOverviewStats(dashboard),
-          revenueStats: buildRevenueStats(dashboard)
+          revenueStats: buildRevenueStats(dashboard),
+          staffAuditTodo: staffPending > 0 && canVisit(this.data.adminAccess, staffAuditUrl)
+            ? { count: staffPending, url: staffAuditUrl }
+            : null
         })
       })
       .catch((err) => { if (requestId === this._dashboardRequest) showError(err) })

@@ -66,6 +66,7 @@ module.exports = function createHandler(context) {
     normalizeStaffWorkflow,
     normalizeVideoAuditGuide,
     normalizeWeeklySchedule,
+    notifyAdmins,
     notifyOrderAccepted,
     now,
     orderMatchesCity,
@@ -612,6 +613,18 @@ module.exports = function createHandler(context) {
       await db.collection('staff_profiles').doc(profile._id).update({ data: { promotionStatus: 'pending', promotionApplicationId: created._id, promotionAppliedAt: time, updatedAt: time } })
       return { applicationId: created._id, status: 'pending' }
     }
+    if (action === 'cancelStaffProfileApplication') {
+      const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
+      const profile = existing.data[0]
+      if (!profile) return { success: true }
+      if (!['pending', 'rejected'].includes(profile.auditStatus)) throw new Error('当前状态不可取消申请')
+      await db.collection('staff_profiles').doc(profile._id).remove()
+      const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId: profile._id }).limit(20).get().catch(() => ({ data: [] }))
+      for (const item of identityRes.data || []) {
+        if (item && item._id) await db.collection('staff_identity_verifications').doc(item._id).remove().catch(() => {})
+      }
+      return { success: true }
+    }
     if (action === 'submitStaffProfile') {
       const user = await getUser(openid)
       if (typeof checkRateLimit === 'function') {
@@ -623,7 +636,9 @@ module.exports = function createHandler(context) {
       }
       const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const existingProfile = existing.data[0] || null
-      if (isStaffProfileLocked(existingProfile)) throw new Error('认证资料已锁定，如需更正请联系平台审核')
+      const userHasStaffRole = Array.isArray(user.roles) && user.roles.includes('staff')
+      const canReapplyAfterRoleRemoval = existingProfile && !userHasStaffRole && existingProfile.auditStatus === 'approved'
+      if (isStaffProfileLocked(existingProfile) && !canReapplyAfterRoleRemoval) throw new Error('认证资料已锁定，如需更正请联系平台审核')
       const gender = requireStaffGender(data.gender)
       const realName = safeText(data.realName).trim()
       const phone = safeText(data.phone || user.phone).trim()
@@ -717,6 +732,15 @@ module.exports = function createHandler(context) {
         faceVerifyProvider: '',
         faceVerifyRequestId: ''
       }
+      const isReapplicationAfterRemoval = existingProfile && (existingProfile.auditStatus === 'revoked' || canReapplyAfterRoleRemoval)
+      const depositReset = isReapplicationAfterRemoval ? {
+        depositStatus: 'unpaid',
+        depositPaidAt: null,
+        depositPaidAmount: 0,
+        requireDepositRepay: true,
+        requireDepositRepayReason: '重新申请宠托师需重新缴纳履约保证金'
+      } : {}
+
       const profile = {
         userId: user._id,
         openid,
@@ -748,6 +772,7 @@ module.exports = function createHandler(context) {
         faceVerifyRequestId: identitySummary.faceVerifyRequestId,
         auditStatus: 'pending',
         auditRemark: '',
+        certificationLockedAt: null,
         staffLevel: 'applicant',
         onboardingStatus: 'application_pending',
         videoAuditStatus: 'not_started',
@@ -762,22 +787,41 @@ module.exports = function createHandler(context) {
         internCompletedOrderCount: 0,
         promotionApplicationId: '',
         promotionAppliedAt: null,
+        ...depositReset,
         updatedAt: time
       }
+
+      async function notifyStaffApplicationSubmitted(staffProfileId, isUpdate) {
+        if (typeof notifyAdmins !== 'function') return
+        const title = isUpdate ? '宠托师重新提交入驻申请' : '新的宠托师入驻申请'
+        await notifyAdmins({
+          type: 'staff_application_submitted',
+          title,
+          content: `${realName || '用户'} 提交了宠托师入驻申请，请及时审核。`,
+          level: 'warning',
+          actionUrl: '/pages/admin/staff-audit/list/index',
+          extra: { staffProfileId, openid, realName, phone, auditStatus: 'pending' },
+          idempotencyKey: `staff_application_submitted:${staffProfileId}:${time}`
+        }).catch(() => {})
+      }
+
       if (existing.data[0]) {
         await db.runTransaction(async (tx) => {
           const current = (await tx.collection('staff_profiles').doc(existing.data[0]._id).get()).data
-          if (isStaffProfileLocked(current)) throw new Error('认证资料已锁定，如需更正请联系平台审核')
+          const canUpdateRemovedStaffProfile = current && !userHasStaffRole && current.auditStatus === 'approved'
+          if (isStaffProfileLocked(current) && !canUpdateRemovedStaffProfile) throw new Error('认证资料已锁定，如需更正请联系平台审核')
           await tx.collection('staff_profiles').doc(existing.data[0]._id).update({ data: profile })
         })
         const identityPayload = { staffProfileId: existing.data[0]._id, userId: user._id, openid, realName, gender, phone, idCardNumber, idCardMasked, realNameVerifyStatus, ...identitySummary, auditStatus: 'pending', updatedAt: time }
         const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId: existing.data[0]._id }).limit(1).get()
         if (identityRes.data[0]) await db.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({ data: identityPayload })
         else await db.collection('staff_identity_verifications').add({ data: { ...identityPayload, createdAt: time } })
+        await notifyStaffApplicationSubmitted(existing.data[0]._id, true)
         return { _id: existing.data[0]._id, ...profile }
       }
       const created = await db.collection('staff_profiles').add({ data: { ...profile, createdAt: time } })
       await db.collection('staff_identity_verifications').add({ data: { staffProfileId: created._id, userId: user._id, openid, realName, gender, phone, idCardNumber, idCardMasked, realNameVerifyStatus, ...identitySummary, auditStatus: 'pending', createdAt: time, updatedAt: time } })
+      await notifyStaffApplicationSubmitted(created._id, false)
       return { _id: created._id, ...profile, createdAt: time }
     }
     if (action === 'updateStaffProfileConfig') {

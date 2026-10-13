@@ -53,7 +53,9 @@
       "Bash(command -v miniprogram-ci)",
       "WebFetch(domain:pay.wechatpay.cn)",
       "Bash(xargs -I{} node --check \"/home/ebrook-dev/project/dogcat/{}\")",
-      "Bash(perl -ne 'print if /not ok|failed|error|AssertionError|ERR_ASSERT|Expected|actual|operator/i')"
+      "Bash(perl -ne 'print if /not ok|failed|error|AssertionError|ERR_ASSERT|Expected|actual|operator/i')",
+      "Bash(perl -ne 'print if /not ok|failed|error|AssertionError|ERR_ASSERT|Expected|actual|operator|# +at /i')",
+      "Bash(perl:*)"
     ]
   }
 }

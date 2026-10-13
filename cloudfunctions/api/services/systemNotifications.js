@@ -30,9 +30,13 @@ module.exports = function createService({
 
     const target = ['all', 'client', 'staff'].includes(data.target) ? data.target : 'all'
     const type = ['system', 'notice', 'activity'].includes(data.type) ? data.type : 'system'
-    const level = ['urgent', 'normal'].includes(data.level) ? data.level : 'normal'
-    const targetUrl = safeText(data.targetUrl).trim()
+    const level = ['urgent', 'normal', 'warning', 'info'].includes(data.level) ? data.level : 'normal'
+    const targetUrl = safeText(data.targetUrl || data.actionUrl).trim()
     if (targetUrl && targetUrl.length > 200) throw new Error('跳转链接不能超过 200 字')
+    const targetOpenid = safeText(data.targetOpenid).trim()
+    const targetOpenids = Array.isArray(data.targetOpenids)
+      ? Array.from(new Set(data.targetOpenids.map((item) => safeText(item).trim()).filter(Boolean))).slice(0, 200)
+      : []
 
     const textToCheck = [title, content].filter(Boolean).join(' ')
     if (textToCheck && typeof checkTextSecurity === 'function') {
@@ -41,15 +45,25 @@ module.exports = function createService({
     }
     const rawTime = typeof now === 'function' ? now() : (typeof nowText === 'function' ? nowText() : new Date())
     const time = rawTime instanceof Date ? rawTime.toISOString() : String(rawTime)
+    const extra = data.extra && typeof data.extra === 'object' ? data.extra : {}
+    const idempotencyKey = safeText(data.idempotencyKey).trim()
+    if (idempotencyKey) {
+      const existing = await db.collection('system_notifications').where({ idempotencyKey }).limit(1).get().catch(() => ({ data: [] }))
+      if (existing.data && existing.data[0]) return existing.data[0]
+    }
 
     const doc = {
       title,
       content,
       target,
+      targetOpenid,
+      targetOpenids,
       type,
       targetUrl,
       level,
       status: 'active',
+      extra,
+      idempotencyKey,
       senderAdminId: adminUser._id || '',
       senderAdminOpenid: adminUser.openid || '',
       senderAdminName: adminUser.name || adminUser.nickName || '系统管理员',
@@ -87,8 +101,8 @@ module.exports = function createService({
     const list = all.map((item) => ({
       ...item,
       typeText: formatNotificationType(item.type),
-      targetText: item.target === 'all' ? '全员广播' : (item.target === 'client' ? '用户端' : '宠托师端'),
-      levelText: item.level === 'urgent' ? '加急预警' : '普通通知',
+      targetText: item.targetOpenid || (Array.isArray(item.targetOpenids) && item.targetOpenids.length) ? '指定用户' : (item.target === 'all' ? '全员广播' : (item.target === 'client' ? '用户端' : '宠托师端')),
+      levelText: item.level === 'urgent' ? '加急预警' : (item.level === 'warning' ? '提醒通知' : '普通通知'),
       statusText: item.status === 'revoked' ? '已撤回' : '正常',
       createdAtText: toBeijingString(item.createdAt)
     }))
@@ -114,13 +128,19 @@ module.exports = function createService({
     return { success: true, notificationId }
   }
 
+  function isNoticeVisibleToUser(n, openid, role) {
+    const directed = safeText(n.targetOpenid).trim() === openid || (Array.isArray(n.targetOpenids) && n.targetOpenids.includes(openid))
+    if (directed) return n.target === 'all' || n.target === role
+    return !n.targetOpenid && (!Array.isArray(n.targetOpenids) || n.targetOpenids.length === 0) && (n.target === 'all' || n.target === role)
+  }
+
   /**
    * 用户端或宠托师端获取系统通知列表
    */
   async function listUserSystemNotifications(openid, role = 'client', data = {}) {
     const user = await getUser(openid).catch(() => ({ roles: [] }))
     const activeNotices = await readScopedDocuments('system_notifications', { status: 'active' }, 'createdAt', 'desc')
-    let visible = activeNotices.filter((n) => n.target === 'all' || n.target === role)
+    let visible = activeNotices.filter((n) => isNoticeVisibleToUser(n, openid, role))
 
     // 动态防御与自动修补：若通知指向问卷详情，校验问卷是否处于已发布状态。已关闭或已删除的问卷通知在前台自动屏蔽并下线
     const questionnaireNotices = visible.filter((n) => n.targetUrl && n.targetUrl.includes('questionnaires/detail'))
@@ -158,7 +178,7 @@ module.exports = function createService({
         ...item,
         isRead,
         typeText: formatNotificationType(item.type),
-        levelText: item.level === 'urgent' ? '重要' : '常规',
+        levelText: item.level === 'urgent' ? '重要' : (item.level === 'warning' ? '提醒' : '常规'),
         createdAtText: toBeijingString(item.createdAt)
       }
     })
@@ -208,7 +228,7 @@ module.exports = function createService({
   async function getUserSystemNotificationUnreadCount(openid, role = 'client', userDoc = null) {
     try {
       const activeNotices = await readScopedDocuments('system_notifications', { status: 'active' })
-      const visible = activeNotices.filter((n) => n.target === 'all' || n.target === role)
+      const visible = activeNotices.filter((n) => isNoticeVisibleToUser(n, openid, role))
       if (!visible.length) return 0
 
       const user = userDoc || (await getUser(openid).catch(() => ({ roles: [] })))

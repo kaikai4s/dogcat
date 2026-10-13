@@ -22,7 +22,8 @@ function assertStaffGenderMatches(order, profile) {
 }
 
 function isStaffProfileLocked(profile) {
-  return Boolean(profile && (profile.certificationLockedAt || profile.auditStatus === 'approved' || profile.identityStatus === 'verified'))
+  if (!profile || profile.auditStatus === 'revoked') return false
+  return Boolean(profile.certificationLockedAt || profile.auditStatus === 'approved' || profile.identityStatus === 'verified')
 }
 
 module.exports = { requireStaffGender, normalizeStaffGenderRequirement, matchesStaffGender, assertStaffGenderMatches, isStaffProfileLocked }

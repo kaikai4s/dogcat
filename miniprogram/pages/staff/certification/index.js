@@ -75,6 +75,7 @@ Page({
     profile: null,
     statusTip: '',
     isApproved: false,
+    isSubmittedApplication: false,
     certificationLocked: false,
     canGoBack: false,
     messageUnreadCount: 0,
@@ -110,6 +111,7 @@ Page({
           },
           statusTip: profile.auditRemark || statusText[profile.auditStatus] || '',
           isApproved: profile.auditStatus === 'approved',
+          isSubmittedApplication: ['pending', 'rejected'].includes(profile.auditStatus),
           certificationLocked: profile.certificationLocked === true || profile.auditStatus === 'approved'
         })
       })
@@ -185,6 +187,36 @@ Page({
     if (gender === 'male' || gender === 'female') this.setData({ 'form.gender': gender })
   },
 
+  cancelApplication() {
+    if (!this.data.isSubmittedApplication || this.data.isApproved) return
+    wx.showModal({
+      title: '取消入驻申请',
+      content: '取消后将删除已提交的入驻申请和审核材料记录。如需入驻，可以重新填写并提交。',
+      confirmText: '确认取消',
+      confirmColor: '#ef4444',
+      success: (res) => {
+        if (!res.confirm) return
+        wx.showLoading({ title: '取消中...', mask: true })
+        callFunction('staff', 'cancelStaffProfileApplication', {})
+          .then(() => {
+            wx.hideLoading()
+            this.setData({
+              profile: null,
+              statusTip: '',
+              isSubmittedApplication: false,
+              isApproved: false,
+              certificationLocked: false
+            })
+            wx.showToast({ title: '已取消申请', icon: 'success' })
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            showError(err)
+          })
+      }
+    })
+  },
+
   submit() {
     if (this.data.isApproved) {
       wx.navigateTo({ url: '/pages/staff/training/index' })
@@ -237,7 +269,10 @@ Page({
         wx.hideLoading()
         this.setData({
           profile: withStaffWorkflowText(withAuditText(profile)),
-          statusTip: statusText.pending
+          statusTip: statusText.pending,
+          isSubmittedApplication: true,
+          isApproved: false,
+          certificationLocked: false
         })
         wx.showToast({ title: '实名核验通过，已提交', icon: 'success' })
       })

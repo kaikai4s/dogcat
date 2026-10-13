@@ -166,9 +166,13 @@
   </view>
 
   <view class="action-btn-container" wx:else>
+    <button class="ghost-btn cancel-application-btn" wx:if="{{isSubmittedApplication}}" bindtap="cancelApplication">
+      <text class="remix-icon ri-close-circle-line"></text>
+      <text>取消申请</text>
+    </button>
     <button class="primary-btn submit-btn" bindtap="submit">
       <text class="remix-icon ri-send-plane-fill"></text>
-      <text>提交入驻申请</text>
+      <text>{{isSubmittedApplication ? '重新提交申请' : '提交入驻申请'}}</text>
     </button>
   </view>
 

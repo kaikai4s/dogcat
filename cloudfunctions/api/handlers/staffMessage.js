@@ -10,7 +10,8 @@ module.exports = function createHandler(context) {
     safeText,
     queryMessageThreads,
     queryThreadMessages,
-    queryOrderMessageUnread
+    queryOrderMessageUnread,
+    hydrateThreadOrderStatus
   } = context
   return async function staffMessage(openid, action, data) {
     const user = await getUser(openid)
@@ -40,9 +41,10 @@ module.exports = function createHandler(context) {
         thread = res.data[0]
       }
       if (!thread || thread.staffOpenid !== openid) throw new Error('消息会话不存在')
+      const latestThread = typeof hydrateThreadOrderStatus === 'function' ? await hydrateThreadOrderStatus(thread) : thread
       const result = await queryThreadMessages(thread._id, 'staff', data)
       return {
-        thread: { ...thread, orderStatusText: orderStatusText(thread.orderStatus) },
+        thread: { ...latestThread, orderStatusText: orderStatusText(latestThread.orderStatus) },
         ...result
       }
     }

@@ -142,6 +142,51 @@ module.exports = function createHandler(context) {
     return rows
   }
 
+  function hasStaffRole(user) {
+    return Array.isArray(user && user.roles) && user.roles.includes('staff')
+  }
+
+  async function assertStaffFundsSettledBeforeRoleRemoval(target, nextRoles = []) {
+    if (!hasStaffRole(target) || nextRoles.includes('staff')) return
+
+    const earnings = (await db.collection('staff_earnings')
+      .where({ staffOpenid: target.openid })
+      .limit(100)
+      .get().catch(() => ({ data: [] }))).data || []
+    const unsettledEarningStatuses = new Set(['pending', 'available', 'withdrawing', 'frozen'])
+    const unsettledEarnings = earnings.filter((earning) => unsettledEarningStatuses.has(safeText(earning.status).trim()) && earning.isMock !== true && earning.paymentChannel !== 'mock')
+    const earningAmount = unsettledEarnings.reduce((sum, earning) => sum + Number(earning.amount || 0), 0)
+    if (Math.round(earningAmount * 100) > 0) {
+      throw new Error(`该宠托师收益尚未结清，可处理金额 ¥${earningAmount.toFixed(2)}。请先在财务管理完成提现打款、驳回、冻结处理或收益结算后再移除宠托师身份`)
+    }
+
+    const withdraws = (await db.collection('withdraw_requests')
+      .where({ staffOpenid: target.openid })
+      .limit(100)
+      .get().catch(() => ({ data: [] }))).data || []
+    const pendingWithdraw = withdraws.find((item) => ['pending', 'approved', 'processing'].includes(safeText(item.status).trim()))
+    if (pendingWithdraw) {
+      const amount = Number(pendingWithdraw.amount || 0).toFixed(2)
+      throw new Error(`该宠托师存在未完成提现申请 ¥${amount}。请先在财务管理完成打款或驳回后再移除宠托师身份`)
+    }
+
+    const deposits = (await db.collection('staff_deposits')
+      .where({ staffOpenid: target.openid })
+      .orderBy('createdAt', 'desc')
+      .limit(5)
+      .get().catch(() => ({ data: [] }))).data || []
+    const unsettled = deposits.find((deposit) => {
+      const available = Math.round(Number(deposit.availableRefundAmount || 0) * 100)
+      const status = safeText(deposit.status).trim()
+      const refundStatus = safeText(deposit.refundStatus).trim()
+      return available > 0 || ['paid', 'partially_refunded', 'refund_requested', 'refund_approved'].includes(status) || ['requested', 'approved', 'processing'].includes(refundStatus)
+    })
+    if (unsettled) {
+      const amount = Number(unsettled.availableRefundAmount || 0).toFixed(2)
+      throw new Error(`该宠托师保证金尚未处理完成，可退余额 ¥${amount}。请先在财务管理完成扣除/退款后再移除宠托师身份`)
+    }
+  }
+
   async function readMonthlyEntities(collectionName, monthStartDate, monthStartText, projection = null) {
     if (!db.command || typeof db.command.gte !== 'function') {
       return readAll(collectionName, {}, 2000, projection)
@@ -479,6 +524,7 @@ module.exports = function createHandler(context) {
       const status = safeText(data.status || target.status || 'active').trim()
       if (!['active', 'disabled'].includes(status)) throw new Error('用户状态无效')
       const roles = normalizeEditableRoles(data.roles)
+      await assertStaffFundsSettledBeforeRoleRemoval(target, roles)
       await protectAdminOwner(target, roles, status)
       await assertAdminRoleChangeAllowed(target, roles, openid)
       const activeRole = roles.includes(data.activeRole) ? data.activeRole : (roles.includes(target.activeRole) ? target.activeRole : roles[0])
@@ -1863,9 +1909,26 @@ module.exports = function createHandler(context) {
       if (staffUser && status === 'rejected') {
         const existingRoles = Array.isArray(staffUser.roles) ? staffUser.roles : ['client']
         const roles = existingRoles.filter((role) => role !== 'staff')
+        await assertStaffFundsSettledBeforeRoleRemoval(staffUser, roles)
         const userUpdate = { roles: roles.length ? roles : ['client'], updatedAt: time }
         if (staffUser.activeRole === 'staff') userUpdate.activeRole = 'client'
         await db.collection('users').doc(staffUser._id).update({ data: userUpdate })
+      }
+      if (typeof sendSystemNotification === 'function' && profile.openid) {
+        const approved = status === 'approved'
+        await sendSystemNotification({
+          target: 'client',
+          targetOpenid: profile.openid,
+          type: 'notice',
+          level: approved ? 'normal' : 'warning',
+          title: approved ? '宠托师入驻审核通过' : '宠托师入驻审核未通过',
+          content: approved
+            ? '你的宠托师入驻资料审核已通过。请继续完成保证金、培训答题、视频学习和线上视频审核。'
+            : `你的宠托师入驻资料审核未通过。${auditRemark ? `原因：${auditRemark}` : '请根据平台提示修改资料后重新提交。'}`,
+          targetUrl: '/pages/staff/certification/index',
+          extra: { staffProfileId, auditStatus: status },
+          idempotencyKey: `staff_audit_result:${staffProfileId}:${status}:${time}`
+        }, admin).catch(() => {})
       }
       await logAdmin(admin, 'staff_profile', staffProfileId, 'auditStaff', { status })
       return { staffProfileId, auditStatus: status }
@@ -1905,11 +1968,19 @@ module.exports = function createHandler(context) {
         throw new Error('该宠托师存在尚未结案的客诉或纠纷，暂不可撤销身份')
       }
 
+      const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
+      const staffUser = userRes.data[0]
+      if (staffUser) {
+        const rolesAfterRemoval = (Array.isArray(staffUser.roles) ? staffUser.roles : ['client']).filter((role) => role !== 'staff')
+        await assertStaffFundsSettledBeforeRoleRemoval(staffUser, rolesAfterRemoval)
+      }
+
       const time = now()
       const auditRemark = safeText(data.auditRemark || data.remark).trim() || '管理员移除宠托师身份'
       const update = {
         auditStatus: 'revoked',
         auditRemark,
+        certificationLockedAt: null,
         staffLevel: 'applicant',
         onboardingStatus: 'application_pending',
         videoAuditStatus: 'not_started',
@@ -1928,8 +1999,6 @@ module.exports = function createHandler(context) {
         updatedAt: time
       }
       await db.collection('staff_profiles').doc(staffProfileId).update({ data: update })
-      const userRes = await db.collection('users').where({ openid: profile.openid }).limit(1).get()
-      const staffUser = userRes.data[0]
       if (staffUser) {
         const roles = (Array.isArray(staffUser.roles) ? staffUser.roles : ['client']).filter((role) => role !== 'staff')
         const userUpdate = { roles: roles.length ? roles : ['client'], updatedAt: time }

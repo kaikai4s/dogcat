@@ -25,6 +25,17 @@
     <view class="banner-btn">{{urgentNotice.actionText}}</view>
   </view>
 
+  <view class="staff-audit-todo-card" wx:if="{{staffAuditTodo}}" data-url="{{staffAuditTodo.url}}" bindtap="go">
+    <view class="todo-left">
+      <view class="todo-icon remix-icon ri-shield-check-fill"></view>
+      <view>
+        <view class="todo-title">有新的宠托师申请待审核</view>
+        <view class="todo-desc">{{staffAuditTodo.count}} 位申请人等待资质审核，点击进入员工审核。</view>
+      </view>
+    </view>
+    <view class="todo-action">去审核</view>
+  </view>
+
   <view class="stats-grid admin-stats-grid" wx:if="{{dashboard}}">
     <view class="stat-card" wx:for="{{overviewStats}}" wx:key="label">
       <view class="stat-number">{{item.value}}</view>

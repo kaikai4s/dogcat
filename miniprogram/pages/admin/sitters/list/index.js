@@ -499,7 +499,7 @@ Page({
     if (!staffProfileId) return
     wx.showModal({
       title: '移除宠托师身份',
-      content: '确认后该用户会失去宠托师角色和接单资格；再次申请需重新审核、答题、观看培训视频并通过视频审核。',
+      content: '确认后该用户会失去宠托师角色和接单资格。若该宠托师仍有可提现收益、提现申请、冻结收益或保证金未处理，系统会要求先在财务管理结清资金。',
       confirmText: '确认移除',
       confirmColor: '#ef4444',
       success: (res) => {
