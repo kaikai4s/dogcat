@@ -587,19 +587,20 @@ Page({
     const id = e.currentTarget.dataset.id
     const approved = e.currentTarget.dataset.approved === true || e.currentTarget.dataset.approved === 'true'
     const defaultAmount = e.currentTarget.dataset.amount || ''
+    const amountSource = String(e.currentTarget.dataset.amountSource || '').trim()
     wx.showModal({
       title: approved ? '审核通过物资报销' : '驳回物资报销申请',
-      content: approved ? `确认审核通过物资报销？默认核准金额¥${defaultAmount}，审批后待实际付款。` : '确认驳回该报销申请？',
-      editable: true,
-      placeholderText: approved ? `核准金额（留空默认¥${defaultAmount}）` : '请输入驳回原因',
+      content: approved ? `确认按后台固定金额 ¥${defaultAmount} 审核通过？审批后待实际付款。` : '确认驳回该报销申请？',
+      editable: !approved,
+      placeholderText: approved ? '' : '请输入驳回原因',
       success: (res) => {
         if (!res.confirm) return
         let approvedAmount = null
         let rejectReason = ''
         if (approved) {
-          approvedAmount = res.content && res.content.trim() ? Number(res.content.trim()) : Number(defaultAmount)
-          if (!Number.isFinite(approvedAmount) || approvedAmount <= 0) {
-            wx.showToast({ title: '请输入有效核准金额', icon: 'none' })
+          approvedAmount = amountSource === 'config' ? undefined : Number(defaultAmount)
+          if (amountSource !== 'config' && (!Number.isFinite(approvedAmount) || approvedAmount <= 0)) {
+            wx.showToast({ title: '报销金额配置无效', icon: 'none' })
             return
           }
         } else {

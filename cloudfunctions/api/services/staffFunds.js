@@ -273,7 +273,10 @@ module.exports = function createService({ db, crypto, now, safeText }) {
       if (!app) throw new Error('报销申请不存在')
       const paying = action === 'paySupplyReimbursement'
       const target = paying ? 'paid' : data.approved === true ? 'approved' : 'rejected'
-      const amount = paying ? money(app.approvedAmount, true) : target === 'approved' ? money(data.approvedAmount ?? app.amount, true) : 0
+      if (!paying && target === 'approved' && app.amountSource === 'config' && data.approvedAmount !== undefined && money(data.approvedAmount, true) !== money(app.amount, true)) {
+        throw new Error('审批报销金额不能大于宠托师申请金额；报销金额由后台配置固定，管理员不能修改申请金额')
+      }
+      const amount = paying ? money(app.approvedAmount, true) : target === 'approved' ? money(app.amountSource === 'config' ? app.amount : (data.approvedAmount ?? app.amount), true) : 0
       if (amount > money(app.amount, true)) throw new Error('审批报销金额不能大于宠托师申请金额')
       if (app.status === target) {
         if ((paying && app.paymentReference !== proof) || (target === 'approved' && money(app.approvedAmount) !== amount)) throw new Error('重复操作参数不一致')

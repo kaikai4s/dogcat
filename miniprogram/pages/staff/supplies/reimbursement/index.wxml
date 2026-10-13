@@ -31,6 +31,8 @@
     <view class="muted">{{supplies.serviceReminder}}</view>
     <view class="muted" wx:if="{{supplies.reimbursementEnabled === false}}">平台暂未开放报销申请。</view>
     <view class="muted" wx:if="{{profile && profile.staffLevel !== 'certified'}}">当前尚未正式认证，暂不能提交申请。</view>
+    <view class="muted" wx:if="{{qualification && !qualification.qualificationMet}}">报销资格进度：{{qualification.progressCount}} / {{qualification.requiredCount}}（{{qualification.mode === 'invite_count' ? '有效邀请绑定人数' : '已完成订单数'}}）</view>
+    <view class="muted" wx:if="{{supplies.purchaseRequired && !purchaseMet}}">请先在平台线上店铺购买一次性用品，完成支付后再申请。</view>
   </view>
 
   <view class="card">
@@ -58,20 +60,22 @@
   </view>
 
   <view class="card" wx:if="{{canApply}}">
-    <view class="card-title">提交首次采购凭证</view>
-    <view class="privacy-notice">请仅上传本人首次采购的订单 / 支付截图，保留物品、金额、日期及核验所需订单信息。上传前遮挡无关手机号、地址、账户余额等个人信息，不要上传他人凭证。凭证仅供本次报销审核，请勿公开分享。</view>
+    <view class="card-title">提交线上店铺采购报销</view>
+    <view class="privacy-notice">报销金额由平台后台统一设置，每位宠托师仅可申请一次。请先在平台线上店铺购买一次性用品并选择已支付订单。</view>
+    <picker wx:if="{{eligibleMallOrders.length}}" mode="selector" range-key="orderNo" range="{{eligibleMallOrders}}" bindchange="selectMallOrder">
+      <view class="form-input">{{mallOrderId ? '已选择线上订单' : '请选择线上用品订单'}}</view>
+    </picker>
     <view class="receipt-grid">
       <view class="receipt" wx:for="{{receipts}}" wx:key="fileId">
         <image class="receipt-image" src="{{item.preview}}" mode="aspectFill" data-index="{{index}}" bindtap="previewReceipt" />
         <button class="remove-btn" data-index="{{index}}" bindtap="removeReceipt" disabled="{{busy || uploading}}">移除</button>
       </view>
     </view>
-    <button class="ghost-btn" bindtap="chooseReceipts" disabled="{{busy || uploading || loading || receipts.length >= 9}}" loading="{{uploading}}">上传截图（{{receipts.length}}/9）</button>
-    <view class="field-label">申请金额（元）</view>
-    <input class="form-input" type="digit" value="{{amount}}" bindinput="inputAmount" placeholder="按首次采购实际金额填写" disabled="{{busy || uploading}}" maxlength="12" />
+    <button class="ghost-btn" bindtap="chooseReceipts" disabled="{{busy || uploading || loading || receipts.length >= 9}}" loading="{{uploading}}">上传截图（可选，{{receipts.length}}/9）</button>
+    <view class="muted">本次固定报销金额：¥{{supplies.reimbursementAmount || supplies.maxReimbursementAmount}}</view>
     <view class="field-label">申请备注</view>
     <textarea class="form-textarea" value="{{remark}}" bindinput="inputRemark" placeholder="可填写采购明细、日期及其他说明" maxlength="500" disabled="{{busy || uploading}}" />
-    <button class="primary-btn" bindtap="submit" loading="{{busy}}" disabled="{{busy || uploading || loading || !receipts.length}}">提交报销申请</button>
+    <button class="primary-btn" bindtap="submit" loading="{{busy}}" disabled="{{busy || uploading || loading}}">提交报销申请</button>
   </view>
   <view class="card muted" wx:elif="{{!loading && !loadError}}">当前不可提交新申请。需正式认证、平台开放且服务端确认具备首次报销资格；已有申请请查看上方进度。</view>
 

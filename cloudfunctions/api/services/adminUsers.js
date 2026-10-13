@@ -8,7 +8,7 @@ module.exports = function createService({
 }) {
   async function getUserManageStats(user) {
     const openid = user.openid
-    const [pets, addresses, coupons, checkins, pointLogs, rewardMails, clientOrders, staffOrders, favorites, homeSecurity, retroLogs, invitesOut, invitesIn, staffProfiles] = await Promise.all([
+    const [pets, addresses, coupons, checkins, pointLogs, rewardMails, clientOrders, staffOrders, favorites, homeSecurity, retroLogs, invitesOut, invitesIn, staffProfiles, assetEarnings] = await Promise.all([
       countByQuery('pets', { openid }),
       countByQuery('user_addresses', { openid }),
       countByQuery('user_coupons', { openid }),
@@ -22,9 +22,10 @@ module.exports = function createService({
       countByQuery('retro_card_logs', { openid }),
       countByQuery('user_invites', { inviterOpenid: openid }),
       countByQuery('user_invites', { invitedOpenid: openid }),
-      countByQuery('staff_profiles', { openid })
+      countByQuery('staff_profiles', { openid }),
+      countByQuery('user_asset_earnings', { userOpenid: openid })
     ])
-    return { pets, addresses, coupons, checkins, pointLogs, rewardMails, clientOrders, staffOrders, favorites, homeSecurity, retroLogs, invitesOut, invitesIn, staffProfiles }
+    return { pets, addresses, coupons, checkins, pointLogs, rewardMails, clientOrders, staffOrders, favorites, homeSecurity, retroLogs, invitesOut, invitesIn, staffProfiles, assetEarnings }
   }
 
   function normalizeEditableRoles(roles) {
@@ -143,6 +144,10 @@ module.exports = function createService({
     if (activeWithdrawCount > 0) {
       throw new Error('该宠托师存在待处理的提现申请，无法删除')
     }
+    const activeUserAssetWithdrawCount = await countByQuery('withdraw_requests', {
+      assetType: 'user', userOpenid: target.openid, status: inOp(activeWithdrawStatuses)
+    }).catch(() => 0)
+    if (activeUserAssetWithdrawCount > 0) throw new Error('该用户存在待处理的资产提现申请，无法删除')
   }
 
   async function cleanupUserPersonalData(targetOpenid) {
@@ -153,6 +158,7 @@ module.exports = function createService({
     }
     cleanup.userInvitesAsInviter = await removeByQuery('user_invites', { inviterOpenid: targetOpenid })
     cleanup.userInvitesAsInvited = await removeByQuery('user_invites', { invitedOpenid: targetOpenid })
+    cleanup.userAssetEarnings = await removeByQuery('user_asset_earnings', { userOpenid: targetOpenid })
     const staffProfiles = await readScopedDocuments('staff_profiles', { openid: targetOpenid })
     await Promise.all(staffProfiles.map((profile) => db.collection('staff_profiles').doc(profile._id).update({ data: { auditStatus: 'rejected', auditRemark: '用户已删除', isFeatured: false, featuredAt: '', featuredByOpenid: '', updatedAt: now() } })))
     cleanup.staffProfilesMarkedDeleted = staffProfiles.length

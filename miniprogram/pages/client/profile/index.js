@@ -387,6 +387,12 @@ Page({
       .catch(() => {})
   },
 
+  openAssets() {
+    ensureLogin({ content: '登录后可查看资产和邀请收益。' })
+      .then(() => wx.navigateTo({ url: '/pages/client/profile/assets/index' }))
+      .catch(() => {})
+  },
+
   editProfile() {
     ensureLogin({ content: '登录后可编辑个人资料。' })
       .then(() => wx.navigateTo({ url: '/pages/client/profile/edit/index?from=client' }))

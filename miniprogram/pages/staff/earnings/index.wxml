@@ -37,6 +37,11 @@
     <view class="withdraw-limit-tip" style="margin-top: 8rpx; color: #78716c;">⏳ 平台结算保护期：订单完成后收益先进入【待结算】，到达缓冲期且无未决售后纠纷后自动转入【可提现余额】。</view>
     <view class="withdraw-limit-tip" wx:if="{{balance.hasMockEarnings}}" style="margin-top: 8rpx; color: #d97706;">🧪 模拟测试收益：¥{{balance.mockTotalText}}（模拟支付订单未发生真实微信支付交易，不计入可提现余额与对账结算）。</view>
   </view>
+  <view class="card revenue-card" wx:if="{{balance.assetSummary}}">
+    <view class="card-subtitle"><text class="remix-icon ri-user-add-line sub-icon"></text><text>邀请收益（独立资金来源）</text></view>
+    <view class="stats-grid"><view class="stat-card primary-stat"><view class="stat-number">¥{{balance.assetSummary.availableAmountText}}</view><view class="stat-label">可提现邀请收益</view></view><view class="stat-card"><view class="stat-number">¥{{balance.assetSummary.totalAmountText}}</view><view class="stat-label">累计邀请收益</view></view></view>
+    <view class="withdraw-limit-tip">邀请绑定收益和宠托师订单收益分别记账，提现审核时会标明收益来源。</view>
+  </view>
 
   <view class="card form-card">
     <view class="card-subtitle">

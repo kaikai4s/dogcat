@@ -159,6 +159,10 @@
         </view>
         <view class="profile-grid-label">我的积分</view>
       </view>
+      <view class="profile-grid-item interactive" bindtap="openAssets">
+        <view class="profile-icon-wrap coral"><view class="remix-icon ri-wallet-3-fill"></view></view>
+        <view class="profile-grid-label">我的资产</view>
+      </view>
       <view class="profile-grid-item interactive" bindtap="openOfficialAccountModal" wx:if="{{officialAccount.enabled}}">
         <view class="profile-icon-wrap teal">
           <view class="remix-icon ri-wechat-fill"></view>

@@ -33,6 +33,10 @@ Page({
     profile: null,
     application: null,
     supplies: null,
+    qualification: null,
+    eligibleMallOrders: [],
+    mallOrderId: '',
+    purchaseMet: false,
     canApply: false,
     loading: false,
     loadError: false,
@@ -90,6 +94,10 @@ Page({
         profile,
         application,
         supplies: result.supplies || {},
+        qualification: result.qualification || null,
+        eligibleMallOrders: result.eligibleMallOrders || [],
+        mallOrderId: (result.eligibleMallOrders && result.eligibleMallOrders[0] && result.eligibleMallOrders[0]._id) || '',
+        purchaseMet: result.purchaseMet !== false,
         canApply: Boolean(result.canApply && profile && profile.staffLevel === 'certified' && (!result.supplies || result.supplies.reimbursementEnabled !== false)),
         statusLabel: application ? (approved ? '审核通过，等待平台付款' : (reimbursementStatusText[status] || application.statusText || '处理中')) : '暂无申请',
         failureReason: application && (application.rejectReason || application.failureReason || application.failReason || application.reason) || '',
@@ -110,6 +118,10 @@ Page({
 
   inputAmount(e) {
     this.setData({ amount: e.detail.value })
+  },
+
+  selectMallOrder(e) {
+    this.setData({ mallOrderId: e.detail.value ? this.data.eligibleMallOrders[e.detail.value]._id : '' })
   },
 
   inputRemark(e) {
@@ -202,19 +214,9 @@ Page({
 
   async submit() {
     if (!this.data.canApply || this.data.loading || this.data.busy || this.data.uploading) return
-    const amountText = this.data.amount.trim()
-    const amount = Number(amountText)
-    if (!/^\d+(\.\d{1,2})?$/.test(amountText) || !Number.isFinite(amount) || amount <= 0) {
-      wx.showToast({ title: '请填写有效金额，最多两位小数', icon: 'none' })
-      return
-    }
-    const maxCap = (this.data.supplies && this.data.supplies.maxReimbursementAmount) || 200
-    if (amount > maxCap) {
-      wx.showToast({ title: `报销金额不能超过上限 ¥${maxCap}`, icon: 'none' })
-      return
-    }
-    if (!this.data.receipts.length) {
-      wx.showToast({ title: '请上传首次购买截图凭证', icon: 'none' })
+    const purchaseRequired = this.data.supplies && this.data.supplies.purchaseRequired === true
+    if (purchaseRequired && !this.data.mallOrderId) {
+      wx.showToast({ title: '请选择线上用品订单', icon: 'none' })
       return
     }
     this.setData({ busy: true })
@@ -222,7 +224,7 @@ Page({
     try {
       await callFunction('staff', 'submitSupplyReimbursement', {
         mediaFileIds: this.data.receipts.map((item) => item.fileId),
-        amount,
+        mallOrderId: this.data.mallOrderId,
         remark: this.data.remark.trim(),
         clientRequestId: `req_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
       })

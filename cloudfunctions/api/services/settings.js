@@ -186,6 +186,14 @@ module.exports = function createService({
       staffTraining: normalizeStaffTrainingConfig(value.staffTraining),
       staffDeposit: normalizeStaffDepositConfig(value.staffDeposit),
       staffSupplies: normalizeStaffSuppliesConfig(value.staffSupplies),
+      invitation: {
+        enabled: (value.invitation || value.userAssets || {}).enabled === true,
+        rewardAmount: Math.round(Math.max(Number((value.invitation || value.userAssets || {}).rewardAmount || 0), 0) * 100) / 100,
+        userMinWithdrawAmount: Math.round(Math.max(Number((value.invitation || value.userAssets || {}).userMinWithdrawAmount ?? (value.invitation || value.userAssets || {}).minWithdrawAmount ?? 10), 0) * 100) / 100,
+        reimbursementMode: ['order_count', 'invite_count'].includes((value.invitation || value.userAssets || {}).reimbursementMode) ? (value.invitation || value.userAssets || {}).reimbursementMode : 'order_count',
+        reimbursementOrderCount: Math.max(Math.round(Number((value.invitation || value.userAssets || {}).reimbursementOrderCount || 0)), 0),
+        reimbursementInviteCount: Math.max(Math.round(Number((value.invitation || value.userAssets || {}).reimbursementInviteCount || 0)), 0)
+      },
       homeHeroCarousel: normalizeHomeHeroCarousel(value.homeHeroCarousel),
       homePage: normalizeHomePageConfig(value.homePage),
       payment: normalizePaymentConfig(payment, existingPayment, includeSecrets),
@@ -308,6 +316,11 @@ module.exports = function createService({
       if (!Number.isFinite(withdrawFeeRate) || withdrawFeeRate < 0 || withdrawFeeRate > 1) {
         throw new Error('【结算设置】提现手续费比例必须在 0-1 之间')
       }
+    }
+    const invitation = settings.invitation || settings.userAssets || {}
+    const invitationAmounts = [invitation.rewardAmount, invitation.userMinWithdrawAmount]
+    if (invitationAmounts.some((value) => value !== undefined && (!Number.isFinite(Number(value)) || Number(value) < 0 || Math.abs(Number(value) * 100 - Math.round(Number(value) * 100)) > 1e-7))) {
+      throw new Error('【邀请活动设置】收益和最低提现金额必须是最多两位小数的非负金额')
     }
     const time = now()
     const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()

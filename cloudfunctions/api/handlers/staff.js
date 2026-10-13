@@ -1628,11 +1628,24 @@ module.exports = function createHandler(context) {
       const res = await db.collection('staff_supply_reimbursements').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
       const application = res.data && res.data[0] || null
       const isCertified = Boolean(profile && profile.auditStatus === 'approved' && profile.staffLevel === 'certified')
-      const canApply = Boolean(!application && isCertified && supplies.reimbursementEnabled !== false)
+      const completedOrders = (await db.collection('orders').where({ staffOpenid: openid }).limit(500).get().catch(() => ({ data: [] }))).data || []
+      const completedOrderCount = completedOrders.filter((order) => order.status === 'completed').length
+      const inviteRows = (await db.collection('user_invites').where({ inviterOpenid: openid }).limit(1000).get().catch(() => ({ data: [] }))).data || []
+      const reimbursementMode = supplies.reimbursementMode || 'order_count'
+      const requiredCount = reimbursementMode === 'invite_count' ? Number(supplies.reimbursementInviteCount || 0) : Number(supplies.reimbursementOrderCount || 0)
+      const progressCount = reimbursementMode === 'invite_count' ? inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length : completedOrderCount
+      const mallOrders = (await db.collection('mall_orders').where({ clientOpenid: openid }).limit(100).get().catch(() => ({ data: [] }))).data || []
+      const eligibleMallOrders = mallOrders.filter((order) => ['paid', 'pending_ship', 'shipped', 'completed', 'received'].includes(order.status))
+      const qualificationMet = requiredCount <= 0 || progressCount >= requiredCount
+      const purchaseMet = supplies.purchaseRequired === false || eligibleMallOrders.length > 0
+      const canApply = Boolean(!application && isCertified && supplies.reimbursementEnabled !== false && qualificationMet && purchaseMet)
       return {
         application,
         canApply,
-        supplies
+        supplies,
+        qualification: { mode: reimbursementMode, requiredCount, progressCount, completedOrderCount, eligibleInviteCount: inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length, qualificationMet },
+        eligibleMallOrders: eligibleMallOrders.map((order) => ({ _id: order._id, orderNo: order.orderNo || '', status: order.status, items: order.items || [], createdAt: order.createdAt || '' })),
+        purchaseMet
       }
     }
     if (action === 'submitSupplyReimbursement') {
@@ -1649,24 +1662,33 @@ module.exports = function createHandler(context) {
       const settings = await getSystemSettings()
       const supplies = settings.staffSupplies || normalizeStaffSuppliesConfig()
       if (supplies.reimbursementEnabled === false) throw new Error('用品报销申请暂未开放')
+      const completedOrders = (await db.collection('orders').where({ staffOpenid: openid }).limit(500).get().catch(() => ({ data: [] }))).data || []
+      const inviteRows = (await db.collection('user_invites').where({ inviterOpenid: openid }).limit(1000).get().catch(() => ({ data: [] }))).data || []
+      const mode = supplies.reimbursementMode || 'order_count'
+      const requiredCount = mode === 'invite_count' ? Number(supplies.reimbursementInviteCount || 0) : Number(supplies.reimbursementOrderCount || 0)
+      const progressCount = mode === 'invite_count' ? inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length : completedOrders.filter((order) => order.status === 'completed').length
+      if (requiredCount > 0 && progressCount < requiredCount) throw new Error(mode === 'invite_count' ? `还需邀请 ${requiredCount - progressCount} 人绑定邀请码后才能申请报销` : `还需完成 ${requiredCount - progressCount} 笔订单后才能申请报销`)
       const existing = await db.collection('staff_supply_reimbursements').where({ staffOpenid: openid }).limit(1).get()
       if (existing.data && existing.data.length > 0) {
         throw new Error('每位宠托师仅限申请一次首次宠物用品报销，后续服务用品须自备自费')
       }
       const mediaFileIds = Array.isArray(data.mediaFileIds) ? data.mediaFileIds.filter(Boolean) : []
-      if (!mediaFileIds.length) throw new Error('请上传首次购买凭证截图')
       if (mediaFileIds.length > 9) throw new Error('凭证截图最多上传 9 张')
       if (mediaFileIds.length && typeof checkImageSecurity === 'function') {
         await Promise.all(mediaFileIds.map((fileId) => checkImageSecurity(openid, fileId, { scene: 1, label: '用品报销凭证' })))
       }
-      const amount = Number(data.amount)
-      if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) {
-        throw new Error('请填写有效的报销金额，最多两位小数')
+      const mallOrderId = safeText(data.mallOrderId).trim()
+      if (mallOrderId) {
+        const mallOrder = (await db.collection('mall_orders').doc(mallOrderId).get().catch(() => ({ data: null }))).data
+        if (!mallOrder || mallOrder.clientOpenid !== openid || !['paid', 'pending_ship', 'shipped', 'completed', 'received'].includes(mallOrder.status)) throw new Error('请选择本人已支付的线上用品订单')
       }
-      const maxCap = supplies.maxReimbursementAmount || 200
-      if (amount > maxCap) {
-        throw new Error(`首次用品报销金额不能超过上限 ¥${maxCap}`)
-      }
+      if (supplies.purchaseRequired !== false && !mallOrderId) throw new Error('请先在平台线上店铺购买一次性用品，并选择对应订单')
+      const fixedAmount = Number(supplies.reimbursementAmount || supplies.maxReimbursementAmount || 200)
+      // Keep legacy callers working during rollout; the new app flow omits amount and
+      // always uses the backend-configured fixed amount.
+      const amount = data.amount !== undefined && !mallOrderId ? Number(data.amount) : fixedAmount
+      if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) throw new Error('后台报销金额配置不正确')
+      if (data.amount !== undefined && !mallOrderId && amount > Number(supplies.maxReimbursementAmount || 200)) throw new Error(`首次用品报销金额不能超过上限 ¥${supplies.maxReimbursementAmount || 200}`)
       const remark = safeText(data.remark).trim()
       if (remark.length > 500) throw new Error('报销备注不能超过 500 字')
       if (remark && typeof checkTextSecurity === 'function') {
@@ -1678,6 +1700,9 @@ module.exports = function createHandler(context) {
         staffUserId: user._id,
         staffProfileId: profile._id,
         mediaFileIds,
+        mallOrderId,
+        purchaseVerified: Boolean(mallOrderId),
+        amountSource: mallOrderId || data.amount === undefined ? 'config' : 'legacy',
         amount,
         approvedAmount: null,
         remark,

@@ -1,6 +1,7 @@
 module.exports = function createHandler(context) {
   const {
     bindInviteRelation,
+    bindInviteCode,
     checkImageSecurity,
     checkRateLimit,
     checkTextSecurity,
@@ -296,6 +297,10 @@ module.exports = function createHandler(context) {
       if (!Array.isArray(user.roles) || !user.roles.includes(data.role)) throw new Error('当前账号无此角色权限')
       await db.collection('users').doc(user._id).update({ data: { activeRole: data.role, updatedAt: now() } })
       return { ...user, activeRole: data.role }
+    }
+
+    if (action === 'bindInviteCode') {
+      return bindInviteCode(openid, data)
     }
 
     throw new Error('未知 auth 操作')

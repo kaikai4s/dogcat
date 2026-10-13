@@ -86,7 +86,8 @@
       "name": "client-profile",
       "pages": [
         "index",
-        "edit/index"
+        "edit/index",
+        "assets/index"
       ]
     },
     {

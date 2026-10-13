@@ -1,6 +1,8 @@
 module.exports = function createService({
   db,
   getOptionalUser,
+  getSystemSettings,
+  grantInviteReward,
   grantRetroCards,
   incUpdateValue,
   normalizeMemberBadgeStyle,
@@ -202,10 +204,35 @@ module.exports = function createService({
       await db.collection('users').doc(user._id).update({ data: { inviteCode, updatedAt: time } })
       currentUser = { ...currentUser, inviteCode, updatedAt: time }
     }
+    if (safeText(currentUser.inviterOpenid).trim()) {
+      // The binding is immutable, but a transient ledger write failure should be
+      // repairable on a later login without creating a second reward.
+      if (typeof grantInviteReward === 'function') {
+        try {
+          const existingRes = await db.collection('user_invites').where({ invitedOpenid: currentUser.openid }).limit(1).get()
+          const existingInvite = existingRes.data && existingRes.data[0]
+          if (existingInvite) {
+            const settings = await getSystemSettings()
+            await grantInviteReward(existingInvite, { settings: settings.invitation || settings.userAssets || settings })
+          }
+        } catch (_) {}
+      }
+      return currentUser
+    }
     const inviter = await resolveInviter(data)
     if (!inviter || inviter.openid === currentUser.openid) return currentUser
 
     const inviteDocId = `invite_${currentUser.openid}`
+    const bindingSource = safeText(data.bindingSource || (data.inviteCode ? 'share' : 'manual')).trim() || 'manual'
+    let inviterStaffEligibleAt = ''
+    try {
+      const profileRes = await db.collection('staff_profiles').where({ openid: inviter.openid }).limit(1).get()
+      const profile = profileRes.data && profileRes.data[0]
+      const depositOkay = profile && (profile.depositRequired !== true || profile.depositStatus === 'paid')
+      if (profile && profile.auditStatus === 'approved' && profile.staffLevel === 'certified' && depositOkay && !['requested', 'approved', 'exited'].includes(profile.exitStatus)) {
+        inviterStaffEligibleAt = profile.certifiedAt || profile.certificationLockedAt || profile.updatedAt || time
+      }
+    } catch (_) {}
 
     const executeBind = async (tx) => {
       const reader = tx || db
@@ -221,7 +248,7 @@ module.exports = function createService({
         existing = queryRes.data && queryRes.data[0]
       }
       if (existing) {
-        return { bound: false, inviterOpenid: existing.inviterOpenid || currentUser.inviterOpenid || '' }
+        return { bound: false, inviterOpenid: existing.inviterOpenid || currentUser.inviterOpenid || '', existing }
       }
 
       const inviteRecord = {
@@ -232,6 +259,11 @@ module.exports = function createService({
         rewarded: true,
         rewardType: 'retro_card',
         rewardCount: 1,
+        bindingSource,
+        inviterStaffEligibleAt,
+        eligibleForSupplyReimbursement: Boolean(inviterStaffEligibleAt),
+        rewardAmount: 0,
+        rewardEarningId: '',
         createdAt: time,
         updatedAt: time
       }
@@ -267,7 +299,7 @@ module.exports = function createService({
         }
       })
 
-      return { bound: true, inviterOpenid: inviter.openid }
+      return { bound: true, inviterOpenid: inviter.openid, inviteRecord }
     }
 
     let result = null
@@ -283,6 +315,17 @@ module.exports = function createService({
       result = await executeBind(null)
     }
 
+    const persistedInvite = await db.collection('user_invites').doc(inviteDocId).get().catch(() => ({ data: null }))
+    const rawBoundInvite = (result && (result.inviteRecord || result.existing)) || (persistedInvite && persistedInvite.data)
+    const boundInvite = rawBoundInvite && { ...rawBoundInvite, _id: rawBoundInvite._id || inviteDocId }
+    if (boundInvite && typeof grantInviteReward === 'function') {
+      try {
+        const settings = await getSystemSettings()
+        await grantInviteReward(boundInvite, { settings: settings.invitation || settings.userAssets || settings })
+      } catch (rewardError) {
+        // Binding remains durable; deterministic reward record will be retried on next login.
+      }
+    }
     return { ...currentUser, inviterOpenid: (result && result.inviterOpenid) || currentUser.inviterOpenid || '', updatedAt: time }
   }
 

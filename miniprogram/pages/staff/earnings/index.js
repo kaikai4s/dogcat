@@ -87,6 +87,7 @@ Page({
         this.setData({
           balance: {
             ...balance,
+            assetSummary: balance.assetSummary ? { ...balance.assetSummary, availableAmountText: money(balance.assetSummary.availableAmount), totalAmountText: money(balance.assetSummary.totalAmount) } : null,
             availableText: money(balance.available),
             pendingText: money(balance.pending),
             withdrawingText: money(balance.withdrawing),

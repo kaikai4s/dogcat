@@ -156,6 +156,11 @@ module.exports = function createService({
     return {
       reimbursementEnabled: supplies.reimbursementEnabled !== false,
       maxReimbursementAmount: Number.isFinite(Number(supplies.maxReimbursementAmount)) && Number(supplies.maxReimbursementAmount) > 0 ? Number(supplies.maxReimbursementAmount) : 200,
+      reimbursementAmount: Number.isFinite(Number(supplies.reimbursementAmount)) && Number(supplies.reimbursementAmount) > 0 ? Math.round(Number(supplies.reimbursementAmount) * 100) / 100 : (Number.isFinite(Number(supplies.maxReimbursementAmount)) && Number(supplies.maxReimbursementAmount) > 0 ? Number(supplies.maxReimbursementAmount) : 200),
+      reimbursementMode: ['order_count', 'invite_count'].includes(safeText(supplies.reimbursementMode).trim()) ? safeText(supplies.reimbursementMode).trim() : 'order_count',
+      reimbursementOrderCount: Math.max(Math.round(Number(supplies.reimbursementOrderCount || 0)), 0),
+      reimbursementInviteCount: Math.max(Math.round(Number(supplies.reimbursementInviteCount || 0)), 0),
+      purchaseRequired: supplies.purchaseRequired === true,
       transfer: {
         enabled: supplies.transfer?.enabled === true,
         sceneId: safeText(supplies.transfer?.sceneId).trim(),

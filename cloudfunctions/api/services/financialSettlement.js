@@ -1,4 +1,4 @@
-module.exports = function createService({ db, now, parseDateValue, safeText, enqueueSubscription, buildSubscriptionData }) {
+module.exports = function createService({ db, now, parseDateValue, safeText, enqueueSubscription, buildSubscriptionData, settleUserAssetWithdrawal, markUserAssetPaid, markUserAssetFailed, releaseUserAssetWithdrawal }) {
   async function optionalOrder(tx, id) {
     try { return (await tx.collection('orders').doc(id).get()).data || null } catch (error) {
       if (String(error.message || error.errMsg).includes(`document with _id ${id} does not exist`)) return null
@@ -33,6 +33,11 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
   }
 
   async function settleWithdrawal(admin, data, paid = false) {
+    const probe = await db.collection('withdraw_requests').doc(data.id).get().catch(() => ({ data: null }))
+    if (probe && probe.data && probe.data.assetType === 'user') {
+      if (typeof settleUserAssetWithdrawal !== 'function') throw new Error('用户资产提现服务未就绪')
+      return settleUserAssetWithdrawal(admin, data, paid)
+    }
     const paymentReference = safeText(data.paymentReference).trim()
     const paymentProofImage = safeText(data.paymentProofImage || data.paymentProof || '').trim()
     if (paid && (data.paymentConfirmed !== true || !paymentReference)) throw new Error('请确认实际付款成功并填写付款凭证号')
@@ -125,6 +130,8 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
   }
 
   async function markWechatWithdrawalPaid(withdrawId, result = {}) {
+    const probe = await db.collection('withdraw_requests').doc(withdrawId).get().catch(() => ({ data: null }))
+    if (probe && probe.data && probe.data.assetType === 'user') return markUserAssetPaid(withdrawId, result)
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(withdrawId).get()).data
       if (!request) throw new Error('提现申请不存在')
@@ -173,6 +180,8 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
   }
 
   async function markWechatWithdrawalFailed(withdrawId, result = {}) {
+    const probe = await db.collection('withdraw_requests').doc(withdrawId).get().catch(() => ({ data: null }))
+    if (probe && probe.data && probe.data.assetType === 'user') return markUserAssetFailed(withdrawId, result)
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(withdrawId).get()).data
       if (!request) throw new Error('提现申请不存在')
@@ -201,6 +210,8 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
   }
 
   async function releaseFailedWithdrawal(admin, data = {}) {
+    const probe = await db.collection('withdraw_requests').doc(data.id).get().catch(() => ({ data: null }))
+    if (probe && probe.data && probe.data.assetType === 'user') return releaseUserAssetWithdrawal(admin, data)
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(data.id).get()).data
       if (!request) throw new Error('提现申请不存在')

@@ -42,6 +42,11 @@ module.exports = function createContext({ cloud, db }) {
   Object.assign(context, require('../services/incidents')(context))
   Object.assign(context, require('../services/staffFunds')(context))
   Object.assign(context, require('../services/memberAppearance')(context))
+  // Settings and user assets are initialized before membership so invite binding can
+  // atomically create idempotent asset earnings without coupling to staff earnings.
+  Object.assign(context, require('../services/staffTraining')(context))
+  Object.assign(context, require('../services/settings')(context))
+  Object.assign(context, require('../services/userAssets')(context))
   Object.assign(context, require('../services/membership')(context))
   Object.assign(context, require('../services/rewardMails')(context))
   Object.assign(context, require('../services/points')(context))
@@ -55,8 +60,6 @@ module.exports = function createContext({ cloud, db }) {
   Object.assign(context, require('../services/homeSecurity')(context))
   Object.assign(context, require('../services/serviceCatalog')(context))
   Object.assign(context, require('../services/checkinRules')(context))
-  Object.assign(context, require('../services/staffTraining')(context))
-  Object.assign(context, require('../services/settings')(context))
   Object.assign(context, require('../services/earnings')(context))
   Object.assign(context, require('../services/realNameVerification')(context))
   Object.assign(context, require('../services/loyaltyCalendar')(context))

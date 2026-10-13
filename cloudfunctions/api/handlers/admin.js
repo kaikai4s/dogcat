@@ -108,6 +108,7 @@ module.exports = function createHandler(context) {
     refreshOrderRefunds,
     sendSystemNotification,
     settleWithdrawal,
+    settleUserAssetWithdrawal,
     submitWechatWithdrawalTransfer,
     queryWechatWithdrawalTransfer,
     retryWechatWithdrawalTransfer,
@@ -127,7 +128,8 @@ module.exports = function createHandler(context) {
     assignOrderAtomically,
     updateOrderStatusWithScheduling,
     getOrderTimeRanges,
-    validateStaffTakeOrderAbility
+    validateStaffTakeOrderAbility,
+    getInviteSettings
   } = context
   async function readAll(collectionName, where = {}, maxLimit = 2000, projection = null) {
     const rows = []
@@ -157,6 +159,21 @@ module.exports = function createHandler(context) {
         rows.push(...await readAll(collectionName, { staffOpenid: db.command.in(chunk) }, 5000))
       } else {
         for (const staffOpenid of chunk) rows.push(...await readAll(collectionName, { staffOpenid }, 5000))
+      }
+    }
+    return rows
+  }
+
+  async function fetchUserAssetWithdrawsByOpenids(openids = []) {
+    const list = [...new Set((openids || []).filter(Boolean))]
+    if (!list.length) return []
+    const rows = []
+    for (let i = 0; i < list.length; i += 50) {
+      const chunk = list.slice(i, i + 50)
+      if (db.command && typeof db.command.in === 'function') {
+        rows.push(...await readAll('withdraw_requests', { assetType: 'user', userOpenid: db.command.in(chunk) }, 5000))
+      } else {
+        for (const userOpenid of chunk) rows.push(...await readAll('withdraw_requests', { assetType: 'user', userOpenid }, 5000))
       }
     }
     return rows
@@ -493,7 +510,7 @@ module.exports = function createHandler(context) {
       const status = safeText(data.status).trim()
       const baseWhere = status ? { status } : {}
       const requests = await queryFinanceListSafely('withdraw_requests', { baseWhere, dateRange: range, dateFields: ['createdAt', 'paidAt'], pageSize: data.pageSize })
-      const openids = [...new Set(requests.map((item) => item.staffOpenid).filter(Boolean))]
+      const openids = [...new Set(requests.flatMap((item) => [item.staffOpenid, item.userOpenid]).filter(Boolean))]
       const [profiles, users, earnings, withdraws] = await Promise.all([
         fetchStaffProfilesByOpenids(openids),
         fetchUsersByOpenids(openids),
@@ -503,7 +520,35 @@ module.exports = function createHandler(context) {
       const profileMap = new Map(profiles.map((item) => [item.openid, item]))
       const userMap = new Map(users.map((item) => [item.openid, item]))
       const financeMap = buildStaffFinanceSummary(earnings, withdraws)
+      const userAssetOpenids = [...new Set(requests.filter((item) => item.assetType === 'user').map((item) => item.userOpenid).filter(Boolean))]
+      const userAssetRows = userAssetOpenids.length && db.command && typeof db.command.in === 'function'
+        ? (await readAll('user_asset_earnings', { userOpenid: db.command.in(userAssetOpenids) }, 5000))
+        : (await Promise.all(userAssetOpenids.map((id) => readAll('user_asset_earnings', { userOpenid: id }, 5000)))).flat()
+      const userAssetWithdraws = await fetchUserAssetWithdrawsByOpenids(userAssetOpenids)
+      const userAssetMap = {}
+      userAssetRows.forEach((row) => {
+        if (!userAssetMap[row.userOpenid]) userAssetMap[row.userOpenid] = { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
+        if (row.status === 'available') userAssetMap[row.userOpenid].available += Number(row.amount || 0)
+      })
+      userAssetWithdraws.forEach((request) => {
+        if (!userAssetMap[request.userOpenid]) userAssetMap[request.userOpenid] = { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
+        const target = userAssetMap[request.userOpenid]
+        target.withdrawCount += 1
+        if (request.status === 'paid') target.withdrawn += Number(request.amount || 0)
+        target.withdrawHistory.push({ _id: request._id, amount: Number(request.amount || 0), status: request.status || '', createdAt: request.createdAt || '', paidAt: request.paidAt || '' })
+      })
+      Object.values(userAssetMap).forEach((item) => {
+        item.available = Math.round(item.available * 100) / 100
+        item.withdrawn = Math.round(item.withdrawn * 100) / 100
+        item.withdrawHistory.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+        item.withdrawHistory = item.withdrawHistory.slice(0, 8)
+      })
       return requests.map((item) => {
+        if (item.assetType === 'user') {
+          const user = userMap.get(item.userOpenid) || {}
+          const asset = userAssetMap[item.userOpenid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
+          return { ...item, staffNickname: user.nickname || '', userNickname: user.nickname || '', currentAvailableAmount: asset.available, withdrawnAmount: asset.withdrawn, withdrawCount: asset.withdrawCount, withdrawHistory: asset.withdrawHistory, assetLabel: '用户邀请收益' }
+        }
         const profile = profileMap.get(item.staffOpenid) || {}
         const user = userMap.get(item.staffOpenid) || {}
         const finance = financeMap[item.staffOpenid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
@@ -518,6 +563,23 @@ module.exports = function createHandler(context) {
           withdrawHistory: finance.withdrawHistory
         }
       })
+    }
+    if (action === 'listUserAssetWithdrawals') {
+      const status = safeText(data.status).trim()
+      const where = { assetType: 'user' }
+      if (status) where.status = status
+      const rows = (await readAll('withdraw_requests', where, 2000)).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      const openids = [...new Set(rows.map((row) => row.userOpenid).filter(Boolean))]
+      const users = await fetchUsersByOpenids(openids)
+      const userMap = new Map(users.map((user) => [user.openid, user]))
+      const earnings = openids.length && db.command && typeof db.command.in === 'function'
+        ? await readAll('user_asset_earnings', { userOpenid: db.command.in(openids) }, 5000)
+        : (await Promise.all(openids.map((id) => readAll('user_asset_earnings', { userOpenid: id }, 5000)))).flat()
+      const availableMap = {}
+      earnings.forEach((earning) => {
+        if (earning.status === 'available') availableMap[earning.userOpenid] = (availableMap[earning.userOpenid] || 0) + Number(earning.amount || 0)
+      })
+      return rows.map((row) => ({ ...row, userNickname: (userMap.get(row.userOpenid) || {}).nickname || '', currentAvailableAmount: Math.round((availableMap[row.userOpenid] || 0) * 100) / 100 }))
     }
     if (action === 'auditWithdrawRequest') {
       const approved = data.approved === true
@@ -537,6 +599,19 @@ module.exports = function createHandler(context) {
         }
       }
       return { id: data.id, status: nextStatus }
+    }
+    if (action === 'auditUserAssetWithdrawal') {
+      const approved = data.approved === true
+      const result = await settleUserAssetWithdrawal({ ...admin, openid }, { ...data, approved })
+      if (approved && result.request && result.request.payoutChannel === 'wechat_wallet') {
+        const settings = await getSystemSettings().catch(() => ({}))
+        const transferConfig = (settings.staffSupplies && settings.staffSupplies.transfer) || {}
+        if (transferConfig.enabled) {
+          const transfer = await submitWechatWithdrawalTransfer(data.id, { ...admin, openid })
+          return { id: data.id, status: transfer.request && transfer.request.status || transfer.status || 'transferring', transferStatus: transfer.request && transfer.request.transferStatus || transfer.transferStatus || 'processing' }
+        }
+      }
+      return { id: data.id, status: approved ? 'approved' : 'rejected' }
     }
     if (action === 'queryWithdrawTransfer') {
       const id = safeText(data.id).trim()
@@ -567,7 +642,7 @@ module.exports = function createHandler(context) {
         await checkImageSecurity(openid, paymentProofImage, { scene: 1, label: '付款凭证截图' })
       }
       const { request, changed } = await settleWithdrawal({ ...admin, openid }, { ...data, payRemark, paymentProofImage }, true)
-      if (changed) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id, startTime: request.createdAt }, { amount: request.amount, statusText: '已打款' }), '', `withdraw:${data.id}:paid`)
+      if (changed && request.staffOpenid) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id, startTime: request.createdAt }, { amount: request.amount, statusText: '已打款' }), '', `withdraw:${data.id}:paid`)
       return { id: data.id, status: 'paid' }
     }
     if (action === 'getSystemSettings') {

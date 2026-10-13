@@ -71,7 +71,7 @@ module.exports = function createService({
       transfer_scene_id: config.transferSceneId,
       openid: request.recipientOpenid || request.staffOpenid,
       transfer_amount: amountFen,
-      transfer_remark: safeText(config.transferRemark || request.remark).trim() || '宠托师服务收益提现',
+      transfer_remark: safeText(config.transferRemark || request.remark).trim() || (request.assetType === 'user' ? '邀请活动收益提现' : '宠托师服务收益提现'),
       user_recv_perception: config.userRecvPerception
     }
     if (config.transferNotifyUrl) payload.notify_url = config.transferNotifyUrl

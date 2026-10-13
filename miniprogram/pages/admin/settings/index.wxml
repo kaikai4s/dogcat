@@ -133,6 +133,10 @@
       </view>
       <view class="setting-summary-line">配置宠托师订单收益分成、完单后可提现等待时间和最低提现金额。</view>
     </view>
+    <view class="admin-compact-card setting-overview-card" data-panel="invitation" bindtap="openSettingModal">
+      <view class="admin-summary-row"><view class="admin-summary-main"><view class="admin-summary-title">邀请活动与用户资产</view><view class="admin-summary-sub">{{settings.invitation.enabled ? '活动已开启' : '活动已关闭'}} · 每人邀请码唯一且仅可绑定一次</view></view><view class="meta-chip {{settings.invitation.enabled ? 'success' : 'warning'}}">{{settings.invitation.enabled ? '开启' : '关闭'}}</view></view>
+      <view class="setting-summary-line">配置邀请绑定收益、用户最低提现金额和活动开关。</view>
+    </view>
 
     <view class="admin-compact-card setting-overview-card" data-panel="carousel" bindtap="openSettingModal">
       <view class="admin-summary-row">
@@ -199,6 +203,7 @@
         <view class="modal-title" wx:if="{{activeSettingPanel === 'customerService'}}">客服与转接</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'checkinShare'}}">签到分享卡片</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'settlementReliability'}}">结算与可靠性</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'invitation'}}">邀请活动与用户资产</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'carousel'}}">首页顶部轮播</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'homePage'}}">首页转化模块</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffTraining'}}">宠托师培训</view>
@@ -216,6 +221,11 @@
           <view class="section-title">平台出资的用品报销与一次性必备物品</view>
           <view class="policy-notice">只有正式认证（不是实习）后首次申请可报销。视频审核必查手套、口罩、鞋套、宠物安全消毒用品；用品齐全不代表考核通过，严格考核未通过不报销。</view>
           <view class="compact-toggle-row"><text>启用用品报销申请</text><switch checked="{{settings.staffSupplies.reimbursementEnabled}}" data-field="staffSupplies.reimbursementEnabled" bindchange="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">固定报销金额（元）</text><input class="input" type="digit" value="{{settings.staffSupplies.reimbursementAmount}}" data-field="staffSupplies.reimbursementAmount" bindinput="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">报销资格方式</text><radio-group bindchange="staffPolicyInput" data-field="staffSupplies.reimbursementMode"><label class="radio-label"><radio value="order_count" checked="{{settings.staffSupplies.reimbursementMode === 'order_count'}}" /> 完成订单数</label><label class="radio-label"><radio value="invite_count" checked="{{settings.staffSupplies.reimbursementMode === 'invite_count'}}" /> 邀请绑定人数</label></radio-group></view>
+          <view class="field-item"><text class="label">需完成订单数量</text><input class="input" type="number" value="{{settings.staffSupplies.reimbursementOrderCount}}" data-field="staffSupplies.reimbursementOrderCount" bindinput="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">需邀请绑定人数</text><input class="input" type="number" value="{{settings.staffSupplies.reimbursementInviteCount}}" data-field="staffSupplies.reimbursementInviteCount" bindinput="staffPolicyInput" /></view>
+          <view class="compact-toggle-row"><text>必须从平台线上店铺购买</text><switch checked="{{settings.staffSupplies.purchaseRequired}}" data-field="staffSupplies.purchaseRequired" bindchange="staffPolicyInput" /></view>
           
           <view class="section-subtitle">一次性防护物品与购买链接配置</view>
           <view class="muted" style="margin-bottom:12rpx;">配置各项一次性必备物品、使用说明及对应购买链接。用户可在服务准备或审核提示中通过提供的链接购买物品。</view>
@@ -253,6 +263,12 @@
           <view class="field-item"><text class="label">收款用户感知</text><input class="input" value="{{settings.staffSupplies.transfer.userRecvPerception}}" data-field="staffSupplies.transfer.userRecvPerception" bindinput="staffPolicyInput" placeholder="填写已获批场景允许的真实文案" /></view>
           <view class="field-item"><text class="label">场景报备信息（JSON 数组）</text><textarea class="input textarea-input report-json" maxlength="-1" value="{{sceneReportInfosText}}" data-field="sceneReportInfosText" bindinput="policyTextInput" /><view class="muted">严格按照微信商户平台场景详情中的字段填写 info_type 和 info_content，不要使用虚构内容。</view></view>
           <view class="policy-notice danger-notice">微信支付商户号、API v3 密钥、商户证书和私钥在“支付与退款”面板配置；密钥不会在这里展示。</view>
+        </view>
+        <view wx:if="{{activeSettingPanel === 'invitation'}}" class="setting-modal-section">
+          <view class="policy-notice">邀请关系只能建立一次，手动输入和分享注册都会写入同一绑定记录；只有活动开启时才发放现金收益。</view>
+          <view class="compact-toggle-row"><text>开启邀请活动</text><switch checked="{{settings.invitation.enabled}}" data-field="invitation.enabled" bindchange="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">每个有效绑定收益（元）</text><input class="input" type="digit" value="{{settings.invitation.rewardAmount}}" data-field="invitation.rewardAmount" bindinput="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">用户最低提现金额（元）</text><input class="input" type="digit" value="{{settings.invitation.userMinWithdrawAmount}}" data-field="invitation.userMinWithdrawAmount" bindinput="staffPolicyInput" /></view>
         </view>
         <view wx:if="{{activeSettingPanel === 'debug'}}" class="setting-modal-section">
           <view class="compact-toggle-row">

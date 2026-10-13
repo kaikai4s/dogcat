@@ -60,11 +60,28 @@ function normalizeStaffSupplies(supplies = {}) {
   return {
     ...supplies,
     reimbursementEnabled: supplies.reimbursementEnabled === true,
+    reimbursementAmount: validAmount(supplies.reimbursementAmount, true) ? Number(supplies.reimbursementAmount) : (validAmount(supplies.maxReimbursementAmount, true) ? Number(supplies.maxReimbursementAmount) : 200),
+    reimbursementMode: supplies.reimbursementMode === 'invite_count' ? 'invite_count' : 'order_count',
+    reimbursementOrderCount: Math.max(0, Number(supplies.reimbursementOrderCount || 0)),
+    reimbursementInviteCount: Math.max(0, Number(supplies.reimbursementInviteCount || 0)),
+    purchaseRequired: supplies.purchaseRequired === true,
     items,
     requiredItems: requiredItems.length ? requiredItems : [...requiredSupplyItems],
     auditNotice: supplies.auditNotice || '视频审核必须检查手套、口罩、鞋套、宠物安全消毒用品。严格考核可能不通过；未正式认证不报销。仅正式认证后首次申请可报销，实习阶段不可申请。',
     serviceReminder: supplies.serviceReminder || '服务前带齐手套、口罩、鞋套和宠物安全消毒用品，按规范完成消毒。',
     transfer: { enabled: false, sceneId: '', userRecvPerception: '', sceneReportInfos: [], ...(supplies.transfer || {}) }
+  }
+}
+
+function normalizeInvitationConfig(invitation = {}) {
+  return {
+    ...invitation,
+    enabled: invitation.enabled === true,
+    rewardAmount: validAmount(invitation.rewardAmount, true) ? Number(invitation.rewardAmount) : 0,
+    userMinWithdrawAmount: validAmount(invitation.userMinWithdrawAmount, true) ? Number(invitation.userMinWithdrawAmount) : 10,
+    reimbursementMode: invitation.reimbursementMode === 'invite_count' ? 'invite_count' : 'order_count',
+    reimbursementOrderCount: Math.max(0, Number(invitation.reimbursementOrderCount || 0)),
+    reimbursementInviteCount: Math.max(0, Number(invitation.reimbursementInviteCount || 0))
   }
 }
 
@@ -451,6 +468,7 @@ Page({
       juheTelecomKeyInput: '',
       payment: normalizePaymentConfig(),
       settlement: normalizeSettlementConfig(),
+      invitation: normalizeInvitationConfig(),
       subscription: normalizeSubscriptionConfig(),
       reliability: normalizeReliabilityConfig(),
       customerService: normalizeCustomerServiceConfig(),
@@ -518,6 +536,7 @@ Page({
           juheTelecomKeyInput: '',
           payment: normalizePaymentConfig(settings.payment),
           settlement: normalizeSettlementConfig(settings.settlement),
+          invitation: normalizeInvitationConfig(settings.invitation),
           subscription: normalizeSubscriptionConfig(settings.subscription),
           reliability: normalizeReliabilityConfig(settings.reliability),
           customerService: normalizeCustomerServiceConfig(settings.customerService),
@@ -1509,6 +1528,8 @@ Page({
     if (invalidKeys.length) return showError(new Error('【订阅消息设置】存在模板编号、占位值或格式错误的 ID。请从当前小程序「订阅消息 → 我的模板」复制完整 ID；暂未配置的项目请留空。'))
     const deposit = this.data.settings.staffDeposit
     if (!validAmount(deposit.amount, !deposit.enabled)) return showError(new Error('保证金金额须为有效金额，最多两位小数；启用时必须大于 0'))
+    if (!validAmount(this.data.settings.staffSupplies.reimbursementAmount)) return showError(new Error('固定报销金额须为有效金额'))
+    if (!validAmount(this.data.settings.invitation.rewardAmount, true) || !validAmount(this.data.settings.invitation.userMinWithdrawAmount, true)) return showError(new Error('邀请收益和用户最低提现金额须为有效金额'))
     let sceneReportInfos
     try {
       sceneReportInfos = JSON.parse(this.data.sceneReportInfosText)

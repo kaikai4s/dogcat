@@ -1,6 +1,9 @@
 module.exports = function createHandler(context) {
   const {
     createWithdrawRequest,
+    createUserAssetWithdraw,
+    getUserAssetSummary,
+    bindInviteCode,
     readScopedDocuments,
     getSystemSettings,
     getUser,
@@ -16,7 +19,8 @@ module.exports = function createHandler(context) {
       const earnings = await readAll('staff_earnings', { staffOpenid: openid })
       const withdraws = (await readAll('withdraw_requests', { staffOpenid: openid })).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
       const settings = await getSystemSettings()
-      return { ...summarizeStaffEarnings(earnings), minWithdrawAmount: settings.settlement.minWithdrawAmount, withdraws }
+      const assetSummary = await getUserAssetSummary(openid).catch(() => null)
+      return { ...summarizeStaffEarnings(earnings), minWithdrawAmount: settings.settlement.minWithdrawAmount, withdraws, assetSummary }
     }
     if (action === 'listStaffEarnings') {
       await getUser(openid)
@@ -31,6 +35,15 @@ module.exports = function createHandler(context) {
     }
     if (action === 'createWithdrawRequest') {
       return createWithdrawRequest(openid, data)
+    }
+    if (action === 'getUserAssetSummary') {
+      return getUserAssetSummary(openid)
+    }
+    if (action === 'createUserAssetWithdraw') {
+      return createUserAssetWithdraw(openid, data)
+    }
+    if (action === 'bindInviteCode') {
+      return bindInviteCode(openid, data)
     }
     throw new Error('未知 finance 操作')
   }

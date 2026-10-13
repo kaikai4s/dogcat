@@ -67,6 +67,12 @@ module.exports = function createHandler(context) {
           }
         }
       }
+      // Newer deployments also need the isolated user asset ledger. Keep it
+      // outside the legacy collection count for backwards compatible reports.
+      try {
+        if (typeof db.createCollection === 'function') await db.createCollection('user_asset_earnings')
+        else await db.collection('user_asset_earnings').limit(1).get().catch(() => null)
+      } catch (_) {}
 
       // 2. 顺带自动创建全量核心业务索引
       const REQUIRED_INDEXES = [
