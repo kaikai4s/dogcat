@@ -83,6 +83,22 @@
       <view class="setting-summary-line">宠托师异常联系平台客服，由管理员转接处理。</view>
     </view>
 
+    <view class="admin-compact-card setting-overview-card" data-panel="officialAccount" bindtap="openSettingModal">
+      <view class="admin-summary-row">
+        <view class="admin-summary-main">
+          <view class="admin-summary-title">微信服务号 (公众号)</view>
+          <view class="admin-summary-sub">{{settingSummary.officialAccount}}</view>
+        </view>
+        <view class="meta-chip chip-primary">配置与指引</view>
+      </view>
+      <view class="meta-chip-row">
+        <view class="meta-chip {{settings.officialAccount.enabled ? 'success' : ''}}">{{settings.officialAccount.enabled ? '已启用' : '已停用'}}</view>
+        <view class="meta-chip {{settings.officialAccount.qrCodeUrl ? 'success' : ''}}">{{settings.officialAccount.qrCodeUrl ? '已传二维码' : '未传二维码'}}</view>
+        <view class="meta-chip {{settings.officialAccount.enableFollowBar ? 'success' : ''}}">{{settings.officialAccount.enableFollowBar ? '官方关注条开启' : '关注条未开'}}</view>
+      </view>
+      <view class="setting-summary-line">支持服务号二维码展示、官方关注条 & 开放平台互联指导。</view>
+    </view>
+
     <view class="admin-compact-card setting-overview-card" data-panel="checkinShare" bindtap="openSettingModal">
       <view class="admin-summary-row">
         <view class="admin-summary-main">
@@ -309,6 +325,97 @@
           <view class="field-item"><text class="label">客服微信</text><input class="input" value="{{settings.customerService.wechatId}}" data-field="wechatId" bindinput="customerServiceInput" placeholder="可选，客服微信号" /></view>
           <view class="field-item"><text class="label">工作时间</text><input class="input" value="{{settings.customerService.workHours}}" data-field="workHours" bindinput="customerServiceInput" placeholder="例如：每天 9:00-21:00" /></view>
           <view class="field-item"><text class="label">公众号名称</text><input class="input" value="{{settings.customerService.officialAccountName}}" data-field="officialAccountName" bindinput="customerServiceInput" placeholder="可选" /></view>
+        </view>
+
+        <view wx:if="{{activeSettingPanel === 'officialAccount'}}" class="setting-modal-section">
+          <view class="compact-toggle-row">
+            <view class="compact-toggle-main">
+              <view class="strong">启用微信服务号联动与引导</view>
+              <view class="muted">开启后客户端个人中心等场景将展示服务号关注入口与二维码。</view>
+            </view>
+            <switch checked="{{settings.officialAccount.enabled}}" bindchange="toggleOfficialAccountEnabled" />
+          </view>
+
+          <view class="field-item">
+            <text class="label">服务号名称</text>
+            <input class="input" value="{{settings.officialAccount.name}}" data-field="name" bindinput="officialAccountInput" placeholder="例如：Dovelin 多芙琳宠物上门服务" />
+          </view>
+
+          <view class="field-item">
+            <text class="label">服务号 AppID</text>
+            <input class="input" value="{{settings.officialAccount.appId}}" data-field="appId" bindinput="officialAccountInput" placeholder="例如：wx1234567890abcdef（用于开放平台统一绑定与跨号识别）" />
+          </view>
+
+          <view class="field-item">
+            <text class="label">服务号原始 ID</text>
+            <input class="input" value="{{settings.officialAccount.originalId}}" data-field="originalId" bindinput="officialAccountInput" placeholder="例如：gh_1234567890ab（用于客服与跳转标识）" />
+          </view>
+
+          <view class="compact-toggle-row">
+            <view class="compact-toggle-main">
+              <view class="strong">在小程序内展示官方关注条 (&lt;official-account&gt;)</view>
+              <view class="muted">需在小程序后台关联该服务号；当用户从公众号菜单或扫小程序码进入时自动展示。</view>
+            </view>
+            <switch checked="{{settings.officialAccount.enableFollowBar}}" bindchange="toggleOfficialAccountFollowBar" />
+          </view>
+
+          <view class="field-item">
+            <text class="label">关注引导文案</text>
+            <textarea class="textarea" value="{{settings.officialAccount.followGuideText}}" data-field="followGuideText" bindinput="officialAccountInput" placeholder="关注引导语，例如：关注微信服务号，第一时间接收订单进展、履约打卡提醒与专属福利推送。" maxlength="200" />
+          </view>
+
+          <view class="field-item">
+            <text class="label">服务号二维码</text>
+            <view class="oa-qrcode-upload-box">
+              <view wx:if="{{settings.officialAccount.qrCodeTempUrl || settings.officialAccount.qrCodeUrl}}" class="oa-qrcode-preview-card">
+                <image class="oa-qrcode-img" src="{{settings.officialAccount.qrCodeTempUrl || settings.officialAccount.qrCodeUrl}}" mode="aspectFit" bindtap="previewOfficialAccountQrCode" />
+                <view class="oa-qrcode-ops">
+                  <button class="btn btn-outline btn-xs" bindtap="previewOfficialAccountQrCode">查看大图</button>
+                  <button class="btn btn-outline btn-xs" bindtap="chooseOfficialAccountQrCodeImage">{{uploadingOfficialAccountQrCode ? '上传中...' : '重新上传'}}</button>
+                  <button class="btn btn-outline btn-xs btn-danger" bindtap="removeOfficialAccountQrCode">删除</button>
+                </view>
+              </view>
+              <view wx:else class="checkin-share-upload" bindtap="chooseOfficialAccountQrCodeImage">
+                <view class="checkin-share-placeholder">
+                  <text class="remix-icon ri-image-add-line"></text>
+                  <text>{{uploadingOfficialAccountQrCode ? '上传中...' : '上传服务号二维码图片'}}</text>
+                </view>
+              </view>
+            </view>
+            <view class="notice" style="margin-top: 10rpx;">上传服务号二维码后，用户在小程序内点击“关注服务号”可直接预览扫码或保存至相册长按关注！</view>
+          </view>
+
+          <view class="official-account-guide-card">
+            <view class="guide-title"><text class="remix-icon ri-guide-line"></text> 微信服务号接入小程序 4 步通指引</view>
+            <view class="guide-step">
+              <view class="step-num">1</view>
+              <view class="step-body">
+                <view class="step-head">在【微信开放平台】打通同一主体</view>
+                <view class="step-desc">登录 open.weixin.qq.com，在【管理中心】分别将本小程序和服务号绑定在同一个账号下，打通用户唯一的 UnionID，实现粉丝与客户统一识别。</view>
+              </view>
+            </view>
+            <view class="guide-step">
+              <view class="step-num">2</view>
+              <view class="step-body">
+                <view class="step-head">在【小程序管理后台】关联公众号</view>
+                <view class="step-desc">登录 mp.weixin.qq.com（小程序），前往【设置 -> 关注公众号】开启并关联当前服务号，使小程序官方关注条原生生效。</view>
+              </view>
+            </view>
+            <view class="guide-step">
+              <view class="step-num">3</view>
+              <view class="step-body">
+                <view class="step-head">在【服务号自定义菜单】配置跳转小程序</view>
+                <view class="step-desc">在服务号后台【内容与互动 -> 自定义菜单】添加菜单项，动作选择“跳转小程序”，填入小程序 AppID 及页面路径（如：pages/index/index）。</view>
+              </view>
+            </view>
+            <view class="guide-step">
+              <view class="step-num">4</view>
+              <view class="step-body">
+                <view class="step-head">在【服务号关注欢迎语】插入小程序卡片</view>
+                <view class="step-desc">在服务号后台【自动回复 -> 收到消息回复/被关注回复】中，插入小程序卡片，粉丝一关注服务号即可一键点击直达小程序预约下单！</view>
+              </view>
+            </view>
+          </view>
         </view>
 
         <view wx:if="{{activeSettingPanel === 'checkinShare'}}" class="setting-modal-section">

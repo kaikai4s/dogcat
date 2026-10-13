@@ -164,8 +164,6 @@ module.exports = function createService({
 
   async function refreshStaffEarnings(openid = '') {
     const time = now()
-    const settings = await getSystemSettings()
-    const immediateWithdraw = Number(settings.settlement && settings.settlement.settlementDelayDays) === 0
 
     // 1. 回溯清洗存量被误标或历史遗留的模拟收益（状态为 available，但实为 mock 支付）
     try {
@@ -244,10 +242,8 @@ module.exports = function createService({
           continue
         }
         const availableAt = parseDateValue(earning.availableAt)
-        if (immediateWithdraw || (availableAt && availableAt.getTime() <= time.getTime())) {
-          const patch = { status: 'available', updatedAt: time }
-          if (immediateWithdraw) patch.availableAt = time
-          await db.collection('staff_earnings').where({ _id: earning._id, status: 'pending' }).update({ data: patch })
+        if (availableAt && availableAt.getTime() <= time.getTime()) {
+          await db.collection('staff_earnings').where({ _id: earning._id, status: 'pending' }).update({ data: { status: 'available', updatedAt: time } })
         }
       }
       if (rows.length < 100) break

@@ -49,7 +49,14 @@ module.exports = function createHandler(context) {
     }
     if (action === 'getCustomerServiceInfo') {
       const settings = await getSystemSettings()
-      return settings.customerService || {}
+      return {
+        ...(settings.customerService || {}),
+        officialAccount: settings.officialAccount || {}
+      }
+    }
+    if (action === 'getOfficialAccountConfig') {
+      const settings = await getSystemSettings()
+      return settings.officialAccount || {}
     }
     if (action === 'checkTextSecurity') {
       return checkTextSecurity(openid, data.content, data.options || {})

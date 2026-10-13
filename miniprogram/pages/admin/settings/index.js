@@ -196,13 +196,28 @@ function normalizeReliabilityConfig(reliability = {}) {
   }
 }
 
-function normalizeCustomerServiceConfig(customerService = {}) {
+function normalizeCustomerServiceConfig(customerService = {}, officialAccount = {}) {
   return {
     ...customerService,
     phone: customerService.phone || '',
     wechatId: customerService.wechatId || '',
     workHours: customerService.workHours || '每天 9:00-21:00',
-    officialAccountName: customerService.officialAccountName || ''
+    officialAccountName: (officialAccount && officialAccount.name) || customerService.officialAccountName || 'Dovelin 多芙琳宠物上门服务'
+  }
+}
+
+function normalizeOfficialAccountConfig(officialAccount = {}, customerService = {}) {
+  const source = officialAccount || {}
+  const name = String(source.name || (customerService && customerService.officialAccountName) || '').trim() || 'Dovelin 多芙琳宠物上门服务'
+  return {
+    enabled: source.enabled !== false,
+    name,
+    appId: String(source.appId || '').trim(),
+    originalId: String(source.originalId || '').trim(),
+    qrCodeUrl: String(source.qrCodeUrl || '').trim(),
+    qrCodeTempUrl: source.qrCodeUrl && /^https?:\/\//.test(source.qrCodeUrl) ? source.qrCodeUrl : '',
+    followGuideText: String(source.followGuideText || '').trim() || '关注官方微信服务号，第一时间接收订单进展、履约打卡提醒与专属福利推送。',
+    enableFollowBar: source.enableFollowBar === true
   }
 }
 
@@ -386,6 +401,7 @@ function buildSettingSummary(settings = {}) {
   const modules = homePage.modules || {}
   const enabledModuleCount = homeModuleOptions.filter((item) => modules[item.key] !== false).length
   const customerService = settings.customerService || normalizeCustomerServiceConfig()
+  const officialAccount = settings.officialAccount || normalizeOfficialAccountConfig(settings.officialAccount, customerService)
   const checkinShare = settings.checkinShare || normalizeCheckinShareConfig()
   const settlement = settings.settlement || normalizeSettlementConfig()
   const reliability = settings.reliability || normalizeReliabilityConfig()
@@ -400,6 +416,7 @@ function buildSettingSummary(settings = {}) {
     payment: `${payment.enabled ? '支付已启用' : '支付已关闭'} · ${payment.mode === 'wechat' ? '微信支付' : '模拟支付'} · ${payment.refundEnabled ? '退款已启用' : '退款已关闭'}`,
     subscription: `${subscription.enabled ? '订阅已启用' : '订阅已关闭'} · 已配置 ${configuredTemplateCount} 个模板`,
     customerService: `${customerService.phone || '未配置电话'} · ${customerService.workHours || '未配置时间'}`,
+    officialAccount: `${officialAccount.enabled ? '服务号已启用' : '服务号已停用'} · ${officialAccount.name || '未配置名称'} · ${officialAccount.qrCodeUrl ? '已上传二维码' : '未传二维码'}`,
     checkinShare: `${checkinShare.title || '未配置标题'} · ${checkinShare.imageUrl ? '已配置封面' : '未配置封面'}`,
     settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · 完单 ${settlement.settlementDelayDays} 天后可提现 · 最低 ¥${Number(settlement.minWithdrawAmount || 0).toFixed(2)}`,
     carousel: `${carousel.enabled ? '轮播已启用' : '轮播已关闭'} · ${enabledCarouselCount}/${carouselItems.length} 个素材启用`,
@@ -437,6 +454,7 @@ Page({
       subscription: normalizeSubscriptionConfig(),
       reliability: normalizeReliabilityConfig(),
       customerService: normalizeCustomerServiceConfig(),
+      officialAccount: normalizeOfficialAccountConfig(),
       checkinShare: normalizeCheckinShareConfig(),
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig(),
@@ -452,6 +470,7 @@ Page({
       subscription: normalizeSubscriptionConfig(),
       reliability: normalizeReliabilityConfig(),
       customerService: normalizeCustomerServiceConfig(),
+      officialAccount: normalizeOfficialAccountConfig(),
       checkinShare: normalizeCheckinShareConfig(),
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig(),
@@ -476,6 +495,7 @@ Page({
     uploadingMedia: false,
     uploadingPoster: false,
     uploadingCheckinShareImage: false,
+    uploadingOfficialAccountQrCode: false,
     uploadingTrainingVideo: false,
     uploadingTrainingPoster: false,
     saving: false
@@ -501,6 +521,7 @@ Page({
           subscription: normalizeSubscriptionConfig(settings.subscription),
           reliability: normalizeReliabilityConfig(settings.reliability),
           customerService: normalizeCustomerServiceConfig(settings.customerService),
+          officialAccount: normalizeOfficialAccountConfig(settings.officialAccount, settings.customerService),
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage),
@@ -513,6 +534,7 @@ Page({
           this.resolveMediaUrls(normalized.homeHeroCarousel.items)
           this.resolveTrainingVideoUrls(normalized.staffTraining.videos)
           this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
+          this.resolveOfficialAccountQrCodeUrl(normalized.officialAccount.qrCodeUrl)
         })
       })
       .catch(showError)
@@ -787,6 +809,102 @@ Page({
   customerServiceInput(e) {
     const field = e.currentTarget.dataset.field
     this.setData({ [`settings.customerService.${field}`]: e.detail.value })
+  },
+
+  officialAccountInput(e) {
+    const field = e.currentTarget.dataset.field
+    const value = e.detail.value
+    const updates = { [`settings.officialAccount.${field}`]: value }
+    if (field === 'name') {
+      updates['settings.customerService.officialAccountName'] = value
+    }
+    this.setData(updates)
+  },
+
+  toggleOfficialAccountEnabled(e) {
+    this.setData({ 'settings.officialAccount.enabled': !!e.detail.value })
+  },
+
+  toggleOfficialAccountFollowBar(e) {
+    this.setData({ 'settings.officialAccount.enableFollowBar': !!e.detail.value })
+  },
+
+  chooseOfficialAccountQrCodeImage() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const file = res.tempFiles && res.tempFiles[0]
+        if (!file || !file.tempFilePath) return
+        const filePath = file.tempFilePath
+        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+        const cloudPath = `official_account/qr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
+
+        this.setData({ uploadingOfficialAccountQrCode: true })
+        wx.showLoading({ title: '上传二维码...' })
+        wx.cloud.uploadFile({
+          cloudPath,
+          filePath,
+          success: (upload) => {
+            const fileId = upload.fileID
+            wx.cloud.getTempFileURL({
+              fileList: [fileId],
+              success: (tempRes) => {
+                wx.hideLoading()
+                const tempFile = tempRes.fileList && tempRes.fileList[0]
+                this.setData({
+                  ['settings.officialAccount.qrCodeUrl']: fileId,
+                  ['settings.officialAccount.qrCodeTempUrl']: (tempFile && tempFile.tempFileURL) || filePath,
+                  uploadingOfficialAccountQrCode: false
+                })
+                wx.showToast({ title: '二维码上传成功' })
+              },
+              fail: () => {
+                wx.hideLoading()
+                this.setData({
+                  ['settings.officialAccount.qrCodeUrl']: fileId,
+                  ['settings.officialAccount.qrCodeTempUrl']: filePath,
+                  uploadingOfficialAccountQrCode: false
+                })
+                wx.showToast({ title: '二维码上传成功' })
+              }
+            })
+          },
+          fail: (err) => {
+            wx.hideLoading()
+            this.setData({ uploadingOfficialAccountQrCode: false })
+            showError(err)
+          }
+        })
+      }
+    })
+  },
+
+  removeOfficialAccountQrCode() {
+    this.setData({
+      'settings.officialAccount.qrCodeUrl': '',
+      'settings.officialAccount.qrCodeTempUrl': ''
+    })
+  },
+
+  previewOfficialAccountQrCode() {
+    const url = this.data.settings.officialAccount.qrCodeTempUrl || this.data.settings.officialAccount.qrCodeUrl
+    if (!url) return
+    wx.previewImage({ current: url, urls: [url] })
+  },
+
+  resolveOfficialAccountQrCodeUrl(fileId) {
+    if (!fileId || typeof fileId !== 'string' || !fileId.startsWith('cloud://')) return
+    wx.cloud.getTempFileURL({
+      fileList: [fileId],
+      success: (res) => {
+        const item = res.fileList && res.fileList[0]
+        if (item && item.tempFileURL) {
+          this.setData({ 'settings.officialAccount.qrCodeTempUrl': item.tempFileURL })
+        }
+      }
+    })
   },
 
   checkinShareInput(e) {
@@ -1497,6 +1615,7 @@ Page({
           subscription: normalizeSubscriptionConfig(settings.subscription),
           reliability: normalizeReliabilityConfig(settings.reliability),
           customerService: normalizeCustomerServiceConfig(settings.customerService),
+          officialAccount: normalizeOfficialAccountConfig(settings.officialAccount, settings.customerService),
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage),

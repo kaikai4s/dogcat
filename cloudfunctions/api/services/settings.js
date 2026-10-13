@@ -219,11 +219,20 @@ module.exports = function createService({
         maxTrackBatchSize: Math.min(Math.max(Math.round(Number(reliability.maxTrackBatchSize || 50)), 1), 200),
         maxRetryTimes: Math.min(Math.max(Math.round(Number(reliability.maxRetryTimes || 5)), 0), 20)
       },
+      officialAccount: {
+        enabled: (value.officialAccount || {}).enabled !== false,
+        name: safeText((value.officialAccount || {}).name || (value.customerService || {}).officialAccountName).trim() || 'Dovelin 多芙琳宠物上门服务',
+        appId: safeText((value.officialAccount || {}).appId).trim(),
+        originalId: safeText((value.officialAccount || {}).originalId).trim(),
+        qrCodeUrl: safeText((value.officialAccount || {}).qrCodeUrl).trim(),
+        followGuideText: safeText((value.officialAccount || {}).followGuideText).trim() || '关注官方微信服务号，第一时间接收订单进展、履约打卡提醒与专属福利推送。',
+        enableFollowBar: (value.officialAccount || {}).enableFollowBar === true
+      },
       customerService: {
         phone: safeText((value.customerService || {}).phone).trim(),
         wechatId: safeText((value.customerService || {}).wechatId).trim(),
         workHours: safeText((value.customerService || {}).workHours).trim() || '每天 9:00-21:00',
-        officialAccountName: safeText((value.customerService || {}).officialAccountName).trim()
+        officialAccountName: safeText((value.officialAccount || {}).name || (value.customerService || {}).officialAccountName).trim() || 'Dovelin 多芙琳宠物上门服务'
       },
       checkinShare: {
         title: safeText((value.checkinShare || {}).title).trim() || '来签到领福利，补签卡也能拿',

@@ -159,11 +159,11 @@
         </view>
         <view class="profile-grid-label">我的积分</view>
       </view>
-      <view class="profile-grid-item interactive" bindtap="openOfficialAccountModal">
+      <view class="profile-grid-item interactive" bindtap="openOfficialAccountModal" wx:if="{{officialAccount.enabled}}">
         <view class="profile-icon-wrap teal">
           <view class="remix-icon ri-wechat-fill"></view>
         </view>
-        <view class="profile-grid-label">关注公众号</view>
+        <view class="profile-grid-label">官方服务号</view>
       </view>
     </view>
   </view>
@@ -233,12 +233,34 @@
     </view>
   </view>
 
+  <!-- 微信原生关注公众号条（满足微信场景条件且关联时自动展示） -->
+  <view class="oa-native-bar-wrap" wx:if="{{officialAccount.enabled && officialAccount.enableFollowBar}}">
+    <official-account bindload="onOfficialAccountLoad" binderror="onOfficialAccountError"></official-account>
+  </view>
+
   <view class="modal-backdrop" wx:if="{{showOfficialAccountModal}}" bindtap="closeOfficialAccountModal">
-    <view class="modal-card" catchtap="true">
-      <view class="modal-title">关注公众号</view>
-      <view class="modal-tip">搜索并关注“{{csInfo.officialAccountName || 'Dovelin 多芙琳宠物上门服务'}}”微信公众号，即可第一时间接收订单进度、打卡提醒和优惠福利推送。</view>
-      <view class="modal-actions">
-        <button class="profile-primary-btn" bindtap="copyOfficialAccountName">复制公众号名称并去微信搜索</button>
+    <view class="modal-card official-account-modal-card" catchtap="true">
+      <view class="oa-modal-header">
+        <view class="oa-modal-avatar">
+          <text class="remix-icon ri-wechat-fill"></text>
+        </view>
+        <view class="oa-modal-header-info">
+          <view class="modal-title">{{officialAccount.name || csInfo.officialAccountName || 'Dovelin 多芙琳宠物上门服务'}}</view>
+          <view class="oa-modal-badge"><text class="remix-icon ri-checkbox-circle-fill"></text> 微信官方认证服务号</view>
+        </view>
+      </view>
+
+      <view class="modal-tip">{{officialAccount.followGuideText || '关注官方微信服务号，第一时间接收订单进展、履约打卡提醒与专属福利推送。'}}</view>
+
+      <!-- 二维码展示区 -->
+      <view wx:if="{{officialAccount.qrCodeTempUrl || officialAccount.qrCodeUrl}}" class="oa-qrcode-display-card">
+        <image class="oa-qrcode-display-img" src="{{officialAccount.qrCodeTempUrl || officialAccount.qrCodeUrl}}" mode="aspectFit" bindtap="previewOfficialAccountQrCode" />
+        <view class="oa-qrcode-hint">点击预览二维码大图，微信内长按可直接识别关注</view>
+      </view>
+
+      <view class="modal-actions modal-actions-vertical">
+        <button wx:if="{{officialAccount.qrCodeTempUrl || officialAccount.qrCodeUrl}}" class="profile-primary-btn" bindtap="saveOfficialAccountQrCode">保存二维码至相册</button>
+        <button class="{{(officialAccount.qrCodeTempUrl || officialAccount.qrCodeUrl) ? 'profile-ghost-btn' : 'profile-primary-btn'}}" bindtap="copyOfficialAccountName">复制服务号名称去搜索</button>
         <button class="profile-ghost-btn" bindtap="closeOfficialAccountModal">关闭</button>
       </view>
     </view>

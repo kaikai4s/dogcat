@@ -60,7 +60,18 @@ Page({
       wechatId: '',
       workHours: '每天 9:00 - 21:00',
       officialAccountName: 'Dovelin 多芙琳宠物上门服务'
-    }
+    },
+    officialAccount: {
+      enabled: true,
+      name: 'Dovelin 多芙琳宠物上门服务',
+      appId: '',
+      originalId: '',
+      qrCodeUrl: '',
+      qrCodeTempUrl: '',
+      followGuideText: '关注官方微信服务号，第一时间接收订单进展、履约打卡提醒与专属福利推送。',
+      enableFollowBar: false
+    },
+    officialAccountFollowBarLoaded: false
   },
 
   onLoad(query = {}) {
@@ -485,16 +496,39 @@ Page({
 
   loadCsInfo() {
     callFunction('system', 'getCustomerServiceInfo')
-      .then((csInfo) => {
-        if (csInfo) {
+      .then((res) => {
+        if (res) {
+          const oa = res.officialAccount || {}
+          const officialAccount = {
+            enabled: oa.enabled !== false,
+            name: oa.name || res.officialAccountName || 'Dovelin 多芙琳宠物上门服务',
+            appId: oa.appId || '',
+            originalId: oa.originalId || '',
+            qrCodeUrl: oa.qrCodeUrl || '',
+            qrCodeTempUrl: oa.qrCodeUrl && /^https?:\/\//.test(oa.qrCodeUrl) ? oa.qrCodeUrl : '',
+            followGuideText: oa.followGuideText || '关注官方微信服务号，第一时间接收订单进展、履约打卡提醒与专属福利推送。',
+            enableFollowBar: oa.enableFollowBar === true
+          }
           this.setData({
             csInfo: {
-              phone: csInfo.phone || '',
-              wechatId: csInfo.wechatId || '',
-              workHours: csInfo.workHours || '每天 9:00 - 21:00',
-              officialAccountName: csInfo.officialAccountName || 'Dovelin 多芙琳宠物上门服务'
-            }
+              phone: res.phone || '',
+              wechatId: res.wechatId || '',
+              workHours: res.workHours || '每天 9:00 - 21:00',
+              officialAccountName: officialAccount.name
+            },
+            officialAccount
           })
+          if (oa.qrCodeUrl && oa.qrCodeUrl.startsWith('cloud://') && !officialAccount.qrCodeTempUrl) {
+            wx.cloud.getTempFileURL({
+              fileList: [oa.qrCodeUrl],
+              success: (tempRes) => {
+                const item = tempRes.fileList && tempRes.fileList[0]
+                if (item && item.tempFileURL) {
+                  this.setData({ 'officialAccount.qrCodeTempUrl': item.tempFileURL })
+                }
+              }
+            })
+          }
         }
       })
       .catch(() => {})
@@ -563,8 +597,81 @@ Page({
   },
 
   copyOfficialAccountName() {
-    const name = this.data.csInfo.officialAccountName || 'Dovelin 多芙琳宠物上门服务'
-    copyText(name, { successTitle: '已复制公众号名称' })
+    const name = this.data.officialAccount.name || this.data.csInfo.officialAccountName || 'Dovelin 多芙琳宠物上门服务'
+    copyText(name, { successTitle: '已复制服务号名称' })
+  },
+
+  previewOfficialAccountQrCode() {
+    const url = this.data.officialAccount.qrCodeTempUrl || this.data.officialAccount.qrCodeUrl
+    if (!url) return
+    wx.previewImage({ current: url, urls: [url] })
+  },
+
+  saveOfficialAccountQrCode() {
+    const url = this.data.officialAccount.qrCodeTempUrl || this.data.officialAccount.qrCodeUrl
+    if (!url) {
+      wx.showToast({ title: '暂未配置二维码', icon: 'none' })
+      return
+    }
+
+    const saveImageToAlbum = (filePath) => {
+      wx.saveImageToPhotosAlbum({
+        filePath,
+        success: () => wx.showToast({ title: '已保存至相册', icon: 'success' }),
+        fail: (err) => {
+          if (err && (err.errMsg || '').includes('auth')) {
+            wx.showModal({
+              title: '提示',
+              content: '需要保存图片到相册权限，请在设置中开启',
+              success: (modalRes) => {
+                if (modalRes.confirm) wx.openSetting()
+              }
+            })
+          } else {
+            wx.showToast({ title: '保存失败', icon: 'none' })
+          }
+        }
+      })
+    }
+
+    wx.showLoading({ title: '正在获取二维码...' })
+    if (url.startsWith('cloud://')) {
+      wx.cloud.downloadFile({
+        fileID: url,
+        success: (res) => {
+          wx.hideLoading()
+          saveImageToAlbum(res.tempFilePath)
+        },
+        fail: () => {
+          wx.hideLoading()
+          wx.showToast({ title: '下载失败', icon: 'none' })
+        }
+      })
+    } else {
+      wx.downloadFile({
+        url,
+        success: (res) => {
+          wx.hideLoading()
+          if (res.statusCode === 200) {
+            saveImageToAlbum(res.tempFilePath)
+          } else {
+            wx.showToast({ title: '下载失败', icon: 'none' })
+          }
+        },
+        fail: () => {
+          wx.hideLoading()
+          wx.showToast({ title: '下载失败', icon: 'none' })
+        }
+      })
+    }
+  },
+
+  onOfficialAccountLoad() {
+    this.setData({ officialAccountFollowBarLoaded: true })
+  },
+
+  onOfficialAccountError() {
+    this.setData({ officialAccountFollowBarLoaded: false })
   },
 
   subscribe() {

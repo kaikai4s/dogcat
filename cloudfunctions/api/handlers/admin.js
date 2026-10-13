@@ -498,7 +498,8 @@ module.exports = function createHandler(context) {
       return getSystemSettings()
     }
     if (action === 'saveSystemSettings') {
-      const saved = await saveSystemSettings(data)
+      const payload = (data && data.settings && typeof data.settings === 'object') ? data.settings : data
+      const saved = await saveSystemSettings(payload)
       const publicValue = normalizeSystemSettings(saved.value)
       await logAdmin(admin, 'platform_config', 'system_settings', 'saveSystemSettings', publicValue)
       return publicValue

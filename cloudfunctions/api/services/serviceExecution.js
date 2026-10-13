@@ -255,7 +255,7 @@ module.exports = function createService({
 
       // 每满 3 单奖励 1 张补签卡；本订单使用固定完单序号。
       if (completionOrdinal > 0 && completionOrdinal % 3 === 0 && !currentOrder.retroCardAwarded && !currentOrder.retroCardEvaluated) {
-        const existingCardLog = (await transaction.collection('retro_card_logs').where({
+        const existingCardLog = (await db.collection('retro_card_logs').where({
           openid: clientOpenid,
           sourceType: 'order_complete_milestone',
           sourceId: orderId
