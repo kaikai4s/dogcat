@@ -407,6 +407,7 @@ function buildSettingSummary(settings = {}) {
     pricingSurcharges: (settings.pricingSurcharges && settings.pricingSurcharges.enabled !== false)
       ? `${((settings.pricingSurcharges && settings.pricingSurcharges.dateSurcharges) || []).filter((d) => d.enabled !== false).length} 个日期加价 · ${((settings.pricingSurcharges && settings.pricingSurcharges.timeSlotSurcharges) || []).filter((s) => s.enabled !== false).length} 个时段加价`
       : '特殊加价已停用',
+    realNameVerification: settings.juheTelecomKeyConfigured ? `已配置密钥 (${settings.juheTelecomKeyConfigured})` : '未配置 (开发/Mock模式)',
     configuredTemplateCount,
     enabledCarouselCount,
     carouselCount: carouselItems.length,
@@ -428,6 +429,8 @@ Page({
       staffSupplies: normalizeStaffSupplies(),
       enableTestAddressMode: false,
       enablePetBreedAi: true,
+      juheTelecomKeyConfigured: '',
+      juheTelecomKeyInput: '',
       payment: normalizePaymentConfig(),
       settlement: normalizeSettlementConfig(),
       subscription: normalizeSubscriptionConfig(),
@@ -490,6 +493,8 @@ Page({
           staffSupplies: normalizeStaffSupplies(settings.staffSupplies),
           enableTestAddressMode: settings.enableTestAddressMode === true,
           enablePetBreedAi: settings.enablePetBreedAi !== false,
+          juheTelecomKeyConfigured: settings.juheTelecomKeyConfigured || '',
+          juheTelecomKeyInput: '',
           payment: normalizePaymentConfig(settings.payment),
           settlement: normalizeSettlementConfig(settings.settlement),
           subscription: normalizeSubscriptionConfig(settings.subscription),
@@ -632,6 +637,37 @@ Page({
   },
 
   noop() {},
+
+  inputJuheKey(e) {
+    const val = (e && e.detail && e.detail.value !== undefined) ? e.detail.value : (e || '')
+    this.setData({ ['settings.juheTelecomKeyInput']: val })
+  },
+
+  pasteJuheKey() {
+    wx.getClipboardData({
+      success: (res) => {
+        const text = String(res.data || '').trim()
+        if (!text) {
+          wx.showToast({ title: '剪贴板内容为空', icon: 'none' })
+          return
+        }
+        this.setData({ ['settings.juheTelecomKeyInput']: text })
+        wx.showToast({ title: '已粘贴 Key', icon: 'success' })
+      },
+      fail: () => {
+        wx.showToast({ title: '未能读取剪贴板，请长按输入框粘贴', icon: 'none' })
+      }
+    })
+  },
+
+  clearJuheKeyInput() {
+    this.setData({ ['settings.juheTelecomKeyInput']: '' })
+  },
+
+  setJuheKeyClearMode() {
+    this.setData({ ['settings.juheTelecomKeyInput']: 'CLEAR' })
+    wx.showToast({ title: '已设为清空，点击保存即可生效', icon: 'none' })
+  },
 
   toggleTestAddressMode(e) {
     this.setData({ ['settings.enableTestAddressMode']: e.detail.value })
@@ -1401,8 +1437,17 @@ Page({
       enabled: item.enabled !== false,
       sort: Number(item.sort) || (index + 1) * 10
     }))
+    const rawKeyInput = this.data.settings.juheTelecomKeyInput !== undefined ? String(this.data.settings.juheTelecomKeyInput).trim() : ''
+    let keyInputToSubmit = undefined
+    if (rawKeyInput === 'CLEAR') {
+      keyInputToSubmit = ''
+    } else if (rawKeyInput) {
+      keyInputToSubmit = rawKeyInput
+    }
+
     const payload = {
       ...this.data.settings,
+      juheTelecomKeyInput: keyInputToSubmit,
       enableTestAddressMode: this.data.settings.enableTestAddressMode === true,
       enablePetBreedAi: this.data.settings.enablePetBreedAi !== false,
       payment: this.data.settings.payment,

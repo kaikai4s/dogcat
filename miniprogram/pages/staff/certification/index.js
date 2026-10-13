@@ -31,12 +31,34 @@ function uploadIdentityFile(filePath, type) {
   })
 }
 
+function validateIdCardLocal(idCard) {
+  if (!idCard || typeof idCard !== 'string') return false
+  const id = idCard.trim().toUpperCase()
+  if (!/^\d{17}[\dX]$/.test(id)) return false
+  const year = parseInt(id.substring(6, 10), 10)
+  const month = parseInt(id.substring(10, 12), 10)
+  const day = parseInt(id.substring(12, 14), 10)
+  const currentYear = new Date().getFullYear()
+  if (year < 1900 || year > currentYear) return false
+  if (month < 1 || month > 12) return false
+  const maxDays = new Date(year, month, 0).getDate()
+  if (day < 1 || day > maxDays) return false
+  const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
+  const checkCodes = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2']
+  let sum = 0
+  for (let i = 0; i < 17; i++) {
+    sum += parseInt(id[i], 10) * weights[i]
+  }
+  return id[17] === checkCodes[sum % 11]
+}
+
 Page({
   data: {
     themeClass: 'theme-day',
     form: {
       realName: '',
       gender: '',
+      idCardNumber: '',
       phone: '',
       serviceCity: '',
       serviceAreas: '',
@@ -76,6 +98,7 @@ Page({
           form: {
             ...this.data.form,
             ...profile,
+            idCardNumber: profile.idCardNumber || profile.idCardMasked || this.data.form.idCardNumber || '',
             serviceRadiusKm: Number(profile.serviceRadiusKm || 5),
             serviceLatitude: Number(profile.serviceLatitude || 0),
             serviceLongitude: Number(profile.serviceLongitude || 0)
@@ -150,6 +173,12 @@ Page({
     })
   },
 
+  inputIdCard(e) {
+    if (this.data.certificationLocked) return
+    const val = (e.detail.value || '').toUpperCase().trim()
+    this.setData({ 'form.idCardNumber': val })
+  },
+
   chooseGender(e) {
     if (this.data.certificationLocked) return
     const gender = e.detail.value
@@ -169,13 +198,25 @@ Page({
       wx.showToast({ title: '请选择性别', icon: 'none' })
       return
     }
-    const { realName, phone, idCardFrontFileId, idCardBackFileId, facePhotoFileId, serviceAddress, serviceLatitude, serviceLongitude } = this.data.form
+    const { realName, idCardNumber, phone, idCardFrontFileId, idCardBackFileId, facePhotoFileId, serviceAddress, serviceLatitude, serviceLongitude } = this.data.form
     if (!realName) {
       wx.showToast({ title: '请填写真实姓名', icon: 'none' })
       return
     }
+    if (!idCardNumber) {
+      wx.showToast({ title: '请输入身份证号码', icon: 'none' })
+      return
+    }
+    if (!validateIdCardLocal(idCardNumber)) {
+      wx.showToast({ title: '请输入有效的18位身份证号码', icon: 'none' })
+      return
+    }
     if (!phone) {
       wx.showToast({ title: '请填写手机号', icon: 'none' })
+      return
+    }
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      wx.showToast({ title: '请输入有效的11位手机号', icon: 'none' })
       return
     }
     if (!idCardFrontFileId || !idCardBackFileId || !facePhotoFileId) {
@@ -187,15 +228,24 @@ Page({
       return
     }
 
+    if (this.submitting) return
+    this.submitting = true
+    wx.showLoading({ title: '实名三要素核验中...', mask: true })
     callFunction('staff', 'submitStaffProfile', this.data.form)
       .then((profile) => {
+        this.submitting = false
+        wx.hideLoading()
         this.setData({
           profile: withStaffWorkflowText(withAuditText(profile)),
           statusTip: statusText.pending
         })
-        wx.showToast({ title: '已提交审核', icon: 'none' })
+        wx.showToast({ title: '实名核验通过，已提交', icon: 'success' })
       })
-      .catch(showError)
+      .catch((err) => {
+        this.submitting = false
+        wx.hideLoading()
+        showError(err)
+      })
   },
 
   go(e) {

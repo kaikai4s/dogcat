@@ -11,6 +11,19 @@
       <view class="setting-summary-line">保证金{{settings.staffDeposit.enabled ? '已启用' : '未启用'}} · ¥{{settings.staffDeposit.amount}}；用品报销独立由平台出资，绝不扣减保证金。</view>
       <view class="setting-summary-line">正式认证后仅首次申请可报销，实习阶段不可申请。</view>
     </view>
+    <view class="admin-compact-card setting-overview-card" data-panel="realNameVerification" bindtap="openSettingModal">
+      <view class="admin-summary-row">
+        <view class="admin-summary-main">
+          <view class="admin-summary-title">宠托师实名核验 (聚合数据)</view>
+          <view class="admin-summary-sub">{{settingSummary.realNameVerification}}</view>
+        </view>
+        <view class="meta-chip chip-primary">配置</view>
+      </view>
+      <view class="meta-chip-row">
+        <view class="meta-chip {{settings.juheTelecomKeyConfigured ? 'success' : 'warning'}}">{{settings.juheTelecomKeyConfigured ? '已配置密钥' : '未配置 (Mock模式)'}}</view>
+        <view class="meta-chip">三网手机三要素</view>
+      </view>
+    </view>
     <view class="admin-compact-card setting-overview-card" data-panel="debug" bindtap="openSettingModal">
       <view class="admin-summary-row">
         <view class="admin-summary-main">
@@ -147,6 +160,7 @@
     <view class="modal-card settings-modal-card" catchtap="noop">
       <view class="modal-header">
         <view class="modal-title" wx:if="{{activeSettingPanel === 'pricingSurcharges'}}">特殊日期与时段加价</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'realNameVerification'}}">宠托师实名核验 (聚合数据)</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffPolicy'}}">保证金与用品报销</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'debug'}}">开发调试</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'petBreedAi'}}">宠物档案 AI</view>
@@ -550,6 +564,34 @@
               </view>
               <button class="ghost compact-btn add-btn" bindtap="addTimeSlotSurchargeItem">+ 添加时段加价</button>
             </view>
+          </view>
+        </view>
+
+        <view wx:if="{{activeSettingPanel === 'realNameVerification'}}" class="setting-modal-section">
+          <view class="policy-notice">
+            配置聚合数据【手机实名校验】接口的 AppKey。系统将在宠托师申请入驻时，直连三大运营商核验真实姓名、身份证号码与手机号是否一致。
+          </view>
+
+          <!-- 接口状态卡片（明确标注状态，避免与输入框混淆） -->
+          <view class="juhe-status-card {{settings.juheTelecomKeyConfigured ? 'configured' : 'unconfigured'}}">
+            <view class="juhe-status-header">
+              <text class="label" style="margin-bottom:0;">接口运行状态</text>
+              <text class="juhe-status-tag {{settings.juheTelecomKeyConfigured ? 'success' : 'warning'}}">
+                {{settings.juheTelecomKeyConfigured ? '● 已配置真实接口' : '○ 模拟/Mock 测试模式'}}
+              </text>
+            </view>
+            <view class="juhe-status-desc">
+              {{settings.juheTelecomKeyConfigured ? ('当前密钥掩码：' + settings.juheTelecomKeyConfigured + '（宠托师入驻已直连三大运营商核验）') : '当前未配置真实 Key。宠托师入驻走本地算法核验，方便测试且不会产生真实扣费。'}}
+            </view>
+          </view>
+
+          <view class="field-item juhe-key-field">
+            <text class="label">输入 / 更新接口 AppKey</text>
+            <input class="input juhe-real-input" type="text" maxlength="128" placeholder="请输入聚合数据 AppKey" value="{{settings.juheTelecomKeyInput}}" bindinput="inputJuheKey" cursor-spacing="40" adjust-position="{{true}}" confirm-type="done" />
+          </view>
+
+          <view class="policy-notice" style="font-size:22rpx; color:#86909c;">
+            💡 提示：在聚合数据「个人中心 → 我的API → 手机实名校验」复制 AppKey 后填入。若留空并直接点击下方【保存设置】，则保持现有密钥不变。
           </view>
         </view>
       </scroll-view>

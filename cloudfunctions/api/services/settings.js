@@ -121,6 +121,14 @@ module.exports = function createService({
     return safeText(value).trim() ? true : false
   }
 
+  function maskSecret(value) {
+    const text = safeText(value).trim()
+    if (!text) return ''
+    if (text.length <= 4) return '****'
+    if (text.length <= 8) return `${text.slice(0, 2)}****${text.slice(-2)}`
+    return `${text.slice(0, 4)}****${text.slice(-4)}`
+  }
+
   function normalizePaymentConfig(payment = {}, existingPayment = {}, includeSecrets = false) {
     const apiV3Key = pickPaymentSecret(payment, existingPayment, 'apiV3Key', 'apiV3KeyInput')
     const privateKey = pickPaymentSecret(payment, existingPayment, 'privateKey', 'privateKeyInput')
@@ -160,11 +168,19 @@ module.exports = function createService({
     const rawQwenApiKey = value.qwenApiKeyInput !== undefined ? value.qwenApiKeyInput : value.qwenApiKey
     const qwenApiKey = (rawQwenApiKey !== undefined ? safeText(rawQwenApiKey).trim() : '') || safeText(existingSettings.qwenApiKey).trim()
     const qwenApiKeyConfigured = maskConfigured(qwenApiKey || process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY)
+    let juheTelecomKey = safeText(existingSettings.juheTelecomKey).trim()
+    if (value.juheTelecomKeyInput !== undefined) {
+      juheTelecomKey = safeText(value.juheTelecomKeyInput).trim()
+    } else if (value.juheTelecomKey !== undefined) {
+      juheTelecomKey = safeText(value.juheTelecomKey).trim()
+    }
+    const juheTelecomKeyConfigured = maskSecret(juheTelecomKey || process.env.JUHE_TELECOM_KEY)
 
     const normalized = {
       enableTestAddressMode: value.enableTestAddressMode === true,
       enablePetBreedAi: value.enablePetBreedAi !== false,
       qwenApiKeyConfigured,
+      juheTelecomKeyConfigured,
       qwenModel: safeText(value.qwenModel).trim() || 'qwen3.5-flash',
       staffTraining: normalizeStaffTrainingConfig(value.staffTraining),
       staffDeposit: normalizeStaffDepositConfig(value.staffDeposit),
@@ -217,6 +233,7 @@ module.exports = function createService({
 
     if (includeSecrets) {
       normalized.qwenApiKey = qwenApiKey
+      normalized.juheTelecomKey = juheTelecomKey
     }
 
     return normalized

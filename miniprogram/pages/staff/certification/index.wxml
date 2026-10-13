@@ -40,8 +40,21 @@
     </view>
     <view class="section-sub-tip" wx:if="{{certificationLocked}}">认证资料已锁定，如需更正请联系平台审核。接单时间和服务范围可在个人中心配置。</view>
     <view class="form-group">
-      <text class="input-label">联系手机号</text>
+      <view class="input-label-row">
+        <text class="input-label">身份证号码（必填）</text>
+        <text class="verified-pill" wx:if="{{profile && profile.realNameVerifyStatus === 'verified'}}">
+          <text class="remix-icon ri-shield-check-fill"></text>
+          <text>三要素核验通过</text>
+        </text>
+      </view>
+      <input class="input-field" placeholder="请输入18位二代居民身份证号码" value="{{form.idCardNumber}}" data-field="idCardNumber" maxlength="18" bindinput="inputIdCard" disabled="{{certificationLocked}}" />
+      <view class="section-sub-tip">系统将直连运营商数据进行“姓名+身份证+手机号”三要素真实性核验。</view>
+    </view>
+
+    <view class="form-group">
+      <text class="input-label">联系手机号（必填）</text>
       <input class="input-field" placeholder="请输入常用手机号" value="{{form.phone}}" data-field="phone" bindinput="input" disabled="{{certificationLocked}}" />
+      <view class="section-sub-tip">须为本人身份证实名登记开卡的手机号码。</view>
     </view>
 
     <view class="form-group">

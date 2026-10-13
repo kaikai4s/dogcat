@@ -86,7 +86,10 @@ module.exports = function createHandler(context) {
     validateStaffScheduleOnly,
     wechatPayRequest,
     withSitterUserProfile,
-    batchWithSitterUserProfiles
+    batchWithSitterUserProfiles,
+    isValidIdCard,
+    maskIdCard,
+    verifyTelecomThreeElements
   } = context
   async function readAll(collectionName, where = {}, maxLimit = 2000) {
     const rows = []
@@ -611,11 +614,21 @@ module.exports = function createHandler(context) {
     }
     if (action === 'submitStaffProfile') {
       const user = await getUser(openid)
+      if (typeof checkRateLimit === 'function') {
+        await checkRateLimit(openid, 'staff.submitStaffProfile', {
+          max: 5,
+          windowMs: 10 * 60 * 1000,
+          message: '实名认证提交过于频繁，请核对信息并在10分钟后再试（10分钟内限提交5次）'
+        })
+      }
       const existing = await db.collection('staff_profiles').where({ openid }).limit(1).get()
-      if (isStaffProfileLocked(existing.data[0])) throw new Error('认证资料已锁定，如需更正请联系平台审核')
+      const existingProfile = existing.data[0] || null
+      if (isStaffProfileLocked(existingProfile)) throw new Error('认证资料已锁定，如需更正请联系平台审核')
       const gender = requireStaffGender(data.gender)
       const realName = safeText(data.realName).trim()
       const phone = safeText(data.phone || user.phone).trim()
+      const rawIdCard = safeText(data.idCardNumber || data.idcard || data.idCard).trim().toUpperCase()
+      const idCardNumber = rawIdCard || (existingProfile ? existingProfile.idCardNumber : '')
       const serviceCity = safeText(data.serviceCity).trim()
       const serviceAreas = safeText(data.serviceAreas).trim()
       const serviceAddress = safeText(data.serviceAddress).trim()
@@ -626,21 +639,76 @@ module.exports = function createHandler(context) {
       const idCardBackFileId = safeFileId(data.idCardBackFileId)
       const facePhotoFileId = safeFileId(data.facePhotoFileId)
 
+      const settings = await getSystemSettings({ includeSecrets: true }).catch(() => ({}))
+      const apiKey = settings.juheTelecomKey || process.env.JUHE_TELECOM_KEY || ''
+      const isRealProductionMode = Boolean(apiKey && apiKey !== 'MOCK' && apiKey !== 'TEST')
+
       if (!realName) throw new Error('请输入真实姓名')
       if (!phone) throw new Error('请输入手机号')
+      if (!idCardNumber && isRealProductionMode) {
+        throw new Error('请输入身份证号码')
+      }
+      if (idCardNumber && typeof isValidIdCard === 'function' && !isValidIdCard(idCardNumber)) {
+        throw new Error('身份证号码格式不正确，请输入有效的18位居民身份证号码')
+      }
       if (!serviceAddress || !hasCoordinate(serviceLatitude, serviceLongitude)) {
         throw new Error('宠托师认证必须设置固定服务地址及坐标')
       }
       if (!idCardFrontFileId || !idCardBackFileId) throw new Error('请上传身份证正反面照片')
       if (!facePhotoFileId) throw new Error('请上传自拍/人脸照片')
 
+      const time = now()
+
+      // 三要素实名核验（复用已核验成功结果防重复扣费，或发起在线/测试核验）
+      let realNameVerifyStatus = 'unverified'
+      let realNameVerifiedAt = null
+      let realNameVerifyProvider = 'juhe_telecom'
+      let realNameVerifyResCode = ''
+      let realNameVerifyOrderId = ''
+
+      const isSameIdentity = existingProfile &&
+        existingProfile.realNameVerifyStatus === 'verified' &&
+        existingProfile.realName === realName &&
+        existingProfile.idCardNumber === idCardNumber &&
+        existingProfile.phone === phone
+
+      if (isSameIdentity) {
+        realNameVerifyStatus = existingProfile.realNameVerifyStatus
+        realNameVerifiedAt = existingProfile.realNameVerifiedAt
+        realNameVerifyProvider = existingProfile.realNameVerifyProvider || 'juhe_telecom'
+        realNameVerifyResCode = existingProfile.realNameVerifyResCode || '11'
+        realNameVerifyOrderId = existingProfile.realNameVerifyOrderId || ''
+      } else if (idCardNumber && typeof verifyTelecomThreeElements === 'function') {
+        const verifyResult = await verifyTelecomThreeElements({
+          realname: realName,
+          idcard: idCardNumber,
+          mobile: phone,
+          apiKey
+        })
+        if (!verifyResult.verified) {
+          throw new Error(verifyResult.message || '三要素实名核验未通过，请核对姓名、身份证及手机号开卡实名')
+        }
+        realNameVerifyStatus = 'verified'
+        realNameVerifiedAt = verifyResult.verifiedAt || time
+        realNameVerifyResCode = verifyResult.resCode || '11'
+        realNameVerifyOrderId = verifyResult.orderId || ''
+      }
+
       const staffText = [realName, serviceCity, serviceAreas, serviceAddress, data.publicServiceAddress, data.bio, data.intro, data.experience].filter(Boolean).join(' ')
       if (staffText) {
         await checkTextSecurity(openid, staffText, { scene: 1, label: '认证资料' })
       }
 
-      const time = now()
+      const idCardMasked = typeof maskIdCard === 'function' ? maskIdCard(idCardNumber) : idCardNumber
+
       const identitySummary = {
+        idCardNumber,
+        idCardMasked,
+        realNameVerifyStatus,
+        realNameVerifiedAt,
+        realNameVerifyProvider,
+        realNameVerifyResCode,
+        realNameVerifyOrderId,
         idCardFrontFileId,
         idCardBackFileId,
         facePhotoFileId,
@@ -655,6 +723,13 @@ module.exports = function createHandler(context) {
         realName,
         gender,
         phone,
+        idCardNumber,
+        idCardMasked,
+        realNameVerifyStatus,
+        realNameVerifiedAt,
+        realNameVerifyProvider,
+        realNameVerifyResCode,
+        realNameVerifyOrderId,
         avatarUrl: user.avatarUrl || data.avatarUrl || '',
         serviceCity,
         serviceAreas,
@@ -695,14 +770,14 @@ module.exports = function createHandler(context) {
           if (isStaffProfileLocked(current)) throw new Error('认证资料已锁定，如需更正请联系平台审核')
           await tx.collection('staff_profiles').doc(existing.data[0]._id).update({ data: profile })
         })
-        const identityPayload = { staffProfileId: existing.data[0]._id, userId: user._id, openid, realName, gender, phone, ...identitySummary, auditStatus: 'pending', updatedAt: time }
+        const identityPayload = { staffProfileId: existing.data[0]._id, userId: user._id, openid, realName, gender, phone, idCardNumber, idCardMasked, realNameVerifyStatus, ...identitySummary, auditStatus: 'pending', updatedAt: time }
         const identityRes = await db.collection('staff_identity_verifications').where({ staffProfileId: existing.data[0]._id }).limit(1).get()
         if (identityRes.data[0]) await db.collection('staff_identity_verifications').doc(identityRes.data[0]._id).update({ data: identityPayload })
         else await db.collection('staff_identity_verifications').add({ data: { ...identityPayload, createdAt: time } })
         return { _id: existing.data[0]._id, ...profile }
       }
       const created = await db.collection('staff_profiles').add({ data: { ...profile, createdAt: time } })
-      await db.collection('staff_identity_verifications').add({ data: { staffProfileId: created._id, userId: user._id, openid, realName, gender, phone, ...identitySummary, auditStatus: 'pending', createdAt: time, updatedAt: time } })
+      await db.collection('staff_identity_verifications').add({ data: { staffProfileId: created._id, userId: user._id, openid, realName, gender, phone, idCardNumber, idCardMasked, realNameVerifyStatus, ...identitySummary, auditStatus: 'pending', createdAt: time, updatedAt: time } })
       return { _id: created._id, ...profile, createdAt: time }
     }
     if (action === 'updateStaffProfileConfig') {
@@ -716,7 +791,7 @@ module.exports = function createHandler(context) {
       }
       const user = await getUser(openid)
       if (!user.roles.includes('staff')) throw new Error('仅宠托师可更新接单配置')
-      const identityFields = ['gender', 'realName', 'phone', 'idCardFrontFileId', 'idCardBackFileId', 'facePhotoFileId', 'serviceCity', 'serviceAreas']
+      const identityFields = ['gender', 'realName', 'phone', 'idCardNumber', 'idCardFrontFileId', 'idCardBackFileId', 'facePhotoFileId', 'serviceCity', 'serviceAreas']
       if (identityFields.some((key) => data[key] !== undefined && data[key] !== profile[key])) {
         throw new Error('认证资料已锁定，如需更正请联系平台审核')
       }

@@ -621,3 +621,50 @@
   font-size: 26rpx;
   font-weight: 650;
 }
+
+/* 聚合数据实名认证弹窗专属样式 */
+.juhe-status-card {
+  padding: 22rpx 24rpx;
+  border-radius: 16rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  border: 1rpx solid #e5e6eb;
+}
+.juhe-status-card.configured {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+.juhe-status-card.unconfigured {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.juhe-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.juhe-status-tag {
+  font-size: 24rpx;
+  font-weight: 700;
+}
+.juhe-status-tag.success { color: #16a34a; }
+.juhe-status-tag.warning { color: #d97706; }
+.juhe-status-desc {
+  font-size: 24rpx;
+  color: #4b5563;
+  line-height: 1.45;
+}
+.juhe-key-field {
+  margin-top: 10rpx;
+}
+.juhe-real-input {
+  height: 84rpx;
+  line-height: 84rpx;
+  background: #ffffff;
+  border: 1rpx solid #e5e6eb;
+  border-radius: 18rpx;
+  font-size: 26rpx;
+  color: #111827;
+}
+
