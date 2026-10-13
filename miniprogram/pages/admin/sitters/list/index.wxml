@@ -91,6 +91,7 @@
           <view class="meta-chip chip-primary">{{item.staffLevelText || '申请人'}}</view>
           <view class="meta-chip">{{item.ratingText}}</view>
           <view class="meta-chip deposit-chip {{item.depositBalance < 100 ? 'danger-chip' : ''}}">保证金: {{item.depositBalanceText}}</view>
+          <view class="meta-chip withdraw-chip">可提现: {{item.withdrawableAmountText}}</view>
           <view class="meta-chip danger-chip" wx:if="{{item.requireDepositRepay}}">需重新缴纳保证金</view>
           <view class="meta-chip danger-chip" wx:if="{{item.problemOrderCount > 0}}">异常订单 {{item.problemOrderCount}}</view>
           <view class="meta-chip warning" wx:if="{{item.promotionStatus === 'pending'}}">转正审核中</view>
@@ -111,11 +112,20 @@
         <view class="compact-info-item"><view class="compact-info-label">绑定账号</view><view class="compact-info-value">{{item.userNickname}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">服务区域</view><view class="compact-info-value">{{item.serviceAreas || '未填写'}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">保证金可用余额</view><view class="compact-info-value strong" style="color: #ea580c;">{{item.depositBalanceText}}</view></view>
+        <view class="compact-info-item"><view class="compact-info-label">当前可提现额度</view><view class="compact-info-value strong" style="color: #16a34a;">{{item.withdrawableAmountText}}</view></view>
+        <view class="compact-info-item"><view class="compact-info-label">历史已提现</view><view class="compact-info-value">{{item.withdrawnAmountText}}（{{item.withdrawCount || 0}}笔）</view></view>
         <view class="compact-info-item"><view class="compact-info-label">保证金管控状态</view><view class="compact-info-value {{item.requireDepositRepay ? 'danger-text' : ''}}">{{item.requireDepositRepay ? '被要求重新缴纳(不可接单)' : (item.depositStatus === 'paid' ? '正常' : item.depositStatus)}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">培训状态</view><view class="compact-info-value">{{item.onboardingStatusText || '-'}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">晋升状态</view><view class="compact-info-value">{{item.promotionStatusText || '-'}}</view></view>
         <view class="compact-info-item"><view class="compact-info-label">实习订单</view><view class="compact-info-value">{{item.internCompletedOrderCount || 0}}/3</view></view>
         <view class="compact-info-item"><view class="compact-info-label">账号状态</view><view class="compact-info-value">{{item.userStatus || '未知'}}</view></view>
+      </view>
+
+      <view class="withdraw-history" wx:if="{{item.withdrawHistory.length}}">
+        <view class="withdraw-history-title">最近提现记录</view>
+        <view class="withdraw-history-item" wx:for="{{item.withdrawHistory}}" wx:for-item="history" wx:key="_id">
+          <text>{{history.amountText}}</text><text>{{history.statusText}}</text><text>{{beijingTime.format(history.paidAt || history.createdAt)}}</text>
+        </view>
       </view>
 
       <!-- 异常与出险违规订单（保证金扣除证据展示） -->

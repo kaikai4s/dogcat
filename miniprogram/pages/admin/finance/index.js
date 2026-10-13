@@ -39,6 +39,13 @@ function decorate(item) {
     amountText: money(item.amount),
     statusText: withdrawStatusText[status] || item.status,
     transferStatusText: transferStatus ? (transferStatus === 'not_started' ? '未开始' : transferStatus === 'submitting' ? '提交中' : transferStatus === 'processing' ? '处理中' : transferStatus === 'success' ? '成功' : transferStatus === 'failed' ? '失败' : transferStatus === 'unknown' ? '待查询确认' : transferStatus) : '',
+    currentAvailableAmountText: money(item.currentAvailableAmount),
+    withdrawnAmountText: money(item.withdrawnAmount),
+    withdrawHistory: (item.withdrawHistory || []).map((history) => ({
+      ...history,
+      amountText: money(history.amount),
+      statusText: withdrawStatusText[String(history.status || '').toLowerCase()] || history.status || '处理中'
+    })),
     isWechatWallet,
     actionLoading: false
   }
@@ -229,9 +236,11 @@ Page({
 
   retryWithdrawTransfer(e) {
     const id = e.currentTarget.dataset.id
+    const item = (this.data.requests || []).find((row) => row._id === id)
+    const isApproved = item && item.status === 'approved'
     wx.showModal({
-      title: '重试微信提现',
-      content: '仅在微信明确失败或未提交成功时重试；不确定状态会先查询微信结果。确认继续？',
+      title: isApproved ? '发起微信提现' : '重试微信提现',
+      content: isApproved ? '确认发起转账到该宠托师的微信零钱？' : '仅在微信明确失败或未提交成功时重试；不确定状态会先查询微信结果。确认继续？',
       success: (res) => {
         if (res.confirm) this.runWithdrawTransferAction(id, 'retryWithdrawTransfer', '正在重试...')
       }

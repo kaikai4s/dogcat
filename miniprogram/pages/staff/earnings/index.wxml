@@ -47,11 +47,7 @@
       <text class="label">提现金额 (元)</text>
       <input class="input-field" type="digit" value="{{amount}}" data-field="amount" bindinput="input" placeholder="请输入提现金额" />
     </view>
-    <view class="field-item">
-      <text class="label">微信零钱收款人真实姓名</text>
-      <input class="input-field" value="{{accountName}}" data-field="accountName" bindinput="input" placeholder="需与当前微信实名一致" />
-    </view>
-    <view class="withdraw-limit-tip" style="margin-top: 8rpx; color: #78716c;">审核通过后平台将转账到你当前登录微信的零钱账户。</view>
+    <view class="withdraw-limit-tip" style="margin-top: 8rpx; color: #78716c;">无需填写银行卡或实名认证信息，审核通过后平台将转账到你当前登录微信的零钱账户。</view>
     <button class="primary-btn submit-withdraw-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="withdraw">
       <text class="remix-icon ri-wechat-pay-line"></text>
       <text>提交提现申请</text>

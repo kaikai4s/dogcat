@@ -60,7 +60,6 @@ Page({
     earnings: [],
     withdraws: [],
     amount: '',
-    accountName: '',
     submitting: false
   },
 
@@ -122,24 +121,19 @@ Page({
     if (minWithdraw > 0 && amount < minWithdraw) {
       return wx.showToast({ title: `最低提现金额为 ¥${minWithdraw}`, icon: 'none' })
     }
-    const accountName = String(this.data.accountName || '').trim()
-    if (!accountName || accountName.length < 2) {
-      return wx.showToast({ title: '请填写收款人真实姓名', icon: 'none' })
-    }
-
     this._submittingLock = true
     this.setData({ submitting: true })
     showLoading({ title: '正在提交提现...', mask: true })
     callFunction('finance', 'createWithdrawRequest', {
       amount,
-      accountName,
+      payoutChannel: 'wechat_wallet',
       clientRequestId: createClientRequestId('withdraw')
     })
       .then(() => {
         hideLoading()
         this._submittingLock = false
         wx.showToast({ title: '已提交提现', icon: 'success' })
-        this.setData({ submitting: false, amount: '', accountName: '' })
+        this.setData({ submitting: false, amount: '' })
         this.load()
       })
       .catch((error) => {

@@ -18,6 +18,14 @@ function withDisplay(profile, selectedIds = []) {
     ratingText: reviewCount ? `${Number(profile.ratingAverage || 0)}分 / ${reviewCount}条评价` : '暂无评分',
     depositBalance,
     depositBalanceText: `¥${depositBalance.toFixed(2)}`,
+    withdrawableAmount: Number(profile.withdrawableAmount || 0),
+    withdrawableAmountText: `¥${Number(profile.withdrawableAmount || 0).toFixed(2)}`,
+    withdrawnAmountText: `¥${Number(profile.withdrawnAmount || 0).toFixed(2)}`,
+    withdrawHistory: (profile.withdrawHistory || []).map((history) => ({
+      ...history,
+      amountText: `¥${Number(history.amount || 0).toFixed(2)}`,
+      statusText: ({ pending: '审核中', approved: '已通过', transferring: '打款中', transfer_failed: '打款失败', rejected: '已驳回', paid: '已到账' })[history.status] || history.status || '处理中'
+    })),
     featuredActionText: profile.isFeatured ? '取消精选' : '设为精选',
     actionText: profile.auditStatus === 'pending' ? '去审核' : '查看资料',
     canRevokeStaff: profile.auditStatus === 'approved',

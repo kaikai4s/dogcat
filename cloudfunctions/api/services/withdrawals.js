@@ -47,10 +47,13 @@ module.exports = function createService({
 
     const accountName = safeText(data.accountName).trim()
     const accountNo = safeText(data.accountNo).trim()
-    if (!accountName || accountName.length < 2 || accountName.length > 50) {
+    const payoutChannel = safeText(data.payoutChannel).trim()
+    if (payoutChannel !== 'wechat_wallet' && (!accountName || accountName.length < 2 || accountName.length > 50)) {
       throw new Error('请填写正确的提现收款人姓名（2-50个字符）')
     }
-    if (!accountNo || accountNo.length < 4 || accountNo.length > 50) {
+    // 微信零钱转账使用当前登录用户的 openid，不需要银行卡/收款账号。
+    // 未指定或其他渠道的历史人工打款请求仍按旧规则校验 accountNo。
+    if (payoutChannel !== 'wechat_wallet' && (!accountNo || accountNo.length < 4 || accountNo.length > 50)) {
       throw new Error('请填写正确的提现收款账号（4-50个字符）')
     }
 

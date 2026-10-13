@@ -388,6 +388,46 @@
   font-weight: 850;
 }
 
+.withdraw-chip {
+  background: #ecfdf5;
+  color: #15803d;
+  font-weight: 850;
+}
+
+.withdraw-history {
+  margin-top: 16rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 16rpx;
+  background: #fafafa;
+  border: 1rpx solid #f0ece8;
+}
+
+.withdraw-history-title {
+  color: #665b54;
+  font-size: 22rpx;
+  font-weight: 900;
+  margin-bottom: 6rpx;
+}
+
+.withdraw-history-item {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.35fr;
+  gap: 8rpx;
+  padding: 8rpx 0;
+  color: #7a6a5e;
+  font-size: 21rpx;
+  border-top: 1rpx solid #f0ece8;
+}
+
+.withdraw-history-item text:first-child {
+  color: #2d211a;
+  font-weight: 850;
+}
+
+.withdraw-history-item text:last-child {
+  text-align: right;
+}
+
 .meta-chip.danger-chip {
   background: #fef2f2;
   color: #dc2626;

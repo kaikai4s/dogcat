@@ -134,6 +134,19 @@ test('accountName and accountNo validation prevents invalid withdrawal requests'
   )
 })
 
+test('wechat wallet withdrawals do not require a bank account number', async () => {
+  const { db, rawCreateWithdrawRequest } = setup()
+  const request = await rawCreateWithdrawRequest('staff', {
+    payoutChannel: 'wechat_wallet',
+    clientRequestId: 'wechat_wallet_without_account'
+  })
+  assert.equal(request.payoutChannel, 'wechat_wallet')
+  assert.equal(request.recipientOpenid, 'staff')
+  assert.equal(request.accountName, '')
+  assert.equal(request.accountNo, '')
+  assert.equal(db.state.withdraw_requests[0].payoutChannel, 'wechat_wallet')
+})
+
 test('mock payment earnings cannot be withdrawn and are excluded from withdrawal requests', async () => {
   // 1. 只有 mock 收益，申请提现直接被拒绝
   const db1 = createCollectionStore({

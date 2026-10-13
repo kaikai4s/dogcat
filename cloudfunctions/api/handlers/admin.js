@@ -147,6 +147,56 @@ module.exports = function createHandler(context) {
     return rows
   }
 
+  async function fetchFinanceRowsByOpenids(collectionName, openids = []) {
+    const list = [...new Set((openids || []).filter(Boolean))]
+    if (!list.length) return []
+    const rows = []
+    for (let i = 0; i < list.length; i += 50) {
+      const chunk = list.slice(i, i + 50)
+      if (db.command && typeof db.command.in === 'function') {
+        rows.push(...await readAll(collectionName, { staffOpenid: db.command.in(chunk) }, 5000))
+      } else {
+        for (const staffOpenid of chunk) rows.push(...await readAll(collectionName, { staffOpenid }, 5000))
+      }
+    }
+    return rows
+  }
+
+  function buildStaffFinanceSummary(earnings = [], withdraws = []) {
+    const summary = {}
+    const ensure = (openid) => {
+      if (!summary[openid]) summary[openid] = { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
+      return summary[openid]
+    }
+    for (const earning of earnings) {
+      const openid = earning.staffOpenid
+      if (!openid || earning.isMock === true || earning.paymentChannel === 'mock') continue
+      const target = ensure(openid)
+      if (earning.status === 'available') target.available += Number(earning.amount || 0)
+    }
+    for (const request of withdraws) {
+      const openid = request.staffOpenid
+      if (!openid) continue
+      const target = ensure(openid)
+      target.withdrawCount += 1
+      if (request.status === 'paid') target.withdrawn += Number(request.amount || 0)
+      target.withdrawHistory.push({
+        _id: request._id,
+        amount: Number(request.amount || 0),
+        status: request.status || '',
+        createdAt: request.createdAt || '',
+        paidAt: request.paidAt || ''
+      })
+    }
+    Object.values(summary).forEach((item) => {
+      item.available = Math.round(item.available * 100) / 100
+      item.withdrawn = Math.round(item.withdrawn * 100) / 100
+      item.withdrawHistory.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      item.withdrawHistory = item.withdrawHistory.slice(0, 8)
+    })
+    return summary
+  }
+
   function hasStaffRole(user) {
     return Array.isArray(user && user.roles) && user.roles.includes('staff')
   }
@@ -438,10 +488,36 @@ module.exports = function createHandler(context) {
       return queryFinanceListSafely('staff_earnings', { baseWhere, dateRange: range, dateFields: ['createdAt', 'completedAt'], pageSize: data.pageSize })
     }
     if (action === 'listWithdrawRequests') {
+      await refreshStaffEarnings()
       const range = buildDateRange(data)
       const status = safeText(data.status).trim()
       const baseWhere = status ? { status } : {}
-      return queryFinanceListSafely('withdraw_requests', { baseWhere, dateRange: range, dateFields: ['createdAt', 'paidAt'], pageSize: data.pageSize })
+      const requests = await queryFinanceListSafely('withdraw_requests', { baseWhere, dateRange: range, dateFields: ['createdAt', 'paidAt'], pageSize: data.pageSize })
+      const openids = [...new Set(requests.map((item) => item.staffOpenid).filter(Boolean))]
+      const [profiles, users, earnings, withdraws] = await Promise.all([
+        fetchStaffProfilesByOpenids(openids),
+        fetchUsersByOpenids(openids),
+        fetchFinanceRowsByOpenids('staff_earnings', openids),
+        fetchFinanceRowsByOpenids('withdraw_requests', openids)
+      ])
+      const profileMap = new Map(profiles.map((item) => [item.openid, item]))
+      const userMap = new Map(users.map((item) => [item.openid, item]))
+      const financeMap = buildStaffFinanceSummary(earnings, withdraws)
+      return requests.map((item) => {
+        const profile = profileMap.get(item.staffOpenid) || {}
+        const user = userMap.get(item.staffOpenid) || {}
+        const finance = financeMap[item.staffOpenid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
+        return {
+          ...item,
+          staffRealName: profile.realName || item.accountName || '',
+          staffPhone: profile.phone || user.phone || '',
+          staffNickname: user.nickname || '',
+          currentAvailableAmount: finance.available,
+          withdrawnAmount: finance.withdrawn,
+          withdrawCount: finance.withdrawCount,
+          withdrawHistory: finance.withdrawHistory
+        }
+      })
     }
     if (action === 'auditWithdrawRequest') {
       const approved = data.approved === true
@@ -656,6 +732,7 @@ module.exports = function createHandler(context) {
       return { openid: targetOpenid, userId: target._id, cleanup }
     }
     if (action === 'listStaffProfiles') {
+      await refreshStaffEarnings()
       const auditStatus = safeText(data.auditStatus).trim()
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const page = Math.max(Number(data.page || 1), 1)
@@ -699,7 +776,7 @@ module.exports = function createHandler(context) {
         return results
       }
 
-      function buildDecoratedProfiles(profiles, allUsers, allEvidences, allDeposits) {
+      function buildDecoratedProfiles(profiles, allUsers, allEvidences, allDeposits, financeSummary = {}) {
         const userMap = new Map((allUsers || []).map((user) => [user.openid, user]))
 
         const evidenceByStaff = {}
@@ -750,6 +827,7 @@ module.exports = function createHandler(context) {
           const depositForfeitedAmount = deposit ? Number(deposit.forfeitedAmount || 0) : 0
           const depositStatus = profile.depositStatus || (deposit ? deposit.status : 'unpaid')
           const requireDepositRepay = profile.requireDepositRepay === true
+          const finance = financeSummary[profile.openid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
 
           return {
             _id: profile._id,
@@ -790,7 +868,11 @@ module.exports = function createHandler(context) {
             depositStatus,
             requireDepositRepay,
             requireDepositRepayReason: profile.requireDepositRepayReason || '',
-            requireDepositRepayAt: profile.requireDepositRepayAt || ''
+            requireDepositRepayAt: profile.requireDepositRepayAt || '',
+            withdrawableAmount: Math.round(Number(finance.available || 0) * 100) / 100,
+            withdrawnAmount: Math.round(Number(finance.withdrawn || 0) * 100) / 100,
+            withdrawCount: Number(finance.withdrawCount || 0),
+            withdrawHistory: finance.withdrawHistory || []
           }
         })
       }
@@ -807,13 +889,15 @@ module.exports = function createHandler(context) {
         const pageProfiles = profilesRes.data || []
         const pageOpenids = [...new Set(pageProfiles.map((p) => p.openid).filter(Boolean))]
 
-        const [pageUsers, pageEvidences, pageDeposits] = await Promise.all([
+        const [pageUsers, pageEvidences, pageDeposits, pageEarnings, pageWithdraws] = await Promise.all([
           fetchByOpenids('users', 'openid', pageOpenids),
           fetchByOpenids('staff_deposit_evidences', 'staffOpenid', pageOpenids),
-          fetchByOpenids('staff_deposits', 'staffOpenid', pageOpenids)
+          fetchByOpenids('staff_deposits', 'staffOpenid', pageOpenids),
+          fetchFinanceRowsByOpenids('staff_earnings', pageOpenids),
+          fetchFinanceRowsByOpenids('withdraw_requests', pageOpenids)
         ])
 
-        const list = buildDecoratedProfiles(pageProfiles, pageUsers, pageEvidences, pageDeposits)
+        const list = buildDecoratedProfiles(pageProfiles, pageUsers, pageEvidences, pageDeposits, buildStaffFinanceSummary(pageEarnings, pageWithdraws))
         return {
           list,
           total,
@@ -826,13 +910,15 @@ module.exports = function createHandler(context) {
       const allProfiles = (await readAll('staff_profiles', where, 2000)).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
       const allOpenids = [...new Set(allProfiles.map((p) => p.openid).filter(Boolean))]
 
-      const [allUsers, allEvidences, allDeposits] = await Promise.all([
+      const [allUsers, allEvidences, allDeposits, allEarnings, allWithdraws] = await Promise.all([
         fetchByOpenids('users', 'openid', allOpenids),
         fetchByOpenids('staff_deposit_evidences', 'staffOpenid', allOpenids),
-        fetchByOpenids('staff_deposits', 'staffOpenid', allOpenids)
+        fetchByOpenids('staff_deposits', 'staffOpenid', allOpenids),
+        fetchFinanceRowsByOpenids('staff_earnings', allOpenids),
+        fetchFinanceRowsByOpenids('withdraw_requests', allOpenids)
       ])
 
-      const decorated = buildDecoratedProfiles(allProfiles, allUsers, allEvidences, allDeposits)
+      const decorated = buildDecoratedProfiles(allProfiles, allUsers, allEvidences, allDeposits, buildStaffFinanceSummary(allEarnings, allWithdraws))
       const filtered = decorated.filter((item) => {
         if (keyword && ![item.openid, item.realName, item.phone, item.serviceCity, item.serviceAreas, item.userNickname].some((value) => safeText(value).toLowerCase().includes(keyword))) {
           return false
