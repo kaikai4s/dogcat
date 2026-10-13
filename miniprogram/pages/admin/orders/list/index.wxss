@@ -403,3 +403,58 @@ button:active,
   transform: scale(0.985);
   opacity: 0.86;
 }
+
+/* 订单卡片底部收益分成条样式 */
+.order-profit-bar {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 16rpx;
+  padding-top: 14rpx;
+  border-top: 1rpx dashed rgba(255, 153, 102, 0.2);
+  flex-wrap: wrap;
+}
+
+.profit-pill {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 14rpx;
+  border-radius: 12rpx;
+  font-size: 21rpx;
+  line-height: 1.3;
+}
+
+.profit-pill .pill-label {
+  font-size: 20rpx;
+}
+
+.profit-pill .pill-val {
+  font-weight: 850;
+  font-size: 23rpx;
+}
+
+.pay-pill {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1rpx solid #e2e8f0;
+}
+
+.staff-pill {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1rpx solid #bbf7d0;
+}
+
+.platform-pill {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1rpx solid #bfdbfe;
+}
+
+.platform-pill.subsidy {
+  background: #fff7ed;
+  color: #c2410c;
+  border-color: #ffedd5;
+}
+

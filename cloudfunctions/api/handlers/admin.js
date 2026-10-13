@@ -25,6 +25,7 @@ module.exports = function createHandler(context) {
     checkTextSecurity,
     countActiveAdmins,
     buildMonthlyDashboard,
+    buildOrderProfitSummary,
     buildSubscriptionData,
     calculateStaffEarningForOrder,
     cleanupUserPersonalData,
@@ -107,6 +108,10 @@ module.exports = function createHandler(context) {
     refreshOrderRefunds,
     sendSystemNotification,
     settleWithdrawal,
+    submitWechatWithdrawalTransfer,
+    queryWechatWithdrawalTransfer,
+    retryWechatWithdrawalTransfer,
+    releaseFailedWithdrawal,
     settleStaffDeposit,
     settleSupplyReimbursement,
     safeUserSummary,
@@ -164,7 +169,7 @@ module.exports = function createHandler(context) {
       .where({ staffOpenid: target.openid })
       .limit(100)
       .get().catch(() => ({ data: [] }))).data || []
-    const pendingWithdraw = withdraws.find((item) => ['pending', 'approved', 'processing'].includes(safeText(item.status).trim()))
+    const pendingWithdraw = withdraws.find((item) => ['pending', 'approved', 'processing', 'transferring', 'transfer_failed'].includes(safeText(item.status).trim()))
     if (pendingWithdraw) {
       const amount = Number(pendingWithdraw.amount || 0).toFixed(2)
       throw new Error(`该宠托师存在未完成提现申请 ¥${amount}。请先在财务管理完成打款或驳回后再移除宠托师身份`)
@@ -366,8 +371,32 @@ module.exports = function createHandler(context) {
       const statuses = ['paid', 'assigned', 'in_service', 'completed']
       const counts = {}
       for (let i = 0; i < statuses.length; i += 1) counts[statuses[i]] = (await db.collection('orders').where({ status: statuses[i] }).count()).total
-      const staffPending = await db.collection('staff_profiles').where({ auditStatus: 'pending' }).count()
-      const incidentsOpen = await db.collection('order_incidents').where({ status: 'open' }).count()
+      const countPending = async (collectionName, where) => {
+        const counted = await db.collection(collectionName).where(where).count().catch(() => null)
+        if (counted && Number.isFinite(counted.total)) return counted.total
+        return (await readAll(collectionName, where, 1000).catch(() => [])).length
+      }
+      const [staffPending, trainingPending, promotionPending, vaccinePending, withdrawPending, depositRefundPending, supplyPending, incidentsOpen] = await Promise.all([
+        countPending('staff_profiles', { auditStatus: 'pending' }),
+        countPending('staff_profiles', { auditStatus: 'approved', videoAuditStatus: 'pending' }),
+        countPending('staff_promotion_applications', { status: 'pending' }),
+        countPending('pet_vaccine_certifications', { status: 'pending' }),
+        countPending('withdraw_requests', { status: 'pending' }),
+        countPending('staff_deposits', { refundStatus: 'requested' }),
+        countPending('staff_supply_reimbursements', { status: 'pending' }),
+        countPending('order_incidents', { status: 'open' })
+      ])
+      const pendingReviews = {
+        staffAudit: staffPending,
+        training: trainingPending,
+        promotion: promotionPending,
+        petVaccine: vaccinePending,
+        withdrawals: withdrawPending,
+        depositRefunds: depositRefundPending,
+        supplyReimbursements: supplyPending,
+        finance: withdrawPending + depositRefundPending + supplyPending,
+        incidents: incidentsOpen
+      }
       const todayParts = toCstParts()
       const monthStartText = `${todayParts.monthKey}-01 00:00:00`
       const monthStartDate = parseDateValue(monthStartText) || new Date(`${todayParts.monthKey}-01T00:00:00.000Z`)
@@ -377,7 +406,7 @@ module.exports = function createHandler(context) {
         readMonthlyEntities('orders', monthStartDate, monthStartText, orderProjection),
         readMonthlyEntities('users', monthStartDate, monthStartText, userProjection)
       ])
-      return { orders: counts, staffPending: staffPending.total, incidentsOpen: incidentsOpen.total, monthly: buildMonthlyDashboard(orders, users) }
+      return { orders: counts, staffPending, incidentsOpen, pendingReviews, monthly: buildMonthlyDashboard(orders, users) }
     }
     if (action === 'financeDashboard') {
       await refreshStaffEarnings()
@@ -423,8 +452,33 @@ module.exports = function createHandler(context) {
         await checkTextSecurity(openid, auditRemark, { scene: 2, label: '提现审核备注' })
       }
       const { request, changed } = await settleWithdrawal({ ...admin, openid }, { ...data, auditRemark })
-      if (changed) await sendSubscribeMessage(request.staffOpenid, 'withdrawResult', 'pages/staff/earnings/index', buildSubscriptionData('withdrawResult', { orderNo: data.id, startTime: request.createdAt }, { amount: request.amount, statusText: approved ? '已审核' : '已驳回' }), '', `withdraw:${data.id}:${approved ? 'approved' : 'rejected'}`)
+      if (approved && request.payoutChannel === 'wechat_wallet') {
+        const settings = await getSystemSettings().catch(() => ({}))
+        const transferConfig = (settings.staffSupplies && settings.staffSupplies.transfer) || {}
+        if (transferConfig.enabled) {
+          const result = await submitWechatWithdrawalTransfer(data.id, { ...admin, openid })
+          return { id: data.id, status: (result.request && result.request.status) || result.status || 'transferring', transferStatus: (result.request && result.request.transferStatus) || result.transferStatus || 'processing' }
+        }
+      }
       return { id: data.id, status: nextStatus }
+    }
+    if (action === 'queryWithdrawTransfer') {
+      const id = safeText(data.id).trim()
+      if (!id) throw new Error('缺少提现申请 ID')
+      const result = await queryWechatWithdrawalTransfer(id)
+      return { id, status: result.request && result.request.status, transferStatus: result.request && result.request.transferStatus }
+    }
+    if (action === 'retryWithdrawTransfer') {
+      const id = safeText(data.id).trim()
+      if (!id) throw new Error('缺少提现申请 ID')
+      const result = await retryWechatWithdrawalTransfer(id, { ...admin, openid })
+      return { id, status: result.request && result.request.status, transferStatus: result.request && result.request.transferStatus }
+    }
+    if (action === 'releaseFailedWithdraw') {
+      const remark = safeText(data.remark || data.auditRemark).trim()
+      if (remark.length > 500) throw new Error('处理备注不能超过 500 字')
+      const { request } = await releaseFailedWithdrawal({ ...admin, openid }, { ...data, remark })
+      return { id: data.id, status: request.status, transferStatus: request.transferStatus }
     }
     if (action === 'markWithdrawPaid') {
       const payRemark = safeText(data.payRemark || data.remark).trim()
@@ -1006,7 +1060,21 @@ module.exports = function createHandler(context) {
       if (refundFilter) orders = orders.filter(order => getOrderRefundState(order) === refundFilter)
       else if (isNormalStatus) orders = orders.filter(order => rawStatus === 'assigned' ? ['assigned', 'on_the_way'].includes(order.status) : order.status === rawStatus)
       const page = paginateList(orders, data)
-      return { ...page, list: await Promise.all(page.list.map(attachAdminOrderContactData)) }
+      const settings = await getSystemSettings().catch(() => ({}))
+      const commissionRate = Number(settings?.settlement?.staffCommissionRate ?? 0.7)
+      const list = await Promise.all(page.list.map(async (item) => {
+        const display = await attachAdminOrderContactData(item)
+        const profitSummary = typeof buildOrderProfitSummary === 'function'
+          ? buildOrderProfitSummary(item, null, commissionRate)
+          : null
+        return {
+          ...display,
+          profitSummary,
+          staffReward: profitSummary ? profitSummary.staffReward : 0,
+          platformProfit: profitSummary ? profitSummary.platformProfit : 0
+        }
+      }))
+      return { ...page, list }
     }
     if (action === 'batchDeleteOrders') {
       const orderIds = Array.from(new Set((Array.isArray(data.orderIds) ? data.orderIds : []).map((id) => safeText(id).trim()).filter(Boolean)))
@@ -1072,6 +1140,18 @@ module.exports = function createHandler(context) {
 
       const standardEarning = await calculateStaffEarningForOrder(order.data).catch(() => ({ earningAmount: 0 }))
       displayOrder.standardStaffReward = standardEarning.earningAmount || 0
+
+      const earningRows = await readScopedDocuments('staff_earnings', { orderId: id }, 'createdAt', 'desc').catch(() => [])
+      const actualEarning = earningRows[0] || null
+      const settings = await getSystemSettings().catch(() => ({}))
+      const commissionRate = Number(settings?.settlement?.staffCommissionRate ?? 0.7)
+      const profitSummary = typeof buildOrderProfitSummary === 'function'
+        ? buildOrderProfitSummary(order.data, actualEarning, commissionRate)
+        : null
+      displayOrder.profitSummary = profitSummary
+      displayOrder.staffReward = profitSummary ? profitSummary.staffReward : 0
+      displayOrder.platformProfit = profitSummary ? profitSummary.platformProfit : 0
+      displayOrder.actualStaffEarning = actualEarning
 
       if (action === 'getEvidence') await logAdmin(admin, 'order', id, 'getEvidence', { trackCount: trackRows.length, checkinCount: checkinRows.filter(isActiveCheckin).length })
       return {

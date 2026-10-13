@@ -140,6 +140,7 @@ function normalizePaymentConfig(payment = {}) {
     appId: payment.appId || '',
     notifyUrl: payment.notifyUrl || '',
     certSerialNo: payment.certSerialNo || payment.merchantCertSerialNo || '',
+    platformCertSerialNo: payment.platformCertSerialNo || '',
     refundEnabled: payment.refundEnabled !== false,
     allowMockInProduction: payment.allowMockInProduction === true,
     apiV3KeyConfigured: payment.apiV3KeyConfigured === true,
@@ -400,7 +401,7 @@ function buildSettingSummary(settings = {}) {
     subscription: `${subscription.enabled ? '订阅已启用' : '订阅已关闭'} · 已配置 ${configuredTemplateCount} 个模板`,
     customerService: `${customerService.phone || '未配置电话'} · ${customerService.workHours || '未配置时间'}`,
     checkinShare: `${checkinShare.title || '未配置标题'} · ${checkinShare.imageUrl ? '已配置封面' : '未配置封面'}`,
-    settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · T+${settlement.settlementDelayDays} · ${reliability.enableOfflineQueue ? '离线补传开' : '离线补传关'}`,
+    settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · 完单 ${settlement.settlementDelayDays} 天后可提现 · 最低 ¥${Number(settlement.minWithdrawAmount || 0).toFixed(2)}`,
     carousel: `${carousel.enabled ? '轮播已启用' : '轮播已关闭'} · ${enabledCarouselCount}/${carouselItems.length} 个素材启用`,
     homePage: `${enabledModuleCount}/${homeModuleOptions.length} 个模块启用 · ${homePage.ctaTitle || '未配置标题'}`,
     staffTraining: `及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题 · ${enabledVideoCount}/${videos.length} 视频 · 审核微信: ${(staffTraining.videoAuditGuide && staffTraining.videoAuditGuide.wechatId) || '未配置'}`,
@@ -769,7 +770,13 @@ Page({
 
   settlementInput(e) {
     const field = e.currentTarget.dataset.field
-    this.setData({ [`settings.settlement.${field}`]: Number(e.detail.value || 0) })
+    const value = String(e.detail.value || '')
+    if (field === 'settlementDelayDays') {
+      if (!/^\d*$/.test(value)) return
+    } else if (!/^\d*(\.\d{0,2})?$/.test(value)) {
+      return
+    }
+    this.setData({ [`settings.settlement.${field}`]: value })
   },
 
   reliabilityInput(e) {

@@ -21,8 +21,27 @@ function monthStart() {
   return `${year}-${month}-01`
 }
 
+const withdrawStatusText = {
+  pending: '待审核',
+  approved: '待提交转账',
+  transferring: '微信提现中',
+  transfer_failed: '微信提现失败',
+  rejected: '已驳回',
+  paid: '已到账'
+}
+
 function decorate(item) {
-  return { ...item, amountText: money(item.amount), actionLoading: false }
+  const status = String(item.status || '').toLowerCase()
+  const transferStatus = String(item.transferStatus || '').toLowerCase()
+  const isWechatWallet = item.payoutChannel === 'wechat_wallet'
+  return {
+    ...item,
+    amountText: money(item.amount),
+    statusText: withdrawStatusText[status] || item.status,
+    transferStatusText: transferStatus ? (transferStatus === 'not_started' ? '未开始' : transferStatus === 'submitting' ? '提交中' : transferStatus === 'processing' ? '处理中' : transferStatus === 'success' ? '成功' : transferStatus === 'failed' ? '失败' : transferStatus === 'unknown' ? '待查询确认' : transferStatus) : '',
+    isWechatWallet,
+    actionLoading: false
+  }
 }
 
 function parseAmount(value) {
@@ -202,6 +221,52 @@ Page({
 
   markPaid(e) {
     this.confirmStaffPayment(e.currentTarget.dataset.id, 'markWithdrawPaid', '确认提现付款')
+  },
+
+  queryWithdrawTransfer(e) {
+    this.runWithdrawTransferAction(e.currentTarget.dataset.id, 'queryWithdrawTransfer', '正在查询...')
+  },
+
+  retryWithdrawTransfer(e) {
+    const id = e.currentTarget.dataset.id
+    wx.showModal({
+      title: '重试微信提现',
+      content: '仅在微信明确失败或未提交成功时重试；不确定状态会先查询微信结果。确认继续？',
+      success: (res) => {
+        if (res.confirm) this.runWithdrawTransferAction(id, 'retryWithdrawTransfer', '正在重试...')
+      }
+    })
+  },
+
+  releaseFailedWithdraw(e) {
+    const id = e.currentTarget.dataset.id
+    wx.showModal({
+      title: '释放失败提现收益',
+      content: '确认微信侧未打款成功后，才可释放收益回可提现余额。',
+      editable: true,
+      placeholderText: '请输入处理备注',
+      success: (res) => {
+        if (!res.confirm) return
+        this.runWithdrawTransferAction(id, 'releaseFailedWithdraw', '正在释放...', { remark: String(res.content || '').trim() || '微信提现失败后释放收益' })
+      }
+    })
+  },
+
+  runWithdrawTransferAction(id, action, title, extra = {}) {
+    if (this.data.actionBusy) return
+    this.setData({ actionBusy: true })
+    wx.showLoading({ title, mask: true })
+    callFunction('admin', action, { id, ...extra })
+      .then(() => {
+        wx.hideLoading()
+        wx.showToast({ title: '已处理' })
+        this.load()
+      })
+      .catch((err) => {
+        wx.hideLoading()
+        showError(err)
+      })
+      .finally(() => this.setData({ actionBusy: false }))
   },
 
   clearStaffFilter() {

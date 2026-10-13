@@ -164,6 +164,8 @@ module.exports = function createService({
 
   async function refreshStaffEarnings(openid = '') {
     const time = now()
+    const settings = await getSystemSettings()
+    const immediateWithdraw = Number(settings.settlement && settings.settlement.settlementDelayDays) === 0
 
     // 1. 回溯清洗存量被误标或历史遗留的模拟收益（状态为 available，但实为 mock 支付）
     try {
@@ -242,8 +244,10 @@ module.exports = function createService({
           continue
         }
         const availableAt = parseDateValue(earning.availableAt)
-        if (availableAt && availableAt.getTime() <= time.getTime()) {
-          await db.collection('staff_earnings').where({ _id: earning._id, status: 'pending' }).update({ data: { status: 'available', updatedAt: time } })
+        if (immediateWithdraw || (availableAt && availableAt.getTime() <= time.getTime())) {
+          const patch = { status: 'available', updatedAt: time }
+          if (immediateWithdraw) patch.availableAt = time
+          await db.collection('staff_earnings').where({ _id: earning._id, status: 'pending' }).update({ data: patch })
         }
       }
       if (rows.length < 100) break
@@ -410,12 +414,148 @@ module.exports = function createService({
     return results
   }
 
+  function buildOrderProfitSummary(order, actualEarning = null, commissionRate = 0.7) {
+    if (!order) {
+      return {
+        hasPayment: false,
+        payAmount: 0,
+        refundAmount: 0,
+        netPayAmount: 0,
+        staffReward: 0,
+        platformProfit: 0,
+        commissionRate: 0.7,
+        commissionRateText: '70%',
+        platformProfitRateText: '30%',
+        isUrgent: false,
+        isSubsidy: false,
+        subsidyAmount: 0,
+        deductAmount: 0,
+        settlementStatus: 'unpaid',
+        settlementStatusText: '未付款'
+      }
+    }
+
+    const payAmount = Number(order.payAmount || 0)
+    const refundAmount = Number(order.refundAmount || 0)
+    const netPayAmount = Math.max(0, Math.round((payAmount - refundAmount) * 100) / 100)
+    const rate = Number(commissionRate ?? 0.7)
+    const ratePercentText = `${Math.round(rate * 100)}%`
+    const platformRatePercentText = `${Math.max(0, 100 - Math.round(rate * 100))}%`
+
+    const isPaid = Boolean(order.paidAt) || order.paymentStatus === 'paid' ||
+      ['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed', 'pending_confirm', 'completed'].includes(order.status) ||
+      (order.status === 'cancelled' && payAmount > 0)
+
+    if (!isPaid || payAmount <= 0) {
+      return {
+        hasPayment: false,
+        payAmount,
+        refundAmount,
+        netPayAmount: 0,
+        staffReward: 0,
+        platformProfit: 0,
+        commissionRate: rate,
+        commissionRateText: ratePercentText,
+        platformProfitRateText: platformRatePercentText,
+        isUrgent: Boolean(order.isUrgent),
+        isSubsidy: false,
+        subsidyAmount: 0,
+        deductAmount: 0,
+        settlementStatus: 'unpaid',
+        settlementStatusText: '未支付'
+      }
+    }
+
+    if (netPayAmount <= 0 && refundAmount >= payAmount) {
+      return {
+        hasPayment: true,
+        payAmount,
+        refundAmount,
+        netPayAmount: 0,
+        staffReward: 0,
+        platformProfit: 0,
+        commissionRate: rate,
+        commissionRateText: ratePercentText,
+        platformProfitRateText: platformRatePercentText,
+        isUrgent: Boolean(order.isUrgent),
+        isSubsidy: false,
+        subsidyAmount: 0,
+        deductAmount: 0,
+        settlementStatus: 'refunded',
+        settlementStatusText: '已全额退款 (无收益)'
+      }
+    }
+
+    let staffReward = 0
+    let deductAmount = 0
+    let commissionText = ratePercentText
+    const isUrgent = Boolean(order.isUrgent && Number(order.urgentStaffReward) > 0)
+
+    if (actualEarning && typeof actualEarning.amount === 'number') {
+      staffReward = Number(actualEarning.amount)
+      deductAmount = Number(actualEarning.deductAmount || 0)
+      if (actualEarning.commissionRate) {
+        commissionText = `${Math.round(actualEarning.commissionRate * 100)}%`
+      }
+    } else if (order.completionType === 'admin_manual' && order.adminManualStaffReward !== undefined) {
+      staffReward = Number(order.adminManualStaffReward)
+      deductAmount = Number(order.adminManualDeductEarning || 0)
+    } else if (isUrgent) {
+      staffReward = Number(order.urgentStaffReward)
+      commissionText = '加急补贴一口价'
+      if (Number(order.adminManualDeductEarning) > 0) {
+        deductAmount = Number(order.adminManualDeductEarning)
+        staffReward = Math.max(0, staffReward - deductAmount)
+      }
+    } else {
+      staffReward = Math.round(netPayAmount * rate * 100) / 100
+      if (Number(order.adminManualDeductEarning) > 0) {
+        deductAmount = Number(order.adminManualDeductEarning)
+        staffReward = Math.max(0, staffReward - deductAmount)
+      }
+    }
+
+    staffReward = Math.round(staffReward * 100) / 100
+    const platformProfit = Math.round((netPayAmount - staffReward) * 100) / 100
+    const isSubsidy = platformProfit < 0
+    const subsidyAmount = isSubsidy ? Math.abs(platformProfit) : 0
+
+    let settlementStatus = 'estimated'
+    let settlementStatusText = '履约中 (预计收益)'
+    if (order.status === 'completed' || (actualEarning && ['available', 'withdrawn', 'pending'].includes(actualEarning.status))) {
+      settlementStatus = 'settled'
+      settlementStatusText = actualEarning && actualEarning.status === 'withdrawn' ? '已结算并提现' : '已完单结算入账'
+    } else if (order.status === 'cancelled') {
+      settlementStatus = 'cancelled'
+      settlementStatusText = '已取消订单结算'
+    }
+
+    return {
+      hasPayment: true,
+      payAmount,
+      refundAmount,
+      netPayAmount,
+      staffReward,
+      platformProfit,
+      commissionRate: rate,
+      commissionRateText: commissionText,
+      platformProfitRateText: isSubsidy ? '平台加急补贴' : platformRatePercentText,
+      isUrgent,
+      isSubsidy,
+      subsidyAmount,
+      deductAmount,
+      settlementStatus,
+      settlementStatusText
+    }
+  }
+
   return {
     calculateStaffEarningForOrder,
     calculateAvailableAt,
     ensureStaffEarning,
     refreshStaffEarnings,
     summarizeStaffEarnings,
-    adjustStaffEarningsForRefund
+    adjustStaffEarningsForRefund,
+    buildOrderProfitSummary
   }
 }

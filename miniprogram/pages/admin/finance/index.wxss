@@ -215,6 +215,11 @@
   font-weight: 950;
 }
 
+.info-row .value.danger,
+.danger {
+  color: #dc2626;
+}
+
 .action-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -78,6 +78,30 @@ function buildRevenueStats(dashboard = {}) {
   ]
 }
 
+function pendingCountForUrl(url, pending = {}) {
+  const map = {
+    '/pages/admin/staff-audit/list/index': pending.staffAudit,
+    '/pages/admin/staff-training/list/index': pending.training,
+    '/pages/admin/staff-promotion/list/index': pending.promotion,
+    '/pages/admin/pet-vaccine/list/index': pending.petVaccine,
+    '/pages/admin/finance/index': pending.finance,
+    '/pages/admin/incidents/list/index': pending.incidents
+  }
+  return Number(map[url] || 0)
+}
+
+function buildAdminSections(access, dashboard = null) {
+  const pending = (dashboard && dashboard.pendingReviews) || {}
+  return adminSections
+    .map(section => ({
+      ...section,
+      items: section.items
+        .filter(item => canVisit(access, item.url))
+        .map(item => ({ ...item, pendingCount: pendingCountForUrl(item.url, pending) }))
+    }))
+    .filter(section => section.items.length)
+}
+
 Page({
   data: {
     dashboard: null,
@@ -113,7 +137,7 @@ Page({
   refreshHome() {
     this.invalidateRequests()
     const access = this.data.adminAccess
-    this.setData({ adminSections: adminSections.map(section => ({ ...section, items: section.items.filter(item => canVisit(access, item.url)) })).filter(section => section.items.length), dashboard: null, urgentNotice: null, unreadNotificationCount: 0, staffAuditTodo: null })
+    this.setData({ adminSections: buildAdminSections(access), dashboard: null, urgentNotice: null, unreadNotificationCount: 0, staffAuditTodo: null })
     const requests = []
     if (can(access, 'admin.dashboard')) requests.push(this.loadDashboard())
     if (can(access, 'admin.getAdminNotificationBadge')) requests.push(this.loadNotifications())
@@ -131,6 +155,7 @@ Page({
           dashboard,
           overviewStats: buildOverviewStats(dashboard),
           revenueStats: buildRevenueStats(dashboard),
+          adminSections: buildAdminSections(this.data.adminAccess, dashboard),
           staffAuditTodo: staffPending > 0 && canVisit(this.data.adminAccess, staffAuditUrl)
             ? { count: staffPending, url: staffAuditUrl }
             : null

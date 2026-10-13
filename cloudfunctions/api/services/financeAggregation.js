@@ -68,13 +68,14 @@ module.exports = function createService({ db, safeText }) {
     ])
     const statuses = summary => Object.fromEntries(summary.statuses.map(item => [item.status, item.count]))
     const withdrawAmount = status => (withdraws.statuses.find(item => item.status === status)?.cents || 0) / 100
+    const withdrawingAmount = ['approved', 'transferring', 'transfer_failed'].reduce((sum, status) => sum + withdrawAmount(status), 0)
     return {
       range: { startDate: range.startDate, endDate: range.endDate },
       metrics: {
         gmv: orders.cents / 100, received: payments.cents / 100, refundAmount: refunds.cents / 100,
         netRevenue: (payments.cents - refunds.cents) / 100, staffEarningAmount: earnings.cents / 100,
         platformGrossProfit: (payments.cents - refunds.cents - earnings.cents) / 100,
-        pendingWithdrawAmount: withdrawAmount('pending'), withdrawingAmount: withdrawAmount('approved'),
+        pendingWithdrawAmount: withdrawAmount('pending'), withdrawingAmount,
         paidWithdrawAmount: paidWithdraws.cents / 100
       },
       accountingScope: { timezone: 'Asia/Shanghai', depositsIncluded: false, actualProfit: null,

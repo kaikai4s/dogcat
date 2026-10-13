@@ -46,11 +46,32 @@ module.exports = function createService({
       apiV3Key: safeText(process.env.WECHAT_PAY_API_V3_KEY || payment.apiV3Key).trim(),
       privateKey: normalizePem(process.env.WECHAT_PAY_PRIVATE_KEY || payment.privateKey),
       platformPublicKey: normalizePem(process.env.WECHAT_PAY_PLATFORM_PUBLIC_KEY || payment.platformPublicKey),
+      platformCertSerialNo: safeText(process.env.WECHAT_PAY_PLATFORM_CERT_SERIAL_NO || payment.platformCertSerialNo).trim(),
       refundEnabled: payment.refundEnabled !== false
     }
     if (!config.appId || !config.mchId || !config.notifyUrl || !config.certSerialNo || !config.apiV3Key || !config.privateKey) throw new Error('微信支付配置未完成')
     if (!/^https:\/\//i.test(config.notifyUrl)) throw new Error('微信支付回调地址必须是 HTTPS')
     return config
+  }
+
+  function getWechatTransferConfig(settings) {
+    const config = getWechatPayConfig(settings)
+    const transfer = (settings.staffSupplies && settings.staffSupplies.transfer) || (settings.payment && settings.payment.transfer) || {}
+    const enabled = transfer.enabled === true || process.env.WECHAT_TRANSFER_ENABLED === 'true'
+    const sceneId = safeText(process.env.WECHAT_TRANSFER_SCENE_ID || transfer.sceneId || transfer.transferSceneId).trim()
+    const userRecvPerception = safeText(process.env.WECHAT_TRANSFER_USER_RECV_PERCEPTION || transfer.userRecvPerception).trim()
+    const remark = safeText(process.env.WECHAT_TRANSFER_REMARK || transfer.remark).trim() || '宠托师服务收益提现'
+    const notifyUrl = safeText(process.env.WECHAT_TRANSFER_NOTIFY_URL || transfer.notifyUrl).trim()
+    const maxAmount = Number(process.env.WECHAT_TRANSFER_MAX_AMOUNT || transfer.maxAmount || 5000)
+    let sceneReportInfos = Array.isArray(transfer.sceneReportInfos) ? transfer.sceneReportInfos : []
+    if (typeof process.env.WECHAT_TRANSFER_SCENE_REPORT_INFOS === 'string' && process.env.WECHAT_TRANSFER_SCENE_REPORT_INFOS.trim()) {
+      sceneReportInfos = JSON.parse(process.env.WECHAT_TRANSFER_SCENE_REPORT_INFOS)
+    }
+    if (!enabled) throw new Error('微信提现到零钱未启用')
+    if (!sceneId) throw new Error('微信商家转账场景 ID 未配置')
+    if (!userRecvPerception) throw new Error('微信商家转账收款用户感知未配置')
+    if (!Number.isFinite(maxAmount) || maxAmount <= 0) throw new Error('微信提现单笔上限配置不正确')
+    return { ...config, transferEnabled: enabled, transferSceneId: sceneId, transferRemark: remark, transferNotifyUrl: notifyUrl, transferMaxAmount: maxAmount, userRecvPerception, sceneReportInfos }
   }
 
   function sanitizeWechatPayload(payload = {}) {
@@ -65,7 +86,30 @@ module.exports = function createService({
     return clone
   }
 
-  function wechatPayRequest(method, path, body, config) {
+  function maskOpenid(openid) {
+    const text = safeText(openid).trim()
+    if (!text) return ''
+    return text.length <= 8 ? 'configured' : `${text.slice(0, 4)}****${text.slice(-4)}`
+  }
+
+  function sanitizeWechatTransferPayload(payload = {}) {
+    const clone = sanitizeWechatPayload(payload)
+    if (clone.openid) clone.openid = maskOpenid(clone.openid)
+    if (clone.user_name) clone.user_name = '[encrypted]'
+    if (clone.fail_reason) clone.fail_reason = safeText(clone.fail_reason).slice(0, 120)
+    if (clone.transfer_scene_report_infos) clone.transfer_scene_report_infos = '[configured]'
+    return clone
+  }
+
+  function encryptWechatTransferUserName(realName, config) {
+    const name = safeText(realName).trim()
+    if (!name) return ''
+    if (!config.platformPublicKey) throw new Error('微信支付平台公钥未配置，无法加密收款人姓名')
+    if (!config.platformCertSerialNo) throw new Error('微信支付平台证书序列号未配置，无法加密收款人姓名')
+    return crypto.publicEncrypt({ key: config.platformPublicKey, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha1' }, Buffer.from(name, 'utf8')).toString('base64')
+  }
+
+  function wechatPayRequest(method, path, body, config, extraHeaders = {}) {
     if (!isProductionPaymentEnv() && process.env.WECHAT_PAY_MOCK_PREPAY_ID && path.includes('/v3/pay/transactions/jsapi')) return Promise.resolve({ prepay_id: process.env.WECHAT_PAY_MOCK_PREPAY_ID })
     if (!isProductionPaymentEnv() && process.env.WECHAT_PAY_MOCK_REFUND_ID && path.includes('/v3/refund/domestic/refunds')) return Promise.resolve({ refund_id: process.env.WECHAT_PAY_MOCK_REFUND_ID, status: process.env.WECHAT_PAY_MOCK_REFUND_STATUS || 'PROCESSING' })
 
@@ -86,7 +130,8 @@ module.exports = function createService({
           Accept: 'application/json',
           'User-Agent': 'VipPetCare-WechatPay/1.0',
           'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(bodyText)
+          'Content-Length': Buffer.byteLength(bodyText),
+          ...extraHeaders
         }
       }, (res) => {
         let raw = ''
@@ -181,7 +226,10 @@ module.exports = function createService({
     isProductionPaymentEnv,
     assertPaymentModeAllowed,
     getWechatPayConfig,
+    getWechatTransferConfig,
     sanitizeWechatPayload,
+    sanitizeWechatTransferPayload,
+    encryptWechatTransferUserName,
     wechatPayRequest,
     buildMiniProgramPayParams,
     getHeader,

@@ -19,8 +19,10 @@ const earningStatusText = {
 const withdrawStatusText = {
   pending: '审核中',
   approved: '已通过',
+  transferring: '打款中',
+  transfer_failed: '打款失败',
   rejected: '已驳回',
-  paid: '已打款'
+  paid: '已到账'
 }
 
 function money(value) {
@@ -59,7 +61,6 @@ Page({
     withdraws: [],
     amount: '',
     accountName: '',
-    accountNo: '',
     submitting: false
   },
 
@@ -125,10 +126,6 @@ Page({
     if (!accountName || accountName.length < 2) {
       return wx.showToast({ title: '请填写收款人真实姓名', icon: 'none' })
     }
-    const accountNo = String(this.data.accountNo || '').trim()
-    if (!accountNo || accountNo.length < 4) {
-      return wx.showToast({ title: '请填写完整收款账号', icon: 'none' })
-    }
 
     this._submittingLock = true
     this.setData({ submitting: true })
@@ -136,14 +133,13 @@ Page({
     callFunction('finance', 'createWithdrawRequest', {
       amount,
       accountName,
-      accountNo,
       clientRequestId: createClientRequestId('withdraw')
     })
       .then(() => {
         hideLoading()
         this._submittingLock = false
         wx.showToast({ title: '已提交提现', icon: 'success' })
-        this.setData({ submitting: false, amount: '', accountName: '', accountNo: '' })
+        this.setData({ submitting: false, amount: '', accountName: '' })
         this.load()
       })
       .catch((error) => {

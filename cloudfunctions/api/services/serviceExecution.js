@@ -27,6 +27,25 @@ module.exports = function createService({
 }) {
   const TRACK_BACKFILL_WINDOW_MS = 10 * 60 * 1000
 
+  function isTransactionConflict(error) {
+    const message = String((error && (error.message || error.errMsg)) || error || '')
+    return message.includes('DATABASE_TRANSACTION_CONFLICT') || message.includes('Transaction is conflict') || message.includes('ResourceUnavailable') || message.includes('-501001')
+  }
+
+  async function runTransactionWithConflictRetry(fn, maxAttempts = 3) {
+    let lastError
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await db.runTransaction(fn)
+      } catch (error) {
+        lastError = error
+        if (!isTransactionConflict(error) || attempt >= maxAttempts) throw error
+        await new Promise(resolve => setTimeout(resolve, attempt * 120))
+      }
+    }
+    throw lastError
+  }
+
   async function evaluateCheckinCompletion(order, sessionStartedAt) {
     try {
       await requireSanitizationEvidence(order, sessionStartedAt)
@@ -87,7 +106,7 @@ module.exports = function createService({
         dayUpdateData.autoCompleted = true
         dayUpdateData.autoCompletedSessions = nextAutoCompletedSessions
       }
-      await db.runTransaction(async tx => {
+      await runTransactionWithConflictRetry(async tx => {
         const current = (await tx.collection('orders').doc(orderId).get()).data
         if (!current || current.status !== ORDER_STATUS.IN_SERVICE || current.staffOpenid !== order.staffOpenid) throw new Error('订单状态不可完成当天服务')
         if (Number(current.activeSessionIndex || 0) && Number(current.activeSessionIndex) !== sessionIndex) throw new Error('服务日期已变化，请刷新订单')
@@ -187,7 +206,7 @@ module.exports = function createService({
 
   async function ensureOrderCompletionRewards(order, time = now(), options = {}) {
     const orderId = order._id
-    const result = await db.runTransaction(async transaction => {
+    const result = await runTransactionWithConflictRetry(async transaction => {
       const currentOrder = (await transaction.collection('orders').doc(orderId).get()).data
       if (!currentOrder || ![ORDER_STATUS.COMPLETED, ...(options.completionPatch ? [ORDER_STATUS.IN_SERVICE] : [])].includes(currentOrder.status)) throw new Error('订单状态不可完成')
       if (options.completionPatch && currentOrder.staffOpenid !== order.staffOpenid) throw new Error('订单员工已变化')
@@ -236,7 +255,7 @@ module.exports = function createService({
 
       // 每满 3 单奖励 1 张补签卡；本订单使用固定完单序号。
       if (completionOrdinal > 0 && completionOrdinal % 3 === 0 && !currentOrder.retroCardAwarded && !currentOrder.retroCardEvaluated) {
-        const existingCardLog = (await db.collection('retro_card_logs').where({
+        const existingCardLog = (await transaction.collection('retro_card_logs').where({
           openid: clientOpenid,
           sourceType: 'order_complete_milestone',
           sourceId: orderId

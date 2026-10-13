@@ -102,7 +102,7 @@
         </view>
         <view class="meta-chip chip-primary">编辑</view>
       </view>
-      <view class="setting-summary-line">提现门槛、分成比例、轨迹补传和重试参数。</view>
+      <view class="setting-summary-line">配置宠托师订单收益分成、完单后可提现等待时间和最低提现金额。</view>
     </view>
 
     <view class="admin-compact-card setting-overview-card" data-panel="carousel" bindtap="openSettingModal">
@@ -254,7 +254,8 @@
           <view class="field-item"><text class="label">商户号</text><input class="input" value="{{settings.payment.mchId}}" data-field="mchId" bindinput="paymentInput" placeholder="微信支付商户号" /></view>
           <view class="field-item"><text class="label">AppID</text><input class="input" value="{{settings.payment.appId}}" data-field="appId" bindinput="paymentInput" placeholder="小程序 AppID" /></view>
           <view class="field-item"><text class="label">支付回调地址</text><input class="input" value="{{settings.payment.notifyUrl}}" data-field="notifyUrl" bindinput="paymentInput" placeholder="https://..." /></view>
-          <view class="field-item"><text class="label">证书序列号</text><input class="input" value="{{settings.payment.certSerialNo}}" data-field="certSerialNo" bindinput="paymentInput" placeholder="商户 API 证书序列号" /></view>
+          <view class="field-item"><text class="label">商户证书序列号</text><input class="input" value="{{settings.payment.certSerialNo}}" data-field="certSerialNo" bindinput="paymentInput" placeholder="商户 API 证书序列号" /></view>
+          <view class="field-item"><text class="label">平台证书序列号</text><input class="input" value="{{settings.payment.platformCertSerialNo}}" data-field="platformCertSerialNo" bindinput="paymentInput" placeholder="转账实名加密使用的 Wechatpay-Serial" /></view>
           <view class="field-item"><text class="label">API v3 Key</text><input class="input" password value="{{settings.payment.apiV3KeyInput}}" data-field="apiV3KeyInput" bindinput="paymentInput" placeholder="{{settings.payment.apiV3KeyConfigured ? '已配置，留空不修改' : '请输入 API v3 Key'}}" /></view>
           <view class="field-item"><text class="label">商户私钥</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.payment.privateKeyInput}}" data-field="privateKeyInput" bindinput="paymentInput" placeholder="{{settings.payment.privateKeyConfigured ? '已配置，留空不修改' : '请输入 PEM 私钥'}}" /></view>
           <view class="field-item"><text class="label">平台公钥</text><textarea class="input textarea-input" maxlength="-1" value="{{settings.payment.platformPublicKeyInput}}" data-field="platformPublicKeyInput" bindinput="paymentInput" placeholder="{{settings.payment.platformPublicKeyConfigured ? '已配置，留空不修改' : '用于回调验签的微信支付平台公钥'}}" /></view>
@@ -323,10 +324,13 @@
         </view>
 
         <view wx:if="{{activeSettingPanel === 'settlementReliability'}}" class="setting-modal-section">
-          <view class="field-item"><text class="label">宠托师分成比例</text><input class="input" type="digit" value="{{settings.settlement.staffCommissionRate}}" data-field="staffCommissionRate" bindinput="settlementInput" /></view>
-          <view class="field-item"><text class="label">结算等待天数</text><input class="input" type="number" value="{{settings.settlement.settlementDelayDays}}" data-field="settlementDelayDays" bindinput="settlementInput" /></view>
-          <view class="field-item"><text class="label">最低提现金额</text><input class="input" type="digit" value="{{settings.settlement.minWithdrawAmount}}" data-field="minWithdrawAmount" bindinput="settlementInput" /></view>
-          <view class="field-item"><text class="label">提现手续费比例</text><input class="input" type="digit" value="{{settings.settlement.withdrawFeeRate}}" data-field="withdrawFeeRate" bindinput="settlementInput" /></view>
+          <view class="field-item"><text class="label">宠托师订单收益分成比例</text><input class="input" type="digit" value="{{settings.settlement.staffCommissionRate}}" data-field="staffCommissionRate" bindinput="settlementInput" placeholder="例如 0.70 表示 70%" /></view>
+          <view class="notice">订单完成后按此比例生成宠托师收益；输入 0-1 之间的小数，最多两位小数。</view>
+          <view class="field-item"><text class="label">订单完成后几天可提现</text><input class="input" type="number" value="{{settings.settlement.settlementDelayDays}}" data-field="settlementDelayDays" bindinput="settlementInput" placeholder="填 0 表示完单后立即可提现" /></view>
+          <view class="notice">用于控制宠托师收益从“待结算”进入“可提现”的等待天数，设置为 0 时完成订单后立即可提现。</view>
+          <view class="field-item"><text class="label">宠托师单次最低提现金额</text><input class="input" type="digit" value="{{settings.settlement.minWithdrawAmount}}" data-field="minWithdrawAmount" bindinput="settlementInput" placeholder="例如 10.00" /></view>
+          <view class="notice">宠托师申请提现时，提现金额低于该值会被拦截，金额最多两位小数。</view>
+          <view class="field-item"><text class="label">提现手续费比例</text><input class="input" type="digit" value="{{settings.settlement.withdrawFeeRate}}" data-field="withdrawFeeRate" bindinput="settlementInput" placeholder="例如 0.00 表示不收手续费" /></view>
           <view class="compact-toggle-row"><view class="compact-toggle-main"><view class="strong">启用离线补传</view><view class="muted">弱网轨迹和打卡可本地排队后补传。</view></view><switch checked="{{settings.reliability.enableOfflineQueue}}" bindchange="toggleOfflineQueue" /></view>
           <view class="field-item"><text class="label">轨迹批量大小</text><input class="input" type="number" value="{{settings.reliability.maxTrackBatchSize}}" data-field="maxTrackBatchSize" bindinput="reliabilityInput" /></view>
           <view class="field-item"><text class="label">最大重试次数</text><input class="input" type="number" value="{{settings.reliability.maxRetryTimes}}" data-field="maxRetryTimes" bindinput="reliabilityInput" /></view>

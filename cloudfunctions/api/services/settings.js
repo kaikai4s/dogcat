@@ -143,6 +143,7 @@ module.exports = function createService({
       notifyUrl: safeText(payment.notifyUrl ?? existingPayment.notifyUrl).trim(),
       certSerialNo,
       merchantCertSerialNo: certSerialNo,
+      platformCertSerialNo: safeText(payment.platformCertSerialNo ?? existingPayment.platformCertSerialNo).trim(),
       refundEnabled: payment.refundEnabled !== undefined ? payment.refundEnabled !== false : existingPayment.refundEnabled !== false,
       allowMockInProduction: payment.allowMockInProduction !== undefined ? payment.allowMockInProduction === true : existingPayment.allowMockInProduction === true,
       apiV3KeyConfigured: maskConfigured(apiV3Key || process.env.WECHAT_PAY_API_V3_KEY),
@@ -191,7 +192,7 @@ module.exports = function createService({
       settlement: {
         staffCommissionRate: Math.min(Math.max(Number(settlement.staffCommissionRate ?? 0.7), 0), 1),
         settlementDelayDays: Math.max(Math.round(Number(settlement.settlementDelayDays ?? 1)), 0),
-        minWithdrawAmount: Math.max(Number(settlement.minWithdrawAmount ?? 10), 0),
+        minWithdrawAmount: Math.round(Math.max(Number(settlement.minWithdrawAmount ?? 10), 0) * 100) / 100,
         withdrawFeeRate: Math.min(Math.max(Number(settlement.withdrawFeeRate || 0), 0), 1)
       },
       subscription: {
@@ -244,6 +245,21 @@ module.exports = function createService({
     return normalizeSystemSettings(res.data[0] ? res.data[0].value : {}, options)
   }
 
+  async function releasePendingEarningsImmediately(time) {
+    let cursor = ''
+    while (true) {
+      const where = { status: 'pending' }
+      if (cursor && db.command && typeof db.command.gt === 'function') where._id = db.command.gt(cursor)
+      const rows = (await db.collection('staff_earnings').where(where).orderBy('_id', 'asc').limit(100).get().catch(() => ({ data: [] }))).data || []
+      for (const earning of rows) {
+        if (earning.isMock === true || earning.paymentChannel === 'mock' || earning.status === 'mock_settled' || earning.withdrawRequestId || earning.frozenIncidentId) continue
+        await db.collection('staff_earnings').where({ _id: earning._id, status: 'pending' }).update({ data: { status: 'available', availableAt: time, updatedAt: time } }).catch(() => {})
+      }
+      if (rows.length < 100) break
+      cursor = rows[rows.length - 1]._id
+    }
+  }
+
   async function saveSystemSettings(settings) {
     if (settings.staffDeposit) {
       const amount = Number(settings.staffDeposit.amount ?? 0)
@@ -263,6 +279,27 @@ module.exports = function createService({
         throw new Error('【保证金设置】金额过大，请输入合理的金额')
       }
     }
+    if (settings.settlement) {
+      const commissionRate = Number(settings.settlement.staffCommissionRate ?? 0.7)
+      const settlementDelayDays = Number(settings.settlement.settlementDelayDays ?? 1)
+      const minWithdrawAmount = Number(settings.settlement.minWithdrawAmount ?? 10)
+      const withdrawFeeRate = Number(settings.settlement.withdrawFeeRate || 0)
+      if (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 1) {
+        throw new Error('【结算设置】宠托师订单收益分成比例必须在 0-1 之间')
+      }
+      if (!Number.isFinite(settlementDelayDays) || settlementDelayDays < 0 || Math.floor(settlementDelayDays) !== settlementDelayDays) {
+        throw new Error('【结算设置】订单完成后可提现天数必须是非负整数')
+      }
+      if (!Number.isFinite(minWithdrawAmount) || minWithdrawAmount < 0 || Math.abs(minWithdrawAmount * 100 - Math.round(minWithdrawAmount * 100)) > 1e-7) {
+        throw new Error('【结算设置】宠托师单次最低提现金额必须是最多两位小数的非负金额')
+      }
+      if (!Number.isSafeInteger(Math.round(minWithdrawAmount * 100))) {
+        throw new Error('【结算设置】宠托师单次最低提现金额过大')
+      }
+      if (!Number.isFinite(withdrawFeeRate) || withdrawFeeRate < 0 || withdrawFeeRate > 1) {
+        throw new Error('【结算设置】提现手续费比例必须在 0-1 之间')
+      }
+    }
     const time = now()
     const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
     const previousValue = existing.data[0] ? existing.data[0].value : {}
@@ -270,9 +307,11 @@ module.exports = function createService({
     const payload = { key: 'system_settings', value, updatedAt: time }
     if (existing.data[0]) {
       await db.collection('platform_configs').doc(existing.data[0]._id).update({ data: payload })
+      if (Number(value.settlement && value.settlement.settlementDelayDays) === 0) await releasePendingEarningsImmediately(time)
       return { _id: existing.data[0]._id, ...payload }
     }
     const created = await db.collection('platform_configs').add({ data: { ...payload, createdAt: time } })
+    if (Number(value.settlement && value.settlement.settlementDelayDays) === 0) await releasePendingEarningsImmediately(time)
     return { _id: created._id, ...payload, createdAt: time }
   }
 

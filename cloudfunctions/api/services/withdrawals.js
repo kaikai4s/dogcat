@@ -91,12 +91,20 @@ module.exports = function createService({
           throw new Error('收益状态已变化或包含不可提现的模拟测试收益，请刷新后重试')
         }
       }
+      const payoutChannel = safeText(data.payoutChannel).trim()
       const request = {
         staffOpenid: openid, openid, clientRequestId, idempotencyKey: clientRequestId || id,
         amount: totalCents / 100, status: 'pending', earningIds: selected.map(item => item._id),
         accountName,
         accountNo,
         remark, auditRemark: '', createdAt: time, updatedAt: time
+      }
+      if (payoutChannel) {
+        request.payoutChannel = payoutChannel
+        request.amountFen = totalCents
+        request.recipientOpenid = openid
+        request.recipientName = accountName
+        request.transferStatus = 'not_started'
       }
       await transaction.collection('withdraw_requests').doc(id).set({ data: request })
       for (const earning of selected) {

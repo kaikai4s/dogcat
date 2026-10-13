@@ -115,7 +115,9 @@
     </view>
     <view class="grid section-grid">
       <view class="card interactive action-card admin-action-card" wx:for="{{item.items}}" wx:for-item="entry" wx:key="title" data-url="{{entry.url}}" bindtap="go">
-        <view class="action-icon remix-icon {{entry.icon}}"></view>
+        <view class="action-icon remix-icon {{entry.icon}}">
+          <view class="action-badge" wx:if="{{entry.pendingCount > 0}}">{{entry.pendingCount > 99 ? '99+' : entry.pendingCount}}</view>
+        </view>
         <view class="action-title">{{entry.title}}</view>
         <view class="action-desc">{{entry.desc}}</view>
       </view>

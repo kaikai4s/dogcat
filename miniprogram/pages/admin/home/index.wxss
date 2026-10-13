@@ -357,6 +357,28 @@
   align-items: center;
   justify-content: center;
   margin-bottom: 16rpx;
+  position: relative;
+}
+
+.action-badge {
+  position: absolute;
+  top: -10rpx;
+  right: -10rpx;
+  min-width: 34rpx;
+  height: 34rpx;
+  padding: 0 8rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: #ff4d4f;
+  border: 3rpx solid #ffffff;
+  font-size: 19rpx;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow: 0 6rpx 14rpx rgba(255, 77, 79, 0.28);
+  box-sizing: border-box;
 }
 
 .action-title {

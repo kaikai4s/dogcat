@@ -102,6 +102,64 @@
     <view class="info-row" wx:if="{{detail.order.refundNo}}"><view class="label">退款单号</view><view class="value">{{detail.order.refundNo}}</view></view>
   </view>
 
+  <!-- 费用与收益分成结算卡片 -->
+  <view class="admin-card financial-card" wx:if="{{detail.order.profitSummary && detail.order.profitSummary.hasPayment}}">
+    <view class="card-subtitle-between">
+      <view class="card-subtitle">
+        <text class="remix-icon ri-money-cny-circle-line sub-icon profit-icon"></text>
+        <text>订单费用与收益分成</text>
+      </view>
+      <view class="soft-badge {{detail.order.profitSummary.settlementStatus === 'settled' ? 'status-badge' : (detail.order.profitSummary.settlementStatus === 'refunded' ? 'danger-badge' : 'urgent-badge')}}">
+        {{detail.order.profitSummary.settlementStatusText}}
+      </view>
+    </view>
+
+    <!-- 三栏醒目数据总览 -->
+    <view class="profit-grid">
+      <view class="profit-item pay-item">
+        <view class="profit-label">客户实付 (流水)</view>
+        <view class="profit-amount">¥{{detail.order.profitSummary.payAmount}}</view>
+        <view class="profit-sub" wx:if="{{detail.order.profitSummary.refundAmount > 0}}">已退 ¥{{detail.order.profitSummary.refundAmount}} · 净额 ¥{{detail.order.profitSummary.netPayAmount}}</view>
+        <view class="profit-sub" wx:else>有效流水 ¥{{detail.order.profitSummary.netPayAmount}}</view>
+      </view>
+
+      <view class="profit-item staff-item">
+        <view class="profit-label">宠托师收益</view>
+        <view class="profit-amount staff-amount">¥{{detail.order.profitSummary.staffReward}}</view>
+        <view class="profit-sub">{{detail.order.profitSummary.commissionRateText}}分成<text wx:if="{{detail.order.profitSummary.deductAmount > 0}}"> (含扣除¥{{detail.order.profitSummary.deductAmount}})</text></view>
+      </view>
+
+      <view class="profit-item platform-item">
+        <view class="profit-label">平台收益</view>
+        <view class="profit-amount {{detail.order.profitSummary.isSubsidy ? 'subsidy-amount' : 'platform-amount'}}">
+          <text wx:if="{{detail.order.profitSummary.isSubsidy}}">-¥{{detail.order.profitSummary.subsidyAmount}}</text>
+          <text wx:else>¥{{detail.order.profitSummary.platformProfit}}</text>
+        </view>
+        <view class="profit-sub">{{detail.order.profitSummary.platformProfitRateText}}</view>
+      </view>
+    </view>
+
+    <!-- 分成明细说明 -->
+    <view class="financial-details-list">
+      <view class="info-row" wx:if="{{detail.order.totalAmount && detail.order.totalAmount !== detail.order.payAmount}}">
+        <view class="label">服务原价 / 优惠</view>
+        <view class="value">原价 ¥{{detail.order.totalAmount}} · 优惠券/满减抵扣 ¥{{detail.order.discountAmount || (detail.order.totalAmount - detail.order.payAmount)}}</view>
+      </view>
+      <view class="info-row" wx:if="{{detail.order.isUrgent}}">
+        <view class="label">加急补贴说明</view>
+        <view class="value urgent-text">加急公共派单（客户支付 ¥{{detail.order.payAmount}}，宠托师抢单收益 ¥{{detail.order.urgentStaffReward}}）</view>
+      </view>
+      <view class="info-row" wx:if="{{detail.order.completionType === 'admin_manual' && detail.order.adminManualDeductEarning > 0}}">
+        <view class="label">核实违规扣款</view>
+        <view class="value danger-text">扣除违规金额 ¥{{detail.order.adminManualDeductEarning}} · 扣减金额留存平台</view>
+      </view>
+      <view class="info-row">
+        <view class="label">分成比例规则</view>
+        <view class="value muted">基础分成：宠托师 {{detail.order.profitSummary.commissionRateText}} · 平台 {{detail.order.profitSummary.platformProfitRateText}}（完单后计入宠托师钱包）</view>
+      </view>
+    </view>
+  </view>
+
   <view class="stats-grid admin-card">
     <view class="stat-item"><view class="stat-number">{{detail.tracks.length}}</view><view class="stat-label">轨迹点</view></view>
     <view class="stat-item"><view class="stat-number">{{detail.checkins.length}}</view><view class="stat-label">打卡</view></view>

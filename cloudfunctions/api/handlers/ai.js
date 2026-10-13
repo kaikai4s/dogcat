@@ -95,6 +95,7 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'generatePetVoice') {
+      checkAiRateLimit(openid, 10)
       const petId = safeText(data.petId).trim()
       const petData = data.pet && typeof data.pet === 'object' ? data.pet : {}
       let p = { ...petData }
@@ -159,7 +160,6 @@ module.exports = function createHandler(context) {
         }
       }
 
-      checkAiRateLimit(openid, 10)
       let voices = []
       let source = 'preset'
 
@@ -182,7 +182,7 @@ module.exports = function createHandler(context) {
                   content: `你是一只名为「${name}」的${speciesLabel}，正在以第一人称口吻对最爱的主人撒娇和表达心声。${petProfile}。
 请一次性生成5条不同的宠物心声，每条都必须同时包含两个方面：
 1. 结合当季时令告诉主人今天/当前天气情况；
-2. 告诉主人待会有宠托师来贴心照顾自己，自己会乖乖听话，让主人安心。
+2. 告诉主人待会有宠托师来贴心照顾自己，自己会乖乖听话，让主人安心放心。
 要求：
 - 每条35到65字左右，语气萌趣治愈、生动可爱；
 - 5条表达必须明显不同；
@@ -201,10 +201,21 @@ module.exports = function createHandler(context) {
             else if (res && res.text) text = res.text
             text = safeText(text).trim()
             const jsonMatch = text.match(/\[[\s\S]*\]/)
-            const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : []
-            if (Array.isArray(parsed)) {
+            let parsed = null
+            if (jsonMatch) {
+              try {
+                parsed = JSON.parse(jsonMatch[0])
+              } catch (_) {}
+            }
+            if (Array.isArray(parsed) && parsed.length > 0) {
               voices = parsed.map(cleanVoiceText).filter((item) => item.length >= 5 && item.length <= 90).slice(0, 5)
-              source = 'hy3'
+              if (voices.length > 0) source = 'hy3'
+            } else if (text.length >= 5 && text.length <= 150) {
+              const single = cleanVoiceText(text)
+              if (single && single.length >= 5) {
+                voices = [single]
+                source = 'hy3'
+              }
             }
           }
         }
@@ -212,6 +223,7 @@ module.exports = function createHandler(context) {
         console.warn('[generatePetVoice] AI model call failed:', (err && err.message) || err)
       }
 
+      const chosenVoice = (source === 'hy3' && voices.length > 0) ? voices[0] : ''
       const fallbacks = fallbackVoices()
       for (const text of fallbacks) {
         if (voices.length >= 5) break
@@ -245,7 +257,7 @@ module.exports = function createHandler(context) {
         name,
         weekdayLabel,
         dateKey,
-        voiceMessage: pickVoice(voices),
+        voiceMessage: chosenVoice || pickVoice(voices),
         source,
         cacheHit: false
       }

@@ -4,6 +4,7 @@ module.exports = function createHandler(context) {
     reconcilePendingRefunds,
     retryFailedSubscriptions,
     retryStaffCancellationNotifications,
+    reconcileWechatTransfers,
     expireDueUnacceptedOrders,
     autoAcceptDueDirectOrders,
     getMonthDays,
@@ -20,6 +21,7 @@ module.exports = function createHandler(context) {
     // 1. 并发执行相互独立的对账与补偿重试任务，避免慢网络累加串行耗时
     const retryTasks = [
       { name: 'refunds', fn: reconcilePendingRefunds },
+      { name: 'wechatTransfers', fn: reconcileWechatTransfers },
       { name: 'subscriptions', fn: retryFailedSubscriptions },
       { name: 'staffCancellationNotifications', fn: retryStaffCancellationNotifications }
     ]

@@ -45,6 +45,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
         return { request, changed: false }
       }
       if (request.status !== (paid ? 'approved' : 'pending')) throw new Error(paid ? '仅已审核提现可标记打款' : '当前状态不可审核')
+      if (paid && request.payoutChannel === 'wechat_wallet') throw new Error('微信提现单须以微信转账成功结果为准，不能手动标记打款')
 
       // 双人复核校验
       let isSameAuditorAndPayer = false
@@ -116,6 +117,115 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
         action: paid ? 'markWithdrawPaid' : 'auditWithdrawRequest', detail: { amount: total / 100, approved: data.approved === true, paymentReference: patch.paymentReference, paymentProofImage: patch.paymentProofImage, isSameAuditorAndPayer }, createdAt: time
       } })
       return { request: { ...request, ...patch }, changed: true }
+    })
+  }
+
+  function transferPaidReference(request, result = {}) {
+    return safeText(result.transferBillNo || result.transfer_bill_no || result.outBillNo || request.outBillNo || request.outDetailNo).trim()
+  }
+
+  async function markWechatWithdrawalPaid(withdrawId, result = {}) {
+    return db.runTransaction(async tx => {
+      const request = (await tx.collection('withdraw_requests').doc(withdrawId).get()).data
+      if (!request) throw new Error('提现申请不存在')
+      if (request.status === 'paid') return { request, changed: false }
+      if (request.payoutChannel !== 'wechat_wallet') throw new Error('非微信提现单不能使用微信转账结算')
+      if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('当前提现状态不可确认微信打款')
+      const earningIds = ids(request.earningIds, true)
+      const earnings = []
+      let total = 0
+      for (const id of earningIds) {
+        const earning = (await tx.collection('staff_earnings').doc(id).get()).data
+        if (!earning || earning.staffOpenid !== request.staffOpenid || earning.withdrawRequestId !== withdrawId || earning.status !== 'withdrawing' || earning.frozenIncidentId) {
+          throw new Error('收益状态或提现归属异常，请核对后重试')
+        }
+        total += cents(earning.amount, true)
+        earnings.push(earning)
+      }
+      if (!Number.isSafeInteger(total) || total !== cents(request.amount, true)) throw new Error('提现金额与收益合计不一致')
+      const time = now()
+      const paymentReference = transferPaidReference(request, result)
+      const patch = {
+        status: 'paid',
+        transferStatus: 'success',
+        wechatTransferState: safeText(result.state || result.transfer_state || 'SUCCESS').trim() || 'SUCCESS',
+        wechatTransferBillNo: safeText(result.transferBillNo || result.transfer_bill_no || request.wechatTransferBillNo).trim(),
+        paymentChannel: 'WECHAT_WALLET',
+        paymentReference,
+        paidAt: time,
+        transferSucceededAt: time,
+        lastTransferCheckedAt: time,
+        rawTransferResponse: result.rawTransferResponse || result.raw || {},
+        updatedAt: time
+      }
+      await tx.collection('withdraw_requests').doc(withdrawId).update({ data: patch })
+      for (const earning of earnings) {
+        await tx.collection('staff_earnings').doc(earning._id).update({ data: { status: 'withdrawn', updatedAt: time } })
+      }
+      await enqueueSubscription(tx, { openid: request.staffOpenid, templateKey: 'withdrawResult', page: 'pages/staff/earnings/index',
+        messageData: buildSubscriptionData('withdrawResult', { orderNo: withdrawId, startTime: request.createdAt }, { amount: request.amount, statusText: '已打款' }), orderId: '', deliveryKey: `withdraw:${withdrawId}:paid` })
+      await financeLog(tx, `withdraw_paid_${withdrawId}`, 'withdraw_paid', 'withdraw_request', withdrawId, time, {
+        staffOpenid: request.staffOpenid, amountDelta: -total / 100,
+        detail: { earningIds, paymentChannel: 'WECHAT_WALLET', paymentReference, outBillNo: request.outBillNo }
+      })
+      return { request: { ...request, ...patch }, changed: true }
+    })
+  }
+
+  async function markWechatWithdrawalFailed(withdrawId, result = {}) {
+    return db.runTransaction(async tx => {
+      const request = (await tx.collection('withdraw_requests').doc(withdrawId).get()).data
+      if (!request) throw new Error('提现申请不存在')
+      if (request.status === 'paid') return { request, changed: false }
+      if (request.payoutChannel !== 'wechat_wallet') throw new Error('非微信提现单不能标记微信转账失败')
+      const time = now()
+      const patch = {
+        status: 'transfer_failed',
+        transferStatus: 'failed',
+        wechatTransferState: safeText(result.state || result.transfer_state || 'FAIL').trim() || 'FAIL',
+        lastTransferError: safeText(result.failReason || result.fail_reason || result.message || '微信提现失败').slice(0, 500),
+        lastTransferCheckedAt: time,
+        transferFailedAt: time,
+        rawTransferResponse: result.rawTransferResponse || result.raw || {},
+        updatedAt: time
+      }
+      await tx.collection('withdraw_requests').doc(withdrawId).update({ data: patch })
+      await enqueueSubscription(tx, { openid: request.staffOpenid, templateKey: 'withdrawResult', page: 'pages/staff/earnings/index',
+        messageData: buildSubscriptionData('withdrawResult', { orderNo: withdrawId, startTime: request.createdAt }, { amount: request.amount, statusText: '打款失败' }), orderId: '', deliveryKey: `withdraw:${withdrawId}:transfer_failed` })
+      await financeLog(tx, `withdraw_transfer_failed_${withdrawId}_${Number(request.transferAttemptCount || 0)}`, 'withdraw_transfer_failed', 'withdraw_request', withdrawId, time, {
+        staffOpenid: request.staffOpenid,
+        detail: { outBillNo: request.outBillNo, error: patch.lastTransferError }
+      })
+      return { request: { ...request, ...patch }, changed: true }
+    })
+  }
+
+  async function releaseFailedWithdrawal(admin, data = {}) {
+    return db.runTransaction(async tx => {
+      const request = (await tx.collection('withdraw_requests').doc(data.id).get()).data
+      if (!request) throw new Error('提现申请不存在')
+      if (request.payoutChannel !== 'wechat_wallet' || request.status !== 'transfer_failed') throw new Error('仅微信提现失败单可释放收益')
+      const earningIds = ids(request.earningIds, true)
+      const earnings = []
+      for (const id of earningIds) {
+        const earning = (await tx.collection('staff_earnings').doc(id).get()).data
+        if (!earning || earning.staffOpenid !== request.staffOpenid || earning.withdrawRequestId !== data.id || earning.status !== 'withdrawing') throw new Error('收益状态或提现归属异常，请核对后重试')
+        earnings.push(earning)
+      }
+      const time = now()
+      const remark = safeText(data.remark || data.auditRemark).trim()
+      await tx.collection('withdraw_requests').doc(data.id).update({ data: {
+        status: 'rejected', transferStatus: 'released', releasedAt: time, releasedByOpenid: admin.openid,
+        auditRemark: remark || request.auditRemark || '微信提现失败后释放收益', updatedAt: time
+      } })
+      for (const earning of earnings) {
+        await tx.collection('staff_earnings').doc(earning._id).update({ data: { status: releasedStatus(earning, time), withdrawRequestId: '', updatedAt: time } })
+      }
+      await financeLog(tx, `withdraw_release_${data.id}`, 'withdraw_released', 'withdraw_request', data.id, time, {
+        staffOpenid: request.staffOpenid,
+        detail: { earningIds, remark }
+      })
+      return { request: { ...request, status: 'rejected', transferStatus: 'released' }, changed: true }
     })
   }
 
@@ -229,5 +339,5 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
     })
   }
 
-  return { settleWithdrawal, freezeIncidentEarnings, closeIncidentFinancially }
+  return { settleWithdrawal, markWechatWithdrawalPaid, markWechatWithdrawalFailed, releaseFailedWithdrawal, freezeIncidentEarnings, closeIncidentFinancially }
 }

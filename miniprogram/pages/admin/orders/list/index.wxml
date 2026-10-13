@@ -76,6 +76,21 @@
         <view class="info-chip wide" wx:if="{{item.publishMode === 'direct'}}"><text class="label">指定</text><text class="value">{{item.requestedStaffName || '已指定宠护师'}}</text></view>
         <view class="info-chip wide auto-chip" wx:if="{{item.autoCompleted}}"><text class="label">完单类型</text><text class="value auto-text"><text class="remix-icon ri-sparkling-fill"></text> 系统智能自动结算（打卡齐全超时完单）</text></view>
       </view>
+      <!-- 收益分成条 -->
+      <view class="order-profit-bar" wx:if="{{item.profitSummary && item.profitSummary.hasPayment}}">
+        <view class="profit-pill pay-pill">
+          <text class="pill-label">实付</text>
+          <text class="pill-val">¥{{item.profitSummary.payAmount}}</text>
+        </view>
+        <view class="profit-pill staff-pill">
+          <text class="pill-label">宠托师收益</text>
+          <text class="pill-val">¥{{item.profitSummary.staffReward}}</text>
+        </view>
+        <view class="profit-pill platform-pill {{item.profitSummary.isSubsidy ? 'subsidy' : ''}}">
+          <text class="pill-label">{{item.profitSummary.isSubsidy ? '平台补贴' : '平台收益'}}</text>
+          <text class="pill-val">{{item.profitSummary.isSubsidy ? ('-¥' + item.profitSummary.subsidyAmount) : ('¥' + item.profitSummary.platformProfit)}}</text>
+        </view>
+      </view>
     </view>
     <button class="primary-btn mini-assign-btn" wx:if="{{item.status === 'paid'}}" size="mini" data-id="{{item._id}}" bindtap="assign"><text class="remix-icon ri-user-shared-line"></text><text>派单</text></button>
   </view>
