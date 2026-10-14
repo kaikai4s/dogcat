@@ -3,7 +3,7 @@ const { navMethods } = require('../../../utils/nav')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
-const WECHAT_MIN_TRANSFER_AMOUNT = 0.10
+const WECHAT_MIN_TRANSFER_AMOUNT = 0.01
 const WECHAT_MAX_TRANSFER_AMOUNT = 200
 
 const earningStatusText = {
@@ -49,10 +49,12 @@ function withEarning(item) {
 
 function withWithdraw(item) {
   const status = String(item.status || '').toLowerCase()
+  const transferState = String(item.wechatTransferState || '').toUpperCase()
   return {
     ...item,
     amountText: money(item.amount),
-    statusText: withdrawStatusText[status] || '处理中'
+    statusText: withdrawStatusText[status] || '处理中',
+    canConfirmTransfer: transferState === 'WAIT_USER_CONFIRM' && Boolean(item.wechatPackageInfo || item.transferPackageInfo)
   }
 }
 
@@ -63,7 +65,9 @@ Page({
     earnings: [],
     withdraws: [],
     amount: '',
-    submitting: false
+    submitting: false,
+    transferBusy: false,
+    transferNotice: ''
   },
 
     onPullDownRefresh() {
@@ -124,7 +128,7 @@ Page({
       return wx.showToast({ title: '请输入正确的提现金额', icon: 'none' })
     }
     if (amount < WECHAT_MIN_TRANSFER_AMOUNT) {
-      return wx.showToast({ title: '微信零钱单笔最低 ¥0.10', icon: 'none' })
+      return wx.showToast({ title: '微信零钱单笔最低 ¥0.01', icon: 'none' })
     }
     if (amount > WECHAT_MAX_TRANSFER_AMOUNT) {
       return wx.showToast({ title: '微信零钱单笔最高 ¥200.00', icon: 'none' })
@@ -171,6 +175,51 @@ Page({
           showError(error)
         }
       })
+  },
+
+  queryWithdrawTransfer(e) {
+    const id = e.currentTarget.dataset.id
+    if (!id || this.data.transferBusy) return
+    this.setData({ transferBusy: true, transferNotice: '' })
+    callFunction('finance', 'queryMyWithdrawTransfer', { id })
+      .then(() => this.load())
+      .catch((error) => {
+        this.setData({ transferNotice: '转账状态同步失败，请稍后刷新重试。' })
+        showError(error)
+      })
+      .finally(() => this.setData({ transferBusy: false }))
+  },
+
+  confirmWithdrawTransfer(e) {
+    const id = e.currentTarget.dataset.id
+    if (!id || this.data.transferBusy) return
+    this.setData({ transferBusy: true, transferNotice: '' })
+    callFunction('finance', 'getMyWithdrawTransferConfirmation', { id })
+      .then((result) => {
+        if (String(result.status || '').toUpperCase() !== 'WAIT_USER_CONFIRM' || !result.packageInfo) {
+          this.setData({ transferNotice: '当前无需确认收款，请先查询最新转账状态。' })
+          return
+        }
+        if (!result.mchId || !result.appId || typeof wx.requestMerchantTransfer !== 'function' || (typeof wx.canIUse === 'function' && !wx.canIUse('requestMerchantTransfer'))) {
+          this.setData({ transferNotice: '当前微信版本不支持收款确认，请升级微信后重试。' })
+          return
+        }
+        return new Promise((resolve, reject) => wx.requestMerchantTransfer({
+          mchId: result.mchId,
+          appId: result.appId,
+          package: result.packageInfo,
+          success: resolve,
+          fail: reject
+        })).then(() => {
+          this.setData({ transferNotice: '已展示收款确认页面，请以转账状态查询结果为准。' })
+          return this.load()
+        })
+      })
+      .catch((error) => {
+        this.setData({ transferNotice: '未能确认收款，请稍后查询转账状态。' })
+        showError(error)
+      })
+      .finally(() => this.setData({ transferBusy: false }))
   },
 
   ...navMethods()

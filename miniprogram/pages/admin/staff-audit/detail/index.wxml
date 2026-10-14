@@ -82,8 +82,8 @@
   </view>
 
   <view class="bottom-actions" wx:if="{{staff.auditStatus === 'pending'}}">
-    <button class="primary-btn" data-status="approved" bindtap="audit"><text class="remix-icon ri-check-line"></text><text>审核通过</text></button>
-    <button class="danger-btn" data-status="rejected" bindtap="audit"><text class="remix-icon ri-close-line"></text><text>审核拒绝</text></button>
+    <button class="primary-btn" loading="{{auditing}}" disabled="{{auditing}}" data-status="approved" bindtap="audit"><text class="remix-icon ri-check-line"></text><text>审核通过</text></button>
+    <button class="danger-btn" loading="{{auditing}}" disabled="{{auditing}}" data-status="rejected" bindtap="audit"><text class="remix-icon ri-close-line"></text><text>审核拒绝</text></button>
   </view>
 </view>
 <global-loading />

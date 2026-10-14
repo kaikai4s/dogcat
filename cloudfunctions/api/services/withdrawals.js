@@ -85,6 +85,11 @@ module.exports = function createService({
       totalCents += cents(earning.amount)
       if (!Number.isSafeInteger(totalCents)) throw new Error('提现金额不正确')
     }
+    // Earnings are indivisible ledger entries. Never silently turn a smaller
+    // requested amount into a larger withdrawal by selecting the next entry.
+    if (requestedCents !== null && totalCents > requestedCents) {
+      throw new Error('提现金额需按收益记录整笔申请，请调整为不超过可选收益的金额')
+    }
     const time = now()
 
     return db.runTransaction(async transaction => {

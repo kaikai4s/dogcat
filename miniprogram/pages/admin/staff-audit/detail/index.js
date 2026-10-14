@@ -3,7 +3,7 @@ const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { withAuditText } = require('../../../../utils/format')
 
 Page({
-  data: { id: '', staff: null, remark: '', gender: '', genderReason: '', savingGender: false, sectionHomeUrl: '', canGoBack: false },
+  data: { id: '', staff: null, remark: '', gender: '', genderReason: '', savingGender: false, auditing: false, sectionHomeUrl: '', canGoBack: false },
   onLoad(q) {
     this.setData({ ...createPageNav(q), id: q.id })
     callFunction('admin', 'listStaffAudits', { staffProfileId: q.id })
@@ -39,6 +39,13 @@ Page({
     if (!url) return
     wx.previewImage({ urls: [url] })
   },
-  audit(e) { callFunction('admin', 'auditStaff', { staffProfileId: this.data.id, auditStatus: e.currentTarget.dataset.status, auditRemark: this.data.remark }).then(() => { wx.showToast({ title: '已处理' }); wx.navigateBack() }).catch(showError) },
+  audit(e) {
+    if (this.data.auditing || !this.data.staff || this.data.staff.auditStatus !== 'pending') return
+    this.setData({ auditing: true })
+    callFunction('admin', 'auditStaff', { staffProfileId: this.data.id, auditStatus: e.currentTarget.dataset.status, auditRemark: this.data.remark })
+      .then(() => { wx.showToast({ title: '已处理' }); wx.navigateBack() })
+      .catch(showError)
+      .finally(() => this.setData({ auditing: false }))
+  },
   ...navMethods()
 })

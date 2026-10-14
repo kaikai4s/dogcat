@@ -87,6 +87,16 @@ test('invalid amounts and oversized batches cannot freeze earnings', async () =>
   assert.equal(request.earningIds.length, 2)
 })
 
+test('partial amount cannot silently withdraw a larger indivisible earning', async () => {
+  const { db, rawCreateWithdrawRequest } = setup()
+  await assert.rejects(
+    rawCreateWithdrawRequest('staff', { payoutChannel: 'wechat_wallet', amount: 5 }),
+    /整笔申请/
+  )
+  assert.equal(db.state.withdraw_requests.length, 0)
+  assert.ok(db.state.staff_earnings.every((earning) => earning.status === 'available'))
+})
+
 test('transaction revalidates ownership and amount before any writes', async () => {
   for (const mutation of [{ staffOpenid: 'other' }, { amount: 99 }, { status: 'frozen' }, { withdrawRequestId: 'other' }, { frozenIncidentId: 'incident' }]) {
     const { db, createWithdrawRequest } = setup()

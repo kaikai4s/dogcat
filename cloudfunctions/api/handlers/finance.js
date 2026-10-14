@@ -4,10 +4,12 @@ module.exports = function createHandler(context) {
     createUserAssetWithdraw,
     getUserAssetSummary,
     bindInviteCode,
+    db,
     readScopedDocuments,
     getSystemSettings,
     getUser,
     getWechatTransferQuotaSnapshot,
+    queryWechatWithdrawalTransfer,
     refreshStaffEarnings,
     safeText,
     summarizeStaffEarnings
@@ -37,6 +39,30 @@ module.exports = function createHandler(context) {
     if (action === 'listMyWithdraws') {
       await getUser(openid)
       return (await readAll('withdraw_requests', { staffOpenid: openid })).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    }
+    if (action === 'queryMyWithdrawTransfer') {
+      await getUser(openid)
+      const id = safeText(data && data.id).trim()
+      if (!id) throw new Error('缺少提现申请 ID')
+      const request = (await db.collection('withdraw_requests').doc(id).get().catch(() => ({ data: null }))).data
+      if (!request || request.staffOpenid !== openid) throw new Error('无权查询该提现申请')
+      const result = await queryWechatWithdrawalTransfer(id)
+      return { id, status: result.request && result.request.status, transferStatus: result.request && result.request.transferStatus }
+    }
+    if (action === 'getMyWithdrawTransferConfirmation') {
+      await getUser(openid)
+      const id = safeText(data && data.id).trim()
+      if (!id) throw new Error('缺少提现申请 ID')
+      const request = (await db.collection('withdraw_requests').doc(id).get().catch(() => ({ data: null }))).data
+      if (!request || request.staffOpenid !== openid) throw new Error('无权确认该提现申请')
+      if (request.payoutChannel !== 'wechat_wallet') throw new Error('仅微信提现单支持收款确认')
+      const settings = await getSystemSettings()
+      return {
+        status: request.wechatTransferState || request.transferStatus || request.status,
+        mchId: settings.payment && settings.payment.mchId || '',
+        appId: settings.payment && settings.payment.appId || '',
+        packageInfo: request.wechatPackageInfo || request.transferPackageInfo || ''
+      }
     }
     if (action === 'createWithdrawRequest') {
       return createWithdrawRequest(openid, data)
