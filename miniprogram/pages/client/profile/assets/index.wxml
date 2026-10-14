@@ -39,7 +39,32 @@
     </view>
     <view wx:else class="bound-tip">
       <text class="remix-icon ri-checkbox-circle-fill"></text>
-      <text>已绑定邀请码，绑定后不可修改。</text>
+      <view class="bound-text">
+        <view>已绑定邀请码，绑定后不可修改。</view>
+        <view class="bound-code" wx:if="{{summary.boundInviteCode}}">绑定的邀请码：{{summary.boundInviteCode}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="records-card card">
+    <view class="section-head compact">
+      <view>
+        <view class="section-title">邀请记录</view>
+        <view class="section-subtitle">好友绑定你的邀请码后会在这里显示</view>
+      </view>
+    </view>
+    <view wx:if="{{!summary || !summary.invites || !summary.invites.length}}" class="empty-state">
+      <view class="empty-icon remix-icon ri-user-add-line"></view>
+      <view class="empty-text">暂无邀请绑定记录</view>
+    </view>
+    <view wx:else class="record-list">
+      <view wx:for="{{summary.invites}}" wx:key="_id" class="record-row">
+        <view class="record-main">
+          <view class="record-title">好友已绑定邀请码</view>
+          <view class="record-time">{{beijingTime.format(item.createdAt)}}</view>
+        </view>
+        <text class="status-pill {{item.rewardEarningId ? 'success' : 'pending'}}">{{item.rewardEarningId ? '已入账' : '待入账'}}</text>
+      </view>
     </view>
   </view>
 

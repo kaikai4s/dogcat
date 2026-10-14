@@ -295,6 +295,20 @@
   font-size: 30rpx;
 }
 
+.bound-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.bound-code {
+  margin-top: 6rpx;
+  color: #2d211a;
+  font-size: 25rpx;
+  font-weight: 950;
+  word-break: break-all;
+}
+
 .record-list {
   margin-top: 12rpx;
 }

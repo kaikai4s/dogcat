@@ -103,13 +103,22 @@ module.exports = function createService({
     const settings = await getInviteSettings()
     const withdraws = (await db.collection('withdraw_requests').where({ assetType: 'user', userOpenid: openid }).limit(200).get().catch(() => ({ data: [] }))).data || []
     const invites = (await db.collection('user_invites').where({ inviterOpenid: openid }).limit(1000).get().catch(() => ({ data: [] }))).data || []
+    const boundInvite = ((await db.collection('user_invites').where({ invitedOpenid: openid }).limit(1).get().catch(() => ({ data: [] }))).data || [])[0] || null
+    const boundInviterOpenid = (boundInvite && boundInvite.inviterOpenid) || user.inviterOpenid || ''
+    let boundInviteCode = safeText(boundInvite && boundInvite.inviteCode).trim().toUpperCase()
+    if (!boundInviteCode && boundInviterOpenid) {
+      const inviter = ((await db.collection('users').where({ openid: boundInviterOpenid }).limit(1).get().catch(() => ({ data: [] }))).data || [])[0]
+      boundInviteCode = safeText(inviter && inviter.inviteCode).trim().toUpperCase()
+    }
     const wechatTransferQuota = typeof getWechatTransferQuotaSnapshot === 'function'
       ? await getWechatTransferQuotaSnapshot(openid, Math.round(summary.available * 100)).catch(() => null)
       : null
     return {
       userOpenid: openid,
       inviteCode: user.inviteCode || '',
-      inviterOpenid: user.inviterOpenid || '',
+      inviterOpenid: boundInviterOpenid,
+      boundInviteCode,
+      boundInvite,
       availableAmount: summary.available,
       withdrawingAmount: summary.withdrawing,
       withdrawnAmount: summary.withdrawn,
@@ -133,18 +142,21 @@ module.exports = function createService({
     if (!inviter || inviter.openid === openid) throw new Error('邀请码无效或不能绑定自己的邀请码')
     const inviteId = `invite_${openid}`
     const time = now()
-    const record = { _id: inviteId, inviterUserId: inviter._id, inviterOpenid: inviter.openid, invitedUserId: user._id, invitedOpenid: openid, bindingSource: 'manual', rewarded: false, createdAt: time, updatedAt: time }
+    const record = { inviterUserId: inviter._id, inviterOpenid: inviter.openid, invitedUserId: user._id, invitedOpenid: openid, inviteCode: code, bindingSource: safeText(data.bindingSource).trim() || 'manual', rewarded: false, createdAt: time, updatedAt: time }
     const result = await db.runTransaction(async tx => {
       const current = (await tx.collection('users').doc(user._id).get()).data
       if (current.inviterOpenid) throw new Error('每个用户只能绑定一次邀请码，绑定后不能修改')
       const existing = (await tx.collection('user_invites').doc(inviteId).get().catch(() => ({ data: null }))).data
-      if (existing) return existing
+      if (existing) {
+        if (!current.inviterOpenid && existing.inviterOpenid) await tx.collection('users').doc(user._id).update({ data: { inviterOpenid: existing.inviterOpenid, updatedAt: time } })
+        return { ...existing, _id: inviteId }
+      }
       await tx.collection('user_invites').doc(inviteId).set({ data: record })
       await tx.collection('users').doc(user._id).update({ data: { inviterOpenid: inviter.openid, updatedAt: time } })
-      return record
+      return { ...record, _id: inviteId }
     })
-    await grantInviteReward(result)
-    return { ...user, inviterOpenid: inviter.openid }
+    await grantInviteReward({ ...result, _id: result._id || inviteId, inviteCode: result.inviteCode || code })
+    return { ...user, inviterOpenid: result.inviterOpenid || inviter.openid, boundInviteCode: result.inviteCode || code }
   }
 
   async function createUserAssetWithdraw(openid, data = {}) {

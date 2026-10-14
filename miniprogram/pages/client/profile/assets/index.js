@@ -7,12 +7,16 @@ Page({
     summary: null,
     inviteCode: '',
     bindCode: '',
+    incomingInviteCode: '',
+    autoBindingInvite: false,
     withdrawAmount: '',
     withdrawing: false
   },
 
   onLoad(options = {}) {
+    const incomingInviteCode = String(options.inviteCode || '').trim().toUpperCase()
     if (options.inviteCode || options.inviterOpenid) savePendingInvite(options)
+    if (incomingInviteCode) this.setData({ incomingInviteCode })
   },
 
   onShow() {
@@ -41,6 +45,7 @@ Page({
         ? Number(summary.availableAmount || 0)
         : Math.min(Number(summary.availableAmount || 0), Number(quota.effectiveRemainingAmount || 0))
       this.setData({ summary, inviteCode: summary.inviteCode || '', withdrawAmount: maxAmount > 0 ? maxAmount.toFixed(2) : '' })
+      await this.autoBindIncomingInvite(summary)
     } catch (error) {
       showError(error)
     } finally {
@@ -58,6 +63,29 @@ Page({
 
   copyInviteCode() {
     copyText(this.data.inviteCode, { successTitle: '邀请码已复制', emptyTitle: '暂无邀请码' })
+  },
+
+  async autoBindIncomingInvite(summary = {}) {
+    const inviteCode = String(this.data.incomingInviteCode || '').trim().toUpperCase()
+    if (!inviteCode || this.data.autoBindingInvite || summary.inviterOpenid || inviteCode === String(summary.inviteCode || '').trim().toUpperCase()) return
+    this.setData({ autoBindingInvite: true })
+    try {
+      await callFunction('finance', 'bindInviteCode', { inviteCode, bindingSource: 'share' })
+      wx.showToast({ title: '已绑定邀请', icon: 'success' })
+      this.setData({ incomingInviteCode: '', bindCode: '' })
+      const summary = await callFunction('finance', 'getUserAssetSummary')
+      const quota = summary.wechatTransferQuota || {}
+      const maxAmount = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
+        ? Number(summary.availableAmount || 0)
+        : Math.min(Number(summary.availableAmount || 0), Number(quota.effectiveRemainingAmount || 0))
+      this.setData({ summary, inviteCode: summary.inviteCode || '', withdrawAmount: maxAmount > 0 ? maxAmount.toFixed(2) : '' })
+    } catch (error) {
+      const message = String(error.message || error.errMsg || error)
+      if (!message.includes('只能绑定一次') && !message.includes('邀请码无效')) showError(error)
+      this.setData({ incomingInviteCode: '' })
+    } finally {
+      this.setData({ autoBindingInvite: false })
+    }
   },
 
   async bindInvite() {

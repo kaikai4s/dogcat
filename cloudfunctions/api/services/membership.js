@@ -209,11 +209,30 @@ module.exports = function createService({
       // repairable on a later login without creating a second reward.
       if (typeof grantInviteReward === 'function') {
         try {
+          const inviteDocId = `invite_${currentUser.openid}`
           const existingRes = await db.collection('user_invites').where({ invitedOpenid: currentUser.openid }).limit(1).get()
-          const existingInvite = existingRes.data && existingRes.data[0]
+          let existingInvite = existingRes.data && existingRes.data[0]
+          if (!existingInvite) {
+            const inviter = await getOptionalUser(currentUser.inviterOpenid)
+            if (inviter && inviter.openid !== currentUser.openid) {
+              const repairRecord = {
+                inviterUserId: inviter._id,
+                inviterOpenid: inviter.openid,
+                invitedUserId: currentUser._id,
+                invitedOpenid: currentUser.openid,
+                inviteCode: safeText(inviter.inviteCode).trim().toUpperCase(),
+                bindingSource: 'repair',
+                rewarded: false,
+                createdAt: currentUser.createdAt || time,
+                updatedAt: time
+              }
+              await db.collection('user_invites').doc(inviteDocId).set({ data: repairRecord })
+              existingInvite = { ...repairRecord, _id: inviteDocId }
+            }
+          }
           if (existingInvite) {
             const settings = await getSystemSettings()
-            await grantInviteReward(existingInvite, { settings: settings.invitation || settings.userAssets || settings })
+            await grantInviteReward({ ...existingInvite, _id: existingInvite._id || inviteDocId }, { settings: settings.invitation || settings.userAssets || settings })
           }
         } catch (_) {}
       }
@@ -256,6 +275,7 @@ module.exports = function createService({
         inviterOpenid: inviter.openid,
         invitedUserId: currentUser._id,
         invitedOpenid: currentUser.openid,
+        inviteCode: safeText(data.inviteCode || inviter.inviteCode).trim().toUpperCase(),
         rewarded: true,
         rewardType: 'retro_card',
         rewardCount: 1,
