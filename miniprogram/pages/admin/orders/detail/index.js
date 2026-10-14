@@ -42,6 +42,93 @@ function formatFullBeijingDateTime(date) {
   return `${y}-${m}-${d} ${h}:${min}`
 }
 
+const CHECKIN_EVENT_LABELS = {
+  sanitization: '进门消毒',
+  enter_door: '进入家门',
+  leash_on: '佩戴牵引绳',
+  pet_status: '毛孩子状态',
+  return_home: '安全回到家',
+  leave_door: '确认离家',
+  feed: '添加粮食',
+  water: '更换饮水',
+  litter: '清理猫砂',
+  clean: '现场清洁',
+  medicine: '喂药照护',
+  play: '陪伴玩耍',
+  pet_beauty_photo: '毛孩子美照',
+  admin_supplement: '管理员补录'
+}
+
+const ACTOR_ROLE_LABELS = {
+  client: '客户',
+  staff: '宠托师',
+  admin: '管理员',
+  system: '系统'
+}
+
+function normalizeList(list) {
+  return Array.isArray(list) ? list : []
+}
+
+function decorateTimeline(list, order = {}) {
+  const rows = normalizeList(list).map((item) => ({
+    ...item,
+    actorRoleText: ACTOR_ROLE_LABELS[item.actorRole] || item.actorRole || '系统'
+  }))
+  const existingTypes = rows.reduce((set, item) => {
+    if (item.type) set[item.type] = true
+    return set
+  }, {})
+  const addFallback = (type, title, time, detail, actorRole = 'system') => {
+    if (!time || existingTypes[type]) return
+    rows.push({ _id: `fallback_${type}`, type, title, detail: detail || '', actorRole, actorRoleText: ACTOR_ROLE_LABELS[actorRole] || actorRole, createdAt: time })
+  }
+  addFallback('created', '订单已创建', order.createdAt, order.serviceSummary, 'client')
+  addFallback('paid', '订单已支付', order.paidAt, order.paymentNo ? `支付单号：${order.paymentNo}` : '', 'client')
+  addFallback('assigned', '订单已接单/派单', order.assignedAt, order.staffContact && order.staffContact.displayName ? `宠托师：${order.staffContact.displayName}` : '', 'staff')
+  addFallback('on_the_way', '宠托师已出发', order.departedAt, '', 'staff')
+  addFallback('started', '服务已开始', order.startedAt || order.currentSessionStartedAt, '', 'staff')
+  addFallback('completed', '服务已完成', order.completedAt, order.completionType === 'admin_manual' ? '管理员核实完单' : '', order.completionType === 'admin_manual' ? 'admin' : 'staff')
+  addFallback('cancelled', '订单已取消', order.cancelledAt, order.cancelReason || '', 'system')
+  return rows.sort((a, b) => {
+    const at = parseBeijingDate(a.createdAt) || new Date(0)
+    const bt = parseBeijingDate(b.createdAt) || new Date(0)
+    return at.getTime() - bt.getTime()
+  })
+}
+
+function decorateCheckins(list) {
+  return normalizeList(list).map((item) => {
+    const mediaUrls = [item.watermarkedMediaFileId, item.mediaFileId, item.imageUrl, item.photoUrl]
+      .filter((url, index, arr) => url && arr.indexOf(url) === index)
+    return {
+      ...item,
+      eventTypeText: item.eventTypeName || CHECKIN_EVENT_LABELS[item.eventType] || item.eventType || '服务打卡',
+      mediaUrls,
+      locationText: (Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))) ? `${Number(item.latitude).toFixed(6)}, ${Number(item.longitude).toFixed(6)}` : '',
+      distanceText: item.distanceKm !== null && item.distanceKm !== undefined ? `${item.distanceKm}km` : ''
+    }
+  })
+}
+
+function decorateTracks(list) {
+  return normalizeList(list).map((item, index) => ({
+    ...item,
+    indexNo: index + 1,
+    locationText: (Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))) ? `${Number(item.latitude).toFixed(6)}, ${Number(item.longitude).toFixed(6)}` : '',
+    accuracyText: Number.isFinite(Number(item.accuracy)) && Number(item.accuracy) > 0 ? `精度 ${Number(item.accuracy).toFixed(0)}m` : '',
+    speedText: Number.isFinite(Number(item.speed)) && Number(item.speed) > 0 ? `速度 ${Number(item.speed).toFixed(1)}m/s` : ''
+  }))
+}
+
+function decorateUnlockLogs(list) {
+  return normalizeList(list).map((item) => ({
+    ...item,
+    actorRoleText: ACTOR_ROLE_LABELS[item.actorRole] || item.actorRole || '访问记录',
+    actionText: item.actionText || item.action || item.eventType || '查看/使用门锁密码'
+  }))
+}
+
 function computeInitialUrgentTime(order, durationMinutes = 60) {
   const now = new Date()
   const cstDate = new Date(now.getTime() + 8 * 3600 * 1000)
@@ -151,8 +238,16 @@ Page({
           statusText: refundStatusMap[r.status] || '处理中'
         }))
         const standardStaffReward = Number(order.standardStaffReward || 0)
+        const decoratedDetail = {
+          ...detail,
+          order,
+          timeline: decorateTimeline(detail.timeline, order),
+          checkins: decorateCheckins(detail.checkins),
+          tracks: decorateTracks(detail.tracks),
+          unlockLogs: decorateUnlockLogs(detail.unlockLogs)
+        }
         this.setData({
-          detail: { ...detail, order },
+          detail: decoratedDetail,
           refunds: mappedRefunds,
           sessionMessages: detail.sessionMessages || [],
           riskBypassLogs: detail.riskBypassLogs || [],
@@ -709,6 +804,13 @@ Page({
     const url = e.currentTarget.dataset.url
     if (!url) return
     wx.previewImage({ urls: [url] })
+  },
+
+  previewCheckinImage(e) {
+    const url = e.currentTarget.dataset.url
+    const urls = e.currentTarget.dataset.urls || [url]
+    if (!url) return
+    wx.previewImage({ current: url, urls })
   },
 
   submitDepositEvidence() {

@@ -38,15 +38,34 @@ Page({
     this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value })
   },
 
+  preparePrivacyAuthorize() {
+    return requirePrivacyAuthorize().catch((error) => {
+      const message = String((error && (error.errMsg || error.message)) || '')
+      if (message.includes('privacy agreement') || message.includes('not declared')) {
+        wx.showModal({ title: '隐私协议未配置', content: '微信后台隐私协议还没有声明“手机号”或“头像昵称”用途，请先在微信公众平台补充隐私协议后再使用快捷授权。', showCancel: false })
+      }
+      throw error
+    })
+  },
+
   bindPhone(e) {
-    const code = e.detail && e.detail.code
+    const detail = e.detail || {}
+    const code = detail.code
     if (!code) {
-      const errMsg = (e.detail && (e.detail.errMsg || e.detail.message)) || ''
+      const errMsg = String(detail.errMsg || detail.message || '')
       if (errMsg.includes('deny') || errMsg.includes('cancel')) {
         wx.showToast({ title: '已取消授权', icon: 'none' })
         return
       }
-      wx.showToast({ title: '未完成手机号授权', icon: 'none' })
+      if (errMsg.includes('privacy agreement') || errMsg.includes('not declared') || errMsg.includes('errno:112')) {
+        wx.showModal({ title: '隐私协议未配置', content: '微信后台隐私协议还没有声明“手机号”用途，所以微信拦截了快捷授权。请在微信公众平台「设置与开发 > 服务内容声明 > 用户隐私保护指引」补充手机号用途；配置生效前可直接输入手机号保存。', showCancel: false })
+        return
+      }
+      if (errMsg.includes('no permission') || errMsg.includes('not support') || errMsg.includes('fail')) {
+        wx.showModal({ title: '快捷授权不可用', content: '当前小程序主体、调试环境或权限未返回手机号授权码。配置企业认证与手机号快速验证能力前，请直接输入手机号保存。', showCancel: false })
+        return
+      }
+      wx.showModal({ title: '快捷授权未完成', content: '微信没有返回手机号授权码，请直接输入手机号保存，或在真机正式环境重新尝试快捷授权。', showCancel: false })
       return
     }
     wx.showLoading({ title: '绑定中...' })
@@ -55,7 +74,7 @@ Page({
         wx.hideLoading()
         setCachedUser(user)
         if (getApp().globalData) getApp().globalData.user = user
-        this.setData({ form: { ...this.data.form, ...user } })
+        this.setData({ ['form.phone']: user.phone || '' })
         wx.showToast({ title: '手机号已绑定' })
       })
       .catch((err) => {
@@ -64,24 +83,31 @@ Page({
       })
   },
 
-  onChooseAvatar(e) {
-    const avatarUrl = e.detail && e.detail.avatarUrl
-    if (!avatarUrl) return
+  uploadAvatar(filePath, successTitle = '已选择头像') {
+    if (!filePath) return
     wx.showLoading({ title: '处理头像中...' })
-    const ext = avatarUrl.includes('.') ? avatarUrl.substring(avatarUrl.lastIndexOf('.')) : '.jpg'
+    const cleanPath = String(filePath).split('?')[0]
+    const rawExt = cleanPath.includes('.') ? cleanPath.substring(cleanPath.lastIndexOf('.')).toLowerCase() : '.jpg'
+    const ext = /^\.(jpg|jpeg|png|webp)$/.test(rawExt) ? rawExt : '.jpg'
     wx.cloud.uploadFile({
-      cloudPath: `users/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`,
-      filePath: avatarUrl,
+      cloudPath: `users/${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`,
+      filePath,
       success: (upload) => {
         wx.hideLoading()
         this.setData({ ['form.avatarUrl']: upload.fileID })
-        wx.showToast({ title: '已选择头像', icon: 'success' })
+        wx.showToast({ title: successTitle, icon: 'success' })
       },
       fail: (err) => {
         wx.hideLoading()
         showError(err)
       }
     })
+  },
+
+  onChooseAvatar(e) {
+    const avatarUrl = e.detail && e.detail.avatarUrl
+    if (!avatarUrl) return
+    this.uploadAvatar(avatarUrl, '已选用微信头像')
   },
 
   onNicknameBlur(e) {
@@ -98,13 +124,7 @@ Page({
       sourceType: ['album', 'camera'],
       success: (res) => {
         const filePath = res.tempFiles[0].tempFilePath
-        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
-        wx.cloud.uploadFile({
-          cloudPath: `users/${Date.now()}${ext}`,
-          filePath,
-          success: (upload) => this.setData({ ['form.avatarUrl']: upload.fileID }),
-          fail: showError
-        })
+        this.uploadAvatar(filePath)
       },
       fail: (err) => {
         const errMsg = (err && (err.errMsg || err.message)) || ''

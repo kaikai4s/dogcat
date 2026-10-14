@@ -36,7 +36,7 @@
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14rpx;
 }
 
@@ -86,6 +86,85 @@
   padding: 18rpx;
   border-radius: 24rpx;
   background: #fff8ec;
+}
+
+.evidence-card {
+  margin-top: 24rpx;
+}
+
+.evidence-section {
+  margin-top: 22rpx;
+  padding-top: 18rpx;
+  border-top: 1rpx solid rgba(255, 153, 102, 0.12);
+}
+
+.evidence-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-bottom: 16rpx;
+  color: #2d211a;
+  font-size: 26rpx;
+  font-weight: 950;
+}
+
+.evidence-section-title .remix-icon {
+  color: #e9672f;
+  font-size: 30rpx;
+}
+
+.checkin-list,
+.track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.checkin-card {
+  padding: 18rpx;
+  border-radius: 24rpx;
+  background: #fff8ec;
+  border: 1rpx solid rgba(255, 153, 102, 0.12);
+}
+
+.checkin-media-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-top: 14rpx;
+}
+
+.checkin-photo {
+  width: 100%;
+  height: 150rpx;
+  border-radius: 18rpx;
+  background: #f3f4f6;
+}
+
+.track-item {
+  display: flex;
+  gap: 14rpx;
+  align-items: flex-start;
+  padding: 16rpx;
+  border-radius: 22rpx;
+  background: #fff8ec;
+}
+
+.track-index {
+  min-width: 58rpx;
+  height: 44rpx;
+  line-height: 44rpx;
+  border-radius: 999rpx;
+  background: #fff0e2;
+  color: #e9672f;
+  font-size: 22rpx;
+  font-weight: 950;
+  text-align: center;
+}
+
+.track-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .bottom-actions {

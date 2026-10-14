@@ -1275,7 +1275,8 @@ module.exports = function createHandler(context) {
       if (action === 'getOrderDetail') [order.data] = await refreshOrderRefunds([order.data])
       const displayOrder = await attachAdminOrderContactData(order.data)
       const payAmount = Number(order.data.payAmount || 0)
-      const [trackRows, checkinRows, unlockRows, refundRows, penaltyRows, sessionMessageRows, riskBypassRows] = await Promise.all([
+      const [timelineRows, trackRows, checkinRows, unlockRows, refundRows, penaltyRows, sessionMessageRows, riskBypassRows] = await Promise.all([
+        readScopedDocuments('order_timeline', { orderId: id }, 'createdAt', 'asc').catch(() => []),
         readScopedDocuments('track_logs', { orderId: id }, 'recordedAt', 'asc').catch(() => []),
         readScopedDocuments('checkin_logs', { orderId: id }, 'createdAt', 'asc').catch(() => []),
         readScopedDocuments('unlock_code_logs', { orderId: id }, 'createdAt', 'desc').catch(() => []),
@@ -1323,6 +1324,7 @@ module.exports = function createHandler(context) {
       if (action === 'getEvidence') await logAdmin(admin, 'order', id, 'getEvidence', { trackCount: trackRows.length, checkinCount: checkinRows.filter(isActiveCheckin).length })
       return {
         order: displayOrder,
+        timeline: timelineRows,
         tracks: trackRows,
         checkins: checkinRows.filter(isActiveCheckin),
         unlockLogs: unlockRows,

@@ -161,12 +161,80 @@
   </view>
 
   <view class="stats-grid admin-card">
+    <view class="stat-item"><view class="stat-number">{{detail.timeline.length}}</view><view class="stat-label">状态记录</view></view>
     <view class="stat-item"><view class="stat-number">{{detail.tracks.length}}</view><view class="stat-label">轨迹点</view></view>
     <view class="stat-item"><view class="stat-number">{{detail.checkins.length}}</view><view class="stat-label">打卡</view></view>
     <view class="stat-item"><view class="stat-number">{{detail.unlockLogs.length}}</view><view class="stat-label">密码日志</view></view>
     <view class="stat-item" bindtap="openChatModal">
       <view class="stat-number {{riskBypassLogs.length ? 'danger-num' : ''}}">{{sessionMessages.length}}</view>
       <view class="stat-label">沟通记录{{riskBypassLogs.length ? ' (风控' + riskBypassLogs.length + ')' : ''}}</view>
+    </view>
+  </view>
+
+  <view class="admin-card evidence-card">
+    <view class="card-subtitle-between">
+      <view class="card-subtitle"><text class="remix-icon ri-shield-check-line sub-icon"></text><text>订单证据链 / 履约记录</text></view>
+      <view class="soft-badge status-badge">{{detail.timeline.length + detail.checkins.length + detail.tracks.length + detail.unlockLogs.length}}条</view>
+    </view>
+
+    <view class="evidence-section">
+      <view class="evidence-section-title"><text class="remix-icon ri-time-line"></text><text>状态变更时间线</text></view>
+      <view class="timeline" wx:if="{{detail.timeline.length}}">
+        <view class="timeline-item" wx:for="{{detail.timeline}}" wx:key="_id">
+          <view class="timeline-dot"></view>
+          <view class="timeline-content">
+            <view class="between"><view class="strong">{{item.title || item.type}}</view><view class="soft-badge">{{item.actorRoleText}}</view></view>
+            <view class="muted" wx:if="{{item.detail}}">{{item.detail}}</view>
+            <view class="muted small">{{beijingTime.format(item.createdAt)}}</view>
+          </view>
+        </view>
+      </view>
+      <view class="empty-chat-tip" wx:else>暂无状态变更记录</view>
+    </view>
+
+    <view class="evidence-section">
+      <view class="evidence-section-title"><text class="remix-icon ri-camera-line"></text><text>打卡照片与现场记录</text></view>
+      <view class="checkin-list" wx:if="{{detail.checkins.length}}">
+        <view class="checkin-card" wx:for="{{detail.checkins}}" wx:key="_id">
+          <view class="between"><view class="strong">{{item.eventTypeText}}</view><view class="muted small">{{beijingTime.format(item.recordedAt || item.createdAt)}}</view></view>
+          <view class="muted" wx:if="{{item.remark}}">备注：{{item.remark}}</view>
+          <view class="muted" wx:if="{{item.locationText}}">位置：{{item.locationText}} <text wx:if="{{item.distanceText}}">· 距服务点 {{item.distanceText}}</text></view>
+          <view class="checkin-media-grid" wx:if="{{item.mediaUrls.length}}">
+            <image class="checkin-photo" wx:for="{{item.mediaUrls}}" wx:for-item="url" wx:key="*this" src="{{url}}" mode="aspectFill" data-url="{{url}}" bindtap="previewCheckinImage" />
+          </view>
+          <view class="muted" wx:else>该打卡暂无照片文件</view>
+        </view>
+      </view>
+      <view class="empty-chat-tip" wx:else>暂无打卡记录</view>
+    </view>
+
+    <view class="evidence-section">
+      <view class="evidence-section-title"><text class="remix-icon ri-route-line"></text><text>轨迹记录</text></view>
+      <view class="track-list" wx:if="{{detail.tracks.length}}">
+        <view class="track-item" wx:for="{{detail.tracks}}" wx:key="_id">
+          <view class="track-index">#{{item.indexNo}}</view>
+          <view class="track-main">
+            <view class="strong">{{item.locationText || '坐标缺失'}}</view>
+            <view class="muted">{{beijingTime.format(item.recordedAt || item.uploadedAt)}} <text wx:if="{{item.accuracyText}}">· {{item.accuracyText}}</text><text wx:if="{{item.speedText}}"> · {{item.speedText}}</text></view>
+          </view>
+        </view>
+      </view>
+      <view class="empty-chat-tip" wx:else>暂无轨迹点</view>
+    </view>
+
+    <view class="evidence-section">
+      <view class="evidence-section-title"><text class="remix-icon ri-lock-password-line"></text><text>门锁密码访问日志</text></view>
+      <view class="timeline" wx:if="{{detail.unlockLogs.length}}">
+        <view class="timeline-item" wx:for="{{detail.unlockLogs}}" wx:key="_id">
+          <view class="timeline-dot"></view>
+          <view class="timeline-content">
+            <view class="between"><view class="strong">{{item.actionText}}</view><view class="soft-badge">{{item.actorRoleText}}</view></view>
+            <view class="muted" wx:if="{{item.staffOpenid || item.openid}}">访问人：{{item.staffOpenid || item.openid}}</view>
+            <view class="muted small">{{beijingTime.format(item.createdAt || item.accessedAt)}}</view>
+          </view>
+        </view>
+      </view>
+      <view class="empty-chat-tip" wx:else>暂无门锁密码访问日志</view>
     </view>
   </view>
 

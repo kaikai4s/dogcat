@@ -8,9 +8,11 @@
   <view class="card form-card">
     <view class="card-subtitle"><text class="remix-icon ri-image-edit-line sub-icon"></text><text>头像</text></view>
     <view class="avatar-picker-wrap">
-      <button class="avatar-picker avatar-picker-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
-        <image class="avatar-preview" wx:if="{{form.avatarUrl}}" src="{{form.avatarUrl}}" mode="aspectFill" />
-        <view class="avatar-empty" wx:else><text class="remix-icon ri-camera-line"></text><text>微信头像</text></view>
+      <button class="avatar-picker-btn" open-type="chooseAvatar" bindtap="preparePrivacyAuthorize" bindchooseavatar="onChooseAvatar">
+        <view class="avatar-picker">
+          <image class="avatar-preview" wx:if="{{form.avatarUrl}}" src="{{form.avatarUrl}}" mode="aspectFill" />
+          <view class="avatar-empty" wx:else><text class="remix-icon ri-camera-line"></text><text>微信头像</text></view>
+        </view>
       </button>
       <view class="avatar-level-badge badge-{{form.badgeStyle || 'gold'}}" wx:if="{{form.badgeTag || form.memberLevelName}}">{{form.badgeTag || form.memberLevelName}}</view>
     </view>
@@ -21,7 +23,7 @@
     <view class="card-subtitle"><text class="remix-icon ri-phone-line sub-icon"></text><text>联系电话</text></view>
     <view class="phone-input-card">
       <input class="input-field phone-input" placeholder="输入11位手机号" type="number" maxlength="11" value="{{form.phone}}" data-field="phone" bindinput="input" />
-      <button class="phone-auth-btn" open-type="getPhoneNumber" bindgetphonenumber="bindPhone">快捷授权</button>
+      <button class="phone-auth-btn" open-type="getPhoneNumber" bindtap="preparePrivacyAuthorize" bindgetphonenumber="bindPhone">快捷授权</button>
     </view>
     <view class="field-tip">个人主体小程序支持直接输入手机号保存；企业认证小程序可点击快捷授权。</view>
   </view>
