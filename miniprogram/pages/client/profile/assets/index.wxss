@@ -136,9 +136,18 @@
 .withdraw-input {
   flex: 1;
   min-width: 0;
+  height: 78rpx;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
   color: #2d211a;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
   font-size: 30rpx;
   font-weight: 900;
+  line-height: 78rpx;
 }
 
 .withdraw-btn,
@@ -329,6 +338,40 @@
   min-width: 0;
 }
 
+.invite-record-row {
+  gap: 16rpx;
+}
+
+.invite-avatar {
+  flex-shrink: 0;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #fff1e1;
+}
+
+.invite-avatar.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b7794c;
+  font-size: 34rpx;
+}
+
+.invite-reward {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8rpx;
+}
+
+.reward-amount {
+  color: #ea580c;
+  font-size: 28rpx;
+  font-weight: 950;
+}
+
 .record-title {
   color: #2d211a;
   font-size: 27rpx;
@@ -379,6 +422,11 @@
 .status-pill.pending {
   color: #9a5a00;
   background: #fff1c7;
+}
+
+.status-pill.muted {
+  color: #6b7280;
+  background: #f3f4f6;
 }
 
 .empty-state {

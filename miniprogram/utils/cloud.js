@@ -416,10 +416,7 @@ function openChooseLocation() {
 }
 
 function chooseSelectedLocation() {
-  return loadSystemSettings().then((settings) => {
-    if (settings.enableTestAddressMode) return openChooseLocation()
-    return requirePrivacyAuthorize().then(openChooseLocation)
-  })
+  return requirePrivacyAuthorize().then(() => openChooseLocation())
 }
 
 function getCurrentLocation() {
@@ -457,12 +454,9 @@ function confirmManualLocation() {
 }
 
 function getServiceLocation() {
-  return loadSystemSettings().then((settings) => {
-    if (settings.enableTestAddressMode) return openChooseLocation()
-    return requirePrivacyAuthorize()
-      .then(getCurrentLocation)
-      .catch(() => confirmManualLocation().then(openChooseLocation))
-  })
+  return requirePrivacyAuthorize()
+    .then(getCurrentLocation)
+    .catch(() => confirmManualLocation().then(openChooseLocation))
 }
 
 function requireSelectedLocation() {

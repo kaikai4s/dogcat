@@ -192,7 +192,8 @@ module.exports = function createService({
         userMinWithdrawAmount: Math.round(Math.max(Number((value.invitation || value.userAssets || {}).userMinWithdrawAmount ?? (value.invitation || value.userAssets || {}).minWithdrawAmount ?? 10), 0) * 100) / 100,
         reimbursementMode: ['order_count', 'invite_count'].includes((value.invitation || value.userAssets || {}).reimbursementMode) ? (value.invitation || value.userAssets || {}).reimbursementMode : 'order_count',
         reimbursementOrderCount: Math.max(Math.round(Number((value.invitation || value.userAssets || {}).reimbursementOrderCount || 0)), 0),
-        reimbursementInviteCount: Math.max(Math.round(Number((value.invitation || value.userAssets || {}).reimbursementInviteCount || 0)), 0)
+        reimbursementInviteCount: Math.max(Math.round(Number((value.invitation || value.userAssets || {}).reimbursementInviteCount || 0)), 0),
+        shareImageUrl: safeText((value.invitation || value.userAssets || {}).shareImageUrl).trim()
       },
       homeHeroCarousel: normalizeHomeHeroCarousel(value.homeHeroCarousel),
       homePage: normalizeHomePageConfig(value.homePage),

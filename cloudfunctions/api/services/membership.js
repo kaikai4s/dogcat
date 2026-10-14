@@ -18,6 +18,16 @@ module.exports = function createService({
     return safeText(value).split(/[\n,，；;]+/).map((item) => item.trim()).filter(Boolean)
   }
 
+  function invitationRewardSnapshot(settings = {}) {
+    const invitation = settings.invitation || settings.userAssets || settings
+    const amount = Number(invitation.rewardAmount || 0)
+    return invitation.enabled === true && Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : 0
+  }
+
+  function invitationSettings(settings = {}) {
+    return settings.invitation || settings.userAssets || settings
+  }
+
   function calcMemberLevel(totalPoints, levels) {
     if (!Array.isArray(levels) || !levels.length) return { memberLevel: '', memberLevelName: '普通会员', badgeTag: 'V1', nameColor: '', nameEffect: '', badgeStyle: 'gold', pointMultiplier: 1, description: '', benefits: [] }
     const sorted = levels.slice().sort((a, b) => Number(b.minPoints || 0) - Number(a.minPoints || 0))
@@ -243,6 +253,8 @@ module.exports = function createService({
 
     const inviteDocId = `invite_${currentUser.openid}`
     const bindingSource = safeText(data.bindingSource || (data.inviteCode ? 'share' : 'manual')).trim() || 'manual'
+    const systemSettings = await getSystemSettings().catch(() => ({}))
+    const rewardAmount = invitationRewardSnapshot(systemSettings)
     let inviterStaffEligibleAt = ''
     try {
       const profileRes = await db.collection('staff_profiles').where({ openid: inviter.openid }).limit(1).get()
@@ -282,7 +294,7 @@ module.exports = function createService({
         bindingSource,
         inviterStaffEligibleAt,
         eligibleForSupplyReimbursement: Boolean(inviterStaffEligibleAt),
-        rewardAmount: 0,
+        rewardAmount,
         rewardEarningId: '',
         createdAt: time,
         updatedAt: time
@@ -340,8 +352,7 @@ module.exports = function createService({
     const boundInvite = rawBoundInvite && { ...rawBoundInvite, _id: rawBoundInvite._id || inviteDocId }
     if (boundInvite && typeof grantInviteReward === 'function') {
       try {
-        const settings = await getSystemSettings()
-        await grantInviteReward(boundInvite, { settings: settings.invitation || settings.userAssets || settings })
+        await grantInviteReward(boundInvite, { settings: invitationSettings(systemSettings) })
       } catch (rewardError) {
         // Binding remains durable; deterministic reward record will be retried on next login.
       }

@@ -7,14 +7,16 @@ test('invite binding grants one idempotent user asset earning and supports user 
     users: [
       { _id: 'u_admin', openid: 'admin', roles: ['admin'], status: 'active' },
       { _id: 'u_inviter', openid: 'inviter', roles: ['client'], status: 'active' },
-      { _id: 'u_invited', openid: 'invited', roles: ['client'], status: 'active' }
+      { _id: 'u_invited', openid: 'invited', roles: ['client'], status: 'active', nickname: '好友小猫', avatarUrl: 'cloud://avatar' },
+      { _id: 'u_invited2', openid: 'invited2', roles: ['client'], status: 'active', nickname: '好友小狗' }
     ],
     admins: [{ _id: 'a1', openid: 'admin', status: 'active', permissions: ['all'] }],
-    platform_configs: [{ _id: 'settings', key: 'system_settings', value: { invitation: { enabled: true, rewardAmount: 5, userMinWithdrawAmount: 5 }, staffSupplies: { transfer: { enabled: false } } } }],
+    platform_configs: [{ _id: 'settings', key: 'system_settings', value: { invitation: { enabled: true, rewardAmount: 5, userMinWithdrawAmount: 5, shareImageUrl: 'cloud://invite-cover' }, staffSupplies: { transfer: { enabled: false } } } }],
     user_invites: [], user_asset_earnings: [], withdraw_requests: [], retro_card_logs: [], finance_logs: [], admin_operation_logs: []
   })
   const inviter = loadCloudFunction('api', db, 'inviter')
   const invited = loadCloudFunction('api', db, 'invited')
+  const invited2 = loadCloudFunction('api', db, 'invited2')
   const admin = loadCloudFunction('api', db, 'admin')
   const inviterLogin = await inviter.main({ module: 'auth', action: 'login', data: {} })
   await invited.main({ module: 'auth', action: 'login', data: { inviteCode: inviterLogin.data.inviteCode } })
@@ -24,6 +26,19 @@ test('invite binding grants one idempotent user asset earning and supports user 
   assert.equal(db.state.user_asset_earnings[0].amount, 5)
   const summary = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })
   assert.equal(summary.data.availableAmount, 5)
+  assert.equal(summary.data.invitationShareImageUrl, 'cloud://invite-cover')
+  assert.equal(summary.data.invites[0].invitedNickname, '好友小猫')
+  assert.equal(summary.data.invites[0].invitedAvatarUrl, 'cloud://avatar')
+  assert.equal(summary.data.invites[0].rewardAmount, 5)
+  assert.equal(summary.data.invites[0].rewardStatusText, '已入账')
+  db.state.platform_configs[0].value.invitation.rewardAmount = 3
+  const changedSummary = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })
+  assert.equal(changedSummary.data.invites[0].rewardAmount, 5)
+  await invited2.main({ module: 'auth', action: 'login', data: { inviteCode: inviterLogin.data.inviteCode } })
+  const secondSummary = await inviter.main({ module: 'finance', action: 'getUserAssetSummary' })
+  assert.equal(secondSummary.data.availableAmount, 8)
+  assert.deepEqual(secondSummary.data.invites.map(row => row.rewardAmount).sort((a, b) => a - b), [3, 5])
+  assert.deepEqual(db.state.user_asset_earnings.map(row => row.amount).sort((a, b) => a - b), [3, 5])
   const request = await inviter.main({ module: 'finance', action: 'createUserAssetWithdraw', data: { amount: 5, clientRequestId: 'asset-1' } })
   assert.equal(request.data.assetType, 'user')
   const approved = await admin.main({ module: 'admin', action: 'auditWithdrawRequest', data: { id: request.data._id, approved: true } })

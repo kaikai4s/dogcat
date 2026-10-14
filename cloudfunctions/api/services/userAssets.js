@@ -26,6 +26,32 @@ module.exports = function createService({
     return `${prefix}_${crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 32)}`
   }
 
+  function maskOpenid(openid) {
+    const text = safeText(openid).trim()
+    if (!text) return ''
+    if (text.length <= 8) return text
+    return `${text.slice(0, 4)}...${text.slice(-4)}`
+  }
+
+  function invitedUserLabel(user, openid) {
+    return safeText(user && (user.nickname || user.nickName || user.realName || user.name)).trim() || maskOpenid(openid) || '好友'
+  }
+
+  async function getUsersByOpenids(openids) {
+    const unique = Array.from(new Set((openids || []).map(openid => safeText(openid).trim()).filter(Boolean)))
+    const usersByOpenid = new Map()
+    for (let i = 0; i < unique.length; i += 20) {
+      const chunk = unique.slice(i, i + 20)
+      const rows = db.command && typeof db.command.in === 'function'
+        ? ((await db.collection('users').where({ openid: db.command.in(chunk) }).limit(100).get().catch(() => ({ data: [] }))).data || [])
+        : (await Promise.all(chunk.map(openid => db.collection('users').where({ openid }).limit(1).get().catch(() => ({ data: [] }))))).flatMap(res => res.data || [])
+      rows.forEach(user => {
+        if (user && user.openid) usersByOpenid.set(user.openid, user)
+      })
+    }
+    return usersByOpenid
+  }
+
   async function getInviteSettings() {
     const settings = await getSystemSettings().catch(() => ({}))
     return settings.invitation || settings.userAssets || {
@@ -38,14 +64,26 @@ module.exports = function createService({
   async function grantInviteReward(invite, options = {}) {
     if (!invite || !invite._id || !invite.inviterOpenid) return null
     const settings = options.settings || await getInviteSettings()
-    const amount = Number(settings.rewardAmount || 0)
+    const hasSnapshotAmount = Object.prototype.hasOwnProperty.call(invite, 'rewardAmount')
+    const snapshotAmount = Number(invite.rewardAmount || 0)
+    const configuredAmount = Number(settings.rewardAmount || 0)
+    const amount = hasSnapshotAmount ? snapshotAmount : configuredAmount
     if (settings.enabled !== true || !Number.isFinite(amount) || amount <= 0) return null
     const earningId = invite.rewardEarningId || idFor('invite_reward', [invite._id, amount])
     const time = now()
     const write = async (tx) => {
       const reader = tx || db
       const existing = await reader.collection('user_asset_earnings').doc(earningId).get().catch(() => ({ data: null }))
-      if (existing && existing.data) return existing.data
+      if (existing && existing.data) {
+        await reader.collection('user_invites').doc(invite._id).update({ data: {
+          rewardEarningId: earningId,
+          rewardAmount: Number(existing.data.amount || amount),
+          rewarded: true,
+          rewardedAt: invite.rewardedAt || existing.data.createdAt || time,
+          updatedAt: time
+        } }).catch(() => {})
+        return { _id: earningId, ...existing.data }
+      }
       const earning = {
         _id: earningId,
         userOpenid: invite.inviterOpenid,
@@ -103,6 +141,38 @@ module.exports = function createService({
     const settings = await getInviteSettings()
     const withdraws = (await db.collection('withdraw_requests').where({ assetType: 'user', userOpenid: openid }).limit(200).get().catch(() => ({ data: [] }))).data || []
     const invites = (await db.collection('user_invites').where({ inviterOpenid: openid }).limit(1000).get().catch(() => ({ data: [] }))).data || []
+    const earningsByInviteId = new Map(summary.rows.filter((row) => row.sourceType === 'invite_binding' && row.sourceId).map((row) => [row.sourceId, row]))
+    const invitedUsersByOpenid = await getUsersByOpenids(invites.map(invite => invite.invitedOpenid))
+    const invitationRewardAmount = Number(settings.rewardAmount || 0)
+    const decoratedInvites = invites.map((invite) => {
+      const earning = earningsByInviteId.get(invite._id)
+      const invitedUser = invitedUsersByOpenid.get(invite.invitedOpenid) || null
+      const rewardAmount = Number((earning && earning.amount) ?? invite.rewardAmount ?? 0)
+      let rewardStatus = 'pending'
+      let rewardStatusText = '待入账'
+      if (invite.rewardEarningId || earning) {
+        rewardStatus = 'success'
+        rewardStatusText = '已入账'
+      } else if (invite.rewarded && invite.rewardType && invite.rewardType !== 'cash') {
+        rewardStatus = 'success'
+        rewardStatusText = '已奖励'
+      } else if (settings.enabled !== true) {
+        rewardStatus = 'muted'
+        rewardStatusText = '活动未开启'
+      } else if (!Number.isFinite(invitationRewardAmount) || invitationRewardAmount <= 0) {
+        rewardStatus = invite.rewarded ? 'success' : 'muted'
+        rewardStatusText = invite.rewarded ? '已奖励' : '无现金奖励'
+      }
+      return {
+        ...invite,
+        invitedNickname: invitedUserLabel(invitedUser, invite.invitedOpenid),
+        invitedAvatarUrl: safeText(invitedUser && invitedUser.avatarUrl).trim(),
+        invitedOpenidMasked: maskOpenid(invite.invitedOpenid),
+        rewardAmount: Number.isFinite(rewardAmount) ? Math.round(rewardAmount * 100) / 100 : 0,
+        rewardStatus,
+        rewardStatusText
+      }
+    })
     const boundInvite = ((await db.collection('user_invites').where({ invitedOpenid: openid }).limit(1).get().catch(() => ({ data: [] }))).data || [])[0] || null
     const boundInviterOpenid = (boundInvite && boundInvite.inviterOpenid) || user.inviterOpenid || ''
     let boundInviteCode = safeText(boundInvite && boundInvite.inviteCode).trim().toUpperCase()
@@ -125,9 +195,11 @@ module.exports = function createService({
       totalAmount: summary.total,
       minWithdrawAmount: Number(settings.userMinWithdrawAmount ?? settings.minWithdrawAmount ?? 10),
       invitationEnabled: settings.enabled === true,
+      invitationRewardAmount,
+      invitationShareImageUrl: safeText(settings.shareImageUrl).trim(),
       wechatTransferQuota,
       earnings: summary.rows,
-      invites: invites.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
+      invites: decoratedInvites.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
       withdraws: withdraws.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     }
   }
@@ -140,9 +212,12 @@ module.exports = function createService({
     const inviterRes = await db.collection('users').where({ inviteCode: code }).limit(1).get()
     const inviter = inviterRes.data && inviterRes.data[0]
     if (!inviter || inviter.openid === openid) throw new Error('邀请码无效或不能绑定自己的邀请码')
+    const settings = await getInviteSettings()
+    const configuredRewardAmount = Number(settings.rewardAmount || 0)
+    const rewardAmount = settings.enabled === true && Number.isFinite(configuredRewardAmount) && configuredRewardAmount > 0 ? Math.round(configuredRewardAmount * 100) / 100 : 0
     const inviteId = `invite_${openid}`
     const time = now()
-    const record = { inviterUserId: inviter._id, inviterOpenid: inviter.openid, invitedUserId: user._id, invitedOpenid: openid, inviteCode: code, bindingSource: safeText(data.bindingSource).trim() || 'manual', rewarded: false, createdAt: time, updatedAt: time }
+    const record = { inviterUserId: inviter._id, inviterOpenid: inviter.openid, invitedUserId: user._id, invitedOpenid: openid, inviteCode: code, bindingSource: safeText(data.bindingSource).trim() || 'manual', rewarded: false, rewardAmount, createdAt: time, updatedAt: time }
     const result = await db.runTransaction(async tx => {
       const current = (await tx.collection('users').doc(user._id).get()).data
       if (current.inviterOpenid) throw new Error('每个用户只能绑定一次邀请码，绑定后不能修改')

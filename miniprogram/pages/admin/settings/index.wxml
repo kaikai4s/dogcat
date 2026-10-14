@@ -322,6 +322,20 @@
           <view class="compact-toggle-row"><text>开启邀请活动</text><switch checked="{{settings.invitation.enabled}}" data-field="invitation.enabled" bindchange="staffPolicyInput" /></view>
           <view class="field-item"><text class="label">每个有效绑定收益（元）</text><input class="input" type="digit" value="{{settings.invitation.rewardAmount}}" data-field="invitation.rewardAmount" bindinput="staffPolicyInput" /></view>
           <view class="field-item"><text class="label">用户最低提现金额（元）</text><input class="input" type="digit" value="{{settings.invitation.userMinWithdrawAmount}}" data-field="invitation.userMinWithdrawAmount" bindinput="staffPolicyInput" /></view>
+          <view class="field-item">
+            <text class="label">邀请分享封面</text>
+            <view class="checkin-share-upload" bindtap="chooseInvitationShareImage">
+              <image wx:if="{{settings.invitation.shareImageTempUrl}}" class="checkin-share-preview" src="{{settings.invitation.shareImageTempUrl}}" mode="aspectFill" />
+              <view wx:else class="checkin-share-placeholder"><text class="remix-icon ri-image-add-line"></text><text>{{uploadingInvitationShareImage ? '上传中...' : '上传邀请分享封面'}}</text></view>
+            </view>
+            <view class="oa-qrcode-ops" wx:if="{{settings.invitation.shareImageUrl}}">
+              <button class="btn btn-outline btn-xs" bindtap="previewInvitationShareImage">查看大图</button>
+              <button class="btn btn-outline btn-xs" bindtap="chooseInvitationShareImage">{{uploadingInvitationShareImage ? '上传中...' : '重新上传'}}</button>
+              <button class="btn btn-outline btn-xs btn-danger" bindtap="removeInvitationShareImage">删除</button>
+            </view>
+            <view class="checkin-share-file" wx:if="{{settings.invitation.shareImageUrl}}">{{settings.invitation.shareImageUrl}}</view>
+            <view class="notice" style="margin-top: 10rpx;">上传后，用户分享“我的资产”邀请码链接时将使用这张封面；未上传则使用微信默认封面。</view>
+          </view>
         </view>
         <view wx:if="{{activeSettingPanel === 'debug'}}" class="setting-modal-section">
           <view class="compact-toggle-row">

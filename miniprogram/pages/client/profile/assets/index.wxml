@@ -58,12 +58,17 @@
       <view class="empty-text">暂无邀请绑定记录</view>
     </view>
     <view wx:else class="record-list">
-      <view wx:for="{{summary.invites}}" wx:key="_id" class="record-row">
+      <view wx:for="{{summary.invites}}" wx:key="_id" class="record-row invite-record-row">
+        <image wx:if="{{item.invitedAvatarUrl}}" class="invite-avatar" src="{{item.invitedAvatarUrl}}" mode="aspectFill" />
+        <view wx:else class="invite-avatar placeholder remix-icon ri-user-smile-line"></view>
         <view class="record-main">
-          <view class="record-title">好友已绑定邀请码</view>
-          <view class="record-time">{{beijingTime.format(item.createdAt)}}</view>
+          <view class="record-title">{{item.invitedNickname || '好友'}} 绑定了邀请码</view>
+          <view class="record-time">{{item.invitedOpenidMasked ? item.invitedOpenidMasked + ' · ' : ''}}{{beijingTime.format(item.createdAt)}}</view>
         </view>
-        <text class="status-pill {{item.rewardEarningId ? 'success' : 'pending'}}">{{item.rewardEarningId ? '已入账' : '待入账'}}</text>
+        <view class="invite-reward">
+          <text class="reward-amount">+¥{{item.rewardAmount || 0}}</text>
+          <text class="status-pill {{item.rewardStatus || 'pending'}}">{{item.rewardStatusText || '待入账'}}</text>
+        </view>
       </view>
     </view>
   </view>

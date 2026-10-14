@@ -9,6 +9,7 @@ Page({
     bindCode: '',
     incomingInviteCode: '',
     autoBindingInvite: false,
+    invitationShareImageUrl: '',
     withdrawAmount: '',
     withdrawing: false
   },
@@ -44,7 +45,12 @@ Page({
       const maxAmount = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
         ? Number(summary.availableAmount || 0)
         : Math.min(Number(summary.availableAmount || 0), Number(quota.effectiveRemainingAmount || 0))
-      this.setData({ summary, inviteCode: summary.inviteCode || '', withdrawAmount: maxAmount > 0 ? maxAmount.toFixed(2) : '' })
+      this.setData({
+        summary,
+        inviteCode: summary.inviteCode || '',
+        invitationShareImageUrl: summary.invitationShareImageUrl || '',
+        withdrawAmount: maxAmount > 0 ? maxAmount.toFixed(2) : ''
+      })
       await this.autoBindIncomingInvite(summary)
     } catch (error) {
       showError(error)
@@ -78,7 +84,12 @@ Page({
       const maxAmount = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
         ? Number(summary.availableAmount || 0)
         : Math.min(Number(summary.availableAmount || 0), Number(quota.effectiveRemainingAmount || 0))
-      this.setData({ summary, inviteCode: summary.inviteCode || '', withdrawAmount: maxAmount > 0 ? maxAmount.toFixed(2) : '' })
+      this.setData({
+        summary,
+        inviteCode: summary.inviteCode || '',
+        invitationShareImageUrl: summary.invitationShareImageUrl || '',
+        withdrawAmount: maxAmount > 0 ? maxAmount.toFixed(2) : ''
+      })
     } catch (error) {
       const message = String(error.message || error.errMsg || error)
       if (!message.includes('只能绑定一次') && !message.includes('邀请码无效')) showError(error)
@@ -134,9 +145,11 @@ Page({
 
   onShareAppMessage() {
     const code = this.data.inviteCode || ''
-    return {
+    const shareObj = {
       title: '邀请好友注册，领取活动收益',
       path: '/pages/client/profile/assets/index?inviteCode=' + encodeURIComponent(code)
     }
+    if (this.data.invitationShareImageUrl) shareObj.imageUrl = this.data.invitationShareImageUrl
+    return shareObj
   }
 })

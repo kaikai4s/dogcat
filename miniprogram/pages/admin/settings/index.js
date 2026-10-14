@@ -127,7 +127,9 @@ function normalizeInvitationConfig(invitation = {}) {
     userMinWithdrawAmount: validAmount(invitation.userMinWithdrawAmount, true) ? Number(invitation.userMinWithdrawAmount) : 10,
     reimbursementMode: invitation.reimbursementMode === 'invite_count' ? 'invite_count' : 'order_count',
     reimbursementOrderCount: Math.max(0, Number(invitation.reimbursementOrderCount || 0)),
-    reimbursementInviteCount: Math.max(0, Number(invitation.reimbursementInviteCount || 0))
+    reimbursementInviteCount: Math.max(0, Number(invitation.reimbursementInviteCount || 0)),
+    shareImageUrl: invitation.shareImageUrl || '',
+    shareImageTempUrl: invitation.shareImageTempUrl || ''
   }
 }
 
@@ -559,6 +561,7 @@ Page({
     uploadingMedia: false,
     uploadingPoster: false,
     uploadingCheckinShareImage: false,
+    uploadingInvitationShareImage: false,
     uploadingOfficialAccountQrCode: false,
     uploadingTrainingVideo: false,
     uploadingTrainingPoster: false,
@@ -617,6 +620,7 @@ Page({
           this.resolveMediaUrls(normalized.homeHeroCarousel.items)
           this.resolveTrainingVideoUrls(normalized.staffTraining.videos)
           this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
+          this.resolveInvitationShareImageUrl(normalized.invitation.shareImageUrl)
           this.resolveOfficialAccountQrCodeUrl(normalized.officialAccount.qrCodeUrl)
         })
       })
@@ -988,6 +992,93 @@ Page({
         }
       }
     })
+  },
+
+  resolveInvitationShareImageUrl(imageUrl) {
+    if (!imageUrl) {
+      this.setData({ ['settings.invitation.shareImageTempUrl']: '' })
+      return
+    }
+    if (/^https?:\/\//.test(imageUrl)) {
+      this.setData({ ['settings.invitation.shareImageTempUrl']: imageUrl })
+      return
+    }
+    wx.cloud.getTempFileURL({
+      fileList: [imageUrl],
+      success: (res) => {
+        const file = res.fileList && res.fileList[0]
+        this.setData({ ['settings.invitation.shareImageTempUrl']: (file && file.tempFileURL) || '' })
+      }
+    })
+  },
+
+  chooseInvitationShareImage() {
+    wx.chooseImage({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const filePath = res.tempFilePaths && res.tempFilePaths[0]
+        if (!filePath) return
+        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+        const cloudPath = `invitation_share/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
+
+        this.setData({ uploadingInvitationShareImage: true })
+        wx.showLoading({ title: '上传封面...' })
+        wx.cloud.uploadFile({
+          cloudPath,
+          filePath,
+          success: (upload) => {
+            const fileId = upload.fileID
+            wx.cloud.getTempFileURL({
+              fileList: [fileId],
+              success: (tempRes) => {
+                wx.hideLoading()
+                const tempFile = tempRes.fileList && tempRes.fileList[0]
+                this.setData({
+                  ['settings.invitation.shareImageUrl']: fileId,
+                  ['settings.invitation.shareImageTempUrl']: (tempFile && tempFile.tempFileURL) || filePath,
+                  uploadingInvitationShareImage: false
+                })
+                wx.showToast({ title: '封面上传成功' })
+              },
+              fail: () => {
+                wx.hideLoading()
+                this.setData({
+                  ['settings.invitation.shareImageUrl']: fileId,
+                  ['settings.invitation.shareImageTempUrl']: filePath,
+                  uploadingInvitationShareImage: false
+                })
+                wx.showToast({ title: '封面上传成功' })
+              }
+            })
+          },
+          fail: (err) => {
+            wx.hideLoading()
+            this.setData({ uploadingInvitationShareImage: false })
+            showError(err)
+          }
+        })
+      },
+      fail: (err) => {
+        const errMsg = (err && err.errMsg) || ''
+        if (errMsg.includes('cancel')) return
+        showError(err)
+      }
+    })
+  },
+
+  removeInvitationShareImage() {
+    this.setData({
+      ['settings.invitation.shareImageUrl']: '',
+      ['settings.invitation.shareImageTempUrl']: ''
+    })
+  },
+
+  previewInvitationShareImage() {
+    const url = this.data.settings.invitation.shareImageTempUrl || this.data.settings.invitation.shareImageUrl
+    if (!url) return
+    wx.previewImage({ current: url, urls: [url] })
   },
 
   checkinShareInput(e) {
@@ -1719,8 +1810,8 @@ Page({
       'settings.staffSupplies.transfer.userRecvPerception': parsedScenes.commission.userRecvPerception,
       'settings.staffSupplies.transfer.sceneReportInfos': parsedScenes.commission.sceneReportInfos
     })
-    if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster) {
-      wx.showToast({ title: '请等待培训素材上传完成', icon: 'none' })
+    if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster || this.data.uploadingInvitationShareImage) {
+      wx.showToast({ title: '请等待素材上传完成', icon: 'none' })
       return
     }
     this.setData({ saving: true })
@@ -1741,6 +1832,7 @@ Page({
       sort: Number(item.sort) || 10
     }))
 
+    const invitation = this.data.settings.invitation || {}
     const checkinShare = this.data.settings.checkinShare || {}
     const staffTraining = this.data.settings.staffTraining || normalizeStaffTrainingConfig()
     const trainingVideos = (staffTraining.videos || []).map((item, index) => ({
@@ -1772,6 +1864,11 @@ Page({
       subscription: this.data.settings.subscription,
       reliability: this.data.settings.reliability,
       customerService: this.data.settings.customerService,
+      invitation: {
+        ...invitation,
+        shareImageUrl: invitation.shareImageUrl || '',
+        shareImageTempUrl: ''
+      },
       checkinShare: {
         ...checkinShare,
         title: checkinShare.title || '',
@@ -1808,6 +1905,7 @@ Page({
           reliability: normalizeReliabilityConfig(settings.reliability),
           customerService: normalizeCustomerServiceConfig(settings.customerService),
           officialAccount: normalizeOfficialAccountConfig(settings.officialAccount, settings.customerService),
+          invitation: normalizeInvitationConfig(settings.invitation),
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage),
@@ -1831,6 +1929,7 @@ Page({
         this.setData({ settings: normalized, settingSummary: buildSettingSummary(normalized), saving: false })
         this.resolveMediaUrls(normalized.homeHeroCarousel.items)
         this.resolveTrainingVideoUrls(normalized.staffTraining.videos)
+        this.resolveInvitationShareImageUrl(normalized.invitation.shareImageUrl)
         this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
         wx.showToast({ title: '设置已保存' })
       })
