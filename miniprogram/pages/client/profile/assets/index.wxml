@@ -1,7 +1,86 @@
 <wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
-<view class="page assets-page">
-  <view class="card hero"><view class="eyebrow">我的资产</view><view class="amount">¥{{summary.availableAmount || '0.00'}}</view><view class="muted">可提现余额 · 最低提现 ¥{{summary.minWithdrawAmount || 0}}</view><button class="primary" bindtap="withdraw" loading="{{withdrawing}}" disabled="{{withdrawing || !summary || summary.availableAmount < summary.minWithdrawAmount}}">提现到微信零钱</button></view>
-  <view class="card"><view class="card-title">我的邀请码</view><view class="invite-code">{{inviteCode}}</view><button class="ghost" open-type="share">分享邀请</button><view wx:if="{{!summary.inviterOpenid}}" class="bind-row"><input placeholder="输入他人邀请码" value="{{bindCode}}" bindinput="inputBindCode" /><button class="primary small" bindtap="bindInvite">绑定</button></view><view wx:else class="muted">已绑定邀请码，绑定后不可修改。</view></view>
-  <view class="card"><view class="card-title">收益明细</view><view wx:if="{{!summary.earnings.length}}" class="muted">暂无收益记录</view><view wx:for="{{summary.earnings}}" wx:key="_id" class="row"><view><text>{{item.sourceType === 'invite_binding' ? '邀请绑定收益' : item.sourceType}}</text><view class="muted">{{beijingTime.format(item.createdAt)}}</view></view><text class="income">+¥{{item.amount}}</text></view></view>
-  <view class="card"><view class="card-title">提现记录</view><view wx:if="{{!summary.withdraws.length}}" class="muted">暂无提现记录</view><view wx:for="{{summary.withdraws}}" wx:key="_id" class="row"><view><text>{{item.status === 'paid' ? '已到账' : item.status === 'rejected' ? '已驳回' : '处理中'}}</text><view class="muted">{{beijingTime.format(item.createdAt)}}</view></view><text>¥{{item.amount}}</text></view></view>
+<view class="{{themeClass}} {{fontClass}} page assets-page">
+  <view class="asset-hero card">
+    <view class="hero-topline">
+      <view>
+        <view class="hero-kicker">我的资产</view>
+        <view class="hero-title">可提现余额</view>
+      </view>
+      <view class="hero-badge">微信零钱</view>
+    </view>
+    <view class="balance-line">
+      <text class="currency">¥</text>
+      <text class="amount">{{summary.availableAmount || '0.00'}}</text>
+    </view>
+    <view class="hero-tip">最低提现 ¥{{summary.minWithdrawAmount || 0}}，提现申请提交后由平台审核处理</view>
+    <button class="withdraw-btn" bindtap="withdraw" loading="{{withdrawing}}" disabled="{{withdrawing || !summary || summary.availableAmount < summary.minWithdrawAmount}}">提现到微信零钱</button>
+  </view>
+
+  <view class="invite-card card">
+    <view class="section-head">
+      <view>
+        <view class="section-title">我的邀请码</view>
+        <view class="section-subtitle">邀请好友注册，获得活动收益</view>
+      </view>
+      <button class="share-btn" open-type="share">分享邀请</button>
+    </view>
+    <view class="code-box">
+      <text class="invite-code">{{inviteCode || '生成中'}}</text>
+      <button class="copy-code-btn" bindtap="copyInviteCode" disabled="{{!inviteCode}}">复制邀请码</button>
+    </view>
+    <view wx:if="{{!summary || !summary.inviterOpenid}}" class="bind-row">
+      <input class="bind-input" placeholder="输入他人邀请码" value="{{bindCode}}" bindinput="inputBindCode" />
+      <button class="bind-btn" bindtap="bindInvite">绑定</button>
+    </view>
+    <view wx:else class="bound-tip">
+      <text class="remix-icon ri-checkbox-circle-fill"></text>
+      <text>已绑定邀请码，绑定后不可修改。</text>
+    </view>
+  </view>
+
+  <view class="records-card card">
+    <view class="section-head compact">
+      <view>
+        <view class="section-title">收益明细</view>
+        <view class="section-subtitle">邀请收益和资产入账记录</view>
+      </view>
+    </view>
+    <view wx:if="{{!summary || !summary.earnings || !summary.earnings.length}}" class="empty-state">
+      <view class="empty-icon remix-icon ri-seedling-line"></view>
+      <view class="empty-text">暂无收益记录</view>
+    </view>
+    <view wx:else class="record-list">
+      <view wx:for="{{summary.earnings}}" wx:key="_id" class="record-row">
+        <view class="record-main">
+          <view class="record-title">{{item.sourceType === 'invite_binding' ? '邀请绑定收益' : item.sourceType}}</view>
+          <view class="record-time">{{beijingTime.format(item.createdAt)}}</view>
+        </view>
+        <text class="income-amount">+¥{{item.amount}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="records-card card">
+    <view class="section-head compact">
+      <view>
+        <view class="section-title">提现记录</view>
+        <view class="section-subtitle">查看微信零钱提现处理进度</view>
+      </view>
+    </view>
+    <view wx:if="{{!summary || !summary.withdraws || !summary.withdraws.length}}" class="empty-state">
+      <view class="empty-icon remix-icon ri-wallet-3-line"></view>
+      <view class="empty-text">暂无提现记录</view>
+    </view>
+    <view wx:else class="record-list">
+      <view wx:for="{{summary.withdraws}}" wx:key="_id" class="record-row">
+        <view class="record-main">
+          <view class="record-title">
+            <text class="status-pill {{item.status === 'paid' ? 'success' : item.status === 'rejected' ? 'danger' : 'pending'}}">{{item.status === 'paid' ? '已到账' : item.status === 'rejected' ? '已驳回' : '处理中'}}</text>
+          </view>
+          <view class="record-time">{{beijingTime.format(item.createdAt)}}</view>
+        </view>
+        <text class="withdraw-amount">¥{{item.amount}}</text>
+      </view>
+    </view>
+  </view>
 </view>

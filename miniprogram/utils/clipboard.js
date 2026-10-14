@@ -1,3 +1,13 @@
+function requireClipboardPrivacy() {
+  return new Promise((resolve, reject) => {
+    if (typeof wx === 'undefined' || typeof wx.requirePrivacyAuthorize !== 'function') {
+      resolve()
+      return
+    }
+    wx.requirePrivacyAuthorize({ success: resolve, fail: reject })
+  })
+}
+
 function copyText(text, options = {}) {
   const value = String(text || '').trim()
   if (!value) {
@@ -27,39 +37,43 @@ function copyText(text, options = {}) {
     }
   }
 
+  const handleSuccess = () => {
+    if (options.successModal) {
+      if (typeof wx.showModal === 'function') {
+        wx.showModal({
+          title: options.successModalTitle || options.successTitle || '复制成功',
+          content: options.successModalContent || `已成功复制到剪贴板！\n\n${value}\n\n可在微信对话框或手机浏览器中长按粘贴打开。`,
+          showCancel: false,
+          confirmText: options.confirmText || '我知道了'
+        })
+      }
+    } else if (options.showToast !== false && typeof wx.showToast === 'function') {
+      wx.showToast({
+        title: options.successTitle || '复制成功',
+        icon: options.icon || 'none',
+        duration: options.duration || 1500
+      })
+    }
+    if (typeof options.success === 'function') {
+      options.success()
+    }
+  }
+
   try {
     if (typeof wx === 'undefined' || typeof wx.setClipboardData !== 'function') {
       handleFail(new Error('wx.setClipboardData is not supported'))
       return
     }
 
-    wx.setClipboardData({
-      data: value,
-      success: () => {
-        if (options.successModal) {
-          if (typeof wx.showModal === 'function') {
-            wx.showModal({
-              title: options.successModalTitle || options.successTitle || '复制成功',
-              content: options.successModalContent || `已成功复制到剪贴板！\n\n${value}\n\n可在微信对话框或手机浏览器中长按粘贴打开。`,
-              showCancel: false,
-              confirmText: options.confirmText || '我知道了'
-            })
-          }
-        } else if (options.showToast !== false) {
-          if (typeof wx.showToast === 'function') {
-            wx.showToast({
-              title: options.successTitle || '复制成功',
-              icon: options.icon || 'none',
-              duration: options.duration || 1500
-            })
-          }
-        }
-        if (typeof options.success === 'function') {
-          options.success()
-        }
-      },
-      fail: handleFail
-    })
+    requireClipboardPrivacy()
+      .then(() => {
+        wx.setClipboardData({
+          data: value,
+          success: handleSuccess,
+          fail: handleFail
+        })
+      })
+      .catch(handleFail)
   } catch (err) {
     handleFail(err)
   }
