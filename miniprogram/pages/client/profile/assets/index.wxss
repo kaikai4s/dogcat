@@ -99,11 +99,46 @@
   letter-spacing: -2rpx;
 }
 
-.hero-tip {
+.hero-tip,
+.quota-tip {
   position: relative;
   z-index: 1;
   font-size: 24rpx;
   line-height: 1.5;
+}
+
+.quota-tip {
+  margin-top: 10rpx;
+  color: #9a5a00;
+}
+
+.withdraw-input-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-height: 78rpx;
+  margin-top: 24rpx;
+  padding: 0 24rpx;
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1rpx solid rgba(255, 122, 69, 0.14);
+  box-sizing: border-box;
+}
+
+.withdraw-input-prefix {
+  color: #ea580c;
+  font-size: 30rpx;
+  font-weight: 950;
+}
+
+.withdraw-input {
+  flex: 1;
+  min-width: 0;
+  color: #2d211a;
+  font-size: 30rpx;
+  font-weight: 900;
 }
 
 .withdraw-btn,
@@ -173,32 +208,28 @@
 
 .code-box {
   margin-top: 24rpx;
-  padding: 22rpx 24rpx;
+  padding: 24rpx;
   border-radius: 26rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18rpx;
   background: linear-gradient(135deg, #fff8f0 0%, #fff1e6 100%);
   border: 1rpx dashed rgba(124, 74, 46, 0.18);
 }
 
 .invite-code {
-  flex: 1;
-  min-width: 0;
   display: block;
+  width: 100%;
   color: #2d211a;
   font-size: 40rpx;
   font-weight: 950;
   letter-spacing: 7rpx;
-  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .copy-code-btn {
-  flex-shrink: 0;
-  min-width: 150rpx;
+  width: 100%;
   min-height: 58rpx;
-  margin: 0;
+  margin: 18rpx 0 0;
   padding: 0 22rpx;
   border: 0;
   border-radius: 999rpx;

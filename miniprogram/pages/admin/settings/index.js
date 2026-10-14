@@ -31,6 +31,43 @@ function normalizeStaffDeposit(deposit = {}) {
   }
 }
 
+function defaultTransferScenes(transfer = {}) {
+  const rawScenes = transfer.scenes || {}
+  const commission = {
+    sceneId: rawScenes.commission?.sceneId || transfer.sceneId || '1005',
+    userRecvPerception: rawScenes.commission?.userRecvPerception || transfer.userRecvPerception || '宠托师服务收益提现',
+    sceneReportInfos: Array.isArray(rawScenes.commission?.sceneReportInfos) && rawScenes.commission.sceneReportInfos.length
+      ? rawScenes.commission.sceneReportInfos
+      : (Array.isArray(transfer.sceneReportInfos) && transfer.sceneReportInfos.length
+          ? transfer.sceneReportInfos
+          : [
+              { info_type: '岗位类型', info_content: '宠托师' },
+              { info_type: '报酬说明', info_content: '宠托师上门服务收益提现' }
+            ])
+  }
+  const marketing = {
+    sceneId: rawScenes.marketing?.sceneId || '1000',
+    userRecvPerception: rawScenes.marketing?.userRecvPerception || '活动推广现金奖励',
+    sceneReportInfos: Array.isArray(rawScenes.marketing?.sceneReportInfos) && rawScenes.marketing.sceneReportInfos.length
+      ? rawScenes.marketing.sceneReportInfos
+      : [
+          { info_type: '活动名称', info_content: '邀请好友有礼' },
+          { info_type: '奖励说明', info_content: '邀请好友完成首单现金奖励' }
+        ]
+  }
+  const reimbursement = {
+    sceneId: rawScenes.reimbursement?.sceneId || '1006',
+    userRecvPerception: rawScenes.reimbursement?.userRecvPerception || '一次性用品采购报销',
+    sceneReportInfos: Array.isArray(rawScenes.reimbursement?.sceneReportInfos) && rawScenes.reimbursement.sceneReportInfos.length
+      ? rawScenes.reimbursement.sceneReportInfos
+      : [
+          { info_type: '费用类型', info_content: '服务用品报销' },
+          { info_type: '发票/凭证说明', info_content: '一次性防护用品采购凭证报销' }
+        ]
+  }
+  return { commission, marketing, reimbursement }
+}
+
 function normalizeStaffSupplies(supplies = {}) {
   let items = Array.isArray(supplies.items) && supplies.items.length
     ? supplies.items.map((item, idx) => ({
@@ -68,8 +105,17 @@ function normalizeStaffSupplies(supplies = {}) {
     items,
     requiredItems: requiredItems.length ? requiredItems : [...requiredSupplyItems],
     auditNotice: supplies.auditNotice || '视频审核必须检查手套、口罩、鞋套、宠物安全消毒用品。严格考核可能不通过；未正式认证不报销。仅正式认证后首次申请可报销，实习阶段不可申请。',
-    serviceReminder: supplies.serviceReminder || '服务前带齐手套、口罩、鞋套和宠物安全消毒用品，按规范完成消毒。',
-    transfer: { enabled: false, sceneId: '', userRecvPerception: '', sceneReportInfos: [], ...(supplies.transfer || {}) }
+    transfer: {
+      enabled: false,
+      sceneId: '',
+      userRecvPerception: '',
+      platformDailyMaxAmount: '',
+      maxAmount: '',
+      recipientDailyMaxAmount: '',
+      sceneReportInfos: [],
+      ...(supplies.transfer || {}),
+      scenes: defaultTransferScenes(supplies.transfer || {})
+    }
   }
 }
 
@@ -516,6 +562,12 @@ Page({
     uploadingOfficialAccountQrCode: false,
     uploadingTrainingVideo: false,
     uploadingTrainingPoster: false,
+    activeTransferTab: 'commission',
+    transferSceneTexts: {
+      commission: '',
+      marketing: '',
+      reimbursement: ''
+    },
     saving: false
   },
 
@@ -547,7 +599,19 @@ Page({
           staffTraining: normalizeStaffTrainingConfig(settings.staffTraining),
           pricingSurcharges: normalizePricingSurcharges(settings.pricingSurcharges)
         }
-        this.setData({ loaded: true, requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'), sceneReportInfosText: JSON.stringify(normalized.staffSupplies.transfer.sceneReportInfos, null, 2) })
+        const scenes = normalized.staffSupplies.transfer.scenes || defaultTransferScenes(normalized.staffSupplies.transfer)
+        const transferSceneTexts = {
+          commission: JSON.stringify(scenes.commission?.sceneReportInfos || [], null, 2),
+          marketing: JSON.stringify(scenes.marketing?.sceneReportInfos || [], null, 2),
+          reimbursement: JSON.stringify(scenes.reimbursement?.sceneReportInfos || [], null, 2)
+        }
+        const activeTab = this.data.activeTransferTab || 'commission'
+        this.setData({
+          loaded: true,
+          requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'),
+          transferSceneTexts,
+          sceneReportInfosText: transferSceneTexts[activeTab] || transferSceneTexts.commission
+        })
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized, settingSummary: buildSettingSummary(normalized) }, () => {
           this.resolveMediaUrls(normalized.homeHeroCarousel.items)
@@ -1514,8 +1578,90 @@ Page({
     this.setData({ 'settings.staffDeposit.enabled': e.detail.value })
   },
 
+  switchTransferTab(e) {
+    const tab = e.currentTarget.dataset.tab
+    if (!tab || tab === this.data.activeTransferTab) return
+    const prev = this.data.activeTransferTab || 'commission'
+    const updatedTexts = {
+      ...this.data.transferSceneTexts,
+      [prev]: this.data.sceneReportInfosText
+    }
+    this.setData({
+      activeTransferTab: tab,
+      transferSceneTexts: updatedTexts,
+      sceneReportInfosText: updatedTexts[tab] || ''
+    })
+  },
+
+  transferSceneFieldInput(e) {
+    const tab = e.currentTarget.dataset.tab || this.data.activeTransferTab || 'commission'
+    const field = e.currentTarget.dataset.field
+    const value = e.detail.value
+    this.setData({
+      [`settings.staffSupplies.transfer.scenes.${tab}.${field}`]: value
+    })
+    if (tab === 'commission') {
+      if (field === 'sceneId') this.setData({ 'settings.staffSupplies.transfer.sceneId': value })
+      if (field === 'userRecvPerception') this.setData({ 'settings.staffSupplies.transfer.userRecvPerception': value })
+    }
+  },
+
   policyTextInput(e) {
-    this.setData({ [e.currentTarget.dataset.field]: e.detail.value })
+    const field = e.currentTarget.dataset.field || 'sceneReportInfosText'
+    const val = e.detail.value
+    this.setData({ [field]: val })
+    if (field === 'sceneReportInfosText') {
+      const tab = this.data.activeTransferTab || 'commission'
+      this.setData({
+        [`transferSceneTexts.${tab}`]: val
+      })
+    }
+  },
+
+  fillTransferPreset(e) {
+    const type = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.type) || this.data.activeTransferTab || 'commission'
+    if (type === 'commission') {
+      const template = [
+        { info_type: '岗位类型', info_content: '宠托师' },
+        { info_type: '报酬说明', info_content: '宠托师上门服务收益提现' }
+      ]
+      const json = JSON.stringify(template, null, 2)
+      this.setData({
+        'settings.staffSupplies.transfer.scenes.commission.sceneId': this.data.settings.staffSupplies.transfer.scenes?.commission?.sceneId || '1005',
+        'settings.staffSupplies.transfer.scenes.commission.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.commission?.userRecvPerception || '宠托师服务收益提现',
+        'settings.staffSupplies.transfer.sceneId': this.data.settings.staffSupplies.transfer.sceneId || '1005',
+        'settings.staffSupplies.transfer.userRecvPerception': this.data.settings.staffSupplies.transfer.userRecvPerception || '宠托师服务收益提现',
+        sceneReportInfosText: json,
+        'transferSceneTexts.commission': json
+      })
+      wx.showToast({ title: '已载入宠托师提现模板', icon: 'success' })
+    } else if (type === 'reimbursement') {
+      const template = [
+        { info_type: '费用类型', info_content: '服务用品报销' },
+        { info_type: '发票/凭证说明', info_content: '一次性防护用品采购凭证报销' }
+      ]
+      const json = JSON.stringify(template, null, 2)
+      this.setData({
+        'settings.staffSupplies.transfer.scenes.reimbursement.sceneId': this.data.settings.staffSupplies.transfer.scenes?.reimbursement?.sceneId || '1006',
+        'settings.staffSupplies.transfer.scenes.reimbursement.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.reimbursement?.userRecvPerception || '一次性用品采购报销',
+        sceneReportInfosText: json,
+        'transferSceneTexts.reimbursement': json
+      })
+      wx.showToast({ title: '已载入企业报销模板', icon: 'success' })
+    } else if (type === 'marketing') {
+      const template = [
+        { info_type: '活动名称', info_content: '邀请好友有礼' },
+        { info_type: '奖励说明', info_content: '邀请好友完成首单现金奖励' }
+      ]
+      const json = JSON.stringify(template, null, 2)
+      this.setData({
+        'settings.staffSupplies.transfer.scenes.marketing.sceneId': this.data.settings.staffSupplies.transfer.scenes?.marketing?.sceneId || '1000',
+        'settings.staffSupplies.transfer.scenes.marketing.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.marketing?.userRecvPerception || '活动推广现金奖励',
+        sceneReportInfosText: json,
+        'transferSceneTexts.marketing': json
+      })
+      wx.showToast({ title: '已载入营销奖励模板', icon: 'success' })
+    }
   },
 
   save() {
@@ -1530,14 +1676,36 @@ Page({
     if (!validAmount(deposit.amount, !deposit.enabled)) return showError(new Error('保证金金额须为有效金额，最多两位小数；启用时必须大于 0'))
     if (!validAmount(this.data.settings.staffSupplies.reimbursementAmount)) return showError(new Error('固定报销金额须为有效金额'))
     if (!validAmount(this.data.settings.invitation.rewardAmount, true) || !validAmount(this.data.settings.invitation.userMinWithdrawAmount, true)) return showError(new Error('邀请收益和用户最低提现金额须为有效金额'))
-    let sceneReportInfos
-    try {
-      sceneReportInfos = JSON.parse(this.data.sceneReportInfosText)
-      if (!Array.isArray(sceneReportInfos) || sceneReportInfos.some((item) => !item || typeof item.info_type !== 'string' || !item.info_type.trim() || typeof item.info_content !== 'string' || !item.info_content.trim())) throw new Error()
-    } catch (err) { return showError(new Error('场景报备信息须为 JSON 数组，每项包含非空 info_type 和 info_content')) }
+
+    const activeTab = this.data.activeTransferTab || 'commission'
+    const allSceneTexts = {
+      ...this.data.transferSceneTexts,
+      [activeTab]: this.data.sceneReportInfosText
+    }
+    const parsedScenes = {}
+    const tabNames = { commission: '宠托师提现', marketing: '邀请奖励', reimbursement: '用品报销' }
+    for (const key of ['commission', 'marketing', 'reimbursement']) {
+      const text = (allSceneTexts[key] || '').trim()
+      let reports = []
+      if (text) {
+        try {
+          reports = JSON.parse(text)
+          if (!Array.isArray(reports) || reports.some(item => !item || typeof item.info_type !== 'string' || !item.info_type.trim() || typeof item.info_content !== 'string' || !item.info_content.trim())) {
+            throw new Error()
+          }
+        } catch (err) {
+          return showError(new Error(`【${tabNames[key]}】场景报备信息须为标准 JSON 数组，每项包含非空 info_type 和 info_content`))
+        }
+      }
+      parsedScenes[key] = {
+        sceneId: String(this.data.settings.staffSupplies.transfer?.scenes?.[key]?.sceneId || (key === 'commission' ? this.data.settings.staffSupplies.transfer.sceneId : '') || '').trim(),
+        userRecvPerception: String(this.data.settings.staffSupplies.transfer?.scenes?.[key]?.userRecvPerception || (key === 'commission' ? this.data.settings.staffSupplies.transfer.userRecvPerception : '') || '').trim(),
+        sceneReportInfos: reports
+      }
+    }
     const transfer = this.data.settings.staffSupplies.transfer
-    if (transfer.enabled && (!String(transfer.sceneId).trim() || !String(transfer.userRecvPerception).trim() || !sceneReportInfos.length)) {
-      return showError(new Error('启用前请填写商户已获批的真实转账场景、收款感知与对应报备信息'))
+    if (transfer.enabled && (!parsedScenes.commission.sceneId || !parsedScenes.commission.userRecvPerception || !parsedScenes.commission.sceneReportInfos.length)) {
+      return showError(new Error('启用商家转账时，【宠托师提现】主场景必须填写商户已获批的场景 ID、收款感知与对应报备信息'))
     }
     const items = (this.data.settings.staffSupplies.items || []).filter((item) => item.name && String(item.name).trim())
     const requiredItems = items.filter((i) => i.enabled).map((item) => String(item.name).trim())
@@ -1546,7 +1714,10 @@ Page({
       'settings.staffDeposit.amount': Number(deposit.amount),
       'settings.staffSupplies.items': items,
       'settings.staffSupplies.requiredItems': requiredItems,
-      'settings.staffSupplies.transfer.sceneReportInfos': sceneReportInfos
+      'settings.staffSupplies.transfer.scenes': parsedScenes,
+      'settings.staffSupplies.transfer.sceneId': parsedScenes.commission.sceneId,
+      'settings.staffSupplies.transfer.userRecvPerception': parsedScenes.commission.userRecvPerception,
+      'settings.staffSupplies.transfer.sceneReportInfos': parsedScenes.commission.sceneReportInfos
     })
     if (this.data.uploadingTrainingVideo || this.data.uploadingTrainingPoster) {
       wx.showToast({ title: '请等待培训素材上传完成', icon: 'none' })
@@ -1643,7 +1814,19 @@ Page({
           staffTraining: normalizeStaffTrainingConfig(settings.staffTraining),
           pricingSurcharges: normalizePricingSurcharges(settings.pricingSurcharges)
         }
-        this.setData({ loaded: true, requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'), sceneReportInfosText: JSON.stringify(normalized.staffSupplies.transfer.sceneReportInfos, null, 2) })
+        const scenes = normalized.staffSupplies.transfer.scenes || defaultTransferScenes(normalized.staffSupplies.transfer)
+        const transferSceneTexts = {
+          commission: JSON.stringify(scenes.commission?.sceneReportInfos || [], null, 2),
+          marketing: JSON.stringify(scenes.marketing?.sceneReportInfos || [], null, 2),
+          reimbursement: JSON.stringify(scenes.reimbursement?.sceneReportInfos || [], null, 2)
+        }
+        const currentTab = this.data.activeTransferTab || 'commission'
+        this.setData({
+          loaded: true,
+          requiredItemsText: normalized.staffSupplies.requiredItems.join('\n'),
+          transferSceneTexts,
+          sceneReportInfosText: transferSceneTexts[currentTab] || transferSceneTexts.commission
+        })
         setCachedSystemSettings(normalized)
         this.setData({ settings: normalized, settingSummary: buildSettingSummary(normalized), saving: false })
         this.resolveMediaUrls(normalized.homeHeroCarousel.items)

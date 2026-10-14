@@ -24,6 +24,15 @@
     </view>
   </view>
 
+  <view class="card record-card" wx:if="{{dashboard.wechatTransferQuota}}">
+    <view class="record-head"><view class="record-title">今日微信商家转账额度</view><view class="badge pink">{{dashboard.wechatTransferQuota.dateKey}}</view></view>
+    <view class="info-row"><view class="label">今日平台额度</view><view class="price">{{dashboard.wechatTransferQuota.platformDailyMaxAmount === null ? '不限' : '¥' + dashboard.wechatTransferQuota.platformDailyMaxAmount}}</view></view>
+    <view class="info-row"><view class="label">今日已成功转账</view><view class="value">¥{{dashboard.wechatTransferQuota.platformDailySuccessfulAmount}}</view></view>
+    <view class="info-row"><view class="label">申请占用</view><view class="value">¥{{dashboard.wechatTransferQuota.platformDailyReservedAmount}}</view></view>
+    <view class="info-row"><view class="label">处理中占用</view><view class="value">¥{{dashboard.wechatTransferQuota.platformInflightAmount}}</view></view>
+    <view class="info-row"><view class="label">今日剩余额度</view><view class="price">{{dashboard.wechatTransferQuota.platformDailyRemainingAmount === null ? '不限' : '¥' + dashboard.wechatTransferQuota.platformDailyRemainingAmount}}</view></view>
+  </view>
+
   <scroll-view scroll-x class="chip-tabs">
     <view class="chip {{activeTab === 'withdraws' ? 'active' : ''}}" data-tab="withdraws" bindtap="switchTab">提现</view>
     <view class="chip {{activeTab === 'deposits' ? 'active' : ''}}" data-tab="deposits" bindtap="switchTab">保证金</view>

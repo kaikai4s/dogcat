@@ -59,21 +59,28 @@ function copyText(text, options = {}) {
     }
   }
 
+  const doSetClipboard = () => {
+    wx.setClipboardData({
+      data: value,
+      success: handleSuccess,
+      fail: handleFail
+    })
+  }
+
   try {
     if (typeof wx === 'undefined' || typeof wx.setClipboardData !== 'function') {
       handleFail(new Error('wx.setClipboardData is not supported'))
       return
     }
 
-    requireClipboardPrivacy()
-      .then(() => {
-        wx.setClipboardData({
-          data: value,
-          success: handleSuccess,
-          fail: handleFail
-        })
+    if (typeof wx.requirePrivacyAuthorize === 'function') {
+      wx.requirePrivacyAuthorize({
+        success: doSetClipboard,
+        fail: handleFail
       })
-      .catch(handleFail)
+    } else {
+      doSetClipboard()
+    }
   } catch (err) {
     handleFail(err)
   }

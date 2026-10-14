@@ -22,6 +22,7 @@
       <view class="meta-chip-row">
         <view class="meta-chip {{settings.staffSupplies.transfer.sceneId ? 'success' : 'warning'}}">{{settings.staffSupplies.transfer.sceneId ? '已填场景 ID' : '待配置场景'}}</view>
         <view class="meta-chip {{settings.staffSupplies.transfer.userRecvPerception ? 'success' : 'warning'}}">{{settings.staffSupplies.transfer.userRecvPerception ? '已填收款感知' : '待配置文案'}}</view>
+        <view class="meta-chip {{settings.staffSupplies.transfer.platformDailyMaxAmount !== '' ? 'success' : 'warning'}}">{{settings.staffSupplies.transfer.platformDailyMaxAmount !== '' ? '日额度 ¥' + settings.staffSupplies.transfer.platformDailyMaxAmount : '日额度不限'}}</view>
       </view>
     </view>
     <view class="admin-compact-card setting-overview-card" data-panel="realNameVerification" bindtap="openSettingModal">
@@ -259,9 +260,61 @@
         <view wx:if="{{activeSettingPanel === 'wechatTransfer'}}" class="setting-modal-section">
           <view class="policy-notice">商户须先在微信支付商户平台开通商家转账并获批适用场景。这里的开关只是允许系统发起转账，审核通过、转账处理中或待用户确认都不等于已经到账。</view>
           <view class="compact-toggle-row"><text>启用商家转账</text><switch checked="{{settings.staffSupplies.transfer.enabled}}" data-field="staffSupplies.transfer.enabled" bindchange="staffPolicyInput" /></view>
-          <view class="field-item"><text class="label">已获批的真实场景 ID</text><input class="input" value="{{settings.staffSupplies.transfer.sceneId}}" data-field="staffSupplies.transfer.sceneId" bindinput="staffPolicyInput" placeholder="复制微信商户平台审核通过的场景 ID" /></view>
-          <view class="field-item"><text class="label">收款用户感知</text><input class="input" value="{{settings.staffSupplies.transfer.userRecvPerception}}" data-field="staffSupplies.transfer.userRecvPerception" bindinput="staffPolicyInput" placeholder="填写已获批场景允许的真实文案" /></view>
-          <view class="field-item"><text class="label">场景报备信息（JSON 数组）</text><textarea class="input textarea-input report-json" maxlength="-1" value="{{sceneReportInfosText}}" data-field="sceneReportInfosText" bindinput="policyTextInput" /><view class="muted">严格按照微信商户平台场景详情中的字段填写 info_type 和 info_content，不要使用虚构内容。</view></view>
+          <view class="field-item"><text class="label">全平台单日微信转账额度（元）</text><input class="input" type="digit" value="{{settings.staffSupplies.transfer.platformDailyMaxAmount}}" data-field="staffSupplies.transfer.platformDailyMaxAmount" bindinput="staffPolicyInput" placeholder="留空不限制；0 表示暂停当日新申请" /><view class="muted">按北京时间自然日统计，成功、申请占用、处理中占用都会计入。</view></view>
+          <view class="field-item"><text class="label">单笔微信转账额度（元）</text><input class="input" type="digit" value="{{settings.staffSupplies.transfer.maxAmount}}" data-field="staffSupplies.transfer.maxAmount" bindinput="staffPolicyInput" placeholder="留空使用环境变量或默认上限" /><view class="muted">与环境变量 WECHAT_TRANSFER_MAX_AMOUNT 同时配置时，系统取更严格的额度。</view></view>
+          <view class="field-item"><text class="label">每个用户每日微信转账额度（元）</text><input class="input" type="digit" value="{{settings.staffSupplies.transfer.recipientDailyMaxAmount}}" data-field="staffSupplies.transfer.recipientDailyMaxAmount" bindinput="staffPolicyInput" placeholder="留空不限制" /><view class="muted">同一微信收款用户在宠托师提现和用户资产提现中共享该额度。</view></view>
+
+          <!-- 多业务场景独立配置面板 -->
+          <view class="section-title-row between" style="margin-top: 24rpx;">
+            <text class="section-title">转账业务场景独立配置</text>
+            <view class="transfer-preset-actions">
+              <text class="transfer-preset-btn" bindtap="fillTransferPreset">载入当前场景推荐模板</text>
+            </view>
+          </view>
+          <view class="muted" style="margin-bottom: 12rpx;">已支持三种场景同时独立配置，发起转账时系统会根据业务类型自动匹配对应场景打款：</view>
+
+          <view class="transfer-scene-selector">
+            <view class="transfer-scene-tab {{activeTransferTab === 'commission' ? 'active' : ''}}" data-tab="commission" bindtap="switchTransferTab">宠托师提现 (1005)</view>
+            <view class="transfer-scene-tab {{activeTransferTab === 'marketing' ? 'active' : ''}}" data-tab="marketing" bindtap="switchTransferTab">邀请奖励 (1000)</view>
+            <view class="transfer-scene-tab {{activeTransferTab === 'reimbursement' ? 'active' : ''}}" data-tab="reimbursement" bindtap="switchTransferTab">用品报销 (1006)</view>
+          </view>
+
+          <view class="transfer-scene-box">
+            <view class="transfer-scene-badge" wx:if="{{activeTransferTab === 'commission'}}">适用：宠托师服务佣金提现（默认主场景）</view>
+            <view class="transfer-scene-badge" wx:if="{{activeTransferTab === 'marketing'}}">适用：邀请好友有礼 / 用户资产提现</view>
+            <view class="transfer-scene-badge" wx:if="{{activeTransferTab === 'reimbursement'}}">适用：服务必备防护用品采购报销</view>
+
+            <view class="field-item">
+              <text class="label">已获批的场景 ID</text>
+              <input class="input" value="{{settings.staffSupplies.transfer.scenes[activeTransferTab].sceneId}}" data-tab="{{activeTransferTab}}" data-field="sceneId" bindinput="transferSceneFieldInput" placeholder="复制微信商户平台审核通过的场景 ID（如 1005、1000、1006）" />
+            </view>
+            <view class="field-item">
+              <text class="label">收款用户感知文案</text>
+              <input class="input" value="{{settings.staffSupplies.transfer.scenes[activeTransferTab].userRecvPerception}}" data-tab="{{activeTransferTab}}" data-field="userRecvPerception" bindinput="transferSceneFieldInput" placeholder="填写微信商户平台允许的真实感知文案" />
+            </view>
+            <view class="field-item">
+              <text class="label">场景报备信息（JSON 数组）</text>
+              <textarea class="input textarea-input report-json" maxlength="-1" value="{{sceneReportInfosText}}" bindinput="policyTextInput" placeholder="[&#10;  { &quot;info_type&quot;: &quot;...&quot;, &quot;info_content&quot;: &quot;...&quot; }&#10;]" />
+              <view class="muted">数组内可包含多个 info_type/info_content 报备项；必须严格匹配微信商户平台该场景要求的字段名。</view>
+            </view>
+          </view>
+
+          <view class="official-account-guide-card" style="margin-top: 16rpx; background: #f0fdf4; border-color: #bbf7d0;">
+            <view class="guide-title" style="color: #16a34a;"><text class="remix-icon ri-information-line"></text> 微信官方场景报备类型对照表</view>
+            <view class="step-desc" style="margin-bottom: 8rpx; color: #166534; font-weight: bold;">1. 宠托师收益提现（佣金报酬 1005）：</view>
+            <view class="step-desc" style="font-family: monospace; font-size: 22rpx; background: #ffffff; padding: 10rpx; border-radius: 8rpx; margin-bottom: 12rpx;">
+              [&#10;  { "info_type": "岗位类型", "info_content": "宠托师" },&#10;  { "info_type": "报酬说明", "info_content": "宠托师上门服务收益提现" }&#10;]
+            </view>
+            <view class="step-desc" style="margin-bottom: 8rpx; color: #166534; font-weight: bold;">2. 企业用品报销（企业报销 1006）：</view>
+            <view class="step-desc" style="font-family: monospace; font-size: 22rpx; background: #ffffff; padding: 10rpx; border-radius: 8rpx; margin-bottom: 12rpx;">
+              [&#10;  { "info_type": "费用类型", "info_content": "服务用品报销" },&#10;  { "info_type": "发票/凭证说明", "info_content": "采购凭证报销" }&#10;]
+            </view>
+            <view class="step-desc" style="margin-bottom: 8rpx; color: #166534; font-weight: bold;">3. 邀请活动奖励（现金营销 1000）：</view>
+            <view class="step-desc" style="font-family: monospace; font-size: 22rpx; background: #ffffff; padding: 10rpx; border-radius: 8rpx;">
+              [&#10;  { "info_type": "活动名称", "info_content": "邀请好友有礼" },&#10;  { "info_type": "奖励说明", "info_content": "邀请好友奖励" }&#10;]
+            </view>
+          </view>
+
           <view class="policy-notice danger-notice">微信支付商户号、API v3 密钥、商户证书和私钥在“支付与退款”面板配置；密钥不会在这里展示。</view>
         </view>
         <view wx:if="{{activeSettingPanel === 'invitation'}}" class="setting-modal-section">

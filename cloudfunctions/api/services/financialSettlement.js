@@ -1,4 +1,4 @@
-module.exports = function createService({ db, now, parseDateValue, safeText, enqueueSubscription, buildSubscriptionData, settleUserAssetWithdrawal, markUserAssetPaid, markUserAssetFailed, releaseUserAssetWithdrawal }) {
+module.exports = function createService({ db, now, parseDateValue, safeText, enqueueSubscription, buildSubscriptionData, settleUserAssetWithdrawal, markUserAssetPaid, markUserAssetFailed, releaseUserAssetWithdrawal, commitWechatTransferSuccessQuota, releaseWechatTransferQuota }) {
   async function optionalOrder(tx, id) {
     try { return (await tx.collection('orders').doc(id).get()).data || null } catch (error) {
       if (String(error.message || error.errMsg).includes(`document with _id ${id} does not exist`)) return null
@@ -102,6 +102,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
             auditRemark: safeText(data.auditRemark).trim(),
             updatedAt: time
           }
+      if (!paid && target === 'rejected') await releaseWechatTransferQuota(tx, { _id: data.id, ...request }, 'rejected')
       await tx.collection('withdraw_requests').doc(data.id).update({ data: patch })
       // Approval also writes the earnings, making it conflict with concurrent freezes.
       for (const earning of earnings) {
@@ -152,6 +153,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
       if (!Number.isSafeInteger(total) || total !== cents(request.amount, true)) throw new Error('提现金额与收益合计不一致')
       const time = now()
       const paymentReference = transferPaidReference(request, result)
+      await commitWechatTransferSuccessQuota(tx, { _id: withdrawId, ...request }, result)
       const patch = {
         status: 'paid',
         transferStatus: 'success',
@@ -188,6 +190,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
       if (request.status === 'paid') return { request, changed: false }
       if (request.payoutChannel !== 'wechat_wallet') throw new Error('非微信提现单不能标记微信转账失败')
       const time = now()
+      await releaseWechatTransferQuota(tx, { _id: withdrawId, ...request }, 'transfer_failed')
       const patch = {
         status: 'transfer_failed',
         transferStatus: 'failed',
@@ -225,6 +228,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
       }
       const time = now()
       const remark = safeText(data.remark || data.auditRemark).trim()
+      await releaseWechatTransferQuota(tx, { _id: data.id, ...request }, 'released')
       await tx.collection('withdraw_requests').doc(data.id).update({ data: {
         status: 'rejected', transferStatus: 'released', releasedAt: time, releasedByOpenid: admin.openid,
         auditRemark: remark || request.auditRemark || '微信提现失败后释放收益', updatedAt: time

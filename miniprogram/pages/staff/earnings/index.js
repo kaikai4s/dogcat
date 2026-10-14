@@ -84,6 +84,10 @@ Page({
       callFunction('finance', 'listMyWithdraws')
     ])
       .then(([balance, earnings, withdraws]) => {
+        const quota = balance.wechatTransferQuota || {}
+        const maxAmount = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
+          ? Number(balance.available || 0)
+          : Math.min(Number(balance.available || 0), Number(quota.effectiveRemainingAmount || 0))
         this.setData({
           balance: {
             ...balance,
@@ -96,7 +100,7 @@ Page({
             hasMockEarnings: Number(balance.mockTotal || 0) > 0,
             minWithdrawAmountText: money(balance.minWithdrawAmount)
           },
-          amount: balance.available ? money(balance.available) : '',
+          amount: maxAmount > 0 ? money(maxAmount) : '',
           earnings: (earnings || []).map(withEarning),
           withdraws: (withdraws || []).map(withWithdraw)
         })
@@ -122,6 +126,16 @@ Page({
     if (minWithdraw > 0 && amount < minWithdraw) {
       return wx.showToast({ title: `最低提现金额为 ¥${minWithdraw}`, icon: 'none' })
     }
+    const quota = this.data.balance?.wechatTransferQuota || {}
+    if (quota.singleMaxAmount !== null && quota.singleMaxAmount !== undefined && amount > Number(quota.singleMaxAmount || 0)) {
+      return wx.showToast({ title: '单笔额度不足，请分多次提现', icon: 'none' })
+    }
+    if (quota.platformDailyRemainingAmount !== null && quota.platformDailyRemainingAmount !== undefined && amount > Number(quota.platformDailyRemainingAmount || 0)) {
+      return wx.showModal({ title: '暂不可提现', content: '当日全平台转帐额度受限,请明日再申请', showCancel: false })
+    }
+    if (quota.recipientDailyRemainingAmount !== null && quota.recipientDailyRemainingAmount !== undefined && amount > Number(quota.recipientDailyRemainingAmount || 0)) {
+      return wx.showModal({ title: '暂不可提现', content: quota.message || '当日个人微信转账额度受限,请明日再申请', showCancel: false })
+    }
     this._submittingLock = true
     this.setData({ submitting: true })
     showLoading({ title: '正在提交提现...', mask: true })
@@ -141,7 +155,12 @@ Page({
         hideLoading()
         this._submittingLock = false
         this.setData({ submitting: false })
-        showError(error)
+        if (String(error.message || error.errMsg || error).includes('当日全平台转帐额度受限')) {
+          wx.showModal({ title: '暂不可提现', content: '当日全平台转帐额度受限,请明日再申请', showCancel: false })
+          this.load()
+        } else {
+          showError(error)
+        }
       })
   },
 

@@ -62,16 +62,21 @@ module.exports = function createService({
     const userRecvPerception = safeText(process.env.WECHAT_TRANSFER_USER_RECV_PERCEPTION || transfer.userRecvPerception).trim()
     const remark = safeText(process.env.WECHAT_TRANSFER_REMARK || transfer.remark).trim() || '宠托师服务收益提现'
     const notifyUrl = safeText(process.env.WECHAT_TRANSFER_NOTIFY_URL || transfer.notifyUrl).trim()
-    const maxAmount = Number(process.env.WECHAT_TRANSFER_MAX_AMOUNT || transfer.maxAmount || 5000)
+    const adminMaxAmount = Number(transfer.maxAmount || 0)
+    const envMaxAmount = Number(process.env.WECHAT_TRANSFER_MAX_AMOUNT || 0)
+    const maxAmount = [adminMaxAmount, envMaxAmount].filter(value => Number.isFinite(value) && value > 0).sort((a, b) => a - b)[0] || 5000
     let sceneReportInfos = Array.isArray(transfer.sceneReportInfos) ? transfer.sceneReportInfos : []
     if (typeof process.env.WECHAT_TRANSFER_SCENE_REPORT_INFOS === 'string' && process.env.WECHAT_TRANSFER_SCENE_REPORT_INFOS.trim()) {
       sceneReportInfos = JSON.parse(process.env.WECHAT_TRANSFER_SCENE_REPORT_INFOS)
     }
+    const scenes = transfer.scenes || {}
+    const primarySceneId = sceneId || (scenes.commission && scenes.commission.sceneId) || ''
+    const primaryPerception = userRecvPerception || (scenes.commission && scenes.commission.userRecvPerception) || ''
     if (!enabled) throw new Error('微信提现到零钱未启用')
-    if (!sceneId) throw new Error('微信商家转账场景 ID 未配置')
-    if (!userRecvPerception) throw new Error('微信商家转账收款用户感知未配置')
+    if (!primarySceneId) throw new Error('微信商家转账场景 ID 未配置')
+    if (!primaryPerception) throw new Error('微信商家转账收款用户感知未配置')
     if (!Number.isFinite(maxAmount) || maxAmount <= 0) throw new Error('微信提现单笔上限配置不正确')
-    return { ...config, transferEnabled: enabled, transferSceneId: sceneId, transferRemark: remark, transferNotifyUrl: notifyUrl, transferMaxAmount: maxAmount, userRecvPerception, sceneReportInfos }
+    return { ...config, transferEnabled: enabled, transferSceneId: primarySceneId, transferRemark: remark, transferNotifyUrl: notifyUrl, transferMaxAmount: maxAmount, userRecvPerception: primaryPerception, sceneReportInfos, scenes }
   }
 
   function sanitizeWechatPayload(payload = {}) {

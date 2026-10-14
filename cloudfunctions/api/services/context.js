@@ -46,6 +46,7 @@ module.exports = function createContext({ cloud, db }) {
   // atomically create idempotent asset earnings without coupling to staff earnings.
   Object.assign(context, require('../services/staffTraining')(context))
   Object.assign(context, require('../services/settings')(context))
+  Object.assign(context, require('../services/wechatTransferQuotas')(context))
   Object.assign(context, require('../services/userAssets')(context))
   Object.assign(context, require('../services/membership')(context))
   Object.assign(context, require('../services/rewardMails')(context))

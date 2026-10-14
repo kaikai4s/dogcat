@@ -1,6 +1,6 @@
 module.exports = function createService({
   checkTextSecurity, crypto, db, findByClientRequestId, getClientRequestId, getSystemSettings,
-  getUser, now, refreshStaffEarnings, safeText
+  getUser, now, refreshStaffEarnings, reserveWechatApplicationQuota, safeText
 }) {
   const maxEarnings = 50
 
@@ -108,6 +108,9 @@ module.exports = function createService({
         request.recipientOpenid = openid
         request.recipientName = accountName
         request.transferStatus = 'not_started'
+      }
+      if (payoutChannel === 'wechat_wallet' && typeof reserveWechatApplicationQuota === 'function') {
+        await reserveWechatApplicationQuota(transaction, { _id: id, ...request }, { settings })
       }
       await transaction.collection('withdraw_requests').doc(id).set({ data: request })
       for (const earning of selected) {

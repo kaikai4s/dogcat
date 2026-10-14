@@ -742,3 +742,47 @@
   line-height: 1.5;
 }
 
+/* 微信转账多场景配置样式 */
+.transfer-scene-selector {
+  display: flex;
+  background: #f5f3f0;
+  border-radius: 14rpx;
+  padding: 6rpx;
+  margin: 16rpx 0 20rpx 0;
+  gap: 8rpx;
+}
+.transfer-scene-tab {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 4rpx;
+  font-size: 23rpx;
+  color: #7a6a5e;
+  border-radius: 10rpx;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+.transfer-scene-tab.active {
+  background: #ffffff;
+  color: #ff8a45;
+  font-weight: 700;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.06);
+}
+.transfer-scene-box {
+  background: #faf8f5;
+  border: 1rpx solid #ede8e3;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  margin-bottom: 20rpx;
+}
+.transfer-scene-badge {
+  display: inline-block;
+  padding: 6rpx 14rpx;
+  font-size: 22rpx;
+  border-radius: 8rpx;
+  background: #fff0db;
+  color: #c25e16;
+  font-weight: 600;
+  margin-bottom: 16rpx;
+}
+
+

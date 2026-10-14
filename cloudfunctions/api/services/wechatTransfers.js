@@ -8,6 +8,7 @@ module.exports = function createService({
   sanitizeWechatTransferPayload,
   markWechatWithdrawalPaid,
   markWechatWithdrawalFailed,
+  prepareWechatSubmissionQuota,
   now,
   safeText
 }) {
@@ -39,7 +40,7 @@ module.exports = function createService({
     return request
   }
 
-  async function ensureTransferIntent(withdrawId, operator = {}) {
+  async function ensureTransferIntent(withdrawId, operator = {}, settings = null) {
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(withdrawId).get()).data
       if (!request) throw new Error('提现申请不存在')
@@ -56,27 +57,55 @@ module.exports = function createService({
         transferPreparedByOpenid: request.transferPreparedByOpenid || operator.openid || '',
         updatedAt: time
       }
+      await prepareWechatSubmissionQuota(tx, { _id: withdrawId, ...request, ...patch }, { settings })
       await tx.collection('withdraw_requests').doc(withdrawId).update({ data: patch })
       return { ...request, ...patch }
     })
+  }
+
+  function resolveTransferScene(request, config) {
+    const scenes = config.scenes || {}
+    let targetKey = 'commission'
+    if (request.assetType === 'user') {
+      targetKey = 'marketing'
+    } else if (request.assetType === 'reimbursement' || request.reimbursementId) {
+      targetKey = 'reimbursement'
+    }
+    const specific = scenes[targetKey]
+    if (specific && specific.sceneId) {
+      const reports = Array.isArray(specific.sceneReportInfos) && specific.sceneReportInfos.length ? specific.sceneReportInfos : config.sceneReportInfos
+      return {
+        sceneId: safeText(specific.sceneId).trim(),
+        userRecvPerception: safeText(specific.userRecvPerception || config.userRecvPerception).trim(),
+        sceneReportInfos: reports,
+        remark: safeText(specific.remark || (targetKey === 'marketing' ? '邀请活动收益提现' : targetKey === 'reimbursement' ? '一次性用品采购报销' : '宠托师服务收益提现')).trim()
+      }
+    }
+    return {
+      sceneId: config.transferSceneId,
+      userRecvPerception: config.userRecvPerception,
+      sceneReportInfos: config.sceneReportInfos,
+      remark: safeText(config.transferRemark || request.remark).trim() || (request.assetType === 'user' ? '邀请活动收益提现' : '宠托师服务收益提现')
+    }
   }
 
   function buildTransferPayload(request, config) {
     const amountFen = request.amountFen || cents(request.amount)
     const maxFen = cents(config.transferMaxAmount)
     if (amountFen > maxFen) throw new Error(`微信提现金额超过单笔上限 ¥${config.transferMaxAmount}`)
+    const scene = resolveTransferScene(request, config)
     const payload = {
       appid: config.appId,
       out_bill_no: request.outBillNo,
-      transfer_scene_id: config.transferSceneId,
+      transfer_scene_id: scene.sceneId,
       openid: request.recipientOpenid || request.staffOpenid,
       transfer_amount: amountFen,
-      transfer_remark: safeText(config.transferRemark || request.remark).trim() || (request.assetType === 'user' ? '邀请活动收益提现' : '宠托师服务收益提现'),
-      user_recv_perception: config.userRecvPerception
+      transfer_remark: safeText(scene.remark || request.remark).trim(),
+      user_recv_perception: scene.userRecvPerception
     }
     if (config.transferNotifyUrl) payload.notify_url = config.transferNotifyUrl
-    if (Array.isArray(config.sceneReportInfos) && config.sceneReportInfos.length) {
-      payload.transfer_scene_report_infos = config.sceneReportInfos
+    if (Array.isArray(scene.sceneReportInfos) && scene.sceneReportInfos.length) {
+      payload.transfer_scene_report_infos = scene.sceneReportInfos
         .map(item => ({ info_type: safeText(item && item.info_type).trim(), info_content: safeText(item && item.info_content).trim() }))
         .filter(item => item.info_type && item.info_content)
     }
@@ -98,9 +127,17 @@ module.exports = function createService({
   }
 
   async function submitWechatWithdrawalTransfer(withdrawId, operator = {}) {
-    const prepared = await ensureTransferIntent(withdrawId, operator)
-    if (prepared.status === 'paid') return prepared
     const settings = await getSystemSettings({ includeSecrets: true })
+    let prepared
+    try {
+      prepared = await ensureTransferIntent(withdrawId, operator, settings)
+    } catch (error) {
+      if (String(error.message || error.errMsg || error).includes('额度') || String(error.message || error.errMsg || error).includes('当日全平台转帐额度受限')) {
+        await db.collection('withdraw_requests').doc(withdrawId).update({ data: { lastTransferError: safeText(error.message || error).slice(0, 500), lastTransferCheckedAt: now(), updatedAt: now() } }).catch(() => {})
+      }
+      throw error
+    }
+    if (prepared.status === 'paid') return prepared
     const config = getWechatTransferConfig(settings)
     const payload = buildTransferPayload(prepared, config)
     const headers = payload.user_name ? { 'Wechatpay-Serial': config.platformCertSerialNo } : {}
@@ -178,13 +215,15 @@ module.exports = function createService({
   }
 
   async function reconcileWechatTransfers(limit = 10) {
-    const rows = (await db.collection('withdraw_requests')
-      .where({ payoutChannel: 'wechat_wallet' })
-      .limit(Math.min(Math.max(Number(limit || 10), 1), 20))
-      .get().catch(() => ({ data: [] }))).data || []
-    const pending = rows.filter(item => ['approved', 'transferring'].includes(safeText(item.status).trim()) || ['processing', 'unknown', 'submitting'].includes(safeText(item.transferStatus).trim()))
+    const maxLimit = Math.min(Math.max(Number(limit || 10), 1), 20)
+    const statusFilter = db.command && typeof db.command.in === 'function' ? db.command.in(['approved', 'transferring', 'transfer_failed']) : undefined
+    const query = statusFilter
+      ? db.collection('withdraw_requests').where({ payoutChannel: 'wechat_wallet', status: statusFilter })
+      : db.collection('withdraw_requests').where({ payoutChannel: 'wechat_wallet' })
+    const rows = (await query.limit(maxLimit * 3).get().catch(() => ({ data: [] }))).data || []
+    const pending = rows.filter(item => ['approved', 'transferring', 'transfer_failed'].includes(safeText(item.status).trim()) || ['processing', 'unknown', 'submitting'].includes(safeText(item.transferStatus).trim()))
     const results = []
-    for (const item of pending.slice(0, limit)) {
+    for (const item of pending.slice(0, maxLimit)) {
       try {
         if (item.outBillNo || item.outDetailNo) results.push(await queryWechatWithdrawalTransfer(item._id))
         else results.push(await submitWechatWithdrawalTransfer(item._id, { openid: 'scheduled' }))
@@ -198,6 +237,8 @@ module.exports = function createService({
   return {
     createOutBillNo,
     mapTransferState,
+    resolveTransferScene,
+    buildTransferPayload,
     submitWechatWithdrawalTransfer,
     queryWechatWithdrawalTransfer,
     applyWechatTransferResult,

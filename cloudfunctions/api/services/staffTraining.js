@@ -150,9 +150,44 @@ module.exports = function createService({
     }))
   }
 
+  function normalizeTransferLimit(value) {
+    if (value === undefined || value === null || value === '') return ''
+    const number = Number(value)
+    const fen = Math.round(number * 100)
+    if (!Number.isFinite(number) || number < 0 || !Number.isSafeInteger(fen) || Math.abs(number * 100 - fen) > 0.000001) throw new Error('微信转账额度配置不正确，金额需为非负数且最多两位小数')
+    return fen / 100
+  }
+
   function normalizeStaffSuppliesConfig(supplies = {}) {
     const items = normalizeStaffSuppliesItems(supplies.items, supplies.requiredItems)
     const requiredItems = items.filter((i) => i.enabled !== false).map((i) => i.name)
+    const rawScenes = supplies.transfer?.scenes || {}
+    const normalizeScene = (scene, defaultSceneId = '', defaultPerception = '', defaultReports = []) => {
+      const sceneId = safeText(scene?.sceneId || defaultSceneId).trim()
+      const userRecvPerception = safeText(scene?.userRecvPerception || defaultPerception).trim()
+      const rawReports = Array.isArray(scene?.sceneReportInfos) && scene.sceneReportInfos.length ? scene.sceneReportInfos : (Array.isArray(defaultReports) ? defaultReports : [])
+      const sceneReportInfos = rawReports.map((item) => ({
+        info_type: safeText(item && item.info_type).trim(),
+        info_content: safeText(item && item.info_content).trim()
+      })).filter(item => item.info_type && item.info_content)
+      return { sceneId, userRecvPerception, sceneReportInfos }
+    }
+
+    const topSceneId = safeText(supplies.transfer?.sceneId).trim()
+    const topPerception = safeText(supplies.transfer?.userRecvPerception).trim()
+    const topReports = (Array.isArray(supplies.transfer?.sceneReportInfos) ? supplies.transfer.sceneReportInfos : []).map((item) => ({
+      info_type: safeText(item && item.info_type).trim(),
+      info_content: safeText(item && item.info_content).trim()
+    })).filter(item => item.info_type && item.info_content)
+
+    const commissionScene = normalizeScene(rawScenes.commission, topSceneId, topPerception, topReports)
+    const marketingScene = normalizeScene(rawScenes.marketing, '', '', [])
+    const reimbursementScene = normalizeScene(rawScenes.reimbursement, '', '', [])
+
+    const finalSceneId = topSceneId || commissionScene.sceneId
+    const finalPerception = topPerception || commissionScene.userRecvPerception
+    const finalReports = topReports.length ? topReports : commissionScene.sceneReportInfos
+
     return {
       reimbursementEnabled: supplies.reimbursementEnabled !== false,
       maxReimbursementAmount: Number.isFinite(Number(supplies.maxReimbursementAmount)) && Number(supplies.maxReimbursementAmount) > 0 ? Number(supplies.maxReimbursementAmount) : 200,
@@ -163,9 +198,17 @@ module.exports = function createService({
       purchaseRequired: supplies.purchaseRequired === true,
       transfer: {
         enabled: supplies.transfer?.enabled === true,
-        sceneId: safeText(supplies.transfer?.sceneId).trim(),
-        userRecvPerception: safeText(supplies.transfer?.userRecvPerception).trim(),
-        sceneReportInfos: (Array.isArray(supplies.transfer?.sceneReportInfos) ? supplies.transfer.sceneReportInfos : []).map((item) => ({ info_type: safeText(item.info_type).trim(), info_content: safeText(item.info_content).trim() }))
+        sceneId: finalSceneId,
+        userRecvPerception: finalPerception,
+        platformDailyMaxAmount: normalizeTransferLimit(supplies.transfer?.platformDailyMaxAmount),
+        maxAmount: normalizeTransferLimit(supplies.transfer?.maxAmount),
+        recipientDailyMaxAmount: normalizeTransferLimit(supplies.transfer?.recipientDailyMaxAmount),
+        sceneReportInfos: finalReports,
+        scenes: {
+          commission: commissionScene,
+          marketing: marketingScene,
+          reimbursement: reimbursementScene
+        }
       },
       items,
       requiredItems: requiredItems.length ? requiredItems : ['一次性手套', '一次性口罩', '一次性鞋套', '安全宠物消毒用品'],

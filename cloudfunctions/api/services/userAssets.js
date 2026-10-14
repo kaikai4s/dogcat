@@ -1,9 +1,13 @@
 module.exports = function createService({
+  commitWechatTransferSuccessQuota,
   crypto,
   db,
   getSystemSettings,
   getUser,
+  getWechatTransferQuotaSnapshot,
   now,
+  releaseWechatTransferQuota,
+  reserveWechatApplicationQuota,
   safeText
 }) {
   const MAX_EARNINGS_PER_WITHDRAW = 1000
@@ -99,6 +103,9 @@ module.exports = function createService({
     const settings = await getInviteSettings()
     const withdraws = (await db.collection('withdraw_requests').where({ assetType: 'user', userOpenid: openid }).limit(200).get().catch(() => ({ data: [] }))).data || []
     const invites = (await db.collection('user_invites').where({ inviterOpenid: openid }).limit(1000).get().catch(() => ({ data: [] }))).data || []
+    const wechatTransferQuota = typeof getWechatTransferQuotaSnapshot === 'function'
+      ? await getWechatTransferQuotaSnapshot(openid, Math.round(summary.available * 100)).catch(() => null)
+      : null
     return {
       userOpenid: openid,
       inviteCode: user.inviteCode || '',
@@ -109,6 +116,7 @@ module.exports = function createService({
       totalAmount: summary.total,
       minWithdrawAmount: Number(settings.userMinWithdrawAmount ?? settings.minWithdrawAmount ?? 10),
       invitationEnabled: settings.enabled === true,
+      wechatTransferQuota,
       earnings: summary.rows,
       invites: invites.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
       withdraws: withdraws.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
@@ -207,6 +215,7 @@ module.exports = function createService({
         createdAt: time,
         updatedAt: time
       }
+      await reserveWechatApplicationQuota(tx, request)
       const { _id: ignoredId, ...requestData } = request
       await tx.collection('withdraw_requests').doc(requestId).set({ data: requestData })
       return request
@@ -225,11 +234,13 @@ module.exports = function createService({
       let total = 0
       for (const id of earningIds) {
         const row = (await tx.collection('user_asset_earnings').doc(id).get()).data
-        if (!row || row.userOpenid !== request.userOpenid || row.withdrawRequestId !== request._id || row.status !== 'withdrawing') throw new Error('用户收益归属或状态异常')
+        if (!row || row.userOpenid !== request.userOpenid || row.withdrawRequestId !== (request._id || data.id) || row.status !== 'withdrawing') throw new Error('用户收益归属或状态异常')
         total += cents(row.amount, true)
       }
       if (total !== cents(request.amount, true)) throw new Error('用户提现金额与收益合计不一致')
       const time = now()
+      if (paid) await commitWechatTransferSuccessQuota(tx, { _id: data.id, ...request }, data)
+      if (!paid && target === 'rejected') await releaseWechatTransferQuota(tx, { _id: data.id, ...request }, 'rejected')
       const patch = paid ? {
         status: 'paid',
         transferStatus: 'success',
@@ -266,8 +277,8 @@ module.exports = function createService({
       if (request.status === 'rejected') return { request, changed: false }
       if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('当前用户资产提现状态不可失败回退')
       const time = now()
+      await releaseWechatTransferQuota(tx, { _id: withdrawId, ...request }, 'transfer_failed')
       await tx.collection('withdraw_requests').doc(withdrawId).update({ data: { status: 'transfer_failed', transferStatus: 'failed', failureReason: safeText(result.failReason || result.message).slice(0, 500), updatedAt: time } })
-      for (const id of (request.earningIds || [])) await tx.collection('user_asset_earnings').doc(id).update({ data: { status: 'available', withdrawRequestId: '', updatedAt: time } })
       return { request: { ...request, status: 'transfer_failed' }, changed: true }
     })
   }
@@ -278,7 +289,8 @@ module.exports = function createService({
       if (!request || request.assetType !== 'user' || request.status !== 'transfer_failed') throw new Error('仅用户资产微信提现失败单可释放收益')
       const time = now()
       const remark = safeText(data.remark || data.auditRemark).trim()
-      await tx.collection('withdraw_requests').doc(request._id).update({ data: { status: 'rejected', transferStatus: 'released', releasedAt: time, releasedByOpenid: admin.openid, auditRemark: remark || request.auditRemark || '微信提现失败后释放收益', updatedAt: time } })
+      await releaseWechatTransferQuota(tx, { _id: data.id, ...request }, 'released')
+      await tx.collection('withdraw_requests').doc(data.id).update({ data: { status: 'rejected', transferStatus: 'released', releasedAt: time, releasedByOpenid: admin.openid, auditRemark: remark || request.auditRemark || '微信提现失败后释放收益', updatedAt: time } })
       for (const id of (request.earningIds || [])) await tx.collection('user_asset_earnings').doc(id).update({ data: { status: 'available', withdrawRequestId: '', updatedAt: time } })
       return { request: { ...request, status: 'rejected', transferStatus: 'released' }, changed: true }
     })

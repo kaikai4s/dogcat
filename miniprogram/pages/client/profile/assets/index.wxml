@@ -13,6 +13,11 @@
       <text class="amount">{{summary.availableAmount || '0.00'}}</text>
     </view>
     <view class="hero-tip">最低提现 ¥{{summary.minWithdrawAmount || 0}}，提现申请提交后由平台审核处理</view>
+    <view wx:if="{{summary && summary.wechatTransferQuota}}" class="quota-tip">今日平台剩余额度：{{summary.wechatTransferQuota.platformDailyRemainingAmount === null ? '不限' : '¥' + summary.wechatTransferQuota.platformDailyRemainingAmount}}</view>
+    <view class="withdraw-input-row">
+      <text class="withdraw-input-prefix">¥</text>
+      <input class="withdraw-input" type="digit" value="{{withdrawAmount}}" bindinput="inputWithdrawAmount" placeholder="输入提现金额" />
+    </view>
     <button class="withdraw-btn" bindtap="withdraw" loading="{{withdrawing}}" disabled="{{withdrawing || !summary || summary.availableAmount < summary.minWithdrawAmount}}">提现到微信零钱</button>
   </view>
 

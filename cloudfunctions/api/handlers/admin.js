@@ -48,6 +48,7 @@ module.exports = function createHandler(context) {
     getMonthConfig,
     getMonthDays,
     getSystemSettings,
+    getWechatTransferQuotaOverview,
     getUserManageStats,
     inDateRange,
     isActiveCheckin,
@@ -477,7 +478,11 @@ module.exports = function createHandler(context) {
     }
     if (action === 'financeDashboard') {
       await refreshStaffEarnings()
-      return aggregateFinanceDashboard(data)
+      const dashboard = await aggregateFinanceDashboard(data)
+      const wechatTransferQuota = typeof getWechatTransferQuotaOverview === 'function'
+        ? await getWechatTransferQuotaOverview().catch(() => null)
+        : null
+      return { ...dashboard, wechatTransferQuota }
     }
     if (action === 'listFinanceLogs') {
       const range = buildDateRange(data)

@@ -7,6 +7,7 @@ module.exports = function createHandler(context) {
     readScopedDocuments,
     getSystemSettings,
     getUser,
+    getWechatTransferQuotaSnapshot,
     refreshStaffEarnings,
     safeText,
     summarizeStaffEarnings
@@ -19,8 +20,12 @@ module.exports = function createHandler(context) {
       const earnings = await readAll('staff_earnings', { staffOpenid: openid })
       const withdraws = (await readAll('withdraw_requests', { staffOpenid: openid })).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
       const settings = await getSystemSettings()
+      const balance = summarizeStaffEarnings(earnings)
       const assetSummary = await getUserAssetSummary(openid).catch(() => null)
-      return { ...summarizeStaffEarnings(earnings), minWithdrawAmount: settings.settlement.minWithdrawAmount, withdraws, assetSummary }
+      const wechatTransferQuota = typeof getWechatTransferQuotaSnapshot === 'function'
+        ? await getWechatTransferQuotaSnapshot(openid, Math.round(Number(balance.availableAmount || balance.available || 0) * 100)).catch(() => null)
+        : null
+      return { ...balance, minWithdrawAmount: settings.settlement.minWithdrawAmount, withdraws, assetSummary, wechatTransferQuota }
     }
     if (action === 'listStaffEarnings') {
       await getUser(openid)
