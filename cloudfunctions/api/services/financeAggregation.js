@@ -56,11 +56,15 @@ module.exports = function createService({ db, safeText }) {
     }
     const paidOrder = $.or([eq('paymentStatus', 'paid'), isIn('status', ['paid', 'assigned', 'in_service', 'day_completed', 'completed'])])
     const paidPayment = $.and([isIn('status', ['success', 'paid']), $.neq([$.ifNull(['$targetType', '']), 'staff_deposit'])])
+    const realStaffEarning = $.and([
+      $.neq([$.ifNull(['$isMock', false]), true]),
+      $.neq([$.ifNull(['$paymentChannel', '']), 'mock'])
+    ])
     const [orders, payments, refunds, earnings, withdraws, paidWithdraws, logResult, recent] = await Promise.all([
       summarize('orders', ['paidAt', 'createdAt'], 'payAmount', paidOrder),
       summarize('payments', ['paidAt', 'updatedAt', 'createdAt'], 'amount', paidPayment),
       summarize('refunds', ['succeededAt', 'updatedAt', 'createdAt'], 'refundAmount', null, eq('status', 'success')),
-      summarize('staff_earnings', ['createdAt', 'completedAt'], 'amount'),
+      summarize('staff_earnings', ['createdAt', 'completedAt'], 'amount', realStaffEarning),
       summarize('withdraw_requests', ['createdAt', 'paidAt'], 'amount'),
       summarize('withdraw_requests', ['paidAt', 'createdAt'], 'amount', eq('status', 'paid')),
       dated('finance_logs', ['createdAt']).group({ _id: null, count: $.sum(1) }).end(),

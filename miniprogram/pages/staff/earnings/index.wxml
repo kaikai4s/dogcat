@@ -33,7 +33,7 @@
         <view class="stat-label">已提现总额</view>
       </view>
     </view>
-    <view class="withdraw-limit-tip">💡 单次最低提现金额：¥{{balance.minWithdrawAmountText}}</view>
+    <view class="withdraw-limit-tip">💡 微信零钱单笔金额：¥0.10～¥200.00；平台最低提现金额：¥{{balance.minWithdrawAmountText}}</view>
     <view class="withdraw-limit-tip" wx:if="{{balance.wechatTransferQuota}}" style="margin-top: 8rpx; color: #9a5a00;">今日平台剩余额度：{{balance.wechatTransferQuota.platformDailyRemainingAmount === null ? '不限' : '¥' + balance.wechatTransferQuota.platformDailyRemainingAmount}}</view>
     <view class="withdraw-limit-tip" style="margin-top: 8rpx; color: #78716c;">⏳ 平台结算保护期：订单完成后收益先进入【待结算】，到达缓冲期且无未决售后纠纷后自动转入【可提现余额】。</view>
     <view class="withdraw-limit-tip" wx:if="{{balance.hasMockEarnings}}" style="margin-top: 8rpx; color: #d97706;">🧪 模拟测试收益：¥{{balance.mockTotalText}}（模拟支付订单未发生真实微信支付交易，不计入可提现余额与对账结算）。</view>

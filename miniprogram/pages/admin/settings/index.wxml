@@ -276,7 +276,7 @@
           <view class="transfer-scene-selector">
             <view class="transfer-scene-tab {{activeTransferTab === 'commission' ? 'active' : ''}}" data-tab="commission" bindtap="switchTransferTab">宠托师提现 (1005)</view>
             <view class="transfer-scene-tab {{activeTransferTab === 'marketing' ? 'active' : ''}}" data-tab="marketing" bindtap="switchTransferTab">邀请奖励 (1000)</view>
-            <view class="transfer-scene-tab {{activeTransferTab === 'reimbursement' ? 'active' : ''}}" data-tab="reimbursement" bindtap="switchTransferTab">用品报销 (1006)</view>
+            <view class="transfer-scene-tab {{activeTransferTab === 'reimbursement' ? 'active' : ''}}" data-tab="reimbursement" bindtap="switchTransferTab">用品采购 (1009)</view>
           </view>
 
           <view class="transfer-scene-box">
@@ -286,7 +286,7 @@
 
             <view class="field-item">
               <text class="label">已获批的场景 ID</text>
-              <input class="input" value="{{settings.staffSupplies.transfer.scenes[activeTransferTab].sceneId}}" data-tab="{{activeTransferTab}}" data-field="sceneId" bindinput="transferSceneFieldInput" placeholder="复制微信商户平台审核通过的场景 ID（如 1005、1000、1006）" />
+              <input class="input" value="{{settings.staffSupplies.transfer.scenes[activeTransferTab].sceneId}}" data-tab="{{activeTransferTab}}" data-field="sceneId" bindinput="transferSceneFieldInput" placeholder="复制微信商户平台审核通过的场景 ID（如 1005、1000、1009）" />
             </view>
             <view class="field-item">
               <text class="label">收款用户感知文案</text>
@@ -305,9 +305,9 @@
             <view class="step-desc" style="font-family: monospace; font-size: 22rpx; background: #ffffff; padding: 10rpx; border-radius: 8rpx; margin-bottom: 12rpx;">
               [&#10;  { "info_type": "岗位类型", "info_content": "宠托师" },&#10;  { "info_type": "报酬说明", "info_content": "宠托师上门服务收益提现" }&#10;]
             </view>
-            <view class="step-desc" style="margin-bottom: 8rpx; color: #166534; font-weight: bold;">2. 企业用品报销（企业报销 1006）：</view>
+            <view class="step-desc" style="margin-bottom: 8rpx; color: #166534; font-weight: bold;">2. 企业用品采购（采购货款 1009）：</view>
             <view class="step-desc" style="font-family: monospace; font-size: 22rpx; background: #ffffff; padding: 10rpx; border-radius: 8rpx; margin-bottom: 12rpx;">
-              [&#10;  { "info_type": "费用类型", "info_content": "服务用品报销" },&#10;  { "info_type": "发票/凭证说明", "info_content": "采购凭证报销" }&#10;]
+              [&#10;  { "info_type": "采购商品名称", "info_content": "一次性防护用品" }&#10;]
             </view>
             <view class="step-desc" style="margin-bottom: 8rpx; color: #166534; font-weight: bold;">3. 邀请活动奖励（现金营销 1000）：</view>
             <view class="step-desc" style="font-family: monospace; font-size: 22rpx; background: #ffffff; padding: 10rpx; border-radius: 8rpx;">

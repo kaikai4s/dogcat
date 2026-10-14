@@ -3,6 +3,9 @@ const { navMethods } = require('../../../utils/nav')
 const { createClientRequestId } = require('../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
+const WECHAT_MIN_TRANSFER_AMOUNT = 0.10
+const WECHAT_MAX_TRANSFER_AMOUNT = 200
+
 const earningStatusText = {
   pending: '待结算',
   available: '可提现',
@@ -119,6 +122,12 @@ Page({
     const available = Number(this.data.balance?.available || 0)
     if (!amount || amount <= 0) {
       return wx.showToast({ title: '请输入正确的提现金额', icon: 'none' })
+    }
+    if (amount < WECHAT_MIN_TRANSFER_AMOUNT) {
+      return wx.showToast({ title: '微信零钱单笔最低 ¥0.10', icon: 'none' })
+    }
+    if (amount > WECHAT_MAX_TRANSFER_AMOUNT) {
+      return wx.showToast({ title: '微信零钱单笔最高 ¥200.00', icon: 'none' })
     }
     if (available > 0 && amount > available) {
       return wx.showToast({ title: '提现金额超出可用余额', icon: 'none' })

@@ -22,7 +22,7 @@
     <view class="admin-summary-row">
       <view class="admin-summary-main">
         <view class="admin-summary-title">{{item.realName || '宠托师'}}</view>
-        <view class="admin-summary-sub">{{item.phone || '未填写手机号'}} · {{item.serviceCity || '未填写城市'}}</view>
+        <view class="admin-summary-sub">绑定手机号：{{item.accountPhone || item.phone || '未填写'}} · 实名认证手机号：{{item.certifiedPhone || '未填写'}} · {{item.serviceCity || '未填写城市'}}</view>
       </view>
       <view class="meta-chip warning">{{item.videoAuditStatusText}}</view>
     </view>

@@ -147,6 +147,25 @@ test('wechat wallet withdrawals do not require a bank account number', async () 
   assert.equal(db.state.withdraw_requests[0].payoutChannel, 'wechat_wallet')
 })
 
+test('wechat wallet withdrawals enforce the backend one-fen to 200 yuan range', async () => {
+  const { db, rawCreateWithdrawRequest } = setup(21)
+  await assert.rejects(
+    rawCreateWithdrawRequest('staff', { payoutChannel: 'wechat_wallet', amount: 0.001 }),
+    /提现金额不正确/
+  )
+  await assert.rejects(
+    rawCreateWithdrawRequest('staff', { payoutChannel: 'wechat_wallet', amount: 200.01 }),
+    /不能超过.*200/
+  )
+  // Omitting the amount means "withdraw all"; the final selected earnings are still capped.
+  await assert.rejects(
+    rawCreateWithdrawRequest('staff', { payoutChannel: 'wechat_wallet' }),
+    /不能超过.*200/
+  )
+  assert.equal(db.state.withdraw_requests.length, 0)
+  assert.ok(db.state.staff_earnings.every((earning) => earning.status === 'available'))
+})
+
 test('mock payment earnings cannot be withdrawn and are excluded from withdrawal requests', async () => {
   // 1. 只有 mock 收益，申请提现直接被拒绝
   const db1 = createCollectionStore({

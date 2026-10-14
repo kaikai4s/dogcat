@@ -56,12 +56,13 @@
     <view class="card record-card" wx:for="{{requests}}" wx:key="_id">
       <view class="record-head"><view class="record-title">{{item.assetType === 'user' ? '用户邀请收益提现' : '宠托师提现申请'}}</view><view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'rejected' ? 'gray' : 'pink')}}">{{item.statusText || item.status}}</view></view>
       <view class="info-row"><view class="label">申请人</view><view class="value">{{item.assetType === 'user' ? (item.userNickname || item.userOpenid) : (item.staffRealName || item.staffNickname || item.staffOpenid)}}</view></view>
-      <view class="info-row" wx:if="{{item.staffPhone}}"><view class="label">手机号</view><view class="value">{{item.staffPhone}}</view></view>
+      <view class="info-row" wx:if="{{item.staffPhone || item.accountPhone}}"><view class="label">绑定手机号</view><view class="value">{{item.accountPhone || item.staffPhone}}</view></view>
+      <view class="info-row" wx:if="{{item.certifiedPhone}}"><view class="label">实名认证手机号</view><view class="value">{{item.certifiedPhone}}</view></view>
       <view class="info-row"><view class="label">金额</view><view class="price">¥{{item.amountText}}</view></view>
       <view class="info-row"><view class="label">当前可提现额度</view><view class="price">¥{{item.currentAvailableAmountText}}</view></view>
       <view class="info-row" wx:if="{{item.withdrawnAmount > 0}}"><view class="label">历史已提现</view><view class="value">¥{{item.withdrawnAmountText}}（{{item.withdrawCount}}笔）</view></view>
       <view class="info-row"><view class="label">收款方式</view><view class="value">{{item.isWechatWallet ? '微信零钱' : '人工打款'}}</view></view>
-      <view class="info-row"><view class="label">收款人</view><view class="value">{{item.recipientName || item.accountName || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">收款人</view><view class="value">{{item.isWechatWallet ? (item.recipientOpenid ? '当前登录微信（openid已记录）' : '未记录收款openid') : (item.recipientName || item.accountName || '未填写')}}</view></view>
       <view class="info-row" wx:if="{{!item.isWechatWallet}}"><view class="label">收款账号</view><view class="value">{{item.accountNo || '未填写'}}</view></view>
       <view class="info-row" wx:if="{{item.isWechatWallet && item.transferStatusText}}"><view class="label">微信转账状态</view><view class="value">{{item.transferStatusText}}</view></view>
       <view class="info-row" wx:if="{{item.outBillNo}}"><view class="label">商户转账单号</view><view class="value">{{item.outBillNo}}</view></view>
@@ -111,7 +112,8 @@
         <view class="badge {{item.status === 'paid' ? 'green' : 'pink'}}">{{item.statusText || item.status}}</view>
       </view>
       <view class="info-row"><view class="label">宠托师</view><view class="value">{{item.staffRealName || item.staffNickname || item.staffOpenid}}</view></view>
-      <view class="info-row"><view class="label">手机号</view><view class="value">{{item.staffPhone || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">绑定手机号</view><view class="value">{{item.accountPhone || item.staffPhone || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">实名认证手机号</view><view class="value">{{item.certifiedPhone || '未填写'}}</view></view>
       <view class="info-row"><view class="label">宠托师等级</view><view class="value">{{item.staffLevel === 'certified' ? '认证宠托师' : (item.staffLevel === 'intern' ? '实习宠托师' : '待定')}}</view></view>
       <view class="info-row"><view class="label">应缴金额</view><view class="price">¥{{item.amountText}}</view></view>
       <view class="info-row"><view class="label">已缴金额</view><view class="value">¥{{item.paidAmountText}}</view></view>
@@ -146,7 +148,8 @@
         <view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'approved' ? 'pink' : 'gray')}}">{{item.statusText || item.status}}</view>
       </view>
       <view class="info-row"><view class="label">申请人</view><view class="value">{{item.staffRealName || item.staffNickname || item.staffOpenid}}</view></view>
-      <view class="info-row"><view class="label">手机号</view><view class="value">{{item.staffPhone || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">绑定手机号</view><view class="value">{{item.accountPhone || item.staffPhone || '未填写'}}</view></view>
+      <view class="info-row"><view class="label">实名认证手机号</view><view class="value">{{item.certifiedPhone || '未填写'}}</view></view>
       <view class="info-row"><view class="label">申请金额</view><view class="price">¥{{item.amountText}}</view></view>
       <view class="info-row" wx:if="{{item.approvedAmount != null}}"><view class="label">核准金额</view><view class="price">¥{{item.approvedAmountText}}</view></view>
       <view class="info-row" wx:if="{{item.remark}}"><view class="label">申请备注</view><view class="value">{{item.remark}}</view></view>

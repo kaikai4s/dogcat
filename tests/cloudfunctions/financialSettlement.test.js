@@ -4,12 +4,12 @@ const { createCollectionStore, loadCloudFunction } = require('./helpers')
 const createContext = require('../../cloudfunctions/api/services/context')
 
 const admin = { _id: 'admin', openid: 'admin' }
-function setup(status = 'withdrawing', requestStatus = 'pending') {
+function setup(status = 'withdrawing', requestStatus = 'pending', amount = 80) {
   const db = createCollectionStore({
     users: [{ ...admin, roles: ['admin'], status: 'active' }, { _id: 'staff', openid: 'staff', roles: ['staff'], status: 'active' }],
-    staff_earnings: [{ _id: 'e', orderId: 'order', staffOpenid: 'staff', amount: 80, status,
+    staff_earnings: [{ _id: 'e', orderId: 'order', staffOpenid: 'staff', amount, status,
       withdrawRequestId: status === 'withdrawing' ? 'w' : '', frozenIncidentId: status === 'frozen' ? 'i' : '' }],
-    withdraw_requests: [{ _id: 'w', staffOpenid: 'staff', amount: 80, status: requestStatus, earningIds: ['e'] }],
+    withdraw_requests: [{ _id: 'w', staffOpenid: 'staff', amount, status: requestStatus, earningIds: ['e'] }],
     order_incidents: [{ _id: 'i', orderId: 'order', staffOpenid: 'staff', status: 'processing', frozenEarningIds: status === 'frozen' ? ['e'] : [] }],
     finance_logs: [], admin_operation_logs: [], incident_actions: [], order_timeline: []
   })
@@ -30,6 +30,14 @@ test('competing approve/reject decisions commit exactly once', async () => {
   assert.equal(db.state.finance_logs.length, 1)
   assert.equal(db.state.admin_operation_logs.length, 1)
   assert.equal(db.state.staff_earnings[0].status, db.state.withdraw_requests[0].status === 'approved' ? 'withdrawing' : 'available')
+})
+
+test('withdrawal approval accepts a one-fen amount', async () => {
+  const { db, context } = setup('withdrawing', 'pending', 0.01)
+  const result = await context.settleWithdrawal(admin, { id: 'w', approved: true })
+  assert.equal(result.changed, true)
+  assert.equal(result.request.status, 'approved')
+  assert.equal(db.state.withdraw_requests[0].amount, 0.01)
 })
 
 test('concurrent payout confirmations are idempotent and cannot be frozen afterwards', async () => {

@@ -35,7 +35,7 @@ function defaultTransferScenes(transfer = {}) {
   const rawScenes = transfer.scenes || {}
   const commission = {
     sceneId: rawScenes.commission?.sceneId || transfer.sceneId || '1005',
-    userRecvPerception: rawScenes.commission?.userRecvPerception || transfer.userRecvPerception || '宠托师服务收益提现',
+    userRecvPerception: rawScenes.commission?.userRecvPerception || transfer.userRecvPerception || '劳务报酬',
     sceneReportInfos: Array.isArray(rawScenes.commission?.sceneReportInfos) && rawScenes.commission.sceneReportInfos.length
       ? rawScenes.commission.sceneReportInfos
       : (Array.isArray(transfer.sceneReportInfos) && transfer.sceneReportInfos.length
@@ -47,7 +47,7 @@ function defaultTransferScenes(transfer = {}) {
   }
   const marketing = {
     sceneId: rawScenes.marketing?.sceneId || '1000',
-    userRecvPerception: rawScenes.marketing?.userRecvPerception || '活动推广现金奖励',
+    userRecvPerception: rawScenes.marketing?.userRecvPerception || '活动奖励',
     sceneReportInfos: Array.isArray(rawScenes.marketing?.sceneReportInfos) && rawScenes.marketing.sceneReportInfos.length
       ? rawScenes.marketing.sceneReportInfos
       : [
@@ -56,13 +56,12 @@ function defaultTransferScenes(transfer = {}) {
         ]
   }
   const reimbursement = {
-    sceneId: rawScenes.reimbursement?.sceneId || '1006',
-    userRecvPerception: rawScenes.reimbursement?.userRecvPerception || '一次性用品采购报销',
+    sceneId: rawScenes.reimbursement?.sceneId || '1009',
+    userRecvPerception: rawScenes.reimbursement?.userRecvPerception || '货款',
     sceneReportInfos: Array.isArray(rawScenes.reimbursement?.sceneReportInfos) && rawScenes.reimbursement.sceneReportInfos.length
       ? rawScenes.reimbursement.sceneReportInfos
       : [
-          { info_type: '费用类型', info_content: '服务用品报销' },
-          { info_type: '发票/凭证说明', info_content: '一次性防护用品采购凭证报销' }
+          { info_type: '采购商品名称', info_content: '一次性防护用品' }
         ]
   }
   return { commission, marketing, reimbursement }
@@ -1719,22 +1718,21 @@ Page({
       const json = JSON.stringify(template, null, 2)
       this.setData({
         'settings.staffSupplies.transfer.scenes.commission.sceneId': this.data.settings.staffSupplies.transfer.scenes?.commission?.sceneId || '1005',
-        'settings.staffSupplies.transfer.scenes.commission.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.commission?.userRecvPerception || '宠托师服务收益提现',
+        'settings.staffSupplies.transfer.scenes.commission.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.commission?.userRecvPerception || '劳务报酬',
         'settings.staffSupplies.transfer.sceneId': this.data.settings.staffSupplies.transfer.sceneId || '1005',
-        'settings.staffSupplies.transfer.userRecvPerception': this.data.settings.staffSupplies.transfer.userRecvPerception || '宠托师服务收益提现',
+        'settings.staffSupplies.transfer.userRecvPerception': this.data.settings.staffSupplies.transfer.userRecvPerception || '劳务报酬',
         sceneReportInfosText: json,
         'transferSceneTexts.commission': json
       })
       wx.showToast({ title: '已载入宠托师提现模板', icon: 'success' })
     } else if (type === 'reimbursement') {
       const template = [
-        { info_type: '费用类型', info_content: '服务用品报销' },
-        { info_type: '发票/凭证说明', info_content: '一次性防护用品采购凭证报销' }
+        { info_type: '采购商品名称', info_content: '一次性防护用品' }
       ]
       const json = JSON.stringify(template, null, 2)
       this.setData({
-        'settings.staffSupplies.transfer.scenes.reimbursement.sceneId': this.data.settings.staffSupplies.transfer.scenes?.reimbursement?.sceneId || '1006',
-        'settings.staffSupplies.transfer.scenes.reimbursement.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.reimbursement?.userRecvPerception || '一次性用品采购报销',
+        'settings.staffSupplies.transfer.scenes.reimbursement.sceneId': this.data.settings.staffSupplies.transfer.scenes?.reimbursement?.sceneId || '1009',
+        'settings.staffSupplies.transfer.scenes.reimbursement.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.reimbursement?.userRecvPerception || '货款',
         sceneReportInfosText: json,
         'transferSceneTexts.reimbursement': json
       })
@@ -1747,7 +1745,7 @@ Page({
       const json = JSON.stringify(template, null, 2)
       this.setData({
         'settings.staffSupplies.transfer.scenes.marketing.sceneId': this.data.settings.staffSupplies.transfer.scenes?.marketing?.sceneId || '1000',
-        'settings.staffSupplies.transfer.scenes.marketing.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.marketing?.userRecvPerception || '活动推广现金奖励',
+        'settings.staffSupplies.transfer.scenes.marketing.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.marketing?.userRecvPerception || '活动奖励',
         sceneReportInfosText: json,
         'transferSceneTexts.marketing': json
       })

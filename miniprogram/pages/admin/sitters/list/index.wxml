@@ -86,7 +86,8 @@
           <view class="badge featured-badge" wx:if="{{item.isFeatured}}">精选</view>
           <view class="badge" wx:else>{{item.auditStatusText}}</view>
         </view>
-        <view class="muted compact-line">{{item.phone || '未填写手机号'}} · {{item.serviceCity || '未填写城市'}}</view>
+        <view class="muted compact-line">绑定手机号：{{item.accountPhone || item.phone || '未填写'}}</view>
+        <view class="muted compact-line">实名认证手机号：{{item.certifiedPhone || '未填写'}} · {{item.serviceCity || '未填写城市'}}</view>
         <view class="meta-chip-row compact-meta-row">
           <view class="meta-chip chip-primary">{{item.staffLevelText || '申请人'}}</view>
           <view class="meta-chip">{{item.ratingText}}</view>

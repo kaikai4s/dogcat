@@ -9,7 +9,15 @@ const tabs = [
 
 function withDisplay(item) {
   const profile = item.profile || {}
-  return { ...item, createdAtText: formatDateTime(item.createdAt), realName: profile.realName || '宠托师', phone: profile.phone || '', staffLevelText: profile.staffLevelText || '' }
+  return {
+    ...item,
+    createdAtText: formatDateTime(item.createdAt),
+    realName: profile.realName || '宠托师',
+    phone: profile.phone || '',
+    accountPhone: profile.accountPhone || profile.phone || '',
+    certifiedPhone: profile.certifiedPhone || '',
+    staffLevelText: profile.staffLevelText || ''
+  }
 }
 
 Page({

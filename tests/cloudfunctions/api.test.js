@@ -770,7 +770,7 @@ test('admin listStaffProfiles filters status and attaches user display fields', 
       { _id: 'staff', openid: 'openid_staff', roles: ['client', 'staff'], status: 'active', nickname: '豆豆姐姐', avatarUrl: 'cloud://avatar', phone: '13800000000' }
     ],
     staff_profiles: [
-      { _id: 'sp1', openid: 'openid_staff', realName: '王小花', phone: '', serviceCity: '上海', serviceAreas: '浦东', auditStatus: 'approved', updatedAt: '2026-08-03' },
+      { _id: 'sp1', openid: 'openid_staff', realName: '王小花', phone: '13700000000', serviceCity: '上海', serviceAreas: '浦东', auditStatus: 'approved', updatedAt: '2026-08-03' },
       { _id: 'sp2', openid: 'openid_pending', realName: '李小狗', phone: '13900000000', serviceCity: '杭州', serviceAreas: '西湖', auditStatus: 'pending', updatedAt: '2026-08-02' }
     ]
   })
@@ -782,6 +782,8 @@ test('admin listStaffProfiles filters status and attaches user display fields', 
   assert.equal(approvedResult.ok, true)
   assert.deepEqual(approvedResult.data.list.map((profile) => profile._id), ['sp1'])
   assert.equal(approvedResult.data.list[0].phone, '13800000000')
+  assert.equal(approvedResult.data.list[0].accountPhone, '13800000000')
+  assert.equal(approvedResult.data.list[0].certifiedPhone, '13700000000')
   assert.equal(approvedResult.data.list[0].userNickname, '豆豆姐姐')
   assert.equal(approvedResult.data.list[0].auditStatusText, '已通过')
   assert.equal(approvedResult.data.list[0].ratingAverage, 0)

@@ -381,6 +381,17 @@ module.exports = function createHandler(context) {
     return evidences.sort((a, b) => toTimeValue(b.createdAt) - toTimeValue(a.createdAt))
   }
 
+  function staffPhoneFields(user = {}, profile = {}) {
+    const accountPhone = safeText(user.phone).trim()
+    const certifiedPhone = safeText(profile.phone).trim()
+    return {
+      // `phone` is the account binding phone shown in current admin views.
+      phone: accountPhone || certifiedPhone,
+      accountPhone,
+      certifiedPhone
+    }
+  }
+
   async function searchUsersByPhoneSafely(phoneKeyword) {
     const raw = safeText(phoneKeyword).trim()
     if (!raw) return []
@@ -557,10 +568,14 @@ module.exports = function createHandler(context) {
         const profile = profileMap.get(item.staffOpenid) || {}
         const user = userMap.get(item.staffOpenid) || {}
         const finance = financeMap[item.staffOpenid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
+        const phoneFields = staffPhoneFields(user, profile)
         return {
           ...item,
           staffRealName: profile.realName || item.accountName || '',
-          staffPhone: profile.phone || user.phone || '',
+          staffPhone: phoneFields.phone,
+          accountPhone: phoneFields.accountPhone,
+          certifiedPhone: phoneFields.certifiedPhone,
+          recipientOpenid: item.recipientOpenid || item.staffOpenid || '',
           staffNickname: user.nickname || '',
           currentAvailableAmount: finance.available,
           withdrawnAmount: finance.withdrawn,
@@ -908,13 +923,16 @@ module.exports = function createHandler(context) {
           const depositStatus = profile.depositStatus || (deposit ? deposit.status : 'unpaid')
           const requireDepositRepay = profile.requireDepositRepay === true
           const finance = financeSummary[profile.openid] || { available: 0, withdrawn: 0, withdrawHistory: [], withdrawCount: 0 }
+          const phoneFields = staffPhoneFields(user, profile)
 
           return {
             _id: profile._id,
             depositId: deposit ? (deposit._id || deposit.id) : '',
             openid: profile.openid || '',
             realName: profile.realName || '',
-            phone: profile.phone || user.phone || '',
+            phone: phoneFields.phone,
+            accountPhone: phoneFields.accountPhone,
+            certifiedPhone: phoneFields.certifiedPhone,
             serviceCity: profile.serviceCity || '',
             serviceAreas: profile.serviceAreas || '',
             auditStatus: profile.auditStatus || 'pending',
@@ -1000,7 +1018,7 @@ module.exports = function createHandler(context) {
 
       const decorated = buildDecoratedProfiles(allProfiles, allUsers, allEvidences, allDeposits, buildStaffFinanceSummary(allEarnings, allWithdraws))
       const filtered = decorated.filter((item) => {
-        if (keyword && ![item.openid, item.realName, item.phone, item.serviceCity, item.serviceAreas, item.userNickname].some((value) => safeText(value).toLowerCase().includes(keyword))) {
+        if (keyword && [item.openid, item.realName, item.phone, item.accountPhone, item.certifiedPhone, item.serviceCity, item.serviceAreas, item.userNickname].every((value) => !safeText(value).toLowerCase().includes(keyword))) {
           return false
         }
         if (data.minDeposit !== undefined && data.minDeposit !== '' && !isNaN(Number(data.minDeposit))) {
@@ -2072,15 +2090,26 @@ module.exports = function createHandler(context) {
           total = pagedProfiles.length
         }
       } else {
-        const allMatching = (await readAll('staff_profiles', where, 1000))
-          .filter((item) => [item.realName, item.phone, item.serviceCity, item.serviceAreas].some((value) => safeText(value).toLowerCase().includes(keyword)))
+        const allProfiles = await readAll('staff_profiles', where, 1000)
+        const profileUsers = await fetchUsersByOpenids(allProfiles.map((profile) => profile.openid))
+        const profileUserMap = new Map(profileUsers.map((user) => [user.openid, user]))
+        const allMatching = allProfiles
+          .filter((item) => {
+            const phoneFields = staffPhoneFields(profileUserMap.get(item.openid) || {}, item)
+            return [item.realName, item.phone, phoneFields.accountPhone, phoneFields.certifiedPhone, item.serviceCity, item.serviceAreas]
+              .some((value) => safeText(value).toLowerCase().includes(keyword))
+          })
           .sort((a, b) => toTimeValue(b.updatedAt) - toTimeValue(a.updatedAt))
         total = allMatching.length
         pagedProfiles = wantsPage ? allMatching.slice(offset, offset + pageSize) : allMatching
       }
 
       const targetOpenids = Array.from(new Set(pagedProfiles.map((p) => p.openid).filter(Boolean)))
-      const evidences = await fetchStaffEvidencesByOpenids(targetOpenids)
+      const [auditUsers, evidences] = await Promise.all([
+        fetchUsersByOpenids(targetOpenids),
+        fetchStaffEvidencesByOpenids(targetOpenids)
+      ])
+      const auditUserMap = new Map(auditUsers.map((user) => [user.openid, user]))
       const evidenceByStaff = {}
       for (const ev of evidences) {
         if (!evidenceByStaff[ev.staffOpenid]) evidenceByStaff[ev.staffOpenid] = []
@@ -2088,9 +2117,13 @@ module.exports = function createHandler(context) {
       }
 
       const list = pagedProfiles.map((p) => {
+        const phoneFields = staffPhoneFields(auditUserMap.get(p.openid) || {}, p)
         const staffEvidences = evidenceByStaff[p.openid] || []
         return {
           ...p,
+          phone: phoneFields.phone,
+          accountPhone: phoneFields.accountPhone,
+          certifiedPhone: phoneFields.certifiedPhone,
           problemOrderCount: staffEvidences.length,
           pendingPenaltyCount: staffEvidences.filter((e) => e.status === 'pending').length,
           problemOrders: staffEvidences
@@ -2259,9 +2292,14 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listTrainingAudits') {
       const keyword = safeText(data.keyword).trim().toLowerCase()
-      const list = (await readAll('staff_profiles', { auditStatus: 'approved', videoAuditStatus: 'pending' }))
+      const profiles = (await readAll('staff_profiles', { auditStatus: 'approved', videoAuditStatus: 'pending' }))
         .sort((a, b) => toTimeValue(b.videoAuditRequestedAt) - toTimeValue(a.videoAuditRequestedAt))
-        .map(normalizeStaffWorkflow).filter((item) => !keyword || [item.realName, item.phone, item.serviceCity, item.serviceAreas].some((value) => safeText(value).toLowerCase().includes(keyword)))
+        .map(normalizeStaffWorkflow)
+      const trainingUsers = await fetchUsersByOpenids(profiles.map((profile) => profile.openid))
+      const trainingUserMap = new Map(trainingUsers.map((user) => [user.openid, user]))
+      const list = profiles
+        .map((profile) => ({ ...profile, ...staffPhoneFields(trainingUserMap.get(profile.openid) || {}, profile) }))
+        .filter((item) => !keyword || [item.realName, item.phone, item.accountPhone, item.certifiedPhone, item.serviceCity, item.serviceAreas].some((value) => safeText(value).toLowerCase().includes(keyword)))
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       return wantsPage ? paginateList(list, data) : list
     }
@@ -2304,16 +2342,26 @@ module.exports = function createHandler(context) {
         const profileIds = Array.from(new Set(pageMeta.list.map((item) => item.staffProfileId).filter(Boolean)))
         const profiles = await fetchStaffProfilesByIds(profileIds)
         const profileMap = new Map(profiles.map((item) => [item._id, item]))
+        const users = await fetchUsersByOpenids(profiles.map((profile) => profile.openid))
+        const userMap = new Map(users.map((user) => [user.openid, user]))
         return {
           ...pageMeta,
-          list: pageMeta.list.map((item) => ({ ...item, profile: profileMap.get(item.staffProfileId) || null }))
+          list: pageMeta.list.map((item) => {
+            const profile = profileMap.get(item.staffProfileId) || null
+            return { ...item, profile: profile ? { ...profile, ...staffPhoneFields(userMap.get(profile.openid) || {}, profile) } : null }
+          })
         }
       }
       const pagedList = limitList(filteredApps, data.pageSize || 50)
       const profileIds = Array.from(new Set(pagedList.map((item) => item.staffProfileId).filter(Boolean)))
       const profiles = await fetchStaffProfilesByIds(profileIds)
       const profileMap = new Map(profiles.map((item) => [item._id, item]))
-      return pagedList.map((item) => ({ ...item, profile: profileMap.get(item.staffProfileId) || null }))
+      const users = await fetchUsersByOpenids(profiles.map((profile) => profile.openid))
+      const userMap = new Map(users.map((user) => [user.openid, user]))
+      return pagedList.map((item) => {
+        const profile = profileMap.get(item.staffProfileId) || null
+        return { ...item, profile: profile ? { ...profile, ...staffPhoneFields(userMap.get(profile.openid) || {}, profile) } : null }
+      })
     }
     if (action === 'getPromotionApplicationDetail') {
       const applicationId = safeText(data.applicationId || data.id).trim()
@@ -2322,7 +2370,9 @@ module.exports = function createHandler(context) {
       const app = appRes && appRes.data
       if (!app) throw new Error('晋升申请不存在')
       const pRes = await db.collection('staff_profiles').doc(app.staffProfileId).get().catch(() => ({ data: null }))
-      const profile = pRes && pRes.data ? normalizeStaffWorkflow(pRes.data) : null
+      const rawProfile = pRes && pRes.data
+      const profileUser = rawProfile && (await db.collection('users').where({ openid: rawProfile.openid }).limit(1).get().catch(() => ({ data: [] }))).data?.[0]
+      const profile = rawProfile ? { ...normalizeStaffWorkflow(rawProfile), ...staffPhoneFields(profileUser || {}, rawProfile) } : null
       const orders = []
       for (const orderId of (app.orderIds || [])) {
         const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
@@ -2865,6 +2915,7 @@ module.exports = function createHandler(context) {
       const list = pagedDeposits.map((item) => {
         const u = userMap[item.staffOpenid] || {}
         const p = profileMap[item.staffOpenid] || {}
+        const phoneFields = staffPhoneFields(u, p)
         const staffEvidences = evidenceByStaff[item.staffOpenid] || []
         const problemOrders = staffEvidences.map((e) => {
           const actualDeductAmount = Number(e.actualDeductAmount ?? e.forfeitedAmount ?? 0)
@@ -2889,7 +2940,9 @@ module.exports = function createHandler(context) {
         return {
           ...item,
           staffNickname: u.nickname || '',
-          staffPhone: p.phone || u.phone || '',
+          staffPhone: phoneFields.phone,
+          accountPhone: phoneFields.accountPhone,
+          certifiedPhone: phoneFields.certifiedPhone,
           staffRealName: p.realName || '',
           staffLevel: p.staffLevel || '',
           problemOrders
@@ -2947,10 +3000,13 @@ module.exports = function createHandler(context) {
       const list = pagedReimbursements.map((item) => {
         const u = userMap[item.staffOpenid] || {}
         const p = profileMap[item.staffOpenid] || {}
+        const phoneFields = staffPhoneFields(u, p)
         return {
           ...item,
           staffNickname: u.nickname || '',
-          staffPhone: p.phone || u.phone || '',
+          staffPhone: phoneFields.phone,
+          accountPhone: phoneFields.accountPhone,
+          certifiedPhone: phoneFields.certifiedPhone,
           staffRealName: p.realName || '',
           staffLevel: p.staffLevel || ''
         }

@@ -81,6 +81,39 @@ test('urgent rewards and deductions are reflected in the same committed finance 
   assert.equal(db.state.finance_logs[0].detail.deductAmount, 20)
 })
 
+test('order revenue split rounds platform cents first and assigns staff the residual', async () => {
+  const db = createCollectionStore({ staff_earnings: [], finance_logs: [], orders: [] })
+  const service = createService({
+    db,
+    now: () => time,
+    parseDateValue: value => new Date(value),
+    getSystemSettings: async () => ({ settlement: { staffCommissionRate: 0.5, settlementDelayDays: 0 } })
+  })
+  const earning = await service.calculateStaffEarningForOrder({ payAmount: 0.01 })
+  assert.equal(earning.earningAmount, 0)
+  const summary = service.buildOrderProfitSummary({
+    payAmount: 0.01,
+    paymentStatus: 'paid',
+    paidAt: time,
+    status: 'completed'
+  }, null, 0.5)
+  assert.equal(summary.staffReward + summary.platformProfit, summary.netPayAmount)
+  assert.equal(summary.staffReward, 0)
+  assert.equal(summary.platformProfit, 0.01)
+
+  const uneven = await service.calculateStaffEarningForOrder({ payAmount: 100.01 })
+  assert.equal(uneven.earningAmount, 50)
+  const unevenSummary = service.buildOrderProfitSummary({
+    payAmount: 100.01,
+    paymentStatus: 'paid',
+    paidAt: time,
+    status: 'completed'
+  }, null, 0.7)
+  assert.equal(unevenSummary.platformProfit, 30)
+  assert.equal(unevenSummary.staffReward, 70.01)
+  assert.equal(Math.round((unevenSummary.platformProfit + unevenSummary.staffReward) * 100), 10001)
+})
+
 test('earning refresh traverses 205 changing rows without releasing frozen, withdrawing or other staff earnings', async () => {
   const rows = Array.from({ length: 205 }, (_, i) => ({
     _id: `e${String(i).padStart(3, '0')}`, staffOpenid: 'staff', status: 'pending', availableAt: '2026-09-01'

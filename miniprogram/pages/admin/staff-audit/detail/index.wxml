@@ -10,7 +10,8 @@
     <view class="card-subtitle"><text class="remix-icon ri-profile-line sub-icon"></text><text>入驻资料</text></view>
     <view class="info-row"><view class="label">姓名</view><view class="value">{{staff.realName}}</view></view>
     <view class="info-row"><view class="label">性别</view><view class="value">{{staff.gender === 'male' ? '男' : (staff.gender === 'female' ? '女' : '未填写')}}</view></view>
-    <view class="info-row"><view class="label">手机</view><view class="value">{{staff.phone}}</view></view>
+    <view class="info-row"><view class="label">绑定手机号</view><view class="value">{{staff.accountPhone || staff.phone || '未填写'}}</view></view>
+    <view class="info-row"><view class="label">实名认证手机号</view><view class="value">{{staff.certifiedPhone || '未填写'}}</view></view>
     <view class="info-row"><view class="label">城市</view><view class="value">{{staff.serviceCity}}</view></view>
     <view class="info-row"><view class="label">区域</view><view class="value">{{staff.serviceAreas}}</view></view>
     <view class="info-row"><view class="label">身份核验</view><view class="soft-badge status-badge">{{staff.identityStatus || 'pending'}}</view></view>

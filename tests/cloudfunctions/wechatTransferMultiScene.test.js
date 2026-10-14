@@ -158,6 +158,7 @@ test('wechatTransfers: resolveTransferScene and buildTransferPayload route betwe
     amount: 50
   }, config)
   assert.equal(staffPayload.transfer_scene_id, '1005')
+  assert.equal(staffPayload.openid, 'staff_openid_1')
   assert.equal(staffPayload.user_recv_perception, '宠托师服务收益提现')
   assert.deepEqual(staffPayload.transfer_scene_report_infos, [{ info_type: '岗位类型', info_content: '宠托师' }])
 
@@ -186,4 +187,13 @@ test('wechatTransfers: resolveTransferScene and buildTransferPayload route betwe
   assert.equal(reimbursementPayload.transfer_scene_id, '1006')
   assert.equal(reimbursementPayload.user_recv_perception, '一次性用品采购报销')
   assert.deepEqual(reimbursementPayload.transfer_scene_report_infos, [{ info_type: '费用类型', info_content: '服务用品报销' }])
+
+  assert.throws(
+    () => transfersService.buildTransferPayload({ outBillNo: 'bill_too_large', staffOpenid: 'staff_openid_1', amount: 200.01 }, config),
+    /单笔上限.*200\.00/
+  )
+  assert.throws(
+    () => transfersService.buildTransferPayload({ outBillNo: 'bill_missing_recipient', amount: 1 }, config),
+    /收款openid缺失/
+  )
 })

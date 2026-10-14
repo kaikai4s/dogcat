@@ -4,6 +4,11 @@ module.exports = function createService({
   now,
   parseDateValue
 }) {
+  function splitOrderCents(grossCents, rate) {
+    const platformCents = Math.round(grossCents * (1 - rate))
+    return { platformCents, staffCents: grossCents - platformCents }
+  }
+
   async function calculateStaffEarningForOrder(order) {
     if (!order) return { earningAmount: 0, commissionRate: 0.7 }
     if (order.isUrgent && Number(order.urgentStaffReward) > 0) {
@@ -19,8 +24,8 @@ module.exports = function createService({
     const settings = await getSystemSettings()
     const rate = Number(settings.settlement.staffCommissionRate ?? 0.7)
     const grossCents = Math.round(Number(order.payAmount || 0) * 100)
-    const grossAmount = grossCents / 100
-    const earningAmount = Math.round(grossCents * rate) / 100
+    const { staffCents } = splitOrderCents(grossCents, rate)
+    const earningAmount = staffCents / 100
     return { earningAmount, commissionRate: rate }
   }
 
@@ -35,7 +40,7 @@ module.exports = function createService({
     const rate = Number(settings.settlement.staffCommissionRate ?? 0.7)
     const grossCents = Math.round(Number(order.payAmount || 0) * 100)
     const grossAmount = grossCents / 100
-    let baseCents = Math.round(grossCents * rate)
+    let baseCents = splitOrderCents(grossCents, rate).staffCents
     if (order.isUrgent && Number(order.urgentStaffReward) > 0) {
       baseCents = Math.round(Number(order.urgentStaffReward) * 100)
     }
@@ -504,7 +509,8 @@ module.exports = function createService({
         staffReward = Math.max(0, staffReward - deductAmount)
       }
     } else {
-      staffReward = Math.round(netPayAmount * rate * 100) / 100
+      const netPayCents = Math.max(0, Math.round(netPayAmount * 100))
+      staffReward = splitOrderCents(netPayCents, rate).staffCents / 100
       if (Number(order.adminManualDeductEarning) > 0) {
         deductAmount = Number(order.adminManualDeductEarning)
         staffReward = Math.max(0, staffReward - deductAmount)
@@ -512,7 +518,9 @@ module.exports = function createService({
     }
 
     staffReward = Math.round(staffReward * 100) / 100
-    const platformProfit = Math.round((netPayAmount - staffReward) * 100) / 100
+    const netPayCents = Math.max(0, Math.round(netPayAmount * 100))
+    const staffRewardCents = Math.round(staffReward * 100)
+    const platformProfit = (netPayCents - staffRewardCents) / 100
     const isSubsidy = platformProfit < 0
     const subsidyAmount = isSubsidy ? Math.abs(platformProfit) : 0
 

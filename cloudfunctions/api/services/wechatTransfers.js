@@ -12,6 +12,11 @@ module.exports = function createService({
   now,
   safeText
 }) {
+  // Frontend validation uses ¥0.10. The backend keeps only a one-fen floor
+  // so review/retry of an existing request is not blocked by that UI rule.
+  const WECHAT_MIN_TRANSFER_CENTS = 1
+  const WECHAT_MAX_TRANSFER_CENTS = 20000
+
   function cents(value) {
     const amount = Number(value)
     const result = Math.round(amount * 100)
@@ -47,11 +52,18 @@ module.exports = function createService({
       if (request.payoutChannel !== 'wechat_wallet') throw new Error('非微信提现单不能执行微信零钱转账')
       if (request.status === 'paid') return request
       if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('仅审核通过的微信提现单可发起转账')
+      const validationConfig = getWechatTransferConfig(settings || await getSystemSettings({ includeSecrets: true }))
+      validateTransferAmount(request, validationConfig)
+      const recipientOpenid = safeText(request.recipientOpenid || request.staffOpenid || request.userOpenid || request.openid).trim()
+      if (!recipientOpenid) throw new Error('微信提现收款openid缺失，无法发起转账')
       const time = now()
       const outBillNo = safeText(request.outBillNo || request.outDetailNo).trim() || createOutBillNo(withdrawId)
       const patch = {
         outBillNo,
         outDetailNo: outBillNo,
+        // Backfill requests created before recipientOpenid was persisted. The
+        // same value is used in the actual transfer payload and admin display.
+        recipientOpenid,
         transferStatus: request.transferStatus || 'queued',
         transferPreparedAt: request.transferPreparedAt || time,
         transferPreparedByOpenid: request.transferPreparedByOpenid || operator.openid || '',
@@ -90,15 +102,15 @@ module.exports = function createService({
   }
 
   function buildTransferPayload(request, config) {
-    const amountFen = request.amountFen || cents(request.amount)
-    const maxFen = cents(config.transferMaxAmount)
-    if (amountFen > maxFen) throw new Error(`微信提现金额超过单笔上限 ¥${config.transferMaxAmount}`)
+    const amountFen = validateTransferAmount(request, config)
     const scene = resolveTransferScene(request, config)
+    const recipientOpenid = safeText(request.recipientOpenid || request.staffOpenid || request.userOpenid || request.openid).trim()
+    if (!recipientOpenid) throw new Error('微信提现收款openid缺失，无法发起转账')
     const payload = {
       appid: config.appId,
       out_bill_no: request.outBillNo,
       transfer_scene_id: scene.sceneId,
-      openid: request.recipientOpenid || request.staffOpenid,
+      openid: recipientOpenid,
       transfer_amount: amountFen,
       transfer_remark: safeText(scene.remark || request.remark).trim(),
       user_recv_perception: scene.userRecvPerception
@@ -112,6 +124,18 @@ module.exports = function createService({
     const recipientName = safeText(request.recipientName || request.accountName).trim()
     if (recipientName) payload.user_name = encryptWechatTransferUserName(recipientName, config)
     return payload
+  }
+
+  function validateTransferAmount(request, config) {
+    const amountFen = request.amountFen || cents(request.amount)
+    if (amountFen < WECHAT_MIN_TRANSFER_CENTS) throw new Error('微信提现金额必须至少为 ¥0.01')
+    const configuredMaxFen = cents(config.transferMaxAmount)
+    const maxFen = Math.min(WECHAT_MAX_TRANSFER_CENTS, configuredMaxFen)
+    if (amountFen > maxFen) {
+      const maxYuan = (maxFen / 100).toFixed(2)
+      throw new Error(`微信提现金额超过单笔上限 ¥${maxYuan}`)
+    }
+    return amountFen
   }
 
   async function patchTransferProcessing(withdrawId, patch = {}) {
@@ -173,7 +197,8 @@ module.exports = function createService({
     if (!outBillNo) throw new Error('微信提现单号缺失')
     const settings = await getSystemSettings({ includeSecrets: true })
     const config = getWechatTransferConfig(settings)
-    const response = await wechatPayRequest('GET', `/v3/fund-app/mch-transfer/transfer-bills/out-bill-no/${encodeURIComponent(outBillNo)}?mchid=${encodeURIComponent(config.mchId)}`, null, config)
+    // 当前商家转账查询接口只接受路径参数 out_bill_no；mchid 不在该接口的请求参数中。
+    const response = await wechatPayRequest('GET', `/v3/fund-app/mch-transfer/transfer-bills/out-bill-no/${encodeURIComponent(outBillNo)}`, null, config)
     return applyWechatTransferResult(withdrawId, response, 'query')
   }
 

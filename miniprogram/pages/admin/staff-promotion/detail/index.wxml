@@ -6,7 +6,7 @@
 <view class="page detail-page" wx:if="{{application}}">
   <view class="header compact-header">
     <view class="title">{{profile.realName || '宠托师'}}的晋升申请</view>
-    <view class="desc">{{profile.phone || '未记录联系电话'}} · 提交于 {{beijingTime.format(application.createdAt)}}</view>
+    <view class="desc">绑定手机号：{{profile.accountPhone || profile.phone || '未填写'}} · 实名认证手机号：{{profile.certifiedPhone || '未填写'}} · 提交于 {{beijingTime.format(application.createdAt)}}</view>
   </view>
 
   <view class="admin-compact-card">

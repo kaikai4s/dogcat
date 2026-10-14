@@ -46,6 +46,20 @@ test('finance uses successful payments and actual successful refunds, excluding 
   assert.deepEqual(result.counts.refundStatus, { success: 1, processing: 1, failed: 1 })
 })
 
+test('finance excludes mock payment earnings from real income analysis', async () => {
+  const result = await report({
+    payments: [{ status: 'success', amount: 100 }],
+    staff_earnings: [
+      { status: 'available', amount: 70, paymentChannel: 'wechat' },
+      { status: 'mock_settled', amount: 70, isMock: true, paymentChannel: 'mock' },
+      { status: 'available', amount: 5, paymentChannel: 'mock' }
+    ]
+  })
+  assert.equal(result.metrics.staffEarningAmount, 70)
+  assert.equal(result.metrics.platformGrossProfit, 30)
+  assert.equal(result.counts.earnings, 1)
+})
+
 test('missing payment records never become GMV cash receipts; empty collections return zeros', async () => {
   const result = await report({ orders: [{ status: 'day_completed', payAmount: 100 }] })
   assert.equal(result.metrics.gmv, 100)

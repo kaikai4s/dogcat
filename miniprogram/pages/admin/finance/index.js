@@ -34,8 +34,12 @@ function decorate(item) {
   const status = String(item.status || '').toLowerCase()
   const transferStatus = String(item.transferStatus || '').toLowerCase()
   const isWechatWallet = item.payoutChannel === 'wechat_wallet'
+  // Older withdrawal records may not have recipientOpenid persisted yet. The
+  // staff/user owner fields are the same verified openid used for the transfer.
+  const recipientOpenid = item.recipientOpenid || item.staffOpenid || item.userOpenid || item.openid || ''
   return {
     ...item,
+    recipientOpenid,
     amountText: money(item.amount),
     statusText: withdrawStatusText[status] || item.status,
     transferStatusText: transferStatus ? (transferStatus === 'not_started' ? '未开始' : transferStatus === 'submitting' ? '提交中' : transferStatus === 'processing' ? '处理中' : transferStatus === 'success' ? '成功' : transferStatus === 'failed' ? '失败' : transferStatus === 'unknown' ? '待查询确认' : transferStatus) : '',
