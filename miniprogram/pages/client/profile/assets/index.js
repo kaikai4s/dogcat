@@ -1,8 +1,47 @@
-const { callFunction, showError, savePendingInvite, ensureLogin } = require('../../../../utils/cloud')
+const { callFunction, showError, showLoading, hideLoading, savePendingInvite, ensureLogin } = require('../../../../utils/cloud')
 const { copyText } = require('../../../../utils/clipboard')
+
+const withdrawStatusText = {
+  pending: '审核中',
+  approved: '已通过',
+  transferring: '打款中',
+  transfer_failed: '打款失败',
+  rejected: '已驳回',
+  paid: '已到账'
+}
+
+const wechatTransferStateText = {
+  ACCEPTED: '微信已受理（等待商户出资划账）',
+  WAIT_USER_CONFIRM: '待收款人确认收款',
+  TRANSFERING: '微信转账处理中',
+  PROCESSING: '微信转账处理中',
+  SUCCESS: '已到账',
+  FAIL: '转账失败',
+  CANCELLED: '已撤销'
+}
+
+function withWithdraw(item) {
+  const status = String(item.status || '').toLowerCase()
+  const transferState = String(item.wechatTransferState || '').toUpperCase()
+  const isAccepted = transferState === 'ACCEPTED'
+  const canConfirmTransfer = item.payoutChannel === 'wechat_wallet' && transferState === 'WAIT_USER_CONFIRM'
+  let statusText = withdrawStatusText[status] || item.statusText || '处理中'
+  if (canConfirmTransfer) {
+    statusText = '待确认收款'
+  }
+  return {
+    ...item,
+    amountText: Number(item.amount || 0).toFixed(2),
+    statusText,
+    wechatTransferStateText: wechatTransferStateText[transferState] || item.wechatTransferStateText || transferState,
+    isAccepted,
+    canConfirmTransfer
+  }
+}
 
 Page({
   data: {
+    activeTab: 'invites', // 'invites' | 'earnings' | 'withdraws'
     loading: false,
     summary: null,
     inviteCode: '',
@@ -11,13 +50,20 @@ Page({
     autoBindingInvite: false,
     invitationShareImageUrl: '',
     withdrawAmount: '',
-    withdrawing: false
+    withdrawing: false,
+    transferBusy: false,
+    confirmingId: '',
+    transferNotice: '',
+    hasPendingWithdrawConfirm: false
   },
 
   onLoad(options = {}) {
     const incomingInviteCode = String(options.inviteCode || '').trim().toUpperCase()
     if (options.inviteCode || options.inviterOpenid) savePendingInvite(options)
     if (incomingInviteCode) this.setData({ incomingInviteCode })
+    if (options.tab && ['invites', 'earnings', 'withdraws'].includes(options.tab)) {
+      this.setData({ activeTab: options.tab })
+    }
   },
 
   onShow() {
@@ -45,8 +91,14 @@ Page({
       const maxAmount = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
         ? Number(summary.availableAmount || 0)
         : Math.min(Number(summary.availableAmount || 0), Number(quota.effectiveRemainingAmount || 0))
+      const withdraws = (summary.withdraws || []).map(withWithdraw)
+      const hasPendingWithdrawConfirm = withdraws.some(item => item.canConfirmTransfer)
       this.setData({
-        summary,
+        summary: {
+          ...summary,
+          withdraws
+        },
+        hasPendingWithdrawConfirm,
         inviteCode: summary.inviteCode || '',
         invitationShareImageUrl: summary.invitationShareImageUrl || '',
         withdrawAmount: maxAmount > 0 ? maxAmount.toFixed(2) : ''
@@ -84,8 +136,14 @@ Page({
       const maxAmount = quota.effectiveRemainingAmount === null || quota.effectiveRemainingAmount === undefined
         ? Number(summary.availableAmount || 0)
         : Math.min(Number(summary.availableAmount || 0), Number(quota.effectiveRemainingAmount || 0))
+      const withdraws = (summary.withdraws || []).map(withWithdraw)
+      const hasPendingWithdrawConfirm = withdraws.some(item => item.canConfirmTransfer)
       this.setData({
-        summary,
+        summary: {
+          ...summary,
+          withdraws
+        },
+        hasPendingWithdrawConfirm,
         inviteCode: summary.inviteCode || '',
         invitationShareImageUrl: summary.invitationShareImageUrl || '',
         withdrawAmount: maxAmount > 0 ? maxAmount.toFixed(2) : ''
@@ -97,6 +155,126 @@ Page({
     } finally {
       this.setData({ autoBindingInvite: false })
     }
+  },
+
+  switchRecordTab(e) {
+    const tab = e.currentTarget.dataset.tab
+    if (tab && tab !== this.data.activeTab) {
+      this.setData({ activeTab: tab })
+    }
+  },
+
+  goToWithdrawsTab() {
+    this.setData({ activeTab: 'withdraws' })
+  },
+
+  queryWithdrawTransfer(e) {
+    const id = e.currentTarget.dataset.id
+    if (!id || this.data.transferBusy) return
+    this.setData({ transferBusy: true, transferNotice: '' })
+    showLoading({ title: '正在查询转账状态...', mask: true })
+    callFunction('finance', 'queryMyWithdrawTransfer', { id })
+      .then((res) => {
+        hideLoading()
+        const status = String(res && res.status || '').toLowerCase()
+        const transferState = String(res && res.wechatTransferState || '').toUpperCase()
+        if (status === 'paid' || transferState === 'SUCCESS') {
+          wx.showToast({ title: '已成功到账微信零钱', icon: 'success' })
+        } else {
+          wx.showToast({ title: '转账状态已同步', icon: 'none' })
+        }
+        return this.load()
+      })
+      .catch((error) => {
+        hideLoading()
+        this.setData({ transferNotice: '转账状态同步失败，请稍后刷新重试。' })
+        showError(error)
+      })
+      .finally(() => this.setData({ transferBusy: false }))
+  },
+
+  async autoCheckTransferStatus(id, retries = 5, delay = 1200) {
+    if (!id) return
+    this.setData({ transferNotice: '已完成确认收款，正在同步微信到账结果...' })
+    showLoading({ title: '同步到账状态...', mask: true })
+    for (let i = 0; i < retries; i++) {
+      try {
+        const res = await callFunction('finance', 'queryMyWithdrawTransfer', { id })
+        const status = String(res && res.status || '').toLowerCase()
+        const transferState = String(res && res.wechatTransferState || '').toUpperCase()
+        if (status === 'paid' || transferState === 'SUCCESS') {
+          hideLoading()
+          wx.showToast({ title: '已成功到账微信零钱', icon: 'success', duration: 2500 })
+          this.setData({ transferNotice: '款项已成功到账微信零钱！', confirmingId: '' })
+          await this.load()
+          return true
+        }
+      } catch (err) {
+        console.warn('[autoCheckTransferStatus] 查询转账状态失败:', err)
+      }
+      if (i < retries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+    hideLoading()
+    this.setData({
+      transferNotice: '收款确认已提交，微信正在打款中。可稍后点击“查询微信转账状态”或下拉刷新。',
+      confirmingId: ''
+    })
+    await this.load()
+    return false
+  },
+
+  confirmWithdrawTransfer(e) {
+    const id = e.currentTarget.dataset.id
+    if (!id || this._confirmingLock || this.data.transferBusy || this.data.confirmingId) return
+    this._confirmingLock = true
+    this.setData({ transferBusy: true, confirmingId: id, transferNotice: '' })
+    showLoading({ title: '正在调起收款确认...', mask: true })
+    callFunction('finance', 'getMyWithdrawTransferConfirmation', { id })
+      .then((result) => {
+        hideLoading()
+        const status = String(result && result.status || '').toUpperCase()
+        if (status === 'SUCCESS' || status === 'PAID') {
+          this.setData({ transferNotice: '该笔提现已成功到账微信零钱。', confirmingId: '' })
+          this._confirmingLock = false
+          return this.load()
+        }
+        if (status !== 'WAIT_USER_CONFIRM' || !result.packageInfo) {
+          this.setData({ transferNotice: '当前无需确认收款，请先查询最新转账状态。', confirmingId: '' })
+          this._confirmingLock = false
+          return this.load()
+        }
+        if (!result.mchId || !result.appId || typeof wx.requestMerchantTransfer !== 'function' || (typeof wx.canIUse === 'function' && !wx.canIUse('requestMerchantTransfer'))) {
+          this.setData({ transferNotice: '当前微信版本不支持收款确认，请升级微信后重试。', confirmingId: '' })
+          this._confirmingLock = false
+          return
+        }
+        return new Promise((resolve, reject) => wx.requestMerchantTransfer({
+          mchId: result.mchId,
+          appId: result.appId,
+          package: result.packageInfo,
+          success: resolve,
+          fail: reject
+        })).then(() => {
+          return this.autoCheckTransferStatus(id)
+        })
+      })
+      .catch((error) => {
+        hideLoading()
+        const errMsg = String(error && (error.errMsg || error.message || error))
+        if (errMsg.includes('cancel')) {
+          this.setData({ transferNotice: '已取消收款确认，可在24小时内重新点击确认。', confirmingId: '' })
+        } else {
+          this.setData({ transferNotice: '未能调起收款确认，请稍后查询转账状态重试。', confirmingId: '' })
+          showError(error)
+        }
+      })
+      .finally(() => {
+        hideLoading()
+        this._confirmingLock = false
+        this.setData({ transferBusy: false, confirmingId: '' })
+      })
   },
 
   async bindInvite() {

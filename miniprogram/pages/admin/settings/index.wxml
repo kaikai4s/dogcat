@@ -291,7 +291,8 @@
             </view>
             <view class="field-item">
               <text class="label">收款用户感知文案</text>
-              <input class="input" value="{{settings.staffSupplies.transfer.scenes[activeTransferTab].userRecvPerception}}" data-tab="{{activeTransferTab}}" data-field="userRecvPerception" bindinput="transferSceneFieldInput" placeholder="填写微信商户平台允许的真实感知文案（如 佣金报酬 / 报销款）" />
+              <input class="input" value="{{settings.staffSupplies.transfer.scenes[activeTransferTab].userRecvPerception}}" data-tab="{{activeTransferTab}}" data-field="userRecvPerception" bindinput="transferSceneFieldInput" placeholder="佣金报酬场景请填：劳务报酬（或报销款/企业补贴）" />
+              <view class="muted">微信规范：在「佣金报酬」场景下，用户端感知仅支持展示为「劳务报酬」、「报销款」、「企业补贴」或「开工利是」（不可填“佣金报酬”）。</view>
             </view>
             <view class="field-item">
               <text class="label">场景报备信息（JSON 数组）</text>
@@ -302,11 +303,11 @@
 
           <view class="official-account-guide-card" style="margin-top: 16rpx; background: #f0fdf4; border-color: #bbf7d0;">
             <view class="guide-title" style="color: #16a34a;"><text class="remix-icon ri-information-line"></text> 单场景商户号（仅开通佣金报酬 1005）报备指南</view>
-            <view class="step-desc" style="margin-bottom: 8rpx; color: #166534; font-weight: bold;">1. 宠托师收益提现（感知：佣金报酬）：</view>
+            <view class="step-desc" style="margin-bottom: 8rpx; color: #166534; font-weight: bold;">1. 宠托师收益提现（感知：劳务报酬）：</view>
             <view class="step-desc" style="font-family: monospace; font-size: 22rpx; background: #ffffff; padding: 10rpx; border-radius: 8rpx; margin-bottom: 12rpx;">
               [&#10;  { "info_type": "岗位类型", "info_content": "宠托师" },&#10;  { "info_type": "报酬说明", "info_content": "宠托师上门服务收益提现" }&#10;]
             </view>
-            <view class="step-desc" style="margin-bottom: 8rpx; color: #166534; font-weight: bold;">2. 用户邀请奖励提现（同使用 1005，感知：佣金报酬）：</view>
+            <view class="step-desc" style="margin-bottom: 8rpx; color: #166534; font-weight: bold;">2. 用户邀请奖励提现（同使用 1005，感知：劳务报酬）：</view>
             <view class="step-desc" style="font-family: monospace; font-size: 22rpx; background: #ffffff; padding: 10rpx; border-radius: 8rpx; margin-bottom: 12rpx;">
               [&#10;  { "info_type": "岗位类型", "info_content": "平台推广顾问" },&#10;  { "info_type": "报酬说明", "info_content": "邀请好友推广佣金提现" }&#10;]
             </view>

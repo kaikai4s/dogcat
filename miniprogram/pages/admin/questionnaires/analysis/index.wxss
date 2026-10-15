@@ -204,6 +204,18 @@
 }
 
 /* 宏观分析总结 */
+.ai-model-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 4rpx 16rpx;
+  background: rgba(255, 107, 53, 0.12);
+  color: #ff6b35;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 850;
+}
+
 .summary-text {
   margin-top: 16rpx;
   color: #4b3d33;
@@ -212,6 +224,15 @@
   background: #fffbf5;
   padding: 20rpx;
   border-radius: 20rpx;
+}
+
+.summary-meta {
+  margin-top: 14rpx;
+  font-size: 22rpx;
+  color: #a89a8f;
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
 }
 
 /* 核心洞察列表 */

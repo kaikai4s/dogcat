@@ -1735,12 +1735,12 @@ Page({
 
     this.setData({
       'settings.staffSupplies.transfer.sceneId': commissionSceneId,
-      'settings.staffSupplies.transfer.userRecvPerception': '佣金报酬',
+      'settings.staffSupplies.transfer.userRecvPerception': '劳务报酬',
       'settings.staffSupplies.transfer.scenes.commission.sceneId': commissionSceneId,
-      'settings.staffSupplies.transfer.scenes.commission.userRecvPerception': '佣金报酬',
+      'settings.staffSupplies.transfer.scenes.commission.userRecvPerception': '劳务报酬',
       'settings.staffSupplies.transfer.scenes.commission.sceneReportInfos': commissionReports,
       'settings.staffSupplies.transfer.scenes.marketing.sceneId': commissionSceneId,
-      'settings.staffSupplies.transfer.scenes.marketing.userRecvPerception': '佣金报酬',
+      'settings.staffSupplies.transfer.scenes.marketing.userRecvPerception': '劳务报酬',
       'settings.staffSupplies.transfer.scenes.marketing.sceneReportInfos': marketingReports,
       'settings.staffSupplies.transfer.scenes.reimbursement.sceneId': commissionSceneId,
       'settings.staffSupplies.transfer.scenes.reimbursement.userRecvPerception': '报销款',
@@ -1752,7 +1752,7 @@ Page({
     })
     wx.showModal({
       title: '已开启单场景模式',
-      content: `所有提现业务已统一绑定场景 ID: ${commissionSceneId}（佣金报酬）。宠托师与用户邀请提现均合规使用“佣金报酬”，可直接点击下方【保存全部设置】生效。`,
+      content: `所有提现业务已统一绑定场景 ID: ${commissionSceneId}（佣金报酬场景）。按微信支付规范，收款感知统一设置为合规文案「劳务报酬」及「报销款」，可直接点击下方【保存全部设置】生效。`,
       showCancel: false
     })
   },
@@ -1768,9 +1768,9 @@ Page({
       const json = JSON.stringify(template, null, 2)
       this.setData({
         'settings.staffSupplies.transfer.scenes.commission.sceneId': commissionSceneId,
-        'settings.staffSupplies.transfer.scenes.commission.userRecvPerception': '佣金报酬',
+        'settings.staffSupplies.transfer.scenes.commission.userRecvPerception': '劳务报酬',
         'settings.staffSupplies.transfer.sceneId': commissionSceneId,
-        'settings.staffSupplies.transfer.userRecvPerception': '佣金报酬',
+        'settings.staffSupplies.transfer.userRecvPerception': '劳务报酬',
         sceneReportInfosText: json,
         'transferSceneTexts.commission': json
       })
@@ -1796,7 +1796,7 @@ Page({
       const json = JSON.stringify(template, null, 2)
       this.setData({
         'settings.staffSupplies.transfer.scenes.marketing.sceneId': commissionSceneId,
-        'settings.staffSupplies.transfer.scenes.marketing.userRecvPerception': '佣金报酬',
+        'settings.staffSupplies.transfer.scenes.marketing.userRecvPerception': '劳务报酬',
         sceneReportInfosText: json,
         'transferSceneTexts.marketing': json
       })

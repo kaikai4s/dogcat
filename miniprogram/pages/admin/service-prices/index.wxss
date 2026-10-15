@@ -3,15 +3,32 @@
 }
 
 .compact-main-action {
-  min-height: 76rpx;
-  margin: 16rpx 0 20rpx;
+  width: 100% !important;
+  min-height: 80rpx !important;
+  height: 80rpx !important;
+  margin: 18rpx 0 20rpx !important;
+  border-radius: 999rpx !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  font-size: 28rpx !important;
+  font-weight: 850 !important;
 }
 
 .service-summary-card .mini-btn,
 .collapse-card .mini-btn {
-  margin: 0;
-  min-height: 52rpx;
-  padding: 0 22rpx;
+  margin: 0 !important;
+  min-height: 54rpx !important;
+  height: 54rpx !important;
+  padding: 0 24rpx !important;
+  width: auto !important;
+  line-height: 1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 999rpx !important;
+  box-sizing: border-box !important;
 }
 
 .compact-rule-item {

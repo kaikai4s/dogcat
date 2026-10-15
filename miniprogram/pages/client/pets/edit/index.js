@@ -405,7 +405,11 @@ Page({
     console.log('[AI识图日志] 开始调用云函数 AI 识别...', { avatarFileId, tempHttpsUrl })
 
     const executeRecognize = (fileId, httpsUrl) => {
-      callFunction('pet', 'recognizePetBreed', { avatarFileId: fileId, imageUrl: httpsUrl })
+      callFunction('pet', 'recognizePetBreed', {
+        avatarFileId: fileId,
+        imageUrl: httpsUrl,
+        model: 'hunyuan-t1-vision-20250916'
+      })
         .then((res) => {
           this.setData({ recognizingBreed: false })
           console.log('[AI识图日志] 云函数识别成功返回:', res)

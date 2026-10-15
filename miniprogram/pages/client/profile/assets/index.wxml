@@ -46,76 +46,145 @@
     </view>
   </view>
 
-  <view class="records-card card">
-    <view class="section-head compact">
-      <view>
-        <view class="section-title">邀请记录</view>
-        <view class="section-subtitle">好友绑定你的邀请码后会在这里显示</view>
-      </view>
+  <!-- 待确认收款快捷提示条 (当未在提现记录栏位时突出显示) -->
+  <view class="pending-confirm-banner" wx:if="{{hasPendingWithdrawConfirm && activeTab !== 'withdraws'}}" bindtap="goToWithdrawsTab">
+    <view class="banner-left">
+      <text class="remix-icon ri-alarm-warning-fill banner-icon"></text>
+      <text class="banner-text">您有提现申请待微信零钱确认收款</text>
     </view>
-    <view wx:if="{{!summary || !summary.invites || !summary.invites.length}}" class="empty-state">
-      <view class="empty-icon remix-icon ri-user-add-line"></view>
-      <view class="empty-text">暂无邀请绑定记录</view>
-    </view>
-    <view wx:else class="record-list">
-      <view wx:for="{{summary.invites}}" wx:key="_id" class="record-row invite-record-row">
-        <image wx:if="{{item.invitedAvatarUrl}}" class="invite-avatar" src="{{item.invitedAvatarUrl}}" mode="aspectFill" />
-        <view wx:else class="invite-avatar placeholder remix-icon ri-user-smile-line"></view>
-        <view class="record-main">
-          <view class="record-title">{{item.invitedNickname || '好友'}} 绑定了邀请码</view>
-          <view class="record-time">{{item.invitedOpenidMasked ? item.invitedOpenidMasked + ' · ' : ''}}{{beijingTime.format(item.createdAt)}}</view>
-        </view>
-        <view class="invite-reward">
-          <text class="reward-amount">+¥{{item.rewardAmount || 0}}</text>
-          <text class="status-pill {{item.rewardStatus || 'pending'}}">{{item.rewardStatusText || '待入账'}}</text>
-        </view>
-      </view>
+    <view class="banner-right">
+      <text>前往确认</text>
+      <text class="remix-icon ri-arrow-right-s-line"></text>
     </view>
   </view>
 
+  <!-- 记录栏位切换卡片 -->
   <view class="records-card card">
-    <view class="section-head compact">
-      <view>
-        <view class="section-title">收益明细</view>
-        <view class="section-subtitle">邀请收益和资产入账记录</view>
+    <!-- 栏位切换 Tab Bar -->
+    <view class="records-tab-bar">
+      <view class="records-tab {{activeTab === 'invites' ? 'active' : ''}}" data-tab="invites" bindtap="switchRecordTab">
+        <text>邀请记录</text>
+        <text class="tab-count" wx:if="{{summary && summary.invites && summary.invites.length}}">({{summary.invites.length}})</text>
+      </view>
+      <view class="records-tab {{activeTab === 'earnings' ? 'active' : ''}}" data-tab="earnings" bindtap="switchRecordTab">
+        <text>收益明细</text>
+        <text class="tab-count" wx:if="{{summary && summary.earnings && summary.earnings.length}}">({{summary.earnings.length}})</text>
+      </view>
+      <view class="records-tab {{activeTab === 'withdraws' ? 'active' : ''}}" data-tab="withdraws" bindtap="switchRecordTab">
+        <text>提现记录</text>
+        <text class="tab-count" wx:if="{{summary && summary.withdraws && summary.withdraws.length}}">({{summary.withdraws.length}})</text>
+        <view class="tab-dot" wx:if="{{hasPendingWithdrawConfirm}}"></view>
       </view>
     </view>
-    <view wx:if="{{!summary || !summary.earnings || !summary.earnings.length}}" class="empty-state">
-      <view class="empty-icon remix-icon ri-seedling-line"></view>
-      <view class="empty-text">暂无收益记录</view>
-    </view>
-    <view wx:else class="record-list">
-      <view wx:for="{{summary.earnings}}" wx:key="_id" class="record-row">
-        <view class="record-main">
-          <view class="record-title">{{item.sourceType === 'invite_binding' ? '邀请绑定收益' : item.sourceType}}</view>
-          <view class="record-time">{{beijingTime.format(item.createdAt)}}</view>
-        </view>
-        <text class="income-amount">+¥{{item.amount}}</text>
-      </view>
-    </view>
-  </view>
 
-  <view class="records-card card">
-    <view class="section-head compact">
-      <view>
-        <view class="section-title">提现记录</view>
-        <view class="section-subtitle">查看微信零钱提现处理进度</view>
+    <!-- Tab 1: 邀请记录 -->
+    <block wx:if="{{activeTab === 'invites'}}">
+      <view wx:if="{{!summary || !summary.invites || !summary.invites.length}}" class="empty-state">
+        <view class="empty-icon remix-icon ri-user-add-line"></view>
+        <view class="empty-text">暂无邀请绑定记录</view>
       </view>
-    </view>
-    <view wx:if="{{!summary || !summary.withdraws || !summary.withdraws.length}}" class="empty-state">
-      <view class="empty-icon remix-icon ri-wallet-3-line"></view>
-      <view class="empty-text">暂无提现记录</view>
-    </view>
-    <view wx:else class="record-list">
-      <view wx:for="{{summary.withdraws}}" wx:key="_id" class="record-row">
-        <view class="record-main">
-          <view class="record-title">
-            <text class="status-pill {{item.status === 'paid' ? 'success' : item.status === 'rejected' ? 'danger' : 'pending'}}">{{item.status === 'paid' ? '已到账' : item.status === 'rejected' ? '已驳回' : '处理中'}}</text>
+      <view wx:else class="record-list">
+        <view wx:for="{{summary.invites}}" wx:key="_id" class="record-row invite-record-row">
+          <image wx:if="{{item.invitedAvatarUrl}}" class="invite-avatar" src="{{item.invitedAvatarUrl}}" mode="aspectFill" />
+          <view wx:else class="invite-avatar placeholder remix-icon ri-user-smile-line"></view>
+          <view class="record-main">
+            <view class="record-title">{{item.invitedNickname || '好友'}} 绑定了邀请码</view>
+            <view class="record-time">{{item.invitedOpenidMasked ? item.invitedOpenidMasked + ' · ' : ''}}{{beijingTime.format(item.createdAt)}}</view>
           </view>
-          <view class="record-time">{{beijingTime.format(item.createdAt)}}</view>
+          <view class="invite-reward">
+            <text class="reward-amount">+¥{{item.rewardAmount || 0}}</text>
+            <text class="status-pill {{item.rewardStatus || 'pending'}}">{{item.rewardStatusText || '待入账'}}</text>
+          </view>
         </view>
-        <text class="withdraw-amount">¥{{item.amount}}</text>
       </view>
-    </view>
+    </block>
+
+    <!-- Tab 2: 收益明细 -->
+    <block wx:if="{{activeTab === 'earnings'}}">
+      <view wx:if="{{!summary || !summary.earnings || !summary.earnings.length}}" class="empty-state">
+        <view class="empty-icon remix-icon ri-seedling-line"></view>
+        <view class="empty-text">暂无收益记录</view>
+      </view>
+      <view wx:else class="record-list">
+        <view wx:for="{{summary.earnings}}" wx:key="_id" class="record-row">
+          <view class="record-main">
+            <view class="record-title">{{item.sourceType === 'invite_binding' ? '邀请绑定收益' : item.sourceType}}</view>
+            <view class="record-time">{{beijingTime.format(item.createdAt)}}</view>
+          </view>
+          <text class="income-amount">+¥{{item.amount}}</text>
+        </view>
+      </view>
+    </block>
+
+    <!-- Tab 3: 提现记录 -->
+    <block wx:if="{{activeTab === 'withdraws'}}">
+      <view class="withdraw-hint-box" wx:if="{{transferNotice}}">
+        <text class="remix-icon ri-information-line"></text>
+        <text>{{transferNotice}}</text>
+      </view>
+
+      <view wx:if="{{!summary || !summary.withdraws || !summary.withdraws.length}}" class="empty-state">
+        <view class="empty-icon remix-icon ri-wallet-3-line"></view>
+        <view class="empty-text">暂无提现记录</view>
+      </view>
+      <view wx:else class="withdraw-card-list">
+        <view wx:for="{{summary.withdraws}}" wx:key="_id" class="withdraw-item-card">
+          <view class="withdraw-item-head">
+            <view class="withdraw-item-amount-wrap">
+              <text class="withdraw-item-label">提现金额</text>
+              <text class="withdraw-item-amount">¥{{item.amountText || item.amount}}</text>
+            </view>
+            <view class="status-pill {{item.status === 'paid' ? 'success' : (item.status === 'rejected' || item.status === 'transfer_failed' ? 'danger' : (item.canConfirmTransfer ? 'pending' : 'pending'))}}">
+              {{item.statusText || '处理中'}}
+            </view>
+          </view>
+
+          <!-- 待收款确认按钮 -->
+          <button class="confirm-transfer-btn"
+                  wx:if="{{item.canConfirmTransfer}}"
+                  disabled="{{transferBusy || confirmingId === item._id}}"
+                  loading="{{confirmingId === item._id}}"
+                  data-id="{{item._id}}"
+                  bindtap="confirmWithdrawTransfer">
+            <text class="remix-icon ri-wechat-pay-line" wx:if="{{confirmingId !== item._id}}"></text>
+            <text>{{confirmingId === item._id ? '正在同步到账状态...' : '点击完成微信零钱确认收款'}}</text>
+          </button>
+
+          <!-- 查询微信打款状态按钮 -->
+          <button class="query-transfer-btn"
+                  wx:if="{{item.status === 'transferring'}}"
+                  disabled="{{transferBusy || confirmingId === item._id}}"
+                  data-id="{{item._id}}"
+                  bindtap="queryWithdrawTransfer">
+            <text class="remix-icon ri-refresh-line"></text>
+            <text>查询微信转账状态</text>
+          </button>
+
+          <!-- 提现详情明细 -->
+          <view class="withdraw-item-details">
+            <view class="detail-row">
+              <text class="detail-label">申请时间</text>
+              <text class="detail-value">{{beijingTime.format(item.createdAt)}}</text>
+            </view>
+            <view class="detail-row" wx:if="{{item.wechatTransferState}}">
+              <text class="detail-label">微信处理状态</text>
+              <text class="detail-value {{item.wechatTransferState === 'WAIT_USER_CONFIRM' ? 'text-highlight' : ''}}">{{item.wechatTransferStateText || item.wechatTransferState}}</text>
+            </view>
+            <view class="detail-row" wx:if="{{item.auditRemark}}">
+              <text class="detail-label">审核备注</text>
+              <text class="detail-value">{{item.auditRemark}}</text>
+            </view>
+            <view class="detail-row" wx:if="{{item.failureReason}}">
+              <text class="detail-label">失败原因</text>
+              <text class="detail-value text-danger">{{item.failureReason}}</text>
+            </view>
+            <view class="detail-row" wx:if="{{item.paidAt}}">
+              <text class="detail-label">到账时间</text>
+              <text class="detail-value">{{beijingTime.format(item.paidAt)}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </block>
   </view>
 </view>

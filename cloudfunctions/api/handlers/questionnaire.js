@@ -24,15 +24,26 @@ module.exports = function createHandler(context) {
 
   function parseJsonObject(raw, fallback) {
     if (!raw) return fallback
-    const content = text(raw, 10000).replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim()
+    if (typeof raw === 'object' && !Array.isArray(raw)) return raw
+    const str = typeof raw === 'string' ? raw : String(raw)
+    let content = str.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+    if (codeBlockMatch && codeBlockMatch[1]) {
+      content = codeBlockMatch[1].trim()
+    }
     try {
       return JSON.parse(content)
-    } catch (_) {
-      const start = content.indexOf('{')
-      const end = content.lastIndexOf('}')
-      if (start >= 0 && end > start) {
+    } catch (_) {}
+    const start = content.indexOf('{')
+    const end = content.lastIndexOf('}')
+    if (start >= 0 && end > start) {
+      const sub = content.slice(start, end + 1)
+      try {
+        return JSON.parse(sub)
+      } catch (_) {
         try {
-          return JSON.parse(content.slice(start, end + 1))
+          const fixed = sub.replace(/,\s*([}\]])/g, '$1')
+          return JSON.parse(fixed)
         } catch (err) {}
       }
     }
@@ -41,21 +52,39 @@ module.exports = function createHandler(context) {
 
   async function runAiJson(messages, fallback) {
     try {
-      const aiExt = cloud.extend && cloud.extend.AI ? cloud.extend.AI : null
-      if (!aiExt) return fallback
+      const aiExt = (cloud && cloud.extend && cloud.extend.AI) ? cloud.extend.AI : ((cloud && cloud.ai) || null)
+      if (!aiExt) return { data: fallback, success: false, source: 'fallback', model: null }
       let model
       try {
         model = aiExt.createModel('hunyuan')
       } catch (_) {
-        model = aiExt.createModel('cloudbase')
+        try {
+          model = aiExt.createModel('cloudbase')
+        } catch (modelErr) {
+          console.warn('[questionnaire] createModel failed:', modelErr && modelErr.message)
+          return { data: fallback, success: false, source: 'fallback', model: null }
+        }
+      }
+      if (!model || typeof model.generateText !== 'function') {
+        return { data: fallback, success: false, source: 'fallback', model: null }
       }
       const res = await model.generateText({ model: 'hy3', messages })
       let output = ''
       if (res && res.choices && res.choices[0] && res.choices[0].message) output = res.choices[0].message.content
       else if (res && res.text) output = res.text
-      return parseJsonObject(output, fallback)
+      else if (res && typeof res === 'string') output = res
+      else if (res && res.Response && res.Response.Choices && res.Response.Choices[0] && res.Response.Choices[0].Message) {
+        output = res.Response.Choices[0].Message.Content
+      }
+      const parsed = parseJsonObject(output, null)
+      if (parsed && typeof parsed === 'object') {
+        return { data: parsed, success: true, source: 'hy3', model: 'hy3' }
+      }
+      console.warn('[questionnaire] Failed to parse JSON from hy3 output:', output)
+      return { data: fallback, success: false, source: 'fallback', model: 'hy3' }
     } catch (error) {
-      return fallback
+      console.warn('[questionnaire] hy3 model call encountered error:', error && (error.message || error))
+      return { data: fallback, success: false, source: 'fallback', model: null }
     }
   }
 
@@ -201,30 +230,86 @@ module.exports = function createHandler(context) {
 
   async function generateAiReport(questionnaire, responses) {
     const fallback = buildFallbackReport(questionnaire, responses)
-    const compactResponses = responses.slice(0, 120).map((response) => ({
+    if (!responses || responses.length === 0) {
+      return {
+        ...fallback,
+        summary: `问卷「${questionnaire.title}」暂未收到作答数据。`,
+        insights: ['问卷处于草稿或刚发布阶段，待用户与宠托师作答回收后，将由腾讯混元 hy3 大模型自动生成深度全景分析与图表洞察。'],
+        strengths: ['问卷设计与奖励机制已配置就绪。'],
+        painPoints: ['暂无作答反馈。'],
+        suggestions: ['可通过服务完成通知或系统消息向目标群体推送问卷，加速调研样本回收。'],
+        qualityAnalysis: '目前作答样本为0，待提交后将实时启动智能防乱填与作答质量深度核查。',
+        source: 'hy3',
+        model: 'hy3',
+        generatedAt: now()
+      }
+    }
+
+    const compactResponses = responses.slice(0, 100).map((response) => ({
       role: response.role,
-      quality: response.aiQuality,
+      quality: response.aiQuality ? (response.aiQuality.verdict || 'valid') : 'valid',
       answers: (response.answers || []).map(answer => ({ title: answer.title, value: answer.value }))
     }))
-    const ai = await runAiJson([
-      {
-        role: 'system',
-        content: '你是专业用户调研与数据分析师。请分析问卷调研数据，输出纯 JSON 格式（不要 markdown 代码块）。JSON 包含字段：\n' +
-          'summary (字符串，总体宏观总结分析，150字以内)\n' +
-          'insights (字符串数组，4-8条核心提炼洞察)\n' +
-          'strengths (字符串数组，2-4条用户/宠托师重点好评与满意亮点)\n' +
-          'painPoints (字符串数组，2-4条用户集中吐槽或痛点问题)\n' +
-          'suggestions (字符串数组，2-4条针对性运营/服务落地改进措施)\n' +
-          'qualityAnalysis (字符串，关于作答质量、乱填敷衍情况的专业诊断与建议)'
+
+    const statsContext = {
+      questionnaire: {
+        title: questionnaire.title,
+        description: questionnaire.description,
+        targetRoles: questionnaire.targetRoles,
+        totalResponses: responses.length,
+        validResponses: fallback.qualityStats.valid,
+        suspiciousResponses: fallback.qualityStats.suspicious,
+        fakeResponses: fallback.qualityStats.fake,
+        validRate: `${fallback.qualityStats.validRate}%`
       },
-      {
-        role: 'user',
-        content: JSON.stringify({
-          questionnaire: { title: questionnaire.title, description: questionnaire.description, questions: questionnaire.questions },
-          responses: compactResponses
-        })
-      }
+      questionSummaries: fallback.charts.filter(c => c.type !== 'quality').map(c => {
+        if (c.type === 'rating') {
+          return {
+            title: c.title,
+            type: '评分题',
+            averageScore: `${c.average}/${c.maxScore || 5}`,
+            voterCount: c.count
+          }
+        }
+        if (c.type === 'text') {
+          return {
+            title: c.title,
+            type: '开放问答题',
+            sampleAnswers: (c.sampleAnswers || []).slice(0, 15)
+          }
+        }
+        return {
+          title: c.title,
+          type: c.typeName || '选择题',
+          distributions: (c.rows || []).map(r => `${r.label}: ${r.value}票(${r.percentage}%)`),
+          otherInputs: c.otherSamples && c.otherSamples.length ? c.otherSamples.slice(0, 10) : undefined
+        }
+      }),
+      sampleSubmissions: compactResponses.slice(0, 40)
+    }
+
+    const systemPrompt = [
+      '你是 Dovelin 多芙琳宠物上门服务平台 的资深用户调研总监与数据分析专家。',
+      '请依据提供的问卷调研真实统计数据与用户作答样本，使用腾讯混元 hy3 大模型进行深度全景分析与商业洞察提炼。',
+      '输出必须为纯合法的 JSON 字符串（绝不能包含 markdown 代码块或其他非 JSON 文本），包含以下字段：',
+      '- summary: 总体宏观分析总结，语言精炼专业，包含核心满意度评价、作答参与度及关键业务定性，120-250字。',
+      '- insights: 字符串数组，4-8条核心提炼洞察，结合猫狗宠主需求、上门喂养/遛狗/护理体验深度提炼。',
+      '- strengths: 字符串数组，2-4条用户/宠托师重点好评与平台满意亮点。',
+      '- painPoints: 字符串数组，2-4条用户集中反馈的痛点、担忧或待改善问题。',
+      '- suggestions: 字符串数组，2-4条切实可落地的运营策略、服务流程优化或激励改进建议。',
+      '- qualityAnalysis: 字符串，结合作答真实度、乱填拦截率与样本分布作出的专业质检诊断与调研可信度评估，80-180字。'
+    ].join('\n')
+
+    const userPrompt = `调研数据如下，请基于腾讯混元 hy3 模型输出专业的分析 JSON：\n${JSON.stringify(statsContext)}`
+
+    const aiRes = await runAiJson([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
     ], fallback)
+
+    const ai = aiRes.data || fallback
+    const isAiSuccess = Boolean(aiRes.success)
+
     return {
       summary: text(ai.summary || fallback.summary, 2000),
       insights: Array.isArray(ai.insights) && ai.insights.length ? ai.insights.map(item => text(item, 300)).filter(Boolean).slice(0, 10) : fallback.insights,
@@ -233,7 +318,10 @@ module.exports = function createHandler(context) {
       suggestions: Array.isArray(ai.suggestions) && ai.suggestions.length ? ai.suggestions.map(item => text(item, 200)).filter(Boolean).slice(0, 5) : fallback.suggestions,
       qualityAnalysis: text(ai.qualityAnalysis || fallback.qualityAnalysis, 500),
       charts: fallback.charts,
-      qualityStats: fallback.qualityStats
+      qualityStats: fallback.qualityStats,
+      source: isAiSuccess ? 'hy3' : 'fallback',
+      model: isAiSuccess ? 'hy3' : null,
+      generatedAt: now()
     }
   }
 

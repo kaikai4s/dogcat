@@ -1,6 +1,7 @@
 module.exports = function createHandler(context) {
   const {
     callCloudbaseExtendAi,
+    callCloudbaseAiGateway,
     checkImageSecurity,
     checkRateLimit,
     checkTextSecurity,
@@ -11,6 +12,7 @@ module.exports = function createHandler(context) {
     ensurePetExclusiveId,
     equipPetTitle,
     generatePetExclusiveId,
+    getCloudbaseAiGatewayEnvId,
     getSystemSettings,
     getUser,
     listUserPetTitles,
@@ -265,8 +267,18 @@ module.exports = function createHandler(context) {
 
       if (!imageUrl) throw new Error('照片链接生成失败，请重新上传照片后再试')
 
-      const requestedModel = safeText(data.model).trim() || 'qwen3.5-flash'
-      const modelsToTry = Array.from(new Set([requestedModel, 'qwen3.5-flash', 'qwen3.5-plus', 'glm-4v-flash', 'glm-4v-plus', 'glm-5v-turbo']))
+      const configuredModel = safeText(settings.petBreedAiModel).trim()
+      const requestedModel = safeText(data.model).trim() || configuredModel || 'hunyuan-t1-vision-20250916'
+      const modelsToTry = Array.from(new Set([
+        requestedModel,
+        'hunyuan-t1-vision-20250916',
+        configuredModel,
+        'qwen3.5-flash',
+        'qwen3.5-plus',
+        'glm-4v-flash',
+        'glm-4v-plus',
+        'glm-5v-turbo'
+      ].filter(Boolean)))
       const promptText = '请详细描述并识别照片中的宠物：包括宠物类型（狗狗/猫咪/异宠）、判断出的具体品种名称，以及外貌毛色形态特征。字数在120字以内。最后单独一行返回格式如 {"species":"dog","breed":"柯基"} 的严格JSON，其中 species 只能是 dog、cat、other。'
 
       let aiResponse = null
@@ -275,7 +287,22 @@ module.exports = function createHandler(context) {
         aiResponse = await callCloudbaseExtendAi(modelsToTry, imageUrl, promptText)
       } catch (error) {
         extendAiError = error
-        console.warn('[云函数AI识图] cloud.extend.AI 全部失败，尝试 AI 网关:', error.message || error)
+        console.warn('[云函数AI识图] cloud.extend.AI 全部失败，尝试 AI 网关备用:', error.message || error)
+      }
+
+      if (!aiResponse && typeof callCloudbaseAiGateway === 'function' && typeof getCloudbaseAiGatewayEnvId === 'function') {
+        try {
+          const gatewayContent = await callCloudbaseAiGateway(getCloudbaseAiGatewayEnvId(), requestedModel, imageUrl, promptText)
+          if (gatewayContent) {
+            aiResponse = {
+              rawAiContent: gatewayContent,
+              modelName: requestedModel,
+              source: 'cloudbase_gateway'
+            }
+          }
+        } catch (gwErr) {
+          console.warn('[云函数AI识图] cloudbase AI 网关备用调用失败:', gwErr.message || gwErr)
+        }
       }
 
       if (!aiResponse) {

@@ -1,1 +1,122 @@
-/* 页面样式使用 miniprogram/app.wxss 全局设计系统 */
+/* 服务价格配置页面样式 */
+.page {
+  min-height: 100vh;
+  padding: 24rpx 28rpx 140rpx;
+  box-sizing: border-box;
+}
+
+.dashboard-header {
+  margin-bottom: 24rpx;
+}
+
+.notice {
+  padding: 22rpx 26rpx;
+  border-radius: 24rpx;
+  background: #fff8ec;
+  border: 1rpx solid rgba(255, 153, 102, 0.2);
+  margin-bottom: 24rpx;
+}
+
+.form-card {
+  margin-bottom: 24rpx;
+  padding: 28rpx;
+  border-radius: 32rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(255, 153, 102, 0.16);
+  box-shadow: 0 10rpx 28rpx rgba(123, 89, 62, 0.05);
+  box-sizing: border-box;
+}
+
+.between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.form-card .strong {
+  font-size: 32rpx;
+  font-weight: 900;
+  color: #2d211a;
+}
+
+.form-card .muted {
+  font-size: 24rpx;
+  color: #8e8580;
+  margin-top: 4rpx;
+}
+
+.form-card input {
+  width: 100%;
+  height: 84rpx;
+  padding: 0 24rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid rgba(255, 153, 102, 0.22);
+  background: #fffbf7;
+  font-size: 28rpx;
+  color: #2d211a;
+  box-sizing: border-box;
+  margin-bottom: 16rpx;
+}
+
+.form-card textarea {
+  width: 100%;
+  min-height: 140rpx;
+  height: 140rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid rgba(255, 153, 102, 0.22);
+  background: #fffbf7;
+  font-size: 26rpx;
+  color: #2d211a;
+  box-sizing: border-box;
+  margin-bottom: 20rpx;
+}
+
+button.primary {
+  width: 100% !important;
+  height: 80rpx !important;
+  min-height: 80rpx !important;
+  border-radius: 999rpx !important;
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%) !important;
+  color: #ffffff !important;
+  font-size: 28rpx !important;
+  font-weight: 900 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: 0 10rpx 24rpx rgba(255, 122, 69, 0.22) !important;
+  border: none !important;
+  margin: 10rpx 0 0 !important;
+  box-sizing: border-box !important;
+}
+
+button.primary:active {
+  opacity: 0.9;
+  transform: translateY(1rpx);
+}
+
+button.ghost {
+  width: 100% !important;
+  height: 84rpx !important;
+  min-height: 84rpx !important;
+  border-radius: 999rpx !important;
+  background: #fff0e2 !important;
+  color: #7a6a5e !important;
+  font-size: 28rpx !important;
+  font-weight: 850 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: none !important;
+  margin: 28rpx 0 32rpx !important;
+  box-sizing: border-box !important;
+}
+
+button.ghost:active {
+  background: #ffe6d4 !important;
+}
+
+button::after {
+  display: none !important;
+}

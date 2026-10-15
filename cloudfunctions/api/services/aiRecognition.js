@@ -73,7 +73,7 @@ module.exports = function createService({
   function callCloudbaseAiGateway(envId, modelName, imageUrl, promptText) {
     return new Promise((resolve, reject) => {
       const payload = JSON.stringify({
-        model: modelName || 'qwen3.5-flash',
+        model: modelName || 'hunyuan-t1-vision-20250916',
         messages: [
           {
             role: 'user',
@@ -145,26 +145,37 @@ module.exports = function createService({
   }
 
   function parsePetRecognitionText(rawAiContent) {
-    const rawText = safeText(rawAiContent).replace(/```json/g, '').replace(/```/g, '').trim()
+    const rawText = safeText(rawAiContent).trim()
     if (!rawText) throw new Error('AI 服务未返回识别内容，请稍后重试')
+
+    // Handle thinking models (such as hunyuan-t1-vision-20250916) which output <think>...</think>
+    const textWithoutThink = rawText.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim()
+    const textToParse = textWithoutThink || rawText
+    const cleanTextWithoutCodeblocks = textToParse.replace(/```json/gi, '').replace(/```/g, '').trim()
 
     let species = ''
     let breed = ''
-    const jsonMatch = rawText.match(/\{[\s\S]*?\}/)
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0])
-        species = normalizePetSpecies(safeText(parsed.species))
-        breed = safeText(parsed.breed).trim()
-      } catch (error) {
-        throw new Error('AI 返回格式异常，请换一张清晰照片后重试')
+    const jsonMatches = cleanTextWithoutCodeblocks.match(/\{[\s\S]*?\}/g)
+    if (jsonMatches && jsonMatches.length) {
+      // Find the JSON object that contains species or breed (scanning from last to first)
+      for (let i = jsonMatches.length - 1; i >= 0; i--) {
+        try {
+          const parsed = JSON.parse(jsonMatches[i])
+          const candidateSpecies = normalizePetSpecies(safeText(parsed.species))
+          const candidateBreed = safeText(parsed.breed).trim()
+          if (candidateSpecies || candidateBreed) {
+            species = candidateSpecies
+            breed = candidateBreed
+            break
+          }
+        } catch (_) {}
       }
     }
 
-    if (!species) species = inferPetSpecies(rawText)
+    if (!species) species = inferPetSpecies(textToParse)
     if (!species) throw new Error('AI 未能识别出宠物类型，请换一张清晰正脸或全身照片重试')
 
-    const cleanAnalysisText = rawText.replace(/\{[\s\S]*?\}/g, '').trim() || rawText
+    const cleanAnalysisText = cleanTextWithoutCodeblocks.replace(/\{[\s\S]*?\}/g, '').trim() || cleanTextWithoutCodeblocks
     return {
       species,
       speciesName: petSpeciesName(species),
@@ -184,29 +195,46 @@ module.exports = function createService({
   async function callCloudbaseExtendAi(modelNames, imageUrl, promptText) {
     let lastError = null
     const aiClient = getCloudbaseAiClient()
-    const aiModel = aiClient.client.createModel('cloudbase')
     for (const modelName of modelNames) {
-      try {
-        console.log(`[云函数AI识图] 正在调用微信云开发 AI 服务: ${modelName}, imageUrl: ${imageUrl.slice(0, 50)}...`)
-        const payload = {
-          model: modelName,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: promptText },
-                { type: 'image_url', image_url: { url: imageUrl } }
-              ]
-            }
-          ]
+      const providers = modelName.toLowerCase().startsWith('hunyuan')
+        ? ['hunyuan', 'cloudbase']
+        : ['cloudbase']
+
+      for (const provider of providers) {
+        try {
+          console.log(`[云函数AI识图] 正在调用微信云开发 AI 服务: provider=${provider}, model=${modelName}, imageUrl: ${imageUrl.slice(0, 50)}...`)
+          let aiModel
+          try {
+            aiModel = aiClient.client.createModel(provider)
+          } catch (createErr) {
+            console.warn(`[云函数AI识图] createModel(${provider}) 失败，回退 cloudbase:`, createErr.message || createErr)
+            aiModel = aiClient.client.createModel('cloudbase')
+          }
+
+          const payload = {
+            model: modelName,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: promptText },
+                  { type: 'image_url', image_url: { url: imageUrl } }
+                ]
+              }
+            ]
+          }
+          const res = await aiModel.generateText(aiClient.wrapData ? { data: payload } : payload)
+          const rawAiContent = res.text ||
+            res.content ||
+            (res.data && (res.data.text || res.data.content)) ||
+            (res.choices && res.choices[0] && res.choices[0].message && res.choices[0].message.content) ||
+            (typeof res === 'string' ? res : '')
+          if (rawAiContent) return { rawAiContent, modelName, source: 'cloudbase_extend_ai', provider }
+          lastError = new Error('AI 服务返回空内容')
+        } catch (error) {
+          lastError = error
+          console.warn(`[云函数AI识图] cloud.extend.AI (${provider}/${modelName}) 调用失败:`, error.message || error)
         }
-        const res = await aiModel.generateText(aiClient.wrapData ? { data: payload } : payload)
-        const rawAiContent = res.text || res.content || (res.data && (res.data.text || res.data.content)) || (typeof res === 'string' ? res : '')
-        if (rawAiContent) return { rawAiContent, modelName, source: 'cloudbase_extend_ai' }
-        lastError = new Error('AI 服务返回空内容')
-      } catch (error) {
-        lastError = error
-        console.warn(`[云函数AI识图] cloud.extend.AI (${modelName}) 调用失败:`, error.message || error)
       }
     }
     throw lastError || new Error('微信云开发 AI 服务未响应')
@@ -219,7 +247,7 @@ module.exports = function createService({
           openid: openid || '',
           type: 'pet_breed_recognition',
           avatarFileId: logData.avatarFileId || '',
-          modelName: logData.modelName || 'qwen3.5-flash',
+          modelName: logData.modelName || 'hunyuan-t1-vision-20250916',
           source: logData.source || 'cloudbase_ai',
           rawResponse: logData.rawResponse || '',
           species: logData.species || '',

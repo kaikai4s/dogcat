@@ -232,14 +232,14 @@ test('wechatTransfers: single commission scene is automatically reused for user 
     }
   }
 
-  // 1. Staff withdrawal uses 1005
+  // 1. Staff withdrawal uses 1005 (佣金报酬 automatically normalized to compliant 劳务报酬)
   const staffPayload = transfersService.buildTransferPayload({
     outBillNo: 'bill_staff_single',
     staffOpenid: 'staff_1',
     amount: 50
   }, singleSceneConfig)
   assert.equal(staffPayload.transfer_scene_id, '1005')
-  assert.equal(staffPayload.user_recv_perception, '佣金报酬')
+  assert.equal(staffPayload.user_recv_perception, '劳务报酬')
   assert.deepEqual(staffPayload.transfer_scene_report_infos, [
     { info_type: '岗位类型', info_content: '宠托师' },
     { info_type: '报酬说明', info_content: '宠托师上门服务收益提现' }
@@ -253,7 +253,7 @@ test('wechatTransfers: single commission scene is automatically reused for user 
     amount: 20
   }, singleSceneConfig)
   assert.equal(userPayload.transfer_scene_id, '1005')
-  assert.equal(userPayload.user_recv_perception, '佣金报酬')
+  assert.equal(userPayload.user_recv_perception, '劳务报酬')
   assert.deepEqual(userPayload.transfer_scene_report_infos, [
     { info_type: '岗位类型', info_content: '平台推广顾问' },
     { info_type: '报酬说明', info_content: '邀请好友推广佣金提现' }

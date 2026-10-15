@@ -75,6 +75,17 @@ module.exports = function createService({
     })
   }
 
+  function normalizeTransferPerception(perception) {
+    const text = safeText(perception).trim()
+    if (!text) return ''
+    // 微信支付商家转账官方规范：在“佣金报酬”(1005)场景下，user_recv_perception 参数不支持直接传入“佣金报酬”，
+    // 否则微信接口会直接返回 INVALID_REQUEST 报错：“暂不支持展示当前传入的用户收款场景”。
+    // 该场景微信官方支持的枚举为：“劳务报酬”、“报销款”、“企业补贴”、“开工利是”（留空则默认展示为“劳务报酬”）。
+    // 若配置或传入了“佣金报酬”，自动规范化修正为合规的“劳务报酬”，彻底杜绝接口拦截报错。
+    if (text === '佣金报酬') return '劳务报酬'
+    return text
+  }
+
   function resolveTransferScene(request, config) {
     const scenes = config.scenes || {}
     const commissionScene = scenes.commission || {}
@@ -93,9 +104,10 @@ module.exports = function createService({
     // 若商户单独配置了与主场景不同的有效独立场景（如已在微信商户平台开通多个转账场景）：
     if (specific && specificSceneId && specificSceneId !== primarySceneId) {
       const reports = Array.isArray(specific.sceneReportInfos) && specific.sceneReportInfos.length ? specific.sceneReportInfos : config.sceneReportInfos
+      const customPerception = normalizeTransferPerception(specific.userRecvPerception || config.userRecvPerception)
       return {
         sceneId: specificSceneId,
-        userRecvPerception: safeText(specific.userRecvPerception || config.userRecvPerception).trim(),
+        userRecvPerception: customPerception,
         sceneReportInfos: reports,
         remark: safeText(specific.remark || (targetKey === 'marketing' ? '邀请活动收益提现' : '一次性用品采购报销')).trim()
       }
@@ -103,7 +115,8 @@ module.exports = function createService({
 
     // 单场景模式（统一复用商户已开通的“佣金报酬”场景）：
     // 在微信支付规范中，1005 佣金报酬支持通过【岗位类型】+【报酬说明】向平台推广顾问发放邀请返佣款
-    const defaultCommissionPerception = safeText(commissionScene.userRecvPerception || config.userRecvPerception || '佣金报酬').trim() || '佣金报酬'
+    const rawCommissionPerception = safeText(commissionScene.userRecvPerception || config.userRecvPerception).trim()
+    const defaultCommissionPerception = normalizeTransferPerception(rawCommissionPerception) || '劳务报酬'
 
     if (targetKey === 'marketing') {
       const customReports = Array.isArray(specific && specific.sceneReportInfos) && specific.sceneReportInfos.length
@@ -112,9 +125,10 @@ module.exports = function createService({
             { info_type: '岗位类型', info_content: '平台推广顾问' },
             { info_type: '报酬说明', info_content: '邀请好友推广佣金提现' }
           ]
+      const marketingPerception = normalizeTransferPerception((specific && specific.userRecvPerception) || defaultCommissionPerception) || '劳务报酬'
       return {
         sceneId: primarySceneId,
-        userRecvPerception: safeText((specific && specific.userRecvPerception) || defaultCommissionPerception).trim(),
+        userRecvPerception: marketingPerception,
         sceneReportInfos: customReports,
         remark: safeText((specific && specific.remark) || '邀请好友推广佣金提现').trim()
       }
@@ -127,9 +141,10 @@ module.exports = function createService({
             { info_type: '岗位类型', info_content: '宠托师' },
             { info_type: '报酬说明', info_content: '一次性服务用品采购报销' }
           ]
+      const reimbPerception = normalizeTransferPerception((specific && specific.userRecvPerception) || '报销款') || '报销款'
       return {
         sceneId: primarySceneId,
-        userRecvPerception: safeText((specific && specific.userRecvPerception) || '报销款').trim(),
+        userRecvPerception: reimbPerception,
         sceneReportInfos: customReports,
         remark: safeText((specific && specific.remark) || '一次性用品采购报销').trim()
       }
@@ -157,14 +172,17 @@ module.exports = function createService({
     const scene = resolveTransferScene(request, config)
     const recipientOpenid = safeText(request.recipientOpenid || request.staffOpenid || request.userOpenid || request.openid).trim()
     if (!recipientOpenid) throw new Error('微信提现收款openid缺失，无法发起转账')
+    const perception = normalizeTransferPerception(scene.userRecvPerception)
     const payload = {
       appid: config.appId,
       out_bill_no: request.outBillNo,
       transfer_scene_id: scene.sceneId,
       openid: recipientOpenid,
       transfer_amount: amountFen,
-      transfer_remark: safeText(scene.remark || request.remark).trim(),
-      user_recv_perception: scene.userRecvPerception
+      transfer_remark: safeText(scene.remark || request.remark).trim()
+    }
+    if (perception) {
+      payload.user_recv_perception = perception
     }
     if (config.transferNotifyUrl) payload.notify_url = config.transferNotifyUrl
     if (Array.isArray(scene.sceneReportInfos) && scene.sceneReportInfos.length) {

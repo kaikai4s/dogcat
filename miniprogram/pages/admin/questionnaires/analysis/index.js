@@ -63,11 +63,11 @@ Page({
   analyze() {
     if (this.data.loading) return
     this.setData({ loading: true })
-    wx.showLoading({ title: 'AI 深度整理中...' })
+    wx.showLoading({ title: '混元 hy3 深度分析中...' })
     callFunction('questionnaire', 'analyzeAI', { id: this.data.id })
       .then((report) => {
         wx.hideLoading()
-        wx.showToast({ title: '分析完成', icon: 'success' })
+        wx.showToast({ title: 'hy3 分析完成', icon: 'success' })
         this.setData({
           loading: false,
           report,

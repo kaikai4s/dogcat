@@ -180,6 +180,41 @@ module.exports = function createService({
       const inviter = ((await db.collection('users').where({ openid: boundInviterOpenid }).limit(1).get().catch(() => ({ data: [] }))).data || [])[0]
       boundInviteCode = safeText(inviter && inviter.inviteCode).trim().toUpperCase()
     }
+    const withdrawStatusTextMap = {
+      pending: '审核中',
+      approved: '待打款',
+      transferring: '打款中',
+      paid: '已到账',
+      rejected: '已驳回',
+      transfer_failed: '打款失败'
+    }
+    const wechatTransferStateTextMap = {
+      WAIT_USER_CONFIRM: '待收款人确认收款',
+      ACCEPTED: '微信已受理',
+      TRANSFERING: '微信转账处理中',
+      PROCESSING: '微信转账处理中',
+      SUCCESS: '已到账',
+      FAIL: '转账失败',
+      CANCELLED: '已撤销'
+    }
+    const decoratedWithdraws = withdraws.map((w) => {
+      const status = safeText(w.status).toLowerCase()
+      const transferState = safeText(w.wechatTransferState).toUpperCase()
+      const canConfirmTransfer = w.payoutChannel === 'wechat_wallet' && transferState === 'WAIT_USER_CONFIRM'
+      let statusText = withdrawStatusTextMap[status] || '处理中'
+      if (canConfirmTransfer) {
+        statusText = '待确认收款'
+      } else if (status === 'transferring') {
+        statusText = '微信转账中'
+      }
+      return {
+        ...w,
+        amountText: Number(w.amount || 0).toFixed(2),
+        statusText,
+        wechatTransferStateText: wechatTransferStateTextMap[transferState] || transferState,
+        canConfirmTransfer
+      }
+    })
     const wechatTransferQuota = typeof getWechatTransferQuotaSnapshot === 'function'
       ? await getWechatTransferQuotaSnapshot(openid, Math.round(summary.available * 100)).catch(() => null)
       : null
@@ -198,9 +233,10 @@ module.exports = function createService({
       invitationRewardAmount,
       invitationShareImageUrl: safeText(settings.shareImageUrl).trim(),
       wechatTransferQuota,
+      hasPendingWithdrawConfirm: decoratedWithdraws.some(w => w.canConfirmTransfer),
       earnings: summary.rows,
       invites: decoratedInvites.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
-      withdraws: withdraws.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      withdraws: decoratedWithdraws.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     }
   }
 

@@ -89,7 +89,7 @@
         <button class="ghost-btn compact-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="queryWithdrawTransfer">查询结果</button>
         <button class="primary-btn compact-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="retryWithdrawTransfer">安全重试</button>
       </view>
-      <button class="ghost-btn full-btn" wx:if="{{item.isWechatWallet && item.status === 'transfer_failed'}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="releaseFailedWithdraw">释放收益</button>
+      <button class="ghost-btn full-btn release-failed-btn" wx:if="{{item.isWechatWallet && item.status === 'transfer_failed'}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="releaseFailedWithdraw">释放收益并退回余额</button>
       <button class="primary-btn full-btn" wx:if="{{!item.isWechatWallet && item.status === 'approved'}}" data-id="{{item._id}}" bindtap="markPaid">标记已打款</button>
     </view>
     <view class="empty-state" wx:if="{{!requests.length}}">暂无提现申请。</view>

@@ -264,7 +264,7 @@ test('pet profile stores photo birthday breed and AI interaction fields', async 
         createModel() {
           return {
             async generateText(payload) {
-              assert.equal(payload.model, 'qwen3.5-flash')
+              assert.equal(payload.model, 'hunyuan-t1-vision-20250916')
               assert.equal(payload.messages[0].content[1].type, 'image_url')
               return { text: '照片中的宠物是一只威尔士柯基犬，体型矮小，大耳朵，毛色黄白相间。{"species":"dog","breed":"威尔士柯基犬"}' }
             }
@@ -281,7 +281,52 @@ test('pet profile stores photo birthday breed and AI interaction fields', async 
   assert.equal(aiRecognize.ok, true)
   assert.equal(aiRecognize.data.species, 'dog')
   assert.equal(aiRecognize.data.breed, '威尔士柯基犬')
+  assert.equal(aiRecognize.data.modelName, 'hunyuan-t1-vision-20250916')
   assert.match(aiRecognize.data.aiResultText, /柯基/)
+})
+
+test('pet AI recognition supports hunyuan-t1-vision-20250916 thinking tokens and custom model specification', async () => {
+  const aiDb = createCollectionStore({
+    users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
+    ai_logs: []
+  })
+  let capturedModel = ''
+  let capturedProvider = ''
+  const aiFn = loadCloudFunction('api', aiDb, 'openid_client', {
+    async getTempFileURL({ fileList }) {
+      return { fileList: [{ fileID: fileList[0], tempFileURL: 'https://example.com/ragdoll-photo.jpg' }] }
+    },
+    ai() {
+      return {
+        createModel(provider) {
+          capturedProvider = provider
+          return {
+            async generateText(payload) {
+              capturedModel = payload.model
+              return {
+                text: '<think>\n分析照片特征：\n这是一只布偶猫，蓝眼睛，重点色，长毛。\n尝试JSON输出：{"species":"cat","breed":"布偶猫"}\n</think>\n照片中的猫咪是一只漂亮的布偶猫，拥有清澈的蓝色眼睛和丰厚的被毛，性格温顺黏人。\n{"species":"cat","breed":"布偶猫"}'
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  const aiRecognize = await aiFn.main({
+    module: 'pet',
+    action: 'recognizePetBreed',
+    data: { avatarFileId: 'cloud://ragdoll-photo.jpg', model: 'hunyuan-t1-vision-20250916' }
+  })
+  assert.equal(aiRecognize.ok, true)
+  assert.equal(aiRecognize.data.modelName, 'hunyuan-t1-vision-20250916')
+  assert.equal(aiRecognize.data.species, 'cat')
+  assert.equal(aiRecognize.data.breed, '布偶猫')
+  // Verify <think> reasoning was completely stripped from user-facing result
+  assert.ok(!aiRecognize.data.aiResultText.includes('<think>'))
+  assert.ok(!aiRecognize.data.aiResultText.includes('分析照片特征'))
+  assert.match(aiRecognize.data.aiResultText, /漂亮的布偶猫/)
+  assert.equal(capturedModel, 'hunyuan-t1-vision-20250916')
+  assert.ok(['hunyuan', 'cloudbase'].includes(capturedProvider))
 })
 
 test('pet AI recognition requires an uploaded image', async () => {

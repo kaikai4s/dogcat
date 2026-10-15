@@ -225,6 +225,28 @@
   grid-template-columns: 1fr 1fr;
   gap: 14rpx;
   margin-top: 18rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.action-row button,
+.action-row .compact-btn {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: 76rpx !important;
+  min-height: 76rpx !important;
+  padding: 0 16rpx !important;
+  margin: 0 !important;
+  border-radius: 20rpx !important;
+  font-size: 25rpx !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
 }
 
 .withdraw-audit-actions {
@@ -303,10 +325,15 @@
   text-align: right;
 }
 
+.admin-finance-page button::after {
+  display: none !important;
+}
+
 .primary-btn,
-.ghost-btn {
+.ghost-btn,
+.withdraw-start-btn {
   min-height: 76rpx;
-  border-radius: 24rpx;
+  border-radius: 20rpx;
   font-size: 26rpx;
   font-weight: 900;
   display: flex;
@@ -314,6 +341,7 @@
   justify-content: center;
   border: none;
   line-height: 1;
+  box-sizing: border-box;
 }
 
 .primary-btn {
@@ -322,14 +350,49 @@
   box-shadow: 0 8rpx 20rpx rgba(255, 122, 69, 0.2);
 }
 
+.primary-btn:active {
+  opacity: 0.9;
+  transform: translateY(1rpx);
+}
+
 .ghost-btn {
   background: #fff0e2;
   color: #7a6a5e;
 }
 
-.full-btn {
-  width: 100%;
-  margin-top: 18rpx;
+.ghost-btn:active {
+  background: #ffe6d4;
+}
+
+button.full-btn {
+  width: 100% !important;
+  margin: 16rpx 0 0 0 !important;
+  height: 76rpx !important;
+  min-height: 76rpx !important;
+  border-radius: 20rpx !important;
+  font-size: 26rpx !important;
+  font-weight: 900 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+}
+
+.release-failed-btn {
+  color: #b42318 !important;
+  background: #fff5f4 !important;
+  border: 1rpx solid #fecdca !important;
+  box-shadow: none !important;
+  font-size: 24rpx !important;
+  font-weight: 850 !important;
+  height: 70rpx !important;
+  min-height: 70rpx !important;
+  border-radius: 18rpx !important;
+  margin-top: 14rpx !important;
+}
+
+.release-failed-btn:active {
+  background: #fee4e2 !important;
 }
 
 .empty-state {

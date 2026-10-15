@@ -71,7 +71,18 @@ test('user asset withdrawal splits earnings and settles after transfer starts', 
   assert.equal(second.ok, true)
   const approved = await admin.main({ module: 'admin', action: 'auditWithdrawRequest', data: { id: second.data._id, approved: true } })
   assert.equal(approved.data.status, 'approved')
-  db.state.withdraw_requests.find((row) => row._id === second.data._id).status = 'transferring'
+  const reqItem = db.state.withdraw_requests.find((row) => row._id === second.data._id)
+  reqItem.status = 'transferring'
+  reqItem.wechatTransferState = 'WAIT_USER_CONFIRM'
+
+  const waitingSummary = await client.main({ module: 'finance', action: 'getUserAssetSummary' })
+  assert.equal(waitingSummary.data.hasPendingWithdrawConfirm, true)
+  const waitingWithdraw = waitingSummary.data.withdraws.find(w => w._id === second.data._id)
+  assert.equal(waitingWithdraw.canConfirmTransfer, true)
+  assert.equal(waitingWithdraw.statusText, '待确认收款')
+  assert.equal(waitingWithdraw.wechatTransferStateText, '待收款人确认收款')
+  assert.equal(waitingWithdraw.amountText, '2.00')
+
   const paid = await admin.main({ module: 'admin', action: 'markWithdrawPaid', data: { id: second.data._id } })
   assert.equal(paid.data.status, 'paid')
   const paidSlice = db.state.user_asset_earnings.find((row) => row.withdrawRequestId === second.data._id)
@@ -80,6 +91,11 @@ test('user asset withdrawal splits earnings and settles after transfer starts', 
   const summary = await client.main({ module: 'finance', action: 'getUserAssetSummary' })
   assert.equal(summary.data.availableAmount, 3)
   assert.equal(summary.data.withdrawnAmount, 2)
+  assert.equal(summary.data.hasPendingWithdrawConfirm, false)
+  const paidWithdraw = summary.data.withdraws.find(w => w._id === second.data._id)
+  assert.equal(paidWithdraw.canConfirmTransfer, false)
+  assert.equal(paidWithdraw.statusText, '已到账')
+
   const listed = await admin.main({ module: 'admin', action: 'listWithdrawRequests', data: {} })
   const listedUser = listed.data.find((row) => row.assetType === 'user')
   assert.equal(listedUser.currentAvailableAmount, 3)

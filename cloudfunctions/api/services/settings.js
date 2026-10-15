@@ -209,6 +209,7 @@ module.exports = function createService({
       qwenApiKeyConfigured,
       juheTelecomKeyConfigured,
       qwenModel: safeText(value.qwenModel).trim() || 'qwen3.5-flash',
+      petBreedAiModel: safeText(value.petBreedAiModel || value.aiModel).trim() || 'hunyuan-t1-vision-20250916',
       staffTraining: normalizeStaffTrainingConfig(value.staffTraining),
       staffDeposit: normalizeStaffDepositConfig(value.staffDeposit),
       staffSupplies: normalizeStaffSuppliesConfig(value.staffSupplies),

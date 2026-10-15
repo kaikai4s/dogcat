@@ -426,4 +426,146 @@ test('questionnaire handles text questions and other:custom input in single/mult
   assert.ok(q3Chart.sampleAnswers.some(s => s.includes('希望能增加更多节假日')))
 })
 
+test('questionnaire analyzeAI uses hy3 model with rich stats context, parses JSON and marks model metadata', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin_1', openid: 'admin_openid', roles: ['admin'], status: 'active' },
+      { _id: 'client_1', openid: 'client_openid', roles: ['client'], status: 'active' }
+    ],
+    questionnaires: [
+      {
+        _id: 'q_satisfaction',
+        title: '猫咪上门喂养深度满意度调研',
+        description: '了解猫主人对上门服务的核心诉求',
+        targetRoles: ['client'],
+        status: 'published',
+        questions: [
+          { id: 'q_1', type: 'single', title: '喂养满意度', options: ['非常满意', '基本满意', '不满意'] },
+          { id: 'q_2', type: 'rating', title: '服务评分', max: 5 },
+          { id: 'q_3', type: 'long_text', title: '服务建议' }
+        ]
+      }
+    ],
+    questionnaire_responses: [
+      {
+        _id: 'resp_1',
+        questionnaireId: 'q_satisfaction',
+        role: 'client',
+        openid: 'client_openid',
+        aiQuality: { verdict: 'valid', score: 100 },
+        answers: [
+          { questionId: 'q_1', title: '喂养满意度', value: '非常满意' },
+          { questionId: 'q_2', title: '服务评分', value: 5 },
+          { questionId: 'q_3', title: '服务建议', value: '宠托师拍的猫咪吃饭小视频非常清晰，让人放心！' }
+        ]
+      }
+    ],
+    questionnaire_ai_reports: []
+  })
+
+  let modelCalledWith = null
+  const mockAiExt = {
+    createModel(provider) {
+      assert.ok(provider === 'hunyuan' || provider === 'cloudbase')
+      return {
+        async generateText(options) {
+          modelCalledWith = options
+          return {
+            choices: [
+              {
+                message: {
+                  content: `\`\`\`json
+{
+  "summary": "本次猫咪上门喂养调研总体满意度极高，用户对全程视频反馈机制给予强烈好评，有效建立了到家履约信任感。",
+  "insights": [
+    "猫主人高度看重实时互动与可视化反馈（如视频打卡与进出门安全提示）。",
+    "到家服务准时率与专业温和态度是用户建立长期复购的核心动因。",
+    "节假日高峰期预约难是潜在的痛点瓶颈。"
+  ],
+  "strengths": [
+    "实时打卡与拍摄反馈极其专业细致，极大缓解宠主焦虑。",
+    "宠托师态度温和，猫咪适应良好。"
+  ],
+  "painPoints": [
+    "热门节假日预约档期紧张，偶有约不上心仪宠托师的情况。"
+  ],
+  "suggestions": [
+    "推广节假日提前锁单机制，提升服务履约确定性。",
+    "进一步标准化上门进门、消毒、喂粮、清洁猫砂的视觉记录规范。"
+  ],
+  "qualityAnalysis": "本期样本作答质量优良，有效作答占比100%，真实反映了核心猫咪家长的实际心声。"
+}
+\`\`\``
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+
+  const adminFn = loadCloudFunction('api', db, 'admin_openid', {
+    extend: {
+      AI: mockAiExt
+    }
+  })
+
+  const res = await adminFn.main({
+    module: 'questionnaire',
+    action: 'analyzeAI',
+    data: { id: 'q_satisfaction' }
+  })
+
+  assert.equal(res.ok, true)
+  assert.equal(res.data.source, 'hy3')
+  assert.equal(res.data.model, 'hy3')
+  assert.equal(modelCalledWith.model, 'hy3')
+  assert.ok(modelCalledWith.messages[0].content.includes('hy3'))
+  assert.ok(modelCalledWith.messages[1].content.includes('猫咪上门喂养深度满意度调研'))
+  assert.ok(res.data.summary.includes('总体满意度极高'))
+  assert.equal(res.data.insights.length, 3)
+  assert.equal(res.data.strengths.length, 2)
+  assert.equal(res.data.painPoints.length, 1)
+  assert.equal(res.data.suggestions.length, 2)
+  assert.ok(res.data.qualityAnalysis.includes('本期样本作答质量优良'))
+
+  // 验证保存至 questionnaire_ai_reports 数据库记录
+  const savedReport = db.state.questionnaire_ai_reports.find(r => r.questionnaireId === 'q_satisfaction')
+  assert.ok(savedReport)
+  assert.equal(savedReport.source, 'hy3')
+  assert.equal(savedReport.model, 'hy3')
+})
+
+test('questionnaire analyzeAI handles empty responses and AI failures gracefully', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'admin_1', openid: 'admin_openid', roles: ['admin'], status: 'active' }
+    ],
+    questionnaires: [
+      {
+        _id: 'q_empty',
+        title: '新功能调研问卷',
+        targetRoles: ['client'],
+        status: 'draft',
+        questions: [{ id: 'q_1', type: 'single', title: '满意吗', options: ['满意', '一般'] }]
+      }
+    ],
+    questionnaire_responses: [],
+    questionnaire_ai_reports: []
+  })
+
+  const adminFn = loadCloudFunction('api', db, 'admin_openid')
+  const emptyRes = await adminFn.main({
+    module: 'questionnaire',
+    action: 'analyzeAI',
+    data: { id: 'q_empty' }
+  })
+  assert.equal(emptyRes.ok, true)
+  assert.ok(emptyRes.data.summary.includes('暂未收到作答数据'))
+  assert.equal(emptyRes.data.source, 'hy3')
+  assert.equal(emptyRes.data.model, 'hy3')
+})
+
+
 
