@@ -574,15 +574,15 @@ button.rank-view-option.is-active { color: #b85b2c; background: #fff; font-weigh
 .ranking-card .section-head { flex-wrap: wrap; }
 .rank-waterfall { display: flex; align-items: flex-start; gap: 20rpx; }
 .rank-column { flex: 1; min-width: 0; }
-.gallery-card { margin-bottom: 20rpx; overflow: hidden; border-radius: 28rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(77, 57, 43, .06); }
-.gallery-cover { position: relative; min-height: 230rpx; max-height: 520rpx; overflow: hidden; background: #f1e9df; }
+.gallery-card { margin-bottom: 24rpx; overflow: visible; border-radius: 28rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(77, 57, 43, .06); position: relative; }
+.gallery-cover { position: relative; min-height: 230rpx; max-height: 520rpx; overflow: hidden; background: #f1e9df; border-top-left-radius: 28rpx; border-top-right-radius: 28rpx; }
 .gallery-image { display: block; width: 100%; height: auto; min-height: 230rpx; }
 .gallery-placeholder { height: 330rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16rpx; color: #ad9989; font-size: 23rpx; }
 .gallery-placeholder .remix-icon { font-size: 66rpx; }
 .gallery-photo-count { position: absolute; top: 16rpx; right: 16rpx; display: flex; align-items: center; gap: 6rpx; padding: 6rpx 12rpx; border-radius: 999rpx; color: #fff; background: rgba(30, 26, 22, .45); font-size: 20rpx; }
-.gallery-rank { position: absolute; left: 14rpx; right: 14rpx; bottom: 14rpx; display: flex; align-items: center; justify-content: center; gap: 8rpx; min-height: 48rpx; padding: 8rpx; border-radius: 14rpx; color: #fff; background: rgba(30, 26, 22, .72); font-size: 22rpx; font-weight: 800; }
+.gallery-rank { position: absolute; left: 14rpx; right: 14rpx; bottom: 14rpx; display: flex; align-items: center; justify-content: center; gap: 8rpx; min-height: 48rpx; padding: 8rpx; border-radius: 14rpx; color: #fff; background: rgba(30, 26, 22, .72); font-size: 22rpx; font-weight: 800; z-index: 12; }
 .gallery-rank-top .remix-icon { color: #ffdb8f; }
-.gallery-body { padding: 20rpx; }
+.gallery-body { padding: 20rpx; background: #fff; border-bottom-left-radius: 28rpx; border-bottom-right-radius: 28rpx; position: relative; z-index: 3; }
 .gallery-name { color: #30271f; font-size: 30rpx; font-weight: 900; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gallery-meta { margin-top: 8rpx; color: #8e8580; font-size: 23rpx; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gallery-id { margin-top: 6rpx; color: #a3978c; font-size: 20rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -596,4 +596,335 @@ button.rank-view-option.is-active { color: #b85b2c; background: #fff; font-weigh
 .gallery-vote-label { color: #a3978c; font-size: 20rpx; }
 button.gallery-vote-btn { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; min-height: 56rpx; margin: 0; padding: 8rpx 16rpx; border: none; border-radius: 16rpx; color: #b45b30; background: #fff0e2; font-size: 22rpx; font-weight: 800; line-height: 1.4; }
 button.gallery-vote-btn[disabled] { color: #a89b90; background: #f4f1ed; }
+
+/* ==================== 多图可拖拽卡片堆叠 (Draggable Card Stack) ==================== */
+.gallery-cover.has-stack {
+  height: 440rpx;
+  min-height: 440rpx;
+  max-height: 440rpx;
+  overflow: visible !important;
+  background: transparent !important;
+  touch-action: pan-y;
+  position: relative;
+}
+
+.card-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 28rpx;
+  overflow: hidden;
+  box-sizing: border-box;
+  transform-origin: 50% 80%;
+  backface-visibility: hidden;
+  border: 1rpx solid rgba(255, 255, 255, 0.7);
+  background: #ffffff;
+}
+
+.card-layer image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 顶层主卡片 (手势跟手拖拽、位移比例旋转、快速甩出) */
+.card-layer-top {
+  z-index: 10;
+  transform: translate3d(0, 0, 0) rotate(0deg);
+  box-shadow: 0 16rpx 36rpx rgba(45, 33, 26, 0.12), 0 4rpx 10rpx rgba(45, 33, 26, 0.05);
+  touch-action: pan-y;
+}
+
+/* 中间卡片 (下一张平滑缩放补位) */
+.card-layer-next {
+  z-index: 5;
+  transform: scale(0.88) translateY(14rpx);
+  opacity: 0.88;
+  box-shadow: 0 10rpx 24rpx rgba(45, 33, 26, 0.08);
+}
+
+/* 底部卡片 (深度背景层) */
+.card-layer-bottom {
+  z-index: 2;
+  transform: scale(0.80) translateY(26rpx);
+  opacity: 0.60;
+  box-shadow: 0 6rpx 16rpx rgba(45, 33, 26, 0.04);
+}
+
+.gallery-image.single-image {
+  width: 100%;
+  height: 440rpx;
+  object-fit: cover;
+  display: block;
+}
+
+/* 照片角标 (圆角黑色胶囊风格，参考效果图 TODAY 标签) */
+.stack-badge-count {
+  position: absolute;
+  top: 18rpx;
+  right: 18rpx;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  color: #ffffff;
+  background: rgba(30, 26, 22, 0.75);
+  backdrop-filter: blur(8px);
+  font-size: 20rpx;
+  font-weight: 850;
+  letter-spacing: 1rpx;
+}
+
+/* 点状指示器 */
+.stack-dots {
+  position: absolute;
+  top: 18rpx;
+  left: 18rpx;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 6rpx 12rpx;
+  border-radius: 999rpx;
+  background: rgba(30, 26, 22, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.stack-dot {
+  width: 8rpx;
+  height: 8rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  transition: all 0.25s ease;
+}
+
+.stack-dot.active {
+  width: 18rpx;
+  border-radius: 999rpx;
+  background: #ff8c42;
+}
+
+/* ==================== 宠物大图卡片堆叠沉浸式浮层 (Preview Modal) ==================== */
+.pet-stack-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.modal-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(18, 14, 11, 0.88);
+  backdrop-filter: blur(12px);
+  animation: modal-fade-in 0.25s ease-out;
+}
+
+.modal-content {
+  position: relative;
+  z-index: 10;
+  width: 650rpx;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: modal-pop-up 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-pop-up {
+  from { opacity: 0; transform: scale(0.92) translateY(30rpx); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+
+.modal-pet-name {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  color: #ffffff;
+  font-size: 36rpx;
+  font-weight: 950;
+}
+
+.modal-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffedd5;
+  font-size: 21rpx;
+  font-weight: 850;
+}
+
+.modal-rank-badge.top-rank {
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%);
+  color: #ffffff;
+}
+
+.modal-pet-meta {
+  margin-top: 6rpx;
+  color: #c4b5a8;
+  font-size: 24rpx;
+}
+
+.modal-close-btn {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.modal-card-stage {
+  position: relative;
+  width: 620rpx;
+  height: 760rpx;
+  border-radius: 36rpx;
+  perspective: 1200px;
+  touch-action: pan-y;
+}
+
+.modal-card-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 36rpx;
+  overflow: hidden;
+  transform-origin: 50% 100%;
+  box-shadow: 0 16rpx 44rpx rgba(0, 0, 0, 0.35);
+  background: #2b221b;
+}
+
+.modal-card-layer image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.modal-card-top {
+  z-index: 10;
+  transform: translate3d(0, 0, 0) rotate(0deg);
+}
+
+.modal-card-next {
+  z-index: 5;
+  transform: scale(0.92) translateY(18rpx);
+  opacity: 0.88;
+  filter: brightness(0.95);
+}
+
+.modal-card-bottom {
+  z-index: 2;
+  transform: scale(0.85) translateY(32rpx);
+  opacity: 0.6;
+  filter: brightness(0.9);
+}
+
+.modal-count-pill {
+  position: absolute;
+  top: 20rpx;
+  right: 20rpx;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  color: #ffffff;
+  background: rgba(20, 16, 13, 0.65);
+  backdrop-filter: blur(8px);
+  font-size: 22rpx;
+  font-weight: 850;
+}
+
+.modal-footer {
+  width: 100%;
+  margin-top: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.modal-votes-count {
+  display: flex;
+  align-items: baseline;
+  gap: 6rpx;
+  color: #ff8c42;
+}
+
+.modal-votes-count .remix-icon {
+  font-size: 30rpx;
+}
+
+.modal-votes-count .votes-num {
+  font-size: 40rpx;
+  font-weight: 950;
+}
+
+.modal-votes-count .votes-text {
+  font-size: 24rpx;
+  color: #c4b5a8;
+}
+
+.modal-vote-btn {
+  flex: 1;
+  min-height: 80rpx !important;
+  border-radius: 999rpx !important;
+  background: linear-gradient(135deg, #ff8c42 0%, #ea580c 100%) !important;
+  color: #ffffff !important;
+  font-size: 28rpx !important;
+  font-weight: 950 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10rpx !important;
+  box-shadow: 0 10rpx 26rpx rgba(234, 88, 12, 0.35) !important;
+  border: none !important;
+}
+
+.modal-vote-btn[disabled] {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #a89b90 !important;
+  box-shadow: none !important;
+}
 

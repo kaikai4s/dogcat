@@ -1,3 +1,4 @@
+<wxs module="cardDrag" src="./card-stack.wxs" />
 <view class="page pet-beauty-page view-{{rankView}} {{themeClass}}">
   <view class="beauty-hero">
     <view class="hero-badge"><text class="remix-icon ri-heart-3-fill"></text><text>最美宠物活动</text></view>
@@ -72,14 +73,68 @@
 
     <view class="rank-waterfall" wx:if="{{ranking.length && rankView === 'waterfall'}}">
       <view class="rank-column" wx:for="{{rankColumns}}" wx:for-item="column" wx:key="id">
-        <view class="gallery-card" wx:for="{{column.pets}}" wx:key="petId" data-id="{{item.petId}}" bindtap="previewPet">
-          <view class="gallery-cover">
-            <image wx:if="{{item.coverUrl}}" class="gallery-image" src="{{item.coverUrl}}" mode="widthFix" lazy-load />
-            <view class="gallery-placeholder" wx:else><text class="remix-icon ri-image-line"></text><text>美照待更新</text></view>
-            <view class="gallery-photo-count" wx:if="{{item.beautyPhotos.length > 1}}"><text class="remix-icon ri-image-line"></text>{{item.beautyPhotos.length}}</view>
-            <view class="gallery-rank {{item.displayRank <= 3 ? 'gallery-rank-top' : ''}}"><text class="remix-icon ri-vip-crown-fill" wx:if="{{item.displayRank <= 3}}"></text><text>{{isHistory ? '历史月榜' : '本月人气'}} · 第{{item.displayRank}}名</text></view>
+        <view class="gallery-card" wx:for="{{column.pets}}" wx:key="petId">
+          <!-- 封面卡片堆叠区域 -->
+          <view class="gallery-cover {{item.hasMultiplePhotos ? 'has-stack' : ''}}" 
+                data-id="{{item.petId}}"
+                bindtap="previewPet">
+            
+            <!-- 多图可拖拽卡片堆叠 -->
+            <block wx:if="{{item.hasMultiplePhotos}}">
+              <!-- 底层卡片 (第3张深度背景，若有) -->
+              <view id="bottom-layer-{{item.petId}}" class="card-layer card-layer-bottom" wx:if="{{item.bottomPhotoUrl}}">
+                <image src="{{item.bottomPhotoUrl}}" mode="aspectFill" lazy-load />
+              </view>
+
+              <!-- 中间卡片 (第2张缩放补位) -->
+              <view id="next-layer-{{item.petId}}" class="card-layer card-layer-next">
+                <image src="{{item.nextPhotoUrl}}" mode="aspectFill" lazy-load />
+              </view>
+
+              <!-- 顶层卡片 (第1张主图，跟随手指拖拽旋转，甩出) -->
+              <view id="top-layer-{{item.petId}}"
+                    class="card-layer card-layer-top"
+                    data-petid="{{item.petId}}"
+                    data-photocount="{{item.photoCount}}"
+                    prop="{{item.activePhotoIndex}}"
+                    change:prop="{{cardDrag.onActiveIndexChange}}"
+                    bindtouchstart="{{cardDrag.touchstart}}"
+                    bindtouchmove="{{cardDrag.touchmove}}"
+                    bindtouchend="{{cardDrag.touchend}}"
+                    bindtouchcancel="{{cardDrag.touchcancel}}">
+                <image src="{{item.topPhotoUrl}}" mode="aspectFill" lazy-load />
+              </view>
+
+              <!-- 点状进度指示器 -->
+              <view class="stack-dots" wx:if="{{item.photoCount <= 6}}">
+                <view class="stack-dot {{dot.active ? 'active' : ''}}" wx:for="{{item.dots}}" wx:for-item="dot" wx:key="index"></view>
+              </view>
+
+              <!-- 照片张数角标 -->
+              <view class="stack-badge-count">
+                <text class="remix-icon ri-image-line"></text>
+                <text>{{item.displayPhotoIndex}}/{{item.photoCount}}</text>
+              </view>
+            </block>
+
+            <!-- 单图普通展示 -->
+            <block wx:else>
+              <image wx:if="{{item.topPhotoUrl || item.coverUrl}}" class="gallery-image" src="{{item.topPhotoUrl || item.coverUrl}}" mode="aspectFill" lazy-load />
+              <view class="gallery-placeholder" wx:else>
+                <text class="remix-icon ri-image-line"></text>
+                <text>美照待更新</text>
+              </view>
+            </block>
+
+            <!-- 排名角标 -->
+            <view class="gallery-rank {{item.displayRank <= 3 ? 'gallery-rank-top' : ''}}">
+              <text class="remix-icon ri-vip-crown-fill" wx:if="{{item.displayRank <= 3}}"></text>
+              <text>{{isHistory ? '历史月榜' : '本月人气'}} · 第{{item.displayRank}}名</text>
+            </view>
           </view>
-          <view class="gallery-body">
+
+          <!-- 卡片信息区域 -->
+          <view class="gallery-body" data-id="{{item.petId}}" bindtap="previewPet">
             <view class="gallery-name">{{item.name}}</view>
             <view class="gallery-meta">{{item.ageText || '年龄未填写'}} · {{item.speciesText || '毛孩子'}}</view>
             <view class="gallery-id" wx:if="{{item.exclusiveId}}">ID · {{item.exclusiveId}}</view>
@@ -132,6 +187,71 @@
       <view>{{loading ? '正在加载爱宠榜…' : (keyword ? '未搜索到符合条件的宠物' : '暂无上榜宠物，快去上传美照吧')}}</view>
     </view>
     <button class="ghost-btn load-more" wx:if="{{hasMore}}" loading="{{loading}}" bindtap="loadMore">加载更多排行</button>
+  </view>
+
+  <!-- 宠物大图卡片堆叠沉浸式浮层 -->
+  <view class="pet-stack-modal {{showPreviewModal ? 'is-visible' : ''}}" wx:if="{{showPreviewModal}}" catchtouchmove="noop">
+    <view class="modal-backdrop" bindtap="closePreviewModal"></view>
+    <view class="modal-content">
+      <view class="modal-header">
+        <view class="modal-pet-info">
+          <view class="modal-pet-name">
+            <text>{{previewModalPet.name}}</text>
+            <view class="modal-rank-badge {{previewModalPet.displayRank <= 3 ? 'top-rank' : ''}}">
+              <text class="remix-icon ri-vip-crown-fill" wx:if="{{previewModalPet.displayRank <= 3}}"></text>
+              <text>第{{previewModalPet.displayRank}}名</text>
+            </view>
+          </view>
+          <view class="modal-pet-meta">{{previewModalPet.ageText || '未知年龄'}} · {{previewModalPet.speciesText || '毛孩子'}}</view>
+        </view>
+        <view class="modal-close-btn" bindtap="closePreviewModal">
+          <text class="remix-icon ri-close-line"></text>
+        </view>
+      </view>
+
+      <!-- 弹窗内大图堆叠舞台 -->
+      <view class="modal-card-stage">
+        <view id="bottom-layer-{{previewModalPet.petId}}" class="modal-card-layer modal-card-bottom" wx:if="{{previewModalPet.bottomPhotoUrl}}">
+          <image src="{{previewModalPet.bottomPhotoUrl}}" mode="aspectFill" />
+        </view>
+
+        <view id="next-layer-{{previewModalPet.petId}}" class="modal-card-layer modal-card-next" wx:if="{{previewModalPet.nextPhotoUrl}}">
+          <image src="{{previewModalPet.nextPhotoUrl}}" mode="aspectFill" />
+        </view>
+
+        <view id="top-layer-{{previewModalPet.petId}}"
+              class="modal-card-layer modal-card-top"
+              data-petid="{{previewModalPet.petId}}"
+              data-photocount="{{previewModalPet.photoCount}}"
+              prop="{{previewModalPet.activePhotoIndex}}"
+              change:prop="{{cardDrag.onActiveIndexChange}}"
+              bindtouchstart="{{cardDrag.touchstart}}"
+              bindtouchmove="{{cardDrag.touchmove}}"
+              bindtouchend="{{cardDrag.touchend}}"
+              bindtouchcancel="{{cardDrag.touchcancel}}">
+          <image src="{{previewModalPet.topPhotoUrl}}" mode="aspectFill" />
+        </view>
+
+        <!-- 计数徽标 -->
+        <view class="modal-count-pill" wx:if="{{previewModalPet.photoCount > 1}}">
+          <text class="remix-icon ri-image-line"></text>
+          <text>{{previewModalPet.displayPhotoIndex}} / {{previewModalPet.photoCount}}</text>
+        </view>
+      </view>
+
+      <!-- 弹窗底部操作条 -->
+      <view class="modal-footer">
+        <view class="modal-votes-count">
+          <text class="remix-icon ri-heart-3-fill"></text>
+          <text class="votes-num">{{previewModalPet.voteCount}}</text>
+          <text class="votes-text">得票</text>
+        </view>
+        <button class="modal-vote-btn" catchtap="vote" data-id="{{previewModalPet.petId}}" loading="{{votingPetId === previewModalPet.petId}}" disabled="{{locked || isHistory || hasVotedToday || votingPetId}}">
+          <text class="remix-icon ri-heart-3-fill"></text>
+          <text>{{isHistory || locked ? '已封榜' : (votedPetId === previewModalPet.petId ? '已投票' : '为Ta投一票')}}</text>
+        </button>
+      </view>
+    </view>
   </view>
 </view>
 <global-loading />

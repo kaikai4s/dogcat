@@ -14,16 +14,56 @@ const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const RANK_VIEW_STORAGE_KEY = 'petBeautyRankView'
 
-function rankingViewData(ranking) {
-  const rankColumns = [{ id: 'left', pets: [] }, { id: 'right', pets: [] }]
-  ranking.forEach((pet, index) => {
-    rankColumns[index % 2].pets.push({
-      ...pet,
-      displayRank: pet.rank || index + 1,
-      coverUrl: pet.avatarFileId || (pet.beautyPhotos && pet.beautyPhotos[0] && pet.beautyPhotos[0].fileId) || ''
+function getPetPhotos(pet) {
+  const list = []
+  if (Array.isArray(pet && pet.beautyPhotos) && pet.beautyPhotos.length > 0) {
+    pet.beautyPhotos.forEach((photo) => {
+      const url = photo && (photo.fileId || photo.url || (typeof photo === 'string' ? photo : ''))
+      if (url && typeof url === 'string' && !list.includes(url)) list.push(url)
     })
+  }
+  if (!list.length && pet && pet.avatarFileId) {
+    list.push(pet.avatarFileId)
+  }
+  return list
+}
+
+function decoratePetCard(pet, index, activeIndices = {}) {
+  const photos = getPetPhotos(pet)
+  const photoCount = photos.length
+  const activeIndex = (activeIndices[pet.petId] || 0) % (photoCount || 1)
+  const topPhotoUrl = photos[activeIndex] || pet.avatarFileId || ''
+  const nextPhotoUrl = photoCount > 1 ? photos[(activeIndex + 1) % photoCount] : ''
+  const bottomPhotoUrl = photoCount > 2 ? photos[(activeIndex + 2) % photoCount] : ''
+  const dots = []
+  for (let d = 0; d < photoCount; d++) {
+    dots.push({ index: d, active: d === activeIndex })
+  }
+
+  return {
+    ...pet,
+    displayRank: pet.rank || index + 1,
+    coverUrl: topPhotoUrl,
+    photos,
+    photoCount,
+    activePhotoIndex: activeIndex,
+    displayPhotoIndex: activeIndex + 1,
+    topPhotoUrl,
+    nextPhotoUrl,
+    bottomPhotoUrl,
+    hasMultiplePhotos: photoCount > 1,
+    dots
+  }
+}
+
+function rankingViewData(ranking, activeIndices = {}) {
+  const rankColumns = [{ id: 'left', pets: [] }, { id: 'right', pets: [] }]
+  const decoratedRanking = ranking.map((pet, index) => {
+    const decorated = decoratePetCard(pet, index, activeIndices)
+    rankColumns[index % 2].pets.push(decorated)
+    return decorated
   })
-  return { ranking, rankColumns }
+  return { ranking: decoratedRanking, rankColumns }
 }
 
 Page({
@@ -48,7 +88,10 @@ Page({
     hasMore: false,
     loading: false,
     votingPetId: '',
-    isHistory: false
+    isHistory: false,
+    showPreviewModal: false,
+    previewModalPet: null,
+    previewModalPhotoIndex: 0
   },
 
   onLoad() {
@@ -184,12 +227,74 @@ Page({
   },
 
   previewPet(e) {
-    const petId = e.currentTarget.dataset.id
+    if (!e || !e.isProgrammatic) {
+      if (this._justSwipedTime && Date.now() - this._justSwipedTime < 350) return
+    }
+    const petId = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id) || (e && e.petId)
     const pet = this.data.ranking.concat(this.data.candidates).find((item) => item.petId === petId)
-    const urls = pet && Array.isArray(pet.beautyPhotos) ? pet.beautyPhotos.map((photo) => photo.fileId).filter(Boolean) : []
+    const urls = pet && Array.isArray(pet.photos) && pet.photos.length ? pet.photos : (pet && Array.isArray(pet.beautyPhotos) ? pet.beautyPhotos.map((photo) => photo.fileId).filter(Boolean) : [])
     if (!urls.length && pet && pet.avatarFileId) urls.push(pet.avatarFileId)
-    if (urls.length) wx.previewImage({ current: urls[0], urls })
+    if (urls.length && typeof wx !== 'undefined' && typeof wx.previewImage === 'function') {
+      const activeIdx = (this._petActivePhotoIndices && this._petActivePhotoIndices[petId]) || (pet && pet.activePhotoIndex) || 0
+      const currentUrl = urls[activeIdx] || urls[0]
+      wx.previewImage({ current: currentUrl, urls })
+    }
+    if (pet) {
+      this.setData({
+        previewModalPet: pet,
+        previewModalPhotoIndex: pet.activePhotoIndex || 0,
+        showPreviewModal: true
+      })
+    }
   },
+
+  previewPetById(data) {
+    const petId = data && data.petId
+    if (petId) this.previewPet({ isProgrammatic: true, currentTarget: { dataset: { id: petId } } })
+  },
+
+  onCardSwipeOut(data) {
+    const petId = data && data.petId
+    if (!petId) return
+    this._justSwipedTime = Date.now()
+    if (!this._petActivePhotoIndices) this._petActivePhotoIndices = {}
+    const pet = this.data.ranking.concat(this.data.candidates).find((item) => item.petId === petId)
+    const photoCount = pet && pet.photoCount ? pet.photoCount : (pet && pet.photos ? pet.photos.length : (pet && Array.isArray(pet.beautyPhotos) ? pet.beautyPhotos.length : 1))
+    if (photoCount <= 1) return
+    const current = this._petActivePhotoIndices[petId] || 0
+    const nextIndex = (current + 1) % photoCount
+    this._petActivePhotoIndices[petId] = nextIndex
+
+    const currentRanking = this.data.ranking || []
+    const newViewData = rankingViewData(currentRanking, this._petActivePhotoIndices)
+    const updatedPet = (newViewData.ranking || []).find((item) => item.petId === petId)
+    const updatePayload = { ...newViewData }
+    if (this.data.previewModalPet && this.data.previewModalPet.petId === petId && updatedPet) {
+      updatePayload.previewModalPet = updatedPet
+      updatePayload.previewModalPhotoIndex = nextIndex
+    }
+    this.setData(updatePayload)
+  },
+
+  closePreviewModal() {
+    this.setData({ showPreviewModal: false, previewModalPet: null })
+  },
+
+  nextModalPhoto() {
+    const pet = this.data.previewModalPet
+    if (!pet || !pet.photos || pet.photos.length <= 1) return
+    const nextIndex = (this.data.previewModalPhotoIndex + 1) % pet.photos.length
+    this.setData({ previewModalPhotoIndex: nextIndex })
+  },
+
+  prevModalPhoto() {
+    const pet = this.data.previewModalPet
+    if (!pet || !pet.photos || pet.photos.length <= 1) return
+    const prevIndex = (this.data.previewModalPhotoIndex - 1 + pet.photos.length) % pet.photos.length
+    this.setData({ previewModalPhotoIndex: prevIndex })
+  },
+
+  noop() {},
 
   vote(e) {
     const petId = e.currentTarget.dataset.id
