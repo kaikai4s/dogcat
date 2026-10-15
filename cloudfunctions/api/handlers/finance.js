@@ -46,7 +46,17 @@ module.exports = function createHandler(context) {
       const id = safeText(data && data.id).trim()
       if (!id) throw new Error('缺少提现申请 ID')
       const request = (await db.collection('withdraw_requests').doc(id).get().catch(() => ({ data: null }))).data
-      if (!request || request.staffOpenid !== openid) throw new Error('无权查询该提现申请')
+      const applicantOpenid = safeText(request && (request.staffOpenid || request.userOpenid || request.recipientOpenid || request.openid)).trim()
+      if (!request || applicantOpenid !== openid) throw new Error('无权查询该提现申请')
+      if (request.status === 'paid' || !safeText(request.outBillNo || request.outDetailNo).trim()) {
+        return {
+          id,
+          status: request.status,
+          transferStatus: request.transferStatus,
+          wechatTransferState: request.wechatTransferState,
+          paidAt: request.paidAt
+        }
+      }
       const result = await queryWechatWithdrawalTransfer(id)
       const current = (result && result.request) || (await db.collection('withdraw_requests').doc(id).get().catch(() => ({ data: null }))).data
       return {
@@ -62,7 +72,8 @@ module.exports = function createHandler(context) {
       const id = safeText(data && data.id).trim()
       if (!id) throw new Error('缺少提现申请 ID')
       const request = (await db.collection('withdraw_requests').doc(id).get().catch(() => ({ data: null }))).data
-      if (!request || request.staffOpenid !== openid) throw new Error('无权确认该提现申请')
+      const applicantOpenid = safeText(request && (request.staffOpenid || request.userOpenid || request.recipientOpenid || request.openid)).trim()
+      if (!request || applicantOpenid !== openid) throw new Error('无权确认该提现申请')
       if (request.payoutChannel !== 'wechat_wallet') throw new Error('仅微信提现单支持收款确认')
       const settings = await getSystemSettings()
       let packageInfo = safeText(request.wechatPackageInfo || request.transferPackageInfo).trim()

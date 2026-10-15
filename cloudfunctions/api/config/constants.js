@@ -10,14 +10,15 @@ const collections = [
   'pet_titles', 'user_pet_titles', 'pet_title_grants',
   'pet_beauty_votes', 'pet_beauty_month_rankings', 'pet_beauty_month_locks',
   'pet_playgrounds', 'pet_homes', 'pet_playground_entities', 'pet_3d_models',
-  'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'ai_logs',
-  'user_feedback', 'staff_promotion_applications', 'pet_voice_daily_cache',
-  'staff_deposits', 'staff_deposit_events', 'staff_supply_reimbursements',
+  'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'user_asset_earnings', 'ai_logs',
+  'user_feedback', 'staff_promotion_applications', 'pet_voice_daily_cache', 'pet_vaccine_certifications',
+  'staff_deposits', 'staff_deposit_events', 'staff_supply_reimbursements', 'wechat_transfer_quota_ledger',
   'mall_categories', 'mall_products', 'mall_carts', 'mall_orders',
   'admin_notifications', 'staff_deposit_evidences',
   'system_notifications', 'user_notification_reads',
-  'questionnaires', 'questionnaire_responses',
-  'admin_access_config', 'admin_groups', 'admin_memberships', 'admin_access_logs'
+  'questionnaires', 'questionnaire_responses', 'questionnaire_ai_reports',
+  'admin_access_config', 'admin_groups', 'admin_memberships', 'admin_access_logs',
+  'system_settings', 'rate_limits'
 ]
 
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'

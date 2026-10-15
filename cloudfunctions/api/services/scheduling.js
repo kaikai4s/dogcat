@@ -287,30 +287,12 @@ module.exports = function createService({
   }
 
   async function checkAcceptOrderRisk(profile, order) {
-    console.log('【调试】开始风险检测')
-    console.log('【调试】宠托师信息:', {
-      openid: profile.openid,
-      serviceLatitude: profile.serviceLatitude,
-      serviceLongitude: profile.serviceLongitude,
-      serviceRadiusKm: profile.serviceRadiusKm,
-      hasWeeklySchedule: !!profile.weeklySchedule,
-      weeklySchedule: profile.weeklySchedule
-    })
-    console.log('【调试】订单信息:', {
-      orderId: order._id,
-      startTime: order.startTime,
-      endTime: order.endTime,
-      addressLatitude: order.addressLatitude,
-      addressLongitude: order.addressLongitude
-    })
-
     const warnings = []
 
-    // 【修改】检查距离风险 - 这里是基于固定服务地址的距离，仅作为参考提示
+    // 检查距离风险 - 这里是基于固定服务地址的距离，仅作为参考提示
     // 实际的强制限制已在acceptOrder中使用实时位置验证
     const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
     const distanceKm = calcDistanceKm(profile.serviceLatitude, profile.serviceLongitude, order.addressLatitude, order.addressLongitude)
-    console.log('【调试】距离检测:', { distanceKm, radiusKm, 超出: distanceKm !== null && distanceKm > radiusKm })
     if (distanceKm !== null && distanceKm > radiusKm) {
       warnings.push({
         type: 'range',
@@ -321,25 +303,19 @@ module.exports = function createService({
       })
     }
 
-    // 【修改】检查时间风险 - 改为仅警告，不阻止接单
+    // 检查时间风险 - 作为警告，提示宠托师确认按时履约
     const sessions = getOrderTimeRanges(order)
-    console.log('【调试】订单时间段:', sessions)
     const failedSessions = []
-    const hasWeeklySchedule = normalizeWeeklySchedule(profile.weeklySchedule) !== null
-    console.log('【调试】是否配置接单时间:', hasWeeklySchedule)
 
     for (const session of sessions) {
       try {
         await validateStaffScheduleOnly(profile, session.startTime, session.endTime)
-        console.log('【调试】时间段验证通过:', session.startTime)
       } catch (error) {
-        console.log('【调试】时间段验证失败:', session.startTime, error.message)
         failedSessions.push(`${session.startTime}：${error.message || '不在你设置的可接单时间段内'}`)
       }
     }
 
     if (failedSessions.length) {
-      console.log('【调试】时间不匹配，添加风险警告，失败数量:', failedSessions.length)
       warnings.push({
         type: 'time',
         title: '订单时间不在你的接单时间内',
@@ -347,12 +323,7 @@ module.exports = function createService({
       })
     }
 
-    console.log('【调试】最终warnings数量:', warnings.length)
-    console.log('【调试】warnings内容:', JSON.stringify(warnings, null, 2))
-
-    const result = buildAcceptRiskNotice(warnings)
-    console.log('【调试】风险通知结果:', JSON.stringify(result, null, 2))
-    return result
+    return buildAcceptRiskNotice(warnings)
   }
 
   async function buildStaffAvailability(profile, startDateKey = '', days = 14) {

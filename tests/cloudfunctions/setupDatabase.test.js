@@ -16,7 +16,7 @@ test('setupDatabase: initializes collections and seeds default prices and checki
 
   assert.equal(res.ok, true)
   assert.equal(res.data.success, true)
-  assert.equal(res.data.totalCollections, 80)
+  assert.equal(res.data.totalCollections, 86)
   assert.equal(res.data.totalIndexesConfigured, 31)
   assert.ok(res.data.pricesInitialized > 0)
   assert.ok(res.data.checkinRulesInitialized > 0)
@@ -33,9 +33,12 @@ test('setupDatabase: initializes collections and seeds default prices and checki
   assert.ok(db.state.service_prices.length >= 7)
   // 验证打卡规则已初始化
   assert.ok(db.state.service_checkin_rules.length > 0)
-  // 验证问卷集合已初始化
+  // 验证集合已初始化
   assert.ok(Array.isArray(db.state.questionnaires))
   assert.ok(Array.isArray(db.state.questionnaire_responses))
+  assert.ok(Array.isArray(db.state.user_asset_earnings))
+  assert.ok(Array.isArray(db.state.wechat_transfer_quota_ledger))
+  assert.ok(Array.isArray(db.state.pet_vaccine_certifications))
 })
 
 test('buildNotificationIndexes: builds indexes specifically for system_notifications and user_notification_reads', async () => {

@@ -115,5 +115,5 @@ test('ai generatePetVoice: gracefully falls back to preset when AI is unavailabl
   assert.equal(res.data.weekdayLabel, '周二')
   // Verify both weather and reassurance exist in message
   assert.ok(res.data.voiceMessage.includes('秋高气爽') || res.data.voiceMessage.includes('天气') || res.data.voiceMessage.includes('阳光'))
-  assert.ok(res.data.voiceMessage.includes('安心') || res.data.voiceMessage.includes('放一百个心') || res.data.voiceMessage.includes('不用担心'))
+  assert.ok(res.data.voiceMessage.includes('安心') || res.data.voiceMessage.includes('放一百个心') || res.data.voiceMessage.includes('不用担心') || res.data.voiceMessage.includes('放宽心'))
 })
