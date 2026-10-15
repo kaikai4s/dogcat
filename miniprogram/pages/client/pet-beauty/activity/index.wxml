@@ -72,10 +72,11 @@
     </view>
 
     <view class="rank-waterfall" wx:if="{{ranking.length && rankView === 'waterfall'}}">
-      <view class="rank-column" wx:for="{{rankColumns}}" wx:for-item="column" wx:key="id">
-        <view class="gallery-card" wx:for="{{column.pets}}" wx:key="petId">
+      <view class="rank-column" wx:for="{{rankColumns}}" wx:for-item="column" wx:key="id" id="rank-col-{{column.id}}">
+        <view class="gallery-card" wx:for="{{column.pets}}" wx:key="petId" id="gallery-card-{{item.petId}}">
           <!-- 封面卡片堆叠区域 -->
           <view class="gallery-cover {{item.hasMultiplePhotos ? 'has-stack' : ''}}" 
+                id="gallery-cover-{{item.petId}}"
                 data-id="{{item.petId}}"
                 bindtap="previewPet">
             
@@ -88,6 +89,7 @@
                     class="card-layer card-role-{{card.role}}"
                     style="z-index: {{card.zIndex}};"
                     data-petid="{{item.petId}}"
+                    data-column="{{column.id}}"
                     data-photocount="{{item.photoCount}}"
                     data-photoindex="{{card.photoIndex}}"
                     data-role="{{card.role}}"
@@ -112,9 +114,11 @@
               </view>
             </block>
 
-            <!-- 单图普通展示 -->
+            <!-- 单图普通展示 (统一采用 440rpx 卡片层级渲染，与多图卡片高度与边角质感完全统一，无文字提示，直接展示美照) -->
             <block wx:else>
-              <image wx:if="{{item.topPhotoUrl || item.coverUrl}}" class="gallery-image" src="{{item.topPhotoUrl || item.coverUrl}}" mode="aspectFill" lazy-load />
+              <view class="card-layer card-role-top" wx:if="{{item.topPhotoUrl || item.coverUrl}}">
+                <image src="{{item.topPhotoUrl || item.coverUrl}}" mode="aspectFill" />
+              </view>
               <view class="gallery-placeholder" wx:else>
                 <text class="remix-icon ri-image-line"></text>
                 <text>美照待更新</text>

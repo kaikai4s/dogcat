@@ -22,8 +22,9 @@ function getPetPhotos(pet) {
       if (url && typeof url === 'string' && !list.includes(url)) list.push(url)
     })
   }
-  if (!list.length && pet && pet.avatarFileId) {
-    list.push(pet.avatarFileId)
+  const avatar = pet && (pet.avatarFileId || pet.avatarUrl || pet.avatar || '')
+  if (!list.length && avatar && typeof avatar === 'string') {
+    list.push(avatar)
   }
   return list
 }
@@ -31,8 +32,8 @@ function getPetPhotos(pet) {
 function decoratePetCard(pet, index, activeIndices = {}) {
   const photos = getPetPhotos(pet)
   const photoCount = photos.length
-  const activeIndex = (activeIndices[pet.petId] || 0) % (photoCount || 1)
-  const topPhotoUrl = photos[activeIndex] || pet.avatarFileId || ''
+  const activeIndex = photoCount > 0 ? (activeIndices[pet.petId] || 0) % photoCount : 0
+  const topPhotoUrl = photos[activeIndex] || (pet && (pet.avatarFileId || pet.avatarUrl)) || ''
   const nextPhotoUrl = photoCount > 1 ? photos[(activeIndex + 1) % photoCount] : ''
   const bottomPhotoUrl = photoCount > 2 ? photos[(activeIndex + 2) % photoCount] : ''
 

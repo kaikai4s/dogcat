@@ -250,5 +250,77 @@ test('WXML and WXSS contain zero text prompts and valid WXS event bindings', () 
   assert.equal(wxml.includes('bindtouchstart="{{cardDrag.touchstart}}"'), true)
   assert.equal(wxml.includes('bindtouchmove="{{cardDrag.touchmove}}"'), true)
   assert.equal(wxml.includes('catchtouchstart="{{item.hasMultiplePhotos'), false)
+
+  // Single-photo card must use card-layer card-role-top without lazy-load or text hints
+  assert.equal(wxml.includes('<view class="card-layer card-role-top" wx:if="{{item.topPhotoUrl || item.coverUrl}}">'), true)
+  assert.equal(wxml.includes('lazy-load'), false)
+  assert.match(wxss, /\.gallery-cover\s*\{[^}]*height:\s*440rpx/)
 })
+
+test('cardDrag raises active column and card z-index above other column regardless of left or right dragging', () => {
+  const wxsPath = path.resolve(__dirname, '../../miniprogram/pages/client/pet-beauty/activity/card-stack.wxs')
+  const wxsContent = fs.readFileSync(wxsPath, 'utf8')
+  const wxsModule = { exports: {} }
+  const context = {
+    module: wxsModule,
+    exports: wxsModule.exports,
+    Math,
+    getDate: () => ({ getTime: () => 1000 })
+  }
+  vm.runInNewContext(wxsContent, context)
+  const { touchstart, touchmove, touchend, onActiveIndexChange } = wxsModule.exports
+
+  function createMockDescriptor(dataset = {}) {
+    const styles = {}
+    const state = {}
+    return {
+      getDataset: () => dataset,
+      getState: () => state,
+      setStyle: (s) => Object.assign(styles, s),
+      getAppliedStyles: () => styles
+    }
+  }
+
+  const leftCol = createMockDescriptor()
+  const rightCol = createMockDescriptor()
+  const card1 = createMockDescriptor()
+  const cover1 = createMockDescriptor()
+  const topCard1 = createMockDescriptor({ petid: 'pet-1', column: 'left', photocount: 2, photoindex: 0, role: 'top' })
+
+  const ownerInstance = {
+    selectComponent: (selector) => {
+      if (selector === '#rank-col-left') return leftCol
+      if (selector === '#rank-col-right') return rightCol
+      if (selector === '#gallery-card-pet-1') return card1
+      if (selector === '#gallery-cover-pet-1') return cover1
+      return null
+    },
+    callMethod: () => {}
+  }
+
+  // 1. Touch start on left column card
+  touchstart({ touches: [{ clientX: 100, clientY: 200 }], instance: topCard1 }, ownerInstance)
+
+  // 2. Drag horizontal: dx = 60px (moving towards the right column)
+  touchmove({ touches: [{ clientX: 160, clientY: 205 }], instance: topCard1 }, ownerInstance)
+
+  // Left column MUST be elevated to z-index 80, right column set to 1
+  assert.equal(leftCol.getAppliedStyles()['z-index'], '80')
+  assert.equal(rightCol.getAppliedStyles()['z-index'], '1')
+  // Active card and cover MUST be elevated
+  assert.equal(card1.getAppliedStyles()['z-index'], '90')
+  assert.equal(cover1.getAppliedStyles()['z-index'], '95')
+  assert.equal(topCard1.getAppliedStyles()['z-index'], '100')
+
+  // 3. Complete gesture
+  touchend({ instance: topCard1 }, ownerInstance)
+  onActiveIndexChange(1, 0, ownerInstance, topCard1)
+
+  // Reset styles
+  assert.equal(leftCol.getAppliedStyles()['z-index'], '')
+  assert.equal(card1.getAppliedStyles()['z-index'], '')
+  assert.equal(cover1.getAppliedStyles()['z-index'], '')
+  assert.equal(topCard1.getAppliedStyles()['z-index'], '')
+})
+
 

@@ -79,13 +79,14 @@ module.exports = function createService({
 
   function toPetPublicBeautyView(pet = {}, voteCount = 0) {
     const beautyPhotos = Array.isArray(pet.beautyPhotos) ? pet.beautyPhotos : []
+    const avatar = pet.avatarFileId || pet.avatarUrl || (beautyPhotos[0] && (beautyPhotos[0].fileId || beautyPhotos[0].url)) || ''
     return {
       petId: pet._id || pet.id || '',
       name: pet.name || '毛孩子',
       ageText: formatPetAgeText(pet.birthday),
       species: pet.species || '',
       speciesText: petSpeciesText(pet.species),
-      avatarFileId: pet.avatarFileId || (beautyPhotos[0] && beautyPhotos[0].fileId) || '',
+      avatarFileId: avatar,
       beautyPhotos,
       beautyTitle: pet.beautyTitle || null,
       exclusiveId: pet.exclusiveId || '',

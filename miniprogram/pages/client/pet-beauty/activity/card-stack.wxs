@@ -33,17 +33,27 @@ function touchstart(event, ownerInstance) {
   state.isVerticalScroll = false;
 
   var petId = ds.petid;
+  var colId = ds.column;
   var photoCount = ds.photocount || 0;
   var photoIndex = ds.photoindex !== undefined ? ds.photoindex : 0;
   var nextIdx = (photoIndex + 1) % (photoCount || 1);
   var bottomIdx = (photoIndex + 2) % (photoCount || 1);
 
+  state.petId = petId;
+  state.colId = colId;
+
   if (petId && ownerInstance) {
     state.nextCard = ownerInstance.selectComponent('#card-' + petId + '-' + nextIdx) || ownerInstance.selectComponent('#next-layer-' + petId);
     state.bottomCard = photoCount > 2 ? (ownerInstance.selectComponent('#card-' + petId + '-' + bottomIdx) || ownerInstance.selectComponent('#bottom-layer-' + petId)) : null;
+    state.colComponent = colId ? ownerInstance.selectComponent('#rank-col-' + colId) : null;
+    state.cardComponent = ownerInstance.selectComponent('#gallery-card-' + petId);
+    state.coverComponent = ownerInstance.selectComponent('#gallery-cover-' + petId);
   } else {
     state.nextCard = null;
     state.bottomCard = null;
+    state.colComponent = null;
+    state.cardComponent = null;
+    state.coverComponent = null;
   }
 
   // 触摸开始时移除过渡动画，进入即时跟手状态
@@ -93,6 +103,25 @@ function touchmove(event, ownerInstance) {
       // 横向位移锁定：开始拖拽卡片
       state.isHorizontalDrag = true;
       state.directionLocked = true;
+
+      // 关键修复：不管是左侧还是右侧卡片拖动，拖动时其所在列、卡片本身及封面容器立即提升到最高层级
+      // 使得无论向左甩还是向右甩，均完整展示在另一列及邻近卡片的最上层，绝不被遮挡！
+      if (ownerInstance) {
+        var otherColId = state.colId === 'left' ? 'right' : 'left';
+        var otherCol = ownerInstance.selectComponent('#rank-col-' + otherColId);
+        if (otherCol) {
+          otherCol.setStyle({ 'z-index': '1' });
+        }
+      }
+      if (state.colComponent) {
+        state.colComponent.setStyle({ 'z-index': '80', 'position': 'relative' });
+      }
+      if (state.cardComponent) {
+        state.cardComponent.setStyle({ 'z-index': '90', 'position': 'relative' });
+      }
+      if (state.coverComponent) {
+        state.coverComponent.setStyle({ 'z-index': '95', 'position': 'relative' });
+      }
     }
   }
 
@@ -106,10 +135,11 @@ function touchmove(event, ownerInstance) {
   if (rotate > MAX_ROTATE) rotate = MAX_ROTATE;
   if (rotate < -MAX_ROTATE) rotate = -MAX_ROTATE;
 
-  // 顶层卡片实时跟手平移 + 旋转
+  // 顶层卡片实时跟手平移 + 旋转，强制保持层级在最顶层 (z-index: 100)
   instance.setStyle({
     'transform': 'translate3d(' + dx + 'px, ' + state.currentY + 'px, 0) rotate(' + rotate + 'deg)',
-    'transition': 'none'
+    'transition': 'none',
+    'z-index': '100'
   });
 
   // 下一层卡片跟随手势进度平滑缩放补位 (从 0.88 放大到 1.0，translateY 从 14rpx 回归 0)
@@ -150,6 +180,7 @@ function touchend(event, ownerInstance) {
 
   var ds = instance.getDataset() || {};
   var petId = ds.petid;
+  var colId = ds.column;
   var photoCount = ds.photocount || 0;
 
   if (state.isVerticalScroll) return;
@@ -172,6 +203,7 @@ function touchend(event, ownerInstance) {
     instance.setStyle({
       'transform': 'translate3d(' + flyX + 'px, ' + flyY + 'px, 0) rotate(' + flyRotate + 'deg)',
       'opacity': '0',
+      'z-index': '100',
       'transition': 'transform 0.26s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.22s ease-out'
     });
 
@@ -203,6 +235,7 @@ function touchend(event, ownerInstance) {
     instance.setStyle({
       'transform': 'translate3d(0, 0, 0) rotate(0deg)',
       'opacity': '1',
+      'z-index': '100',
       'transition': 'transform 0.34s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease-out'
     });
 
@@ -235,12 +268,22 @@ function onActiveIndexChange(newValue, oldValue, ownerInstance, instance) {
   instance.setStyle({
     'transform': '',
     'opacity': '',
-    'transition': 'none'
+    'transition': 'none',
+    'z-index': ''
   });
 
   var ds = instance.getDataset() || {};
   var petId = ds.petid;
+  var colId = ds.column;
   if (petId && ownerInstance) {
+    var cardComp = ownerInstance.selectComponent('#gallery-card-' + petId);
+    if (cardComp) cardComp.setStyle({ 'z-index': '', 'position': '' });
+    var coverComp = ownerInstance.selectComponent('#gallery-cover-' + petId);
+    if (coverComp) coverComp.setStyle({ 'z-index': '', 'position': '' });
+    if (colId) {
+      var colComp = ownerInstance.selectComponent('#rank-col-' + colId);
+      if (colComp) colComp.setStyle({ 'z-index': '', 'position': '' });
+    }
     var nextCard = ownerInstance.selectComponent('#next-layer-' + petId);
     if (nextCard) {
       nextCard.setStyle({

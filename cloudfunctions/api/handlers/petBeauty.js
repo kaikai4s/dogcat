@@ -17,6 +17,7 @@ module.exports = function createHandler(context) {
     petSpeciesText,
     requireAdmin,
     requireClientOrder,
+    safeFileId,
     safeText,
     settlePetBeautyMonthlyRanking,
     toCstParts,
@@ -52,14 +53,24 @@ module.exports = function createHandler(context) {
         cursor = page[page.length - 1]._id
       }
       return rows
-        .filter((pet) => !pet.deletedAt && ((Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0) || pet.avatarFileId))
+        .filter((pet) => !pet.deletedAt && ((Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0) || pet.avatarFileId || pet.avatarUrl))
         .map((pet) => {
+          const avatar = safeFileId(pet.avatarFileId || pet.avatarUrl) || safeText(pet.avatarFileId || pet.avatarUrl)
           if (!Array.isArray(pet.beautyPhotos) || !pet.beautyPhotos.length) {
+            let beautyPhotos = []
+            if (avatar) {
+              try {
+                beautyPhotos = normalizeBeautyPhotos([], avatar)
+              } catch (_) {
+                beautyPhotos = [{ id: `bp_${pet._id || '0'}`, fileId: avatar, source: 'pet_profile' }]
+              }
+            }
             return {
               ...pet,
-              beautyPhotos: normalizeBeautyPhotos([], pet.avatarFileId),
-              hasBeautyPhotos: true,
-              beautyPhotoCount: 1
+              avatarFileId: avatar || pet.avatarFileId || '',
+              beautyPhotos,
+              hasBeautyPhotos: beautyPhotos.length > 0,
+              beautyPhotoCount: beautyPhotos.length
             }
           }
           return pet
