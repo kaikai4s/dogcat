@@ -109,7 +109,7 @@ Page({
     rankView: 'waterfall',
     keyword: '',
     page: 1,
-    pageSize: 20,
+    pageSize: 100,
     hasMore: false,
     loading: false,
     votingPetId: '',
@@ -264,6 +264,12 @@ Page({
       const currentUrl = urls[activeIdx] || urls[0]
       wx.previewImage({ current: currentUrl, urls })
     }
+  },
+
+  previewPetById(data) {
+    const petId = data && data.petId
+    if (!petId) return
+    const pet = this.data.ranking.concat(this.data.candidates).find((item) => item.petId === petId)
     if (pet) {
       this.setData({
         previewModalPet: pet,
@@ -271,11 +277,7 @@ Page({
         showPreviewModal: true
       })
     }
-  },
-
-  previewPetById(data) {
-    const petId = data && data.petId
-    if (petId) this.previewPet({ isProgrammatic: true, currentTarget: { dataset: { id: petId } } })
+    this.previewPet({ isProgrammatic: true, currentTarget: { dataset: { id: petId } } })
   },
 
   onCardSwipeOut(data) {

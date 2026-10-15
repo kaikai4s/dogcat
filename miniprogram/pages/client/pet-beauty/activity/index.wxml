@@ -136,7 +136,7 @@
             <view class="gallery-title" wx:if="{{item.beautyTitle && item.beautyTitle.title}}"><text class="remix-icon ri-medal-line"></text><text>{{item.beautyTitle.title}}</text></view>
             <view class="gallery-footer">
               <view class="gallery-votes"><text class="remix-icon ri-heart-3-fill"></text><text class="gallery-vote-number">{{item.voteCount}}</text><text class="gallery-vote-label">票</text></view>
-              <button class="gallery-vote-btn" catchtap="vote" data-id="{{item.petId}}" loading="{{votingPetId === item.petId}}" disabled="{{locked || isHistory || hasVotedToday || votingPetId}}">{{isHistory || locked ? '已封榜' : (votedPetId === item.petId ? '已投票' : '投一票')}}</button>
+              <button size="mini" class="gallery-vote-btn" catchtap="vote" data-id="{{item.petId}}" loading="{{votingPetId === item.petId}}" disabled="{{locked || isHistory || hasVotedToday || votingPetId}}">{{isHistory || locked ? '已封榜' : (votedPetId === item.petId ? '已投票' : '投一票')}}</button>
             </view>
           </view>
         </view>
@@ -185,8 +185,8 @@
   </view>
 
   <!-- 宠物大图卡片堆叠沉浸式浮层 -->
-  <view class="pet-stack-modal {{showPreviewModal ? 'is-visible' : ''}}" wx:if="{{showPreviewModal}}" catchtouchmove="noop">
-    <view class="modal-backdrop" bindtap="closePreviewModal"></view>
+  <view class="pet-stack-modal {{showPreviewModal ? 'is-visible' : ''}}" wx:if="{{showPreviewModal}}" bindtap="closePreviewModal" catchtouchmove="noop">
+    <view class="modal-backdrop"></view>
     <view class="modal-content">
       <view class="modal-header">
         <view class="modal-pet-info">

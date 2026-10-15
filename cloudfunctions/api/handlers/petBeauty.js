@@ -39,36 +39,31 @@ module.exports = function createHandler(context) {
     }
 
     async function readBeautyCandidatePets(maxLimit = 1000) {
-      // 1. 优先使用索引打标字段 hasBeautyPhotos: true 定向检索已参赛宠物，避免无索引全表扫表
-      const indexedRows = []
+      // 扫描全平台有效宠物（未删除且包含美照或头像），确保全平台参赛宠物均按票数排进前 100
+      const rows = []
       let cursor = ''
-      while (indexedRows.length < maxLimit) {
-        const condition = { hasBeautyPhotos: true }
-        if (cursor) condition._id = db.command.gt(cursor)
-        const fetchLimit = Math.min(100, maxLimit - indexedRows.length)
-        const page = (await db.collection('pets').where(condition).orderBy('_id', 'asc').limit(fetchLimit).get()).data || []
-        indexedRows.push(...page)
-        if (page.length < fetchLimit) break
-        cursor = page[page.length - 1]._id
-      }
-      const validIndexed = indexedRows.filter((pet) => !pet.deletedAt && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0)
-      if (validIndexed.length > 0) {
-        return validIndexed
-      }
-
-      // 2. 平滑兼容存量历史数据：若系统中尚未对旧宠物打标 hasBeautyPhotos，降级使用扫描兜底，并在内存中筛选
-      const legacyRows = []
-      cursor = ''
-      while (legacyRows.length < maxLimit) {
+      while (rows.length < maxLimit) {
         const condition = {}
         if (cursor) condition._id = db.command.gt(cursor)
-        const fetchLimit = Math.min(100, maxLimit - legacyRows.length)
+        const fetchLimit = Math.min(100, maxLimit - rows.length)
         const page = (await db.collection('pets').where(condition).orderBy('_id', 'asc').limit(fetchLimit).get()).data || []
-        legacyRows.push(...page)
+        rows.push(...page)
         if (page.length < fetchLimit) break
         cursor = page[page.length - 1]._id
       }
-      return legacyRows.filter((pet) => !pet.deletedAt && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0)
+      return rows
+        .filter((pet) => !pet.deletedAt && ((Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0) || pet.avatarFileId))
+        .map((pet) => {
+          if (!Array.isArray(pet.beautyPhotos) || !pet.beautyPhotos.length) {
+            return {
+              ...pet,
+              beautyPhotos: normalizeBeautyPhotos([], pet.avatarFileId),
+              hasBeautyPhotos: true,
+              beautyPhotoCount: 1
+            }
+          }
+          return pet
+        })
     }
 
     async function getPublicPetsWithVotes() {
@@ -118,7 +113,7 @@ module.exports = function createHandler(context) {
       const pets = (await getPublicPetsWithVotes())
         .map((pet, index) => ({ ...pet, rank: index + 1 }))
         .filter((pet) => !keyword || safeText(pet.exclusiveId).toUpperCase().includes(keyword) || safeText(pet.name).toUpperCase().includes(keyword))
-      return paginateList(pets, data)
+      return paginateList(pets, { ...data, pageSize: data.pageSize || 100 })
     }
 
     if (action === 'vote') {

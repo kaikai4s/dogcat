@@ -589,13 +589,54 @@ button.rank-view-option.is-active { color: #b85b2c; background: #fff; font-weigh
 .gallery-title { display: flex; align-items: center; gap: 6rpx; width: fit-content; max-width: 100%; margin-top: 14rpx; padding: 6rpx 12rpx; border-radius: 10rpx; background: #fff6e5; color: #a57529; font-size: 20rpx; }
 .gallery-title .remix-icon { flex-shrink: 0; }
 .gallery-title text:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gallery-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12rpx; margin-top: 18rpx; padding-top: 16rpx; border-top: 1rpx solid #f5f0ea; }
-.gallery-votes { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5rpx; min-width: 0; color: #d77649; }
-.gallery-votes .remix-icon { font-size: 23rpx; }
-.gallery-vote-number { font-size: 27rpx; font-weight: 900; overflow-wrap: anywhere; }
-.gallery-vote-label { color: #a3978c; font-size: 20rpx; }
-button.gallery-vote-btn { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; min-height: 56rpx; margin: 0; padding: 8rpx 16rpx; border: none; border-radius: 16rpx; color: #b45b30; background: #fff0e2; font-size: 22rpx; font-weight: 800; line-height: 1.4; }
-button.gallery-vote-btn[disabled] { color: #a89b90; background: #f4f1ed; }
+.gallery-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 8rpx;
+  margin-top: 18rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #f5f0ea;
+  box-sizing: border-box;
+  width: 100%;
+}
+.gallery-votes {
+  display: flex;
+  align-items: baseline;
+  gap: 4rpx;
+  flex: 1;
+  min-width: 0;
+  color: #d77649;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.gallery-votes .remix-icon { font-size: 23rpx; flex-shrink: 0; }
+.gallery-vote-number { font-size: 27rpx; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gallery-vote-label { color: #a3978c; font-size: 20rpx; flex-shrink: 0; }
+button.gallery-vote-btn {
+  width: auto !important;
+  max-width: 140rpx !important;
+  min-width: 100rpx !important;
+  flex-shrink: 0;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 52rpx !important;
+  height: 52rpx !important;
+  line-height: 52rpx !important;
+  margin: 0 !important;
+  padding: 0 16rpx !important;
+  border: none;
+  border-radius: 16rpx;
+  color: #b45b30;
+  background: #fff0e2;
+  font-size: 22rpx;
+  font-weight: 800;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+button.gallery-vote-btn[disabled] { color: #a89b90; background: #f4f1ed; opacity: 0.85; }
 
 /* ==================== 多图可拖拽卡片堆叠 (Draggable Card Stack) ==================== */
 .gallery-cover.has-stack {
