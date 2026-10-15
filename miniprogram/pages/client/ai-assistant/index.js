@@ -1,4 +1,6 @@
 const { showError, ensureLogin } = require('../../../utils/cloud')
+const { applyTheme, getThemeState } = require('../../../utils/theme')
+const { applyFont, getFontState } = require('../../../utils/font')
 
 function generateId() {
   const timestamp = Date.now().toString().slice(-4)
@@ -8,6 +10,8 @@ function generateId() {
 
 Page({
   data: {
+    themeClass: 'theme-day',
+    fontClass: 'font-system',
     inputText: '',
     messages: [
       {
@@ -20,6 +24,15 @@ Page({
 
   onLoad() {
     ensureLogin({ content: '登录后可体验 AI 智能问答助手。' }).catch(() => {})
+  },
+
+  onShow() {
+    const theme = applyTheme()
+    const font = applyFont()
+    this.setData({
+      ...getThemeState(theme.value),
+      ...getFontState(font.value)
+    })
   },
 
   onInput(e) {
@@ -42,6 +55,8 @@ Page({
       messages: [...this.data.messages, userMsg],
       inputText: '',
       loading: true
+    }, () => {
+      wx.pageScrollTo({ scrollTop: 99999, duration: 200 })
     })
 
     const model = wx.cloud.extend.AI.createModel('cloudbase')
@@ -62,7 +77,9 @@ Page({
         fullText += text
         const messages = [...this.data.messages]
         messages[aiIndex] = { role: 'ai', content: fullText }
-        this.setData({ messages })
+        this.setData({ messages }, () => {
+          wx.pageScrollTo({ scrollTop: 99999, duration: 80 })
+        })
       }
       this.setData({ loading: false })
     }).catch((err) => {

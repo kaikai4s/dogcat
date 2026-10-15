@@ -12,6 +12,28 @@ const staffEntryMap = {
   approved: { title: '进入多芙琳宠护端', tip: '查看任务并开始接单' }
 }
 
+function getCachedStaffState() {
+  try {
+    const profile = wx.getStorageSync('cached_staff_profile_data')
+    if (profile) {
+      const status = profile.auditStatus || 'none'
+      const entry = staffEntryMap[status] || staffEntryMap.none
+      return {
+        staffProfile: profile,
+        staffEntryReady: true,
+        staffEntryTitle: entry.title,
+        staffEntryTip: status === 'rejected' && profile.auditRemark ? profile.auditRemark : entry.tip
+      }
+    }
+  } catch (e) {}
+  return {
+    staffProfile: null,
+    staffEntryReady: true,
+    staffEntryTitle: staffEntryMap.none.title,
+    staffEntryTip: staffEntryMap.none.tip
+  }
+}
+
 Page({
   data: {
     isGuest: true,
@@ -31,10 +53,7 @@ Page({
     fontPreviewText: '默认清爽',
     savingFont: false,
     loadingLogin: false,
-    staffProfile: null,
-    staffEntryReady: false,
-    staffEntryTitle: staffEntryMap.none.title,
-    staffEntryTip: staffEntryMap.none.tip,
+    ...getCachedStaffState(),
     userName: '游客',
     userMeta: '登录后可管理宠物、订单、地址和收藏',
     avatarUrl: '',
@@ -95,7 +114,13 @@ Page({
 
   onShow() {
     wx.setNavigationBarTitle({ title: this.data.showSettings ? '设置' : '我的' })
-    this.setData({ staffEntryReady: false })
+    // 静默刷新宠护师状态，不重置 staffEntryReady: false，避免每次进入页面时金刚区卡片延迟加载跳动
+    try {
+      const cached = wx.getStorageSync('cached_staff_profile_data')
+      if (cached) {
+        this.applyStaffProfile(cached)
+      }
+    } catch (e) {}
     this.applyCurrentTheme()
     this.applyCurrentFont()
     getCurrentUser({ silent: true })
@@ -138,6 +163,7 @@ Page({
   },
 
   applyGuest() {
+    try { wx.removeStorageSync('cached_staff_profile_data') } catch (e) {}
     setCachedUser(null)
     this.setData({
       isGuest: true,
@@ -218,19 +244,26 @@ Page({
       .finally(() => this.setData({ loadingLogin: false }))
   },
 
+  applyStaffProfile(profile) {
+    const status = profile ? profile.auditStatus : 'none'
+    const entry = staffEntryMap[status] || staffEntryMap.none
+    this.setData({
+      staffProfile: profile,
+      staffEntryReady: true,
+      staffEntryTitle: entry.title,
+      staffEntryTip: status === 'rejected' && profile.auditRemark ? profile.auditRemark : entry.tip
+    })
+  },
+
   loadStaffProfile() {
     callFunction('staff', 'getStaffProfile')
       .then((profile) => {
-        const status = profile ? profile.auditStatus : 'none'
-        const entry = staffEntryMap[status] || staffEntryMap.none
-        this.setData({
-          staffProfile: profile,
-          staffEntryReady: true,
-          staffEntryTitle: entry.title,
-          staffEntryTip: status === 'rejected' && profile.auditRemark ? profile.auditRemark : entry.tip
-        })
+        this.applyStaffProfile(profile)
+        try { wx.setStorageSync('cached_staff_profile_data', profile) } catch (e) {}
       })
-      .catch(showError)
+      .catch((err) => {
+        console.warn('loadStaffProfile failed', err)
+      })
   },
 
   loadPoints() {
@@ -311,7 +344,8 @@ Page({
     ensureLogin({ content: '登录后可申请或进入多芙琳宠护端。' })
       .then(() => callFunction('staff', 'getStaffProfile'))
       .then((profile) => {
-        this.setData({ staffProfile: profile })
+        this.applyStaffProfile(profile)
+        try { wx.setStorageSync('cached_staff_profile_data', profile) } catch (e) {}
         const status = profile && profile.auditStatus
         if (status === 'approved') {
           const app = getApp()

@@ -21,10 +21,69 @@
 .ai-msg-tip { display: inline-flex; align-items: center; gap: 6rpx; margin-top: 8rpx; margin-left: 14rpx; font-size: 20rpx; color: #b59f93; line-height: 1; }
 .ai-msg-tip .remix-icon { font-size: 22rpx; color: #ffaa5b; }
 .input-wrap { position: fixed; left: 24rpx; right: 24rpx; bottom: calc(14rpx + env(safe-area-inset-bottom)); background: rgba(255,255,255,.96); padding: 16rpx 18rpx 14rpx; box-shadow: 0 16rpx 38rpx rgba(123,89,62,.12); border: 1rpx solid rgba(255,153,102,.14); border-radius: 32rpx; display: flex; flex-direction: column; gap: 10rpx; backdrop-filter: blur(16rpx); z-index: 20; box-sizing: border-box; }
-.input-row { display: flex; gap: 14rpx; align-items: center; width: 100%; }
-.input-row input { flex: 1; min-width: 0; background: #fff8ec; height: 76rpx; border-radius: 26rpx; padding: 0 24rpx; color: #2d211a; font-size: 26rpx; }
+.input-row { display: flex; gap: 14rpx; align-items: center; width: 100%; box-sizing: border-box; }
+.input-row .ai-input,
+.input-row input {
+  flex: 1;
+  min-width: 0;
+  width: auto !important;
+  height: 76rpx !important;
+  min-height: 76rpx !important;
+  line-height: 76rpx !important;
+  margin: 0 !important;
+  margin-bottom: 0 !important;
+  padding: 0 28rpx !important;
+  border-radius: 38rpx !important;
+  background: #fff8ec !important;
+  border: 1rpx solid rgba(255, 153, 102, 0.25) !important;
+  box-sizing: border-box !important;
+  color: #2d211a;
+  font-size: 26rpx;
+}
+.ai-input-ph {
+  color: #b59f93;
+  font-size: 26rpx;
+}
 .input-disclaimer { display: flex; align-items: center; justify-content: center; gap: 6rpx; color: #a89a90; font-size: 20rpx; line-height: 1.2; text-align: center; }
 .input-disclaimer .remix-icon { font-size: 22rpx; color: #ff9a44; }
-.send-btn { min-width: 140rpx; height: 76rpx; border-radius: 26rpx; margin: 0 !important; background: linear-gradient(135deg,#ffb86c 0%,#ff7a45 100%) !important; color: #fff !important; display: flex; align-items: center; justify-content: center; gap: 6rpx; font-size: 25rpx !important; font-weight: 900; line-height: 1 !important; padding: 0 22rpx !important; border: none; box-shadow: 0 10rpx 24rpx rgba(255,122,69,.18); }
-.send-btn::after { display: none; }
-.send-btn .remix-icon { font-size: 28rpx; }
+.send-btn {
+  width: 140rpx !important;
+  min-width: 140rpx !important;
+  max-width: 140rpx !important;
+  height: 76rpx !important;
+  min-height: 76rpx !important;
+  line-height: 76rpx !important;
+  border-radius: 38rpx !important;
+  margin: 0 !important;
+  margin-bottom: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+  background: linear-gradient(135deg, #ffb86c 0%, #ff7a45 100%) !important;
+  color: #fff !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6rpx;
+  font-size: 26rpx !important;
+  font-weight: 900;
+  border: none !important;
+  box-shadow: 0 8rpx 20rpx rgba(255, 122, 69, 0.22);
+}
+.send-btn::after { display: none !important; }
+.send-btn .remix-icon { font-size: 28rpx; line-height: 1; }
+
+/* Night theme adaptations */
+.theme-night.ai-page { background: linear-gradient(180deg, #15131d 0%, #1f2030 42%, #11131b 100%); color: #f5f4fb; }
+.theme-night .ai-hero { background: linear-gradient(135deg, #20233a 0%, #373154 58%, #181927 100%); box-shadow: 0 18rpx 44rpx rgba(0,0,0,0.3); }
+.theme-night .hero-title { color: #ffffff; }
+.theme-night .hero-desc { color: #b9b6c8; }
+.theme-night .hero-badge { background: rgba(36, 38, 54, 0.85); color: #a78bfa; }
+.theme-night .preset-chip { background: rgba(36, 38, 54, 0.86); color: #a78bfa; border-color: rgba(124, 140, 255, 0.2); }
+.theme-night .ai-disclaimer-strip { background: rgba(46, 51, 95, 0.5); border-color: rgba(124, 140, 255, 0.25); }
+.theme-night .strip-text { color: #d1ccf0; }
+.theme-night .chat-msg.ai { background: rgba(36, 38, 54, 0.96); color: #f5f4fb; border-color: rgba(124, 140, 255, 0.2); }
+.theme-night .input-wrap { background: rgba(36, 38, 54, 0.96); border-color: rgba(124, 140, 255, 0.2); }
+.theme-night .input-row .ai-input,
+.theme-night .input-row input { background: #1f2030 !important; color: #f5f4fb !important; border-color: rgba(124, 140, 255, 0.25) !important; }
+.theme-night .ai-input-ph { color: #79768f; }

@@ -31,8 +31,11 @@
 
   <view class="input-wrap">
     <view class="input-row">
-      <input placeholder="请输入养宠或服务咨询问题..." value="{{inputText}}" bindinput="onInput" bindconfirm="send" />
-      <button class="send-btn" loading="{{loading}}" bindtap="send"><text class="remix-icon ri-send-plane-fill"></text><text>发送</text></button>
+      <input class="ai-input" placeholder="请输入养宠或服务咨询问题..." placeholder-class="ai-input-ph" value="{{inputText}}" bindinput="onInput" bindconfirm="send" confirm-type="send" />
+      <button class="send-btn" loading="{{loading}}" bindtap="send">
+        <text wx:if="{{!loading}}" class="remix-icon ri-send-plane-fill"></text>
+        <text>{{loading ? '发送中' : '发送'}}</text>
+      </button>
     </view>
     <view class="input-disclaimer">
       <text class="remix-icon ri-information-line"></text>
