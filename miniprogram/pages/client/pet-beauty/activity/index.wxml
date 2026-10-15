@@ -79,30 +79,25 @@
                 data-id="{{item.petId}}"
                 bindtap="previewPet">
             
-            <!-- 多图可拖拽卡片堆叠 -->
+            <!-- 多图可拖拽卡片堆叠 (每张照片拥有独立持久节点，底层无缝顶上，杜绝重载与闪烁) -->
             <block wx:if="{{item.hasMultiplePhotos}}">
-              <!-- 底层卡片 (第3张深度背景，若有) -->
-              <view id="bottom-layer-{{item.petId}}" class="card-layer card-layer-bottom" wx:if="{{item.bottomPhotoUrl}}">
-                <image src="{{item.bottomPhotoUrl}}" mode="aspectFill" lazy-load />
-              </view>
-
-              <!-- 中间卡片 (第2张缩放补位) -->
-              <view id="next-layer-{{item.petId}}" class="card-layer card-layer-next">
-                <image src="{{item.nextPhotoUrl}}" mode="aspectFill" lazy-load />
-              </view>
-
-              <!-- 顶层卡片 (第1张主图，跟随手指拖拽旋转，甩出) -->
-              <view id="top-layer-{{item.petId}}"
-                    class="card-layer card-layer-top"
+              <view wx:for="{{item.stackCards}}"
+                    wx:for-item="card"
+                    wx:key="photoIndex"
+                    id="card-{{item.petId}}-{{card.photoIndex}}"
+                    class="card-layer card-role-{{card.role}}"
+                    style="z-index: {{card.zIndex}};"
                     data-petid="{{item.petId}}"
                     data-photocount="{{item.photoCount}}"
+                    data-photoindex="{{card.photoIndex}}"
+                    data-role="{{card.role}}"
                     prop="{{item.activePhotoIndex}}"
                     change:prop="{{cardDrag.onActiveIndexChange}}"
                     bindtouchstart="{{cardDrag.touchstart}}"
                     bindtouchmove="{{cardDrag.touchmove}}"
                     bindtouchend="{{cardDrag.touchend}}"
                     bindtouchcancel="{{cardDrag.touchcancel}}">
-                <image src="{{item.topPhotoUrl}}" mode="aspectFill" lazy-load />
+                <image src="{{card.photoUrl}}" mode="aspectFill" />
               </view>
 
               <!-- 点状进度指示器 -->
@@ -211,25 +206,23 @@
 
       <!-- 弹窗内大图堆叠舞台 -->
       <view class="modal-card-stage">
-        <view id="bottom-layer-{{previewModalPet.petId}}" class="modal-card-layer modal-card-bottom" wx:if="{{previewModalPet.bottomPhotoUrl}}">
-          <image src="{{previewModalPet.bottomPhotoUrl}}" mode="aspectFill" />
-        </view>
-
-        <view id="next-layer-{{previewModalPet.petId}}" class="modal-card-layer modal-card-next" wx:if="{{previewModalPet.nextPhotoUrl}}">
-          <image src="{{previewModalPet.nextPhotoUrl}}" mode="aspectFill" />
-        </view>
-
-        <view id="top-layer-{{previewModalPet.petId}}"
-              class="modal-card-layer modal-card-top"
+        <view wx:for="{{previewModalPet.stackCards}}"
+              wx:for-item="card"
+              wx:key="photoIndex"
+              id="card-{{previewModalPet.petId}}-{{card.photoIndex}}"
+              class="modal-card-layer card-role-{{card.role}}"
+              style="z-index: {{card.zIndex}};"
               data-petid="{{previewModalPet.petId}}"
               data-photocount="{{previewModalPet.photoCount}}"
+              data-photoindex="{{card.photoIndex}}"
+              data-role="{{card.role}}"
               prop="{{previewModalPet.activePhotoIndex}}"
               change:prop="{{cardDrag.onActiveIndexChange}}"
               bindtouchstart="{{cardDrag.touchstart}}"
               bindtouchmove="{{cardDrag.touchmove}}"
               bindtouchend="{{cardDrag.touchend}}"
               bindtouchcancel="{{cardDrag.touchcancel}}">
-          <image src="{{previewModalPet.topPhotoUrl}}" mode="aspectFill" />
+          <image src="{{card.photoUrl}}" mode="aspectFill" />
         </view>
 
         <!-- 计数徽标 -->

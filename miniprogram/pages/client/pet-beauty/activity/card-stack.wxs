@@ -15,8 +15,8 @@ function touchstart(event, ownerInstance) {
   var state = instance.getState();
 
   var ds = instance.getDataset() || {};
-  var photoCount = ds.photocount || 0;
-  if (photoCount <= 1) {
+  // 仅允许当前处于 top 角色的卡片响应手势
+  if ((ds.role && ds.role !== 'top') || ds.photocount <= 1) {
     state.canDrag = false;
     return;
   }
@@ -32,28 +32,37 @@ function touchstart(event, ownerInstance) {
   state.isHorizontalDrag = false;
   state.isVerticalScroll = false;
 
+  var petId = ds.petid;
+  var photoCount = ds.photocount || 0;
+  var photoIndex = ds.photoindex !== undefined ? ds.photoindex : 0;
+  var nextIdx = (photoIndex + 1) % (photoCount || 1);
+  var bottomIdx = (photoIndex + 2) % (photoCount || 1);
+
+  if (petId && ownerInstance) {
+    state.nextCard = ownerInstance.selectComponent('#card-' + petId + '-' + nextIdx) || ownerInstance.selectComponent('#next-layer-' + petId);
+    state.bottomCard = photoCount > 2 ? (ownerInstance.selectComponent('#card-' + petId + '-' + bottomIdx) || ownerInstance.selectComponent('#bottom-layer-' + petId)) : null;
+  } else {
+    state.nextCard = null;
+    state.bottomCard = null;
+  }
+
   // 触摸开始时移除过渡动画，进入即时跟手状态
   instance.setStyle({
     'transition': 'none',
     'will-change': 'transform'
   });
 
-  var petId = ds.petid;
-  if (petId && ownerInstance) {
-    var nextCard = ownerInstance.selectComponent('#next-layer-' + petId);
-    if (nextCard) {
-      nextCard.setStyle({
-        'transition': 'none',
-        'will-change': 'transform'
-      });
-    }
-    var bottomCard = ownerInstance.selectComponent('#bottom-layer-' + petId);
-    if (bottomCard) {
-      bottomCard.setStyle({
-        'transition': 'none',
-        'will-change': 'transform'
-      });
-    }
+  if (state.nextCard) {
+    state.nextCard.setStyle({
+      'transition': 'none',
+      'will-change': 'transform'
+    });
+  }
+  if (state.bottomCard) {
+    state.bottomCard.setStyle({
+      'transition': 'none',
+      'will-change': 'transform'
+    });
   }
 }
 
@@ -103,38 +112,31 @@ function touchmove(event, ownerInstance) {
     'transition': 'none'
   });
 
-  // 下一层卡片跟随手势进度平滑缩放补位 (从 0.88 放大到 1.0)
-  var ds = instance.getDataset() || {};
-  var petId = ds.petid;
-  if (petId && ownerInstance) {
-    var progress = Math.abs(dx) / 160;
-    if (progress > 1) progress = 1;
+  // 下一层卡片跟随手势进度平滑缩放补位 (从 0.88 放大到 1.0，translateY 从 14rpx 回归 0)
+  var progress = Math.abs(dx) / 160;
+  if (progress > 1) progress = 1;
 
+  if (state.nextCard) {
     var nextScale = 0.88 + (0.12 * progress);
     var nextTranslateY = 14 * (1 - progress);
-    var nextOpacity = 0.85 + (0.15 * progress);
+    var nextOpacity = 0.88 + (0.12 * progress);
+    state.nextCard.setStyle({
+      'transform': 'scale(' + nextScale + ') translateY(' + nextTranslateY + 'rpx)',
+      'opacity': '' + nextOpacity,
+      'transition': 'none'
+    });
+  }
 
-    var nextCard = ownerInstance.selectComponent('#next-layer-' + petId);
-    if (nextCard) {
-      nextCard.setStyle({
-        'transform': 'scale(' + nextScale + ') translateY(' + nextTranslateY + 'rpx)',
-        'opacity': '' + nextOpacity,
-        'transition': 'none'
-      });
-    }
-
-    // 底层卡片 (第3层) 联动微放大 (从 0.80 放大到 0.88)
-    var bottomCard = ownerInstance.selectComponent('#bottom-layer-' + petId);
-    if (bottomCard) {
-      var bottomScale = 0.80 + (0.08 * progress);
-      var bottomTranslateY = 26 - (12 * progress);
-      var bottomOpacity = 0.60 + (0.25 * progress);
-      bottomCard.setStyle({
-        'transform': 'scale(' + bottomScale + ') translateY(' + bottomTranslateY + 'rpx)',
-        'opacity': '' + bottomOpacity,
-        'transition': 'none'
-      });
-    }
+  // 底层卡片 (第3层) 联动微放大 (从 0.80 放大到 0.88)
+  if (state.bottomCard) {
+    var bottomScale = 0.80 + (0.08 * progress);
+    var bottomTranslateY = 26 - (12 * progress);
+    var bottomOpacity = 0.60 + (0.28 * progress);
+    state.bottomCard.setStyle({
+      'transform': 'scale(' + bottomScale + ') translateY(' + bottomTranslateY + 'rpx)',
+      'opacity': '' + bottomOpacity,
+      'transition': 'none'
+    });
   }
 
   return false;
@@ -160,9 +162,6 @@ function touchend(event, ownerInstance) {
   // 判定是否达成甩出条件 (距离超阈值，或快速滑动甩出)
   var isFling = absX >= FLING_THRESHOLD || (absX >= FAST_FLING_THRESHOLD && elapsed < FAST_FLING_TIME);
 
-  var nextCard = petId && ownerInstance ? ownerInstance.selectComponent('#next-layer-' + petId) : null;
-  var bottomCard = petId && ownerInstance ? ownerInstance.selectComponent('#bottom-layer-' + petId) : null;
-
   if (isFling && photoCount > 1) {
     // 甩出动作：沿手势方向快速飞出视区并淡出
     var dir = dx >= 0 ? 1 : -1;
@@ -176,9 +175,9 @@ function touchend(event, ownerInstance) {
       'transition': 'transform 0.26s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.22s ease-out'
     });
 
-    // 下一张卡片丝滑放大完全补位 (scale 1.0, translateY 0, opacity 1.0)
-    if (nextCard) {
-      nextCard.setStyle({
+    // 下一张卡片丝滑顶上来，完全无缝补位 (scale 1.0, translateY 0, opacity 1.0)
+    if (state.nextCard) {
+      state.nextCard.setStyle({
         'transform': 'scale(1) translateY(0)',
         'opacity': '1',
         'transition': 'all 0.26s cubic-bezier(0.2, 0.9, 0.3, 1)'
@@ -186,10 +185,10 @@ function touchend(event, ownerInstance) {
     }
 
     // 底层卡片平滑递进到下一层位置
-    if (bottomCard) {
-      bottomCard.setStyle({
+    if (state.bottomCard) {
+      state.bottomCard.setStyle({
         'transform': 'scale(0.88) translateY(14rpx)',
-        'opacity': '0.85',
+        'opacity': '0.88',
         'transition': 'all 0.26s cubic-bezier(0.2, 0.9, 0.3, 1)'
       });
     }
@@ -207,16 +206,16 @@ function touchend(event, ownerInstance) {
       'transition': 'transform 0.34s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease-out'
     });
 
-    if (nextCard) {
-      nextCard.setStyle({
+    if (state.nextCard) {
+      state.nextCard.setStyle({
         'transform': 'scale(0.88) translateY(14rpx)',
-        'opacity': '0.85',
+        'opacity': '0.88',
         'transition': 'all 0.34s ease-out'
       });
     }
 
-    if (bottomCard) {
-      bottomCard.setStyle({
+    if (state.bottomCard) {
+      state.bottomCard.setStyle({
         'transform': 'scale(0.80) translateY(26rpx)',
         'opacity': '0.60',
         'transition': 'all 0.34s ease-out'
@@ -232,10 +231,10 @@ function touchcancel(event, ownerInstance) {
 // 监听 activePhotoIndex 属性变化：当逻辑层完成图片数据切换后，无缝复位卡片层样式
 function onActiveIndexChange(newValue, oldValue, ownerInstance, instance) {
   if (!instance) return;
-  // 复位顶层卡片
+  // 清理临时行内变换样式，让 WXML 的各层角色 class 样式 (.card-role-top / .card-role-next / .card-role-bottom) 自然接管
   instance.setStyle({
-    'transform': 'translate3d(0, 0, 0) rotate(0deg)',
-    'opacity': '1',
+    'transform': '',
+    'opacity': '',
     'transition': 'none'
   });
 
@@ -246,7 +245,7 @@ function onActiveIndexChange(newValue, oldValue, ownerInstance, instance) {
     if (nextCard) {
       nextCard.setStyle({
         'transform': 'scale(0.88) translateY(14rpx)',
-        'opacity': '0.85',
+        'opacity': '0.88',
         'transition': 'none'
       });
     }

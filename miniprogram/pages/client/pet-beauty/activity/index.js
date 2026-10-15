@@ -35,6 +35,30 @@ function decoratePetCard(pet, index, activeIndices = {}) {
   const topPhotoUrl = photos[activeIndex] || pet.avatarFileId || ''
   const nextPhotoUrl = photoCount > 1 ? photos[(activeIndex + 1) % photoCount] : ''
   const bottomPhotoUrl = photoCount > 2 ? photos[(activeIndex + 2) % photoCount] : ''
+
+  const stackCards = photos.map((photoUrl, photoIndex) => {
+    const offset = (photoIndex - activeIndex + photoCount) % photoCount
+    let role = 'hidden'
+    let zIndex = 1
+    if (offset === 0) {
+      role = 'top'
+      zIndex = 10
+    } else if (offset === 1) {
+      role = 'next'
+      zIndex = 5
+    } else if (offset === 2 && photoCount > 2) {
+      role = 'bottom'
+      zIndex = 2
+    }
+    return {
+      photoUrl,
+      photoIndex,
+      offset,
+      role,
+      zIndex
+    }
+  })
+
   const dots = []
   for (let d = 0; d < photoCount; d++) {
     dots.push({ index: d, active: d === activeIndex })
@@ -52,6 +76,7 @@ function decoratePetCard(pet, index, activeIndices = {}) {
     nextPhotoUrl,
     bottomPhotoUrl,
     hasMultiplePhotos: photoCount > 1,
+    stackCards,
     dots
   }
 }
@@ -265,15 +290,24 @@ Page({
     const nextIndex = (current + 1) % photoCount
     this._petActivePhotoIndices[petId] = nextIndex
 
-    const currentRanking = this.data.ranking || []
-    const newViewData = rankingViewData(currentRanking, this._petActivePhotoIndices)
-    const updatedPet = (newViewData.ranking || []).find((item) => item.petId === petId)
-    const updatePayload = { ...newViewData }
-    if (this.data.previewModalPet && this.data.previewModalPet.petId === petId && updatedPet) {
-      updatePayload.previewModalPet = updatedPet
-      updatePayload.previewModalPhotoIndex = nextIndex
+    const applyUpdate = () => {
+      const currentRanking = this.data.ranking || []
+      const newViewData = rankingViewData(currentRanking, this._petActivePhotoIndices)
+      const updatedPet = (newViewData.ranking || []).find((item) => item.petId === petId)
+      const updatePayload = { ...newViewData }
+      if (this.data.previewModalPet && this.data.previewModalPet.petId === petId && updatedPet) {
+        updatePayload.previewModalPet = updatedPet
+        updatePayload.previewModalPhotoIndex = nextIndex
+      }
+      this.setData(updatePayload)
     }
-    this.setData(updatePayload)
+
+    const isTestEnv = typeof wx === 'undefined' || typeof wx.createSelectorQuery !== 'function'
+    if (isTestEnv || (data && data.immediate)) {
+      applyUpdate()
+    } else {
+      setTimeout(applyUpdate, 260)
+    }
   },
 
   closePreviewModal() {

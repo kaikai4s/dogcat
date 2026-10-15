@@ -633,27 +633,43 @@ button.gallery-vote-btn[disabled] { color: #a89b90; background: #f4f1ed; }
 }
 
 /* 顶层主卡片 (手势跟手拖拽、位移比例旋转、快速甩出) */
-.card-layer-top {
+.card-layer-top,
+.card-role-top {
   z-index: 10;
   transform: translate3d(0, 0, 0) rotate(0deg);
+  opacity: 1;
   box-shadow: 0 16rpx 36rpx rgba(45, 33, 26, 0.12), 0 4rpx 10rpx rgba(45, 33, 26, 0.05);
   touch-action: pan-y;
+  pointer-events: auto;
 }
 
-/* 中间卡片 (下一张平滑缩放补位) */
-.card-layer-next {
+/* 中间卡片 (下一张平滑缩放补位，随时准备顶上) */
+.card-layer-next,
+.card-role-next {
   z-index: 5;
   transform: scale(0.88) translateY(14rpx);
   opacity: 0.88;
   box-shadow: 0 10rpx 24rpx rgba(45, 33, 26, 0.08);
+  pointer-events: none;
 }
 
 /* 底部卡片 (深度背景层) */
-.card-layer-bottom {
+.card-layer-bottom,
+.card-role-bottom {
   z-index: 2;
   transform: scale(0.80) translateY(26rpx);
   opacity: 0.60;
   box-shadow: 0 6rpx 16rpx rgba(45, 33, 26, 0.04);
+  pointer-events: none;
+}
+
+/* 隐藏深层卡片 (超过3张时的缓冲卡片) */
+.card-role-hidden {
+  z-index: 1;
+  transform: scale(0.75) translateY(32rpx);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .gallery-image.single-image {
@@ -840,23 +856,38 @@ button.gallery-vote-btn[disabled] { color: #a89b90; background: #f4f1ed; }
   pointer-events: none;
 }
 
-.modal-card-top {
+.modal-card-top,
+.modal-card-layer.card-role-top {
   z-index: 10;
   transform: translate3d(0, 0, 0) rotate(0deg);
+  opacity: 1;
+  pointer-events: auto;
 }
 
-.modal-card-next {
+.modal-card-next,
+.modal-card-layer.card-role-next {
   z-index: 5;
   transform: scale(0.92) translateY(18rpx);
   opacity: 0.88;
   filter: brightness(0.95);
+  pointer-events: none;
 }
 
-.modal-card-bottom {
+.modal-card-bottom,
+.modal-card-layer.card-role-bottom {
   z-index: 2;
   transform: scale(0.85) translateY(32rpx);
   opacity: 0.6;
   filter: brightness(0.9);
+  pointer-events: none;
+}
+
+.modal-card-layer.card-role-hidden {
+  z-index: 1;
+  transform: scale(0.80) translateY(40rpx);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .modal-count-pill {

@@ -76,6 +76,14 @@ test('pet with multiple photos creates draggable card stack with top, next and b
   assert.equal(multi.dots.length, 3)
   assert.equal(multi.dots[0].active, true)
   assert.equal(multi.dots[1].active, false)
+  assert.equal(Array.isArray(multi.stackCards), true)
+  assert.equal(multi.stackCards.length, 3)
+  assert.equal(multi.stackCards[0].role, 'top')
+  assert.equal(multi.stackCards[0].zIndex, 10)
+  assert.equal(multi.stackCards[1].role, 'next')
+  assert.equal(multi.stackCards[1].zIndex, 5)
+  assert.equal(multi.stackCards[2].role, 'bottom')
+  assert.equal(multi.stackCards[2].zIndex, 2)
 
   assert.equal(single.hasMultiplePhotos, false)
   assert.equal(single.photoCount, 1)
@@ -221,10 +229,10 @@ test('card-stack.wxs implements 0.07 deg/px displacement rotation matching refer
   assert.equal(topCard.getAppliedStyles().opacity, '0')
   assert.match(topCard.getAppliedStyles().transition, /transform/)
 
-  // 4. onActiveIndexChange resets layers seamlessly
+  // 4. onActiveIndexChange clears temporary inline styles seamlessly to let CSS roles take over
   onActiveIndexChange(1, 0, ownerInstance, topCard)
-  assert.equal(topCard.getAppliedStyles().opacity, '1')
-  assert.equal(topCard.getAppliedStyles().transform, 'translate3d(0, 0, 0) rotate(0deg)')
+  assert.equal(topCard.getAppliedStyles().opacity, '')
+  assert.equal(topCard.getAppliedStyles().transform, '')
   assert.equal(topCard.getAppliedStyles().transition, 'none')
 })
 
