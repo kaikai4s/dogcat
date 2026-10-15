@@ -266,6 +266,10 @@ test('direct order locks time slot preventing another user from booking even bef
 test('due direct orders auto-accept after 1 hour', async () => {
   const staffOpenid = 'openid_staff_due'
   const oneHourAgo = new Date(Date.now() - 3605000)
+  const futureDate = new Date(Date.now() + 86400000)
+  const futureDateStr = futureDate.toISOString().slice(0, 10)
+  const futureStart = `${futureDateStr} 10:00`
+  const futureEnd = `${futureDateStr} 11:00`
 
   const db = createCollectionStore({
     users: [
@@ -278,7 +282,8 @@ test('due direct orders auto-accept after 1 hour', async () => {
         openid: staffOpenid,
         realName: '王宠托',
         phone: '13900000000',
-        auditStatus: 'approved'
+        auditStatus: 'approved',
+        staffLevel: 'certified'
       }
     ],
     orders: [
@@ -295,9 +300,9 @@ test('due direct orders auto-accept after 1 hour', async () => {
         paymentStatus: 'paid',
         createdAt: oneHourAgo,
         paidAt: oneHourAgo,
-        startTime: '2026-10-15 10:00',
-        endTime: '2026-10-15 11:00',
-        serviceSessions: [{ index: 1, date: '2026-10-15', startTime: '2026-10-15 10:00', endTime: '2026-10-15 11:00', status: 'pending' }]
+        startTime: futureStart,
+        endTime: futureEnd,
+        serviceSessions: [{ index: 1, date: futureDateStr, startTime: futureStart, endTime: futureEnd, status: 'pending' }]
       }
     ],
     order_timeline: [],

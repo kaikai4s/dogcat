@@ -275,10 +275,27 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         }
       }
 
+      let nextStatus = order.status
+      if (full && order.status !== 'completed') {
+        nextStatus = 'refunded'
+      } else if (isMallOrder && status === 'success' && !full && order.status === 'refund_applied') {
+        let restoredStatus = order.preRefundStatus
+        if (!restoredStatus || !['pending_ship', 'shipped', 'completed'].includes(restoredStatus)) {
+          if (order.receivedAt) {
+            restoredStatus = 'completed'
+          } else if (order.trackingNo || order.shippedAt) {
+            restoredStatus = 'shipped'
+          } else {
+            restoredStatus = 'pending_ship'
+          }
+        }
+        nextStatus = restoredStatus
+      }
+
       await tx.collection(resolved.collectionName).doc(order._id).update({ data: {
         refundAmount: reserved / 100, refundedAmount: successful / 100,
         paymentStatus, refundStatus,
-        ...(full && order.status !== 'completed' ? { status: 'refunded' } : {}),
+        status: nextStatus,
         ...(shouldRestoreStock ? { stockRestored: true, stockRestoredAt: time } : {}),
         updatedAt: time
       } })

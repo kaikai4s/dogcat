@@ -26,10 +26,14 @@ Page({
     this.load()
   },
 
+  onPullDownRefresh() {
+    Promise.resolve(this.load()).finally(() => wx.stopPullDownRefresh())
+  },
+
   load() {
-    if (!this.data.id) return
+    if (!this.data.id) return Promise.resolve()
     this.setData({ loading: true })
-    callFunction('mall', 'getProductDetail', { id: this.data.id })
+    return callFunction('mall', 'getProductDetail', { id: this.data.id })
       .then((product) => this.initSkuSelection(product))
       .catch((error) => {
         this.setData({ loading: false })
@@ -85,22 +89,50 @@ Page({
   },
 
   addCart() {
+    if (this._addingCartLock) return
     const product = this.data.product
     const sku = this.data.selectedSku
     if (!this.data.canBuy || !product || product.status === 'off_sale' || !sku || sku.status === 'off_sale' || this.data.quantity > Number(sku.stock || 0)) return wx.showToast({ title: this.data.selectionMessage || '请选择有库存的规格', icon: 'none' })
+    this._addingCartLock = true
     ensureLogin({ content: '登录后可加入购物车。' })
       .then(() => callFunction('mall', 'updateCart', { productId: product._id, skuId: sku.skuId, quantity: this.data.quantity, operation: 'add' }))
-      .then(() => wx.showToast({ title: '已加入购物车' }))
+      .then(() => {
+        this.setData({ cartBouncing: true })
+        wx.showToast({ title: '已加入购物车', icon: 'success' })
+        setTimeout(() => this.setData({ cartBouncing: false }), 800)
+      })
       .catch(showError)
+      .finally(() => {
+        this._addingCartLock = false
+      })
   },
 
   buyNow() {
+    if (this._buyingNowLock) return
     const product = this.data.product
     const sku = this.data.selectedSku
     if (!this.data.canBuy || !product || product.status === 'off_sale' || !sku || sku.status === 'off_sale' || this.data.quantity > Number(sku.stock || 0)) return wx.showToast({ title: this.data.selectionMessage || '请选择有库存的规格', icon: 'none' })
+    this._buyingNowLock = true
     ensureLogin({ content: '登录后可购买商品。' })
-      .then(() => wx.navigateTo({ url: `/pages/client/mall/checkout/index?productId=${product._id}&skuId=${sku.skuId}&quantity=${this.data.quantity}` }))
-      .catch(() => {})
+      .then(() => wx.navigateTo({
+        url: `/pages/client/mall/checkout/index?productId=${product._id}&skuId=${sku.skuId}&quantity=${this.data.quantity}`,
+        complete: () => { setTimeout(() => { this._buyingNowLock = false }, 500) }
+      }))
+      .catch(() => {
+        this._buyingNowLock = false
+      })
+  },
+
+  previewDetailImage(e) {
+    const current = e.currentTarget.dataset.url
+    const urls = this.data.product && this.data.product.detailImageFileIds || []
+    if (current && urls.length) wx.previewImage({ current, urls })
+  },
+
+  previewCarouselImage(e) {
+    const current = e.currentTarget.dataset.url
+    const urls = this.data.displayImages || []
+    if (current && urls.length) wx.previewImage({ current, urls })
   },
 
   cart() { wx.navigateTo({ url: '/pages/client/mall/cart/index' }) }

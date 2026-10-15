@@ -37,7 +37,14 @@ function paymentStatusText(status) {
 }
 
 function refundStatusText(status) {
-  return ({ none: '无售后', applied: '待审核', approved: '已同意', rejected: '已拒绝' })[status] || '无售后'
+  return ({
+    none: '无售后',
+    applied: '待审核',
+    approved: '已同意',
+    rejected: '已拒绝',
+    return_pending_ship: '待买家寄回',
+    return_shipped: '已寄回待验货'
+  })[status] || '无售后'
 }
 
 function decorateOrder(order = {}) {
@@ -56,12 +63,12 @@ function decorateOrder(order = {}) {
     paymentStatusText: paymentStatusText(order.paymentStatus),
     refundStatusText: refundStatusText(order.refundStatus),
     statusClass: order.status === 'pending_ship' ? 'warning' : (order.status === 'refunded' ? 'muted-badge' : (order.status === 'refund_applied' ? 'danger-badge' : 'success')),
-    refundClass: order.refundStatus === 'applied' ? 'danger-badge' : (order.refundStatus === 'approved' ? 'success' : 'muted-badge'),
+    refundClass: ['applied', 'return_shipped'].includes(order.refundStatus) ? 'danger-badge' : (order.refundStatus === 'approved' ? 'success' : 'muted-badge'),
     addressText,
     maxRefundable,
     logisticsText: order.expressCompany && order.trackingNo ? `${order.expressCompany} ${order.trackingNo}` : '待录入',
     canShip: order.status === 'pending_ship',
-    canAuditRefund: order.refundStatus === 'applied',
+    canAuditRefund: order.refundStatus === 'applied' || order.refundStatus === 'return_shipped',
     canManualRefund: maxRefundable > 0 && order.paymentStatus === 'paid'
   }
 }
@@ -69,7 +76,7 @@ function decorateOrder(order = {}) {
 function orderStats(orders = []) {
   return {
     pendingShip: orders.filter((item) => item.status === 'pending_ship').length,
-    refundApplied: orders.filter((item) => item.refundStatus === 'applied').length,
+    refundApplied: orders.filter((item) => ['applied', 'return_shipped'].includes(item.refundStatus)).length,
     shipped: orders.filter((item) => item.status === 'shipped').length
   }
 }
@@ -88,6 +95,10 @@ Page({
     shipping: false,
     refunding: false,
     activeOrder: null,
+    expressOptions: ['顺丰速运', '京东快递', '中通快递', '圆通速递', '韵达快递', '极兔速递', '申通快递', '中国邮政EMS', '德邦快递'],
+    showLogisticsModal: false,
+    activeLogistics: null,
+    loadingLogistics: false,
     shipForm: { expressCompany: '', trackingNo: '' },
     refundForm: { approved: true, remark: '', refundAmount: '' },
 
@@ -134,13 +145,38 @@ Page({
 
   showShip(e) {
     const order = this.data.orders.find((item) => item._id === e.currentTarget.dataset.id)
-    this.setData({ shipping: true, activeOrder: order, shipForm: { expressCompany: order && order.expressCompany || '', trackingNo: order && order.trackingNo || '' } })
+    this.setData({ shipping: true, activeOrder: order, shipForm: { expressCompany: order && order.expressCompany || '顺丰速运', trackingNo: order && order.trackingNo || '' } })
   },
   hideShip() { this.setData({ shipping: false }) },
   inputShip(e) { this.setData({ ['shipForm.' + e.currentTarget.dataset.field]: e.detail.value }) },
+  chooseExpress(e) {
+    const name = e.currentTarget.dataset.name
+    this.setData({ 'shipForm.expressCompany': name })
+  },
   submitShip() {
     const order = this.data.activeOrder
     callFunction('adminMall', 'shipOrder', { orderId: order._id, ...this.data.shipForm }).then(() => { wx.showToast({ title: '已发货' }); this.setData({ shipping: false }); this.load({ reset: true }) }).catch(showError)
+  },
+
+  viewLogistics(e) {
+    const id = e.currentTarget.dataset.id
+    const order = this.data.orders.find((item) => item._id === id)
+    if (!order || !order.trackingNo) return wx.showToast({ title: '尚未发货，暂无物流', icon: 'none' })
+    this.setData({ showLogisticsModal: true, loadingLogistics: true, activeLogistics: null, activeOrder: order })
+    callFunction('adminMall', 'queryOrderLogistics', { orderId: order._id })
+      .then((res) => {
+        this.setData({ activeLogistics: res, loadingLogistics: false })
+        if (res && res.isDelivered && order.status === 'shipped') {
+          this.load({ reset: true })
+        }
+      })
+      .catch((err) => {
+        this.setData({ loadingLogistics: false })
+        showError(err)
+      })
+  },
+  closeLogisticsModal() {
+    this.setData({ showLogisticsModal: false, activeLogistics: null })
   },
 
   showRefund(e) {

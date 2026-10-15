@@ -10,6 +10,7 @@ module.exports = function createHandler(context) {
     getUser,
     getWechatTransferQuotaSnapshot,
     queryWechatWithdrawalTransfer,
+    submitWechatWithdrawalTransfer,
     refreshStaffEarnings,
     safeText,
     summarizeStaffEarnings
@@ -47,7 +48,14 @@ module.exports = function createHandler(context) {
       const request = (await db.collection('withdraw_requests').doc(id).get().catch(() => ({ data: null }))).data
       if (!request || request.staffOpenid !== openid) throw new Error('无权查询该提现申请')
       const result = await queryWechatWithdrawalTransfer(id)
-      return { id, status: result.request && result.request.status, transferStatus: result.request && result.request.transferStatus }
+      const current = (result && result.request) || (await db.collection('withdraw_requests').doc(id).get().catch(() => ({ data: null }))).data
+      return {
+        id,
+        status: current && current.status,
+        transferStatus: current && current.transferStatus,
+        wechatTransferState: current && current.wechatTransferState,
+        paidAt: current && current.paidAt
+      }
     }
     if (action === 'getMyWithdrawTransferConfirmation') {
       await getUser(openid)
@@ -57,11 +65,29 @@ module.exports = function createHandler(context) {
       if (!request || request.staffOpenid !== openid) throw new Error('无权确认该提现申请')
       if (request.payoutChannel !== 'wechat_wallet') throw new Error('仅微信提现单支持收款确认')
       const settings = await getSystemSettings()
+      let packageInfo = safeText(request.wechatPackageInfo || request.transferPackageInfo).trim()
+      let transferState = safeText(request.wechatTransferState || request.transferStatus || request.status).trim().toUpperCase()
+
+      // 如果当前是待收款人确认收款，但 packageInfo 缺失（例如曾被历史状态查询置空），
+      // 依据微信支付官方规范：使用原商户单号与参数重新调用发起转账，微信支持3天内幂等返回原单据及 package_info。
+      if (transferState === 'WAIT_USER_CONFIRM' && !packageInfo && typeof submitWechatWithdrawalTransfer === 'function') {
+        try {
+          const res = await submitWechatWithdrawalTransfer(id, { openid })
+          const updatedReq = res && res.request ? res.request : (await db.collection('withdraw_requests').doc(id).get().catch(() => ({ data: null }))).data
+          if (updatedReq) {
+            packageInfo = safeText(updatedReq.wechatPackageInfo || updatedReq.transferPackageInfo).trim()
+            transferState = safeText(updatedReq.wechatTransferState || updatedReq.transferStatus || updatedReq.status).trim().toUpperCase()
+          }
+        } catch (err) {
+          console.error('[finance:getMyWithdrawTransferConfirmation] 恢复 package_info 失败:', err)
+        }
+      }
+
       return {
-        status: request.wechatTransferState || request.transferStatus || request.status,
+        status: transferState,
         mchId: settings.payment && settings.payment.mchId || '',
         appId: settings.payment && settings.payment.appId || '',
-        packageInfo: request.wechatPackageInfo || request.transferPackageInfo || ''
+        packageInfo
       }
     }
     if (action === 'createWithdrawRequest') {

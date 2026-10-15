@@ -1,33 +1,177 @@
-<view class="mall-page" wx:if="{{order}}">
-  <view class="mall-hero small"><view class="mall-kicker">{{order.statusText}}</view><view class="mall-title">订单详情</view><view class="mall-desc">{{order.orderNo}}</view></view>
-  <view class="checkout-card">
-    <view class="card-head">商品</view>
-    <view class="mini-item" wx:for="{{order.items}}" wx:key="skuId"><image src="{{item.coverFileId}}" mode="aspectFill" /><view><view class="mini-name">{{item.name}}</view><view class="mini-sub">{{item.specText}} × {{item.quantity}}</view></view><view class="price">¥{{item.price}}</view></view>
+<view class="mall-page order-detail-page fade-in-page" wx:if="{{order}}">
+  <!-- 顶部状态 Hero -->
+  <view class="mall-hero small status-hero">
+    <view class="hero-left">
+      <view class="mall-kicker status-kicker">{{order.statusText}}</view>
+      <view class="mall-title status-title">{{order.statusText === '已发货' ? '包裹飞速运输中' : (order.statusText === '已完成' ? '包裹已成功签收' : '订单详情')}}</view>
+      <view class="mall-desc">订单号：{{order.orderNo}}</view>
+    </view>
+    <view class="status-icon-wrap">
+      <text class="status-emoji" wx:if="{{order.status === 'shipped'}}">🚚</text>
+      <text class="status-emoji" wx:elif="{{order.status === 'completed'}}">🎁</text>
+      <text class="status-emoji" wx:elif="{{order.status === 'pending_pay'}}">💳</text>
+      <text class="status-emoji" wx:else>📦</text>
+    </view>
   </view>
+
+  <!-- 物流轨迹实时跟踪卡片（发货后展示） -->
+  <view class="checkout-card logistics-card" wx:if="{{order.trackingNo}}">
+    <view class="card-head logistics-head">
+      <view class="head-left">
+        <text class="logistics-title">物流轨迹追踪</text>
+        <text class="logistics-state-badge {{logisticsInfo && logisticsInfo.statusCode === 'delivered' ? 'badge-delivered' : 'badge-transit'}}">{{logisticsInfo ? logisticsInfo.stateText : '运输中'}}</text>
+      </view>
+      <view class="head-actions">
+        <text class="action-btn copy-btn" bindtap="copyTracking">复制单号</text>
+        <view class="action-btn refresh-btn {{refreshingLogistics ? 'spinning' : ''}}" bindtap="refreshLogistics">
+          <text class="refresh-icon">🔄</text>
+          <text>刷新</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 快递信息条 -->
+    <view class="express-info-bar">
+      <view class="express-company-name">
+        <text class="company-text">{{order.expressCompany || '快递配送'}}</text>
+        <text class="tracking-text">{{order.trackingNo}}</text>
+      </view>
+      <view class="express-tel" wx:if="{{logisticsInfo && logisticsInfo.companyTel}}" bindtap="callExpressTel">
+        <text class="tel-icon">📞</text>
+        <text>官方热线</text>
+      </view>
+    </view>
+
+    <!-- 动态时间轴节点 -->
+    <view class="timeline-box" wx:if="{{logisticsInfo && logisticsInfo.traces && logisticsInfo.traces.length}}">
+      <view class="timeline-node {{index === 0 ? 'node-latest' : ''}}" wx:for="{{logisticsInfo.traces}}" wx:key="time">
+        <view class="node-axis">
+          <view class="node-dot {{index === 0 ? 'pulse-beacon' : ''}}"></view>
+          <view class="node-line" wx:if="{{index < logisticsInfo.traces.length - 1}}"></view>
+        </view>
+        <view class="node-body">
+          <view class="node-context">{{item.context}}</view>
+          <view class="node-time">{{item.time}}</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 加载中或空状态 -->
+    <view class="logistics-loading-bar" wx:elif="{{loadingLogistics}}">
+      <text class="loading-spin">⏳</text>
+      <text>正在获取最新快递轨迹节点...</text>
+    </view>
+    <view class="logistics-loading-bar" wx:else>
+      <text>快件已交由快递揽收，轨迹信息同步中...</text>
+    </view>
+  </view>
+
+  <!-- 商品明细 -->
+  <view class="checkout-card">
+    <view class="card-head">
+      <text>商品清单</text>
+      <text class="items-count">共 {{order.items.length}} 件商品</text>
+    </view>
+    <view class="mini-item" wx:for="{{order.items}}" wx:key="skuId">
+      <image src="{{item.coverFileId}}" mode="aspectFill" />
+      <view class="item-detail">
+        <view class="mini-name">{{item.name}}</view>
+        <view class="mini-sub">{{item.specText}} × {{item.quantity}}</view>
+      </view>
+      <view class="price">¥{{item.price}}</view>
+    </view>
+  </view>
+
+  <!-- 收货地址 -->
   <view class="checkout-card">
     <view class="card-head">收货信息</view>
     <view class="addr-name">{{order.shippingAddress.contactName}} {{order.shippingAddress.contactPhone}}</view>
     <view class="addr-text">{{order.shippingAddress.fullAddress}}</view>
   </view>
-  <view class="checkout-card" wx:if="{{order.trackingNo}}">
-    <view class="card-head">物流信息 <text bindtap="copyTracking">复制单号</text></view>
-    <view class="addr-name">{{order.expressCompany}}</view><view class="addr-text">{{order.trackingNo}}</view>
-  </view>
+
+  <!-- 金额明细 -->
   <view class="checkout-card amount-card">
     <view><text>商品金额</text><text>¥{{order.totalProductAmount}}</text></view>
     <view><text>运费</text><text>¥{{order.shippingFee}}</text></view>
     <view wx:if="{{order.discountAmount}}"><text>优惠</text><text>-¥{{order.discountAmount}}</text></view>
-    <view class="pay-line"><text>实付</text><text>¥{{order.payAmount}}</text></view>
+    <view class="pay-line"><text>实付款</text><text class="pay-price">¥{{order.payAmount}}</text></view>
   </view>
-  <view class="checkout-card" wx:if="{{order.refundStatus && order.refundStatus !== 'none'}}"><view class="card-head">售后状态</view><view class="addr-text">{{order.refundStatusText || '售后处理中'}} {{order.refundReason}}</view></view>
+
+  <!-- 售后与赔付状态卡片 -->
+  <view class="checkout-card refund-card" wx:if="{{(order.refundStatus && order.refundStatus !== 'none') || order.compensationAmount}}">
+    <view class="card-head">
+      <text>售后与服务保障</text>
+      <text class="refund-type-tag" wx:if="{{order.afterSaleType === 'return_and_refund'}}">退货退款</text>
+      <text class="refund-type-tag" wx:elif="{{order.afterSaleType === 'compensation'}}">少发/破损赔付</text>
+      <text class="refund-type-tag" wx:else>仅退款</text>
+    </view>
+    <view class="addr-text">售后状态：<text class="strong">{{order.refundStatusText || '售后处理中'}}</text></view>
+    <view class="addr-text" wx:if="{{order.refundReason}}">申请说明：{{order.refundReason}}</view>
+    <view class="addr-text highlight-text" wx:if="{{order.compensationAmount}}">💰 商家已赔付补偿：¥{{order.compensationAmount}}</view>
+
+    <!-- 待买家寄回时：展示商家退货地址和回填按钮 -->
+    <view class="return-address-box" wx:if="{{order.refundStatus === 'return_pending_ship' && order.returnAddress}}">
+      <view class="box-title">📦 请将商品寄回以下地址：</view>
+      <view class="box-content">{{order.returnAddress.receiver}} · {{order.returnAddress.phone}}</view>
+      <view class="box-content">{{order.returnAddress.address}}</view>
+      <view class="box-actions">
+        <button class="small-btn ghost" bindtap="copyReturnAddress">复制退货地址</button>
+        <button class="small-btn primary" bindtap="openReturnModal">已寄出，填运单号</button>
+      </view>
+    </view>
+
+    <!-- 已寄出展示已填退货物流 -->
+    <view class="return-express-box" wx:if="{{order.refundStatus === 'return_shipped' && order.returnExpress}}">
+      <view class="box-title">🚚 退货寄回物流：</view>
+      <view class="box-content">{{order.returnExpress.expressCompany}} · 单号：{{order.returnExpress.trackingNo}}</view>
+      <view class="muted">商家收到退货并核验无误后将立即为您原路退款</view>
+    </view>
+  </view>
+
+  <!-- 底部操作悬浮条 -->
   <view class="bottom-bar">
-    <button wx:if="{{order.status === 'pending_pay'}}" bindtap="cancelOrder">取消</button>
-    <button class="primary" wx:if="{{order.status === 'pending_pay'}}" loading="{{paying}}" bindtap="pay">去支付</button>
-    <button class="primary" wx:if="{{order.status === 'shipped'}}" bindtap="confirmReceipt">确认收货</button>
-    <button wx:if="{{order.paymentStatus === 'paid' && (order.status === 'pending_ship' || order.status === 'shipped' || order.status === 'completed')}}" bindtap="showRefund">申请售后</button>
+    <button class="ghost-btn" wx:if="{{order.status === 'pending_pay'}}" bindtap="cancelOrder">取消订单</button>
+    <button class="primary buy-btn" wx:if="{{order.status === 'pending_pay'}}" loading="{{paying}}" bindtap="pay">立即支付</button>
+    <button class="primary buy-btn" wx:if="{{order.status === 'shipped'}}" bindtap="confirmReceipt">确认收货</button>
+    <button class="ghost-btn" wx:if="{{order.refundStatus === 'return_pending_ship'}}" bindtap="openReturnModal">填写退货单号</button>
+    <button class="ghost-btn" wx:if="{{order.paymentStatus === 'paid' && !order.refundStatus && (order.status === 'pending_ship' || order.status === 'shipped' || order.status === 'completed')}}" bindtap="showRefund">申请售后</button>
   </view>
+
+  <!-- 售后申请弹窗 -->
   <view class="modal-mask" wx:if="{{refunding}}">
-    <view class="modal-card"><view class="page-title">申请售后</view><textarea placeholder="请填写退款/售后原因" value="{{refundReason}}" bindinput="inputRefundReason" /><view class="modal-actions"><button bindtap="hideRefund">取消</button><button class="primary" bindtap="submitRefund">提交</button></view></view>
+    <view class="modal-card">
+      <view class="page-title">申请售后与赔付服务</view>
+      <view class="form-label" style="margin-top: 10rpx;">选择售后类型：</view>
+      <view class="type-pill-row">
+        <view class="type-pill {{afterSaleType === 'refund_only' ? 'active' : ''}}" data-type="refund_only" bindtap="setAfterSaleType">仅退款 (不退货)</view>
+        <view class="type-pill {{afterSaleType === 'return_and_refund' ? 'active' : ''}}" data-type="return_and_refund" bindtap="setAfterSaleType">退货退款 (需寄回)</view>
+        <view class="type-pill {{afterSaleType === 'compensation' ? 'active' : ''}}" data-type="compensation" bindtap="setAfterSaleType">破损/少发补偿</view>
+      </view>
+      <view class="form-label" wx:if="{{afterSaleType === 'compensation'}}" style="margin-top: 14rpx;">期望补偿金额 (元)：</view>
+      <input wx:if="{{afterSaleType === 'compensation'}}" class="single-line-input" type="digit" placeholder="输入期望补偿金额（不超过实付）" value="{{requestedAmount}}" bindinput="inputRequestedAmount" />
+      <view class="form-label" style="margin-top: 14rpx;">售后原因及问题说明：</view>
+      <textarea placeholder="请详细说明您的退款、退货或补偿原因" value="{{refundReason}}" bindinput="inputRefundReason" />
+      <view class="modal-actions">
+        <button bindtap="hideRefund">取消</button>
+        <button class="primary" bindtap="submitRefund">提交申请</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 填写退货物流单号弹窗 -->
+  <view class="modal-mask" wx:if="{{showReturnModal}}">
+    <view class="modal-card">
+      <view class="page-title">填写退货物流信息</view>
+      <view class="muted" style="margin-bottom: 16rpx;">请将商品包装好并寄回商家指定地址后，在此回填快递单号。</view>
+      <view class="form-label">快递公司</view>
+      <input class="single-line-input" placeholder="如 顺丰速运 / 中通快递 / 圆通速递" value="{{returnExpressCompany}}" data-field="returnExpressCompany" bindinput="inputReturnField" />
+      <view class="form-label" style="margin-top: 14rpx;">退货快递单号</view>
+      <input class="single-line-input" placeholder="请输入退货运单号" value="{{returnTrackingNo}}" data-field="returnTrackingNo" bindinput="inputReturnField" />
+      <view class="modal-actions">
+        <button bindtap="closeReturnModal">取消</button>
+        <button class="primary" bindtap="submitReturnLogistics">确认提交单号</button>
+      </view>
+    </view>
   </view>
 </view>
 <global-loading />

@@ -15,7 +15,7 @@
   </view>
   <view class="checkout-card amount-card">
     <view><text>商品金额</text><text>¥{{pricing.totalProductAmount}}</text></view>
-    <view><text>运费</text><text>¥{{pricing.shippingFee}}</text></view>
+    <view><text>运费</text><text>{{pricing.shippingFee > 0 ? '¥' + pricing.shippingFee : '免运费'}}</text></view>
     <view wx:if="{{pricing.discountAmount}}"><text>优惠</text><text>-¥{{pricing.discountAmount}}</text></view>
     <view class="pay-line"><text>应付</text><text>¥{{pricing.payAmount}}</text></view>
   </view>

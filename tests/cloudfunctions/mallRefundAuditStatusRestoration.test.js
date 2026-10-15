@@ -151,3 +151,99 @@ test('mall refund audit rejection accurately restores pre-refund status and prev
   assert.equal(order4InDb.status, 'completed', '历史无 preRefundStatus 但有 receivedAt 的订单拒绝后精准恢复为 completed')
   assert.equal(order4InDb.refundStatus, 'rejected')
 })
+
+test('mall partial compensation refund success restores preRefundStatus and updates refundStatus to partially_refunded', async () => {
+  const db = createCollectionStore({
+    users: [
+      { _id: 'u_client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000001' },
+      { _id: 'u_admin', openid: 'openid_admin', roles: ['admin'], status: 'active' }
+    ],
+    mall_products: [
+      { _id: 'p1', name: '全价猫粮', price: 100, stock: 50, status: 'on_sale' }
+    ],
+    mall_orders: [
+      {
+        _id: 'order_compensation_test',
+        orderNo: 'MO10009',
+        clientOpenid: 'openid_client',
+        status: 'shipped',
+        paymentStatus: 'paid',
+        paymentNo: 'P202610150999',
+        payAmount: 100,
+        amount: 100,
+        expressCompany: '顺丰',
+        trackingNo: 'SF99998888',
+        shippedAt: '2026-10-15 10:00:00',
+        items: [{ productId: 'p1', skuId: 'default', quantity: 1, price: 100 }]
+      }
+    ],
+    refunds: [],
+    admin_operation_logs: [],
+    platform_configs: [{ _id: 'global', payment: { mode: 'mock', refundEnabled: true } }]
+  })
+
+  const clientApi = loadCloudFunction('api', db, 'openid_client')
+  const adminApi = loadCloudFunction('api', db, 'openid_admin')
+
+  // 1. 买家申请破损少发补偿 ¥20
+  const applyRes = await clientApi.main({
+    module: 'mall',
+    action: 'applyRefund',
+    data: {
+      orderId: 'order_compensation_test',
+      afterSaleType: 'compensation',
+      requestedAmount: 20,
+      reason: '外包装破损少发一罐'
+    }
+  })
+  assert.equal(applyRes.ok, true)
+  const appliedOrder = db.state.mall_orders.find(o => o._id === 'order_compensation_test')
+  assert.equal(appliedOrder.status, 'refund_applied')
+  assert.equal(appliedOrder.preRefundStatus, 'shipped')
+  assert.equal(appliedOrder.afterSaleType, 'compensation')
+
+  // 2. 管理员同意赔付 ¥20
+  const auditRes = await adminApi.main({
+    module: 'adminMall',
+    action: 'auditRefund',
+    data: {
+      orderId: 'order_compensation_test',
+      approved: true,
+      refundAmount: 20,
+      remark: '核实属实，同意破损补偿20元'
+    }
+  })
+  assert.equal(auditRes.ok, true)
+  assert.equal(auditRes.data.refundAmount, 20)
+
+  // 此时退款单创建成功，订单进入退款处理中
+  const refundRecord = db.state.refunds.find(r => r.orderId === 'order_compensation_test')
+  assert.ok(refundRecord, '退款记录已生成')
+  assert.equal(refundRecord.status, 'processing')
+  assert.equal(refundRecord.refundAmount, 20)
+
+  // 3. 模拟微信支付退款成功通知 / 对账结算（settlement）
+  const createContext = require('../../cloudfunctions/api/services/context')
+  const baseContext = createContext({ db, cloud: {} })
+  const refundService = require('../../cloudfunctions/api/services/refunds')({
+    ...baseContext,
+    getSystemSettings: async () => ({ payment: { mode: 'wechat', refundEnabled: true } }),
+    getWechatPayConfig: () => ({ appId: 'app', mchId: 'mch', apiV3Key: 'key', certSerialNo: 'cert', privateKey: 'pk' }),
+    wechatPayRequest: async () => ({
+      status: 'SUCCESS',
+      out_refund_no: refundRecord.refundNo,
+      refund_id: 'WX_REF_COMPENSATION_001',
+      amount: { refund: 2000, total: 10000 },
+      success_time: new Date().toISOString()
+    })
+  })
+  await refundService.dispatchOrderRefund({ ...refundRecord, channel: 'wechat' })
+
+  // 4. 校验订单状态已从 refund_applied 恢复为 shipped（preRefundStatus），同时 refundStatus 变为 partially_refunded
+  const finalOrder = db.state.mall_orders.find(o => o._id === 'order_compensation_test')
+  assert.equal(finalOrder.status, 'shipped', '部分补偿退款完成后，主状态必须恢复为 preRefundStatus(shipped)，不能卡在 refund_applied')
+  assert.equal(finalOrder.refundStatus, 'partially_refunded')
+  assert.equal(finalOrder.refundedAmount, 20)
+  assert.equal(finalOrder.compensationAmount, 20)
+})
+

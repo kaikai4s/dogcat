@@ -58,15 +58,21 @@
       <view class="wide"><text>物流</text><text>{{item.logisticsText}}</text></view>
     </view>
 
-    <view class="refund-note" wx:if="{{item.refundStatus === 'applied'}}">
-      <view class="badge danger-badge">售后申请</view>
-      <view class="muted">{{item.refundReason || '用户申请退款'}}</view>
+    <view class="refund-note" wx:if="{{item.refundStatus === 'applied' || item.refundStatus === 'return_shipped' || item.refundStatus === 'return_pending_ship'}}">
+      <view class="badge danger-badge">{{item.afterSaleType === 'return_and_refund' ? '退货退款' : (item.afterSaleType === 'compensation' ? '少发/破损赔付' : '仅退款')}}</view>
+      <view class="muted">{{item.refundReason || '用户申请售后'}}</view>
+      <view class="muted" wx:if="{{item.refundStatus === 'return_shipped' && item.returnExpress}}">退货单号：{{item.returnExpress.expressCompany}} {{item.returnExpress.trackingNo}}</view>
+    </view>
+    <view class="refund-note" wx:if="{{item.compensationAmount}}">
+      <view class="badge success">已赔付</view>
+      <view class="muted">已赔付买家 ¥{{item.compensationAmount}} {{item.compensationRemark ? '(' + item.compensationRemark + ')' : ''}}</view>
     </view>
 
     <view class="actions inline-actions order-actions">
       <button wx:if="{{item.canShip}}" class="primary" data-id="{{item._id}}" bindtap="showShip">录入发货</button>
-      <button wx:if="{{item.trackingNo}}" data-id="{{item._id}}" bindtap="copyLogistics">复制物流</button>
-      <button wx:if="{{item.canAuditRefund}}" class="danger" data-id="{{item._id}}" bindtap="showRefund">售后审核</button>
+      <button wx:if="{{item.trackingNo}}" class="primary" data-id="{{item._id}}" bindtap="viewLogistics">查看物流</button>
+      <button wx:if="{{item.trackingNo}}" data-id="{{item._id}}" bindtap="copyLogistics">复制单号</button>
+      <button wx:if="{{item.canAuditRefund}}" class="danger" data-id="{{item._id}}" bindtap="showRefund">{{item.refundStatus === 'return_shipped' ? '验货退款' : '售后审核'}}</button>
       <button data-id="{{item._id}}" bindtap="openStatusModal">修改状态</button>
       <button wx:if="{{item.canManualRefund}}" class="danger" data-id="{{item._id}}" bindtap="openManualRefundModal">手动退款</button>
     </view>
@@ -82,8 +88,12 @@
         <view class="muted">{{activeOrder.addressText}}</view>
       </view>
       <view class="form-section">
-        <view class="form-label">快递公司</view>
-        <input placeholder="如 顺丰 / 京东 / 中通" value="{{shipForm.expressCompany}}" data-field="expressCompany" bindinput="inputShip" />
+        <view class="form-label">常用快递公司快捷选择</view>
+        <view class="express-chip-row">
+          <view class="chip {{shipForm.expressCompany === item ? 'active' : ''}}" wx:for="{{expressOptions}}" wx:key="*this" data-name="{{item}}" bindtap="chooseExpress">{{item}}</view>
+        </view>
+        <view class="form-label">快递公司名称</view>
+        <input placeholder="如 顺丰速运 / 京东快递 / 中通快递" value="{{shipForm.expressCompany}}" data-field="expressCompany" bindinput="inputShip" />
         <view class="form-label">快递单号</view>
         <input placeholder="请输入快递单号" value="{{shipForm.trackingNo}}" data-field="trackingNo" bindinput="inputShip" />
       </view>
@@ -93,10 +103,14 @@
 
   <view class="modal-mask" wx:if="{{refunding}}">
     <view class="modal-card">
-      <view class="modal-title">售后审核</view>
+      <view class="modal-title">{{activeOrder.refundStatus === 'return_shipped' ? '退货验货与退款' : '售后审核'}}</view>
       <view class="modal-summary" wx:if="{{activeOrder}}">
-        <view class="strong small">{{activeOrder.orderNo}} · ¥{{activeOrder.payAmount}}</view>
+        <view class="strong small">{{activeOrder.orderNo}} · 实付 ¥{{activeOrder.payAmount}}</view>
+        <view class="muted">售后类型：{{activeOrder.afterSaleType === 'return_and_refund' ? '退货退款' : (activeOrder.afterSaleType === 'compensation' ? '少发/破损赔付' : '仅退款')}}</view>
         <view class="muted">申请原因：{{activeOrder.refundReason || '未填写'}}</view>
+        <view class="highlight-text" wx:if="{{activeOrder.refundStatus === 'return_shipped' && activeOrder.returnExpress}}">
+          📦 买家已寄回：{{activeOrder.returnExpress.expressCompany}} · {{activeOrder.returnExpress.trackingNo}}
+        </view>
         <view class="refund-images" wx:if="{{activeOrder.refundImages && activeOrder.refundImages.length}}">
           <image wx:for="{{activeOrder.refundImages}}" wx:key="*this" src="{{item}}" mode="aspectFill" />
         </view>
@@ -161,6 +175,39 @@
       <view class="modal-actions">
         <button bindtap="closeManualRefundModal">取消</button>
         <button class="danger" loading="{{submittingManualRefund}}" disabled="{{submittingManualRefund}}" bindtap="submitManualRefund">确认退款</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 查看物流轨迹弹窗 -->
+  <view class="modal-mask" wx:if="{{showLogisticsModal}}">
+    <view class="modal-card tall logistics-modal">
+      <view class="modal-title">物流轨迹追踪</view>
+      <view class="modal-summary" wx:if="{{activeOrder}}">
+        <view class="strong small">{{activeOrder.orderNo}}</view>
+        <view class="muted">{{activeOrder.expressCompany}} · 单号：{{activeOrder.trackingNo}}</view>
+      </view>
+      <view wx:if="{{loadingLogistics}}" class="logistics-loading">
+        <text class="spin-icon">⏳</text>
+        <text>正在查询物流节点...</text>
+      </view>
+      <view wx:elif="{{activeLogistics && activeLogistics.traces && activeLogistics.traces.length}}" class="timeline-box">
+        <view class="timeline-item {{index === 0 ? 'latest' : ''}}" wx:for="{{activeLogistics.traces}}" wx:key="time">
+          <view class="timeline-dot-wrap">
+            <view class="timeline-dot {{index === 0 ? 'pulse' : ''}}"></view>
+            <view class="timeline-line" wx:if="{{index < activeLogistics.traces.length - 1}}"></view>
+          </view>
+          <view class="timeline-content">
+            <view class="timeline-context">{{item.context}}</view>
+            <view class="timeline-time">{{item.time}}</view>
+          </view>
+        </view>
+      </view>
+      <view wx:else class="logistics-empty">
+        <text>暂无轨迹信息或运输节点尚未录入</text>
+      </view>
+      <view class="modal-actions">
+        <button class="primary" bindtap="closeLogisticsModal">关闭</button>
       </view>
     </view>
   </view>

@@ -89,7 +89,7 @@ Page({
       const status = String(application && application.status || '').toUpperCase()
       const transferStatus = String(application && application.transferStatus || status).toUpperCase()
       const approved = ['APPROVED', 'APPROVED_AWAITING_PAYMENT', 'WAITING_PAYMENT', 'PENDING_PAYMENT'].includes(status)
-      const canConfirmTransfer = Boolean(application && transferStatus === 'WAIT_USER_CONFIRM' && application.transferPackageInfo)
+      const canConfirmTransfer = Boolean(application && transferStatus === 'WAIT_USER_CONFIRM')
       this.setData({
         profile,
         application,

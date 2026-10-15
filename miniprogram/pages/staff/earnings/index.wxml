@@ -61,90 +61,133 @@
     </button>
   </view>
 
-  <view class="section-title">
-    <text class="remix-icon ri-list-check-2 section-icon"></text>
-    <text>收益明细记录</text>
+  <view class="segmented-tabs">
+    <view class="segmented-tab {{activeTab === 'earnings' ? 'active' : ''}}" data-tab="earnings" bindtap="switchTab">
+      <text class="remix-icon ri-list-check-2 tab-icon"></text>
+      <text>收益明细</text>
+      <text class="tab-count" wx:if="{{earnings.length}}">{{earnings.length}}</text>
+    </view>
+    <view class="segmented-tab {{activeTab === 'withdraws' ? 'active' : ''}}" data-tab="withdraws" bindtap="switchTab">
+      <text class="remix-icon ri-history-line tab-icon"></text>
+      <text>提现记录</text>
+      <text class="tab-count" wx:if="{{withdraws.length}}">{{withdraws.length}}</text>
+    </view>
   </view>
 
-  <view class="card record-card" wx:for="{{earnings}}" wx:key="_id">
-    <view class="record-head">
-      <view class="record-title">订单 {{item.orderNo || item.orderId}}</view>
-      <view class="badge {{item.isMock ? 'muted' : 'pink'}}">{{item.statusText || '已记录'}}</view>
+  <block wx:if="{{activeTab === 'earnings'}}">
+    <view class="card record-card" wx:for="{{earnings}}" wx:key="_id">
+      <view class="record-head">
+        <view class="record-title">订单 {{item.orderNo || item.orderId}}</view>
+        <view class="badge {{item.isMock ? 'muted' : 'pink'}}">{{item.statusText || '已记录'}}</view>
+      </view>
+      <view class="info-list">
+        <view class="info-row" wx:if="{{item.isMock}}">
+          <view class="label">支付属性</view>
+          <view class="value" style="color: #d97706; font-weight: 500;">模拟支付测试单（不可提现）</view>
+        </view>
+        <view class="info-row">
+          <view class="label">订单原价</view>
+          <view class="value">¥{{item.grossAmountText}}</view>
+        </view>
+        <view class="info-row" wx:if="{{item.hasDeduction}}">
+          <view class="label">应得收益</view>
+          <view class="value">¥{{item.originalAmountText}}</view>
+        </view>
+        <view class="info-row" wx:if="{{item.hasDeduction}}">
+          <view class="label">违规扣减</view>
+          <view class="value" style="color: #ef4444; font-weight: 700;">-¥{{item.deductAmountText}}</view>
+        </view>
+        <view class="info-row" wx:if="{{item.hasDeduction && item.deductReason}}">
+          <view class="label">扣减说明</view>
+          <view class="value" style="color: #ef4444;">{{item.deductReason}}</view>
+        </view>
+        <view class="info-row">
+          <view class="label">{{item.hasDeduction ? '实发收益' : '到手收益'}}</view>
+          <view class="value price-highlight">¥{{item.amountText}}</view>
+        </view>
+        <view class="info-row" wx:if="{{!item.isMock}}">
+          <view class="label">可提现时间</view>
+          <view class="value muted">{{beijingTime.format(item.availableAt)}}</view>
+        </view>
+        <view class="info-row" wx:else>
+          <view class="label">结算说明</view>
+          <view class="value muted">模拟测试订单，不计入可提现资金池</view>
+        </view>
+      </view>
     </view>
-    <view class="info-list">
-      <view class="info-row" wx:if="{{item.isMock}}">
-        <view class="label">支付属性</view>
-        <view class="value" style="color: #d97706; font-weight: 500;">模拟支付测试单（不可提现）</view>
-      </view>
-      <view class="info-row">
-        <view class="label">订单原价</view>
-        <view class="value">¥{{item.grossAmountText}}</view>
-      </view>
-      <view class="info-row" wx:if="{{item.hasDeduction}}">
-        <view class="label">应得收益</view>
-        <view class="value">¥{{item.originalAmountText}}</view>
-      </view>
-      <view class="info-row" wx:if="{{item.hasDeduction}}">
-        <view class="label">违规扣减</view>
-        <view class="value" style="color: #ef4444; font-weight: 700;">-¥{{item.deductAmountText}}</view>
-      </view>
-      <view class="info-row" wx:if="{{item.hasDeduction && item.deductReason}}">
-        <view class="label">扣减说明</view>
-        <view class="value" style="color: #ef4444;">{{item.deductReason}}</view>
-      </view>
-      <view class="info-row">
-        <view class="label">{{item.hasDeduction ? '实发收益' : '到手收益'}}</view>
-        <view class="value price-highlight">¥{{item.amountText}}</view>
-      </view>
-      <view class="info-row" wx:if="{{!item.isMock}}">
-        <view class="label">可提现时间</view>
-        <view class="value muted">{{beijingTime.format(item.availableAt)}}</view>
-      </view>
-      <view class="info-row" wx:else>
-        <view class="label">结算说明</view>
-        <view class="value muted">模拟测试订单，不计入可提现资金池</view>
-      </view>
+    <view class="empty-state" wx:if="{{!earnings.length}}">
+      <text class="remix-icon ri-inbox-archive-line empty-icon"></text>
+      <view class="empty-text">暂无收益明细</view>
     </view>
-  </view>
-  <view class="empty-state" wx:if="{{!earnings.length}}">
-    <text class="remix-icon ri-inbox-archive-line empty-icon"></text>
-    <view class="empty-text">暂无收益明细</view>
-  </view>
+  </block>
 
-  <view class="section-title">
-    <text class="remix-icon ri-history-line section-icon"></text>
-    <text>历史提现记录</text>
-  </view>
-
-  <view class="card record-card" wx:for="{{withdraws}}" wx:key="_id">
-    <view class="record-head">
-      <view class="record-title">提现金额：¥{{item.amountText}}</view>
-      <view class="badge {{item.status === 'approved' ? 'green' : 'pink'}}">{{item.statusText || '审核中'}}</view>
+  <block wx:if="{{activeTab === 'withdraws'}}">
+    <view class="withdraw-hint-box" wx:if="{{transferNotice}}" style="margin-bottom: 20rpx; background: #fff8ec; color: #d45f22; border-color: rgba(255, 153, 102, 0.4);">
+      <text class="remix-icon ri-information-line"></text>
+      <text>{{transferNotice}}</text>
     </view>
-    <button class="ghost-btn full-btn" wx:if="{{item.canConfirmTransfer}}" disabled="{{transferBusy}}" data-id="{{item._id}}" bindtap="confirmWithdrawTransfer">确认微信零钱收款</button>
-    <button class="ghost-btn full-btn" wx:if="{{item.status === 'transferring' && !item.canConfirmTransfer}}" disabled="{{transferBusy}}" data-id="{{item._id}}" bindtap="queryWithdrawTransfer">查询转账状态</button>
-    <view class="info-list">
-      <view class="info-row">
-        <view class="label">申请时间</view>
-        <view class="value muted">{{beijingTime.format(item.createdAt)}}</view>
+    <view class="card record-card" wx:for="{{withdraws}}" wx:key="_id">
+      <view class="record-head">
+        <view class="record-title">提现金额：¥{{item.amountText}}</view>
+        <view class="badge {{item.status === 'paid' ? 'green' : (item.status === 'transfer_failed' || item.status === 'rejected' ? 'gray' : 'pink')}}">{{item.statusText || '审核中'}}</view>
       </view>
-      <view class="info-row" wx:if="{{item.auditRemark}}">
-        <view class="label">审核备注</view>
-        <view class="value">{{item.auditRemark}}</view>
-      </view>
-      <view class="info-row" wx:if="{{item.payoutChannel === 'wechat_wallet'}}">
-        <view class="label">收款方式</view>
-        <view class="value">微信零钱</view>
-      </view>
-      <view class="info-row" wx:if="{{item.lastTransferError}}">
-        <view class="label">打款说明</view>
-        <view class="value">{{item.lastTransferError}}</view>
+      <button class="primary-btn confirm-transfer-btn" 
+              wx:if="{{item.canConfirmTransfer}}" 
+              disabled="{{transferBusy || confirmingId === item._id}}" 
+              loading="{{confirmingId === item._id}}" 
+              data-id="{{item._id}}" 
+              bindtap="confirmWithdrawTransfer">
+        <text class="remix-icon ri-wechat-pay-line" wx:if="{{confirmingId !== item._id}}"></text>
+        <text>{{confirmingId === item._id ? '正在同步到账状态...' : '点击完成微信零钱确认收款'}}</text>
+      </button>
+      <button class="ghost-btn full-btn" 
+              wx:if="{{item.status === 'transferring'}}" 
+              disabled="{{transferBusy || confirmingId === item._id}}" 
+              data-id="{{item._id}}" 
+              bindtap="queryWithdrawTransfer" 
+              style="{{item.canConfirmTransfer ? 'margin-top: 16rpx;' : ''}}">
+        <text class="remix-icon ri-refresh-line"></text>
+        <text>查询微信转账状态</text>
+      </button>
+      <view class="info-list">
+        <view class="info-row">
+          <view class="label">申请时间</view>
+          <view class="value muted">{{beijingTime.format(item.createdAt)}}</view>
+        </view>
+        <view class="info-row" wx:if="{{item.wechatTransferState}}">
+          <view class="label">微信处理状态</view>
+          <view class="value {{item.wechatTransferState === 'WAIT_USER_CONFIRM' ? 'price-highlight' : ''}}">{{item.wechatTransferStateText || item.wechatTransferState}}</view>
+        </view>
+        <view class="info-row" wx:if="{{item.auditRemark}}">
+          <view class="label">审核备注</view>
+          <view class="value">{{item.auditRemark}}</view>
+        </view>
+        <view class="info-row" wx:if="{{item.payoutChannel === 'wechat_wallet'}}">
+          <view class="label">收款方式</view>
+          <view class="value">微信零钱</view>
+        </view>
+        <view class="info-row" wx:if="{{item.outBillNo}}">
+          <view class="label">商户转账单号</view>
+          <view class="value muted">{{item.outBillNo}}</view>
+        </view>
+        <view class="info-row" wx:if="{{item.lastTransferError}}">
+          <view class="label">打款说明</view>
+          <view class="value price-highlight">{{item.lastTransferError}}</view>
+        </view>
+        <view class="withdraw-hint-box" wx:if="{{item.status === 'transferring' && item.isAccepted}}">
+          <text class="remix-icon ri-information-line"></text>
+          <text>微信已受理当前申请。若长时间未到账，通常为微信商户号出资账户待充值，请联系平台管理员核对。</text>
+        </view>
+        <view class="withdraw-hint-box alert" wx:if="{{item.canConfirmTransfer}}">
+          <text class="remix-icon ri-alarm-warning-line"></text>
+          <text>请在24小时内点击上方按钮在微信弹窗中完成确认收款，超时微信将自动关闭。</text>
+        </view>
       </view>
     </view>
-  </view>
-  <view class="empty-state" wx:if="{{!withdraws.length}}">
-    <text class="remix-icon ri-history-line empty-icon"></text>
-    <view class="empty-text">暂无提现记录</view>
-  </view>
+    <view class="empty-state" wx:if="{{!withdraws.length}}">
+      <text class="remix-icon ri-history-line empty-icon"></text>
+      <view class="empty-text">暂无提现记录</view>
+    </view>
+  </block>
 </view>
 <global-loading />

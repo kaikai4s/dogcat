@@ -30,7 +30,8 @@ module.exports = function createHandler(context) {
     syncOrderRefund,
     updateOrderWhenStatus,
     validatePaymentCallbackPayload,
-    wechatPayRequest
+    wechatPayRequest,
+    syncWechatPaidOrder: contextSyncWechatPaidOrder
   } = context
   function publicPaymentStatus(payment = {}) {
     return {
@@ -45,6 +46,7 @@ module.exports = function createHandler(context) {
   }
 
   async function syncWechatPaidOrder(order, payments) {
+    if (typeof contextSyncWechatPaidOrder === 'function') return contextSyncWechatPaidOrder(order, payments)
     if (!order || order.paymentStatus === 'paid') return order
     const paymentNo = order.paymentNo || (payments.find(item => item.channel === 'wechat' && item.paymentNo) || {}).paymentNo
     if (!paymentNo) return order

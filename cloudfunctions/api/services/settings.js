@@ -158,11 +158,37 @@ module.exports = function createService({
     return normalized
   }
 
+  function normalizeLogisticsConfig(logistics = {}, existingLogistics = {}, includeSecrets = false) {
+    const rawAppCode = logistics.appCodeInput !== undefined ? logistics.appCodeInput : logistics.appCode
+    const rawKey = logistics.keyInput !== undefined ? logistics.keyInput : logistics.key
+    const appCode = (rawAppCode !== undefined ? safeText(rawAppCode).trim() : '') || safeText(existingLogistics.appCode).trim()
+    const key = (rawKey !== undefined ? safeText(rawKey).trim() : '') || safeText(existingLogistics.key).trim()
+    const customer = safeText(logistics.customer !== undefined ? logistics.customer : existingLogistics.customer).trim()
+    const provider = safeText(logistics.provider || existingLogistics.provider || 'aliyun').trim().toLowerCase()
+    const enabled = logistics.enabled !== undefined ? logistics.enabled !== false : existingLogistics.enabled !== false
+
+    const normalized = {
+      enabled,
+      provider: ['aliyun', 'kuaidi100'].includes(provider) ? provider : 'aliyun',
+      customer,
+      appCodeConfigured: maskConfigured(appCode || process.env.ALIYUN_LOGISTICS_APPCODE),
+      keyConfigured: maskConfigured(key || process.env.KUAIDI100_KEY)
+    }
+
+    if (includeSecrets) {
+      normalized.appCode = appCode || process.env.ALIYUN_LOGISTICS_APPCODE || ''
+      normalized.key = key || process.env.KUAIDI100_KEY || ''
+    }
+
+    return normalized
+  }
+
   function normalizeSystemSettings(value = {}, options = {}) {
     const payment = value.payment || {}
     const existingPayment = options.existingPayment || {}
     const settlement = value.settlement || {}
     const subscription = value.subscription || {}
+    const logistics = value.logistics || {}
     const reliability = value.reliability || {}
     const includeSecrets = options.includeSecrets === true
     const existingSettings = options.existingSettings || options.previousValue || {}
@@ -247,7 +273,8 @@ module.exports = function createService({
         title: safeText((value.checkinShare || {}).title).trim() || '来签到领福利，补签卡也能拿',
         imageUrl: safeText((value.checkinShare || {}).imageUrl).trim()
       },
-      pricingSurcharges: normalizePricingSurcharges(value.pricingSurcharges)
+      pricingSurcharges: normalizePricingSurcharges(value.pricingSurcharges),
+      logistics: normalizeLogisticsConfig(logistics, existingSettings.logistics, includeSecrets)
     }
 
     if (includeSecrets) {

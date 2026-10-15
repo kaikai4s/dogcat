@@ -7,6 +7,7 @@ module.exports = function createHandler(context) {
     reconcileWechatTransfers,
     expireDueUnacceptedOrders,
     autoAcceptDueDirectOrders,
+    autoCompleteDeliveredMallOrders,
     getMonthDays,
     processOverdueUnfinishedOrders,
     processOverdueUnstartedOrders,
@@ -43,6 +44,11 @@ module.exports = function createHandler(context) {
     if (typeof autoAcceptDueDirectOrders === 'function') {
       try { await autoAcceptDueDirectOrders() }
       catch (error) { console.error('[scheduled-error] autoAcceptDueDirectOrders:', error.message) }
+    }
+
+    if (typeof autoCompleteDeliveredMallOrders === 'function') {
+      try { await autoCompleteDeliveredMallOrders() }
+      catch (error) { console.error('[scheduled-error] autoCompleteDeliveredMallOrders:', error.message) }
     }
 
     // 3. 履约预警与临近服务触达

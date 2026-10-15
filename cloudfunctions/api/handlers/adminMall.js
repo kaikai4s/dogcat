@@ -8,6 +8,7 @@ module.exports = function createHandler(context) {
     getClientRequestId,
     getDocOrNull,
     getSkuById,
+    listExpressCompanies,
     logAdmin,
     mallOrderStatusText,
     normalizeMallCategory,
@@ -15,9 +16,12 @@ module.exports = function createHandler(context) {
     now,
     paginateList,
     publicMallProduct,
+    queryOrderLogistics,
+    readScopedDocuments,
     requireAdmin,
     restoreOrderCoupon,
     safeText,
+    syncWechatPaidOrder,
     validateMallProductInput
   } = context
 
@@ -94,7 +98,8 @@ module.exports = function createHandler(context) {
 
       // 内容与图片风控安全审查
       const specTexts = (payload.specGroups || []).flatMap((g) => [g.name, ...(g.values || [])]).filter(Boolean)
-      const productText = [payload.name, payload.subtitle, payload.description, ...specTexts].filter(Boolean).join(' ')
+      const paramTexts = (payload.parameters || []).flatMap((p) => [p.label, p.value]).filter(Boolean)
+      const productText = [payload.name, payload.subtitle, payload.description, payload.usageInstructions, ...specTexts, ...paramTexts].filter(Boolean).join(' ')
       if (productText && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, productText, { scene: 2, label: '商城商品资料' })
       }
@@ -173,8 +178,16 @@ module.exports = function createHandler(context) {
       return paginateList(enriched, data)
     }
     if (action === 'getOrderDetail') {
-      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      let order = await getDocOrNull('mall_orders', data.id || data.orderId)
       if (!order) throw new Error('订单不存在')
+      if ((order.status === 'pending_pay' || order.paymentStatus !== 'paid') && typeof syncWechatPaidOrder === 'function') {
+        const payments = typeof readScopedDocuments === 'function'
+          ? await readScopedDocuments('payments', { orderId: order._id }, 'createdAt', 'desc')
+          : []
+        if (payments.some(item => (item.channel === 'wechat' || item.status === 'success') && item.paymentNo)) {
+          order = await syncWechatPaidOrder(order, payments)
+        }
+      }
       const payAmount = Number(order.payAmount || 0)
       const existingRefundsRes = await db.collection('refunds').where({ orderId: order._id }).get()
       const successfulRefundsAmount = (existingRefundsRes.data || [])
@@ -209,6 +222,27 @@ module.exports = function createHandler(context) {
       })
       await logAdmin(admin, 'mall_order', order._id, 'shipOrder', { expressCompany, trackingNo })
       return { orderId: order._id, status: 'shipped', expressCompany, trackingNo }
+    }
+    if (action === 'listExpressCompanies') {
+      return typeof listExpressCompanies === 'function' ? listExpressCompanies() : []
+    }
+    if (action === 'queryOrderLogistics') {
+      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      if (!order) throw new Error('订单不存在')
+      const result = await queryOrderLogistics(order)
+      if (result && result.isDelivered && order.status === 'shipped') {
+        const time = now()
+        await db.collection('mall_orders').where({ _id: order._id, status: 'shipped' }).update({
+          data: {
+            status: 'completed',
+            receivedAt: time,
+            autoDeliveredByLogistics: true,
+            updatedAt: time
+          }
+        }).catch(() => {})
+        result.orderStatusUpdated = 'completed'
+      }
+      return result
     }
     if (action === 'updateOrderStatus') {
       const orderId = safeText(data.id || data.orderId).trim()
@@ -292,7 +326,7 @@ module.exports = function createHandler(context) {
     if (action === 'auditRefund') {
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)
       if (!order) throw new Error('订单不存在')
-      if (order.refundStatus !== 'applied') throw new Error('当前订单没有待审核售后')
+      if (!['applied', 'return_shipped'].includes(order.refundStatus)) throw new Error('当前订单没有待审核售后')
       const approved = data.approved === true
       const auditRemark = safeText(data.remark).trim()
       if (auditRemark.length > 200) throw new Error('审核说明不能超过 200 字')
@@ -311,7 +345,7 @@ module.exports = function createHandler(context) {
             restoredStatus = 'pending_ship'
           }
         }
-        const updated = await db.collection('mall_orders').where({ _id: order._id, refundStatus: 'applied' }).update({
+        const updated = await db.collection('mall_orders').where({ _id: order._id }).update({
           data: {
             status: restoredStatus,
             refundStatus: 'rejected',
@@ -324,6 +358,28 @@ module.exports = function createHandler(context) {
         await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: false, remark: auditRemark, restoredStatus })
         return { orderId: order._id, refundStatus: 'rejected', status: restoredStatus }
       }
+
+      // 退货退款第一步：同意买家寄回，下发退货收件人与地址
+      if (order.afterSaleType === 'return_and_refund' && order.refundStatus === 'applied' && data.requireReturn !== false) {
+        const returnAddress = {
+          receiver: safeText(data.returnReceiver || '商城售后部').trim(),
+          phone: safeText(data.returnPhone || '13800000000').trim(),
+          address: safeText(data.returnAddress || '官方商城仓储退货中心').trim()
+        }
+        await db.collection('mall_orders').where({ _id: order._id, refundStatus: 'applied' }).update({
+          data: {
+            refundStatus: 'return_pending_ship',
+            returnAddress,
+            refundAuditRemark: auditRemark,
+            refundAuditedAt: time,
+            updatedAt: time
+          }
+        })
+        await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: true, step: 'return_pending_ship', returnAddress })
+        return { orderId: order._id, refundStatus: 'return_pending_ship', returnAddress }
+      }
+
+      // 退款执行阶段（仅退款、退货退款已寄回验货、或赔付补偿）
       const payAmount = Number(order.payAmount || 0)
       const refundAmount = data.refundAmount !== undefined && data.refundAmount !== null && String(data.refundAmount).trim() !== ''
         ? Number(data.refundAmount)
@@ -331,8 +387,14 @@ module.exports = function createHandler(context) {
       if (payAmount > 0) {
         if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error('请输入有效的退款金额（需大于0）')
         if (refundAmount > payAmount) throw new Error('退款金额不能超过订单实付金额')
-        const refund = await createRefundForOrder(order, refundAmount, auditRemark || order.refundReason || '商城售后退款', 'mall_after_sale', openid, getClientRequestId(data))
-        await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: true, refundNo: refund.refundNo, refundAmount })
+        const refundReasonText = auditRemark || order.refundReason || (order.afterSaleType === 'compensation' ? '售后赔付补偿' : '商城售后退款')
+        const refund = await createRefundForOrder(order, refundAmount, refundReasonText, 'mall_after_sale', openid, getClientRequestId(data))
+        if (order.afterSaleType === 'compensation') {
+          await db.collection('mall_orders').doc(order._id).update({
+            data: { compensationAmount: refundAmount, compensationRemark: auditRemark, updatedAt: time }
+          }).catch(() => {})
+        }
+        await logAdmin(admin, 'mall_order', order._id, 'auditRefund', { approved: true, refundNo: refund.refundNo, refundAmount, afterSaleType: order.afterSaleType })
         return { orderId: order._id, refundStatus: 'approved', refundNo: refund.refundNo, refundAmount }
       }
       // 0 元券单售后通过：无需调用微信支付退款，直接在事务中流转为全额退款完成并恢复优惠券与库存

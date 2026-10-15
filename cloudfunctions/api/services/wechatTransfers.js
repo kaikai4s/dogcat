@@ -77,27 +77,78 @@ module.exports = function createService({
 
   function resolveTransferScene(request, config) {
     const scenes = config.scenes || {}
+    const commissionScene = scenes.commission || {}
+    const primarySceneId = safeText(config.transferSceneId || commissionScene.sceneId).trim()
+
     let targetKey = 'commission'
     if (request.assetType === 'user') {
       targetKey = 'marketing'
     } else if (request.assetType === 'reimbursement' || request.reimbursementId) {
       targetKey = 'reimbursement'
     }
+
     const specific = scenes[targetKey]
-    if (specific && specific.sceneId) {
+    const specificSceneId = safeText(specific && specific.sceneId).trim()
+
+    // 若商户单独配置了与主场景不同的有效独立场景（如已在微信商户平台开通多个转账场景）：
+    if (specific && specificSceneId && specificSceneId !== primarySceneId) {
       const reports = Array.isArray(specific.sceneReportInfos) && specific.sceneReportInfos.length ? specific.sceneReportInfos : config.sceneReportInfos
       return {
-        sceneId: safeText(specific.sceneId).trim(),
+        sceneId: specificSceneId,
         userRecvPerception: safeText(specific.userRecvPerception || config.userRecvPerception).trim(),
         sceneReportInfos: reports,
-        remark: safeText(specific.remark || (targetKey === 'marketing' ? '邀请活动收益提现' : targetKey === 'reimbursement' ? '一次性用品采购报销' : '宠托师服务收益提现')).trim()
+        remark: safeText(specific.remark || (targetKey === 'marketing' ? '邀请活动收益提现' : '一次性用品采购报销')).trim()
       }
     }
+
+    // 单场景模式（统一复用商户已开通的“佣金报酬”场景）：
+    // 在微信支付规范中，1005 佣金报酬支持通过【岗位类型】+【报酬说明】向平台推广顾问发放邀请返佣款
+    const defaultCommissionPerception = safeText(commissionScene.userRecvPerception || config.userRecvPerception || '佣金报酬').trim() || '佣金报酬'
+
+    if (targetKey === 'marketing') {
+      const customReports = Array.isArray(specific && specific.sceneReportInfos) && specific.sceneReportInfos.length
+        ? specific.sceneReportInfos
+        : [
+            { info_type: '岗位类型', info_content: '平台推广顾问' },
+            { info_type: '报酬说明', info_content: '邀请好友推广佣金提现' }
+          ]
+      return {
+        sceneId: primarySceneId,
+        userRecvPerception: safeText((specific && specific.userRecvPerception) || defaultCommissionPerception).trim(),
+        sceneReportInfos: customReports,
+        remark: safeText((specific && specific.remark) || '邀请好友推广佣金提现').trim()
+      }
+    }
+
+    if (targetKey === 'reimbursement') {
+      const customReports = Array.isArray(specific && specific.sceneReportInfos) && specific.sceneReportInfos.length
+        ? specific.sceneReportInfos
+        : [
+            { info_type: '岗位类型', info_content: '宠托师' },
+            { info_type: '报酬说明', info_content: '一次性服务用品采购报销' }
+          ]
+      return {
+        sceneId: primarySceneId,
+        userRecvPerception: safeText((specific && specific.userRecvPerception) || '报销款').trim(),
+        sceneReportInfos: customReports,
+        remark: safeText((specific && specific.remark) || '一次性用品采购报销').trim()
+      }
+    }
+
+    // 宠托师服务收益提现
+    const reports = Array.isArray(commissionScene.sceneReportInfos) && commissionScene.sceneReportInfos.length
+      ? commissionScene.sceneReportInfos
+      : (Array.isArray(config.sceneReportInfos) && config.sceneReportInfos.length
+          ? config.sceneReportInfos
+          : [
+              { info_type: '岗位类型', info_content: '宠托师' },
+              { info_type: '报酬说明', info_content: '宠托师上门服务收益提现' }
+            ])
     return {
-      sceneId: config.transferSceneId,
-      userRecvPerception: config.userRecvPerception,
-      sceneReportInfos: config.sceneReportInfos,
-      remark: safeText(config.transferRemark || request.remark).trim() || (request.assetType === 'user' ? '邀请活动收益提现' : '宠托师服务收益提现')
+      sceneId: primarySceneId,
+      userRecvPerception: defaultCommissionPerception,
+      sceneReportInfos: reports,
+      remark: safeText(commissionScene.remark || config.transferRemark || request.remark || '宠托师服务收益提现').trim()
     }
   }
 
@@ -199,7 +250,20 @@ module.exports = function createService({
     const config = getWechatTransferConfig(settings)
     // 当前商家转账查询接口只接受路径参数 out_bill_no；mchid 不在该接口的请求参数中。
     const response = await wechatPayRequest('GET', `/v3/fund-app/mch-transfer/transfer-bills/out-bill-no/${encodeURIComponent(outBillNo)}`, null, config)
-    return applyWechatTransferResult(withdrawId, response, 'query')
+    const result = await applyWechatTransferResult(withdrawId, response, 'query')
+    const current = result && result.request
+    const state = safeText(current && (current.wechatTransferState || current.status)).trim().toUpperCase()
+    // 微信支付商家转账规范：GET 查询单接口不返回 package_info，仅 POST 发起接口返回。
+    // 若微信侧处于待收款人确认 (WAIT_USER_CONFIRM)，但本地缺失 package_info，
+    // 依据微信支付官方重入规范：使用相同 out_bill_no 重新发起转账（POST），微信会幂等返回原单据及 package_info。
+    if (state === 'WAIT_USER_CONFIRM' && !safeText(current && (current.wechatPackageInfo || current.transferPackageInfo)).trim()) {
+      try {
+        return await submitWechatWithdrawalTransfer(withdrawId, { openid: 'auto_recover_package_info' })
+      } catch (err) {
+        console.warn('[queryWechatWithdrawalTransfer] 自动幂等恢复 package_info 失败:', err)
+      }
+    }
+    return result
   }
 
   async function applyWechatTransferResult(withdrawId, response = {}, source = 'query') {
@@ -220,14 +284,18 @@ module.exports = function createService({
         rawTransferResponse: sanitized
       })
     }
-    await patchTransferProcessing(withdrawId, {
+    const packageInfo = safeText(response.package_info || response.packageInfo).trim()
+    const patch = {
       transferStatus: mapped === 'unknown' ? 'unknown' : 'processing',
       wechatTransferState: state || 'PROCESSING',
       wechatTransferBillNo: safeText(response.transfer_bill_no).trim(),
-      wechatPackageInfo: safeText(response.package_info).trim(),
       rawTransferResponse: sanitized,
       lastTransferSource: source
-    })
+    }
+    if (packageInfo) {
+      patch.wechatPackageInfo = packageInfo
+    }
+    await patchTransferProcessing(withdrawId, patch)
     const latest = await db.collection('withdraw_requests').doc(withdrawId).get().catch(() => ({ data: null }))
     return { request: latest.data, changed: true }
   }

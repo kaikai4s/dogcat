@@ -122,6 +122,18 @@ module.exports = function createService({
     const specGroups = normalizeMallSpecGroups(product.specGroups)
     const specMode = product.specMode === 'multi' && specGroups.length ? 'multi' : 'single'
     const imageFileIds = Array.isArray(product.imageFileIds) ? product.imageFileIds.map((item) => safeFileId(item) || safeText(item).trim()).filter(Boolean).slice(0, 9) : []
+    const detailImageFileIds = Array.isArray(product.detailImageFileIds) ? product.detailImageFileIds.map((item) => safeFileId(item) || safeText(item).trim()).filter(Boolean).slice(0, 20) : []
+    const parameters = Array.isArray(product.parameters) ? product.parameters.map((p) => ({
+      label: safeText(p && p.label).trim().slice(0, 30),
+      value: safeText(p && p.value).trim().slice(0, 200)
+    })).filter((p) => p.label && p.value).slice(0, 30) : []
+    const usageInstructions = safeText(product.usageInstructions).trim().slice(0, 2000)
+    const shippingFee = Math.max(0, Math.round(Number(product.shippingFee || 0) * 100) / 100)
+    const defaultGuarantees = ['正品保障', '极速发货', '破损包赔']
+    const serviceGuarantees = Array.isArray(product.serviceGuarantees)
+      ? product.serviceGuarantees.map((item) => safeText(item).trim().slice(0, 30)).filter(Boolean).slice(0, 10)
+      : defaultGuarantees
+    const highlights = Array.isArray(product.highlights) ? product.highlights.map((item) => safeText(item).trim().slice(0, 20)).filter(Boolean).slice(0, 6) : []
     const base = {
       _id: product._id || '',
       categoryId: safeText(product.categoryId).trim(),
@@ -129,6 +141,12 @@ module.exports = function createService({
       subtitle: safeText(product.subtitle).trim(),
       coverFileId: safeFileId(product.coverFileId) || safeText(product.coverFileId).trim(),
       imageFileIds,
+      detailImageFileIds,
+      parameters,
+      usageInstructions,
+      serviceGuarantees,
+      highlights,
+      shippingFee,
       specMode,
       specGroups: specMode === 'multi' ? specGroups : [],
       status: product.status === 'off_sale' ? 'off_sale' : 'on_sale',
@@ -259,11 +277,47 @@ module.exports = function createService({
   }
 
   function calcMallPricing(items, couponResult) {
-    const totalProductAmount = Math.round(items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0) * 100) / 100
-    const shippingFee = totalProductAmount >= 99 || totalProductAmount <= 0 ? 0 : 8
+    const list = Array.isArray(items) ? items : []
+    const totalProductAmount = Math.round(list.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0) * 100) / 100
+    let shippingFee = 0
+    if (totalProductAmount > 0 && list.length) {
+      shippingFee = list.reduce((max, item) => {
+        const fee = Number(item.shippingFee ?? (item.product && item.product.shippingFee) ?? 0)
+        return Math.max(max, Number.isFinite(fee) && fee > 0 ? fee : 0)
+      }, 0)
+      shippingFee = Math.round(shippingFee * 100) / 100
+    }
     const amount = Math.round((totalProductAmount + shippingFee) * 100) / 100
     const basePricing = { businessType: 'mall', amount, payAmount: amount, totalProductAmount, shippingFee, discountAmount: 0, currency: 'CNY', serviceTypes: ['mall'], priceItems: [{ key: 'mall_goods', label: '商品金额', price: totalProductAmount }, { key: 'shipping_fee', label: '运费', price: shippingFee }], priceSnapshot: { originalAmount: amount, totalProductAmount, shippingFee, discountAmount: 0, payAmount: amount } }
     return couponResult ? applyCouponToPricing(basePricing, couponResult) : basePricing
+  }
+
+  async function autoCompleteDeliveredMallOrders(timeoutDays = 7) {
+    if (!db || typeof db.collection !== 'function') return []
+    const currentTime = now()
+    const thresholdMs = timeoutDays * 24 * 3600 * 1000
+    const ordersRes = await db.collection('mall_orders').where({ status: 'shipped' }).limit(100).get().catch(() => ({ data: [] }))
+    const candidates = ordersRes.data || []
+    const updatedOrderIds = []
+    for (const order of candidates) {
+      if (order.refundStatus && !['none', 'rejected'].includes(order.refundStatus)) continue
+      const shippedTime = order.shippedAt ? new Date(order.shippedAt).getTime() : 0
+      const isDeliveredByCache = order.logisticsCache && order.logisticsCache.isDelivered === true
+      const isTimeout = shippedTime > 0 && currentTime.getTime() - shippedTime >= thresholdMs
+      if (isDeliveredByCache || isTimeout) {
+        await db.collection('mall_orders').doc(order._id).update({
+          data: {
+            status: 'completed',
+            receivedAt: currentTime,
+            autoDeliveredByTimeout: isTimeout,
+            autoDeliveredByLogistics: isDeliveredByCache,
+            updatedAt: currentTime
+          }
+        }).catch(() => {})
+        updatedOrderIds.push(order._id)
+      }
+    }
+    return updatedOrderIds
   }
 
   return {
@@ -287,6 +341,7 @@ module.exports = function createService({
     loadMallCart,
     saveMallCart,
     formatMallCart,
-    calcMallPricing
+    calcMallPricing,
+    autoCompleteDeliveredMallOrders
   }
 }

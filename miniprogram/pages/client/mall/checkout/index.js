@@ -2,14 +2,30 @@ const { callFunction, showError, ensureLogin, requestSubscribeTemplates, loadSys
 const { createClientRequestId } = require('../../../../utils/offlineQueue')
 
 function calcPreview(items = [], coupon = null) {
-  const totalProductAmount = Math.round(items.reduce((sum, item) => sum + Number(item.price == null ? (item.product && item.product.price) || 0 : item.price) * Number(item.quantity || 0), 0) * 100) / 100
-  const shippingFee = totalProductAmount >= 99 || totalProductAmount <= 0 ? 0 : 8
+  const list = Array.isArray(items) ? items : []
+  const totalProductAmount = Math.round(list.reduce((sum, item) => sum + Number(item.price == null ? (item.product && item.product.price) || 0 : item.price) * Number(item.quantity || 0), 0) * 100) / 100
+  let shippingFee = 0
+  if (totalProductAmount > 0 && list.length) {
+    shippingFee = list.reduce((max, item) => {
+      const fee = Number(item.shippingFee ?? (item.product && item.product.shippingFee) ?? 0)
+      return Math.max(max, Number.isFinite(fee) && fee > 0 ? fee : 0)
+    }, 0)
+    shippingFee = Math.round(shippingFee * 100) / 100
+  }
   const amount = Math.round((totalProductAmount + shippingFee) * 100) / 100
   const minOrderAmount = Number(coupon && coupon.minOrderAmount || 0)
   const canUseCoupon = coupon && coupon.applicable !== false && amount >= minOrderAmount
   const discountAmount = canUseCoupon ? Math.min(Number(coupon.discountAmount || 0), amount) : 0
   const payAmount = Math.round(Math.max(amount - discountAmount, 0) * 100) / 100
   return { totalProductAmount, shippingFee, discountAmount, payAmount }
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function isPaidResult(result) {
+  return Boolean(result && (result.paid || result.paymentStatus === 'paid' || result.status === 'paid' || result.status === 'pending_ship'))
 }
 
 function chooseSku(product = {}, skuId = '') {
@@ -37,12 +53,12 @@ Page({
       return callFunction('mall', 'getProductDetail', { id: this.data.productId }).then((product) => {
         const sku = chooseSku(product, this.data.skuId)
         if (!sku || product.status === 'off_sale' || sku.status === 'off_sale' || Number(sku.stock || 0) < this.data.quantity) throw new Error('商品规格已失效、下架或库存不足，请返回重新选规格')
-        const items = [{ productId: product._id, skuId: sku.skuId, name: product.name, coverFileId: sku.imageFileId || product.coverFileId || (product.imageFileIds || [])[0], price: sku.price, quantity: this.data.quantity, specText: sku.specText }]
+        const items = [{ productId: product._id, skuId: sku.skuId, name: product.name, coverFileId: sku.imageFileId || product.coverFileId || (product.imageFileIds || [])[0], price: sku.price, quantity: this.data.quantity, specText: sku.specText, shippingFee: Number(product.shippingFee || 0), product }]
         this.setData({ items, skuId: sku.skuId }, () => this.refreshPricing())
       }).catch((error) => { this.setData({ items: [] }, () => this.refreshPricing()); showError(error) })
     }
     return callFunction('mall', 'getCart').then((cart) => {
-      const items = (cart.items || []).filter((item) => item.selected !== false && !item.invalid && !item.soldOut).map((item) => ({ ...item, name: item.snapshot && item.snapshot.name || item.product.name, coverFileId: item.snapshot && item.snapshot.coverFileId || item.product.coverFileId, price: item.price == null ? (item.snapshot && item.snapshot.price != null ? item.snapshot.price : item.product.price) : item.price, specText: item.specText || item.snapshot && item.snapshot.specText || item.product.specText }))
+      const items = (cart.items || []).filter((item) => item.selected !== false && !item.invalid && !item.soldOut).map((item) => ({ ...item, name: item.snapshot && item.snapshot.name || item.product.name, coverFileId: item.snapshot && item.snapshot.coverFileId || item.product.coverFileId, price: item.price == null ? (item.snapshot && item.snapshot.price != null ? item.snapshot.price : item.product.price) : item.price, specText: item.specText || item.snapshot && item.snapshot.specText || item.product.specText, shippingFee: Number((item.product && item.product.shippingFee) || (item.snapshot && item.snapshot.shippingFee) || 0) }))
       this.setData({ items }, () => this.refreshPricing())
     }).catch(showError)
   },
@@ -84,6 +100,30 @@ Page({
     this.setData({ couponId: '', couponName: '' }, () => this.refreshPricing())
   },
 
+  syncPaymentStatusWithRetry(orderId) {
+    const delays = [0, 800, 1600, 2500]
+    let lastResult = null
+    const run = (index) => {
+      const delay = delays[index] || 0
+      return wait(delay)
+        .then(() => {
+          if (index > 0) showLoading({ title: '正在确认支付结果...', mask: true })
+          return callFunction('payment', 'getPaymentStatus', { orderId })
+        })
+        .then((result) => {
+          lastResult = result
+          if (isPaidResult(result) || index >= delays.length - 1) return result
+          return run(index + 1)
+        })
+        .catch((error) => {
+          if (index >= delays.length - 1) throw error
+          lastResult = lastResult || { paymentStatus: 'paying' }
+          return run(index + 1)
+        })
+    }
+    return run(0)
+  },
+
   submit() {
     if (this._submittingLock || this.data.submitting) return
     if (!this.data.items.length) {
@@ -99,7 +139,7 @@ Page({
     if (this.data.productId) Object.assign(data, { productId: this.data.productId, skuId: this.data.skuId, quantity: this.data.quantity })
     this.setData({ submitting: true })
     showLoading({ title: '正在提交订单...', mask: true })
-    requestSubscribeTemplates(['refundResult'], 'mall_pay').catch(() => null)
+    return requestSubscribeTemplates(['refundResult'], 'mall_pay').catch(() => null)
       .then(() => callFunction('mall', 'createOrder', data))
       .then((order) => {
         this.setData({ pendingOrderId: order._id })
@@ -108,15 +148,24 @@ Page({
       .then((order) => callFunction('payment', 'createPayment', { orderId: order._id, clientRequestId: createClientRequestId('mall_pay') }).then((payment) => ({ order, payment })))
       .then(({ order, payment }) => {
         if (payment.paid) return order
-        if (payment.mock) return callFunction('payment', 'mockPayOrder', { orderId: order._id, paymentNo: payment.paymentNo }).then(() => order)
+        if (payment.mock) {
+          return callFunction('payment', 'mockPayOrder', { orderId: order._id, paymentNo: payment.paymentNo })
+            .then(() => this.syncPaymentStatusWithRetry(order._id))
+            .then(() => order)
+        }
         if (!payment.payParams) throw new Error(payment.message || '微信支付参数未配置')
         hideLoading()
-        return new Promise((resolve, reject) => wx.requestPayment({ ...payment.payParams, success: resolve, fail: reject })).then(() => order)
+        return new Promise((resolve, reject) => wx.requestPayment({ ...payment.payParams, success: resolve, fail: reject }))
+          .then(() => {
+            showLoading({ title: '正在确认支付结果...', mask: true })
+            return this.syncPaymentStatusWithRetry(order._id)
+          })
+          .then(() => order)
       })
       .then((order) => {
         hideLoading()
         this._submittingLock = false
-        wx.showToast({ title: '下单成功' })
+        wx.showToast({ title: '支付成功' })
         wx.redirectTo({ url: '/pages/client/mall/orders/detail/index?id=' + order._id })
       })
       .catch((error) => {

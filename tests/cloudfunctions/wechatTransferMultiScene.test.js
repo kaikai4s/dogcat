@@ -197,3 +197,67 @@ test('wechatTransfers: resolveTransferScene and buildTransferPayload route betwe
     /收款openid缺失/
   )
 })
+
+test('wechatTransfers: single commission scene is automatically reused for user marketing withdrawals', () => {
+  const transfersService = createWechatTransfers({
+    db: { collection: () => ({ doc: () => ({ get: async () => ({ data: null }), update: async () => {} }) }) },
+    now: () => new Date('2026-10-14T10:00:00Z'),
+    safeText: s => String(s || ''),
+    getSystemSettings: async () => ({}),
+    getWechatTransferConfig: () => ({}),
+    wechatPayRequest: async () => ({}),
+    prepareWechatSubmissionQuota: async () => {},
+    applyWechatTransferResult: () => ({}),
+    markWechatWithdrawalFailed: () => ({})
+  })
+
+  // Single-scene configuration: only 1005 commission scene is approved on WeChat Pay
+  const singleSceneConfig = {
+    appId: 'wx123',
+    transferMaxAmount: 200,
+    transferSceneId: '1005',
+    userRecvPerception: '佣金报酬',
+    scenes: {
+      commission: {
+        sceneId: '1005',
+        userRecvPerception: '佣金报酬',
+        sceneReportInfos: [
+          { info_type: '岗位类型', info_content: '宠托师' },
+          { info_type: '报酬说明', info_content: '宠托师上门服务收益提现' }
+        ]
+      },
+      marketing: {
+        sceneId: '1005'
+      }
+    }
+  }
+
+  // 1. Staff withdrawal uses 1005
+  const staffPayload = transfersService.buildTransferPayload({
+    outBillNo: 'bill_staff_single',
+    staffOpenid: 'staff_1',
+    amount: 50
+  }, singleSceneConfig)
+  assert.equal(staffPayload.transfer_scene_id, '1005')
+  assert.equal(staffPayload.user_recv_perception, '佣金报酬')
+  assert.deepEqual(staffPayload.transfer_scene_report_infos, [
+    { info_type: '岗位类型', info_content: '宠托师' },
+    { info_type: '报酬说明', info_content: '宠托师上门服务收益提现' }
+  ])
+
+  // 2. User referral commission withdrawal also uses 1005 with compliant parameters
+  const userPayload = transfersService.buildTransferPayload({
+    outBillNo: 'bill_user_single',
+    assetType: 'user',
+    userOpenid: 'user_1',
+    amount: 20
+  }, singleSceneConfig)
+  assert.equal(userPayload.transfer_scene_id, '1005')
+  assert.equal(userPayload.user_recv_perception, '佣金报酬')
+  assert.deepEqual(userPayload.transfer_scene_report_infos, [
+    { info_type: '岗位类型', info_content: '平台推广顾问' },
+    { info_type: '报酬说明', info_content: '邀请好友推广佣金提现' }
+  ])
+  assert.equal(userPayload.transfer_remark, '邀请好友推广佣金提现')
+})
+

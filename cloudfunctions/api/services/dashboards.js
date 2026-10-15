@@ -27,19 +27,23 @@ module.exports = function createService({
     })
     const maxOrders = Math.max(...days.map((item) => item.orders), 1)
     const maxRegistrations = Math.max(...days.map((item) => item.registrations), 1)
-    const maxRevenue = Math.max(...days.map((item) => item.revenue), 1)
-    const revenueTotal = days.reduce((sum, item) => sum + item.revenue, 0)
+    const maxRevenue = Math.max(...days.map((item) => Math.round(item.revenue * 100) / 100), 1)
+    const revenueTotal = Math.round(days.reduce((sum, item) => sum + item.revenue, 0) * 100) / 100
     const paidOrders = orders.filter((order) => isPaidOrder(order)).filter((order) => {
       const paidDate = parseDateValue(order.paidAt || order.createdAt)
       return paidDate && toCstParts(paidDate).monthKey === monthKey
     })
-    const withHeights = days.map((item) => ({
-      ...item,
-      revenueText: `¥${item.revenue}`,
-      orderHeight: item.orders ? Math.max(Math.round((item.orders / maxOrders) * 100), 8) : 0,
-      registrationHeight: item.registrations ? Math.max(Math.round((item.registrations / maxRegistrations) * 100), 8) : 0,
-      revenueHeight: item.revenue ? Math.max(Math.round((item.revenue / maxRevenue) * 100), 8) : 0
-    }))
+    const withHeights = days.map((item) => {
+      const dayRevenue = Math.round(item.revenue * 100) / 100
+      return {
+        ...item,
+        revenue: dayRevenue,
+        revenueText: `¥${dayRevenue.toFixed(2)}`,
+        orderHeight: item.orders ? Math.max(Math.round((item.orders / maxOrders) * 100), 8) : 0,
+        registrationHeight: item.registrations ? Math.max(Math.round((item.registrations / maxRegistrations) * 100), 8) : 0,
+        revenueHeight: dayRevenue ? Math.max(Math.round((dayRevenue / maxRevenue) * 100), 8) : 0
+      }
+    })
     return {
       monthKey,
       days: withHeights,

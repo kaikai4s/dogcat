@@ -25,9 +25,12 @@ module.exports = function createHandler(context) {
     now,
     paginateList,
     publicMallProduct,
+    queryOrderLogistics,
+    readScopedDocuments,
     safeFileId,
     safeText,
-    saveMallCart
+    saveMallCart,
+    syncWechatPaidOrder
   } = context
 
   async function readAll(collectionName, where = {}, maxLimit = 2000) {
@@ -182,7 +185,19 @@ module.exports = function createHandler(context) {
       const countRes = await db.collection('mall_orders').where(where).count()
       const total = (countRes && countRes.total) || 0
       const res = await db.collection('mall_orders').where(where).orderBy('createdAt', 'desc').skip(offset).limit(pageSize).get()
-      const list = (res.data || []).map((item) => ({ ...item, statusText: mallOrderStatusText(item.status) }))
+      const rawList = res.data || []
+      const list = []
+      for (let item of rawList) {
+        if ((item.status === 'pending_pay' || item.paymentStatus !== 'paid') && typeof syncWechatPaidOrder === 'function') {
+          const payments = typeof readScopedDocuments === 'function'
+            ? await readScopedDocuments('payments', { orderId: item._id }, 'createdAt', 'desc')
+            : []
+          if (payments.some(p => (p.channel === 'wechat' || p.status === 'success') && p.paymentNo)) {
+            item = await syncWechatPaidOrder(item, payments)
+          }
+        }
+        list.push({ ...item, statusText: mallOrderStatusText(item.status) })
+      }
       return {
         list,
         total,
@@ -192,8 +207,16 @@ module.exports = function createHandler(context) {
       }
     }
     if (action === 'getOrderDetail') {
-      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      let order = await getDocOrNull('mall_orders', data.id || data.orderId)
       if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
+      if ((order.status === 'pending_pay' || order.paymentStatus !== 'paid') && typeof syncWechatPaidOrder === 'function') {
+        const payments = typeof readScopedDocuments === 'function'
+          ? await readScopedDocuments('payments', { orderId: order._id }, 'createdAt', 'desc')
+          : []
+        if (payments.some(item => (item.channel === 'wechat' || item.status === 'success') && item.paymentNo)) {
+          order = await syncWechatPaidOrder(order, payments)
+        }
+      }
       return { ...order, statusText: mallOrderStatusText(order.status) }
     }
     if (action === 'cancelOrder') {
@@ -228,19 +251,65 @@ module.exports = function createHandler(context) {
       if (refundImages.length && typeof checkImageSecurity === 'function') {
         await Promise.all(refundImages.map((fileId) => checkImageSecurity(openid, fileId, { scene: 1, label: '商城售后凭证' })))
       }
+      const afterSaleType = ['return_and_refund', 'compensation'].includes(data.afterSaleType) ? data.afterSaleType : 'refund_only'
+      const requestedAmount = Number(data.requestedAmount) > 0 ? Math.min(Number(data.requestedAmount), Number(order.payAmount || 0)) : Number(order.payAmount || 0)
       const res = await db.collection('mall_orders').where({ _id: order._id, clientOpenid: openid, status: order.status }).update({
         data: {
           status: 'refund_applied',
           refundStatus: 'applied',
+          afterSaleType,
           preRefundStatus: order.status,
           refundReason: reason,
           refundImages,
-          refundRequestedAmount: Number(order.payAmount || 0),
+          refundRequestedAmount: requestedAmount,
           updatedAt: time
         }
       })
       if (!res.stats || !res.stats.updated) throw new Error('订单状态已更新，请刷新后重试')
-      return { orderId: order._id, refundStatus: 'applied', preRefundStatus: order.status }
+      return { orderId: order._id, refundStatus: 'applied', afterSaleType, preRefundStatus: order.status }
+    }
+    if (action === 'fillReturnLogistics') {
+      await getUser(openid)
+      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
+      if (order.refundStatus !== 'return_pending_ship') throw new Error('当前订单不是待买家寄回状态')
+      const expressCompany = safeText(data.expressCompany).trim()
+      const trackingNo = safeText(data.trackingNo).trim()
+      if (!expressCompany) throw new Error('请选择或填写退货快递公司')
+      if (!trackingNo) throw new Error('请填写退货快递单号')
+      const time = now()
+      const res = await db.collection('mall_orders').where({ _id: order._id, refundStatus: 'return_pending_ship' }).update({
+        data: {
+          refundStatus: 'return_shipped',
+          returnExpress: {
+            expressCompany,
+            trackingNo,
+            shippedAt: time
+          },
+          updatedAt: time
+        }
+      })
+      if (!res.stats || !res.stats.updated) throw new Error('退货状态已更新，请刷新后重试')
+      return { orderId: order._id, refundStatus: 'return_shipped', expressCompany, trackingNo }
+    }
+    if (action === 'queryOrderLogistics') {
+      await getUser(openid)
+      const order = await getDocOrNull('mall_orders', data.id || data.orderId)
+      if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
+      const result = await queryOrderLogistics(order)
+      if (result && result.isDelivered && order.status === 'shipped') {
+        const time = now()
+        await db.collection('mall_orders').where({ _id: order._id, status: 'shipped' }).update({
+          data: {
+            status: 'completed',
+            receivedAt: time,
+            autoDeliveredByLogistics: true,
+            updatedAt: time
+          }
+        }).catch(() => {})
+        result.orderStatusUpdated = 'completed'
+      }
+      return result
     }
     throw new Error('未知 mall 操作')
   }

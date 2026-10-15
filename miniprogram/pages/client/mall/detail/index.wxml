@@ -1,32 +1,137 @@
-<view class="mall-page detail-page" wx:if="{{product}}">
-  <swiper class="detail-swiper" indicator-dots="true" autoplay="true">
-    <swiper-item wx:for="{{displayImages}}" wx:key="*this"><image src="{{item}}" mode="aspectFill" /></swiper-item>
-  </swiper>
-  <view class="detail-card">
-    <view class="detail-price">¥{{selectedSku ? selectedSku.price : product.price}} <text wx:if="{{selectedSku ? selectedSku.originalPrice : product.originalPrice}}">¥{{selectedSku ? selectedSku.originalPrice : product.originalPrice}}</text></view>
-    <view class="detail-title">{{product.name}}</view>
-    <view class="detail-sub">{{product.subtitle}}</view>
-    <view class="detail-sub" wx:if="{{selectionMessage}}">{{selectionMessage}}</view>
-    <view class="detail-meta"><text>{{selectedSku ? selectedSku.specText : (product.specText || '默认规格')}}</text><text>库存 {{selectedSku ? selectedSku.stock : 0}}</text><text>已售 {{product.salesCount}}</text></view>
+<view class="mall-page detail-page fade-in-page" wx:if="{{product}}">
+  <!-- 顶部高清轮播图 -->
+  <view class="swiper-wrap">
+    <swiper class="detail-swiper" indicator-dots="true" indicator-active-color="#ff7a45" indicator-color="rgba(255,255,255,0.6)" autoplay="true" interval="4000" circular="true">
+      <swiper-item wx:for="{{displayImages}}" wx:key="*this">
+        <image class="swiper-img" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewCarouselImage" />
+      </swiper-item>
+    </swiper>
+    <view class="swiper-corner-badge">点击图片可放大查看</view>
   </view>
-  <view class="detail-card" wx:if="{{product.specGroups && product.specGroups.length}}">
+
+  <!-- 基础价格与标题 -->
+  <view class="detail-card main-info-card">
+    <view class="detail-price-row">
+      <view class="price-main">
+        <text class="yen-symbol">¥</text>
+        <text class="price-val">{{selectedSku ? selectedSku.price : product.price}}</text>
+        <text class="orig-price" wx:if="{{selectedSku ? selectedSku.originalPrice : product.originalPrice}}">¥{{selectedSku ? selectedSku.originalPrice : product.originalPrice}}</text>
+      </view>
+      <view class="sales-tag">已售 {{product.salesCount || 0}}</view>
+    </view>
+
+    <view class="detail-title">{{product.name}}</view>
+    <view class="detail-sub" wx:if="{{product.subtitle}}">{{product.subtitle}}</view>
+
+    <!-- 亮点标签 -->
+    <view class="highlights-row" wx:if="{{product.highlights && product.highlights.length}}">
+      <view class="highlight-chip" wx:for="{{product.highlights}}" wx:key="*this">
+        <text class="highlight-icon">✨</text>
+        <text>{{item}}</text>
+      </view>
+    </view>
+
+    <view class="detail-warn" wx:if="{{selectionMessage}}">{{selectionMessage}}</view>
+    <view class="detail-meta">
+      <text class="meta-item"><text class="meta-label">已选</text>{{selectedSku ? selectedSku.specText : (product.specText || '默认规格')}}</text>
+      <text class="meta-item"><text class="meta-label">库存</text>{{selectedSku ? selectedSku.stock : 0}}件</text>
+      <text class="meta-item"><text class="meta-label">运费</text>{{product.shippingFee > 0 ? '¥' + product.shippingFee : '免运费'}}</text>
+    </view>
+  </view>
+
+  <!-- 服务保障背书条 -->
+  <view class="detail-card guarantee-card" wx:if="{{product.serviceGuarantees && product.serviceGuarantees.length}}">
+    <view class="guarantee-head">
+      <text class="guarantee-badge">服务承诺</text>
+      <text class="guarantee-sub">官方自营 · 品质保障 · 售后无忧</text>
+    </view>
+    <view class="guarantee-list">
+      <view class="guarantee-item" wx:for="{{product.serviceGuarantees}}" wx:key="*this">
+        <text class="guarantee-check">✓</text>
+        <text>{{item}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 规格属性选择 -->
+  <view class="detail-card spec-card" wx:if="{{product.specGroups && product.specGroups.length}}">
     <view class="section-title">选择规格</view>
     <view class="spec-group" wx:for="{{product.specGroups}}" wx:key="name" wx:for-item="group">
       <view class="spec-title">{{group.name}}</view>
       <view class="spec-values">
-        <view class="spec-chip {{selectedSpecs[group.name] === value ? 'active' : ''}}" wx:for="{{group.values}}" wx:key="*this" wx:for-item="value" data-group="{{group.name}}" data-value="{{value}}" bindtap="selectSpec">{{value}}</view>
+        <view class="spec-chip {{selectedSpecs[group.name] === value ? 'active' : ''}}" wx:for="{{group.values}}" wx:key="*this" wx:for-item="value" data-group="{{group.name}}" data-value="{{value}}" bindtap="selectSpec">
+          {{value}}
+        </view>
       </view>
     </view>
   </view>
-  <view class="detail-card">
-    <view class="section-title">商品详情</view>
-    <view class="desc-text">{{product.description || '暂无详情说明'}}</view>
+
+  <!-- 结构化产品参数说明表 -->
+  <view class="detail-card params-card" wx:if="{{product.parameters && product.parameters.length}}">
+    <view class="section-head-bar">
+      <view class="section-title">产品规格参数</view>
+      <view class="section-tag">标准化信息</view>
+    </view>
+    <view class="params-table">
+      <view class="param-tr" wx:for="{{product.parameters}}" wx:key="label">
+        <view class="param-th">{{item.label}}</view>
+        <view class="param-td">{{item.value}}</view>
+      </view>
+    </view>
   </view>
+
+  <!-- 使用说明 / 喂食指南 / 注意事项 -->
+  <view class="detail-card instruction-card" wx:if="{{product.usageInstructions}}">
+    <view class="section-head-bar">
+      <view class="section-title">使用说明与建议</view>
+      <view class="section-tag warm-tag">贴心提示</view>
+    </view>
+    <view class="instruction-content">
+      <text class="instruction-text">{{product.usageInstructions}}</text>
+    </view>
+  </view>
+
+  <!-- 商品图文详情长卷 -->
+  <view class="detail-card content-card">
+    <view class="section-head-bar">
+      <view class="section-title">商品详细介绍</view>
+      <view class="section-tag">图文详情</view>
+    </view>
+
+    <!-- 纯文字简介补充 -->
+    <view class="desc-text-box" wx:if="{{product.description}}">
+      <text class="desc-text">{{product.description}}</text>
+    </view>
+
+    <!-- 高清长图无缝展示 -->
+    <view class="detail-images-box" wx:if="{{product.detailImageFileIds && product.detailImageFileIds.length}}">
+      <view class="detail-img-item" wx:for="{{product.detailImageFileIds}}" wx:key="*this">
+        <image class="detail-long-image" src="{{item}}" mode="widthFix" lazy-load="true" data-url="{{item}}" bindtap="previewDetailImage" />
+      </view>
+      <view class="image-preview-tip">—— 点击长图可全屏高清浏览 ——</view>
+    </view>
+    <view class="desc-empty" wx:elif="{{!product.description}}">
+      <text>商家正在整理更丰富的图文介绍中，敬请期待</text>
+    </view>
+  </view>
+
+  <!-- 底部操作悬浮栏 -->
   <view class="bottom-bar detail-bottom-bar">
-    <button class="ghost cart-entry" bindtap="cart">购物车</button>
-    <view class="qty-box detail-qty"><button data-delta="-1" bindtap="changeQty">-</button><input type="number" value="{{quantity}}" bindinput="inputQty" /><button data-delta="1" bindtap="changeQty">+</button></view>
-    <button class="add-cart-btn" bindtap="addCart" disabled="{{!canBuy}}">加购</button>
-    <button class="primary buy-btn" bindtap="buyNow" disabled="{{!canBuy}}">立即买</button>
+    <view class="cart-entry-wrap {{cartBouncing ? 'cart-bouncing' : ''}}" bindtap="cart">
+      <view class="cart-icon-box">
+        <text class="cart-emoji">🛒</text>
+      </view>
+      <text class="cart-label">购物车</text>
+    </view>
+    <view class="qty-stepper">
+      <button class="step-btn" data-delta="-1" bindtap="changeQty">-</button>
+      <input class="step-input" type="number" value="{{quantity}}" bindinput="inputQty" />
+      <button class="step-btn" data-delta="1" bindtap="changeQty">+</button>
+    </view>
+    <view class="btn-group">
+      <button class="action-btn cart-action-btn" bindtap="addCart" disabled="{{!canBuy}}">加入购物车</button>
+      <button class="action-btn buy-action-btn" bindtap="buyNow" disabled="{{!canBuy}}">立即购买</button>
+    </view>
   </view>
 </view>
 <view class="mall-page empty" wx:else>商品加载中...</view>

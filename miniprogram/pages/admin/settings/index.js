@@ -33,9 +33,11 @@ function normalizeStaffDeposit(deposit = {}) {
 
 function defaultTransferScenes(transfer = {}) {
   const rawScenes = transfer.scenes || {}
+  const commissionSceneId = rawScenes.commission?.sceneId || transfer.sceneId || '1005'
+  const commissionPerception = rawScenes.commission?.userRecvPerception || transfer.userRecvPerception || '佣金报酬'
   const commission = {
-    sceneId: rawScenes.commission?.sceneId || transfer.sceneId || '1005',
-    userRecvPerception: rawScenes.commission?.userRecvPerception || transfer.userRecvPerception || '劳务报酬',
+    sceneId: commissionSceneId,
+    userRecvPerception: commissionPerception,
     sceneReportInfos: Array.isArray(rawScenes.commission?.sceneReportInfos) && rawScenes.commission.sceneReportInfos.length
       ? rawScenes.commission.sceneReportInfos
       : (Array.isArray(transfer.sceneReportInfos) && transfer.sceneReportInfos.length
@@ -46,22 +48,23 @@ function defaultTransferScenes(transfer = {}) {
             ])
   }
   const marketing = {
-    sceneId: rawScenes.marketing?.sceneId || '1000',
-    userRecvPerception: rawScenes.marketing?.userRecvPerception || '活动奖励',
+    sceneId: rawScenes.marketing?.sceneId || commissionSceneId,
+    userRecvPerception: rawScenes.marketing?.userRecvPerception || '佣金报酬',
     sceneReportInfos: Array.isArray(rawScenes.marketing?.sceneReportInfos) && rawScenes.marketing.sceneReportInfos.length
       ? rawScenes.marketing.sceneReportInfos
       : [
-          { info_type: '活动名称', info_content: '邀请好友有礼' },
-          { info_type: '奖励说明', info_content: '邀请好友完成首单现金奖励' }
+          { info_type: '岗位类型', info_content: '平台推广顾问' },
+          { info_type: '报酬说明', info_content: '邀请好友推广佣金提现' }
         ]
   }
   const reimbursement = {
-    sceneId: rawScenes.reimbursement?.sceneId || '1009',
-    userRecvPerception: rawScenes.reimbursement?.userRecvPerception || '货款',
+    sceneId: rawScenes.reimbursement?.sceneId || commissionSceneId,
+    userRecvPerception: rawScenes.reimbursement?.userRecvPerception || '报销款',
     sceneReportInfos: Array.isArray(rawScenes.reimbursement?.sceneReportInfos) && rawScenes.reimbursement.sceneReportInfos.length
       ? rawScenes.reimbursement.sceneReportInfos
       : [
-          { info_type: '采购商品名称', info_content: '一次性防护用品' }
+          { info_type: '岗位类型', info_content: '宠托师' },
+          { info_type: '报酬说明', info_content: '一次性服务用品采购报销' }
         ]
   }
   return { commission, marketing, reimbursement }
@@ -1708,8 +1711,55 @@ Page({
     }
   },
 
+  applySingleSceneMode() {
+    const commissionSceneId = this.data.settings.staffSupplies?.transfer?.scenes?.commission?.sceneId ||
+      this.data.settings.staffSupplies?.transfer?.sceneId || '1005'
+    const commissionReports = [
+      { info_type: '岗位类型', info_content: '宠托师' },
+      { info_type: '报酬说明', info_content: '宠托师上门服务收益提现' }
+    ]
+    const marketingReports = [
+      { info_type: '岗位类型', info_content: '平台推广顾问' },
+      { info_type: '报酬说明', info_content: '邀请好友推广佣金提现' }
+    ]
+    const reimbursementReports = [
+      { info_type: '岗位类型', info_content: '宠托师' },
+      { info_type: '报酬说明', info_content: '一次性服务用品采购报销' }
+    ]
+    const activeTab = this.data.activeTransferTab || 'commission'
+    const activeJson = activeTab === 'marketing'
+      ? JSON.stringify(marketingReports, null, 2)
+      : activeTab === 'reimbursement'
+        ? JSON.stringify(reimbursementReports, null, 2)
+        : JSON.stringify(commissionReports, null, 2)
+
+    this.setData({
+      'settings.staffSupplies.transfer.sceneId': commissionSceneId,
+      'settings.staffSupplies.transfer.userRecvPerception': '佣金报酬',
+      'settings.staffSupplies.transfer.scenes.commission.sceneId': commissionSceneId,
+      'settings.staffSupplies.transfer.scenes.commission.userRecvPerception': '佣金报酬',
+      'settings.staffSupplies.transfer.scenes.commission.sceneReportInfos': commissionReports,
+      'settings.staffSupplies.transfer.scenes.marketing.sceneId': commissionSceneId,
+      'settings.staffSupplies.transfer.scenes.marketing.userRecvPerception': '佣金报酬',
+      'settings.staffSupplies.transfer.scenes.marketing.sceneReportInfos': marketingReports,
+      'settings.staffSupplies.transfer.scenes.reimbursement.sceneId': commissionSceneId,
+      'settings.staffSupplies.transfer.scenes.reimbursement.userRecvPerception': '报销款',
+      'settings.staffSupplies.transfer.scenes.reimbursement.sceneReportInfos': reimbursementReports,
+      'transferSceneTexts.commission': JSON.stringify(commissionReports, null, 2),
+      'transferSceneTexts.marketing': JSON.stringify(marketingReports, null, 2),
+      'transferSceneTexts.reimbursement': JSON.stringify(reimbursementReports, null, 2),
+      sceneReportInfosText: activeJson
+    })
+    wx.showModal({
+      title: '已开启单场景模式',
+      content: `所有提现业务已统一绑定场景 ID: ${commissionSceneId}（佣金报酬）。宠托师与用户邀请提现均合规使用“佣金报酬”，可直接点击下方【保存全部设置】生效。`,
+      showCancel: false
+    })
+  },
+
   fillTransferPreset(e) {
     const type = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.type) || this.data.activeTransferTab || 'commission'
+    const commissionSceneId = this.data.settings.staffSupplies?.transfer?.scenes?.commission?.sceneId || this.data.settings.staffSupplies?.transfer?.sceneId || '1005'
     if (type === 'commission') {
       const template = [
         { info_type: '岗位类型', info_content: '宠托师' },
@@ -1717,39 +1767,40 @@ Page({
       ]
       const json = JSON.stringify(template, null, 2)
       this.setData({
-        'settings.staffSupplies.transfer.scenes.commission.sceneId': this.data.settings.staffSupplies.transfer.scenes?.commission?.sceneId || '1005',
-        'settings.staffSupplies.transfer.scenes.commission.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.commission?.userRecvPerception || '劳务报酬',
-        'settings.staffSupplies.transfer.sceneId': this.data.settings.staffSupplies.transfer.sceneId || '1005',
-        'settings.staffSupplies.transfer.userRecvPerception': this.data.settings.staffSupplies.transfer.userRecvPerception || '劳务报酬',
+        'settings.staffSupplies.transfer.scenes.commission.sceneId': commissionSceneId,
+        'settings.staffSupplies.transfer.scenes.commission.userRecvPerception': '佣金报酬',
+        'settings.staffSupplies.transfer.sceneId': commissionSceneId,
+        'settings.staffSupplies.transfer.userRecvPerception': '佣金报酬',
         sceneReportInfosText: json,
         'transferSceneTexts.commission': json
       })
       wx.showToast({ title: '已载入宠托师提现模板', icon: 'success' })
     } else if (type === 'reimbursement') {
       const template = [
-        { info_type: '采购商品名称', info_content: '一次性防护用品' }
+        { info_type: '岗位类型', info_content: '宠托师' },
+        { info_type: '报酬说明', info_content: '一次性服务用品采购报销' }
       ]
       const json = JSON.stringify(template, null, 2)
       this.setData({
-        'settings.staffSupplies.transfer.scenes.reimbursement.sceneId': this.data.settings.staffSupplies.transfer.scenes?.reimbursement?.sceneId || '1009',
-        'settings.staffSupplies.transfer.scenes.reimbursement.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.reimbursement?.userRecvPerception || '货款',
+        'settings.staffSupplies.transfer.scenes.reimbursement.sceneId': commissionSceneId,
+        'settings.staffSupplies.transfer.scenes.reimbursement.userRecvPerception': '报销款',
         sceneReportInfosText: json,
         'transferSceneTexts.reimbursement': json
       })
       wx.showToast({ title: '已载入企业报销模板', icon: 'success' })
     } else if (type === 'marketing') {
       const template = [
-        { info_type: '活动名称', info_content: '邀请好友有礼' },
-        { info_type: '奖励说明', info_content: '邀请好友完成首单现金奖励' }
+        { info_type: '岗位类型', info_content: '平台推广顾问' },
+        { info_type: '报酬说明', info_content: '邀请好友推广佣金提现' }
       ]
       const json = JSON.stringify(template, null, 2)
       this.setData({
-        'settings.staffSupplies.transfer.scenes.marketing.sceneId': this.data.settings.staffSupplies.transfer.scenes?.marketing?.sceneId || '1000',
-        'settings.staffSupplies.transfer.scenes.marketing.userRecvPerception': this.data.settings.staffSupplies.transfer.scenes?.marketing?.userRecvPerception || '活动奖励',
+        'settings.staffSupplies.transfer.scenes.marketing.sceneId': commissionSceneId,
+        'settings.staffSupplies.transfer.scenes.marketing.userRecvPerception': '佣金报酬',
         sceneReportInfosText: json,
         'transferSceneTexts.marketing': json
       })
-      wx.showToast({ title: '已载入营销奖励模板', icon: 'success' })
+      wx.showToast({ title: '已载入推广佣金模板', icon: 'success' })
     }
   },
 

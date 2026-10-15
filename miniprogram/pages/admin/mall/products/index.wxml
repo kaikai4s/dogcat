@@ -1,42 +1,51 @@
 <view class="admin-mall-page">
   <view class="admin-hero">
     <view class="hero-copy">
-      <view class="badge">用品商城</view>
-      <view class="title">商品与分类</view>
-      <view class="tip">集中维护分类、商品图片、价格库存和上下架状态，适合日常快速运营。</view>
+      <view class="hero-tag">用品商城</view>
+      <view class="hero-title">商品与分类</view>
+      <view class="hero-desc">集中维护分类、商品图片、价格库存和上下架状态，适合日常快速运营。</view>
     </view>
     <view class="hero-stats">
-      <view><text>{{stats.onSaleProducts}}</text><text>上架</text></view>
-      <view><text>{{stats.lowStockProducts}}</text><text>需补货</text></view>
-      <view><text>{{stats.enabledCategories}}</text><text>启用分类</text></view>
+      <view class="hero-stat-card"><text class="stat-num">{{stats.onSaleProducts}}</text><text class="stat-label">上架</text></view>
+      <view class="hero-stat-card"><text class="stat-num">{{stats.lowStockProducts}}</text><text class="stat-label">需补货</text></view>
+      <view class="hero-stat-card"><text class="stat-num">{{stats.enabledCategories}}</text><text class="stat-label">启用分类</text></view>
     </view>
   </view>
 
   <view class="toolbar sticky-toolbar">
-    <button bindtap="showCategory">新增分类</button>
-    <button class="primary" bindtap="showProduct">新增商品</button>
+    <button class="tool-btn btn-secondary" bindtap="showCategory">+ 新增分类</button>
+    <button class="tool-btn btn-primary" bindtap="showProduct">+ 新增商品</button>
   </view>
 
-  <view class="section-card">
+  <view class="section-card category-card">
     <view class="section-head">
-      <view>
+      <view class="section-info">
         <view class="section-title">商品分类</view>
-        <view class="muted">分类可停用，已有商品的分类不能直接删除。</view>
+        <view class="muted">分类可停用；已有商品的分类不可直接删除。</view>
       </view>
       <view class="pill light">{{stats.enabledCategories}}/{{stats.totalCategories}}</view>
     </view>
     <scroll-view scroll-x class="cat-row compact-row">
       <view class="cat-chip {{item.enabled ? '' : 'disabled'}}" wx:for="{{categories}}" wx:key="_id">
-        <text class="cat-main" bindtap="showCategory" data-id="{{item._id}}">{{item.icon || '•'}} {{item.name}}</text>
-        <text class="cat-status">{{item.enabled ? '启用' : '停用'}}</text>
-        <text class="delete" data-id="{{item._id}}" bindtap="deleteCategory">删</text>
+        <view class="cat-main" bindtap="showCategory" data-id="{{item._id}}">
+          <text class="cat-icon">{{item.icon || '🏷️'}}</text>
+          <text class="cat-name">{{item.name}}</text>
+        </view>
+        <text class="cat-status-badge {{item.enabled ? 'is-enabled' : 'is-disabled'}}">{{item.enabled ? '已启用' : '已停用'}}</text>
+        <view class="cat-del-btn" data-id="{{item._id}}" catchtap="deleteCategory">
+          <text class="del-cross">×</text>
+        </view>
       </view>
     </scroll-view>
   </view>
 
   <view class="search-card">
-    <input placeholder="搜索商品名称 / 副标题" value="{{keyword}}" bindinput="inputKeyword" bindconfirm="search" />
-    <button bindtap="search">搜索</button>
+    <view class="search-input-wrap">
+      <text class="search-icon-symbol">🔍</text>
+      <input class="search-text-input" placeholder="搜索商品名称 / 副标题" value="{{keyword}}" bindinput="inputKeyword" bindconfirm="search" />
+      <text class="search-clear-btn" wx:if="{{keyword}}" bindtap="clearKeyword">×</text>
+    </view>
+    <button class="search-submit-btn" bindtap="search">搜索</button>
   </view>
 
   <view class="filter-row">
@@ -56,16 +65,29 @@
         <view class="strong product-name">{{item.name}}</view>
         <view class="price">{{item.priceText}}</view>
       </view>
-      <view class="muted">{{item.categoryName}} · {{item.specText}}</view>
-      <view class="muted" wx:if="{{item.subtitle}}">{{item.subtitle}}</view>
+      <view class="muted product-sub-spec">{{item.categoryName}} · {{item.specText}}</view>
+      <view class="muted product-subtitle" wx:if="{{item.subtitle}}">{{item.subtitle}}</view>
       <view class="metric-row">
-        <view class="mini-metric {{item.stockClass}}"><text>{{item.stockText}}</text><text>库存 {{item.stock}}</text></view>
-        <view class="mini-metric"><text>销量</text><text>{{item.salesCount || 0}}</text></view>
-        <view class="mini-metric"><text>图片</text><text>{{item.imageCount}}</text></view>
+        <view class="mini-metric {{item.stockClass}}">
+          <text class="metric-label">{{item.stockText}}</text>
+          <text class="metric-val">库存 {{item.stock}}</text>
+        </view>
+        <view class="mini-metric">
+          <text class="metric-label">销量</text>
+          <text class="metric-val">{{item.salesCount || 0}}</text>
+        </view>
+        <view class="mini-metric">
+          <text class="metric-label">运费</text>
+          <text class="metric-val">{{item.shippingFeeText || '包邮'}}</text>
+        </view>
+        <view class="mini-metric">
+          <text class="metric-label">图片</text>
+          <text class="metric-val">{{item.imageCount}}</text>
+        </view>
       </view>
       <view class="actions inline-actions">
-        <button data-id="{{item._id}}" bindtap="showProduct">编辑</button>
-        <button class="{{item.status === 'on_sale' ? 'danger' : 'primary'}}" data-id="{{item._id}}" data-status="{{item.status}}" bindtap="toggleStatus">{{item.status === 'on_sale' ? '下架' : '上架'}}</button>
+        <button class="product-action-btn btn-edit" data-id="{{item._id}}" bindtap="showProduct">编辑商品</button>
+        <button class="product-action-btn {{item.status === 'on_sale' ? 'btn-danger' : 'btn-primary'}}" data-id="{{item._id}}" data-status="{{item.status}}" bindtap="toggleStatus">{{item.status === 'on_sale' ? '下架' : '上架'}}</button>
       </view>
     </view>
   </view>
@@ -95,6 +117,8 @@
         <input placeholder="商品名称" value="{{productForm.name}}" data-field="name" bindinput="inputProduct" />
         <input placeholder="副标题，如 低敏成猫粮 / 结团除臭" value="{{productForm.subtitle}}" data-field="subtitle" bindinput="inputProduct" />
         <picker mode="selector" range="{{categories}}" range-key="name" bindchange="chooseCategory"><view class="picker-line">分类：{{productForm.categoryName || '请选择'}}</view></picker>
+        <view class="form-label" style="margin-top: 14rpx;">商品专属运费（元，0 或留空表示包邮）</view>
+        <input type="digit" placeholder="0.00（如 0 包邮，或 6、8、15 等）" value="{{productForm.shippingFee}}" data-field="shippingFee" bindinput="inputProduct" />
       </view>
       <view class="form-section">
         <view class="section-title small-title">商品图片</view>
@@ -117,6 +141,17 @@
           </view>
           <view class="image-tile add-tile" bindtap="chooseCarouselImages">+</view>
         </view>
+        <view class="form-label">详情长图 / 详细介绍图（支持上传多张，展示在商品详情底部）</view>
+        <view class="image-grid">
+          <view class="image-tile detail-tile" wx:for="{{productForm.detailImageFileIds}}" wx:key="*this">
+            <image src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="previewMallImage" />
+            <view class="remove-image" data-index="{{index}}" bindtap="removeDetailImage">×</view>
+          </view>
+          <view class="image-tile add-tile" bindtap="chooseDetailImages">
+            <text class="add-icon">+</text>
+            <text class="add-tip">传详情图</text>
+          </view>
+        </view>
       </view>
       <view class="form-section">
         <view class="section-title small-title">规格与价格</view>
@@ -135,54 +170,168 @@
           <view class="muted">历史重复属性已合并；丢失的SKU无法恢复，请重新生成并填写缺失组合的价格库存。同步不会推测新组合价格。</view>
           <view class="muted" wx:if="{{productForm.specsDirty}}">属性已更改，请重新同步SKU后保存。</view>
           <view class="spec-group-editor" wx:for="{{productForm.specGroupsForm}}" wx:key="index" wx:for-item="group">
-            <view class="section-head">
-              <view class="strong small">属性名称 {{index + 1}}</view>
-              <view class="delete" data-index="{{index}}" bindtap="removeSpecGroup">删除</view>
+            <view class="section-head spec-group-head">
+              <view class="strong small">属性规格 {{index + 1}}</view>
+              <view class="delete spec-del-btn" data-index="{{index}}" bindtap="removeSpecGroup">删除该属性</view>
             </view>
             <view class="two-col-form sku-form">
               <view><view class="form-label">属性名称</view><input placeholder="如 重量 / 尺寸 / 颜色" value="{{group.name}}" data-index="{{index}}" data-field="name" bindinput="inputSpecGroup" /></view>
               <view><view class="form-label">属性值（多个）</view><input placeholder="如 2kg、5kg、10kg" value="{{group.valuesText}}" data-index="{{index}}" data-field="valuesText" bindinput="inputSpecGroup" /></view>
             </view>
           </view>
-          <view class="spec-actions"><button class="ghost sku-generate" bindtap="addSpecGroup">添加属性名称</button><button class="ghost sku-generate" bindtap="generateSkus">生成/同步SKU</button></view>
+          <view class="spec-actions">
+            <button class="spec-btn-add" bindtap="addSpecGroup">+ 添加属性名称</button>
+            <button class="spec-btn-generate" bindtap="generateSkus">⚡ 生成/同步SKU</button>
+          </view>
           <view class="sku-table-card" wx:if="{{productForm.skus.length}}">
-            <view class="section-head">
+            <view class="section-head sku-section-head">
               <view>
-                <view class="strong small">SKU组合表</view>
-                <view class="muted">每一行就是一个可售规格组合，分别维护价格、库存、图片和上下架。</view>
+                <view class="strong small sku-title-text">SKU 规格组合表</view>
+                <view class="muted">每一张卡片对应一个规格组合，独立设置价格、库存与图片</view>
               </view>
-              <view class="pill light">{{productForm.skus.length}}个SKU</view>
+              <view class="pill light sku-count-pill">{{productForm.skus.length}} 个SKU</view>
             </view>
-            <view class="sku-table-head">
-              <text>规格组合</text><text>售价</text><text>库存</text><text>状态</text>
+
+            <!-- 批量填充工具栏 -->
+            <view class="sku-batch-bar" wx:if="{{productForm.skus.length > 1}}">
+              <view class="batch-bar-title">⚡ 批量设置：</view>
+              <view class="batch-inputs-wrap">
+                <input class="batch-input" type="digit" placeholder="统一售价" value="{{batchPrice}}" bindinput="inputBatchPrice" />
+                <input class="batch-input" type="number" placeholder="统一库存" value="{{batchStock}}" bindinput="inputBatchStock" />
+                <button class="batch-apply-btn" bindtap="applyBatchToSkus">应用全部</button>
+              </view>
             </view>
-            <view class="sku-table-row" wx:for="{{productForm.skus}}" wx:key="skuId">
-              <view class="sku-combo">
-                <view class="sku-spec-tags">
-                  <text wx:for="{{productForm.specGroupsForm}}" wx:key="name" wx:for-item="group">{{group.name}}：{{item.specs[group.name]}}</text>
+
+            <!-- SKU 卡片列表 -->
+            <view class="sku-cards-list">
+              <view class="sku-item-card" wx:for="{{productForm.skus}}" wx:key="skuId">
+                <!-- 卡片顶部：组合标签 与 启用/停售开关 -->
+                <view class="sku-card-header">
+                  <view class="sku-spec-pills">
+                    <view class="sku-pill" wx:for="{{productForm.specGroupsForm}}" wx:key="name" wx:for-item="group">
+                      <text class="pill-key">{{group.name}}:</text>
+                      <text class="pill-val">{{item.specs[group.name] || '默认'}}</text>
+                    </view>
+                  </view>
+                  <view class="sku-status-btn {{item.status === 'off_sale' ? 'is-off' : 'is-on'}}" data-index="{{index}}" bindtap="toggleSkuStatus">
+                    <text class="status-dot"></text>
+                    <text>{{item.status === 'off_sale' ? '已停售' : '销售中'}}</text>
+                  </view>
                 </view>
-                <input class="sku-name-input" value="{{item.specText}}" data-index="{{index}}" data-field="specText" bindinput="inputSku" />
-                <view class="sku-image-mini" data-index="{{index}}" bindtap="chooseSkuImage">
-                  <image wx:if="{{item.imageFileId}}" src="{{item.imageFileId}}" mode="aspectFill" data-url="{{item.imageFileId}}" bindtap="previewMallImage" />
-                  <text wx:else>图</text>
+
+                <!-- 卡片主体：图片 + 结构化参数录入 -->
+                <view class="sku-card-body">
+                  <!-- 规格图片上传框 -->
+                  <view class="sku-avatar-col">
+                    <view class="sku-avatar-box {{item.imageFileId ? 'has-img' : ''}}" data-index="{{index}}" bindtap="chooseSkuImage">
+                      <image wx:if="{{item.imageFileId}}" src="{{item.imageFileId}}" mode="aspectFill" data-url="{{item.imageFileId}}" catchtap="previewMallImage" />
+                      <view wx:else class="sku-avatar-placeholder">
+                        <text class="cam-icon">📷</text>
+                        <text class="cam-text">传图</text>
+                      </view>
+                    </view>
+                    <text wx:if="{{item.imageFileId}}" class="sku-img-del" data-index="{{index}}" bindtap="removeSkuImage">删除图</text>
+                  </view>
+
+                  <!-- 数据输入区：售价、原价、库存 栅格化清晰带标签 -->
+                  <view class="sku-fields-col">
+                    <view class="sku-field-grid">
+                      <view class="sku-field-item">
+                        <view class="sku-field-label required">售价 (元)</view>
+                        <view class="sku-input-wrapper price-wrap">
+                          <text class="currency">¥</text>
+                          <input class="sku-field-input" type="digit" placeholder="0.00" value="{{item.price}}" data-index="{{index}}" data-field="price" bindinput="inputSku" />
+                        </view>
+                      </view>
+                      <view class="sku-field-item">
+                        <view class="sku-field-label">划线原价</view>
+                        <view class="sku-input-wrapper">
+                          <text class="currency">¥</text>
+                          <input class="sku-field-input" type="digit" placeholder="选填" value="{{item.originalPrice}}" data-index="{{index}}" data-field="originalPrice" bindinput="inputSku" />
+                        </view>
+                      </view>
+                      <view class="sku-field-item">
+                        <view class="sku-field-label required">库存</view>
+                        <view class="sku-input-wrapper">
+                          <input class="sku-field-input" type="number" placeholder="0" value="{{item.stock}}" data-index="{{index}}" data-field="stock" bindinput="inputSku" />
+                        </view>
+                      </view>
+                    </view>
+                    <!-- 规格别名自定义 -->
+                    <view class="sku-alias-row">
+                      <text class="alias-label">别名:</text>
+                      <input class="sku-alias-input" placeholder="规格别名，如 2kg / 蓝色" value="{{item.specText}}" data-index="{{index}}" data-field="specText" bindinput="inputSku" />
+                    </view>
+                  </view>
                 </view>
-                <text wx:if="{{item.imageFileId}}" class="delete mini-delete" data-index="{{index}}" bindtap="removeSkuImage">移除图</text>
               </view>
-              <view class="sku-price-fields">
-                <input type="digit" placeholder="售价" value="{{item.price}}" data-index="{{index}}" data-field="price" bindinput="inputSku" />
-                <input type="digit" placeholder="原价" value="{{item.originalPrice}}" data-index="{{index}}" data-field="originalPrice" bindinput="inputSku" />
-              </view>
-              <input class="sku-stock-input" type="number" placeholder="库存" value="{{item.stock}}" data-index="{{index}}" data-field="stock" bindinput="inputSku" />
-              <view class="pill {{item.status === 'off_sale' ? 'muted-badge' : 'success'}}" data-index="{{index}}" bindtap="toggleSkuStatus">{{item.status === 'off_sale' ? '停用' : '启用'}}</view>
             </view>
           </view>
         </view>
         <view class="form-label">排序</view>
         <input type="number" placeholder="排序" value="{{productForm.sortOrder}}" data-field="sortOrder" bindinput="inputProduct" />
       </view>
+
       <view class="form-section">
-        <view class="section-title small-title">商品详情</view>
-        <textarea placeholder="卖点、适用宠物、使用说明、售后说明" value="{{productForm.description}}" data-field="description" bindinput="inputProduct" />
+        <view class="section-head">
+          <view class="section-title small-title">产品规格参数（说明表）</view>
+          <view class="pill light param-add-btn" bindtap="addParameter">+ 增加一行参数</view>
+        </view>
+        <view class="muted" style="margin-bottom: 14rpx;">呈现给用户的标准化属性表，如：适用对象、保质期、净含量、产地、储存方法等。</view>
+
+        <view class="param-head-row" wx:if="{{productForm.parameters.length}}">
+          <text class="param-head-th col-key">参数名</text>
+          <text class="param-head-th col-val">参数详细内容</text>
+          <text class="param-head-th col-act">操作</text>
+        </view>
+
+        <view class="param-card-list">
+          <view class="param-row-card" wx:for="{{productForm.parameters}}" wx:key="index">
+            <view class="param-cell-key">
+              <input class="param-key-input" placeholder="如 适用对象" value="{{item.label}}" data-index="{{index}}" data-field="label" bindinput="inputParameter" />
+            </view>
+            <view class="param-cell-val">
+              <input class="param-val-input" placeholder="填写参数内容，如 全阶段猫咪" value="{{item.value}}" data-index="{{index}}" data-field="value" bindinput="inputParameter" />
+            </view>
+            <view class="param-del-btn" data-index="{{index}}" bindtap="removeParameter">×</view>
+          </view>
+        </view>
+      </view>
+
+      <view class="form-section">
+        <view class="section-title small-title">亮点标签与服务保障</view>
+        <view class="form-label">亮点卖点标签（以顿号或逗号分隔）</view>
+        <input placeholder="如 低敏全鲜肉、0谷物、强力结团除臭" value="{{productForm.highlightsText}}" data-field="highlightsText" bindinput="inputProduct" />
+        
+        <view class="form-label" style="margin-top: 16rpx;">当前已选服务承诺（在详情页顶部背书展示，点 × 可移除）：</view>
+        <view class="guarantee-selected-wrap" wx:if="{{productForm.serviceGuarantees.length}}">
+          <view class="guarantee-chip" wx:for="{{productForm.serviceGuarantees}}" wx:key="*this">
+            <text class="chip-text">✓ {{item}}</text>
+            <text class="chip-remove" data-index="{{index}}" bindtap="removeGuarantee">×</text>
+          </view>
+        </view>
+        <view class="guarantee-empty-tip" wx:else>当前未设置任何承诺。详情页将不展示服务承诺栏（适合活体、开封损耗品等）。</view>
+
+        <view class="form-label" style="margin-top: 16rpx;">快捷推荐（点击可快速选入或移出）：</view>
+        <view class="tag-row">
+          <view class="filter {{productForm.serviceGuarantees.indexOf(item) >= 0 ? 'active' : ''}}" wx:for="{{presetGuarantees}}" wx:key="*this" data-tag="{{item}}" bindtap="toggleGuarantee">{{item}}</view>
+        </view>
+
+        <view class="form-label" style="margin-top: 16rpx;">添加自定义服务承诺（如 冷链速递、保活到家、拆封不退 等）：</view>
+        <view class="custom-guarantee-box">
+          <input class="custom-guarantee-input" placeholder="输入自定义承诺文字，最多20字" value="{{customGuaranteeInput}}" bindinput="inputCustomGuarantee" />
+          <button class="custom-guarantee-btn" bindtap="addCustomGuarantee">+ 添加承诺</button>
+        </view>
+      </view>
+
+      <view class="form-section">
+        <view class="section-title small-title">使用说明 / 喂食指南 / 注意事项</view>
+        <textarea placeholder="使用方法、每日建议喂食量、注意事项或保存说明" value="{{productForm.usageInstructions}}" data-field="usageInstructions" bindinput="inputProduct" />
+      </view>
+
+      <view class="form-section">
+        <view class="section-title small-title">商品纯文字简介</view>
+        <textarea placeholder="简短卖点、适用宠物概况、售后概括" value="{{productForm.description}}" data-field="description" bindinput="inputProduct" />
       </view>
       <view class="modal-actions"><button bindtap="hideProduct">取消</button><button class="primary" bindtap="saveProduct">保存商品</button></view>
     </view>

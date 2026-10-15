@@ -6,7 +6,36 @@ function pageList(result) {
 
 function emptySpecGroup() { return { name: '', valuesText: '' } }
 function emptyProduct() {
-  return { _id: '', categoryId: '', categoryName: '', name: '', subtitle: '', coverFileId: '', imageFileIds: [], price: '', originalPrice: '', stock: '', specText: '', specMode: 'single', specGroupsForm: [emptySpecGroup()], skus: [], description: '', sortOrder: 0, status: 'on_sale' }
+  return {
+    _id: '',
+    categoryId: '',
+    categoryName: '',
+    name: '',
+    subtitle: '',
+    coverFileId: '',
+    imageFileIds: [],
+    detailImageFileIds: [],
+    parameters: [
+      { label: '适用对象', value: '' },
+      { label: '保质期', value: '' },
+      { label: '净含量', value: '' },
+      { label: '储存方式', value: '' }
+    ],
+    usageInstructions: '',
+    serviceGuarantees: ['正品保障', '极速发货', '破损包赔'],
+    shippingFee: '',
+    highlightsText: '',
+    price: '',
+    originalPrice: '',
+    stock: '',
+    specText: '',
+    specMode: 'single',
+    specGroupsForm: [emptySpecGroup()],
+    skus: [],
+    description: '',
+    sortOrder: 0,
+    status: 'on_sale'
+  }
 }
 
 const emptyCategory = { _id: '', name: '', icon: '', sortOrder: 0, enabled: true }
@@ -68,11 +97,29 @@ function normalizeSkusForForm(product = {}) {
 
 function buildProductForm(product = {}, categories = []) {
   const category = categories.find((item) => item._id === product.categoryId)
+  const parameters = Array.isArray(product.parameters) && product.parameters.length
+    ? product.parameters
+    : [
+        { label: '适用对象', value: '' },
+        { label: '保质期', value: '' },
+        { label: '净含量', value: '' },
+        { label: '储存方式', value: '' }
+      ]
+  const serviceGuarantees = Array.isArray(product.serviceGuarantees)
+    ? product.serviceGuarantees
+    : ['正品保障', '极速发货', '破损包赔']
+  const highlightsText = Array.isArray(product.highlights) ? product.highlights.join('、') : ''
   return {
     ...emptyProduct(),
     ...product,
+    shippingFee: product.shippingFee != null ? product.shippingFee : '',
     categoryName: category ? category.name : (product.categoryName || ''),
     imageFileIds: Array.isArray(product.imageFileIds) ? product.imageFileIds : [],
+    detailImageFileIds: Array.isArray(product.detailImageFileIds) ? product.detailImageFileIds : [],
+    parameters,
+    serviceGuarantees,
+    highlightsText,
+    usageInstructions: product.usageInstructions || '',
     specMode: product.specMode === 'multi' ? 'multi' : 'single',
     specGroupsForm: normalizeSpecGroupsForForm(product),
     skus: normalizeSkusForForm(product)
@@ -85,6 +132,7 @@ function withCategoryName(product, categories = []) {
   const status = product.status === 'off_sale' ? 'off_sale' : 'on_sale'
   const soldOut = stock <= 0
   const lowStock = stock > 0 && stock <= 5
+  const shippingFeeNum = Number(product.shippingFee || 0)
   return {
     ...product,
     categoryName: category ? category.name : '未分类',
@@ -92,6 +140,7 @@ function withCategoryName(product, categories = []) {
     statusClass: status === 'on_sale' ? 'success' : 'muted-badge',
     stockText: soldOut ? '售罄' : (lowStock ? '低库存' : '库存充足'),
     stockClass: soldOut ? 'danger-badge' : (lowStock ? 'warning' : 'success'),
+    shippingFeeText: shippingFeeNum > 0 ? `¥${shippingFeeNum}` : '包邮',
     imageCount: (product.imageFileIds || []).length || (product.coverFileId ? 1 : 0),
     cover: product.coverFileId || (product.imageFileIds || [])[0] || '',
     specText: product.hasSku ? `${product.skuCount || 0}个规格` : (product.specText || '默认规格'),
@@ -110,7 +159,26 @@ function categoryStats(categories = [], products = []) {
 }
 
 Page({
-  data: { categories: [], products: [], stats: categoryStats(), keyword: '', status: '', page: 1, pageSize: 10, hasMore: true, loading: false, uploadingImage: false, editingProduct: false, productForm: emptyProduct(), editingCategory: false, categoryForm: emptyCategory },
+  data: {
+    categories: [],
+    products: [],
+    stats: categoryStats(),
+    keyword: '',
+    status: '',
+    page: 1,
+    pageSize: 10,
+    hasMore: true,
+    loading: false,
+    uploadingImage: false,
+    editingProduct: false,
+    productForm: emptyProduct(),
+    editingCategory: false,
+    categoryForm: emptyCategory,
+    batchPrice: '',
+    batchStock: '',
+    customGuaranteeInput: '',
+    presetGuarantees: ['正品保障', '极速发货', '破损包赔', '7天无理由退换', '拆封不退', '过敏包退', '冷链速递', '保活到家', '假一赔十']
+  },
 
     onPullDownRefresh() {
     Promise.resolve(this.loadAll()).finally(() => wx.stopPullDownRefresh())
@@ -194,6 +262,28 @@ Page({
     const field = e.currentTarget.dataset.field
     this.setData({ [`productForm.skus[${index}].${field}`]: e.detail.value })
   },
+  inputBatchPrice(e) { this.setData({ batchPrice: e.detail.value }) },
+  inputBatchStock(e) { this.setData({ batchStock: e.detail.value }) },
+  applyBatchToSkus() {
+    const { batchPrice, batchStock } = this.data
+    const priceTrimmed = String(batchPrice || '').trim()
+    const stockTrimmed = String(batchStock || '').trim()
+    if (!priceTrimmed && !stockTrimmed) {
+      return wx.showToast({ title: '请输入统一售价或库存', icon: 'none' })
+    }
+    const skus = (this.data.productForm.skus || []).map((sku) => {
+      const updated = { ...sku }
+      if (priceTrimmed !== '') updated.price = priceTrimmed
+      if (stockTrimmed !== '') updated.stock = stockTrimmed
+      return updated
+    })
+    this.setData({ ['productForm.skus']: skus })
+    wx.showToast({ title: '已应用到全部规格', icon: 'success' })
+  },
+  clearKeyword() {
+    this.setData({ keyword: '' })
+    this.loadProducts({ reset: true })
+  },
   toggleSkuStatus(e) {
     const index = Number(e.currentTarget.dataset.index)
     const sku = this.data.productForm.skus[index]
@@ -220,10 +310,14 @@ Page({
   },
   chooseCoverImage() { this.chooseMallImages('cover') },
   chooseCarouselImages() { this.chooseMallImages('carousel') },
+  chooseDetailImages() { this.chooseMallImages('detail') },
   chooseSkuImage(e) { this.chooseMallImages('sku', Number(e.currentTarget.dataset.index)) },
   chooseMallImages(type, skuIndex) {
-    const current = this.data.productForm.imageFileIds || []
-    const count = type === 'carousel' ? Math.max(9 - current.length, 1) : 1
+    const currentCarousel = this.data.productForm.imageFileIds || []
+    const currentDetail = this.data.productForm.detailImageFileIds || []
+    let count = 1
+    if (type === 'carousel') count = Math.max(9 - currentCarousel.length, 1)
+    else if (type === 'detail') count = Math.max(20 - currentDetail.length, 1)
     wx.chooseMedia({
       count,
       mediaType: ['image'],
@@ -251,6 +345,7 @@ Page({
           const fileID = upload.fileID
           if (type === 'cover') this.setData({ ['productForm.coverFileId']: fileID })
           else if (type === 'sku') this.setData({ [`productForm.skus[${skuIndex}].imageFileId`]: fileID })
+          else if (type === 'detail') this.setData({ ['productForm.detailImageFileIds']: (this.data.productForm.detailImageFileIds || []).concat(fileID).slice(0, 20) })
           else this.setData({ ['productForm.imageFileIds']: (this.data.productForm.imageFileIds || []).concat(fileID).slice(0, 9) })
           resolve(fileID)
         },
@@ -264,18 +359,93 @@ Page({
     images.splice(index, 1)
     this.setData({ ['productForm.imageFileIds']: images })
   },
+  removeDetailImage(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const images = (this.data.productForm.detailImageFileIds || []).slice()
+    images.splice(index, 1)
+    this.setData({ ['productForm.detailImageFileIds']: images })
+  },
   removeSkuImage(e) { this.setData({ [`productForm.skus[${Number(e.currentTarget.dataset.index)}].imageFileId`]: '' }) },
+  addParameter() {
+    const parameters = (this.data.productForm.parameters || []).concat({ label: '', value: '' })
+    this.setData({ ['productForm.parameters']: parameters })
+  },
+  removeParameter(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const parameters = (this.data.productForm.parameters || []).slice()
+    parameters.splice(index, 1)
+    this.setData({ ['productForm.parameters']: parameters })
+  },
+  inputParameter(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const field = e.currentTarget.dataset.field
+    this.setData({ [`productForm.parameters[${index}].${field}`]: e.detail.value })
+  },
+  inputCustomGuarantee(e) {
+    this.setData({ customGuaranteeInput: e.detail.value })
+  },
+  addCustomGuarantee() {
+    const text = String(this.data.customGuaranteeInput || '').trim()
+    if (!text) return wx.showToast({ title: '请输入承诺内容', icon: 'none' })
+    if (text.length > 20) return wx.showToast({ title: '承诺最多20字', icon: 'none' })
+    const current = (this.data.productForm.serviceGuarantees || []).slice()
+    if (current.includes(text)) return wx.showToast({ title: '已有相同承诺', icon: 'none' })
+    if (current.length >= 10) return wx.showToast({ title: '最多添加10项服务承诺', icon: 'none' })
+    current.push(text)
+    this.setData({
+      ['productForm.serviceGuarantees']: current,
+      customGuaranteeInput: ''
+    })
+  },
+  removeGuarantee(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const current = (this.data.productForm.serviceGuarantees || []).slice()
+    current.splice(index, 1)
+    this.setData({ ['productForm.serviceGuarantees']: current })
+  },
+  toggleGuarantee(e) {
+    const tag = e.currentTarget.dataset.tag
+    const current = (this.data.productForm.serviceGuarantees || []).slice()
+    const idx = current.indexOf(tag)
+    if (idx >= 0) current.splice(idx, 1)
+    else {
+      if (current.length >= 10) return wx.showToast({ title: '最多添加10项服务承诺', icon: 'none' })
+      current.push(tag)
+    }
+    this.setData({ ['productForm.serviceGuarantees']: current })
+  },
   previewMallImage(e) {
     const current = e.currentTarget.dataset.url
     const skuImages = (this.data.productForm.skus || []).map((item) => item.imageFileId).filter(Boolean)
-    const urls = [this.data.productForm.coverFileId].concat(this.data.productForm.imageFileIds || [], skuImages).filter(Boolean)
+    const detailImages = this.data.productForm.detailImageFileIds || []
+    const urls = [this.data.productForm.coverFileId].concat(this.data.productForm.imageFileIds || [], detailImages, skuImages).filter(Boolean)
     if (current && urls.length) wx.previewImage({ current, urls })
   },
   saveProduct() {
     const form = this.data.productForm
     const imageFileIds = Array.isArray(form.imageFileIds) ? form.imageFileIds : []
+    const detailImageFileIds = Array.isArray(form.detailImageFileIds) ? form.detailImageFileIds : []
+    const parameters = Array.isArray(form.parameters) ? form.parameters.filter((p) => p && String(p.label || '').trim() && String(p.value || '').trim()) : []
+    const serviceGuarantees = Array.isArray(form.serviceGuarantees) ? form.serviceGuarantees.filter(Boolean) : []
+    const highlights = String(form.highlightsText || '').split(/,|，|、|\s+/).map((item) => item.trim()).filter(Boolean)
     const specMode = form.specMode === 'multi' ? 'multi' : 'single'
-    const data = { ...form, id: form._id, price: Number(form.price || 0), originalPrice: Number(form.originalPrice || 0), stock: Number(form.stock || 0), sortOrder: Number(form.sortOrder || 0), imageFileIds, specMode }
+    const shippingFee = Math.max(0, Math.round(Number(form.shippingFee || 0) * 100) / 100)
+    const data = {
+      ...form,
+      id: form._id,
+      price: Number(form.price || 0),
+      originalPrice: Number(form.originalPrice || 0),
+      stock: Number(form.stock || 0),
+      shippingFee,
+      sortOrder: Number(form.sortOrder || 0),
+      imageFileIds,
+      detailImageFileIds,
+      parameters,
+      serviceGuarantees,
+      highlights,
+      usageInstructions: String(form.usageInstructions || '').trim(),
+      specMode
+    }
     if (specMode === 'multi') {
       let groups
       try {
