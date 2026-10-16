@@ -41,6 +41,43 @@ function calcDistanceKm(lat1, lng1, lat2, lng2) {
   return R * c
 }
 
+function getPriceDigitsArray(amount) {
+  const num = Number(amount)
+  const str = (isNaN(num) || num < 0 ? 0 : num).toFixed(2)
+  const parts = str.split('.')
+  const intPart = parts[0]
+  const decPart = parts[1] || '00'
+  const result = []
+
+  const intLen = intPart.length
+  for (let i = 0; i < intLen; i++) {
+    const val = parseInt(intPart[i], 10)
+    const power = intLen - 1 - i
+    result.push({
+      key: `int_${power}`,
+      isDigit: true,
+      val: isNaN(val) ? 0 : val
+    })
+  }
+
+  result.push({
+    key: 'dot',
+    isDigit: false,
+    char: '.'
+  })
+
+  for (let j = 0; j < decPart.length; j++) {
+    const val = parseInt(decPart[j], 10)
+    result.push({
+      key: `dec_${j}`,
+      isDigit: true,
+      val: isNaN(val) ? 0 : val
+    })
+  }
+
+  return result
+}
+
 const durationOptions = [
   { label: '30分钟', value: 30 },
   { label: '60分钟', value: 60 },
@@ -437,6 +474,10 @@ typeof Page === 'function' ? Page({
       addressLongitude: 0
     },
     quote: null,
+    displayPriceDigits: getPriceDigitsArray('0.00'),
+    showPriceDetailModal: false,
+    hasExtraPetFee: false,
+    hasPetTimeExtraFee: false,
     securityCoverageText: '',
     securityCoverageOk: true,
     uploadingKeyImage: false,
@@ -552,10 +593,14 @@ typeof Page === 'function' ? Page({
     if (!selected) return
     wx.removeStorageSync(SELECTED_COUPON_KEY)
     if (selected.clear) {
-      this.setData({ selectedCouponId: '', selectedCoupon: null, quote: null })
+      this.setData({ selectedCouponId: '', selectedCoupon: null }, () => {
+        this.triggerAutoQuote()
+      })
       return
     }
-    this.setData({ selectedCouponId: selected._id, selectedCoupon: selected, quote: null })
+    this.setData({ selectedCouponId: selected._id, selectedCoupon: selected }, () => {
+      this.triggerAutoQuote()
+    })
   },
 
   loadPageData() {
@@ -628,8 +673,7 @@ typeof Page === 'function' ? Page({
       hasTimedServices, petDurationRows: rows, timedDurationTotal: total,
       walkWithoutDog: timedServices.includes('walk') && !pets.some((pet) => isDogPet(pet)),
       ['form.petServiceDurations']: rows.map(({ serviceKey, petId, durationMinutes }) => ({ serviceKey, petId, durationMinutes })),
-      ['form.durationMinutes']: hasTimedServices ? total : durationOptions[this.data.durationIndex].value,
-      quote: null
+      ['form.durationMinutes']: hasTimedServices ? total : durationOptions[this.data.durationIndex].value
     })
   },
 
@@ -644,7 +688,10 @@ typeof Page === 'function' ? Page({
       return
     }
     const durations = this.data.form.petServiceDurations.map((item) => item.petId === row.petId && item.serviceKey === row.serviceKey ? { ...item, durationMinutes } : item)
-    this.setData({ ['form.petServiceDurations']: durations, quote: null }, this.prepareTime)
+    this.setData({ ['form.petServiceDurations']: durations }, () => {
+      this.prepareTime()
+      this.triggerAutoQuote()
+    })
   },
 
   prepareTime() {
@@ -713,12 +760,16 @@ typeof Page === 'function' ? Page({
   choosePublishMode(e) {
     const publishMode = e.currentTarget.dataset.mode
     if (publishMode === 'open') {
-      this.setData({ ['form.publishMode']: 'open', ['form.staffProfileId']: '', requestedSitter: null, sitterAvailability: [], selectedAvailability: null, isOutOfRange: false, rangeDistanceText: '', rangeWarningText: '', quote: null }, this.prepareTime)
+      this.setData({ ['form.publishMode']: 'open', ['form.staffProfileId']: '', requestedSitter: null, sitterAvailability: [], selectedAvailability: null, isOutOfRange: false, rangeDistanceText: '', rangeWarningText: '' }, () => {
+        this.prepareTime()
+        this.triggerAutoQuote()
+      })
       return
     }
-    this.setData({ ['form.publishMode']: 'direct', quote: null }, () => {
+    this.setData({ ['form.publishMode']: 'direct' }, () => {
       this.prepareTime()
       this.checkSitterRange()
+      this.triggerAutoQuote()
     })
     if (!this.data.form.staffProfileId) this.chooseSitter()
   },
@@ -813,6 +864,7 @@ typeof Page === 'function' ? Page({
           this.prepareTime()
           this.checkSitterRange()
           this.syncSitterScheduleWarning()
+          this.triggerAutoQuote()
         })
       })
       .catch(showError)
@@ -908,10 +960,10 @@ typeof Page === 'function' ? Page({
       ['form.addressLatitude']: Number(address.latitude || address.addressLatitude || 0),
       ['form.addressLongitude']: Number(address.longitude || address.addressLongitude || 0),
       locationReady: Boolean(address.serviceAddress),
-      locationTip: address.label ? `已选择常用地址：${address.label}` : '已选择常用地址',
-      quote: null
+      locationTip: address.label ? `已选择常用地址：${address.label}` : '已选择常用地址'
     }, () => {
       this.checkSitterRange()
+      this.triggerAutoQuote()
     })
   },
 
@@ -1097,12 +1149,12 @@ typeof Page === 'function' ? Page({
       'form.serviceType': getPrimaryBusinessService(serviceTypes),
       serviceOptions,
       selectedServiceDetails: buildSelectedServiceDetails(serviceOptions, serviceTypes, this.data.serviceDetailExpanded, this.data.serviceCaseUrlMap),
-      quote: null,
       selectedPetsTitle: formatSelectedPetsSummary(selectedPets),
       hasSelectedUnvaccinatedPets: selectedPets.some((pet) => pet.vaccineCertified !== true),
       petVoiceMessage: initialVoice
     }, () => {
       this.prepareTime()
+      this.triggerAutoQuote()
       if (isSinglePet && selectedPet) {
         this.fetchAiPetVoice(selectedPet, this.data.form.startDate)
       }
@@ -1171,7 +1223,7 @@ typeof Page === 'function' ? Page({
       this.showBookingNotice({ title: '至少选择一只宠物', icon: 'none' })
       return
     }
-    this.setData({ ['form.petId']: selected[0], ['form.petIds']: selected, quote: null }, this.syncSelectedPetUI)
+    this.setData({ ['form.petId']: selected[0], ['form.petIds']: selected }, this.syncSelectedPetUI)
   },
 
   addPet() {
@@ -1199,9 +1251,11 @@ typeof Page === 'function' ? Page({
       ['form.serviceTypes']: serviceTypes,
       ['form.serviceType']: getPrimaryBusinessService(serviceTypes),
       serviceOptions: serviceOptionsWithSelected,
-      selectedServiceDetails: buildSelectedServiceDetails(serviceOptionsWithSelected, serviceTypes, this.data.serviceDetailExpanded, this.data.serviceCaseUrlMap),
-      quote: null
-    }, this.prepareTime)
+      selectedServiceDetails: buildSelectedServiceDetails(serviceOptionsWithSelected, serviceTypes, this.data.serviceDetailExpanded, this.data.serviceCaseUrlMap)
+    }, () => {
+      this.prepareTime()
+      this.triggerAutoQuote()
+    })
   },
 
   initPricingSurcharges(surcharges) {
@@ -1643,8 +1697,7 @@ typeof Page === 'function' ? Page({
 
     this.setData({
       ...nextForm,
-      showCalendarModal: false,
-      quote: null
+      showCalendarModal: false
     }, () => {
       this.updateMinTime()
       this.prepareTime()
@@ -1652,41 +1705,54 @@ typeof Page === 'function' ? Page({
       this.syncSelectedAvailability()
       this.syncCurrentSurchargesUI()
       this.syncSitterScheduleWarning()
-      this.quoteOrder()
+      this.triggerAutoQuote()
     })
   },
 
   chooseOrderType(e) {
     const orderType = e.currentTarget.dataset.type === 'multi_day' ? 'multi_day' : 'single'
-    const next = { ['form.orderType']: orderType, quote: null }
+    const next = { ['form.orderType']: orderType }
     if (orderType === 'single') next['form.endDate'] = this.data.form.startDate
-    this.setData(next, this.prepareTime)
+    this.setData(next, () => {
+      this.prepareTime()
+      this.triggerAutoQuote()
+    })
   },
 
   chooseDate(e) {
     const startDate = e.detail.value
-    const next = { ['form.startDate']: startDate, quote: null }
+    const next = { ['form.startDate']: startDate }
     if (!this.data.form.endDate || this.data.form.endDate < startDate || this.data.form.orderType === 'single') next['form.endDate'] = startDate
     this.setData(next, () => {
       this.updateMinTime()
       this.prepareTime()
       this.syncSelectedPetUI()
       this.syncSelectedAvailability()
+      this.triggerAutoQuote()
     })
   },
 
   chooseEndDate(e) {
-    this.setData({ ['form.endDate']: e.detail.value, quote: null }, this.prepareTime)
+    this.setData({ ['form.endDate']: e.detail.value }, () => {
+      this.prepareTime()
+      this.triggerAutoQuote()
+    })
   },
 
   chooseClock(e) {
-    this.setData({ ['form.startClock']: e.detail.value, quote: null }, this.prepareTime)
+    this.setData({ ['form.startClock']: e.detail.value }, () => {
+      this.prepareTime()
+      this.triggerAutoQuote()
+    })
   },
 
   chooseDuration(e) {
     const durationIndex = Number(e.detail.value)
     const duration = durationOptions[durationIndex]
-    this.setData({ durationIndex, ['form.durationMinutes']: duration.value, quote: null }, this.prepareTime)
+    this.setData({ durationIndex, ['form.durationMinutes']: duration.value }, () => {
+      this.prepareTime()
+      this.triggerAutoQuote()
+    })
   },
 
   useCurrentLocation() {
@@ -1697,10 +1763,10 @@ typeof Page === 'function' ? Page({
           ['form.addressLatitude']: location.latitude,
           ['form.addressLongitude']: location.longitude,
           locationReady: true,
-          locationTip: location.address || '已选择服务位置',
-          quote: null
+          locationTip: location.address || '已选择服务位置'
         }, () => {
           this.checkSitterRange()
+          this.triggerAutoQuote()
         })
         this.showBookingNotice({ title: '已更新位置' })
       })
@@ -1750,7 +1816,9 @@ typeof Page === 'function' ? Page({
   chooseStaffGender(e) {
     const value = e.detail.value
     if (!['any', 'male', 'female'].includes(value)) return
-    this.setData({ 'form.staffGenderRequirement': value, quote: null })
+    this.setData({ 'form.staffGenderRequirement': value }, () => {
+      this.triggerAutoQuote()
+    })
   },
 
   buildOrderPayload() {
@@ -1795,16 +1863,87 @@ typeof Page === 'function' ? Page({
     wx.navigateTo({ url: `/pages/client/coupons/select/index?selectedCouponId=${this.data.selectedCouponId || ''}` })
   },
 
-  quoteOrder() {
+  canAutoQuote() {
+    const form = this.data.form
+    if (!form) return false
+    const petIds = normalizeSelectedPetIds(form.petIds, form.petId)
+    if (!petIds.length) return false
+    if (!form.serviceTypes || !form.serviceTypes.includes(VISIT_FEE_SERVICE_KEY)) return false
+    if (!getBusinessServiceTypes(form.serviceTypes).length) return false
+    if (this.data.walkWithoutDog) return false
+    if (this.data.hasTimedServices && this.data.timedDurationTotal > 240) return false
+    if (!form.startDate || !form.startClock) return false
+    if (form.orderType === 'multi_day' && (!form.endDate || form.endDate < form.startDate)) return false
+    return true
+  },
+
+  triggerAutoQuote(delay = 120) {
+    clearTimeout(this._autoQuoteTimer)
+    this._autoQuoteTimer = setTimeout(() => {
+      this.calculatePrice({ silent: true })
+    }, delay)
+  },
+
+  calculatePrice(options = {}) {
+    const { silent = false, showToast = false } = options
     this.prepareTime()
-    const error = this.validateRequired()
-    if (error) {
-      this.showBookingNotice({ title: error, icon: 'none' })
-      return
+    if (!this.canAutoQuote()) {
+      if (showToast) {
+        const error = this.validateRequired()
+        if (error) this.showBookingNotice({ title: error, icon: 'none' })
+      }
+      return Promise.resolve(null)
     }
-    callFunction('order', 'quoteOrder', this.buildOrderPayload())
-      .then((quote) => this.setData({ quote, selectedCouponId: quote.coupon ? quote.coupon.couponId : this.data.selectedCouponId, selectedCoupon: quote.coupon || this.data.selectedCoupon }))
-      .catch(showError)
+
+    const payload = this.buildOrderPayload()
+    this.quotingPrice = true
+    return callFunction('order', 'quoteOrder', payload)
+      .then((quote) => {
+        this.quotingPrice = false
+        if (!quote) return null
+        const priceItems = quote.priceItems || []
+        const hasExtraPetFee = priceItems.some((item) => item.type === 'extra_pet_fee')
+        const hasPetTimeExtraFee = priceItems.some((item) => item.type === 'pet_time_extra_fee')
+        const amountToDisplay = quote.payAmount !== undefined ? quote.payAmount : quote.amount
+        const displayPriceDigits = getPriceDigitsArray(amountToDisplay)
+
+        const nextData = {
+          quote,
+          displayPriceDigits,
+          hasExtraPetFee,
+          hasPetTimeExtraFee
+        }
+
+        if (quote.coupon && !this.data.selectedCouponId) {
+          nextData.selectedCouponId = quote.coupon.couponId
+          nextData.selectedCoupon = quote.coupon
+        }
+
+        this.setData(nextData)
+        return quote
+      })
+      .catch((err) => {
+        this.quotingPrice = false
+        if (!silent || showToast) {
+          showError(err)
+        }
+        return null
+      })
+  },
+
+  openPriceDetailModal() {
+    if (!this.data.quote && this.canAutoQuote()) {
+      this.calculatePrice({ silent: true })
+    }
+    this.setData({ showPriceDetailModal: true })
+  },
+
+  closePriceDetailModal() {
+    this.setData({ showPriceDetailModal: false })
+  },
+
+  quoteOrder() {
+    return this.calculatePrice({ silent: false, showToast: true })
   },
 
   showBookingNotice({ title }) {
@@ -1827,6 +1966,7 @@ typeof Page === 'function' ? Page({
 
   onUnload() {
     clearTimeout(this.bookingNoticeTimer)
+    clearTimeout(this._autoQuoteTimer)
   },
 
   toggleAgreement() {

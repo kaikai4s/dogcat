@@ -99,20 +99,6 @@
         </view>
         <view class="pet-voice-text">“{{petVoiceMessage}}”</view>
       </view>
-      <view class="order-care-card" id="care-sync-confirm" wx:if="{{selectedPetCareCards.length}}">
-        <view class="order-care-title"><text class="remix-icon ri-shield-heart-line"></text><text>下单照护确认</text></view>
-        <view class="order-care-desc">以下为当前宠物档案照护信息，下单后会作为订单快照同步给接单宠托师。</view>
-        <view class="order-care-pet" wx:for="{{selectedPetCareCards}}" wx:key="name">
-          <view class="order-care-head"><text class="order-care-name">{{item.name}}</text><text class="care-risk-pill risk-{{item.riskClass}}">{{item.riskLevelText}}</text></view>
-          <view class="order-care-tags" wx:if="{{item.tags.length}}"><text class="order-care-tag" wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view>
-          <view class="order-care-line" wx:for="{{item.highlights}}" wx:key="*this">{{item}}</view>
-          <view class="order-care-missing" wx:if="{{item.missingText}}">建议补充：{{item.missingText}}</view>
-        </view>
-        <label class="care-confirm-row" bindtap="toggleCareSyncConfirmed">
-          <checkbox checked="{{careSyncConfirmed}}" color="#ff7a45" />
-          <text>我确认以上照护信息会同步给接单宠托师</text>
-        </label>
-      </view>
     </view>
     <view class="pet-empty" wx:else>
       <view class="pet-empty-icon"><view class="remix-icon ri-file-user-line"></view></view>
@@ -456,6 +442,22 @@
     </view>
   </view>
 
+  <!-- 下单照护确认（移至服务保障与取消规则上方，方便一起点击） -->
+  <view class="order-care-card order-care-standalone-card" id="care-sync-confirm" wx:if="{{selectedPetCareCards.length}}">
+    <view class="order-care-title"><text class="remix-icon ri-shield-heart-line"></text><text>下单照护确认</text></view>
+    <view class="order-care-desc">以下为当前宠物档案照护信息，下单后会作为订单快照同步给接单宠托师。</view>
+    <view class="order-care-pet" wx:for="{{selectedPetCareCards}}" wx:key="name">
+      <view class="order-care-head"><text class="order-care-name">{{item.name}}</text><text class="care-risk-pill risk-{{item.riskClass}}">{{item.riskLevelText}}</text></view>
+      <view class="order-care-tags" wx:if="{{item.tags.length}}"><text class="order-care-tag" wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view>
+      <view class="order-care-line" wx:for="{{item.highlights}}" wx:key="*this">{{item}}</view>
+      <view class="order-care-missing" wx:if="{{item.missingText}}">建议补充：{{item.missingText}}</view>
+    </view>
+    <label class="care-confirm-row" bindtap="toggleCareSyncConfirmed">
+      <checkbox checked="{{careSyncConfirmed}}" color="#ff7a45" />
+      <text>我确认以上照护信息会同步给接单宠托师</text>
+    </label>
+  </view>
+
   <view id="booking-agreement" class="booking-side-card trust-note agreement-confirm-card {{agreementRequired ? 'agreement-required' : ''}}">
     <view class="agreement-check-cell" bindtap="toggleAgreement">
       <checkbox checked="{{agreeAgreement}}" color="#ff7a45" class="agreement-checkbox" />
@@ -479,9 +481,147 @@
     </view>
   </view>
 
+  <!-- 底部吸底结算栏：实时显示预算价格与滚动切换动画 -->
   <view class="booking-submit-bar">
-    <button class="ghost quote-btn" bindtap="quoteOrder">试算价格</button>
+    <view class="submit-price-section" bindtap="openPriceDetailModal">
+      <view class="submit-price-main">
+        <text class="submit-price-prefix">预估</text>
+        <view class="submit-price-amount">
+          <text class="currency">¥</text>
+          <view class="price-rolling-container">
+            <block wx:for="{{displayPriceDigits}}" wx:key="key">
+              <view class="digit-col" wx:if="{{item.isDigit}}">
+                <view class="digit-strip" style="transform: translateY(-{{item.val * 10}}%);">
+                  <text class="digit-num" wx:for="{{[0,1,2,3,4,5,6,7,8,9]}}" wx:for-item="n" wx:key="*this">{{n}}</text>
+                </view>
+              </view>
+              <text class="digit-symbol" wx:else>{{item.char}}</text>
+            </block>
+          </view>
+          <text class="discount-pill" wx:if="{{quote && quote.discountAmount > 0}}">已省¥{{quote.discountAmount}}</text>
+        </view>
+      </view>
+      <view class="submit-price-detail-btn">
+        <text>打开价格详细</text>
+        <text class="remix-icon ri-arrow-up-s-line"></text>
+      </view>
+    </view>
     <button class="primary create-btn" loading="{{creating}}" disabled="{{creating}}" bindtap="create">{{creating ? '创建中...' : '创建订单'}}</button>
+  </view>
+
+  <!-- 屏幕上方固定弹框：详细价格明细 -->
+  <view class="modal-backdrop top-price-modal-backdrop" wx:if="{{showPriceDetailModal}}" bindtap="closePriceDetailModal" catchtouchmove="noop">
+    <view class="top-price-modal-card" catchtap="noop">
+      <view class="top-price-modal-head">
+        <view class="modal-title-wrap">
+          <text class="remix-icon ri-file-list-3-fill modal-title-icon"></text>
+          <text class="modal-sheet-title">价格详细明细</text>
+        </view>
+        <view class="remix-icon ri-close-line close-sheet-icon" bindtap="closePriceDetailModal"></view>
+      </view>
+
+      <scroll-view scroll-y class="top-price-modal-body">
+        <view class="top-price-summary-banner">
+          <view class="summary-label">预计实付金额</view>
+          <view class="summary-amount">
+            <text class="currency">¥</text>
+            <text class="num">{{quote ? quote.payAmount : '0.00'}}</text>
+            <text class="original-price" wx:if="{{quote && quote.discountAmount > 0}}">原价 ¥{{quote.amount}}</text>
+          </view>
+          <view class="summary-tags" wx:if="{{quote}}">
+            <view class="badge summary-badge" wx:if="{{quote.serviceSummary}}">{{quote.serviceSummary}}</view>
+            <view class="discount-badge" wx:if="{{quote.discountAmount > 0}}">已减免 ¥{{quote.discountAmount}}</view>
+          </view>
+        </view>
+
+        <view class="quote-intern-badge" wx:if="{{quote && quote.priceSnapshot && quote.priceSnapshot.staffPriceLevel === 'intern'}}">
+          <text class="remix-icon ri-discount-percent-fill"></text>
+          <text>已应用实习宠托师专享特惠定价</text>
+        </view>
+
+        <view class="modal-price-breakdown" wx:if="{{quote}}">
+          <view class="info-row" wx:if="{{quote.amount !== undefined}}">
+            <view class="label">服务原价</view>
+            <view class="value">¥{{quote.amount}}</view>
+          </view>
+          <view class="info-row" wx:if="{{quote.sessionCount > 1}}">
+            <view class="label">服务天数/频次</view>
+            <view class="value">{{quote.sessionCount}} 次</view>
+          </view>
+
+          <!-- 基础服务项 -->
+          <view class="quote-section-title">基础服务费</view>
+          <block wx:for="{{quote.priceItems}}" wx:key="key">
+            <view class="info-row" wx:if="{{!item.type}}">
+              <view class="label">{{item.label}}</view>
+              <view class="value">¥{{item.price}}</view>
+            </view>
+          </block>
+
+          <!-- 多宠物加价 -->
+          <block wx:if="{{hasExtraPetFee}}">
+            <view class="quote-section-title">多宠物加价</view>
+            <block wx:for="{{quote.priceItems}}" wx:key="key">
+              <view class="info-row" wx:if="{{item.type === 'extra_pet_fee'}}">
+                <view class="label">{{item.label}}</view>
+                <view class="value">¥{{item.price}}</view>
+              </view>
+            </block>
+          </block>
+
+          <!-- 续时费 -->
+          <block wx:if="{{hasPetTimeExtraFee}}">
+            <view class="quote-section-title">逐宠物续时费</view>
+            <view class="muted section-sub">基础价含首只30分钟，额外宠物加价含新增宠物30分钟；以下为超过30分钟的续时费用。</view>
+            <block wx:for="{{quote.priceItems}}" wx:key="key">
+              <view class="info-row" wx:if="{{item.type === 'pet_time_extra_fee'}}">
+                <view class="label">{{item.label}}</view>
+                <view class="value">¥{{item.price}}</view>
+              </view>
+            </block>
+          </block>
+
+          <!-- 每日清单 -->
+          <view wx:if="{{quote.petServiceDurations && quote.petServiceDurations.length}}" class="quote-duration-list">
+            <view class="quote-section-title">每日服务时长</view>
+            <view class="muted section-sub" wx:if="{{quote.sessionCount > 1}}">以下宠物时长每天相同，费用按{{quote.sessionCount}}次累计。</view>
+            <view class="duration-task" wx:for="{{quote.petServiceDurations}}" wx:key="index">
+              <text class="remix-icon ri-time-line"></text>
+              <text>{{item.petName}} · {{item.serviceLabel}} · {{item.durationMinutes}}分钟</text>
+            </view>
+          </view>
+
+          <!-- 节假日/夜间加价 -->
+          <block wx:for="{{quote.priceItems}}" wx:key="key">
+            <view class="info-row surcharge-row" wx:if="{{item.type === 'date_surcharge' || item.type === 'time_surcharge'}}">
+              <view class="label">
+                <text class="remix-icon {{item.type === 'date_surcharge' ? 'ri-calendar-event-line' : 'ri-time-line'}}"></text>
+                <text>{{item.label}}</text>
+              </view>
+              <view class="value">+¥{{item.price}}</view>
+            </view>
+          </block>
+
+          <!-- 优惠券 -->
+          <view class="info-row coupon-row" wx:if="{{quote.discountAmount}}">
+            <view class="label">
+              <text class="remix-icon ri-coupon-3-line"></text>
+              <text>优惠券抵扣</text>
+            </view>
+            <view class="value">-¥{{quote.discountAmount}}</view>
+          </view>
+        </view>
+
+        <view class="price-modal-empty" wx:if="{{!quote}}">
+          <view class="remix-icon ri-loader-4-line rotating empty-icon"></view>
+          <view class="empty-tip">正在实时计算最新价格明细...</view>
+        </view>
+      </scroll-view>
+
+      <view class="top-price-modal-foot">
+        <button class="primary-btn modal-dismiss-btn" bindtap="closePriceDetailModal">我知道了</button>
+      </view>
+    </view>
   </view>
 
   <!-- 预约日历与时间段弹框 -->
