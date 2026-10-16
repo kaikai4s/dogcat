@@ -73,6 +73,21 @@ function safeNavigateTo(options) {
         const msg = (err && (err.errMsg || err.message)) || ''
         if (/limit exceed|exceed/i.test(msg)) {
           wx.redirectTo(options)
+        } else if (/timeout/i.test(msg)) {
+          const currentPages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+          const current = currentPages[currentPages.length - 1]
+          const currentRoute = current && current.route ? (current.route.startsWith('/') ? current.route : '/' + current.route) : ''
+          const targetPath = (options.url || '').split('?')[0]
+          if (currentRoute === targetPath) {
+            if (typeof options.success === 'function') options.success({ errMsg: 'navigateTo:ok' })
+            return
+          }
+          wx.redirectTo({
+            ...options,
+            fail: (fallbackErr) => {
+              if (typeof options.fail === 'function') options.fail(fallbackErr || err)
+            }
+          })
         } else if (typeof options.fail === 'function') {
           options.fail(err)
         }

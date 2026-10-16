@@ -238,6 +238,11 @@ Page({
       })
       .catch((error) => {
         if (!isActive()) return
+        const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+        const current = pages[pages.length - 1]
+        const currentRoute = current && current.route ? (current.route.startsWith('/') ? current.route : '/' + current.route) : ''
+        const targetPath = (url || '').split('?')[0]
+        if (currentRoute === targetPath) return
         console.error('[home navigation failed]', url, error)
         showError(error)
       })

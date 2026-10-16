@@ -65,6 +65,20 @@ test('safeNavigateTo automatically degrades to redirectTo when page stack depth 
   assert.equal(navigateToCalled, true)
   assert.equal(redirectToCalled, true)
   assert.equal(targetUrl, '/pages/client/messages/thread/index')
+
+  // Case 5: 分包加载偶发超时时，若底层路由已成功到达，视为成功
+  let successCalled = false
+  currentPagesList = [{ route: 'packagePlayground/pages/index' }]
+  global.wx.navigateTo = ({ url, fail }) => {
+    if (typeof fail === 'function') {
+      fail({ errMsg: 'navigateTo:fail timeout' })
+    }
+  }
+  safeNavigateTo({
+    url: '/packagePlayground/pages/index',
+    success: () => { successCalled = true }
+  })
+  assert.equal(successCalled, true)
 })
 
 test('scheduled tasks use 7-day active time window to query orders without full table scan', () => {

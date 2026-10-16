@@ -246,7 +246,7 @@
   "preloadRule": {
     "pages/client/home/index": {
       "network": "all",
-      "packages": ["client-orders", "client-sitters", "client-profile"]
+      "packages": ["client-orders", "client-sitters", "client-profile", "playground"]
     },
     "pages/staff/home/index": {
       "network": "all",
