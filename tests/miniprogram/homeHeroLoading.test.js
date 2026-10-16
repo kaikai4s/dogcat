@@ -122,3 +122,13 @@ test('leaving the home invalidates outstanding settings and pull-down refresh al
   await ctx.page.onPullDownRefresh()
   assert.ok(ctx.calls.includes('stopRefresh'))
 })
+
+test('home service price cards have uniform height and clamp long title text', () => {
+  const wxss = fs.readFileSync(path.join(root, 'pages/client/home/index.wxss'), 'utf8')
+  assert.match(wxss, /\.service-price-card\s*\{[^}]*height:\s*420rpx;/)
+  assert.match(wxss, /\.service-price-card\s*\{[^}]*flex-direction:\s*column;/)
+  assert.match(wxss, /\.service-price-name\s*\{[^}]*height:\s*76rpx;/)
+  assert.match(wxss, /\.service-price-name\s*\{[^}]*-webkit-line-clamp:\s*2;/)
+  assert.match(wxss, /\.service-price-text\s*\{[^}]*margin-top:\s*auto;/)
+})
+

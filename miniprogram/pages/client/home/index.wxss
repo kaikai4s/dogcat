@@ -552,7 +552,11 @@
 
 .service-price-card {
   width: 270rpx;
-  min-height: 330rpx;
+  height: 420rpx;
+  box-sizing: border-box;
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: top;
 }
 
 .service-cover-wrap {
@@ -565,6 +569,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .service-cover-img {
@@ -585,7 +590,20 @@
   justify-content: center;
 }
 
-.service-price-name,
+.service-price-name {
+  color: #2d211a;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1.35;
+  height: 76rpx;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+  flex-shrink: 0;
+}
+
 .assurance-title {
   color: #2d211a;
   font-size: 28rpx;
@@ -593,7 +611,20 @@
   line-height: 1.3;
 }
 
-.service-price-desc,
+.service-price-desc {
+  margin-top: 8rpx;
+  color: #8e8580;
+  font-size: 23rpx;
+  line-height: 1.42;
+  height: 66rpx;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+  flex-shrink: 0;
+}
+
 .assurance-desc,
 .coupon-rule,
 .sitter-bio {
@@ -603,11 +634,15 @@
   line-height: 1.42;
 }
 
-.service-price-desc {
-  min-height: 66rpx;
+.service-price-text {
+  margin-top: auto;
+  color: #e9672f;
+  font-size: 32rpx;
+  font-weight: 950;
+  line-height: 1.2;
+  flex-shrink: 0;
 }
 
-.service-price-text,
 .coupon-amount {
   margin-top: 14rpx;
   color: #e9672f;
