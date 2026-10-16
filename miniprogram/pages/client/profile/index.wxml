@@ -273,6 +273,7 @@
         <button wx:if="{{officialAccount.qrCodeTempUrl || officialAccount.qrCodeUrl}}" class="profile-primary-btn" bindtap="saveOfficialAccountQrCode">保存二维码至相册</button>
         <button class="{{(officialAccount.qrCodeTempUrl || officialAccount.qrCodeUrl) ? 'profile-ghost-btn' : 'profile-primary-btn'}}" bindtap="copyOfficialAccountName">复制服务号名称去搜索</button>
         <button class="profile-ghost-btn" bindtap="closeOfficialAccountModal">关闭</button>
+      </view>
     </view>
   </view>
 </view>
