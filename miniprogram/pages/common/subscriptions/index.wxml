@@ -12,12 +12,13 @@
   <view class="page-state" wx:elif="{{loadFailed}}"><view>暂时无法加载通知选项</view><button class="outline-button" bindtap="load">重新加载</button></view>
   <block wx:else>
     <view class="all-card">
-      <view><view class="all-title">订阅全部通知</view><view class="all-desc">{{availableCount}} 项通知可订阅，微信每次最多申请 3 个模板，需分次确认</view></view>
+      <view><view class="all-title">补充通知次数</view><view class="all-desc">{{availableCount}} 项通知可按需多次订阅，微信每次最多申请 3 个模板</view></view>
       <button class="subscribe-button" data-scope="all" bindtap="subscribe" disabled="{{busy || !ready || !availableCount}}" loading="{{busy}}">{{!availableCount ? '待平台配置' : mainSwitch === false ? '去打开设置' : pendingScope === 'all' && pendingKeys.length ? '继续订阅' : '批量订阅'}}</button>
     </view>
     <view class="notice" wx:if="{{!enabled}}">订阅通知暂未开放，订单进度仍可在消息中心查看。</view>
     <view class="notice" wx:elif="{{!availableCount}}">{{invalidCount ? '现有模板不可用，暂时无法订阅。' : '平台尚未配置通知模板，暂时无法订阅。'}}请管理员在「系统设置 → 订阅消息」填写当前小程序的完整模板 ID 并保存，配置完成后点击下方重新检查。</view>
-    <view class="notice" wx:else>自动将待订阅通知按每批最多 3 项组合，无需逐项点击。每批请在微信弹窗中确认，剩余通知点击继续即可；微信已记住选择时可能不再弹窗。</view>
+    <view class="notice" wx:else>建议为重要订单和服务通知多补充几次提醒机会。每次主动点击并在微信中同意，通常可增加一次对应提醒；不会自动连续弹窗，也不影响正常使用。</view>
+    <view class="notice secondary" wx:if="{{summaryUnavailable}}">预计提醒次数暂时无法同步，已授权状态仍以微信返回结果为准，可稍后重新进入本页查看。</view>
     <view class="notice" wx:if="{{invalidCount && availableCount}}">{{invalidCount}} 项模板不可用，已从批量订阅中排除，请平台修正配置后重新检查。</view>
     <button class="outline-button" bindtap="reloadConfiguration" disabled="{{busy}}">重新检查配置</button>
     <view class="feedback" wx:if="{{feedback}}">{{feedback}}</view>
@@ -30,12 +31,12 @@
     <view class="group-card" wx:for="{{groups}}" wx:key="id" wx:for-item="group">
       <view class="group-header"><text class="group-title">{{group.title}}</text><button class="subscribe-button small" data-scope="{{group.id}}" bindtap="subscribe" disabled="{{busy || !group.available}}">{{pendingScope === group.id && pendingKeys.length ? '继续订阅' : '批量订阅'}}</button></view>
       <view class="notification-row" wx:for="{{group.items}}" wx:key="key">
-        <view class="notification-copy"><view class="notification-title">{{item.title}}</view><view class="notification-desc">{{item.desc}}</view><view class="notification-status {{item.accepted ? 'accepted' : ''}}">{{item.statusText}}</view></view>
-        <button class="outline-button" data-scope="{{item.key}}" bindtap="subscribe" disabled="{{busy || !item.available}}">{{item.invalid ? '待修复' : item.accepted ? '再订阅' : '订阅'}}</button>
+        <view class="notification-copy"><view class="notification-title">{{item.title}}</view><view class="notification-desc">{{item.desc}}</view><view class="notification-balance {{item.lowBalance ? 'low' : ''}}" wx:if="{{item.balanceText}}">{{item.balanceText}}</view><view class="notification-status {{item.accepted ? 'accepted' : ''}}">{{item.statusText}}</view></view>
+        <button class="outline-button" data-scope="{{item.key}}" bindtap="subscribe" disabled="{{busy || !item.available}}">{{item.invalid ? '待修复' : item.accepted ? '再订阅一次' : '订阅一次'}}</button>
       </view>
     </view>
   </block>
   <button class="open-settings-button" bindtap="openSettings">打开微信通知设置 <text class="remix-icon ri-arrow-right-line"></text></button>
-  <view class="footnote">每次授权最多选择 3 个通知模板，更多通知可继续订阅。已授权状态会保留在当前设备，表示曾同意订阅，不代表永久接收或剩余提醒次数；一次性订阅通常对应一次提醒，实际送达以微信授权为准。</view>
+  <view class="footnote">预计次数根据平台收到的授权记录和成功发送记录计算，并非微信实时余额。一次性订阅每次同意通常增加一次提醒机会，发送成功后预计扣减一次；实际可发送次数和送达结果以微信平台为准。</view>
 </view>
 <global-loading />

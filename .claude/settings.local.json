@@ -55,7 +55,9 @@
       "Bash(xargs -I{} node --check \"/home/ebrook-dev/project/dogcat/{}\")",
       "Bash(perl -ne 'print if /not ok|failed|error|AssertionError|ERR_ASSERT|Expected|actual|operator/i')",
       "Bash(perl -ne 'print if /not ok|failed|error|AssertionError|ERR_ASSERT|Expected|actual|operator|# +at /i')",
-      "Bash(perl:*)"
+      "Bash(perl:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm:*)"
     ]
   }
 }

@@ -4,7 +4,7 @@ const collections = [
   'sitter_favorites', 'service_reviews', 'user_addresses', 'order_timeline', 'platform_configs',
   'coupon_templates', 'user_coupons', 'payment_events', 'refunds', 'finance_logs',
   'staff_earnings', 'withdraw_requests', 'staff_schedule_exceptions',
-  'subscription_consents', 'subscription_logs', 'home_security_notifications',
+  'subscription_consents', 'subscription_logs', 'subscription_balances', 'subscription_balance_events', 'home_security_notifications',
   'order_message_threads', 'order_messages', 'order_staff_message_threads', 'order_staff_messages', 'order_session_messages', 'risk_bypass_logs',
   'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
   'pet_titles', 'user_pet_titles', 'pet_title_grants',

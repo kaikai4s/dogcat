@@ -23,7 +23,7 @@ Page({
     enabled: false, mainSwitch: null, groups: [], busy: false,
     pendingKeys: [], pendingScope: '', feedback: '', availableCount: 0,
     batchTotal: 0, batchAccepted: 0, batchRemaining: 0, invalidCount: 0,
-    pendingNames: '', pendingTitle: '', nextBatchCount: 0
+    pendingNames: '', pendingTitle: '', nextBatchCount: 0, summaryUnavailable: false
   },
   onLoad(query = {}) {
     this.setData({ role: query.role === 'staff' ? 'staff' : 'client' })
@@ -43,17 +43,22 @@ Page({
     if (this._loadingSettings) return this._loadingSettings
     this.setData({ loading: true, loadFailed: false, ready: false })
     this._loadingSettings = ensureLogin({ content: '登录后可管理订阅消息通知。' })
-      .then(() => callFunction('system', 'getSettings'))
-      .then((settings) => {
+      .then(() => Promise.all([
+        callFunction('system', 'getSettings'),
+        callFunction('system', 'getSubscriptionSummary').catch(() => ({ items: null }))
+      ]))
+      .then(([settings, summary]) => {
         const previous = JSON.stringify(this._settings && this._settings.subscription)
         this._settings = setCachedSystemSettings(settings)
+        this._subscriptionSummary = summary && summary.items || {}
+        const summaryUnavailable = !summary || summary.items === null
         this._lastResults = getCachedSubscriptionResults()
         const changed = previous !== JSON.stringify(this._settings.subscription)
         if (changed) {
           this._batchAcceptedIds = new Set()
           this.resetBatchPlan()
         }
-        this.setData({ loading: false, ready: true, enabled: !!this._settings.subscription.enabled,
+        this.setData({ loading: false, ready: true, enabled: !!this._settings.subscription.enabled, summaryUnavailable,
           ...(changed ? { pendingKeys: [], pendingScope: '', pendingNames: '', pendingTitle: '', feedback: '', nextBatchCount: 0, batchTotal: 0, batchAccepted: 0, batchRemaining: 0 } : {}) })
         this.updateGroups()
       }).catch((error) => {
@@ -65,6 +70,20 @@ Page({
   templateId(key) {
     const templates = this._settings && this._settings.subscription.templates || {}
     return String(templates[key] || '').trim()
+  },
+  refreshSubscriptionSummary() {
+    return callFunction('system', 'getSubscriptionSummary')
+      .then((summary) => {
+        this._subscriptionSummary = summary && summary.items || {}
+        this.setData({ summaryUnavailable: false })
+        this.updateGroups()
+        return summary
+      })
+      .catch(() => {
+        this.setData({ summaryUnavailable: true })
+        this.updateGroups()
+        return null
+      })
   },
   reloadConfiguration() {
     if (this.data.busy) return
@@ -122,6 +141,11 @@ Page({
         const invalid = !!templateId && (!!issue || this._invalidTemplateIds.has(templateId))
         // This legacy key is configurable but has no business sender yet.
         const available = key !== 'disputeUpdate' && this.data.enabled && !issue && !invalid
+        const balance = this._subscriptionSummary && this._subscriptionSummary[key] || {}
+        const estimatedRemaining = Math.max(Number(balance.estimatedRemaining || 0), 0)
+        const balanceText = !available ? '' : this.data.summaryUnavailable ? '预计次数暂时无法同步'
+          : balance.known ? `预计可提醒 ${estimatedRemaining} 次${balance.needsResubscribe || estimatedRemaining <= 1 ? '，建议再订阅一次' : ''}`
+          : '预计次数尚未建立，订阅一次后开始记录'
         const statusText = key === 'disputeUpdate' ? '暂未开放'
           : invalid ? '模板不可用，请联系平台核对配置'
           : issue ? issue : !this.data.enabled ? '平台暂未开启订阅通知' : this.data.mainSwitch === false ? '微信订阅开关已关闭'
@@ -131,7 +155,18 @@ Page({
           : status === 'invalid' ? '模板不可用，请联系平台核对配置'
           : status === 'unknown' ? '微信未返回授权结果，请继续订阅'
           : status === 'filter' ? '微信已过滤，继续订阅时自动调整组合' : '暂无订阅授权记录'
-        return { key, title: catalog[key][0], desc: catalog[key][1], available, invalid, statusText, accepted: available && status === 'accept' && this.data.mainSwitch !== false }
+        return {
+          key,
+          title: catalog[key][0],
+          desc: catalog[key][1],
+          available,
+          invalid,
+          statusText,
+          balanceText,
+          estimatedRemaining,
+          lowBalance: Boolean(available && balance.known && (balance.needsResubscribe || estimatedRemaining <= 1)),
+          accepted: available && status === 'accept' && this.data.mainSwitch !== false
+        }
       })
       return { id, title, items, available: items.some((item) => item.available) }
     })
@@ -233,10 +268,18 @@ Page({
         const pendingKeys = keys.filter(key => !batch.includes(key)).concat(incompleteKeys)
         const remaining = new Set(pendingKeys.map(key => this.templateId(key))).size
         const needsSettings = ids.some(id => ['reject', 'ban'].includes(results[id]))
+        const syncText = accepted ? '预计提醒次数正在同步。' : ''
         this.setData({
           ...this.pendingState(pendingKeys, scope), batchAccepted: this._batchAcceptedIds.size,
-          feedback: `本次已同意 ${accepted} 项通知，本轮累计 ${this._batchAcceptedIds.size} / ${this.data.batchTotal} 项。${pendingKeys.length ? `还有 ${remaining} 项未完成，请点击下方继续订阅。` : this._batchAcceptedIds.size === this.data.batchTotal ? '本轮所选通知已全部订阅。' : '本轮尚有未授权通知，请查看下方状态。'}${needsSettings ? '若微信已记住拒绝选择，请先打开微信通知设置调整。' : ''}`
+          feedback: `本次已同意 ${accepted} 项通知，本轮累计 ${this._batchAcceptedIds.size} / ${this.data.batchTotal} 项。${syncText}${pendingKeys.length ? `还有 ${remaining} 项未完成，请点击下方继续订阅。` : this._batchAcceptedIds.size === this.data.batchTotal ? '本轮所选通知已全部订阅。' : '本轮尚有未授权通知，请查看下方状态。'}${needsSettings ? '若微信已记住拒绝选择，请先打开微信通知设置调整。' : ''}`
         })
+        if (result.consentRecording) {
+          result.consentRecording.then((recorded) => {
+            if (recorded.consentRecorded) return this.refreshSubscriptionSummary()
+            this.setData({ feedback: `${this.data.feedback} 微信授权已完成，但预计次数同步失败，本次暂不计入页面次数，请稍后再次订阅。` })
+            return null
+          })
+        }
       }).catch(showError).finally(() => {
         this.setData({ busy: false })
         this.updateGroups()

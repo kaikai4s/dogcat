@@ -361,11 +361,12 @@ function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) 
     const limitedKeys = requestKeys.filter((key) => tmplIds.includes(resolveTemplateId(key)))
     if (!tmplIds.length) return Promise.resolve({ requested: false, reason: 'template_not_configured' })
     const resultsStorageKey = subscriptionResultsStorageKey()
+    const requestId = `subscribe_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
     subscriptionRequestInFlight = true
     return new Promise((resolve) => {
       wx.requestSubscribeMessage({
         tmplIds,
-        success: (res) => resolve({ requested: true, templateKeys: limitedKeys, templateIds: tmplIds, templateIdByKey: Object.fromEntries(limitedKeys.map(key => [key, resolveTemplateId(key)])), results: res || {} }),
+        success: (res) => resolve({ requested: true, requestId, templateKeys: limitedKeys, templateIds: tmplIds, templateIdByKey: Object.fromEntries(limitedKeys.map(key => [key, resolveTemplateId(key)])), results: res || {} }),
         fail: (error) => resolve({ requested: false, reason: 'request_failed', errorCode: error && error.errCode, error: error && (error.errMsg || error.message) || '' })
       })
     }).catch(error => ({ requested: false, reason: 'request_failed', errorCode: error && error.errCode, error: error && (error.errMsg || error.message) || '' }))
@@ -374,10 +375,17 @@ function requestSubscribeTemplates(templateKeys = [], scene = '', options = {}) 
         setCachedSubscriptionResults(Object.fromEntries(tmplIds.map(id => [id, result.results[id] || 'unknown'])), resultsStorageKey)
         const templateIds = {}
         limitedKeys.forEach((key) => { templateIds[key] = resolveTemplateId(key) })
-        const recording = callFunction('system', 'recordSubscriptionConsent', { templateKeys: limitedKeys, templateIds, results: result.results, scene })
-          .then(() => result)
-          .catch(() => result)
-        return options.waitForConsent === true ? recording : result
+        const recording = callFunction('system', 'recordSubscriptionConsent', {
+          requestId: result.requestId,
+          templateKeys: limitedKeys,
+          templateIds,
+          results: result.results,
+          scene
+        })
+          .then((consent) => ({ ...result, consentRecorded: true, consent }))
+          .catch((error) => ({ ...result, consentRecorded: false, consentError: error && (error.errMsg || error.message) || '授权次数同步失败' }))
+        if (options.waitForConsent === true) return recording
+        return { ...result, consentRecording: recording }
       }).finally(() => { subscriptionRequestInFlight = false })
   }
 

@@ -6,7 +6,7 @@ const vm = require('node:vm')
 const flush = () => new Promise(resolve => setImmediate(resolve))
 const templateKeys = ['staffDirectOrder', 'orderAccepted', 'staffDeparture', 'serviceStart', 'serviceProgress', 'serviceFinish', 'orderPaid', 'orderAssigned', 'remoteUnlock', 'refundResult', 'disputeUpdate', 'upcomingServiceReminder', 'withdrawResult']
 
-async function setup({ templates = Object.fromEntries(templateKeys.map(key => [key, `tpl_${key}`])), enabled = true, mainSwitch = true, role = 'client', subscribe, holdConsent = false, storage = {}, app = { globalData: { env: 'test', user: { _id: 'user' } } } } = {}) {
+async function setup({ templates = Object.fromEntries(templateKeys.map(key => [key, `tpl_${key}`])), enabled = true, mainSwitch = true, role = 'client', subscribe, holdConsent = false, failConsent = false, failSummary = false, summaryItems = {}, storage = {}, app = { globalData: { env: 'test', user: { _id: 'user' } } } } = {}) {
   const requests = []
   const calls = []
   const settingsCalls = []
@@ -25,7 +25,12 @@ async function setup({ templates = Object.fromEntries(templateKeys.map(key => [k
     cloud: { callFunction(options) {
       calls.push(options.data)
       if (options.data.action === 'recordSubscriptionConsent' && holdConsent) return new Promise(() => {})
-      return Promise.resolve({ result: { ok: true, data: options.data.action === 'getSettings' ? settings : {} } })
+      if (options.data.action === 'recordSubscriptionConsent' && failConsent) return Promise.reject(new Error('consent record failed'))
+      if (options.data.action === 'getSubscriptionSummary' && failSummary) return Promise.reject(new Error('summary failed'))
+      const data = options.data.action === 'getSettings' ? settings
+        : options.data.action === 'getSubscriptionSummary' ? { items: summaryItems }
+          : {}
+      return Promise.resolve({ result: { ok: true, data } })
     } }
   }
   const module = { exports: {} }
@@ -49,6 +54,23 @@ async function setup({ templates = Object.fromEntries(templateKeys.map(key => [k
 }
 const tap = scope => ({ currentTarget: { dataset: { scope } } })
 const itemFor = (page, key) => page.data.groups.flatMap(group => group.items).find(item => item.key === key)
+
+test('estimated counts are shown and repeated taps use distinct consent request IDs', async () => {
+  const { page, calls } = await setup({ summaryItems: {
+    orderPaid: { templateId: 'tpl_orderPaid', known: true, estimatedRemaining: 1, needsResubscribe: false }
+  } })
+  assert.match(itemFor(page, 'orderPaid').balanceText, /预计可提醒 1 次/)
+  assert.equal(itemFor(page, 'orderPaid').lowBalance, true)
+
+  await page.subscribe(tap('orderPaid'))
+  await flush()
+  await page.subscribe(tap('orderPaid'))
+  await flush()
+  const consentCalls = calls.filter(call => call.action === 'recordSubscriptionConsent')
+  assert.equal(consentCalls.length, 2)
+  assert.ok(consentCalls.every(call => /^subscribe_/.test(call.data.requestId)))
+  assert.notEqual(consentCalls[0].data.requestId, consentCalls[1].data.requestId)
+})
 
 test('all authorized client and staff notifications survive page recreation and app restart with empty WeChat settings', async () => {
   for (const role of ['client', 'staff']) {
@@ -636,4 +658,33 @@ test('a single template type error stays pending while other failed-batch candid
   assert.equal(page.data.batchAccepted, 1)
   assert.deepEqual([...page.data.pendingKeys], ['orderAccepted'])
   assert.doesNotMatch(page.data.feedback, /全部订阅/)
+})
+
+test('subscription center handles reject, summary failure, and consent recording sync error', async () => {
+  // 1. Summary fetch failure marks summaryUnavailable and displays notice
+  const failedSummary = await setup({ failSummary: true })
+  assert.equal(failedSummary.page.data.summaryUnavailable, true)
+  assert.match(itemFor(failedSummary.page, 'orderPaid').balanceText, /预计次数暂时无法同步/)
+
+  // 2. Unrecorded template display text
+  const freshCenter = await setup({ summaryItems: {} })
+  assert.match(itemFor(freshCenter.page, 'orderPaid').balanceText, /预计次数尚未建立，订阅一次后开始记录/)
+  assert.equal(itemFor(freshCenter.page, 'orderPaid').lowBalance, false)
+
+  // 3. User rejects template: not accepted, shows rejection status
+  const rejected = await setup({
+    subscribe(options) {
+      options.success(Object.fromEntries(options.tmplIds.map(id => [id, 'reject'])))
+    }
+  })
+  await rejected.page.subscribe(tap('orderPaid'))
+  await flush()
+  assert.equal(itemFor(rejected.page, 'orderPaid').accepted, false)
+  assert.match(itemFor(rejected.page, 'orderPaid').statusText, /暂未允许，可重新订阅/)
+
+  // 4. Consent recording failure in background reports sync failure in feedback
+  const failedConsent = await setup({ failConsent: true })
+  await failedConsent.page.subscribe(tap('orderPaid'))
+  await flush()
+  assert.match(failedConsent.page.data.feedback, /微信授权已完成，但预计次数同步失败，本次暂不计入页面次数/)
 })

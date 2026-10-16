@@ -272,6 +272,7 @@
   "requiredPrivateInfos": [
     "chooseLocation",
     "getLocation",
+    "onLocationChange",
     "startLocationUpdate",
     "startLocationUpdateBackground",
     "chooseAddress"

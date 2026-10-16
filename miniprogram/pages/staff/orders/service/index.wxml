@@ -257,11 +257,28 @@
         <text class="remix-icon ri-map-pin-line sub-icon"></text>
         <text>轨迹记录</text>
       </view>
-      <view class="badge green" wx:if="{{autoTracking}}">{{backgroundTracking ? '后台记录中' : '自动记录中'}}</view>
+      <view class="badge tracking-badge starting" wx:if="{{trackingState === 'starting'}}">正在开启</view>
+      <view class="badge tracking-badge background" wx:if="{{trackingState === 'background'}}">后台记录中</view>
+      <view class="badge tracking-badge foreground" wx:if="{{trackingState === 'foreground'}}">仅前台记录</view>
+      <view class="badge tracking-badge error" wx:if="{{trackingState === 'error'}}">自动记录未开启</view>
       <view class="track-text">{{trackStatusText}}</view>
+      <view class="tracking-alert success" wx:if="{{trackingState === 'background'}}">
+        <text class="remix-icon ri-checkbox-circle-fill tracking-alert-icon"></text>
+        <text>{{trackingWarningText}}</text>
+      </view>
+      <view class="tracking-alert warning" wx:if="{{trackingState === 'foreground'}}">
+        <text class="remix-icon ri-error-warning-line tracking-alert-icon"></text>
+        <text>{{trackingWarningText}}</text>
+      </view>
+      <view class="tracking-alert danger" wx:if="{{trackingState === 'error'}}">
+        <text class="remix-icon ri-close-circle-line tracking-alert-icon"></text>
+        <text>{{trackingWarningText}}</text>
+      </view>
+      <view class="tracking-error" wx:if="{{trackingErrorText}}">定位提示：{{trackingErrorText}}</view>
+      <button class="ghost-btn full-btn" wx:if="{{trackingState === 'foreground' || trackingState === 'error'}}" bindtap="retryBackgroundTracking">重试后台定位</button>
       <view class="track-text" wx:if="{{latestTrackText}}">{{latestTrackText}}</view>
       <button class="ghost-btn full-btn" bindtap="uploadPoint">手动补记当前位置</button>
-      <view class="track-tips">服务期间约每 5 秒采集一次精确定位；已授权后台定位时，退到后台仍会持续记录并按时间生成路径。</view>
+      <view class="track-tips">前台以约 5 秒为采样目标；后台定位频率由微信和手机系统调度。使用浮窗或返回微信前，请确认上方显示“后台记录中”。</view>
       <view class="track-count">已上传轨迹点：{{pointCount}}</view>
       <view class="track-tips danger" wx:if="{{offlineTaskCount}}">待补传：{{offlineTaskCount}} 条；需核对：{{offlineBlockedCount || 0}} 条。</view>
       <button class="ghost-btn full-btn" wx:if="{{offlineTaskCount}}" bindtap="retryOfflineUploads">重试补传</button>

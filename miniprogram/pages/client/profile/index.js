@@ -433,6 +433,12 @@ Page({
       .catch(() => {})
   },
 
+  openSubscriptions() {
+    ensureLogin({ content: '登录后可管理通知订阅。' })
+      .then(() => wx.navigateTo({ url: '/pages/common/subscriptions/index?role=client' }))
+      .catch(() => {})
+  },
+
   openSettings() {
     wx.navigateTo({ url: '/pages/client/profile/index?settings=1' })
   },

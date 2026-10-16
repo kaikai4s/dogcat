@@ -16,17 +16,25 @@ test('track quality helpers stay inside their consuming subpackages and match th
 
 function loadPage(relativePath, overrides = {}, exported = '') {
   let page
+  let requestSeq = 0
   const requests = []
+  const { __wx = {}, ...dependencyOverrides } = overrides
   const wx = {
     showToast() {},
+    showModal() {},
     startLocationUpdate(options) { requests.push(options); options.success() },
-    getLocation(options) { requests.push(options); options.success({ latitude: 31.2, longitude: 121.5, accuracy: 10 }) }
+    stopLocationUpdate(options = {}) { if (options.complete) options.complete() },
+    stopLocationUpdateBackground(options = {}) { if (options.complete) options.complete() },
+    onLocationChange() {},
+    offLocationChange() {},
+    getLocation(options) { requests.push(options); options.success({ latitude: 31.2, longitude: 121.5, accuracy: 10 }) },
+    ...__wx
   }
   const deps = {
     navMethods: () => ({}), requirePrivacyAuthorize: () => Promise.resolve(),
-    createClientRequestId: () => 'point-id', callFunction: () => Promise.resolve({ count: 1 }),
+    createClientRequestId: () => `point-id-${++requestSeq}`, callFunction: () => Promise.resolve({ count: 1 }),
     formatDateTime: () => '2026-09-24 10:00', parseBeijingDate: require('../../miniprogram/utils/format').parseBeijingDate,
-    getOfflineTaskCount: () => 0, showError() {}, ...overrides
+    getOfflineTaskCount: () => 0, showError() {}, ...dependencyOverrides
   }
   const module = { exports: {} }
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram', relativePath), 'utf8') + exported, {
@@ -57,6 +65,141 @@ test('foreground stream and one-shot sampling both use GCJ-02 and request precis
   assert.equal(requests[0].type, 'gcj02')
   assert.equal(requests[1].type, 'gcj02')
   assert.equal(requests[1].isHighAccuracy, true)
+})
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+function prepareTrackingPage(overrides = {}) {
+  const result = loadPage('pages/staff/orders/service/index.js', overrides)
+  result.page.setData({ id: 'order', order: { status: 'in_service' } })
+  result.page.uploadAutoTrackPoint = () => Promise.resolve()
+  return result.page
+}
+
+test('background tracking is only shown after the native API succeeds and survives onHide', async (t) => {
+  let backgroundRequest
+  const page = prepareTrackingPage({
+    __wx: {
+      startLocationUpdateBackground(options) { backgroundRequest = options }
+    }
+  })
+
+  page.startAutoTracking()
+  t.after(() => page.stopAutoTracking())
+  await settle()
+  assert.equal(page.data.trackingState, 'starting')
+  assert.equal(page.data.backgroundTracking, false)
+  assert.ok(backgroundRequest)
+
+  backgroundRequest.success()
+  await settle()
+  assert.equal(page.data.trackingState, 'background')
+  assert.equal(page.data.backgroundTracking, true)
+  page.onHide()
+  assert.equal(page.trackingStarted, true)
+})
+
+test('stopping during a pending native start waits for the late callback and closes that session', async () => {
+  let backgroundRequest
+  let stopCount = 0
+  const page = prepareTrackingPage({
+    __wx: {
+      startLocationUpdateBackground(options) { backgroundRequest = options },
+      stopLocationUpdate(options) { stopCount += 1; options.complete() },
+      stopLocationUpdateBackground(options) { stopCount += 1; options.complete() }
+    }
+  })
+
+  const starting = page.startAutoTracking()
+  await settle()
+  const stopping = page.stopAutoTracking()
+  assert.equal(page.data.trackingState, 'idle')
+  assert.equal(stopCount, 0)
+  backgroundRequest.success()
+  await Promise.all([starting, stopping])
+  assert.equal(stopCount, 2)
+  assert.equal(page.trackingStarted, false)
+})
+
+test('background failure keeps its errMsg visible when foreground tracking is used', async (t) => {
+  const page = prepareTrackingPage({
+    __wx: {
+      startLocationUpdateBackground(options) { options.fail({ errMsg: 'startLocationUpdateBackground:fail auth deny' }) },
+      startLocationUpdate(options) { options.success() }
+    }
+  })
+
+  page.startAutoTracking()
+  t.after(() => page.stopAutoTracking())
+  await settle()
+  assert.equal(page.data.trackingState, 'foreground')
+  assert.equal(page.data.backgroundTracking, false)
+  assert.match(page.data.trackingErrorText, /auth deny/)
+  assert.match(page.data.trackingWarningText, /请勿离开服务页面/)
+  page.onHide()
+  assert.equal(page.trackingStarted, false)
+})
+
+test('retry waits for native stop callbacks before opening a new background session', async (t) => {
+  let backgroundCalls = 0
+  let retryBackgroundRequest
+  const stopRequests = []
+  const page = prepareTrackingPage({
+    __wx: {
+      startLocationUpdateBackground(options) {
+        backgroundCalls += 1
+        if (backgroundCalls === 1) options.fail({ errMsg: 'background denied' })
+        else retryBackgroundRequest = options
+      },
+      startLocationUpdate(options) { options.success() },
+      stopLocationUpdate(options) { stopRequests.push(options) },
+      stopLocationUpdateBackground(options) { stopRequests.push(options) }
+    }
+  })
+
+  page.startAutoTracking()
+  t.after(async () => {
+    const stopping = page.stopAutoTracking()
+    await settle()
+    stopRequests.splice(0).forEach((request) => request.complete())
+    await stopping
+  })
+  await settle()
+  assert.equal(page.data.trackingState, 'foreground')
+
+  const retry = page.retryBackgroundTracking()
+  assert.equal(backgroundCalls, 1)
+  await settle()
+  assert.equal(stopRequests.length, 2)
+  stopRequests.splice(0).forEach((request) => request.complete())
+  await settle()
+  assert.equal(backgroundCalls, 2)
+  retryBackgroundRequest.success()
+  await retry
+  assert.equal(page.data.trackingState, 'background')
+})
+
+test('background and foreground failures expose the real errors and release tracking state', async () => {
+  const errors = []
+  const page = prepareTrackingPage({
+    showError(error) { errors.push(error) },
+    __wx: {
+      startLocationUpdateBackground(options) { options.fail({ errMsg: 'background denied' }) },
+      startLocationUpdate(options) { options.fail({ errMsg: 'foreground denied' }) }
+    }
+  })
+
+  page.startAutoTracking()
+  await settle()
+  assert.equal(page.data.trackingState, 'error')
+  assert.equal(page.trackingStarted, false)
+  assert.match(page.data.trackingErrorText, /background denied/)
+  assert.match(page.data.trackingErrorText, /foreground denied/)
+  assert.equal(errors.length, 1)
+  await page.stopAutoTracking()
+  assert.equal(page.data.trackingState, 'idle')
+  assert.equal(page.data.trackingErrorText, '')
+  assert.equal(page.data.trackingWarningText, '')
 })
 
 test('location callbacks queue while an upload is in flight so no precise point is dropped', async () => {

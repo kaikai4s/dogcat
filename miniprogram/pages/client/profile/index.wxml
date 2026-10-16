@@ -187,6 +187,12 @@
         </view>
         <view class="profile-grid-label">意见反馈</view>
       </view>
+      <view class="profile-grid-item interactive" bindtap="openSubscriptions">
+        <view class="profile-icon-wrap teal">
+          <view class="remix-icon ri-notification-3-fill"></view>
+        </view>
+        <view class="profile-grid-label">通知订阅</view>
+      </view>
       <view class="profile-grid-item interactive" wx:if="{{isAdmin}}" bindtap="openAdmin">
         <view class="profile-icon-wrap orange">
           <view class="remix-icon ri-shield-keyhole-fill"></view>

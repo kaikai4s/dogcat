@@ -2302,19 +2302,110 @@ test('coupon create order locks coupon and prevents reuse', async () => {
   assert.equal(reused.message, '已锁定')
 })
 
-test('system records subscription consent results', async () => {
+test('system records subscription consent results and idempotent estimated counts', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
-    subscription_consents: []
+    platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: { subscription: { enabled: true, templates: { orderPaid: 'tpl_paid' } } } }],
+    subscription_consents: [], subscription_balances: [], subscription_balance_events: []
+  })
+  const fn = loadCloudFunction('api', db, 'openid_client')
+  const consent = requestId => fn.main({ module: 'system', action: 'recordSubscriptionConsent', data: {
+    requestId, templateKeys: ['orderPaid'], templateIds: { orderPaid: 'untrusted_client_value' }, results: { tpl_paid: 'accept' }, scene: 'client_pay'
+  } })
+
+  const first = await consent('request-1')
+  const replay = await consent('request-1')
+  const second = await consent('request-2')
+  const summary = await fn.main({ module: 'system', action: 'getSubscriptionSummary', data: {} })
+
+  assert.equal(first.ok, true)
+  assert.equal(replay.ok, true)
+  assert.equal(second.ok, true)
+  assert.equal(first.data.count, 1)
+  assert.equal(db.state.subscription_consents.length, 2)
+  assert.equal(db.state.subscription_consents[0].templateId, 'tpl_paid')
+  assert.equal(db.state.subscription_consents[0].status, 'accept')
+  assert.equal(db.state.subscription_balance_events.length, 2)
+  assert.equal(summary.data.items.orderPaid.known, true)
+  assert.equal(summary.data.items.orderPaid.estimatedRemaining, 2)
+})
+
+test('system subscription consent validates input, enforces bounds, and deduplicates shared templates', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
+    platform_configs: [{ _id: 'cfg1', key: 'system_settings', value: {
+      subscription: {
+        enabled: true,
+        templates: {
+          orderAssigned: 'tpl_shared',
+          staffDirectOrder: 'tpl_shared',
+          serviceStart: 'tpl_start',
+          serviceFinish: 'tpl_finish',
+          remoteUnlock: 'tpl_unlock'
+        }
+      }
+    } }],
+    subscription_consents: [], subscription_balances: [], subscription_balance_events: []
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
 
-  const result = await fn.main({ module: 'system', action: 'recordSubscriptionConsent', data: { templateKeys: ['orderPaid'], templateIds: { orderPaid: 'tpl_paid' }, results: { tpl_paid: 'accept' }, scene: 'client_pay' } })
+  // Validation: empty requestId
+  const noReqId = await fn.main({ module: 'system', action: 'recordSubscriptionConsent', data: {
+    requestId: '', templateKeys: ['orderAssigned'], results: { tpl_shared: 'accept' }
+  } })
+  assert.equal(noReqId.ok, false)
+  assert.match(noReqId.message, /订阅请求标识无效/)
 
-  assert.equal(result.ok, true)
-  assert.equal(result.data.count, 1)
-  assert.equal(db.state.subscription_consents[0].templateKey, 'orderPaid')
-  assert.equal(db.state.subscription_consents[0].status, 'accept')
+  // Validation: empty templateKeys
+  const noKeys = await fn.main({ module: 'system', action: 'recordSubscriptionConsent', data: {
+    requestId: 'req-1', templateKeys: [], results: {}
+  } })
+  assert.equal(noKeys.ok, false)
+  assert.match(noKeys.message, /订阅模板数量不正确/)
+
+  // Validation: invalid status
+  const badStatus = await fn.main({ module: 'system', action: 'recordSubscriptionConsent', data: {
+    requestId: 'req-1', templateKeys: ['orderAssigned'], results: { tpl_shared: 'invalid_status' }
+  } })
+  assert.equal(badStatus.ok, false)
+  assert.match(badStatus.message, /订阅授权状态无效/)
+
+  // Validation: unconfigured template
+  const unconfigured = await fn.main({ module: 'system', action: 'recordSubscriptionConsent', data: {
+    requestId: 'req-1', templateKeys: ['unconfiguredKey'], results: {}
+  } })
+  assert.equal(unconfigured.ok, false)
+  assert.match(unconfigured.message, /订阅模板未配置/)
+
+  // Validation: > 3 templateIds
+  const tooMany = await fn.main({ module: 'system', action: 'recordSubscriptionConsent', data: {
+    requestId: 'req-1',
+    templateKeys: ['orderAssigned', 'serviceStart', 'serviceFinish', 'remoteUnlock'],
+    results: { tpl_shared: 'accept', tpl_start: 'accept', tpl_finish: 'accept', tpl_unlock: 'accept' }
+  } })
+  assert.equal(tooMany.ok, false)
+  assert.match(tooMany.message, /每次最多订阅 3 个模板/)
+
+  // Deduplication of shared template: orderAssigned and staffDirectOrder share tpl_shared
+  const shared = await fn.main({ module: 'system', action: 'recordSubscriptionConsent', data: {
+    requestId: 'req-shared',
+    templateKeys: ['orderAssigned', 'staffDirectOrder'],
+    results: { tpl_shared: 'accept' }
+  } })
+  assert.equal(shared.ok, true)
+  assert.equal(shared.data.count, 2)
+  assert.equal(shared.data.acceptedCount, 1)
+  assert.equal(db.state.subscription_balance_events.length, 1)
+  assert.equal(db.state.subscription_balances.length, 1)
+  assert.equal(db.state.subscription_balances[0].acceptedCount, 1)
+
+  // getSubscriptionSummary returns known: false for untouched template
+  const summary = await fn.main({ module: 'system', action: 'getSubscriptionSummary', data: {} })
+  assert.equal(summary.ok, true)
+  assert.equal(summary.data.items.orderAssigned.known, true)
+  assert.equal(summary.data.items.orderAssigned.estimatedRemaining, 1)
+  assert.equal(summary.data.items.serviceStart.known, false)
+  assert.equal(summary.data.items.serviceStart.estimatedRemaining, 0)
 })
 
 

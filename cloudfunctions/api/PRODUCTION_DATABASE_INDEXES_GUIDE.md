@@ -183,6 +183,25 @@
 
 ---
 
+### 7. 订阅消息与通知账本域 (Subscriptions & Notice Ledger)
+
+#### 集合：`subscription_balances` (用户订阅次数账本表)
+| 索引名称 | 字段配置 (Keys) | 唯一索引 (Unique) | 业务查询场景与收益 |
+| :--- | :--- | :---: | :--- |
+| `idx_subscription_balance_user` | `openid: 1` | 否 | **订阅中心与设置页额度加载**：按本人 openid 批量提取所有模板剩余次数，杜绝全表扫描 |
+
+> **主键设计说明**：`subscription_balances` 主键 `_id` 采用确定性哈希 `balance_${sha256(openid|templateId).slice(0,32)}` 生成，默认主键索引天然保证每个用户针对每个模板仅有唯一的汇总记录，并发读写通过 `_id` 保证 O(1) 事务命中与幂等更新。
+
+#### 集合：`subscription_balance_events` (订阅账本事件防重流水表)
+| 索引名称 | 字段配置 (Keys) | 唯一索引 (Unique) | 业务查询场景与收益 |
+| :--- | :--- | :---: | :--- |
+| `idx_balance_event_audit` | `openid: 1`, `templateId: 1`, `createdAt: -1` | 否 | **模板流水审计与溯源**：按用户和模板倒序回溯授权增加 (accept) 与发送扣减 (consume) 流水 |
+| `idx_balance_event_user_time` | `openid: 1`, `createdAt: -1` | 否 | **用户事件流分页检索**：按用户维度极速分页检索全部通知变更流水 |
+
+> **主键设计说明**：`subscription_balance_events` 主键 `_id` 采用确定性哈希 `balance_${type}_${sha256(openid|templateId|eventId).slice(0,32)}` 生成，通过默认主键唯一索引在事务写入前完成 O(1) 幂等防重判断，杜绝重复授权与重复扣减。
+
+---
+
 ## 三、性能收益与大吞吐容量对照
 
 | 业务场景 | 无索引查询延迟 (全表扫描) | 建立索引后延迟 (Index Scan) | 性能提升幅度 |

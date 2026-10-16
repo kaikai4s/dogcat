@@ -196,9 +196,10 @@ module.exports = function createService({
 
   async function sendSubscribeMessageOnce(openid, templateKey, page, messageData = {}, orderId = '') {
     if (!openid || !templateKey) return { status: 'skipped', error: 'missing_recipient_or_template_key' }
+    let templateId = ''
     try {
       const settings = await getSystemSettings()
-      let templateId = settings.subscription.templates[templateKey] || ''
+      templateId = settings.subscription.templates[templateKey] || ''
       // Cancellation is an assignment-status update, not a service-start or payment-success event.
       if (!templateId && templateKey === 'staffCancellation') {
         templateId = settings.subscription.templates.orderAssigned || ''
@@ -286,7 +287,7 @@ module.exports = function createService({
       const isQuotaExhausted = errCode === 43101 || String(message).includes('43101')
       console.error('[subscription] failed', { orderId, templateKey, status: 'failed', code: errCode || 'send_failed', isQuotaExhausted })
       await recordSubscriptionLog({ openid, templateKey, orderId, page, data: messageData, status: 'failed', error: message, code: errCode, isQuotaExhausted })
-      return { status: 'failed', error: message, templateKey, code: errCode, isQuotaExhausted }
+      return { status: 'failed', error: message, templateKey, templateId, code: errCode, isQuotaExhausted }
     }
   }
 

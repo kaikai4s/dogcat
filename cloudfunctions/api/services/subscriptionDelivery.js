@@ -1,10 +1,69 @@
 module.exports = function createService({ db, crypto, now }) {
-  async function read(tx, id) {
-    try { return (await tx.collection('subscription_logs').doc(id).get()).data || null } catch (error) {
+  async function readDocument(tx, collection, id) {
+    try { return (await tx.collection(collection).doc(id).get()).data || null } catch (error) {
       if (String(error.message || error.errMsg).includes(`document with _id ${id} does not exist`)) return null
       throw error
     }
   }
+  const read = (tx, id) => readDocument(tx, 'subscription_logs', id)
+  const hashedId = (prefix, values) => `${prefix}_${crypto.createHash('sha256').update(values.join('|')).digest('hex').slice(0, 32)}`
+  const balanceId = (openid, templateId) => hashedId('balance', [openid, templateId])
+  const balanceEventId = (type, openid, templateId, eventId) => hashedId(`balance_${type}`, [openid, templateId, eventId])
+
+  async function applyBalanceEvent(tx, { type, openid, templateId, eventId }) {
+    if (!openid || !templateId || !eventId) return null
+    const id = balanceId(openid, templateId)
+    const eventDocId = balanceEventId(type, openid, templateId, eventId)
+    if (await readDocument(tx, 'subscription_balance_events', eventDocId)) return readDocument(tx, 'subscription_balances', id)
+    const time = now()
+    const current = await readDocument(tx, 'subscription_balances', id)
+    const acceptedCount = Number(current && current.acceptedCount || 0) + (type === 'accept' ? 1 : 0)
+    const consumedCount = Number(current && current.consumedCount || 0) + (type === 'consume' ? 1 : 0)
+    const value = {
+      openid,
+      templateId,
+      acceptedCount,
+      consumedCount,
+      estimatedRemaining: Math.max(acceptedCount - consumedCount, 0),
+      needsResubscribe: type === 'accept' ? false : Boolean(current && current.needsResubscribe),
+      createdAt: current && current.createdAt || time,
+      updatedAt: time,
+      ...(type === 'accept' ? { lastAcceptedAt: time } : {}),
+      ...(type === 'consume' ? { lastConsumedAt: time } : {})
+    }
+    await tx.collection('subscription_balance_events').doc(eventDocId).set({ data: { type, openid, templateId, eventId, createdAt: time } })
+    await tx.collection('subscription_balances').doc(id).set({ data: value })
+    return value
+  }
+
+  async function recordSubscriptionBalance(openid, templateId, requestId) {
+    return db.runTransaction(tx => applyBalanceEvent(tx, { type: 'accept', openid, templateId, eventId: requestId }))
+  }
+
+  async function getSubscriptionBalanceSummary(openid, templateIds = []) {
+    const requested = new Set(templateIds.filter(Boolean))
+    if (!openid || !requested.size) return {}
+    const rows = (await db.collection('subscription_balances').where({ openid }).limit(100).get()).data || []
+    return Object.fromEntries(rows.filter(row => requested.has(row.templateId)).map(row => [row.templateId, {
+      known: true,
+      acceptedCount: Number(row.acceptedCount || 0),
+      consumedCount: Number(row.consumedCount || 0),
+      estimatedRemaining: Math.max(Number(row.estimatedRemaining || 0), 0),
+      needsResubscribe: Boolean(row.needsResubscribe),
+      updatedAt: row.updatedAt || null
+    }]))
+  }
+
+  async function markQuotaExhausted(tx, openid, templateId, claimStartedAt) {
+    if (!openid || !templateId) return
+    const id = balanceId(openid, templateId)
+    const current = await readDocument(tx, 'subscription_balances', id)
+    if (!current) return
+    const acceptedAt = new Date(current.lastAcceptedAt || 0).getTime()
+    if (acceptedAt > new Date(claimStartedAt || 0).getTime()) return
+    await tx.collection('subscription_balances').doc(id).update({ data: { needsResubscribe: true, estimatedRemaining: 0, updatedAt: now() } })
+  }
+
   const deliveryId = message => {
     const identity = message.deliveryKey ? [message.openid, message.templateKey, message.orderId, message.deliveryKey] : message
     return `delivery_${crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex').slice(0, 32)}`
@@ -41,6 +100,11 @@ module.exports = function createService({ db, crypto, now }) {
       const row = await read(tx, id)
       if (!row || row.leaseToken !== token) return
       const retry = result.status === 'failed' && row.attempts < 6
+      if (result.status === 'sent' && result.templateId) {
+        await applyBalanceEvent(tx, { type: 'consume', openid: message.openid, templateId: result.templateId, eventId: id })
+      } else if (result.isQuotaExhausted && result.templateId) {
+        await markQuotaExhausted(tx, message.openid, result.templateId, claim.value.updatedAt)
+      }
       await tx.collection('subscription_logs').doc(id).update({ data: {
         status: retry ? 'queued' : result.status, error: result.error || '', code: result.code || '',
         isQuotaExhausted: Boolean(result.isQuotaExhausted), templateId: result.templateId || '', leaseToken: '',
@@ -105,5 +169,13 @@ module.exports = function createService({ db, crypto, now }) {
       return { id, status: 'queued' }
     })
   }
-  return { enqueueSubscription, deliverSubscription, retrySubscriptionDeliveries, listSubscriptionDeliveries, requeueSubscriptionDelivery }
+  return {
+    enqueueSubscription,
+    deliverSubscription,
+    retrySubscriptionDeliveries,
+    listSubscriptionDeliveries,
+    requeueSubscriptionDelivery,
+    recordSubscriptionBalance,
+    getSubscriptionBalanceSummary
+  }
 }

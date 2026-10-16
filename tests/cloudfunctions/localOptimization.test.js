@@ -108,22 +108,78 @@ test('same track ID inside one batch and concurrent uploads produce one point', 
   assert.equal(db.state.orders[0].trackRevision, 1)
 })
 
-test('transactional delivery survives commit without immediate send and keeps semantic identity', async () => {
-  const db = createCollectionStore()
+test('transactional delivery survives commit and consumes estimated subscription count once', async () => {
+  const db = createCollectionStore({ subscription_balances: [], subscription_balance_events: [] })
   let time = new Date('2026-10-01T00:00:00Z')
   const service = require('../../cloudfunctions/api/services/subscriptionDelivery')({ db, crypto, now: () => time })
+  await service.recordSubscriptionBalance('client', 'tpl_refund', 'consent-1')
+  await service.recordSubscriptionBalance('client', 'tpl_refund', 'consent-1')
+  await service.recordSubscriptionBalance('client', 'tpl_refund', 'consent-2')
+  assert.equal((await service.getSubscriptionBalanceSummary('client', ['tpl_refund'])).tpl_refund.estimatedRemaining, 2)
+
   const message = { openid: 'client', templateKey: 'refundResult', page: 'pages/client/orders/detail/index?id=o', messageData: {}, orderId: 'o', deliveryKey: 'refund-a' }
   await db.runTransaction(tx => service.enqueueSubscription(tx, message))
   let calls = 0
-  await service.retrySubscriptionDeliveries(async () => { calls++; return { status: 'failed' } })
+  await service.retrySubscriptionDeliveries(async () => { calls++; return { status: 'failed', templateId: 'tpl_refund' } })
   assert.equal(calls, 1)
   time = new Date(time.getTime() + 3600000)
-  await service.retrySubscriptionDeliveries(async () => { calls++; return { status: 'sent' } })
+  await service.retrySubscriptionDeliveries(async () => { calls++; return { status: 'sent', templateId: 'tpl_refund' } })
+  await service.deliverSubscription(message, async () => { calls++; return { status: 'sent', templateId: 'tpl_refund' } })
   assert.equal(calls, 2)
   assert.equal(db.state.subscription_logs.length, 1)
   assert.equal(db.state.subscription_logs[0].status, 'sent')
+  assert.equal((await service.getSubscriptionBalanceSummary('client', ['tpl_refund'])).tpl_refund.estimatedRemaining, 1)
+  assert.equal(db.state.subscription_balance_events.filter(row => row.type === 'consume').length, 1)
   assert.equal((await service.listSubscriptionDeliveries({ status: 'sent' })).list[0].openid, undefined)
 })
+
+test('quota exhaustion marks balance resubscribe needed and race condition preserves newer consent', async () => {
+  const db = createCollectionStore({ subscription_balances: [], subscription_balance_events: [] })
+  let currentTime = new Date('2026-10-01T00:00:00Z')
+  const service = require('../../cloudfunctions/api/services/subscriptionDelivery')({ db, crypto, now: () => currentTime })
+
+  await service.recordSubscriptionBalance('client', 'tpl_status', 'consent-1')
+  assert.equal((await service.getSubscriptionBalanceSummary('client', ['tpl_status'])).tpl_status.estimatedRemaining, 1)
+
+  // 1. Quota exhausted normal case
+  const msg1 = { openid: 'client', templateKey: 'orderPaid', page: 'p', messageData: {}, orderId: 'o1', deliveryKey: 'k1' }
+  await db.runTransaction(tx => service.enqueueSubscription(tx, msg1))
+  await service.deliverSubscription(msg1, async () => ({
+    status: 'failed', templateId: 'tpl_status', isQuotaExhausted: true, code: 43101
+  }))
+  const exhausted = (await service.getSubscriptionBalanceSummary('client', ['tpl_status'])).tpl_status
+  assert.equal(exhausted.needsResubscribe, true)
+  assert.equal(exhausted.estimatedRemaining, 0)
+
+  // 2. Race condition: user consents again while an in-flight send encounters quota exhaustion
+  currentTime = new Date('2026-10-01T01:00:00Z')
+  const msg2 = { openid: 'client', templateKey: 'orderPaid', page: 'p', messageData: {}, orderId: 'o2', deliveryKey: 'k2' }
+  await db.runTransaction(tx => service.enqueueSubscription(tx, msg2))
+  await service.deliverSubscription(msg2, async () => {
+    // During send execution, time advances and user authorizes anew
+    currentTime = new Date('2026-10-01T01:00:05Z')
+    await service.recordSubscriptionBalance('client', 'tpl_status', 'consent-fresh')
+    return { status: 'failed', templateId: 'tpl_status', isQuotaExhausted: true, code: 43101 }
+  })
+  const preserved = (await service.getSubscriptionBalanceSummary('client', ['tpl_status'])).tpl_status
+  assert.equal(preserved.needsResubscribe, false)
+  assert.equal(preserved.estimatedRemaining, 2)
+
+  // 3. Consumptions beyond balance floor remaining count at 0
+  const msg3 = { openid: 'client', templateKey: 'orderPaid', page: 'p', messageData: {}, orderId: 'o3', deliveryKey: 'k3' }
+  const msg4 = { openid: 'client', templateKey: 'orderPaid', page: 'p', messageData: {}, orderId: 'o4', deliveryKey: 'k4' }
+  const msg5 = { openid: 'client', templateKey: 'orderPaid', page: 'p', messageData: {}, orderId: 'o5', deliveryKey: 'k5' }
+  await service.deliverSubscription(msg3, async () => ({ status: 'sent', templateId: 'tpl_status' }))
+  assert.equal((await service.getSubscriptionBalanceSummary('client', ['tpl_status'])).tpl_status.estimatedRemaining, 1)
+  await service.deliverSubscription(msg4, async () => ({ status: 'sent', templateId: 'tpl_status' }))
+  assert.equal((await service.getSubscriptionBalanceSummary('client', ['tpl_status'])).tpl_status.estimatedRemaining, 0)
+  await service.deliverSubscription(msg5, async () => ({ status: 'sent', templateId: 'tpl_status' }))
+  const floored = (await service.getSubscriptionBalanceSummary('client', ['tpl_status'])).tpl_status
+  assert.equal(floored.estimatedRemaining, 0)
+  assert.equal(floored.consumedCount, 3)
+  assert.equal(floored.acceptedCount, 2)
+})
+
 
 test('delivery event identity preserves queued payload and retry audit, and distinguishes service days', async () => {
   const db = createCollectionStore()
