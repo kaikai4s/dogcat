@@ -63,6 +63,7 @@ Page({
     pageSize: 20,
     hasMore: true,
     loading: false,
+    contentLoaded: false,
     total: 0,
     // 系统通知
     systemNotices: [],
@@ -70,6 +71,7 @@ Page({
     systemPageSize: 20,
     systemHasMore: true,
     systemLoading: false,
+    systemContentLoaded: false,
     systemTotal: 0,
     // 全局与分类未读数
     messageUnreadCount: 0,
@@ -154,7 +156,8 @@ Page({
           page: pageData.page,
           hasMore: pageData.hasMore,
           total: pageData.total,
-          loading: false
+          loading: false,
+          contentLoaded: true
         })
       })
       .catch((error) => {
@@ -188,7 +191,8 @@ Page({
           messageUnreadCount: total,
           messageHasUnread: total > 0,
           messageUnreadCountText: total > 99 ? '99+' : String(total),
-          systemLoading: false
+          systemLoading: false,
+          systemContentLoaded: true
         })
         setCachedUnread('client', {
           totalUnread: total,

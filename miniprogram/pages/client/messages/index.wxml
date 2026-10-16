@@ -25,26 +25,47 @@
 
   <!-- 订单消息列表 -->
   <block wx:if="{{activeTab === 'order'}}">
-    <view class="card message-card interactive" wx:for="{{threads}}" wx:key="_id" data-id="{{item._id}}" data-order-id="{{item.orderId}}" bindtap="openThread" bindlongpress="onThreadLongPress">
-      <view class="message-icon">
-        <view class="remix-icon ri-notification-3-fill msg-icon-inner"></view>
-        <view class="message-card-dot" wx:if="{{item.showUnreadDot}}"></view>
-        <view class="message-card-count" wx:elif="{{item.unreadCount > 1}}">{{item.unreadCountText}}</view>
-      </view>
-      <view class="message-main">
-        <view class="message-title-row">
-          <view class="message-title">{{item.titleText}}</view>
-          <view class="message-time">{{item.lastMessageAtText}}</view>
+    <!-- 骨架屏加载状态（叠加从左到右流光渐变） -->
+    <view class="messages-skeleton-list" wx:if="{{loading && !threads.length}}">
+      <view class="card message-card message-skeleton-card" wx:for="{{[1, 2, 3, 4]}}" wx:key="*this" style="display:flex; align-items:flex-start; gap: 20rpx; padding: 28rpx; margin-bottom: 20rpx;">
+        <view class="skeleton-shimmer" style="width: 88rpx; height: 88rpx; border-radius: 20rpx; flex-shrink: 0;"></view>
+        <view style="flex: 1;">
+          <view style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 14rpx;">
+            <view class="skeleton-shimmer" style="width: 240rpx; height: 32rpx; border-radius: 6rpx;"></view>
+            <view class="skeleton-shimmer" style="width: 90rpx; height: 24rpx; border-radius: 6rpx;"></view>
+          </view>
+          <view class="skeleton-shimmer" style="width: 380rpx; height: 26rpx; border-radius: 6rpx; margin-bottom: 18rpx;"></view>
+          <view style="display:flex; gap: 16rpx; align-items:center;">
+            <view class="skeleton-shimmer" style="width: 100rpx; height: 36rpx; border-radius: 8rpx;"></view>
+            <view class="skeleton-shimmer" style="width: 160rpx; height: 26rpx; border-radius: 6rpx;"></view>
+          </view>
         </view>
-        <view class="message-preview">{{item.lastMessageTitle || '订单消息'}}<text wx:if="{{item.lastMessageDetail}}"> · {{item.lastMessageDetail}}</text></view>
-        <view class="message-meta">
-          <view class="status-badge {{item.orderStatusClass}}">{{item.orderStatusText || '处理中'}}</view>
-          <view class="order-meta"><text class="remix-icon ri-file-list-3-line"></text><text>订单 {{item.orderNo || item.orderId}}</text></view>
-        </view>
       </view>
-      <view class="message-card-side">
-        <view class="message-delete-action" data-id="{{item._id}}" catchtap="deleteThread" hover-class="delete-hover" title="删除">
-          <text class="remix-icon ri-delete-bin-line"></text>
+    </view>
+
+    <!-- 真实订单消息列表（模糊淡入） -->
+    <view class="threads-real-list {{contentLoaded ? 'blur-fade-in' : ''}}" wx:if="{{threads.length}}">
+      <view class="card message-card interactive" wx:for="{{threads}}" wx:key="_id" data-id="{{item._id}}" data-order-id="{{item.orderId}}" bindtap="openThread" bindlongpress="onThreadLongPress">
+        <view class="message-icon">
+          <view class="remix-icon ri-notification-3-fill msg-icon-inner"></view>
+          <view class="message-card-dot" wx:if="{{item.showUnreadDot}}"></view>
+          <view class="message-card-count" wx:elif="{{item.unreadCount > 1}}">{{item.unreadCountText}}</view>
+        </view>
+        <view class="message-main">
+          <view class="message-title-row">
+            <view class="message-title">{{item.titleText}}</view>
+            <view class="message-time">{{item.lastMessageAtText}}</view>
+          </view>
+          <view class="message-preview">{{item.lastMessageTitle || '订单消息'}}<text wx:if="{{item.lastMessageDetail}}"> · {{item.lastMessageDetail}}</text></view>
+          <view class="message-meta">
+            <view class="status-badge {{item.orderStatusClass}}">{{item.orderStatusText || '处理中'}}</view>
+            <view class="order-meta"><text class="remix-icon ri-file-list-3-line"></text><text>订单 {{item.orderNo || item.orderId}}</text></view>
+          </view>
+        </view>
+        <view class="message-card-side">
+          <view class="message-delete-action" data-id="{{item._id}}" catchtap="deleteThread" hover-class="delete-hover" title="删除">
+            <text class="remix-icon ri-delete-bin-line"></text>
+          </view>
         </view>
       </view>
     </view>
@@ -69,22 +90,39 @@
         <text>全部标为已读</text>
       </view>
     </view>
-    <view class="card notice-card interactive {{item.isRead ? 'notice-read' : 'notice-unread'}}" wx:for="{{systemNotices}}" wx:key="_id" data-id="{{item._id}}" bindtap="tapNotice">
-      <view class="notice-top">
-        <view class="notice-tags">
-          <view class="notice-type-tag type-{{item.type || 'system'}}">{{item.typeText || '系统通知'}}</view>
-          <view class="notice-urgent-tag" wx:if="{{item.level === 'urgent'}}">重要</view>
-          <view class="notice-unread-dot" wx:if="{{!item.isRead}}"></view>
+
+    <!-- 骨架屏加载状态（叠加从左到右流光渐变） -->
+    <view class="notices-skeleton-list" wx:if="{{systemLoading && !systemNotices.length}}">
+      <view class="card notice-card notice-skeleton-card" wx:for="{{[1, 2, 3]}}" wx:key="*this" style="padding: 28rpx; margin-bottom: 20rpx;">
+        <view style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16rpx;">
+          <view class="skeleton-shimmer" style="width: 130rpx; height: 36rpx; border-radius: 8rpx;"></view>
+          <view class="skeleton-shimmer" style="width: 100rpx; height: 24rpx; border-radius: 6rpx;"></view>
         </view>
-        <view class="notice-time">{{item.createdAtText}}</view>
+        <view class="skeleton-shimmer" style="width: 320rpx; height: 34rpx; border-radius: 6rpx; margin-bottom: 14rpx;"></view>
+        <view class="skeleton-shimmer" style="width: 90%; height: 26rpx; border-radius: 6rpx; margin-bottom: 10rpx;"></view>
+        <view class="skeleton-shimmer" style="width: 60%; height: 26rpx; border-radius: 6rpx;"></view>
       </view>
-      <view class="notice-title-row">
-        <view class="notice-title">{{item.title}}</view>
-      </view>
-      <view class="notice-content-preview">{{item.content}}</view>
-      <view class="notice-footer" wx:if="{{item.targetUrl}}">
-        <text class="notice-link-text">查看详情</text>
-        <text class="remix-icon ri-arrow-right-s-line"></text>
+    </view>
+
+    <!-- 真实系统通知列表（模糊淡入） -->
+    <view class="notices-real-list {{systemContentLoaded ? 'blur-fade-in' : ''}}" wx:if="{{systemNotices.length}}">
+      <view class="card notice-card interactive {{item.isRead ? 'notice-read' : 'notice-unread'}}" wx:for="{{systemNotices}}" wx:key="_id" data-id="{{item._id}}" bindtap="tapNotice">
+        <view class="notice-top">
+          <view class="notice-tags">
+            <view class="notice-type-tag type-{{item.type || 'system'}}">{{item.typeText || '系统通知'}}</view>
+            <view class="notice-urgent-tag" wx:if="{{item.level === 'urgent'}}">重要</view>
+            <view class="notice-unread-dot" wx:if="{{!item.isRead}}"></view>
+          </view>
+          <view class="notice-time">{{item.createdAtText}}</view>
+        </view>
+        <view class="notice-title-row">
+          <view class="notice-title">{{item.title}}</view>
+        </view>
+        <view class="notice-content-preview">{{item.content}}</view>
+        <view class="notice-footer" wx:if="{{item.targetUrl}}">
+          <text class="notice-link-text">查看详情</text>
+          <text class="remix-icon ri-arrow-right-s-line"></text>
+        </view>
       </view>
     </view>
 
@@ -119,14 +157,14 @@
       </view>
     </view>
   </view>
-
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>首页</view></view>
-    <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon remix-icon ri-team-line"></view><view>宠托师</view></view>
-    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
-    <view class="nav-item active"><view class="nav-icon remix-icon ri-message-3-fill"><view class="nav-unread-count" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCountText}}</view></view><view>消息</view></view>
-    <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
-  </view>
 </view>
 </dovlin-refresh>
+
+<view class="bottom-nav">
+  <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>首页</view></view>
+  <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon remix-icon ri-team-line"></view><view>宠托师</view></view>
+  <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
+  <view class="nav-item active"><view class="nav-icon remix-icon ri-message-3-fill"><view class="nav-unread-count" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCountText}}</view></view><view>消息</view></view>
+  <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
+</view>
 <global-loading />

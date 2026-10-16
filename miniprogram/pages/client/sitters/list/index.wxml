@@ -70,12 +70,37 @@
     <button class="trust-btn-cute" bindtap="openPublish">公开发布抢单需求</button>
   </view>
 
-  <view class="loading-card" wx:if="{{loading}}">
-    <view class="remix-icon ri-loader-4-line spin-icon"></view>
-    <text>正在为您推荐优秀宠托师...</text>
+  <!-- 骨架屏加载状态（叠加从左到右流光渐变） -->
+  <view class="sitter-skeleton-list" wx:if="{{loading && !sitters.length}}">
+    <view class="card sitter-item-card sitter-skeleton-card" wx:for="{{[1, 2, 3]}}" wx:key="*this">
+      <view class="sitter-skeleton-head">
+        <view class="skeleton-shimmer sitter-skeleton-avatar"></view>
+        <view class="sitter-skeleton-body">
+          <view style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 14rpx;">
+            <view class="skeleton-shimmer" style="width: 150rpx; height: 36rpx; border-radius: 8rpx;"></view>
+            <view class="skeleton-shimmer" style="width: 110rpx; height: 34rpx; border-radius: 999rpx;"></view>
+          </view>
+          <view class="skeleton-shimmer" style="width: 220rpx; height: 26rpx; border-radius: 6rpx; margin-bottom: 16rpx;"></view>
+          <view style="display:flex; gap: 10rpx;">
+            <view class="skeleton-shimmer" style="width: 72rpx; height: 36rpx; border-radius: 8rpx;"></view>
+            <view class="skeleton-shimmer" style="width: 120rpx; height: 36rpx; border-radius: 8rpx;"></view>
+            <view class="skeleton-shimmer" style="width: 140rpx; height: 36rpx; border-radius: 8rpx;"></view>
+          </view>
+        </view>
+      </view>
+      <view style="margin-top: 20rpx;">
+        <view class="skeleton-shimmer" style="width: 90%; height: 28rpx; border-radius: 6rpx; margin-bottom: 20rpx;"></view>
+        <view style="display:grid; grid-template-columns: 1fr 1fr; gap: 16rpx;">
+          <view class="skeleton-shimmer" style="height: 76rpx; border-radius: 999rpx;"></view>
+          <view class="skeleton-shimmer" style="height: 76rpx; border-radius: 999rpx;"></view>
+        </view>
+      </view>
+    </view>
   </view>
 
-  <view class="card sitter-item-card" wx:for="{{sitters}}" wx:key="_id">
+  <!-- 真实内容（数据返回后平滑模糊淡入） -->
+  <view class="sitter-real-list {{contentLoaded ? 'blur-fade-in' : ''}}" wx:if="{{sitters.length}}">
+    <view class="card sitter-item-card" wx:for="{{sitters}}" wx:key="_id">
     <view class="sitter-item-head">
       <view class="sitter-avatar-container">
         <image class="sitter-avatar-img" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" lazy-load />
@@ -127,6 +152,7 @@
       <button class="ghost-cute-btn" data-id="{{item._id}}" bindtap="detail">查看资料</button>
     </view>
   </view>
+  </view>
 
   <view class="list-state" wx:if="{{loading && sitters.length}}">正在加载更多宠托师...</view>
   <view class="list-state" wx:if="{{!loading && sitters.length && !hasMore}}">已显示全部宠托师</view>
@@ -170,14 +196,14 @@
       </scroll-view>
     </view>
   </view>
-
-  <view class="bottom-nav">
-    <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>首页</view></view>
-    <view class="nav-item active"><view class="nav-icon remix-icon ri-team-fill"></view><view>宠托师</view></view>
-    <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
-    <view class="nav-item" data-url="/pages/client/messages/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-unread-count" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCountText}}</view></view><view>消息</view></view>
-    <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
-  </view>
 </view>
 </dovlin-refresh>
+
+<view class="bottom-nav">
+  <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>首页</view></view>
+  <view class="nav-item active"><view class="nav-icon remix-icon ri-team-fill"></view><view>宠托师</view></view>
+  <view class="nav-item" data-url="/pages/client/orders/list/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>订单</view></view>
+  <view class="nav-item" data-url="/pages/client/messages/index" bindtap="goProtected"><view class="nav-icon remix-icon ri-message-3-line"><view class="nav-unread-count" wx:if="{{messageUnreadCount > 0}}">{{messageUnreadCountText}}</view></view><view>消息</view></view>
+  <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
+</view>
 <global-loading />

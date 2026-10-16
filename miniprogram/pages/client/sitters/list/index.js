@@ -60,6 +60,7 @@ Page({
     hasMore: true,
     total: 0,
     loading: false,
+    contentLoaded: false,
     messageUnreadCount: 0,
     messageHasUnread: false
   },
@@ -170,7 +171,8 @@ Page({
           page: pageData.page,
           hasMore: pageData.hasMore,
           total: pageData.total,
-          loading: false
+          loading: false,
+          contentLoaded: true
         })
       })
       .catch((error) => {
