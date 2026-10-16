@@ -62,10 +62,10 @@ class World3D {
     this.destroyed = false
     this.scene = new THREE.Scene()
     this.materials = new Map()
-    this.target = new THREE.Vector3(0, 0.7, 0)
-    this.yaw = 0.3
-    this.pitch = 0.75
-    this.distance = 45
+    this.target = new THREE.Vector3(-1, 1.2, -1)
+    this.yaw = 0.32
+    this.pitch = 0.65
+    this.distance = 25
     this.follow = true
     this.lastStatus = ''
     this.frame = null
@@ -83,6 +83,7 @@ class World3D {
     })
     if (this.destroyed) return this
     this.canvas = item.node
+    THREE.currentCanvas = this.canvas
     this.canvas.addEventListener = this.canvas.addEventListener || (() => {})
     this.canvas.removeEventListener = this.canvas.removeEventListener || (() => {})
     this.canvas.style = this.canvas.style || {}
@@ -99,6 +100,7 @@ class World3D {
     const sun = new THREE.DirectionalLight(0xfff1d5, 1.1)
     sun.position.set(-6, 10, 5)
     this.scene.add(sun)
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.75))
     this.onStatus('加载庄园模型…')
     let house
     try {
@@ -140,22 +142,26 @@ class World3D {
   createStations(profiles, houseBox) {
     const stations = []
     const count = Math.max(1, profiles.length)
-    const dining = new THREE.Mesh(new THREE.PlaneBufferGeometry(18, Math.max(10, count * 4.8 + 4)), this.material(0xd7c797))
+    const diningCenterX = 5.8
+    const diningCenterZ = -3.5
+    const dining = new THREE.Mesh(new THREE.PlaneBufferGeometry(7.2, Math.max(6.5, count * 3.2 + 1.8)), this.material(0xd7c797))
     dining.rotation.x = -Math.PI / 2
-    dining.position.set(30.5, 0.022, -10)
+    dining.position.set(diningCenterX, 0.022, diningCenterZ)
     this.scene.add(dining)
     for (let i = 0; i < count; i += 1) {
       const row = i - (count - 1) / 2
-      const z = -10 + row * 4.6
-      const restX = houseBox.max.x + 2 + (i % 3) * 2.2
-      const restZ = houseBox.max.z + 2 + Math.floor(i / 3) * 2.2
-      this.bowl(27.5, z, 0xcc895f, false)
-      this.bowl(33.5, z, 0x93bec4, true)
+      const z = diningCenterZ + row * 2.8
+      const restX = houseBox.max.x + 1.8 + (i % 2) * 2.2
+      const restZ = houseBox.max.z + 1.6 + Math.floor(i / 2) * 1.8
+      const eatX = diningCenterX - 1.6
+      const drinkX = diningCenterX + 1.6
+      this.bowl(eatX, z, 0xcc895f, false)
+      this.bowl(drinkX, z, 0x93bec4, true)
       const mat = this.mesh(new THREE.CylinderBufferGeometry(1.05, 1.2, 0.08, 18), i % 2 ? 0xd8bea0 : 0xc9d6a9, restX, 0.04, restZ)
-      mat.scale.set(1.4, 1, 0.82)
+      mat.scale.set(1.3, 1, 0.85)
       stations.push({
-        eat: { point: { x: 27.5, z: z + 1.48 }, bowl: { x: 27.5, z }, heading: Math.PI, owner: null },
-        drink: { point: { x: 33.5, z: z + 1.48 }, bowl: { x: 33.5, z }, heading: Math.PI, owner: null },
+        eat: { point: { x: eatX, z: z + 1.25 }, bowl: { x: eatX, z }, heading: Math.PI, owner: null },
+        drink: { point: { x: drinkX, z: z + 1.25 }, bowl: { x: drinkX, z }, heading: Math.PI, owner: null },
         rest: { point: { x: restX, z: restZ }, heading: -Math.PI / 2, owner: null }
       })
     }
@@ -181,11 +187,11 @@ class World3D {
 
     // Neighbor villa placements around the central street
     const neighborSlots = [
-      { x: 22.5, z: -8, rotY: 0 },
-      { x: -37.5, z: -8, rotY: 0 },
+      { x: 24, z: -8, rotY: 0 },
+      { x: -39, z: -8, rotY: 0 },
       { x: -7.5, z: 24, rotY: Math.PI },
-      { x: 22.5, z: 24, rotY: Math.PI },
-      { x: -37.5, z: 24, rotY: Math.PI }
+      { x: 24, z: 24, rotY: Math.PI },
+      { x: -39, z: 24, rotY: Math.PI }
     ]
 
     this.neighborHouses = []
@@ -213,8 +219,8 @@ class World3D {
     })
 
     // My Villa golden signpost at front gate
-    this.mesh(new THREE.CylinderBufferGeometry(0.14, 0.16, 1.35, 8), 0x3d6645, -3.2, 0.68, -1.8)
-    const mySign = this.mesh(new THREE.BoxBufferGeometry(2.2, 0.72, 0.14), 0xf3ca65, -3.2, 1.2, -1.8)
+    this.mesh(new THREE.CylinderBufferGeometry(0.14, 0.16, 1.35, 8), 0x3d6645, -2.8, 0.68, 1.8)
+    const mySign = this.mesh(new THREE.BoxBufferGeometry(2.2, 0.72, 0.14), 0xf3ca65, -2.8, 1.2, 1.8)
     mySign.rotation.y = -0.18
 
     const stone = new THREE.CylinderBufferGeometry(0.72, 0.82, 0.08, 8)
@@ -240,10 +246,13 @@ class World3D {
       this.selectPet(first.petId)
       this.target.copy(this.petPosition(first)).add(new THREE.Vector3(0, 0.7, 0))
     } else {
+      this.target.set(-1, 1.2, -1)
       this.onStatus('当前宠物模型资源待接入')
     }
     this.emitPetList()
-    this.distance = 20
+    this.distance = 25
+    this.pitch = 0.65
+    this.yaw = 0.32
   }
 
   buildFenceAndPlants() {
@@ -303,7 +312,7 @@ class World3D {
   }
 
   setupPlaceholderPet(pet, index) {
-    const starts = [{ x: -28, z: 22 }, { x: 18, z: 24 }, { x: -34, z: -18 }, { x: 42, z: -22 }, { x: -8, z: 34 }, { x: 36, z: 12 }, { x: -44, z: 8 }, { x: 12, z: -34 }]
+    const starts = [{ x: 1.5, z: 1.8 }, { x: 5.5, z: -1.5 }, { x: -1.8, z: 3.2 }, { x: 4.2, z: 3.8 }, { x: 10.5, z: 1.5 }, { x: -14.5, z: 2.5 }, { x: 0, z: 7.5 }, { x: 6.5, z: 7.5 }]
     const start = starts[index % starts.length]
     pet.behavior = new PetBehavior(this.navigation, pet.stationSet, start)
     pet.behavior.remaining = 0
@@ -380,7 +389,7 @@ class World3D {
     pet.idleActionName = pet.actions.Idle ? 'Idle' : Object.keys(pet.actions)[0] || ''
     pet.walkActionName = pet.actions.Walk ? 'Walk' : pet.idleActionName
     pet.runActionName = pet.actions.Gallop ? 'Gallop' : pet.walkActionName
-    const starts = [{ x: -28, z: 22 }, { x: 18, z: 24 }, { x: -34, z: -18 }, { x: 42, z: -22 }, { x: -8, z: 34 }, { x: 36, z: 12 }, { x: -44, z: 8 }, { x: 12, z: -34 }]
+    const starts = [{ x: 1.5, z: 1.8 }, { x: 5.5, z: -1.5 }, { x: -1.8, z: 3.2 }, { x: 4.2, z: 3.8 }, { x: 10.5, z: 1.5 }, { x: -14.5, z: 2.5 }, { x: 0, z: 7.5 }, { x: 6.5, z: 7.5 }]
     const start = starts[index % starts.length]
     pet.behavior = new PetBehavior(this.navigation, pet.stationSet, start)
     pet.behavior.remaining = 0
@@ -625,6 +634,7 @@ class World3D {
     })
     disposeObject(this.scene)
     if (this.renderer) this.renderer.dispose()
+    if (THREE.currentCanvas === this.canvas) THREE.currentCanvas = null
     this.onStatus = () => {}
     this.onPetsChange = () => {}
   }

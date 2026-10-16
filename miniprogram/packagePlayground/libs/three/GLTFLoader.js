@@ -1590,14 +1590,17 @@ module.exports = ( function () {
 
 		}
 
-		// Absolute URL http://,https://,//
-		if ( /^(https?:)?\/\//i.test( url ) ) return url;
+		// Absolute URL http://,https://,// or custom scheme like wxfile:// or file://
+		if ( /^[a-zA-Z0-9_\-]+:\/\//i.test( url ) ) return url;
 
 		// Data URI
 		if ( /^data:.*,.*$/i.test( url ) ) return url;
 
 		// Blob URL
 		if ( /^blob:.*$/i.test( url ) ) return url;
+
+		// Absolute path (e.g. /var/mobile... or /glb_tex_...)
+		if ( url.charAt( 0 ) === '/' ) return url;
 
 		// Relative URL
 		return path + url;
@@ -2409,7 +2412,7 @@ module.exports = ( function () {
 
 		var textureDef = json.textures[ textureIndex ];
 
-		var URL = self.URL || self.webkitURL;
+		var URL = typeof self !== 'undefined' ? (self.URL || self.webkitURL) : (typeof window !== 'undefined' ? (window.URL || window.webkitURL) : null);
 
 		var sourceURI = source.uri;
 		var isObjectURL = false;
@@ -2436,10 +2439,37 @@ module.exports = ( function () {
 
 				}
 
-				isObjectURL = true;
-				var blob = new Blob( [ bufferView ], { type: source.mimeType } );
-				sourceURI = URL.createObjectURL( blob );
-				return sourceURI;
+				if ( typeof Blob !== 'undefined' && URL && typeof URL.createObjectURL === 'function' ) {
+					isObjectURL = true;
+					var blob = new Blob( [ bufferView ], { type: source.mimeType } );
+					sourceURI = URL.createObjectURL( blob );
+					return sourceURI;
+				}
+
+				if ( typeof wx !== 'undefined' && typeof wx.getFileSystemManager === 'function' && wx.env && wx.env.USER_DATA_PATH ) {
+					try {
+						var fs = wx.getFileSystemManager();
+						var ext = (source.mimeType === 'image/jpeg' || source.mimeType === 'image/jpg') ? '.jpg' : '.png';
+						var tempPath = wx.env.USER_DATA_PATH + '/glb_tex_' + Date.now() + '_' + Math.random().toString(36).slice(2) + ext;
+						fs.writeFileSync(tempPath, bufferView, 'binary');
+						return tempPath;
+					} catch (fsErr) {
+						console.warn('[GLTFLoader] 写入临时贴图失败:', fsErr);
+					}
+				}
+
+				var mime = source.mimeType || 'image/png';
+				var base64 = '';
+				if ( typeof wx !== 'undefined' && typeof wx.arrayBufferToBase64 === 'function' ) {
+					base64 = wx.arrayBufferToBase64( bufferView );
+				} else if ( typeof Buffer !== 'undefined' ) {
+					base64 = Buffer.from( bufferView ).toString( 'base64' );
+				}
+				if ( base64 ) {
+					return 'data:' + mime + ';base64,' + base64;
+				}
+
+				return '';
 
 			} );
 
@@ -2461,7 +2491,47 @@ module.exports = ( function () {
 
 				}
 
-				loader.load( resolveURL( sourceURI, options.path ), onLoad, undefined, reject );
+				var resolvedURL = resolveURL( sourceURI, options.path );
+
+				// WeChat Mini Program Canvas Image loading
+				var activeCanvas = (typeof THREE !== 'undefined' && THREE.currentCanvas) ||
+					(typeof wx !== 'undefined' && typeof wx.createOffscreenCanvas === 'function' ? wx.createOffscreenCanvas({ type: '2d', width: 1, height: 1 }) : null);
+
+				if ( typeof wx !== 'undefined' && activeCanvas && typeof activeCanvas.createImage === 'function' ) {
+					try {
+						var img = activeCanvas.createImage();
+						img.onload = function () {
+							var texture = new THREE.Texture( img );
+							texture.needsUpdate = true;
+							onLoad( texture );
+						};
+						img.onerror = function ( err ) {
+							console.warn( '[GLTFLoader] 微信小程序贴图加载失败，降级为默认纹理:', err );
+							var fallback = new THREE.DataTexture( new Uint8Array( [ 232, 232, 232, 255 ] ), 1, 1, THREE.RGBAFormat );
+							fallback.needsUpdate = true;
+							onLoad( fallback );
+						};
+						img.src = resolvedURL;
+						return;
+					} catch ( createErr ) {
+						console.warn( '[GLTFLoader] activeCanvas.createImage 异常:', createErr );
+					}
+				}
+
+				// Standard loader with fallback protection (prevent crash when document is undefined or loading fails)
+				try {
+					loader.load( resolvedURL, onLoad, undefined, function ( err ) {
+						console.warn( '[GLTFLoader] loader.load 贴图异常，降级为默认纹理:', err );
+						var fallback = new THREE.DataTexture( new Uint8Array( [ 232, 232, 232, 255 ] ), 1, 1, THREE.RGBAFormat );
+						fallback.needsUpdate = true;
+						onLoad( fallback );
+					} );
+				} catch ( loaderErr ) {
+					console.warn( '[GLTFLoader] 运行时无 DOM 环境(如微信小程序/Node环境)，降级为默认纹理:', loaderErr );
+					var fallback = new THREE.DataTexture( new Uint8Array( [ 232, 232, 232, 255 ] ), 1, 1, THREE.RGBAFormat );
+					fallback.needsUpdate = true;
+					onLoad( fallback );
+				}
 
 			} );
 

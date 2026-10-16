@@ -1,4 +1,4 @@
-const { callFunction, showError, ensureLogin } = require('../../utils/cloud')
+const { callFunction, showError, ensureLogin, chooseSelectedLocation } = require('../../utils/cloud')
 
 Page({
   data: {
@@ -295,7 +295,6 @@ Page({
   },
 
   openChooseCommunity() {
-    const { chooseSelectedLocation } = require('../../utils/location')
     chooseSelectedLocation()
       .then((loc) => {
         if (!loc || !loc.name) throw new Error('未选择有效小区')
@@ -325,7 +324,6 @@ Page({
   },
 
   selectCommunityAndEnter() {
-    const { chooseSelectedLocation } = require('../../utils/location')
     chooseSelectedLocation()
       .then((loc) => {
         if (!loc || !loc.name) throw new Error('未选择有效小区')
