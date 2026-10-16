@@ -25,6 +25,7 @@ Page({
     pageSize: 10,
     hasMore: true,
     loading: false,
+    contentLoaded: false,
     total: 0,
     orderKeyword: '',
     startDate: '',
@@ -78,7 +79,8 @@ Page({
           page: pageData.page,
           hasMore: pageData.hasMore,
           total: pageData.total,
-          loading: false
+          loading: false,
+          contentLoaded: true
         })
       })
       .catch((error) => {

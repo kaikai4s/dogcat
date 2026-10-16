@@ -97,6 +97,7 @@ Page({
     locationReady: false,
     locationText: '尚未获取当前位置',
     loadingNearby: false,
+    contentLoaded: false,
     missingAddressNotice: false,
     // 筛选状态
     selectedCity: '深圳市',
@@ -407,7 +408,8 @@ Page({
           locationReady: true,
           currentWorkbenchLocation: location || null,
           locationText: formatWorkbenchLocationText(locationText, location),
-          loadingNearby: false
+          loadingNearby: false,
+          contentLoaded: true
         })
       })
       .catch((error) => {
