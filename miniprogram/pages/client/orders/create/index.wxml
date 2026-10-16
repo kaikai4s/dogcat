@@ -442,20 +442,29 @@
     </view>
   </view>
 
-  <!-- 下单照护确认（移至服务保障与取消规则上方，方便一起点击） -->
-  <view class="order-care-card order-care-standalone-card" id="care-sync-confirm" wx:if="{{selectedPetCareCards.length}}">
-    <view class="order-care-title"><text class="remix-icon ri-shield-heart-line"></text><text>下单照护确认</text></view>
-    <view class="order-care-desc">以下为当前宠物档案照护信息，下单后会作为订单快照同步给接单宠托师。</view>
-    <view class="order-care-pet" wx:for="{{selectedPetCareCards}}" wx:key="name">
-      <view class="order-care-head"><text class="order-care-name">{{item.name}}</text><text class="care-risk-pill risk-{{item.riskClass}}">{{item.riskLevelText}}</text></view>
-      <view class="order-care-tags" wx:if="{{item.tags.length}}"><text class="order-care-tag" wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view>
-      <view class="order-care-line" wx:for="{{item.highlights}}" wx:key="*this">{{item}}</view>
-      <view class="order-care-missing" wx:if="{{item.missingText}}">建议补充：{{item.missingText}}</view>
+  <!-- 下单照护确认（与服务保障卡片UI结构与复选框完全一致对齐） -->
+  <view id="care-sync-confirm" class="booking-side-card trust-note agreement-confirm-card care-confirm-card order-care-card {{careConfirmRequired ? 'agreement-required' : ''}}" wx:if="{{selectedPetCareCards.length}}">
+    <view class="agreement-check-cell" bindtap="toggleCareSyncConfirmed">
+      <checkbox checked="{{careSyncConfirmed}}" color="#ff7a45" class="agreement-checkbox" />
     </view>
-    <label class="care-confirm-row" bindtap="toggleCareSyncConfirmed">
-      <checkbox checked="{{careSyncConfirmed}}" color="#ff7a45" />
-      <text>我确认以上照护信息会同步给接单宠托师</text>
-    </label>
+    <view class="agreement-main-cell">
+      <view class="agreement-required-tip" wx:if="{{careConfirmRequired}}">请确认以下宠物照护信息会同步给接单宠托师</view>
+      <view class="agreement-header-row" bindtap="toggleCareSyncConfirmed">
+        <text class="remix-icon ri-shield-check-fill agreement-shield-icon"></text>
+        <text class="strong">下单照护确认</text>
+      </view>
+      <view class="muted agreement-desc-row" bindtap="toggleCareSyncConfirmed">
+        <text>我确认以下宠物档案照护信息会作为订单快照同步给接单宠托师：</text>
+      </view>
+      <view class="order-care-pets-wrap">
+        <view class="order-care-pet" wx:for="{{selectedPetCareCards}}" wx:key="name">
+          <view class="order-care-head"><text class="order-care-name">{{item.name}}</text><text class="care-risk-pill risk-{{item.riskClass}}">{{item.riskLevelText}}</text></view>
+          <view class="order-care-tags" wx:if="{{item.tags.length}}"><text class="order-care-tag" wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view>
+          <view class="order-care-line" wx:for="{{item.highlights}}" wx:key="*this">{{item}}</view>
+          <view class="order-care-missing" wx:if="{{item.missingText}}">建议补充：{{item.missingText}}</view>
+        </view>
+      </view>
+    </view>
   </view>
 
   <view id="booking-agreement" class="booking-side-card trust-note agreement-confirm-card {{agreementRequired ? 'agreement-required' : ''}}">

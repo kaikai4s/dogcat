@@ -487,6 +487,7 @@ typeof Page === 'function' ? Page({
     selectedPets: [],
     selectedPetCareCards: [],
     careSyncConfirmed: false,
+    careConfirmRequired: false,
     selectedPetsTitle: '',
     hasSelectedUnvaccinatedPets: false,
     petVoiceMessage: '',
@@ -1975,7 +1976,8 @@ typeof Page === 'function' ? Page({
   },
 
   toggleCareSyncConfirmed() {
-    this.setData({ careSyncConfirmed: !this.data.careSyncConfirmed })
+    this.dismissBookingNotice()
+    this.setData({ careSyncConfirmed: !this.data.careSyncConfirmed, careConfirmRequired: false })
   },
 
   openAgreement(e) {
@@ -2005,7 +2007,7 @@ typeof Page === 'function' ? Page({
     }
     if (this.data.selectedPetCareCards.length && !this.data.careSyncConfirmed) {
       this.creatingOrder = false
-      this.setData({ creating: false })
+      this.setData({ creating: false, careConfirmRequired: true })
       this.showBookingNotice({ title: '请先确认宠物照护卡会同步给接单宠托师', icon: 'none' })
       wx.pageScrollTo({ selector: '#care-sync-confirm', offsetTop: -24, duration: 300 })
       return

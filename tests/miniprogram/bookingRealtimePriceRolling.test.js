@@ -11,12 +11,14 @@ test('orders/create has realtime price rolling odometer and top price detail mod
   const jsPath = path.resolve(__dirname, '../../miniprogram/pages/client/orders/create/index.js')
   const js = fs.readFileSync(jsPath, 'utf8')
 
-  // 1. 位置关系：照护确认卡片必须位于服务保障规则与取消规则的上方
+  // 1. 位置关系与统一对齐：照护确认卡片必须位于服务保障规则与取消规则的上方，且共享完全一致的对齐结构与左侧勾选框
   const careConfirmIndex = wxml.indexOf('order-care-card')
   const agreementIndex = wxml.indexOf('id="booking-agreement"')
   assert.ok(careConfirmIndex > 0, 'WXML must contain order-care-card')
   assert.ok(agreementIndex > 0, 'WXML must contain booking-agreement')
   assert.ok(careConfirmIndex < agreementIndex, 'order-care-card must be placed above booking-agreement')
+  assert.ok(wxml.includes('class="booking-side-card trust-note agreement-confirm-card care-confirm-card order-care-card'), 'care-confirm-card must share agreement-confirm-card class')
+  assert.ok(wxml.includes('toggleCareSyncConfirmed'), 'care confirm must bind toggleCareSyncConfirmed on left cell and header')
 
   // 2. WXML 结构验证：底栏无“试算价格”按钮，包含预估价、数字滚轮与打开价格详细按钮
   assert.ok(!wxml.includes('quote-btn'), 'Bottom submit bar must not contain quote-btn')
