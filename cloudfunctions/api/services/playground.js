@@ -65,7 +65,15 @@ module.exports = function createService({
 
   async function getOrCreatePlaygroundEntity(openid, playgroundId, pet, home, index) {
     const res = await db.collection('pet_playground_entities').where({ ownerOpenid: openid, petId: pet._id }).limit(1).get()
-    if (res.data && res.data[0]) return res.data[0]
+    const customModelUrl = safeText(pet.customModelUrl || pet.customModelFileId || '')
+    if (res.data && res.data[0]) {
+      const existing = res.data[0]
+      if (!existing.activeModelUrl && customModelUrl) {
+        existing.activeModelUrl = customModelUrl
+        existing.activeModelType = 'custom'
+      }
+      return existing
+    }
     const position = playgroundPosition(index, 5.2)
     const species = pet.species === 'cat' ? 'cat' : 'dog'
     const time = nowText()
@@ -74,9 +82,9 @@ module.exports = function createService({
       playgroundId,
       petId: pet._id,
       species,
-      activeModelType: 'default',
+      activeModelType: customModelUrl ? 'custom' : 'default',
       activeModelId: '',
-      activeModelUrl: '',
+      activeModelUrl: customModelUrl,
       homeId: home._id,
       position,
       rotation: { x: 0, y: 0, z: 0 },

@@ -28,7 +28,7 @@
     <view class="daily-title">进入全屏庄园</view>
     <view class="daily-desc">按宠物档案生成庄园成员，支持点选宠物、单独跟随、吃饭、喝水和休息。</view>
     <button class="primary-btn" bindtap="openWorld">打开全屏庄园</button>
-    <view class="muted">狗狗使用本地柴犬模型；猫咪使用云存储小猫模型，资源不可用时会显示 3D 占位模型。</view>
+    <view class="muted">支持专属云端 3D 模型与本地秒开缓存；专属模型未就绪时自动平滑使用基础模型。</view>
   </view>
 
   <view class="daily-status" wx:if="{{!loading && !empty}}">
@@ -54,7 +54,7 @@
         <image class="pet-avatar" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" />
         <view class="pet-avatar empty" wx:else><text class="remix-icon ri-paw-print-line"></text></view>
         <view class="pet-chip-name">{{item.name}}</view>
-        <view class="pet-chip-type">{{item.species === 'cat' ? '猫窝' : '狗窝'}}</view>
+        <view class="pet-chip-type">{{item.customModelUrl ? '专属3D' : (item.species === 'cat' ? '猫窝' : '狗窝')}}</view>
       </view>
     </scroll-view>
   </view>
@@ -64,7 +64,7 @@
       <view class="popover-head">
         <view>
           <view class="popover-title">{{selectedPet.name}}</view>
-          <view class="muted">{{selectedPet.species === 'cat' ? '猫咪' : '狗狗'}} · {{selectedPet.breed || '未填写品种'}}</view>
+          <view class="muted">{{selectedPet.species === 'cat' ? '猫咪' : '狗狗'}} · {{selectedPet.breed || '未填写品种'}} · {{selectedPet.customModelUrl ? '✨专属3D模型' : '标准基础模型'}}</view>
         </view>
         <view class="remix-icon ri-close-line close-btn" bindtap="closePetCard"></view>
       </view>

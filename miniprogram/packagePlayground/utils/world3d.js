@@ -233,24 +233,24 @@ class World3D {
     const petId = profile._id || `pet_${index}`
     const species = profile.species === 'cat' ? 'cat' : 'dog'
     const pet = { petId, name: petLabel(profile), species, available: false, profile, stationSet: stations }
-    if (species === 'dog') {
-      try {
-        const dog = await loadModel('shiba')
-        if (this.destroyed) { disposeObject(dog.scene); return }
-        this.setupPetModel(pet, dog, index, 1.45)
-      } catch (error) {
-        console.warn('[world3d] 柴犬模型加载失败，使用占位宠物', error)
-        this.setupPlaceholderPet(pet, index)
-      }
-    } else {
-      try {
-        const cat = await loadModel('cat')
-        if (this.destroyed) { disposeObject(cat.scene); return }
-        this.setupPetModel(pet, cat, index, 1.15)
-      } catch (error) {
-        console.warn('[world3d] 小猫云端模型加载失败，使用占位宠物', error)
-        this.setupPlaceholderPet(pet, index)
-      }
+
+    const entities = (this.overviewData && Array.isArray(this.overviewData.entities)) ? this.overviewData.entities : []
+    const entity = entities.find((e) => e.petId === petId) || {}
+    const customModel = (entity && entity.activeModelUrl) || profile.customModelUrl || profile.customModelFileId || ''
+    const fallbackModel = species === 'cat' ? 'cat' : 'shiba'
+    const targetModel = customModel || fallbackModel
+    const scaleFactor = (entity && Number(entity.scale) > 0) ? Number(entity.scale) : 1
+    const baseHeight = species === 'cat' ? 1.15 : 1.45
+    const height = baseHeight * scaleFactor
+    pet.customModel = Boolean(customModel)
+
+    try {
+      const model = await loadModel(targetModel, { fallback: fallbackModel })
+      if (this.destroyed) { disposeObject(model.scene); return }
+      this.setupPetModel(pet, model, index, height)
+    } catch (error) {
+      console.warn(`[world3d] 宠物 ${pet.name} 模型(${targetModel})加载失败，降级使用占位宠物`, error)
+      this.setupPlaceholderPet(pet, index)
     }
     this.pets.push(pet)
   }
@@ -364,7 +364,8 @@ class World3D {
       species: pet.species,
       selected: pet.petId === this.selectedPetId,
       available: pet.available,
-      status: pet.available ? '' : pet.status
+      status: pet.available ? '' : pet.status,
+      customModel: Boolean(pet.customModel)
     })))
   }
 

@@ -12,6 +12,8 @@ page { height: 100%; overflow: hidden; background: #d7e7db; }
 .pet-chip.disabled { opacity: .62; }
 .species { padding: 1px 5px; border-radius: 9px; background: rgba(77,105,67,.14); font-size: 10px; }
 .selected .species { background: rgba(255,255,255,.22); }
+.custom-badge { padding: 1px 5px; border-radius: 9px; background: rgba(233,103,47,.16); color: #e9672f; font-size: 10px; font-weight: bold; }
+.selected .custom-badge { background: rgba(255,255,255,.26); color: #fff; }
 .pending { font-size: 10px; color: #a36a3d; }
 .selected .pending { color: #ffe0b7; }
 .controls { display: flex; gap: 6px; margin-top: 10px; padding: 8px; border-radius: 22px; background: rgba(247,248,235,.94); box-shadow: 0 8px 24px rgba(48,71,45,.16); }

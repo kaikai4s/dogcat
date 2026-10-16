@@ -36,7 +36,8 @@ module.exports = function createHandler(context) {
           breed: safeText(pet.breed),
           avatarFileId: safeText(pet.avatarFileId),
           personality: safeText(pet.personality),
-          gender: safeText(pet.gender)
+          gender: safeText(pet.gender),
+          customModelUrl: safeText(pet.customModelUrl || pet.customModelFileId)
         })),
         homes,
         entities,
@@ -46,6 +47,39 @@ module.exports = function createHandler(context) {
         }
       }
     }
+    if (action === 'updatePetModel') {
+      const petId = safeText(data && data.petId)
+      if (!petId) throw new Error('缺少宠物ID')
+      const modelUrl = safeText(data && (data.modelUrl || data.customModelUrl))
+      const scale = typeof data?.scale === 'number' && data.scale > 0 ? Number(data.scale) : 1
+      const petRes = await db.collection('pets').where({ _id: petId, openid }).limit(1).get()
+      if (!petRes.data || !petRes.data[0]) throw new Error('宠物档案不存在或无权配置')
+      const time = (context.nowText && context.nowText()) || new Date().toISOString()
+      await db.collection('pets').doc(petId).update({
+        data: {
+          customModelUrl: modelUrl,
+          updatedAt: time
+        }
+      })
+      const entityRes = await db.collection('pet_playground_entities').where({ ownerOpenid: openid, petId }).limit(1).get()
+      if (entityRes.data && entityRes.data[0]) {
+        await db.collection('pet_playground_entities').doc(entityRes.data[0]._id).update({
+          data: {
+            activeModelType: modelUrl ? 'custom' : 'default',
+            activeModelUrl: modelUrl,
+            scale,
+            updatedAt: time
+          }
+        })
+      }
+      return {
+        success: true,
+        petId,
+        customModelUrl: modelUrl,
+        scale
+      }
+    }
     throw new Error('未知 playground 操作')
   }
 }
+

@@ -2,7 +2,7 @@
   <canvas id="worldCanvas" type="webgl" class="canvas" bindtouchstart="touchStart" catchtouchmove="touchMove" bindtouchend="touchEnd" bindtouchcancel="touchCancel"></canvas>
   <view class="top" style="top: {{top}}px">
     <button class="round" bindtap="back">返回</button>
-    <view class="title"><text>阳光庄园</text><text class="subtitle">多宠物活动样板 · 狗狗本地模型 · 猫咪云端模型</text></view>
+    <view class="title"><text>阳光庄园</text><text class="subtitle">多宠物 3D 庄园 · 支持专属与云端模型</text></view>
   </view>
   <view class="error" wx:if="{{error}}">
     <view>场景加载失败</view><view class="detail">{{error}}</view>
@@ -14,6 +14,7 @@
     <scroll-view class="pet-tabs" scroll-x="true" wx:if="{{pets.length}}">
       <view class="pet-chip {{item.selected ? 'selected' : ''}} {{item.available ? '' : 'disabled'}}" wx:for="{{pets}}" wx:key="id" data-id="{{item.id}}" bindtap="selectPet">
         <text>{{item.name}}</text><text class="species">{{item.species === 'cat' ? '猫' : '狗'}}</text>
+        <text class="custom-badge" wx:if="{{item.customModel}}">专属</text>
         <text class="pending" wx:if="{{!item.available}}">模型待接入</text>
       </view>
     </scroll-view>
