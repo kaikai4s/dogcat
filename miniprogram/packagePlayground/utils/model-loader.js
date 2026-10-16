@@ -153,9 +153,17 @@ async function loadRemoteGlbModel(urlOrFileId) {
   if (targetCachePath && checkLocalCacheExists(targetCachePath)) {
     try {
       const buffer = await readLocalBuffer(targetCachePath)
-      return await parseGlbBuffer(buffer)
+      const byteLen = (buffer && (buffer.byteLength || buffer.length)) || 0
+      if (byteLen > 0) {
+        return await parseGlbBuffer(buffer)
+      }
+      throw new Error('本地缓存文件大小为 0')
     } catch (readErr) {
-      console.warn('[model-loader] 读取本地缓存失败，准备重新拉取:', readErr)
+      console.warn('[model-loader] 读取本地缓存失败，清理坏缓存并重新拉取:', readErr)
+      const fs = getFileSystem()
+      if (fs && fs.unlinkSync) {
+        try { fs.unlinkSync(targetCachePath) } catch (e) {}
+      }
     }
   }
 
@@ -235,7 +243,7 @@ async function loadModel(source, options = {}) {
   const fallback = options.fallback || ''
 
   if (!source) {
-    if (fallback) return loadModel(fallback)
+    if (fallback) return loadModel(fallback, { fallback: '' })
     throw new Error('未指定要加载的 3D 模型')
   }
 
@@ -245,7 +253,7 @@ async function loadModel(source, options = {}) {
     } catch (err) {
       if (fallback && fallback !== source) {
         console.warn(`[model-loader] 预设模型 ${source} 加载失败，降级使用 ${fallback}:`, err)
-        return loadModel(fallback)
+        return loadModel(fallback, { fallback: '' })
       }
       throw err
     }
@@ -262,9 +270,9 @@ async function loadModel(source, options = {}) {
     try {
       return await loadRemoteGlbModel(source)
     } catch (err) {
-      if (fallback) {
+      if (fallback && fallback !== source) {
         console.warn(`[model-loader] 专属云端模型 ${source} 加载失败，降级回退到 ${fallback}:`, err)
-        return loadModel(fallback)
+        return loadModel(fallback, { fallback: '' })
       }
       throw err
     }
@@ -280,7 +288,7 @@ async function loadModel(source, options = {}) {
     }, (err) => {
       if (fallback && fallback !== source) {
         console.warn(`[model-loader] 本地模型 ${source} 加载失败，降级回退到 ${fallback}:`, err)
-        loadModel(fallback).then(resolve).catch(reject)
+        loadModel(fallback, { fallback: '' }).then(resolve).catch(reject)
       } else {
         reject(err)
       }

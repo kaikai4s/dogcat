@@ -210,6 +210,7 @@ Page({
   },
 
   saveManualModel() {
+    if (this.savingManual) return
     const pet = this.data.selectedPet
     if (!pet) return
     const modelUrl = (this.data.manualModelUrl || '').trim()
@@ -217,23 +218,27 @@ Page({
       wx.showToast({ title: '请先上传或输入模型路径', icon: 'none' })
       return
     }
+    this.savingManual = true
     wx.showLoading({ title: '正在绑定模型...' })
     callFunction('playground', 'bindPetCustomModel', {
       petId: pet._id,
       modelUrl,
       scale: this.data.manualScale || 1.0
     }).then(() => {
+      this.savingManual = false
       wx.hideLoading()
       wx.showToast({ title: '专属模型绑定成功！', icon: 'success' })
       this.closeCustomModal()
       this.load()
     }).catch((err) => {
+      this.savingManual = false
       wx.hideLoading()
       showError(err || '绑定模型失败')
     })
   },
 
   resetToDefaultModel() {
+    if (this.resettingModel) return
     const pet = this.data.selectedPet
     if (!pet) return
     wx.showModal({
@@ -241,16 +246,19 @@ Page({
       content: '是否确认撤销专属 3D 模型，恢复为系统默认基础模型？',
       success: (m) => {
         if (!m.confirm) return
+        this.resettingModel = true
         wx.showLoading({ title: '正在恢复...' })
         callFunction('playground', 'bindPetCustomModel', {
           petId: pet._id,
           modelUrl: ''
         }).then(() => {
+          this.resettingModel = false
           wx.hideLoading()
           wx.showToast({ title: '已恢复默认模型', icon: 'success' })
           this.closeCustomModal()
           this.load()
         }).catch((err) => {
+          this.resettingModel = false
           wx.hideLoading()
           showError(err || '操作失败')
         })

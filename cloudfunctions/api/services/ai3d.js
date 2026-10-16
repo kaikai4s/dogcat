@@ -7,12 +7,15 @@ module.exports = function createService({
   safeText,
   nowText
 }) {
-  function downloadBuffer(url) {
+  function downloadBuffer(url, redirectCount = 0) {
+    if (redirectCount > 5) {
+      return Promise.reject(new Error('下载模型资源重定向次数过多'))
+    }
     return new Promise((resolve, reject) => {
       const client = url.startsWith('https') ? https : http
-      client.get(url, (res) => {
+      const req = client.get(url, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          return downloadBuffer(res.headers.location).then(resolve).catch(reject)
+          return downloadBuffer(res.headers.location, redirectCount + 1).then(resolve).catch(reject)
         }
         if (res.statusCode !== 200) {
           return reject(new Error(`下载资源失败，状态码: ${res.statusCode}`))
@@ -21,7 +24,11 @@ module.exports = function createService({
         res.on('data', (chunk) => chunks.push(chunk))
         res.on('end', () => resolve(Buffer.concat(chunks)))
         res.on('error', reject)
-      }).on('error', reject)
+      })
+      req.on('error', reject)
+      req.setTimeout(25000, () => {
+        req.destroy(new Error('下载模型资源请求超时'))
+      })
     })
   }
 
@@ -55,6 +62,9 @@ module.exports = function createService({
         res.on('error', reject)
       })
       req.on('error', reject)
+      req.setTimeout(25000, () => {
+        req.destroy(new Error('AI 生成服务请求超时'))
+      })
       req.write(payload)
       req.end()
     })

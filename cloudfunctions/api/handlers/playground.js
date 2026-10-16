@@ -15,6 +15,14 @@ module.exports = function createHandler(context) {
   const createAi3dService = require('../services/ai3d')
   const ai3d = createAi3dService(context)
 
+  function sanitizeScale(val) {
+    const num = Number(val)
+    if (Number.isFinite(num) && num >= 0.2 && num <= 5) {
+      return Number(num.toFixed(2))
+    }
+    return 1
+  }
+
   return async function playground(openid, action, data) {
     await getUser(openid)
     if (action === 'getOverview') {
@@ -54,7 +62,7 @@ module.exports = function createHandler(context) {
       const petId = safeText(data && data.petId)
       if (!petId) throw new Error('缺少宠物ID')
       const modelUrl = safeText(data && (data.modelUrl || data.customModelUrl))
-      const scale = typeof data?.scale === 'number' && data.scale > 0 ? Number(data.scale) : 1
+      const scale = sanitizeScale(data && data.scale)
       const petRes = await db.collection('pets').where({ _id: petId, openid }).limit(1).get()
       if (!petRes.data || !petRes.data[0]) throw new Error('宠物档案不存在或无权配置')
       const time = (context.nowText && context.nowText()) || new Date().toISOString()
@@ -110,7 +118,7 @@ module.exports = function createHandler(context) {
       }
 
       const provider = safeText(data && data.provider) || 'auto'
-      const scale = typeof data?.scale === 'number' && data.scale > 0 ? Number(data.scale) : 1
+      const scale = sanitizeScale(data && data.scale)
       const genResult = await ai3d.startPet3DGeneration({
         imageUrl: httpImageUrl,
         petInfo: pet,
