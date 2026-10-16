@@ -2,5 +2,9 @@
   "navigationBarTitleText": "我的订单",
   "enablePullDownRefresh": false,
   "navigationBarBackgroundColor": "#FFF8EC",
-  "backgroundColor": "#FFF8EC"
+  "backgroundColor": "#FFF8EC",
+  "usingComponents": {
+    "dovlin-refresh": "/components/dovlin-refresh/index",
+    "global-loading": "/components/global-loading/index"
+  }
 }

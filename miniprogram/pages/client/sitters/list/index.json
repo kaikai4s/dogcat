@@ -1,4 +1,8 @@
 {
   "navigationBarTitleText": "找宠托师",
-  "enablePullDownRefresh": false
+  "enablePullDownRefresh": false,
+  "usingComponents": {
+    "dovlin-refresh": "/components/dovlin-refresh/index",
+    "global-loading": "/components/global-loading/index"
+  }
 }
