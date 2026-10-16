@@ -1,0 +1,62 @@
+<!-- miniprogram/components/dovlin-refresh/index.wxml -->
+<template name="dovlin-anim">
+  <view class="dovlin-refresh-header {{statusClass}} {{isSlotMode ? 'is-slot-mode' : ''}}">
+    <!-- 图标主容器 (90px x 90px) -->
+    <view class="dovlin-avatar-box">
+      <!-- 1. 虚线轨道与深绿色动态圆环 -->
+      <view class="dovlin-ring-box">
+        <view class="dovlin-ring-track"></view>
+        <view class="dovlin-ring-fill" style="background: conic-gradient(#145938 {{ringDeg}}deg, transparent 0deg);"></view>
+      </view>
+
+      <!-- 2. Dovlin 品牌官方小狗 (白身、深绿线条、暖黄牵引绳、官方字标) -->
+      <image class="dovlin-dog-img" src="/images/dovlin/dovlin-dog.svg" mode="aspectFit" />
+
+      <!-- 3. 围绕四周 360° 环绕分布的黄色小爪印群 (持续旋转层) -->
+      <view class="paws-orbit-layer" style="{{orbitStyle}}">
+        <view wx:for="{{pawsList}}" wx:key="id" 
+              class="paw-item {{item.active ? 'active' : ''}}" 
+              style="left: {{item.x}}px; top: {{item.y}}px; transform: rotate({{item.rot}}deg); --delay: {{item.delay}}s;">
+          <image class="paw-icon" src="/images/dovlin/dovlin-paw.svg" mode="aspectFit" />
+        </view>
+      </view>
+    </view>
+
+    <!-- 下拉状态文案 -->
+    <view wx:if="{{showTips}}" class="dovlin-status-text">{{currentTips}}</view>
+  </view>
+</template>
+
+<!-- 默认容器模式：内置 scroll-view 原生驱动，彻底解决手势卡死和原生三灰点问题 -->
+<scroll-view 
+  wx:if="{{!isSlotMode}}"
+  class="dovlin-scroll-view" 
+  scroll-y="{{scrollY}}"
+  enable-back-to-top="{{true}}"
+  refresher-enabled="{{true}}" 
+  refresher-default-style="none" 
+  refresher-background="#FFF9EB"
+  refresher-threshold="{{threshold}}"
+  refresher-triggered="{{isRefreshing}}" 
+  bindrefresherpulling="onRefresherPulling" 
+  bindrefresherrefresh="onRefresherRefresh" 
+  bindrefresherrestore="onRefresherRestore"
+  bindrefresherabort="onRefresherAbort"
+  bindscrolltolower="onScrollToLower"
+  bindscroll="onScroll">
+
+  <!-- 微信官方 refresher 插槽：渲染 Dovlin 品牌动画 -->
+  <view slot="refresher" class="dovlin-refresher-container">
+    <template is="dovlin-anim" data="{{statusClass, isSlotMode: false, ringDeg, orbitStyle, pawsList, showTips, currentTips}}" />
+  </view>
+
+  <!-- 页面主体内容插槽 -->
+  <view class="dovlin-scroll-content">
+    <slot></slot>
+  </view>
+</scroll-view>
+
+<!-- 外部已自备 scroll-view 时的纯插槽模式 -->
+<view wx:else class="dovlin-refresher-container">
+  <template is="dovlin-anim" data="{{statusClass, isSlotMode: true, ringDeg, orbitStyle, pawsList, showTips, currentTips}}" />
+</view>

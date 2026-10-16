@@ -97,8 +97,17 @@ Page({
     this.setData({ showSettings: query.settings === '1' })
   },
 
-    onPullDownRefresh() {
-    Promise.resolve(
+  onCustomRefresh() {
+    return Promise.resolve(this.onPullDownRefresh()).finally(() => {
+      const refreshComp = this.selectComponent('#dovlinRefresh')
+      if (refreshComp) {
+        refreshComp.finishRefresh('更新完毕 ✨')
+      }
+    })
+  },
+
+  onPullDownRefresh() {
+    return Promise.resolve(
       getCurrentUser({ force: true })
         .then((user) => {
           if (!user) { this.applyGuest(); return; }

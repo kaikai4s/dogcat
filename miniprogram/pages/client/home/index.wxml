@@ -1,3 +1,4 @@
+<dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh">
 <view class="page client-home-page {{themeClass}} {{fontClass}}">
   <view class="home-hero-section">
     <view class="home-topbar">
@@ -204,6 +205,7 @@
     <view class="remix-icon ri-gift-fill lottery-icon"></view><view class="lottery-info"><view class="lottery-title">{{lotteryActivity.name}}</view><view class="lottery-sub" wx:if="{{lotteryActivity.canDraw}}">今日还有 {{lotteryActivity.remainingDrawCount}} 次抽奖机会</view><view class="lottery-sub" wx:else>每天参与一次，随机赢优惠券</view></view><view class="lottery-btn">去抽奖</view>
   </view>
 </view>
+</dovlin-refresh>
 
 <view class="lottery-float-card interactive" wx:if="{{homePage.modules.lottery && lotteryActivity && lotteryFloatVisible}}" bindtap="goLottery">
   <view class="remix-icon ri-gift-fill lottery-icon"></view>

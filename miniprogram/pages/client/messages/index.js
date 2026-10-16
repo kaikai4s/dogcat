@@ -86,7 +86,16 @@ Page({
     selectedNotice: null,
     showNoticeModal: false
   },
-    onPullDownRefresh() {
+  onCustomRefresh() {
+    return Promise.resolve(this.onPullDownRefresh()).finally(() => {
+      const refreshComp = this.selectComponent('#dovlinRefresh')
+      if (refreshComp) {
+        refreshComp.finishRefresh('更新完毕 ✨')
+      }
+    })
+  },
+
+  onPullDownRefresh() {
     const p = this.data.activeTab === "order"
       ? this.load({ reset: true })
       : this.loadSystemNotices({ reset: true })

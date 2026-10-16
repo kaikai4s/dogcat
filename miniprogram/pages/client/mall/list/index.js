@@ -23,8 +23,17 @@ Page({
     this.loadProducts({ reset: true })
   },
 
+  onCustomRefresh() {
+    return Promise.resolve(this.onPullDownRefresh()).finally(() => {
+      const refreshComp = this.selectComponent('#dovlinRefresh')
+      if (refreshComp) {
+        refreshComp.finishRefresh('更新完毕 ✨')
+      }
+    })
+  },
+
   onPullDownRefresh() {
-    Promise.all([this.loadCategories(), this.loadProducts({ reset: true })]).finally(() => wx.stopPullDownRefresh())
+    return Promise.all([this.loadCategories(), this.loadProducts({ reset: true })]).finally(() => wx.stopPullDownRefresh())
   },
 
   onReachBottom() {

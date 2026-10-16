@@ -1,3 +1,4 @@
+<dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh" bind:scrolltolower="onReachBottom">
 <view class="messages-page {{themeClass}} {{fontClass}} page">
   <navigator class="subscription-entry" url="/pages/common/subscriptions/index?role=client">
     <view class="subscription-entry-icon"><text class="remix-icon ri-notification-3-line"></text></view>
@@ -127,4 +128,5 @@
     <view class="nav-item" data-url="/pages/client/profile/index" bindtap="go"><view class="nav-icon remix-icon ri-user-3-line"></view><view>我的</view></view>
   </view>
 </view>
+</dovlin-refresh>
 <global-loading />

@@ -48,6 +48,14 @@ Page({
   onReachBottom() {
     this.loadMore()
   },
+  onCustomRefresh() {
+    return Promise.resolve(this.onPullDownRefresh()).finally(() => {
+      const refreshComp = this.selectComponent('#dovlinRefresh')
+      if (refreshComp) {
+        refreshComp.finishRefresh('更新完毕 ✨')
+      }
+    })
+  },
   onPullDownRefresh() {
     return this.load({ reset: true }).finally(() => wx.stopPullDownRefresh())
   },

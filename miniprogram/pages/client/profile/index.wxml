@@ -1,3 +1,4 @@
+<dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh">
 <view wx:if="{{showSettings}}" class="profile-settings-page {{themeClass}} {{fontClass}}">
   <view class="settings-hero">
     <view class="settings-kicker">偏好与隐私</view>
@@ -284,4 +285,5 @@
     <view class="nav-item active"><view class="nav-icon remix-icon ri-user-3-fill"></view><view>我的</view></view>
   </view>
 </view>
+</dovlin-refresh>
 <global-loading />

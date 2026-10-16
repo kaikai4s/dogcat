@@ -68,7 +68,16 @@ Page({
     this.setData({ staffGenderRequirement: ['male', 'female'].includes(options.staffGenderRequirement) ? options.staffGenderRequirement : 'any' })
   },
 
-    onPullDownRefresh() {
+  onCustomRefresh() {
+    return Promise.resolve(this.onPullDownRefresh()).finally(() => {
+      const refreshComp = this.selectComponent('#dovlinRefresh')
+      if (refreshComp) {
+        refreshComp.finishRefresh('更新完毕 ✨')
+      }
+    })
+  },
+
+  onPullDownRefresh() {
     Promise.resolve(this.loadFacets()).finally(() => {
       loadMessageUnread(this)
       wx.stopPullDownRefresh()

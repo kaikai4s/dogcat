@@ -117,7 +117,8 @@ Page({
     heroCarouselKey: '',
     heroAutoplay: true,
     heroPlayingVideoId: null,
-    heroPausedByVideo: false
+    heroPausedByVideo: false,
+    pageScrollTop: 0
   },
 
   onShow() {
@@ -141,6 +142,21 @@ Page({
   toggleFlowExpand() {
     this.setData({
       flowExpanded: !this.data.flowExpanded
+    })
+  },
+
+  onPageScroll(e) {
+    this.setData({
+      pageScrollTop: (e && e.scrollTop) || 0
+    })
+  },
+
+  onCustomRefresh() {
+    return Promise.resolve(this.onPullDownRefresh()).finally(() => {
+      const refreshComp = this.selectComponent('#dovlinRefresh')
+      if (refreshComp) {
+        refreshComp.finishRefresh('更新完毕 ✨')
+      }
     })
   },
 
