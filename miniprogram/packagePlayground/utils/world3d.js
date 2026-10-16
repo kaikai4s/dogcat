@@ -99,9 +99,13 @@ class World3D {
     const sun = new THREE.DirectionalLight(0xfff1d5, 1.1)
     sun.position.set(-6, 10, 5)
     this.scene.add(sun)
-    this.scene.fog = new THREE.Fog(0xd7e7db, 210, 340)
     this.onStatus('加载庄园模型…')
-    const house = await loadModel('house')
+    let house
+    try {
+      house = await loadModel('villa')
+    } catch (e) {
+      house = await loadModel('house')
+    }
     if (this.destroyed) { disposeObject(house.scene); return this }
     this.house = house.scene
     this.scene.add(this.house)
@@ -170,6 +174,49 @@ class World3D {
     house.scene.updateMatrixWorld(true)
     const box = new THREE.Box3().setFromObject(house.scene)
     const obstacles = [{ minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z }]
+
+    // Community town mode: If user has a community and neighbors exist
+    const hasCommunity = Boolean(this.overviewData.hasCommunity)
+    const neighbors = (hasCommunity && Array.isArray(this.overviewData.neighbors)) ? this.overviewData.neighbors : []
+
+    // Neighbor villa placements around the central street
+    const neighborSlots = [
+      { x: 22.5, z: -8, rotY: 0 },
+      { x: -37.5, z: -8, rotY: 0 },
+      { x: -7.5, z: 24, rotY: Math.PI },
+      { x: 22.5, z: 24, rotY: Math.PI },
+      { x: -37.5, z: 24, rotY: Math.PI }
+    ]
+
+    this.neighborHouses = []
+    neighbors.forEach((neighbor, idx) => {
+      const slot = neighborSlots[idx % neighborSlots.length]
+      const nHouse = house.scene.clone(true)
+      nHouse.position.set(slot.x, 0, slot.z)
+      if (slot.rotY) nHouse.rotation.y = slot.rotY
+      nHouse.updateMatrixWorld(true)
+      this.scene.add(nHouse)
+      this.neighborHouses.push(nHouse)
+
+      const nBox = new THREE.Box3().setFromObject(nHouse)
+      obstacles.push({ minX: nBox.min.x, maxX: nBox.max.x, minZ: nBox.min.z, maxZ: nBox.max.z })
+
+      // Neighbor signpost / mailbox in front of their villa
+      const postZ = slot.z + (slot.rotY ? -6.5 : 6.5)
+      this.mesh(new THREE.CylinderBufferGeometry(0.12, 0.14, 1.2, 8), 0x936538, slot.x + 3.8, 0.6, postZ)
+      const signBoard = this.mesh(new THREE.BoxBufferGeometry(1.8, 0.6, 0.12), 0xdfb782, slot.x + 3.8, 1.05, postZ)
+      signBoard.rotation.y = 0.12
+
+      // Front yard pet cushion for neighbor
+      const cushion = this.mesh(new THREE.CylinderBufferGeometry(0.85, 0.95, 0.08, 16), 0xb8cf9f, slot.x + 1.2, 0.04, postZ)
+      cushion.scale.set(1.2, 1, 0.8)
+    })
+
+    // My Villa golden signpost at front gate
+    this.mesh(new THREE.CylinderBufferGeometry(0.14, 0.16, 1.35, 8), 0x3d6645, -3.2, 0.68, -1.8)
+    const mySign = this.mesh(new THREE.BoxBufferGeometry(2.2, 0.72, 0.14), 0xf3ca65, -3.2, 1.2, -1.8)
+    mySign.rotation.y = -0.18
+
     const stone = new THREE.CylinderBufferGeometry(0.72, 0.82, 0.08, 8)
     for (let i = 0; i < 74; i += 1) {
       const p = this.mesh(stone, i % 2 ? 0xd8ccb1 : 0xc5bea4, 0.5 + Math.sin(i * 0.33) * 1.7, 0.035, -43 + i * 1.05)
@@ -404,6 +451,7 @@ class World3D {
   overviewCameraBox() {
     const box = new THREE.Box3(new THREE.Vector3(-68, 0, -50), new THREE.Vector3(68, 0, 50))
     if (this.house) box.expandByObject(this.house)
+    if (this.neighborHouses) this.neighborHouses.forEach((nh) => box.expandByObject(nh))
     this.pets.forEach((pet) => { if (pet.available) box.expandByPoint(this.petPosition(pet)) })
     return box
   }

@@ -24,7 +24,30 @@ module.exports = function createHandler(context) {
   }
 
   return async function playground(openid, action, data) {
-    await getUser(openid)
+    const user = await getUser(openid)
+    if (action === 'saveCommunity') {
+      const community = data.community || null
+      let normalizedCommunity = null
+      if (community && community.name) {
+        normalizedCommunity = {
+          name: safeText(community.name).trim(),
+          address: safeText(community.address || '').trim(),
+          latitude: Number(community.latitude || 0),
+          longitude: Number(community.longitude || 0),
+          city: safeText(community.city || '').trim(),
+          district: safeText(community.district || '').trim(),
+          updatedAt: context.nowText ? context.nowText() : new Date().toISOString()
+        }
+      }
+      await db.collection('users').doc(user._id).update({
+        data: {
+          residentialCommunity: normalizedCommunity,
+          updatedAt: context.nowText ? context.nowText() : new Date().toISOString()
+        }
+      })
+      return { residentialCommunity: normalizedCommunity }
+    }
+
     if (action === 'getOverview') {
       const playground = await getOrCreateClientPlayground(openid)
       const petRes = await db.collection('pets').where({ openid }).orderBy('createdAt', 'desc').get()
@@ -38,8 +61,50 @@ module.exports = function createHandler(context) {
         homes.push(home)
         entities.push(entity)
       }
+
+      const userCommunity = user.residentialCommunity || null
+      const communityName = (userCommunity && userCommunity.name) ? String(userCommunity.name).trim() : ''
+      const hasCommunity = Boolean(communityName)
+      const neighbors = []
+
+      if (hasCommunity) {
+        try {
+          const neighborUsersRes = await db.collection('users').where({
+            'residentialCommunity.name': communityName,
+            status: 'active'
+          }).limit(10).get()
+
+          const otherUsers = (neighborUsersRes.data || []).filter((u) => u.openid !== openid).slice(0, 5)
+
+          for (let i = 0; i < otherUsers.length; i += 1) {
+            const nUser = otherUsers[i]
+            const nPetsRes = await db.collection('pets').where({ openid: nUser.openid }).orderBy('createdAt', 'desc').limit(2).get()
+            const nPets = (nPetsRes.data || []).filter((p) => !p.deletedAt && ['cat', 'dog'].includes(p.species || 'dog'))
+
+            neighbors.push({
+              openid: nUser.openid,
+              nickname: safeText(nUser.nickname) || '邻居宠友',
+              avatarUrl: safeText(nUser.avatarUrl) || '',
+              slotIndex: i + 1,
+              pets: nPets.map((p) => ({
+                _id: p._id,
+                name: safeText(p.name),
+                species: p.species === 'cat' ? 'cat' : 'dog',
+                breed: safeText(p.breed),
+                personality: safeText(p.personality)
+              }))
+            })
+          }
+        } catch (e) {
+          // Gracefully fallback to empty neighbors if query fails
+        }
+      }
+
       return {
         playground,
+        userCommunity,
+        hasCommunity,
+        neighbors,
         pets: pets.map((pet) => ({
           _id: pet._id,
           name: safeText(pet.name),

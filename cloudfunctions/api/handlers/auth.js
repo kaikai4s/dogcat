@@ -226,9 +226,48 @@ module.exports = function createHandler(context) {
         phone: rawPhone,
         updatedAt: now()
       }
+      if (data.residentialCommunity !== undefined) {
+        if (!data.residentialCommunity || !data.residentialCommunity.name) {
+          payload.residentialCommunity = null
+        } else {
+          payload.residentialCommunity = {
+            name: safeText(data.residentialCommunity.name).trim(),
+            address: safeText(data.residentialCommunity.address || '').trim(),
+            latitude: Number(data.residentialCommunity.latitude || 0),
+            longitude: Number(data.residentialCommunity.longitude || 0),
+            city: safeText(data.residentialCommunity.city || '').trim(),
+            district: safeText(data.residentialCommunity.district || '').trim(),
+            updatedAt: now()
+          }
+        }
+      }
       await db.collection('users').doc(user._id).update({ data: payload })
       if (payload.phone !== oldPhone) await syncClientOrderPhone(openid, payload.phone)
       return { ...user, ...payload }
+    }
+
+    if (action === 'updateCommunity') {
+      const user = await getUser(openid)
+      const community = data.community || null
+      let normalizedCommunity = null
+      if (community && community.name) {
+        normalizedCommunity = {
+          name: safeText(community.name).trim(),
+          address: safeText(community.address || '').trim(),
+          latitude: Number(community.latitude || 0),
+          longitude: Number(community.longitude || 0),
+          city: safeText(community.city || '').trim(),
+          district: safeText(community.district || '').trim(),
+          updatedAt: now()
+        }
+      }
+      await db.collection('users').doc(user._id).update({
+        data: {
+          residentialCommunity: normalizedCommunity,
+          updatedAt: now()
+        }
+      })
+      return { ...user, residentialCommunity: normalizedCommunity }
     }
 
     if (action === 'updateTheme') {

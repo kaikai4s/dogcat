@@ -14,7 +14,12 @@ Page({
     aiGenerating: false,
     manualModelUrl: '',
     manualScale: 1.0,
-    manualUploading: false
+    manualUploading: false,
+    generatingTip: 'AI 3D 形象、衣物间和抽奖活动将在下一阶段开放',
+    userCommunity: null,
+    hasCommunity: false,
+    showCommunityModal: false,
+    savingCommunity: false
   },
 
   onShow() {
@@ -37,7 +42,14 @@ Page({
     callFunction('playground', 'getOverview')
       .then((overview) => {
         const pets = overview.pets || []
-        this.setData({ overview, pets, empty: !pets.length, loading: false })
+        this.setData({
+          overview,
+          pets,
+          empty: !pets.length,
+          loading: false,
+          userCommunity: overview.userCommunity || null,
+          hasCommunity: Boolean(overview.hasCommunity)
+        })
       })
       .catch((error) => {
         this.setData({ loading: false })
@@ -275,8 +287,86 @@ Page({
   },
 
   openWorld() {
+    if (!this.data.hasCommunity) {
+      this.setData({ showCommunityModal: true })
+      return
+    }
     wx.navigateTo({ url: '/packagePlayground/pages/world' })
   },
+
+  openChooseCommunity() {
+    const { chooseSelectedLocation } = require('../../utils/location')
+    chooseSelectedLocation()
+      .then((loc) => {
+        if (!loc || !loc.name) throw new Error('未选择有效小区')
+        const community = {
+          name: loc.name,
+          address: loc.address || '',
+          latitude: loc.latitude,
+          longitude: loc.longitude
+        }
+        wx.showLoading({ title: '正在保存小区…' })
+        return callFunction('playground', 'saveCommunity', { community })
+      })
+      .then((res) => {
+        wx.hideLoading()
+        this.setData({
+          userCommunity: res.residentialCommunity,
+          hasCommunity: Boolean(res.residentialCommunity && res.residentialCommunity.name),
+          showCommunityModal: false
+        })
+        wx.showToast({ title: '居住小区已更新', icon: 'success' })
+      })
+      .catch((err) => {
+        wx.hideLoading()
+        if (err && err.errMsg && err.errMsg.includes('cancel')) return
+        showError(err)
+      })
+  },
+
+  selectCommunityAndEnter() {
+    const { chooseSelectedLocation } = require('../../utils/location')
+    chooseSelectedLocation()
+      .then((loc) => {
+        if (!loc || !loc.name) throw new Error('未选择有效小区')
+        const community = {
+          name: loc.name,
+          address: loc.address || '',
+          latitude: loc.latitude,
+          longitude: loc.longitude
+        }
+        this.setData({ savingCommunity: true })
+        return callFunction('playground', 'saveCommunity', { community })
+      })
+      .then((res) => {
+        this.setData({
+          savingCommunity: false,
+          showCommunityModal: false,
+          userCommunity: res.residentialCommunity,
+          hasCommunity: Boolean(res.residentialCommunity && res.residentialCommunity.name)
+        })
+        wx.showToast({ title: '已加入邻里庄园', icon: 'success' })
+        setTimeout(() => {
+          wx.navigateTo({ url: '/packagePlayground/pages/world' })
+        }, 500)
+      })
+      .catch((err) => {
+        this.setData({ savingCommunity: false })
+        if (err && err.errMsg && err.errMsg.includes('cancel')) return
+        showError(err)
+      })
+  },
+
+  enterSoloManor() {
+    this.setData({ showCommunityModal: false })
+    wx.navigateTo({ url: '/packagePlayground/pages/world' })
+  },
+
+  closeCommunityModal() {
+    this.setData({ showCommunityModal: false })
+  },
+
+  stopBubble() {},
 
   showComingSoon() {
     wx.showToast({ title: '下一阶段开放', icon: 'none' })

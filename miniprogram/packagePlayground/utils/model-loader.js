@@ -239,12 +239,24 @@ async function loadCloudGltfModel(config) {
   })
 }
 
+const CLOUD_VILLA_FILE_ID = 'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/models/villa.glb'
+
 async function loadModel(source, options = {}) {
   const fallback = options.fallback || ''
 
   if (!source) {
     if (fallback) return loadModel(fallback, { fallback: '' })
     throw new Error('未指定要加载的 3D 模型')
+  }
+
+  if (source === 'villa') {
+    if (CLOUD_VILLA_FILE_ID) {
+      try {
+        return await loadRemoteGlbModel(CLOUD_VILLA_FILE_ID)
+      } catch (err) {
+        console.warn('[model-loader] 云端别墅模型拉取失败，尝试降级加载本地模型:', err)
+      }
+    }
   }
 
   if (typeof source === 'string' && CLOUD_MODELS[source]) {
@@ -334,10 +346,11 @@ function getModelCacheInfo() {
 
 module.exports = {
   loadModel,
+  loadRemoteGlbModel,
+  CLOUD_VILLA_FILE_ID,
   getCacheFilePath,
   ensureModelCacheDir,
   clearModelCache,
   getModelCacheInfo,
   hashString
 }
-

@@ -2,7 +2,13 @@
   <canvas id="worldCanvas" type="webgl" class="canvas" bindtouchstart="touchStart" catchtouchmove="touchMove" bindtouchend="touchEnd" bindtouchcancel="touchCancel"></canvas>
   <view class="top" style="top: {{top}}px">
     <button class="round" bindtap="back">返回</button>
-    <view class="title"><text>阳光庄园</text><text class="subtitle">多宠物 3D 庄园 · 支持专属与云端模型</text></view>
+    <view class="title">
+      <text wx:if="{{hasCommunity && communityName}}">{{communityName}} · 邻里庄园</text>
+      <text wx:else>阳光庄园 · 私享模式</text>
+      <text class="subtitle" wx:if="{{hasCommunity && neighborsCount}}">同小区 {{neighborsCount}} 位邻居相伴 · 别墅相邻串门中</text>
+      <text class="subtitle" wx:elif="{{hasCommunity}}">暂无同小区其他邻居入驻 · 专属静谧庄园</text>
+      <text class="subtitle" wx:else>未设置常住小区 · 仅展示自己与爱宠</text>
+    </view>
   </view>
   <view class="error" wx:if="{{error}}">
     <view>场景加载失败</view><view class="detail">{{error}}</view>

@@ -24,11 +24,26 @@
     <button class="primary-btn empty-btn" bindtap="goAddPet">添加宠物</button>
   </view>
 
+  <view class="community-card" wx:if="{{!loading}}">
+    <view class="community-left">
+      <view class="remix-icon ri-home-5-fill community-icon"></view>
+      <view class="community-info">
+        <view class="community-label">当前常住小区</view>
+        <view class="community-name strong" wx:if="{{userCommunity && userCommunity.name}}">{{userCommunity.name}}</view>
+        <view class="community-name muted" wx:else>未绑定常住小区（单人庄园模式）</view>
+      </view>
+    </view>
+    <button class="ghost-btn mini-btn" bindtap="openChooseCommunity">{{userCommunity && userCommunity.name ? '修改小区' : '选择小区'}}</button>
+  </view>
+
   <view class="daily-status">
-    <view class="daily-title">进入全屏庄园</view>
-    <view class="daily-desc">按宠物档案生成庄园成员，支持点选宠物、单独跟随、吃饭、喝水和休息。</view>
+    <view class="daily-title">进入 3D 庄园</view>
+    <view class="daily-desc">
+      <text wx:if="{{hasCommunity}}">已为您匹配同小区邻里庄园，您的别墅与邻居相邻，宠物会自由散步、互相串门。</text>
+      <text wx:else>未设置小区时进入单人私享庄园，设置常住小区后可解锁邻居相邻模式。</text>
+    </view>
     <button class="primary-btn" bindtap="openWorld">打开全屏庄园</button>
-    <view class="muted">支持专属云端 3D 模型与本地秒开缓存；专属模型未就绪时自动平滑使用基础模型。</view>
+    <view class="muted">庄园已接入高品质独栋别墅模型与邻里互动，支持专属 3D 模型与本地秒开缓存。</view>
   </view>
 
   <view class="daily-status" wx:if="{{!loading && !empty}}">
@@ -144,6 +159,29 @@
 
       <view class="reset-link" wx:if="{{selectedPet.customModelUrl}}" bindtap="resetToDefaultModel">
         <text class="remix-icon ri-restart-line"></text> 撤销专属模型，恢复为系统默认模型
+      </view>
+    </view>
+  </view>
+
+  <view class="community-modal-mask" wx:if="{{showCommunityModal}}" bindtap="closeCommunityModal">
+    <view class="community-modal-card" catchtap="stopBubble">
+      <view class="community-modal-icon-wrap">
+        <view class="remix-icon ri-home-5-fill modal-icon"></view>
+      </view>
+      <view class="modal-title">发现同小区的毛孩子邻居</view>
+      <view class="modal-desc">
+        选择您的常住小区后，系统将为您生成城镇邻里庄园。您的别墅将与同小区宠友相邻，毛孩子还能互相串门打招呼！
+      </view>
+      <view class="modal-tip">
+        <text class="remix-icon ri-map-pin-2-fill tip-icon"></text>
+        <text>点击后将调起地图，自动根据您当前位置汇总推荐周围的小区，一键选定即可。</text>
+      </view>
+      <view class="modal-actions">
+        <button class="primary-btn full-btn" bindtap="selectCommunityAndEnter" loading="{{savingCommunity}}">
+          <text class="remix-icon ri-navigation-fill"></text>
+          <text>定位并选择常住小区</text>
+        </button>
+        <button class="ghost-btn full-btn" bindtap="enterSoloManor">暂不设置，单人私享庄园</button>
       </view>
     </view>
   </view>

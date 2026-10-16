@@ -2,7 +2,7 @@ const { ensureLogin, callFunction } = require('../../utils/cloud')
 const { World3D } = require('../utils/world3d')
 
 Page({
-  data: { loading: true, error: '', status: '准备庄园…', top: 48, bottom: 20, pets: [], selectedPetId: '' },
+  data: { loading: true, error: '', status: '准备庄园…', top: 48, bottom: 20, pets: [], selectedPetId: '', hasCommunity: false, communityName: '', neighborsCount: 0 },
   onLoad() {
     const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
     const menu = wx.getMenuButtonBoundingClientRect()
@@ -38,6 +38,11 @@ Page({
       if (!this.visible || version !== this.version) return
       callFunction('playground', 'getOverview').then((overview) => {
         if (!this.visible || version !== this.version) return
+        this.setData({
+          hasCommunity: Boolean(overview.hasCommunity),
+          communityName: (overview.userCommunity && overview.userCommunity.name) || '',
+          neighborsCount: (overview.neighbors && overview.neighbors.length) || 0
+        })
         const world = new World3D(this, (status) => {
           if (version === this.version && this.visible) this.setData({ status })
         }, overview, (pets) => {
