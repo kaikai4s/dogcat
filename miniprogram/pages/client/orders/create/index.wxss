@@ -1307,6 +1307,24 @@ textarea {
   font-weight: 850;
 }
 
+.modal-total-row {
+  margin-top: 14rpx;
+  padding-top: 14rpx !important;
+  border-top: 2rpx solid #f2ece6;
+}
+
+.modal-total-row .label {
+  font-size: 28rpx;
+  color: #2d211a;
+  font-weight: 900;
+}
+
+.modal-pay-highlight {
+  font-size: 38rpx;
+  color: #ff5000;
+  font-weight: 950;
+}
+
 .quote-duration-list {
   background: #faf7f4;
   border-radius: 18rpx;

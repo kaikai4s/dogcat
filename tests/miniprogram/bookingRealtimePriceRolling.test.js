@@ -20,7 +20,8 @@ test('orders/create has realtime price rolling odometer and top price detail mod
   assert.ok(wxml.includes('class="booking-side-card trust-note agreement-confirm-card care-confirm-card order-care-card'), 'care-confirm-card must share agreement-confirm-card class')
   assert.ok(wxml.includes('toggleCareSyncConfirmed'), 'care confirm must bind toggleCareSyncConfirmed on left cell and header')
 
-  // 2. WXML 结构验证：底栏无“试算价格”按钮，包含预估价、数字滚轮与打开价格详细按钮
+  // 2. WXML 结构验证：页面主体已完全移除原来的 quote-card，底栏无“试算价格”按钮，包含预估价、数字滚轮与打开价格详细按钮
+  assert.ok(!wxml.includes('<view class="quote-card"'), 'Inline quote-card must be completely removed from body')
   assert.ok(!wxml.includes('quote-btn'), 'Bottom submit bar must not contain quote-btn')
   assert.ok(wxml.includes('price-rolling-container'), 'WXML must contain price-rolling-container')
   assert.ok(wxml.includes('digit-col'), 'WXML must contain digit-col')
@@ -28,6 +29,10 @@ test('orders/create has realtime price rolling odometer and top price detail mod
   assert.ok(wxml.includes('openPriceDetailModal'), 'WXML must bind openPriceDetailModal')
   assert.ok(wxml.includes('top-price-modal-backdrop'), 'WXML must contain top-price-modal-backdrop')
   assert.ok(wxml.includes('top-price-modal-card'), 'WXML must contain top-price-modal-card')
+  assert.ok(wxml.includes('基础服务费'), 'Modal must contain 基础服务费')
+  assert.ok(wxml.includes('多宠物加价'), 'Modal must contain 多宠物加价')
+  assert.ok(wxml.includes('逐宠物续时费'), 'Modal must contain 逐宠物续时费')
+  assert.ok(wxml.includes('每日服务清单'), 'Modal must contain 每日服务清单')
 
   // 3. WXSS 样式验证：数字滚动动画与顶部固定弹框动画
   assert.ok(wxss.includes('.price-rolling-container'), 'WXSS must define .price-rolling-container')
