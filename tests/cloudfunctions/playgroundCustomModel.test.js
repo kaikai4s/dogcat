@@ -132,3 +132,87 @@ test('playground updatePetModel validates missing petId', async () => {
     })
   }, /缺少宠物ID/)
 })
+
+test('playground generatePet3DModel generates and binds exclusive model from image', async () => {
+  const { handler, db, openid } = createTestContext({
+    users: [{ _id: 'u_1', openid: 'test_owner', role: 'client' }],
+    pet_playgrounds: [{ _id: 'pg_1', ownerOpenid: 'test_owner', name: '我的乐园' }],
+    pet_homes: [],
+    pet_playground_entities: [
+      {
+        _id: 'entity_ai_01',
+        ownerOpenid: 'test_owner',
+        petId: 'pet_ai_01',
+        activeModelType: 'default',
+        activeModelUrl: '',
+        scale: 1
+      }
+    ],
+    pets: [
+      {
+        _id: 'pet_ai_01',
+        openid: 'test_owner',
+        name: '皮皮',
+        species: 'dog',
+        avatarFileId: 'https://mock.cdn/avatar.jpg'
+      }
+    ]
+  })
+
+  const genResult = await handler(openid, 'generatePet3DModel', {
+    petId: 'pet_ai_01',
+    provider: 'auto',
+    scale: 1.1
+  })
+
+  assert.equal(genResult.success, true)
+  assert.equal(genResult.petId, 'pet_ai_01')
+  assert.ok(genResult.customModelUrl)
+  assert.equal(genResult.scale, 1.1)
+
+  const updatedPet = db.state.pets.find(p => p._id === 'pet_ai_01')
+  assert.equal(updatedPet.customModelUrl, genResult.customModelUrl)
+
+  const updatedEntity = db.state.pet_playground_entities.find(e => e.petId === 'pet_ai_01')
+  assert.equal(updatedEntity.activeModelType, 'custom')
+  assert.equal(updatedEntity.activeModelUrl, genResult.customModelUrl)
+})
+
+test('playground bindPetCustomModel resets to default model when empty modelUrl passed', async () => {
+  const { handler, db, openid } = createTestContext({
+    users: [{ _id: 'u_1', openid: 'test_owner', role: 'client' }],
+    pet_playground_entities: [
+      {
+        _id: 'entity_reset_01',
+        ownerOpenid: 'test_owner',
+        petId: 'pet_reset_01',
+        activeModelType: 'custom',
+        activeModelUrl: 'cloud://old_model.glb',
+        scale: 1.2
+      }
+    ],
+    pets: [
+      {
+        _id: 'pet_reset_01',
+        openid: 'test_owner',
+        name: '球球',
+        species: 'cat',
+        customModelUrl: 'cloud://old_model.glb'
+      }
+    ]
+  })
+
+  const resetResult = await handler(openid, 'bindPetCustomModel', {
+    petId: 'pet_reset_01',
+    modelUrl: ''
+  })
+
+  assert.equal(resetResult.success, true)
+  const updatedPet = db.state.pets.find(p => p._id === 'pet_reset_01')
+  assert.equal(updatedPet.customModelUrl, '')
+
+  const updatedEntity = db.state.pet_playground_entities.find(e => e.petId === 'pet_reset_01')
+  assert.equal(updatedEntity.activeModelType, 'default')
+  assert.equal(updatedEntity.activeModelUrl, '')
+})
+

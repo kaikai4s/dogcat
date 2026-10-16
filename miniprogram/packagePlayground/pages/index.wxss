@@ -340,3 +340,263 @@
 .interactive:active {
   transform: scale(0.98);
 }
+
+.badge-tag {
+  display: inline-block;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  background: #f0ede8;
+  color: #8d7a65;
+}
+
+.badge-tag.gold {
+  background: linear-gradient(135deg, #ffe082, #ffb300);
+  color: #6d4c00;
+  font-weight: 800;
+}
+
+.popover-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.compact-btn {
+  flex: 1;
+  height: 72rpx;
+  line-height: 72rpx;
+  font-size: 26rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+}
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  backdrop-filter: blur(4px);
+}
+
+.modal-dialog {
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  background: #fffdfa;
+  border-radius: 44rpx 44rpx 0 0;
+  padding: 36rpx 32rpx 60rpx;
+  box-shadow: 0 -10rpx 40rpx rgba(0, 0, 0, 0.15);
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.modal-title {
+  font-size: 38rpx;
+  font-weight: 900;
+  color: #4a3424;
+}
+
+.modal-subtitle {
+  font-size: 24rpx;
+  color: #9c8974;
+  margin-top: 6rpx;
+}
+
+.modal-close {
+  font-size: 40rpx;
+  color: #a4917e;
+  padding: 8rpx;
+}
+
+.custom-tabs {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 28rpx;
+  background: #f4eee7;
+  padding: 8rpx;
+  border-radius: 20rpx;
+}
+
+.tab-pill {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 8rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #8c7865;
+  border-radius: 16rpx;
+  transition: all 0.2s ease;
+}
+
+.tab-pill.active {
+  background: #fff;
+  color: #ff7d3b;
+  box-shadow: 0 4rpx 14rpx rgba(255, 125, 59, 0.16);
+}
+
+.tab-content {
+  margin-top: 28rpx;
+}
+
+.card-hint {
+  padding: 22rpx 24rpx;
+  border-radius: 20rpx;
+  background: #fff6ed;
+  border: 1rpx solid #ffe2c8;
+}
+
+.photo-uploader {
+  margin-top: 24rpx;
+  height: 320rpx;
+  border: 3rpx dashed #ffb888;
+  border-radius: 28rpx;
+  background: #fffaf5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.preview-img {
+  width: 100%;
+  height: 100%;
+}
+
+.upload-placeholder {
+  text-align: center;
+}
+
+.upload-icon {
+  font-size: 64rpx;
+  color: #ff9f57;
+}
+
+.upload-text {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #5d4633;
+  margin-top: 8rpx;
+}
+
+.upload-sub {
+  font-size: 22rpx;
+  color: #a89481;
+  margin-top: 4rpx;
+}
+
+.repick-btn {
+  text-align: center;
+  color: #ff7d3b;
+  font-size: 24rpx;
+  margin-top: 14rpx;
+  text-decoration: underline;
+}
+
+.upload-box {
+  margin-top: 24rpx;
+  padding: 32rpx 24rpx;
+  border: 3rpx dashed #d1c5b8;
+  border-radius: 24rpx;
+  background: #faf6f2;
+  text-align: center;
+}
+
+.file-icon {
+  font-size: 60rpx;
+  color: #a08c79;
+}
+
+.file-text {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #513e2e;
+  margin-top: 8rpx;
+}
+
+.file-sub {
+  font-size: 22rpx;
+  color: #9a8877;
+  margin-top: 6rpx;
+  word-break: break-all;
+}
+
+.input-row {
+  margin-top: 24rpx;
+}
+
+.input-label {
+  font-size: 24rpx;
+  color: #796653;
+  font-weight: 700;
+  margin-bottom: 10rpx;
+}
+
+.custom-input {
+  height: 80rpx;
+  background: #f7f3ee;
+  border-radius: 18rpx;
+  padding: 0 24rpx;
+  font-size: 26rpx;
+  color: #443224;
+}
+
+.scale-section {
+  margin-top: 24rpx;
+}
+
+.scale-title {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #796653;
+  margin-bottom: 12rpx;
+}
+
+.scale-chips {
+  display: flex;
+  gap: 12rpx;
+}
+
+.scale-chip {
+  flex: 1;
+  text-align: center;
+  padding: 14rpx 0;
+  border-radius: 16rpx;
+  background: #f4eee7;
+  font-size: 22rpx;
+  color: #6e5b49;
+}
+
+.scale-chip.active {
+  background: #ff7d3b;
+  color: #fff;
+  font-weight: 800;
+}
+
+.submit-btn {
+  margin-top: 36rpx;
+  height: 86rpx;
+  line-height: 86rpx;
+  font-size: 30rpx;
+  font-weight: 800;
+  border-radius: 999rpx;
+}
+
+.reset-link {
+  text-align: center;
+  font-size: 24rpx;
+  color: #a4917e;
+  margin-top: 28rpx;
+  padding: 12rpx;
+}
+
