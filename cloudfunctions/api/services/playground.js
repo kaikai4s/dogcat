@@ -8,7 +8,6 @@ module.exports = function createService({
     const zRadius = radius * 0.72
     return {
       x: Number((Math.cos(angle) * radius).toFixed(2)),
-      y: 0,
       z: Number((Math.sin(angle) * zRadius).toFixed(2))
     }
   }
@@ -20,9 +19,43 @@ module.exports = function createService({
     return list[index % list.length]
   }
 
+  function normalizePosition(position) {
+    const source = position || {}
+    return {
+      x: Number.isFinite(Number(source.x)) ? Number(source.x) : 0,
+      z: Number.isFinite(Number(source.z)) ? Number(source.z) : 0
+    }
+  }
+
+  function normalizePlayground(playground) {
+    if (!playground) return playground
+    const { camera, ...clean } = playground
+    return clean
+  }
+
+  function normalizePetHome(home) {
+    if (!home) return home
+    const { rotation, ...clean } = home
+    return { ...clean, position: normalizePosition(home.position) }
+  }
+
+  function normalizePlaygroundEntity(entity) {
+    if (!entity) return entity
+    const {
+      activeModelType,
+      activeModelId,
+      activeModelUrl,
+      equippedClothesId,
+      equippedOutfitModelId,
+      rotation,
+      ...clean
+    } = entity
+    return { ...clean, position: normalizePosition(entity.position) }
+  }
+
   async function getOrCreateClientPlayground(openid) {
     const res = await db.collection('pet_playgrounds').where({ ownerOpenid: openid }).limit(1).get()
-    if (res.data && res.data[0]) return res.data[0]
+    if (res.data && res.data[0]) return normalizePlayground(res.data[0])
     const time = nowText()
     const playground = {
       ownerOpenid: openid,
@@ -30,7 +63,6 @@ module.exports = function createService({
       theme: 'sunny_garden',
       level: 1,
       maxVisiblePets: 8,
-      camera: { x: 0, y: 8, z: 12, targetX: 0, targetY: 0, targetZ: 0 },
       unlockedAreas: ['main_garden'],
       createdAt: time,
       updatedAt: time
@@ -41,7 +73,7 @@ module.exports = function createService({
 
   async function getOrCreatePetHome(openid, playgroundId, pet, index) {
     const res = await db.collection('pet_homes').where({ ownerOpenid: openid, petId: pet._id }).limit(1).get()
-    if (res.data && res.data[0]) return res.data[0]
+    if (res.data && res.data[0]) return normalizePetHome(res.data[0])
     const species = pet.species === 'cat' ? 'cat' : 'dog'
     const position = playgroundPosition(index, 8.2)
     const time = nowText()
@@ -53,7 +85,6 @@ module.exports = function createService({
       homeType: species === 'cat' ? 'cat_nest' : 'dog_house',
       name: `${safeText(pet.name) || '宠物'}的小窝`,
       position,
-      rotation: { x: 0, y: 0, z: 0 },
       scale: 1,
       style: playgroundHomeStyle(species, index),
       createdAt: time,
@@ -65,14 +96,8 @@ module.exports = function createService({
 
   async function getOrCreatePlaygroundEntity(openid, playgroundId, pet, home, index) {
     const res = await db.collection('pet_playground_entities').where({ ownerOpenid: openid, petId: pet._id }).limit(1).get()
-    const customModelUrl = safeText(pet.customModelUrl || pet.customModelFileId || '')
     if (res.data && res.data[0]) {
-      const existing = res.data[0]
-      if (!existing.activeModelUrl && customModelUrl) {
-        existing.activeModelUrl = customModelUrl
-        existing.activeModelType = 'custom'
-      }
-      return existing
+      return normalizePlaygroundEntity(res.data[0])
     }
     const position = playgroundPosition(index, 5.2)
     const species = pet.species === 'cat' ? 'cat' : 'dog'
@@ -82,17 +107,11 @@ module.exports = function createService({
       playgroundId,
       petId: pet._id,
       species,
-      activeModelType: customModelUrl ? 'custom' : 'default',
-      activeModelId: '',
-      activeModelUrl: customModelUrl,
       homeId: home._id,
       position,
-      rotation: { x: 0, y: 0, z: 0 },
-      scale: species === 'cat' ? 0.85 : 1,
+      scale: species === 'cat' ? 0.9 : 1,
       currentAction: 'idle',
       mood: 'happy',
-      equippedClothesId: '',
-      equippedOutfitModelId: '',
       lastActionAt: time,
       nextActionAt: time,
       createdAt: time,

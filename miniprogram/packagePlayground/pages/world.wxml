@@ -1,13 +1,11 @@
 <view class="world">
-  <canvas id="worldCanvas" type="webgl" class="canvas" bindtouchstart="touchStart" catchtouchmove="touchMove" bindtouchend="touchEnd" bindtouchcancel="touchCancel"></canvas>
+  <canvas id="worldCanvas" type="2d" class="canvas" bindtouchstart="touchStart" catchtouchmove="touchMove" bindtouchend="touchEnd" bindtouchcancel="touchCancel"></canvas>
   <view class="top" style="top: {{top}}px">
     <button class="round" bindtap="back">返回</button>
     <view class="title">
       <text wx:if="{{hasCommunity && communityName}}">{{communityName}} · 邻里庄园</text>
       <text wx:else>阳光庄园 · 私享模式</text>
-      <text class="subtitle" wx:if="{{hasCommunity && neighborsCount}}">同小区 {{neighborsCount}} 位邻居相伴 · 别墅相邻串门中</text>
-      <text class="subtitle" wx:elif="{{hasCommunity}}">暂无同小区其他邻居入驻 · 专属静谧庄园</text>
-      <text class="subtitle" wx:else>未设置常住小区 · 仅展示自己与爱宠</text>
+      <text class="subtitle">{{worldSize}} · {{hasCommunity ? '同小区共享草地' : '设置常住小区后可安家'}} </text>
     </view>
   </view>
   <view class="error" wx:if="{{error}}">
@@ -18,16 +16,16 @@
   <view class="bottom" style="bottom: {{bottom}}px" wx:else>
     <view class="status">{{status}}</view>
     <scroll-view class="pet-tabs" scroll-x="true" wx:if="{{pets.length}}">
-      <view class="pet-chip {{item.selected ? 'selected' : ''}} {{item.available ? '' : 'disabled'}}" wx:for="{{pets}}" wx:key="id" data-id="{{item.id}}" bindtap="selectPet">
+      <view class="pet-chip {{item.selected ? 'selected' : ''}}" wx:for="{{pets}}" wx:key="id" data-id="{{item.id}}" bindtap="selectPet">
         <text>{{item.name}}</text><text class="species">{{item.species === 'cat' ? '猫' : '狗'}}</text>
-        <text class="custom-badge" wx:if="{{item.customModel}}">专属</text>
-        <text class="pending" wx:if="{{!item.available}}">模型待接入</text>
       </view>
     </scroll-view>
     <view class="controls">
-      <button bindtap="overview">查看全场</button><button bindtap="follow">跟随选中</button>
-      <button bindtap="activity" data-action="eat">去吃饭</button><button bindtap="activity" data-action="drink">去喝水</button><button bindtap="activity" data-action="sleep">去睡觉</button>
+      <button bindtap="overview">{{hasPlot ? '回到家园' : '回到起点'}}</button><button bindtap="follow">跟随宠物</button>
+      <button wx:if="{{!hasPlot && hasCommunity && !placing}}" bindtap="choosePlot">选择宅基地</button>
+      <button wx:if="{{placing}}" bindtap="cancelPlot" disabled="{{claiming}}">取消选址</button>
+      <button wx:if="{{placing}}" bindtap="confirmPlot" disabled="{{!canConfirm || claiming}}" loading="{{claiming}}">永久安置</button>
     </view>
-    <view class="hint">点宠物或名字可选中 · 控制只作用于当前选中的宠物 · 拖动旋转 · 双指缩放</view>
+    <view class="hint">点击草地行走 · 点击名字切换宠物 · 单指拖动 · 双指缩放</view>
   </view>
 </view>

@@ -6,6 +6,10 @@
   </view>
 
   <view class="settings-grid">
+    <view class="admin-compact-card setting-overview-card" data-panel="playground" bindtap="openSettingModal">
+      <view class="admin-summary-title">宠物乐园地面</view>
+      <view class="setting-summary-line">{{settings.playground.width || 2240}} × {{settings.playground.height || 2240}} 米 · 同小区共享草地</view>
+    </view>
     <view class="admin-compact-card setting-overview-card" data-panel="staffPolicy" bindtap="openSettingModal">
       <view class="admin-summary-title">宠托师保证金与用品报销</view>
       <view class="setting-summary-line">保证金{{settings.staffDeposit.enabled ? '已启用' : '未启用'}} · ¥{{settings.staffDeposit.amount}}；用品报销独立由平台出资，绝不扣减保证金。</view>
@@ -196,6 +200,7 @@
         <view class="modal-title" wx:if="{{activeSettingPanel === 'pricingSurcharges'}}">特殊日期与时段加价</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'realNameVerification'}}">宠托师实名核验 (聚合数据)</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffPolicy'}}">保证金与用品报销</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'playground'}}">宠物乐园地面</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'wechatTransfer'}}">微信零钱提现 / 微信商家转账</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'debug'}}">开发调试</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'petBreedAi'}}">宠物档案 AI</view>
@@ -212,6 +217,11 @@
       </view>
 
       <scroll-view scroll-y class="modal-scroll-body settings-modal-scroll">
+        <view wx:if="{{activeSettingPanel === 'playground'}}" class="setting-modal-section">
+          <view class="field-item"><text class="label">地面宽度（米）</text><input class="input" type="number" value="{{settings.playground.width}}" data-field="playground.width" bindinput="staffPolicyInput" /></view>
+          <view class="field-item"><text class="label">地面长度（米）</text><input class="input" type="number" value="{{settings.playground.height}}" data-field="playground.height" bindinput="staffPolicyInput" /></view>
+          <view class="muted">范围 224～11200 米，填写整数。草地自动铺满；已有房屋不能因缩小地面而被移出边界。保存后重新进入乐园生效。</view>
+        </view>
         <view wx:if="{{activeSettingPanel === 'staffPolicy'}}" class="setting-modal-section">
           <view class="policy-notice">自愿退出时保证金全额原路退回，仅减去管理员有记录依据的违规没收及已退部分。用品报销不占用、不抵扣保证金。</view>
           <view class="field-item"><text class="label">保证金金额（元，精确到分）</text><input class="input" type="digit" value="{{settings.staffDeposit.amount}}" data-field="staffDeposit.amount" bindinput="staffPolicyInput" /></view>

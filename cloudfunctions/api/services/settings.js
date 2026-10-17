@@ -205,6 +205,7 @@ module.exports = function createService({
 
     const normalized = {
       enableTestAddressMode: value.enableTestAddressMode === true,
+      playground: require('./playground-world').dimensions(value.playground || existingSettings.playground || {}),
       enablePetBreedAi: value.enablePetBreedAi !== false,
       qwenApiKeyConfigured,
       juheTelecomKeyConfigured,
@@ -288,7 +289,11 @@ module.exports = function createService({
 
   async function getSystemSettings(options = {}) {
     const res = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
-    return normalizeSystemSettings(res.data[0] ? res.data[0].value : {}, options)
+    const normalized = normalizeSystemSettings(res.data[0] ? res.data[0].value : {}, options)
+    const world = require('./playground-world')
+    const saved = await world.read(db, world.CONFIG_ID)
+    if (saved) normalized.playground = world.dimensions(saved)
+    return normalized
   }
 
   async function releasePendingEarningsImmediately(time) {
@@ -355,6 +360,14 @@ module.exports = function createService({
     const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
     const previousValue = existing.data[0] ? existing.data[0].value : {}
     const value = normalizeSystemSettings(settings, { includeSecrets: true, existingSettings: previousValue, existingPayment: previousValue.payment || {} })
+    if (settings.playground) {
+      const world = require('./playground-world')
+      await db.runTransaction(async tx => {
+        const { _id: configDocumentId, ...previous } = await world.read(tx, world.CONFIG_ID) || {}
+        if (value.playground.width < (previous.usedWidth || 0) || value.playground.height < (previous.usedHeight || 0)) throw new Error('地面缩小后会超出已有房屋范围，请保留已有宅基地')
+        await tx.collection('pet_playground_plots').doc(world.CONFIG_ID).set({ data: { ...previous, ...value.playground } })
+      })
+    }
     const payload = { key: 'system_settings', value, updatedAt: time }
     if (existing.data[0]) {
       await db.collection('platform_configs').doc(existing.data[0]._id).update({ data: payload })

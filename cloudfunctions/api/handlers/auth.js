@@ -241,7 +241,11 @@ module.exports = function createHandler(context) {
           }
         }
       }
-      await db.collection('users').doc(user._id).update({ data: payload })
+      if (data.residentialCommunity !== undefined) {
+        await require('../services/playground-world').updateCommunity(db, openid, user._id, payload.residentialCommunity, payload)
+      } else {
+        await db.collection('users').doc(user._id).update({ data: payload })
+      }
       if (payload.phone !== oldPhone) await syncClientOrderPhone(openid, payload.phone)
       return { ...user, ...payload }
     }
@@ -261,12 +265,7 @@ module.exports = function createHandler(context) {
           updatedAt: now()
         }
       }
-      await db.collection('users').doc(user._id).update({
-        data: {
-          residentialCommunity: normalizedCommunity,
-          updatedAt: now()
-        }
-      })
+      await require('../services/playground-world').updateCommunity(db, openid, user._id, normalizedCommunity, { updatedAt: now() })
       return { ...user, residentialCommunity: normalizedCommunity }
     }
 

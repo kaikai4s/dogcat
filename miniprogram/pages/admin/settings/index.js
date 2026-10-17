@@ -585,6 +585,7 @@ Page({
       .then((settings) => {
         const normalized = {
           ...settings,
+          playground: settings.playground || { width: 2240, height: 2240 },
           staffDeposit: normalizeStaffDeposit(settings.staffDeposit),
           staffSupplies: normalizeStaffSupplies(settings.staffSupplies),
           enableTestAddressMode: settings.enableTestAddressMode === true,

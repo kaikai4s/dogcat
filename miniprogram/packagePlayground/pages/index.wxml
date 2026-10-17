@@ -1,9 +1,9 @@
 <view class="page playground-page">
   <view class="playground-hero">
     <view class="hero-copy">
-      <view class="hero-badge"><text class="remix-icon ri-gamepad-fill"></text><text>宠物乐园</text></view>
-      <view class="hero-title">进入爱宠的 3D 阳光庄园</view>
-      <view class="hero-desc">更大的草地、会馆、小窝、餐饮区和玩耍区，宠物会自由散步、吃饭、喝水和回家休息。</view>
+      <view class="hero-badge"><text class="remix-icon ri-gamepad-fill"></text><text>宠物乐园 · 2D 互动</text></view>
+      <view class="hero-title">进入爱宠的阳光庄园</view>
+      <view class="hero-desc">在大草地上拖动、缩放浏览，点击地面控制爱宠行走，为自己选择永久宅基地。</view>
     </view>
     <view class="hero-actions">
       <button class="ghost-btn small-btn" bindtap="goPets">宠物档案</button>
@@ -14,13 +14,13 @@
   <view class="loading-card" wx:if="{{loading}}">
     <view class="remix-icon ri-loader-4-line loading-icon"></view>
     <view class="strong">正在唤醒宠物乐园...</view>
-    <view class="muted">正在准备 3D 庄园、餐饮区、玩耍区和宠物小窝</view>
+    <view class="muted">正在读取 2D 草地场景和宠物档案</view>
   </view>
 
   <view class="empty-card" wx:elif="{{empty}}">
     <view class="remix-icon ri-paw-print-line empty-icon"></view>
     <view class="empty-title">还没有宠物进入乐园</view>
-    <view class="empty-desc">先上传宠物档案和头像，TA 就能拥有自己的 3D 小窝，并在庄园里自由活动。</view>
+    <view class="empty-desc">先添加宠物档案，带 TA 进入 2D 庄园散步。</view>
     <button class="primary-btn empty-btn" bindtap="goAddPet">添加宠物</button>
   </view>
 
@@ -37,29 +37,19 @@
   </view>
 
   <view class="daily-status">
-    <view class="daily-title">进入 3D 庄园</view>
+    <view class="daily-title">开始 2D 庄园游戏</view>
     <view class="daily-desc">
-      <text wx:if="{{hasCommunity}}">已为您匹配同小区邻里庄园，您的别墅与邻居相邻，宠物会自由散步、互相串门。</text>
-      <text wx:else>未设置小区时进入单人私享庄园，设置常住小区后可解锁邻居相邻模式。</text>
+      <text wx:if="{{hasCommunity}}">已加入同小区共享草地，选址安家后可带宠物拜访邻居。</text>
+      <text wx:else>可以先浏览草地，设置常住小区后可选择永久宅基地。</text>
     </view>
-    <button class="primary-btn" bindtap="openWorld">打开全屏庄园</button>
-    <view class="muted">庄园已接入高品质独栋别墅模型与邻里互动，支持专属 3D 模型与本地秒开缓存。</view>
+    <button class="primary-btn" bindtap="openWorld">打开 2D 庄园</button>
+    <view class="muted">玩法：点选宠物、拖动地图、双指缩放，再用底部按钮安排吃饭、喝水和休息。</view>
   </view>
 
-  <view class="daily-status" wx:if="{{!loading && !empty}}">
-    <view class="daily-title">样板验收重点</view>
-    <view class="daily-desc">观察是否能按名字选中不同宠物、单独控制去吃喝休息、宠物之间不重叠，查看全场时能看到庄园主体。</view>
-  </view>
-
-  <view class="action-dock" wx:if="{{!loading && !empty}}">
-    <view class="dock-item interactive" bindtap="showComingSoon">
-      <view class="remix-icon ri-t-shirt-2-line dock-icon pink"></view>
-      <view><view class="dock-title">衣物间</view><view class="dock-desc">即将开放</view></view>
-    </view>
-    <view class="dock-item interactive" bindtap="showComingSoon">
-      <view class="remix-icon ri-gift-line dock-icon orange"></view>
-      <view><view class="dock-title">衣物抽奖</view><view class="dock-desc">即将开放</view></view>
-    </view>
+  <view class="game-features" wx:if="{{!loading && !empty}}">
+    <view class="feature-item"><text class="feature-icon">🐾</text><view><view class="feature-title">手动控制行走</view><view class="muted">点击目的地、从院门进出</view></view></view>
+    <view class="feature-item"><text class="feature-icon">🏡</text><view><view class="feature-title">邻里庄园</view><view class="muted">查看相邻别墅和绿化</view></view></view>
+    <view class="feature-item"><text class="feature-icon">🍖</text><view><view class="feature-title">永久安家</view><view class="muted">空草坪选址，保存后不能搬迁</view></view></view>
   </view>
 
   <view class="pet-strip" wx:if="{{pets.length}}">
@@ -69,119 +59,34 @@
         <image class="pet-avatar" wx:if="{{item.avatarFileId}}" src="{{item.avatarFileId}}" mode="aspectFill" />
         <view class="pet-avatar empty" wx:else><text class="remix-icon ri-paw-print-line"></text></view>
         <view class="pet-chip-name">{{item.name}}</view>
-        <view class="pet-chip-type">{{item.customModelUrl ? '专属3D' : (item.species === 'cat' ? '猫窝' : '狗窝')}}</view>
+        <view class="pet-chip-type">{{item.species === 'cat' ? '猫咪' : '狗狗'}}</view>
       </view>
     </scroll-view>
   </view>
 
-  <view class="pet-popover" wx:if="{{selectedPet && !customModalVisible}}">
+  <view class="pet-popover" wx:if="{{selectedPet}}">
     <view class="popover-card">
       <view class="popover-head">
         <view>
           <view class="popover-title">{{selectedPet.name}}</view>
-          <view class="muted">{{selectedPet.species === 'cat' ? '猫咪' : '狗狗'}} · {{selectedPet.breed || '未填写品种'}} · <text class="badge-tag {{selectedPet.customModelUrl ? 'gold' : ''}}">{{selectedPet.customModelUrl ? '✨专属3D伴侣' : '标准基础模型'}}</text></view>
+          <view class="muted">{{selectedPet.species === 'cat' ? '猫咪' : '狗狗'}} · {{selectedPet.breed || '未填写品种'}}</view>
         </view>
         <view class="remix-icon ri-close-line close-btn" bindtap="closePetCard"></view>
       </view>
-      <view class="popover-desc">{{selectedPet.personality || '正在乐园里开心玩耍'}}</view>
-      <view class="popover-actions">
-        <button class="ghost-btn compact-btn" bindtap="openCustomModal"><text class="remix-icon ri-magic-line"></text>定制3D形象</button>
-        <button class="primary-btn compact-btn" bindtap="openWorld"><text class="remix-icon ri-play-circle-line"></text>进入庄园互动</button>
-      </view>
-    </view>
-  </view>
-
-  <view class="modal-mask" wx:if="{{customModalVisible}}" bindtap="closeCustomModal">
-    <view class="modal-dialog" catchtap="true">
-      <view class="modal-head">
-        <view>
-          <view class="modal-title">定制专属 3D 形象</view>
-          <view class="modal-subtitle">正在为「{{selectedPet.name}}」配置 3D 模型</view>
-        </view>
-        <view class="remix-icon ri-close-line modal-close" bindtap="closeCustomModal"></view>
-      </view>
-
-      <view class="custom-tabs">
-        <view class="tab-pill {{customTab === 'ai' ? 'active' : ''}}" data-tab="ai" bindtap="switchCustomTab">
-          <text class="remix-icon ri-sparkling-fill"></text> 方案一：AI 智能生成
-        </view>
-        <view class="tab-pill {{customTab === 'manual' ? 'active' : ''}}" data-tab="manual" bindtap="switchCustomTab">
-          <text class="remix-icon ri-folder-upload-fill"></text> 方案二：手动上传资源
-        </view>
-      </view>
-
-      <!-- 方案一：AI 智能生成 -->
-      <view class="tab-content" wx:if="{{customTab === 'ai'}}">
-        <view class="card-hint">
-          <view class="strong">AI 照片一键变 3D 宠物</view>
-          <view class="muted">上传爱宠的正面全身照片，AI 将自动分析体态轮廓、毛色花纹并生成专属 3D 模型与奔跑骨骼。</view>
-        </view>
-        <view class="photo-uploader" bindtap="chooseCustomPhoto">
-          <image class="preview-img" wx:if="{{aiPhotoUrl}}" src="{{aiPhotoUrl}}" mode="aspectFit" />
-          <view class="upload-placeholder" wx:else>
-            <view class="remix-icon ri-camera-lens-line upload-icon"></view>
-            <view class="upload-text">点击上传正面全身照</view>
-            <view class="upload-sub">光线充足、全身无遮挡效果最佳</view>
-          </view>
-        </view>
-        <view class="repick-btn" wx:if="{{aiPhotoUrl}}" bindtap="chooseCustomPhoto">重新拍照/选图</view>
-        <button class="primary-btn submit-btn" loading="{{aiGenerating}}" disabled="{{aiGenerating}}" bindtap="triggerAiGeneration">
-          {{aiGenerating ? 'AI 正在建模与绑定骨骼中...' : '一键启动 AI 3D 建模'}}
-        </button>
-      </view>
-
-      <!-- 方案二：手动上传资源 -->
-      <view class="tab-content" wx:if="{{customTab === 'manual'}}">
-        <view class="card-hint">
-          <view class="strong">直接导入专属 3D 资产 (.glb)</view>
-          <view class="muted">支持从微信文件/手机本地直接选取专属 .glb 单文件，或直接粘贴已存放在微信云存储的 FileID。</view>
-        </view>
-        <view class="upload-box" bindtap="chooseLocalGlbFile">
-          <view class="remix-icon ri-file-upload-line file-icon"></view>
-          <view class="file-text">{{manualUploading ? '正在上传中...' : (manualModelUrl ? '已选取模型文件' : '从手机/微信文件选取 .glb 模型')}}</view>
-          <view class="file-sub">{{manualModelUrl || '单文件 .glb 格式，包含贴图与骨骼'}}</view>
-        </view>
-        <view class="input-row">
-          <view class="input-label">或输入云存储路径 (cloud://)</view>
-          <input class="custom-input" placeholder="cloud://.../custom_models/dog.glb" value="{{manualModelUrl}}" bindinput="onManualUrlInput" />
-        </view>
-        <view class="scale-section">
-          <view class="scale-title">体型比例缩放</view>
-          <view class="scale-chips">
-            <view class="scale-chip {{manualScale === 0.8 ? 'active' : ''}}" data-scale="0.8" bindtap="onScaleChange">0.8x (小型)</view>
-            <view class="scale-chip {{manualScale === 1.0 ? 'active' : ''}}" data-scale="1.0" bindtap="onScaleChange">1.0x (标准)</view>
-            <view class="scale-chip {{manualScale === 1.2 ? 'active' : ''}}" data-scale="1.2" bindtap="onScaleChange">1.2x (中大型)</view>
-            <view class="scale-chip {{manualScale === 1.5 ? 'active' : ''}}" data-scale="1.5" bindtap="onScaleChange">1.5x (大型)</view>
-          </view>
-        </view>
-        <button class="primary-btn submit-btn" bindtap="saveManualModel">保存并应用模型</button>
-      </view>
-
-      <view class="reset-link" wx:if="{{selectedPet.customModelUrl}}" bindtap="resetToDefaultModel">
-        <text class="remix-icon ri-restart-line"></text> 撤销专属模型，恢复为系统默认模型
-      </view>
+      <view class="popover-desc">{{selectedPet.personality || '正在 2D 庄园里开心玩耍'}}</view>
+      <button class="primary-btn compact-btn" bindtap="openWorld"><text class="remix-icon ri-play-circle-line"></text>进入庄园互动</button>
     </view>
   </view>
 
   <view class="community-modal-mask" wx:if="{{showCommunityModal}}" bindtap="closeCommunityModal">
     <view class="community-modal-card" catchtap="stopBubble">
-      <view class="community-modal-icon-wrap">
-        <view class="remix-icon ri-home-5-fill modal-icon"></view>
-      </view>
+      <view class="community-modal-icon-wrap"><view class="remix-icon ri-home-5-fill modal-icon"></view></view>
       <view class="modal-title">发现同小区的毛孩子邻居</view>
-      <view class="modal-desc">
-        选择您的常住小区后，系统将为您生成城镇邻里庄园。您的别墅将与同小区宠友相邻，毛孩子还能互相串门打招呼！
-      </view>
-      <view class="modal-tip">
-        <text class="remix-icon ri-map-pin-2-fill tip-icon"></text>
-        <text>点击后将调起地图，自动根据您当前位置汇总推荐周围的小区，一键选定即可。</text>
-      </view>
+      <view class="modal-desc">选择常住小区后，与同小区住户共享草地。房屋位置由您手动选择，确认后永久保存。</view>
+      <view class="modal-tip"><text class="remix-icon ri-map-pin-2-fill tip-icon"></text><text>选择小区只用于匹配邻里庄园位置。</text></view>
       <view class="modal-actions">
-        <button class="primary-btn full-btn" bindtap="selectCommunityAndEnter" loading="{{savingCommunity}}">
-          <text class="remix-icon ri-navigation-fill"></text>
-          <text>定位并选择常住小区</text>
-        </button>
-        <button class="ghost-btn full-btn" bindtap="enterSoloManor">暂不设置，单人私享庄园</button>
+        <button class="primary-btn full-btn" bindtap="selectCommunityAndEnter" loading="{{savingCommunity}}"><text class="remix-icon ri-navigation-fill"></text><text>定位并进入邻里庄园</text></button>
+        <button class="ghost-btn full-btn" bindtap="enterSoloManor">暂不设置，进入单人庄园</button>
       </view>
     </view>
   </view>
