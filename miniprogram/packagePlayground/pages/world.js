@@ -1,24 +1,70 @@
-const { ensureLogin, callFunction } = require('../../utils/cloud')
+const { ensureLogin, callFunction, chooseSelectedLocation } = require('../../utils/cloud')
 const { World2D } = require('../utils/world2d')
+const { SceneSync } = require('../utils/scene-sync')
 
 Page({
   data: {
     loading: true,
+    characterType: 'boy',
+    characterChanging: false,
+    hasAvatar: false,
+    residentCount: 0,
+    settingsOpen: false,
+    socialOpen: false,
+    socialBusy: false,
+    socialFriends: [],
+    socialRequests: [],
+    socialOutgoing: [],
+    nearbyPlayer: null,
+    nearbyGate: null,
+    joystickMode: 'always',
+    joystickHand: 'left',
+    joystickOpacity: 100,
+    showYardOwners: false,
     error: '',
     status: '准备庄园…',
+    connectionMessage: '',
+    syncSceneState: '连接中',
+    syncMailState: '连接中',
+    characterSelected: false,
     top: 48,
     bottom: 20,
     pets: [],
     selectedPetId: '',
+    selectedPetName: '',
+    petScalePercent: 100,
+    showPetScale: false,
+    petScaleSaving: false,
+    nearbyPet: null,
+    nearbyBowl: null,
+    feeding: false,
+    joystickX: 0,
+    joystickY: 0,
+    joystickActive: false,
+    joystickLeft: 0,
+    joystickTop: 0,
+    joystickRunning: false,
     hasCommunity: false,
     communityName: '',
     hasPlot: false,
+    visiting: false,
+    hasHomeElsewhere: false,
+    canRelocate: false,
     placing: false,
     canConfirm: false,
     claiming: false,
     worldSize: ''
   },
   onLoad() {
+    try {
+      const saved=wx.getStorageSync('playground-controls') || {}
+      this.setData({joystickMode:saved.joystickMode==='hold'?'hold':'always',
+        joystickHand:saved.joystickHand==='right'?'right':'left',
+        joystickOpacity:Number.isFinite(saved.joystickOpacity)?Math.max(10,Math.min(100,saved.joystickOpacity)):100,
+        showYardOwners:saved.showYardOwners===true})
+      const zoom=wx.getStorageSync('playground-zoom')
+      if(typeof zoom==='number' && Number.isFinite(zoom) && zoom>=.001 && zoom<=2.5) this.sceneZoom=zoom
+    } catch(error) {}
     const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
     const menu = wx.getMenuButtonBoundingClientRect()
     this.setData({
@@ -30,13 +76,23 @@ Page({
           12
       )
     })
+    this.windowHeight=info.windowHeight || info.screenHeight
+    this.windowWidth=info.windowWidth || info.screenWidth || 375
+    this.joystickInsetLeft=Math.max(20,(info.safeArea&&info.safeArea.left||0)+12)
+    this.joystickInsetRight=Math.max(20,this.windowWidth-(info.safeArea&&info.safeArea.right||this.windowWidth)+12)
+    this.positionJoystick()
   },
   onShow() {
     this.visible = true
-    const version = (this.version = (this.version || 0) + 1)
+    const version = this.world && !this.world.destroyed && this.world.paused
+      ? this.version : (this.version = (this.version || 0) + 1)
     ensureLogin({ content: '登录后进入全屏庄园。' })
       .then(() => {
-        if (this.visible && version === this.version && this.ready)
+        if (this.visible && version === this.version && this.world && !this.world.destroyed && this.world.paused) {
+          this.authorized=true
+          this.world.resume()
+          if(this.world.sceneSync) this.world.sceneSync.start()
+        } else if (this.visible && version === this.version && this.ready)
           this.initialize()
         else if (version === this.version) this.authorized = true
       })
@@ -50,34 +106,61 @@ Page({
     if (this.visible && this.authorized) this.initialize()
   },
   onHide() {
-    this.stop()
+    this.clearPetSelection()
+    this.joystickEnd()
+    this.visible=false
+    if(this.world && !this.data.loading) {
+      this.world.pause()
+      if(this.world.sceneSync) this.world.sceneSync.stop().catch(()=>{})
+    } else this.stop()
   },
   onUnload() {
     this.stop()
   },
   stop() {
+    this.joystickEnd()
     this.visible = false
     this.authorized = false
     this.version = (this.version || 0) + 1
+    if(this.world && this.world.sceneSync) this.world.sceneSync.stop().catch(()=>{})
     if (this.world) this.world.destroy()
     this.world = null
   },
   initialize() {
+    if(this.world && this.world.manualZoom) this.sceneZoom=this.world.zoom
+    this.joystickEnd()
+    if(this.world && this.world.sceneSync) this.world.sceneSync.stop().catch(()=>{})
     if (this.world) this.world.destroy()
     let instance = null
     const version = (this.version = (this.version || 0) + 1)
     this.setData(
       {
         loading: true,
+        characterChanging: false,
         claiming: false,
         error: '',
         status: '读取宠物档案…',
+        connectionMessage: '',
+        characterSelected: false,
+        syncSceneState: '连接中',
+        syncMailState: '连接中',
         pets: [],
-        selectedPetId: ''
+        petScaleSaving: false,
+        selectedPetId: '',
+        selectedPetName: '',
+        residentCount: 0,
+        showPetScale: false,
+        settingsOpen: false,
+        socialOpen: false,
+        nearbyPlayer: null,
+        nearbyGate: null,
+        nearbyPet: null,
+        nearbyBowl: null,
+        feeding: false
       },
       () => {
         if (!this.visible || version !== this.version) return
-        callFunction('playground', 'getOverview')
+        callFunction('playground', 'enterScene', {community:this.selectedCommunity})
           .then((overview) => {
             if (!this.visible || version !== this.version) return
             this.setData({
@@ -85,6 +168,11 @@ Page({
               communityName:
                 (overview.userCommunity && overview.userCommunity.name) || '',
               hasPlot: Boolean(overview.plot),
+              hasAvatar: Boolean(overview.scene && overview.scene.hasAvatar),
+              visiting: Boolean(overview.scene && overview.scene.visiting),
+              hasHomeElsewhere: Boolean(overview.scene && overview.scene.hasHomeElsewhere),
+              characterType: overview.scene ? overview.scene.characterType : this.data.characterType,
+              canRelocate: overview.world.canRelocate === true,
               placing: false,
               canConfirm: false,
               worldSize: `${overview.world.width} × ${overview.world.height} 米`
@@ -101,17 +189,43 @@ Page({
                 const selected = pets.find((pet) => pet.selected)
                 this.setData({
                   pets,
-                  selectedPetId: selected ? selected.id : ''
+                  selectedPetId: selected ? selected.id : '',
+                  selectedPetName: selected ? selected.name : '',
+                  petScalePercent: selected ? Math.round(selected.modelScale * 100) : 100
                 })
+                if(!selected) this.setData({showPetScale:false})
+                this.positionJoystick()
               }
             )
             this.world = world
             instance = world
-            return world.init()
+            return world.init().then(async()=>{
+              if(!world.destroyed && overview.scene) {
+                world.sceneSync=new SceneSync(world,overview.scene,(error)=>{
+                  if(this.world===world && this.visible) {
+                    this.joystickEnd()
+                    if((error.message||'').includes('场景已切换')) {
+                      world.sceneSync.stop().catch(()=>{})
+                      this.setData({error:'此账号已在其他设备进入场景，请点击重新加载',loading:false})
+                    } else this.setData({status:(error.message||'').includes('实时连接')?error.message:'同步暂时中断，正在重试…'})
+                  }
+                },(connection)=>{
+                  if(this.world===world && this.visible) this.setData({
+                    connectionMessage:connection.message,
+                    syncSceneState:connection.scene,syncMailState:connection.mail
+                  })
+                })
+                await world.sceneSync.snapshot()
+                if(this.world===world && this.visible) world.sceneSync.start()
+              }
+            })
           })
           .then(() => {
-            if (version === this.version && this.visible)
+            if (version === this.version && this.visible) {
               this.setData({ loading: false })
+              this.positionJoystick()
+              if(this.placeAfterLoad) {this.placeAfterLoad=false;this.world.beginPlacement()}
+            }
             else if (instance) instance.destroy()
           })
           .catch((error) => {
@@ -126,9 +240,37 @@ Page({
     )
   },
   fetchRegion(chunkX, chunkZ) {
-    return callFunction('playground', 'getRegion', { chunkX, chunkZ })
+    return callFunction('playground', 'getRegion', { chunkX, chunkZ, community:this.selectedCommunity })
+  },
+  async switchCharacter() {
+    this.clearPetSelection()
+    const world = this.world
+    if (!world || this.data.characterChanging) return
+    this.joystickEnd()
+    const type = this.data.characterType === 'girl' ? 'boy' : 'girl'
+    this.setData({ characterChanging: true })
+    try {
+      if (await world.setCharacterType(type)) {
+        if (this.world === world) this.setData({ characterType: type })
+      }
+    } catch (error) {
+      if (this.world === world) wx.showToast({ title: '角色素材加载失败，请重试', icon: 'none' })
+    } finally {
+      if (this.world === world) this.setData({ characterChanging: false })
+    }
+  },
+  fetchMapOverview(cursor) {
+    return callFunction('playground', 'getMapOverview', { cursor, community:this.selectedCommunity })
+  },
+  fullOverview() {
+    this.joystickEnd()
+    if (this.world) this.world.fullOverview()
   },
   choosePlot() {
+    this.joystickEnd()
+    if(this.data.hasHomeElsewhere) return
+    if(!this.data.hasCommunity) return this.chooseCommunityAndBuild()
+    if(this.data.visiting) return this.settleCommunity(true)
     if (this.world) this.world.beginPlacement()
   },
   cancelPlot() {
@@ -140,8 +282,8 @@ Page({
     const candidate = { ...world.candidate }
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
-        title: '永久安置房屋',
-        content: '确定使用这块草坪吗？确认后房屋位置将永久保存，无法搬迁。',
+        title: this.data.hasPlot ? '调整庭院位置' : '安置庭院',
+        content: `别墅将放在中心标记处，庭院范围 ${candidate.size}×${candidate.size} 米。${this.data.hasPlot ? '保存后原位置会腾空。' : ''}${this.data.canRelocate ? '目前临时开放重新选址。' : '确认后不能搬迁。'}`,
         success: (r) => resolve(r.confirm),
         fail: () => resolve(false)
       })
@@ -151,11 +293,14 @@ Page({
     try {
       const result = await callFunction('playground', 'claimPlot', {
         cellX: candidate.cellX,
-        cellZ: candidate.cellZ
+        cellZ: candidate.cellZ,
+        x: candidate.x,
+        z: candidate.z,
+        sceneId:world.scene && world.scene.sceneId
       })
       if (this.world === world && !world.destroyed) {
-        world.setPlot(result.plot)
-        this.setData({ hasPlot: true })
+        if(world.scene) this.initialize()
+        else {world.setPlot(result.plot);this.setData({ hasPlot: true })}
       }
     } catch (e) {
       if (this.world === world && !world.destroyed) {
@@ -167,46 +312,392 @@ Page({
         )
         world.candidate = null
         this.setData({ canConfirm: false })
-        wx.showToast({
-          title: e.message || '选址失败，请重新选择',
-          icon: 'none'
+        const message = e.message || e.errMsg || '选址失败，请重新选择'
+        const code = e.code || e.errCode
+        wx.showModal({
+          title: '庭院位置保存失败',
+          content:
+            message +
+            (code && !message.includes(String(code))
+              ? `\n错误码：${code}`
+              : ''),
+          showCancel: false
         })
       }
     } finally {
       if (this.world === world) this.setData({ claiming: false })
     }
   },
+  communityActions() {
+    this.clearPetSelection()
+    this.joystickEnd()
+    const actions=[{title:this.data.hasAvatar?'访问其他小区':'重新选择小区并建造',run:()=>this.data.hasAvatar?this.visitCommunity():this.chooseCommunityAndBuild()},
+      {title:'回到常住小区',run:()=>{this.selectedCommunity=null;this.initialize()}}]
+    if(this.data.visiting) actions.push({title:'迁入当前小区',run:()=>this.settleCommunity()})
+    if(this.data.hasPlot) actions.push({title:'拆除我的庭院',run:()=>this.demolishPlot()})
+    wx.showActionSheet({itemList:actions.map((a)=>a.title),success:(r)=>actions[r.tapIndex].run()})
+  },
+  async visitCommunity() {
+    try {
+      const location=await chooseSelectedLocation()
+      if(!location || !location.name) return
+      this.selectedCommunity={name:location.name,address:location.address||'',latitude:location.latitude||0,longitude:location.longitude||0}
+      this.initialize()
+    } catch(error) {
+      if(!(error.errMsg||'').includes('cancel')) wx.showToast({title:error.message||'选择小区失败',icon:'none'})
+    }
+  },
+  async chooseCommunityAndBuild() {
+    this.clearPetSelection()
+    this.joystickEnd()
+    try {
+      const location=await chooseSelectedLocation()
+      if(!location || !location.name) return
+      const community={name:location.name,address:location.address||'',latitude:location.latitude||0,longitude:location.longitude||0}
+      await callFunction('playground','saveCommunity',{community})
+      this.selectedCommunity=null
+      this.placeAfterLoad=true
+      this.initialize()
+    } catch(error) {
+      if(!(error.errMsg||'').includes('cancel')) wx.showToast({title:error.message||'选择小区失败',icon:'none'})
+    }
+  },
+  async settleCommunity(autoPlace=false) {
+    if(this.data.hasHomeElsewhere) {
+      wx.showModal({title:'请先拆除原庭院',content:'请先回到常住小区，拆除自己的庭院，再迁入当前小区。访问不会影响原庭院。',showCancel:false})
+      return
+    }
+    const confirmed=await new Promise((resolve)=>wx.showModal({title:'迁入当前小区',content:`将常住小区更新为“${this.data.communityName}”，随后可选择空地新建庭院。`,success:(r)=>resolve(r.confirm),fail:()=>resolve(false)}))
+    if(!confirmed) return
+    try {await callFunction('playground','saveCommunity',{community:this.selectedCommunity});this.selectedCommunity=null;this.placeAfterLoad=autoPlace===true;this.initialize()}
+    catch(error) {wx.showToast({title:error.message||'迁入失败',icon:'none'})}
+  },
+  async demolishPlot() {
+    const world=this.world
+    if(!world || !world.ownPlot) return
+    this.joystickEnd()
+    const confirmed=await new Promise((resolve)=>wx.showModal({title:'拆除我的庭院',content:'原位置将腾空，庭院布置与碗中粮食将清除，角色和宠物将退出场景，宠物档案保留。之后可直接重新选择小区建造庭院。',confirmText:'确认拆除',success:(r)=>resolve(r.confirm),fail:()=>resolve(false)}))
+    if(!confirmed || this.world!==world) return
+    try {
+      if(world.sceneSync) await world.sceneSync.stop().catch(()=>{})
+      await callFunction('playground','demolishPlot',{plotId:world.ownPlot.id,sceneId:world.scene&&world.scene.sceneId})
+      if(this.world===world){this.selectedCommunity=null;this.initialize()}
+    } catch(error) {
+      if(this.world===world && this.visible && world.sceneSync) world.sceneSync.start()
+      wx.showToast({title:error.message||'拆除失败',icon:'none'})
+    }
+  },
   onResize() {
+    this.joystickEnd()
     if (!this.world) return
     this.createSelectorQuery()
       .select('#worldCanvas')
       .boundingClientRect((rect) => {
-        if (rect && this.world) this.world.resize(rect.width, rect.height)
+        if (rect && this.world) {
+          this.windowHeight=rect.height
+          this.windowWidth=rect.width
+          const info=wx.getWindowInfo?wx.getWindowInfo():{}
+          this.joystickInsetLeft=Math.max(20,(info.safeArea&&info.safeArea.left||0)+12)
+          this.joystickInsetRight=Math.max(20,rect.width-(info.safeArea&&info.safeArea.right||rect.width)+12)
+          this.positionJoystick()
+          this.world.canvasRect = { left: rect.left, top: rect.top }
+          this.world.resize(rect.width, rect.height)
+        }
       })
       .exec()
   },
   touchStart(e) {
-    if (this.world) this.world.touchStart(e.touches)
+    if (!this.world) return
+    const touches = e.touches || []
+    if (touches.length > 1) {
+      this.joystickEnd()
+      this.suppressTouchTap = true
+      this.world.touchStart(touches)
+      return
+    }
+    this.suppressTouchTap = false
+    this.world.touchStart(touches)
+    if(this.data.joystickMode!=='hold' || !this.world.character || this.data.settingsOpen || this.data.socialOpen) return
+    const touch = touches[0]
+    if (!touch || this.data.loading || this.data.error || this.data.placing || this.data.feeding || this.data.characterChanging) return
+    this.joystickEnd()
+    this.suppressTouchTap = false
+    const center = this.touchCoordinates(touch)
+    if (!center) return
+    this.joystickTouch = touch.identifier
+    this.joystickCenter = center
+    const token = this.joystickToken
+    const world = this.world
+    this.joystickTimer = setTimeout(() => {
+      if (token !== this.joystickToken || this.world !== world || world.destroyed ||
+          this.data.loading || this.data.error || this.data.placing || this.data.feeding || this.data.characterChanging) return
+      this.joystickTimer = null
+      this.joystickHeld = true
+      this.clearPetSelection()
+      this.suppressTouchTap = true
+      world.gesture = null
+      world.focusCharacter()
+      world.setCharacterInput(0, 0)
+      this.setData({ joystickActive: true, joystickLeft: center.x - 72,
+        joystickTop: center.y - 72, joystickRunning: false })
+    }, 1000)
+  },
+  touchCoordinates(touch) {
+    const rect = this.world && this.world.canvasRect || { left: 0, top: 0 }
+    // Native Canvas touches may contain only canvas-local x/y.
+    const x = Number.isFinite(touch.clientX) ? touch.clientX
+      : Number.isFinite(touch.pageX) ? touch.pageX : touch.x + rect.left
+    const y = Number.isFinite(touch.clientY) ? touch.clientY
+      : Number.isFinite(touch.pageY) ? touch.pageY : touch.y + rect.top
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
   },
   touchMove(e) {
-    if (this.world) this.world.touchMove(e.touches)
+    if (!this.world) return
+    const touches = e.touches || []
+    if (touches.length > 1) {
+      if (this.joystickHeld || this.joystickTimer != null) {
+        this.joystickEnd()
+        this.world.touchStart(touches)
+      }
+      this.suppressTouchTap = true
+      this.world.touchMove(touches)
+      return
+    }
+    const touch = touches.find(t => t.identifier === this.joystickTouch)
+    if (this.joystickHeld) {
+      if (touch) this.updateJoystick(touch)
+      return
+    }
+    if (touch && this.joystickCenter) {
+      const point = this.touchCoordinates(touch)
+      if (point && Math.hypot(point.x - this.joystickCenter.x, point.y - this.joystickCenter.y) > 6)
+        this.joystickEnd()
+    }
+    this.world.touchMove(touches)
   },
-  touchEnd() {
-    if (this.world) this.world.touchEnd()
+  touchEnd(e) {
+    if (!this.world) return
+    const touches = e.touches || []
+    const suppressed = this.suppressTouchTap || this.joystickHeld
+    this.joystickEnd()
+    if (touches.length) {
+      this.suppressTouchTap = true
+      this.world.touchStart(touches)
+      if (this.world.gesture) this.world.gesture.moved = true
+    } else {
+      if (suppressed) this.world.gesture = null
+      else this.world.touchEnd(e.changedTouches)
+      this.suppressTouchTap = false
+    }
   },
   touchCancel() {
+    this.joystickEnd()
+    this.suppressTouchTap = false
     if (this.world) this.world.gesture = null
   },
+  focusCharacter() {
+    this.joystickEnd()
+    if (this.world) this.world.focusCharacter()
+  },
+  updateJoystick(touch) {
+    if (!this.world || !this.joystickCenter || !touch) return
+    const point = this.touchCoordinates(touch)
+    if (!point) return
+    const dx = point.x - this.joystickCenter.x, dy = point.y - this.joystickCenter.y
+    const length = Math.hypot(dx, dy)
+    const ratio = length > 48 ? 48 / length : 1
+    const joystickX = dx * ratio, joystickY = dy * ratio
+    this.world.setCharacterInput(joystickX / 48, joystickY / 48)
+    this.setData({ joystickX: Math.round(joystickX), joystickY: Math.round(joystickY),
+      joystickRunning: Boolean(this.world.character && this.world.character.runRequested) })
+  },
+  joystickEnd() {
+    const wasHeld=this.joystickHeld
+    if (this.joystickTimer != null) clearTimeout(this.joystickTimer)
+    this.joystickTimer = null
+    this.joystickToken = (this.joystickToken || 0) + 1
+    // A UI action during a hold must not turn the eventual release into a pet command.
+    if (this.joystickHeld) this.suppressTouchTap = true
+    this.joystickHeld = false
+    this.joystickTouch = null
+    this.joystickCenter = null
+    if (this.world && (wasHeld || this.world.character && this.world.character.input && !this.world.characterRoute &&
+        (this.world.character.input.x || this.world.character.input.y))) this.world.setCharacterInput(0, 0)
+    this.setData({ joystickX: 0, joystickY: 0, joystickActive: false, joystickRunning: false })
+    this.positionJoystick()
+  },
+  positionJoystick() {
+    const left=this.joystickInsetLeft||20,right=this.joystickInsetRight||20
+    if(this.data.joystickMode==='always' && !this.joystickHeld) this.setData({
+      joystickLeft:this.data.joystickHand==='right'?Math.max(left,(this.windowWidth||375)-right-144):left,
+      joystickTop:Math.max(this.data.top+80,(this.windowHeight||667)-this.data.bottom-330-(this.data.selectedPetId?110:0))})
+  },
+  fixedJoystickStart(e) {
+    if(!this.world || !this.world.character || this.data.loading || this.data.placing) return
+    this.joystickEnd()
+    const touches=e.touches||[]
+    if(touches.length!==1) return
+    this.joystickTouch=touches[0].identifier
+    this.joystickCenter={x:this.data.joystickLeft+72,y:this.data.joystickTop+72}
+    this.joystickHeld=true
+    this.clearPetSelection()
+    this.world.gesture=null
+    this.world.focusCharacter()
+    this.setData({joystickActive:true})
+    this.updateJoystick(touches[0])
+  },
+  fixedJoystickMove(e) {
+    if((e.touches||[]).length!==1) return this.joystickEnd()
+    if(this.joystickHeld) this.updateJoystick(e.touches.find((t)=>t.identifier===this.joystickTouch))
+  },
+  fixedJoystickEnd() { this.joystickEnd() },
+  clearPetSelection() {
+    if(this.world && this.world.clearPetSelection) this.world.clearPetSelection()
+  },
+  openSettings() {
+    this.joystickEnd()
+    this.clearPetSelection()
+    this.setData({settingsOpen:true})
+  },
+  closeSettings() { this.setData({settingsOpen:false}) },
+  async openSocial() {
+    this.joystickEnd();this.clearPetSelection()
+    this.setData({settingsOpen:false,socialOpen:true})
+    if(this.world&&this.world.sceneSync) {
+      try {await this.world.sceneSync.social('getSocial')}
+      catch(error){wx.showToast({title:error.message||'读取申请失败',icon:'none'})}
+    }
+  },
+  closeSocial() {this.setData({socialOpen:false})},
+  async socialAction(action,data) {
+    const world=this.world
+    if(!world || !world.sceneSync || this.data.socialBusy)return
+    this.joystickEnd();this.clearPetSelection();this.setData({socialBusy:true})
+    try {await world.sceneSync.social(action,data);wx.showToast({title:action==='respondRequest'?'申请已处理':action==='removeFriend'?'已解除好友':'申请已发送',icon:'none'})}
+    catch(error){wx.showToast({title:error.message||'操作失败，请重试',icon:'none'})}
+    finally {if(this.world===world)this.setData({socialBusy:false})}
+  },
+  async requestFriend() {
+    const player=this.data.nearbyPlayer
+    if(!player||player.friend)return
+    const yes=await new Promise((resolve)=>wx.showModal({title:'添加好友',content:`向“${player.name}”发送好友申请？成为好友后可互相进入庭院。`,success:(r)=>resolve(r.confirm),fail:()=>resolve(false)}))
+    if(yes)return this.socialAction('requestFriend',{playerId:player.id})
+  },
+  async requestVisit() {
+    const gate=this.data.nearbyGate
+    if(!gate)return
+    const yes=await new Promise((resolve)=>wx.showModal({title:'申请访问庭院',content:`是否申请访问“${gate.name}”的庭院？主人同意后可访问至今天24点（北京时间）。`,success:(r)=>resolve(r.confirm),fail:()=>resolve(false)}))
+    if(yes)return this.socialAction('requestVisit',{playerId:gate.playerId,plotId:gate.plotId})
+  },
+  respondRequest(e) {return this.socialAction('respondRequest',{requestId:e.currentTarget.dataset.id,accept:e.currentTarget.dataset.accept===true || e.currentTarget.dataset.accept==='true'})},
+  async removeFriend(e) {
+    const id=e.currentTarget.dataset.id
+    const yes=await new Promise((resolve)=>wx.showModal({title:'解除好友',content:'解除后将取消双方互访权限，需重新申请访问庭院。',success:(r)=>resolve(r.confirm),fail:()=>resolve(false)}))
+    if(yes)return this.socialAction('removeFriend',{playerId:id})
+  },
+  swallowTouch() {},
+  saveSettings() {
+    try {wx.setStorageSync('playground-controls',{joystickMode:this.data.joystickMode,
+      joystickHand:this.data.joystickHand,
+      joystickOpacity:this.data.joystickOpacity,showYardOwners:this.data.showYardOwners})} catch(error) {}
+  },
+  changeJoystickMode(e) {
+    this.joystickEnd()
+    this.setData({joystickMode:e.detail.value?'hold':'always'})
+    this.positionJoystick()
+    this.saveSettings()
+  },
+  changeJoystickOpacity(e) {
+    this.setData({joystickOpacity:Math.max(10,Math.min(100,Number(e.detail.value)||100))})
+    this.saveSettings()
+  },
+  changeJoystickHand(e) {
+    this.joystickEnd()
+    this.clearPetSelection()
+    this.setData({joystickHand:e.currentTarget.dataset.hand==='right'?'right':'left'})
+    this.positionJoystick()
+    this.saveSettings()
+  },
+  changeYardOwners(e) {
+    this.setData({showYardOwners:e.detail.value===true})
+    this.saveSettings()
+  },
+  rememberZoom(zoom) {
+    this.sceneZoom=zoom
+    try {wx.setStorageSync('playground-zoom',zoom)} catch(error) {}
+  },
+  async interactPet() {
+    const pet = this.data.nearbyPet
+    if (!this.world || !pet) return
+    this.joystickEnd()
+    const world=this.world
+    if(world.sceneSync) {
+      try {await world.sceneSync.interactPet(pet.id)}
+      catch(error) {if(this.world===world)wx.showToast({title:error.message||'互动失败，请重试',icon:'none'});return}
+      if(this.world!==world || world.destroyed)return
+    }
+    if (!this.world.interactPet(pet.id))
+      wx.showToast({ title: '请靠近宠物，稍等一下再互动', icon: 'none' })
+  },
+  async fillBowl() {
+    const world = this.world
+    if (!world || this.data.feeding) return
+    const bowl = world.nearbyInteractions().bowl
+    if (!bowl) return wx.showToast({ title: '请先走近自家狗碗', icon: 'none' })
+    this.clearPetSelection()
+    if (bowl.food >= 100) return
+    this.joystickEnd()
+    this.setData({ feeding: true })
+    try {
+      const result = await callFunction('playground', 'fillBowl', { plotId: bowl.plotId })
+      if (this.world === world && !world.destroyed && world.applyBowlFood(result))
+        wx.showToast({ title: '狗碗的粮食已添满', icon: 'success' })
+    } catch (error) {
+      if (this.world === world && !world.destroyed)
+        wx.showToast({ title: error.message || '添粮失败，请重试', icon: 'none' })
+    } finally {
+      if (this.world === world) this.setData({ feeding: false })
+    }
+  },
   overview() {
+    this.joystickEnd()
     if (this.world) this.world.overview()
   },
   follow() {
+    this.joystickEnd()
     if (this.world) this.world.followPet()
   },
-  selectPet(e) {
-    const id = e.currentTarget.dataset.id
-    if (this.world && !this.world.selectPet(id))
-      wx.showToast({ title: '暂时无法选中这只宠物', icon: 'none' })
+  togglePetScale() {
+    this.setData({ showPetScale: !this.data.showPetScale })
+  },
+  previewPetScale(e) {
+    if (this.data.petScaleSaving || !this.world) return
+    this.world.setPetScale(this.data.selectedPetId, Number(e.detail.value) / 100)
+  },
+  async savePetScale(e) {
+    const world = this.world
+    const pet = world && world.selectedPet()
+    if (!pet || this.data.petScaleSaving) return
+    const scale = Number(e.detail.value) / 100
+    if (!Number.isFinite(scale)) return
+    const previous = pet.savedModelScale
+    world.setPetScale(pet.id, scale)
+    this.setData({ petScaleSaving: true })
+    try {
+      const result = await callFunction('playground', 'setPetScale', { petId: pet.id, scale })
+      if (this.world === world && !world.destroyed)
+        world.setPetScale(pet.id, result.scale, true)
+    } catch (error) {
+      if (this.world === world && !world.destroyed) {
+        world.setPetScale(pet.id, previous)
+        wx.showToast({ title: error.message || '大小保存失败，请重试', icon: 'none' })
+      }
+    } finally {
+      if (this.world === world) this.setData({ petScaleSaving: false })
+    }
+  },
+  resetPetScale() {
+    return this.savePetScale({ detail: { value: 100 } })
   },
   activity(e) {
     if (this.world && !this.world.request(e.currentTarget.dataset.action))

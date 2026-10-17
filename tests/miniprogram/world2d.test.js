@@ -32,6 +32,7 @@ test('unclaimed scene stays empty and projection round-trips a large world', () 
 test('manual movement stays idle until requested and rejects out-of-world destinations', async () => {
   const w = create()
   w.buildWorld()
+  w.selectPet('dog')
   const start = { ...w.pets[0].position }
   w.update(30)
   assert.deepEqual(w.pets[0].position, start)
@@ -45,7 +46,7 @@ test('manual movement stays idle until requested and rejects out-of-world destin
   assert.deepEqual(w.pets[0].position, target)
 })
 test('fence blocks shortcuts while six metre gate allows entering and leaving', () => {
-  const p = { x: 84, z: 84 }
+  const p = { x: 84, z: 84, size: 48 }
   const nav = createNavigation(
     { minX: 20, maxX: 150, minZ: 20, maxZ: 150 },
     yardObstacles(p),
@@ -55,7 +56,7 @@ test('fence blocks shortcuts while six metre gate allows entering and leaving', 
   assert.equal(nav.clearSegment({ x: 84, z: 104 }, { x: 84, z: 115 }), true)
   assert.equal(nav.clearSegment({ x: 70, z: 104 }, { x: 70, z: 115 }), false)
   assert.equal(nav.walkable({ x: 84, z: 84 }), false)
-  const path = nav.path({ x: 70, z: 100 }, { x: 70, z: 116 })
+  const path = nav.path({ x: 70, z: 104 }, { x: 70, z: 116 })
   assert.ok(path)
   assert.ok(path.some((t) => t.x > 80 && t.x < 88 && t.z > 106))
 })
@@ -89,4 +90,112 @@ test('placement is offered only on loaded unoccupied grass and not beyond bounds
   w.setPlot({ id: 'mine', x: 140, z: 140, size: 48 })
   w.beginPlacement()
   assert.equal(w.placing, false)
+})
+
+test('walking keeps the camera fixed and retains an exact destination until arrival', async () => {
+  const w = create()
+  w.buildWorld()
+  w.selectPet('dog')
+  w.camera = { x: 1100, z: 1150 }
+  w.follow = true
+  const camera = { ...w.camera },
+    target = { x: w.pets[0].position.x + 20, z: w.pets[0].position.z + 5 }
+  await w.moveTo(target)
+  assert.equal(w.follow, false)
+  assert.deepEqual(w.pets[0].destination, target)
+  for (let i = 0; i < 80; i++) w.update(0.1)
+  assert.deepEqual(w.camera, camera)
+  assert.deepEqual(w.pets[0].position, target)
+  assert.ok(w.pets[0].arrivedAt)
+})
+test('placement uses the tapped center without snapping and confirmation keeps camera and preview location', async () => {
+  const w = create({
+    world: { width: 2240, height: 2240, canRelocate: true, plotSize: 112 },
+    plot: { id: 'old', x: 140, z: 140, size: 48, mine: true }
+  })
+  w.buildWorld()
+  w.beginPlacement()
+  const point = { x: 369.25, z: 421.75 }
+  await w.pickPlot(point)
+  assert.equal(w.candidate.x, point.x)
+  assert.equal(w.candidate.z, point.z)
+  assert.equal(w.candidate.size, 112)
+  const camera = { ...w.camera },
+    plot = { ...w.candidate, id: 'new', mine: true }
+  w.chunks.set('1,1', [w.ownPlot])
+  w.setPlot(plot)
+  assert.deepEqual(w.camera, camera)
+  assert.equal(w.ownPlot.x, point.x)
+  assert.equal(
+    w.plots().some((p) => p.id === 'old'),
+    false
+  )
+  w.beginPlacement()
+  assert.equal(w.placing, true)
+})
+test('manual pinch fits every world corner without requesting empty chunks; map centering keeps that zoom', async () => {
+  for (const size of [
+    { width: 224, height: 448 },
+    { width: 2240, height: 2240 },
+    { width: 11200, height: 5600 }
+  ]) {
+    const w = create({ world: size })
+    w.width = 390
+    w.height = 844
+    let calls = 0
+    w.page.fetchRegion = async () => {
+      calls++
+      return { plots: [] }
+    }
+    w.page.fetchMapOverview = async () => ({ plots: [], nextCursor: '' })
+    w.touchStart([{x:0,y:200},{x:1000,y:200}])
+    w.touchMove([{x:499.999,y:200},{x:500.001,y:200}])
+    const zoom=w.zoom
+    w.fullOverview()
+    assert.equal(w.zoom,zoom)
+    await w.loadVisible()
+    assert.deepEqual(w.camera, { x: size.width / 2, z: size.height / 2 })
+    const screen = w.screenCenter()
+    for (const [x, z] of [
+      [0, 0],
+      [size.width, 0],
+      [size.width, size.height],
+      [0, size.height]
+    ]) {
+      const p = w.project(x, z)
+      assert.ok(p.x >= 15 && p.x <= 375)
+      assert.ok(p.y >= screen.top && p.y <= screen.bottom)
+    }
+    if (size.width >= 2240) assert.equal(calls, 0)
+  }
+})
+test('native touch coordinates account for canvas offset and use release point for placement', () => {
+  const w = create()
+  w.canvasRect = { left: 17, top: 31 }
+  w.placing = true
+  let received
+  w.pickPlot = (point) => {
+    received = point
+  }
+  const screen = w.project(356.5, 410.25)
+  w.touchStart([{ clientX: screen.x + 17 - 1, clientY: screen.y + 31 - 1 }])
+  w.touchEnd([{ clientX: screen.x + 17, clientY: screen.y + 31 }])
+  assert.ok(Math.abs(received.x - 356.5) < 1e-8)
+  assert.ok(Math.abs(received.z - 410.25) < 1e-8)
+})
+
+test('pinch can reach full map scale and recenters an off-center camera', () => {
+  const w = create({ world: { width: 11200, height: 5600 } })
+  w.camera = { x: 200, z: 400 }
+  w.touchStart([
+    { x: 0, y: 200 },
+    { x: 1000, y: 200 }
+  ])
+  w.touchMove([
+    { x: 499.5, y: 200 },
+    { x: 500.5, y: 200 }
+  ])
+  assert.equal(w.zoom, w.minimumZoom())
+  assert.deepEqual(w.camera, { x: 5600, z: 2800 })
+  assert.equal(w.gesture.moved, true)
 })

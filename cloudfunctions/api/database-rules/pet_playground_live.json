@@ -1,0 +1,4 @@
+{
+  "read": "auth != null && (doc.kind == 'scene' || doc._openid == auth.openid)",
+  "write": false
+}

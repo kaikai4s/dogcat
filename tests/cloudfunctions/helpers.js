@@ -52,8 +52,12 @@ function createCollectionStore(initial = {}) {
   }
 
   function matchWhere(item, where) {
+    if(where && where.$and)return where.$and.every((part)=>matchWhere(item,part))
+    if(where && where.$or)return where.$or.some((part)=>matchWhere(item,part))
     return Object.keys(where || {}).every((key) => {
       const condition = where[key]
+      if(key.includes('.'))return matchWhere({value:key.split('.').reduce((value,part)=>value&&value[part],item)},{value:condition})
+      if(condition && typeof condition==='object' && '$exists' in condition)return condition.$exists?(item[key]!==undefined):(item[key]===undefined)
       if (condition && typeof condition === 'object' && '$gt' in condition) {
         const itemTs = toTimestamp(item[key])
         const condTs = toTimestamp(condition.$gt)
@@ -91,6 +95,13 @@ function createCollectionStore(initial = {}) {
   function applyUpdateData(target, data) {
     const next = {}
     for (const [key, value] of Object.entries(data || {})) {
+      if(key.includes('.')) {
+        const parts=key.split('.'),last=parts.pop()
+        let node=target
+        for(const part of parts){if(!node[part])node[part]={};node=node[part]}
+        applyUpdateData(node,{[last]:value})
+        continue
+      }
       if (value && value.__cloudCommand === 'remove') {
         delete target[key]
         continue
@@ -231,6 +242,7 @@ function createCollectionStore(initial = {}) {
     runTransaction,
     RegExp: ({ regexp, options = 'i' }) => ({ $regex: regexp, $options: options, regexp, options }),
     command: {
+      and: value=>({$and:value}),or:value=>({$or:value}),exists:value=>({$exists:value}),
       in: (arr) => ({ $in: arr }), gt: value => ({ $gt: value }), gte: value => ({ $gte: value }),
       lte: value => ({ $lte: value }), lt: value => ({ $lt: value }),
       set: value => ({ __cloudCommand: 'set', value }),

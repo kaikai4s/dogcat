@@ -1,4 +1,5 @@
 function now() { return new Date() }
+function nowMs() { return Date.now() }
 
 function nowText() { return new Date().toISOString() }
 
@@ -64,4 +65,4 @@ function toTimeValue(value) {
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
-module.exports = { now, nowText, beijingClockText, cstTodayStart, toCstParts, parseDateValue, toTimeValue }
+module.exports = { now, nowMs, nowText, beijingClockText, cstTodayStart, toCstParts, parseDateValue, toTimeValue }

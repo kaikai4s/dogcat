@@ -1,70 +1,116 @@
 function createNavigation(bounds, obstacles, radius = 0.65, cell = 0.4) {
   const cols = Math.floor((bounds.maxX - bounds.minX) / cell) + 1
   const rows = Math.floor((bounds.maxZ - bounds.minZ) / cell) + 1
-  const point = (id) => ({ x: bounds.minX + (id % cols) * cell, z: bounds.minZ + Math.floor(id / cols) * cell })
+  const blocks = obstacles.map((o) => ({ minX:o.minX-radius, maxX:o.maxX+radius, minZ:o.minZ-radius, maxZ:o.maxZ+radius }))
+  const point = (id) => ({ x:bounds.minX+(id%cols)*cell, z:bounds.minZ+Math.floor(id/cols)*cell })
   function walkable(p) {
-    if (p.x < bounds.minX + radius || p.x > bounds.maxX - radius || p.z < bounds.minZ + radius || p.z > bounds.maxZ - radius) return false
-    return !obstacles.some((o) => p.x >= o.minX - radius && p.x <= o.maxX + radius && p.z >= o.minZ - radius && p.z <= o.maxZ + radius)
+    return Number.isFinite(p.x) && Number.isFinite(p.z) &&
+      p.x >= bounds.minX+radius && p.x <= bounds.maxX-radius && p.z >= bounds.minZ+radius && p.z <= bounds.maxZ-radius &&
+      !blocks.some((o) => p.x>=o.minX && p.x<=o.maxX && p.z>=o.minZ && p.z<=o.maxZ)
   }
-  function clearSegment(a, b) {
-    const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / (cell / 4)))
-    for (let i = 0; i <= steps; i += 1) {
-      const t = i / steps
-      if (!walkable({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t })) return false
-    }
-    return true
+  function clearSegment(a,b) {
+    if (!walkable(a) || !walkable(b)) return false
+    // Exact slab intersection avoids sampling hundreds of points per fence check.
+    return !blocks.some((o) => {
+      let lo=0,hi=1
+      for (const [axis,min,max] of [['x','minX','maxX'],['z','minZ','maxZ']]) {
+        const d=b[axis]-a[axis]
+        if (Math.abs(d)<1e-12) { if(a[axis]<o[min] || a[axis]>o[max]) return false }
+        else {
+          const t1=(o[min]-a[axis])/d,t2=(o[max]-a[axis])/d
+          lo=Math.max(lo,Math.min(t1,t2));hi=Math.min(hi,Math.max(t1,t2))
+          if(lo>hi) return false
+        }
+      }
+      return true
+    })
   }
   function nearest(p) {
-    let best = -1
-    let distance = Infinity
-    for (let id = 0; id < cols * rows; id += 1) {
-      const q = point(id)
-      const d = Math.hypot(p.x - q.x, p.z - q.z)
-      if (d < distance && walkable(q)) { distance = d; best = id }
+    const cx=Math.round((p.x-bounds.minX)/cell),cz=Math.round((p.z-bounds.minZ)/cell)
+    let best=-1,distance=Infinity
+    for(let ring=0;ring<Math.max(cols,rows);ring++) {
+      for(let x=Math.max(0,cx-ring);x<=Math.min(cols-1,cx+ring);x++)
+        for(let z=Math.max(0,cz-ring);z<=Math.min(rows-1,cz+ring);z++) {
+          if(ring && Math.abs(x-cx)!==ring && Math.abs(z-cz)!==ring)continue
+          const id=z*cols+x,q=point(id),d=Math.hypot(p.x-q.x,p.z-q.z)
+          if(d<distance && clearSegment(p,q)) {best=id;distance=d}
+        }
+      if(best>=0 && (ring+.5)*cell>distance)return best
     }
     return best
   }
-  function path(start, end) {
-    if (!walkable(start) || !walkable(end)) return null
-    if (clearSegment(start, end)) return [{ ...end }]
-    const first = nearest(start)
-    const last = nearest(end)
-    if (first < 0 || last < 0 || !clearSegment(start, point(first)) || !clearSegment(point(last), end)) return null
-    const open = new Set([first])
-    const closed = new Set()
-    const cost = new Map([[first, 0]])
-    const parent = new Map()
-    while (open.size) {
-      let current = -1
-      let score = Infinity
-      for (const id of open) {
-        const p = point(id)
-        const f = cost.get(id) + Math.hypot(p.x - end.x, p.z - end.z)
-        if (f < score) { current = id; score = f }
-      }
-      if (current === last) {
-        const route = [{ ...end }]
-        while (current !== first) { route.unshift(point(current)); current = parent.get(current) }
-        route.unshift(point(first))
-        return route
-      }
-      open.delete(current)
-      closed.add(current)
-      const x = current % cols
-      const z = Math.floor(current / cols)
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + dx; const nz = z + dz
-        if (nx < 0 || nx >= cols || nz < 0 || nz >= rows) continue
-        const id = nz * cols + nx
-        if (closed.has(id) || !clearSegment(point(current), point(id))) continue
-        const nextCost = cost.get(current) + cell
-        if (nextCost < (cost.has(id) ? cost.get(id) : Infinity)) {
-          cost.set(id, nextCost); parent.set(id, current); open.add(id)
+  function* search(start,end) {
+    if(!walkable(start)||!walkable(end))return null
+    if(clearSegment(start,end))return [{...end}]
+    const first=nearest(start),last=nearest(end)
+    if(first<0||last<0)return null
+    const heap=[],cost=new Map([[first,0]]),parent=new Map(),closed=new Set()
+    function push(node) {
+      let i=heap.length;heap.push(node)
+      while(i) {const p=(i-1)>>1;if(heap[p].score<=node.score)break;heap[i]=heap[p];i=p}
+      heap[i]=node
+    }
+    function pop() {
+      const top=heap[0],tail=heap.pop()
+      if(heap.length) {
+        let i=0
+        while(i*2+1<heap.length) {
+          let child=i*2+1
+          if(child+1<heap.length && heap[child+1].score<heap[child].score)child++
+          if(heap[child].score>=tail.score)break
+          heap[i]=heap[child];i=child
         }
+        heap[i]=tail
       }
+      return top
+    }
+    push({id:first,score:0})
+    let count=0
+    while(heap.length) {
+      let current=pop().id
+      if(closed.has(current))continue
+      if(current===last) {
+        const route=[{...end}]
+        while(current!==first) {route.push(point(current));current=parent.get(current)}
+        route.push(point(first));route.reverse()
+        const simple=[]
+        let anchor=start
+        for(let i=0;i<route.length;i++) {
+          if(i+1<route.length && clearSegment(anchor,route[i+1]))continue
+          simple.push(route[i]);anchor=route[i]
+        }
+        return simple
+      }
+      closed.add(current)
+      const x=current%cols,z=Math.floor(current/cols),a=point(current)
+      for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx=x+dx,nz=z+dz,id=nz*cols+nx
+        if(nx<0||nx>=cols||nz<0||nz>=rows||closed.has(id))continue
+        const b=point(id),next=cost.get(current)+cell
+        if(next>=(cost.has(id)?cost.get(id):Infinity)||!clearSegment(a,b))continue
+        cost.set(id,next);parent.set(id,current)
+        push({id,score:next+Math.hypot(b.x-end.x,b.z-end.z)})
+      }
+      if(++count%128===0)yield
     }
     return null
   }
-  return { walkable, clearSegment, path }
+  function path(start,end) {
+    const task=search(start,end)
+    let result
+    do {result=task.next()}while(!result.done)
+    return result.value
+  }
+  async function pathAsync(start,end,current=()=>true) {
+    const task=search(start,end)
+    let result
+    do {
+      if(!current())return null
+      result=task.next()
+      if(!result.done)await new Promise((resolve)=>setTimeout(resolve,0))
+    }while(!result.done)
+    return result.value
+  }
+  return { walkable, clearSegment, path, pathAsync }
 }
 module.exports = { createNavigation }

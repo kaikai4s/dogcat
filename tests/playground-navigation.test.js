@@ -3,6 +3,31 @@ const assert = require('node:assert/strict')
 const { createNavigation } = require('../miniprogram/packagePlayground/utils/navigation')
 const { PetBehavior } = require('../miniprogram/packagePlayground/utils/pet-behavior')
 
+test('cooperative paths leave time for rendering and every simplified segment stays outside fences',async()=>{
+  const nav=createNavigation({minX:0,maxX:200,minZ:0,maxZ:200},[{minX:90,maxX:110,minZ:1,maxZ:170}],.8,1.5)
+  let yielded=false
+  setTimeout(()=>{yielded=true},0)
+  const start={x:40,z:40},end={x:150,z:40}
+  const route=await nav.pathAsync(start,end)
+  assert.equal(yielded,true)
+  assert.ok(route && route.length>2)
+  let previous=start
+  for(const next of route) {assert.equal(nav.clearSegment(previous,next),true);previous=next}
+  assert.deepEqual(route.at(-1),end)
+})
+
+test('exact collision rejects a narrow obstacle between the old sample points',()=>{
+  const nav=createNavigation({minX:0,maxX:10,minZ:0,maxZ:10},[{minX:4.123,maxX:4.124,minZ:4,maxZ:6}],0,1.5)
+  assert.equal(nav.clearSegment({x:2,z:5},{x:8,z:5}),false)
+})
+
+test('replacing a destination cancels cooperative planning between batches',async()=>{
+  const nav=createNavigation({minX:0,maxX:200,minZ:0,maxZ:200},[{minX:90,maxX:110,minZ:1,maxZ:170}],.8,1.5)
+  let active=true
+  setTimeout(()=>{active=false},0)
+  assert.equal(await nav.pathAsync({x:40,z:40},{x:150,z:40},()=>active),null)
+})
+
 test('navigation routes around blocked cottage', () => {
   const nav = createNavigation({ minX: -4, maxX: 4, minZ: -4, maxZ: 4 }, [{ minX: -1, maxX: 1, minZ: -1, maxZ: 1 }], 0.4, 0.4)
   const route = nav.path({ x: -3, z: 0 }, { x: 3, z: 0 })

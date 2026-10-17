@@ -1,21 +1,27 @@
 const CLOUD_ASSET_BASE =
   'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage'
+const { YARD_EXTRAS } = require('./yard-layout')
+const { CHARACTER_ASSETS } = require('./character-assets')
+const { PET_ATLASES } = require('./pet-assets')
 const ASSET_NAMES = [
   'grass_tile',
   'house',
   'tree',
   'flower_bush',
   'street_lamp',
-  'dog_stand',
-  'dog_run',
-  'cat_stand',
-  'cat_run',
+  'dog_walk',
+  'cat_walk',
   'stone_tile',
-  'road_tile'
+  'road_tile',
+  ...YARD_EXTRAS
 ]
 const downloads = new Map()
+function assetId(name) {
+  return CHARACTER_ASSETS[name] || (PET_ATLASES[name] && PET_ATLASES[name].fileID) || CLOUD_ASSET_BASE + '/' + name + '.png'
+}
 function download(name) {
-  const id = CLOUD_ASSET_BASE + '/' + name + '.png'
+  const id = assetId(name)
+  if (id.startsWith('/')) return Promise.resolve(id)
   if (!downloads.has(id))
     downloads.set(
       id,
@@ -39,6 +45,9 @@ function surface(width, height) {
   return wx.createOffscreenCanvas({ type: '2d', width, height })
 }
 function prepare(image, name) {
+  // Character assets already have alpha and fixed anchors. Background removal
+  // would damage white shoes; resizing an atlas would break its frame grid.
+  if (CHARACTER_ASSETS[name] || PET_ATLASES[name]) return image
   if (name === 'grass_tile') {
     const tile = surface(256, 256),
       c = tile.getContext('2d')
@@ -86,6 +95,18 @@ function prepare(image, name) {
     if (p >= size) add(p - size)
     if (p < size * (size - 1)) add(p + size)
   }
+  if (name === 'tree') {
+    // The source includes a concrete planting tile and a blue baked shadow.
+    // Keep the colored trunk and grass at its base so it sits on our lawn.
+    for (let y = Math.floor(size * 0.6); y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4
+        const green = d[i + 1] > d[i] * 0.92 && d[i + 1] > d[i + 2] * 1.3
+        const wood = d[i] > d[i + 1] * 1.18 && d[i] > d[i + 2] * 1.5
+        if (!green && !wood) d[i + 3] = 0
+      }
+    }
+  }
   c.putImageData(pixels, 0, 0)
   // The villa image has a blue shadow baked over its checkerboard. Trim only
   // the area below the walls and outside the original ground platform.
@@ -130,21 +151,25 @@ class AssetLoader2D {
       i.onerror = reject
       i.src = path
     }).catch((error) => {
-      downloads.delete(CLOUD_ASSET_BASE + '/' + name + '.png')
+      downloads.delete(assetId(name))
       throw error
     })
     const prepared = prepare(img, name)
     this.cache.set(name, prepared)
     return prepared
   }
-  async loadAll(progress, names = ASSET_NAMES) {
+  async loadAll(progress, names = ASSET_NAMES, { optional = false } = {}) {
     const result = {}
     let next = 0,
       done = 0
     const worker = async () => {
       while (next < names.length) {
         const name = names[next++]
-        result[name] = await this.loadImage(name)
+        try {
+          result[name] = await this.loadImage(name)
+        } catch (error) {
+          if (!optional) throw error
+        }
         if (progress) progress(Math.round((++done / names.length) * 100), name)
       }
     }

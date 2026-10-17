@@ -12,7 +12,9 @@ test('cloud assets load only requested images, share downloads and recover after
     cloud: {
       downloadFile({ fileID, success, fail }) {
         requests.push(fileID)
-        if (fileID.includes('cat_run') && failNetwork) {
+        if (fileID.endsWith('/pq/pq6.png')) {
+          fail(new Error('fountain frame unavailable'))
+        } else if (fileID.includes('cat_run') && failNetwork) {
           failNetwork = false
           fail(new Error('network unavailable'))
         } else success({ tempFilePath: '/tmp/' + fileID.split('/').pop() })
@@ -72,6 +74,48 @@ test('cloud assets load only requested images, share downloads and recover after
     await assert.rejects(() => first.loadImage('cat_run'), /invalid image/)
     assert.ok(await first.loadImage('cat_run'))
     assert.equal(requests.filter((id) => id.includes('cat_run')).length, 3)
+    const decorations = await first.loadAll(
+      null,
+      ['pq/pq1', 'pq/pq6', 'dog_eat', 'cat_eat', 'dog_wo', 'cat_wo'],
+      { optional: true }
+    )
+    assert.equal(Object.keys(decorations).length, 5)
+    assert.ok(requests.some((id) => id.endsWith('/baseImage/pq/pq1.png')))
+    for (const name of ['dog_eat', 'cat_eat', 'dog_wo', 'cat_wo']) {
+      assert.ok(decorations[name])
+      assert.ok(requests.some((id) => id.endsWith(`/baseImage/${name}.png`)))
+    }
+    await assert.rejects(() => first.loadAll(null, ['pq/pq6']), /unavailable/)
+    const requestCount=requests.length
+    const idle=await first.loadImage('boy_idle_sw')
+    assert.ok(idle)
+    assert.equal(requests.at(-1),'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage/people/boy/boy-walk-sw-end/boy-walk-sw-stop.png')
+    const atlas=await first.loadImage('boy_walk_sw')
+    assert.ok(atlas)
+    assert.equal(atlas.width,2048)
+    assert.equal(requests.at(-1),'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage/people/boy/boy-walk-sw-end/walk-sw.png')
+    assert.ok(await first.loadImage('boy_run_sw'))
+    assert.equal(requests.at(-1),'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage/people/boy/boy-walk-sw-end/run-sw.png')
+    assert.equal(requests.length,requestCount+3)
+    for (const action of ['idle', 'walk', 'run']) {
+      const image = await first.loadImage('girl_' + action + '_sw')
+      assert.equal(image.width, 2048)
+      assert.equal(requests.at(-1), 'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage/people/girl/' + action + '-sw.png')
+    }
+    await new AssetLoader2D(canvas).loadAll(null, ['boy_idle_sw', 'boy_walk_sw', 'boy_run_sw'])
+    assert.equal(requests.length,requestCount+6)
+    const catAtlas = await first.loadImage('cat_walk')
+    assert.equal(catAtlas.width, 2048)
+    assert.equal(catAtlas.height, 2048)
+    assert.equal(requests.at(-1), 'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage/cat/walk.png')
+    await new AssetLoader2D(canvas).loadImage('cat_walk')
+    assert.equal(requests.length,requestCount+7)
+    const dogAtlas = await first.loadImage('dog_walk')
+    assert.equal(dogAtlas.width,2048)
+    assert.equal(dogAtlas.height,2048)
+    assert.equal(requests.at(-1),'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage/dog/walk.png')
+    await new AssetLoader2D(canvas).loadImage('dog_walk')
+    assert.equal(requests.length,requestCount+8)
   } finally {
     delete global.wx
   }

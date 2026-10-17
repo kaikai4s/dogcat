@@ -1,3 +1,4 @@
+.playground-page, .playground-page view, .playground-page text, .playground-page button, .playground-page image { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .playground-page {
   min-height: 100vh;
   padding: 28rpx 24rpx 48rpx;

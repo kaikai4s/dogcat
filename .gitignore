@@ -4,3 +4,8 @@ cloudfunctions/*/node_modules/
 
 # Accidental Windows cache files copied into the repository root.
 %SystemDrive%/
+
+# Generated previews and original-asset backups stay local.
+output/
+__pycache__/
+*.pyc

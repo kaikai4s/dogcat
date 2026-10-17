@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createCollectionStore } = require('./helpers')
 const createHandler = require('../../cloudfunctions/api/handlers/playground')
+const { ownerId } = require('../../cloudfunctions/api/services/playground-world')
 
 function createTestContext(dbState, openid = 'test_owner') {
   const db = createCollectionStore(dbState)
@@ -92,4 +93,55 @@ test('playground rejects removed model actions', async () => {
     () => handler(openid, 'updatePetModel', { petId: 'pet_01' }),
     /未知 playground 操作/
   )
+})
+
+test('individual pet sizes persist in the overview without changing other pets', async () => {
+  const { handler, openid, db } = createTestContext({
+    users: [],
+    pets: [
+      { _id: 'dog', openid: 'test_owner', species: 'dog' },
+      { _id: 'cat', openid: 'test_owner', species: 'cat' }
+    ]
+  })
+  assert.deepEqual(await handler(openid, 'setPetScale', { petId: 'dog', scale: 1.75 }),
+    { petId: 'dog', scale: 1.75 })
+  const overview = await handler(openid, 'getOverview')
+  assert.equal(overview.pets.find((p) => p._id === 'dog').playgroundScale, 1.75)
+  assert.equal(overview.pets.find((p) => p._id === 'cat').playgroundScale, 1)
+  assert.equal(db.state.pets.find((p) => p._id === 'cat').playgroundScale, undefined)
+  await handler(openid, 'setPetScale', { petId: 'dog', scale: 1 })
+  assert.equal(db.state.pets.find((p) => p._id === 'dog').playgroundScale, 1)
+})
+
+test('size changes reject invalid values, deleted pets and pets owned by others', async () => {
+  const { handler, openid, db } = createTestContext({
+    users: [],
+    pets: [
+      { _id: 'other', openid: 'another_owner', playgroundScale: 1 },
+      { _id: 'deleted', openid: 'test_owner', deletedAt: '2026-10-17' }
+    ]
+  })
+  for (const scale of [0, -1, 2.01, 0.49, NaN, Infinity, '1', null])
+    await assert.rejects(handler(openid, 'setPetScale', { petId: 'other', scale }), /50%～200%/)
+  for (const petId of ['other', 'deleted', 'missing'])
+    await assert.rejects(handler(openid, 'setPetScale', { petId, scale: 1.5 }), /不存在或无权/)
+  assert.equal(db.state.pets[0].playgroundScale, 1)
+})
+
+test('filling a dog bowl persists for its owner, is idempotent and rejects foreign or old plots', async () => {
+  const {handler,openid,db}=createTestContext({
+    users:[], pets:[],
+    pet_playground_plots:[{_id:ownerId('test_owner'),kind:'owner_plot',
+      ownerOpenid:'test_owner',plotId:'mine',x:84,z:84,size:48}]
+  })
+  await assert.rejects(handler(openid,'fillBowl',{plotId:'neighbor'}),/只能给自己/)
+  await assert.rejects(handler(openid,'fillBowl',{}),/请选择/)
+  const results=await Promise.all([handler(openid,'fillBowl',{plotId:'mine'}),handler(openid,'fillBowl',{plotId:'mine'})])
+  assert.deepEqual(results,[{plotId:'mine',food:100},{plotId:'mine',food:100}])
+  const overview=await handler(openid,'getOverview')
+  assert.equal(overview.foodBowls.dog,100)
+  const record=db.state.pet_playground_plots.find(p=>p._id===ownerId(openid))
+  record.plotId='moved'
+  await assert.rejects(handler(openid,'fillBowl',{plotId:'mine'}),/只能给自己/)
+  await assert.rejects(handler('someone_else','fillBowl',{plotId:'moved'}),/只能给自己/)
 })

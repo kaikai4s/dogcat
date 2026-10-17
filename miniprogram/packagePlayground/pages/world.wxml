@@ -1,31 +1,96 @@
 <view class="world">
   <canvas id="worldCanvas" type="2d" class="canvas" bindtouchstart="touchStart" catchtouchmove="touchMove" bindtouchend="touchEnd" bindtouchcancel="touchCancel"></canvas>
   <view class="top" style="top: {{top}}px">
-    <button class="round" bindtap="back">返回</button>
-    <view class="title">
-      <text wx:if="{{hasCommunity && communityName}}">{{communityName}} · 邻里庄园</text>
-      <text wx:else>阳光庄园 · 私享模式</text>
-      <text class="subtitle">{{worldSize}} · {{hasCommunity ? '同小区共享草地' : '设置常住小区后可安家'}} </text>
+    <button class="round settings-icon" bindtap="openSettings" aria-label="场景设置">⚙</button>
+    <button class="round back-button" bindtap="back">‹ 返回</button>
+    <view class="title" bindtap="communityActions">
+      <text class="community-name">{{communityName || '阳光庄园'}}</text>
+      <view class="subtitle"><text>{{visiting ? '正在访问' : hasAvatar ? '我的小区' : '待建庭院'}} · 切换 ▾</text><text class="resident-count">已入住 {{residentCount}} 人</text></view>
     </view>
   </view>
+  <button class="request-badge" style="top: {{top + 76}}px" wx:if="{{socialRequests.length && !loading && !socialOpen}}" bindtap="openSocial">待处理申请 {{socialRequests.length}}</button>
   <view class="error" wx:if="{{error}}">
     <view>场景加载失败</view><view class="detail">{{error}}</view>
     <button bindtap="initialize">重新加载</button>
   </view>
   <view class="loading" wx:elif="{{loading}}"><view class="loader"></view><text>{{status}}</text></view>
-  <view class="bottom" style="bottom: {{bottom}}px" wx:else>
-    <view class="status">{{status}}</view>
-    <scroll-view class="pet-tabs" scroll-x="true" wx:if="{{pets.length}}">
-      <view class="pet-chip {{item.selected ? 'selected' : ''}}" wx:for="{{pets}}" wx:key="id" data-id="{{item.id}}" bindtap="selectPet">
-        <text>{{item.name}}</text><text class="species">{{item.species === 'cat' ? '猫' : '狗'}}</text>
-      </view>
-    </scroll-view>
-    <view class="controls">
-      <button bindtap="overview">{{hasPlot ? '回到家园' : '回到起点'}}</button><button bindtap="follow">跟随宠物</button>
-      <button wx:if="{{!hasPlot && hasCommunity && !placing}}" bindtap="choosePlot">选择宅基地</button>
-      <button wx:if="{{placing}}" bindtap="cancelPlot" disabled="{{claiming}}">取消选址</button>
-      <button wx:if="{{placing}}" bindtap="confirmPlot" disabled="{{!canConfirm || claiming}}" loading="{{claiming}}">永久安置</button>
+  <view wx:if="{{hasAvatar && !loading && !error && !placing && !settingsOpen && !socialOpen && !showPetScale && (joystickMode === 'always' || joystickActive)}}" class="joystick-pad {{joystickMode === 'always' ? 'joystick-fixed' : ''}} {{joystickRunning ? 'running' : ''}}" style="left: {{joystickLeft}}px; top: {{joystickTop}}px; opacity: {{joystickOpacity / 100}};" catchtouchstart="fixedJoystickStart" catchtouchmove="fixedJoystickMove" catchtouchend="fixedJoystickEnd" catchtouchcancel="fixedJoystickEnd">
+    <view class="joystick-ring"></view>
+    <view class="joystick-knob" style="transform: translate({{joystickX}}px, {{joystickY}}px)"></view>
+    <text class="joystick-caption">{{joystickRunning ? '奔跑' : '轻推行走 · 拉远奔跑'}}</text>
+  </view>
+  <view class="player-hud {{joystickHand === 'right' ? 'right-hand' : ''}}" style="bottom: {{bottom + 260 + (showPetScale ? 105 : 0)}}px" wx:if="{{hasAvatar && !loading && !error && !placing}}">
+    <view class="interaction-actions">
+      <button wx:if="{{nearbyPlayer && !nearbyPlayer.friend}}" bindtap="requestFriend" disabled="{{socialBusy}}">添加 {{nearbyPlayer.name}} 为好友</button>
+      <button wx:if="{{nearbyGate}}" bindtap="requestVisit" disabled="{{socialBusy}}">申请访问 {{nearbyGate.name}} 的庭院</button>
+      <button wx:if="{{nearbyBowl}}" class="fill-bowl" bindtap="fillBowl" disabled="{{feeding || nearbyBowl.food >= 100}}" loading="{{feeding}}">{{nearbyBowl.food >= 100 ? '狗碗已添满' : '给狗碗添粮'}}</button>
     </view>
-    <view class="hint">点击草地行走 · 点击名字切换宠物 · 单指拖动 · 双指缩放</view>
+  </view>
+  <view class="bottom" style="bottom: {{bottom}}px" wx:if="{{!loading && !error}}">
+    <view class="status">{{connectionMessage || status}}</view>
+    <view class="unplaced" wx:if="{{!hasAvatar && !placing}}">
+      <text>尚未安置庭院，建好后角色和宠物将进入场景</text>
+      <button bindtap="chooseCommunityAndBuild">选择小区并建造庭院</button>
+    </view>
+    <view class="character-selection" wx:if="{{characterSelected && !placing}}">已选中自己的角色 · 点击空地移动</view>
+    <view class="pet-actions" wx:if="{{selectedPetId && !placing}}">
+      <text class="selected-pet-name">已选中 {{selectedPetName}} · 点击地图前往，可连续更换目标</text>
+      <button wx:if="{{nearbyPet && selectedPetId === nearbyPet.id}}" bindtap="interactPet">摸摸</button>
+      <button bindtap="activity" data-action="eat" wx:if="{{hasPlot}}">去吃饭</button>
+      <button bindtap="activity" data-action="sleep" wx:if="{{hasPlot}}">回窝休息</button>
+      <button bindtap="follow">跟随宠物</button>
+      <button bindtap="togglePetScale">{{showPetScale ? '收起大小调节' : '调整宠物大小'}}</button>
+    </view>
+    <view class="pet-size-panel" wx:if="{{showPetScale && selectedPetId && !placing}}">
+      <view class="pet-size-heading"><text>{{selectedPetName}} · {{petScalePercent}}%</text><text class="pet-size-tip">{{petScaleSaving ? '保存中…' : '松手自动保存'}}</text></view>
+      <view class="pet-size-slider"><text>小</text><slider min="50" max="200" step="5" value="{{petScalePercent}}" disabled="{{petScaleSaving}}" activeColor="#6f8d58" block-color="#6f8d58" block-size="20" bindchanging="previewPetScale" bindchange="savePetScale"/><text>大</text><button bindtap="resetPetScale" disabled="{{petScaleSaving}}">恢复默认</button></view>
+    </view>
+    <view class="controls">
+      <button wx:if="{{hasAvatar}}" bindtap="focusCharacter">回到角色</button><button bindtap="fullOverview">地图中心</button><button bindtap="overview">{{hasPlot ? '回到家园' : '回到起点'}}</button>
+      <button wx:if="{{(!hasPlot || canRelocate) && hasCommunity && !hasHomeElsewhere && !placing}}" bindtap="choosePlot">{{hasPlot ? '调整庭院' : '在这里建造庭院'}}</button>
+      <button wx:if="{{placing}}" bindtap="cancelPlot" disabled="{{claiming}}">取消选址</button>
+      <button wx:if="{{placing}}" bindtap="confirmPlot" disabled="{{!canConfirm || claiming}}" loading="{{claiming}}">确认位置</button>
+    </view>
+    <view class="hint">{{hasAvatar ? joystickMode === 'hold' ? '长按草地1秒显示摇杆 · ' : '摇杆轻推走 / 拉远跑 · ' : ''}}点击角色 / 宠物选择 · 双指缩放</view>
+  </view>
+  <view class="settings-backdrop" wx:if="{{settingsOpen}}" catchtap="closeSettings" catchtouchmove="swallowTouch">
+    <view class="settings-panel" catchtap="swallowTouch">
+      <view class="settings-heading"><view><text>场景设置</text><text class="settings-tip">按你的习惯，自在逛家园</text></view><button bindtap="closeSettings">完成</button></view>
+      <scroll-view scroll-y="true" class="settings-content">
+        <button class="settings-entry" bindtap="openSocial">
+          <text class="settings-entry-icon">友</text>
+          <view class="settings-entry-copy"><text class="settings-entry-title">好友与庭院访问</text><text class="settings-tip">查看好友，处理好友与来访申请</text></view>
+          <text class="settings-count" wx:if="{{socialRequests.length}}">{{socialRequests.length}}</text><text class="settings-chevron">›</text>
+        </button>
+        <text class="settings-section">操控习惯</text>
+        <view class="settings-card">
+          <view class="settings-row"><view><text>长按显示摇杆</text><text class="settings-tip">关闭时常显，开启后长按草地 1 秒</text></view><switch checked="{{joystickMode === 'hold'}}" color="#6f8d58" bindchange="changeJoystickMode"/></view>
+          <view class="settings-hand"><text>习惯用手</text><view class="hand-options"><button class="{{joystickHand === 'left' ? 'active' : ''}}" data-hand="left" bindtap="changeJoystickHand" aria-pressed="{{joystickHand === 'left'}}">左手摇杆</button><button class="{{joystickHand === 'right' ? 'active' : ''}}" data-hand="right" bindtap="changeJoystickHand" aria-pressed="{{joystickHand === 'right'}}">右手摇杆</button></view><text class="settings-tip">常显摇杆靠近所选侧边</text></view>
+          <view class="settings-opacity"><view class="settings-value"><text>摇杆不透明度</text><text>{{joystickOpacity}}%</text></view><slider min="10" max="100" step="5" value="{{joystickOpacity}}" activeColor="#6f8d58" block-color="#6f8d58" block-size="20" bindchanging="changeJoystickOpacity" bindchange="changeJoystickOpacity"/></view>
+        </view>
+        <text class="settings-section">场景显示</text>
+        <view class="settings-card"><view class="settings-row"><view><text>显示庭院主人</text><text class="settings-tip">在每个庭院上方显示用户昵称</text></view><switch checked="{{showYardOwners}}" color="#6f8d58" bindchange="changeYardOwners"/></view></view>
+        <button wx:if="{{hasAvatar}}" class="settings-entry character-entry" bindtap="switchCharacter" disabled="{{characterChanging || placing}}" loading="{{characterChanging}}"><text class="settings-entry-icon">人</text><view class="settings-entry-copy"><text class="settings-entry-title">{{characterType === 'girl' ? '换成男孩' : '换成女孩'}}</text><text class="settings-tip">当前角色：{{characterType === 'girl' ? '女孩' : '男孩'}}</text></view><text class="settings-chevron">›</text></button>
+      </scroll-view>
+    </view>
+  </view>
+  <view class="settings-backdrop" wx:if="{{socialOpen}}" catchtap="closeSocial" catchtouchmove="swallowTouch">
+    <view class="settings-panel" catchtap="swallowTouch">
+      <view class="settings-heading"><text>好友与庭院访问</text><button bindtap="closeSocial">完成</button></view>
+      <scroll-view scroll-y="true" class="social-list">
+        <view class="social-section">待处理申请</view>
+        <text class="settings-tip" wx:if="{{!socialRequests.length}}">暂无新申请</text>
+        <view class="social-item" wx:for="{{socialRequests}}" wx:key="id">
+          <text>{{item.name}} {{item.type === 'visit' ? '申请访问你的庭院' : '申请添加你为好友'}}</text>
+          <text class="settings-tip">{{item.type === 'visit' ? '同意后可访问至今天24点（北京时间）' : '成为好友后可以互相进出庭院'}}</text>
+          <view class="social-actions"><button data-id="{{item.id}}" data-accept="{{true}}" bindtap="respondRequest" disabled="{{socialBusy}}">同意</button><button data-id="{{item.id}}" data-accept="{{false}}" bindtap="respondRequest" disabled="{{socialBusy}}">拒绝</button></view>
+        </view>
+        <view class="social-section">我的好友 · {{socialFriends.length}}</view>
+        <text class="settings-tip" wx:if="{{!socialFriends.length}}">走近场景中的其他角色，即可申请添加好友</text>
+        <view class="social-item social-friend" wx:for="{{socialFriends}}" wx:key="id"><text>{{item.name}}</text><button data-id="{{item.id}}" bindtap="removeFriend" disabled="{{socialBusy}}">解除好友</button></view>
+        <view class="social-section" wx:if="{{socialOutgoing.length}}">我发出的申请</view>
+        <view class="social-item" wx:for="{{socialOutgoing}}" wx:key="id"><text>{{item.name}} · {{item.type === 'visit' ? '访问庭院' : '添加好友'}}</text><text class="settings-tip">{{item.status === 'accepted' ? '已同意' : item.status === 'rejected' ? '已拒绝' : '等待对方处理'}}</text></view>
+      </scroll-view>
+    </view>
   </view>
 </view>

@@ -3,7 +3,7 @@
     <view class="hero-copy">
       <view class="hero-badge"><text class="remix-icon ri-gamepad-fill"></text><text>宠物乐园 · 2D 互动</text></view>
       <view class="hero-title">进入爱宠的阳光庄园</view>
-      <view class="hero-desc">在大草地上拖动、缩放浏览，点击地面控制爱宠行走，为自己选择永久宅基地。</view>
+      <view class="hero-desc">在大草地上拖动、缩放浏览，点击地面控制爱宠行走，为自己选择宅基地。</view>
     </view>
     <view class="hero-actions">
       <button class="ghost-btn small-btn" bindtap="goPets">宠物档案</button>
@@ -49,7 +49,7 @@
   <view class="game-features" wx:if="{{!loading && !empty}}">
     <view class="feature-item"><text class="feature-icon">🐾</text><view><view class="feature-title">手动控制行走</view><view class="muted">点击目的地、从院门进出</view></view></view>
     <view class="feature-item"><text class="feature-icon">🏡</text><view><view class="feature-title">邻里庄园</view><view class="muted">查看相邻别墅和绿化</view></view></view>
-    <view class="feature-item"><text class="feature-icon">🍖</text><view><view class="feature-title">永久安家</view><view class="muted">空草坪选址，保存后不能搬迁</view></view></view>
+    <view class="feature-item"><text class="feature-icon">🍖</text><view><view class="feature-title">庭院安置</view><view class="muted">{{overview.world.canRelocate ? '临时开放重新选址' : '空草坪选址，保存后不能搬迁'}}</view></view></view>
   </view>
 
   <view class="pet-strip" wx:if="{{pets.length}}">
@@ -82,7 +82,7 @@
     <view class="community-modal-card" catchtap="stopBubble">
       <view class="community-modal-icon-wrap"><view class="remix-icon ri-home-5-fill modal-icon"></view></view>
       <view class="modal-title">发现同小区的毛孩子邻居</view>
-      <view class="modal-desc">选择常住小区后，与同小区住户共享草地。房屋位置由您手动选择，确认后永久保存。</view>
+      <view class="modal-desc">选择常住小区后，与同小区住户共享草地。房屋位置由您手动选择，确认后保存位置。</view>
       <view class="modal-tip"><text class="remix-icon ri-map-pin-2-fill tip-icon"></text><text>选择小区只用于匹配邻里庄园位置。</text></view>
       <view class="modal-actions">
         <button class="primary-btn full-btn" bindtap="selectCommunityAndEnter" loading="{{savingCommunity}}"><text class="remix-icon ri-navigation-fill"></text><text>定位并进入邻里庄园</text></button>
