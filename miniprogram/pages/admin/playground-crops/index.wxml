@@ -1,0 +1,27 @@
+<view class="crop-admin">
+  <block wx:if="{{!form}}">
+    <view class="heading"><text class="title">农作物管理</text><button wx:if="{{adminSuper || adminPermissions.playgroundFarm_save}}" bindtap="edit"><text class="remix-icon ri-add-line"></text>新增作物</button></view>
+    <view class="error" wx:if="{{error}}">{{error}}<button bindtap="load">重试</button></view>
+    <view class="muted" wx:if="{{loading}}">加载中…</view>
+    <view class="crop-row" wx:for="{{crops}}" wx:key="id">
+      <view class="crop-summary"><view class="crop-name">{{item.name}} <text class="status {{item.enabled ? '' : 'off'}}">{{item.enabled ? '已上架' : '已下架'}}</text></view><view class="muted">{{item.minutes}}分钟 · {{item.stages.length}}阶段 · Lv.{{item.level}}</view><view class="muted">种子 {{item.price}}金币 · 每份售价 {{item.sell}}金币 · 收成 {{item.yield}}份</view></view>
+      <button wx:if="{{adminSuper || adminPermissions.playgroundFarm_save}}" data-id="{{item.id}}" bindtap="edit">编辑</button>
+    </view>
+  </block>
+  <block wx:else>
+    <view class="heading"><button bindtap="close" disabled="{{busy}}"><text class="remix-icon ri-arrow-left-line"></text>返回</button><text class="title">{{isNew ? '新增农作物' : form.name}}</text></view>
+    <view class="form-section">
+      <label class="field"><text>作物编号</text><input value="{{form.id}}" disabled="{{!isNew || busy}}" maxlength="40" data-key="id" bindinput="input" placeholder="例如 tomato" /></label>
+      <label class="field"><text>作物名称</text><input value="{{form.name}}" disabled="{{busy}}" maxlength="24" data-key="name" bindinput="input" /></label>
+      <label class="field" wx:for="{{fields}}" wx:key="key"><text>{{item.label}}</text><input type="number" disabled="{{busy}}" value="{{form[item.key]}}" data-key="{{item.key}}" bindinput="input" /></label>
+      <view class="field"><text>上架销售与播种</text><switch checked="{{form.enabled}}" disabled="{{busy}}" bindchange="enabledChange" color="#327f64" /></view>
+    </view>
+    <view class="form-section">
+      <label class="field stages-field"><text>生长阶段（进度%）</text><input value="{{stagesText}}" disabled="{{busy}}" bindinput="stagesInput" placeholder="0,20,65,100" /></label>
+      <view class="stage-preview" wx:if="{{form.atlas}}"><image src="{{form.atlas.fileID}}" mode="scaleToFill" style="width:{{form.atlas.columns * 256}}rpx;left:{{-previewStage * 256}}rpx;" /></view>
+      <view class="stage-tabs" wx:if="{{form.atlas}}"><button wx:for="{{form.stages}}" wx:key="index" class="{{previewStage === index ? 'selected' : ''}}" data-index="{{index}}" bindtap="preview">{{item === 100 ? '成熟' : item + '%'}}</button></view>
+      <button wx:if="{{adminSuper || adminPermissions.playgroundFarm_prepareUpload}}" class="asset-button" disabled="{{busy}}" bindtap="upload"><text class="remix-icon ri-image-add-line"></text>{{busy && progress ? '上传中 ' + progress + '%' : '上传阶段PNG图集'}}</button>
+    </view>
+    <button class="save" loading="{{busy}}" disabled="{{busy}}" bindtap="save"><text class="remix-icon ri-save-line"></text>保存并发布</button>
+  </block>
+</view>

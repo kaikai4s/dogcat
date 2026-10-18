@@ -36,7 +36,7 @@ function requireOrderedTransactions(db) {
 function fixture() {
   let time=1800000000000
   const db=createCollectionStore({users:['a','b','admin'].map((openid)=>({_id:'u_'+openid,openid,status:'active',roles:openid==='admin'?['admin']:['client'],nickname:openid,residentialCommunity:{name:'A小区',address:'路'}})),
-    pets:[{_id:'pet_a',openid:'a',name:'豆豆',species:'dog'},{_id:'pet_a2',openid:'a',name:'豆豆',species:'cat'},{_id:'pet_b',openid:'b',name:'豆豆',species:'dog'}]})
+    pets:[{_id:'pet_a',openid:'a',name:'豆豆',species:'dog'},{_id:'pet_a2',openid:'a',name:'豆豆',species:'cat'},{_id:'pet_b',openid:'b',name:'豆豆',species:'dog'}]}, {cloudObjectUpdates:true})
   requireOrderedTransactions(db)
   const files=new Map(),uploaded=[],checks=[]
   const cloud={downloadFile:async({fileID})=>{if(!files.has(fileID))throw new Error('file missing');return {fileContent:files.get(fileID)}},
@@ -163,6 +163,7 @@ test('character publish preserves live position and session, and stale entry use
   const readyRun=fileID(batch.walkFileID.replace(/walk\.png$/,'run.png').slice('cloud://test.bucket/'.length))
   f.files.set(readyRun,atlas({color:101}))
   const custom=await f.service.publish('admin',{...batch,runFileID:readyRun})
+  assert.equal(custom.syncPending,false)
   const actor=f.db.state.pet_playground_plots.find((r)=>r._id===pid('a'))
   for(const field of ['position','session','seq'])assert.deepEqual(actor[field],old[field])
   assert.ok(actor.sessionStarted>old.sessionStarted)
@@ -173,6 +174,60 @@ test('character publish preserves live position and session, and stale entry use
   assert.equal(returned.appearance.id,custom.appearance.id)
   assert.equal(f.db.state.pet_playground_plots.find((r)=>r.kind==='resident').pets[0].appearance.id,petLook.appearance.id)
   assert.equal(scene.sceneId,returned.sceneId)
+})
+
+test('publishing over legacy null appearance fields repairs existing projections and re-entry without resetting positions',async()=>{
+  for(const type of ['character','pet']) {
+    const f=fixture(),shared=require('../../cloudfunctions/api/services/playground-shared')(f.context)
+    await world.create(f.context).claim('a',f.user('a'),{x:280,z:280})
+    const scene=await shared.enter('a',f.user('a'),{},[f.entity('pet_a')])
+    const before=structuredClone(f.db.state.pet_playground_plots)
+    const row=await f.pending('a',type==='pet'?'pet_a':'',type),batch=await f.batch(row)
+    f.db.state[REQUESTS].find((r)=>r._id===row._id).appearance=null
+    f.db.state[BINDINGS].find((r)=>r.activeRequestId===row._id).appearance=null
+    const entity=type==='pet'?f.entity('pet_a'):f.user('a')
+    entity.playgroundAppearance=null
+    const result=await f.service.publish('admin',batch)
+    assert.equal(result.completed,true);assert.equal(result.syncPending,false)
+    for(const stored of [(type==='pet'?f.entity('pet_a'):f.user('a')).playgroundAppearance,
+      f.db.state[REQUESTS].find((r)=>r._id===row._id).appearance,
+      f.db.state[BINDINGS].find((r)=>r.kind==='target').appearance]) {
+      assert.equal(stored.id,result.appearance.id)
+    }
+    const actor=f.db.state.pet_playground_plots.find((r)=>r._id===pid('a'))
+    assert.deepEqual(actor.position,before.find((r)=>r._id===pid('a')).position)
+    const resident=f.db.state.pet_playground_plots.find((r)=>r.kind==='resident')
+    assert.deepEqual(resident.pets.map((p)=>p.motion),before.find((r)=>r.kind==='resident').pets.map((p)=>p.motion))
+    const returned=await shared.enter('a',f.user('a'),{},[f.entity('pet_a')])
+    await shared.snapshot('a',{sceneId:returned.sceneId,session:returned.session})
+    assert.deepEqual(returned.position,scene.position)
+    const projected=f.db.state.pet_playground_live.flatMap((r)=>Object.values(r.records||{}))
+    const look=type==='character'?projected.find((r)=>r.id===pid('a')).appearance:projected.find((r)=>r.kind==='resident').pets[0].appearance
+    assert.equal(look.id,result.appearance.id)
+  }
+})
+
+test('a walking-only replacement removes the old running atlas from target, binding, request and live scene',async()=>{
+  const f=fixture(),shared=require('../../cloudfunctions/api/services/playground-shared')(f.context)
+  await world.create(f.context).claim('a',f.user('a'),{x:280,z:280})
+  await shared.enter('a',f.user('a'),{},[])
+  const first=await f.pending('a','','character'),batch=await f.batch(first)
+  const runFileID=batch.walkFileID.replace(/walk\.png$/,'run.png')
+  f.files.set(runFileID,atlas({color:101}))
+  await f.service.publish('admin',{...batch,runFileID})
+  assert.ok(f.user('a').playgroundAppearance.run)
+  f.advance()
+  const next=await f.pending('a','','character')
+  const result=await f.service.publish('admin',await f.batch(next,atlas({color:102})))
+  assert.equal(result.syncPending,false)
+  const binding=f.db.state[BINDINGS].find((r)=>r.kind==='target')
+  const request=f.db.state[REQUESTS].find((r)=>r._id===next._id)
+  const actor=f.db.state.pet_playground_plots.find((r)=>r._id===pid('a'))
+  const live=f.db.state.pet_playground_live.flatMap((r)=>Object.values(r.records||{})).find((r)=>r.id===pid('a'))
+  for(const stored of [f.user('a').playgroundAppearance,binding.appearance,request.appearance,actor.appearance,live.appearance]) {
+    assert.equal(stored.id,result.appearance.id)
+    assert.ok(!stored.run)
+  }
 })
 
 test('entry reads multiple current pets in order and excludes missing, deleted or reassigned pets',async()=>{

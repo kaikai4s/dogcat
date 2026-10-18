@@ -7,7 +7,7 @@ const {createNavigation}=require('../../miniprogram/packagePlayground/utils/navi
 const {PlayerCharacter}=require('../../miniprogram/packagePlayground/utils/player-character')
 const lifePage=require('../../miniprogram/packagePlayground/utils/life-page')
 const {fixture}=require('../fixtures/playgroundLife')
-const {farmLayout}=require('../../miniprogram/packagePlayground/utils/farm-model')
+const {farmLayout,CROPS,SOILS}=require('../../miniprogram/packagePlayground/utils/farm-model')
 
 function worldFixture(scene={}) {
   let emitted=[]
@@ -21,17 +21,83 @@ function worldFixture(scene={}) {
   page.world=w;w.buildWorld();w.loadVisible=async()=>{}
   return {w,page,emitted:()=>emitted}
 }
-function syncFixture(world,scene,call) {
+function syncFixture(world,scene,call,runtime={}) {
   let SceneSync
   const requests=[]
   vm.runInNewContext(fs.readFileSync(require.resolve('../../miniprogram/packagePlayground/utils/scene-sync'),'utf8'),{
-    module:{set exports(value){SceneSync=value.SceneSync}},setTimeout,clearTimeout,Date,
+    module:{set exports(value){SceneSync=value.SceneSync}},setTimeout,clearTimeout,Date,...runtime,
     require:()=>({getCloudEnv:()=>'',callFunction:async(_,action,data)=>{requests.push({action,data});return call(action,data)}})
   })
   const sync=new SceneSync(world,scene);world.sceneSync=sync
   return {sync,requests}
 }
 const motion=(p)=>({epoch:Date.now(),approach:[p],patrol:[p]})
+
+test('crop atlases slice four and five growth columns and reserve the final frame for maturity',()=>{
+  const {w}=worldFixture(),draws=[],stamp=Date.now(),duration=100000000
+  w.scale=2;w.zoom=1;w.serverOffset=0
+  w.ctx={drawImage:(...args)=>draws.push(args)};w.markerLabel=()=>{}
+  const images=new Map()
+  w.farmImage=(atlas)=>{
+    if(!atlas)return null
+    if(!images.has(atlas.fileID))images.set(atlas.fileID,{id:atlas.fileID})
+    return images.get(atlas.fileID)
+  }
+  for(const id of ['carrot','corn']) {
+    const crop=CROPS.find((c)=>c.id===id)
+    for(const progress of [0,14,15,19,20,44,45,64,65,74,75,99.9,100]) {
+      draws.length=0
+      const plantedAt=stamp-progress/100*duration
+      w.drawFarm({x:400,z:400,size:112,farmBeds:[{id:0,cropId:id,plantedAt,readyAt:plantedAt+duration,watered:true}]})
+      const draw=draws.find((args)=>args[0].id===crop.atlas.fileID)
+      const frame=crop.stages.filter((threshold)=>threshold<=progress).length-1
+      assert.deepEqual(draw.slice(1,5),[frame*256,0,256,256],`${id}: ${progress}%`)
+      const soil=draws.find((args)=>args[0].id===SOILS.watered)
+      assert.equal(draw[5],soil[1]);assert.equal(draw[6],soil[2])
+      assert.equal(draw[7],soil[3]);assert.equal(draw[8],soil[4])
+    }
+  }
+})
+
+test('newer crop definitions survive a late farm response while its inventory and clock still update',()=>{
+  const {w,page}=worldFixture(),crop={...CROPS[0],id:'tomato',name:'番茄',enabled:false}
+  const catalog={revision:3,crops:[crop],soils:SOILS}
+  w.setFarmCatalog(catalog)
+  page.data.farmCropId='tomato'
+  page.applyFarm({catalog:{revision:2,crops:[{...crop,name:'旧名字',enabled:true}]},level:2,coins:81,seeds:{tomato:2},produce:{tomato:4},
+    crops:[],serverTime:Date.now(),beds:[{id:0,cropId:'tomato',plantedAt:Date.now()-120000,readyAt:Date.now()-1000}]})
+  assert.equal(w.farmCatalog.revision,3)
+  assert.equal(page.data.farm.catalog.revision,3)
+  assert.equal(page.data.farm.coins,81)
+  assert.equal(page.data.farm.crops[0].name,'番茄')
+  assert.equal(page.data.farm.crops[0].seeds,2);assert.equal(page.data.farm.crops[0].stock,4)
+  assert.equal(page.data.farmSeedAvailable,false)
+  assert.equal(page.data.farmBed.name,'番茄');assert.equal(page.data.farmBed.state,'ready')
+})
+
+test('catalog polling is throttled during scene fallback and a stopped session rejects a late catalog',async()=>{
+  const {w,page}=worldFixture(),timers=[],catalogs=[]
+  let stamp=100000,snapshots=0,release
+  w.setFarmCatalog=(catalog)=>catalogs.push(catalog)
+  w.sceneState=()=>({trail:[]})
+  page.ensureFarm=async()=>{}
+  const {sync,requests}=syncFixture(w,w.scene,(action)=>{
+    if(action==='getFarmCatalog')return new Promise((resolve)=>{release=resolve})
+    return {}
+  },{Date:{now:()=>stamp},setTimeout:(fn,delay)=>{const timer={fn,delay};timers.push(timer);return timer},clearTimeout(){}})
+  sync.watch=()=>{};sync.send=async()=>{};sync.snapshot=async()=>{snapshots++}
+  const settle=()=>new Promise((resolve)=>setImmediate(resolve))
+  const refresh=async()=>{const i=timers.findIndex((timer)=>timer.delay===1000);assert.ok(i>=0);await timers.splice(i,1)[0].fn()}
+  sync.start();release({revision:1,crops:[]});await settle()
+  stamp+=1000;await refresh();stamp+=1000;await refresh()
+  assert.equal(requests.filter((r)=>r.action==='getFarmCatalog').length,1)
+  assert.equal(snapshots,3)
+  stamp+=30000
+  const refreshing=refresh();await settle()
+  await sync.stop();release({revision:2,crops:[]});await refreshing
+  assert.equal(requests.filter((r)=>r.action==='getFarmCatalog').length,2)
+  assert.equal(catalogs.length,1);assert.equal(catalogs[0].revision,1)
+})
 
 test('selected pet shows live needs and low alerts, hides ridden sprites, and ignores neighbors low needs',()=>{
   const f=worldFixture(),at=Date.now()

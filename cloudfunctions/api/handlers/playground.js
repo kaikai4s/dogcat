@@ -18,6 +18,7 @@ module.exports = function createHandler(context) {
     if (action === 'setVehicleSpeed') return shared.vehicles.speed(openid,user,data)
     if (action === 'petAction') return shared.companions.action(openid,data)
     if (action === 'getFarm') return shared.farm.state(openid,data)
+    if (action === 'getFarmCatalog') return require('../services/playground-farm-catalog').readCatalog(db)
     if (action === 'farmAction') return shared.farm.action(openid,data)
     if (action === 'rideRequest') return shared.rides.request(openid,data)
     if (action === 'rideRespond') return shared.rides.respond(openid,data)
@@ -139,6 +140,7 @@ module.exports = function createHandler(context) {
 
     return {
       world: await world.config(),
+      farmCatalog: await require('../services/playground-farm-catalog').readCatalog(db),
       scene,
       plot: scene ? scene.plot : ownPlot ? world.publicPlot({ ...ownPlot, _id: ownPlot.plotId }, openid) : null,
       foodBowls: { dog: Number(ownPlot&&ownPlot.foodBowls&&ownPlot.foodBowls.dog)||0, cat:Number(ownPlot&&ownPlot.foodBowls&&ownPlot.foodBowls.cat)||0 },

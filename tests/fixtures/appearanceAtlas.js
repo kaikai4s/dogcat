@@ -11,8 +11,8 @@ function chunk(name,bytes) {
   out.writeUInt32BE(crc32(Buffer.concat([type,bytes])),out.length-4)
   return out
 }
-function atlas({color=100,filter=0,hidden=0,blank=-1,opaque=false,columns=4,level=6}={}) {
-  const width=128*columns,height=128*6,stride=width*4,raw=Buffer.alloc((stride+1)*height)
+function atlas({color=100,filter=0,hidden=0,blank=-1,opaque=false,columns=4,rows=6,level=6}={}) {
+  const width=128*columns,height=128*rows,stride=width*4,raw=Buffer.alloc((stride+1)*height)
   let previous=Buffer.alloc(stride)
   const paeth=(a,b,c)=>{const p=a+b-c,pa=Math.abs(p-a),pb=Math.abs(p-b),pc=Math.abs(p-c);return pa<=pb&&pa<=pc?a:pb<=pc?b:c}
   for(let y=0;y<height;y++) {

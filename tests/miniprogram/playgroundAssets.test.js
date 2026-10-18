@@ -4,6 +4,27 @@ const {
   AssetLoader2D
 } = require('../../miniprogram/packagePlayground/utils/asset-loader-2d')
 
+test('farm cloud atlases keep their original canvas and skip decoration background processing', async () => {
+  const previousWx=global.wx,requests=[]
+  let width=1280
+  global.wx={cloud:{downloadFile(options){requests.push(options.fileID);options.success({tempFilePath:'/tmp/farm-stage.png'})}},
+    createOffscreenCanvas(){assert.fail('Transparent farm art must not be resized or background-removed')}}
+  const canvas={createImage(){return {width,height:256,set src(value){queueMicrotask(()=>this.onload())}}}}
+  const atlas={fileID:'cloud://test.env/farm/transparent-stages.png',columns:5,rows:1,frameSize:256}
+  try {
+    const loader=new AssetLoader2D(canvas),image=await loader.loadAtlas(atlas)
+    assert.equal(image.width,1280);assert.equal(image.height,256)
+    assert.equal(await loader.loadAtlas(atlas),image)
+    assert.deepEqual(requests,[atlas.fileID])
+    const wrong={...atlas,fileID:'cloud://test.env/farm/wrong-stages.png'}
+    width=1024
+    await assert.rejects(()=>loader.loadAtlas(wrong),/尺寸不匹配/)
+    width=1280
+    assert.equal((await loader.loadAtlas(wrong)).width,1280)
+    assert.equal(requests.filter((id)=>id===wrong.fileID).length,2)
+  }finally{if(previousWx===undefined)delete global.wx;else global.wx=previousWx}
+})
+
 test('cloud assets load only requested images, share downloads and recover after network or image failures', async () => {
   const requests = []
   let failNetwork = true

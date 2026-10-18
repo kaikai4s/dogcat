@@ -54,6 +54,7 @@ class World2D {
     this.onStatus = onStatus || (() => {})
     this.onPetsChange = onPetsChange || (() => {})
     this.overviewData = overview || {}
+    this.farmCatalog=this.overviewData.farmCatalog||{revision:0,crops:require('./farm-model').CROPS,soils:require('./farm-model').SOILS}
     this.config = { width: 2240, height: 2240, ...this.overviewData.world }
     this.plotSize = this.config.plotSize || SIZE
     this.bounds = {
@@ -1171,11 +1172,12 @@ class World2D {
     pet.pendingMove=null
     if(previous)this.applySharedPet(previous,true)
   }
-  applySharedPet(pet,mine,ownerName,ownerId) {
+  applySharedPet(pet,mine,ownerName,ownerId,nameColor) {
     let target=this.pets.find((p)=>p.id===pet.id)
     if(!target) { target={id:pet.id,route:[],mode:'roaming',commandToken:0};this.pets.push(target) }
     // Appearance and ownership can change independently of an in-flight route.
     target.ownerId=ownerId||target.ownerId||(mine&&this.scene&&this.scene.playerId)||''
+    if(nameColor)target.nameColor=nameColor
     if(validAppearance(pet.appearance,'pet',pet.id,target.ownerId)&&(!target.appearance||(pet.appearance.revision||0)>=(target.appearance.revision||0)))target.appearance=pet.appearance
     else if(!validAppearance(target.appearance,'pet',pet.id,target.ownerId))target.appearance=null
     if(mine && (pet.commandSeq||0)<(target.acceptedCommand||0))return target
@@ -1263,8 +1265,8 @@ class World2D {
     for(const record of records) {
       if(record.kind==='plot') plots.set(record.id,record)
       if(record.kind==='presence'&&!record.mine) characters.push(record)
-      if(record.kind==='presence'&&record.mine){this.setOwnAppearance(record.appearance);this.applyOwnVehicleActor(record)}
-      if(record.kind==='resident') for(const pet of record.pets) {ids.add(pet.id);this.applySharedPet(pet,record.mine,record.ownerName||record.name,record.ownerId)}
+      if(record.kind==='presence'&&record.mine){this.setOwnName(record);this.setOwnAppearance(record.appearance);this.applyOwnVehicleActor(record)}
+      if(record.kind==='resident') for(const pet of record.pets) {ids.add(pet.id);this.applySharedPet(pet,record.mine,record.ownerName||record.name,record.ownerId,record.nameColor)}
     }
     this.pets=this.pets.filter((p)=>ids.has(p.id))
     this.sharedPlots=plots
@@ -1299,10 +1301,10 @@ class World2D {
       if(record.kind==='resident') {
         const ids=new Set((record.pets||[]).map((p)=>p.id))
         this.pets=this.pets.filter((p)=>p.ownerId!==record.ownerId||!record.deleted&&ids.has(p.id))
-        if(!record.deleted)for(const pet of record.pets||[])this.applySharedPet(pet,record.mine,record.ownerName||record.name,record.ownerId)
+        if(!record.deleted)for(const pet of record.pets||[])this.applySharedPet(pet,record.mine,record.ownerName||record.name,record.ownerId,record.nameColor)
         this.emitPets();continue
       }
-      if(record.mine) {this.setOwnAppearance(record.deleted?null:record.appearance,!!record.deleted);this.applyOwnVehicleActor(record);continue}
+      if(record.mine) {if(!record.deleted)this.setOwnName(record);this.setOwnAppearance(record.deleted?null:record.appearance,!!record.deleted);this.applyOwnVehicleActor(record);continue}
       if(record.deleted)characters.delete(record.id)
       else characters.set(record.id,record)
     }
@@ -1369,8 +1371,7 @@ class World2D {
       }
     }
     c.restore()
-    const online=person.online && Date.now()+this.serverOffset-person.lastSeen<15000
-    if(!overview) this.markerLabel((person.name||'邻居')+' · '+(online?'在线':'离线'),p.x,p.y-size*CHARACTER_STYLE.anchor-8)
+    if(!overview) this.markerLabel(person.name||'邻居',p.x,p.y-size*CHARACTER_STYLE.anchor-8,false,this.ownerNameColor(person.ownerId||person.id,person.nameColor))
   }
   pause() {
     this.paused=true
@@ -1506,6 +1507,8 @@ class World2D {
         -size / 2, -size * style.anchor, size, size)
     } else c.drawImage(image, -size / 2, -size * style.anchor, size, size)
     c.restore()
+    const name=this.scene&&this.scene.name||this.ownPlot&&this.ownPlot.ownerName
+    if(name)this.markerLabel(name,point.x,point.y-size*style.anchor-8,false,this.ownerNameColor(this.scene&&this.scene.playerId))
   }
   drawInteractionFeedback() {
     const c = this.ctx
@@ -1641,16 +1644,29 @@ class World2D {
     this.markerLabel(marker.pending ? '规划路线…' : arrived ? '已到达' : '前往这里', target.x, target.y - 34)
     c.restore()
   }
-  markerLabel(text, x, y, selected = false) {
+  setOwnName(record) {
+    if(!this.scene)return
+    if(record.name)this.scene.name=record.name
+    if(record.nameColor)this.scene.nameColor=record.nameColor
+  }
+  ownerNameColor(ownerId, color) {
+    const valid=(value)=>/^#[0-9a-f]{6}$/i.test(value||'')&&!/^#(?:ffffff|000000)$/i.test(value)
+    if(valid(color))return color
+    const plot=ownerId&&this.plots().find((p)=>p.ownerId===ownerId || p.mine&&this.scene&&ownerId===this.scene.playerId)
+    if(plot&&valid(plot.nameColor))return plot.nameColor
+    if(this.scene&&ownerId===this.scene.playerId&&valid(this.scene.nameColor))return this.scene.nameColor
+    return '#354c39'
+  }
+  markerLabel(text, x, y, selected = false, nameColor) {
     const c = this.ctx
     c.save()
     c.font = (selected ? '600 ' : '') + '12px sans-serif'
     c.textAlign = 'center'
     c.lineJoin = 'round'
     c.lineWidth = 3
-    c.strokeStyle = 'rgba(255,253,243,.85)'
+    c.strokeStyle = nameColor ? '#ffffff' : 'rgba(255,253,243,.85)'
     c.strokeText(text, x, y + 1)
-    c.fillStyle = selected ? '#285b38' : '#354c39'
+    c.fillStyle = nameColor || (selected ? '#285b38' : '#354c39')
     c.fillText(text, x, y + 1)
     c.restore()
   }
@@ -1747,7 +1763,7 @@ class World2D {
         point.y > this.height + 40
       )
         continue
-      const displayName=pet.mine===false && pet.ownerName ? pet.ownerName+'的'+pet.name : pet.name
+      const displayName=pet.name||'宠物'
       const width = c.measureText(displayName).width + 16
       const labelOffset = Math.max(16, 7 * (pet.modelScale || 1) * this.scale * this.zoom)
       let y = point.y - labelOffset
@@ -1767,7 +1783,7 @@ class World2D {
           'rgba(255,253,243,.75)',
           1
         )
-      this.markerLabel(displayName, point.x, y, pet.id === this.selectedPetId)
+      this.markerLabel(displayName, point.x, y, pet.id === this.selectedPetId,this.ownerNameColor(pet.ownerId||(pet.mine!==false&&this.scene&&this.scene.playerId),pet.nameColor))
     }
     c.restore()
   }
@@ -1778,7 +1794,7 @@ class World2D {
       const half=(plot.size||SIZE)/2
       if(plot.x+half<bounds.minX || plot.x-half>bounds.maxX || plot.z+half<bounds.minZ || plot.z-half>bounds.maxZ) continue
       const point=this.project(plot.x-half,plot.z-half)
-      this.markerLabel(plot.ownerName || String(plot.name||'邻居').replace(/的庭院$/,''),point.x,point.y-16,!!plot.mine)
+      this.markerLabel(plot.ownerName || String(plot.name||'邻居').replace(/的庭院$/,''),point.x,point.y-16,!!plot.mine,this.ownerNameColor(plot.ownerId,plot.nameColor))
     }
     this.ctx.restore()
   }

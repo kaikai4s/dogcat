@@ -49,6 +49,14 @@ module.exports={
     return request.promise
   },
   applyFarm(farm) {
+    if(this.world&&this.world.setFarmCatalog) {
+      this.world.setFarmCatalog(farm.catalog)
+      const catalog=this.world.farmCatalog
+      if(farm.catalog&&catalog&&catalog.revision>farm.catalog.revision) {
+        farm={...farm,catalog,crops:catalog.crops.map((c)=>({...c,unlocked:c.enabled!==false&&c.level<=farm.level,
+          seeds:(farm.seeds||{})[c.id]||0,stock:(farm.produce||{})[c.id]||0}))}
+      }
+    }
     this.farmApplyRevision=(this.farmApplyRevision||0)+1
     this.farmSnapshot=farm
     this.farmReceived=Date.now()
@@ -60,7 +68,7 @@ module.exports={
     if(!this.farmSnapshot)return
     const stamp=this.farmSnapshot.serverTime+Date.now()-this.farmReceived
     const beds=this.farmSnapshot.beds.map((b)=>{
-      const view=b.state==='wild'?b:bedView(b,stamp),remaining=view.remaining||0
+      const view=b.state==='wild'?b:bedView(b,stamp,this.farmSnapshot.crops),remaining=view.remaining||0
       return {...b,...view,countdown:remaining>=3600?Math.ceil(remaining/3600)+'小时':remaining>=60?Math.ceil(remaining/60)+'分钟':remaining+'秒'}
     })
     const crop=(this.farmSnapshot.crops||[]).find((c)=>c.id===this.data.farmCropId)

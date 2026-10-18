@@ -32,6 +32,26 @@
     </view>
     <text class="remix-icon {{showCareCard ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}} care-quick-arrow"></text>
   </view>
+  <view class="pet-notice-section care-quick-content" wx:if="{{showCareCard && order && order.petNoticeRows && order.petNoticeRows.length}}">
+    <view class="duration-title"><text class="remix-icon ri-error-warning-line"></text><text>下单时照护快照</text></view>
+    <view class="care-snapshot-tip">后续修改宠物档案不会影响本订单已同步的信息。</view>
+    <view class="pet-notice-row" wx:for="{{order.petNoticeRows}}" wx:for-item="petNotice" wx:key="index">
+      <view class="pet-notice-head">
+        <text class="pet-notice-name">{{petNotice.name}}</text>
+        <text class="pet-risk-pill risk-{{petNotice.riskClass}}">{{petNotice.riskLevelText}}</text>
+      </view>
+      <view class="pet-notice-tags" wx:if="{{petNotice.tags && petNotice.tags.length}}">
+        <text class="pet-notice-tag" wx:for="{{petNotice.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
+      </view>
+      <view wx:if="{{petNotice.sections && petNotice.sections.length}}">
+        <view class="pet-notice-line" wx:for="{{petNotice.sections}}" wx:for-item="section" wx:key="label">
+          <text class="pet-notice-label">{{section.label}}</text>
+          <text class="pet-notice-text">{{section.text}}</text>
+        </view>
+      </view>
+      <view class="pet-notice-empty" wx:else>暂无特别注意事项</view>
+    </view>
+  </view>
 
   <!-- 出发前往服务地点卡片（已接单但尚未出发） -->
   <view class="card depart-card" wx:if="{{order && order.canDepart}}">
@@ -120,26 +140,6 @@
     <view class="duration-section" wx:if="{{order.playDurationRows && order.playDurationRows.length}}">
       <view class="duration-title"><text class="remix-icon ri-gamepad-line"></text><text>陪玩时间</text></view>
       <view class="duration-chip" wx:for="{{order.playDurationRows}}" wx:key="index">{{item.text}}</view>
-    </view>
-    <view class="pet-notice-section" wx:if="{{showCareCard && order.petNoticeRows && order.petNoticeRows.length}}">
-      <view class="duration-title"><text class="remix-icon ri-error-warning-line"></text><text>下单时照护快照</text></view>
-      <view class="care-snapshot-tip">后续修改宠物档案不会影响本订单已同步的信息。</view>
-      <view class="pet-notice-row" wx:for="{{order.petNoticeRows}}" wx:for-item="petNotice" wx:key="index">
-        <view class="pet-notice-head">
-          <text class="pet-notice-name">{{petNotice.name}}</text>
-          <text class="pet-risk-pill risk-{{petNotice.riskClass}}">{{petNotice.riskLevelText}}</text>
-        </view>
-        <view class="pet-notice-tags" wx:if="{{petNotice.tags && petNotice.tags.length}}">
-          <text class="pet-notice-tag" wx:for="{{petNotice.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
-        </view>
-        <view wx:if="{{petNotice.sections && petNotice.sections.length}}">
-          <view class="pet-notice-line" wx:for="{{petNotice.sections}}" wx:for-item="section" wx:key="label">
-            <text class="pet-notice-label">{{section.label}}</text>
-            <text class="pet-notice-text">{{section.text}}</text>
-          </view>
-        </view>
-        <view class="pet-notice-empty" wx:else>暂无特别注意事项</view>
-      </view>
     </view>
   </view>
 
@@ -275,6 +275,7 @@
         <text>{{trackingWarningText}}</text>
       </view>
       <view class="tracking-error" wx:if="{{trackingErrorText}}">定位提示：{{trackingErrorText}}</view>
+      <button class="ghost-btn full-btn" wx:if="{{trackingState === 'foreground' || trackingState === 'error'}}" open-type="openSetting" bindopensetting="onTrackingSettingsOpened"><text class="remix-icon ri-settings-3-line"></text>定位授权设置</button>
       <button class="ghost-btn full-btn" wx:if="{{trackingState === 'foreground' || trackingState === 'error'}}" bindtap="retryBackgroundTracking">重试后台定位</button>
       <view class="track-text" wx:if="{{latestTrackText}}">{{latestTrackText}}</view>
       <button class="ghost-btn full-btn" bindtap="uploadPoint">手动补记当前位置</button>

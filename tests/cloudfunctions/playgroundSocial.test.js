@@ -10,7 +10,7 @@ async function fixture() {
   let time=Date.parse('2026-10-18T15:59:00Z')
   const users=['a','b','c'].map((openid,i)=>({_id:'u_'+openid,openid,nickname:['凯大大','小红','访客'][i],residentialCommunity:{name:i===2?'B小区':'A小区'}}))
   const pets=users.map((u)=>({_id:'pet_'+u.openid,openid:u.openid,name:'豆豆',species:'dog'}))
-  const db=createCollectionStore({users,pets}),context={db,nowMs:()=>time,nowText:()=>new Date(time).toISOString(),safeText:(s)=>s||'',getUser:async(id)=>db.state.users.find((u)=>u.openid===id)}
+  const db=createCollectionStore({users,pets},{cloudObjectUpdates:true}),context={db,nowMs:()=>time,nowText:()=>new Date(time).toISOString(),safeText:(s)=>s||'',getUser:async(id)=>db.state.users.find((u)=>u.openid===id)}
   const plots=world.create(context),shared=createShared(context),social=shared.social
   await plots.claim('a',users[0],{x:280,z:280})
   await plots.claim('b',users[1],{x:700,z:700})
@@ -117,4 +117,26 @@ test('live projection rejects delayed writes and a yard rebuilt in the same cell
   assert.equal(scene.scene.hasAvatar,true)
   assert.equal(publicRow(f.scenes.a.sceneId,playerId('a')).deleted,undefined)
   assert.equal(publicRow(f.scenes.a.sceneId,plot.plotId).deleted,undefined)
+})
+
+test('live projection replaces nullable nested state and old fields only for its own entity, preserving shard neighbors and version order',async()=>{
+  const db=createCollectionStore({}, {cloudObjectUpdates:true})
+  const live=require('../../cloudfunctions/api/services/playground-live')({db,nowMs:()=>100})
+  const id='character',sceneId='null-appearance'
+  await live.publish(sceneId,{id,kind:'presence',appearance:null,position:{x:1,z:2}},{epoch:1,seq:1})
+  const shard=db.state.pet_playground_live[0]
+  shard.records.neighbor={id:'neighbor',kind:'presence',position:{x:3,z:4}}
+  const neighbor=structuredClone(shard.records.neighbor)
+  const custom={id,kind:'presence',appearance:{id:'look-new',walk:{fileID:'cloud://test/walk.png'},run:null},position:{x:5,z:6}}
+  await live.publish(sceneId,custom,{epoch:1,seq:2})
+  assert.deepEqual(shard.records[id],{...custom,version:{epoch:1,seq:2}})
+  assert.deepEqual(shard.records.neighbor,neighbor)
+  await live.publish(sceneId,{id,kind:'presence',deleted:true})
+  assert.equal(shard.records[id].appearance,undefined)
+  await live.publish(sceneId,custom,{epoch:2,seq:99})
+  assert.equal(shard.records[id].deleted,true)
+  const recovered={id,kind:'presence',appearance:null,position:{x:7,z:8}}
+  await live.publish(sceneId,recovered,{epoch:101,seq:0})
+  assert.deepEqual(shard.records[id],{...recovered,version:{epoch:101,seq:0}})
+  assert.deepEqual(shard.records.neighbor,neighbor)
 })

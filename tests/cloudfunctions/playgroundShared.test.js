@@ -23,6 +23,45 @@ function fixture() {
   return {db,users,pets,context,shared,plots,enter,auth,snapshot,advance:(ms)=>{time+=ms},now:()=>time}
 }
 
+test('legacy offline owners share one color across yards, characters, pets, cars and realtime updates',async()=>{
+  const f=fixture()
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  await f.plots.claim('b',f.users[1],{x:560,z:280})
+  const initialScene=await f.enter('a'),offlineScene=await f.enter('b')
+  await f.snapshot('a',initialScene)
+  f.db.state.pet_playground_plots=f.db.state.pet_playground_plots.filter((r)=>r.kind!=='name_colors')
+  for(const row of f.db.state.pet_playground_plots)delete row.nameColor
+  const oldVersions=new Map()
+  for(const shard of f.db.state.pet_playground_live)for(const record of Object.values(shard.records||{})) {
+    delete record.nameColor
+    oldVersions.set(record.id,{...record.version})
+  }
+  f.advance(30000)
+  const scene=await f.enter('a'),records=await f.snapshot('a',scene)
+  const plots=records.filter((r)=>r.kind==='plot')
+  assert.equal(new Set(plots.map((p)=>p.nameColor)).size,2)
+  assert.equal(scene.nameColor,plots.find((p)=>p.mine).nameColor)
+  for(const plot of plots) {
+    const owned=records.filter((r)=>r.ownerId===plot.ownerId)
+    assert.deepEqual(new Set(owned.map((r)=>r.kind)),new Set(['plot','presence','resident','vehicle']))
+    for(const row of owned)assert.equal(row.nameColor,plot.nameColor)
+  }
+  const offlineColor=plots.find((p)=>!p.mine).nameColor
+  for(const shard of f.db.state.pet_playground_live)for(const record of Object.values(shard.records||{})) {
+    if(record.ownerId!==offlineScene.playerId)continue
+    assert.equal(record.nameColor,offlineColor)
+    assert.ok(record.version.epoch>oldVersions.get(record.id).epoch)
+    assert.equal(f.db.state.pet_playground_plots.find((row)=>row._id===record.id).nameColor,offlineColor)
+  }
+  const offlineActor=f.db.state.pet_playground_plots.find((row)=>row._id===offlineScene.playerId)
+  assert.equal(offlineActor.session,offlineScene.session)
+  await f.shared.sync('b',{...f.auth(offlineScene),seq:1,position:offlineActor.position})
+  await f.shared.petScale('b','pet_b',1.2)
+  const live=f.db.state.pet_playground_live.flatMap((shard)=>Object.values(shard.records||{}))
+  const petOwner=live.find((r)=>r.kind==='resident'&&r.ownerId==='presence_'+world.hash('b'))
+  assert.equal(petOwner.nameColor,plots.find((p)=>!p.mine).nameColor)
+})
+
 test('retrying a committed movement acknowledges the packet and repairs a failed realtime projection',async()=>{
   const f=fixture()
   await f.plots.claim('a',f.users[0],{x:280,z:280})

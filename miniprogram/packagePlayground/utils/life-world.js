@@ -1,7 +1,32 @@
 const {needsView}=require('./pet-needs')
-const {farmLayout,bedReach,bedView}=require('./farm-model')
+const {farmLayout,bedReach,bedView,cropById,growthStage,SOILS}=require('./farm-model')
 module.exports={
   ...require('./vehicle-rear'),
+  setFarmCatalog(catalog) {
+    if(!catalog||!Array.isArray(catalog.crops)||this.farmCatalog&&catalog.revision<this.farmCatalog.revision)return
+    this.farmCatalog=catalog
+  },
+  farmImage(atlas) {
+    if(!this.loader||!atlas)return null
+    if(!this.farmImages){this.farmImages=new Map();this.farmLoads=new Map();this.farmRetry=new Map()}
+    const key=JSON.stringify(atlas),cached=this.farmImages.get(key)
+    if(cached){this.farmImages.delete(key);this.farmImages.set(key,cached);return cached.image}
+    if(this.farmLoads.size<3&&!this.farmLoads.has(key)&&Date.now()>=(this.farmRetry.get(key)||0)) {
+      const task=this.loader.loadAtlas(atlas).then((image)=>{
+        if(this.destroyed)return
+        this.farmImages.set(key,{image,fileID:atlas.fileID})
+        while(this.farmImages.size>12) {
+          const oldest=this.farmImages.keys().next().value,entry=this.farmImages.get(oldest)
+          this.farmImages.delete(oldest)
+          if(this.loader.cache)this.loader.cache.delete(entry.fileID)
+        }
+        this.farmRetry.delete(key)
+      }).catch(()=>{if(!this.destroyed)this.farmRetry.set(key,Date.now()+10000)})
+        .finally(()=>this.farmLoads.delete(key))
+      this.farmLoads.set(key,task)
+    }
+    return null
+  },
   petNeeds(pet) {return needsView(pet,Date.now()+this.serverOffset)},
   petActivity(pet) {
     if(pet.ridingVehicleId)return '同行乘车中'
@@ -74,12 +99,24 @@ module.exports={
     if(s<.55)return
     const beds=new Map((plot.farmBeds||[]).map((b)=>[b.id,b]))
     for(const tile of farmLayout(plot)) {
-      const bed=bedView(beds.get(tile.id),stamp),p=this.project(tile.x,tile.z),size=tile.size*s
-      this.diamond(tile.x,tile.z,tile.size*.46,bed.state==='wild'?'#8ca76e':bed.state==='ready'?'#b49c65':'#947453')
+      const crops=this.farmCatalog&&this.farmCatalog.crops,bed=bedView(beds.get(tile.id),stamp,crops),p=this.project(tile.x,tile.z),size=tile.size*s
+      const soils=this.farmCatalog&&this.farmCatalog.soils||SOILS
+      const soil=this.farmImage({fileID:soils[bed.state==='wild'?'wild':bed.watered?'watered':'tilled'],columns:1,rows:1,frameSize:256})
+      const width=size*2.1
+      if(soil)c.drawImage(soil,p.x-width*.5,p.y-width*.75,width,width)
+      else this.diamond(tile.x,tile.z,tile.size*.46,bed.state==='wild'?'#8ca76e':bed.state==='ready'?'#b49c65':'#947453')
       if(plot.mine&&this.page.data&&this.page.data.nearbyFarm&&this.page.data.nearbyFarm.id===tile.id) {
+        this.diamond(tile.x,tile.z,tile.size*.46,'transparent')
         c.save();c.strokeStyle='#fff4c7';c.lineWidth=2;c.stroke();c.restore()
       }
       if(bed.cropId) {
+        const crop=cropById(bed.cropId,crops),atlas=crop&&crop.atlas,image=this.farmImage(atlas)
+        if(image) {
+          const frame=growthStage(crop,bed.progress),cell=atlas.frameSize
+          c.drawImage(image,frame*cell,0,cell,cell,p.x-width*atlas.anchorX,p.y-width*atlas.anchorY,width,width)
+          if(bed.state==='ready')this.markerLabel('可收获',p.x,p.y-width*.9)
+          continue
+        }
         const growth=.35+bed.progress/155
         c.save();c.translate(p.x,p.y)
         c.strokeStyle='#52764b';c.lineWidth=Math.max(1,size*.07)

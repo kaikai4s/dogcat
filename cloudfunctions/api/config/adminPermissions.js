@@ -1,4 +1,5 @@
 const definitions = [
+  ['farm', '农作物管理', 'playgroundFarm', 'list:查看农作物 prepareUpload:上传阶段素材 save:保存及上下架'],
   ['playground', '乐园形象定制', 'playgroundAppearance', 'listAdmin:申请列表 detailAdmin:查看照片 prepareUpload:上传图集 publish:发布专属形象 reject:退回申请'],
   ['overview', '控制台与通知', 'admin', 'dashboard:查看统计 listAdminNotifications:查看通知 getAdminNotificationBadge:通知角标 markAdminNotificationRead:标记已读 sendSystemNotification:发送系统通知 listSystemNotifications:系统通知列表 revokeSystemNotification:撤回系统通知'],
   ['orders', '服务订单', 'admin', 'listOrders:订单列表 getOrderDetail:订单详情 getEvidence:服务证据 assignOrder:派单 updateOrderStatus:修改状态 manualCompleteOrder:人工完单 refundOrder:退款 batchDeleteOrders:删除订单 republishOrderAsUrgent:加急重发 addOrderDepositPenaltyEvidence:录入扣罚证据 listOrderDepositPenaltyEvidences:查看扣罚证据'],

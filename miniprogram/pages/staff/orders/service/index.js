@@ -780,6 +780,10 @@ Page({
 
     const startPromise = requirePrivacyAuthorize()
       .then(() => {
+        if (this.trackingStarted && segmentId === this.trackSegmentId) return this.ensureTrackingLocationPermission()
+        return null
+      })
+      .then(() => {
         if (!this.trackingStarted || segmentId !== this.trackSegmentId) return null
         return this.startLocationUpdate()
       })
@@ -848,7 +852,7 @@ Page({
       wx.startLocationUpdate({
         type: 'gcj02',
         success: () => resolve({ mode: 'foreground', backgroundError }),
-        fail: (foregroundError) => reject(new Error(`${backgroundError}；前台定位开启失败：${locationErrorText(foregroundError)}`))
+        fail: (foregroundError) => reject(new Error(`${backgroundError}；前台定位开启失败：${this.trackingLocationError(foregroundError)}`))
       })
     })
 
@@ -860,11 +864,41 @@ Page({
         type: 'gcj02',
         success: () => resolve({ mode: 'background', backgroundError: '' }),
         fail: (backgroundError) => {
-          const message = `后台定位开启失败：${locationErrorText(backgroundError)}`
+          const message = `后台定位开启失败：${this.trackingLocationError(backgroundError)}`
           startForeground(message).then(resolve).catch(reject)
         }
       })
     })
+  },
+
+  ensureTrackingLocationPermission() {
+    if (typeof wx.getSetting !== 'function') return Promise.resolve()
+    return new Promise((resolve, reject) => wx.getSetting({
+      success: ({ authSetting = {} }) => {
+        if (authSetting['scope.userLocation'] === true) return resolve()
+        if (authSetting['scope.userLocation'] === false) return reject(new Error('未获得手机端定位授权，请点击“定位授权设置”允许位置信息，并选择允许在使用小程序时和离开后获取位置。'))
+        if (typeof wx.authorize !== 'function') return reject(new Error('当前微信版本无法申请定位授权，请升级微信'))
+        wx.authorize({ scope: 'scope.userLocation', success: resolve, fail: (error) => reject(new Error(this.trackingLocationError(error))) })
+      }, fail: (error) => reject(new Error(`读取手机定位授权失败：${locationErrorText(error)}`))
+    }))
+  },
+
+  trackingLocationError(error) {
+    const raw = locationErrorText(error), hints = []
+    try {
+      if (typeof wx.getSystemSetting === 'function' && wx.getSystemSetting().locationEnabled === false) hints.push('手机系统定位服务已关闭，请在系统设置开启')
+      if (typeof wx.getAppAuthorizeSetting === 'function' && wx.getAppAuthorizeSetting().locationAuthorized === 'denied') hints.push('微信未获系统定位权限，请在手机设置中允许微信访问位置')
+      const device = typeof wx.getDeviceInfo === 'function' ? wx.getDeviceInfo() : null
+      if (device && device.platform === 'devtools') hints.push('请用微信真机验证后台定位')
+    } catch (ignored) {}
+    if (/auth|deny|denied|permission|authorize|权限/i.test(raw)) hints.push('请点击“定位授权设置”，允许在使用小程序时和离开后获取位置；平台接口审批不等于手机授权')
+    if (/not declared|requiredPrivateInfos|config|api scope|无权限|未开通/i.test(raw)) hints.push('请核对当前小程序AppID的接口权限、隐私声明，并重新编译发布含后台定位配置的版本')
+    return [raw, ...hints].join('；')
+  },
+
+  onTrackingSettingsOpened(event) {
+    if (/fail/i.test(event.detail && event.detail.errMsg || '')) return showError(new Error(event.detail.errMsg))
+    return this.retryBackgroundTracking()
   },
 
   stopNativeLocationUpdates() {

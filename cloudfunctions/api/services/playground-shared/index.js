@@ -1,6 +1,7 @@
 const { transaction } = require('../playground-transaction')
 const crypto = require('crypto')
 const world = require('../playground-world')
+const { validColor } = require('../playground-name-colors')
 const { createNavigation } = require('./navigation')
 const { yardLayout } = require('./yard-layout')
 const { sampleMotion } = require('./shared-motion')
@@ -71,20 +72,36 @@ module.exports = function createShared(context) {
   function publicRecord(row) {
     const ownerId=presenceId(row.ownerOpenid)
     if(row.kind==='plot') {const {mine,...plot}=service.publicPlot(row,'');return {kind:'plot',...plot,ownerId}}
-    if(row.kind==='resident') return {kind:'resident',id:row._id,ownerId,name:row.name,ownerName:row.name,pets:(row.pets||[]).map((pet)=>({...pet,appearance:publicAppearance(pet.appearance,'pet',pet.id,row.ownerOpenid)}))}
-    if(row.kind==='vehicle')return {kind:'vehicle',id:row._id,ownerId,name:row.name,plotId:row.plotId,state:row.state,position:row.position,
+    if(row.kind==='resident') return {kind:'resident',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',ownerName:row.name,pets:(row.pets||[]).map((pet)=>({...pet,appearance:publicAppearance(pet.appearance,'pet',pet.id,row.ownerOpenid)}))}
+    if(row.kind==='vehicle')return {kind:'vehicle',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',plotId:row.plotId,state:row.state,position:row.position,
       facing:row.facing||'sw',passengers:(row.passengers||[]).map((p)=>({id:p.id,name:p.name})),capacity:3,
       mirrored:!!row.mirrored,moving:!!row.moving&&now()-row.lastSeen<3000,online:!!row.online&&now()-row.lastSeen<15000,lastSeen:row.lastSeen,speedMultiplier:row.speedMultiplier}
-    return {kind:'presence',id:row._id,ownerId,name:row.name||'邻居',position:row.position,characterType:row.characterType==='girl'?'girl':'boy',
+    return {kind:'presence',id:row._id,ownerId,name:row.name||'邻居',nameColor:row.nameColor||'',position:row.position,characterType:row.characterType==='girl'?'girl':'boy',
       vehicleId:row.vehicleId||'',
       vehicleRole:row.vehicleRole||'',facing:row.facing||'sw',
       appearance:publicAppearance(row.appearance,'character',row._id,row.ownerOpenid),
       mirrored:!!row.mirrored,online:!!row.online&&row.active!==false&&now()-row.lastSeen<15000,lastSeen:row.lastSeen,moving:!!row.moving&&now()-row.lastSeen<3000,running:!!row.running}
   }
   const version=(row)=>({epoch:row.kind==='presence'?row.sessionStarted||row.lastSeen:row.revision||Date.parse(row.updatedAt||row.createdAt)||0,seq:row.kind==='resident'?row.petSeq||0:row.seq||0})
+  async function ensureRecordNameColor(row) {
+    if(row.kind==='plot' || validColor(row.nameColor)) return row
+    const home=await service.own(row.ownerOpenid)
+    if(!home) return row
+    return transaction(db,async(tx)=>{
+      const current=await read(tx,row._id),owned=await read(tx,world.ownerId(row.ownerOpenid))
+      if(!current || current.communityId!==row.communityId) return null
+      if(validColor(current.nameColor) || !owned) return current
+      // Bump the projection version so existing watchers receive legacy colors.
+      const patch={nameColor:owned.nameColor,[current.kind==='presence'?'sessionStarted':'revision']:Math.max(now(),version(current).epoch+1)}
+      await tx.collection(COLLECTION).doc(current._id).update({data:patch})
+      return {...current,...patch}
+    })
+  }
   async function publish(row) {
-    if(row.kind==='presence'&&row.active===false) return
+    row=await ensureRecordNameColor(row)
+    if(!row || row.kind==='presence'&&row.active===false) return row
     await live.publish(row.communityId,publicRecord(row),version(row))
+    return row
   }
   function publicNavigation(cfg,plots,allowed) {
     return createNavigation({minX:0,minZ:0,maxX:cfg.width,maxZ:cfg.height},plots.flatMap((p)=>obstacles(p,!allowed.includes(p._id))),.8,1.5)
@@ -99,7 +116,7 @@ module.exports = function createShared(context) {
       result.push(...page)
       cursor=page.length===100?page[page.length-1]._id:''
     } while(cursor)
-    return result
+    return kind === 'plot' ? service.ensureNameColors(result) : result
   }
   async function check(openid,data,database=db) {
     const actor=await read(database,presenceId(openid))
@@ -129,6 +146,7 @@ module.exports = function createShared(context) {
     const community=data.community || user.residentialCommunity || null
     const id=world.communityId({residentialCommunity:community}) || 'solo_'+world.hash(openid)
     await rides.prepareEntry(openid,id)
+    await service.own(openid)
     await vehicles.ensure(openid)
     const cfg=await service.config()
     const plots=await rows(id,'plot')
@@ -148,6 +166,7 @@ module.exports = function createShared(context) {
       const previous=old && old.communityId===id && (currentOwn || !plots.some((p)=>inside(old.position,p))) ? old.position : start
       const position=safePoint(publicNavigation(cfg,plots,allowed),previous)
       const actor={kind:'presence',communityId:id,ownerOpenid:openid,name:String(user.nickname||'邻居').slice(0,20),
+        nameColor:currentHome&&currentHome.nameColor||'',
         appearance:publicAppearance(currentUser.playgroundAppearance,'character',presenceId(openid),openid),
         position,characterType:old && old.characterType==='girl'?'girl':'boy',mirrored:!!(old&&old.mirrored),facing:old&&old.facing||'sw',
         session,seq:0,active:!!currentHome,homePlotId:currentHome?currentHome.plotId:'',online:true,lastSeen:stamp,sessionStarted:Math.max(actorEpoch,(old&&old.sessionStarted||0)+1)}
@@ -157,7 +176,7 @@ module.exports = function createShared(context) {
       if(canKeepPets) {
         const petsNow=await currentPets(tx,pets,openid)
         savedResident={kind:'resident',communityId:id,ownerOpenid:openid,plotId:plotKey,session,revision:Math.max(residentEpoch,(resident&&resident.revision||0)+1),petSeq:0,layoutKey:resident&&resident.layoutKey||layoutKey(plots),
-          name:actor.name,pets:petsNow.map((p,i)=>{
+          name:actor.name,nameColor:actor.nameColor,pets:petsNow.map((p,i)=>{
             const previous=resident && resident.communityId===id && resident.plotId===plotKey && (resident.pets||[]).find((q)=>q.id===p._id)
             const origin={x:start.x+(i%3-1)*5,z:start.z+Math.floor(i/3)*4}
             return {...previous,id:p._id,name:p.name||'宠物',species:p.species==='cat'?'cat':'dog',modelScale:Math.max(.5,Math.min(2,Number(p.playgroundScale)||1)),
@@ -177,7 +196,7 @@ module.exports = function createShared(context) {
     if(state.resident) await publish({...state.resident,_id:residentId(openid)})
     if(state.vehicle)await publish(state.vehicle)
     const socialState=await social.state(openid)
-    return {session,playerId:presenceId(openid),sceneId:id,realtimeCollection:'pet_playground_live',serverTime:now(),social:socialState,allowedPlotIds:state.allowed,position:state.position,characterType:state.characterType,appearance:state.appearance,hasAvatar:state.active,
+    return {session,playerId:presenceId(openid),name:state.name,nameColor:state.nameColor,sceneId:id,realtimeCollection:'pet_playground_live',serverTime:now(),social:socialState,allowedPlotIds:state.allowed,position:state.position,characterType:state.characterType,appearance:state.appearance,hasAvatar:state.active,
       vehicleId:state.vehicleId||'',vehicleRole:state.vehicleRole||'',facing:state.facing||'sw',mirrored:!!state.mirrored,vehicleSpeed:Math.max(2,Math.min(5,Number(user.playgroundVehicleSpeed)||2)),
       community,visiting:id!==(world.communityId(user)||'solo_'+world.hash(openid)),hasHomeElsewhere:!!state.home&&!state.own,
       homeCommunity:user.residentialCommunity||null,plot:state.own?service.publicPlot({...state.own,_id:state.own.plotId},openid):null}
@@ -281,7 +300,7 @@ module.exports = function createShared(context) {
           if(!owned || owned.communityId!==data.sceneId || owned.plotId!==plot._id || old&&old.communityId===data.sceneId&&old.plotId===plot._id) return
           const petsNow=await currentPets(tx,pets,plot.ownerOpenid)
           const resident={kind:'resident',communityId:data.sceneId,ownerOpenid:plot.ownerOpenid,plotId:plot._id,revision:now(),
-            name:plot.ownerName||String(plot.name||'邻居').replace(/的庭院$/,''),layoutKey:layoutKey(plots),pets:petsNow.map((p,i)=>({id:p._id,name:p.name||'宠物',species:p.species==='cat'?'cat':'dog',
+            name:plot.ownerName||String(plot.name||'邻居').replace(/的庭院$/,''),nameColor:owned.nameColor,layoutKey:layoutKey(plots),pets:petsNow.map((p,i)=>({id:p._id,name:p.name||'宠物',species:p.species==='cat'?'cat':'dog',
               appearance:publicAppearance(p.playgroundAppearance,'pet',p._id,plot.ownerOpenid),
               needs:{at:now(),energy:100,satiety:100,hydration:100},
               modelScale:Math.max(.5,Math.min(2,Number(p.playgroundScale)||1)),motion:motion(cfg,plots,{x:plot.x+(i%3-1)*5,z:plot.z+14+Math.floor(i/3)*4},now(),p._id)}))}
@@ -325,8 +344,9 @@ module.exports = function createShared(context) {
       if(row.kind==='vehicle')return plots.some((p)=>p.ownerOpenid===row.ownerOpenid&&p._id===row.plotId&&(p.instanceId||p.createdAt||'')===row.plotInstanceId)
       return true
     })
-    for(const row of visible) await publish(row)
-    return {serverTime:now(),allowedPlotIds:await social.access(openid,plots),nextCursor:page.length===100?page[page.length-1]._id:'',records:visible.map((row)=>({...publicRecord(row),version:version(row),mine:row.ownerOpenid===openid}))}
+    const published=[]
+    for(const row of visible) {const current=await publish(row);if(current)published.push(current)}
+    return {serverTime:now(),allowedPlotIds:await social.access(openid,plots),nextCursor:page.length===100?page[page.length-1]._id:'',records:published.map((row)=>({...publicRecord(row),version:version(row),mine:row.ownerOpenid===openid}))}
   }
   async function commandPet(openid,data) {
     const petRecord=((await db.collection('pets').where({_id:data.petId,openid}).get()).data||[])[0]

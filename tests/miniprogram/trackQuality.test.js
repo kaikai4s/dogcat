@@ -76,6 +76,82 @@ function prepareTrackingPage(overrides = {}) {
   return result.page
 }
 
+test('first location grant completes before the background native stream starts', async (t) => {
+  let authorization
+  const calls = []
+  const page = prepareTrackingPage({ __wx: {
+    getSetting(options) { calls.push('settings'); options.success({ authSetting: {} }) },
+    authorize(options) { calls.push(options.scope); authorization = options },
+    startLocationUpdateBackground(options) { calls.push('background'); options.success() }
+  } })
+  t.after(() => page.stopAutoTracking())
+  const starting = page.startAutoTracking()
+  await settle()
+  assert.deepEqual(calls, ['settings', 'scope.userLocation'])
+  assert.equal(page.data.trackingState, 'starting')
+  authorization.success()
+  await starting
+  assert.deepEqual(calls, ['settings', 'scope.userLocation', 'background'])
+  assert.equal(page.data.trackingState, 'background')
+})
+
+test('denied phone permission exposes settings and a settings retry opens background tracking', async (t) => {
+  let allowed = false
+  let nativeCalls = 0
+  const page = prepareTrackingPage({ __wx: {
+    getSetting(options) { options.success({ authSetting: { 'scope.userLocation': allowed } }) },
+    authorize() { assert.fail('A previously denied permission must be changed in settings') },
+    startLocationUpdateBackground(options) { nativeCalls++; options.success() }
+  } })
+  t.after(() => page.stopAutoTracking())
+  await page.startAutoTracking()
+  assert.equal(nativeCalls, 0)
+  assert.equal(page.data.trackingState, 'error')
+  assert.match(page.data.trackingErrorText, /手机端定位授权/)
+  assert.match(page.data.trackingErrorText, /定位授权设置/)
+  allowed = true
+  await page.onTrackingSettingsOpened({ detail: { errMsg: 'openSetting:ok' } })
+  assert.equal(nativeCalls, 1)
+  assert.equal(page.data.trackingState, 'background')
+})
+
+test('failed authorization keeps the native error and device diagnostics without starting a stream', async () => {
+  const page = prepareTrackingPage({ __wx: {
+    getSetting(options) { options.success({ authSetting: {} }) },
+    authorize(options) { options.fail({ errMsg: 'authorize:fail auth deny' }) },
+    getSystemSetting() { return { locationEnabled: false } },
+    getAppAuthorizeSetting() { return { locationAuthorized: 'denied' } },
+    getDeviceInfo() { return { platform: 'devtools' } },
+    startLocationUpdateBackground() { assert.fail('Unauthorized stream') },
+    startLocationUpdate() { assert.fail('Unauthorized fallback') }
+  } })
+  await page.startAutoTracking()
+  assert.equal(page.data.trackingState, 'error')
+  assert.match(page.data.trackingErrorText, /authorize:fail auth deny/)
+  assert.match(page.data.trackingErrorText, /系统定位服务已关闭/)
+  assert.match(page.data.trackingErrorText, /微信未获系统定位权限/)
+  assert.match(page.data.trackingErrorText, /真机验证/)
+  assert.match(page.data.trackingErrorText, /平台接口审批不等于手机授权/)
+  await page.stopAutoTracking()
+})
+
+test('stopping while authorization is pending never opens a native stream', async () => {
+  let authorization
+  const page = prepareTrackingPage({ __wx: {
+    getSetting(options) { options.success({ authSetting: {} }) },
+    authorize(options) { authorization = options },
+    startLocationUpdateBackground() { assert.fail('Stopped stream') },
+    startLocationUpdate() { assert.fail('Stopped fallback') }
+  } })
+  const starting = page.startAutoTracking()
+  await settle()
+  const stopping = page.stopAutoTracking()
+  authorization.success()
+  await Promise.all([starting, stopping])
+  assert.equal(page.data.trackingState, 'idle')
+  assert.equal(page.trackingStarted, false)
+})
+
 test('background tracking is only shown after the native API succeeds and survives onHide', async (t) => {
   let backgroundRequest
   const page = prepareTrackingPage({

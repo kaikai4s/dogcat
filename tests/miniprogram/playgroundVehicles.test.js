@@ -108,18 +108,18 @@ test('24-frame atlas preserves alpha, crops the final row, mirrors, loops and st
   await assert.rejects(()=>loader.loadAtlas(VEHICLE_ATLAS),/尺寸不匹配/)
   const {w}=fixture(),calls=[],scales=[],labels=[]
   w.vehicleImage=atlas;w.ctx=new Proxy({}, {get:(_,key)=>key==='drawImage'?(...args)=>calls.push(args):key==='scale'?(...args)=>scales.push(args):()=>{}})
-  w.markerLabel=(text)=>labels.push(text)
+  w.markerLabel=(text,x,y,selected,color)=>labels.push({text,color})
   w.width=1000;w.height=1000;w.project=()=>({x:100,y:100})
   w.applyOwnVehicleActor(actor());w.character.moving=true;w.character.mirrored=true
   w.character.animationPhase=23.5/24
-  w.drawVehicle(car(),false)
-  assert.deepEqual(calls.at(-1).slice(1,5),[768,1280,256,256]);assert.deepEqual(scales.at(-1),[-1,1]);assert.equal(labels.at(-1),'凯大大')
+  w.drawVehicle(car({nameColor:'#c23056'}),false)
+  assert.deepEqual(calls.at(-1).slice(1,5),[768,1280,256,256]);assert.deepEqual(scales.at(-1),[-1,1]);assert.deepEqual(labels.at(-1),{text:'小车',color:'#c23056'})
   w.character.animationPhase=0;w.drawVehicle(car(),false)
   assert.deepEqual(calls.at(-1).slice(1,3),[0,0])
   w.character.animationPhase=.5;w.character.moving=false;w.drawVehicle(car(),false)
   assert.deepEqual(calls.at(-1).slice(1,3),[0,0])
-  w.drawVehicle(car({id:'other',mine:false,state:'outside',online:false}),false);assert.equal(labels.at(-1),'凯大大的车')
-  w.drawVehicle(car({id:'other',mine:false,state:'driving',online:false}),false);assert.equal(labels.at(-1),'凯大大 · 离线')
+  w.drawVehicle(car({id:'other',mine:false,state:'outside',online:false}),false);assert.equal(labels.at(-1).text,'小车')
+  w.drawVehicle(car({id:'other',mine:false,state:'driving',online:false}),false);assert.equal(labels.at(-1).text,'小车')
 })
 test('uploaded rear atlas keeps alpha, crops frame 24 and mirrors NW to NE once for driver and neighbors',async()=>{
   const rear={width:1024,height:1536,rear:true},front={width:1024,height:1536}

@@ -202,6 +202,8 @@
   border-color: rgba(190, 18, 60, 0.18);
 }
 
+.care-quick-content { margin-top: 8rpx; }
+
 .care-quick-left {
   display: flex;
   align-items: center;

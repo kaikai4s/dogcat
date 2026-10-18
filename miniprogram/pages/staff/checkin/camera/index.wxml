@@ -19,8 +19,9 @@
 
   <button class="primary-btn upload-btn" loading="{{uploading}}" disabled="{{uploading}}" bindtap="chooseAndCreateCheckins">
     <text class="remix-icon ri-image-add-line"></text>
-    <text>{{uploading ? '上传中...' : (isBeautyCheckin ? '拍照 / 上传美照' : (eventType === 'sanitization' ? '现场拍照打卡（仅限现场拍摄）' : '拍照 / 上传截图'))}}</text>
+    <text class="upload-label">{{uploading ? '上传中...' : (isBeautyCheckin ? '拍照 / 上传美照' : (eventType === 'sanitization' ? '现场拍照打卡' : '拍照 / 上传截图'))}}</text>
   </button>
+  <view class="capture-note" wx:if="{{eventType === 'sanitization'}}">仅限现场拍摄</view>
 
   <view class="card photo-card">
     <view class="photo-head">

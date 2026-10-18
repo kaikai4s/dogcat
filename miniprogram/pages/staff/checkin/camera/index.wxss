@@ -114,6 +114,19 @@
   margin-top: 24rpx;
 }
 
+.staff-camera-page .upload-btn {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 20rpx 24rpx;
+  height: auto;
+  line-height: 1.5;
+}
+.upload-btn .remix-icon { flex-shrink: 0; }
+.upload-label { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.capture-note { margin-top: 12rpx; text-align: center; font-size: 24rpx; line-height: 1.5; color: #7a6a5e; }
+
 .photo-head {
   display: flex;
   align-items: center;

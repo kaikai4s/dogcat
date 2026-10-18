@@ -21,11 +21,14 @@ module.exports=function createLive({db,nowMs}) {
     version=version||{epoch:now(),seq:0}
     const key='records.'+record.id+'.version',command=db.command
     // Atomic conditional update: an old snapshot must never resurrect a deleted entity.
+    // Plain objects are expanded into dotted leaf updates by the SDK, which
+    // cannot replace appearance:null and leaves obsolete fields (e.g. deleted).
+    // Replace this entity only; keep the shard's other entities and version guard.
     await db.collection(COLLECTION).where(command.and([{_id:id},command.or([
       {[key]:command.exists(false)},
       {[key+'.epoch']:command.lt(version.epoch)},
       {[key+'.epoch']:version.epoch,[key+'.seq']:command.lt(version.seq)}
-    ])])).update({data:{['records.'+record.id]:{...record,version}}})
+    ])])).update({data:{['records.'+record.id]:command.set({...record,version})}})
   }
   async function nextEpoch(sceneId,recordId,proposed=now()) {
     const id='scene_'+sceneId+'_'+hash(recordId).slice(0,1)

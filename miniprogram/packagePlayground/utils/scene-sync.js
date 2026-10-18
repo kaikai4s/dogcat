@@ -221,6 +221,16 @@ class SceneSync {
     }
     tick()
     const refresh=async()=>{
+      try {
+        if(this.world.setFarmCatalog&&Date.now()-(this.lastFarmCatalogAttempt||0)>=30000) {
+          this.lastFarmCatalogAttempt=Date.now()
+          const catalog=await callFunction('playground','getFarmCatalog',{})
+          if(this.active&&this.generation===generation&&!this.world.destroyed) {
+            this.world.setFarmCatalog(catalog)
+            if(this.world.ownPlot&&this.world.page&&this.world.page.ensureFarm)await this.world.page.ensureFarm(true)
+          }
+        }
+      }catch(error){/* Retry configuration on the next scene refresh. */}
       try {await this.snapshot();this.snapshotFailures=0}
       catch(error){
         this.snapshotFailures=(this.snapshotFailures||0)+1

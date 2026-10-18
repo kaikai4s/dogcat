@@ -162,9 +162,11 @@ module.exports=function createAppearance(context) {
       const stamp=Math.max(now(),(t.entity.playgroundAppearance&&t.entity.playgroundAppearance.revision||0)+1),appearance={id:'look_'+id.slice(7),targetType:current.targetType,targetId:current.targetId,
         ownerId:'presence_'+hash(current.ownerOpenid),revision:stamp,...atlases}
       for(const digest of new Set(digests))await tx.collection(BINDINGS).doc('image_'+digest).set({data:{kind:'image',targetKey:current.targetKey,appearanceId:appearance.id,createdAt:stamp}})
-      await tx.collection(BINDINGS).doc(current.targetKey).update({data:{appearance,activeRequestId:''}})
-      await tx.collection(t.collection).doc(t.id).update({data:{playgroundAppearance:appearance}})
-      await tx.collection(REQUESTS).doc(id).update({data:{status:'completed',appearance,updatedAt:stamp}})
+      // Replace optional nested objects explicitly: legacy values can be null,
+      // and a new walking-only appearance must not retain the previous run atlas.
+      await tx.collection(BINDINGS).doc(current.targetKey).update({data:{appearance:db.command.set(appearance),activeRequestId:''}})
+      await tx.collection(t.collection).doc(t.id).update({data:{playgroundAppearance:db.command.set(appearance)}})
+      await tx.collection(REQUESTS).doc(id).update({data:{status:'completed',appearance:db.command.set(appearance),updatedAt:stamp}})
       const rows=[]
       const sourceId=(current.targetType==='pet'?'resident_':'presence_')+hash(current.ownerOpenid)
       const source=await read(tx,'pet_playground_plots',sourceId)

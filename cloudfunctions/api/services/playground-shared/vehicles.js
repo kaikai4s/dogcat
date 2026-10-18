@@ -20,6 +20,7 @@ module.exports = function vehicles(context, hooks) {
   function parked(openid,plot,user,epoch) {
     return {kind:'vehicle',ownerOpenid:openid,communityId:plot.communityId,plotId:plot.plotId||plot._id,
       plotInstanceId:instance(plot),name:String(user.nickname||plot.ownerName||'邻居').slice(0,20),state:'parked',
+      nameColor:plot.nameColor||'',
       position:yardLayout(plot).parking,mirrored:false,moving:false,online:false,lastSeen:now(),
       speedMultiplier:multiplier(user.playgroundVehicleSpeed),revision:epoch,seq:0,facing:'sw',passengers:[]}
   }
@@ -29,7 +30,11 @@ module.exports = function vehicles(context, hooks) {
       const plot=await read(tx,world.ownerId(openid))
       if(!plot)return null
       const old=await read(tx,id)
-      if(old&&old.communityId===plot.communityId&&old.plotId===plot.plotId&&old.plotInstanceId===instance(plot))return {car:old}
+      if(old&&old.communityId===plot.communityId&&old.plotId===plot.plotId&&old.plotInstanceId===instance(plot)) {
+        if (old.nameColor === plot.nameColor) return {car:old}
+        old.nameColor=plot.nameColor||'';old.revision=Math.max(stamp,(old.revision||0)+1)
+        return {car:await save(tx,id,old)}
+      }
       const users=(await tx.collection('users').where({openid}).limit(1).get()).data||[]
       const epoch=await hooks.nextEpoch(plot.communityId,id,Math.max(stamp,(old&&old.revision||0)+1))
       const car=await save(tx,id,parked(openid,plot,users[0]||{},epoch))

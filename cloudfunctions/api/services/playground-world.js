@@ -1,5 +1,6 @@
 const { transaction } = require('./playground-transaction')
 const crypto = require('crypto')
+const nameColors = require('./playground-name-colors')
 const SIZE = 112
 const STEP = 56
 const GAP = 4
@@ -84,6 +85,7 @@ function publicPlot(plot, openid) {
     foodBowls: { dog: Math.max(0,Math.min(100,Number(plot.foodBowls&&plot.foodBowls.dog)||0)), cat: Math.max(0,Math.min(100,Number(plot.foodBowls&&plot.foodBowls.cat)||0)) },
     farmBeds: Array.isArray(plot.farmBeds) ? plot.farmBeds : [],
     ownerName: plot.ownerName || String(plot.name || '邻居').replace(/的庭院$/, ''),
+    nameColor: plot.nameColor || '',
     ownerId: 'presence_' + hash(plot.ownerOpenid),
     instanceId: plot.instanceId || plot.createdAt || '',
     name: plot.name || '邻居庭院'
@@ -131,7 +133,29 @@ module.exports = {
       }
     }
     async function own(openid) {
-      return read(db, ownerId(openid))
+      const plot = await read(db, ownerId(openid))
+      return plot ? ensureNameColor(plot) : null
+    }
+    async function ensureNameColor(plot) {
+      if (nameColors.validColor(plot.nameColor)) return plot
+      return transaction(db, async (tx) => {
+        const owner = await read(tx, ownerId(plot.ownerOpenid))
+        const canonical = await read(tx, plot.plotId || plot._id)
+        if (!owner || !canonical || owner.plotId !== canonical._id) return plot
+        if (nameColors.validColor(owner.nameColor) && owner.nameColor === canonical.nameColor)
+          return { ...plot, nameColor: owner.nameColor, revision: canonical.revision }
+        const nameColor = await nameColors.allocate(tx, owner.communityId, hash(owner.ownerOpenid), read)
+        const revision = Math.max(stamp(), (owner.revision || 0) + 1, (canonical.revision || 0) + 1)
+        const patch = { nameColor, revision }
+        await tx.collection('pet_playground_plots').doc(owner._id).update({ data: patch })
+        await tx.collection('pet_playground_plots').doc(canonical._id).update({ data: patch })
+        return { ...plot, ...patch }
+      })
+    }
+    async function ensureNameColors(plots) {
+      const result = []
+      for (const plot of plots) result.push(await ensureNameColor(plot))
+      return result
     }
     async function fillBowl(openid, data) {
       if (typeof data.plotId !== 'string' || !data.plotId.trim())
@@ -184,6 +208,7 @@ module.exports = {
         if (data.sceneId && data.sceneId !== id) throw new Error('访问其他小区时不能建造庭院，请先迁入该小区')
         if (!id) throw new Error('请先设置常住小区，再选择宅基地')
         const existing = await read(tx, ownerId(openid))
+        const nameColor = await nameColors.allocate(tx, id, hash(openid), read)
         if (
           existing &&
           existing.communityId === id &&
@@ -191,6 +216,12 @@ module.exports = {
           existing.z === pz &&
           existing.size === SIZE
         ) {
+          if (existing.nameColor !== nameColor) {
+            const patch = { nameColor, revision: Math.max(stamp(), (existing.revision || 0) + 1) }
+            await tx.collection('pet_playground_plots').doc(existing.plotId).update({ data: patch })
+            await tx.collection('pet_playground_plots').doc(ownerId(openid)).update({ data: patch })
+            Object.assign(existing, patch)
+          }
           return publicPlot({ ...existing, _id: existing.plotId }, openid)
         }
         if (existing && !allowRelocation())
@@ -242,6 +273,7 @@ module.exports = {
           z: pz,
           size: SIZE,
           ownerName: String(user.nickname || '我').slice(0, 20),
+          nameColor,
           revision: Math.max(await require('./playground-live')({db,nowMs}).nextEpoch(id,key,stamp()),(existing&&existing.revision||0)+1),
           instanceId: crypto.randomBytes(12).toString('hex'),
           name: `${String(user.nickname || '我').slice(0, 20)}的庭院`,
@@ -298,7 +330,7 @@ module.exports = {
         )
       )
       return {
-        plots: rows.filter(Boolean).map((p) => publicPlot(p, openid)),
+        plots: (await ensureNameColors(rows.filter(Boolean))).map((p) => publicPlot(p, openid)),
         chunkX: x,
         chunkZ: z
       }
@@ -321,7 +353,7 @@ module.exports = {
             .get()
         ).data || []
       return {
-        plots: rows.filter((p) => !p.plotId).map((p) => publicPlot(p, openid)),
+        plots: (await ensureNameColors(rows.filter((p) => !p.plotId))).map((p) => publicPlot(p, openid)),
         nextCursor: rows.length === 100 ? rows[rows.length - 1]._id : ''
       }
     }
@@ -332,6 +364,7 @@ module.exports = {
           throw new Error('只能拆除自己的当前庭院')
         if (data.sceneId && plot.communityId !== data.sceneId) throw new Error('请回到原小区拆除庭院')
         const released=beforeRemove?await beforeRemove(tx,openid,plot):[]
+        await nameColors.release(tx, plot.communityId, hash(openid), read)
         const residentId = 'resident_' + hash(openid)
         const resident = await read(tx, residentId)
         const presenceId = 'presence_' + hash(openid)
@@ -346,6 +379,6 @@ module.exports = {
       })
     }
     async function ownInTransaction(tx, openid) { return read(tx, ownerId(openid)) }
-    return { config, own, claim, region, mapOverview, publicPlot, fillBowl, demolish }
+    return { config, own, claim, region, mapOverview, publicPlot, ensureNameColors, fillBowl, demolish }
   }
 }

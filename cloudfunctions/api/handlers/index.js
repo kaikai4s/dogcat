@@ -2,6 +2,7 @@ const loaders = {
   system: () => require('./system'),
   auth: () => require('./auth'),
   playground: () => require('./playground'),
+  playgroundFarm: () => require('./playgroundFarm'),
   playgroundAppearance: () => require('./playgroundAppearance'),
   pet: () => require('./pet'),
   petBeauty: () => require('./petBeauty'),

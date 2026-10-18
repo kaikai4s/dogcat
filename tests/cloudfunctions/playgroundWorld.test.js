@@ -88,6 +88,46 @@ test('simultaneous claims of the same grass commit one plot and one permanent ow
     196
   )
 })
+
+test('community colors resolve random collisions atomically and survive reloads and relocation', async (t) => {
+  t.mock.method(require('crypto'), 'randomInt', () => 0)
+  const { db, users, service } = fixture()
+  const [a, b] = await Promise.all([
+    service.claim('a', users[0], { x: 280, z: 280 }),
+    service.claim('b', users[1], { x: 560, z: 280 })
+  ])
+  assert.notEqual(a.nameColor, b.nameColor)
+  assert.match(a.nameColor, /^#[0-9a-f]{6}$/)
+  assert.ok(!['#000000', '#ffffff'].includes(a.nameColor))
+  assert.equal((await service.own('a')).nameColor, a.nameColor)
+  assert.equal((await service.claim('a', users[0], { x: 840, z: 280 })).nameColor, a.nameColor)
+  const otherCommunity = await service.claim('c', users[2], { x: 280, z: 280 })
+  assert.equal(otherCommunity.nameColor, a.nameColor)
+  await service.demolish('b', { plotId: b.id })
+  const registry = db.state.pet_playground_plots.find((p) => p._id === 'name_colors_' + world.communityId(users[0]))
+  assert.equal(registry.colors[world.hash('b')], undefined)
+  assert.equal(registry.colors[world.hash('a')], a.nameColor)
+})
+
+test('old courtyards receive persisted colors through map and region reads without owners logging in', async () => {
+  const { db, users, service } = fixture()
+  const a = await service.claim('a', users[0], { x: 280, z: 280 })
+  const b = await service.claim('b', users[1], { x: 560, z: 280 })
+  db.state.pet_playground_plots = db.state.pet_playground_plots.filter((p) => p.kind !== 'name_colors')
+  for (const row of db.state.pet_playground_plots) delete row.nameColor
+  const map = await service.mapOverview('c', users[2], { community: users[0].residentialCommunity })
+  assert.equal(new Set(map.plots.map((p) => p.nameColor)).size, 2)
+  for (const plot of map.plots) {
+    assert.match(plot.nameColor, /^#[0-9a-f]{6}$/)
+    const stored = db.state.pet_playground_plots.find((p) => p._id === plot.id)
+    const owner = db.state.pet_playground_plots.find((p) => p.plotId === plot.id)
+    assert.equal(stored.nameColor, plot.nameColor)
+    assert.equal(owner.nameColor, plot.nameColor)
+  }
+  const region = await service.region('a', users[0], { chunkX: Math.floor(a.x / world.CHUNK), chunkZ: Math.floor(a.z / world.CHUNK) })
+  assert.equal(region.plots.find((p) => p.id === a.id).nameColor, map.plots.find((p) => p.id === a.id).nameColor)
+  assert.equal((await service.own('b')).nameColor, map.plots.find((p) => p.id === b.id).nameColor)
+})
 test('one owner cannot move through repeat claims or community changes; rejected writes roll back', async () => {
   const { db, users, service, handler } = fixture()
   const p = await service.claim('a', users[0], { cellX: 1, cellZ: 1 })

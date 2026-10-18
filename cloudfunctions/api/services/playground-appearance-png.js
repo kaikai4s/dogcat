@@ -10,7 +10,9 @@ function crc32(bytes) {
   for(const byte of bytes)crc=crcTable[(crc^byte)&255]^(crc>>>8)
   return (crc^0xffffffff)>>>0
 }
-function inspectAtlas(buffer) {
+function inspectAtlas(buffer, layout = null) {
+  const columns=layout?layout.columns:4,rows=layout?layout.rows:6
+  if(!Number.isInteger(columns)||columns<1||columns>12||!Number.isInteger(rows)||rows<1||rows>6)throw new Error('图集行列数无效')
   if(!Buffer.isBuffer(buffer)||buffer.length>8*1024*1024||!buffer.subarray(0,8).equals(signature))
     throw new Error('请上传不超过8MB的透明PNG图集')
   let header,idat=[],ended=false,offset=8
@@ -23,11 +25,11 @@ function inspectAtlas(buffer) {
     if(type==='IHDR') {
       if(header||length!==13)throw new Error('PNG格式不正确')
       header={width:bytes.readUInt32BE(0),height:bytes.readUInt32BE(4)}
-      const size=header.width/4
-      if(![128,256,512].includes(size)||header.height!==size*6||bytes[8]!==8||bytes[9]!==6||bytes[10]||bytes[11]||bytes[12])
-        throw new Error('图集需为4列6行、24帧透明RGBA PNG，每格128、256或512像素，关闭隔行扫描')
+      const size=header.width/columns
+      if(![128,256,512].includes(size)||header.height!==size*rows||bytes[8]!==8||bytes[9]!==6||bytes[10]||bytes[11]||bytes[12])
+        throw new Error(layout?'图集须为指定列数的单行透明RGBA PNG，每格128、256或512像素，关闭隔行扫描':'图集需为4列6行、24帧透明RGBA PNG，每格128、256或512像素，关闭隔行扫描')
     }
-    if(type==='acTL')throw new Error('请上传静态24帧图集，不支持动态PNG')
+    if(type==='acTL')throw new Error('请上传静态PNG图集，不支持动态PNG')
     if(type==='IDAT')idat.push(bytes)
     if(type==='IEND') {ended=true;offset=end;break}
     offset=end
@@ -39,7 +41,7 @@ function inspectAtlas(buffer) {
   catch(error) {throw new Error('PNG像素数据损坏，请重新导出')}
   if(raw.length!==expected)throw new Error('PNG像素数据不完整')
   let previous=Buffer.alloc(rowBytes),transparent=false
-  const frames=new Uint32Array(24),size=width/4,hash=crypto.createHash('sha256').update(`${width}x${height}:`)
+  const frames=new Uint32Array(columns*rows),size=width/columns,hash=crypto.createHash('sha256').update(`${width}x${height}:`)
   const paeth=(a,b,c)=>{
     const p=a+b-c,pa=Math.abs(p-a),pb=Math.abs(p-b),pc=Math.abs(p-c)
     return pa<=pb&&pa<=pc?a:pb<=pc?b:c
@@ -53,7 +55,7 @@ function inspectAtlas(buffer) {
       row[x]=(raw[y*(rowBytes+1)+1+x]+predictor)&255
       if(x%4===3) {
         if(row[x]<255)transparent=true
-        if(row[x]>0)frames[Math.floor(y/size)*4+Math.floor((x>>2)/size)]++
+        if(row[x]>0)frames[Math.floor(y/size)*columns+Math.floor((x>>2)/size)]++
       }
     }
     // Preserve original bytes for the next row's PNG filter prediction.
@@ -62,7 +64,7 @@ function inspectAtlas(buffer) {
     hash.update(canonical)
     previous=row
   }
-  if(!transparent||frames.some((count)=>count===0))throw new Error('图集必须保留透明背景，且24个格子都需要有动作画面')
-  return {digest:hash.digest('hex'),width,height,frameSize:size,frames:24,columns:4,rows:6,anchor:460/512}
+  if(!transparent||frames.some((count)=>count===0))throw new Error(`图集必须保留透明背景，且${columns*rows}个格子都需要有动作画面`)
+  return {digest:hash.digest('hex'),width,height,frameSize:size,frames:columns*rows,columns,rows,anchor:460/512}
 }
 module.exports={inspectAtlas,crc32}

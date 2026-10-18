@@ -264,11 +264,11 @@ test('late packets cannot undo motion or resurrect a deleted player; new session
   assert.equal(f.w.remoteCharacters[0].position.x,140)
   await f.sync.stop()
 })
-test('pet route pushes are shared immediately and render the owner with the pet name',async(t)=>{
+test('pet route pushes share movement and render only the pet name in its owner color',async(t)=>{
   t.mock.method(Date,'now',()=>1800000000000)
   const f=fixture();f.sync.start();await settle()
   const motion={epoch:Date.now()-500,approach:[{x:110,z:100},{x:117,z:100}],patrol:[{x:117,z:100}],speed:7,roamSpeed:3,wait:3}
-  f.watches[0].onChange({docs:[{records:{resident:{id:'resident',kind:'resident',ownerId:'other',ownerName:'凯大大',pets:[{id:'dog',name:'豆豆',species:'dog',modelScale:1,motion}],version:{epoch:1,seq:1}}}}]})
+  f.watches[0].onChange({docs:[{records:{resident:{id:'resident',kind:'resident',ownerId:'other',ownerName:'凯大大',nameColor:'#168c72',pets:[{id:'dog',name:'豆豆',species:'dog',modelScale:1,motion}],version:{epoch:1,seq:1}}}}]})
   await settle()
   assert.equal(f.w.pets[0].mine,false)
   const time=Date.now()+f.w.serverOffset
@@ -276,9 +276,9 @@ test('pet route pushes are shared immediately and render the owner with the pet 
   assert.ok(Math.abs(f.w.pets[0].position.x-expected.position.x)<.2)
   const labels=[]
   f.w.ctx={save(){},restore(){},measureText:()=>({width:72})}
-  f.w.camera={x:110,z:100};f.w.markerLabel=(name)=>labels.push(name);f.w.line=()=>{}
+  f.w.camera={x:110,z:100};f.w.markerLabel=(name,x,y,selected,color)=>labels.push({name,color});f.w.line=()=>{}
   f.w.drawPetNames()
-  assert.deepEqual(labels,['凯大大的豆豆'])
+  assert.deepEqual(labels,[{name:'豆豆',color:'#168c72'}])
   await f.sync.stop()
 })
 test('friendship mailbox pushes update collision permissions; strangers remain blocked and expiry closes the gate',async()=>{

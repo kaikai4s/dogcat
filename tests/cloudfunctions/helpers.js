@@ -31,7 +31,7 @@ const aggregateCommand = Object.fromEntries([
   'ifNull', 'literal', 'floor', 'add', 'multiply', 'sum', 'push'
 ].map(name => [name, value => ({ [`$${name === 'neq' ? 'ne' : name}`]: value })]))
 
-function createCollectionStore(initial = {}) {
+function createCollectionStore(initial = {}, options = {}) {
   const state = {}
   Object.keys(initial).forEach((name) => {
     state[name] = initial[name].map((item, index) => ({ _id: item._id || `${name}_${index + 1}`, ...item }))
@@ -93,6 +93,34 @@ function createCollectionStore(initial = {}) {
   }
 
   function applyUpdateData(target, data) {
+    if (options.cloudObjectUpdates) {
+      // CloudBase flattens plain update objects into dotted leaf paths. Only
+      // command.set replaces an entire object, including a previous null value.
+      const flatten = (value, prefix = '', result = {}) => {
+        for (const [key, child] of Object.entries(value || {})) {
+          const field = prefix ? `${prefix}.${key}` : key
+          if (child === undefined) continue
+          if (child && Object.getPrototypeOf(child) === Object.prototype && !child.__cloudCommand) flatten(child, field, result)
+          else result[field] = child
+        }
+        return result
+      }
+      const candidate = structuredClone(target)
+      for (const [field, value] of Object.entries(flatten(data))) {
+        const parts = field.split('.'), last = parts.pop()
+        let node = candidate
+        for (const part of parts) {
+          if (!Object.prototype.hasOwnProperty.call(node, part)) node[part] = {}
+          if (node[part] === null || typeof node[part] !== 'object') throw new Error(`Cannot create field '${last}' in element {${part}: ${node[part]}}`)
+          node = node[part]
+        }
+        if (value && value.__cloudCommand === 'remove') delete node[last]
+        else node[last] = structuredClone(value && value.__cloudCommand === 'set' ? value.value : value)
+      }
+      for (const key of Object.keys(target)) delete target[key]
+      Object.assign(target, candidate)
+      return
+    }
     const next = {}
     for (const [key, value] of Object.entries(data || {})) {
       if(key.includes('.')) {
@@ -227,7 +255,7 @@ function createCollectionStore(initial = {}) {
   function runTransaction(callback) {
     const run = transactionQueue.then(async () => {
       // Isolated snapshots model atomic commit/rollback, not CloudBase conflict retries.
-      const snapshot = createCollectionStore(structuredClone(state))
+      const snapshot = createCollectionStore(structuredClone(state), options)
       const result = await callback({ collection: snapshot.collection })
       for (const name of Object.keys(state)) delete state[name]
       Object.assign(state, snapshot.state)

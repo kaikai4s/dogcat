@@ -37,6 +37,7 @@ const adminSections = [
       { icon: 'ri-vip-crown-line', title: '会员等级', desc: '积分升级规则', url: '/pages/admin/member-levels/index' },
       { icon: 'ri-medal-line', title: '宠物头衔', desc: '称号与自动发放', url: '/pages/admin/pet-titles/index' },
       { icon: 'ri-palette-line', title: '乐园形象定制', desc: '照片申请与专属形象发布', url: '/pages/admin/playground-customizations/index' },
+      { icon: 'ri-plant-line', title: '农作物管理', desc: '阶段素材、种子价格与生长配置', url: '/pages/admin/playground-crops/index' },
       { icon: 'ri-shield-check-line', title: '宠物疫苗审核', desc: '接种认证材料审核', url: '/pages/admin/pet-vaccine/list/index' },
       { icon: 'ri-calendar-check-line', title: '签到奖励', desc: '月度每日奖励配置', url: '/pages/admin/checkin-config/index' },
       { icon: 'ri-coins-line', title: '积分管理', desc: '手动增减与流水', url: '/pages/admin/points/index' },

@@ -130,9 +130,7 @@ module.exports={
     }
     c.restore()
     if(!overview){
-      const online=mineDriving||car.online&&Date.now()+this.serverOffset-car.lastSeen<15000
-      const label=(car.name||'邻居')+(car.state==='driving'?(online?'':' · 离线'):'的车')+((car.passengers||[]).length?' · '+car.passengers.length+'/3位乘客':'')
-      this.markerLabel(label,point.x,point.y-size*.66-8,selected)
+      this.markerLabel('小车',point.x,point.y-size*.66-8,selected,this.ownerNameColor(car.ownerId,car.nameColor))
     }
   },
   nearbyRideCandidate() {
