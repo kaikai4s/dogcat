@@ -8,6 +8,15 @@ Page({
     characterType: 'boy',
     characterChanging: false,
     hasAvatar: false,
+    hasCustomCharacter: false,
+    driving:false,
+    vehicleSelected:false,
+    vehicleParked:false,
+    nearbyVehicle:false,
+    ownVehicleId:'',
+    vehicleSpeed:2,
+    vehicleSpeedSaving:false,
+    vehicleOperating:false,
     residentCount: 0,
     settingsOpen: false,
     socialOpen: false,
@@ -137,6 +146,8 @@ Page({
       {
         loading: true,
         characterChanging: false,
+        hasCustomCharacter: false,
+        driving:false,vehicleSelected:false,vehicleParked:false,nearbyVehicle:false,ownVehicleId:'',vehicleOperating:false,
         claiming: false,
         error: '',
         status: '读取宠物档案…',
@@ -169,6 +180,7 @@ Page({
                 (overview.userCommunity && overview.userCommunity.name) || '',
               hasPlot: Boolean(overview.plot),
               hasAvatar: Boolean(overview.scene && overview.scene.hasAvatar),
+              vehicleSpeed:overview.scene&&overview.scene.vehicleSpeed||2,
               visiting: Boolean(overview.scene && overview.scene.visiting),
               hasHomeElsewhere: Boolean(overview.scene && overview.scene.hasHomeElsewhere),
               characterType: overview.scene ? overview.scene.characterType : this.data.characterType,
@@ -560,6 +572,36 @@ Page({
     this.setData({settingsOpen:true})
   },
   closeSettings() { this.setData({settingsOpen:false}) },
+  async operateVehicle(e) {
+    const world=this.world,operation=e.currentTarget.dataset.operation
+    if(!world||!world.sceneSync||this.data.vehicleOperating)return
+    const car=world.ownVehicle()
+    if(!car)return
+    this.joystickEnd()
+    this.setData({vehicleOperating:true})
+    try {
+      await world.sceneSync.vehicleAction(operation,car.id)
+      const messages={start:'车辆已停在院门外，走近即可上车',enter:'已上车 · 摇杆驾驶，或点击车辆后点地移动',exit:'已下车 · 靠近车辆可再次上车或入库',garage:'车辆已返回庭院车位'}
+      if(this.world===world)world.onStatus(messages[operation])
+    } catch(error) {wx.showToast({title:error.message||'车辆操作失败',icon:'none'})}
+    finally {if(this.world===world)this.setData({vehicleOperating:false})}
+  },
+  previewVehicleSpeed(e) {this.setData({vehicleSpeed:Number(e.detail.value)/10})},
+  async changeVehicleSpeed(e) {
+    const world=this.world,value=Number(e.detail.value)/10
+    if(!world||!world.sceneSync||this.data.vehicleSpeedSaving)return
+    const previous=world.vehicleSpeed
+    this.setData({vehicleSpeed:value,vehicleSpeedSaving:true})
+    try {await world.sceneSync.setVehicleSpeed(value)}
+    catch(error){this.setData({vehicleSpeed:previous});wx.showToast({title:error.message||'车速保存失败',icon:'none'})}
+    finally{if(this.world===world)this.setData({vehicleSpeedSaving:false})}
+  },
+  customizeAppearance() {
+    this.joystickEnd()
+    this.clearPetSelection()
+    this.setData({settingsOpen:false})
+    wx.navigateTo({url:'/packagePlayground/pages/customize'})
+  },
   async openSocial() {
     this.joystickEnd();this.clearPetSelection()
     this.setData({settingsOpen:false,socialOpen:true})

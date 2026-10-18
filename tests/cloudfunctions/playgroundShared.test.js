@@ -23,6 +23,83 @@ function fixture() {
   return {db,users,pets,context,shared,plots,enter,auth,snapshot,advance:(ms)=>{time+=ms},now:()=>time}
 }
 
+test('retrying a committed movement acknowledges the packet and repairs a failed realtime projection',async()=>{
+  const f=fixture()
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const scene=await f.enter('a')
+  f.advance(1000)
+  const packet={...f.auth(scene),seq:1,position:{x:scene.position.x+5,z:scene.position.z},moving:true}
+  await f.shared.sync('a',packet)
+  const actor=f.db.state.pet_playground_plots.find((r)=>r._id===scene.playerId)
+  const saved=structuredClone(actor)
+  const shard=f.db.state.pet_playground_live.find((r)=>r.records&&r.records[scene.playerId])
+  delete shard.records[scene.playerId]
+  f.advance(500)
+  const duplicate=await f.shared.sync('a',packet)
+  assert.equal(duplicate.ackSeq,1)
+  assert.deepEqual(f.db.state.pet_playground_plots.find((r)=>r._id===scene.playerId),saved)
+  const repaired=f.db.state.pet_playground_live.find((r)=>r.records&&r.records[scene.playerId])
+  assert.deepEqual(repaired.records[scene.playerId].position,packet.position)
+})
+
+test('movement time credit absorbs packet jitter without allowing excess speed',async()=>{
+  const f=fixture()
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const scene=await f.enter('a')
+  f.db.state.pet_playground_plots.find((r)=>r._id===scene.playerId).position={x:100,z:100}
+  f.advance(1000)
+  await f.shared.sync('a',{...f.auth(scene),seq:1,position:{x:107,z:100},moving:true})
+  await f.shared.sync('a',{...f.auth(scene),seq:2,position:{x:114,z:100},moving:true})
+  await assert.rejects(()=>f.shared.sync('a',{...f.auth(scene),seq:3,position:{x:214,z:100}}),/移动过远/)
+})
+
+test('reconciliation returns and publishes the valid route prefix instead of discarding all movement',async()=>{
+  const f=fixture()
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  await f.plots.claim('b',f.users[1],{x:400,z:400})
+  const scene=await f.enter('a')
+  f.db.state.pet_playground_plots.find((r)=>r._id===scene.playerId).position={x:100,z:100}
+  f.advance(30000)
+  const packet={...f.auth(scene),seq:1,reconcile:true,trail:[{x:110,z:100},{x:120,z:100}],position:{x:380,z:350},moving:true}
+  const result=await f.shared.sync('a',packet)
+  assert.equal(result.corrected,true)
+  assert.equal(result.correctionReason,'path')
+  assert.deepEqual(result.position,{x:120,z:100})
+  const duplicate=await f.shared.sync('a',packet)
+  assert.equal(duplicate.ackSeq,1)
+  assert.equal(duplicate.corrected,true)
+  assert.deepEqual(duplicate.position,result.position)
+  const projection=f.db.state.pet_playground_live.find((r)=>r.records&&r.records[scene.playerId]).records[scene.playerId]
+  assert.deepEqual(projection.position,result.position)
+  assert.equal(projection.moving,false)
+})
+
+test('reconciliation still rejects excess travel and malformed points and accepts the next legal move',async()=>{
+  const f=fixture()
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const scene=await f.enter('a')
+  f.db.state.pet_playground_plots.find((r)=>r._id===scene.playerId).position={x:100,z:100}
+  f.advance(1000)
+  const result=await f.shared.sync('a',{...f.auth(scene),seq:1,reconcile:true,trail:[{x:105,z:100}],position:{x:200,z:100}})
+  assert.equal(result.correctionReason,'distance')
+  assert.deepEqual(result.position,{x:105,z:100})
+  const next=await f.shared.sync('a',{...f.auth(scene),seq:2,reconcile:true,position:{x:106,z:100}})
+  assert.equal(next.corrected,false)
+  assert.deepEqual(next.position,{x:106,z:100})
+  await assert.rejects(()=>f.shared.sync('a',{...f.auth(scene),seq:3,reconcile:true,position:{x:NaN,z:100}}),/位置无效/)
+})
+
+test('buffered route batches share the elapsed-time budget and cannot multiply their movement allowance',async()=>{
+  const f=fixture()
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const scene=await f.enter('a')
+  f.db.state.pet_playground_plots.find((r)=>r._id===scene.playerId).position={x:100,z:100}
+  f.advance(10000)
+  await f.shared.sync('a',{...f.auth(scene),seq:1,moreTrail:true,position:{x:160,z:100}})
+  await f.shared.sync('a',{...f.auth(scene),seq:2,moreTrail:false,position:{x:220,z:100}})
+  await assert.rejects(()=>f.shared.sync('a',{...f.auth(scene),seq:3,position:{x:250,z:100}}),/移动过远/)
+})
+
 test('same community shares yards, bowl state, pets and players; visits do not migrate or expose private IDs',async()=>{
   const f=fixture()
   const plot=await f.plots.claim('a',f.users[0],{x:280,z:280})

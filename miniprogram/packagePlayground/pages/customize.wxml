@@ -1,0 +1,18 @@
+<view class="customize-page">
+  <view class="customize-hero"><view class="eyebrow">宠物乐园 · 专属定制</view><view class="customize-title"><view>让庄园里的 TA</view><view>更像现实中的 TA</view></view><view class="muted">提供清晰照片，我们为你制作角色或宠物形象。完成后只对这次申请的对象生效。</view></view>
+  <view class="customize-card">
+    <view class="section-title">这次为谁定制</view>
+    <picker range="{{targets}}" range-key="label" value="{{targetIndex}}" disabled="{{busy || !targets.length}}" bindchange="changeTarget"><view class="target-picker"><text>{{targets[targetIndex].label || '正在读取角色与宠物…'}}</text><text>⌄</text></view></picker>
+    <view class="section-title photo-heading"><text>参考照片</text><text class="muted">{{photos.length}} / 6</text></view>
+    <view class="muted">至少一张清晰全身照，可补充正面、侧面和毛色细节。</view>
+    <view class="photo-grid"><view class="photo-item" wx:for="{{photos}}" wx:key="path"><image src="{{item.path}}" mode="aspectFill" data-path="{{item.path}}" bindtap="previewPhoto"/><button class="remove-photo" data-index="{{index}}" catchtap="removePhoto" disabled="{{busy}}">×</button></view><button class="add-photo" wx:if="{{6 > photos.length}}" bindtap="addPhotos" disabled="{{busy}}"><text>＋</text><text>添加照片</text></button></view>
+    <view class="section-title">想保留的特征</view><textarea value="{{remark}}" maxlength="500" disabled="{{busy}}" bindinput="inputRemark" placeholder="例如：豆豆是奶油色，胸前有白毛，佩戴蓝色项圈。"/>
+    <view class="privacy-note">参考照片用于定制处理；其他玩家只会在场景中看到完成后的形象。</view>
+    <button class="submit-button" bindtap="submit" loading="{{busy}}" disabled="{{busy || !targets.length}}">{{busy ? progress : '提交专属定制申请'}}</button>
+  </view>
+  <view class="history-heading"><text class="section-title">我的申请</text><button bindtap="load" disabled="{{loading || busy}}">刷新</button></view>
+  <view class="error-message" wx:if="{{error}}">{{error}}</view>
+  <view class="empty-message" wx:if="{{!loading && !applications.length}}">还没有申请，先为自己或爱宠定制一个形象吧。</view>
+  <view class="application-card" wx:for="{{applications}}" wx:key="_id"><view class="application-top"><text>{{item.targetType === 'pet' ? '宠物 · ' : ''}}{{item.targetName}}</text><text class="status-pill {{item.status}}">{{item.statusText}}</text></view><view class="muted">{{item.timeText}} · {{item.photos.length}} 张参考照片</view><view class="request-number">申请编号 {{item._id}}</view><view class="reason" wx:if="{{item.reason}}">处理说明：{{item.reason}}</view><view class="success-note" wx:if="{{item.status === 'completed'}}">专属形象已绑定{{item.targetType === 'pet' ? '这只宠物' : '你的角色'}}，进入庄园即可查看。</view><button class="cancel-button" wx:if="{{item.canCancel}}" data-id="{{item._id}}" bindtap="cancel" disabled="{{busy}}">取消申请</button></view>
+  <button class="more-button" wx:if="{{hasMore}}" bindtap="loadMore" loading="{{loading}}" disabled="{{loading || busy}}">查看更多申请</button>
+</view>

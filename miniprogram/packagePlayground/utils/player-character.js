@@ -36,13 +36,15 @@ class PlayerCharacter {
     this.runRequested = strength >= (this.runRequested ? RUN_STOP : RUN_START)
     if (!strength) this.moving = false
   }
-  update(dt, navigation, known) {
+  update(dt, navigation, known, onStep) {
     this.moving = false
     const vector = screenMovement(this.input.x, this.input.y)
     if (!vector.strength || !navigation || !Number.isFinite(dt) || dt <= 0) return
     // Bounded substeps prevent crossing a narrow fence during a slow frame.
     const strength = vector.strength
-    const speed = strength <= RUN_START
+    const speed = this.vehicleSpeed
+      ? this.vehicleSpeed * (strength - 0.12) / (1 - 0.12)
+      : strength <= RUN_START
       ? CHARACTER_SPEED * (strength - 0.12) / (RUN_START - 0.12)
       : CHARACTER_SPEED + (CHARACTER_RUN_SPEED - CHARACTER_SPEED) * (strength - RUN_START) / (1 - RUN_START)
     let remaining = speed * Math.min(dt, 0.1)
@@ -67,9 +69,10 @@ class PlayerCharacter {
       if (!target) break
       const moved = Math.hypot(target.x - start.x, target.z - start.z)
       this.walkDistance += moved
-      this.animationPhase = (this.animationPhase + moved / (this.runRequested ? 9.5 : 7)) % 1
+      this.animationPhase = (this.animationPhase + moved / (this.vehicleSpeed ? 20 : this.runRequested ? 9.5 : 7)) % 1
       this.moving = this.moving || moved > 0.00001
       this.position = target
+      if(onStep)onStep(target)
       remaining -= distance
     }
   }

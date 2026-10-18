@@ -17,10 +17,12 @@
   <view wx:if="{{hasAvatar && !loading && !error && !placing && !settingsOpen && !socialOpen && !showPetScale && (joystickMode === 'always' || joystickActive)}}" class="joystick-pad {{joystickMode === 'always' ? 'joystick-fixed' : ''}} {{joystickRunning ? 'running' : ''}}" style="left: {{joystickLeft}}px; top: {{joystickTop}}px; opacity: {{joystickOpacity / 100}};" catchtouchstart="fixedJoystickStart" catchtouchmove="fixedJoystickMove" catchtouchend="fixedJoystickEnd" catchtouchcancel="fixedJoystickEnd">
     <view class="joystick-ring"></view>
     <view class="joystick-knob" style="transform: translate({{joystickX}}px, {{joystickY}}px)"></view>
-    <text class="joystick-caption">{{joystickRunning ? '奔跑' : '轻推行走 · 拉远奔跑'}}</text>
+    <text class="joystick-caption">{{driving ? '驾驶 · 拉远加速' : joystickRunning ? '奔跑' : '轻推行走 · 拉远奔跑'}}</text>
   </view>
   <view class="player-hud {{joystickHand === 'right' ? 'right-hand' : ''}}" style="bottom: {{bottom + 260 + (showPetScale ? 105 : 0)}}px" wx:if="{{hasAvatar && !loading && !error && !placing}}">
     <view class="interaction-actions">
+      <button wx:if="{{nearbyVehicle && !driving}}" data-operation="enter" bindtap="operateVehicle" disabled="{{vehicleOperating}}" loading="{{vehicleOperating}}">进入车辆</button>
+      <button wx:if="{{nearbyVehicle && !driving}}" data-operation="garage" bindtap="operateVehicle" disabled="{{vehicleOperating}}">车辆入库</button>
       <button wx:if="{{nearbyPlayer && !nearbyPlayer.friend}}" bindtap="requestFriend" disabled="{{socialBusy}}">添加 {{nearbyPlayer.name}} 为好友</button>
       <button wx:if="{{nearbyGate}}" bindtap="requestVisit" disabled="{{socialBusy}}">申请访问 {{nearbyGate.name}} 的庭院</button>
       <button wx:if="{{nearbyBowl}}" class="fill-bowl" bindtap="fillBowl" disabled="{{feeding || nearbyBowl.food >= 100}}" loading="{{feeding}}">{{nearbyBowl.food >= 100 ? '狗碗已添满' : '给狗碗添粮'}}</button>
@@ -33,6 +35,11 @@
       <button bindtap="chooseCommunityAndBuild">选择小区并建造庭院</button>
     </view>
     <view class="character-selection" wx:if="{{characterSelected && !placing}}">已选中自己的角色 · 点击空地移动</view>
+    <view class="pet-actions vehicle-actions" wx:if="{{vehicleSelected && !placing}}">
+      <text class="selected-pet-name">{{driving ? '已选中车辆 · 点击空地驾驶，可连续更换目标' : vehicleParked ? '我的蓝色轿车 · 停在车位' : '我的蓝色轿车 · 靠近后可以上车或入库'}}</text>
+      <button wx:if="{{vehicleParked}}" data-operation="start" bindtap="operateVehicle" disabled="{{vehicleOperating}}" loading="{{vehicleOperating}}">启动车辆</button>
+      <button wx:if="{{driving}}" data-operation="exit" bindtap="operateVehicle" disabled="{{vehicleOperating}}" loading="{{vehicleOperating}}">下车</button>
+    </view>
     <view class="pet-actions" wx:if="{{selectedPetId && !placing}}">
       <text class="selected-pet-name">已选中 {{selectedPetName}} · 点击地图前往，可连续更换目标</text>
       <button wx:if="{{nearbyPet && selectedPetId === nearbyPet.id}}" bindtap="interactPet">摸摸</button>
@@ -62,15 +69,17 @@
           <view class="settings-entry-copy"><text class="settings-entry-title">好友与庭院访问</text><text class="settings-tip">查看好友，处理好友与来访申请</text></view>
           <text class="settings-count" wx:if="{{socialRequests.length}}">{{socialRequests.length}}</text><text class="settings-chevron">›</text>
         </button>
+        <button class="settings-entry" bindtap="customizeAppearance"><text class="settings-entry-icon">绘</text><view class="settings-entry-copy"><text class="settings-entry-title">专属形象定制</text><text class="settings-tip">上传照片，为角色或爱宠申请专属形象</text></view><text class="settings-chevron">›</text></button>
         <text class="settings-section">操控习惯</text>
         <view class="settings-card">
           <view class="settings-row"><view><text>长按显示摇杆</text><text class="settings-tip">关闭时常显，开启后长按草地 1 秒</text></view><switch checked="{{joystickMode === 'hold'}}" color="#6f8d58" bindchange="changeJoystickMode"/></view>
           <view class="settings-hand"><text>习惯用手</text><view class="hand-options"><button class="{{joystickHand === 'left' ? 'active' : ''}}" data-hand="left" bindtap="changeJoystickHand" aria-pressed="{{joystickHand === 'left'}}">左手摇杆</button><button class="{{joystickHand === 'right' ? 'active' : ''}}" data-hand="right" bindtap="changeJoystickHand" aria-pressed="{{joystickHand === 'right'}}">右手摇杆</button></view><text class="settings-tip">常显摇杆靠近所选侧边</text></view>
           <view class="settings-opacity"><view class="settings-value"><text>摇杆不透明度</text><text>{{joystickOpacity}}%</text></view><slider min="10" max="100" step="5" value="{{joystickOpacity}}" activeColor="#6f8d58" block-color="#6f8d58" block-size="20" bindchanging="changeJoystickOpacity" bindchange="changeJoystickOpacity"/></view>
+          <view class="settings-opacity"><view class="settings-value"><text>车辆最高速度</text><text>跑步的 {{vehicleSpeed}} 倍</text></view><slider min="20" max="50" step="1" value="{{vehicleSpeed * 10}}" disabled="{{vehicleSpeedSaving}}" activeColor="#6f8d58" block-color="#6f8d58" block-size="20" bindchanging="previewVehicleSpeed" bindchange="changeVehicleSpeed"/><text class="settings-tip">默认 2 倍，最高 5 倍；与角色共用摇杆设置</text></view>
         </view>
         <text class="settings-section">场景显示</text>
         <view class="settings-card"><view class="settings-row"><view><text>显示庭院主人</text><text class="settings-tip">在每个庭院上方显示用户昵称</text></view><switch checked="{{showYardOwners}}" color="#6f8d58" bindchange="changeYardOwners"/></view></view>
-        <button wx:if="{{hasAvatar}}" class="settings-entry character-entry" bindtap="switchCharacter" disabled="{{characterChanging || placing}}" loading="{{characterChanging}}"><text class="settings-entry-icon">人</text><view class="settings-entry-copy"><text class="settings-entry-title">{{characterType === 'girl' ? '换成男孩' : '换成女孩'}}</text><text class="settings-tip">当前角色：{{characterType === 'girl' ? '女孩' : '男孩'}}</text></view><text class="settings-chevron">›</text></button>
+        <button wx:if="{{hasAvatar && !hasCustomCharacter}}" class="settings-entry character-entry" bindtap="switchCharacter" disabled="{{characterChanging || placing}}" loading="{{characterChanging}}"><text class="settings-entry-icon">人</text><view class="settings-entry-copy"><text class="settings-entry-title">{{characterType === 'girl' ? '换成男孩' : '换成女孩'}}</text><text class="settings-tip">当前角色：{{characterType === 'girl' ? '女孩' : '男孩'}}</text></view><text class="settings-chevron">›</text></button>
       </scroll-view>
     </view>
   </view>

@@ -1,4 +1,5 @@
 const routes = {
+  'playground-customizations/index': ['playgroundAppearance.listAdmin'],
   'users/list/index': ['admin.listUsers'], 'users/edit/index': ['admin.getUserDetail'],
   'sitters/list/index': ['admin.listStaffProfiles'], 'admins/list/index': ['owner'],
   'permissions/index': ['owner'], 'operation-logs/index': ['admin.listOperationLogs'],

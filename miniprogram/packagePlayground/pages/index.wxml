@@ -6,6 +6,7 @@
       <view class="hero-desc">在大草地上拖动、缩放浏览，点击地面控制爱宠行走，为自己选择宅基地。</view>
     </view>
     <view class="hero-actions">
+      <button class="ghost-btn small-btn" bindtap="customize">专属形象定制</button>
       <button class="ghost-btn small-btn" bindtap="goPets">宠物档案</button>
       <button class="primary-btn small-btn" bindtap="load" loading="{{loading}}">刷新乐园</button>
     </view>
@@ -74,6 +75,7 @@
         <view class="remix-icon ri-close-line close-btn" bindtap="closePetCard"></view>
       </view>
       <view class="popover-desc">{{selectedPet.personality || '正在 2D 庄园里开心玩耍'}}</view>
+      <button class="ghost-btn compact-btn" bindtap="customizePet">为 {{selectedPet.name}} 定制形象</button>
       <button class="primary-btn compact-btn" bindtap="openWorld"><text class="remix-icon ri-play-circle-line"></text>进入庄园互动</button>
     </view>
   </view>

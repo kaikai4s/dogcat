@@ -159,7 +159,8 @@
       "name": "playground",
       "pages": [
         "pages/index",
-        "pages/world"
+        "pages/world",
+        "pages/customize"
       ]
     },
     {
@@ -217,6 +218,7 @@
         "evidence/detail/index",
         "member-levels/index",
         "pet-titles/index",
+        "playground-customizations/index",
         "pet-vaccine/list/index",
         "checkin-config/index",
         "points/index",

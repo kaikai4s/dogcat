@@ -2,10 +2,12 @@ const { AssetLoader2D } = require('./asset-loader-2d')
 const { createNavigation } = require('./navigation')
 const { CHARACTER_STYLE } = require('./character-assets')
 const { PET_ATLASES } = require('./pet-assets')
+const { validAppearance, atlasFor } = require('./appearance-assets')
 const { sampleMotion } = require('./shared-motion')
 const { PlayerCharacter, CHARACTER_RADIUS, INTERACTION_DISTANCE } = require('./player-character')
 const {
   YARD_SIZE,
+  VEHICLE_RADIUS,
   FOUNTAIN_FRAMES,
   YARD_EXTRAS,
   yardLayout
@@ -94,9 +96,18 @@ class World2D {
     this.followCharacter = false
     this.foodBowls = { dog: 0, ...this.overviewData.foodBowls }
     this.scene = this.overviewData.scene
+    this.setOwnAppearance(this.scene&&this.scene.appearance)
+    this.customImages=new Map()
+    this.customLoads=new Map()
+    this.customRetry=new Map()
+    this.customSizes=new Map()
+    this.customUsed=new Map()
     this.social = this.scene && this.scene.social || {friends:[],visits:{}}
     this.sharedPlots = new Map()
     this.remoteCharacters = []
+    this.vehicles = new Map()
+    this.drivingVehicleId=this.scene&&this.scene.vehicleId||''
+    this.vehicleSpeed=clamp(Number(this.scene&&this.scene.vehicleSpeed)||2,2,5)
     this.sceneTrail = []
     this.serverOffset = this.scene ? this.scene.serverTime - Date.now() : 0
   }
@@ -180,6 +191,8 @@ class World2D {
       id: p._id,
       name: p.name || '宠物',
       species: p.species,
+      appearance:p.appearance||null,
+      ownerId:this.scene&&this.scene.playerId,
       modelScale: clamp(Number(p.playgroundScale) || 1, 0.5, 2),
       savedModelScale: clamp(Number(p.playgroundScale) || 1, 0.5, 2),
       position: petStart(origin, this.ownPlot, i),
@@ -199,6 +212,7 @@ class World2D {
       ? { x: this.ownPlot.x + 3, z: this.ownPlot.z + 14 }
       : this.startPoint
     this.character = new PlayerCharacter(origin)
+    this.character.vehicleSpeed=this.drivingVehicleId?14*this.vehicleSpeed:0
     this.characterTerrain = null
     this.characterAreaPromise = null
     this.characterRetryAt = 0
@@ -210,7 +224,6 @@ class World2D {
     this.follow = false
     this.followCharacter = true
     this.camera = { ...this.character.position }
-    this.characterTerrain = null
     this.prepareCharacterArea().catch(() => {})
     this.loadVisible().catch(() => this.onStatus('角色附近场景加载失败，请重试'))
   }
@@ -218,7 +231,7 @@ class World2D {
     if (!this.character) return
     this.characterRoute = null
     this.characterMoveToken = (this.characterMoveToken || 0) + 1
-    if (this.destroyed || this.placing || this.recoveringScene) { x = 0; y = 0 }
+    if (this.destroyed || this.placing || this.recoveringScene || this.vehicleBusy) { x = 0; y = 0 }
     this.character.setInput(x, y)
     if (this.character.input.x || this.character.input.y) {
       this.clearPetSelection()
@@ -233,12 +246,13 @@ class World2D {
     const p = character.position
     const b = this.characterTerrain
     if (b && !this.characterAreaLoaded(b)) this.characterTerrain = null
-    if (this.characterTerrain && p.x >= b.minX + 4 && p.x <= b.maxX - 4 && p.z >= b.minZ + 4 && p.z <= b.maxZ - 4)
+    const margin=this.drivingVehicleId?18:4, reach=this.drivingVehicleId?40:12
+    if (this.characterTerrain && p.x >= b.minX + margin && p.x <= b.maxX - margin && p.z >= b.minZ + margin && p.z <= b.maxZ - margin)
       return Promise.resolve()
     if (this.elapsed < this.characterRetryAt) return Promise.resolve()
     const bounds = {
-      minX: Math.max(0, p.x - 12), maxX: Math.min(this.config.width, p.x + 12),
-      minZ: Math.max(0, p.z - 12), maxZ: Math.min(this.config.height, p.z + 12)
+      minX: Math.max(0, p.x - reach), maxX: Math.min(this.config.width, p.x + reach),
+      minZ: Math.max(0, p.z - reach), maxZ: Math.min(this.config.height, p.z + reach)
     }
     const generation = this.regionGeneration
     const promise = this.loadNavigationArea(bounds).then(() => {
@@ -269,10 +283,11 @@ class World2D {
   }
   characterNavigation() {
     const p = this.character.position
-    const area = { minX: p.x - 8, maxX: p.x + 8, minZ: p.z - 8, maxZ: p.z + 8 }
+    const reach=this.drivingVehicleId?14:8
+    const area = { minX: p.x - reach, maxX: p.x + reach, minZ: p.z - reach, maxZ: p.z + reach }
     const obstacles=this.plots().filter((plot)=>plot.x+(plot.size||SIZE)/2>=area.minX&&plot.x-(plot.size||SIZE)/2<=area.maxX&&plot.z+(plot.size||SIZE)/2>=area.minZ&&plot.z-(plot.size||SIZE)/2<=area.maxZ)
-      .flatMap((plot)=>this.canEnterPlot(plot)?yardObstacles(plot):[{minX:plot.x-(plot.size||SIZE)/2,maxX:plot.x+(plot.size||SIZE)/2,minZ:plot.z-(plot.size||SIZE)/2,maxZ:plot.z+(plot.size||SIZE)/2}])
-    return createNavigation(this.bounds, obstacles, CHARACTER_RADIUS, 1.5)
+      .flatMap((plot)=>!this.drivingVehicleId&&this.canEnterPlot(plot)?yardObstacles(plot):this.solidPlot(plot))
+    return createNavigation(this.bounds, obstacles, this.drivingVehicleId?VEHICLE_RADIUS:CHARACTER_RADIUS, 1.5)
   }
   canEnterPlot(plot) {
     if(!this.scene || plot.mine)return true
@@ -289,6 +304,7 @@ class World2D {
   }
   nearbyInteractions() {
     const result = { pet: null, bowl: null }
+    if(this.drivingVehicleId)return result
     if (!this.character || this.placing || this.destroyed || this.isMapOverview() || !this.characterTerrain || !this.characterAreaLoaded(this.characterTerrain))
       return result
     const p = this.character.position
@@ -316,6 +332,7 @@ class World2D {
     return result
   }
   emitNearby() {
+    this.emitVehicleUi()
     const nearby = this.nearbyInteractions()
     const key = JSON.stringify(nearby)
     if (key === this.nearbyKey) return
@@ -372,16 +389,25 @@ class World2D {
       if(route.length) {
         const dx=route[0].x-p.x,dz=route[0].z-p.z
         const sx=dx-dz,sy=(dx+dz)*.52,length=Math.hypot(sx,sy)
-        this.character.setInput(sx/length*.72,sy/length*.72)
-        dt=Math.min(dt,Math.hypot(dx,dz)/7)
+        const speed=this.drivingVehicleId?14*this.vehicleSpeed:7
+        this.character.setInput(sx/length*(this.drivingVehicleId?1:.72),sy/length*(this.drivingVehicleId?1:.72))
+        dt=Math.min(dt,Math.hypot(dx,dz)/speed)
       } else {this.character.setInput(0,0);this.characterRoute=null}
     }
     const input = this.character.input
     if (input.x || input.y) this.prepareCharacterArea().catch(() => {})
     const b = this.characterTerrain
     const known = (p) => Boolean(b && p.x >= b.minX && p.x <= b.maxX && p.z >= b.minZ && p.z <= b.maxZ)
-    this.character.update(dt, this.characterNavigation(), known)
-    if (this.scene && this.character.moving) this.sceneTrail.push({...this.character.position})
+    const steps=this.scene?[{...this.character.position}]:null
+    this.character.update(dt, this.characterNavigation(), known, steps?(point)=>{
+      // Preserve actual turns for both walking and driving; simplify only
+      // consecutive collinear substeps inside this frame.
+      const b=steps[steps.length-1],a=steps[steps.length-2]
+      if(a&&Math.abs((b.x-a.x)*(point.z-b.z)-(b.z-a.z)*(point.x-b.x))<1e-8&&
+        (b.x-a.x)*(point.x-b.x)+(b.z-a.z)*(point.z-b.z)>=0)steps[steps.length-1]={...point}
+      else steps.push({...point})
+    }:null)
+    if (steps && this.character.moving) this.sceneTrail.push(...steps.slice(1))
     if (this.followCharacter) this.camera = { ...this.character.position }
   }
   emitPets() {
@@ -416,13 +442,14 @@ class World2D {
     return true
   }
   selectPet(id) {
-    if (!this.pets.some((p) => p.id === id && p.mine!==false)) return false
-    if(this.selectedPetId!==id || this.characterSelected) this.clearPetSelection()
+    if (this.drivingVehicleId || !this.pets.some((p) => p.id === id && p.mine!==false)) return false
+    if(this.selectedPetId!==id || this.characterSelected || this.selectedVehicleId) this.clearPetSelection()
     this.selectedPetId = id
     this.emitPets()
     return true
   }
   clearPetSelection() {
+    if(this.selectedVehicleId) {this.selectedVehicleId='';this.characterTarget=null;this.emitVehicleUi()}
     if(this.characterSelected) {
       this.characterSelected=false
       this.characterTarget=null
@@ -437,7 +464,7 @@ class World2D {
     this.page.setData({ showPetScale: false })
   }
   characterAt(point) {
-    if(!this.character)return false
+    if(!this.character || this.drivingVehicleId)return false
     const p=this.project(this.character.position.x,this.character.position.z)
     const size=this.isMapOverview()?24:Math.max(24,CHARACTER_STYLE.size*this.scale*this.zoom)
     return Math.abs(point.x-p.x)<=size*.35 && point.y>=p.y-size*CHARACTER_STYLE.anchor && point.y<=p.y+10
@@ -450,7 +477,7 @@ class World2D {
     this.onStatus('已选中自己的角色 · 点击空地移动，可连续更换目标')
   }
   async moveCharacterTo(target) {
-    if(!this.character || this.recoveringScene)return
+    if(!this.character || this.recoveringScene || this.vehicleBusy)return
     const start={...this.character.position}
     if(Math.hypot(target.x-start.x,target.z-start.z)>300)return this.onStatus('请选择附近的空地')
     const marker=this.characterTarget={...target,pending:true}
@@ -461,14 +488,14 @@ class World2D {
     try {
       await this.loadNavigationArea(bounds)
       if(this.destroyed || token!==this.characterMoveToken)return
-      const blocks=this.plots().flatMap((plot)=>this.canEnterPlot(plot)?yardObstacles(plot):this.solidPlot(plot))
-      const route=await createNavigation(bounds,blocks,CHARACTER_RADIUS,1.5).pathAsync(start,target,()=>!this.destroyed && token===this.characterMoveToken)
+      const blocks=this.plots().flatMap((plot)=>!this.drivingVehicleId&&this.canEnterPlot(plot)?yardObstacles(plot):this.solidPlot(plot))
+      const route=await createNavigation(bounds,blocks,this.drivingVehicleId?VEHICLE_RADIUS:CHARACTER_RADIUS,1.5).pathAsync(start,target,()=>!this.destroyed && token===this.characterMoveToken)
       if(this.destroyed || token!==this.characterMoveToken)return
       if(!route) {if(this.characterTarget===marker)this.characterTarget=null;return this.onStatus('这里无法到达，请选择空地或从获准访问的院门进入')}
       this.characterRoute=route
       marker.pending=false
       this.follow=false
-      this.onStatus('角色前往选定位置 · 可继续点击地图更换目标')
+      this.onStatus((this.drivingVehicleId?'车辆':'角色')+'前往选定位置 · 可继续点击地图更换目标')
     } catch(error) {
       if(!this.destroyed && token===this.characterMoveToken) {
         if(this.characterTarget===marker)this.characterTarget=null
@@ -1054,10 +1081,48 @@ class World2D {
   sceneState() {
     const p=this.character
     if(!p) return {trail:[],characterType:this.characterType,moving:false,running:false}
-    return {position:{...p.position},trail:this.sceneTrail.map((point)=>({...point})),characterType:this.characterType,
-      mirrored:p.mirrored,moving:p.moving,running:p.runRequested}
+    const trail=this.sceneTrail.slice(0,600).map((point)=>({...point})),moreTrail=this.sceneTrail.length>trail.length
+    return {position:{...(moreTrail?trail[trail.length-1]:p.position)},vehicleId:this.drivingVehicleId||'',trail,moreTrail,characterType:this.characterType,
+      mirrored:p.mirrored,moving:moreTrail||p.moving,running:p.runRequested}
   }
   ackSceneTrail(count) { this.sceneTrail.splice(0,count) }
+  setOwnAppearance(value,reset=false) {
+    const id=this.scene&&this.scene.playerId
+    if(validAppearance(value,'character',id,id)) {
+      if(!this.characterAppearance||(value.revision||0)>=(this.characterAppearance.revision||0))this.characterAppearance=value
+    } else if(reset||!validAppearance(this.characterAppearance,'character',id,id))this.characterAppearance=null
+    const enabled=!!this.characterAppearance
+    if(!this.page.data||this.page.data.hasCustomCharacter!==enabled)this.page.setData({hasCustomCharacter:enabled})
+  }
+  customSprite(value,type,targetId,ownerId,action) {
+    if(!validAppearance(value,type,targetId,ownerId))return null
+    const atlas=atlasFor(value,action)
+    if(!atlas)return null
+    const image=this.customImages.get(atlas.fileID)
+    if(image){this.customUsed.set(atlas.fileID,Date.now());return {image,style:atlas}}
+    const walk=action==='run'?atlasFor(value,'walk'):null
+    const fallback=walk&&this.customImages.get(walk.fileID)?{image:this.customImages.get(walk.fileID),style:walk}:null
+    if(fallback)this.customUsed.set(walk.fileID,Date.now())
+    if(this.loader&&this.loader.loadAtlas&&this.customLoads.size<2&&!this.customLoads.has(atlas.fileID)&&Date.now()>=(this.customRetry.get(atlas.fileID)||0)) {
+      const bytes=atlas.frameSize*atlas.frameSize*24*4
+      let total=[...this.customSizes.values()].reduce((sum,size)=>sum+size,0)
+      for(const [id,used] of [...this.customUsed].sort((a,b)=>a[1]-b[1])) {
+        if(total+bytes<=64*1024*1024)break
+        if(Date.now()-used<1000)continue
+        total-=this.customSizes.get(id)||0
+        this.customImages.delete(id);this.customSizes.delete(id);this.customUsed.delete(id)
+        if(this.loader.cache)this.loader.cache.delete(id)
+      }
+      if(total+bytes>64*1024*1024)return fallback
+      this.customSizes.set(atlas.fileID,bytes)
+      const task=this.loader.loadAtlas(atlas).then((loaded)=>{
+        if(!this.destroyed){this.customImages.set(atlas.fileID,loaded);this.customUsed.set(atlas.fileID,Date.now())}
+      }).catch(()=>{if(!this.destroyed){this.customSizes.delete(atlas.fileID);this.customRetry.set(atlas.fileID,Date.now()+5000)}})
+        .finally(()=>this.customLoads.delete(atlas.fileID))
+      this.customLoads.set(atlas.fileID,task)
+    }
+    return fallback
+  }
   async predictPetMove(id,target,token) {
     const pet=this.pets.find((p)=>p.id===id&&p.mine!==false)
     if(!pet || !pet.sharedMotion || Math.hypot(target.x-pet.position.x,target.z-pet.position.z)>300)return
@@ -1084,9 +1149,13 @@ class World2D {
     pet.pendingMove=null
     if(previous)this.applySharedPet(previous,true)
   }
-  applySharedPet(pet,mine,ownerName) {
+  applySharedPet(pet,mine,ownerName,ownerId) {
     let target=this.pets.find((p)=>p.id===pet.id)
     if(!target) { target={id:pet.id,route:[],mode:'roaming',commandToken:0};this.pets.push(target) }
+    // Appearance and ownership can change independently of an in-flight route.
+    target.ownerId=ownerId||target.ownerId||(mine&&this.scene&&this.scene.playerId)||''
+    if(validAppearance(pet.appearance,'pet',pet.id,target.ownerId)&&(!target.appearance||(pet.appearance.revision||0)>=(target.appearance.revision||0)))target.appearance=pet.appearance
+    else if(!validAppearance(target.appearance,'pet',pet.id,target.ownerId))target.appearance=null
     if(mine && (pet.commandSeq||0)<(target.acceptedCommand||0))return target
     if(target.pendingMove && (pet.commandSeq||0)<target.pendingMove.token) {
       target.pendingMove.previous=pet
@@ -1131,10 +1200,12 @@ class World2D {
     for(const record of records) {
       if(record.kind==='plot') plots.set(record.id,record)
       if(record.kind==='presence'&&!record.mine) characters.push(record)
-      if(record.kind==='resident') for(const pet of record.pets) {ids.add(pet.id);this.applySharedPet(pet,record.mine,record.ownerName||record.name)}
+      if(record.kind==='presence'&&record.mine){this.setOwnAppearance(record.appearance);this.applyOwnVehicleActor(record)}
+      if(record.kind==='resident') for(const pet of record.pets) {ids.add(pet.id);this.applySharedPet(pet,record.mine,record.ownerName||record.name,record.ownerId)}
     }
     this.pets=this.pets.filter((p)=>ids.has(p.id))
     this.sharedPlots=plots
+    this.replaceVehicles(records.filter((r)=>r.kind==='vehicle'))
     // Snapshot is authoritative: evict stale cached plots after a demolition.
     for(const [key,list] of this.chunks) this.chunks.set(key,list.filter((p)=>plots.has(p.id)))
     this.mapPlots=new Map(plots)
@@ -1160,7 +1231,8 @@ class World2D {
   async applySceneChanges(changes) {
     const characters=new Map(this.remoteCharacters.map((person)=>[person.id,person]))
     for(const record of changes) {
-      if(record.mine)continue
+      if(record.kind==='vehicle') {this.applyVehicle(record);continue}
+      if(record.mine) {this.setOwnAppearance(record.deleted?null:record.appearance,!!record.deleted);this.applyOwnVehicleActor(record);continue}
       if(record.deleted)characters.delete(record.id)
       else characters.set(record.id,record)
     }
@@ -1204,6 +1276,7 @@ class World2D {
     return {x:person.from.x+(target.x-person.from.x)*t,z:person.from.z+(target.z-person.from.z)*t}
   }
   drawNeighbor(person,overview) {
+    if(person.vehicleId)return
     const position=this.neighborPosition(person)
     const p=this.project(position.x,position.z),c=this.ctx
     const size=CHARACTER_STYLE.size*this.scale*this.zoom
@@ -1213,13 +1286,15 @@ class World2D {
     else {
       const prefix=person.characterType==='girl'?'girl':'boy'
       const moving=person.online&&person.moving&&Date.now()+this.serverOffset-person.lastSeen<3000
-      const image=this.assets[prefix+(moving?(person.running?'_run_sw':'_walk_sw'):'_idle_sw')]
+      const custom=this.customSprite(person.appearance,'character',person.id,person.ownerId,moving&&person.running?'run':'walk')
+      const style=custom?custom.style:CHARACTER_STYLE
+      const image=custom?custom.image:this.assets[prefix+(moving?(person.running?'_run_sw':'_walk_sw'):'_idle_sw')]
       if(image) {
         c.translate(p.x,p.y);if(person.mirrored)c.scale(-1,1)
-        if(moving) {
-          const frame=Math.floor((Date.now()+this.serverOffset)/90)%CHARACTER_STYLE.frames
-          const w=image.width/CHARACTER_STYLE.columns,h=image.height/CHARACTER_STYLE.rows
-          c.drawImage(image,frame%4*w,Math.floor(frame/4)*h,w,h,-size/2,-size*CHARACTER_STYLE.anchor,size,size)
+        if(moving||custom) {
+          const frame=moving?Math.floor((Date.now()+this.serverOffset)/(person.running?70:90))%style.frames:0
+          const w=image.width/style.columns,h=image.height/style.rows
+          c.drawImage(image,frame%style.columns*w,Math.floor(frame/style.columns)*h,w,h,-size/2,-size*style.anchor,size,size)
         } else c.drawImage(image,-size/2,-size*CHARACTER_STYLE.anchor,size,size)
       }
     }
@@ -1307,17 +1382,18 @@ class World2D {
     this.ctx.drawImage(img, p.x - w / 2, p.y - w * anchor, w, w)
   }
   drawPet(pet) {
+    const point = this.project(pet.position.x, pet.position.z)
+    const size = 7 * (pet.modelScale || 1) * this.scale * this.zoom
+    if (point.x < -size || point.x > this.width + size || point.y < -size || point.y > this.height + size) return
     const name = (pet.species === 'cat' ? 'cat' : 'dog') + '_walk'
-    const image = this.assets[name]
+    const custom=this.customSprite(pet.appearance,'pet',pet.id,pet.ownerId,'walk')
+    const image = custom?custom.image:this.assets[name]
     if (!image) {
       this.sprite((pet.species === 'cat' ? 'cat' : 'dog') + (pet.moving ? '_run' : '_stand'),
         pet.position.x, pet.position.z, 7 * (pet.modelScale || 1))
       return
     }
-    const style = PET_ATLASES[name]
-    const point = this.project(pet.position.x, pet.position.z)
-    const size = 7 * (pet.modelScale || 1) * this.scale * this.zoom
-    if (point.x < -size || point.x > this.width + size || point.y < -size || point.y > this.height + size) return
+    const style = custom?{...custom.style,stride:PET_ATLASES[name].stride}:PET_ATLASES[name]
     const frame = pet.moving ? Math.floor((pet.walkDistance || 0) / style.stride * style.frames) % style.frames : 0
     const width = image.width / style.columns, height = image.height / style.rows
     const c = this.ctx
@@ -1329,6 +1405,7 @@ class World2D {
     c.restore()
   }
   drawCharacter(overview) {
+    if(this.drivingVehicleId)return
     const player = this.character
     if (!player) return
     const point = this.project(player.position.x, player.position.z)
@@ -1340,18 +1417,19 @@ class World2D {
       c.fill()
       return
     }
-    const style = CHARACTER_STYLE
     const prefix = this.characterType || 'boy'
-    const walking = player.moving && this.assets[prefix + (player.runRequested ? '_run_sw' : '_walk_sw')]
-    const image = walking || this.assets[prefix + '_idle_sw']
+    const custom=this.customSprite(this.characterAppearance,'character',this.scene&&this.scene.playerId,this.scene&&this.scene.playerId,player.moving&&player.runRequested?'run':'walk')
+    const style=custom?{...CHARACTER_STYLE,...custom.style}:CHARACTER_STYLE
+    const walking = player.moving && (custom?custom.image:this.assets[prefix + (player.runRequested ? '_run_sw' : '_walk_sw')])
+    const image = custom?custom.image:walking || this.assets[prefix + '_idle_sw']
     if (!image) return
     const size = style.size * this.scale * this.zoom
     if (point.x < -size || point.x > this.width + size || point.y < -size || point.y > this.height + size) return
     c.save()
     c.translate(point.x, point.y)
     if (player.mirrored) c.scale(-1, 1)
-    if (walking) {
-      const index = Math.floor(player.animationPhase * style.frames) % style.frames
+    if (walking||custom) {
+      const index = walking?Math.floor(player.animationPhase * style.frames) % style.frames:0
       const w = image.width / style.columns, h = image.height / style.rows
       c.drawImage(image, index % style.columns * w, Math.floor(index / style.columns) * h, w, h,
         -size / 2, -size * style.anchor, size, size)
@@ -1450,10 +1528,11 @@ class World2D {
     c.restore()
   }
   drawDestination() {
-    const pet = this.characterSelected ? this.character : this.selectedPet(),
+    const controlled=this.characterSelected||!!this.drivingVehicleId&&this.selectedVehicleId===this.drivingVehicleId
+    const pet = controlled ? this.character : this.selectedPet(),
       c = this.ctx
-    const marker = this.characterSelected ? this.characterTarget : this.petTarget
-    if (!pet || !marker || !this.characterSelected && marker.petId !== pet.id) return
+    const marker = controlled ? this.characterTarget : this.petTarget
+    if (!pet || !marker || !controlled && marker.petId !== pet.id) return
     if (!marker.pending && Math.hypot(pet.position.x-marker.x, pet.position.z-marker.z) < .5)
       marker.arrived = true
     const arrived = !!marker.arrived
@@ -1467,7 +1546,7 @@ class World2D {
       c.beginPath()
       const start = this.project(pet.position.x, pet.position.z)
       c.moveTo(start.x, start.y)
-      for (const node of this.characterSelected ? this.characterRoute || [] : pet.sharedMotion ? pet.sharedMotion.approach || [] : pet.route) {
+      for (const node of controlled ? this.characterRoute || [] : pet.sharedMotion ? pet.sharedMotion.approach || [] : pet.route) {
         const q = this.project(node.x, node.z)
         c.lineTo(q.x, q.y)
       }
@@ -1524,6 +1603,8 @@ class World2D {
     )
     const frames = FOUNTAIN_FRAMES.filter((name) => this.assets[name])
     for (const item of layout.sprites)
+      if(item.name==='car_road')this.sprite(item.name,item.x,item.z,item.size,item.anchor)
+      else
       items.push({
         depth: item.x + item.z,
         draw: () => {
@@ -1696,6 +1777,10 @@ class World2D {
       items.push({ depth: this.character.position.x + this.character.position.z,
         draw: () => this.drawCharacter(overview) })
     for(const person of this.remoteCharacters) items.push({depth:person.position.x+person.position.z,draw:()=>this.drawNeighbor(person,overview)})
+    for(const car of this.vehicles.values()) {
+      const p=this.vehiclePosition(car)
+      items.push({depth:p.x+p.z,draw:()=>this.drawVehicle(car,overview)})
+    }
     items.sort((a, b) => a.depth - b.depth).forEach((i) => i.draw())
     this.drawYardOwners(b)
     this.drawDestination()
@@ -1845,6 +1930,14 @@ class World2D {
       const p = this.unproject(point.x, point.y)
       if (this.placing) this.pickPlot(p)
       else {
+        if(this.vehicleBusy)return
+        const car=this.vehicleAt(point)
+        if(car) {this.selectVehicle(car);return}
+        if(this.drivingVehicleId) {
+          if(this.selectedVehicleId===this.drivingVehicleId)this.moveCharacterTo(p)
+          else this.clearPetSelection()
+          return
+        }
         const pet=this.petAt(point)
         if(pet && pet.mine!==false) { this.selectPet(pet.id); this.emitNearby() }
         else if(!pet && this.characterAt(point)) this.selectCharacter()
@@ -1864,6 +1957,11 @@ class World2D {
     this.queue = []
     this.chunks.clear()
     this.assets = {}
+    this.customImages.clear()
+    this.customRetry.clear()
+    this.customSizes.clear()
+    this.customUsed.clear()
   }
 }
 module.exports = { World2D, yardObstacles, STEP, SIZE, CHUNK }
+Object.assign(World2D.prototype,require('./vehicle-world'))

@@ -1,0 +1,38 @@
+page { background: #f5f6f0; color: #354a39; }
+.custom-admin { padding: 30rpx 26rpx 70rpx; }
+.page-heading, .request-heading, .detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
+.page-title { font-size: 36rpx; font-weight: 700; }
+.muted { font-size: 23rpx; line-height: 1.7; color: #8a9580; }
+button::after { border: none; }
+button { margin: 0; padding: 0 22rpx; line-height: 66rpx; font-size: 25rpx; border-radius: 18rpx; background: #e8eedf; color: #617952; }
+.tabs { margin: 28rpx 0; white-space: nowrap; }
+.tab { display: inline-block; margin-right: 14rpx; padding: 14rpx 24rpx; font-size: 25rpx; color: #869279; border-radius: 18rpx; background: #ebefe2; }
+.tab.active { color: white; background: #6f8d58; }
+.request-card { margin-bottom: 22rpx; padding: 28rpx; border-radius: 26rpx; background: #fffdf7; }
+.request-name { font-size: 29rpx; font-weight: 600; }
+.request-heading { margin-bottom: 14rpx; }
+.request-card button { margin-top: 22rpx; }
+.status-pill { flex: none; padding: 8rpx 16rpx; font-size: 21rpx; border-radius: 16rpx; background: #f5edda; color: #9a7d42; }
+.status-pill.completed { color: #668151; background: #eaf1df; }
+.request-id { margin-top: 8rpx; color: #a0a795; font-size: 20rpx; word-break: break-all; }
+.empty-message, .error-message { padding: 50rpx 20rpx; text-align: center; color: #8b967f; font-size: 25rpx; }
+.error-message { color: #a67452; }
+.detail-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: #20352466; }
+.detail-panel { width: 92%; max-width: 600px; padding: 28rpx; box-sizing: border-box; border-radius: 30rpx; background: #fffdf7; }
+.detail-heading { margin-bottom: 22rpx; }
+.detail-content { height: 68vh; }
+.section-title { margin: 28rpx 0 16rpx; font-size: 29rpx; font-weight: 600; }
+.binding-note { margin: 20rpx 0; padding: 20rpx; font-size: 24rpx; line-height: 1.7; border-radius: 18rpx; color: #698156; background: #edf3e5; }
+.photo-grid { display: flex; flex-wrap: wrap; gap: 14rpx; }
+.photo-grid image { width: 174rpx; height: 174rpx; border-radius: 18rpx; }
+.remark { margin-top: 20rpx; padding: 18rpx; font-size: 25rpx; white-space: pre-wrap; border-radius: 18rpx; background: #f6f3e9; }
+.atlas-row { display: flex; align-items: center; justify-content: space-between; gap: 14rpx; margin-top: 22rpx; padding: 20rpx; border-radius: 22rpx; background: #f2f5eb; font-size: 26rpx; }
+.atlas-copy { flex: 1; min-width: 0; }
+.atlas-copy .muted { display: block; word-break: break-all; }
+.atlas-copy button { width: max-content; max-width: 100%; margin-top: 14rpx; font-size: 23rpx; }
+.sprite-preview { position: relative; flex: none; width: 160rpx; height: 160rpx; overflow: hidden; border-radius: 18rpx; background-color: #e3e8db; background-image: linear-gradient(45deg,#cad4bc 25%,transparent 25%),linear-gradient(-45deg,#cad4bc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#cad4bc 75%),linear-gradient(-45deg,transparent 75%,#cad4bc 75%); background-size: 24rpx 24rpx; background-position: 0 0,0 12rpx,12rpx -12rpx,-12rpx 0; }
+.sprite-preview image { position: absolute; width: 400%; height: 600%; }
+.publish-button { color: #fff; background: #6f8d58; }
+.reject-section { margin-top: 30rpx; padding-top: 12rpx; border-top: 1rpx solid #e5eadc; }
+textarea { box-sizing: border-box; width: 100%; height: 160rpx; padding: 20rpx; margin-bottom: 18rpx; border-radius: 20rpx; background: #f4f1e8; font-size: 25rpx; }
+.reject-section button { color: #a47a54; background: #f3eadb; }

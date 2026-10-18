@@ -276,6 +276,7 @@ function loadCloudFunction(functionName, db, openid = 'openid_test', cloudOverri
         ai: cloudOverrides.ai,
         extend: cloudOverrides.extend,
         downloadFile: cloudOverrides.downloadFile,
+        uploadFile: cloudOverrides.uploadFile,
         openapi: {
           phonenumber: {
             async getPhoneNumber() {

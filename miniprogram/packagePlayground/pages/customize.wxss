@@ -1,0 +1,35 @@
+page { background: #f4f6ed; color: #344d39; }
+.customize-page { padding: 32rpx 28rpx 80rpx; }
+.customize-hero { padding: 22rpx 12rpx 36rpx; }
+.eyebrow { color: #799066; font-size: 22rpx; letter-spacing: 3rpx; }
+.customize-title { margin: 18rpx 0; font-size: 48rpx; line-height: 1.4; font-weight: 700; }
+.muted { color: #7c8875; font-size: 24rpx; line-height: 1.7; }
+.customize-card, .application-card { padding: 30rpx; border-radius: 32rpx; background: #fffdf6; box-shadow: 0 12rpx 36rpx #40533808; }
+.section-title { font-size: 28rpx; font-weight: 600; }
+.target-picker { display: flex; justify-content: space-between; gap: 14rpx; margin: 22rpx 0 32rpx; padding: 24rpx; border-radius: 20rpx; background: #eff3e7; font-size: 27rpx; }
+.target-picker > text:first-child { min-width: 0; word-break: break-all; }
+.photo-heading, .history-heading, .application-top { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.photo-grid { display: flex; flex-wrap: wrap; gap: 18rpx; margin: 22rpx 0 30rpx; }
+.photo-item, .add-photo { position: relative; width: 174rpx; height: 174rpx; }
+.photo-item image { width: 100%; height: 100%; border-radius: 22rpx; }
+button::after { border: none; }
+.remove-photo { position: absolute; right: 0; top: 0; width: 42rpx; height: 42rpx; margin: 0; padding: 0; line-height: 40rpx; border-radius: 0 20rpx; color: white; background: #344d39aa; }
+.add-photo { display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0; padding: 0; background: #eef3e5; border: 2rpx dashed #c6d3b6; border-radius: 22rpx; color: #718760; font-size: 23rpx; line-height: 1.8; }
+.add-photo > text:first-child { font-size: 48rpx; }
+textarea { box-sizing: border-box; width: 100%; height: 180rpx; margin-top: 18rpx; padding: 22rpx; border-radius: 20rpx; background: #f2f4ec; font-size: 26rpx; line-height: 1.6; }
+.privacy-note { margin: 22rpx 0; font-size: 22rpx; line-height: 1.7; color: #8a957f; }
+.submit-button { border-radius: 22rpx; color: #fffdf3; background: #6f8d58; font-size: 28rpx; }
+.history-heading { margin: 42rpx 6rpx 20rpx; }
+.history-heading button, .cancel-button, .more-button { margin: 0; padding: 0 22rpx; line-height: 60rpx; border-radius: 18rpx; background: #e8eedf; color: #667e56; font-size: 24rpx; }
+.application-card { margin-bottom: 20rpx; }
+.application-top { margin-bottom: 14rpx; font-size: 28rpx; font-weight: 600; }
+.status-pill { flex: none; padding: 6rpx 14rpx; border-radius: 14rpx; font-size: 21rpx; font-weight: normal; color: #9a7c40; background: #f5edda; }
+.status-pill.completed { color: #62804d; background: #e8f0dc; }
+.status-pill.cancelled, .status-pill.draft { color: #8b9383; background: #edf0e7; }
+.request-number { margin-top: 10rpx; color: #929b8b; font-size: 19rpx; word-break: break-all; }
+.reason, .success-note { margin-top: 20rpx; padding: 18rpx; border-radius: 16rpx; color: #8a6c49; background: #f6f0e4; font-size: 24rpx; line-height: 1.6; }
+.success-note { color: #678150; background: #eef4e5; }
+.cancel-button { margin: 20rpx 0 0 auto; width: max-content; }
+.empty-message, .error-message { padding: 30rpx; font-size: 25rpx; line-height: 1.7; color: #8b967f; text-align: center; }
+.error-message { color: #a16f51; }
+.more-button { margin-top: 24rpx; }

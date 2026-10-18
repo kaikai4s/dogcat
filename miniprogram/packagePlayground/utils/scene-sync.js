@@ -29,7 +29,7 @@ class SceneSync {
         this.applyAgain=false
         const changes=[...this.changes.values()]
         this.changes.clear()
-        const rebuild=this.fullApply||!this.world.applySceneChanges||changes.some((r)=>r.kind!=='presence')
+        const rebuild=this.fullApply||!this.world.applySceneChanges||changes.some((r)=>!['presence','vehicle'].includes(r.kind))
         this.fullApply=false
         if(rebuild) await this.world.applySceneRecords([...this.records.values()].filter((r)=>!r.deleted))
         else await this.world.applySceneChanges(changes)
@@ -75,28 +75,44 @@ class SceneSync {
     return true
   }
   send(online=true) {
-    const seq=++this.seq
-    const run=()=>{
+    const transmit=async(packet)=>{
       const generation=this.generation
-      const state=this.world.sceneState(),sent=Date.now()
-      return callFunction('playground','syncScene',{...this.credentials(),...state,seq,online}).then((r)=>{
+      const {state,seq}=packet,sent=Date.now()
+      try {
+        const r=await callFunction('playground','syncScene',{...this.credentials(),...state,seq,online:packet.online,reconcile:true})
         this.clock(r.serverTime,sent)
-        if(r.accepted) this.world.ackSceneTrail(state.trail.length)
+        if(!r.accepted&&!(Number.isInteger(r.ackSeq)&&r.ackSeq>=seq))throw new Error('位置同步尚未确认，正在重试')
+        this.pendingMovement=null
+        this.world.ackSceneTrail(state.trail.length)
         if(r.corrected && this.world.character && generation===this.generation && !this.world.destroyed) {
-          this.world.setCharacterInput(0,0);this.world.character.position={...r.position}
+          // Genuine collision/permission changes return the last safe point in
+          // this reply. Keep joystick input live and avoid a full-scene fetch.
+          this.world.characterRoute=null
+          this.world.characterMoveToken=(this.world.characterMoveToken||0)+1
+          this.world.character.position={...r.position}
           this.world.sceneTrail=[];this.world.characterTerrain=null
-          this.world.onStatus('访问权限已过期，已回到庭院外')
+          if(this.world.prepareCharacterArea)this.world.prepareCharacterArea().catch(()=>{})
+          this.world.onStatus(r.correctionReason==='permission'?'访问权限已过期，已回到庭院外':'路线已更新，已调整到可通行位置')
         }
-      }).catch(async(error)=>{
-        if(!online || !this.active || generation!==this.generation || this.world.destroyed ||
-          !/移动过远|路径过长|不能穿过/.test(error.message||'')) throw error
+      } catch(error) {
+        if(!packet.online || !this.active || generation!==this.generation || this.world.destroyed ||
+          !/移动过远|路径过长|不能穿过|上下车状态已更新/.test(error.message||'')) throw error
+        this.pendingMovement=null
         // Reconcile rejected movement without rebuilding the canvas or reloading assets.
         this.world.recoveringScene=true
         this.world.setCharacterInput(0,0)
         try {
           if(await this.snapshot(true)) this.world.onStatus('角色位置已校准，可以继续移动')
         } finally {this.world.recoveringScene=false}
-      })
+      }
+    }
+    const run=async()=>{
+      // A timeout does not tell us whether the write committed. Retry the
+      // immutable packet first; only then capture and send subsequent motion.
+      if(this.pendingMovement)await transmit(this.pendingMovement)
+      const packet={state:this.world.sceneState(),seq:++this.seq,online}
+      this.pendingMovement=packet
+      await transmit(packet)
     }
     const result=this.chain.then(run,run)
     this.chain=result.catch(()=>{})
@@ -191,7 +207,7 @@ class SceneSync {
       try {
         const state=this.world.sceneState()
         const signature=JSON.stringify([state.position,state.moving,state.running,state.mirrored,state.characterType])
-        if(signature!==this.signature || start-(this.lastSent||0)>=2000) {
+        if(this.pendingMovement || state.trail.length || signature!==this.signature || start-(this.lastSent||0)>=2000) {
           await this.send(true)
           if(this.active&&this.generation===generation) {this.signature=signature;this.lastSent=Date.now()}
         }
@@ -200,7 +216,7 @@ class SceneSync {
         this.sendFailures=(this.sendFailures||0)+1
         if(this.active&&this.generation===generation)this.onError(error)
       }
-      const delay=this.sendFailures?Math.min(30000,1000*2**Math.min(this.sendFailures-1,5)):Math.max(0,100-(Date.now()-start))
+      const delay=this.sendFailures?Math.min(2000,1000*2**Math.min(this.sendFailures-1,1)):Math.max(0,100-(Date.now()-start))
       if(this.active&&this.generation===generation)this.timer=setTimeout(tick,delay)
     }
     tick()
@@ -228,6 +244,50 @@ class SceneSync {
     const result=await callFunction('playground',action,{...this.credentials(),...data})
     if(!this.world.destroyed&&this.world.setSocial)this.world.setSocial(result)
     return result
+  }
+  async vehicleAction(operation,vehicleId) {
+    if(this.world.vehicleBusy)throw new Error('车辆正在操作中')
+    this.world.vehicleBusy=true
+    this.world.setCharacterInput(0,0)
+    try {
+      await this.send(true)
+      const run=async()=>{
+        const result=await callFunction('playground','vehicleAction',{...this.credentials(),operation,vehicleId})
+        if(this.world.destroyed)return result
+        this.clock(result.serverTime,Date.now())
+        this.merge(result.actor);this.merge(result.vehicle)
+        await this.apply(false)
+        const latest=this.records.get(result.actor.id)
+        if(latest&&!newer(latest.version,result.actor.version))this.world.applyOwnVehicleActor(result.actor,true)
+        return result
+      }
+      const result=this.chain.then(run,run)
+      this.chain=result.catch(()=>{})
+      return await result
+    } catch(error) {
+      // A lost reply may still have committed. Recover before enabling controls.
+      if(!this.world.destroyed)await this.snapshot(true).catch(()=>{})
+      throw error
+    } finally {this.world.vehicleBusy=false}
+  }
+  async setVehicleSpeed(multiplier) {
+    if(this.world.vehicleBusy)throw new Error('车辆正在操作中')
+    this.world.vehicleBusy=true
+    this.world.setCharacterInput(0,0)
+    try {
+      await this.send(true)
+      const run=async()=>{
+        const result=await callFunction('playground','setVehicleSpeed',{...this.credentials(),multiplier})
+        if(!this.world.destroyed){
+          if(result.vehicle){this.merge(result.vehicle);await this.apply(false)}
+          this.world.setVehicleSpeed(result.speedMultiplier)
+        }
+        return result
+      }
+      const result=this.chain.then(run,run)
+      this.chain=result.catch(()=>{})
+      return await result
+    } finally {this.world.vehicleBusy=false}
   }
   async movePet(petId,target) {
     const token=this.petCommand=(this.petCommand||0)+1

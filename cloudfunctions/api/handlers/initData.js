@@ -76,6 +76,9 @@ module.exports = function createHandler(context) {
 
       // 2. 顺带自动创建全量核心业务索引
       const REQUIRED_INDEXES = [
+        { collection: 'pet_playground_appearance_requests', name: 'idx_appearance_owner', keys: { ownerOpenid: 1, _id: 1 }, unique: false },
+        { collection: 'pet_playground_appearance_requests', name: 'idx_appearance_owner_status', keys: { ownerOpenid: 1, status: 1, _id: 1 }, unique: false },
+        { collection: 'pet_playground_appearance_requests', name: 'idx_appearance_status', keys: { status: 1, _id: 1 }, unique: false },
         { collection: 'pet_playground_live', name: 'idx_playground_live_scene', keys: { kind: 1, communityId: 1 }, unique: false },
         { collection: 'pet_playground_plots', name: 'idx_playground_map', keys: { communityId: 1, kind: 1, _id: 1 }, unique: false },
         { collection: 'orders', name: 'idx_client_orders', keys: { clientOpenid: 1, createdAt: -1 }, unique: false },

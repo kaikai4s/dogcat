@@ -1,5 +1,17 @@
 # 数据库索引创建操作手册
 
+## 乐园形象定制新增配置（2026-10-18）
+
+创建私有集合 `pet_playground_appearance_requests`、`pet_playground_appearance_bindings`，两者均禁止客户端直接读写，使用 `database-rules/` 下同名JSON。后台数据库初始化已包含两集合与下列索引：
+
+| 集合 | 索引名 | 字段顺序（全部升序） | 属性 |
+| --- | --- | --- | --- |
+| `pet_playground_appearance_requests` | `idx_appearance_owner` | `ownerOpenid` → `_id` | 非唯一 |
+| `pet_playground_appearance_requests` | `idx_appearance_owner_status` | `ownerOpenid` → `status` → `_id` | 非唯一 |
+| `pet_playground_appearance_requests` | `idx_appearance_status` | `status` → `_id` | 非唯一 |
+
+绑定集合利用默认唯一 `_id` 进行事务锁定，无需额外唯一索引；不能为 `ownerOpenid` 或宠物名字建唯一索引。还需配置云存储参考照隐私与已发布图集禁止客户端写入的规则，详见 [专属形象定制](../../docs/playground-appearance.md)。
+
 ## 📌 使用说明
 
 本文档提供微信云开发控制台创建索引的**逐步操作指南**。每个索引都包含：

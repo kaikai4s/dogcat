@@ -57,6 +57,15 @@ Page({
     wx.navigateTo({ url: '/pages/client/pets/list/index' })
   },
 
+  customize() {
+    wx.navigateTo({url:'/packagePlayground/pages/customize'})
+  },
+
+  customizePet() {
+    const pet=this.data.selectedPet
+    if(pet)wx.navigateTo({url:'/packagePlayground/pages/customize?petId='+encodeURIComponent(pet._id)})
+  },
+
   openWorld() {
     if (!this.data.hasCommunity) {
       this.setData({ showCommunityModal: true })

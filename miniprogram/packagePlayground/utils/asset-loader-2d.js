@@ -17,6 +17,7 @@ const ASSET_NAMES = [
 ]
 const downloads = new Map()
 function assetId(name) {
+  if(name.startsWith('cloud://'))return name
   return CHARACTER_ASSETS[name] || (PET_ATLASES[name] && PET_ATLASES[name].fileID) || CLOUD_ASSET_BASE + '/' + name + '.png'
 }
 function download(name) {
@@ -47,7 +48,7 @@ function surface(width, height) {
 function prepare(image, name) {
   // Character assets already have alpha and fixed anchors. Background removal
   // would damage white shoes; resizing an atlas would break its frame grid.
-  if (CHARACTER_ASSETS[name] || PET_ATLASES[name]) return image
+  if (name.startsWith('cloud://') || CHARACTER_ASSETS[name] || PET_ATLASES[name]) return image
   if (name === 'grass_tile') {
     const tile = surface(256, 256),
       c = tile.getContext('2d')
@@ -142,6 +143,15 @@ class AssetLoader2D {
     )
     this.inflight.set(name, promise)
     return promise
+  }
+  async loadAtlas(atlas) {
+    const image=await this.loadImage(atlas.fileID)
+    if(image.width!==atlas.columns*atlas.frameSize || image.height!==atlas.rows*atlas.frameSize) {
+      this.cache.delete(atlas.fileID)
+      downloads.delete(atlas.fileID)
+      throw new Error('专属形象图集尺寸不匹配')
+    }
+    return image
   }
   async loadPrepared(name) {
     const path = await download(name)

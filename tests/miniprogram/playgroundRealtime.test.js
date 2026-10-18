@@ -21,7 +21,7 @@ function fixture(call,options={}) {
     setTimeout:(fn,delay)=>{const id=nextTimer++;timers.set(id,{fn,delay});return id},clearTimeout:(id)=>timers.delete(id)
   })
   const page={data:{},setData(v){Object.assign(this.data,v)},fetchRegion:async()=>({plots:[]})}
-  const scene={session:'s',sceneId:'A',playerId:'me',realtimeCollection:'pet_playground_live',hasAvatar:true,serverTime:Date.now(),position:{x:100,z:100}}
+  const scene={session:'s',sceneId:'A',playerId:'me',realtimeCollection:'pet_playground_live',hasAvatar:true,serverTime:Date.now(),position:{x:100,z:100},...options.scene}
   const w=new World2D(page,null,{scene,pets:[],world:{width:2240,height:2240}})
   w.buildWorld()
   const sync=new SceneSync(w,scene,(error)=>errors.push(error),(state)=>connections.push(state))
@@ -29,6 +29,120 @@ function fixture(call,options={}) {
   return {sync,w,watches,timers,requests,queries,databaseOptions,connections,errors,closed:()=>closed}
 }
 function presence(x,seq) {return {id:'neighbor',ownerId:'other',kind:'presence',name:'凯大大',position:{x,z:100},characterType:'boy',moving:true,online:true,lastSeen:Date.now(),version:{epoch:1,seq}}}
+
+test('a lost movement reply retries the same packet, keeps controls live and then sends the new movement',async()=>{
+  let failed=false,committed=0
+  const f=fixture((action,data)=>{
+    if(action!=='syncScene')throw new Error('movement recovery must not fetch the whole scene')
+    if(!failed){failed=true;committed=data.seq;throw new Error('response lost after commit')}
+    return {accepted:data.seq>committed,ackSeq:data.seq,serverTime:Date.now()}
+  })
+  f.w.character.position={x:101,z:100};f.w.sceneTrail=[{x:101,z:100}]
+  await assert.rejects(()=>f.sync.send(true),/response lost/)
+  f.w.setCharacterInput(1,0)
+  assert.equal(f.w.character.input.x,1)
+  f.w.character.position={x:102,z:100};f.w.sceneTrail.push({x:102,z:100})
+  await f.sync.send(true)
+  assert.equal(f.requests[1].data.seq,f.requests[0].data.seq)
+  assert.deepEqual(f.requests[1].data,f.requests[0].data)
+  assert.equal(f.requests[2].data.trail.length,1)
+  assert.equal(f.requests[2].data.trail[0].x,102)
+  assert.equal(f.w.sceneTrail.length,0)
+  assert.equal(f.w.character.position.x,102)
+  assert.equal(f.w.character.input.x,1)
+})
+
+test('walking around a yard corner reports every actual turn without a forbidden shortcut',async()=>{
+  const f=fixture(),w=f.w
+  w.sharedPlots.set('block',{id:'block',x:470,z:470,size:112})
+  w.character.position={x:526,z:413}
+  await w.prepareCharacterArea()
+  const start={...w.character.position},nav=w.characterNavigation()
+  w.setCharacterInput(0,1);w.updateCharacter(.1)
+  assert.equal(nav.clearSegment(start,w.character.position),false)
+  assert.ok(w.sceneTrail.length>1&&w.sceneTrail.length<6)
+  let previous=start
+  for(const point of w.sceneTrail){assert.ok(nav.clearSegment(previous,point));previous=point}
+  assert.deepEqual(previous,w.character.position)
+})
+
+test('long buffered movement is sent in bounded ordered batches while new movement continues',async()=>{
+  const f=fixture()
+  f.w.sceneTrail=Array.from({length:1300},(_,i)=>({x:100+(i+1)/1000,z:100}))
+  f.w.character.position={...f.w.sceneTrail.at(-1)}
+  const state=f.w.sceneState()
+  assert.ok(state.trail.length<=600)
+  assert.deepEqual(state.position,state.trail.at(-1))
+  while(f.w.sceneTrail.length)await f.sync.send(true)
+  assert.ok(f.requests.length>=3)
+  assert.equal(f.requests.at(-1).data.position.x,101.3)
+  assert.ok(f.requests.every((r)=>r.data.trail.length<=600))
+})
+
+test('a real sync commit with a lost reply catches up the live projection without freezing or rolling back',async()=>{
+  const {createCollectionStore}=require('../cloudfunctions/helpers')
+  const world=require('../../cloudfunctions/api/services/playground-world')
+  const user={_id:'u_a',openid:'a',nickname:'A',residentialCommunity:{name:'A小区'}}
+  const db=createCollectionStore({users:[user]})
+  let time=1800000000000,lost=false
+  const context={db,nowMs:()=>time,nowText:()=>new Date(time).toISOString()}
+  await world.create(context).claim('a',user,{x:280,z:280})
+  const shared=require('../../cloudfunctions/api/services/playground-shared')(context)
+  const scene=await shared.enter('a',user,{},[])
+  db.state.pet_playground_plots.find((r)=>r._id===scene.playerId).position={x:100,z:100}
+  const f=fixture(async(action,data)=>{
+    assert.equal(action,'syncScene')
+    const result=await shared.sync('a',data)
+    if(!lost){lost=true;throw new Error('reply lost')}
+    return result
+  },{scene:{...scene,position:{x:100,z:100}}})
+  time+=1000
+  f.w.character.position={x:105,z:100};f.w.sceneTrail=[{x:105,z:100}]
+  await assert.rejects(()=>f.sync.send(true),/reply lost/)
+  f.w.setCharacterInput(1,0)
+  time+=500
+  f.w.character.position={x:110,z:100};f.w.sceneTrail.push({x:110,z:100})
+  await f.sync.send(true)
+  assert.equal(f.w.character.input.x,1)
+  assert.equal(f.w.character.position.x,110)
+  assert.equal(f.w.sceneTrail.length,0)
+  assert.equal(db.state.pet_playground_plots.find((r)=>r._id===scene.playerId).position.x,110)
+  const projection=db.state.pet_playground_live.find((r)=>r.records&&r.records[scene.playerId]).records[scene.playerId]
+  assert.equal(projection.position.x,110)
+  assert.equal(projection.version.seq,2)
+})
+
+test('an actual collision correction keeps joystick input and returns without a full snapshot',async()=>{
+  const f=fixture((action)=>{
+    assert.equal(action,'syncScene')
+    return {accepted:true,ackSeq:1,corrected:true,correctionReason:'path',position:{x:102,z:100}}
+  })
+  f.w.character.position={x:104,z:100};f.w.sceneTrail=[{x:102,z:100},{x:104,z:100}]
+  f.w.setCharacterInput(1,0)
+  await f.sync.send(true)
+  assert.equal(f.w.character.position.x,102)
+  assert.equal(f.w.character.input.x,1)
+  assert.equal(!!f.w.recoveringScene,false)
+  assert.equal(f.requests.length,1)
+  assert.equal(f.w.sceneTrail.length,0)
+})
+
+test('publishing custom art reaches the owner and neighbors through watch without resetting position or zoom',async()=>{
+  const f=fixture();f.sync.start();await settle()
+  f.w.zoom=.7;f.w.manualZoom=true
+  const position={...f.w.character.position}
+  const appearance={id:'look_'+'a'.repeat(32),targetType:'character',targetId:'me',ownerId:'me',revision:20,
+    walk:{fileID:'cloud://test/custom/walk.png',frames:24,columns:4,rows:6,frameSize:128}}
+  const own={...presence(100,1),id:'me',ownerId:'me',appearance,version:{epoch:20,seq:1}}
+  const other={...presence(110,1),appearance:{...appearance,targetId:'neighbor',ownerId:'other'}}
+  f.watches[0].onChange({docs:[{records:{me:own,neighbor:other}}]});await settle()
+  assert.equal(f.w.characterAppearance.id,appearance.id)
+  assert.equal(f.w.remoteCharacters[0].appearance.targetId,'neighbor')
+  assert.deepEqual(f.w.character.position,position);assert.equal(f.w.zoom,.7)
+  f.watches[0].onChange({docs:[{records:{me:{...own,appearance:null,version:{epoch:1,seq:99}}}}]});await settle()
+  assert.equal(f.w.characterAppearance.id,appearance.id)
+  await f.sync.stop()
+})
 
 test('presence-only pushes do not rebuild yards, resample pets or send pet UI updates',async()=>{
   const f=fixture();f.sync.start();await settle()
@@ -292,8 +406,9 @@ test('a synchronous private watch failure cannot close the public listener or hi
 })
 
 test('failed uploads and snapshots slow down retries rather than hammering the server',async()=>{
+  let recovered=false
   const f=fixture((action,data)=>{
-    if(action==='syncScene'&&data.online || action==='getScene')throw new Error('network unavailable')
+    if(!recovered&&(action==='syncScene'&&data.online || action==='getScene'))throw new Error('network unavailable')
     return {accepted:true}
   })
   f.sync.start();await settle()
@@ -304,5 +419,6 @@ test('failed uploads and snapshots slow down retries rather than hammering the s
   const retry=[...f.timers.values()].find((timer)=>timer.delay===1000)
   await retry.fn()
   assert.equal(f.sync.sendFailures,2)
+  recovered=true
   await f.sync.stop()
 })

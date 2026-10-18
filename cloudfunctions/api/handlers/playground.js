@@ -3,6 +3,7 @@ module.exports = function createHandler(context) {
   const worldService = require('../services/playground-world')
   const world = worldService.create(context)
   const shared = require('../services/playground-shared')(context)
+  const {publicAppearance}=require('../services/playground-appearance-record')
   const {
     getOrCreateClientPlayground,
     getOrCreatePetHome,
@@ -13,6 +14,8 @@ module.exports = function createHandler(context) {
     const user = await getUser(openid)
     if (action === 'syncScene') return shared.sync(openid, data)
     if (action === 'getScene') return shared.snapshot(openid, data)
+    if (action === 'vehicleAction') return shared.vehicles.action(openid,user,data)
+    if (action === 'setVehicleSpeed') return shared.vehicles.speed(openid,user,data)
     if (action === 'movePet') return shared.commandPet(openid, data)
     if (action === 'interactPet') return shared.commandPet(openid, {...data,interact:true})
     if (action === 'getSocial') return shared.social.state(openid)
@@ -140,6 +143,7 @@ module.exports = function createHandler(context) {
         _id: pet._id,
         name: safeText(pet.name),
         species: pet.species === 'cat' ? 'cat' : 'dog',
+        appearance:publicAppearance(pet.playgroundAppearance,'pet',pet._id,openid),
         playgroundScale: Math.max(0.5, Math.min(2, Number(pet.playgroundScale) || 1)),
         breed: safeText(pet.breed),
         avatarFileId: safeText(pet.avatarFileId),

@@ -338,6 +338,8 @@ module.exports = {
         await tx.collection('pet_playground_plots').doc(ownerId(openid)).remove()
         if (resident) await tx.collection('pet_playground_plots').doc(residentId).remove()
         if (presence) await tx.collection('pet_playground_plots').doc(presenceId).remove()
+        const carId='vehicle_'+hash(openid)
+        if(await read(tx,carId))await tx.collection('pet_playground_plots').doc(carId).remove()
         return { removed: true }
       })
     }
