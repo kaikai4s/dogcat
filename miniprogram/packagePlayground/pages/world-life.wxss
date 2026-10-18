@@ -1,0 +1,62 @@
+.world-toolbar { position: fixed; left: 12px; right: 12px; z-index: 14; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.world-toolbar-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+.life-tools { display: flex; flex-wrap: wrap; gap: 6px; max-width: 100%; }
+.life-tools button { pointer-events: auto; margin: 0; padding: 0 12px; border-radius: 18px; line-height: 32px; color: #385743; background: #fffdf3ed; font-size: 12px; }
+.pet-alert-banner { pointer-events: auto; padding: 10px 14px; box-sizing: border-box; border-radius: 14px; color: #865432; background: #fff0dceF; font-size: 11px; }
+.pet-alert-banner text { display: block; line-height: 18px; }
+.pet-alert-banner text + text { font-size: 10px; opacity: .8; }
+.pet-roster { pointer-events: auto; padding: 16px; border-radius: 20px; color: #385743; background: #fffdf3f5; box-shadow: 0 8px 25px #34502725; }
+.pet-roster-list { height: 28vh; max-height: 28vh; }
+.pet-roster-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e4eadb; font-size: 12px; }
+.life-heading { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }
+.life-muted { display: block; font-size: 11px; line-height: 18px; color: #7b8871; margin-top: 5px; }
+.pet-needs { display: flex; gap: 12px; width: 100%; padding: 5px 0; }
+.pet-need { flex: 1; min-width: 0; }
+.pet-need > view:first-child { display: flex; justify-content: space-between; font-size: 10px; color: #6e8062; }
+.need-track { height: 5px; margin-top: 6px; overflow: hidden; background: #e0e7d5; border-radius: 4px; }
+.need-track > view { height: 100%; border-radius: 4px; background: #8ba96d; }
+.need-low > view:first-child { color: #b47049; }
+.need-low .need-track > view { background: #cf8b60; }
+.trip-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 14px; margin-top: 8px; border-radius: 18px; background: #fffdf3ed; color: #385743; text-align: left; font-size: 12px; }
+.trip-bar button { margin: 0; padding: 0 14px; line-height: 32px; border-radius: 15px; font-size: 12px; background: #6f8d58; color: white; }
+.farm-panel { display: flex; flex-direction: column; width: 94%; max-width: 480px; height: 86vh; max-height: 88vh; overflow: hidden; padding: 20px 16px 14px; box-sizing: border-box; background: #fcfaee; border-radius: 26px; color: #3d5740; }
+.farm-heading { display: flex; justify-content: space-between; align-items: center; }
+.farm-eyebrow { display: block; font-size: 10px; color: #879771; letter-spacing: 2px; }
+.farm-title { display: block; margin-top: 6px; font-size: 20px; font-weight: 600; }
+.farm-heading button { margin: 0; font-size: 12px; line-height: 32px; padding: 0 14px; border-radius: 15px; background: #e6eddb; color: #486242; }
+.farm-wallet { display: flex; justify-content: space-between; padding: 14px 0; font-size: 12px; color: #7c8a65; }
+.farm-wallet text + text { color: #a9823e; }
+.farm-tabs { display: flex; gap: 4px; background: #eaf0df; border-radius: 14px; padding: 4px; margin-top: 8px; }
+.farm-tabs button { flex: 1; margin: 0; padding: 0 6px; line-height: 32px; border-radius: 11px; background: transparent; color: #7a8a69; font-size: 12px; }
+.farm-tabs button.active { color: #41643e; background: #fffdf5; box-shadow: 0 2px 6px #45632a15; }
+.farm-content { flex: 1; min-height: 0; height: 0; margin-top: 14px; }
+.farm-caption { display: flex; justify-content: space-between; font-size: 10px; color: #8b9878; margin-bottom: 10px; }
+.farm-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.farm-tile { display: flex; flex-direction: column; justify-content: center; align-items: center; box-sizing: border-box; height: 83px; padding: 6px 2px; border: 2px solid transparent; border-radius: 14px; background: #d9e3c7; font-size: 10px; color: #648153; }
+.farm-tile.tile-empty { background: #eadbc3; color: #8f7554; }
+.farm-tile.tile-growing { background: #dfe9cc; }
+.farm-tile.tile-ready { background: #f3e6b7; color: #9d7e37; }
+.farm-tile.tile-selected { border-color: #789557; }
+.farm-tile.tile-locked { background: #edf0e4; color: #a7af99; }
+.tile-icon { font-size: 26px; line-height: 30px; }
+.tile-detail { margin-top: 3px; font-size: 9px; opacity: .75; }
+.farm-bed-detail { padding: 14px; margin: 12px 0; background: #f0f2e5; border-radius: 16px; }
+.field-context { margin: 8px 0; padding: 10px 12px; border-radius: 14px; background: #fffdf3f2; color: #3d5740; text-align: left; }
+.field-heading { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.field-heading text + text { color: #859071; font-size: 10px; }
+.field-actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.field-actions button { flex: 1; margin: 0; padding: 0 10px; font-size: 12px; line-height: 32px; border-radius: 10px; background: #72925c; color: #fffdf3; }
+.field-seeds { width: 100%; margin-top: 8px; white-space: nowrap; }
+.field-seed-row { display: inline-flex; gap: 6px; }
+.field-seed-row button { flex: none; margin: 0; padding: 0 10px; line-height: 28px; font-size: 11px; border: 1px solid #dfe6d4; border-radius: 14px; color: #69845a; background: transparent; }
+.field-seed-row button.active { color: #365c32; border-color: #7e9d61; background: #e3edce; }
+.farm-section-title { font-size: 12px; color: #6e7d5b; }
+.crop-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0; }
+.crop-choices button { margin: 0; padding: 9px 2px; border: 1px solid #e0e7d4; border-radius: 12px; background: #f5f7ec; font-size: 11px; line-height: 18px; color: #69845a; }
+.crop-choices button.active { background: #e3edce; border-color: #7e9d61; }
+.crop-choices button text { display: block; }
+.crop-choices button text + text { font-size: 9px; opacity: .75; }
+.farm-product { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 16px 10px; margin-bottom: 8px; background: #f0f3e5; border-radius: 16px; font-size: 13px; }
+.farm-product button { margin: 0; padding: 0 9px; line-height: 32px; border-radius: 12px; color: #547045; background: #e0e9d0; font-size: 10px; }
+.farm-go { margin: 14px 0 0; padding: 0 10px; line-height: 40px; border-radius: 15px; color: #fffdf3; background: #6f8d58; font-size: 12px; }
+.farm-empty { flex: 1; display: flex; flex-direction: column; gap: 12px; align-items: center; padding: 30px; font-size: 13px; }

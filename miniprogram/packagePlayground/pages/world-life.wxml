@@ -1,0 +1,38 @@
+<view class="world-toolbar" style="top: {{top + 76}}px" wx:if="{{!loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen}}">
+  <view class="world-toolbar-row">
+    <view class="life-tools"><button bindtap="togglePetRoster">爱宠 {{pets.length}}</button><button wx:if="{{hasPlot}}" bindtap="openFarm">我的菜园</button></view>
+    <button class="request-badge" wx:if="{{socialRequests.length}}" bindtap="openSocial">待处理申请 {{socialRequests.length}}</button>
+  </view>
+  <view class="pet-alert-banner" wx:if="{{petAlerts.length}}" bindtap="viewPetAlert"><text>♡ {{petAlerts[0].name}}：{{petAlerts[0].message}}</text><text wx:if="{{petAlerts.length > 1}}">还有 {{petAlerts.length - 1}} 项需要照料 ›</text></view>
+  <view class="pet-roster" wx:if="{{petRosterOpen}}">
+    <view class="life-heading"><text>我的伙伴</text><text bindtap="togglePetRoster">收起</text></view>
+    <scroll-view scroll-y class="pet-roster-list">
+      <view wx:for="{{pets}}" wx:key="id" class="pet-roster-row" data-id="{{item.id}}" bindtap="selectCompanion"><view><text>{{item.name}}</text><text class="life-muted">{{item.activity}}</text></view><text>查看状态 ›</text></view>
+      <text wx:if="{{!pets.length}}" class="life-muted">添加猫狗档案并安置庭院后，伙伴就会来到乐园</text>
+    </scroll-view>
+  </view>
+</view>
+<view class="settings-backdrop farm-backdrop" wx:if="{{farmOpen}}" catchtap="closeFarm" catchtouchmove="swallowTouch">
+  <view class="farm-panel" catchtap="swallowTouch">
+    <view class="farm-heading"><view><text class="farm-eyebrow">阳光菜园</text><text class="farm-title">种下今天的小期待</text></view><button bindtap="closeFarm">完成</button></view>
+    <view class="farm-wallet" wx:if="{{farm}}"><text>Lv.{{farm.level}} · {{farm.xp}} 经验</text><text>◉ {{farm.coins}} 农场金币</text></view>
+    <view class="farm-tabs"><button class="{{farmTab === 'field' ? 'active' : ''}}" data-tab="field" bindtap="changeFarmTab">田地概览</button><button class="{{farmTab === 'shop' ? 'active' : ''}}" data-tab="shop" bindtap="changeFarmTab">种子铺</button><button class="{{farmTab === 'barn' ? 'active' : ''}}" data-tab="barn" bindtap="changeFarmTab">收获仓库</button></view>
+    <view wx:if="{{farmLoading}}" class="farm-empty">正在看看菜园…</view>
+    <view wx:elif="{{!farm}}" class="farm-empty"><text>暂时无法读取菜园</text><button bindtap="openFarm">重试</button></view>
+    <scroll-view wx:else scroll-y class="farm-content">
+      <block wx:if="{{farmTab === 'field'}}">
+        <view class="farm-caption"><text>{{farm.unlockedBeds}} / 12 块土地已解锁</text><text>{{farmReadyCount}} 块可收获</text></view>
+        <view class="farm-grid"><view wx:for="{{farm.beds}}" wx:key="id" class="farm-tile tile-{{item.state}} {{farmSelectedBed === item.id ? 'tile-selected' : ''}} {{!item.unlocked ? 'tile-locked' : ''}}" data-id="{{item.id}}" bindtap="selectFarmBed"><text class="tile-icon">{{!item.unlocked ? '◇' : item.state === 'wild' ? '＋' : item.state === 'empty' ? '⋮' : item.state === 'ready' ? '✦' : '♧'}}</text><text>{{!item.unlocked ? '升级解锁' : item.name || item.label}}</text><text class="tile-detail" wx:if="{{item.cropId}}">{{item.state === 'ready' ? '可收获' : item.countdown}}</text></view></view>
+        <view class="farm-bed-detail" wx:if="{{farmBed}}"><view class="life-heading"><text>第 {{farmBed.id + 1}} 块田 · {{farmBed.name || farmBed.label}}</text><text>{{farmBed.cropId ? farmBed.progress + '%' : ''}}</text></view>
+          <view class="need-track" wx:if="{{farmBed.cropId}}"><view style="width: {{farmBed.progress}}%;"></view></view>
+          <text class="life-muted">{{!farmBed.unlocked ? '通过收获积累经验，升级可解锁更多土地和作物' : farmBed.state === 'wild' ? '花10金币开垦，之后可一直重复种植' : farmBed.state === 'empty' ? '走到这块土地旁，选择种子播种' : farmBed.state === 'ready' ? '已经成熟，走到田边收获吧' : '离线也会生长，成熟后保留收成，不会枯萎'}}</text>
+          <button class="farm-go" data-id="{{farmBed.id}}" bindtap="goToFarm" disabled="{{!farmBed.unlocked}}">走到这块土地旁</button>
+        </view>
+        <text class="life-muted">开垦、播种、浇水、施肥与收获，都需要角色走到对应土地旁，在场景中操作。点击地图上的土地也能自动走过去。</text>
+      </block>
+      <block wx:elif="{{farmTab === 'shop'}}"><view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}}种子</text><text class="life-muted">{{item.minutes}}分钟成熟 · 基础收成{{item.yield}}份</text><text class="life-muted">{{item.unlocked ? '已解锁' : 'Lv.' + item.level + ' 解锁'}} · 库存 {{item.seeds}}包</text></view><button data-operation="buySeeds" data-crop="{{item.id}}" data-quantity="5" bindtap="farmOperation" disabled="{{farmBusy || !item.unlocked}}">{{item.price * 5}}金币 / 5包</button></view></block>
+      <block wx:else><view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}} × {{item.stock}}</text><text class="life-muted">每份可换 {{item.sell}} 农场金币</text></view><button data-operation="sell" data-crop="{{item.id}}" data-quantity="{{item.stock}}" bindtap="farmOperation" disabled="{{farmBusy || !item.stock}}">全部出售</button></view><text class="life-muted">农场金币用于开垦、买种子和施肥，不涉及现金交易。</text></block>
+    </scroll-view>
+    <button class="farm-go" bindtap="goToFarm">前往所选土地</button>
+  </view>
+</view>

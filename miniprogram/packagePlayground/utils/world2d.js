@@ -107,6 +107,7 @@ class World2D {
     this.remoteCharacters = []
     this.vehicles = new Map()
     this.drivingVehicleId=this.scene&&this.scene.vehicleId||''
+    this.vehicleRole=this.scene&&this.scene.vehicleRole||''
     this.vehicleSpeed=clamp(Number(this.scene&&this.scene.vehicleSpeed)||2,2,5)
     this.sceneTrail = []
     this.serverOffset = this.scene ? this.scene.serverTime - Date.now() : 0
@@ -212,7 +213,9 @@ class World2D {
       ? { x: this.ownPlot.x + 3, z: this.ownPlot.z + 14 }
       : this.startPoint
     this.character = new PlayerCharacter(origin)
-    this.character.vehicleSpeed=this.drivingVehicleId?14*this.vehicleSpeed:0
+    this.character.facing=this.scene&&this.scene.facing||'sw'
+    this.character.mirrored=!!(this.scene&&this.scene.mirrored)
+    this.character.vehicleSpeed=this.drivingVehicleId&&this.vehicleRole!=='passenger'?14*this.vehicleSpeed:0
     this.characterTerrain = null
     this.characterAreaPromise = null
     this.characterRetryAt = 0
@@ -228,6 +231,7 @@ class World2D {
     this.loadVisible().catch(() => this.onStatus('角色附近场景加载失败，请重试'))
   }
   setCharacterInput(x, y) {
+    if(this.vehicleRole==='passenger'){x=0;y=0}
     if (!this.character) return
     this.characterRoute = null
     this.characterMoveToken = (this.characterMoveToken || 0) + 1
@@ -320,9 +324,12 @@ class World2D {
       }
     }
     if (this.ownPlot) {
-      const station = yardLayout(this.ownPlot).stations.dog.eat
-      if (Math.hypot(p.x - station.x, p.z - station.z) <= INTERACTION_DISTANCE && nav.clearSegment(p, station))
-        result.bowl = { plotId: this.ownPlot.id, food: this.foodBowls.dog >= 100 ? 100 : 0 }
+      const stations=yardLayout(this.ownPlot).stations
+      if (['dog','cat'].some((species)=>{
+        const station=stations[species].eat
+        return Math.hypot(p.x - station.x, p.z - station.z) <= INTERACTION_DISTANCE && nav.clearSegment(p, station)
+      }))
+        result.bowl = { plotId: this.ownPlot.id, food: Math.min(this.foodBowls.dog||0,this.foodBowls.cat||0) }
     }
     const nearbyPlayer=this.remoteCharacters.map((person)=>({...person,position:this.neighborPosition(person)}))
       .find((person)=>Math.hypot(p.x-person.position.x,p.z-person.position.z)<=5)
@@ -333,6 +340,7 @@ class World2D {
   }
   emitNearby() {
     this.emitVehicleUi()
+    this.emitFarmUi()
     const nearby = this.nearbyInteractions()
     const key = JSON.stringify(nearby)
     if (key === this.nearbyKey) return
@@ -366,11 +374,19 @@ class World2D {
   applyBowlFood(result) {
     if (!this.ownPlot || result.plotId !== this.ownPlot.id) return false
     this.foodBowls.dog = result.food === 100 ? 100 : 0
+    this.foodBowls.cat = this.foodBowls.dog
     this.emitNearby()
     return true
   }
   updateCharacter(dt) {
     if (!this.character || this.placing) return
+    if(this.vehicleRole==='passenger') {
+      const car=this.vehicles.get(this.drivingVehicleId)
+      if(car)this.character.position={...this.vehiclePosition(car)}
+      this.character.setInput(0,0)
+      if(this.followCharacter)this.camera={...this.character.position}
+      return
+    }
     if(this.scene) {
       const plot=this.plots().find((p)=>!this.canEnterPlot(p)&&Math.abs(this.character.position.x-p.x)<(p.size||SIZE)/2&&Math.abs(this.character.position.z-p.z)<(p.size||SIZE)/2)
       if(plot) {
@@ -418,6 +434,11 @@ class World2D {
         modelScale: p.modelScale,
         selected: p.id === this.selectedPetId,
         available: true,
+        following:!!p.following,
+        riding:!!p.ridingVehicleId,
+        needs:this.petNeeds(p),
+        fatigue:100-this.petNeeds(p)[0].value,
+        activity:this.petActivity(p),
         status: p.moving
           ? p.mode === 'roaming'
             ? '自由活动'
@@ -442,7 +463,7 @@ class World2D {
     return true
   }
   selectPet(id) {
-    if (this.drivingVehicleId || !this.pets.some((p) => p.id === id && p.mine!==false)) return false
+    if (!this.pets.some((p) => p.id === id && p.mine!==false)) return false
     if(this.selectedPetId!==id || this.characterSelected || this.selectedVehicleId) this.clearPetSelection()
     this.selectedPetId = id
     this.emitPets()
@@ -477,6 +498,7 @@ class World2D {
     this.onStatus('已选中自己的角色 · 点击空地移动，可连续更换目标')
   }
   async moveCharacterTo(target) {
+    if(this.vehicleRole==='passenger'){this.onStatus('正在搭乘，先下车再步行');return false}
     if(!this.character || this.recoveringScene || this.vehicleBusy)return
     const start={...this.character.position}
     if(Math.hypot(target.x-start.x,target.z-start.z)>300)return this.onStatus('请选择附近的空地')
@@ -513,7 +535,7 @@ class World2D {
   }
   petAt(point) {
     const overview = this.isMapOverview()
-    return [...this.pets].sort((a,b)=>(b.position.x+b.position.z)-(a.position.x+a.position.z)).find((pet)=>{
+    return this.pets.filter((p)=>!p.ridingVehicleId).sort((a,b)=>(b.position.x+b.position.z)-(a.position.x+a.position.z)).find((pet)=>{
       const p = this.project(pet.position.x,pet.position.z)
       const size = overview ? 24 : Math.max(24,7*(pet.modelScale||1)*this.scale*this.zoom)
       return Math.abs(point.x-p.x)<=size*.45 && point.y>=p.y-size*.9 && point.y<=p.y+Math.max(10,size*.1)
@@ -1083,7 +1105,7 @@ class World2D {
     if(!p) return {trail:[],characterType:this.characterType,moving:false,running:false}
     const trail=this.sceneTrail.slice(0,600).map((point)=>({...point})),moreTrail=this.sceneTrail.length>trail.length
     return {position:{...(moreTrail?trail[trail.length-1]:p.position)},vehicleId:this.drivingVehicleId||'',trail,moreTrail,characterType:this.characterType,
-      mirrored:p.mirrored,moving:moreTrail||p.moving,running:p.runRequested}
+      mirrored:p.mirrored,facing:p.facing||'sw',moving:moreTrail||p.moving,running:p.runRequested}
   }
   ackSceneTrail(count) { this.sceneTrail.splice(0,count) }
   setOwnAppearance(value,reset=false) {
@@ -1168,25 +1190,32 @@ class World2D {
     target.authoritativePet=pet
     const modelScale=target.scalePreview?target.modelScale:pet.modelScale
     Object.assign(target,{name:pet.name,species:pet.species,mine,sharedMotion:pet.motion,
+      following:!!pet.following,ridingVehicleId:pet.ridingVehicleId||'',needs:pet.needs||target.needs,care:pet.care||null,
       modelScale,savedModelScale:pet.modelScale})
     if(ownerName)target.ownerName=ownerName
+    // Keep the rendered position across route packets, including large network
+    // discrepancies. Following pets walk along a legal connector each frame.
+    target.followRender=previous&&pet.following&&!pet.ridingVehicleId?(target.followRender||{speed:0,stamp:Date.now()}):null
+    if(changed&&target.followRender){target.followRender.nav=null;target.followRender.route=null}
     const sample=sampleMotion(pet.motion,Date.now()+this.serverOffset)
+    if(changed)target.motionDistanceOffset=(target.walkDistance||0)-sample.distance
     if(changed)target.reconcile=null
-    if(changed && previous && Math.hypot(previous.x-sample.position.x,previous.z-sample.position.z)<3) {
+    if(changed && previous && !target.followRender && Math.hypot(previous.x-sample.position.x,previous.z-sample.position.z)<3) {
       target.reconcile={x:previous.x-sample.position.x,z:previous.z-sample.position.z,start:Date.now()}
       // Check the small correction against current fences before drawing it.
       target.reconcileNav=createNavigation(this.bounds,this.plots().flatMap(yardObstacles),PET_RADIUS,1.5)
     }
-    const state=this.sharedPetSample(target)
+    const state=this.sharedPetSample(target,0)
     target.position=state.position
     target.moving=state.moving
-    target.walkDistance=state.distance
+    target.walkDistance=state.distance+(target.motionDistanceOffset||0)
     target.walkFacingLeft=state.facingLeft
     if(pet.interactionUntil) target.interactingUntil=this.elapsed+Math.max(0,(pet.interactionUntil-Date.now()-this.serverOffset)/1000)
     return target
   }
-  sharedPetSample(pet) {
+  sharedPetSample(pet,dt) {
     const state=sampleMotion(pet.sharedMotion,Date.now()+this.serverOffset)
+    if(pet.followRender)return this.smoothFollowSample(pet,state,dt)
     if(pet.reconcile) {
       const t=clamp(1-(Date.now()-pet.reconcile.start)/150,0,1)
       const corrected={x:state.position.x+pet.reconcile.x*t,z:state.position.z+pet.reconcile.z*t}
@@ -1194,6 +1223,40 @@ class World2D {
       if(!t)pet.reconcile=null
     }
     return state
+  }
+  smoothFollowSample(pet,state,dt) {
+    const render=pet.followRender,stamp=Date.now(),from=pet.position,to=state.position
+    const seconds=clamp(dt===undefined?(stamp-render.stamp)/1000:dt,0,.1)
+    render.stamp=stamp
+    const gap=Math.hypot(to.x-from.x,to.z-from.z)
+    if(!seconds)return {...state,position:{...from},moving:!!pet.moving,distance:(pet.walkDistance||0)-(pet.motionDistanceOffset||0),facingLeft:!!pet.walkFacingLeft}
+    if(!render.nav) {
+      const margin=120
+      render.nav=createNavigation({minX:Math.max(this.bounds.minX,Math.min(from.x,to.x)-margin),maxX:Math.min(this.bounds.maxX,Math.max(from.x,to.x)+margin),minZ:Math.max(this.bounds.minZ,Math.min(from.z,to.z)-margin),maxZ:Math.min(this.bounds.maxZ,Math.max(from.z,to.z)+margin)},this.plots().flatMap(yardObstacles),PET_RADIUS,1.5)
+    }
+    const nav=render.nav
+    // Only invalid ground (for example a newly built fence) permits the
+    // authoritative safety recovery. Ordinary route changes never teleport.
+    if(!nav.walkable(from)){render.nav=null;render.speed=0;return state}
+    if(gap<.02){render.speed=0;return {...state,position:{...from},moving:false,distance:(pet.walkDistance||0)-(pet.motionDistanceOffset||0),facingLeft:!!pet.walkFacingLeft}}
+    if(nav.clearSegment(from,to))render.route=[to]
+    else if(!render.route||stamp-(render.plannedAt||0)>300||Math.hypot(to.x-render.goal.x,to.z-render.goal.z)>1.5) {
+      render.route=nav.path(from,to)||[];render.goal={...to};render.plannedAt=stamp
+    }
+    const previousSpeed=render.speed||0,desired=Math.min(18,7+gap*.6,Math.sqrt(2*24*gap))
+    render.speed=previousSpeed+clamp(desired-previousSpeed,-24*seconds,24*seconds)
+    let budget=(previousSpeed+render.speed)*.5*seconds,travel=0,position={...from},facingLeft=!!pet.walkFacingLeft
+    while(budget>0&&render.route&&render.route.length) {
+      const point=render.route[0],dx=point.x-position.x,dz=point.z-position.z,d=Math.hypot(dx,dz)
+      if(d<.001){render.route.shift();continue}
+      if(!nav.clearSegment(position,point)){render.route=null;render.speed=0;break}
+      const n=Math.min(d,budget)
+      position={x:position.x+dx*n/d,z:position.z+dz*n/d}
+      travel+=n;budget-=n
+      if(Math.abs(dx-dz)>.00001)facingLeft=dx-dz<0
+      if(n===d)render.route.shift()
+    }
+    return {...state,position,moving:travel>.0001,distance:(pet.walkDistance||0)+travel-(pet.motionDistanceOffset||0),facingLeft}
   }
   async applySceneRecords(records) {
     const ids=new Set(),plots=new Map(),characters=[]
@@ -1205,6 +1268,7 @@ class World2D {
     }
     this.pets=this.pets.filter((p)=>ids.has(p.id))
     this.sharedPlots=plots
+    for(const pet of this.pets)if(pet.followRender){pet.followRender.nav=null;pet.followRender.route=null}
     this.replaceVehicles(records.filter((r)=>r.kind==='vehicle'))
     // Snapshot is authoritative: evict stale cached plots after a demolition.
     for(const [key,list] of this.chunks) this.chunks.set(key,list.filter((p)=>plots.has(p.id)))
@@ -1232,6 +1296,12 @@ class World2D {
     const characters=new Map(this.remoteCharacters.map((person)=>[person.id,person]))
     for(const record of changes) {
       if(record.kind==='vehicle') {this.applyVehicle(record);continue}
+      if(record.kind==='resident') {
+        const ids=new Set((record.pets||[]).map((p)=>p.id))
+        this.pets=this.pets.filter((p)=>p.ownerId!==record.ownerId||!record.deleted&&ids.has(p.id))
+        if(!record.deleted)for(const pet of record.pets||[])this.applySharedPet(pet,record.mine,record.ownerName||record.name,record.ownerId)
+        this.emitPets();continue
+      }
       if(record.mine) {this.setOwnAppearance(record.deleted?null:record.appearance,!!record.deleted);this.applyOwnVehicleActor(record);continue}
       if(record.deleted)characters.delete(record.id)
       else characters.set(record.id,record)
@@ -1382,6 +1452,7 @@ class World2D {
     this.ctx.drawImage(img, p.x - w / 2, p.y - w * anchor, w, w)
   }
   drawPet(pet) {
+    if(pet.ridingVehicleId)return
     const point = this.project(pet.position.x, pet.position.z)
     const size = 7 * (pet.modelScale || 1) * this.scale * this.zoom
     if (point.x < -size || point.x > this.width + size || point.y < -size || point.y > this.height + size) return
@@ -1572,13 +1643,16 @@ class World2D {
   }
   markerLabel(text, x, y, selected = false) {
     const c = this.ctx
-    c.font = '12px sans-serif'
+    c.save()
+    c.font = (selected ? '600 ' : '') + '12px sans-serif'
     c.textAlign = 'center'
-    const width = c.measureText(text).width + 16
-    c.fillStyle = selected ? 'rgba(46,100,66,.96)' : 'rgba(255,253,243,.94)'
-    c.fillRect(x - width / 2, y - 14, width, 22)
-    c.fillStyle = selected ? '#fffdf3' : '#16472e'
+    c.lineJoin = 'round'
+    c.lineWidth = 3
+    c.strokeStyle = 'rgba(255,253,243,.85)'
+    c.strokeText(text, x, y + 1)
+    c.fillStyle = selected ? '#285b38' : '#354c39'
     c.fillText(text, x, y + 1)
+    c.restore()
   }
   drawYard(p, items) {
     const layout = yardLayout(p)
@@ -1617,7 +1691,8 @@ class World2D {
             item.size,
             item.anchor
           )
-          if (item.name === 'dog_eat' && ((p.foodBowls && p.foodBowls.dog >= 100) || (this.ownPlot && p.id === this.ownPlot.id && this.foodBowls.dog >= 100))) {
+          const species=item.name==='cat_eat'?'cat':'dog'
+          if (['dog_eat','cat_eat'].includes(item.name) && ((p.foodBowls && p.foodBowls[species] > 0) || (this.ownPlot && p.id === this.ownPlot.id && this.foodBowls[species] > 0))) {
             const point = this.project(item.x, item.z)
             const scale = this.scale * this.zoom * Math.min(1, layout.half / 48)
             this.ctx.fillStyle = '#a76834'
@@ -1663,6 +1738,7 @@ class World2D {
     c.save()
     c.font = '12px sans-serif'
     for (const pet of this.pets) {
+      if(pet.ridingVehicleId)continue
       const point = this.project(pet.position.x, pet.position.z)
       if (
         point.x < -20 ||
@@ -1708,7 +1784,7 @@ class World2D {
   }
   drawPetSelection() {
     const pet=this.characterSelected?this.character:this.selectedPet()
-    if(!pet) return
+    if(!pet||pet.ridingVehicleId) return
     const point=this.project(pet.position.x,pet.position.z),c=this.ctx
     const radius=Math.max(10,2.5*(pet.modelScale||1)*this.scale*this.zoom)
     c.save()
@@ -1757,9 +1833,10 @@ class World2D {
         )
           continue
         this.drawYard(p, items)
+        this.drawFarm(p)
       }
     this.drawPetSelection()
-    for (const p of this.pets)
+    for (const p of this.pets.filter((pet)=>!pet.ridingVehicleId))
       items.push({
         depth: p.position.x + p.position.z,
         draw: () => {
@@ -1791,11 +1868,12 @@ class World2D {
 
   update(dt) {
     this.elapsed += dt
+    this.updateLifeUi()
     this.updateCharacter(dt)
     for (const pet of this.pets) {
       if(pet.sharedMotion) {
-        const state=this.sharedPetSample(pet)
-        pet.position=state.position;pet.moving=state.moving;pet.walkDistance=state.distance;pet.walkFacingLeft=state.facingLeft
+        const state=this.sharedPetSample(pet,dt)
+        pet.position=state.position;pet.moving=state.moving;pet.walkDistance=state.distance+(pet.motionDistanceOffset||0);pet.walkFacingLeft=state.facingLeft
         continue
       }
       const wasMoving = pet.route.length > 0
@@ -1931,6 +2009,8 @@ class World2D {
       if (this.placing) this.pickPlot(p)
       else {
         if(this.vehicleBusy)return
+        const farm=this.farmAt(point)
+        if(farm&&!this.drivingVehicleId){this.moveToFarmBed(farm.id);return}
         const car=this.vehicleAt(point)
         if(car) {this.selectVehicle(car);return}
         if(this.drivingVehicleId) {
@@ -1965,3 +2045,4 @@ class World2D {
 }
 module.exports = { World2D, yardObstacles, STEP, SIZE, CHUNK }
 Object.assign(World2D.prototype,require('./vehicle-world'))
+Object.assign(World2D.prototype,require('./life-world'))

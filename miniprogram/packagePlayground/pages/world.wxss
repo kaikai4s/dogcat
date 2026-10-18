@@ -1,3 +1,4 @@
+@import "./world-life.wxss";
 page { height: 100%; overflow: hidden; background: #d7e7db; }
 .world, .world view, .world text, .world button, .world canvas { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .world, .canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
@@ -61,7 +62,7 @@ button::after { border: none; }
 .interaction-actions .interact-pet { background: #c77b84; }
 .interaction-actions .fill-bowl { background: #6f8d58; }
 .interaction-actions button { background: #6f8d58; }
-.request-badge { position: fixed; right: 16px; z-index: 12; margin: 0; padding: 0 14px; line-height: 32px; border-radius: 18px; color: #fff; background: #b2744c; font-size: 12px; }
+.request-badge { pointer-events: auto; flex: 0 1 auto; max-width: 100%; margin: 0 0 0 auto; padding: 0 14px; line-height: 32px; border-radius: 18px; color: #fff; background: #b2744c; font-size: 12px; white-space: normal; }
 .social-list { max-height: 56vh; height: 56vh; }
 .social-section { margin: 18px 0 8px; font-weight: bold; }
 .social-item { padding: 12px 0; border-bottom: 1px solid #e4eddb; font-size: 13px; }

@@ -3,7 +3,7 @@ const assert=require('node:assert/strict')
 const fs=require('node:fs')
 const vm=require('node:vm')
 const {World2D}=require('../../miniprogram/packagePlayground/utils/world2d')
-const {VEHICLE_ATLAS}=require('../../miniprogram/packagePlayground/utils/vehicle-assets')
+const {VEHICLE_ATLAS,VEHICLE_REAR_ATLAS}=require('../../miniprogram/packagePlayground/utils/vehicle-assets')
 const {AssetLoader2D,prepare}=require('../../miniprogram/packagePlayground/utils/asset-loader-2d')
 function fixture(options={}) {
   const page={data:{},setData(v){Object.assign(this.data,v)},fetchRegion:async()=>({plots:[]})}
@@ -121,6 +121,37 @@ test('24-frame atlas preserves alpha, crops the final row, mirrors, loops and st
   w.drawVehicle(car({id:'other',mine:false,state:'outside',online:false}),false);assert.equal(labels.at(-1),'凯大大的车')
   w.drawVehicle(car({id:'other',mine:false,state:'driving',online:false}),false);assert.equal(labels.at(-1),'凯大大 · 离线')
 })
+test('uploaded rear atlas keeps alpha, crops frame 24 and mirrors NW to NE once for driver and neighbors',async()=>{
+  const rear={width:1024,height:1536,rear:true},front={width:1024,height:1536}
+  assert.equal(VEHICLE_REAR_ATLAS.frames,24)
+  assert.equal(VEHICLE_REAR_ATLAS.anchor,VEHICLE_ATLAS.anchor)
+  assert.ok(VEHICLE_REAR_ATLAS.fileID.endsWith('/car/drive-nw-v2.png'))
+  assert.equal(prepare(rear,VEHICLE_REAR_ATLAS.fileID),rear)
+  const loader=new AssetLoader2D({});loader.loadImage=async()=>rear
+  assert.equal(await loader.loadAtlas(VEHICLE_REAR_ATLAS),rear)
+  const {w}=fixture(),calls=[],scales=[]
+  w.loadVehicleAtlas=()=>{};w.vehicleRearImage=rear;w.vehicleImage=front
+  w.ctx=new Proxy({}, {get:(_,key)=>key==='drawImage'?(...args)=>calls.push(args):key==='scale'?(...args)=>scales.push(args):()=>{}})
+  w.markerLabel=()=>{};w.width=1000;w.height=1000;w.project=()=>({x:100,y:100})
+  w.applyOwnVehicleActor(actor({facing:'nw'}));w.character.moving=true;w.character.animationPhase=23.5/24
+  for(const facing of ['nw','ne']) {
+    scales.length=0;w.character.facing=facing;w.character.mirrored=facing==='nw'
+    w.drawVehicle(car(),false)
+    assert.equal(calls.at(-1)[0],rear)
+    assert.deepEqual(calls.at(-1).slice(1,5),[768,1280,256,256])
+    assert.deepEqual(scales,facing==='ne'?[[-1,1]]:[])
+    scales.length=0
+    w.drawVehicle(car({id:'other',mine:false,facing,state:'outside',online:false,mirrored:facing==='nw'}),false)
+    assert.equal(calls.at(-1)[0],rear)
+    assert.deepEqual(calls.at(-1).slice(1,5),[0,0,256,256])
+    assert.deepEqual(scales,facing==='ne'?[[-1,1]]:[])
+  }
+  w.character.moving=false;w.drawVehicle(car(),false)
+  assert.deepEqual(calls.at(-1).slice(1,5),[0,0,256,256])
+  let fallback=0;w.vehicleRearImage=null;w.drawRearVehicle=()=>fallback++
+  w.drawVehicle(car(),false);assert.equal(fallback,1)
+})
+
 test('vehicle actions flush movement before mutation and publish state before the next movement packet',async()=>{
   let release
   const gate=new Promise((resolve)=>{release=resolve})

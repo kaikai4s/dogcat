@@ -3,7 +3,11 @@ const { World2D } = require('../utils/world2d')
 const { SceneSync } = require('../utils/scene-sync')
 
 Page({
+  ...require('../utils/life-page'),
   data: {
+    petRosterOpen:false,petAlerts:[],petCareBusy:false,selectedPet:null,
+    farmOpen:false,farmLoading:false,farmBusy:false,farm:null,farmBed:null,nearbyFarm:null,farmSeedAvailable:false,farmTab:'field',farmCropId:'carrot',farmSelectedBed:0,farmReadyCount:0,
+    riding:false,rideBusy:false,nearbyRide:null,nearbyInvite:null,passengers:[],
     loading: true,
     characterType: 'boy',
     characterChanging: false,
@@ -136,6 +140,7 @@ Page({
     this.world = null
   },
   initialize() {
+    this.pendingFarm=null;this.farmSnapshot=null;this.farmRequest=null;this.farmAttempt=0
     if(this.world && this.world.manualZoom) this.sceneZoom=this.world.zoom
     this.joystickEnd()
     if(this.world && this.world.sceneSync) this.world.sceneSync.stop().catch(()=>{})
@@ -148,6 +153,8 @@ Page({
         characterChanging: false,
         hasCustomCharacter: false,
         driving:false,vehicleSelected:false,vehicleParked:false,nearbyVehicle:false,ownVehicleId:'',vehicleOperating:false,
+        riding:false,rideBusy:false,nearbyRide:null,nearbyInvite:null,passengers:[],petAlerts:[],selectedPet:null,petCareBusy:false,petRosterOpen:false,
+        farmOpen:false,farmLoading:false,farmBusy:false,farm:null,nearbyFarm:null,
         claiming: false,
         error: '',
         status: '读取宠物档案…',
@@ -203,6 +210,7 @@ Page({
                   pets,
                   selectedPetId: selected ? selected.id : '',
                   selectedPetName: selected ? selected.name : '',
+                  selectedPet:selected||null,
                   petScalePercent: selected ? Math.round(selected.modelScale * 100) : 100
                 })
                 if(!selected) this.setData({showPetScale:false})
@@ -215,8 +223,8 @@ Page({
               if(!world.destroyed && overview.scene) {
                 world.sceneSync=new SceneSync(world,overview.scene,(error)=>{
                   if(this.world===world && this.visible) {
-                    this.joystickEnd()
                     if((error.message||'').includes('场景已切换')) {
+                      this.joystickEnd()
                       world.sceneSync.stop().catch(()=>{})
                       this.setData({error:'此账号已在其他设备进入场景，请点击重新加载',loading:false})
                     } else this.setData({status:(error.message||'').includes('实时连接')?error.message:'同步暂时中断，正在重试…'})
@@ -429,7 +437,7 @@ Page({
     }
     this.suppressTouchTap = false
     this.world.touchStart(touches)
-    if(this.data.joystickMode!=='hold' || !this.world.character || this.data.settingsOpen || this.data.socialOpen) return
+    if(this.data.joystickMode!=='hold' || !this.world.character || this.data.settingsOpen || this.data.socialOpen || this.data.farmOpen || this.data.riding) return
     const touch = touches[0]
     if (!touch || this.data.loading || this.data.error || this.data.placing || this.data.feeding || this.data.characterChanging) return
     this.joystickEnd()
@@ -685,7 +693,7 @@ Page({
     const world = this.world
     if (!world || this.data.feeding) return
     const bowl = world.nearbyInteractions().bowl
-    if (!bowl) return wx.showToast({ title: '请先走近自家狗碗', icon: 'none' })
+    if (!bowl) return wx.showToast({ title: '请先走近自家猫狗碗', icon: 'none' })
     this.clearPetSelection()
     if (bowl.food >= 100) return
     this.joystickEnd()
@@ -693,7 +701,7 @@ Page({
     try {
       const result = await callFunction('playground', 'fillBowl', { plotId: bowl.plotId })
       if (this.world === world && !world.destroyed && world.applyBowlFood(result))
-        wx.showToast({ title: '狗碗的粮食已添满', icon: 'success' })
+        wx.showToast({ title: '猫狗碗的粮食已添满', icon: 'success' })
     } catch (error) {
       if (this.world === world && !world.destroyed)
         wx.showToast({ title: error.message || '添粮失败，请重试', icon: 'none' })

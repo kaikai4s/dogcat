@@ -501,6 +501,8 @@
 
 新增实时集合 `pet_playground_live`，非唯一复合索引 `idx_playground_live_scene` 为 `kind` 升序、`communityId` 升序，后台数据库初始化已配置。`scene_<小区摘要>_<0至f>` 是16份脱敏实时投影，使用字段版本条件更新，无用户openid或会话密钥。`mail_presence_<用户摘要>` 存本人好友及待办，带 `_openid`。微信客户端watch仅读取这些投影，不直接写入。必须在云开发控制台对这个新集合设置 `cloudfunctions/api/database-rules/pet_playground_live.json` 中的自定义安全规则：已登录可读scene，mail仅本人可读，客户端禁止写。原 `pet_playground_plots` 仍仅云函数可访问。仅部署云函数不会自动替换集合权限规则。
 
+宠物跟随、状态、农耕和多人乘车复用以上两个集合及索引，不新增集合或自定义索引。`farm_<用户摘要>` 是 `pet_playground_plots` 中的私有农场账户文档（`kind=farm_account`），通过默认 `_id` 索引读取；金币、种子、收获仓库和等级不会发布到实时集合。完整数据映射及手动建索引步骤见[乐园养成数据说明](../../docs/playground-life.md#数据集合与索引)。
+
 认领或搬迁时在同一事务内校验用户当前小区、主人记录、按实际占地范围计算的周边占地记录与完整地面边界；成功后清理原占地、写入新位置，失败保持原位置。临时搬迁可通过环境变量 PLAYGROUND_ALLOW_RELOCATION=false 关闭。后台缩小尺寸也使用同一配置记录进行事务校验。区域按 112×112 米加载，每次最多读取四块庭院；返回数据不包含邻居 openid。
 
 ---

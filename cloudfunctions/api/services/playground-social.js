@@ -19,7 +19,7 @@ module.exports=function createSocial(context) {
     const {_id,...data}=value
     await tx.collection(COLLECTION).doc(bookId(openid)).set({data:{...data,kind:'social',revision:Math.max(now(),(value.revision||0)+1)}})
   }
-  const cleanRequest=(r)=>({id:r.id,type:r.type,playerId:r.playerId,name:r.name,plotId:r.plotId||'',status:r.status,createdAt:r.createdAt,expiresAt:r.expiresAt||0})
+  const cleanRequest=(r)=>({id:r.id,type:r.type,playerId:r.playerId,name:r.name,plotId:r.plotId||'',vehicleId:r.vehicleId||'',status:r.status,createdAt:r.createdAt,expiresAt:r.expiresAt||0})
   function publicBook(value) {
     return {revision:value.revision||0,friends:Object.entries(value.friends).map(([id,v])=>({id,name:v.name})),
       incoming:Object.values(value.incoming).filter((r)=>r.status==='pending' && (!r.expiresAt||r.expiresAt>now())).map(cleanRequest),
@@ -84,6 +84,7 @@ module.exports=function createSocial(context) {
     const other=await transaction(db,async(tx)=>{
       const mine=await book(openid,tx),r=mine.incoming[String(data.requestId||'')]
       if(!r || r.status!=='pending') throw new Error('申请已处理或不存在')
+      if(!['visit','friend'].includes(r.type))throw new Error('请使用乘车申请入口处理')
       if(r.expiresAt && r.expiresAt<=now()) throw new Error('访问申请已过期，请重新申请')
       const sender=await book(r.openid,tx),accepted=data.accept===true
       if(accepted && r.type==='visit') {
@@ -118,6 +119,6 @@ module.exports=function createSocial(context) {
     })
     await state(other);return state(openid)
   }
-  return {state,access,request,respond,removeFriend,book}
+  return {state,access,request,respond,removeFriend,book,save}
 }
 module.exports.dayEnd=dayEnd

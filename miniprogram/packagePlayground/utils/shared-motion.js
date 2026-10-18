@@ -44,6 +44,7 @@ function compile(motion) {
   return result
 }
 function sampleMotion(motion, now) {
+  if(now<motion.epoch)return {position:{...(motion.approach||[motion.origin])[0]},moving:false,distance:0,facingLeft:false}
   const {end,first,wait,cycle,length,legs}=compile(motion)
   let seconds = Math.max(0, (now - motion.epoch) / 1000)
   if (seconds < first.duration) return at(first, seconds, end)

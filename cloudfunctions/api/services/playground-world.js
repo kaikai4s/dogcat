@@ -81,7 +81,8 @@ function publicPlot(plot, openid) {
     cellX: plot.cellX,
     cellZ: plot.cellZ,
     mine: plot.ownerOpenid === openid,
-    foodBowls: { dog: plot.foodBowls && plot.foodBowls.dog === 100 ? 100 : 0 },
+    foodBowls: { dog: Math.max(0,Math.min(100,Number(plot.foodBowls&&plot.foodBowls.dog)||0)), cat: Math.max(0,Math.min(100,Number(plot.foodBowls&&plot.foodBowls.cat)||0)) },
+    farmBeds: Array.isArray(plot.farmBeds) ? plot.farmBeds : [],
     ownerName: plot.ownerName || String(plot.name || '邻居').replace(/的庭院$/, ''),
     ownerId: 'presence_' + hash(plot.ownerOpenid),
     instanceId: plot.instanceId || plot.createdAt || '',
@@ -140,13 +141,13 @@ module.exports = {
         if (!plot || plot.ownerOpenid !== openid || plot.plotId !== data.plotId)
           throw new Error('只能给自己庭院里的狗碗添粮，请重新进入庭院')
         // Filling is idempotent and has no currency or inventory reward.
-        if (!plot.foodBowls || plot.foodBowls.dog !== 100) {
+        if (!plot.foodBowls || plot.foodBowls.dog !== 100 || plot.foodBowls.cat !== 100) {
           const canonical = await read(tx, plot.plotId)
           await tx.collection('pet_playground_plots').doc(ownerId(openid)).update({
-            data: { foodBowls: { dog: 100 }, updatedAt: nowText(),revision:Math.max(stamp(),(plot.revision||0)+1) }
+            data: { foodBowls: { dog: 100, cat: 100 }, updatedAt: nowText(),revision:Math.max(stamp(),(plot.revision||0)+1) }
           })
           if (canonical) await tx.collection('pet_playground_plots').doc(plot.plotId).update({
-            data: { foodBowls: { dog: 100 }, updatedAt: nowText(),revision:Math.max(stamp(),(canonical.revision||0)+1) }
+            data: { foodBowls: { dog: 100, cat: 100 }, updatedAt: nowText(),revision:Math.max(stamp(),(canonical.revision||0)+1) }
           })
         }
         return { plotId: plot.plotId, food: 100 }
@@ -324,12 +325,13 @@ module.exports = {
         nextCursor: rows.length === 100 ? rows[rows.length - 1]._id : ''
       }
     }
-    async function demolish(openid, data) {
+    async function demolish(openid, data, beforeRemove) {
       return transaction(db,async (tx) => {
         const plot = await ownInTransaction(tx, openid)
         if (!plot || plot.ownerOpenid !== openid || data.plotId !== plot.plotId)
           throw new Error('只能拆除自己的当前庭院')
         if (data.sceneId && plot.communityId !== data.sceneId) throw new Error('请回到原小区拆除庭院')
+        const released=beforeRemove?await beforeRemove(tx,openid,plot):[]
         const residentId = 'resident_' + hash(openid)
         const resident = await read(tx, residentId)
         const presenceId = 'presence_' + hash(openid)
@@ -340,7 +342,7 @@ module.exports = {
         if (presence) await tx.collection('pet_playground_plots').doc(presenceId).remove()
         const carId='vehicle_'+hash(openid)
         if(await read(tx,carId))await tx.collection('pet_playground_plots').doc(carId).remove()
-        return { removed: true }
+        return beforeRemove?{ removed: true,released }:{ removed: true }
       })
     }
     async function ownInTransaction(tx, openid) { return read(tx, ownerId(openid)) }

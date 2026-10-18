@@ -264,7 +264,8 @@ test('late packets cannot undo motion or resurrect a deleted player; new session
   assert.equal(f.w.remoteCharacters[0].position.x,140)
   await f.sync.stop()
 })
-test('pet route pushes are shared immediately and render the owner with the pet name',async()=>{
+test('pet route pushes are shared immediately and render the owner with the pet name',async(t)=>{
+  t.mock.method(Date,'now',()=>1800000000000)
   const f=fixture();f.sync.start();await settle()
   const motion={epoch:Date.now()-500,approach:[{x:110,z:100},{x:117,z:100}],patrol:[{x:117,z:100}],speed:7,roamSpeed:3,wait:3}
   f.watches[0].onChange({docs:[{records:{resident:{id:'resident',kind:'resident',ownerId:'other',ownerName:'凯大大',pets:[{id:'dog',name:'豆豆',species:'dog',modelScale:1,motion}],version:{epoch:1,seq:1}}}}]})

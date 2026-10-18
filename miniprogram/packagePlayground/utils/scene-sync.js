@@ -29,7 +29,7 @@ class SceneSync {
         this.applyAgain=false
         const changes=[...this.changes.values()]
         this.changes.clear()
-        const rebuild=this.fullApply||!this.world.applySceneChanges||changes.some((r)=>!['presence','vehicle'].includes(r.kind))
+        const rebuild=this.fullApply||!this.world.applySceneChanges||changes.some((r)=>!['presence','vehicle','resident'].includes(r.kind))
         this.fullApply=false
         if(rebuild) await this.world.applySceneRecords([...this.records.values()].filter((r)=>!r.deleted))
         else await this.world.applySceneChanges(changes)
@@ -206,7 +206,7 @@ class SceneSync {
       const start=Date.now()
       try {
         const state=this.world.sceneState()
-        const signature=JSON.stringify([state.position,state.moving,state.running,state.mirrored,state.characterType])
+        const signature=JSON.stringify([this.world.vehicleRole==='passenger'?null:state.position,state.moving,state.running,state.mirrored,state.facing,state.characterType])
         if(this.pendingMovement || state.trail.length || signature!==this.signature || start-(this.lastSent||0)>=2000) {
           await this.send(true)
           if(this.active&&this.generation===generation) {this.signature=signature;this.lastSent=Date.now()}
@@ -256,6 +256,7 @@ class SceneSync {
         if(this.world.destroyed)return result
         this.clock(result.serverTime,Date.now())
         this.merge(result.actor);this.merge(result.vehicle)
+        for(const row of result.records||[])this.merge(row)
         await this.apply(false)
         const latest=this.records.get(result.actor.id)
         if(latest&&!newer(latest.version,result.actor.version))this.world.applyOwnVehicleActor(result.actor,true)
@@ -290,7 +291,7 @@ class SceneSync {
     } finally {this.world.vehicleBusy=false}
   }
   async movePet(petId,target) {
-    const token=this.petCommand=(this.petCommand||0)+1
+    const token=this.nextPetCommand()
     if(!this.petCommands)this.petCommands=new Map()
     this.petCommands.set(petId,token)
     const prediction=this.world.predictPetMove?this.world.predictPetMove(petId,target,token):Promise.resolve()
@@ -305,11 +306,47 @@ class SceneSync {
   }
   async interactPet(petId) {
     await this.send(true)
-    const token=this.petCommand=(this.petCommand||0)+1
+    const token=this.nextPetCommand()
     if(!this.petCommands)this.petCommands=new Map()
     this.petCommands.set(petId,token)
     const result=await callFunction('playground','interactPet',{...this.credentials(),petId,commandSeq:token})
     if(!this.world.destroyed&&token===this.petCommands.get(petId))this.world.applySharedPet({...result.pet,commandSeq:token},true)
+  }
+  nextPetCommand() {
+    const latest=Math.max(0,...(this.world.pets||[]).filter((p)=>p.mine!==false).map((p)=>p.acceptedCommand||0))
+    return this.petCommand=Math.max(this.petCommand||0,latest)+1
+  }
+  async petAction(petId,operation) {
+    await this.send(true)
+    const pending=this.pendingPetAction
+    const packet=pending&&pending.petId===petId&&pending.operation===operation?pending:{petId,operation,commandSeq:this.nextPetCommand()}
+    this.pendingPetAction=packet
+    let result
+    try {result=await callFunction('playground','petAction',{...this.credentials(),...packet})}
+    catch(error){if(/操作已更新|无效.*序号/.test(error.message||''))this.pendingPetAction=null;throw error}
+    if(this.pendingPetAction===packet)this.pendingPetAction=null
+    if(!this.world.destroyed){this.world.applySharedPet(result.pet,true);this.world.emitPets()}
+    return result
+  }
+  async rideAction(action,data={}) {
+    this.world.setCharacterInput(0,0)
+    await this.send(true)
+    const run=async()=>{
+      const result=await callFunction('playground',action,{...this.credentials(),...data})
+      if(this.world.destroyed)return result
+      for(const row of result.records||[])this.merge(row)
+      if(result.social)this.world.setSocial(result.social)
+      await this.apply(false)
+      return result
+    }
+    const result=this.chain.then(run,run)
+    this.chain=result.catch(()=>{})
+    return result
+  }
+  async getFarm() {return callFunction('playground','getFarm',this.credentials())}
+  async farmAction(packet) {
+    await this.send(true)
+    return callFunction('playground','farmAction',{...this.credentials(),...packet})
   }
 }
 module.exports={SceneSync}

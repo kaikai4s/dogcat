@@ -16,6 +16,12 @@ module.exports = function createHandler(context) {
     if (action === 'getScene') return shared.snapshot(openid, data)
     if (action === 'vehicleAction') return shared.vehicles.action(openid,user,data)
     if (action === 'setVehicleSpeed') return shared.vehicles.speed(openid,user,data)
+    if (action === 'petAction') return shared.companions.action(openid,data)
+    if (action === 'getFarm') return shared.farm.state(openid,data)
+    if (action === 'farmAction') return shared.farm.action(openid,data)
+    if (action === 'rideRequest') return shared.rides.request(openid,data)
+    if (action === 'rideRespond') return shared.rides.respond(openid,data)
+    if (action === 'rideLeave') return shared.rides.leave(openid,data)
     if (action === 'movePet') return shared.commandPet(openid, data)
     if (action === 'interactPet') return shared.commandPet(openid, {...data,interact:true})
     if (action === 'getSocial') return shared.social.state(openid)
@@ -25,7 +31,8 @@ module.exports = function createHandler(context) {
     if (action === 'removeFriend') return shared.social.removeFriend(openid,data)
     if (action === 'demolishPlot') {
       const old=await world.own(openid)
-      const result=await world.demolish(openid,data)
+      const {released,...result}=await world.demolish(openid,data,shared.rides.beforeDemolish)
+      await shared.publishRecords(released||[])
       await shared.plotChanged(openid,old.plotId,true,old.communityId)
       return result
     }
@@ -134,7 +141,7 @@ module.exports = function createHandler(context) {
       world: await world.config(),
       scene,
       plot: scene ? scene.plot : ownPlot ? world.publicPlot({ ...ownPlot, _id: ownPlot.plotId }, openid) : null,
-      foodBowls: { dog: ownPlot && ownPlot.foodBowls && ownPlot.foodBowls.dog === 100 ? 100 : 0 },
+      foodBowls: { dog: Number(ownPlot&&ownPlot.foodBowls&&ownPlot.foodBowls.dog)||0, cat:Number(ownPlot&&ownPlot.foodBowls&&ownPlot.foodBowls.cat)||0 },
       playground,
       userCommunity,
       hasCommunity,

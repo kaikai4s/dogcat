@@ -21,6 +21,7 @@ class PlayerCharacter {
     this.input = { x: 0, y: 0 }
     this.moving = false
     this.mirrored = false
+    this.facing = 'sw'
     this.walkDistance = 0
     this.runRequested = false
     this.animationPhase = 0
@@ -68,6 +69,17 @@ class PlayerCharacter {
       }
       if (!target) break
       const moved = Math.hypot(target.x - start.x, target.z - start.z)
+      if(moved>.00001) {
+        const screenX=target.x-start.x-(target.z-start.z)
+        const screenY=(target.x-start.x+target.z-start.z)*.52
+        const axisTolerance=Math.hypot(screenX,screenY)*.08
+        const right=Math.abs(screenX)>1e-6?screenX>0:this.mirrored
+        // Keep the last front/rear view close to horizontal movement. Tiny
+        // joystick jitter or rounding at a collision must not flicker views.
+        const back=Math.abs(screenY)>axisTolerance?screenY<0:this.facing==='nw'||this.facing==='ne'
+        if(Math.abs(screenX)>1e-6)this.mirrored=right
+        this.facing=back?(right?'ne':'nw'):(right?'se':'sw')
+      }
       this.walkDistance += moved
       this.animationPhase = (this.animationPhase + moved / (this.vehicleSpeed ? 20 : this.runRequested ? 9.5 : 7)) % 1
       this.moving = this.moving || moved > 0.00001

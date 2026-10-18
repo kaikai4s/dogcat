@@ -48,7 +48,8 @@ function yardLayout(plot) {
         species,
         {
           eat: { x: bowl.x, z: bowl.z + bowl.radius + 1.8 },
-          sleep: { x: bed.x, z: bed.z + bed.radius + 1.8 }
+          sleep: { x: bed.x, z: bed.z + bed.radius + 1.8 },
+          drink: { x: plot.x + .5 * half, z: plot.z + .43 * half + 4.2 * detailScale + 1.8 }
         }
       ]
     })

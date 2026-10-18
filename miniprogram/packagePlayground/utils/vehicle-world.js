@@ -1,23 +1,27 @@
 const { createNavigation } = require('./navigation')
 const { yardLayout, VEHICLE_RADIUS } = require('./yard-layout')
-const { VEHICLE_ATLAS:ATLAS } = require('./vehicle-assets')
+const { VEHICLE_ATLAS:ATLAS,VEHICLE_REAR_ATLAS:REAR_ATLAS } = require('./vehicle-assets')
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n))
 module.exports={
   setVehicleSpeed(value) {
     this.vehicleSpeed=clamp(Number(value)||2,2,5)
-    if(this.character)this.character.vehicleSpeed=this.drivingVehicleId?14*this.vehicleSpeed:0
+    if(this.character)this.character.vehicleSpeed=this.drivingVehicleId&&this.vehicleRole!=='passenger'?14*this.vehicleSpeed:0
     if(!this.page.data||this.page.data.vehicleSpeed!==this.vehicleSpeed)this.page.setData({vehicleSpeed:this.vehicleSpeed})
   },
   applyOwnVehicleActor(actor,force=false) {
     if(!this.character)return
     const id=actor.deleted?'':actor.vehicleId||''
-    if(force||id!==this.drivingVehicleId) {
+    const role=id?(actor.vehicleRole||'driver'):''
+    if(force||id!==this.drivingVehicleId||role!==this.vehicleRole) {
       this.setCharacterInput(0,0)
       this.clearPetSelection()
       if(actor.position)this.character.position={...actor.position}
+      if(actor.facing)this.character.facing=actor.facing
+      if(typeof actor.mirrored==='boolean')this.character.mirrored=actor.mirrored
       this.sceneTrail=[];this.characterTerrain=null
       this.drivingVehicleId=id
-      this.character.vehicleSpeed=id?14*this.vehicleSpeed:0
+      this.vehicleRole=role
+      this.character.vehicleSpeed=id&&role!=='passenger'?14*this.vehicleSpeed:0
       this.prepareCharacterArea().catch(()=>{})
     }
     this.emitVehicleUi()
@@ -49,7 +53,7 @@ module.exports={
   },
   ownVehicle() {return [...this.vehicles.values()].find((r)=>r.mine)},
   vehiclePosition(car) {
-    return car.mine&&this.drivingVehicleId===car.id&&this.character?this.character.position:this.neighborPosition(car)
+    return car.mine&&this.vehicleRole!=='passenger'&&this.drivingVehicleId===car.id&&this.character?this.character.position:this.neighborPosition(car)
   },
   vehicleSize(car) {
     const plot=car.state==='parked'&&this.plots().find((p)=>p.id===car.plotId)
@@ -62,7 +66,9 @@ module.exports={
     const nearby=!!car&&car.state==='outside'&&!driving&&!!p&&Math.hypot(p.x-car.position.x,p.z-car.position.z)<=6&&
       !!this.characterTerrain&&this.characterAreaLoaded(this.characterTerrain)&&this.characterNavigation().clearSegment(p,car.position)
     const state={driving,vehicleSelected:selected,vehicleParked:!!car&&car.state==='parked',nearbyVehicle:nearby,
-      ownVehicleId:car?car.id:''}
+      ownVehicleId:car?car.id:'',riding:this.vehicleRole==='passenger',
+      passengers:((this.vehicles.get(this.drivingVehicleId)||{}).passengers||[]),
+      nearbyRide:this.nearbyRideCandidate(),nearbyInvite:this.nearbyRideInvite()}
     const key=JSON.stringify(state)
     if(key!==this.vehicleUiKey){this.vehicleUiKey=key;this.page.setData(state)}
   },
@@ -84,9 +90,12 @@ module.exports={
     })
   },
   loadVehicleAtlas() {
-    if(!this.loader||this.vehicleImage||this.vehicleImagePromise||Date.now()<(this.vehicleRetryAt||0))return
-    this.vehicleImagePromise=this.loader.loadAtlas(ATLAS).then((img)=>{if(!this.destroyed)this.vehicleImage=img})
-      .catch(()=>{this.vehicleRetryAt=Date.now()+15000}).finally(()=>{this.vehicleImagePromise=null})
+    if(!this.loader)return
+    for(const [atlas,key] of [[ATLAS,'vehicleImage'],[REAR_ATLAS,'vehicleRearImage']]) {
+      if(!atlas||this[key]||this[key+'Promise']||Date.now()<(this[key+'RetryAt']||0))continue
+      this[key+'Promise']=this.loader.loadAtlas(atlas).then((img)=>{if(!this.destroyed)this[key]=img})
+        .catch(()=>{this[key+'RetryAt']=Date.now()+15000}).finally(()=>{this[key+'Promise']=null})
+    }
   },
   drawVehicle(car,overview) {
     const position=this.vehiclePosition(car),point=this.project(position.x,position.z),c=this.ctx
@@ -94,7 +103,7 @@ module.exports={
     if(point.x < -size||point.x>this.width+size||point.y < -size||point.y>this.height+size)return
     this.loadVehicleAtlas()
     const selected=car.id===this.selectedVehicleId
-    const mineDriving=car.mine&&car.id===this.drivingVehicleId&&this.character
+    const mineDriving=car.mine&&this.vehicleRole!=='passenger'&&car.id===this.drivingVehicleId&&this.character
     const moving=mineDriving?this.character.moving:car.moving&&car.online&&Date.now()+this.serverOffset-car.lastSeen<3000
     if(car.renderPosition&&moving)car.renderDistance=(car.renderDistance||0)+Math.hypot(position.x-car.renderPosition.x,position.z-car.renderPosition.z)
     car.renderPosition={...position}
@@ -103,12 +112,16 @@ module.exports={
     if(selected){c.strokeStyle='#efae36';c.lineWidth=2;c.beginPath();c.ellipse(0,0,Math.max(12,size*.4),Math.max(6,size*.14),0,0,Math.PI*2);c.stroke()}
     if(overview){c.fillStyle=selected?'#efae36':'#5b8bb3';c.fillRect(-5,-4,10,6)}
     else {
-      if(mineDriving?this.character.mirrored:car.mirrored)c.scale(-1,1)
-      const img=this.vehicleImage
-      if(img){
-        const frame=moving?Math.floor(phase*ATLAS.frames)%ATLAS.frames:0,w=img.width/ATLAS.columns,h=img.height/ATLAS.rows
-        c.drawImage(img,frame%ATLAS.columns*w,Math.floor(frame/ATLAS.columns)*h,w,h,-size/2,-size*ATLAS.anchor,size,size)
-      }else{
+      const facing=mineDriving?this.character.facing:car.facing
+      const rear=facing==='nw'||facing==='ne'
+      const mirrored=rear?facing==='ne':mineDriving?this.character.mirrored:car.mirrored
+      if(mirrored)c.scale(-1,1)
+      const atlas=rear?REAR_ATLAS:ATLAS,img=rear?this.vehicleRearImage:this.vehicleImage
+      if(img&&atlas){
+        const frame=moving?Math.floor(phase*atlas.frames)%atlas.frames:0,w=img.width/atlas.columns,h=img.height/atlas.rows
+        c.drawImage(img,frame%atlas.columns*w,Math.floor(frame/atlas.columns)*h,w,h,-size/2,-size*atlas.anchor,size,size)
+      }else if(rear)this.drawRearVehicle(size,moving,phase)
+      else{
         // A small blue vehicle marker remains usable while the atlas downloads.
         c.fillStyle='#273641';c.fillRect(-size*.32,-size*.32,size*.64,size*.16)
         c.fillStyle='#6299c5';c.fillRect(-size*.38,-size*.46,size*.76,size*.24)
@@ -118,8 +131,22 @@ module.exports={
     c.restore()
     if(!overview){
       const online=mineDriving||car.online&&Date.now()+this.serverOffset-car.lastSeen<15000
-      const label=(car.name||'邻居')+(car.state==='driving'?(online?'':' · 离线'):'的车')
+      const label=(car.name||'邻居')+(car.state==='driving'?(online?'':' · 离线'):'的车')+((car.passengers||[]).length?' · '+car.passengers.length+'/3位乘客':'')
       this.markerLabel(label,point.x,point.y-size*.66-8,selected)
     }
+  },
+  nearbyRideCandidate() {
+    if(this.drivingVehicleId||!this.character)return null
+    const p=this.character.position
+    const car=[...this.vehicles.values()].find((v)=>!v.mine&&v.state==='driving'&&v.online&&Date.now()+this.serverOffset-v.lastSeen<15000&&!v.moving&&(v.passengers||[]).length<3&&Math.hypot(p.x-v.position.x,p.z-v.position.z)<=7&&this.characterNavigation().clearSegment(p,v.position))
+    return car?{id:car.id,playerId:car.ownerId,name:car.name}:null
+  },
+  nearbyRideInvite() {
+    if(!this.drivingVehicleId||this.vehicleRole==='passenger'||!this.character||this.character.moving)return null
+    const car=this.vehicles.get(this.drivingVehicleId)
+    if(!car||(car.passengers||[]).length>=3)return null
+    const p=this.character.position
+    const person=this.remoteCharacters.find((v)=>!v.vehicleId&&v.online&&Date.now()+this.serverOffset-v.lastSeen<15000&&Math.hypot(p.x-v.position.x,p.z-v.position.z)<=7&&this.characterNavigation().clearSegment(p,v.position))
+    return person?{id:person.id,name:person.name}:null
   }
 }
