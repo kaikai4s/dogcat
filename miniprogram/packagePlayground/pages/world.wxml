@@ -29,14 +29,14 @@
       <button wx:if="{{nearbyBowl}}" class="fill-bowl" bindtap="fillBowl" disabled="{{feeding || nearbyBowl.food >= 100}}" loading="{{feeding}}">{{nearbyBowl.food >= 100 ? '猫狗碗已添满' : '给猫狗碗添粮'}}</button>
       <button wx:if="{{nearbyPoop}}" bindtap="pickupPoop">拾取便便</button>
       <button wx:if="{{nearbyPoop}}" bindtap="reportPoopAction">向居委会反馈便便</button>
-      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'committee'}}" bindtap="openDisputes">进入居委会</button>
-      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'repair_shop'}}" bindtap="cleanVehicleAction">修理厂洗车</button>
-      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'repair_shop'}}" bindtap="repairVehicleAction">检修保养车辆</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'committee'}}" bindtap="openDisputes">社区服务站</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'repair_shop'}}" bindtap="cleanVehicleAction">便民爱车清洗</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'repair_shop'}}" bindtap="repairVehicleAction">车辆便民养护</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'pet_hospital'}}" data-type="wash" bindtap="hospitalCareAction">宠物专业洗护</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'pet_hospital'}}" data-type="treat" bindtap="hospitalCareAction">宠物健康调理</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'pet_hospital'}}" bindtap="hospitalTreatHumanAction">健康舒缓调理</button>
-      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'police_station'}}" bindtap="openJustice">进入文明督导所</button>
-      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'prison'}}" bindtap="openJustice">安全宣教自省室</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'police_station'}}" bindtap="openJustice">文明出行督导站</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'prison'}}" bindtap="openJustice">交通安全宣教室</button>
       <button wx:if="{{myJailStatus && myJailStatus.isJailed}}" bindtap="openJustice" class="jail-status-btn">宣教自省中({{myJailStatus.remainingSeconds}}s)·提前结业</button>
       <button wx:if="{{isHumanInjured && (!nearbyBuilding || nearbyBuilding.type !== 'pet_hospital')}}" class="injured-tip-btn">身体疲劳·前往调理</button>
     </view>
@@ -97,21 +97,21 @@
       <view class="pet-size-slider"><text>小</text><slider min="50" max="200" step="5" value="{{petScalePercent}}" disabled="{{petScaleSaving}}" activeColor="#6f8d58" block-color="#6f8d58" block-size="20" bindchanging="previewPetScale" bindchange="savePetScale"/><text>大</text><button bindtap="resetPetScale" disabled="{{petScaleSaving}}">恢复默认</button></view>
     </view>
     <view class="plot-size-bar" wx:if="{{placing && isPlacingNewPlot}}">
-      <text class="plot-size-label">地皮尺寸：</text>
-      <button class="plot-size-chip {{selectedPlotSize === 36 ? 'active' : ''}}" data-size="36" bindtap="selectPlotSize">36m (30币)</button>
-      <button class="plot-size-chip {{selectedPlotSize === 48 ? 'active' : ''}}" data-size="48" bindtap="selectPlotSize">48m (50币)</button>
-      <button class="plot-size-chip {{selectedPlotSize === 64 ? 'active' : ''}}" data-size="64" bindtap="selectPlotSize">64m (80币)</button>
-      <button class="plot-size-chip {{selectedPlotSize === 80 ? 'active' : ''}}" data-size="80" bindtap="selectPlotSize">80m (120币)</button>
+      <text class="plot-size-label">绿地规格：</text>
+      <button class="plot-size-chip {{selectedPlotSize === 36 ? 'active' : ''}}" data-size="36" bindtap="selectPlotSize">36m (30爱心值)</button>
+      <button class="plot-size-chip {{selectedPlotSize === 48 ? 'active' : ''}}" data-size="48" bindtap="selectPlotSize">48m (50爱心值)</button>
+      <button class="plot-size-chip {{selectedPlotSize === 64 ? 'active' : ''}}" data-size="64" bindtap="selectPlotSize">64m (80爱心值)</button>
+      <button class="plot-size-chip {{selectedPlotSize === 80 ? 'active' : ''}}" data-size="80" bindtap="selectPlotSize">80m (120爱心值)</button>
     </view>
     <view class="controls">
       <button wx:if="{{hasAvatar && !placing}}" bindtap="focusCharacter">回到角色</button>
       <button wx:if="{{!placing}}" bindtap="fullOverview">地图中心</button>
       <button wx:if="{{!placing}}" bindtap="overview">{{hasPlot ? '回到家园' : '回到起点'}}</button>
-      <button wx:if="{{hasPlot && hasCommunity && !hasHomeElsewhere && !placing}}" bindtap="buyNewPlotAction">购买独立新地皮</button>
-      <button wx:if="{{(!hasPlot || canRelocate) && hasCommunity && !hasHomeElsewhere && !placing}}" bindtap="choosePlot">{{hasPlot ? '调整原别墅' : '在这里建造庭院'}}</button>
+      <button wx:if="{{hasPlot && hasCommunity && !hasHomeElsewhere && !placing}}" bindtap="buyNewPlotAction">认领专属爱心绿地</button>
+      <button wx:if="{{(!hasPlot || canRelocate) && hasCommunity && !hasHomeElsewhere && !placing}}" bindtap="choosePlot">{{hasPlot ? '调整原别墅' : '安置庭院'}}</button>
       <button wx:if="{{placing}}" bindtap="cycleGateDirection">门口：{{gateDirectionText}} ▾</button>
       <button wx:if="{{placing}}" bindtap="cancelPlot" disabled="{{claiming}}">取消选址</button>
-      <button wx:if="{{placing}}" bindtap="confirmPlot" disabled="{{!canConfirm || claiming}}" loading="{{claiming}}">{{isPlacingNewPlot ? '确认购买地皮' : '确认位置'}}</button>
+      <button wx:if="{{placing}}" bindtap="confirmPlot" disabled="{{!canConfirm || claiming}}" loading="{{claiming}}">{{isPlacingNewPlot ? '确认认领绿地' : '确认位置'}}</button>
     </view>
     <view class="hint">{{hasAvatar ? joystickMode === 'hold' ? '长按草地1秒显示摇杆 · ' : '摇杆轻推走 / 拉远跑 · ' : ''}}点击角色 / 宠物选择 · 双指缩放</view>
   </view>
@@ -119,6 +119,9 @@
     <view class="settings-panel" catchtap="swallowTouch">
       <view class="settings-heading"><view><text>场景设置</text><text class="settings-tip">按你的习惯，自在逛家园</text></view><button bindtap="closeSettings">完成</button></view>
       <scroll-view scroll-y="true" class="settings-content">
+        <view class="compliance-banner" style="background: rgba(111,141,88,0.08); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
+          <text style="font-size: 11px; color: #556b46; line-height: 1.5; display: block;">【社区文明公约】本空间为邻里文明养宠与绿色生活互动专区，爱心币仅用于场景内绿化开垦、种子申领等公益成长互动，不具备现金价值，不涉及任何现金交易。</text>
+        </view>
         <button class="settings-entry" bindtap="openSocial">
           <text class="settings-entry-icon">友</text>
           <view class="settings-entry-copy"><text class="settings-entry-title">好友与庭院访问</text><text class="settings-tip">查看好友，处理好友与来访申请</text></view>

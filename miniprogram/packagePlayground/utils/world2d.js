@@ -2025,7 +2025,7 @@ class World2D {
             item.anchor
           )
           if (item.name === 'house' && p.buildingType && p.buildingType !== 'residential') {
-            const bLabels = { committee: '🏛 居委会', repair_shop: '🔧 修理厂', pet_hospital: '🏥 宠物医院', police_station: '📋 督导所', prison: '🕊 自省室' }
+            const bLabels = { committee: '🏛 邻里服务站', repair_shop: '🔧 便民洗车', pet_hospital: '🏥 宠医健康', police_station: '📋 出行督导', prison: '🕊 安全宣教' }
             const bColors = { committee: '#d84315', repair_shop: '#0277bd', pet_hospital: '#2e7d32', police_station: '#1565c0', prison: '#6a1b9a' }
             const tag = bLabels[p.buildingType] || p.buildingName || '工坊'
             const tagColor = bColors[p.buildingType] || '#388e3c'

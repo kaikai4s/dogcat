@@ -414,7 +414,7 @@ test('standalone yard plot sizes pricing, decoupling houses into yard, and uniqu
         buildingName: '爱心宠医',
         costCoins: 100
       }),
-    /您还没有属于自己的地皮，房子的建筑只能在已购买的地皮内部建造/
+    /公共设施建筑只能在已认领的爱心绿地内部建造/
   )
 
   // 5. a 在自己的 64m 地皮内部建造文明督导所 (消耗 100 爱心币)

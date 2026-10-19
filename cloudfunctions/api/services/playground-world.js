@@ -5,10 +5,10 @@ const SIZE = 112
 const STEP = 56
 const GAP = 4
 const DEFAULT_PLOT_SIZES = [
-  { size: 36, label: '紧凑庭院 (36×36m)', price: 30 },
-  { size: 48, label: '标准庭院 (48×48m)', price: 50 },
-  { size: 64, label: '宽敞庭院 (64×64m)', price: 80 },
-  { size: 80, label: '豪华庄园 (80×80m)', price: 120 }
+  { size: 36, label: '紧凑绿地 (36×36m)', price: 30 },
+  { size: 48, label: '标准绿地 (48×48m)', price: 50 },
+  { size: 64, label: '宽敞绿地 (64×64m)', price: 80 },
+  { size: 80, label: '生态大院 (80×80m)', price: 120 }
 ]
 // Temporary relocation switch. Set PLAYGROUND_ALLOW_RELOCATION=false to lock it.
 const allowRelocation = () =>
@@ -260,7 +260,7 @@ module.exports = {
         if (isNewPlot && costCoins > 0) {
           const userCoins = current.playgroundCoins || 0
           if (userCoins < costCoins) {
-            throw new Error(`爱心币不足，购买 ${plotSize}×${plotSize} 米独立地皮需要 ${costCoins} 爱心币，当前拥有 ${userCoins} 爱心币`)
+            throw new Error(`爱心币不足，认领 ${plotSize}×${plotSize} 米专属绿地需要 ${costCoins} 爱心币，当前拥有 ${userCoins} 爱心币`)
           }
           await tx.collection('users').doc(user._id).update({
             data: {
@@ -332,7 +332,7 @@ module.exports = {
           nameColor,
           revision: Math.max(await require('./playground-live')({db,nowMs}).nextEpoch(id,key,stamp()),(existing&&existing.revision||0)+1),
           instanceId: crypto.randomBytes(12).toString('hex'),
-          name: buildingName ? `${String(user.nickname || '我').slice(0, 20)}的${buildingName}` : (isNewPlot ? `${String(user.nickname || '我').slice(0, 20)}的专属地皮` : `${String(user.nickname || '我').slice(0, 20)}的庭院`),
+          name: buildingName ? `${String(user.nickname || '我').slice(0, 20)}的${buildingName}` : (isNewPlot ? `${String(user.nickname || '我').slice(0, 20)}的专属爱心绿地` : `${String(user.nickname || '我').slice(0, 20)}的庭院`),
           createdAt: existing ? existing.createdAt : nowText(),
           updatedAt: nowText(),
           isNewPlot: Boolean(isNewPlot)
@@ -463,7 +463,7 @@ module.exports = {
           }
         }
         if (!targetPlot) {
-          throw new Error('您还没有属于自己的地皮，房子的建筑只能在已购买的地皮内部建造，请先购买地皮')
+          throw new Error('您还没有属于自己的专属绿地空间，公共设施建筑只能在已认领的爱心绿地内部建造，请先认领专属绿地')
         }
 
         const communityId = targetPlot.communityId
