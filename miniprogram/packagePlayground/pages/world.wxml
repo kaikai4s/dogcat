@@ -160,6 +160,7 @@
         <view class="social-item" wx:for="{{socialOutgoing}}" wx:key="id"><text>{{item.name}} · {{item.type === 'rideInvite' ? '邀请乘车' : item.type === 'rideRequest' ? '申请乘车' : item.type === 'visit' ? '访问庭院' : '添加好友'}}</text><text class="settings-tip">{{item.status === 'accepted' ? '已同意' : item.status === 'rejected' ? '已拒绝' : item.expiresAt && item.expiresAt < socialClock ? '已过期' : '等待对方处理'}}</text></view>
       </scroll-view>
     </view>
+  </view>
   <view class="settings-backdrop" wx:if="{{historyModalOpen}}" catchtap="closeHistoryModal" catchtouchmove="swallowTouch">
     <view class="settings-panel history-panel" catchtap="swallowTouch">
       <view class="settings-heading">
