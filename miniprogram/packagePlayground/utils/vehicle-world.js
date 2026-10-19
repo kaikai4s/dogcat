@@ -1,6 +1,7 @@
 const { createNavigation } = require('./navigation')
 const { yardLayout, VEHICLE_RADIUS } = require('./yard-layout')
 const { VEHICLE_ATLAS:ATLAS,VEHICLE_REAR_ATLAS:REAR_ATLAS } = require('./vehicle-assets')
+const { drawVehicleStains } = require('./excretion-system')
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n))
 module.exports={
   setVehicleSpeed(value) {
@@ -67,10 +68,20 @@ module.exports={
       !!this.characterTerrain&&this.characterAreaLoaded(this.characterTerrain)&&this.characterNavigation().clearSegment(p,car.position)
     const state={driving,vehicleSelected:selected,vehicleParked:!!car&&car.state==='parked',nearbyVehicle:nearby,
       ownVehicleId:car?car.id:'',riding:this.vehicleRole==='passenger',
+      vehicleSoiled:!!(car&&(car.soiled||(car.stains&&car.stains.length>0))),
       passengers:((this.vehicles.get(this.drivingVehicleId)||{}).passengers||[]),
       nearbyRide:this.nearbyRideCandidate(),nearbyInvite:this.nearbyRideInvite()}
     const key=JSON.stringify(state)
     if(key!==this.vehicleUiKey){this.vehicleUiKey=key;this.page.setData(state)}
+  },
+  cleanVehicle(car) {
+    const target=car||this.ownVehicle()
+    if(!target)return false
+    target.stains=[]
+    target.soiled=false
+    this.onStatus('车辆已清洗干净，焕然一新！')
+    this.emitVehicleUi()
+    return true
   },
   selectVehicle(car) {
     this.clearPetSelection()
@@ -127,10 +138,14 @@ module.exports={
         c.fillStyle='#6299c5';c.fillRect(-size*.38,-size*.46,size*.76,size*.24)
         c.fillStyle='#244864';c.fillRect(-size*.18,-size*.43,size*.36,size*.1)
       }
+      if(car.stains&&car.stains.length) {
+        drawVehicleStains(c,car.stains,size,this.excretionImages)
+      }
     }
     c.restore()
     if(!overview){
-      this.markerLabel('小车',point.x,point.y-size*.66-8,selected,this.ownerNameColor(car.ownerId,car.nameColor))
+      const label=car.soiled?'小车（已脏）':'小车'
+      this.markerLabel(label,point.x,point.y-size*.66-8,selected,this.ownerNameColor(car.ownerId,car.nameColor))
     }
   },
   nearbyRideCandidate() {

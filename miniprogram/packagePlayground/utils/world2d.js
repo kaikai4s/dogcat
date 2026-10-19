@@ -12,6 +12,8 @@ const {
   YARD_EXTRAS,
   yardLayout
 } = require('./yard-layout')
+const { updatePetExcretion, drawSingleDecal } = require('./excretion-system')
+const { getExcretionAsset, setExcretionAsset: configureExcretionAsset } = require('./excretion-assets')
 const STEP = 56,
   SIZE = YARD_SIZE,
   CHUNK = 112
@@ -112,6 +114,24 @@ class World2D {
     this.vehicleSpeed=clamp(Number(this.scene&&this.scene.vehicleSpeed)||2,2,5)
     this.sceneTrail = []
     this.serverOffset = this.scene ? this.scene.serverTime - Date.now() : 0
+    this.groundDecals = []
+    this.excretionImages = {}
+  }
+  setExcretionAsset(type, fileIDOrPath) {
+    configureExcretionAsset(type, fileIDOrPath)
+    this.loadExcretionAssets()
+  }
+  loadExcretionAssets() {
+    if (!this.loader) return
+    for (const type of ['pee', 'poop']) {
+      const asset = getExcretionAsset(type)
+      if (!asset) continue
+      const target = asset.fileID || asset.localPath
+      if (!target || this.excretionImages[type]) continue
+      this.loader.load(target).then((img) => {
+        if (!this.destroyed && img) this.excretionImages[type] = img
+      }).catch(() => {})
+    }
   }
   async init() {
     const item = await new Promise((resolve, reject) =>
@@ -1475,6 +1495,15 @@ class World2D {
     c.drawImage(image, frame % style.columns * width, Math.floor(frame / style.columns) * height, width, height,
       -size / 2, -size * style.anchor, size, size)
     c.restore()
+    if (pet.relieving) {
+      c.save()
+      c.translate(point.x, point.y - size * (style ? style.anchor : 0.8) - 8)
+      c.font = '15px sans-serif'
+      c.textAlign = 'center'
+      c.textBaseline = 'middle'
+      c.fillText(pet.relieving.type === 'poop' ? '💩' : '💧', 0, 0)
+      c.restore()
+    }
   }
   drawCharacter(overview) {
     if(this.drivingVehicleId)return
@@ -1851,6 +1880,16 @@ class World2D {
         this.drawYard(p, items)
         this.drawFarm(p)
       }
+    if (!overview && this.groundDecals && this.groundDecals.length) {
+      this.loadExcretionAssets()
+      for (const decal of this.groundDecals) {
+        if (decal.x < b.minX || decal.x > b.maxX || decal.z < b.minZ || decal.z > b.maxZ) continue
+        const pt = this.project(decal.x, decal.z)
+        const decalSize = 14 * this.scale * this.zoom
+        const img = this.excretionImages && this.excretionImages[decal.type]
+        drawSingleDecal(c, decal, pt, decalSize, img)
+      }
+    }
     this.drawPetSelection()
     for (const p of this.pets.filter((pet)=>!pet.ridingVehicleId))
       items.push({
@@ -1887,6 +1926,22 @@ class World2D {
     this.updateLifeUi()
     this.updateCharacter(dt)
     for (const pet of this.pets) {
+      if (pet.mine !== false) {
+        updatePetExcretion(pet, dt, {
+          now: Date.now() + this.serverOffset,
+          ownPlot: this.ownPlot,
+          vehicles: this.vehicles,
+          groundDecals: this.groundDecals,
+          onStatus: (msg) => this.onStatus(msg),
+          random: this.random,
+          emitPets: () => this.emitPets()
+        })
+      }
+      if (pet.relieving) {
+        pet.moving = false
+        pet.route = []
+        continue
+      }
       if(pet.sharedMotion) {
         const state=this.sharedPetSample(pet,dt)
         pet.position=state.position;pet.moving=state.moving;pet.walkDistance=state.distance+(pet.motionDistanceOffset||0);pet.walkFacingLeft=state.facingLeft

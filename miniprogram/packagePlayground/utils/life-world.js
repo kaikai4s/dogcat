@@ -29,6 +29,7 @@ module.exports={
   },
   petNeeds(pet) {return needsView(pet,Date.now()+this.serverOffset)},
   petActivity(pet) {
+    if(pet.relieving)return pet.relieving.type==='poop'?'便便中...':'嘘嘘中...'
     if(pet.ridingVehicleId)return '同行乘车中'
     if(pet.following)return '跟随主人 · 到身边后自由活动'
     const now=Date.now()+this.serverOffset,care=pet.care

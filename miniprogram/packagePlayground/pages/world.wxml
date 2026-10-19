@@ -57,6 +57,7 @@
       <text class="selected-pet-name">{{driving ? '已选中车辆 · 点击空地驾驶，可连续更换目标' : vehicleParked ? '我的蓝色轿车 · 停在车位' : '我的蓝色轿车 · 靠近后可以上车或入库'}}</text>
       <button wx:if="{{vehicleParked}}" data-operation="start" bindtap="operateVehicle" disabled="{{vehicleOperating}}" loading="{{vehicleOperating}}">启动车辆</button>
       <button wx:if="{{driving}}" data-operation="exit" bindtap="operateVehicle" disabled="{{vehicleOperating}}" loading="{{vehicleOperating}}">下车</button>
+      <button wx:if="{{vehicleSoiled}}" bindtap="cleanVehicleAction">洗车清洁</button>
     </view>
     <view class="pet-actions" wx:if="{{selectedPetId && !placing}}">
       <text class="selected-pet-name">{{selectedPetName}} · {{selectedPet.activity}} · 疲惫 {{selectedPet.fatigue}}%</text>

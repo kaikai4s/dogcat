@@ -106,7 +106,7 @@ test('selected pet shows live needs and low alerts, hides ridden sprites, and ig
   assert.equal(f.w.selectPet('pet'),true)
   f.w.updateLifeUi()
   const selected=f.emitted().find((p)=>p.id==='pet')
-  assert.equal(selected.needs.length,3);assert.ok(selected.fatigue>=90);assert.equal(selected.following,true)
+  assert.equal(selected.needs.length,5);assert.ok(selected.fatigue>=90);assert.equal(selected.following,true)
   assert.equal(f.page.data.petAlerts.length,2);assert.ok(f.page.data.petAlerts.every((a)=>a.id==='pet'))
   f.w.applySharedPet({...f.w.pets[0].authoritativePet,ridingVehicleId:'car'},true)
   f.w.drawPet(f.w.pets[0])

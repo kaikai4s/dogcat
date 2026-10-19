@@ -594,6 +594,11 @@ Page({
     } catch(error) {wx.showToast({title:error.message||'车辆操作失败',icon:'none'})}
     finally {if(this.world===world)this.setData({vehicleOperating:false})}
   },
+  cleanVehicleAction() {
+    if (this.world && this.world.cleanVehicle) {
+      this.world.cleanVehicle()
+    }
+  },
   previewVehicleSpeed(e) {this.setData({vehicleSpeed:Number(e.detail.value)/10})},
   async changeVehicleSpeed(e) {
     const world=this.world,value=Number(e.detail.value)/10

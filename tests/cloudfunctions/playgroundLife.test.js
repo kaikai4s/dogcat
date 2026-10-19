@@ -11,7 +11,7 @@ const {farmLayout,bedReach}=require('../../cloudfunctions/api/services/playgroun
 
 test('needs decay offline, recovery starts on arrival, and settling does not apply recovery twice',()=>{
   const stamp=1800000000000,pet={needs:{at:stamp,energy:70,satiety:70,hydration:70}}
-  assert.deepEqual(sampleNeeds(pet,stamp+3600000),{at:stamp+3600000,energy:62,satiety:58,hydration:52})
+  assert.deepEqual(sampleNeeds(pet,stamp+3600000),{at:stamp+3600000,energy:62,satiety:58,hydration:52,pee:22.22,poop:11.11})
   pet.care={type:'sleep',startsAt:stamp+60000,endsAt:stamp+960000}
   assert.ok(sampleNeeds(pet,stamp+30000).energy<70)
   const value=sampleNeeds(pet,stamp+120000)
@@ -20,6 +20,8 @@ test('needs decay offline, recovery starts on arrival, and settling does not app
   assert.deepEqual(sampleNeeds(pet,stamp+120000),value)
   assert.equal(sampleNeeds(pet,stamp+365*86400000).energy,0)
   assert.equal(sampleNeeds(pet,stamp+365*86400000).hydration,0)
+  assert.equal(sampleNeeds(pet,stamp+365*86400000).pee,100)
+  assert.equal(sampleNeeds(pet,stamp+365*86400000).poop,100)
 })
 
 test('full recovery cannot bank excess needs and offline sampling matches periodic settlement',()=>{
