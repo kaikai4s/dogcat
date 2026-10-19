@@ -31,7 +31,12 @@
         <text class="life-muted">开垦、播种、浇水、施肥与收获，都需要角色走到对应土地旁，在场景中操作。点击地图上的土地也能自动走过去。</text>
       </block>
       <block wx:elif="{{farmTab === 'shop'}}"><view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}}种子</text><text class="life-muted">{{item.minutes}}分钟成熟 · 基础收成{{item.yield}}份</text><text class="life-muted">{{item.enabled === false ? '已下架' : item.unlocked ? '已解锁' : 'Lv.' + item.level + ' 解锁'}} · 库存 {{item.seeds}}包</text></view><button data-operation="buySeeds" data-crop="{{item.id}}" data-quantity="5" bindtap="farmOperation" disabled="{{farmBusy || !item.unlocked}}">{{item.price * 5}}金币 / 5包</button></view></block>
-      <block wx:else><view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}} × {{item.stock}}</text><text class="life-muted">每份可换 {{item.sell}} 农场金币</text></view><button data-operation="sell" data-crop="{{item.id}}" data-quantity="{{item.stock}}" bindtap="farmOperation" disabled="{{farmBusy || !item.stock}}">全部出售</button></view><text class="life-muted">农场金币用于开垦、买种子和施肥，不涉及现金交易。</text></block>
+      <block wx:else>
+        <view class="farm-product">
+          <view><text>便便有机肥 × {{farm.manure || 0}}</text><text class="life-muted">拾取宠物便便获得 · 施肥享受1小时双倍速加速</text></view>
+          <text class="life-muted" wx:if="{{farm.manure}}">施肥自动优先消耗</text>
+        </view>
+        <view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}} × {{item.stock}}</text><text class="life-muted">每份可换 {{item.sell}} 农场金币</text></view><button data-operation="sell" data-crop="{{item.id}}" data-quantity="{{item.stock}}" bindtap="farmOperation" disabled="{{farmBusy || !item.stock}}">全部出售</button></view><text class="life-muted">农场金币用于开垦、买种子和施肥，不涉及现金交易。</text></block>
     </scroll-view>
     <button class="farm-go" bindtap="goToFarm">前往所选土地</button>
   </view>

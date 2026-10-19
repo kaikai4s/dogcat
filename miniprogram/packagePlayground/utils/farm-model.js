@@ -27,8 +27,10 @@ function bedView(bed,stamp,crops=CROPS) {
   if(!bed.cropId)return {...bed,state:'empty',label:'待播种',progress:0}
   const crop=cropById(bed.cropId,crops),duration=bed.readyAt-bed.plantedAt
   const progress=Math.max(0,Math.min(100,(stamp-bed.plantedAt)/Math.max(1,duration)*100))
-  return {...bed,state:stamp>=bed.readyAt?'ready':'growing',label:stamp>=bed.readyAt?'可收获':progress<20?'萌芽':progress<65?'生长中':'即将成熟',
-    name:crop?crop.name:'作物',color:crop?crop.color:'#7ca557',progress:Math.floor(progress),remaining:Math.max(0,Math.ceil((bed.readyAt-stamp)/1000))}
+  const boosted=bed.boostUntil&&stamp<bed.boostUntil
+  const defaultLabel=stamp>=bed.readyAt?'可收获':boosted?'双倍生长中':progress<20?'萌芽':progress<65?'生长中':'即将成熟'
+  return {...bed,state:stamp>=bed.readyAt?'ready':'growing',label:defaultLabel,
+    name:crop?crop.name:'作物',color:crop?crop.color:'#7ca557',progress:Math.floor(progress),remaining:Math.max(0,Math.ceil((bed.readyAt-stamp)/1000)),boosted:!!boosted}
 }
-function newFarm() {return {coins:120,xp:0,seeds:{carrot:12,radish:8},produce:{},beds:{},receipts:[]}}
+function newFarm() {return {coins:120,xp:0,seeds:{carrot:12,radish:8},produce:{},beds:{},manure:0,receipts:[]}}
 module.exports={CROPS,SOILS,FARM_BASE,cropById,growthStage,level,farmLayout,bedReach,bedView,newFarm}

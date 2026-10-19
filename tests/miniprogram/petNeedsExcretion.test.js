@@ -19,6 +19,7 @@ const {
   getExcretionAsset,
   setExcretionAsset
 } = require('../../miniprogram/packagePlayground/utils/excretion-assets')
+const { World2D } = require('../../miniprogram/packagePlayground/utils/world2d')
 
 test('1. pet needs model correctly accumulates and relieves pee and poop values', () => {
   const stamp = 10000000
@@ -266,3 +267,133 @@ test('7. excretion assets configuration and custom paths', () => {
   const poopAsset = getExcretionAsset('poop')
   assert.equal(poopAsset.localPath, '/packagePlayground/assets/custom-poop.png')
 })
+
+test('8. poop pickup near interaction, ground removal, and farm warehouse inventory', async () => {
+  const records = []
+  const page = {
+    setData(data) {},
+    fetchRegion: async () => ({ plots: [] }),
+    recordPoopPickup: async () => {
+      records.push('picked')
+    }
+  }
+  const w = new World2D(page, () => {}, {
+    world: { width: 1120, height: 1120 },
+    scene: { position: { x: 100, z: 100 }, serverTime: Date.now() },
+    pets: []
+  })
+  w.buildWorld()
+  w.character = { position: { x: 100, z: 100 } }
+  await w.prepareCharacterArea()
+  w.groundDecals = [
+    { id: 'poop_1', type: 'poop', x: 102, z: 100 },
+    { id: 'poop_far', type: 'poop', x: 120, z: 100 },
+    { id: 'pee_1', type: 'pee', x: 101, z: 100 }
+  ]
+
+  // Nearby check detects poop_1 (distance 2 <= 3.8)
+  const nearby = w.nearbyInteractions()
+  assert.ok(nearby.poop)
+  assert.equal(nearby.poop.id, 'poop_1')
+
+  // Far pickup fails
+  const farResult = await w.pickupPoop('poop_far')
+  assert.equal(farResult, false)
+  assert.equal(w.groundDecals.length, 3)
+
+  // Near pickup succeeds
+  const success = await w.pickupPoop('poop_1')
+  assert.equal(success, true)
+  assert.equal(w.groundDecals.find((d) => d.id === 'poop_1'), undefined)
+  assert.equal(records.length, 1)
+})
+
+test('9. pets in yard autonomously eat from food bowl', async () => {
+  const mine = { id: 'yard_1', x: 300, z: 300, size: 112, mine: true }
+  let statusMsg = ''
+  const page = {
+    setData() {},
+    fetchRegion: async () => ({ plots: [] })
+  }
+  const w = new World2D(page, () => {}, {
+    world: { width: 1120, height: 1120 },
+    plot: mine,
+    pets: [{ _id: 'cat_1', name: '花花', species: 'cat' }]
+  })
+  w.buildWorld()
+  w.onStatus = (msg) => { statusMsg = msg }
+  w.foodBowls = { cat: 50, dog: 50 }
+
+  const pet = w.pets[0]
+  pet.position = { x: 300, z: 330 }
+  pet.needs = { satiety: 40, hydration: 90 } // Hungry
+  pet.lastCareActionAt = 0
+  w.elapsed = 100
+
+  // Plan roam triggers autonomous eating path
+  await w.planRoam(pet)
+  assert.equal(pet.pendingAutonomousCare, 'eat')
+  assert.equal(pet.moving, true)
+  assert.ok(pet.route.length > 0)
+
+  // Simulate reaching destination
+  pet.route = [{ x: pet.position.x + 0.001, z: pet.position.z }]
+  w.update(0.1)
+
+  // Reached! Bowl food consumed, satiety restored, autonomousAction set
+  assert.equal(w.foodBowls.cat, 40) // 50 - 10
+  assert.equal(pet.needs.satiety, 65) // 40 + 25
+  assert.ok(pet.autonomousAction)
+  assert.equal(pet.autonomousAction.type, 'eat')
+  assert.ok(statusMsg.includes('正在碗边香喷喷地进食'))
+
+  // life-world petActivity returns eating status
+  const { petActivity } = require('../../miniprogram/packagePlayground/utils/life-world')
+  const host = { elapsed: w.elapsed, serverOffset: 0 }
+  const act = petActivity.call(host, pet)
+  assert.equal(act, '正在碗边进食')
+})
+
+test('10. pets in yard autonomously drink from fountain when thirsty', async () => {
+  const mine = { id: 'yard_1', x: 300, z: 300, size: 112, mine: true }
+  let statusMsg = ''
+  const page = {
+    setData() {},
+    fetchRegion: async () => ({ plots: [] })
+  }
+  const w = new World2D(page, () => {}, {
+    world: { width: 1120, height: 1120 },
+    plot: mine,
+    pets: [{ _id: 'dog_1', name: '小白', species: 'dog' }]
+  })
+  w.buildWorld()
+  w.onStatus = (msg) => { statusMsg = msg }
+  w.foodBowls = { cat: 50, dog: 0 } // No food, but thirsty
+
+  const pet = w.pets[0]
+  pet.position = { x: 320, z: 330 }
+  pet.needs = { satiety: 90, hydration: 50 } // Thirsty
+  pet.lastCareActionAt = 0
+  w.elapsed = 100
+
+  // Plan roam triggers autonomous drinking path
+  await w.planRoam(pet)
+  assert.equal(pet.pendingAutonomousCare, 'drink')
+  assert.equal(pet.moving, true)
+
+  // Simulate reaching destination
+  pet.route = [{ x: pet.position.x + 0.001, z: pet.position.z }]
+  w.update(0.1)
+
+  // Reached! hydration restored, autonomousAction set
+  assert.equal(pet.needs.hydration, 80) // 50 + 30
+  assert.ok(pet.autonomousAction)
+  assert.equal(pet.autonomousAction.type, 'drink')
+  assert.ok(statusMsg.includes('正在喷泉边饮水'))
+
+  const { petActivity } = require('../../miniprogram/packagePlayground/utils/life-world')
+  const host = { elapsed: w.elapsed, serverOffset: 0 }
+  const act = petActivity.call(host, pet)
+  assert.equal(act, '正在喷泉饮水')
+})
+

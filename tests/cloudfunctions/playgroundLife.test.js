@@ -230,3 +230,35 @@ test('farm levels unlock more beds and crops; moving preserves the wallet and wa
   const page=await f.shared.snapshot('a',f.auth(returned))
   assert.equal(page.records.some((r)=>r.kind==='farm_account'),false)
 })
+
+test('poop fertilizer pickup and 1 hour 2x boost acceleration',async()=>{
+  const f=fixture(),a=await f.build()
+  const tiles=farmLayout(a.plot)
+  f.place('a',tiles[0])
+  await f.farmAction('a',a,'till',{bedId:0})
+  await f.farmAction('a',a,'plant',{bedId:0,cropId:'carrot'})
+
+  let state=await f.farmAction('a',a,'pickupPoop',{quantity:2})
+  assert.equal(state.manure,2)
+
+  const beforeCoins=state.coins
+  state=await f.farmAction('a',a,'fertilize',{bedId:0,useManure:true})
+  assert.equal(state.manure,1)
+  assert.equal(state.coins,beforeCoins)
+  const bed=state.beds.find((b)=>b.id===0)
+  assert.equal(bed.fertilized,true)
+  assert.ok(bed.boostUntil>Date.now())
+  assert.equal(bed.state,'growing')
+  assert.equal(bed.label,'双倍生长中')
+  assert.equal(bed.boosted,true)
+  // Carrot original duration is 300s. Under 2x growth speed, remaining is cut by half to 150s
+  assert.equal(bed.remaining,150)
+
+  // Advancing 150 seconds completes growth
+  f.advance(150000)
+  const afterGrowth=await f.shared.farm.state('a',f.auth(a))
+  const readyBed=afterGrowth.beds.find((b)=>b.id===0)
+  assert.equal(readyBed.state,'ready')
+  assert.equal(readyBed.label,'可收获')
+})
+

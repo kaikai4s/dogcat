@@ -51,6 +51,7 @@ Page({
     petScaleSaving: false,
     nearbyPet: null,
     nearbyBowl: null,
+    nearbyPoop: null,
     feeding: false,
     joystickX: 0,
     joystickY: 0,

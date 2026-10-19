@@ -94,7 +94,13 @@ module.exports={
     const tile=field&&world.nearbyFarmTile()
     if(field&&(this.data.farmOpen||!tile||tile.id!==Number(dataset.bed)))return wx.showToast({title:'请先走到这块土地旁边',icon:'none'})
     if(field){this.joystickEnd();world.setCharacterInput(0,0);world.characterRoute=null;world.characterTarget=null;world.characterMoveToken=(world.characterMoveToken||0)+1}
-    const payload={operation:dataset.operation,bedId:field?tile.id:undefined,cropId:dataset.crop||this.data.farmCropId||'carrot',quantity:dataset.quantity===undefined?1:Number(dataset.quantity)}
+    const payload={
+      operation:dataset.operation,
+      bedId:field?tile.id:undefined,
+      cropId:dataset.crop||this.data.farmCropId||'carrot',
+      quantity:dataset.quantity===undefined?1:Number(dataset.quantity),
+      useManure:dataset.operation==='fertilize' ? !!(this.data.farm && this.data.farm.manure > 0) : undefined
+    }
     const signature=JSON.stringify(payload)
     const packet=this.pendingFarm&&this.pendingFarm.signature===signature?this.pendingFarm.packet:
       {...payload,requestId:'farm_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,12)}
@@ -106,6 +112,24 @@ module.exports={
       if(this.world===world){this.applyFarm(result);world.onStatus(result.message);wx.showToast({title:result.message,icon:'none'})}
     }catch(error){toast(error)}
     finally{if(this.world===world)this.setData({farmBusy:false})}
+  },
+  async pickupPoop(e) {
+    const world=this.world
+    if(!world)return
+    await world.pickupPoop()
+  },
+  async recordPoopPickup() {
+    const world=this.world
+    if(!world||!world.sceneSync)return
+    try {
+      const packet={
+        operation:'pickupPoop',
+        quantity:1,
+        requestId:'poop_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,12)
+      }
+      const result=await world.sceneSync.farmAction(packet)
+      if(this.world===world){this.applyFarm(result)}
+    }catch(error){console.error('recordPoopPickup error',error)}
   },
   async rideOperation(e) {
     const world=this.world,data=e.currentTarget.dataset

@@ -372,7 +372,29 @@ class World2D {
     if(nearbyPlayer)result.player={id:nearbyPlayer.id,name:nearbyPlayer.name,friend:(this.social.friends||[]).some((friend)=>friend.id===nearbyPlayer.id)}
     const gate=this.plots().find((plot)=>!this.canEnterPlot(plot)&&Math.hypot(p.x-plot.x,p.z-(plot.z+(plot.size||SIZE)/2+2))<=6)
     if(gate)result.gate={plotId:gate.id,playerId:gate.ownerId,name:gate.ownerName||String(gate.name||'邻居').replace(/的庭院$/,'')}
+    if (this.groundDecals && this.groundDecals.length) {
+      const poop = this.groundDecals.find((d) => d.type === 'poop' && Math.hypot(p.x - d.x, p.z - d.z) <= 3.8 && nav.clearSegment(p, d))
+      if (poop) result.poop = { id: poop.id, x: poop.x, z: poop.z }
+    }
     return result
+  }
+  async pickupPoop(id) {
+    if (!this.character) return false
+    const p = this.character.position
+    const target = id
+      ? this.groundDecals.find((d) => d.id === id && Math.hypot(p.x - d.x, p.z - d.z) <= 4.2)
+      : this.groundDecals.find((d) => d.type === 'poop' && Math.hypot(p.x - d.x, p.z - d.z) <= 4.2)
+    if (!target) {
+      this.onStatus('离便便太远了，请走近一些再拾取')
+      return false
+    }
+    this.groundDecals = this.groundDecals.filter((d) => d.id !== target.id)
+    this.emitNearby()
+    this.onStatus('已拾取便便，存入农场仓库化为有机肥！')
+    if (this.page.recordPoopPickup) {
+      await this.page.recordPoopPickup()
+    }
+    return true
   }
   emitNearby() {
     this.emitVehicleUi()
@@ -381,7 +403,13 @@ class World2D {
     const key = JSON.stringify(nearby)
     if (key === this.nearbyKey) return
     this.nearbyKey = key
-    this.page.setData({ nearbyPet: nearby.pet, nearbyBowl: nearby.bowl,nearbyPlayer:nearby.player||null,nearbyGate:nearby.gate||null })
+    this.page.setData({
+      nearbyPet: nearby.pet,
+      nearbyBowl: nearby.bowl,
+      nearbyPlayer: nearby.player || null,
+      nearbyGate: nearby.gate || null,
+      nearbyPoop: nearby.poop || null
+    })
   }
   interactPet(id) {
     const nearby = this.nearbyInteractions().pet
@@ -894,6 +922,39 @@ class World2D {
       }
       const nav = createNavigation(bounds, obstacles, PET_RADIUS, 1.5)
       if (!nav.walkable(start)) return
+      if (yard && this.ownPlot && yard.id === this.ownPlot.id && pet.mine !== false && !pet.following && !pet.ridingVehicleId) {
+        const species = pet.species === 'cat' ? 'cat' : 'dog'
+        const stations = yardLayout(yard).stations[species]
+        const cooldown = (this.elapsed - (pet.lastCareActionAt || 0)) > 30
+        if (cooldown && stations) {
+          const food = (this.foodBowls && this.foodBowls[species]) || 0
+          const needs = pet.needs || {}
+          const hunger = (needs.satiety !== undefined ? needs.satiety : 100) < 80 || this.random() < 0.28
+          const thirst = (needs.hydration !== undefined ? needs.hydration : 100) < 80 || this.random() < 0.28
+          let targetStation = null, actionType = null
+          if (food >= 10 && hunger && (!thirst || this.random() < 0.5)) {
+            targetStation = stations.eat
+            actionType = 'eat'
+          } else if (thirst) {
+            targetStation = stations.drink
+            actionType = 'drink'
+          }
+          if (targetStation && nav.walkable(targetStation)) {
+            const route = nav.path(start, targetStation)
+            if (route && route.length) {
+              pet.route = route
+              pet.moving = true
+              pet.mode = 'roaming'
+              pet.roamPlotId = yard.id
+              pet.pendingAutonomousCare = actionType
+              pet.destination = null
+              pet.arrivedAt = null
+              this.emitPets()
+              return
+            }
+          }
+        }
+      }
       for (let attempt = 0; attempt < 10; attempt++) {
         const angle = this.random() * Math.PI * 2
         const distance = 5 + this.random() * 15
@@ -1510,13 +1571,18 @@ class World2D {
     c.drawImage(image, frame % style.columns * width, Math.floor(frame / style.columns) * height, width, height,
       -size / 2, -size * style.anchor, size, size)
     c.restore()
-    if (pet.relieving) {
+    const bubble = pet.relieving
+      ? (pet.relieving.type === 'poop' ? '💩' : '💧')
+      : (pet.autonomousAction && this.elapsed < pet.autonomousAction.until)
+      ? (pet.autonomousAction.type === 'eat' ? '🥣' : '💧')
+      : null
+    if (bubble) {
       c.save()
       c.translate(point.x, point.y - size * (style ? style.anchor : 0.8) - 8)
       c.font = '15px sans-serif'
       c.textAlign = 'center'
       c.textBaseline = 'middle'
-      c.fillText(pet.relieving.type === 'poop' ? '💩' : '💧', 0, 0)
+      c.fillText(bubble, 0, 0)
       c.restore()
     }
   }
@@ -1987,6 +2053,25 @@ class World2D {
         pet.moving = false
         pet.arrivedAt = Date.now()
         pet.idleSeconds = 0
+        if (pet.pendingAutonomousCare) {
+          const action = pet.pendingAutonomousCare
+          pet.pendingAutonomousCare = null
+          pet.lastCareActionAt = this.elapsed
+          pet.interactingUntil = this.elapsed + 5
+          pet.autonomousAction = { type: action, until: this.elapsed + 5 }
+          const species = pet.species === 'cat' ? 'cat' : 'dog'
+          if (action === 'eat') {
+            if (this.foodBowls && this.foodBowls[species] >= 10) {
+              this.foodBowls[species] = Math.max(0, this.foodBowls[species] - 10)
+              if (this.ownPlot && this.ownPlot.foodBowls) this.ownPlot.foodBowls[species] = this.foodBowls[species]
+            }
+            if (pet.needs) pet.needs.satiety = Math.min(100, (pet.needs.satiety || 0) + 25)
+            this.onStatus(`${pet.name} 正在碗边香喷喷地进食~`)
+          } else if (action === 'drink') {
+            if (pet.needs) pet.needs.hydration = Math.min(100, (pet.needs.hydration || 0) + 30)
+            this.onStatus(`${pet.name} 正在喷泉边饮水~`)
+          }
+        }
         this.emitPets()
         if (pet.mode === 'manual' && pet.id === this.selectedPetId)
           this.onStatus('已到达 · 休息 3 秒后在当前区域自由活动')

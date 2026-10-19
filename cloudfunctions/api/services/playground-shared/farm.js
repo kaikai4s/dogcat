@@ -24,6 +24,7 @@ module.exports=function createFarm(context,hooks) {
     const farm={...newFarm(),...own.farm},currentLevel=level(farm.xp)
     return {plotId:own.plotId,serverTime:stamp,coins:farm.coins,xp:farm.xp,level:currentLevel,
       nextLevelXp:currentLevel<10?currentLevel*80:null,seeds:farm.seeds,produce:farm.produce,
+      manure:farm.manure||0,
       unlockedBeds:Math.min(12,4+(currentLevel-1)*2),
       catalog,
       crops:catalog.crops.map((c)=>({...c,unlocked:c.enabled!==false&&c.level<=currentLevel,seeds:farm.seeds[c.id]||0,stock:farm.produce[c.id]||0})),
@@ -94,9 +95,24 @@ module.exports=function createFarm(context,hooks) {
         else {
           const spec=bedSpec(bed)
           if(!spec||bed.fertilized||stamp>=bed.readyAt)throw new Error('请选择尚未施肥且正在生长的作物')
-          spend(5);bed.fertilized=true;bed.readyAt=Math.max(stamp+1000,bed.readyAt-spec.minutes*60000*.2)
-          message='施肥完成，生长加快且收成 +1'
+          if(data.useManure||(data.useManure===undefined&&farm.manure>0)) {
+            if(!farm.manure||farm.manure<=0)throw new Error('仓库中暂无便便有机肥')
+            farm.manure=Math.max(0,farm.manure-1)
+            bed.fertilized=true
+            const boostMs=60*60*1000
+            const remaining=bed.readyAt-stamp
+            const deduction=Math.min(boostMs,Math.max(1000,remaining*0.5))
+            bed.readyAt=Math.max(stamp+1000,bed.readyAt-deduction)
+            bed.boostUntil=stamp+boostMs
+            message='已使用便便施肥！作物享受1小时双倍生长加速！收成 +1'
+          } else {
+            spend(5);bed.fertilized=true;bed.readyAt=Math.max(stamp+1000,bed.readyAt-spec.minutes*60000*.2)
+            message='施肥完成，生长加快且收成 +1'
+          }
         }
+      } else if(operation==='pickupPoop') {
+        farm.manure=(farm.manure||0)+(quantity||1)
+        message='已将便便存入农场仓库化为有机肥'
       } else if(operation==='buySeeds') {
         if(!crop||crop.enabled===false||crop.level>currentLevel)throw new Error('该种子已下架或尚未解锁')
         if(!Number.isInteger(quantity)||quantity<1||quantity>99)throw new Error('购买数量须在1～99之间')

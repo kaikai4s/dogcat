@@ -27,6 +27,7 @@
       <button wx:if="{{nearbyPlayer && !nearbyPlayer.friend}}" bindtap="requestFriend" disabled="{{socialBusy}}">添加 {{nearbyPlayer.name}} 为好友</button>
       <button wx:if="{{nearbyGate}}" bindtap="requestVisit" disabled="{{socialBusy}}">申请访问 {{nearbyGate.name}} 的庭院</button>
       <button wx:if="{{nearbyBowl}}" class="fill-bowl" bindtap="fillBowl" disabled="{{feeding || nearbyBowl.food >= 100}}" loading="{{feeding}}">{{nearbyBowl.food >= 100 ? '猫狗碗已添满' : '给猫狗碗添粮'}}</button>
+      <button wx:if="{{nearbyPoop}}" bindtap="pickupPoop">拾取便便</button>
     </view>
   </view>
   <view class="bottom" style="bottom: {{bottom}}px" wx:if="{{!loading && !error}}">
@@ -46,7 +47,7 @@
           <button wx:if="{{nearbyFarm.state === 'empty'}}" data-bed="{{nearbyFarm.id}}" data-operation="plant" bindtap="farmOperation" disabled="{{farmBusy || !farmSeedAvailable}}">播种</button>
           <button wx:if="{{nearbyFarm.state === 'empty' && !farmSeedAvailable}}" data-tab="shop" bindtap="openFarm">去种子铺备种</button>
           <button wx:if="{{nearbyFarm.state === 'growing' && !nearbyFarm.watered}}" data-bed="{{nearbyFarm.id}}" data-operation="water" bindtap="farmOperation" disabled="{{farmBusy}}">浇水</button>
-          <button wx:if="{{nearbyFarm.state === 'growing' && !nearbyFarm.fertilized}}" data-bed="{{nearbyFarm.id}}" data-operation="fertilize" bindtap="farmOperation" disabled="{{farmBusy}}">施肥 · 5金币</button>
+          <button wx:if="{{nearbyFarm.state === 'growing' && !nearbyFarm.fertilized}}" data-bed="{{nearbyFarm.id}}" data-operation="fertilize" bindtap="farmOperation" disabled="{{farmBusy}}">{{farm && farm.manure > 0 ? '便便加速施肥(余' + farm.manure + ')' : '施肥 · 5金币'}}</button>
           <button wx:if="{{nearbyFarm.state === 'ready'}}" data-bed="{{nearbyFarm.id}}" data-operation="harvest" bindtap="farmOperation" disabled="{{farmBusy}}">收获</button>
           <text class="life-muted" wx:if="{{nearbyFarm.state === 'growing' && nearbyFarm.watered && nearbyFarm.fertilized}}">已浇水、已施肥，等待成熟</text>
         </view>
