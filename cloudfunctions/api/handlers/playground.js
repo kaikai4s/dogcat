@@ -46,12 +46,7 @@ module.exports = function createHandler(context) {
     if (action === 'resolveDispute') return disputes.resolveDispute(openid, user, data)
     if (action === 'claimWeeklySalary') return disputes.claimWeeklySalary(openid, data)
     if (action === 'washVehicle') return disputes.washVehicle(openid, user, data)
-    if (action === 'repairVehicle') {
-      return {
-        success: true,
-        message: '车辆经过社区修理厂全面检修，制动、轮胎与引擎性能已恢复至最佳状态！'
-      }
-    }
+    if (action === 'repairVehicle') return disputes.repairVehicle(openid, user, data)
     const justice = require('../services/playground-justice')(context)
     if (action === 'reportAccident') return justice.reportAccident(openid, user, data)
     if (action === 'listAccidents') return justice.listAccidents(openid, data)
@@ -82,12 +77,28 @@ module.exports = function createHandler(context) {
           }
         }).catch(() => {})
       }
+      const sceneId = String(data.sceneId || '')
+      let hospitalBonus = ''
+        const hospitalRes = await db.collection('pet_playground_plots').where({ buildingType: 'pet_hospital' }).get().catch(() => ({ data: [] }))
+        const hospitalList = (hospitalRes.data || []).filter((p) => !p.demolished)
+        const hospital = hospitalList.find((p) => p.communityId === sceneId) || hospitalList[0] || null
+        if (hospital && hospital.ownerOpenid && hospital.ownerOpenid !== openid) {
+          const ownerUser = (await db.collection('users').where({ openid: hospital.ownerOpenid }).limit(1).get().catch(() => ({ data: [] }))).data[0]
+          if (ownerUser) {
+            await db.collection('users').doc(ownerUser._id).update({
+              data: {
+                playgroundCoins: (ownerUser.playgroundCoins || 0) + 15
+              }
+            }).catch(() => {})
+            hospitalBonus = '，已向宠物医院主理人发放 15 爱心币照料津贴'
+          }
+        }
       return {
         success: true,
         careType,
         message: careType === 'wash'
-          ? '爱宠在宠物医院完成了精细洗护，毛发柔顺蓬松，洁净清爽！'
-          : '爱宠在宠物医院完成了健康治疗与创伤恢复，生病状态已治愈，状态满格！'
+          ? `爱宠在宠物医院完成了精细洗护，毛发柔顺蓬松，洁净清爽${hospitalBonus}！`
+          : `爱宠在宠物医院完成了健康治疗与创伤恢复，生病状态已治愈，状态满格${hospitalBonus}！`
       }
     }
 

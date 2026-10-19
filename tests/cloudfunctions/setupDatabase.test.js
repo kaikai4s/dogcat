@@ -16,8 +16,8 @@ test('setupDatabase: initializes collections and seeds default prices and checki
 
   assert.equal(res.ok, true)
   assert.equal(res.data.success, true)
-  assert.equal(res.data.totalCollections, 91)
-  assert.equal(res.data.totalIndexesConfigured, 36)
+  assert.equal(res.data.totalCollections, 94)
+  assert.equal(res.data.totalIndexesConfigured, 41)
   assert.ok(res.data.pricesInitialized > 0)
   assert.ok(res.data.checkinRulesInitialized > 0)
   assert.equal(res.data.settingsInitialized, true)
@@ -44,6 +44,9 @@ test('setupDatabase: initializes collections and seeds default prices and checki
   assert.ok(Array.isArray(db.state.pet_playground_live))
   assert.ok(Array.isArray(db.state.pet_playground_appearance_requests))
   assert.ok(Array.isArray(db.state.pet_playground_appearance_bindings))
+  assert.ok(Array.isArray(db.state.pet_playground_disputes))
+  assert.ok(Array.isArray(db.state.pet_playground_accidents))
+  assert.ok(Array.isArray(db.state.pet_playground_jail))
 })
 
 test('buildNotificationIndexes: builds indexes specifically for system_notifications and user_notification_reads', async () => {

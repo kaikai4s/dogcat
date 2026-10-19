@@ -11,7 +11,21 @@ module.exports = function createJusticeService(context) {
   const { db } = context
   const now = () => (context.nowMs ? context.nowMs() : Date.now())
 
-  // 获取社区内的执法所与监狱建筑
+  // 发放爱心币津贴
+  async function awardCoins(tx, targetOpenid, amount) {
+    if (!targetOpenid || amount <= 0) return
+    const userRes = await tx.collection('users').where({ openid: targetOpenid }).limit(1).get()
+    const targetUser = (userRes.data || [])[0]
+    if (targetUser) {
+      await tx.collection('users').doc(targetUser._id).update({
+        data: {
+          playgroundCoins: (targetUser.playgroundCoins || 0) + amount
+        }
+      })
+    }
+  }
+
+  // 获取社区内的执法所与监狱建筑及宠物医院
   async function getJusticeFacilities(communityId) {
     const rows = await db
       .collection(PLOTS_COLLECTION)
@@ -20,7 +34,8 @@ module.exports = function createJusticeService(context) {
     const list = rows.data || []
     return {
       policeStation: list.find((p) => p.buildingType === 'police_station' && !p.demolished) || null,
-      prison: list.find((p) => p.buildingType === 'prison' && !p.demolished) || null
+      prison: list.find((p) => p.buildingType === 'prison' && !p.demolished) || null,
+      petHospital: list.find((p) => p.buildingType === 'pet_hospital' && !p.demolished) || null
     }
   }
 
@@ -171,12 +186,19 @@ module.exports = function createJusticeService(context) {
         })
       }
 
+      // 发放文明督导所主理人津贴 20 爱心币
+      let bonusMsg = ''
+      if (facilities.policeStation && facilities.policeStation.ownerOpenid && facilities.policeStation.ownerOpenid !== targetDriverOpenid) {
+        await awardCoins(tx, facilities.policeStation.ownerOpenid, 20)
+        bonusMsg = '，已向文明督导所主理人发放 20 爱心币督导津贴'
+      }
+
       return {
         arrested: true,
         driverOpenid: targetDriverOpenid,
         jailedUntil,
         prisonPosition: { x: facilities.prison.x, z: facilities.prison.z },
-        message: `文明督导所已安排车主 ${accident.driverName} 前往宣教自省室进行安全宣教自省学习 60 秒`
+        message: `文明督导所已安排车主 ${accident.driverName} 前往宣教自省室进行安全宣教自省学习 60 秒${bonusMsg}`
       }
     })
   }
@@ -212,7 +234,7 @@ module.exports = function createJusticeService(context) {
     })
   }
 
-  // 5. 医院救治人或宠物
+  // 5. 医院救治人或宠物（带医院主理人津贴）
   async function hospitalTreat(openid, user, data) {
     const target = data.target === 'pet' ? 'pet' : 'human'
     const sceneId = String(data.sceneId || '')
@@ -223,19 +245,26 @@ module.exports = function createJusticeService(context) {
         .collection(PLOTS_COLLECTION)
         .where({ communityId: sceneId, buildingType: 'pet_hospital' })
         .get()
-      const hasHospital = facilities.data && facilities.data.length > 0
+      const hospitalList = (facilities.data || []).filter((p) => !p.demolished)
+      const hospital = hospitalList[0] || null
+
+      let hospitalBonus = ''
+      if (hospital && hospital.ownerOpenid && hospital.ownerOpenid !== openid) {
+        await awardCoins(tx, hospital.ownerOpenid, 15)
+        hospitalBonus = '，已向爱心医院主理人发放 15 爱心币调理津贴'
+      }
 
       if (target === 'human') {
         return {
           treated: true,
           target: 'human',
-          message: '已在爱心医院接受专业调理舒缓，身体不适已消除，体力充沛，恢复奔跑！'
+          message: `已在爱心医院接受专业调理舒缓，身体不适已消除，体力充沛，恢复奔跑${hospitalBonus}！`
         }
       } else {
         return {
           treated: true,
           target: 'pet',
-          message: '爱宠在宠物医院完成了全面健康调理与状态恢复，已彻底恢复健康，精神满满！'
+          message: `爱宠在宠物医院完成了全面健康调理与状态恢复，已彻底恢复健康，精神满满${hospitalBonus}！`
         }
       }
     })

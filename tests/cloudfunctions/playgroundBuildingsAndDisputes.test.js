@@ -254,3 +254,52 @@ test('repair shop washes car removing soiled state and hospital provides care', 
   assert.equal(treatCare.success, true)
   assert.ok(treatCare.message.includes('治疗'))
 })
+
+test('neighbor using repair shop and pet hospital grants coins bonus to facility owners', async () => {
+  const f = fixture()
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const a = await f.build('a')
+  const sceneId = a.sceneId
+
+  // a 用户在庭院建造了修理厂
+  await handler('a', 'buildInYard', {
+    buildingType: 'repair_shop',
+    buildingName: '阿强汽修厂',
+    sceneId
+  })
+
+  // c 用户在庭院建造了宠物医院
+  const c = await f.build('c', { x: 400, z: 400 })
+  await handler('c', 'buildInYard', {
+    buildingType: 'pet_hospital',
+    buildingName: '爱心宠医',
+    sceneId: c.sceneId
+  })
+
+  // 邻居 b 来到该社区
+  const b = await f.build('b', { x: 504, z: 280 })
+  await f.drive('b', b)
+  const bCar = f.car('b')
+  bCar.soiled = true
+  bCar.stains = [{ x: 1, y: 1, type: 'dirt' }]
+
+  // 初始 a 和 c 的金币
+  const userA = f.db.state.users.find((u) => u.openid === 'a')
+  const userC = f.db.state.users.find((u) => u.openid === 'c')
+  const coinsBeforeA = userA.playgroundCoins || 0
+  const coinsBeforeC = userC.playgroundCoins || 0
+
+  // 1. 邻居 b 洗车，a 获得 10 爱心币
+  const washRes = await handler('b', 'washVehicle', { sceneId })
+  assert.equal(washRes.washed, true)
+  assert.ok(washRes.message.includes('10 爱心币'))
+  const userAAfterWash = f.db.state.users.find((u) => u.openid === 'a')
+  assert.equal(userAAfterWash.playgroundCoins, coinsBeforeA + 10)
+
+  // 2. 邻居 b 做宠物洗护，c 获得 15 爱心币
+  const washCare = await handler('b', 'hospitalCare', { careType: 'wash', sceneId })
+  assert.equal(washCare.success, true)
+  assert.ok(washCare.message.includes('15 爱心币'))
+  const userCAfterCare = f.db.state.users.find((u) => u.openid === 'c')
+  assert.equal(userCAfterCare.playgroundCoins, coinsBeforeC + 15)
+})

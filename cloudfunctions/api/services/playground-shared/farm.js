@@ -144,7 +144,7 @@ module.exports=function createFarm(context,hooks) {
         message='已购买 '+quantity+' 包'+crop.name+'种子'
       } else if(operation==='sell') {
         if(!crop||!Number.isInteger(quantity)||quantity<1||quantity>(farm.produce[crop.id]||0))throw new Error('仓库里的作物数量不足')
-        farm.produce[crop.id]-=quantity;farm.coins+=quantity*crop.sell;message='出售完成，获得 '+quantity*crop.sell+' 农场金币'
+        farm.produce[crop.id]-=quantity;farm.coins+=quantity*crop.sell;message='出售完成，获得 '+quantity*crop.sell+' 爱心币'
       } else if(['harvestAll','waterAll','plantAll'].includes(operation)) {
         throw new Error('请走到每块土地旁边操作')
       } else throw new Error('未知农场操作')

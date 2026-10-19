@@ -221,7 +221,35 @@ module.exports = function createDisputesService(context) {
     })
   }
 
-  // 5. 修理厂洗车服务
+  // 发放爱心币津贴与奖励
+  async function awardCoins(tx, targetOpenid, amount) {
+    if (!targetOpenid || amount <= 0) return
+    const userRes = await tx.collection('users').where({ openid: targetOpenid }).limit(1).get()
+    const targetUser = (userRes.data || [])[0]
+    if (targetUser) {
+      await tx.collection('users').doc(targetUser._id).update({
+        data: {
+          playgroundCoins: (targetUser.playgroundCoins || 0) + amount
+        }
+      })
+    }
+  }
+
+  // 获取社区内的指定公共建筑（优先匹配指定communityId，降级fallback）
+  async function getCommunityBuilding(communityId, buildingType) {
+    const rows = await db
+      .collection(PLOTS_COLLECTION)
+      .where({ buildingType })
+      .get()
+    const list = (rows.data || []).filter((p) => !p.demolished)
+    if (communityId) {
+      const match = list.find((p) => p.communityId === communityId)
+      if (match) return match
+    }
+    return list[0] || null
+  }
+
+  // 5. 修理厂洗车服务（带房东收益）
   async function washVehicle(openid, user, data) {
     const sceneId = String(data.sceneId || '')
     const targetVehicleId = String(data.vehicleId || require('./playground-shared/vehicles').vehicleId(openid))
@@ -238,9 +266,33 @@ module.exports = function createDisputesService(context) {
         })
       }
 
+      let bonusMsg = ''
+      const repairShop = await getCommunityBuilding(sceneId, 'repair_shop')
+      if (repairShop && repairShop.ownerOpenid && repairShop.ownerOpenid !== openid) {
+        await awardCoins(tx, repairShop.ownerOpenid, 10)
+        bonusMsg = '，已向修理厂主理人发放 10 爱心币服务津贴'
+      }
+
       return {
         washed: true,
-        message: '洗车保养完成！车身光洁如新，已消除[肮脏]状态'
+        message: `洗车保养完成！车身光洁如新，已消除[肮脏]状态${bonusMsg}`
+      }
+    })
+  }
+
+  // 6. 修理厂全面检修保养服务（带房东收益）
+  async function repairVehicle(openid, user, data) {
+    const sceneId = String(data.sceneId || '')
+    return transaction(db, async (tx) => {
+      let bonusMsg = ''
+      const repairShop = await getCommunityBuilding(sceneId, 'repair_shop')
+      if (repairShop && repairShop.ownerOpenid && repairShop.ownerOpenid !== openid) {
+        await awardCoins(tx, repairShop.ownerOpenid, 10)
+        bonusMsg = '，已向修理厂主理人发放 10 爱心币检修津贴'
+      }
+      return {
+        success: true,
+        message: `车辆经过社区修理厂全面检修，制动、轮胎与引擎性能已恢复至最佳状态${bonusMsg}！`
       }
     })
   }
@@ -252,6 +304,8 @@ module.exports = function createDisputesService(context) {
     checkCommitteeTimeout,
     claimWeeklySalary,
     washVehicle,
-    getCommunityCommittee
+    repairVehicle,
+    getCommunityCommittee,
+    getCommunityBuilding
   }
 }
