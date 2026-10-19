@@ -120,8 +120,8 @@ class World2D {
     this.pickedPoopIds = new Set()
     this.excretionImages = {}
   }
-  setExcretionAsset(type, fileIDOrPath) {
-    configureExcretionAsset(type, fileIDOrPath)
+  setExcretionAsset(type, fileID) {
+    configureExcretionAsset(type, fileID)
     this.loadExcretionAssets()
   }
   loadExcretionAssets() {
@@ -131,9 +131,9 @@ class World2D {
     const now = Date.now()
     for (const type of ['pee', 'poop']) {
       const asset = getExcretionAsset(type)
-      if (!asset) continue
-      const target = asset.localPath || asset.fileID
-      if (!target || this.excretionImages[type] || this.excretionLoads.has(type)) continue
+      if (!asset || !asset.fileID) continue
+      const target = asset.fileID
+      if (this.excretionImages[type] || this.excretionLoads.has(type)) continue
       if (now < (this.excretionRetry.get(type) || 0)) continue
 
       const p = this.loader.loadImage(target).then((img) => {
@@ -141,11 +141,6 @@ class World2D {
           this.excretionImages[type] = img
         }
       }).catch(() => {
-        if (!this.destroyed && asset.fileID && target !== asset.fileID) {
-          return this.loader.loadImage(asset.fileID).then((img) => {
-            if (!this.destroyed && img) this.excretionImages[type] = img
-          })
-        }
         if (!this.destroyed) this.excretionRetry.set(type, Date.now() + 10000)
       }).finally(() => {
         this.excretionLoads.delete(type)

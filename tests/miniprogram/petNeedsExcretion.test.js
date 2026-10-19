@@ -263,9 +263,9 @@ test('7. excretion assets configuration and custom paths', () => {
   setExcretionAsset('pee', 'cloud://my-env/assets/my-pee.png')
   assert.equal(peeAsset.fileID, 'cloud://my-env/assets/my-pee.png')
 
-  setExcretionAsset('poop', '/packagePlayground/assets/custom-poop.png')
+  setExcretionAsset('poop', 'cloud://my-env/assets/custom-poop.png')
   const poopAsset = getExcretionAsset('poop')
-  assert.equal(poopAsset.localPath, '/packagePlayground/assets/custom-poop.png')
+  assert.equal(poopAsset.fileID, 'cloud://my-env/assets/custom-poop.png')
 })
 
 test('8. poop pickup near interaction, ground removal, and farm warehouse inventory', async () => {
