@@ -88,10 +88,14 @@
       <view class="pet-size-slider"><text>小</text><slider min="50" max="200" step="5" value="{{petScalePercent}}" disabled="{{petScaleSaving}}" activeColor="#6f8d58" block-color="#6f8d58" block-size="20" bindchanging="previewPetScale" bindchange="savePetScale"/><text>大</text><button bindtap="resetPetScale" disabled="{{petScaleSaving}}">恢复默认</button></view>
     </view>
     <view class="controls">
-      <button wx:if="{{hasAvatar}}" bindtap="focusCharacter">回到角色</button><button bindtap="fullOverview">地图中心</button><button bindtap="overview">{{hasPlot ? '回到家园' : '回到起点'}}</button>
-      <button wx:if="{{(!hasPlot || canRelocate) && hasCommunity && !hasHomeElsewhere && !placing}}" bindtap="choosePlot">{{hasPlot ? '调整庭院' : '在这里建造庭院'}}</button>
+      <button wx:if="{{hasAvatar && !placing}}" bindtap="focusCharacter">回到角色</button>
+      <button wx:if="{{!placing}}" bindtap="fullOverview">地图中心</button>
+      <button wx:if="{{!placing}}" bindtap="overview">{{hasPlot ? '回到家园' : '回到起点'}}</button>
+      <button wx:if="{{hasPlot && hasCommunity && !hasHomeElsewhere && !placing}}" bindtap="buyNewPlotAction">购买独立新地皮</button>
+      <button wx:if="{{(!hasPlot || canRelocate) && hasCommunity && !hasHomeElsewhere && !placing}}" bindtap="choosePlot">{{hasPlot ? '调整原别墅' : '在这里建造庭院'}}</button>
+      <button wx:if="{{placing}}" bindtap="cycleGateDirection">门口：{{gateDirectionText}} ▾</button>
       <button wx:if="{{placing}}" bindtap="cancelPlot" disabled="{{claiming}}">取消选址</button>
-      <button wx:if="{{placing}}" bindtap="confirmPlot" disabled="{{!canConfirm || claiming}}" loading="{{claiming}}">确认位置</button>
+      <button wx:if="{{placing}}" bindtap="confirmPlot" disabled="{{!canConfirm || claiming}}" loading="{{claiming}}">{{isPlacingNewPlot ? '确认购买地皮' : '确认位置'}}</button>
     </view>
     <view class="hint">{{hasAvatar ? joystickMode === 'hold' ? '长按草地1秒显示摇杆 · ' : '摇杆轻推走 / 拉远跑 · ' : ''}}点击角色 / 宠物选择 · 双指缩放</view>
   </view>

@@ -1184,21 +1184,30 @@ class World2D {
     const p = this.selectedPet()
     if (p) this.camera = { ...p.position }
   }
-  beginPlacement() {
+  beginPlacement(isNewPlot = false) {
     this.clearPetSelection()
-    if (this.ownPlot && !this.config.canRelocate) return
+    this.isPlacingNewPlot = !!isNewPlot
+    if (!isNewPlot && this.ownPlot && !this.config.canRelocate) return
     this.placing = true
     this.setCharacterInput(0, 0)
     this.followCharacter = false
     this.emitNearby()
     this.candidate = null
     this.follow = false
-    this.onStatus('点击位置作为别墅中心，预览围栏范围后确认')
+    this.candidateGateDirection = this.candidateGateDirection || 'south'
+    this.onStatus(isNewPlot ? '轻触空旷草坪，规划购买独立新地皮（原别墅保持不变）' : '点击位置作为别墅中心，预览围栏范围后确认')
     this.page.setData({ placing: true, canConfirm: false })
+  }
+  setGateDirection(dir) {
+    this.candidateGateDirection = ['south', 'north', 'east', 'west'].includes(dir) ? dir : 'south'
+    if (this.candidate) {
+      this.candidate.gateDirection = this.candidateGateDirection
+    }
   }
   cancelPlacement() {
     this.pickToken = (this.pickToken || 0) + 1
     this.placing = false
+    this.isPlacingNewPlot = false
     this.candidate = null
     this.page.setData({ placing: false, canConfirm: false })
   }
@@ -1228,7 +1237,7 @@ class World2D {
       if (this.destroyed || !this.placing || token !== this.pickToken) return
       if (
         this.plots().some((p) => {
-          if (p.mine || (this.ownPlot && p.id === this.ownPlot.id)) return false
+          if (!this.isPlacingNewPlot && (p.mine || (this.ownPlot && p.id === this.ownPlot.id))) return false
           const separation = (this.plotSize + (p.size || 48)) / 2 + 4
           return (
             (p.cellX === x && p.cellZ === z) ||
@@ -1237,16 +1246,17 @@ class World2D {
           )
         })
       )
-        return this.onStatus('庭院范围与邻居重叠，请选择更空旷的草坪')
+        return this.onStatus('地皮范围与已有建筑或邻居重叠，请选择更空旷的草坪')
       this.candidate = {
         cellX: x,
         cellZ: z,
         x: point.x,
         z: point.z,
-        size: this.plotSize
+        size: this.plotSize,
+        gateDirection: this.candidateGateDirection || 'south'
       }
       this.page.setData({ canConfirm: true })
-      this.onStatus('中心标记为别墅落点 · 绿色边框为实际围栏范围')
+      this.onStatus(this.isPlacingNewPlot ? '已选定新地皮！绿色边框为木栅栏范围，可切换大门朝向' : '中心标记为别墅落点 · 绿色边框为实际围栏范围')
     } catch (e) {
       this.onStatus('位置读取失败，请重新选择')
     }
@@ -1278,6 +1288,19 @@ class World2D {
     this.loadVisible().catch(() =>
       this.onStatus('房屋已保存，庭院素材加载失败，请重新进入')
     )
+  }
+  addNewPlot(plot) {
+    this.cancelPlacement()
+    if (!plot) return
+    this.sharedPlots.set(plot.id, plot)
+    const chunkKey = this.chunkKey(
+      Math.floor(plot.cellX / 2),
+      Math.floor(plot.cellZ / 2)
+    )
+    const existing = this.chunks.get(chunkKey) || []
+    this.chunks.set(chunkKey, [...existing.filter((p) => p.id !== plot.id), plot])
+    this.onStatus('独立新地皮购买成功，四周已圈上木栅栏！')
+    this.loadVisible().catch(() => {})
   }
   sceneState() {
     const p=this.character
@@ -1789,7 +1812,7 @@ class World2D {
     const c = this.ctx,
       occupied = new Set()
     for (const p of this.plots()) {
-      if (this.candidate && this.ownPlot && p.id === this.ownPlot.id) continue
+      if (!this.isPlacingNewPlot && this.candidate && this.ownPlot && p.id === this.ownPlot.id) continue
       if (
         p.x < bounds.minX ||
         p.x > bounds.maxX ||
@@ -1849,10 +1872,17 @@ class World2D {
     c.arc(center.x, center.y, 4, 0, Math.PI * 2)
     c.fill()
     this.markerLabel(
-      '别墅中心 · ' + p.size + '×' + p.size + '米',
+      (this.isPlacingNewPlot ? '新地皮中心 · ' : '别墅中心 · ') + p.size + '×' + p.size + '米',
       center.x,
       center.y + 26
     )
+
+    // 清晰绘制当前设置的栅栏门口位置与标记
+    const gatePos = plotGatePosition(p)
+    const gp = this.project(gatePos.x, gatePos.z)
+    const dirMap = { south: '南门', north: '北门', east: '东门', west: '西门' }
+    const dirText = dirMap[p.gateDirection || 'south'] || '南门'
+    this.markerLabel('🚪 栅栏' + dirText + '入口', gp.x, gp.y)
     c.restore()
   }
   drawDestination() {
@@ -2140,7 +2170,7 @@ class World2D {
     if (overview) this.drawMapPlots(b)
     else
       for (const p of this.plots()) {
-        if (this.candidate && this.ownPlot && p.id === this.ownPlot.id) continue
+        if (!this.isPlacingNewPlot && this.candidate && this.ownPlot && p.id === this.ownPlot.id) continue
         const half = (p.size || SIZE) / 2
         if (
           p.x + half < b.minX ||

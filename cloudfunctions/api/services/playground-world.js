@@ -95,7 +95,8 @@ function publicPlot(plot, openid) {
     buildingName: plot.buildingName || '',
     buildingImage: plot.buildingImage || '',
     buildingWidth: Number(plot.buildingWidth) || 0,
-    buildingDepth: Number(plot.buildingDepth) || 0
+    buildingDepth: Number(plot.buildingDepth) || 0,
+    isNewPlot: Boolean(plot.isNewPlot)
   }
 }
 async function updateCommunity(db, openid, userId, community, extra = {}) {
@@ -231,10 +232,26 @@ module.exports = {
           }
           return publicPlot({ ...existing, _id: existing.plotId }, openid)
         }
-        if (existing && !allowRelocation())
+        const isNewPlot = data.isNewPlot === true || Boolean(data.buildingType && data.buildingType !== 'residential')
+        if (!isNewPlot && existing && !allowRelocation())
           throw new Error('你已经选择过房屋位置，不能更改')
-        if (existing && existing.communityId !== id)
+        if (!isNewPlot && existing && existing.communityId !== id)
           throw new Error('只能在原小区调整庭院位置')
+
+        // 购买新地皮扣减爱心币
+        const costCoins = Math.max(0, Number(data.costCoins) || 0)
+        if (isNewPlot && costCoins > 0) {
+          const userCoins = current.playgroundCoins || 0
+          if (userCoins < costCoins) {
+            throw new Error(`爱心币不足，规划购买该独立地皮需要 ${costCoins} 爱心币，当前拥有 ${userCoins} 爱心币`)
+          }
+          await tx.collection('users').doc(user._id).update({
+            data: {
+              playgroundCoins: userCoins - costCoins
+            }
+          })
+        }
+
         const { _id: configDocumentId, ...stored } =
           (await read(tx, CONFIG_ID)) || {}
         const settings = { ...dimensions(), ...stored }
@@ -260,14 +277,15 @@ module.exports = {
             cz++
           ) {
             const other = await read(tx, plotId(id, cx, cz))
-            if (!other || other.ownerOpenid === openid) continue
+            if (!other) continue
+            if (!isNewPlot && other.ownerOpenid === openid) continue
             const separation = (SIZE + (Number(other.size) || 48)) / 2 + GAP
             if (
               other._id === key ||
               (Math.abs(px - other.x) < separation &&
                 Math.abs(pz - other.z) < separation)
             )
-              throw new Error('庭院范围与邻居重叠，请选择更空旷的草坪')
+              throw new Error('地皮范围与已有建筑或邻居重叠，请选择更空旷的草坪')
           }
         }
         const buildingType = data.buildingType || (existing && existing.buildingType) || 'residential'
@@ -299,18 +317,22 @@ module.exports = {
           instanceId: crypto.randomBytes(12).toString('hex'),
           name: buildingName ? `${String(user.nickname || '我').slice(0, 20)}的${buildingName}` : `${String(user.nickname || '我').slice(0, 20)}的庭院`,
           createdAt: existing ? existing.createdAt : nowText(),
-          updatedAt: nowText()
+          updatedAt: nowText(),
+          isNewPlot: Boolean(isNewPlot)
         }
-        if (existing && existing.plotId !== key)
+        // 若为购买新地皮，绝不删除原有的老庭院！原别墅完整保留在原位
+        if (!isNewPlot && existing && existing.plotId !== key)
           await tx
             .collection('pet_playground_plots')
             .doc(existing.plotId)
             .remove()
         await tx.collection('pet_playground_plots').doc(key).set({ data: plot })
-        await tx
-          .collection('pet_playground_plots')
-          .doc(ownerId(openid))
-          .set({ data: { ...plot, kind: 'owner_plot', plotId: key } })
+        // 仅在首次建造主庭院或主动调整主庭院时，更新主庭院映射
+        if (!existing || !isNewPlot)
+          await tx
+            .collection('pet_playground_plots')
+            .doc(ownerId(openid))
+            .set({ data: { ...plot, kind: 'owner_plot', plotId: key } })
         await tx
           .collection('pet_playground_plots')
           .doc(CONFIG_ID)

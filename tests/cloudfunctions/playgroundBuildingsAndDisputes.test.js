@@ -303,3 +303,73 @@ test('neighbor using repair shop and pet hospital grants coins bonus to facility
   const userCAfterCare = f.db.state.users.find((u) => u.openid === 'c')
   assert.equal(userCAfterCare.playgroundCoins, coinsBeforeC + 15)
 })
+
+test('purchasing standalone new plot retains original villa intact and sets custom gate direction with fence', async () => {
+  const f = fixture()
+  const userA = f.user('a')
+  const dbUserA = f.db.state.users.find((u) => u.openid === 'a')
+  dbUserA.playgroundCoins = 100 // 赋予 100 爱心币
+
+  // 1. 建造最初的家园别墅
+  const originalVilla = await f.plots.claim('a', userA, {
+    x: 280,
+    z: 280,
+    gateDirection: 'south'
+  })
+  assert.equal(originalVilla.x, 280)
+  assert.equal(originalVilla.z, 280)
+  assert.equal(originalVilla.gateDirection, 'south')
+
+  // 2. 购买全新独立地块（围木栅栏，选择西门，消耗 50 爱心币）
+  const newPlot = await f.plots.claim('a', userA, {
+    x: 400,
+    z: 280,
+    isNewPlot: true,
+    costCoins: 50,
+    gateDirection: 'west',
+    buildingType: 'garden',
+    buildingName: '专属独立花园'
+  })
+  assert.equal(newPlot.x, 400)
+  assert.equal(newPlot.z, 280)
+  assert.equal(newPlot.gateDirection, 'west')
+  assert.equal(newPlot.isNewPlot, true)
+
+  // 3. 核心校验：用户原来的家园别墅必须完好无损保留在 (280, 280)，绝不能被挪动或删除！
+  const ownPlot = await f.plots.own('a')
+  assert.equal(ownPlot.x, 280)
+  assert.equal(ownPlot.z, 280)
+  assert.equal(ownPlot.gateDirection, 'south')
+  assert.notEqual(ownPlot.id, newPlot.id)
+
+  // 4. 校验爱心币正常扣减 (100 - 50 = 50)
+  const updatedUserA = f.db.state.users.find((u) => u.openid === 'a')
+  assert.equal(updatedUserA.playgroundCoins, 50)
+
+  // 5. 校验新地皮防重叠机制：距离老别墅小于 116m 时不能重叠建造 (400 - 350 = 50 < 116)
+  await assert.rejects(
+    () =>
+      f.plots.claim('a', userA, {
+        x: 350,
+        z: 280,
+        isNewPlot: true,
+        costCoins: 50,
+        gateDirection: 'north'
+      }),
+    /地皮范围与已有建筑或邻居重叠/
+  )
+
+  // 6. 校验爱心币不足拦截：需要 80 但只剩 50
+  await assert.rejects(
+    () =>
+      f.plots.claim('a', userA, {
+        x: 560,
+        z: 280,
+        isNewPlot: true,
+        costCoins: 80,
+        gateDirection: 'north'
+      }),
+    /爱心币不足/
+  )
+})
+

@@ -15,14 +15,47 @@ const inside = (p, plot) => Math.abs(p.x - plot.x) < (plot.size || 48) / 2 && Ma
 function obstacles(plot, solid = false) {
   const h = (plot.size || 48) / 2, x = plot.x, z = plot.z, t = .65
   if (solid) return [{ minX:x-h, maxX:x+h, minZ:z-h, maxZ:z+h }]
+  const dir = plot.gateDirection || 'south'
+  const fences = []
+
+  if (dir === 'north') {
+    fences.push({ minX: x - h, maxX: x - 3, minZ: z - h - t, maxZ: z - h + t })
+    fences.push({ minX: x + 3, maxX: x + h, minZ: z - h - t, maxZ: z - h + t })
+    fences.push({ minX: x - 3.25, maxX: x - 2.75, minZ: z - h, maxZ: z - h + 3 })
+    fences.push({ minX: x + 2.75, maxX: x + 3.25, minZ: z - h, maxZ: z - h + 3 })
+  } else {
+    fences.push({ minX: x - h, maxX: x + h, minZ: z - h - t, maxZ: z - h + t })
+  }
+
+  if (dir === 'south') {
+    fences.push({ minX: x - h, maxX: x - 3, minZ: z + h - t, maxZ: z + h + t })
+    fences.push({ minX: x + 3, maxX: x + h, minZ: z + h - t, maxZ: z + h + t })
+    fences.push({ minX: x - 3.25, maxX: x - 2.75, minZ: z + h - 3, maxZ: z + h })
+    fences.push({ minX: x + 2.75, maxX: x + 3.25, minZ: z + h - 3, maxZ: z + h })
+  } else {
+    fences.push({ minX: x - h, maxX: x + h, minZ: z + h - t, maxZ: z + h + t })
+  }
+
+  if (dir === 'west') {
+    fences.push({ minX: x - h - t, maxX: x - h + t, minZ: z - h, maxZ: z - 3 })
+    fences.push({ minX: x - h - t, maxX: x - h + t, minZ: z + 3, maxZ: z + h })
+    fences.push({ minX: x - h, maxX: x - h + 3, minZ: z - 3.25, maxZ: z - 2.75 })
+    fences.push({ minX: x - h, maxX: x - h + 3, minZ: z + 2.75, maxZ: z + 3.25 })
+  } else {
+    fences.push({ minX: x - h - t, maxX: x - h + t, minZ: z - h, maxZ: z + h })
+  }
+
+  if (dir === 'east') {
+    fences.push({ minX: x + h - t, maxX: x + h + t, minZ: z - h, maxZ: z - 3 })
+    fences.push({ minX: x + h - t, maxX: x + h + t, minZ: z + 3, maxZ: z + h })
+    fences.push({ minX: x + h - 3, maxX: x + h, minZ: z - 3.25, maxZ: z - 2.75 })
+    fences.push({ minX: x + h - 3, maxX: x + h, minZ: z + 2.75, maxZ: z + 3.25 })
+  } else {
+    fences.push({ minX: x + h - t, maxX: x + h + t, minZ: z - h, maxZ: z + h })
+  }
+
   return [
-    {minX:x-h-t,maxX:x-h+t,minZ:z-h,maxZ:z+h},
-    {minX:x+h-t,maxX:x+h+t,minZ:z-h,maxZ:z+h},
-    {minX:x-h,maxX:x+h,minZ:z-h-t,maxZ:z-h+t},
-    {minX:x-h,maxX:x-3,minZ:z+h-t,maxZ:z+h+t},
-    {minX:x+3,maxX:x+h,minZ:z+h-t,maxZ:z+h+t},
-    {minX:x-3.25,maxX:x-2.75,minZ:z+h-3,maxZ:z+h},
-    {minX:x+2.75,maxX:x+3.25,minZ:z+h-3,maxZ:z+h},
+    ...fences,
     ...yardLayout(plot).sprites.filter((p)=>p.radius>0).map((p)=>({minX:p.x-p.radius,maxX:p.x+p.radius,minZ:p.z-p.radius,maxZ:p.z+p.radius}))
   ]
 }
