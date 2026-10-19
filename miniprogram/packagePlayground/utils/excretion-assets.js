@@ -1,17 +1,20 @@
+const CLOUD_ASSET_BASE =
+  'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage'
+
 // Excretion (pee & poop) asset configuration and custom image loader
 const EXCRETION_ASSETS = {
   pee: {
     key: 'pee',
     label: '嘘嘘素材',
-    fileID: '', // 预留云开发 fileID
-    localPath: '/packagePlayground/assets/pee.png', // 预留本地素材路径
+    fileID: `${CLOUD_ASSET_BASE}/pet_pee.png`,
+    localPath: '/packagePlayground/assets/pee.png',
     size: 20
   },
   poop: {
     key: 'poop',
     label: '便便素材',
-    fileID: '', // 预留云开发 fileID
-    localPath: '/packagePlayground/assets/poop.png', // 预留本地素材路径
+    fileID: `${CLOUD_ASSET_BASE}/pet_poop.png`,
+    localPath: '/packagePlayground/assets/poop.png',
     size: 22
   }
 }
