@@ -322,6 +322,8 @@ Page({
     }, 5000)
   },
   toggleMenuCollapse() {
+    this.joystickEnd()
+    this.clearPetSelection()
     this.setData({ menuCollapsed: !this.data.menuCollapsed })
   },
   openHistoryModal() {

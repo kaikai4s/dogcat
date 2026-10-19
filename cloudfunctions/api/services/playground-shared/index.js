@@ -105,9 +105,10 @@ module.exports = function createShared(context) {
   function publicRecord(row) {
     const ownerId=presenceId(row.ownerOpenid)
     if(row.kind==='plot') {const {mine,...plot}=service.publicPlot(row,'');return {kind:'plot',...plot,ownerId}}
-    if(row.kind==='resident') return {kind:'resident',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',ownerName:row.name,pets:(row.pets||[]).map((pet)=>({...pet,appearance:publicAppearance(pet.appearance,'pet',pet.id,row.ownerOpenid)}))}
+    if(row.kind==='resident') return {kind:'resident',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',ownerName:row.name,pets:(row.pets||[]).map((pet)=>({...pet,lifeManaged:true,appearance:publicAppearance(pet.appearance,'pet',pet.id,row.ownerOpenid)}))}
     if(row.kind==='vehicle')return {kind:'vehicle',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',plotId:row.plotId,state:row.state,position:row.position,
       facing:row.facing||'sw',passengers:(row.passengers||[]).map((p)=>({id:p.id,name:p.name})),capacity:3,
+      stains:row.stains||[],soiled:!!row.soiled,
       mirrored:!!row.mirrored,moving:!!row.moving&&now()-row.lastSeen<3000,online:!!row.online&&now()-row.lastSeen<15000,lastSeen:row.lastSeen,speedMultiplier:row.speedMultiplier}
     return {kind:'presence',id:row._id,ownerId,name:row.name||'邻居',nameColor:row.nameColor||'',position:row.position,characterType:row.characterType==='girl'?'girl':'boy',
       vehicleId:row.vehicleId||'',
@@ -311,7 +312,7 @@ module.exports = function createShared(context) {
       const vehicle=car?await vehicles.saveMovement(tx,car,actor):null
       return {serverTime:stamp,accepted:true,ackSeq:data.seq,corrected:!!correctionReason,correctionReason,position:actor.position,actor:{...actor,_id:presenceId(openid)},vehicle,resident}
     })
-    await Promise.all([result.actor&&publish(result.actor),result.vehicle&&publish(result.vehicle),result.resident&&publish(result.resident)])
+    await Promise.all([result.actor&&publish(result.actor),result.vehicle&&publish(result.vehicle),result.resident&&companions.publishLife(result.resident)])
     const {actor,vehicle,resident,...response}=result
     return {...response,serverTime:now()}
   }
@@ -351,18 +352,14 @@ module.exports = function createShared(context) {
     const geometry=layoutKey(plots)
     // A new/demolished yard invalidates old outdoor routes, even for offline owners.
     for(let i=0;i<page.length;i++) if(page[i].kind==='resident' &&
-      plots.some((p)=>p.ownerOpenid===page[i].ownerOpenid&&p._id===page[i].plotId) &&
-      (page[i].layoutKey!==geometry || (page[i].pets||[]).some((pet)=>pet.care&&stamp>=pet.care.endsAt))) {
+      plots.some((p)=>p.ownerOpenid===page[i].ownerOpenid&&p._id===page[i].plotId)) {
       page[i]=await transaction(db,async(tx)=>{
         const row=await read(tx,page[i]._id)
         if(!row || row.communityId!==data.sceneId) return {...page[i],pets:[]}
         const layoutMismatch = row.layoutKey!==geometry
-        const expiredCare = (row.pets||[]).some((pet)=>pet.care&&stamp>=pet.care.endsAt)
-        if(!layoutMismatch && !expiredCare) return row
         row.pets=(row.pets||[]).map((pet)=>{
           if(pet.ridingVehicleId)return pet
-          const careExpired = pet.care && stamp >= pet.care.endsAt
-          if (layoutMismatch || careExpired) {
+          if (layoutMismatch) {
             const current=sampleMotion(pet.motion,stamp).position
             const start=safePoint(navigation(cfg,plots,current,current,'pet',row.plotId),current)
             settleNeeds(pet,stamp)
@@ -370,6 +367,8 @@ module.exports = function createShared(context) {
           }
           return pet
         })
+        const lifeChanged=await companions.advance(tx,row,cfg,plots)
+        if(!layoutMismatch&&!lifeChanged)return row
         if (layoutMismatch) row.layoutKey=geometry
         row.revision=Math.max(stamp,(row.revision||0)+1)
         const key=row._id
@@ -377,6 +376,12 @@ module.exports = function createShared(context) {
         await tx.collection(COLLECTION).doc(key).set({data:row})
         return {...row,_id:key}
       })
+      // Automatic meals reserve food in the same transaction. Read the latest
+      // plot for both the snapshot and live projection after that commit.
+      if(page[i].pets.some((p)=>p.care&&p.care.type==='eat')) {
+        const latest=await read(db,page[i].plotId),plotIndex=page.findIndex((p)=>p._id===page[i].plotId)
+        if(latest){if(plotIndex>=0)page[plotIndex]=latest;await publish(latest)}
+      }
     }
     const visible=page.filter((row)=>{
       if(row.kind==='presence') return row.active===true || legacyActors.has(row._id)
@@ -385,7 +390,12 @@ module.exports = function createShared(context) {
       return true
     })
     const published=[]
-    for(const row of visible) {const current=await publish(row);if(current)published.push(current)}
+    for(const row of visible) {
+      const latest=row.kind==='vehicle'?await read(db,row._id):row
+      if(!latest)continue
+      const current=await publish(latest)
+      if(current)published.push(current)
+    }
     return {serverTime:now(),allowedPlotIds:await social.access(openid,plots),nextCursor:page.length===100?page[page.length-1]._id:'',records:published.map((row)=>({...publicRecord(row),version:version(row),mine:row.ownerOpenid===openid}))}
   }
   async function commandPet(openid,data) {

@@ -13,6 +13,99 @@ module.exports=function createCompanions(context,hooks) {
     await tx.collection(COLLECTION).doc(residentId(resident.ownerOpenid)).set({data})
     return {...data,_id:residentId(resident.ownerOpenid)}
   }
+  async function startCare(tx,resident,pet,home,operation,cfg,plots,stamp,automatic=false) {
+    const current=sampleMotion(pet.motion,stamp).position
+    const species=pet.species==='cat'?'cat':'dog'
+    const food={dog:0,cat:0,...home.foodBowls}
+    if(operation==='eat'&&food[species]<25)return false
+    const target=yardLayout(home).stations[species][operation]
+    const nav=hooks.navigation(cfg,plots,current,target,'pet',resident.plotId),route=nav.path(current,target)
+    if(!route) return false
+    if(operation==='eat') {
+      food[species]-=25;home.foodBowls=food
+      await tx.collection(COLLECTION).doc(world.ownerId(resident.ownerOpenid)).update({data:{foodBowls:food}})
+      const plot=await hooks.read(tx,home.plotId)
+      if(plot) {
+        plot.foodBowls=food;plot.revision=Math.max(stamp,(plot.revision||0)+1)
+        const {_id,...saved}=plot
+        await tx.collection(COLLECTION).doc(home.plotId).set({data:saved})
+      }
+    }
+    let distance=0,previous=current
+    for(const point of route){distance+=Math.hypot(point.x-previous.x,point.z-previous.z);previous=point}
+    const startsAt=stamp+distance/7*1000,spec=RECOVERY[operation]
+    const seconds=automatic?Math.max(spec.seconds,(100-pet.needs[spec.key])/spec.rate):spec.seconds
+    pet.following=false;pet.care={type:operation,startsAt,endsAt:startsAt+seconds*1000}
+    pet.motion={epoch:stamp,approach:[current,...route],patrol:[target],speed:7}
+    return true
+  }
+  async function recordRelief(tx,resident,pet,type,stamp,position) {
+    relieveWaste(pet,type,type==='poop'?40:20,stamp)
+    const event={id:'waste_'+world.hash(resident.ownerOpenid)+'_'+world.hash(pet.id).slice(0,8)+'_'+stamp,type,x:position.x,z:position.z,createdAt:stamp,vehicleId:pet.ridingVehicleId||''}
+    pet.waste=[...(pet.waste||[]).filter((w)=>stamp-w.createdAt<86400000).slice(-11),event]
+    pet.relieving={id:event.id,type,start:stamp,until:stamp+3000,position:{...position}}
+    // Delay the saved route by the same pause on every client.
+    pet.motion={...pet.motion,epoch:pet.motion.epoch+3000}
+    if(pet.care)pet.care={...pet.care,startsAt:Math.max(stamp,pet.care.startsAt)+3000,endsAt:pet.care.endsAt+3000}
+    pet[type==='poop'?'poopDueAt':'peeDueAt']=null
+    if(pet.ridingVehicleId) {
+      const car=await hooks.read(tx,pet.ridingVehicleId)
+      if(car) {
+        const stains=[...(car.stains||[]).slice(-23),{id:event.id,type,at:stamp,x:0,y:0}]
+        await tx.collection(COLLECTION).doc(car._id).update({data:{stains,soiled:true,revision:Math.max(stamp,(car.revision||0)+1)}})
+      }
+    }
+  }
+  async function publishLife(resident) {
+    await hooks.publish(resident)
+    if(resident.pets.some((p)=>p.care&&p.care.type==='eat')) {
+      const plot=await hooks.read(db,resident.plotId)
+      if(plot)await hooks.publish(plot)
+    }
+    for(const id of new Set(resident.pets.map((p)=>p.ridingVehicleId).filter(Boolean))) {
+      const car=await hooks.read(db,id)
+      if(car)await hooks.publish(car)
+    }
+  }
+  async function advance(tx,resident,cfg,plots) {
+    const stamp=now(),before=JSON.parse(JSON.stringify(resident.pets||[]))
+    const home=await hooks.read(tx,world.ownerId(resident.ownerOpenid))
+    if(!home||home.communityId!==resident.communityId||home.plotId!==resident.plotId)return false
+    for(const pet of resident.pets||[]) {
+      if(!pet.motion)continue
+      if(pet.relieving&&stamp<pet.relieving.until)continue
+      if(pet.relieving)pet.relieving=null
+      const current=sampleMotion(pet.motion,stamp).position
+      const values=settleNeeds(pet,stamp)
+      const inside=Math.abs(current.x-home.x)<=(home.size||48)/2&&Math.abs(current.z-home.z)<=(home.size||48)/2
+      if(inside&&!pet.ridingVehicleId) {pet.poopDueAt=null;pet.peeDueAt=null}
+      else {
+        if(values.poop>=40)pet.poopDueAt=pet.poopDueAt||stamp+120000
+        else pet.poopDueAt=null
+        if(values.pee>=20)pet.peeDueAt=pet.peeDueAt||stamp+30000+parseInt(world.hash(pet.id+stamp).slice(0,4),16)%30001
+        else pet.peeDueAt=null
+      }
+      const type=values.poop>=100||pet.poopDueAt&&stamp>=pet.poopDueAt?'poop':
+        values.pee>=100||pet.peeDueAt&&stamp>=pet.peeDueAt?'pee':''
+      if(type){await recordRelief(tx,resident,pet,type,stamp,current);continue}
+      if(pet.care) {
+        const spec=RECOVERY[pet.care.type]
+        if(stamp<pet.care.endsAt&&(!spec||values[spec.key]<98))continue
+        pet.care=null
+        pet.motion=hooks.motion(cfg,plots,current,stamp,pet.id+'roam')
+      }
+      if(!inside||pet.ridingVehicleId||pet.interactionUntil>stamp)continue
+      const actions=Object.keys(RECOVERY).filter((op)=>values[RECOVERY[op].key]<=20)
+        .sort((a,b)=>values[RECOVERY[a].key]-values[RECOVERY[b].key])
+      for(const operation of actions)if(await startCare(tx,resident,pet,home,operation,cfg,plots,stamp,true))break
+    }
+    // Sampling alone does not need a write; timed actions and their baselines do.
+    const changed=resident.pets.some((pet,i)=>{
+      const old=before[i]
+      return JSON.stringify({...pet,needs:null})!==JSON.stringify({...old,needs:null})
+    })
+    return changed
+  }
   function followRoute(pet,actor,cfg,plots,allowed,index=0) {
     const stamp=now()
     const previous=pet.motion
@@ -84,22 +177,8 @@ module.exports=function createCompanions(context,hooks) {
       } else {
         const home=await hooks.read(tx,world.ownerId(openid))
         if(!home||home.communityId!==actor.communityId||home.plotId!==resident.plotId)throw new Error('请回到自家庭院照料宠物')
-        const target=yardLayout(home).stations[pet.species==='cat'?'cat':'dog'][operation]
-        const nav=hooks.navigation(cfg,plots,current,target,'pet',resident.plotId),route=nav.path(current,target)
-        if(!route)throw new Error('暂时无法到达，请从自家庭院院门进出')
-        if(operation==='eat') {
-          const species=pet.species==='cat'?'cat':'dog',food={dog:0,cat:0,...home.foodBowls}
-          if(food[species]<25)throw new Error('碗里粮食不足，请先添粮')
-          food[species]-=25
-          await tx.collection(COLLECTION).doc(world.ownerId(openid)).update({data:{foodBowls:food}})
-          const plot=await hooks.read(tx,home.plotId)
-          if(plot) {plot.foodBowls=food;plot.revision=Math.max(stamp,(plot.revision||0)+1);const {_id,...saved}=plot;await tx.collection(COLLECTION).doc(home.plotId).set({data:saved})}
-        }
-        let distance=0,previous=current
-        for(const point of route){distance+=Math.hypot(point.x-previous.x,point.z-previous.z);previous=point}
-        const startsAt=stamp+distance/7*1000,spec=RECOVERY[operation]
-        pet.following=false;pet.care={type:operation,startsAt,endsAt:startsAt+spec.seconds*1000}
-        pet.motion={epoch:stamp,approach:[current,...route],patrol:[target],speed:7}
+        if(operation==='eat'&&Number(home.foodBowls&&home.foodBowls[pet.species==='cat'?'cat':'dog']||0)<25)throw new Error('碗里粮食不足，请先添粮')
+        if(!await startCare(tx,resident,pet,home,operation,cfg,plots,stamp))throw new Error('暂时无法到达，请从自家庭院院门进出')
       }
       pet.commandSeq=data.commandSeq;pet.lastOperation=operation;resident.petSeq=data.commandSeq
       return {resident:await save(tx,resident),pet}
@@ -115,29 +194,13 @@ module.exports=function createCompanions(context,hooks) {
     actor.lastCompanionSync=stamp
     const resident=await hooks.read(tx,residentId(actor.ownerOpenid))
     if(!resident||resident.communityId!==actor.communityId)return null
-    let changed=false
-    for(const pet of resident.pets||[]) {
-      if(pet.care && !pet.ridingVehicleId && !pet.following) {
-        const needs = settleNeeds(pet, stamp)
-        const isSatisfied = (
-          (pet.care.type === 'drink' && needs.hydration >= 98) ||
-          (pet.care.type === 'eat' && needs.satiety >= 98) ||
-          (pet.care.type === 'sleep' && needs.energy >= 98)
-        )
-        if (stamp >= pet.care.endsAt || isSatisfied) {
-          const current=sampleMotion(pet.motion,stamp).position
-          const start=hooks.safePoint(hooks.navigation(cfg,plots,current,current,'pet',resident.plotId),current)
-          pet.care=null
-          pet.motion=hooks.motion(cfg,plots,start,stamp,pet.id+'roam')
-          changed=true
-        }
-      }
-    }
+    let changed=await advance(tx,resident,cfg,plots)
     const followers=resident.pets.filter((p)=>p.following&&!p.ridingVehicleId)
     if(followers.length) {
       actor.hasFollowers=true
       const allowed=await hooks.access(actor.ownerOpenid,plots,tx)
       for(const pet of followers) {
+        if(pet.relieving&&stamp<pet.relieving.until)continue
         if(!force&&pet.followCenter&&Math.hypot(pet.followCenter.x-actor.position.x,pet.followCenter.z-actor.position.z)<2)continue
         changed=followRoute(pet,actor,cfg,plots,allowed,resident.pets.indexOf(pet))||changed
       }
@@ -164,23 +227,25 @@ module.exports=function createCompanions(context,hooks) {
     return save(tx,resident)
   }
   async function relief(openid, data) {
+    await hooks.check(openid,data)
     const petId = String(data.petId || '')
-    const type = data.type === 'poop' ? 'poop' : 'pee'
-    const amount = Number(data.amount) || (type === 'poop' ? 40 : 20)
+    const type = data.type
+    if(!['poop','pee'].includes(type))throw new Error('无效排泄类型')
     const result = await transaction(db, async (tx) => {
       const resident = await hooks.read(tx, residentId(openid))
-      if (!resident) return null
+      if (!resident||resident.session!==data.session||resident.communityId!==data.sceneId)throw new Error('场景已切换，请重新进入')
       const pet = (resident.pets || []).find((p) => p.id === petId)
-      if (!pet) return null
+      if (!pet)throw new Error('只能操作自己的宠物')
       const stamp = now()
-      relieveWaste(pet, type, amount, stamp)
-      await save(tx, resident)
-      return { resident, pet }
+      const values=settleNeeds(pet,stamp),minimum=type==='poop'?40:20
+      if(pet.relieving&&stamp<pet.relieving.until||values[type]<minimum)return {resident,pet}
+      await recordRelief(tx,resident,pet,type,stamp,sampleMotion(pet.motion,stamp).position)
+      return {resident:await save(tx,resident),pet}
     })
     if (result && result.resident && hooks.publish) {
-      await hooks.publish(result.resident)
+      await publishLife(result.resident)
     }
-    return result
+    return {pet:result.pet,serverTime:now()}
   }
-  return {action,sync,transport,save,followRoute,relief}
+  return {action,sync,transport,save,followRoute,relief,advance,publishLife}
 }

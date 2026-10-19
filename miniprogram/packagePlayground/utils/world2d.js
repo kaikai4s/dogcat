@@ -1004,24 +1004,12 @@ class World2D {
       if (yard && this.ownPlot && yard.id === this.ownPlot.id && pet.mine !== false && !pet.following && !pet.ridingVehicleId) {
         const species = pet.species === 'cat' ? 'cat' : 'dog'
         const stations = yardLayout(yard).stations[species]
-        const cooldown = (this.elapsed - (pet.lastCareActionAt || 0)) > 30
-        if (cooldown && stations) {
+        if (stations) {
           const food = (this.foodBowls && this.foodBowls[species]) || 0
-          const needs = pet.needs || {}
-          const hunger = (needs.satiety !== undefined ? needs.satiety : 100) < 80 || this.random() < 0.28
-          const thirst = (needs.hydration !== undefined ? needs.hydration : 100) < 80 || this.random() < 0.28
-          const fatigue = (needs.energy !== undefined ? needs.energy : 100) < 60 || this.random() < 0.2
-          let targetStation = null, actionType = null
-          if (food >= 10 && hunger && (!thirst || this.random() < 0.5)) {
-            targetStation = stations.eat
-            actionType = 'eat'
-          } else if (thirst && (!fatigue || this.random() < 0.5)) {
-            targetStation = stations.drink
-            actionType = 'drink'
-          } else if (fatigue && stations.sleep) {
-            targetStation = stations.sleep
-            actionType = 'sleep'
-          }
+          const needs = sampleNeeds(pet,Date.now()+this.serverOffset)
+          const candidates=[{type:'drink',value:needs.hydration},{type:'eat',value:needs.satiety},{type:'sleep',value:needs.energy}]
+            .filter((a)=>a.value<=20&&(a.type!=='eat'||food>=10)).sort((a,b)=>a.value-b.value)
+          const actionType=candidates[0]&&candidates[0].type,targetStation=stations[actionType]
           if (targetStation && nav.walkable(targetStation)) {
             const route = nav.path(start, targetStation)
             if (route && route.length) {
@@ -1445,7 +1433,10 @@ class World2D {
     }
     Object.assign(target,{name:pet.name,species:pet.species,mine:mine===true,sharedMotion:pet.motion,
       following:!!pet.following,ridingVehicleId:pet.ridingVehicleId||'',needs:mergedNeeds,care:pet.care||null,
+      lifeManaged:!!(pet.lifeManaged||target.lifeManaged),waste:pet.waste||[],
       modelScale,savedModelScale:pet.modelScale})
+    if(target.lifeManaged)target.relieving=pet.relieving||null
+    this.syncPetWaste()
     if(ownerName)target.ownerName=ownerName
     // Keep the rendered position across route packets, including large network
     // discrepancies. Following pets walk along a legal connector each frame.
@@ -1470,6 +1461,9 @@ class World2D {
     return target
   }
   sharedPetSample(pet,dt) {
+    const relief=pet.relieving
+    if(relief&&relief.position&&Date.now()+this.serverOffset<relief.until)
+      return {position:{...relief.position},moving:false,distance:(pet.walkDistance||0)-(pet.motionDistanceOffset||0),facingLeft:!!pet.walkFacingLeft}
     const state=sampleMotion(pet.sharedMotion,Date.now()+this.serverOffset)
     if(pet.followRender)return this.smoothFollowSample(pet,state,dt)
     if(pet.reconcile) {
@@ -1479,6 +1473,15 @@ class World2D {
       if(!t)pet.reconcile=null
     }
     return state
+  }
+  syncPetWaste() {
+    const stamp=Date.now()+this.serverOffset,shared=[]
+    for(const pet of this.pets)for(const event of pet.waste||[]) {
+      if(event.vehicleId||stamp-event.createdAt>=86400000||this.pickedPoopIds&&this.pickedPoopIds.has(event.id))continue
+      shared.push({...event,shared:true})
+    }
+    const local=this.groundDecals.filter((d)=>!d.shared)
+    this.groundDecals=[...local,...shared].sort((a,b)=>a.createdAt-b.createdAt).slice(-60)
   }
   smoothFollowSample(pet,state,dt) {
     const render=pet.followRender,stamp=Date.now(),from=pet.position,to=state.position
@@ -1523,6 +1526,7 @@ class World2D {
       if(record.kind==='resident') for(const pet of record.pets) {ids.add(pet.id);this.applySharedPet(pet,record.mine,record.ownerName||record.name,record.ownerId,record.nameColor)}
     }
     this.pets=this.pets.filter((p)=>ids.has(p.id))
+    this.syncPetWaste()
     this.sharedPlots=plots
     for(const pet of this.pets)if(pet.followRender){pet.followRender.nav=null;pet.followRender.route=null}
     this.replaceVehicles(records.filter((r)=>r.kind==='vehicle'))
@@ -1556,6 +1560,7 @@ class World2D {
         const ids=new Set((record.pets||[]).map((p)=>p.id))
         this.pets=this.pets.filter((p)=>p.ownerId!==record.ownerId||!record.deleted&&ids.has(p.id))
         if(!record.deleted)for(const pet of record.pets||[])this.applySharedPet(pet,record.mine,record.ownerName||record.name,record.ownerId,record.nameColor)
+        this.syncPetWaste()
         this.emitPets();continue
       }
       if(record.mine) {if(!record.deleted)this.setOwnName(record);this.setOwnAppearance(record.deleted?null:record.appearance,!!record.deleted);this.applyOwnVehicleActor(record);continue}
@@ -2428,7 +2433,7 @@ class World2D {
     this.updateCharacter(dt)
     this.checkVehicleCollisions(dt)
     for (const pet of this.pets) {
-      if (pet.mine !== false) {
+      if (pet.mine !== false && !pet.lifeManaged) {
         updatePetExcretion(pet, dt, {
           now: Date.now() + this.serverOffset,
           ownPlot: this.ownPlot,
@@ -2445,6 +2450,7 @@ class World2D {
           }
         })
       }
+      if(pet.lifeManaged&&pet.relieving&&Date.now()+this.serverOffset>=pet.relieving.until)pet.relieving=null
       if (pet.relieving) {
         pet.moving = false
         pet.route = []
@@ -2452,6 +2458,11 @@ class World2D {
         continue
       }
       if(pet.sharedMotion) {
+        if(pet.lifeManaged) {
+          const state=this.sharedPetSample(pet,dt)
+          pet.position=state.position;pet.moving=state.moving;pet.walkDistance=state.distance+(pet.motionDistanceOffset||0);pet.walkFacingLeft=state.facingLeft
+          continue
+        }
         const needsSatisfied = pet.care && (
           (pet.care.type === 'drink' && pet.needs && pet.needs.hydration >= 98) ||
           (pet.care.type === 'eat' && pet.needs && pet.needs.satiety >= 98) ||
@@ -2552,11 +2563,11 @@ class World2D {
         // 自家庭院自主照料：在自家庭院内，当数值过低且没有跟随玩家/乘车时，自主去喝水、进食或休息
         const inOwnPlot = this.ownPlot && Math.abs(pet.position.x - this.ownPlot.x) <= (this.ownPlot.size || 48) / 2 && Math.abs(pet.position.z - this.ownPlot.z) <= (this.ownPlot.size || 48) / 2
         const needsCare = pet.needs && (
-          (pet.needs.hydration !== undefined && pet.needs.hydration < 40) ||
-          (pet.needs.satiety !== undefined && pet.needs.satiety < 40) ||
-          (pet.needs.energy !== undefined && pet.needs.energy < 40)
+          (pet.needs.hydration !== undefined && pet.needs.hydration <= 20) ||
+          (pet.needs.satiety !== undefined && pet.needs.satiety <= 20) ||
+          (pet.needs.energy !== undefined && pet.needs.energy <= 20)
         )
-        const canAutoCare = pet.mine !== false && inOwnPlot && !pet.following && !pet.ridingVehicleId && needsCare && ((this.elapsed - (pet.lastCareActionAt || 0)) > 25)
+        const canAutoCare = pet.mine !== false && inOwnPlot && !pet.following && !pet.ridingVehicleId && needsCare
 
         if (canAutoCare && !pet.pendingAutonomousCare && !pet.moving) {
           pet.idleSeconds = ROAM_WAIT
@@ -2683,7 +2694,6 @@ class World2D {
         else {
           this.clearPetSelection()
           if(pet) this.onStatus('这是邻居的宠物，只能操作自家宠物')
-          else if(this.character && !this.drivingVehicleId) this.moveCharacterTo(p)
         }
       }
     }

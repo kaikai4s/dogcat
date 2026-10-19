@@ -54,6 +54,39 @@ test('shared snapshot shows neighboring pets but only own pets are selectable or
   assert.equal(w.pets.length,0)
 })
 
+test('shared excretion renders a neighbor pause and ground traces once without local simulation',async()=>{
+  const page={data:{},setData(v){Object.assign(this.data,v)},fetchRegion:async()=>({plots:[]})}
+  const stamp=Date.now(),w=new World2D(page,null,{world:{width:1120,height:1120},pets:[]})
+  w.buildWorld()
+  const position={x:100,z:100},event={id:'waste_neighbor_1',type:'poop',x:100,z:100,createdAt:stamp}
+  const motion={epoch:stamp,approach:[position,{x:110,z:100}],patrol:[{x:110,z:100}],speed:7}
+  const pet={id:'other',name:'邻居的狗',species:'dog',modelScale:1,motion,lifeManaged:true,
+    needs:{at:stamp,poop:100,pee:100,energy:10,satiety:10,hydration:10},waste:[event],
+    relieving:{type:'poop',start:stamp,until:stamp+3000,position}}
+  const record={kind:'resident',id:'neighbor',ownerId:'neighbor',mine:false,pets:[pet]}
+  await w.applySceneRecords([record])
+  w.update(.1)
+  assert.deepEqual(w.pets[0].position,position)
+  assert.equal(w.pets[0].moving,false)
+  assert.equal(w.petActivity(w.pets[0]),'便便中...')
+  await w.applySceneChanges([record])
+  assert.equal(w.groundDecals.length,1)
+  assert.equal(w.groundDecals[0].id,event.id)
+  w.serverOffset=4000
+  w.update(.1)
+  assert.ok(w.pets[0].position.x>100)
+  assert.equal(w.pets[0].relieving,null)
+  assert.equal(w.groundDecals.length,1)
+  // Managed own pets also wait for authoritative events; high needs do not
+  // create a second decal or deduct waste a second time on this client.
+  w.applySharedPet({...pet,relieving:null},true)
+  w.update(.1)
+  assert.equal(w.groundDecals.length,1)
+  assert.equal(w.pets[0].needs.poop,100)
+  await w.applySceneRecords([])
+  assert.equal(w.groundDecals.length,0)
+})
+
 test('queued heartbeats acknowledge only the captured trail and departure is last',async()=>{
   let SceneSync
   const requests=[],pending=[]

@@ -1,11 +1,11 @@
-.world-toolbar { position: fixed; left: 12px; right: 12px; z-index: 14; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-.world-toolbar-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+.world-toolbar { position: fixed; left: 12px; max-width: calc(100% - 24px); z-index: 14; display: flex; align-items: flex-start; flex-direction: column; gap: 8px; pointer-events: none; }
+.world-toolbar-row { display: flex; align-items: flex-start; flex-wrap: wrap; justify-content: flex-start; max-width: 100%; gap: 8px; }
 .life-tools { display: flex; flex-wrap: wrap; gap: 6px; max-width: 100%; }
-.life-tools button { pointer-events: auto; margin: 0; padding: 0 12px; border-radius: 18px; line-height: 32px; color: #385743; background: #fffdf3ed; font-size: 12px; }
-.pet-alert-banner { pointer-events: auto; padding: 10px 14px; box-sizing: border-box; border-radius: 14px; color: #865432; background: #fff0dceF; font-size: 11px; }
+.life-tools button, .request-badge { pointer-events: auto; margin: 0; padding: 0 12px; border-radius: 18px; line-height: 32px; color: #385743; background: #fffdf3ed; font-size: 12px; }
+.pet-alert-banner { pointer-events: auto; max-width: 300px; padding: 10px 14px; box-sizing: border-box; border-radius: 14px; color: #865432; background: #fff0dceF; font-size: 11px; }
 .pet-alert-banner text { display: block; line-height: 18px; }
 .pet-alert-banner text + text { font-size: 10px; opacity: .8; }
-.pet-roster { pointer-events: auto; padding: 16px; border-radius: 20px; color: #385743; background: #fffdf3f5; box-shadow: 0 8px 25px #34502725; }
+.pet-roster { pointer-events: auto; width: 300px; max-width: 100%; box-sizing: border-box; padding: 16px; border-radius: 20px; color: #385743; background: #fffdf3f5; box-shadow: 0 8px 25px #34502725; }
 .pet-roster-list { height: 28vh; max-height: 28vh; }
 .pet-roster-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e4eadb; font-size: 12px; }
 .life-heading { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; }

@@ -108,7 +108,7 @@ button::after { border: none; }
 .social-list { max-height: calc(82vh - 116px); }
 
 /* 顶部功能菜单折叠 */
-.menu-collapse-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 11px; font-weight: 600; color: #355842; background: rgba(247,248,235,.94); border-radius: 14px; box-shadow: 0 4px 12px rgba(48,71,45,.12); position: relative; }
+.menu-collapse-btn { display: inline-flex; align-items: center; gap: 4px; pointer-events: auto; flex: none; width: auto; margin: 0; padding: 0 12px; line-height: 32px; text-align: left; font-size: 11px; font-weight: 600; color: #355842; background: rgba(247,248,235,.94); border-radius: 14px; box-shadow: 0 4px 12px rgba(48,71,45,.12); position: relative; }
 .menu-badge { width: 7px; height: 7px; border-radius: 50%; background: #e55353; position: absolute; top: 3px; right: 4px; }
 
 /* 底部状态消息容器与历史提示按钮 */

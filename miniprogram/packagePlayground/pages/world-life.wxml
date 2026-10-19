@@ -1,6 +1,6 @@
 <view class="world-toolbar" style="top: {{top + 76}}px" wx:if="{{!loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !disputesOpen && !buildOpen}}">
   <view class="world-toolbar-row">
-    <button class="menu-collapse-btn" bindtap="toggleMenuCollapse">
+    <button class="menu-collapse-btn" catchtap="toggleMenuCollapse">
       <text>{{menuCollapsed ? '☰ 快捷功能 ▾' : '▴ 收起功能'}}</text>
       <view class="menu-badge" wx:if="{{menuCollapsed && socialRequests.length}}"></view>
     </button>

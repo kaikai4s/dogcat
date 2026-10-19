@@ -58,6 +58,7 @@ module.exports=function createFarm(context,hooks) {
       const selected=Number.isInteger(bedId)&&bedId>=0&&bedId<12?tiles[bedId]:null
       const quantity=data.quantity===undefined?1:data.quantity
       let message='菜园已更新'
+      let pickedResident=null
       const spend=(value)=>{if(farm.coins<value)throw new Error('农场金币不足，可以出售收获换取金币');farm.coins-=value}
       const plant=(id)=>{
         if(!crop||crop.enabled===false||crop.level>currentLevel)throw new Error('该作物已下架或尚未解锁')
@@ -121,6 +122,21 @@ module.exports=function createFarm(context,hooks) {
           if (existing && existing.picked) {
             throw new Error('该便便已被其他邻居拾取，不可重复拾取')
           }
+          const sharedWaste=/^waste_([a-f0-9]{32})_[a-f0-9]{8}_\d+$/.exec(poopId)
+          if(sharedWaste) {
+            if(quantity!==1)throw new Error('每份便便只能拾取一次')
+            const resident=await hooks.read(tx,'resident_'+sharedWaste[1])
+            const pet=resident&&resident.communityId===actor.communityId&&(resident.pets||[]).find((p)=>(p.waste||[]).some((w)=>w.id===poopId&&w.type==='poop'&&!w.vehicleId))
+            const event=pet&&pet.waste.find((w)=>w.id===poopId)
+            if(!event)throw new Error('这份便便已被拾取或已消失')
+            const plots=await hooks.rows(actor.communityId,'plot')
+            const nav=hooks.publicNavigation(await hooks.config(),plots,await hooks.access(openid,plots,tx))
+            if(Math.hypot(actor.position.x-event.x,actor.position.z-event.z)>4.2||!nav.clearSegment(actor.position,event))throw new Error('请走近便便再拾取')
+            pet.waste=pet.waste.filter((w)=>w.id!==poopId)
+            resident.revision=Math.max(stamp,(resident.revision||0)+1)
+            await save(tx,resident._id,resident)
+            pickedResident=resident
+          }
           await tx.collection(COLLECTION).doc(pickedKey).set({
             data: {
               kind: 'picked_poop',
@@ -155,9 +171,10 @@ module.exports=function createFarm(context,hooks) {
       plot.revision=Math.max(stamp,(plot.revision||0)+1)
       await save(tx,accountId(openid),{kind:'farm_account',ownerOpenid:openid,plotId:own.plotId,instanceId:own.instanceId||own.createdAt||'',farm})
       await save(tx,world.ownerId(openid),own);await save(tx,own.plotId,plot)
-      return {own,plot,catalog,message}
+      return {own,plot,catalog,message,pickedResident}
     })
     await hooks.publish(result.plot)
+    if(result.pickedResident)await hooks.publish(result.pickedResident)
     return {...view(result.own,now(),result.catalog),message:result.message}
   }
   return {state,action}

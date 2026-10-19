@@ -86,6 +86,30 @@ test('only a selected own pet responds to map taps without an extra move button'
   assert.equal(w.selectedPetId,'')
 })
 
+test('character only accepts map movement while selected and menu expansion cancels all selection',()=>{
+  const {page}=pageFixture(),w=page.world
+  let moves=0
+  w.moveCharacterTo=()=>{moves++}
+  const target=w.project(240,260)
+  const tap=()=>{w.touchStart([target]);w.touchEnd([target])}
+  tap();assert.equal(moves,0)
+  w.selectCharacter();tap();tap()
+  assert.equal(moves,2)
+  w.clearPetSelection();tap()
+  assert.equal(moves,2)
+  w.selectCharacter()
+  w.touchStart([{x:20,y:20},{x:120,y:20}]);w.touchEnd([{x:20,y:20}])
+  tap();assert.equal(moves,2)
+  const collapsed=page.data.menuCollapsed
+  w.selectCharacter();page.toggleMenuCollapse()
+  assert.equal(page.data.menuCollapsed,!collapsed)
+  assert.equal(w.characterSelected,false)
+  tap();assert.equal(moves,2)
+  w.selectPet('cat');page.toggleMenuCollapse()
+  assert.equal(w.selectedPetId,'')
+  assert.equal(page.data.menuCollapsed,collapsed)
+})
+
 test('character taps select exclusively, repeated map taps walk, and panning through page controls preserves the route',async()=>{
   const {page}=pageFixture()
   const w=page.world

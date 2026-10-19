@@ -327,7 +327,7 @@ test('9. pets in yard autonomously eat from food bowl', async () => {
 
   const pet = w.pets[0]
   pet.position = { x: 300, z: 330 }
-  pet.needs = { satiety: 40, hydration: 90 } // Hungry
+  pet.needs = { satiety: 20, hydration: 90 } // Automatic care starts at 20
   pet.lastCareActionAt = 0
   w.elapsed = 100
 
@@ -343,7 +343,7 @@ test('9. pets in yard autonomously eat from food bowl', async () => {
 
   // Reached! Bowl food consumed, satiety restored, autonomousAction set
   assert.equal(w.foodBowls.cat, 40) // 50 - 10
-  assert.equal(pet.needs.satiety, 65) // 40 + 25
+  assert.equal(pet.needs.satiety, 45) // 20 + 25
   assert.ok(pet.autonomousAction)
   assert.equal(pet.autonomousAction.type, 'eat')
   assert.ok(statusMsg.includes('正在碗边香喷喷地进食'))
@@ -374,7 +374,7 @@ test('10. pets in yard autonomously drink from fountain when thirsty', async () 
 
   const pet = w.pets[0]
   pet.position = { x: 320, z: 330 }
-  pet.needs = { satiety: 90, hydration: 50 } // Thirsty
+  pet.needs = { satiety: 90, hydration: 20 } // Automatic care starts at 20
   pet.lastCareActionAt = 0
   w.elapsed = 100
 
@@ -388,7 +388,7 @@ test('10. pets in yard autonomously drink from fountain when thirsty', async () 
   w.update(0.1)
 
   // Reached! hydration restored, autonomousAction set
-  assert.equal(pet.needs.hydration, 80) // 50 + 30
+  assert.equal(pet.needs.hydration, 50) // 20 + 30
   assert.ok(pet.autonomousAction)
   assert.equal(pet.autonomousAction.type, 'drink')
   assert.ok(statusMsg.includes('正在喷泉边饮水'))
