@@ -1,7 +1,8 @@
 const { sampleNeeds, settleNeeds, relieveWaste } = require('./pet-needs')
 const { getExcretionAsset } = require('./excretion-assets')
+const { YARD_SIZE } = require('./yard-layout')
 
-const YARD_DEFAULT_SIZE = 56
+const YARD_DEFAULT_SIZE = YARD_SIZE || 112
 
 function isOutsideYard(pos, plot) {
   if (!plot || !Number.isFinite(plot.x) || !Number.isFinite(plot.z)) return true
@@ -22,6 +23,7 @@ function triggerRelief(pet, type, amount, context, reason) {
   }
   pet.moving = false
   pet.route = []
+  pet.pendingAutonomousCare = null
 
   const actionName = type === 'poop' ? '便便' : '嘘嘘'
   const isRiding = !!pet.ridingVehicleId

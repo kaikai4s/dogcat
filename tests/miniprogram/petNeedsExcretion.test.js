@@ -415,3 +415,162 @@ test('11. drawSingleDecal preserves aspect ratio and uses natural ground anchor'
   assert.equal(dy, 50 - 8 * 0.78)
 })
 
+test('12. empty food bowl does not restore satiety and informs user', async () => {
+  const mine = { id: 'yard_1', x: 300, z: 300, size: 112, mine: true }
+  let statusMsg = ''
+  const page = { setData() {}, fetchRegion: async () => ({ plots: [] }) }
+  const w = new World2D(page, () => {}, {
+    world: { width: 1120, height: 1120 },
+    plot: mine,
+    pets: [{ _id: 'cat_1', name: '花花', species: 'cat' }]
+  })
+  w.buildWorld()
+  w.onStatus = (msg) => { statusMsg = msg }
+  w.foodBowls = { cat: 5, dog: 0 } // Less than 10
+  const pet = w.pets[0]
+  pet.position = { x: 300, z: 330 }
+  pet.needs = { satiety: 30, hydration: 90 }
+  pet.pendingAutonomousCare = 'eat'
+  pet.moving = true
+  pet.route = [{ x: pet.position.x + 0.001, z: pet.position.z }]
+
+  w.update(0.1)
+
+  // Satiety should NOT increase when bowl is empty/insufficient
+  assert.equal(pet.needs.satiety, 30)
+  assert.equal(w.foodBowls.cat, 5)
+  assert.equal(pet.autonomousAction, undefined)
+  assert.ok(statusMsg.includes('口粮吃光啦，等待添粮中'))
+})
+
+test('13. manual moveTo interrupts pending autonomous care and prevents ghost eating', async () => {
+  const mine = { id: 'yard_1', x: 300, z: 300, size: 112, mine: true }
+  let statusMsg = ''
+  const page = { setData() {}, fetchRegion: async () => ({ plots: [] }) }
+  const w = new World2D(page, () => {}, {
+    world: { width: 1120, height: 1120 },
+    plot: mine,
+    pets: [{ _id: 'cat_1', name: '花花', species: 'cat' }]
+  })
+  w.buildWorld()
+  w.onStatus = (msg) => { statusMsg = msg }
+  w.foodBowls = { cat: 50, dog: 50 }
+  const pet = w.pets[0]
+  pet.position = { x: 300, z: 330 }
+  pet.needs = { satiety: 30, hydration: 90 }
+  pet.pendingAutonomousCare = 'eat'
+  w.selectedPetId = pet.id
+
+  // User manually moves pet to field
+  await w.moveTo({ x: 350, z: 350 })
+  assert.equal(pet.pendingAutonomousCare, null)
+
+  // When arrival completes manual move, eating should not trigger
+  pet.moving = true
+  pet.route = [{ x: pet.position.x + 0.001, z: pet.position.z }]
+  w.update(0.1)
+
+  assert.equal(w.foodBowls.cat, 50)
+  assert.equal(pet.needs.satiety, 30)
+  assert.equal(pet.autonomousAction, undefined)
+})
+
+test('14. relief interruption clears pending autonomous care', () => {
+  const pet = {
+    name: '豆豆',
+    position: { x: 300, z: 300 },
+    needs: { pee: 100, poop: 10 },
+    pendingAutonomousCare: 'eat'
+  }
+  const context = { now: 1000000 }
+  triggerRelief(pet, 'pee', 20, context, 'burst')
+  assert.equal(pet.pendingAutonomousCare, null)
+  assert.ok(pet.relieving)
+})
+
+test('15. request drink navigates to fountain and completes drink action', async () => {
+  const mine = { id: 'yard_1', x: 300, z: 300, size: 112, mine: true }
+  let statusMsg = ''
+  const page = { setData() {}, fetchRegion: async () => ({ plots: [] }) }
+  const w = new World2D(page, () => {}, {
+    world: { width: 1120, height: 1120 },
+    plot: mine,
+    pets: [{ _id: 'dog_1', name: '小白', species: 'dog' }]
+  })
+  w.buildWorld()
+  w.onStatus = (msg) => { statusMsg = msg }
+  const pet = w.pets[0]
+  pet.position = { x: 300, z: 320 }
+  pet.needs = { satiety: 90, hydration: 40 }
+  w.selectedPetId = pet.id
+
+  // Command to drink
+  const requested = w.request('drink')
+  assert.equal(requested, true)
+  assert.equal(pet.pendingAutonomousCare, 'drink')
+
+  // Simulate reaching fountain
+  pet.moving = true
+  pet.route = [{ x: pet.position.x + 0.001, z: pet.position.z }]
+  w.update(0.1)
+
+  assert.equal(pet.needs.hydration, 70) // 40 + 30
+  assert.ok(pet.autonomousAction)
+  assert.equal(pet.autonomousAction.type, 'drink')
+  assert.ok(statusMsg.includes('正在喷泉边饮水'))
+})
+
+test('16. pickupPoop is blocked while driving and rolls back decals on record failure', async () => {
+  let statusMsg = ''
+  let shouldFail = false
+  const page = {
+    setData() {},
+    fetchRegion: async () => ({ plots: [] }),
+    recordPoopPickup: async () => {
+      if (shouldFail) throw new Error('network timeout')
+    }
+  }
+  const w = new World2D(page, () => {}, {
+    world: { width: 1120, height: 1120 },
+    scene: { position: { x: 100, z: 100 }, serverTime: Date.now() },
+    pets: []
+  })
+  w.buildWorld()
+  w.character = { position: { x: 100, z: 100 } }
+  await w.prepareCharacterArea()
+  w.onStatus = (msg) => { statusMsg = msg }
+  w.groundDecals = [{ id: 'poop_1', type: 'poop', x: 101, z: 100 }]
+
+  // 1. Blocked when driving
+  w.drivingVehicleId = 'car_1'
+  const drivePickup = await w.pickupPoop('poop_1')
+  assert.equal(drivePickup, false)
+  assert.equal(w.groundDecals.length, 1)
+  assert.ok(statusMsg.includes('请先下车'))
+
+  // 2. Rollback when recordPoopPickup throws
+  w.drivingVehicleId = null
+  shouldFail = true
+  let thrown = false
+  try {
+    await w.pickupPoop('poop_1')
+  } catch (err) {
+    thrown = true
+  }
+  assert.equal(thrown, true)
+  assert.equal(w.groundDecals.length, 1)
+  assert.equal(w.groundDecals[0].id, 'poop_1')
+})
+
+test('17. isOutsideYard uses 112 standard yard size by default', () => {
+  const plotWithoutSize = { x: 100, z: 100 }
+  // At offset 40 (inside 56m half extent of 112m yard)
+  const insidePos = { x: 140, z: 100 }
+  assert.equal(isOutsideYard(insidePos, plotWithoutSize), false)
+
+  // At offset 60 (outside 56m half extent)
+  const outsidePos = { x: 160, z: 100 }
+  assert.equal(isOutsideYard(outsidePos, plotWithoutSize), true)
+})
+
+

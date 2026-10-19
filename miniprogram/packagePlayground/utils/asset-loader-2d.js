@@ -17,7 +17,7 @@ const ASSET_NAMES = [
 ]
 const downloads = new Map()
 function assetId(name) {
-  if(name.startsWith('cloud://'))return name
+  if(name.startsWith('cloud://') || name.startsWith('/'))return name
   return CHARACTER_ASSETS[name] || (PET_ATLASES[name] && PET_ATLASES[name].fileID) || CLOUD_ASSET_BASE + '/' + name + '.png'
 }
 function download(name) {
@@ -48,7 +48,7 @@ function surface(width, height) {
 function prepare(image, name) {
   // Character assets already have alpha and fixed anchors. Background removal
   // would damage white shoes; resizing an atlas would break its frame grid.
-  if (name.startsWith('cloud://') || CHARACTER_ASSETS[name] || PET_ATLASES[name]) return image
+  if (name.startsWith('cloud://') || name.startsWith('/') || CHARACTER_ASSETS[name] || PET_ATLASES[name]) return image
   if (name === 'grass_tile') {
     const tile = surface(256, 256),
       c = tile.getContext('2d')

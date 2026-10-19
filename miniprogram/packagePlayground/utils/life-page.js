@@ -115,8 +115,13 @@ module.exports={
   },
   async pickupPoop(e) {
     const world=this.world
-    if(!world)return
-    await world.pickupPoop()
+    if(!world||this.data.pickupBusy)return
+    this.setData({pickupBusy:true})
+    try {
+      await world.pickupPoop()
+    } finally {
+      this.setData({pickupBusy:false})
+    }
   },
   async recordPoopPickup() {
     const world=this.world

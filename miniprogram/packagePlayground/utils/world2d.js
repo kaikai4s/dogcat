@@ -385,6 +385,10 @@ class World2D {
   }
   async pickupPoop(id) {
     if (!this.character) return false
+    if (this.drivingVehicleId) {
+      this.onStatus('请先下车再拾取便便')
+      return false
+    }
     const p = this.character.position
     const target = id
       ? this.groundDecals.find((d) => d.id === id && Math.hypot(p.x - d.x, p.z - d.z) <= 4.2)
@@ -393,11 +397,18 @@ class World2D {
       this.onStatus('离便便太远了，请走近一些再拾取')
       return false
     }
+    const prevDecals = [...this.groundDecals]
     this.groundDecals = this.groundDecals.filter((d) => d.id !== target.id)
     this.emitNearby()
     this.onStatus('已拾取便便，存入农场仓库化为有机肥！')
-    if (this.page.recordPoopPickup) {
-      await this.page.recordPoopPickup()
+    if (this.page && this.page.recordPoopPickup) {
+      try {
+        await this.page.recordPoopPickup()
+      } catch (err) {
+        this.groundDecals = prevDecals
+        this.emitNearby()
+        throw err
+      }
     }
     return true
   }
@@ -432,6 +443,7 @@ class World2D {
     pet.route = []
     pet.moving = false
     pet.destination = null
+    pet.pendingAutonomousCare = null
     pet.mode = 'idle'
     pet.idleSeconds = 0
     pet.interactingUntil = this.elapsed + 2.5
@@ -974,6 +986,7 @@ class World2D {
         pet.moving = true
         pet.mode = 'roaming'
         pet.roamPlotId = yard ? yard.id : null
+        pet.pendingAutonomousCare = null
         pet.destination = null
         pet.arrivedAt = null
         this.emitPets()
@@ -986,7 +999,7 @@ class World2D {
       this.roamPlanning--
     }
   }
-  async moveTo(target) {
+  async moveTo(target, options = {}) {
     this.follow = false
     const pet = this.selectedPet()
     if (!pet) return this.onStatus(this.scene && this.scene.hasAvatar === false
@@ -1000,6 +1013,7 @@ class World2D {
     )
       return this.onStatus('不能走出场景边界')
     const marker = this.petTarget = { petId: pet.id, ...target, pending: true }
+    pet.pendingAutonomousCare = (options && options.care) || null
     if (this.scene && this.sceneSync) {
       try {
         await this.sceneSync.movePet(pet.id,target)
@@ -1077,9 +1091,10 @@ class World2D {
     if (!pet) return false
     const stations =
       yardLayout(p).stations[pet.species === 'cat' ? 'cat' : 'dog']
-    const target = stations[action === 'drink' ? 'eat' : action]
+    const target = stations[action] || stations[action === 'drink' ? 'eat' : action]
     if (!target) return false
-    this.moveTo(target)
+    const care = (action === 'eat' || action === 'drink') ? action : null
+    this.moveTo(target, { care })
     return true
   }
   overview() {
@@ -2028,6 +2043,7 @@ class World2D {
       if (pet.relieving) {
         pet.moving = false
         pet.route = []
+        pet.pendingAutonomousCare = null
         continue
       }
       if(pet.sharedMotion) {
@@ -2063,19 +2079,24 @@ class World2D {
         if (pet.pendingAutonomousCare) {
           const action = pet.pendingAutonomousCare
           pet.pendingAutonomousCare = null
-          pet.lastCareActionAt = this.elapsed
-          pet.interactingUntil = this.elapsed + 5
-          pet.autonomousAction = { type: action, until: this.elapsed + 5 }
           const species = pet.species === 'cat' ? 'cat' : 'dog'
           if (action === 'eat') {
             if (this.foodBowls && this.foodBowls[species] >= 10) {
               this.foodBowls[species] = Math.max(0, this.foodBowls[species] - 10)
               if (this.ownPlot && this.ownPlot.foodBowls) this.ownPlot.foodBowls[species] = this.foodBowls[species]
+              if (pet.needs) pet.needs.satiety = Math.min(100, (pet.needs.satiety || 0) + 25)
+              pet.lastCareActionAt = this.elapsed
+              pet.interactingUntil = this.elapsed + 5
+              pet.autonomousAction = { type: action, until: this.elapsed + 5 }
+              this.onStatus(`${pet.name} 正在碗边香喷喷地进食~`)
+            } else {
+              this.onStatus(`${pet.name} 跑到碗边发现口粮吃光啦，等待添粮中~`)
             }
-            if (pet.needs) pet.needs.satiety = Math.min(100, (pet.needs.satiety || 0) + 25)
-            this.onStatus(`${pet.name} 正在碗边香喷喷地进食~`)
           } else if (action === 'drink') {
             if (pet.needs) pet.needs.hydration = Math.min(100, (pet.needs.hydration || 0) + 30)
+            pet.lastCareActionAt = this.elapsed
+            pet.interactingUntil = this.elapsed + 5
+            pet.autonomousAction = { type: action, until: this.elapsed + 5 }
             this.onStatus(`${pet.name} 正在喷泉边饮水~`)
           }
         }
