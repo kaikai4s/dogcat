@@ -8,14 +8,14 @@ const EXCRETION_ASSETS = {
     label: '嘘嘘素材',
     fileID: `${CLOUD_ASSET_BASE}/pet_pee.png`,
     localPath: '/packagePlayground/assets/pee.png',
-    size: 20
+    size: 2.4
   },
   poop: {
     key: 'poop',
     label: '便便素材',
     fileID: `${CLOUD_ASSET_BASE}/pet_poop.png`,
     localPath: '/packagePlayground/assets/poop.png',
-    size: 22
+    size: 2.2
   }
 }
 

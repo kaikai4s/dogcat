@@ -321,6 +321,7 @@ test('9. pets in yard autonomously eat from food bowl', async () => {
     pets: [{ _id: 'cat_1', name: '花花', species: 'cat' }]
   })
   w.buildWorld()
+  w.random = () => 0.9
   w.onStatus = (msg) => { statusMsg = msg }
   w.foodBowls = { cat: 50, dog: 50 }
 
@@ -367,6 +368,7 @@ test('10. pets in yard autonomously drink from fountain when thirsty', async () 
     pets: [{ _id: 'dog_1', name: '小白', species: 'dog' }]
   })
   w.buildWorld()
+  w.random = () => 0.9
   w.onStatus = (msg) => { statusMsg = msg }
   w.foodBowls = { cat: 50, dog: 0 } // No food, but thirsty
 
@@ -395,5 +397,21 @@ test('10. pets in yard autonomously drink from fountain when thirsty', async () 
   const host = { elapsed: w.elapsed, serverOffset: 0 }
   const act = petActivity.call(host, pet)
   assert.equal(act, '正在喷泉饮水')
+})
+
+test('11. drawSingleDecal preserves aspect ratio and uses natural ground anchor', () => {
+  const drawOps = []
+  const mockCtx = {
+    drawImage: (...args) => drawOps.push(args)
+  }
+  const customImg = { width: 100, height: 80 }
+  // Test poop decal
+  drawSingleDecal(mockCtx, { type: 'poop' }, { x: 50, y: 50 }, 10, customImg)
+  assert.equal(drawOps.length, 1)
+  const [img, dx, dy, dw, dh] = drawOps[0]
+  assert.equal(dw, 10)
+  assert.equal(dh, 8)
+  assert.equal(dx, 45) // 50 - 10/2
+  assert.equal(dy, 50 - 8 * 0.78)
 })
 

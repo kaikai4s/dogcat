@@ -131,7 +131,7 @@ class World2D {
     for (const type of ['pee', 'poop']) {
       const asset = getExcretionAsset(type)
       if (!asset) continue
-      const target = asset.fileID || asset.localPath
+      const target = asset.localPath || asset.fileID
       if (!target || this.excretionImages[type] || this.excretionLoads.has(type)) continue
       if (now < (this.excretionRetry.get(type) || 0)) continue
 
@@ -140,6 +140,11 @@ class World2D {
           this.excretionImages[type] = img
         }
       }).catch(() => {
+        if (!this.destroyed && asset.fileID && target !== asset.fileID) {
+          return this.loader.loadImage(asset.fileID).then((img) => {
+            if (!this.destroyed && img) this.excretionImages[type] = img
+          })
+        }
         if (!this.destroyed) this.excretionRetry.set(type, Date.now() + 10000)
       }).finally(() => {
         this.excretionLoads.delete(type)
@@ -1966,7 +1971,9 @@ class World2D {
       for (const decal of this.groundDecals) {
         if (decal.x < b.minX || decal.x > b.maxX || decal.z < b.minZ || decal.z > b.maxZ) continue
         const pt = this.project(decal.x, decal.z)
-        const decalSize = 14 * this.scale * this.zoom
+        const config = getExcretionAsset(decal.type)
+        const baseSize = config && config.size ? config.size : (decal.type === 'poop' ? 2.2 : 2.4)
+        const decalSize = baseSize * this.scale * this.zoom
         const img = this.excretionImages && this.excretionImages[decal.type]
         drawSingleDecal(c, decal, pt, decalSize, img)
       }

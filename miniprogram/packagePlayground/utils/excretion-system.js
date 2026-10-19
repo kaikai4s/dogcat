@@ -143,7 +143,18 @@ function updatePetExcretion(pet, dt, context) {
 // Canvas 矢量兜底及贴图绘制辅助函数
 function drawSingleDecal(ctx, decal, pt, size, customImage) {
   if (customImage) {
-    ctx.drawImage(customImage, pt.x - size / 2, pt.y - size / 2, size, size)
+    const imgW = customImage.width || 1
+    const imgH = customImage.height || 1
+    const aspect = imgW / imgH
+    let drawW = size
+    let drawH = size
+    if (aspect >= 1) {
+      drawH = size / aspect
+    } else {
+      drawW = size * aspect
+    }
+    const anchorY = decal.type === 'poop' ? 0.78 : 0.5
+    ctx.drawImage(customImage, pt.x - drawW / 2, pt.y - drawH * anchorY, drawW, drawH)
     return
   }
   ctx.save()
