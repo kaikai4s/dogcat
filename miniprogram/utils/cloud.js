@@ -4,7 +4,7 @@ const { getSavedThemeKey, saveTheme } = require('./theme')
 const { getSavedFontKey, saveFont } = require('./font')
 
 const ENTRY_READ_TIMEOUT_MS = 15000
-const entryReads = new Set(['auth.me', 'auth.checkSession', 'system.getHomePageData', 'system.getSettings', 'order.listServiceOptions', 'pet.listPets', 'client.listAddresses'])
+const entryReads = new Set(['auth.me', 'auth.checkSession', 'system.getHomePageData', 'system.getSettings', 'order.listServiceOptions', 'order.getActiveService', 'pet.listPets', 'client.listAddresses'])
 const pendingEntryReads = new Set()
 const pendingUserRequests = new Map()
 let foregroundListenerInstalled = false
@@ -487,6 +487,19 @@ function getCachedUser() {
   return getAppData().user || null
 }
 
+const identityListeners = new Set()
+
+function subscribeIdentityChange(listener) {
+  identityListeners.add(listener)
+  return () => identityListeners.delete(listener)
+}
+
+function notifyIdentityChange(user) {
+  identityListeners.forEach(listener => {
+    try { listener(user) } catch (error) { console.error('身份状态同步失败', error) }
+  })
+}
+
 function setCachedUser(user) {
   authRevision += 1
   pendingUserRequests.clear()
@@ -502,6 +515,7 @@ function setCachedUser(user) {
     if (themeKey) saveTheme(themeKey)
     if (fontKey) saveFont(fontKey)
   }
+  notifyIdentityChange(user || null)
   return user || null
 }
 
@@ -514,6 +528,7 @@ function logoutCurrentUser() {
   globalData.isGuest = true
   globalData.authChecked = true
   globalData.activeRole = 'client'
+  notifyIdentityChange(null)
 }
 
 function isLoginRequiredError(error) {
@@ -631,6 +646,7 @@ module.exports = {
   getServiceLocation,
   getCachedUser,
   setCachedUser,
+  subscribeIdentityChange,
   logoutCurrentUser,
   getCurrentUser,
   savePendingInvite,

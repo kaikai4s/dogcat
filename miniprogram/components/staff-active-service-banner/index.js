@@ -1,4 +1,4 @@
-const { callFunction } = require('../../utils/cloud')
+const serviceTracking = require('../../utils/serviceTrackingManager')
 
 function isCurrentServicePage(orderId) {
   const pages = getCurrentPages()
@@ -11,12 +11,32 @@ function isCurrentServicePage(orderId) {
 Component({
   data: {
     visible: false,
-    activeService: null
+    activeService: null,
+    trackingDescription: ''
   },
 
   lifetimes: {
     attached() {
+      this._trackingDetached = false
+      this._unsubscribeTracking = serviceTracking.subscribe(state => {
+        if (this._trackingDetached) return
+        const orderId = state.orderId
+        this.setData({
+          activeService: orderId ? { orderId } : null,
+          visible: Boolean(orderId) && !isCurrentServicePage(orderId),
+          trackingDescription: state.backgroundTracking
+            ? '后台定位已开启，可切换页面或返回微信'
+            : state.trackingState === 'starting'
+              ? '正在开启服务定位'
+              : '后台定位未开启，请前往服务页面设置'
+        })
+      })
       this.loadActiveService()
+    },
+    detached() {
+      this._trackingDetached = true
+      if (this._unsubscribeTracking) this._unsubscribeTracking()
+      this._unsubscribeTracking = null
     }
   },
 
@@ -28,15 +48,9 @@ Component({
 
   methods: {
     loadActiveService() {
-      callFunction('order', 'getActiveService')
-        .then((activeService) => {
-          const orderId = activeService && activeService.orderId
-          this.setData({
-            activeService: activeService || null,
-            visible: Boolean(orderId) && !isCurrentServicePage(orderId)
-          })
-        })
-        .catch(() => this.setData({ activeService: null, visible: false }))
+      const state = serviceTracking.getSnapshot()
+      this.setData({ visible: Boolean(state.orderId) && !isCurrentServicePage(state.orderId) })
+      return serviceTracking.reconcileActiveService()
     },
 
     goService() {

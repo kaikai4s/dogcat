@@ -3,6 +3,7 @@ const { envList, getActiveEnvId } = require('./envList')
 const { getSavedThemeKey, applyTheme, getThemeState } = require('./utils/theme')
 const { getSavedFontKey, applyFont, getFontState } = require('./utils/font')
 const { copyText } = require('./utils/clipboard')
+const serviceTracking = require('./utils/serviceTrackingManager')
 require('./utils/format')
 require('./utils/nav')
 require('./utils/offlineQueue')
@@ -118,6 +119,14 @@ App({
       env,
       traceUser: true
     })
+  },
+
+  onShow() {
+    serviceTracking.onAppShow()
+  },
+
+  onHide() {
+    serviceTracking.onAppHide()
   },
 
   globalData: {

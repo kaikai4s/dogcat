@@ -57,7 +57,10 @@
       "Bash(perl -ne 'print if /not ok|failed|error|AssertionError|ERR_ASSERT|Expected|actual|operator|# +at /i')",
       "Bash(perl:*)",
       "WebFetch(domain:github.com)",
-      "Bash(npm:*)"
+      "Bash(npm:*)",
+      "WebFetch(domain:developers.weixin.qq.com)",
+      "Bash(gh api:*)",
+      "Bash(set -o pipefail)"
     ]
   }
 }

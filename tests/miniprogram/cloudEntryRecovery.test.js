@@ -115,6 +115,43 @@ test('leaving a booking attempt suppresses its delayed login error', async () =>
   assert.equal(messages.length, 0)
 })
 
+test('identity subscribers synchronously observe login, permission changes, expiration and logout', async () => {
+  const { api, app, requests } = setup()
+  const observed = []
+  const unsubscribe = api.subscribeIdentityChange(user => observed.push(user))
+  const staff = { _id: 'staff', roles: ['staff'] }
+  api.setCachedUser(staff)
+  assert.equal(observed[0], staff)
+  const revoked = { ...staff, roles: ['client'] }
+  api.setCachedUser(revoked)
+  assert.equal(observed[1], revoked)
+  const reading = api.callFunction('order', 'getActiveService').catch(error => error)
+  await flush()
+  requests[0].resolve({ result: { ok: false, message: '请先登录' } })
+  await reading
+  assert.equal(observed[2], null)
+  assert.equal(app.globalData.user, null)
+  api.setCachedUser(staff)
+  api.logoutCurrentUser()
+  assert.equal(observed[4], null)
+  unsubscribe()
+  api.setCachedUser(staff)
+  assert.equal(observed.length, 5)
+})
+
+test('active-service recovery has a read deadline so a suspended request cannot block later recovery', async () => {
+  const { api, requests, advance } = setup()
+  const waiting = api.callFunction('order', 'getActiveService').catch(error => error)
+  await flush()
+  advance(15000)
+  assert.equal((await waiting).code, 'ENTRY_READ_TIMEOUT')
+  const retry = api.callFunction('order', 'getActiveService')
+  await flush()
+  requests[1].resolve(ok({ orderId: 'active-order' }))
+  assert.equal((await retry).orderId, 'active-order')
+  requests[0].resolve(ok({ orderId: 'stale-order' }))
+})
+
 test('order creation is not subject to read deadlines and is never automatically retried', async () => {
   const { api, requests, advance } = setup()
   const creating = api.callFunction('order', 'createOrder', { clientRequestId: 'same-id' })

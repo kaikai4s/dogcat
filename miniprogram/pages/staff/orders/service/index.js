@@ -1,66 +1,12 @@
 const { sessionChatMethods } = require('../../utils/sessionChat')
-const { callFunction, showError, getServiceLocation, requirePrivacyAuthorize, requestSubscribeTemplates, loadSystemSettings, showLoading, hideLoading } = require('../../../../utils/cloud')
+const { callFunction, showError, requirePrivacyAuthorize, requestSubscribeTemplates, loadSystemSettings, showLoading, hideLoading } = require('../../../../utils/cloud')
+const trackingManager = require('../../../../utils/serviceTrackingManager')
+const { flushServiceOfflineTasks } = require('../../../../utils/serviceOfflineSync')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
-const { createClientRequestId, enqueueOfflineTask, getOfflineTasks, getOfflineTaskCount, removeOfflineTask, failOfflineTask, retryOfflineTasks, withOfflineFlush, isOfflineOwner, getUnownedOfflineTaskCount } = require('../../../../utils/offlineQueue')
+const { createClientRequestId, enqueueOfflineTask, getOfflineTaskCount, retryOfflineTasks } = require('../../../../utils/offlineQueue')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
-const { formatDateTime, toBeijingDate, buildOrderCareCards } = require('../../../../utils/format')
+const { formatDateTime, buildOrderCareCards } = require('../../../../utils/format')
 const { copyText } = require('../../../../utils/clipboard')
-const { MAX_GAP_MS, pointTime, isGoodTrackPoint, isPlausibleStep } = require('../../utils/trackQuality')
-
-// Keep the route dense enough to represent a walking path. The continuous
-// location callback remains the primary source; this timer is a fallback for
-// devices that do not emit a callback while the user is moving slowly.
-const TRACK_INTERVAL_MS = 5 * 1000
-const TRACK_MIN_DISTANCE_M = 3
-const TRACK_MIN_INTERVAL_MS = 2 * 1000
-const TRACK_UPLOAD_BATCH_SIZE = 20
-
-function locationErrorText(error, fallback = '未知错误') {
-  return (error && (error.errMsg || error.message)) || fallback
-}
-
-function hasCoordinate(latitude, longitude) {
-  const lat = Number(latitude)
-  const lng = Number(longitude)
-  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) > 0.000001 && Math.abs(lng) > 0.000001
-}
-
-function calcDistanceM(lat1, lng1, lat2, lng2) {
-  const toRad = (degree) => degree * Math.PI / 180
-  const radius = 6371000
-  const radLat1 = toRad(Number(lat1))
-  const radLat2 = toRad(Number(lat2))
-  const dLat = toRad(Number(lat2) - Number(lat1))
-  const dLng = toRad(Number(lng2) - Number(lng1))
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(radLat1) * Math.cos(radLat2) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2)
-  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
-function toTrackPoint(location) {
-  const latitude = Number(location && location.latitude)
-  const longitude = Number(location && location.longitude)
-  if (!hasCoordinate(latitude, longitude)) return null
-  const rawRecordedAt = location && (location.recordedAt || location.timestamp)
-  const numericRecordedAt = Number(rawRecordedAt)
-  const recordedAt = Number.isFinite(numericRecordedAt) && numericRecordedAt > 0
-    ? (numericRecordedAt < 100000000000 ? numericRecordedAt * 1000 : numericRecordedAt)
-    : (rawRecordedAt || Date.now())
-  return {
-    latitude,
-    longitude,
-    accuracy: Number(location.accuracy || location.horizontalAccuracy || 0),
-    speed: Number(location.speed || 0),
-    // Some WeChat versions expose a capture timestamp on the continuous
-    // callback. Keep it when available so delayed background callbacks retain
-    // their real position time instead of being stamped at upload time.
-    recordedAt,
-    coordinateType: 'gcj02',
-    locationSource: 'gps'
-  }
-}
-
 function toTimeValue(value) {
   if (!value) return 0
   if (value instanceof Date) return value.getTime()
@@ -245,8 +191,11 @@ Page({
   },
 
   onLoad(q) {
+    this._unloaded = false
+    this._pageHidden = false
     this.applyCurrentTheme()
     this.setData({ ...createPageNav(q), id: q.id })
+    this._unsubscribeTracking = trackingManager.subscribe(snapshot => this.applyTrackingSnapshot(snapshot))
     if (q.openChat === '1' || q.openChat === 'true' || q.openChat === true) {
       setTimeout(() => {
         if (typeof this.openSessionChat === 'function') this.openSessionChat({ silent: true })
@@ -274,9 +223,6 @@ Page({
     if (this.data.openingCheckinType) this.setData({ openingCheckinType: '' })
     this.stopSessionChatRefresh()
     this.stopEarlyStartPolling()
-    // Keep a confirmed background session alive. During startup the request
-    // flag prevents a quick app switch from cancelling the permission flow.
-    if (!this.data.backgroundTracking && !this.trackingBackgroundRequested) this.stopAutoTracking()
   },
 
   applyCurrentTheme() {
@@ -285,12 +231,16 @@ Page({
   },
 
   onUnload() {
+    this._unloaded = true
+    this._pageHidden = true
+    this._orderRequestSeq = (this._orderRequestSeq || 0) + 1
+    if (this._unsubscribeTracking) this._unsubscribeTracking()
+    this._unsubscribeTracking = null
     this._chatPageVisible = false
     this._checkinNavigationSeq = (this._checkinNavigationSeq || 0) + 1
     this.stopSessionChatRefresh()
     this.stopEarlyStartPolling()
     this.stopServiceElapsedTimer()
-    this.stopAutoTracking()
   },
 
   startEarlyStartPolling() {
@@ -361,7 +311,8 @@ Page({
     this._reassignModalShown = true
     this.stopServiceElapsedTimer()
     this.stopEarlyStartPolling()
-    this.stopAutoTracking()
+    this._orderRequestSeq = (this._orderRequestSeq || 0) + 1
+    this.stopAutoTracking('reassigned')
     wx.showModal({
       title: '订单已被改派',
       content: notice || '该订单因超时未履约已被平台转加急派单',
@@ -380,12 +331,15 @@ Page({
   },
 
   loadOrder() {
+    if (this._unloaded || this._startingLock || this._finishingLock) return Promise.resolve()
+    const requestSeq = this._orderRequestSeq = (this._orderRequestSeq || 0) + 1
+    const isCurrent = () => !this._unloaded && requestSeq === this._orderRequestSeq
     return Promise.all([
       callFunction('order', 'getOrderDetail', { id: this.data.id, role: 'staff' }),
       callFunction('checkin', 'listOrderCheckins', { orderId: this.data.id }).catch(() => [])
     ])
       .then(([order, checkins]) => {
-        if (!order) return
+        if (!isCurrent() || !order) return
         const app = typeof getApp === 'function' ? getApp() : null
         const currentUser = (app && app.globalData && app.globalData.user) || {}
         const myOpenid = currentUser.openid || ''
@@ -439,15 +393,22 @@ Page({
         }
         if (order && order.status === 'in_service') {
           this.startServiceElapsedTimer(displayOrder)
-          this.flushOfflineTasks()
-          this.startAutoTracking()
+          this.flushOfflineTasks().catch(() => null)
         } else {
           this.stopServiceElapsedTimer()
-          this.stopAutoTracking()
           this.setData({ serviceElapsedText: '00:00:00' })
+        }
+        const active = trackingManager.getSnapshot()
+        // Merely viewing another order must not replace the global service.
+        // For this order, the manager also checks the session before stopping
+        // a server-confirmed inactive session.
+        if (active.orderId === this.data.id || (!active.orderId && order.status === 'in_service')) {
+          trackingManager.ensureTracking({ ...order, _id: this.data.id }, { interactive: false })
+            .then(snapshot => this.applyTrackingSnapshot(snapshot)).catch(() => null)
         }
       })
       .catch((err) => {
+        if (!isCurrent()) return
         const msg = (err && (err.message || err.errMsg)) || ''
         if (/无权访问|不是该订单员工/.test(msg)) {
           this.handleOrderReassigned('该订单因超时未履约已被平台转加急派单')
@@ -540,6 +501,7 @@ Page({
     }
     if (this._startingLock || this.data.starting) return
     this._startingLock = true
+    this._orderRequestSeq = (this._orderRequestSeq || 0) + 1
     this.setData({ starting: true })
     showLoading({ title: '正在准备开始服务...', mask: true })
 
@@ -608,10 +570,35 @@ Page({
             currentLongitude: locationRes.longitude,
             clientRequestId: createClientRequestId('start_service')
           }))
-          .then(() => {
+          .then(async (result) => {
             hideLoading()
-            this._startingLock = false
+            this._orderRequestSeq = (this._orderRequestSeq || 0) + 1
             this._pendingTrackingNotice = true
+            // The idempotent response has no session: read the confirmed one,
+            // never manufacture a timestamp used by the manager's session key.
+            let confirmed = result
+            try {
+              if (!confirmed || !confirmed.currentSessionStartedAt || !confirmed.activeSessionIndex) {
+                confirmed = await callFunction('order', 'getActiveService')
+                if (!confirmed || confirmed.orderId !== this.data.id || !confirmed.currentSessionStartedAt || !confirmed.activeSessionIndex) {
+                  throw new Error('未读取到当前服务场次')
+                }
+              }
+              const order = { ...this.data.order, ...confirmed, _id: this.data.id, status: 'in_service' }
+              if (!this._unloaded) {
+                this.setData({ order: withServiceActionState(order) })
+                this.startServiceElapsedTimer(order)
+              }
+              const snapshot = await trackingManager.ensureTracking(order, { interactive: !this._unloaded && !this._pageHidden })
+              this.applyTrackingSnapshot(snapshot)
+            } catch (error) {
+              if (!this._unloaded) {
+                this.setData({ trackingState: 'error', trackingErrorText: '服务已开始，但场次或轨迹读取失败，请刷新页面后重试。' })
+                this.showPendingTrackingNotice()
+              }
+            }
+            this._startingLock = false
+            if (this._unloaded) return
             wx.showToast({ title: '已开始服务', icon: 'success' })
             this.setData({ starting: false })
             this.loadOrder()
@@ -619,6 +606,7 @@ Page({
           .catch((error) => {
             hideLoading()
             this._startingLock = false
+            if (this._unloaded) return
             this.setData({ starting: false })
             if (error && error.message === '前置条件未满足') return // 已经显示了具体的错误提示
             showError(error)
@@ -627,11 +615,14 @@ Page({
       fail: (err) => {
         hideLoading()
         this._startingLock = false
+        if (this._unloaded) return
         this.setData({ starting: false })
         wx.showModal({
           title: '需要位置权限',
-          content: '开始服务需要验证你是否在服务地址附近，请允许获取位置信息。',
-          showCancel: false
+          content: '开始服务需要验证服务地址附近的位置。请在小程序设置允许位置信息；在手机系统设置开启定位服务，并允许微信访问位置。',
+          confirmText: '去设置',
+          cancelText: '稍后重试',
+          success: result => { if (result.confirm) this.openTrackingSettings() }
         })
       }
     })
@@ -747,153 +738,27 @@ Page({
       })
   },
 
+  applyTrackingSnapshot(snapshot) {
+    if (this._unloaded || !snapshot) return
+    if (snapshot.orderId !== this.data.id) {
+      if (this.data.trackingState !== 'idle') {
+        const interrupted = this.data.order && this.data.order.status === 'in_service' && !this.data.finishing
+        this.setData({ autoTracking: false, backgroundTracking: false,
+          trackingState: interrupted ? 'error' : 'idle',
+          trackingErrorText: interrupted ? '当前服务定位已停止，请刷新订单确认服务状态后重试。' : '',
+          trackingWarningText: '', trackStatusText: '轨迹记录已停止' })
+      }
+      return
+    }
+    const { orderId, ...updates } = snapshot
+    this.setData(updates)
+    this.showPendingTrackingNotice()
+  },
+
   startAutoTracking() {
-    if (this.trackingStarted || !this.data.id) return this.trackingStartPromise
-    if (this.trackingStopPromise) {
-      if (!this.trackingRestartPromise) {
-        const restartPromise = this.trackingStopPromise.then(() => {
-          if (this.trackingRestartPromise === restartPromise) this.trackingRestartPromise = null
-          if (this.data.order && this.data.order.status === 'in_service') return this.startAutoTracking()
-          return null
-        })
-        this.trackingRestartPromise = restartPromise
-      }
-      return this.trackingRestartPromise
-    }
-
-    this.trackingStarted = true
-    this.lastTrackPoint = null
-    this.trackWarmupPoint = null
-    this.trackSegmentId = createClientRequestId('segment')
-    const segmentId = this.trackSegmentId
-    this.lastTrackUploadedAt = 0
-    this.trackingBackgroundRequested = true
-    this.trackUploadQueue = []
-    this.setData({
-      autoTracking: true,
-      backgroundTracking: false,
-      trackingState: 'starting',
-      trackingErrorText: '',
-      trackingWarningText: '',
-      trackStatusText: '正在申请后台轨迹记录'
-    })
-
-    const startPromise = requirePrivacyAuthorize()
-      .then(() => {
-        if (this.trackingStarted && segmentId === this.trackSegmentId) return this.ensureTrackingLocationPermission()
-        return null
-      })
-      .then(() => {
-        if (!this.trackingStarted || segmentId !== this.trackSegmentId) return null
-        return this.startLocationUpdate()
-      })
-      .then((result) => {
-        if (!result || !this.trackingStarted || segmentId !== this.trackSegmentId) return
-        const { mode, backgroundError } = result
-        if (typeof wx.onLocationChange !== 'function') throw new Error('当前微信版本不支持连续定位监听')
-        this.handleLocationChange = (location) => {
-          if (this.trackingStarted && segmentId === this.trackSegmentId) this.recordTrackPoint(location, false)
-        }
-        wx.onLocationChange(this.handleLocationChange)
-        this.uploadAutoTrackPoint()
-        this.trackTimer = setInterval(() => this.uploadAutoTrackPoint(), TRACK_INTERVAL_MS)
-        this.trackingBackgroundRequested = false
-        this.trackingMode = mode
-        if (mode === 'foreground' && this._pageHidden) {
-          this.stopAutoTracking()
-          return
-        }
-        this.setData({
-          backgroundTracking: mode === 'background',
-          trackingState: mode,
-          trackingErrorText: backgroundError || '',
-          trackingWarningText: mode === 'background'
-            ? '可返回微信或使用浮窗；请勿结束小程序、关闭微信或关闭系统定位。'
-            : '当前仅支持前台定位，请勿离开服务页面，否则轨迹记录会暂停。',
-          trackStatusText: mode === 'background' ? '后台采集中，持续记录履约轨迹' : '前台采集中，离开页面将暂停'
-        })
-        this.showPendingTrackingNotice()
-      })
-      .catch((error) => {
-        if (segmentId !== this.trackSegmentId) return
-        this.trackingBackgroundRequested = false
-        this.trackingStarted = false
-        this.trackingMode = ''
-        const nativeStopPromise = this.stopNativeLocationUpdates().finally(() => {
-          if (this.trackingStopPromise === nativeStopPromise) this.trackingStopPromise = null
-        })
-        this.trackingStopPromise = nativeStopPromise
-        const message = locationErrorText(error)
-        const hasPendingNotice = this._pendingTrackingNotice
-        this.setData({
-          autoTracking: false,
-          backgroundTracking: false,
-          trackingState: 'error',
-          trackingErrorText: message,
-          trackingWarningText: '自动轨迹未开启，请保持在服务页面并手动补记当前位置。',
-          trackStatusText: '自动轨迹未开启'
-        })
-        this.showPendingTrackingNotice()
-        if (!hasPendingNotice) showError(error)
-      })
-      .finally(() => {
-        if (this.trackingStartPromise === startPromise) this.trackingStartPromise = null
-      })
-    this.trackingStartPromise = startPromise
-    return startPromise
-  },
-
-  startLocationUpdate() {
-    const startForeground = (backgroundError) => new Promise((resolve, reject) => {
-      if (typeof wx.startLocationUpdate !== 'function') {
-        reject(new Error(`${backgroundError}；当前微信版本不支持前台连续定位`))
-        return
-      }
-      wx.startLocationUpdate({
-        type: 'gcj02',
-        success: () => resolve({ mode: 'foreground', backgroundError }),
-        fail: (foregroundError) => reject(new Error(`${backgroundError}；前台定位开启失败：${this.trackingLocationError(foregroundError)}`))
-      })
-    })
-
-    if (typeof wx.startLocationUpdateBackground !== 'function') {
-      return startForeground('当前微信版本不支持后台持续定位')
-    }
-    return new Promise((resolve, reject) => {
-      wx.startLocationUpdateBackground({
-        type: 'gcj02',
-        success: () => resolve({ mode: 'background', backgroundError: '' }),
-        fail: (backgroundError) => {
-          const message = `后台定位开启失败：${this.trackingLocationError(backgroundError)}`
-          startForeground(message).then(resolve).catch(reject)
-        }
-      })
-    })
-  },
-
-  ensureTrackingLocationPermission() {
-    if (typeof wx.getSetting !== 'function') return Promise.resolve()
-    return new Promise((resolve, reject) => wx.getSetting({
-      success: ({ authSetting = {} }) => {
-        if (authSetting['scope.userLocation'] === true) return resolve()
-        if (authSetting['scope.userLocation'] === false) return reject(new Error('未获得手机端定位授权，请点击“定位授权设置”允许位置信息，并选择允许在使用小程序时和离开后获取位置。'))
-        if (typeof wx.authorize !== 'function') return reject(new Error('当前微信版本无法申请定位授权，请升级微信'))
-        wx.authorize({ scope: 'scope.userLocation', success: resolve, fail: (error) => reject(new Error(this.trackingLocationError(error))) })
-      }, fail: (error) => reject(new Error(`读取手机定位授权失败：${locationErrorText(error)}`))
-    }))
-  },
-
-  trackingLocationError(error) {
-    const raw = locationErrorText(error), hints = []
-    try {
-      if (typeof wx.getSystemSetting === 'function' && wx.getSystemSetting().locationEnabled === false) hints.push('手机系统定位服务已关闭，请在系统设置开启')
-      if (typeof wx.getAppAuthorizeSetting === 'function' && wx.getAppAuthorizeSetting().locationAuthorized === 'denied') hints.push('微信未获系统定位权限，请在手机设置中允许微信访问位置')
-      const device = typeof wx.getDeviceInfo === 'function' ? wx.getDeviceInfo() : null
-      if (device && device.platform === 'devtools') hints.push('请用微信真机验证后台定位')
-    } catch (ignored) {}
-    if (/auth|deny|denied|permission|authorize|权限/i.test(raw)) hints.push('请点击“定位授权设置”，允许在使用小程序时和离开后获取位置；平台接口审批不等于手机授权')
-    if (/not declared|requiredPrivateInfos|config|api scope|无权限|未开通/i.test(raw)) hints.push('请核对当前小程序AppID的接口权限、隐私声明，并重新编译发布含后台定位配置的版本')
-    return [raw, ...hints].join('；')
+    if (this._unloaded || !this.data.id) return Promise.resolve(null)
+    return trackingManager.ensureTracking({ ...this.data.order, _id: this.data.id }, { interactive: true })
+      .then(snapshot => { this.applyTrackingSnapshot(snapshot); return snapshot })
   },
 
   onTrackingSettingsOpened(event) {
@@ -901,101 +766,34 @@ Page({
     return this.retryBackgroundTracking()
   },
 
-  stopNativeLocationUpdates() {
-    const stop = (method) => new Promise((resolve) => {
-      if (typeof wx[method] !== 'function') {
-        resolve()
-        return
-      }
-      let settled = false
-      const finish = () => {
-        if (settled) return
-        settled = true
-        resolve()
-      }
-      try {
-        wx[method]({ success: finish, fail: finish, complete: finish })
-      } catch (error) {
-        finish()
-      }
-    })
-    return Promise.all([stop('stopLocationUpdate'), stop('stopLocationUpdateBackground')])
+  openTrackingSettings() {
+    wx.openSetting({ success: event => this.onTrackingSettingsOpened({ detail: event }), fail: showError })
   },
 
   showPendingTrackingNotice() {
-    if (!this._pendingTrackingNotice || this._pageHidden || this.data.trackingState === 'starting' || this.data.trackingState === 'idle') return
+    if (!this._pendingTrackingNotice || this._unloaded || this._pageHidden || ['starting', 'idle'].includes(this.data.trackingState)) return
     this._pendingTrackingNotice = false
-    let content = '自动轨迹未开启，请检查微信和系统定位权限，并在服务过程中手动补记当前位置。'
-    if (this.data.trackingState === 'background') {
-      content = '后台轨迹已开启。可返回微信或使用浮窗，但请保持微信运行及系统定位开启；结束小程序、关闭微信或系统回收进程后，轨迹可能中断。'
-    } else if (this.data.trackingState === 'foreground') {
-      content = '当前仅支持前台定位，请不要离开服务页面。返回微信、使用浮窗或关闭小程序都会暂停轨迹记录，请点击页面中的“重试后台定位”检查权限。'
-    }
-    wx.showModal({ title: '服务轨迹记录', content, showCancel: false, confirmText: '知道了' })
+    const background = this.data.trackingState === 'background'
+    const content = background
+      ? '后台轨迹已开启，可切换小程序页面、返回微信或桌面。请保持微信运行及系统定位开启；进程被终止后轨迹可能中断。'
+      : (this.data.trackingState === 'foreground'
+        ? '当前仅前台定位，可在小程序内切换页面；返回微信或桌面将暂停。请在定位授权设置允许离开小程序后获取位置，并检查系统定位与微信位置权限。'
+        : '服务已开始，但自动轨迹未开启或场次读取失败。请刷新页面后重试；检查小程序位置授权、手机系统定位服务及微信位置权限，也可手动补记。')
+    wx.showModal({ title: '服务轨迹记录', content, showCancel: !background,
+      confirmText: background ? '知道了' : '去设置', cancelText: '稍后处理',
+      success: result => { if (!background && result.confirm && !this._unloaded && !this._pageHidden) this.openTrackingSettings() } })
   },
 
   retryBackgroundTracking() {
-    if (this.trackingBackgroundRequested || this.data.trackingState === 'starting') return
-    if (!this.data.order || this.data.order.status !== 'in_service') return
-    return this.stopAutoTracking().then(() => {
-      if (this.data.order && this.data.order.status === 'in_service') return this.startAutoTracking()
-      return null
-    })
+    if (this._unloaded || !this.data.order || this.data.order.status !== 'in_service') return Promise.resolve(null)
+    this._pendingTrackingNotice = true
+    const request = trackingManager.getSnapshot().orderId === this.data.id
+      ? trackingManager.retryBackgroundTracking() : this.startAutoTracking()
+    return request.then(snapshot => { this.applyTrackingSnapshot(snapshot); return snapshot })
   },
 
-  stopAutoTracking() {
-    const existingStop = this.trackingStopPromise
-    const pendingStart = this.trackingStartPromise
-    const pendingUpload = this.trackUploadDrainPromise
-    this.trackingStarted = false
-    this.trackingBackgroundRequested = false
-    this.trackingMode = ''
-    this.trackSegmentId = ''
-    this.trackWarmupPoint = null
-    if (this.handleLocationChange && typeof wx.offLocationChange === 'function') {
-      wx.offLocationChange(this.handleLocationChange)
-    }
-    this.handleLocationChange = null
-    if (this.trackTimer) clearInterval(this.trackTimer)
-    this.trackTimer = null
-    this.setData({
-      autoTracking: false,
-      backgroundTracking: false,
-      trackingState: 'idle',
-      trackingErrorText: '',
-      trackingWarningText: '',
-      trackStatusText: '轨迹记录已停止'
-    })
-    if (existingStop) return existingStop
-
-    const stopPromise = Promise.all([
-      Promise.resolve(pendingStart).catch(() => null),
-      Promise.resolve(pendingUpload).catch(() => null)
-    ]).then(() => this.stopNativeLocationUpdates())
-      .finally(() => {
-        if (this.trackingStopPromise === stopPromise) this.trackingStopPromise = null
-      })
-    this.trackingStopPromise = stopPromise
-    return stopPromise
-  },
-
-  shouldUploadTrackPoint(point, force) {
-    if (!isGoodTrackPoint(point) || Math.abs(Date.now() - pointTime(point.recordedAt)) > 15000) return false
-    const previous = this.lastTrackPoint
-    if (!previous || pointTime(point.recordedAt) - pointTime(previous.recordedAt) > MAX_GAP_MS) {
-      const warmup = this.trackWarmupPoint
-      this.trackWarmupPoint = point
-      if (!warmup || pointTime(point.recordedAt) - pointTime(warmup.recordedAt) > 60000 || !isPlausibleStep(warmup, point)) return false
-    } else if (!isPlausibleStep(previous, point)) return false
-    if (force || !previous) return true
-    const elapsed = Date.now() - this.lastTrackUploadedAt
-    if (elapsed < TRACK_MIN_INTERVAL_MS) return false
-    if (elapsed >= TRACK_INTERVAL_MS) return true
-    const distance = calcDistanceM(this.lastTrackPoint.latitude, this.lastTrackPoint.longitude, point.latitude, point.longitude)
-    // Accuracy is an uncertainty radius, not a reason to wait for a whole
-    // accuracy radius of movement. Cap its contribution so slow walking still
-    // produces enough vertices for a faithful polyline.
-    return distance >= Math.max(TRACK_MIN_DISTANCE_M, Math.min(6, (point.accuracy + previous.accuracy) / 3))
+  stopAutoTracking(reason = 'stopped') {
+    return trackingManager.stop({ orderId: this.data.id, reason })
   },
 
   getRealtimeLocation() {
@@ -1010,109 +808,15 @@ Page({
     }))
   },
 
-  uploadAutoTrackPoint() {
-    if (this.autoTrackRequest) return this.autoTrackRequest
-    const segmentId = this.trackSegmentId
-    this.autoTrackRequest = this.getRealtimeLocation()
-      .then((loc) => this.trackingStarted && segmentId === this.trackSegmentId ? this.recordTrackPoint(loc, false) : null)
-      .then((res) => this.flushOfflineTasks().then(() => res))
-      .catch(() => null)
-      .finally(() => { this.autoTrackRequest = null })
-    return this.autoTrackRequest
-  },
-
-  recordTrackPoint(location, force) {
-    if (!this.data.order || this.data.order.status !== 'in_service') return Promise.resolve(null)
-    const point = toTrackPoint(location)
-    if (!point || !this.shouldUploadTrackPoint(point, force)) {
-      this.setData({ trackStatusText: '等待稳定定位，低精度或跳跃位置不会记录' })
-      if (force) wx.showToast({ title: '定位尚不稳定，请到开阔处稍后重试', icon: 'none' })
-      return Promise.resolve(null)
-    }
-    point.segmentId = this.trackSegmentId || createClientRequestId('manual_segment')
-    point.clientPointId = createClientRequestId('track')
-    point.forceUpload = Boolean(force)
-    // Preserve the sampling anchor even when the upload is queued offline.
-    this.lastTrackPoint = point
-    this.lastTrackUploadedAt = Date.now()
-    this.trackWarmupPoint = null
-    if (!Array.isArray(this.trackUploadQueue)) this.trackUploadQueue = []
-    this.trackUploadQueue.push(point)
-    return this.flushTrackUploadQueue()
-  },
-
-  flushTrackUploadQueue() {
-    if (this.trackUploadInFlight) return this.trackUploadDrainPromise || Promise.resolve(null)
-    const queue = this.trackUploadQueue || []
-    if (!queue.length) return Promise.resolve(null)
-    const batch = queue.splice(0, TRACK_UPLOAD_BATCH_SIZE)
-    const batchSegmentId = batch[0] && batch[0].segmentId
-    const forceUpload = batch.some((point) => point.forceUpload)
-    const uploadPoints = batch.map((point) => {
-      const uploadPoint = { ...point }
-      delete uploadPoint.forceUpload
-      return uploadPoint
-    })
-    this.trackUploadInFlight = true
-    let uploadRequest
-    try {
-      // Invoke immediately so a precise point captured in the native callback
-      // is handed to the network layer before another callback can arrive.
-      uploadRequest = callFunction('track', 'batchUploadTrack', { orderId: this.data.id, batchId: createClientRequestId('batch'), points: uploadPoints })
-    } catch (error) {
-      uploadRequest = Promise.reject(error)
-    }
-    this.trackUploadDrainPromise = Promise.resolve(uploadRequest)
-      .then((res = {}) => {
-        const acceptedCount = Number(res.count || 0)
-        const isCurrentSegment = this.trackingStarted && batchSegmentId && batchSegmentId === this.trackSegmentId
-        if (!acceptedCount) {
-          if (res.rejectedCount && isCurrentSegment) {
-            this.lastTrackPoint = null
-            this.trackWarmupPoint = null
-            this.lastTrackUploadedAt = 0
-          }
-          if (isCurrentSegment) {
-            this.setData({ trackStatusText: res.rejectedCount ? '定位质量不足，已忽略本次位置' : '位置已记录' })
-          }
-          return null
-        }
-        const latestPoint = batch[batch.length - 1]
-        const updates = {
-          pointCount: this.data.pointCount + acceptedCount,
-          offlineTaskCount: getOfflineTaskCount(this.data.id)
-        }
-        if (isCurrentSegment) {
-          updates.trackStatusText = this.data.trackingState === 'background' ? '后台轨迹记录中' : '前台轨迹记录中'
-          updates.latestTrackText = `最近记录：${formatDateTime(latestPoint.recordedAt).slice(6)}，精度${Math.round(latestPoint.accuracy || 0)}m`
-        }
-        this.setData(updates)
-        return res
-      })
-      .catch((error) => {
-        if (isNetworkError(error)) {
-          batch.forEach((point) => enqueueOfflineTask('track', {
-            orderId: this.data.id,
-            point: { ...point, isBackfilled: true },
-            clientPointId: point.clientPointId
-          }))
-        }
-        this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id) })
-        if (forceUpload) showError(error)
-        return null
-      })
-      .then(() => {
-        this.trackUploadInFlight = false
-        this.trackUploadDrainPromise = null
-        // Return the next drain promise so callers such as finishService wait
-        // for every location already captured, instead of only the first one.
-        return this.trackUploadQueue && this.trackUploadQueue.length ? this.flushTrackUploadQueue() : null
-      })
-    return this.trackUploadDrainPromise
-  },
-
   flushOfflineTasks() {
-    return withOfflineFlush(this.data.id, ownerId => this.flushOwnedOfflineTasks(ownerId))
+    const id = this.data.id
+    return flushServiceOfflineTasks(id).then(result => {
+      if (this._unloaded || this.data.id !== id) return result
+      const { flushed, ...counts } = result
+      this.setData(counts)
+      if (flushed) return this.loadOrder().then(() => result)
+      return result
+    })
   },
 
   retryOfflineUploads() {
@@ -1123,51 +827,13 @@ Page({
     } })
   },
 
-  flushOwnedOfflineTasks(ownerId) {
-    const allTasks = getOfflineTasks(this.data.id)
-    const tasks = allTasks.filter(task => task.status !== 'blocked' && Number(task.nextAttemptAt || 0) <= Date.now())
-    this.setData({ offlineBlockedCount: allTasks.filter(task => task.status === 'blocked').length,
-      offlineUnownedCount: getUnownedOfflineTaskCount(this.data.id) })
-    if (!tasks.length) {
-      this.setData({ offlineTaskCount: allTasks.length })
-      return Promise.resolve()
-    }
-    let flushed = false
-    return tasks.reduce((chain, task) => chain.then(() => {
-      if (!isOfflineOwner(ownerId)) return null
-      if (task.type === 'track') {
-        return callFunction('track', 'batchUploadTrack', { orderId: task.orderId, batchId: createClientRequestId('backfill'), points: [task.payload.point] })
-          .then(result => {
-            if (!Number(result.count || 0) && !Number(result.duplicateCount || 0)) throw new Error('轨迹未通过校验，请核对记录')
-            flushed = true; removeOfflineTask(task.id, ownerId)
-          })
-      }
-      if (task.type === 'checkin') {
-        return callFunction('checkin', 'createCheckin', { ...task.payload, isBackfilled: true })
-          .then(() => { flushed = true; removeOfflineTask(task.id, ownerId) })
-      }
-      if (task.type === 'key_return') {
-        return callFunction('homeSecurity', 'recordKeyReturned', task.payload)
-          .then(() => { flushed = true; removeOfflineTask(task.id, ownerId) })
-      }
-      throw new Error('待补传数据类型无法识别，请联系管理员')
-    }).catch(error => {
-      failOfflineTask(task, error, isNetworkError(error))
-    }), Promise.resolve()).then(() => {
-      if (!isOfflineOwner(ownerId)) return null
-      this.setData({ offlineTaskCount: getOfflineTaskCount(this.data.id),
-        offlineBlockedCount: getOfflineTasks(this.data.id).filter(task => task.status === 'blocked').length })
-      if (!flushed) return null
-      return callFunction('order', 'getOrderDetail', { id: this.data.id, role: 'staff' })
-        .then((order) => this.setData({ order: withServiceActionState(order), pointCount: Number(order.trackCount || 0), earlyStartRequest: order.earlyStartRequest || null }))
-        .catch(() => null)
-    })
-  },
-
   uploadPoint(options = {}) {
-    if (!this.data.order || !this.data.order.serviceStarted) return Promise.resolve(null)
-    return this.getRealtimeLocation()
-      .then((loc) => this.recordTrackPoint(loc, true))
+    if (this._unloaded || !this.data.order || !this.data.order.serviceStarted) return Promise.resolve(null)
+    if (trackingManager.getSnapshot().orderId !== this.data.id) {
+      if (!options.silent) showError(new Error('当前订单轨迹尚未就绪，请刷新页面后重试'))
+      return Promise.resolve(null)
+    }
+    return trackingManager.captureNow({ force: true })
       .then((res) => {
         if (res && !options.silent) wx.showToast({ title: '已记录位置' })
       })
@@ -1241,10 +907,11 @@ Page({
   _doFinish() {
     if (this._finishingLock || this.data.finishing) return
     this._finishingLock = true
+    this._orderRequestSeq = (this._orderRequestSeq || 0) + 1
+    const order = { ...this.data.order, _id: this.data.id }
     this.setData({ finishing: true })
     showLoading({ title: '正在完成服务...', mask: true })
-    this.uploadAutoTrackPoint()
-      .then(() => this.flushOfflineTasks())
+    return trackingManager.prepareFinish(this.data.id)
       .then(() => {
         if (getOfflineTaskCount(this.data.id) > 0) wx.showToast({ title: '仍有数据待补传，网络恢复后会继续上传', icon: 'none' })
       })
@@ -1252,15 +919,19 @@ Page({
       .then((res) => {
         hideLoading()
         this._finishingLock = false
+        this._orderRequestSeq = (this._orderRequestSeq || 0) + 1
         this.stopServiceElapsedTimer()
-        this.stopAutoTracking()
-        wx.showToast({ title: res && res.status === 'day_completed' ? '服务已完成，密码已销毁' : '服务已完成，密码已销毁', icon: 'success' })
-        this.setData({ finishing: false, unlock: null })
+        this.stopAutoTracking('completed')
+        if (this._unloaded) return
+        wx.showToast({ title: '服务已完成，密码已销毁', icon: 'success' })
+        this.setData({ finishing: false, unlock: null, order: withServiceActionState({ ...order, status: res && res.status || 'completed' }) })
         this.loadOrder()
       })
       .catch((error) => {
         hideLoading()
         this._finishingLock = false
+        trackingManager.resumeAfterFinishFailure(order).then(snapshot => this.applyTrackingSnapshot(snapshot)).catch(() => null)
+        if (this._unloaded) return
         this.setData({ finishing: false })
         showError(error)
       })
