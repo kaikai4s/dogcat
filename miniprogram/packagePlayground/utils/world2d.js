@@ -123,14 +123,26 @@ class World2D {
   }
   loadExcretionAssets() {
     if (!this.loader) return
+    if (!this.excretionLoads) this.excretionLoads = new Map()
+    if (!this.excretionRetry) this.excretionRetry = new Map()
+    const now = Date.now()
     for (const type of ['pee', 'poop']) {
       const asset = getExcretionAsset(type)
       if (!asset) continue
       const target = asset.fileID || asset.localPath
-      if (!target || this.excretionImages[type]) continue
-      this.loader.load(target).then((img) => {
-        if (!this.destroyed && img) this.excretionImages[type] = img
-      }).catch(() => {})
+      if (!target || this.excretionImages[type] || this.excretionLoads.has(type)) continue
+      if (now < (this.excretionRetry.get(type) || 0)) continue
+
+      const p = this.loader.loadImage(target).then((img) => {
+        if (!this.destroyed && img) {
+          this.excretionImages[type] = img
+        }
+      }).catch(() => {
+        if (!this.destroyed) this.excretionRetry.set(type, Date.now() + 10000)
+      }).finally(() => {
+        this.excretionLoads.delete(type)
+      })
+      this.excretionLoads.set(type, p)
     }
   }
   async init() {
@@ -182,6 +194,7 @@ class World2D {
     this.onStatus(this.scene && this.scene.hasAvatar === false
       ? '尚未安置庭院，可直接重新选择小区并建造'
       : '点击宠物选择操作 · 摇杆轻推行走、拉远奔跑')
+    this.loadExcretionAssets()
     this.start()
   }
   async setCharacterType(type) {
