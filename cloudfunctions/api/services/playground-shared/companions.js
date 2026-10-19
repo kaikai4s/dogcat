@@ -117,13 +117,20 @@ module.exports=function createCompanions(context,hooks) {
     if(!resident||resident.communityId!==actor.communityId)return null
     let changed=false
     for(const pet of resident.pets||[]) {
-      if(pet.care && stamp >= pet.care.endsAt && !pet.ridingVehicleId && !pet.following) {
-        settleNeeds(pet, stamp)
-        const current=sampleMotion(pet.motion,stamp).position
-        const start=hooks.safePoint(hooks.navigation(cfg,plots,current,current,'pet',resident.plotId),current)
-        pet.care=null
-        pet.motion=hooks.motion(cfg,plots,start,stamp,pet.id+'roam')
-        changed=true
+      if(pet.care && !pet.ridingVehicleId && !pet.following) {
+        const needs = settleNeeds(pet, stamp)
+        const isSatisfied = (
+          (pet.care.type === 'drink' && needs.hydration >= 98) ||
+          (pet.care.type === 'eat' && needs.satiety >= 98) ||
+          (pet.care.type === 'sleep' && needs.energy >= 98)
+        )
+        if (stamp >= pet.care.endsAt || isSatisfied) {
+          const current=sampleMotion(pet.motion,stamp).position
+          const start=hooks.safePoint(hooks.navigation(cfg,plots,current,current,'pet',resident.plotId),current)
+          pet.care=null
+          pet.motion=hooks.motion(cfg,plots,start,stamp,pet.id+'roam')
+          changed=true
+        }
       }
     }
     const followers=resident.pets.filter((p)=>p.following&&!p.ridingVehicleId)

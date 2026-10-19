@@ -106,3 +106,33 @@ button::after { border: none; }
 .social-actions button:first-child { color: white; background: #6f8d58; }
 .social-section { font-size: 12px; color: #75836b; }
 .social-list { max-height: calc(82vh - 116px); }
+
+/* 顶部功能菜单折叠 */
+.menu-collapse-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 11px; font-weight: 600; color: #355842; background: rgba(247,248,235,.94); border-radius: 14px; box-shadow: 0 4px 12px rgba(48,71,45,.12); position: relative; }
+.menu-badge { width: 7px; height: 7px; border-radius: 50%; background: #e55353; position: absolute; top: 3px; right: 4px; }
+
+/* 底部状态消息容器与历史提示按钮 */
+.status-container { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin-bottom: 6px; }
+.status-container .status { flex: 1; min-height: 28px; line-height: 28px; padding: 0 12px; border-radius: 14px; font-size: 11px; color: #355842; background: rgba(247,248,235,.92); box-shadow: 0 4px 14px rgba(48,71,45,.10); transition: opacity .4s ease; }
+.status-visible { opacity: 1; }
+.status-hidden { opacity: 0; pointer-events: none; }
+.history-msg-btn { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 28px; line-height: 28px; padding: 0 9px; font-size: 11px; border-radius: 14px; color: #355842; background: rgba(247,248,235,.94); box-shadow: 0 4px 12px rgba(48,71,45,.12); position: relative; margin: 0; }
+.history-btn-icon { font-size: 12px; }
+.history-badge { min-width: 15px; height: 15px; line-height: 15px; border-radius: 8px; font-size: 9px; background: #6f8d58; color: #fff; text-align: center; padding: 0 3px; }
+
+/* 历史消息抽屉/弹窗 */
+.history-panel { max-height: 68vh; }
+.history-content { max-height: 48vh; padding: 4px 0; }
+.history-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; margin-bottom: 6px; background: #edf2e4; border-radius: 12px; font-size: 11px; }
+.history-time { flex: none; color: #6f8d58; font-weight: 600; font-size: 10px; margin-top: 1px; }
+.history-body { flex: 1; color: #355842; word-break: break-all; }
+.history-empty { text-align: center; color: #889980; font-size: 12px; padding: 32px 0; }
+.history-footer { display: flex; justify-content: flex-end; padding-top: 10px; }
+.clear-history-btn { font-size: 11px; color: #8a9682; background: #e5ede0; border-radius: 12px; padding: 4px 14px; margin: 0; }
+
+/* 选址地皮尺寸工具栏 */
+.plot-size-bar { display: flex; align-items: center; gap: 4px; padding: 6px 8px; margin-top: 8px; border-radius: 16px; background: rgba(247,248,235,.94); box-shadow: 0 6px 18px rgba(48,71,45,.12); }
+.plot-size-label { font-size: 10px; color: #526e5a; font-weight: 600; flex: none; }
+.plot-size-chip { flex: 1; font-size: 10px; line-height: 28px; padding: 0 4px; border-radius: 12px; color: #385743; background: #e4eddb; margin: 0; white-space: nowrap; }
+.plot-size-chip.active { color: #fff; background: #4f7956; font-weight: 600; }
+

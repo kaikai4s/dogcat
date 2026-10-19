@@ -372,4 +372,178 @@ test('purchasing standalone new plot retains original villa intact and sets cust
     /爱心币不足/
   )
 })
+test('standalone yard plot sizes pricing, decoupling houses into yard, and uniqueness constraints', async () => {
+  const f = fixture()
+  const userA = f.user('a')
+  f.db.state.users.find((u) => u.openid === 'a').playgroundCoins = 500 // 赋予 500 爱心币
 
+  // 1. 验证 config 接口正确输出地皮尺寸规格
+  const worldCfg = await f.plots.config()
+  assert.ok(Array.isArray(worldCfg.plotSizes))
+  assert.equal(worldCfg.plotSizes.length, 4)
+  assert.deepEqual(worldCfg.plotSizes.map((p) => p.size), [36, 48, 64, 80])
+
+  // 2. a 购买最初住宅 (48m，自家庭院)
+  const home = await f.plots.claim('a', userA, {
+    x: 280,
+    z: 280,
+    gateDirection: 'south'
+  })
+  assert.equal(home.buildingType, 'residential')
+
+  // 3. a 购买一块 64m 独立纯地皮 (草坪 + 围栏，消耗 80 爱心币)
+  const yard64 = await f.plots.claim('a', userA, {
+    x: 480,
+    z: 280,
+    size: 64,
+    isNewPlot: true,
+    gateDirection: 'east'
+  })
+  assert.equal(yard64.size, 64)
+  assert.equal(yard64.buildingType, 'yard') // 纯地皮草坪
+  assert.equal(yard64.gateDirection, 'east')
+  assert.equal(f.db.state.users.find((u) => u.openid === 'a').playgroundCoins, 420) // 500 - 80 = 420
+
+  // 4. 用户 b 尝试在 a 的地皮内建造单房建筑 -> 必须被拒绝拦截
+  const userB = f.user('b')
+  await assert.rejects(
+    () =>
+      f.plots.buildInYard('b', userB, {
+        plotId: yard64.id,
+        buildingType: 'pet_hospital',
+        buildingName: '爱心宠医',
+        costCoins: 100
+      }),
+    /您还没有属于自己的地皮，房子的建筑只能在已购买的地皮内部建造/
+  )
+
+  // 5. a 在自己的 64m 地皮内部建造文明督导所 (消耗 100 爱心币)
+  const policeBuilding = await f.plots.buildInYard('a', userA, {
+    plotId: yard64.id,
+    buildingType: 'police_station',
+    buildingName: '文明督导所',
+    costCoins: 100
+  })
+  assert.equal(policeBuilding.buildingType, 'police_station')
+  assert.equal(policeBuilding.size, 64) // 地皮尺寸保留
+  assert.equal(policeBuilding.gateDirection, 'east') // 原栅栏门方向保留
+  assert.equal(f.db.state.users.find((u) => u.openid === 'a').playgroundCoins, 320) // 420 - 100 = 320
+
+  // 6. 重复在同社区建立文明督导所 -> 触发唯一性拦截
+  await assert.rejects(
+    () =>
+      f.plots.buildInYard('a', userA, {
+        plotId: home.id,
+        buildingType: 'police_station',
+        buildingName: '第二督导所'
+      }),
+    /当前社区已设立文明督导所，每个社区有且仅能有一个文明督导所/
+  )
+
+  // 7. a 在自己的家园地皮内部建造安全宣教自省室
+  await f.plots.buildInYard('a', userA, {
+    plotId: home.id,
+    buildingType: 'prison',
+    buildingName: '安全宣教自省室',
+    costCoins: 50
+  })
+  assert.equal(f.db.state.users.find((u) => u.openid === 'a').playgroundCoins, 270) // 320 - 50 = 270
+
+  // 重复在同社区建立自省室 -> 触发唯一性拦截
+  await assert.rejects(
+    () =>
+      f.plots.buildInYard('a', userA, {
+        plotId: yard64.id,
+        buildingType: 'prison',
+        buildingName: '第二自省室'
+      }),
+    /当前社区已设立安全宣教自省室，每个社区有且仅能有一个自省室/
+  )
+})
+
+test('traffic dispute exceeding 3 days automatically revokes police station without refund', async () => {
+  const f = fixture()
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const userA = f.user('a')
+  f.db.state.users.find((u) => u.openid === 'a').playgroundCoins = 300
+
+  // 1. a 建立督导所
+  const a = await f.build('a')
+  const sceneId = a.sceneId
+  await f.plots.buildInYard('a', userA, {
+    plotId: a.plot.id,
+    buildingType: 'police_station',
+    buildingName: '文明督导所',
+    costCoins: 100
+  })
+  assert.equal(f.db.state.users.find((u) => u.openid === 'a').playgroundCoins, 200)
+
+  // 2. 模拟一起交通事故举报（3天未处理，status 为 wanted）
+  const accident = {
+    _id: 'dispute_traffic_timeout',
+    communityId: sceneId,
+    victimType: 'human',
+    victimName: '居民',
+    victimOpenid: 'b',
+    driverOpenid: 'c',
+    driverName: '肇事司机',
+    status: 'wanted',
+    createdAt: f.now() - 73 * 3600 * 1000
+  }
+  await f.db.collection('pet_playground_accidents').add({ data: accident })
+
+  // 3. 督导所超时弹劾检查
+  const listRes = await handler('a', 'listAccidents', { sceneId })
+  assert.equal(listRes.hasPoliceStation, false) // 督导所资格已被撤销收回
+  assert.equal(listRes.accidents[0].status, 'expired')
+
+  // 4. 检查督导所已被拆除恢复为普通住宅，且绝不退还爱心币！
+  const ownPlot = await f.plots.own('a')
+  assert.equal(ownPlot.buildingType, 'residential')
+  assert.equal(ownPlot.buildingName, '住宅洋房')
+  assert.equal(f.db.state.users.find((u) => u.openid === 'a').playgroundCoins, 200) // 100 币未退还！
+})
+
+test('crops are completely free to plant and seeds are free in shop', async () => {
+  const f = fixture()
+  const a = await f.build('a')
+
+  // 1. 免费领取种子铺里的胡萝卜种子（初始资金 120 金币，购买 5 个种子不扣除任何金币）
+  const buyRes = await f.farmAction('a', a, 'buySeeds', { cropId: 'carrot', quantity: 5 })
+  assert.equal(buyRes.coins, 120) // 保持 120 金币，不扣币！
+  assert.equal(buyRes.seeds.carrot, 17) // 初始自带 12 + 领取的 5 = 17
+
+  // 2. 走到田地旁，耕地并免费播种
+  const { farmLayout } = require('../../cloudfunctions/api/services/playground-shared/farm-model')
+  const tile = farmLayout(a.plot)[0]
+  f.place('a', tile)
+  await f.farmAction('a', a, 'till', { bedId: 0 })
+  const plantRes = await f.farmAction('a', a, 'plant', { bedId: 0, cropId: 'carrot' })
+  assert.equal(plantRes.beds[0].cropId, 'carrot')
+  assert.equal(plantRes.beds[0].name, '胡萝卜')
+  assert.equal(plantRes.coins, 110) // 耕地消耗 10 基础体力/金币，而播种胡萝卜免费（0币）！
+  assert.equal(plantRes.seeds.carrot, 16) // 17 - 1 = 16 粒种子
+})
+
+test('pet automatically leaves facility and roams when thirst or hunger is satisfied', async () => {
+  const f = fixture()
+  const a = await f.build('a')
+  const pet = f.pet('a')
+
+  // 设置正在喝水状态，且水分回满至 99%
+  pet.care = {
+    type: 'drink',
+    startsAt: f.now() - 10000,
+    endsAt: f.now() + 60000
+  }
+  pet.hydration = 99
+  pet.satiety = 100
+  pet.energy = 100
+
+  // 触发同步检查
+  await f.sync('a', a)
+
+  // 验证需求满足后 pet.care 自动清除，恢复自由漫游状态
+  const updatedPet = f.pet('a')
+  assert.equal(updatedPet.care, null)
+})

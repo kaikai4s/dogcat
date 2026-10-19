@@ -42,7 +42,16 @@
     </view>
   </view>
   <view class="bottom" style="bottom: {{bottom}}px" wx:if="{{!loading && !error}}">
-    <view class="status">{{connectionMessage || status}}</view>
+    <view class="status-container">
+      <view class="status {{statusMessage || connectionMessage ? 'status-visible' : 'status-hidden'}}">
+        <text>{{statusMessage || connectionMessage}}</text>
+      </view>
+      <button class="history-msg-btn" bindtap="openHistoryModal" aria-label="查看历史消息">
+        <text class="history-btn-icon">📋</text>
+        <text class="history-btn-text">消息</text>
+        <text class="history-badge" wx:if="{{messageHistory.length}}">{{messageHistory.length}}</text>
+      </button>
+    </view>
     <view class="trip-bar" wx:if="{{driving}}"><view><text>{{riding ? '正在搭乘 · 由车主驾驶' : '驾驶中 · 乘客 ' + passengers.length + '/3'}}</text><text class="settings-tip">跟随宠物将与你一起下车</text></view><button wx:if="{{riding}}" data-operation="leave" bindtap="rideOperation" disabled="{{rideBusy}}">一起下车</button><button wx:else data-operation="exit" bindtap="operateVehicle" disabled="{{vehicleOperating}}">一起下车</button></view>
     <view class="unplaced" wx:if="{{!hasAvatar && !placing}}">
       <text>尚未安置庭院，建好后角色和宠物将进入场景</text>
@@ -55,8 +64,8 @@
         <scroll-view scroll-x class="field-seeds" wx:if="{{nearbyFarm.state === 'empty'}}"><view class="field-seed-row"><block wx:for="{{farm.crops}}" wx:key="id"><button wx:if="{{item.unlocked}}" class="{{farmCropId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="selectFarmCrop">{{item.name}} · {{item.seeds}}包</button></block></view></scroll-view>
         <view class="field-actions">
           <button wx:if="{{nearbyFarm.state === 'wild'}}" data-bed="{{nearbyFarm.id}}" data-operation="till" bindtap="farmOperation" disabled="{{farmBusy}}">开垦 · 10爱心币</button>
-          <button wx:if="{{nearbyFarm.state === 'empty'}}" data-bed="{{nearbyFarm.id}}" data-operation="plant" bindtap="farmOperation" disabled="{{farmBusy || !farmSeedAvailable}}">播种</button>
-          <button wx:if="{{nearbyFarm.state === 'empty' && !farmSeedAvailable}}" data-tab="shop" bindtap="openFarm">去种子铺备种</button>
+          <button wx:if="{{nearbyFarm.state === 'empty'}}" data-bed="{{nearbyFarm.id}}" data-operation="plant" bindtap="farmOperation" disabled="{{farmBusy}}">直接播种</button>
+          <button wx:if="{{nearbyFarm.state === 'empty'}}" data-tab="shop" bindtap="openFarm">种子库</button>
           <button wx:if="{{nearbyFarm.state === 'growing' && !nearbyFarm.watered}}" data-bed="{{nearbyFarm.id}}" data-operation="water" bindtap="farmOperation" disabled="{{farmBusy}}">浇水</button>
           <button wx:if="{{nearbyFarm.state === 'growing' && !nearbyFarm.fertilized}}" data-bed="{{nearbyFarm.id}}" data-operation="fertilize" bindtap="farmOperation" disabled="{{farmBusy}}">{{farm && farm.manure > 0 ? '便便加速施肥(余' + farm.manure + ')' : '施肥 · 5爱心币'}}</button>
           <button wx:if="{{nearbyFarm.state === 'ready'}}" data-bed="{{nearbyFarm.id}}" data-operation="harvest" bindtap="farmOperation" disabled="{{farmBusy}}">收获</button>
@@ -86,6 +95,13 @@
     <view class="pet-size-panel" wx:if="{{showPetScale && selectedPetId && !placing}}">
       <view class="pet-size-heading"><text>{{selectedPetName}} · {{petScalePercent}}%</text><text class="pet-size-tip">{{petScaleSaving ? '保存中…' : '松手自动保存'}}</text></view>
       <view class="pet-size-slider"><text>小</text><slider min="50" max="200" step="5" value="{{petScalePercent}}" disabled="{{petScaleSaving}}" activeColor="#6f8d58" block-color="#6f8d58" block-size="20" bindchanging="previewPetScale" bindchange="savePetScale"/><text>大</text><button bindtap="resetPetScale" disabled="{{petScaleSaving}}">恢复默认</button></view>
+    </view>
+    <view class="plot-size-bar" wx:if="{{placing && isPlacingNewPlot}}">
+      <text class="plot-size-label">地皮尺寸：</text>
+      <button class="plot-size-chip {{selectedPlotSize === 36 ? 'active' : ''}}" data-size="36" bindtap="selectPlotSize">36m (30币)</button>
+      <button class="plot-size-chip {{selectedPlotSize === 48 ? 'active' : ''}}" data-size="48" bindtap="selectPlotSize">48m (50币)</button>
+      <button class="plot-size-chip {{selectedPlotSize === 64 ? 'active' : ''}}" data-size="64" bindtap="selectPlotSize">64m (80币)</button>
+      <button class="plot-size-chip {{selectedPlotSize === 80 ? 'active' : ''}}" data-size="80" bindtap="selectPlotSize">80m (120币)</button>
     </view>
     <view class="controls">
       <button wx:if="{{hasAvatar && !placing}}" bindtap="focusCharacter">回到角色</button>
@@ -140,6 +156,28 @@
         <view class="social-section" wx:if="{{socialOutgoing.length}}">我发出的申请</view>
         <view class="social-item" wx:for="{{socialOutgoing}}" wx:key="id"><text>{{item.name}} · {{item.type === 'rideInvite' ? '邀请乘车' : item.type === 'rideRequest' ? '申请乘车' : item.type === 'visit' ? '访问庭院' : '添加好友'}}</text><text class="settings-tip">{{item.status === 'accepted' ? '已同意' : item.status === 'rejected' ? '已拒绝' : item.expiresAt && item.expiresAt < socialClock ? '已过期' : '等待对方处理'}}</text></view>
       </scroll-view>
+    </view>
+  <view class="settings-backdrop" wx:if="{{historyModalOpen}}" catchtap="closeHistoryModal" catchtouchmove="swallowTouch">
+    <view class="settings-panel history-panel" catchtap="swallowTouch">
+      <view class="settings-heading">
+        <view>
+          <text class="panel-main-title">📋 场景提示历史</text>
+          <text class="settings-tip">回看近期系统提示与操作通知</text>
+        </view>
+        <button bindtap="closeHistoryModal">完成</button>
+      </view>
+      <scroll-view scroll-y="true" class="history-content">
+        <block wx:if="{{messageHistory.length}}">
+          <view class="history-row" wx:for="{{messageHistory}}" wx:key="index">
+            <text class="history-time">{{item.time}}</text>
+            <text class="history-body">{{item.text}}</text>
+          </view>
+        </block>
+        <view wx:else class="history-empty">暂无历史提示消息</view>
+      </scroll-view>
+      <view class="history-footer" wx:if="{{messageHistory.length}}">
+        <button class="clear-history-btn" bindtap="clearHistoryMessages">清空历史</button>
+      </view>
     </view>
   </view>
   <include src="./world-life.wxml" />

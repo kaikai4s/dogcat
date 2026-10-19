@@ -62,8 +62,7 @@ module.exports=function createFarm(context,hooks) {
       const plant=(id)=>{
         if(!crop||crop.enabled===false||crop.level>currentLevel)throw new Error('该作物已下架或尚未解锁')
         if(!farm.beds[id]||farm.beds[id].cropId)throw new Error('请选择已开垦的空地')
-        if(!(farm.seeds[crop.id]>0))throw new Error('种子不足，请先购买种子')
-        farm.seeds[crop.id]--
+        if(farm.seeds[crop.id]>0) farm.seeds[crop.id]--
         farm.beds[id]={id,cropId:crop.id,parameters:{minutes:crop.minutes,yield:crop.yield,xp:crop.xp},plantedAt:stamp,readyAt:stamp+crop.minutes*60000,watered:false,fertilized:false}
       }
       const harvest=(id)=>{
@@ -139,9 +138,10 @@ module.exports=function createFarm(context,hooks) {
         message='已将便便存入农场仓库化为有机肥'
       } else if(operation==='buySeeds') {
         if(!crop||crop.enabled===false||crop.level>currentLevel)throw new Error('该种子已下架或尚未解锁')
-        if(!Number.isInteger(quantity)||quantity<1||quantity>99)throw new Error('购买数量须在1～99之间')
-        spend(crop.price*quantity);farm.seeds[crop.id]=(farm.seeds[crop.id]||0)+quantity
-        message='已购买 '+quantity+' 包'+crop.name+'种子'
+        if(!Number.isInteger(quantity)||quantity<1||quantity>99)throw new Error('购买数量或领取数量须在1～99之间')
+        if(crop.price>0) spend(crop.price*quantity)
+        farm.seeds[crop.id]=(farm.seeds[crop.id]||0)+quantity
+        message='已免费领取 '+quantity+' 包'+crop.name+'种子'
       } else if(operation==='sell') {
         if(!crop||!Number.isInteger(quantity)||quantity<1||quantity>(farm.produce[crop.id]||0))throw new Error('仓库里的作物数量不足')
         farm.produce[crop.id]-=quantity;farm.coins+=quantity*crop.sell;message='出售完成，获得 '+quantity*crop.sell+' 爱心币'

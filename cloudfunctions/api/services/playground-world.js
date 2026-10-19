@@ -4,6 +4,12 @@ const nameColors = require('./playground-name-colors')
 const SIZE = 112
 const STEP = 56
 const GAP = 4
+const DEFAULT_PLOT_SIZES = [
+  { size: 36, label: '紧凑庭院 (36×36m)', price: 30 },
+  { size: 48, label: '标准庭院 (48×48m)', price: 50 },
+  { size: 64, label: '宽敞庭院 (64×64m)', price: 80 },
+  { size: 80, label: '豪华庄园 (80×80m)', price: 120 }
+]
 // Temporary relocation switch. Set PLAYGROUND_ALLOW_RELOCATION=false to lock it.
 const allowRelocation = () =>
   process.env.PLAYGROUND_ALLOW_RELOCATION !== 'false'
@@ -119,6 +125,7 @@ module.exports = {
   STEP,
   CHUNK,
   CONFIG_ID,
+  DEFAULT_PLOT_SIZES,
   read,
   dimensions,
   communityId,
@@ -131,10 +138,12 @@ module.exports = {
   create({ db, nowText, nowMs }) {
     const stamp=()=>nowMs?nowMs():Date.now()
     async function config() {
+      const stored = (await read(db, CONFIG_ID)) || {}
       return {
         ...dimensions(),
-        ...((await read(db, CONFIG_ID)) || {}),
+        ...stored,
         plotSize: SIZE,
+        plotSizes: stored.plotSizes || DEFAULT_PLOT_SIZES,
         step: STEP,
         chunkSize: CHUNK,
         canRelocate: allowRelocation()
@@ -217,12 +226,19 @@ module.exports = {
         if (!id) throw new Error('请先设置常住小区，再选择宅基地')
         const existing = await read(tx, ownerId(openid))
         const nameColor = await nameColors.allocate(tx, id, hash(openid), read)
+        const reqSize = Number(data.size)
+        const allowedSizes = [36, 48, 64, 80, 112]
+        const plotSize = allowedSizes.includes(reqSize) ? reqSize : SIZE
+
+        const isNewPlot = data.isNewPlot === true
+
         if (
+          !isNewPlot &&
           existing &&
           existing.communityId === id &&
           existing.x === px &&
           existing.z === pz &&
-          existing.size === SIZE
+          existing.size === plotSize
         ) {
           if (existing.nameColor !== nameColor) {
             const patch = { nameColor, revision: Math.max(stamp(), (existing.revision || 0) + 1) }
@@ -232,18 +248,19 @@ module.exports = {
           }
           return publicPlot({ ...existing, _id: existing.plotId }, openid)
         }
-        const isNewPlot = data.isNewPlot === true || Boolean(data.buildingType && data.buildingType !== 'residential')
         if (!isNewPlot && existing && !allowRelocation())
           throw new Error('你已经选择过房屋位置，不能更改')
         if (!isNewPlot && existing && existing.communityId !== id)
           throw new Error('只能在原小区调整庭院位置')
 
         // 购买新地皮扣减爱心币
-        const costCoins = Math.max(0, Number(data.costCoins) || 0)
+        const sizeOption = DEFAULT_PLOT_SIZES.find((o) => o.size === plotSize)
+        const defaultCost = sizeOption ? sizeOption.price : 50
+        const costCoins = isNewPlot ? (data.costCoins !== undefined ? Math.max(0, Number(data.costCoins)) : defaultCost) : 0
         if (isNewPlot && costCoins > 0) {
           const userCoins = current.playgroundCoins || 0
           if (userCoins < costCoins) {
-            throw new Error(`爱心币不足，规划购买该独立地皮需要 ${costCoins} 爱心币，当前拥有 ${userCoins} 爱心币`)
+            throw new Error(`爱心币不足，购买 ${plotSize}×${plotSize} 米独立地皮需要 ${costCoins} 爱心币，当前拥有 ${userCoins} 爱心币`)
           }
           await tx.collection('users').doc(user._id).update({
             data: {
@@ -256,16 +273,16 @@ module.exports = {
           (await read(tx, CONFIG_ID)) || {}
         const settings = { ...dimensions(), ...stored }
         if (
-          px - SIZE / 2 < 0 ||
-          pz - SIZE / 2 < 0 ||
-          px + SIZE / 2 > settings.width ||
-          pz + SIZE / 2 > settings.height
+          px - plotSize / 2 < 0 ||
+          pz - plotSize / 2 < 0 ||
+          px + plotSize / 2 > settings.width ||
+          pz + plotSize / 2 > settings.height
         )
           throw new Error('宅基地不能超过场景边界')
         const key = plotId(id, x, z)
         // Keep operations on one transaction ordered; viewport reads outside
         // transactions can still run concurrently.
-        const reach = SIZE + GAP
+        const reach = plotSize + GAP
         for (
           let cx = Math.max(0, Math.floor((px - reach) / STEP));
           cx <= Math.floor((px + reach) / STEP);
@@ -279,7 +296,7 @@ module.exports = {
             const other = await read(tx, plotId(id, cx, cz))
             if (!other) continue
             if (!isNewPlot && other.ownerOpenid === openid) continue
-            const separation = (SIZE + (Number(other.size) || 48)) / 2 + GAP
+            const separation = (plotSize + (Number(other.size) || 48)) / 2 + GAP
             if (
               other._id === key ||
               (Math.abs(px - other.x) < separation &&
@@ -288,7 +305,7 @@ module.exports = {
               throw new Error('地皮范围与已有建筑或邻居重叠，请选择更空旷的草坪')
           }
         }
-        const buildingType = data.buildingType || (existing && existing.buildingType) || 'residential'
+        const buildingType = data.buildingType || (isNewPlot ? 'yard' : (existing && existing.buildingType) || 'residential')
         const buildingId = data.buildingId || (existing && existing.buildingId) || ''
         const buildingName = data.buildingName || (existing && existing.buildingName) || ''
         const buildingImage = data.buildingImage || (existing && existing.buildingImage) || ''
@@ -303,7 +320,7 @@ module.exports = {
           cellZ: z,
           x: px,
           z: pz,
-          size: SIZE,
+          size: plotSize,
           gateDirection: ['south', 'north', 'east', 'west'].includes(data.gateDirection) ? data.gateDirection : (existing && existing.gateDirection) || 'south',
           buildingId,
           buildingType,
@@ -315,7 +332,7 @@ module.exports = {
           nameColor,
           revision: Math.max(await require('./playground-live')({db,nowMs}).nextEpoch(id,key,stamp()),(existing&&existing.revision||0)+1),
           instanceId: crypto.randomBytes(12).toString('hex'),
-          name: buildingName ? `${String(user.nickname || '我').slice(0, 20)}的${buildingName}` : `${String(user.nickname || '我').slice(0, 20)}的庭院`,
+          name: buildingName ? `${String(user.nickname || '我').slice(0, 20)}的${buildingName}` : (isNewPlot ? `${String(user.nickname || '我').slice(0, 20)}的专属地皮` : `${String(user.nickname || '我').slice(0, 20)}的庭院`),
           createdAt: existing ? existing.createdAt : nowText(),
           updatedAt: nowText(),
           isNewPlot: Boolean(isNewPlot)
@@ -428,20 +445,69 @@ module.exports = {
       const buildingImage = String(data.buildingImage || '')
       const buildingWidth = Number(data.buildingWidth) || 7
       const buildingDepth = Number(data.buildingDepth) || 7
+      const costCoins = Math.max(0, Number(data.costCoins) || 0)
+      const targetPlotId = String(data.plotId || '')
 
       return transaction(db, async (tx) => {
-        const existing = await ownInTransaction(tx, openid)
-        if (!existing || !existing.plotId) {
-          throw new Error('您还没有安顿庭院，请先安置庭院或在庭院外购买地皮建造')
+        let targetPlot = null
+        if (targetPlotId) {
+          const doc = await read(tx, targetPlotId)
+          if (doc && doc.ownerOpenid === openid) {
+            targetPlot = doc
+          }
+        }
+        if (!targetPlot) {
+          const ownerPlotDoc = await read(tx, ownerId(openid))
+          if (ownerPlotDoc && ownerPlotDoc.plotId) {
+            targetPlot = await read(tx, ownerPlotDoc.plotId)
+          }
+        }
+        if (!targetPlot) {
+          throw new Error('您还没有属于自己的地皮，房子的建筑只能在已购买的地皮内部建造，请先购买地皮')
         }
 
-        const currentPlot = await read(tx, existing.plotId)
-        if (!currentPlot) {
-          throw new Error('未找到庭院地块')
+        const communityId = targetPlot.communityId
+
+        // 唯一性校验：居委会、督导所、自省室每个小区只能创建一个
+        if (buildingType === 'committee') {
+          const existingComm = await tx
+            .collection('pet_playground_plots')
+            .where({ communityId, buildingType: 'committee' })
+            .get()
+          const active = (existingComm.data || []).find((p) => !p.demolished && p._id !== targetPlot._id)
+          if (active) throw new Error('当前社区已设立居委会，每个社区有且仅能有一个居委会')
+        }
+        if (buildingType === 'police_station') {
+          const existingPolice = await tx
+            .collection('pet_playground_plots')
+            .where({ communityId, buildingType: 'police_station' })
+            .get()
+          const active = (existingPolice.data || []).find((p) => !p.demolished && p._id !== targetPlot._id)
+          if (active) throw new Error('当前社区已设立文明督导所，每个社区有且仅能有一个文明督导所')
+        }
+        if (buildingType === 'prison') {
+          const existingPrison = await tx
+            .collection('pet_playground_plots')
+            .where({ communityId, buildingType: 'prison' })
+            .get()
+          const active = (existingPrison.data || []).find((p) => !p.demolished && p._id !== targetPlot._id)
+          if (active) throw new Error('当前社区已设立安全宣教自省室，每个社区有且仅能有一个自省室')
+        }
+
+        // 扣减爱心币购买建筑
+        if (costCoins > 0) {
+          const currentUser = await readDocument(tx, 'users', user._id, '读取用户')
+          const userCoins = (currentUser && currentUser.playgroundCoins) || 0
+          if (userCoins < costCoins) {
+            throw new Error(`爱心币不足，建造该建筑需要 ${costCoins} 爱心币，当前拥有 ${userCoins} 爱心币`)
+          }
+          await tx.collection('users').doc(user._id).update({
+            data: { playgroundCoins: userCoins - costCoins }
+          })
         }
 
         const updated = {
-          ...currentPlot,
+          ...targetPlot,
           buildingId,
           buildingType,
           buildingName,
@@ -453,9 +519,12 @@ module.exports = {
         }
 
         const { _id, ...cleanUpdated } = updated
-        await tx.collection('pet_playground_plots').doc(existing.plotId).set({ data: cleanUpdated })
-        await tx.collection('pet_playground_plots').doc(ownerId(openid)).set({ data: { ...cleanUpdated, kind: 'owner_plot', plotId: existing.plotId } })
-        return publicPlot({ ...cleanUpdated, _id: existing.plotId }, openid)
+        await tx.collection('pet_playground_plots').doc(targetPlot._id).set({ data: cleanUpdated })
+        const mainOwner = await read(tx, ownerId(openid))
+        if (mainOwner && mainOwner.plotId === targetPlot._id) {
+          await tx.collection('pet_playground_plots').doc(ownerId(openid)).set({ data: { ...cleanUpdated, kind: 'owner_plot', plotId: targetPlot._id } })
+        }
+        return publicPlot({ ...cleanUpdated, _id: targetPlot._id }, openid)
       })
     }
     async function ownInTransaction(tx, openid) { return read(tx, ownerId(openid)) }

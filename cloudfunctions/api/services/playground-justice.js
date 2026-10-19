@@ -6,10 +6,66 @@ const JAIL_COLLECTION = 'pet_playground_jail'
 const PLOTS_COLLECTION = 'pet_playground_plots'
 const JAIL_DURATION_MS = 60 * 1000 // 默认拘留 60 秒
 const BAIL_COINS = 100 // 保释金 100 金币
+const THREE_DAYS_MS = 3 * 24 * 3600 * 1000
 
 module.exports = function createJusticeService(context) {
   const { db } = context
   const now = () => (context.nowMs ? context.nowMs() : Date.now())
+
+  // 检查是否有交通事故超过 3 天未处理，若超时则自动收回拆除督导所与自省室，不退还爱心币
+  async function checkJusticeTimeout(communityId, stamp = now()) {
+    const expiredAccidents = await db
+      .collection(ACCIDENTS_COLLECTION)
+      .where({ communityId, status: 'wanted' })
+      .get()
+
+    const timeoutItems = (expiredAccidents.data || []).filter(
+      (a) => a.createdAt && stamp - a.createdAt > THREE_DAYS_MS
+    )
+
+    if (timeoutItems.length === 0) return null
+
+    return transaction(db, async (tx) => {
+      for (const item of timeoutItems) {
+        await tx
+          .collection(ACCIDENTS_COLLECTION)
+          .doc(item._id)
+          .update({ data: { status: 'expired', expiredAt: stamp } })
+      }
+
+      const rows = await tx
+        .collection(PLOTS_COLLECTION)
+        .where({ communityId })
+        .get()
+
+      for (const p of rows.data || []) {
+        if (p.buildingType === 'police_station' || p.buildingType === 'prison') {
+          const restoredName = `${p.ownerName || '邻居'}的庭院`
+          await tx.collection(PLOTS_COLLECTION).doc(p._id).update({
+            data: {
+              buildingType: 'residential',
+              buildingName: '住宅洋房',
+              name: restoredName,
+              justiceRevoked: true,
+              revokedAt: stamp,
+              revokedReason: '存在超过3天未处理的道路安全案件，公共治安设施已被自动收回拆除，爱心币不予退还'
+            }
+          })
+          const mainOwner = await tx.collection(PLOTS_COLLECTION).doc(require('./playground-world').ownerId(p.ownerOpenid)).get().then(r => r.data).catch(() => null)
+          if (mainOwner && mainOwner.plotId === p._id) {
+            await tx.collection(PLOTS_COLLECTION).doc(mainOwner._id).update({
+              data: {
+                buildingType: 'residential',
+                buildingName: '住宅洋房',
+                name: restoredName
+              }
+            })
+          }
+        }
+      }
+      return { revoked: true, timeoutCount: timeoutItems.length }
+    })
+  }
 
   // 发放爱心币津贴
   async function awardCoins(tx, targetOpenid, amount) {
@@ -27,6 +83,7 @@ module.exports = function createJusticeService(context) {
 
   // 获取社区内的执法所与监狱建筑及宠物医院
   async function getJusticeFacilities(communityId) {
+    await checkJusticeTimeout(communityId)
     const rows = await db
       .collection(PLOTS_COLLECTION)
       .where({ communityId })

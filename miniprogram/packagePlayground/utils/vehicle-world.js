@@ -145,8 +145,7 @@ module.exports={
     c.restore()
     if(!overview){
       const isSoiled=!!(car.soiled||(car.stains&&car.stains.length>0))
-      const baseName=car.name ? `${car.name}的小车` : '小车'
-      const label=isSoiled?`${baseName} [肮脏]`:baseName
+      const label=isSoiled?'小车（已脏）':'小车'
       const labelColor=isSoiled?'#ba392a':this.ownerNameColor(car.ownerId,car.nameColor)
       const labelY=point.y-size*.66-8
       this.markerLabel(label,point.x,labelY,selected,labelColor)

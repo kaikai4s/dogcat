@@ -1,12 +1,16 @@
 <view class="world-toolbar" style="top: {{top + 76}}px" wx:if="{{!loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !disputesOpen && !buildOpen}}">
   <view class="world-toolbar-row">
-    <view class="life-tools">
+    <button class="menu-collapse-btn" bindtap="toggleMenuCollapse">
+      <text>{{menuCollapsed ? '☰ 快捷功能 ▾' : '▴ 收起功能'}}</text>
+      <view class="menu-badge" wx:if="{{menuCollapsed && socialRequests.length}}"></view>
+    </button>
+    <view class="life-tools" wx:if="{{!menuCollapsed}}">
       <button bindtap="togglePetRoster">爱宠 {{pets.length}}</button>
       <button wx:if="{{hasPlot}}" bindtap="openFarm">我的菜园</button>
       <button bindtap="openBuild">工坊建造</button>
       <button bindtap="openDisputes">社区纠纷</button>
     </view>
-    <button class="request-badge" wx:if="{{socialRequests.length}}" bindtap="openSocial">待处理申请 {{socialRequests.length}}</button>
+    <button class="request-badge" wx:if="{{!menuCollapsed && socialRequests.length}}" bindtap="openSocial">待处理申请 {{socialRequests.length}}</button>
   </view>
   <view class="pet-alert-banner" wx:if="{{petAlerts.length}}" bindtap="viewPetAlert"><text>♡ {{petAlerts[0].name}}：{{petAlerts[0].message}}</text><text wx:if="{{petAlerts.length > 1}}">还有 {{petAlerts.length - 1}} 项需要照料 ›</text></view>
   <view class="pet-roster" wx:if="{{petRosterOpen}}">
@@ -35,7 +39,7 @@
         </view>
         <text class="life-muted">开垦、播种、浇水、施肥与收获，都需要角色走到对应土地旁，在场景中操作。点击地图上的土地也能自动走过去。</text>
       </block>
-      <block wx:elif="{{farmTab === 'shop'}}"><view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}}种子</text><text class="life-muted">{{item.minutes}}分钟成熟 · 基础收成{{item.yield}}份</text><text class="life-muted">{{item.enabled === false ? '已下架' : item.unlocked ? '已解锁' : '第 ' + item.level + ' 阶段解锁'}} · 库存 {{item.seeds}}包</text></view><button data-operation="buySeeds" data-crop="{{item.id}}" data-quantity="5" bindtap="farmOperation" disabled="{{farmBusy || !item.unlocked}}">{{item.price * 5}}爱心币 / 5包</button></view></block>
+      <block wx:elif="{{farmTab === 'shop'}}"><view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}}种子</text><text class="life-muted">{{item.minutes}}分钟成熟 · 基础收成{{item.yield}}份</text><text class="life-muted">{{item.enabled === false ? '已下架' : item.unlocked ? '已解锁' : '第 ' + item.level + ' 阶段解锁'}} · 库存 {{item.seeds}}包</text></view><button data-operation="buySeeds" data-crop="{{item.id}}" data-quantity="5" bindtap="farmOperation" disabled="{{farmBusy || !item.unlocked}}">{{item.price ? item.price * 5 + '爱心币' : '免费领取'}} / 5包</button></view></block>
       <block wx:else>
         <view class="farm-product">
           <view><text>便便有机肥 × {{farm.manure || 0}}</text><text class="life-muted">拾取宠物便便获得 · 施肥享受1小时双倍速加速</text></view>

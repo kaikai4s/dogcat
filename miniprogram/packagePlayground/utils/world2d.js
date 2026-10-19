@@ -1198,6 +1198,13 @@ class World2D {
     this.onStatus(isNewPlot ? '轻触空旷草坪，规划购买独立新地皮（原别墅保持不变）' : '点击位置作为别墅中心，预览围栏范围后确认')
     this.page.setData({ placing: true, canConfirm: false })
   }
+  setPlotSize(size) {
+    const s = Number(size) || 48
+    this.plotSize = s
+    if (this.candidate) {
+      this.candidate.size = s
+    }
+  }
   setGateDirection(dir) {
     this.candidateGateDirection = ['south', 'north', 'east', 'west'].includes(dir) ? dir : 'south'
     if (this.candidate) {
@@ -1215,9 +1222,34 @@ class World2D {
     this.candidate = null
     this.page.setData({ canConfirm: false })
     const token = (this.pickToken = (this.pickToken || 0) + 1)
+
+    // 房子的建筑只能选在已买的地皮里面建造！
+    if (this.page.pendingBuilding) {
+      const insidePlot = this.plots().find((p) => {
+        if (!p.mine && (!this.ownPlot || p.id !== this.ownPlot.id)) return false
+        const half = (p.size || 48) / 2
+        return Math.abs(point.x - p.x) <= half && Math.abs(point.z - p.z) <= half
+      })
+      if (!insidePlot) {
+        return this.onStatus('房子的建筑只能选在您已购买的地皮内部建造，请点击自家庭院草坪！')
+      }
+      this.page.targetPlotForBuilding = insidePlot
+      this.candidate = {
+        cellX: insidePlot.cellX,
+        cellZ: insidePlot.cellZ,
+        x: insidePlot.x,
+        z: insidePlot.z,
+        size: insidePlot.size || 48,
+        gateDirection: insidePlot.gateDirection || 'south'
+      }
+      this.page.setData({ canConfirm: true })
+      return this.onStatus(`已选定在【${insidePlot.name || '我的庭院'}】落座【${this.page.pendingBuilding.name}】，点击确认建造`)
+    }
+
     const x = Math.floor(point.x / STEP),
       z = Math.floor(point.z / STEP)
-    const half = this.plotSize / 2
+    const currentSize = Number(this.plotSize) || 48
+    const half = currentSize / 2
     if (
       point.x - half < 0 ||
       point.z - half < 0 ||
@@ -1226,7 +1258,7 @@ class World2D {
     )
       return this.onStatus('请在场景范围内选择')
     try {
-      const radius = this.plotSize + 4
+      const radius = currentSize + 4
       await this.loadArea({
         minX: Math.max(0, point.x - radius),
         maxX: Math.min(this.config.width, point.x + radius),
@@ -1238,7 +1270,7 @@ class World2D {
       if (
         this.plots().some((p) => {
           if (!this.isPlacingNewPlot && (p.mine || (this.ownPlot && p.id === this.ownPlot.id))) return false
-          const separation = (this.plotSize + (p.size || 48)) / 2 + 4
+          const separation = (currentSize + (p.size || 48)) / 2 + 4
           return (
             (p.cellX === x && p.cellZ === z) ||
             (Math.abs(point.x - p.x) < separation &&
@@ -1252,11 +1284,11 @@ class World2D {
         cellZ: z,
         x: point.x,
         z: point.z,
-        size: this.plotSize,
+        size: currentSize,
         gateDirection: this.candidateGateDirection || 'south'
       }
       this.page.setData({ canConfirm: true })
-      this.onStatus(this.isPlacingNewPlot ? '已选定新地皮！绿色边框为木栅栏范围，可切换大门朝向' : '中心标记为别墅落点 · 绿色边框为实际围栏范围')
+      this.onStatus(this.isPlacingNewPlot ? `已选定${currentSize}×${currentSize}米新地皮！绿色边框为栅栏范围，可切换大门朝向` : '中心标记为别墅落点 · 绿色边框为实际围栏范围')
     } catch (e) {
       this.onStatus('位置读取失败，请重新选择')
     }
@@ -1602,6 +1634,7 @@ class World2D {
   }
   drawOfflineBadge(x, y) {
     const c = this.ctx
+    if (!c || typeof c.beginPath !== 'function') return
     c.save()
     c.fillStyle = '#8e9297'
     c.beginPath()
@@ -2378,15 +2411,21 @@ class World2D {
         continue
       }
       if(pet.sharedMotion) {
-        const careExpired = pet.care && (Date.now() + this.serverOffset >= pet.care.endsAt)
+        const needsSatisfied = pet.care && (
+          (pet.care.type === 'drink' && pet.needs && pet.needs.hydration >= 98) ||
+          (pet.care.type === 'eat' && pet.needs && pet.needs.satiety >= 98) ||
+          (pet.care.type === 'sleep' && pet.needs && pet.needs.energy >= 98)
+        )
+        const careExpired = (pet.care && (Date.now() + this.serverOffset >= pet.care.endsAt)) || needsSatisfied
         if (careExpired) pet.care = null
         const isSingleStation = pet.sharedMotion && pet.sharedMotion.patrol && pet.sharedMotion.patrol.length === 1
         if (pet.mine !== false && !pet.following && !pet.ridingVehicleId && careExpired && isSingleStation) {
           pet.sharedMotion = null
-          pet.mode = 'idle'
+          pet.mode = 'roaming'
           pet.idleSeconds = ROAM_WAIT
           pet.route = []
           pet.moving = false
+          this.planRoam(pet)
         } else {
           const state=this.sharedPetSample(pet,dt)
           pet.position=state.position;pet.moving=state.moving;pet.walkDistance=state.distance+(pet.motionDistanceOffset||0);pet.walkFacingLeft=state.facingLeft
@@ -2428,8 +2467,8 @@ class World2D {
               if (this.ownPlot && this.ownPlot.foodBowls) this.ownPlot.foodBowls[species] = this.foodBowls[species]
               if (pet.needs) pet.needs.satiety = Math.min(100, (pet.needs.satiety || 0) + 25)
               pet.lastCareActionAt = this.elapsed
-              pet.interactingUntil = this.elapsed + 5
-              pet.autonomousAction = { type: action, until: this.elapsed + 5 }
+              pet.interactingUntil = this.elapsed + 4
+              pet.autonomousAction = { type: action, until: this.elapsed + 4 }
               this.onStatus(`${pet.name} 正在碗边香喷喷地进食~`)
             } else {
               this.onStatus(`${pet.name} 跑到碗边发现口粮吃光啦，等待添粮中~`)
@@ -2437,9 +2476,15 @@ class World2D {
           } else if (action === 'drink') {
             if (pet.needs) pet.needs.hydration = Math.min(100, (pet.needs.hydration || 0) + 30)
             pet.lastCareActionAt = this.elapsed
-            pet.interactingUntil = this.elapsed + 5
-            pet.autonomousAction = { type: action, until: this.elapsed + 5 }
+            pet.interactingUntil = this.elapsed + 4
+            pet.autonomousAction = { type: action, until: this.elapsed + 4 }
             this.onStatus(`${pet.name} 正在喷泉边饮水~`)
+          } else if (action === 'sleep') {
+            if (pet.needs) pet.needs.energy = Math.min(100, (pet.needs.energy || 0) + 30)
+            pet.lastCareActionAt = this.elapsed
+            pet.interactingUntil = this.elapsed + 4
+            pet.autonomousAction = { type: action, until: this.elapsed + 4 }
+            this.onStatus(`${pet.name} 正在窝里舒服地打盹休息~`)
           }
         }
         this.emitPets()
@@ -2447,6 +2492,42 @@ class World2D {
           this.onStatus('已到达 · 休息 3 秒后在当前区域自由活动')
       }
       if (!wasMoving && !pet.planning && !(pet.interactingUntil > this.elapsed)) {
+        if (pet.autonomousAction && pet.autonomousAction.until <= this.elapsed) {
+          const actionName = pet.autonomousAction.type === 'drink' ? '喝饱水啦' : pet.autonomousAction.type === 'eat' ? '吃饱饭啦' : '休息好啦'
+          pet.autonomousAction = null
+          this.onStatus(`${pet.name} ${actionName}，开心地去草坪自由玩耍啦~`)
+          pet.idleSeconds = ROAM_WAIT
+          this.planRoam(pet)
+        }
+
+        // 自家庭院自主照料：在自家庭院内，当数值过低且没有跟随玩家/乘车时，自主去喝水、进食或休息
+        const inOwnPlot = this.ownPlot && Math.abs(pet.position.x - this.ownPlot.x) <= (this.ownPlot.size || 48) / 2 && Math.abs(pet.position.z - this.ownPlot.z) <= (this.ownPlot.size || 48) / 2
+        const canAutoCare = pet.mine !== false && inOwnPlot && !pet.following && !pet.ridingVehicleId && (!pet.lastAutoCareAt || this.elapsed - pet.lastAutoCareAt > 20)
+
+        if (canAutoCare && pet.needs) {
+          const species = pet.species === 'cat' ? 'cat' : 'dog'
+          const stations = yardLayout(this.ownPlot).stations[species] || {}
+          if (pet.needs.hydration < 35 && stations.drink) {
+            pet.lastAutoCareAt = this.elapsed
+            pet.pendingAutonomousCare = 'drink'
+            this.moveTo(stations.drink, { care: 'drink' })
+            this.onStatus(`${pet.name} 觉得口渴了，自己跑去喷泉喝水~`)
+            continue
+          } else if (pet.needs.satiety < 35 && stations.eat && this.foodBowls && this.foodBowls[species] >= 10) {
+            pet.lastAutoCareAt = this.elapsed
+            pet.pendingAutonomousCare = 'eat'
+            this.moveTo(stations.eat, { care: 'eat' })
+            this.onStatus(`${pet.name} 肚子饿了，自己跑去碗边吃粮食~`)
+            continue
+          } else if (pet.needs.energy < 30 && stations.sleep) {
+            pet.lastAutoCareAt = this.elapsed
+            pet.pendingAutonomousCare = 'sleep'
+            this.moveTo(stations.sleep, { care: 'sleep' })
+            this.onStatus(`${pet.name} 玩累了，自己回窝休息~`)
+            continue
+          }
+        }
+
         pet.idleSeconds = (pet.idleSeconds || 0) + dt
         if (pet.idleSeconds >= ROAM_WAIT && !this.roamPlanning && !this.placing)
           this.planRoam(pet)

@@ -72,6 +72,11 @@ Page({
     isPlacingNewPlot: false,
     gateDirection: 'south',
     gateDirectionText: '南门',
+    selectedPlotSize: 48,
+    menuCollapsed: true,
+    statusMessage: '',
+    messageHistory: [],
+    historyModalOpen: false,
     canConfirm: false,
     claiming: false,
     worldSize: ''
@@ -209,7 +214,7 @@ Page({
               this,
               (status) => {
                 if (version === this.version && this.visible)
-                  this.setData({ status })
+                  this.pushStatusMessage(status)
               },
               overview,
               (pets) => {
@@ -296,20 +301,62 @@ Page({
     this.joystickEnd()
     if (this.world) this.world.fullOverview()
   },
+  pushStatusMessage(msg) {
+    if (!msg) return
+    const text = String(msg).trim()
+    if (!text) return
+    const d = new Date()
+    const time = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+    const history = (this.data.messageHistory || []).slice(-49)
+    history.push({ time, text })
+    this.setData({
+      status: text,
+      statusMessage: text,
+      messageHistory: history
+    })
+    if (this.statusFadeTimer) clearTimeout(this.statusFadeTimer)
+    this.statusFadeTimer = setTimeout(() => {
+      this.setData({ statusMessage: '' })
+    }, 5000)
+  },
+  toggleMenuCollapse() {
+    this.setData({ menuCollapsed: !this.data.menuCollapsed })
+  },
+  openHistoryModal() {
+    this.setData({ historyModalOpen: true })
+  },
+  closeHistoryModal() {
+    this.setData({ historyModalOpen: false })
+  },
+  clearHistoryMessages() {
+    this.setData({ messageHistory: [] })
+    wx.showToast({ title: '历史消息已清空', icon: 'none' })
+  },
+  selectPlotSize(e) {
+    const size = Number(e.currentTarget.dataset.size) || 48
+    this.setData({ selectedPlotSize: size })
+    if (this.world) {
+      this.world.setPlotSize(size)
+    }
+    const priceMap = { 36: 30, 48: 50, 64: 80, 80: 120 }
+    this.pushStatusMessage(`已选择 ${size}×${size} 米地皮（${priceMap[size] || 50} 爱心币），指示框已同步尺寸`)
+  },
   choosePlot(isNewPlot = false) {
     this.joystickEnd()
     if(this.data.hasHomeElsewhere) return
     if(!this.data.hasCommunity) return this.chooseCommunityAndBuild()
     if(this.data.visiting) return this.settleCommunity(true)
     const dir = this.data.gateDirection || 'south'
+    const size = this.data.selectedPlotSize || 48
     this.setData({
       isPlacingNewPlot: Boolean(isNewPlot),
       gateDirection: dir,
       gateDirectionText: dir === 'north' ? '北门' : dir === 'east' ? '东门' : dir === 'west' ? '西门' : '南门'
     })
     if (this.world) {
+      this.world.setPlotSize(size)
       this.world.setGateDirection(dir)
-      this.world.beginPlacement(Boolean(isNewPlot))
+      this.world.beginPlacement(Boolean(isNewPlot), size)
     }
   },
   async buyNewPlotAction() {
@@ -325,7 +372,7 @@ Page({
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
         title: '购买独立新地皮',
-        content: '直接购买一块全新的独立地皮并用木栅栏圈起来，原别墅完好保留在原地不移动。地皮规划需要 50 爱心币，是否立即选址？',
+        content: '直接购买一块全新的独立地皮（草坪及四周木栅栏），原别墅完好保留在原地不移动。可选 36m~80m 多种尺寸，是否立即前往选址？',
         confirmText: '去选址',
         cancelText: '取消',
         success: (r) => resolve(r.confirm),
@@ -352,10 +399,11 @@ Page({
     if (this.world) {
       this.world.setGateDirection(next.key)
     }
-    wx.showToast({ title: `栅栏门口已设为：${next.text}`, icon: 'none' })
+    this.pushStatusMessage(`栅栏门口已设为：${next.text}`)
   },
   cancelPlot() {
     this.pendingBuilding = null
+    this.targetPlotForBuilding = null
     this.setData({ isPlacingNewPlot: false })
     if (this.world) this.world.cancelPlacement()
   },
@@ -364,17 +412,73 @@ Page({
     if (!world || !world.candidate || this.data.claiming) return
     const candidate = { ...world.candidate }
     const building = this.pendingBuilding || null
-    const isNewPlot = Boolean(this.data.isPlacingNewPlot || (building && building.type !== 'residential'))
+    const isNewPlot = Boolean(this.data.isPlacingNewPlot)
     const gateDirMap = { south: '南门', north: '北门', east: '东门', west: '西门' }
     const currentGateDir = candidate.gateDirection || this.data.gateDirection || 'south'
     const gateText = gateDirMap[currentGateDir] || '南门'
 
+    const priceMap = { 36: 30, 48: 50, 64: 80, 80: 120 }
+    const plotSize = Number(candidate.size) || this.data.selectedPlotSize || 48
+    const plotCost = priceMap[plotSize] || 50
+
+    // 情况 A：在已购买的地皮内部建造房子建筑
+    if (building) {
+      const targetPlot = this.targetPlotForBuilding || world.ownPlot
+      if (!targetPlot) {
+        wx.showModal({ title: '提示', content: '房子的建筑只能选在您已购买的地皮内部建造，请点击自家庭院草坪！', showCancel: false })
+        return
+      }
+      const confirmed = await new Promise((resolve) =>
+        wx.showModal({
+          title: `确认建造【${building.name}】`,
+          content: `将在您的【${targetPlot.name || '自家庭院'}】内部建造该建筑房屋（不含额外地皮）。\n消耗：${building.costCoins || 0} 爱心币。`,
+          confirmText: '确认建造',
+          success: (r) => resolve(r.confirm),
+          fail: () => resolve(false)
+        })
+      )
+      if (!confirmed || this.world !== world || world.destroyed) return
+
+      this.setData({ claiming: true })
+      try {
+        const result = await callFunction('playground', 'buildInYard', {
+          plotId: targetPlot.id || targetPlot._id,
+          buildingId: building.id || '',
+          buildingType: building.type || 'residential',
+          buildingName: building.name || '',
+          buildingImage: building.image || '',
+          buildingWidth: building.width || 7,
+          buildingDepth: building.depth || 7,
+          costCoins: building.costCoins || 0,
+          sceneId: world.scene && world.scene.sceneId
+        })
+        this.pendingBuilding = null
+        this.targetPlotForBuilding = null
+        this.setData({ isPlacingNewPlot: false })
+        if (this.world === world && !world.destroyed) {
+          if (world.scene) this.initialize()
+          else {
+            world.cancelPlacement()
+            this.pushStatusMessage(`【${building.name}】已成功落座于地皮内！`)
+          }
+        }
+        wx.showToast({ title: '建筑落座成功！', icon: 'success' })
+      } catch (e) {
+        const message = e.message || e.errMsg || '建造失败'
+        wx.showModal({ title: '建造失败', content: message, showCancel: false })
+      } finally {
+        if (this.world === world) this.setData({ claiming: false })
+      }
+      return
+    }
+
+    // 情况 B：购买纯地皮（草坪 + 四周木栅栏）
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
-        title: isNewPlot ? (building ? `确认建造【${building.name}】` : '确认购买独立新地皮') : this.data.hasPlot ? '调整庭院位置' : '安置庭院',
+        title: isNewPlot ? '确认购买独立新地皮' : this.data.hasPlot ? '调整庭院位置' : '安置庭院',
         content: isNewPlot
-          ? `地皮尺寸 ${candidate.size}×${candidate.size} 米，四周用木栅栏围起，栅栏大门朝向【${gateText}】。\n原别墅完整保留在原地不移动。${building ? `\n建造费用：${building.costCoins || 0} 爱心币。` : '\n购买费用：50 爱心币。'}`
-          : `建筑将坐落于中心位置，地皮范围 ${candidate.size}×${candidate.size} 米并由栅栏围住，栅栏门口朝向【${gateText}】。${this.data.hasPlot ? '保存后原位置会腾空。' : ''}${this.data.canRelocate ? '目前临时开放重新选址。' : '确认后不能搬迁。'}`,
+          ? `地皮尺寸 ${plotSize}×${plotSize} 米，四周用木栅栏围起，栅栏大门朝向【${gateText}】。\n购买费用：${plotCost} 爱心币。\n原别墅完整保留在原地不移动。`
+          : `地皮范围 ${plotSize}×${plotSize} 米并由栅栏围住，栅栏门口朝向【${gateText}】。${this.data.hasPlot ? '保存后原位置会腾空。' : ''}${this.data.canRelocate ? '目前临时开放重新选址。' : '确认后不能搬迁。'}`,
         confirmText: isNewPlot ? '确认购买' : '确认位置',
         success: (r) => resolve(r.confirm),
         fail: () => resolve(false)
@@ -388,18 +492,16 @@ Page({
         cellZ: candidate.cellZ,
         x: candidate.x,
         z: candidate.z,
+        size: plotSize,
         gateDirection: currentGateDir,
         isNewPlot: isNewPlot,
-        costCoins: isNewPlot ? (building ? (building.costCoins || 0) : 50) : 0,
-        buildingId: building ? building.id : '',
-        buildingType: building ? building.type : (isNewPlot ? 'garden' : 'residential'),
-        buildingName: building ? building.name : (isNewPlot ? '独立花园' : ''),
-        buildingImage: building ? building.image : '',
-        buildingWidth: building ? building.width : 7,
-        buildingDepth: building ? building.depth : 7,
+        costCoins: isNewPlot ? plotCost : 0,
+        buildingType: isNewPlot ? 'yard' : 'residential',
+        buildingName: isNewPlot ? '专属地皮' : '',
         sceneId: world.scene && world.scene.sceneId
       })
       this.pendingBuilding = null
+      this.targetPlotForBuilding = null
       this.setData({ isPlacingNewPlot: false })
       if (this.world === world && !world.destroyed) {
         if(world.scene) this.initialize()
