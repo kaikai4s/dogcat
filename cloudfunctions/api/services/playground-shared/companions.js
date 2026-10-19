@@ -1,7 +1,7 @@
 const {transaction}=require('../playground-transaction')
 const world=require('../playground-world')
 const {sampleMotion}=require('./shared-motion')
-const {settleNeeds,RECOVERY}=require('./pet-needs')
+const {settleNeeds,relieveWaste,RECOVERY}=require('./pet-needs')
 const {yardLayout}=require('./yard-layout')
 const COLLECTION='pet_playground_plots'
 const residentId=(openid)=>'resident_'+world.hash(openid)
@@ -156,5 +156,24 @@ module.exports=function createCompanions(context,hooks) {
     actor.hasFollowers=resident.pets.some((p)=>p.following)
     return save(tx,resident)
   }
-  return {action,sync,transport,save,followRoute}
+  async function relief(openid, data) {
+    const petId = String(data.petId || '')
+    const type = data.type === 'poop' ? 'poop' : 'pee'
+    const amount = Number(data.amount) || (type === 'poop' ? 40 : 20)
+    const result = await transaction(db, async (tx) => {
+      const resident = await hooks.read(tx, residentId(openid))
+      if (!resident) return null
+      const pet = (resident.pets || []).find((p) => p.id === petId)
+      if (!pet) return null
+      const stamp = now()
+      relieveWaste(pet, type, amount, stamp)
+      await save(tx, resident)
+      return { resident, pet }
+    })
+    if (result && result.resident && hooks.publish) {
+      await hooks.publish(result.resident)
+    }
+    return result
+  }
+  return {action,sync,transport,save,followRoute,relief}
 }

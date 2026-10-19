@@ -17,6 +17,7 @@ module.exports = function createHandler(context) {
     if (action === 'vehicleAction') return shared.vehicles.action(openid,user,data)
     if (action === 'setVehicleSpeed') return shared.vehicles.speed(openid,user,data)
     if (action === 'petAction') return shared.companions.action(openid,data)
+    if (action === 'petRelief') return shared.companions.relief(openid,data)
     if (action === 'getFarm') return shared.farm.state(openid,data)
     if (action === 'getFarmCatalog') return require('../services/playground-farm-catalog').readCatalog(db)
     if (action === 'farmAction') return shared.farm.action(openid,data)

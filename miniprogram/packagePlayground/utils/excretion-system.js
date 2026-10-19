@@ -68,6 +68,9 @@ function triggerRelief(pet, type, amount, context, reason) {
   if (context.emitPets) {
     context.emitPets()
   }
+  if (context.onRelief) {
+    context.onRelief(pet, type, amount)
+  }
 }
 
 function updatePetExcretion(pet, dt, context) {

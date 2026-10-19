@@ -301,4 +301,23 @@ test('care behavior expires after duration and automatically returns pet to free
   assert.ok(petState.motion.patrol.length > 1) // Roaming patrol around yard
 })
 
+test('petRelief action decreases pee/poop values and persists to resident database', async () => {
+  const f = fixture(), a = await f.build()
+  const petId = f.resident('a').pets[0].id
+  // Pet needs start with pee=0, poop=0 at stamp. Advance 4.5 hours -> pee=100, poop=50
+  f.advance(4.5 * 3600000)
+
+  // Trigger pee relief (-20)
+  const peeRes = await f.shared.companions.relief('a', { petId, type: 'pee', amount: 20 })
+  assert.ok(peeRes && peeRes.pet)
+  assert.equal(Math.round(peeRes.pet.needs.pee), 80)
+  assert.equal(Math.round(f.resident('a').pets[0].needs.pee), 80)
+
+  // Trigger poop relief (-40)
+  const poopRes = await f.shared.companions.relief('a', { petId, type: 'poop', amount: 40 })
+  assert.ok(poopRes && poopRes.pet)
+  assert.equal(Math.round(poopRes.pet.needs.poop), 10) // 50 - 40 = 10
+  assert.equal(Math.round(f.resident('a').pets[0].needs.poop), 10)
+})
+
 

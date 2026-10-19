@@ -338,6 +338,20 @@ class SceneSync {
     if(!this.world.destroyed){this.world.applySharedPet(result.pet,true);this.world.emitPets()}
     return result
   }
+  async petRelief(petId, type, amount) {
+    if (!petId) return
+    try {
+      const packet = { petId, type, amount }
+      const result = await callFunction('playground', 'petRelief', { ...this.credentials(), ...packet })
+      if (!this.world.destroyed && result && result.pet) {
+        this.world.applySharedPet(result.pet, true)
+        this.world.emitPets()
+      }
+      return result
+    } catch (e) {
+      console.warn('petRelief sync skipped', e)
+    }
+  }
   async rideAction(action,data={}) {
     this.world.setCharacterInput(0,0)
     await this.send(true)

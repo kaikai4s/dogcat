@@ -12,6 +12,7 @@ const {
   YARD_EXTRAS,
   yardLayout
 } = require('./yard-layout')
+const { sampleNeeds } = require('./pet-needs')
 const { updatePetExcretion, drawSingleDecal } = require('./excretion-system')
 const { getExcretionAsset, setExcretionAsset: configureExcretionAsset } = require('./excretion-assets')
 const vehicleWorld = require('./vehicle-world')
@@ -1311,9 +1312,21 @@ class World2D {
     target.acceptedCommand=pet.commandSeq||0
     target.authoritativePet=pet
     const modelScale=target.scalePreview?target.modelScale:pet.modelScale
-    const mergedNeeds = (mine && target.needs && (!pet.needs || !pet.needs.at || (target.needs.at || 0) >= pet.needs.at))
-      ? target.needs
-      : (pet.needs || target.needs)
+    let mergedNeeds = pet.needs || target.needs
+    if (mine && target.needs) {
+      if (!pet.needs || !pet.needs.at || (target.needs.at || 0) >= pet.needs.at) {
+        mergedNeeds = target.needs
+      } else {
+        mergedNeeds = { ...pet.needs }
+        const localAtRemoteTime = sampleNeeds(target, pet.needs.at)
+        if (Number.isFinite(localAtRemoteTime.pee) && localAtRemoteTime.pee < (pet.needs.pee !== undefined ? pet.needs.pee : 100)) {
+          mergedNeeds.pee = localAtRemoteTime.pee
+        }
+        if (Number.isFinite(localAtRemoteTime.poop) && localAtRemoteTime.poop < (pet.needs.poop !== undefined ? pet.needs.poop : 100)) {
+          mergedNeeds.poop = localAtRemoteTime.poop
+        }
+      }
+    }
     Object.assign(target,{name:pet.name,species:pet.species,mine:mine===true,sharedMotion:pet.motion,
       following:!!pet.following,ridingVehicleId:pet.ridingVehicleId||'',needs:mergedNeeds,care:pet.care||null,
       modelScale,savedModelScale:pet.modelScale})
@@ -2046,7 +2059,13 @@ class World2D {
           groundDecals: this.groundDecals,
           onStatus: (msg) => this.onStatus(msg),
           random: this.random,
-          emitPets: () => this.emitPets()
+          emitPets: () => this.emitPets(),
+          onRelief: (p, type, amt) => {
+            const petId = p && (p.id || p._id)
+            if (petId && this.sceneSync && this.sceneSync.petRelief) {
+              this.sceneSync.petRelief(petId, type, amt)
+            }
+          }
         })
       }
       if (pet.relieving) {

@@ -659,5 +659,58 @@ test('20. pet care expiration automatically releases single-station sharedMotion
   assert.equal(pet.planning || pet.moving || pet.mode === 'roaming' || pet.idleSeconds === 0, true)
 })
 
+test('21. onRelief callback triggers when excretion occurs to notify backend', () => {
+  const reliefs = []
+  const pet = {
+    id: 'dog_1',
+    name: '旺财',
+    position: { x: 100, z: 100 },
+    needs: { at: 1000, pee: 0, poop: 100 }
+  }
+  const context = {
+    now: 1000,
+    ownPlot: { x: 100, z: 100, size: 56 },
+    groundDecals: [],
+    onRelief: (p, type, amount) => {
+      reliefs.push({ id: p.id, type, amount })
+    }
+  }
+  updatePetExcretion(pet, 0.1, context)
+  assert.equal(reliefs.length, 1)
+  assert.equal(reliefs[0].id, 'dog_1')
+  assert.equal(reliefs[0].type, 'poop')
+  assert.equal(reliefs[0].amount, 40)
+})
+
+test('22. newer remote packet without excretion relief does not overwrite lower local relieved values', () => {
+  const w = new World2D({ setData() {}, fetchRegion: async () => ({ plots: [] }) }, () => {}, {
+    world: { width: 1120, height: 1120 },
+    pets: [{ _id: 'cat_1', name: '花花', species: 'cat' }]
+  })
+  w.buildWorld()
+  const pet = w.pets[0]
+  pet.mine = true
+
+  // Local pet relieved poop at t = 1000, poop reduced to 60
+  pet.needs = { at: 1000, poop: 60, pee: 20, energy: 80, satiety: 80, hydration: 80 }
+
+  // Remote packet arrives at t = 1010 (10 seconds later, e.g. after remote drinking action)
+  // Remote packet did not know about local poop relief and has poop = 100, hydration = 100
+  const newerRemotePet = {
+    id: 'cat_1',
+    name: '花花',
+    species: 'cat',
+    needs: { at: 1010, poop: 100, pee: 50, energy: 80, satiety: 80, hydration: 100 }
+  }
+  w.applySharedPet(newerRemotePet, true, '我', 'my_id')
+
+  // Remote hydration should be updated to 100
+  assert.equal(pet.needs.hydration, 100)
+  // But poop should remain around 60 (60 + tiny 10s increment), NOT reset to 100!
+  assert.ok(pet.needs.poop < 65)
+  assert.ok(pet.needs.poop >= 60)
+})
+
+
 
 
