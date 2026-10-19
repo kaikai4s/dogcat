@@ -111,6 +111,15 @@ module.exports=function createFarm(context,hooks) {
           }
         }
       } else if(operation==='pickupPoop') {
+        const poopId = data.poopId || data.requestId
+        farm.pickedPoops = farm.pickedPoops || []
+        if (poopId && farm.pickedPoops.includes(poopId)) {
+          throw new Error('该便便已被拾取，不可重复拾取')
+        }
+        if (poopId) {
+          farm.pickedPoops.push(poopId)
+          if (farm.pickedPoops.length > 200) farm.pickedPoops.shift()
+        }
         farm.manure=(farm.manure||0)+(quantity||1)
         message='已将便便存入农场仓库化为有机肥'
       } else if(operation==='buySeeds') {

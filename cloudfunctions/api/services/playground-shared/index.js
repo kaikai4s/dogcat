@@ -317,20 +317,27 @@ module.exports = function createShared(context) {
     const stamp=now()
     const geometry=layoutKey(plots)
     // A new/demolished yard invalidates old outdoor routes, even for offline owners.
-    for(let i=0;i<page.length;i++) if(page[i].kind==='resident' && page[i].layoutKey!==geometry &&
-      plots.some((p)=>p.ownerOpenid===page[i].ownerOpenid&&p._id===page[i].plotId)) {
+    for(let i=0;i<page.length;i++) if(page[i].kind==='resident' &&
+      plots.some((p)=>p.ownerOpenid===page[i].ownerOpenid&&p._id===page[i].plotId) &&
+      (page[i].layoutKey!==geometry || (page[i].pets||[]).some((pet)=>pet.care&&stamp>=pet.care.endsAt))) {
       page[i]=await transaction(db,async(tx)=>{
         const row=await read(tx,page[i]._id)
         if(!row || row.communityId!==data.sceneId) return {...page[i],pets:[]}
-        if(row.layoutKey===geometry) return row
+        const layoutMismatch = row.layoutKey!==geometry
+        const expiredCare = (row.pets||[]).some((pet)=>pet.care&&stamp>=pet.care.endsAt)
+        if(!layoutMismatch && !expiredCare) return row
         row.pets=(row.pets||[]).map((pet)=>{
-          const current=sampleMotion(pet.motion,stamp).position
-          const start=safePoint(navigation(cfg,plots,current,current,'pet',row.plotId),current)
           if(pet.ridingVehicleId)return pet
-          settleNeeds(pet,stamp)
-          return {...pet,care:null,motion:motion(cfg,plots,start,stamp,pet.id+geometry)}
+          const careExpired = pet.care && stamp >= pet.care.endsAt
+          if (layoutMismatch || careExpired) {
+            const current=sampleMotion(pet.motion,stamp).position
+            const start=safePoint(navigation(cfg,plots,current,current,'pet',row.plotId),current)
+            settleNeeds(pet,stamp)
+            return {...pet,care:null,motion:motion(cfg,plots,start,stamp,pet.id+(layoutMismatch?geometry:'roam'))}
+          }
+          return pet
         })
-        row.layoutKey=geometry
+        if (layoutMismatch) row.layoutKey=geometry
         row.revision=Math.max(stamp,(row.revision||0)+1)
         const key=row._id
         delete row._id

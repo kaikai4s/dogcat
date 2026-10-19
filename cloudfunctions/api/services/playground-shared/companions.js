@@ -109,19 +109,33 @@ module.exports=function createCompanions(context,hooks) {
     return {pet:result.pet,serverTime:now()}
   }
   async function sync(tx,actor,cfg,plots,force=false) {
-    if(!actor.hasFollowers||actor.vehicleId)return null
+    if(actor.vehicleId)return null
     const stamp=now()
     if(!force&&stamp-(actor.lastCompanionSync||0)<600)return null
     actor.lastCompanionSync=stamp
     const resident=await hooks.read(tx,residentId(actor.ownerOpenid))
     if(!resident||resident.communityId!==actor.communityId)return null
-    const followers=resident.pets.filter((p)=>p.following&&!p.ridingVehicleId)
-    if(!followers.length){actor.hasFollowers=false;return null}
-    const allowed=await hooks.access(actor.ownerOpenid,plots,tx)
     let changed=false
-    for(const pet of followers) {
-      if(!force&&pet.followCenter&&Math.hypot(pet.followCenter.x-actor.position.x,pet.followCenter.z-actor.position.z)<2)continue
-      changed=followRoute(pet,actor,cfg,plots,allowed,resident.pets.indexOf(pet))||changed
+    for(const pet of resident.pets||[]) {
+      if(pet.care && stamp >= pet.care.endsAt && !pet.ridingVehicleId && !pet.following) {
+        settleNeeds(pet, stamp)
+        const current=sampleMotion(pet.motion,stamp).position
+        const start=hooks.safePoint(hooks.navigation(cfg,plots,current,current,'pet',resident.plotId),current)
+        pet.care=null
+        pet.motion=hooks.motion(cfg,plots,start,stamp,pet.id+'roam')
+        changed=true
+      }
+    }
+    const followers=resident.pets.filter((p)=>p.following&&!p.ridingVehicleId)
+    if(followers.length) {
+      actor.hasFollowers=true
+      const allowed=await hooks.access(actor.ownerOpenid,plots,tx)
+      for(const pet of followers) {
+        if(!force&&pet.followCenter&&Math.hypot(pet.followCenter.x-actor.position.x,pet.followCenter.z-actor.position.z)<2)continue
+        changed=followRoute(pet,actor,cfg,plots,allowed,resident.pets.indexOf(pet))||changed
+      }
+    } else {
+      actor.hasFollowers=false
     }
     return changed?save(tx,resident):null
   }

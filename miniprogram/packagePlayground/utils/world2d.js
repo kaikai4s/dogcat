@@ -117,6 +117,7 @@ class World2D {
     this.sceneTrail = []
     this.serverOffset = this.scene ? this.scene.serverTime - Date.now() : 0
     this.groundDecals = []
+    this.pickedPoopIds = new Set()
     this.excretionImages = {}
   }
   setExcretionAsset(type, fileIDOrPath) {
@@ -397,14 +398,22 @@ class World2D {
       this.onStatus('离便便太远了，请走近一些再拾取')
       return false
     }
+    if (this.pickedPoopIds && this.pickedPoopIds.has(target.id)) {
+      this.onStatus('该便便已被拾取，不可重复拾取')
+      return false
+    }
+    if (!this.pickedPoopIds) this.pickedPoopIds = new Set()
+    this.pickedPoopIds.add(target.id)
+
     const prevDecals = [...this.groundDecals]
     this.groundDecals = this.groundDecals.filter((d) => d.id !== target.id)
     this.emitNearby()
     this.onStatus('已拾取便便，存入农场仓库化为有机肥！')
     if (this.page && this.page.recordPoopPickup) {
       try {
-        await this.page.recordPoopPickup()
+        await this.page.recordPoopPickup(target.id)
       } catch (err) {
+        this.pickedPoopIds.delete(target.id)
         this.groundDecals = prevDecals
         this.emitNearby()
         throw err
@@ -1307,27 +1316,32 @@ class World2D {
     target.acceptedCommand=pet.commandSeq||0
     target.authoritativePet=pet
     const modelScale=target.scalePreview?target.modelScale:pet.modelScale
-    Object.assign(target,{name:pet.name,species:pet.species,mine,sharedMotion:pet.motion,
-      following:!!pet.following,ridingVehicleId:pet.ridingVehicleId||'',needs:pet.needs||target.needs,care:pet.care||null,
+    const mergedNeeds = (mine && target.needs && (!pet.needs || !pet.needs.at || (target.needs.at || 0) >= pet.needs.at))
+      ? target.needs
+      : (pet.needs || target.needs)
+    Object.assign(target,{name:pet.name,species:pet.species,mine:mine===true,sharedMotion:pet.motion,
+      following:!!pet.following,ridingVehicleId:pet.ridingVehicleId||'',needs:mergedNeeds,care:pet.care||null,
       modelScale,savedModelScale:pet.modelScale})
     if(ownerName)target.ownerName=ownerName
     // Keep the rendered position across route packets, including large network
     // discrepancies. Following pets walk along a legal connector each frame.
     target.followRender=previous&&pet.following&&!pet.ridingVehicleId?(target.followRender||{speed:0,stamp:Date.now()}):null
     if(changed&&target.followRender){target.followRender.nav=null;target.followRender.route=null}
-    const sample=sampleMotion(pet.motion,Date.now()+this.serverOffset)
-    if(changed)target.motionDistanceOffset=(target.walkDistance||0)-sample.distance
-    if(changed)target.reconcile=null
-    if(changed && previous && !target.followRender && Math.hypot(previous.x-sample.position.x,previous.z-sample.position.z)<3) {
-      target.reconcile={x:previous.x-sample.position.x,z:previous.z-sample.position.z,start:Date.now()}
-      // Check the small correction against current fences before drawing it.
-      target.reconcileNav=createNavigation(this.bounds,this.plots().flatMap(yardObstacles),PET_RADIUS,1.5)
+    if (pet.motion) {
+      const sample=sampleMotion(pet.motion,Date.now()+this.serverOffset)
+      if(changed)target.motionDistanceOffset=(target.walkDistance||0)-sample.distance
+      if(changed)target.reconcile=null
+      if(changed && previous && !target.followRender && Math.hypot(previous.x-sample.position.x,previous.z-sample.position.z)<3) {
+        target.reconcile={x:previous.x-sample.position.x,z:previous.z-sample.position.z,start:Date.now()}
+        // Check the small correction against current fences before drawing it.
+        target.reconcileNav=createNavigation(this.bounds,this.plots().flatMap(yardObstacles),PET_RADIUS,1.5)
+      }
+      const state=this.sharedPetSample(target,0)
+      target.position=state.position
+      target.moving=state.moving
+      target.walkDistance=state.distance+(target.motionDistanceOffset||0)
+      target.walkFacingLeft=state.facingLeft
     }
-    const state=this.sharedPetSample(target,0)
-    target.position=state.position
-    target.moving=state.moving
-    target.walkDistance=state.distance+(target.motionDistanceOffset||0)
-    target.walkFacingLeft=state.facingLeft
     if(pet.interactionUntil) target.interactingUntil=this.elapsed+Math.max(0,(pet.interactionUntil-Date.now()-this.serverOffset)/1000)
     return target
   }
@@ -2047,9 +2061,20 @@ class World2D {
         continue
       }
       if(pet.sharedMotion) {
-        const state=this.sharedPetSample(pet,dt)
-        pet.position=state.position;pet.moving=state.moving;pet.walkDistance=state.distance+(pet.motionDistanceOffset||0);pet.walkFacingLeft=state.facingLeft
-        continue
+        const careExpired = pet.care && (Date.now() + this.serverOffset >= pet.care.endsAt)
+        if (careExpired) pet.care = null
+        const isSingleStation = pet.sharedMotion && pet.sharedMotion.patrol && pet.sharedMotion.patrol.length === 1
+        if (pet.mine !== false && !pet.following && !pet.ridingVehicleId && careExpired && isSingleStation) {
+          pet.sharedMotion = null
+          pet.mode = 'idle'
+          pet.idleSeconds = ROAM_WAIT
+          pet.route = []
+          pet.moving = false
+        } else {
+          const state=this.sharedPetSample(pet,dt)
+          pet.position=state.position;pet.moving=state.moving;pet.walkDistance=state.distance+(pet.motionDistanceOffset||0);pet.walkFacingLeft=state.facingLeft
+          continue
+        }
       }
       const wasMoving = pet.route.length > 0
       let budget = dt * (pet.mode === 'roaming' ? 3 : 7)

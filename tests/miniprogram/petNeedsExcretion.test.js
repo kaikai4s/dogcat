@@ -573,4 +573,91 @@ test('17. isOutsideYard uses 112 standard yard size by default', () => {
   assert.equal(isOutsideYard(outsidePos, plotWithoutSize), true)
 })
 
+test('18. frontend poop pickup concurrency lock prevents duplicate pickup of the same poop', async () => {
+  let statusMsg = ''
+  let pickupCalls = 0
+  const page = {
+    setData() {},
+    fetchRegion: async () => ({ plots: [] }),
+    recordPoopPickup: async () => {
+      pickupCalls++
+    }
+  }
+  const w = new World2D(page, () => {}, {
+    world: { width: 1120, height: 1120 },
+    scene: { position: { x: 100, z: 100 }, serverTime: Date.now() },
+    pets: []
+  })
+  w.buildWorld()
+  w.character = { position: { x: 100, z: 100 } }
+  await w.prepareCharacterArea()
+  w.onStatus = (msg) => { statusMsg = msg }
+  w.groundDecals = [{ id: 'poop_unique_1', type: 'poop', x: 101, z: 100 }]
+
+  // First pickup succeeds
+  const first = await w.pickupPoop('poop_unique_1')
+  assert.equal(first, true)
+  assert.equal(pickupCalls, 1)
+
+  // Concurrent/second pickup attempt with same id fails
+  const second = await w.pickupPoop('poop_unique_1')
+  assert.equal(second, false)
+  assert.equal(pickupCalls, 1) // Did not trigger second backend call
+})
+
+test('19. relieved pet needs with fresher timestamp are preserved against stale remote needs', () => {
+  const w = new World2D({ setData() {}, fetchRegion: async () => ({ plots: [] }) }, () => {}, {
+    world: { width: 1120, height: 1120 },
+    pets: [{ _id: 'cat_1', name: '花花', species: 'cat' }]
+  })
+  w.buildWorld()
+  const pet = w.pets[0]
+  pet.mine = true
+
+  // Simulate local waste relief at t = 2000, poop reduced to 5
+  pet.needs = { at: 2000, poop: 5, pee: 10, energy: 100, satiety: 100, hydration: 100 }
+
+  // Stale remote packet arrives with t = 1000 and old poop = 80
+  const staleRemotePet = {
+    id: 'cat_1',
+    name: '花花',
+    species: 'cat',
+    needs: { at: 1000, poop: 80, pee: 40, energy: 100, satiety: 100, hydration: 100 }
+  }
+  w.applySharedPet(staleRemotePet, true, '我', 'my_id')
+
+  // Local fresh needs should NOT be overwritten by stale remote needs
+  assert.equal(pet.needs.at, 2000)
+  assert.equal(pet.needs.poop, 5)
+})
+
+test('20. pet care expiration automatically releases single-station sharedMotion back to roaming', () => {
+  const w = new World2D({ setData() {}, fetchRegion: async () => ({ plots: [] }) }, () => {}, {
+    world: { width: 1120, height: 1120 },
+    pets: [{ _id: 'dog_1', name: '小白', species: 'dog' }]
+  })
+  w.buildWorld()
+  const pet = w.pets[0]
+  pet.mine = true
+  pet.position = { x: 300, z: 300 }
+  // Pet was drinking at fountain with single-station patrol
+  pet.care = { type: 'drink', startsAt: 1000, endsAt: 2000 }
+  pet.sharedMotion = { epoch: 1000, approach: [{ x: 300, z: 300 }], patrol: [{ x: 300, z: 300 }], speed: 7 }
+
+  // At t = 1500 (still drinking)
+  w.serverOffset = 1500 - Date.now()
+  w.update(0.1)
+  assert.ok(pet.sharedMotion)
+  assert.ok(pet.care)
+
+  // At t = 2500 (care expired)
+  w.serverOffset = 2500 - Date.now()
+  w.update(0.1)
+  // SharedMotion released and pet returned to roaming state
+  assert.equal(pet.sharedMotion, null)
+  assert.equal(pet.care, null)
+  assert.equal(pet.planning || pet.moving || pet.mode === 'roaming' || pet.idleSeconds === 0, true)
+})
+
+
 

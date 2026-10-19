@@ -262,3 +262,43 @@ test('poop fertilizer pickup and 1 hour 2x boost acceleration',async()=>{
   assert.equal(readyBed.label,'可收获')
 })
 
+test('poop pickup enforces uniqueness per poopId to prevent duplicate/concurrent pickup', async () => {
+  const f = fixture(), a = await f.build()
+  // First pickup with poop_101 succeeds
+  let state = await f.farmAction('a', a, 'pickupPoop', { poopId: 'poop_101', quantity: 1 })
+  assert.equal(state.manure, 1)
+
+  // Duplicate pickup with poop_101 rejects
+  await assert.rejects(
+    f.farmAction('a', a, 'pickupPoop', { poopId: 'poop_101', quantity: 1 }),
+    /该便便已被拾取/
+  )
+  // Manure should not increment on duplicate
+  const fresh = await f.shared.farm.state('a', f.auth(a))
+  assert.equal(fresh.manure, 1)
+
+  // Pickup with different poopId succeeds
+  state = await f.farmAction('a', a, 'pickupPoop', { poopId: 'poop_102', quantity: 1 })
+  assert.equal(state.manure, 2)
+})
+
+test('care behavior expires after duration and automatically returns pet to free roaming motion', async () => {
+  const f = fixture(), a = await f.build()
+  const pet = f.pet('a')
+  // Order pet to drink at fountain
+  await f.petAction('a', a, 'drink')
+  let petState = f.resident('a').pets[0]
+  assert.equal(petState.care.type, 'drink')
+  assert.equal(petState.motion.patrol.length, 1) // Pointing to fountain station
+
+  // Advance time beyond care.endsAt (420s + buffer)
+  f.advance(450000)
+
+  // On next sync or snapshot, pet care must be cleared and free roaming motion restored
+  await f.shared.snapshot('a', f.auth(a))
+  petState = f.resident('a').pets[0]
+  assert.equal(petState.care, null)
+  assert.ok(petState.motion.patrol.length > 1) // Roaming patrol around yard
+})
+
+

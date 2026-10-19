@@ -123,18 +123,19 @@ module.exports={
       this.setData({pickupBusy:false})
     }
   },
-  async recordPoopPickup() {
+  async recordPoopPickup(poopId) {
     const world=this.world
     if(!world||!world.sceneSync)return
     try {
       const packet={
         operation:'pickupPoop',
+        poopId: poopId || ('poop_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8)),
         quantity:1,
         requestId:'poop_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,12)
       }
       const result=await world.sceneSync.farmAction(packet)
       if(this.world===world){this.applyFarm(result)}
-    }catch(error){console.error('recordPoopPickup error',error)}
+    }catch(error){console.error('recordPoopPickup error',error);throw error}
   },
   async rideOperation(e) {
     const world=this.world,data=e.currentTarget.dataset
