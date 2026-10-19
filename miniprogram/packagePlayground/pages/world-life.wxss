@@ -60,3 +60,59 @@
 .farm-product button { margin: 0; padding: 0 9px; line-height: 32px; border-radius: 12px; color: #547045; background: #e0e9d0; font-size: 10px; }
 .farm-go { margin: 14px 0 0; padding: 0 10px; line-height: 40px; border-radius: 15px; color: #fffdf3; background: #6f8d58; font-size: 12px; }
 .farm-empty { flex: 1; display: flex; flex-direction: column; gap: 12px; align-items: center; padding: 30px; font-size: 13px; }
+.panel-main-title { display: block; font-size: 18px; font-weight: 700; color: #2e4a32; }
+.dispute-panel, .build-panel { display: flex; flex-direction: column; width: 94%; max-width: 480px; height: 86vh; max-height: 88vh; overflow: hidden; padding: 20px 16px 14px; box-sizing: border-box; background: #fcfaee; border-radius: 26px; color: #3d5740; }
+.committee-card { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px; margin-bottom: 12px; background: #f3eedc; border-radius: 16px; border-left: 4px solid #d84315; }
+.committee-info { flex: 1; min-width: 0; }
+.committee-title { display: block; font-size: 14px; font-weight: 700; color: #3c4f34; }
+.committee-desc { display: block; font-size: 11px; color: #7a6e55; margin-top: 4px; line-height: 16px; }
+.salary-btn { flex: none; margin: 0; padding: 0 12px; line-height: 32px; font-size: 11px; border-radius: 14px; background: #d84315; color: #ffffff; }
+.dispute-list-title { font-size: 13px; font-weight: 600; color: #496342; margin-bottom: 8px; }
+.dispute-list { flex: 1; min-height: 0; height: 0; }
+.dispute-empty { padding: 40px 20px; text-align: center; color: #7f9074; font-size: 13px; }
+.dispute-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px; margin-bottom: 10px; background: #ffffff; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.03); }
+.item-resolved { opacity: 0.65; background: #f4f7f0; }
+.item-expired { opacity: 0.55; background: #faedea; }
+.dispute-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dispute-head { display: flex; align-items: center; gap: 8px; }
+.dispute-badge { padding: 2px 6px; border-radius: 8px; font-size: 10px; font-weight: 600; }
+.badge-pending { background: #ffebee; color: #c62828; }
+.badge-resolved { background: #e8f5e9; color: #2e7d32; }
+.badge-expired { background: #efebe9; color: #4e342e; }
+.dispute-reporter { font-size: 12px; font-weight: 600; color: #333333; }
+.dispute-detail { font-size: 11px; color: #666666; }
+.dispute-time { font-size: 10px; color: #e65100; line-height: 14px; }
+.resolve-btn { flex: none; margin: 0; padding: 0 10px; line-height: 32px; font-size: 11px; border-radius: 12px; background: #2e7d32; color: #ffffff; }
+
+.build-empty { padding: 40px; text-align: center; color: #7f9074; font-size: 13px; }
+.build-content { flex: 1; min-height: 0; height: 0; }
+.building-cards { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.building-card { display: flex; gap: 12px; padding: 12px; background: #ffffff; border: 2px solid #e2ebd8; border-radius: 16px; box-sizing: border-box; }
+.building-card.active { border-color: #558b2f; background: #f9fbf5; box-shadow: 0 3px 10px rgba(85,139,47,0.12); }
+.building-card-left { flex: 0 0 64px; width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; background: #f0f4ea; border-radius: 12px; }
+.building-thumb { width: 56px; height: 56px; }
+.building-thumb-placeholder { font-size: 28px; }
+.building-card-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.building-name-row { display: flex; justify-content: space-between; align-items: center; }
+.building-title { font-size: 14px; font-weight: 700; color: #2e3e26; }
+.building-type-tag { font-size: 10px; padding: 2px 6px; border-radius: 6px; background: #e8f5e9; color: #2e7d32; font-weight: 600; }
+.building-desc { font-size: 11px; color: #6b7a60; line-height: 15px; }
+.building-meta { display: flex; justify-content: space-between; font-size: 10px; margin-top: 4px; color: #558b2f; font-weight: 600; }
+.meta-cost { color: #d84315; }
+.build-actions { display: flex; gap: 8px; padding: 8px 0 16px; }
+.build-in-yard-btn { flex: 1; margin: 0; line-height: 38px; font-size: 12px; border-radius: 14px; background: #689f38; color: #ffffff; }
+.build-out-yard-btn { flex: 1; margin: 0; line-height: 38px; font-size: 12px; border-radius: 14px; background: #ff8f00; color: #ffffff; }
+
+.justice-panel { display: flex; flex-direction: column; width: 94%; max-width: 480px; height: 86vh; max-height: 88vh; overflow: hidden; padding: 20px 16px 14px; box-sizing: border-box; background: #faf9f6; border-radius: 26px; color: #263238; }
+.justice-jail-card { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px; margin-bottom: 12px; background: #ffebee; border-radius: 16px; border-left: 4px solid #c62828; }
+.jail-status-info { flex: 1; min-width: 0; }
+.jail-title { display: block; font-size: 13px; font-weight: 700; color: #b71c1c; }
+.jail-desc { display: block; font-size: 11px; color: #d32f2f; margin-top: 4px; line-height: 16px; }
+.bail-btn { flex: none; margin: 0; padding: 0 10px; line-height: 32px; font-size: 11px; border-radius: 14px; background: #d32f2f; color: #ffffff; }
+.badge-wanted { background: #ffebee; color: #c62828; }
+.badge-arrested { background: #ede7f6; color: #512da8; }
+.item-arrested { background: #f3e5f5; }
+.arrest-btn { background: #1565c0 !important; }
+.jail-status-btn { background: #c62828 !important; color: #ffffff !important; animation: pulse 1.5s infinite; }
+.injured-tip-btn { background: #ef6c00 !important; color: #ffffff !important; }
+

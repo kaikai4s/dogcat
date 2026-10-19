@@ -28,9 +28,27 @@ function sampleNeeds(pet, stamp) {
       result[spec.key]=clamp(recovered-Math.max(0,after)*spec.decay/3600)
     }
   }
+  if (result.satiety <= 0 && result.hydration <= 0) {
+    pet.sick = true
+    if (!pet.sickReason) pet.sickReason = 'hunger_thirst'
+  }
   return result
 }
 function settleNeeds(pet,stamp) {pet.needs=sampleNeeds(pet,stamp);return pet.needs}
+function treatPetHealth(pet, stamp = Date.now()) {
+  pet.sick = false
+  pet.injured = false
+  pet.sickReason = ''
+  pet.needs = {
+    at: stamp,
+    energy: 100,
+    satiety: 100,
+    hydration: 100,
+    pee: clamp((pet.needs && pet.needs.pee) || 0),
+    poop: clamp((pet.needs && pet.needs.poop) || 0)
+  }
+  return pet.needs
+}
 function relieveWaste(pet,type,amount,stamp) {
   const current=settleNeeds(pet,stamp)
   const deduction=amount||(type==='pee'?20:40)
@@ -41,11 +59,16 @@ function relieveWaste(pet,type,amount,stamp) {
 }
 function needsView(pet,stamp) {
   const values=sampleNeeds(pet,stamp)
+  const isSick = !!(pet.sick || pet.injured || (values.satiety <= 0 && values.hydration <= 0))
   return NEEDS.map((s)=>{
     const val=Math.round(values[s.key])
     const isUp=s.direction==='up'
     const isLow=isUp?val>=80:val<=20
-    return {key:s.key,label:s.label,value:val,low:isLow,message:s.low,direction:s.direction}
+    let msg = s.low
+    if (isSick && (s.key === 'satiety' || s.key === 'hydration')) {
+      msg = pet.injured ? '爱宠受伤虚弱，请前往宠物医院治疗！' : '过度饥渴已虚弱生病，请去宠物医院治疗！'
+    }
+    return {key:s.key,label:s.label,value:val,low:isLow || isSick,message:msg,direction:s.direction,sick:isSick}
   })
 }
-module.exports={NEEDS,RECOVERY,sampleNeeds,settleNeeds,relieveWaste,needsView}
+module.exports={NEEDS,RECOVERY,sampleNeeds,settleNeeds,treatPetHealth,relieveWaste,needsView}

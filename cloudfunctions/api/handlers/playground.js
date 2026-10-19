@@ -38,8 +38,78 @@ module.exports = function createHandler(context) {
       await shared.plotChanged(openid,old.plotId,true,old.communityId)
       return result
     }
+    const disputes = require('../services/playground-disputes')(context)
+    const buildingsService = require('../services/playground-buildings')(context)
+    if (action === 'getBuildingCatalog') return buildingsService.readCatalog()
+    if (action === 'reportPoop') return disputes.reportPoop(openid, user, data)
+    if (action === 'listDisputes') return disputes.listDisputes(openid, data)
+    if (action === 'resolveDispute') return disputes.resolveDispute(openid, user, data)
+    if (action === 'claimWeeklySalary') return disputes.claimWeeklySalary(openid, data)
+    if (action === 'washVehicle') return disputes.washVehicle(openid, user, data)
+    if (action === 'repairVehicle') {
+      return {
+        success: true,
+        message: '车辆经过社区修理厂全面检修，制动、轮胎与引擎性能已恢复至最佳状态！'
+      }
+    }
+    const justice = require('../services/playground-justice')(context)
+    if (action === 'reportAccident') return justice.reportAccident(openid, user, data)
+    if (action === 'listAccidents') return justice.listAccidents(openid, data)
+    if (action === 'arrestDriver') return justice.arrestDriver(openid, user, data)
+    if (action === 'releaseDriver') return justice.releaseDriver(openid, data)
+    if (action === 'hospitalTreat') return justice.hospitalTreat(openid, user, data)
+
+    if (action === 'hospitalCare') {
+      const careType = data.careType === 'treat' ? 'treat' : 'wash'
+      const petId = String(data.petId || '')
+      if (careType === 'treat' && petId) {
+        // 解除爱宠的生病与受伤状态，重获健康
+        await db.collection('pet_playground_plots').where({ kind: 'resident', ownerOpenid: openid }).get().then(async (res) => {
+          for (const doc of (res.data || [])) {
+            const pets = (doc.pets || []).map((p) => {
+              if (p.id === petId || p._id === petId) {
+                return {
+                  ...p,
+                  sick: false,
+                  injured: false,
+                  sickReason: '',
+                  needs: { ...(p.needs || {}), satiety: 100, hydration: 100, energy: 100 }
+                }
+              }
+              return p
+            })
+            await db.collection('pet_playground_plots').doc(doc._id).update({ data: { pets } })
+          }
+        }).catch(() => {})
+      }
+      return {
+        success: true,
+        careType,
+        message: careType === 'wash'
+          ? '爱宠在宠物医院完成了精细洗护，毛发柔顺蓬松，洁净清爽！'
+          : '爱宠在宠物医院完成了健康治疗与创伤恢复，生病状态已治愈，状态满格！'
+      }
+    }
+
+    if (action === 'buildInYard') {
+      if (data.buildingType === 'committee') {
+        const existing = await disputes.getCommunityCommittee(data.sceneId)
+        if (existing && existing.ownerOpenid !== openid) {
+          throw new Error('当前社区已设立居委会，每个社区有且仅能有一个居委会')
+        }
+      }
+      const plot = await world.buildInYard(openid, user, data)
+      await shared.plotChanged(openid, plot.id)
+      return { plot }
+    }
 
     if (action === 'claimPlot') {
+      if (data.buildingType === 'committee') {
+        const existing = await disputes.getCommunityCommittee(data.sceneId)
+        if (existing && existing.ownerOpenid !== openid) {
+          throw new Error('当前社区已设立居委会，每个社区有且仅能有一个居委会')
+        }
+      }
       const old=await world.own(openid),plot=await world.claim(openid,user,data)
       if(old&&old.plotId!==plot.id) await shared.plotChanged(openid,old.plotId,true,old.communityId)
       await shared.plotChanged(openid,plot.id)

@@ -88,7 +88,14 @@ function publicPlot(plot, openid) {
     nameColor: plot.nameColor || '',
     ownerId: 'presence_' + hash(plot.ownerOpenid),
     instanceId: plot.instanceId || plot.createdAt || '',
-    name: plot.name || '邻居庭院'
+    gateDirection: plot.gateDirection || 'south',
+    name: plot.name || '邻居庭院',
+    buildingId: plot.buildingId || '',
+    buildingType: plot.buildingType || 'residential',
+    buildingName: plot.buildingName || '',
+    buildingImage: plot.buildingImage || '',
+    buildingWidth: Number(plot.buildingWidth) || 0,
+    buildingDepth: Number(plot.buildingDepth) || 0
   }
 }
 async function updateCommunity(db, openid, userId, community, extra = {}) {
@@ -263,6 +270,13 @@ module.exports = {
               throw new Error('庭院范围与邻居重叠，请选择更空旷的草坪')
           }
         }
+        const buildingType = data.buildingType || (existing && existing.buildingType) || 'residential'
+        const buildingId = data.buildingId || (existing && existing.buildingId) || ''
+        const buildingName = data.buildingName || (existing && existing.buildingName) || ''
+        const buildingImage = data.buildingImage || (existing && existing.buildingImage) || ''
+        const buildingWidth = Number(data.buildingWidth) || (existing && existing.buildingWidth) || 7
+        const buildingDepth = Number(data.buildingDepth) || (existing && existing.buildingDepth) || 7
+
         const plot = {
           kind: 'plot',
           communityId: id,
@@ -272,11 +286,18 @@ module.exports = {
           x: px,
           z: pz,
           size: SIZE,
+          gateDirection: ['south', 'north', 'east', 'west'].includes(data.gateDirection) ? data.gateDirection : (existing && existing.gateDirection) || 'south',
+          buildingId,
+          buildingType,
+          buildingName,
+          buildingImage,
+          buildingWidth,
+          buildingDepth,
           ownerName: String(user.nickname || '我').slice(0, 20),
           nameColor,
           revision: Math.max(await require('./playground-live')({db,nowMs}).nextEpoch(id,key,stamp()),(existing&&existing.revision||0)+1),
           instanceId: crypto.randomBytes(12).toString('hex'),
-          name: `${String(user.nickname || '我').slice(0, 20)}的庭院`,
+          name: buildingName ? `${String(user.nickname || '我').slice(0, 20)}的${buildingName}` : `${String(user.nickname || '我').slice(0, 20)}的庭院`,
           createdAt: existing ? existing.createdAt : nowText(),
           updatedAt: nowText()
         }
@@ -378,7 +399,44 @@ module.exports = {
         return beforeRemove?{ removed: true,released }:{ removed: true }
       })
     }
+    async function buildInYard(openid, user, data) {
+      const buildingId = String(data.buildingId || '')
+      const buildingType = String(data.buildingType || 'residential')
+      const buildingName = String(data.buildingName || '')
+      const buildingImage = String(data.buildingImage || '')
+      const buildingWidth = Number(data.buildingWidth) || 7
+      const buildingDepth = Number(data.buildingDepth) || 7
+
+      return transaction(db, async (tx) => {
+        const existing = await ownInTransaction(tx, openid)
+        if (!existing || !existing.plotId) {
+          throw new Error('您还没有安顿庭院，请先安置庭院或在庭院外购买地皮建造')
+        }
+
+        const currentPlot = await read(tx, existing.plotId)
+        if (!currentPlot) {
+          throw new Error('未找到庭院地块')
+        }
+
+        const updated = {
+          ...currentPlot,
+          buildingId,
+          buildingType,
+          buildingName,
+          buildingImage,
+          buildingWidth,
+          buildingDepth,
+          name: buildingName ? `${String(user.nickname || '我').slice(0, 20)}的${buildingName}` : `${String(user.nickname || '我').slice(0, 20)}的庭院`,
+          updatedAt: nowText()
+        }
+
+        const { _id, ...cleanUpdated } = updated
+        await tx.collection('pet_playground_plots').doc(existing.plotId).set({ data: cleanUpdated })
+        await tx.collection('pet_playground_plots').doc(ownerId(openid)).set({ data: { ...cleanUpdated, kind: 'owner_plot', plotId: existing.plotId } })
+        return publicPlot({ ...cleanUpdated, _id: existing.plotId }, openid)
+      })
+    }
     async function ownInTransaction(tx, openid) { return read(tx, ownerId(openid)) }
-    return { config, own, claim, region, mapOverview, publicPlot, ensureNameColors, fillBowl, demolish }
+    return { config, own, claim, buildInYard, region, mapOverview, publicPlot, ensureNameColors, fillBowl, demolish }
   }
 }

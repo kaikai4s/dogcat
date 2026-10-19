@@ -7,6 +7,9 @@ Page({
   ...lifePage,
   data: {
     petRosterOpen:false,petAlerts:[],petCareBusy:false,selectedPet:null,
+    disputesOpen: false, disputes: [], isCommittee: false, committeeOwnerName: '', disputesLoading: false,
+    justiceOpen: false, justiceLoading: false, accidents: [], myJailStatus: null, isHumanInjured: false,
+    buildOpen: false, buildLoading: false, buildBusy: false, buildingCatalog: [], selectedBuilding: null, nearbyBuilding: null,
     farmOpen:false,farmLoading:false,farmBusy:false,farm:null,farmBed:null,nearbyFarm:null,farmSeedAvailable:false,farmTab:'field',farmCropId:'carrot',farmSelectedBed:0,farmReadyCount:0,
     riding:false,rideBusy:false,nearbyRide:null,nearbyInvite:null,passengers:[],
     loading: true,
@@ -134,6 +137,7 @@ Page({
   },
   stop() {
     this.joystickEnd()
+    if (this.jailTimer) clearInterval(this.jailTimer)
     this.visible = false
     this.authorized = false
     this.version = (this.version || 0) + 1
@@ -246,6 +250,7 @@ Page({
             if (version === this.version && this.visible) {
               this.setData({ loading: false })
               this.positionJoystick()
+              this.checkInitialJailStatus()
               if(this.placeAfterLoad) {this.placeAfterLoad=false;this.world.beginPlacement()}
             }
             else if (instance) instance.destroy()
@@ -296,21 +301,37 @@ Page({
     if (this.world) this.world.beginPlacement()
   },
   cancelPlot() {
+    this.pendingBuilding = null
     if (this.world) this.world.cancelPlacement()
   },
   async confirmPlot() {
     const world = this.world
     if (!world || !world.candidate || this.data.claiming) return
     const candidate = { ...world.candidate }
+    const building = this.pendingBuilding || null
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
-        title: this.data.hasPlot ? '调整庭院位置' : '安置庭院',
-        content: `别墅将放在中心标记处，庭院范围 ${candidate.size}×${candidate.size} 米。${this.data.hasPlot ? '保存后原位置会腾空。' : ''}${this.data.canRelocate ? '目前临时开放重新选址。' : '确认后不能搬迁。'}`,
+        title: building ? `确认建造【${building.name}】` : this.data.hasPlot ? '调整庭院位置' : '安置庭院',
+        content: `建筑将坐落于中心位置，地皮范围 ${candidate.size}×${candidate.size} 米并由栅栏围住。${this.data.hasPlot ? '保存后原位置会腾空。' : ''}${this.data.canRelocate ? '目前临时开放重新选址。' : '确认后不能搬迁。'}`,
         success: (r) => resolve(r.confirm),
         fail: () => resolve(false)
       })
     )
     if (!confirmed || this.world !== world || world.destroyed) return
+    const gateDirections = [
+      { key: 'south', label: '南侧留门（面南向阳 · 默认）' },
+      { key: 'north', label: '北侧留门（向北通行）' },
+      { key: 'east', label: '东侧留门（向东通行）' },
+      { key: 'west', label: '西侧留门（向西通行）' }
+    ]
+    const gateDirection = await new Promise((resolve) => {
+      if (typeof wx.showActionSheet !== 'function') return resolve('south')
+      wx.showActionSheet({
+        itemList: gateDirections.map((d) => d.label),
+        success: (res) => resolve(gateDirections[res.tapIndex].key),
+        fail: () => resolve('south')
+      })
+    })
     this.setData({ claiming: true })
     try {
       const result = await callFunction('playground', 'claimPlot', {
@@ -318,8 +339,16 @@ Page({
         cellZ: candidate.cellZ,
         x: candidate.x,
         z: candidate.z,
-        sceneId:world.scene && world.scene.sceneId
+        gateDirection,
+        buildingId: building ? building.id : '',
+        buildingType: building ? building.type : 'residential',
+        buildingName: building ? building.name : '',
+        buildingImage: building ? building.image : '',
+        buildingWidth: building ? building.width : 7,
+        buildingDepth: building ? building.depth : 7,
+        sceneId: world.scene && world.scene.sceneId
       })
+      this.pendingBuilding = null
       if (this.world === world && !world.destroyed) {
         if(world.scene) this.initialize()
         else {world.setPlot(result.plot);this.setData({ hasPlot: true })}
@@ -763,5 +792,365 @@ Page({
   back() {
     if (getCurrentPages().length > 1) wx.navigateBack()
     else wx.redirectTo({ url: '/packagePlayground/pages/index' })
+  },
+  async reportPoopAction() {
+    const world = this.world
+    if (!world || !this.data.nearbyPoop) return
+    const poop = this.data.nearbyPoop
+    const confirmed = await new Promise((resolve) =>
+      wx.showModal({
+        title: '向居委会反馈便便',
+        content: '发现未清理的便便，是否向社区居委会提交保洁提醒？居委会核实督导后您将获得爱心币奖励。',
+        confirmText: '立即反馈',
+        success: (r) => resolve(r.confirm),
+        fail: () => resolve(false)
+      })
+    )
+    if (!confirmed) return
+    try {
+      const result = await callFunction('playground', 'reportPoop', {
+        poopId: poop.id,
+        x: poop.x,
+        z: poop.z,
+        sceneId: world.scene && world.scene.sceneId
+      })
+      wx.showToast({ title: result.message || '举报成功', icon: 'success' })
+    } catch (err) {
+      wx.showToast({ title: err.message || '举报失败', icon: 'none' })
+    }
+  },
+  async openDisputes() {
+    const world = this.world
+    if (!world) return
+    this.setData({ disputesOpen: true, disputesLoading: true })
+    try {
+      const result = await callFunction('playground', 'listDisputes', {
+        sceneId: world.scene && world.scene.sceneId
+      })
+      this.setData({
+        disputes: result.disputes || [],
+        isCommittee: result.isCommittee || false,
+        committeeOwnerName: result.committeeOwnerName || '暂未设立'
+      })
+    } catch (err) {
+      wx.showToast({ title: err.message || '加载纠纷列表失败', icon: 'none' })
+    } finally {
+      this.setData({ disputesLoading: false })
+    }
+  },
+  closeDisputes() {
+    this.setData({ disputesOpen: false })
+  },
+  async resolveDisputeAction(e) {
+    const world = this.world
+    const disputeId = e.currentTarget.dataset.id
+    if (!world || !disputeId) return
+    try {
+      const result = await callFunction('playground', 'resolveDispute', {
+        disputeId,
+        sceneId: world.scene && world.scene.sceneId
+      })
+      wx.showToast({ title: result.message || '调解完成', icon: 'success' })
+      this.openDisputes()
+    } catch (err) {
+      wx.showToast({ title: err.message || '调解失败', icon: 'none' })
+    }
+  },
+  async claimWeeklySalaryAction() {
+    const world = this.world
+    if (!world) return
+    try {
+      const result = await callFunction('playground', 'claimWeeklySalary', {
+        sceneId: world.scene && world.scene.sceneId
+      })
+      wx.showToast({ title: result.message || '周薪领取成功', icon: 'success' })
+    } catch (err) {
+      wx.showToast({ title: err.message || '领取失败', icon: 'none' })
+    }
+  },
+  async openBuild() {
+    this.setData({ buildOpen: true, buildLoading: true })
+    try {
+      const result = await callFunction('playground', 'getBuildingCatalog')
+      const buildings = (result.buildings || []).filter((b) => b.enabled !== false)
+      this.setData({
+        buildingCatalog: buildings,
+        selectedBuilding: buildings[0] || null
+      })
+    } catch (err) {
+      wx.showToast({ title: err.message || '加载建筑列表失败', icon: 'none' })
+    } finally {
+      this.setData({ buildLoading: false })
+    }
+  },
+  closeBuild() {
+    this.setData({ buildOpen: false })
+  },
+  selectBuilding(e) {
+    const id = e.currentTarget.dataset.id
+    const b = (this.data.buildingCatalog || []).find((item) => item.id === id)
+    if (b) this.setData({ selectedBuilding: b })
+  },
+  async buildInYardAction() {
+    const building = this.data.selectedBuilding
+    if (!building) return
+    const world = this.world
+    if (!world || !this.data.hasPlot) {
+      wx.showToast({ title: '您尚未安顿庭院，请规划独立草坪建造', icon: 'none' })
+      return
+    }
+    const confirmed = await new Promise((resolve) =>
+      wx.showModal({
+        title: `在庭院内建造【${building.name}】`,
+        content: `建筑占地约 ${building.tileCount || 4} 块草地，建造将消耗 ${building.costCoins || 0} 爱心币，是否确认建造？`,
+        confirmText: '立即建造',
+        success: (r) => resolve(r.confirm),
+        fail: () => resolve(false)
+      })
+    )
+    if (!confirmed) return
+    this.setData({ buildBusy: true })
+    try {
+      const result = await callFunction('playground', 'buildInYard', {
+        buildingId: building.id,
+        buildingType: building.type,
+        buildingName: building.name,
+        buildingImage: building.image,
+        buildingWidth: building.width,
+        buildingDepth: building.depth,
+        sceneId: world.scene && world.scene.sceneId
+      })
+      wx.showToast({ title: '庭院建筑建造成功！', icon: 'success' })
+      this.closeBuild()
+      if (this.world === world && !world.destroyed) {
+        if (world.scene) this.initialize()
+        else world.setPlot(result.plot)
+      }
+    } catch (err) {
+      wx.showToast({ title: err.message || '建造失败', icon: 'none' })
+    } finally {
+      this.setData({ buildBusy: false })
+    }
+  },
+  async buildOutYardAction() {
+    const building = this.data.selectedBuilding
+    if (!building) return
+    const world = this.world
+    if (!world) return
+    const confirmed = await new Promise((resolve) =>
+      wx.showModal({
+        title: `规划独立草坪建造【${building.name}】`,
+        content: `将规划一块独立专属草坪并建造该建筑（围木栅栏并由您自选留门朝向），需消耗 ${building.costCoins || 0} 爱心币。是否前往场景选址？`,
+        confirmText: '前往选址',
+        success: (r) => resolve(r.confirm),
+        fail: () => resolve(false)
+      })
+    )
+    if (!confirmed) return
+    this.pendingBuilding = building
+    this.closeBuild()
+    this.choosePlot()
+  },
+  async repairVehicleAction() {
+    const world = this.world
+    if (!world) return
+    try {
+      const result = await callFunction('playground', 'repairVehicle', {
+        sceneId: world.scene && world.scene.sceneId
+      })
+      wx.showModal({
+        title: '车辆保养完成',
+        content: result.message || '经过全面维护，车辆机械与安全性能已完全达标！',
+        showCancel: false
+      })
+    } catch (err) {
+      wx.showToast({ title: err.message || '检修失败', icon: 'none' })
+    }
+  },
+  async hospitalCareAction(e) {
+    const type = e.currentTarget.dataset.type || 'wash'
+    const world = this.world
+    if (!world) return
+    const pet = this.data.selectedPet || (this.data.pets && this.data.pets[0])
+    try {
+      const result = await callFunction('playground', 'hospitalCare', {
+        careType: type,
+        petId: pet ? pet.id : '',
+        sceneId: world.scene && world.scene.sceneId
+      })
+      if (type === 'treat' && pet) {
+        pet.sick = false
+        pet.injured = false
+        pet.sickReason = ''
+        if (this.world) this.world.emitPets()
+      }
+      wx.showModal({
+        title: type === 'wash' ? '爱宠洗护完成' : '健康体检与治疗完成',
+        content: result.message || '爱宠状态已焕然一新！',
+        showCancel: false
+      })
+    } catch (err) {
+      wx.showToast({ title: err.message || '护理失败', icon: 'none' })
+    }
+  },
+  async reportTrafficAccident(accidentData) {
+    const world = this.world
+    try {
+      await callFunction('playground', 'reportAccident', {
+        sceneId: world && world.scene && world.scene.sceneId,
+        ...accidentData
+      })
+      wx.showToast({ title: '慢速出行提醒已通报文明督导所', icon: 'none' })
+    } catch (err) {
+      console.error('reportTrafficAccident error:', err)
+    }
+  },
+  onHumanInjured() {
+    this.setData({ isHumanInjured: true })
+  },
+  async hospitalTreatHumanAction() {
+    const world = this.world
+    try {
+      const result = await callFunction('playground', 'hospitalTreat', {
+        target: 'human',
+        sceneId: world && world.scene && world.scene.sceneId
+      })
+      if (this.world) {
+        this.world.injured = false
+        if (this.world.character) this.world.character.injured = false
+      }
+      this.setData({ isHumanInjured: false })
+      wx.showModal({
+        title: '健康调理完成',
+        content: result.message || '经过爱心驿站义工的精心调理，您已恢复满满活力！',
+        showCancel: false
+      })
+    } catch (err) {
+      wx.showToast({ title: err.message || '调理失败', icon: 'none' })
+    }
+  },
+  async openJustice() {
+    const world = this.world
+    this.setData({ justiceOpen: true, justiceLoading: true })
+    try {
+      const result = await callFunction('playground', 'listAccidents', {
+        sceneId: world && world.scene && world.scene.sceneId
+      })
+      this.setData({
+        accidents: result.accidents || [],
+        myJailStatus: result.isJailed ? {
+          isJailed: true,
+          remainingSeconds: result.jailRemainingSeconds,
+          bailCoins: result.bailCoins
+        } : null
+      })
+      if (result.isJailed) {
+        this.syncJailRestriction(result)
+        this.startJailTimer()
+      } else {
+        if (this.jailTimer) clearInterval(this.jailTimer)
+      }
+    } catch (err) {
+      wx.showToast({ title: err.message || '加载自省记录失败', icon: 'none' })
+    } finally {
+      this.setData({ justiceLoading: false })
+    }
+  },
+  startJailTimer() {
+    if (this.jailTimer) clearInterval(this.jailTimer)
+    this.jailTimer = setInterval(() => {
+      const status = this.data.myJailStatus
+      if (!status || !status.isJailed || status.remainingSeconds <= 0) {
+        if (this.jailTimer) clearInterval(this.jailTimer)
+        if (status && status.isJailed) {
+          this.payBailAction({ currentTarget: { dataset: { paybail: false } } })
+        }
+        return
+      }
+      this.setData({
+        'myJailStatus.remainingSeconds': Math.max(0, status.remainingSeconds - 1)
+      })
+    }, 1000)
+  },
+  async checkInitialJailStatus() {
+    const world = this.world
+    if (!world) return
+    try {
+      const result = await callFunction('playground', 'listAccidents', {
+        sceneId: world.scene && world.scene.sceneId
+      })
+      if (result && result.isJailed) {
+        this.setData({
+          myJailStatus: {
+            isJailed: true,
+            remainingSeconds: result.jailRemainingSeconds,
+            bailCoins: result.bailCoins
+          }
+        })
+        this.syncJailRestriction(result)
+        this.startJailTimer()
+      }
+    } catch (_) {}
+  },
+  closeJustice() {
+    this.setData({ justiceOpen: false })
+  },
+  syncJailRestriction(jailStatus) {
+    if (!this.world) return
+    if (!jailStatus || !jailStatus.isJailed) {
+      this.world.setJailedStatus(false, null)
+      return
+    }
+    const prisonPlot = (this.world.plots() || []).find((p) => p.buildingType === 'prison')
+    if (prisonPlot) {
+      const half = (prisonPlot.size || 48) / 2
+      const bounds = {
+        minX: prisonPlot.x - half,
+        maxX: prisonPlot.x + half,
+        minZ: prisonPlot.z - half,
+        maxZ: prisonPlot.z + half
+      }
+      this.world.setJailedStatus(true, bounds)
+    } else {
+      this.world.setJailedStatus(true, null)
+    }
+  },
+  async arrestDriverAction(e) {
+    const id = e.currentTarget.dataset.id
+    const world = this.world
+    if (!world || !id) return
+    const accident = (this.data.accidents || []).find((a) => a._id === id || a.id === id)
+    if (!accident) return
+    try {
+      const result = await callFunction('playground', 'arrestDriver', {
+        accidentId: accident._id || accident.id,
+        sceneId: world.scene && world.scene.sceneId
+      })
+      wx.showToast({ title: result.message || '已安排前往自省室宣教学习！', icon: 'success' })
+      this.openJustice()
+    } catch (err) {
+      wx.showToast({ title: err.message || '安排自省失败', icon: 'none' })
+    }
+  },
+  async payBailAction(e) {
+    const payBail = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.paybail === false ? false : true
+    const world = this.world
+    try {
+      const result = await callFunction('playground', 'releaseDriver', {
+        payBail,
+        sceneId: world && world.scene && world.scene.sceneId
+      })
+      if (this.jailTimer) clearInterval(this.jailTimer)
+      wx.showModal({
+        title: '自省完成',
+        content: result.message || '已完成宣教自省，欢迎继续参与社区文明互动！',
+        showCancel: false
+      })
+      this.setData({ myJailStatus: null })
+      if (this.world) this.world.setJailedStatus(false, null)
+      if (this.data.justiceOpen) this.openJustice()
+    } catch (err) {
+      wx.showToast({ title: err.message || '结束自省失败', icon: 'none' })
+    }
   }
 })

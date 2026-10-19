@@ -16,7 +16,7 @@
   <view wx:if="{{hasAvatar && !loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !riding && !showPetScale && (joystickMode === 'always' || joystickActive)}}" class="joystick-pad {{joystickMode === 'always' ? 'joystick-fixed' : ''}} {{joystickRunning ? 'running' : ''}}" style="left: {{joystickLeft}}px; top: {{joystickTop}}px; opacity: {{joystickOpacity / 100}};" catchtouchstart="fixedJoystickStart" catchtouchmove="fixedJoystickMove" catchtouchend="fixedJoystickEnd" catchtouchcancel="fixedJoystickEnd">
     <view class="joystick-ring"></view>
     <view class="joystick-knob" style="transform: translate({{joystickX}}px, {{joystickY}}px)"></view>
-    <text class="joystick-caption">{{driving ? '驾驶 · 拉远加速' : joystickRunning ? '奔跑' : '轻推行走 · 拉远奔跑'}}</text>
+    <text class="joystick-caption">{{driving ? '代步巡检 · 慢速前行' : joystickRunning ? '快步行走' : '轻推漫游 · 可轻触地面导航'}}</text>
   </view>
   <view class="player-hud {{joystickHand === 'right' ? 'right-hand' : ''}}" style="bottom: {{bottom + 260 + (showPetScale ? 105 : 0)}}px" wx:if="{{hasAvatar && !loading && !error && !placing}}">
     <view class="interaction-actions">
@@ -28,6 +28,17 @@
       <button wx:if="{{nearbyGate}}" bindtap="requestVisit" disabled="{{socialBusy}}">申请访问 {{nearbyGate.name}} 的庭院</button>
       <button wx:if="{{nearbyBowl}}" class="fill-bowl" bindtap="fillBowl" disabled="{{feeding || nearbyBowl.food >= 100}}" loading="{{feeding}}">{{nearbyBowl.food >= 100 ? '猫狗碗已添满' : '给猫狗碗添粮'}}</button>
       <button wx:if="{{nearbyPoop}}" bindtap="pickupPoop">拾取便便</button>
+      <button wx:if="{{nearbyPoop}}" bindtap="reportPoopAction">向居委会反馈便便</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'committee'}}" bindtap="openDisputes">进入居委会</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'repair_shop'}}" bindtap="cleanVehicleAction">修理厂洗车</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'repair_shop'}}" bindtap="repairVehicleAction">检修保养车辆</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'pet_hospital'}}" data-type="wash" bindtap="hospitalCareAction">宠物专业洗护</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'pet_hospital'}}" data-type="treat" bindtap="hospitalCareAction">宠物健康调理</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'pet_hospital'}}" bindtap="hospitalTreatHumanAction">健康舒缓调理</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'police_station'}}" bindtap="openJustice">进入文明督导所</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'prison'}}" bindtap="openJustice">安全宣教自省室</button>
+      <button wx:if="{{myJailStatus && myJailStatus.isJailed}}" bindtap="openJustice" class="jail-status-btn">宣教自省中({{myJailStatus.remainingSeconds}}s)·提前结业</button>
+      <button wx:if="{{isHumanInjured && (!nearbyBuilding || nearbyBuilding.type !== 'pet_hospital')}}" class="injured-tip-btn">身体疲劳·前往调理</button>
     </view>
   </view>
   <view class="bottom" style="bottom: {{bottom}}px" wx:if="{{!loading && !error}}">
@@ -43,11 +54,11 @@
       <block wx:if="{{nearbyFarm.loaded && nearbyFarm.unlocked}}">
         <scroll-view scroll-x class="field-seeds" wx:if="{{nearbyFarm.state === 'empty'}}"><view class="field-seed-row"><block wx:for="{{farm.crops}}" wx:key="id"><button wx:if="{{item.unlocked}}" class="{{farmCropId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="selectFarmCrop">{{item.name}} · {{item.seeds}}包</button></block></view></scroll-view>
         <view class="field-actions">
-          <button wx:if="{{nearbyFarm.state === 'wild'}}" data-bed="{{nearbyFarm.id}}" data-operation="till" bindtap="farmOperation" disabled="{{farmBusy}}">开垦 · 10金币</button>
+          <button wx:if="{{nearbyFarm.state === 'wild'}}" data-bed="{{nearbyFarm.id}}" data-operation="till" bindtap="farmOperation" disabled="{{farmBusy}}">开垦 · 10爱心币</button>
           <button wx:if="{{nearbyFarm.state === 'empty'}}" data-bed="{{nearbyFarm.id}}" data-operation="plant" bindtap="farmOperation" disabled="{{farmBusy || !farmSeedAvailable}}">播种</button>
           <button wx:if="{{nearbyFarm.state === 'empty' && !farmSeedAvailable}}" data-tab="shop" bindtap="openFarm">去种子铺备种</button>
           <button wx:if="{{nearbyFarm.state === 'growing' && !nearbyFarm.watered}}" data-bed="{{nearbyFarm.id}}" data-operation="water" bindtap="farmOperation" disabled="{{farmBusy}}">浇水</button>
-          <button wx:if="{{nearbyFarm.state === 'growing' && !nearbyFarm.fertilized}}" data-bed="{{nearbyFarm.id}}" data-operation="fertilize" bindtap="farmOperation" disabled="{{farmBusy}}">{{farm && farm.manure > 0 ? '便便加速施肥(余' + farm.manure + ')' : '施肥 · 5金币'}}</button>
+          <button wx:if="{{nearbyFarm.state === 'growing' && !nearbyFarm.fertilized}}" data-bed="{{nearbyFarm.id}}" data-operation="fertilize" bindtap="farmOperation" disabled="{{farmBusy}}">{{farm && farm.manure > 0 ? '便便加速施肥(余' + farm.manure + ')' : '施肥 · 5爱心币'}}</button>
           <button wx:if="{{nearbyFarm.state === 'ready'}}" data-bed="{{nearbyFarm.id}}" data-operation="harvest" bindtap="farmOperation" disabled="{{farmBusy}}">收获</button>
           <text class="life-muted" wx:if="{{nearbyFarm.state === 'growing' && nearbyFarm.watered && nearbyFarm.fertilized}}">已浇水、已施肥，等待成熟</text>
         </view>

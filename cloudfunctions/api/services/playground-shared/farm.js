@@ -111,12 +111,27 @@ module.exports=function createFarm(context,hooks) {
           }
         }
       } else if(operation==='pickupPoop') {
-        const poopId = data.poopId || data.requestId
+        const poopId = String(data.poopId || data.requestId || '')
         farm.pickedPoops = farm.pickedPoops || []
         if (poopId && farm.pickedPoops.includes(poopId)) {
           throw new Error('该便便已被拾取，不可重复拾取')
         }
         if (poopId) {
+          const pickedKey = 'picked_poop_' + poopId
+          const existing = await hooks.read(tx, pickedKey)
+          if (existing && existing.picked) {
+            throw new Error('该便便已被其他邻居拾取，不可重复拾取')
+          }
+          await tx.collection(COLLECTION).doc(pickedKey).set({
+            data: {
+              kind: 'picked_poop',
+              picked: true,
+              poopId,
+              pickedBy: openid,
+              pickedAt: stamp,
+              communityId: actor.communityId
+            }
+          })
           farm.pickedPoops.push(poopId)
           if (farm.pickedPoops.length > 200) farm.pickedPoops.shift()
         }

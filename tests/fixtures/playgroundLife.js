@@ -6,9 +6,9 @@ function fixture() {
   let time=1800000000000
   const users=['a','b','c','d','e','f'].map((openid)=>({_id:'user_'+openid,openid,nickname:'玩家'+openid,residentialCommunity:{name:openid==='f'?'B小区':'A小区'}}))
   const pets=users.map((u)=>({_id:'pet_'+u.openid,openid:u.openid,name:'宠物'+u.openid,species:u.openid==='b'?'cat':'dog'}))
-  const db=createCollectionStore({users,pets}),context={db,nowMs:()=>time,nowText:()=>new Date(time).toISOString()}
-  const shared=createShared(context),plots=world.create(context),seq={},commands={}
   const user=(id)=>users.find((u)=>u.openid===id)
+  const db=createCollectionStore({users,pets}),context={db,nowMs:()=>time,nowText:()=>new Date(time).toISOString(),getUser:async(id)=>user(id)}
+  const shared=createShared(context),plots=world.create(context),seq={},commands={}
   const enter=(id,community)=>shared.enter(id,user(id),{community},pets.filter((p)=>p.openid===id))
   const auth=(scene)=>({session:scene.session,sceneId:scene.sceneId})
   const row=(id)=>db.state.pet_playground_plots.find((r)=>r._id===id)

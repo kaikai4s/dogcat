@@ -144,8 +144,16 @@ module.exports={
     }
     c.restore()
     if(!overview){
-      const label=car.soiled?'小车（已脏）':'小车'
-      this.markerLabel(label,point.x,point.y-size*.66-8,selected,this.ownerNameColor(car.ownerId,car.nameColor))
+      const isSoiled=!!(car.soiled||(car.stains&&car.stains.length>0))
+      const baseName=car.name ? `${car.name}的小车` : '小车'
+      const label=isSoiled?`${baseName} [肮脏]`:baseName
+      const labelColor=isSoiled?'#ba392a':this.ownerNameColor(car.ownerId,car.nameColor)
+      const labelY=point.y-size*.66-8
+      this.markerLabel(label,point.x,labelY,selected,labelColor)
+      const isCarOnline = car.online !== false && (Date.now() + this.serverOffset - (car.lastSeen || 0) < 15000)
+      if(!car.mine && !isCarOnline && this.drawOfflineBadge) {
+        this.drawOfflineBadge(point.x + Math.max(16, label.length * 6) + 8, labelY)
+      }
     }
   },
   nearbyRideCandidate() {

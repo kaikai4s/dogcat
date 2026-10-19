@@ -1,6 +1,11 @@
-<view class="world-toolbar" style="top: {{top + 76}}px" wx:if="{{!loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen}}">
+<view class="world-toolbar" style="top: {{top + 76}}px" wx:if="{{!loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !disputesOpen && !buildOpen}}">
   <view class="world-toolbar-row">
-    <view class="life-tools"><button bindtap="togglePetRoster">爱宠 {{pets.length}}</button><button wx:if="{{hasPlot}}" bindtap="openFarm">我的菜园</button></view>
+    <view class="life-tools">
+      <button bindtap="togglePetRoster">爱宠 {{pets.length}}</button>
+      <button wx:if="{{hasPlot}}" bindtap="openFarm">我的菜园</button>
+      <button bindtap="openBuild">工坊建造</button>
+      <button bindtap="openDisputes">社区纠纷</button>
+    </view>
     <button class="request-badge" wx:if="{{socialRequests.length}}" bindtap="openSocial">待处理申请 {{socialRequests.length}}</button>
   </view>
   <view class="pet-alert-banner" wx:if="{{petAlerts.length}}" bindtap="viewPetAlert"><text>♡ {{petAlerts[0].name}}：{{petAlerts[0].message}}</text><text wx:if="{{petAlerts.length > 1}}">还有 {{petAlerts.length - 1}} 项需要照料 ›</text></view>
@@ -15,29 +20,143 @@
 <view class="settings-backdrop farm-backdrop" wx:if="{{farmOpen}}" catchtap="closeFarm" catchtouchmove="swallowTouch">
   <view class="farm-panel" catchtap="swallowTouch">
     <view class="farm-heading"><view><text class="farm-eyebrow">阳光菜园</text><text class="farm-title">种下今天的小期待</text></view><button bindtap="closeFarm">完成</button></view>
-    <view class="farm-wallet" wx:if="{{farm}}"><text>Lv.{{farm.level}} · {{farm.xp}} 经验</text><text>◉ {{farm.coins}} 农场金币</text></view>
+    <view class="farm-wallet" wx:if="{{farm}}"><text>绿化阶段 {{farm.level}} · 绿意值 {{farm.xp}}</text><text>◉ {{farm.coins}} 爱心币</text></view>
     <view class="farm-tabs"><button class="{{farmTab === 'field' ? 'active' : ''}}" data-tab="field" bindtap="changeFarmTab">田地概览</button><button class="{{farmTab === 'shop' ? 'active' : ''}}" data-tab="shop" bindtap="changeFarmTab">种子铺</button><button class="{{farmTab === 'barn' ? 'active' : ''}}" data-tab="barn" bindtap="changeFarmTab">收获仓库</button></view>
     <view wx:if="{{farmLoading}}" class="farm-empty">正在看看菜园…</view>
     <view wx:elif="{{!farm}}" class="farm-empty"><text>暂时无法读取菜园</text><button bindtap="openFarm">重试</button></view>
     <scroll-view wx:else scroll-y class="farm-content">
       <block wx:if="{{farmTab === 'field'}}">
         <view class="farm-caption"><text>{{farm.unlockedBeds}} / 12 块土地已解锁</text><text>{{farmReadyCount}} 块可收获</text></view>
-        <view class="farm-grid"><view wx:for="{{farm.beds}}" wx:key="id" class="farm-tile tile-{{item.state}} {{farmSelectedBed === item.id ? 'tile-selected' : ''}} {{!item.unlocked ? 'tile-locked' : ''}}" data-id="{{item.id}}" bindtap="selectFarmBed"><text class="tile-icon">{{!item.unlocked ? '◇' : item.state === 'wild' ? '＋' : item.state === 'empty' ? '⋮' : item.state === 'ready' ? '✦' : '♧'}}</text><text>{{!item.unlocked ? '升级解锁' : item.name || item.label}}</text><text class="tile-detail" wx:if="{{item.cropId}}">{{item.state === 'ready' ? '可收获' : item.countdown}}</text></view></view>
+        <view class="farm-grid"><view wx:for="{{farm.beds}}" wx:key="id" class="farm-tile tile-{{item.state}} {{farmSelectedBed === item.id ? 'tile-selected' : ''}} {{!item.unlocked ? 'tile-locked' : ''}}" data-id="{{item.id}}" bindtap="selectFarmBed"><text class="tile-icon">{{!item.unlocked ? '◇' : item.state === 'wild' ? '＋' : item.state === 'empty' ? '⋮' : item.state === 'ready' ? '✦' : '♧'}}</text><text>{{!item.unlocked ? '阶段解锁' : item.name || item.label}}</text><text class="tile-detail" wx:if="{{item.cropId}}">{{item.state === 'ready' ? '可收获' : item.countdown}}</text></view></view>
         <view class="farm-bed-detail" wx:if="{{farmBed}}"><view class="life-heading"><text>第 {{farmBed.id + 1}} 块田 · {{farmBed.name || farmBed.label}}</text><text>{{farmBed.cropId ? farmBed.progress + '%' : ''}}</text></view>
           <view class="need-track" wx:if="{{farmBed.cropId}}"><view style="width: {{farmBed.progress}}%;"></view></view>
-          <text class="life-muted">{{!farmBed.unlocked ? '通过收获积累经验，升级可解锁更多土地和作物' : farmBed.state === 'wild' ? '花10金币开垦，之后可一直重复种植' : farmBed.state === 'empty' ? '走到这块土地旁，选择种子播种' : farmBed.state === 'ready' ? '已经成熟，走到田边收获吧' : '离线也会生长，成熟后保留收成，不会枯萎'}}</text>
+          <text class="life-muted">{{!farmBed.unlocked ? '通过绿植培育积累绿意，提升绿化阶段可解锁更多专属作物' : farmBed.state === 'wild' ? '花10爱心币开垦，之后可一直重复种植' : farmBed.state === 'empty' ? '走到这块土地旁，选择种子播种' : farmBed.state === 'ready' ? '已经成熟，走到田边收获吧' : '离线也会生长，成熟后保留收成，不会枯萎'}}</text>
           <button class="farm-go" data-id="{{farmBed.id}}" bindtap="goToFarm" disabled="{{!farmBed.unlocked}}">走到这块土地旁</button>
         </view>
         <text class="life-muted">开垦、播种、浇水、施肥与收获，都需要角色走到对应土地旁，在场景中操作。点击地图上的土地也能自动走过去。</text>
       </block>
-      <block wx:elif="{{farmTab === 'shop'}}"><view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}}种子</text><text class="life-muted">{{item.minutes}}分钟成熟 · 基础收成{{item.yield}}份</text><text class="life-muted">{{item.enabled === false ? '已下架' : item.unlocked ? '已解锁' : 'Lv.' + item.level + ' 解锁'}} · 库存 {{item.seeds}}包</text></view><button data-operation="buySeeds" data-crop="{{item.id}}" data-quantity="5" bindtap="farmOperation" disabled="{{farmBusy || !item.unlocked}}">{{item.price * 5}}金币 / 5包</button></view></block>
+      <block wx:elif="{{farmTab === 'shop'}}"><view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}}种子</text><text class="life-muted">{{item.minutes}}分钟成熟 · 基础收成{{item.yield}}份</text><text class="life-muted">{{item.enabled === false ? '已下架' : item.unlocked ? '已解锁' : '第 ' + item.level + ' 阶段解锁'}} · 库存 {{item.seeds}}包</text></view><button data-operation="buySeeds" data-crop="{{item.id}}" data-quantity="5" bindtap="farmOperation" disabled="{{farmBusy || !item.unlocked}}">{{item.price * 5}}爱心币 / 5包</button></view></block>
       <block wx:else>
         <view class="farm-product">
           <view><text>便便有机肥 × {{farm.manure || 0}}</text><text class="life-muted">拾取宠物便便获得 · 施肥享受1小时双倍速加速</text></view>
           <text class="life-muted" wx:if="{{farm.manure}}">施肥自动优先消耗</text>
         </view>
-        <view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}} × {{item.stock}}</text><text class="life-muted">每份可换 {{item.sell}} 农场金币</text></view><button data-operation="sell" data-crop="{{item.id}}" data-quantity="{{item.stock}}" bindtap="farmOperation" disabled="{{farmBusy || !item.stock}}">全部出售</button></view><text class="life-muted">农场金币用于开垦、买种子和施肥，不涉及现金交易。</text></block>
+        <view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}} × {{item.stock}}</text><text class="life-muted">每份可换 {{item.sell}} 爱心币</text></view><button data-operation="sell" data-crop="{{item.id}}" data-quantity="{{item.stock}}" bindtap="farmOperation" disabled="{{farmBusy || !item.stock}}">全部出售</button></view><text class="life-muted">爱心币用于开垦、买种子和施肥，不涉及现金交易。</text></block>
     </scroll-view>
     <button class="farm-go" bindtap="goToFarm">前往所选土地</button>
+  </view>
+</view>
+<view class="settings-backdrop dispute-backdrop" wx:if="{{disputesOpen}}" catchtap="closeDisputes" catchtouchmove="swallowTouch">
+  <view class="settings-panel dispute-panel" catchtap="swallowTouch">
+    <view class="settings-heading">
+      <view>
+        <text class="panel-main-title">🏛 社区居委会</text>
+        <text class="settings-tip">社区自治 · 环境保洁督导 · 唯一机构</text>
+      </view>
+      <button bindtap="closeDisputes">完成</button>
+    </view>
+    <view class="committee-card">
+      <view class="committee-info">
+        <text class="committee-title">当前在任主任：{{committeeOwnerName || '暂未设立'}}</text>
+        <text class="committee-desc" wx:if="{{isCommittee}}">★ 您是当前社区在任居委会主任，履行保洁督导与社区治理职责</text>
+        <text class="committee-desc" wx:else>每个社区只能设立一所居委会，若保洁提醒超过3天未处理，系统将重新推选居委会主任</text>
+      </view>
+      <button class="salary-btn" wx:if="{{isCommittee}}" bindtap="claimWeeklySalaryAction">领取共建津贴</button>
+    </view>
+    <view class="dispute-list-title">待处理保洁提醒 ({{disputes.length}})</view>
+    <scroll-view scroll-y class="dispute-list">
+      <view wx:if="{{disputesLoading}}" class="dispute-empty">正在拉取社区保洁记录…</view>
+      <view wx:elif="{{!disputes.length}}" class="dispute-empty">当前社区环境洁净，暂无未处理的保洁提醒！</view>
+      <view wx:for="{{disputes}}" wx:key="_id" class="dispute-item {{item.status === 'resolved' ? 'item-resolved' : item.status === 'expired' ? 'item-expired' : ''}}">
+        <view class="dispute-main">
+          <view class="dispute-head">
+            <text class="dispute-badge {{item.status === 'resolved' ? 'badge-resolved' : item.status === 'expired' ? 'badge-expired' : 'badge-pending'}}">
+              {{item.status === 'resolved' ? '已督促清理' : item.status === 'expired' ? '已超时重新推选' : '待居委会处理'}}
+            </text>
+            <text class="dispute-reporter">提醒人：{{item.reporterName}}</text>
+          </view>
+          <text class="dispute-detail">便便位置：坐标 ({{item.location.x}}, {{item.location.z}})</text>
+          <text class="dispute-time" wx:if="{{item.status === 'pending'}}">处理时限：超过3天未处理居委会将重新推选！</text>
+          <text class="dispute-time" wx:elif="{{item.status === 'resolved'}}">督导主任：{{item.resolverName}}</text>
+        </view>
+        <button class="resolve-btn" wx:if="{{isCommittee && item.status === 'pending'}}" data-id="{{item._id}}" bindtap="resolveDisputeAction">协助清理并督导</button>
+      </view>
+    </scroll-view>
+  </view>
+</view>
+<view class="settings-backdrop build-backdrop" wx:if="{{buildOpen}}" catchtap="closeBuild" catchtouchmove="swallowTouch">
+  <view class="settings-panel build-panel" catchtap="swallowTouch">
+    <view class="settings-heading">
+      <view>
+        <text class="panel-main-title">🛠 社区工坊 · 建筑规划</text>
+        <text class="settings-tip">在已有庭院内建造，或规划独立专属草坪建造</text>
+      </view>
+      <button bindtap="closeBuild">完成</button>
+    </view>
+    <view wx:if="{{buildLoading}}" class="build-empty">正在加载建筑图纸…</view>
+    <scroll-view wx:else scroll-y class="build-content">
+      <view class="building-cards">
+        <view wx:for="{{buildingCatalog}}" wx:key="id" class="building-card {{selectedBuilding.id === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="selectBuilding">
+          <view class="building-card-left">
+            <image wx:if="{{item.image}}" class="building-thumb" src="{{item.image}}" mode="aspectFit" />
+            <view wx:else class="building-thumb-placeholder">
+              {{item.type === 'committee' ? '🏛' : item.type === 'repair_shop' ? '🔧' : item.type === 'pet_hospital' ? '🏥' : item.type === 'police_station' ? '👮' : item.type === 'prison' ? '⛓' : '🏡'}}
+            </view>
+          </view>
+          <view class="building-card-info">
+            <view class="building-name-row">
+              <text class="building-title">{{item.name}}</text>
+              <text class="building-type-tag">{{item.type === 'committee' ? '社区居委会' : item.type === 'repair_shop' ? '修理厂' : item.type === 'pet_hospital' ? '宠物医院' : item.type === 'police_station' ? '督导所' : item.type === 'prison' ? '自省室' : '住宅洋房'}}</text>
+            </view>
+            <text class="building-desc">{{item.desc || '实用社区建筑，丰富社区生态生活'}}</text>
+            <view class="building-meta">
+              <text class="meta-size">尺寸：{{item.width}}×{{item.depth}}米 (约占 {{item.tileCount}} 块草地)</text>
+              <text class="meta-cost">建设消耗：{{item.costCoins}} 爱心币</text>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="build-actions" wx:if="{{selectedBuilding}}">
+        <button class="build-in-yard-btn" bindtap="buildInYardAction" disabled="{{buildBusy}}">在已有庭院内建造</button>
+        <button class="build-out-yard-btn" bindtap="buildOutYardAction" disabled="{{buildBusy}}">规划独立专属草坪建造</button>
+      </view>
+    </scroll-view>
+  </view>
+</view>
+<view class="settings-backdrop justice-backdrop" wx:if="{{justiceOpen}}" catchtap="closeJustice" catchtouchmove="swallowTouch">
+  <view class="settings-panel justice-panel" catchtap="swallowTouch">
+    <view class="settings-heading">
+      <view>
+        <text class="panel-main-title">📋 社区文明督导所 & 自省室</text>
+        <text class="settings-tip">倡导文明慢行 · 规范社区秩序 · 守护平安</text>
+      </view>
+      <button bindtap="closeJustice">完成</button>
+    </view>
+    <view class="justice-jail-card" wx:if="{{myJailStatus && myJailStatus.isJailed}}">
+      <view class="jail-status-info">
+        <text class="jail-title">🕊 您当前正在安全宣教自省室学习中</text>
+        <text class="jail-desc">剩余宣教自省时间：{{myJailStatus.remainingSeconds}} 秒 · 请在指定自省活动区内静思</text>
+      </view>
+      <button class="bail-btn" bindtap="payBailAction">交存安全公约金({{myJailStatus.bailCoins}}爱心币)提前恢复通行</button>
+    </view>
+    <view class="dispute-list-title">交通出行安全劝导记录 ({{accidents.length}})</view>
+    <scroll-view scroll-y class="dispute-list justice-list">
+      <view wx:if="{{justiceLoading}}" class="dispute-empty">正在调取社区出行记录…</view>
+      <view wx:elif="{{!accidents.length}}" class="dispute-empty">社区秩序井然，暂无碰撞摩擦劝导记录！</view>
+      <view wx:for="{{accidents}}" wx:key="_id" class="dispute-item {{item.status === 'arrested' ? 'item-arrested' : item.status === 'settled' ? 'item-resolved' : ''}}">
+        <view class="dispute-main">
+          <view class="dispute-head">
+            <text class="dispute-badge {{item.status === 'arrested' ? 'badge-arrested' : item.status === 'settled' ? 'badge-resolved' : 'badge-wanted'}}">
+              {{item.status === 'arrested' ? '正在宣教自省' : item.status === 'settled' ? '劝导完成' : '待上门劝导'}}
+            </text>
+            <text class="dispute-reporter">当事司机：{{item.driverName}}</text>
+          </view>
+          <text class="dispute-detail">碰撞涉及：{{item.victimType === 'pet' ? '🐾 爱宠' : '🚶 居民'}}【{{item.victimName}}】</text>
+          <text class="dispute-time" wx:if="{{item.status === 'wanted'}}">状态：车辆发生接触碰撞，文明督导员可前往宣教劝导！</text>
+          <text class="dispute-time" wx:elif="{{item.status === 'arrested'}}">督导员：{{item.officerName || '督导所'}} · 宣教学习自省中</text>
+        </view>
+        <button class="resolve-btn arrest-btn" wx:if="{{item.status === 'wanted'}}" data-id="{{item._id}}" data-openid="{{item.driverOpenid}}" bindtap="arrestDriverAction">安排宣教自省</button>
+      </view>
+    </scroll-view>
   </view>
 </view>

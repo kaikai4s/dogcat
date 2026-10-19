@@ -320,4 +320,45 @@ test('petRelief action decreases pee/poop values and persists to resident databa
   assert.equal(Math.round(f.resident('a').pets[0].needs.poop), 10)
 })
 
+test('buildings catalog management, grass tile calculation, and committee parameters', async () => {
+  const createBuildings = require('../../cloudfunctions/api/services/playground-buildings')
+  const f = fixture()
+  const bService = createBuildings(f.context)
+
+  // 1. List default buildings
+  const listRes = await bService.list()
+  assert.ok(listRes.buildings && listRes.buildings.length >= 4)
+  const repairShop = listRes.buildings.find((b) => b.type === 'repair_shop')
+  const committee = listRes.buildings.find((b) => b.type === 'committee')
+  assert.ok(repairShop)
+  assert.ok(committee)
+  assert.equal(repairShop.name, '社区修理厂')
+  assert.equal(committee.name, '社区居委会')
+  assert.equal(committee.weeklySalary, 200)
+  assert.equal(committee.resolveReward, 20)
+
+  // 2. Save new custom building with tile calculation: 10.5m x 7m = 73.5m² = 6 grass tiles
+  const customBuilding = {
+    id: 'my_custom_clinic',
+    name: '阳光宠物诊所',
+    type: 'pet_hospital',
+    desc: '提供全天候洗护和调理',
+    width: 10.5,
+    depth: 7,
+    costCoins: 300,
+    image: 'cloud://env/buildings/clinic.png',
+    enabled: true
+  }
+  const saveRes = await bService.save('admin_user', { building: customBuilding, revision: listRes.revision })
+  assert.equal(saveRes.revision, listRes.revision + 1)
+  const saved = saveRes.buildings.find((b) => b.id === 'my_custom_clinic')
+  assert.ok(saved)
+  assert.equal(saved.tileCount, 6) // (10.5 * 7) / (3.5 * 3.5) = 73.5 / 12.25 = 6
+  assert.equal(saved.costCoins, 300)
+
+  // 3. Remove custom building
+  const delRes = await bService.remove('admin_user', { id: 'my_custom_clinic' })
+  assert.equal(delRes.buildings.some((b) => b.id === 'my_custom_clinic'), false)
+})
+
 

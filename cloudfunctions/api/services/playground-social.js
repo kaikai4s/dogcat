@@ -55,8 +55,12 @@ module.exports=function createSocial(context) {
         b={ownerOpenid:yard.ownerOpenid,name:yard.ownerName||String(yard.name||'邻居').replace(/的庭院$/,'')}
         const home=await world.read(tx,world.ownerId(b.ownerOpenid))
         plot=home && await world.read(tx,home.plotId)
-        if(!plot || plot.communityId!==a.communityId || plot._id!==data.plotId) throw new Error('庭院已变化，请重新靠近院门')
-        const gate={x:plot.x,z:plot.z+(plot.size||48)/2+2}
+        const half = (plot.size || 48) / 2
+        const dir = plot.gateDirection || 'south'
+        const gate = dir === 'north' ? { x: plot.x, z: plot.z - half - 2 } :
+                     dir === 'east' ? { x: plot.x + half + 2, z: plot.z } :
+                     dir === 'west' ? { x: plot.x - half - 2, z: plot.z } :
+                     { x: plot.x, z: plot.z + half + 2 }
         if(Math.hypot(a.position.x-gate.x,a.position.z-gate.z)>6) throw new Error('请先移动到对方庭院门口')
       } else {
         if(!b || b.communityId!==a.communityId || !b.active) throw new Error('用户已离开当前场景')

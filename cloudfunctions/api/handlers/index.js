@@ -3,6 +3,7 @@ const loaders = {
   auth: () => require('./auth'),
   playground: () => require('./playground'),
   playgroundFarm: () => require('./playgroundFarm'),
+  playgroundBuilding: () => require('./playgroundBuilding'),
   playgroundAppearance: () => require('./playgroundAppearance'),
   pet: () => require('./pet'),
   petBeauty: () => require('./petBeauty'),

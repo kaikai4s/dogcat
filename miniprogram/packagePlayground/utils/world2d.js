@@ -30,19 +30,60 @@ function petStart(origin, plot, index) {
     z: origin.z + Math.floor(index / 3) * rowStep
   }
 }
+function plotGatePosition(plot) {
+  const half = (plot.size || SIZE) / 2
+  const dir = plot.gateDirection || 'south'
+  if (dir === 'north') return { x: plot.x, z: plot.z - half - 2 }
+  if (dir === 'east') return { x: plot.x + half + 2, z: plot.z }
+  if (dir === 'west') return { x: plot.x - half - 2, z: plot.z }
+  return { x: plot.x, z: plot.z + half + 2 }
+}
 function yardObstacles(p) {
   const x = p.x,
     z = p.z,
     h = (p.size || SIZE) / 2,
     t = 0.65
+  const dir = p.gateDirection || 'south'
+  const fences = []
+
+  if (dir === 'north') {
+    fences.push({ minX: x - h, maxX: x - 3, minZ: z - h - t, maxZ: z - h + t })
+    fences.push({ minX: x + 3, maxX: x + h, minZ: z - h - t, maxZ: z - h + t })
+    fences.push({ minX: x - 3.25, maxX: x - 2.75, minZ: z - h, maxZ: z - h + 3 })
+    fences.push({ minX: x + 2.75, maxX: x + 3.25, minZ: z - h, maxZ: z - h + 3 })
+  } else {
+    fences.push({ minX: x - h, maxX: x + h, minZ: z - h - t, maxZ: z - h + t })
+  }
+
+  if (dir === 'south') {
+    fences.push({ minX: x - h, maxX: x - 3, minZ: z + h - t, maxZ: z + h + t })
+    fences.push({ minX: x + 3, maxX: x + h, minZ: z + h - t, maxZ: z + h + t })
+    fences.push({ minX: x - 3.25, maxX: x - 2.75, minZ: z + h - 3, maxZ: z + h })
+    fences.push({ minX: x + 2.75, maxX: x + 3.25, minZ: z + h - 3, maxZ: z + h })
+  } else {
+    fences.push({ minX: x - h, maxX: x + h, minZ: z + h - t, maxZ: z + h + t })
+  }
+
+  if (dir === 'west') {
+    fences.push({ minX: x - h - t, maxX: x - h + t, minZ: z - h, maxZ: z - 3 })
+    fences.push({ minX: x - h - t, maxX: x - h + t, minZ: z + 3, maxZ: z + h })
+    fences.push({ minX: x - h, maxX: x - h + 3, minZ: z - 3.25, maxZ: z - 2.75 })
+    fences.push({ minX: x - h, maxX: x - h + 3, minZ: z + 2.75, maxZ: z + 3.25 })
+  } else {
+    fences.push({ minX: x - h - t, maxX: x - h + t, minZ: z - h, maxZ: z + h })
+  }
+
+  if (dir === 'east') {
+    fences.push({ minX: x + h - t, maxX: x + h + t, minZ: z - h, maxZ: z - 3 })
+    fences.push({ minX: x + h - t, maxX: x + h + t, minZ: z + 3, maxZ: z + h })
+    fences.push({ minX: x + h - 3, maxX: x + h, minZ: z - 3.25, maxZ: z - 2.75 })
+    fences.push({ minX: x + h - 3, maxX: x + h, minZ: z + 2.75, maxZ: z + 3.25 })
+  } else {
+    fences.push({ minX: x + h - t, maxX: x + h + t, minZ: z - h, maxZ: z + h })
+  }
+
   return [
-    { minX: x - h - t, maxX: x - h + t, minZ: z - h, maxZ: z + h },
-    { minX: x + h - t, maxX: x + h + t, minZ: z - h, maxZ: z + h },
-    { minX: x - h, maxX: x + h, minZ: z - h - t, maxZ: z - h + t },
-    { minX: x - h, maxX: x - 3, minZ: z + h - t, maxZ: z + h + t },
-    { minX: x + 3, maxX: x + h, minZ: z + h - t, maxZ: z + h + t },
-    { minX: x - 3.25, maxX: x - 2.75, minZ: z + h - 3, maxZ: z + h },
-    { minX: x + 2.75, maxX: x + 3.25, minZ: z + h - 3, maxZ: z + h },
+    ...fences,
     ...yardLayout(p)
       .sprites.filter((item) => item.radius > 0)
       .map((item) => ({
@@ -371,12 +412,27 @@ class World2D {
     }
     const nearbyPlayer=this.remoteCharacters.map((person)=>({...person,position:this.neighborPosition(person)}))
       .find((person)=>Math.hypot(p.x-person.position.x,p.z-person.position.z)<=5)
-    if(nearbyPlayer)result.player={id:nearbyPlayer.id,name:nearbyPlayer.name,friend:(this.social.friends||[]).some((friend)=>friend.id===nearbyPlayer.id)}
-    const gate=this.plots().find((plot)=>!this.canEnterPlot(plot)&&Math.hypot(p.x-plot.x,p.z-(plot.z+(plot.size||SIZE)/2+2))<=6)
+    const gate=this.plots().find((plot)=>{
+      if (this.canEnterPlot(plot)) return false
+      const gp = plotGatePosition(plot)
+      return Math.hypot(p.x - gp.x, p.z - gp.z) <= 6
+    })
     if(gate)result.gate={plotId:gate.id,playerId:gate.ownerId,name:gate.ownerName||String(gate.name||'邻居').replace(/的庭院$/,'')}
     if (this.groundDecals && this.groundDecals.length) {
       const poop = this.groundDecals.find((d) => d.type === 'poop' && Math.hypot(p.x - d.x, p.z - d.z) <= 3.8 && nav.clearSegment(p, d))
       if (poop) result.poop = { id: poop.id, x: poop.x, z: poop.z }
+    }
+    const nearbyPlot = this.plots().find((plot) => {
+      const dist = Math.hypot(p.x - plot.x, p.z - plot.z)
+      return dist <= 16 && (plot.mine || this.canEnterPlot(plot) || dist <= 12)
+    })
+    if (nearbyPlot && nearbyPlot.buildingType && nearbyPlot.buildingType !== 'residential') {
+      result.building = {
+        plotId: nearbyPlot.id,
+        type: nearbyPlot.buildingType,
+        name: nearbyPlot.buildingName || (nearbyPlot.buildingType === 'committee' ? '社区居委会' : nearbyPlot.buildingType === 'repair_shop' ? '社区修理厂' : nearbyPlot.buildingType === 'pet_hospital' ? '爱心宠物医院' : nearbyPlot.buildingType === 'police_station' ? '文明督导所' : nearbyPlot.buildingType === 'prison' ? '安全宣教自省室' : '社区工坊'),
+        mine: !!nearbyPlot.mine
+      }
     }
     return result
   }
@@ -429,7 +485,8 @@ class World2D {
       nearbyBowl: nearby.bowl,
       nearbyPlayer: nearby.player || null,
       nearbyGate: nearby.gate || null,
-      nearbyPoop: nearby.poop || null
+      nearbyPoop: nearby.poop || null,
+      nearbyBuilding: nearby.building || null
     })
   }
   interactPet(id) {
@@ -1509,7 +1566,36 @@ class World2D {
       }
     }
     c.restore()
-    if(!overview) this.markerLabel(person.name||'邻居',p.x,p.y-size*CHARACTER_STYLE.anchor-8,false,this.ownerNameColor(person.ownerId||person.id,person.nameColor))
+    if(!overview) {
+      const isOnline = person.online !== false && (Date.now() + this.serverOffset - (person.lastSeen || 0) < 15000)
+      const baseName = person.name || '邻居'
+      const nameColor = this.ownerNameColor(person.ownerId||person.id,person.nameColor)
+      const labelY = p.y - size * CHARACTER_STYLE.anchor - 8
+      this.markerLabel(baseName, p.x, labelY, false, nameColor)
+      if (!isOnline) {
+        this.drawOfflineBadge(p.x + Math.max(16, baseName.length * 6) + 8, labelY)
+      }
+    }
+  }
+  drawOfflineBadge(x, y) {
+    const c = this.ctx
+    c.save()
+    c.fillStyle = '#8e9297'
+    c.beginPath()
+    c.arc(x, y - 2, 6, 0, Math.PI * 2)
+    c.fill()
+    c.strokeStyle = '#ffffff'
+    c.lineWidth = 1.2
+    c.beginPath()
+    c.arc(x, y - 2, 3.5, 1.2 * Math.PI, 1.8 * Math.PI)
+    c.stroke()
+    c.beginPath()
+    c.moveTo(x - 3, y - 5)
+    c.lineTo(x + 3, y + 1)
+    c.strokeStyle = '#ff4d4f'
+    c.lineWidth = 1.2
+    c.stroke()
+    c.restore()
   }
   pause() {
     this.paused=true
@@ -1615,6 +1701,10 @@ class World2D {
     c.restore()
     const bubble = pet.relieving
       ? (pet.relieving.type === 'poop' ? '💩' : '💧')
+      : pet.injured
+      ? '🩹'
+      : pet.sick
+      ? '🤒'
       : (pet.autonomousAction && this.elapsed < pet.autonomousAction.until)
       ? (pet.autonomousAction.type === 'eat' ? '🥣' : '💧')
       : null
@@ -1659,8 +1749,20 @@ class World2D {
         -size / 2, -size * style.anchor, size, size)
     } else c.drawImage(image, -size / 2, -size * style.anchor, size, size)
     c.restore()
-    const name=this.scene&&this.scene.name||this.ownPlot&&this.ownPlot.ownerName
-    if(name)this.markerLabel(name,point.x,point.y-size*style.anchor-8,false,this.ownerNameColor(this.scene&&this.scene.playerId))
+    const isInjured = !!(this.injured || player.injured)
+    const isJailed = !!this.isJailed
+    let name = this.scene && this.scene.name || this.ownPlot && this.ownPlot.ownerName || ''
+    if (isJailed) name = `${name} [自省中]`
+    if (name) this.markerLabel(name, point.x, point.y - size * style.anchor - 8, false, isJailed ? '#d32f2f' : this.ownerNameColor(this.scene && this.scene.playerId))
+    if (isInjured || isJailed) {
+      c.save()
+      c.translate(point.x, point.y - size * style.anchor - 26)
+      c.font = '16px sans-serif'
+      c.textAlign = 'center'
+      c.textBaseline = 'middle'
+      c.fillText(isJailed ? '🕊' : '🤕', 0, 0)
+      c.restore()
+    }
   }
   drawInteractionFeedback() {
     const c = this.ctx
@@ -1859,6 +1961,27 @@ class World2D {
             item.size,
             item.anchor
           )
+          if (item.name === 'house' && p.buildingType && p.buildingType !== 'residential') {
+            const bLabels = { committee: '🏛 居委会', repair_shop: '🔧 修理厂', pet_hospital: '🏥 宠物医院', police_station: '📋 督导所', prison: '🕊 自省室' }
+            const bColors = { committee: '#d84315', repair_shop: '#0277bd', pet_hospital: '#2e7d32', police_station: '#1565c0', prison: '#6a1b9a' }
+            const tag = bLabels[p.buildingType] || p.buildingName || '工坊'
+            const tagColor = bColors[p.buildingType] || '#388e3c'
+            const pt = this.project(item.x, item.z)
+            const c = this.ctx
+            c.save()
+            c.font = 'bold 12px sans-serif'
+            c.textAlign = 'center'
+            const bw = tag.length * 13 + 18
+            const signY = pt.y - item.size * this.scale * this.zoom * 0.72 - 10
+            c.fillStyle = tagColor
+            c.beginPath()
+            if (typeof c.roundRect === 'function') c.roundRect(pt.x - bw/2, signY - 14, bw, 20, 6)
+            else c.rect(pt.x - bw/2, signY - 14, bw, 20)
+            c.fill()
+            c.fillStyle = '#ffffff'
+            c.fillText(tag, pt.x, signY)
+            c.restore()
+          }
           const species=item.name==='cat_eat'?'cat':'dog'
           if (['dog_eat','cat_eat'].includes(item.name) && ((p.foodBowls && p.foodBowls[species] > 0) || (this.ownPlot && p.id === this.ownPlot.id && this.foodBowls[species] > 0))) {
             const point = this.project(item.x, item.z)
@@ -1875,14 +1998,40 @@ class World2D {
     const x = p.x,
       z = p.z,
       h = (p.size || SIZE) / 2
-    this.fenceSegment({ x: x - h, z: z - h }, { x: x + h, z: z - h }, items)
-    this.fenceSegment({ x: x - h, z: z - h }, { x: x - h, z: z + h }, items)
-    this.fenceSegment({ x: x + h, z: z - h }, { x: x + h, z: z + h }, items)
-    this.fenceSegment({ x: x - h, z: z + h }, { x: x - 3, z: z + h }, items)
-    this.fenceSegment({ x: x + 3, z: z + h }, { x: x + h, z: z + h }, items)
-    // Gate leaves remain open beside the entrance.
-    this.fenceSegment({ x: x - 3, z: z + h }, { x: x - 3, z: z + h - 3 }, items)
-    this.fenceSegment({ x: x + 3, z: z + h }, { x: x + 3, z: z + h - 3 }, items)
+    const dir = p.gateDirection || 'south'
+    const gw = 3
+    if (dir === 'north') {
+      this.fenceSegment({ x: x - h, z: z - h }, { x: x - gw, z: z - h }, items)
+      this.fenceSegment({ x: x + gw, z: z - h }, { x: x + h, z: z - h }, items)
+      this.fenceSegment({ x: x - gw, z: z - h }, { x: x - gw, z: z - h + 3 }, items)
+      this.fenceSegment({ x: x + gw, z: z - h }, { x: x + gw, z: z - h + 3 }, items)
+    } else {
+      this.fenceSegment({ x: x - h, z: z - h }, { x: x + h, z: z - h }, items)
+    }
+    if (dir === 'south') {
+      this.fenceSegment({ x: x - h, z: z + h }, { x: x - gw, z: z + h }, items)
+      this.fenceSegment({ x: x + gw, z: z + h }, { x: x + h, z: z + h }, items)
+      this.fenceSegment({ x: x - gw, z: z + h }, { x: x - gw, z: z + h - 3 }, items)
+      this.fenceSegment({ x: x + gw, z: z + h }, { x: x + gw, z: z + h - 3 }, items)
+    } else {
+      this.fenceSegment({ x: x - h, z: z + h }, { x: x + h, z: z + h }, items)
+    }
+    if (dir === 'west') {
+      this.fenceSegment({ x: x - h, z: z - h }, { x: x - h, z: z - gw }, items)
+      this.fenceSegment({ x: x - h, z: z + gw }, { x: x - h, z: z + h }, items)
+      this.fenceSegment({ x: x - h, z: z - gw }, { x: x - h + 3, z: z - gw }, items)
+      this.fenceSegment({ x: x - h, z: z + gw }, { x: x - h + 3, z: z + gw }, items)
+    } else {
+      this.fenceSegment({ x: x - h, z: z - h }, { x: x - h, z: z + h }, items)
+    }
+    if (dir === 'east') {
+      this.fenceSegment({ x: x + h, z: z - h }, { x: x + h, z: z - gw }, items)
+      this.fenceSegment({ x: x + h, z: z + gw }, { x: x + h, z: z + h }, items)
+      this.fenceSegment({ x: x + h, z: z - gw }, { x: x + h - 3, z: z - gw }, items)
+      this.fenceSegment({ x: x + h, z: z + gw }, { x: x + h - 3, z: z + gw }, items)
+    } else {
+      this.fenceSegment({ x: x + h, z: z - h }, { x: x + h, z: z + h }, items)
+    }
   }
   drawStonePath(a, b, width = 6) {
     const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 2.5))
@@ -2045,11 +2194,135 @@ class World2D {
     this.drawInteractionFeedback()
     if (this.candidate) this.drawPlacement()
   }
+  setJailedStatus(isJailed, prisonBounds) {
+    this.isJailed = !!isJailed
+    this.prisonBounds = prisonBounds || null
+    if (this.isJailed) {
+      this.drivingVehicleId = null
+      if (this.character) {
+        this.character.vehicleSpeed = 0
+        if (this.prisonBounds) {
+          this.character.position.x = clamp(this.character.position.x, this.prisonBounds.minX + 2, this.prisonBounds.maxX - 2)
+          this.character.position.z = clamp(this.character.position.z, this.prisonBounds.minZ + 2, this.prisonBounds.maxZ - 2)
+        }
+      }
+    }
+  }
+  checkVehicleCollisions(dt) {
+    if (!this.character) return
+    const p = this.character.position
+    const isDriving = !!this.drivingVehicleId
+
+    // 1. 安全宣教自省限制：若在宣教自省中，活动被限制在自省室地块内
+    if (this.isJailed && this.prisonBounds) {
+      p.x = clamp(p.x, this.prisonBounds.minX + 2, this.prisonBounds.maxX - 2)
+      p.z = clamp(p.z, this.prisonBounds.minZ + 2, this.prisonBounds.maxZ - 2)
+    }
+
+    // 2. 负伤状态影响：人被撞伤后行动迟缓，禁止奔跑，禁止驾车
+    if (this.character.injured || this.injured) {
+      this.character.runRequested = false
+      if (this.character.vehicleSpeed) this.character.vehicleSpeed = 0
+    }
+
+    // 3. 自身驾驶车辆的碰撞物理
+    if (isDriving) {
+      const now = Date.now()
+      // A. 车与车模型碰撞：阻止穿透
+      for (const [id, car] of this.vehicles.entries()) {
+        if (id === this.drivingVehicleId) continue
+        const op = this.vehiclePosition(car)
+        const dist = Math.hypot(p.x - op.x, p.z - op.z)
+        const collisionRadius = 2.8 // VEHICLE_RADIUS 1.4m * 2
+        if (dist < collisionRadius && dist > 0.001) {
+          const overlap = collisionRadius - dist
+          const nx = (p.x - op.x) / dist
+          const nz = (p.z - op.z) / dist
+          p.x += nx * overlap
+          p.z += nz * overlap
+          if (now - (this.lastCarCrashAt || 0) > 3000) {
+            this.lastCarCrashAt = now
+            this.onStatus('砰！车辆发生撞击碰撞，请减速慢行！')
+          }
+        }
+      }
+
+      // 仅当车辆行驶时检测对行人与宠物的撞击
+      if (this.character.moving) {
+        // B. 车辆撞人判定
+        for (const person of this.remoteCharacters) {
+          if (person.vehicleId) continue
+          const pp = this.neighborPosition(person)
+          const dist = Math.hypot(p.x - pp.x, p.z - pp.z)
+          if (dist < 2.2) {
+            if (now - (this.lastHitHumanAt || 0) > 4000) {
+              this.lastHitHumanAt = now
+              this.onStatus(`提示：车辆与邻居【${person.name || '邻居'}】发生擦碰，请减速慢行！已通报文明督导所`)
+              if (this.page && this.page.reportTrafficAccident) {
+                this.page.reportTrafficAccident({
+                  victimType: 'human',
+                  victimId: person.id,
+                  victimName: person.name || '邻居',
+                  x: pp.x,
+                  z: pp.z
+                })
+              }
+            }
+          }
+        }
+
+        // C. 车辆撞宠物判定
+        for (const pet of this.pets) {
+          if (pet.ridingVehicleId) continue
+          const dist = Math.hypot(p.x - pet.position.x, p.z - pet.position.z)
+          if (dist < 2.2) {
+            pet.injured = true
+            pet.sick = true
+            pet.sickReason = 'traffic_accident'
+            pet.moving = false
+            pet.route = []
+            if (now - (this.lastHitPetAt || 0) > 4000) {
+              this.lastHitPetAt = now
+              this.onStatus(`提示：车辆与爱宠【${pet.name}】发生接触碰撞，爱宠受到惊吓不适，建议送宠物医院调理！`)
+              if (this.page && this.page.reportTrafficAccident) {
+                this.page.reportTrafficAccident({
+                  victimType: 'pet',
+                  petId: pet.id,
+                  petName: pet.name,
+                  x: pet.position.x,
+                  z: pet.position.z
+                })
+              }
+              this.emitPets()
+            }
+          }
+        }
+      }
+    } else {
+      // 4. 自身步行时被外部车辆撞击检测
+      for (const car of this.vehicles.values()) {
+        if (!car.moving) continue
+        const cp = this.vehiclePosition(car)
+        const dist = Math.hypot(p.x - cp.x, p.z - cp.z)
+        if (dist < 2.2) {
+          if (!this.injured) {
+            this.injured = true
+            this.character.injured = true
+            this.onStatus('您受到车辆接触擦碰，行动略微减慢，可前往爱心医院调理恢复！')
+            if (this.page && this.page.onHumanInjured) {
+              this.page.onHumanInjured()
+            }
+          }
+        }
+      }
+    }
+  }
 
   update(dt) {
     this.elapsed += dt
     this.updateLifeUi()
     this.updateCharacter(dt)
+    this.checkVehicleCollisions(dt)
     for (const pet of this.pets) {
       if (pet.mine !== false) {
         updatePetExcretion(pet, dt, {
@@ -2261,7 +2534,11 @@ class World2D {
         else if(!pet && this.characterAt(point)) this.selectCharacter()
         else if(!pet && this.selectedPet()) this.moveTo(p)
         else if(!pet && this.characterSelected) this.moveCharacterTo(p)
-        else { this.clearPetSelection(); if(pet) this.onStatus('这是邻居的宠物，只能操作自家宠物') }
+        else {
+          this.clearPetSelection()
+          if(pet) this.onStatus('这是邻居的宠物，只能操作自家宠物')
+          else if(this.character && !this.drivingVehicleId) this.moveCharacterTo(p)
+        }
       }
     }
   }

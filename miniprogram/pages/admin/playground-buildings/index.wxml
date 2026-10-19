@@ -1,0 +1,136 @@
+<view class="container">
+  <view class="header">
+    <view class="title-wrap">
+      <text class="title">乐园建筑管理</text>
+      <text class="subtitle">可建建筑、尺寸预览换算草地、功能与金币配置</text>
+    </view>
+    <button class="primary-btn" bindtap="edit" data-id="">新建建筑</button>
+  </view>
+
+  <view class="loading-state" wx:if="{{loading}}">正在加载建筑列表…</view>
+  <view class="error-state" wx:if="{{error}}">{{error}}</view>
+
+  <view class="building-list" wx:if="{{!loading && !form}}">
+    <view class="building-card" wx:for="{{buildings}}" wx:key="id" bindtap="edit" data-id="{{item.id}}">
+      <view class="card-image-wrap">
+        <image class="building-img" src="{{item.image || '/assets/default-building.png'}}" mode="aspectFit" />
+        <text class="type-tag {{item.type}}">{{item.type === 'repair_shop' ? '修理厂' : item.type === 'pet_hospital' ? '宠物医院' : item.type === 'committee' ? '居委会' : '房屋'}}</text>
+      </view>
+      <view class="card-info">
+        <view class="card-heading">
+          <text class="card-title">{{item.name}}</text>
+          <text class="enabled-badge {{item.enabled ? 'active' : ''}}">{{item.enabled ? '已启用' : '已下架'}}</text>
+        </view>
+        <text class="card-desc">{{item.desc || '暂无描述'}}</text>
+        <view class="card-props">
+          <text class="prop-item">尺寸: {{item.width}}×{{item.depth}}米</text>
+          <text class="prop-item highlight">占 {{item.tileCount}} 块草地</text>
+          <text class="prop-item cost">建造: {{item.costCoins}} 金币</text>
+        </view>
+        <view class="committee-meta" wx:if="{{item.type === 'committee'}}">
+          <text>周薪: {{item.weeklySalary || 0}}金币 · 调解奖励: {{item.resolveReward || 0}}金币/起</text>
+        </view>
+      </view>
+      <view class="chevron">›</view>
+    </view>
+  </view>
+
+  <!-- 编辑/新建弹窗 -->
+  <view class="modal-backdrop" wx:if="{{form}}">
+    <view class="modal-card">
+      <view class="modal-header">
+        <text class="modal-title">{{isNew ? '新建建筑' : '编辑建筑 · ' + form.name}}</text>
+        <button class="close-btn" bindtap="close">✕</button>
+      </view>
+
+      <scroll-view scroll-y class="modal-body">
+        <view class="form-group">
+          <text class="form-label">建筑编号 (唯一英文ID)</text>
+          <input class="form-input" disabled="{{!isNew}}" value="{{form.id}}" data-key="id" bindinput="input" placeholder="如 repair_shop_1" />
+        </view>
+
+        <view class="form-group">
+          <text class="form-label">建筑名称</text>
+          <input class="form-input" value="{{form.name}}" data-key="name" bindinput="input" placeholder="如 社区便民修理厂" />
+        </view>
+
+        <view class="form-group">
+          <text class="form-label">功能类型</text>
+          <radio-group class="type-radio-group">
+            <label class="radio-label" wx:for="{{types}}" wx:key="key" data-key="{{item.key}}" bindtap="input" data-key="type" data-val="{{item.key}}">
+              <radio value="{{item.key}}" checked="{{form.type === item.key}}" />
+              <text>{{item.label}}</text>
+            </label>
+          </radio-group>
+        </view>
+
+        <view class="form-group">
+          <text class="form-label">功能描述与用途</text>
+          <textarea class="form-textarea" value="{{form.desc}}" data-key="desc" bindinput="input" placeholder="简要说明此建筑的业务功能" />
+        </view>
+
+        <!-- 尺寸与草地换算预览 -->
+        <view class="form-row">
+          <view class="form-col">
+            <text class="form-label">宽度 (米)</text>
+            <input class="form-input" type="digit" value="{{form.width}}" data-key="width" bindinput="input" />
+          </view>
+          <view class="form-col">
+            <text class="form-label">深度/长度 (米)</text>
+            <input class="form-input" type="digit" value="{{form.depth}}" data-key="depth" bindinput="input" />
+          </view>
+        </view>
+
+        <view class="tile-preview-card">
+          <view class="preview-header">
+            <text class="preview-title">草地地块占用换算（单块草地 3.5×3.5米）</text>
+            <text class="preview-count">相当于占 {{form.tileCount}} 块草地</text>
+          </view>
+          <text class="preview-tip">建筑总占地面积约 {{form.width * form.depth}} 平方米。系统将在场景中按对应比例缩放渲染。</text>
+        </view>
+
+        <view class="form-group">
+          <text class="form-label">建造所需金币</text>
+          <input class="form-input" type="number" value="{{form.costCoins}}" data-key="costCoins" bindinput="input" placeholder="建造需要扣除的金币数" />
+        </view>
+
+        <!-- 居委会专属配置 -->
+        <block wx:if="{{form.type === 'committee'}}">
+          <view class="section-divider">居委会特权与薪酬配置</view>
+          <view class="form-row">
+            <view class="form-col">
+              <text class="form-label">每周任职工资 (金币/周)</text>
+              <input class="form-input" type="number" value="{{form.weeklySalary}}" data-key="weeklySalary" bindinput="input" />
+            </view>
+            <view class="form-col">
+              <text class="form-label">单次纠纷调解奖励 (金币/起)</text>
+              <input class="form-input" type="number" value="{{form.resolveReward}}" data-key="resolveReward" bindinput="input" />
+            </view>
+          </view>
+          <text class="form-tip">注意：每个社区有且仅能存在一个居委会；若有未处理纠纷超3天未调解，系统将自动收回该建筑与职务！</text>
+        </block>
+
+        <!-- 图片素材上传与透明预览 -->
+        <view class="form-group">
+          <text class="form-label">透明背景建筑游戏图 (PNG)</text>
+          <view class="image-upload-box">
+            <view class="checkerboard-bg" wx:if="{{form.image}}">
+              <image class="uploaded-img" src="{{form.image}}" mode="aspectFit" />
+            </view>
+            <button class="upload-btn" bindtap="upload" disabled="{{busy}}">{{form.image ? '更换透明原图' : '选择并上传透明PNG'}}</button>
+          </view>
+        </view>
+
+        <view class="form-group switch-group">
+          <text class="form-label">是否上架允许建造</text>
+          <switch checked="{{form.enabled}}" color="#6f8d58" bindchange="enabledChange" />
+        </view>
+      </scroll-view>
+
+      <view class="modal-footer">
+        <button class="danger-btn" wx:if="{{!isNew}}" bindtap="removeBuilding" disabled="{{busy}}">删除建筑</button>
+        <button class="primary-btn" bindtap="save" disabled="{{busy}}" loading="{{busy}}">保存配置</button>
+      </view>
+    </view>
+  </view>
+</view>
