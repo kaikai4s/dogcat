@@ -2,6 +2,10 @@ const { callFunction, showError, ensureLogin } = require('../../../utils/cloud')
 const { formatDateTime } = require('../../../utils/format')
 
 const sourceTypeMap = {
+  playground_report:'环境反馈',
+  playground_resolve:'纠纷处理',
+  playground_weekly:'每周处理奖励',
+  playground_wash:'洗车服务',
   order_complete: '完成订单',
   order_review: '评价订单',
   admin_grant: '管理员操作',

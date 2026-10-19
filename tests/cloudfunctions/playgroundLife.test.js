@@ -149,56 +149,52 @@ test('feeding and pet commands enforce ownership, proximity, cooldowns and curre
   await f.enter('a');await assert.rejects(()=>f.petAction('a',a,'follow'),/场景已切换/)
 })
 
-test('farm completes till, seed, water, fertilize, offline growth, harvest and sale without duplicate charges',async()=>{
-  const f=fixture(),a=await f.build(),tile=farmLayout(a.plot)[0]
+test('decorative garden has four soil stages, no economic rewards, and replays safely',async()=>{
+  const f=fixture(),a=await f.build(),tile=farmLayout(a.plot)[0],bedId=tile.id
+  const before=JSON.parse(JSON.stringify(f.db.state.users))
   const initial=await f.shared.farm.state('a',f.auth(a))
-  assert.equal(initial.coins,120);assert.equal(initial.beds.length,12)
-  await assert.rejects(()=>f.farmAction('a',a,'till',{bedId:0}),/先走到/)
+  assert.ok(initial.beds.length>12);assert.ok(initial.beds.every((b)=>b.state==='grass'))
+  assert.equal(initial.coins,undefined);assert.equal(initial.xp,undefined)
+  await assert.rejects(()=>f.farmAction('a',a,'convert',{bedId}),/先走到/)
   f.place('a',tile)
-  const packet={...f.auth(a),operation:'till',bedId:0,requestId:'exact_request_001'}
-  const first=await f.shared.farm.action('a',packet),retry=await f.shared.farm.action('a',packet)
-  assert.equal(first.coins,110);assert.equal(retry.coins,110)
-  await assert.rejects(()=>f.shared.farm.action('a',{...packet,bedId:1}),/标识已使用/)
-  let state=await f.farmAction('a',a,'plant',{bedId:0,cropId:'carrot'})
-  assert.equal(state.seeds.carrot,11)
-  const initialReady=state.beds[0].readyAt
-  state=await f.farmAction('a',a,'water',{bedId:0})
-  assert.ok(state.beds[0].readyAt<initialReady)
-  state=await f.farmAction('a',a,'fertilize',{bedId:0});assert.equal(state.coins,105)
-  await assert.rejects(()=>f.farmAction('a',a,'harvest',{bedId:0}),/还没有成熟/)
+  const packet={...f.auth(a),operation:'convert',bedId,requestId:'exact_request_001'}
+  assert.equal((await f.shared.farm.action('a',packet)).beds.find((b)=>b.id===bedId).stage,'soil')
+  await f.shared.farm.action('a',packet)
+  await assert.rejects(()=>f.shared.farm.action('a',{...packet,bedId:bedId+1}),/标识已使用/)
+  await f.farmAction('a',a,'till',{bedId})
+  let state=await f.farmAction('a',a,'plant',{bedId,cropId:'carrot'})
+  const readyAt=state.beds.find((b)=>b.id===bedId).readyAt
+  state=await f.farmAction('a',a,'water',{bedId})
+  assert.equal(state.beds.find((b)=>b.id===bedId).readyAt,readyAt)
+  assert.equal(state.beds.find((b)=>b.id===bedId).stage,'watered')
+  await assert.rejects(()=>f.farmAction('a',a,'harvest',{bedId}),/生长中/)
   f.advance(300000)
-  state=await f.farmAction('a',a,'harvest',{bedId:0});assert.equal(state.produce.carrot,5);assert.equal(state.xp,12)
-  state=await f.farmAction('a',a,'sell',{cropId:'carrot',quantity:5});assert.equal(state.coins,135);assert.equal(state.produce.carrot,0)
-  const scene=await f.shared.snapshot('a',f.auth(a)),plot=scene.records.find((r)=>r.kind==='plot')
-  assert.equal(plot.farmBeds[0].cropId,undefined);assert.equal(plot.farm,undefined)
-  assert.equal(plot.coins,undefined);assert.equal(plot.receipts,undefined)
+  const results=await Promise.allSettled([f.farmAction('a',a,'harvest',{bedId}),f.farmAction('a',a,'harvest',{bedId})])
+  assert.equal(results.filter((r)=>r.status==='fulfilled').length,1)
+  state=await f.farmAction('a',a,'lawn',{bedId})
+  assert.equal(state.beds.find((b)=>b.id===bedId).state,'grass')
+  assert.deepEqual(f.db.state.users,before);assert.equal((f.db.state.point_logs||[]).length,0)
+  assert.equal(state.produce,undefined);assert.equal(state.seeds,undefined)
+  const scene=await f.shared.snapshot('a',f.auth(a))
+  assert.equal(scene.records.some((r)=>r.kind==='garden_receipts'),false)
 })
 
-test('farm requires the specific nearby bed, rejects batch bypasses and serializes each harvest',async()=>{
-  const f=fixture(),a=await f.build(),b=await f.build('b',{x:504,z:280})
-  const tiles=farmLayout(a.plot)
-  f.place('a',tiles[0]);f.place('b',tiles[0])
-  await assert.rejects(()=>f.farmAction('b',b,'till',{bedId:0,plotId:a.plot.id}),/先走到/)
-  await assert.rejects(()=>f.farmAction('a',a,'till',{bedId:1}),/这块土地旁边/)
-  f.place('a',{x:tiles[0].x+bedReach(tiles[0])+.01,z:tiles[0].z})
-  await assert.rejects(()=>f.farmAction('a',a,'till',{bedId:0}),/这块土地旁边/)
-  await assert.rejects(()=>f.farmAction('a',a,'till',{bedId:7}),/还未解锁/)
-  await assert.rejects(()=>f.farmAction('a',a,'buySeeds',{cropId:'corn'}),/尚未解锁/)
-  for(const operation of ['plantAll','waterAll','harvestAll'])await assert.rejects(()=>f.farmAction('a',a,operation,{cropId:'carrot'}),/每块土地/)
-  for(let id=0;id<4;id++) {
-    f.place('a',tiles[id])
-    await f.farmAction('a',a,'till',{bedId:id})
-    await f.farmAction('a',a,'plant',{bedId:id,cropId:'carrot'})
-    await f.farmAction('a',a,'water',{bedId:id})
+test('gardens allow more than 12 tiles and additional own plots, reject foreign tiles, obstacles and obsolete operations',async()=>{
+  const f=fixture(),a=await f.build(),b=await f.build('b',{x:504,z:280}),tiles=farmLayout(a.plot)
+  for(const tile of tiles.slice(0,15)){
+    f.place('a',tile);await f.farmAction('a',a,'convert',{bedId:tile.id})
   }
-  f.advance(300000)
-  const results=await Promise.allSettled([f.farmAction('a',a,'harvest',{bedId:3}),f.farmAction('a',a,'harvest',{bedId:3})])
-  assert.equal(results.filter((r)=>r.status==='fulfilled').length,1)
-  for(let bedId=0;bedId<3;bedId++){f.place('a',tiles[bedId]);await f.farmAction('a',a,'harvest',{bedId})}
-  const state=await f.shared.farm.state('a',f.auth(a))
-  assert.equal(state.produce.carrot,16);assert.equal(state.xp,48)
-  await assert.rejects(()=>f.farmAction('a',a,'sell',{cropId:'carrot',quantity:17}),/数量不足/)
-  await assert.rejects(()=>f.farmAction('a',a,'buySeeds',{cropId:'carrot',quantity:-1}),/购买数量/)
+  assert.equal(f.row(a.plot.id).farmBeds.length,15)
+  const yard=await f.plots.claim('a',f.user('a'),{x:280,z:504,size:48,isNewPlot:true})
+  const tile=farmLayout(yard)[0];f.place('a',tile)
+  await f.farmAction('a',a,'convert',{bedId:tile.id,plotId:yard.id})
+  assert.equal(f.row(yard.id).farmBeds.length,1)
+  f.place('b',tile)
+  await assert.rejects(()=>f.farmAction('b',b,'convert',{bedId:tile.id,plotId:yard.id}),/只能在自己/)
+  await assert.rejects(()=>f.farmAction('a',a,'convert',{bedId:-1,plotId:yard.id}),/草块/)
+  for(const operation of ['buySeeds','sell','fertilize','plantAll','waterAll','harvestAll'])await assert.rejects(()=>f.farmAction('a',a,operation,{bedId:tile.id,plotId:yard.id}),/不支持/)
+  f.place('a',tiles[0]);await assert.rejects(()=>f.farmAction('a',a,'till',{bedId:tiles[10].id}),/先走到/)
+  await f.enter('a');await assert.rejects(()=>f.shared.farm.state('a',f.auth(a)),/场景已切换/)
 })
 
 test('client and server clock models and station coordinates remain identical',()=>{
@@ -207,79 +203,27 @@ test('client and server clock models and station coordinates remain identical',(
     fs.readFileSync(require.resolve('../../miniprogram/packagePlayground/utils/'+name),'utf8'))
 })
 
-test('farm levels unlock more beds and crops; moving preserves the wallet and warehouse but resets land',async()=>{
+test('old fixed beds migrate into decorative tiles without consuming legacy balances',async()=>{
   const f=fixture(),a=await f.build()
-  const tiles=farmLayout(a.plot)
-  for(let bedId=0;bedId<4;bedId++){f.place('a',tiles[bedId]);await f.farmAction('a',a,'till',{bedId})}
-  for(let i=0;i<2;i++) {
-    for(let bedId=0;bedId<4;bedId++){f.place('a',tiles[bedId]);await f.farmAction('a',a,'plant',{bedId,cropId:'carrot'})}
-    f.advance(300000)
-    for(let bedId=0;bedId<4;bedId++){f.place('a',tiles[bedId]);await f.farmAction('a',a,'harvest',{bedId})}
-  }
-  const levelled=await f.shared.farm.state('a',f.auth(a))
-  assert.equal(levelled.level,2);assert.equal(levelled.unlockedBeds,6)
-  assert.equal(levelled.crops.find((c)=>c.id==='corn').unlocked,true)
-  const before=await f.farmAction('a',a,'buySeeds',{cropId:'corn',quantity:5})
-  assert.equal(before.seeds.corn,5)
-  await f.plots.demolish('a',{...f.auth(a),plotId:a.plot.id})
-  const returned=await f.build('a',{x:504,z:504})
-  const after=await f.shared.farm.state('a',f.auth(returned))
-  assert.equal(after.coins,before.coins);assert.equal(after.xp,before.xp)
-  assert.deepEqual(after.seeds,before.seeds);assert.deepEqual(after.produce,before.produce)
-  assert.ok(after.beds.every((b)=>b.state==='wild'))
-  const page=await f.shared.snapshot('a',f.auth(returned))
-  assert.equal(page.records.some((r)=>r.kind==='farm_account'),false)
+  const plot=f.row(a.plot.id)
+  plot.farmBeds=[{id:0,cropId:'carrot',plantedAt:f.now()-300000,readyAt:f.now()}]
+  f.db.state.users[0].playgroundCoins=31
+  const state=await f.shared.farm.state('a',f.auth(a)),bed=state.beds.find((b)=>b.cropId)
+  assert.ok(bed);assert.equal(bed.label,'成熟展示')
+  f.place('a',bed);await f.farmAction('a',a,'harvest',{bedId:bed.id})
+  assert.equal(f.row(a.plot.id).gardenVersion,2)
+  assert.equal(f.db.state.users[0].playgroundCoins,31)
 })
 
-test('poop fertilizer pickup and 1 hour 2x boost acceleration',async()=>{
-  const f=fixture(),a=await f.build()
-  const tiles=farmLayout(a.plot)
-  f.place('a',tiles[0])
-  await f.farmAction('a',a,'till',{bedId:0})
-  await f.farmAction('a',a,'plant',{bedId:0,cropId:'carrot'})
-
-  let state=await f.farmAction('a',a,'pickupPoop',{quantity:2})
-  assert.equal(state.manure,2)
-
-  const beforeCoins=state.coins
-  state=await f.farmAction('a',a,'fertilize',{bedId:0,useManure:true})
-  assert.equal(state.manure,1)
-  assert.equal(state.coins,beforeCoins)
-  const bed=state.beds.find((b)=>b.id===0)
-  assert.equal(bed.fertilized,true)
-  assert.ok(bed.boostUntil>Date.now())
-  assert.equal(bed.state,'growing')
-  assert.equal(bed.label,'双倍生长中')
-  assert.equal(bed.boosted,true)
-  // Carrot original duration is 300s. Under 2x growth speed, remaining is cut by half to 150s
-  assert.equal(bed.remaining,150)
-
-  // Advancing 150 seconds completes growth
-  f.advance(150000)
-  const afterGrowth=await f.shared.farm.state('a',f.auth(a))
-  const readyBed=afterGrowth.beds.find((b)=>b.id===0)
-  assert.equal(readyBed.state,'ready')
-  assert.equal(readyBed.label,'可收获')
-})
-
-test('poop pickup enforces uniqueness per poopId to prevent duplicate/concurrent pickup', async () => {
-  const f = fixture(), a = await f.build()
-  // First pickup with poop_101 succeeds
-  let state = await f.farmAction('a', a, 'pickupPoop', { poopId: 'poop_101', quantity: 1 })
-  assert.equal(state.manure, 1)
-
-  // Duplicate pickup with poop_101 rejects
-  await assert.rejects(
-    f.farmAction('a', a, 'pickupPoop', { poopId: 'poop_101', quantity: 1 }),
-    /该便便已被拾取/
-  )
-  // Manure should not increment on duplicate
-  const fresh = await f.shared.farm.state('a', f.auth(a))
-  assert.equal(fresh.manure, 1)
-
-  // Pickup with different poopId succeeds
-  state = await f.farmAction('a', a, 'pickupPoop', { poopId: 'poop_102', quantity: 1 })
-  assert.equal(state.manure, 2)
+test('ground waste pickup removes one real event, never creates fertilizer or awards points',async()=>{
+  const f=fixture(),a=await f.build(),p={x:280,z:338}
+  const id='waste_'+world.hash('a')+'_'+world.hash('pet_a').slice(0,8)+'_'+f.now()
+  f.pet('a').waste=[{id,type:'poop',...p,createdAt:f.now(),vehicleId:''}];f.place('a',p)
+  const outcomes=await Promise.allSettled([f.farmAction('a',a,'pickupPoop',{poopId:id}),f.farmAction('a',a,'pickupPoop',{poopId:id})])
+  assert.equal(outcomes.filter((r)=>r.status==='fulfilled').length,1)
+  assert.equal(f.pet('a').waste.length,0);assert.equal((f.db.state.point_logs||[]).length,0)
+  assert.equal(outcomes.find((r)=>r.status==='fulfilled').value.manure,undefined)
+  await assert.rejects(()=>f.farmAction('a',a,'pickupPoop',{poopId:'fake'}),/已消失/)
 })
 
 test('care behavior expires after duration and automatically returns pet to free roaming motion', async () => {
@@ -335,8 +279,8 @@ test('buildings catalog management, grass tile calculation, and committee parame
   assert.ok(committee)
   assert.equal(repairShop.name, '社区修理厂')
   assert.equal(committee.name, '社区居委会')
-  assert.equal(committee.weeklySalary, 200)
-  assert.equal(committee.resolveReward, 20)
+  assert.equal(committee.weeklySalary, 20)
+  assert.equal(committee.resolveReward, 10)
 
   // 2. Save new custom building with tile calculation: 10.5m x 7m = 73.5m² = 6 grass tiles
   const customBuilding = {
@@ -355,10 +299,10 @@ test('buildings catalog management, grass tile calculation, and committee parame
   const saved = saveRes.buildings.find((b) => b.id === 'my_custom_clinic')
   assert.ok(saved)
   assert.equal(saved.tileCount, 6) // (10.5 * 7) / (3.5 * 3.5) = 73.5 / 12.25 = 6
-  assert.equal(saved.costCoins, 300)
+  assert.equal(saved.costCoins, 0)
 
   // 3. Remove custom building
-  const delRes = await bService.remove('admin_user', { id: 'my_custom_clinic' })
+  const delRes = await bService.remove('admin_user', { id: 'my_custom_clinic',revision:saveRes.revision })
   assert.equal(delRes.buildings.some((b) => b.id === 'my_custom_clinic'), false)
 })
 

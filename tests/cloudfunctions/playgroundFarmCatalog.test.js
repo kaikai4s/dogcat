@@ -30,15 +30,14 @@ test('catalog defaults match uploaded soil and stage PNGs, saves validate all ce
   const saved=await f.service.save('admin',{revision:0,crop})
   assert.equal(saved.revision,1);assert.equal(saved.crops.at(-1).id,'tomato')
   assert.equal(f.downloads.length,1)
-  const updated=await f.service.save('admin',{revision:1,crop:{...crop,price:17}})
-  assert.equal(updated.crops.at(-1).price,17);assert.equal(f.downloads.length,1)
+  const updated=await f.service.save('admin',{revision:1,crop:{...crop,minutes:17}})
+  assert.equal(updated.crops.at(-1).minutes,17);assert.equal(f.downloads.length,1)
   await assert.rejects(()=>f.service.save('other',{revision:1,crop}),/其他管理员/)
   assert.equal((await f.service.list()).revision,2)
 })
-test('catalog rejects malformed stages, unsafe IDs and invalid economy values',()=>{
+test('catalog rejects malformed stages, unsafe IDs and invalid durations and membership IDs',()=>{
   const base=clone(CROPS[0])
-  for(const patch of [{id:'__proto__'},{id:'constructor'},{id:'x/y'},{name:' '},{minutes:0},{price:-1},{sell:1.5},
-    {yield:101},{xp:Infinity},{level:11},{stages:[0,30,20,100]},{stages:[0,20,65,99]},
+  for(const patch of [{id:'__proto__'},{id:'constructor'},{id:'x/y'},{name:' '},{minutes:0},{unlockLevelIds:'gold'},{unlockLevelIds:[3]},{stages:[0,30,20,100]},{stages:[0,20,65,99]},
     {stages:[0,100]},{atlas:{...base.atlas,anchorY:1}},{atlas:{...base.atlas,fileID:'https://example.com/a.png'}}]) {
     assert.throws(()=>createCatalog.normalizeCrop({...base,...patch}),JSON.stringify(patch))
   }
@@ -64,44 +63,36 @@ test('concurrent admin saves cannot overwrite each other',async()=>{
   assert.equal(results.filter((r)=>r.status==='fulfilled').length,1)
   assert.equal((await f.service.list()).crops.length,7)
 })
-test('custom crops use server prices, preserve the planted harvest, and allow delisted stock to be sold',async()=>{
+test('crop member gates use canonical settings, deletion preserves planted appearance and duration',async()=>{
   const f=fixture(),a=await f.build(),catalog=setup(f.db),crop=await catalog.custom()
-  await catalog.service.save('admin',{revision:0,crop:{...crop,price:7,minutes:10,yield:4,xp:20,sell:11}})
-  f.place('a',farmLayout(a.plot)[0])
-  await f.farmAction('a',a,'till',{bedId:0})
-  let state=await f.farmAction('a',a,'buySeeds',{cropId:'tomato',quantity:2,price:0})
-  assert.equal(state.coins,96);assert.equal(state.crops.at(-1).name,'番茄')
-  state=await f.farmAction('a',a,'plant',{bedId:0,cropId:'tomato',minutes:1})
-  assert.equal(state.beds[0].readyAt-f.now(),600000)
-  await catalog.service.save('admin',{revision:1,crop:{...crop,minutes:1,yield:99,xp:999,sell:13,enabled:false}})
-  await assert.rejects(()=>f.farmAction('a',a,'buySeeds',{cropId:'tomato'}),/下架/)
-  await f.farmAction('a',a,'water',{bedId:0})
+  await f.db.collection('member_levels').doc('gold').set({data:{name:'金卡',minPoints:100}})
+  await catalog.service.save('admin',{revision:0,crop:{...crop,minutes:10,unlockLevelIds:['gold']}})
+  const tile=farmLayout(a.plot)[0],bedId=tile.id;f.place('a',tile)
+  await f.farmAction('a',a,'convert',{bedId});await f.farmAction('a',a,'till',{bedId})
+  await assert.rejects(()=>f.farmAction('a',a,'plant',{bedId,cropId:'tomato',unlocked:true,memberLevel:'gold'}),/会员等级/)
+  await f.db.collection('users').doc('user_a').update({data:{memberLevel:'gold'}})
+  let state=await f.farmAction('a',a,'plant',{bedId,cropId:'tomato',minutes:1})
+  assert.equal(state.beds.find((b)=>b.id===bedId).readyAt-f.now(),600000)
+  await assert.rejects(()=>catalog.service.remove('admin',{id:'tomato',revision:0}),/其他管理员/)
+  await catalog.service.remove('admin',{id:'tomato',revision:1})
   state=await f.shared.farm.state('a',f.auth(a))
-  assert.equal(state.beds[0].readyAt-f.now(),510000)
-  assert.equal(state.crops.at(-1).unlocked,false)
-  f.advance(510000)
-  state=await f.farmAction('a',a,'harvest',{bedId:0})
-  assert.equal(state.produce.tomato,5);assert.equal(state.xp,20)
-  await assert.rejects(()=>f.farmAction('a',a,'plant',{bedId:0,cropId:'tomato'}),/下架/)
-  state=await f.farmAction('a',a,'sell',{cropId:'tomato',quantity:5,sell:999})
-  assert.equal(state.coins,161)
+  assert.equal(state.crops.some((c)=>c.id==='tomato'),false)
+  assert.equal(state.beds.find((b)=>b.id===bedId).crop.atlas.fileID,crop.atlas.fileID)
+  f.advance(600000)
+  await f.farmAction('a',a,'harvest',{bedId})
+  await assert.rejects(()=>f.farmAction('a',a,'plant',{bedId,cropId:'tomato'}),/下架/)
+  assert.equal(f.db.state.users.find((u)=>u.openid==='a').points,undefined)
 })
-test('legacy planted crops retain the original growth and yield after default crop edits',async()=>{
-  const f=fixture(),a=await f.build(),catalog=setup(f.db)
-  f.place('a',farmLayout(a.plot)[0])
-  await f.farmAction('a',a,'till',{bedId:0})
-  await f.farmAction('a',a,'plant',{bedId:0,cropId:'carrot'})
-  for(const row of f.db.state.pet_playground_plots)if(row.farm&&row.farm.beds[0])delete row.farm.beds[0].parameters
-  await catalog.service.save('admin',{revision:0,crop:{...clone(CROPS[0]),minutes:1,yield:99,xp:999}})
-  const water=await f.farmAction('a',a,'water',{bedId:0})
-  assert.equal(water.beds[0].readyAt-f.now(),255000)
-  f.advance(300000)
-  const state=await f.farmAction('a',a,'harvest',{bedId:0})
-  assert.equal(state.produce.carrot,4);assert.equal(state.xp,12)
+
+test('admin rejects removed member level IDs without publishing changes',async()=>{
+  const f=setup(),crop=await f.custom()
+  await assert.rejects(()=>f.service.save('admin',{revision:0,crop:{...crop,unlockLevelIds:['removed']}}),/会员等级/)
+  assert.equal((await f.service.list()).revision,0)
 })
+
 test('farm admin handler requires an administrator even for listing and upload paths',async()=>{
   const actions=[],context={db:createCollectionStore({}),getUser:async()=>actions.push('user'),requireAdmin:async()=>{throw new Error('无权')}}
   const handler=require('../../cloudfunctions/api/handlers/playgroundFarm')(context)
-  for(const action of ['list','prepareUpload','save'])await assert.rejects(()=>handler('client',action,{}),/无权/)
-  assert.equal(actions.length,3)
+  for(const action of ['list','prepareUpload','save','remove'])await assert.rejects(()=>handler('client',action,{}),/无权/)
+  assert.equal(actions.length,4)
 })

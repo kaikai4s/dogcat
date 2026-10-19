@@ -55,7 +55,10 @@ function yardLayout(plot) {
     })
   )
   const spot=sprites.find((p)=>p.name==='car_road')
-  return { half, sprites, stations, parking:{x:spot.x,z:spot.z}, vehicleSize:13*detailScale }
+  const custom=!!plot.buildingId
+  let visibleSprites=plot.buildingType==='yard'?[]:plot.buildingType&&plot.buildingType!=='residential'?sprites.filter((p)=>p.name==='house'):sprites
+  if(custom)visibleSprites=visibleSprites.map((p)=>p.name==='house'?{...p,radius:Math.max(plot.buildingWidth||7,plot.buildingDepth||7)/2,size:Math.max(plot.buildingWidth||7,plot.buildingDepth||7)*2,anchor:.8}:p)
+  return { half, sprites:visibleSprites, stations, parking:{x:spot.x,z:spot.z}, vehicleSize:13*detailScale }
 }
 
 module.exports = { YARD_SIZE, VEHICLE_RADIUS, FOUNTAIN_FRAMES, YARD_EXTRAS, yardLayout }

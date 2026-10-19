@@ -1,3 +1,4 @@
+const {levelIds,validateLevels}=require('./playground-access')
 const crypto = require('crypto')
 const { transaction } = require('./playground-transaction')
 const { readDocument } = require('./playground-world')
@@ -5,6 +6,7 @@ const { readDocument } = require('./playground-world')
 const COLLECTION = 'platform_configs'
 const ID = 'playground_buildings_catalog_v1'
 const UPLOAD_PATH = 'packagePlayground/2d/baseImage/buildings/custom/'
+const DEFAULT_PLOT_SIZES=[36,48,64,80,112].map((size)=>({size,label:`${size}×${size} 米绿地`,unlockLevelIds:[]}))
 const GRASS_TILE_SIZE = 3.5 // 单块草地标准尺寸 3.5m x 3.5m = 12.25 平方米
 
 const DEFAULT_BUILDINGS = [
@@ -16,7 +18,7 @@ const DEFAULT_BUILDINGS = [
     width: 7,
     depth: 7,
     tileCount: 4,
-    costCoins: 100,
+    costCoins: 0,
     image: '',
     enabled: true
   },
@@ -28,9 +30,9 @@ const DEFAULT_BUILDINGS = [
     width: 7,
     depth: 7,
     tileCount: 4,
-    costCoins: 200,
-    weeklySalary: 200,
-    resolveReward: 20,
+    costCoins: 0,
+    weeklySalary: 20,
+    resolveReward: 10,
     image: '',
     enabled: true
   },
@@ -42,7 +44,7 @@ const DEFAULT_BUILDINGS = [
     width: 7,
     depth: 7,
     tileCount: 4,
-    costCoins: 150,
+    costCoins: 0,
     image: '',
     enabled: true
   },
@@ -54,7 +56,7 @@ const DEFAULT_BUILDINGS = [
     width: 7,
     depth: 7,
     tileCount: 4,
-    costCoins: 80,
+    costCoins: 0,
     image: '',
     enabled: true
   },
@@ -66,7 +68,7 @@ const DEFAULT_BUILDINGS = [
     width: 7,
     depth: 7,
     tileCount: 4,
-    costCoins: 220,
+    costCoins: 0,
     image: '',
     enabled: true
   },
@@ -78,7 +80,7 @@ const DEFAULT_BUILDINGS = [
     width: 7,
     depth: 7,
     tileCount: 4,
-    costCoins: 180,
+    costCoins: 0,
     image: '',
     enabled: true
   }
@@ -97,11 +99,21 @@ function calcTileCount(width, depth) {
 
 async function readCatalog(db) {
   const row = await readDocument(db, COLLECTION, ID, '读取建筑配置', true)
-  return row
-    ? { revision: row.revision, buildings: row.buildings }
-    : { revision: 0, buildings: DEFAULT_BUILDINGS }
+  return {revision:row?row.revision:0,
+    buildings:(row?row.buildings:DEFAULT_BUILDINGS).map((item)=>({...item,costCoins:0,unlockLevelIds:item.unlockLevelIds||[],
+      washPoints:Number.isInteger(item.washPoints)?item.washPoints:10,
+      reportPoints:Number.isInteger(item.reportPoints)?item.reportPoints:5,
+      resolveReward:(!row||row.rewardsVersion===2)&&Number.isInteger(item.resolveReward)?item.resolveReward:10,
+      weeklySalary:(!row||row.rewardsVersion===2)&&Number.isInteger(item.weeklySalary)?item.weeklySalary:20})),
+    plotSizes:row&&row.plotSizes||DEFAULT_PLOT_SIZES}
+
 }
 
+function pointAmount(value,fallback) {
+  if(value===undefined)return fallback
+  if(!Number.isInteger(value)||value<0||value>1000)throw new Error('奖励积分须为0至1000之间的整数')
+  return value
+}
 function normalizeBuilding(value) {
   if (!value || !validId(value.id))
     throw new Error('建筑编号须以小写字母开头，最多40位字母、数字、横线或下划线')
@@ -114,7 +126,7 @@ function normalizeBuilding(value) {
   const width = Math.max(3.5, Math.min(35, Number(value.width) || 7))
   const depth = Math.max(3.5, Math.min(35, Number(value.depth) || 7))
   const tileCount = calcTileCount(width, depth)
-  const costCoins = Math.max(0, Math.min(1000000, Math.floor(Number(value.costCoins) || 0)))
+  const costCoins = 0
 
   const building = {
     id: value.id,
@@ -125,13 +137,16 @@ function normalizeBuilding(value) {
     depth,
     tileCount,
     costCoins,
+    unlockLevelIds:levelIds(value.unlockLevelIds),
     image: typeof value.image === 'string' ? value.image.trim() : '',
     enabled: value.enabled !== false
   }
 
+  if(value.type==='repair_shop') building.washPoints=pointAmount(value.washPoints,10)
   if (value.type === 'committee') {
-    building.weeklySalary = Math.max(0, Math.min(100000, Math.floor(Number(value.weeklySalary) || 200)))
-    building.resolveReward = Math.max(0, Math.min(10000, Math.floor(Number(value.resolveReward) || 20)))
+    building.reportPoints=pointAmount(value.reportPoints,5)
+    building.weeklySalary = pointAmount(value.weeklySalary,20)
+    building.resolveReward = pointAmount(value.resolveReward,10)
   }
 
   return building
@@ -142,7 +157,7 @@ module.exports = function createBuildingsService(context) {
   const now = () => (context.nowMs ? context.nowMs() : Date.now())
 
   async function list() {
-    return readCatalog(db)
+    return {...await readCatalog(db),levels:(await db.collection('member_levels').orderBy('minPoints','asc').get()).data||[]}
   }
 
   async function prepareUpload(openid, data) {
@@ -154,9 +169,10 @@ module.exports = function createBuildingsService(context) {
 
   async function save(openid, data) {
     const item = normalizeBuilding(data.building)
+    await validateLevels(db,item.unlockLevelIds)
     return transaction(db, async (tx) => {
       const current = await readCatalog(tx)
-      if (typeof data.revision === 'number' && current.revision !== data.revision) {
+      if (current.revision !== data.revision) {
         throw new Error('配置已被其他管理员更新，请刷新后重新编辑')
       }
       const exists = current.buildings.some((b) => b.id === item.id)
@@ -164,13 +180,14 @@ module.exports = function createBuildingsService(context) {
         ? current.buildings.map((b) => (b.id === item.id ? item : b))
         : current.buildings.concat(item)
       const next = {
+        rewardsVersion:2,plotSizes:current.plotSizes,
         revision: (current.revision || 0) + 1,
         buildings,
         updatedBy: openid,
         updatedAt: now()
       }
       await tx.collection(COLLECTION).doc(ID).set({ data: next })
-      return { revision: next.revision, buildings }
+      return { revision: next.revision, buildings,plotSizes:current.plotSizes }
     })
   }
 
@@ -178,19 +195,36 @@ module.exports = function createBuildingsService(context) {
     const id = String(data.id || '')
     return transaction(db, async (tx) => {
       const current = await readCatalog(tx)
+      if(current.revision!==data.revision)throw new Error('配置已被其他管理员更新，请刷新后重新编辑')
       const buildings = current.buildings.filter((b) => b.id !== id)
       const next = {
+        rewardsVersion:2,plotSizes:current.plotSizes,
         revision: (current.revision || 0) + 1,
         buildings,
         updatedBy: openid,
         updatedAt: now()
       }
       await tx.collection(COLLECTION).doc(ID).set({ data: next })
-      return { revision: next.revision, buildings }
+      return { revision: next.revision, buildings,plotSizes:current.plotSizes }
     })
   }
 
+  async function savePlotAccess(openid,data) {
+    const size=Number(data.size)
+    if(!DEFAULT_PLOT_SIZES.some((p)=>p.size===size))throw new Error('无效的绿地规格')
+    const ids=levelIds(data.unlockLevelIds)
+    await validateLevels(db,ids)
+    return transaction(db,async(tx)=>{
+      const current=await readCatalog(tx)
+      if(current.revision!==data.revision)throw new Error('配置已更新，请刷新后重试')
+      const plotSizes=DEFAULT_PLOT_SIZES.map((p)=>({...p,...current.plotSizes.find((v)=>v.size===p.size),...(p.size===size?{unlockLevelIds:ids}:{})}))
+      const next={...current,rewardsVersion:2,plotSizes,revision:current.revision+1,updatedBy:openid,updatedAt:now()}
+      await tx.collection(COLLECTION).doc(ID).set({data:next})
+      return next
+    })
+  }
   return {
+    savePlotAccess,
     list,
     save,
     remove,
@@ -198,3 +232,5 @@ module.exports = function createBuildingsService(context) {
     readCatalog: () => readCatalog(db)
   }
 }
+
+module.exports.DEFAULT_PLOT_SIZES=DEFAULT_PLOT_SIZES

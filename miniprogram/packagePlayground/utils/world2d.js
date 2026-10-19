@@ -1187,7 +1187,7 @@ class World2D {
     this.candidate = null
     this.follow = false
     this.candidateGateDirection = this.candidateGateDirection || 'south'
-    this.onStatus(isNewPlot ? '轻触空旷草坪，规划购买独立新地皮（原别墅保持不变）' : '点击位置作为别墅中心，预览围栏范围后确认')
+    this.onStatus(isNewPlot ? '轻触空旷草坪，规划独立新地皮（原别墅保持不变）' : '点击位置作为别墅中心，预览围栏范围后确认')
     this.page.setData({ placing: true, canConfirm: false })
   }
   setPlotSize(size) {
@@ -2038,6 +2038,11 @@ class World2D {
         items.push({
           depth: item.x + item.z,
           draw: () => {
+            const custom=item.name==='house'&&this.buildingImage(p.buildingImage)
+            if(custom) {
+              const point=this.project(item.x,item.z),width=item.size*this.scale*this.zoom,height=width*custom.height/custom.width
+              this.ctx.drawImage(custom,point.x-width/2,point.y-height*item.anchor,width,height)
+            } else
             this.sprite(
               item.name === 'fountain'
                 ? frames[Math.floor(this.elapsed * 8) % frames.length]
@@ -2677,8 +2682,8 @@ class World2D {
       if (this.placing) this.pickPlot(p)
       else {
         if(this.vehicleBusy)return
-        const farm=this.farmAt(point)
-        if(farm&&!this.drivingVehicleId){this.moveToFarmBed(farm.id);return}
+        const farm=!this.vehicleAt(point)&&!this.petAt(point)&&!this.characterAt(point)&&this.farmAt(point)
+        if(farm&&!this.drivingVehicleId){this.moveToFarmBed(farm.id,farm.plotId);return}
         const car=this.vehicleAt(point)
         if(car) {this.selectVehicle(car);return}
         if(this.drivingVehicleId) {

@@ -1,4 +1,5 @@
 const routes = {
+  'playground-buildings/index':['playgroundBuilding.list'],
   'playground-crops/index': ['playgroundFarm.list'],
   'playground-customizations/index': ['playgroundAppearance.listAdmin'],
   'users/list/index': ['admin.listUsers'], 'users/edit/index': ['admin.getUserDetail'],

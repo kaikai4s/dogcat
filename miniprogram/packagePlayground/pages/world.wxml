@@ -13,6 +13,7 @@
     <button bindtap="initialize">重新加载</button>
   </view>
   <view class="loading" wx:elif="{{loading}}"><view class="loader"></view><text>{{status}}</text></view>
+  <view class="garden-edit-hint" wx:if="{{farmEditMode && !farmOpen}}"><text>选择自家草块，走近后布置</text><button bindtap="endGardenEdit">完成选地</button></view>
   <view wx:if="{{hasAvatar && !loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !riding && !showPetScale && (joystickMode === 'always' || joystickActive)}}" class="joystick-pad {{joystickMode === 'always' ? 'joystick-fixed' : ''}} {{joystickRunning ? 'running' : ''}}" style="left: {{joystickLeft}}px; top: {{joystickTop}}px; opacity: {{joystickOpacity / 100}};" catchtouchstart="fixedJoystickStart" catchtouchmove="fixedJoystickMove" catchtouchend="fixedJoystickEnd" catchtouchcancel="fixedJoystickEnd">
     <view class="joystick-ring"></view>
     <view class="joystick-knob" style="transform: translate({{joystickX}}px, {{joystickY}}px)"></view>
@@ -58,18 +59,16 @@
       <button bindtap="chooseCommunityAndBuild">选择小区并建造庭院</button>
     </view>
     <view class="field-context" wx:if="{{nearbyFarm && !farmOpen && !settingsOpen && !socialOpen && !placing}}">
-      <view class="field-heading"><text>第 {{nearbyFarm.id + 1}} 块田 · {{nearbyFarm.name || nearbyFarm.label || '正在查看…'}}</text><text>{{nearbyFarm.state === 'growing' ? nearbyFarm.countdown : '身边的土地'}}</text></view>
-      <text class="life-muted" wx:if="{{nearbyFarm.loaded && !nearbyFarm.unlocked}}">收获积累经验，升级后解锁这块土地</text>
-      <block wx:if="{{nearbyFarm.loaded && nearbyFarm.unlocked}}">
-        <scroll-view scroll-x class="field-seeds" wx:if="{{nearbyFarm.state === 'empty'}}"><view class="field-seed-row"><block wx:for="{{farm.crops}}" wx:key="id"><button wx:if="{{item.unlocked}}" class="{{farmCropId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="selectFarmCrop">{{item.name}} · {{item.seeds}}包</button></block></view></scroll-view>
+      <view class="field-heading"><text>{{nearbyFarm.name || nearbyFarm.label || '正在查看土地…'}}</text><text>{{nearbyFarm.cropId ? nearbyFarm.label : '庭院装饰'}}</text></view>
+      <block wx:if="{{nearbyFarm.loaded}}">
+        <scroll-view scroll-x class="field-seeds" wx:if="{{nearbyFarm.state === 'empty'}}"><view class="field-seed-row"><block wx:for="{{farm.crops}}" wx:key="id"><button wx:if="{{item.unlocked}}" class="{{farmCropId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="selectFarmCrop">{{item.name}}</button></block></view></scroll-view>
         <view class="field-actions">
-          <button wx:if="{{nearbyFarm.state === 'wild'}}" data-bed="{{nearbyFarm.id}}" data-operation="till" bindtap="farmOperation" disabled="{{farmBusy}}">开垦 · 10爱心币</button>
-          <button wx:if="{{nearbyFarm.state === 'empty'}}" data-bed="{{nearbyFarm.id}}" data-operation="plant" bindtap="farmOperation" disabled="{{farmBusy}}">直接播种</button>
-          <button wx:if="{{nearbyFarm.state === 'empty'}}" data-tab="shop" bindtap="openFarm">种子库</button>
-          <button wx:if="{{nearbyFarm.state === 'growing' && !nearbyFarm.watered}}" data-bed="{{nearbyFarm.id}}" data-operation="water" bindtap="farmOperation" disabled="{{farmBusy}}">浇水</button>
-          <button wx:if="{{nearbyFarm.state === 'growing' && !nearbyFarm.fertilized}}" data-bed="{{nearbyFarm.id}}" data-operation="fertilize" bindtap="farmOperation" disabled="{{farmBusy}}">{{farm && farm.manure > 0 ? '便便加速施肥(余' + farm.manure + ')' : '施肥 · 5爱心币'}}</button>
-          <button wx:if="{{nearbyFarm.state === 'ready'}}" data-bed="{{nearbyFarm.id}}" data-operation="harvest" bindtap="farmOperation" disabled="{{farmBusy}}">收获</button>
-          <text class="life-muted" wx:if="{{nearbyFarm.state === 'growing' && nearbyFarm.watered && nearbyFarm.fertilized}}">已浇水、已施肥，等待成熟</text>
+          <button wx:if="{{nearbyFarm.state === 'grass'}}" data-plot="{{nearbyFarm.plotId}}" data-bed="{{nearbyFarm.id}}" data-operation="convert" bindtap="farmOperation" disabled="{{farmBusy}}">获得耕地</button>
+          <button wx:if="{{nearbyFarm.state === 'soil'}}" data-plot="{{nearbyFarm.plotId}}" data-bed="{{nearbyFarm.id}}" data-operation="till" bindtap="farmOperation" disabled="{{farmBusy}}">开垦</button>
+          <button wx:if="{{nearbyFarm.state === 'empty'}}" data-plot="{{nearbyFarm.plotId}}" data-bed="{{nearbyFarm.id}}" data-operation="plant" bindtap="farmOperation" disabled="{{farmBusy || !farmSeedAvailable}}">种植</button>
+          <button wx:if="{{nearbyFarm.state !== 'grass' && nearbyFarm.state !== 'soil' && nearbyFarm.stage !== 'watered'}}" data-plot="{{nearbyFarm.plotId}}" data-bed="{{nearbyFarm.id}}" data-operation="water" bindtap="farmOperation" disabled="{{farmBusy}}">浇水</button>
+          <button wx:if="{{nearbyFarm.state === 'ready'}}" data-plot="{{nearbyFarm.plotId}}" data-bed="{{nearbyFarm.id}}" data-operation="harvest" bindtap="farmOperation" disabled="{{farmBusy}}">收整植株</button>
+          <button wx:if="{{nearbyFarm.state !== 'grass'}}" data-plot="{{nearbyFarm.plotId}}" data-bed="{{nearbyFarm.id}}" data-operation="lawn" bindtap="farmOperation" disabled="{{farmBusy}}">恢复草坪</button>
         </view>
       </block>
     </view>
@@ -98,10 +97,7 @@
     </view>
     <view class="plot-size-bar" wx:if="{{placing && isPlacingNewPlot}}">
       <text class="plot-size-label">绿地规格：</text>
-      <button class="plot-size-chip {{selectedPlotSize === 36 ? 'active' : ''}}" data-size="36" bindtap="selectPlotSize">36m (30爱心值)</button>
-      <button class="plot-size-chip {{selectedPlotSize === 48 ? 'active' : ''}}" data-size="48" bindtap="selectPlotSize">48m (50爱心值)</button>
-      <button class="plot-size-chip {{selectedPlotSize === 64 ? 'active' : ''}}" data-size="64" bindtap="selectPlotSize">64m (80爱心值)</button>
-      <button class="plot-size-chip {{selectedPlotSize === 80 ? 'active' : ''}}" data-size="80" bindtap="selectPlotSize">80m (120爱心值)</button>
+      <button wx:for="{{plotSizes}}" wx:key="size" class="plot-size-chip {{selectedPlotSize === item.size ? 'active' : ''}}" data-size="{{item.size}}" bindtap="selectPlotSize" disabled="{{isPlacingNewPlot && !item.unlocked}}">{{item.label}} {{isPlacingNewPlot && !item.unlocked ? item.unlockText : ''}}</button>
     </view>
     <view class="controls">
       <button wx:if="{{hasAvatar && !placing}}" bindtap="focusCharacter">回到角色</button>
@@ -120,7 +116,7 @@
       <view class="settings-heading"><view><text>场景设置</text><text class="settings-tip">按你的习惯，自在逛家园</text></view><button bindtap="closeSettings">完成</button></view>
       <scroll-view scroll-y="true" class="settings-content">
         <view class="compliance-banner" style="background: rgba(111,141,88,0.08); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-          <text style="font-size: 11px; color: #556b46; line-height: 1.5; display: block;">【社区文明公约】本空间为邻里文明养宠与绿色生活互动专区，爱心币仅用于场景内绿化开垦、种子申领等公益成长互动，不具备现金价值，不涉及任何现金交易。</text>
+          <text style="font-size: 11px; color: #556b46; line-height: 1.5; display: block;">植物用于庭院装饰，收整不提供收益。有效洗车、环境反馈和纠纷处理奖励计入会员积分，可在积分记录中查看。</text>
         </view>
         <button class="settings-entry" bindtap="openSocial">
           <text class="settings-entry-icon">友</text>

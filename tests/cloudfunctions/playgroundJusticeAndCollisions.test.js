@@ -13,11 +13,11 @@ test('buildings catalog includes police_station and prison facilities', async ()
 
   assert.ok(police, 'catalog should have police_station')
   assert.equal(police.name, '文明督导所')
-  assert.equal(police.costCoins, 220)
+  assert.equal(police.costCoins, 0)
 
   assert.ok(prison, 'catalog should have prison')
   assert.equal(prison.name, '安全宣教自省室')
-  assert.equal(prison.costCoins, 180)
+  assert.equal(prison.costCoins, 0)
 })
 
 test('pet becomes sick when satiety and hydration stay zero and hospital cures it', () => {
@@ -162,27 +162,16 @@ test('cannot arrest if police station or prison is missing', async () => {
   )
 })
 
-test('concurrent poop pickup between different users prevents duplicate acquisition', async () => {
-  const f = fixture()
-  const a = await f.build('a')
-  const b = await f.build('b', { x: 504, z: 280 })
-  const poopId = 'poop_global_concurrent_123'
-
-  // 用户 a 成功拾取便便
-  const resA = await f.farmAction('a', a, 'pickupPoop', { poopId })
-  assert.equal(resA.manure, 1)
-
-  // 用户 b 尝试拾取同一个 poopId，被全局事务拒绝
-  await assert.rejects(
-    () => f.farmAction('b', b, 'pickupPoop', { poopId }),
-    /该便便已被其他邻居拾取/
-  )
-
-  // 用户 a 再次重复拾取，也被自己历史拒绝
-  await assert.rejects(
-    () => f.farmAction('a', a, 'pickupPoop', { poopId }),
-    /该便便已被拾取/
-  )
+test('concurrent poop pickup between different users consumes the ground event once', async () => {
+  const f=fixture(),a=await f.build(),b=await f.build('b',{x:504,z:280})
+  const world=require('../../cloudfunctions/api/services/playground-world'),position={x:280,z:338}
+  const poopId='waste_'+world.hash('a')+'_'+world.hash('pet_a').slice(0,8)+'_'+f.now()
+  f.pet('a').waste=[{id:poopId,type:'poop',...position,createdAt:f.now(),vehicleId:''}]
+  f.place('a',position);f.place('b',position)
+  const results=await Promise.allSettled([f.farmAction('a',a,'pickupPoop',{poopId}),f.farmAction('b',b,'pickupPoop',{poopId})])
+  assert.equal(results.filter((r)=>r.status==='fulfilled').length,1)
+  assert.equal(f.pet('a').waste.length,0)
+  assert.equal(results.find((r)=>r.status==='fulfilled').value.manure,undefined)
 })
 
 test('arrest parks driver car and resets vehicle presence', async () => {

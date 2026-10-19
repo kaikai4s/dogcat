@@ -10,7 +10,7 @@ Page({
     disputesOpen: false, disputes: [], isCommittee: false, committeeOwnerName: '', disputesLoading: false,
     justiceOpen: false, justiceLoading: false, accidents: [], myJailStatus: null, isHumanInjured: false,
     buildOpen: false, buildLoading: false, buildBusy: false, buildingCatalog: [], selectedBuilding: null, nearbyBuilding: null,
-    farmOpen:false,farmLoading:false,farmBusy:false,farm:null,farmBed:null,nearbyFarm:null,farmSeedAvailable:false,farmTab:'field',farmCropId:'carrot',farmSelectedBed:0,farmReadyCount:0,
+    farmEditMode:false,farmPlotId:'',plotSizes:[],farmCultivated:[],farmOpen:false,farmLoading:false,farmBusy:false,farm:null,farmBed:null,nearbyFarm:null,farmSeedAvailable:false,farmCropId:'carrot',farmSelectedBed:0,
     riding:false,rideBusy:false,nearbyRide:null,nearbyInvite:null,passengers:[],
     loading: true,
     characterType: 'boy',
@@ -170,7 +170,7 @@ Page({
         hasCustomCharacter: false,
         driving:false,vehicleSelected:false,vehicleParked:false,nearbyVehicle:false,ownVehicleId:'',vehicleOperating:false,
         riding:false,rideBusy:false,nearbyRide:null,nearbyInvite:null,passengers:[],petAlerts:[],selectedPet:null,petCareBusy:false,petRosterOpen:false,
-        farmOpen:false,farmLoading:false,farmBusy:false,farm:null,nearbyFarm:null,
+        farmEditMode:false,farmPlotId:'',plotSizes:[],farmCultivated:[],farmOpen:false,farmLoading:false,farmBusy:false,farm:null,nearbyFarm:null,
         claiming: false,
         error: '',
         status: '读取宠物档案…',
@@ -208,6 +208,7 @@ Page({
               hasHomeElsewhere: Boolean(overview.scene && overview.scene.hasHomeElsewhere),
               characterType: overview.scene ? overview.scene.characterType : this.data.characterType,
               canRelocate: overview.world.canRelocate === true,
+              plotSizes:overview.world.plotSizes || [],
               placing: false,
               canConfirm: false,
               worldSize: `${overview.world.width} × ${overview.world.height} 米`
@@ -338,21 +339,26 @@ Page({
   },
   selectPlotSize(e) {
     const size = Number(e.currentTarget.dataset.size) || 48
+    const option=(this.data.plotSizes||[]).find((p)=>p.size===size)
+    if(this.data.isPlacingNewPlot&&(!option||!option.unlocked))return wx.showToast({title:option&&option.unlockText||'该规格未解锁',icon:'none'})
     this.setData({ selectedPlotSize: size })
     if (this.world) {
       this.world.setPlotSize(size)
     }
-    const priceMap = { 36: 30, 48: 50, 64: 80, 80: 120 }
-    this.pushStatusMessage(`已选择 ${size}×${size} 米绿地规格（${priceMap[size] || 50} 爱心币），指示框已同步`)
+    this.pushStatusMessage(`已选择 ${size}×${size} 米绿地规格，指示框已同步`)
   },
   choosePlot(isNewPlot = false) {
+    isNewPlot=isNewPlot===true
     this.joystickEnd()
     if(this.data.hasHomeElsewhere) return
     if(!this.data.hasCommunity) return this.chooseCommunityAndBuild()
     if(this.data.visiting) return this.settleCommunity(true)
     const dir = this.data.gateDirection || 'south'
-    const size = this.data.selectedPlotSize || 48
+    const options=(this.data.plotSizes||[]).filter((p)=>p.unlocked)
+    if(isNewPlot&&!options.length)return wx.showToast({title:'当前会员尚未解锁新地皮',icon:'none'})
+    const size = isNewPlot ? (options.find((p)=>p.size===this.data.selectedPlotSize)||options[0]).size : this.data.selectedPlotSize || 48
     this.setData({
+      selectedPlotSize:size,
       isPlacingNewPlot: Boolean(isNewPlot),
       gateDirection: dir,
       gateDirectionText: dir === 'north' ? '北门' : dir === 'east' ? '东门' : dir === 'west' ? '西门' : '南门'
@@ -373,10 +379,12 @@ Page({
     if (!this.data.hasPlot) {
       return this.choosePlot(false)
     }
+    try {const catalog=await callFunction('playground','getBuildingCatalog');this.setData({plotSizes:catalog.plotSizes||[]})}
+    catch(error){return wx.showToast({title:error.message||'无法读取会员解锁配置',icon:'none'})}
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
         title: '认领专属爱心绿地',
-        content: '认领一块全新的专属爱心绿地（草坪及四周生态木栅栏），原别墅完好保留在原地不移动。可选 36m~80m 多种规格，是否立即前往选址？',
+        content: '认领一块全新的专属爱心绿地（草坪及四周生态木栅栏），原别墅完好保留在原地不移动。可按会员等级选择多种规格，是否立即前往选址？',
         confirmText: '去选址',
         cancelText: '取消',
         success: (r) => resolve(r.confirm),
@@ -421,9 +429,7 @@ Page({
     const currentGateDir = candidate.gateDirection || this.data.gateDirection || 'south'
     const gateText = gateDirMap[currentGateDir] || '南门'
 
-    const priceMap = { 36: 30, 48: 50, 64: 80, 80: 120 }
     const plotSize = Number(candidate.size) || this.data.selectedPlotSize || 48
-    const plotCost = priceMap[plotSize] || 50
 
     // 情况 A：在已购买的地皮内部建造房子建筑
     if (building) {
@@ -435,7 +441,7 @@ Page({
       const confirmed = await new Promise((resolve) =>
         wx.showModal({
           title: `确认建造【${building.name}】`,
-          content: `将在您的【${targetPlot.name || '自家庭院'}】内部建造该建筑房屋（不含额外地皮）。\n消耗：${building.costCoins || 0} 爱心币。`,
+          content: `将在您的【${targetPlot.name || '自家庭院'}】内部建造该建筑房屋（不含额外地皮）。\n当前会员已解锁，无需支付代币。`,
           confirmText: '确认建造',
           success: (r) => resolve(r.confirm),
           fail: () => resolve(false)
@@ -453,7 +459,6 @@ Page({
           buildingImage: building.image || '',
           buildingWidth: building.width || 7,
           buildingDepth: building.depth || 7,
-          costCoins: building.costCoins || 0,
           sceneId: world.scene && world.scene.sceneId
         })
         this.pendingBuilding = null
@@ -481,7 +486,7 @@ Page({
       wx.showModal({
         title: isNewPlot ? '确认认领专属爱心绿地' : this.data.hasPlot ? '调整庭院位置' : '安置庭院',
         content: isNewPlot
-          ? `绿地规格 ${plotSize}×${plotSize} 米，四周用生态木栅栏围护，栅栏大门朝向【${gateText}】。\n认领共建所需：${plotCost} 爱心币。\n原别墅完整保留在原地不移动。`
+          ? `绿地规格 ${plotSize}×${plotSize} 米，四周用生态木栅栏围护，栅栏大门朝向【${gateText}】。\n当前会员已解锁此规格，无需支付代币。\n原别墅完整保留在原地不移动。`
           : `庭院范围 ${plotSize}×${plotSize} 米并由栅栏围护，大门朝向【${gateText}】。${this.data.hasPlot ? '保存后原位置会腾空。' : ''}${this.data.canRelocate ? '目前临时开放重新选址。' : '确认后不能搬迁。'}`,
         confirmText: isNewPlot ? '确认认领' : '确认位置',
         success: (r) => resolve(r.confirm),
@@ -499,7 +504,6 @@ Page({
         size: plotSize,
         gateDirection: currentGateDir,
         isNewPlot: isNewPlot,
-        costCoins: isNewPlot ? plotCost : 0,
         buildingType: isNewPlot ? 'yard' : 'residential',
         buildingName: isNewPlot ? '专属爱心绿地' : '',
         sceneId: world.scene && world.scene.sceneId
@@ -788,10 +792,16 @@ Page({
     } catch(error) {wx.showToast({title:error.message||'车辆操作失败',icon:'none'})}
     finally {if(this.world===world)this.setData({vehicleOperating:false})}
   },
-  cleanVehicleAction() {
-    if (this.world && this.world.cleanVehicle) {
-      this.world.cleanVehicle()
-    }
+  async cleanVehicleAction() {
+    const world=this.world,car=world&&world.ownVehicle()
+    if(!world||!world.sceneSync||!car||this.data.washingVehicle)return
+    this.joystickEnd();this.setData({washingVehicle:true})
+    try {
+      await world.sceneSync.send(true)
+      const result=await callFunction('playground','washVehicle',{...world.sceneSync.credentials(),vehicleId:car.id})
+      if(this.world===world&&!world.destroyed){world.cleanVehicle(car);world.onStatus(result.message)}
+    }catch(error){wx.showToast({title:error.message||'洗车失败',icon:'none'})}
+    finally{if(this.world===world)this.setData({washingVehicle:false})}
   },
   previewVehicleSpeed(e) {this.setData({vehicleSpeed:Number(e.detail.value)/10})},
   async changeVehicleSpeed(e) {
@@ -963,7 +973,7 @@ Page({
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
         title: '向居委会反馈便便',
-        content: '发现未清理的便便，是否向社区居委会提交保洁提醒？居委会核实督导后您将获得爱心币奖励。',
+        content: '发现未清理的便便，是否向社区居委会提交保洁提醒？有效反馈可获得会员积分，同一份便便只奖励一次。',
         confirmText: '立即反馈',
         success: (r) => resolve(r.confirm),
         fail: () => resolve(false)
@@ -971,7 +981,9 @@ Page({
     )
     if (!confirmed) return
     try {
+      await world.sceneSync.send(true)
       const result = await callFunction('playground', 'reportPoop', {
+        ...world.sceneSync.credentials(),
         poopId: poop.id,
         x: poop.x,
         z: poop.z,
@@ -987,13 +999,15 @@ Page({
     if (!world) return
     this.setData({ disputesOpen: true, disputesLoading: true })
     try {
+      await world.sceneSync.send(true)
       const result = await callFunction('playground', 'listDisputes', {
+        ...world.sceneSync.credentials(),
         sceneId: world.scene && world.scene.sceneId
       })
       this.setData({
         disputes: result.disputes || [],
         isCommittee: result.isCommittee || false,
-        committeeOwnerName: result.committeeOwnerName || '暂未设立'
+        committeeOwnerName: result.committeeOwnerName || '暂未设立',weeklyPoints:result.weeklyPoints||0
       })
     } catch (err) {
       wx.showToast({ title: err.message || '加载纠纷列表失败', icon: 'none' })
@@ -1009,7 +1023,9 @@ Page({
     const disputeId = e.currentTarget.dataset.id
     if (!world || !disputeId) return
     try {
+      await world.sceneSync.send(true)
       const result = await callFunction('playground', 'resolveDispute', {
+        ...world.sceneSync.credentials(),
         disputeId,
         sceneId: world.scene && world.scene.sceneId
       })
@@ -1023,7 +1039,9 @@ Page({
     const world = this.world
     if (!world) return
     try {
+      await world.sceneSync.send(true)
       const result = await callFunction('playground', 'claimWeeklySalary', {
+        ...world.sceneSync.credentials(),
         sceneId: world.scene && world.scene.sceneId
       })
       wx.showToast({ title: result.message || '周薪领取成功', icon: 'success' })
@@ -1038,7 +1056,8 @@ Page({
       const buildings = (result.buildings || []).filter((b) => b.enabled !== false)
       this.setData({
         buildingCatalog: buildings,
-        selectedBuilding: buildings[0] || null
+        selectedBuilding: buildings.find((b)=>b.unlocked) || buildings[0] || null,
+        plotSizes:result.plotSizes||this.data.plotSizes
       })
     } catch (err) {
       wx.showToast({ title: err.message || '加载建筑列表失败', icon: 'none' })
@@ -1056,7 +1075,8 @@ Page({
   },
   async buildInYardAction() {
     const building = this.data.selectedBuilding
-    if (!building) return
+    if (!building || this.data.buildBusy) return
+    if(!building.unlocked)return wx.showToast({title:building.unlockText||'当前会员未解锁',icon:'none'})
     const world = this.world
     if (!world || !this.data.hasPlot) {
       wx.showModal({
@@ -1093,7 +1113,7 @@ Page({
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
         title: `在绿地内建造【${building.name}】`,
-        content: `将在【${targetPlot.buildingName || targetPlot.name || '自家庭院'}】内部建造该单房建筑（不含额外地皮）。\n建造消耗：${building.costCoins || 0} 爱心币。是否确认建造？`,
+        content: `将在【${targetPlot.buildingName || targetPlot.name || '自家庭院'}】内部建造该单房建筑（不含额外地皮）。\n当前会员已解锁，无需支付代币。是否确认建造？`,
         confirmText: '立即建造',
         success: (r) => resolve(r.confirm),
         fail: () => resolve(false)
@@ -1110,7 +1130,6 @@ Page({
         buildingImage: building.image,
         buildingWidth: building.width,
         buildingDepth: building.depth,
-        costCoins: building.costCoins || 0,
         sceneId: world.scene && world.scene.sceneId
       })
       wx.showToast({ title: '建筑落座成功！', icon: 'success' })
@@ -1133,7 +1152,9 @@ Page({
     const world = this.world
     if (!world) return
     try {
+      await world.sceneSync.send(true)
       const result = await callFunction('playground', 'repairVehicle', {
+        ...world.sceneSync.credentials(),
         sceneId: world.scene && world.scene.sceneId
       })
       wx.showModal({

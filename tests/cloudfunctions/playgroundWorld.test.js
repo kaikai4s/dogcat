@@ -275,38 +275,17 @@ test('claim and relocation use ordered requests within one transaction', async (
   const { db, users, context } = fixture()
   const runTransaction = db.runTransaction.bind(db)
   let active = 0
-  db.runTransaction = (callback) =>
-    runTransaction((tx) =>
-      callback({
-        collection(name) {
-          const collection = tx.collection(name)
-          return {
-            doc(id) {
-              const doc = collection.doc(id)
-              return Object.fromEntries(
-                ['get', 'set', 'remove'].map((method) => [
-                  method,
-                  async (...args) => {
-                    assert.equal(
-                      active,
-                      0,
-                      'requests on the same transaction must not overlap'
-                    )
-                    active++
-                    try {
-                      await new Promise((resolve) => setImmediate(resolve))
-                      return await doc[method](...args)
-                    } finally {
-                      active--
-                    }
-                  }
-                ])
-              )
-            }
-          }
-        }
-      })
-    )
+  function guarded(target) {
+    return new Proxy(target,{get(object,key){
+      if(['get','set','remove','update'].includes(key))return async(...args)=>{
+        assert.equal(active,0,'requests on the same transaction must not overlap');active++
+        try{await new Promise((resolve)=>setImmediate(resolve));return await object[key](...args)}finally{active--}
+      }
+      if(['doc','where','orderBy','limit'].includes(key))return (...args)=>guarded(object[key](...args))
+      return object[key]
+    }})
+  }
+  db.runTransaction=(callback)=>runTransaction((tx)=>callback({collection:(name)=>guarded(tx.collection(name))}))
   const service = world.create(context)
   const first = await service.claim('a', users[0], { x: 360, z: 360 })
   const moved = await service.claim('a', users[0], { x: 600.25, z: 700.5 })

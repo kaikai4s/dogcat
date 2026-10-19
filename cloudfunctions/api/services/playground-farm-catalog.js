@@ -2,20 +2,22 @@ const crypto=require('crypto')
 const {transaction}=require('./playground-transaction')
 const {readDocument}=require('./playground-world')
 const {inspectAtlas}=require('./playground-appearance-png')
+const {levelIds,validateLevels}=require('./playground-access')
 const {CROPS,SOILS}=require('./playground-shared/farm-model')
 const COLLECTION='platform_configs',ID='playground_farm_catalog_v1'
 const UPLOAD_PATH='packagePlayground/2d/baseImage/farm/custom/'
 const validId=(id)=>typeof id==='string'&&/^[a-z][a-z0-9_-]{0,39}$/.test(id)&&!['constructor','prototype','__proto__'].includes(id)
 async function readCatalog(db) {
   const row=await readDocument(db,COLLECTION,ID,'读取农作物配置',true)
-  return row?{revision:row.revision,crops:row.crops,soils:SOILS}:{revision:0,crops:CROPS,soils:SOILS}
+  const crops=(row?row.crops:CROPS).map(({price,sell,yield:oldYield,xp,level,...crop})=>({...crop,unlockLevelIds:crop.unlockLevelIds||[]}))
+  return {revision:row?row.revision:0,crops,soils:SOILS}
 }
 function normalizeCrop(value) {
   if(!value||!validId(value.id))throw new Error('作物编号须以小写字母开头，最多40位字母、数字、横线或下划线')
   const name=typeof value.name==='string'?value.name.trim():''
   if(!name||name.length>24)throw new Error('作物名称须为1至24个字符')
-  const crop={id:value.id,name,enabled:value.enabled!==false}
-  for(const [key,min,max] of [['minutes',1,525600],['price',0,1000000],['sell',0,1000000],['yield',1,100],['xp',0,10000],['level',1,10]]) {
+  const crop={id:value.id,name,enabled:value.enabled!==false,unlockLevelIds:levelIds(value.unlockLevelIds)}
+  for(const [key,min,max] of [['minutes',1,525600]]) {
     if(!Number.isInteger(value[key])||value[key]<min||value[key]>max)throw new Error(`${key}须为${min}至${max}之间的整数`)
     crop[key]=value[key]
   }
@@ -37,6 +39,7 @@ module.exports=function createCatalog(context) {
   }
   async function save(openid,data) {
     const crop=normalizeCrop(data.crop),catalog=await readCatalog(db)
+    await validateLevels(db,crop.unlockLevelIds)
     const old=catalog.crops.find((c)=>c.id===crop.id)
     if(!old||JSON.stringify(old.atlas)!==JSON.stringify(crop.atlas)) {
       const path=crop.atlas.fileID.slice(crop.atlas.fileID.indexOf('/',8)+1)
@@ -51,7 +54,6 @@ module.exports=function createCatalog(context) {
     return transaction(db,async(tx)=>{
       const current=await readCatalog(tx)
       if(current.revision!==data.revision)throw new Error('配置已被其他管理员修改，请刷新后重新编辑')
-      if(!current.crops.some((c)=>c.id===crop.id)&&current.crops.length>=32)throw new Error('最多配置32种作物')
       const exists=current.crops.some((c)=>c.id===crop.id)
       const crops=exists?current.crops.map((c)=>c.id===crop.id?crop:c):current.crops.concat(crop)
       const next={revision:current.revision+1,crops,updatedBy:openid,updatedAt:context.nowMs?context.nowMs():Date.now()}
@@ -59,7 +61,17 @@ module.exports=function createCatalog(context) {
       return {revision:next.revision,crops,soils:SOILS}
     })
   }
-  return {list:()=>readCatalog(db),prepareUpload,save}
+  async function remove(openid,data) {
+    if(!validId(data.id))throw new Error('请选择有效的植物')
+    return transaction(db,async(tx)=>{
+      const current=await readCatalog(tx)
+      if(current.revision!==data.revision)throw new Error('配置已被其他管理员修改，请刷新后重新编辑')
+      const next={revision:current.revision+1,crops:current.crops.filter((c)=>c.id!==data.id),updatedBy:openid,updatedAt:context.nowMs?context.nowMs():Date.now()}
+      await tx.collection(COLLECTION).doc(ID).set({data:next})
+      return {...next,soils:SOILS}
+    })
+  }
+  return {list:async()=>({...await readCatalog(db),levels:(await db.collection('member_levels').orderBy('minPoints','asc').get()).data||[]}),prepareUpload,save,remove}
 }
 module.exports.readCatalog=readCatalog
 module.exports.normalizeCrop=normalizeCrop

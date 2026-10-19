@@ -28,92 +28,92 @@ module.exports={
   async openFarm(e) {
     const world=this.world
     if(!world||!world.sceneSync)return
-    if(!world.ownPlot)return wx.showToast({title:'请先建造自己的庭院',icon:'none'})
+    const plots=world.gardenPlots()
+    if(!plots.length)return wx.showToast({title:'请先建造自己的庭院',icon:'none'})
     this.joystickEnd();this.clearPetSelection()
-    const dataset=e&&e.currentTarget&&e.currentTarget.dataset||{},id=Number(dataset.bed)
-    this.setData({farmOpen:true,farmLoading:true,farmTab:dataset.tab||'field',farmSelectedBed:Number.isInteger(id)?id:0})
-    try {
-      await this.ensureFarm(true)
-    }catch(error){toast(error)}
+    const dataset=e&&e.currentTarget&&e.currentTarget.dataset||{}
+    const plotId=dataset.plot||this.data.farmPlotId||plots[0].id
+    this.setData({farmOpen:true,farmLoading:true,gardenPlots:plots.map((p,i)=>({id:p.id,name:p.buildingName||p.name||'我的地皮 '+(i+1)})),farmPlotId:plotId})
+    try {await this.ensureFarm(true,plotId)}catch(error){toast(error)}
     finally{if(this.world===world)this.setData({farmLoading:false})}
   },
   closeFarm(){this.setData({farmOpen:false})},
-  ensureFarm(force=false) {
+  async selectGardenPlot(e) {
+    const plotId=e.currentTarget.dataset.id
+    this.setData({farmPlotId:plotId,farmLoading:true})
+    try{await this.ensureFarm(true,plotId)}catch(error){toast(error)}
+    finally{this.setData({farmLoading:false})}
+  },
+  startGardenEdit() {
+    this.closeFarm();this.joystickEnd()
+    this.setData({farmEditMode:true})
+    if(this.world){this.world.selectCharacter();this.world.emitFarmUi();this.world.onStatus('点击自家庭院或新地皮里的草块，走近后布置植物')}
+  },
+  endGardenEdit(){this.setData({farmEditMode:false});if(this.world)this.world.emitFarmUi()},
+  ensureFarm(force=false,plotId) {
     const world=this.world
-    if(!world||!world.sceneSync||!world.ownPlot)return Promise.resolve()
-    if(this.farmRequest&&this.farmRequest.world===world)return this.farmRequest.promise
-    if(!force&&this.farmSnapshot&&this.farmSnapshot.plotId===world.ownPlot.id&&Date.now()-this.farmReceived<15000)return Promise.resolve()
-    if(!force&&Date.now()-(this.farmAttempt||0)<5000)return Promise.resolve()
-    this.farmAttempt=Date.now()
-    const request={world,revision:this.farmApplyRevision||0}
-    request.promise=world.sceneSync.getFarm().then((farm)=>{
-      if(this.world===world&&!world.destroyed&&world.ownPlot&&farm.plotId===world.ownPlot.id&&request.revision===(this.farmApplyRevision||0))this.applyFarm(farm)
+    plotId=plotId||this.data.farmPlotId||world&&world.ownPlot&&world.ownPlot.id
+    if(!world||!world.sceneSync||!plotId)return Promise.resolve()
+    this.farmWantedPlot=plotId
+    if(this.farmRequest&&this.farmRequest.world===world&&this.farmRequest.plotId===plotId)return this.farmRequest.promise
+    if(!force&&this.farmSnapshot&&this.farmSnapshot.plotId===plotId&&Date.now()-this.farmReceived<15000)return Promise.resolve()
+    const request={world,plotId,revision:this.farmApplyRevision||0}
+    request.promise=world.sceneSync.getFarm(plotId).then((farm)=>{
+      if(this.world===world&&!world.destroyed&&farm.plotId===this.farmWantedPlot&&request.revision===(this.farmApplyRevision||0))this.applyFarm(farm)
     }).finally(()=>{if(this.farmRequest===request)this.farmRequest=null})
     this.farmRequest=request
     return request.promise
   },
   applyFarm(farm) {
-    if(this.world&&this.world.setFarmCatalog) {
-      this.world.setFarmCatalog(farm.catalog)
-      const catalog=this.world.farmCatalog
-      if(farm.catalog&&catalog&&catalog.revision>farm.catalog.revision) {
-        farm={...farm,catalog,crops:catalog.crops.map((c)=>({...c,unlocked:c.enabled!==false&&c.level<=farm.level,
-          seeds:(farm.seeds||{})[c.id]||0,stock:(farm.produce||{})[c.id]||0}))}
-      }
-    }
+    if(this.world&&this.world.setFarmCatalog)this.world.setFarmCatalog(farm.catalog)
+    const latest=this.world&&this.world.farmCatalog
+    if(latest&&farm.catalog&&latest.revision>farm.catalog.revision)farm={...farm,catalog:latest,crops:latest.crops.map((c)=>({...c,unlocked:c.enabled!==false&&(!(c.unlockLevelIds||[]).length||c.unlockLevelIds.includes(farm.memberLevel))}))}
     this.farmApplyRevision=(this.farmApplyRevision||0)+1
-    this.farmSnapshot=farm
-    this.farmReceived=Date.now()
-    this.setData({farm})
+    this.farmSnapshot=farm;this.farmReceived=Date.now()
+    this.setData({farm,farmPlotId:farm.plotId})
     this.refreshFarmClock()
     if(this.world)this.world.emitFarmUi()
   },
   refreshFarmClock() {
     if(!this.farmSnapshot)return
     const stamp=this.farmSnapshot.serverTime+Date.now()-this.farmReceived
-    const beds=this.farmSnapshot.beds.map((b)=>{
-      const view=b.state==='wild'?b:bedView(b,stamp,this.farmSnapshot.crops),remaining=view.remaining||0
-      return {...b,...view,countdown:remaining>=3600?Math.ceil(remaining/3600)+'小时':remaining>=60?Math.ceil(remaining/60)+'分钟':remaining+'秒'}
-    })
-    const crop=(this.farmSnapshot.crops||[]).find((c)=>c.id===this.data.farmCropId)
-    this.setData({'farm.beds':beds,farmBed:beds.find((b)=>b.id===this.data.farmSelectedBed)||beds[0],farmSeedAvailable:!!(crop&&crop.unlocked&&crop.seeds>0),
-      farmReadyCount:beds.filter((b)=>b.state==='ready').length})
+    const beds=this.farmSnapshot.beds.map((b)=>({...b,...(b.state==='grass'?b:bedView(b,stamp,this.farmSnapshot.crops))}))
+    const crops=this.farmSnapshot.crops||[],crop=crops.find((c)=>c.id===this.data.farmCropId)
+    const selected=crop&&crop.unlocked?crop:crops.find((c)=>c.unlocked)
+    this.setData({'farm.beds':beds,farmCultivated:beds.filter((b)=>b.state!=='grass'),farmCropId:selected&&selected.id||'',farmSeedAvailable:!!selected,
+      farmBed:beds.find((b)=>b.id===this.data.farmSelectedBed)||null})
   },
   selectFarmBed(e){this.setData({farmSelectedBed:Number(e.currentTarget.dataset.id)});this.refreshFarmClock()},
-  changeFarmTab(e){this.setData({farmTab:e.currentTarget.dataset.tab})},
   selectFarmCrop(e){this.setData({farmCropId:e.currentTarget.dataset.id});this.refreshFarmClock()},
   async goToFarm(e) {
     const world=this.world
-    if(!world||!world.ownPlot)return
+    if(!world)return
     if(world.drivingVehicleId)return wx.showToast({title:'请先下车',icon:'none'})
-    const id=e&&e.currentTarget&&e.currentTarget.dataset.id
-    const bedId=id===undefined?this.data.farmSelectedBed:Number(id)
+    const dataset=e&&e.currentTarget&&e.currentTarget.dataset||{}
+    const bedId=dataset.id===undefined?this.data.farmSelectedBed:Number(dataset.id)
     this.closeFarm()
-    await world.moveToFarmBed(bedId)
+    await world.moveToFarmBed(bedId,dataset.plot||this.data.farmPlotId)
   },
   async farmOperation(e) {
     const world=this.world,dataset=e.currentTarget.dataset
     if(!world||!world.sceneSync||this.data.farmBusy)return
-    const field=['till','plant','water','fertilize','harvest'].includes(dataset.operation)
-    const tile=field&&world.nearbyFarmTile()
-    if(field&&(this.data.farmOpen||!tile||tile.id!==Number(dataset.bed)))return wx.showToast({title:'请先走到这块土地旁边',icon:'none'})
-    if(field){this.joystickEnd();world.setCharacterInput(0,0);world.characterRoute=null;world.characterTarget=null;world.characterMoveToken=(world.characterMoveToken||0)+1}
-    const payload={
-      operation:dataset.operation,
-      bedId:field?tile.id:undefined,
-      cropId:dataset.crop||this.data.farmCropId||'carrot',
-      quantity:dataset.quantity===undefined?1:Number(dataset.quantity),
-      useManure:dataset.operation==='fertilize' ? !!(this.data.farm && this.data.farm.manure > 0) : undefined
-    }
+    const tile=world.nearbyFarmTile()
+    if(this.data.farmOpen||!tile||tile.id!==Number(dataset.bed)||tile.plotId!==dataset.plot)return wx.showToast({title:'请先走到这块土地旁边',icon:'none'})
+    this.joystickEnd();world.setCharacterInput(0,0);world.characterRoute=null;world.characterTarget=null;world.characterMoveToken=(world.characterMoveToken||0)+1
+    const payload={operation:dataset.operation,plotId:tile.plotId,bedId:tile.id,cropId:dataset.crop||this.data.farmCropId||''}
     const signature=JSON.stringify(payload)
     const packet=this.pendingFarm&&this.pendingFarm.signature===signature?this.pendingFarm.packet:
       {...payload,requestId:'farm_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,12)}
-    this.pendingFarm={signature,packet}
-    this.setData({farmBusy:true})
+    this.pendingFarm={signature,packet};this.setData({farmBusy:true})
     try {
       const result=await world.sceneSync.farmAction(packet)
       this.pendingFarm=null
-      if(this.world===world){this.applyFarm(result);world.onStatus(result.message);wx.showToast({title:result.message,icon:'none'})}
+      if(this.world===world&&!world.destroyed){
+        // Reflect the acknowledged layout while realtime publication arrives.
+        const plot=world.gardenPlots().find((p)=>p.id===result.plotId)
+        if(plot){plot.farmBeds=result.beds.filter((b)=>b.state!=='grass');plot.gardenVersion=2}
+        this.applyFarm(result);world.onStatus(result.message);wx.showToast({title:result.message,icon:'none'})
+      }
     }catch(error){toast(error)}
     finally{if(this.world===world)this.setData({farmBusy:false})}
   },
@@ -138,7 +138,7 @@ module.exports={
         requestId:'poop_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,12)
       }
       const result=await world.sceneSync.farmAction(packet)
-      if(this.world===world){this.applyFarm(result)}
+      if(this.world===world)world.onStatus(result.message)
     }catch(error){console.error('recordPoopPickup error',error);throw error}
   },
   async rideOperation(e) {

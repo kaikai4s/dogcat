@@ -82,6 +82,8 @@ module.exports = function createHandler(context) {
         { collection: 'pet_playground_live', name: 'idx_playground_live_scene', keys: { kind: 1, communityId: 1 }, unique: false },
         { collection: 'pet_playground_plots', name: 'idx_playground_map', keys: { communityId: 1, kind: 1, _id: 1 }, unique: false },
         { collection: 'pet_playground_disputes', name: 'idx_disputes_community_status', keys: { communityId: 1, status: 1, createdAt: -1 }, unique: false },
+        { collection: 'pet_playground_disputes', name: 'idx_disputes_scene_time', keys: { communityId: 1, createdAt: -1 }, unique: false },
+        { collection: 'pet_playground_disputes', name: 'idx_disputes_resolver_time', keys: { communityId: 1, status: 1, resolvedBy: 1, resolvedAt: -1 }, unique: false },
         { collection: 'pet_playground_disputes', name: 'idx_disputes_poop_status', keys: { poopId: 1, status: 1 }, unique: false },
         { collection: 'pet_playground_accidents', name: 'idx_accidents_scene_time', keys: { sceneId: 1, reportedAt: -1 }, unique: false },
         { collection: 'pet_playground_accidents', name: 'idx_accidents_driver_status', keys: { driverOpenid: 1, status: 1 }, unique: false },

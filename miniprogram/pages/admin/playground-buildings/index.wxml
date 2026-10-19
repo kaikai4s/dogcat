@@ -2,9 +2,9 @@
   <view class="header">
     <view class="title-wrap">
       <text class="title">乐园建筑管理</text>
-      <text class="subtitle">可建建筑、尺寸预览换算草地、功能与金币配置</text>
+      <text class="subtitle">可建建筑、尺寸预览换算草地、功能、会员解锁与积分配置</text>
     </view>
-    <button class="primary-btn" bindtap="edit" data-id="">新建建筑</button>
+    <button wx:if="{{adminSuper || adminPermissions.playgroundBuilding_save}}" class="primary-btn" bindtap="edit" data-id="">新建建筑</button>
   </view>
 
   <view class="loading-state" wx:if="{{loading}}">正在加载建筑列表…</view>
@@ -25,16 +25,17 @@
         <view class="card-props">
           <text class="prop-item">尺寸: {{item.width}}×{{item.depth}}米</text>
           <text class="prop-item highlight">占 {{item.tileCount}} 块草地</text>
-          <text class="prop-item cost">建造: {{item.costCoins}} 金币</text>
+          <text class="prop-item">{{item.unlockLevelIds.length ? '指定会员等级可建造' : '所有会员可建造'}}</text>
         </view>
         <view class="committee-meta" wx:if="{{item.type === 'committee'}}">
-          <text>周薪: {{item.weeklySalary || 0}}金币 · 调解奖励: {{item.resolveReward || 0}}金币/起</text>
+          <text>每周处理奖励: {{item.weeklySalary || 0}}积分 · 调解: {{item.resolveReward || 0}}积分/起</text>
         </view>
       </view>
       <view class="chevron">›</view>
     </view>
   </view>
 
+  <view class="building-list" wx:if="{{!form && !loading}}"><view class="title">新地皮会员解锁</view><text class="subtitle">每个规格单独保存，不选等级表示所有会员可用。</text><view class="building-card" wx:for="{{plotSizes}}" wx:key="size"><view><text>{{item.label}}</text><checkbox-group data-size="{{item.size}}" bindchange="plotLevelsChange"><label wx:for="{{item.choices}}" wx:for-item="level" wx:key="_id"><checkbox value="{{level._id}}" checked="{{level.checked}}" />{{level.name}}</label></checkbox-group><button wx:if="{{adminSuper || adminPermissions.playgroundBuilding_savePlotAccess}}" data-size="{{item.size}}" bindtap="savePlotLevels" disabled="{{busy}}">保存此规格</button></view></view></view>
   <!-- 编辑/新建弹窗 -->
   <view class="modal-backdrop" wx:if="{{form}}">
     <view class="modal-card">
@@ -56,8 +57,8 @@
 
         <view class="form-group">
           <text class="form-label">功能类型</text>
-          <radio-group class="type-radio-group">
-            <label class="radio-label" wx:for="{{types}}" wx:key="key" data-key="{{item.key}}" bindtap="input" data-key="type" data-val="{{item.key}}">
+          <radio-group class="type-radio-group" bindchange="typeChange">
+            <label class="radio-label" wx:for="{{types}}" wx:key="key">
               <radio value="{{item.key}}" checked="{{form.type === item.key}}" />
               <text>{{item.label}}</text>
             </label>
@@ -89,21 +90,18 @@
           <text class="preview-tip">建筑总占地面积约 {{form.width * form.depth}} 平方米。系统将在场景中按对应比例缩放渲染。</text>
         </view>
 
-        <view class="form-group">
-          <text class="form-label">建造所需金币</text>
-          <input class="form-input" type="number" value="{{form.costCoins}}" data-key="costCoins" bindinput="input" placeholder="建造需要扣除的金币数" />
-        </view>
-
+        <view class="form-group"><text class="form-label">会员等级（不选表示所有会员；勾选的等级分别生效）</text><checkbox-group bindchange="levelsChange"><label wx:for="{{levelChoices}}" wx:key="_id"><checkbox value="{{item._id}}" checked="{{item.checked}}" />{{item.name}}</label></checkbox-group></view>
+        <view class="form-group" wx:if="{{form.type === 'repair_shop'}}"><text class="form-label">单次有效洗车奖励（会员积分，0关闭）</text><input class="form-input" type="number" value="{{form.washPoints}}" data-key="washPoints" bindinput="input" /></view>
         <!-- 居委会专属配置 -->
         <block wx:if="{{form.type === 'committee'}}">
-          <view class="section-divider">居委会特权与薪酬配置</view>
+          <view class="section-divider">居委会会员积分配置（0表示关闭）</view><view class="form-group"><text class="form-label">有效举报奖励（会员积分）</text><input class="form-input" type="number" value="{{form.reportPoints}}" data-key="reportPoints" bindinput="input" /></view><text class="form-tip">每周奖励要求任职满7天、最近7天处理过反馈，距上次领取满7天。</text>
           <view class="form-row">
             <view class="form-col">
-              <text class="form-label">每周任职工资 (金币/周)</text>
+              <text class="form-label">每周处理奖励 (积分/周)</text>
               <input class="form-input" type="number" value="{{form.weeklySalary}}" data-key="weeklySalary" bindinput="input" />
             </view>
             <view class="form-col">
-              <text class="form-label">单次纠纷调解奖励 (金币/起)</text>
+              <text class="form-label">单次纠纷调解奖励 (积分/起)</text>
               <input class="form-input" type="number" value="{{form.resolveReward}}" data-key="resolveReward" bindinput="input" />
             </view>
           </view>
@@ -117,7 +115,7 @@
             <view class="checkerboard-bg" wx:if="{{form.image}}">
               <image class="uploaded-img" src="{{form.image}}" mode="aspectFit" />
             </view>
-            <button class="upload-btn" bindtap="upload" disabled="{{busy}}">{{form.image ? '更换透明原图' : '选择并上传透明PNG'}}</button>
+            <button wx:if="{{adminSuper || adminPermissions.playgroundBuilding_prepareUpload}}" class="upload-btn" bindtap="upload" disabled="{{busy}}">{{form.image ? '更换透明原图' : '选择并上传透明PNG'}}</button>
           </view>
         </view>
 
@@ -128,8 +126,8 @@
       </scroll-view>
 
       <view class="modal-footer">
-        <button class="danger-btn" wx:if="{{!isNew}}" bindtap="removeBuilding" disabled="{{busy}}">删除建筑</button>
-        <button class="primary-btn" bindtap="save" disabled="{{busy}}" loading="{{busy}}">保存配置</button>
+        <button class="danger-btn" wx:if="{{!isNew && (adminSuper || adminPermissions.playgroundBuilding_remove)}}" bindtap="removeBuilding" disabled="{{busy}}">删除建筑</button>
+        <button wx:if="{{adminSuper || adminPermissions.playgroundBuilding_save}}" class="primary-btn" bindtap="save" disabled="{{busy}}" loading="{{busy}}">保存配置</button>
       </view>
     </view>
   </view>

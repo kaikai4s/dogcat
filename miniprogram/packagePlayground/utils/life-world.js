@@ -1,5 +1,5 @@
 const {needsView}=require('./pet-needs')
-const {farmLayout,bedReach,bedView,cropById,growthStage,SOILS}=require('./farm-model')
+const {farmLayout,savedBeds,bedReach,bedView,cropById,growthStage,SOILS}=require('./farm-model')
 module.exports={
   setFarmCatalog(catalog) {
     if(!catalog||!Array.isArray(catalog.crops)||this.farmCatalog&&catalog.revision<this.farmCatalog.revision)return
@@ -23,6 +23,20 @@ module.exports={
       }).catch(()=>{if(!this.destroyed)this.farmRetry.set(key,Date.now()+10000)})
         .finally(()=>this.farmLoads.delete(key))
       this.farmLoads.set(key,task)
+    }
+    return null
+  },
+  buildingImage(fileID) {
+    if(!fileID||!this.loader)return null
+    if(!this.buildingImages){this.buildingImages=new Map();this.buildingLoads=new Map();this.buildingRetry=new Map()}
+    if(this.buildingImages.has(fileID))return this.buildingImages.get(fileID)
+    if(this.buildingLoads.size<3&&!this.buildingLoads.has(fileID)&&Date.now()>=(this.buildingRetry.get(fileID)||0)) {
+      const task=this.loader.loadImage(fileID).then((image)=>{
+        if(this.destroyed)return
+        this.buildingImages.set(fileID,image)
+        if(this.buildingImages.size>32){const first=this.buildingImages.keys().next().value;this.buildingImages.delete(first);this.loader.cache&&this.loader.cache.delete(first)}
+      }).catch(()=>this.buildingRetry.set(fileID,Date.now()+10000)).finally(()=>this.buildingLoads.delete(fileID))
+      this.buildingLoads.set(fileID,task)
     }
     return null
   },
@@ -64,26 +78,33 @@ module.exports={
     if(this.page.refreshFarmClock)this.page.refreshFarmClock()
     this.emitFarmUi()
   },
+  gardenPlots() {
+    return this.plots().filter((p)=>p.mine&&!p.demolished)
+  },
   nearbyFarmTile() {
-    if(!this.ownPlot||!this.character||this.drivingVehicleId||this.placing||this.destroyed||this.isMapOverview()||!this.characterTerrain||!this.characterAreaLoaded(this.characterTerrain))return null
-    const p=this.character.position,nav=this.characterNavigation()
-    const tiles=farmLayout(this.ownPlot).filter((t)=>Math.hypot(t.x-p.x,t.z-p.z)<=bedReach(t)&&nav.clearSegment(p,t))
-    return tiles.find((t)=>t.id===this.farmTargetBed)||tiles.sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0]||null
+    if(!this.character||this.drivingVehicleId||this.placing||this.destroyed||this.isMapOverview()||!this.characterTerrain||!this.characterAreaLoaded(this.characterTerrain))return null
+    const p=this.character.position,nav=this.characterNavigation(),edit=this.page.data.farmEditMode
+    const tiles=this.gardenPlots().flatMap((plot)=>{
+      const saved=savedBeds(plot)
+      return farmLayout(plot).filter((t)=>(edit||saved[t.id])&&Math.hypot(t.x-p.x,t.z-p.z)<=bedReach(t)&&nav.clearSegment(p,t)).map((t)=>({...t,plotId:plot.id}))
+    })
+    return tiles.find((t)=>t.id===this.farmTargetBed&&t.plotId===this.farmTargetPlot)||tiles.sort((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)-Math.hypot(b.x-p.x,b.z-p.z))[0]||null
   },
   emitFarmUi() {
     const tile=this.nearbyFarmTile(),page=this.page
-    if(tile&&page.ensureFarm)page.ensureFarm().catch(()=>{})
+    if(tile&&page.ensureFarm&&!page.data.farmOpen)page.ensureFarm(false,tile.plotId).catch(()=>{})
     const farm=page.data&&page.data.farm
-    const bed=tile&&farm&&farm.plotId===this.ownPlot.id?farm.beds.find((b)=>b.id===tile.id):null
+    const bed=tile&&farm&&farm.plotId===tile.plotId?farm.beds.find((b)=>b.id===tile.id):null
     const nearby=tile?{...tile,...(bed||{}),loaded:!!bed}:null,key=JSON.stringify(nearby)
     if(key!==this.farmUiKey){this.farmUiKey=key;page.setData({nearbyFarm:nearby})}
   },
-  async moveToFarmBed(id) {
-    if(!this.ownPlot||!this.character||this.drivingVehicleId)return false
-    const tile=farmLayout(this.ownPlot).find((t)=>t.id===id)
+  async moveToFarmBed(id,plotId) {
+    if(!this.character||this.drivingVehicleId)return false
+    const plot=this.gardenPlots().find((p)=>p.id===(plotId||this.ownPlot&&this.ownPlot.id))
+    const tile=plot&&farmLayout(plot).find((t)=>t.id===id)
     if(!tile)return false
-    this.farmTargetBed=id
-    if(this.page.ensureFarm)this.page.ensureFarm().catch(()=>{})
+    this.farmTargetBed=id;this.farmTargetPlot=plot.id
+    if(this.page.ensureFarm)this.page.ensureFarm(false,plot.id).catch(()=>{})
     this.selectCharacter()
     const nav=this.characterNavigation(),offset=tile.size*.65
     const target=[{x:tile.x,z:tile.z+offset},{x:tile.x-offset,z:tile.z},{x:tile.x+offset,z:tile.z},{x:tile.x,z:tile.z-offset},tile].find((p)=>nav.walkable(p)&&nav.clearSegment(p,tile))
@@ -93,31 +114,47 @@ module.exports={
     return result
   },
   farmAt(point) {
-    if(!this.ownPlot)return null
+    const edit=this.page.data.farmEditMode
+    if(!edit&&!this.characterSelected)return null
     const p=this.unproject(point.x,point.y)
-    return farmLayout(this.ownPlot).find((tile)=>Math.abs(p.x-tile.x)<tile.size*.6&&Math.abs(p.z-tile.z)<tile.size*.6)
+    for(const plot of this.gardenPlots()) {
+      const saved=savedBeds(plot)
+      const tile=farmLayout(plot).find((t)=>(edit||saved[t.id])&&Math.abs(p.x-t.x)<=t.size/2&&Math.abs(p.z-t.z)<=t.size/2)
+      if(tile)return {...tile,plotId:plot.id}
+    }
+    return null
   },
   drawFarm(plot) {
     const stamp=Date.now()+this.serverOffset,c=this.ctx,s=this.scale*this.zoom
     if(s<.55)return
-    const beds=new Map((plot.farmBeds||[]).map((b)=>[b.id,b]))
+    const beds=savedBeds(plot)
     for(const tile of farmLayout(plot)) {
-      const crops=this.farmCatalog&&this.farmCatalog.crops,bed=bedView(beds.get(tile.id),stamp,crops),p=this.project(tile.x,tile.z),size=tile.size*s
+      if(!beds[tile.id]) {
+        if(plot.mine&&this.page.data.farmEditMode) {
+          const point=this.project(tile.x,tile.z),margin=tile.size*s*2
+          if(point.x>=-margin&&point.x<=this.width+margin&&point.y>=-margin&&point.y<=this.height+margin) {
+            const nearby=this.page.data.nearbyFarm,selected=nearby&&nearby.plotId===plot.id&&nearby.id===tile.id
+            c.save();this.diamond(tile.x,tile.z,tile.size*.46,selected?'rgba(255,244,199,.22)':'rgba(255,255,255,.035)')
+            c.strokeStyle=selected?'#fff4c7':'rgba(255,255,255,.25)';c.lineWidth=selected?2:1;c.stroke();c.restore()
+          }
+        }
+        continue
+      }
+      const crops=this.farmCatalog&&this.farmCatalog.crops,bed=bedView(beds[tile.id],stamp,crops),p=this.project(tile.x,tile.z),size=tile.size*s
       const soils=this.farmCatalog&&this.farmCatalog.soils||SOILS
-      const soil=this.farmImage({fileID:soils[bed.state==='wild'?'wild':bed.watered?'watered':'tilled'],columns:1,rows:1,frameSize:256})
+      const soil=this.farmImage({fileID:soils[bed.stage||'tilled'],columns:1,rows:1,frameSize:256})
       const width=size*2.1
       if(soil)c.drawImage(soil,p.x-width*.5,p.y-width*.75,width,width)
-      else this.diamond(tile.x,tile.z,tile.size*.46,bed.state==='wild'?'#8ca76e':bed.state==='ready'?'#b49c65':'#947453')
-      if(plot.mine&&this.page.data&&this.page.data.nearbyFarm&&this.page.data.nearbyFarm.id===tile.id) {
+      else this.diamond(tile.x,tile.z,tile.size*.46,bed.stage==='watered'?'#70573e':'#947453')
+      if(plot.mine&&this.page.data&&this.page.data.nearbyFarm&&this.page.data.nearbyFarm.plotId===plot.id&&this.page.data.nearbyFarm.id===tile.id) {
         this.diamond(tile.x,tile.z,tile.size*.46,'transparent')
         c.save();c.strokeStyle='#fff4c7';c.lineWidth=2;c.stroke();c.restore()
       }
       if(bed.cropId) {
-        const crop=cropById(bed.cropId,crops),atlas=crop&&crop.atlas,image=this.farmImage(atlas)
+        const crop=cropById(bed.cropId,crops)||bed.crop,atlas=crop&&crop.atlas,image=this.farmImage(atlas)
         if(image) {
           const frame=growthStage(crop,bed.progress),cell=atlas.frameSize
           c.drawImage(image,frame*cell,0,cell,cell,p.x-width*atlas.anchorX,p.y-width*atlas.anchorY,width,width)
-          if(bed.state==='ready')this.markerLabel('可收获',p.x,p.y-width*.9)
           continue
         }
         const growth=.35+bed.progress/155
@@ -127,11 +164,9 @@ module.exports={
         c.fillStyle='#77a261';c.beginPath();c.ellipse(-size*.13,-size*.25*growth,size*.2*growth,size*.09,Math.PI/6,0,Math.PI*2);c.fill()
         c.beginPath();c.ellipse(size*.13,-size*.35*growth,size*.2*growth,size*.09,-Math.PI/6,0,Math.PI*2);c.fill()
         if(bed.progress>45){c.fillStyle=bed.color;c.beginPath();c.arc(0,-size*.58*growth,size*.17*growth,0,Math.PI*2);c.fill()}
-        if(bed.state==='ready'){c.fillStyle='#fff0b3';c.font=Math.max(10,size*.45)+'px sans-serif';c.textAlign='center';c.fillText('✦',0,-size*.95)}
         if(bed.watered){c.fillStyle='#89c9dc';c.beginPath();c.arc(size*.28,-size*.08,Math.max(1,size*.055),0,Math.PI*2);c.fill()}
         c.restore()
       }
     }
-    if(plot.mine) {const p=this.project(plot.x+17.5,plot.z-31);this.markerLabel('我的菜园 · 走近土地照料',p.x,p.y-10)}
   }
 }

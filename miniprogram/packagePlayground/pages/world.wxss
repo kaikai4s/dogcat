@@ -136,3 +136,5 @@ button::after { border: none; }
 .plot-size-chip { flex: 1; font-size: 10px; line-height: 28px; padding: 0 4px; border-radius: 12px; color: #385743; background: #e4eddb; margin: 0; white-space: nowrap; }
 .plot-size-chip.active { color: #fff; background: #4f7956; font-weight: 600; }
 
+
+.garden-edit-hint{position:fixed;top:180rpx;right:20rpx;z-index:20;max-width:340rpx;padding:16rpx;border-radius:16rpx;background:rgba(255,253,243,.95);font-size:24rpx;display:flex;align-items:center;gap:12rpx}.garden-edit-hint button{font-size:22rpx;padding:0 16rpx;margin:0}

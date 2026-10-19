@@ -1,314 +1,157 @@
-const { transaction } = require('./playground-transaction')
-const { readDocument } = require('./playground-world')
-
-const DISPUTES_COLLECTION = 'pet_playground_disputes'
-const PLOTS_COLLECTION = 'pet_playground_plots'
-const THREE_DAYS_MS = 3 * 24 * 3600 * 1000
-const SEVEN_DAYS_MS = 7 * 24 * 3600 * 1000
-
-module.exports = function createDisputesService(context) {
-  const { db } = context
-  const now = () => (context.nowMs ? context.nowMs() : Date.now())
-
-  // 获取居委会建筑配置
-  async function getCommitteeConfig() {
-    const buildingsService = require('./playground-buildings')(context)
-    const catalog = await buildingsService.readCatalog()
-    const committee = (catalog.buildings || []).find((b) => b.type === 'committee')
-    return {
-      weeklySalary: (committee && committee.weeklySalary) || 200,
-      resolveReward: (committee && committee.resolveReward) || 20
-    }
+const {transaction}=require('./playground-transaction')
+const world=require('./playground-world')
+const COLLECTION='pet_playground_plots',DISPUTES='pet_playground_disputes'
+const WEEK=7*86400000,DEADLINE=3*86400000
+module.exports=function createDisputesService(context) {
+  const {db}=context,now=()=>context.nowMs?context.nowMs():Date.now()
+  async function actor(tx,openid,data) {
+    const row=await world.read(tx,'presence_'+world.hash(openid))
+    if(!row||row.session!==data.session||row.communityId!==data.sceneId||row.active===false)throw new Error('场景已切换，请重新进入')
+    return row
   }
-
-  // 获取社区内当前的居委会地块/建筑
-  async function getCommunityCommittee(communityId) {
-    const rows = await db
-      .collection(PLOTS_COLLECTION)
-      .where({ communityId, buildingType: 'committee' })
-      .get()
-    const list = rows.data || []
-    return list.find((p) => !p.demolished) || null
+  async function getCommunityBuilding(communityId,type,database=db) {
+    if(!communityId)return null
+    const rows=(await database.collection(COLLECTION).where({kind:'plot',communityId,buildingType:type}).get()).data||[]
+    return rows.find((p)=>!p.demolished)||null
   }
-
-  // 1. 举报便便
-  async function reportPoop(openid, user, data) {
-    const poopId = String(data.poopId || '')
-    const sceneId = String(data.sceneId || '')
-    if (!poopId || !sceneId) throw new Error('举报参数不完整')
-
-    const config = await getCommitteeConfig()
-    const stamp = now()
-
-    return transaction(db, async (tx) => {
-      // 防止对同一个便便重复举报
-      const existing = await tx
-        .collection(DISPUTES_COLLECTION)
-        .where({ poopId, status: 'pending' })
-        .get()
-      if (existing.data && existing.data.length > 0) {
-        throw new Error('该便便已被其他邻居举报，居委会正在排队处理中')
-      }
-
-      const disputeId = `disp_${stamp.toString(36)}_${Math.random().toString(36).slice(2, 8)}`
-      const dispute = {
-        _id: disputeId,
-        communityId: sceneId,
-        poopId,
-        location: {
-          x: Number(data.x) || 0,
-          z: Number(data.z) || 0
-        },
-        reporterOpenid: openid,
-        reporterName: String(user.nickname || '热心邻居').slice(0, 20),
-        suspectOpenid: String(data.suspectOpenid || ''),
-        suspectName: String(data.suspectName || '某宠物主人').slice(0, 20),
-        petName: String(data.petName || '宠物').slice(0, 20),
-        status: 'pending',
-        createdAt: stamp,
-        deadline: stamp + THREE_DAYS_MS,
-        fineAmount: 50,
-        rewardAmount: 30,
-        committeeReward: config.resolveReward,
-        message: '路边便便未及时清理，影响社区卫生环境'
-      }
-
-      const { _id, ...disputeData } = dispute
-      await tx.collection(DISPUTES_COLLECTION).doc(disputeId).set({ data: disputeData })
-      return { dispute, disputeId, reported: true, message: '举报成功，已通知社区居委会处理' }
+  const getCommunityCommittee=(sceneId,database=db)=>getCommunityBuilding(sceneId,'committee',database)
+  async function config(tx,building,type) {
+    const catalog=await require('./playground-buildings')({db:tx}).readCatalog()
+    return catalog.buildings.find((b)=>building&&b.id===building.buildingId)||catalog.buildings.find((b)=>b.type===type)||{}
+  }
+  async function award(tx,openid,amount,type,id,reason) {
+    if(!Number.isInteger(amount)||amount<=0)return {delta:0}
+    if(typeof context.addPoints!=='function')throw new Error('会员积分服务不可用，请稍后重试')
+    const target=(await tx.collection('users').where({openid}).limit(1).get()).data[0]
+    if(!target||target.status==='deleted')throw new Error('积分接收用户不存在')
+    const result=await context.addPoints(openid,target._id,amount,type,id,reason,{transaction:tx,baseDelta:amount,idempotencyKey:type+'_'+id})
+    return {...result,delta:result.duplicate?0:result.delta}
+  }
+  async function reportPoop(openid,user,data) {
+    const stamp=now()
+    return transaction(db,async(tx)=>{
+      const person=await actor(tx,openid,data)
+      const match=/^waste_([a-f0-9]{32})_[a-f0-9]{8}_\d+$/.exec(String(data.poopId||''))
+      if(!match)throw new Error('请选择场景内实际存在的便便')
+      const resident=await world.read(tx,'resident_'+match[1])
+      const pet=resident&&resident.communityId===person.communityId&&(resident.pets||[]).find((p)=>(p.waste||[]).some((w)=>w.id===data.poopId&&w.type==='poop'&&!w.vehicleId))
+      const event=pet&&pet.waste.find((w)=>w.id===data.poopId)
+      if(!event||stamp-event.createdAt>86400000)throw new Error('这份便便已被清理或已消失')
+      if(resident.ownerOpenid===openid)throw new Error('自己的宠物便便请直接清理')
+      if(Math.hypot(person.position.x-event.x,person.position.z-event.z)>4.2)throw new Error('请走近便便再反馈')
+      const yards=(await tx.collection(COLLECTION).where({kind:'plot',communityId:person.communityId}).get()).data||[]
+      const parent=await require('./playground-social')(context).access(openid,yards,tx)
+      if(!require('./playground-shared').navigation(await world.create(context).config(),yards,person.position,event,'character',null,parent).clearSegment(person.position,event))throw new Error('请绕过障碍走近便便再反馈')
+      const disputeId='disp_'+world.hash(person.communityId+'|'+data.poopId)
+      const existing=await world.readDocument(tx,DISPUTES,disputeId,'读取保洁反馈',true)
+      if(existing)return {reported:true,duplicate:true,disputeId,pointsReceived:0,message:'这份便便已有反馈记录，不重复发放积分'}
+      const legacy=(await tx.collection(DISPUTES).where({communityId:person.communityId,poopId:data.poopId}).limit(1).get()).data||[]
+      if(legacy.length)return {reported:true,duplicate:true,disputeId:legacy[0]._id,pointsReceived:0,message:'这份便便已有反馈记录'}
+      const committee=await getCommunityCommittee(person.communityId,tx),settings=await config(tx,committee,'committee')
+      const reward=await award(tx,openid,settings.reportPoints,'playground_report',disputeId,'反馈宠物粪便')
+      const dispute={communityId:person.communityId,poopId:data.poopId,location:{x:event.x,z:event.z},reporterOpenid:openid,
+        reporterName:String(user.nickname||'邻居').slice(0,20),suspectOpenid:resident.ownerOpenid,suspectName:resident.name||'宠物主人',petName:pet.name||'宠物',
+        status:'pending',createdAt:stamp,deadline:stamp+DEADLINE,reportPoints:reward.delta,committeeReward:settings.resolveReward||0,message:'宠物便便待清理'}
+      await tx.collection(DISPUTES).doc(disputeId).set({data:dispute})
+      return {reported:true,disputeId,pointsReceived:reward.delta,message:'反馈已提交，获得 '+reward.delta+' 会员积分'}
     })
   }
-
-  // 2. 查询社区纠纷列表并检查 3 天超时自动弹劾
-  async function listDisputes(openid, data) {
-    const sceneId = String(data.sceneId || '')
-    const stamp = now()
-
-    // 检查超时纠纷
-    await checkCommitteeTimeout(sceneId, stamp)
-
-    const result = await db
-      .collection(DISPUTES_COLLECTION)
-      .where({ communityId: sceneId })
-      .orderBy('createdAt', 'desc')
-      .limit(30)
-      .get()
-
-    const committee = await getCommunityCommittee(sceneId)
-    const isCommittee = committee && committee.ownerOpenid === openid
-
-    return {
-      disputes: result.data || [],
-      isCommittee: !!isCommittee,
-      committeeOwnerName: (committee && committee.ownerName) || '',
-      serverTime: stamp
-    }
+  async function listDisputes(openid,data) {
+    await actor(db,openid,data)
+    await checkCommitteeTimeout(data.sceneId)
+    const disputes=(await db.collection(DISPUTES).where({communityId:data.sceneId}).orderBy('createdAt','desc').limit(30).get()).data||[]
+    const committee=await getCommunityCommittee(data.sceneId),settings=await config(db,committee,'committee')
+    // Do not expose account identifiers in the community list.
+    return {disputes:disputes.map(({reporterOpenid,suspectOpenid,resolvedBy,...item})=>item),isCommittee:!!committee&&committee.ownerOpenid===openid,
+      committeeOwnerName:committee&&committee.ownerName||'',weeklyPoints:settings.weeklySalary||0,serverTime:now()}
   }
-
-  // 检查是否有纠纷超过 3 天未处理，若超时则收回居委会房屋
-  async function checkCommitteeTimeout(communityId, stamp = now()) {
-    const expiredRows = await db
-      .collection(DISPUTES_COLLECTION)
-      .where({ communityId, status: 'pending' })
-      .get()
-
-    const timeoutItems = (expiredRows.data || []).filter((d) => stamp > d.deadline)
-    if (timeoutItems.length === 0) return null
-
-    return transaction(db, async (tx) => {
-      // 标记超时
-      for (const item of timeoutItems) {
-        await tx
-          .collection(DISPUTES_COLLECTION)
-          .doc(item._id)
-          .update({ data: { status: 'expired', expiredAt: stamp } })
+  async function checkCommitteeTimeout(sceneId) {
+    const stamp=now()
+    return transaction(db,async(tx)=>{
+      const rows=(await tx.collection(DISPUTES).where({communityId:sceneId,status:'pending'}).get()).data||[]
+      const expired=rows.filter((d)=>stamp>d.deadline)
+      if(!expired.length)return null
+      for(const item of expired)await tx.collection(DISPUTES).doc(item._id).update({data:{status:'expired',expiredAt:stamp}})
+      const committee=await getCommunityCommittee(sceneId,tx)
+      if(committee) {
+        const type=committee.isNewPlot?'yard':'residential',patch={buildingId:'',buildingType:type,buildingImage:'',buildingName:type==='yard'?'专属绿地':'住宅洋房',committeeRevoked:true,revokedAt:stamp,revision:Math.max(stamp,(committee.revision||0)+1),revokedReason:'存在超过3天未处理的保洁反馈'}
+        await tx.collection(COLLECTION).doc(committee._id).update({data:patch})
+        const home=await world.read(tx,world.ownerId(committee.ownerOpenid))
+        if(home&&home.plotId===committee._id)await tx.collection(COLLECTION).doc(home._id).update({data:patch})
       }
-
-      // 收回/弹劾居委会房子及任期
-      const committeeRows = await tx
-        .collection(PLOTS_COLLECTION)
-        .where({ communityId, buildingType: 'committee' })
-        .get()
-      for (const cDoc of (committeeRows.data || [])) {
-        const isPureYard = cDoc.previousBuildingType === 'yard' || cDoc.isNewPlot
-        const restoredType = isPureYard ? 'yard' : 'residential'
-        const restoredBuildingName = isPureYard ? '专属爱心绿地' : '住宅洋房'
-        const restoredName = isPureYard ? `${cDoc.ownerName || '邻居'}的专属爱心绿地` : `${cDoc.ownerName || '邻居'}的庭院`
-        await tx.collection(PLOTS_COLLECTION).doc(cDoc._id).update({
-          data: {
-            buildingType: restoredType,
-            buildingName: restoredBuildingName,
-            name: restoredName,
-            committeeRevoked: true,
-            revokedAt: stamp,
-            revokedReason: '存在超过3天未处理的社区便便纠纷，居委会已被自动收回拆除，爱心币不予退还'
-          }
-        })
-      }
-      return { revoked: true, timeoutCount: timeoutItems.length }
+      return {revoked:!!committee,timeoutCount:expired.length}
     })
   }
-
-  // 3. 居委会调解处理纠纷
-  async function resolveDispute(openid, user, data) {
-    const disputeId = String(data.disputeId || '')
-    const sceneId = String(data.sceneId || '')
-    const stamp = now()
-
-    return transaction(db, async (tx) => {
-      const committee = await getCommunityCommittee(sceneId)
-      if (!committee || committee.ownerOpenid !== openid) {
-        throw new Error('只有当前社区的在任居委会才能上门处理纠纷')
-      }
-
-      const dispute = await readDocument(tx, DISPUTES_COLLECTION, disputeId, '读取纠纷', true)
-      if (!dispute || dispute.status !== 'pending') {
-        throw new Error('该纠纷已处理或不存在')
-      }
-
-      if (stamp > dispute.deadline) {
-        await tx
-          .collection(DISPUTES_COLLECTION)
-          .doc(disputeId)
-          .update({ data: { status: 'expired', expiredAt: stamp } })
-        throw new Error('该纠纷已超过3天未处理，已超时失效并触发居委会责任收回')
-      }
-
-      // 更新纠纷状态
-      await tx.collection(DISPUTES_COLLECTION).doc(disputeId).update({
-        data: {
-          status: 'resolved',
-          resolvedAt: stamp,
-          resolvedBy: openid,
-          resolverName: String(user.nickname || '居委会主任').slice(0, 20)
+  async function resolveDispute(openid,user,data) {
+    const stamp=now()
+    return transaction(db,async(tx)=>{
+      await actor(tx,openid,data)
+      const committee=await getCommunityCommittee(data.sceneId,tx)
+      if(!committee||committee.ownerOpenid!==openid)throw new Error('只有当前社区在任居委会才能处理')
+      const dispute=await world.readDocument(tx,DISPUTES,String(data.disputeId||''),'读取保洁反馈',true)
+      if(!dispute||dispute.communityId!==data.sceneId)throw new Error('该反馈不存在或不属于当前小区')
+      if(dispute.status==='resolved'&&dispute.resolvedBy===openid)return {resolved:true,duplicate:true,rewardReceived:0,message:'该反馈已处理，不重复发放积分'}
+      if(dispute.status!=='pending'||stamp>dispute.deadline)throw new Error('该反馈已处理或已超时')
+      const settings=await config(tx,committee,'committee')
+      const reward=await award(tx,openid,settings.resolveReward,'playground_resolve',dispute._id,'处理宠物粪便反馈')
+      await tx.collection(DISPUTES).doc(dispute._id).update({data:{status:'resolved',resolvedAt:stamp,resolvedBy:openid,resolverName:String(user.nickname||'服务人员').slice(0,20)}})
+      let record=null
+      const match=/^waste_([a-f0-9]{32})_/.exec(dispute.poopId||'')
+      if(match) {
+        const row=await world.read(tx,'resident_'+match[1])
+        if(row&&row.communityId===data.sceneId&&(row.pets||[]).some((p)=>(p.waste||[]).some((w)=>w.id===dispute.poopId))) {
+          row.pets=(row.pets||[]).map((p)=>({...p,waste:(p.waste||[]).filter((w)=>w.id!==dispute.poopId)}))
+          row.revision=Math.max(stamp,(row.revision||0)+1)
+          const {_id,...value}=row
+          await tx.collection(COLLECTION).doc(_id).set({data:value});record=row
         }
-      })
-
-      return {
-        resolved: true,
-        disputeId,
-        rewardReceived: dispute.committeeReward || 20,
-        message: `督导完成！已督促规范文明养宠行为并奖励提醒人，居委会获得爱心币奖励 ${dispute.committeeReward || 20}`
       }
+      return {record,resolved:true,rewardReceived:reward.delta,message:'处理完成，获得 '+reward.delta+' 会员积分'}
     })
   }
-
-  // 4. 居委会领取社区共建津贴
-  async function claimWeeklySalary(openid, data) {
-    const sceneId = String(data.sceneId || '')
-    const stamp = now()
-
-    return transaction(db, async (tx) => {
-      const committee = await getCommunityCommittee(sceneId)
-      if (!committee || committee.ownerOpenid !== openid) {
-        throw new Error('只有当前社区在任居委会才能领取社区共建津贴')
-      }
-
-      const startedAt = committee.createdAtStamp || (committee.createdAt ? new Date(committee.createdAt).getTime() : stamp)
-      const lastClaim = committee.lastSalaryClaimAt || startedAt
-      if (stamp - lastClaim < SEVEN_DAYS_MS) {
-        const daysLeft = Math.ceil((SEVEN_DAYS_MS - (stamp - lastClaim)) / 86400000)
-        throw new Error(`成功履职满一周方可领取共建津贴，还差约 ${daysLeft} 天`)
-      }
-
-      const config = await getCommitteeConfig()
-      await tx.collection(PLOTS_COLLECTION).doc(committee._id).update({
-        data: { lastSalaryClaimAt: stamp }
-      })
-
-      return {
-        claimed: true,
-        salary: config.weeklySalary,
-        message: `成功领取居委会社区共建津贴 ${config.weeklySalary} 爱心币！`
-      }
+  async function claimWeeklySalary(openid,data) {
+    const stamp=now()
+    return transaction(db,async(tx)=>{
+      await actor(tx,openid,data)
+      const committee=await getCommunityCommittee(data.sceneId,tx)
+      if(!committee||committee.ownerOpenid!==openid)throw new Error('只有当前社区在任居委会才能领取每周处理奖励')
+      const started=committee.committeeStartedAt||committee.createdAtStamp||Date.parse(committee.createdAt)||stamp
+      const last=committee.lastSalaryClaimAt||started
+      if(stamp-last<WEEK)throw new Error('距上次领取或任职尚未满一周')
+      const rows=(await tx.collection(DISPUTES).where({communityId:data.sceneId,status:'resolved',resolvedBy:openid}).orderBy('resolvedAt','desc').limit(1).get()).data||[]
+      if(!rows.some((d)=>d.resolvedAt>=Math.max(last,stamp-WEEK)&&d.resolvedAt<=stamp))throw new Error('最近一周暂无已处理反馈，暂不能领取奖励')
+      const settings=await config(tx,committee,'committee')
+      const reward=await award(tx,openid,settings.weeklySalary,'playground_weekly',committee._id+'_'+last,'每周纠纷处理奖励')
+      await tx.collection(COLLECTION).doc(committee._id).update({data:{lastSalaryClaimAt:stamp}})
+      return {claimed:true,salary:reward.delta,message:'已领取每周处理奖励 '+reward.delta+' 会员积分'}
     })
   }
-
-  // 发放爱心币津贴与奖励
-  async function awardCoins(tx, targetOpenid, amount) {
-    if (!targetOpenid || amount <= 0) return
-    const userRes = await tx.collection('users').where({ openid: targetOpenid }).limit(1).get()
-    const targetUser = (userRes.data || [])[0]
-    if (targetUser) {
-      await tx.collection('users').doc(targetUser._id).update({
-        data: {
-          playgroundCoins: (targetUser.playgroundCoins || 0) + amount
-        }
-      })
-    }
-  }
-
-  // 获取社区内的指定公共建筑（优先匹配指定communityId，降级fallback）
-  async function getCommunityBuilding(communityId, buildingType) {
-    const rows = await db
-      .collection(PLOTS_COLLECTION)
-      .where({ buildingType })
-      .get()
-    const list = (rows.data || []).filter((p) => !p.demolished)
-    if (communityId) {
-      const match = list.find((p) => p.communityId === communityId)
-      if (match) return match
-    }
-    return list[0] || null
-  }
-
-  // 5. 修理厂洗车服务（带房东收益）
-  async function washVehicle(openid, user, data) {
-    const sceneId = String(data.sceneId || '')
-    const targetVehicleId = String(data.vehicleId || require('./playground-shared/vehicles').vehicleId(openid))
-
-    return transaction(db, async (tx) => {
-      const car = await readDocument(tx, PLOTS_COLLECTION, targetVehicleId, '读取车辆', true)
-      if (car) {
-        await tx.collection(PLOTS_COLLECTION).doc(targetVehicleId).update({
-          data: {
-            stains: [],
-            soiled: false,
-            cleanedAt: now()
-          }
-        })
-      }
-
-      let bonusMsg = ''
-      const repairShop = await getCommunityBuilding(sceneId, 'repair_shop')
-      if (repairShop && repairShop.ownerOpenid && repairShop.ownerOpenid !== openid) {
-        await awardCoins(tx, repairShop.ownerOpenid, 10)
-        bonusMsg = '，已向修理厂主理人发放 10 爱心币服务津贴'
-      }
-
-      return {
-        washed: true,
-        message: `洗车保养完成！车身光洁如新，已消除[肮脏]状态${bonusMsg}`
-      }
+  async function washVehicle(openid,user,data) {
+    const stamp=now()
+    const result=await transaction(db,async(tx)=>{
+      const person=await actor(tx,openid,data)
+      const id=String(data.vehicleId||require('./playground-shared/vehicles').vehicleId(openid))
+      const car=await world.read(tx,id)
+      if(!car||car.kind!=='vehicle'||car.ownerOpenid!==openid||car.communityId!==person.communityId)throw new Error('只能清洗自己在当前小区的车辆')
+      if(Math.hypot(person.position.x-car.position.x,person.position.z-car.position.z)>8)throw new Error('请先走近自己的车辆')
+      const shops=(await tx.collection(COLLECTION).where({kind:'plot',communityId:data.sceneId,buildingType:'repair_shop'}).get()).data||[]
+      const shop=shops.filter((p)=>!p.demolished&&Math.max(Math.abs(car.position.x-p.x),Math.abs(car.position.z-p.z))<=(p.size||48)/2+8).sort((a,b)=>Math.hypot(car.position.x-a.x,car.position.z-a.z)-Math.hypot(car.position.x-b.x,car.position.z-b.z))[0]
+      if(!shop)throw new Error('请将车辆开到本小区洗车店附近')
+      if(car.moving&&stamp-car.lastSeen<3000)throw new Error('请先停车再清洗')
+      if(!car.soiled&&!(car.stains||[]).length)return {washed:true,pointsReceived:0,message:'车辆已经干净，无需重复清洗'}
+      const settings=await config(tx,shop,'repair_shop')
+      const source=id+'_'+world.hash(JSON.stringify(car.stains||[]))
+      const reward=shop.ownerOpenid!==openid?await award(tx,shop.ownerOpenid,settings.washPoints,'playground_wash',source,'为邻居清洗车辆'):{delta:0}
+      const record={...car,stains:[],soiled:false,cleanedAt:stamp,revision:Math.max(stamp,(car.revision||0)+1)}
+      const {_id,...value}=record
+      await tx.collection(COLLECTION).doc(id).set({data:value})
+      return {record,washed:true,pointsReceived:reward.delta,message:'洗车完成'+(reward.delta?'，洗车店主获得 '+reward.delta+' 会员积分':'')}
     })
+    return result
   }
-
-  // 6. 修理厂全面检修保养服务（带房东收益）
-  async function repairVehicle(openid, user, data) {
-    const sceneId = String(data.sceneId || '')
-    return transaction(db, async (tx) => {
-      let bonusMsg = ''
-      const repairShop = await getCommunityBuilding(sceneId, 'repair_shop')
-      if (repairShop && repairShop.ownerOpenid && repairShop.ownerOpenid !== openid) {
-        await awardCoins(tx, repairShop.ownerOpenid, 10)
-        bonusMsg = '，已向修理厂主理人发放 10 爱心币检修津贴'
-      }
-      return {
-        success: true,
-        message: `车辆经过社区修理厂全面检修，制动、轮胎与引擎性能已恢复至最佳状态${bonusMsg}！`
-      }
-    })
+  async function repairVehicle(openid,user,data) {
+    await actor(db,openid,data)
+    return {success:true,message:'车辆保养完成，本次无积分奖励'}
   }
-
-  return {
-    reportPoop,
-    listDisputes,
-    resolveDispute,
-    checkCommitteeTimeout,
-    claimWeeklySalary,
-    washVehicle,
-    repairVehicle,
-    getCommunityCommittee,
-    getCommunityBuilding
-  }
+  return {getCommunityBuilding,getCommunityCommittee,reportPoop,listDisputes,resolveDispute,claimWeeklySalary,checkCommitteeTimeout,washVehicle,repairVehicle}
 }

@@ -97,7 +97,7 @@ test('playground rejects removed model actions', async () => {
 
 test('individual pet sizes persist in the overview without changing other pets', async () => {
   const { handler, openid, db } = createTestContext({
-    users: [],
+    users: [{_id:'u_test_owner',openid:'test_owner',role:'client'}],
     pets: [
       { _id: 'dog', openid: 'test_owner', species: 'dog' },
       { _id: 'cat', openid: 'test_owner', species: 'cat' }
@@ -115,7 +115,7 @@ test('individual pet sizes persist in the overview without changing other pets',
 
 test('size changes reject invalid values, deleted pets and pets owned by others', async () => {
   const { handler, openid, db } = createTestContext({
-    users: [],
+    users: [{_id:'u_test_owner',openid:'test_owner',role:'client'}],
     pets: [
       { _id: 'other', openid: 'another_owner', playgroundScale: 1 },
       { _id: 'deleted', openid: 'test_owner', deletedAt: '2026-10-17' }
@@ -130,7 +130,7 @@ test('size changes reject invalid values, deleted pets and pets owned by others'
 
 test('filling a dog bowl persists for its owner, is idempotent and rejects foreign or old plots', async () => {
   const {handler,openid,db}=createTestContext({
-    users:[], pets:[],
+    users:[{_id:'u_test_owner',openid:'test_owner',role:'client'}], pets:[],
     pet_playground_plots:[{_id:ownerId('test_owner'),kind:'owner_plot',
       ownerOpenid:'test_owner',plotId:'mine',x:84,z:84,size:48}]
   })

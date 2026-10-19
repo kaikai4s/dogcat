@@ -1,9 +1,7 @@
 const {callFunction,showError}=require('../../../utils/cloud')
 const {uploadFile}=require('../utils/playgroundAppearanceUpload')
 const {can}=require('../../../utils/adminAccess')
-const fields=[{key:'minutes',label:'生长时间（分钟）',min:1,max:525600},{key:'price',label:'种子价格（农场金币）',min:0,max:1000000},
-  {key:'sell',label:'每份售价（农场金币）',min:0,max:1000000},{key:'yield',label:'基础收成（份）',min:1,max:100},
-  {key:'xp',label:'收获经验',min:0,max:10000},{key:'level',label:'解锁等级',min:1,max:10}]
+const fields=[{key:'minutes',label:'生长时间（分钟）',min:1,max:525600}]
 const stageValues=(text)=>String(text).split(/[,，\s]+/).filter(Boolean).map(Number)
 function choosePng(source) {
   return new Promise((resolve,reject)=>{
@@ -20,7 +18,7 @@ function choosePng(source) {
   })
 }
 Page({
-  data:{crops:[],revision:0,loading:false,busy:false,error:'',form:null,isNew:false,fields,stagesText:'0,20,65,100',previewStage:0,progress:0},
+  data:{levels:[],levelChoices:[],crops:[],revision:0,loading:false,busy:false,error:'',form:null,isNew:false,fields,stagesText:'0,20,65,100',previewStage:0,progress:0},
   onShow(){this.closed=false;if(!this.data.form)this.load()},
   onUnload(){this.closed=true;this.loadToken=(this.loadToken||0)+1},
   async load() {
@@ -28,18 +26,27 @@ Page({
     this.setData({loading:true,error:''})
     try {
       const result=await callFunction('playgroundFarm','list')
-      if(!this.closed&&token===this.loadToken)this.setData({crops:result.crops,revision:result.revision})
+      if(!this.closed&&token===this.loadToken)this.setData({crops:result.crops,revision:result.revision,levels:result.levels||[]})
     }catch(error){if(!this.closed&&token===this.loadToken)this.setData({error:error.message||'加载失败'})}
     finally{if(!this.closed&&token===this.loadToken)this.setData({loading:false})}
   },
   edit(e) {
     if(this.data.busy||!can(this.data.adminAccess,'playgroundFarm.save'))return
     const crop=this.data.crops.find((c)=>c.id===e.currentTarget.dataset.id)
-    this.setData({form:JSON.parse(JSON.stringify(crop||{id:'',name:'',minutes:5,price:3,sell:6,yield:3,xp:12,level:1,color:'#7ca557',enabled:true,stages:[0,20,65,100],atlas:null})),
-      isNew:!crop,previewStage:0,stagesText:(crop&&crop.stages||[0,20,65,100]).join(',')})
+    this.setData({form:JSON.parse(JSON.stringify(crop||{id:'',name:'',minutes:5,unlockLevelIds:[],color:'#7ca557',enabled:true,stages:[0,20,65,100],atlas:null})),
+      levelChoices:this.data.levels.map((l)=>({...l,checked:!!crop&&(crop.unlockLevelIds||[]).includes(l._id)})),isNew:!crop,previewStage:0,stagesText:(crop&&crop.stages||[0,20,65,100]).join(',')})
   },
   close(){if(!this.data.busy){this.setData({form:null});this.load()}},
   input(e){const key=e.currentTarget.dataset.key;if(['id','name'].includes(key))this.setData({['form.'+key]:e.detail.value});else if(fields.some((f)=>f.key===key))this.setData({['form.'+key]:e.detail.value})},
+  levelsChange(e){this.setData({'form.unlockLevelIds':e.detail.value})},
+  async removeCrop() {
+    if(this.data.busy||this.data.isNew||!can(this.data.adminAccess,'playgroundFarm.remove'))return
+    const confirmed=await new Promise((resolve)=>wx.showModal({title:'删除作物',content:'删除后不能再种植，已经种植的装饰会保留。',success:(r)=>resolve(r.confirm),fail:()=>resolve(false)}))
+    if(!confirmed)return
+    this.setData({busy:true})
+    try{const result=await callFunction('playgroundFarm','remove',{id:this.data.form.id,revision:this.data.revision});if(!this.closed)this.setData({crops:result.crops,revision:result.revision,form:null})}
+    catch(error){showError(error)}finally{if(!this.closed)this.setData({busy:false})}
+  },
   stagesInput(e){this.setData({stagesText:e.detail.value,previewStage:0})},
   enabledChange(e){this.setData({'form.enabled':e.detail.value})},
   preview(e){this.setData({previewStage:Number(e.currentTarget.dataset.index)})},

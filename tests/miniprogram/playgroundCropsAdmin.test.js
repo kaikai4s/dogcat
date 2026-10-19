@@ -27,24 +27,24 @@ function fixture({wx={},uploadFile=async()=>'',callFunction=async()=>({crops:[],
 
 test('crop editor serializes numeric input and stage thresholds when publishing',async()=>{
   const {page,calls,errors}=fixture()
-  page.input({currentTarget:{dataset:{key:'price'}},detail:{value:'19'}})
+  page.levelsChange({detail:{value:['gold']}})
   page.input({currentTarget:{dataset:{key:'minutes'}},detail:{value:'90'}})
   page.stagesInput({detail:{value:'0， 25,70,100'}})
   await page.save()
   assert.equal(errors.length,0);assert.equal(calls.length,1)
   const request=calls[0]
   assert.equal(request.module,'playgroundFarm');assert.equal(request.action,'save');assert.equal(request.data.revision,0)
-  assert.equal(request.data.crop.price,19);assert.equal(request.data.crop.minutes,90)
+  assert.deepEqual(Array.from(request.data.crop.unlockLevelIds),['gold']);assert.equal(request.data.crop.price,undefined);assert.equal(request.data.crop.minutes,90)
   assert.deepEqual(Array.from(request.data.crop.stages),[0,25,70,100])
   assert.equal(page.data.form,null);assert.equal(page.data.revision,1)
 })
 
-test('crop editor rejects blank prices and respects read-only admin access',async()=>{
+test('crop editor rejects blank durations and respects read-only admin access',async()=>{
   const {page,calls,errors}=fixture()
-  page.data.form.price=''
+  page.data.form.minutes=''
   await page.save()
-  assert.equal(calls.length,0);assert.match(errors[0].message,/种子价格/)
-  page.data.form.price=5;page.data.adminAccess={permissions:['playgroundFarm.list']}
+  assert.equal(calls.length,0);assert.match(errors[0].message,/生长时间/)
+  page.data.form.minutes=5;page.data.adminAccess={permissions:['playgroundFarm.list']}
   await page.save();await page.upload()
   assert.equal(calls.length,0)
 })

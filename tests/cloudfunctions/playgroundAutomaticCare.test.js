@@ -111,7 +111,7 @@ test('relief validates the current scene and repeated packets do not deduct need
   assert.equal(f.pet('a').waste.length,1)
 })
 
-test('picking shared poop removes it from every snapshot and awards manure once',async()=>{
+test('picking shared poop removes it from every snapshot without awarding manure',async()=>{
   const f=fixture(),scene=await f.build()
   f.placePet('a',{x:280,z:350});needs(f,{poop:100})
   await f.shared.snapshot('a',f.auth(scene))
@@ -119,7 +119,7 @@ test('picking shared poop removes it from every snapshot and awards manure once'
   await assert.rejects(f.farmAction('a',scene,'pickupPoop',{poopId:event.id}),/走近/)
   f.place('a',{x:event.x,z:event.z})
   const result=await f.farmAction('a',scene,'pickupPoop',{poopId:event.id})
-  assert.equal(result.manure,1)
+  assert.equal(result.manure,undefined)
   const snapshot=await f.shared.snapshot('a',f.auth(scene))
   assert.equal(snapshot.records.find((r)=>r.kind==='resident').pets[0].waste.length,0)
   await assert.rejects(f.farmAction('a',scene,'pickupPoop',{poopId:event.id}),/已被拾取/)

@@ -8,6 +8,8 @@ function fixture() {
   const pets=users.map((u)=>({_id:'pet_'+u.openid,openid:u.openid,name:'宠物'+u.openid,species:u.openid==='b'?'cat':'dog'}))
   const user=(id)=>users.find((u)=>u.openid===id)
   const db=createCollectionStore({users,pets}),context={db,nowMs:()=>time,nowText:()=>new Date(time).toISOString(),getUser:async(id)=>user(id)}
+  Object.assign(context,require('../../cloudfunctions/api/services/membership')({...context,safeText:(v)=>v==null?'':String(v),normalizeMemberBadgeTag:(v)=>v||'',normalizeMemberNameColor:(v)=>v||'',normalizeMemberNameEffect:(v)=>v||'',normalizeMemberBadgeStyle:(v)=>v||'gold'}))
+  Object.assign(context,require('../../cloudfunctions/api/services/points')({...context,now:()=>new Date(time).toISOString(),safeText:(v)=>String(v||'')}))
   const shared=createShared(context),plots=world.create(context),seq={},commands={}
   const enter=(id,community)=>shared.enter(id,user(id),{community},pets.filter((p)=>p.openid===id))
   const auth=(scene)=>({session:scene.session,sceneId:scene.sceneId})

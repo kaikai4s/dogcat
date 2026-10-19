@@ -59,18 +59,16 @@ test('crop atlases slice four and five growth columns and reserve the final fram
   }
 })
 
-test('newer crop definitions survive a late farm response while its inventory and clock still update',()=>{
+test('newer crop definitions survive a late farm response while the planted display and clock still update',()=>{
   const {w,page}=worldFixture(),crop={...CROPS[0],id:'tomato',name:'番茄',enabled:false}
   const catalog={revision:3,crops:[crop],soils:SOILS}
   w.setFarmCatalog(catalog)
   page.data.farmCropId='tomato'
-  page.applyFarm({catalog:{revision:2,crops:[{...crop,name:'旧名字',enabled:true}]},level:2,coins:81,seeds:{tomato:2},produce:{tomato:4},
+  page.applyFarm({catalog:{revision:2,crops:[{...crop,name:'旧名字',enabled:true}]},memberLevel:'gold',
     crops:[],serverTime:Date.now(),beds:[{id:0,cropId:'tomato',plantedAt:Date.now()-120000,readyAt:Date.now()-1000}]})
   assert.equal(w.farmCatalog.revision,3)
   assert.equal(page.data.farm.catalog.revision,3)
-  assert.equal(page.data.farm.coins,81)
   assert.equal(page.data.farm.crops[0].name,'番茄')
-  assert.equal(page.data.farm.crops[0].seeds,2);assert.equal(page.data.farm.crops[0].stock,4)
   assert.equal(page.data.farmSeedAvailable,false)
   assert.equal(page.data.farmBed.name,'番茄');assert.equal(page.data.farmBed.state,'ready')
 })
@@ -156,9 +154,9 @@ test('late follow packets preserve the rendered position and walk around a fence
 
 test('map soil routes beside the chosen bed; proximity actions disappear on departure and reject a stale button',async()=>{
   const {w,page}=worldFixture(),plot={id:'own',x:400,z:400,size:112,mine:true},calls=[]
-  w.ownPlot=plot;w.sharedPlots=new Map([[plot.id,plot]])
+  w.ownPlot=plot;w.sharedPlots=new Map([[plot.id,plot]]);page.data.farmEditMode=true
   w.characterTerrain={};w.characterAreaLoaded=()=>true
-  w.sceneSync={getFarm:async()=>({plotId:'own',serverTime:Date.now(),beds:farmLayout(plot).map((b)=>({...b,state:'wild',unlocked:b.id<4})),crops:[]}),farmAction:async(p)=>calls.push(p)}
+  w.sceneSync={getFarm:async()=>({plotId:'own',serverTime:Date.now(),beds:farmLayout(plot).map((b)=>({...b,state:'grass',unlocked:true})),crops:[]}),farmAction:async(p)=>calls.push(p)}
   let target
   w.moveCharacterTo=async(p)=>{target=p;return true}
   await w.moveToFarmBed(2)
@@ -168,7 +166,7 @@ test('map soil routes beside the chosen bed; proximity actions disappear on depa
   w.character.position=target;w.emitNearby()
   await page.ensureFarm(true)
   w.emitFarmUi();assert.equal(page.data.nearbyFarm.id,2);assert.equal(page.data.farmOpen,undefined)
-  w.character.position={x:450,z:450};w.emitNearby()
+  w.character.position={x:465,z:465};w.emitNearby()
   assert.equal(page.data.nearbyFarm,null)
   const previousWx=global.wx;global.wx={showToast(){}}
   try {await page.farmOperation({currentTarget:{dataset:{operation:'till',bed:2}}});assert.equal(calls.length,0)}finally{global.wx=previousWx}
@@ -233,14 +231,15 @@ test('farm drawer recomputes maturity from the server clock and retains idempote
   const {w,page}=worldFixture(),packets=[]
   w.ownPlot={id:'own',x:400,z:400,size:112,mine:true}
   w.character.position={...farmLayout(w.ownPlot)[0]};w.characterTerrain={};w.characterAreaLoaded=()=>true
-  const farm={plotId:'own',serverTime:Date.now()-120000,coins:100,beds:[{id:0,cropId:'carrot',plantedAt:Date.now()-180000,readyAt:Date.now()-130000,state:'growing',unlocked:true}]}
+  w.ownPlot.gardenVersion=2;w.ownPlot.farmBeds=[{id:0,stage:'watered'}]
+  const farm={plotId:'own',serverTime:Date.now()-120000,beds:[{id:0,cropId:'carrot',plantedAt:Date.now()-180000,readyAt:Date.now()-130000,state:'growing',unlocked:true}]}
   page.applyFarm(farm)
-  assert.equal(page.data.farmBed.state,'ready');assert.equal(page.data.farmReadyCount,1)
+  assert.equal(page.data.farmBed.state,'ready');assert.equal(page.data.farmBed.label,'成熟展示')
   let calls=0
   w.sceneSync={farmAction:async(p)=>{packets.push({...p});if(++calls===1)throw new Error('网络超时');return {...farm,serverTime:Date.now(),message:'已收获'}}}
   const oldWx=global.wx;global.wx={showToast(){}}
   try {
-    const event={currentTarget:{dataset:{operation:'harvest',bed:0}}}
+    const event={currentTarget:{dataset:{operation:'harvest',bed:0,plot:'own'}}}
     await page.farmOperation(event);await page.farmOperation(event)
     assert.equal(packets[0].requestId,packets[1].requestId)
     assert.equal(page.data.farmBusy,false);assert.equal(page.pendingFarm,null)
@@ -282,4 +281,29 @@ test('ride replies and server pushes update all occupants and their pets before 
   assert.equal(w.vehicleRole,'passenger');assert.equal(w.pets.find((p)=>p.id==='pet_b').ridingVehicleId,f.car('a')._id)
   await sync.rideAction('rideLeave')
   assert.equal(w.vehicleRole,'');assert.equal(w.pets.find((p)=>p.id==='pet_b').ridingVehicleId,'')
+})
+
+
+test('normal map clicks do not claim empty grass; edit mode targets own additional land only',()=>{
+  const {w,page}=worldFixture(),yard={id:'yard',x:400,z:400,size:48,mine:true,buildingType:'yard',gardenVersion:2},neighbor={...yard,id:'neighbor',x:520,mine:false}
+  w.ownPlot=null;w.sharedPlots=new Map([[yard.id,yard],[neighbor.id,neighbor]])
+  const tile=farmLayout(yard)[0],point=w.project(tile.x,tile.z)
+  assert.equal(w.farmAt(point),null)
+  w.characterSelected=true;assert.equal(w.farmAt(point),null)
+  page.data.farmEditMode=true
+  assert.equal(w.farmAt(point).plotId,'yard')
+  const other=farmLayout(neighbor)[0]
+  assert.equal(w.farmAt(w.project(other.x,other.z)),null)
+  assert.equal(createNavigation(w.bounds,yardObstacles(yard),.8,1.5).walkable({x:400,z:400}),true)
+})
+
+test('mature crops have no harvest badge, and deleted definitions render the saved atlas',()=>{
+  const {w}=worldFixture(),labels=[],draws=[],crop=CROPS[0]
+  w.scale=2;w.zoom=1;w.serverOffset=0
+  w.ctx={drawImage:(...args)=>draws.push(args)};w.markerLabel=(text)=>labels.push(text)
+  w.farmCatalog={crops:[],soils:SOILS};w.farmImage=(atlas)=>atlas?{id:atlas.fileID}:null
+  const plot={id:'p',x:400,z:400,size:48,buildingType:'yard',gardenVersion:2},tile=farmLayout(plot)[0]
+  w.drawFarm({...plot,farmBeds:[{id:tile.id,stage:'tilled',cropId:crop.id,crop,plantedAt:1,readyAt:2}]})
+  assert.ok(draws.some((args)=>args[0].id===crop.atlas.fileID))
+  assert.equal(labels.length,0)
 })

@@ -46,6 +46,7 @@ const TYPE_NAMES = {
 
 Page({
   data: {
+    levels:[],levelChoices:[],plotSizes:[],
     buildings: [],
     revision: 0,
     loading: false,
@@ -78,6 +79,8 @@ Page({
       const result = await callFunction('playgroundBuilding', 'list')
       if (!this.closed && token === this.loadToken) {
         this.setData({
+          levels:result.levels||[],
+          plotSizes:(result.plotSizes||[]).map((p)=>({...p,choices:(result.levels||[]).map((l)=>({...l,checked:(p.unlockLevelIds||[]).includes(l._id)}))})),
           buildings: result.buildings || [],
           revision: result.revision || 0
         })
@@ -103,15 +106,16 @@ Page({
       desc: '',
       width: 7,
       depth: 7,
-      costCoins: 100,
+      unlockLevelIds:[],washPoints:10,reportPoints:5,
       image: '',
-      weeklySalary: 200,
-      resolveReward: 20,
+      weeklySalary: 20,
+      resolveReward: 10,
       enabled: true
     }
     const form = JSON.parse(JSON.stringify(base))
     form.tileCount = calcGrassTiles(form.width, form.depth)
     this.setData({
+      levelChoices:this.data.levels.map((l)=>({...l,checked:(form.unlockLevelIds||[]).includes(l._id)})),
       form,
       isNew: !building
     })
@@ -125,7 +129,7 @@ Page({
   input(e) {
     const key = e.currentTarget.dataset.key
     let val = e.detail.value
-    if (['width', 'depth', 'costCoins', 'weeklySalary', 'resolveReward'].includes(key)) {
+    if (['width', 'depth', 'washPoints', 'reportPoints', 'weeklySalary', 'resolveReward'].includes(key)) {
       val = Number(val) || 0
     }
     const form = { ...this.data.form, [key]: val }
@@ -135,9 +139,22 @@ Page({
     this.setData({ form })
   },
   typeChange(e) {
-    const idx = Number(e.detail.value)
-    const type = this.data.types[idx].key
+    const type = e.detail.value
+    if(!this.data.types.some((t)=>t.key===type))return
     this.setData({ 'form.type': type })
+  },
+  levelsChange(e){this.setData({'form.unlockLevelIds':e.detail.value})},
+  plotLevelsChange(e) {
+    const size=Number(e.currentTarget.dataset.size)
+    this.setData({plotSizes:this.data.plotSizes.map((p)=>p.size===size?{...p,unlockLevelIds:e.detail.value}:p)})
+  },
+  async savePlotLevels(e) {
+    if(this.data.busy||!can(this.data.adminAccess,'playgroundBuilding.savePlotAccess'))return
+    const plot=this.data.plotSizes.find((p)=>p.size===Number(e.currentTarget.dataset.size))
+    if(!plot)return
+    this.setData({busy:true})
+    try {const result=await callFunction('playgroundBuilding','savePlotAccess',{size:plot.size,unlockLevelIds:plot.unlockLevelIds,revision:this.data.revision});this.setData({revision:result.revision});wx.showToast({title:'已保存',icon:'success'})}
+    catch(error){showError(error)}finally{if(!this.closed)this.setData({busy:false})}
   },
   enabledChange(e) {
     this.setData({ 'form.enabled': e.detail.value })
@@ -213,7 +230,7 @@ Page({
     this.setData({ busy: true })
     try {
       const result = await callFunction('playgroundBuilding', 'remove', {
-        id: this.data.form.id
+        id: this.data.form.id,revision:this.data.revision
       })
       this.setData({
         buildings: result.buildings || [],

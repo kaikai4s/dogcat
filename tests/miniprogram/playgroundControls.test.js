@@ -367,3 +367,33 @@ test('choosing a new community after demolition starts placement without requiri
   assert.equal(initialized,1)
   assert.equal(toasts.length,0)
 })
+
+
+test('wash action sends scene credentials and clears dirt only after server acknowledgement',async()=>{
+  const packets=[];let fail=true,cleaned=0,sent=0
+  const {page}=pageFixture({},async(module,action,data)=>{
+    packets.push({module,action,data});assert.equal(cleaned,0)
+    if(fail)throw new Error('请将车辆开到洗车店附近')
+    return {washed:true,message:'洗车完成'}
+  })
+  const w=page.world,car={id:'car'}
+  w.ownVehicle=()=>car;w.cleanVehicle=()=>{cleaned++}
+  w.sceneSync={send:async()=>{sent++},credentials:()=>({sceneId:'scene',session:'session'})}
+  await page.cleanVehicleAction()
+  assert.equal(cleaned,0);assert.equal(page.data.washingVehicle,false)
+  fail=false;await page.cleanVehicleAction()
+  assert.equal(sent,2);assert.equal(cleaned,1)
+  assert.equal(packets[1].action,'washVehicle');assert.equal(packets[1].data.vehicleId,'car')
+  assert.equal(packets[1].data.session,'session');assert.equal(packets[1].data.sceneId,'scene')
+})
+
+test('plot placement tap keeps the main courtyard mode, and new land selects an unlocked membership size',()=>{
+  const {page}=pageFixture(),placements=[]
+  page.data.hasPlot=true;page.data.hasCommunity=true
+  page.data.plotSizes=[{size:48,unlocked:false},{size:64,unlocked:true}]
+  page.world.beginPlacement=(isNew,size)=>placements.push({isNew,size})
+  page.choosePlot({currentTarget:{dataset:{}}})
+  assert.equal(placements[0].isNew,false)
+  page.choosePlot(true)
+  assert.equal(placements[1].isNew,true);assert.equal(placements[1].size,64)
+})

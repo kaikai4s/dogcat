@@ -367,7 +367,7 @@ class SceneSync {
     this.chain=result.catch(()=>{})
     return result
   }
-  async getFarm() {return callFunction('playground','getFarm',this.credentials())}
+  async getFarm(plotId) {return callFunction('playground','getFarm',{...this.credentials(),plotId})}
   async farmAction(packet) {
     await this.send(true)
     return callFunction('playground','farmAction',{...this.credentials(),...packet})

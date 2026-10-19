@@ -1,15 +1,10 @@
 const { transaction } = require('./playground-transaction')
 const crypto = require('crypto')
 const nameColors = require('./playground-name-colors')
+const {memberAccess,unlocked}=require('./playground-access')
 const SIZE = 112
 const STEP = 56
 const GAP = 4
-const DEFAULT_PLOT_SIZES = [
-  { size: 36, label: '紧凑绿地 (36×36m)', price: 30 },
-  { size: 48, label: '标准绿地 (48×48m)', price: 50 },
-  { size: 64, label: '宽敞绿地 (64×64m)', price: 80 },
-  { size: 80, label: '生态大院 (80×80m)', price: 120 }
-]
 // Temporary relocation switch. Set PLAYGROUND_ALLOW_RELOCATION=false to lock it.
 const allowRelocation = () =>
   process.env.PLAYGROUND_ALLOW_RELOCATION !== 'false'
@@ -89,6 +84,7 @@ function publicPlot(plot, openid) {
     cellZ: plot.cellZ,
     mine: plot.ownerOpenid === openid,
     foodBowls: { dog: Math.max(0,Math.min(100,Number(plot.foodBowls&&plot.foodBowls.dog)||0)), cat: Math.max(0,Math.min(100,Number(plot.foodBowls&&plot.foodBowls.cat)||0)) },
+    gardenVersion:plot.gardenVersion||1,
     farmBeds: Array.isArray(plot.farmBeds) ? plot.farmBeds : [],
     ownerName: plot.ownerName || String(plot.name || '邻居').replace(/的庭院$/, ''),
     nameColor: plot.nameColor || '',
@@ -125,7 +121,6 @@ module.exports = {
   STEP,
   CHUNK,
   CONFIG_ID,
-  DEFAULT_PLOT_SIZES,
   read,
   dimensions,
   communityId,
@@ -143,7 +138,7 @@ module.exports = {
         ...dimensions(),
         ...stored,
         plotSize: SIZE,
-        plotSizes: stored.plotSizes || DEFAULT_PLOT_SIZES,
+        plotSizes: (await require('./playground-buildings')({db}).readCatalog()).plotSizes,
         step: STEP,
         chunkSize: CHUNK,
         canRelocate: allowRelocation()
@@ -228,7 +223,8 @@ module.exports = {
         const nameColor = await nameColors.allocate(tx, id, hash(openid), read)
         const reqSize = Number(data.size)
         const allowedSizes = [36, 48, 64, 80, 112]
-        const plotSize = allowedSizes.includes(reqSize) ? reqSize : SIZE
+        if(data.size!==undefined&&!allowedSizes.includes(reqSize))throw new Error('无效的绿地规格')
+        const plotSize = data.size===undefined ? SIZE : reqSize
 
         const isNewPlot = data.isNewPlot === true
 
@@ -253,20 +249,20 @@ module.exports = {
         if (!isNewPlot && existing && existing.communityId !== id)
           throw new Error('只能在原小区调整庭院位置')
 
-        // 购买新地皮扣减爱心币
-        const sizeOption = DEFAULT_PLOT_SIZES.find((o) => o.size === plotSize)
-        const defaultCost = sizeOption ? sizeOption.price : 50
-        const costCoins = isNewPlot ? (data.costCoins !== undefined ? Math.max(0, Number(data.costCoins)) : defaultCost) : 0
-        if (isNewPlot && costCoins > 0) {
-          const userCoins = current.playgroundCoins || 0
-          if (userCoins < costCoins) {
-            throw new Error(`爱心币不足，认领 ${plotSize}×${plotSize} 米专属绿地需要 ${costCoins} 爱心币，当前拥有 ${userCoins} 爱心币`)
+        const catalog=await require('./playground-buildings')({db:tx}).readCatalog()
+        const access=await memberAccess(tx,openid)
+        if(isNewPlot) {
+          const option=catalog.plotSizes.find((p)=>p.size===plotSize)
+          if(!option||!unlocked(option,access))throw new Error('当前会员等级尚未解锁该绿地规格')
+        }
+        let building=null
+        if(data.buildingId||data.buildingType&&!['yard','residential'].includes(data.buildingType)) {
+          building=catalog.buildings.find((b)=>data.buildingId?b.id===data.buildingId:b.type===data.buildingType)
+          if(!building||!unlocked(building,access))throw new Error('该建筑已下架或当前会员等级尚未解锁')
+          if(['committee','police_station','prison'].includes(building.type)) {
+            const rows=await tx.collection('pet_playground_plots').where({communityId:id,kind:'plot',buildingType:building.type}).get()
+            if((rows.data||[]).some((p)=>!p.demolished))throw new Error('该小区已存在此类公共建筑')
           }
-          await tx.collection('users').doc(user._id).update({
-            data: {
-              playgroundCoins: userCoins - costCoins
-            }
-          })
         }
 
         const { _id: configDocumentId, ...stored } =
@@ -305,12 +301,13 @@ module.exports = {
               throw new Error('地皮范围与已有建筑或邻居重叠，请选择更空旷的草坪')
           }
         }
-        const buildingType = data.buildingType || (isNewPlot ? 'yard' : (existing && existing.buildingType) || 'residential')
-        const buildingId = data.buildingId || (existing && existing.buildingId) || ''
-        const buildingName = data.buildingName || (existing && existing.buildingName) || ''
-        const buildingImage = data.buildingImage || (existing && existing.buildingImage) || ''
-        const buildingWidth = Number(data.buildingWidth) || (existing && existing.buildingWidth) || 7
-        const buildingDepth = Number(data.buildingDepth) || (existing && existing.buildingDepth) || 7
+        const buildingType = building?building.type:isNewPlot?'yard':existing&&existing.buildingType||'residential'
+        const buildingId = building?building.id:!isNewPlot&&existing&&existing.buildingId||''
+        const buildingName = building?building.name:!isNewPlot&&existing&&existing.buildingName||''
+        const buildingImage = building?building.image:!isNewPlot&&existing&&existing.buildingImage||''
+        const buildingWidth = building?building.width:!isNewPlot&&existing&&existing.buildingWidth||7
+        const buildingDepth = building?building.depth:!isNewPlot&&existing&&existing.buildingDepth||7
+        if(Math.max(buildingWidth,buildingDepth)>plotSize-4)throw new Error('这块绿地放不下该建筑')
 
         const plot = {
           kind: 'plot',
@@ -333,7 +330,8 @@ module.exports = {
           revision: Math.max(await require('./playground-live')({db,nowMs}).nextEpoch(id,key,stamp()),(existing&&existing.revision||0)+1),
           instanceId: crypto.randomBytes(12).toString('hex'),
           name: buildingName ? `${String(user.nickname || '我').slice(0, 20)}的${buildingName}` : (isNewPlot ? `${String(user.nickname || '我').slice(0, 20)}的专属爱心绿地` : `${String(user.nickname || '我').slice(0, 20)}的庭院`),
-          createdAt: existing ? existing.createdAt : nowText(),
+          createdAt: existing&&!isNewPlot ? existing.createdAt : nowText(),
+          createdAtStamp:stamp(),
           updatedAt: nowText(),
           isNewPlot: Boolean(isNewPlot)
         }
@@ -439,19 +437,18 @@ module.exports = {
       })
     }
     async function buildInYard(openid, user, data) {
-      const buildingId = String(data.buildingId || '')
-      const buildingType = String(data.buildingType || 'residential')
-      const buildingName = String(data.buildingName || '')
-      const buildingImage = String(data.buildingImage || '')
-      const buildingWidth = Number(data.buildingWidth) || 7
-      const buildingDepth = Number(data.buildingDepth) || 7
-      const costCoins = Math.max(0, Number(data.costCoins) || 0)
       const targetPlotId = String(data.plotId || '')
 
       return transaction(db, async (tx) => {
+        const catalog=await require('./playground-buildings')({db:tx}).readCatalog()
+        const access=await memberAccess(tx,openid)
+        const building=catalog.buildings.find((b)=>data.buildingId?b.id===data.buildingId:b.type===data.buildingType)
+        if(!building||!unlocked(building,access))throw new Error('该建筑已下架或当前会员等级尚未解锁')
+        const {id:buildingId,type:buildingType,name:buildingName,image:buildingImage,width:buildingWidth,depth:buildingDepth}=building
         let targetPlot = null
         if (targetPlotId) {
           const doc = await read(tx, targetPlotId)
+          if (!doc || doc.kind!=='plot' || doc.ownerOpenid!==openid || doc.demolished)throw new Error('只能在自己的有效地皮内建造')
           if (doc && doc.ownerOpenid === openid) {
             targetPlot = doc
           }
@@ -467,12 +464,14 @@ module.exports = {
         }
 
         const communityId = targetPlot.communityId
+        if(data.sceneId&&communityId!==data.sceneId)throw new Error('请回到该地皮所在小区建造')
+        if(Math.max(buildingWidth,buildingDepth)>(targetPlot.size||48)-4)throw new Error('这块绿地放不下该建筑')
 
         // 唯一性校验：居委会、督导所、自省室每个小区只能创建一个
         if (buildingType === 'committee') {
           const existingComm = await tx
             .collection('pet_playground_plots')
-            .where({ communityId, buildingType: 'committee' })
+            .where({ kind:'plot',communityId, buildingType: 'committee' })
             .get()
           const active = (existingComm.data || []).find((p) => !p.demolished && p._id !== targetPlot._id)
           if (active) throw new Error('当前社区已设立居委会，每个社区有且仅能有一个居委会')
@@ -480,7 +479,7 @@ module.exports = {
         if (buildingType === 'police_station') {
           const existingPolice = await tx
             .collection('pet_playground_plots')
-            .where({ communityId, buildingType: 'police_station' })
+            .where({ kind:'plot',communityId, buildingType: 'police_station' })
             .get()
           const active = (existingPolice.data || []).find((p) => !p.demolished && p._id !== targetPlot._id)
           if (active) throw new Error('当前社区已设立文明督导所，每个社区有且仅能有一个文明督导所')
@@ -488,28 +487,18 @@ module.exports = {
         if (buildingType === 'prison') {
           const existingPrison = await tx
             .collection('pet_playground_plots')
-            .where({ communityId, buildingType: 'prison' })
+            .where({ kind:'plot',communityId, buildingType: 'prison' })
             .get()
           const active = (existingPrison.data || []).find((p) => !p.demolished && p._id !== targetPlot._id)
           if (active) throw new Error('当前社区已设立安全宣教自省室，每个社区有且仅能有一个自省室')
-        }
-
-        // 扣减爱心币购买建筑
-        if (costCoins > 0) {
-          const currentUser = await readDocument(tx, 'users', user._id, '读取用户')
-          const userCoins = (currentUser && currentUser.playgroundCoins) || 0
-          if (userCoins < costCoins) {
-            throw new Error(`爱心币不足，建造该建筑需要 ${costCoins} 爱心币，当前拥有 ${userCoins} 爱心币`)
-          }
-          await tx.collection('users').doc(user._id).update({
-            data: { playgroundCoins: userCoins - costCoins }
-          })
         }
 
         const prevType = targetPlot.buildingType || (targetPlot.isNewPlot ? 'yard' : 'residential')
         const updated = {
           ...targetPlot,
           previousBuildingType: prevType,
+          ...(buildingType==='committee'&&prevType!=='committee'?{committeeStartedAt:stamp(),lastSalaryClaimAt:0}:{}),
+          revision:Math.max(stamp(),(targetPlot.revision||0)+1),
           buildingId,
           buildingType,
           buildingName,
@@ -520,6 +509,10 @@ module.exports = {
           updatedAt: nowText()
         }
 
+        const {savedBeds,farmLayout}=require('./playground-shared/farm-model')
+        const beds=Object.values(savedBeds(targetPlot)),available=new Set(farmLayout(updated).map((t)=>t.id))
+        if(beds.some((b)=>!available.has(b.id)))throw new Error('建筑会占用已布置的植物，请先将对应土地恢复为草坪')
+        updated.farmBeds=beds;updated.gardenVersion=2
         const { _id, ...cleanUpdated } = updated
         await tx.collection('pet_playground_plots').doc(targetPlot._id).set({ data: cleanUpdated })
         const mainOwner = await read(tx, ownerId(openid))
