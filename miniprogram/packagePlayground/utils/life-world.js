@@ -1,7 +1,6 @@
 const {needsView}=require('./pet-needs')
 const {farmLayout,bedReach,bedView,cropById,growthStage,SOILS}=require('./farm-model')
 module.exports={
-  ...require('./vehicle-rear'),
   setFarmCatalog(catalog) {
     if(!catalog||!Array.isArray(catalog.crops)||this.farmCatalog&&catalog.revision<this.farmCatalog.revision)return
     this.farmCatalog=catalog
