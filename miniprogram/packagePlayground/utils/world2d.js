@@ -14,6 +14,8 @@ const {
 } = require('./yard-layout')
 const { updatePetExcretion, drawSingleDecal } = require('./excretion-system')
 const { getExcretionAsset, setExcretionAsset: configureExcretionAsset } = require('./excretion-assets')
+const vehicleWorld = require('./vehicle-world')
+const lifeWorld = require('./life-world')
 const STEP = 56,
   SIZE = YARD_SIZE,
   CHUNK = 112
@@ -2128,5 +2130,5 @@ class World2D {
   }
 }
 module.exports = { World2D, yardObstacles, STEP, SIZE, CHUNK }
-Object.assign(World2D.prototype,require('./vehicle-world'))
-Object.assign(World2D.prototype,require('./life-world'))
+Object.assign(World2D.prototype, vehicleWorld)
+Object.assign(World2D.prototype, lifeWorld)

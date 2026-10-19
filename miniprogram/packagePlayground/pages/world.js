@@ -1,9 +1,10 @@
 const { ensureLogin, callFunction, chooseSelectedLocation } = require('../../utils/cloud')
 const { World2D } = require('../utils/world2d')
 const { SceneSync } = require('../utils/scene-sync')
+const lifePage = require('../utils/life-page')
 
 Page({
-  ...require('../utils/life-page'),
+  ...lifePage,
   data: {
     petRosterOpen:false,petAlerts:[],petCareBusy:false,selectedPet:null,
     farmOpen:false,farmLoading:false,farmBusy:false,farm:null,farmBed:null,nearbyFarm:null,farmSeedAvailable:false,farmTab:'field',farmCropId:'carrot',farmSelectedBed:0,farmReadyCount:0,
