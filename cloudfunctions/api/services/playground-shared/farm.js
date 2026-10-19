@@ -141,7 +141,7 @@ module.exports=function createFarm(context,hooks) {
         if(!Number.isInteger(quantity)||quantity<1||quantity>99)throw new Error('购买数量或领取数量须在1～99之间')
         if(crop.price>0) spend(crop.price*quantity)
         farm.seeds[crop.id]=(farm.seeds[crop.id]||0)+quantity
-        message='已免费领取 '+quantity+' 包'+crop.name+'种子'
+        message=crop.price>0?'已成功购买 '+quantity+' 包'+crop.name+'种子':'已免费领取 '+quantity+' 包'+crop.name+'种子'
       } else if(operation==='sell') {
         if(!crop||!Number.isInteger(quantity)||quantity<1||quantity>(farm.produce[crop.id]||0))throw new Error('仓库里的作物数量不足')
         farm.produce[crop.id]-=quantity;farm.coins+=quantity*crop.sell;message='出售完成，获得 '+quantity*crop.sell+' 爱心币'

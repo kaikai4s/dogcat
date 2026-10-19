@@ -1010,13 +1010,17 @@ class World2D {
           const needs = pet.needs || {}
           const hunger = (needs.satiety !== undefined ? needs.satiety : 100) < 80 || this.random() < 0.28
           const thirst = (needs.hydration !== undefined ? needs.hydration : 100) < 80 || this.random() < 0.28
+          const fatigue = (needs.energy !== undefined ? needs.energy : 100) < 60 || this.random() < 0.2
           let targetStation = null, actionType = null
           if (food >= 10 && hunger && (!thirst || this.random() < 0.5)) {
             targetStation = stations.eat
             actionType = 'eat'
-          } else if (thirst) {
+          } else if (thirst && (!fatigue || this.random() < 0.5)) {
             targetStation = stations.drink
             actionType = 'drink'
+          } else if (fatigue && stations.sleep) {
+            targetStation = stations.sleep
+            actionType = 'sleep'
           }
           if (targetStation && nav.walkable(targetStation)) {
             const route = nav.path(start, targetStation)
@@ -1155,7 +1159,7 @@ class World2D {
       yardLayout(p).stations[pet.species === 'cat' ? 'cat' : 'dog']
     const target = stations[action] || stations[action === 'drink' ? 'eat' : action]
     if (!target) return false
-    const care = (action === 'eat' || action === 'drink') ? action : null
+    const care = (action === 'eat' || action === 'drink' || action === 'sleep') ? action : null
     this.moveTo(target, { care })
     return true
   }
@@ -1988,76 +1992,113 @@ class World2D {
     c.restore()
   }
   drawYard(p, items) {
+    const isPureYard = p.buildingType === 'yard' || (this.candidate && this.candidate === p && this.isPlacingNewPlot)
+    const isSingleBuilding = p.buildingType && !['residential', 'yard'].includes(p.buildingType)
     const layout = yardLayout(p)
-    this.drawStonePath(
-      { x: p.x, z: p.z + 11 },
-      { x: p.x, z: p.z + layout.half - 1 }
-    )
-    this.sprite('road_tile', p.x, p.z + layout.half - 0.5, 6, 0.5)
-    for (const species of ['dog', 'cat']) {
-      const station = layout.stations[species].eat
-      this.drawStonePath(
-        { x: p.x, z: station.z },
-        { x: station.x, z: station.z },
-        4
-      )
-    }
-    const fountain = layout.sprites.find((item) => item.name === 'fountain')
-    this.drawStonePath(
-      { x: p.x, z: fountain.z },
-      { x: fountain.x - fountain.radius - 2, z: fountain.z },
-      4
-    )
-    const frames = FOUNTAIN_FRAMES.filter((name) => this.assets[name])
-    for (const item of layout.sprites)
-      if(item.name==='car_road')this.sprite(item.name,item.x,item.z,item.size,item.anchor)
-      else
-      items.push({
-        depth: item.x + item.z,
-        draw: () => {
-          this.sprite(
-            item.name === 'fountain'
-              ? frames[Math.floor(this.elapsed * 8) % frames.length]
-              : item.name,
-            item.x,
-            item.z,
-            item.size,
-            item.anchor
+    if (!isPureYard) {
+      if (isSingleBuilding) {
+        this.drawStonePath(
+          { x: p.x, z: p.z + 11 },
+          { x: p.x, z: p.z + layout.half - 1 }
+        )
+      } else {
+        this.drawStonePath(
+          { x: p.x, z: p.z + 11 },
+          { x: p.x, z: p.z + layout.half - 1 }
+        )
+        this.sprite('road_tile', p.x, p.z + layout.half - 0.5, 6, 0.5)
+        for (const species of ['dog', 'cat']) {
+          const station = layout.stations[species].eat
+          this.drawStonePath(
+            { x: p.x, z: station.z },
+            { x: station.x, z: station.z },
+            4
           )
-          if (item.name === 'house' && p.buildingType && p.buildingType !== 'residential') {
-            const bLabels = { committee: '🏛 邻里服务站', repair_shop: '🔧 便民洗车', pet_hospital: '🏥 宠医健康', police_station: '📋 出行督导', prison: '🕊 安全宣教' }
-            const bColors = { committee: '#d84315', repair_shop: '#0277bd', pet_hospital: '#2e7d32', police_station: '#1565c0', prison: '#6a1b9a' }
-            const tag = bLabels[p.buildingType] || p.buildingName || '工坊'
-            const tagColor = bColors[p.buildingType] || '#388e3c'
-            const pt = this.project(item.x, item.z)
-            const c = this.ctx
-            c.save()
-            c.font = 'bold 12px sans-serif'
-            c.textAlign = 'center'
-            const bw = tag.length * 13 + 18
-            const signY = pt.y - item.size * this.scale * this.zoom * 0.72 - 10
-            c.fillStyle = tagColor
-            c.beginPath()
-            if (typeof c.roundRect === 'function') c.roundRect(pt.x - bw/2, signY - 14, bw, 20, 6)
-            else c.rect(pt.x - bw/2, signY - 14, bw, 20)
-            c.fill()
-            c.fillStyle = '#ffffff'
-            c.fillText(tag, pt.x, signY)
-            c.restore()
-          }
-          const species=item.name==='cat_eat'?'cat':'dog'
-          if (['dog_eat','cat_eat'].includes(item.name) && ((p.foodBowls && p.foodBowls[species] > 0) || (this.ownPlot && p.id === this.ownPlot.id && this.foodBowls[species] > 0))) {
-            const point = this.project(item.x, item.z)
-            const scale = this.scale * this.zoom * Math.min(1, layout.half / 48)
-            this.ctx.fillStyle = '#a76834'
-            for (const [dx, dy] of [[-0.5,0],[0,0.2],[0.5,0],[-0.25,-0.3],[0.25,-0.3]]) {
-              this.ctx.beginPath()
-              this.ctx.arc(point.x + dx * scale, point.y - 0.8 * scale + dy * scale, Math.max(0.6, 0.2 * scale), 0, Math.PI * 2)
-              this.ctx.fill()
+        }
+        const fountain = layout.sprites.find((item) => item.name === 'fountain')
+        if (fountain) {
+          this.drawStonePath(
+            { x: p.x, z: fountain.z },
+            { x: fountain.x - fountain.radius - 2, z: fountain.z },
+            4
+          )
+        }
+      }
+
+      const frames = FOUNTAIN_FRAMES.filter((name) => this.assets[name])
+      for (const item of layout.sprites) {
+        if (isSingleBuilding && item.name !== 'house') continue
+        if(item.name==='car_road')this.sprite(item.name,item.x,item.z,item.size,item.anchor)
+        else
+        items.push({
+          depth: item.x + item.z,
+          draw: () => {
+            this.sprite(
+              item.name === 'fountain'
+                ? frames[Math.floor(this.elapsed * 8) % frames.length]
+                : item.name,
+              item.x,
+              item.z,
+              item.size,
+              item.anchor
+            )
+            if (item.name === 'house' && p.buildingType && p.buildingType !== 'residential') {
+              const bLabels = { committee: '🏛 邻里服务站', repair_shop: '🔧 便民洗车', pet_hospital: '🏥 宠医健康', police_station: '📋 出行督导', prison: '🕊 安全宣教' }
+              const bColors = { committee: '#d84315', repair_shop: '#0277bd', pet_hospital: '#2e7d32', police_station: '#1565c0', prison: '#6a1b9a' }
+              const tag = bLabels[p.buildingType] || p.buildingName || '工坊'
+              const tagColor = bColors[p.buildingType] || '#388e3c'
+              const pt = this.project(item.x, item.z)
+              const c = this.ctx
+              c.save()
+              c.font = 'bold 12px sans-serif'
+              c.textAlign = 'center'
+              const bw = tag.length * 13 + 18
+              const signY = pt.y - item.size * this.scale * this.zoom * 0.72 - 10
+              c.fillStyle = tagColor
+              c.beginPath()
+              if (typeof c.roundRect === 'function') c.roundRect(pt.x - bw/2, signY - 14, bw, 20, 6)
+              else c.rect(pt.x - bw/2, signY - 14, bw, 20)
+              c.fill()
+              c.fillStyle = '#ffffff'
+              c.fillText(tag, pt.x, signY)
+              c.restore()
+            }
+            const species=item.name==='cat_eat'?'cat':'dog'
+            if (['dog_eat','cat_eat'].includes(item.name) && ((p.foodBowls && p.foodBowls[species] > 0) || (this.ownPlot && p.id === this.ownPlot.id && this.foodBowls[species] > 0))) {
+              const point = this.project(item.x, item.z)
+              const scale = this.scale * this.zoom * Math.min(1, layout.half / 48)
+              this.ctx.fillStyle = '#a76834'
+              for (const [dx, dy] of [[-0.5,0],[0,0.2],[0.5,0],[-0.25,-0.3],[0.25,-0.3]]) {
+                this.ctx.beginPath()
+                this.ctx.arc(point.x + dx * scale, point.y - 0.8 * scale + dy * scale, Math.max(0.6, 0.2 * scale), 0, Math.PI * 2)
+                this.ctx.fill()
+              }
             }
           }
+        })
+      }
+    } else if (p.buildingType === 'yard' && !(this.candidate && this.candidate === p)) {
+      items.push({
+        depth: p.x + p.z,
+        draw: () => {
+          const pt = this.project(p.x, p.z)
+          const tag = p.buildingName || p.name || '专属爱心绿地'
+          const c = this.ctx
+          c.save()
+          c.font = 'bold 12px sans-serif'
+          c.textAlign = 'center'
+          const bw = tag.length * 12 + 16
+          c.fillStyle = 'rgba(46, 125, 50, 0.85)'
+          c.beginPath()
+          if (typeof c.roundRect === 'function') c.roundRect(pt.x - bw/2, pt.y - 10, bw, 20, 5)
+          else c.rect(pt.x - bw/2, pt.y - 10, bw, 20)
+          c.fill()
+          c.fillStyle = '#ffffff'
+          c.fillText('🌿 ' + tag, pt.x, pt.y + 4)
+          c.restore()
         }
       })
+    }
     const x = p.x,
       z = p.z,
       h = (p.size || SIZE) / 2
@@ -2492,40 +2533,34 @@ class World2D {
           this.onStatus('已到达 · 休息 3 秒后在当前区域自由活动')
       }
       if (!wasMoving && !pet.planning && !(pet.interactingUntil > this.elapsed)) {
-        if (pet.autonomousAction && pet.autonomousAction.until <= this.elapsed) {
-          const actionName = pet.autonomousAction.type === 'drink' ? '喝饱水啦' : pet.autonomousAction.type === 'eat' ? '吃饱饭啦' : '休息好啦'
-          pet.autonomousAction = null
-          this.onStatus(`${pet.name} ${actionName}，开心地去草坪自由玩耍啦~`)
-          pet.idleSeconds = ROAM_WAIT
-          this.planRoam(pet)
+        if (pet.autonomousAction) {
+          const needsSatisfied = pet.needs && (
+            (pet.autonomousAction.type === 'drink' && (pet.needs.hydration || 0) >= 98) ||
+            (pet.autonomousAction.type === 'eat' && (pet.needs.satiety || 0) >= 98) ||
+            (pet.autonomousAction.type === 'sleep' && (pet.needs.energy || 0) >= 98)
+          )
+          if (needsSatisfied || pet.autonomousAction.until <= this.elapsed) {
+            const actionName = pet.autonomousAction.type === 'drink' ? '喝饱水啦' : pet.autonomousAction.type === 'eat' ? '吃饱饭啦' : '休息好啦'
+            pet.autonomousAction = null
+            pet.interactingUntil = 0
+            this.onStatus(`${pet.name} ${actionName}，开心地去草坪自由玩耍啦~`)
+            pet.idleSeconds = ROAM_WAIT
+            this.planRoam(pet)
+          }
         }
 
         // 自家庭院自主照料：在自家庭院内，当数值过低且没有跟随玩家/乘车时，自主去喝水、进食或休息
         const inOwnPlot = this.ownPlot && Math.abs(pet.position.x - this.ownPlot.x) <= (this.ownPlot.size || 48) / 2 && Math.abs(pet.position.z - this.ownPlot.z) <= (this.ownPlot.size || 48) / 2
-        const canAutoCare = pet.mine !== false && inOwnPlot && !pet.following && !pet.ridingVehicleId && (!pet.lastAutoCareAt || this.elapsed - pet.lastAutoCareAt > 20)
+        const needsCare = pet.needs && (
+          (pet.needs.hydration !== undefined && pet.needs.hydration < 40) ||
+          (pet.needs.satiety !== undefined && pet.needs.satiety < 40) ||
+          (pet.needs.energy !== undefined && pet.needs.energy < 40)
+        )
+        const canAutoCare = pet.mine !== false && inOwnPlot && !pet.following && !pet.ridingVehicleId && needsCare && ((this.elapsed - (pet.lastCareActionAt || 0)) > 25)
 
-        if (canAutoCare && pet.needs) {
-          const species = pet.species === 'cat' ? 'cat' : 'dog'
-          const stations = yardLayout(this.ownPlot).stations[species] || {}
-          if (pet.needs.hydration < 35 && stations.drink) {
-            pet.lastAutoCareAt = this.elapsed
-            pet.pendingAutonomousCare = 'drink'
-            this.moveTo(stations.drink, { care: 'drink' })
-            this.onStatus(`${pet.name} 觉得口渴了，自己跑去喷泉喝水~`)
-            continue
-          } else if (pet.needs.satiety < 35 && stations.eat && this.foodBowls && this.foodBowls[species] >= 10) {
-            pet.lastAutoCareAt = this.elapsed
-            pet.pendingAutonomousCare = 'eat'
-            this.moveTo(stations.eat, { care: 'eat' })
-            this.onStatus(`${pet.name} 肚子饿了，自己跑去碗边吃粮食~`)
-            continue
-          } else if (pet.needs.energy < 30 && stations.sleep) {
-            pet.lastAutoCareAt = this.elapsed
-            pet.pendingAutonomousCare = 'sleep'
-            this.moveTo(stations.sleep, { care: 'sleep' })
-            this.onStatus(`${pet.name} 玩累了，自己回窝休息~`)
-            continue
-          }
+        if (canAutoCare && !pet.pendingAutonomousCare && !pet.moving) {
+          pet.idleSeconds = ROAM_WAIT
+          this.planRoam(pet)
         }
 
         pet.idleSeconds = (pet.idleSeconds || 0) + dt

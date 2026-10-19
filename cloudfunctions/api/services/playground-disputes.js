@@ -130,15 +130,18 @@ module.exports = function createDisputesService(context) {
         .where({ communityId, buildingType: 'committee' })
         .get()
       for (const cDoc of (committeeRows.data || [])) {
-        const restoredName = `${cDoc.ownerName || '邻居'}的庭院`
+        const isPureYard = cDoc.previousBuildingType === 'yard' || cDoc.isNewPlot
+        const restoredType = isPureYard ? 'yard' : 'residential'
+        const restoredBuildingName = isPureYard ? '专属爱心绿地' : '住宅洋房'
+        const restoredName = isPureYard ? `${cDoc.ownerName || '邻居'}的专属爱心绿地` : `${cDoc.ownerName || '邻居'}的庭院`
         await tx.collection(PLOTS_COLLECTION).doc(cDoc._id).update({
           data: {
-            buildingType: 'residential',
-            buildingName: '住宅洋房',
+            buildingType: restoredType,
+            buildingName: restoredBuildingName,
             name: restoredName,
             committeeRevoked: true,
             revokedAt: stamp,
-            revokedReason: '存在超过3天未处理的社区便便纠纷，居委会已被自动收回'
+            revokedReason: '存在超过3天未处理的社区便便纠纷，居委会已被自动收回拆除，爱心币不予退还'
           }
         })
       }

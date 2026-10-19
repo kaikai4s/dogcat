@@ -40,11 +40,14 @@ module.exports = function createJusticeService(context) {
 
       for (const p of rows.data || []) {
         if (p.buildingType === 'police_station' || p.buildingType === 'prison') {
-          const restoredName = `${p.ownerName || '邻居'}的庭院`
+          const isPureYard = p.previousBuildingType === 'yard' || p.isNewPlot
+          const restoredType = isPureYard ? 'yard' : 'residential'
+          const restoredBuildingName = isPureYard ? '专属爱心绿地' : '住宅洋房'
+          const restoredName = isPureYard ? `${p.ownerName || '邻居'}的专属爱心绿地` : `${p.ownerName || '邻居'}的庭院`
           await tx.collection(PLOTS_COLLECTION).doc(p._id).update({
             data: {
-              buildingType: 'residential',
-              buildingName: '住宅洋房',
+              buildingType: restoredType,
+              buildingName: restoredBuildingName,
               name: restoredName,
               justiceRevoked: true,
               revokedAt: stamp,
@@ -55,8 +58,8 @@ module.exports = function createJusticeService(context) {
           if (mainOwner && mainOwner.plotId === p._id) {
             await tx.collection(PLOTS_COLLECTION).doc(mainOwner._id).update({
               data: {
-                buildingType: 'residential',
-                buildingName: '住宅洋房',
+                buildingType: restoredType,
+                buildingName: restoredBuildingName,
                 name: restoredName
               }
             })

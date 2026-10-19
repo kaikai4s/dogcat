@@ -506,8 +506,10 @@ module.exports = {
           })
         }
 
+        const prevType = targetPlot.buildingType || (targetPlot.isNewPlot ? 'yard' : 'residential')
         const updated = {
           ...targetPlot,
+          previousBuildingType: prevType,
           buildingId,
           buildingType,
           buildingName,

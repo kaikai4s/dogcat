@@ -39,7 +39,7 @@
         </view>
         <text class="life-muted">开垦、播种、浇水、施肥与收获，都需要角色走到对应绿地旁进行。点击地图上的绿地也能自动寻路走过去。</text>
       </block>
-      <block wx:elif="{{farmTab === 'shop'}}"><view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}}种子</text><text class="life-muted">{{item.minutes}}分钟成熟 · 基础收成{{item.yield}}份</text><text class="life-muted">{{item.enabled === false ? '已下架' : item.unlocked ? '已解锁' : '第 ' + item.level + ' 阶段解锁'}} · 库存 {{item.seeds}}包</text></view><button data-operation="buySeeds" data-crop="{{item.id}}" data-quantity="5" bindtap="farmOperation" disabled="{{farmBusy || !item.unlocked}}">{{item.price ? item.price * 5 + '爱心币' : '免费领取'}} / 5包</button></view></block>
+      <block wx:elif="{{farmTab === 'shop'}}"><view class="farm-product" wx:for="{{farm.crops}}" wx:key="id"><view><text>{{item.name}}种子</text><text class="life-muted">{{item.minutes}}分钟成熟 · 基础收成{{item.yield}}份</text><text class="life-muted">{{item.enabled === false ? '已下架' : item.unlocked ? '已解锁' : '第 ' + item.level + ' 阶段解锁'}} · 库存 {{item.seeds}}包</text></view><button data-operation="buySeeds" data-crop="{{item.id}}" data-quantity="5" bindtap="farmOperation" disabled="{{farmBusy || !item.unlocked}}">免费领取 5包</button></view></block>
       <block wx:else>
         <view class="farm-product">
           <view><text>环保有机肥 × {{farm.manure || 0}}</text><text class="life-muted">拾取宠物便便化为有机肥 · 施肥享受1小时双倍速加速</text></view>
@@ -121,8 +121,8 @@
         </view>
       </view>
       <view class="build-actions" wx:if="{{selectedBuilding}}">
-        <button class="build-in-yard-btn" bindtap="buildInYardAction" disabled="{{buildBusy}}">在已认领绿地内建造</button>
-        <button class="build-out-yard-btn" bindtap="buildOutYardAction" disabled="{{buildBusy}}">认领新专属绿地建造</button>
+        <button class="build-in-yard-btn" bindtap="buildInYardAction" disabled="{{buildBusy}}">落座建造至专属绿地</button>
+        <button class="build-out-yard-btn" bindtap="buildOutYardAction" disabled="{{buildBusy}}">先认领新专属绿地</button>
       </view>
     </scroll-view>
   </view>

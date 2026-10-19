@@ -146,6 +146,7 @@ Page({
   stop() {
     this.joystickEnd()
     if (this.jailTimer) clearInterval(this.jailTimer)
+    if (this.statusFadeTimer) clearTimeout(this.statusFadeTimer)
     this.visible = false
     this.authorized = false
     this.version = (this.version || 0) + 1
@@ -154,6 +155,7 @@ Page({
     this.world = null
   },
   initialize() {
+    if (this.statusFadeTimer) clearTimeout(this.statusFadeTimer)
     this.pendingFarm=null;this.farmSnapshot=null;this.farmRequest=null;this.farmAttempt=0
     if(this.world && this.world.manualZoom) this.sceneZoom=this.world.zoom
     this.joystickEnd()
@@ -1055,13 +1057,41 @@ Page({
     if (!building) return
     const world = this.world
     if (!world || !this.data.hasPlot) {
-      wx.showToast({ title: '您尚未安顿庭院，请规划独立草坪建造', icon: 'none' })
+      wx.showModal({
+        title: '温馨提示',
+        content: '公共设施房屋只能建造在属于您自己的已认领绿地内部，请先点击顶部菜单认领专属爱心绿地！',
+        showCancel: false
+      })
       return
     }
+    const myPlots = (world.plots && world.plots().filter((p) => p.mine)) || (world.ownPlot ? [world.ownPlot] : [])
+    if (!myPlots.length) {
+      wx.showModal({
+        title: '温馨提示',
+        content: '公共设施房屋只能建造在属于您自己的已认领绿地内部，请先认领一块专属爱心绿地！',
+        showCancel: false
+      })
+      return
+    }
+
+    let targetPlot = myPlots[0]
+    if (myPlots.length > 1) {
+      const itemList = myPlots.map((p, idx) => p.buildingName || p.name || `我的专属绿地 ${idx + 1}`)
+      const selectedIndex = await new Promise((resolve) => {
+        wx.showActionSheet({
+          itemList,
+          success: (res) => resolve(res.tapIndex),
+          fail: () => resolve(-1)
+        })
+      })
+      if (selectedIndex < 0) return
+      targetPlot = myPlots[selectedIndex]
+    }
+
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
-        title: `在庭院内建造【${building.name}】`,
-        content: `建筑占地约 ${building.tileCount || 4} 块草地，建造将消耗 ${building.costCoins || 0} 爱心币，是否确认建造？`,
+        title: `在绿地内建造【${building.name}】`,
+        content: `将在【${targetPlot.buildingName || targetPlot.name || '自家庭院'}】内部建造该单房建筑（不含额外地皮）。\n建造消耗：${building.costCoins || 0} 爱心币。是否确认建造？`,
         confirmText: '立即建造',
         success: (r) => resolve(r.confirm),
         fail: () => resolve(false)
@@ -1071,15 +1101,17 @@ Page({
     this.setData({ buildBusy: true })
     try {
       const result = await callFunction('playground', 'buildInYard', {
+        plotId: targetPlot.id || targetPlot._id,
         buildingId: building.id,
         buildingType: building.type,
         buildingName: building.name,
         buildingImage: building.image,
         buildingWidth: building.width,
         buildingDepth: building.depth,
+        costCoins: building.costCoins || 0,
         sceneId: world.scene && world.scene.sceneId
       })
-      wx.showToast({ title: '庭院建筑建造成功！', icon: 'success' })
+      wx.showToast({ title: '建筑落座成功！', icon: 'success' })
       this.closeBuild()
       if (this.world === world && !world.destroyed) {
         if (world.scene) this.initialize()
@@ -1092,23 +1124,8 @@ Page({
     }
   },
   async buildOutYardAction() {
-    const building = this.data.selectedBuilding
-    if (!building) return
-    const world = this.world
-    if (!world) return
-    const confirmed = await new Promise((resolve) =>
-      wx.showModal({
-        title: `规划独立草坪建造【${building.name}】`,
-        content: `将规划一块独立专属草坪并建造该建筑（围木栅栏并由您自选留门朝向），需消耗 ${building.costCoins || 0} 爱心币。是否前往场景选址？`,
-        confirmText: '前往选址',
-        success: (r) => resolve(r.confirm),
-        fail: () => resolve(false)
-      })
-    )
-    if (!confirmed) return
-    this.pendingBuilding = building
     this.closeBuild()
-    this.choosePlot(true)
+    this.buyNewPlotAction()
   },
   async repairVehicleAction() {
     const world = this.world

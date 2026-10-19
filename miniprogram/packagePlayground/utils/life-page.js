@@ -12,7 +12,11 @@ module.exports={
   },
   async petCare(e) {
     const world=this.world,operation=e.currentTarget.dataset.operation,petId=this.data.selectedPetId
-    if(!world||!world.sceneSync||!petId||this.data.petCareBusy)return
+    if(!world||!petId||this.data.petCareBusy)return
+    if(!world.sceneSync) {
+      world.request(operation)
+      return
+    }
     this.setData({petCareBusy:true})
     try {
       await world.sceneSync.petAction(petId,operation)
