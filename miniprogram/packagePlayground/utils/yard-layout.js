@@ -56,8 +56,16 @@ function yardLayout(plot) {
   )
   const spot=sprites.find((p)=>p.name==='car_road')
   const custom = !!plot.buildingId && plot.buildingType !== 'residential'
+  const isFloor = plot.buildingType === 'floor' || plot.buildingCategory === 'floor' || (plot.buildingType && String(plot.buildingType).startsWith('floor_'))
+  const isTree = plot.buildingType === 'tree' || plot.buildingCategory === 'tree' || (plot.buildingType && String(plot.buildingType).startsWith('tree_'))
   let visibleSprites=plot.buildingType==='yard'?[]:plot.buildingType&&plot.buildingType!=='residential'?sprites.filter((p)=>p.name==='house'):sprites
-  if(custom)visibleSprites=visibleSprites.map((p)=>p.name==='house'?{...p,radius:Math.max(plot.buildingWidth||7,plot.buildingDepth||7)/2,size:Math.max(plot.buildingWidth||7,plot.buildingDepth||7)*2,anchor:.8}:p)
+  if(custom)visibleSprites=visibleSprites.map((p)=>{
+    if(p.name!=='house')return p
+    const bW=plot.buildingWidth||7,bD=plot.buildingDepth||7,bSize=Math.max(bW,bD)*2
+    if(isFloor)return {...p,radius:0,size:bSize,anchor:0.5}
+    if(isTree)return {...p,radius:Math.min(1.5,Math.max(0.6,bW*0.15)),size:bSize,anchor:0.88}
+    return {...p,radius:Math.max(bW,bD)/2,size:bSize,anchor:0.8}
+  })
   return { half, sprites:visibleSprites, stations, parking:{x:spot.x,z:spot.z}, vehicleSize:13*detailScale }
 }
 

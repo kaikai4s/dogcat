@@ -9,7 +9,15 @@ Page({
     petRosterOpen:false,petAlerts:[],petCareBusy:false,selectedPet:null,
     disputesOpen: false, disputes: [], isCommittee: false, committeeOwnerName: '', disputesLoading: false,
     justiceOpen: false, justiceLoading: false, accidents: [], myJailStatus: null, isHumanInjured: false,
-    buildOpen: false, buildLoading: false, buildBusy: false, buildingCatalog: [], selectedBuilding: null, nearbyBuilding: null,
+    buildOpen: false, buildLoading: false, buildBusy: false, buildingCatalog: [], filteredBuildingCatalog: [], selectedBuilding: null, nearbyBuilding: null,
+    buildCategories: [
+      { key: 'all', label: '全部' },
+      { key: 'public', label: '公共配套' },
+      { key: 'residential', label: '居住木屋' },
+      { key: 'floor', label: '地板素材' },
+      { key: 'tree', label: '景观树木' }
+    ],
+    activeBuildCategory: 'all',
     farmEditMode:false,farmPlotId:'',plotSizes:[],farmCultivated:[],farmOpen:false,farmLoading:false,farmBusy:false,farm:null,farmBed:null,nearbyFarm:null,farmSeedAvailable:false,farmCropId:'carrot',farmSelectedBed:0,
     riding:false,rideBusy:false,nearbyRide:null,nearbyInvite:null,passengers:[],
     loading: true,
@@ -1101,17 +1109,32 @@ Page({
       return p.buildingType === 'yard' || !p.buildingType
     })
   },
+  filterBuildCatalog(buildings, category) {
+    if (!category || category === 'all') return buildings || []
+    return (buildings || []).filter((b) => (b.category || 'public') === category)
+  },
+  switchBuildCategory(e) {
+    const key = e.currentTarget.dataset.key
+    const filtered = this.filterBuildCatalog(this.data.buildingCatalog, key)
+    this.setData({
+      activeBuildCategory: key,
+      filteredBuildingCatalog: filtered,
+      selectedBuilding: filtered.find((b) => b.unlocked) || filtered[0] || null
+    })
+  },
   async openBuild() {
     this.setData({ buildOpen: true, buildLoading: true })
     try {
       const result = await callFunction('playground', 'getBuildingCatalog')
       const buildings = (result.buildings || []).filter((b) => b.enabled !== false)
+      const filtered = this.filterBuildCatalog(buildings, this.data.activeBuildCategory)
       const serverEmptyPlots = Array.isArray(result.emptyPlots) ? result.emptyPlots : []
       const localEmptyPlots = this.getAvailableEmptyPlots()
       const finalEmptyPlots = serverEmptyPlots.length > 0 ? serverEmptyPlots : localEmptyPlots
       this.setData({
         buildingCatalog: buildings,
-        selectedBuilding: buildings.find((b) => b.unlocked) || buildings[0] || null,
+        filteredBuildingCatalog: filtered,
+        selectedBuilding: filtered.find((b) => b.unlocked) || filtered[0] || null,
         plotSizes: result.plotSizes || this.data.plotSizes,
         emptyPlots: finalEmptyPlots,
         availableEmptyPlotCount: finalEmptyPlots.length
@@ -1127,7 +1150,7 @@ Page({
   },
   selectBuilding(e) {
     const id = e.currentTarget.dataset.id
-    const b = (this.data.buildingCatalog || []).find((item) => item.id === id)
+    const b = (this.data.filteredBuildingCatalog || this.data.buildingCatalog || []).find((item) => item.id === id)
     if (b) this.setData({ selectedBuilding: b })
   },
   async buildInYardAction() {

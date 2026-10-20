@@ -303,3 +303,75 @@ test('overview and applySceneRecords prioritize residential villa over committee
   assert.equal(w.character.position.x, homePlot.x + 3)
   assert.equal(w.character.position.z, homePlot.z + 14)
 })
+
+test('drawYard renders floor tiles at ground level and tree sprites with proper depth and custom images', () => {
+  const page = { setData: () => {}, pushStatusMessage: () => {} }
+  const drawCalls = []
+  const ctx = {
+    save() {},
+    restore() {},
+    beginPath() {},
+    stroke() {},
+    fill() {},
+    rect() {},
+    roundRect() {},
+    fillText() {},
+    strokeText() {},
+    drawImage(...args) {
+      drawCalls.push(args)
+    }
+  }
+  const w = new World2D(page, null, {
+    world: { width: 1000, height: 1000 },
+    pets: []
+  })
+  w.ctx = ctx
+  w.scale = 10
+  w.zoom = 1
+  w.project = (x, z) => ({ x: x * 2, y: z * 2 })
+  w.sprite = (name, x, z, size, anchor) => {
+    drawCalls.push([name, x, z, size, anchor])
+  }
+
+  // 1. 地板地坪素材绘制：如果有自定义图片，平铺绘制在地表层，不产生立面遮挡
+  const floorPlot = {
+    id: 'plot_floor',
+    x: 200,
+    z: 200,
+    size: 48,
+    buildingType: 'floor',
+    buildingCategory: 'floor',
+    buildingWidth: 7,
+    buildingDepth: 7,
+    buildingImage: 'cloud://test/deck.png'
+  }
+  w.buildingImage = (id) => (id === 'cloud://test/deck.png' ? { width: 100, height: 100 } : null)
+  const items = []
+  w.drawYard(floorPlot, items)
+  // 地板地坪素材在地面层平铺绘制，不将立面房子放入 items 遮挡角色（items 中仅含外围栅栏段）
+  const buildingInItems = items.find((it) => it.depth === floorPlot.x + floorPlot.z)
+  assert.equal(buildingInItems, undefined)
+  assert.ok(drawCalls.length > 0)
+
+  // 2. 树木景观素材绘制：参与立体 items 排序
+  const treePlot = {
+    id: 'plot_tree',
+    x: 300,
+    z: 300,
+    size: 48,
+    buildingType: 'tree',
+    buildingCategory: 'tree',
+    buildingWidth: 7,
+    buildingDepth: 7,
+    buildingImage: 'cloud://test/cherry.png'
+  }
+  w.buildingImage = (id) => (id === 'cloud://test/cherry.png' ? { width: 120, height: 160 } : null)
+  const treeItems = []
+  w.drawYard(treePlot, treeItems)
+  const treeInItems = treeItems.find((it) => it.depth === treePlot.x + treePlot.z)
+  assert.ok(treeInItems, '树木应当参与 items 立体深度排序')
+  assert.equal(treeInItems.depth, 600)
+  treeInItems.draw()
+  // 确认树木的 drawImage 被调用
+  assert.ok(drawCalls.some((args) => args[0] && args[0].width === 120))
+})

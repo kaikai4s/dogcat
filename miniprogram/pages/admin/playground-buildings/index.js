@@ -37,17 +37,30 @@ function calcGrassTiles(w, d) {
 
 const TYPE_NAMES = {
   residential: '普通住宅/房屋',
+  wood_cabin: '田园小木屋',
+  floor: '地板/地坪铺装素材',
+  tree: '园林/景观树木素材',
   repair_shop: '修理厂（洗车/修车）',
   pet_hospital: '宠物医院（洗护/治疗）',
   committee: '居委会（环境卫生调解/唯一）',
-  police_station: '文明督导所（交通出行劝导/文明督导）',
-  prison: '安全宣教自省室（违规驾驶宣教自省）'
+  police_station: '文明督导所（交通出行劝导）',
+  prison: '安全宣教自省室（违规自省）',
+  decoration: '景观装饰设施'
 }
 
 Page({
   data: {
     levels:[],levelChoices:[],plotSizes:[],
     buildings: [],
+    displayBuildings: [],
+    activeCategory: 'all',
+    categories: [
+      { key: 'all', label: '全部' },
+      { key: 'public', label: '🏛 公共配套' },
+      { key: 'residential', label: '🏡 居住木屋' },
+      { key: 'floor', label: '🧱 地板素材' },
+      { key: 'tree', label: '🌳 景观树木' }
+    ],
     revision: 0,
     loading: false,
     busy: false,
@@ -56,13 +69,28 @@ Page({
     isNew: false,
     progress: 0,
     types: [
-      { key: 'residential', label: '普通住宅/房屋' },
-      { key: 'repair_shop', label: '修理厂（洗车/修车）' },
-      { key: 'pet_hospital', label: '宠物医院（洗护/治疗）' },
-      { key: 'committee', label: '居委会（环境卫生调解/唯一）' },
-      { key: 'police_station', label: '文明督导所（交通出行劝导/文明督导）' },
-      { key: 'prison', label: '安全宣教自省室（违规驾驶宣教自省）' }
+      { key: 'residential', label: '普通住宅/房屋', category: 'residential' },
+      { key: 'wood_cabin', label: '田园小木屋', category: 'residential' },
+      { key: 'floor', label: '地板/地坪铺装素材', category: 'floor' },
+      { key: 'tree', label: '园林/景观树木素材', category: 'tree' },
+      { key: 'repair_shop', label: '修理厂（洗车/修车）', category: 'public' },
+      { key: 'pet_hospital', label: '宠物医院（洗护/治疗）', category: 'public' },
+      { key: 'committee', label: '居委会（环境卫生调解/唯一）', category: 'public' },
+      { key: 'police_station', label: '文明督导所（交通出行劝导）', category: 'public' },
+      { key: 'prison', label: '安全宣教自省室（违规自省）', category: 'public' },
+      { key: 'decoration', label: '景观装饰设施', category: 'decoration' }
     ]
+  },
+  filterBuildings(buildings, category) {
+    if (!category || category === 'all') return buildings
+    return buildings.filter((b) => (b.category || 'public') === category)
+  },
+  switchCategory(e) {
+    const key = e.currentTarget.dataset.key
+    this.setData({
+      activeCategory: key,
+      displayBuildings: this.filterBuildings(this.data.buildings, key)
+    })
   },
   onShow() {
     this.closed = false
@@ -78,10 +106,12 @@ Page({
     try {
       const result = await callFunction('playgroundBuilding', 'list')
       if (!this.closed && token === this.loadToken) {
+        const buildings = result.buildings || []
         this.setData({
           levels:result.levels||[],
           plotSizes:(result.plotSizes||[]).map((p)=>({...p,choices:(result.levels||[]).map((l)=>({...l,checked:(p.unlockLevelIds||[]).includes(l._id)}))})),
-          buildings: result.buildings || [],
+          buildings,
+          displayBuildings: this.filterBuildings(buildings, this.data.activeCategory),
           revision: result.revision || 0
         })
       }
@@ -99,10 +129,13 @@ Page({
     if (this.data.busy || !can(this.data.adminAccess, 'playgroundBuilding.save')) return
     const id = e.currentTarget.dataset.id
     const building = this.data.buildings.find((b) => b.id === id)
+    const defaultType = this.data.activeCategory === 'floor' ? 'floor' : this.data.activeCategory === 'tree' ? 'tree' : this.data.activeCategory === 'residential' ? 'wood_cabin' : 'residential'
+    const defaultCategory = this.data.activeCategory !== 'all' ? this.data.activeCategory : 'residential'
     const base = building || {
       id: '',
       name: '',
-      type: 'residential',
+      type: defaultType,
+      category: defaultCategory,
       desc: '',
       width: 7,
       depth: 7,
@@ -140,8 +173,12 @@ Page({
   },
   typeChange(e) {
     const type = e.detail.value
-    if(!this.data.types.some((t)=>t.key===type))return
-    this.setData({ 'form.type': type })
+    const found = this.data.types.find((t) => t.key === type)
+    if (!found) return
+    this.setData({
+      'form.type': type,
+      'form.category': found.category || 'public'
+    })
   },
   levelsChange(e){this.setData({'form.unlockLevelIds':e.detail.value})},
   plotLevelsChange(e) {
@@ -203,8 +240,10 @@ Page({
         building: form,
         revision: this.data.revision
       })
+      const buildings = result.buildings || []
       this.setData({
-        buildings: result.buildings || [],
+        buildings,
+        displayBuildings: this.filterBuildings(buildings, this.data.activeCategory),
         revision: result.revision || 0,
         form: null
       })
@@ -232,8 +271,10 @@ Page({
       const result = await callFunction('playgroundBuilding', 'remove', {
         id: this.data.form.id,revision:this.data.revision
       })
+      const buildings = result.buildings || []
       this.setData({
-        buildings: result.buildings || [],
+        buildings,
+        displayBuildings: this.filterBuildings(buildings, this.data.activeCategory),
         revision: result.revision || 0,
         form: null
       })

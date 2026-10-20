@@ -84,6 +84,10 @@
 .dispute-time { font-size: 10px; color: #e65100; line-height: 14px; }
 .resolve-btn { flex: none; margin: 0; padding: 0 10px; line-height: 32px; font-size: 11px; border-radius: 12px; background: #2e7d32; color: #ffffff; }
 
+.build-category-tabs { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; padding-bottom: 2px; }
+.build-category-tab { flex: none; padding: 6px 14px; background: #e8ede4; color: #43662b; font-size: 12px; font-weight: 500; border-radius: 16px; white-space: nowrap; }
+.build-category-tab.active { background: #558b2f; color: #ffffff; font-weight: 600; }
+
 .build-empty { padding: 40px; text-align: center; color: #7f9074; font-size: 13px; }
 .build-content { flex: 1; min-height: 0; height: 0; }
 .building-cards { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }

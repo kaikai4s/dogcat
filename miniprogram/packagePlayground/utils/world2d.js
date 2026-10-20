@@ -2059,10 +2059,32 @@ class World2D {
   }
   drawYard(p, items) {
     const isPureYard = p.buildingType === 'yard' || (this.candidate && this.candidate === p && this.isPlacingNewPlot)
+    const isFloor = p.buildingType === 'floor' || p.buildingCategory === 'floor' || (p.buildingType && String(p.buildingType).startsWith('floor_'))
+    const isTree = p.buildingType === 'tree' || p.buildingCategory === 'tree' || (p.buildingType && String(p.buildingType).startsWith('tree_'))
     const isSingleBuilding = p.buildingType && !['residential', 'yard'].includes(p.buildingType)
     const layout = yardLayout(p)
     if (!isPureYard) {
-      if (isSingleBuilding) {
+      if (isFloor) {
+        // 地板地坪素材直接在地面草坪上平铺绘制，不产生立体深度遮挡
+        const custom = this.buildingImage(p.buildingImage)
+        const pt = this.project(p.x, p.z)
+        const bW = Math.max(3.5, p.buildingWidth || 7) * this.scale * this.zoom
+        const bD = Math.max(3.5, p.buildingDepth || 7) * this.scale * this.zoom
+        if (custom && custom.width > 0 && custom.height > 0) {
+          this.ctx.drawImage(custom, pt.x - bW, pt.y - bD, bW * 2, bD * 2)
+        } else {
+          this.ctx.save()
+          this.ctx.fillStyle = '#b0bec5'
+          this.ctx.beginPath()
+          if (typeof this.ctx.roundRect === 'function') this.ctx.roundRect(pt.x - bW, pt.y - bD, bW * 2, bD * 2, 8)
+          else this.ctx.rect(pt.x - bW, pt.y - bD, bW * 2, bD * 2)
+          this.ctx.fill()
+          this.ctx.strokeStyle = '#78909c'
+          this.ctx.lineWidth = 2
+          this.ctx.stroke()
+          this.ctx.restore()
+        }
+      } else if (isSingleBuilding) {
         this.drawStonePath(
           { x: p.x, z: p.z + 11 },
           { x: p.x, z: p.z + layout.half - 1 }
@@ -2094,15 +2116,20 @@ class World2D {
       const frames = FOUNTAIN_FRAMES.filter((name) => this.assets[name])
       for (const item of layout.sprites) {
         if (isSingleBuilding && item.name !== 'house') continue
+        if (isFloor && item.name === 'house') continue
         if(item.name==='car_road')this.sprite(item.name,item.x,item.z,item.size,item.anchor)
         else
         items.push({
           depth: item.x + item.z,
           draw: () => {
-            const custom=item.name==='house'&&this.buildingImage(p.buildingImage)
-            if(custom) {
-              const point=this.project(item.x,item.z),width=item.size*this.scale*this.zoom,height=width*custom.height/custom.width
-              this.ctx.drawImage(custom,point.x-width/2,point.y-height*item.anchor,width,height)
+            const custom = item.name === 'house' && this.buildingImage(p.buildingImage)
+            if (custom && custom.width > 0 && custom.height > 0) {
+              const point = this.project(item.x, item.z)
+              const width = item.size * this.scale * this.zoom
+              const height = (width * custom.height) / custom.width
+              this.ctx.drawImage(custom, point.x - width / 2, point.y - height * item.anchor, width, height)
+            } else if (isTree && item.name === 'house') {
+              this.sprite('tree', item.x, item.z, item.size, item.anchor)
             } else
             this.sprite(
               item.name === 'fountain'
@@ -2113,9 +2140,9 @@ class World2D {
               item.size,
               item.anchor
             )
-            if (item.name === 'house' && p.buildingType && p.buildingType !== 'residential') {
-              const bLabels = { committee: '🏛 邻里服务站', repair_shop: '🔧 便民洗车', pet_hospital: '🏥 宠医健康', police_station: '📋 出行督导', prison: '🕊 安全宣教', wood_cabin: '🏡 田园小木屋' }
-              const bColors = { committee: '#d84315', repair_shop: '#0277bd', pet_hospital: '#2e7d32', police_station: '#1565c0', prison: '#6a1b9a', wood_cabin: '#5d4037' }
+            if (item.name === 'house' && p.buildingType && p.buildingType !== 'residential' && !isFloor) {
+              const bLabels = { committee: '🏛 邻里服务站', repair_shop: '🔧 便民洗车', pet_hospital: '🏥 宠医健康', police_station: '📋 出行督导', prison: '🕊 安全宣教', wood_cabin: '🏡 田园小木屋', tree: '🌳 景观树木' }
+              const bColors = { committee: '#d84315', repair_shop: '#0277bd', pet_hospital: '#2e7d32', police_station: '#1565c0', prison: '#6a1b9a', wood_cabin: '#5d4037', tree: '#2e7d32' }
               const tag = bLabels[p.buildingType] || p.buildingName || '工坊'
               const tagColor = bColors[p.buildingType] || '#388e3c'
               const pt = this.project(item.x, item.z)

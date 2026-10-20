@@ -16,26 +16,53 @@ const ASSET_NAMES = [
   ...YARD_EXTRAS
 ]
 const downloads = new Map()
+function isDirectPath(str) {
+  if (typeof str !== 'string') return false
+  return (
+    str.startsWith('cloud://') ||
+    str.startsWith('http://') ||
+    str.startsWith('https://') ||
+    str.startsWith('wxfile://') ||
+    str.startsWith('/')
+  )
+}
 function assetId(name) {
-  if(name.startsWith('cloud://') || name.startsWith('/'))return name
+  if (isDirectPath(name)) return name
   return CHARACTER_ASSETS[name] || (PET_ATLASES[name] && PET_ATLASES[name].fileID) || CLOUD_ASSET_BASE + '/' + name + '.png'
 }
 function download(name) {
   const id = assetId(name)
-  if (id.startsWith('/')) return Promise.resolve(id)
+  if (id.startsWith('/') || id.startsWith('wxfile://')) return Promise.resolve(id)
   if (!downloads.has(id))
     downloads.set(
       id,
-      new Promise((resolve, reject) =>
-        wx.cloud.downloadFile({
-          fileID: id,
-          success: (r) =>
-            r.tempFilePath
-              ? resolve(r.tempFilePath)
-              : reject(new Error('云图片未返回有效文件')),
-          fail: reject
-        })
-      ).catch((e) => {
+      new Promise((resolve, reject) => {
+        if (id.startsWith('http://') || id.startsWith('https://')) {
+          if (typeof wx !== 'undefined' && typeof wx.downloadFile === 'function') {
+            wx.downloadFile({
+              url: id,
+              success: (r) =>
+                r.tempFilePath
+                  ? resolve(r.tempFilePath)
+                  : reject(new Error('网络图片下载未返回有效文件')),
+              fail: reject
+            })
+          } else {
+            resolve(id)
+          }
+        } else if (typeof wx !== 'undefined' && wx.cloud && typeof wx.cloud.downloadFile === 'function') {
+          wx.cloud.downloadFile({
+            fileID: id,
+            success: (r) =>
+              r.tempFilePath
+                ? resolve(r.tempFilePath)
+                : reject(new Error('云图片未返回有效文件')),
+            fail: reject
+          })
+        } else {
+          resolve(id)
+        }
+      }).catch((e) => {
         downloads.delete(id)
         throw e
       })
@@ -48,7 +75,7 @@ function surface(width, height) {
 function prepare(image, name) {
   // Character assets already have alpha and fixed anchors. Background removal
   // would damage white shoes; resizing an atlas would break its frame grid.
-  if (name.startsWith('cloud://') || name.startsWith('/') || CHARACTER_ASSETS[name] || PET_ATLASES[name]) return image
+  if (isDirectPath(name) || CHARACTER_ASSETS[name] || PET_ATLASES[name]) return image
   if (name === 'grass_tile') {
     const tile = surface(256, 256),
       c = tile.getContext('2d')

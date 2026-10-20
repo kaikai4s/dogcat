@@ -35,6 +35,7 @@ module.exports={
         if(this.destroyed)return
         this.buildingImages.set(fileID,image)
         if(this.buildingImages.size>32){const first=this.buildingImages.keys().next().value;this.buildingImages.delete(first);this.loader.cache&&this.loader.cache.delete(first)}
+        if(typeof this.onAssetLoaded==='function')this.onAssetLoaded(fileID,image)
       }).catch(()=>this.buildingRetry.set(fileID,Date.now()+10000)).finally(()=>this.buildingLoads.delete(fileID))
       this.buildingLoads.set(fileID,task)
     }

@@ -43,6 +43,32 @@
   font-size: 28rpx;
 }
 
+.category-tabs {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+  overflow-x: auto;
+  padding-bottom: 4rpx;
+}
+
+.category-tab {
+  padding: 12rpx 24rpx;
+  background: #e8ede4;
+  color: #4b6348;
+  font-size: 26rpx;
+  font-weight: 500;
+  border-radius: 30rpx;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.category-tab.active {
+  background: #5b874b;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 4rpx 12rpx rgba(91, 135, 75, 0.25);
+}
+
 .building-list {
   display: flex;
   flex-direction: column;

@@ -329,3 +329,82 @@ test('pet automatically leaves facility and roams when thirst or hunger is satis
   const updatedPet = f.pet('a')
   assert.equal(updatedPet.care, null)
 })
+
+test('building catalog classifies buildings and supports floor paving and landscape tree placement without collision traps', async () => {
+  const f = fixture()
+  const service = createBuildingsService(f.context)
+  const catalog = await service.list()
+
+  // 1. 验证默认预设包含分类
+  const floorItem = catalog.buildings.find((b) => b.type === 'floor')
+  assert.ok(floorItem)
+  assert.equal(floorItem.category, 'floor')
+
+  const treeItem = catalog.buildings.find((b) => b.type === 'tree')
+  assert.ok(treeItem)
+  assert.equal(treeItem.category, 'tree')
+
+  const cabinItem = catalog.buildings.find((b) => b.type === 'wood_cabin')
+  assert.ok(cabinItem)
+  assert.equal(cabinItem.category, 'residential')
+
+  const hospitalItem = catalog.buildings.find((b) => b.type === 'pet_hospital')
+  assert.equal(hospitalItem.category, 'public')
+
+  // 2. 保存自定义地坪和自定义景观树
+  const saved = await service.save('admin', {
+    revision: catalog.revision,
+    building: {
+      id: 'custom_deck_tile',
+      name: '户外木纹地坪',
+      type: 'floor',
+      category: 'floor',
+      width: 7,
+      depth: 7,
+      image: 'https://cloud.test/deck.png'
+    }
+  })
+  const customDeck = saved.buildings.find((b) => b.id === 'custom_deck_tile')
+  assert.ok(customDeck)
+  assert.equal(customDeck.category, 'floor')
+  assert.equal(customDeck.tileCount, 4)
+
+  // 3. 玩家先认领新独立地皮，随后在专属绿地内铺设地板
+  const user = f.user('a')
+  await f.plots.claim('a', user, { x: 280, z: 280 }) // 初始主宅
+  const emptyYard = await f.plots.claim('a', user, { x: 560, z: 280, isNewPlot: true }) // 认领新绿地
+  assert.equal(emptyYard.buildingType, 'yard')
+
+  const builtPlot = await f.plots.buildInYard('a', user, {
+    plotId: emptyYard.id,
+    buildingId: 'custom_deck_tile'
+  })
+  assert.equal(builtPlot.buildingType, 'floor')
+  assert.equal(builtPlot.buildingCategory, 'floor')
+  assert.equal(builtPlot.buildingImage, 'https://cloud.test/deck.png')
+
+  // 4. 验证 yardLayout 计算避障碰撞体
+  const { yardLayout } = require('../../miniprogram/packagePlayground/utils/yard-layout')
+  const floorLayout = yardLayout(builtPlot)
+  const floorHouseSprite = floorLayout.sprites.find((s) => s.name === 'house')
+  assert.ok(floorHouseSprite)
+  // 地板地坪素材为地表物，阻挡半径必须为 0，角色和宠物可以在上面自如穿行！
+  assert.equal(floorHouseSprite.radius, 0)
+
+  // 5. 验证景观树的避障半径仅为树干，不能把整棵树冠作为全实心碰撞阻挡
+  const treePlot = {
+    x: 480,
+    z: 280,
+    size: 48,
+    buildingId: 'tree_cherry_blossom_default',
+    buildingType: 'tree',
+    buildingCategory: 'tree',
+    buildingWidth: 7,
+    buildingDepth: 7
+  }
+  const treeLayout = yardLayout(treePlot)
+  const treeSprite = treeLayout.sprites.find((s) => s.name === 'house')
+  assert.ok(treeSprite)
+  assert.ok(treeSprite.radius <= 1.5, '树木避障仅阻挡树干')
+  assert.equal(treeSprite.anchor, 0.88)
+})

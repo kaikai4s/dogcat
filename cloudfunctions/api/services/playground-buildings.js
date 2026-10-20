@@ -9,11 +9,26 @@ const UPLOAD_PATH = 'packagePlayground/2d/baseImage/buildings/custom/'
 const DEFAULT_PLOT_SIZES=[36,48,64,80,112].map((size)=>({size,label:`${size}×${size} 米绿地`,unlockLevelIds:[]}))
 const GRASS_TILE_SIZE = 3.5 // 单块草地标准尺寸 3.5m x 3.5m = 12.25 平方米
 
+const VALID_CATEGORIES = ['public', 'residential', 'floor', 'tree', 'decoration']
+
+function deriveCategory(type, explicitCategory) {
+  if (explicitCategory && VALID_CATEGORIES.includes(explicitCategory)) {
+    return explicitCategory
+  }
+  if (type === 'floor' || (typeof type === 'string' && type.startsWith('floor_'))) return 'floor'
+  if (type === 'tree' || (typeof type === 'string' && (type.startsWith('tree_') || type.startsWith('landscape_')))) return 'tree'
+  if (['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison'].includes(type)) return 'public'
+  if (['residential', 'wood_cabin'].includes(type)) return 'residential'
+  if (type === 'decoration') return 'decoration'
+  return 'decoration'
+}
+
 const DEFAULT_BUILDINGS = [
   {
     id: 'repair_shop_default',
     name: '社区修理厂',
     type: 'repair_shop',
+    category: 'public',
     desc: '可为车辆洗车清洁、维修保养，清除车名[肮脏]状态',
     width: 7,
     depth: 7,
@@ -26,6 +41,7 @@ const DEFAULT_BUILDINGS = [
     id: 'committee_default',
     name: '社区居委会',
     type: 'committee',
+    category: 'public',
     desc: '每个社区唯一自治机构，处理路面未清理便便反馈，督促文明养宠并给予爱心奖励；若3天未处理将重新推选',
     width: 7,
     depth: 7,
@@ -40,6 +56,7 @@ const DEFAULT_BUILDINGS = [
     id: 'pet_hospital_default',
     name: '爱心宠物医院',
     type: 'pet_hospital',
+    category: 'public',
     desc: '提供宠物专业洗护、健康体检调理与状态恢复',
     width: 7,
     depth: 7,
@@ -52,6 +69,7 @@ const DEFAULT_BUILDINGS = [
     id: 'residential_wood_cabin',
     name: '田园小木屋',
     type: 'wood_cabin',
+    category: 'residential',
     desc: '温馨舒适的户外庭院小屋，可建于空余专属绿地作为户外度假安顿点',
     width: 7,
     depth: 7,
@@ -64,6 +82,7 @@ const DEFAULT_BUILDINGS = [
     id: 'police_station_default',
     name: '文明督导所',
     type: 'police_station',
+    category: 'public',
     desc: '维护社区交通出行秩序，处理碰撞摩擦事件，开展文明出行宣传与安全劝导',
     width: 7,
     depth: 7,
@@ -76,7 +95,60 @@ const DEFAULT_BUILDINGS = [
     id: 'prison_default',
     name: '安全宣教自省室',
     type: 'prison',
+    category: 'public',
     desc: '违规驾驶宣教与自省学习场所，宣教学习期间在指定区域静思自省',
+    width: 7,
+    depth: 7,
+    tileCount: 4,
+    costCoins: 0,
+    image: '',
+    enabled: true
+  },
+  {
+    id: 'floor_stone_tile_default',
+    name: '古朴石板地坪',
+    type: 'floor',
+    category: 'floor',
+    desc: '平整耐磨的户外石板铺装地坪，为庭院与步道铺设坚实美观的地面',
+    width: 7,
+    depth: 7,
+    tileCount: 4,
+    costCoins: 0,
+    image: '',
+    enabled: true
+  },
+  {
+    id: 'floor_wood_deck_default',
+    name: '暖阳防腐木地台',
+    type: 'floor',
+    category: 'floor',
+    desc: '温馨自然的户外防腐木质平台，适合休闲驻足、露营野餐',
+    width: 7,
+    depth: 7,
+    tileCount: 4,
+    costCoins: 0,
+    image: '',
+    enabled: true
+  },
+  {
+    id: 'tree_cherry_blossom_default',
+    name: '浪漫景观樱花树',
+    type: 'tree',
+    category: 'tree',
+    desc: '盛开的粉色景观樱花树，微风拂过落英缤纷，点缀社区优美园林',
+    width: 7,
+    depth: 7,
+    tileCount: 4,
+    costCoins: 0,
+    image: '',
+    enabled: true
+  },
+  {
+    id: 'tree_ginkgo_default',
+    name: '金秋银杏景观树',
+    type: 'tree',
+    category: 'tree',
+    desc: '金黄璀璨的秋日银杏景观树，落叶如扇，营造诗意园林景观',
     width: 7,
     depth: 7,
     tileCount: 4,
@@ -100,7 +172,7 @@ function calcTileCount(width, depth) {
 async function readCatalog(db) {
   const row = await readDocument(db, COLLECTION, ID, '读取建筑配置', true)
   return {revision:row?row.revision:0,
-    buildings:(row?row.buildings:DEFAULT_BUILDINGS).map((item)=>({...item,costCoins:0,unlockLevelIds:item.unlockLevelIds||[],
+    buildings:(row?row.buildings:DEFAULT_BUILDINGS).map((item)=>({...item,category:item.category||deriveCategory(item.type),costCoins:0,unlockLevelIds:item.unlockLevelIds||[],
       washPoints:Number.isInteger(item.washPoints)?item.washPoints:10,
       reportPoints:Number.isInteger(item.reportPoints)?item.reportPoints:5,
       resolveReward:(!row||row.rewardsVersion===2)&&Number.isInteger(item.resolveReward)?item.resolveReward:10,
@@ -120,18 +192,20 @@ function normalizeBuilding(value) {
   const name = typeof value.name === 'string' ? value.name.trim() : ''
   if (!name || name.length > 30) throw new Error('建筑名称须为1至30个字符')
 
-  const validTypes = ['residential', 'repair_shop', 'pet_hospital', 'committee', 'police_station', 'prison', 'wood_cabin']
+  const validTypes = ['residential', 'repair_shop', 'pet_hospital', 'committee', 'police_station', 'prison', 'wood_cabin', 'floor', 'tree', 'decoration']
   if (!validTypes.includes(value.type)) throw new Error('无效的建筑功能类型')
 
   const width = Math.max(3.5, Math.min(35, Number(value.width) || 7))
   const depth = Math.max(3.5, Math.min(35, Number(value.depth) || 7))
   const tileCount = calcTileCount(width, depth)
   const costCoins = 0
+  const category = deriveCategory(value.type, value.category)
 
   const building = {
     id: value.id,
     name,
     type: value.type,
+    category,
     desc: typeof value.desc === 'string' ? value.desc.trim().slice(0, 120) : '',
     width,
     depth,

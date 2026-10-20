@@ -141,3 +141,65 @@ test('cloud assets load only requested images, share downloads and recover after
     delete global.wx
   }
 })
+
+test('asset loader supports https network image and preserves custom building images without background removal', async () => {
+  const previousWx = global.wx
+  const networkDownloads = []
+  global.wx = {
+    downloadFile(options) {
+      networkDownloads.push(options.url)
+      options.success({ tempFilePath: '/tmp/custom-net-tile.png' })
+    },
+    cloud: {
+      downloadFile(options) {
+        assert.fail('Network https URLs should not invoke cloud.downloadFile')
+      }
+    },
+    createOffscreenCanvas() {
+      assert.fail('Custom remote image must not trigger offscreen background removal')
+    }
+  }
+  const canvas = {
+    createImage() {
+      return {
+        width: 512,
+        height: 512,
+        set src(value) {
+          assert.equal(value, '/tmp/custom-net-tile.png')
+          queueMicrotask(() => this.onload && this.onload())
+        }
+      }
+    }
+  }
+  try {
+    const loader = new AssetLoader2D(canvas)
+    const netUrl = 'https://cos.ap-guangzhou.myqcloud.com/buildings/wood_cabin_roof.png'
+    const img = await loader.loadImage(netUrl)
+    assert.ok(img)
+    assert.equal(img.width, 512)
+    assert.deepEqual(networkDownloads, [netUrl])
+
+    // 本地 wxfile 协议支持
+    let localSrc = ''
+    const localCanvas = {
+      createImage() {
+        return {
+          width: 256,
+          height: 256,
+          set src(val) {
+            localSrc = val
+            queueMicrotask(() => this.onload && this.onload())
+          }
+        }
+      }
+    }
+    const localLoader = new AssetLoader2D(localCanvas)
+    const wxfile = 'wxfile://tmp_building_preview.png'
+    const localImg = await localLoader.loadImage(wxfile)
+    assert.ok(localImg)
+    assert.equal(localSrc, wxfile)
+  } finally {
+    if (previousWx === undefined) delete global.wx
+    else global.wx = previousWx
+  }
+})

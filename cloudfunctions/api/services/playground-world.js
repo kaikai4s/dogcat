@@ -94,6 +94,7 @@ function publicPlot(plot, openid) {
     name: plot.name || '邻居庭院',
     buildingId: plot.buildingId || '',
     buildingType: plot.buildingType || (plot.isNewPlot ? 'yard' : 'residential'),
+    buildingCategory: plot.buildingCategory || '',
     buildingName: plot.buildingName || '',
     buildingImage: plot.buildingImage || '',
     buildingWidth: Number(plot.buildingWidth) || 0,
@@ -392,6 +393,7 @@ module.exports = {
           }
         }
         const buildingType = building?building.type:isNewPlot?'yard':existing&&existing.buildingType||'residential'
+        const buildingCategory = building?building.category:''
         const buildingId = building?building.id:!isNewPlot&&existing&&existing.buildingId||''
         const buildingName = building?building.name:!isNewPlot&&existing&&existing.buildingName||''
         const buildingImage = building?building.image:!isNewPlot&&existing&&existing.buildingImage||''
@@ -411,6 +413,7 @@ module.exports = {
           gateDirection: ['south', 'north', 'east', 'west'].includes(data.gateDirection) ? data.gateDirection : (existing && existing.gateDirection) || 'south',
           buildingId,
           buildingType,
+          buildingCategory,
           buildingName,
           buildingImage,
           buildingWidth,
@@ -534,7 +537,7 @@ module.exports = {
         const access=await memberAccess(tx,openid)
         const building=catalog.buildings.find((b)=>data.buildingId?b.id===data.buildingId:b.type===data.buildingType)
         if(!building||!unlocked(building,access))throw new Error('该建筑已下架或当前会员等级尚未解锁')
-        const {id:buildingId,type:buildingType,name:buildingName,image:buildingImage,width:buildingWidth,depth:buildingDepth}=building
+        const {id:buildingId,type:buildingType,category:buildingCategory,name:buildingName,image:buildingImage,width:buildingWidth,depth:buildingDepth}=building
         let targetPlot = null
         const ownerPlotDoc = await read(tx, ownerId(openid))
         const mainPlotId = ownerPlotDoc && ownerPlotDoc.plotId
@@ -597,6 +600,7 @@ module.exports = {
           revision:Math.max(stamp(),(targetPlot.revision||0)+1),
           buildingId,
           buildingType,
+          buildingCategory: buildingCategory || '',
           buildingName,
           buildingImage,
           buildingWidth,
