@@ -98,7 +98,7 @@
           <view class="building-card-info">
             <view class="building-name-row">
               <text class="building-title">{{item.name}}</text>
-              <text class="building-type-tag">{{item.type === 'wood_cabin' ? '田园小木屋' : (item.type === 'committee' ? '社区服务站' : item.type === 'repair_shop' ? '便民爱车角' : item.type === 'pet_hospital' ? '宠医健康驿站' : item.type === 'police_station' ? '出行督导站' : item.type === 'prison' ? '安全宣教室' : '私家庭院住宅'))}}</text>
+              <text class="building-type-tag">{{item.type === 'wood_cabin' ? '田园小木屋' : item.type === 'committee' ? '社区服务站' : item.type === 'repair_shop' ? '便民爱车角' : item.type === 'pet_hospital' ? '宠医健康驿站' : item.type === 'police_station' ? '出行督导站' : item.type === 'prison' ? '安全宣教室' : '私家庭院住宅'}}</text>
             </view>
             <text class="building-desc">{{item.desc || '实用社区建筑，丰富社区生态生活'}}</text>
             <view class="building-meta">
