@@ -292,9 +292,9 @@ module.exports = function createShared(context) {
           previous=point
         }
         actor.position={...previous}
-        // Keep a small jitter allowance, or the remaining elapsed-time budget
-        // while draining bounded batches after a temporary disconnection.
-        actor.movementCredit=Math.min(budget-total,data.moreTrail===true?speed*30+3:speed*.5+3)
+        // Keep a jitter allowance, or the remaining elapsed-time budget
+        // while draining bounded batches after a temporary disconnection or network latency.
+        actor.movementCredit=Math.min(budget-total,data.moreTrail===true?speed*30+3:speed*1.8+3)
         actor.movementSpeed=speed
       }
       actor.characterType=data.characterType==='girl'?'girl':'boy'

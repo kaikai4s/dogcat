@@ -171,7 +171,6 @@ Page({
     this._heroSettingsRequestSeq = (this._heroSettingsRequestSeq || 0) + 1
     this._heroCarouselRequestSeq = (this._heroCarouselRequestSeq || 0) + 1
     this._protectedNavigationSeq = (this._protectedNavigationSeq || 0) + 1
-    this.setData({ protectedNavigationUrl: '' })
     this.stopAllVideos()
     this.clearLotteryFloatTimer()
     this.stopHotServicesAutoScroll()
@@ -179,7 +178,10 @@ Page({
       clearTimeout(this.hotServicesResumeTimer)
       this.hotServicesResumeTimer = null
     }
-    this.setData({ lotteryFloatVisible: false })
+    const hideUpdates = {}
+    if (this.data.protectedNavigationUrl) hideUpdates.protectedNavigationUrl = ''
+    if (this.data.lotteryFloatVisible) hideUpdates.lotteryFloatVisible = false
+    if (Object.keys(hideUpdates).length > 0) this.setData(hideUpdates)
   },
 
   onUnload() {

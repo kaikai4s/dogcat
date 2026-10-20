@@ -30,20 +30,28 @@ function setGlobalTheme(themeKey) {
   return option
 }
 
-function applyTheme(themeKey) {
+let lastAppliedTheme = null
+
+function applyTheme(themeKey, animate = false) {
   const option = setGlobalTheme(themeKey || getSavedThemeKey())
-  wx.setNavigationBarColor({
-    frontColor: option.navText === 'white' ? '#ffffff' : '#000000',
-    backgroundColor: option.navBackground,
-    animation: { duration: 180, timingFunc: 'easeIn' }
-  })
+  if (typeof wx !== 'undefined' && typeof wx.setNavigationBarColor === 'function') {
+    const shouldAnimate = Boolean(animate && lastAppliedTheme && lastAppliedTheme !== option.value)
+    lastAppliedTheme = option.value
+    try {
+      wx.setNavigationBarColor({
+        frontColor: option.navText === 'white' ? '#ffffff' : '#000000',
+        backgroundColor: option.navBackground,
+        animation: shouldAnimate ? { duration: 180, timingFunc: 'easeIn' } : { duration: 0 }
+      })
+    } catch (_) {}
+  }
   return option
 }
 
 function saveTheme(themeKey) {
   const option = getThemeOption(themeKey)
   wx.setStorageSync(THEME_STORAGE_KEY, option.value)
-  return applyTheme(option.value)
+  return applyTheme(option.value, true)
 }
 
 function getThemeState(themeKey) {

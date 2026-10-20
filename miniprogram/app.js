@@ -15,9 +15,11 @@ function installGlobalPreferencePagePatch() {
     const originalOnShow = options.onShow
     options.data = { themeClass: 'theme-day', fontClass: 'font-system', ...(options.data || {}) }
     options.onShow = function preferenceOnShow(...args) {
-      const theme = applyTheme()
+      const theme = applyTheme(null, false)
       const font = applyFont()
-      this.setData({ ...getThemeState(theme.value), ...getFontState(font.value) })
+      if (!this.data || this.data.themeClass !== theme.className || this.data.fontClass !== font.className) {
+        this.setData({ ...getThemeState(theme.value), ...getFontState(font.value) })
+      }
       if (typeof originalOnShow === 'function') return originalOnShow.apply(this, args)
     }
     return originalPage(options)

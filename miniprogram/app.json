@@ -268,6 +268,8 @@
   },
   "window": {
     "backgroundColor": "#FFF8EC",
+    "backgroundColorTop": "#FFF8EC",
+    "backgroundColorBottom": "#FFF8EC",
     "backgroundTextStyle": "light",
     "navigationBarBackgroundColor": "#FFF8EC",
     "navigationBarTitleText": "Dovelin 多芙琳宠物上门服务",

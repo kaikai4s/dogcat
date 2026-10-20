@@ -532,11 +532,15 @@ class World2D {
       return
     }
     if(this.scene) {
-      const plot=this.plots().find((p)=>!this.canEnterPlot(p)&&Math.abs(this.character.position.x-p.x)<(p.size||SIZE)/2&&Math.abs(this.character.position.z-p.z)<(p.size||SIZE)/2)
+      const plot=this.plots().find((p)=>{
+        const pSize = p.size || (p.isNewPlot ? 48 : SIZE)
+        return !this.canEnterPlot(p) && Math.abs(this.character.position.x - p.x) < pSize / 2 && Math.abs(this.character.position.z - p.z) < pSize / 2
+      })
       if(plot) {
+        const plotSize = plot.size || (plot.isNewPlot ? 48 : SIZE)
         this.characterRoute=null
         this.character.setInput(0,0)
-        this.character.position={x:plot.x,z:plot.z+(plot.size||SIZE)/2+2}
+        this.character.position={x:plot.x,z:plot.z+plotSize/2+2}
         this.characterTerrain=null
         this.onStatus('当前没有庭院访问权限，已返回院门外')
       }
