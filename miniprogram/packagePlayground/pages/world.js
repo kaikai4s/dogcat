@@ -1305,6 +1305,23 @@ Page({
   onHumanInjured() {
     this.setData({ isHumanInjured: true })
   },
+  guideToPetHospital() {
+    const world = this.world
+    if (!world) return
+    const hospital = (world.plots ? world.plots() : []).find((p) => p.buildingType === 'pet_hospital')
+    if (hospital) {
+      this.pushStatusMessage('正在前往爱心宠物医院进行健康舒缓调理…')
+      wx.showToast({ title: '正前往宠物医院', icon: 'none' })
+      const targetPos = { x: hospital.x, z: hospital.z + (hospital.size || 48) / 2 - 4 }
+      world.moveCharacterTo(targetPos)
+    } else {
+      wx.showModal({
+        title: '温馨提示',
+        content: '当前社区暂未设立爱心宠物医院，您可在【社区共建】中认领绿地建造，或在长凳/自家木屋前休憩片刻自行恢复。',
+        showCancel: false
+      })
+    }
+  },
   async hospitalTreatHumanAction() {
     const world = this.world
     try {
