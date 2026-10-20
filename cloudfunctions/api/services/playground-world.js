@@ -426,6 +426,7 @@ module.exports = {
           createdAt: existing&&!isNewPlot ? existing.createdAt : nowText(),
           createdAtStamp:stamp(),
           updatedAt: nowText(),
+          ...(buildingType === 'committee' ? { committeeStartedAt: stamp(), lastSalaryClaimAt: 0 } : {}),
           isNewPlot: Boolean(isNewPlot)
         }
         // 若为购买新地皮，绝不删除原有的老庭院！原别墅完整保留在原位
@@ -540,8 +541,40 @@ module.exports = {
         if (presence) await tx.collection('pet_playground_plots').doc(presenceId).remove()
         const carId='vehicle_'+hash(openid)
         if(await read(tx,carId))await tx.collection('pet_playground_plots').doc(carId).remove()
+        const hadPrison = (allUserPlots.data || []).some((p) => p.buildingType === 'prison')
+        if (hadPrison) {
+          await releasePrisonersIfPrisonRemoved(tx, plot.communityId, stamp())
+        }
         return beforeRemove?{ removed: true,released,removedPlotIds }:{ removed: true,removedPlotIds }
       })
+    }
+    async function releasePrisonersIfPrisonRemoved(tx, communityId, currentStamp) {
+      try {
+        const prisonRows = await tx.collection('pet_playground_plots').where({ kind: 'plot', communityId, buildingType: 'prison' }).get()
+        const stillHasPrison = (prisonRows.data || []).some((p) => !p.demolished)
+        if (!stillHasPrison) {
+          const jailRows = await tx.collection('pet_playground_jail').where({ communityId, jailed: true }).get()
+          for (const item of (jailRows.data || [])) {
+            await tx.collection('pet_playground_jail').doc(item._id).update({
+              data: {
+                jailed: false,
+                releasedAt: currentStamp,
+                releasedBy: 'facility_dismantled'
+              }
+            })
+            const accRows = await tx.collection('pet_playground_accidents').where({ driverOpenid: item._id, status: 'arrested' }).get()
+            for (const acc of (accRows.data || [])) {
+              await tx.collection('pet_playground_accidents').doc(acc._id).update({
+                data: {
+                  status: 'settled',
+                  settledAt: currentStamp,
+                  settleType: 'facility_dismantled'
+                }
+              })
+            }
+          }
+        }
+      } catch (_) {}
     }
     async function buildInYard(openid, user, data) {
       const targetPlotId = String(data.plotId || '')
@@ -634,6 +667,9 @@ module.exports = {
         if (mainOwner && mainOwner.plotId === targetPlot._id && (!buildingType || buildingType === 'residential')) {
           await tx.collection('pet_playground_plots').doc(ownerId(openid)).set({ data: { ...cleanUpdated, kind: 'owner_plot', plotId: targetPlot._id } })
         }
+        if (prevType === 'prison' && buildingType !== 'prison') {
+          await releasePrisonersIfPrisonRemoved(tx, communityId, stamp())
+        }
         return publicPlot({ ...cleanUpdated, _id: targetPlot._id }, openid)
       })
     }
@@ -659,7 +695,7 @@ module.exports = {
 
         const prevBuildingType = doc.buildingType
         const prevBuildingName = doc.buildingName || doc.name || '建筑'
-        const cleanName = `${String(user.nickname || doc.ownerName || '邻居').slice(0, 20)}的专属爱心绿地`
+        const cleanName = `${String((user && user.nickname) || doc.ownerName || '邻居').slice(0, 20)}的专属爱心绿地`
 
         const updated = {
           ...doc,
@@ -679,6 +715,10 @@ module.exports = {
 
         const { _id, ...cleanUpdated } = updated
         await tx.collection('pet_playground_plots').doc(doc._id).set({ data: cleanUpdated })
+
+        if (prevBuildingType === 'prison') {
+          await releasePrisonersIfPrisonRemoved(tx, doc.communityId, stamp())
+        }
 
         return {
           dismantled: true,

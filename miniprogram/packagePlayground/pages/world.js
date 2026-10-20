@@ -1242,23 +1242,26 @@ Page({
       wx.showToast({ title: '建筑落座成功！', icon: 'success' })
       this.closeBuild()
       if (this.world === world && !world.destroyed) {
-        if (world.scene) this.initialize()
-        else {
-          const updated = result.plot || {
-            ...targetPlot,
-            buildingId: building.id,
-            buildingType: building.type,
-            buildingCategory: building.category || '',
-            buildingName: building.name,
-            buildingImage: building.image || '',
-            buildingWidth: building.width || 7,
-            buildingDepth: building.depth || 7,
-            name: `${targetPlot.ownerName || '我'}的${building.name}`
-          }
-          if (world.sharedPlots) world.sharedPlots.set(updated.id, updated)
-          world.loadVisible().catch(() => {})
-          this.pushStatusMessage(`【${building.name}】已成功落座于地皮内！`)
+        const updated = result.plot || {
+          ...targetPlot,
+          buildingId: building.id,
+          buildingType: building.type,
+          buildingCategory: building.category || '',
+          buildingName: building.name,
+          buildingImage: building.image || '',
+          buildingWidth: building.width || 7,
+          buildingDepth: building.depth || 7,
+          name: `${targetPlot.ownerName || '我'}的${building.name}`
         }
+        if (world.sharedPlots) world.sharedPlots.set(updated.id || updated._id, updated)
+        if (world.sceneSync && typeof world.sceneSync.snapshot === 'function') {
+          world.sceneSync.snapshot().catch(() => {})
+        } else if (world.scene) {
+          this.initialize()
+        }
+        world.loadVisible().catch(() => {})
+        if (typeof world.renderFrame === 'function') world.renderFrame()
+        this.pushStatusMessage(`【${building.name}】已成功落座于地皮内！`)
       }
     } catch (err) {
       wx.showToast({ title: err.message || '建造失败', icon: 'none' })
@@ -1300,23 +1303,26 @@ Page({
       })
       wx.showToast({ title: result.message || '建筑已拆除，恢复为初始草块！', icon: 'success' })
       if (this.world === world && !world.destroyed) {
-        if (world.scene) this.initialize()
-        else {
-          if (targetPlot) {
-            targetPlot.buildingType = 'yard'
-            targetPlot.buildingId = ''
-            targetPlot.buildingName = ''
-            targetPlot.buildingCategory = ''
-            targetPlot.buildingImage = ''
-            targetPlot.buildingWidth = 0
-            targetPlot.buildingDepth = 0
-            targetPlot.name = `${targetPlot.ownerName || '邻居'}的专属爱心绿地`
-            if (world.sharedPlots) world.sharedPlots.set(targetPlot.id, targetPlot)
-          }
-          world.loadVisible().catch(() => {})
-          if (typeof world.renderFrame === 'function') world.renderFrame()
-          this.pushStatusMessage(`【${buildingName}】已拆除，地皮已恢复为纯草块！`)
+        if (targetPlot) {
+          targetPlot.buildingType = 'yard'
+          targetPlot.buildingId = ''
+          targetPlot.buildingName = ''
+          targetPlot.buildingCategory = ''
+          targetPlot.buildingImage = ''
+          targetPlot.buildingWidth = 0
+          targetPlot.buildingDepth = 0
+          targetPlot.name = `${(targetPlot && targetPlot.ownerName) || '邻居'}的专属爱心绿地`
+          if (world.sharedPlots) world.sharedPlots.set(targetPlot.id || targetPlot._id, targetPlot)
         }
+        if (world.sceneSync && typeof world.sceneSync.snapshot === 'function') {
+          world.sceneSync.snapshot().catch(() => {})
+        } else if (world.scene) {
+          this.initialize()
+        }
+        world.loadVisible().catch(() => {})
+        if (typeof world.renderFrame === 'function') world.renderFrame()
+        this.setData({ nearbyBuilding: null })
+        this.pushStatusMessage(`【${buildingName}】已拆除，地皮已恢复为纯草块！`)
       }
     } catch (err) {
       wx.showToast({ title: err.message || '拆除建筑失败', icon: 'none' })

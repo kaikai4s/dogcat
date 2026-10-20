@@ -310,4 +310,59 @@ test('jail time expiration allows free release without paying bail', async () =>
   assert.equal(settledCase.settleType, 'served_time')
 })
 
+test('dismantling or replacing prison building automatically frees jailed drivers and settles cases', async () => {
+  const f = fixture()
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const a = await f.build('a', { x: 280, z: 280 })
+  const sceneId = a.sceneId
+
+  const aYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 728, z: 280, size: 48 })
+  await handler('a', 'buildInYard', {
+    plotId: aYard.id,
+    buildingType: 'police_station',
+    buildingName: '阳光社区执法所',
+    sceneId
+  })
+  const prisonPlot = await f.plots.claim('c', f.user('c'), {
+    isNewPlot: true,
+    x: 400,
+    z: 400,
+    size: 48,
+    gateDirection: 'south',
+    buildingType: 'prison',
+    buildingName: '阳光社区第一自省室'
+  })
+
+  // 发生事故并逮捕司机 d
+  const hit = await handler('a', 'reportAccident', {
+    sceneId,
+    victimType: 'human',
+    victimName: '张居民',
+    driverOpenid: 'd',
+    driverName: '小刘司机'
+  })
+  await handler('a', 'arrestDriver', { sceneId, accidentId: hit.accidentId })
+
+  // 确认司机处于自省中
+  const statusBefore = await handler('d', 'listAccidents', { sceneId })
+  assert.equal(statusBefore.isJailed, true)
+
+  // 主理人 c 拆除自省室恢复为草块
+  const dismantleRes = await handler('c', 'dismantleBuilding', {
+    plotId: prisonPlot.id,
+    sceneId
+  })
+  assert.equal(dismantleRes.dismantled, true)
+  assert.equal(dismantleRes.plot.buildingType, 'yard')
+
+  // 验证自省室被拆除后，在押司机自动解除自省，且事故结案为 facility_dismantled
+  const statusAfter = await handler('d', 'listAccidents', { sceneId })
+  assert.equal(statusAfter.isJailed, false)
+  const settled = statusAfter.accidents.find((acc) => acc._id === hit.accidentId)
+  assert.ok(settled)
+  assert.equal(settled.status, 'settled')
+  assert.equal(settled.settleType, 'facility_dismantled')
+})
+
+
 
