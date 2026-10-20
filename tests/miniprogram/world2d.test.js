@@ -249,3 +249,57 @@ test('pure empty yard does not trigger dog bowl interaction and keeps residentia
   assert.ok(nearbyInHome.bowl, '出生庭院内应正常触发狗碗交互')
   assert.equal(nearbyInHome.bowl.plotId, homePlot.id)
 })
+
+test('overview and applySceneRecords prioritize residential villa over committee/yard', async () => {
+  const page = { setData: () => {}, pushStatusMessage: () => {} }
+  const homePlot = {
+    id: 'plot_home',
+    mine: true,
+    buildingType: 'residential',
+    x: 100,
+    z: 100,
+    size: 112,
+    isNewPlot: false
+  }
+  const committeePlot = {
+    id: 'plot_committee',
+    mine: true,
+    buildingType: 'committee',
+    x: 400,
+    z: 400,
+    size: 48,
+    isNewPlot: true
+  }
+
+  // World initially loaded with ownPlot pointing to committee due to old bug
+  const w = new World2D(page, null, {
+    world: { width: 800, height: 800 },
+    plot: committeePlot,
+    pets: []
+  })
+  w.ownPlot = committeePlot
+  w.camera = { x: committeePlot.x, z: committeePlot.z }
+
+  // 1. overview() must center on residential plot
+  w.sharedPlots = new Map([
+    [homePlot.id, homePlot],
+    [committeePlot.id, committeePlot]
+  ])
+  w.overview()
+  assert.equal(w.camera.x, homePlot.x)
+  assert.equal(w.camera.z, homePlot.z)
+
+  // 2. applySceneRecords must detect residential plot and auto-recenter camera & character
+  w.camera = { x: committeePlot.x, z: committeePlot.z }
+  w.character = { position: { x: committeePlot.x + 3, z: committeePlot.z + 14 } }
+  w.characterMoved = false
+  await w.applySceneRecords([
+    { kind: 'plot', ...homePlot },
+    { kind: 'plot', ...committeePlot }
+  ])
+  assert.equal(w.ownPlot.id, homePlot.id)
+  assert.equal(w.camera.x, homePlot.x)
+  assert.equal(w.camera.z, homePlot.z)
+  assert.equal(w.character.position.x, homePlot.x + 3)
+  assert.equal(w.character.position.z, homePlot.z + 14)
+})

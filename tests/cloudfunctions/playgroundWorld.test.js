@@ -378,3 +378,40 @@ test('overview paginates only the current community and excludes legacy owner co
   )
   assert.equal((await service.mapOverview('c', users[2], {})).plots.length, 0)
 })
+
+test('own heals ownerId pointer to residential villa when previously pointing to committee or extra plot', async () => {
+  const { db, users, service } = fixture()
+  const user = users[0]
+  // 1. Initial claim: residential plot at (200, 200)
+  const residential = await service.claim('a', user, { x: 200, z: 200, isNewPlot: false })
+  assert.equal(residential.buildingType, 'residential')
+  let ownPlot = await service.own('a')
+  assert.equal(ownPlot.plotId, residential.id)
+
+  // 2. Claim second plot: extra green plot at (400, 200)
+  const extraPlot = await service.claim('a', user, { x: 400, z: 200, isNewPlot: true, size: 48 })
+  assert.equal(extraPlot.buildingType, 'yard')
+
+  // Simulate previous bug where ownerId was overwritten by extra plot or committee
+  const ownerKey = world.ownerId('a')
+  await db.collection('pet_playground_plots').doc(ownerKey).set({
+    data: {
+      kind: 'owner_plot',
+      plotId: extraPlot.id,
+      buildingType: 'committee',
+      buildingName: '居委会',
+      communityId: residential.communityId,
+      ownerOpenid: 'a'
+    }
+  })
+
+  // Calling own('a') must heal ownerId back to the canonical residential plot
+  const healed = await service.own('a')
+  assert.equal(healed.plotId, residential.id)
+  assert.equal(healed.buildingType, 'residential')
+  
+  // The document in the database should also be healed
+  const ownerDocInDb = await world.read(db, ownerKey)
+  assert.equal(ownerDocInDb.plotId, residential.id)
+  assert.equal(ownerDocInDb.buildingType, 'residential')
+})

@@ -191,7 +191,7 @@ module.exports = function createShared(context) {
       const currentUser=(await tx.collection('users').doc(user._id).get()).data||user
       const old=await read(tx,presenceId(openid))
       const resident=await read(tx,residentId(openid))
-      const currentHome=await read(tx,world.ownerId(openid))
+      const currentHome=await service.ownInTransaction(tx,openid)
       const currentOwn=currentHome && currentHome.communityId===id ? currentHome : null
       const allowed=await social.access(openid,plots,tx)
       const preferred=currentOwn?{x:currentOwn.x+3,z:currentOwn.z+14}:{x:Math.floor(cfg.width/224)*112,z:Math.floor(cfg.height/224)*112}

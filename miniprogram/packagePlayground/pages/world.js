@@ -356,7 +356,7 @@ Page({
     const dir = this.data.gateDirection || 'south'
     const options=(this.data.plotSizes||[]).filter((p)=>p.unlocked)
     if(isNewPlot&&!options.length)return wx.showToast({title:'当前会员尚未解锁新地皮',icon:'none'})
-    const size = isNewPlot ? (options.find((p)=>p.size===this.data.selectedPlotSize)||options[0]).size : this.data.selectedPlotSize || 48
+    const size = isNewPlot ? (options.find((p)=>p.size===this.data.selectedPlotSize)||options[0]).size : (this.world && this.world.ownPlot && this.world.ownPlot.size) || this.data.selectedPlotSize || 112
     this.setData({
       selectedPlotSize:size,
       isPlacingNewPlot: Boolean(isNewPlot),

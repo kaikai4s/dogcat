@@ -1160,8 +1160,11 @@ class World2D {
     this.clearPetSelection()
     this.follow = false
     this.followCharacter = false
-    this.camera = this.ownPlot
-      ? { x: this.ownPlot.x, z: this.ownPlot.z }
+    const home = this.ownPlot && (!this.ownPlot.buildingType || this.ownPlot.buildingType === 'residential')
+      ? this.ownPlot
+      : [...this.plots()].find((p) => p.mine && (!p.buildingType || p.buildingType === 'residential')) || this.ownPlot
+    this.camera = home
+      ? { x: home.x, z: home.z }
       : { ...this.startPoint }
     this.loadVisible().catch(() => this.onStatus('场景加载失败，请稍后重试'))
   }
@@ -1541,9 +1544,18 @@ class World2D {
     const own=[...plots.values()].find((p)=>p.mine && (!p.buildingType || p.buildingType === 'residential') && !p.isNewPlot) ||
               [...plots.values()].find((p)=>p.mine && (!p.buildingType || p.buildingType === 'residential')) ||
               [...plots.values()].find((p)=>p.mine)
+    const prevOwn = this.ownPlot
     this.ownPlot=own||null
     this.page.setData({hasPlot:!!own,residentCount:plots.size})
     this.foodBowls=own?own.foodBowls:{dog:0}
+    if (own && (!prevOwn || (prevOwn.buildingType && prevOwn.buildingType !== 'residential' && (!own.buildingType || own.buildingType === 'residential')))) {
+      if (!this.manualZoom && !this.characterMoved) {
+        this.camera = { x: own.x, z: own.z }
+        if (this.character && !this.characterMoved) {
+          this.character.position = { x: own.x + 3, z: own.z + 14 }
+        }
+      }
+    }
     this.replaceCharacters(characters)
     const species=[...new Set(this.pets.map((p)=>p.species==='cat'?'cat_walk':'dog_walk'))]
     const names=[...species,...new Set(characters.flatMap((p)=>['idle','walk','run'].map((a)=>(p.characterType==='girl'?'girl':'boy')+'_'+a+'_sw')))]

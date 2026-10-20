@@ -144,8 +144,50 @@ module.exports = {
         canRelocate: allowRelocation()
       }
     }
+    async function resolveOwnerPlot(database, openid) {
+      let plot = await read(database, ownerId(openid))
+      let myPlots = []
+      try {
+        const res = await database.collection('pet_playground_plots').where({ kind: 'plot', ownerOpenid: openid }).get()
+        myPlots = (res && res.data) || []
+      } catch (e) {
+        myPlots = []
+      }
+
+      // 永远保障用户的核心庭院必须是居住型别墅庭院，绝不被公共建筑或空余绿地顶替
+      let residential = myPlots.find(p => !p.demolished && (!p.buildingType || p.buildingType === 'residential') && !p.isNewPlot) ||
+                        myPlots.find(p => !p.demolished && (!p.buildingType || p.buildingType === 'residential'))
+
+      if (!residential) {
+        const softDemolished = myPlots.find(p => p.demolished && (!p.buildingType || p.buildingType === 'residential'))
+        if (softDemolished) {
+          residential = { ...softDemolished, demolished: false, updatedAt: nowText() }
+          try {
+            await database.collection('pet_playground_plots').doc(residential._id).set({ data: residential })
+          } catch(e) {}
+        }
+      }
+
+      if (residential) {
+        if (!plot || plot.demolished || plot.plotId !== residential._id || (plot.buildingType && plot.buildingType !== 'residential')) {
+          const { _id, ...cleanResidential } = residential
+          const ownerDoc = {
+            ...cleanResidential,
+            kind: 'owner_plot',
+            plotId: residential._id,
+            buildingType: 'residential',
+            updatedAt: nowText()
+          }
+          try {
+            await database.collection('pet_playground_plots').doc(ownerId(openid)).set({ data: ownerDoc })
+          } catch(e) {}
+          plot = ownerDoc
+        }
+      }
+      return plot
+    }
     async function own(openid) {
-      const plot = await read(db, ownerId(openid))
+      const plot = await resolveOwnerPlot(db, openid)
       return plot ? ensureNameColor(plot) : null
     }
     async function ensureNameColor(plot) {
@@ -342,8 +384,8 @@ module.exports = {
             .doc(existing.plotId)
             .remove()
         await tx.collection('pet_playground_plots').doc(key).set({ data: plot })
-        // 仅在首次建造主庭院或主动调整主庭院时，更新主庭院映射
-        if (!existing || !isNewPlot)
+        // 仅在非新地皮（首次建造主庭院或主动调整主庭院位置）时，更新主庭院映射；新绿地地皮绝不覆盖主庭院
+        if (!isNewPlot)
           await tx
             .collection('pet_playground_plots')
             .doc(ownerId(openid))
@@ -519,13 +561,13 @@ module.exports = {
         const { _id, ...cleanUpdated } = updated
         await tx.collection('pet_playground_plots').doc(targetPlot._id).set({ data: cleanUpdated })
         const mainOwner = await read(tx, ownerId(openid))
-        if (mainOwner && mainOwner.plotId === targetPlot._id) {
+        if (mainOwner && mainOwner.plotId === targetPlot._id && (!buildingType || buildingType === 'residential')) {
           await tx.collection('pet_playground_plots').doc(ownerId(openid)).set({ data: { ...cleanUpdated, kind: 'owner_plot', plotId: targetPlot._id } })
         }
         return publicPlot({ ...cleanUpdated, _id: targetPlot._id }, openid)
       })
     }
-    async function ownInTransaction(tx, openid) { return read(tx, ownerId(openid)) }
-    return { config, own, claim, buildInYard, region, mapOverview, publicPlot, ensureNameColors, fillBowl, demolish }
+    async function ownInTransaction(tx, openid) { return resolveOwnerPlot(tx, openid) }
+    return { config, own, claim, buildInYard, region, mapOverview, publicPlot, ensureNameColors, fillBowl, demolish, ownInTransaction }
   }
 }
