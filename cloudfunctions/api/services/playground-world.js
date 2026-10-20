@@ -93,7 +93,7 @@ function publicPlot(plot, openid) {
     gateDirection: plot.gateDirection || 'south',
     name: plot.name || '邻居庭院',
     buildingId: plot.buildingId || '',
-    buildingType: plot.buildingType || 'residential',
+    buildingType: plot.buildingType || (plot.isNewPlot ? 'yard' : 'residential'),
     buildingName: plot.buildingName || '',
     buildingImage: plot.buildingImage || '',
     buildingWidth: Number(plot.buildingWidth) || 0,

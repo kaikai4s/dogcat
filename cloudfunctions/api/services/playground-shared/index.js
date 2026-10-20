@@ -323,10 +323,10 @@ module.exports = function createShared(context) {
     const plots=await rows(data.sceneId,'plot'), cfg=await service.config()
     if(!cursor) {
       const cars=await rows(data.sceneId,'vehicle')
-      for(const plot of plots)if(!cars.some((car)=>car.ownerOpenid===plot.ownerOpenid&&car.plotId===plot._id&&car.plotInstanceId===(plot.instanceId||plot.createdAt||'')))await vehicles.ensure(plot.ownerOpenid)
+      for(const plot of plots.filter((p)=>!p.isNewPlot))if(!cars.some((car)=>car.ownerOpenid===plot.ownerOpenid&&car.plotId===plot._id&&car.plotInstanceId===(plot.instanceId||plot.createdAt||'')))await vehicles.ensure(plot.ownerOpenid)
       // Existing residents need not log in after deployment for their pets to appear.
       const existing=await rows(data.sceneId,'resident')
-      for(const plot of plots) if(!existing.some((r)=>r.ownerOpenid===plot.ownerOpenid&&r.plotId===plot._id)) {
+      for(const plot of plots.filter((p)=>!p.isNewPlot)) if(!existing.some((r)=>r.ownerOpenid===plot.ownerOpenid&&r.plotId===plot._id)) {
         const pets=((await db.collection('pets').where({openid:plot.ownerOpenid}).orderBy('createdAt','desc').limit(100).get()).data||[])
           .filter((p)=>!p.deletedAt&&['cat','dog'].includes(p.species||'dog')).slice(0,8)
         await transaction(db,async(tx)=>{

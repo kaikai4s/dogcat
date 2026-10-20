@@ -2469,17 +2469,16 @@ class World2D {
         continue
       }
       if(pet.sharedMotion) {
-        if(pet.lifeManaged) {
-          const state=this.sharedPetSample(pet,dt)
-          pet.position=state.position;pet.moving=state.moving;pet.walkDistance=state.distance+(pet.motionDistanceOffset||0);pet.walkFacingLeft=state.facingLeft
-          continue
+        if (pet.needs) {
+          const sampled = sampleNeeds(pet, Date.now() + this.serverOffset)
+          Object.assign(pet.needs, sampled)
         }
         const needsSatisfied = pet.care && (
           (pet.care.type === 'drink' && pet.needs && pet.needs.hydration >= 98) ||
           (pet.care.type === 'eat' && pet.needs && pet.needs.satiety >= 98) ||
           (pet.care.type === 'sleep' && pet.needs && pet.needs.energy >= 98)
         )
-        const careExpired = (pet.care && (Date.now() + this.serverOffset >= pet.care.endsAt)) || needsSatisfied
+        const careExpired = !!pet.care && ((Date.now() + this.serverOffset >= pet.care.endsAt) || needsSatisfied)
         if (careExpired) pet.care = null
         const isSingleStation = pet.sharedMotion && pet.sharedMotion.patrol && pet.sharedMotion.patrol.length === 1
         if (pet.mine !== false && !pet.following && !pet.ridingVehicleId && careExpired && isSingleStation) {

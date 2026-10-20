@@ -659,6 +659,28 @@ test('20. pet care expiration automatically releases single-station sharedMotion
   assert.equal(pet.planning || pet.moving || pet.mode === 'roaming' || pet.idleSeconds === 0, true)
 })
 
+test('20b. pet drinking at fountain releases back to roaming as soon as hydration reaches 98+ even with lifeManaged:true', () => {
+  const w = new World2D({ setData() {}, fetchRegion: async () => ({ plots: [] }) }, () => {}, {
+    world: { width: 1120, height: 1120 },
+    pets: [{ _id: 'dog_2', name: '大黄', species: 'dog' }]
+  })
+  w.buildWorld()
+  const pet = w.pets[0]
+  pet.mine = true
+  pet.lifeManaged = true
+  pet.position = { x: 300, z: 300 }
+  pet.needs = { at: 1000, hydration: 99, satiety: 80, energy: 80 }
+  pet.care = { type: 'drink', startsAt: 1000, endsAt: 100000 }
+  pet.sharedMotion = { epoch: 1000, approach: [{ x: 300, z: 300 }], patrol: [{ x: 300, z: 300 }], speed: 7 }
+
+  w.serverOffset = 2000 - Date.now()
+  w.update(0.1)
+
+  assert.equal(pet.sharedMotion, null, '喝水饱了后必须立即解除喷泉停留')
+  assert.equal(pet.care, null)
+  assert.equal(pet.mode, 'roaming')
+})
+
 test('21. onRelief callback triggers when excretion occurs to notify backend', () => {
   const reliefs = []
   const pet = {
