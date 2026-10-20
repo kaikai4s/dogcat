@@ -79,7 +79,21 @@ Page({
     historyModalOpen: false,
     canConfirm: false,
     claiming: false,
-    worldSize: ''
+    worldSize: '',
+    activeService: null,
+    hasServiceDiary: false,
+    serviceDiaryOpen: false,
+    serviceDiaryLoading: false,
+    serviceDiary: null,
+    mallSuppliesOpen: false,
+    mallSuppliesLoading: false,
+    mallSupplies: [],
+    groupBuyTab: 'sanitation',
+    communityGroupBuy: null,
+    rewardsOpen: false,
+    rewardsLoading: false,
+    rewardsData: null,
+    exchangingCouponId: ''
   },
   onLoad() {
     try {
@@ -198,6 +212,7 @@ Page({
           .then((overview) => {
             if (!this.visible || version !== this.version) return
             this.setData({
+              activeService: overview.activeService || null,
               hasCommunity: Boolean(overview.hasCommunity),
               communityName:
                 (overview.userCommunity && overview.userCommunity.name) || '',
@@ -213,6 +228,7 @@ Page({
               canConfirm: false,
               worldSize: `${overview.world.width} × ${overview.world.height} 米`
             })
+            this.loadServiceTwin(false)
             const world = new World2D(
               this,
               (status) => {
@@ -913,8 +929,13 @@ Page({
     this.setData({ feeding: true })
     try {
       const result = await callFunction('playground', 'fillBowl', { plotId: bowl.plotId })
-      if (this.world === world && !world.destroyed && world.applyBowlFood(result))
-        wx.showToast({ title: '猫狗碗的粮食已添满', icon: 'success' })
+      if (this.world === world && !world.destroyed && world.applyBowlFood(result)) {
+        const msg = result && result.pointsAwarded
+          ? `食盆已添满！获得每日关爱打卡 +${result.pointsAwarded}积分`
+          : (result && result.message ? result.message : '猫狗碗的粮食已添满')
+        wx.showToast({ title: msg, icon: 'none' })
+        this.pushStatusMessage(msg)
+      }
     } catch (error) {
       if (this.world === world && !world.destroyed)
         wx.showToast({ title: error.message || '添粮失败，请重试', icon: 'none' })
@@ -1394,5 +1415,146 @@ Page({
     } catch (err) {
       wx.showToast({ title: err.message || '结束自省失败', icon: 'none' })
     }
+  },
+  async loadServiceTwin(openModal = false) {
+    if (this.data.serviceDiaryLoading) return
+    this.setData({ serviceDiaryLoading: true })
+    try {
+      const res = await callFunction('playground', 'getServiceTwinInfo')
+      this.setData({
+        serviceDiary: res || null,
+        activeService: (res && res.activeOrder) || this.data.activeService || null,
+        hasServiceDiary: Boolean(res && res.latestCheckins && res.latestCheckins.length > 0)
+      })
+      if (res && res.bowlAutoRefilled && this.world && !this.world.destroyed) {
+        this.world.applyBowlFood({ food: 100 })
+      }
+      if (openModal) {
+        this.setData({ serviceDiaryOpen: true })
+      }
+    } catch (err) {
+      if (openModal) {
+        wx.showToast({ title: err.message || '加载照料记录失败', icon: 'none' })
+      }
+    } finally {
+      this.setData({ serviceDiaryLoading: false })
+    }
+  },
+  openServiceDiary() {
+    this.setData({ serviceDiaryOpen: true })
+    this.loadServiceTwin(false)
+  },
+  closeServiceDiary() {
+    this.setData({ serviceDiaryOpen: false })
+  },
+  previewDiaryPhoto(e) {
+    const url = e.currentTarget.dataset.url
+    if (url) {
+      wx.previewImage({ urls: [url], current: url })
+    }
+  },
+  goToOrderDetail(e) {
+    const orderId = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id) ||
+      (this.data.serviceDiary && this.data.serviceDiary.activeOrder && this.data.serviceDiary.activeOrder.id)
+    if (orderId) {
+      wx.navigateTo({ url: `/pages/client/orders/detail/index?id=${orderId}` })
+    }
+  },
+  async openMallSupplies() {
+    this.setData({ mallSuppliesOpen: true, mallSuppliesLoading: true })
+    try {
+      const res = await callFunction('playground', 'getMallSupplies')
+      this.setData({ mallSupplies: (res && res.products) || [] })
+    } catch (err) {
+      wx.showToast({ title: err.message || '加载口粮商品失败', icon: 'none' })
+    } finally {
+      this.setData({ mallSuppliesLoading: false })
+    }
+  },
+  closeMallSupplies() {
+    this.setData({ mallSuppliesOpen: false })
+  },
+  goToMallDetail(e) {
+    const id = e.currentTarget.dataset.id
+    if (id) {
+      wx.navigateTo({ url: `/pages/client/mall/detail/index?id=${id}` })
+    }
+  },
+  goToMallHome() {
+    wx.navigateTo({ url: '/pages/client/mall/list/index' })
+  },
+  setGroupBuyTab(e) {
+    const tab = e.currentTarget.dataset.tab || 'sanitation'
+    this.setData({ groupBuyTab: tab })
+    if (tab === 'groupbuy' && !this.data.communityGroupBuy) {
+      this.loadCommunityGroupBuy()
+    }
+  },
+  async loadCommunityGroupBuy() {
+    try {
+      const res = await callFunction('playground', 'getCommunityGroupBuy', { community: this.selectedCommunity })
+      this.setData({ communityGroupBuy: res || null })
+    } catch (e) {}
+  },
+  startGroupBuyOrder() {
+    wx.navigateTo({ url: '/pages/client/orders/create/index?source=community_groupbuy' })
+  },
+  bookSitterAction(e) {
+    const staffId = e.currentTarget.dataset.id
+    if (staffId) {
+      wx.navigateTo({ url: `/pages/client/orders/create/index?staffProfileId=${staffId}` })
+    } else {
+      wx.navigateTo({ url: '/pages/client/orders/create/index' })
+    }
+  },
+  viewSitterDetail(e) {
+    const sitterId = e.currentTarget.dataset.id
+    if (sitterId) {
+      wx.navigateTo({ url: `/pages/client/sitters/detail/index?id=${sitterId}` })
+    }
+  },
+  async openRewards() {
+    this.setData({ rewardsOpen: true, rewardsLoading: true })
+    try {
+      const res = await callFunction('playground', 'getPlaygroundRewards')
+      this.setData({ rewardsData: res || null })
+    } catch (err) {
+      wx.showToast({ title: err.message || '加载关爱权益失败', icon: 'none' })
+    } finally {
+      this.setData({ rewardsLoading: false })
+    }
+  },
+  closeRewards() {
+    this.setData({ rewardsOpen: false })
+  },
+  async exchangeCouponAction(e) {
+    const item = e.currentTarget.dataset.item
+    if (!item || !item.id) return
+    const modalRes = await new Promise((resolve) => {
+      wx.showModal({
+        title: '兑换优惠券',
+        content: `确定消耗 ${item.requiredPoints} 关爱积分兑换【${item.name}】吗？`,
+        confirmText: '确定兑换',
+        cancelText: '再想想',
+        success: (res) => resolve(res.confirm)
+      })
+    })
+    if (!modalRes) return
+    this.setData({ exchangingCouponId: item.id })
+    try {
+      const res = await callFunction('playground', 'exchangeCoupon', { templateId: item.id })
+      wx.showToast({ title: res.message || '兑换成功！', icon: 'success' })
+      this.openRewards()
+    } catch (err) {
+      wx.showToast({ title: err.message || '兑换失败', icon: 'none' })
+    } finally {
+      this.setData({ exchangingCouponId: '' })
+    }
+  },
+  goToCouponsList() {
+    wx.navigateTo({ url: '/pages/client/coupons/list/index' })
+  },
+  goToServiceBooking() {
+    wx.navigateTo({ url: '/pages/client/orders/create/index' })
   }
 })

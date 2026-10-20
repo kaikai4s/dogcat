@@ -1,16 +1,24 @@
-<view class="world-toolbar" style="top: {{top + 76}}px" wx:if="{{!loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !disputesOpen && !buildOpen}}">
+<view class="world-toolbar" style="top: {{top + 76}}px" wx:if="{{!loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !disputesOpen && !buildOpen && !serviceDiaryOpen && !mallSuppliesOpen && !rewardsOpen}}">
   <view class="world-toolbar-row">
     <button class="menu-collapse-btn" catchtap="toggleMenuCollapse">
       <text>{{menuCollapsed ? '☰ 快捷功能 ▾' : '▴ 收起功能'}}</text>
-      <view class="menu-badge" wx:if="{{menuCollapsed && socialRequests.length}}"></view>
+      <view class="menu-badge" wx:if="{{menuCollapsed && (socialRequests.length || activeService)}}"></view>
     </button>
     <view class="life-tools" wx:if="{{!menuCollapsed}}">
       <button bindtap="togglePetRoster">爱宠 {{pets.length}}</button>
       <button wx:if="{{hasPlot}}" bindtap="openFarm">庭院装饰</button>
       <button bindtap="openBuild">社区共建</button>
-      <button bindtap="openDisputes">邻里互助</button>
+      <button bindtap="openDisputes">居委会·拼单</button>
+      <button class="tool-btn-highlight" bindtap="openServiceDiary">照料日记</button>
+      <button class="tool-btn-highlight" bindtap="openMallSupplies">口粮补给</button>
+      <button class="tool-btn-highlight" bindtap="openRewards">关爱权益</button>
     </view>
     <button class="request-badge" wx:if="{{!menuCollapsed && socialRequests.length}}" bindtap="openSocial">待处理申请 {{socialRequests.length}}</button>
+  </view>
+  <view class="active-service-banner" wx:if="{{activeService}}" bindtap="openServiceDiary">
+    <view class="service-pulse-dot"></view>
+    <text class="service-banner-text">【上门服务中】{{activeService.staffName}} 正在进行{{activeService.serviceType}}</text>
+    <text class="service-banner-link">查看打卡日记 ›</text>
   </view>
   <view class="pet-alert-banner" wx:if="{{petAlerts.length}}" bindtap="viewPetAlert"><text>♡ {{petAlerts[0].name}}：{{petAlerts[0].message}}</text><text wx:if="{{petAlerts.length > 1}}">还有 {{petAlerts.length - 1}} 项需要照料 ›</text></view>
   <view class="pet-roster" wx:if="{{petRosterOpen}}">
@@ -43,37 +51,75 @@
     <view class="settings-heading">
       <view>
         <text class="panel-main-title">🏛 社区居委会</text>
-        <text class="settings-tip">社区自治 · 环境保洁督导 · 唯一机构</text>
+        <text class="settings-tip">社区自治 · 环境保洁督导 · 邻里拼单宠托</text>
       </view>
       <button bindtap="closeDisputes">完成</button>
     </view>
-    <view class="committee-card">
-      <view class="committee-info">
-        <text class="committee-title">当前在任主任：{{committeeOwnerName || '暂未设立'}}</text>
-        <text class="committee-desc" wx:if="{{isCommittee}}">★ 您是当前社区在任居委会主任，履行保洁督导与社区治理职责</text>
-        <text class="committee-desc" wx:else>每个社区只能设立一所居委会，若保洁提醒超过3天未处理，系统将重新推选居委会主任</text>
-      </view>
-      <button class="salary-btn" wx:if="{{isCommittee}}" bindtap="claimWeeklySalaryAction">每周处理奖励 {{weeklyPoints}}积分</button>
+    <view class="dispute-tabs">
+      <button class="dispute-tab-btn {{groupBuyTab === 'sanitation' ? 'active' : ''}}" data-tab="sanitation" bindtap="setGroupBuyTab">环境保洁督导</button>
+      <button class="dispute-tab-btn {{groupBuyTab === 'groupbuy' ? 'active' : ''}}" data-tab="groupbuy" bindtap="setGroupBuyTab">🏘️ 邻里拼单宠托</button>
     </view>
-    <view class="dispute-list-title">待处理保洁提醒 ({{disputes.length}})</view>
-    <scroll-view scroll-y class="dispute-list">
-      <view wx:if="{{disputesLoading}}" class="dispute-empty">正在拉取社区保洁记录…</view>
-      <view wx:elif="{{!disputes.length}}" class="dispute-empty">当前社区环境洁净，暂无未处理的保洁提醒！</view>
-      <view wx:for="{{disputes}}" wx:key="_id" class="dispute-item {{item.status === 'resolved' ? 'item-resolved' : item.status === 'expired' ? 'item-expired' : ''}}">
-        <view class="dispute-main">
-          <view class="dispute-head">
-            <text class="dispute-badge {{item.status === 'resolved' ? 'badge-resolved' : item.status === 'expired' ? 'badge-expired' : 'badge-pending'}}">
-              {{item.status === 'resolved' ? '已督促清理' : item.status === 'expired' ? '已超时重新推选' : '待居委会处理'}}
-            </text>
-            <text class="dispute-reporter">提醒人：{{item.reporterName}}</text>
-          </view>
-          <text class="dispute-detail">便便位置：坐标 ({{item.location.x}}, {{item.location.z}})</text>
-          <text class="dispute-time" wx:if="{{item.status === 'pending'}}">处理时限：超过3天未处理居委会将重新推选！</text>
-          <text class="dispute-time" wx:elif="{{item.status === 'resolved'}}">督导主任：{{item.resolverName}}</text>
+    <block wx:if="{{groupBuyTab === 'sanitation'}}">
+      <view class="committee-card">
+        <view class="committee-info">
+          <text class="committee-title">当前在任主任：{{committeeOwnerName || '暂未设立'}}</text>
+          <text class="committee-desc" wx:if="{{isCommittee}}">★ 您是当前社区在任居委会主任，履行保洁督导与社区治理职责</text>
+          <text class="committee-desc" wx:else>每个社区只能设立一所居委会，若保洁提醒超过3天未处理，系统将重新推选居委会主任</text>
         </view>
-        <button class="resolve-btn" wx:if="{{isCommittee && item.status === 'pending'}}" data-id="{{item._id}}" bindtap="resolveDisputeAction">协助清理并督导</button>
+        <button class="salary-btn" wx:if="{{isCommittee}}" bindtap="claimWeeklySalaryAction">每周处理奖励 {{weeklyPoints}}积分</button>
       </view>
-    </scroll-view>
+      <view class="dispute-list-title">待处理保洁提醒 ({{disputes.length}})</view>
+      <scroll-view scroll-y class="dispute-list">
+        <view wx:if="{{disputesLoading}}" class="dispute-empty">正在拉取社区保洁记录…</view>
+        <view wx:elif="{{!disputes.length}}" class="dispute-empty">当前社区环境洁净，暂无未处理的保洁提醒！</view>
+        <view wx:for="{{disputes}}" wx:key="_id" class="dispute-item {{item.status === 'resolved' ? 'item-resolved' : item.status === 'expired' ? 'item-expired' : ''}}">
+          <view class="dispute-main">
+            <view class="dispute-head">
+              <text class="dispute-badge {{item.status === 'resolved' ? 'badge-resolved' : item.status === 'expired' ? 'badge-expired' : 'badge-pending'}}">
+                {{item.status === 'resolved' ? '已督促清理' : item.status === 'expired' ? '已超时重新推选' : '待居委会处理'}}
+              </text>
+              <text class="dispute-reporter">提醒人：{{item.reporterName}}</text>
+            </view>
+            <text class="dispute-detail">便便位置：坐标 ({{item.location.x}}, {{item.location.z}})</text>
+            <text class="dispute-time" wx:if="{{item.status === 'pending'}}">处理时限：超过3天未处理居委会将重新推选！</text>
+            <text class="dispute-time" wx:elif="{{item.status === 'resolved'}}">督导主任：{{item.resolverName}}</text>
+          </view>
+          <button class="resolve-btn" wx:if="{{isCommittee && item.status === 'pending'}}" data-id="{{item._id}}" bindtap="resolveDisputeAction">协助清理并督导</button>
+        </view>
+      </scroll-view>
+    </block>
+    <block wx:if="{{groupBuyTab === 'groupbuy'}}">
+      <scroll-view scroll-y class="groupbuy-content">
+        <view class="groupbuy-hero-card">
+          <view class="groupbuy-hero-badge">同小区集中拼单</view>
+          <text class="groupbuy-hero-title">{{(communityGroupBuy && communityGroupBuy.groupBuyDiscount) || '同小区拼单免路费 · 满3户享8.8折'}}</text>
+          <text class="groupbuy-hero-desc">{{(communityGroupBuy && communityGroupBuy.groupBuyRule) || '每周五/节假日本小区满2户预约即可成团，宠托师集中上门，免除跨区域加急交通费。'}}</text>
+          <button class="groupbuy-order-btn" bindtap="startGroupBuyOrder">发起同小区拼单预约</button>
+        </view>
+        <view class="groupbuy-section-title">本小区常驻金牌宠托师</view>
+        <view class="groupbuy-sitters-list">
+          <view wx:if="{{!communityGroupBuy || !communityGroupBuy.sitters || !communityGroupBuy.sitters.length}}" class="dispute-empty">本小区正在招募金牌宠托师入驻中…</view>
+          <view wx:for="{{communityGroupBuy.sitters}}" wx:key="id" class="sitter-card">
+            <image wx:if="{{item.avatarUrl}}" class="sitter-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+            <view wx:else class="sitter-avatar-placeholder">🐾</view>
+            <view class="sitter-info">
+              <view class="sitter-name-row">
+                <text class="sitter-name">{{item.name}}</text>
+                <text class="sitter-rating">★ {{item.rating}}</text>
+              </view>
+              <text class="sitter-orders">已照料 {{item.orderCount}} 次 · 100% 放心托</text>
+              <view class="sitter-tags">
+                <text wx:for="{{item.specialties}}" wx:for-item="tag" wx:key="*this" class="sitter-tag">{{tag}}</text>
+              </view>
+            </view>
+            <view class="sitter-action-col">
+              <button class="book-sitter-btn" data-id="{{item.id}}" bindtap="bookSitterAction">指定TA预约</button>
+              <text class="view-sitter-link" data-id="{{item.id}}" bindtap="viewSitterDetail">查看名片</text>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </block>
   </view>
 </view>
 <view class="settings-backdrop build-backdrop" wx:if="{{buildOpen}}" catchtap="closeBuild" catchtouchmove="swallowTouch">
@@ -155,5 +201,152 @@
         <button class="resolve-btn arrest-btn" wx:if="{{item.status === 'wanted'}}" data-id="{{item._id}}" data-openid="{{item.driverOpenid}}" bindtap="arrestDriverAction">安排宣教自省</button>
       </view>
     </scroll-view>
+  </view>
+</view>
+<!-- 方案1：上门服务数字孪生日记弹窗 -->
+<view class="settings-backdrop diary-backdrop" wx:if="{{serviceDiaryOpen}}" catchtap="closeServiceDiary" catchtouchmove="swallowTouch">
+  <view class="settings-panel diary-panel" catchtap="swallowTouch">
+    <view class="settings-heading">
+      <view>
+        <text class="panel-main-title">🐾 宠托照料日记</text>
+        <text class="settings-tip">数字孪生 · 宠托师上门实拍与照料动态</text>
+      </view>
+      <button bindtap="closeServiceDiary">完成</button>
+    </view>
+    <view wx:if="{{serviceDiary && serviceDiary.activeOrder}}" class="diary-active-card">
+      <view class="diary-active-info">
+        <view class="diary-active-head">
+          <text class="active-pulse-badge">实时服务中</text>
+          <text class="active-service-type">{{serviceDiary.activeOrder.serviceType}}</text>
+        </view>
+        <text class="active-staff-name">宠托师：{{serviceDiary.activeOrder.staffName}}</text>
+      </view>
+      <button class="diary-detail-btn" data-id="{{serviceDiary.activeOrder.id}}" bindtap="goToOrderDetail">订单追踪</button>
+    </view>
+    <view wx:if="{{serviceDiary && serviceDiary.bowlAutoRefilled}}" class="diary-bowl-sync-tip">
+      <text class="bowl-sync-icon">🥣</text>
+      <text class="bowl-sync-text">宠托师今日打卡喂粮，庄园食盆已自动同步补满！</text>
+    </view>
+    <view class="diary-section-title">最新服务照料打卡流水 ({{(serviceDiary && serviceDiary.latestCheckins && serviceDiary.latestCheckins.length) || 0}})</view>
+    <scroll-view scroll-y class="diary-list">
+      <view wx:if="{{serviceDiaryLoading}}" class="dispute-empty">正在拉取照料实况日记…</view>
+      <view wx:elif="{{!serviceDiary || !serviceDiary.latestCheckins || !serviceDiary.latestCheckins.length}}" class="dispute-empty">
+        <text class="empty-icon">📷</text>
+        <text>暂无服务打卡记录\n预约宠托师上门照料后，实拍照片与打卡动态将实时同步至此！</text>
+      </view>
+      <view wx:for="{{serviceDiary.latestCheckins}}" wx:key="id" class="diary-item">
+        <view class="diary-timeline-col">
+          <view class="timeline-dot"></view>
+          <view class="timeline-line" wx:if="{{index < serviceDiary.latestCheckins.length - 1}}"></view>
+        </view>
+        <view class="diary-card">
+          <view class="diary-card-head">
+            <text class="checkin-type-badge">
+              {{item.eventType === 'food' || item.eventType === 'feed' ? '🥣 添粮添水' : item.eventType === 'poop' || item.eventType === 'clean' ? '🧹 铲屎保洁' : item.eventType === 'play' ? '🎾 互动陪伴' : '📷 上门打卡'}}
+            </text>
+            <text class="checkin-time">{{item.time}}</text>
+          </view>
+          <text class="checkin-remark" wx:if="{{item.remark}}">{{item.remark}}</text>
+          <image wx:if="{{item.mediaFileId}}" class="checkin-photo" src="{{item.mediaFileId}}" mode="aspectFill" data-url="{{item.mediaFileId}}" bindtap="previewDiaryPhoto" />
+        </view>
+      </view>
+    </scroll-view>
+    <view class="diary-footer" wx:if="{{serviceDiary && serviceDiary.activeOrder}}">
+      <button class="diary-full-btn" data-id="{{serviceDiary.activeOrder.id}}" bindtap="goToOrderDetail">查看完整服务跟踪报告</button>
+    </view>
+  </view>
+</view>
+
+<!-- 方案2：爱宠口粮补给站弹窗 -->
+<view class="settings-backdrop supplies-backdrop" wx:if="{{mallSuppliesOpen}}" catchtap="closeMallSupplies" catchtouchmove="swallowTouch">
+  <view class="settings-panel supplies-panel" catchtap="swallowTouch">
+    <view class="settings-heading">
+      <view>
+        <text class="panel-main-title">🥣 爱宠口粮补给站</text>
+        <text class="settings-tip">精选无谷天然粮 · 零食营养补给 · 关爱积分抵扣</text>
+      </view>
+      <button bindtap="closeMallSupplies">完成</button>
+    </view>
+    <view class="supplies-care-banner">
+      <text class="supplies-care-title">★ 关爱积分商城抵扣</text>
+      <text class="supplies-care-desc">每日给庄园猫狗碗添粮打卡可得关爱积分，可在选购好粮时直接抵扣现金！</text>
+    </view>
+    <scroll-view scroll-y class="supplies-list">
+      <view wx:if="{{mallSuppliesLoading}}" class="dispute-empty">正在精选优质宠粮…</view>
+      <view wx:elif="{{!mallSupplies.length}}" class="dispute-empty">补给站正加急补货中…</view>
+      <view wx:for="{{mallSupplies}}" wx:key="id" class="supplies-card" data-id="{{item.id}}" bindtap="goToMallDetail">
+        <image class="supplies-image" src="{{item.coverUrl}}" mode="aspectFill" />
+        <view class="supplies-info">
+          <text class="supplies-name">{{item.name}}</text>
+          <text class="supplies-summary">{{item.summary}}</text>
+          <view class="supplies-discount-tag">可使用积分立减抵扣</view>
+          <view class="supplies-price-row">
+            <view class="supplies-price-box">
+              <text class="price-symbol">¥</text>
+              <text class="price-val">{{item.price}}</text>
+              <text class="price-orig" wx:if="{{item.originalPrice && item.originalPrice > item.price}}">¥{{item.originalPrice}}</text>
+            </view>
+            <button class="supplies-buy-btn">立即选购</button>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="supplies-footer">
+      <button class="supplies-all-btn" bindtap="goToMallHome">进入宠粮用品全品类商城 ›</button>
+    </view>
+  </view>
+</view>
+
+<!-- 方案5：关爱权益中心与优惠券兑换弹窗 -->
+<view class="settings-backdrop rewards-backdrop" wx:if="{{rewardsOpen}}" catchtap="closeRewards" catchtouchmove="swallowTouch">
+  <view class="settings-panel rewards-panel" catchtap="swallowTouch">
+    <view class="settings-heading">
+      <view>
+        <text class="panel-main-title">🎁 关爱权益中心</text>
+        <text class="settings-tip">关爱积分兑换真实优惠券 · 抵扣商城与上门服务</text>
+      </view>
+      <button bindtap="closeRewards">完成</button>
+    </view>
+    <view class="rewards-member-card">
+      <view class="member-card-left">
+        <text class="member-level-tag">{{(rewardsData && rewardsData.memberLevelName) || '普通会员'}}</text>
+        <text class="member-points-label">当前可用关爱积分</text>
+        <text class="member-points-num">{{(rewardsData && rewardsData.points) || 0}}</text>
+      </view>
+      <view class="member-card-right">
+        <text class="points-rule-tip">添粮打卡 +5分/天</text>
+        <text class="points-rule-tip">社区治理保洁奖励</text>
+        <text class="points-rule-tip">积分可抵扣现金换券</text>
+      </view>
+    </view>
+    <view class="rewards-section-title">积分兑换真实立减优惠券</view>
+    <scroll-view scroll-y class="rewards-coupon-list">
+      <view wx:if="{{rewardsLoading}}" class="dispute-empty">正在加载可用权益…</view>
+      <view wx:elif="{{!rewardsData || !rewardsData.exchangeableCoupons || !rewardsData.exchangeableCoupons.length}}" class="dispute-empty">暂无可兑换优惠券，快去打卡攒积分吧～</view>
+      <view wx:for="{{rewardsData.exchangeableCoupons}}" wx:key="id" class="reward-coupon-card">
+        <view class="coupon-left-col">
+          <view class="coupon-amount-box">
+            <text class="coupon-amount-sym">¥</text>
+            <text class="coupon-amount-val">{{item.discountAmount}}</text>
+          </view>
+          <text class="coupon-min-spend">{{item.minSpend ? '满' + item.minSpend + '元可用' : '无门槛立减'}}</text>
+        </view>
+        <view class="coupon-mid-col">
+          <text class="coupon-name">{{item.name}}</text>
+          <text class="coupon-desc">{{item.type === 'mall' ? '商城全场口粮用品通用' : '专业上门照料服务通用'}}</text>
+          <text class="coupon-need-points">消耗 {{item.requiredPoints}} 关爱积分</text>
+        </view>
+        <view class="coupon-right-col">
+          <button class="exchange-btn" data-item="{{item}}" bindtap="exchangeCouponAction" disabled="{{((rewardsData && rewardsData.points) || 0) < item.requiredPoints || exchangingCouponId === item.id}}" loading="{{exchangingCouponId === item.id}}">
+            {{((rewardsData && rewardsData.points) || 0) < item.requiredPoints ? '积分不足' : '立即兑换'}}
+          </button>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="rewards-footer">
+      <button class="rewards-nav-btn" bindtap="goToCouponsList">我的优惠券包</button>
+      <button class="rewards-nav-btn btn-primary" bindtap="goToServiceBooking">去预约宠托</button>
+      <button class="rewards-nav-btn btn-primary" bindtap="goToMallHome">去商城选购</button>
+    </view>
   </view>
 </view>

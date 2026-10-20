@@ -118,3 +118,119 @@
 .jail-status-btn { background: #c62828 !important; color: #ffffff !important; animation: pulse 1.5s infinite; }
 .injured-tip-btn { background: #ef6c00 !important; color: #ffffff !important; }
 
+/* 业务闭环联动专属样式 */
+.tool-btn-highlight { background: #e8f5e9 !important; color: #2e7d32 !important; font-weight: 600 !important; border: 1px solid #c8e6c9 !important; }
+.mall-supplies-btn { background: #ff8f00 !important; color: #ffffff !important; }
+
+/* 顶部实时上门照料动态横幅 */
+.active-service-banner { pointer-events: auto; display: flex; align-items: center; gap: 8px; max-width: 330px; padding: 8px 12px; border-radius: 18px; background: rgba(46, 125, 50, 0.92); color: #ffffff; box-shadow: 0 4px 12px rgba(46, 125, 50, 0.25); animation: bannerSlideDown 0.3s ease-out; }
+@keyframes bannerSlideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.service-pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #69f0ae; box-shadow: 0 0 0 0 rgba(105, 240, 174, 0.7); animation: pulseDot 1.8s infinite; }
+@keyframes pulseDot { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(105, 240, 174, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(105, 240, 174, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(105, 240, 174, 0); } }
+.service-banner-text { flex: 1; min-width: 0; font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.service-banner-link { font-size: 11px; color: #b9f6ca; font-weight: 600; flex-shrink: 0; }
+
+/* 居委会 Tab 切换与同小区拼单 */
+.dispute-tabs { display: flex; gap: 6px; margin-bottom: 12px; background: #eef2e6; border-radius: 14px; padding: 4px; }
+.dispute-tab-btn { flex: 1; margin: 0; padding: 0 6px; line-height: 32px; border-radius: 11px; background: transparent; color: #6a7c64; font-size: 12px; font-weight: 600; }
+.dispute-tab-btn.active { background: #ffffff; color: #2e7d32; box-shadow: 0 2px 6px rgba(46, 125, 50, 0.12); }
+
+.groupbuy-content { flex: 1; min-height: 0; height: 0; }
+.groupbuy-hero-card { padding: 14px 16px; margin-bottom: 14px; border-radius: 18px; background: linear-gradient(135deg, #f1f8e9 0%, #dcedc8 100%); border-left: 4px solid #558b2f; }
+.groupbuy-hero-badge { display: inline-block; padding: 2px 8px; border-radius: 8px; background: #558b2f; color: #ffffff; font-size: 10px; font-weight: 700; margin-bottom: 6px; }
+.groupbuy-hero-title { display: block; font-size: 14px; font-weight: 700; color: #2e4d1f; margin-bottom: 4px; }
+.groupbuy-hero-desc { display: block; font-size: 11px; color: #556b46; line-height: 16px; margin-bottom: 10px; }
+.groupbuy-order-btn { margin: 0; line-height: 36px; border-radius: 14px; background: #558b2f; color: #ffffff; font-size: 12px; font-weight: 700; }
+
+.groupbuy-section-title { font-size: 13px; font-weight: 700; color: #334d28; margin-bottom: 10px; }
+.groupbuy-sitters-list { display: flex; flex-direction: column; gap: 10px; }
+.sitter-card { display: flex; align-items: center; gap: 12px; padding: 12px; background: #ffffff; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px solid #e5ede0; }
+.sitter-avatar { width: 50px; height: 50px; border-radius: 50%; }
+.sitter-avatar-placeholder { width: 50px; height: 50px; border-radius: 50%; background: #e8f5e9; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.sitter-info { flex: 1; min-width: 0; }
+.sitter-name-row { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.sitter-name { font-size: 14px; font-weight: 700; color: #2e3e26; }
+.sitter-rating { font-size: 11px; font-weight: 700; color: #ff8f00; }
+.sitter-orders { font-size: 11px; color: #78909c; display: block; margin-bottom: 4px; }
+.sitter-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.sitter-tag { font-size: 9px; padding: 2px 6px; border-radius: 6px; background: #f1f8e9; color: #558b2f; font-weight: 600; }
+.sitter-action-col { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+.book-sitter-btn { margin: 0; padding: 0 12px; line-height: 30px; font-size: 11px; border-radius: 12px; background: #2e7d32; color: #ffffff; font-weight: 700; }
+.view-sitter-link { font-size: 10px; color: #558b2f; }
+
+/* 方案1：宠托照料日记弹窗样式 */
+.diary-panel, .supplies-panel, .rewards-panel { display: flex; flex-direction: column; width: 94%; max-width: 480px; height: 86vh; max-height: 88vh; overflow: hidden; padding: 20px 16px 14px; box-sizing: border-box; background: #fcfaee; border-radius: 26px; color: #3d5740; }
+.diary-active-card { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; margin-bottom: 10px; border-radius: 16px; background: #e8f5e9; border: 1px solid #c8e6c9; }
+.diary-active-info { flex: 1; min-width: 0; }
+.diary-active-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.active-pulse-badge { padding: 2px 6px; border-radius: 6px; background: #2e7d32; color: #ffffff; font-size: 9px; font-weight: 700; }
+.active-service-type { font-size: 12px; font-weight: 700; color: #1b5e20; }
+.active-staff-name { font-size: 11px; color: #388e3c; }
+.diary-detail-btn { margin: 0; padding: 0 12px; line-height: 30px; font-size: 11px; border-radius: 12px; background: #2e7d32; color: #ffffff; }
+
+.diary-bowl-sync-tip { display: flex; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 10px; border-radius: 12px; background: #fff8e1; border: 1px solid #ffe082; }
+.bowl-sync-icon { font-size: 16px; }
+.bowl-sync-text { font-size: 11px; color: #b78103; font-weight: 600; }
+
+.diary-section-title { font-size: 12px; font-weight: 700; color: #556b46; margin-bottom: 8px; }
+.diary-list { flex: 1; min-height: 0; height: 0; }
+.diary-item { display: flex; gap: 10px; margin-bottom: 12px; }
+.diary-timeline-col { display: flex; flex-direction: column; align-items: center; width: 16px; flex-shrink: 0; }
+.timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: #689f38; margin-top: 4px; }
+.timeline-line { flex: 1; width: 2px; background: #dcedc8; margin-top: 4px; }
+.diary-card { flex: 1; min-width: 0; padding: 10px 12px; background: #ffffff; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.03); }
+.diary-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.checkin-type-badge { font-size: 11px; font-weight: 700; color: #33691e; }
+.checkin-time { font-size: 10px; color: #9e9e9e; }
+.checkin-remark { display: block; font-size: 11px; color: #424242; line-height: 16px; margin-bottom: 8px; }
+.checkin-photo { width: 100%; height: 140px; border-radius: 10px; }
+.diary-footer { padding-top: 10px; }
+.diary-full-btn { margin: 0; line-height: 40px; border-radius: 16px; background: #689f38; color: #ffffff; font-size: 12px; font-weight: 700; }
+
+/* 方案2：爱宠口粮补给站样式 */
+.supplies-care-banner { padding: 10px 12px; margin-bottom: 12px; border-radius: 14px; background: #fff3e0; border-left: 4px solid #ef6c00; }
+.supplies-care-title { display: block; font-size: 12px; font-weight: 700; color: #e65100; margin-bottom: 2px; }
+.supplies-care-desc { display: block; font-size: 10px; color: #8d5300; line-height: 14px; }
+.supplies-list { flex: 1; min-height: 0; height: 0; }
+.supplies-card { display: flex; gap: 12px; padding: 12px; margin-bottom: 10px; background: #ffffff; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px solid #f0f0f0; }
+.supplies-image { width: 78px; height: 78px; border-radius: 12px; flex-shrink: 0; }
+.supplies-info { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; }
+.supplies-name { font-size: 13px; font-weight: 700; color: #212121; line-height: 17px; margin-bottom: 3px; }
+.supplies-summary { font-size: 10px; color: #757575; line-height: 14px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.supplies-discount-tag { display: inline-block; align-self: flex-start; font-size: 9px; padding: 2px 6px; border-radius: 4px; background: #ffebee; color: #c62828; font-weight: 600; margin-bottom: 4px; }
+.supplies-price-row { display: flex; justify-content: space-between; align-items: flex-end; }
+.supplies-price-box { display: flex; align-items: baseline; gap: 2px; }
+.price-symbol { font-size: 11px; color: #e53935; font-weight: 700; }
+.price-val { font-size: 16px; color: #e53935; font-weight: 700; }
+.price-orig { font-size: 10px; color: #bdbdbd; text-decoration: line-through; margin-left: 4px; }
+.supplies-buy-btn { margin: 0; padding: 0 10px; line-height: 28px; font-size: 11px; border-radius: 12px; background: #e53935; color: #ffffff; font-weight: 700; }
+.supplies-footer { padding-top: 10px; }
+.supplies-all-btn { margin: 0; line-height: 40px; border-radius: 16px; background: #455a64; color: #ffffff; font-size: 12px; font-weight: 700; }
+
+/* 方案5：关爱权益中心样式 */
+.rewards-member-card { display: flex; justify-content: space-between; padding: 16px; margin-bottom: 14px; border-radius: 18px; background: linear-gradient(135deg, #424242 0%, #212121 100%); color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.member-card-left { display: flex; flex-direction: column; }
+.member-level-tag { display: inline-block; padding: 2px 8px; border-radius: 8px; background: #ffd54f; color: #372400; font-size: 10px; font-weight: 700; margin-bottom: 6px; align-self: flex-start; }
+.member-points-label { font-size: 10px; color: #b0bec5; }
+.member-points-num { font-size: 26px; font-weight: 700; color: #ffd54f; line-height: 32px; }
+.member-card-right { display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.points-rule-tip { font-size: 9px; color: #cfd8dc; }
+.rewards-section-title { font-size: 12px; font-weight: 700; color: #37474f; margin-bottom: 8px; }
+.rewards-coupon-list { flex: 1; min-height: 0; height: 0; }
+.reward-coupon-card { display: flex; align-items: center; padding: 12px; margin-bottom: 10px; background: #ffffff; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px dashed #cfd8dc; }
+.coupon-left-col { flex: 0 0 68px; text-align: center; border-right: 1px solid #f0f0f0; padding-right: 8px; }
+.coupon-amount-box { display: flex; align-items: baseline; justify-content: center; }
+.coupon-amount-sym { font-size: 12px; color: #d32f2f; font-weight: 700; }
+.coupon-amount-val { font-size: 22px; color: #d32f2f; font-weight: 700; }
+.coupon-min-spend { font-size: 9px; color: #9e9e9e; display: block; }
+.coupon-mid-col { flex: 1; min-width: 0; padding: 0 10px; }
+.coupon-name { font-size: 13px; font-weight: 700; color: #212121; display: block; margin-bottom: 2px; }
+.coupon-desc { font-size: 10px; color: #757575; display: block; margin-bottom: 4px; }
+.coupon-need-points { font-size: 10px; color: #f57c00; font-weight: 700; display: block; }
+.coupon-right-col { flex-shrink: 0; }
+.exchange-btn { margin: 0; padding: 0 12px; line-height: 30px; font-size: 11px; border-radius: 12px; background: #d32f2f; color: #ffffff; font-weight: 700; }
+.rewards-footer { display: flex; gap: 6px; padding-top: 10px; }
+.rewards-nav-btn { flex: 1; margin: 0; line-height: 38px; border-radius: 14px; background: #eceff1; color: #455a64; font-size: 11px; font-weight: 700; }
+.rewards-nav-btn.btn-primary { background: #2e7d32; color: #ffffff; }
+
+

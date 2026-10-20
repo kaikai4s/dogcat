@@ -28,6 +28,7 @@
       <button wx:if="{{nearbyPlayer && !nearbyPlayer.friend}}" bindtap="requestFriend" disabled="{{socialBusy}}">添加 {{nearbyPlayer.name}} 为好友</button>
       <button wx:if="{{nearbyGate}}" bindtap="requestVisit" disabled="{{socialBusy}}">申请访问 {{nearbyGate.name}} 的庭院</button>
       <button wx:if="{{nearbyBowl}}" class="fill-bowl" bindtap="fillBowl" disabled="{{feeding || nearbyBowl.food >= 100}}" loading="{{feeding}}">{{nearbyBowl.food >= 100 ? '猫狗碗已添满' : '给猫狗碗添粮'}}</button>
+      <button wx:if="{{nearbyBowl}}" class="mall-supplies-btn" bindtap="openMallSupplies">口粮补给站</button>
       <button wx:if="{{nearbyPoop}}" bindtap="pickupPoop">拾取便便</button>
       <button wx:if="{{nearbyPoop}}" bindtap="reportPoopAction">向居委会反馈便便</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'committee'}}" bindtap="openDisputes">社区服务站</button>

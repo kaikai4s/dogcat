@@ -157,9 +157,218 @@ module.exports = function createHandler(context) {
     if (action === 'getRegion') return world.region(openid, user, data)
     if (action === 'getMapOverview') return world.mapOverview(openid, user, data)
     if (action === 'fillBowl') {
-      const result=await world.fillBowl(openid,data)
-      await shared.plotChanged(openid,data.plotId)
+      const result = await world.fillBowl(openid, data)
+      await shared.plotChanged(openid, data.plotId)
+      let pointsAwarded = 0
+      let message = '猫狗碗的粮食已添满'
+      if (typeof context.addPoints === 'function' && user && user._id) {
+        const todayDateKey = (context.nowText ? context.nowText() : new Date().toISOString()).slice(0, 10)
+        try {
+          const pointRes = await context.addPoints(
+            openid,
+            user._id,
+            5,
+            'playground_care',
+            `${openid}_${todayDateKey}`,
+            '爱宠空间-每日关爱添粮照料打卡',
+            { idempotencyKey: `playground_care_${openid}_${todayDateKey}` }
+          )
+          if (!pointRes.duplicate && pointRes.delta > 0) {
+            pointsAwarded = pointRes.delta
+            message = `食盆已添满！获得每日关爱打卡 +${pointsAwarded} 积分`
+          }
+        } catch (e) {}
+      }
+      if (pointsAwarded > 0) {
+        return { ...result, pointsAwarded, message }
+      }
       return result
+    }
+
+    if (action === 'getServiceTwinInfo') {
+      let activeOrder = null
+      try {
+        const orderRes = await db.collection('orders')
+          .where({ clientOpenid: openid, status: 'in_service' })
+          .orderBy('updatedAt', 'desc')
+          .limit(1)
+          .get()
+        const order = (orderRes.data || [])[0]
+        if (order) {
+          activeOrder = {
+            id: order._id,
+            orderNo: order.orderNo,
+            serviceType: order.serviceSummary || order.serviceType || '上门照料',
+            staffName: (order.staffSnapshot && (order.staffSnapshot.name || order.staffSnapshot.nickname)) || '认证宠托师',
+            staffAvatar: (order.staffSnapshot && order.staffSnapshot.avatarUrl) || '',
+            staffPhone: (order.staffSnapshot && order.staffSnapshot.phone) || '',
+            status: order.status,
+            startedAt: order.serviceStartDate || order.updatedAt
+          }
+        }
+      } catch (e) {}
+
+      let latestCheckins = []
+      try {
+        let targetOrderId = activeOrder ? activeOrder.id : ''
+        if (!targetOrderId) {
+          const recentOrders = await db.collection('orders')
+            .where({ clientOpenid: openid })
+            .orderBy('createdAt', 'desc')
+            .limit(3)
+            .get()
+          const completedOrder = (recentOrders.data || []).find((o) => ['completed', 'day_completed', 'in_service'].includes(o.status))
+          if (completedOrder) targetOrderId = completedOrder._id
+        }
+        if (targetOrderId) {
+          const checkinRes = await db.collection('checkin_logs')
+            .where({ orderId: targetOrderId })
+            .orderBy('createdAt', 'desc')
+            .limit(8)
+            .get()
+          latestCheckins = (checkinRes.data || []).map((c) => ({
+            id: c._id,
+            eventType: c.eventType,
+            mediaFileId: c.mediaFileId || c.fileId || '',
+            remark: c.checkinRemark || c.remark || '',
+            time: c.createdAt ? new Date(c.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''
+          }))
+        }
+      } catch (e) {}
+
+      let bowlAutoRefilled = false
+      if (latestCheckins.some((c) => ['food', 'water', 'feed'].includes(c.eventType))) {
+        bowlAutoRefilled = true
+      }
+
+      return {
+        hasActiveService: Boolean(activeOrder),
+        activeOrder,
+        latestCheckins,
+        bowlAutoRefilled
+      }
+    }
+
+    if (action === 'getMallSupplies') {
+      let products = []
+      try {
+        const res = await db.collection('mall_products')
+          .where({ status: 'on_sale' })
+          .orderBy('salesCount', 'desc')
+          .limit(6)
+          .get()
+        products = (res.data || []).map((p) => ({
+          id: p._id,
+          name: p.name,
+          price: p.price,
+          originalPrice: p.originalPrice || p.price,
+          coverUrl: p.coverUrl || (Array.isArray(p.images) ? p.images[0] : '') || '',
+          summary: p.summary || p.desc || '精选优质宠粮',
+          salesCount: p.salesCount || 0,
+          pointsDeductible: true,
+          pointsDeduction: Math.min(20, Math.max(5, Math.floor((p.price || 0) * 0.1))),
+          maxPointsDiscount: Math.min(20, Math.floor((p.price || 0) * 0.2))
+        }))
+      } catch (e) {}
+      return { products }
+    }
+
+    if (action === 'getCommunityGroupBuy') {
+      const userCommunity = user.residentialCommunity || null
+      const communityName = (typeof userCommunity === 'string' ? userCommunity : (userCommunity && userCommunity.name)) ||
+        (data && data.community && (typeof data.community === 'string' ? data.community : data.community.name)) ||
+        '当前社区'
+      let sitters = []
+      try {
+        const staffRes = await db.collection('staff_profiles')
+          .where({ approved: true, isOnline: true })
+          .orderBy('rating', 'desc')
+          .limit(3)
+          .get()
+        sitters = (staffRes.data || []).map((s) => ({
+          id: s._id,
+          userId: s.userId,
+          name: s.nickname || s.name || '金牌宠托师',
+          avatarUrl: s.avatarUrl || '',
+          rating: Number(s.rating || 5.0).toFixed(1),
+          orderCount: s.orderCount || s.completedOrders || 28,
+          specialties: Array.isArray(s.specialties) ? s.specialties.slice(0, 3) : ['专业喂养', '上门遛狗', '健康观察']
+        }))
+      } catch (e) {}
+
+      return {
+        communityName,
+        groupBuyDiscount: '同小区拼单免路费 · 满3户享8.8折',
+        groupBuyRule: '每周五/节假日本小区满2户预约即可成团，宠托师集中上门，免除跨区域加急交通费。',
+        sitters
+      }
+    }
+
+    if (action === 'getPlaygroundRewards') {
+      const userDoc = (await db.collection('users').doc(user._id).get().catch(() => ({ data: {} }))).data || user
+      const memberLevelKey = userDoc.memberLevel || 'bronze'
+      let memberLevelName = '普通会员'
+      try {
+        const levelDoc = (await db.collection('member_levels').doc(memberLevelKey).get().catch(() => ({ data: {} }))).data
+        if (levelDoc && levelDoc.name) memberLevelName = levelDoc.name
+      } catch (e) {}
+
+      let exchangeableCoupons = []
+      try {
+        const couponRes = await db.collection('coupon_templates')
+          .where({ status: 'active' })
+          .limit(4)
+          .get()
+        exchangeableCoupons = (couponRes.data || []).map((c) => ({
+          id: c._id,
+          name: c.name,
+          discountAmount: c.discountAmount,
+          minSpend: c.minSpend || 0,
+          requiredPoints: Math.max(50, (c.discountAmount || 5) * 10),
+          type: c.type || 'service'
+        }))
+      } catch (e) {}
+
+      return {
+        points: Number(userDoc.points || 0),
+        memberLevel: memberLevelKey,
+        memberLevelName,
+        exchangeableCoupons
+      }
+    }
+
+    if (action === 'exchangeCoupon') {
+      const templateId = String(data.templateId || '').trim()
+      if (!templateId) throw new Error('请选择要兑换的优惠券')
+      const templateDoc = await db.collection('coupon_templates').doc(templateId).get().catch(() => null)
+      const template = templateDoc && templateDoc.data
+      if (!template || template.status !== 'active') throw new Error('该优惠券暂不可兑换')
+
+      const requiredPoints = Math.max(50, Number(template.discountAmount || 5) * 10)
+      const userDoc = (await db.collection('users').doc(user._id).get().catch(() => ({ data: {} }))).data || user
+      if (Number(userDoc.points || 0) < requiredPoints) {
+        throw new Error(`积分不足，兑换该券需要 ${requiredPoints} 积分（当前可用 ${userDoc.points || 0} 积分）`)
+      }
+
+      if (typeof context.addPoints === 'function') {
+        await context.addPoints(
+          openid,
+          user._id,
+          -requiredPoints,
+          'coupon_exchange',
+          templateId + '_' + Date.now(),
+          `关爱积分兑换优惠券【${template.name}】`
+        )
+      }
+
+      if (typeof context.issueCouponToTargetUser === 'function') {
+        await context.issueCouponToTargetUser(template, user, {
+          sourceType: 'playground_exchange',
+          sourceId: templateId
+        })
+      }
+
+      return { success: true, message: `成功消耗 ${requiredPoints} 积分兑换【${template.name}】！` }
     }
 
     if (action === 'setPetScale') {
@@ -249,7 +458,26 @@ module.exports = function createHandler(context) {
     const ownPlot = await world.own(openid)
 
     const member=await require('../services/playground-access').memberAccess(db,openid)
+    let activeService = null
+    try {
+      const activeOrderRes = await db.collection('orders')
+        .where({ clientOpenid: openid, status: 'in_service' })
+        .orderBy('updatedAt', 'desc')
+        .limit(1)
+        .get()
+      const aOrder = (activeOrderRes.data || [])[0]
+      if (aOrder) {
+        activeService = {
+          orderId: aOrder._id,
+          orderNo: aOrder.orderNo,
+          serviceType: aOrder.serviceSummary || aOrder.serviceType || '上门照料',
+          staffName: (aOrder.staffSnapshot && (aOrder.staffSnapshot.name || aOrder.staffSnapshot.nickname)) || '认证宠托师'
+        }
+      }
+    } catch (e) {}
+
     return {
+      activeService,
       world: {...await world.config(),plotSizes:(await buildingsService.readCatalog()).plotSizes.map((p)=>require('../services/playground-access').decorate(p,member))},
       farmCatalog: await require('../services/playground-farm-catalog').readCatalog(db),
       scene,
