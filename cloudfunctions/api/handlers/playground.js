@@ -148,12 +148,31 @@ module.exports = function createHandler(context) {
         }).catch(() => {})
       }
       const sceneId = String(data.sceneId || '')
+      let bonusMsg = ''
+      if (sceneId) {
+        try {
+          const hospitalRes = await db.collection('pet_playground_plots').where({ kind: 'plot', communityId: sceneId, buildingType: 'pet_hospital' }).get()
+          const hospital = (hospitalRes.data || []).find((p) => !p.demolished)
+          if (hospital && hospital.ownerOpenid && hospital.ownerOpenid !== openid) {
+            const userRes = await db.collection('users').where({ openid: hospital.ownerOpenid }).limit(1).get()
+            const targetUser = (userRes.data || [])[0]
+            if (targetUser) {
+              await db.collection('users').doc(targetUser._id).update({
+                data: {
+                  playgroundCoins: (targetUser.playgroundCoins || 0) + 15
+                }
+              })
+              bonusMsg = '，已向爱心医院主理人发放 15 爱心币调理津贴'
+            }
+          }
+        } catch (_) {}
+      }
       return {
         success: true,
         careType,
         message: careType === 'wash'
-          ? `爱宠在宠物医院完成了精细洗护，毛发柔顺蓬松，洁净清爽！`
-          : `爱宠在宠物医院完成了健康治疗与创伤恢复，生病状态已治愈，状态满格！`
+          ? `爱宠在宠物医院完成了精细洗护，毛发柔顺蓬松，洁净清爽${bonusMsg}！`
+          : `爱宠在宠物医院完成了健康治疗与创伤恢复，生病状态已治愈，状态满格${bonusMsg}！`
       }
     }
 

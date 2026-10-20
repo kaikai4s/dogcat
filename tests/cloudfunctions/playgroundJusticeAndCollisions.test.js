@@ -155,6 +155,25 @@ test('traffic accident reporting, police investigation and jail arrest workflow'
   const treatPet = await handler('a', 'hospitalTreat', { target: 'pet', sceneId })
   assert.equal(treatPet.treated, true)
   assert.equal(treatPet.target, 'pet')
+
+  // 9. 邻居在医院洗护和治疗宠物，向医院主理人发放津贴
+  await f.plots.claim('b', f.user('b'), {
+    x: 600,
+    z: 600,
+    gateDirection: 'south',
+    buildingType: 'pet_hospital',
+    buildingName: '爱心宠物医院'
+  })
+  const hospitalOwnerCoinsBefore = (await f.db.collection('users').doc('user_b').get()).data?.playgroundCoins || 0
+  const careRes = await handler('a', 'hospitalCare', {
+    careType: 'wash',
+    petId: 'pet_a',
+    sceneId
+  })
+  assert.equal(careRes.success, true)
+  assert.ok(careRes.message.includes('爱心医院主理人发放 15 爱心币调理津贴'))
+  const hospitalOwnerCoinsAfter = (await f.db.collection('users').doc('user_b').get()).data?.playgroundCoins || 0
+  assert.equal(hospitalOwnerCoinsAfter, hospitalOwnerCoinsBefore + 15)
 })
 
 test('cannot arrest if police station or prison is missing', async () => {
@@ -232,6 +251,13 @@ test('arrest parks driver car and resets vehicle presence', async () => {
   const carAfter = f.car('d')
   assert.equal(carAfter.state, 'parked')
   assert.equal(carAfter.moving, false)
+
+  // 司机的角色已被传送进安全宣教自省室内
+  const actorAfter = f.actor('d')
+  assert.equal(actorAfter.vehicleId, '')
+  assert.equal(actorAfter.moving, false)
+  assert.equal(actorAfter.position.x, 400)
+  assert.equal(actorAfter.position.z, 400)
 })
 
 test('jail time expiration allows free release without paying bail', async () => {

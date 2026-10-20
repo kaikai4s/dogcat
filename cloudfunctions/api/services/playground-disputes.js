@@ -74,7 +74,7 @@ module.exports=function createDisputesService(context) {
       for(const item of expired)await tx.collection(DISPUTES).doc(item._id).update({data:{status:'expired',expiredAt:stamp}})
       const committee=await getCommunityCommittee(sceneId,tx)
       if(committee) {
-        const type=committee.isNewPlot?'yard':'residential',patch={buildingId:'',buildingType:type,buildingImage:'',buildingName:type==='yard'?'专属绿地':'住宅洋房',committeeRevoked:true,revokedAt:stamp,revision:Math.max(stamp,(committee.revision||0)+1),revokedReason:'存在超过3天未处理的保洁反馈'}
+        const type=committee.isNewPlot?'yard':'residential',patch={buildingId:'',buildingType:type,buildingImage:'',buildingCategory:'',buildingWidth:0,buildingDepth:0,buildingName:type==='yard'?'专属爱心绿地':'住宅洋房',committeeRevoked:true,revokedAt:stamp,revision:Math.max(stamp,(committee.revision||0)+1),revokedReason:'存在超过3天未处理的保洁反馈'}
         await tx.collection(COLLECTION).doc(committee._id).update({data:patch})
         const home=await world.read(tx,world.ownerId(committee.ownerOpenid))
         if(home&&home.plotId===committee._id)await tx.collection(COLLECTION).doc(home._id).update({data:patch})

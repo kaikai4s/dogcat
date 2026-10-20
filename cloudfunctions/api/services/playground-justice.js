@@ -47,6 +47,11 @@ module.exports = function createJusticeService(context) {
           await tx.collection(PLOTS_COLLECTION).doc(p._id).update({
             data: {
               buildingType: restoredType,
+              buildingId: '',
+              buildingImage: '',
+              buildingCategory: '',
+              buildingWidth: 0,
+              buildingDepth: 0,
               buildingName: restoredBuildingName,
               name: restoredName,
               justiceRevoked: true,
@@ -243,14 +248,16 @@ module.exports = function createJusticeService(context) {
       }
       const pId = 'presence_' + require('./playground-world').hash(targetDriverOpenid)
       const actor = await readDocument(tx, PLOTS_COLLECTION, pId, '读取角色', true)
-      if (actor && actor.vehicleId) {
-        await tx.collection(PLOTS_COLLECTION).doc(pId).update({
-          data: {
-            vehicleId: '',
-            vehicleRole: '',
-            moving: false
-          }
-        })
+      if (actor) {
+        const patch = { moving: false }
+        if (actor.vehicleId) {
+          patch.vehicleId = ''
+          patch.vehicleRole = ''
+        }
+        if (facilities.prison) {
+          patch.position = { x: facilities.prison.x, z: facilities.prison.z }
+        }
+        await tx.collection(PLOTS_COLLECTION).doc(pId).update({ data: patch })
       }
 
       // 发放文明督导所主理人津贴 20 爱心币
