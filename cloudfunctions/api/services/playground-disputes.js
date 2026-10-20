@@ -150,8 +150,17 @@ module.exports=function createDisputesService(context) {
     return result
   }
   async function repairVehicle(openid,user,data) {
-    await actor(db,openid,data)
-    return {success:true,message:'车辆保养完成，本次无积分奖励'}
+    const stamp = now()
+    const person = await actor(db,openid,data)
+    const id = String(data.vehicleId || require('./playground-shared/vehicles').vehicleId(openid))
+    const car = await world.read(db, id)
+    if (car && car.ownerOpenid === openid) {
+      const record = { ...car, stains: [], soiled: false, maintainedAt: stamp, revision: Math.max(stamp, (car.revision || 0) + 1) }
+      const { _id, ...cleanCar } = record
+      await db.collection(COLLECTION).doc(id).set({ data: cleanCar })
+      return { success: true, record, message: '车辆经过专业检修与保养，机械与安全性能已完全达标！' }
+    }
+    return { success: true, message: '车辆保养完成，机械与安全性能达标！' }
   }
   return {getCommunityBuilding,getCommunityCommittee,reportPoop,listDisputes,resolveDispute,claimWeeklySalary,checkCommitteeTimeout,washVehicle,repairVehicle}
 }

@@ -96,7 +96,11 @@ module.exports = function createHandler(context) {
       if(record)await shared.publishRecords([record])
       return result
     }
-    if (action === 'repairVehicle') return disputes.repairVehicle(openid, user, data)
+    if (action === 'repairVehicle') {
+      const {record,...result}=await disputes.repairVehicle(openid, user, data)
+      if(record)await shared.publishRecords([record])
+      return result
+    }
     const justice = require('../services/playground-justice')(context)
     if (action === 'reportAccident') return justice.reportAccident(openid, user, data)
     if (action === 'listAccidents') return justice.listAccidents(openid, data)

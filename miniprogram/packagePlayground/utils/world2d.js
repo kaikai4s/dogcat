@@ -375,7 +375,8 @@ class World2D {
   }
   canEnterPlot(plot) {
     if(!this.scene || plot.mine)return true
-    if(plot.buildingType && ['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison'].includes(plot.buildingType)) return true
+    if(plot.buildingCategory === 'public' || plot.buildingCategory === 'floor' || plot.buildingCategory === 'tree') return true
+    if(plot.buildingType && ['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison', 'floor', 'tree'].includes(plot.buildingType)) return true
     const friends=this.social.friends||[]
     const visit = this.social.visits && (this.social.visits[plot.id] || this.social.visits[plot._id])
     const plotInstance = plot.instanceId || plot.createdAt || ''
@@ -2065,25 +2066,38 @@ class World2D {
     const layout = yardLayout(p)
     if (!isPureYard) {
       if (isFloor) {
-        // 地板地坪素材直接在地面草坪上平铺绘制，不产生立体深度遮挡
+        // 地板地坪素材直接在地面草坪上平铺绘制，按等轴测多边形贴合地表，不产生立体深度遮挡
         const custom = this.buildingImage(p.buildingImage)
-        const pt = this.project(p.x, p.z)
-        const bW = Math.max(3.5, p.buildingWidth || 7) * this.scale * this.zoom
-        const bD = Math.max(3.5, p.buildingDepth || 7) * this.scale * this.zoom
+        const halfW = (p.buildingWidth || 7) / 2
+        const halfD = (p.buildingDepth || 7) / 2
+        const corners = [
+          this.project(p.x - halfW, p.z - halfD),
+          this.project(p.x + halfW, p.z - halfD),
+          this.project(p.x + halfW, p.z + halfD),
+          this.project(p.x - halfW, p.z + halfD)
+        ]
+        this.ctx.save()
+        if (typeof this.ctx.beginPath === 'function') this.ctx.beginPath()
+        if (typeof this.ctx.moveTo === 'function') corners.forEach((pt, i) => (i === 0 ? this.ctx.moveTo(pt.x, pt.y) : this.ctx.lineTo(pt.x, pt.y)))
+        if (typeof this.ctx.closePath === 'function') this.ctx.closePath()
         if (custom && custom.width > 0 && custom.height > 0) {
-          this.ctx.drawImage(custom, pt.x - bW, pt.y - bD, bW * 2, bD * 2)
-        } else {
           this.ctx.save()
-          this.ctx.fillStyle = '#b0bec5'
-          this.ctx.beginPath()
-          if (typeof this.ctx.roundRect === 'function') this.ctx.roundRect(pt.x - bW, pt.y - bD, bW * 2, bD * 2, 8)
-          else this.ctx.rect(pt.x - bW, pt.y - bD, bW * 2, bD * 2)
-          this.ctx.fill()
-          this.ctx.strokeStyle = '#78909c'
-          this.ctx.lineWidth = 2
-          this.ctx.stroke()
+          if (typeof this.ctx.clip === 'function') this.ctx.clip()
+          const minX = Math.min(...corners.map((c) => c.x))
+          const maxX = Math.max(...corners.map((c) => c.x))
+          const minY = Math.min(...corners.map((c) => c.y))
+          const maxY = Math.max(...corners.map((c) => c.y))
+          this.ctx.drawImage(custom, minX, minY, maxX - minX, maxY - minY)
           this.ctx.restore()
+        } else {
+          const isWood = String(p.buildingId || '').includes('wood')
+          this.ctx.fillStyle = isWood ? '#d7ccc8' : '#cfd8dc'
+          this.ctx.fill()
+          this.ctx.strokeStyle = isWood ? '#a1887f' : '#90a4ae'
+          this.ctx.lineWidth = 1.5
+          this.ctx.stroke()
         }
+        this.ctx.restore()
       } else if (isSingleBuilding) {
         this.drawStonePath(
           { x: p.x, z: p.z + 11 },
