@@ -263,6 +263,22 @@ module.exports = function createBuildingsService(context) {
         updatedAt: now()
       }
       await tx.collection(COLLECTION).doc(ID).set({ data: next })
+      if (exists) {
+        try {
+          const plotRows = await tx.collection('pet_playground_plots').where({ kind: 'plot', buildingId: item.id }).get()
+          for (const p of (plotRows.data || [])) {
+            await tx.collection('pet_playground_plots').doc(p._id).update({
+              data: {
+                buildingName: item.name,
+                buildingImage: item.image,
+                buildingWidth: item.width,
+                buildingDepth: item.depth,
+                buildingCategory: item.category || deriveCategory(item.type, item.category)
+              }
+            })
+          }
+        } catch (_) {}
+      }
       return { revision: next.revision, buildings,plotSizes:current.plotSizes }
     })
   }

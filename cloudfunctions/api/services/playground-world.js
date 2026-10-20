@@ -583,7 +583,7 @@ module.exports = {
         const catalog=await require('./playground-buildings')({db:tx}).readCatalog()
         const access=await memberAccess(tx,openid)
         const building=catalog.buildings.find((b)=>data.buildingId?b.id===data.buildingId:b.type===data.buildingType)
-        if(!building||!unlocked(building,access))throw new Error('该建筑已下架或当前会员等级尚未解锁')
+        if(!building||building.enabled===false||!unlocked(building,access))throw new Error('该建筑已下架或当前会员等级尚未解锁')
         const {id:buildingId,type:buildingType,category:buildingCategory,name:buildingName,image:buildingImage,width:buildingWidth,depth:buildingDepth}=building
         let targetPlot = null
         const ownerPlotDoc = await read(tx, ownerId(openid))
@@ -662,6 +662,13 @@ module.exports = {
         if(beds.some((b)=>!available.has(b.id)))throw new Error('建筑会占用已布置的植物，请先将对应土地恢复为草坪')
         updated.farmBeds=beds;updated.gardenVersion=2
         const { _id, ...cleanUpdated } = updated
+        if (buildingType !== 'committee') {
+          delete cleanUpdated.committeeRevoked
+          delete cleanUpdated.revokedAt
+          delete cleanUpdated.revokedReason
+          delete cleanUpdated.committeeStartedAt
+          delete cleanUpdated.lastSalaryClaimAt
+        }
         await tx.collection('pet_playground_plots').doc(targetPlot._id).set({ data: cleanUpdated })
         const mainOwner = await read(tx, ownerId(openid))
         if (mainOwner && mainOwner.plotId === targetPlot._id && (!buildingType || buildingType === 'residential')) {

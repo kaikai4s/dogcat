@@ -379,3 +379,77 @@ test('drawYard renders floor tiles at ground level and tree sprites with proper 
   // 确认树木的 drawImage 被调用
   assert.ok(drawCalls.some((args) => args[0] && args[0].width === 120))
 })
+
+test('nearby detects custom decoration building, falls back to _id, and drawYard renders custom building name', () => {
+  const page = { setData: () => {}, pushStatusMessage: () => {} }
+  const textCalls = []
+  const ctx = {
+    save() {},
+    restore() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    closePath() {},
+    clip() {},
+    stroke() {},
+    fill() {},
+    rect() {},
+    roundRect() {},
+    fillText(text, x, y) {
+      textCalls.push(text)
+    },
+    strokeText() {},
+    drawImage() {}
+  }
+  const w = new World2D(page, null, {
+    world: { width: 1000, height: 1000 },
+    pets: []
+  })
+  w.ctx = ctx
+  w.scale = 10
+  w.zoom = 1
+  w.project = (x, z) => ({ x: x * 2, y: z * 2 })
+  w.sprite = () => {}
+
+  // 1. 设置角色在靠近自定义景观装饰的位置
+  w.character = {
+    position: { x: 500, z: 500 },
+    moving: false,
+    direction: 'south'
+  }
+  w.characterTerrain = { cellX: Math.floor(500 / 56), cellZ: Math.floor(500 / 56) }
+  w.characterAreaLoaded = () => true
+  w.characterNavigation = () => ({ clearSegment: () => true })
+
+  // 2. 地皮只有 _id（没有 .id 属性）
+  const decorPlot = {
+    _id: 'plot_custom_decor_123',
+    x: 502,
+    z: 502,
+    size: 48,
+    mine: true,
+    isNewPlot: true,
+    buildingType: 'decoration',
+    buildingCategory: 'decoration',
+    buildingName: '中式望江楼',
+    buildingWidth: 10,
+    buildingDepth: 10
+  }
+  w.sharedPlots.set(decorPlot._id, decorPlot)
+
+  // 3. 测试 nearbyInteractions() 检查附近的建筑
+  const nearbyResult = w.nearbyInteractions()
+  assert.ok(nearbyResult.building)
+  assert.equal(nearbyResult.building.plotId, 'plot_custom_decor_123')
+  assert.equal(nearbyResult.building.name, '中式望江楼')
+  assert.equal(nearbyResult.building.type, 'decoration')
+  assert.equal(nearbyResult.building.canDismantle, true)
+
+  // 4. 测试 drawYard 对自定义建筑渲染自定义标题标签
+  const items = []
+  w.drawYard(decorPlot, items)
+  const decorInItems = items.find((it) => it.depth === decorPlot.x + decorPlot.z)
+  assert.ok(decorInItems)
+  decorInItems.draw()
+  assert.ok(textCalls.includes('中式望江楼'))
+})

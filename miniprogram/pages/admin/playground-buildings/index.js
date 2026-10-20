@@ -60,7 +60,8 @@ Page({
       { key: 'public', label: '🏛 公共配套' },
       { key: 'residential', label: '🏡 居住木屋' },
       { key: 'floor', label: '🧱 地板素材' },
-      { key: 'tree', label: '🌳 景观树木' }
+      { key: 'tree', label: '🌳 景观树木' },
+      { key: 'decoration', label: '🪴 景观装饰' }
     ],
     revision: 0,
     loading: false,

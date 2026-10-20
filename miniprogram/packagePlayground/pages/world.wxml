@@ -37,6 +37,7 @@
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'pet_hospital'}}" data-type="wash" bindtap="hospitalCareAction">宠物专业洗护</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'pet_hospital'}}" data-type="treat" bindtap="hospitalCareAction">宠物健康调理</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'wood_cabin'}}" bindtap="woodCabinAction">木屋营地·静享时光</button>
+      <button wx:if="{{nearbyBuilding && (nearbyBuilding.type === 'decoration' || nearbyBuilding.category === 'decoration')}}" bindtap="decorationAction">观赏·{{nearbyBuilding.name}}</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'tree'}}" bindtap="treeAction">树荫休憩·微风拂面</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'police_station'}}" bindtap="openJustice">文明出行督导站</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'prison'}}" bindtap="openJustice">交通安全宣教室</button>

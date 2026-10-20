@@ -15,7 +15,8 @@ Page({
       { key: 'public', label: '公共配套' },
       { key: 'residential', label: '居住木屋' },
       { key: 'floor', label: '地板素材' },
-      { key: 'tree', label: '景观树木' }
+      { key: 'tree', label: '景观树木' },
+      { key: 'decoration', label: '景观装饰' }
     ],
     activeBuildCategory: 'all',
     farmEditMode:false,farmPlotId:'',plotSizes:[],farmCultivated:[],farmOpen:false,farmLoading:false,farmBusy:false,farm:null,farmBed:null,nearbyFarm:null,farmSeedAvailable:false,farmCropId:'carrot',farmSelectedBed:0,
@@ -1403,6 +1404,17 @@ Page({
     }
     const msg = '您在景观树荫下小憩，微风吹拂，落英缤纷，心情愉悦～'
     wx.showToast({ title: '树荫休憩·微风拂面', icon: 'none' })
+    this.pushStatusMessage(msg)
+  },
+  decorationAction() {
+    const bName = (this.data.nearbyBuilding && this.data.nearbyBuilding.name) || '景观设施'
+    const pet = this.data.selectedPet || (this.data.pets && this.data.pets[0])
+    if (pet && pet.needs) {
+      pet.needs.energy = Math.min(100, (pet.needs.energy || 80) + 10)
+      if (this.world) this.world.emitPets()
+    }
+    const msg = `您在【${bName}】旁驻足观赏，怡然自得，爱宠心情愉快～`
+    wx.showToast({ title: '驻足观赏·心旷神怡', icon: 'none' })
     this.pushStatusMessage(msg)
   },
   async reportTrafficAccident(accidentData) {

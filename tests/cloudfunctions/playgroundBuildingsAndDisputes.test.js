@@ -530,3 +530,65 @@ test('all buildings (present and future custom uploaded) can be dismantled back 
   )
 })
 
+test('admin updating existing building propagates changes to placed plots and disabled buildings cannot be built', async () => {
+  const f = fixture()
+  f.context.requireAdmin = async () => ({ openid: 'admin', roles: ['admin'] })
+  f.context.getUser = async (openid) => f.user(openid)
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const adminBuildingHandler = require('../../cloudfunctions/api/handlers/playgroundBuilding')(f.context)
+  await f.build('a')
+
+  // 1. 认领新专属地皮并在上面建造浪漫景观樱花树
+  const aYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 728, z: 280, size: 48 })
+  const builtTree = await handler('a', 'buildInYard', {
+    plotId: aYard.id,
+    buildingId: 'tree_cherry_blossom_default',
+    sceneId: aYard.communityId
+  })
+  assert.equal(builtTree.plot.buildingType, 'tree')
+  assert.equal(builtTree.plot.buildingName, '浪漫景观樱花树')
+  assert.equal(builtTree.plot.buildingImage, '')
+
+  // 2. 管理员在后台给浪漫景观樱花树上传高清素材图并更新配置
+  const catalogRes = await adminBuildingHandler('admin', 'list')
+  const treeItem = catalogRes.buildings.find((b) => b.id === 'tree_cherry_blossom_default')
+  assert.ok(treeItem)
+
+  await adminBuildingHandler('admin', 'save', {
+    revision: catalogRes.revision,
+    building: {
+      ...treeItem,
+      name: '盛唐绝美樱花树',
+      image: 'cloud://cloud1/buildings/custom/cherry_blossom_hd.png'
+    }
+  })
+
+  // 3. 验证已落座的地皮数据自动同步获得了最新的高清贴图与名称
+  const updatedPlotDoc = await f.context.db.collection('pet_playground_plots').doc(aYard.id).get()
+  assert.equal(updatedPlotDoc.data.buildingName, '盛唐绝美樱花树')
+  assert.equal(updatedPlotDoc.data.buildingImage, 'cloud://cloud1/buildings/custom/cherry_blossom_hd.png')
+
+  // 4. 管理员将该建筑下架禁用（enabled: false）
+  const listAfterSave = await adminBuildingHandler('admin', 'list')
+  const updatedTreeItem = listAfterSave.buildings.find((b) => b.id === 'tree_cherry_blossom_default')
+  await adminBuildingHandler('admin', 'save', {
+    revision: listAfterSave.revision,
+    building: {
+      ...updatedTreeItem,
+      enabled: false
+    }
+  })
+
+  // 5. 验证下架禁用的建筑无法再次被建造
+  const bYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 800, z: 280, size: 48 })
+  await assert.rejects(
+    () => handler('a', 'buildInYard', {
+      plotId: bYard.id,
+      buildingId: 'tree_cherry_blossom_default',
+      sceneId: bYard.communityId
+    }),
+    /该建筑已下架或当前会员等级尚未解锁/
+  )
+})
+
+

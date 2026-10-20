@@ -441,10 +441,10 @@ class World2D {
       const isResidential = nearbyPlot.buildingType === 'residential' && !nearbyPlot.isNewPlot
       if (!isResidential && (!isFloor || nearbyPlot.mine)) {
         result.building = {
-          plotId: nearbyPlot.id,
+          plotId: nearbyPlot.id || nearbyPlot._id,
           type: nearbyPlot.buildingType,
           category: nearbyPlot.buildingCategory || '',
-          name: nearbyPlot.buildingName || (nearbyPlot.buildingType === 'committee' ? '社区居委会' : nearbyPlot.buildingType === 'repair_shop' ? '社区修理厂' : nearbyPlot.buildingType === 'pet_hospital' ? '爱心宠物医院' : nearbyPlot.buildingType === 'police_station' ? '文明督导所' : nearbyPlot.buildingType === 'prison' ? '安全宣教自省室' : nearbyPlot.buildingType === 'wood_cabin' ? '田园小木屋' : nearbyPlot.buildingType === 'tree' ? '景观树木' : isFloor ? '地面铺装素材' : '社区建筑'),
+          name: nearbyPlot.buildingName || (nearbyPlot.buildingType === 'committee' ? '社区居委会' : nearbyPlot.buildingType === 'repair_shop' ? '社区修理厂' : nearbyPlot.buildingType === 'pet_hospital' ? '爱心宠物医院' : nearbyPlot.buildingType === 'police_station' ? '文明督导所' : nearbyPlot.buildingType === 'prison' ? '安全宣教自省室' : nearbyPlot.buildingType === 'wood_cabin' ? '田园小木屋' : nearbyPlot.buildingType === 'tree' ? '景观树木' : nearbyPlot.buildingType === 'decoration' ? '景观装饰' : isFloor ? '地面铺装素材' : '社区建筑'),
           mine: !!nearbyPlot.mine,
           canDismantle: !!(nearbyPlot.mine && nearbyPlot.isNewPlot)
         }
@@ -2161,9 +2161,9 @@ class World2D {
               item.anchor
             )
             if (item.name === 'house' && p.buildingType && p.buildingType !== 'residential' && !isFloor) {
-              const bLabels = { committee: '🏛 邻里服务站', repair_shop: '🔧 便民洗车', pet_hospital: '🏥 宠医健康', police_station: '📋 出行督导', prison: '🕊 安全宣教', wood_cabin: '🏡 田园小木屋', tree: '🌳 景观树木' }
-              const bColors = { committee: '#d84315', repair_shop: '#0277bd', pet_hospital: '#2e7d32', police_station: '#1565c0', prison: '#6a1b9a', wood_cabin: '#5d4037', tree: '#2e7d32' }
-              const tag = bLabels[p.buildingType] || p.buildingName || '工坊'
+              const bLabels = { committee: '🏛 邻里服务站', repair_shop: '🔧 便民洗车', pet_hospital: '🏥 宠医健康', police_station: '📋 出行督导', prison: '🕊 安全宣教', wood_cabin: '🏡 田园小木屋', tree: '🌳 景观树木', decoration: '🪴 景观装饰' }
+              const bColors = { committee: '#d84315', repair_shop: '#0277bd', pet_hospital: '#2e7d32', police_station: '#1565c0', prison: '#6a1b9a', wood_cabin: '#5d4037', tree: '#2e7d32', decoration: '#00796b' }
+              const tag = (p.buildingName && p.buildingName !== '建筑' && !['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison'].includes(p.buildingType)) ? p.buildingName : (bLabels[p.buildingType] || p.buildingName || '工坊')
               const tagColor = bColors[p.buildingType] || '#388e3c'
               const pt = this.project(item.x, item.z)
               const c = this.ctx
