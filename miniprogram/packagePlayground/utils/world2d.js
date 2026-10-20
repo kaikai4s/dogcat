@@ -2483,10 +2483,13 @@ class World2D {
           if (!this.injured) {
             this.injured = true
             this.character.injured = true
-            this.onStatus('您受到车辆接触擦碰，行动略微减慢，可前往爱心医院调理恢复！')
-            if (this.page && this.page.onHumanInjured) {
-              this.page.onHumanInjured()
-            }
+            this.onStatus('与车辆发生轻微擦碰，脚步略有放慢，深呼吸歇息片刻即可自行恢复～')
+            if (this.injuredRecoverTimer) clearTimeout(this.injuredRecoverTimer)
+            this.injuredRecoverTimer = setTimeout(() => {
+              this.injured = false
+              if (this.character) this.character.injured = false
+              this.onStatus('身体已自然恢复充沛活力！')
+            }, 8000)
           }
         }
       }
@@ -2764,6 +2767,7 @@ class World2D {
     }
   }
   destroy() {
+    if (this.injuredRecoverTimer) clearTimeout(this.injuredRecoverTimer)
     this.setCharacterInput(0, 0)
     this.destroyed = true
     this.moveToken = (this.moveToken || 0) + 1

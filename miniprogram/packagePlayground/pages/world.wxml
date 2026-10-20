@@ -36,12 +36,10 @@
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'repair_shop'}}" bindtap="repairVehicleAction">车辆便民养护</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'pet_hospital'}}" data-type="wash" bindtap="hospitalCareAction">宠物专业洗护</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'pet_hospital'}}" data-type="treat" bindtap="hospitalCareAction">宠物健康调理</button>
-      <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'pet_hospital'}}" bindtap="hospitalTreatHumanAction">健康舒缓调理</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'wood_cabin'}}" bindtap="woodCabinAction">木屋营地·静享时光</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'police_station'}}" bindtap="openJustice">文明出行督导站</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'prison'}}" bindtap="openJustice">交通安全宣教室</button>
       <button wx:if="{{myJailStatus && myJailStatus.isJailed}}" bindtap="openJustice" class="jail-status-btn">宣教自省中({{myJailStatus.remainingSeconds}}s)·提前结业</button>
-      <button wx:if="{{isHumanInjured && (!nearbyBuilding || nearbyBuilding.type !== 'pet_hospital')}}" class="injured-tip-btn" bindtap="guideToPetHospital">身体疲劳·前往调理</button>
     </view>
   </view>
   <view class="bottom" style="bottom: {{bottom}}px" wx:if="{{!loading && !error}}">

@@ -155,6 +155,7 @@ Page({
     this.joystickEnd()
     if (this.jailTimer) clearInterval(this.jailTimer)
     if (this.statusFadeTimer) clearTimeout(this.statusFadeTimer)
+    if (this.humanInjuredTimer) clearTimeout(this.humanInjuredTimer)
     this.visible=false
     if(this.world && !this.data.loading) {
       this.world.pause()
@@ -168,6 +169,7 @@ Page({
     this.joystickEnd()
     if (this.jailTimer) clearInterval(this.jailTimer)
     if (this.statusFadeTimer) clearTimeout(this.statusFadeTimer)
+    if (this.humanInjuredTimer) clearTimeout(this.humanInjuredTimer)
     this.visible = false
     this.authorized = false
     this.version = (this.version || 0) + 1
@@ -1304,44 +1306,10 @@ Page({
   },
   onHumanInjured() {
     this.setData({ isHumanInjured: true })
-  },
-  guideToPetHospital() {
-    const world = this.world
-    if (!world) return
-    const hospital = (world.plots ? world.plots() : []).find((p) => p.buildingType === 'pet_hospital')
-    if (hospital) {
-      this.pushStatusMessage('正在前往爱心宠物医院进行健康舒缓调理…')
-      wx.showToast({ title: '正前往宠物医院', icon: 'none' })
-      const targetPos = { x: hospital.x, z: hospital.z + (hospital.size || 48) / 2 - 4 }
-      world.moveCharacterTo(targetPos)
-    } else {
-      wx.showModal({
-        title: '温馨提示',
-        content: '当前社区暂未设立爱心宠物医院，您可在【社区共建】中认领绿地建造，或在长凳/自家木屋前休憩片刻自行恢复。',
-        showCancel: false
-      })
-    }
-  },
-  async hospitalTreatHumanAction() {
-    const world = this.world
-    try {
-      const result = await callFunction('playground', 'hospitalTreat', {
-        target: 'human',
-        sceneId: world && world.scene && world.scene.sceneId
-      })
-      if (this.world) {
-        this.world.injured = false
-        if (this.world.character) this.world.character.injured = false
-      }
+    if (this.humanInjuredTimer) clearTimeout(this.humanInjuredTimer)
+    this.humanInjuredTimer = setTimeout(() => {
       this.setData({ isHumanInjured: false })
-      wx.showModal({
-        title: '健康调理完成',
-        content: result.message || '经过爱心驿站义工的精心调理，您已恢复满满活力！',
-        showCancel: false
-      })
-    } catch (err) {
-      wx.showToast({ title: err.message || '调理失败', icon: 'none' })
-    }
+    }, 8000)
   },
   async openJustice() {
     const world = this.world
