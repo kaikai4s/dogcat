@@ -193,7 +193,14 @@ function normalizeBuilding(value) {
   if (!name || name.length > 30) throw new Error('建筑名称须为1至30个字符')
 
   const validTypes = ['residential', 'repair_shop', 'pet_hospital', 'committee', 'police_station', 'prison', 'wood_cabin', 'floor', 'tree', 'decoration']
-  if (!validTypes.includes(value.type)) throw new Error('无效的建筑功能类型')
+  const typeStr = typeof value.type === 'string' ? value.type : ''
+  const isValidType = validTypes.includes(typeStr) ||
+    typeStr.startsWith('floor_') ||
+    typeStr.startsWith('tree_') ||
+    typeStr.startsWith('landscape_') ||
+    typeStr.startsWith('decoration_') ||
+    (validId(typeStr) && VALID_CATEGORIES.includes(value.category))
+  if (!isValidType) throw new Error('无效的建筑功能类型')
 
   const width = Math.max(3.5, Math.min(108, Number(value.width) || 7))
   const depth = Math.max(3.5, Math.min(108, Number(value.depth) || 7))
@@ -288,6 +295,7 @@ module.exports = function createBuildingsService(context) {
     return transaction(db, async (tx) => {
       const current = await readCatalog(tx)
       if(current.revision!==data.revision)throw new Error('配置已被其他管理员更新，请刷新后重新编辑')
+      const targetBuilding = current.buildings.find((b) => b.id === id)
       const buildings = current.buildings.filter((b) => b.id !== id)
       const next = {
         rewardsVersion:2,plotSizes:current.plotSizes,
@@ -297,6 +305,47 @@ module.exports = function createBuildingsService(context) {
         updatedAt: now()
       }
       await tx.collection(COLLECTION).doc(ID).set({ data: next })
+
+      // 若被删除的建筑已被建造于玩家地皮，自动将对应地皮恢复为初始纯草块
+      try {
+        const plotRows = await tx.collection('pet_playground_plots').where({ kind: 'plot', buildingId: id }).get()
+        const affectedCommunities = new Set()
+        for (const p of (plotRows.data || [])) {
+          if (p.communityId) affectedCommunities.add(p.communityId)
+          await tx.collection('pet_playground_plots').doc(p._id).update({
+            data: {
+              buildingType: 'yard',
+              buildingId: '',
+              buildingName: '',
+              buildingCategory: '',
+              buildingImage: '',
+              buildingWidth: 0,
+              buildingDepth: 0,
+              name: `${p.ownerName || '邻居'}的专属爱心绿地`,
+              updatedAt: new Date().toISOString()
+            }
+          })
+        }
+        if (targetBuilding && targetBuilding.type === 'prison') {
+          for (const communityId of affectedCommunities) {
+            const prisonRows = await tx.collection('pet_playground_plots').where({ kind: 'plot', communityId, buildingType: 'prison' }).get()
+            const stillHasPrison = (prisonRows.data || []).some((p) => !p.demolished && p.buildingId !== id)
+            if (!stillHasPrison) {
+              const jailRows = await tx.collection('pet_playground_jail').where({ communityId, jailed: true }).get()
+              for (const item of (jailRows.data || [])) {
+                await tx.collection('pet_playground_jail').doc(item._id).update({
+                  data: {
+                    jailed: false,
+                    releasedAt: now(),
+                    releasedBy: 'building_deleted_by_admin'
+                  }
+                })
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
       return { revision: next.revision, buildings,plotSizes:current.plotSizes }
     })
   }

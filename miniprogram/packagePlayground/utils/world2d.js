@@ -377,7 +377,7 @@ class World2D {
     if(!this.scene || plot.mine)return true
     if(plot.buildingCategory === 'public' || plot.buildingCategory === 'floor' || plot.buildingCategory === 'tree' || plot.buildingCategory === 'decoration') return true
     if(plot.buildingType && ['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison', 'floor', 'tree', 'decoration'].includes(plot.buildingType)) return true
-    if(plot.buildingType && (String(plot.buildingType).startsWith('floor_') || String(plot.buildingType).startsWith('tree_'))) return true
+    if(plot.buildingType && (String(plot.buildingType).startsWith('floor_') || String(plot.buildingType).startsWith('tree_') || String(plot.buildingType).startsWith('decoration_'))) return true
     const friends=this.social.friends||[]
     const visit = this.social.visits && (this.social.visits[plot.id] || this.social.visits[plot._id])
     const plotInstance = plot.instanceId || plot.createdAt || ''
@@ -429,7 +429,7 @@ class World2D {
       const poop = this.groundDecals.find((d) => d.type === 'poop' && Math.hypot(p.x - d.x, p.z - d.z) <= 3.8 && nav.clearSegment(p, d))
       if (poop) result.poop = { id: poop.id, x: poop.x, z: poop.z }
     }
-    const nearbyPlot = this.plots().find((plot) => {
+    const candidatePlots = this.plots().filter((plot) => {
       const pSize = plot.size || 48
       const half = pSize / 2
       const dx = Math.abs(p.x - plot.x)
@@ -437,6 +437,8 @@ class World2D {
       const insideOrNearGate = dx <= (half + 6) && dz <= (half + 6)
       return insideOrNearGate && (plot.mine || this.canEnterPlot(plot) || (dx <= half + 4 && dz <= half + 4))
     })
+    candidatePlots.sort((a, b) => Math.hypot(p.x - a.x, p.z - a.z) - Math.hypot(p.x - b.x, p.z - b.z))
+    const nearbyPlot = candidatePlots[0]
     if (nearbyPlot && nearbyPlot.buildingType && nearbyPlot.buildingType !== 'yard') {
       const isFloor = nearbyPlot.buildingType === 'floor' || nearbyPlot.buildingCategory === 'floor'
       const isResidential = nearbyPlot.buildingType === 'residential' && !nearbyPlot.isNewPlot

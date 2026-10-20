@@ -453,3 +453,58 @@ test('nearby detects custom decoration building, falls back to _id, and drawYard
   decorInItems.draw()
   assert.ok(textCalls.includes('中式望江楼'))
 })
+
+test('nearbyInteractions selects closest plot and canEnterPlot respects custom decoration/floor/tree', () => {
+  const page = { setData: () => {}, pushStatusMessage: () => {} }
+  const w = new World2D(page, null, {
+    world: { width: 1000, height: 1000 },
+    pets: []
+  })
+  w.character = {
+    position: { x: 500, z: 500 },
+    moving: false,
+    direction: 'south'
+  }
+  w.characterTerrain = { cellX: Math.floor(500 / 56), cellZ: Math.floor(500 / 56) }
+  w.characterAreaLoaded = () => true
+  w.characterNavigation = () => ({ clearSegment: () => true })
+
+  // 两个相邻地皮：地皮 A 在 (526, 500)，地皮 B 在 (502, 500)
+  // 角色在 (500, 500)，离地皮 B 仅 2 米，离地皮 A 有 26 米
+  const plotFar = {
+    _id: 'plot_far',
+    x: 526,
+    z: 500,
+    size: 48,
+    mine: true,
+    isNewPlot: true,
+    buildingType: 'tree',
+    buildingName: '远处的樱花树'
+  }
+  const plotClose = {
+    _id: 'plot_close',
+    x: 502,
+    z: 500,
+    size: 48,
+    mine: true,
+    isNewPlot: true,
+    buildingType: 'floor',
+    buildingName: '脚下的古朴石板'
+  }
+
+  // 故意将远处的 plotFar 放在前面
+  w.sharedPlots.set(plotFar._id, plotFar)
+  w.sharedPlots.set(plotClose._id, plotClose)
+
+  const result = w.nearbyInteractions()
+  assert.ok(result.building)
+  // 必须精确匹配距离最近的地皮（脚下的古朴石板），而不是误选远处的樱花树
+  assert.equal(result.building.plotId, 'plot_close')
+  assert.equal(result.building.name, '脚下的古朴石板')
+
+  // 测试 canEnterPlot 对前缀和 category 的放行
+  assert.equal(w.canEnterPlot({ buildingType: 'decoration_fountain' }), true)
+  assert.equal(w.canEnterPlot({ buildingCategory: 'decoration' }), true)
+  assert.equal(w.canEnterPlot({ buildingCategory: 'floor' }), true)
+  assert.equal(w.canEnterPlot({ buildingType: 'floor_marble' }), true)
+})

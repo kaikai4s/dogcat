@@ -549,7 +549,7 @@ Page({
           else world.setPlot(result.plot)
         } else {
           world.addNewPlot(result.plot)
-          this.setData({ hasPlot: true })
+          this.setData({ hasPlot: true, emptyPlots: null })
           if (world.sceneSync && world.sceneSync.snapshot) {
             world.sceneSync.snapshot().catch(() => {})
           }
@@ -1255,6 +1255,22 @@ Page({
           name: `${targetPlot.ownerName || '我'}的${building.name}`
         }
         if (world.sharedPlots) world.sharedPlots.set(updated.id || updated._id, updated)
+        const targetPlotId = targetPlot.id || targetPlot._id
+        const updatedEmptyPlots = (this.data.emptyPlots || []).map((p) => {
+          if (p.id === targetPlotId || p._id === targetPlotId) {
+            return {
+              ...p,
+              buildingId: building.id,
+              buildingType: building.type,
+              buildingCategory: building.category || '',
+              buildingName: building.name,
+              isBuilt: true,
+              name: `${targetPlot.ownerName || '我'}的${building.name}`
+            }
+          }
+          return p
+        })
+        this.setData({ emptyPlots: updatedEmptyPlots, availableEmptyPlotCount: updatedEmptyPlots.length })
         if (world.sceneSync && typeof world.sceneSync.snapshot === 'function') {
           world.sceneSync.snapshot().catch(() => {})
         } else if (world.scene) {
@@ -1322,7 +1338,21 @@ Page({
         }
         world.loadVisible().catch(() => {})
         if (typeof world.renderFrame === 'function') world.renderFrame()
-        this.setData({ nearbyBuilding: null })
+        const updatedEmptyPlots = (this.data.emptyPlots || []).map((p) => {
+          if (p.id === plotId || p._id === plotId) {
+            return {
+              ...p,
+              buildingType: 'yard',
+              buildingId: '',
+              buildingName: '',
+              buildingCategory: '',
+              isBuilt: false,
+              name: `${(targetPlot && targetPlot.ownerName) || '邻居'}的专属爱心绿地`
+            }
+          }
+          return p
+        })
+        this.setData({ emptyPlots: updatedEmptyPlots, availableEmptyPlotCount: updatedEmptyPlots.length, nearbyBuilding: null })
         this.pushStatusMessage(`【${buildingName}】已拆除，地皮已恢复为纯草块！`)
       }
     } catch (err) {

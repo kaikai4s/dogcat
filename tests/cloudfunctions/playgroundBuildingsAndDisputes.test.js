@@ -591,4 +591,127 @@ test('admin updating existing building propagates changes to placed plots and di
   )
 })
 
+test('admin deleting a building from catalog automatically restores placed plots to grass yard and frees prisoners if prison', async () => {
+  const f = fixture()
+  f.context.requireAdmin = async () => ({ openid: 'admin', roles: ['admin'] })
+  f.context.getUser = async (openid) => f.user(openid)
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const adminBuildingHandler = require('../../cloudfunctions/api/handlers/playgroundBuilding')(f.context)
+  await f.build('a')
+
+  // 1. 创建并建造一个临时自定义建筑 custom_temporary_shop
+  const catalogRes = await adminBuildingHandler('admin', 'list')
+  await adminBuildingHandler('admin', 'save', {
+    revision: catalogRes.revision,
+    building: {
+      id: 'custom_temp_building',
+      name: '临时观光角',
+      type: 'decoration',
+      category: 'decoration',
+      width: 7,
+      depth: 7,
+      enabled: true
+    }
+  })
+
+  const aYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 856, z: 280, size: 48 })
+  const built = await handler('a', 'buildInYard', {
+    plotId: aYard.id,
+    buildingId: 'custom_temp_building',
+    sceneId: aYard.communityId
+  })
+  assert.equal(built.plot.buildingType, 'decoration')
+  assert.equal(built.plot.buildingName, '临时观光角')
+
+  // 2. 管理员从配置目录中彻底删除该建筑
+  const listBeforeDelete = await adminBuildingHandler('admin', 'list')
+  await adminBuildingHandler('admin', 'remove', {
+    id: 'custom_temp_building',
+    revision: listBeforeDelete.revision
+  })
+
+  // 3. 验证对应地皮已自动恢复为纯草块 yard，名称恢复为专属爱心绿地
+  const plotAfterDelete = await f.context.db.collection('pet_playground_plots').doc(aYard.id).get()
+  assert.equal(plotAfterDelete.data.buildingType, 'yard')
+  assert.equal(plotAfterDelete.data.buildingId, '')
+  assert.equal(plotAfterDelete.data.buildingName, '')
+  assert.ok(plotAfterDelete.data.name.includes('专属爱心绿地'))
+
+  // 4. 再次验证：拆除为草块后，可以继续在该草块上建造其他建筑
+  const rebuiltTree = await handler('a', 'buildInYard', {
+    plotId: aYard.id,
+    buildingId: 'tree_cherry_blossom_default',
+    sceneId: aYard.communityId
+  })
+  assert.equal(rebuiltTree.plot.buildingType, 'tree')
+})
+
+test('admin uploading custom building types with floor_/tree_/decoration_ prefixes passes validation and can be built, dismantled, and replaced', async () => {
+  const f = fixture()
+  f.context.requireAdmin = async () => ({ openid: 'admin', roles: ['admin'] })
+  f.context.getUser = async (openid) => f.user(openid)
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const adminBuildingHandler = require('../../cloudfunctions/api/handlers/playgroundBuilding')(f.context)
+  await f.build('a')
+
+  // 1. 管理员上传带前缀类型的素材：如 floor_marble（大理石地坪）和 tree_pine（高山雪松）
+  const catalogRes = await adminBuildingHandler('admin', 'list')
+  await adminBuildingHandler('admin', 'save', {
+    revision: catalogRes.revision,
+    building: {
+      id: 'custom_floor_marble',
+      name: '汉白玉大理石地坪',
+      type: 'floor_marble',
+      category: 'floor',
+      width: 10,
+      depth: 10,
+      enabled: true
+    }
+  })
+
+  const listAfterMarble = await adminBuildingHandler('admin', 'list')
+  await adminBuildingHandler('admin', 'save', {
+    revision: listAfterMarble.revision,
+    building: {
+      id: 'custom_tree_pine',
+      name: '迎客高山雪松',
+      type: 'tree_pine',
+      category: 'tree',
+      width: 8,
+      depth: 8,
+      enabled: true
+    }
+  })
+
+  // 2. 玩家在专属绿地建造汉白玉大理石地坪
+  const aYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 912, z: 280, size: 48 })
+  const builtFloor = await handler('a', 'buildInYard', {
+    plotId: aYard.id,
+    buildingId: 'custom_floor_marble',
+    sceneId: aYard.communityId
+  })
+  assert.equal(builtFloor.plot.buildingType, 'floor_marble')
+  assert.equal(builtFloor.plot.buildingCategory, 'floor')
+  assert.equal(builtFloor.plot.buildingName, '汉白玉大理石地坪')
+
+  // 3. 直接替换改建为迎客高山雪松
+  const replacedTree = await handler('a', 'buildInYard', {
+    plotId: aYard.id,
+    buildingId: 'custom_tree_pine',
+    sceneId: aYard.communityId
+  })
+  assert.equal(replacedTree.plot.buildingType, 'tree_pine')
+  assert.equal(replacedTree.plot.buildingCategory, 'tree')
+  assert.equal(replacedTree.plot.buildingName, '迎客高山雪松')
+
+  // 4. 执行拆除：顺利恢复为初始草块
+  const dismantled = await handler('a', 'dismantleBuilding', {
+    plotId: aYard.id,
+    sceneId: aYard.communityId
+  })
+  assert.equal(dismantled.dismantled, true)
+  assert.equal(dismantled.plot.buildingType, 'yard')
+  assert.equal(dismantled.plot.buildingId, '')
+})
+
 
