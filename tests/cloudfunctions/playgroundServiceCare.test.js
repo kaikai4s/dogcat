@@ -128,3 +128,18 @@ test('new geometry rebuilds an active sitter route but bowl updates do not inter
   assert.notEqual(f.resident('a').serviceCare.layoutKey,oldGeometry)
   assert.equal(f.resident('a').careAgent.phase,'returning')
 })
+
+test('sitter refills advance the plot version so connected clients accept the new bowl state',async()=>{
+  const f=fixture(),scene=await f.build()
+  f.db.state.orders=[{_id:'refill',clientOpenid:'a',staffOpenid:'b',petIds:['pet_a'],serviceTypes:['feed'],status:'in_service',updatedAt:new Date(f.now()).toISOString()}]
+  const before=await f.shared.snapshot('a',f.auth(scene))
+  const oldPlot=before.records.find((r)=>r.kind==='plot')
+  assert.equal(oldPlot.foodBowls.dog,0)
+  f.advance(20000)
+  const after=await f.shared.snapshot('a',f.auth(scene))
+  const plot=after.records.find((r)=>r.id===oldPlot.id)
+  assert.equal(plot.foodBowls.dog,100)
+  assert.ok(plot.version.epoch>oldPlot.version.epoch,'refills must not be discarded as an old scene record')
+  const unchanged=await f.shared.snapshot('a',f.auth(scene))
+  assert.deepEqual(unchanged.records.find((r)=>r.id===plot.id).version,plot.version,'full bowls must not generate redundant updates')
+})

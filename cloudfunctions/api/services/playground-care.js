@@ -127,7 +127,14 @@ module.exports = function createCare(context) {
         }
       }
       if (state.phase === 'caring') {
-        for (const id of [plot._id, world.ownerId(resident.ownerOpenid)]) await tx.collection('pet_playground_plots').doc(id).update({ data: { foodBowls: { dog: 100, cat: 100 } } })
+        for (const id of [plot._id, world.ownerId(resident.ownerOpenid)]) {
+          const current = await world.read(tx, id)
+          if (!current || current.foodBowls && current.foodBowls.dog === 100 && current.foodBowls.cat === 100) continue
+          const patch = { foodBowls: { dog: 100, cat: 100 } }
+          // Scene clients discard records whose version has not advanced.
+          if (id === plot._id) patch.revision = Math.max(stamp, (current.revision || 0) + 1)
+          await tx.collection('pet_playground_plots').doc(id).update({ data: patch })
+        }
       }
       state.lastCareAt = stamp
     }
