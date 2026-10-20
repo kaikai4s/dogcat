@@ -637,7 +637,58 @@ module.exports = {
         return publicPlot({ ...cleanUpdated, _id: targetPlot._id }, openid)
       })
     }
+    async function dismantleBuilding(openid, user, data) {
+      const targetPlotId = String(data.plotId || '')
+      if (!targetPlotId) throw new Error('缺少地皮编号')
+
+      return transaction(db, async (tx) => {
+        const doc = await read(tx, targetPlotId)
+        if (!doc || doc.kind !== 'plot' || doc.ownerOpenid !== openid || doc.demolished) {
+          throw new Error('只能拆除自己名下的有效建筑')
+        }
+
+        const ownerPlotDoc = await read(tx, ownerId(openid))
+        const mainPlotId = ownerPlotDoc && ownerPlotDoc.plotId
+        if (doc._id === mainPlotId || !doc.isNewPlot) {
+          throw new Error('最初的自家庭院为主住宅，若需搬迁请在庭院设置中拆除庭院；专属绿地建筑支持随时拆除恢复草块')
+        }
+
+        if (!doc.buildingType || doc.buildingType === 'yard') {
+          throw new Error('该绿地当前已是纯草块，无需重复拆除')
+        }
+
+        const prevBuildingType = doc.buildingType
+        const prevBuildingName = doc.buildingName || doc.name || '建筑'
+        const cleanName = `${String(user.nickname || doc.ownerName || '邻居').slice(0, 20)}的专属爱心绿地`
+
+        const updated = {
+          ...doc,
+          previousBuildingType: prevBuildingType,
+          buildingType: 'yard',
+          buildingId: '',
+          buildingName: '',
+          buildingCategory: '',
+          buildingImage: '',
+          buildingWidth: 0,
+          buildingDepth: 0,
+          name: cleanName,
+          ...(prevBuildingType === 'committee' ? { committeeStartedAt: 0, lastSalaryClaimAt: 0 } : {}),
+          updatedAt: nowText(),
+          revision: Math.max(stamp(), (doc.revision || 0) + 1)
+        }
+
+        const { _id, ...cleanUpdated } = updated
+        await tx.collection('pet_playground_plots').doc(doc._id).set({ data: cleanUpdated })
+
+        return {
+          dismantled: true,
+          plotId: doc._id,
+          plot: publicPlot({ ...cleanUpdated, _id: doc._id }, openid),
+          message: `已成功拆除【${prevBuildingName}】，地皮已恢复为初始草块！`
+        }
+      })
+    }
     async function ownInTransaction(tx, openid) { return resolveOwnerPlot(tx, openid) }
-    return { config, own, claim, buildInYard, region, mapOverview, publicPlot, ensureNameColors, fillBowl, demolish, ownInTransaction }
+    return { config, own, claim, buildInYard, dismantleBuilding, region, mapOverview, publicPlot, ensureNameColors, fillBowl, demolish, ownInTransaction }
   }
 }

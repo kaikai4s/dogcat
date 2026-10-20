@@ -40,6 +40,7 @@
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'tree'}}" bindtap="treeAction">树荫休憩·微风拂面</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'police_station'}}" bindtap="openJustice">文明出行督导站</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'prison'}}" bindtap="openJustice">交通安全宣教室</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.mine && nearbyBuilding.canDismantle}}" class="dismantle-building-btn" bindtap="dismantleBuildingAction">拆除建筑·恢复草块</button>
       <button wx:if="{{myJailStatus && myJailStatus.isJailed}}" bindtap="openJustice" class="jail-status-btn">宣教自省中({{myJailStatus.remainingSeconds}}s)·提前结业</button>
     </view>
   </view>

@@ -436,12 +436,18 @@ class World2D {
       const insideOrNearGate = dx <= (half + 6) && dz <= (half + 6)
       return insideOrNearGate && (plot.mine || this.canEnterPlot(plot) || (dx <= half + 4 && dz <= half + 4))
     })
-    if (nearbyPlot && nearbyPlot.buildingType && !['residential', 'yard', 'floor'].includes(nearbyPlot.buildingType) && nearbyPlot.buildingCategory !== 'floor') {
-      result.building = {
-        plotId: nearbyPlot.id,
-        type: nearbyPlot.buildingType,
-        name: nearbyPlot.buildingName || (nearbyPlot.buildingType === 'committee' ? '社区居委会' : nearbyPlot.buildingType === 'repair_shop' ? '社区修理厂' : nearbyPlot.buildingType === 'pet_hospital' ? '爱心宠物医院' : nearbyPlot.buildingType === 'police_station' ? '文明督导所' : nearbyPlot.buildingType === 'prison' ? '安全宣教自省室' : nearbyPlot.buildingType === 'wood_cabin' ? '田园小木屋' : nearbyPlot.buildingType === 'tree' ? '景观树木' : '社区工坊'),
-        mine: !!nearbyPlot.mine
+    if (nearbyPlot && nearbyPlot.buildingType && nearbyPlot.buildingType !== 'yard') {
+      const isFloor = nearbyPlot.buildingType === 'floor' || nearbyPlot.buildingCategory === 'floor'
+      const isResidential = nearbyPlot.buildingType === 'residential' && !nearbyPlot.isNewPlot
+      if (!isResidential && (!isFloor || nearbyPlot.mine)) {
+        result.building = {
+          plotId: nearbyPlot.id,
+          type: nearbyPlot.buildingType,
+          category: nearbyPlot.buildingCategory || '',
+          name: nearbyPlot.buildingName || (nearbyPlot.buildingType === 'committee' ? '社区居委会' : nearbyPlot.buildingType === 'repair_shop' ? '社区修理厂' : nearbyPlot.buildingType === 'pet_hospital' ? '爱心宠物医院' : nearbyPlot.buildingType === 'police_station' ? '文明督导所' : nearbyPlot.buildingType === 'prison' ? '安全宣教自省室' : nearbyPlot.buildingType === 'wood_cabin' ? '田园小木屋' : nearbyPlot.buildingType === 'tree' ? '景观树木' : isFloor ? '地面铺装素材' : '社区建筑'),
+          mine: !!nearbyPlot.mine,
+          canDismantle: !!(nearbyPlot.mine && nearbyPlot.isNewPlot)
+        }
       }
     }
     return result

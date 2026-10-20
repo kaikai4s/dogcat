@@ -169,6 +169,12 @@ module.exports = function createHandler(context) {
       return { plot }
     }
 
+    if (action === 'dismantleBuilding') {
+      const result = await world.dismantleBuilding(openid, user, data)
+      await shared.plotChanged(openid, result.plotId)
+      return result
+    }
+
     if (action === 'claimPlot') {
       if (data.buildingType === 'committee') {
         const existing = await disputes.getCommunityCommittee(data.sceneId)

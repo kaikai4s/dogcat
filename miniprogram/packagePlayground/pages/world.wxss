@@ -138,3 +138,4 @@ button::after { border: none; }
 
 
 .garden-edit-hint{position:fixed;top:180rpx;right:20rpx;z-index:20;max-width:340rpx;padding:16rpx;border-radius:16rpx;background:rgba(255,253,243,.95);font-size:24rpx;display:flex;align-items:center;gap:12rpx}.garden-edit-hint button{font-size:22rpx;padding:0 16rpx;margin:0}
+.dismantle-building-btn{background:rgba(224,79,95,.12)!important;color:#c62828!important;border:1px solid rgba(224,79,95,.4)!important}

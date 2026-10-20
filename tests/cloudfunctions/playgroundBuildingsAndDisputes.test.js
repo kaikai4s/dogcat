@@ -437,3 +437,96 @@ test('building catalog classifies buildings and supports floor paving and landsc
   assert.equal(rebuiltAgain.buildingType, 'floor')
   assert.equal(rebuiltAgain.buildingCategory, 'floor')
 })
+
+test('all buildings (present and future custom uploaded) can be dismantled back to grass yard or replaced', async () => {
+  const f = fixture()
+  const user = f.user('a')
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const buildingsService = createBuildingsService(f.context)
+  const aHome = await f.build('a')
+
+  // 1. 模拟管理员在后台新建上传一个未来自定义建筑（如：中式望江楼阁）
+  const adminRes = await buildingsService.save('admin_openid', {
+    revision: 0,
+    building: {
+      id: 'custom_bld_pavilion',
+      name: '中式望江阁',
+      type: 'decoration',
+      category: 'decoration',
+      desc: '古色古香的观景亭阁，微风穿堂',
+      width: 14,
+      depth: 14,
+      image: 'cloud://cloud1/buildings/custom/pavilion.png',
+      enabled: true
+    }
+  })
+  assert.ok(adminRes.buildings.some((b) => b.id === 'custom_bld_pavilion'))
+
+  // 2. 玩家认领一块专属绿地，初始为纯草块 yard
+  const aYard = await f.plots.claim('a', user, { isNewPlot: true, x: 560, z: 280, size: 48 })
+  assert.equal(aYard.buildingType, 'yard')
+
+  // 3. 在专属绿地上建造后台新上传的自定义建筑
+  const builtRes = await handler('a', 'buildInYard', {
+    plotId: aYard.id,
+    buildingId: 'custom_bld_pavilion',
+    sceneId: aYard.communityId
+  })
+  assert.equal(builtRes.plot.buildingType, 'decoration')
+  assert.equal(builtRes.plot.buildingName, '中式望江阁')
+  assert.equal(builtRes.plot.buildingImage, 'cloud://cloud1/buildings/custom/pavilion.png')
+
+  // 4. 执行拆除建筑：拆除后恢复为原来的草块 yard
+  const dismantleRes = await handler('a', 'dismantleBuilding', {
+    plotId: aYard.id,
+    sceneId: aYard.communityId
+  })
+  assert.equal(dismantleRes.dismantled, true)
+  assert.ok(dismantleRes.message.includes('恢复为初始草块'))
+  assert.equal(dismantleRes.plot.buildingType, 'yard')
+  assert.equal(dismantleRes.plot.buildingId, '')
+  assert.equal(dismantleRes.plot.buildingImage, '')
+  assert.equal(dismantleRes.plot.buildingWidth, 0)
+  assert.equal(dismantleRes.plot.buildingDepth, 0)
+  assert.ok(dismantleRes.plot.name.includes('专属爱心绿地'))
+
+  // 验证对纯草块重复拆除会被友好拦截
+  await assert.rejects(
+    () => handler('a', 'dismantleBuilding', { plotId: aYard.id }),
+    /已是纯草块/
+  )
+
+  // 5. 拆除变回草块后，可再次在上面建造任意建筑（如浪漫景观樱花树）
+  const rebuiltTree = await handler('a', 'buildInYard', {
+    plotId: aYard.id,
+    buildingId: 'tree_cherry_blossom_default',
+    sceneId: aYard.communityId
+  })
+  assert.equal(rebuiltTree.plot.buildingType, 'tree')
+  assert.equal(rebuiltTree.plot.buildingName, '浪漫景观樱花树')
+
+  // 6. 验证无需先拆除，也可以直接无缝替换改建为其他建筑（如古朴石板地坪）
+  const replacedFloor = await handler('a', 'buildInYard', {
+    plotId: aYard.id,
+    buildingId: 'floor_stone_tile_default',
+    sceneId: aYard.communityId
+  })
+  assert.equal(replacedFloor.plot.buildingType, 'floor')
+  assert.equal(replacedFloor.plot.buildingName, '古朴石板地坪')
+
+  // 7. 再次拆除地坪，确认地坪也能随时拆除变回纯草块
+  const dismantleFloor = await handler('a', 'dismantleBuilding', {
+    plotId: aYard.id,
+    sceneId: aYard.communityId
+  })
+  assert.equal(dismantleFloor.dismantled, true)
+  assert.equal(dismantleFloor.plot.buildingType, 'yard')
+
+  // 8. 验证尝试拆除出生原住庭院会被硬保护拦截
+  const myHome = await f.plots.own('a')
+  await assert.rejects(
+    () => handler('a', 'dismantleBuilding', { plotId: myHome.plotId || myHome.id }),
+    /最初的自家庭院为主住宅/
+  )
+})
+

@@ -1199,6 +1199,22 @@ Page({
     const sizeText = `${targetPlot.size || 48}×${targetPlot.size || 48}米`
     const dirText = dirMap[targetPlot.gateDirection] || '南门'
     const isRebuild = targetPlot.buildingType && targetPlot.buildingType !== 'yard'
+
+    if (isRebuild) {
+      const choice = await new Promise((resolve) => {
+        wx.showActionSheet({
+          itemList: [`直接替换改建为【${building.name}】`, `拆除原【${targetPlot.buildingName || '建筑'}】还原为纯草块`],
+          success: (r) => resolve(r.tapIndex),
+          fail: () => resolve(-1)
+        })
+      })
+      if (choice === 1) {
+        this.closeBuild()
+        return this.dismantleBuildingAction({ currentTarget: { dataset: { plotid: targetPlot.id || targetPlot._id } } })
+      }
+      if (choice !== 0) return
+    }
+
     const rebuildNotice = isRebuild ? `\n⚠️ 当前绿地已落座【${targetPlot.buildingName || '原建筑'}】，本次建造将替换改建为【${building.name}】。` : ''
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
@@ -1253,6 +1269,58 @@ Page({
   async buildOutYardAction() {
     this.closeBuild()
     this.buyNewPlotAction()
+  },
+  async dismantleBuildingAction(e) {
+    const world = this.world
+    if (!world) return
+    const plotId = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.plotid) ||
+                   (this.data.nearbyBuilding && this.data.nearbyBuilding.plotId)
+    if (!plotId) return wx.showToast({ title: '未找到对应建筑', icon: 'none' })
+
+    const targetPlot = (world.plots ? world.plots() : []).find((p) => p.id === plotId || p._id === plotId)
+    const buildingName = (targetPlot && targetPlot.buildingName) || (this.data.nearbyBuilding && this.data.nearbyBuilding.name) || '建筑'
+
+    const confirmed = await new Promise((resolve) =>
+      wx.showModal({
+        title: '确认拆除建筑',
+        content: `确定要拆除【${buildingName}】吗？\n拆除后该地皮将恢复为原来的初始纯草块，您可以随时重新规划或建造其他建筑。`,
+        confirmText: '拆除建筑',
+        confirmColor: '#e04f5f',
+        cancelText: '保留建筑',
+        success: (r) => resolve(r.confirm),
+        fail: () => resolve(false)
+      })
+    )
+    if (!confirmed) return
+
+    try {
+      const result = await callFunction('playground', 'dismantleBuilding', {
+        plotId,
+        sceneId: world.scene && world.scene.sceneId
+      })
+      wx.showToast({ title: result.message || '建筑已拆除，恢复为初始草块！', icon: 'success' })
+      if (this.world === world && !world.destroyed) {
+        if (world.scene) this.initialize()
+        else {
+          if (targetPlot) {
+            targetPlot.buildingType = 'yard'
+            targetPlot.buildingId = ''
+            targetPlot.buildingName = ''
+            targetPlot.buildingCategory = ''
+            targetPlot.buildingImage = ''
+            targetPlot.buildingWidth = 0
+            targetPlot.buildingDepth = 0
+            targetPlot.name = `${targetPlot.ownerName || '邻居'}的专属爱心绿地`
+            if (world.sharedPlots) world.sharedPlots.set(targetPlot.id, targetPlot)
+          }
+          world.loadVisible().catch(() => {})
+          if (typeof world.renderFrame === 'function') world.renderFrame()
+          this.pushStatusMessage(`【${buildingName}】已拆除，地皮已恢复为纯草块！`)
+        }
+      }
+    } catch (err) {
+      wx.showToast({ title: err.message || '拆除建筑失败', icon: 'none' })
+    }
   },
   async repairVehicleAction() {
     const world = this.world
