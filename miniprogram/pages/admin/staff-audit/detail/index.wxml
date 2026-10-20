@@ -37,6 +37,27 @@
     </view>
   </view>
 
+  <view class="admin-card form-card" wx:if="{{staff.zhimaScore || staff.zhimaCredit || staff.zhimaScoreFileId || staff.alipayProfileFileId}}">
+    <view class="card-subtitle"><text class="remix-icon ri-shield-check-line sub-icon"></text><text>支付宝芝麻信用核验</text></view>
+    <view class="info-row">
+      <view class="label">芝麻信用分</view>
+      <view class="value" style="display: flex; align-items: center; gap: 12rpx;">
+        <text style="font-weight: bold; font-size: 32rpx; color: #0284c7;">{{staff.zhimaScore || (staff.zhimaCredit && staff.zhimaCredit.score) || '未填写'}} 分</text>
+        <text class="soft-badge status-badge" style="background: #e0f2fe; color: #0369a1;">支付宝信用凭证</text>
+      </view>
+    </view>
+    <view class="evidence-grid" style="margin-top: 16rpx;">
+      <view class="service-option" wx:if="{{staff.zhimaScoreFileId || (staff.zhimaCredit && staff.zhimaCredit.scoreFileId)}}" data-url="{{staff.zhimaScoreFileId || (staff.zhimaCredit && staff.zhimaCredit.scoreFileId)}}" bindtap="preview">
+        <image class="evidence-image" src="{{staff.zhimaScoreFileId || (staff.zhimaCredit && staff.zhimaCredit.scoreFileId)}}" mode="aspectFill" />
+        <view class="service-title">芝麻信用分截图</view>
+      </view>
+      <view class="service-option" wx:if="{{staff.alipayProfileFileId || (staff.zhimaCredit && staff.zhimaCredit.profileFileId)}}" data-url="{{staff.alipayProfileFileId || (staff.zhimaCredit && staff.zhimaCredit.profileFileId)}}" bindtap="preview">
+        <image class="evidence-image" src="{{staff.alipayProfileFileId || (staff.zhimaCredit && staff.zhimaCredit.profileFileId)}}" mode="aspectFill" />
+        <view class="service-title">支付宝主页截图</view>
+      </view>
+    </view>
+  </view>
+
   <view class="admin-card form-card" wx:if="{{staff.auditStatus === 'approved' && !staff.gender}}">
     <view class="card-subtitle">核实补录性别</view>
     <view class="muted">请核对实名认证材料后补录，仅可补录一次，操作将留档。</view>

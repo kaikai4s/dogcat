@@ -129,6 +129,19 @@ module.exports = function createService({
     return `${text.slice(0, 4)}****${text.slice(-4)}`
   }
 
+  function normalizeStaffZhimaConfig(zhima = {}) {
+    const source = typeof zhima === 'object' && zhima !== null ? zhima : {}
+    const rawMinScore = Number(source.minScore ?? 650)
+    const minScore = Number.isFinite(rawMinScore) && rawMinScore >= 350 && rawMinScore <= 950 ? Math.round(rawMinScore) : 650
+    return {
+      enabled: source.enabled === true,
+      minScore,
+      rulesText: safeText(source.rulesText).trim() || '宠托师必须具备良好的信用记录，支付宝芝麻信用分达到门槛并上传信用分与实名主页截屏方可申请。',
+      scoreTemplateUrl: safeText(source.scoreTemplateUrl || source.scoreTemplateFileId).trim(),
+      profileTemplateUrl: safeText(source.profileTemplateUrl || source.profileTemplateFileId).trim()
+    }
+  }
+
   function normalizePaymentConfig(payment = {}, existingPayment = {}, includeSecrets = false) {
     const apiV3Key = pickPaymentSecret(payment, existingPayment, 'apiV3Key', 'apiV3KeyInput')
     const privateKey = pickPaymentSecret(payment, existingPayment, 'privateKey', 'privateKeyInput')
@@ -214,6 +227,7 @@ module.exports = function createService({
       staffTraining: normalizeStaffTrainingConfig(value.staffTraining),
       staffDeposit: normalizeStaffDepositConfig(value.staffDeposit),
       staffSupplies: normalizeStaffSuppliesConfig(value.staffSupplies),
+      staffZhima: normalizeStaffZhimaConfig(value.staffZhima || existingSettings.staffZhima),
       invitation: {
         enabled: (value.invitation || value.userAssets || {}).enabled === true,
         rewardAmount: Math.round(Math.max(Number((value.invitation || value.userAssets || {}).rewardAmount || 0), 0) * 100) / 100,
@@ -356,6 +370,12 @@ module.exports = function createService({
     if (invitationAmounts.some((value) => value !== undefined && (!Number.isFinite(Number(value)) || Number(value) < 0 || Math.abs(Number(value) * 100 - Math.round(Number(value) * 100)) > 1e-7))) {
       throw new Error('【邀请活动设置】收益和最低提现金额必须是最多两位小数的非负金额')
     }
+    if (settings.staffZhima && settings.staffZhima.enabled) {
+      const minScore = Number(settings.staffZhima.minScore)
+      if (!Number.isFinite(minScore) || minScore < 350 || minScore > 950) {
+        throw new Error('【宠托师芝麻信用】最低准入信用分必须在 350 至 950 之间')
+      }
+    }
     const time = now()
     const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
     const previousValue = existing.data[0] ? existing.data[0].value : {}
@@ -386,6 +406,7 @@ module.exports = function createService({
     maskConfigured,
     normalizePaymentConfig,
     normalizePricingSurcharges,
+    normalizeStaffZhimaConfig,
     normalizeSystemSettings,
     getSystemSettings,
     saveSystemSettings

@@ -63,6 +63,7 @@ module.exports = function createHandler(context) {
     normalizeStaffDepositConfig,
     normalizeStaffSuppliesConfig,
     normalizeStaffTrainingConfig,
+    normalizeStaffZhimaConfig,
     normalizeStaffWorkflow,
     normalizeVideoAuditGuide,
     normalizeWeeklySchedule,
@@ -443,6 +444,7 @@ module.exports = function createHandler(context) {
       if (!profile) return null
       const settings = await getSystemSettings().catch(() => ({}))
       const depositConfig = settings.staffDeposit || normalizeStaffDepositConfig()
+      const zhimaConfig = normalizeStaffZhimaConfig(settings.staffZhima)
       const ability = validateStaffTakeOrderAbility(profile, depositConfig)
       const depositSatisfied = staffDepositSatisfied(profile, depositConfig)
       return {
@@ -452,6 +454,7 @@ module.exports = function createHandler(context) {
           enabled: depositConfig.enabled,
           amount: depositConfig.amount
         },
+        zhimaConfig,
         canTakeOrders: ability.can,
         cannotTakeOrderReason: ability.can ? '' : ability.reason,
         cannotTakeOrderMessage: ability.can ? '' : ability.message,
@@ -465,6 +468,13 @@ module.exports = function createHandler(context) {
             ? `平台要求重新足额缴纳履约保证金（¥${depositConfig.amount}）。原因：${profile.requireDepositRepayReason || '保证金余额不足或存在违规出险'}。请先完成足额缴纳后继续接单。`
             : `平台已开启宠托师履约保证金（¥${depositConfig.amount}），请先完成缴纳后再开始抢单/接单。`
         } : null
+      }
+    }
+    if (action === 'getStaffCertificationConfig') {
+      const settings = await getSystemSettings().catch(() => ({}))
+      const zhima = normalizeStaffZhimaConfig(settings.staffZhima)
+      return {
+        zhima
       }
     }
     if (action === 'getTrainingStatus') {
@@ -674,6 +684,36 @@ module.exports = function createHandler(context) {
 
       const time = now()
 
+      const zhimaConfig = normalizeStaffZhimaConfig(settings.staffZhima)
+      const hasZhimaInput = data.zhimaScore !== undefined || data.zhimaScoreFileId !== undefined || data.alipayProfileFileId !== undefined
+      let zhimaCredit = null
+
+      if (zhimaConfig.enabled || hasZhimaInput) {
+        const rawScore = Number(data.zhimaScore)
+        if (!Number.isFinite(rawScore) || rawScore < 350 || rawScore > 950) {
+          throw new Error('请输入有效的支付宝芝麻信用分（350-950分）')
+        }
+        const zhimaScore = Math.round(rawScore)
+        if (zhimaConfig.enabled && zhimaScore < zhimaConfig.minScore) {
+          throw new Error(`支付宝芝麻信用分未达到平台准入要求（最低需要 ${zhimaConfig.minScore} 分）`)
+        }
+        const zhimaScoreFileId = safeFileId(data.zhimaScoreFileId)
+        if (!zhimaScoreFileId) {
+          throw new Error('请上传支付宝芝麻信用分截图')
+        }
+        const alipayProfileFileId = safeFileId(data.alipayProfileFileId)
+        if (!alipayProfileFileId) {
+          throw new Error('请上传支付宝个人主页截图')
+        }
+        zhimaCredit = {
+          score: zhimaScore,
+          scoreFileId: zhimaScoreFileId,
+          profileFileId: alipayProfileFileId,
+          minScoreSnapshot: zhimaConfig.minScore,
+          submittedAt: time
+        }
+      }
+
       // 三要素实名核验（复用已核验成功结果防重复扣费，或发起在线/测试核验）
       let realNameVerifyStatus = 'unverified'
       let realNameVerifiedAt = null
@@ -727,6 +767,10 @@ module.exports = function createHandler(context) {
         idCardFrontFileId,
         idCardBackFileId,
         facePhotoFileId,
+        zhimaScore: zhimaCredit ? zhimaCredit.score : (existingProfile ? (existingProfile.zhimaScore ?? null) : null),
+        zhimaScoreFileId: zhimaCredit ? zhimaCredit.scoreFileId : (existingProfile ? (existingProfile.zhimaScoreFileId ?? '') : ''),
+        alipayProfileFileId: zhimaCredit ? zhimaCredit.profileFileId : (existingProfile ? (existingProfile.alipayProfileFileId ?? '') : ''),
+        zhimaCredit: zhimaCredit || (existingProfile ? (existingProfile.zhimaCredit ?? null) : null),
         identityStatus: 'pending',
         faceVerifyStatus: 'manual_pending',
         faceVerifyProvider: '',
@@ -766,6 +810,10 @@ module.exports = function createHandler(context) {
         idCardFrontFileId,
         idCardBackFileId,
         facePhotoFileId,
+        zhimaScore: identitySummary.zhimaScore,
+        zhimaScoreFileId: identitySummary.zhimaScoreFileId,
+        alipayProfileFileId: identitySummary.alipayProfileFileId,
+        zhimaCredit: identitySummary.zhimaCredit,
         identityStatus: identitySummary.identityStatus,
         faceVerifyStatus: identitySummary.faceVerifyStatus,
         faceVerifyProvider: identitySummary.faceVerifyProvider,

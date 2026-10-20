@@ -104,6 +104,62 @@
       </view>
     </view>
 
+    <block wx:if="{{zhimaConfig.enabled || form.zhimaScore || form.zhimaScoreFileId}}">
+      <view class="section-divider"></view>
+
+      <view class="card-subtitle between-head">
+        <view class="sub-left">
+          <text class="remix-icon ri-shield-check-line sub-icon"></text>
+          <text>支付宝芝麻信用分认证</text>
+        </view>
+        <text class="required-tag" wx:if="{{zhimaConfig.enabled}}">* 需达到 {{zhimaConfig.minScore || 650}} 分</text>
+      </view>
+      <view class="section-sub-tip">{{zhimaConfig.rulesText || '平台要求宠托师具备良好信用记录，支付宝芝麻信用分达标方可申请入驻。请上传真实信用截图与个人主页。'}}</view>
+
+      <view class="form-group">
+        <view class="input-label-row">
+          <text class="input-label">支付宝芝麻信用分数值（必填）</text>
+          <text class="verified-pill {{form.zhimaScore >= (zhimaConfig.minScore || 650) ? 'green-pill' : 'warning-pill'}}" wx:if="{{form.zhimaScore}}">
+            <text class="remix-icon {{form.zhimaScore >= (zhimaConfig.minScore || 650) ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'}}"></text>
+            <text>{{form.zhimaScore >= (zhimaConfig.minScore || 650) ? '达到准入门槛' : '未达门槛(' + (zhimaConfig.minScore || 650) + '分)'}}</text>
+          </text>
+        </view>
+        <input class="input-field" type="number" placeholder="请输入您的支付宝芝麻信用分（如 680）" value="{{form.zhimaScore}}" maxlength="3" bindinput="inputZhimaScore" disabled="{{certificationLocked}}" />
+      </view>
+
+      <view class="photo-upload-grid zhima-upload-grid">
+        <view class="upload-item-col">
+          <view class="upload-item" data-field="zhimaScoreFileId" bindtap="chooseIdentityPhoto">
+            <image wx:if="{{identityPreviews.zhimaScoreFileId}}" src="{{identityPreviews.zhimaScoreFileId}}" mode="aspectFill" class="preview-img" />
+            <view class="upload-placeholder" wx:else>
+              <text class="remix-icon ri-award-line upload-icon"></text>
+              <text class="upload-title">芝麻信用分截图</text>
+            </view>
+            <view class="upload-status {{form.zhimaScoreFileId ? 'uploaded' : ''}}">{{form.zhimaScoreFileId ? '✓ 已上传' : '点击上传'}}</view>
+          </view>
+          <view class="template-guide-btn" wx:if="{{zhimaConfig.scoreTemplateUrl}}" data-url="{{zhimaConfig.scoreTemplateUrl}}" bindtap="previewTemplate">
+            <text class="remix-icon ri-image-line"></text>
+            <text>查看参考模板</text>
+          </view>
+        </view>
+
+        <view class="upload-item-col">
+          <view class="upload-item" data-field="alipayProfileFileId" bindtap="chooseIdentityPhoto">
+            <image wx:if="{{identityPreviews.alipayProfileFileId}}" src="{{identityPreviews.alipayProfileFileId}}" mode="aspectFill" class="preview-img" />
+            <view class="upload-placeholder" wx:else>
+              <text class="remix-icon ri-user-shared-line upload-icon"></text>
+              <text class="upload-title">支付宝主页截图</text>
+            </view>
+            <view class="upload-status {{form.alipayProfileFileId ? 'uploaded' : ''}}">{{form.alipayProfileFileId ? '✓ 已上传' : '点击上传'}}</view>
+          </view>
+          <view class="template-guide-btn" wx:if="{{zhimaConfig.profileTemplateUrl}}" data-url="{{zhimaConfig.profileTemplateUrl}}" bindtap="previewTemplate">
+            <text class="remix-icon ri-image-line"></text>
+            <text>查看参考模板</text>
+          </view>
+        </view>
+      </view>
+    </block>
+
     <view class="section-divider"></view>
 
     <view class="card-subtitle between-head">

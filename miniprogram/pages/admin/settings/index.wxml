@@ -15,6 +15,16 @@
       <view class="setting-summary-line">保证金{{settings.staffDeposit.enabled ? '已启用' : '未启用'}} · ¥{{settings.staffDeposit.amount}}；用品报销独立由平台出资，绝不扣减保证金。</view>
       <view class="setting-summary-line">正式认证后仅首次申请可报销，实习阶段不可申请。</view>
     </view>
+    <view class="admin-compact-card setting-overview-card" data-panel="staffZhima" bindtap="openSettingModal">
+      <view class="admin-summary-row">
+        <view class="admin-summary-main">
+          <view class="admin-summary-title">宠托师芝麻信用准入</view>
+          <view class="admin-summary-sub">支付宝芝麻信用分门槛核验与参考模板</view>
+        </view>
+        <view class="meta-chip {{settings.staffZhima.enabled ? 'success' : 'warning'}}">{{settings.staffZhima.enabled ? '已启用' : '未启用'}}</view>
+      </view>
+      <view class="setting-summary-line">准入门槛：最低 {{settings.staffZhima.minScore || 650}} 分；要求上传分值截图与个人主页；{{settings.staffZhima.scoreTemplateUrl ? '已配分值模板' : '未配分值模板'}} · {{settings.staffZhima.profileTemplateUrl ? '已配主页模板' : '未配主页模板'}}</view>
+    </view>
     <view class="admin-compact-card setting-overview-card transfer-overview-card" data-panel="wechatTransfer" bindtap="openSettingModal">
       <view class="admin-summary-row">
         <view class="admin-summary-main">
@@ -199,6 +209,7 @@
       <view class="modal-header">
         <view class="modal-title" wx:if="{{activeSettingPanel === 'pricingSurcharges'}}">特殊日期与时段加价</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'realNameVerification'}}">宠托师实名核验 (聚合数据)</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'staffZhima'}}">宠托师芝麻信用准入</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffPolicy'}}">保证金与用品报销</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'playground'}}">宠物乐园地面</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'wechatTransfer'}}">微信零钱提现 / 微信商家转账</view>
@@ -217,6 +228,44 @@
       </view>
 
       <scroll-view scroll-y class="modal-scroll-body settings-modal-scroll">
+        <view wx:if="{{activeSettingPanel === 'staffZhima'}}" class="setting-modal-section">
+          <view class="policy-notice">开启后，宠托师申请入驻必须填写支付宝芝麻信用分，且分数必须达到平台配置的最低门槛。申请人需上传【芝麻信用分截图】和【支付宝个人主页截图】以便管理员审核核对实名信息。</view>
+          
+          <view class="compact-toggle-row">
+            <text>启用芝麻信用分准入门槛</text>
+            <switch checked="{{settings.staffZhima.enabled}}" bindchange="toggleStaffZhima" />
+          </view>
+
+          <view class="field-item">
+            <text class="label">准入最低芝麻信用分（350 - 950）</text>
+            <input class="input" type="number" placeholder="如 650" value="{{settings.staffZhima.minScore}}" bindinput="inputStaffZhimaMinScore" />
+          </view>
+
+          <view class="field-item">
+            <text class="label">准入规则与申请指引说明</text>
+            <textarea class="input textarea-input" maxlength="-1" value="{{settings.staffZhima.rulesText}}" bindinput="inputStaffZhimaRules" placeholder="向宠托师展示的信用分要求说明" />
+          </view>
+
+          <view class="section-subtitle" style="margin-top: 24rpx; font-weight: bold;">芝麻信用分截屏参考模板</view>
+          <view class="muted" style="margin-bottom: 12rpx;">管理员上传示例模板后，宠托师申请时可点击查看模板大图，引导其在支付宝中截取正确的分数页面。</view>
+          <view class="template-upload-box" style="display: flex; align-items: center; gap: 20rpx; margin-bottom: 24rpx;">
+            <image wx:if="{{settings.staffZhima.scoreTemplateTempUrl || settings.staffZhima.scoreTemplateUrl}}" src="{{settings.staffZhima.scoreTemplateTempUrl || settings.staffZhima.scoreTemplateUrl}}" mode="aspectFill" style="width: 140rpx; height: 140rpx; border-radius: 12rpx; border: 1rpx solid #e5e7eb;" data-url="{{settings.staffZhima.scoreTemplateTempUrl || settings.staffZhima.scoreTemplateUrl}}" bindtap="previewStaffZhimaTemplate" />
+            <view style="display: flex; flex-direction: column; gap: 10rpx;">
+              <button class="mini-btn" data-type="score" bindtap="chooseStaffZhimaTemplate">{{settings.staffZhima.scoreTemplateUrl ? '更换模板' : '上传分数模板'}}</button>
+              <button class="mini-danger-btn" wx:if="{{settings.staffZhima.scoreTemplateUrl}}" data-type="score" bindtap="removeStaffZhimaTemplate">清除模板</button>
+            </view>
+          </view>
+
+          <view class="section-subtitle" style="margin-top: 24rpx; font-weight: bold;">支付宝个人主页截屏参考模板</view>
+          <view class="muted" style="margin-bottom: 12rpx;">引导宠托师在支付宝【我的】页面截屏，管理员审核时核对该截屏中的账号/实名与申请人是否一致。</view>
+          <view class="template-upload-box" style="display: flex; align-items: center; gap: 20rpx; margin-bottom: 24rpx;">
+            <image wx:if="{{settings.staffZhima.profileTemplateTempUrl || settings.staffZhima.profileTemplateUrl}}" src="{{settings.staffZhima.profileTemplateTempUrl || settings.staffZhima.profileTemplateUrl}}" mode="aspectFill" style="width: 140rpx; height: 140rpx; border-radius: 12rpx; border: 1rpx solid #e5e7eb;" data-url="{{settings.staffZhima.profileTemplateTempUrl || settings.staffZhima.profileTemplateUrl}}" bindtap="previewStaffZhimaTemplate" />
+            <view style="display: flex; flex-direction: column; gap: 10rpx;">
+              <button class="mini-btn" data-type="profile" bindtap="chooseStaffZhimaTemplate">{{settings.staffZhima.profileTemplateUrl ? '更换模板' : '上传主页模板'}}</button>
+              <button class="mini-danger-btn" wx:if="{{settings.staffZhima.profileTemplateUrl}}" data-type="profile" bindtap="removeStaffZhimaTemplate">清除模板</button>
+            </view>
+          </view>
+        </view>
         <view wx:if="{{activeSettingPanel === 'playground'}}" class="setting-modal-section">
           <view class="field-item"><text class="label">地面宽度（米）</text><input class="input" type="number" value="{{settings.playground.width}}" data-field="playground.width" bindinput="staffPolicyInput" /></view>
           <view class="field-item"><text class="label">地面长度（米）</text><input class="input" type="number" value="{{settings.playground.height}}" data-field="playground.height" bindinput="staffPolicyInput" /></view>

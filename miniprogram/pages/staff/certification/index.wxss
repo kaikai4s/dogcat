@@ -529,3 +529,45 @@
 }
 .gender-options { display: flex; align-items: center; gap: 48rpx; padding: 20rpx 0; }
 .gender-option { display: flex; align-items: center; gap: 12rpx; font-size: 28rpx; }
+
+/* 支付宝芝麻信用分认证板块样式 */
+.zhima-upload-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 20rpx !important;
+}
+
+.upload-item-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.zhima-upload-grid .upload-item {
+  height: 200rpx;
+}
+
+.template-guide-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  padding: 8rpx 16rpx;
+  background: #f0f7ff;
+  border: 1rpx solid #bfdbfe;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  color: #1d4ed8;
+  font-weight: bold;
+}
+
+.verified-pill.green-pill {
+  background: #ecfdf5 !important;
+  color: #059669 !important;
+  border: 1rpx solid #a7f3d0 !important;
+}
+
+.verified-pill.warning-pill {
+  background: #fef2f2 !important;
+  color: #dc2626 !important;
+  border: 1rpx solid #fecaca !important;
+}

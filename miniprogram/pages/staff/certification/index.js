@@ -68,11 +68,21 @@ Page({
       serviceRadiusKm: 5,
       idCardFrontFileId: '',
       idCardBackFileId: '',
-      facePhotoFileId: ''
+      facePhotoFileId: '',
+      zhimaScore: '',
+      zhimaScoreFileId: '',
+      alipayProfileFileId: ''
     },
-    identityPreviews: { idCardFrontFileId: '', idCardBackFileId: '', facePhotoFileId: '' },
+    identityPreviews: {
+      idCardFrontFileId: '',
+      idCardBackFileId: '',
+      facePhotoFileId: '',
+      zhimaScoreFileId: '',
+      alipayProfileFileId: ''
+    },
     radiusOptions,
     profile: null,
+    zhimaConfig: null,
     statusTip: '',
     isApproved: false,
     isSubmittedApplication: false,
@@ -91,23 +101,39 @@ Page({
   onShow() {
     this.applyCurrentTheme()
     loadMessageUnread(this, 'staff')
+    callFunction('staff', 'getStaffCertificationConfig')
+      .then((cfg) => {
+        if (cfg && cfg.zhima) {
+          this.setData({ zhimaConfig: cfg.zhima })
+        }
+      })
+      .catch(() => {})
     callFunction('staff', 'getStaffProfile')
       .then((profile) => {
         if (!profile) return
+        const zhimaScore = profile.zhimaScore || (profile.zhimaCredit && profile.zhimaCredit.score) || this.data.form.zhimaScore || ''
+        const zhimaScoreFileId = profile.zhimaScoreFileId || (profile.zhimaCredit && profile.zhimaCredit.scoreFileId) || this.data.form.zhimaScoreFileId || ''
+        const alipayProfileFileId = profile.alipayProfileFileId || (profile.zhimaCredit && profile.zhimaCredit.profileFileId) || this.data.form.alipayProfileFileId || ''
         this.setData({
           profile: withStaffWorkflowText(withAuditText(profile)),
+          zhimaConfig: profile.zhimaConfig || this.data.zhimaConfig,
           form: {
             ...this.data.form,
             ...profile,
             idCardNumber: profile.idCardNumber || profile.idCardMasked || this.data.form.idCardNumber || '',
             serviceRadiusKm: Number(profile.serviceRadiusKm || 5),
             serviceLatitude: Number(profile.serviceLatitude || 0),
-            serviceLongitude: Number(profile.serviceLongitude || 0)
+            serviceLongitude: Number(profile.serviceLongitude || 0),
+            zhimaScore,
+            zhimaScoreFileId,
+            alipayProfileFileId
           },
           identityPreviews: {
             idCardFrontFileId: profile.idCardFrontFileId || '',
             idCardBackFileId: profile.idCardBackFileId || '',
-            facePhotoFileId: profile.facePhotoFileId || ''
+            facePhotoFileId: profile.facePhotoFileId || '',
+            zhimaScoreFileId,
+            alipayProfileFileId
           },
           statusTip: profile.auditRemark || statusText[profile.auditStatus] || '',
           isApproved: profile.auditStatus === 'approved',
@@ -187,6 +213,26 @@ Page({
     if (gender === 'male' || gender === 'female') this.setData({ 'form.gender': gender })
   },
 
+  inputZhimaScore(e) {
+    if (this.data.certificationLocked) return
+    const val = (e.detail.value || '').trim()
+    this.setData({ 'form.zhimaScore': val })
+  },
+
+  previewTemplate(e) {
+    const url = e.currentTarget.dataset.url
+    if (url) {
+      wx.previewImage({ urls: [url] })
+    }
+  },
+
+  previewIdentity(e) {
+    const url = e.currentTarget.dataset.url
+    if (url) {
+      wx.previewImage({ urls: [url] })
+    }
+  },
+
   cancelApplication() {
     if (!this.data.isSubmittedApplication || this.data.isApproved) return
     wx.showModal({
@@ -258,6 +304,31 @@ Page({
     if (!serviceAddress || !serviceLatitude || !serviceLongitude) {
       wx.showToast({ title: '请设置固定服务地址及位置', icon: 'none' })
       return
+    }
+
+    const zhimaConfig = this.data.zhimaConfig
+    const isZhimaRequired = zhimaConfig && zhimaConfig.enabled
+    const hasZhimaInput = this.data.form.zhimaScore || this.data.form.zhimaScoreFileId || this.data.form.alipayProfileFileId
+
+    if (isZhimaRequired || hasZhimaInput) {
+      const rawScore = Number(this.data.form.zhimaScore)
+      if (!this.data.form.zhimaScore || !Number.isFinite(rawScore) || rawScore < 350 || rawScore > 950) {
+        wx.showToast({ title: '请输入有效的芝麻信用分(350-950分)', icon: 'none' })
+        return
+      }
+      const minScore = (zhimaConfig && zhimaConfig.minScore) || 650
+      if (isZhimaRequired && rawScore < minScore) {
+        wx.showToast({ title: `芝麻信用分需达到${minScore}分方可申请成为宠托师`, icon: 'none', duration: 2500 })
+        return
+      }
+      if (!this.data.form.zhimaScoreFileId) {
+        wx.showToast({ title: '请上传支付宝芝麻信用分截图', icon: 'none' })
+        return
+      }
+      if (!this.data.form.alipayProfileFileId) {
+        wx.showToast({ title: '请上传支付宝个人主页截图', icon: 'none' })
+        return
+      }
     }
 
     if (this.submitting) return

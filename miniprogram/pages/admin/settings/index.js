@@ -20,6 +20,19 @@ function validAmount(value, allowZero = false) {
     Number.isSafeInteger(Math.round(amount * 100)) && (allowZero ? amount >= 0 : amount > 0)
 }
 
+function normalizeStaffZhima(zhima = {}) {
+  const minScoreNum = Number(zhima.minScore)
+  return {
+    enabled: zhima.enabled === true,
+    minScore: Number.isFinite(minScoreNum) && minScoreNum >= 350 && minScoreNum <= 950 ? Math.round(minScoreNum) : 650,
+    rulesText: zhima.rulesText || '宠托师必须具备良好的信用记录，支付宝芝麻信用分达到门槛并上传信用分与实名主页截屏方可申请。',
+    scoreTemplateUrl: String(zhima.scoreTemplateUrl || zhima.scoreTemplateFileId || '').trim(),
+    profileTemplateUrl: String(zhima.profileTemplateUrl || zhima.profileTemplateFileId || '').trim(),
+    scoreTemplateTempUrl: String(zhima.scoreTemplateTempUrl || '').trim(),
+    profileTemplateTempUrl: String(zhima.profileTemplateTempUrl || '').trim()
+  }
+}
+
 function normalizeStaffDeposit(deposit = {}) {
   return {
     ...deposit,
@@ -512,6 +525,7 @@ Page({
     settings: {
       staffDeposit: normalizeStaffDeposit(),
       staffSupplies: normalizeStaffSupplies(),
+      staffZhima: normalizeStaffZhima(),
       enableTestAddressMode: false,
       enablePetBreedAi: true,
       juheTelecomKeyConfigured: '',
@@ -588,6 +602,8 @@ Page({
           playground: settings.playground || { width: 2240, height: 2240 },
           staffDeposit: normalizeStaffDeposit(settings.staffDeposit),
           staffSupplies: normalizeStaffSupplies(settings.staffSupplies),
+          staffZhima: normalizeStaffZhima(settings.staffZhima),
+          staffZhima: normalizeStaffZhima(settings.staffZhima),
           enableTestAddressMode: settings.enableTestAddressMode === true,
           enablePetBreedAi: settings.enablePetBreedAi !== false,
           juheTelecomKeyConfigured: settings.juheTelecomKeyConfigured || '',
@@ -1864,6 +1880,13 @@ Page({
       wx.showToast({ title: '请等待素材上传完成', icon: 'none' })
       return
     }
+    if (this.data.settings.staffZhima && this.data.settings.staffZhima.enabled) {
+      const minScore = Number(this.data.settings.staffZhima.minScore)
+      if (!Number.isFinite(minScore) || minScore < 350 || minScore > 950) {
+        showError('【宠托师芝麻信用】最低准入信用分必须在 350 至 950 之间')
+        return
+      }
+    }
     this.setData({ saving: true })
 
     const carousel = this.data.settings.homeHeroCarousel || {}
@@ -1912,6 +1935,7 @@ Page({
       payment: this.data.settings.payment,
       settlement: this.data.settings.settlement,
       subscription: this.data.settings.subscription,
+      staffZhima: normalizeStaffZhima(this.data.settings.staffZhima),
       reliability: this.data.settings.reliability,
       customerService: this.data.settings.customerService,
       invitation: {
@@ -1947,6 +1971,7 @@ Page({
           ...settings,
           staffDeposit: normalizeStaffDeposit(settings.staffDeposit),
           staffSupplies: normalizeStaffSupplies(settings.staffSupplies),
+          staffZhima: normalizeStaffZhima(settings.staffZhima),
           enableTestAddressMode: settings.enableTestAddressMode === true,
           enablePetBreedAi: settings.enablePetBreedAi !== false,
           payment: normalizePaymentConfig(settings.payment),
@@ -2090,6 +2115,93 @@ Page({
       newTimeSlotRule: { startTime: '07:00', endTime: '09:00', name: '', surcharge: '' }
     })
     wx.showToast({ title: '已添加时段加价', icon: 'success' })
+  },
+
+  toggleStaffZhima(e) {
+    const enabled = Boolean(e.detail.value)
+    this.setData({
+      ['settings.staffZhima.enabled']: enabled
+    })
+  },
+
+  inputStaffZhimaMinScore(e) {
+    const value = e.detail.value
+    this.setData({
+      ['settings.staffZhima.minScore']: value
+    })
+  },
+
+  inputStaffZhimaRules(e) {
+    const value = e.detail.value
+    this.setData({
+      ['settings.staffZhima.rulesText']: value
+    })
+  },
+
+  chooseStaffZhimaTemplate(e) {
+    const type = e.currentTarget.dataset.type
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const file = res.tempFiles && res.tempFiles[0]
+        if (!file || !file.tempFilePath) return
+        const filePath = file.tempFilePath
+        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+        const cloudPath = `staff_zhima_templates/${type}_template_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
+
+        wx.showLoading({ title: '上传模板...' })
+        wx.cloud.uploadFile({
+          cloudPath,
+          filePath,
+          success: (upload) => {
+            const fileId = upload.fileID
+            wx.cloud.getTempFileURL({
+              fileList: [fileId],
+              success: (tempRes) => {
+                wx.hideLoading()
+                const tempFile = tempRes.fileList && tempRes.fileList[0]
+                const urlKey = type === 'score' ? 'settings.staffZhima.scoreTemplateUrl' : 'settings.staffZhima.profileTemplateUrl'
+                const tempKey = type === 'score' ? 'settings.staffZhima.scoreTemplateTempUrl' : 'settings.staffZhima.profileTemplateTempUrl'
+                this.setData({
+                  [urlKey]: fileId,
+                  [tempKey]: (tempFile && tempFile.tempFileURL) || filePath
+                })
+                wx.showToast({ title: '模板已上传' })
+              },
+              fail: () => {
+                wx.hideLoading()
+                const urlKey = type === 'score' ? 'settings.staffZhima.scoreTemplateUrl' : 'settings.staffZhima.profileTemplateUrl'
+                this.setData({ [urlKey]: fileId })
+                wx.showToast({ title: '模板已上传' })
+              }
+            })
+          },
+          fail: (err) => {
+            wx.hideLoading()
+            showError(err || '上传模板失败')
+          }
+        })
+      }
+    })
+  },
+
+  removeStaffZhimaTemplate(e) {
+    const type = e.currentTarget.dataset.type
+    const urlKey = type === 'score' ? 'settings.staffZhima.scoreTemplateUrl' : 'settings.staffZhima.profileTemplateUrl'
+    const tempKey = type === 'score' ? 'settings.staffZhima.scoreTemplateTempUrl' : 'settings.staffZhima.profileTemplateTempUrl'
+    this.setData({
+      [urlKey]: '',
+      [tempKey]: ''
+    })
+  },
+
+  previewStaffZhimaTemplate(e) {
+    const url = e.currentTarget.dataset.url
+    if (url) {
+      wx.previewImage({ urls: [url] })
+    }
   },
 
   go(e) {
