@@ -512,11 +512,15 @@ Page({
       this.targetPlotForBuilding = null
       this.setData({ isPlacingNewPlot: false })
       if (this.world === world && !world.destroyed) {
-        if(world.scene) this.initialize()
-        else {
-          if (!isNewPlot) world.setPlot(result.plot)
-          else world.addNewPlot(result.plot)
+        if (!isNewPlot) {
+          if (world.scene) this.initialize()
+          else world.setPlot(result.plot)
+        } else {
+          world.addNewPlot(result.plot)
           this.setData({ hasPlot: true })
+          if (world.sceneSync && world.sceneSync.snapshot) {
+            world.sceneSync.snapshot().catch(() => {})
+          }
         }
       }
       wx.showToast({ title: isNewPlot ? '专属绿地认领成功！' : '位置已保存！', icon: 'success' })
@@ -1049,15 +1053,28 @@ Page({
       wx.showToast({ title: err.message || '领取失败', icon: 'none' })
     }
   },
+  getAvailableEmptyPlots() {
+    const world = this.world
+    if (!world) return []
+    const allPlots = world.plots ? world.plots() : []
+    const homePlotId = world.ownPlot ? (world.ownPlot.id || world.ownPlot._id) : null
+    return allPlots.filter((p) => {
+      if (!p.mine) return false
+      if (homePlotId && p.id === homePlotId) return false
+      return p.buildingType === 'yard' || (p.isNewPlot && (!p.buildingType || p.buildingType === 'yard'))
+    })
+  },
   async openBuild() {
     this.setData({ buildOpen: true, buildLoading: true })
     try {
       const result = await callFunction('playground', 'getBuildingCatalog')
       const buildings = (result.buildings || []).filter((b) => b.enabled !== false)
+      const emptyPlots = this.getAvailableEmptyPlots()
       this.setData({
         buildingCatalog: buildings,
         selectedBuilding: buildings.find((b)=>b.unlocked) || buildings[0] || null,
-        plotSizes:result.plotSizes||this.data.plotSizes
+        plotSizes: result.plotSizes || this.data.plotSizes,
+        availableEmptyPlotCount: emptyPlots.length
       })
     } catch (err) {
       wx.showToast({ title: err.message || '加载建筑列表失败', icon: 'none' })
@@ -1076,29 +1093,35 @@ Page({
   async buildInYardAction() {
     const building = this.data.selectedBuilding
     if (!building || this.data.buildBusy) return
-    if(!building.unlocked)return wx.showToast({title:building.unlockText||'当前会员未解锁',icon:'none'})
+    if(!building.unlocked) return wx.showToast({ title: building.unlockText || '当前会员未解锁', icon: 'none' })
     const world = this.world
-    if (!world || !this.data.hasPlot) {
+    if (!world) return
+
+    const emptyPlots = this.getAvailableEmptyPlots()
+    if (emptyPlots.length === 0) {
       wx.showModal({
-        title: '温馨提示',
-        content: '公共设施房屋只能建造在属于您自己的已认领绿地内部，请先点击顶部菜单认领专属爱心绿地！',
-        showCancel: false
-      })
-      return
-    }
-    const myPlots = (world.plots && world.plots().filter((p) => p.mine)) || (world.ownPlot ? [world.ownPlot] : [])
-    if (!myPlots.length) {
-      wx.showModal({
-        title: '温馨提示',
-        content: '公共设施房屋只能建造在属于您自己的已认领绿地内部，请先认领一块专属爱心绿地！',
-        showCancel: false
+        title: '需要空余地皮',
+        content: '最初的自家庭院为温馨住宅，不可改建为公共设施。建造公共建筑必须先认领一块空余专属绿地，是否立即前往认领？',
+        confirmText: '去认领绿地',
+        cancelText: '取消',
+        success: (r) => {
+          if (r.confirm) {
+            this.closeBuild()
+            this.buyNewPlotAction()
+          }
+        }
       })
       return
     }
 
-    let targetPlot = myPlots[0]
-    if (myPlots.length > 1) {
-      const itemList = myPlots.map((p, idx) => p.buildingName || p.name || `我的专属绿地 ${idx + 1}`)
+    let targetPlot = emptyPlots[0]
+    if (emptyPlots.length > 1) {
+      const dirMap = { south: '南门', north: '北门', east: '东门', west: '西门' }
+      const itemList = emptyPlots.map((p, idx) => {
+        const size = p.size || 48
+        const dir = dirMap[p.gateDirection] || '南门'
+        return `空余绿地 ${idx + 1} (${size}×${size}m · 栅栏${dir})`
+      })
       const selectedIndex = await new Promise((resolve) => {
         wx.showActionSheet({
           itemList,
@@ -1107,13 +1130,14 @@ Page({
         })
       })
       if (selectedIndex < 0) return
-      targetPlot = myPlots[selectedIndex]
+      targetPlot = emptyPlots[selectedIndex]
     }
 
+    const sizeText = `${targetPlot.size || 48}×${targetPlot.size || 48}米`
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
-        title: `在绿地内建造【${building.name}】`,
-        content: `将在【${targetPlot.buildingName || targetPlot.name || '自家庭院'}】内部建造该单房建筑（不含额外地皮）。\n当前会员已解锁，无需支付代币。是否确认建造？`,
+        title: `确认建造【${building.name}】`,
+        content: `将在所选的空余专属绿地（${sizeText}）内落座建造【${building.name}】。\n建造后该绿地将成为专属公共设施，您的初始自家庭院不受任何影响。是否确认建造？`,
         confirmText: '立即建造',
         success: (r) => resolve(r.confirm),
         fail: () => resolve(false)
@@ -1130,13 +1154,24 @@ Page({
         buildingImage: building.image,
         buildingWidth: building.width,
         buildingDepth: building.depth,
+        costCoins: building.costCoins || 0,
         sceneId: world.scene && world.scene.sceneId
       })
       wx.showToast({ title: '建筑落座成功！', icon: 'success' })
       this.closeBuild()
       if (this.world === world && !world.destroyed) {
         if (world.scene) this.initialize()
-        else world.setPlot(result.plot)
+        else {
+          const updated = result.plot || {
+            ...targetPlot,
+            buildingId: building.id,
+            buildingType: building.type,
+            buildingName: building.name,
+            name: `${targetPlot.ownerName || '我'}的${building.name}`
+          }
+          if (world.sharedPlots) world.sharedPlots.set(updated.id, updated)
+          world.loadVisible().catch(() => {})
+        }
       }
     } catch (err) {
       wx.showToast({ title: err.message || '建造失败', icon: 'none' })

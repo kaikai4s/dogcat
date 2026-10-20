@@ -17,7 +17,7 @@ test('setupDatabase: initializes collections and seeds default prices and checki
   assert.equal(res.ok, true)
   assert.equal(res.data.success, true)
   assert.equal(res.data.totalCollections, 94)
-  assert.equal(res.data.totalIndexesConfigured, 41)
+  assert.equal(res.data.totalIndexesConfigured, 43)
   assert.ok(res.data.pricesInitialized > 0)
   assert.ok(res.data.checkinRulesInitialized > 0)
   assert.equal(res.data.settingsInitialized, true)

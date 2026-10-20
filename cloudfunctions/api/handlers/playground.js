@@ -119,7 +119,7 @@ module.exports = function createHandler(context) {
         }
       }
       const old=await world.own(openid),plot=await world.claim(openid,user,data)
-      if(old&&old.plotId!==plot.id) await shared.plotChanged(openid,old.plotId,true,old.communityId)
+      if(!data.isNewPlot && old && old.plotId !== plot.id) await shared.plotChanged(openid,old.plotId,true,old.communityId)
       await shared.plotChanged(openid,plot.id)
       return {plot}
     }

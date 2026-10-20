@@ -83,7 +83,7 @@ module.exports={
   },
   nearbyFarmTile() {
     if(!this.character||this.drivingVehicleId||this.placing||this.destroyed||this.isMapOverview()||!this.characterTerrain||!this.characterAreaLoaded(this.characterTerrain))return null
-    const p=this.character.position,nav=this.characterNavigation(),edit=this.page.data.farmEditMode
+    const p=this.character.position,nav=this.characterNavigation(),edit=Boolean(this.page&&this.page.data&&this.page.data.farmEditMode)
     const tiles=this.gardenPlots().flatMap((plot)=>{
       const saved=savedBeds(plot)
       return farmLayout(plot).filter((t)=>(edit||saved[t.id])&&Math.hypot(t.x-p.x,t.z-p.z)<=bedReach(t)&&nav.clearSegment(p,t)).map((t)=>({...t,plotId:plot.id}))
@@ -92,7 +92,7 @@ module.exports={
   },
   emitFarmUi() {
     const tile=this.nearbyFarmTile(),page=this.page
-    if(tile&&page.ensureFarm&&!page.data.farmOpen)page.ensureFarm(false,tile.plotId).catch(()=>{})
+    if(tile&&page&&page.ensureFarm&&!(page.data&&page.data.farmOpen))page.ensureFarm(false,tile.plotId).catch(()=>{})
     const farm=page.data&&page.data.farm
     const bed=tile&&farm&&farm.plotId===tile.plotId?farm.beds.find((b)=>b.id===tile.id):null
     const nearby=tile?{...tile,...(bed||{}),loaded:!!bed}:null,key=JSON.stringify(nearby)

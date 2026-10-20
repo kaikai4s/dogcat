@@ -108,9 +108,14 @@
           </view>
         </view>
       </view>
+      <view class="empty-plots-tip-bar" wx:if="{{selectedBuilding}}">
+        <text class="tip-icon">🏡</text>
+        <text class="tip-text" wx:if="{{availableEmptyPlotCount > 0}}">名下有 {{availableEmptyPlotCount}} 块空余绿地可选 · 出生家庭院完好保留</text>
+        <text class="tip-text tip-warning" wx:else>暂无空余绿地(出生庭院不可改建) · 请先认领新地皮</text>
+      </view>
       <view class="build-actions" wx:if="{{selectedBuilding}}">
-        <button class="build-in-yard-btn" bindtap="buildInYardAction" disabled="{{buildBusy || !selectedBuilding.unlocked}}">落座建造至专属绿地</button>
-        <button class="build-out-yard-btn" bindtap="buildOutYardAction" disabled="{{buildBusy}}">先认领新专属绿地</button>
+        <button class="build-in-yard-btn" bindtap="buildInYardAction" disabled="{{buildBusy || !selectedBuilding.unlocked}}">选择空余绿地落座建造</button>
+        <button class="build-out-yard-btn" bindtap="buildOutYardAction" disabled="{{buildBusy}}">认领新独立地皮</button>
       </view>
     </scroll-view>
   </view>

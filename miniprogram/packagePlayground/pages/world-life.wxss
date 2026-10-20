@@ -102,6 +102,8 @@
 .build-actions { display: flex; gap: 8px; padding: 8px 0 16px; }
 .build-in-yard-btn { flex: 1; margin: 0; line-height: 38px; font-size: 12px; border-radius: 14px; background: #689f38; color: #ffffff; }
 .build-out-yard-btn { flex: 1; margin: 0; line-height: 38px; font-size: 12px; border-radius: 14px; background: #ff8f00; color: #ffffff; }
+.empty-plots-tip-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; margin-bottom: 8px; background: #eef5e6; border-radius: 12px; font-size: 11px; color: #43662b; }
+.empty-plots-tip-bar .tip-warning { color: #c62828; }
 
 .justice-panel { display: flex; flex-direction: column; width: 94%; max-width: 480px; height: 86vh; max-height: 88vh; overflow: hidden; padding: 20px 16px 14px; box-sizing: border-box; background: #faf9f6; border-radius: 26px; color: #263238; }
 .justice-jail-card { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px; margin-bottom: 12px; background: #ffebee; border-radius: 16px; border-left: 4px solid #c62828; }

@@ -199,3 +199,53 @@ test('pinch can reach full map scale and recenters an off-center camera', () => 
   assert.deepEqual(w.camera, { x: 5600, z: 2800 })
   assert.equal(w.gesture.moved, true)
 })
+
+test('pure empty yard does not trigger dog bowl interaction and keeps residential home intact', () => {
+  const w = create()
+  const homePlot = {
+    id: 'home_plot_1',
+    plotId: 'home_plot_1',
+    mine: true,
+    buildingType: 'residential',
+    x: 100,
+    z: 100,
+    size: 48,
+    foodBowls: { dog: 50, cat: 50 }
+  }
+  const pureYard = {
+    id: 'yard_plot_2',
+    plotId: 'yard_plot_2',
+    mine: true,
+    buildingType: 'yard',
+    x: 300,
+    z: 300,
+    size: 48,
+    isNewPlot: true
+  }
+
+  w.sharedPlots = new Map([
+    [homePlot.id, homePlot],
+    [pureYard.id, pureYard]
+  ])
+  w.ownPlot = homePlot
+  w.foodBowls = { dog: 50, cat: 50 }
+
+  // 1. 角色走在纯地皮的相对食盆位置，绝对不应触发狗碗交互
+  const { yardLayout } = require('../../miniprogram/packagePlayground/utils/yard-layout')
+  const yardFakeBowl = yardLayout(pureYard).stations.dog.eat
+  w.character = { position: { x: yardFakeBowl.x, z: yardFakeBowl.z } }
+  w.characterTerrain = { cellX: Math.floor(yardFakeBowl.x / 56), cellZ: Math.floor(yardFakeBowl.z / 56) }
+  w.characterAreaLoaded = () => true
+  w.characterNavigation = () => ({ clearSegment: () => true })
+
+  const nearbyInYard = w.nearbyInteractions()
+  assert.equal(nearbyInYard.bowl, null, '纯地皮内不应触发狗碗交互')
+
+  // 2. 角色走在初始出生庭院的真实食盆位置，正确触发狗碗交互
+  const homeRealBowl = yardLayout(homePlot).stations.dog.eat
+  w.character = { position: { x: homeRealBowl.x, z: homeRealBowl.z } }
+  w.characterTerrain = { cellX: Math.floor(homeRealBowl.x / 56), cellZ: Math.floor(homeRealBowl.z / 56) }
+  const nearbyInHome = w.nearbyInteractions()
+  assert.ok(nearbyInHome.bowl, '出生庭院内应正常触发狗碗交互')
+  assert.equal(nearbyInHome.bowl.plotId, homePlot.id)
+})

@@ -446,21 +446,24 @@ module.exports = {
         if(!building||!unlocked(building,access))throw new Error('该建筑已下架或当前会员等级尚未解锁')
         const {id:buildingId,type:buildingType,name:buildingName,image:buildingImage,width:buildingWidth,depth:buildingDepth}=building
         let targetPlot = null
+        const ownerPlotDoc = await read(tx, ownerId(openid))
+        const mainPlotId = ownerPlotDoc && ownerPlotDoc.plotId
+
         if (targetPlotId) {
           const doc = await read(tx, targetPlotId)
           if (!doc || doc.kind!=='plot' || doc.ownerOpenid!==openid || doc.demolished)throw new Error('只能在自己的有效地皮内建造')
-          if (doc && doc.ownerOpenid === openid) {
-            targetPlot = doc
+          targetPlot = doc
+        } else {
+          const myPlots = await tx.collection('pet_playground_plots').where({ kind: 'plot', ownerOpenid: openid }).get()
+          const emptyYard = (myPlots.data || []).find((p) => !p.demolished && p._id !== mainPlotId && (p.buildingType === 'yard' || p.isNewPlot && !p.buildingType))
+          if (emptyYard) {
+            targetPlot = emptyYard
+          } else if (mainPlotId) {
+            targetPlot = await read(tx, mainPlotId)
           }
         }
         if (!targetPlot) {
-          const ownerPlotDoc = await read(tx, ownerId(openid))
-          if (ownerPlotDoc && ownerPlotDoc.plotId) {
-            targetPlot = await read(tx, ownerPlotDoc.plotId)
-          }
-        }
-        if (!targetPlot) {
-          throw new Error('您还没有属于自己的专属绿地空间，公共设施建筑只能在已认领的爱心绿地内部建造，请先认领专属绿地')
+          throw new Error('您当前没有空余的专属绿地！最初的自家庭院不可改建，请先认领一块新的专属绿地')
         }
 
         const communityId = targetPlot.communityId

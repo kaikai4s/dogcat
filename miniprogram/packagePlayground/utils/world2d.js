@@ -402,13 +402,14 @@ class World2D {
         result.pet = { id: pet.id, name: pet.name }
       }
     }
-    if (this.ownPlot) {
-      const stations=yardLayout(this.ownPlot).stations
+    const homePlot = this.ownPlot && (!this.ownPlot.buildingType || this.ownPlot.buildingType === 'residential') ? this.ownPlot : [...this.plots()].find((pl) => pl.mine && (!pl.buildingType || pl.buildingType === 'residential'))
+    if (homePlot && (!homePlot.buildingType || homePlot.buildingType === 'residential')) {
+      const stations=yardLayout(homePlot).stations
       if (['dog','cat'].some((species)=>{
         const station=stations[species].eat
         return Math.hypot(p.x - station.x, p.z - station.z) <= INTERACTION_DISTANCE && nav.clearSegment(p, station)
       }))
-        result.bowl = { plotId: this.ownPlot.id, food: Math.min(this.foodBowls.dog||0,this.foodBowls.cat||0) }
+        result.bowl = { plotId: homePlot.id, food: Math.min(this.foodBowls.dog||0,this.foodBowls.cat||0) }
     }
     const nearbyPlayer=this.remoteCharacters.map((person)=>({...person,position:this.neighborPosition(person)}))
       .find((person)=>Math.hypot(p.x-person.position.x,p.z-person.position.z)<=5)
@@ -1533,7 +1534,9 @@ class World2D {
     // Snapshot is authoritative: evict stale cached plots after a demolition.
     for(const [key,list] of this.chunks) this.chunks.set(key,list.filter((p)=>plots.has(p.id)))
     this.mapPlots=new Map(plots)
-    const own=[...plots.values()].find((p)=>p.mine)
+    const own=[...plots.values()].find((p)=>p.mine && (!p.buildingType || p.buildingType === 'residential') && !p.isNewPlot) ||
+              [...plots.values()].find((p)=>p.mine && (!p.buildingType || p.buildingType === 'residential')) ||
+              [...plots.values()].find((p)=>p.mine)
     this.ownPlot=own||null
     this.page.setData({hasPlot:!!own,residentCount:plots.size})
     this.foodBowls=own?own.foodBowls:{dog:0}
@@ -1841,12 +1844,15 @@ class World2D {
       const lift = (2.5 - (pet.interactingUntil - this.elapsed)) * 10
       c.fillText('♥', p.x, p.y - Math.max(24, 7 * pet.modelScale * this.scale * this.zoom) - lift)
     }
-    if (this.ownPlot && this.foodBowls.dog >= 100 && !this.isMapOverview()) {
-      const bowl = yardLayout(this.ownPlot).sprites.find((p) => p.name === 'dog_eat')
-      const p = this.project(bowl.x, bowl.z)
-      c.font = '11px sans-serif'
-      c.fillStyle = '#4c682e'
-      c.fillText('粮食已添满', p.x, p.y - 5 * this.scale * this.zoom)
+    const homePlotDraw = this.ownPlot && (!this.ownPlot.buildingType || this.ownPlot.buildingType === 'residential') ? this.ownPlot : [...this.plots()].find((p) => p.mine && (!p.buildingType || p.buildingType === 'residential'))
+    if (homePlotDraw && (!homePlotDraw.buildingType || homePlotDraw.buildingType === 'residential') && this.foodBowls.dog >= 100 && !this.isMapOverview()) {
+      const bowl = yardLayout(homePlotDraw).sprites.find((p) => p.name === 'dog_eat')
+      if (bowl) {
+        const p = this.project(bowl.x, bowl.z)
+        c.font = '11px sans-serif'
+        c.fillStyle = '#4c682e'
+        c.fillText('粮食已添满', p.x, p.y - 5 * this.scale * this.zoom)
+      }
     }
     c.restore()
   }
