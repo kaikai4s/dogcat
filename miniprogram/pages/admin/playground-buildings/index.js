@@ -130,7 +130,7 @@ Page({
     if (this.data.busy || !can(this.data.adminAccess, 'playgroundBuilding.save')) return
     const id = e.currentTarget.dataset.id
     const building = this.data.buildings.find((b) => b.id === id)
-    const defaultType = this.data.activeCategory === 'floor' ? 'floor' : this.data.activeCategory === 'tree' ? 'tree' : this.data.activeCategory === 'residential' ? 'wood_cabin' : 'residential'
+    const defaultType = this.data.activeCategory === 'floor' ? 'floor' : this.data.activeCategory === 'tree' ? 'tree' : this.data.activeCategory === 'residential' ? 'wood_cabin' : this.data.activeCategory === 'public' ? 'repair_shop' : 'residential'
     const defaultCategory = this.data.activeCategory !== 'all' ? this.data.activeCategory : 'residential'
     const base = building || {
       id: '',

@@ -427,4 +427,13 @@ test('building catalog classifies buildings and supports floor paving and landsc
     }),
     /最初的自家庭院/
   )
+
+  // 8. 独立绿地即便是 residential 类型也能自由改建，唯独出生原住庭院受硬保护
+  await f.db.collection('pet_playground_plots').doc(rebuiltPlot.id).update({ data: { buildingType: 'residential' } })
+  const rebuiltAgain = await f.plots.buildInYard('a', user, {
+    plotId: rebuiltPlot.id,
+    buildingId: 'floor_stone_tile_default'
+  })
+  assert.equal(rebuiltAgain.buildingType, 'floor')
+  assert.equal(rebuiltAgain.buildingCategory, 'floor')
 })

@@ -142,9 +142,7 @@ Page({
           this.world.resume()
           if(this.world.sceneSync) this.world.sceneSync.start()
           this.loadServiceTwin(false)
-          if (this.data.myJailStatus && this.data.myJailStatus.isJailed) {
-            this.checkInitialJailStatus()
-          }
+          this.checkInitialJailStatus()
         } else if (this.visible && version === this.version && this.ready)
           this.initialize()
         else if (version === this.version) this.authorized = true
@@ -1412,6 +1410,12 @@ Page({
         })
         this.syncJailRestriction(result)
         this.startJailTimer()
+      } else {
+        if (this.jailTimer) clearInterval(this.jailTimer)
+        if (this.data.myJailStatus) {
+          this.setData({ myJailStatus: null })
+          this.syncJailRestriction(null)
+        }
       }
     } catch (_) {}
   },

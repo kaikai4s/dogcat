@@ -571,8 +571,8 @@ module.exports = {
           throw new Error('您当前没有空余的专属绿地！最初的自家庭院不可改建，请先认领一块新的专属绿地')
         }
 
-        // 严禁改建最初的自家庭院别墅！
-        if (targetPlot._id === mainPlotId || !targetPlot.isNewPlot || targetPlot.buildingType === 'residential') {
+        // 严禁改建最初的自家庭院别墅（主地皮硬保护，独立专属绿地可自由改建）
+        if (targetPlot._id === mainPlotId || !targetPlot.isNewPlot) {
           throw new Error('最初的自家庭院（原住别墅）不可改建或覆盖，只能在空余的专属绿地上建造新建筑！')
         }
 

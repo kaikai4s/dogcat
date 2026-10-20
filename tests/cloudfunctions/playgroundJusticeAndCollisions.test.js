@@ -124,14 +124,28 @@ test('traffic accident reporting, police investigation and jail arrest workflow'
     /安全宣教自省期未满/
   )
 
-  // 7. 缴纳安全公约金提前恢复通行
+  // 7. 缴纳安全公约金：余额不足时被拦截
+  await assert.rejects(
+    () => handler('d', 'releaseDriver', { payBail: true, sceneId }),
+    /爱心币不足/
+  )
+
+  // 充值爱心币后缴纳安全公约金提前恢复通行
+  await f.db.collection('users').doc('user_d').update({ data: { playgroundCoins: 150 } })
+  f.user('d').playgroundCoins = 150
   const bailRes = await handler('d', 'releaseDriver', { payBail: true, sceneId })
   assert.equal(bailRes.released, true)
   assert.ok(bailRes.message.includes('安全公约金'))
+  const updatedUser = (await f.db.collection('users').doc('user_d').get()).data
+  assert.equal(updatedUser.playgroundCoins, 50)
 
-  // 释放后再查询，不再服刑
+  // 释放后再查询，不再服刑，且案件已更新为 settled
   const releasedStatus = await handler('d', 'listAccidents', { sceneId })
   assert.equal(releasedStatus.isJailed, false)
+  const settledCase = releasedStatus.accidents.find((acc) => acc._id === humanHit.accidentId)
+  assert.ok(settledCase)
+  assert.equal(settledCase.status, 'settled')
+  assert.equal(settledCase.settleType, 'bail')
 
   // 8. 医院治疗行人和宠物外伤
   const treatHuman = await handler('a', 'hospitalTreat', { target: 'human', sceneId })
@@ -219,4 +233,55 @@ test('arrest parks driver car and resets vehicle presence', async () => {
   assert.equal(carAfter.state, 'parked')
   assert.equal(carAfter.moving, false)
 })
+
+test('jail time expiration allows free release without paying bail', async () => {
+  const f = fixture()
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const a = await f.build('a', { x: 280, z: 280 })
+  const sceneId = a.sceneId
+
+  const aYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 728, z: 280, size: 48 })
+  await handler('a', 'buildInYard', {
+    plotId: aYard.id,
+    buildingType: 'police_station',
+    buildingName: '阳光社区执法所',
+    sceneId
+  })
+  await f.plots.claim('c', f.user('c'), {
+    x: 400,
+    z: 400,
+    gateDirection: 'south',
+    buildingType: 'prison',
+    buildingName: '阳光社区第一监狱'
+  })
+
+  const hit = await handler('a', 'reportAccident', {
+    sceneId,
+    victimType: 'pet',
+    victimName: '猫咪花花',
+    driverOpenid: 'e',
+    driverName: '马虎司机'
+  })
+
+  await handler('a', 'arrestDriver', { sceneId, accidentId: hit.accidentId })
+  const statusBefore = await handler('e', 'listAccidents', { sceneId })
+  assert.equal(statusBefore.isJailed, true)
+
+  // 时间快进 65 秒，服刑期满
+  f.advance(65000)
+
+  // 不付保释金免费离开
+  const freeRelease = await handler('e', 'releaseDriver', { payBail: false, sceneId })
+  assert.equal(freeRelease.released, true)
+  assert.ok(freeRelease.message.includes('安全宣教自省期满'))
+
+  // 事故更新为已结案，且 settleType 为 served_time
+  const statusAfter = await handler('e', 'listAccidents', { sceneId })
+  assert.equal(statusAfter.isJailed, false)
+  const settledCase = statusAfter.accidents.find((acc) => acc._id === hit.accidentId)
+  assert.ok(settledCase)
+  assert.equal(settledCase.status, 'settled')
+  assert.equal(settledCase.settleType, 'served_time')
+})
+
 

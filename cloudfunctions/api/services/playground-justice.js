@@ -142,10 +142,6 @@ module.exports = function createJusticeService(context) {
     const stamp = now()
 
     const facilities = await getJusticeFacilities(sceneId)
-    const accidentRows = await db
-      .collection(ACCIDENTS_COLLECTION)
-      .where({ communityId: sceneId })
-      .get()
 
     // 检查自己的羁押服刑状态
     const jailRow = await readDocument(db, JAIL_COLLECTION, openid, '检查羁押状态', true)
@@ -158,9 +154,20 @@ module.exports = function createJusticeService(context) {
         jailRemainingSeconds = Math.max(1, Math.ceil((jailRow.jailedUntil - stamp) / 1000))
       } else {
         // 刑期自动结束
-        await db.collection(JAIL_COLLECTION).doc(openid).update({ data: { jailed: false } }).catch(() => {})
+        await db.collection(JAIL_COLLECTION).doc(openid).update({ data: { jailed: false, releasedAt: stamp, releasedBy: 'served_time' } }).catch(() => {})
+        const arrestedAccidents = await db.collection(ACCIDENTS_COLLECTION).where({ driverOpenid: openid, status: 'arrested' }).get()
+        for (const item of (arrestedAccidents.data || [])) {
+          await db.collection(ACCIDENTS_COLLECTION).doc(item._id).update({
+            data: { status: 'settled', settledAt: stamp, settleType: 'served_time' }
+          }).catch(() => {})
+        }
       }
     }
+
+    const accidentRows = await db
+      .collection(ACCIDENTS_COLLECTION)
+      .where({ communityId: sceneId })
+      .get()
 
     return {
       hasPoliceStation: !!facilities.policeStation,
@@ -279,6 +286,20 @@ module.exports = function createJusticeService(context) {
         throw new Error(`安全宣教自省期未满，还需宣教自省 ${remaining} 秒，或可交存 ${BAIL_COINS} 爱心币安全公约金提前恢复通行`)
       }
 
+      if (payBail) {
+        const userRes = await tx.collection('users').where({ openid }).limit(1).get()
+        const userDoc = (userRes.data || [])[0]
+        const currentCoins = (userDoc && userDoc.playgroundCoins) || 0
+        if (currentCoins < BAIL_COINS) {
+          throw new Error(`爱心币不足，交存安全公约金需要 ${BAIL_COINS} 爱心币，当前拥有 ${currentCoins} 爱心币`)
+        }
+        await tx.collection('users').doc(userDoc._id).update({
+          data: {
+            playgroundCoins: currentCoins - BAIL_COINS
+          }
+        })
+      }
+
       await tx.collection(JAIL_COLLECTION).doc(openid).update({
         data: {
           jailed: false,
@@ -286,6 +307,21 @@ module.exports = function createJusticeService(context) {
           releasedBy: payBail ? 'bail' : 'served_time'
         }
       })
+
+      // 结案该司机处于 arrested 状态的事故案件
+      const accidentsToSettle = await tx
+        .collection(ACCIDENTS_COLLECTION)
+        .where({ driverOpenid: openid, status: 'arrested' })
+        .get()
+      for (const acc of accidentsToSettle.data || []) {
+        await tx.collection(ACCIDENTS_COLLECTION).doc(acc._id).update({
+          data: {
+            status: 'settled',
+            settledAt: stamp,
+            settleType: payBail ? 'bail' : 'served_time'
+          }
+        })
+      }
 
       return {
         released: true,
