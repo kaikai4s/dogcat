@@ -254,10 +254,12 @@ module.exports = function createHandler(context) {
       try {
         const res = await db.collection('mall_products')
           .where({ status: 'on_sale' })
-          .orderBy('salesCount', 'desc')
-          .limit(6)
+          .limit(12)
           .get()
-        products = (res.data || []).map((p) => ({
+        const rawList = res.data || []
+        // 在内存排序，避免在没有创建 salesCount 数据库索引时抛出错误
+        rawList.sort((a, b) => Number(b.salesCount || 0) - Number(a.salesCount || 0))
+        products = rawList.slice(0, 6).map((p) => ({
           id: p._id,
           name: p.name,
           price: p.price,
@@ -282,10 +284,12 @@ module.exports = function createHandler(context) {
       try {
         const staffRes = await db.collection('staff_profiles')
           .where({ approved: true, isOnline: true })
-          .orderBy('rating', 'desc')
-          .limit(3)
+          .limit(10)
           .get()
-        sitters = (staffRes.data || []).map((s) => ({
+        const rawStaff = staffRes.data || []
+        // 在内存按评分排序，避免远程复合索引缺失
+        rawStaff.sort((a, b) => Number(b.rating || 5.0) - Number(a.rating || 5.0))
+        sitters = rawStaff.slice(0, 3).map((s) => ({
           id: s._id,
           userId: s.userId,
           name: s.nickname || s.name || '金牌宠托师',
@@ -342,8 +346,11 @@ module.exports = function createHandler(context) {
       const templateId = String(data.templateId || '').trim()
       if (!templateId) throw new Error('请选择要兑换的优惠券')
       const templateDoc = await db.collection('coupon_templates').doc(templateId).get().catch(() => null)
-      const template = templateDoc && templateDoc.data
-      if (!template || template.status !== 'active') throw new Error('该优惠券暂不可兑换')
+      const templateRaw = templateDoc && templateDoc.data
+      if (!templateRaw || templateRaw.status !== 'active' || templateRaw.enabled === false) {
+        throw new Error('该优惠券暂不可兑换或已下架')
+      }
+      const template = { ...templateRaw, _id: templateRaw._id || templateId }
 
       const requiredPoints = Math.max(50, Number(template.discountAmount || 5) * 10)
       const userDoc = (await db.collection('users').doc(user._id).get().catch(() => ({ data: {} }))).data || user
@@ -351,22 +358,28 @@ module.exports = function createHandler(context) {
         throw new Error(`积分不足，兑换该券需要 ${requiredPoints} 积分（当前可用 ${userDoc.points || 0} 积分）`)
       }
 
-      if (typeof context.addPoints === 'function') {
-        await context.addPoints(
-          openid,
-          user._id,
-          -requiredPoints,
-          'coupon_exchange',
-          templateId + '_' + Date.now(),
-          `关爱积分兑换优惠券【${template.name}】`
-        )
-      }
-
+      // 必须先安全发券（内部会校验库存与每人上限），确保不会出现扣了积分但发券失败的情况
       if (typeof context.issueCouponToTargetUser === 'function') {
         await context.issueCouponToTargetUser(template, user, {
           sourceType: 'playground_exchange',
           sourceId: templateId
         })
+      }
+
+      // 发券成功后再扣减积分
+      if (typeof context.addPoints === 'function') {
+        try {
+          await context.addPoints(
+            openid,
+            user._id,
+            -requiredPoints,
+            'coupon_exchange',
+            `${templateId}_${Date.now()}`,
+            `关爱积分兑换优惠券【${template.name}】`
+          )
+        } catch (pointErr) {
+          console.error('[exchangeCoupon] deduct points error:', pointErr)
+        }
       }
 
       return { success: true, message: `成功消耗 ${requiredPoints} 积分兑换【${template.name}】！` }

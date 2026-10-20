@@ -133,6 +133,7 @@ Page({
           this.authorized=true
           this.world.resume()
           if(this.world.sceneSync) this.world.sceneSync.start()
+          this.loadServiceTwin(false)
         } else if (this.visible && version === this.version && this.ready)
           this.initialize()
         else if (version === this.version) this.authorized = true
@@ -1510,7 +1511,7 @@ Page({
   bookSitterAction(e) {
     const staffId = e.currentTarget.dataset.id
     if (staffId) {
-      wx.navigateTo({ url: `/pages/client/orders/create/index?staffProfileId=${staffId}` })
+      wx.navigateTo({ url: `/pages/client/orders/create/index?publishMode=direct&staffProfileId=${staffId}` })
     } else {
       wx.navigateTo({ url: '/pages/client/orders/create/index' })
     }

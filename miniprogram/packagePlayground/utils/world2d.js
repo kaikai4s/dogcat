@@ -518,9 +518,29 @@ class World2D {
     return true
   }
   applyBowlFood(result) {
-    if (!this.ownPlot || result.plotId !== this.ownPlot.id) return false
-    this.foodBowls.dog = result.food === 100 ? 100 : 0
-    this.foodBowls.cat = this.foodBowls.dog
+    if (!result) return false
+    const plotId = result.plotId
+    if (plotId) {
+      const matchOwn = this.ownPlot && (plotId === this.ownPlot.id || plotId === this.ownPlot._id)
+      const plot = [...this.plots()].find((p) => (p.id === plotId || p._id === plotId) && p.mine)
+      if (!matchOwn && !plot) return false
+
+      if (plot && plot.foodBowls) {
+        plot.foodBowls.dog = result.food === 100 ? 100 : 0
+        plot.foodBowls.cat = result.food === 100 ? 100 : 0
+      }
+      this.foodBowls.dog = result.food === 100 ? 100 : 0
+      this.foodBowls.cat = this.foodBowls.dog
+    } else {
+      // 未指定特定地皮时（如数字孪生宠托师上门自动添粮），更新自家庭院的食碗
+      if (!this.ownPlot) return false
+      this.foodBowls.dog = result.food === 100 ? 100 : 0
+      this.foodBowls.cat = this.foodBowls.dog
+      if (this.ownPlot.foodBowls) {
+        this.ownPlot.foodBowls.dog = this.foodBowls.dog
+        this.ownPlot.foodBowls.cat = this.foodBowls.cat
+      }
+    }
     this.emitNearby()
     return true
   }

@@ -1,4 +1,4 @@
-<view class="world-toolbar" style="top: {{top + 76}}px" wx:if="{{!loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !disputesOpen && !buildOpen && !serviceDiaryOpen && !mallSuppliesOpen && !rewardsOpen}}">
+<view class="world-toolbar" style="top: {{top + 76}}px" wx:if="{{!loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !disputesOpen && !buildOpen && !justiceOpen && !historyModalOpen && !serviceDiaryOpen && !mallSuppliesOpen && !rewardsOpen}}">
   <view class="world-toolbar-row">
     <button class="menu-collapse-btn" catchtap="toggleMenuCollapse">
       <text>{{menuCollapsed ? '☰ 快捷功能 ▾' : '▴ 收起功能'}}</text>
