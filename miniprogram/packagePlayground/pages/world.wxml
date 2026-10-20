@@ -14,12 +14,12 @@
   </view>
   <view class="loading" wx:elif="{{loading}}"><view class="loader"></view><text>{{status}}</text></view>
   <view class="garden-edit-hint" wx:if="{{farmEditMode && !farmOpen}}"><text>选择自家草块，走近后布置</text><button bindtap="endGardenEdit">完成选地</button></view>
-  <view wx:if="{{hasAvatar && !loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !disputesOpen && !justiceOpen && !buildOpen && !historyModalOpen && !serviceDiaryOpen && !mallSuppliesOpen && !rewardsOpen && !riding && !showPetScale && (joystickMode === 'always' || joystickActive)}}" class="joystick-pad {{joystickMode === 'always' ? 'joystick-fixed' : ''}} {{joystickRunning ? 'running' : ''}}" style="left: {{joystickLeft}}px; top: {{joystickTop}}px; opacity: {{joystickOpacity / 100}};" catchtouchstart="fixedJoystickStart" catchtouchmove="fixedJoystickMove" catchtouchend="fixedJoystickEnd" catchtouchcancel="fixedJoystickEnd">
+  <view wx:if="{{hasAvatar && !loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !disputesOpen && !justiceOpen && !buildOpen && !historyModalOpen && !serviceDiaryOpen && !publicCareOpen && !mallSuppliesOpen && !rewardsOpen && !riding && !showPetScale && (joystickMode === 'always' || joystickActive)}}" class="joystick-pad {{joystickMode === 'always' ? 'joystick-fixed' : ''}} {{joystickRunning ? 'running' : ''}}" style="left: {{joystickLeft}}px; top: {{joystickTop}}px; opacity: {{joystickOpacity / 100}};" catchtouchstart="fixedJoystickStart" catchtouchmove="fixedJoystickMove" catchtouchend="fixedJoystickEnd" catchtouchcancel="fixedJoystickEnd">
     <view class="joystick-ring"></view>
     <view class="joystick-knob" style="transform: translate({{joystickX}}px, {{joystickY}}px)"></view>
     <text class="joystick-caption">{{driving ? '代步巡检 · 慢速前行' : joystickRunning ? '快步行走' : '轻推漫游 · 可轻触地面导航'}}</text>
   </view>
-  <view class="player-hud {{joystickHand === 'right' ? 'right-hand' : ''}}" style="bottom: {{bottom + 260 + (showPetScale ? 105 : 0)}}px" wx:if="{{hasAvatar && !loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !disputesOpen && !justiceOpen && !buildOpen && !historyModalOpen && !serviceDiaryOpen && !mallSuppliesOpen && !rewardsOpen}}">
+  <view class="player-hud {{joystickHand === 'right' ? 'right-hand' : ''}}" style="bottom: {{bottom + 260 + (showPetScale ? 105 : 0)}}px" wx:if="{{hasAvatar && !loading && !error && !placing && !settingsOpen && !socialOpen && !farmOpen && !disputesOpen && !justiceOpen && !buildOpen && !historyModalOpen && !serviceDiaryOpen && !publicCareOpen && !mallSuppliesOpen && !rewardsOpen}}">
     <view class="interaction-actions">
       <button wx:if="{{nearbyInvite}}" data-operation="invite" data-player="{{nearbyInvite.id}}" bindtap="rideOperation" disabled="{{rideBusy}}">邀请 {{nearbyInvite.name}} 上车</button>
       <button wx:if="{{nearbyRide}}" data-operation="request" data-player="{{nearbyRide.playerId}}" bindtap="rideOperation" disabled="{{rideBusy}}">申请乘坐 {{nearbyRide.name}} 的车</button>
@@ -27,10 +27,17 @@
       <button wx:if="{{nearbyVehicle && !driving}}" data-operation="garage" bindtap="operateVehicle" disabled="{{vehicleOperating}}">车辆入库</button>
       <button wx:if="{{nearbyPlayer && !nearbyPlayer.friend}}" bindtap="requestFriend" disabled="{{socialBusy}}">添加 {{nearbyPlayer.name}} 为好友</button>
       <button wx:if="{{nearbyGate}}" bindtap="requestVisit" disabled="{{socialBusy}}">申请访问 {{nearbyGate.name}} 的庭院</button>
+      <view wx:if="{{nearbySitter}}" class="nearby-sitter-card">
+        <view class="nearby-sitter-title"><text class="remix-icon ri-verified-badge-fill"></text>宠托师服务</view>
+        <view class="nearby-sitter-caption">已到达宠托师别墅门口</view>
+        <view class="nearby-sitter-actions"><button bindtap="viewNearbySitter">名片与评价</button><button class="sitter-book-primary" bindtap="bookNearbySitter">预约服务</button></view>
+      </view>
+      <button wx:if="{{nearbyCarePet}}" class="nearby-care-button" bindtap="viewNearbyPetCare">{{nearbyCarePet.name}} · 照护记录</button>
       <button wx:if="{{nearbyBowl}}" class="fill-bowl" bindtap="fillBowl" disabled="{{feeding || nearbyBowl.food >= 100}}" loading="{{feeding}}">{{nearbyBowl.food >= 100 ? '猫狗碗已添满' : '给猫狗碗添粮'}}</button>
       <button wx:if="{{nearbyBowl}}" class="mall-supplies-btn" bindtap="openMallSupplies">口粮补给站</button>
       <button wx:if="{{nearbyPoop}}" bindtap="pickupPoop">拾取便便</button>
       <button wx:if="{{nearbyPoop}}" bindtap="reportPoopAction">向居委会反馈便便</button>
+      <block wx:if="{{selectedBuildingInfo && nearbyBuilding && selectedBuildingInfo.plotId === nearbyBuilding.plotId}}">
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'committee'}}" bindtap="openDisputes">社区服务站</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'repair_shop'}}" bindtap="cleanVehicleAction">便民爱车清洗</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'repair_shop'}}" bindtap="repairVehicleAction">车辆便民养护</button>
@@ -42,7 +49,12 @@
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'police_station'}}" bindtap="openJustice">文明出行督导站</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'prison'}}" bindtap="openJustice">交通安全宣教室</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.mine && nearbyBuilding.canDismantle}}" class="dismantle-building-btn" bindtap="dismantleBuildingAction">拆除建筑·恢复草块</button>
+      </block>
       <button wx:if="{{myJailStatus && myJailStatus.isJailed}}" bindtap="openJustice" class="jail-status-btn">宣教自省中({{myJailStatus.remainingSeconds}}s)·提前结业</button>
+      <view wx:if="{{selectedBuildingInfo}}" class="building-info-card" catchtouchstart="swallowTouch" catchtouchmove="swallowTouch" catchtouchend="swallowTouch" catchtap="swallowTouch">
+        <view class="building-info-title"><text class="remix-icon ri-home-5-line"></text><text>{{selectedBuildingInfo.name}}</text><button class="building-info-close" catchtap="closeBuildingInfo" aria-label="收起建筑信息">×</button></view>
+        <view class="building-info-caption">{{selectedBuildingInfo.mine ? '我的建筑' : '社区建筑'}} · 走近后可使用对应服务</view>
+      </view>
     </view>
   </view>
   <view class="bottom" style="bottom: {{bottom}}px" wx:if="{{!loading && !error}}">
@@ -61,7 +73,7 @@
       <text>尚未安置庭院，建好后角色和宠物将进入场景</text>
       <button bindtap="chooseCommunityAndBuild">选择小区并建造庭院</button>
     </view>
-    <view class="field-context" wx:if="{{nearbyFarm && !farmOpen && !settingsOpen && !socialOpen && !disputesOpen && !justiceOpen && !buildOpen && !historyModalOpen && !serviceDiaryOpen && !mallSuppliesOpen && !rewardsOpen && !placing}}">
+    <view class="field-context" wx:if="{{nearbyFarm && !farmOpen && !settingsOpen && !socialOpen && !disputesOpen && !justiceOpen && !buildOpen && !historyModalOpen && !serviceDiaryOpen && !publicCareOpen && !mallSuppliesOpen && !rewardsOpen && !placing}}">
       <view class="field-heading"><text>{{nearbyFarm.name || nearbyFarm.label || '正在查看土地…'}}</text><text>{{nearbyFarm.cropId ? nearbyFarm.label : '庭院装饰'}}</text></view>
       <block wx:if="{{nearbyFarm.loaded}}">
         <scroll-view scroll-x class="field-seeds" wx:if="{{nearbyFarm.state === 'empty'}}"><view class="field-seed-row"><block wx:for="{{farm.crops}}" wx:key="id"><button wx:if="{{item.unlocked}}" class="{{farmCropId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="selectFarmCrop">{{item.name}}</button></block></view></scroll-view>

@@ -36,13 +36,20 @@ const adminSections = [
       { icon: 'ri-store-2-line', title: '商城商品', desc: '分类与商品', url: '/pages/admin/mall/products/index' },
       { icon: 'ri-vip-crown-line', title: '会员等级', desc: '积分升级规则', url: '/pages/admin/member-levels/index' },
       { icon: 'ri-medal-line', title: '宠物头衔', desc: '称号与自动发放', url: '/pages/admin/pet-titles/index' },
-      { icon: 'ri-palette-line', title: '乐园形象定制', desc: '照片申请与专属形象发布', url: '/pages/admin/playground-customizations/index' },
-      { icon: 'ri-plant-line', title: '农作物管理', desc: '装饰素材、生长阶段与会员解锁', url: '/pages/admin/playground-crops/index' },
-      { icon: 'ri-building-line', title: '乐园建筑管理', desc: '建筑素材、土地会员解锁与积分配置', url: '/pages/admin/playground-buildings/index' },
       { icon: 'ri-shield-check-line', title: '宠物疫苗审核', desc: '接种认证材料审核', url: '/pages/admin/pet-vaccine/list/index' },
       { icon: 'ri-calendar-check-line', title: '签到奖励', desc: '月度每日奖励配置', url: '/pages/admin/checkin-config/index' },
       { icon: 'ri-coins-line', title: '积分管理', desc: '手动增减与流水', url: '/pages/admin/points/index' },
       { icon: 'ri-gift-line', title: '抽奖活动', desc: '开关与奖品设置', url: '/pages/admin/lottery/index' }
+    ]
+  },
+  {
+    title: '宠物庄园',
+    desc: '拼单、宠物状态、地面与庄园素材',
+    items: [
+      { icon: 'ri-home-heart-line', title: '庄园规则与配置', desc: '拼单优惠、猫狗状态与排泄规则', url: '/pages/admin/playground/index' },
+      { icon: 'ri-palette-line', title: '乐园形象定制', desc: '照片申请与专属形象发布', url: '/pages/admin/playground-customizations/index' },
+      { icon: 'ri-plant-line', title: '农作物管理', desc: '装饰素材、生长阶段与会员解锁', url: '/pages/admin/playground-crops/index' },
+      { icon: 'ri-building-line', title: '乐园建筑管理', desc: '建筑素材、土地会员解锁与积分配置', url: '/pages/admin/playground-buildings/index' },
     ]
   },
   {

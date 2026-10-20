@@ -1238,3 +1238,5 @@
   transform: scale(0.985);
   opacity: 0.86;
 }
+
+.home-group-notice{margin:24rpx 28rpx;padding:24rpx 28rpx;border-radius:20rpx;background:#e1f1e8;color:#285e47;font-size:27rpx;line-height:1.8}

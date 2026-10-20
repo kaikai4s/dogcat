@@ -110,6 +110,13 @@ module.exports = function createService({
   async function toPublicSitterDetail(openid, profile) {
     const base = toPublicSitter(profile)
     const reviewStats = await getReviewStats(profile._id)
+    const services={walk:'遛狗',feed:'喂养',clean:'清洁',litter:'清理猫砂',play:'陪伴互动',medicine:'日常照护'}
+    const completed=profile.openid?(await db.collection('orders').where({staffOpenid:profile.openid,status:'completed'}).orderBy('completedAt','desc').limit(30).get()).data||[]:[]
+    const recentServices=completed.filter((o)=>!o.deletedAt&&!o.adminDeletedAt).slice(0,8).map((o)=>({
+      date:require('../utils/time').toCstParts(o.completedAt||o.updatedAt||o.createdAt).dateKey,
+      serviceText:[...new Set((o.serviceTypes||[o.serviceType]).map((key)=>services[key]).filter(Boolean))].join('、')||'上门照护',
+      petCount:Math.min(20,Math.max(1,Array.isArray(o.petIds)?o.petIds.length:1))
+    }))
     return {
       ...base,
       level: profile.level || (base.isIntern ? 'intern' : 'normal'),
@@ -117,6 +124,7 @@ module.exports = function createService({
       serviceRadiusKm: base.serviceRadiusKm,
       publicTags: Array.isArray(profile.publicTags) && profile.publicTags.length ? profile.publicTags : base.publicTags,
       favorite: openid ? await isFavoriteSitter(openid, profile._id) : false,
+      recentServices,
       ...reviewStats
     }
   }

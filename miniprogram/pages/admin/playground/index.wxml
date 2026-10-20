@@ -1,0 +1,38 @@
+<view class="manor-admin {{fontClass}}">
+  <view class="admin-hero"><view class="eyebrow">社区运营</view><view class="page-title">宠物庄园管理</view><view class="hero-tip">拼单规则、场景空间与宠物状态统一管理</view></view>
+  <view class="quick-links">
+    <navigator wx:if="{{adminSuper || adminPermissions.playgroundAppearance_listAdmin}}" url="/pages/admin/playground-customizations/index"><text class="remix-icon ri-user-smile-line"></text><text>形象定制</text><text class="link-arrow">›</text></navigator>
+    <navigator wx:if="{{adminSuper || adminPermissions.playgroundFarm_list}}" url="/pages/admin/playground-crops/index"><text class="remix-icon ri-plant-line"></text><text>庭院植物</text><text class="link-arrow">›</text></navigator>
+    <navigator wx:if="{{adminSuper || adminPermissions.playgroundBuilding_list}}" url="/pages/admin/playground-buildings/index"><text class="remix-icon ri-home-5-line"></text><text>建筑土地</text><text class="link-arrow">›</text></navigator>
+  </view>
+  <view wx:if="{{loading}}" class="empty-state">正在加载庄园配置…</view>
+  <view wx:elif="{{loadError}}" class="empty-state"><view>配置加载失败</view><button bindtap="load">重新加载</button></view>
+  <block wx:elif="{{settings}}">
+    <view class="readonly-note" wx:if="{{!adminSuper}}"><text class="remix-icon ri-lock-2-line"></text> 当前为查看模式，保存平台规则需主管理员权限</view>
+    <view class="card">
+      <view class="card-heading"><view><view class="card-title">同小区拼单</view><view class="card-subtitle">控制开放范围与成团优惠</view></view><text class="section-icon remix-icon ri-building-line"></text></view>
+      <view class="manor-field"><view class="field-main"><text>开放拼单</text><text class="field-tip">关闭后已有订单仍可查看</text></view><switch color="#397660" checked="{{settings.playgroundGroupBuy.enabled}}" disabled="{{!adminSuper || saving}}" data-field="playgroundGroupBuy.enabled" bindchange="toggle" /></view>
+      <view class="manor-field"><view class="field-main"><text>成团户数</text><text class="field-tip">2～20 户，每户仅计一次</text></view><view class="input-wrap"><input type="number" value="{{settings.playgroundGroupBuy.minHouseholds}}" disabled="{{!adminSuper || saving}}" data-field="playgroundGroupBuy.minHouseholds" bindinput="input" /><text>户</text></view></view>
+      <view class="manor-field"><view class="field-main"><text>折扣比例</text><text class="field-tip">0.01～1；0.88 即为 8.8 折</text></view><view class="input-wrap"><input type="digit" value="{{settings.playgroundGroupBuy.discountRate}}" disabled="{{!adminSuper || saving}}" data-field="playgroundGroupBuy.discountRate" bindinput="input" /></view></view>
+      <view class="manor-field"><view class="field-main"><text>免除上门费</text><text class="field-tip">先减免上门费，再计算折扣</text></view><switch color="#397660" checked="{{settings.playgroundGroupBuy.waiveVisitFee}}" disabled="{{!adminSuper || saving}}" data-field="playgroundGroupBuy.waiveVisitFee" bindchange="toggle" /></view>
+      <view class="manor-field"><view class="field-main"><text>募集时长</text><text class="field-tip">1～48 小时，至少提前 2 小时截止</text></view><view class="input-wrap"><input type="number" value="{{settings.playgroundGroupBuy.recruitHours}}" disabled="{{!adminSuper || saving}}" data-field="playgroundGroupBuy.recruitHours" bindinput="input" /><text>小时</text></view></view>
+      <view class="rule-preview"><view class="preview-heading"><text>成团优惠预览</text><text class="preview-tag">{{discountText}}</text></view><view class="preview-price">¥<text>{{exampleAmount}}</text></view><view class="preview-caption">以原价 ¥100（含上门费 ¥20）为例</view></view>
+      <view class="note">未成团不收款，优惠不可叠券。金额四舍五入到分，最低 ¥0.01。已发起的拼单保留原规则。</view>
+    </view>
+    <view class="card">
+      <view class="card-heading"><view><view class="card-title">庄园地面</view><view class="card-subtitle">调整社区可用空间</view></view><text class="section-icon remix-icon ri-layout-grid-line"></text></view>
+      <view class="dimension-row"><view class="dimension-item"><text>宽度</text><view class="input-wrap"><input type="number" value="{{settings.playground.width}}" disabled="{{!adminSuper || saving}}" data-field="playground.width" bindinput="input" /><text>米</text></view></view><text class="dimension-cross">×</text><view class="dimension-item"><text>长度</text><view class="input-wrap"><input type="number" value="{{settings.playground.height}}" disabled="{{!adminSuper || saving}}" data-field="playground.height" bindinput="input" /><text>米</text></view></view></view>
+      <view class="note">宽高为 224～11200 的整数，不能缩小到已有建筑范围以内。</view>
+    </view>
+    <view class="card">
+      <view class="card-heading"><view><view class="card-title">宠物状态与排泄</view><view class="card-subtitle">猫咪与狗狗分别设置，即时切换编辑</view></view><text class="section-icon remix-icon ri-heart-pulse-line"></text></view>
+      <view class="species-tabs"><button wx:for="{{species}}" wx:key="key" class="{{activeSpecies === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="selectSpecies">{{item.label}}</button></view>
+      <view class="parameter-group" wx:for="{{fieldGroups}}" wx:for-item="section" wx:key="key">
+        <view class="parameter-title">{{section.title}}</view><view class="parameter-caption">{{section.description}}</view>
+        <view class="manor-field" wx:for="{{section.fields}}" wx:for-item="field" wx:key="key"><view class="field-main"><text>{{field.label}}</text><text class="field-tip">{{field.min}}～{{field.max}}</text></view><view class="input-wrap parameter-input"><input type="digit" value="{{settings.playgroundCare[activeSpecies][field.key]}}" disabled="{{!adminSuper || saving}}" data-field="playgroundCare.{{activeSpecies}}.{{field.key}}" bindinput="input" /><text>{{field.unit}}</text></view></view>
+      </view>
+      <view class="note">所有状态范围为 0～100。尿意或便意达到 100 时会原地排泄，动作持续 3 秒。新参数在场景下次同步后生效。</view>
+    </view>
+    <view class="save-dock" wx:if="{{adminSuper}}"><view class="save-status"><text class="{{dirty ? 'unsaved-dot' : 'saved-dot'}}"></text>{{dirty ? '有未保存的修改' : '当前配置已同步'}}</view><button bindtap="save" loading="{{saving}}" disabled="{{saving || !dirty}}">{{saving ? '正在保存…' : '保存庄园配置'}}</button></view>
+  </block>
+</view>

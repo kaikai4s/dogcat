@@ -380,8 +380,8 @@ test('drawYard renders floor tiles at ground level and tree sprites with proper 
   assert.ok(drawCalls.some((args) => args[0] && args[0].width === 120))
 })
 
-test('nearby detects custom decoration building, falls back to _id, and drawYard renders custom building name', () => {
-  const page = { setData: () => {}, pushStatusMessage: () => {} }
+test('custom building keeps its name hidden until tapped and supports plots with only _id', () => {
+  const page = { data: {}, setData(value) { Object.assign(this.data, value) }, pushStatusMessage: () => {} }
   const textCalls = []
   const ctx = {
     save() {},
@@ -445,13 +445,21 @@ test('nearby detects custom decoration building, falls back to _id, and drawYard
   assert.equal(nearbyResult.building.type, 'decoration')
   assert.equal(nearbyResult.building.canDismantle, true)
 
-  // 4. 测试 drawYard 对自定义建筑渲染自定义标题标签
+  // 4. 场景不常驻绘制名称，点击建筑后在信息卡展示名称。
   const items = []
   w.drawYard(decorPlot, items)
   const decorInItems = items.find((it) => it.depth === decorPlot.x + decorPlot.z)
   assert.ok(decorInItems)
   decorInItems.draw()
-  assert.ok(textCalls.includes('中式望江楼'))
+  assert.equal(textCalls.includes('中式望江楼'), false)
+  assert.equal(page.data.selectedBuildingInfo, undefined)
+  w.assets.house = {width:256,height:256}
+  const hit = w.buildingAt({x:1004,y:950})
+  assert.equal(hit.plotId, decorPlot._id)
+  w.selectBuilding(hit)
+  assert.equal(page.data.selectedBuildingInfo.name, '中式望江楼')
+  w.clearBuildingSelection()
+  assert.equal(page.data.selectedBuildingInfo, null)
 })
 
 test('nearbyInteractions selects closest plot and canEnterPlot respects custom decoration/floor/tree', () => {

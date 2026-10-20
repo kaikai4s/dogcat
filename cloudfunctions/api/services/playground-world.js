@@ -73,6 +73,10 @@ function communityId(user) {
 }
 const ownerId = (openid) => `plot_owner_${hash(openid)}`
 const plotId = (id, x, z) => `plot_${id}_${x}_${z}`
+function isResidence(plot) {
+  return !!(plot && plot.ownerOpenid && !plot.demolished && !plot.isNewPlot &&
+    (!plot.buildingType || plot.buildingType === 'residential'))
+}
 function publicPlot(plot, openid) {
   if (!plot) return null
   return {
@@ -99,7 +103,10 @@ function publicPlot(plot, openid) {
     buildingImage: plot.buildingImage || '',
     buildingWidth: Number(plot.buildingWidth) || 0,
     buildingDepth: Number(plot.buildingDepth) || 0,
-    isNewPlot: Boolean(plot.isNewPlot)
+    isNewPlot: Boolean(plot.isNewPlot),
+    isResidence: isResidence(plot),
+    demolished: Boolean(plot.demolished),
+    staffCard: plot.staffCard ? { id: plot.staffCard.id, label: plot.staffCard.label } : null
   }
 }
 async function updateCommunity(db, openid, userId, community, extra = {}) {
@@ -127,6 +134,7 @@ module.exports = {
   communityId,
   ownerId,
   plotId,
+  isResidence,
   hash,
   readDocument,
   updateCommunity,
@@ -482,7 +490,7 @@ module.exports = {
         )
       )
       return {
-        plots: (await ensureNameColors(rows.filter(Boolean))).map((p) => publicPlot(p, openid)),
+        plots: (await ensureNameColors(rows.filter((p) => p && !p.demolished))).map((p) => publicPlot(p, openid)),
         chunkX: x,
         chunkZ: z
       }
@@ -505,7 +513,7 @@ module.exports = {
             .get()
         ).data || []
       return {
-        plots: (await ensureNameColors(rows.filter((p) => !p.plotId))).map((p) => publicPlot(p, openid)),
+        plots: (await ensureNameColors(rows.filter((p) => !p.plotId && !p.demolished))).map((p) => publicPlot(p, openid)),
         nextCursor: rows.length === 100 ? rows[rows.length - 1]._id : ''
       }
     }

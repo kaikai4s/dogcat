@@ -133,12 +133,38 @@ Page({
     this.loadHeroCarousel()
     this.loadHomePageData()
     this.loadStaffEntryState()
+    this.loadCommunityGroups()
     loadMessageUnread(this)
     if (this.data.isHotServicesLooping) {
       this.startHotServicesAutoScroll()
     }
   },
 
+  async loadCommunityGroups() {
+    clearTimeout(this._groupNoticeTimer)
+    const request = this._groupNoticeRequest = (this._groupNoticeRequest || 0) + 1
+    const currentRequest = () => this._isPageActive && request === this._groupNoticeRequest
+    let authenticated = false
+    try {
+      const user = typeof getCurrentUser === 'function' ? await getCurrentUser() : null
+      if (!currentRequest()) return
+      if (!user) return this.setData({ communityGroupNotice: null })
+      authenticated = true
+      const result = await callFunction('playground', 'listCommunityGroupBuys')
+      const current = await getCurrentUser()
+      if (currentRequest()) this.setData({ communityGroupNotice: current && (current.openid || current._id) === (user.openid || user._id) ? result : null })
+    } catch (_) {
+      if (currentRequest()) this.setData({ communityGroupNotice: null })
+    } finally {
+      if (authenticated && currentRequest()) {
+        this._groupNoticeTimer = setTimeout(() => this.loadCommunityGroups(), 30000)
+        if (this._groupNoticeTimer && typeof this._groupNoticeTimer.unref === 'function') this._groupNoticeTimer.unref()
+      }
+    }
+  },
+  openCommunityGroups() {
+    wx.navigateTo({url:'/pages/client/orders/group-buy/index'})
+  },
   toggleFlowExpand() {
     this.setData({
       flowExpanded: !this.data.flowExpanded
@@ -161,11 +187,13 @@ Page({
   },
 
   onPullDownRefresh() {
-    return Promise.all([this.loadHeroCarousel(), this.loadHomePageData()])
+    return Promise.all([this.loadHeroCarousel(), this.loadHomePageData(), this.loadCommunityGroups()])
       .finally(() => wx.stopPullDownRefresh())
   },
 
   onHide() {
+    clearTimeout(this._groupNoticeTimer)
+    this._groupNoticeRequest=(this._groupNoticeRequest||0)+1
     this._isPageActive = false
     this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
     this._heroSettingsRequestSeq = (this._heroSettingsRequestSeq || 0) + 1
@@ -187,6 +215,8 @@ Page({
   },
 
   onUnload() {
+    clearTimeout(this._groupNoticeTimer)
+    this._groupNoticeRequest=(this._groupNoticeRequest||0)+1
     this._isPageActive = false
     this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
     this._heroSettingsRequestSeq = (this._heroSettingsRequestSeq || 0) + 1

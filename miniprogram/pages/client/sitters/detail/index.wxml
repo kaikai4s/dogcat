@@ -116,6 +116,7 @@
     </view>
   </view>
 
+  <view class="card info-list-card"><view class="section-title"><text class="remix-icon ri-history-line section-icon"></text><text>近期服务记录</text></view><view wx:for="{{sitter.recentServices}}" wx:key="index" class="info-row"><view class="label">{{item.date}}</view><view class="value">{{item.serviceText}} · {{item.petCount}} 只宠物 · 已完成</view></view><view wx:if="{{!sitter.recentServices.length}}" class="muted">暂无可公开的已完成服务记录</view><view class="muted">仅公开服务类别与日期，保护客户和宠物的私人信息。</view></view>
   <view class="reviews-header">
     <view class="section-title">
       <text class="remix-icon ri-chat-smile-2-line section-icon"></text>

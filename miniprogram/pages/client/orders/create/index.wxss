@@ -2104,3 +2104,6 @@ button:active {
 .booking-notice-dismiss { padding: 16rpx 0 4rpx; color: #ffd5b5; }
 .agreement-confirm-card.agreement-required { border: 2rpx solid #e56830; }
 .agreement-required-tip { color: #c74d1b; font-size: 25rpx; line-height: 1.5; margin-bottom: 12rpx; }
+
+/* 长金额与拼单优惠允许换行，保留提交按钮的点击区域。 */
+.submit-price-main,.submit-price-amount{flex-wrap:wrap}

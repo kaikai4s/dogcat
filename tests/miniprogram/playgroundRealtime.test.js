@@ -30,6 +30,34 @@ function fixture(call,options={}) {
 }
 function presence(x,seq) {return {id:'neighbor',ownerId:'other',kind:'presence',name:'凯大大',position:{x,z:100},characterType:'boy',moving:true,online:true,lastSeen:Date.now(),version:{epoch:1,seq}}}
 
+test('resident totals include every snapshot page and follow live move-outs without stale snapshot rollback',async()=>{
+  const homes=Array.from({length:105},(_,i)=>({kind:'plot',id:'home-'+i,ownerId:'offline-'+i,
+    x:800,z:800,size:112,buildingType:'residential',isResidence:true,version:{epoch:1,seq:0}}))
+  let hold=false,resume
+  const f=fixture((action,data)=>{
+    if(action!=='getScene')return {accepted:true,serverTime:Date.now()}
+    const result={records:data.cursor?homes.slice(100):homes.slice(0,100),nextCursor:data.cursor?'':'page2',serverTime:Date.now()}
+    if(hold&&!data.cursor)return new Promise((resolve)=>{resume=()=>resolve(result)})
+    return result
+  })
+  f.w.prepareCharacterArea=async()=>{};f.w.loadVisible=async()=>{}
+  f.sync.start();await settle();await settle()
+  assert.equal(f.w.page.data.residentCount,105)
+  const extra={...homes[0],id:'extra',isNewPlot:true,buildingType:'wood_cabin'}
+  f.watches[0].onChange({docs:[{records:{extra,visitor:presence(100,1)}}]});await settle()
+  assert.equal(f.w.page.data.residentCount,105)
+  hold=true
+  const pending=f.sync.snapshot()
+  f.watches[0].onChange({docs:[{records:{[homes[0].id]:{...homes[0],deleted:true,version:{epoch:2,seq:0}}}}]});await settle()
+  assert.equal(f.w.page.data.residentCount,104)
+  resume();await pending
+  assert.equal(f.w.page.data.residentCount,104)
+  const moved={...homes[1],id:'relocated',version:{epoch:3,seq:0}}
+  f.watches[0].onChange({docs:[{records:{relocated:moved}}]});await settle()
+  assert.equal(f.w.page.data.residentCount,104)
+  await f.sync.stop()
+})
+
 test('a lost movement reply retries the same packet, keeps controls live and then sends the new movement',async()=>{
   let failed=false,committed=0
   const f=fixture((action,data)=>{

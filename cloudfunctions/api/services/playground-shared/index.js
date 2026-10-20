@@ -105,7 +105,7 @@ module.exports = function createShared(context) {
   function publicRecord(row) {
     const ownerId=presenceId(row.ownerOpenid)
     if(row.kind==='plot') {const {mine,...plot}=service.publicPlot(row,'');return {kind:'plot',...plot,ownerId}}
-    if(row.kind==='resident') return {kind:'resident',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',ownerName:row.name,pets:(row.pets||[]).map((pet)=>({...pet,lifeManaged:true,appearance:publicAppearance(pet.appearance,'pet',pet.id,row.ownerOpenid)}))}
+    if(row.kind==='resident') return {kind:'resident',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',ownerName:row.name,careAgent:row.careAgent||null,careAgents:row.careAgents||(row.careAgent?[row.careAgent]:[]),pets:(row.pets||[]).map((pet)=>({...pet,lifeManaged:true,appearance:publicAppearance(pet.appearance,'pet',pet.id,row.ownerOpenid)}))}
     if(row.kind==='vehicle')return {kind:'vehicle',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',plotId:row.plotId,state:row.state,position:row.position,
       facing:row.facing||'sw',passengers:(row.passengers||[]).map((p)=>({id:p.id,name:p.name})),capacity:3,
       stains:row.stains||[],soiled:!!row.soiled,
@@ -150,7 +150,7 @@ module.exports = function createShared(context) {
       result.push(...page)
       cursor=page.length===100?page[page.length-1]._id:''
     } while(cursor)
-    return kind === 'plot' ? service.ensureNameColors(result) : result
+    return kind === 'plot' ? service.ensureNameColors(result.filter((p)=>!p.demolished)) : result
   }
   async function check(openid,data,database=db) {
     const actor=await read(database,presenceId(openid))
@@ -210,6 +210,10 @@ module.exports = function createShared(context) {
       if(canKeepPets) {
         const petsNow=await currentPets(tx,pets,openid)
         savedResident={kind:'resident',communityId:id,ownerOpenid:openid,plotId:plotKey,session,revision:Math.max(residentEpoch,(resident&&resident.revision||0)+1),petSeq:0,layoutKey:resident&&resident.layoutKey||layoutKey(plots),
+          serviceCare:resident&&resident.communityId===id&&resident.plotId===plotKey?resident.serviceCare||null:null,
+          serviceCares:resident&&resident.communityId===id&&resident.plotId===plotKey?resident.serviceCares||(resident.serviceCare?[resident.serviceCare]:[]):[],
+          careAgent:resident&&resident.communityId===id&&resident.plotId===plotKey?resident.careAgent||null:null,
+          careAgents:resident&&resident.communityId===id&&resident.plotId===plotKey?resident.careAgents||(resident.careAgent?[resident.careAgent]:[]):[],
           name:actor.name,nameColor:actor.nameColor,pets:petsNow.map((p,i)=>{
             const previous=resident && resident.communityId===id && resident.plotId===plotKey && (resident.pets||[]).find((q)=>q.id===p._id)
             const origin={x:start.x+(i%3-1)*5,z:start.z+Math.floor(i/3)*4}
@@ -321,6 +325,9 @@ module.exports = function createShared(context) {
     const cursor=String(data.cursor||'')
     if(cursor.length>128) throw new Error('无效场景页码')
     const plots=await rows(data.sceneId,'plot'), cfg=await service.config()
+    const careService=require('../playground-care')(context)
+    const careRules=(await require('../playground-config').readConfig(db)).care
+    await careService.decoratePlots(plots)
     if(!cursor) {
       const cars=await rows(data.sceneId,'vehicle')
       for(const plot of plots.filter((p)=>!p.isNewPlot))if(!cars.some((car)=>car.ownerOpenid===plot.ownerOpenid&&car.plotId===plot._id&&car.plotInstanceId===(plot.instanceId||plot.createdAt||'')))await vehicles.ensure(plot.ownerOpenid)
@@ -345,6 +352,13 @@ module.exports = function createShared(context) {
     const where={communityId:data.sceneId,kind:db.command.in(['plot','presence','resident','vehicle'])}
     if(cursor) where._id=db.command.gt(cursor)
     const page=(await db.collection(COLLECTION).where(where).orderBy('_id','asc').limit(100).get()).data||[]
+    for (const row of page) if (row.kind==='plot') {
+      const current=plots.find((p)=>p._id===row._id)
+      if (current && JSON.stringify(row.staffCard||null)!==JSON.stringify(current.staffCard||null)) {
+        row.staffCard=current.staffCard||null;row.revision=Math.max(now(),(row.revision||0)+1)
+        await db.collection(COLLECTION).doc(row._id).update({data:{staffCard:row.staffCard,revision:row.revision}})
+      }
+    }
     // Hide unplaced avatars written by older versions until their next entry.
     const legacyActors=new Set()
     for(const row of page) if(row.kind==='presence' && row.active===undefined && await read(db,world.ownerId(row.ownerOpenid))) legacyActors.add(row._id)
@@ -353,6 +367,7 @@ module.exports = function createShared(context) {
     // A new/demolished yard invalidates old outdoor routes, even for offline owners.
     for(let i=0;i<page.length;i++) if(page[i].kind==='resident' &&
       plots.some((p)=>p.ownerOpenid===page[i].ownerOpenid&&p._id===page[i].plotId)) {
+      const serviceOrders=await careService.activeOrders(page[i].ownerOpenid)
       page[i]=await transaction(db,async(tx)=>{
         const row=await read(tx,page[i]._id)
         if(!row || row.communityId!==data.sceneId) return {...page[i],pets:[]}
@@ -367,8 +382,14 @@ module.exports = function createShared(context) {
           }
           return pet
         })
+        let rulesChanged=false
+        for(const pet of row.pets||[]) {
+          const rules=careRules[pet.species==='cat'?'cat':'dog']
+          if(JSON.stringify(pet.needsRules)!==JSON.stringify(rules)){settleNeeds(pet,stamp);pet.needsRules=rules;rulesChanged=true}
+        }
+        const serviceChanged=await careService.advance(tx,row,cfg,plots,hooks,serviceOrders)
         const lifeChanged=await companions.advance(tx,row,cfg,plots)
-        if(!layoutMismatch&&!lifeChanged)return row
+        if(!layoutMismatch&&!lifeChanged&&!serviceChanged&&!rulesChanged)return row
         if (layoutMismatch) row.layoutKey=geometry
         row.revision=Math.max(stamp,(row.revision||0)+1)
         const key=row._id
@@ -378,12 +399,13 @@ module.exports = function createShared(context) {
       })
       // Automatic meals reserve food in the same transaction. Read the latest
       // plot for both the snapshot and live projection after that commit.
-      if(page[i].pets.some((p)=>p.care&&p.care.type==='eat')) {
+      if(page[i].pets.some((p)=>p.care&&p.care.type==='eat') || (page[i].careAgents||[]).some((agent)=>agent.phase==='caring')) {
         const latest=await read(db,page[i].plotId),plotIndex=page.findIndex((p)=>p._id===page[i].plotId)
         if(latest){if(plotIndex>=0)page[plotIndex]=latest;await publish(latest)}
       }
     }
     const visible=page.filter((row)=>{
+      if(row.kind==='plot') return !row.demolished
       if(row.kind==='presence') return row.active===true || legacyActors.has(row._id)
       if(row.kind==='resident') return plots.some((p)=>p.ownerOpenid===row.ownerOpenid&&p._id===row.plotId)
       if(row.kind==='vehicle')return plots.some((p)=>p.ownerOpenid===row.ownerOpenid&&p._id===row.plotId&&(p.instanceId||p.createdAt||'')===row.plotInstanceId)
@@ -413,6 +435,7 @@ module.exports = function createShared(context) {
       if(resident.session && resident.session!==data.session) throw new Error('场景已切换，请重新进入')
       const pet=(resident.pets||[]).find((p)=>p.id===data.petId)
       if(!pet) throw new Error('只能操作自己的宠物')
+      if(pet.serviceManaged)throw new Error('宠物正在接受宠托师服务，请等待照护完成后再操作')
       if(!Number.isInteger(data.commandSeq) || data.commandSeq<1) throw new Error('无效宠物操作序号')
       if(data.commandSeq<=(resident.petSeq||0)) throw new Error('宠物操作已更新，请使用最新指令')
       const current=sampleMotion(pet.motion,stamp).position

@@ -62,3 +62,18 @@ test('own name color follows realtime actor changes when visiting without a loca
   assert.notEqual(w.ownerNameColor('me', '#ffffff'), '#ffffff')
   assert.notEqual(w.ownerNameColor('me', '#000000'), '#000000')
 })
+
+test('certified sitter yards draw a graphic badge without a certification text label',()=>{
+  const {w,labels}=fixture()
+  w.page.data.showYardOwners=false
+  const plot={id:'certified-home',x:280,z:280,size:112,staffCard:{id:'staff',label:'认证宠托师'}}
+  w.sharedPlots.set(plot.id,plot)
+  let circles=0
+  w.ctx.arc=()=>{circles++}
+  w.drawYardOwners(w.bounds)
+  assert.equal(circles,1)
+  assert.deepEqual(labels,[])
+  delete plot.staffCard
+  w.drawYardOwners(w.bounds)
+  assert.equal(circles,1)
+})

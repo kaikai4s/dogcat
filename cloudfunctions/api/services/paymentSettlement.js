@@ -58,6 +58,7 @@ module.exports = function createService(context) {
         return { order, changed: false, orderType: resolved.orderType }
       }
       if (order.status !== 'pending_pay' || order.paymentStatus === 'closed') throw new Error('订单状态不可支付')
+      if (order.groupBuyId && order.groupBuyStatus !== 'formed') throw new Error('拼单尚未成团，不可支付')
       const candidates = (await db.collection('payments').where({ orderId, paymentNo }).limit(2).get()).data || []
       const paymentId = key('payment', `${resolved.collectionName}:${orderId}`)
       let payment = await optional(tx, 'payments', paymentId)
@@ -257,7 +258,8 @@ module.exports = function createService(context) {
     order,
     couponId,
     openid,
-    extraDocuments = []
+    extraDocuments = [],
+    prepareOrder = null
   }) {
     const time = now()
     // wx-server-sdk requires an explicit doc ID. Allocate IDs before the
@@ -341,13 +343,14 @@ module.exports = function createService(context) {
       }
 
       // 3. 写入订单主表记录
-      const cleanOrder = {
+      let cleanOrder = {
         ...order,
         ...(stockReserved ? { stockReserved: true } : {}),
         createdAt: order.createdAt || time,
         updatedAt: order.updatedAt || time
       }
       delete cleanOrder._id
+      if (prepareOrder) cleanOrder = await prepareOrder(tx, cleanOrder, orderId)
       await tx.collection(collectionName).doc(orderId).set({
         data: cleanOrder
       })

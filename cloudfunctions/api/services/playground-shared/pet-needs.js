@@ -8,17 +8,23 @@ const NEEDS = [
   {key:'poop',label:'便便',low:'便意满满，快去庭院外便便吧',growth:11.11,direction:'up',threshold:40,relief:40}
 ]
 const RECOVERY = {sleep:{key:'energy',rate:.16,seconds:900},eat:{key:'satiety',rate:.24,seconds:300},drink:{key:'hydration',rate:.3,seconds:420}}
+function recoverySpec(pet,type) {
+  const spec=RECOVERY[type]
+  return spec ? {...spec,rate:Number(pet.needsRules&&pet.needsRules[type+'Rate'])||spec.rate} : null
+}
 function sampleNeeds(pet, stamp) {
   const saved=pet.needs||{},since=Number.isFinite(saved.at)?saved.at:stamp
   const seconds=Math.max(0,(stamp-since)/1000),care=pet.care
   const result={at:Math.max(stamp,since)}
-  for(const spec of NEEDS) {
+  const rules=pet.needsRules||{}
+  for(const source of NEEDS) {
+    const spec={...source,decay:rules[source.key+'Decay']===undefined?source.decay:rules[source.key+'Decay'],growth:rules[source.key+'Growth']===undefined?source.growth:rules[source.key+'Growth']}
     if(spec.direction==='up') {
       const base=Number.isFinite(saved[spec.key])?clamp(saved[spec.key]):0
       result[spec.key]=clamp(base+seconds*(spec.growth||0)/3600)
     } else {
       const base=Number.isFinite(saved[spec.key])?clamp(saved[spec.key]):100
-      const recovery=care&&RECOVERY[care.type]
+      const recovery=care&&recoverySpec(pet,care.type)
       const recovering=recovery&&recovery.key===spec.key?
         Math.max(0,(Math.min(stamp,care.endsAt)-Math.max(since,care.startsAt))/1000):0
       // Clamp before recovery so a long absence before arrival cannot eat a future meal.
@@ -71,4 +77,4 @@ function needsView(pet,stamp) {
     return {key:s.key,label:s.label,value:val,low:isLow || isSick,message:msg,direction:s.direction,sick:isSick}
   })
 }
-module.exports={NEEDS,RECOVERY,sampleNeeds,settleNeeds,treatPetHealth,relieveWaste,needsView}
+module.exports={NEEDS,RECOVERY,recoverySpec,sampleNeeds,settleNeeds,treatPetHealth,relieveWaste,needsView}

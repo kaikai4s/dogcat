@@ -1,5 +1,6 @@
 <dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh">
 <view class="page client-home-page {{themeClass}} {{fontClass}}">
+  <view wx:if="{{communityGroupNotice.availableCount || communityGroupNotice.myGroups.length}}" class="home-group-notice" bindtap="openCommunityGroups"><view>🏡 {{communityGroupNotice.communityName}} · 同小区拼单</view><view>{{communityGroupNotice.availableCount ? communityGroupNotice.availableCount + '个邻居拼单可加入' : '查看我发起和参加的拼单'}} · 我的拼单 {{communityGroupNotice.myGroups.length}} ›</view></view>
   <view class="home-hero-section">
     <view class="home-topbar">
       <view class="home-location-card interactive" bindtap="updateLocation">

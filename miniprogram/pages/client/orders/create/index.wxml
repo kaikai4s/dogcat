@@ -161,10 +161,11 @@
       <view class="step-index">04</view>
       <view><view class="step-title">服务地点</view><view class="step-desc">选择常用地址或地图定位</view></view>
     </view>
-    <view class="address-actions">
+    <view class="address-actions" wx:if="{{!groupBuyMode}}">
       <button class="ghost compact-btn" bindtap="chooseSavedAddress">常用地址</button>
       <button class="ghost compact-btn" bindtap="useCurrentLocation">地图选择</button>
     </view>
+    <view wx:if="{{groupBuyMode}}" class="notice">同小区拼单：服务地点固定为本人所属小区，成团后付款，不与优惠券叠加。{{groupBuyScheduleText}}</view>
     <view class="address-summary" wx:if="{{locationReady || form.serviceAddress}}">
       <view class="remix-icon ri-map-pin-2-line address-icon"></view>
       <view>
@@ -394,7 +395,7 @@
     </view>
   </view>
 
-  <view class="booking-side-card interactive" bindtap="chooseCoupon">
+  <view class="booking-side-card interactive" wx:if="{{!groupBuyMode}}" bindtap="chooseCoupon">
     <view class="remix-icon ri-coupon-3-line side-icon"></view>
     <view class="side-main"><view class="strong">优惠券</view><view class="muted">{{selectedCoupon ? selectedCoupon.name : '自动选择最优优惠券'}}</view></view>
     <view class="menu-arrow remix-icon ri-arrow-right-s-line"></view>
@@ -459,7 +460,7 @@
   <view class="booking-submit-bar">
     <view class="submit-price-section" bindtap="openPriceDetailModal">
       <view class="submit-price-main">
-        <text class="submit-price-prefix">预估</text>
+        <text class="submit-price-prefix">{{groupBuyMode ? "成团后" : "预估"}}</text>
         <view class="submit-price-amount">
           <text class="currency">¥</text>
           <view class="price-rolling-container">
@@ -472,15 +473,15 @@
               <text class="digit-symbol" wx:else>{{item.char}}</text>
             </block>
           </view>
-          <text class="discount-pill" wx:if="{{quote && quote.discountAmount > 0}}">已省¥{{quote.discountAmount}}</text>
+          <text class="discount-pill" wx:if="{{quote && quoteDisplayDiscount > 0}}">{{groupBuyMode ? "预计省" : "已省"}}¥{{quoteDisplayDiscount}}</text>
         </view>
       </view>
       <view class="submit-price-detail-btn">
-        <text>打开价格详细</text>
+        <text>{{groupBuyMode ? "成团后付款 · 价格明细" : "打开价格详细"}}</text>
         <text class="remix-icon ri-arrow-up-s-line"></text>
       </view>
     </view>
-    <button class="primary create-btn" loading="{{creating}}" disabled="{{creating}}" bindtap="create">{{creating ? '创建中...' : '创建订单'}}</button>
+    <button class="primary create-btn" loading="{{creating}}" disabled="{{creating}}" bindtap="create">{{creating ? '创建中...' : groupBuyMode ? (groupBuyId ? '加入拼单' : '发起拼单') : '创建订单'}}</button>
   </view>
 
   <!-- 屏幕上方固定弹框：详细价格明细 -->
@@ -496,15 +497,15 @@
 
       <scroll-view scroll-y class="top-price-modal-body">
         <view class="top-price-summary-banner">
-          <view class="summary-label">预计实付金额</view>
+          <view class="summary-label">{{groupBuyMode ? "成团后预计实付" : "预计实付金额"}}</view>
           <view class="summary-amount">
             <text class="currency">¥</text>
-            <text class="num">{{quote ? quote.payAmount : '0.00'}}</text>
-            <text class="original-price" wx:if="{{quote && quote.discountAmount > 0}}">原价 ¥{{quote.amount}}</text>
+            <text class="num">{{quote ? quoteDisplayAmount : '0.00'}}</text>
+            <text class="original-price" wx:if="{{quote && quoteDisplayDiscount > 0}}">原价 ¥{{quote.amount}}</text>
           </view>
           <view class="summary-tags" wx:if="{{quote}}">
             <view class="badge summary-badge" wx:if="{{quote.serviceSummary}}">{{quote.serviceSummary}}</view>
-            <view class="discount-badge" wx:if="{{quote.discountAmount > 0}}">已减免 ¥{{quote.discountAmount}}</view>
+            <view class="discount-badge" wx:if="{{quoteDisplayDiscount > 0}}">{{groupBuyMode ? "成团预计减免" : "已减免"}} ¥{{quoteDisplayDiscount}}</view>
           </view>
         </view>
 
@@ -514,6 +515,7 @@
         </view>
 
         <view class="price-breakdown modal-price-breakdown" wx:if="{{quote}}">
+          <view wx:if="{{quote.groupBuy}}" class="notice">成团后预计 ¥{{quote.groupBuy.estimatedPayAmount}}，优惠 ¥{{quote.groupBuy.estimatedDiscountAmount}}。当前等待 {{quote.groupBuy.rules.minHouseholds}} 户成团；实际金额以成团订单为准。</view>
           <view class="info-row"><view class="label">原价</view><view class="value">¥{{quote.amount}}</view></view>
           <view class="info-row" wx:if="{{quote.sessionCount > 1}}"><view class="label">服务次数</view><view class="value">{{quote.sessionCount}} 次</view></view>
 
@@ -561,17 +563,17 @@
             </view>
           </block>
 
-          <view class="info-row coupon-row" wx:if="{{quote.discountAmount}}">
+          <view class="info-row coupon-row" wx:if="{{quoteDisplayDiscount > 0}}">
             <view class="label">
               <text class="remix-icon ri-coupon-3-line"></text>
-              <text>优惠券抵扣{{selectedCoupon ? '（' + selectedCoupon.name + '）' : ''}}</text>
+              <text>{{groupBuyMode ? '成团优惠（预计）' : '优惠券抵扣'}}{{!groupBuyMode && selectedCoupon ? '（' + selectedCoupon.name + '）' : ''}}</text>
             </view>
-            <view class="value">-¥{{quote.discountAmount}}</view>
+            <view class="value">-¥{{quoteDisplayDiscount}}</view>
           </view>
 
           <view class="info-row modal-total-row">
-            <view class="label strong">预计实付金额</view>
-            <view class="value strong modal-pay-highlight">¥{{quote.payAmount}}</view>
+            <view class="label strong">{{groupBuyMode ? "成团后预计实付" : "预计实付金额"}}</view>
+            <view class="value strong modal-pay-highlight">¥{{quoteDisplayAmount}}</view>
           </view>
         </view>
 

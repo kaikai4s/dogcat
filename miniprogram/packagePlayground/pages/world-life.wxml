@@ -9,6 +9,7 @@
       <button wx:if="{{hasPlot}}" bindtap="openFarm">庭院装饰</button>
       <button bindtap="openBuild">社区共建</button>
       <button bindtap="openDisputes">居委会·拼单</button>
+      <button bindtap="openGroupBuys">我的拼单／邻居拼单</button>
       <button class="tool-btn-highlight" bindtap="openServiceDiary">照料日记</button>
       <button class="tool-btn-highlight" bindtap="openMallSupplies">口粮补给</button>
       <button class="tool-btn-highlight" bindtap="openRewards">关爱权益</button>
@@ -92,14 +93,21 @@
       <scroll-view scroll-y class="groupbuy-content">
         <view class="groupbuy-hero-card">
           <view class="groupbuy-hero-badge">同小区集中拼单</view>
-          <text class="groupbuy-hero-title">{{(communityGroupBuy && communityGroupBuy.groupBuyDiscount) || '同小区拼单免路费 · 满3户享8.8折'}}</text>
-          <text class="groupbuy-hero-desc">{{(communityGroupBuy && communityGroupBuy.groupBuyRule) || '每周五/节假日本小区满2户预约即可成团，宠托师集中上门，免除跨区域加急交通费。'}}</text>
-          <button class="groupbuy-order-btn" bindtap="startGroupBuyOrder">发起同小区拼单预约</button>
+          <text class="groupbuy-hero-title">{{(communityGroupBuy && communityGroupBuy.groupBuyDiscount) || '同小区拼单优惠以当前规则为准'}}</text>
+          <text class="groupbuy-hero-desc">{{(communityGroupBuy && communityGroupBuy.groupBuyRule) || '正在加载本小区拼单规则…'}}</text>
+          <view class="groupbuy-community-name">{{communityGroupBuy.communityName || "本人所属小区"}}</view><button wx:if="{{communityGroupBuy.communityId && communityGroupBuy.rules.enabled}}" class="groupbuy-order-btn" bindtap="startGroupBuyOrder">发起同小区拼单预约</button>
+          <button class="groupbuy-order-btn groupbuy-secondary-btn" bindtap="openGroupBuys">查看我的拼单与邻居拼单</button>
         </view>
-        <view class="groupbuy-section-title">本小区常驻金牌宠托师</view>
+        <view class="groupbuy-retry" wx:if="{{communityGroupBuyError}}"><text>拼单信息加载失败</text><button bindtap="loadCommunityGroupBuy">重试</button></view><view class="groupbuy-section-title">我的拼单</view>
+        <view wx:if="{{!communityGroupBuyLoading && !communityGroupBuyError && !communityGroupBuy.myGroups.length}}" class="dispute-empty">你发起和参加的拼单会显示在这里</view>
+        <view class="manor-group-card" wx:for="{{communityGroupBuy.myGroups}}" wx:key="id"><view class="manor-group-head"><text>{{item.serviceSummary}}</text><text class="manor-group-badge {{item.closed ? 'is-closed' : ''}}">{{item.ownStatusText}}</text></view><view class="manor-group-time">{{item.timeText}} · {{item.sessionText}}</view><view class="manor-group-progress"><view style="width: {{item.progress}}%;"></view></view><view class="manor-group-bottom"><view><view>{{item.householdCount}} / {{item.minHouseholds}} 户 · {{item.progressText}}</view><view wx:if="{{item.canPay}}" class="manor-payment-time">付款截止 {{item.paymentDeadlineText}}</view></view><button data-id="{{item.orderId}}" bindtap="goToOrderDetail">{{item.canPay ? '去付款' : '我的订单'}}</button></view></view>
+        <view class="groupbuy-section-title">邻居正在拼</view>
+        <view wx:if="{{!communityGroupBuyLoading && !communityGroupBuyError && !communityGroupBuy.groups.length}}" class="dispute-empty">暂无可加入的本小区拼单</view>
+        <view class="manor-group-card" wx:for="{{communityGroupBuy.groups}}" wx:key="id"><view class="manor-group-head"><text>{{item.serviceSummary}}</text><text class="manor-group-badge">{{item.statusText}}</text></view><view class="manor-group-time">{{item.timeText}} · {{item.householdCount}} / {{item.minHouseholds}} 户</view><view class="manor-group-bottom"><text>募集截止 {{item.deadlineText}}</text><button wx:if="{{!item.mine}}" data-id="{{item.id}}" bindtap="joinGroupBuy">加入拼单</button><text wx:else>已参加</text></view></view>
+        <view class="groupbuy-section-title">本小区宠托师</view>
         <view class="groupbuy-sitters-list">
-          <view wx:if="{{communityGroupBuyLoading}}" class="dispute-empty">正在拉取本小区拼单优惠与金牌宠托师…</view>
-          <view wx:elif="{{!communityGroupBuy || !communityGroupBuy.sitters || !communityGroupBuy.sitters.length}}" class="dispute-empty">本小区正在招募金牌宠托师入驻中…</view>
+          <view wx:if="{{communityGroupBuyLoading}}" class="dispute-empty">正在加载本小区拼单与宠托师…</view>
+          <view wx:elif="{{!communityGroupBuy || !communityGroupBuy.sitters || !communityGroupBuy.sitters.length}}" class="dispute-empty">本小区暂无可展示的认证宠托师</view>
           <view wx:for="{{communityGroupBuy.sitters}}" wx:key="id" class="sitter-card">
             <image wx:if="{{item.avatarUrl}}" class="sitter-avatar" src="{{item.avatarUrl}}" mode="aspectFill" lazy-load />
             <view wx:else class="sitter-avatar-placeholder">🐾</view>
@@ -108,7 +116,7 @@
                 <text class="sitter-name">{{item.name}}</text>
                 <text class="sitter-rating">★ {{item.rating}}</text>
               </view>
-              <text class="sitter-orders">已照料 {{item.orderCount}} 次 · 100% 放心托</text>
+              <text class="sitter-orders">已照料 {{item.orderCount}} 次</text>
               <view class="sitter-tags">
                 <text wx:for="{{item.specialties}}" wx:for-item="tag" wx:key="*this" class="sitter-tag">{{tag}}</text>
               </view>
@@ -356,5 +364,17 @@
       <button class="rewards-nav-btn btn-primary" bindtap="goToServiceBooking">去预约宠托</button>
       <button class="rewards-nav-btn btn-primary" bindtap="goToMallHome">去商城选购</button>
     </view>
+  </view>
+</view>
+
+<view class="settings-backdrop" wx:if="{{publicCareOpen}}" catchtap="closePublicCare" catchtouchmove="swallowTouch">
+  <view class="settings-panel public-care-panel" catchtap="swallowTouch">
+    <view class="settings-heading"><view><text class="panel-main-title">{{publicCare.petName}}的照护记录</text><text class="settings-tip">只展示照护项目与日期</text></view><button bindtap="closePublicCare">完成</button></view>
+    <view class="public-care-active" wx:if="{{publicCare.active}}"><text class="remix-icon ri-heart-pulse-line"></text> 正在接受宠托师照护</view>
+    <view class="dispute-empty" wx:if="{{publicCareLoading}}">正在读取照护记录…</view>
+    <view class="dispute-empty" wx:elif="{{publicCareError}}">记录暂时无法加载，请走近宠物后重试</view>
+    <view class="dispute-empty" wx:elif="{{!publicCare.records.length}}">暂无可公开的照护记录</view>
+    <scroll-view wx:else scroll-y class="public-care-list"><view class="public-care-row" wx:for="{{publicCare.records}}" wx:key="index"><view class="public-care-dot"></view><text class="public-care-label">{{item.label}}</text><text class="public-care-date">{{item.date}}</text></view></scroll-view>
+    <view class="public-care-privacy"><text class="remix-icon ri-shield-check-line"></text> 住址、联系方式、照片和服务备注均不公开</view>
   </view>
 </view>

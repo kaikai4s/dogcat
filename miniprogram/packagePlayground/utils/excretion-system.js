@@ -88,6 +88,7 @@ function updatePetExcretion(pet, dt, context) {
 
   // 2. 获取当前体内生理累积值
   const needs = sampleNeeds(pet, now)
+  const rules=pet.needsRules||{}
   const poopVal = Number.isFinite(needs.poop) ? needs.poop : 0
   const peeVal = Number.isFinite(needs.pee) ? needs.pee : 0
 
@@ -116,9 +117,9 @@ function updatePetExcretion(pet, dt, context) {
   pet.outsideSeconds = (pet.outsideSeconds || 0) + dt
 
   // 4.1 便便规则：值 >= 40 且在院外待满 2 分钟 (120 秒)
-  if (poopVal >= 40) {
+  if (poopVal >= (rules.poopThreshold||40)) {
     pet.outsidePoopTimer = (pet.outsidePoopTimer || 0) + dt
-    if (pet.outsidePoopTimer >= 120) {
+    if (pet.outsidePoopTimer >= (rules.poopDelaySeconds||120)) {
       triggerRelief(pet, 'poop', 40, context, 'outside')
       pet.outsidePoopTimer = 0
       return
@@ -128,16 +129,16 @@ function updatePetExcretion(pet, dt, context) {
   }
 
   // 4.2 嘘嘘规则：值 >= 20，随机 30~60 秒排泄一次
-  if (peeVal >= 20) {
+  if (peeVal >= (rules.peeThreshold||20)) {
     if (pet.nextPeeCooldown === undefined || pet.nextPeeCooldown === null) {
       const rand = context.random ? context.random() : Math.random()
-      pet.nextPeeCooldown = 30 + rand * 30
+      pet.nextPeeCooldown = rules.peeDelaySeconds || (30 + rand * 30)
     }
     pet.nextPeeCooldown -= dt
     if (pet.nextPeeCooldown <= 0) {
       triggerRelief(pet, 'pee', 20, context, 'outside')
       const rand = context.random ? context.random() : Math.random()
-      pet.nextPeeCooldown = 30 + rand * 30
+      pet.nextPeeCooldown = rules.peeDelaySeconds || (30 + rand * 30)
       return
     }
   } else {

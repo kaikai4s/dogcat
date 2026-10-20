@@ -4,7 +4,7 @@ const { CHARACTER_STYLE } = require('./character-assets')
 const { PET_ATLASES } = require('./pet-assets')
 const { validAppearance, atlasFor } = require('./appearance-assets')
 const { sampleMotion } = require('./shared-motion')
-const { PlayerCharacter, CHARACTER_RADIUS, INTERACTION_DISTANCE } = require('./player-character')
+const { PlayerCharacter, CHARACTER_RADIUS, CHARACTER_SPEED, CHARACTER_RUN_SPEED, RUN_START, INTERACTION_DISTANCE } = require('./player-character')
 const {
   YARD_SIZE,
   VEHICLE_RADIUS,
@@ -23,6 +23,9 @@ const STEP = 56,
 const PET_RADIUS = 0.8
 const ROAM_WAIT = 3
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n))
+// Older live projections lack isResidence; infer only primary residential yards.
+const isResidence = (plot) => !plot.demolished && !plot.isNewPlot &&
+  (!plot.buildingType || plot.buildingType === 'residential') && plot.isResidence !== false
 function petStart(origin, plot, index) {
   const rowStep = plot ? Math.min(5, ((plot.size || SIZE) / 2 - 18) / 2) : 5
   return {
@@ -140,6 +143,9 @@ class World2D {
     this.roamPlanning = 0
     this.random = Math.random
     this.character = null
+    // 建筑信息只在用户点选建筑后显示，避免新建建筑名称长期铺在场景上。
+    this.selectedBuildingPlotId = ''
+    this.buildingHitMasks = new WeakMap()
     this.followCharacter = false
     this.foodBowls = { dog: 0, ...this.overviewData.foodBowls }
     this.scene = this.overviewData.scene
@@ -398,8 +404,10 @@ class World2D {
       return result
     const p = this.character.position
     const nav = this.characterNavigation()
-    let distance = INTERACTION_DISTANCE
+    let distance = INTERACTION_DISTANCE,carePetDistance=INTERACTION_DISTANCE
     for (const pet of this.pets) {
+      const careDistance=Math.hypot(p.x-pet.position.x,p.z-pet.position.z)
+      if(careDistance<=carePetDistance && nav.clearSegment(p,pet.position)){carePetDistance=careDistance;result.carePet={id:pet.id,name:pet.name}}
       if (pet.mine === false) continue
       if (pet.id !== this.selectedPetId) continue
       const d = Math.hypot(p.x - pet.position.x, p.z - pet.position.z)
@@ -425,6 +433,8 @@ class World2D {
       return Math.hypot(p.x - gp.x, p.z - gp.z) <= 6
     })
     if(gate)result.gate={plotId:gate.id || gate._id,playerId:gate.ownerId,name:gate.ownerName||String(gate.name||'邻居').replace(/的庭院$/,'')}
+    const sitterPlot=this.plots().find((plot)=>plot.staffCard&&!plot.mine&&Math.hypot(p.x-plotGatePosition(plot).x,p.z-plotGatePosition(plot).z)<=7)
+    if(sitterPlot)result.sitter={...sitterPlot.staffCard}
     if (this.groundDecals && this.groundDecals.length) {
       const poop = this.groundDecals.find((d) => d.type === 'poop' && Math.hypot(p.x - d.x, p.z - d.z) <= 3.8 && nav.clearSegment(p, d))
       if (poop) result.poop = { id: poop.id, x: poop.x, z: poop.z }
@@ -438,7 +448,7 @@ class World2D {
       return insideOrNearGate && (plot.mine || this.canEnterPlot(plot) || (dx <= half + 4 && dz <= half + 4))
     })
     candidatePlots.sort((a, b) => Math.hypot(p.x - a.x, p.z - a.z) - Math.hypot(p.x - b.x, p.z - b.z))
-    const nearbyPlot = candidatePlots[0]
+    const nearbyPlot = candidatePlots.find((plot) => (plot.id || plot._id) === this.selectedBuildingPlotId) || candidatePlots[0]
     if (nearbyPlot && nearbyPlot.buildingType && nearbyPlot.buildingType !== 'yard') {
       const isFloor = nearbyPlot.buildingType === 'floor' || nearbyPlot.buildingCategory === 'floor'
       const isResidential = nearbyPlot.buildingType === 'residential' && !nearbyPlot.isNewPlot
@@ -495,6 +505,7 @@ class World2D {
   emitNearby() {
     this.emitVehicleUi()
     this.emitFarmUi()
+    this.emitBuildingInfo()
     const nearby = this.nearbyInteractions()
     const key = JSON.stringify(nearby)
     if (key === this.nearbyKey) return
@@ -504,6 +515,8 @@ class World2D {
       nearbyBowl: nearby.bowl,
       nearbyPlayer: nearby.player || null,
       nearbyGate: nearby.gate || null,
+      nearbySitter: nearby.sitter || null,
+      nearbyCarePet: nearby.carePet ? {id:nearby.carePet.id,name:nearby.carePet.name} : null,
       nearbyPoop: nearby.poop || null,
       nearbyBuilding: nearby.building || null
     })
@@ -584,6 +597,7 @@ class World2D {
       }
     }
     if (this.characterTerrain && !this.characterAreaLoaded(this.characterTerrain)) this.characterTerrain = null
+    const injured = !this.drivingVehicleId && (this.character.injured || this.injured)
     const route=this.characterRoute
     if(route && route.length && !this.recoveringScene) {
       const next=route[0],p=this.character.position,d=Math.hypot(next.x-p.x,next.z-p.z)
@@ -591,12 +605,18 @@ class World2D {
       if(route.length) {
         const dx=route[0].x-p.x,dz=route[0].z-p.z
         const sx=dx-dz,sy=(dx+dz)*.52,length=Math.hypot(sx,sy)
-        const speed=this.drivingVehicleId?14*this.vehicleSpeed:7
-        this.character.setInput(sx/length*(this.drivingVehicleId?1:.72),sy/length*(this.drivingVehicleId?1:.72))
+        const speed=this.drivingVehicleId?14*this.vehicleSpeed:injured?CHARACTER_SPEED:CHARACTER_RUN_SPEED
+        const strength=injured?RUN_START:1
+        this.character.setInput(sx/length*strength,sy/length*strength)
         dt=Math.min(dt,Math.hypot(dx,dz)/speed)
       } else {this.character.setInput(0,0);this.characterRoute=null}
     }
     const input = this.character.input
+    if (injured) {
+      const strength = Math.hypot(input.x, input.y)
+      if (strength > RUN_START) this.character.setInput(input.x / strength * RUN_START, input.y / strength * RUN_START)
+      this.character.runRequested = false
+    }
     if (input.x || input.y) this.prepareCharacterArea().catch(() => {})
     const b = this.characterTerrain
     const known = (p) => Boolean(b && p.x >= b.minX && p.x <= b.maxX && p.z >= b.minZ && p.z <= b.maxZ)
@@ -653,12 +673,14 @@ class World2D {
   }
   selectPet(id) {
     if (!this.pets.some((p) => p.id === id && p.mine!==false)) return false
+    this.clearBuildingSelection()
     if(this.selectedPetId!==id || this.characterSelected || this.selectedVehicleId) this.clearPetSelection()
     this.selectedPetId = id
     this.emitPets()
     return true
   }
   clearPetSelection() {
+    this.clearBuildingSelection()
     if(this.selectedVehicleId) {this.selectedVehicleId='';this.characterTarget=null;this.emitVehicleUi()}
     if(this.characterSelected) {
       this.characterSelected=false
@@ -673,6 +695,101 @@ class World2D {
     this.emitNearby()
     this.page.setData({ showPetScale: false })
   }
+  buildingInfoFor(plot) {
+    if (!plot || plot.demolished || plot.buildingType === 'yard') return null
+    const type = plot.buildingType || 'residential'
+    const isFloor = plot.buildingType === 'floor' || plot.buildingCategory === 'floor'
+    const names = {
+      committee: '社区居委会',
+      repair_shop: '社区修理厂',
+      pet_hospital: '爱心宠物医院',
+      police_station: '文明督导所',
+      prison: '安全宣教自省室',
+      wood_cabin: '田园小木屋',
+      tree: '景观树木',
+      decoration: '景观装饰',
+      residential: '住宅别墅'
+    }
+    return {
+      plotId: plot.id || plot._id,
+      type,
+      category: plot.buildingCategory || '',
+      name: plot.buildingName || names[type] || (isFloor ? '地面铺装素材' : '社区建筑'),
+      mine: !!plot.mine,
+      canDismantle: !!(plot.mine && plot.isNewPlot)
+    }
+  }
+  buildingAt(point) {
+    if (!point || this.isMapOverview() || this.placing) return null
+    const candidates = this.plots().filter((plot) => {
+      if (!this.buildingInfoFor(plot)) return false
+      const floor = plot.buildingType === 'floor' || plot.buildingCategory === 'floor' || String(plot.buildingType || '').startsWith('floor_')
+      if (floor) {
+        const ground = this.unproject(point.x, point.y)
+        return Math.abs(ground.x - plot.x) <= (plot.buildingWidth || 7) / 2 && Math.abs(ground.z - plot.z) <= (plot.buildingDepth || 7) / 2
+      }
+      const sprite = yardLayout(plot).sprites.find((item) => item.name === 'house')
+      if (!sprite) return false
+      const origin = this.project(sprite.x, sprite.z)
+      const width = sprite.size * this.scale * this.zoom
+      if (Math.abs(point.x - origin.x) > width / 2) return false
+      const loaded = this.buildingImage(plot.buildingImage)
+      const custom = loaded && loaded.width > 0 && loaded.height > 0 ? loaded : null
+      const tree = plot.buildingType === 'tree' || plot.buildingCategory === 'tree' || String(plot.buildingType || '').startsWith('tree_')
+      const image = custom || this.assets[tree ? 'tree' : 'house']
+      if (!image || !image.width || !image.height) return false
+      const height = custom ? width * custom.height / custom.width : width
+      const u = (point.x - origin.x) / width + .5, v = (point.y - origin.y) / height + sprite.anchor
+      return u >= 0 && u < 1 && v >= 0 && v < 1 && this.buildingPixelAt(image, u, v)
+    })
+    // 按画面的遮挡顺序命中最前面的建筑，屋顶与立面均可点击。
+    candidates.sort((a, b) => (b.x + b.z) - (a.x + a.z))
+    return candidates[0] ? this.buildingInfoFor(candidates[0]) : null
+  }
+  buildingPixelAt(image, u, v) {
+    if (!this.buildingHitMasks.has(image)) {
+      let mask = null
+      try {
+        if (typeof wx !== 'undefined' && typeof wx.createOffscreenCanvas === 'function') {
+          const scale = Math.min(1, 128 / Math.max(image.width, image.height))
+          const width = Math.max(1, Math.round(image.width * scale)), height = Math.max(1, Math.round(image.height * scale))
+          const surface = wx.createOffscreenCanvas({type:'2d', width, height}), ctx = surface.getContext('2d')
+          ctx.drawImage(image, 0, 0, width, height)
+          const rgba = ctx.getImageData(0, 0, width, height).data, alpha = new Uint8Array(width * height)
+          for (let i = 0; i < alpha.length; i++) alpha[i] = rgba[i * 4 + 3]
+          mask = {width, height, alpha}
+        }
+      } catch (error) { /* 像素读取不可用时退回图片矩形命中。 */ }
+      this.buildingHitMasks.set(image, mask)
+    }
+    const mask = this.buildingHitMasks.get(image)
+    return !mask || mask.alpha[Math.floor(v * mask.height) * mask.width + Math.floor(u * mask.width)] > 16
+  }
+  selectBuilding(building) {
+    if (!building || !building.plotId) return false
+    // 信息卡叠加在当前操控状态上，保留医院护理的目标宠物及车辆选择。
+    this.selectedBuildingPlotId = building.plotId
+    this.selectedBuildingKey = JSON.stringify(building)
+    this.page.setData({ selectedBuildingInfo: building })
+    this.emitNearby()
+    return true
+  }
+  emitBuildingInfo() {
+    if (!this.selectedBuildingPlotId) return
+    const plot = this.plots().find((p) => (p.id || p._id) === this.selectedBuildingPlotId)
+    const building = this.buildingInfoFor(plot)
+    if (!building) return this.clearBuildingSelection()
+    const key = JSON.stringify(building)
+    if (key === this.selectedBuildingKey) return
+    this.selectedBuildingKey = key
+    this.page.setData({ selectedBuildingInfo: building })
+  }
+  clearBuildingSelection() {
+    if (!this.selectedBuildingPlotId) return
+    this.selectedBuildingPlotId = ''
+    this.selectedBuildingKey = ''
+    this.page.setData({ selectedBuildingInfo: null })
+  }
   characterAt(point) {
     if(!this.character || this.drivingVehicleId)return false
     const p=this.project(this.character.position.x,this.character.position.z)
@@ -681,6 +798,7 @@ class World2D {
   }
   selectCharacter() {
     if(!this.character)return
+    this.clearBuildingSelection()
     this.clearPetSelection()
     this.characterSelected=true
     this.page.setData({characterSelected:true})
@@ -1490,7 +1608,7 @@ class World2D {
     }
     Object.assign(target,{name:pet.name,species:pet.species,mine:mine===true,sharedMotion:pet.motion,
       following:!!pet.following,ridingVehicleId:pet.ridingVehicleId||'',needs:mergedNeeds,care:pet.care||null,
-      lifeManaged:!!(pet.lifeManaged||target.lifeManaged),waste:pet.waste||[],
+      lifeManaged:!!(pet.lifeManaged||target.lifeManaged),waste:pet.waste||[],needsRules:pet.needsRules||null,serviceManaged:!!pet.serviceManaged,serviceAgentId:pet.serviceAgentId||'',
       modelScale,savedModelScale:pet.modelScale})
     if(target.lifeManaged)target.relieving=pet.relieving||null
     this.syncPetWaste()
@@ -1575,9 +1693,10 @@ class World2D {
     return {...state,position,moving:travel>.0001,distance:(pet.walkDistance||0)+travel-(pet.motionDistanceOffset||0),facingLeft}
   }
   async applySceneRecords(records) {
+    this.careAgents=new Map(records.filter((r)=>r.kind==='resident').flatMap((r)=>(r.careAgents||(r.careAgent?[r.careAgent]:[])).map((agent)=>[r.id+':'+agent.id,agent])))
     const ids=new Set(),plots=new Map(),characters=[]
     for(const record of records) {
-      if(record.kind==='plot') plots.set(record.id,record)
+      if(record.kind==='plot'&&!record.demolished) plots.set(record.id,record)
       if(record.kind==='presence'&&!record.mine) characters.push(record)
       if(record.kind==='presence'&&record.mine){this.setOwnName(record);this.setOwnAppearance(record.appearance);this.applyOwnVehicleActor(record)}
       if(record.kind==='resident') for(const pet of record.pets) {ids.add(pet.id);this.applySharedPet(pet,record.mine,record.ownerName||record.name,record.ownerId,record.nameColor)}
@@ -1590,12 +1709,12 @@ class World2D {
     // Snapshot is authoritative: evict stale cached plots after a demolition.
     for(const [key,list] of this.chunks) this.chunks.set(key,list.filter((p)=>plots.has(p.id)))
     this.mapPlots=new Map(plots)
-    const own=[...plots.values()].find((p)=>p.mine && (!p.buildingType || p.buildingType === 'residential') && !p.isNewPlot) ||
-              [...plots.values()].find((p)=>p.mine && (!p.buildingType || p.buildingType === 'residential')) ||
-              [...plots.values()].find((p)=>p.mine)
+    const homes=[...plots.values()].filter(isResidence)
+    const own=homes.find((p)=>p.mine)
     const prevOwn = this.ownPlot
     this.ownPlot=own||null
-    this.page.setData({hasPlot:!!own,residentCount:plots.size})
+    const residents=new Set(homes.map((p)=>p.ownerId).filter(Boolean))
+    this.page.setData({hasPlot:!!own,residentCount:residents.size})
     this.foodBowls=own?own.foodBowls:{dog:0}
     if (own && (!prevOwn || (prevOwn.buildingType && prevOwn.buildingType !== 'residential' && (!own.buildingType || own.buildingType === 'residential')))) {
       if (!this.manualZoom && !this.characterMoved) {
@@ -1607,7 +1726,7 @@ class World2D {
     }
     this.replaceCharacters(characters)
     const species=[...new Set(this.pets.map((p)=>p.species==='cat'?'cat_walk':'dog_walk'))]
-    const names=[...species,...new Set(characters.flatMap((p)=>['idle','walk','run'].map((a)=>(p.characterType==='girl'?'girl':'boy')+'_'+a+'_sw')))]
+    const names=[...species,...this.careAssetNames(),...new Set(characters.flatMap((p)=>['idle','walk','run'].map((a)=>(p.characterType==='girl'?'girl':'boy')+'_'+a+'_sw')))]
     if(this.loader) {
       const missing=names.filter((name)=>!this.assets[name])
       if(missing.length) {
@@ -1625,6 +1744,9 @@ class World2D {
     for(const record of changes) {
       if(record.kind==='vehicle') {this.applyVehicle(record);continue}
       if(record.kind==='resident') {
+        if(!this.careAgents)this.careAgents=new Map()
+        for(const key of this.careAgents.keys())if(key===record.id||key.startsWith(record.id+':'))this.careAgents.delete(key)
+        if(!record.deleted)for(const agent of record.careAgents||(record.careAgent?[record.careAgent]:[]))this.careAgents.set(record.id+':'+agent.id,agent)
         const ids=new Set((record.pets||[]).map((p)=>p.id))
         this.pets=this.pets.filter((p)=>p.ownerId!==record.ownerId||!record.deleted&&ids.has(p.id))
         if(!record.deleted)for(const pet of record.pets||[])this.applySharedPet(pet,record.mine,record.ownerName||record.name,record.ownerId,record.nameColor)
@@ -1637,12 +1759,15 @@ class World2D {
     }
     this.replaceCharacters([...characters.values()])
     if(this.loader) {
-      const missing=[...new Set(this.remoteCharacters.flatMap((p)=>['idle','walk','run'].map((a)=>(p.characterType==='girl'?'girl':'boy')+'_'+a+'_sw')))].filter((name)=>!this.assets[name])
+      const missing=[...this.careAssetNames(),...new Set(this.remoteCharacters.flatMap((p)=>['idle','walk','run'].map((a)=>(p.characterType==='girl'?'girl':'boy')+'_'+a+'_sw')))].filter((name)=>!this.assets[name])
       if(missing.length) {
         const assets=await this.loader.loadAll(null,missing)
         if(!this.destroyed)Object.assign(this.assets,assets)
       }
     }
+  }
+  careAssetNames() {
+    return [...new Set([...(this.careAgents||new Map()).values()].flatMap((agent)=>['idle','walk'].map((a)=>(agent.characterType==='girl'?'girl':'boy')+'_'+a+'_sw')))]
   }
   replaceCharacters(characters) {
     const old=new Map(this.remoteCharacters.map((p)=>[p.id,p]))
@@ -2163,27 +2288,6 @@ class World2D {
               item.size,
               item.anchor
             )
-            if (item.name === 'house' && p.buildingType && p.buildingType !== 'residential' && !isFloor) {
-              const bLabels = { committee: '🏛 邻里服务站', repair_shop: '🔧 便民洗车', pet_hospital: '🏥 宠医健康', police_station: '📋 出行督导', prison: '🕊 安全宣教', wood_cabin: '🏡 田园小木屋', tree: '🌳 景观树木', decoration: '🪴 景观装饰' }
-              const bColors = { committee: '#d84315', repair_shop: '#0277bd', pet_hospital: '#2e7d32', police_station: '#1565c0', prison: '#6a1b9a', wood_cabin: '#5d4037', tree: '#2e7d32', decoration: '#00796b' }
-              const tag = (p.buildingName && p.buildingName !== '建筑' && !['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison'].includes(p.buildingType)) ? p.buildingName : (bLabels[p.buildingType] || p.buildingName || '工坊')
-              const tagColor = bColors[p.buildingType] || '#388e3c'
-              const pt = this.project(item.x, item.z)
-              const c = this.ctx
-              c.save()
-              c.font = 'bold 12px sans-serif'
-              c.textAlign = 'center'
-              const bw = tag.length * 13 + 18
-              const signY = pt.y - item.size * this.scale * this.zoom * 0.72 - 10
-              c.fillStyle = tagColor
-              c.beginPath()
-              if (typeof c.roundRect === 'function') c.roundRect(pt.x - bw/2, signY - 14, bw, 20, 6)
-              else c.rect(pt.x - bw/2, signY - 14, bw, 20)
-              c.fill()
-              c.fillStyle = '#ffffff'
-              c.fillText(tag, pt.x, signY)
-              c.restore()
-            }
             const species=item.name==='cat_eat'?'cat':'dog'
             if (['dog_eat','cat_eat'].includes(item.name) && ((p.foodBowls && p.foodBowls[species] > 0) || (this.ownPlot && p.id === this.ownPlot.id && this.foodBowls[species] > 0))) {
               const point = this.project(item.x, item.z)
@@ -2314,15 +2418,45 @@ class World2D {
     c.restore()
   }
   drawYardOwners(bounds) {
-    if (!this.page.data || !this.page.data.showYardOwners) return
+    if (!this.page.data) return
     this.ctx.save()
     for (const plot of this.plots()) {
       const half=(plot.size||SIZE)/2
       if(plot.x+half<bounds.minX || plot.x-half>bounds.maxX || plot.z+half<bounds.minZ || plot.z-half>bounds.maxZ) continue
       const point=this.project(plot.x-half,plot.z-half)
-      this.markerLabel(plot.ownerName || String(plot.name||'邻居').replace(/的庭院$/,''),point.x,point.y-16,!!plot.mine,this.ownerNameColor(plot.ownerId,plot.nameColor))
+      if(this.page.data.showYardOwners)this.markerLabel(plot.ownerName || String(plot.name||'邻居').replace(/的庭院$/,''),point.x,point.y-16,!!plot.mine,this.ownerNameColor(plot.ownerId,plot.nameColor))
+      if(plot.staffCard)this.drawCertificationBadge(point.x,point.y-36)
     }
     this.ctx.restore()
+  }
+  drawCertificationBadge(x, y) {
+    const c = this.ctx
+    c.save()
+    c.translate(x, y)
+    c.fillStyle = '#23795b'
+    c.beginPath()
+    c.arc(0, 0, 9, 0, Math.PI * 2)
+    c.fill()
+    c.fillStyle = '#ffffff'
+    c.beginPath()
+    c.moveTo(0, -6)
+    c.lineTo(5, -4)
+    c.lineTo(4, 2)
+    c.quadraticCurveTo(2, 6, 0, 7)
+    c.quadraticCurveTo(-2, 6, -4, 2)
+    c.lineTo(-5, -4)
+    c.closePath()
+    c.fill()
+    c.strokeStyle = '#23795b'
+    c.lineWidth = 1.5
+    c.lineCap = 'round'
+    c.lineJoin = 'round'
+    c.beginPath()
+    c.moveTo(-2.5, 0)
+    c.lineTo(-0.5, 2)
+    c.lineTo(3, -2)
+    c.stroke()
+    c.restore()
   }
   drawPetSelection() {
     const pet=this.characterSelected?this.character:this.selectedPet()
@@ -2408,6 +2542,16 @@ class World2D {
       items.push({ depth: this.character.position.x + this.character.position.z,
         draw: () => this.drawCharacter(overview) })
     for(const person of this.remoteCharacters) items.push({depth:person.position.x+person.position.z,draw:()=>this.drawNeighbor(person,overview)})
+    for(const agent of (this.careAgents||new Map()).values()) {
+      const state=sampleMotion(agent.motion,Date.now()+this.serverOffset),position=state.position
+      items.push({depth:position.x+position.z,draw:()=>{
+        this.drawNeighbor({id:agent.displayId||agent.id,ownerId:agent.displayId||agent.id,appearance:agent.appearance||null,name:agent.name+' · '+agent.label,position,online:true,lastSeen:Date.now()+this.serverOffset,moving:state.moving,mirrored:state.facingLeft,characterType:agent.characterType||'boy'},overview)
+        if(agent.phase==='walking'&&!overview)for(const pet of this.pets.filter((p)=>p.serviceManaged&&p.species==='dog'&&p.serviceAgentId===agent.id)) {
+          const a=this.project(position.x,position.z),b=this.project(pet.position.x,pet.position.z)
+          this.ctx.save();this.ctx.strokeStyle='#9b7043';this.ctx.lineWidth=1.5;this.ctx.beginPath();this.ctx.moveTo(a.x,a.y-14*this.zoom);this.ctx.lineTo(b.x,b.y-5*this.zoom);this.ctx.stroke();this.ctx.restore()
+        }
+      }})
+    }
     for(const car of this.vehicles.values()) {
       const p=this.vehiclePosition(car)
       items.push({depth:p.x+p.z,draw:()=>this.drawVehicle(car,overview)})
@@ -2797,21 +2941,30 @@ class World2D {
       if (this.placing) this.pickPlot(p)
       else {
         if(this.vehicleBusy)return
-        const farm=!this.vehicleAt(point)&&!this.petAt(point)&&!this.characterAt(point)&&this.farmAt(point)
-        if(farm&&!this.drivingVehicleId){this.moveToFarmBed(farm.id,farm.plotId);return}
         const car=this.vehicleAt(point)
         if(car) {this.selectVehicle(car);return}
+        const pet = this.drivingVehicleId ? null : this.petAt(point)
+        const character = !pet && this.characterAt(point)
+        const building = !pet && !character && !(this.page.data && this.page.data.farmEditMode) && this.buildingAt(point)
+        if (building) {this.selectBuilding(building);return}
+        this.clearBuildingSelection()
         if(this.drivingVehicleId) {
           if(this.selectedVehicleId===this.drivingVehicleId)this.moveCharacterTo(p)
           else this.clearPetSelection()
           return
         }
-        const pet=this.petAt(point)
         if(pet && pet.mine!==false) { this.selectPet(pet.id); this.emitNearby() }
-        else if(!pet && this.characterAt(point)) this.selectCharacter()
-        else if(!pet && this.selectedPet()) this.moveTo(p)
-        else if(!pet && this.characterSelected) this.moveCharacterTo(p)
+        else if(character) this.selectCharacter()
+        else if(!pet) {
+          const farm = this.farmAt(point)
+          if (farm) {this.moveToFarmBed(farm.id, farm.plotId);return}
+          this.clearBuildingSelection()
+          if (this.selectedPet()) this.moveTo(p)
+          else if (this.characterSelected) this.moveCharacterTo(p)
+          else this.clearPetSelection()
+        }
         else {
+          this.clearBuildingSelection()
           this.clearPetSelection()
           if(pet) this.onStatus('这是邻居的宠物，只能操作自家宠物')
         }
@@ -2829,6 +2982,7 @@ class World2D {
     this.queue = []
     this.chunks.clear()
     this.assets = {}
+    this.buildingHitMasks = new WeakMap()
     this.customImages.clear()
     this.customRetry.clear()
     this.customSizes.clear()

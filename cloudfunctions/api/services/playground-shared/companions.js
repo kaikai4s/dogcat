@@ -1,7 +1,7 @@
 const {transaction}=require('../playground-transaction')
 const world=require('../playground-world')
 const {sampleMotion}=require('./shared-motion')
-const {settleNeeds,relieveWaste,RECOVERY}=require('./pet-needs')
+const {settleNeeds,relieveWaste,RECOVERY,recoverySpec}=require('./pet-needs')
 const {yardLayout}=require('./yard-layout')
 const COLLECTION='pet_playground_plots'
 const residentId=(openid)=>'resident_'+world.hash(openid)
@@ -33,7 +33,7 @@ module.exports=function createCompanions(context,hooks) {
     }
     let distance=0,previous=current
     for(const point of route){distance+=Math.hypot(point.x-previous.x,point.z-previous.z);previous=point}
-    const startsAt=stamp+distance/7*1000,spec=RECOVERY[operation]
+    const startsAt=stamp+distance/7*1000,spec=recoverySpec(pet,operation)
     const seconds=automatic?Math.max(spec.seconds,(100-pet.needs[spec.key])/spec.rate):spec.seconds
     pet.following=false;pet.care={type:operation,startsAt,endsAt:startsAt+seconds*1000}
     pet.motion={epoch:stamp,approach:[current,...route],patrol:[target],speed:7}
@@ -77,19 +77,21 @@ module.exports=function createCompanions(context,hooks) {
       if(pet.relieving)pet.relieving=null
       const current=sampleMotion(pet.motion,stamp).position
       const values=settleNeeds(pet,stamp)
+      const rules=pet.needsRules||{}
       const inside=Math.abs(current.x-home.x)<=(home.size||48)/2&&Math.abs(current.z-home.z)<=(home.size||48)/2
       if(inside&&!pet.ridingVehicleId) {pet.poopDueAt=null;pet.peeDueAt=null}
       else {
-        if(values.poop>=40)pet.poopDueAt=pet.poopDueAt||stamp+120000
+        if(values.poop>=(rules.poopThreshold||40))pet.poopDueAt=pet.poopDueAt||stamp+(rules.poopDelaySeconds||120)*1000
         else pet.poopDueAt=null
-        if(values.pee>=20)pet.peeDueAt=pet.peeDueAt||stamp+30000+parseInt(world.hash(pet.id+stamp).slice(0,4),16)%30001
+        if(values.pee>=(rules.peeThreshold||20))pet.peeDueAt=pet.peeDueAt||stamp+(rules.peeDelaySeconds?rules.peeDelaySeconds*1000:30000+parseInt(world.hash(pet.id+stamp).slice(0,4),16)%30001)
         else pet.peeDueAt=null
       }
       const type=values.poop>=100||pet.poopDueAt&&stamp>=pet.poopDueAt?'poop':
         values.pee>=100||pet.peeDueAt&&stamp>=pet.peeDueAt?'pee':''
       if(type){await recordRelief(tx,resident,pet,type,stamp,current);continue}
+      if(pet.serviceManaged)continue
       if(pet.care) {
-        const spec=RECOVERY[pet.care.type]
+        const spec=recoverySpec(pet,pet.care.type)
         if(stamp<pet.care.endsAt&&(!spec||values[spec.key]<98))continue
         pet.care=null
         pet.motion=hooks.motion(cfg,plots,current,stamp,pet.id+'roam')
@@ -151,6 +153,7 @@ module.exports=function createCompanions(context,hooks) {
       if(resident.session!==data.session)throw new Error('场景已切换，请重新进入')
       const pet=(resident.pets||[]).find((p)=>p.id===data.petId),stamp=now()
       if(!pet)throw new Error('宠物已离开当前场景')
+      if(pet.serviceManaged)throw new Error('宠物正在接受宠托师服务，请等待照护完成后再操作')
       if(!Number.isInteger(data.commandSeq)||data.commandSeq<1)throw new Error('无效宠物操作序号')
       if(data.commandSeq<=(resident.petSeq||0)) {
         if(pet.commandSeq===data.commandSeq&&pet.lastOperation===operation)return {resident,pet}

@@ -23,7 +23,7 @@ const tree = definitions.map(([id, label, module, actions]) => ({ id, label, chi
   return { id: `${module}.${action}`, label: name }
 }) }))
 const permissions = new Set(tree.flatMap(node => node.children.map(child => child.id)))
-const ownerActions = new Set(['admin.saveSystemSettings', 'admin.enableAdminPermissions', 'admin.listAdminGroups', 'admin.saveAdminGroup', 'admin.setAdminMembership',
+const ownerActions = new Set(['admin.saveSystemSettings', 'admin.savePlaygroundSettings', 'admin.enableAdminPermissions', 'admin.listAdminGroups', 'admin.saveAdminGroup', 'admin.setAdminMembership',
   'admin.listAdminMembers', 'admin.getAdminMembership', 'admin.grantAdmin', 'admin.revokeAdmin', 'admin.listAdmins', 'initData.checkCollections', 'initData.seedDemoData',
   'initData.setupDatabase', 'initData.initAllCollections', 'initData.buildNotificationIndexes', 'initData.setupNotificationIndexes'])
 module.exports = { tree, permissions, ownerActions }

@@ -19,6 +19,7 @@ const routes = {
   'pet-titles/index': ['admin.listPetTitles'], 'pet-vaccine/list/index': ['admin.listPetVaccineCertifications'], 'checkin-config/index': ['admin.getCheckinMonthConfig'],
   'points/index': ['admin.listPointLogs'], 'lottery/index': ['admin.listLotteryActivities'],
   'settings/index': ['admin.getSystemSettings'],
+  'playground/index': ['admin.getSystemSettings'],
   'questionnaires/list/index': ['questionnaire.listAdmin'], 'questionnaires/edit/index': ['questionnaire.detailAdmin', 'questionnaire.create', 'questionnaire.update'],
   'questionnaires/responses/index': ['questionnaire.responses'], 'questionnaires/analysis/index': ['questionnaire.getAiReport', 'questionnaire.analyzeAI']
 }

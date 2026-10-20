@@ -6,10 +6,7 @@
   </view>
 
   <view class="settings-grid">
-    <view class="admin-compact-card setting-overview-card" data-panel="playground" bindtap="openSettingModal">
-      <view class="admin-summary-title">宠物乐园地面</view>
-      <view class="setting-summary-line">{{settings.playground.width || 2240}} × {{settings.playground.height || 2240}} 米 · 同小区共享草地</view>
-    </view>
+    <navigator class="admin-compact-card setting-overview-card" url="/pages/admin/playground/index"><view class="admin-summary-title">宠物庄园管理</view><view class="setting-summary-line">拼单优惠、宠物状态、地面及庄园素材统一管理 ›</view></navigator>
     <view class="admin-compact-card setting-overview-card" data-panel="staffPolicy" bindtap="openSettingModal">
       <view class="admin-summary-title">宠托师保证金与用品报销</view>
       <view class="setting-summary-line">保证金{{settings.staffDeposit.enabled ? '已启用' : '未启用'}} · ¥{{settings.staffDeposit.amount}}；用品报销独立由平台出资，绝不扣减保证金。</view>

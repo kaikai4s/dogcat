@@ -15,6 +15,8 @@ module.exports = function createHandler(context) {
 
   return async function playground(openid, action, data = {}) {
     const user = await getUser(openid)
+    if (action === 'listCommunityGroupBuys') return require('../services/playground-group-buy')(context).list(openid)
+    if (action === 'getPublicPetCare') return require('../services/playground-care')(context).publicCare(openid, data)
     if (action === 'syncScene') return shared.sync(openid, data)
     if (action === 'getScene') return shared.snapshot(openid, data)
     if (action === 'vehicleAction') return shared.vehicles.action(openid,user,data)
@@ -372,34 +374,47 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'getCommunityGroupBuy') {
+      const groups = await require('../services/playground-group-buy')(context).list(openid)
       const userCommunity = (user && user.residentialCommunity) || null
       const communityName = (typeof userCommunity === 'string' ? userCommunity : (userCommunity && userCommunity.name)) ||
         (data && data.community && (typeof data.community === 'string' ? data.community : data.community.name)) ||
         '当前社区'
       let sitters = []
       try {
-        const staffRes = await db.collection('staff_profiles')
-          .where({ approved: true, isOnline: true })
-          .limit(10)
-          .get()
-        const rawStaff = staffRes.data || []
+        const rawStaff = []
+        let cursor = ''
+        do {
+          // Scan by the built-in id index; local sitters may be beyond the first page.
+          const page = (await db.collection('staff_profiles').where(cursor ? { _id: db.command.gt(cursor) } : {}).orderBy('_id','asc').limit(100).get()).data || []
+          const approved = page.filter((s) => s.auditStatus === 'approved' && s.openid && !s.deletedAt && !s.revokedAt)
+          const owners = [...new Set(approved.map((s) => s.openid))]
+          const residents = []
+          for (let i = 0; i < owners.length; i += 50) residents.push(...(await db.collection('users').where({openid:db.command.in(owners.slice(i,i+50))}).limit(100).get()).data || [])
+          for (const staff of approved) {
+            const resident = residents.find((r) => r.openid === staff.openid), community = resident && resident.residentialCommunity
+            if (!community || worldService.communityId({residentialCommunity:typeof community==='string'?{name:community}:community}) !== groups.communityId) continue
+            const publicStaff = typeof context.toPublicSitter === 'function' ? context.toPublicSitter({...staff,userProfile:resident}) : {}
+            rawStaff.push({...staff,...publicStaff,nickname:publicStaff.displayName||publicStaff.name||resident.nickname||staff.nickname||'认证宠托师'})
+          }
+          cursor = page.length === 100 ? page[page.length - 1]._id : ''
+        } while (cursor)
         // 在内存按评分排序，避免远程复合索引缺失
-        rawStaff.sort((a, b) => Number(b.rating || 5.0) - Number(a.rating || 5.0))
+        rawStaff.sort((a, b) => Number(b.ratingAverage || b.rating || 0) - Number(a.ratingAverage || a.rating || 0))
         sitters = rawStaff.slice(0, 3).map((s) => ({
           id: s._id,
-          userId: s.userId,
-          name: s.nickname || s.name || '金牌宠托师',
+          name: s.nickname || s.name || '认证宠托师',
           avatarUrl: s.avatarUrl || '',
-          rating: Number(s.rating || 5.0).toFixed(1),
-          orderCount: s.orderCount || s.completedOrders || 28,
-          specialties: Array.isArray(s.specialties) ? s.specialties.slice(0, 3) : ['专业喂养', '上门遛狗', '健康观察']
+          rating: Number(s.ratingAverage || s.rating || 0).toFixed(1),
+          orderCount: s.orderCount || s.completedOrders || 0,
+          specialties: Array.isArray(s.specialties) ? s.specialties.slice(0, 3) : (s.publicTags || []).slice(0, 3)
         }))
       } catch (e) {}
 
       return {
-        communityName,
-        groupBuyDiscount: '同小区拼单免路费 · 满3户享8.8折',
-        groupBuyRule: '每周五/节假日本小区满2户预约即可成团，宠托师集中上门，免除跨区域加急交通费。',
+        ...groups,
+        communityName: groups.communityName || communityName,
+        groupBuyDiscount: `${groups.rules.waiveVisitFee ? '同小区拼单免路费 · ' : ''}满${groups.rules.minHouseholds}户享${Number((groups.rules.discountRate * 10).toFixed(2))}折`,
+        groupBuyRule: `仅限本人所属小区，${groups.rules.minHouseholds}户成团后付款，优惠不与优惠券叠加。募集截止前可加入，成团后优惠锁定；未成团不收款。`,
         sitters
       }
     }

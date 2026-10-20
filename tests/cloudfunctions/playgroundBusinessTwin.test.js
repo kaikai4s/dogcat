@@ -121,10 +121,10 @@ test('方案2：添粮打卡赠送关爱积分，getMallSupplies 返回在售商
 
 test('方案3：getCommunityGroupBuy 返回同小区拼单优惠与本小区常驻宠托师名片', async () => {
   const { handler, openid } = createTestContext({
-    users: [{ _id: 'u_test_owner', openid: 'test_owner', role: 'client', residentialCommunity: '翠湖阳光花园' }],
+    users: [{ _id: 'u_test_owner', openid: 'test_owner', role: 'client', residentialCommunity: '翠湖阳光花园' },{_id:'u_sitter',openid:'sitter_01',nickname:'张金牌',residentialCommunity:'翠湖阳光花园'}],
     staff_profiles: [
       {
-        _id: 'staff_01',
+        _id: 'staff_01', openid:'sitter_01', auditStatus:'approved',
         nickname: '张金牌',
         rating: 4.95,
         orderCount: 156,
@@ -192,4 +192,18 @@ test('方案5：关爱权益中心支持查看可用积分、会员等级并消�
     handler(openid, 'exchangeCoupon', { templateId: 'coupon_tpl_01' }),
     /积分不足，兑换该券需要 100 积分/
   )
+})
+
+test('local sitters beyond the global first page retain their public personalized names and ratings',async()=>{
+  const staff_profiles=Array.from({length:105},(_,i)=>({_id:'staff_'+String(i).padStart(3,'0'),openid:'remote_'+i,auditStatus:'approved'}))
+  staff_profiles.push({_id:'staff_999',openid:'local',auditStatus:'approved',ratingAverage:4.8,phone:'13800000000'})
+  const {handler,openid,context}=createTestContext({
+    users:[{_id:'owner',openid:'test_owner',residentialCommunity:'A小区'},{_id:'local_user',openid:'local',nickname:'昵称',residentialCommunity:'A小区'}],staff_profiles
+  })
+  context.toPublicSitter=()=>({displayName:'自定义公开名称',ratingAverage:4.8})
+  const result=await handler(openid,'getCommunityGroupBuy',{})
+  assert.equal(result.sitters.length,1)
+  assert.equal(result.sitters[0].name,'自定义公开名称')
+  assert.equal(result.sitters[0].rating,'4.8')
+  assert.ok(!JSON.stringify(result.sitters).includes('13800000000'))
 })

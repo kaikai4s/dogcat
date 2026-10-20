@@ -144,6 +144,9 @@ module.exports = function createHandler(context) {
     }
   }
   return async function order(openid, action, data) {
+    const groupBuy = require('../services/playground-group-buy')(context)
+    const groupRequested = require('../services/playground-group-buy').isGroup(data || {})
+    if (groupRequested) data = { ...data, autoApplyCoupon: false }
     if (action === 'listServiceOptions') {
       await getUser(openid)
       return listServicePrices(false)
@@ -173,7 +176,8 @@ module.exports = function createHandler(context) {
           await validateStaffAvailabilityForSessions(staffProfile, pricing.sessions)
         }
       }
-      return pricing
+      const group = await groupBuy.prepare(openid, data, pricing)
+      return group ? { ...pricing, groupBuy: { rules: group.rules, estimatedPayAmount: group.estimated.payAmount, estimatedDiscountAmount: group.estimated.discountAmount, status: group.group && group.group.formedAt ? 'formed' : 'recruiting' } } : pricing
     }
 
     if (action === 'createOrder') {
@@ -203,6 +207,8 @@ module.exports = function createHandler(context) {
       const pets = await getClientPetsByIds(openid, petIds)
       const pricing = await calcOrderPricing(data, pets, { openid })
       validateOrderTime({ ...data, durationMinutes: pricing.durationMinutes, endTime: pricing.sessions[pricing.sessions.length - 1].endTime })
+      const groupPrepared = await groupBuy.prepare(openid, data, pricing)
+      if(groupPrepared)data={...data,city:groupPrepared.community.city||'',serviceAddress:groupPrepared.community.name,addressLatitude:Number(groupPrepared.community.latitude)||0,addressLongitude:Number(groupPrepared.community.longitude)||0}
       const serviceSessions = pricing.sessions
       const primaryPet = pets[0]
       const petSnapshots = pets.map(createPetSnapshot)
@@ -264,6 +270,7 @@ module.exports = function createHandler(context) {
         order,
         couponId: order.couponId,
         openid,
+        prepareOrder: groupPrepared ? (tx, current, id) => groupBuy.attach(tx, current, id, groupPrepared) : null,
         extraDocuments: [
           {
             collection: 'order_home_security',

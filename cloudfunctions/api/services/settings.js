@@ -219,6 +219,8 @@ module.exports = function createService({
     const normalized = {
       enableTestAddressMode: value.enableTestAddressMode === true,
       playground: require('./playground-world').dimensions(value.playground || existingSettings.playground || {}),
+      playgroundGroupBuy: require('./playground-config').groupConfig(value.playgroundGroupBuy || existingSettings.playgroundGroupBuy),
+      playgroundCare: require('./playground-config').careConfig(value.playgroundCare || existingSettings.playgroundCare),
       enablePetBreedAi: value.enablePetBreedAi !== false,
       qwenApiKeyConfigured,
       juheTelecomKeyConfigured,

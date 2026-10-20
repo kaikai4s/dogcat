@@ -532,6 +532,7 @@ typeof Page === 'function' ? Page({
   },
 
   onLoad(options = {}) {
+    this.setData({ groupBuyMode: options.source === 'community_groupbuy' || !!options.groupBuyId, groupBuyId: options.groupBuyId || '' })
     const initialTime = getInitialServiceTime()
     this.setData({
       'form.startDate': initialTime.startDate,
@@ -611,6 +612,7 @@ typeof Page === 'function' ? Page({
       this.setData({ initialized: true })
       if (this.data.form.publishMode === 'direct' && this.data.form.staffProfileId) this.loadRequestedSitter(this.data.form.staffProfileId)
       if (options.rebookOrderId) this.loadRebook(options.rebookOrderId)
+      else if (this.data.groupBuyMode) this.loadGroupBuyContext()
       else this.loadDefaultAddress()
     }
     return Promise.all([
@@ -891,7 +893,33 @@ typeof Page === 'function' ? Page({
     this.setData({ selectedAvailability: selected ? { ...selected, slotText, timeFitText } : null })
   },
 
+  async loadGroupBuyContext() {
+    try {
+      const result=await callFunction('playground','listCommunityGroupBuys')
+      if(!result.communityId) throw new Error('请先在个人资料中设置所属小区')
+      const community=result.community||{}
+      const update={groupBuyCommunityId:result.communityId,'form.serviceAddress':result.communityName,
+        'form.addressLatitude':Number(community.latitude)||0,'form.addressLongitude':Number(community.longitude)||0,
+        locationReady:true,locationTip:'拼单仅限本小区，楼栋和门牌不会向邻居展示',selectedCouponId:'',selectedCoupon:null}
+      if(!this.data.groupBuyId) {
+        const earliest=new Date(Date.now()+4*3600000)
+        update['form.startDate']=formatDate(earliest);update['form.endDate']=formatDate(earliest);update['form.startClock']=formatTime(earliest)
+      }
+      if(this.data.groupBuyId) {
+        const group=[...result.groups,...result.myGroups].find((g)=>g.id===this.data.groupBuyId)
+        if(!group||group.status==='expired')throw new Error('拼单已截止或不属于本小区')
+        const sessions=group.serviceSessions,first=parseDateTime(sessions[0].startTime)
+        update['form.startDate']=formatDate(first)
+        update['form.endDate']=sessions[sessions.length-1].date
+        update['form.startClock']=formatTime(first)
+        update['form.orderType']=sessions.length>1?'multi_day':'single'
+        update.groupBuyScheduleText=`${update['form.startDate']} ${update['form.startClock']}，共${sessions.length}天`
+      }
+      this.setData(update,()=>{this.prepareTime();this.triggerAutoQuote()})
+    }catch(error){showError(error)}
+  },
   loadDefaultAddress() {
+    if (this.data.groupBuyMode) return this.loadGroupBuyContext()
     callFunction('client', 'listAddresses')
       .then((addresses) => {
         const address = addresses.find((item) => item.isDefault)
@@ -902,6 +930,7 @@ typeof Page === 'function' ? Page({
   },
 
   applySelectedLocation() {
+    if (this.data.groupBuyMode) return
     const location = getSelectedLocation()
     if (!location) return
     this.setData({
@@ -954,6 +983,10 @@ typeof Page === 'function' ? Page({
   },
 
   applyAddress(address) {
+    if (this.data.groupBuyMode) {
+      this.showBookingNotice({ title: '拼单地点固定为本人所属小区，请在下方填写本小区楼栋与门牌' })
+      return
+    }
     this.setData({
       ['form.serviceAddress']: address.serviceAddress || '',
       ['form.addressDetail']: address.addressDetail || '',
@@ -969,6 +1002,7 @@ typeof Page === 'function' ? Page({
   },
 
   chooseSavedAddress() {
+    if (this.data.groupBuyMode) return this.showBookingNotice({ title: '拼单仅支持本人所属小区' })
     this.showBookingNotice({ title: '正在打开常用地址', icon: 'none' })
     wx.navigateTo({
       url: '/pages/client/addresses/list/index?select=1',
@@ -1321,6 +1355,7 @@ typeof Page === 'function' ? Page({
   },
 
   openCalendarModal() {
+    if(this.data.groupBuyId)return this.showBookingNotice({title:'参团服务日期与开始时间需与发起者一致'})
     const now = new Date()
     const form = this.data.form
     const startDate = form.startDate || formatDate(now)
@@ -1757,6 +1792,7 @@ typeof Page === 'function' ? Page({
   },
 
   useCurrentLocation() {
+    if(this.data.groupBuyMode)return this.showBookingNotice({title:'拼单地点固定为本人所属小区'})
     chooseSelectedLocation()
       .then((location) => {
         this.setData({
@@ -1838,6 +1874,7 @@ typeof Page === 'function' ? Page({
     const serviceSessions = buildDailySessions(form)
     return {
       ...form,
+      ...(this.data.groupBuyMode ? { source: 'community_groupbuy', groupBuyId: this.data.groupBuyId, communityId: this.data.groupBuyCommunityId } : {}),
       petServiceDurations: form.petServiceDurations.map(({ serviceKey, petId, durationMinutes }) => ({ serviceKey, petId, durationMinutes })),
       orderType: form.orderType || 'single',
       endDate: form.endDate || form.startDate,
@@ -1848,12 +1885,13 @@ typeof Page === 'function' ? Page({
       serviceSessions,
       sessionCount: serviceSessions.length,
       orderHomeSecurity,
-      couponId: this.data.selectedCouponId,
-      autoApplyCoupon: !this.data.selectedCouponId
+      couponId: this.data.groupBuyMode ? '' : this.data.selectedCouponId,
+      autoApplyCoupon: !this.data.groupBuyMode && !this.data.selectedCouponId
     }
   },
 
   chooseCoupon() {
+    if (this.data.groupBuyMode) return this.showBookingNotice({ title: '拼单优惠不可与优惠券叠加' })
     this.prepareTime()
     const error = this.validateRequired()
     if (error) {
@@ -1880,6 +1918,7 @@ typeof Page === 'function' ? Page({
 
   triggerAutoQuote(delay = 120) {
     clearTimeout(this._autoQuoteTimer)
+    this._quoteRequest = (this._quoteRequest || 0) + 1
     this._autoQuoteTimer = setTimeout(() => {
       this.calculatePrice({ silent: true })
     }, delay)
@@ -1887,8 +1926,10 @@ typeof Page === 'function' ? Page({
 
   calculatePrice(options = {}) {
     const { silent = false, showToast = false } = options
+    const request = this._quoteRequest = (this._quoteRequest || 0) + 1
     this.prepareTime()
     if (!this.canAutoQuote()) {
+      this.setData({ quote: null, displayPriceDigits: getPriceDigitsArray(0) })
       if (showToast) {
         const error = this.validateRequired()
         if (error) this.showBookingNotice({ title: error, icon: 'none' })
@@ -1900,16 +1941,19 @@ typeof Page === 'function' ? Page({
     this.quotingPrice = true
     return callFunction('order', 'quoteOrder', payload)
       .then((quote) => {
+        if (request !== this._quoteRequest) return null
         this.quotingPrice = false
         if (!quote) return null
         const priceItems = quote.priceItems || []
         const hasExtraPetFee = priceItems.some((item) => item.type === 'extra_pet_fee')
         const hasPetTimeExtraFee = priceItems.some((item) => item.type === 'pet_time_extra_fee')
-        const amountToDisplay = quote.payAmount !== undefined ? quote.payAmount : quote.amount
+        const amountToDisplay = quote.groupBuy ? quote.groupBuy.estimatedPayAmount : quote.payAmount !== undefined ? quote.payAmount : quote.amount
         const displayPriceDigits = getPriceDigitsArray(amountToDisplay)
 
         const nextData = {
           quote,
+          quoteDisplayAmount: Number(amountToDisplay).toFixed(2),
+          quoteDisplayDiscount: Number(quote.groupBuy ? quote.groupBuy.estimatedDiscountAmount : quote.discountAmount || 0).toFixed(2),
           displayPriceDigits,
           hasExtraPetFee,
           hasPetTimeExtraFee
@@ -1924,7 +1968,9 @@ typeof Page === 'function' ? Page({
         return quote
       })
       .catch((err) => {
+        if (request !== this._quoteRequest) return null
         this.quotingPrice = false
+        this.setData({ quote: null, displayPriceDigits: getPriceDigitsArray(0) })
         if (!silent || showToast) {
           showError(err)
         }
@@ -1966,6 +2012,7 @@ typeof Page === 'function' ? Page({
   },
 
   onUnload() {
+    this._quoteRequest = (this._quoteRequest || 0) + 1
     clearTimeout(this.bookingNoticeTimer)
     clearTimeout(this._autoQuoteTimer)
   },

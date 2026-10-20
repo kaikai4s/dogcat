@@ -668,6 +668,13 @@ module.exports = function createHandler(context) {
     if (action === 'getSystemSettings') {
       return getSystemSettings()
     }
+    if (action === 'savePlaygroundSettings') {
+      const current=await getSystemSettings({includeSecrets:true})
+      const saved=await saveSystemSettings({...current,playground:data.playground,playgroundCare:data.playgroundCare,playgroundGroupBuy:data.playgroundGroupBuy})
+      const result=normalizeSystemSettings(saved.value)
+      await logAdmin(admin,'platform_config','playground','savePlaygroundSettings',{playground:result.playground,playgroundGroupBuy:result.playgroundGroupBuy,playgroundCare:result.playgroundCare})
+      return result
+    }
     if (action === 'saveSystemSettings') {
       const payload = (data && data.settings && typeof data.settings === 'object') ? data.settings : data
       const saved = await saveSystemSettings(payload)

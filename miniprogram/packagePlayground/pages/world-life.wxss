@@ -239,3 +239,15 @@
 .rewards-nav-btn.btn-primary { background: #2e7d32; color: #ffffff; }
 
 
+
+/* 拼单进度与公开照护记录 */
+.groupbuy-secondary-btn{margin-top:8px;background:#ffffff;color:#527341;border:1px solid #d4e2c8}
+.groupbuy-community-name{font-size:11px;color:#647d52;margin:8px 0}
+.manor-group-card{padding:13px;margin:0 0 12px;background:#fff;border:1px solid #e1e9d9;border-radius:16px}
+.manor-group-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;font-size:13px;font-weight:700;color:#314c2b}
+.manor-group-head>text:first-child{flex:1;min-width:0}.manor-group-badge{flex-shrink:0;padding:3px 6px;border-radius:6px;background:#edf4e4;font-size:10px;color:#5c7d42;font-weight:500}
+.manor-group-badge.is-closed{color:#899081;background:#f2f3ef}.manor-group-time{margin-top:8px;font-size:11px;line-height:1.6;color:#87907e}
+.manor-group-progress{height:5px;border-radius:5px;background:#edf3e5;overflow:hidden;margin-top:12px}.manor-group-progress>view{height:100%;background:#8daf66;border-radius:5px}
+.manor-group-bottom{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;font-size:10px;color:#718363;line-height:1.6}.manor-group-bottom>view{flex:1;min-width:0}.manor-group-bottom button{flex-shrink:0;margin:0;padding:0 12px;border-radius:11px;line-height:34px;font-size:11px;background:#e8f0de;color:#4e713a}
+.manor-payment-time{color:#bc8345;margin-top:3px}.groupbuy-retry{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#927347;margin:10px 0}.groupbuy-retry button{margin:0;font-size:11px;background:#f5eddb;line-height:30px;color:#927347}
+.public-care-panel{max-height:72vh}.public-care-active{display:flex;align-items:center;gap:7px;padding:11px 12px;border-radius:12px;background:#e7f1df;color:#4d783b;font-size:12px;margin-bottom:12px}.public-care-list{height:36vh;max-height:300px}.public-care-row{display:flex;align-items:center;gap:10px;padding:15px 2px;border-bottom:1px solid #e8eedf;font-size:12px}.public-care-dot{height:7px;width:7px;border-radius:50%;background:#8eac6c;flex-shrink:0}.public-care-label{flex:1;color:#465d3d}.public-care-date{font-size:11px;color:#8c9984}.public-care-privacy{display:flex;align-items:center;gap:7px;font-size:10px;color:#8b9980;margin-top:16px;line-height:1.8}

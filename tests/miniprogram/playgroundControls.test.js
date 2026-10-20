@@ -110,7 +110,7 @@ test('character only accepts map movement while selected and menu expansion canc
   assert.equal(page.data.menuCollapsed,collapsed)
 })
 
-test('character taps select exclusively, repeated map taps walk, and panning through page controls preserves the route',async()=>{
+test('character taps select exclusively, repeated map taps run, and panning through page controls preserves the route',async()=>{
   const {page}=pageFixture()
   const w=page.world
   w.page=page
@@ -136,6 +136,11 @@ test('character taps select exclusively, repeated map taps walk, and panning thr
   assert.equal(w.characterRoute,route)
   assert.equal(w.characterSelected,true)
   await w.prepareCharacterArea()
+  const start = {...w.character.position}
+  w.updateCharacter(.05)
+  assert.equal(w.character.runRequested,true)
+  assert.ok(Math.abs(Math.hypot(w.character.position.x-start.x,w.character.position.z-start.z)-14*.05)<1e-8)
+  assert.equal(w.sceneState().running,true)
   for(let i=0;i<100 && w.characterRoute;i++) {w.update(.05);await Promise.resolve()}
   assert.ok(Math.hypot(w.character.position.x-365,w.character.position.z-360)<.2)
   assert.equal(w.character.moving,false)
@@ -146,6 +151,58 @@ test('character taps select exclusively, repeated map taps walk, and panning thr
   w.setCharacterInput(.8,0)
   assert.equal(w.characterSelected,false)
   assert.equal(w.characterRoute,null)
+})
+
+test('click run follows short waypoints without overshooting a turn or its destination',()=>{
+  const w=makeWorld()
+  w.character.position={x:350,z:350}
+  w.characterTerrain={minX:0,minZ:0,maxX:1120,maxZ:1120}
+  w.characterAreaLoaded=()=>true
+  w.characterNavigation=()=>({clearSegment:()=>true})
+  w.characterRoute=[{x:350.3,z:350},{x:350.3,z:352}]
+  w.updateCharacter(.05)
+  assert.ok(Math.abs(w.character.position.x-350.3)<1e-8)
+  assert.ok(Math.abs(w.character.position.z-350)<1e-8)
+  assert.equal(w.character.runRequested,true)
+  for(let i=0;i<10;i++)w.updateCharacter(.05)
+  assert.ok(Math.hypot(w.character.position.x-350.3,w.character.position.z-352)<1e-8)
+  assert.equal(w.characterRoute,null)
+  assert.equal(w.character.moving,false)
+  assert.equal(w.character.runRequested,false)
+})
+
+test('roof taps select building info before movement and blank taps, controls or demolition dismiss it',async()=>{
+  const {page}=pageFixture(),w=page.world
+  w.page=page
+  w.character.position={x:350,z:350}
+  const plot={id:'repair',x:410,z:380,size:48,mine:true,isNewPlot:true,buildingId:'repair',buildingType:'repair_shop',buildingName:'社区修理厂',buildingWidth:10,buildingDepth:10,buildingImage:'cloud://repair'}
+  w.sharedPlots.set(plot.id,plot)
+  w.buildingImage=()=>({width:100,height:200})
+  const origin=w.project(plot.x,plot.z)
+  // 点击屋顶：该点投影到地面后并不位于建筑的占地范围。
+  const roof={x:origin.x,y:origin.y-100}
+  let moves=0
+  w.moveCharacterTo=()=>{moves++}
+  const tap=(point)=>{w.touchStart([point]);w.touchEnd([point])}
+  w.selectCharacter()
+  tap(roof)
+  assert.equal(moves,0)
+  assert.equal(w.characterSelected,true)
+  assert.equal(page.data.selectedBuildingInfo.name,plot.buildingName)
+  page.closeBuildingInfo()
+  assert.equal(page.data.selectedBuildingInfo,null)
+  tap(roof)
+  tap(w.project(500,500))
+  assert.equal(page.data.selectedBuildingInfo,null)
+  tap(roof)
+  w.selectCharacter()
+  assert.equal(page.data.selectedBuildingInfo,null)
+  tap(roof)
+  page.openSettings()
+  assert.equal(page.data.selectedBuildingInfo,null)
+  tap(roof)
+  await w.applySceneRecords([])
+  assert.equal(page.data.selectedBuildingInfo,null)
 })
 
 test('shared scene refreshes retain character selection and a newer character destination replaces pending planning',async()=>{
@@ -162,6 +219,87 @@ test('shared scene refreshes retain character selection and a newer character de
   await w.applySceneRecords([])
   assert.equal(w.characterSelected,true)
   assert.equal(w.characterTarget.x,370)
+})
+
+test('opening hospital info preserves the chosen pet instead of silently switching to the first pet',async()=>{
+  const calls=[]
+  const {page}=pageFixture({},async(module,action,data)=>{calls.push({module,action,data});return {}}),w=page.world
+  w.page=page
+  w.onPetsChange=(pets)=>{
+    page.data.pets=pets
+    page.data.selectedPet=pets.find((p)=>p.selected)||null
+  }
+  w.selectPet('dog')
+  w.selectBuilding({plotId:'hospital',type:'pet_hospital',name:'爱心宠物医院'})
+  await page.hospitalCareAction({currentTarget:{dataset:{type:'treat'}}})
+  assert.equal(calls.find((c)=>c.action==='hospitalCare').data.petId,'dog')
+  assert.equal(w.selectedPetId,'dog')
+})
+
+test('building clicks during driving open info while preserving the selected vehicle',()=>{
+  const w=makeWorld()
+  w.drivingVehicleId='car';w.selectedVehicleId='car'
+  w.sharedPlots.set('repair',{id:'repair',x:410,z:380,size:48,buildingType:'repair_shop'})
+  w.vehicleAt=()=>null
+  w.buildingAt=()=>({plotId:'repair',name:'社区修理厂',type:'repair_shop'})
+  let moves=0
+  w.moveCharacterTo=()=>{moves++}
+  const point=w.project(400,400)
+  w.touchStart([point]);w.touchEnd([point])
+  assert.equal(w.page.data.selectedBuildingInfo.plotId,'repair')
+  assert.equal(w.selectedVehicleId,'car')
+  assert.equal(moves,0)
+})
+
+test('an injured character uses walking speed until recovery, including during click navigation',()=>{
+  const w=makeWorld()
+  w.character.position={x:350,z:350}
+  w.characterTerrain={minX:0,minZ:0,maxX:1120,maxZ:1120};w.characterAreaLoaded=()=>true
+  w.characterNavigation=()=>({clearSegment:()=>true})
+  w.characterRoute=[{x:360,z:350}]
+  w.character.injured=true
+  w.updateCharacter(.05)
+  assert.ok(Math.abs(w.character.position.x-350-7*.05)<1e-8)
+  assert.equal(w.character.runRequested,false)
+  w.character.injured=false
+  const before=w.character.position.x
+  w.updateCharacter(.05)
+  assert.ok(Math.abs(w.character.position.x-before-14*.05)<1e-8)
+  assert.equal(w.character.runRequested,true)
+})
+
+test('a selected nearby building keeps its service buttons when an adjacent plot center is closer',()=>{
+  const w=makeWorld()
+  w.character.position={x:327,z:400}
+  w.characterTerrain={};w.characterAreaLoaded=()=>true
+  w.characterNavigation=()=>({clearSegment:()=>true})
+  const closer={id:'empty',x:300,z:400,size:48,mine:true,buildingType:'yard'}
+  const selected={id:'hospital',x:356,z:400,size:48,mine:true,isNewPlot:true,buildingType:'pet_hospital'}
+  w.sharedPlots.set(closer.id,closer);w.sharedPlots.set(selected.id,selected)
+  w.selectBuilding(w.buildingInfoFor(selected))
+  assert.equal(w.nearbyInteractions().building.plotId,selected.id)
+})
+
+test('transparent image padding does not intercept a click on the grass behind a building',()=>{
+  const previousWx=global.wx,w=makeWorld()
+  const plot={id:'repair',x:410,z:380,size:48,buildingId:'repair',buildingType:'repair_shop',buildingImage:'cloud://repair',buildingWidth:10,buildingDepth:10}
+  w.sharedPlots.set(plot.id,plot)
+  w.buildingImage=()=>image
+  const image={width:100,height:100},origin=w.project(plot.x,plot.z)
+  let reads=0
+  global.wx={createOffscreenCanvas({width,height}){return {getContext:()=>({
+    drawImage(){},getImageData(){
+      reads++
+      const data=new Uint8ClampedArray(width*height*4)
+      for(let y=0;y<height;y++)for(let x=Math.floor(width/4);x<width*3/4;x++)data[(y*width+x)*4+3]=255
+      return {data}
+    }
+  })}}}
+  try {
+    assert.equal(w.buildingAt({x:origin.x-38,y:origin.y-20}),null)
+    assert.equal(w.buildingAt({x:origin.x,y:origin.y-20}).plotId,plot.id)
+    assert.equal(reads,1)
+  } finally {if(previousWx===undefined)delete global.wx;else global.wx=previousWx}
 })
 
 test('click movement cannot enter an unapproved yard and settings remove character selection',async()=>{
@@ -243,8 +381,8 @@ test('unplaced scene has no avatar or pets, can synchronize and choose a plot in
 
 test('resident count uses occupied yards and the owner nickname setting applies to every yard',async()=>{
   const w=makeWorld({scene:{hasAvatar:true,serverTime:Date.now(),position:{x:280,z:280}}})
-  const plots=[{kind:'plot',id:'mine',mine:true,x:280,z:280,size:112,ownerName:'小明'},
-    {kind:'plot',id:'other',mine:false,x:500,z:500,size:112,name:'小红的庭院'}]
+  const plots=[{kind:'plot',id:'mine',ownerId:'owner-me',mine:true,x:280,z:280,size:112,ownerName:'小明'},
+    {kind:'plot',id:'other',ownerId:'owner-other',mine:false,x:500,z:500,size:112,name:'小红的庭院'}]
   await w.applySceneRecords(plots)
   assert.equal(w.page.data.residentCount,2)
   const labels=[]
@@ -258,6 +396,34 @@ test('resident count uses occupied yards and the owner nickname setting applies 
   assert.deepEqual(labels,['小明','小红'])
   await w.applySceneRecords(plots.slice(1))
   assert.equal(w.page.data.residentCount,1)
+})
+
+test('resident count deduplicates actual primary homes including offline owners and ignores extra land and visitors',async()=>{
+  const w=makeWorld({scene:{hasAvatar:true,serverTime:Date.now(),position:{x:280,z:280}}})
+  const home={kind:'plot',id:'mine',ownerId:'owner-me',mine:true,x:280,z:280,size:112,buildingType:'residential',isResidence:true}
+  const neighbors=Array.from({length:205},(_,i)=>({...home,id:'home-'+i,ownerId:'owner-'+i,mine:false,x:800,z:800}))
+  const extras=[
+    {...home,id:'legacy-duplicate'},
+    {...home,id:'extra-yard',isNewPlot:true,buildingType:'yard'},
+    {...home,id:'extra-villa',isNewPlot:true},
+    {...home,id:'cabin',buildingType:'wood_cabin'},
+    {...home,id:'public',buildingType:'shop'},
+    {...home,id:'demolished',ownerId:'removed-owner',demolished:true},
+    {...home,id:'inactive',ownerId:'inactive-owner',isResidence:false},
+    {...home,id:'unowned',ownerId:'',mine:false},
+    {kind:'presence',id:'visitor',ownerId:'visitor',position:{x:100,z:100},online:true},
+    {kind:'resident',id:'pet-owner',ownerId:'pet-owner',pets:[],careAgents:[{id:'sitter'}]}
+  ]
+  await w.applySceneRecords([home,...neighbors,...extras])
+  assert.equal(w.page.data.residentCount,206)
+  assert.equal(w.ownPlot.id,'mine')
+  assert.equal(w.sharedPlots.has('demolished'),false)
+  await w.applySceneRecords([...neighbors,...extras.filter((p)=>p.ownerId!=='owner-me')])
+  assert.equal(w.page.data.residentCount,205)
+  assert.equal(w.page.data.hasPlot,false)
+  await w.applySceneRecords(extras.filter((p)=>p.isNewPlot))
+  assert.equal(w.page.data.residentCount,0)
+  assert.equal(w.page.data.hasPlot,false)
 })
 
 test('joystick defaults to always visible, stops on release and does not swallow the next map tap',()=>{

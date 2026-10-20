@@ -23,6 +23,49 @@ function fixture() {
   return {db,users,pets,context,shared,plots,enter,auth,snapshot,advance:(ms)=>{time+=ms},now:()=>time}
 }
 
+test('public home identity tracks actual community residents across relocation and demolition',async()=>{
+  const f=fixture()
+  const first=await f.plots.claim('a',f.users[0],{x:280,z:280})
+  await f.plots.claim('b',f.users[1],{x:560,z:280})
+  const extra=await f.plots.claim('a',f.users[0],{x:840,z:280,isNewPlot:true})
+  await f.plots.claim('c',f.users[2],{x:280,z:280})
+  const scene=await f.enter('a')
+  const homeIds=(records)=>new Set(records.filter((p)=>p.kind==='plot'&&p.isResidence).map((p)=>p.ownerId))
+  let records=await f.snapshot('a',scene)
+  assert.equal(homeIds(records).size,2) // b has never entered the manor and is offline.
+  assert.equal(records.find((p)=>p.id===extra.id).isResidence,false)
+  assert.ok(records.filter((p)=>p.kind==='plot').every((p)=>!('ownerOpenid' in p)))
+  const relocated=await f.plots.claim('a',f.users[0],{x:280,z:560})
+  records=await f.snapshot('a',scene)
+  assert.equal(homeIds(records).size,2)
+  assert.ok(!records.some((p)=>p.id===first.id))
+  assert.equal(records.find((p)=>p.id===relocated.id).isResidence,true)
+  await f.plots.demolish('b',{plotId:records.find((p)=>p.ownerId==='presence_'+world.hash('b')&&p.kind==='plot').id})
+  assert.equal(homeIds(await f.snapshot('a',scene)).size,1)
+  const foreign=await f.enter('c')
+  assert.equal(homeIds(await f.snapshot('c',foreign)).size,1)
+})
+
+test('demolished legacy parcels stay out of scene, region and map without truncating later snapshot pages',async()=>{
+  const f=fixture()
+  await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const scene=await f.enter('a'),base=f.db.state.pet_playground_plots.find((p)=>p.kind==='plot')
+  for(let i=0;i<105;i++) f.db.state.pet_playground_plots.push({...base,_id:'aaa_removed_'+String(i).padStart(3,'0'),ownerOpenid:'removed-'+i,demolished:true})
+  const legacy={...base,_id:world.plotId(scene.sceneId,15,5),ownerOpenid:'legacy',x:840,z:280,cellX:15,cellZ:5}
+  delete legacy.buildingType
+  f.db.state.pet_playground_plots.push(legacy)
+  const records=await f.snapshot('a',scene)
+  assert.equal(records.filter((p)=>p.kind==='plot'&&p.isResidence).length,2)
+  assert.equal(records.some((p)=>p.id.startsWith('aaa_removed_')),false)
+  const removed={...base,_id:world.plotId(scene.sceneId,10,10),ownerOpenid:'removed',x:560,z:560,cellX:10,cellZ:10,demolished:true}
+  f.db.state.pet_playground_plots.push(removed)
+  const region=await f.plots.region('a',f.users[0],{chunkX:5,chunkZ:5})
+  assert.equal(region.plots.some((p)=>p.id===removed._id),false)
+  let cursor='',map=[]
+  do {const page=await f.plots.mapOverview('a',f.users[0],{cursor});map.push(...page.plots);cursor=page.nextCursor}while(cursor)
+  assert.equal(map.length,2)
+})
+
 test('legacy offline owners share one color across yards, characters, pets, cars and realtime updates',async()=>{
   const f=fixture()
   await f.plots.claim('a',f.users[0],{x:280,z:280})

@@ -61,7 +61,8 @@
         "report/index",
         "public-detail/index",
         "public-list/index",
-        "review/index"
+        "review/index",
+        "group-buy/index"
       ]
     },
     {
@@ -231,13 +232,16 @@
         "questionnaires/list/index",
         "questionnaires/edit/index",
         "questionnaires/responses/index",
-        "questionnaires/analysis/index"
+        "questionnaires/analysis/index",
+        "playground/index"
       ]
     },
     {
       "root": "pages/common/subscriptions",
       "name": "common-subscriptions",
-      "pages": ["index"]
+      "pages": [
+        "index"
+      ]
     },
     {
       "root": "pages/common/agreement",
@@ -250,15 +254,24 @@
   "preloadRule": {
     "pages/client/home/index": {
       "network": "all",
-      "packages": ["client-orders", "client-sitters", "client-profile", "playground"]
+      "packages": [
+        "client-orders",
+        "client-sitters",
+        "client-profile",
+        "playground"
+      ]
     },
     "pages/staff/home/index": {
       "network": "all",
-      "packages": ["staff"]
+      "packages": [
+        "staff"
+      ]
     },
     "pages/admin/home/index": {
       "network": "all",
-      "packages": ["admin"]
+      "packages": [
+        "admin"
+      ]
     }
   },
   "usingComponents": {

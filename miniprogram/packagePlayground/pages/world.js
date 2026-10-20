@@ -2,14 +2,17 @@ const { ensureLogin, callFunction, chooseSelectedLocation } = require('../../uti
 const { World2D } = require('../utils/world2d')
 const { SceneSync } = require('../utils/scene-sync')
 const lifePage = require('../utils/life-page')
+const { decorateListing } = require('../utils/community-group-buy')
 
 Page({
   ...lifePage,
   data: {
+    publicCareOpen: false, publicCareLoading: false, publicCareError: false, publicCare: null,
+    communityGroupBuyError: false,
     petRosterOpen:false,petAlerts:[],petCareBusy:false,selectedPet:null,
     disputesOpen: false, disputes: [], isCommittee: false, committeeOwnerName: '', disputesLoading: false,
     justiceOpen: false, justiceLoading: false, accidents: [], myJailStatus: null, isHumanInjured: false,
-    buildOpen: false, buildLoading: false, buildBusy: false, buildingCatalog: [], filteredBuildingCatalog: [], selectedBuilding: null, nearbyBuilding: null,
+    buildOpen: false, buildLoading: false, buildBusy: false, buildingCatalog: [], filteredBuildingCatalog: [], selectedBuilding: null, selectedBuildingInfo: null, nearbyBuilding: null,
     buildCategories: [
       { key: 'all', label: '全部' },
       { key: 'public', label: '公共配套' },
@@ -201,6 +204,7 @@ Page({
         driving:false,vehicleSelected:false,vehicleParked:false,nearbyVehicle:false,ownVehicleId:'',vehicleOperating:false,
         riding:false,rideBusy:false,nearbyRide:null,nearbyInvite:null,passengers:[],petAlerts:[],selectedPet:null,petCareBusy:false,petRosterOpen:false,
         farmEditMode:false,farmPlotId:'',plotSizes:[],farmCultivated:[],farmOpen:false,farmLoading:false,farmBusy:false,farm:null,nearbyFarm:null,
+        selectedBuildingInfo: null,
         claiming: false,
         error: '',
         status: '读取宠物档案…',
@@ -220,6 +224,7 @@ Page({
         nearbyGate: null,
         nearbyPet: null,
         nearbyBowl: null,
+        nearbyBuilding: null,
         feeding: false
       },
       () => {
@@ -808,6 +813,9 @@ Page({
   clearPetSelection() {
     if(this.world && this.world.clearPetSelection) this.world.clearPetSelection()
   },
+  closeBuildingInfo() {
+    if (this.world) this.world.clearBuildingSelection()
+  },
   openSettings() {
     this.joystickEnd()
     this.clearPetSelection()
@@ -1039,7 +1047,7 @@ Page({
     const world = this.world
     if (!world) return
     this.setData({ disputesOpen: true, disputesLoading: true })
-    if (!this.data.communityGroupBuy) this.loadCommunityGroupBuy()
+    this.loadCommunityGroupBuy()
     try {
       await world.sceneSync.send(true)
       const result = await callFunction('playground', 'listDisputes', {
@@ -1680,17 +1688,51 @@ Page({
   },
   async loadCommunityGroupBuy() {
     if (this.data.communityGroupBuyLoading) return
-    this.setData({ communityGroupBuyLoading: true })
+    this.setData({ communityGroupBuyLoading: true, communityGroupBuyError: false })
     try {
       const res = await callFunction('playground', 'getCommunityGroupBuy', { community: this.selectedCommunity })
-      this.setData({ communityGroupBuy: res || null })
+      this.setData({ communityGroupBuy: res ? decorateListing(res) : null })
     } catch (e) {
+      this.setData({ communityGroupBuyError: true })
     } finally {
       this.setData({ communityGroupBuyLoading: false })
     }
   },
   startGroupBuyOrder() {
     wx.navigateTo({ url: '/pages/client/orders/create/index?source=community_groupbuy' })
+  },
+  openGroupBuys() {
+    wx.navigateTo({ url: '/pages/client/orders/group-buy/index' })
+  },
+  joinGroupBuy(e) {
+    const id=e.currentTarget.dataset.id
+    if(id)wx.navigateTo({url:'/pages/client/orders/create/index?source=community_groupbuy&groupBuyId='+encodeURIComponent(id)})
+  },
+  viewNearbySitter() {
+    const sitter=this.data.nearbySitter
+    if(sitter) wx.navigateTo({url:'/pages/client/sitters/detail/index?id='+encodeURIComponent(sitter.id)})
+  },
+  bookNearbySitter() {
+    const sitter=this.data.nearbySitter
+    if(sitter) wx.navigateTo({url:'/pages/client/orders/create/index?publishMode=direct&staffProfileId='+encodeURIComponent(sitter.id)})
+  },
+  async viewNearbyPetCare() {
+    const pet = this.data.nearbyCarePet, world = this.world
+    if (!pet || !world || !world.scene) return
+    const request = this._publicCareRequest = (this._publicCareRequest || 0) + 1
+    this.setData({ publicCareOpen: true, publicCareLoading: true, publicCareError: false, publicCare: { petName: pet.name, records: [] } })
+    try {
+      const result = await callFunction('playground','getPublicPetCare',{petId:pet.id,sceneId:world.scene.sceneId,session:world.scene.session})
+      if (request === this._publicCareRequest) this.setData({ publicCare: result })
+    } catch(error) {
+      if (request === this._publicCareRequest) this.setData({ publicCareError: true })
+    } finally {
+      if (request === this._publicCareRequest) this.setData({ publicCareLoading: false })
+    }
+  },
+  closePublicCare() {
+    this._publicCareRequest = (this._publicCareRequest || 0) + 1
+    this.setData({ publicCareOpen: false, publicCareLoading: false })
   },
   bookSitterAction(e) {
     const staffId = e.currentTarget.dataset.id
