@@ -51,8 +51,8 @@ const DEFAULT_BUILDINGS = [
   {
     id: 'residential_wood_cabin',
     name: '田园小木屋',
-    type: 'residential',
-    desc: '温馨舒适的户外庭院小屋，可作为私家庭院或户外安顿点',
+    type: 'wood_cabin',
+    desc: '温馨舒适的户外庭院小屋，可建于空余专属绿地作为户外度假安顿点',
     width: 7,
     depth: 7,
     tileCount: 4,
@@ -120,7 +120,7 @@ function normalizeBuilding(value) {
   const name = typeof value.name === 'string' ? value.name.trim() : ''
   if (!name || name.length > 30) throw new Error('建筑名称须为1至30个字符')
 
-  const validTypes = ['residential', 'repair_shop', 'pet_hospital', 'committee', 'police_station', 'prison']
+  const validTypes = ['residential', 'repair_shop', 'pet_hospital', 'committee', 'police_station', 'prison', 'wood_cabin']
   if (!validTypes.includes(value.type)) throw new Error('无效的建筑功能类型')
 
   const width = Math.max(3.5, Math.min(35, Number(value.width) || 7))

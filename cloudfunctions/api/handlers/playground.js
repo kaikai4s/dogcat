@@ -41,9 +41,40 @@ module.exports = function createHandler(context) {
     const disputes = require('../services/playground-disputes')(context)
     const buildingsService = require('../services/playground-buildings')(context)
     if (action === 'getBuildingCatalog') {
-      const catalog=await buildingsService.readCatalog(),access=await require('../services/playground-access').memberAccess(db,openid)
-      const {decorate}=require('../services/playground-access')
-      return {...catalog,buildings:catalog.buildings.map((b)=>decorate(b,access)),plotSizes:catalog.plotSizes.map((p)=>decorate(p,access)),memberLevelName:access.memberLevelName}
+      const catalog = await buildingsService.readCatalog(), access = await require('../services/playground-access').memberAccess(db, openid)
+      const { decorate } = require('../services/playground-access')
+      const crypto = require('crypto')
+      const ownerHash = crypto.createHash('sha256').update(openid).digest('hex').slice(0, 32)
+      let mainPlotId = ''
+      try {
+        const ownerDoc = await db.collection('pet_playground_plots').doc('plot_owner_' + ownerHash).get()
+        mainPlotId = ownerDoc && ownerDoc.data && ownerDoc.data.plotId
+      } catch (e) {}
+      let emptyPlots = []
+      try {
+        const myPlotsRes = await db.collection('pet_playground_plots').where({ kind: 'plot', ownerOpenid: openid }).get()
+        const myPlots = (myPlotsRes && myPlotsRes.data) || []
+        emptyPlots = myPlots
+          .filter((p) => !p.demolished && p._id !== mainPlotId && p.isNewPlot && (!p.buildingType || p.buildingType === 'yard'))
+          .map((p) => ({
+            id: p._id,
+            _id: p._id,
+            name: p.name || '专属绿地',
+            size: Number(p.size) || 48,
+            gateDirection: p.gateDirection || 'south',
+            x: p.x,
+            z: p.z,
+            cellX: p.cellX,
+            cellZ: p.cellZ
+          }))
+      } catch (e) {}
+      return {
+        ...catalog,
+        buildings: catalog.buildings.map((b) => decorate(b, access)),
+        plotSizes: catalog.plotSizes.map((p) => decorate(p, access)),
+        memberLevelName: access.memberLevelName,
+        emptyPlots
+      }
     }
     if (action === 'reportPoop') return disputes.reportPoop(openid, user, data)
     if (action === 'listDisputes') return disputes.listDisputes(openid, data)

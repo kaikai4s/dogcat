@@ -50,7 +50,7 @@ test('outdoor plot purchase with fence and gate direction places selected buildi
   assert.ok(plot.name.includes('爱心宠物医院'))
 })
 
-test('buildInYard modifies existing courtyard building without moving plot or gates', async () => {
+test('buildInYard protects starting residential courtyard and requires empty yard for new building', async () => {
   const f = fixture()
   const user = f.user('a')
   // 先安置标准住宅庭院
@@ -59,8 +59,23 @@ test('buildInYard modifies existing courtyard building without moving plot or ga
   assert.equal(before.gateDirection, 'north')
   assert.equal(before.buildingType, 'residential')
 
-  // 在庭院内建造社区修理厂
+  // 尝试在初始自家庭院上改建，必须被拒绝拦截
+  await assert.rejects(
+    () => f.plots.buildInYard('a', user, {
+      buildingId: 'repair_shop_default',
+      buildingType: 'repair_shop',
+      buildingName: '社区修理厂'
+    }),
+    /最初的自家庭院/
+  )
+
+  // 认领一块新的空余专属绿地
+  const newYard = await f.plots.claim('a', user, { isNewPlot: true, x: 560, z: 280, gateDirection: 'east' })
+  assert.equal(newYard.buildingType, 'yard')
+
+  // 在该空余绿地内建造社区修理厂
   const updated = await f.plots.buildInYard('a', user, {
+    plotId: newYard.id,
     buildingId: 'repair_shop_default',
     buildingType: 'repair_shop',
     buildingName: '社区修理厂',
@@ -69,9 +84,14 @@ test('buildInYard modifies existing courtyard building without moving plot or ga
   })
   assert.equal(updated.buildingType, 'repair_shop')
   assert.equal(updated.buildingName, '社区修理厂')
-  assert.equal(updated.gateDirection, 'north') // 原留门方向不变
-  assert.equal(updated.x, 280)
+  assert.equal(updated.gateDirection, 'east') // 原专属绿地留门方向保持
+  assert.equal(updated.x, 560)
   assert.equal(updated.z, 280)
+
+  // 初始自家庭院完好保留，不受任何影响
+  const home = await f.plots.own('a')
+  assert.equal(home.buildingType, 'residential')
+  assert.equal(home.gateDirection, 'north')
 })
 
 test('committee uniqueness: only one committee can be built per community', async () => {
@@ -79,22 +99,26 @@ test('committee uniqueness: only one committee can be built per community', asyn
   const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
   const a = await f.build('a') // a 建造庭院
   const sceneId = a.sceneId
+  const aYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 728, z: 280, size: 48 })
 
   // a 成为居委会
   await handler('a', 'buildInYard', {
+    plotId: aYard.id,
     buildingType: 'committee',
     buildingName: '阳光居委会',
     sceneId
   })
 
-  // Replacing the building on the same plot must ignore its owner mapping.
-  await handler('a','buildInYard',{buildingId:'committee_default',plotId:a.plot.id,sceneId})
+  // Replacing the building on the same plot must succeed
+  await handler('a','buildInYard',{buildingId:'committee_default',plotId:aYard.id,sceneId})
 
   // b 尝试在同一社区建造居委会，必须被拦截
   await f.build('b', { x: 560, z: 280 })
+  const bYard = await f.plots.claim('b', f.user('b'), { isNewPlot: true, x: 560, z: 560, size: 48 })
   await assert.rejects(
     () =>
       handler('b', 'buildInYard', {
+        plotId: bYard.id,
         buildingType: 'committee',
         buildingName: '第二居委会',
         sceneId
@@ -114,9 +138,10 @@ function waste(f,id='c',extra={}) {
 async function committeeFixture() {
   const f=fixture(),a=await f.build(),b=await f.build('b',{x:504,z:280}),c=await f.build('c',{x:280,z:504})
   const handler=require('../../cloudfunctions/api/handlers/playground')(f.context)
-  await handler('a','buildInYard',{...f.auth(a),buildingId:'committee_default'})
+  const aYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 728, z: 280, size: 48 })
+  await handler('a','buildInYard',{...f.auth(a),plotId:aYard.id,buildingId:'committee_default'})
   f.place('b',{x:280,z:338})
-  return {f,a,b,c,handler}
+  return {f,a,b,c,handler,aYard}
 }
 
 test('real poop reports and resolutions award real membership points once, including concurrent retries',async()=>{
@@ -182,9 +207,10 @@ test('washing verifies scene, owner, proximity, shop and actual dirt before payi
   await f.drive('b',b)
   f.car('b').soiled=true;f.car('b').stains=[{id:'waste-1',type:'poop',createdAt:f.now()}]
   await assert.rejects(()=>handler('b','washVehicle',f.auth(b)),/洗车店/)
-  await handler('a','buildInYard',{...f.auth(a),buildingId:'repair_shop_default'})
+  const aShop = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 728, z: 280, size: 48 })
+  await handler('a','buildInYard',{...f.auth(a),plotId:aShop.id,buildingId:'repair_shop_default'})
   await assert.rejects(()=>handler('b','washVehicle',f.auth(b)),/洗车店/)
-  f.car('b').position={x:280,z:338};f.place('b',{x:280,z:338})
+  f.car('b').position={x:728,z:280};f.place('b',{x:728,z:280})
   await assert.rejects(()=>handler('a','washVehicle',{...f.auth(a),vehicleId:f.car('b')._id}),/只能清洗自己/)
   const washes=await Promise.all([handler('b','washVehicle',f.auth(b)),handler('b','washVehicle',f.auth(b))])
   assert.equal(washes.reduce((sum,r)=>sum+r.pointsReceived,0),10)
@@ -245,8 +271,9 @@ test('traffic dispute exceeding 3 days automatically revokes police station with
   // 1. a 建立督导所
   const a = await f.build('a')
   const sceneId = a.sceneId
+  const aYard = await f.plots.claim('a', userA, { isNewPlot: true, x: 728, z: 280, size: 48 })
   await f.plots.buildInYard('a', userA, {
-    plotId: a.plot.id,
+    plotId: aYard.id,
     buildingType: 'police_station',
     buildingName: '文明督导所',
     costCoins: 100
@@ -272,10 +299,11 @@ test('traffic dispute exceeding 3 days automatically revokes police station with
   assert.equal(listRes.hasPoliceStation, false) // 督导所资格已被撤销收回
   assert.equal(listRes.accidents[0].status, 'expired')
 
-  // 4. 检查督导所已被拆除恢复为普通住宅，且绝不退还爱心币！
+  // 4. 检查督导所已被拆除恢复为专属绿地，初始自家庭院不受影响，且绝不退还爱心币！
+  const revokedPlot = (await f.db.collection('pet_playground_plots').doc(aYard.id).get()).data
+  assert.equal(revokedPlot.buildingType, 'yard')
   const ownPlot = await f.plots.own('a')
   assert.equal(ownPlot.buildingType, 'residential')
-  assert.equal(ownPlot.buildingName, '住宅洋房')
   assert.equal(f.db.state.users.find((u) => u.openid === 'a').playgroundCoins, 300) // 100 币未退还！
 })
 

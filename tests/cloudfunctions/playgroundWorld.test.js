@@ -415,3 +415,84 @@ test('own heals ownerId pointer to residential villa when previously pointing to
   assert.equal(ownerDocInDb.plotId, residential.id)
   assert.equal(ownerDocInDb.buildingType, 'residential')
 })
+
+test('wood cabin has independent type, cannot alter starting residential villa, and self-heals corrupted villa', async () => {
+  const { db, users, service, handler } = fixture()
+  const user = users[0]
+  const { yardLayout } = require('../../cloudfunctions/api/services/playground-shared/yard-layout')
+
+  // 1. 验证建筑列表中的田园小木屋类型为独立的 wood_cabin 而不是 residential
+  const catalogRes = await handler('a', 'getBuildingCatalog')
+  const woodCabin = catalogRes.buildings.find(b => b.id === 'residential_wood_cabin')
+  assert.ok(woodCabin)
+  assert.equal(woodCabin.type, 'wood_cabin')
+
+  // 2. 安置自家庭院别墅
+  const residential = await service.claim('a', user, { x: 200, z: 200, isNewPlot: false })
+  assert.equal(residential.buildingType, 'residential')
+  const homeLayout = yardLayout(residential)
+  const homeHouse = homeLayout.sprites.find(s => s.name === 'house')
+  assert.equal(homeHouse.size, 38) // 原住别墅标准尺寸为38
+
+  // 3. 认领一块新专属绿地
+  const extraYard = await service.claim('a', user, { x: 400, z: 200, isNewPlot: true, size: 48 })
+  assert.equal(extraYard.buildingType, 'yard')
+
+  // 4. 尝试在自家庭院落座小木屋，必须被拒绝拦截
+  await assert.rejects(
+    () => handler('a', 'buildInYard', {
+      plotId: residential.id,
+      buildingId: 'residential_wood_cabin',
+      buildingType: 'wood_cabin'
+    }),
+    /最初的自家庭院/
+  )
+
+  // 5. 在新绿地落座小木屋，小木屋独立落座，尺寸自适应为14
+  const builtCabin = (await handler('a', 'buildInYard', {
+    plotId: extraYard.id,
+    buildingId: 'residential_wood_cabin',
+    buildingType: 'wood_cabin',
+    buildingName: '田园小木屋',
+    buildingWidth: 7,
+    buildingDepth: 7
+  })).plot
+  assert.equal(builtCabin.buildingType, 'wood_cabin')
+  const cabinLayout = yardLayout(builtCabin)
+  const cabinHouse = cabinLayout.sprites.find(s => s.name === 'house')
+  assert.equal(cabinHouse.size, 14) // 小木屋尺寸为14 (7 * 2)
+
+  // 初始自家庭院完好如初
+  const homeAfter = await service.own('a')
+  assert.equal(homeAfter.buildingType, 'residential')
+  assert.equal(yardLayout(homeAfter).sprites.find(s => s.name === 'house').size, 38)
+
+  // 6. 模拟历史受损用户：自家庭院曾被误写入木屋参数 (buildingId: residential_wood_cabin, buildingWidth: 7)
+  await db.collection('pet_playground_plots').doc(residential.id).update({
+    data: {
+      buildingId: 'residential_wood_cabin',
+      buildingName: '田园小木屋',
+      buildingWidth: 7,
+      buildingDepth: 7
+    }
+  })
+  // 恢复前若直接传入 yardLayout，因为 buildingType 保持 residential，依然受保护保持 38
+  const corruptedDoc = (await db.collection('pet_playground_plots').doc(residential.id).get()).data
+  assert.equal(yardLayout(corruptedDoc).sprites.find(s => s.name === 'house').size, 38)
+
+  // 准备另一块纯净空绿地以供小木屋自动迁移
+  const emptyGreenYard = await service.claim('a', user, { x: 600, z: 200, isNewPlot: true, size: 48 })
+
+  // 调用 own('a') 触发自愈
+  const healedHome = await service.own('a')
+  assert.equal(healedHome.buildingId, '')
+  assert.equal(healedHome.buildingWidth, 0)
+  assert.equal(healedHome.buildingType, 'residential')
+  assert.equal(yardLayout(healedHome).sprites.find(s => s.name === 'house').size, 38)
+
+  // 验证误写入的小木屋自动迁移至名下的空余独立绿地
+  const migratedPlot = (await db.collection('pet_playground_plots').doc(emptyGreenYard.id).get()).data
+  assert.equal(migratedPlot.buildingId, 'residential_wood_cabin')
+  assert.equal(migratedPlot.buildingType, 'wood_cabin')
+  assert.equal(migratedPlot.buildingWidth, 7)
+})

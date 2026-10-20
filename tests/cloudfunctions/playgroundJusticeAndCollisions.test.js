@@ -56,7 +56,9 @@ test('traffic accident reporting, police investigation and jail arrest workflow'
   const sceneId = a.sceneId
 
   // 1. 在场景中建造执法所与监狱
+  const aYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 728, z: 280, size: 48 })
   await handler('a', 'buildInYard', {
+    plotId: aYard.id,
     buildingType: 'police_station',
     buildingName: '阳光社区执法所',
     sceneId
@@ -180,7 +182,9 @@ test('arrest parks driver car and resets vehicle presence', async () => {
   const a = await f.build('a', { x: 280, z: 280 })
   const sceneId = a.sceneId
 
+  const aYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 728, z: 280, size: 48 })
   await handler('a', 'buildInYard', {
+    plotId: aYard.id,
     buildingType: 'police_station',
     buildingName: '阳光社区执法所',
     sceneId

@@ -1054,14 +1054,18 @@ Page({
     }
   },
   getAvailableEmptyPlots() {
+    if (Array.isArray(this.data.emptyPlots) && this.data.emptyPlots.length) {
+      return this.data.emptyPlots
+    }
     const world = this.world
     if (!world) return []
     const allPlots = world.plots ? world.plots() : []
     const homePlotId = world.ownPlot ? (world.ownPlot.id || world.ownPlot._id) : null
     return allPlots.filter((p) => {
       if (!p.mine) return false
-      if (homePlotId && p.id === homePlotId) return false
-      return p.buildingType === 'yard' || (p.isNewPlot && (!p.buildingType || p.buildingType === 'yard'))
+      if (homePlotId && (p.id === homePlotId || p._id === homePlotId)) return false
+      if (!p.isNewPlot) return false
+      return p.buildingType === 'yard' || !p.buildingType
     })
   },
   async openBuild() {
@@ -1069,12 +1073,13 @@ Page({
     try {
       const result = await callFunction('playground', 'getBuildingCatalog')
       const buildings = (result.buildings || []).filter((b) => b.enabled !== false)
-      const emptyPlots = this.getAvailableEmptyPlots()
+      const serverEmptyPlots = Array.isArray(result.emptyPlots) ? result.emptyPlots : []
       this.setData({
         buildingCatalog: buildings,
-        selectedBuilding: buildings.find((b)=>b.unlocked) || buildings[0] || null,
+        selectedBuilding: buildings.find((b) => b.unlocked) || buildings[0] || null,
         plotSizes: result.plotSizes || this.data.plotSizes,
-        availableEmptyPlotCount: emptyPlots.length
+        emptyPlots: serverEmptyPlots,
+        availableEmptyPlotCount: serverEmptyPlots.length
       })
     } catch (err) {
       wx.showToast({ title: err.message || '加载建筑列表失败', icon: 'none' })
@@ -1093,15 +1098,15 @@ Page({
   async buildInYardAction() {
     const building = this.data.selectedBuilding
     if (!building || this.data.buildBusy) return
-    if(!building.unlocked) return wx.showToast({ title: building.unlockText || '当前会员未解锁', icon: 'none' })
+    if (!building.unlocked) return wx.showToast({ title: building.unlockText || '当前会员未解锁', icon: 'none' })
     const world = this.world
     if (!world) return
 
     const emptyPlots = this.getAvailableEmptyPlots()
     if (emptyPlots.length === 0) {
       wx.showModal({
-        title: '需要空余地皮',
-        content: '最初的自家庭院为温馨住宅，不可改建为公共设施。建造公共建筑必须先认领一块空余专属绿地，是否立即前往认领？',
+        title: '需要空余专属绿地',
+        content: '最初的自家庭院为温馨住宅别墅，不可改建或覆盖。\n建造新建筑必须先认领一块空余专属绿地，是否立即前往认领？',
         confirmText: '去认领绿地',
         cancelText: '取消',
         success: (r) => {
@@ -1115,12 +1120,13 @@ Page({
     }
 
     let targetPlot = emptyPlots[0]
+    const dirMap = { south: '南门', north: '北门', east: '东门', west: '西门' }
     if (emptyPlots.length > 1) {
-      const dirMap = { south: '南门', north: '北门', east: '东门', west: '西门' }
       const itemList = emptyPlots.map((p, idx) => {
         const size = p.size || 48
         const dir = dirMap[p.gateDirection] || '南门'
-        return `空余绿地 ${idx + 1} (${size}×${size}m · 栅栏${dir})`
+        const posText = p.x !== undefined ? ` · 坐标 (${Math.round(p.x)}, ${Math.round(p.z)})` : ''
+        return `空余绿地 ${idx + 1} (${size}×${size}m · 栅栏${dir}${posText})`
       })
       const selectedIndex = await new Promise((resolve) => {
         wx.showActionSheet({
@@ -1134,10 +1140,11 @@ Page({
     }
 
     const sizeText = `${targetPlot.size || 48}×${targetPlot.size || 48}米`
+    const dirText = dirMap[targetPlot.gateDirection] || '南门'
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
         title: `确认建造【${building.name}】`,
-        content: `将在所选的空余专属绿地（${sizeText}）内落座建造【${building.name}】。\n建造后该绿地将成为专属公共设施，您的初始自家庭院不受任何影响。是否确认建造？`,
+        content: `已选定专属绿地（${sizeText} · 栅栏${dirText}）。\n将在该绿地落座建造【${building.name}】。\n★ 您的自家庭院（原住别墅）完好保留，不受任何影响。是否确认建造？`,
         confirmText: '立即建造',
         success: (r) => resolve(r.confirm),
         fail: () => resolve(false)
@@ -1171,6 +1178,7 @@ Page({
           }
           if (world.sharedPlots) world.sharedPlots.set(updated.id, updated)
           world.loadVisible().catch(() => {})
+          this.pushStatusMessage(`【${building.name}】已成功落座于地皮内！`)
         }
       }
     } catch (err) {

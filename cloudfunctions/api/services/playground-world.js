@@ -155,7 +155,7 @@ module.exports = {
       }
 
       // 永远保障用户的核心庭院必须是居住型别墅庭院，绝不被公共建筑或空余绿地顶替
-      let residential = myPlots.find(p => !p.demolished && (!p.buildingType || p.buildingType === 'residential') && !p.isNewPlot) ||
+      let residential = myPlots.find(p => !p.demolished && !p.isNewPlot) ||
                         myPlots.find(p => !p.demolished && (!p.buildingType || p.buildingType === 'residential'))
 
       if (!residential) {
@@ -169,13 +169,61 @@ module.exports = {
       }
 
       if (residential) {
-        if (!plot || plot.demolished || plot.plotId !== residential._id || (plot.buildingType && plot.buildingType !== 'residential')) {
+        // 自家庭院绝不缩小，必须是原住别墅！清除误写入的“小木屋”或尺寸参数
+        const hadWoodCabin = residential.buildingId === 'residential_wood_cabin' || residential.buildingName === '田园小木屋' || residential.buildingType === 'wood_cabin'
+        if (hadWoodCabin || residential.buildingWidth || residential.buildingDepth || residential.buildingType !== 'residential') {
+          const restoredResidential = {
+            ...residential,
+            buildingId: '',
+            buildingName: '',
+            buildingType: 'residential',
+            buildingImage: '',
+            buildingWidth: 0,
+            buildingDepth: 0,
+            name: residential.ownerName ? `${residential.ownerName}的庭院` : '我的庭院',
+            updatedAt: nowText(),
+            revision: Math.max(stamp(), (residential.revision || 0) + 1)
+          }
+          const { _id: rId, ...cleanRestored } = restoredResidential
+          try {
+            await database.collection('pet_playground_plots').doc(residential._id).set({ data: cleanRestored })
+          } catch(e) {}
+          residential = restoredResidential
+
+          // 若有名下空余专属绿地，将之前建造的田园小木屋迁移至该独立绿地，两不耽误
+          if (hadWoodCabin) {
+            const emptyYard = myPlots.find(p => !p.demolished && p._id !== residential._id && (p.buildingType === 'yard' || p.isNewPlot && !p.buildingType))
+            if (emptyYard) {
+              const woodCabinPlot = {
+                ...emptyYard,
+                buildingId: 'residential_wood_cabin',
+                buildingName: '田园小木屋',
+                buildingType: 'wood_cabin',
+                buildingWidth: 7,
+                buildingDepth: 7,
+                name: residential.ownerName ? `${residential.ownerName}的田园小木屋` : '田园小木屋',
+                updatedAt: nowText(),
+                revision: Math.max(stamp(), (emptyYard.revision || 0) + 1)
+              }
+              const { _id: yId, ...cleanCabin } = woodCabinPlot
+              try {
+                await database.collection('pet_playground_plots').doc(emptyYard._id).set({ data: cleanCabin })
+              } catch(e) {}
+            }
+          }
+        }
+
+        if (!plot || plot.demolished || plot.plotId !== residential._id || (plot.buildingType && plot.buildingType !== 'residential') || plot.buildingId === 'residential_wood_cabin' || plot.buildingWidth) {
           const { _id, ...cleanResidential } = residential
           const ownerDoc = {
             ...cleanResidential,
             kind: 'owner_plot',
             plotId: residential._id,
             buildingType: 'residential',
+            buildingId: '',
+            buildingName: '',
+            buildingWidth: 0,
+            buildingDepth: 0,
             updatedAt: nowText()
           }
           try {
@@ -497,15 +545,18 @@ module.exports = {
           targetPlot = doc
         } else {
           const myPlots = await tx.collection('pet_playground_plots').where({ kind: 'plot', ownerOpenid: openid }).get()
-          const emptyYard = (myPlots.data || []).find((p) => !p.demolished && p._id !== mainPlotId && (p.buildingType === 'yard' || p.isNewPlot && !p.buildingType))
+          const emptyYard = (myPlots.data || []).find((p) => !p.demolished && p._id !== mainPlotId && p.isNewPlot && (p.buildingType === 'yard' || !p.buildingType))
           if (emptyYard) {
             targetPlot = emptyYard
-          } else if (mainPlotId) {
-            targetPlot = await read(tx, mainPlotId)
           }
         }
         if (!targetPlot) {
           throw new Error('您当前没有空余的专属绿地！最初的自家庭院不可改建，请先认领一块新的专属绿地')
+        }
+
+        // 严禁改建最初的自家庭院别墅！
+        if (targetPlot._id === mainPlotId || !targetPlot.isNewPlot || targetPlot.buildingType === 'residential') {
+          throw new Error('最初的自家庭院（原住别墅）不可改建或覆盖，只能在空余的专属绿地上建造新建筑！')
         }
 
         const communityId = targetPlot.communityId

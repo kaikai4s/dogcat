@@ -427,11 +427,11 @@ class World2D {
       const dist = Math.hypot(p.x - plot.x, p.z - plot.z)
       return dist <= 16 && (plot.mine || this.canEnterPlot(plot) || dist <= 12)
     })
-    if (nearbyPlot && nearbyPlot.buildingType && nearbyPlot.buildingType !== 'residential') {
+    if (nearbyPlot && nearbyPlot.buildingType && !['residential', 'yard'].includes(nearbyPlot.buildingType)) {
       result.building = {
         plotId: nearbyPlot.id,
         type: nearbyPlot.buildingType,
-        name: nearbyPlot.buildingName || (nearbyPlot.buildingType === 'committee' ? '社区居委会' : nearbyPlot.buildingType === 'repair_shop' ? '社区修理厂' : nearbyPlot.buildingType === 'pet_hospital' ? '爱心宠物医院' : nearbyPlot.buildingType === 'police_station' ? '文明督导所' : nearbyPlot.buildingType === 'prison' ? '安全宣教自省室' : '社区工坊'),
+        name: nearbyPlot.buildingName || (nearbyPlot.buildingType === 'committee' ? '社区居委会' : nearbyPlot.buildingType === 'repair_shop' ? '社区修理厂' : nearbyPlot.buildingType === 'pet_hospital' ? '爱心宠物医院' : nearbyPlot.buildingType === 'police_station' ? '文明督导所' : nearbyPlot.buildingType === 'prison' ? '安全宣教自省室' : nearbyPlot.buildingType === 'wood_cabin' ? '田园小木屋' : '社区工坊'),
         mine: !!nearbyPlot.mine
       }
     }
@@ -1233,6 +1233,13 @@ class World2D {
       if (!insidePlot) {
         return this.onStatus('房子的建筑只能选在您已购买的地皮内部建造，请点击自家庭院草坪！')
       }
+      const homePlotId = this.ownPlot ? (this.ownPlot.id || this.ownPlot._id) : null
+      if (insidePlot.id === homePlotId || insidePlot._id === homePlotId || !insidePlot.isNewPlot || insidePlot.buildingType === 'residential') {
+        return this.onStatus('最初的自家庭院（原住别墅）不可改建！请选择空余的专属绿地建造')
+      }
+      if (insidePlot.buildingType && insidePlot.buildingType !== 'yard') {
+        return this.onStatus('该绿地已被其他建筑占用，请选择未建房屋的空余绿地！')
+      }
       this.page.targetPlotForBuilding = insidePlot
       this.candidate = {
         cellX: insidePlot.cellX,
@@ -1243,7 +1250,7 @@ class World2D {
         gateDirection: insidePlot.gateDirection || 'south'
       }
       this.page.setData({ canConfirm: true })
-      return this.onStatus(`已选定在【${insidePlot.name || '我的庭院'}】落座【${this.page.pendingBuilding.name}】，点击确认建造`)
+      return this.onStatus(`已选定在【${insidePlot.name || '我的专属绿地'}】落座【${this.page.pendingBuilding.name}】，点击确认建造`)
     }
 
     const x = Math.floor(point.x / STEP),
@@ -2075,8 +2082,8 @@ class World2D {
               item.anchor
             )
             if (item.name === 'house' && p.buildingType && p.buildingType !== 'residential') {
-              const bLabels = { committee: '🏛 邻里服务站', repair_shop: '🔧 便民洗车', pet_hospital: '🏥 宠医健康', police_station: '📋 出行督导', prison: '🕊 安全宣教' }
-              const bColors = { committee: '#d84315', repair_shop: '#0277bd', pet_hospital: '#2e7d32', police_station: '#1565c0', prison: '#6a1b9a' }
+              const bLabels = { committee: '🏛 邻里服务站', repair_shop: '🔧 便民洗车', pet_hospital: '🏥 宠医健康', police_station: '📋 出行督导', prison: '🕊 安全宣教', wood_cabin: '🏡 田园小木屋' }
+              const bColors = { committee: '#d84315', repair_shop: '#0277bd', pet_hospital: '#2e7d32', police_station: '#1565c0', prison: '#6a1b9a', wood_cabin: '#5d4037' }
               const tag = bLabels[p.buildingType] || p.buildingName || '工坊'
               const tagColor = bColors[p.buildingType] || '#388e3c'
               const pt = this.project(item.x, item.z)
