@@ -520,13 +520,27 @@ module.exports = {
         const resident = await read(tx, residentId)
         const presenceId = 'presence_' + hash(openid)
         const presence = await read(tx, presenceId)
-        await tx.collection('pet_playground_plots').doc(plot.plotId).remove()
+
+        // 彻底清理该玩家在当前小区下的所有地皮（主别墅与所有独立专属绿地/商铺/地坪/景观等）
+        const allUserPlots = await tx.collection('pet_playground_plots')
+          .where({ kind: 'plot', ownerOpenid: openid, communityId: plot.communityId })
+          .get()
+        const removedPlotIds = []
+        for (const p of (allUserPlots.data || [])) {
+          await tx.collection('pet_playground_plots').doc(p._id).remove()
+          removedPlotIds.push(p._id)
+        }
+        if (!removedPlotIds.includes(plot.plotId)) {
+          await tx.collection('pet_playground_plots').doc(plot.plotId).remove()
+          removedPlotIds.push(plot.plotId)
+        }
+
         await tx.collection('pet_playground_plots').doc(ownerId(openid)).remove()
         if (resident) await tx.collection('pet_playground_plots').doc(residentId).remove()
         if (presence) await tx.collection('pet_playground_plots').doc(presenceId).remove()
         const carId='vehicle_'+hash(openid)
         if(await read(tx,carId))await tx.collection('pet_playground_plots').doc(carId).remove()
-        return beforeRemove?{ removed: true,released }:{ removed: true }
+        return beforeRemove?{ removed: true,released,removedPlotIds }:{ removed: true,removedPlotIds }
       })
     }
     async function buildInYard(openid, user, data) {
@@ -597,6 +611,7 @@ module.exports = {
           ...targetPlot,
           previousBuildingType: prevType,
           ...(buildingType==='committee'&&prevType!=='committee'?{committeeStartedAt:stamp(),lastSalaryClaimAt:0}:{}),
+          ...(buildingType!=='committee'&&prevType==='committee'?{committeeStartedAt:0,lastSalaryClaimAt:0}:{}),
           revision:Math.max(stamp(),(targetPlot.revision||0)+1),
           buildingId,
           buildingType,

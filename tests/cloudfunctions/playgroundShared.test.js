@@ -221,12 +221,17 @@ test('owned pets can leave by gate and then roam outside without entering yards'
 
 test('demolish is owned and atomic; migration only succeeds after removing the old plot',async()=>{
   const f=fixture(),plot=await f.plots.claim('a',f.users[0],{x:280,z:280})
+  const extraYard=await f.plots.claim('a',f.users[0],{x:560,z:280,isNewPlot:true})
+  assert.equal(f.db.state.pet_playground_plots.filter((p)=>p.kind==='plot').length,2)
   const a=await f.enter('a')
   await assert.rejects(()=>world.updateCommunity(f.db,'a','u_a',f.users[2].residentialCommunity),/先拆除/)
   await assert.rejects(()=>f.plots.demolish('a',{plotId:plot.id,sceneId:'foreign'}),/原小区/)
-  await f.plots.demolish('a',{plotId:plot.id,sceneId:a.sceneId})
+  const demRes = await f.plots.demolish('a',{plotId:plot.id,sceneId:a.sceneId})
+  assert.ok(demRes.removedPlotIds.includes(plot.id))
+  assert.ok(demRes.removedPlotIds.includes(extraYard.id))
   assert.equal(await f.plots.own('a'),null)
   assert.equal(await world.read(f.db,plot.id),null)
+  assert.equal(await world.read(f.db,extraYard.id),null)
   assert.equal(await world.read(f.db,'resident_'+world.hash('a')),null)
   await world.updateCommunity(f.db,'a','u_a',f.users[2].residentialCommunity)
   const latest=f.db.state.users.find((u)=>u.openid==='a')

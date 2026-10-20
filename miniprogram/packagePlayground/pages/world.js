@@ -1282,7 +1282,7 @@ Page({
     try {
       const result = await callFunction('playground', 'hospitalCare', {
         careType: type,
-        petId: pet ? pet.id : '',
+        petId: pet ? (pet.id || pet._id) : '',
         sceneId: world.scene && world.scene.sceneId
       })
       if (pet) {

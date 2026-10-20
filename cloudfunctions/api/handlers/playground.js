@@ -36,9 +36,12 @@ module.exports = function createHandler(context) {
     if (action === 'removeFriend') return shared.social.removeFriend(openid,data)
     if (action === 'demolishPlot') {
       const old=await world.own(openid)
-      const {released,...result}=await world.demolish(openid,data,shared.rides.beforeDemolish)
+      const {released,removedPlotIds,...result}=await world.demolish(openid,data,shared.rides.beforeDemolish)
       await shared.publishRecords(released||[])
-      await shared.plotChanged(openid,old.plotId,true,old.communityId)
+      const allRemoved = Array.isArray(removedPlotIds) && removedPlotIds.length ? removedPlotIds : [old.plotId]
+      for (const pId of allRemoved) {
+        await shared.plotChanged(openid, pId, true, old.communityId)
+      }
       return result
     }
     const disputes = require('../services/playground-disputes')(context)
@@ -112,9 +115,11 @@ module.exports = function createHandler(context) {
       const careType = data.careType === 'treat' ? 'treat' : 'wash'
       const petId = String(data.petId || '')
       if (petId) {
-        // 更新爱宠的健康或洗护状态并持久化
+        // 更新爱宠的健康或洗护状态并持久化，同时同步实时场景
         await db.collection('pet_playground_plots').where({ kind: 'resident', ownerOpenid: openid }).get().then(async (res) => {
+          const published = []
           for (const doc of (res.data || [])) {
+            const stamp = Date.now()
             const pets = (doc.pets || []).map((p) => {
               if (p.id === petId || p._id === petId) {
                 if (careType === 'treat') {
@@ -134,8 +139,12 @@ module.exports = function createHandler(context) {
               }
               return p
             })
-            await db.collection('pet_playground_plots').doc(doc._id).update({ data: { pets } })
+            const updated = { ...doc, pets, revision: Math.max(stamp, (doc.revision || 0) + 1) }
+            const { _id, ...cleanDoc } = updated
+            await db.collection('pet_playground_plots').doc(doc._id).set({ data: cleanDoc })
+            published.push(updated)
           }
+          if (published.length) await shared.publishRecords(published)
         }).catch(() => {})
       }
       const sceneId = String(data.sceneId || '')
