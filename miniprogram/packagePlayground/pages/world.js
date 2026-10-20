@@ -1073,6 +1073,8 @@ Page({
         sceneId: world.scene && world.scene.sceneId
       })
       wx.showToast({ title: result.message || '周薪领取成功', icon: 'success' })
+      this.pushStatusMessage(result.message || '已成功领取居委会每周津贴')
+      if (this.data.rewardsOpen) this.openRewards(true)
     } catch (err) {
       wx.showToast({ title: err.message || '领取失败', icon: 'none' })
     }
@@ -1522,13 +1524,13 @@ Page({
       wx.navigateTo({ url: `/pages/client/sitters/detail/index?id=${sitterId}` })
     }
   },
-  async openRewards() {
-    this.setData({ rewardsOpen: true, rewardsLoading: true })
+  async openRewards(silent = false) {
+    if (!silent) this.setData({ rewardsOpen: true, rewardsLoading: true })
     try {
       const res = await callFunction('playground', 'getPlaygroundRewards')
-      this.setData({ rewardsData: res || null })
+      this.setData({ rewardsData: res || null, rewardsOpen: true })
     } catch (err) {
-      wx.showToast({ title: err.message || '加载关爱权益失败', icon: 'none' })
+      if (!silent) wx.showToast({ title: err.message || '加载关爱权益失败', icon: 'none' })
     } finally {
       this.setData({ rewardsLoading: false })
     }
@@ -1553,7 +1555,8 @@ Page({
     try {
       const res = await callFunction('playground', 'exchangeCoupon', { templateId: item.id })
       wx.showToast({ title: res.message || '兑换成功！', icon: 'success' })
-      this.openRewards()
+      this.pushStatusMessage(res.message || '成功兑换优惠券')
+      this.openRewards(true)
     } catch (err) {
       wx.showToast({ title: err.message || '兑换失败', icon: 'none' })
     } finally {

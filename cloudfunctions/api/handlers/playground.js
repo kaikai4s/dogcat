@@ -3,7 +3,10 @@ module.exports = function createHandler(context) {
   const worldService = require('../services/playground-world')
   const world = worldService.create(context)
   const shared = require('../services/playground-shared')(context)
-  const {publicAppearance}=require('../services/playground-appearance-record')
+  const { publicAppearance } = require('../services/playground-appearance-record')
+  const { toCstParts: defaultToCstParts, beijingClockText: defaultBeijingClockText } = require('../utils/time')
+  const getToCstParts = context.toCstParts || defaultToCstParts
+  const getBeijingClockText = context.beijingClockText || defaultBeijingClockText
   const {
     getOrCreateClientPlayground,
     getOrCreatePetHome,
@@ -162,7 +165,7 @@ module.exports = function createHandler(context) {
       let pointsAwarded = 0
       let message = '猫狗碗的粮食已添满'
       if (typeof context.addPoints === 'function' && user && user._id) {
-        const todayDateKey = (context.nowText ? context.nowText() : new Date().toISOString()).slice(0, 10)
+        const todayDateKey = (getToCstParts() && getToCstParts().dateKey) || (context.nowText ? context.nowText() : new Date().toISOString()).slice(0, 10)
         try {
           const pointRes = await context.addPoints(
             openid,
@@ -186,14 +189,50 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'getServiceTwinInfo') {
+      const EVENT_NAME_MAP = {
+        sanitization: '进门消毒',
+        enter_door: '进入家门',
+        leash_on: '佩戴牵引绳',
+        pet_status: '毛孩子状态',
+        return_home: '安全回到家',
+        leave_door: '确认离家',
+        feed: '添加粮食',
+        food: '添加粮食',
+        water: '更换饮水',
+        litter: '清理猫砂',
+        clean: '现场清洁',
+        medicine: '喂药照护',
+        play: '陪伴玩耍',
+        pet_beauty_photo: '毛孩子美照'
+      }
+
+      const EVENT_EMOJI_MAP = {
+        feed: '🥣',
+        food: '🥣',
+        water: '💧',
+        litter: '🧹',
+        clean: '🧹',
+        play: '🎾',
+        medicine: '💊',
+        sanitization: '🧴',
+        enter_door: '🚪',
+        leave_door: '🚪',
+        return_home: '🏠',
+        leash_on: '🦮',
+        pet_status: '🐾',
+        pet_beauty_photo: '📷'
+      }
+
       let activeOrder = null
       try {
         const orderRes = await db.collection('orders')
           .where({ clientOpenid: openid, status: 'in_service' })
-          .orderBy('updatedAt', 'desc')
-          .limit(1)
+          .limit(5)
           .get()
-        const order = (orderRes.data || [])[0]
+        const orderList = orderRes.data || []
+        // 内存中按时间倒序排序，避免云开发因缺少复合索引而报错
+        orderList.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
+        const order = orderList[0]
         if (order) {
           activeOrder = {
             id: order._id,
@@ -214,25 +253,35 @@ module.exports = function createHandler(context) {
         if (!targetOrderId) {
           const recentOrders = await db.collection('orders')
             .where({ clientOpenid: openid })
-            .orderBy('createdAt', 'desc')
-            .limit(3)
+            .limit(6)
             .get()
-          const completedOrder = (recentOrders.data || []).find((o) => ['completed', 'day_completed', 'in_service'].includes(o.status))
+          const rawOrders = recentOrders.data || []
+          rawOrders.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+          const completedOrder = rawOrders.find((o) => ['completed', 'day_completed', 'in_service'].includes(o.status))
           if (completedOrder) targetOrderId = completedOrder._id
         }
         if (targetOrderId) {
           const checkinRes = await db.collection('checkin_logs')
             .where({ orderId: targetOrderId })
-            .orderBy('createdAt', 'desc')
-            .limit(8)
+            .limit(20)
             .get()
-          latestCheckins = (checkinRes.data || []).map((c) => ({
-            id: c._id,
-            eventType: c.eventType,
-            mediaFileId: c.mediaFileId || c.fileId || '',
-            remark: c.checkinRemark || c.remark || '',
-            time: c.createdAt ? new Date(c.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''
-          }))
+          // 过滤掉已软删除的打卡日志，并在内存中排序，防止缺少复合索引抛错
+          const validLogs = (checkinRes.data || []).filter((c) => !c.deletedAt)
+          validLogs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+
+          latestCheckins = validLogs.slice(0, 8).map((c) => {
+            const eventType = c.eventType || 'checkin'
+            const emoji = EVENT_EMOJI_MAP[eventType] || '📷'
+            const label = EVENT_NAME_MAP[eventType] || '上门照料'
+            return {
+              id: c._id,
+              eventType,
+              eventLabel: `${emoji} ${label}`,
+              mediaFileId: c.mediaFileId || c.fileId || '',
+              remark: c.checkinRemark || c.remark || '',
+              time: c.createdAt ? getBeijingClockText(c.createdAt) : ''
+            }
+          })
         }
       } catch (e) {}
 
