@@ -116,12 +116,12 @@
 
         <!-- 图片素材上传与透明预览 -->
         <view class="form-group">
-          <text class="form-label">透明背景建筑游戏图 (PNG)</text>
+          <text class="form-label">建筑/素材游戏图 (PNG/JPG/WEBP)</text>
           <view class="image-upload-box">
             <view class="checkerboard-bg" wx:if="{{form.image}}">
               <image class="uploaded-img" src="{{form.image}}" mode="aspectFit" />
             </view>
-            <button wx:if="{{adminSuper || adminPermissions.playgroundBuilding_prepareUpload}}" class="upload-btn" bindtap="upload" disabled="{{busy}}">{{form.image ? '更换透明原图' : '选择并上传透明PNG'}}</button>
+            <button wx:if="{{adminSuper || adminPermissions.playgroundBuilding_prepareUpload}}" class="upload-btn" bindtap="upload" disabled="{{busy}}">{{form.image ? '更换素材原图' : '选择并上传素材图'}}</button>
           </view>
         </view>
 

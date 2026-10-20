@@ -1106,7 +1106,7 @@ Page({
       if (!p.mine) return false
       if (homePlotId && (p.id === homePlotId || p._id === homePlotId)) return false
       if (!p.isNewPlot) return false
-      return p.buildingType === 'yard' || !p.buildingType
+      return true
     })
   },
   filterBuildCatalog(buildings, category) {
@@ -1184,7 +1184,8 @@ Page({
         const size = p.size || 48
         const dir = dirMap[p.gateDirection] || '南门'
         const posText = p.x !== undefined ? ` · 坐标 (${Math.round(p.x)}, ${Math.round(p.z)})` : ''
-        return `空余绿地 ${idx + 1} (${size}×${size}m · 栅栏${dir}${posText})`
+        const statusText = p.buildingType && p.buildingType !== 'yard' ? ` · 已建【${p.buildingName || '建筑'}】可改建` : ' · 空余绿地'
+        return `专属地皮 ${idx + 1} (${size}×${size}m · 栅栏${dir}${statusText}${posText})`
       })
       const selectedIndex = await new Promise((resolve) => {
         wx.showActionSheet({
@@ -1199,11 +1200,13 @@ Page({
 
     const sizeText = `${targetPlot.size || 48}×${targetPlot.size || 48}米`
     const dirText = dirMap[targetPlot.gateDirection] || '南门'
+    const isRebuild = targetPlot.buildingType && targetPlot.buildingType !== 'yard'
+    const rebuildNotice = isRebuild ? `\n⚠️ 当前绿地已落座【${targetPlot.buildingName || '原建筑'}】，本次建造将替换改建为【${building.name}】。` : ''
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
-        title: `确认建造【${building.name}】`,
-        content: `已选定专属绿地（${sizeText} · 栅栏${dirText}）。\n将在该绿地落座建造【${building.name}】。\n★ 您的自家庭院（原住别墅）完好保留，不受任何影响。是否确认建造？`,
-        confirmText: '立即建造',
+        title: isRebuild ? `确认改建【${building.name}】` : `确认建造【${building.name}】`,
+        content: `已选定专属绿地（${sizeText} · 栅栏${dirText}）。\n将在该绿地落座建造【${building.name}】。${rebuildNotice}\n★ 您的自家庭院（原住别墅）完好保留，不受任何影响。是否确认建造？`,
+        confirmText: isRebuild ? '确认改建' : '立即建造',
         success: (r) => resolve(r.confirm),
         fail: () => resolve(false)
       })
@@ -1231,7 +1234,11 @@ Page({
             ...targetPlot,
             buildingId: building.id,
             buildingType: building.type,
+            buildingCategory: building.category || '',
             buildingName: building.name,
+            buildingImage: building.image || '',
+            buildingWidth: building.width || 7,
+            buildingDepth: building.depth || 7,
             name: `${targetPlot.ownerName || '我'}的${building.name}`
           }
           if (world.sharedPlots) world.sharedPlots.set(updated.id, updated)
@@ -1313,6 +1320,17 @@ Page({
     }
     const msg = '您在田园小木屋前静享微风与舒适时光，心情愉悦，爱宠精力充沛～'
     wx.showToast({ title: '木屋营地·静享舒适', icon: 'none' })
+    this.pushStatusMessage(msg)
+  },
+  treeAction() {
+    const pet = this.data.selectedPet || (this.data.pets && this.data.pets[0])
+    if (pet && pet.needs) {
+      pet.needs.energy = Math.min(100, (pet.needs.energy || 80) + 10)
+      pet.fatigue = Math.max(0, (pet.fatigue || 20) - 10)
+      if (this.world) this.world.emitPets()
+    }
+    const msg = '您在景观树荫下小憩，微风吹拂，落英缤纷，心情愉悦～'
+    wx.showToast({ title: '树荫休憩·微风拂面', icon: 'none' })
     this.pushStatusMessage(msg)
   },
   async reportTrafficAccident(accidentData) {

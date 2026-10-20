@@ -407,4 +407,24 @@ test('building catalog classifies buildings and supports floor paving and landsc
   assert.ok(treeSprite)
   assert.ok(treeSprite.radius <= 1.5, '树木避障仅阻挡树干')
   assert.equal(treeSprite.anchor, 0.88)
+
+  // 6. 验证在已有建筑的独立绿地上改建（比如将木屋改建为景观樱花树）
+  const rebuiltPlot = await f.plots.buildInYard('a', user, {
+    plotId: emptyYard.id,
+    buildingId: 'tree_cherry_blossom_default'
+  })
+  assert.equal(rebuiltPlot.buildingType, 'tree')
+  assert.equal(rebuiltPlot.buildingCategory, 'tree')
+  assert.equal(rebuiltPlot.name, '玩家a的浪漫景观樱花树')
+
+  // 7. 再次确认：自家庭院原住别墅始终受到保护不可改建
+  const myHome = await f.plots.own('a')
+  assert.equal(myHome.buildingType, 'residential')
+  await assert.rejects(
+    () => f.plots.buildInYard('a', user, {
+      plotId: myHome.id,
+      buildingId: 'tree_cherry_blossom_default'
+    }),
+    /最初的自家庭院/
+  )
 })

@@ -195,8 +195,8 @@ function normalizeBuilding(value) {
   const validTypes = ['residential', 'repair_shop', 'pet_hospital', 'committee', 'police_station', 'prison', 'wood_cabin', 'floor', 'tree', 'decoration']
   if (!validTypes.includes(value.type)) throw new Error('无效的建筑功能类型')
 
-  const width = Math.max(3.5, Math.min(35, Number(value.width) || 7))
-  const depth = Math.max(3.5, Math.min(35, Number(value.depth) || 7))
+  const width = Math.max(3.5, Math.min(108, Number(value.width) || 7))
+  const depth = Math.max(3.5, Math.min(108, Number(value.depth) || 7))
   const tileCount = calcTileCount(width, depth)
   const costCoins = 0
   const category = deriveCategory(value.type, value.category)
@@ -236,8 +236,10 @@ module.exports = function createBuildingsService(context) {
 
   async function prepareUpload(openid, data) {
     if (!validId(data.id)) throw new Error('请先填写有效的建筑编号')
+    const rawExt = typeof data.ext === 'string' ? data.ext.toLowerCase().replace(/[^a-z0-9]/g, '') : 'png'
+    const ext = ['png', 'jpg', 'jpeg', 'webp'].includes(rawExt) ? rawExt : 'png'
     return {
-      cloudPath: `${UPLOAD_PATH}${data.id}/${crypto.randomBytes(16).toString('hex')}.png`
+      cloudPath: `${UPLOAD_PATH}${data.id}/${crypto.randomBytes(16).toString('hex')}.${ext}`
     }
   }
 

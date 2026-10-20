@@ -4,25 +4,26 @@ const { can } = require('../../../utils/adminAccess')
 
 const GRASS_TILE_SIZE = 3.5
 
-function choosePng(source) {
+function chooseImageFile(source) {
   return new Promise((resolve, reject) => {
     const success = (result) => {
       const file = (result.tempFiles || [])[0],
         path = file && (file.path || file.tempFilePath)
       if (!path || !file.size || file.size > 8 * 1024 * 1024)
-        return reject(new Error('请选择不超过8MB的透明PNG原图'))
+        return reject(new Error('请选择不超过8MB的素材图片'))
       wx.getImageInfo({
         src: path,
         success: (info) => {
-          if (String(info.type).toLowerCase() !== 'png')
-            return reject(new Error('请选择透明PNG原图'))
-          resolve({ path, width: info.width, height: info.height })
+          const ext = String(info.type || '').toLowerCase()
+          if (!['png', 'jpg', 'jpeg', 'webp'].includes(ext))
+            return reject(new Error('请选择PNG、JPG或WEBP格式素材图'))
+          resolve({ path, width: info.width, height: info.height, ext: ext === 'jpeg' ? 'jpg' : ext })
         },
         fail: reject
       })
     }
     if (source === 0)
-      wx.chooseMessageFile({ count: 1, type: 'file', extension: ['png'], success, fail: reject })
+      wx.chooseMessageFile({ count: 1, type: 'file', extension: ['png', 'jpg', 'jpeg', 'webp'], success, fail: reject })
     else
       wx.chooseMedia({ count: 1, mediaType: ['image'], sourceType: ['album'], sizeType: ['original'], success, fail: reject })
   })
@@ -206,14 +207,15 @@ Page({
     try {
       const selection = await new Promise((resolve, reject) =>
         wx.showActionSheet({
-          itemList: ['从聊天文件选择透明PNG', '从相册选择原图PNG'],
+          itemList: ['从聊天文件选择素材图片', '从相册选择素材图片'],
           success: resolve,
           fail: reject
         })
       )
-      const file = await choosePng(selection.tapIndex)
+      const file = await chooseImageFile(selection.tapIndex)
       const { cloudPath } = await callFunction('playgroundBuilding', 'prepareUpload', {
-        id: form.id
+        id: form.id,
+        ext: file.ext || 'png'
       })
       const fileID = await uploadFile(file.path, cloudPath, (progress) => {
         if (!this.closed) this.setData({ progress })

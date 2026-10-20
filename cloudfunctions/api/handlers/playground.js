@@ -58,11 +58,15 @@ module.exports = function createHandler(context) {
         const myPlotsRes = await db.collection('pet_playground_plots').where({ kind: 'plot', ownerOpenid: openid }).get()
         const myPlots = (myPlotsRes && myPlotsRes.data) || []
         emptyPlots = myPlots
-          .filter((p) => !p.demolished && p._id !== mainPlotId && p.isNewPlot && (!p.buildingType || p.buildingType === 'yard'))
+          .filter((p) => !p.demolished && p._id !== mainPlotId && p.isNewPlot)
           .map((p) => ({
             id: p._id,
             _id: p._id,
             name: p.name || '专属绿地',
+            buildingType: p.buildingType || 'yard',
+            buildingName: p.buildingName || '',
+            buildingCategory: p.buildingCategory || '',
+            isBuilt: !!(p.buildingType && p.buildingType !== 'yard'),
             size: Number(p.size) || 48,
             gateDirection: p.gateDirection || 'south',
             x: p.x,
