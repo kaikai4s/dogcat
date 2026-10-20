@@ -134,6 +134,9 @@ Page({
           this.world.resume()
           if(this.world.sceneSync) this.world.sceneSync.start()
           this.loadServiceTwin(false)
+          if (this.data.myJailStatus && this.data.myJailStatus.isJailed) {
+            this.checkInitialJailStatus()
+          }
         } else if (this.visible && version === this.version && this.ready)
           this.initialize()
         else if (version === this.version) this.authorized = true
@@ -150,6 +153,8 @@ Page({
   onHide() {
     this.clearPetSelection()
     this.joystickEnd()
+    if (this.jailTimer) clearInterval(this.jailTimer)
+    if (this.statusFadeTimer) clearTimeout(this.statusFadeTimer)
     this.visible=false
     if(this.world && !this.data.loading) {
       this.world.pause()
@@ -1100,12 +1105,14 @@ Page({
       const result = await callFunction('playground', 'getBuildingCatalog')
       const buildings = (result.buildings || []).filter((b) => b.enabled !== false)
       const serverEmptyPlots = Array.isArray(result.emptyPlots) ? result.emptyPlots : []
+      const localEmptyPlots = this.getAvailableEmptyPlots()
+      const finalEmptyPlots = serverEmptyPlots.length > 0 ? serverEmptyPlots : localEmptyPlots
       this.setData({
         buildingCatalog: buildings,
         selectedBuilding: buildings.find((b) => b.unlocked) || buildings[0] || null,
         plotSizes: result.plotSizes || this.data.plotSizes,
-        emptyPlots: serverEmptyPlots,
-        availableEmptyPlotCount: serverEmptyPlots.length
+        emptyPlots: finalEmptyPlots,
+        availableEmptyPlotCount: finalEmptyPlots.length
       })
     } catch (err) {
       wx.showToast({ title: err.message || '加载建筑列表失败', icon: 'none' })
