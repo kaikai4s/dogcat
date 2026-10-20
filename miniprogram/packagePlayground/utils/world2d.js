@@ -426,8 +426,12 @@ class World2D {
       if (poop) result.poop = { id: poop.id, x: poop.x, z: poop.z }
     }
     const nearbyPlot = this.plots().find((plot) => {
-      const dist = Math.hypot(p.x - plot.x, p.z - plot.z)
-      return dist <= 16 && (plot.mine || this.canEnterPlot(plot) || dist <= 12)
+      const pSize = plot.size || 48
+      const half = pSize / 2
+      const dx = Math.abs(p.x - plot.x)
+      const dz = Math.abs(p.z - plot.z)
+      const insideOrNearGate = dx <= (half + 6) && dz <= (half + 6)
+      return insideOrNearGate && (plot.mine || this.canEnterPlot(plot) || (dx <= half + 4 && dz <= half + 4))
     })
     if (nearbyPlot && nearbyPlot.buildingType && !['residential', 'yard'].includes(nearbyPlot.buildingType)) {
       result.building = {

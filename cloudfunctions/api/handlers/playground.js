@@ -103,18 +103,25 @@ module.exports = function createHandler(context) {
     if (action === 'hospitalCare') {
       const careType = data.careType === 'treat' ? 'treat' : 'wash'
       const petId = String(data.petId || '')
-      if (careType === 'treat' && petId) {
-        // 解除爱宠的生病与受伤状态，重获健康
+      if (petId) {
+        // 更新爱宠的健康或洗护状态并持久化
         await db.collection('pet_playground_plots').where({ kind: 'resident', ownerOpenid: openid }).get().then(async (res) => {
           for (const doc of (res.data || [])) {
             const pets = (doc.pets || []).map((p) => {
               if (p.id === petId || p._id === petId) {
-                return {
-                  ...p,
-                  sick: false,
-                  injured: false,
-                  sickReason: '',
-                  needs: { ...(p.needs || {}), satiety: 100, hydration: 100, energy: 100 }
+                if (careType === 'treat') {
+                  return {
+                    ...p,
+                    sick: false,
+                    injured: false,
+                    sickReason: '',
+                    needs: { ...(p.needs || {}), satiety: 100, hydration: 100, energy: 100 }
+                  }
+                } else {
+                  return {
+                    ...p,
+                    needs: { ...(p.needs || {}), energy: 100, pee: 0, poop: 0 }
+                  }
                 }
               }
               return p

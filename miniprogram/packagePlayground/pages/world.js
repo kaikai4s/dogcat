@@ -1253,10 +1253,20 @@ Page({
         petId: pet ? pet.id : '',
         sceneId: world.scene && world.scene.sceneId
       })
-      if (type === 'treat' && pet) {
-        pet.sick = false
-        pet.injured = false
-        pet.sickReason = ''
+      if (pet) {
+        if (type === 'treat') {
+          pet.sick = false
+          pet.injured = false
+          pet.sickReason = ''
+        }
+        if (pet.needs) {
+          pet.needs.energy = 100
+          if (type === 'treat') {
+            pet.needs.satiety = 100
+            pet.needs.hydration = 100
+          }
+        }
+        pet.fatigue = 0
         if (this.world) this.world.emitPets()
       }
       wx.showModal({
@@ -1267,6 +1277,18 @@ Page({
     } catch (err) {
       wx.showToast({ title: err.message || '护理失败', icon: 'none' })
     }
+  },
+  woodCabinAction() {
+    const world = this.world
+    const pet = this.data.selectedPet || (this.data.pets && this.data.pets[0])
+    if (pet && pet.needs) {
+      pet.needs.energy = Math.min(100, (pet.needs.energy || 80) + 15)
+      pet.fatigue = Math.max(0, (pet.fatigue || 20) - 15)
+      if (this.world) this.world.emitPets()
+    }
+    const msg = '您在田园小木屋前静享微风与舒适时光，心情愉悦，爱宠精力充沛～'
+    wx.showToast({ title: '木屋营地·静享舒适', icon: 'none' })
+    this.pushStatusMessage(msg)
   },
   async reportTrafficAccident(accidentData) {
     const world = this.world
