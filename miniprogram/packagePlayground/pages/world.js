@@ -90,6 +90,7 @@ Page({
     mallSupplies: [],
     groupBuyTab: 'sanitation',
     communityGroupBuy: null,
+    communityGroupBuyLoading: false,
     rewardsOpen: false,
     rewardsLoading: false,
     rewardsData: null,
@@ -1023,6 +1024,7 @@ Page({
     const world = this.world
     if (!world) return
     this.setData({ disputesOpen: true, disputesLoading: true })
+    if (!this.data.communityGroupBuy) this.loadCommunityGroupBuy()
     try {
       await world.sceneSync.send(true)
       const result = await callFunction('playground', 'listDisputes', {
@@ -1492,10 +1494,15 @@ Page({
     }
   },
   async loadCommunityGroupBuy() {
+    if (this.data.communityGroupBuyLoading) return
+    this.setData({ communityGroupBuyLoading: true })
     try {
       const res = await callFunction('playground', 'getCommunityGroupBuy', { community: this.selectedCommunity })
       this.setData({ communityGroupBuy: res || null })
-    } catch (e) {}
+    } catch (e) {
+    } finally {
+      this.setData({ communityGroupBuyLoading: false })
+    }
   },
   startGroupBuyOrder() {
     wx.navigateTo({ url: '/pages/client/orders/create/index?source=community_groupbuy' })

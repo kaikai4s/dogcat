@@ -30,9 +30,12 @@ module.exports=function createSocial(context) {
     await live.mailbox(openid,value)
     return value
   }
+  const PUBLIC_BUILDING_TYPES = ['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison']
   async function access(openid,plots,database=db) {
     const value=await book(openid,database),stamp=now()
-    return plots.filter((plot)=>plot.ownerOpenid===openid || value.friends[playerId(plot.ownerOpenid)] ||
+    return plots.filter((plot)=>plot.ownerOpenid===openid ||
+      (plot.buildingType && PUBLIC_BUILDING_TYPES.includes(plot.buildingType)) ||
+      value.friends[playerId(plot.ownerOpenid)] ||
       value.visits[plot._id] && value.visits[plot._id].expiresAt>stamp && value.visits[plot._id].instanceId===(plot.instanceId||plot.createdAt||'')).map((plot)=>plot._id)
   }
   async function actor(openid,data,tx) {

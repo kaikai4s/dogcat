@@ -98,7 +98,8 @@
         </view>
         <view class="groupbuy-section-title">本小区常驻金牌宠托师</view>
         <view class="groupbuy-sitters-list">
-          <view wx:if="{{!communityGroupBuy || !communityGroupBuy.sitters || !communityGroupBuy.sitters.length}}" class="dispute-empty">本小区正在招募金牌宠托师入驻中…</view>
+          <view wx:if="{{communityGroupBuyLoading}}" class="dispute-empty">正在拉取本小区拼单优惠与金牌宠托师…</view>
+          <view wx:elif="{{!communityGroupBuy || !communityGroupBuy.sitters || !communityGroupBuy.sitters.length}}" class="dispute-empty">本小区正在招募金牌宠托师入驻中…</view>
           <view wx:for="{{communityGroupBuy.sitters}}" wx:key="id" class="sitter-card">
             <image wx:if="{{item.avatarUrl}}" class="sitter-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
             <view wx:else class="sitter-avatar-placeholder">🐾</view>

@@ -69,3 +69,25 @@ test('位移平滑度验证：密集或网络抖动包到达时，拥有平滑�
   assert.notEqual(syncRes.corrected, true)
   assert.equal(syncRes.position.z, enterRes.scene.position.z + 1.5)
 })
+
+test('公共便民设施开放性验证：居委会、宠物医院、便民洗车等对全社区开放，不拦截为私宅围栏', async () => {
+  const social = require('../../cloudfunctions/api/services/playground-social')
+  const { db } = createTestContext({
+    users: [{ _id: 'u_user_a', openid: 'user_a', role: 'client' }]
+  })
+
+  const plots = [
+    { _id: 'plot_neighbor_home', ownerOpenid: 'user_b', buildingType: 'residential' },
+    { _id: 'plot_committee', ownerOpenid: 'user_b', buildingType: 'committee' },
+    { _id: 'plot_hospital', ownerOpenid: 'user_c', buildingType: 'pet_hospital' },
+    { _id: 'plot_repair', ownerOpenid: 'user_d', buildingType: 'repair_shop' }
+  ]
+
+  const allowedPlots = await social({ db }).access('user_a', plots)
+  // 私宅不会放行
+  assert.equal(allowedPlots.includes('plot_neighbor_home'), false)
+  // 公共便民设施全量放行通行
+  assert.equal(allowedPlots.includes('plot_committee'), true)
+  assert.equal(allowedPlots.includes('plot_hospital'), true)
+  assert.equal(allowedPlots.includes('plot_repair'), true)
+})

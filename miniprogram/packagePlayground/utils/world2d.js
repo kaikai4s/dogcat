@@ -375,6 +375,7 @@ class World2D {
   }
   canEnterPlot(plot) {
     if(!this.scene || plot.mine)return true
+    if(plot.buildingType && ['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison'].includes(plot.buildingType)) return true
     const friends=this.social.friends||[]
     return friends.some((friend)=>friend.id===plot.ownerId) ||
       !!(this.social.visits && this.social.visits[plot.id] && this.social.visits[plot.id].expiresAt>Date.now()+this.serverOffset && this.social.visits[plot.id].instanceId===(plot.instanceId||''))
