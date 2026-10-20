@@ -375,8 +375,9 @@ class World2D {
   }
   canEnterPlot(plot) {
     if(!this.scene || plot.mine)return true
-    if(plot.buildingCategory === 'public' || plot.buildingCategory === 'floor' || plot.buildingCategory === 'tree') return true
-    if(plot.buildingType && ['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison', 'floor', 'tree'].includes(plot.buildingType)) return true
+    if(plot.buildingCategory === 'public' || plot.buildingCategory === 'floor' || plot.buildingCategory === 'tree' || plot.buildingCategory === 'decoration') return true
+    if(plot.buildingType && ['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison', 'floor', 'tree', 'decoration'].includes(plot.buildingType)) return true
+    if(plot.buildingType && (String(plot.buildingType).startsWith('floor_') || String(plot.buildingType).startsWith('tree_'))) return true
     const friends=this.social.friends||[]
     const visit = this.social.visits && (this.social.visits[plot.id] || this.social.visits[plot._id])
     const plotInstance = plot.instanceId || plot.createdAt || ''
@@ -423,7 +424,7 @@ class World2D {
       const gp = plotGatePosition(plot)
       return Math.hypot(p.x - gp.x, p.z - gp.z) <= 6
     })
-    if(gate)result.gate={plotId:gate.id,playerId:gate.ownerId,name:gate.ownerName||String(gate.name||'邻居').replace(/的庭院$/,'')}
+    if(gate)result.gate={plotId:gate.id || gate._id,playerId:gate.ownerId,name:gate.ownerName||String(gate.name||'邻居').replace(/的庭院$/,'')}
     if (this.groundDecals && this.groundDecals.length) {
       const poop = this.groundDecals.find((d) => d.type === 'poop' && Math.hypot(p.x - d.x, p.z - d.z) <= 3.8 && nav.clearSegment(p, d))
       if (poop) result.poop = { id: poop.id, x: poop.x, z: poop.z }

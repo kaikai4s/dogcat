@@ -140,3 +140,40 @@ test('live projection replaces nullable nested state and old fields only for its
   assert.deepEqual(shard.records[id],{...recovered,version:{epoch:101,seq:0}})
   assert.deepEqual(shard.records.neighbor,neighbor)
 })
+
+test('visit requests work for independent second plots and public/floor/tree/decoration plots are universally accessible', async () => {
+  const f = await fixture()
+  // a 用户有主别墅（在 280, 280），再认领一块独立庭院木屋（在 560, 280，南门，门坐标 560, 306）
+  const userA = f.users.find((u) => u.openid === 'a')
+  const aCabin = await f.plots.claim('a', userA, { isNewPlot: true, x: 560, z: 280, size: 48, gateDirection: 'south', buildingType: 'wood_cabin' })
+
+  // 1. 验证公共建筑、地板地坪、园林树木、景观装饰对访客开放通行
+  const publicPlot = { _id: 'plot_pub_1', buildingCategory: 'public', ownerOpenid: 'x' }
+  const floorPlot = { _id: 'plot_floor_1', buildingType: 'floor', ownerOpenid: 'x' }
+  const treePlot = { _id: 'plot_tree_1', buildingCategory: 'tree', ownerOpenid: 'x' }
+  const decorPlot = { _id: 'plot_decor_1', buildingCategory: 'decoration', ownerOpenid: 'x' }
+  const normalPlot = { _id: 'plot_normal_1', buildingType: 'residential', ownerOpenid: 'x' }
+
+  const accessible = await f.social.access('c', [publicPlot, floorPlot, treePlot, decorPlot, normalPlot])
+  assert.ok(accessible.includes('plot_pub_1'))
+  assert.ok(accessible.includes('plot_floor_1'))
+  assert.ok(accessible.includes('plot_tree_1'))
+  assert.ok(accessible.includes('plot_decor_1'))
+  assert.equal(accessible.includes('plot_normal_1'), false)
+
+  // 2. 访客 c 走到 a 的独立木屋院门前（560, 306）申请访问独立木屋
+  await f.position('c', 560, 306)
+  await f.social.request('c', { ...f.auth('c'), type: 'visit', playerId: playerId('a'), plotId: aCabin._id || aCabin.id })
+
+  const stateA = await f.social.state('a')
+  const req = stateA.incoming.find((r) => r.plotId === (aCabin._id || aCabin.id))
+  assert.ok(req, '申请应被正确记录且对应独立木屋 plotId')
+
+  // 3. 业主 a 批准访问申请
+  await f.social.respond('a', { requestId: req.id, accept: true })
+
+  // 4. 验证访客 c 现在拥有进入 a 独立木屋的通行权限
+  const allowedAfter = await f.social.access('c', [aCabin])
+  assert.ok(allowedAfter.includes(aCabin._id || aCabin.id))
+})
+

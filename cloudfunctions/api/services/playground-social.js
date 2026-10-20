@@ -30,13 +30,21 @@ module.exports=function createSocial(context) {
     await live.mailbox(openid,value)
     return value
   }
-  const PUBLIC_BUILDING_TYPES = ['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison']
+  const PUBLIC_BUILDING_TYPES = ['committee', 'repair_shop', 'pet_hospital', 'police_station', 'prison', 'floor', 'tree', 'decoration']
+  const OPEN_CATEGORIES = ['public', 'floor', 'tree', 'decoration']
   async function access(openid,plots,database=db) {
     const value=await book(openid,database),stamp=now()
-    return plots.filter((plot)=>plot.ownerOpenid===openid ||
-      (plot.buildingType && PUBLIC_BUILDING_TYPES.includes(plot.buildingType)) ||
-      value.friends[playerId(plot.ownerOpenid)] ||
-      value.visits[plot._id] && value.visits[plot._id].expiresAt>stamp && value.visits[plot._id].instanceId===(plot.instanceId||plot.createdAt||'')).map((plot)=>plot._id)
+    return plots.filter((plot)=> {
+      if (!plot) return false
+      if ((plot.ownerOpenid && plot.ownerOpenid === openid) || plot.mine === true) return true
+      if (plot.buildingCategory && OPEN_CATEGORIES.includes(plot.buildingCategory)) return true
+      if (plot.buildingType && (PUBLIC_BUILDING_TYPES.includes(plot.buildingType) || String(plot.buildingType).startsWith('floor_') || String(plot.buildingType).startsWith('tree_'))) return true
+      const pId = plot.ownerId || (plot.ownerOpenid ? playerId(plot.ownerOpenid) : '')
+      if (pId && value.friends[pId]) return true
+      const plotId = plot._id || plot.id
+      if (plotId && value.visits[plotId] && value.visits[plotId].expiresAt > stamp && value.visits[plotId].instanceId === (plot.instanceId || plot.createdAt || '')) return true
+      return false
+    }).map((plot)=>plot._id || plot.id)
   }
   async function actor(openid,data,tx) {
     const row=await world.read(tx,playerId(openid))
@@ -56,8 +64,7 @@ module.exports=function createSocial(context) {
         const yard=await world.read(tx,data.plotId)
         if(!yard || playerId(yard.ownerOpenid)!==targetId) throw new Error('庭院已变化，请重新靠近院门')
         b={ownerOpenid:yard.ownerOpenid,name:yard.ownerName||String(yard.name||'邻居').replace(/的庭院$/,'')}
-        const home=await world.read(tx,world.ownerId(b.ownerOpenid))
-        plot=home && await world.read(tx,home.plotId)
+        plot=yard
         const half = (plot.size || 48) / 2
         const dir = plot.gateDirection || 'south'
         const gate = dir === 'north' ? { x: plot.x, z: plot.z - half - 2 } :
@@ -95,8 +102,10 @@ module.exports=function createSocial(context) {
       if(r.expiresAt && r.expiresAt<=now()) throw new Error('访问申请已过期，请重新申请')
       const sender=await book(r.openid,tx),accepted=data.accept===true
       if(accepted && r.type==='visit') {
-        const home=await world.read(tx,world.ownerId(openid))
-        if(!home || home.plotId!==r.plotId || (home.instanceId||home.createdAt||'')!==r.plotVersion) throw new Error('原庭院已拆除或更换，不能批准旧申请')
+        const targetPlot = await world.read(tx, r.plotId)
+        if (!targetPlot || targetPlot.ownerOpenid !== openid || targetPlot.demolished || (targetPlot.instanceId || targetPlot.createdAt || '') !== r.plotVersion) {
+          throw new Error('原庭院已拆除或更换，不能批准旧申请')
+        }
         sender.visits[r.plotId]={ownerId:playerId(openid),instanceId:r.plotVersion,expiresAt:dayEnd(now())}
       }
       if(accepted && r.type==='friend') {
