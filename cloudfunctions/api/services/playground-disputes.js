@@ -154,13 +154,33 @@ module.exports=function createDisputesService(context) {
     const person = await actor(db,openid,data)
     const id = String(data.vehicleId || require('./playground-shared/vehicles').vehicleId(openid))
     const car = await world.read(db, id)
+    const sceneId = String(data.sceneId || (person && person.communityId) || '')
+    let bonusMsg = ''
+    if (sceneId) {
+      try {
+        const shopRes = await db.collection(COLLECTION).where({ kind: 'plot', communityId: sceneId, buildingType: 'repair_shop' }).get()
+        const shop = (shopRes.data || []).find((p) => !p.demolished)
+        if (shop && shop.ownerOpenid && shop.ownerOpenid !== openid) {
+          const userRes = await db.collection('users').where({ openid: shop.ownerOpenid }).limit(1).get()
+          const targetUser = (userRes.data || [])[0]
+          if (targetUser) {
+            await db.collection('users').doc(targetUser._id).update({
+              data: {
+                playgroundCoins: (targetUser.playgroundCoins || 0) + 15
+              }
+            })
+            bonusMsg = '，已向修理厂主理人发放 15 爱心币检修津贴'
+          }
+        }
+      } catch (_) {}
+    }
     if (car && car.ownerOpenid === openid) {
       const record = { ...car, stains: [], soiled: false, maintainedAt: stamp, revision: Math.max(stamp, (car.revision || 0) + 1) }
       const { _id, ...cleanCar } = record
       await db.collection(COLLECTION).doc(id).set({ data: cleanCar })
-      return { success: true, record, message: '车辆经过专业检修与保养，机械与安全性能已完全达标！' }
+      return { success: true, record, message: `车辆经过专业检修与保养，机械与安全性能已完全达标${bonusMsg}！` }
     }
-    return { success: true, message: '车辆保养完成，机械与安全性能达标！' }
+    return { success: true, message: `车辆保养完成，机械与安全性能达标${bonusMsg}！` }
   }
   return {getCommunityBuilding,getCommunityCommittee,reportPoop,listDisputes,resolveDispute,claimWeeklySalary,checkCommitteeTimeout,washVehicle,repairVehicle}
 }

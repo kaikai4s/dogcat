@@ -364,5 +364,105 @@ test('dismantling or replacing prison building automatically frees jailed driver
   assert.equal(settled.settleType, 'facility_dismantled')
 })
 
+test('passenger disembarking on driver arrest, repair shop allowance, and hospitalCare default pet handling', async () => {
+  const f = fixture()
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const a = await f.build('a', { x: 280, z: 280 })
+  const sceneId = a.sceneId
+
+  // 1. 设置执法所、自省室和修理厂
+  const policeYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 728, z: 280, size: 48 })
+  await handler('a', 'buildInYard', {
+    plotId: policeYard.id,
+    buildingType: 'police_station',
+    buildingName: '阳光社区执法所',
+    sceneId
+  })
+  const prisonYard = await f.plots.claim('b', f.user('b'), { isNewPlot: true, x: 400, z: 400, size: 48, buildingType: 'prison', buildingName: '自省室' })
+  const repairYard = await f.plots.claim('c', f.user('c'), { isNewPlot: true, x: 500, z: 500, size: 48, buildingType: 'repair_shop', buildingName: '社区修理厂' })
+
+  // 2. 司机 d 开车搭载乘客 e
+  const driverCarId = require('../../cloudfunctions/api/services/playground-shared/vehicles').vehicleId('d')
+  await f.context.db.collection('pet_playground_plots').doc(driverCarId).set({
+    data: {
+      kind: 'vehicle',
+      communityId: sceneId,
+      ownerOpenid: 'd',
+      state: 'driving',
+      moving: true,
+      passengers: [{ id: 'presence_' + require('../../cloudfunctions/api/services/playground-world').hash('e'), openid: 'e', name: '乘客小李' }],
+      position: { x: 300, z: 300 }
+    }
+  })
+  const passengerPresenceId = 'presence_' + require('../../cloudfunctions/api/services/playground-world').hash('e')
+  await f.context.db.collection('pet_playground_plots').doc(passengerPresenceId).set({
+    data: {
+      kind: 'presence',
+      communityId: sceneId,
+      ownerOpenid: 'e',
+      vehicleId: driverCarId,
+      vehicleRole: 'passenger',
+      moving: true,
+      position: { x: 300, z: 300 }
+    }
+  })
+
+  // 3. 发生车辆碰撞事件并逮捕司机 d
+  const hit = await handler('a', 'reportAccident', {
+    sceneId,
+    victimType: 'pet',
+    victimName: '旺财',
+    victimOpenid: 'v_openid',
+    victimId: 'v_openid',
+    driverOpenid: 'd',
+    driverName: '小刘司机'
+  })
+  assert.equal(hit.record.victimOpenid, 'v_openid')
+
+  await handler('a', 'arrestDriver', { sceneId, accidentId: hit.accidentId })
+
+  // 验证车上乘客自动下车解除绑定
+  const passengerAfter = await f.context.db.collection('pet_playground_plots').doc(passengerPresenceId).get()
+  assert.equal(passengerAfter.data.vehicleId, '')
+  assert.equal(passengerAfter.data.vehicleRole, '')
+
+  // 4. 验证在 1.5 秒误差容差内自动平滑出狱
+  const jailDoc = await f.context.db.collection('pet_playground_jail').doc('d').get()
+  const jailedUntil = jailDoc.data.jailedUntil
+  // 模拟当前时间仅差 1000ms（小于 1500ms 容差）
+  f.context.nowMs = () => jailedUntil - 1000
+  const freeReleaseRes = await handler('d', 'releaseDriver', { sceneId, payBail: false })
+  assert.equal(freeReleaseRes.released, true)
+
+  // 5. 邻里车辆检修，修理厂主理人 c 获得 15 爱心币津贴
+  await f.context.db.collection('users').doc('user_c').set({ data: { openid: 'c', playgroundCoins: 50 } })
+  const repairRes = await handler('a', 'repairVehicle', f.auth(a))
+  assert.ok(repairRes.message.includes('15 爱心币检修津贴'))
+  const userCDoc = await f.context.db.collection('users').doc('user_c').get()
+  assert.equal(userCDoc.data.playgroundCoins, 65)
+
+  // 6. hospitalCare 未传特定 petId 时，自动为玩家所有宠物完成治疗调理
+  await f.context.db.collection('pet_playground_plots').doc('resident_' + require('../../cloudfunctions/api/services/playground-world').hash('a')).set({
+    data: {
+      kind: 'resident',
+      ownerOpenid: 'a',
+      communityId: sceneId,
+      pets: [
+        { id: 'pet_1', name: '大黄', sick: true, injured: true, sickReason: 'traffic_accident', needs: { satiety: 20, hydration: 20, energy: 30 } },
+        { id: 'pet_2', name: '花花', sick: true, injured: true, sickReason: 'traffic_accident', needs: { satiety: 40, hydration: 40, energy: 50 } }
+      ]
+    }
+  })
+  await handler('a', 'hospitalCare', { sceneId, careType: 'treat' })
+  const residentAfter = await f.context.db.collection('pet_playground_plots').doc('resident_' + require('../../cloudfunctions/api/services/playground-world').hash('a')).get()
+  for (const pet of residentAfter.data.pets) {
+    assert.equal(pet.sick, false)
+    assert.equal(pet.injured, false)
+    assert.equal(pet.needs.satiety, 100)
+    assert.equal(pet.needs.energy, 100)
+  }
+})
+
+
 
 

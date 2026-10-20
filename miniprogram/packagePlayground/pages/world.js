@@ -1564,6 +1564,13 @@ Page({
       if (this.data.justiceOpen) this.openJustice()
     } catch (err) {
       wx.showToast({ title: err.message || '结束自省失败', icon: 'none' })
+      if (!payBail && this.data.myJailStatus && this.data.myJailStatus.isJailed) {
+        setTimeout(() => {
+          if (this.data.myJailStatus && this.data.myJailStatus.isJailed) {
+            this.payBailAction({ currentTarget: { dataset: { paybail: false } } })
+          }
+        }, 1500)
+      }
     }
   },
   async loadServiceTwin(openModal = false) {

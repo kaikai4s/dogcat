@@ -2509,6 +2509,8 @@ class World2D {
               if (this.page && this.page.reportTrafficAccident) {
                 this.page.reportTrafficAccident({
                   victimType: 'pet',
+                  victimId: pet.ownerId || '',
+                  victimOpenid: pet.ownerId || '',
                   petId: pet.id,
                   petName: pet.name,
                   x: pet.position.x,

@@ -114,39 +114,37 @@ module.exports = function createHandler(context) {
     if (action === 'hospitalCare') {
       const careType = data.careType === 'treat' ? 'treat' : 'wash'
       const petId = String(data.petId || '')
-      if (petId) {
-        // 更新爱宠的健康或洗护状态并持久化，同时同步实时场景
-        await db.collection('pet_playground_plots').where({ kind: 'resident', ownerOpenid: openid }).get().then(async (res) => {
-          const published = []
-          for (const doc of (res.data || [])) {
-            const stamp = Date.now()
-            const pets = (doc.pets || []).map((p) => {
-              if (p.id === petId || p._id === petId) {
-                if (careType === 'treat') {
-                  return {
-                    ...p,
-                    sick: false,
-                    injured: false,
-                    sickReason: '',
-                    needs: { ...(p.needs || {}), satiety: 100, hydration: 100, energy: 100 }
-                  }
-                } else {
-                  return {
-                    ...p,
-                    needs: { ...(p.needs || {}), energy: 100, pee: 0, poop: 0 }
-                  }
+      // 更新爱宠的健康或洗护状态并持久化，同时同步实时场景
+      await db.collection('pet_playground_plots').where({ kind: 'resident', ownerOpenid: openid }).get().then(async (res) => {
+        const published = []
+        for (const doc of (res.data || [])) {
+          const stamp = Date.now()
+          const pets = (doc.pets || []).map((p) => {
+            if (!petId || p.id === petId || p._id === petId) {
+              if (careType === 'treat') {
+                return {
+                  ...p,
+                  sick: false,
+                  injured: false,
+                  sickReason: '',
+                  needs: { ...(p.needs || {}), satiety: 100, hydration: 100, energy: 100 }
+                }
+              } else {
+                return {
+                  ...p,
+                  needs: { ...(p.needs || {}), energy: 100, pee: 0, poop: 0 }
                 }
               }
-              return p
-            })
-            const updated = { ...doc, pets, revision: Math.max(stamp, (doc.revision || 0) + 1) }
-            const { _id, ...cleanDoc } = updated
-            await db.collection('pet_playground_plots').doc(doc._id).set({ data: cleanDoc })
-            published.push(updated)
-          }
-          if (published.length) await shared.publishRecords(published)
-        }).catch(() => {})
-      }
+            }
+            return p
+          })
+          const updated = { ...doc, pets, revision: Math.max(stamp, (doc.revision || 0) + 1) }
+          const { _id, ...cleanDoc } = updated
+          await db.collection('pet_playground_plots').doc(doc._id).set({ data: cleanDoc })
+          published.push(updated)
+        }
+        if (published.length) await shared.publishRecords(published)
+      }).catch(() => {})
       const sceneId = String(data.sceneId || '')
       let bonusMsg = ''
       if (sceneId) {

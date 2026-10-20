@@ -109,6 +109,7 @@ module.exports = function createJusticeService(context) {
     const sceneId = String(data.sceneId || '')
     const victimType = data.victimType === 'pet' ? 'pet' : 'human'
     const victimName = String(data.victimName || (victimType === 'pet' ? '爱宠' : '居民')).slice(0, 20)
+    const victimOpenid = String(data.victimOpenid || data.victimId || openid)
     const driverOpenid = String(data.driverOpenid || openid)
     const driverName = String(data.driverName || user.nickname || '某车主').slice(0, 20)
     const stamp = now()
@@ -118,7 +119,7 @@ module.exports = function createJusticeService(context) {
       communityId: sceneId,
       victimType,
       victimName,
-      victimOpenid: openid,
+      victimOpenid,
       driverOpenid,
       driverName,
       location: {
@@ -237,6 +238,26 @@ module.exports = function createJusticeService(context) {
       const carId = require('./playground-shared/vehicles').vehicleId(targetDriverOpenid)
       const car = await readDocument(tx, PLOTS_COLLECTION, carId, '读取车辆', true)
       if (car && car.state === 'driving') {
+        if ((car.passengers || []).length > 0) {
+          for (const member of car.passengers) {
+            if (member.id) {
+              try {
+                const pActor = await readDocument(tx, PLOTS_COLLECTION, member.id, '读取乘客', true)
+                if (pActor && pActor.vehicleId === car._id) {
+                  await tx.collection(PLOTS_COLLECTION).doc(member.id).update({
+                    data: {
+                      vehicleId: '',
+                      vehicleRole: '',
+                      moving: false,
+                      revision: stamp,
+                      lastSeen: stamp
+                    }
+                  })
+                }
+              } catch (_) {}
+            }
+          }
+        }
         await tx.collection(PLOTS_COLLECTION).doc(carId).update({
           data: {
             state: 'parked',
@@ -249,7 +270,7 @@ module.exports = function createJusticeService(context) {
       const pId = 'presence_' + require('./playground-world').hash(targetDriverOpenid)
       const actor = await readDocument(tx, PLOTS_COLLECTION, pId, '读取角色', true)
       if (actor) {
-        const patch = { moving: false }
+        const patch = { moving: false, revision: stamp, lastSeen: stamp }
         if (actor.vehicleId) {
           patch.vehicleId = ''
           patch.vehicleRole = ''
@@ -288,7 +309,7 @@ module.exports = function createJusticeService(context) {
         return { released: true, message: '您当前未处于宣教自省状态' }
       }
 
-      if (!payBail && stamp < jailRow.jailedUntil) {
+      if (!payBail && stamp + 1500 < jailRow.jailedUntil) {
         const remaining = Math.ceil((jailRow.jailedUntil - stamp) / 1000)
         throw new Error(`安全宣教自省期未满，还需宣教自省 ${remaining} 秒，或可交存 ${BAIL_COINS} 爱心币安全公约金提前恢复通行`)
       }
@@ -344,7 +365,7 @@ module.exports = function createJusticeService(context) {
     const stamp = now()
 
     return transaction(db, async (tx) => {
-      const facilities = await db
+      const facilities = await tx
         .collection(PLOTS_COLLECTION)
         .where({ communityId: sceneId, buildingType: 'pet_hospital' })
         .get()

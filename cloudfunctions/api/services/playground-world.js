@@ -349,7 +349,7 @@ module.exports = {
         let building=null
         if(data.buildingId||data.buildingType&&!['yard','residential'].includes(data.buildingType)) {
           building=catalog.buildings.find((b)=>data.buildingId?b.id===data.buildingId:b.type===data.buildingType)
-          if(!building||!unlocked(building,access))throw new Error('该建筑已下架或当前会员等级尚未解锁')
+          if(!building||building.enabled===false||!unlocked(building,access))throw new Error('该建筑已下架或当前会员等级尚未解锁')
           if(['committee','police_station','prison'].includes(building.type)) {
             const rows=await tx.collection('pet_playground_plots').where({communityId:id,kind:'plot',buildingType:building.type}).get()
             if((rows.data||[]).some((p)=>!p.demolished))throw new Error('该小区已存在此类公共建筑')
