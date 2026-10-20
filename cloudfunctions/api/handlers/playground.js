@@ -274,7 +274,7 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'getCommunityGroupBuy') {
-      const userCommunity = user.residentialCommunity || null
+      const userCommunity = (user && user.residentialCommunity) || null
       const communityName = (typeof userCommunity === 'string' ? userCommunity : (userCommunity && userCommunity.name)) ||
         (data && data.community && (typeof data.community === 'string' ? data.community : data.community.name)) ||
         '当前社区'
@@ -305,7 +305,7 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'getPlaygroundRewards') {
-      const userDoc = (await db.collection('users').doc(user._id).get().catch(() => ({ data: {} }))).data || user
+      const userDoc = user && user._id ? (await db.collection('users').doc(user._id).get().catch(() => ({ data: {} }))).data || user : (user || {})
       const memberLevelKey = userDoc.memberLevel || 'bronze'
       let memberLevelName = '普通会员'
       try {
@@ -338,6 +338,7 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'exchangeCoupon') {
+      if (!user || !user._id) throw new Error('请先登录后操作')
       const templateId = String(data.templateId || '').trim()
       if (!templateId) throw new Error('请选择要兑换的优惠券')
       const templateDoc = await db.collection('coupon_templates').doc(templateId).get().catch(() => null)

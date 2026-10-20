@@ -1449,8 +1449,9 @@ Page({
   },
   previewDiaryPhoto(e) {
     const url = e.currentTarget.dataset.url
-    if (url) {
-      wx.previewImage({ urls: [url], current: url })
+    const urls = (this.data.serviceDiary && this.data.serviceDiary.latestCheckins ? this.data.serviceDiary.latestCheckins.map(c => c.mediaFileId).filter(Boolean) : [url]).filter(Boolean)
+    if (url && urls.length) {
+      wx.previewImage({ urls, current: url, fail: () => wx.showToast({ title: '照片暂时无法预览', icon: 'none' }) })
     }
   },
   goToOrderDetail(e) {

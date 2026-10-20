@@ -317,6 +317,7 @@ class World2D {
     if (this.destroyed || this.placing || this.recoveringScene || this.vehicleBusy) { x = 0; y = 0 }
     this.character.setInput(x, y)
     if (this.character.input.x || this.character.input.y) {
+      this.characterMoved = true
       this.clearPetSelection()
       if (!this.followCharacter) this.focusCharacter()
       this.prepareCharacterArea().catch(() => {})
@@ -571,7 +572,10 @@ class World2D {
         (b.x-a.x)*(point.x-b.x)+(b.z-a.z)*(point.z-b.z)>=0)steps[steps.length-1]={...point}
       else steps.push({...point})
     }:null)
-    if (steps && this.character.moving) this.sceneTrail.push(...steps.slice(1))
+    if (steps && this.character.moving) {
+      this.characterMoved = true
+      this.sceneTrail.push(...steps.slice(1))
+    }
     if (this.followCharacter) this.camera = { ...this.character.position }
   }
   emitPets() {
@@ -648,6 +652,7 @@ class World2D {
   async moveCharacterTo(target) {
     if(this.vehicleRole==='passenger'){this.onStatus('正在搭乘，先下车再步行');return false}
     if(!this.character || this.recoveringScene || this.vehicleBusy)return
+    this.characterMoved = true
     const start={...this.character.position}
     if(Math.hypot(target.x-start.x,target.z-start.z)>300)return this.onStatus('请选择附近的空地')
     const marker=this.characterTarget={...target,pending:true}

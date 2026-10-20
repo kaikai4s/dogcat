@@ -275,7 +275,8 @@
       <view wx:if="{{mallSuppliesLoading}}" class="dispute-empty">正在精选优质宠粮…</view>
       <view wx:elif="{{!mallSupplies.length}}" class="dispute-empty">补给站正加急补货中…</view>
       <view wx:for="{{mallSupplies}}" wx:key="id" class="supplies-card" data-id="{{item.id}}" bindtap="goToMallDetail">
-        <image class="supplies-image" src="{{item.coverUrl}}" mode="aspectFill" />
+        <image wx:if="{{item.coverUrl}}" class="supplies-image" src="{{item.coverUrl}}" mode="aspectFill" />
+        <view wx:else class="supplies-image supplies-image-placeholder">🥣</view>
         <view class="supplies-info">
           <text class="supplies-name">{{item.name}}</text>
           <text class="supplies-summary">{{item.summary}}</text>
@@ -286,7 +287,7 @@
               <text class="price-val">{{item.price}}</text>
               <text class="price-orig" wx:if="{{item.originalPrice && item.originalPrice > item.price}}">¥{{item.originalPrice}}</text>
             </view>
-            <button class="supplies-buy-btn">立即选购</button>
+            <button class="supplies-buy-btn" data-id="{{item.id}}" catchtap="goToMallDetail">立即选购</button>
           </view>
         </view>
       </view>

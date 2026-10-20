@@ -178,10 +178,12 @@ Page({
       clearTimeout(this.hotServicesResumeTimer)
       this.hotServicesResumeTimer = null
     }
-    const hideUpdates = {}
-    if (this.data.protectedNavigationUrl) hideUpdates.protectedNavigationUrl = ''
-    if (this.data.lotteryFloatVisible) hideUpdates.lotteryFloatVisible = false
-    if (Object.keys(hideUpdates).length > 0) this.setData(hideUpdates)
+    if (this.data.protectedNavigationUrl) this.data.protectedNavigationUrl = ''
+    if (this.data.lotteryFloatVisible) {
+      setTimeout(() => {
+        if (!this._isPageActive) this.setData({ lotteryFloatVisible: false })
+      }, 350)
+    }
   },
 
   onUnload() {
