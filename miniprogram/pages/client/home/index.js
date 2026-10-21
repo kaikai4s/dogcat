@@ -50,17 +50,53 @@ function buildGroupNoticeCards(result) {
   if (!result) return []
   const cards = []
   const communityName = result.communityName || '本小区'
+  const seenGroupIds = new Set()
 
-  // 1. 邻居发起的招募中拼单
-  const activeGroups = (result.groups || []).filter((g) => !g.mine && g.status === 'recruiting')
-  for (const group of activeGroups) {
+  // 1. 优先提取“我的拼单”（我发起的或我已参加的拼单，进行中或已成团）
+  // 必须只显示为“🐾 我的拼单”，绝不重复出现在小区邻居拼单中
+  const rawMyGroups = [
+    ...(result.myGroups || []),
+    ...((result.groups || []).filter((g) => g && g.mine))
+  ]
+
+  for (const group of rawMyGroups) {
+    if (!group) continue
+    const gid = String(group.id || group._id || '')
+    if (!gid || seenGroupIds.has(gid)) continue
+    // 仅展示招募中或已成团的进行中拼单（已取消/已失效不展示在弹窗中）
+    if (group.status !== 'recruiting' && group.status !== 'formed') continue
+
+    seenGroupIds.add(gid)
+    const minH = group.minHouseholds || (group.rules && group.rules.minHouseholds) || 2
+    const currentH = group.householdCount || 1
+    const remaining = Math.max(0, minH - currentH)
+    cards.push({
+      id: gid,
+      groupId: gid,
+      type: 'my_group',
+      badge: '🐾 我的拼单',
+      communityName,
+      title: group.serviceSummary ? `${group.serviceSummary}拼单` : '我的拼单',
+      highlightText: group.status === 'formed' ? '🎉 已成团！享受拼单优惠' : `招募中 · 已有 ${currentH} 户 (还差 ${remaining} 户)`,
+      subText: group.statusText || (group.status === 'formed' ? '拼单已成团' : '等待邻居参团'),
+      actionText: '查看拼单进度'
+    })
+  }
+
+  // 2. 邻居发起的招募中拼单（排除我自己的拼单、排除已出现的拼单、排除0人无效拼单）
+  const activeNeighborGroups = (result.groups || []).filter((g) => g && !g.mine && g.status === 'recruiting' && (g.householdCount || 0) > 0)
+  for (const group of activeNeighborGroups) {
+    const gid = String(group.id || group._id || '')
+    if (!gid || seenGroupIds.has(gid)) continue
+
+    seenGroupIds.add(gid)
     const minH = group.minHouseholds || (group.rules && group.rules.minHouseholds) || 2
     const currentH = group.householdCount || 1
     const remaining = Math.max(1, minH - currentH)
     const timeStr = group.startTime ? (typeof formatDateTime === 'function' ? formatDateTime(group.startTime) : group.startTime) : ''
     cards.push({
-      id: group.id || group._id,
-      groupId: group.id || group._id,
+      id: gid,
+      groupId: gid,
       type: 'community_group',
       badge: '🏡 同小区拼单',
       communityName,
@@ -71,37 +107,34 @@ function buildGroupNoticeCards(result) {
     })
   }
 
-  // 2. 我的拼单（进行中或已成团）
-  const myGroups = (result.myGroups || []).filter((g) => g.status === 'recruiting' || g.status === 'formed')
-  for (const group of myGroups) {
-    const minH = group.minHouseholds || (group.rules && group.rules.minHouseholds) || 2
-    const currentH = group.householdCount || 1
-    const remaining = Math.max(0, minH - currentH)
-    cards.push({
-      id: group.id || group._id,
-      groupId: group.id || group._id,
-      type: 'my_group',
-      badge: '🐾 我的拼单',
-      communityName,
-      title: group.serviceSummary ? `${group.serviceSummary}拼单` : '我的拼单',
-      highlightText: group.status === 'formed' ? '🎉 已成团！享受拼单优惠' : `招募中 · 已有 ${currentH} 户 (还差 ${remaining} 户)`,
-      subText: group.statusText || '拼单进行中',
-      actionText: '查看拼单进度'
-    })
-  }
-
-  // 3. 兜底汇总卡片（当没有单项列表但有拼单统计时，例如简易 mock 数据）
+  // 3. 兜底汇总卡片（当没有单项列表但有拼单统计时）
   if (cards.length === 0 && (result.availableCount || (result.myGroups && result.myGroups.length))) {
-    cards.push({
-      id: 'summary',
-      type: 'summary',
-      badge: '🏡 同小区拼单',
-      communityName,
-      title: '同小区拼单',
-      highlightText: result.availableCount ? `${result.availableCount} 个邻居拼单可加入` : '查看我发起和参加的拼单',
-      subText: (result.myGroups && result.myGroups.length) ? `我的拼单 ${result.myGroups.length}` : '邻居拼单享优惠',
-      actionText: '立即查看拼单'
-    })
+    const hasMyGroups = Array.isArray(result.myGroups) && result.myGroups.some((g) => g && (g.status === 'recruiting' || g.status === 'formed'))
+    if (hasMyGroups) {
+      cards.push({
+        id: 'summary_my',
+        groupId: 'summary_my',
+        type: 'my_group',
+        badge: '🐾 我的拼单',
+        communityName,
+        title: '我的拼单',
+        highlightText: '查看我发起和参加的拼单',
+        subText: '拼单进行中',
+        actionText: '查看拼单进度'
+      })
+    } else if (result.availableCount) {
+      cards.push({
+        id: 'summary_community',
+        groupId: 'summary_community',
+        type: 'community_group',
+        badge: '🏡 同小区拼单',
+        communityName,
+        title: '同小区拼单',
+        highlightText: `${result.availableCount} 个邻居拼单可加入`,
+        subText: '邻居拼单享优惠',
+        actionText: '立即查看拼单'
+      })
+    }
   }
 
   return cards

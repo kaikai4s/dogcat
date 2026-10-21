@@ -76,6 +76,55 @@ module.exports = function createGroupBuy(context) {
     await tx.collection(COLLECTION).doc(id).set({ data: { ...clean, formedAt, members: [...history, ...members.map(({ openid, orderId, householdKey }) => ({ openid, orderId, ...(householdKey?{householdKey}:{}) }))], updatedAt: now() } })
     return order
   }
+  async function onOrderCancelled(orderId, groupBuyId) {
+    const id = groupBuyId || (orderId ? ((await db.collection('orders').doc(orderId).get().catch(() => ({ data: {} }))).data || {}).groupBuyId : '')
+    if (!id) return
+    const group = await optional(db, COLLECTION, id)
+    if (!group || group.status === 'cancelled') return
+
+    const members = group.members || []
+    const ids = members.map((m) => m.orderId).filter(Boolean)
+    if (!ids.length) {
+      await db.collection(COLLECTION).doc(id).update({
+        data: { status: 'cancelled', deadline: now(), cancelReason: '拼单全部成员已取消', updatedAt: now() }
+      }).catch(() => {})
+      return
+    }
+
+    const orders = new Map()
+    for (let i = 0; i < ids.length; i += 100) {
+      const res = await db.collection('orders').where({ _id: db.command.in(ids.slice(i, i + 100)) }).get().catch(() => ({ data: [] }))
+      for (const ord of res.data || []) orders.set(ord._id, ord)
+    }
+
+    const activeMembers = members.filter((m) => {
+      if (m.orderId === orderId) return false
+      const ord = orders.get(m.orderId)
+      return participating(ord, now())
+    })
+
+    // 当拼单最后一人也取消的时候，有效人数归零，立即取消该拼单团！
+    if (activeMembers.length === 0) {
+      const time = now()
+      await db.collection(COLLECTION).doc(id).update({
+        data: {
+          status: 'cancelled',
+          deadline: time,
+          cancelReason: '拼单全部成员已取消，自动作废',
+          updatedAt: time
+        }
+      }).catch(() => {})
+    } else {
+      const time = now()
+      await db.collection(COLLECTION).doc(id).update({
+        data: {
+          members: activeMembers.map(({ openid, orderId, householdKey }) => ({ openid, orderId, ...(householdKey ? { householdKey } : {}) })),
+          updatedAt: time
+        }
+      }).catch(() => {})
+    }
+  }
+
   async function list(openid) {
     let own
     try { own = await identity(openid) } catch (_) { return { communityName: '', groups: [], myGroups: [], availableCount: 0, rules: (await readConfig(db)).groupBuy } }
@@ -100,15 +149,15 @@ module.exports = function createGroupBuy(context) {
         const mine = members.find((m) => m.openid === openid)
         // Keep cancelled/expired own orders discoverable until they are deleted.
         const ownMember = mine || allMembers.slice().reverse().find((m) => m.openid === openid && m.order && !m.order.deletedAt && !m.order.adminDeletedAt)
-        const status = group.formedAt ? 'formed' : group.deadline <= stamp ? 'expired' : 'recruiting'
-        const item = { id: group._id, communityName: group.communityName, status, statusText: { formed: '已成团', expired: '未成团已截止', recruiting: '等待邻居参团' }[status],
+        const status = group.status === 'cancelled' ? 'cancelled' : group.formedAt ? 'formed' : group.deadline <= stamp ? 'expired' : 'recruiting'
+        const item = { id: group._id, communityName: group.communityName, status, statusText: { formed: '已成团', expired: '未成团已截止', recruiting: '等待邻居参团', cancelled: '已取消' }[status],
           householdCount: members.length, minHouseholds: group.rules.minHouseholds, serviceSummary: group.serviceSummary, serviceSessions: group.serviceSessions,
           startTime: group.serviceSessions[0].startTime, deadline: group.deadline, rules: group.rules, mine: !!mine,
           ...(ownMember ? { orderId: ownMember.orderId, orderStatus: ownMember.order.status, payAmount: ownMember.order.payAmount,
             paymentDeadline: ownMember.order.paymentDeadline, paymentExpired: ownMember.order.status === 'pending_pay' && ownMember.order.paymentDeadline <= stamp,
             estimatedPayAmount: discounted(ownMember.order, group.rules).payAmount } : {}) }
         if (ownMember) myGroups.push(item)
-        if (config.groupBuy.enabled && group.deadline > stamp && members.length < 20) groups.push(item)
+        if (config.groupBuy.enabled && group.deadline > stamp && members.length < 20 && group.status !== 'cancelled') groups.push(item)
       }
       cursor = page.length === 100 ? page[page.length - 1]._id : ''
     } while (cursor)
@@ -116,7 +165,7 @@ module.exports = function createGroupBuy(context) {
     myGroups.sort((a, b) => b.deadline - a.deadline)
     return { communityId: own.id, community: own.community, communityName: own.community.name, groups: groups.slice(0, 30), myGroups: myGroups.slice(0, 30), availableCount: groups.filter((g) => !g.mine).length, rules: config.groupBuy }
   }
-  return { prepare, attach, list, identity }
+  return { prepare, attach, list, identity, onOrderCancelled }
 }
 module.exports.isGroup = isGroup
 module.exports.discounted = discounted

@@ -110,3 +110,41 @@ test('payment-expired members stop counting immediately while cancelled own orde
   assert.equal(listing.myGroups[0].orderId,first.order._id)
   assert.equal(listing.myGroups[0].orderStatus,'cancelled')
 })
+
+test('when the last member of a group buy cancels, the group is immediately cancelled and delisted from community',async()=>{
+  const f=fixture()
+  // 1. a 发起拼单，b 加入拼单
+  const first=await f.submit('a')
+  const groupBuyId=first.order.groupBuyId
+  const second=await f.submit('b',{groupBuyId})
+  
+  let groupDoc=await f.db.collection('pet_playground_groups').doc(groupBuyId).get()
+  assert.equal(groupDoc.data.members.length,2)
+  assert.notEqual(groupDoc.data.status,'cancelled')
+
+  // 2. a 取消订单（还剩 b）
+  f.db.state.orders.find(o=>o._id===first.order._id).status='cancelled'
+  await f.groups.onOrderCancelled(first.order._id,groupBuyId)
+
+  groupDoc=await f.db.collection('pet_playground_groups').doc(groupBuyId).get()
+  assert.equal(groupDoc.data.members.length,1)
+  assert.equal(groupDoc.data.members[0].openid,'b')
+  assert.notEqual(groupDoc.data.status,'cancelled')
+
+  // 3. 当最后一人 b 也取消时：立即作废整个拼单
+  f.db.state.orders.find(o=>o._id===second.order._id).status='cancelled'
+  await f.groups.onOrderCancelled(second.order._id,groupBuyId)
+
+  groupDoc=await f.db.collection('pet_playground_groups').doc(groupBuyId).get()
+  assert.equal(groupDoc.data.status,'cancelled')
+  assert.ok(groupDoc.data.cancelReason.includes('取消'))
+
+  // 4. 邻居 c 查询同小区拼单列表：已取消的拼单已被踢除，不会作为招募中拼单展示
+  const listingC=await f.groups.list('c')
+  assert.equal(listingC.groups.length,0)
+
+  // 5. b 查询自己的拼单：仍可看到已取消状态
+  const listingB=await f.groups.list('b')
+  assert.equal(listingB.myGroups[0].status,'cancelled')
+  assert.equal(listingB.myGroups[0].statusText,'已取消')
+})

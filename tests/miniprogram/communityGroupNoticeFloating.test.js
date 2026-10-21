@@ -286,3 +286,49 @@ test('同小区拼单浮窗: 防滑动误触跳转、防轮询死而复生与定
   page.onUnload()
   assert.equal(page._isDismissing, false)
 })
+
+test('同小区拼单浮窗: 我的拼单专属呈现排他优先、同单严格全局只出现一次', async () => {
+  const mockNotice = {
+    communityName: '太阳城小区',
+    availableCount: 2,
+    // 模拟服务端下发数据：包含重复 id、包含属于我的拼单在 groups 与 myGroups 均有返回、包含已取消的拼单
+    groups: [
+      { id: 'g_mine', serviceSummary: '遛狗服务', householdCount: 1, minHouseholds: 2, status: 'recruiting', mine: true },
+      { id: 'g_neighbor', serviceSummary: '猫咪上门喂养', householdCount: 1, minHouseholds: 2, status: 'recruiting', mine: false },
+      { id: 'g_neighbor', serviceSummary: '猫咪上门喂养', householdCount: 1, minHouseholds: 2, status: 'recruiting', mine: false }, // 重复项
+      { id: 'g_cancelled', serviceSummary: '猫咪洗护', householdCount: 0, minHouseholds: 2, status: 'cancelled', mine: false } // 已取消项
+    ],
+    myGroups: [
+      { id: 'g_mine', serviceSummary: '遛狗服务', householdCount: 1, minHouseholds: 2, status: 'recruiting', mine: true }
+    ]
+  }
+
+  const { page } = pageAt('pages/client/home/index.js', {
+    getCurrentUser: async () => ({ openid: 'u1' }),
+    callFunction: async () => mockNotice
+  })
+
+  page._isPageActive = true
+  await page.loadCommunityGroups()
+
+  // 1. 验证同单严格仅出现一次：总卡片数应为 2 (g_mine 和 g_neighbor)
+  assert.equal(page.data.groupNoticeCards.length, 2, '相同 ID 的拼单与已取消拼单必须被去重/排除')
+
+  // 2. 验证属于我的拼单排在第一位，且只显示为“🐾 我的拼单”，绝不显示为“🏡 同小区拼单”
+  const cardMine = page.data.groupNoticeCards[0]
+  assert.equal(cardMine.id, 'g_mine')
+  assert.equal(cardMine.badge, '🐾 我的拼单')
+  assert.equal(cardMine.type, 'my_group')
+  assert.equal(cardMine.actionText, '查看拼单进度')
+
+  // 3. 验证邻居拼单正常展示为“🏡 同小区拼单”
+  const cardNeighbor = page.data.groupNoticeCards[1]
+  assert.equal(cardNeighbor.id, 'g_neighbor')
+  assert.equal(cardNeighbor.badge, '🏡 同小区拼单')
+  assert.equal(cardNeighbor.type, 'community_group')
+  assert.equal(cardNeighbor.actionText, '立即查看拼单')
+
+  // 4. 再次验证：整个列表中不存在任何重复的 groupId
+  const groupIds = page.data.groupNoticeCards.map((c) => c.groupId)
+  assert.equal(new Set(groupIds).size, groupIds.length, '浮窗卡片中不能有重复拼单')
+})

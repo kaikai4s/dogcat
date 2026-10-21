@@ -129,6 +129,17 @@ module.exports = function createHelpers({
       } })
       return true
     })
+    if (success && (order.groupBuyId || order.source === 'community_groupbuy')) {
+      try {
+        const groupBuy = require('../services/playground-group-buy')(context)
+        if (typeof groupBuy.onOrderCancelled === 'function') {
+          await groupBuy.onOrderCancelled(order._id, order.groupBuyId)
+        }
+      } catch (e) {
+        console.error('[cancelUnpaidOrder] sync group buy error:', e)
+      }
+    }
+    return success
   }
 
   async function cancelUnpaidOrders() {

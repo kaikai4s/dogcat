@@ -595,6 +595,12 @@ module.exports = function createHandler(context) {
       if (order.status === 'pending_pay') {
         const cancelled = await cancelUnpaidOrder(order, { reason: reason || '宠物主取消', actorRole: 'client' })
         if (!cancelled) throw new Error('支付或订单状态已更新，请刷新后重新取消')
+        if (order.groupBuyId || order.source === 'community_groupbuy') {
+          const groupBuy = require('../services/playground-group-buy')(context)
+          if (typeof groupBuy.onOrderCancelled === 'function') {
+            await groupBuy.onOrderCancelled(data.orderId, order.groupBuyId).catch((e) => console.error('[cancelOrder] sync group buy error:', e))
+          }
+        }
         return { orderId: data.orderId, status: 'cancelled', refundAmount: 0, refundStatus: '', refundNo: '' }
       }
       assertOrderTransition(order.status, ORDER_STATUS.CANCELLED, '订单状态不可取消')
@@ -663,6 +669,12 @@ module.exports = function createHandler(context) {
         }).catch(() => {})
       }
       if (refund) await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${quote.refundAmount}`, 'system')
+      if (order.groupBuyId || order.source === 'community_groupbuy') {
+        const groupBuy = require('../services/playground-group-buy')(context)
+        if (typeof groupBuy.onOrderCancelled === 'function') {
+          await groupBuy.onOrderCancelled(data.orderId, order.groupBuyId).catch((e) => console.error('[cancelOrder] sync group buy error:', e))
+        }
+      }
       return { orderId: data.orderId, status: 'cancelled', refundStatus: quote.refundStatus, refundAmount: quote.refundAmount, refundNo: refund ? refund.refundNo : '' }
     }
 
