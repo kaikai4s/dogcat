@@ -1743,13 +1743,13 @@ module.exports = function createHandler(context) {
       const res = await db.collection('staff_supply_reimbursements').where({ staffOpenid: openid }).orderBy('createdAt', 'desc').limit(1).get()
       const application = res.data && res.data[0] || null
       const isCertified = Boolean(profile && profile.auditStatus === 'approved' && profile.staffLevel === 'certified')
-      const completedOrders = (await db.collection('orders').where({ staffOpenid: openid }).limit(500).get().catch(() => ({ data: [] }))).data || []
+      const completedOrders = await readScopedDocuments('orders', { staffOpenid: openid, status: 'completed' })
       const completedOrderCount = completedOrders.filter((order) => order.status === 'completed').length
-      const inviteRows = (await db.collection('user_invites').where({ inviterOpenid: openid }).limit(1000).get().catch(() => ({ data: [] }))).data || []
+      const inviteRows = await readScopedDocuments('user_invites', { inviterOpenid: openid, eligibleForSupplyReimbursement: true })
       const reimbursementMode = supplies.reimbursementMode || 'order_count'
       const requiredCount = reimbursementMode === 'invite_count' ? Number(supplies.reimbursementInviteCount || 0) : Number(supplies.reimbursementOrderCount || 0)
       const progressCount = reimbursementMode === 'invite_count' ? inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length : completedOrderCount
-      const mallOrders = (await db.collection('mall_orders').where({ clientOpenid: openid }).limit(100).get().catch(() => ({ data: [] }))).data || []
+      const mallOrders = await readScopedDocuments('mall_orders', { clientOpenid: openid })
       const eligibleMallOrders = mallOrders.filter((order) => ['paid', 'pending_ship', 'shipped', 'completed', 'received'].includes(order.status))
       const qualificationMet = requiredCount <= 0 || progressCount >= requiredCount
       const purchaseMet = supplies.purchaseRequired === false || eligibleMallOrders.length > 0
@@ -1777,8 +1777,8 @@ module.exports = function createHandler(context) {
       const settings = await getSystemSettings()
       const supplies = settings.staffSupplies || normalizeStaffSuppliesConfig()
       if (supplies.reimbursementEnabled === false) throw new Error('用品报销申请暂未开放')
-      const completedOrders = (await db.collection('orders').where({ staffOpenid: openid }).limit(500).get().catch(() => ({ data: [] }))).data || []
-      const inviteRows = (await db.collection('user_invites').where({ inviterOpenid: openid }).limit(1000).get().catch(() => ({ data: [] }))).data || []
+      const completedOrders = await readScopedDocuments('orders', { staffOpenid: openid, status: 'completed' })
+      const inviteRows = await readScopedDocuments('user_invites', { inviterOpenid: openid, eligibleForSupplyReimbursement: true })
       const mode = supplies.reimbursementMode || 'order_count'
       const requiredCount = mode === 'invite_count' ? Number(supplies.reimbursementInviteCount || 0) : Number(supplies.reimbursementOrderCount || 0)
       const progressCount = mode === 'invite_count' ? inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length : completedOrders.filter((order) => order.status === 'completed').length

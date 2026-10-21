@@ -1,3 +1,5 @@
+const { readDocuments } = require('../utils/documentPages')
+
 module.exports = function createService({ db, crypto, now, toTimeValue, createRefundForOrder, appendOrderClientMessage, notifyOrder }) {
   const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex')
   const tokenFor = order => hash(['staff_assignment', order._id, order.staffOpenid, toTimeValue(order.assignedAt)])
@@ -25,6 +27,7 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
     const start = toTimeValue(order.startTime)
     let blocked = ''
     if (order.status !== 'assigned' || order.paymentStatus !== 'paid') blocked = '仅已支付且未开始履约的已接单订单可取消'
+    else if (direct && order.groupBuyId) blocked = '指定拼单请联系平台处理整团取消'
     else if (!assigned || elapsed < 0) blocked = '接单时间异常，请联系平台'
     else if (direct && elapsed > 600000) blocked = '指定订单接单已超过10分钟，不可取消，请联系平台客服'
     else if (!start || start - time.getTime() <= 1800000) blocked = '距服务开始不足或等于30分钟，请联系平台'
@@ -85,7 +88,9 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
     const cancelledSiblings = []
     for (const sibId of (siblingIds || [])) {
       const sib = await read(tx, 'orders', sibId)
-      if (sib && sib.staffOpenid === openid && sib.status === 'assigned') {
+      const siblingQuote = quote(sib && { ...sib, _id: sibId }, openid, time)
+      if (!siblingQuote.canCancel || siblingQuote.publishMode !== 'open') throw new Error('拼单中有住户已开始履约或不可取消，请联系平台')
+      if (sib) {
         const sibPatch = { ...cleanup(sib, openid), status: 'paid', publishMode: 'open', updatedAt: time }
         await tx.collection('orders').doc(sibId).update({ data: sibPatch })
         await tx.collection('order_timeline').doc(`cancel_${eventId}_${sibId}`).set({
@@ -175,21 +180,24 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
         event = event || await read(db, 'payment_events', eventId)
         if (!event) throw new Error('取消事件未保存，请联系平台核对')
       } else {
-        let siblingIds = []
-        if (order && order.groupBuyId) {
-          const siblingRes = await db.collection('orders').where({
-            groupBuyId: order.groupBuyId,
-            staffOpenid: openid,
-            status: 'assigned',
-            _id: db.command.neq(data.orderId)
-          }).get().catch(() => ({ data: [] }))
-          siblingIds = (siblingRes.data || []).map(item => item._id)
-        }
         event = await db.runTransaction(async tx => {
           await staff(openid, tx, user._id)
           const existing = await read(tx, 'payment_events', eventId)
           if (existing) { assertReplay(existing, openid, data); return existing }
           const current = await read(tx, 'orders', data.orderId)
+          let siblingIds = []
+          if (current && current.groupBuyId) {
+            const members = await readDocuments(tx, db.command, 'orders', { groupBuyId: current.groupBuyId })
+            const active = members.filter(member => !member.deletedAt && !member.adminDeletedAt && !member.groupBuyRefundRequired &&
+              member.paymentStatus === 'paid' && !['pending_pay', 'cancelled', 'closed', 'refunded', 'expired'].includes(member.status))
+            if (!active.some(member => member._id === data.orderId)) throw new Error('拼单成员已变化，请刷新后重试')
+            for (const member of active) {
+              if (member.staffOpenid !== openid || !quote(member, openid).canCancel || quote(member, openid).publishMode !== 'open') throw new Error('拼单中有住户已开始履约或不可取消，请联系平台')
+            }
+            siblingIds = active.filter(member => member._id !== data.orderId).map(member => member._id)
+            const group = await read(tx, 'pet_playground_groups', current.groupBuyId)
+            if (group) await tx.collection('pet_playground_groups').doc(current.groupBuyId).update({ data: { assignmentRevision: eventId } })
+          }
           const committed = await commitCancellation(tx, current, user, openid, data, eventId, 'open', siblingIds)
           await tx.collection('orders').doc(data.orderId).update({ data: committed.patch })
           return committed.event

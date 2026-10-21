@@ -1,3 +1,5 @@
+const { readDocuments, readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createService({
   commitWechatTransferSuccessQuota,
   crypto,
@@ -10,7 +12,7 @@ module.exports = function createService({
   reserveWechatApplicationQuota,
   safeText
 }) {
-  const MAX_EARNINGS_PER_WITHDRAW = 1000
+  const MAX_EARNINGS_PER_WITHDRAW = 50
 
   function cents(value, positive = false) {
     const amount = Number(value)
@@ -53,7 +55,7 @@ module.exports = function createService({
   }
 
   async function getInviteSettings() {
-    const settings = await getSystemSettings().catch(() => ({}))
+    const settings = await getSystemSettings()
     return settings.invitation || settings.userAssets || {
       enabled: false,
       rewardAmount: 0,
@@ -64,26 +66,30 @@ module.exports = function createService({
   async function grantInviteReward(invite, options = {}) {
     if (!invite || !invite._id || !invite.inviterOpenid) return null
     const settings = options.settings || await getInviteSettings()
-    const hasSnapshotAmount = Object.prototype.hasOwnProperty.call(invite, 'rewardAmount')
-    const snapshotAmount = Number(invite.rewardAmount || 0)
-    const configuredAmount = Number(settings.rewardAmount || 0)
-    const amount = hasSnapshotAmount ? snapshotAmount : configuredAmount
-    if (settings.enabled !== true || !Number.isFinite(amount) || amount <= 0) return null
-    const earningId = invite.rewardEarningId || idFor('invite_reward', [invite._id, amount])
     const time = now()
     const write = async (tx) => {
       const reader = tx || db
-      const existing = await reader.collection('user_asset_earnings').doc(earningId).get().catch(() => ({ data: null }))
-      if (existing && existing.data) {
+      const current = await readOptionalDocument(reader, 'user_invites', invite._id)
+      if (!current || current.inviterOpenid !== invite.inviterOpenid || current.invitedOpenid !== invite.invitedOpenid) throw new Error('邀请关系已变化，请刷新后重试')
+      const amount = Object.prototype.hasOwnProperty.call(current, 'rewardAmount') ? Number(current.rewardAmount) : Number(settings.rewardAmount || 0)
+      const priorRows = (await reader.collection('user_asset_earnings').where({ sourceType: 'invite_binding', sourceId: invite._id }).limit(2).get()).data || []
+      if (priorRows.length > 1) throw new Error('邀请奖励存在重复记录，请联系平台核对')
+      const earningId = current.rewardEarningId || (priorRows[0] && priorRows[0]._id) || idFor('invite_reward', [invite._id, amount])
+      const existing = await readOptionalDocument(reader, 'user_asset_earnings', earningId)
+      if (existing) {
+        if (existing.userOpenid !== current.inviterOpenid || existing.sourceId !== invite._id || existing.sourceType !== 'invite_binding') throw new Error('邀请奖励归属异常')
         await reader.collection('user_invites').doc(invite._id).update({ data: {
           rewardEarningId: earningId,
-          rewardAmount: Number(existing.data.amount || amount),
+          rewardAmount: cents(existing.amount, true) / 100,
           rewarded: true,
-          rewardedAt: invite.rewardedAt || existing.data.createdAt || time,
+          rewardedAt: current.rewardedAt || existing.createdAt || time,
           updatedAt: time
-        } }).catch(() => {})
-        return { _id: earningId, ...existing.data }
+        } })
+        return { ...existing, _id: earningId }
       }
+      if (current.rewardEarningId) throw new Error('邀请奖励记录缺失，请联系平台核对')
+      if (settings.enabled !== true || !Number.isFinite(amount) || amount <= 0) return null
+      cents(amount, true)
       const earning = {
         _id: earningId,
         userOpenid: invite.inviterOpenid,
@@ -114,17 +120,20 @@ module.exports = function createService({
   }
 
   async function summarizeUserAssets(openid) {
-    const rows = (await db.collection('user_asset_earnings').where({ userOpenid: openid }).limit(1000).get().catch(() => ({ data: [] }))).data || []
+    const rows = await readDocuments(db, db.command, 'user_asset_earnings', { userOpenid: openid })
     const totals = { available: 0, withdrawing: 0, withdrawn: 0, pending: 0, total: 0 }
     rows.forEach((row) => {
-      const amount = Number(row.amount || 0)
+      const amount = cents(row.amount)
       totals.total += amount
       if (row.status === 'available') totals.available += amount
       else if (row.status === 'withdrawing') totals.withdrawing += amount
       else if (row.status === 'withdrawn') totals.withdrawn += amount
       else totals.pending += amount
     })
-    Object.keys(totals).forEach((key) => { totals[key] = Math.round(totals[key] * 100) / 100 })
+    Object.keys(totals).forEach((key) => {
+      if (!Number.isSafeInteger(totals[key])) throw new Error('用户资产金额超出安全范围')
+      totals[key] /= 100
+    })
     return { ...totals, rows: rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) }
   }
 
@@ -139,8 +148,8 @@ module.exports = function createService({
     }
     const summary = await summarizeUserAssets(openid)
     const settings = await getInviteSettings()
-    const withdraws = (await db.collection('withdraw_requests').where({ assetType: 'user', userOpenid: openid }).limit(200).get().catch(() => ({ data: [] }))).data || []
-    const invites = (await db.collection('user_invites').where({ inviterOpenid: openid }).limit(1000).get().catch(() => ({ data: [] }))).data || []
+    const withdraws = await readDocuments(db, db.command, 'withdraw_requests', { assetType: 'user', userOpenid: openid })
+    const invites = await readDocuments(db, db.command, 'user_invites', { inviterOpenid: openid })
     const earningsByInviteId = new Map(summary.rows.filter((row) => row.sourceType === 'invite_binding' && row.sourceId).map((row) => [row.sourceId, row]))
     const invitedUsersByOpenid = await getUsersByOpenids(invites.map(invite => invite.invitedOpenid))
     const invitationRewardAmount = Number(settings.rewardAmount || 0)
@@ -279,13 +288,18 @@ module.exports = function createService({
     if (requested < Math.round(minAmount * 100)) throw new Error(`最低提现金额 ¥${minAmount}`)
     const clientRequestId = safeText(data.clientRequestId).trim()
     const requestId = clientRequestId ? idFor('uw', [openid, clientRequestId]) : idFor('uw', [openid, requested, Date.now(), Math.random()])
-    const existing = await db.collection('withdraw_requests').doc(requestId).get().catch(() => ({ data: null }))
-    if (existing && existing.data) return existing.data
-    const available = (await db.collection('user_asset_earnings').where({ userOpenid: openid, status: 'available' }).orderBy('_id', 'asc').limit(MAX_EARNINGS_PER_WITHDRAW + 1).get()).data || []
+    const existing = await readOptionalDocument(db, 'withdraw_requests', requestId)
+    function replay(request) {
+      if (request.assetType !== 'user' || request.userOpenid !== openid || cents(request.amount, true) !== requested) throw new Error('请求编号已用于其他提现金额，请刷新后重试')
+      return request
+    }
+    if (existing) return replay(existing)
+    const available = await readDocuments(db, db.command, 'user_asset_earnings', { userOpenid: openid, status: 'available' }, MAX_EARNINGS_PER_WITHDRAW + 1)
     const selected = []
     let total = 0
     for (const row of available) {
       if (total >= requested) break
+      if (selected.length >= MAX_EARNINGS_PER_WITHDRAW) throw new Error(`单次最多合并${MAX_EARNINGS_PER_WITHDRAW}笔收益，请减少提现金额后分批申请`)
       const rowAmount = cents(row.amount, true)
       const allocation = Math.min(rowAmount, requested - total)
       selected.push({ row, amountFen: allocation })
@@ -294,8 +308,8 @@ module.exports = function createService({
     if (!selected.length || total < requested) throw new Error('可提现余额不足')
     const time = now()
     return db.runTransaction(async tx => {
-      const current = (await tx.collection('withdraw_requests').doc(requestId).get().catch(() => ({ data: null }))).data
-      if (current) return current
+      const current = await readOptionalDocument(tx, 'withdraw_requests', requestId)
+      if (current) return replay(current)
       const earningIds = []
       for (const selection of selected) {
         const row = selection.row
@@ -345,22 +359,19 @@ module.exports = function createService({
     })
   }
 
-  async function settleUserAssetWithdrawal(admin, data, paid = false) {
+  async function settleUserAssetWithdrawal(admin, data, paid = false, options = {}) {
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(data.id).get()).data
       if (!request || request.assetType !== 'user') throw new Error('用户资产提现申请不存在')
+      if (paid && options.wechatResult !== true) {
+        if (request.payoutChannel === 'wechat_wallet') throw new Error('微信提现单须以微信转账成功结果为准，不能手动标记打款')
+        if (data.paymentConfirmed !== true || !safeText(data.paymentReference).trim()) throw new Error('请确认实际付款成功并填写付款凭证号')
+      }
       const target = paid ? 'paid' : (data.approved === true ? 'approved' : 'rejected')
       if (request.status === target) return { request, changed: false }
-      const allowedStatuses = paid ? ['approved', 'transferring'] : ['pending']
+      const allowedStatuses = paid ? ['approved', 'transferring', ...(options.wechatResult === true ? ['transfer_failed'] : [])] : ['pending']
       if (!allowedStatuses.includes(request.status)) throw new Error('当前用户资产提现状态不可操作')
-      const earningIds = Array.isArray(request.earningIds) ? request.earningIds : []
-      let total = 0
-      for (const id of earningIds) {
-        const row = (await tx.collection('user_asset_earnings').doc(id).get()).data
-        if (!row || row.userOpenid !== request.userOpenid || row.withdrawRequestId !== (request._id || data.id) || row.status !== 'withdrawing') throw new Error('用户收益归属或状态异常')
-        total += cents(row.amount, true)
-      }
-      if (total !== cents(request.amount, true)) throw new Error('用户提现金额与收益合计不一致')
+      const { earningIds, total } = await validateWithdrawalEarnings(tx, request, data.id)
       const time = now()
       if (paid) await commitWechatTransferSuccessQuota(tx, { _id: data.id, ...request }, data)
       if (!paid && target === 'rejected') await releaseWechatTransferQuota(tx, { _id: data.id, ...request }, 'rejected')
@@ -390,7 +401,7 @@ module.exports = function createService({
       transferBillNo: result.transferBillNo || result.transfer_bill_no,
       state: result.state || result.transfer_state,
       rawTransferResponse: result.rawTransferResponse || result.raw || {}
-    }, true)
+    }, true, { wechatResult: true })
   }
 
   async function markUserAssetFailed(withdrawId, result = {}) {
@@ -410,13 +421,31 @@ module.exports = function createService({
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(data.id).get()).data
       if (!request || request.assetType !== 'user' || request.status !== 'transfer_failed') throw new Error('仅用户资产微信提现失败单可释放收益')
+      const { earningIds } = await validateWithdrawalEarnings(tx, request, data.id)
       const time = now()
       const remark = safeText(data.remark || data.auditRemark).trim()
       await releaseWechatTransferQuota(tx, { _id: data.id, ...request }, 'released')
       await tx.collection('withdraw_requests').doc(data.id).update({ data: { status: 'rejected', transferStatus: 'released', releasedAt: time, releasedByOpenid: admin.openid, auditRemark: remark || request.auditRemark || '微信提现失败后释放收益', updatedAt: time } })
-      for (const id of (request.earningIds || [])) await tx.collection('user_asset_earnings').doc(id).update({ data: { status: 'available', withdrawRequestId: '', updatedAt: time } })
+      for (const id of earningIds) await tx.collection('user_asset_earnings').doc(id).update({ data: { status: 'available', withdrawRequestId: '', updatedAt: time } })
+      await tx.collection('finance_logs').doc(`user_withdraw_${data.id}_released`).set({ data: { action: 'user_withdraw_released', targetType: 'user_asset_withdrawal', targetId: data.id, userOpenid: request.userOpenid, amountDelta: 0, createdAt: time, detail: { earningIds, releasedByOpenid: admin.openid, remark } } })
       return { request: { ...request, status: 'rejected', transferStatus: 'released' }, changed: true }
     })
+  }
+
+  async function validateWithdrawalEarnings(tx, request, requestId) {
+    const earningIds = request.earningIds
+    if (typeof request.userOpenid !== 'string' || !request.userOpenid.trim() || request._id !== requestId) throw new Error('用户提现归属异常')
+    // Retain support for already-created historical requests (previous cap: 1000).
+    if (!Array.isArray(earningIds) || !earningIds.length || earningIds.length > 1000 ||
+      earningIds.some(id => typeof id !== 'string' || !id.trim()) || new Set(earningIds).size !== earningIds.length) throw new Error('用户提现收益记录异常')
+    let total = 0
+    for (const id of earningIds) {
+      const row = (await tx.collection('user_asset_earnings').doc(id).get()).data
+      if (!row || row.userOpenid !== request.userOpenid || row.withdrawRequestId !== requestId || row.status !== 'withdrawing') throw new Error('用户收益归属或状态异常')
+      total += cents(row.amount, true)
+    }
+    if (!Number.isSafeInteger(total) || total !== cents(request.amount, true)) throw new Error('用户提现金额与收益合计不一致')
+    return { earningIds, total }
   }
 
   return { getInviteSettings, grantInviteReward, summarizeUserAssets, getUserAssetSummary, bindInviteCode, createUserAssetWithdraw, settleUserAssetWithdrawal, markUserAssetPaid, markUserAssetFailed, releaseUserAssetWithdrawal }

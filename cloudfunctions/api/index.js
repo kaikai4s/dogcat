@@ -56,6 +56,10 @@ exports.main = async (event = {}) => {
       return result
     }
     const moduleName = event.module || event.name
+    if (typeof OPENID !== 'string' || !OPENID.trim()) {
+      if (moduleName === 'payment' && event.action === 'paymentCallback') throw new Error('支付回调仅限 HTTP 入口')
+      throw new Error('缺少可信用户身份，请通过小程序调用')
+    }
     const handler = getHandler(moduleName)
     if (!handler) throw new Error(`未知模块：${moduleName}`)
     route = moduleName

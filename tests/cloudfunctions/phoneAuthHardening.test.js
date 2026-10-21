@@ -109,6 +109,27 @@ test('production rejects explicit mock phone authorization code', async () => {
   }
 })
 
+test('production test-address flag cannot substitute a phone number for WeChat verification', async () => {
+  const previous = process.env.PAYMENT_ENV
+  process.env.PAYMENT_ENV = 'production'
+  let calls = 0
+  try {
+    const db = createCollectionStore({ users: [], platform_configs: [{ _id: 'cfg', key: 'system_settings', value: { enableTestAddressMode: true } }] })
+    const api = loadCloudFunction('api', db, 'prod_phone', { openapi: { phonenumber: { async getPhoneNumber() {
+      calls++
+      throw new Error('invalid code')
+    } } } })
+    const result = await api.main({ module: 'auth', action: 'loginByPhoneCode', data: { code: 'expired_real_code' } })
+    assert.equal(result.ok, false)
+    assert.match(result.message, /手机号授权已过期/)
+    assert.equal(calls, 1)
+    assert.equal(db.state.users.length, 0)
+  } finally {
+    if (previous === undefined) delete process.env.PAYMENT_ENV
+    else process.env.PAYMENT_ENV = previous
+  }
+})
+
 test('loginByPhoneCode rejects phone already bound by another active account', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'u_existing', openid: 'openid_existing', phone: '19900006302', roles: ['client'], status: 'active' }],

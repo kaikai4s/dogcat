@@ -1,4 +1,5 @@
 const { assertStaffGenderMatches } = require('../utils/staffGender')
+const { readDocuments } = require('../utils/documentPages')
 
 module.exports = function createService(context) {
   const {
@@ -43,8 +44,8 @@ module.exports = function createService(context) {
     const _ = db.command
     const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
     const activeStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
-    const activeOrdersRes = await transaction.collection('orders').where({ staffOpenid, status: inOp(activeStatuses) }).limit(100).get().catch(() => ({ data: [] }))
-    const activeOrders = (activeOrdersRes.data || []).filter(o => o && !o.adminDeletedAt && o._id !== orderId)
+    const activeRows = await readDocuments(transaction, db.command, 'orders', { staffOpenid, status: inOp(activeStatuses) })
+    const activeOrders = activeRows.filter(o => o && !o.adminDeletedAt && o._id !== orderId)
     const maxActiveOrders = Number(dispatchConfig.maxStaffActiveOrders || 8)
     if (activeOrders.length + bundleSize > maxActiveOrders) {
       throw new Error(`您当前进行中订单已有 ${activeOrders.length} 笔，已达接单上限（最多 ${maxActiveOrders} 笔），请先履约完成后再接新单`)
@@ -53,8 +54,8 @@ module.exports = function createService(context) {
     const targetDate = String(order.serviceStartDate || order.startTime || '').slice(0, 10)
     if (!targetDate) return
     const dailyStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed']
-    const dailyOrdersRes = await transaction.collection('orders').where({ staffOpenid, status: inOp(dailyStatuses) }).limit(200).get().catch(() => ({ data: [] }))
-    const sameDayOrders = (dailyOrdersRes.data || []).filter((o) => {
+    const dailyOrders = await readDocuments(transaction, db.command, 'orders', { staffOpenid, status: inOp(dailyStatuses) })
+    const sameDayOrders = dailyOrders.filter((o) => {
       if (!o || o.adminDeletedAt || o._id === orderId) return false
       const oDate = String(o.serviceStartDate || o.startTime || '').slice(0, 10)
       return oDate === targetDate
@@ -174,12 +175,12 @@ module.exports = function createService(context) {
       const activeStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
       const _ = db.command
       const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
-      const activeOrdersRes = await db.collection('orders').where({
+      const activeOrders = await readDocuments(tx, db.command, 'orders', {
         staffOpenid: user.openid,
         status: inOp(activeStatuses)
-      }).limit(100).get().catch(() => ({ data: [] }))
+      })
 
-      const activeOrdersOnDate = (activeOrdersRes.data || []).filter(order => {
+      const activeOrdersOnDate = activeOrders.filter(order => {
         if (order.adminDeletedAt) return false
         const ranges = typeof getOrderTimeRanges === 'function' ? getOrderTimeRanges(order) : (order.startTime && order.endTime ? [{ startTime: order.startTime, endTime: order.endTime }] : [])
         return ranges.some(range => {

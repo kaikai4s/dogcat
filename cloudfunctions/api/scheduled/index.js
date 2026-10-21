@@ -4,6 +4,7 @@ module.exports = function createHandler(context) {
     reconcilePendingRefunds,
     retryFailedSubscriptions,
     retryStaffCancellationNotifications,
+    retryPendingGroupCompletions,
     reconcileWechatTransfers,
     expireDueUnacceptedOrders,
     autoAcceptDueDirectOrders,
@@ -24,7 +25,8 @@ module.exports = function createHandler(context) {
       { name: 'refunds', fn: reconcilePendingRefunds },
       { name: 'wechatTransfers', fn: reconcileWechatTransfers },
       { name: 'subscriptions', fn: retryFailedSubscriptions },
-      { name: 'staffCancellationNotifications', fn: retryStaffCancellationNotifications }
+      { name: 'staffCancellationNotifications', fn: retryStaffCancellationNotifications },
+      { name: 'groupCompletions', fn: retryPendingGroupCompletions }
     ]
     await Promise.allSettled(retryTasks.map(async ({ name, fn }) => {
       try {

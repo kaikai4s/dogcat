@@ -76,7 +76,17 @@ module.exports = function createService({
     }
   }
 
+  const groupCompletion = require('./groupCompletion')({ db, now, normalizeServiceSessions, markServiceSession,
+    isFinalServiceSession, evaluateCheckinCompletion, completeSingleOrderService, appendOrderTimeline, appendOrderClientMessage, toTimeValue })
+
   async function completeOrderService(order, activeSession, time = now(), options = {}) {
+    if (order.groupBuyId && (groupCompletion.isGroupMemberReady(order) || isFinalServiceSession(order, activeSession))) {
+      return groupCompletion.finishGroup(order, activeSession, time, options)
+    }
+    return completeSingleOrderService(order, activeSession, time, options)
+  }
+
+  async function completeSingleOrderService(order, activeSession, time = now(), options = {}) {
     const isAuto = options.isAuto === true
     const actor = options.actor || (isAuto ? 'system' : 'staff')
     const completedSessions = markServiceSession(normalizeServiceSessions(order), activeSession.index, { status: 'completed', finishedAt: time })
@@ -301,6 +311,7 @@ module.exports = function createService({
   return {
     evaluateCheckinCompletion,
     completeOrderService,
+    retryPendingGroupCompletions: groupCompletion.retryPendingGroupCompletions,
     ensureOrderCompletionRewards
   }
 }

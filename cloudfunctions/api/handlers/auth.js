@@ -8,6 +8,7 @@ module.exports = function createHandler(context) {
     claimCheckinReward,
     cloud,
     db,
+    createUserOnce,
     enrichUserMemberLevel,
     ensureMonthConfig,
     executeDailyCheckin,
@@ -56,7 +57,7 @@ module.exports = function createHandler(context) {
       if (!mockPhoneCodeAllowed(settings)) throw new Error('正式环境禁止使用模拟手机号授权码')
       return '13800138000'
     }
-    if (settings.enableTestAddressMode) return '13800138000'
+    if (settings.enableTestAddressMode && mockPhoneCodeAllowed(settings)) return '13800138000'
     try {
       const phoneResult = await cloud.openapi.phonenumber.getPhoneNumber({ code })
       const phoneInfo = (phoneResult && (phoneResult.phoneInfo || phoneResult.phone_info)) || {}
@@ -117,8 +118,7 @@ module.exports = function createHandler(context) {
           createdAt: time,
           updatedAt: time
         }
-        const created = await db.collection('users').add({ data: userData })
-        user = { _id: created._id, ...userData }
+        user = await createUserOnce(openid, userData)
       }
       if (user.status !== 'active') throw new Error('账号不可用')
       user = await bindInviteRelation(user, data)
@@ -156,13 +156,13 @@ module.exports = function createHandler(context) {
           createdAt: time,
           updatedAt: time
         }
-        const created = await db.collection('users').add({ data: userData })
-        user = { _id: created._id, ...userData }
-      } else {
-        if (user.status !== 'active') throw new Error('账号不可用')
-        const oldPhone = safeText(user.phone).trim()
+        user = await createUserOnce(openid, userData)
+      }
+      if (user.status !== 'active') throw new Error('账号不可用')
+      const oldPhone = safeText(user.phone).trim()
+      if (phone !== oldPhone) {
         await db.collection('users').doc(user._id).update({ data: { phone, updatedAt: time } })
-        if (phone !== oldPhone) await syncClientOrderPhone(openid, phone)
+        await syncClientOrderPhone(openid, phone)
         user = { ...user, phone, updatedAt: time }
       }
       user = await bindInviteRelation(user, data)

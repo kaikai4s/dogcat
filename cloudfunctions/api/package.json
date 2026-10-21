@@ -1,1 +1,18 @@
-{"name":"api","version":"1.0.0","main":"index.js","dependencies":{"wx-server-sdk":"4.0.2"}}
+{
+  "name": "api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "lodash": "4.18.1",
+    "lodash.set": "file:vendor/lodash-set",
+    "lodash.unset": "file:vendor/lodash-unset",
+    "wx-server-sdk": "4.0.2"
+  },
+  "overrides": {
+    "axios": "0.34.0",
+    "follow-redirects": "1.16.1",
+    "qs": "6.16.1",
+    "lodash.set": "$lodash.set",
+    "lodash.unset": "$lodash.unset"
+  }
+}

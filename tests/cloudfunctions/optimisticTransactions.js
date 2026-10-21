@@ -9,8 +9,19 @@ function optimistic(db) {
     for (let attempt = 0; attempt < 8; attempt++) {
       const snapshot = createCollectionStore(structuredClone(db.state))
       const reads = new Map()
+      const queryReads = new Map()
       const writes = []
-      const result = await callback({ collection(name) { return { doc(id) {
+      function trackQuery(query, name) {
+        return new Proxy(query, { get(target, key) {
+          if (key === 'get') return async () => {
+            queryReads.set(name, structuredClone(snapshot.state[name] || []))
+            return target.get()
+          }
+          if (['where', 'orderBy', 'limit', 'skip', 'field'].includes(key)) return (...args) => trackQuery(target[key](...args), name)
+          return target[key]
+        } })
+      }
+      const result = await callback({ collection(name) { return { where: (...args) => trackQuery(snapshot.collection(name).where(...args), name), doc(id) {
         const remember = () => reads.set(`${name}/${id}`, { name, id, value: structuredClone(snapshot.state[name]?.find(row => row._id === id)) })
         return {
           async get() { remember(); return snapshot.collection(name).doc(id).get() },
@@ -23,7 +34,8 @@ function optimistic(db) {
           }
         }
       } } } })
-      if ([...reads.values()].some(({ name, id, value }) => !isDeepStrictEqual(db.state[name]?.find(row => row._id === id), value))) {
+      if ([...reads.values()].some(({ name, id, value }) => !isDeepStrictEqual(db.state[name]?.find(row => row._id === id), value)) ||
+        [...queryReads].some(([name, value]) => !isDeepStrictEqual(db.state[name] || [], value))) {
         retries++; continue
       }
       for (const { name, id, data, replace } of writes) {

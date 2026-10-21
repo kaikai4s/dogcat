@@ -36,6 +36,43 @@ function setup(patch = {}) {
     setClock: value => { clock = new Date(value) }, counts: () => ({ messageCalls, subscriptionCalls }) }
 }
 
+test('group cancellation rejects any household that has departed, started, or completed', async () => {
+  for (const status of ['on_the_way', 'in_service', 'day_completed', 'completed']) {
+    const s = setup({ groupBuyId: 'g' })
+    s.db.state.orders.push({ ...s.db.state.orders[0], _id: 'sibling', status })
+    const input = await s.data()
+    await assert.rejects(() => s.service.cancelStaffAcceptedOrder('staff', input), /已开始履约或不可取消/)
+    assert.equal(s.db.state.orders[0].status, 'assigned')
+    assert.equal(s.db.state.orders[1].status, status)
+    assert.equal(s.db.state.payment_events.length, 0)
+  }
+})
+
+test('group cancellation reads past unpaid history and atomically releases every paid household', async () => {
+  const s = setup({ groupBuyId: 'g' })
+  s.db.state.orders.push(...Array.from({ length: 110 }, (_, i) => ({ _id: `history_${String(i).padStart(3, '0')}`, groupBuyId: 'g', status: 'pending_pay', paymentStatus: 'unpaid' })),
+    { ...s.db.state.orders[0], _id: 'z_sibling', clientOpenid: 'neighbor' })
+  await s.service.cancelStaffAcceptedOrder('staff', await s.data())
+  const paid = s.db.state.orders.filter(order => order.paymentStatus === 'paid')
+  assert.equal(paid.length, 2)
+  assert.ok(paid.every(order => order.status === 'paid' && !order.staffOpenid))
+  assert.equal(s.db.state.payment_events.length, 1)
+})
+
+test('group cancellation query failure never cancels only the entry household', async () => {
+  const s = setup({ groupBuyId: 'g' })
+  const input = await s.data()
+  const run = s.db.runTransaction
+  s.db.runTransaction = fn => run(tx => fn({ collection(name) {
+    const collection = tx.collection(name)
+    if (name === 'orders') collection.where = () => { throw new Error('group query unavailable') }
+    return collection
+  } }))
+  await assert.rejects(() => s.service.cancelStaffAcceptedOrder('staff', input), /group query unavailable/)
+  assert.equal(s.db.state.orders[0].status, 'assigned')
+  assert.equal(s.db.state.payment_events.length, 0)
+})
+
 test('open cutoff overrides grace, exact grace boundary free and later pending review', async () => {
   const s = setup({ startTime: new Date('2026-09-28T04:30:00Z') })
   assert.equal((await s.service.getStaffCancellationQuote('staff', { orderId: 'o' })).canCancel, false)

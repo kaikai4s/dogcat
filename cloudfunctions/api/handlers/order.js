@@ -1415,6 +1415,10 @@ module.exports = function createHandler(context) {
 
     if (action === 'finishService') {
       const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
+      if (order.groupBuyId && (order.status === 'completed' || (order.status === 'day_completed' && normalizeServiceSessions(order).every(session => session.status === 'completed')))) {
+        const session = order.groupCompletionSession || normalizeServiceSessions(order).slice(-1)[0] || { index: 1 }
+        return completeOrderService({ ...order, _id: data.id }, session, now(), { isAuto: false, actor: 'staff' })
+      }
       if (order.status === 'completed') {
         await ensureStaffEarning(order, order.completedAt || order.updatedAt || now())
         const rewardResult = await ensureOrderCompletionRewards(order, now())
@@ -1427,62 +1431,6 @@ module.exports = function createHandler(context) {
       if (!checkinResult.isComplete) {
         throw new Error(`缺少必打卡照片：${checkinResult.missing.join('、')}`)
       }
-      if (order.groupBuyId) {
-        const siblingRes = await db.collection('orders').where({
-          groupBuyId: order.groupBuyId,
-          staffOpenid: openid,
-          _id: db.command.neq(data.id)
-        }).get().catch(() => ({ data: [] }))
-        const siblings = siblingRes.data || []
-        // 检查同拼单团是否还有其他住户尚未完成打卡（排除已取消/退款订单）
-        const uncompletedSiblings = siblings.filter((s) => !['completed', 'day_completed', 'cancelled'].includes(s.status))
-        if (uncompletedSiblings.length > 0) {
-          // 当前住户打卡已完整，但同团其他住户尚未打卡完毕
-          // 将当前住户订单标记为 day_completed，暂不结算整团，提示宠托师切换住户
-          const time = now()
-          const completedSessions = markServiceSession(normalizeServiceSessions(order), activeSession.index, { status: 'completed', finishedAt: time })
-          await db.collection('orders').doc(data.id).update({
-            data: {
-              status: ORDER_STATUS.DAY_COMPLETED,
-              serviceSessions: completedSessions,
-              activeSessionIndex: 0,
-              currentSessionStartedAt: '',
-              updatedAt: time
-            }
-          })
-          await appendOrderTimeline(data.id, 'day_completed', '住户服务打卡已完成', '当前住户服务打卡已就绪，等待同拼单团其他住户打卡完毕后统一结算。', 'staff')
-          await appendOrderClientMessage({ ...order, _id: data.id, status: ORDER_STATUS.DAY_COMPLETED }, {
-            eventType: 'day_completed',
-            title: '服务打卡已完成',
-            detail: '宠托师已完成打卡，服务已进入完成结算流程。',
-            actorRole: 'staff'
-          })
-          return {
-            id: data.id,
-            status: ORDER_STATUS.DAY_COMPLETED,
-            partialGroupCompleted: true,
-            remainingCount: uncompletedSiblings.length,
-            message: `当前住户打卡完成！同拼单团还有 ${uncompletedSiblings.length} 户未完成打卡，请切换至下一住户继续服务。`
-          }
-        } else {
-          // 本次是最后一家打卡完成！将本单及此前就绪的兄弟订单全部推进到 completed，统一结算收益
-          const currentResult = await completeOrderService({ ...order, _id: data.id }, activeSession, now(), { isAuto: false, actor: 'staff' })
-          for (const sib of siblings) {
-            if (sib.status !== 'completed' && sib.status !== 'cancelled') {
-              const sibActiveSession = getActiveServiceSession(sib) || normalizeServiceSessions(sib)[0] || { index: 1, date: beijingDateKey(now()) }
-              await completeOrderService({ ...sib, _id: sib._id }, sibActiveSession, now(), { isAuto: false, actor: 'staff' }).catch((err) => {
-                console.error('[finishService] complete sibling error:', sib._id, err.message)
-              })
-            }
-          }
-          return {
-            ...currentResult,
-            allGroupCompleted: true,
-            message: '同小区拼单全部住户服务已完成！收益已统一结算。'
-          }
-        }
-      }
-
       return completeOrderService({ ...order, _id: data.id }, activeSession, now(), { isAuto: false, actor: 'staff' })
     }
 

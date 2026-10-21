@@ -104,6 +104,18 @@ test('payment RPC rejects forged internal flags even without OPENID', async () =
   }
 })
 
+test('RPC entry rejects missing trusted identity before any user creation or privileged query', async () => {
+  const db = { collection() { throw new Error('Database must not be touched') } }
+  for (const identity of ['', '   ', null]) {
+    const api = loadCloudFunction('api', db, identity)
+    for (const module of ['auth', 'finance', 'admin', 'order']) {
+      const result = await api.main({ module, action: module === 'auth' ? 'login' : 'list', data: { openid: 'forged' } })
+      assert.equal(result.ok, false)
+      assert.match(result.message, /缺少可信用户身份/)
+    }
+  }
+})
+
 test('client cannot forge HTTP or timer events', async () => {
   const db = { collection() { throw new Error('Database must not be touched') } }
   const fn = loadCloudFunction('api', db, 'client')

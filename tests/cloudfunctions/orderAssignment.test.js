@@ -31,6 +31,27 @@ function setup(orders = [order('a'), order('b')]) {
   return { db, context, assign }
 }
 
+test('daily assignment limit includes recent orders beyond 1000 historical completed rows', async () => {
+  const history = Array.from({ length: 1105 }, (_, i) => ({ ...order(`a_old_${String(i).padStart(4, '0')}`), status: 'completed', staffOpenid: 'staff', startTime: '2098-01-01 10:00', endTime: '2098-01-01 11:00' }))
+  const current = Array.from({ length: 6 }, (_, i) => ({ ...order(`z_today_${i}`), status: 'completed', staffOpenid: 'staff' }))
+  const { db, assign } = setup([order('target'), ...history, ...current])
+  await assert.rejects(() => assign('target', 'staff', { enforceAcceptLimits: true }), /单日接单上限/)
+  assert.equal(db.state.orders[0].status, 'paid')
+})
+
+test('assignment aborts when transaction quota query is unavailable', async () => {
+  const { db, assign } = setup([order('target')])
+  const run = db.runTransaction
+  db.runTransaction = fn => run(tx => fn({ collection(name) {
+    const collection = tx.collection(name)
+    if (name === 'orders') collection.where = () => { throw new Error('quota database unavailable') }
+    return collection
+  } }))
+  await assert.rejects(() => assign('target', 'staff', { enforceAcceptLimits: true }), /quota database unavailable/)
+  assert.equal(db.state.orders[0].status, 'paid')
+  assert.equal((db.state.subscription_messages || []).length, 0)
+})
+
 // Unlike the shared serialized fake, this permits overlapping snapshots and retries on read/write conflicts.
 function useOptimisticTransactions(db) {
   let retries = 0
