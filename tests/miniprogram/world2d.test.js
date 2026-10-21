@@ -516,3 +516,181 @@ test('nearbyInteractions selects closest plot and canEnterPlot respects custom d
   assert.equal(w.canEnterPlot({ buildingCategory: 'floor' }), true)
   assert.equal(w.canEnterPlot({ buildingType: 'floor_marble' }), true)
 })
+
+test('building placement allows free positioning with grass tile capacity validation and relocation', async () => {
+  const pageData = {}
+  const page = {
+    data: pageData,
+    setData: (patch) => Object.assign(pageData, patch),
+    pushStatusMessage: () => {}
+  }
+  const w = new World2D(page, null, {
+    world: { width: 1000, height: 1000 },
+    pets: []
+  })
+
+  const ownPlot = {
+    _id: 'plot_home',
+    id: 'plot_home',
+    x: 200,
+    z: 200,
+    size: 48,
+    mine: true,
+    isNewPlot: false,
+    buildingType: 'residential',
+    name: '我的自家庭院'
+  }
+  const greenPlot = {
+    _id: 'plot_green_1',
+    id: 'plot_green_1',
+    x: 400,
+    z: 400,
+    size: 48,
+    mine: true,
+    isNewPlot: true,
+    buildingType: 'yard',
+    name: '专属爱心绿地'
+  }
+
+  w.ownPlot = ownPlot
+  w.sharedPlots.set(ownPlot.id, ownPlot)
+  w.sharedPlots.set(greenPlot.id, greenPlot)
+
+  const publicBuilding = {
+    id: 'b_comm',
+    name: '居委会',
+    type: 'committee',
+    category: 'public',
+    width: 8,
+    depth: 8
+  }
+  const decorBuilding = {
+    id: 'b_tree',
+    name: '红枫树',
+    type: 'tree',
+    category: 'tree',
+    width: 6,
+    depth: 6
+  }
+
+  // 1. 公共配套设施不能建在出生庭院
+  w.beginBuildingPlacement(publicBuilding, false)
+  assert.equal(w.isPlacingBuilding, true)
+  assert.equal(pageData.isPlacingBuilding, true)
+  assert.equal(pageData.canConfirm, false)
+
+  await w.pickPlot({ x: 200, z: 200 })
+  assert.equal(w.candidate.valid, false)
+  assert.match(w.candidate.reason, /专属绿地/)
+  assert.equal(pageData.canConfirm, false)
+
+  // 2. 公共配套设施在独立专属绿地内，选择合适位置（满足草坪方块空间容纳）：呈现绿色指示
+  await w.pickPlot({ x: 400, z: 400 })
+  assert.equal(w.candidate.valid, true)
+  assert.equal(w.candidate.buildingX, 400)
+  assert.equal(w.candidate.buildingZ, 400)
+  assert.equal(pageData.canConfirm, true)
+
+  // 3. 点击偏离中心但仍在草坪方块容纳范围内：非中心化放置成功
+  await w.pickPlot({ x: 410, z: 412 })
+  assert.equal(w.candidate.valid, true)
+  assert.equal(w.candidate.buildingX, 410)
+  assert.equal(w.candidate.buildingZ, 412)
+  assert.equal(pageData.canConfirm, true)
+
+  // 4. 点击超出草坪围栏边缘导致草坪方块空间不足：呈现红色指示，禁止确认
+  // 绿地范围 [400 - 24, 400 + 24] = [376, 424]，建筑宽度 8，半宽 4，若点击 423 则 423 + 4 = 427 > 424
+  await w.pickPlot({ x: 423, z: 400 })
+  assert.equal(w.candidate.valid, false)
+  assert.match(w.candidate.reason, /空间不足/)
+  assert.equal(pageData.canConfirm, false)
+
+  // 5. 点击非领地范围：呈现红色指示
+  await w.pickPlot({ x: 700, z: 700 })
+  assert.equal(w.candidate.valid, false)
+  assert.match(w.candidate.reason, /领地范围/)
+  assert.equal(pageData.canConfirm, false)
+
+  // 6. 非公共配套建筑（景观树/木屋/地砖）：可以在自家庭院的空旷草坪建造
+  w.beginBuildingPlacement(decorBuilding, false)
+  // 点击自家庭院的空旷草坪角落 (216, 216)
+  await w.pickPlot({ x: 216, z: 216 })
+  assert.equal(w.candidate.valid, true)
+  assert.equal(w.candidate.targetPlot.id, 'plot_home')
+  assert.equal(pageData.canConfirm, true)
+
+  // 若与自家庭院原生主屋中心 (200, 200) 重叠：呈现红色指示
+  await w.pickPlot({ x: 200, z: 200 })
+  assert.equal(w.candidate.valid, false)
+  assert.match(w.candidate.reason, /重叠/)
+
+  // 7. 测试位置调整（Relocation）：
+  const existingDecorPlot = {
+    _id: 'plot_tree_placed',
+    id: 'plot_tree_placed',
+    x: 400,
+    z: 400,
+    size: 48,
+    mine: true,
+    isNewPlot: true,
+    buildingType: 'tree',
+    buildingName: '红枫树',
+    buildingWidth: 6,
+    buildingDepth: 6,
+    buildingX: 405,
+    buildingZ: 405
+  }
+  w.sharedPlots.set(existingDecorPlot.id, existingDecorPlot)
+
+  w.beginBuildingPlacement(decorBuilding, true, existingDecorPlot)
+  assert.equal(w.candidate.isRelocating, true)
+  assert.equal(w.candidate.x, 405)
+  assert.equal(w.candidate.z, 405)
+  assert.equal(w.candidate.valid, true)
+
+  // 移动到新草坪方块 (395, 398)
+  await w.pickPlot({ x: 395, z: 398 })
+  assert.equal(w.candidate.valid, true)
+  assert.equal(w.candidate.x, 395)
+  assert.equal(w.candidate.z, 398)
+  assert.equal(pageData.canConfirm, true)
+
+  // 8. 验证 yardLayout 支持自定义 buildingX、buildingZ 偏移
+  const { yardLayout } = require('../../miniprogram/packagePlayground/utils/yard-layout')
+  const layout = yardLayout({
+    x: 400,
+    z: 400,
+    size: 48,
+    buildingX: 412,
+    buildingZ: 388
+  })
+  const houseSprite = layout.sprites.find((s) => s.name === 'house')
+  assert.ok(houseSprite)
+  assert.equal(houseSprite.x, 412)
+  assert.equal(houseSprite.z, 388)
+
+  // 9. 验证偏离中心放置的地板（floor）可通过 buildingAt 精确命中点击
+  w.cancelPlacement()
+  const offsetFloorPlot = {
+    _id: 'plot_offset_floor',
+    id: 'plot_offset_floor',
+    x: 400,
+    z: 400,
+    size: 48,
+    mine: true,
+    isNewPlot: true,
+    buildingType: 'floor',
+    buildingName: '偏心大理石',
+    buildingWidth: 10,
+    buildingDepth: 10,
+    buildingX: 410,
+    buildingZ: 390
+  }
+  w.sharedPlots.set(offsetFloorPlot.id, offsetFloorPlot)
+  // 点击建筑实际坐标 (410, 390) 对应的屏幕投影点
+  const screenPt = w.project(410, 390)
+  const hitBuilding = w.buildingAt(screenPt)
+  assert.ok(hitBuilding)
+  assert.equal(hitBuilding.plotId, 'plot_offset_floor')
+  assert.equal(hitBuilding.name, '偏心大理石')
+})

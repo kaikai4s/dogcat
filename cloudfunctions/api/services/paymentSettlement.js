@@ -58,7 +58,7 @@ module.exports = function createService(context) {
         return { order, changed: false, orderType: resolved.orderType }
       }
       if (order.status !== 'pending_pay' || order.paymentStatus === 'closed') throw new Error('订单状态不可支付')
-      if (order.groupBuyId && order.groupBuyStatus !== 'formed') throw new Error('拼单尚未成团，不可支付')
+      if (order.groupBuyId && order.groupBuyStatus === 'cancelled') throw new Error('拼单已取消，不可支付')
       const candidates = (await db.collection('payments').where({ orderId, paymentNo }).limit(2).get()).data || []
       const paymentId = key('payment', `${resolved.collectionName}:${orderId}`)
       let payment = await optional(tx, 'payments', paymentId)
@@ -249,6 +249,16 @@ module.exports = function createService(context) {
     }
     if (result.changed && result.orderType === 'service' && result.order.publishMode === 'direct' && result.order.requestedStaffOpenid) {
       await notifyStaffDirectOrder(result.order, 'request')
+    }
+    if (result.changed && result.orderType === 'service' && result.order.groupBuyId) {
+      try {
+        const groupBuy = require('./playground-group-buy')(context)
+        if (typeof groupBuy.onOrderPaid === 'function') {
+          await groupBuy.onOrderPaid(result.order._id, result.order.groupBuyId)
+        }
+      } catch (err) {
+        console.error('[paymentSettlement] group buy onOrderPaid error:', err)
+      }
     }
     return result
   }

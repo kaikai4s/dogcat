@@ -19,7 +19,7 @@ function fixture(){
   const data=(who,extra={})=>({source:'community_groupbuy',communityId:id,serviceAddress:community.name,addressDetail:'楼栋'+who,doorplate:'101',...extra})
   async function submit(who,extra={},request=who){
     const prepared=await groups.prepare(who,data(who,extra),pricing)
-    return settlement.createOrderWithCouponLock({collectionName:'orders',openid:who,couponId:'',order:{clientOpenid:who,clientRequestId:request,amount:100,payAmount:100,priceSnapshot:pricing.priceSnapshot,serviceSessions:sessions,serviceSummary:'喂养',status:'pending_pay',paymentStatus:'unpaid'},prepareOrder:(tx,order,id)=>groups.attach(tx,order,id,prepared)})
+    return settlement.createOrderWithCouponLock({collectionName:'orders',openid:who,couponId:'',order:{clientOpenid:who,clientRequestId:request,amount:100,payAmount:100,priceSnapshot:pricing.priceSnapshot,serviceSessions:sessions,startTime:sessions[0].startTime,endTime:sessions[0].endTime,serviceSummary:'喂养',status:'pending_pay',paymentStatus:'unpaid'},prepareOrder:(tx,order,id)=>groups.attach(tx,order,id,prepared)})
   }
   return {db,context,groups,submit,data,pricing,advance:(ms)=>stamp+=ms}
 }
@@ -27,7 +27,9 @@ test('group orders attach atomically, form by distinct households, freeze cent p
   const f=fixture(),first=await f.submit('a'),id=first.order.groupBuyId
   assert.equal(first.order.groupBuyStatus,'recruiting')
   const guard=require('../../cloudfunctions/api/services/paymentDeadline')({toTimeValue:(t)=>new Date(t).getTime(),now:f.context.now})
-  assert.throws(()=>guard.assertOrderPaymentOpen(first.order),/尚未成团/)
+  assert.doesNotThrow(()=>guard.assertOrderPaymentOpen(first.order))
+  assert.equal(first.order.payAmount,70.4)
+  assert.equal(first.order.discountAmount,29.6)
   const before=await f.groups.list('b')
   assert.equal(before.availableCount,1)
   assert.ok(!JSON.stringify(before).includes('openid'))
@@ -36,8 +38,27 @@ test('group orders attach atomically, form by distinct households, freeze cent p
   assert.equal((await f.submit('a',{},'a')).created,false)
   await assert.rejects(f.submit('a',{groupBuyId:id},'again'),/每户/)
   const second=await f.submit('b',{groupBuyId:id})
-  assert.equal(second.order.groupBuyStatus,'formed')
+  assert.equal(second.order.groupBuyStatus,'recruiting')
   assert.equal(second.order.payAmount,70.4)
+  
+  // 双方付款后成团
+  const orderA = f.db.state.orders.find((o)=>o._id===first.order._id)
+  orderA.status = 'paid'
+  orderA.paymentStatus = 'paid'
+  await f.groups.onOrderPaid(first.order._id, id)
+
+  const orderB = f.db.state.orders.find((o)=>o._id===second.order._id)
+  orderB.status = 'paid'
+  orderB.paymentStatus = 'paid'
+  await f.groups.onOrderPaid(second.order._id, id)
+
+  const storedGroup = await f.db.collection('pet_playground_groups').doc(id).get()
+  assert.ok(storedGroup.data.formedAt > 0)
+  const freshA = f.db.state.orders.find((o)=>o._id===first.order._id)
+  const freshB = f.db.state.orders.find((o)=>o._id===second.order._id)
+  assert.equal(freshA.groupBuyStatus, 'formed')
+  assert.equal(freshB.groupBuyStatus, 'formed')
+
   const stored=f.db.state.orders.find((o)=>o._id===first.order._id)
   assert.equal(stored.payAmount,70.4)
   assert.equal(stored.discountAmount,29.6)
@@ -86,10 +107,26 @@ test('real order quote and create routes carry group context, enforce local coor
   assert.equal(first.ok,true,first.message)
   assert.equal(first.data.groupBuyStatus,'recruiting')
   assert.equal(first.data.addressLatitude,community.latitude)
+  assert.ok(first.data.payAmount < first.data.amount)
+  // A 立即支付拼单特惠价
+  const payA = await apiA.main({module:'payment',action:'createPayment',data:{orderId:first.data._id}})
+  assert.equal(payA.ok, true)
+  const paidA = await apiA.main({module:'payment',action:'mockPayOrder',data:{orderId:first.data._id,paymentNo:payA.data.paymentNo}})
+  assert.equal(paidA.ok, true)
+
   const second=await apiB.main({module:'order',action:'createOrder',data:{...data,petIds:['p_b'],addressDetail:'2栋',groupBuyId:first.data.groupBuyId,clientRequestId:'join-group'}})
   assert.equal(second.ok,true,second.message)
-  assert.equal(second.data.groupBuyStatus,'formed')
+  assert.equal(second.data.groupBuyStatus,'recruiting')
   assert.ok(second.data.payAmount<second.data.amount)
+
+  // B 支付拼单特惠价，凑齐2户已付款，正式触发成团！
+  const payB = await apiB.main({module:'payment',action:'createPayment',data:{orderId:second.data._id}})
+  assert.equal(payB.ok, true)
+  const paidB = await apiB.main({module:'payment',action:'mockPayOrder',data:{orderId:second.data._id,paymentNo:payB.data.paymentNo}})
+  assert.equal(paidB.ok, true)
+
+  const freshSecond = await apiB.main({module:'order',action:'getOrderDetail',data:{orderId:second.data._id}})
+  assert.equal(freshSecond.data.groupBuyStatus,'formed')
   const listing=await apiA.main({module:'playground',action:'listCommunityGroupBuys',data:{}})
   assert.equal(listing.ok,true,listing.message)
   assert.equal(listing.data.myGroups[0].householdCount,2)
@@ -169,7 +206,17 @@ test('group buy enforces single-day schedule and prevents unilateral cancellatio
   const first=await f.submit('a')
   const groupBuyId=first.order.groupBuyId
   const second=await f.submit('b',{groupBuyId})
-  assert.equal(second.order.groupBuyStatus,'formed')
+  const orderA = f.db.state.orders.find((o)=>o._id===first.order._id)
+  orderA.status = 'paid'
+  orderA.paymentStatus = 'paid'
+  await f.groups.onOrderPaid(first.order._id, groupBuyId)
+
+  const orderB = f.db.state.orders.find((o)=>o._id===second.order._id)
+  orderB.status = 'paid'
+  orderB.paymentStatus = 'paid'
+  await f.groups.onOrderPaid(second.order._id, groupBuyId)
+  const freshB = f.db.state.orders.find((o)=>o._id===second.order._id)
+  assert.equal(freshB.groupBuyStatus,'formed')
 
   // 获取 cancelQuote 验证 canCancel 必须为 false
   const orderAccess=require('../../cloudfunctions/api/services/orderAccess')({
@@ -177,7 +224,7 @@ test('group buy enforces single-day schedule and prevents unilateral cancellatio
     toTimeValue:(t)=>new Date(t).getTime(),
     getSystemSettings:async()=>({})
   })
-  const quote=orderAccess.getCancelQuoteForOrder(second.order)
+  const quote=orderAccess.getCancelQuoteForOrder(freshB)
   assert.equal(quote.canCancel,false)
   assert.ok(quote.ruleText.includes('成团锁定') || quote.ruleText.includes('暂不支持'))
 })
@@ -762,4 +809,106 @@ test('同小区拼单任务包: 出发前往与时空雷达整团联动更新，
   const docBFinal = await db.collection('orders').doc('ord_transit_b').get()
   assert.equal(docAFinal.data.status, 'completed', '订单A应当正常进入 completed 终态')
   assert.equal(docBFinal.data.status, 'cancelled', '已取消的订单B应保持 cancelled')
+})
+
+test('同小区拼单先支付保障: 未成团招募截止自动全额原路退款', async () => {
+  const f = fixture()
+  const refundCalls = []
+  f.context.createRefundForOrder = async (order, amount, reason, type, openid, idempotencyKey, options) => {
+    refundCalls.push({ orderId: order._id, amount, reason, type, openid, idempotencyKey, options })
+    return { refundNo: 'ref_' + order._id, status: 'processing' }
+  }
+
+  // A 发起拼单并完成预付款
+  const first = await f.submit('a')
+  const groupBuyId = first.order.groupBuyId
+  const orderA = f.db.state.orders.find(o => o._id === first.order._id)
+  orderA.status = 'paid'
+  orderA.paymentStatus = 'paid'
+  await f.groups.onOrderPaid(first.order._id, groupBuyId)
+
+  // 此时只有 A 付款，拼单仍处于招募中
+  let groupDoc = await f.db.collection('pet_playground_groups').doc(groupBuyId).get()
+  assert.equal(groupDoc.data.status, 'recruiting')
+  assert.equal(groupDoc.data.formedAt, 0)
+
+  // 时间推进超过募集截止时间（deadline）
+  f.advance(13 * 3600000)
+
+  // 触发自动检查过期与退款
+  await f.groups.expireDueGroupBuys(f.context.now())
+
+  // 断言：拼单已自动取消
+  groupDoc = await f.db.collection('pet_playground_groups').doc(groupBuyId).get()
+  assert.equal(groupDoc.data.status, 'cancelled')
+  assert.ok(groupDoc.data.cancelReason.includes('未成团') || groupDoc.data.cancelReason.includes('截止'))
+
+  // 断言：已付款用户 A 收到全额原路退款
+  assert.equal(refundCalls.length, 1)
+  assert.equal(refundCalls[0].orderId, first.order._id)
+  assert.equal(refundCalls[0].amount, 70.4)
+  assert.ok(refundCalls[0].reason.includes('未成团') || refundCalls[0].reason.includes('全额退款'))
+  const freshA = f.db.state.orders.find(o => o._id === first.order._id)
+  assert.equal(freshA.status, 'expired')
+  assert.equal(freshA.groupBuyStatus, 'cancelled')
+})
+
+test('同小区拼单先支付保障: 成团后服务开始前2小时无人接单自动全额原路退款', async () => {
+  const f = fixture()
+  const refundCalls = []
+  f.context.createRefundForOrder = async (order, amount, reason, type, openid, idempotencyKey, options) => {
+    refundCalls.push({ orderId: order._id, amount, reason, type, openid, idempotencyKey, options })
+    return { refundNo: 'ref_' + order._id, status: 'processing' }
+  }
+
+  // A 和 B 均先付款，凑齐2户成功成团
+  const first = await f.submit('a')
+  const groupBuyId = first.order.groupBuyId
+  const second = await f.submit('b', { groupBuyId })
+
+  const orderA = f.db.state.orders.find(o => o._id === first.order._id)
+  orderA.status = 'paid'
+  orderA.paymentStatus = 'paid'
+  await f.groups.onOrderPaid(first.order._id, groupBuyId)
+
+  const orderB = f.db.state.orders.find(o => o._id === second.order._id)
+  orderB.status = 'paid'
+  orderB.paymentStatus = 'paid'
+  await f.groups.onOrderPaid(second.order._id, groupBuyId)
+
+  let groupDoc = await f.db.collection('pet_playground_groups').doc(groupBuyId).get()
+  assert.ok(groupDoc.data.formedAt > 0)
+  assert.equal(groupDoc.data.status, 'formed')
+
+  // 服务开始时间为 2026-10-21 10:00
+  // 当时间推进到服务开始前 2 小时以内（例如 2026-10-21 08:30，距服务开始只有 1.5 小时）且无人接单
+  const expireService = require('../../cloudfunctions/api/scheduled/expireOrders')({
+    now: () => new Date('2026-10-21T08:30:00+08:00'),
+    toTimeValue: (t) => new Date(t).getTime(),
+    ORDER_STATUS: { PAID: 'paid', EXPIRED: 'expired' },
+    safeText: (s) => s || '',
+    createRefundForOrder: f.context.createRefundForOrder,
+    makeIdempotencyKey: (prefix, id) => `${prefix}_${id}`,
+    db: f.db,
+    appendOrderTimeline: async () => {},
+    appendOrderClientMessage: async () => {},
+    restoreOrderCoupon: async () => {}
+  })
+
+  // 执行未接单过期处理
+  await expireService.expireDueUnacceptedOrders()
+
+  // 断言：拼单已自动取消
+  groupDoc = await f.db.collection('pet_playground_groups').doc(groupBuyId).get()
+  assert.equal(groupDoc.data.status, 'cancelled')
+  assert.ok(groupDoc.data.cancelReason.includes('2小时'))
+
+  // 断言：A 和 B 两个订单均已被自动发起全额原路退款
+  assert.equal(refundCalls.length, 2)
+  const freshA = f.db.state.orders.find(o => o._id === first.order._id)
+  const freshB = f.db.state.orders.find(o => o._id === second.order._id)
+  assert.equal(freshA.status, 'expired')
+  assert.equal(freshA.groupBuyStatus, 'cancelled')
+  assert.equal(freshB.status, 'expired')
+  assert.equal(freshB.groupBuyStatus, 'cancelled')
 })

@@ -165,7 +165,7 @@
       <button class="ghost compact-btn" bindtap="chooseSavedAddress">常用地址</button>
       <button class="ghost compact-btn" bindtap="useCurrentLocation">地图选择</button>
     </view>
-    <view wx:if="{{groupBuyMode}}" class="notice">同小区拼单：服务地点固定为本人所属小区，成团后付款，不与优惠券叠加。{{groupBuyScheduleText}}</view>
+    <view wx:if="{{groupBuyMode}}" class="notice">同小区拼单：服务地点固定为本人所属小区，预付拼单特惠价，凑齐户数立即成团，未成团或服务前2小时无人接单全额原路退款。{{groupBuyScheduleText}}</view>
     <view class="address-summary" wx:if="{{locationReady || form.serviceAddress}}">
       <view class="remix-icon ri-map-pin-2-line address-icon"></view>
       <view>
@@ -460,7 +460,7 @@
   <view class="booking-submit-bar">
     <view class="submit-price-section" bindtap="openPriceDetailModal">
       <view class="submit-price-main">
-        <text class="submit-price-prefix">{{groupBuyMode ? "成团后" : "预估"}}</text>
+        <text class="submit-price-prefix">{{groupBuyMode ? "特惠预付" : "预估"}}</text>
         <view class="submit-price-amount">
           <text class="currency">¥</text>
           <view class="price-rolling-container">
@@ -473,11 +473,11 @@
               <text class="digit-symbol" wx:else>{{item.char}}</text>
             </block>
           </view>
-          <text class="discount-pill" wx:if="{{quote && quoteDisplayDiscount > 0}}">{{groupBuyMode ? "预计省" : "已省"}}¥{{quoteDisplayDiscount}}</text>
+          <text class="discount-pill" wx:if="{{quote && quoteDisplayDiscount > 0}}">{{groupBuyMode ? "拼单省" : "已省"}}¥{{quoteDisplayDiscount}}</text>
         </view>
       </view>
       <view class="submit-price-detail-btn">
-        <text>{{groupBuyMode ? "成团后付款 · 价格明细" : "打开价格详细"}}</text>
+        <text>{{groupBuyMode ? "特惠预付 · 价格明细" : "打开价格详细"}}</text>
         <text class="remix-icon ri-arrow-up-s-line"></text>
       </view>
     </view>

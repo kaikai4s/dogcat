@@ -103,6 +103,10 @@ function publicPlot(plot, openid) {
     buildingImage: plot.buildingImage || '',
     buildingWidth: Number(plot.buildingWidth) || 0,
     buildingDepth: Number(plot.buildingDepth) || 0,
+    buildingX: plot.buildingX !== undefined && plot.buildingX !== null ? Number(plot.buildingX) : undefined,
+    buildingZ: plot.buildingZ !== undefined && plot.buildingZ !== null ? Number(plot.buildingZ) : undefined,
+    buildingOffsetX: plot.buildingOffsetX !== undefined && plot.buildingOffsetX !== null ? Number(plot.buildingOffsetX) : undefined,
+    buildingOffsetZ: plot.buildingOffsetZ !== undefined && plot.buildingOffsetZ !== null ? Number(plot.buildingOffsetZ) : undefined,
     isNewPlot: Boolean(plot.isNewPlot),
     isResidence: isResidence(plot),
     demolished: Boolean(plot.demolished),
@@ -612,14 +616,54 @@ module.exports = {
           throw new Error('您当前没有空余的专属绿地！最初的自家庭院不可改建，请先认领一块新的专属绿地')
         }
 
-        // 严禁改建最初的自家庭院别墅（主地皮硬保护，独立专属绿地可自由改建）
-        if (targetPlot._id === mainPlotId || !targetPlot.isNewPlot) {
-          throw new Error('最初的自家庭院（原住别墅）不可改建或覆盖，只能在空余的专属绿地上建造新建筑！')
+        // 公共配套建筑（大房子）一个地皮只能建立一个，且必须在独立的专属绿地上设立，不可占用出生庭院
+        const isPublicFacility = buildingCategory === 'public' || ['committee', 'police_station', 'prison', 'pet_hospital', 'repair_shop'].includes(buildingType)
+        if (isPublicFacility) {
+          if (targetPlot._id === mainPlotId || !targetPlot.isNewPlot) {
+            throw new Error('公共配套大设施只能在独立的专属绿地上设立，不可占用最初的自家庭院')
+          }
+          if (targetPlot.buildingType && targetPlot.buildingType !== 'yard') {
+            const isSameBuilding = targetPlot.buildingId === buildingId || targetPlot.buildingType === buildingType
+            if (!isSameBuilding) {
+              // 若该地块已有其他公共配套建筑，提示不可多建
+              const prevIsPublic = ['committee', 'police_station', 'prison', 'pet_hospital', 'repair_shop'].includes(targetPlot.buildingType) || targetPlot.buildingCategory === 'public'
+              if (prevIsPublic) {
+                throw new Error('公共配套大设施一个地皮只能建立一个！如需更换请先拆除或改建')
+              }
+            }
+          }
         }
 
         const communityId = targetPlot.communityId
         if(data.sceneId&&communityId!==data.sceneId)throw new Error('请回到该地皮所在小区建造')
+        const halfPlot = (targetPlot.size || 48) / 2
         if(Math.max(buildingWidth,buildingDepth)>(targetPlot.size||48)-4)throw new Error('这块绿地放不下该建筑')
+
+        // 校验并在场景中自由选择落座位置（不固定在地皮正中心，只要草坪方块空间满足即可建造）
+        let buildingX = Number(data.buildingX !== undefined ? data.buildingX : data.x)
+        let buildingZ = Number(data.buildingZ !== undefined ? data.buildingZ : data.z)
+        if (Number.isFinite(buildingX) && Number.isFinite(buildingZ)) {
+          const margin = 1.0 // 边缘留出草坪余量
+          const minAllowedX = targetPlot.x - halfPlot + buildingWidth / 2 + margin
+          const maxAllowedX = targetPlot.x + halfPlot - buildingWidth / 2 - margin
+          const minAllowedZ = targetPlot.z - halfPlot + buildingDepth / 2 + margin
+          const maxAllowedZ = targetPlot.z + halfPlot - buildingDepth / 2 - margin
+          if (buildingX < minAllowedX || buildingX > maxAllowedX || buildingZ < minAllowedZ || buildingZ > maxAllowedZ) {
+            throw new Error('草坪方块空间不足，建筑部分超出地皮围栏范围')
+          }
+          const isHomePlot = targetPlot._id === mainPlotId || !targetPlot.isNewPlot
+          if (isHomePlot && buildingType !== 'residential') {
+            const houseHalfSize = 9
+            const overlapX = Math.abs(buildingX - targetPlot.x) < (buildingWidth / 2 + houseHalfSize)
+            const overlapZ = Math.abs(buildingZ - targetPlot.z) < (buildingDepth / 2 + houseHalfSize)
+            if (overlapX && overlapZ) {
+              throw new Error('建筑位置与自家庭院原有别墅重叠，请移至空旷草坪方块')
+            }
+          }
+        } else {
+          buildingX = targetPlot.x
+          buildingZ = targetPlot.z
+        }
 
         // 唯一性校验：居委会、督导所、自省室每个小区只能创建一个
         if (buildingType === 'committee') {
@@ -661,6 +705,10 @@ module.exports = {
           buildingImage,
           buildingWidth,
           buildingDepth,
+          buildingX,
+          buildingZ,
+          buildingOffsetX: Number((buildingX - targetPlot.x).toFixed(2)),
+          buildingOffsetZ: Number((buildingZ - targetPlot.z).toFixed(2)),
           name: buildingName ? `${String(user.nickname || '我').slice(0, 20)}的${buildingName}` : `${String(user.nickname || '我').slice(0, 20)}的庭院`,
           updatedAt: nowText()
         }
@@ -743,7 +791,66 @@ module.exports = {
         }
       })
     }
+    async function relocateBuilding(openid, user, data) {
+      const plotId = String(data.plotId || '')
+      if (!plotId) throw new Error('缺少地块编号')
+      const targetX = Number(data.buildingX !== undefined ? data.buildingX : data.x)
+      const targetZ = Number(data.buildingZ !== undefined ? data.buildingZ : data.z)
+      if (!Number.isFinite(targetX) || !Number.isFinite(targetZ)) {
+        throw new Error('无效的目标坐标')
+      }
+
+      return transaction(db, async (tx) => {
+        const plot = await read(tx, plotId)
+        if (!plot || plot.kind !== 'plot' || plot.ownerOpenid !== openid || plot.demolished) {
+          throw new Error('只能调整自己地皮内的建筑位置')
+        }
+        if (!plot.buildingType || plot.buildingType === 'yard') {
+          throw new Error('该绿地尚未落座建筑，无需调整位置')
+        }
+        const ownerPlotDoc = await read(tx, ownerId(openid))
+        const mainPlotId = ownerPlotDoc && ownerPlotDoc.plotId
+        const isHomePlot = plot._id === mainPlotId || !plot.isNewPlot
+        if (isHomePlot && plot.buildingType === 'residential') {
+          throw new Error('自家庭院原住别墅居于庭院中央，若需搬迁整体庭院请使用安置庭院选址功能')
+        }
+        const bW = Number(plot.buildingWidth || 7)
+        const bD = Number(plot.buildingDepth || 7)
+        if (isHomePlot && plot.buildingType !== 'residential') {
+          const houseHalfSize = 9
+          const overlapX = Math.abs(targetX - plot.x) < (bW / 2 + houseHalfSize)
+          const overlapZ = Math.abs(targetZ - plot.z) < (bD / 2 + houseHalfSize)
+          if (overlapX && overlapZ) {
+            throw new Error('建筑位置与自家庭院原有别墅重叠，请移至空旷草坪方块')
+          }
+        }
+        const halfPlot = (plot.size || 48) / 2
+        const margin = 1.0
+        const minAllowedX = plot.x - halfPlot + bW / 2 + margin
+        const maxAllowedX = plot.x + halfPlot - bW / 2 - margin
+        const minAllowedZ = plot.z - halfPlot + bD / 2 + margin
+        const maxAllowedZ = plot.z + halfPlot - bD / 2 - margin
+        if (targetX < minAllowedX || targetX > maxAllowedX || targetZ < minAllowedZ || targetZ > maxAllowedZ) {
+          throw new Error('草坪方块空间不足，建筑部分超出地皮围栏范围')
+        }
+
+        const patch = {
+          buildingX: targetX,
+          buildingZ: targetZ,
+          buildingOffsetX: Number((targetX - plot.x).toFixed(2)),
+          buildingOffsetZ: Number((targetZ - plot.z).toFixed(2)),
+          revision: Math.max(stamp(), (plot.revision || 0) + 1),
+          updatedAt: nowText()
+        }
+        await tx.collection('pet_playground_plots').doc(plot._id).update({ data: patch })
+        const updatedPlot = { ...plot, ...patch }
+        if (ownerPlotDoc && ownerPlotDoc.plotId === plot._id) {
+          await tx.collection('pet_playground_plots').doc(ownerId(openid)).update({ data: patch })
+        }
+        return publicPlot(updatedPlot, openid)
+      })
+    }
     async function ownInTransaction(tx, openid) { return resolveOwnerPlot(tx, openid) }
-    return { config, own, claim, buildInYard, dismantleBuilding, region, mapOverview, publicPlot, ensureNameColors, fillBowl, demolish, ownInTransaction }
+    return { config, own, claim, buildInYard, relocateBuilding, dismantleBuilding, region, mapOverview, publicPlot, ensureNameColors, fillBowl, demolish, ownInTransaction }
   }
 }

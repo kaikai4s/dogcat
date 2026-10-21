@@ -714,4 +714,165 @@ test('admin uploading custom building types with floor_/tree_/decoration_ prefix
   assert.equal(dismantled.plot.buildingId, '')
 })
 
+test('free placement and relocation on lawn tiles with grass capacity checks and public facility restrictions', async () => {
+  const f = fixture()
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  // 初始化用户 a 的出生庭院（主地皮，位于 (224, 224) 规格 48x48）
+  const a = await f.build('a')
+  const homePlot = a.plot || a
+  const homePlotId = homePlot.id || homePlot._id
+  const sceneId = a.sceneId || homePlot.communityId
+
+  // 1. 公共配套大设施（如居委会）不可在自家庭院设立
+  await assert.rejects(
+    () => handler('a', 'buildInYard', {
+      plotId: homePlotId,
+      buildingType: 'committee',
+      buildingName: '社区居委会',
+      buildingWidth: 8,
+      buildingDepth: 8,
+      sceneId
+    }),
+    /公共配套大设施只能在独立的专属绿地上设立，不可占用最初的自家庭院/
+  )
+
+  // 2. 非公共配套建筑（如居住木屋、景观树）允许在自家庭院自由建造
+  const homeTree = await handler('a', 'buildInYard', {
+    plotId: homePlotId,
+    buildingType: 'tree',
+    buildingWidth: 6,
+    buildingDepth: 6,
+    buildingX: 236, // 偏离中心，位于空旷草坪
+    buildingZ: 236,
+    sceneId
+  })
+  assert.equal(homeTree.plot.buildingName, '浪漫景观樱花树')
+  assert.equal(homeTree.plot.name, '玩家a的浪漫景观樱花树')
+  assert.equal(homeTree.plot.buildingX, 236)
+  assert.equal(homeTree.plot.buildingZ, 236)
+  assert.equal(homeTree.plot.buildingOffsetX, -44)
+  assert.equal(homeTree.plot.buildingOffsetZ, -44)
+
+  // 3. 认领一块独立专属爱心绿地 (600, 600)，规格 48x48
+  const greenYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 600, z: 600, size: 48 })
+
+  // 4. 在专属绿地建造时，草坪方块空间容纳度检测：
+  // 绿地范围 [600 - 24, 600 + 24] = [576, 624]，建筑宽度 8，半宽 4。
+  // 若建筑中心设在 623，623 + 4 = 627 > 624，超出草坪范围，报错拒绝
+  await assert.rejects(
+    () => handler('a', 'buildInYard', {
+      plotId: greenYard.id,
+      buildingType: 'committee',
+      buildingName: '专属居委会',
+      buildingWidth: 8,
+      buildingDepth: 8,
+      buildingX: 623,
+      buildingZ: 600,
+      sceneId: greenYard.communityId
+    }),
+    /草坪方块空间不足，建筑部分超出地皮围栏范围/
+  )
+
+  // 5. 合法自由指定位置落座建造居委会（位于 608, 605）
+  const builtComm = await handler('a', 'buildInYard', {
+    plotId: greenYard.id,
+    buildingType: 'committee',
+    buildingName: '专属居委会',
+    buildingWidth: 8,
+    buildingDepth: 8,
+    buildingX: 608,
+    buildingZ: 605,
+    sceneId: greenYard.communityId
+  })
+  assert.equal(builtComm.plot.buildingX, 608)
+  assert.equal(builtComm.plot.buildingZ, 605)
+  assert.equal(builtComm.plot.buildingOffsetX, 8)
+  assert.equal(builtComm.plot.buildingOffsetZ, 5)
+
+  // 6. 已建公共配套的大房子，该地皮不可再建立第二个公共配套
+  await assert.rejects(
+    () => handler('a', 'buildInYard', {
+      plotId: greenYard.id,
+      buildingType: 'police_station',
+      buildingName: '督导站',
+      buildingWidth: 8,
+      buildingDepth: 8,
+      sceneId: greenYard.communityId
+    }),
+    /公共配套大设施一个地皮只能建立一个/
+  )
+
+  // 7. 调整已有建筑位置（relocateBuilding）
+  // 将居委会从 (608, 605) 调整移动至 (592, 595)
+  const relocated = await handler('a', 'relocateBuilding', {
+    plotId: greenYard.id,
+    buildingX: 592,
+    buildingZ: 595,
+    sceneId: greenYard.communityId
+  })
+  assert.equal(relocated.plot.buildingX, 592)
+  assert.equal(relocated.plot.buildingZ, 595)
+  assert.equal(relocated.plot.buildingOffsetX, -8)
+  assert.equal(relocated.plot.buildingOffsetZ, -5)
+
+  // 8. 调整位置时若超出草坪方块范围，报错拒绝
+  await assert.rejects(
+    () => handler('a', 'relocateBuilding', {
+      plotId: greenYard.id,
+      buildingX: 570,
+      buildingZ: 600,
+      sceneId: greenYard.communityId
+    }),
+    /草坪方块空间不足，建筑部分超出地皮围栏范围/
+  )
+
+  // 9. 无法调整别人地皮上的建筑
+  await assert.rejects(
+    () => handler('b', 'relocateBuilding', {
+      plotId: greenYard.id,
+      buildingX: 595,
+      buildingZ: 595,
+      sceneId: greenYard.communityId
+    }),
+    /只能调整自己地皮内的建筑位置/
+  )
+
+  // 10. 自家庭院内增建建筑若移动至中心原住别墅重叠区，报错拒绝
+  await assert.rejects(
+    () => handler('a', 'relocateBuilding', {
+      plotId: homePlotId,
+      buildingX: 285,
+      buildingZ: 285,
+      sceneId
+    }),
+    /建筑位置与自家庭院原有别墅重叠/
+  )
+
+  // 11. 初始自家庭院主住宅别墅不可被 relocateBuilding 移动
+  const c = await f.build('c', { x: 500, z: 500 })
+  const cHome = c.plot || c
+  await assert.rejects(
+    () => handler('c', 'relocateBuilding', {
+      plotId: cHome.id || cHome._id,
+      buildingX: 510,
+      buildingZ: 510,
+      sceneId: c.sceneId || cHome.communityId
+    }),
+    /自家庭院原住别墅居于庭院中央/
+  )
+
+  // 12. 未建建筑的纯绿地无需调整位置
+  const emptyGreen = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 700, z: 700, size: 48 })
+  await assert.rejects(
+    () => handler('a', 'relocateBuilding', {
+      plotId: emptyGreen.id,
+      buildingX: 705,
+      buildingZ: 705,
+      sceneId
+    }),
+    /该绿地尚未落座建筑，无需调整位置/
+  )
+})
+
+
 

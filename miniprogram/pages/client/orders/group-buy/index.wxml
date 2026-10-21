@@ -2,7 +2,7 @@
   <view class="group-hero">
     <view class="hero-eyebrow"><text class="remix-icon ri-building-line"></text> 邻里一起预约</view>
     <view class="hero-title">{{communityName || '同小区拼单'}}</view>
-    <view class="hero-description">同一小区 · 同一时段 · 成团后再付款</view>
+    <view class="hero-description">同一小区 · 同一时段 · 先享特惠预付</view>
     <view wx:if="{{rules}}" class="hero-benefits">
       <view><text class="benefit-value">{{rules.minHouseholds}}<text class="benefit-unit">户</text></text><text class="benefit-label">即可成团</text></view>
       <view><text class="benefit-value">{{discountText}}</text><text class="benefit-label">成团享优惠</text></view>
@@ -23,7 +23,7 @@
     <view class="progress-heading"><text>{{item.progressText}}</text><text><text class="household-number">{{item.householdCount}}</text> / {{item.minHouseholds}} 户</text></view>
     <view class="progress-track"><view class="progress-fill" style="width: {{item.progress}}%;"></view></view>
     <view class="deadline-note" wx:if="{{item.canPay}}">请于 {{item.paymentDeadlineText}} 前付款</view>
-    <view class="deadline-note" wx:elif="{{item.status === 'recruiting' && !item.closed}}">募集截止 {{item.deadlineText}} · 未成团不收款</view>
+    <view class="deadline-note" wx:elif="{{item.status === 'recruiting' && !item.closed}}">募集截止 {{item.deadlineText}} · 未成团或无人接单全额退款</view>
     <view class="card-footer"><view class="price-block"><block wx:if="{{item.priceText && !item.closed}}"><text class="price-label">{{item.priceLabel}}</text><text class="price-amount">¥{{item.priceText}}</text></block><text wx:else class="price-label">订单详情与服务进度</text></view><button class="card-action {{item.canPay ? 'action-primary' : ''}}" data-id="{{item.orderId}}" bindtap="detail">{{item.canPay ? '去付款' : '查看订单'}} <text class="remix-icon ri-arrow-right-s-line"></text></button></view>
   </view>
   <view class="section-heading"><view>邻居正在拼 <text class="section-count">{{groups.length}}</text></view><text class="section-hint">相同时段，轻松参团</text></view>

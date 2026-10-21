@@ -438,14 +438,14 @@ test('wood cabin has independent type, cannot alter starting residential villa, 
   const extraYard = await service.claim('a', user, { x: 400, z: 200, isNewPlot: true, size: 48 })
   assert.equal(extraYard.buildingType, 'yard')
 
-  // 4. 尝试在自家庭院落座小木屋，必须被拒绝拦截
+  // 4. 尝试在自家庭院落座公共配套大设施（如居委会），必须被拒绝拦截
   await assert.rejects(
     () => handler('a', 'buildInYard', {
       plotId: residential.id,
-      buildingId: 'residential_wood_cabin',
-      buildingType: 'wood_cabin'
+      buildingId: 'committee_default',
+      buildingType: 'committee'
     }),
-    /最初的自家庭院/
+    /公共配套大设施只能在独立的专属绿地上设立/
   )
 
   // 5. 在新绿地落座小木屋，小木屋独立落座，尺寸自适应为14

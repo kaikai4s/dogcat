@@ -66,34 +66,41 @@ module.exports = function createGroupBuy(context) {
     if (members.some((m) => m.openid === order.clientOpenid || m.householdKey === prepared.householdKey)) throw new Error('每户只能参加同一拼单一次，请查看我的拼单')
     if (members.length >= 20) throw new Error('该拼单人数已满')
     members.push({ openid: order.clientOpenid, orderId, householdKey: prepared.householdKey, order })
-    const formedAt = group.formedAt || (members.length >= group.rules.minHouseholds ? now() : 0)
+    const paidMembers = members.filter(m => m.order && (m.order.status === 'paid' || m.order.paymentStatus === 'paid'))
+    const formedAt = group.formedAt || (paidMembers.length >= group.rules.minHouseholds ? now() : 0)
+    const paymentDeadline = Math.min(now() + 30 * 60 * 1000, group.deadline)
+
     for (const m of members) {
-      if (m.order.status !== 'pending_pay' || m.order.paymentStatus === 'paid') {
-        if (formedAt && m.order.groupBuyStatus !== 'formed') {
-          if (m.orderId === orderId) {
-            order = { ...order, groupBuyStatus: 'formed' }
-          } else {
-            await tx.collection('orders').doc(m.orderId).update({ data: { groupBuyStatus: 'formed', updatedAt: order.updatedAt } })
-          }
-        }
-        continue
+      const isCurrent = m.orderId === orderId
+      const targetOrder = isCurrent ? order : m.order
+      const mDiscount = discounted(targetOrder, group.rules)
+      const patch = {
+        groupBuyId: id,
+        source: 'community_groupbuy',
+        communityId: prepared.id,
+        groupBuyStatus: formedAt ? 'formed' : 'recruiting',
+        groupBuyRules: group.rules,
+        paymentDeadline: targetOrder.paymentDeadline || paymentDeadline,
+        ...mDiscount,
+        updatedAt: order.updatedAt
       }
-      const patch = { groupBuyId: id, source: 'community_groupbuy', communityId: prepared.id, groupBuyStatus: formedAt ? 'formed' : 'recruiting',
-        groupBuyRules: group.rules, paymentDeadline: m.order.groupBuyStatus==='formed' ? m.order.paymentDeadline : formedAt ? Math.min(group.deadline + 1800000, now() + 1800000) : group.deadline,
-        ...(formedAt ? discounted(m.order, group.rules) : {}), updatedAt: order.updatedAt }
-      if (m.orderId === orderId) order = { ...order, ...patch }
-      else await tx.collection('orders').doc(m.orderId).update({ data: patch })
+      if (isCurrent) {
+        order = { ...order, ...patch }
+      } else {
+        await tx.collection('orders').doc(m.orderId).update({ data: patch })
+      }
     }
     const { _id, ...clean } = group
     const history = (group.members || []).filter((old) => !members.some((m) => m.orderId === old.orderId))
-    await tx.collection(COLLECTION).doc(id).set({ data: { ...clean, formedAt, members: [...history, ...members.map(({ openid, orderId, householdKey }) => ({ openid, orderId, ...(householdKey?{householdKey}:{}) }))], updatedAt: now() } })
+    await tx.collection(COLLECTION).doc(id).set({ data: { ...clean, formedAt, status: formedAt ? 'formed' : 'recruiting', members: [...history, ...members.map(({ openid, orderId, householdKey }) => ({ openid, orderId, ...(householdKey?{householdKey}:{}) }))], updatedAt: now() } })
     return order
   }
   async function onOrderCancelled(orderId, groupBuyId) {
     const id = groupBuyId || (orderId ? ((await db.collection('orders').doc(orderId).get().catch(() => ({ data: {} }))).data || {}).groupBuyId : '')
     if (!id) return
+    const toRefundMembers = []
 
-    return db.runTransaction(async (tx) => {
+    await db.runTransaction(async (tx) => {
       const group = await optional(tx, COLLECTION, id)
       if (!group || group.status === 'cancelled') return
 
@@ -142,17 +149,7 @@ module.exports = function createGroupBuy(context) {
           })
           for (const m of activeMembers) {
             if (m.order && m.order.paymentStatus === 'paid' && Number(m.order.payAmount || 0) > 0) {
-              if (typeof context.createRefundForOrder === 'function') {
-                await context.createRefundForOrder(
-                  m.order,
-                  m.order.payAmount,
-                  '拼单人数不足且招募已截止，系统自动全额退款',
-                  'system_groupbuy_fail',
-                  m.order.clientOpenid,
-                  `groupbuy_fail_${m.order._id}`,
-                  { cancelStatus: 'expired' }
-                ).catch((err) => console.error('[onOrderCancelled] auto refund fail:', m.orderId, err.message))
-              }
+              toRefundMembers.push(m.order)
             }
             await tx.collection('orders').doc(m.orderId).update({
               data: {
@@ -191,6 +188,167 @@ module.exports = function createGroupBuy(context) {
     }).catch((e) => {
       console.error('[onOrderCancelled] atomic transaction error:', e)
     })
+
+    // 事务外安全退款，避免长事务和嵌套事务
+    for (const ord of toRefundMembers) {
+      if (typeof context.createRefundForOrder === 'function') {
+        await context.createRefundForOrder(
+          ord,
+          ord.payAmount,
+          '拼单人数不足且招募已截止，系统自动全额退款',
+          'system_groupbuy_fail',
+          ord.clientOpenid,
+          `groupbuy_fail_${ord._id}`,
+          { cancelStatus: 'expired' }
+        ).catch((err) => console.error('[onOrderCancelled] auto refund fail:', ord._id, err.message))
+      }
+    }
+  }
+
+  async function onOrderPaid(orderId, groupBuyId) {
+    const id = groupBuyId || (orderId ? ((await db.collection('orders').doc(orderId).get().catch(() => ({ data: {} }))).data || {}).groupBuyId : '')
+    if (!id) return
+
+    return db.runTransaction(async (tx) => {
+      const group = await optional(tx, COLLECTION, id)
+      if (!group || group.status === 'cancelled') return
+
+      const members = group.members || []
+      const activePaidMembers = []
+      const time = now()
+
+      for (const m of members) {
+        let ord = null
+        if (m.orderId === orderId) {
+          ord = (await tx.collection('orders').doc(m.orderId).get().catch(() => ({ data: null }))).data
+        } else {
+          ord = await optional(tx, 'orders', m.orderId)
+        }
+        if (ord && !ord.deletedAt && !ord.adminDeletedAt && !['cancelled', 'closed', 'refunded'].includes(ord.status)) {
+          if (ord.status === 'paid' || ord.paymentStatus === 'paid' || m.orderId === orderId) {
+            activePaidMembers.push({ ...m, order: ord })
+          }
+        }
+      }
+
+      const minHouseholds = (group.rules && group.rules.minHouseholds) || 2
+      if (activePaidMembers.length >= minHouseholds && !group.formedAt) {
+        const formedAt = time
+        await tx.collection(COLLECTION).doc(id).update({
+          data: {
+            formedAt,
+            status: 'formed',
+            updatedAt: time
+          }
+        })
+        for (const m of activePaidMembers) {
+          await tx.collection('orders').doc(m.orderId).update({
+            data: {
+              groupBuyStatus: 'formed',
+              updatedAt: time
+            }
+          }).catch(() => {})
+        }
+      }
+    }).catch((e) => {
+      console.error('[onOrderPaid] group buy check error:', e)
+    })
+  }
+
+  async function expireGroupBuyIfDue(groupBuyId, time = now()) {
+    if (!groupBuyId) return
+    const stamp = typeof time === 'number' ? time : (time instanceof Date ? time.getTime() : new Date(time || 0).getTime())
+    const toRefundOrders = []
+    const cancelReason = '拼单截止未成团，系统已自动取消并全额退款'
+
+    const success = await db.runTransaction(async (tx) => {
+      const group = await optional(tx, COLLECTION, groupBuyId)
+      if (!group || group.status === 'cancelled') return false
+      if (group.formedAt || group.deadline > stamp) return false
+
+      const members = group.members || []
+      const activeMembers = []
+      for (const m of members) {
+        const ord = await optional(tx, 'orders', m.orderId)
+        if (ord && !ord.deletedAt && !ord.adminDeletedAt && !['cancelled', 'closed', 'refunded'].includes(ord.status)) {
+          activeMembers.push({ ...m, order: ord })
+        }
+      }
+
+      await tx.collection(COLLECTION).doc(groupBuyId).update({
+        data: {
+          status: 'cancelled',
+          deadline: stamp,
+          cancelReason,
+          updatedAt: stamp
+        }
+      })
+
+      for (const m of activeMembers) {
+        const ord = m.order
+        const isPaid = ord && ord.paymentStatus === 'paid' && Number(ord.payAmount || 0) > 0
+        if (isPaid) {
+          toRefundOrders.push(ord)
+        } else if (ord) {
+          await tx.collection('orders').doc(ord._id).update({
+            data: {
+              status: 'cancelled',
+              paymentStatus: 'closed',
+              groupBuyStatus: 'cancelled',
+              cancelReason: '拼单招募已截止',
+              updatedAt: stamp
+            }
+          }).catch(() => {})
+        }
+      }
+      return true
+    }).catch((e) => {
+      console.error('[expireGroupBuyIfDue] transaction error:', e)
+      return false
+    })
+
+    if (!success) return
+
+    // 事务成功提交后再执行退款，彻底杜绝事务嵌套死锁
+    for (const ord of toRefundOrders) {
+      if (typeof context.createRefundForOrder === 'function') {
+        await context.createRefundForOrder(
+          ord,
+          ord.payAmount,
+          '拼单截止未成团，系统自动全额退款',
+          'system_groupbuy_fail',
+          ord.clientOpenid,
+          `groupbuy_fail_${ord._id}`,
+          { cancelStatus: 'expired' }
+        ).catch((err) => console.error('[expireGroupBuyIfDue] auto refund failed:', ord._id, err.message))
+      }
+      await db.collection('orders').doc(ord._id).update({
+        data: {
+          status: 'expired',
+          groupBuyStatus: 'cancelled',
+          cancelReason,
+          updatedAt: stamp
+        }
+      }).catch(() => {})
+    }
+  }
+
+  async function expireDueGroupBuys(time = now()) {
+    const stamp = typeof time === 'number' ? time : (time instanceof Date ? time.getTime() : new Date(time || 0).getTime())
+    const groups = (await db.collection(COLLECTION).where({
+      status: db.command ? db.command.neq('cancelled') : 'recruiting',
+      deadline: db.command ? db.command.lte(stamp) : stamp
+    }).limit(100).get().catch(() => ({ data: [] }))).data || []
+
+    for (const g of groups) {
+      if (!g.formedAt && g.deadline <= stamp && g.status !== 'cancelled') {
+        try {
+          await expireGroupBuyIfDue(g._id, stamp)
+        } catch (err) {
+          console.error('[expireDueGroupBuys] item error:', g._id, err.message)
+        }
+      }
+    }
   }
 
   async function list(openid) {
@@ -212,6 +370,9 @@ module.exports = function createGroupBuy(context) {
         for (const order of result.data || []) orders.set(order._id, order)
       }
       for (const group of relevant) {
+        if (group.deadline <= stamp && !group.formedAt && group.status !== 'cancelled') {
+          expireGroupBuyIfDue(group._id, stamp).catch(() => {})
+        }
         const allMembers = (group.members || []).map((m) => ({ ...m, order: orders.get(m.orderId) }))
         const members = allMembers.filter((m) => participating(m.order, stamp))
         const mine = members.find((m) => m.openid === openid)
@@ -233,7 +394,7 @@ module.exports = function createGroupBuy(context) {
     myGroups.sort((a, b) => b.deadline - a.deadline)
     return { communityId: own.id, community: own.community, communityName: own.community.name, groups: groups.slice(0, 30), myGroups: myGroups.slice(0, 30), availableCount: groups.filter((g) => !g.mine).length, rules: config.groupBuy }
   }
-  return { prepare, attach, list, identity, onOrderCancelled }
+  return { prepare, attach, list, identity, onOrderCancelled, onOrderPaid, expireGroupBuyIfDue, expireDueGroupBuys }
 }
 module.exports.isGroup = isGroup
 module.exports.discounted = discounted

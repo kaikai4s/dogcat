@@ -447,7 +447,15 @@ class World2D {
       const insideOrNearGate = dx <= (half + 6) && dz <= (half + 6)
       return insideOrNearGate && (plot.mine || this.canEnterPlot(plot) || (dx <= half + 4 && dz <= half + 4))
     })
-    candidatePlots.sort((a, b) => Math.hypot(p.x - a.x, p.z - a.z) - Math.hypot(p.x - b.x, p.z - b.z))
+    const getBuildingPos = (plot) => ({
+      x: (plot.buildingX !== undefined && plot.buildingX !== null) ? Number(plot.buildingX) : plot.x,
+      z: (plot.buildingZ !== undefined && plot.buildingZ !== null) ? Number(plot.buildingZ) : plot.z
+    })
+    candidatePlots.sort((a, b) => {
+      const posA = getBuildingPos(a)
+      const posB = getBuildingPos(b)
+      return Math.hypot(p.x - posA.x, p.z - posA.z) - Math.hypot(p.x - posB.x, p.z - posB.z)
+    })
     const nearbyPlot = candidatePlots.find((plot) => (plot.id || plot._id) === this.selectedBuildingPlotId) || candidatePlots[0]
     if (nearbyPlot && nearbyPlot.buildingType && nearbyPlot.buildingType !== 'yard') {
       const isFloor = nearbyPlot.buildingType === 'floor' || nearbyPlot.buildingCategory === 'floor'
@@ -726,7 +734,9 @@ class World2D {
       const floor = plot.buildingType === 'floor' || plot.buildingCategory === 'floor' || String(plot.buildingType || '').startsWith('floor_')
       if (floor) {
         const ground = this.unproject(point.x, point.y)
-        return Math.abs(ground.x - plot.x) <= (plot.buildingWidth || 7) / 2 && Math.abs(ground.z - plot.z) <= (plot.buildingDepth || 7) / 2
+        const fx = (plot.buildingX !== undefined && plot.buildingX !== null) ? Number(plot.buildingX) : plot.x
+        const fz = (plot.buildingZ !== undefined && plot.buildingZ !== null) ? Number(plot.buildingZ) : plot.z
+        return Math.abs(ground.x - fx) <= (plot.buildingWidth || 7) / 2 && Math.abs(ground.z - fz) <= (plot.buildingDepth || 7) / 2
       }
       const sprite = yardLayout(plot).sprites.find((item) => item.name === 'house')
       if (!sprite) return false
@@ -1347,6 +1357,10 @@ class World2D {
   beginPlacement(isNewPlot = false) {
     this.clearPetSelection()
     this.isPlacingNewPlot = !!isNewPlot
+    this.isPlacingBuilding = false
+    this.isRelocatingBuilding = false
+    this.pendingBuilding = null
+    this.relocatingPlot = null
     if (!isNewPlot && this.ownPlot && !this.config.canRelocate) return
     this.placing = true
     this.setCharacterInput(0, 0)
@@ -1356,7 +1370,51 @@ class World2D {
     this.follow = false
     this.candidateGateDirection = this.candidateGateDirection || 'south'
     this.onStatus(isNewPlot ? '轻触空旷草坪，规划独立新地皮（原别墅保持不变）' : '点击位置作为别墅中心，预览围栏范围后确认')
-    this.page.setData({ placing: true, canConfirm: false })
+    this.page.setData({ placing: true, isPlacingNewPlot: !!isNewPlot, isPlacingBuilding: false, isRelocatingBuilding: false, canConfirm: false })
+  }
+  beginBuildingPlacement(building, isRelocating = false, currentPlot = null) {
+    this.clearPetSelection()
+    this.placing = true
+    this.isPlacingNewPlot = false
+    this.isPlacingBuilding = true
+    this.isRelocatingBuilding = !!isRelocating
+    this.relocatingPlot = currentPlot || null
+    this.pendingBuilding = building
+    this.setCharacterInput(0, 0)
+    this.followCharacter = false
+    this.emitNearby()
+    this.follow = false
+    this.target = null
+    this.destination = null
+
+    const bW = Number(building.width || 7)
+    const bD = Number(building.depth || 7)
+
+    if (isRelocating && currentPlot) {
+      const initX = (currentPlot.buildingX !== undefined && currentPlot.buildingX !== null) ? Number(currentPlot.buildingX) : currentPlot.x
+      const initZ = (currentPlot.buildingZ !== undefined && currentPlot.buildingZ !== null) ? Number(currentPlot.buildingZ) : currentPlot.z
+      this.candidate = {
+        isBuilding: true,
+        isRelocating: true,
+        building,
+        x: initX,
+        z: initZ,
+        width: bW,
+        depth: bD,
+        targetPlot: currentPlot,
+        buildingX: initX,
+        buildingZ: initZ,
+        buildingOffsetX: Number((initX - currentPlot.x).toFixed(2)),
+        buildingOffsetZ: Number((initZ - currentPlot.z).toFixed(2)),
+        valid: true
+      }
+      this.page.setData({ placing: true, isPlacingNewPlot: false, isPlacingBuilding: true, isRelocatingBuilding: true, canConfirm: true })
+      this.onStatus(`已选中【${building.name}】当前位置，轻触草坪方块可自由移动调整（绿色可建造/红色空间不足）`)
+    } else {
+      this.candidate = null
+      this.page.setData({ placing: true, isPlacingNewPlot: false, isPlacingBuilding: true, isRelocatingBuilding: false, canConfirm: false })
+      this.onStatus(`请轻触场景草坪选择【${building.name}】的建造位置（绿色表示空间充足，红色表示空间不足）`)
+    }
   }
   setPlotSize(size) {
     const s = Number(size) || 48
@@ -1375,42 +1433,167 @@ class World2D {
     this.pickToken = (this.pickToken || 0) + 1
     this.placing = false
     this.isPlacingNewPlot = false
+    this.isPlacingBuilding = false
+    this.isRelocatingBuilding = false
+    this.relocatingPlot = null
+    this.pendingBuilding = null
     this.candidate = null
-    this.page.setData({ placing: false, canConfirm: false })
+    this.page.setData({ placing: false, isPlacingNewPlot: false, isPlacingBuilding: false, isRelocatingBuilding: false, canConfirm: false })
+    this.draw()
   }
   async pickPlot(point) {
     this.candidate = null
     this.page.setData({ canConfirm: false })
     const token = (this.pickToken = (this.pickToken || 0) + 1)
 
-    // 房子的建筑只能选在已买的地皮里面建造！
-    if (this.page.pendingBuilding) {
+    // 建筑放置模式（新造建筑或已有建筑调整位置）：随意指定具体建造位置，通过草坪方块空间判断绿色/红色
+    const currentBuilding = this.pendingBuilding || this.page.pendingBuilding
+    if (this.isPlacingBuilding && currentBuilding) {
+      const b = currentBuilding
+      const bW = Number(b.width || 7)
+      const bD = Number(b.depth || 7)
+      const isPublicFacility = b.category === 'public' || ['committee', 'police_station', 'prison', 'pet_hospital', 'repair_shop'].includes(b.type)
+
+      // 1. 查找点击点所在的我方地皮（出生庭院或专属绿地）
       const insidePlot = this.plots().find((p) => {
-        if (!p.mine && (!this.ownPlot || p.id !== this.ownPlot.id)) return false
+        if (!p.mine && (!this.ownPlot || (p.id !== this.ownPlot.id && p._id !== this.ownPlot._id))) return false
         const half = (p.size || 48) / 2
         return Math.abs(point.x - p.x) <= half && Math.abs(point.z - p.z) <= half
       })
+
+      // A. 点击点不在自己的任何地皮内
       if (!insidePlot) {
-        return this.onStatus('房子的建筑只能选在您已购买的地皮内部建造，请点击自家庭院草坪！')
+        this.candidate = {
+          isBuilding: true,
+          building: b,
+          valid: false,
+          reason: '超出您的领地范围，请在自家庭院或专属绿地内选择',
+          x: point.x,
+          z: point.z,
+          width: bW,
+          depth: bD,
+          targetPlot: null
+        }
+        this.page.setData({ canConfirm: false })
+        this.draw()
+        return this.onStatus('【无法建造】超出您的领地范围，请在自家庭院或专属绿地草坪内选择')
       }
+
       const homePlotId = this.ownPlot ? (this.ownPlot.id || this.ownPlot._id) : null
-      if (insidePlot.id === homePlotId || insidePlot._id === homePlotId || !insidePlot.isNewPlot || insidePlot.buildingType === 'residential') {
-        return this.onStatus('最初的自家庭院（原住别墅）不可改建！请选择空余的专属绿地建造')
+      const isHomePlot = insidePlot.id === homePlotId || insidePlot._id === homePlotId || !insidePlot.isNewPlot || insidePlot.buildingType === 'residential'
+
+      // B. 公共配套大建筑规则：只能在独立专属绿地建造，且一个地皮只能建立一个
+      if (isPublicFacility) {
+        if (isHomePlot) {
+          this.candidate = {
+            isBuilding: true,
+            building: b,
+            valid: false,
+            reason: '公共配套大设施只能在独立专属绿地建造，不可占用自家庭院',
+            x: point.x,
+            z: point.z,
+            width: bW,
+            depth: bD,
+            targetPlot: insidePlot
+          }
+          this.page.setData({ canConfirm: false })
+          this.draw()
+          return this.onStatus('【无法建造】公共配套大设施只能在独立专属绿地建造，不可占用自家庭院')
+        }
+        const isRelocatingSelf = this.isRelocatingBuilding && this.relocatingPlot && (this.relocatingPlot.id === insidePlot.id || this.relocatingPlot._id === insidePlot._id)
+        if (!isRelocatingSelf && insidePlot.buildingType && insidePlot.buildingType !== 'yard') {
+          this.candidate = {
+            isBuilding: true,
+            building: b,
+            valid: false,
+            reason: '该绿地已有公共设施，公共配套大建筑一个地皮只能建立一个',
+            x: point.x,
+            z: point.z,
+            width: bW,
+            depth: bD,
+            targetPlot: insidePlot
+          }
+          this.page.setData({ canConfirm: false })
+          this.draw()
+          return this.onStatus('【无法建造】该绿地已有公共设施，公共配套大建筑一个地皮只能建立一个')
+        }
       }
-      if (insidePlot.buildingType && insidePlot.buildingType !== 'yard') {
-        return this.onStatus('该绿地已被其他建筑占用，请选择未建房屋的空余绿地！')
+
+      // C. 检查草坪方块空间容纳度（建筑完全包含在地皮围栏内，留出安全边距）
+      const halfPlot = (insidePlot.size || 48) / 2
+      const margin = 1.0 // 留出草坪通道边距
+      const minPlotX = insidePlot.x - halfPlot + margin
+      const maxPlotX = insidePlot.x + halfPlot - margin
+      const minPlotZ = insidePlot.z - halfPlot + margin
+      const maxPlotZ = insidePlot.z + halfPlot - margin
+
+      const minBx = point.x - bW / 2
+      const maxBx = point.x + bW / 2
+      const minBz = point.z - bD / 2
+      const maxBz = point.z + bD / 2
+
+      if (minBx < minPlotX || maxBx > maxPlotX || minBz < minPlotZ || maxBz > maxPlotZ) {
+        this.candidate = {
+          isBuilding: true,
+          building: b,
+          valid: false,
+          reason: '草坪方块空间不足，建筑部分超出地皮围栏范围',
+          x: point.x,
+          z: point.z,
+          width: bW,
+          depth: bD,
+          targetPlot: insidePlot
+        }
+        this.page.setData({ canConfirm: false })
+        this.draw()
+        return this.onStatus('【无法建造】草坪方块空间不足，建筑部分超出地皮围栏范围')
       }
+
+      // D. 在自家庭院中建造时，检查是否与自家庭院的原主屋中心发生严重重叠
+      if (isHomePlot && b.type !== 'residential' && b.category !== 'residential') {
+        const homeHouseX = insidePlot.x
+        const homeHouseZ = insidePlot.z
+        const houseHalfSize = 9
+        const overlapX = Math.abs(point.x - homeHouseX) < (bW / 2 + houseHalfSize)
+        const overlapZ = Math.abs(point.z - homeHouseZ) < (bD / 2 + houseHalfSize)
+        if (overlapX && overlapZ) {
+          this.candidate = {
+            isBuilding: true,
+            building: b,
+            valid: false,
+            reason: '与自家庭院原有别墅位置重叠，请移至空旷草坪方块',
+            x: point.x,
+            z: point.z,
+            width: bW,
+            depth: bD,
+            targetPlot: insidePlot
+          }
+          this.page.setData({ canConfirm: false })
+          this.draw()
+          return this.onStatus('【无法建造】与自家庭院原有别墅位置重叠，请移至空旷草坪方块')
+        }
+      }
+
+      // E. 条件完全满足：呈现绿色指示，允许建造
       this.page.targetPlotForBuilding = insidePlot
       this.candidate = {
-        cellX: insidePlot.cellX,
-        cellZ: insidePlot.cellZ,
-        x: insidePlot.x,
-        z: insidePlot.z,
-        size: insidePlot.size || 48,
-        gateDirection: insidePlot.gateDirection || 'south'
+        isBuilding: true,
+        isRelocating: Boolean(this.isRelocatingBuilding),
+        building: b,
+        valid: true,
+        x: point.x,
+        z: point.z,
+        width: bW,
+        depth: bD,
+        targetPlot: insidePlot,
+        buildingX: point.x,
+        buildingZ: point.z,
+        buildingOffsetX: Number((point.x - insidePlot.x).toFixed(2)),
+        buildingOffsetZ: Number((point.z - insidePlot.z).toFixed(2))
       }
       this.page.setData({ canConfirm: true })
-      return this.onStatus(`已选定在【${insidePlot.name || '我的专属绿地'}】落座【${this.page.pendingBuilding.name}】，点击确认建造`)
+      this.draw()
+      return this.onStatus(`【位置可用】草坪方块空间充足！可在【${insidePlot.name || '我的庭院'}】落座【${b.name}】，点击确认`)
     }
 
     const x = Math.floor(point.x / STEP),
@@ -1458,6 +1641,23 @@ class World2D {
       this.onStatus(this.isPlacingNewPlot ? `已选定${currentSize}×${currentSize}米新地皮！绿色边框为栅栏范围，可切换大门朝向` : '中心标记为别墅落点 · 绿色边框为实际围栏范围')
     } catch (e) {
       this.onStatus('位置读取失败，请重新选择')
+    }
+  }
+  updatePlot(updated) {
+    if (!updated) return
+    const id = updated.id || updated._id
+    if (!id) return
+    if (this.ownPlot && (this.ownPlot.id === id || this.ownPlot._id === id)) {
+      this.ownPlot = { ...this.ownPlot, ...updated }
+    }
+    for (const [, list] of this.chunks.entries()) {
+      const idx = list.findIndex((p) => p.id === id || p._id === id)
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], ...updated }
+      }
+    }
+    if (this.mapPlots && this.mapPlots.has(id)) {
+      this.mapPlots.set(id, { ...this.mapPlots.get(id), ...updated })
     }
   }
   setPlot(plot) {
@@ -2074,6 +2274,111 @@ class World2D {
   drawPlacement() {
     const p = this.candidate,
       c = this.ctx
+    if (!p) return
+
+    // 建筑放置模式（含新建建筑与已有建筑调整位置）：随意指定具体建造位置，根据草坪方块空间判断绿色/红色
+    if (p.isBuilding) {
+      const bW = p.width || 7
+      const bD = p.depth || 7
+      const corners = [
+        [p.x - bW / 2, p.z - bD / 2],
+        [p.x + bW / 2, p.z - bD / 2],
+        [p.x + bW / 2, p.z + bD / 2],
+        [p.x - bW / 2, p.z + bD / 2]
+      ].map((q) => this.project(...q))
+
+      c.save()
+      c.beginPath()
+      corners.forEach((q, i) => (i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)))
+      c.closePath()
+
+      if (p.valid) {
+        // 绿色指示：草坪方块空间满足，呈现绿色可建造
+        c.fillStyle = 'rgba(34, 197, 94, 0.28)'
+        c.fill()
+        c.strokeStyle = '#15803d'
+        c.lineWidth = 2.5
+        c.stroke()
+
+        // 绘制内部草坪方块网格细虚线（直观展现草坪方块的满足情况）
+        c.save()
+        if (typeof c.setLineDash === 'function') c.setLineDash([3, 3])
+        c.strokeStyle = 'rgba(21, 128, 61, 0.45)'
+        c.lineWidth = 1
+        const gridStep = Math.max(2, Math.min(bW, bD) / 3)
+        for (let gx = -bW / 2 + gridStep; gx < bW / 2; gx += gridStep) {
+          const start = this.project(p.x + gx, p.z - bD / 2)
+          const end = this.project(p.x + gx, p.z + bD / 2)
+          c.beginPath()
+          c.moveTo(start.x, start.y)
+          c.lineTo(end.x, end.y)
+          c.stroke()
+        }
+        for (let gz = -bD / 2 + gridStep; gz < bD / 2; gz += gridStep) {
+          const start = this.project(p.x - bW / 2, p.z + gz)
+          const end = this.project(p.x + bW / 2, p.z + gz)
+          c.beginPath()
+          c.moveTo(start.x, start.y)
+          c.lineTo(end.x, end.y)
+          c.stroke()
+        }
+        c.restore()
+
+        // 绘制建筑半透明预览贴图（支持自定义贴图与默认系统模型）
+        const isTree = p.building && (p.building.type === 'tree' || p.building.category === 'tree' || String(p.building.type || '').startsWith('tree_'))
+        const customImg = p.building && p.building.image ? this.buildingImage(p.building.image) : null
+        const img = (customImg && customImg.width > 0 && customImg.height > 0) ? customImg : (this.assets && this.assets[isTree ? 'tree' : 'house'])
+        if (img && img.width > 0 && img.height > 0) {
+          c.save()
+          c.globalAlpha = 0.65
+          const pt = this.project(p.x, p.z)
+          const w = Math.max(bW, bD) * 2 * this.scale * this.zoom
+          const h = (w * img.height) / img.width
+          c.drawImage(img, pt.x - w / 2, pt.y - h * 0.8, w, h)
+          c.restore()
+        }
+
+        // 绘制中心绿色十字准星
+        const center = this.project(p.x, p.z)
+        c.strokeStyle = '#ffffff'
+        c.lineWidth = 3
+        c.beginPath()
+        c.moveTo(center.x - 8, center.y)
+        c.lineTo(center.x + 8, center.y)
+        c.moveTo(center.x, center.y - 8)
+        c.lineTo(center.x, center.y + 8)
+        c.stroke()
+        c.fillStyle = '#15803d'
+        c.beginPath()
+        c.arc(center.x, center.y, 4, 0, Math.PI * 2)
+        c.fill()
+
+        this.markerLabel(`✓ 可建造 · ${bW}×${bD}米`, center.x, center.y + 26)
+      } else {
+        // 红色指示：草坪方块空间不足，呈现红色不可建造
+        c.fillStyle = 'rgba(239, 68, 68, 0.32)'
+        c.fill()
+        c.strokeStyle = '#dc2626'
+        c.lineWidth = 2.5
+        c.stroke()
+
+        // 绘制中心红色 ✕ 标
+        const center = this.project(p.x, p.z)
+        c.strokeStyle = '#dc2626'
+        c.lineWidth = 3
+        c.beginPath()
+        c.moveTo(center.x - 7, center.y - 7)
+        c.lineTo(center.x + 7, center.y + 7)
+        c.moveTo(center.x + 7, center.y - 7)
+        c.lineTo(center.x - 7, center.y + 7)
+        c.stroke()
+
+        this.markerLabel(`✕ 无法建造：${p.reason || '空间不足'}`, center.x, center.y + 26)
+      }
+      c.restore()
+      return
+    }
+
     const corners = [
       [p.x - p.size / 2, p.z - p.size / 2],
       [p.x + p.size / 2, p.z - p.size / 2],
@@ -2204,11 +2509,13 @@ class World2D {
         const custom = this.buildingImage(p.buildingImage)
         const halfW = (p.buildingWidth || 7) / 2
         const halfD = (p.buildingDepth || 7) / 2
+        const fx = (p.buildingX !== undefined && p.buildingX !== null) ? Number(p.buildingX) : p.x
+        const fz = (p.buildingZ !== undefined && p.buildingZ !== null) ? Number(p.buildingZ) : p.z
         const corners = [
-          this.project(p.x - halfW, p.z - halfD),
-          this.project(p.x + halfW, p.z - halfD),
-          this.project(p.x + halfW, p.z + halfD),
-          this.project(p.x - halfW, p.z + halfD)
+          this.project(fx - halfW, fz - halfD),
+          this.project(fx + halfW, fz - halfD),
+          this.project(fx + halfW, fz + halfD),
+          this.project(fx - halfW, fz + halfD)
         ]
         this.ctx.save()
         if (typeof this.ctx.beginPath === 'function') this.ctx.beginPath()

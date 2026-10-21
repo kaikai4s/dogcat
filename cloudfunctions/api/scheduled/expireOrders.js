@@ -1,6 +1,6 @@
 module.exports = function createHelpers({ now, toTimeValue, ORDER_STATUS, safeText, createRefundForOrder, makeIdempotencyKey, db, appendOrderTimeline, appendOrderClientMessage, restoreOrderCoupon }) {
 function shouldExpireUnacceptedOrder(order = {}, time = now()) {
-  const start = toTimeValue(order.startTime)
+  const start = toTimeValue(order.startTime || (order.serviceSessions && order.serviceSessions[0] && order.serviceSessions[0].startTime))
   const isGroup = !!(order.groupBuyId || order.source === 'community_groupbuy')
   const threshold = isGroup ? (start - 2 * 3600 * 1000) : start
   return order.status === ORDER_STATUS.PAID && !safeText(order.staffOpenid).trim() && start > 0 && threshold <= time.getTime()
@@ -8,8 +8,13 @@ function shouldExpireUnacceptedOrder(order = {}, time = now()) {
 
 async function expireUnacceptedOrder(orderId, order, time = now(), forceGroupExpire = false) {
   if (!forceGroupExpire && !shouldExpireUnacceptedOrder(order, time)) return order
-  const isPaid = order.paymentStatus === 'paid' && Number(order.payAmount || 0) > 0
-  const isGroup = !!(order.groupBuyId || order.source === 'community_groupbuy')
+  const current = (await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data || order
+  if (!forceGroupExpire && !shouldExpireUnacceptedOrder(current, time)) return order
+  if (current.status === ORDER_STATUS.EXPIRED || ['refunding', 'refunded'].includes(current.paymentStatus)) {
+    return order
+  }
+  const isPaid = current.paymentStatus === 'paid' && Number(current.payAmount || 0) > 0
+  const isGroup = !!(current.groupBuyId || current.source === 'community_groupbuy')
   const expireReason = isGroup ? '服务开始前2小时无人接单，拼单自动作废' : '服务开始时间前无人接单'
   const refundReason = isGroup ? '服务开始前2小时无人接单，拼单自动全额退款' : '服务开始时间前无人接单，系统自动全额退款'
   const update = {
@@ -22,14 +27,12 @@ async function expireUnacceptedOrder(orderId, order, time = now(), forceGroupExp
 
   let refund = null
   if (isPaid) {
-    refund = await createRefundForOrder(order, order.payAmount, refundReason, 'system_expire', order.clientOpenid, makeIdempotencyKey('expire_refund', orderId), { unreadForClient: false, cancelStatus: 'expired' })
+    refund = await createRefundForOrder(current, current.payAmount, refundReason, 'system_expire', current.clientOpenid, makeIdempotencyKey('expire_refund', orderId), { unreadForClient: false, cancelStatus: 'expired' })
     update.paymentStatus = 'refunding'
     update.refundStatus = 'processing'
-    update.refundNo = refund.refundNo
-    update.refundAmount = Number(order.payAmount)
-    if (isGroup) {
-      await db.collection('orders').doc(orderId).update({ data: { groupBuyStatus: 'cancelled', updatedAt: time } }).catch(() => {})
-    }
+    update.refundNo = refund ? refund.refundNo : ''
+    update.refundAmount = Number(current.payAmount)
+    await db.collection('orders').doc(orderId).update({ data: update }).catch(() => {})
   }
 
   if (!refund) {
@@ -80,6 +83,14 @@ async function expireUnacceptedOrder(orderId, order, time = now(), forceGroupExp
 
 async function expireDueUnacceptedOrders() {
   const time = now()
+  try {
+    const groupBuy = require('../services/playground-group-buy')({ db, now, createRefundForOrder })
+    if (typeof groupBuy.expireDueGroupBuys === 'function') {
+      await groupBuy.expireDueGroupBuys(time)
+    }
+  } catch (err) {
+    console.error('[expireDueUnacceptedOrders] expireDueGroupBuys error:', err.message)
+  }
   let cursor = ''
   while (true) {
     const where = { status: ORDER_STATUS.PAID }

@@ -194,6 +194,12 @@ module.exports = function createHandler(context) {
       return result
     }
 
+    if (action === 'relocateBuilding') {
+      const plot = await world.relocateBuilding(openid, user, data)
+      await shared.plotChanged(openid, plot.id)
+      return { plot }
+    }
+
     if (action === 'claimPlot') {
       if (data.buildingType === 'committee') {
         const existing = await disputes.getCommunityCommittee(data.sceneId)
@@ -414,7 +420,7 @@ module.exports = function createHandler(context) {
         ...groups,
         communityName: groups.communityName || communityName,
         groupBuyDiscount: `${groups.rules.waiveVisitFee ? '同小区拼单免路费 · ' : ''}满${groups.rules.minHouseholds}户享${Number((groups.rules.discountRate * 10).toFixed(2))}折`,
-        groupBuyRule: `仅限本人所属小区，${groups.rules.minHouseholds}户成团后付款，优惠不与优惠券叠加。募集截止前可加入，成团后优惠锁定；未成团不收款。`,
+        groupBuyRule: `仅限本人所属小区，特惠预付满${groups.rules.minHouseholds}户成团，优惠不与优惠券叠加。凑齐户数立即成团并安排抢单；未成团或服务前2小时无人接单全额原路退款。`,
         sitters
       }
     }

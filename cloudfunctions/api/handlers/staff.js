@@ -1027,7 +1027,7 @@ module.exports = function createHandler(context) {
         }
       }
 
-      let candidates = availableOrders.filter((order) => matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish' && !isStaffPreviouslyAssignedToOrder(order, profile.openid) && !(Array.isArray(order.cancelledStaffOpenids) && order.cancelledStaffOpenids.includes(profile.openid)))
+      let candidates = availableOrders.filter((order) => (!order.groupBuyId || order.groupBuyStatus === 'formed') && matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish' && !isStaffPreviouslyAssignedToOrder(order, profile.openid) && !(Array.isArray(order.cancelledStaffOpenids) && order.cancelledStaffOpenids.includes(profile.openid)))
       if (filterDate) {
         candidates = candidates.filter((order) => {
           if (!order.startTime) return false

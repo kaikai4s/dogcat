@@ -453,14 +453,15 @@ Page({
   cancelPlot() {
     this.pendingBuilding = null
     this.targetPlotForBuilding = null
-    this.setData({ isPlacingNewPlot: false })
+    this.setData({ isPlacingNewPlot: false, isPlacingBuilding: false, isRelocatingBuilding: false })
     if (this.world) this.world.cancelPlacement()
   },
   async confirmPlot() {
     const world = this.world
     if (!world || !world.candidate || this.data.claiming) return
     const candidate = { ...world.candidate }
-    const building = this.pendingBuilding || null
+    const building = this.pendingBuilding || candidate.building || null
+    const isRelocating = Boolean(candidate.isRelocating || this.data.isRelocatingBuilding)
     const isNewPlot = Boolean(this.data.isPlacingNewPlot)
     const gateDirMap = { south: '南门', north: '北门', east: '东门', west: '西门' }
     const currentGateDir = candidate.gateDirection || this.data.gateDirection || 'south'
@@ -468,17 +469,84 @@ Page({
 
     const plotSize = Number(candidate.size) || this.data.selectedPlotSize || 48
 
-    // 情况 A：在已购买的地皮内部建造房子建筑
-    if (building) {
-      const targetPlot = this.targetPlotForBuilding || world.ownPlot
-      if (!targetPlot) {
-        wx.showModal({ title: '提示', content: '公共设施只能选在您已认领的爱心绿地内部建造，请点击自家庭院草坪！', showCancel: false })
+    // 情况 A：在草坪自由选址建造或调整已有建筑位置
+    if (candidate.isBuilding || building) {
+      if (!candidate.valid) {
+        wx.showModal({ title: '无法放置', content: candidate.reason || '草坪方块空间不足，无法建造', showCancel: false })
         return
       }
+      const targetPlot = candidate.targetPlot || this.targetPlotForBuilding || world.ownPlot
+      if (!targetPlot) {
+        wx.showModal({ title: '提示', content: '请先在场景中点击您拥有的庭院或专属绿地选择放置位置！', showCancel: false })
+        return
+      }
+
+      const bName = (building && building.name) || (targetPlot && targetPlot.buildingName) || '建筑'
+      const posDesc = `(${Math.round(candidate.x)}, ${Math.round(candidate.z)})`
+
+      if (isRelocating) {
+        // 调整已有建筑位置
+        const confirmed = await new Promise((resolve) =>
+          wx.showModal({
+            title: `确认调整【${bName}】位置`,
+            content: `将在【${targetPlot.name || '我的庭院'}】草坪坐标 ${posDesc} 重新安放该建筑，是否保存新位置？`,
+            confirmText: '保存位置',
+            success: (r) => resolve(r.confirm),
+            fail: () => resolve(false)
+          })
+        )
+        if (!confirmed || this.world !== world || world.destroyed) return
+
+        this.setData({ claiming: true })
+        try {
+          const result = await callFunction('playground', 'relocateBuilding', {
+            plotId: targetPlot.id || targetPlot._id,
+            buildingX: candidate.x,
+            buildingZ: candidate.z,
+            sceneId: world.scene && world.scene.sceneId
+          })
+          this.pendingBuilding = null
+          this.targetPlotForBuilding = null
+          this.setData({ isPlacingBuilding: false, isRelocatingBuilding: false })
+          if (this.world === world && !world.destroyed) {
+            const updatedPlot = result.plot || {
+              ...targetPlot,
+              buildingX: candidate.x,
+              buildingZ: candidate.z,
+              buildingOffsetX: Number((candidate.x - targetPlot.x).toFixed(2)),
+              buildingOffsetZ: Number((candidate.z - targetPlot.z).toFixed(2))
+            }
+            if (world.updatePlot) world.updatePlot(updatedPlot)
+            if (world.sharedPlots) world.sharedPlots.set(updatedPlot.id || updatedPlot._id, updatedPlot)
+            const targetPlotId = targetPlot.id || targetPlot._id
+            const updatedEmptyPlots = (this.data.emptyPlots || []).map((p) => {
+              if (p.id === targetPlotId || p._id === targetPlotId) {
+                return {
+                  ...p,
+                  ...updatedPlot
+                }
+              }
+              return p
+            })
+            this.setData({ emptyPlots: updatedEmptyPlots })
+            world.cancelPlacement()
+            this.pushStatusMessage(`【${bName}】已成功移动到新位置！`)
+          }
+          wx.showToast({ title: '位置调整成功！', icon: 'success' })
+        } catch (e) {
+          const message = e.message || e.errMsg || '调整位置失败'
+          wx.showModal({ title: '调整位置失败', content: message, showCancel: false })
+        } finally {
+          if (this.world === world) this.setData({ claiming: false })
+        }
+        return
+      }
+
+      // 新建建筑落座
       const confirmed = await new Promise((resolve) =>
         wx.showModal({
-          title: `确认建造【${building.name}】`,
-          content: `将在您的【${targetPlot.name || '自家庭院'}】内部建造该建筑房屋（不含额外地皮）。\n当前会员已解锁，无需支付代币。`,
+          title: `确认建造【${bName}】`,
+          content: `将在【${targetPlot.name || '我的庭院'}】草坪坐标 ${posDesc} 落座建造该建筑。\n当前会员已解锁，无需支付代币。`,
           confirmText: '确认建造',
           success: (r) => resolve(r.confirm),
           fail: () => resolve(false)
@@ -496,17 +564,46 @@ Page({
           buildingImage: building.image || '',
           buildingWidth: building.width || 7,
           buildingDepth: building.depth || 7,
+          buildingX: candidate.x,
+          buildingZ: candidate.z,
+          costCoins: building.costCoins || 0,
           sceneId: world.scene && world.scene.sceneId
         })
         this.pendingBuilding = null
         this.targetPlotForBuilding = null
-        this.setData({ isPlacingNewPlot: false })
+        this.setData({ isPlacingNewPlot: false, isPlacingBuilding: false, isRelocatingBuilding: false })
         if (this.world === world && !world.destroyed) {
-          if (world.scene) this.initialize()
-          else {
-            world.cancelPlacement()
-            this.pushStatusMessage(`【${building.name}】已成功落座于地皮内！`)
+          const updatedPlot = result.plot || {
+            ...targetPlot,
+            buildingId: building.id,
+            buildingType: building.type,
+            buildingCategory: building.category || '',
+            buildingName: building.name,
+            buildingImage: building.image || '',
+            buildingWidth: building.width || 7,
+            buildingDepth: building.depth || 7,
+            buildingX: candidate.x,
+            buildingZ: candidate.z,
+            buildingOffsetX: Number((candidate.x - targetPlot.x).toFixed(2)),
+            buildingOffsetZ: Number((candidate.z - targetPlot.z).toFixed(2)),
+            name: `${targetPlot.ownerName || '我'}的${building.name}`
           }
+          if (world.updatePlot) world.updatePlot(updatedPlot)
+          if (world.sharedPlots) world.sharedPlots.set(updatedPlot.id || updatedPlot._id, updatedPlot)
+          const targetPlotId = targetPlot.id || targetPlot._id
+          const updatedEmptyPlots = (this.data.emptyPlots || []).map((p) => {
+            if (p.id === targetPlotId || p._id === targetPlotId) {
+              return {
+                ...p,
+                ...updatedPlot,
+                isBuilt: true
+              }
+            }
+            return p
+          })
+          this.setData({ emptyPlots: updatedEmptyPlots })
+          world.cancelPlacement()
+          this.pushStatusMessage(`【${bName}】已成功落座于草坪！`)
         }
         wx.showToast({ title: '建筑落座成功！', icon: 'success' })
       } catch (e) {
@@ -1167,132 +1264,93 @@ Page({
     const world = this.world
     if (!world) return
 
+    const isPublicFacility = building.category === 'public' || ['committee', 'police_station', 'prison', 'pet_hospital', 'repair_shop'].includes(building.type)
     const emptyPlots = this.getAvailableEmptyPlots()
-    if (emptyPlots.length === 0) {
-      wx.showModal({
-        title: '需要空余专属绿地',
-        content: '最初的自家庭院为温馨住宅别墅，不可改建或覆盖。\n建造新建筑必须先认领一块空余专属绿地，是否立即前往认领？',
-        confirmText: '去认领绿地',
-        cancelText: '取消',
-        success: (r) => {
-          if (r.confirm) {
-            this.closeBuild()
-            this.buyNewPlotAction()
+
+    // 1. 公共配套大建筑（居委会、医院、督导所等）：必须在独立专属爱心绿地上建立，且一块绿地只能建立一个
+    if (isPublicFacility) {
+      if (emptyPlots.length === 0) {
+        wx.showModal({
+          title: '需要独立专属绿地',
+          content: '公共配套大设施（居委会、医院、督导所等）必须设立在独立的专属爱心绿地上，且一块绿地只能设立一个，不可占用自家庭院。\n请先认领一块空余的专属爱心绿地！',
+          confirmText: '去认领绿地',
+          cancelText: '取消',
+          success: (r) => {
+            if (r.confirm) {
+              this.closeBuild()
+              this.buyNewPlotAction()
+            }
           }
-        }
+        })
+        return
+      }
+    } else {
+      // 2. 非公共配套建筑（居住木屋、地板、景观树、景观装饰等）：可在任何已有绿地或自家庭院内建造
+      const hasAnyPlot = this.data.hasPlot || world.ownPlot || emptyPlots.length > 0
+      if (!hasAnyPlot) {
+        wx.showModal({
+          title: '需要先安置庭院',
+          content: '您当前尚未安置庭院家园，请先在场景中安置自家庭院！',
+          confirmText: '去安置庭院',
+          cancelText: '取消',
+          success: (r) => {
+            if (r.confirm) {
+              this.closeBuild()
+              this.choosePlot(false)
+            }
+          }
+        })
+        return
+      }
+    }
+
+    // 关闭建筑列表弹窗，直接进入场景自由建造放置模式（轻触草坪指定位置，绿标可建，红标空间不足）
+    this.closeBuild()
+    this.pendingBuilding = building
+    this.targetPlotForBuilding = null
+    world.beginBuildingPlacement(building, false)
+    wx.showToast({ title: '轻触草坪指定建造位置', icon: 'none' })
+  },
+  startRelocateBuildingAction(e) {
+    const world = this.world
+    if (!world) return
+    const plotId = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.plotid) ||
+                   (this.data.selectedBuildingInfo && this.data.selectedBuildingInfo.plotId) ||
+                   (this.data.nearbyBuilding && this.data.nearbyBuilding.plotId)
+    if (!plotId) return wx.showToast({ title: '未找到对应建筑', icon: 'none' })
+
+    const targetPlot = (world.plots ? world.plots() : []).find((p) => p.id === plotId || p._id === plotId)
+    if (!targetPlot) return wx.showToast({ title: '未找到该地皮信息', icon: 'none' })
+
+    if (!targetPlot.mine) {
+      return wx.showToast({ title: '只能调整属于您自己的建筑位置', icon: 'none' })
+    }
+
+    const isStartingVilla = (!targetPlot.isNewPlot || targetPlot.id === this.data.mainPlotId || targetPlot._id === this.data.mainPlotId) && targetPlot.buildingType === 'residential'
+    if (isStartingVilla) {
+      wx.showModal({
+        title: '温馨提示',
+        content: '最初的自家庭院原住别墅居于庭院中央，若需搬迁整体庭院，请在场景底部使用“调整原别墅/安置庭院”功能。\n若在该庭院内增建了其它设施，可在草坪方块中自由移动。',
+        showCancel: false
       })
       return
     }
 
-    let targetPlot = emptyPlots[0]
-    const dirMap = { south: '南门', north: '北门', east: '东门', west: '西门' }
-    if (emptyPlots.length > 1) {
-      const itemList = emptyPlots.map((p, idx) => {
-        const size = p.size || 48
-        const dir = dirMap[p.gateDirection] || '南门'
-        const posText = p.x !== undefined ? ` · 坐标 (${Math.round(p.x)}, ${Math.round(p.z)})` : ''
-        const statusText = p.buildingType && p.buildingType !== 'yard' ? ` · 已建【${p.buildingName || '建筑'}】可改建` : ' · 空余绿地'
-        return `专属地皮 ${idx + 1} (${size}×${size}m · 栅栏${dir}${statusText}${posText})`
-      })
-      const selectedIndex = await new Promise((resolve) => {
-        wx.showActionSheet({
-          itemList,
-          success: (res) => resolve(res.tapIndex),
-          fail: () => resolve(-1)
-        })
-      })
-      if (selectedIndex < 0) return
-      targetPlot = emptyPlots[selectedIndex]
+    const building = {
+      id: targetPlot.buildingId || targetPlot.id || targetPlot._id,
+      name: targetPlot.buildingName || targetPlot.name || '建筑',
+      type: targetPlot.buildingType || 'residential',
+      category: targetPlot.buildingCategory || '',
+      image: targetPlot.buildingImage || '',
+      width: targetPlot.buildingWidth || 7,
+      depth: targetPlot.buildingDepth || 7
     }
 
-    const sizeText = `${targetPlot.size || 48}×${targetPlot.size || 48}米`
-    const dirText = dirMap[targetPlot.gateDirection] || '南门'
-    const isRebuild = targetPlot.buildingType && targetPlot.buildingType !== 'yard'
-
-    if (isRebuild) {
-      const choice = await new Promise((resolve) => {
-        wx.showActionSheet({
-          itemList: [`直接替换改建为【${building.name}】`, `拆除原【${targetPlot.buildingName || '建筑'}】还原为纯草块`],
-          success: (r) => resolve(r.tapIndex),
-          fail: () => resolve(-1)
-        })
-      })
-      if (choice === 1) {
-        this.closeBuild()
-        return this.dismantleBuildingAction({ currentTarget: { dataset: { plotid: targetPlot.id || targetPlot._id } } })
-      }
-      if (choice !== 0) return
-    }
-
-    const rebuildNotice = isRebuild ? `\n⚠️ 当前绿地已落座【${targetPlot.buildingName || '原建筑'}】，本次建造将替换改建为【${building.name}】。` : ''
-    const confirmed = await new Promise((resolve) =>
-      wx.showModal({
-        title: isRebuild ? `确认改建【${building.name}】` : `确认建造【${building.name}】`,
-        content: `已选定专属绿地（${sizeText} · 栅栏${dirText}）。\n将在该绿地落座建造【${building.name}】。${rebuildNotice}\n★ 您的自家庭院（原住别墅）完好保留，不受任何影响。是否确认建造？`,
-        confirmText: isRebuild ? '确认改建' : '立即建造',
-        success: (r) => resolve(r.confirm),
-        fail: () => resolve(false)
-      })
-    )
-    if (!confirmed) return
-    this.setData({ buildBusy: true })
-    try {
-      const result = await callFunction('playground', 'buildInYard', {
-        plotId: targetPlot.id || targetPlot._id,
-        buildingId: building.id,
-        buildingType: building.type,
-        buildingName: building.name,
-        buildingImage: building.image,
-        buildingWidth: building.width,
-        buildingDepth: building.depth,
-        costCoins: building.costCoins || 0,
-        sceneId: world.scene && world.scene.sceneId
-      })
-      wx.showToast({ title: '建筑落座成功！', icon: 'success' })
-      this.closeBuild()
-      if (this.world === world && !world.destroyed) {
-        const updated = result.plot || {
-          ...targetPlot,
-          buildingId: building.id,
-          buildingType: building.type,
-          buildingCategory: building.category || '',
-          buildingName: building.name,
-          buildingImage: building.image || '',
-          buildingWidth: building.width || 7,
-          buildingDepth: building.depth || 7,
-          name: `${targetPlot.ownerName || '我'}的${building.name}`
-        }
-        if (world.sharedPlots) world.sharedPlots.set(updated.id || updated._id, updated)
-        const targetPlotId = targetPlot.id || targetPlot._id
-        const updatedEmptyPlots = (this.data.emptyPlots || []).map((p) => {
-          if (p.id === targetPlotId || p._id === targetPlotId) {
-            return {
-              ...p,
-              buildingId: building.id,
-              buildingType: building.type,
-              buildingCategory: building.category || '',
-              buildingName: building.name,
-              isBuilt: true,
-              name: `${targetPlot.ownerName || '我'}的${building.name}`
-            }
-          }
-          return p
-        })
-        this.setData({ emptyPlots: updatedEmptyPlots, availableEmptyPlotCount: updatedEmptyPlots.length })
-        if (world.sceneSync && typeof world.sceneSync.snapshot === 'function') {
-          world.sceneSync.snapshot().catch(() => {})
-        } else if (world.scene) {
-          this.initialize()
-        }
-        world.loadVisible().catch(() => {})
-        if (typeof world.renderFrame === 'function') world.renderFrame()
-        this.pushStatusMessage(`【${building.name}】已成功落座于地皮内！`)
-      }
-    } catch (err) {
-      wx.showToast({ title: err.message || '建造失败', icon: 'none' })
-    } finally {
-      this.setData({ buildBusy: false })
-    }
+    this.pendingBuilding = building
+    this.targetPlotForBuilding = targetPlot
+    this.setData({ selectedBuildingInfo: null })
+    world.beginBuildingPlacement(building, true, targetPlot)
+    this.pushStatusMessage(`已进入【${building.name}】位置调整模式，轻触草坪方块可自由移动`)
   },
   async buildOutYardAction() {
     this.closeBuild()

@@ -23,8 +23,20 @@ function yardLayout(plot) {
     radius: radius * detailScale,
     anchor
   })
+  let houseItemX = 0
+  let houseItemZ = 0
+  if (plot.buildingX !== undefined && plot.buildingX !== null) {
+    houseItemX = (Number(plot.buildingX) - plot.x) / half
+  } else if (plot.buildingOffsetX !== undefined && plot.buildingOffsetX !== null) {
+    houseItemX = Number(plot.buildingOffsetX) / half
+  }
+  if (plot.buildingZ !== undefined && plot.buildingZ !== null) {
+    houseItemZ = (Number(plot.buildingZ) - plot.z) / half
+  } else if (plot.buildingOffsetZ !== undefined && plot.buildingOffsetZ !== null) {
+    houseItemZ = Number(plot.buildingOffsetZ) / half
+  }
   const sprites = [
-    item('house', 0, 0, 38, 9, 0.78),
+    item('house', houseItemX, houseItemZ, 38, 9, 0.78),
     item('tree', -0.72, -0.64, 18, 2.6, 0.74),
     item('tree', 0.72, -0.64, 18, 2.6, 0.74),
     item('tree', 0.75, 0.05, 15, 2.1, 0.74),

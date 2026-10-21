@@ -48,12 +48,16 @@
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'tree'}}" bindtap="treeAction">树荫休憩·微风拂面</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'police_station'}}" bindtap="openJustice">文明出行督导站</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'prison'}}" bindtap="openJustice">交通安全宣教室</button>
-      <button wx:if="{{nearbyBuilding && nearbyBuilding.mine && nearbyBuilding.canDismantle}}" class="dismantle-building-btn" bindtap="dismantleBuildingAction">拆除建筑·恢复草块</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.mine}}" class="relocate-building-btn" data-plotid="{{nearbyBuilding.plotId}}" bindtap="startRelocateBuildingAction">调整建筑位置</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.mine && nearbyBuilding.canDismantle}}" class="dismantle-building-btn" data-plotid="{{nearbyBuilding.plotId}}" bindtap="dismantleBuildingAction">拆除建筑·恢复草块</button>
       </block>
       <button wx:if="{{myJailStatus && myJailStatus.isJailed}}" bindtap="openJustice" class="jail-status-btn">宣教自省中({{myJailStatus.remainingSeconds}}s)·提前结业</button>
       <view wx:if="{{selectedBuildingInfo}}" class="building-info-card" catchtouchstart="swallowTouch" catchtouchmove="swallowTouch" catchtouchend="swallowTouch" catchtap="swallowTouch">
         <view class="building-info-title"><text class="remix-icon ri-home-5-line"></text><text>{{selectedBuildingInfo.name}}</text><button class="building-info-close" catchtap="closeBuildingInfo" aria-label="收起建筑信息">×</button></view>
         <view class="building-info-caption">{{selectedBuildingInfo.mine ? '我的建筑' : '社区建筑'}} · 走近后可使用对应服务</view>
+        <view wx:if="{{selectedBuildingInfo.mine}}" class="building-info-actions">
+          <button class="relocate-building-btn" data-plotid="{{selectedBuildingInfo.plotId}}" bindtap="startRelocateBuildingAction">调整建筑位置</button>
+        </view>
       </view>
     </view>
   </view>
@@ -110,7 +114,7 @@
       <view class="pet-size-heading"><text>{{selectedPetName}} · {{petScalePercent}}%</text><text class="pet-size-tip">{{petScaleSaving ? '保存中…' : '松手自动保存'}}</text></view>
       <view class="pet-size-slider"><text>小</text><slider min="50" max="200" step="5" value="{{petScalePercent}}" disabled="{{petScaleSaving}}" activeColor="#6f8d58" block-color="#6f8d58" block-size="20" bindchanging="previewPetScale" bindchange="savePetScale"/><text>大</text><button bindtap="resetPetScale" disabled="{{petScaleSaving}}">恢复默认</button></view>
     </view>
-    <view class="plot-size-bar" wx:if="{{placing && isPlacingNewPlot}}">
+    <view class="plot-size-bar" wx:if="{{placing && isPlacingNewPlot && !isPlacingBuilding}}">
       <text class="plot-size-label">绿地规格：</text>
       <button wx:for="{{plotSizes}}" wx:key="size" class="plot-size-chip {{selectedPlotSize === item.size ? 'active' : ''}}" data-size="{{item.size}}" bindtap="selectPlotSize" disabled="{{isPlacingNewPlot && !item.unlocked}}">{{item.label}} {{isPlacingNewPlot && !item.unlocked ? item.unlockText : ''}}</button>
     </view>
@@ -120,9 +124,9 @@
       <button wx:if="{{!placing}}" bindtap="overview">{{hasPlot ? '回到家园' : '回到起点'}}</button>
       <button wx:if="{{hasPlot && hasCommunity && !hasHomeElsewhere && !placing}}" bindtap="buyNewPlotAction">认领专属爱心绿地</button>
       <button wx:if="{{(!hasPlot || canRelocate) && hasCommunity && !hasHomeElsewhere && !placing}}" bindtap="choosePlot">{{hasPlot ? '调整原别墅' : '安置庭院'}}</button>
-      <button wx:if="{{placing}}" bindtap="cycleGateDirection">门口：{{gateDirectionText}} ▾</button>
-      <button wx:if="{{placing}}" bindtap="cancelPlot" disabled="{{claiming}}">取消选址</button>
-      <button wx:if="{{placing}}" bindtap="confirmPlot" disabled="{{!canConfirm || claiming}}" loading="{{claiming}}">{{isPlacingNewPlot ? '确认认领绿地' : '确认位置'}}</button>
+      <button wx:if="{{placing && !isPlacingBuilding}}" bindtap="cycleGateDirection">门口：{{gateDirectionText}} ▾</button>
+      <button wx:if="{{placing}}" bindtap="cancelPlot" disabled="{{claiming}}">{{isPlacingBuilding ? '取消建造' : '取消选址'}}</button>
+      <button wx:if="{{placing}}" bindtap="confirmPlot" disabled="{{!canConfirm || claiming}}" loading="{{claiming}}">{{isPlacingBuilding ? (isRelocatingBuilding ? '确认新位置' : '确认建造') : (isPlacingNewPlot ? '确认认领绿地' : '确认位置')}}</button>
     </view>
     <view class="hint">{{hasAvatar ? joystickMode === 'hold' ? '长按草地1秒显示摇杆 · ' : '摇杆轻推走 / 拉远跑 · ' : ''}}点击角色 / 宠物选择 · 双指缩放</view>
   </view>
