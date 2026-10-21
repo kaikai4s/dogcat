@@ -4,6 +4,90 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 
+test('building relocation submits the selected instance and keeps the server multi-building state', async () => {
+  let page
+  const requests = []
+  const tree = { id: 'tree_template', instanceId: 'selected_tree', type: 'tree', name: '选中的树', width: 7, depth: 7 }
+  const original = { id: 'garden', x: 400, z: 400, isNewPlot: true, buildings: [
+    { ...tree, buildingId: tree.id, x: 390, z: 390 },
+    { ...tree, instanceId: 'other_tree', buildingId: tree.id, x: 410, z: 410 }
+  ] }
+  const response = { ...original, buildings: original.buildings.map((b) => b.instanceId === tree.instanceId ? { ...b, x: 390.25, z: 410.75 } : b) }
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/packagePlayground/pages/world.js'), 'utf8'), {
+    Page: (p) => { page = p },
+    require: (name) => name.includes('utils/cloud') ? { callFunction: async (module, action, data) => {
+      requests.push({ action, data })
+      return { plot: response }
+    } } : name.includes('plot-buildings') ? require('../../miniprogram/packagePlayground/utils/plot-buildings') : {},
+    wx: { showModal(options) { if (options.success) options.success({ confirm: true }) }, showToast() {} },
+    setTimeout, clearTimeout
+  })
+  page.setData = (patch) => Object.assign(page.data, patch)
+  page.pushStatusMessage = () => {}
+  page.pendingBuilding = tree
+  page.data.isRelocatingBuilding = true
+  let applied
+  page.world = {
+    candidate: { isBuilding: true, isRelocating: true, valid: true, building: tree, buildingInstanceId: tree.instanceId, targetPlot: original, x: 390.25, z: 410.75 },
+    relocatingBuildingInstanceId: tree.instanceId,
+    relocatingPlot: original,
+    scene: { sceneId: 'scene' }, sharedPlots: new Map(),
+    updatePlot(plot) { applied = plot }, cancelPlacement() {}
+  }
+  await page.confirmPlot()
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].action, 'relocateBuilding')
+  assert.equal(requests[0].data.plotId, original.id)
+  assert.equal(requests[0].data.buildingInstanceId, tree.instanceId)
+  assert.equal(requests[0].data.buildingX, 390.25)
+  assert.equal(applied, response)
+  assert.equal(applied.buildings.length, 2)
+  assert.deepEqual(applied.buildings[1], original.buildings[1])
+})
+
+test('new construction retries reuse an intent id while another tree receives a new id', async () => {
+  const { World2D } = require('../../miniprogram/packagePlayground/utils/world2d')
+  const model = require('../../miniprogram/packagePlayground/utils/plot-buildings')
+  let page
+  let stored = { id: 'home_retry', x: 400, z: 400, size: 48, mine: true, isNewPlot: false, buildingType: 'residential', buildings: [] }
+  const requests = []
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/packagePlayground/pages/world.js'), 'utf8'), {
+    Page: (p) => { page = p },
+    require: (name) => name.includes('utils/cloud') ? { callFunction: async (module, action, data) => {
+      requests.push(data)
+      if (requests.length === 1) throw new Error('测试建造重试')
+      stored = model.withBuildings(stored, [...stored.buildings, {
+        instanceId: data.buildingInstanceId, buildingId: data.buildingId, type: 'tree', category: 'tree', name: '树', width: 7, depth: 7, x: data.buildingX, z: data.buildingZ
+      }])
+      return { plot: stored }
+    } } : name.includes('plot-buildings') ? model : {},
+    wx: { showModal(options) { if (options.success) options.success({ confirm: true }) }, showToast() {} },
+    setTimeout, clearTimeout
+  })
+  page.setData = (patch) => Object.assign(page.data, patch)
+  page.pushStatusMessage = () => {}
+  page.fetchRegion = async () => ({ plots: [] })
+  page.data.hasPlot = true
+  page.data.selectedBuilding = { id: 'tree_template', name: '树', type: 'tree', category: 'tree', width: 7, depth: 7, unlocked: true }
+  const world = new World2D(page, null, { world: { width: 1000, height: 1000 }, pets: [] })
+  world.ownPlot = stored
+  world.sharedPlots.set(stored.id, stored)
+  page.world = world
+  await page.buildInYardAction()
+  await world.pickPlot({ x: 416, z: 416 })
+  await page.confirmPlot()
+  assert.equal(world.candidate.valid, true)
+  await page.confirmPlot()
+  assert.ok(requests[0].buildingInstanceId)
+  assert.equal(requests[0].buildingInstanceId, requests[1].buildingInstanceId)
+  await page.buildInYardAction()
+  await world.pickPlot({ x: 384, z: 384 })
+  await page.confirmPlot()
+  assert.notEqual(requests[2].buildingInstanceId, requests[1].buildingInstanceId)
+  assert.equal(stored.buildings.length, 2)
+  assert.equal(world.ownPlot.buildingType, 'residential')
+})
+
 test('placement failure shows the complete cloud error and retains the existing yard', async () => {
   const modals = []
   let page

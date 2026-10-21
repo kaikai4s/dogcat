@@ -4,6 +4,141 @@ const { fixture } = require('../fixtures/playgroundLife')
 const createBuildingsService = require('../../cloudfunctions/api/services/playground-buildings')
 const createDisputesService = require('../../cloudfunctions/api/services/playground-disputes')
 
+test('multiple trees in a home preserve the villa, survive reentry and operate independently', async () => {
+  const f = fixture()
+  await f.build('a')
+  const owner = await f.plots.own('a')
+  const home = { ...owner, id: owner.plotId || owner.id }
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const create = (id, offset) => handler('a', 'buildInYard', {
+    plotId: home.id, sceneId: home.communityId, buildingId: 'tree_cherry_blossom_default',
+    buildingInstanceId: id, buildingX: home.x + offset, buildingZ: home.z + offset
+  })
+  const first = await create('home_tree_one', 16)
+  const second = await create('home_tree_two', -16)
+  assert.equal(first.plot.buildingType, 'residential')
+  assert.equal(second.plot.buildingType, 'residential')
+  assert.equal(second.plot.buildings.length, 2)
+  assert.deepEqual(second.plot.buildings.map((b) => b.instanceId), ['home_tree_one', 'home_tree_two'])
+  assert.deepEqual(second.plot.buildings[0], first.plot.buildings[0])
+  const retry = await create('home_tree_two', -16)
+  assert.equal(retry.plot.buildings.length, 2)
+  assert.equal((await f.plots.own('a')).buildings.length, 2)
+  await f.enter('a')
+  assert.equal((await f.plots.own('a')).buildingType, 'residential')
+  assert.equal((await f.plots.own('a')).buildings.length, 2)
+
+  const moved = await handler('a', 'relocateBuilding', {
+    plotId: home.id, buildingInstanceId: 'home_tree_one',
+    buildingX: home.x + 16, buildingZ: home.z - 16, sceneId: home.communityId
+  })
+  assert.equal(moved.plot.buildings.find((b) => b.instanceId === 'home_tree_one').z, home.z - 16)
+  assert.deepEqual(moved.plot.buildings.find((b) => b.instanceId === 'home_tree_two'), second.plot.buildings[1])
+  await assert.rejects(() => handler('a', 'relocateBuilding', {
+    plotId: home.id, buildingInstanceId: 'home_tree_one',
+    buildingX: home.x - 16, buildingZ: home.z - 16, sceneId: home.communityId
+  }), /重叠|占用/)
+  const removed = await handler('a', 'dismantleBuilding', {
+    plotId: home.id, buildingInstanceId: 'home_tree_one', sceneId: home.communityId
+  })
+  assert.equal(removed.plot.buildingType, 'residential')
+  assert.deepEqual(removed.plot.buildings.map((b) => b.instanceId), ['home_tree_two'])
+  await assert.rejects(() => handler('a', 'dismantleBuilding', {
+    plotId: home.id, buildingInstanceId: 'unknown_instance', sceneId: home.communityId
+  }), /不存在|未找到|无效/)
+  await assert.rejects(() => handler('b', 'dismantleBuilding', {
+    plotId: home.id, buildingInstanceId: 'home_tree_two', sceneId: home.communityId
+  }), /自己/)
+})
+
+test('concurrent tree construction retries are idempotent while distinct trees are preserved', async () => {
+  const f = fixture()
+  await f.build('a')
+  const plot = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 600, z: 600, size: 48 })
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const data = { plotId: plot.id, sceneId: plot.communityId, buildingId: 'tree_cherry_blossom_default', buildingInstanceId: 'concurrent_tree', buildingX: 588, buildingZ: 600 }
+  await Promise.all([handler('a', 'buildInYard', data), handler('a', 'buildInYard', data)])
+  assert.equal(f.row(plot.id).buildings.length, 1)
+  await handler('a', 'buildInYard', { ...data, buildingInstanceId: 'another_tree', buildingX: 612 })
+  assert.deepEqual(f.row(plot.id).buildings.map((b) => b.instanceId), ['concurrent_tree', 'another_tree'])
+  await assert.rejects(() => handler('a', 'buildInYard', { ...data, buildingX: 600 }), /重复|冲突|不一致|不同|已存在/)
+})
+
+test('one public facility coexists with ordinary instances without losing public service identity', async () => {
+  const f = fixture()
+  await f.build('a')
+  const plot = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 600, z: 600, size: 48 })
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const create = (buildingId, instanceId, x, z) => handler('a', 'buildInYard', {
+    plotId: plot.id, sceneId: plot.communityId, buildingId, buildingInstanceId: instanceId, buildingX: x, buildingZ: z
+  })
+  await create('tree_cherry_blossom_default', 'garden_tree_one', 586, 614)
+  const publicResult = await create('committee_default', 'garden_committee', 600, 600)
+  const withTree = await create('tree_cherry_blossom_default', 'garden_tree_two', 614, 614)
+  assert.equal(withTree.plot.buildings.length, 3)
+  assert.equal(withTree.plot.buildingType, 'committee')
+  assert.equal(f.row(plot.id).committeeStartedAt, f.now())
+  await assert.rejects(() => create('committee_default', 'second_committee', 600, 586), /公共|只能|一个/)
+  await assert.rejects(() => create('repair_shop_default', 'second_public', 600, 586), /公共|只能|一个/)
+  const removed = await handler('a', 'dismantleBuilding', {
+    plotId: plot.id, buildingInstanceId: 'garden_tree_one', sceneId: plot.communityId
+  })
+  assert.equal(removed.plot.buildingType, 'committee')
+  assert.equal(removed.plot.buildings.length, 2)
+  assert.equal(f.row(plot.id).committeeStartedAt, f.now())
+  assert.ok(publicResult.plot.buildings.some((b) => b.instanceId === 'garden_committee'))
+})
+
+test('catalog updates and deletion affect matching instances only, including non-primary trees', async () => {
+  const f = fixture()
+  await f.build('a')
+  const plot = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 600, z: 600, size: 48 })
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  for (const [buildingId, instanceId, x] of [
+    ['floor_stone_tile_default', 'keep_floor', 600],
+    ['tree_cherry_blossom_default', 'update_tree_one', 586],
+    ['tree_cherry_blossom_default', 'update_tree_two', 614]
+  ]) {
+    await handler('a', 'buildInYard', { plotId: plot.id, buildingId, buildingInstanceId: instanceId, buildingX: x, buildingZ: 600, sceneId: plot.communityId })
+  }
+  const service = createBuildingsService(f.context)
+  const catalog = await service.list()
+  const tree = catalog.buildings.find((b) => b.id === 'tree_cherry_blossom_default')
+  const saved = await service.save('admin', { revision: catalog.revision, building: { ...tree, name: '同步新树名', image: 'cloud://tree-new.png' } })
+  const trees = f.row(plot.id).buildings.filter((b) => b.type === 'tree')
+  assert.equal(trees.length, 2)
+  assert.ok(trees.every((b) => b.name === '同步新树名' && b.image === 'cloud://tree-new.png'))
+  await service.remove('admin', { id: tree.id, revision: saved.revision })
+  assert.deepEqual(f.row(plot.id).buildings.map((b) => b.instanceId), ['keep_floor'])
+  assert.equal(f.row(plot.id).buildingType, 'floor')
+})
+
+test('legacy home attachments migrate without loss and move with their courtyard', async () => {
+  const f = fixture()
+  await f.build('a')
+  const owner = await f.plots.own('a')
+  const home = { ...owner, id: owner.plotId || owner.id }
+  const stored = f.row(home.id)
+  delete stored.buildings
+  Object.assign(stored, {
+    buildingId: 'tree_cherry_blossom_default', buildingType: 'tree', buildingCategory: 'tree',
+    buildingName: '存量庭院树', buildingWidth: 7, buildingDepth: 7, buildingX: home.x + 16, buildingZ: home.z + 16
+  })
+  const migrated = await f.plots.own('a')
+  assert.equal(migrated.buildingType, 'residential')
+  assert.equal(migrated.buildings.length, 1)
+  assert.equal(migrated.buildings[0].name, '存量庭院树')
+  assert.equal(migrated.buildings[0].x, home.x + 16)
+  const id = migrated.buildings[0].instanceId
+  assert.equal((await f.plots.own('a')).buildings[0].instanceId, id)
+  const moved = await f.plots.claim('a', f.user('a'), { x: 800, z: 800, size: home.size })
+  assert.equal(moved.buildingType, 'residential')
+  assert.equal(moved.buildings.length, 1)
+  assert.equal(moved.buildings[0].instanceId, id)
+  assert.equal(moved.buildings[0].x - moved.x, 16)
+  assert.equal(moved.buildings[0].z - moved.z, 16)
+})
+
 test('building catalog calculates grass tile count correctly and manages buildings', async () => {
   const f = fixture()
   const service = createBuildingsService(f.context)
@@ -106,11 +241,12 @@ test('committee uniqueness: only one committee can be built per community', asyn
     plotId: aYard.id,
     buildingType: 'committee',
     buildingName: '阳光居委会',
+    buildingInstanceId: 'committee_retry',
     sceneId
   })
 
-  // Replacing the building on the same plot must succeed
-  await handler('a','buildInYard',{buildingId:'committee_default',plotId:aYard.id,sceneId})
+  // Retrying the same construction intent must not create a second facility.
+  await handler('a','buildInYard',{buildingId:'committee_default',buildingInstanceId:'committee_retry',plotId:aYard.id,sceneId})
 
   // b 尝试在同一社区建造居委会，必须被拦截
   await f.build('b', { x: 560, z: 280 })
@@ -194,12 +330,15 @@ test('weekly membership rewards require actual recent work and seven days, concu
 })
 
 test('unresolved reports expire after three days and revoke the current committee',async()=>{
-  const {f,a,b,handler}=await committeeFixture(),event=waste(f)
+  const {f,a,b,handler,aYard}=await committeeFixture(),event=waste(f)
+  await handler('a','buildInYard',{...f.auth(a),plotId:aYard.id,buildingId:'tree_cherry_blossom_default',buildingInstanceId:'keep_tree_after_revocation',buildingX:aYard.x+14,buildingZ:aYard.z+14})
   await handler('b','reportPoop',{...f.auth(b),poopId:event.id})
   f.advance(73*3600000)
   const state=await handler('a','listDisputes',f.auth(a))
   assert.equal(state.isCommittee,false);assert.equal(state.disputes[0].status,'expired')
   assert.equal((await f.plots.own('a')).buildingType,'residential')
+  assert.deepEqual(f.row(aYard.id).buildings.map((building)=>building.instanceId),['keep_tree_after_revocation'])
+  assert.equal(f.row(aYard.id).buildingType,'tree')
 })
 
 test('washing verifies scene, owner, proximity, shop and actual dirt before paying the shop owner once',async()=>{
@@ -408,37 +547,37 @@ test('building catalog classifies buildings and supports floor paving and landsc
   assert.ok(treeSprite.radius <= 1.5, '树木避障仅阻挡树干')
   assert.equal(treeSprite.anchor, 0.88)
 
-  // 6. 验证在已有建筑的独立绿地上改建（比如将木屋改建为景观樱花树）
   const rebuiltPlot = await f.plots.buildInYard('a', user, {
     plotId: emptyYard.id,
     buildingId: 'tree_cherry_blossom_default'
   })
-  assert.equal(rebuiltPlot.buildingType, 'tree')
-  assert.equal(rebuiltPlot.buildingCategory, 'tree')
-  assert.equal(rebuiltPlot.name, '玩家a的浪漫景观樱花树')
+  assert.equal(rebuiltPlot.buildings.length, 2)
+  assert.equal(rebuiltPlot.buildings[0].type, 'floor')
+  assert.equal(rebuiltPlot.buildings[1].type, 'tree')
+  assert.equal(rebuiltPlot.buildings[1].name, '浪漫景观樱花树')
 
   // 7. 再次确认：自家庭院原住别墅始终受到保护不可改建
   const myHome = await f.plots.own('a')
   assert.equal(myHome.buildingType, 'residential')
   await assert.rejects(
     () => f.plots.buildInYard('a', user, {
-      plotId: myHome.id,
+      plotId: myHome.plotId || myHome.id,
       buildingId: 'tree_cherry_blossom_default'
     }),
-    /最初的自家庭院/
+    /别墅重叠|原有别墅/
   )
 
-  // 8. 独立绿地即便是 residential 类型也能自由改建，唯独出生原住庭院受硬保护
+  // 顶层旧字段不能覆盖已有实例数组。
   await f.db.collection('pet_playground_plots').doc(rebuiltPlot.id).update({ data: { buildingType: 'residential' } })
   const rebuiltAgain = await f.plots.buildInYard('a', user, {
     plotId: rebuiltPlot.id,
     buildingId: 'floor_stone_tile_default'
   })
-  assert.equal(rebuiltAgain.buildingType, 'floor')
-  assert.equal(rebuiltAgain.buildingCategory, 'floor')
+  assert.equal(rebuiltAgain.buildings.length, 3)
+  assert.deepEqual(rebuiltAgain.buildings.map((b) => b.type), ['floor', 'tree', 'floor'])
 })
 
-test('all buildings (present and future custom uploaded) can be dismantled back to grass yard or replaced', async () => {
+test('custom buildings can be dismantled individually while additional buildings are preserved', async () => {
   const f = fixture()
   const user = f.user('a')
   const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
@@ -505,22 +644,22 @@ test('all buildings (present and future custom uploaded) can be dismantled back 
   assert.equal(rebuiltTree.plot.buildingType, 'tree')
   assert.equal(rebuiltTree.plot.buildingName, '浪漫景观樱花树')
 
-  // 6. 验证无需先拆除，也可以直接无缝替换改建为其他建筑（如古朴石板地坪）
+  // 在树下铺地坪，树和地坪必须共存。
   const replacedFloor = await handler('a', 'buildInYard', {
     plotId: aYard.id,
     buildingId: 'floor_stone_tile_default',
     sceneId: aYard.communityId
   })
-  assert.equal(replacedFloor.plot.buildingType, 'floor')
-  assert.equal(replacedFloor.plot.buildingName, '古朴石板地坪')
-
-  // 7. 再次拆除地坪，确认地坪也能随时拆除变回纯草块
+  assert.deepEqual(replacedFloor.plot.buildings.map((b) => b.type), ['tree', 'floor'])
+  const floorInstance = replacedFloor.plot.buildings.find((b) => b.type === 'floor')
   const dismantleFloor = await handler('a', 'dismantleBuilding', {
     plotId: aYard.id,
+    buildingInstanceId: floorInstance.instanceId,
     sceneId: aYard.communityId
   })
   assert.equal(dismantleFloor.dismantled, true)
-  assert.equal(dismantleFloor.plot.buildingType, 'yard')
+  assert.equal(dismantleFloor.plot.buildingType, 'tree')
+  assert.equal(dismantleFloor.plot.buildings.length, 1)
 
   // 8. 验证尝试拆除出生原住庭院会被硬保护拦截
   const myHome = await f.plots.own('a')
@@ -646,7 +785,7 @@ test('admin deleting a building from catalog automatically restores placed plots
   assert.equal(rebuiltTree.plot.buildingType, 'tree')
 })
 
-test('admin uploading custom building types with floor_/tree_/decoration_ prefixes passes validation and can be built, dismantled, and replaced', async () => {
+test('custom prefixed buildings coexist and can be dismantled independently', async () => {
   const f = fixture()
   f.context.requireAdmin = async () => ({ openid: 'admin', roles: ['admin'] })
   f.context.getUser = async (openid) => f.user(openid)
@@ -694,24 +833,119 @@ test('admin uploading custom building types with floor_/tree_/decoration_ prefix
   assert.equal(builtFloor.plot.buildingCategory, 'floor')
   assert.equal(builtFloor.plot.buildingName, '汉白玉大理石地坪')
 
-  // 3. 直接替换改建为迎客高山雪松
+  // 在地坪上增建雪松，不得覆盖地坪。
   const replacedTree = await handler('a', 'buildInYard', {
     plotId: aYard.id,
     buildingId: 'custom_tree_pine',
     sceneId: aYard.communityId
   })
-  assert.equal(replacedTree.plot.buildingType, 'tree_pine')
-  assert.equal(replacedTree.plot.buildingCategory, 'tree')
-  assert.equal(replacedTree.plot.buildingName, '迎客高山雪松')
+  assert.deepEqual(replacedTree.plot.buildings.map((b) => b.type), ['floor_marble', 'tree_pine'])
+  const pine = replacedTree.plot.buildings.find((b) => b.type === 'tree_pine')
+  assert.equal(pine.name, '迎客高山雪松')
 
-  // 4. 执行拆除：顺利恢复为初始草块
   const dismantled = await handler('a', 'dismantleBuilding', {
     plotId: aYard.id,
+    buildingInstanceId: pine.instanceId,
     sceneId: aYard.communityId
   })
   assert.equal(dismantled.dismantled, true)
-  assert.equal(dismantled.plot.buildingType, 'yard')
-  assert.equal(dismantled.plot.buildingId, '')
+  assert.equal(dismantled.plot.buildingType, 'floor_marble')
+  assert.equal(dismantled.plot.buildings.length, 1)
+})
+
+test('green building previews agree with server capacity and exact fence boundaries', async () => {
+  const { World2D } = require('../../miniprogram/packagePlayground/utils/world2d')
+  for (const [width, depth] of [[44, 7], [45, 7], [46, 7], [47, 7], [7, 46], [7, 47]]) {
+    const f = fixture()
+    await f.build('a')
+    const plot = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 600, z: 600, size: 48 })
+    const service = createBuildingsService(f.context)
+    const catalog = await service.list()
+    const saved = await service.save('admin', {
+      revision: catalog.revision,
+      building: { id: 'boundary_building', name: '边界建筑', type: 'tree', category: 'tree', width, depth }
+    })
+    const building = saved.buildings.find((b) => b.id === 'boundary_building')
+    assert.equal(building.width, width)
+    assert.equal(building.depth, depth)
+    const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+    const pageData = {}
+    const preview = new World2D({ setData: (patch) => Object.assign(pageData, patch) }, null, {
+      world: { width: 2240, height: 2240 }, pets: []
+    })
+    preview.sharedPlots.set(plot.id, { ...plot, mine: true })
+    preview.beginBuildingPlacement(building)
+    const request = (x, z, action = 'buildInYard') => handler('a', action, {
+      plotId: plot.id, buildingId: building.id, buildingX: x, buildingZ: z, sceneId: plot.communityId
+    })
+
+    await preview.pickPlot({ x: plot.x, z: plot.z })
+    if (Math.max(width, depth) > 46) {
+      assert.equal(preview.candidate.valid, false)
+      assert.equal(pageData.canConfirm, false)
+      await assert.rejects(() => request(plot.x, plot.z), /这块绿地放不下该建筑/)
+      continue
+    }
+    assert.equal(preview.candidate.valid, true)
+    const centered = await request(preview.candidate.x, preview.candidate.z)
+    assert.equal(centered.plot.buildingX, plot.x)
+
+    for (const direction of [-1, 1]) {
+      const x = plot.x + direction * (23 - width / 2)
+      const z = plot.z + direction * (23 - depth / 2)
+      await preview.pickPlot({ x, z })
+      assert.equal(preview.candidate.valid, true)
+      const built = await request(preview.candidate.x, preview.candidate.z, 'relocateBuilding')
+      assert.equal(built.plot.buildingX, x)
+      assert.equal(built.plot.buildingZ, z)
+
+      for (const outside of [{ x: x + direction * 1e-6, z }, { x, z: z + direction * 1e-6 }]) {
+        await preview.pickPlot(outside)
+        assert.equal(preview.candidate.valid, false)
+        assert.equal(pageData.canConfirm, false)
+        await assert.rejects(() => request(outside.x, outside.z), /草坪方块空间不足/)
+      }
+    }
+  }
+})
+
+test('fractional plot centers accept green fence-edge previews for construction and relocation', async () => {
+  const { World2D } = require('../../miniprogram/packagePlayground/utils/world2d')
+  const f = fixture()
+  await f.build('a')
+  const plot = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 490.04, z: 600.04, size: 48 })
+  const service = createBuildingsService(f.context)
+  const catalog = await service.list()
+  const saved = await service.save('admin', {
+    revision: catalog.revision,
+    building: { id: 'fractional_boundary', name: '贴边建筑', type: 'tree', category: 'tree', width: 46, depth: 46 }
+  })
+  const building = saved.buildings.find((b) => b.id === 'fractional_boundary')
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const preview = new World2D({ setData() {} }, null, { world: { width: 2240, height: 2240 }, pets: [] })
+  preview.sharedPlots.set(plot.id, { ...plot, mine: true })
+  preview.beginBuildingPlacement(building)
+  await preview.pickPlot({ x: plot.x, z: plot.z })
+  assert.equal(preview.candidate.valid, true)
+  const data = { plotId: plot.id, buildingId: building.id, buildingX: preview.candidate.x, buildingZ: preview.candidate.z, sceneId: plot.communityId }
+  const built = await handler('a', 'buildInYard', data)
+  assert.equal(built.plot.buildingX, plot.x)
+  assert.equal(built.plot.buildingZ, plot.z)
+  await preview.beginBuildingPlacement(building, true, { ...built.plot, mine: true })
+  assert.equal(preview.candidate.valid, true)
+  const moved = await handler('a', 'relocateBuilding', data)
+  assert.equal(moved.plot.buildingX, plot.x)
+  assert.equal(moved.plot.buildingZ, plot.z)
+
+  for (const direction of [-1, 1]) {
+    for (const outside of [{ x: plot.x + direction * 1e-6, z: plot.z }, { x: plot.x, z: plot.z + direction * 1e-6 }]) {
+      await preview.pickPlot(outside)
+      assert.equal(preview.candidate.valid, false)
+      for (const action of ['buildInYard', 'relocateBuilding']) {
+        await assert.rejects(() => handler('a', action, { ...data, buildingX: outside.x, buildingZ: outside.z }), /草坪方块空间不足/)
+      }
+    }
+  }
 })
 
 test('free placement and relocation on lawn tiles with grass capacity checks and public facility restrictions', async () => {
@@ -746,12 +980,11 @@ test('free placement and relocation on lawn tiles with grass capacity checks and
     buildingZ: 236,
     sceneId
   })
-  assert.equal(homeTree.plot.buildingName, '浪漫景观樱花树')
-  assert.equal(homeTree.plot.name, '玩家a的浪漫景观樱花树')
-  assert.equal(homeTree.plot.buildingX, 236)
-  assert.equal(homeTree.plot.buildingZ, 236)
-  assert.equal(homeTree.plot.buildingOffsetX, -44)
-  assert.equal(homeTree.plot.buildingOffsetZ, -44)
+  assert.equal(homeTree.plot.buildingType, 'residential')
+  assert.equal(homeTree.plot.buildings.length, 1)
+  assert.equal(homeTree.plot.buildings[0].name, '浪漫景观樱花树')
+  assert.equal(homeTree.plot.buildings[0].x, 236)
+  assert.equal(homeTree.plot.buildings[0].z, 236)
 
   // 3. 认领一块独立专属爱心绿地 (600, 600)，规格 48x48
   const greenYard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 600, z: 600, size: 48 })

@@ -2,6 +2,7 @@ const { transaction } = require('./playground-transaction')
 const crypto = require('crypto')
 const nameColors = require('./playground-name-colors')
 const {memberAccess,unlocked}=require('./playground-access')
+const { placedBuildings, withBuildings, isPublicBuilding, validateBuildingPlacement } = require('./playground-shared/plot-buildings')
 const SIZE = 112
 const STEP = 56
 const GAP = 4
@@ -96,6 +97,7 @@ function publicPlot(plot, openid) {
     instanceId: plot.instanceId || plot.createdAt || '',
     gateDirection: plot.gateDirection || 'south',
     name: plot.name || '邻居庭院',
+    buildings: placedBuildings(plot),
     buildingId: plot.buildingId || '',
     buildingType: plot.buildingType || (plot.isNewPlot ? 'yard' : 'residential'),
     buildingCategory: plot.buildingCategory || '',
@@ -167,81 +169,30 @@ module.exports = {
         myPlots = []
       }
 
-      // 永远保障用户的核心庭院必须是居住型别墅庭院，绝不被公共建筑或空余绿地顶替
-      let residential = myPlots.find(p => !p.demolished && !p.isNewPlot) ||
-                        myPlots.find(p => !p.demolished && (!p.buildingType || p.buildingType === 'residential'))
-
+      // Only restore a real home. Legacy public facilities on independent plots
+      // must never be mistaken for the owner's original residence.
+      const homeCandidate = (p) => !p.isNewPlot && !isPublicBuilding(p)
+      let residential = myPlots.find(p => !p.demolished && homeCandidate(p))
       if (!residential) {
-        const softDemolished = myPlots.find(p => p.demolished && (!p.buildingType || p.buildingType === 'residential'))
-        if (softDemolished) {
-          residential = { ...softDemolished, demolished: false, updatedAt: nowText() }
-          try {
-            await database.collection('pet_playground_plots').doc(residential._id).set({ data: residential })
-          } catch(e) {}
-        }
+        const softDemolished = myPlots.find(p => p.demolished && homeCandidate(p))
+        if (softDemolished) residential = softDemolished
       }
-
       if (residential) {
-        // 自家庭院绝不缩小，必须是原住别墅！清除误写入的“小木屋”或尺寸参数
-        const hadWoodCabin = residential.buildingId === 'residential_wood_cabin' || residential.buildingName === '田园小木屋' || residential.buildingType === 'wood_cabin'
-        if (hadWoodCabin || residential.buildingWidth || residential.buildingDepth || residential.buildingType !== 'residential') {
-          const restoredResidential = {
-            ...residential,
-            buildingId: '',
-            buildingName: '',
-            buildingType: 'residential',
-            buildingImage: '',
-            buildingWidth: 0,
-            buildingDepth: 0,
-            name: residential.ownerName ? `${residential.ownerName}的庭院` : '我的庭院',
-            updatedAt: nowText(),
-            revision: Math.max(stamp(), (residential.revision || 0) + 1)
-          }
-          const { _id: rId, ...cleanRestored } = restoredResidential
-          try {
-            await database.collection('pet_playground_plots').doc(residential._id).set({ data: cleanRestored })
-          } catch(e) {}
-          residential = restoredResidential
-
-          // 若有名下空余专属绿地，将之前建造的田园小木屋迁移至该独立绿地，两不耽误
-          if (hadWoodCabin) {
-            const emptyYard = myPlots.find(p => !p.demolished && p._id !== residential._id && (p.buildingType === 'yard' || p.isNewPlot && !p.buildingType))
-            if (emptyYard) {
-              const woodCabinPlot = {
-                ...emptyYard,
-                buildingId: 'residential_wood_cabin',
-                buildingName: '田园小木屋',
-                buildingType: 'wood_cabin',
-                buildingWidth: 7,
-                buildingDepth: 7,
-                name: residential.ownerName ? `${residential.ownerName}的田园小木屋` : '田园小木屋',
-                updatedAt: nowText(),
-                revision: Math.max(stamp(), (emptyYard.revision || 0) + 1)
-              }
-              const { _id: yId, ...cleanCabin } = woodCabinPlot
-              try {
-                await database.collection('pet_playground_plots').doc(emptyYard._id).set({ data: cleanCabin })
-              } catch(e) {}
-            }
-          }
+        const restored = withBuildings({ ...residential, isNewPlot: false, demolished: false }, placedBuildings(residential))
+        if (JSON.stringify(restored) !== JSON.stringify(residential) || residential.demolished) {
+          restored.updatedAt = nowText()
+          restored.revision = Math.max(stamp(), (residential.revision || 0) + 1)
+          const { _id, ...clean } = restored
+          await database.collection('pet_playground_plots').doc(_id).set({ data: clean })
         }
-
-        if (!plot || plot.demolished || plot.plotId !== residential._id || (plot.buildingType && plot.buildingType !== 'residential') || plot.buildingId === 'residential_wood_cabin' || plot.buildingWidth) {
-          const { _id, ...cleanResidential } = residential
-          const ownerDoc = {
-            ...cleanResidential,
-            kind: 'owner_plot',
-            plotId: residential._id,
-            buildingType: 'residential',
-            buildingId: '',
-            buildingName: '',
-            buildingWidth: 0,
-            buildingDepth: 0,
-            updatedAt: nowText()
-          }
-          try {
-            await database.collection('pet_playground_plots').doc(ownerId(openid)).set({ data: ownerDoc })
-          } catch(e) {}
+        residential = restored
+        const { _id, ...cleanResidential } = residential
+        if (!plot || plot.demolished || plot.plotId !== _id ||
+            plot.buildingType !== 'residential' ||
+            JSON.stringify(plot.buildings) !== JSON.stringify(residential.buildings) ||
+            plot.revision !== residential.revision) {
+          const ownerDoc = { ...cleanResidential, kind: 'owner_plot', plotId: _id }
+          await database.collection('pet_playground_plots').doc(ownerId(openid)).set({ data: ownerDoc })
           plot = ownerDoc
         }
       }
@@ -322,12 +273,14 @@ module.exports = {
         const id = communityId(current)
         if (data.sceneId && data.sceneId !== id) throw new Error('访问其他小区时不能建造庭院，请先迁入该小区')
         if (!id) throw new Error('请先设置常住小区，再选择宅基地')
-        const existing = await read(tx, ownerId(openid))
+        const owner = await read(tx, ownerId(openid))
+        const canonical = owner && await read(tx, owner.plotId)
+        const existing = canonical ? { ...canonical, plotId: canonical._id } : owner
         const nameColor = await nameColors.allocate(tx, id, hash(openid), read)
         const reqSize = Number(data.size)
         const allowedSizes = [36, 48, 64, 80, 112]
         if(data.size!==undefined&&!allowedSizes.includes(reqSize))throw new Error('无效的绿地规格')
-        const plotSize = data.size===undefined ? SIZE : reqSize
+        const plotSize = data.size === undefined ? SIZE : reqSize
 
         const isNewPlot = data.isNewPlot === true
 
@@ -394,7 +347,7 @@ module.exports = {
           ) {
             const other = await read(tx, plotId(id, cx, cz))
             if (!other) continue
-            if (!isNewPlot && other.ownerOpenid === openid) continue
+            if (!isNewPlot && existing && other._id === existing.plotId && other.ownerOpenid === openid) continue
             const separation = (plotSize + (Number(other.size) || 48)) / 2 + GAP
             if (
               other._id === key ||
@@ -413,7 +366,8 @@ module.exports = {
         const buildingDepth = building?building.depth:!isNewPlot&&existing&&existing.buildingDepth||7
         if(Math.max(buildingWidth,buildingDepth)>plotSize-4)throw new Error('这块绿地放不下该建筑')
 
-        const plot = {
+        let plot = {
+          ...(!isNewPlot && existing ? existing : {}),
           kind: 'plot',
           communityId: id,
           ownerOpenid: openid,
@@ -433,14 +387,40 @@ module.exports = {
           ownerName: String(user.nickname || '我').slice(0, 20),
           nameColor,
           revision: Math.max(await require('./playground-live')({db,nowMs}).nextEpoch(id,key,stamp()),(existing&&existing.revision||0)+1),
-          instanceId: crypto.randomBytes(12).toString('hex'),
+          instanceId: !isNewPlot && existing && existing.instanceId || crypto.randomBytes(12).toString('hex'),
           name: buildingName ? `${String(user.nickname || '我').slice(0, 20)}的${buildingName}` : (isNewPlot ? `${String(user.nickname || '我').slice(0, 20)}的专属爱心绿地` : `${String(user.nickname || '我').slice(0, 20)}的庭院`),
           createdAt: existing&&!isNewPlot ? existing.createdAt : nowText(),
-          createdAtStamp:stamp(),
+          createdAtStamp: !isNewPlot && existing && existing.createdAtStamp || stamp(),
           updatedAt: nowText(),
-          ...(buildingType === 'committee' ? { committeeStartedAt: stamp(), lastSalaryClaimAt: 0 } : {}),
+          ...(building && building.type === 'committee' && (isNewPlot || !existing) ? { committeeStartedAt: stamp(), lastSalaryClaimAt: 0 } : {}),
           isNewPlot: Boolean(isNewPlot)
         }
+        // Preserve all courtyard state and move each attachment by the same delta.
+        // Legacy claim calls may create a public facility without isNewPlot; those
+        // are independent facilities, not residences to be healed into villas.
+        const relocating = !isNewPlot && existing
+        const independent = isNewPlot || !!(building && isPublicBuilding(building)) || !!(relocating && (existing.isNewPlot || isPublicBuilding(existing)))
+        if (relocating && building && isPublicBuilding(building) && !existing.isNewPlot && !isPublicBuilding(existing))
+          throw new Error('公共配套大设施不可占用最初的自家庭院')
+        let buildings = relocating ? placedBuildings(existing).map((b) => ({
+          ...b, x: b.x + px - Number(existing.x), z: b.z + pz - Number(existing.z)
+        })) : []
+        if (building && !relocating) buildings.push({
+          instanceId: data.buildingInstanceId ? String(data.buildingInstanceId) : crypto.randomBytes(12).toString('hex'),
+          buildingId: building.id, type: building.type, category: building.category || '',
+          name: building.name, image: building.image || '', width: Number(building.width), depth: Number(building.depth),
+          x: Number(data.buildingX !== undefined ? data.buildingX : px),
+          z: Number(data.buildingZ !== undefined ? data.buildingZ : pz)
+        })
+        plot = withBuildings({ ...plot, isNewPlot: independent }, buildings)
+        for (const instance of buildings) {
+          const error = validateBuildingPlacement(plot, instance, instance, instance.instanceId)
+          if (error) throw new Error(error)
+        }
+        if (relocating) preserveRelocatedBeds(existing, plot)
+        // Owner mappings and canonical plot identities must not leak into set data.
+        delete plot._id
+        delete plot.plotId
         // 若为购买新地皮，绝不删除原有的老庭院！原别墅完整保留在原位
         if (!isNewPlot && existing && existing.plotId !== key)
           await tx
@@ -588,6 +568,48 @@ module.exports = {
         }
       } catch (_) {}
     }
+    function selectBuilding(plot, buildings, instanceId) {
+      if (!buildings.length) {
+        if (!plot.isNewPlot) throw new Error('最初的自家庭院为主住宅；自家庭院原住别墅居于庭院中央，若需搬迁整体庭院请使用安置庭院选址功能')
+        throw new Error('该绿地尚未落座建筑，无需调整位置；该绿地当前已是纯草块，无需重复拆除')
+      }
+      if (!instanceId && buildings.length > 1) throw new Error('该地皮有多个建筑，请提供建筑实例编号')
+      const target = instanceId ? buildings.find((b) => b.instanceId === instanceId) : buildings[0]
+      if (!target) throw new Error('该地皮不存在指定建筑实例')
+      if (target.type === 'residential' && !plot.isNewPlot) throw new Error('主住宅不可单独移动或拆除')
+      return target
+    }
+    function protectFarmBeds(previous, updated) {
+      const { savedBeds, farmLayout } = require('./playground-shared/farm-model')
+      const beds = Object.values(savedBeds(previous))
+      const available = new Set(farmLayout(updated).map((t) => t.id))
+      if (beds.some((b) => !available.has(b.id))) throw new Error('建筑会占用已布置的植物，请先将对应土地恢复为草坪')
+      updated.farmBeds = beds
+      updated.gardenVersion = 2
+    }
+    function preserveRelocatedBeds(previous, updated) {
+      if (!Array.isArray(previous.farmBeds) || !previous.farmBeds.length) return
+      const { savedBeds, farmLayout } = require('./playground-shared/farm-model')
+      const oldTiles = new Map(farmLayout(previous).map((t) => [t.id, t]))
+      const pointKey = (x, z) => `${x.toFixed(6)},${z.toFixed(6)}`
+      const newTiles = new Map(farmLayout(updated).map((t) => [pointKey(t.x - updated.x, t.z - updated.z), t]))
+      updated.farmBeds = Object.values(savedBeds(previous)).map((bed) => {
+        const old = oldTiles.get(bed.id)
+        const tile = old && newTiles.get(pointKey(old.x - previous.x, old.z - previous.z))
+        if (!tile) throw new Error('缩小后的庭院放不下已有农田，请先将对应土地恢复为草坪')
+        return { ...bed, id: tile.id }
+      })
+      updated.gardenVersion = 2
+    }
+    async function saveBuildingPlot(tx, openid, updated, owner) {
+      const { _id, ...clean } = updated
+      await tx.collection('pet_playground_plots').doc(_id).set({ data: clean })
+      if (owner && owner.plotId === _id) {
+        await tx.collection('pet_playground_plots').doc(ownerId(openid)).set({
+          data: { ...clean, kind: 'owner_plot', plotId: _id }
+        })
+      }
+    }
     async function buildInYard(openid, user, data) {
       const targetPlotId = String(data.plotId || '')
 
@@ -599,7 +621,7 @@ module.exports = {
         const {id:buildingId,type:buildingType,category:buildingCategory,name:buildingName,image:buildingImage,width:buildingWidth,depth:buildingDepth}=building
         let targetPlot = null
         const ownerPlotDoc = await read(tx, ownerId(openid))
-        const mainPlotId = ownerPlotDoc && ownerPlotDoc.plotId
+        const mainPlotId = ownerPlotDoc && !ownerPlotDoc.isNewPlot && !isPublicBuilding(ownerPlotDoc) ? ownerPlotDoc.plotId : null
 
         if (targetPlotId) {
           const doc = await read(tx, targetPlotId)
@@ -607,63 +629,36 @@ module.exports = {
           targetPlot = doc
         } else {
           const myPlots = await tx.collection('pet_playground_plots').where({ kind: 'plot', ownerOpenid: openid }).get()
-          const emptyYard = (myPlots.data || []).find((p) => !p.demolished && p._id !== mainPlotId && p.isNewPlot && (p.buildingType === 'yard' || !p.buildingType))
-          if (emptyYard) {
-            targetPlot = emptyYard
-          }
+          const plots = (myPlots.data || []).filter((p) => !p.demolished && (!data.sceneId || p.communityId === data.sceneId))
+          targetPlot = !isPublicBuilding(building) && plots.find((p) => p._id === mainPlotId || !p.isNewPlot && !isPublicBuilding(p)) ||
+            plots.find((p) => p._id !== mainPlotId && p.isNewPlot && (!isPublicBuilding(building) || !placedBuildings(p).some(isPublicBuilding)))
         }
         if (!targetPlot) {
           throw new Error('您当前没有空余的专属绿地！最初的自家庭院不可改建，请先认领一块新的专属绿地')
         }
 
-        // 公共配套建筑（大房子）一个地皮只能建立一个，且必须在独立的专属绿地上设立，不可占用出生庭院
-        const isPublicFacility = buildingCategory === 'public' || ['committee', 'police_station', 'prison', 'pet_hospital', 'repair_shop'].includes(buildingType)
-        if (isPublicFacility) {
-          if (targetPlot._id === mainPlotId || !targetPlot.isNewPlot) {
-            throw new Error('公共配套大设施只能在独立的专属绿地上设立，不可占用最初的自家庭院')
-          }
-          if (targetPlot.buildingType && targetPlot.buildingType !== 'yard') {
-            const isSameBuilding = targetPlot.buildingId === buildingId || targetPlot.buildingType === buildingType
-            if (!isSameBuilding) {
-              // 若该地块已有其他公共配套建筑，提示不可多建
-              const prevIsPublic = ['committee', 'police_station', 'prison', 'pet_hospital', 'repair_shop'].includes(targetPlot.buildingType) || targetPlot.buildingCategory === 'public'
-              if (prevIsPublic) {
-                throw new Error('公共配套大设施一个地皮只能建立一个！如需更换请先拆除或改建')
-              }
-            }
-          }
-        }
-
         const communityId = targetPlot.communityId
         if(data.sceneId&&communityId!==data.sceneId)throw new Error('请回到该地皮所在小区建造')
-        const halfPlot = (targetPlot.size || 48) / 2
-        if(Math.max(buildingWidth,buildingDepth)>(targetPlot.size||48)-4)throw new Error('这块绿地放不下该建筑')
-
-        // 校验并在场景中自由选择落座位置（不固定在地皮正中心，只要草坪方块空间满足即可建造）
-        let buildingX = Number(data.buildingX !== undefined ? data.buildingX : data.x)
-        let buildingZ = Number(data.buildingZ !== undefined ? data.buildingZ : data.z)
-        if (Number.isFinite(buildingX) && Number.isFinite(buildingZ)) {
-          const margin = 1.0 // 边缘留出草坪余量
-          const minAllowedX = targetPlot.x - halfPlot + buildingWidth / 2 + margin
-          const maxAllowedX = targetPlot.x + halfPlot - buildingWidth / 2 - margin
-          const minAllowedZ = targetPlot.z - halfPlot + buildingDepth / 2 + margin
-          const maxAllowedZ = targetPlot.z + halfPlot - buildingDepth / 2 - margin
-          if (buildingX < minAllowedX || buildingX > maxAllowedX || buildingZ < minAllowedZ || buildingZ > maxAllowedZ) {
-            throw new Error('草坪方块空间不足，建筑部分超出地皮围栏范围')
-          }
-          const isHomePlot = targetPlot._id === mainPlotId || !targetPlot.isNewPlot
-          if (isHomePlot && buildingType !== 'residential') {
-            const houseHalfSize = 9
-            const overlapX = Math.abs(buildingX - targetPlot.x) < (buildingWidth / 2 + houseHalfSize)
-            const overlapZ = Math.abs(buildingZ - targetPlot.z) < (buildingDepth / 2 + houseHalfSize)
-            if (overlapX && overlapZ) {
-              throw new Error('建筑位置与自家庭院原有别墅重叠，请移至空旷草坪方块')
-            }
-          }
-        } else {
-          buildingX = targetPlot.x
-          buildingZ = targetPlot.z
+        const buildings = placedBuildings(targetPlot)
+        const instanceId = data.buildingInstanceId === undefined
+          ? crypto.randomBytes(12).toString('hex') : String(data.buildingInstanceId || '')
+        if (!instanceId || instanceId.length > 128) throw new Error('无效的建筑实例编号')
+        const buildingX = Number(data.buildingX !== undefined ? data.buildingX : data.x !== undefined ? data.x : targetPlot.x)
+        const buildingZ = Number(data.buildingZ !== undefined ? data.buildingZ : data.z !== undefined ? data.z : targetPlot.z)
+        const prior = buildings.find((b) => b.instanceId === instanceId)
+        if (prior) {
+          if (prior.buildingId !== buildingId || prior.x !== buildingX || prior.z !== buildingZ)
+            throw new Error('建筑实例编号冲突：已用于不同的建造意图')
+          return publicPlot(withBuildings(targetPlot, buildings), openid)
         }
+        const instance = { instanceId, buildingId, type: buildingType, category: buildingCategory || '',
+          name: buildingName, image: buildingImage || '', width: Number(buildingWidth), depth: Number(buildingDepth),
+          x: buildingX, z: buildingZ }
+        const placementPlot = targetPlot._id === mainPlotId ? { ...targetPlot, isNewPlot: false } : targetPlot
+        if (Math.max(instance.width, instance.depth) > (Number(targetPlot.size) || 48) - 2)
+          throw new Error('这块绿地放不下该建筑')
+        const placementError = validateBuildingPlacement(placementPlot, instance, instance)
+        if (placementError) throw new Error(placementError)
 
         // 唯一性校验：居委会、督导所、自省室每个小区只能创建一个
         if (buildingType === 'committee') {
@@ -691,49 +686,14 @@ module.exports = {
           if (active) throw new Error('当前社区已设立安全宣教自省室，每个社区有且仅能有一个自省室')
         }
 
-        const prevType = targetPlot.buildingType || (targetPlot.isNewPlot ? 'yard' : 'residential')
-        const updated = {
-          ...targetPlot,
-          previousBuildingType: prevType,
-          ...(buildingType==='committee'&&prevType!=='committee'?{committeeStartedAt:stamp(),lastSalaryClaimAt:0}:{}),
-          ...(buildingType!=='committee'&&prevType==='committee'?{committeeStartedAt:0,lastSalaryClaimAt:0}:{}),
-          revision:Math.max(stamp(),(targetPlot.revision||0)+1),
-          buildingId,
-          buildingType,
-          buildingCategory: buildingCategory || '',
-          buildingName,
-          buildingImage,
-          buildingWidth,
-          buildingDepth,
-          buildingX,
-          buildingZ,
-          buildingOffsetX: Number((buildingX - targetPlot.x).toFixed(2)),
-          buildingOffsetZ: Number((buildingZ - targetPlot.z).toFixed(2)),
-          name: buildingName ? `${String(user.nickname || '我').slice(0, 20)}的${buildingName}` : `${String(user.nickname || '我').slice(0, 20)}的庭院`,
-          updatedAt: nowText()
-        }
-
-        const {savedBeds,farmLayout}=require('./playground-shared/farm-model')
-        const beds=Object.values(savedBeds(targetPlot)),available=new Set(farmLayout(updated).map((t)=>t.id))
-        if(beds.some((b)=>!available.has(b.id)))throw new Error('建筑会占用已布置的植物，请先将对应土地恢复为草坪')
-        updated.farmBeds=beds;updated.gardenVersion=2
-        const { _id, ...cleanUpdated } = updated
-        if (buildingType !== 'committee') {
-          delete cleanUpdated.committeeRevoked
-          delete cleanUpdated.revokedAt
-          delete cleanUpdated.revokedReason
-          delete cleanUpdated.committeeStartedAt
-          delete cleanUpdated.lastSalaryClaimAt
-        }
-        await tx.collection('pet_playground_plots').doc(targetPlot._id).set({ data: cleanUpdated })
-        const mainOwner = await read(tx, ownerId(openid))
-        if (mainOwner && mainOwner.plotId === targetPlot._id && (!buildingType || buildingType === 'residential')) {
-          await tx.collection('pet_playground_plots').doc(ownerId(openid)).set({ data: { ...cleanUpdated, kind: 'owner_plot', plotId: targetPlot._id } })
-        }
-        if (prevType === 'prison' && buildingType !== 'prison') {
-          await releasePrisonersIfPrisonRemoved(tx, communityId, stamp())
-        }
-        return publicPlot({ ...cleanUpdated, _id: targetPlot._id }, openid)
+        const updated = withBuildings({ ...placementPlot,
+          ...(buildingType === 'committee' ? { committeeStartedAt: stamp(), lastSalaryClaimAt: 0,
+            committeeRevoked: false, revokedAt: 0, revokedReason: '' } : {}),
+          revision: Math.max(stamp(), (targetPlot.revision || 0) + 1), updatedAt: nowText()
+        }, [...buildings, instance])
+        protectFarmBeds(targetPlot, updated)
+        await saveBuildingPlot(tx, openid, updated, ownerPlotDoc)
+        return publicPlot(updated, openid)
       })
     }
     async function dismantleBuilding(openid, user, data) {
@@ -746,48 +706,23 @@ module.exports = {
           throw new Error('只能拆除自己名下的有效建筑')
         }
 
+        if (data.sceneId && doc.communityId !== data.sceneId) throw new Error('请回到该地皮所在小区拆除建筑')
         const ownerPlotDoc = await read(tx, ownerId(openid))
-        const mainPlotId = ownerPlotDoc && ownerPlotDoc.plotId
-        if (doc._id === mainPlotId || !doc.isNewPlot) {
-          throw new Error('最初的自家庭院为主住宅，若需搬迁请在庭院设置中拆除庭院；专属绿地建筑支持随时拆除恢复草块')
-        }
-
-        if (!doc.buildingType || doc.buildingType === 'yard') {
-          throw new Error('该绿地当前已是纯草块，无需重复拆除')
-        }
-
-        const prevBuildingType = doc.buildingType
-        const prevBuildingName = doc.buildingName || doc.name || '建筑'
-        const cleanName = `${String((user && user.nickname) || doc.ownerName || '邻居').slice(0, 20)}的专属爱心绿地`
-
-        const updated = {
-          ...doc,
-          previousBuildingType: prevBuildingType,
-          buildingType: 'yard',
-          buildingId: '',
-          buildingName: '',
-          buildingCategory: '',
-          buildingImage: '',
-          buildingWidth: 0,
-          buildingDepth: 0,
-          name: cleanName,
-          ...(prevBuildingType === 'committee' ? { committeeStartedAt: 0, lastSalaryClaimAt: 0 } : {}),
-          updatedAt: nowText(),
-          revision: Math.max(stamp(), (doc.revision || 0) + 1)
-        }
-
-        const { _id, ...cleanUpdated } = updated
-        await tx.collection('pet_playground_plots').doc(doc._id).set({ data: cleanUpdated })
-
-        if (prevBuildingType === 'prison') {
-          await releasePrisonersIfPrisonRemoved(tx, doc.communityId, stamp())
-        }
-
+        const buildings = placedBuildings(doc)
+        const target = selectBuilding(doc, buildings, data.buildingInstanceId)
+        const home = !doc.isNewPlot && ownerPlotDoc && ownerPlotDoc.plotId === doc._id
+        const updated = withBuildings({ ...doc, ...(home ? { isNewPlot: false } : {}),
+          previousBuildingType: target.type,
+          ...(target.type === 'committee' ? { committeeStartedAt: 0, lastSalaryClaimAt: 0,
+            committeeRevoked: false, revokedAt: 0, revokedReason: '' } : {}),
+          updatedAt: nowText(), revision: Math.max(stamp(), (doc.revision || 0) + 1)
+        }, buildings.filter((b) => b.instanceId !== target.instanceId))
+        await saveBuildingPlot(tx, openid, updated, ownerPlotDoc)
+        if (target.type === 'prison') await releasePrisonersIfPrisonRemoved(tx, doc.communityId, stamp())
         return {
-          dismantled: true,
-          plotId: doc._id,
-          plot: publicPlot({ ...cleanUpdated, _id: doc._id }, openid),
-          message: `已成功拆除【${prevBuildingName}】，地皮已恢复为初始草块！`
+          dismantled: true, plotId: doc._id, buildingInstanceId: target.instanceId,
+          plot: publicPlot(updated, openid),
+          message: `已成功拆除【${target.name || '建筑'}】，${updated.isNewPlot && !updated.buildings.length ? '地皮已恢复为初始草块' : '其他建筑和庭院保持不变'}！`
         }
       })
     }
@@ -805,48 +740,19 @@ module.exports = {
         if (!plot || plot.kind !== 'plot' || plot.ownerOpenid !== openid || plot.demolished) {
           throw new Error('只能调整自己地皮内的建筑位置')
         }
-        if (!plot.buildingType || plot.buildingType === 'yard') {
-          throw new Error('该绿地尚未落座建筑，无需调整位置')
-        }
+        if (data.sceneId && plot.communityId !== data.sceneId) throw new Error('请回到该地皮所在小区调整建筑')
         const ownerPlotDoc = await read(tx, ownerId(openid))
-        const mainPlotId = ownerPlotDoc && ownerPlotDoc.plotId
-        const isHomePlot = plot._id === mainPlotId || !plot.isNewPlot
-        if (isHomePlot && plot.buildingType === 'residential') {
-          throw new Error('自家庭院原住别墅居于庭院中央，若需搬迁整体庭院请使用安置庭院选址功能')
-        }
-        const bW = Number(plot.buildingWidth || 7)
-        const bD = Number(plot.buildingDepth || 7)
-        if (isHomePlot && plot.buildingType !== 'residential') {
-          const houseHalfSize = 9
-          const overlapX = Math.abs(targetX - plot.x) < (bW / 2 + houseHalfSize)
-          const overlapZ = Math.abs(targetZ - plot.z) < (bD / 2 + houseHalfSize)
-          if (overlapX && overlapZ) {
-            throw new Error('建筑位置与自家庭院原有别墅重叠，请移至空旷草坪方块')
-          }
-        }
-        const halfPlot = (plot.size || 48) / 2
-        const margin = 1.0
-        const minAllowedX = plot.x - halfPlot + bW / 2 + margin
-        const maxAllowedX = plot.x + halfPlot - bW / 2 - margin
-        const minAllowedZ = plot.z - halfPlot + bD / 2 + margin
-        const maxAllowedZ = plot.z + halfPlot - bD / 2 - margin
-        if (targetX < minAllowedX || targetX > maxAllowedX || targetZ < minAllowedZ || targetZ > maxAllowedZ) {
-          throw new Error('草坪方块空间不足，建筑部分超出地皮围栏范围')
-        }
-
-        const patch = {
-          buildingX: targetX,
-          buildingZ: targetZ,
-          buildingOffsetX: Number((targetX - plot.x).toFixed(2)),
-          buildingOffsetZ: Number((targetZ - plot.z).toFixed(2)),
-          revision: Math.max(stamp(), (plot.revision || 0) + 1),
-          updatedAt: nowText()
-        }
-        await tx.collection('pet_playground_plots').doc(plot._id).update({ data: patch })
-        const updatedPlot = { ...plot, ...patch }
-        if (ownerPlotDoc && ownerPlotDoc.plotId === plot._id) {
-          await tx.collection('pet_playground_plots').doc(ownerId(openid)).update({ data: patch })
-        }
+        const buildings = placedBuildings(plot)
+        const target = selectBuilding(plot, buildings, data.buildingInstanceId)
+        const home = !plot.isNewPlot && ownerPlotDoc && ownerPlotDoc.plotId === plot._id
+        const placementPlot = home ? { ...plot, isNewPlot: false } : plot
+        const error = validateBuildingPlacement(placementPlot, target, { x: targetX, z: targetZ }, target.instanceId)
+        if (error) throw new Error(error)
+        const updatedPlot = withBuildings({ ...placementPlot,
+          revision: Math.max(stamp(), (plot.revision || 0) + 1), updatedAt: nowText()
+        }, buildings.map((b) => b.instanceId === target.instanceId ? { ...b, x: targetX, z: targetZ } : b))
+        protectFarmBeds(plot, updatedPlot)
+        await saveBuildingPlot(tx, openid, updatedPlot, ownerPlotDoc)
         return publicPlot(updatedPlot, openid)
       })
     }

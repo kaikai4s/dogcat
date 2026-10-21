@@ -37,7 +37,7 @@
       <button wx:if="{{nearbyBowl}}" class="mall-supplies-btn" bindtap="openMallSupplies">口粮补给站</button>
       <button wx:if="{{nearbyPoop}}" bindtap="pickupPoop">拾取便便</button>
       <button wx:if="{{nearbyPoop}}" bindtap="reportPoopAction">向居委会反馈便便</button>
-      <block wx:if="{{selectedBuildingInfo && nearbyBuilding && selectedBuildingInfo.plotId === nearbyBuilding.plotId}}">
+      <block wx:if="{{selectedBuildingInfo && nearbyBuilding && selectedBuildingInfo.plotId === nearbyBuilding.plotId && selectedBuildingInfo.buildingInstanceId === nearbyBuilding.buildingInstanceId}}">
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'committee'}}" bindtap="openDisputes">社区服务站</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'repair_shop'}}" bindtap="cleanVehicleAction">便民爱车清洗</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'repair_shop'}}" bindtap="repairVehicleAction">车辆便民养护</button>
@@ -48,15 +48,15 @@
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'tree'}}" bindtap="treeAction">树荫休憩·微风拂面</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'police_station'}}" bindtap="openJustice">文明出行督导站</button>
       <button wx:if="{{nearbyBuilding && nearbyBuilding.type === 'prison'}}" bindtap="openJustice">交通安全宣教室</button>
-      <button wx:if="{{nearbyBuilding && nearbyBuilding.mine}}" class="relocate-building-btn" data-plotid="{{nearbyBuilding.plotId}}" bindtap="startRelocateBuildingAction">调整建筑位置</button>
-      <button wx:if="{{nearbyBuilding && nearbyBuilding.mine && nearbyBuilding.canDismantle}}" class="dismantle-building-btn" data-plotid="{{nearbyBuilding.plotId}}" bindtap="dismantleBuildingAction">拆除建筑·恢复草块</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.canRelocate}}" class="relocate-building-btn" data-plotid="{{nearbyBuilding.plotId}}" data-instanceid="{{nearbyBuilding.buildingInstanceId}}" bindtap="startRelocateBuildingAction">调整建筑位置</button>
+      <button wx:if="{{nearbyBuilding && nearbyBuilding.mine && nearbyBuilding.canDismantle}}" class="dismantle-building-btn" data-plotid="{{nearbyBuilding.plotId}}" data-instanceid="{{nearbyBuilding.buildingInstanceId}}" bindtap="dismantleBuildingAction">拆除该建筑</button>
       </block>
       <button wx:if="{{myJailStatus && myJailStatus.isJailed}}" bindtap="openJustice" class="jail-status-btn">宣教自省中({{myJailStatus.remainingSeconds}}s)·提前结业</button>
       <view wx:if="{{selectedBuildingInfo}}" class="building-info-card" catchtouchstart="swallowTouch" catchtouchmove="swallowTouch" catchtouchend="swallowTouch" catchtap="swallowTouch">
         <view class="building-info-title"><text class="remix-icon ri-home-5-line"></text><text>{{selectedBuildingInfo.name}}</text><button class="building-info-close" catchtap="closeBuildingInfo" aria-label="收起建筑信息">×</button></view>
         <view class="building-info-caption">{{selectedBuildingInfo.mine ? '我的建筑' : '社区建筑'}} · 走近后可使用对应服务</view>
-        <view wx:if="{{selectedBuildingInfo.mine}}" class="building-info-actions">
-          <button class="relocate-building-btn" data-plotid="{{selectedBuildingInfo.plotId}}" bindtap="startRelocateBuildingAction">调整建筑位置</button>
+        <view wx:if="{{selectedBuildingInfo.canRelocate}}" class="building-info-actions">
+          <button class="relocate-building-btn" data-plotid="{{selectedBuildingInfo.plotId}}" data-instanceid="{{selectedBuildingInfo.buildingInstanceId}}" bindtap="startRelocateBuildingAction">调整建筑位置</button>
         </view>
       </view>
     </view>

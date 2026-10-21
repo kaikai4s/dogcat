@@ -128,7 +128,16 @@
         <view class="primary-booking-title">{{homePage.ctaTitle}}</view>
         <view class="primary-booking-subtitle">{{homePage.ctaSubtitle}}</view>
       </view>
-      <button class="primary-booking-btn" data-url="/pages/client/orders/create/index" bindtap="goProtected" loading="{{protectedNavigationUrl === '/pages/client/orders/create/index'}}" disabled="{{!!protectedNavigationUrl}}">{{protectedNavigationUrl === '/pages/client/orders/create/index' ? '正在打开' : homePage.ctaText}}</button>
+      <button class="primary-booking-btn {{protectedNavigationUrl === '/pages/client/orders/create/index' ? 'is-loading' : ''}}" 
+              hover-class="primary-booking-btn-hover"
+              hover-start-time="10"
+              hover-stay-time="160"
+              data-url="/pages/client/orders/create/index" 
+              bindtap="goProtected" 
+              loading="{{protectedNavigationUrl === '/pages/client/orders/create/index'}}">
+        <text class="btn-text">{{protectedNavigationUrl === '/pages/client/orders/create/index' ? '正在打开' : (homePage.ctaText || '立即预约')}}</text>
+        <text class="remix-icon ri-arrow-right-s-line btn-arrow" wx:if="{{protectedNavigationUrl !== '/pages/client/orders/create/index'}}"></text>
+      </button>
     </view>
   </view>
 

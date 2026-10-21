@@ -1,3 +1,4 @@
+const { placedBuildings, isFloorBuilding, isTreeBuilding } = require('./plot-buildings')
 const YARD_SIZE = 112
 // The minimum gap between yards is four metres; cars must fit those lanes.
 const VEHICLE_RADIUS = 1.4
@@ -67,17 +68,22 @@ function yardLayout(plot) {
     })
   )
   const spot=sprites.find((p)=>p.name==='car_road')
-  const custom = !!plot.buildingId && plot.buildingType !== 'residential'
-  const isFloor = plot.buildingType === 'floor' || plot.buildingCategory === 'floor' || (plot.buildingType && String(plot.buildingType).startsWith('floor_'))
-  const isTree = plot.buildingType === 'tree' || plot.buildingCategory === 'tree' || (plot.buildingType && String(plot.buildingType).startsWith('tree_'))
-  let visibleSprites=plot.buildingType==='yard'?[]:plot.buildingType&&plot.buildingType!=='residential'?sprites.filter((p)=>p.name==='house'):sprites
-  if(custom)visibleSprites=visibleSprites.map((p)=>{
-    if(p.name!=='house')return p
-    const bW=plot.buildingWidth||7,bD=plot.buildingDepth||7,bSize=Math.max(bW,bD)*2
-    if(isFloor)return {...p,radius:0,size:bSize,anchor:0.5}
-    if(isTree)return {...p,radius:Math.min(1.5,Math.max(0.6,bW*0.15)),size:bSize,anchor:0.88}
-    return {...p,radius:Math.max(bW,bD)/2,size:bSize,anchor:0.8}
-  })
+  // Explicit instance arrays identify migrated homes; legacy non-residential
+  // records without isNewPlot must still render as standalone buildings.
+  const residential = !plot.isNewPlot && (Array.isArray(plot.buildings) || !plot.buildingType || plot.buildingType === 'residential')
+  if (residential && Array.isArray(plot.buildings)) sprites[0] = item('house', 0, 0, 38, 9, 0.78)
+  const visibleSprites = residential ? sprites : []
+  for (const building of placedBuildings(plot)) {
+    const bW = Number(building.width) || 7, bD = Number(building.depth) || 7
+    const floor = isFloorBuilding(building), tree = isTreeBuilding(building)
+    visibleSprites.push({
+      name: 'house', building, buildingInstanceId: building.instanceId,
+      x: building.x, z: building.z, size: Math.max(bW, bD) * 2,
+      radius: floor ? 0 : tree ? Math.min(1.5, Math.max(0.6, bW * 0.15)) : Math.max(bW, bD) / 2,
+      anchor: floor ? 0.5 : tree ? 0.88 : 0.8
+    })
+  }
+  if (!residential && !visibleSprites.length && plot.buildingType && plot.buildingType !== 'yard' && !Array.isArray(plot.buildings)) visibleSprites.push(sprites[0])
   return { half, sprites:visibleSprites, stations, parking:{x:spot.x,z:spot.z}, vehicleSize:13*detailScale }
 }
 

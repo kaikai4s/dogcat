@@ -346,18 +346,66 @@
 }
 
 .primary-booking-btn {
-  min-width: 176rpx;
-  min-height: 78rpx;
-  padding: 0 28rpx;
+  position: relative;
+  min-width: 184rpx;
+  min-height: 80rpx;
+  padding: 0 26rpx;
   border-radius: 26rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #e9672f;
-  background: #ffffff;
+  gap: 6rpx;
+  color: #e9672f !important;
+  background: #ffffff !important;
   font-size: 28rpx;
   font-weight: 900;
-  box-shadow: 0 10rpx 24rpx rgba(120, 69, 32, 0.12);
+  box-shadow: 0 8rpx 22rpx rgba(180, 70, 20, 0.18), 0 2rpx 6rpx rgba(0, 0, 0, 0.04);
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.16s ease, background-color 0.16s ease;
+  overflow: hidden;
+  line-height: normal;
+  border: none !important;
+  margin: 0 !important;
+}
+
+.primary-booking-btn::after {
+  border: none !important;
+}
+
+.primary-booking-btn .btn-text {
+  position: relative;
+  z-index: 2;
+  color: #e9672f;
+  font-weight: 900;
+}
+
+.primary-booking-btn .btn-arrow {
+  position: relative;
+  z-index: 2;
+  font-size: 30rpx;
+  color: #e9672f;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 核心优化：高响应轻快按压动画反馈 (深度下沉 + 弹性回弹 + 阴影内缩 + 箭头轻微前推) */
+.primary-booking-btn-hover,
+.primary-booking-btn:active {
+  transform: scale(0.91) translate3d(0, 4rpx, 0) !important;
+  box-shadow: 0 2rpx 8rpx rgba(180, 70, 20, 0.28) !important;
+  background: #fff5ee !important;
+}
+
+.primary-booking-btn-hover .btn-arrow,
+.primary-booking-btn:active .btn-arrow {
+  transform: translateX(4rpx);
+}
+
+/* 导航打开过渡中，保持高亮纯正品牌色，坚决抵御微信小程序默认 disabled 灰色污染 */
+.primary-booking-btn.is-loading,
+.primary-booking-btn[disabled] {
+  color: #e9672f !important;
+  background: #ffffff !important;
+  opacity: 0.92 !important;
+  box-shadow: 0 4rpx 14rpx rgba(180, 70, 20, 0.16) !important;
 }
 
 .home-section {
@@ -1232,7 +1280,6 @@
 }
 
 .interactive:active,
-.primary-booking-btn:active,
 .coupon-claim-btn:active,
 .nav-item:active {
   transform: scale(0.985);

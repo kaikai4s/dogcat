@@ -1,5 +1,6 @@
 const { ensureLogin, callFunction, chooseSelectedLocation } = require('../../utils/cloud')
 const { World2D } = require('../utils/world2d')
+const { placedBuildings, isPublicBuilding } = require('../utils/plot-buildings')
 const { SceneSync } = require('../utils/scene-sync')
 const lifePage = require('../utils/life-page')
 const { decorateListing } = require('../utils/community-group-buy')
@@ -501,21 +502,17 @@ Page({
         try {
           const result = await callFunction('playground', 'relocateBuilding', {
             plotId: targetPlot.id || targetPlot._id,
+            buildingInstanceId: candidate.buildingInstanceId || building.buildingInstanceId || building.instanceId,
             buildingX: candidate.x,
             buildingZ: candidate.z,
             sceneId: world.scene && world.scene.sceneId
           })
+          if (!result.plot || !Array.isArray(result.plot.buildings)) throw new Error('服务端未返回完整建筑状态，请重试同步')
           this.pendingBuilding = null
           this.targetPlotForBuilding = null
           this.setData({ isPlacingBuilding: false, isRelocatingBuilding: false })
           if (this.world === world && !world.destroyed) {
-            const updatedPlot = result.plot || {
-              ...targetPlot,
-              buildingX: candidate.x,
-              buildingZ: candidate.z,
-              buildingOffsetX: Number((candidate.x - targetPlot.x).toFixed(2)),
-              buildingOffsetZ: Number((candidate.z - targetPlot.z).toFixed(2))
-            }
+            const updatedPlot = result.plot
             if (world.updatePlot) world.updatePlot(updatedPlot)
             if (world.sharedPlots) world.sharedPlots.set(updatedPlot.id || updatedPlot._id, updatedPlot)
             const targetPlotId = targetPlot.id || targetPlot._id
@@ -558,7 +555,8 @@ Page({
       try {
         const result = await callFunction('playground', 'buildInYard', {
           plotId: targetPlot.id || targetPlot._id,
-          buildingId: building.id || '',
+          buildingId: building.id || building.buildingId || '',
+          buildingInstanceId: building.buildingInstanceId || building.instanceId,
           buildingType: building.type || 'residential',
           buildingName: building.name || '',
           buildingImage: building.image || '',
@@ -569,25 +567,12 @@ Page({
           costCoins: building.costCoins || 0,
           sceneId: world.scene && world.scene.sceneId
         })
+        if (!result.plot || !Array.isArray(result.plot.buildings)) throw new Error('服务端未返回完整建筑状态，请重试同步')
         this.pendingBuilding = null
         this.targetPlotForBuilding = null
         this.setData({ isPlacingNewPlot: false, isPlacingBuilding: false, isRelocatingBuilding: false })
         if (this.world === world && !world.destroyed) {
-          const updatedPlot = result.plot || {
-            ...targetPlot,
-            buildingId: building.id,
-            buildingType: building.type,
-            buildingCategory: building.category || '',
-            buildingName: building.name,
-            buildingImage: building.image || '',
-            buildingWidth: building.width || 7,
-            buildingDepth: building.depth || 7,
-            buildingX: candidate.x,
-            buildingZ: candidate.z,
-            buildingOffsetX: Number((candidate.x - targetPlot.x).toFixed(2)),
-            buildingOffsetZ: Number((candidate.z - targetPlot.z).toFixed(2)),
-            name: `${targetPlot.ownerName || '我'}的${building.name}`
-          }
+          const updatedPlot = result.plot
           if (world.updatePlot) world.updatePlot(updatedPlot)
           if (world.sharedPlots) world.sharedPlots.set(updatedPlot.id || updatedPlot._id, updatedPlot)
           const targetPlotId = targetPlot.id || targetPlot._id
@@ -1199,19 +1184,10 @@ Page({
     }
   },
   getAvailableEmptyPlots() {
-    if (Array.isArray(this.data.emptyPlots) && this.data.emptyPlots.length) {
-      return this.data.emptyPlots
-    }
     const world = this.world
-    if (!world) return []
-    const allPlots = world.plots ? world.plots() : []
-    const homePlotId = world.ownPlot ? (world.ownPlot.id || world.ownPlot._id) : null
-    return allPlots.filter((p) => {
-      if (!p.mine) return false
-      if (homePlotId && (p.id === homePlotId || p._id === homePlotId)) return false
-      if (!p.isNewPlot) return false
-      return true
-    })
+    const plots = new Map((this.data.emptyPlots || []).map((p) => [p.id || p._id, p]))
+    if (world && world.plots) for (const p of world.plots()) plots.set(p.id || p._id, p)
+    return [...plots.values()].filter((p) => p.mine !== false && p.isNewPlot && !p.demolished && !placedBuildings(p).some(isPublicBuilding))
   },
   filterBuildCatalog(buildings, category) {
     if (!category || category === 'all') return buildings || []
@@ -1264,7 +1240,7 @@ Page({
     const world = this.world
     if (!world) return
 
-    const isPublicFacility = building.category === 'public' || ['committee', 'police_station', 'prison', 'pet_hospital', 'repair_shop'].includes(building.type)
+    const isPublicFacility = isPublicBuilding(building)
     const emptyPlots = this.getAvailableEmptyPlots()
 
     // 1. 公共配套大建筑（居委会、医院、督导所等）：必须在独立专属爱心绿地上建立，且一块绿地只能建立一个
@@ -1286,7 +1262,7 @@ Page({
       }
     } else {
       // 2. 非公共配套建筑（居住木屋、地板、景观树、景观装饰等）：可在任何已有绿地或自家庭院内建造
-      const hasAnyPlot = this.data.hasPlot || world.ownPlot || emptyPlots.length > 0
+      const hasAnyPlot = this.data.hasPlot || world.ownPlot || (world.plots ? world.plots() : []).some((p) => p.mine && !p.demolished)
       if (!hasAnyPlot) {
         wx.showModal({
           title: '需要先安置庭院',
@@ -1306,9 +1282,9 @@ Page({
 
     // 关闭建筑列表弹窗，直接进入场景自由建造放置模式（轻触草坪指定位置，绿标可建，红标空间不足）
     this.closeBuild()
-    this.pendingBuilding = building
+    this.pendingBuilding = { ...building, buildingInstanceId: `building_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}` }
     this.targetPlotForBuilding = null
-    world.beginBuildingPlacement(building, false)
+    world.beginBuildingPlacement(this.pendingBuilding, false)
     wx.showToast({ title: '轻触草坪指定建造位置', icon: 'none' })
   },
   startRelocateBuildingAction(e) {
@@ -1326,7 +1302,11 @@ Page({
       return wx.showToast({ title: '只能调整属于您自己的建筑位置', icon: 'none' })
     }
 
-    const isStartingVilla = (!targetPlot.isNewPlot || targetPlot.id === this.data.mainPlotId || targetPlot._id === this.data.mainPlotId) && targetPlot.buildingType === 'residential'
+    const dataset = e && e.currentTarget && e.currentTarget.dataset
+    const info = this.data.selectedBuildingInfo && this.data.selectedBuildingInfo.plotId === plotId ? this.data.selectedBuildingInfo : this.data.nearbyBuilding
+    const instanceId = dataset && Object.prototype.hasOwnProperty.call(dataset, 'instanceid') ? dataset.instanceid : info && info.buildingInstanceId
+    const instance = placedBuildings(targetPlot).find((b) => b.instanceId === instanceId)
+    const isStartingVilla = !instanceId && !targetPlot.isNewPlot
     if (isStartingVilla) {
       wx.showModal({
         title: '温馨提示',
@@ -1336,15 +1316,8 @@ Page({
       return
     }
 
-    const building = {
-      id: targetPlot.buildingId || targetPlot.id || targetPlot._id,
-      name: targetPlot.buildingName || targetPlot.name || '建筑',
-      type: targetPlot.buildingType || 'residential',
-      category: targetPlot.buildingCategory || '',
-      image: targetPlot.buildingImage || '',
-      width: targetPlot.buildingWidth || 7,
-      depth: targetPlot.buildingDepth || 7
-    }
+    if (!instance) return wx.showToast({ title: '该建筑已不存在，请重新选择', icon: 'none' })
+    const building = { ...instance, id: instance.buildingId, buildingInstanceId: instance.instanceId }
 
     this.pendingBuilding = building
     this.targetPlotForBuilding = targetPlot
@@ -1359,17 +1332,20 @@ Page({
   async dismantleBuildingAction(e) {
     const world = this.world
     if (!world) return
-    const plotId = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.plotid) ||
-                   (this.data.nearbyBuilding && this.data.nearbyBuilding.plotId)
+    const dataset = e && e.currentTarget && e.currentTarget.dataset
+    const info = this.data.selectedBuildingInfo || this.data.nearbyBuilding
+    const plotId = dataset && dataset.plotid || info && info.plotId
     if (!plotId) return wx.showToast({ title: '未找到对应建筑', icon: 'none' })
-
+    const instanceId = dataset && Object.prototype.hasOwnProperty.call(dataset, 'instanceid') ? dataset.instanceid : info && info.buildingInstanceId
     const targetPlot = (world.plots ? world.plots() : []).find((p) => p.id === plotId || p._id === plotId)
-    const buildingName = (targetPlot && targetPlot.buildingName) || (this.data.nearbyBuilding && this.data.nearbyBuilding.name) || '建筑'
+    const instance = targetPlot && placedBuildings(targetPlot).find((b) => b.instanceId === instanceId)
+    if (!targetPlot || !targetPlot.mine || !instance) return wx.showToast({ title: '请选择自己的附属建筑，默认别墅不可拆除', icon: 'none' })
+    const buildingName = instance.name || '建筑'
 
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
         title: '确认拆除建筑',
-        content: `确定要拆除【${buildingName}】吗？\n拆除后该地皮将恢复为原来的初始纯草块，您可以随时重新规划或建造其他建筑。`,
+        content: `确定要拆除【${buildingName}】吗？\n仅拆除该建筑，地皮上的其他建筑和原有别墅保持不变。`,
         confirmText: '拆除建筑',
         confirmColor: '#e04f5f',
         cancelText: '保留建筑',
@@ -1382,21 +1358,16 @@ Page({
     try {
       const result = await callFunction('playground', 'dismantleBuilding', {
         plotId,
+        buildingInstanceId: instanceId,
         sceneId: world.scene && world.scene.sceneId
       })
-      wx.showToast({ title: result.message || '建筑已拆除，恢复为初始草块！', icon: 'success' })
+      if (!result.plot || !Array.isArray(result.plot.buildings)) throw new Error('服务端未返回完整建筑状态，请重新同步')
+      wx.showToast({ title: result.message || '该建筑已拆除', icon: 'success' })
       if (this.world === world && !world.destroyed) {
-        if (targetPlot) {
-          targetPlot.buildingType = 'yard'
-          targetPlot.buildingId = ''
-          targetPlot.buildingName = ''
-          targetPlot.buildingCategory = ''
-          targetPlot.buildingImage = ''
-          targetPlot.buildingWidth = 0
-          targetPlot.buildingDepth = 0
-          targetPlot.name = `${(targetPlot && targetPlot.ownerName) || '邻居'}的专属爱心绿地`
-          if (world.sharedPlots) world.sharedPlots.set(targetPlot.id || targetPlot._id, targetPlot)
-        }
+        if (world.updatePlot) world.updatePlot(result.plot)
+        if (world.sharedPlots) world.sharedPlots.set(plotId, result.plot)
+        if (world.emitBuildingInfo) world.emitBuildingInfo()
+        if (world.emitNearby) world.emitNearby()
         if (world.sceneSync && typeof world.sceneSync.snapshot === 'function') {
           world.sceneSync.snapshot().catch(() => {})
         } else if (world.scene) {
@@ -1408,18 +1379,15 @@ Page({
           if (p.id === plotId || p._id === plotId) {
             return {
               ...p,
-              buildingType: 'yard',
-              buildingId: '',
-              buildingName: '',
-              buildingCategory: '',
-              isBuilt: false,
-              name: `${(targetPlot && targetPlot.ownerName) || '邻居'}的专属爱心绿地`
+              ...result.plot,
+              isBuilt: placedBuildings(result.plot).length > 0
             }
           }
           return p
         })
-        this.setData({ emptyPlots: updatedEmptyPlots, availableEmptyPlotCount: updatedEmptyPlots.length, nearbyBuilding: null })
-        this.pushStatusMessage(`【${buildingName}】已拆除，地皮已恢复为纯草块！`)
+        this.setData({ emptyPlots: updatedEmptyPlots })
+        this.setData({ availableEmptyPlotCount: this.getAvailableEmptyPlots().length })
+        this.pushStatusMessage(`【${buildingName}】已拆除，其他建筑保持不变。`)
       }
     } catch (err) {
       wx.showToast({ title: err.message || '拆除建筑失败', icon: 'none' })

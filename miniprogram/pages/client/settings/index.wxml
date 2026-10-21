@@ -2,17 +2,10 @@
   <view class="settings-hero">
     <view class="hero-badge"><text class="remix-icon ri-settings-4-fill hero-icon"></text><text>设置中心</text></view>
     <view class="hero-title">设置</view>
-    <view class="hero-desc">管理主题、字体、账号安全与隐私信息。</view>
+    <view class="hero-desc">管理字体、账号安全与隐私信息。</view>
   </view>
 
   <view class="settings-card">
-    <picker range="{{themeOptions}}" range-key="label" value="{{themeIndex}}" disabled="{{savingTheme}}" bindchange="changeTheme">
-      <view class="settings-row">
-        <view class="row-icon"><text class="remix-icon ri-palette-line"></text></view>
-        <view class="row-main"><view class="row-title">主题切换</view><view class="row-desc">切换后主颜色会同步变化</view></view>
-        <view class="settings-value">{{themeName}} <text class="remix-icon ri-arrow-right-s-line"></text></view>
-      </view>
-    </picker>
     <picker range="{{fontOptions}}" range-key="label" value="{{fontIndex}}" disabled="{{savingFont}}" bindchange="changeFont">
       <view class="settings-row">
         <view class="row-icon"><text class="remix-icon ri-font-size-line"></text></view>

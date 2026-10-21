@@ -1,6 +1,7 @@
 module.exports = function createHandler(context) {
   const { db, getUser, safeText } = context
   const worldService = require('../services/playground-world')
+  const { placedBuildings, isPublicBuilding } = require('../services/playground-shared/plot-buildings')
   const world = worldService.create(context)
   const shared = require('../services/playground-shared')(context)
   const { publicAppearance } = require('../services/playground-appearance-record')
@@ -63,7 +64,7 @@ module.exports = function createHandler(context) {
         const myPlotsRes = await db.collection('pet_playground_plots').where({ kind: 'plot', ownerOpenid: openid }).get()
         const myPlots = (myPlotsRes && myPlotsRes.data) || []
         emptyPlots = myPlots
-          .filter((p) => !p.demolished && p._id !== mainPlotId && p.isNewPlot)
+          .filter((p) => !p.demolished && p._id !== mainPlotId && p.isNewPlot && !placedBuildings(p).some(isPublicBuilding))
           .map((p) => ({
             id: p._id,
             _id: p._id,
@@ -71,7 +72,8 @@ module.exports = function createHandler(context) {
             buildingType: p.buildingType || 'yard',
             buildingName: p.buildingName || '',
             buildingCategory: p.buildingCategory || '',
-            isBuilt: !!(p.buildingType && p.buildingType !== 'yard'),
+            buildings: placedBuildings(p),
+            isBuilt: placedBuildings(p).some(isPublicBuilding),
             size: Number(p.size) || 48,
             gateDirection: p.gateDirection || 'south',
             x: p.x,

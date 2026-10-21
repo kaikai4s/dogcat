@@ -1,4 +1,5 @@
 const { AssetLoader2D } = require('./asset-loader-2d')
+const { placedBuildings, isPublicBuilding, isFloorBuilding, isTreeBuilding, validateBuildingPlacement } = require('./plot-buildings')
 const { createNavigation } = require('./navigation')
 const { CHARACTER_STYLE } = require('./character-assets')
 const { PET_ATLASES } = require('./pet-assets')
@@ -447,30 +448,14 @@ class World2D {
       const insideOrNearGate = dx <= (half + 6) && dz <= (half + 6)
       return insideOrNearGate && (plot.mine || this.canEnterPlot(plot) || (dx <= half + 4 && dz <= half + 4))
     })
-    const getBuildingPos = (plot) => ({
-      x: (plot.buildingX !== undefined && plot.buildingX !== null) ? Number(plot.buildingX) : plot.x,
-      z: (plot.buildingZ !== undefined && plot.buildingZ !== null) ? Number(plot.buildingZ) : plot.z
-    })
-    candidatePlots.sort((a, b) => {
-      const posA = getBuildingPos(a)
-      const posB = getBuildingPos(b)
-      return Math.hypot(p.x - posA.x, p.z - posA.z) - Math.hypot(p.x - posB.x, p.z - posB.z)
-    })
-    const nearbyPlot = candidatePlots.find((plot) => (plot.id || plot._id) === this.selectedBuildingPlotId) || candidatePlots[0]
-    if (nearbyPlot && nearbyPlot.buildingType && nearbyPlot.buildingType !== 'yard') {
-      const isFloor = nearbyPlot.buildingType === 'floor' || nearbyPlot.buildingCategory === 'floor'
-      const isResidential = nearbyPlot.buildingType === 'residential' && !nearbyPlot.isNewPlot
-      if (!isResidential && (!isFloor || nearbyPlot.mine)) {
-        result.building = {
-          plotId: nearbyPlot.id || nearbyPlot._id,
-          type: nearbyPlot.buildingType,
-          category: nearbyPlot.buildingCategory || '',
-          name: nearbyPlot.buildingName || (nearbyPlot.buildingType === 'committee' ? '社区居委会' : nearbyPlot.buildingType === 'repair_shop' ? '社区修理厂' : nearbyPlot.buildingType === 'pet_hospital' ? '爱心宠物医院' : nearbyPlot.buildingType === 'police_station' ? '文明督导所' : nearbyPlot.buildingType === 'prison' ? '安全宣教自省室' : nearbyPlot.buildingType === 'wood_cabin' ? '田园小木屋' : nearbyPlot.buildingType === 'tree' ? '景观树木' : nearbyPlot.buildingType === 'decoration' ? '景观装饰' : isFloor ? '地面铺装素材' : '社区建筑'),
-          mine: !!nearbyPlot.mine,
-          canDismantle: !!(nearbyPlot.mine && nearbyPlot.isNewPlot)
-        }
-      }
-    }
+    const candidates = candidatePlots.flatMap((plot) => placedBuildings(plot)
+      .filter((building) => !isFloorBuilding(building) || plot.mine)
+      .map((building) => ({ plot, building })))
+    candidates.sort((a, b) => Math.hypot(p.x - a.building.x, p.z - a.building.z) - Math.hypot(p.x - b.building.x, p.z - b.building.z))
+    const selected = candidates.find(({ plot, building }) => (plot.id || plot._id) === this.selectedBuildingPlotId && building.instanceId === this.selectedBuildingInstanceId)
+    // 选中同地皮的另一栋或默认别墅时，不把服务按钮悄悄切换到其他实例。
+    const nearby = this.selectedBuildingPlotId ? selected : candidates[0]
+    if (nearby) result.building = this.buildingInfoFor(nearby.plot, nearby.building.instanceId)
     return result
   }
   async pickupPoop(id) {
@@ -703,10 +688,14 @@ class World2D {
     this.emitNearby()
     this.page.setData({ showPetScale: false })
   }
-  buildingInfoFor(plot) {
-    if (!plot || plot.demolished || plot.buildingType === 'yard') return null
-    const type = plot.buildingType || 'residential'
-    const isFloor = plot.buildingType === 'floor' || plot.buildingCategory === 'floor'
+  buildingInfoFor(plot, instanceId) {
+    if (!plot || plot.demolished) return null
+    const instances = placedBuildings(plot)
+    const building = instanceId ? instances.find((b) => b.instanceId === instanceId) : instanceId === '' ? null : instances[0]
+    if (instanceId && !building) return null
+    if (!building && (plot.isNewPlot || plot.buildingType === 'yard')) return null
+    const type = building ? building.type : 'residential'
+    const isFloor = building && isFloorBuilding(building)
     const names = {
       committee: '社区居委会',
       repair_shop: '社区修理厂',
@@ -720,32 +709,30 @@ class World2D {
     }
     return {
       plotId: plot.id || plot._id,
+      buildingInstanceId: building ? building.instanceId : '',
       type,
-      category: plot.buildingCategory || '',
-      name: plot.buildingName || names[type] || (isFloor ? '地面铺装素材' : '社区建筑'),
+      category: building ? building.category || '' : '',
+      name: (building && building.name) || names[type] || (isFloor ? '地面铺装素材' : '社区建筑'),
       mine: !!plot.mine,
-      canDismantle: !!(plot.mine && plot.isNewPlot)
+      canRelocate: !!(plot.mine && building),
+      canDismantle: !!(plot.mine && building)
     }
   }
   buildingAt(point) {
     if (!point || this.isMapOverview() || this.placing) return null
-    const candidates = this.plots().filter((plot) => {
-      if (!this.buildingInfoFor(plot)) return false
-      const floor = plot.buildingType === 'floor' || plot.buildingCategory === 'floor' || String(plot.buildingType || '').startsWith('floor_')
+    const candidates = this.plots().flatMap((plot) => yardLayout(plot).sprites.filter((sprite) => sprite.name === 'house').map((sprite) => ({ plot, sprite, building: sprite.building }))).filter(({ plot, sprite, building }) => {
+      if (!this.buildingInfoFor(plot, building ? building.instanceId : '')) return false
+      const floor = building && isFloorBuilding(building)
       if (floor) {
         const ground = this.unproject(point.x, point.y)
-        const fx = (plot.buildingX !== undefined && plot.buildingX !== null) ? Number(plot.buildingX) : plot.x
-        const fz = (plot.buildingZ !== undefined && plot.buildingZ !== null) ? Number(plot.buildingZ) : plot.z
-        return Math.abs(ground.x - fx) <= (plot.buildingWidth || 7) / 2 && Math.abs(ground.z - fz) <= (plot.buildingDepth || 7) / 2
+        return Math.abs(ground.x - building.x) <= (building.width || 7) / 2 && Math.abs(ground.z - building.z) <= (building.depth || 7) / 2
       }
-      const sprite = yardLayout(plot).sprites.find((item) => item.name === 'house')
-      if (!sprite) return false
       const origin = this.project(sprite.x, sprite.z)
       const width = sprite.size * this.scale * this.zoom
       if (Math.abs(point.x - origin.x) > width / 2) return false
-      const loaded = this.buildingImage(plot.buildingImage)
+      const loaded = building && this.buildingImage(building.image)
       const custom = loaded && loaded.width > 0 && loaded.height > 0 ? loaded : null
-      const tree = plot.buildingType === 'tree' || plot.buildingCategory === 'tree' || String(plot.buildingType || '').startsWith('tree_')
+      const tree = building && isTreeBuilding(building)
       const image = custom || this.assets[tree ? 'tree' : 'house']
       if (!image || !image.width || !image.height) return false
       const height = custom ? width * custom.height / custom.width : width
@@ -753,8 +740,9 @@ class World2D {
       return u >= 0 && u < 1 && v >= 0 && v < 1 && this.buildingPixelAt(image, u, v)
     })
     // 按画面的遮挡顺序命中最前面的建筑，屋顶与立面均可点击。
-    candidates.sort((a, b) => (b.x + b.z) - (a.x + a.z))
-    return candidates[0] ? this.buildingInfoFor(candidates[0]) : null
+    candidates.sort((a, b) => Number(!!(a.building && isFloorBuilding(a.building))) - Number(!!(b.building && isFloorBuilding(b.building))) || (b.sprite.x + b.sprite.z) - (a.sprite.x + a.sprite.z))
+    const hit = candidates[0]
+    return hit ? this.buildingInfoFor(hit.plot, hit.building ? hit.building.instanceId : '') : null
   }
   buildingPixelAt(image, u, v) {
     if (!this.buildingHitMasks.has(image)) {
@@ -779,6 +767,7 @@ class World2D {
     if (!building || !building.plotId) return false
     // 信息卡叠加在当前操控状态上，保留医院护理的目标宠物及车辆选择。
     this.selectedBuildingPlotId = building.plotId
+    this.selectedBuildingInstanceId = building.buildingInstanceId || ''
     this.selectedBuildingKey = JSON.stringify(building)
     this.page.setData({ selectedBuildingInfo: building })
     this.emitNearby()
@@ -787,7 +776,7 @@ class World2D {
   emitBuildingInfo() {
     if (!this.selectedBuildingPlotId) return
     const plot = this.plots().find((p) => (p.id || p._id) === this.selectedBuildingPlotId)
-    const building = this.buildingInfoFor(plot)
+    const building = this.buildingInfoFor(plot, this.selectedBuildingInstanceId || '')
     if (!building) return this.clearBuildingSelection()
     const key = JSON.stringify(building)
     if (key === this.selectedBuildingKey) return
@@ -797,6 +786,7 @@ class World2D {
   clearBuildingSelection() {
     if (!this.selectedBuildingPlotId) return
     this.selectedBuildingPlotId = ''
+    this.selectedBuildingInstanceId = ''
     this.selectedBuildingKey = ''
     this.page.setData({ selectedBuildingInfo: null })
   }
@@ -1387,29 +1377,19 @@ class World2D {
     this.target = null
     this.destination = null
 
-    const bW = Number(building.width || 7)
-    const bD = Number(building.depth || 7)
-
+    const focusPlot = isRelocating ? currentPlot : isPublicBuilding(building)
+      ? this.plots().find((p) => p.mine && p.isNewPlot && !placedBuildings(p).some(isPublicBuilding))
+      : this.ownPlot || this.plots().find((p) => p.mine)
+    const currentInstances = isRelocating && currentPlot ? placedBuildings(currentPlot) : []
+    const instanceId = building.instanceId || building.buildingInstanceId || (currentInstances.length === 1 ? currentInstances[0].instanceId : '')
+    const instance = isRelocating && currentPlot && placedBuildings(currentPlot).find((b) => b.instanceId === instanceId)
+    this.relocatingBuildingInstanceId = isRelocating ? instanceId || '' : ''
+    if (focusPlot) this.camera = { x: instance ? instance.x : focusPlot.x, z: instance ? instance.z : focusPlot.z }
     if (isRelocating && currentPlot) {
-      const initX = (currentPlot.buildingX !== undefined && currentPlot.buildingX !== null) ? Number(currentPlot.buildingX) : currentPlot.x
-      const initZ = (currentPlot.buildingZ !== undefined && currentPlot.buildingZ !== null) ? Number(currentPlot.buildingZ) : currentPlot.z
-      this.candidate = {
-        isBuilding: true,
-        isRelocating: true,
-        building,
-        x: initX,
-        z: initZ,
-        width: bW,
-        depth: bD,
-        targetPlot: currentPlot,
-        buildingX: initX,
-        buildingZ: initZ,
-        buildingOffsetX: Number((initX - currentPlot.x).toFixed(2)),
-        buildingOffsetZ: Number((initZ - currentPlot.z).toFixed(2)),
-        valid: true
-      }
-      this.page.setData({ placing: true, isPlacingNewPlot: false, isPlacingBuilding: true, isRelocatingBuilding: true, canConfirm: true })
-      this.onStatus(`已选中【${building.name}】当前位置，轻触草坪方块可自由移动调整（绿色可建造/红色空间不足）`)
+      const initX = instance ? instance.x : currentPlot.buildingX != null ? Number(currentPlot.buildingX) : currentPlot.x
+      const initZ = instance ? instance.z : currentPlot.buildingZ != null ? Number(currentPlot.buildingZ) : currentPlot.z
+      this.page.setData({ placing: true, isPlacingNewPlot: false, isPlacingBuilding: true, isRelocatingBuilding: true, canConfirm: false })
+      return this.pickPlot({ x: initX, z: initZ })
     } else {
       this.candidate = null
       this.page.setData({ placing: true, isPlacingNewPlot: false, isPlacingBuilding: true, isRelocatingBuilding: false, canConfirm: false })
@@ -1452,10 +1432,9 @@ class World2D {
       const b = currentBuilding
       const bW = Number(b.width || 7)
       const bD = Number(b.depth || 7)
-      const isPublicFacility = b.category === 'public' || ['committee', 'police_station', 'prison', 'pet_hospital', 'repair_shop'].includes(b.type)
 
       // 1. 查找点击点所在的我方地皮（出生庭院或专属绿地）
-      const insidePlot = this.plots().find((p) => {
+      const insidePlot = this.isRelocatingBuilding ? this.relocatingPlot : this.plots().find((p) => {
         if (!p.mine && (!this.ownPlot || (p.id !== this.ownPlot.id && p._id !== this.ownPlot._id))) return false
         const half = (p.size || 48) / 2
         return Math.abs(point.x - p.x) <= half && Math.abs(point.z - p.z) <= half
@@ -1479,106 +1458,18 @@ class World2D {
         return this.onStatus('【无法建造】超出您的领地范围，请在自家庭院或专属绿地草坪内选择')
       }
 
-      const homePlotId = this.ownPlot ? (this.ownPlot.id || this.ownPlot._id) : null
-      const isHomePlot = insidePlot.id === homePlotId || insidePlot._id === homePlotId || !insidePlot.isNewPlot || insidePlot.buildingType === 'residential'
-
-      // B. 公共配套大建筑规则：只能在独立专属绿地建造，且一个地皮只能建立一个
-      if (isPublicFacility) {
-        if (isHomePlot) {
-          this.candidate = {
-            isBuilding: true,
-            building: b,
-            valid: false,
-            reason: '公共配套大设施只能在独立专属绿地建造，不可占用自家庭院',
-            x: point.x,
-            z: point.z,
-            width: bW,
-            depth: bD,
-            targetPlot: insidePlot
-          }
-          this.page.setData({ canConfirm: false })
-          this.draw()
-          return this.onStatus('【无法建造】公共配套大设施只能在独立专属绿地建造，不可占用自家庭院')
-        }
-        const isRelocatingSelf = this.isRelocatingBuilding && this.relocatingPlot && (this.relocatingPlot.id === insidePlot.id || this.relocatingPlot._id === insidePlot._id)
-        if (!isRelocatingSelf && insidePlot.buildingType && insidePlot.buildingType !== 'yard') {
-          this.candidate = {
-            isBuilding: true,
-            building: b,
-            valid: false,
-            reason: '该绿地已有公共设施，公共配套大建筑一个地皮只能建立一个',
-            x: point.x,
-            z: point.z,
-            width: bW,
-            depth: bD,
-            targetPlot: insidePlot
-          }
-          this.page.setData({ canConfirm: false })
-          this.draw()
-          return this.onStatus('【无法建造】该绿地已有公共设施，公共配套大建筑一个地皮只能建立一个')
-        }
-      }
-
-      // C. 检查草坪方块空间容纳度（建筑完全包含在地皮围栏内，留出安全边距）
-      const halfPlot = (insidePlot.size || 48) / 2
-      const margin = 1.0 // 留出草坪通道边距
-      const minPlotX = insidePlot.x - halfPlot + margin
-      const maxPlotX = insidePlot.x + halfPlot - margin
-      const minPlotZ = insidePlot.z - halfPlot + margin
-      const maxPlotZ = insidePlot.z + halfPlot - margin
-
-      const minBx = point.x - bW / 2
-      const maxBx = point.x + bW / 2
-      const minBz = point.z - bD / 2
-      const maxBz = point.z + bD / 2
-
-      if (minBx < minPlotX || maxBx > maxPlotX || minBz < minPlotZ || maxBz > maxPlotZ) {
-        this.candidate = {
-          isBuilding: true,
-          building: b,
-          valid: false,
-          reason: '草坪方块空间不足，建筑部分超出地皮围栏范围',
-          x: point.x,
-          z: point.z,
-          width: bW,
-          depth: bD,
-          targetPlot: insidePlot
-        }
-        this.page.setData({ canConfirm: false })
+      const placementError = validateBuildingPlacement(insidePlot, b, point, this.isRelocatingBuilding ? this.relocatingBuildingInstanceId : undefined)
+      if (placementError) {
+        this.candidate = { isBuilding: true, isRelocating: !!this.isRelocatingBuilding, building: b, buildingInstanceId: this.relocatingBuildingInstanceId || b.instanceId || b.buildingInstanceId, valid: false, reason: placementError, x: point.x, z: point.z, width: bW, depth: bD, targetPlot: insidePlot }
         this.draw()
-        return this.onStatus('【无法建造】草坪方块空间不足，建筑部分超出地皮围栏范围')
+        return this.onStatus(`【无法建造】${placementError}`)
       }
-
-      // D. 在自家庭院中建造时，检查是否与自家庭院的原主屋中心发生严重重叠
-      if (isHomePlot && b.type !== 'residential' && b.category !== 'residential') {
-        const homeHouseX = insidePlot.x
-        const homeHouseZ = insidePlot.z
-        const houseHalfSize = 9
-        const overlapX = Math.abs(point.x - homeHouseX) < (bW / 2 + houseHalfSize)
-        const overlapZ = Math.abs(point.z - homeHouseZ) < (bD / 2 + houseHalfSize)
-        if (overlapX && overlapZ) {
-          this.candidate = {
-            isBuilding: true,
-            building: b,
-            valid: false,
-            reason: '与自家庭院原有别墅位置重叠，请移至空旷草坪方块',
-            x: point.x,
-            z: point.z,
-            width: bW,
-            depth: bD,
-            targetPlot: insidePlot
-          }
-          this.page.setData({ canConfirm: false })
-          this.draw()
-          return this.onStatus('【无法建造】与自家庭院原有别墅位置重叠，请移至空旷草坪方块')
-        }
-      }
-
       // E. 条件完全满足：呈现绿色指示，允许建造
       this.page.targetPlotForBuilding = insidePlot
       this.candidate = {
         isBuilding: true,
         isRelocating: Boolean(this.isRelocatingBuilding),
+        buildingInstanceId: this.relocatingBuildingInstanceId || b.instanceId || b.buildingInstanceId,
         building: b,
         valid: true,
         x: point.x,
@@ -1659,6 +1550,8 @@ class World2D {
     if (this.mapPlots && this.mapPlots.has(id)) {
       this.mapPlots.set(id, { ...this.mapPlots.get(id), ...updated })
     }
+    this.sharedPlots.set(id, { ...this.sharedPlots.get(id), ...updated })
+    this.emitBuildingInfo()
   }
   setPlot(plot) {
     this.moveToken = (this.moveToken || 0) + 1
@@ -1942,6 +1835,17 @@ class World2D {
   async applySceneChanges(changes) {
     const characters=new Map(this.remoteCharacters.map((person)=>[person.id,person]))
     for(const record of changes) {
+      if (record.kind === 'plot') {
+        const id = record.id || record._id
+        if (record.deleted || record.demolished) {
+          this.sharedPlots.delete(id)
+          this.mapPlots.delete(id)
+          for (const [key, list] of this.chunks) this.chunks.set(key, list.filter((p) => (p.id || p._id) !== id))
+          if (this.ownPlot && (this.ownPlot.id || this.ownPlot._id) === id) this.ownPlot = null
+        } else this.updatePlot(record)
+        this.emitBuildingInfo()
+        continue
+      }
       if(record.kind==='vehicle') {this.applyVehicle(record);continue}
       if(record.kind==='resident') {
         if(!this.careAgents)this.careAgents=new Map()
@@ -1965,6 +1869,7 @@ class World2D {
         if(!this.destroyed)Object.assign(this.assets,assets)
       }
     }
+    this.emitNearby()
   }
   careAssetNames() {
     return [...new Set([...(this.careAgents||new Map()).values()].flatMap((agent)=>['idle','walk'].map((a)=>(agent.characterType==='girl'?'girl':'boy')+'_'+a+'_sw')))]
@@ -2250,7 +2155,7 @@ class World2D {
     const c = this.ctx,
       occupied = new Set()
     for (const p of this.plots()) {
-      if (!this.isPlacingNewPlot && this.candidate && this.ownPlot && p.id === this.ownPlot.id) continue
+      if (!this.isPlacingBuilding && !this.isPlacingNewPlot && this.candidate && this.ownPlot && p.id === this.ownPlot.id) continue
       if (
         p.x < bounds.minX ||
         p.x > bounds.maxX ||
@@ -2498,13 +2403,13 @@ class World2D {
     c.restore()
   }
   drawYard(p, items) {
-    const isPureYard = p.buildingType === 'yard' || (this.candidate && this.candidate === p && this.isPlacingNewPlot)
-    const isFloor = p.buildingType === 'floor' || p.buildingCategory === 'floor' || (p.buildingType && String(p.buildingType).startsWith('floor_'))
-    const isTree = p.buildingType === 'tree' || p.buildingCategory === 'tree' || (p.buildingType && String(p.buildingType).startsWith('tree_'))
-    const isSingleBuilding = p.buildingType && !['residential', 'yard'].includes(p.buildingType)
+    const buildings = placedBuildings(p)
+    const isPureYard = (p.isNewPlot || p.buildingType === 'yard') && !buildings.length || (this.candidate && this.candidate === p && this.isPlacingNewPlot)
+    const isSingleBuilding = p.isNewPlot || !!(p.buildingType && !['residential', 'yard'].includes(p.buildingType) && !Array.isArray(p.buildings))
     const layout = yardLayout(p)
     if (!isPureYard) {
-      if (isFloor) {
+      for (const building of buildings.filter(isFloorBuilding)) {
+        const p = { buildingImage: building.image, buildingId: building.buildingId, buildingWidth: building.width, buildingDepth: building.depth, buildingX: building.x, buildingZ: building.z }
         // 地板地坪素材直接在地面草坪上平铺绘制，按等轴测多边形贴合地表，不产生立体深度遮挡
         const custom = this.buildingImage(p.buildingImage)
         const halfW = (p.buildingWidth || 7) / 2
@@ -2539,7 +2444,8 @@ class World2D {
           this.ctx.stroke()
         }
         this.ctx.restore()
-      } else if (isSingleBuilding) {
+      }
+      if (isSingleBuilding) {
         this.drawStonePath(
           { x: p.x, z: p.z + 11 },
           { x: p.x, z: p.z + layout.half - 1 }
@@ -2571,19 +2477,19 @@ class World2D {
       const frames = FOUNTAIN_FRAMES.filter((name) => this.assets[name])
       for (const item of layout.sprites) {
         if (isSingleBuilding && item.name !== 'house') continue
-        if (isFloor && item.name === 'house') continue
+        if (item.building && isFloorBuilding(item.building)) continue
         if(item.name==='car_road')this.sprite(item.name,item.x,item.z,item.size,item.anchor)
         else
         items.push({
           depth: item.x + item.z,
           draw: () => {
-            const custom = item.name === 'house' && this.buildingImage(p.buildingImage)
+            const custom = item.name === 'house' && item.building && this.buildingImage(item.building.image)
             if (custom && custom.width > 0 && custom.height > 0) {
               const point = this.project(item.x, item.z)
               const width = item.size * this.scale * this.zoom
               const height = (width * custom.height) / custom.width
               this.ctx.drawImage(custom, point.x - width / 2, point.y - height * item.anchor, width, height)
-            } else if (isTree && item.name === 'house') {
+            } else if (item.name === 'house' && item.building && isTreeBuilding(item.building)) {
               this.sprite('tree', item.x, item.z, item.size, item.anchor)
             } else
             this.sprite(
@@ -2806,7 +2712,7 @@ class World2D {
     if (overview) this.drawMapPlots(b)
     else
       for (const p of this.plots()) {
-        if (!this.isPlacingNewPlot && this.candidate && this.ownPlot && p.id === this.ownPlot.id) continue
+        if (!this.isPlacingBuilding && !this.isPlacingNewPlot && this.candidate && this.ownPlot && p.id === this.ownPlot.id) continue
         const half = (p.size || SIZE) / 2
         if (
           p.x + half < b.minX ||

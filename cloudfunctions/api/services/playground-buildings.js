@@ -1,7 +1,16 @@
 const {levelIds,validateLevels}=require('./playground-access')
 const crypto = require('crypto')
 const { transaction } = require('./playground-transaction')
-const { readDocument } = require('./playground-world')
+const { readDocument, ownerId, read } = require('./playground-world')
+const { placedBuildings, withBuildings } = require('./playground-shared/plot-buildings')
+
+function projectionPatch(plot, buildings) {
+  const projected = withBuildings(plot, buildings)
+  const keys = ['buildings', 'buildingId', 'buildingType', 'buildingCategory', 'buildingName', 'buildingImage', 'buildingWidth', 'buildingDepth', 'buildingX', 'buildingZ', 'buildingOffsetX', 'buildingOffsetZ', 'name']
+  const patch = Object.fromEntries(keys.map((key) => [key, projected[key]]))
+  if (projected.buildingType !== 'committee') Object.assign(patch, { committeeStartedAt: 0, lastSalaryClaimAt: 0 })
+  return patch
+}
 
 const COLLECTION = 'platform_configs'
 const ID = 'playground_buildings_catalog_v1'
@@ -237,6 +246,31 @@ module.exports = function createBuildingsService(context) {
   const { db } = context
   const now = () => (context.nowMs ? context.nowMs() : Date.now())
 
+  async function matchingPlots(tx, buildingId) {
+    const matches = []
+    let cursor = ''
+    do {
+      const query = { kind: 'plot', ...(cursor ? { _id: db.command.gt(cursor) } : {}) }
+      const page = (await tx.collection('pet_playground_plots').where(query).orderBy('_id', 'asc').limit(100).get()).data || []
+      matches.push(...page.filter((plot) => placedBuildings(plot).some((building) => building.buildingId === buildingId)))
+      cursor = page.length === 100 ? page[page.length - 1]._id : ''
+    } while (cursor)
+    return matches
+  }
+
+  async function updatePlot(tx, plot, buildings) {
+    const stamp = now()
+    const patch = { ...projectionPatch(plot, buildings), updatedAt: new Date(stamp).toISOString(), revision: Math.max(stamp, (plot.revision || 0) + 1) }
+    await tx.collection('pet_playground_plots').doc(plot._id).update({ data: patch })
+    const owner = await read(tx, ownerId(plot.ownerOpenid))
+    if (owner && owner.plotId === plot._id) await tx.collection('pet_playground_plots').doc(owner._id).update({ data: patch })
+    return { ...plot, ...patch }
+  }
+
+  async function publishPlots(records) {
+    if (records.length) await require('./playground-shared')(context).publishRecords(records)
+  }
+
   async function list() {
     return {...await readCatalog(db),levels:(await db.collection('member_levels').orderBy('minPoints','asc').get()).data||[]}
   }
@@ -253,7 +287,7 @@ module.exports = function createBuildingsService(context) {
   async function save(openid, data) {
     const item = normalizeBuilding(data.building)
     await validateLevels(db,item.unlockLevelIds)
-    return transaction(db, async (tx) => {
+    const result = await transaction(db, async (tx) => {
       const current = await readCatalog(tx)
       if (current.revision !== data.revision) {
         throw new Error('配置已被其他管理员更新，请刷新后重新编辑')
@@ -270,32 +304,28 @@ module.exports = function createBuildingsService(context) {
         updatedAt: now()
       }
       await tx.collection(COLLECTION).doc(ID).set({ data: next })
+      const records = []
       if (exists) {
-        try {
-          const plotRows = await tx.collection('pet_playground_plots').where({ kind: 'plot', buildingId: item.id }).get()
-          for (const p of (plotRows.data || [])) {
-            await tx.collection('pet_playground_plots').doc(p._id).update({
-              data: {
-                buildingName: item.name,
-                buildingImage: item.image,
-                buildingWidth: item.width,
-                buildingDepth: item.depth,
-                buildingCategory: item.category || deriveCategory(item.type, item.category)
-              }
-            })
-          }
-        } catch (_) {}
+        for (const plot of await matchingPlots(tx, item.id)) {
+          const instances = placedBuildings(plot).map((building) => building.buildingId === item.id ? {
+            ...building, type: item.type, category: item.category, name: item.name,
+            image: item.image, width: item.width, depth: item.depth
+          } : building)
+          records.push(await updatePlot(tx, plot, instances))
+        }
       }
-      return { revision: next.revision, buildings,plotSizes:current.plotSizes }
+      return { revision: next.revision, buildings, plotSizes: current.plotSizes, records }
     })
+    const { records, ...response } = result
+    await publishPlots(records)
+    return response
   }
 
   async function remove(openid, data) {
     const id = String(data.id || '')
-    return transaction(db, async (tx) => {
+    const result = await transaction(db, async (tx) => {
       const current = await readCatalog(tx)
       if(current.revision!==data.revision)throw new Error('配置已被其他管理员更新，请刷新后重新编辑')
-      const targetBuilding = current.buildings.find((b) => b.id === id)
       const buildings = current.buildings.filter((b) => b.id !== id)
       const next = {
         rewardsVersion:2,plotSizes:current.plotSizes,
@@ -306,48 +336,32 @@ module.exports = function createBuildingsService(context) {
       }
       await tx.collection(COLLECTION).doc(ID).set({ data: next })
 
-      // 若被删除的建筑已被建造于玩家地皮，自动将对应地皮恢复为初始纯草块
-      try {
-        const plotRows = await tx.collection('pet_playground_plots').where({ kind: 'plot', buildingId: id }).get()
-        const affectedCommunities = new Set()
-        for (const p of (plotRows.data || [])) {
-          if (p.communityId) affectedCommunities.add(p.communityId)
-          await tx.collection('pet_playground_plots').doc(p._id).update({
-            data: {
-              buildingType: 'yard',
-              buildingId: '',
-              buildingName: '',
-              buildingCategory: '',
-              buildingImage: '',
-              buildingWidth: 0,
-              buildingDepth: 0,
-              name: `${p.ownerName || '邻居'}的专属爱心绿地`,
-              updatedAt: new Date().toISOString()
-            }
-          })
-        }
-        if (targetBuilding && targetBuilding.type === 'prison') {
-          for (const communityId of affectedCommunities) {
-            const prisonRows = await tx.collection('pet_playground_plots').where({ kind: 'plot', communityId, buildingType: 'prison' }).get()
-            const stillHasPrison = (prisonRows.data || []).some((p) => !p.demolished && p.buildingId !== id)
-            if (!stillHasPrison) {
-              const jailRows = await tx.collection('pet_playground_jail').where({ communityId, jailed: true }).get()
-              for (const item of (jailRows.data || [])) {
-                await tx.collection('pet_playground_jail').doc(item._id).update({
-                  data: {
-                    jailed: false,
-                    releasedAt: now(),
-                    releasedBy: 'building_deleted_by_admin'
-                  }
-                })
-              }
-            }
+      // Remove only matching instances, including non-primary attachments.
+      const records = []
+      const affectedCommunities = new Set()
+      for (const plot of await matchingPlots(tx, id)) {
+        const instances = placedBuildings(plot)
+        if (instances.some((building) => building.buildingId === id && building.type === 'prison') && plot.communityId) affectedCommunities.add(plot.communityId)
+        records.push(await updatePlot(tx, plot, instances.filter((building) => building.buildingId !== id)))
+      }
+      for (const communityId of affectedCommunities) {
+        const prisonRows = await tx.collection('pet_playground_plots').where({ kind: 'plot', communityId, buildingType: 'prison' }).get()
+        const stillHasPrison = (prisonRows.data || []).some((p) => !p.demolished && p.buildingId !== id)
+        if (!stillHasPrison) {
+          const jailRows = await tx.collection('pet_playground_jail').where({ communityId, jailed: true }).get()
+          for (const item of (jailRows.data || [])) {
+            await tx.collection('pet_playground_jail').doc(item._id).update({
+              data: { jailed: false, releasedAt: now(), releasedBy: 'building_deleted_by_admin' }
+            })
           }
         }
-      } catch (_) {}
+      }
 
-      return { revision: next.revision, buildings,plotSizes:current.plotSizes }
+      return { revision: next.revision, buildings, plotSizes: current.plotSizes, records }
     })
+    const { records, ...response } = result
+    await publishPlots(records)
+    return response
   }
 
   async function savePlotAccess(openid,data) {

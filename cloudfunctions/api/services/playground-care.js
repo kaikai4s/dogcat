@@ -10,7 +10,8 @@ function gate(plot, outside = true) {
 const petIds = (order) => order.petIds && order.petIds.length ? order.petIds : order.petId ? [order.petId] : []
 const millis = (value) => typeof value === 'number' ? value : new Date(value || 0).getTime()
 const sessionKey = (order) => [order._id, order.activeSessionIndex || 0, order.currentSessionStartedAt || order.startedAt || '', order.staffOpenid].join(':')
-const layoutKey = (plots) => JSON.stringify(plots.map((p) => [p._id, p.x, p.z, p.size, p.gateDirection, p.buildingType, p.footprint]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))))
+const { buildingGeometryKey } = require('./playground-shared/plot-buildings')
+const layoutKey = (plots) => JSON.stringify(plots.map((p) => [p._id, p.gateDirection, p.buildingType, p.footprint, buildingGeometryKey(p)]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))))
 function duration(route, speed = 5) { let d = 0; for (let i = 1; i < route.length; i++) d += Math.hypot(route[i].x - route[i - 1].x, route[i].z - route[i - 1].z); return d / speed * 1000 }
 module.exports = function createCare(context) {
   const { db } = context, now = () => context.nowMs ? context.nowMs() : Date.now()

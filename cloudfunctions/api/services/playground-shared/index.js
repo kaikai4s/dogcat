@@ -10,7 +10,8 @@ const { settleNeeds } = require('./pet-needs')
 const COLLECTION = 'pet_playground_plots'
 const presenceId = (openid) => 'presence_' + world.hash(openid)
 const residentId = (openid) => 'resident_' + world.hash(openid)
-const layoutKey = (plots) => world.hash('garage-v1'+JSON.stringify(plots.map((p)=>[p._id,p.x,p.z,p.size]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])))))
+const { buildingGeometryKey } = require('./plot-buildings')
+const layoutKey = (plots) => world.hash('garage-v2'+JSON.stringify(plots.map((p)=>[p._id,p.gateDirection,p.buildingType,buildingGeometryKey(p)]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])))))
 const inside = (p, plot) => Math.abs(p.x - plot.x) < (plot.size || 48) / 2 && Math.abs(p.z - plot.z) < (plot.size || 48) / 2
 function obstacles(plot, solid = false) {
   const h = (plot.size || 48) / 2, x = plot.x, z = plot.z, t = .65

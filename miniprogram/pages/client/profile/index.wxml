@@ -8,12 +8,6 @@
 
   <view class="settings-section">
     <view class="settings-section-title">个性化</view>
-    <picker range="{{themeOptions}}" range-key="label" value="{{themeIndex}}" disabled="{{savingTheme}}" bindchange="changeTheme">
-      <view class="settings-row interactive">
-        <view class="settings-row-main"><view class="settings-label">主题切换</view><view class="settings-help">切换后主颜色会同步变化</view></view>
-        <view class="settings-value">{{themeName}} <text class="remix-icon ri-arrow-right-s-line"></text></view>
-      </view>
-    </picker>
     <picker range="{{fontOptions}}" range-key="label" value="{{fontIndex}}" disabled="{{savingFont}}" bindchange="changeFont">
       <view class="settings-row interactive">
         <view class="settings-row-main"><view class="settings-label">字体设置</view><view class="settings-help">选择后全局界面文字会同步变化</view><view class="font-preview">{{fontPreviewText}}</view></view>

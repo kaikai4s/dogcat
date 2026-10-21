@@ -15,6 +15,83 @@ function create(extra = {}) {
     ...extra
   })
 }
+test('building instances normalize legacy data without resurrecting removed buildings', () => {
+  const fs = require('node:fs')
+  const client = '../../miniprogram/packagePlayground/utils/'
+  const server = '../../cloudfunctions/api/services/playground-shared/'
+  for (const name of ['plot-buildings', 'yard-layout', 'farm-model']) {
+    assert.equal(fs.readFileSync(require.resolve(client + name), 'utf8'), fs.readFileSync(require.resolve(server + name), 'utf8'))
+  }
+  const { placedBuildings, withBuildings, buildingGeometryKey } = require(client + 'plot-buildings')
+  const legacy = { id: 'legacy_garden', x: 400, z: 400, size: 48, isNewPlot: true,
+    buildingId: 'tree_template', buildingType: 'tree', buildingWidth: 7, buildingDepth: 7, buildingX: 410, buildingZ: 412 }
+  const instances = placedBuildings(legacy)
+  assert.equal(instances.length, 1)
+  assert.equal(instances[0].x, 410)
+  assert.equal(instances[0].z, 412)
+  assert.equal(placedBuildings(legacy)[0].instanceId, instances[0].instanceId)
+  assert.deepEqual(placedBuildings({ ...legacy, buildings: [] }), [])
+  const normalized = withBuildings(legacy, instances)
+  assert.equal(normalized.buildings.length, 1)
+  assert.equal(normalized.buildingType, 'tree')
+  const moved = withBuildings(normalized, [{ ...instances[0], x: 408 }])
+  assert.notEqual(buildingGeometryKey(normalized), buildingGeometryKey(moved))
+  const home = withBuildings({ ...legacy, isNewPlot: false }, instances)
+  assert.equal(home.buildingType, 'residential')
+  assert.equal(home.buildings.length, 1)
+  assert.equal(withBuildings(home, []).buildingType, 'residential')
+  const { yardLayout } = require(client + 'yard-layout')
+  const sprites = yardLayout(home).sprites
+  assert.ok(sprites.some((s) => s.name === 'house' && !s.buildingInstanceId))
+  assert.ok(sprites.some((s) => s.buildingInstanceId === instances[0].instanceId))
+})
+
+test('instance placement validates other buildings but permits flooring and excludes only the moved instance', () => {
+  const { validateBuildingPlacement } = require('../../miniprogram/packagePlayground/utils/plot-buildings')
+  const tree = { instanceId: 'existing_tree', buildingId: 'tree', type: 'tree', category: 'tree', width: 7, depth: 7, x: 400, z: 400 }
+  const plot = { id: 'capacity_plot', x: 400, z: 400, size: 48, isNewPlot: true, buildings: [tree] }
+  assert.ok(validateBuildingPlacement(plot, tree, { x: 400, z: 406 }))
+  assert.equal(validateBuildingPlacement(plot, tree, { x: 400, z: 407 }), null)
+  assert.equal(validateBuildingPlacement(plot, tree, { x: 400, z: 400 }, tree.instanceId), null)
+  assert.equal(validateBuildingPlacement(plot, { ...tree, type: 'floor', category: 'floor' }, { x: 400, z: 400 }), null)
+  const publicBuilding = { instanceId: 'public_one', type: 'committee', category: 'public', width: 7, depth: 7, x: 400, z: 400 }
+  assert.ok(validateBuildingPlacement({ ...plot, buildings: [publicBuilding] }, publicBuilding, { x: 414, z: 414 }))
+  assert.equal(validateBuildingPlacement({ ...plot, buildings: [publicBuilding] }, tree, { x: 414, z: 414 }), null)
+  const home = { ...plot, isNewPlot: false, buildingType: 'residential', buildings: [] }
+  assert.ok(validateBuildingPlacement(home, { ...tree, type: 'wood_cabin', category: 'residential' }, { x: 400, z: 400 }))
+  assert.ok(validateBuildingPlacement(home, publicBuilding, { x: 414, z: 414 }))
+})
+
+test('building previews keep the home visible in both scene and overview rendering', async () => {
+  const w = create()
+  const home = { id: 'home_visible', x: 400, z: 400, size: 48, mine: true, isNewPlot: false, buildingType: 'residential' }
+  w.ownPlot = home
+  w.sharedPlots.set(home.id, home)
+  w.isPlacingBuilding = true
+  w.isPlacingNewPlot = false
+  w.candidate = { isBuilding: true, x: 416, z: 416, width: 7, depth: 7, valid: true }
+  const rendered = []
+  let markers = 0
+  w.ctx = { setTransform() {}, fillRect() {}, save() {}, transform() {}, scale() {}, restore() {},
+    beginPath() {}, arc() { markers++ }, fill() {}, stroke() {} }
+  w.visibleBounds = () => ({ minX: 0, minZ: 0, maxX: 1000, maxZ: 1000 })
+  w.isMapOverview = () => false
+  w.drawYard = (plot) => rendered.push(plot.id)
+  for (const name of ['drawFarm', 'drawPetSelection', 'drawYardOwners', 'drawDestination', 'drawPetNames', 'drawInteractionFeedback', 'drawPlacement', 'drawCharacter']) w[name] = () => {}
+  w.draw()
+  assert.deepEqual(rendered, [home.id])
+  w.drawMapPlots(w.visibleBounds())
+  assert.equal(markers, 1)
+  w.candidate.valid = false
+  rendered.length = 0
+  w.draw()
+  assert.deepEqual(rendered, [home.id])
+  w.isPlacingBuilding = false
+  rendered.length = 0
+  w.draw()
+  assert.deepEqual(rendered, [])
+})
+
 test('unclaimed scene stays empty and projection round-trips a large world', () => {
   const w = create()
   w.buildWorld()
@@ -380,6 +457,45 @@ test('drawYard renders floor tiles at ground level and tree sprites with proper 
   assert.ok(drawCalls.some((args) => args[0] && args[0].width === 120))
 })
 
+test('multiple building sprites render independently and nearby selection identifies the closest instance', async () => {
+  const page = { data: {}, setData(v) { Object.assign(this.data, v) } }
+  const w = new World2D(page, null, { world: { width: 1000, height: 1000 }, pets: [] })
+  const draws = []
+  w.ctx = new Proxy({}, { get(target, key) { return target[key] || (() => {}) } })
+  w.scale = 10
+  w.zoom = 1
+  w.project = (x, z) => ({ x: x * 2, y: z * 2 })
+  w.sprite = () => {}
+  w.buildingImage = (image) => ({ width: 120, height: 160, image })
+  w.ctx.drawImage = (image) => draws.push(image.image)
+  const buildings = [
+    { instanceId: 'tree_one', buildingId: 'tree_template', type: 'tree', category: 'tree', name: '第一棵树', image: 'tree_one.png', width: 7, depth: 7, x: 480, z: 480 },
+    { instanceId: 'tree_two', buildingId: 'tree_template', type: 'tree', category: 'tree', name: '第二棵树', image: 'tree_two.png', width: 7, depth: 7, x: 520, z: 520 }
+  ]
+  const plot = { id: 'multi_tree_plot', x: 500, z: 500, size: 112, isNewPlot: true, mine: true, buildingType: 'tree', buildings }
+  w.sharedPlots.set(plot.id, plot)
+  const items = []
+  w.drawYard(plot, items)
+  assert.ok(items.some((i) => i.depth === 960))
+  assert.ok(items.some((i) => i.depth === 1040))
+  for (const item of items) item.draw()
+  assert.ok(draws.includes('tree_one.png'))
+  assert.ok(draws.includes('tree_two.png'))
+  w.character = { position: { x: 521, z: 521 }, moving: false, direction: 'south' }
+  w.characterTerrain = { cellX: 9, cellZ: 9 }
+  w.characterAreaLoaded = () => true
+  w.characterNavigation = () => ({ clearSegment: () => true })
+  const nearby = w.nearbyInteractions().building
+  assert.equal(nearby.buildingInstanceId, 'tree_two')
+  assert.equal(nearby.name, '第二棵树')
+  const hit = w.buildingAt({ x: 1040, y: 1030 })
+  assert.equal(hit.buildingInstanceId, 'tree_two')
+  w.selectBuilding(hit)
+  assert.equal(page.data.selectedBuildingInfo.buildingInstanceId, 'tree_two')
+  await w.applySceneChanges([{ ...plot, kind: 'plot', buildings: [buildings[0]], revision: 2 }])
+  assert.equal(page.data.selectedBuildingInfo, null)
+})
+
 test('custom building keeps its name hidden until tapped and supports plots with only _id', () => {
   const page = { data: {}, setData(value) { Object.assign(this.data, value) }, pushStatusMessage: () => {} }
   const textCalls = []
@@ -647,12 +763,27 @@ test('building placement allows free positioning with grass tile capacity valida
   assert.equal(w.candidate.x, 405)
   assert.equal(w.candidate.z, 405)
   assert.equal(w.candidate.valid, true)
+  assert.equal(w.candidate.targetPlot.id, existingDecorPlot.id)
+
+  existingDecorPlot.buildingX = 423
+  await w.beginBuildingPlacement(decorBuilding, true, existingDecorPlot)
+  assert.equal(w.candidate.valid, false)
+  assert.match(w.candidate.reason, /空间不足/)
+  assert.equal(pageData.canConfirm, false)
+
+  const otherPlot = { ...greenPlot, id: 'plot_other', _id: 'plot_other', x: 600, z: 600 }
+  w.sharedPlots.set(otherPlot.id, otherPlot)
+  await w.pickPlot({ x: 600, z: 600 })
+  assert.equal(w.candidate.targetPlot.id, existingDecorPlot.id)
+  assert.equal(w.candidate.valid, false)
+  assert.equal(pageData.canConfirm, false)
 
   // 移动到新草坪方块 (395, 398)
   await w.pickPlot({ x: 395, z: 398 })
   assert.equal(w.candidate.valid, true)
   assert.equal(w.candidate.x, 395)
   assert.equal(w.candidate.z, 398)
+  assert.equal(w.candidate.targetPlot.id, existingDecorPlot.id)
   assert.equal(pageData.canConfirm, true)
 
   // 8. 验证 yardLayout 支持自定义 buildingX、buildingZ 偏移

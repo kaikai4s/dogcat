@@ -1,5 +1,6 @@
 const { transaction } = require('./playground-transaction')
 const { readDocument } = require('./playground-world')
+const { placedBuildings, withBuildings, isPublicBuilding } = require('./playground-shared/plot-buildings')
 
 const ACCIDENTS_COLLECTION = 'pet_playground_accidents'
 const JAIL_COLLECTION = 'pet_playground_jail'
@@ -25,7 +26,7 @@ module.exports = function createJusticeService(context) {
 
     if (timeoutItems.length === 0) return null
 
-    return transaction(db, async (tx) => {
+    const result = await transaction(db, async (tx) => {
       for (const item of timeoutItems) {
         await tx
           .collection(ACCIDENTS_COLLECTION)
@@ -38,41 +39,29 @@ module.exports = function createJusticeService(context) {
         .where({ communityId })
         .get()
 
+      const records = []
       for (const p of rows.data || []) {
-        if (p.buildingType === 'police_station' || p.buildingType === 'prison') {
-          const isPureYard = p.previousBuildingType === 'yard' || p.isNewPlot
-          const restoredType = isPureYard ? 'yard' : 'residential'
-          const restoredBuildingName = isPureYard ? '专属爱心绿地' : '住宅洋房'
-          const restoredName = isPureYard ? `${p.ownerName || '邻居'}的专属爱心绿地` : `${p.ownerName || '邻居'}的庭院`
-          await tx.collection(PLOTS_COLLECTION).doc(p._id).update({
-            data: {
-              buildingType: restoredType,
-              buildingId: '',
-              buildingImage: '',
-              buildingCategory: '',
-              buildingWidth: 0,
-              buildingDepth: 0,
-              buildingName: restoredBuildingName,
-              name: restoredName,
-              justiceRevoked: true,
-              revokedAt: stamp,
-              revokedReason: '存在超过3天未处理的道路安全案件，公共治安设施已被自动收回拆除，爱心币不予退还'
-            }
-          })
-          const mainOwner = await tx.collection(PLOTS_COLLECTION).doc(require('./playground-world').ownerId(p.ownerOpenid)).get().then(r => r.data).catch(() => null)
-          if (mainOwner && mainOwner.plotId === p._id) {
-            await tx.collection(PLOTS_COLLECTION).doc(mainOwner._id).update({
-              data: {
-                buildingType: restoredType,
-                buildingName: restoredBuildingName,
-                name: restoredName
-              }
-            })
-          }
+        if (p.kind !== 'plot') continue
+        const instances = placedBuildings(p)
+        const remaining = instances.filter((building) => !(isPublicBuilding(building) && ['police_station', 'prison'].includes(building.type)))
+        if (remaining.length === instances.length) continue
+        const projected = withBuildings(p, remaining)
+        const { _id, kind, ...patch } = {
+          ...projected, justiceRevoked: true, revokedAt: stamp,
+          revision: Math.max(stamp, (p.revision || 0) + 1),
+          ...(projected.buildingType !== 'committee' ? { committeeStartedAt: 0, lastSalaryClaimAt: 0 } : {}),
+          revokedReason: '存在超过3天未处理的道路安全案件，公共治安设施已被自动收回拆除，爱心币不予退还'
         }
+        await tx.collection(PLOTS_COLLECTION).doc(p._id).update({ data: patch })
+        const mainOwner = await require('./playground-world').read(tx, require('./playground-world').ownerId(p.ownerOpenid))
+        if (mainOwner && mainOwner.plotId === p._id) await tx.collection(PLOTS_COLLECTION).doc(mainOwner._id).update({ data: patch })
+        records.push({ ...p, ...patch })
       }
-      return { revoked: true, timeoutCount: timeoutItems.length }
+      return { revoked: true, timeoutCount: timeoutItems.length, records }
     })
+    const { records, ...response } = result
+    if (records.length) await require('./playground-shared')(context).publishRecords(records)
+    return response
   }
 
   // 发放爱心币津贴

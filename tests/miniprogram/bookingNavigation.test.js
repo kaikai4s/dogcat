@@ -28,7 +28,10 @@ function loadBookingPage(file, { stackDepth = 1, login, navigate, callFunction }
   })
   const deps = {
     loadSystemSettings: async () => ({}),
+    getCachedSystemSettings: () => ({}),
+    getCurrentUser: async () => ({ _id: 'user' }),
     ensureLogin: login || (async () => ({ _id: 'user' })),
+    loadMessageUnread: () => {},
     applyTheme: () => ({ value: 'day' }), getThemeState: () => ({}),
     getSelectedLocation: () => null,
     toBeijingDate: require('../../miniprogram/utils/format').toBeijingDate,
@@ -124,4 +127,43 @@ test('booking page initializes its real lifecycle and loads pet and service data
   assert.ok(page.data.form.startTime)
   assert.deepEqual(errors, [])
   assert.deepEqual(navigation, [])
+})
+
+test('booking button onShow and onHide automatically resets navigation lock to prevent stuck gray button', async () => {
+  const { page } = loadBookingPage(homePath)
+  page.setData({ protectedNavigationUrl: bookingUrl })
+  page._navigatingLock = true
+  assert.equal(page.data.protectedNavigationUrl, bookingUrl)
+
+  // 页面隐藏时清理状态
+  page.onHide()
+  assert.equal(page.data.protectedNavigationUrl, '')
+  assert.equal(page._navigatingLock, false)
+
+  // 再次模拟带入状态，页面展示时自动清理
+  page.setData({ protectedNavigationUrl: bookingUrl })
+  page._navigatingLock = true
+  page.onShow()
+  assert.equal(page.data.protectedNavigationUrl, '')
+  assert.equal(page._navigatingLock, false)
+})
+
+test('booking button UI structure and tactile feedback animation styles', () => {
+  const wxmlPath = path.resolve(__dirname, '../../miniprogram/pages/client/home/index.wxml')
+  const wxml = fs.readFileSync(wxmlPath, 'utf8')
+
+  // 1. WXML 中立即预约按钮不得带有 disabled 属性（防止被微信原生样式强行置灰）
+  assert.ok(wxml.includes('class="primary-booking-btn'), '需包含立即预约主按钮')
+  assert.ok(!wxml.includes('disabled="{{!!protectedNavigationUrl}}"'), '按钮不得使用原生 disabled 属性，防止呈现死板灰色')
+  assert.ok(wxml.includes('hover-class="primary-booking-btn-hover"'), '需配置 hover-class 触觉微交互类')
+  assert.ok(wxml.includes('btn-arrow'), '需包含动态箭头节点')
+
+  // 2. WXSS 动画与高响应样式
+  const wxssPath = path.resolve(__dirname, '../../miniprogram/pages/client/home/index.wxss')
+  const wxss = fs.readFileSync(wxssPath, 'utf8')
+
+  assert.ok(wxss.includes('.primary-booking-btn-hover'), '需具备按下态微交互样式')
+  assert.ok(wxss.includes('transform: scale(0.91)'), '按下需具备明显的弹性微下沉动画')
+  assert.ok(wxss.includes('.primary-booking-btn[disabled]'), '需包含对微信原生 disabled 灰色的强阻断覆盖样式')
+  assert.ok(wxss.includes('color: #e9672f !important;'), '在任何状态下均需维持高亮品牌色')
 })

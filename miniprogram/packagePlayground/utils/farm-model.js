@@ -17,9 +17,10 @@ function growthStage(crop,progress) {
 }
 const TILE_SIZE=3.5
 const {yardLayout}=require('./yard-layout')
+const {buildingGeometryKey}=require('./plot-buildings')
 const layoutCache=new Map(),layoutIndexes=new WeakMap()
 function farmLayout(plot) {
-  const key=JSON.stringify([plot.x,plot.z,plot.size,plot.buildingType,plot.buildingId,plot.buildingWidth,plot.buildingDepth])
+  const key=JSON.stringify([buildingGeometryKey(plot),plot.buildingType])
   if(layoutCache.has(key))return layoutCache.get(key)
   const half=(plot.size||112)/2, count=Math.floor((half*2-4)/TILE_SIZE)
   const startX=plot.x-count*TILE_SIZE/2+TILE_SIZE/2, startZ=plot.z-count*TILE_SIZE/2+TILE_SIZE/2

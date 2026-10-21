@@ -1,5 +1,6 @@
 const {transaction}=require('./playground-transaction')
 const world=require('./playground-world')
+const {placedBuildings,withBuildings,isPublicBuilding}=require('./playground-shared/plot-buildings')
 const COLLECTION='pet_playground_plots',DISPUTES='pet_playground_disputes'
 const WEEK=7*86400000,DEADLINE=3*86400000
 module.exports=function createDisputesService(context) {
@@ -67,20 +68,28 @@ module.exports=function createDisputesService(context) {
   }
   async function checkCommitteeTimeout(sceneId) {
     const stamp=now()
-    return transaction(db,async(tx)=>{
+    const result=await transaction(db,async(tx)=>{
       const rows=(await tx.collection(DISPUTES).where({communityId:sceneId,status:'pending'}).get()).data||[]
       const expired=rows.filter((d)=>stamp>d.deadline)
       if(!expired.length)return null
       for(const item of expired)await tx.collection(DISPUTES).doc(item._id).update({data:{status:'expired',expiredAt:stamp}})
       const committee=await getCommunityCommittee(sceneId,tx)
+      let record=null
       if(committee) {
-        const type=committee.isNewPlot?'yard':'residential',patch={buildingId:'',buildingType:type,buildingImage:'',buildingCategory:'',buildingWidth:0,buildingDepth:0,buildingName:type==='yard'?'专属爱心绿地':'住宅洋房',committeeRevoked:true,revokedAt:stamp,revision:Math.max(stamp,(committee.revision||0)+1),revokedReason:'存在超过3天未处理的保洁反馈'}
+        const projected=withBuildings(committee,placedBuildings(committee).filter((building)=>!(isPublicBuilding(building)&&building.type==='committee')))
+        const {_id,kind,...patch}={...projected,committeeRevoked:true,revokedAt:stamp,revision:Math.max(stamp,(committee.revision||0)+1),revokedReason:'存在超过3天未处理的保洁反馈',
+          ...(projected.buildingType!=='committee'?{committeeStartedAt:0,lastSalaryClaimAt:0}:{})}
         await tx.collection(COLLECTION).doc(committee._id).update({data:patch})
         const home=await world.read(tx,world.ownerId(committee.ownerOpenid))
         if(home&&home.plotId===committee._id)await tx.collection(COLLECTION).doc(home._id).update({data:patch})
+        record={...committee,...patch}
       }
-      return {revoked:!!committee,timeoutCount:expired.length}
+      return {revoked:!!committee,timeoutCount:expired.length,record}
     })
+    if(!result)return null
+    const {record,...response}=result
+    if(record)await require('./playground-shared')(context).publishRecords([record])
+    return response
   }
   async function resolveDispute(openid,user,data) {
     const stamp=now()

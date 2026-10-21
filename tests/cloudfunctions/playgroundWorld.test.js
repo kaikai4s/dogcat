@@ -467,7 +467,8 @@ test('wood cabin has independent type, cannot alter starting residential villa, 
   assert.equal(homeAfter.buildingType, 'residential')
   assert.equal(yardLayout(homeAfter).sprites.find(s => s.name === 'house').size, 38)
 
-  // 6. 模拟历史受损用户：自家庭院曾被误写入木屋参数 (buildingId: residential_wood_cabin, buildingWidth: 7)
+  // 模拟旧版没有实例数组的受损主庭院。
+  delete db.state.pet_playground_plots.find((p) => p._id === residential.id).buildings
   await db.collection('pet_playground_plots').doc(residential.id).update({
     data: {
       buildingId: 'residential_wood_cabin',
@@ -490,9 +491,9 @@ test('wood cabin has independent type, cannot alter starting residential villa, 
   assert.equal(healedHome.buildingType, 'residential')
   assert.equal(yardLayout(healedHome).sprites.find(s => s.name === 'house').size, 38)
 
-  // 验证误写入的小木屋自动迁移至名下的空余独立绿地
-  const migratedPlot = (await db.collection('pet_playground_plots').doc(emptyGreenYard.id).get()).data
-  assert.equal(migratedPlot.buildingId, 'residential_wood_cabin')
-  assert.equal(migratedPlot.buildingType, 'wood_cabin')
-  assert.equal(migratedPlot.buildingWidth, 7)
+  assert.equal(healedHome.buildings.length, 1)
+  assert.equal(healedHome.buildings[0].buildingId, 'residential_wood_cabin')
+  assert.equal(healedHome.buildings[0].width, 7)
+  const untouchedGreen = (await db.collection('pet_playground_plots').doc(emptyGreenYard.id).get()).data
+  assert.equal(untouchedGreen.buildingType, 'yard')
 })

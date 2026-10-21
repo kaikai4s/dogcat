@@ -243,6 +243,11 @@ Page({
 
   onShow() {
     this._isPageActive = true
+    clearTimeout(this._navigatingSafetyTimer)
+    this._navigatingLock = false
+    if (this.data.protectedNavigationUrl) {
+      this.setData({ protectedNavigationUrl: '' })
+    }
     this.applyCurrentTheme()
     this.applySavedLocation()
     if (isGroupNoticeDismissedToday()) {
@@ -506,7 +511,11 @@ Page({
       clearTimeout(this.hotServicesResumeTimer)
       this.hotServicesResumeTimer = null
     }
-    if (this.data.protectedNavigationUrl) this.data.protectedNavigationUrl = ''
+    clearTimeout(this._navigatingSafetyTimer)
+    this._navigatingLock = false
+    if (this.data.protectedNavigationUrl) {
+      this.setData({ protectedNavigationUrl: '' })
+    }
     if (this.data.lotteryFloatVisible) {
       setTimeout(() => {
         if (!this._isPageActive) this.setData({ lotteryFloatVisible: false })
@@ -552,21 +561,53 @@ Page({
   },
 
   goProtected(e) {
-    const url = e.currentTarget.dataset.url
-    if (!url || this.data.protectedNavigationUrl) return
+    const url = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.url
+    if (!url || this._navigatingLock || this.data.protectedNavigationUrl) return
+    this._navigatingLock = true
     const requestSeq = this._protectedNavigationSeq = (this._protectedNavigationSeq || 0) + 1
-    const isActive = () => requestSeq === this._protectedNavigationSeq
+    const isActive = () => this._isPageActive !== false && requestSeq === this._protectedNavigationSeq
     this.setData({ protectedNavigationUrl: url })
+
+    if (typeof wx !== 'undefined' && typeof wx.vibrateShort === 'function') {
+      try { wx.vibrateShort({ type: 'light' }) } catch (_) {}
+    }
+
+    clearTimeout(this._navigatingSafetyTimer)
+    this._navigatingSafetyTimer = setTimeout(() => {
+      this._navigatingLock = false
+      if (this.data.protectedNavigationUrl) {
+        this.setData({ protectedNavigationUrl: '' })
+      }
+    }, 1500)
+
+    const releaseNavigation = () => {
+      clearTimeout(this._navigatingSafetyTimer)
+      this._navigatingLock = false
+      if (this.data.protectedNavigationUrl) {
+        this.setData({ protectedNavigationUrl: '' })
+      }
+    }
+
     return ensureLogin({ content: '登录后可预约服务、管理宠物、查看订单和消息。', isActive })
       .then(() => {
-        if (!isActive()) return
-        const pages = getCurrentPages()
+        const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
         const current = pages[pages.length - 1]
-        const currentRoute = current && current.route ? '/' + current.route : ''
-        if (currentRoute === url) return
+        const currentRoute = current && current.route ? (current.route.startsWith('/') ? current.route : '/' + current.route) : ''
+        if (currentRoute === url) {
+          releaseNavigation()
+          return
+        }
         const mainNavUrls = ['/pages/client/home/index', '/pages/client/sitters/list/index', '/pages/client/orders/list/index', '/pages/client/messages/index', '/pages/client/profile/index']
         return new Promise((resolve, reject) => {
-          const options = { url, success: resolve, fail: reject }
+          const options = {
+            url,
+            success: (res) => {
+              resolve(res)
+            },
+            fail: (err) => {
+              reject(err)
+            }
+          }
           if (mainNavUrls.includes(url)) wx.redirectTo(options)
           else safeNavigateTo(options)
         })
@@ -574,7 +615,6 @@ Page({
         // ensureLogin already presents authentication errors or opens the login page.
       })
       .catch((error) => {
-        if (!isActive()) return
         const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
         const current = pages[pages.length - 1]
         const currentRoute = current && current.route ? (current.route.startsWith('/') ? current.route : '/' + current.route) : ''
@@ -583,7 +623,9 @@ Page({
         console.error('[home navigation failed]', url, error)
         showError(error)
       })
-      .finally(() => { if (isActive()) this.setData({ protectedNavigationUrl: '' }) })
+      .finally(() => {
+        releaseNavigation()
+      })
   },
 
   onTapQuickRepeat() {
