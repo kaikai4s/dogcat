@@ -27,6 +27,24 @@ function getCustomServiceCovers() {
   }
 }
 
+function getTodayDateString() {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function isGroupNoticeDismissedToday() {
+  try {
+    const todayStr = getTodayDateString()
+    const dismissedDate = wx.getStorageSync('dismiss_community_group_notice_date')
+    return dismissedDate === todayStr
+  } catch (_) {
+    return false
+  }
+}
+
 function normalizeHomeServicePrices(options = []) {
   const localCovers = getCustomServiceCovers()
   return options
@@ -99,6 +117,9 @@ Page({
     assuranceItems: [],
     messageUnreadCount: 0,
     messageHasUnread: false,
+    communityGroupNotice: null,
+    showCommunityGroupNotice: true,
+    groupNoticeDismissed: false,
     staffEntryLoaded: true,
     staffEntryTitle: '宠护端',
     staffEntryTip: '',
@@ -125,6 +146,9 @@ Page({
     this._isPageActive = true
     this.applyCurrentTheme()
     this.applySavedLocation()
+    if (isGroupNoticeDismissedToday()) {
+      this.setData({ showCommunityGroupNotice: false, groupNoticeDismissed: true })
+    }
     if (!this._heroRestored) {
       this._heroRestored = true
       const cached = getCachedSystemSettings()
@@ -148,19 +172,43 @@ Page({
     try {
       const user = typeof getCurrentUser === 'function' ? await getCurrentUser() : null
       if (!currentRequest()) return
-      if (!user) return this.setData({ communityGroupNotice: null })
+      if (!user) return this.setData({ communityGroupNotice: null, showCommunityGroupNotice: false })
       authenticated = true
       const result = await callFunction('playground', 'listCommunityGroupBuys')
       const current = await getCurrentUser()
-      if (currentRequest()) this.setData({ communityGroupNotice: current && (current.openid || current._id) === (user.openid || user._id) ? result : null })
+      if (currentRequest()) {
+        const isOwner = current && (current.openid || current._id) === (user.openid || user._id)
+        const validNotice = isOwner ? result : null
+        const isDismissed = this.data.groupNoticeDismissed || isGroupNoticeDismissedToday()
+        this.setData({
+          communityGroupNotice: validNotice,
+          showCommunityGroupNotice: Boolean(validNotice && !isDismissed)
+        })
+      }
     } catch (_) {
-      if (currentRequest()) this.setData({ communityGroupNotice: null })
+      if (currentRequest()) this.setData({ communityGroupNotice: null, showCommunityGroupNotice: false })
     } finally {
       if (authenticated && currentRequest()) {
         this._groupNoticeTimer = setTimeout(() => this.loadCommunityGroups(), 30000)
         if (this._groupNoticeTimer && typeof this._groupNoticeTimer.unref === 'function') this._groupNoticeTimer.unref()
       }
     }
+  },
+  dismissGroupNotice() {
+    this.setData({
+      showCommunityGroupNotice: false,
+      groupNoticeDismissed: true
+    })
+  },
+  dismissGroupNoticeToday() {
+    try {
+      wx.setStorageSync('dismiss_community_group_notice_date', getTodayDateString())
+    } catch (_) {}
+    this.setData({
+      showCommunityGroupNotice: false,
+      groupNoticeDismissed: true
+    })
+    wx.showToast({ title: '今日将不再提示拼单', icon: 'none' })
   },
   openCommunityGroups() {
     wx.navigateTo({url:'/pages/client/orders/group-buy/index'})

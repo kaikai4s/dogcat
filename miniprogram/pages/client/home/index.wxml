@@ -1,6 +1,33 @@
 <dovlin-refresh id="dovlinRefresh" bind:refresh="onCustomRefresh">
 <view class="page client-home-page {{themeClass}} {{fontClass}}">
-  <view wx:if="{{communityGroupNotice.availableCount || communityGroupNotice.myGroups.length}}" class="home-group-notice" bindtap="openCommunityGroups"><view>🏡 {{communityGroupNotice.communityName}} · 同小区拼单</view><view>{{communityGroupNotice.availableCount ? communityGroupNotice.availableCount + '个邻居拼单可加入' : '查看我发起和参加的拼单'}} · 我的拼单 {{communityGroupNotice.myGroups.length}} ›</view></view>
+  <!-- 同小区拼单浮动提醒（半透明悬浮顶部，不挤占原本页面流） -->
+  <view wx:if="{{showCommunityGroupNotice && (communityGroupNotice.availableCount || communityGroupNotice.myGroups.length)}}" class="home-group-notice-wrapper">
+    <view class="home-group-notice-card" bindtap="openCommunityGroups">
+      <view class="notice-top-row">
+        <view class="notice-title-box">
+          <text class="notice-badge">🏡 同小区拼单</text>
+          <text class="notice-community-name">{{communityGroupNotice.communityName}}</text>
+        </view>
+        <view class="notice-close-btn" catchtap="dismissGroupNotice" aria-label="关闭提示">
+          <text class="remix-icon ri-close-line"></text>
+        </view>
+      </view>
+      <view class="notice-content-row">
+        <text class="notice-highlight-text">{{communityGroupNotice.availableCount ? communityGroupNotice.availableCount + '个邻居拼单可加入' : '查看我发起和参加的拼单'}}</text>
+        <text class="notice-sub-count" wx:if="{{communityGroupNotice.myGroups.length}}"> · 我的拼单 {{communityGroupNotice.myGroups.length}}</text>
+      </view>
+      <view class="notice-footer-row">
+        <view class="notice-action-link">
+          <text>立即查看拼单</text>
+          <text class="remix-icon ri-arrow-right-s-line"></text>
+        </view>
+        <view class="notice-today-btn" catchtap="dismissGroupNoticeToday">
+          <text class="remix-icon ri-time-line"></text>
+          <text>今日不再显示</text>
+        </view>
+      </view>
+    </view>
+  </view>
   <view class="home-hero-section">
     <view class="home-topbar">
       <view class="home-location-card interactive" bindtap="updateLocation">
