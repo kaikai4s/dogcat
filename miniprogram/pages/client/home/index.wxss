@@ -1360,6 +1360,10 @@
 /* 手势松手回弹原位平滑过渡 */
 .card-stack-top.card-rebounding {
   transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.4, 1), opacity 0.25s ease, filter 0.25s ease !important;
+  transform: translateY(0) !important;
+  opacity: 1 !important;
+  filter: blur(0px) !important;
+  -webkit-filter: blur(0px) !important;
 }
 
 /* 堆叠张数胶囊计数器 */
@@ -1374,6 +1378,16 @@
   margin-left: 6rpx;
   flex-shrink: 0;
   line-height: 1.4;
+}
+
+.theme-night .card-stack-layer-1 {
+  border-color: rgba(255, 255, 255, 0.22);
+  opacity: 0.72;
+}
+
+.theme-night .card-stack-layer-2 {
+  border-color: rgba(255, 255, 255, 0.15);
+  opacity: 0.42;
 }
 
 .theme-night .notice-stack-counter {

@@ -246,7 +246,10 @@ Page({
         const isOwner = current && (current.openid || current._id) === (user.openid || user._id)
         const validNotice = isOwner ? result : null
         const isDismissed = this.data.groupNoticeDismissed || isGroupNoticeDismissedToday()
-        const cards = validNotice ? buildGroupNoticeCards(validNotice) : []
+        this._dismissedGroupIds = this._dismissedGroupIds || new Set()
+        // 过滤掉用户在本会话中已手动上滑取消的拼单卡片，防止轮询与刷新后死而复生
+        const rawCards = validNotice ? buildGroupNoticeCards(validNotice) : []
+        const cards = rawCards.filter((c) => !this._dismissedGroupIds.has(c.id))
         this.setData({
           communityGroupNotice: validNotice,
           groupNoticeCards: cards,
@@ -264,22 +267,31 @@ Page({
   },
 
   onNoticeTouchStart(e) {
-    if (this._isDismissing || !e.touches || !e.touches[0]) return
+    if (this._isDismissing || !e.touches || e.touches.length !== 1) return
+    this._touchStartX = e.touches[0].clientX
     this._touchStartY = e.touches[0].clientY
     this._touchStartTime = Date.now()
     this._touchDeltaY = 0
+    this._touchMoved = false
     if (this.data.noticeCardRebounding) {
       this.setData({ noticeCardRebounding: false })
     }
   },
 
   onNoticeTouchMove(e) {
-    if (this._isDismissing || !this._touchStartY || !e.touches || !e.touches[0]) return
+    if (this._isDismissing || !this._touchStartY || !e.touches || e.touches.length !== 1) return
+    const clientX = e.touches[0].clientX
     const clientY = e.touches[0].clientY
+    const deltaX = clientX - (this._touchStartX || 0)
     const deltaY = clientY - this._touchStartY
+
+    // 若水平位移明显大于垂直位移，判定为非上下滑动，不触发卡片垂直动效
+    if (Math.abs(deltaX) > Math.abs(deltaY) * 1.5 && Math.abs(deltaX) > 10) return
+
     if (deltaY <= 0) {
       // 向上滑动：第一张卡片随手指上移，逐渐增加模糊度并淡出
       const moveUp = -deltaY
+      if (moveUp > 8) this._touchMoved = true
       const opacity = Math.max(0.05, Number((1 - (moveUp / 140) * 0.85).toFixed(2)))
       const blur = Math.min(14, Math.round(moveUp / 6))
       this._touchDeltaY = deltaY
@@ -303,6 +315,12 @@ Page({
     const duration = Date.now() - (this._touchStartTime || 0)
     const velocity = distance / Math.max(duration, 1)
 
+    if (this._touchMoved) {
+      // 产生过滑动位移，防止松手瞬间误触发卡片 bindtap 点击跳转
+      this._preventCardTap = true
+      setTimeout(() => { this._preventCardTap = false }, 320)
+    }
+
     if (distance >= 45 || (distance >= 20 && velocity > 0.25)) {
       // 向上滑达到阈值，触发飞出模糊淡出动画
       this.animateDismissTopCard()
@@ -312,13 +330,15 @@ Page({
         noticeCardRebounding: true,
         topCardTransformStyle: ''
       })
-      setTimeout(() => {
-        if (!this._isDismissing) {
+      clearTimeout(this._noticeReboundTimer)
+      this._noticeReboundTimer = setTimeout(() => {
+        if (!this._isDismissing && this._isPageActive !== false) {
           this.setData({ noticeCardRebounding: false })
         }
       }, 260)
     }
     this._touchStartY = 0
+    this._touchStartX = 0
     this._touchDeltaY = 0
   },
 
@@ -329,14 +349,27 @@ Page({
   animateDismissTopCard() {
     if (this._isDismissing) return
     this._isDismissing = true
+    this._preventCardTap = true
     this.setData({
       noticeCardDismissing: true,
       noticeCardRebounding: false,
       topCardTransformStyle: ''
     })
 
-    setTimeout(() => {
-      const remaining = (this.data.groupNoticeCards || []).slice(1)
+    clearTimeout(this._noticeDismissTimer)
+    this._noticeDismissTimer = setTimeout(() => {
+      this._isDismissing = false
+      this._preventCardTap = false
+      if (this._isPageActive === false) return
+
+      const currentCards = this.data.groupNoticeCards || []
+      const topCard = currentCards[0]
+      if (topCard && topCard.id) {
+        this._dismissedGroupIds = this._dismissedGroupIds || new Set()
+        this._dismissedGroupIds.add(topCard.id)
+      }
+
+      const remaining = currentCards.slice(1)
       if (remaining.length === 0) {
         // 卡片已全部取消（或原本仅有单张卡片）
         this.setData({
@@ -354,13 +387,17 @@ Page({
           topCardTransformStyle: ''
         })
       }
-      this._isDismissing = false
     }, 270)
   },
 
   dismissGroupNotice(e) {
     if (!e || typeof e !== 'object' || !e.type) {
       // 同步直接关闭（满足测试及快速调用契约）
+      const currentCards = this.data.groupNoticeCards || []
+      this._dismissedGroupIds = this._dismissedGroupIds || new Set()
+      for (const card of currentCards) {
+        if (card && card.id) this._dismissedGroupIds.add(card.id)
+      }
       this.setData({
         showCommunityGroupNotice: false,
         groupNoticeDismissed: true,
@@ -376,6 +413,11 @@ Page({
     try {
       wx.setStorageSync('dismiss_community_group_notice_date', getTodayDateString())
     } catch (_) {}
+    const currentCards = this.data.groupNoticeCards || []
+    this._dismissedGroupIds = this._dismissedGroupIds || new Set()
+    for (const card of currentCards) {
+      if (card && card.id) this._dismissedGroupIds.add(card.id)
+    }
     this.setData({
       showCommunityGroupNotice: false,
       groupNoticeDismissed: true,
@@ -384,6 +426,7 @@ Page({
     wx.showToast({ title: '今日将不再提示拼单', icon: 'none' })
   },
   openCommunityGroups() {
+    if (this._preventCardTap || this._isDismissing || this._touchMoved) return
     wx.navigateTo({url:'/pages/client/orders/group-buy/index'})
   },
   toggleFlowExpand() {
@@ -414,6 +457,9 @@ Page({
 
   onHide() {
     clearTimeout(this._groupNoticeTimer)
+    clearTimeout(this._noticeDismissTimer)
+    clearTimeout(this._noticeReboundTimer)
+    this._isDismissing = false
     this._groupNoticeRequest=(this._groupNoticeRequest||0)+1
     this._isPageActive = false
     this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1
@@ -437,6 +483,9 @@ Page({
 
   onUnload() {
     clearTimeout(this._groupNoticeTimer)
+    clearTimeout(this._noticeDismissTimer)
+    clearTimeout(this._noticeReboundTimer)
+    this._isDismissing = false
     this._groupNoticeRequest=(this._groupNoticeRequest||0)+1
     this._isPageActive = false
     this._homeDataRequestSeq = (this._homeDataRequestSeq || 0) + 1

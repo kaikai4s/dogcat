@@ -224,3 +224,65 @@ test('同小区拼单浮窗: 多拼单卡片堆叠、上滑模糊淡出与动态
   assert.equal(page.data.showCommunityGroupNotice, false)
   assert.equal(page.data.groupNoticeDismissed, true)
 })
+
+test('同小区拼单浮窗: 防滑动误触跳转、防轮询死而复生与定时器清理安全', async () => {
+  let navigated = false
+  const mockNotice = {
+    communityName: '蔚蓝海岸',
+    availableCount: 2,
+    groups: [
+      { id: 'g1', serviceSummary: '遛狗', householdCount: 1, minHouseholds: 2, status: 'recruiting', mine: false },
+      { id: 'g2', serviceSummary: '喂猫', householdCount: 1, minHouseholds: 2, status: 'recruiting', mine: false }
+    ],
+    myGroups: []
+  }
+
+  const { page } = pageAt('pages/client/home/index.js', {
+    getCurrentUser: async () => ({ openid: 'u1' }),
+    callFunction: async () => mockNotice,
+    wx: {
+      navigateTo: (opts) => {
+        if (opts.url.includes('group-buy')) navigated = true
+      }
+    }
+  })
+
+  page._isPageActive = true
+  await page.loadCommunityGroups()
+  assert.equal(page.data.groupNoticeCards.length, 2)
+
+  // 1. 测试上滑过程中/动画中点击卡片，必须拦截跳转，杜绝误触
+  page.onNoticeTouchStart({ touches: [{ clientY: 200 }] })
+  page.onNoticeTouchMove({ touches: [{ clientY: 160 }] }) // 上移 40px
+  page.openCommunityGroups()
+  assert.equal(navigated, false, '滑动卡片时不应误触 openCommunityGroups 跳转')
+
+  // 2. 完成上滑动效，g1 飞出
+  page.onNoticeTouchEnd()
+  page.openCommunityGroups()
+  assert.equal(navigated, false, '松手瞬间仍处于动画/保护期，不应跳转')
+
+  await new Promise((resolve) => setTimeout(resolve, 350))
+  assert.equal(page.data.groupNoticeCards.length, 1)
+  assert.equal(page.data.groupNoticeCards[0].id, 'g2')
+
+  // 3. 模拟 30 秒后台轮询或下拉刷新触发 loadCommunityGroups
+  // 必须保证已取消的 g1 不会重新复活！
+  await page.loadCommunityGroups()
+  assert.equal(page.data.groupNoticeCards.length, 1)
+  assert.equal(page.data.groupNoticeCards[0].id, 'g2', '已取消的 g1 绝不可在轮询或刷新后复活')
+
+  // 4. 正常轻触未滑动的卡片，允许正常跳转
+  page._touchMoved = false
+  page._preventCardTap = false
+  page._isDismissing = false
+  page.openCommunityGroups()
+  assert.equal(navigated, true, '正常纯点击应顺利打开拼单列表')
+
+  // 5. 测试 onHide 和 onUnload 定时器安全清理
+  page.animateDismissTopCard()
+  page.onHide()
+  assert.equal(page._isDismissing, false, '切后台时应重置动画锁')
+  page.onUnload()
+  assert.equal(page._isDismissing, false)
+})
