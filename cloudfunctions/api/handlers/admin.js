@@ -1299,6 +1299,7 @@ module.exports = function createHandler(context) {
       if (!order || !order.data) throw new Error('订单不存在')
       if (action === 'getOrderDetail') [order.data] = await refreshOrderRefunds([order.data])
       const displayOrder = await attachAdminOrderContactData(order.data)
+      Object.assign(displayOrder, await require('../services/order-group-buy-view')(context).attach(displayOrder))
       const payAmount = Number(order.data.payAmount || 0)
       const [timelineRows, trackRows, checkinRows, unlockRows, refundRows, penaltyRows, sessionMessageRows, riskBypassRows] = await Promise.all([
         readScopedDocuments('order_timeline', { orderId: id }, 'createdAt', 'asc').catch(() => []),

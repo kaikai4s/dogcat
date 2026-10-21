@@ -52,42 +52,25 @@ module.exports = function createHandler(context) {
     if (action === 'getBuildingCatalog') {
       const catalog = await buildingsService.readCatalog(), access = await require('../services/playground-access').memberAccess(db, openid)
       const { decorate } = require('../services/playground-access')
-      const crypto = require('crypto')
-      const ownerHash = crypto.createHash('sha256').update(openid).digest('hex').slice(0, 32)
-      let mainPlotId = ''
-      try {
-        const ownerDoc = await db.collection('pet_playground_plots').doc('plot_owner_' + ownerHash).get()
-        mainPlotId = ownerDoc && ownerDoc.data && ownerDoc.data.plotId
-      } catch (e) {}
-      let emptyPlots = []
-      try {
-        const myPlotsRes = await db.collection('pet_playground_plots').where({ kind: 'plot', ownerOpenid: openid }).get()
-        const myPlots = (myPlotsRes && myPlotsRes.data) || []
-        emptyPlots = myPlots
-          .filter((p) => !p.demolished && p._id !== mainPlotId && p.isNewPlot && !placedBuildings(p).some(isPublicBuilding))
-          .map((p) => ({
-            id: p._id,
-            _id: p._id,
-            name: p.name || '专属绿地',
-            buildingType: p.buildingType || 'yard',
-            buildingName: p.buildingName || '',
-            buildingCategory: p.buildingCategory || '',
-            buildings: placedBuildings(p),
-            isBuilt: placedBuildings(p).some(isPublicBuilding),
-            size: Number(p.size) || 48,
-            gateDirection: p.gateDirection || 'south',
-            x: p.x,
-            z: p.z,
-            cellX: p.cellX,
-            cellZ: p.cellZ
-          }))
-      } catch (e) {}
+      // Include the home and occupied gardens: ordinary buildings can be added
+      // to either. Complete projections also work before distant chunks load.
+      await world.own(openid)
+      const buildablePlots = []
+      let cursor = ''
+      do {
+        const query = { kind: 'plot', ownerOpenid: openid, ...(data.sceneId ? { communityId: data.sceneId } : {}), ...(cursor ? { _id: db.command.gt(cursor) } : {}) }
+        const page = (await db.collection('pet_playground_plots').where(query).orderBy('_id', 'asc').limit(100).get()).data || []
+        buildablePlots.push(...page.filter((p) => !p.demolished).map((p) => world.publicPlot(p, openid)))
+        cursor = page.length === 100 ? page[page.length - 1]._id : ''
+      } while (cursor)
+      const emptyPlots = buildablePlots.filter((p) => p.isNewPlot && !placedBuildings(p).some(isPublicBuilding))
       return {
         ...catalog,
         buildings: catalog.buildings.map((b) => decorate(b, access)),
         plotSizes: catalog.plotSizes.map((p) => decorate(p, access)),
         memberLevelName: access.memberLevelName,
-        emptyPlots
+        emptyPlots,
+        buildablePlots
       }
     }
     if (action === 'reportPoop') return disputes.reportPoop(openid, user, data)
@@ -222,7 +205,7 @@ module.exports = function createHandler(context) {
       let pointsAwarded = 0
       let message = '猫狗碗的粮食已添满'
       if (typeof context.addPoints === 'function' && user && user._id) {
-        const todayDateKey = (getToCstParts() && getToCstParts().dateKey) || (context.nowText ? context.nowText() : new Date().toISOString()).slice(0, 10)
+        const todayDateKey = getToCstParts(new Date(context.nowMs ? context.nowMs() : Date.now())).dateKey
         try {
           const pointRes = await context.addPoints(
             openid,

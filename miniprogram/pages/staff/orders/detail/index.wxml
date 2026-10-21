@@ -11,32 +11,9 @@
     <view class="hero-desc">性别要求：{{order.staffGenderRequirement === 'male' ? '男性宠托师' : (order.staffGenderRequirement === 'female' ? '女性宠托师' : '不限')}}</view>
   </view>
 
-  <!-- 拼单任务包多户服务清单卡片 -->
-  <view class="card bundle-overview-card" wx:if="{{order.isGroupBuy && (order.subOrders || (order.groupBuyBundle && order.groupBuyBundle.members))}}">
-    <view class="card-subtitle">
-      <text class="remix-icon ri-community-line sub-icon"></text>
-      <text>拼单任务包含住户（共{{order.householdCount || 2}}户）</text>
-    </view>
-    <view class="bundle-member-list">
-      <view class="bundle-member-item" wx:for="{{order.groupBuyBundle ? order.groupBuyBundle.members : order.subOrders}}" wx:key="orderId">
-        <view class="member-item-top">
-          <text class="member-index-tag">住户{{item.householdIndex}}</text>
-          <text class="member-label">{{item.householdLabel || item.petName}}</text>
-          <text class="member-status-tag {{item.isCompleted ? 'done' : (item.status === 'in_service' ? 'serving' : 'pending')}}" wx:if="{{item.status}}">{{item.isCompleted ? '已完成' : (item.status === 'in_service' ? '服务中' : '待服务')}}</text>
-        </view>
-        <view class="member-item-detail">
-          <text class="remix-icon ri-time-line"></text>
-          <text>{{beijingTime.format(item.startTime)}} - {{beijingTime.format(item.endTime)}}</text>
-        </view>
-        <view class="member-item-service">
-          <text class="remix-icon ri-service-line"></text>
-          <text>{{item.serviceSummary || item.serviceType}}</text>
-        </view>
-      </view>
-    </view>
-  </view>
+  <group-households bundle="{{order.groupBuyBundle}}" current-id="{{id}}" />
 
-  <view class="card pet-card" wx:if="{{order.petSnapshot}}">
+  <view class="card pet-card" wx:if="{{order.petSnapshot && !order.groupBuyBundle}}">
     <view class="card-subtitle">
       <text class="remix-icon ri-footprint-line sub-icon"></text>
       <text>服务宠物档案</text>
@@ -104,7 +81,7 @@
   <view class="card client-card">
     <view class="card-subtitle">
       <text class="remix-icon ri-user-heart-line sub-icon"></text>
-      <text>宠物主信息</text>
+      <text>{{order.groupBuyBundle ? '当前订单住户信息' : '宠物主信息'}}</text>
     </view>
     <view class="order-person">
       <view class="avatar-level-wrap">

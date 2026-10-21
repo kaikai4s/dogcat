@@ -295,7 +295,10 @@ function withOrderText(order) {
     groupBuyTagText = '同小区拼单'
     const gbStatus = String(order.groupBuyStatus || '').toLowerCase()
     const ordStatus = String(order.status || '').toLowerCase()
-    if (gbStatus === 'recruiting') {
+    if (gbStatus === 'pending_payment') {
+      groupBuyStatusText = '待付款后发起拼单'
+      groupBuyProgressText = '支付成功后才会公开并计入拼单户数'
+    } else if (gbStatus === 'recruiting') {
       groupBuyStatusText = '拼单招募中'
       groupBuyProgressText = '招募中 · 满员即成团'
     } else if (gbStatus === 'formed') {
@@ -310,6 +313,9 @@ function withOrderText(order) {
     } else if (gbStatus === 'expired') {
       groupBuyStatusText = '未成团已截止'
       groupBuyProgressText = '拼单未成团'
+    } else if (gbStatus === 'cancelled') {
+      groupBuyStatusText = '拼单已取消'
+      groupBuyProgressText = order.groupBuyRefundRequired ? '未能加入拼单，将全额原路退款' : '请查看订单状态与退款进度'
     }
   }
 

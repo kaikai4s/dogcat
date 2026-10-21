@@ -1,7 +1,7 @@
 const { callFunction, showError, ensureLogin } = require('../../../../utils/cloud')
 const { decorateListing } = require('../utils/community-group-buy')
 Page({
-  data: { loading: true, loadError: false, groups: [], myGroups: [], communityName: '', rules: null },
+  data: { activeTab: 'mine', loading: true, loadError: false, groups: [], myGroups: [], communityName: '', rules: null },
   onShow() { return this.load() },
   async load() {
     const request = this._request = (this._request || 0) + 1
@@ -12,6 +12,10 @@ Page({
       if (request === this._request) this.setData(decorateListing(result))
     } catch (error) { if (request === this._request) { this.setData({ loadError: true }); showError(error) } }
     finally { if (request === this._request) this.setData({ loading: false }) }
+  },
+  switchTab(e) {
+    const tab = e.currentTarget.dataset.tab
+    if (['mine', 'neighbors'].includes(tab)) this.setData({ activeTab: tab })
   },
   onHide() { this._request = (this._request || 0) + 1 },
   onUnload() { this._request = (this._request || 0) + 1 },

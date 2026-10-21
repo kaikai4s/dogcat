@@ -27,6 +27,8 @@ const clamp = (n, a, b) => Math.max(a, Math.min(b, n))
 // Older live projections lack isResidence; infer only primary residential yards.
 const isResidence = (plot) => !plot.demolished && !plot.isNewPlot &&
   (!plot.buildingType || plot.buildingType === 'residential') && plot.isResidence !== false
+const plotIdentity = (plot) => plot && (plot.id || plot._id)
+const plotRevision = (plot) => Math.max(Number(plot && plot.revision) || 0, Number(plot && plot.version && plot.version.epoch) || 0)
 function petStart(origin, plot, index) {
   const rowStep = plot ? Math.min(5, ((plot.size || SIZE) / 2 - 18) / 2) : 5
   return {
@@ -872,10 +874,10 @@ class World2D {
       )
     )
   }
-  yardZoom() {
+  yardZoom(plot = this.ownPlot) {
     const center = this.screenCenter()
     const diagonal =
-      (this.ownPlot ? this.ownPlot.size : this.plotSize) * 2 * this.scale
+      (plot ? plot.size : this.plotSize) * 2 * this.scale
     return Math.max(
       this.minimumZoom(),
       Math.min(
@@ -1364,6 +1366,8 @@ class World2D {
   }
   beginBuildingPlacement(building, isRelocating = false, currentPlot = null) {
     this.clearPetSelection()
+    this.pickToken = (this.pickToken || 0) + 1
+    this.candidate = null
     this.placing = true
     this.isPlacingNewPlot = false
     this.isPlacingBuilding = true
@@ -1384,7 +1388,12 @@ class World2D {
     const instanceId = building.instanceId || building.buildingInstanceId || (currentInstances.length === 1 ? currentInstances[0].instanceId : '')
     const instance = isRelocating && currentPlot && placedBuildings(currentPlot).find((b) => b.instanceId === instanceId)
     this.relocatingBuildingInstanceId = isRelocating ? instanceId || '' : ''
-    if (focusPlot) this.camera = { x: instance ? instance.x : focusPlot.x, z: instance ? instance.z : focusPlot.z }
+    if (focusPlot) {
+      this.camera = { x: instance ? instance.x : focusPlot.x, z: instance ? instance.z : focusPlot.z }
+      this.zoom = this.yardZoom(focusPlot)
+      this.page.sceneZoom = this.zoom
+      this.loadVisible().catch(() => this.onStatus('建造区域加载失败，请稍后重试'))
+    }
     if (isRelocating && currentPlot) {
       const initX = instance ? instance.x : currentPlot.buildingX != null ? Number(currentPlot.buildingX) : currentPlot.x
       const initZ = instance ? instance.z : currentPlot.buildingZ != null ? Number(currentPlot.buildingZ) : currentPlot.z
@@ -1394,6 +1403,7 @@ class World2D {
       this.candidate = null
       this.page.setData({ placing: true, isPlacingNewPlot: false, isPlacingBuilding: true, isRelocatingBuilding: false, canConfirm: false })
       this.onStatus(`请轻触场景草坪选择【${building.name}】的建造位置（绿色表示空间充足，红色表示空间不足）`)
+      this.draw()
     }
   }
   setPlotSize(size) {
@@ -1435,7 +1445,7 @@ class World2D {
 
       // 1. 查找点击点所在的我方地皮（出生庭院或专属绿地）
       const insidePlot = this.isRelocatingBuilding ? this.relocatingPlot : this.plots().find((p) => {
-        if (!p.mine && (!this.ownPlot || (p.id !== this.ownPlot.id && p._id !== this.ownPlot._id))) return false
+        if (p.demolished || !p.mine && (!plotIdentity(this.ownPlot) || plotIdentity(p) !== plotIdentity(this.ownPlot))) return false
         const half = (p.size || 48) / 2
         return Math.abs(point.x - p.x) <= half && Math.abs(point.z - p.z) <= half
       })
@@ -1538,6 +1548,13 @@ class World2D {
     if (!updated) return
     const id = updated.id || updated._id
     if (!id) return
+    const previous = this.plots().find((p) => plotIdentity(p) === id)
+    if (plotRevision(updated) < plotRevision(previous)) return
+    // A successful mutation must also advance the realtime cache. Otherwise a
+    // later full apply can replay the pre-construction building list.
+    if (!updated.version && plotRevision(updated) && this.sceneSync && this.sceneSync.merge) {
+      this.sceneSync.merge({ ...updated, kind: 'plot', version: { epoch: plotRevision(updated), seq: 0 } })
+    }
     if (this.ownPlot && (this.ownPlot.id === id || this.ownPlot._id === id)) {
       this.ownPlot = { ...this.ownPlot, ...updated }
     }
@@ -1787,9 +1804,13 @@ class World2D {
   }
   async applySceneRecords(records) {
     this.careAgents=new Map(records.filter((r)=>r.kind==='resident').flatMap((r)=>(r.careAgents||(r.careAgent?[r.careAgent]:[])).map((agent)=>[r.id+':'+agent.id,agent])))
+    const previousPlots = new Map(this.plots().map((p) => [plotIdentity(p), p]))
     const ids=new Set(),plots=new Map(),characters=[]
     for(const record of records) {
-      if(record.kind==='plot'&&!record.demolished) plots.set(record.id,record)
+      if(record.kind==='plot'&&!record.demolished) {
+        const id = plotIdentity(record), previous = previousPlots.get(id)
+        plots.set(id, plotRevision(record) < plotRevision(previous) ? previous : record)
+      }
       if(record.kind==='presence'&&!record.mine) characters.push(record)
       if(record.kind==='presence'&&record.mine){this.setOwnName(record);this.setOwnAppearance(record.appearance);this.applyOwnVehicleActor(record)}
       if(record.kind==='resident') for(const pet of record.pets) {ids.add(pet.id);this.applySharedPet(pet,record.mine,record.ownerName||record.name,record.ownerId,record.nameColor)}
@@ -1837,6 +1858,8 @@ class World2D {
     for(const record of changes) {
       if (record.kind === 'plot') {
         const id = record.id || record._id
+        const previous = this.plots().find((p) => plotIdentity(p) === id)
+        if (plotRevision(record) < plotRevision(previous)) continue
         if (record.deleted || record.demolished) {
           this.sharedPlots.delete(id)
           this.mapPlots.delete(id)

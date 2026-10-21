@@ -115,9 +115,10 @@ module.exports = function createHandler(context) {
 
   function sanitizeOrderSecurityFields(order) {
     if (!order) return order
+    const { groupBuyIntent, groupBuyHouseholdKey, ...publicOrder } = order
     const security = order.orderHomeSecurity || order.homeSecuritySnapshot
     const publicSecurity = toPublicOrderHomeSecurity(security)
-    return { ...order, orderHomeSecurity: publicSecurity, homeSecuritySnapshot: publicSecurity ? toPublicHomeSecuritySnapshot(publicSecurity) : null }
+    return { ...publicOrder, orderHomeSecurity: publicSecurity, homeSecuritySnapshot: publicSecurity ? toPublicHomeSecuritySnapshot(publicSecurity) : null }
   }
 
   // Transit coordinates are useful only while the sitter is travelling. Keep
@@ -431,53 +432,9 @@ module.exports = function createHandler(context) {
         resultOrder.reassignNotice = order.isUrgent ? '该订单因超时未履约已被平台转加急派单' : '该订单已被平台改派给其他宠托师'
       }
       const isStaffPreview = isStaffView && (order.status === ORDER_STATUS.PAID || order.staffOpenid !== openid)
-      if (order.groupBuyId) {
-        resultOrder.isGroupBuy = true
-        resultOrder.groupBuyId = order.groupBuyId
-        const siblingRes = await db.collection('orders').where({
-          groupBuyId: order.groupBuyId
-        }).orderBy('createdAt', 'asc').get().catch(() => ({ data: [] }))
-        const allSiblings = (siblingRes.data || []).map(s => s._id === orderId ? { ...s, ...resultOrder } : s)
-        resultOrder.householdCount = allSiblings.length
-
-        if (isStaffView && order.staffOpenid === openid) {
-          resultOrder.groupBuyBundle = {
-            groupBuyId: order.groupBuyId,
-            householdCount: allSiblings.length,
-            members: allSiblings.map((sib, idx) => ({
-              orderId: sib._id,
-              householdIndex: idx + 1,
-              householdLabel: `住户 ${idx + 1} (${sib.doorplate || sib.addressDetail || '住户'})`,
-              doorplate: sib.doorplate || '',
-              addressDetail: sib.addressDetail || '',
-              contactPhone: sib.contactPhone || '',
-              petName: sib.petName || (sib.petSnapshot && sib.petSnapshot.name) || '宠物',
-              petSnapshot: sib.petSnapshot || null,
-              serviceType: sib.serviceType || 'feed',
-              serviceSummary: sib.serviceSummary || '',
-              startTime: sib.startTime || '',
-              endTime: sib.endTime || '',
-              status: sib.status,
-              isCompleted: sib.status === 'completed' || sib.status === 'day_completed',
-              checkinRequirements: sib.checkinRequirements || []
-            }))
-          }
-        } else if (isStaffPreview) {
-          resultOrder.subOrders = allSiblings.map((sib, idx) => ({
-            orderId: sib._id,
-            householdIndex: idx + 1,
-            householdLabel: `住户 ${idx + 1}`,
-            petName: sib.petName || (sib.petSnapshot && sib.petSnapshot.name) || '宠物',
-            petSummary: sib.petSummary || '',
-            serviceType: sib.serviceType || 'feed',
-            serviceSummary: sib.serviceSummary || '',
-            startTime: sib.startTime || '',
-            endTime: sib.endTime || '',
-            addressDetail: '接单后可见',
-            doorplate: '接单后可见'
-          }))
-        }
-      }
+      Object.assign(resultOrder, await require('../services/order-group-buy-view')(context).attach(resultOrder))
+      delete resultOrder.groupBuyIntent
+      delete resultOrder.groupBuyHouseholdKey
       if (isStaffPreview) return maskOrderForStaffPreview(resultOrder)
       if (isStaffView || (!user.roles.includes('admin') && order.clientOpenid !== openid)) return maskOrderClientContact(resultOrder)
       return sanitizeClientTransitFields(resultOrder)
@@ -1612,12 +1569,13 @@ module.exports = function createHandler(context) {
         staffProfile = (staffRes && staffRes.data) || {}
       }
       const displayOrder = await attachClientSnapshot(order)
-      return toHomeOrderActivity(displayOrder, {
+      const publicDetail = toHomeOrderActivity(displayOrder, {
         review: reviewRes.data[0] || null,
         checkins: checkinsRes.filter(isActiveCheckin),
         staffProfile,
         hideCheckinPhotos: shouldHidePublicCheckinPhotos(clientRes.data[0])
       })
+      return require('../services/order-group-buy-view')(context).attach({ ...publicDetail, groupBuyId: order.groupBuyId || '' }, { publicView: true })
     }
     throw new Error('未知 order 操作')
   }

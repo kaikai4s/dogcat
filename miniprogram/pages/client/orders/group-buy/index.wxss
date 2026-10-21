@@ -1,4 +1,5 @@
 .group-page{min-height:100vh;box-sizing:border-box;padding:28rpx 28rpx calc(48rpx + env(safe-area-inset-bottom));background:var(--theme-bg);color:var(--theme-text)}
+.group-list-tabs{display:flex;gap:10rpx;padding:8rpx;margin:28rpx 0;border-radius:24rpx;background:var(--theme-bg-soft)}.group-list-tab{flex:1;min-width:0;margin:0;padding:0 12rpx;line-height:76rpx;border-radius:18rpx;font-size:25rpx;color:var(--theme-muted);background:transparent;white-space:nowrap}.group-list-tab.active{font-weight:700;background:var(--theme-card-bg);color:var(--theme-primary);box-shadow:0 4rpx 12rpx var(--theme-shadow)}
 .group-page button::after{border:0}.group-page button{box-sizing:border-box}
 .group-hero{padding:34rpx;border-radius:32rpx;background:var(--theme-hero);box-shadow:0 12rpx 36rpx var(--theme-shadow)}
 .hero-eyebrow{display:flex;align-items:center;gap:10rpx;font-size:23rpx;color:var(--theme-hero-text);font-weight:600}

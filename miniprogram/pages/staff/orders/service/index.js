@@ -248,9 +248,10 @@ Page({
     if (!this.data.id) return
     this.earlyStartPollTimer = setInterval(() => {
       if (!this.data.id || this.data.starting || this.data.requestingEarlyStart) return
-      callFunction('order', 'getEarlyStartStatus', { id: this.data.id })
+      const orderId = this.data.id
+      callFunction('order', 'getEarlyStartStatus', { id: orderId })
         .then((earlyStart) => {
-          if (!earlyStart) return
+          if (!earlyStart || this._unloaded || orderId !== this.data.id) return
           const currentStatus = this.data.earlyStartRequest && this.data.earlyStartRequest.status
           if (currentStatus === 'pending' && earlyStart.status !== 'pending') {
             this.stopEarlyStartPolling()
@@ -663,9 +664,13 @@ Page({
 
   unlock() {
     if (!this.data.order || !this.data.order.serviceStarted) return
-    callFunction('homeSecurity', 'getUnlockCode', { orderId: this.data.id })
-      .then((unlock) => this.setData({ unlock }))
+    const orderId = this.data.id
+    return callFunction('homeSecurity', 'getUnlockCode', { orderId })
+      .then((unlock) => {
+        if (!this._unloaded && orderId === this.data.id && this.data.order && this.data.order.serviceStarted) this.setData({ unlock })
+      })
       .catch((error) => {
+        if (this._unloaded || orderId !== this.data.id) return
         const message = (error && error.message) || ''
         if (message.includes('尚未生效') || message.includes('已过期')) {
           wx.showModal({ title: '密码暂不可用', content: message, showCancel: false })
@@ -923,6 +928,7 @@ Page({
         this.stopServiceElapsedTimer()
         this.stopAutoTracking('completed')
         if (this._unloaded) return
+        this.setData({ finishing: false, unlock: null, order: withServiceActionState({ ...order, status: res && res.status || 'completed' }) })
 
         if (res && res.partialGroupCompleted) {
           wx.showModal({
@@ -934,9 +940,9 @@ Page({
               this.loadOrder().then(() => {
                 const bundle = this.data.order && this.data.order.groupBuyBundle
                 if (bundle && bundle.members) {
-                  const nextMember = bundle.members.find(m => !m.isCompleted && m.orderId !== this.data.id)
+                  const nextMember = bundle.members.find(m => !m.isCompleted && !['cancelled', 'closed', 'refunded', 'expired'].includes(m.status) && m.orderId !== this.data.id)
                   if (nextMember) {
-                    this.setData({ id: nextMember.orderId }, () => this.loadOrder())
+                    this.switchHousehold({ detail: { orderId: nextMember.orderId } })
                   }
                 }
               })
@@ -959,7 +965,6 @@ Page({
         }
 
         wx.showToast({ title: '服务已完成，密码已销毁', icon: 'success' })
-        this.setData({ finishing: false, unlock: null, order: withServiceActionState({ ...order, status: res && res.status || 'completed' }) })
         this.loadOrder()
       })
       .catch((error) => {
@@ -1088,10 +1093,12 @@ Page({
 
   openPrivacyCall() {
     if (!this.data.id) return
+    const orderId = this.data.id
     showLoading('获取虚拟隐私通话...')
-    callFunction('order', 'getPrivacyCallInfo', { orderId: this.data.id })
+    callFunction('order', 'getPrivacyCallInfo', { orderId })
       .then((info) => {
         hideLoading()
+        if (this._unloaded || orderId !== this.data.id) return
         this.setData({ privacyCallInfo: info, showCallModal: true })
       })
       .catch((err) => {
@@ -1220,11 +1227,25 @@ Page({
   },
 
   switchHousehold(e) {
-    const nextId = e.currentTarget.dataset.id
-    if (!nextId || nextId === this.data.id) return
-    this.setData({ id: nextId }, () => {
-      this.loadOrder()
-    })
+    const nextId = e.detail && e.detail.orderId || e.currentTarget && e.currentTarget.dataset.id
+    if (this._unloaded || !nextId || nextId === this.data.id) return
+    const members = this.data.order && this.data.order.groupBuyBundle && this.data.order.groupBuyBundle.members || []
+    if (!members.some(member => member.orderId === nextId && !['cancelled', 'closed', 'refunded', 'expired'].includes(member.status))) return
+    if (this._startingLock || this._finishingLock || this._requestingEarlyStartLock ||
+        ['starting', 'finishing', 'departing', 'requestingEarlyStart', 'requestingRemoteUnlock', 'returningKey', 'cancelling', 'sendingChatMessage', 'updatingTravelLocation', 'openingCheckinType'].some(key => this.data[key])) {
+      wx.showToast({ title: '请等待当前操作完成', icon: 'none' })
+      return
+    }
+    this._orderRequestSeq = (this._orderRequestSeq || 0) + 1
+    this.stopEarlyStartPolling()
+    this.stopServiceElapsedTimer()
+    this.stopSessionChatRefresh()
+    this.setData({ id: nextId, order: null, unlock: null, earlyStartRequest: null, keyReturnImageFileIds: [],
+      showChatModal: false, sessionMessages: [], sessionInputText: '', sessionScrollTarget: '', sessionUnreadCount: 0, sessionChatError: '',
+      showCallModal: false, privacyCallInfo: null, showCareRiskModal: false, careRiskStartConfirmed: false,
+      pointCount: 0, autoTracking: false, backgroundTracking: false, trackingState: 'idle', trackingErrorText: '', trackingWarningText: '',
+      trackStatusText: '服务开始后自动记录轨迹', latestTrackText: '', serviceElapsedText: '00:00:00', offlineTaskCount: getOfflineTaskCount(nextId) })
+    return this.loadOrder()
   },
 
   ...navMethods()

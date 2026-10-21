@@ -1,1 +1,5 @@
-{}
+{
+  "usingComponents": {
+    "group-households": "/components/group-households/index"
+  }
+}

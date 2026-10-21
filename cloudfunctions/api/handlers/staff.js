@@ -1027,7 +1027,13 @@ module.exports = function createHandler(context) {
         }
       }
 
-      let candidates = availableOrders.filter((order) => (!order.groupBuyId || order.groupBuyStatus === 'formed') && matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish' && !isStaffPreviouslyAssignedToOrder(order, profile.openid) && !(Array.isArray(order.cancelledStaffOpenids) && order.cancelledStaffOpenids.includes(profile.openid)))
+      const groupBuyCounts = new Map()
+      for (const order of availableOrders) {
+        if (order.groupBuyId && !order.deletedAt && !isAdminDeletedOrder(order) && !order.groupBuyRefundRequired && order.paymentStatus === 'paid') {
+          groupBuyCounts.set(order.groupBuyId, (groupBuyCounts.get(order.groupBuyId) || 0) + 1)
+        }
+      }
+      let candidates = availableOrders.filter((order) => (!order.groupBuyId || order.groupBuyStatus === 'formed' && order.paymentStatus === 'paid' && !order.groupBuyRefundRequired) && !order.deletedAt && matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish' && !isStaffPreviouslyAssignedToOrder(order, profile.openid) && !(Array.isArray(order.cancelledStaffOpenids) && order.cancelledStaffOpenids.includes(profile.openid)))
       if (filterDate) {
         candidates = candidates.filter((order) => {
           if (!order.startTime) return false
@@ -1041,12 +1047,6 @@ module.exports = function createHandler(context) {
       const scheduleExceptions = candidates.length
         ? await readAll('staff_schedule_exceptions', { staffOpenid: openid })
         : []
-      const groupBuyCounts = new Map()
-      for (const c of candidates) {
-        if (c.groupBuyId) {
-          groupBuyCounts.set(c.groupBuyId, (groupBuyCounts.get(c.groupBuyId) || 0) + 1)
-        }
-      }
       let orders = await Promise.all(candidates.map(async (order) => {
         const enriched = await attachOrderDisplayData(order)
         let distanceKm = null
@@ -1091,6 +1091,9 @@ module.exports = function createHandler(context) {
 
       const bundleOrders = []
       for (const [groupBuyId, bundleList] of bundleMap) {
+        // Every household must pass the selected filters. A partial package
+        // would understate both its service workload and total earnings.
+        if (bundleList.length !== groupBuyCounts.get(groupBuyId)) continue
         const primary = bundleList[0]
         const householdCount = bundleList.length
         const totalEarning = bundleList.reduce((sum, item) => sum + (Number(item.staffEarning) || 0), 0)
@@ -1598,34 +1601,7 @@ module.exports = function createHandler(context) {
       const notifyResult = await notifyOrderAccepted(assignedOrder, maskStaffName(profile.realName))
       await db.collection('orders').doc(data.orderId).update({ data: { acceptedNotifyStatus: notifyResult && notifyResult.status || 'skipped', acceptedNotifyError: notifyResult && notifyResult.error || '', updatedAt: time } })
 
-      let bundledCount = 1
-      if (order.groupBuyId) {
-        const siblingRes = await db.collection('orders').where({
-          groupBuyId: order.groupBuyId,
-          status: 'paid',
-          _id: db.command.neq(data.orderId)
-        }).get().catch(() => ({ data: [] }))
-        for (const sibling of siblingRes.data || []) {
-          if (!sibling.staffOpenid) {
-            try {
-              const siblingAssigned = await assignOrderAtomically(sibling._id, sibling, assignmentUpdate, {
-                depositConfig: settings.staffDeposit,
-                dispatchConfig: settings.dispatch || {},
-                enforceAcceptLimits: false,
-                riskConfirmed: true
-              })
-              bundledCount++
-              await appendOrderTimeline(sibling._id, 'assigned', '拼单整包顺路接单', `同小区拼单任务包已由宠托师（${maskStaffName(profile.realName)}）顺路统一承接。`, 'staff').catch(() => {})
-              await appendOrderClientMessage(siblingAssigned, { eventType: 'assigned', title: '拼单已由同小区专属宠托师接单', detail: `同小区拼单已由宠托师（${maskStaffName(profile.realName)}）统一接单顺路服务。`, actorRole: 'staff' }).catch(() => {})
-              if (typeof notifyOrderAccepted === 'function') {
-                notifyOrderAccepted(siblingAssigned, maskStaffName(profile.realName)).catch(() => {})
-              }
-            } catch (err) {
-              console.error('[acceptOrder] bundle assign sibling failed:', sibling._id, err.message)
-            }
-          }
-        }
-      }
+      const bundledCount = assignedOrder.bundledCount || 1
       return { orderId: data.orderId, status: 'assigned', assignmentSource, bundledCount, notifyStatus: notifyResult && notifyResult.status || 'skipped', notifyError: notifyResult && notifyResult.error || '' }
     }
     if (action === 'getStaffCancellationQuote') {

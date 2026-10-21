@@ -198,7 +198,10 @@ module.exports = function createService(context) {
         await enqueueOrderNotification(tx, order.clientOpenid, 'orderPaid', paid, { amount: Number(order.payAmount), statusText: '已支付' })
         if (order.publishMode === 'direct' && order.requestedStaffOpenid) await enqueueStaffDirectOrder(tx, paid, 'request')
       }
-      return { order: { ...order, ...patch }, changed: true, orderType: resolved.orderType }
+      const paidOrder = { ...order, ...patch }
+      const activated = resolved.orderType === 'service' && order.groupBuyId
+        ? await require('./playground-group-buy')(context).activatePaidOrder(tx, paidOrder) : paidOrder
+      return { order: activated, changed: true, orderType: resolved.orderType }
     })
 
     if (result && result.oversoldRefundRequired && typeof context.requestOrderRefund === 'function') {
@@ -250,15 +253,9 @@ module.exports = function createService(context) {
     if (result.changed && result.orderType === 'service' && result.order.publishMode === 'direct' && result.order.requestedStaffOpenid) {
       await notifyStaffDirectOrder(result.order, 'request')
     }
-    if (result.changed && result.orderType === 'service' && result.order.groupBuyId) {
-      try {
-        const groupBuy = require('./playground-group-buy')(context)
-        if (typeof groupBuy.onOrderPaid === 'function') {
-          await groupBuy.onOrderPaid(result.order._id, result.order.groupBuyId)
-        }
-      } catch (err) {
-        console.error('[paymentSettlement] group buy onOrderPaid error:', err)
-      }
+    if (result.orderType === 'service' && result.order.groupBuyRefundRequired && typeof context.createRefundForOrder === 'function') {
+      await context.createRefundForOrder(result.order, result.order.payAmount, '拼单已截止或无法加入，全额原路退款',
+        'system_groupbuy_fail', result.order.clientOpenid, `groupbuy_fail_${result.order._id}`, { cancelStatus: 'expired' })
     }
     return result
   }

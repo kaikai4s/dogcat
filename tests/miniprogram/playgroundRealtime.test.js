@@ -30,6 +30,24 @@ function fixture(call,options={}) {
 }
 function presence(x,seq) {return {id:'neighbor',ownerId:'other',kind:'presence',name:'凯大大',position:{x,z:100},characterType:'boy',moving:true,online:true,lastSeen:Date.now(),version:{epoch:1,seq}}}
 
+test('construction response advances realtime state before an old snapshot or unrelated plot push', async () => {
+  const tree = { instanceId: 'first', buildingId: 'tree', type: 'tree', width: 7, depth: 7, x: 416, z: 416 }
+  const old = { id: 'home', kind: 'plot', ownerId: 'me', mine: true, x: 400, z: 400, size: 48,
+    buildingType: 'residential', buildings: [tree], revision: 10, version: { epoch: 10, seq: 0 } }
+  const f = fixture(() => ({ records: [old], serverTime: Date.now(), nextCursor: '' }))
+  f.sync.merge(old)
+  await f.sync.apply()
+  const { version, ...built } = { ...old, revision: 20, buildings: [tree, { ...tree, instanceId: 'second', x: 384, z: 384 }] }
+  f.w.updatePlot(built)
+  assert.equal(f.sync.records.get(old.id).version.epoch, 20)
+  f.sync.merge({ ...old, id: 'another_yard', ownerId: 'other', version: { epoch: 11, seq: 0 } })
+  await f.sync.apply(false)
+  assert.equal(f.w.ownPlot.buildings.length, 2)
+  await f.sync.snapshot()
+  assert.equal(f.w.ownPlot.buildings.length, 2)
+  assert.equal(f.sync.records.get(old.id).buildings.length, 2)
+})
+
 test('resident totals include every snapshot page and follow live move-outs without stale snapshot rollback',async()=>{
   const homes=Array.from({length:105},(_,i)=>({kind:'plot',id:'home-'+i,ownerId:'offline-'+i,
     x:800,z:800,size:112,buildingType:'residential',isResidence:true,version:{epoch:1,seq:0}}))

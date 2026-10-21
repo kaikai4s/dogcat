@@ -2,29 +2,7 @@
 <view class="page staff-service-page {{themeClass}} {{fontClass}}">
   <staff-active-service-banner />
 
-  <!-- 同小区拼单多户切换栏位 -->
-  <view class="group-buy-tabs-wrap" wx:if="{{order && order.groupBuyBundle && order.groupBuyBundle.members.length > 1}}">
-    <view class="group-buy-tabs-header">
-      <view class="tabs-header-title">
-        <text class="remix-icon ri-community-fill"></text>
-        <text>同小区顺路拼单（共{{order.groupBuyBundle.members.length}}户）</text>
-      </view>
-      <text class="tabs-header-tip">点击切换服务对象</text>
-    </view>
-    <scroll-view scroll-x class="group-buy-tabs-scroll" enable-flex>
-      <view class="household-tab-item {{item.orderId === id ? 'active' : ''}}" 
-            wx:for="{{order.groupBuyBundle.members}}" 
-            wx:key="orderId" 
-            bindtap="switchHousehold" 
-            data-id="{{item.orderId}}">
-        <view class="tab-badge {{item.isCompleted ? 'badge-completed' : (item.status === 'in_service' ? 'badge-serving' : 'badge-pending')}}">
-          {{item.isCompleted ? '已打卡完成' : (item.status === 'in_service' ? '服务中' : '待服务')}}
-        </view>
-        <view class="tab-label-text">{{item.householdLabel}}</view>
-        <view class="tab-pet-text">{{item.petName}} · {{item.serviceSummary || item.serviceType}}</view>
-      </view>
-    </scroll-view>
-  </view>
+  <group-households bundle="{{order.groupBuyBundle}}" current-id="{{id}}" allow-switch="{{true}}" bind:switchhousehold="switchHousehold" />
 
   <view class="staff-hero">
     <view class="hero-badge">

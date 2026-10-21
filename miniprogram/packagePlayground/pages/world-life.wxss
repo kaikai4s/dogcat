@@ -148,7 +148,17 @@
 
 .groupbuy-section-title { font-size: 13px; font-weight: 700; color: #334d28; margin-bottom: 10px; }
 .groupbuy-sitters-list { display: flex; flex-direction: column; gap: 10px; }
-.sitter-card { display: flex; align-items: center; gap: 12px; padding: 12px; background: #ffffff; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px solid #e5ede0; }
+.sitter-card { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; background: #ffffff; border-radius: 18px; box-shadow: 0 4px 14px rgba(47,76,36,0.06); border: 1px solid #e5ede0; box-sizing: border-box; }
+.sitter-card-main { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.manor-sitter-card .sitter-avatar,.manor-sitter-card .sitter-avatar-placeholder { flex-shrink: 0; width: 52px; height: 52px; border-radius: 16px; }
+.manor-sitter-card .sitter-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.manor-sitter-card .sitter-rating { flex-shrink: 0; white-space: nowrap; }
+.manor-sitter-card .sitter-action-col { flex-direction: row; justify-content: space-between; padding-top: 12px; border-top: 1px solid #edf1e8; gap: 12px; }
+.manor-sitter-card .book-sitter-btn { flex: 1; min-width: 0; margin: 0; height: 36px; line-height: 36px; padding: 0 12px; }
+.manor-sitter-card .view-sitter-link { flex-shrink: 0; padding: 8px 0 8px 8px; font-size: 12px; }
+.group-list-tabs { display: flex; gap: 6px; padding: 4px; margin: 16px 0; border-radius: 14px; background: #eaf0e3; }
+.group-list-tab { flex: 1; min-width: 0; margin: 0; padding: 0 6px; line-height: 36px; border-radius: 11px; background: transparent; color: #6b7b61; font-size: 12px; white-space: nowrap; }
+.group-list-tab.active { color: #355c2e; background: #fff; font-weight: 700; box-shadow: 0 2px 6px rgba(40,70,30,.08); }
 .sitter-avatar { width: 50px; height: 50px; border-radius: 50%; }
 .sitter-avatar-placeholder { width: 50px; height: 50px; border-radius: 50%; background: #e8f5e9; display: flex; align-items: center; justify-content: center; font-size: 24px; }
 .sitter-info { flex: 1; min-width: 0; }

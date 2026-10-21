@@ -52,7 +52,7 @@ function buildGroupNoticeCards(result) {
   const communityName = result.communityName || '本小区'
   const seenGroupIds = new Set()
 
-  // 1. 优先提取“我的拼单”（我发起的或我已参加的拼单，进行中或已成团）
+  // 1. 优先提取“我的拼单”（我发起的或我已参加的拼单，招募中）
   // 必须只显示为“🐾 我的拼单”，绝不重复出现在小区邻居拼单中
   const rawMyGroups = [
     ...(result.myGroups || []),
@@ -63,8 +63,8 @@ function buildGroupNoticeCards(result) {
     if (!group) continue
     const gid = String(group.id || group._id || '')
     if (!gid || seenGroupIds.has(gid)) continue
-    // 仅展示招募中或已成团的进行中拼单（已取消/已失效不展示在弹窗中）
-    if (group.status !== 'recruiting' && group.status !== 'formed') continue
+    // 仅展示已付款、未成团的有效拼单（已取消/已失效不展示在弹窗中）
+    if (group.status !== 'recruiting' || group.orderStatus === 'pending_pay' || group.paymentExpired || !(group.householdCount > 0)) continue
 
     seenGroupIds.add(gid)
     const minH = group.minHouseholds || (group.rules && group.rules.minHouseholds) || 2
@@ -109,7 +109,7 @@ function buildGroupNoticeCards(result) {
 
   // 3. 兜底汇总卡片（当没有单项列表但有拼单统计时）
   if (cards.length === 0 && (result.availableCount || (result.myGroups && result.myGroups.length))) {
-    const hasMyGroups = Array.isArray(result.myGroups) && result.myGroups.some((g) => g && (g.status === 'recruiting' || g.status === 'formed'))
+    const hasMyGroups = Array.isArray(result.myGroups) && result.myGroups.some((g) => g && g.status === 'recruiting' && g.orderStatus !== 'pending_pay' && !g.paymentExpired && g.householdCount > 0)
     if (hasMyGroups) {
       cards.push({
         id: 'summary_my',
@@ -122,7 +122,7 @@ function buildGroupNoticeCards(result) {
         subText: '拼单进行中',
         actionText: '查看拼单进度'
       })
-    } else if (result.availableCount) {
+    } else if (result.availableCount && !Array.isArray(result.groups)) {
       cards.push({
         id: 'summary_community',
         groupId: 'summary_community',
@@ -282,7 +282,7 @@ Page({
       const current = await getCurrentUser()
       if (currentRequest()) {
         const isOwner = current && (current.openid || current._id) === (user.openid || user._id)
-        const validNotice = isOwner ? result : null
+        const validNotice = isOwner ? { ...result, myGroups: (result.myGroups || []).filter(g => g && g.status === 'recruiting' && g.orderStatus !== 'pending_pay' && !g.paymentExpired && g.householdCount > 0) } : null
         const isDismissed = this.data.groupNoticeDismissed || isGroupNoticeDismissedToday()
         this._dismissedGroupIds = this._dismissedGroupIds || new Set()
         // 过滤掉用户在本会话中已手动上滑取消的拼单卡片，防止轮询与刷新后死而复生

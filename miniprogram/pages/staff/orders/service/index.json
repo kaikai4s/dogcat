@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "服务执行"
+  "navigationBarTitleText": "服务执行",
+  "usingComponents": {
+    "group-households": "/components/group-households/index"
+  }
 }

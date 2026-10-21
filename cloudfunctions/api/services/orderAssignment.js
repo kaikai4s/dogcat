@@ -39,14 +39,14 @@ module.exports = function createService(context) {
     }
   }
 
-  async function assertStaffAssignmentLimits(transaction, staffOpenid, order, orderId, dispatchConfig = {}) {
+  async function assertStaffAssignmentLimits(transaction, staffOpenid, order, orderId, dispatchConfig = {}, bundleSize = 1) {
     const _ = db.command
     const inOp = _ && typeof _.in === 'function' ? _.in.bind(_) : (arr) => ({ $in: arr })
     const activeStatuses = ['assigned', 'on_the_way', 'in_service', 'day_completed']
     const activeOrdersRes = await transaction.collection('orders').where({ staffOpenid, status: inOp(activeStatuses) }).limit(100).get().catch(() => ({ data: [] }))
     const activeOrders = (activeOrdersRes.data || []).filter(o => o && !o.adminDeletedAt && o._id !== orderId)
     const maxActiveOrders = Number(dispatchConfig.maxStaffActiveOrders || 8)
-    if (activeOrders.length >= maxActiveOrders) {
+    if (activeOrders.length + bundleSize > maxActiveOrders) {
       throw new Error(`您当前进行中订单已有 ${activeOrders.length} 笔，已达接单上限（最多 ${maxActiveOrders} 笔），请先履约完成后再接新单`)
     }
 
@@ -60,7 +60,7 @@ module.exports = function createService(context) {
       return oDate === targetDate
     })
     const maxDailyOrders = Number(dispatchConfig.maxStaffDailyOrders || 6)
-    if (sameDayOrders.length >= maxDailyOrders) {
+    if (sameDayOrders.length + bundleSize > maxDailyOrders) {
       throw new Error(`您在 ${targetDate} 已接单 ${sameDayOrders.length} 笔，已达单日接单上限（${maxDailyOrders} 笔），请合理规划时间避免服务延误`)
     }
   }
@@ -81,25 +81,51 @@ module.exports = function createService(context) {
       if (!ability.can) throw new Error(ability.message || '宠托师当前不可接单')
       const order = (await transaction.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data
       if (!order || order.status !== 'paid' || order.staffOpenid || order.adminDeletedAt) throw new Error('订单已被分配或状态不可接单')
-      assertStaffGenderMatches(order, profile)
-      await assertVaccinesStillAllowed(profile, order)
       if (assignmentTerms(order) !== assignmentTerms(expectedOrder)) throw new Error('订单预约信息已变化，请刷新后重新接单')
-      if (toTimeValue(order.startTime) > 0 && toTimeValue(order.startTime) <= now().getTime()) throw new Error('订单服务时间已过，无法接单')
-      if (!options.admin && order.requestedStaffOpenid && order.requestedStaffOpenid !== patch.staffOpenid) throw new Error('该订单指定了其他宠托师')
-      await assertNoConflict(transaction, patch.staffOpenid, order, orderId)
-      if (options.enforceAcceptLimits) await assertStaffAssignmentLimits(transaction, patch.staffOpenid, order, orderId, options.dispatchConfig || {})
-      for (const range of getOrderTimeRanges(order)) {
-        try { await validateStaffScheduleOnly(profile, range.startTime, range.endTime) }
-        catch (error) { if (!options.riskConfirmed) throw error }
+      let bundle = [order]
+      if (order.groupBuyId) {
+        if (order.groupBuyStatus !== 'formed') throw new Error('拼单尚未成团，暂不可接单')
+        const rows = []
+        let cursor = ''
+        do {
+          const page = (await transaction.collection('orders').where({ groupBuyId: order.groupBuyId,
+            ...(cursor ? { _id: db.command.gt(cursor) } : {}) }).orderBy('_id', 'asc').limit(100).get()).data || []
+          rows.push(...page)
+          cursor = page.length === 100 ? page[page.length - 1]._id : ''
+        } while (cursor)
+        bundle = rows.filter(o => !o.deletedAt && !o.adminDeletedAt && !o.groupBuyRefundRequired && o.paymentStatus === 'paid' && !['pending_pay', 'cancelled', 'closed', 'refunded', 'expired'].includes(o.status))
+        if (!bundle.some(o => o._id === orderId)) throw new Error('拼单成员已变化，请刷新后重试')
+        const group = (await transaction.collection('pet_playground_groups').doc(order.groupBuyId).get().catch(() => ({ data: null }))).data
+        if (group) {
+          if (group.status === 'cancelled' || !group.formedAt) throw new Error('拼单已取消或尚未成团')
+          await transaction.collection('pet_playground_groups').doc(order.groupBuyId).update({ data: { assignmentRevision: crypto.randomBytes(16).toString('hex') } })
+        }
+      }
+      for (const member of bundle) {
+        if (member.status !== 'paid' || member.staffOpenid) throw new Error('拼单中有订单已被分配或状态不可接单')
+        assertStaffGenderMatches(member, profile)
+        await assertVaccinesStillAllowed(profile, member)
+        if (toTimeValue(member.startTime) > 0 && toTimeValue(member.startTime) <= now().getTime()) throw new Error('订单服务时间已过，无法接单')
+        if (!options.admin && member.requestedStaffOpenid && member.requestedStaffOpenid !== patch.staffOpenid) throw new Error('该订单指定了其他宠托师')
+        await assertNoConflict(transaction, patch.staffOpenid, member, member._id)
+        if (options.enforceAcceptLimits) await assertStaffAssignmentLimits(transaction, patch.staffOpenid, member, member._id, options.dispatchConfig || {}, bundle.length)
+        for (const range of getOrderTimeRanges(member)) {
+          try { await validateStaffScheduleOnly(profile, range.startTime, range.endTime) }
+          catch (error) { if (!options.riskConfirmed) throw error }
+        }
       }
       await transaction.collection('users').doc(patch.staffUserId).update({ data: { staffAssignmentRevision: crypto.randomBytes(16).toString('hex') } })
-      const assignmentPatch = { ...patch, assignmentNoticeRevision: Number(order.assignmentNoticeRevision || 0) + 1 }
-      await transaction.collection('orders').doc(orderId).update({ data: assignmentPatch })
-      const assigned = { ...order, ...assignmentPatch, _id: orderId }
-      if (options.admin && assigned.assignmentSource !== 'direct_auto_accept') await enqueueOrderNotification(transaction, order.clientOpenid, 'orderAssigned', assigned, { statusText: '已派单' })
-      else await enqueueOrderAccepted(transaction, assigned, maskStaffName(profile.realName))
-      if (options.admin) await enqueueStaffDirectOrder(transaction, assigned, 'assignment')
-      return assigned
+      const assignedMembers = []
+      for (const member of bundle) {
+        const assignmentPatch = { ...patch, assignmentNoticeRevision: Number(member.assignmentNoticeRevision || 0) + 1 }
+        await transaction.collection('orders').doc(member._id).update({ data: assignmentPatch })
+        const assigned = { ...member, ...assignmentPatch }
+        if (options.admin && assigned.assignmentSource !== 'direct_auto_accept') await enqueueOrderNotification(transaction, member.clientOpenid, 'orderAssigned', assigned, { statusText: '已派单' })
+        else await enqueueOrderAccepted(transaction, assigned, maskStaffName(profile.realName))
+        if (options.admin) await enqueueStaffDirectOrder(transaction, assigned, 'assignment')
+        assignedMembers.push(assigned)
+      }
+      return { ...assignedMembers.find(member => member._id === orderId), bundledCount: assignedMembers.length }
     })
     if (options.admin) await notifyStaffDirectOrder(assignedOrder, 'assignment')
     return assignedOrder

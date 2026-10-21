@@ -15,7 +15,7 @@
   <view class="privacy-note"><text class="remix-icon ri-shield-check-line"></text><text>邻居仅能看到服务时段和户数，楼栋、门牌及联系方式不会公开。优惠不可叠加优惠券。</text></view>
   <view wx:if="{{loadError}}" class="load-error"><text>拼单加载失败，请重试</text><button bindtap="load">重新加载</button></view>
   <view wx:if="{{loading && !rules}}" class="empty-card"><text class="remix-icon ri-loader-4-line empty-icon"></text><view>正在查找本小区拼单…</view></view>
-  <view class="section-heading"><view>我的拼单 <text class="section-count">{{myGroups.length}}</text></view><text class="section-hint">进度和订单都在这里</text></view>
+<view class="group-list-tabs"><button class="group-list-tab {{activeTab === 'mine' ? 'active' : ''}}" data-tab="mine" bindtap="switchTab">我的拼单 {{myGroups.length}}</button><button class="group-list-tab {{activeTab === 'neighbors' ? 'active' : ''}}" data-tab="neighbors" bindtap="switchTab">邻居正在拼 {{groups.length}}</button></view><block wx:if="{{activeTab === 'mine'}}">  <view class="section-heading"><view>我的拼单 <text class="section-count">{{myGroups.length}}</text></view><text class="section-hint">进度和订单都在这里</text></view>
   <view wx:if="{{!myGroups.length && !loading && !loadError}}" class="empty-card"><text class="remix-icon ri-file-list-3-line empty-icon"></text><view class="empty-title">还没有拼单订单</view><view>发起或参加后，可在这里查看成团进度</view></view>
   <view wx:for="{{myGroups}}" wx:key="id" class="group-card {{item.closed ? 'is-closed' : ''}}">
     <view class="card-heading"><text class="card-title">{{item.serviceSummary || '上门宠护'}}</text><text class="status-badge {{item.closed ? 'neutral' : item.status}}">{{item.ownStatusText}}</text></view>
@@ -26,7 +26,7 @@
     <view class="deadline-note" wx:elif="{{item.status === 'recruiting' && !item.closed}}">募集截止 {{item.deadlineText}} · 未成团或无人接单全额退款</view>
     <view class="card-footer"><view class="price-block"><block wx:if="{{item.priceText && !item.closed}}"><text class="price-label">{{item.priceLabel}}</text><text class="price-amount">¥{{item.priceText}}</text></block><text wx:else class="price-label">订单详情与服务进度</text></view><button class="card-action {{item.canPay ? 'action-primary' : ''}}" data-id="{{item.orderId}}" bindtap="detail">{{item.canPay ? '去付款' : '查看订单'}} <text class="remix-icon ri-arrow-right-s-line"></text></button></view>
   </view>
-  <view class="section-heading"><view>邻居正在拼 <text class="section-count">{{groups.length}}</text></view><text class="section-hint">相同时段，轻松参团</text></view>
+</block><block wx:else>  <view class="section-heading"><view>邻居正在拼 <text class="section-count">{{groups.length}}</text></view><text class="section-hint">相同时段，轻松参团</text></view>
   <view wx:if="{{!groups.length && !loading && !loadError}}" class="empty-card"><text class="remix-icon ri-building-line empty-icon"></text><view class="empty-title">暂时没有可加入的拼单</view><view>可以先发起，等邻居一起预约</view></view>
   <view wx:for="{{groups}}" wx:key="id" class="group-card">
     <view class="card-heading"><text class="card-title">{{item.serviceSummary || '上门宠护'}}</text><text class="status-badge {{item.status}}">{{item.statusText}}</text></view>
@@ -35,5 +35,5 @@
     <view class="progress-track"><view class="progress-fill" style="width: {{item.progress}}%;"></view></view>
     <view class="card-footer"><view class="deadline-note">募集截止<view>{{item.deadlineText}}</view></view><button wx:if="{{!item.mine}}" class="card-action action-primary" data-id="{{item.id}}" bindtap="join">加入拼单 <text class="remix-icon ri-arrow-right-s-line"></text></button><button wx:else class="card-action" data-id="{{item.orderId}}" bindtap="detail">已参加 · 查看订单</button></view>
   </view>
-  <view class="page-footnote">拼单地点固定为个人资料中设置的所属小区</view>
+</block>  <view class="page-footnote">拼单地点固定为个人资料中设置的所属小区</view>
 </view>

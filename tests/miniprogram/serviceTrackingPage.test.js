@@ -176,6 +176,66 @@ test('failed finish resumes the exact confirmed session without interactive auth
   assert.equal(h.errors.length, 1)
 })
 
+test('finishing one household clears its credentials and allows the next household to finish', async t => {
+  let finishes = 0
+  const members = [{ orderId: 'order', isCompleted: true, status: 'day_completed' },
+    { orderId: 'cancelled', status: 'cancelled' }, { orderId: 'next', status: 'in_service' }]
+  const h = setup(t, { cloud: async (action, data) => {
+    if (action === 'finishService') return ++finishes === 1 ? { partialGroupCompleted: true, status: 'day_completed' } : { allGroupCompleted: true, status: 'completed' }
+    if (action === 'getOrderDetail') return { ...order, _id: data.id, status: data.id === 'order' ? 'day_completed' : 'in_service', groupBuyBundle: { members } }
+    return []
+  } })
+  h.page.data.unlock = { code: 'previous-secret' }
+  await h.page._doFinish()
+  assert.equal(h.page.data.finishing, false)
+  assert.equal(h.page.data.unlock, null)
+  h.modals[0].success()
+  await tick()
+  assert.equal(h.page.data.id, 'next')
+  assert.equal(h.page.data.order._id, 'next')
+  await h.page._doFinish()
+  assert.equal(finishes, 2)
+  assert.equal(h.modals.at(-1).title, '拼单全部完成')
+})
+
+test('household switch clears private state and ignores old unlock and order responses', async t => {
+  const unlock = deferred(), previous = deferred(), next = deferred()
+  const members = [{ orderId: 'order', status: 'in_service' }, { orderId: 'next', status: 'assigned' }]
+  const h = setup(t, { cloud: (action, data) => {
+    if (action === 'getUnlockCode') return unlock.promise
+    if (action === 'getOrderDetail') return data.id === 'order' ? previous.promise : next.promise
+    return Promise.resolve([])
+  } })
+  Object.assign(h.page.data, { unlock: { code: 'old' }, keyReturnImageFileIds: ['old-photo'],
+    privacyCallInfo: { privacyNumber: 'old' }, sessionMessages: [{ content: 'old' }] })
+  h.page.data.order.groupBuyBundle = { members }
+  const unlocking = h.page.unlock(), loading = h.page.loadOrder()
+  const switching = h.page.switchHousehold({ detail: { orderId: 'next' } })
+  assert.equal(h.page.data.order, null)
+  assert.equal(h.page.data.unlock, null)
+  assert.equal(h.page.data.keyReturnImageFileIds.length, 0)
+  assert.equal(h.page.data.sessionMessages.length, 0)
+  assert.equal(h.page.data.privacyCallInfo, null)
+  unlock.resolve({ code: 'late-old-secret' })
+  previous.resolve({ ...order })
+  await Promise.all([unlocking, loading])
+  assert.equal(h.page.data.order, null)
+  assert.equal(h.page.data.unlock, null)
+  next.resolve({ ...order, _id: 'next', status: 'assigned' })
+  await switching
+  assert.equal(h.page.data.order._id, 'next')
+  assert.equal(h.calls.some(c => c[0] === 'stop'), false, 'view switches must keep global tracking intact')
+})
+
+test('household switch is blocked while a service operation is in flight', t => {
+  const h = setup(t)
+  h.page.data.order.groupBuyBundle = { members: [{ orderId: 'next', status: 'assigned' }] }
+  h.page.data.starting = true
+  h.page.switchHousehold({ detail: { orderId: 'next' } })
+  assert.equal(h.page.data.id, 'order')
+  assert.equal(h.calls.some(c => c[0] === 'getOrderDetail'), false)
+})
+
 for (const repeated of [false, true]) {
   test(`start immediately uses ${repeated ? 'getActiveService for an idempotent response' : 'server-confirmed session'} even if detail fails`, async t => {
     const h = setup(t, { cloud: async action => {

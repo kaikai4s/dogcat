@@ -1,5 +1,6 @@
 <wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="page order-detail-page {{themeClass}} {{fontClass}}" wx:if="{{order}}">
+  <group-households bundle="{{order.groupBuyBundle}}" current-id="{{id}}" />
   <view class="detail-hero">
     <view class="hero-badge"><text class="remix-icon ri-file-list-3-fill hero-icon"></text><text>订单详情</text></view>
     <view class="hero-title">{{order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
@@ -14,7 +15,14 @@
     <view class="summary-price">¥{{order.payAmount}}</view>
   </view>
 
-  <navigator wx:if="{{order.groupBuyId}}" class="summary-card" url="/pages/client/orders/group-buy/index"><view><view class="strong">同小区拼单 · {{order.groupBuyStatus === 'formed' ? '已成团' : '等待邻居成团'}}</view><view class="muted">{{order.groupBuyStatus === 'formed' ? '拼单已成团，等待宠托师接单' : '拼单特惠预付 · 拼团失败或无人接单全额原路退款'}}</view></view><text>我的拼单 ›</text></navigator>
+  <navigator wx:if="{{order.isGroupBuy}}" class="summary-card" url="/pages/client/orders/group-buy/index">
+    <view>
+      <view class="strong">同小区拼单 · {{order.groupBuyStatusText || order.statusText}}</view>
+      <view class="muted">{{order.groupBuyProgressText}}</view>
+      <view class="muted" wx:if="{{order.groupBuyStatus === 'recruiting' || order.groupBuyStatus === 'formed'}}">拼单特惠预付 · 拼团失败或无人接单全额原路退款</view>
+    </view>
+    <text>我的拼单 ›</text>
+  </navigator>
   <!-- 微信服务通知订阅授权栏（针对进行中的订单补充授权配额） -->
   <navigator class="subscribe-notice-banner" url="/pages/common/subscriptions/index?role=client">
     <view class="subscribe-banner-content"><text class="remix-icon ri-notification-3-line subscribe-icon"></text><text class="subscribe-text">管理订单、开门与退款通知</text></view>

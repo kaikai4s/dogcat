@@ -101,7 +101,7 @@ Page({
     mallSuppliesOpen: false,
     mallSuppliesLoading: false,
     mallSupplies: [],
-    groupBuyTab: 'sanitation',
+    groupBuyTab: 'sanitation', communityGroupListTab: 'mine',
     communityGroupBuy: null,
     communityGroupBuyLoading: false,
     rewardsOpen: false,
@@ -514,7 +514,7 @@ Page({
           if (this.world === world && !world.destroyed) {
             const updatedPlot = result.plot
             if (world.updatePlot) world.updatePlot(updatedPlot)
-            if (world.sharedPlots) world.sharedPlots.set(updatedPlot.id || updatedPlot._id, updatedPlot)
+            else if (world.sharedPlots) world.sharedPlots.set(updatedPlot.id || updatedPlot._id, updatedPlot)
             const targetPlotId = targetPlot.id || targetPlot._id
             const updatedEmptyPlots = (this.data.emptyPlots || []).map((p) => {
               if (p.id === targetPlotId || p._id === targetPlotId) {
@@ -574,7 +574,7 @@ Page({
         if (this.world === world && !world.destroyed) {
           const updatedPlot = result.plot
           if (world.updatePlot) world.updatePlot(updatedPlot)
-          if (world.sharedPlots) world.sharedPlots.set(updatedPlot.id || updatedPlot._id, updatedPlot)
+          else if (world.sharedPlots) world.sharedPlots.set(updatedPlot.id || updatedPlot._id, updatedPlot)
           const targetPlotId = targetPlot.id || targetPlot._id
           const updatedEmptyPlots = (this.data.emptyPlots || []).map((p) => {
             if (p.id === targetPlotId || p._id === targetPlotId) {
@@ -1104,7 +1104,7 @@ Page({
     const confirmed = await new Promise((resolve) =>
       wx.showModal({
         title: '向居委会反馈便便',
-        content: '发现未清理的便便，是否向社区居委会提交保洁提醒？有效反馈可获得会员积分，同一份便便只奖励一次。',
+        content: '发现未清理的便便，是否向社区居委会提交保洁提醒？每天首次有效反馈可获得会员积分，后续反馈仍可提交。',
         confirmText: '立即反馈',
         success: (r) => resolve(r.confirm),
         fail: () => resolve(false)
@@ -1203,14 +1203,19 @@ Page({
     })
   },
   async openBuild() {
+    const world = this.world
     this.setData({ buildOpen: true, buildLoading: true })
     try {
-      const result = await callFunction('playground', 'getBuildingCatalog')
+      const result = await callFunction('playground', 'getBuildingCatalog', { sceneId: world && world.scene && world.scene.sceneId })
+      if (world !== this.world || world && world.destroyed) return
+      if (world && world.updatePlot) {
+        for (const plot of result.buildablePlots || result.emptyPlots || []) world.updatePlot(plot)
+      }
       const buildings = (result.buildings || []).filter((b) => b.enabled !== false)
       const filtered = this.filterBuildCatalog(buildings, this.data.activeBuildCategory)
       const serverEmptyPlots = Array.isArray(result.emptyPlots) ? result.emptyPlots : []
       const localEmptyPlots = this.getAvailableEmptyPlots()
-      const finalEmptyPlots = serverEmptyPlots.length > 0 ? serverEmptyPlots : localEmptyPlots
+      const finalEmptyPlots = Array.isArray(result.emptyPlots) ? serverEmptyPlots : localEmptyPlots
       this.setData({
         buildingCatalog: buildings,
         filteredBuildingCatalog: filtered,
@@ -1365,7 +1370,7 @@ Page({
       wx.showToast({ title: result.message || '该建筑已拆除', icon: 'success' })
       if (this.world === world && !world.destroyed) {
         if (world.updatePlot) world.updatePlot(result.plot)
-        if (world.sharedPlots) world.sharedPlots.set(plotId, result.plot)
+        else if (world.sharedPlots) world.sharedPlots.set(plotId, result.plot)
         if (world.emitBuildingInfo) world.emitBuildingInfo()
         if (world.emitNearby) world.emitNearby()
         if (world.sceneSync && typeof world.sceneSync.snapshot === 'function') {
@@ -1711,6 +1716,10 @@ Page({
     if (tab === 'groupbuy' && !this.data.communityGroupBuy) {
       this.loadCommunityGroupBuy()
     }
+  },
+  switchCommunityGroupList(e) {
+    const tab = e.currentTarget.dataset.tab
+    if (['mine', 'neighbors'].includes(tab)) this.setData({ communityGroupListTab: tab })
   },
   async loadCommunityGroupBuy() {
     if (this.data.communityGroupBuyLoading) return

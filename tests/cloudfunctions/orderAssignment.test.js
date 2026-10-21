@@ -86,6 +86,18 @@ test('two staff competing for one order can only assign it once', async () => {
   assert.equal(db.state.orders[0].status, 'assigned')
 })
 
+test('group assignment reads every paid household beyond unpaid history and excludes failed joins', async () => {
+  const pending = Array.from({ length: 105 }, (_, i) => ({ ...order(`old_${String(i).padStart(3, '0')}`), groupBuyId: 'group', status: 'pending_pay', paymentStatus: 'unpaid' }))
+  const paid = ['z_a', 'z_b'].map(id => ({ ...order(id), groupBuyId: 'group', groupBuyStatus: 'formed' }))
+  const failed = { ...order('z_failed'), groupBuyId: 'group', groupBuyRefundRequired: true }
+  const { db, assign } = setup([...pending, ...paid, failed])
+  const result = await assign('z_a')
+  assert.equal(result.bundledCount, 2)
+  assert.ok(db.state.orders.filter(o => o._id === 'z_a' || o._id === 'z_b').every(o => o.staffOpenid === 'staff'))
+  assert.equal(failed.staffOpenid, '')
+  assert.equal(db.state.orders.filter(o => o.status === 'pending_pay').length, 105)
+})
+
 test('adjacent non-overlapping orders can both be assigned', async () => {
   const { db, assign } = setup([order('a'), order('b', '11:00', '12:00')])
   useOptimisticTransactions(db)
@@ -185,4 +197,40 @@ test('admin assignment checks every session of a multi-day order', async () => {
   assert.equal(response.ok, false)
   assert.match(response.message, /该时间段已有订单/)
   assert.equal(db.state.orders[1].status, 'paid')
+})
+
+test('admin assigns every paid household and excludes unpaid joins', async () => {
+  const group = { groupBuyId: 'group', groupBuyStatus: 'formed' }
+  const { db } = setup([{ ...order('a'), ...group }, { ...order('b'), ...group }, { ...order('pending'), ...group, status: 'pending_pay', paymentStatus: 'unpaid' }])
+  const api = loadCloudFunction('api', db, 'admin')
+  const response = await api.main({ module: 'admin', action: 'assignOrder', data: { orderId: 'a', staffProfileId: 'profile' } })
+  assert.equal(response.ok, true, response.message)
+  assert.deepEqual(db.state.orders.map(o => o.status), ['assigned', 'assigned', 'pending_pay'])
+  assert.ok(db.state.orders.slice(0, 2).every(o => o.staffOpenid === 'staff'))
+})
+
+test('a failure on a sibling rolls back the entire group assignment', async () => {
+  const group = { groupBuyId: 'group', groupBuyStatus: 'formed' }
+  const { db, assign } = setup([{ ...order('a'), ...group }, { ...order('b'), ...group }])
+  const run = db.runTransaction
+  db.runTransaction = callback => run(tx => callback({ collection(name) {
+    const collection = tx.collection(name)
+    const doc = collection.doc
+    collection.doc = id => {
+      const ref = doc(id)
+      return name === 'orders' && id === 'b' ? { ...ref, update: async () => { throw new Error('sibling write failed') } } : ref
+    }
+    return collection
+  } }))
+  await assert.rejects(assign('a'), /sibling write failed/)
+  assert.ok(db.state.orders.every(o => o.status === 'paid' && !o.staffOpenid))
+  assert.equal(db.state.users[0].staffAssignmentRevision, undefined)
+})
+
+test('competing staff on different households cannot split a group', async () => {
+  const group = { groupBuyId: 'group', groupBuyStatus: 'formed' }
+  const { db, assign } = setup([{ ...order('a'), ...group }, { ...order('b'), ...group }])
+  const results = await Promise.allSettled([assign('a'), assign('b', 'staff2')])
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)
+  assert.equal(new Set(db.state.orders.map(o => o.staffOpenid)).size, 1)
 })

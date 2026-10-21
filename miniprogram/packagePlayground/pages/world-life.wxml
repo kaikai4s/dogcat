@@ -98,18 +98,18 @@
           <view class="groupbuy-community-name">{{communityGroupBuy.communityName || "本人所属小区"}}</view><button wx:if="{{communityGroupBuy.communityId && communityGroupBuy.rules.enabled}}" class="groupbuy-order-btn" bindtap="startGroupBuyOrder">发起同小区拼单预约</button>
           <button class="groupbuy-order-btn groupbuy-secondary-btn" bindtap="openGroupBuys">查看我的拼单与邻居拼单</button>
         </view>
-        <view class="groupbuy-retry" wx:if="{{communityGroupBuyError}}"><text>拼单信息加载失败</text><button bindtap="loadCommunityGroupBuy">重试</button></view><view class="groupbuy-section-title">我的拼单</view>
+        <view class="groupbuy-retry" wx:if="{{communityGroupBuyError}}"><text>拼单信息加载失败</text><button bindtap="loadCommunityGroupBuy">重试</button></view><view class="group-list-tabs"><button class="group-list-tab {{communityGroupListTab === 'mine' ? 'active' : ''}}" data-tab="mine" bindtap="switchCommunityGroupList">我的拼单 {{communityGroupBuy.myGroups.length || 0}}</button><button class="group-list-tab {{communityGroupListTab === 'neighbors' ? 'active' : ''}}" data-tab="neighbors" bindtap="switchCommunityGroupList">邻居正在拼 {{communityGroupBuy.groups.length || 0}}</button></view><block wx:if="{{communityGroupListTab === 'mine'}}">
         <view wx:if="{{!communityGroupBuyLoading && !communityGroupBuyError && !communityGroupBuy.myGroups.length}}" class="dispute-empty">你发起和参加的拼单会显示在这里</view>
         <view class="manor-group-card" wx:for="{{communityGroupBuy.myGroups}}" wx:key="id"><view class="manor-group-head"><text>{{item.serviceSummary}}</text><text class="manor-group-badge {{item.closed ? 'is-closed' : ''}}">{{item.ownStatusText}}</text></view><view class="manor-group-time">{{item.timeText}} · {{item.sessionText}}</view><view class="manor-group-progress"><view style="width: {{item.progress}}%;"></view></view><view class="manor-group-bottom"><view><view>{{item.householdCount}} / {{item.minHouseholds}} 户 · {{item.progressText}}</view><view wx:if="{{item.canPay}}" class="manor-payment-time">付款截止 {{item.paymentDeadlineText}}</view></view><button data-id="{{item.orderId}}" bindtap="goToOrderDetail">{{item.canPay ? '去付款' : '我的订单'}}</button></view></view>
-        <view class="groupbuy-section-title">邻居正在拼</view>
+</block><block wx:else>
         <view wx:if="{{!communityGroupBuyLoading && !communityGroupBuyError && !communityGroupBuy.groups.length}}" class="dispute-empty">暂无可加入的本小区拼单</view>
         <view class="manor-group-card" wx:for="{{communityGroupBuy.groups}}" wx:key="id"><view class="manor-group-head"><text>{{item.serviceSummary}}</text><text class="manor-group-badge">{{item.statusText}}</text></view><view class="manor-group-time">{{item.timeText}} · {{item.householdCount}} / {{item.minHouseholds}} 户</view><view class="manor-group-bottom"><text>募集截止 {{item.deadlineText}}</text><button wx:if="{{!item.mine}}" data-id="{{item.id}}" bindtap="joinGroupBuy">加入拼单</button><text wx:else>已参加</text></view></view>
-        <view class="groupbuy-section-title">本小区宠托师</view>
+</block>        <view class="groupbuy-section-title">本小区宠托师</view>
         <view class="groupbuy-sitters-list">
           <view wx:if="{{communityGroupBuyLoading}}" class="dispute-empty">正在加载本小区拼单与宠托师…</view>
           <view wx:elif="{{!communityGroupBuy || !communityGroupBuy.sitters || !communityGroupBuy.sitters.length}}" class="dispute-empty">本小区暂无可展示的认证宠托师</view>
-          <view wx:for="{{communityGroupBuy.sitters}}" wx:key="id" class="sitter-card">
-            <image wx:if="{{item.avatarUrl}}" class="sitter-avatar" src="{{item.avatarUrl}}" mode="aspectFill" lazy-load />
+          <view wx:for="{{communityGroupBuy.sitters}}" wx:key="id" class="sitter-card manor-sitter-card">
+            <view class="sitter-card-main"><image wx:if="{{item.avatarUrl}}" class="sitter-avatar" src="{{item.avatarUrl}}" mode="aspectFill" lazy-load />
             <view wx:else class="sitter-avatar-placeholder">🐾</view>
             <view class="sitter-info">
               <view class="sitter-name-row">
@@ -121,7 +121,7 @@
                 <text wx:for="{{item.specialties}}" wx:for-item="tag" wx:key="*this" class="sitter-tag">{{tag}}</text>
               </view>
             </view>
-            <view class="sitter-action-col">
+            </view><view class="sitter-action-col">
               <button class="book-sitter-btn" data-id="{{item.id}}" bindtap="bookSitterAction">指定TA预约</button>
               <text class="view-sitter-link" data-id="{{item.id}}" bindtap="viewSitterDetail">查看名片</text>
             </view>
@@ -136,7 +136,7 @@
     <view class="settings-heading">
       <view>
         <text class="panel-main-title">🛠 社区工坊 · 建筑规划</text>
-        <text class="settings-tip">在名下空余专属绿地内落座建造，自家庭院别墅完好保留</text>
+        <text class="settings-tip">公共设施每块专属绿地限一个；其他建筑可在自家庭院或专属绿地重复建造</text>
       </view>
       <button bindtap="closeBuild">完成</button>
     </view>
@@ -172,7 +172,7 @@
       <view class="empty-plots-tip-bar" wx:if="{{selectedBuilding}}">
         <text class="tip-icon">🏡</text>
         <text class="tip-text" wx:if="{{selectedBuilding.category === 'public' || selectedBuilding.type === 'committee' || selectedBuilding.type === 'police_station' || selectedBuilding.type === 'prison' || selectedBuilding.type === 'pet_hospital' || selectedBuilding.type === 'repair_shop'}}">公共配套大设施一地仅限一个 · 须在专属绿地设立</text>
-        <text class="tip-text" wx:else>非公共设施可在自家庭院或专属绿地中自由选址建造</text>
+        <text class="tip-text" wx:else>可重复新建多个 · 在自家庭院或专属绿地草坪中选址</text>
       </view>
       <view class="build-actions" wx:if="{{selectedBuilding}}">
         <button class="build-in-yard-btn" bindtap="buildInYardAction" disabled="{{buildBusy || !selectedBuilding.unlocked}}">轻触场景自由指定建造位置</button>

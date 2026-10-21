@@ -92,6 +92,52 @@ test('building previews keep the home visible in both scene and overview renderi
   assert.deepEqual(rendered, [])
 })
 
+test('starting construction from the map restores a usable courtyard view and clears old previews', async () => {
+  const w = create()
+  const home = { id: 'home_focus', x: 400, z: 400, size: 112, mine: true, buildingType: 'residential' }
+  w.ownPlot = home
+  w.zoom = w.minimumZoom()
+  w.manualZoom = true
+  w.candidate = { x: 900, z: 900, size: 48 }
+  assert.equal(w.isMapOverview(), true)
+  w.beginBuildingPlacement({ id: 'tree_template', type: 'tree', name: '树', width: 7, depth: 7 })
+  assert.equal(w.isMapOverview(), false)
+  assert.equal(w.candidate, null)
+  assert.deepEqual(w.camera, { x: home.x, z: home.z })
+  await w.pickPlot({ x: 430, z: 430 })
+  assert.equal(w.candidate.targetPlot.id, home.id)
+  assert.equal(w.candidate.valid, true)
+})
+
+test('building placement rejects a neighbor when public plot records have no _id', async () => {
+  const w = create()
+  w.ownPlot = { id: 'home_mine', mine: true, x: 400, z: 400, size: 48, buildingType: 'residential' }
+  const neighbor = { id: 'home_neighbor', mine: false, x: 600, z: 600, size: 48, buildingType: 'residential' }
+  w.sharedPlots.set(neighbor.id, neighbor)
+  w.beginBuildingPlacement({ id: 'tree_template', type: 'tree', name: '树', width: 7, depth: 7 })
+  await w.pickPlot({ x: 616, z: 616 })
+  assert.equal(w.candidate.valid, false)
+  assert.equal(w.candidate.targetPlot, null)
+})
+
+test('older plot sync cannot erase newly built trees or restore an individually removed tree', async () => {
+  const w = create()
+  const first = { instanceId: 'first_tree', buildingId: 'tree', type: 'tree', width: 7, depth: 7, x: 416, z: 416 }
+  const second = { ...first, instanceId: 'second_tree', x: 384, z: 384 }
+  const home = { id: 'home_sync', kind: 'plot', mine: true, x: 400, z: 400, size: 48, buildingType: 'residential', foodBowls: { dog: 0 }, buildings: [first], revision: 10 }
+  w.ownPlot = home
+  w.updatePlot({ ...home, buildings: [first, second], revision: 20 })
+  await w.applySceneRecords([{ ...home, version: { epoch: 10, seq: 0 } }])
+  assert.equal(w.ownPlot.buildings.length, 2)
+  w.updatePlot({ ...home, buildings: [second], revision: 30 })
+  await w.applySceneChanges([{ ...home, revision: 20, buildings: [first, second] }])
+  assert.deepEqual(w.ownPlot.buildings.map((b) => b.instanceId), ['second_tree'])
+  await w.applySceneChanges([{ ...home, revision: 25, deleted: true }])
+  assert.equal(w.ownPlot.id, home.id)
+  await w.applySceneChanges([{ ...home, revision: 40, deleted: true }])
+  assert.equal(w.ownPlot, null)
+})
+
 test('unclaimed scene stays empty and projection round-trips a large world', () => {
   const w = create()
   w.buildWorld()

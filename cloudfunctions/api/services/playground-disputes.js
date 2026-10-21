@@ -25,7 +25,11 @@ module.exports=function createDisputesService(context) {
     if(typeof context.addPoints!=='function')throw new Error('会员积分服务不可用，请稍后重试')
     const target=(await tx.collection('users').where({openid}).limit(1).get()).data[0]
     if(!target||target.status==='deleted')throw new Error('积分接收用户不存在')
-    const result=await context.addPoints(openid,target._id,amount,type,id,reason,{transaction:tx,baseDelta:amount,idempotencyKey:type+'_'+id})
+    const day = require('../utils/time').toCstParts(new Date(now())).dateKey
+    // Honor rewards issued before the daily key was introduced as well.
+    const recent = (await tx.collection('point_logs').where({ openid, sourceType: type }).orderBy('createdAt','desc').limit(100).get()).data || []
+    if (recent.some(log => Number(log.delta) > 0 && require('../utils/time').toCstParts(log.createdAt).dateKey === day)) return { delta: 0, duplicate: true }
+    const result=await context.addPoints(openid,target._id,amount,type,id+'_'+day,reason,{transaction:tx,baseDelta:amount,idempotencyKey:type+'_'+day})
     return {...result,delta:result.duplicate?0:result.delta}
   }
   async function reportPoop(openid,user,data) {
@@ -54,7 +58,7 @@ module.exports=function createDisputesService(context) {
         reporterName:String(user.nickname||'邻居').slice(0,20),suspectOpenid:resident.ownerOpenid,suspectName:resident.name||'宠物主人',petName:pet.name||'宠物',
         status:'pending',createdAt:stamp,deadline:stamp+DEADLINE,reportPoints:reward.delta,committeeReward:settings.resolveReward||0,message:'宠物便便待清理'}
       await tx.collection(DISPUTES).doc(disputeId).set({data:dispute})
-      return {reported:true,disputeId,pointsReceived:reward.delta,message:'反馈已提交，获得 '+reward.delta+' 会员积分'}
+      return {reported:true,disputeId,pointsReceived:reward.delta,message:reward.delta?'反馈已提交，获得 '+reward.delta+' 会员积分':'反馈已提交；本类行为每天仅首次有效操作奖励积分'}
     })
   }
   async function listDisputes(openid,data) {
@@ -115,7 +119,7 @@ module.exports=function createDisputesService(context) {
           await tx.collection(COLLECTION).doc(_id).set({data:value});record=row
         }
       }
-      return {record,resolved:true,rewardReceived:reward.delta,message:'处理完成，获得 '+reward.delta+' 会员积分'}
+      return {record,resolved:true,rewardReceived:reward.delta,message:reward.delta?'处理完成，获得 '+reward.delta+' 会员积分':'处理完成；本类行为每天仅首次有效操作奖励积分'}
     })
   }
   async function claimWeeklySalary(openid,data) {

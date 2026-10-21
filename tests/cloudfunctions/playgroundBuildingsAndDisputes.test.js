@@ -64,6 +64,50 @@ test('concurrent tree construction retries are idempotent while distinct trees a
   await assert.rejects(() => handler('a', 'buildInYard', { ...data, buildingX: 600 }), /重复|冲突|不一致|不同|已存在/)
 })
 
+test('loading and migrating a courtyard during construction cannot overwrite its new tree', async () => {
+  const f = fixture()
+  await f.build('a')
+  const owner = await f.plots.own('a'), homeId = owner.plotId
+  const stored = f.row(homeId)
+  delete stored.buildings
+  Object.assign(stored, { buildingId: 'tree_cherry_blossom_default', buildingType: 'tree', buildingCategory: 'tree',
+    buildingName: '原有树', buildingWidth: 7, buildingDepth: 7, buildingX: stored.x + 16, buildingZ: stored.z + 16 })
+  let release, captured
+  const readStarted = new Promise((resolve) => { captured = resolve })
+  const proceed = new Promise((resolve) => { release = resolve })
+  let held = false
+  const wrapCollection = (collection) => (name) => {
+    const query = collection(name), get = query.get.bind(query)
+    query.get = async () => {
+      const result = await get()
+      if (!held && name === 'pet_playground_plots' && query._where && query._where.ownerOpenid === 'a') {
+        held = true
+        const snapshot = structuredClone(result)
+        captured()
+        await proceed
+        return snapshot
+      }
+      return result
+    }
+    return query
+  }
+  f.db.collection = wrapCollection(f.db.collection)
+  const runTransaction = f.db.runTransaction
+  f.db.runTransaction = (callback) => runTransaction((tx) => callback({ ...tx, collection: wrapCollection(tx.collection) }))
+  const loading = f.plots.own('a')
+  await readStarted
+  const building = f.plots.buildInYard('a', f.user('a'), { plotId: homeId, buildingId: 'tree_cherry_blossom_default',
+    buildingInstanceId: 'new_tree_during_load', buildingX: stored.x - 16, buildingZ: stored.z - 16 })
+  await new Promise((resolve) => setImmediate(resolve))
+  release()
+  await Promise.all([loading, building])
+  const reentered = await f.plots.own('a')
+  assert.equal(reentered.buildingType, 'residential')
+  assert.equal(reentered.buildings.length, 2)
+  assert.ok(reentered.buildings.some((b) => b.name === '原有树'))
+  assert.ok(reentered.buildings.some((b) => b.instanceId === 'new_tree_during_load'))
+})
+
 test('one public facility coexists with ordinary instances without losing public service identity', async () => {
   const f = fixture()
   await f.build('a')
@@ -87,6 +131,39 @@ test('one public facility coexists with ordinary instances without losing public
   assert.equal(removed.plot.buildings.length, 2)
   assert.equal(f.row(plot.id).committeeStartedAt, f.now())
   assert.ok(publicResult.plot.buildings.some((b) => b.instanceId === 'garden_committee'))
+})
+
+test('building catalog returns complete owned plots including the home and occupied gardens', async () => {
+  const f = fixture()
+  await f.build('a')
+  const home = await f.plots.own('a')
+  const yard = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 600, z: 600, size: 48 })
+  await f.plots.buildInYard('a', f.user('a'), { plotId: yard.id, buildingId: 'repair_shop_default' })
+  const empty = await f.plots.claim('a', f.user('a'), { isNewPlot: true, x: 800, z: 600, size: 48 })
+  const handler = require('../../cloudfunctions/api/handlers/playground')(f.context)
+  const catalog = await handler('a', 'getBuildingCatalog', { sceneId: home.communityId })
+  assert.deepEqual(new Set(catalog.buildablePlots.map((p) => p.id)), new Set([home.plotId, yard.id, empty.id]))
+  assert.deepEqual(catalog.emptyPlots.map((p) => p.id), [empty.id])
+  assert.ok(catalog.emptyPlots.every((p) => p.mine && p.isNewPlot && p.revision > 0))
+  assert.ok(catalog.buildablePlots.every((p) => Array.isArray(p.buildings)))
+  const elsewhere = await handler('a', 'getBuildingCatalog', { sceneId: 'different_scene' })
+  assert.equal(elsewhere.buildablePlots.length, 0)
+})
+
+test('ordinary residential instances can be added, moved and removed without touching the villa', async () => {
+  const f = fixture()
+  await f.build('a')
+  const home = await f.plots.own('a')
+  const service = createBuildingsService(f.context)
+  await service.save('admin', { revision: 0, building: { id: 'custom_house', name: '庭院小屋', type: 'residential', category: 'residential', width: 7, depth: 7 } })
+  for (const offset of [-30, 30]) await f.plots.buildInYard('a', f.user('a'), { plotId: home.plotId, buildingId: 'custom_house', buildingX: home.x + offset, buildingZ: home.z + 30 })
+  const built = await f.plots.own('a')
+  const target = built.buildings[0]
+  await f.plots.relocateBuilding('a', f.user('a'), { plotId: home.plotId, buildingInstanceId: target.instanceId, buildingX: home.x - 30, buildingZ: home.z - 30 })
+  const result = await f.plots.dismantleBuilding('a', f.user('a'), { plotId: home.plotId, buildingInstanceId: target.instanceId })
+  assert.equal(result.plot.buildingType, 'residential')
+  assert.equal(result.plot.buildings.length, 1)
+  assert.notEqual(result.plot.buildings[0].instanceId, target.instanceId)
 })
 
 test('catalog updates and deletion affect matching instances only, including non-primary trees', async () => {
@@ -311,6 +388,33 @@ test('reports reject fabricated, own, far, car-stain and cross-scene waste with 
   await assert.rejects(()=>handler('b','reportPoop',{...f.auth(b),poopId:event.id}),/消失/)
   await assert.rejects(()=>handler('b','listDisputes',{sceneId:a.sceneId}),/场景已切换/)
   assert.equal((f.db.state.point_logs||[]).length,0)
+})
+
+test('different poop reports and resolutions award once per Beijing day and resume at midnight',async()=>{
+  const {f,a,b,handler}=await committeeFixture()
+  const midnight = Date.parse(require('../../cloudfunctions/api/utils/time').toCstParts(f.now()).dateKey+'T23:59:59+08:00')
+  f.advance(midnight-f.now())
+  for (let i=0;i<3;i++) {
+    if(i===1) f.advance(1)
+    if(i===2) f.advance(999)
+    const event=waste(f)
+    const report=await handler('b','reportPoop',{...f.auth(b),poopId:event.id})
+    assert.equal(report.pointsReceived,i===1?0:5)
+    const resolution=await handler('a','resolveDispute',{...f.auth(a),disputeId:report.disputeId})
+    assert.equal(resolution.rewardReceived,i===1?0:10)
+  }
+  assert.equal(pointUser(f,'b').points,10)
+  assert.equal(pointUser(f,'a').points,20)
+  assert.equal(f.db.state.pet_playground_disputes.length,3)
+})
+
+test('legacy rewards issued today also consume the daily allowance',async()=>{
+  const {f,b,handler}=await committeeFixture(),event=waste(f)
+  await f.db.collection('point_logs').doc('legacy').set({data:{openid:'b',sourceType:'playground_report',sourceId:'old-dispute',delta:5,createdAt:new Date(f.now()).toISOString()}})
+  const report=await handler('b','reportPoop',{...f.auth(b),poopId:event.id})
+  assert.equal(report.reported,true)
+  assert.equal(report.pointsReceived,0)
+  assert.equal(f.db.state.point_logs.length,1)
 })
 
 test('weekly membership rewards require actual recent work and seven days, concurrent claims pay once',async()=>{

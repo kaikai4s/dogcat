@@ -17,11 +17,14 @@ function fixture(){
   const sessions=[{date:'2026-10-21',startTime:'2026-10-21 10:00',endTime:'2026-10-21 10:30'}]
   const pricing={amount:100,sessions,priceSnapshot:{services:[{key:'visit_fee',price:20},{key:'feed',price:80}]}}
   const data=(who,extra={})=>({source:'community_groupbuy',communityId:id,serviceAddress:community.name,addressDetail:'楼栋'+who,doorplate:'101',...extra})
-  async function submit(who,extra={},request=who){
+  async function submit(who,extra={},request=who,pay=true){
     const prepared=await groups.prepare(who,data(who,extra),pricing)
-    return settlement.createOrderWithCouponLock({collectionName:'orders',openid:who,couponId:'',order:{clientOpenid:who,clientRequestId:request,amount:100,payAmount:100,priceSnapshot:pricing.priceSnapshot,serviceSessions:sessions,startTime:sessions[0].startTime,endTime:sessions[0].endTime,serviceSummary:'喂养',status:'pending_pay',paymentStatus:'unpaid'},prepareOrder:(tx,order,id)=>groups.attach(tx,order,id,prepared)})
+    const result = await settlement.createOrderWithCouponLock({collectionName:'orders',openid:who,couponId:'',order:{clientOpenid:who,clientRequestId:request,amount:100,payAmount:100,priceSnapshot:pricing.priceSnapshot,serviceSessions:sessions,startTime:sessions[0].startTime,endTime:sessions[0].endTime,serviceSummary:'喂养',status:'pending_pay',paymentStatus:'unpaid'},prepareOrder:(tx,order,id)=>groups.attach(tx,order,id,prepared)})
+    if (pay && result.created) result.order = await payOrder(result.order)
+    return result
   }
-  return {db,context,groups,submit,data,pricing,advance:(ms)=>stamp+=ms}
+  async function payOrder(order) { const stored=db.state.orders.find(o=>o._id===order._id);stored.status='paid';stored.paymentStatus='paid';stored.paidAt=new Date(stamp);return groups.onOrderPaid(order._id) }
+  return {db,context,groups,submit,payOrder,data,pricing,advance:(ms)=>stamp+=ms}
 }
 test('group orders attach atomically, form by distinct households, freeze cent pricing and retain private member identities',async()=>{
   const f=fixture(),first=await f.submit('a'),id=first.order.groupBuyId
@@ -38,7 +41,7 @@ test('group orders attach atomically, form by distinct households, freeze cent p
   assert.equal((await f.submit('a',{},'a')).created,false)
   await assert.rejects(f.submit('a',{groupBuyId:id},'again'),/每户/)
   const second=await f.submit('b',{groupBuyId:id})
-  assert.equal(second.order.groupBuyStatus,'recruiting')
+  assert.equal(second.order.groupBuyStatus,'formed')
   assert.equal(second.order.payAmount,70.4)
   
   // 双方付款后成团
@@ -105,7 +108,7 @@ test('real order quote and create routes carry group context, enforce local coor
   assert.equal(quote.data.groupBuy.rules.minHouseholds,2)
   const first=await apiA.main({module:'order',action:'createOrder',data:{...data,clientRequestId:'first-group'}})
   assert.equal(first.ok,true,first.message)
-  assert.equal(first.data.groupBuyStatus,'recruiting')
+  assert.equal(first.data.groupBuyStatus,'pending_payment')
   assert.equal(first.data.addressLatitude,community.latitude)
   assert.ok(first.data.payAmount < first.data.amount)
   // A 立即支付拼单特惠价
@@ -116,7 +119,7 @@ test('real order quote and create routes carry group context, enforce local coor
 
   const second=await apiB.main({module:'order',action:'createOrder',data:{...data,petIds:['p_b'],addressDetail:'2栋',groupBuyId:first.data.groupBuyId,clientRequestId:'join-group'}})
   assert.equal(second.ok,true,second.message)
-  assert.equal(second.data.groupBuyStatus,'recruiting')
+  assert.equal(second.data.groupBuyStatus,'pending_payment')
   assert.ok(second.data.payAmount<second.data.amount)
 
   // B 支付拼单特惠价，凑齐2户已付款，正式触发成团！
@@ -132,20 +135,109 @@ test('real order quote and create routes carry group context, enforce local coor
   assert.equal(listing.data.myGroups[0].householdCount,2)
 })
 
-test('payment-expired members stop counting immediately while cancelled own orders remain discoverable',async()=>{
-  const f=fixture(),first=await f.submit('a'),id=first.order.groupBuyId
-  await f.submit('b',{groupBuyId:id})
+test('unpaid orders stay private, unpaid joins never count and timed out joins do not affect paid members',async()=>{
+  const f=fixture(), first=await f.submit('a',{},'a',false), id=first.order.groupBuyId
+  assert.equal(first.order.groupBuyStatus,'pending_payment')
+  assert.equal((await f.groups.list('a')).myGroups.length,0)
+  assert.equal((await f.groups.list('b')).groups.length,0)
+  assert.equal((f.db.state.pet_playground_groups||[]).length,0)
+  await f.payOrder(first.order)
+  const pending=await f.submit('b',{groupBuyId:id},'b',false)
+  assert.equal((await f.groups.list('b')).myGroups.length,0)
+  assert.equal((await f.groups.list('c')).groups[0].householdCount,1)
   f.advance(31*60000)
-  let listing=await f.groups.list('a')
-  assert.equal(listing.groups[0].householdCount,0)
-  assert.equal(listing.myGroups[0].paymentExpired,true)
-  assert.equal(listing.myGroups[0].mine,false)
-  f.db.state.orders[0].status='cancelled'
+  assert.equal((await f.groups.list('a')).myGroups[0].householdCount,1)
+  f.db.state.orders.find(o=>o._id===pending.order._id).status='cancelled'
   await f.submit('c',{groupBuyId:id})
-  listing=await f.groups.list('a')
-  assert.equal(listing.groups[0].householdCount,1)
-  assert.equal(listing.myGroups[0].orderId,first.order._id)
-  assert.equal(listing.myGroups[0].orderStatus,'cancelled')
+  assert.equal((await f.groups.list('a')).myGroups[0].householdCount,2)
+  assert.equal((await f.groups.list('a')).groups.length,0)
+})
+
+test('replayed paid callbacks are idempotent and cancelled groups cannot revive',async()=>{
+  const f=fixture(), first=await f.submit('a'), id=first.order.groupBuyId
+  await Promise.all([f.groups.onOrderPaid(first.order._id),f.groups.onOrderPaid(first.order._id)])
+  assert.equal(f.db.state.pet_playground_groups[0].members.length,1)
+  f.db.state.pet_playground_groups[0].status='cancelled'
+  await f.groups.onOrderPaid(first.order._id)
+  assert.equal(f.db.state.pet_playground_groups[0].status,'cancelled')
+  assert.equal(f.db.state.orders[0].groupBuyRefundRequired,true)
+  assert.equal((await f.groups.list('b')).groups.length,0)
+})
+
+test('late payments never publish a group and refund submission is retried by the scheduled sweep',async()=>{
+  const f=fixture(), first=await f.submit('a',{},'late',false)
+  f.advance(13*3600000)
+  const paid=await f.payOrder(first.order)
+  assert.equal(paid.groupBuyRefundRequired,true)
+  assert.equal(paid.groupBuyStatus,'cancelled')
+  assert.equal((f.db.state.pet_playground_groups||[]).length,0)
+  assert.equal((await f.groups.list('b')).groups.length,0)
+  const refunds=[]
+  f.context.createRefundForOrder=async(...args)=>{ refunds.push(args);f.db.state.orders[0].paymentStatus='refunding' }
+  await f.groups.expireDueGroupBuys()
+  await f.groups.expireDueGroupBuys()
+  assert.equal(refunds.length,1)
+  assert.equal(refunds[0][1],70.4)
+  assert.equal(refunds[0][5],'groupbuy_fail_'+first.order._id)
+})
+
+test('household roster includes every paid pet and excludes sibling credentials and unpaid joins',async()=>{
+  const f=fixture(), first=await f.submit('a'), second=await f.submit('b',{groupBuyId:first.order.groupBuyId})
+  await f.submit('c',{groupBuyId:first.order.groupBuyId},'c',false)
+  f.db.state.orders.push({...second.order,_id:'late_failed_join',clientOpenid:'late',groupBuyActivationFailed:true,groupBuyRefundRequired:true,groupBuyStatus:'cancelled',paymentStatus:'paid'})
+  Object.assign(f.db.state.orders.find(o=>o._id===second.order._id),{
+    clientSnapshot:{nickname:'邻居用户',phone:'13912345678'},doorplate:'私密门牌',orderHomeSecurity:{code:'secret'},
+    petSnapshots:[{name:'小猫',species:'cat',avatarFileId:'photo',healthNotes:'注意事项'},{name:'小狗',species:'dog'}]
+  })
+  const view=require('../../cloudfunctions/api/services/order-group-buy-view')(f.context)
+  const detail=await view.attach(f.db.state.orders[0])
+  assert.equal(detail.groupBuyBundle.members.length,2)
+  const sibling=detail.groupBuyBundle.members.find(m=>m.orderId===second.order._id)
+  assert.deepEqual(sibling.petSnapshots.map(p=>p.name),['小猫','小狗'])
+  assert.equal(sibling.clientName,'邻**')
+  assert.equal(sibling.doorplate,undefined)
+  assert.equal(sibling.orderHomeSecurity,undefined)
+  assert.equal(sibling.clientSnapshot,undefined)
+  assert.equal(detail.groupBuyIntent,undefined)
+  const publicDetail=await view.attach(f.db.state.orders[0],{publicView:true})
+  assert.equal(publicDetail.groupBuyBundle.members[1].petSnapshots[0].avatarFileId,undefined)
+  assert.equal(publicDetail.groupBuyBundle.members[1].petSnapshots[0].healthNotes,undefined)
+})
+
+test('expired group refunds survive a failed submission and keep the same refund request on retry', async()=>{
+  const f=fixture(),first=await f.submit('a'),calls=[]
+  let fail=true
+  f.context.createRefundForOrder=async(...args)=>{
+    calls.push(args)
+    if(fail) throw new Error('temporary refund outage')
+    f.db.state.orders.find(o=>o._id===args[0]._id).paymentStatus='refunding'
+  }
+  f.advance(13*3600000)
+  await f.groups.expireDueGroupBuys()
+  const expired=f.db.state.orders.find(o=>o._id===first.order._id)
+  assert.equal(expired.status,'expired')
+  assert.equal(expired.groupBuyRefundRequired,true)
+  assert.equal(expired.paymentStatus,'paid')
+  fail=false
+  await f.groups.expireDueGroupBuys()
+  await f.groups.expireDueGroupBuys()
+  assert.equal(calls.length,2)
+  assert.equal(calls[0][2],calls[1][2],'idempotent retries must preserve the refund reason')
+  assert.equal(calls[0][5],calls[1][5])
+  assert.equal(expired.paymentStatus,'refunding')
+  const history=await require('../../cloudfunctions/api/services/order-group-buy-view')(f.context).attach(expired)
+  assert.equal(history.groupBuyBundle.members.length,1,'refunds retain households that really joined')
+})
+
+test('expired recruiting groups are processed beyond a hundred formed groups',async()=>{
+  const f=fixture(),first=await f.submit('a'),calls=[]
+  const group=f.db.state.pet_playground_groups[0]
+  for(let i=0;i<105;i++) f.db.state.pet_playground_groups.push({...group,_id:'aa_history_'+String(i).padStart(3,'0'),formedAt:1,status:'formed'})
+  f.context.createRefundForOrder=async(order)=>{calls.push(order._id);f.db.state.orders.find(o=>o._id===order._id).paymentStatus='refunding'}
+  f.advance(13*3600000)
+  await f.groups.expireDueGroupBuys()
+  assert.deepEqual(calls,[first.order._id])
+  assert.equal(f.db.state.pet_playground_groups.find(g=>g._id===first.order.groupBuyId).status,'cancelled')
 })
 
 test('when the last member of a group buy cancels, the group is immediately cancelled and delisted from community',async()=>{
@@ -482,6 +574,12 @@ test('同小区拼单任务包: 抢单大厅聚合成单条展示且详情支持
   assert.equal(bundle.isGroupBuyBundle, true)
   assert.equal(bundle.householdCount, 2)
   assert.equal(bundle.subOrders.length, 2)
+
+  await db.collection('orders').doc('ord_agg_2').update({ data: { staffGenderRequirement: 'female' } })
+  const incompatible = await staffApi.main({ module: 'staff', action: 'listNearbyOrders', data: { latitude: 31.2, longitude: 121.4 } })
+  assert.equal(incompatible.ok, true, incompatible.message)
+  assert.equal(incompatible.data.length, 0, 'one incompatible household must hide the complete package, never show one household')
+  await db.collection('orders').doc('ord_agg_2').update({ data: { staffGenderRequirement: 'any' } })
 
   // 2. 宠托师接单
   const acceptRes = await staffApi.main({

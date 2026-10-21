@@ -96,6 +96,19 @@ test('同小区拼单浮窗: 界面元素与不挤占正文样式校验', () => 
   assert.match(wxss, /backdrop-filter:\s*blur/)
 })
 
+test('home hides formed groups and unpaid intents even when stale counts remain', async () => {
+  const notice = { availableCount: 8, groups: [{ id: 'formed', status: 'formed', householdCount: 2 }], myGroups: [
+    { id: 'formed', status: 'formed', householdCount: 2 },
+    { id: 'unpaid', status: 'recruiting', householdCount: 1, orderStatus: 'pending_pay' }
+  ] }
+  const { page } = pageAt('pages/client/home/index.js', { getCurrentUser: async () => ({ openid: 'u1' }), callFunction: async () => notice })
+  page._isPageActive = true
+  await page.loadCommunityGroups()
+  assert.equal(page.data.showCommunityGroupNotice, false)
+  assert.equal(page.data.groupNoticeCards.length, 0)
+  assert.equal(page.data.communityGroupNotice.myGroups.length, 0)
+})
+
 test('同小区拼单浮窗: 点击取消图标能够关闭本次显示', async () => {
   const mockNotice = { communityName: '翠湖花园', availableCount: 2, myGroups: [] }
   const { page } = pageAt('pages/client/home/index.js', {

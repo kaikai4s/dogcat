@@ -95,6 +95,7 @@ function publicPlot(plot, openid) {
     nameColor: plot.nameColor || '',
     ownerId: 'presence_' + hash(plot.ownerOpenid),
     instanceId: plot.instanceId || plot.createdAt || '',
+    revision: plot.revision || Date.parse(plot.updatedAt || plot.createdAt) || 0,
     gateDirection: plot.gateDirection || 'south',
     name: plot.name || '邻居庭院',
     buildings: placedBuildings(plot),
@@ -199,7 +200,9 @@ module.exports = {
       return plot
     }
     async function own(openid) {
-      const plot = await resolveOwnerPlot(db, openid)
+      // Legacy normalization writes the whole canonical plot and owner mapping.
+      // Serialize it with construction so a stale read cannot remove attachments.
+      const plot = await transaction(db, (tx) => resolveOwnerPlot(tx, openid))
       return plot ? ensureNameColor(plot) : null
     }
     async function ensureNameColor(plot) {
@@ -576,7 +579,8 @@ module.exports = {
       if (!instanceId && buildings.length > 1) throw new Error('该地皮有多个建筑，请提供建筑实例编号')
       const target = instanceId ? buildings.find((b) => b.instanceId === instanceId) : buildings[0]
       if (!target) throw new Error('该地皮不存在指定建筑实例')
-      if (target.type === 'residential' && !plot.isNewPlot) throw new Error('主住宅不可单独移动或拆除')
+      // The original villa is not a placed instance. An explicit residential
+      // attachment belongs to the catalog and can be managed like any cabin.
       return target
     }
     function protectFarmBeds(previous, updated) {

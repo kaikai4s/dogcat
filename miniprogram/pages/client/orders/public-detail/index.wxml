@@ -1,5 +1,6 @@
 <wxs module="beijingTime" src="../../../../utils/beijing-time.wxs" />
 <view class="public-detail-page {{themeClass}} {{fontClass}} page" wx:if="{{detail}}">
+  <group-households bundle="{{detail.groupBuyBundle}}" current-id="{{id}}" />
   <view class="public-hero">
     <view class="hero-badge"><text class="remix-icon ri-file-shield-2-fill hero-icon"></text><text>完成订单</text></view>
     <view class="hero-title">{{detail.petName}} · {{detail.serviceSummary}}</view>

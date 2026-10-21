@@ -237,7 +237,7 @@
         <view class="group-buy-banner" wx:if="{{item.isGroupBuyBundle}}">
           <view class="banner-left">
             <text class="remix-icon ri-community-fill banner-icon"></text>
-            <text class="banner-title">{{item.groupBuyBadge}}</text>
+            <text class="banner-title">同小区顺路拼单</text><text class="banner-count">共{{item.householdCount}}户</text>
           </view>
           <text class="banner-tag">一键接全团</text>
         </view>
