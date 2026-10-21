@@ -499,3 +499,129 @@ test('同小区拼单任务包: 抢单大厅聚合成单条展示且详情支持
   assert.equal(doc1Final.data.status, 'completed')
   assert.equal(doc2Final.data.status, 'completed')
 })
+
+test('同小区拼单任务包: 默认2户成团，且支持3户以上多户逐户分栏打卡与全团结算', async () => {
+  const { readConfig } = require('../../cloudfunctions/api/services/playground-config')
+  const defaultCfg = await readConfig(createCollectionStore({ platform_configs: [] }))
+  assert.equal(defaultCfg.groupBuy.minHouseholds, 2, '系统默认拼单成团门槛已调整为2户')
+
+  const community = { name: '万科翡翠滨江', city: '上海市', latitude: 31.2, longitude: 121.5 }
+  const staffUser = { _id: 'u_staff_m', openid: 'staff_m', roles: ['staff'], status: 'active', residentialCommunity: community }
+  const staffProfile = {
+    _id: 'prof_staff_m',
+    openid: 'staff_m',
+    realName: '李宠师',
+    auditStatus: 'approved',
+    onboardingStatus: 'approved',
+    serviceAddress: community.name,
+    serviceLatitude: 31.2,
+    serviceLongitude: 121.5,
+    serviceRadiusKm: 10,
+    trainingVideoProgress: {},
+    staffLevel: 'certified'
+  }
+
+  const client1 = { _id: 'u_c_1', openid: 'client_1', roles: ['client'], status: 'active' }
+  const client2 = { _id: 'u_c_2', openid: 'client_2', roles: ['client'], status: 'active' }
+  const client3 = { _id: 'u_c_3', openid: 'client_3', roles: ['client'], status: 'active' }
+
+  const makeOrder = (id, clientOpenid, petName, doorplate, startTime, endTime) => ({
+    _id: id,
+    orderNo: 'NO_' + id,
+    source: 'community_groupbuy',
+    groupBuyId: 'group_3households',
+    groupBuyStatus: 'formed',
+    status: 'paid',
+    paymentStatus: 'paid',
+    publishMode: 'open',
+    clientOpenid,
+    petName,
+    startTime,
+    endTime,
+    serviceStartDate: '2026-10-21',
+    serviceEndDate: '2026-10-21',
+    serviceSessions: [{ date: '2026-10-21', startTime, endTime }],
+    serviceTypes: ['feed'],
+    serviceAddress: community.name,
+    doorplate,
+    addressLatitude: 31.2,
+    addressLongitude: 121.5,
+    payAmount: 50,
+    staffOpenid: ''
+  })
+
+  const o1 = makeOrder('ord_3h_1', 'client_1', '橘猫大橘', '1号楼101', '2026-10-21 16:00', '2026-10-21 16:30')
+  const o2 = makeOrder('ord_3h_2', 'client_2', '白猫雪球', '2号楼202', '2026-10-21 16:30', '2026-10-21 17:00')
+  const o3 = makeOrder('ord_3h_3', 'client_3', '柴犬阿黄', '3号楼303', '2026-10-21 17:00', '2026-10-21 17:30')
+
+  const db = createCollectionStore({
+    users: [staffUser, client1, client2, client3],
+    staff_profiles: [staffProfile],
+    orders: [o1, o2, o3],
+    staff_schedule_exceptions: [],
+    platform_configs: [{ _id: 'settings', key: 'system_settings', value: { staffDeposit: { required: false } } }]
+  })
+
+  const staffApi = loadCloudFunction('api', db, 'staff_m')
+  // 1. 抢单大厅聚合展示3户拼单
+  const listRes = await staffApi.main({
+    module: 'staff',
+    action: 'listNearbyOrders',
+    data: { latitude: 31.2, longitude: 121.5 }
+  })
+  assert.equal(listRes.ok, true)
+  assert.equal(listRes.data.length, 1, '3户拼单也应当聚合为1个拼单任务包')
+  const bundle = listRes.data[0]
+  assert.equal(bundle.householdCount, 3)
+  assert.equal(bundle.subOrders.length, 3)
+
+  // 2. 接单：一次性整包顺路承接3户
+  const acceptRes = await staffApi.main({
+    module: 'staff',
+    action: 'acceptOrder',
+    data: { orderId: bundle._id, currentLatitude: 31.2, currentLongitude: 121.5 }
+  })
+  assert.equal(acceptRes.ok, true)
+  assert.equal(acceptRes.data.bundledCount, 3, '应当整包接下全部3户订单')
+
+  // 3. 详情页多户分栏数据：返回3个成员供前端Tab切换
+  const detailApi = loadCloudFunction('api', db, 'staff_m')
+  const detailRes = await detailApi.main({
+    module: 'order',
+    action: 'getOrderDetail',
+    data: { id: bundle._id, role: 'staff' }
+  })
+  assert.equal(detailRes.ok, true)
+  assert.equal(detailRes.data.groupBuyBundle.members.length, 3)
+
+  // 4. 模拟逐户打卡：进入服务状态
+  for (const id of ['ord_3h_1', 'ord_3h_2', 'ord_3h_3']) {
+    await db.collection('orders').doc(id).update({ data: { status: 'in_service', currentSessionStartedAt: '2026-10-21 16:00' } })
+    await db.collection('checkin_logs').add({ data: { orderId: id, eventType: 'sanitization', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+    await db.collection('checkin_logs').add({ data: { orderId: id, eventType: 'enter_door', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+    await db.collection('checkin_logs').add({ data: { orderId: id, eventType: 'leave_door', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+  }
+
+  // 4.1 第1户完成
+  const f1 = await detailApi.main({ module: 'order', action: 'finishService', data: { id: 'ord_3h_1' } })
+  assert.equal(f1.data.partialGroupCompleted, true)
+  assert.equal(f1.data.remainingCount, 2, '同团还剩2户未完成')
+  const d1 = await db.collection('orders').doc('ord_3h_1').get()
+  assert.equal(d1.data.status, 'day_completed')
+
+  // 4.2 第2户完成
+  const f2 = await detailApi.main({ module: 'order', action: 'finishService', data: { id: 'ord_3h_2' } })
+  assert.equal(f2.data.partialGroupCompleted, true)
+  assert.equal(f2.data.remainingCount, 1, '同团还剩1户未完成')
+  const d2 = await db.collection('orders').doc('ord_3h_2').get()
+  assert.equal(d2.data.status, 'day_completed')
+
+  // 4.3 第3户完成（最后一户）
+  const f3 = await detailApi.main({ module: 'order', action: 'finishService', data: { id: 'ord_3h_3' } })
+  assert.equal(f3.data.allGroupCompleted, true, '全部3户均完成，触发整包终态结算')
+
+  for (const id of ['ord_3h_1', 'ord_3h_2', 'ord_3h_3']) {
+    const doc = await db.collection('orders').doc(id).get()
+    assert.equal(doc.data.status, 'completed', `订单 ${id} 应当最终完成`)
+  }
+})

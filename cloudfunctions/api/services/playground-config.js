@@ -1,4 +1,4 @@
-const DEFAULT_GROUP = { enabled: true, minHouseholds: 3, discountRate: 0.88, waiveVisitFee: true, recruitHours: 12 }
+const DEFAULT_GROUP = { enabled: true, minHouseholds: 2, discountRate: 0.88, waiveVisitFee: true, recruitHours: 12 }
 const DEFAULT_CARE = { energyDecay: 8, satietyDecay: 12, hydrationDecay: 18, peeGrowth: 22.22, poopGrowth: 11.11, sleepRate: 0.16, eatRate: 0.24, drinkRate: 0.3, peeThreshold: 20, poopThreshold: 40, peeDelaySeconds: 45, poopDelaySeconds: 120 }
 function number(value, fallback, min, max, label, integer = false) {
   const n = value === undefined ? fallback : Number(value)
@@ -7,7 +7,7 @@ function number(value, fallback, min, max, label, integer = false) {
 }
 function groupConfig(value = {}) {
   return { enabled: value.enabled !== false,
-    minHouseholds: number(value.minHouseholds, 3, 2, 20, '成团户数', true),
+    minHouseholds: number(value.minHouseholds, 2, 2, 20, '成团户数', true),
     discountRate: number(value.discountRate, 0.88, 0.01, 1, '拼单折扣比例'),
     waiveVisitFee: value.waiveVisitFee !== false,
     recruitHours: number(value.recruitHours, 12, 1, 48, '拼单募集小时数', true) }
