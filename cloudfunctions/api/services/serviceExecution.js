@@ -208,7 +208,7 @@ module.exports = function createService({
     const orderId = order._id
     const result = await runTransactionWithConflictRetry(async transaction => {
       const currentOrder = (await transaction.collection('orders').doc(orderId).get()).data
-      if (!currentOrder || ![ORDER_STATUS.COMPLETED, ...(options.completionPatch ? [ORDER_STATUS.IN_SERVICE] : [])].includes(currentOrder.status)) throw new Error('订单状态不可完成')
+      if (!currentOrder || ![ORDER_STATUS.COMPLETED, ...(options.completionPatch ? [ORDER_STATUS.IN_SERVICE, ORDER_STATUS.DAY_COMPLETED] : [])].includes(currentOrder.status)) throw new Error('订单状态不可完成')
       if (options.completionPatch && currentOrder.staffOpenid !== order.staffOpenid) throw new Error('订单员工已变化')
       if (currentOrder.status === ORDER_STATUS.IN_SERVICE && Number(currentOrder.activeSessionIndex || 0) &&
           Number(options.completionPatch && options.completionPatch.lastCompletedSessionIndex) !== Number(currentOrder.activeSessionIndex)) throw new Error('服务日期已变化，请刷新订单')

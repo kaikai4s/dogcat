@@ -1163,3 +1163,97 @@
 
 .chat-header, .chat-warning-banner, .chat-footer, .chat-sync-status, .chat-new-messages { flex-shrink: 0; }
 .chat-sync-status, .chat-new-messages { padding: 14rpx 24rpx; font-size: 24rpx; line-height: 1.5; text-align: center; color: #a65127; background: #fff4e8; }
+
+/* 拼单多户切换栏样式 */
+.group-buy-tabs-wrap {
+  margin: 16rpx 24rpx 24rpx;
+  background: #ffffff;
+  border-radius: 28rpx;
+  padding: 20rpx;
+  box-shadow: 0 10rpx 30rpx rgba(255, 125, 56, 0.08);
+  border: 2rpx solid #ff9966;
+}
+
+.group-buy-tabs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
+.tabs-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 26rpx;
+  font-weight: 850;
+  color: #ff6600;
+}
+
+.tabs-header-tip {
+  font-size: 20rpx;
+  color: #999999;
+}
+
+.group-buy-tabs-scroll {
+  display: flex;
+  flex-direction: row;
+  white-space: nowrap;
+  gap: 16rpx;
+  overflow-x: auto;
+}
+
+.household-tab-item {
+  display: inline-flex;
+  flex-direction: column;
+  padding: 16rpx 24rpx;
+  border-radius: 20rpx;
+  background: #fbf8f5;
+  border: 1rpx solid #ede3dc;
+  min-width: 200rpx;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.household-tab-item.active {
+  background: #fff4ed;
+  border-color: #ff7d38;
+  box-shadow: 0 4rpx 12rpx rgba(255, 125, 56, 0.15);
+}
+
+.tab-badge {
+  font-size: 18rpx;
+  padding: 2rpx 8rpx;
+  border-radius: 6rpx;
+  align-self: flex-start;
+  margin-bottom: 8rpx;
+  font-weight: 700;
+}
+
+.badge-pending {
+  background: #e6f7ff;
+  color: #096dd9;
+}
+
+.badge-serving {
+  background: #fff7e6;
+  color: #d46b08;
+}
+
+.badge-completed {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.tab-label-text {
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #262626;
+  margin-bottom: 4rpx;
+}
+
+.tab-pet-text {
+  font-size: 20rpx;
+  color: #8c8c8c;
+}
+

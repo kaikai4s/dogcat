@@ -262,9 +262,11 @@ module.exports = function createService({
       for (const item of page) {
         if (item._id === excludeOrderId || seenIds.has(item._id)) continue
         seenIds.add(item._id)
+        if (candidate.groupBuyId && item.groupBuyId && candidate.groupBuyId === item.groupBuyId) continue
         if (!isOrderConflictCandidate(item) || !orderTimeRangesOverlap(candidate, item)) continue
         const current = transaction ? (await transaction.collection('orders').doc(item._id).get().catch(() => ({ data: null }))).data : item
         if (!current) continue
+        if (candidate.groupBuyId && current.groupBuyId && candidate.groupBuyId === current.groupBuyId) continue
         const isMatch = current.staffOpenid === openid || (current.requestedStaffOpenid === openid && current.publishMode === 'direct')
         if (isMatch && isOrderConflictCandidate(current) && orderTimeRangesOverlap(candidate, current)) return current
       }

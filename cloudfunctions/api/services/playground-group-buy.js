@@ -68,7 +68,16 @@ module.exports = function createGroupBuy(context) {
     members.push({ openid: order.clientOpenid, orderId, householdKey: prepared.householdKey, order })
     const formedAt = group.formedAt || (members.length >= group.rules.minHouseholds ? now() : 0)
     for (const m of members) {
-      if (m.order.status !== 'pending_pay' || m.order.paymentStatus === 'paid') continue
+      if (m.order.status !== 'pending_pay' || m.order.paymentStatus === 'paid') {
+        if (formedAt && m.order.groupBuyStatus !== 'formed') {
+          if (m.orderId === orderId) {
+            order = { ...order, groupBuyStatus: 'formed' }
+          } else {
+            await tx.collection('orders').doc(m.orderId).update({ data: { groupBuyStatus: 'formed', updatedAt: order.updatedAt } })
+          }
+        }
+        continue
+      }
       const patch = { groupBuyId: id, source: 'community_groupbuy', communityId: prepared.id, groupBuyStatus: formedAt ? 'formed' : 'recruiting',
         groupBuyRules: group.rules, paymentDeadline: m.order.groupBuyStatus==='formed' ? m.order.paymentDeadline : formedAt ? Math.min(group.deadline + 1800000, now() + 1800000) : group.deadline,
         ...(formedAt ? discounted(m.order, group.rules) : {}), updatedAt: order.updatedAt }
@@ -102,12 +111,13 @@ module.exports = function createGroupBuy(context) {
         if (m.orderId === orderId) continue
         const ord = await optional(tx, 'orders', m.orderId)
         if (participating(ord, now())) {
-          activeMembers.push(m)
+          activeMembers.push({ ...m, order: ord })
         }
       }
 
       // 当拼单最后一人也取消的时候，有效人数归零，立即取消该拼单团！
       const time = now()
+      const minHouseholds = (group.rules && group.rules.minHouseholds) || 2
       if (activeMembers.length === 0) {
         await tx.collection(COLLECTION).doc(id).update({
           data: {
@@ -117,6 +127,59 @@ module.exports = function createGroupBuy(context) {
             updatedAt: time
           }
         })
+      } else if (activeMembers.length < minHouseholds && group.formedAt) {
+        // 曾成团，但因成员取消/未支付超时取消跌破最低成团门槛
+        if (group.deadline <= time) {
+          // 招募已截止，整团作废并退款
+          await tx.collection(COLLECTION).doc(id).update({
+            data: {
+              status: 'cancelled',
+              formedAt: 0,
+              cancelReason: '因部分成员取消或未支付，成团人数不足且已过招募截止时间，拼单自动作废',
+              members: activeMembers.map(({ openid, orderId, householdKey }) => ({ openid, orderId, ...(householdKey ? { householdKey } : {}) })),
+              updatedAt: time
+            }
+          })
+          for (const m of activeMembers) {
+            if (m.order && m.order.paymentStatus === 'paid' && Number(m.order.payAmount || 0) > 0) {
+              if (typeof context.createRefundForOrder === 'function') {
+                await context.createRefundForOrder(
+                  m.order,
+                  m.order.payAmount,
+                  '拼单人数不足且招募已截止，系统自动全额退款',
+                  'system_groupbuy_fail',
+                  m.order.clientOpenid,
+                  `groupbuy_fail_${m.order._id}`,
+                  { cancelStatus: 'expired' }
+                ).catch((err) => console.error('[onOrderCancelled] auto refund fail:', m.orderId, err.message))
+              }
+            }
+            await tx.collection('orders').doc(m.orderId).update({
+              data: {
+                groupBuyStatus: 'cancelled',
+                updatedAt: time
+              }
+            }).catch(() => {})
+          }
+        } else {
+          // 尚未过截止时间，团退回招募中状态（formedAt: 0），等待新邻居加入！
+          // 同时将剩余成员的订单 groupBuyStatus 退回 recruiting，杜绝被宠托师按成团抢走！
+          await tx.collection(COLLECTION).doc(id).update({
+            data: {
+              formedAt: 0,
+              members: activeMembers.map(({ openid, orderId, householdKey }) => ({ openid, orderId, ...(householdKey ? { householdKey } : {}) })),
+              updatedAt: time
+            }
+          })
+          for (const m of activeMembers) {
+            await tx.collection('orders').doc(m.orderId).update({
+              data: {
+                groupBuyStatus: 'recruiting',
+                updatedAt: time
+              }
+            }).catch(() => {})
+          }
+        }
       } else {
         await tx.collection(COLLECTION).doc(id).update({
           data: {

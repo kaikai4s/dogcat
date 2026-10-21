@@ -682,3 +682,78 @@
 .risk-action.disabled {
   opacity: 0.55;
 }
+
+/* 拼单多户概览卡片 */
+.bundle-overview-card {
+  border: 2rpx solid #ff9966 !important;
+  background: #fffcf8 !important;
+}
+
+.bundle-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+
+.bundle-member-item {
+  background: #ffffff;
+  padding: 18rpx 20rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid #f0e6df;
+}
+
+.member-item-top {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
+}
+
+.member-index-tag {
+  font-size: 20rpx;
+  background: #ffecd9;
+  color: #ff6600;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  font-weight: 700;
+}
+
+.member-label {
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #333333;
+  flex: 1;
+}
+
+.member-status-tag {
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  font-weight: 700;
+}
+
+.member-status-tag.pending {
+  background: #e6f7ff;
+  color: #096dd9;
+}
+
+.member-status-tag.serving {
+  background: #fff7e6;
+  color: #d46b08;
+}
+
+.member-status-tag.done {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.member-item-detail, .member-item-service {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 22rpx;
+  color: #666666;
+  margin-top: 4rpx;
+}
+

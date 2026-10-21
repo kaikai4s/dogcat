@@ -431,6 +431,53 @@ module.exports = function createHandler(context) {
         resultOrder.reassignNotice = order.isUrgent ? '该订单因超时未履约已被平台转加急派单' : '该订单已被平台改派给其他宠托师'
       }
       const isStaffPreview = isStaffView && (order.status === ORDER_STATUS.PAID || order.staffOpenid !== openid)
+      if (order.groupBuyId) {
+        resultOrder.isGroupBuy = true
+        resultOrder.groupBuyId = order.groupBuyId
+        const siblingRes = await db.collection('orders').where({
+          groupBuyId: order.groupBuyId
+        }).orderBy('createdAt', 'asc').get().catch(() => ({ data: [] }))
+        const allSiblings = (siblingRes.data || []).map(s => s._id === orderId ? { ...s, ...resultOrder } : s)
+        resultOrder.householdCount = allSiblings.length
+
+        if (isStaffView && order.staffOpenid === openid) {
+          resultOrder.groupBuyBundle = {
+            groupBuyId: order.groupBuyId,
+            householdCount: allSiblings.length,
+            members: allSiblings.map((sib, idx) => ({
+              orderId: sib._id,
+              householdIndex: idx + 1,
+              householdLabel: `住户 ${idx + 1} (${sib.doorplate || sib.addressDetail || '住户'})`,
+              doorplate: sib.doorplate || '',
+              addressDetail: sib.addressDetail || '',
+              contactPhone: sib.contactPhone || '',
+              petName: sib.petName || (sib.petSnapshot && sib.petSnapshot.name) || '宠物',
+              petSnapshot: sib.petSnapshot || null,
+              serviceType: sib.serviceType || 'feed',
+              serviceSummary: sib.serviceSummary || '',
+              startTime: sib.startTime || '',
+              endTime: sib.endTime || '',
+              status: sib.status,
+              isCompleted: sib.status === 'completed' || sib.status === 'day_completed',
+              checkinRequirements: sib.checkinRequirements || []
+            }))
+          }
+        } else if (isStaffPreview) {
+          resultOrder.subOrders = allSiblings.map((sib, idx) => ({
+            orderId: sib._id,
+            householdIndex: idx + 1,
+            householdLabel: `住户 ${idx + 1}`,
+            petName: sib.petName || (sib.petSnapshot && sib.petSnapshot.name) || '宠物',
+            petSummary: sib.petSummary || '',
+            serviceType: sib.serviceType || 'feed',
+            serviceSummary: sib.serviceSummary || '',
+            startTime: sib.startTime || '',
+            endTime: sib.endTime || '',
+            addressDetail: '接单后可见',
+            doorplate: '接单后可见'
+          }))
+        }
+      }
       if (isStaffPreview) return maskOrderForStaffPreview(resultOrder)
       if (isStaffView || (!user.roles.includes('admin') && order.clientOpenid !== openid)) return maskOrderClientContact(resultOrder)
       return sanitizeClientTransitFields(resultOrder)
@@ -1297,6 +1344,62 @@ module.exports = function createHandler(context) {
       if (!checkinResult.isComplete) {
         throw new Error(`缺少必打卡照片：${checkinResult.missing.join('、')}`)
       }
+      if (order.groupBuyId) {
+        const siblingRes = await db.collection('orders').where({
+          groupBuyId: order.groupBuyId,
+          staffOpenid: openid,
+          _id: db.command.neq(data.id)
+        }).get().catch(() => ({ data: [] }))
+        const siblings = siblingRes.data || []
+        // 检查同拼单团是否还有其他住户尚未完成打卡
+        const uncompletedSiblings = siblings.filter((s) => !['completed', 'day_completed'].includes(s.status))
+        if (uncompletedSiblings.length > 0) {
+          // 当前住户打卡已完整，但同团其他住户尚未打卡完毕
+          // 将当前住户订单标记为 day_completed，暂不结算整团，提示宠托师切换住户
+          const time = now()
+          const completedSessions = markServiceSession(normalizeServiceSessions(order), activeSession.index, { status: 'completed', finishedAt: time })
+          await db.collection('orders').doc(data.id).update({
+            data: {
+              status: ORDER_STATUS.DAY_COMPLETED,
+              serviceSessions: completedSessions,
+              activeSessionIndex: 0,
+              currentSessionStartedAt: '',
+              updatedAt: time
+            }
+          })
+          await appendOrderTimeline(data.id, 'day_completed', '住户服务打卡已完成', '当前住户服务打卡已就绪，等待同拼单团其他住户打卡完毕后统一结算。', 'staff')
+          await appendOrderClientMessage({ ...order, _id: data.id, status: ORDER_STATUS.DAY_COMPLETED }, {
+            eventType: 'day_completed',
+            title: '服务打卡已完成',
+            detail: '宠托师已完成打卡，服务已进入完成结算流程。',
+            actorRole: 'staff'
+          })
+          return {
+            id: data.id,
+            status: ORDER_STATUS.DAY_COMPLETED,
+            partialGroupCompleted: true,
+            remainingCount: uncompletedSiblings.length,
+            message: `当前住户打卡完成！同拼单团还有 ${uncompletedSiblings.length} 户未完成打卡，请切换至下一住户继续服务。`
+          }
+        } else {
+          // 本次是最后一家打卡完成！将本单及此前就绪的兄弟订单全部推进到 completed，统一结算收益
+          const currentResult = await completeOrderService({ ...order, _id: data.id }, activeSession, now(), { isAuto: false, actor: 'staff' })
+          for (const sib of siblings) {
+            if (sib.status !== 'completed') {
+              const sibActiveSession = getActiveServiceSession(sib) || normalizeServiceSessions(sib)[0] || { index: 1, date: beijingDateKey(now()) }
+              await completeOrderService({ ...sib, _id: sib._id }, sibActiveSession, now(), { isAuto: false, actor: 'staff' }).catch((err) => {
+                console.error('[finishService] complete sibling error:', sib._id, err.message)
+              })
+            }
+          }
+          return {
+            ...currentResult,
+            allGroupCompleted: true,
+            message: '同小区拼单全部住户服务已完成！收益已统一结算。'
+          }
+        }
+      }
+
       return completeOrderService({ ...order, _id: data.id }, activeSession, now(), { isAuto: false, actor: 'staff' })
     }
 

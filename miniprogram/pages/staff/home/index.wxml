@@ -232,7 +232,16 @@
 
     <!-- 真实普通可接订单列表（模糊淡入） -->
     <view class="nearby-real-list {{contentLoaded ? 'blur-fade-in' : ''}}" wx:if="{{nearbyOrders.length}}">
-      <view class="order-card" wx:for="{{nearbyOrders}}" wx:key="_id">
+      <view class="order-card {{item.isGroupBuyBundle ? 'group-bundle-card' : ''}}" wx:for="{{nearbyOrders}}" wx:key="_id">
+        <!-- 拼单任务包聚合徽章横幅 -->
+        <view class="group-buy-banner" wx:if="{{item.isGroupBuyBundle}}">
+          <view class="banner-left">
+            <text class="remix-icon ri-community-fill banner-icon"></text>
+            <text class="banner-title">{{item.groupBuyBadge}}</text>
+          </view>
+          <text class="banner-tag">一键接全团</text>
+        </view>
+
         <view class="order-card-head">
           <view class="order-person">
             <view class="avatar-level-wrap">
@@ -243,19 +252,30 @@
             </view>
             <view class="order-person-info">
               <view class="order-title-row">
-                <text class="order-client-name {{item.clientSnapshot.nameEffect && item.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + item.clientSnapshot.nameEffect : ''}}" style="{{item.clientSnapshot.nameColor ? 'color: ' + item.clientSnapshot.nameColor + ';' : ''}}">{{item.clientSnapshot.displayName || '宠物主'}}</text>
-                <text class="member-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</text>
-                <text class="order-pet-name">· {{item.petName}}</text>
-                <view class="pet-title" wx:if="{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}">
+                <text class="order-client-name {{item.clientSnapshot.nameEffect && item.clientSnapshot.nameEffect !== 'none' ? 'name-effect-' + item.clientSnapshot.nameEffect : ''}}" style="{{item.clientSnapshot.nameColor ? 'color: ' + item.clientSnapshot.nameColor + ';' : ''}}">{{item.isGroupBuyBundle ? '同小区多户拼单' : (item.clientSnapshot.displayName || '宠物主')}}</text>
+                <text class="member-badge badge-{{item.clientSnapshot.badgeStyle || 'gold'}}" wx:if="{{!item.isGroupBuyBundle && item.clientSnapshot && (item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName)}}">{{item.clientSnapshot.badgeTag || item.clientSnapshot.memberLevelName}}</text>
+                <text class="order-pet-name">· {{item.isGroupBuyBundle ? '共' + item.householdCount + '户' : item.petName}}</text>
+                <view class="pet-title" wx:if="{{!item.isGroupBuyBundle && ((item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title))}}">
                   <text class="remix-icon ri-vip-crown-fill"></text>
                   <text>{{(item.petSnapshot && item.petSnapshot.beautyTitle && item.petSnapshot.beautyTitle.title) || (item.beautyTitle && item.beautyTitle.title)}}</text>
                 </view>
-                <view class="vaccine-badge {{item.petSnapshot.vaccineCertified ? 'certified' : item.petSnapshot.vaccineBadgeClass}}" wx:if="{{item.petSnapshot}}">{{item.petSnapshot.vaccineStatusText || '未接种认证'}}</view>
+                <view class="vaccine-badge {{item.petSnapshot.vaccineCertified ? 'certified' : item.petSnapshot.vaccineBadgeClass}}" wx:if="{{!item.isGroupBuyBundle && item.petSnapshot}}">{{item.petSnapshot.vaccineStatusText || '未接种认证'}}</view>
               </view>
               <view class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
             </view>
           </view>
           <view class="count-badge">{{item.distanceText}}</view>
+        </view>
+
+        <!-- 拼单包含的各户子订单清单 -->
+        <view class="bundle-suborders-box" wx:if="{{item.isGroupBuyBundle && item.subOrders.length}}">
+          <view class="bundle-suborders-header">本次拼单包含服务（接单后分户打卡）：</view>
+          <view class="bundle-suborder-row" wx:for="{{item.subOrders}}" wx:for-item="sub" wx:key="orderId">
+            <text class="bundle-sub-tag">住户{{sub.householdIndex}}</text>
+            <text class="bundle-sub-pet">{{sub.petName}}</text>
+            <text class="bundle-sub-service">{{sub.serviceSummary || sub.serviceType}}</text>
+            <text class="bundle-sub-earning">{{sub.staffEarningText}}</text>
+          </view>
         </view>
 
         <view class="order-card-address">
@@ -272,7 +292,7 @@
         </view>
 
         <view class="order-actions">
-          <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">订单详情</button>
+          <button class="ghost-btn" data-id="{{item._id}}" bindtap="detail">查看拼单</button>
           <button class="primary-btn" data-id="{{item._id}}" disabled="{{acceptingOrderId}}" loading="{{acceptingOrderId === item._id}}" bindtap="accept">{{acceptingOrderId === item._id ? '抢单中...' : '立即抢单'}}</button>
           <button class="ghost-btn nav-btn" data-approximate="{{item.locationIsApproximate}}" data-latitude="{{item.addressLatitude}}" data-longitude="{{item.addressLongitude}}" data-name="{{item.serviceAddress}}" data-address="{{item.addressDetail}} {{item.doorplate}}" bindtap="openNavigation">
             <text class="remix-icon ri-map-pin-line"></text>{{item.locationIsApproximate ? '区域导航' : '导航'}}

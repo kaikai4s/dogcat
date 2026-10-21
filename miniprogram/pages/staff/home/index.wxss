@@ -992,3 +992,105 @@ button.refresh-btn::after {
   box-shadow: 0 8rpx 20rpx rgba(245, 63, 63, 0.3) !important;
 }
 
+/* 拼单任务包专属样式 */
+.group-bundle-card {
+  border: 2rpx solid #ff9966 !important;
+  background: linear-gradient(180deg, #fffaf5 0%, #ffffff 40rpx) !important;
+  position: relative;
+}
+
+.group-buy-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #ff9966, #ff6633);
+  color: #ffffff;
+  padding: 10rpx 20rpx;
+  border-radius: 20rpx;
+  margin-bottom: 20rpx;
+}
+
+.banner-left {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.banner-icon {
+  font-size: 30rpx;
+}
+
+.banner-title {
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.banner-tag {
+  font-size: 20rpx;
+  background: rgba(255, 255, 255, 0.25);
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  font-weight: 700;
+}
+
+.bundle-suborders-box {
+  margin: 16rpx 0;
+  padding: 16rpx;
+  background: #fbf7f4;
+  border-radius: 18rpx;
+  border: 1rpx dashed rgba(255, 153, 102, 0.3);
+}
+
+.bundle-suborders-header {
+  font-size: 22rpx;
+  color: #8c7569;
+  margin-bottom: 12rpx;
+  font-weight: 600;
+}
+
+.bundle-suborder-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 8rpx 0;
+  font-size: 24rpx;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.03);
+}
+
+.bundle-suborder-row:last-child {
+  border-bottom: none;
+}
+
+.bundle-sub-tag {
+  font-size: 20rpx;
+  background: #ffecd9;
+  color: #ff6600;
+  padding: 2rpx 10rpx;
+  border-radius: 8rpx;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.bundle-sub-pet {
+  font-weight: 700;
+  color: #333333;
+  flex-shrink: 0;
+}
+
+.bundle-sub-service {
+  color: #666666;
+  font-size: 22rpx;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bundle-sub-earning {
+  font-weight: 800;
+  color: #389e0d;
+  font-size: 24rpx;
+  flex-shrink: 0;
+}
+
+

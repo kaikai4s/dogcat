@@ -6,8 +6,8 @@ function shouldExpireUnacceptedOrder(order = {}, time = now()) {
   return order.status === ORDER_STATUS.PAID && !safeText(order.staffOpenid).trim() && start > 0 && threshold <= time.getTime()
 }
 
-async function expireUnacceptedOrder(orderId, order, time = now()) {
-  if (!shouldExpireUnacceptedOrder(order, time)) return order
+async function expireUnacceptedOrder(orderId, order, time = now(), forceGroupExpire = false) {
+  if (!forceGroupExpire && !shouldExpireUnacceptedOrder(order, time)) return order
   const isPaid = order.paymentStatus === 'paid' && Number(order.payAmount || 0) > 0
   const isGroup = !!(order.groupBuyId || order.source === 'community_groupbuy')
   const expireReason = isGroup ? '服务开始前2小时无人接单，拼单自动作废' : '服务开始时间前无人接单'
@@ -16,6 +16,7 @@ async function expireUnacceptedOrder(orderId, order, time = now()) {
     status: ORDER_STATUS.EXPIRED,
     expiredAt: time,
     expireReason,
+    ...(isGroup ? { groupBuyStatus: 'cancelled' } : {}),
     updatedAt: time
   }
 
@@ -26,12 +27,15 @@ async function expireUnacceptedOrder(orderId, order, time = now()) {
     update.refundStatus = 'processing'
     update.refundNo = refund.refundNo
     update.refundAmount = Number(order.payAmount)
+    if (isGroup) {
+      await db.collection('orders').doc(orderId).update({ data: { groupBuyStatus: 'cancelled', updatedAt: time } }).catch(() => {})
+    }
   }
 
   if (!refund) {
     const changed = await db.runTransaction(async tx => {
       const current = (await tx.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data
-      if (!current || !shouldExpireUnacceptedOrder(current, time) || current.paymentStatus === 'paid') return false
+      if (!current || (!forceGroupExpire && !shouldExpireUnacceptedOrder(current, time)) || current.paymentStatus === 'paid') return false
       await tx.collection('orders').doc(orderId).update({ data: update })
       if (current.couponId && typeof restoreOrderCoupon === 'function') {
         await restoreOrderCoupon(current.couponId, orderId, tx)
@@ -53,6 +57,23 @@ async function expireUnacceptedOrder(orderId, order, time = now()) {
         updatedAt: time
       }
     }).catch(() => {})
+
+    if (!forceGroupExpire) {
+      const siblingRes = await db.collection('orders').where({
+        groupBuyId: order.groupBuyId,
+        status: ORDER_STATUS.PAID,
+        _id: db.command.neq(orderId)
+      }).get().catch(() => ({ data: [] }))
+      for (const sib of siblingRes.data || []) {
+        if (!safeText(sib.staffOpenid).trim()) {
+          try {
+            await expireUnacceptedOrder(sib._id, sib, time, true)
+          } catch (err) {
+            console.error('[expireUnacceptedOrder] sibling expire failed:', sib._id, err.message)
+          }
+        }
+      }
+    }
   }
   return updatedOrder
 }

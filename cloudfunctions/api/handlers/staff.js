@@ -1063,9 +1063,7 @@ module.exports = function createHandler(context) {
           staffEarningText: `¥${earning.earningAmount.toFixed(2)}`
         }
         if (order.groupBuyId) {
-          const bundleCount = groupBuyCounts.get(order.groupBuyId) || 1
           result.isGroupBuy = true
-          result.groupBuyBadge = bundleCount > 1 ? `🏡 同小区顺路拼单 (共${bundleCount}户)` : '🏡 同小区拼单'
         }
         result.inRange = isOrderInRange(result)
         result.inTime = await isOrderInTime(result, scheduleExceptions)
@@ -1077,7 +1075,60 @@ module.exports = function createHandler(context) {
       if (inServiceTime) orders = orders.filter((order) => order.inTime)
       if (profile.rejectUnvaccinatedPets === true) orders = orders.filter((order) => !order.hasUnvaccinatedPets)
 
-      const sortedOrders = orders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
+      // 4. 聚合同小区拼单任务包：严禁将拼单子订单零散独立展示在抢单大厅，统一整合成一个拼单任务包
+      const regularOrders = []
+      const bundleMap = new Map()
+      for (const order of orders) {
+        if (order.groupBuyId) {
+          if (!bundleMap.has(order.groupBuyId)) {
+            bundleMap.set(order.groupBuyId, [])
+          }
+          bundleMap.get(order.groupBuyId).push(order)
+        } else {
+          regularOrders.push(order)
+        }
+      }
+
+      const bundleOrders = []
+      for (const [groupBuyId, bundleList] of bundleMap) {
+        const primary = bundleList[0]
+        const householdCount = bundleList.length
+        const totalEarning = bundleList.reduce((sum, item) => sum + (Number(item.staffEarning) || 0), 0)
+        const subOrders = bundleList.map((item, idx) => ({
+          orderId: item._id,
+          householdIndex: idx + 1,
+          householdLabel: `住户 ${idx + 1}`,
+          petName: item.petName || (item.petSnapshot && item.petSnapshot.name) || '宠物',
+          petSummary: item.petSummary || '',
+          serviceType: item.serviceType || 'feed',
+          serviceSummary: item.serviceSummary || '',
+          startTime: item.startTime || '',
+          endTime: item.endTime || '',
+          staffEarning: Number(item.staffEarning) || 0,
+          staffEarningText: `¥${(Number(item.staffEarning) || 0).toFixed(2)}`
+        }))
+        const allPets = bundleList.map((item) => item.petName || '宠物').filter(Boolean).join('、')
+        const aggregated = {
+          ...primary,
+          isGroupBuy: true,
+          isGroupBuyBundle: true,
+          groupBuyId,
+          householdCount,
+          subOrders,
+          subOrderIds: bundleList.map((item) => item._id),
+          groupBuyBadge: `🏡 同小区顺路拼单 (共${householdCount}户)`,
+          serviceSummary: `同小区顺路拼单 (共${householdCount}户：${allPets})`,
+          petSummary: `共${householdCount}户宠物：${allPets}`,
+          staffEarning: totalEarning,
+          staffEarningText: `¥${totalEarning.toFixed(2)} (共${householdCount}户合计收益)`,
+          inRange: bundleList.every((item) => item.inRange),
+          inTime: bundleList.every((item) => item.inTime)
+        }
+        bundleOrders.push(aggregated)
+      }
+
+      const displayedOrders = [...regularOrders, ...bundleOrders]
+      const sortedOrders = displayedOrders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
       const maskedOrders = sortedOrders.map(maskOrderForStaffPreview)
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       return wantsPage ? paginateList(maskedOrders, data) : maskedOrders.slice(0, 20)

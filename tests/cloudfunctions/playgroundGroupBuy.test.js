@@ -341,3 +341,161 @@ test('sitter accepting a community group buy order bundles all orders in the gro
   assert.equal(docB.data.staffOpenid,'staff_1')
   assert.equal(docB.data.status,'assigned')
 })
+
+test('同小区拼单任务包: 抢单大厅聚合成单条展示且详情支持多户分栏数据', async () => {
+  const community = { name: '龙湖春江天玺', city: '上海市', latitude: 31.2, longitude: 121.4 }
+  const staffUser = { _id: 'u_staff_p', openid: 'staff_p', roles: ['staff'], status: 'active', residentialCommunity: community }
+  const staffProfile = {
+    _id: 'prof_staff_p',
+    openid: 'staff_p',
+    realName: '王宠托',
+    auditStatus: 'approved',
+    onboardingStatus: 'approved',
+    serviceAddress: community.name,
+    serviceLatitude: 31.2,
+    serviceLongitude: 121.4,
+    serviceRadiusKm: 10,
+    trainingVideoProgress: {},
+    staffLevel: 'certified'
+  }
+
+  const order1 = {
+    _id: 'ord_agg_1',
+    orderNo: 'OAGG1',
+    source: 'community_groupbuy',
+    groupBuyId: 'group_agg_test',
+    groupBuyStatus: 'formed',
+    status: 'paid',
+    paymentStatus: 'paid',
+    publishMode: 'open',
+    clientOpenid: 'client_agg_1',
+    petName: '皮皮猫',
+    startTime: '2026-10-21 14:00',
+    endTime: '2026-10-21 14:30',
+    serviceStartDate: '2026-10-21',
+    serviceEndDate: '2026-10-21',
+    serviceSessions: [{ date: '2026-10-21', startTime: '2026-10-21 14:00', endTime: '2026-10-21 14:30' }],
+    serviceTypes: ['feed'],
+    serviceAddress: community.name,
+    doorplate: '1号楼101',
+    addressLatitude: 31.2,
+    addressLongitude: 121.4,
+    payAmount: 60,
+    staffOpenid: ''
+  }
+
+  const order2 = {
+    _id: 'ord_agg_2',
+    orderNo: 'OAGG2',
+    source: 'community_groupbuy',
+    groupBuyId: 'group_agg_test',
+    groupBuyStatus: 'formed',
+    status: 'paid',
+    paymentStatus: 'paid',
+    publishMode: 'open',
+    clientOpenid: 'client_agg_2',
+    petName: '球球狗',
+    startTime: '2026-10-21 14:30',
+    endTime: '2026-10-21 15:00',
+    serviceStartDate: '2026-10-21',
+    serviceEndDate: '2026-10-21',
+    serviceSessions: [{ date: '2026-10-21', startTime: '2026-10-21 14:30', endTime: '2026-10-21 15:00' }],
+    serviceTypes: ['feed'],
+    serviceAddress: community.name,
+    doorplate: '2号楼302',
+    addressLatitude: 31.2,
+    addressLongitude: 121.4,
+    payAmount: 60,
+    staffOpenid: ''
+  }
+
+  const clientUser1 = { _id: 'u_client_agg_1', openid: 'client_agg_1', roles: ['client'], status: 'active' }
+  const clientUser2 = { _id: 'u_client_agg_2', openid: 'client_agg_2', roles: ['client'], status: 'active' }
+
+  const db = createCollectionStore({
+    users: [staffUser, clientUser1, clientUser2],
+    staff_profiles: [staffProfile],
+    orders: [order1, order2],
+    staff_schedule_exceptions: [],
+    platform_configs: [{ _id: 'settings', key: 'system_settings', value: { staffDeposit: { required: false } } }]
+  })
+
+  const staffApi = loadCloudFunction('api', db, 'staff_p')
+  // 1. 抢单大厅查询
+  const listRes = await staffApi.main({
+    module: 'staff',
+    action: 'listNearbyOrders',
+    data: { latitude: 31.2, longitude: 121.4 }
+  })
+  assert.equal(listRes.ok, true, listRes.message)
+  const list = listRes.data || []
+  // 必须只返回 1 条聚合任务包，严禁拆分成 2 条散单
+  assert.equal(list.length, 1, '同拼单团应当聚合为 1 条拼单任务包')
+  const bundle = list[0]
+  assert.equal(bundle.isGroupBuyBundle, true)
+  assert.equal(bundle.householdCount, 2)
+  assert.equal(bundle.subOrders.length, 2)
+
+  // 2. 宠托师接单
+  const acceptRes = await staffApi.main({
+    module: 'staff',
+    action: 'acceptOrder',
+    data: { orderId: bundle._id, currentLatitude: 31.2, currentLongitude: 121.4 }
+  })
+  assert.equal(acceptRes.ok, true, acceptRes.message)
+  assert.equal(acceptRes.data.bundledCount, 2)
+
+  // 3. 宠托师查看订单详情，校验 groupBuyBundle 多户分栏数据
+  const detailApi = loadCloudFunction('api', db, 'staff_p')
+  const detailRes = await detailApi.main({
+    module: 'order',
+    action: 'getOrderDetail',
+    data: { id: bundle._id, role: 'staff' }
+  })
+  assert.equal(detailRes.ok, true, detailRes.message)
+  const detailOrder = detailRes.data
+  assert.equal(detailOrder.isGroupBuy, true)
+  assert.ok(detailOrder.groupBuyBundle, '接单后应返回 groupBuyBundle 用于前端分栏切换')
+  assert.equal(detailOrder.groupBuyBundle.members.length, 2)
+
+  // 4. 服务履约：第1户完成打卡，调用 finishService，此时第2户尚未完成，整团应部分就绪
+  // 将两单都模拟进入 in_service
+  await db.collection('orders').doc('ord_agg_1').update({ data: { status: 'in_service', currentSessionStartedAt: '2026-10-21 14:00' } })
+  await db.collection('orders').doc('ord_agg_2').update({ data: { status: 'in_service', currentSessionStartedAt: '2026-10-21 14:30' } })
+  // 注入第1户的必填打卡
+  await db.collection('checkin_logs').add({ data: { orderId: 'ord_agg_1', eventType: 'sanitization', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+  await db.collection('checkin_logs').add({ data: { orderId: 'ord_agg_1', eventType: 'enter_door', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+  await db.collection('checkin_logs').add({ data: { orderId: 'ord_agg_1', eventType: 'leave_door', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+
+  const finishApi = loadCloudFunction('api', db, 'staff_p')
+  const finish1Res = await finishApi.main({
+    module: 'order',
+    action: 'finishService',
+    data: { id: 'ord_agg_1' }
+  })
+  assert.equal(finish1Res.ok, true, finish1Res.message)
+  assert.equal(finish1Res.data.partialGroupCompleted, true, '第一户完成应标识 partialGroupCompleted')
+
+  const doc1After = await db.collection('orders').doc('ord_agg_1').get()
+  const doc2After = await db.collection('orders').doc('ord_agg_2').get()
+  assert.equal(doc1After.data.status, 'day_completed')
+  assert.equal(doc2After.data.status, 'in_service')
+
+  // 5. 第2户完成打卡并点击完成服务，整团所有住户服务全部完成
+  await db.collection('checkin_logs').add({ data: { orderId: 'ord_agg_2', eventType: 'sanitization', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+  await db.collection('checkin_logs').add({ data: { orderId: 'ord_agg_2', eventType: 'enter_door', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+  await db.collection('checkin_logs').add({ data: { orderId: 'ord_agg_2', eventType: 'leave_door', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+
+  const finish2Res = await finishApi.main({
+    module: 'order',
+    action: 'finishService',
+    data: { id: 'ord_agg_2' }
+  })
+  assert.equal(finish2Res.ok, true, finish2Res.message)
+  assert.equal(finish2Res.data.allGroupCompleted, true, '第二户完成且此前第一户已就绪，应完成整团拼单')
+
+  const doc1Final = await db.collection('orders').doc('ord_agg_1').get()
+  const doc2Final = await db.collection('orders').doc('ord_agg_2').get()
+  assert.equal(doc1Final.data.status, 'completed')
+  assert.equal(doc2Final.data.status, 'completed')
+})

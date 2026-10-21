@@ -923,6 +923,41 @@ Page({
         this.stopServiceElapsedTimer()
         this.stopAutoTracking('completed')
         if (this._unloaded) return
+
+        if (res && res.partialGroupCompleted) {
+          wx.showModal({
+            title: '该住户打卡已完成',
+            content: res.message || '当前住户打卡已完成，请切换至下一个住户继续服务。全部住户打卡完成后统一结算本次拼单收益。',
+            showCancel: false,
+            confirmText: '切换下一户',
+            success: () => {
+              this.loadOrder().then(() => {
+                const bundle = this.data.order && this.data.order.groupBuyBundle
+                if (bundle && bundle.members) {
+                  const nextMember = bundle.members.find(m => !m.isCompleted && m.orderId !== this.data.id)
+                  if (nextMember) {
+                    this.setData({ id: nextMember.orderId }, () => this.loadOrder())
+                  }
+                }
+              })
+            }
+          })
+          return
+        }
+
+        if (res && res.allGroupCompleted) {
+          wx.showModal({
+            title: '拼单全部完成',
+            content: res.message || '同小区拼单各户服务打卡已全部完成！各户收益已统一结算到您的账户。',
+            showCancel: false,
+            confirmText: '确定',
+            success: () => {
+              wx.navigateBack()
+            }
+          })
+          return
+        }
+
         wx.showToast({ title: '服务已完成，密码已销毁', icon: 'success' })
         this.setData({ finishing: false, unlock: null, order: withServiceActionState({ ...order, status: res && res.status || 'completed' }) })
         this.loadOrder()
@@ -1182,6 +1217,14 @@ Page({
         hideLoading()
         showError(err)
       })
+  },
+
+  switchHousehold(e) {
+    const nextId = e.currentTarget.dataset.id
+    if (!nextId || nextId === this.data.id) return
+    this.setData({ id: nextId }, () => {
+      this.loadOrder()
+    })
   },
 
   ...navMethods()

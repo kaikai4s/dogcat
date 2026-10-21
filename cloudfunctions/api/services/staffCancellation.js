@@ -72,7 +72,7 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
     if (event.staffOpenid !== openid || event.assignmentToken !== data.assignmentToken || event.orderId !== data.orderId) throw new Error('取消请求不匹配')
     if (event.reason !== data.reason) throw new Error('同一接单取消请求不可更改原因')
   }
-  async function commitCancellation(tx, current, user, openid, data, eventId, expectedMode) {
+  async function commitCancellation(tx, current, user, openid, data, eventId, expectedMode, siblingIds = []) {
     await staff(openid, tx, user._id)
     const order = { ...current, _id: data.orderId }
     const q = quote(order, openid)
@@ -82,9 +82,37 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
     const time = now()
     const patch = { ...cleanup(order, openid), updatedAt: time,
       ...(q.publishMode === 'open' ? { status: 'paid', publishMode: 'open' } : { status: 'cancelled', cancelReason: data.reason, cancelledAt: time }) }
+    const cancelledSiblings = []
+    for (const sibId of (siblingIds || [])) {
+      const sib = await read(tx, 'orders', sibId)
+      if (sib && sib.staffOpenid === openid && sib.status === 'assigned') {
+        const sibPatch = { ...cleanup(sib, openid), status: 'paid', publishMode: 'open', updatedAt: time }
+        await tx.collection('orders').doc(sibId).update({ data: sibPatch })
+        await tx.collection('order_timeline').doc(`cancel_${eventId}_${sibId}`).set({
+          data: {
+            orderId: sibId,
+            type: 'staff_cancellation',
+            title: '宠托师已取消顺路整包接单',
+            detail: '同小区拼单整包已由宠托师取消接单，订单已重新放回抢单大厅等待接单',
+            actorRole: 'staff',
+            createdAt: time
+          }
+        })
+        cancelledSiblings.push({
+          _id: sibId,
+          orderNo: sib.orderNo || '',
+          clientOpenid: sib.clientOpenid || '',
+          clientUserId: sib.clientUserId || '',
+          serviceSummary: sib.serviceSummary || '',
+          startTime: sib.startTime || '',
+          status: 'paid'
+        })
+      }
+    }
     const event = { eventType: 'staff_cancellation', orderId: data.orderId, staffOpenid: openid, assignmentToken: data.assignmentToken,
       assignedAt: order.assignedAt, requestId: data.requestId, reason: data.reason, publishMode: q.publishMode,
       amountPendingReview: q.amountPendingReview, refundAmount: q.refundAmount,
+      siblingOrders: cancelledSiblings,
       notificationStatus: 'pending', messageDone: false, subscriptionDone: false, createdAt: time, updatedAt: time,
       // Minimal immutable client notification snapshot; never include staff identities or the private reason.
       notificationOrder: { _id: data.orderId, orderNo: order.orderNo || '', clientOpenid: order.clientOpenid || '', clientUserId: order.clientUserId || '',
@@ -147,12 +175,22 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
         event = event || await read(db, 'payment_events', eventId)
         if (!event) throw new Error('取消事件未保存，请联系平台核对')
       } else {
+        let siblingIds = []
+        if (order && order.groupBuyId) {
+          const siblingRes = await db.collection('orders').where({
+            groupBuyId: order.groupBuyId,
+            staffOpenid: openid,
+            status: 'assigned',
+            _id: db.command.neq(data.orderId)
+          }).get().catch(() => ({ data: [] }))
+          siblingIds = (siblingRes.data || []).map(item => item._id)
+        }
         event = await db.runTransaction(async tx => {
           await staff(openid, tx, user._id)
           const existing = await read(tx, 'payment_events', eventId)
           if (existing) { assertReplay(existing, openid, data); return existing }
           const current = await read(tx, 'orders', data.orderId)
-          const committed = await commitCancellation(tx, current, user, openid, data, eventId, 'open')
+          const committed = await commitCancellation(tx, current, user, openid, data, eventId, 'open', siblingIds)
           await tx.collection('orders').doc(data.orderId).update({ data: committed.patch })
           return committed.event
         })
@@ -191,6 +229,30 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
           { statusText: direct ? '订单已取消' : '等待重新接单', tip: direct ? '宠托师取消，已发起全额退款' : '宠托师取消，等待重新接单', cancelledAt: event.createdAt }, 'client')
         if (!sent || !['sent', 'skipped'].includes(sent.status)) throw new Error('订阅通知待重试')
         await update({ subscriptionDone: true })
+      }
+      if (Array.isArray(event.siblingOrders)) {
+        for (const sib of event.siblingOrders) {
+          try {
+            await appendOrderClientMessage(sib, {
+              eventType: 'staff_cancellation',
+              title: '宠托师已取消接单，拼单重新等待接单',
+              detail: '同小区拼单宠托师因故取消接单，拼单已整包返回抢单大厅，等待其他宠托师顺路接单。',
+              actorRole: 'system',
+              unreadForClient: true,
+              idempotencyKey: `${eventId}_${sib._id}`,
+              createdAt: event.createdAt
+            })
+            if (typeof notifyOrder === 'function') {
+              await notifyOrder(sib.clientOpenid, 'staffCancellation', sib, {
+                statusText: '等待重新接单',
+                tip: '宠托师取消接单，拼单已重新放回大厅',
+                cancelledAt: event.createdAt
+              }, 'client').catch(() => {})
+            }
+          } catch (e) {
+            console.error('[staff-cancellation-sibling-notification]', sib._id, e.message)
+          }
+        }
       }
       await update({ notificationStatus: 'done', leaseToken: '', leaseUntil: null })
     } catch (error) {
