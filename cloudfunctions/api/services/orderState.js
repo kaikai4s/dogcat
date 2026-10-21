@@ -73,6 +73,9 @@ module.exports = function createService({
   }
 
   function isOpenOrder(order) {
+    if ((order.groupBuyId || order.source === 'community_groupbuy') && order.groupBuyStatus !== 'formed') {
+      return false
+    }
     return !order.staffOpenid && (!order.publishMode || order.publishMode === 'open') && !order.requestedStaffOpenid
   }
 

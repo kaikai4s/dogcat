@@ -181,3 +181,84 @@ test('group buy enforces single-day schedule and prevents unilateral cancellatio
   assert.equal(quote.canCancel,false)
   assert.ok(quote.ruleText.includes('成团锁定') || quote.ruleText.includes('暂不支持'))
 })
+
+test('group buy unformed orders are excluded from open hall and expire 2 hours before service start',async()=>{
+  const f=fixture()
+  const orderState=require('../../cloudfunctions/api/services/orderState')({
+    db:f.db,
+    ORDER_STATUS:{PAID:'paid',EXPIRED:'expired'}
+  })
+  const expireService=require('../../cloudfunctions/api/scheduled/expireOrders')({
+    now:f.context.now,
+    toTimeValue:(t)=>new Date(t).getTime(),
+    ORDER_STATUS:{PAID:'paid',EXPIRED:'expired'},
+    safeText:(s)=>String(s||''),
+    createRefundForOrder:async(order,amount,reason)=>({refundNo:'ref_123',amount}),
+    makeIdempotencyKey:()=>'idem',
+    db:f.db,
+    appendOrderTimeline:async()=>{},
+    appendOrderClientMessage:async()=>{},
+    restoreOrderCoupon:async()=>{}
+  })
+
+  // 1. 验证 isOpenOrder：未成团的拼单订单决不能公开出现在抢单大厅
+  const recruitingOrder={
+    source:'community_groupbuy',
+    groupBuyId:'g1',
+    groupBuyStatus:'recruiting',
+    status:'paid',
+    publishMode:'open'
+  }
+  assert.equal(orderState.isOpenOrder(recruitingOrder),false,'未成团拼单订单严禁出现在抢单大厅')
+
+  const formedOrder={
+    source:'community_groupbuy',
+    groupBuyId:'g1',
+    groupBuyStatus:'formed',
+    status:'paid',
+    publishMode:'open'
+  }
+  assert.equal(orderState.isOpenOrder(formedOrder),true,'成团拼单订单允许公开接单')
+
+  // 2. 验证 T-2h 自动过期：服务时间为 14:00
+  const serviceStartTime='2026-10-21 14:00'
+  const groupOrder={
+    _id:'ord_group',
+    source:'community_groupbuy',
+    groupBuyId:'g1',
+    status:'paid',
+    paymentStatus:'paid',
+    payAmount:70.4,
+    startTime:serviceStartTime,
+    clientOpenid:'u1'
+  }
+  const regularOrder={
+    _id:'ord_regular',
+    status:'paid',
+    paymentStatus:'paid',
+    payAmount:100,
+    startTime:serviceStartTime,
+    clientOpenid:'u2'
+  }
+
+  const time2_5hBefore=new Date('2026-10-21T03:30:00Z') // 11:30
+  const time1_9hBefore=new Date('2026-10-21T04:05:00Z') // 12:05 (距14:00不足2h)
+
+  // 11:30 时：拼单和普通订单均未过期
+  assert.equal(expireService.shouldExpireUnacceptedOrder(groupOrder,time2_5hBefore),false)
+  assert.equal(expireService.shouldExpireUnacceptedOrder(regularOrder,time2_5hBefore),false)
+
+  // 12:05 时（服务前不足 2 小时）：拼单提前判定过期！普通订单此时尚未过期
+  assert.equal(expireService.shouldExpireUnacceptedOrder(groupOrder,time1_9hBefore),true)
+  assert.equal(expireService.shouldExpireUnacceptedOrder(regularOrder,time1_9hBefore),false)
+
+  // 3. 执行 expireUnacceptedOrder：验证退款及拼单团状态同步
+  f.db.state.pet_playground_groups=[{_id:'g1',status:'recruiting',members:[]}]
+  const expired=await expireService.expireUnacceptedOrder('ord_group',groupOrder,time1_9hBefore)
+  assert.equal(expired.status,'expired')
+  assert.equal(expired.paymentStatus,'refunding')
+  assert.ok(expired.expireReason.includes('2小时'))
+
+  const g1Doc=await f.db.collection('pet_playground_groups').doc('g1').get()
+  assert.equal(g1Doc.data.status,'cancelled')
+})

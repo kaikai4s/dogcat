@@ -1,22 +1,27 @@
 module.exports = function createHelpers({ now, toTimeValue, ORDER_STATUS, safeText, createRefundForOrder, makeIdempotencyKey, db, appendOrderTimeline, appendOrderClientMessage, restoreOrderCoupon }) {
 function shouldExpireUnacceptedOrder(order = {}, time = now()) {
   const start = toTimeValue(order.startTime)
-  return order.status === ORDER_STATUS.PAID && !safeText(order.staffOpenid).trim() && start > 0 && start <= time.getTime()
+  const isGroup = !!(order.groupBuyId || order.source === 'community_groupbuy')
+  const threshold = isGroup ? (start - 2 * 3600 * 1000) : start
+  return order.status === ORDER_STATUS.PAID && !safeText(order.staffOpenid).trim() && start > 0 && threshold <= time.getTime()
 }
 
 async function expireUnacceptedOrder(orderId, order, time = now()) {
   if (!shouldExpireUnacceptedOrder(order, time)) return order
   const isPaid = order.paymentStatus === 'paid' && Number(order.payAmount || 0) > 0
+  const isGroup = !!(order.groupBuyId || order.source === 'community_groupbuy')
+  const expireReason = isGroup ? '服务开始前2小时无人接单，拼单自动作废' : '服务开始时间前无人接单'
+  const refundReason = isGroup ? '服务开始前2小时无人接单，拼单自动全额退款' : '服务开始时间前无人接单，系统自动全额退款'
   const update = {
     status: ORDER_STATUS.EXPIRED,
     expiredAt: time,
-    expireReason: '服务开始时间前无人接单',
+    expireReason,
     updatedAt: time
   }
 
   let refund = null
   if (isPaid) {
-    refund = await createRefundForOrder(order, order.payAmount, '服务开始时间前无人接单，系统自动全额退款', 'system_expire', order.clientOpenid, makeIdempotencyKey('expire_refund', orderId), { unreadForClient: false, cancelStatus: 'expired' })
+    refund = await createRefundForOrder(order, order.payAmount, refundReason, 'system_expire', order.clientOpenid, makeIdempotencyKey('expire_refund', orderId), { unreadForClient: false, cancelStatus: 'expired' })
     update.paymentStatus = 'refunding'
     update.refundStatus = 'processing'
     update.refundNo = refund.refundNo
@@ -36,8 +41,19 @@ async function expireUnacceptedOrder(orderId, order, time = now()) {
     if (!changed) return order
   }
   const updatedOrder = refund ? ((await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))).data || { ...order, _id: orderId, ...update }) : { ...order, _id: orderId, ...update }
-  await appendOrderTimeline(orderId, 'expired', '订单已过期', isPaid ? `服务开始时间前无人接单，已发起全额退款 ¥${order.payAmount}` : '服务开始时间前无人接单', 'system')
-  await appendOrderClientMessage(updatedOrder, { eventType: 'expired', title: '订单已过期', detail: isPaid ? `服务开始时间前无人接单，已自动发起全额退款 ¥${order.payAmount}` : '服务开始时间前无人接单', actorRole: 'system' })
+  const noticeDetail = isPaid ? (isGroup ? `服务开始前2小时无人接单，拼单已自动取消并全额退款 ¥${order.payAmount}` : `服务开始时间前无人接单，已发起全额退款 ¥${order.payAmount}`) : expireReason
+  await appendOrderTimeline(orderId, 'expired', isGroup ? '拼单已超时取消' : '订单已过期', noticeDetail, 'system')
+  await appendOrderClientMessage(updatedOrder, { eventType: 'expired', title: isGroup ? '拼单超时未接单已取消' : '订单已过期', detail: noticeDetail, actorRole: 'system' })
+  if (isGroup && order.groupBuyId) {
+    await db.collection('pet_playground_groups').doc(order.groupBuyId).update({
+      data: {
+        status: 'cancelled',
+        deadline: time,
+        cancelReason: '服务开始前2小时无人接单，拼单已自动取消',
+        updatedAt: time
+      }
+    }).catch(() => {})
+  }
   return updatedOrder
 }
 
