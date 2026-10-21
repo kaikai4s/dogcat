@@ -3,6 +3,7 @@ const { getCachedHeroMedia, resolveHeroMedia } = require('../../../utils/hero-me
 const { loadMessageUnread } = require('../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { safeNavigateTo } = require('../../../utils/nav')
+const { formatDateTime } = require('../../../utils/format')
 
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'
 const RETIRED_SERVICE_KEYS = ['extra_pet']
@@ -43,6 +44,67 @@ function isGroupNoticeDismissedToday() {
   } catch (_) {
     return false
   }
+}
+
+function buildGroupNoticeCards(result) {
+  if (!result) return []
+  const cards = []
+  const communityName = result.communityName || '本小区'
+
+  // 1. 邻居发起的招募中拼单
+  const activeGroups = (result.groups || []).filter((g) => !g.mine && g.status === 'recruiting')
+  for (const group of activeGroups) {
+    const minH = group.minHouseholds || (group.rules && group.rules.minHouseholds) || 2
+    const currentH = group.householdCount || 1
+    const remaining = Math.max(1, minH - currentH)
+    const timeStr = group.startTime ? (typeof formatDateTime === 'function' ? formatDateTime(group.startTime) : group.startTime) : ''
+    cards.push({
+      id: group.id || group._id,
+      groupId: group.id || group._id,
+      type: 'community_group',
+      badge: '🏡 同小区拼单',
+      communityName,
+      title: group.serviceSummary ? `${group.serviceSummary}拼单` : '邻居拼单',
+      highlightText: `已有 ${currentH} 户参团 · 还差 ${remaining} 户成团`,
+      subText: timeStr ? `服务时间: ${timeStr}` : (group.serviceSummary || '点击查看详情'),
+      actionText: '立即查看拼单'
+    })
+  }
+
+  // 2. 我的拼单（进行中或已成团）
+  const myGroups = (result.myGroups || []).filter((g) => g.status === 'recruiting' || g.status === 'formed')
+  for (const group of myGroups) {
+    const minH = group.minHouseholds || (group.rules && group.rules.minHouseholds) || 2
+    const currentH = group.householdCount || 1
+    const remaining = Math.max(0, minH - currentH)
+    cards.push({
+      id: group.id || group._id,
+      groupId: group.id || group._id,
+      type: 'my_group',
+      badge: '🐾 我的拼单',
+      communityName,
+      title: group.serviceSummary ? `${group.serviceSummary}拼单` : '我的拼单',
+      highlightText: group.status === 'formed' ? '🎉 已成团！享受拼单优惠' : `招募中 · 已有 ${currentH} 户 (还差 ${remaining} 户)`,
+      subText: group.statusText || '拼单进行中',
+      actionText: '查看拼单进度'
+    })
+  }
+
+  // 3. 兜底汇总卡片（当没有单项列表但有拼单统计时，例如简易 mock 数据）
+  if (cards.length === 0 && (result.availableCount || (result.myGroups && result.myGroups.length))) {
+    cards.push({
+      id: 'summary',
+      type: 'summary',
+      badge: '🏡 同小区拼单',
+      communityName,
+      title: '同小区拼单',
+      highlightText: result.availableCount ? `${result.availableCount} 个邻居拼单可加入` : '查看我发起和参加的拼单',
+      subText: (result.myGroups && result.myGroups.length) ? `我的拼单 ${result.myGroups.length}` : '邻居拼单享优惠',
+      actionText: '立即查看拼单'
+    })
+  }
+
+  return cards
 }
 
 function normalizeHomeServicePrices(options = []) {
@@ -120,6 +182,10 @@ Page({
     communityGroupNotice: null,
     showCommunityGroupNotice: true,
     groupNoticeDismissed: false,
+    groupNoticeCards: [],
+    noticeCardDismissing: false,
+    noticeCardRebounding: false,
+    topCardTransformStyle: '',
     staffEntryLoaded: true,
     staffEntryTitle: '宠护端',
     staffEntryTip: '',
@@ -172,7 +238,7 @@ Page({
     try {
       const user = typeof getCurrentUser === 'function' ? await getCurrentUser() : null
       if (!currentRequest()) return
-      if (!user) return this.setData({ communityGroupNotice: null, showCommunityGroupNotice: false })
+      if (!user) return this.setData({ communityGroupNotice: null, showCommunityGroupNotice: false, groupNoticeCards: [] })
       authenticated = true
       const result = await callFunction('playground', 'listCommunityGroupBuys')
       const current = await getCurrentUser()
@@ -180,13 +246,15 @@ Page({
         const isOwner = current && (current.openid || current._id) === (user.openid || user._id)
         const validNotice = isOwner ? result : null
         const isDismissed = this.data.groupNoticeDismissed || isGroupNoticeDismissedToday()
+        const cards = validNotice ? buildGroupNoticeCards(validNotice) : []
         this.setData({
           communityGroupNotice: validNotice,
-          showCommunityGroupNotice: Boolean(validNotice && !isDismissed)
+          groupNoticeCards: cards,
+          showCommunityGroupNotice: Boolean(validNotice && cards.length && !isDismissed)
         })
       }
     } catch (_) {
-      if (currentRequest()) this.setData({ communityGroupNotice: null, showCommunityGroupNotice: false })
+      if (currentRequest()) this.setData({ communityGroupNotice: null, showCommunityGroupNotice: false, groupNoticeCards: [] })
     } finally {
       if (authenticated && currentRequest()) {
         this._groupNoticeTimer = setTimeout(() => this.loadCommunityGroups(), 30000)
@@ -194,19 +262,124 @@ Page({
       }
     }
   },
-  dismissGroupNotice() {
-    this.setData({
-      showCommunityGroupNotice: false,
-      groupNoticeDismissed: true
-    })
+
+  onNoticeTouchStart(e) {
+    if (this._isDismissing || !e.touches || !e.touches[0]) return
+    this._touchStartY = e.touches[0].clientY
+    this._touchStartTime = Date.now()
+    this._touchDeltaY = 0
+    if (this.data.noticeCardRebounding) {
+      this.setData({ noticeCardRebounding: false })
+    }
   },
+
+  onNoticeTouchMove(e) {
+    if (this._isDismissing || !this._touchStartY || !e.touches || !e.touches[0]) return
+    const clientY = e.touches[0].clientY
+    const deltaY = clientY - this._touchStartY
+    if (deltaY <= 0) {
+      // 向上滑动：第一张卡片随手指上移，逐渐增加模糊度并淡出
+      const moveUp = -deltaY
+      const opacity = Math.max(0.05, Number((1 - (moveUp / 140) * 0.85).toFixed(2)))
+      const blur = Math.min(14, Math.round(moveUp / 6))
+      this._touchDeltaY = deltaY
+      this.setData({
+        topCardTransformStyle: `transform: translateY(${deltaY}px); opacity: ${opacity}; filter: blur(${blur}px); -webkit-filter: blur(${blur}px);`
+      })
+    } else {
+      // 向下拉微弱阻尼
+      const dampY = Math.min(deltaY * 0.15, 12)
+      this._touchDeltaY = dampY
+      this.setData({
+        topCardTransformStyle: `transform: translateY(${dampY}px);`
+      })
+    }
+  },
+
+  onNoticeTouchEnd() {
+    if (this._isDismissing) return
+    const deltaY = this._touchDeltaY || 0
+    const distance = -deltaY
+    const duration = Date.now() - (this._touchStartTime || 0)
+    const velocity = distance / Math.max(duration, 1)
+
+    if (distance >= 45 || (distance >= 20 && velocity > 0.25)) {
+      // 向上滑达到阈值，触发飞出模糊淡出动画
+      this.animateDismissTopCard()
+    } else {
+      // 未达到阈值，弹性平滑回弹原位
+      this.setData({
+        noticeCardRebounding: true,
+        topCardTransformStyle: ''
+      })
+      setTimeout(() => {
+        if (!this._isDismissing) {
+          this.setData({ noticeCardRebounding: false })
+        }
+      }, 260)
+    }
+    this._touchStartY = 0
+    this._touchDeltaY = 0
+  },
+
+  onNoticeTouchCancel() {
+    this.onNoticeTouchEnd()
+  },
+
+  animateDismissTopCard() {
+    if (this._isDismissing) return
+    this._isDismissing = true
+    this.setData({
+      noticeCardDismissing: true,
+      noticeCardRebounding: false,
+      topCardTransformStyle: ''
+    })
+
+    setTimeout(() => {
+      const remaining = (this.data.groupNoticeCards || []).slice(1)
+      if (remaining.length === 0) {
+        // 卡片已全部取消（或原本仅有单张卡片）
+        this.setData({
+          groupNoticeCards: [],
+          showCommunityGroupNotice: false,
+          groupNoticeDismissed: true,
+          noticeCardDismissing: false,
+          topCardTransformStyle: ''
+        })
+      } else {
+        // 还有剩余堆叠卡片：下一张顶上来成为当前卡片
+        this.setData({
+          groupNoticeCards: remaining,
+          noticeCardDismissing: false,
+          topCardTransformStyle: ''
+        })
+      }
+      this._isDismissing = false
+    }, 270)
+  },
+
+  dismissGroupNotice(e) {
+    if (!e || typeof e !== 'object' || !e.type) {
+      // 同步直接关闭（满足测试及快速调用契约）
+      this.setData({
+        showCommunityGroupNotice: false,
+        groupNoticeDismissed: true,
+        groupNoticeCards: []
+      })
+      return
+    }
+    // 用户真机点击右上角取消按钮时触发飞出模糊淡出动效
+    this.animateDismissTopCard()
+  },
+
   dismissGroupNoticeToday() {
     try {
       wx.setStorageSync('dismiss_community_group_notice_date', getTodayDateString())
     } catch (_) {}
     this.setData({
       showCommunityGroupNotice: false,
-      groupNoticeDismissed: true
+      groupNoticeDismissed: true,
+      groupNoticeCards: []
     })
     wx.showToast({ title: '今日将不再提示拼单', icon: 'none' })
   },

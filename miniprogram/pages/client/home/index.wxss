@@ -1239,7 +1239,7 @@
   opacity: 0.86;
 }
 
-/* 顶部悬浮拼单通知（半透明柔光玻璃样式，浮层覆盖在页面上方，不挤占原本UI流） */
+/* 顶部悬浮拼单通知（超通透柔光玻璃样式，浮层覆盖在页面上方，不挤占原本UI流） */
 .home-group-notice-wrapper {
   position: fixed;
   top: 24rpx;
@@ -1259,6 +1259,11 @@
     transform: translateY(0);
     opacity: 1;
   }
+}
+
+.home-group-notice-stack {
+  position: relative;
+  width: 100%;
 }
 
 .home-group-notice-card {
@@ -1290,6 +1295,91 @@
     0 0 24rpx rgba(16, 185, 129, 0.10),
     inset 0 1rpx 3rpx rgba(255, 255, 255, 0.25);
   color: #f1f5f9;
+}
+
+/* 卡片堆叠层级与动效 */
+.card-stack-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  pointer-events: none;
+  box-sizing: border-box;
+  transform-origin: center bottom;
+}
+
+/* 堆叠第 1 底层（第二张卡片） */
+.card-stack-layer-1 {
+  z-index: 2;
+  transform: translateY(14rpx) scale(0.96);
+  opacity: 0.68;
+  filter: blur(2rpx);
+  -webkit-filter: blur(2rpx);
+  transition: transform 0.26s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.26s ease, filter 0.26s ease;
+}
+
+/* 堆叠第 1 底层平滑顶上来变为顶层卡片 */
+.card-stack-layer-1.promoting-to-top {
+  transform: translateY(0) scale(1) !important;
+  opacity: 1 !important;
+  filter: blur(0px) !important;
+  -webkit-filter: blur(0px) !important;
+  z-index: 5;
+}
+
+/* 堆叠第 2 底层（第三张卡片微缩轮廓） */
+.card-stack-layer-2 {
+  z-index: 1;
+  transform: translateY(26rpx) scale(0.91);
+  opacity: 0.38;
+  height: 100%;
+  filter: blur(4rpx);
+  -webkit-filter: blur(4rpx);
+}
+
+/* 当前最上方顶层卡片 */
+.card-stack-top {
+  position: relative;
+  z-index: 10;
+  transform-origin: center center;
+  touch-action: pan-y;
+  will-change: transform, opacity, filter;
+}
+
+/* 卡片向上飞出并模糊淡出动画 */
+.card-stack-top.card-dismissing {
+  transition: transform 0.26s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.26s ease, filter 0.26s ease !important;
+  transform: translateY(-160rpx) !important;
+  opacity: 0 !important;
+  filter: blur(16px) !important;
+  -webkit-filter: blur(16px) !important;
+  pointer-events: none;
+}
+
+/* 手势松手回弹原位平滑过渡 */
+.card-stack-top.card-rebounding {
+  transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.4, 1), opacity 0.25s ease, filter 0.25s ease !important;
+}
+
+/* 堆叠张数胶囊计数器 */
+.notice-stack-counter {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #059669;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1rpx solid rgba(16, 185, 129, 0.25);
+  border-radius: 999rpx;
+  padding: 2rpx 12rpx;
+  margin-left: 6rpx;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.theme-night .notice-stack-counter {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.22);
+  border-color: rgba(52, 211, 153, 0.30);
 }
 
 .notice-top-row {
