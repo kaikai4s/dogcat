@@ -1264,28 +1264,29 @@
 .home-group-notice-card {
   padding: 24rpx 28rpx 20rpx;
   border-radius: 32rpx;
-  /* 柔光漫反射与微透渐变 */
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(240, 253, 244, 0.72) 50%, rgba(255, 255, 255, 0.78) 100%);
-  backdrop-filter: blur(28rpx) saturate(190%);
-  -webkit-backdrop-filter: blur(28rpx) saturate(190%);
-  /* 柔光玻璃高光微边框与内发光 */
-  border: 1rpx solid rgba(255, 255, 255, 0.85);
+  /* 高通透柔光玻璃漫反射与微透渐变 */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.52) 0%, rgba(240, 253, 244, 0.35) 45%, rgba(255, 255, 255, 0.46) 100%);
+  backdrop-filter: blur(36rpx) saturate(210%);
+  -webkit-backdrop-filter: blur(36rpx) saturate(210%);
+  /* 柔光玻璃高光微边框与立体光晕 */
+  border: 1.5rpx solid rgba(255, 255, 255, 0.78);
   box-shadow: 
-    0 16rpx 40rpx rgba(5, 150, 105, 0.12),
-    0 4rpx 14rpx rgba(15, 23, 42, 0.05),
-    inset 0 1rpx 3rpx rgba(255, 255, 255, 0.95),
-    inset 0 -1rpx 2rpx rgba(16, 185, 129, 0.12);
+    0 20rpx 48rpx rgba(5, 150, 105, 0.12),
+    0 6rpx 18rpx rgba(15, 23, 42, 0.04),
+    0 0 24rpx rgba(255, 255, 255, 0.65),
+    inset 0 2rpx 4rpx rgba(255, 255, 255, 0.95),
+    inset 0 -1rpx 2rpx rgba(255, 255, 255, 0.5);
   color: #1e293b;
   box-sizing: border-box;
 }
 
 .theme-night .home-group-notice-card {
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.75) 100%);
-  border: 1rpx solid rgba(255, 255, 255, 0.20);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.40) 100%);
+  border: 1.5rpx solid rgba(255, 255, 255, 0.24);
   box-shadow: 
-    0 18rpx 44rpx rgba(0, 0, 0, 0.38),
-    inset 0 1rpx 2rpx rgba(255, 255, 255, 0.20),
-    inset 0 -1rpx 2rpx rgba(16, 185, 129, 0.15);
+    0 20rpx 48rpx rgba(0, 0, 0, 0.45),
+    0 0 24rpx rgba(16, 185, 129, 0.15),
+    inset 0 1rpx 3rpx rgba(255, 255, 255, 0.35);
   color: #f1f5f9;
 }
 
@@ -1339,21 +1340,23 @@
   justify-content: center;
   font-size: 32rpx;
   color: #64748b;
-  background: rgba(255, 255, 255, 0.65);
-  border: 1rpx solid rgba(0, 0, 0, 0.04);
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  background: rgba(255, 255, 255, 0.48);
+  border: 1rpx solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 4rpx 10rpx rgba(0, 0, 0, 0.03);
+  backdrop-filter: blur(12rpx);
+  -webkit-backdrop-filter: blur(12rpx);
   flex-shrink: 0;
   margin-left: 12rpx;
 }
 
 .theme-night .notice-close-btn {
   background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.20);
   color: #cbd5e1;
 }
 
 .notice-close-btn:active {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.65);
 }
 
 .notice-content-row {
@@ -1415,18 +1418,21 @@
   align-items: center;
   gap: 6rpx;
   font-size: 22rpx;
-  color: #64748b;
+  color: #475569;
   padding: 8rpx 18rpx;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.60);
-  border: 1rpx solid rgba(0, 0, 0, 0.05);
-  box-shadow: inset 0 1rpx 2rpx rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.45);
+  border: 1rpx solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.03), inset 0 1rpx 2rpx rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12rpx);
+  -webkit-backdrop-filter: blur(12rpx);
 }
 
 .theme-night .notice-today-btn {
   color: #94a3b8;
   background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: none;
 }
 
 .notice-today-btn:active {
