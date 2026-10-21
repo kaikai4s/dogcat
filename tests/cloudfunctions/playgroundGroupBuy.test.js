@@ -148,3 +148,36 @@ test('when the last member of a group buy cancels, the group is immediately canc
   assert.equal(listingB.myGroups[0].status,'cancelled')
   assert.equal(listingB.myGroups[0].statusText,'已取消')
 })
+
+test('group buy enforces single-day schedule and prevents unilateral cancellation after formed',async(t)=>{
+  const f=fixture()
+  // 1. 测试跨天拼单被直接拒绝
+  const multiDayPricing={
+    amount:200,
+    sessions:[
+      {date:'2026-10-21',startTime:'2026-10-21 10:00',endTime:'2026-10-21 10:30'},
+      {date:'2026-10-22',startTime:'2026-10-22 10:00',endTime:'2026-10-22 10:30'}
+    ],
+    priceSnapshot:{services:[{key:'feed',price:100}]}
+  }
+  await assert.rejects(
+    f.groups.prepare('a',f.data('a'),multiDayPricing),
+    /单日服务|不可跨天/
+  )
+
+  // 2. 测试成团后严禁单方面取消订单
+  const first=await f.submit('a')
+  const groupBuyId=first.order.groupBuyId
+  const second=await f.submit('b',{groupBuyId})
+  assert.equal(second.order.groupBuyStatus,'formed')
+
+  // 获取 cancelQuote 验证 canCancel 必须为 false
+  const orderAccess=require('../../cloudfunctions/api/services/orderAccess')({
+    now:f.context.now,
+    toTimeValue:(t)=>new Date(t).getTime(),
+    getSystemSettings:async()=>({})
+  })
+  const quote=orderAccess.getCancelQuoteForOrder(second.order)
+  assert.equal(quote.canCancel,false)
+  assert.ok(quote.ruleText.includes('成团锁定') || quote.ruleText.includes('暂不支持'))
+})

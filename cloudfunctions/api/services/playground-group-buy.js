@@ -31,6 +31,10 @@ module.exports = function createGroupBuy(context) {
     if (data.publishMode === 'direct') throw new Error('拼单由平台统一派单，请使用公开预约')
     if (data.couponId) throw new Error('拼单优惠不可与优惠券叠加')
     if (data.communityId !== own.id || String(data.serviceAddress || '').trim() !== own.community.name) throw new Error('拼单服务地点只能选择自己所属的小区')
+    const sessions = Array.isArray(pricing.sessions) ? pricing.sessions : []
+    if (!sessions.length) throw new Error('拼单服务时段不能为空')
+    const dates = new Set(sessions.map((s) => s.date || (s.startTime ? String(s.startTime).slice(0, 10) : '')).filter(Boolean))
+    if (dates.size > 1) throw new Error('同小区拼单仅支持同一自然日内的单日服务，不可跨天预约')
     const group = data.groupBuyId ? await optional(db, COLLECTION, String(data.groupBuyId)) : null
     if (data.groupBuyId && !group) throw new Error('拼单不存在')
     if (group && (group.communityId !== own.id || group.deadline <= now())) throw new Error('拼单不属于本小区或已截止')
@@ -79,50 +83,51 @@ module.exports = function createGroupBuy(context) {
   async function onOrderCancelled(orderId, groupBuyId) {
     const id = groupBuyId || (orderId ? ((await db.collection('orders').doc(orderId).get().catch(() => ({ data: {} }))).data || {}).groupBuyId : '')
     if (!id) return
-    const group = await optional(db, COLLECTION, id)
-    if (!group || group.status === 'cancelled') return
 
-    const members = group.members || []
-    const ids = members.map((m) => m.orderId).filter(Boolean)
-    if (!ids.length) {
-      await db.collection(COLLECTION).doc(id).update({
-        data: { status: 'cancelled', deadline: now(), cancelReason: '拼单全部成员已取消', updatedAt: now() }
-      }).catch(() => {})
-      return
-    }
+    return db.runTransaction(async (tx) => {
+      const group = await optional(tx, COLLECTION, id)
+      if (!group || group.status === 'cancelled') return
 
-    const orders = new Map()
-    for (let i = 0; i < ids.length; i += 100) {
-      const res = await db.collection('orders').where({ _id: db.command.in(ids.slice(i, i + 100)) }).get().catch(() => ({ data: [] }))
-      for (const ord of res.data || []) orders.set(ord._id, ord)
-    }
+      const members = group.members || []
+      const ids = members.map((m) => m.orderId).filter(Boolean)
+      if (!ids.length) {
+        await tx.collection(COLLECTION).doc(id).update({
+          data: { status: 'cancelled', deadline: now(), cancelReason: '拼单全部成员已取消', updatedAt: now() }
+        }).catch(() => {})
+        return
+      }
 
-    const activeMembers = members.filter((m) => {
-      if (m.orderId === orderId) return false
-      const ord = orders.get(m.orderId)
-      return participating(ord, now())
+      const activeMembers = []
+      for (const m of members) {
+        if (m.orderId === orderId) continue
+        const ord = await optional(tx, 'orders', m.orderId)
+        if (participating(ord, now())) {
+          activeMembers.push(m)
+        }
+      }
+
+      // 当拼单最后一人也取消的时候，有效人数归零，立即取消该拼单团！
+      const time = now()
+      if (activeMembers.length === 0) {
+        await tx.collection(COLLECTION).doc(id).update({
+          data: {
+            status: 'cancelled',
+            deadline: time,
+            cancelReason: '拼单全部成员已取消，自动作废',
+            updatedAt: time
+          }
+        })
+      } else {
+        await tx.collection(COLLECTION).doc(id).update({
+          data: {
+            members: activeMembers.map(({ openid, orderId, householdKey }) => ({ openid, orderId, ...(householdKey ? { householdKey } : {}) })),
+            updatedAt: time
+          }
+        })
+      }
+    }).catch((e) => {
+      console.error('[onOrderCancelled] atomic transaction error:', e)
     })
-
-    // 当拼单最后一人也取消的时候，有效人数归零，立即取消该拼单团！
-    if (activeMembers.length === 0) {
-      const time = now()
-      await db.collection(COLLECTION).doc(id).update({
-        data: {
-          status: 'cancelled',
-          deadline: time,
-          cancelReason: '拼单全部成员已取消，自动作废',
-          updatedAt: time
-        }
-      }).catch(() => {})
-    } else {
-      const time = now()
-      await db.collection(COLLECTION).doc(id).update({
-        data: {
-          members: activeMembers.map(({ openid, orderId, householdKey }) => ({ openid, orderId, ...(householdKey ? { householdKey } : {}) })),
-          updatedAt: time
-        }
-      }).catch(() => {})
-    }
   }
 
   async function list(openid) {

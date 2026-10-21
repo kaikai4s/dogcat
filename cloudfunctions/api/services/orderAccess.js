@@ -111,6 +111,14 @@ module.exports = function createService({
   }
 
   function getCancelQuoteForOrder(order) {
+    if ((order.groupBuyId || order.source === 'community_groupbuy') && (order.groupBuyStatus === 'formed' || order.groupBuyFormed === true)) {
+      return {
+        canCancel: false,
+        refundAmount: 0,
+        refundStatus: 'not_allowed',
+        ruleText: '同小区特惠拼单已全员成团锁定，暂不支持单方面自主取消，如遇紧急情况请联系官方客服处理'
+      }
+    }
     if (order.status === 'pending_pay') return { canCancel: true, refundAmount: 0, refundStatus: 'not_required', ruleText: '待支付订单可直接取消' }
     if (order.status === 'paid') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'processing', ruleText: '已支付未接单订单可全额退款' }
     if (order.status === 'expired') return { canCancel: true, refundAmount: Number(order.payAmount || 0), refundStatus: 'processing', ruleText: '过期未接单订单可全额退款' }

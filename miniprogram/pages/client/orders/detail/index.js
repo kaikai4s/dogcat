@@ -466,8 +466,25 @@ Page({
     if (!this.data.id) return
     wx.navigateTo({ url: '/pages/client/messages/thread/index?orderId=' + this.data.id })
   },
+  onFormedGroupBuyCancelClick() {
+    wx.showModal({
+      title: '拼单已成团锁定',
+      content: '本订单为同小区特惠拼单，当前已全员成团并锁定邻里优惠与宠托师上门行程，暂不支持单方面线上取消。如有突发紧急情况，请联系平台官方客服介入协商。',
+      confirmText: '联系客服',
+      cancelText: '我知道了',
+      success: (res) => {
+        if (res.confirm) {
+          wx.makePhoneCall({ phoneNumber: '400-000-0000' }).catch(() => {})
+        }
+      }
+    })
+  },
   cancelOrder() {
     if (this.data.cancelling) return
+    const order = this.data.order || {}
+    if (order.groupBuyId && (order.groupBuyStatus === 'formed' || order.groupBuyFormed === true)) {
+      return this.onFormedGroupBuyCancelClick()
+    }
     this.setData({ cancelling: true })
     callFunction('order', 'getCancelQuote', { orderId: this.data.id })
       .then((quote) => {

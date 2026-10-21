@@ -593,6 +593,9 @@ module.exports = function createHandler(context) {
         await checkTextSecurity(openid, reason, { scene: 2, label: '订单取消原因' })
       }
       if (order.status === 'pending_pay') {
+        if ((order.groupBuyId || order.source === 'community_groupbuy') && (order.groupBuyStatus === 'formed' || order.groupBuyFormed === true)) {
+          throw new Error('同小区特惠拼单已全员成团锁定，暂不支持单方面自主取消，如遇紧急情况请联系官方客服处理')
+        }
         const cancelled = await cancelUnpaidOrder(order, { reason: reason || '宠物主取消', actorRole: 'client' })
         if (!cancelled) throw new Error('支付或订单状态已更新，请刷新后重新取消')
         if (order.groupBuyId || order.source === 'community_groupbuy') {
