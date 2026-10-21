@@ -370,11 +370,11 @@ test('同小区拼单任务包: 抢单大厅聚合成单条展示且详情支持
     publishMode: 'open',
     clientOpenid: 'client_agg_1',
     petName: '皮皮猫',
-    startTime: '2026-10-21 14:00',
-    endTime: '2026-10-21 14:30',
-    serviceStartDate: '2026-10-21',
-    serviceEndDate: '2026-10-21',
-    serviceSessions: [{ date: '2026-10-21', startTime: '2026-10-21 14:00', endTime: '2026-10-21 14:30' }],
+    startTime: '2099-10-21 14:00',
+    endTime: '2099-10-21 14:30',
+    serviceStartDate: '2099-10-21',
+    serviceEndDate: '2099-10-21',
+    serviceSessions: [{ date: '2099-10-21', startTime: '2099-10-21 14:00', endTime: '2099-10-21 14:30' }],
     serviceTypes: ['feed'],
     serviceAddress: community.name,
     doorplate: '1号楼101',
@@ -395,11 +395,11 @@ test('同小区拼单任务包: 抢单大厅聚合成单条展示且详情支持
     publishMode: 'open',
     clientOpenid: 'client_agg_2',
     petName: '球球狗',
-    startTime: '2026-10-21 14:30',
-    endTime: '2026-10-21 15:00',
-    serviceStartDate: '2026-10-21',
-    serviceEndDate: '2026-10-21',
-    serviceSessions: [{ date: '2026-10-21', startTime: '2026-10-21 14:30', endTime: '2026-10-21 15:00' }],
+    startTime: '2099-10-21 14:30',
+    endTime: '2099-10-21 15:00',
+    serviceStartDate: '2099-10-21',
+    serviceEndDate: '2099-10-21',
+    serviceSessions: [{ date: '2099-10-21', startTime: '2099-10-21 14:30', endTime: '2099-10-21 15:00' }],
     serviceTypes: ['feed'],
     serviceAddress: community.name,
     doorplate: '2号楼302',
@@ -460,8 +460,8 @@ test('同小区拼单任务包: 抢单大厅聚合成单条展示且详情支持
 
   // 4. 服务履约：第1户完成打卡，调用 finishService，此时第2户尚未完成，整团应部分就绪
   // 将两单都模拟进入 in_service
-  await db.collection('orders').doc('ord_agg_1').update({ data: { status: 'in_service', currentSessionStartedAt: '2026-10-21 14:00' } })
-  await db.collection('orders').doc('ord_agg_2').update({ data: { status: 'in_service', currentSessionStartedAt: '2026-10-21 14:30' } })
+  await db.collection('orders').doc('ord_agg_1').update({ data: { status: 'in_service', currentSessionStartedAt: '2099-10-21 14:00' } })
+  await db.collection('orders').doc('ord_agg_2').update({ data: { status: 'in_service', currentSessionStartedAt: '2099-10-21 14:30' } })
   // 注入第1户的必填打卡
   await db.collection('checkin_logs').add({ data: { orderId: 'ord_agg_1', eventType: 'sanitization', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
   await db.collection('checkin_logs').add({ data: { orderId: 'ord_agg_1', eventType: 'enter_door', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
@@ -538,9 +538,9 @@ test('同小区拼单任务包: 默认2户成团，且支持3户以上多户逐�
     petName,
     startTime,
     endTime,
-    serviceStartDate: '2026-10-21',
-    serviceEndDate: '2026-10-21',
-    serviceSessions: [{ date: '2026-10-21', startTime, endTime }],
+    serviceStartDate: '2099-10-21',
+    serviceEndDate: '2099-10-21',
+    serviceSessions: [{ date: '2099-10-21', startTime, endTime }],
     serviceTypes: ['feed'],
     serviceAddress: community.name,
     doorplate,
@@ -550,9 +550,9 @@ test('同小区拼单任务包: 默认2户成团，且支持3户以上多户逐�
     staffOpenid: ''
   })
 
-  const o1 = makeOrder('ord_3h_1', 'client_1', '橘猫大橘', '1号楼101', '2026-10-21 16:00', '2026-10-21 16:30')
-  const o2 = makeOrder('ord_3h_2', 'client_2', '白猫雪球', '2号楼202', '2026-10-21 16:30', '2026-10-21 17:00')
-  const o3 = makeOrder('ord_3h_3', 'client_3', '柴犬阿黄', '3号楼303', '2026-10-21 17:00', '2026-10-21 17:30')
+  const o1 = makeOrder('ord_3h_1', 'client_1', '橘猫大橘', '1号楼101', '2099-10-21 16:00', '2099-10-21 16:30')
+  const o2 = makeOrder('ord_3h_2', 'client_2', '白猫雪球', '2号楼202', '2099-10-21 16:30', '2099-10-21 17:00')
+  const o3 = makeOrder('ord_3h_3', 'client_3', '柴犬阿黄', '3号楼303', '2099-10-21 17:00', '2099-10-21 17:30')
 
   const db = createCollectionStore({
     users: [staffUser, client1, client2, client3],
@@ -624,4 +624,142 @@ test('同小区拼单任务包: 默认2户成团，且支持3户以上多户逐�
     const doc = await db.collection('orders').doc(id).get()
     assert.equal(doc.data.status, 'completed', `订单 ${id} 应当最终完成`)
   }
+})
+
+test('同小区拼单任务包: 出发前往与时空雷达整团联动更新，且同团有取消订单时免死锁完成结算', async () => {
+  const community = { name: '万科翡翠滨江', city: '上海市', latitude: 31.2, longitude: 121.5 }
+  const staffUser = { _id: 'u_staff_transit', openid: 'staff_transit', roles: ['staff'], status: 'active', residentialCommunity: community }
+  const staffProfile = {
+    _id: 'prof_staff_transit',
+    openid: 'staff_transit',
+    realName: '赵宠师',
+    auditStatus: 'approved',
+    onboardingStatus: 'approved',
+    serviceAddress: community.name,
+    serviceLatitude: 31.2,
+    serviceLongitude: 121.5,
+    serviceRadiusKm: 10,
+    trainingVideoProgress: {},
+    staffLevel: 'certified'
+  }
+
+  const client1 = { _id: 'u_client_t1', openid: 'client_t1', roles: ['client'], status: 'active' }
+  const client2 = { _id: 'u_client_t2', openid: 'client_t2', roles: ['client'], status: 'active' }
+
+  const makeOrder = (id, clientOpenid, petName, doorplate) => ({
+    _id: id,
+    orderNo: 'NOTRANSIT_' + id,
+    source: 'community_groupbuy',
+    groupBuyId: 'group_transit_test',
+    groupBuyStatus: 'formed',
+    status: 'assigned',
+    paymentStatus: 'paid',
+    publishMode: 'open',
+    clientOpenid,
+    staffOpenid: 'staff_transit',
+    staffUserId: staffUser._id,
+    staffProfileId: staffProfile._id,
+    petName,
+    startTime: '2099-10-21 14:00',
+    endTime: '2099-10-21 14:30',
+    serviceStartDate: '2099-10-21',
+    serviceEndDate: '2099-10-21',
+    serviceSessions: [{ index: 1, date: '2099-10-21', startTime: '2099-10-21 14:00', endTime: '2099-10-21 14:30', status: 'pending' }],
+    serviceTypes: ['feed'],
+    serviceAddress: community.name,
+    doorplate,
+    addressLatitude: 31.2,
+    addressLongitude: 121.5,
+    payAmount: 60
+  })
+
+  const orderA = makeOrder('ord_transit_a', 'client_t1', '布偶猫咪咪', '1号楼101')
+  const orderB = makeOrder('ord_transit_b', 'client_t2', '金毛可乐', '2号楼202')
+
+  const db = createCollectionStore({
+    users: [staffUser, client1, client2],
+    staff_profiles: [staffProfile],
+    orders: [orderA, orderB],
+    staff_schedule_exceptions: [],
+    platform_configs: [{ _id: 'settings', key: 'system_settings', value: { staffDeposit: { required: false } } }]
+  })
+
+  const staffApi = loadCloudFunction('api', db, 'staff_transit')
+
+  // 1. 宠托师针对 orderA 调用 departForService 出发前往
+  const departRes = await staffApi.main({
+    module: 'order',
+    action: 'departForService',
+    data: {
+      id: 'ord_transit_a',
+      latitude: 31.21,
+      longitude: 121.51
+    }
+  })
+  assert.equal(departRes.ok, true, departRes.message)
+
+  // 校验主订单 orderA 状态变为 on_the_way
+  const docAAfterDepart = await db.collection('orders').doc('ord_transit_a').get()
+  assert.equal(docAAfterDepart.data.status, 'on_the_way')
+  assert.ok(docAAfterDepart.data.departedAt)
+  assert.ok(docAAfterDepart.data.travelEtaMinutes > 0)
+
+  // 关键断言：同拼单团的兄弟订单 orderB 必须联动自动更新为 on_the_way 并同步时空雷达与出发时间
+  const docBAfterDepart = await db.collection('orders').doc('ord_transit_b').get()
+  assert.equal(docBAfterDepart.data.status, 'on_the_way', '兄弟订单应当联动更新为 on_the_way')
+  assert.ok(docBAfterDepart.data.departedAt, '兄弟订单应同步出发时间')
+  assert.equal(docBAfterDepart.data.travelDeparted, true)
+  assert.ok(docBAfterDepart.data.travelEtaMinutes > 0)
+
+  // 2. 途中位置上报 updateTravelLocation
+  const locRes = await staffApi.main({
+    module: 'order',
+    action: 'updateTravelLocation',
+    data: {
+      id: 'ord_transit_a',
+      latitude: 31.2005,
+      longitude: 121.5005
+    }
+  })
+  assert.equal(locRes.ok, true, locRes.message)
+
+  const docAAfterLoc = await db.collection('orders').doc('ord_transit_a').get()
+  const docBAfterLoc = await db.collection('orders').doc('ord_transit_b').get()
+  assert.equal(docAAfterLoc.data.currentLocation.latitude, 31.2005)
+  assert.equal(docBAfterLoc.data.currentLocation.latitude, 31.2005, '兄弟订单应同步实时雷达位置')
+
+  // 3. 模拟异常场景：同团中 orderB 因紧急情况被平台客服取消
+  await db.collection('orders').doc('ord_transit_b').update({
+    data: {
+      status: 'cancelled',
+      cancelReason: '客户家中突发紧急情况客服介入取消',
+      refundStatus: 'completed'
+    }
+  })
+
+  // 4. 宠托师开始服务 orderA，并完成打卡
+  await db.collection('orders').doc('ord_transit_a').update({
+    data: {
+      status: 'in_service',
+      currentSessionStartedAt: '2099-10-21 14:00'
+    }
+  })
+  await db.collection('checkin_logs').add({ data: { orderId: 'ord_transit_a', eventType: 'sanitization', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+  await db.collection('checkin_logs').add({ data: { orderId: 'ord_transit_a', eventType: 'enter_door', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+  await db.collection('checkin_logs').add({ data: { orderId: 'ord_transit_a', eventType: 'leave_door', clientRole: 'staff', status: 'valid', createdAt: new Date() } })
+
+  // 5. 调用 finishService 完成服务
+  // 关键断言：同团的 orderB 已经 cancelled，系统不应死锁卡在 day_completed，而应直接判定所有有效订单全部履约完毕，整单结算为 completed
+  const finishRes = await staffApi.main({
+    module: 'order',
+    action: 'finishService',
+    data: { id: 'ord_transit_a' }
+  })
+  assert.equal(finishRes.ok, true, finishRes.message)
+  assert.equal(finishRes.data.allGroupCompleted, true, '同团其他订单取消时，正常履约订单打卡完成应顺利终态结算，不可发生死锁')
+
+  const docAFinal = await db.collection('orders').doc('ord_transit_a').get()
+  const docBFinal = await db.collection('orders').doc('ord_transit_b').get()
+  assert.equal(docAFinal.data.status, 'completed', '订单A应当正常进入 completed 终态')
+  assert.equal(docBFinal.data.status, 'cancelled', '已取消的订单B应保持 cancelled')
 })

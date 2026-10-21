@@ -960,7 +960,51 @@ module.exports = function createHandler(context) {
         const nextOrder = { ...latest, ...updateData }
         await tx.collection('orders').doc(order._id).update({ data: updateData })
         await enqueueOrderNotification(tx, latest.clientOpenid, 'staffDeparture', nextOrder, departureDetail, 'client', departureKey)
-        return { repeated: false, order: nextOrder }
+
+        const updatedSiblings = []
+        if (latest.groupBuyId) {
+          const siblingsRes = await tx.collection('orders').where({
+            groupBuyId: latest.groupBuyId,
+            staffOpenid: openid
+          }).get().catch(() => ({ data: [] }))
+          const validSiblings = (siblingsRes.data || []).filter(s => s._id !== latest._id && ['assigned', 'day_completed'].includes(s.status))
+          for (const sib of validSiblings) {
+            const sibSession = getNextPendingServiceSession(sib, time) || { index: 1, startTime: sib.startTime }
+            const sibKey = makeIdempotencyKey('staff_departure', sib._id, sib.staffOpenid, String(sibSession.index), sibSession.startTime)
+            const sibDetail = { appointmentTime: sibSession.startTime, departedAt: time, staffName: sib.staffName || user.realName || user.name || user.nickname || '宠托师' }
+            const sibUpdate = {
+              status: ORDER_STATUS.ON_THE_WAY,
+              departedAt: time,
+              departureSessionIndex: sibSession.index,
+              departureLocation: hasCoordinate(currentLat, currentLng) ? { latitude: currentLat, longitude: currentLng } : null,
+              currentLocation: hasCoordinate(currentLat, currentLng) ? { latitude: currentLat, longitude: currentLng, updatedAt: time } : null,
+              distanceFromDestinationKm: distanceKm !== null ? Number(distanceKm.toFixed(2)) : null,
+              travelDistanceKm: distanceKm !== null ? Number(distanceKm.toFixed(2)) : null,
+              estimatedTravelMinutes,
+              travelEtaMinutes: estimatedTravelMinutes,
+              estimatedArrivalTime,
+              travelDeparted: true,
+              radarProximityNotified: isProximity,
+              updatedAt: time
+            }
+            let sibTriggerRadar = false
+            if (isProximity && !sib.radarApproachingNotified) {
+              sibUpdate.radarApproachingNotified = true
+              sibUpdate.radarApproachingNotifiedAt = time
+              sibTriggerRadar = true
+            }
+            await tx.collection('orders').doc(sib._id).update({ data: sibUpdate })
+            await enqueueOrderNotification(tx, sib.clientOpenid, 'staffDeparture', { ...sib, ...sibUpdate }, sibDetail, 'client', sibKey)
+            updatedSiblings.push({
+              order: { ...sib, ...sibUpdate },
+              detail: sibDetail,
+              key: sibKey,
+              triggerRadar: sibTriggerRadar
+            })
+          }
+        }
+
+        return { repeated: false, order: nextOrder, updatedSiblings }
       })
       const updatedOrder = departure.order
       if (departure.repeated) return {
@@ -994,6 +1038,35 @@ module.exports = function createHandler(context) {
           statusText: '宠托师即将到达',
           tip: '宠托师已在路上，预计10分钟后到达您家'
         }, 'client').catch(() => {})
+      }
+
+      if (Array.isArray(departure.updatedSiblings)) {
+        for (const sibItem of departure.updatedSiblings) {
+          const sibOrder = sibItem.order
+          await notifyOrder(sibOrder.clientOpenid, 'staffDeparture', sibOrder, sibItem.detail, 'client', sibItem.key).catch(() => {})
+          await appendOrderTimeline(sibOrder._id, 'on_the_way', '宠托师已出发前往服务地点', `预计 ${estimatedTravelMinutes} 分钟后到达${distStr}。`, 'staff').catch(() => {})
+          await appendOrderClientMessage(sibOrder, {
+            eventType: 'on_the_way',
+            title: '宠托师已出发',
+            detail: `宠托师已在前往服务地点的路上，预计 ${estimatedTravelMinutes} 分钟后到达您家。`,
+            actorRole: 'staff'
+          }).catch(() => {})
+
+          if (sibItem.triggerRadar) {
+            await appendOrderTimeline(sibOrder._id, 'radar_approaching', '宠托师临近到家提醒', '时空雷达：宠托师距离您家约 1 公里内，预计 10 分钟内到达。', 'system').catch(() => {})
+            await appendOrderClientMessage(sibOrder, {
+              eventType: 'radar_proximity',
+              title: '【时空雷达】宠托师即将到达',
+              detail: '宠托师已在路上，预计10分钟后到达您家，请注意门铃/电话，提前安抚毛孩子。',
+              actorRole: 'system',
+              unreadForClient: true
+            }).catch(() => {})
+            await notifyOrder(sibOrder.clientOpenid, 'serviceProgress', sibOrder, {
+              statusText: '宠托师即将到达',
+              tip: '宠托师已在路上，预计10分钟后到达您家'
+            }, 'client').catch(() => {})
+          }
+        }
       }
 
       return {
@@ -1063,6 +1136,59 @@ module.exports = function createHandler(context) {
           statusText: '宠托师即将到达',
           tip: '宠托师已在路上，预计10分钟后到达您家'
         }, 'client').catch(() => {})
+      }
+
+      if (order.groupBuyId) {
+        const siblingsRes = await db.collection('orders').where({
+          groupBuyId: order.groupBuyId,
+          staffOpenid: openid,
+          status: ORDER_STATUS.ON_THE_WAY
+        }).get().catch(() => ({ data: [] }))
+        const siblings = (siblingsRes.data || []).filter(s => s._id !== order._id)
+        for (const sib of siblings) {
+          const sibLat = Number(sib.serviceLatitude || sib.addressLatitude || orderLat || 0)
+          const sibLng = Number(sib.serviceLongitude || sib.addressLongitude || orderLng || 0)
+          let sibDist = distanceKm
+          let sibEta = estimatedTravelMinutes
+          if (hasCoordinate(currentLat, currentLng) && hasCoordinate(sibLat, sibLng)) {
+            const d = calcDistanceKm(currentLat, currentLng, sibLat, sibLng)
+            if (d !== null && !isNaN(d)) {
+              sibDist = d
+              sibEta = Math.max(Math.ceil(d * 2.4 + 2), 2)
+            }
+          }
+          const sibEtaTime = new Date(time.getTime() + sibEta * 60 * 1000)
+          const sibProximity = (sibDist !== null && sibDist <= 1.0) || sibEta <= 10
+          const sibUpdate = {
+            currentLocation: { latitude: currentLat, longitude: currentLng, updatedAt: time },
+            distanceFromDestinationKm: sibDist !== null ? Number(sibDist.toFixed(2)) : null,
+            estimatedTravelMinutes: sibEta,
+            estimatedArrivalTime: sibEtaTime,
+            updatedAt: time
+          }
+          let sibTriggerRadar = false
+          if (sibProximity && !sib.radarApproachingNotified) {
+            sibUpdate.radarApproachingNotified = true
+            sibUpdate.radarApproachingNotifiedAt = time
+            sibTriggerRadar = true
+          }
+          await db.collection('orders').doc(sib._id).update({ data: sibUpdate }).catch(() => {})
+          if (sibTriggerRadar) {
+            const nextSib = { ...sib, ...sibUpdate }
+            await appendOrderTimeline(sib._id, 'radar_approaching', '宠托师临近到家提醒', '时空雷达：宠托师距离您家约 1 公里内，预计 10 分钟内到达。', 'system').catch(() => {})
+            await appendOrderClientMessage(nextSib, {
+              eventType: 'radar_proximity',
+              title: '【时空雷达】宠托师即将到达',
+              detail: '宠托师已在路上，预计10分钟后到达您家，请注意门铃/电话，提前安抚毛孩子。',
+              actorRole: 'system',
+              unreadForClient: true
+            }).catch(() => {})
+            await notifyOrder(sib.clientOpenid, 'serviceProgress', nextSib, {
+              statusText: '宠托师即将到达',
+              tip: '宠托师已在路上，预计10分钟后到达您家'
+            }, 'client').catch(() => {})
+          }
+        }
       }
 
       return {
@@ -1351,8 +1477,8 @@ module.exports = function createHandler(context) {
           _id: db.command.neq(data.id)
         }).get().catch(() => ({ data: [] }))
         const siblings = siblingRes.data || []
-        // 检查同拼单团是否还有其他住户尚未完成打卡
-        const uncompletedSiblings = siblings.filter((s) => !['completed', 'day_completed'].includes(s.status))
+        // 检查同拼单团是否还有其他住户尚未完成打卡（排除已取消/退款订单）
+        const uncompletedSiblings = siblings.filter((s) => !['completed', 'day_completed', 'cancelled'].includes(s.status))
         if (uncompletedSiblings.length > 0) {
           // 当前住户打卡已完整，但同团其他住户尚未打卡完毕
           // 将当前住户订单标记为 day_completed，暂不结算整团，提示宠托师切换住户
@@ -1385,7 +1511,7 @@ module.exports = function createHandler(context) {
           // 本次是最后一家打卡完成！将本单及此前就绪的兄弟订单全部推进到 completed，统一结算收益
           const currentResult = await completeOrderService({ ...order, _id: data.id }, activeSession, now(), { isAuto: false, actor: 'staff' })
           for (const sib of siblings) {
-            if (sib.status !== 'completed') {
+            if (sib.status !== 'completed' && sib.status !== 'cancelled') {
               const sibActiveSession = getActiveServiceSession(sib) || normalizeServiceSessions(sib)[0] || { index: 1, date: beijingDateKey(now()) }
               await completeOrderService({ ...sib, _id: sib._id }, sibActiveSession, now(), { isAuto: false, actor: 'staff' }).catch((err) => {
                 console.error('[finishService] complete sibling error:', sib._id, err.message)
