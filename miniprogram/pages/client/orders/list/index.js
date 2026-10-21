@@ -131,6 +131,14 @@ Page({
     this.setData({ orderKeyword: '', startDate: '', endDate: '', page: 1, hasMore: true }, () => this.load({ reset: true }))
   },
   detail(e) { wx.navigateTo({ url: '/pages/client/orders/detail/index?id=' + e.currentTarget.dataset.id }) },
+  openGroupBuyDetail(e) {
+    const groupId = e.currentTarget.dataset.groupId
+    if (groupId) {
+      wx.navigateTo({ url: `/pages/client/orders/group-buy/index?groupId=${encodeURIComponent(groupId)}` })
+    } else {
+      wx.navigateTo({ url: '/pages/client/orders/group-buy/index' })
+    }
+  },
   go(e) {
     const url = e.currentTarget.dataset.url
     if (!url) return

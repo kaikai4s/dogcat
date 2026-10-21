@@ -284,14 +284,59 @@ function withOrderText(order) {
   const isStartOverdue = !terminal && order.isStartOverdue === true
   const isFinishOverdue = !terminal && order.isFinishOverdue === true
   const isOverdue = !terminal && (order.isOverdue === true || isStartOverdue || isFinishOverdue)
+
+  // 拼单状态识别与文本修饰
+  const isGroupBuy = Boolean(order.source === 'community_groupbuy' || order.groupBuyId)
+  let groupBuyStatusText = ''
+  let groupBuyTagText = ''
+  let groupBuyProgressText = ''
+
+  if (isGroupBuy) {
+    groupBuyTagText = '同小区拼单'
+    const gbStatus = String(order.groupBuyStatus || '').toLowerCase()
+    const ordStatus = String(order.status || '').toLowerCase()
+    if (gbStatus === 'recruiting') {
+      groupBuyStatusText = '拼单招募中'
+      groupBuyProgressText = '招募中 · 满员即成团'
+    } else if (gbStatus === 'formed') {
+      groupBuyStatusText = '已成团'
+      if (ordStatus === 'paid' && !order.staffOpenid) {
+        groupBuyProgressText = '已成团 · 待派单'
+      } else if (['assigned', 'on_the_way', 'in_service'].includes(ordStatus)) {
+        groupBuyProgressText = '已成团 · 待服务'
+      } else {
+        groupBuyProgressText = '已成团'
+      }
+    } else if (gbStatus === 'expired') {
+      groupBuyStatusText = '未成团已截止'
+      groupBuyProgressText = '拼单未成团'
+    }
+  }
+
+  // 计算订单列表展示的状态文字
+  let displayStatusText = formatOrderStatus(order.status, order)
+  if (isGroupBuy && !terminal) {
+    if (order.groupBuyStatus === 'recruiting' && order.status !== 'pending_pay') {
+      displayStatusText = '拼单招募中'
+    } else if (order.groupBuyStatus === 'formed' && order.status === 'paid' && !order.staffOpenid) {
+      displayStatusText = '已成团·待派单'
+    }
+  }
+
   return {
     ...order,
+    isGroupBuy,
+    groupBuyTagText,
+    groupBuyStatusText,
+    groupBuyProgressText,
+    displayStatusText,
     autoCompleted,
     isOverdue,
     isStartOverdue,
     isFinishOverdue,
     autoCompletedText: autoCompleted ? '系统自动结算' : '',
-    statusText: formatOrderStatus(order.status, order),
+    statusText: displayStatusText,
+    originalStatusText: formatOrderStatus(order.status, order),
     paymentStatusText: formatPaymentStatus(order.paymentStatus || 'unpaid'),
     refundStatusText: formatRefundStatus(order.refundStatus),
     assignmentSourceText: formatAssignmentSource(order.assignmentSource),

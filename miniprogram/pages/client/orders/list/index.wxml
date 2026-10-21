@@ -97,10 +97,13 @@
                 <text>{{(item.petSnapshot && item.petSnapshot.beautyTitle && (item.petSnapshot.beautyTitle.title || item.petSnapshot.beautyTitle)) || (item.beautyTitle && (item.beautyTitle.title || item.beautyTitle))}}</text>
               </view>
             </view>
-            <view class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</view>
+            <view class="order-service-wrap">
+              <text class="group-buy-order-badge" wx:if="{{item.isGroupBuy || item.source === 'community_groupbuy' || item.groupBuyId}}">🏡 同小区拼单</text>
+              <text class="order-service">{{item.serviceSummary || (item.serviceType === 'walk' ? '上门遛狗' : '上门喂养')}}</text>
+            </view>
           </view>
         </view>
-        <view class="badge">{{item.statusText}}</view>
+        <view class="badge {{item.isGroupBuy ? (item.groupBuyStatus === 'recruiting' ? 'badge-group-recruiting' : (item.groupBuyStatus === 'formed' ? 'badge-group-formed' : '')) : ''}}">{{item.statusText}}</view>
       </view>
       <view class="order-info-grid">
         <view><view class="order-label">创建时间</view><view class="order-value">{{item.createdAtText || '-'}}</view></view>
@@ -112,6 +115,17 @@
         <view class="chip">安心履约</view>
         <view class="chip pink">实时打卡</view>
         <view class="chip blue">服务报告</view>
+      </view>
+      <!-- 拼单专属进度提示与快捷入口 -->
+      <view class="group-buy-card-footer" wx:if="{{item.isGroupBuy || item.source === 'community_groupbuy' || item.groupBuyId}}">
+        <view class="group-buy-tip-text">
+          <text class="remix-icon ri-group-line"></text>
+          <text>{{item.groupBuyProgressText || '同小区拼单特惠'}}</text>
+        </view>
+        <view class="group-buy-detail-link" catchtap="openGroupBuyDetail" data-group-id="{{item.groupBuyId}}">
+          <text>拼单详情</text>
+          <text class="remix-icon ri-arrow-right-s-line"></text>
+        </view>
       </view>
     </view>
     </view>
