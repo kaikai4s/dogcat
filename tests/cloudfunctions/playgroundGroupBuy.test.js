@@ -262,3 +262,82 @@ test('group buy unformed orders are excluded from open hall and expire 2 hours b
   const g1Doc=await f.db.collection('pet_playground_groups').doc('g1').get()
   assert.equal(g1Doc.data.status,'cancelled')
 })
+
+test('sitter accepting a community group buy order bundles all orders in the group',async(t)=>{
+  t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-20T00:00:00Z')})
+  const community={name:'同心小区',city:'上海',latitude:31.2,longitude:121.4}
+  const staffUser={_id:'u_staff',openid:'staff_1',roles:['staff'],status:'active',phone:'13900000000'}
+  const staffProfile={_id:'sp_staff',openid:'staff_1',realName:'张师傅',phone:'13900000000',auditStatus:'approved',serviceAddress:'同心小区附近',serviceLatitude:31.2,serviceLongitude:121.4,serviceRadiusKm:10,weeklySchedule:[{day:3,timeSlots:['09:00-18:00']}]}
+  
+  const orderA={
+    _id:'ord_bundle_1',
+    orderNo:'O1',
+    source:'community_groupbuy',
+    groupBuyId:'group_bundle',
+    groupBuyStatus:'formed',
+    status:'paid',
+    paymentStatus:'paid',
+    publishMode:'open',
+    clientOpenid:'u_client_1',
+    startTime:'2026-10-21 10:00',
+    endTime:'2026-10-21 10:30',
+    serviceStartDate:'2026-10-21',
+    serviceEndDate:'2026-10-21',
+    serviceSessions:[{date:'2026-10-21',startTime:'2026-10-21 10:00',endTime:'2026-10-21 10:30'}],
+    serviceTypes:['feed'],
+    serviceAddress:community.name,
+    addressLatitude:31.2,
+    addressLongitude:121.4,
+    payAmount:70.4,
+    staffOpenid:''
+  }
+
+  const orderB={
+    _id:'ord_bundle_2',
+    orderNo:'O2',
+    source:'community_groupbuy',
+    groupBuyId:'group_bundle',
+    groupBuyStatus:'formed',
+    status:'paid',
+    paymentStatus:'paid',
+    publishMode:'open',
+    clientOpenid:'u_client_2',
+    startTime:'2026-10-21 10:30',
+    endTime:'2026-10-21 11:00',
+    serviceStartDate:'2026-10-21',
+    serviceEndDate:'2026-10-21',
+    serviceSessions:[{date:'2026-10-21',startTime:'2026-10-21 10:30',endTime:'2026-10-21 11:00'}],
+    serviceTypes:['feed'],
+    serviceAddress:community.name,
+    addressLatitude:31.2,
+    addressLongitude:121.4,
+    payAmount:70.4,
+    staffOpenid:''
+  }
+
+  const db=createCollectionStore({
+    users:[staffUser],
+    staff_profiles:[staffProfile],
+    orders:[orderA,orderB],
+    order_messages:[],
+    order_message_threads:[],
+    order_timeline:[],
+    platform_configs:[{_id:'settings',key:'system_settings',value:{staffDeposit:{required:false}}}]
+  })
+
+  const staffApi=loadCloudFunction('api',db,'staff_1')
+  const acceptRes=await staffApi.main({
+    module:'staff',
+    action:'acceptOrder',
+    data:{orderId:'ord_bundle_1',currentLatitude:31.2,currentLongitude:121.4}
+  })
+  assert.equal(acceptRes.ok,true,acceptRes.message)
+  assert.equal(acceptRes.data.bundledCount,2,'应整包承接本拼单团全部2户订单')
+
+  const docA=await db.collection('orders').doc('ord_bundle_1').get()
+  const docB=await db.collection('orders').doc('ord_bundle_2').get()
+  assert.equal(docA.data.staffOpenid,'staff_1')
+  assert.equal(docA.data.status,'assigned')
+  assert.equal(docB.data.staffOpenid,'staff_1')
+  assert.equal(docB.data.status,'assigned')
+})
