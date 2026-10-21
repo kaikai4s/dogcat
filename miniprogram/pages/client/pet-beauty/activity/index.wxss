@@ -602,18 +602,41 @@ button.rank-view-option.is-active { color: #b85b2c; background: #fff; font-weigh
   width: 100%;
 }
 .gallery-votes {
+  position: relative;
   display: flex;
-  align-items: baseline;
-  gap: 4rpx;
+  align-items: center;
+  gap: 6rpx;
   flex: 1;
   min-width: 0;
-  color: #d77649;
+  color: #ff2d55;
   white-space: nowrap;
-  overflow: hidden;
+  overflow: visible;
 }
-.gallery-votes .remix-icon { font-size: 23rpx; flex-shrink: 0; }
-.gallery-vote-number { font-size: 27rpx; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gallery-votes .remix-icon {
+  font-size: 26rpx;
+  flex-shrink: 0;
+  color: #ff2d55 !important;
+  text-shadow: 0 2rpx 8rpx rgba(255, 45, 85, 0.28);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.3s ease;
+}
+.gallery-vote-number {
+  font-size: 28rpx;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #30271f;
+  display: inline-block;
+}
 .gallery-vote-label { color: #a3978c; font-size: 20rpx; flex-shrink: 0; }
+
+.vote-action-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 button.gallery-vote-btn {
   width: auto !important;
   max-width: 140rpx !important;
@@ -999,4 +1022,1274 @@ button.gallery-vote-btn[disabled] { color: #a89b90; background: #f4f1ed; opacity
   color: #a89b90 !important;
   box-shadow: none !important;
 }
+
+/* ========================================================
+   最美宠物大赛 - 活动海报、冠军大奖展区与规则说明美化
+   ======================================================== */
+
+.beauty-poster-section {
+  margin: 0 -28rpx 20rpx;
+}
+
+/* 运营上传的定制活动海报 横屏 Banner (自适应横屏比例，完整呈现原图，骨骼预加载，不裁切画面) */
+.poster-banner-box {
+  position: relative;
+  width: 100%;
+  height: auto;
+  min-height: 200rpx;
+  overflow: hidden;
+  border-bottom-left-radius: 36rpx;
+  border-bottom-right-radius: 36rpx;
+  box-shadow: 0 12rpx 30rpx rgba(123, 89, 62, 0.08);
+  background: #f8eee4;
+}
+
+.poster-skeleton-box {
+  width: 100%;
+  height: 300rpx;
+  min-height: 240rpx;
+  border-bottom-left-radius: 36rpx;
+  border-bottom-right-radius: 36rpx;
+}
+
+.poster-banner-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.poster-banner-img.is-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.poster-banner-img.is-loaded {
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+
+.poster-overlay-strip {
+  position: absolute;
+  left: 20rpx;
+  right: 20rpx;
+  bottom: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.poster-pill-badge,
+.poster-rules-btn {
+  pointer-events: auto;
+}
+
+/* 半透明轻薄磨砂角标，绝不遮挡海报主体艺术画面 */
+.poster-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  background: rgba(18, 14, 12, 0.32);
+  backdrop-filter: blur(16rpx);
+  -webkit-backdrop-filter: blur(16rpx);
+  border: 1rpx solid rgba(255, 255, 255, 0.28);
+  color: #fff9ee;
+  font-size: 22rpx;
+  font-weight: 800;
+  text-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.15);
+}
+
+.poster-pill-badge .remix-icon {
+  color: #fbbf24;
+  font-size: 24rpx;
+}
+
+.poster-rules-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 22rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(16rpx);
+  -webkit-backdrop-filter: blur(16rpx);
+  border: 1rpx solid rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 800;
+  text-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.15);
+}
+
+/* 顶部轻量常驻规则条 */
+.contest-quick-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin: 12rpx 0 16rpx;
+  padding: 16rpx 24rpx;
+  border-radius: 24rpx;
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+  border: 1rpx solid rgba(251, 146, 60, 0.25);
+  box-shadow: 0 6rpx 18rpx rgba(234, 88, 12, 0.06);
+}
+
+/* 今日投票状态与邀请新用户赠票提示条 */
+.today-vote-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin: 0 0 20rpx;
+  padding: 14rpx 20rpx;
+  border-radius: 22rpx;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1rpx solid rgba(255, 153, 102, 0.2);
+  box-shadow: 0 6rpx 20rpx rgba(123, 89, 62, 0.05);
+  box-sizing: border-box;
+}
+
+.vote-strip-left {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #3b2c23;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.vote-strip-left .remix-icon.is-active {
+  color: #ff5e3a;
+  font-size: 28rpx;
+  flex-shrink: 0;
+}
+
+.vote-strip-left .remix-icon.is-done {
+  color: #10b981;
+  font-size: 28rpx;
+  flex-shrink: 0;
+}
+
+.vote-strip-left .vote-main-text {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.vote-strip-left .vote-num {
+  color: #ff5e3a;
+  font-weight: 900;
+  font-size: 28rpx;
+  margin: 0 4rpx;
+}
+
+.vote-strip-left .vote-badge-hint {
+  display: inline-flex;
+  align-items: center;
+  padding: 2rpx 10rpx;
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #ff5e3a;
+  background: rgba(255, 94, 58, 0.1);
+  border-radius: 999rpx;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.invite-bonus-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  padding: 8rpx 18rpx !important;
+  margin: 0 !important;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #ff8a4c 0%, #ff5e3a 100%);
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 800;
+  box-shadow: 0 4rpx 12rpx rgba(255, 94, 58, 0.28);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: normal !important;
+  min-height: 0 !important;
+  width: auto !important;
+}
+
+.invite-bonus-tag .remix-icon {
+  font-size: 24rpx;
+  flex-shrink: 0;
+}
+
+.quick-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  font-size: 24rpx;
+  color: #7c2d12;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trophy-gold {
+  color: #f59e0b;
+  font-size: 28rpx;
+}
+
+.quick-bar-strong {
+  font-weight: 950;
+  color: #c2410c;
+}
+
+.quick-bar-divider {
+  color: #fdba74;
+  margin: 0 4rpx;
+}
+
+.quick-bar-desc {
+  color: #9a3412;
+  font-size: 23rpx;
+}
+
+.quick-bar-action {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  color: #ea580c;
+  font-size: 23rpx;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+/* 默认冠军大奖 Hero 舞台 */
+.hero-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
+}
+
+.hero-rules-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  color: #9a3412;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1rpx solid rgba(251, 146, 60, 0.28);
+  font-size: 23rpx;
+  font-weight: 900;
+  box-shadow: 0 2rpx 8rpx rgba(123, 89, 62, 0.05);
+}
+
+.hero-rules-tag .remix-icon {
+  font-size: 24rpx;
+}
+
+/* 冠军大奖醒目卡片 */
+.hero-prize-card {
+  margin-top: 24rpx;
+  padding: 22rpx 26rpx;
+  border-radius: 30rpx;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 50%, #fff7ed 100%);
+  border: 2rpx solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 10rpx 26rpx rgba(217, 119, 6, 0.12);
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  transition: transform 0.2s ease;
+}
+
+.hero-prize-card:active {
+  transform: scale(0.985);
+}
+
+.prize-badge-col {
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 22rpx;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6rpx 14rpx rgba(245, 158, 11, 0.3);
+  flex-shrink: 0;
+}
+
+.prize-trophy-icon {
+  font-size: 40rpx;
+  line-height: 1;
+}
+
+.prize-info-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.prize-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 6rpx;
+}
+
+.prize-tag {
+  color: #78350f;
+  font-size: 26rpx;
+  font-weight: 950;
+}
+
+.prize-highlight {
+  display: inline-block;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  background: #fde68a;
+  color: #92400e;
+  font-size: 20rpx;
+  font-weight: 900;
+}
+
+.prize-amount-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4rpx;
+}
+
+.prize-amount-row .currency {
+  font-size: 28rpx;
+  font-weight: 950;
+  color: #b45309;
+}
+
+.prize-amount-row .amount {
+  font-size: 46rpx;
+  font-weight: 950;
+  color: #b45309;
+  line-height: 1;
+}
+
+.prize-extra {
+  margin-left: 10rpx;
+  font-size: 22rpx;
+  color: #92400e;
+  font-weight: 700;
+}
+
+.prize-arrow {
+  display: flex;
+  align-items: center;
+  gap: 2rpx;
+  color: #b45309;
+  font-size: 23rpx;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.hero-bottom-status {
+  margin-top: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.hero-state.is-voted {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 8rpx 20rpx rgba(16, 185, 129, 0.22);
+}
+
+.hero-rules-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  color: #c2410c;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.hero-rules-link .remix-icon {
+  font-size: 26rpx;
+}
+
+/* ========================================================
+   活动规则与奖金说明弹窗样式 (Rules Modal)
+   ======================================================== */
+
+.rules-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(18, 14, 11, 0.65);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.rules-modal-mask.is-visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.rules-modal-container {
+  width: 100%;
+  max-height: 84vh;
+  background: #ffffff;
+  border-top-left-radius: 48rpx;
+  border-top-right-radius: 48rpx;
+  padding: 32rpx 36rpx 48rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 -16rpx 48rpx rgba(0, 0, 0, 0.2);
+}
+
+.rules-modal-mask.is-visible .rules-modal-container {
+  transform: translateY(0);
+}
+
+.rules-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding-bottom: 24rpx;
+  border-bottom: 1rpx solid #f3ece6;
+  flex-shrink: 0;
+}
+
+.rules-modal-header-left {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+
+.rules-icon-box {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 20rpx;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38rpx;
+  box-shadow: 0 4rpx 12rpx rgba(245, 158, 11, 0.2);
+}
+
+.rules-modal-title {
+  color: #1f1612;
+  font-size: 32rpx;
+  font-weight: 950;
+  line-height: 1.3;
+}
+
+.rules-modal-subtitle {
+  color: #8c7c72;
+  font-size: 22rpx;
+  margin-top: 4rpx;
+}
+
+.rules-modal-close {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 50%;
+  background: #f7f3f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7c6c62;
+  font-size: 34rpx;
+}
+
+.rules-modal-body {
+  flex: 1;
+  max-height: 58vh;
+  margin-top: 24rpx;
+  box-sizing: border-box;
+}
+
+.rules-block {
+  margin-bottom: 28rpx;
+  padding: 24rpx 26rpx;
+  border-radius: 28rpx;
+  background: #faf8f5;
+  border: 1rpx solid #f0e9e2;
+}
+
+.rules-block.prize-block {
+  background: linear-gradient(135deg, #fffbeb 0%, #fff7ed 100%);
+  border: 2rpx solid rgba(245, 158, 11, 0.3);
+  box-shadow: 0 8rpx 20rpx rgba(245, 158, 11, 0.08);
+}
+
+.rules-block-header {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 18rpx;
+}
+
+.rules-badge-icon {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  color: #ffffff;
+}
+
+.gold-bg { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+.orange-bg { background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%); }
+.blue-bg { background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); }
+.green-bg { background: linear-gradient(135deg, #34d399 0%, #059669 100%); }
+.purple-bg { background: linear-gradient(135deg, #c084fc 0%, #9333ea 100%); }
+
+.rules-block-title {
+  color: #261b15;
+  font-size: 28rpx;
+  font-weight: 950;
+}
+
+/* 奖金卡片特殊排版 */
+.prize-feature-card {
+  padding: 20rpx;
+  border-radius: 20rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(245, 158, 11, 0.25);
+}
+
+.feature-crown-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.feature-crown-tag .remix-icon {
+  color: #f59e0b;
+}
+
+.feature-amount {
+  margin: 14rpx 0 16rpx;
+  display: flex;
+  align-items: baseline;
+  gap: 6rpx;
+}
+
+.feature-amount .symbol {
+  font-size: 32rpx;
+  font-weight: 950;
+  color: #d97706;
+}
+
+.feature-amount .num {
+  font-size: 56rpx;
+  font-weight: 950;
+  color: #b45309;
+  line-height: 1;
+}
+
+.feature-amount .unit {
+  font-size: 24rpx;
+  font-weight: 800;
+  color: #92400e;
+  margin-left: 6rpx;
+}
+
+.feature-benefits {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  padding-top: 14rpx;
+  border-top: 1rpx dashed #fcd34d;
+}
+
+.benefit-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10rpx;
+  font-size: 24rpx;
+  color: #5b3d28;
+  line-height: 1.5;
+}
+
+.benefit-item .check {
+  color: #d97706;
+  font-size: 26rpx;
+  margin-top: 4rpx;
+  flex-shrink: 0;
+}
+
+/* 规则列表 */
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.rule-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14rpx;
+}
+
+.rule-dot {
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 50%;
+  background: #ede6de;
+  color: #6b5a4e;
+  font-size: 20rpx;
+  font-weight: 950;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 4rpx;
+}
+
+.rule-text {
+  flex: 1;
+  font-size: 25rpx;
+  color: #4b3e36;
+  line-height: 1.55;
+}
+
+.rule-text .highlight {
+  font-weight: 900;
+  color: #d97706;
+}
+
+.custom-rules-content {
+  font-size: 25rpx;
+  color: #55443a;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.rules-modal-footer {
+  margin-top: 24rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid #f3ece6;
+  flex-shrink: 0;
+}
+
+.rules-confirm-btn {
+  width: 100% !important;
+  min-height: 88rpx !important;
+  border-radius: 999rpx !important;
+  background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%) !important;
+  color: #ffffff !important;
+  font-size: 30rpx !important;
+  font-weight: 950 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 12rpx !important;
+  box-shadow: 0 10rpx 28rpx rgba(234, 88, 12, 0.35) !important;
+  border: none !important;
+}
+
+/* 暗色模式适配 */
+.theme-night .rules-modal-container {
+  background: #1e1915;
+  color: #f5ede6;
+}
+
+.theme-night .rules-modal-header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.theme-night .rules-modal-title {
+  color: #f7ede6;
+}
+
+.theme-night .rules-modal-subtitle {
+  color: #a89a90;
+}
+
+.theme-night .rules-modal-close {
+  background: #2b231d;
+  color: #c4b6ad;
+}
+
+.theme-night .rules-block {
+  background: #26201a;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.theme-night .rules-block.prize-block {
+  background: linear-gradient(135deg, #2d2012 0%, #291b15 100%);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.theme-night .prize-feature-card {
+  background: #201914;
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.theme-night .rule-text {
+  color: #d1c4ba;
+}
+
+.theme-night .benefit-item {
+  color: #e2d7ce;
+}
+
+/* ========================================================
+   最美爱宠投票高质感动效体系：
+   1. 爱心图标调红 (鲜亮纯正爱心红 #ff2d55)
+   2. 投一票按钮收缩渐变变白色透明玻璃爱心
+   3. 缓慢向左平移 + 留下心电图折线轨迹 + 逐渐浸润变红
+   4. 到达左侧爱心像水滴一样融入吸收
+   5. 票数滚动翻牌增加与浮动 +1 飞升
+   ======================================================== */
+
+.modal-vote-action-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* 按钮转变为白色玻璃爱心时的收缩过渡 */
+.gallery-vote-btn.btn-morphing,
+.modal-vote-btn.btn-morphing {
+  animation: vote-btn-collapse 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes vote-btn-collapse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  15% {
+    transform: scale(0.62);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(0.62);
+    opacity: 0;
+  }
+}
+
+/* 飞行爱心（初始为白色透明玻璃爱心 -> 向左移动 -> 渐变变红 -> 水滴汇合融入） */
+.flying-glass-heart {
+  position: absolute;
+  right: 18rpx;
+  top: 50%;
+  margin-top: -26rpx;
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+  animation: glass-heart-flight 1.1s cubic-bezier(0.25, 0.9, 0.3, 1) forwards;
+}
+
+.modal-flying-heart {
+  right: 40rpx;
+  margin-top: -32rpx;
+  width: 64rpx;
+  height: 64rpx;
+  animation: modal-glass-heart-flight 1.1s cubic-bezier(0.25, 0.9, 0.3, 1) forwards;
+}
+
+.glass-heart-icon {
+  font-size: 32rpx;
+  transition: color 0.3s ease;
+}
+
+.modal-flying-heart .glass-heart-icon {
+  font-size: 38rpx;
+}
+
+/* 玻璃反光高光光斑 */
+.glass-reflection {
+  position: absolute;
+  top: 8rpx;
+  left: 10rpx;
+  width: 14rpx;
+  height: 8rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  transform: rotate(-25deg);
+}
+
+/* 核心飞行与变色关键帧动画 (白色半透明玻璃心 -> 向左飞 -> 慢慢变红 -> 水滴吸入) */
+@keyframes glass-heart-flight {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.3);
+    opacity: 0;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1.5rpx solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 4rpx 14rpx rgba(255, 255, 255, 0.8), inset 0 0 8rpx rgba(255, 255, 255, 0.9);
+    color: rgba(255, 255, 255, 0.95);
+  }
+  16% {
+    transform: translate3d(0, 0, 0) scale(1.08);
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1.5rpx solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 4rpx 16rpx rgba(255, 255, 255, 0.85), inset 0 0 10rpx rgba(255, 255, 255, 0.9);
+    color: rgba(255, 255, 255, 0.95);
+  }
+  24% {
+    transform: translate3d(-18rpx, 0, 0) scale(1);
+    background: rgba(255, 245, 248, 0.88);
+    color: #ffb8c6;
+    box-shadow: 0 4rpx 14rpx rgba(255, 180, 195, 0.6);
+  }
+  48% {
+    transform: translate3d(-88rpx, -4rpx, 0) scale(1.02);
+    background: rgba(255, 130, 155, 0.9);
+    color: #ff476d;
+    box-shadow: 0 4rpx 18rpx rgba(255, 71, 109, 0.5);
+  }
+  74% {
+    transform: translate3d(-176rpx, 0, 0) scale(1);
+    opacity: 1;
+    background: #ff2d55;
+    border: 1.5rpx solid #ff5e7e;
+    color: #ffffff;
+    box-shadow: 0 6rpx 22rpx rgba(255, 45, 85, 0.7);
+  }
+  80% {
+    /* 接触水滴瞬间发生流体表面张力拉伸 */
+    transform: translate3d(-182rpx, 0, 0) scale(1.3, 0.75);
+    opacity: 0.9;
+    background: #ff2d55;
+    color: #ffffff;
+  }
+  86% {
+    /* 如水滴一样被吸附收拢 */
+    transform: translate3d(-186rpx, 0, 0) scale(0.45, 1.25);
+    opacity: 0.45;
+  }
+  92%, 100% {
+    /* 彻底融入左侧爱心 */
+    transform: translate3d(-186rpx, 0, 0) scale(0);
+    opacity: 0;
+  }
+}
+
+/* 弹窗中的飞行爱心位移动画 */
+@keyframes modal-glass-heart-flight {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.3);
+    opacity: 0;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1.5rpx solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 4rpx 14rpx rgba(255, 255, 255, 0.8);
+    color: rgba(255, 255, 255, 0.95);
+  }
+  16% {
+    transform: translate3d(0, 0, 0) scale(1.08);
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.85);
+    color: rgba(255, 255, 255, 0.95);
+  }
+  48% {
+    transform: translate3d(-150rpx, -4rpx, 0) scale(1.02);
+    background: rgba(255, 130, 155, 0.9);
+    color: #ff476d;
+    box-shadow: 0 4rpx 18rpx rgba(255, 71, 109, 0.5);
+  }
+  74% {
+    transform: translate3d(-310rpx, 0, 0) scale(1);
+    opacity: 1;
+    background: #ff2d55;
+    color: #ffffff;
+    box-shadow: 0 6rpx 22rpx rgba(255, 45, 85, 0.7);
+  }
+  80% {
+    transform: translate3d(-316rpx, 0, 0) scale(1.35, 0.75);
+    opacity: 0.9;
+    background: #ff2d55;
+  }
+  86% {
+    transform: translate3d(-320rpx, 0, 0) scale(0.45, 1.25);
+    opacity: 0.45;
+  }
+  92%, 100% {
+    transform: translate3d(-320rpx, 0, 0) scale(0);
+    opacity: 0;
+  }
+}
+
+/* 心电图脉冲轨迹 (随着爱心向左位移动态划过，留下跳动的心电折线) */
+.ecg-pulse-trail {
+  position: absolute;
+  right: 48rpx;
+  top: 50%;
+  margin-top: -12rpx;
+  height: 24rpx;
+  width: 140rpx;
+  pointer-events: none;
+  z-index: 8;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 24'%3E%3Cpath d='M 120,12 L 95,12 L 86,4 L 78,20 L 70,2 L 62,22 L 54,12 L 0,12' fill='none' stroke='%23ff2d55' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 140rpx 24rpx;
+  background-repeat: no-repeat;
+  background-position: right center;
+  animation: ecg-trail-glow 1.1s cubic-bezier(0.2, 0.8, 0.25, 1) forwards;
+}
+
+.modal-ecg {
+  right: 80rpx;
+  width: 250rpx;
+  background-size: 250rpx 24rpx;
+  animation: modal-ecg-trail-glow 1.1s cubic-bezier(0.2, 0.8, 0.25, 1) forwards;
+}
+
+@keyframes ecg-trail-glow {
+  0% {
+    clip-path: inset(0 0 0 100%);
+    opacity: 0;
+  }
+  18% {
+    clip-path: inset(0 0 0 100%);
+    opacity: 0.85;
+  }
+  72% {
+    clip-path: inset(0 0 0 0%);
+    opacity: 1;
+    filter: drop-shadow(0 0 4rpx rgba(255, 45, 85, 0.6));
+  }
+  84% {
+    clip-path: inset(0 0 0 0%);
+    opacity: 0.6;
+  }
+  100% {
+    clip-path: inset(0 0 0 0%);
+    opacity: 0;
+  }
+}
+
+@keyframes modal-ecg-trail-glow {
+  0% {
+    clip-path: inset(0 0 0 100%);
+    opacity: 0;
+  }
+  18% {
+    clip-path: inset(0 0 0 100%);
+    opacity: 0.85;
+  }
+  72% {
+    clip-path: inset(0 0 0 0%);
+    opacity: 1;
+  }
+  84% {
+    clip-path: inset(0 0 0 0%);
+    opacity: 0.5;
+  }
+  100% {
+    clip-path: inset(0 0 0 0%);
+    opacity: 0;
+  }
+}
+
+/* 左侧目标爱心水滴吸收与弹性共振动效 */
+.heart-target-icon.droplet-absorbed {
+  animation: heart-droplet-absorbed 0.5s 0.72s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes heart-droplet-absorbed {
+  0% {
+    transform: scale(1);
+    color: #ff4d6d;
+  }
+  30% {
+    /* 像水滴注入瞬间饱满膨胀 */
+    transform: scale(1.48) rotate(-6deg);
+    color: #ff2d55;
+    text-shadow: 0 0 16rpx rgba(255, 45, 85, 0.7);
+  }
+  60% {
+    transform: scale(0.9) rotate(4deg);
+    color: #ff2d55;
+  }
+  82% {
+    transform: scale(1.12) rotate(-2deg);
+    color: #ff2d55;
+  }
+  100% {
+    transform: scale(1) rotate(0);
+    color: #ff2d55;
+    text-shadow: 0 2rpx 8rpx rgba(255, 45, 85, 0.35);
+  }
+}
+
+/* 接触融合时的水滴涟漪扩散环 */
+.droplet-ripple {
+  position: absolute;
+  left: 2rpx;
+  top: 50%;
+  margin-top: -24rpx;
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 50%;
+  border: 2rpx solid rgba(255, 45, 85, 0.7);
+  pointer-events: none;
+  z-index: 5;
+  animation: droplet-ripple-spread 0.45s 0.74s ease-out forwards;
+}
+
+@keyframes droplet-ripple-spread {
+  0% {
+    transform: scale(0.3);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+/* 票数数字滚动推进增加 */
+.vote-number-roller.is-rolling,
+.vote-num.is-rolling,
+.votes-num.is-rolling {
+  animation: number-roll-up 0.45s 0.74s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+@keyframes number-roll-up {
+  0% {
+    transform: translateY(12rpx) scale(0.9);
+    opacity: 0.7;
+    color: #ff2d55;
+  }
+  50% {
+    transform: translateY(-4rpx) scale(1.22);
+    opacity: 1;
+    color: #ff2d55;
+    font-weight: 950;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* 浮动飞升的 +1 飘字 */
+.flying-plus-one {
+  position: absolute;
+  left: 12rpx;
+  top: -16rpx;
+  font-size: 22rpx;
+  font-weight: 900;
+  color: #ff2d55;
+  text-shadow: 0 2rpx 6rpx rgba(255, 45, 85, 0.4);
+  pointer-events: none;
+  z-index: 12;
+  animation: float-plus-one 0.65s 0.74s cubic-bezier(0.2, 0.8, 0.25, 1) forwards;
+}
+
+@keyframes float-plus-one {
+  0% {
+    transform: translate3d(0, 4rpx, 0) scale(0.5);
+    opacity: 0;
+  }
+  30% {
+    transform: translate3d(0, -14rpx, 0) scale(1.25);
+    opacity: 1;
+  }
+  75% {
+    transform: translate3d(0, -28rpx, 0) scale(1.05);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate3d(0, -38rpx, 0) scale(0.85);
+    opacity: 0;
+  }
+}
+
+/* ================= 宠物美照与榜单骨骼预加载 (骨架屏与渐入过渡) ================= */
+.photo-skeleton-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.pet-photo-img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.pet-photo-img.is-loaded {
+  opacity: 1;
+}
+
+.rank-avatar-box {
+  position: relative;
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin-right: 20rpx;
+  background: #f7ede4;
+}
+
+.avatar-skeleton-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.rank-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.rank-avatar.is-loaded {
+  opacity: 1;
+}
+
+.single-cover-box,
+.grid-img-box {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  background: #f7ede4;
+}
+
+.grid-skeleton-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.grid-img,
+.pet-cover {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.grid-img.is-loaded,
+.pet-cover.is-loaded {
+  opacity: 1;
+}
+
+/* 页面初始瀑布流骨骼预加载 */
+.beauty-skeleton-waterfall {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 16rpx;
+}
+
+.skeleton-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+.skeleton-card {
+  background: #ffffff;
+  border-radius: 24rpx;
+  overflow: hidden;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+}
+
+.skeleton-card .skeleton-cover {
+  width: 100%;
+  height: 440rpx;
+  border-radius: 24rpx 24rpx 0 0;
+}
+
+.skeleton-card .skeleton-body {
+  padding: 20rpx 18rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.skeleton-card .skeleton-name {
+  width: 60%;
+  height: 32rpx;
+  border-radius: 8rpx;
+}
+
+.skeleton-card .skeleton-meta {
+  width: 40%;
+  height: 24rpx;
+  border-radius: 6rpx;
+}
+
+.skeleton-card .skeleton-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8rpx;
+}
+
+.skeleton-card .skeleton-vote-count {
+  width: 80rpx;
+  height: 28rpx;
+  border-radius: 6rpx;
+}
+
+.skeleton-card .skeleton-vote-btn {
+  width: 120rpx;
+  height: 48rpx;
+  border-radius: 999rpx;
+}
+
+
 

@@ -32,7 +32,14 @@ require('./utils/adminAccess').installAdminPageGuard()
 
 App({
   copyText,
-  onLaunch() {
+  onLaunch(options = {}) {
+    const query = (options && options.query) || {}
+    if (query.inviteCode || query.inviterOpenid) {
+      try {
+        const { savePendingInvite } = require('./utils/cloud')
+        savePendingInvite(query)
+      } catch (_) {}
+    }
     const env = (typeof getActiveEnvId === 'function' ? getActiveEnvId() : '') || (envList[0] && envList[0].envId ? envList[0].envId : '')
 
     this.globalData = {
@@ -123,7 +130,14 @@ App({
     })
   },
 
-  onShow() {
+  onShow(options = {}) {
+    const query = (options && options.query) || {}
+    if (query.inviteCode || query.inviterOpenid) {
+      try {
+        const { savePendingInvite } = require('./utils/cloud')
+        savePendingInvite(query)
+      } catch (_) {}
+    }
     serviceTracking.onAppShow()
   },
 

@@ -176,6 +176,21 @@
       <view class="setting-summary-line">控制首页 CTA、优惠、精选宠托师、活动入口等模块。</view>
     </view>
 
+    <view class="admin-compact-card setting-overview-card" data-panel="petBeautyContest" bindtap="openSettingModal">
+      <view class="admin-summary-row">
+        <view class="admin-summary-main">
+          <view class="admin-summary-title">最美宠物大赛与奖金</view>
+          <view class="admin-summary-sub">{{settingSummary.petBeautyContest}}</view>
+        </view>
+        <view class="meta-chip chip-primary">配置</view>
+      </view>
+      <view class="meta-chip-row">
+        <view class="meta-chip success">月度冠军 ¥{{settings.petBeautyContest.firstPrizeAmount || 500}}</view>
+        <view class="meta-chip {{settings.petBeautyContest.posterUrl ? 'success' : 'warning'}}">{{settings.petBeautyContest.posterUrl ? '已配海报' : '默认海报'}}</view>
+      </view>
+      <view class="setting-summary-line">配置月度第一名奖金、活动宣传海报、大赛标题及规则说明。</view>
+    </view>
+
     <view class="admin-compact-card setting-overview-card" data-panel="staffTraining" bindtap="openSettingModal">
       <view class="admin-summary-row">
         <view class="admin-summary-main">
@@ -220,6 +235,7 @@
         <view class="modal-title" wx:if="{{activeSettingPanel === 'invitation'}}">邀请活动与用户资产</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'carousel'}}">首页顶部轮播</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'homePage'}}">首页转化模块</view>
+        <view class="modal-title" wx:if="{{activeSettingPanel === 'petBeautyContest'}}">最美宠物大赛与奖金设置</view>
         <view class="modal-title" wx:if="{{activeSettingPanel === 'staffTraining'}}">宠托师培训</view>
         <view class="modal-close" bindtap="closeSettingModal">×</view>
       </view>
@@ -667,6 +683,50 @@
           <view class="module-switch-row"><text>历史服务统计</text><switch checked="{{settings.homePage.modules.historyStats !== false}}" data-key="historyStats" bindchange="toggleHomeModule" /></view>
           <view class="module-switch-row"><text>抽奖活动横幅</text><switch checked="{{settings.homePage.modules.lottery !== false}}" data-key="lottery" bindchange="toggleHomeModule" /></view>
           <view class="module-switch-row"><text>最美宠物活动</text><switch checked="{{settings.homePage.modules.petBeautyActivity !== false}}" data-key="petBeautyActivity" bindchange="toggleHomeModule" /></view>
+        </view>
+
+        <view wx:if="{{activeSettingPanel === 'petBeautyContest'}}" class="setting-modal-section">
+          <view class="section-title-row"><text class="section-title">月度第一名奖金设置</text></view>
+          <view class="field-item">
+            <text class="label">第一名奖金 (元)</text>
+            <input class="input" type="digit" value="{{settings.petBeautyContest.firstPrizeAmount}}" data-field="firstPrizeAmount" bindinput="petBeautyContestInput" placeholder="例如：500 或 888" />
+          </view>
+          <view class="notice">每月最后一日 24:00 系统自动锁榜结算时，总票数第 1 名获得的现金奖励金额。次月由官方客服线下或微信零钱核实打款。</view>
+
+          <view class="section-title-row"><text class="section-title">活动宣传海报</text></view>
+          <view class="field-item">
+            <text class="label">海报图片</text>
+            <view class="upload-trigger" bindtap="choosePetBeautyPoster">
+              <view wx:if="{{settings.petBeautyContest.posterTempUrl || settings.petBeautyContest.posterUrl}}" class="upload-preview-box">
+                <image src="{{settings.petBeautyContest.posterTempUrl || settings.petBeautyContest.posterUrl}}" mode="aspectFill" class="upload-preview" />
+              </view>
+              <view wx:else class="upload-placeholder">{{uploadingPetBeautyPoster ? '上传中...' : '+ 点击上传活动海报'}}</view>
+            </view>
+            <view class="checkin-share-file" wx:if="{{settings.petBeautyContest.posterUrl}}">{{settings.petBeautyContest.posterUrl}}</view>
+          </view>
+          <view class="item-actions-row" wx:if="{{settings.petBeautyContest.posterUrl}}">
+            <button class="small-btn danger" bindtap="removePetBeautyPoster">清除海报 (使用默认)</button>
+            <button class="small-btn default" bindtap="previewPetBeautyPoster">预览原图</button>
+          </view>
+          <view class="notice">建议上传横屏海报图（推荐比例 2.5:1 如 750×300 像素，或 16:9 如 750×420 像素），前台将自适应宽高比完整展示整张海报（零裁切），视觉舒展且不遮挡正文。未上传时大赛前台将自动显示默认精美冠军奖金横幅。</view>
+
+          <view class="section-title-row"><text class="section-title">大赛横幅与文案</text></view>
+          <view class="field-item">
+            <text class="label">活动主标题</text>
+            <input class="input" value="{{settings.petBeautyContest.bannerTitle}}" data-field="bannerTitle" bindinput="petBeautyContestInput" placeholder="最美爱宠月度大赛" />
+          </view>
+          <view class="field-item">
+            <text class="label">副标题/宣传语</text>
+            <input class="input" value="{{settings.petBeautyContest.bannerSubtitle}}" data-field="bannerSubtitle" bindinput="petBeautyContestInput" placeholder="晒出爱宠萌照 · 赢取月度现金大奖与全服专属头衔" />
+          </view>
+          <view class="field-item">
+            <text class="label">规则简述 (滚动提醒)</text>
+            <input class="input" value="{{settings.petBeautyContest.rulesSummary}}" data-field="rulesSummary" bindinput="petBeautyContestInput" placeholder="每月评选 · 每日免费投1票 · 榜首专享现金奖与全服荣誉" />
+          </view>
+          <view class="field-item">
+            <text class="label">详细规则特别补充说明 (选填)</text>
+            <textarea class="textarea" value="{{settings.petBeautyContest.detailedRules}}" data-field="detailedRules" bindinput="petBeautyContestInput" placeholder="如有当月赞助商特别说明或加码福利，可在此输入补充规则" maxlength="1000" />
+          </view>
         </view>
 
         <view wx:if="{{activeSettingPanel === 'staffTraining'}}" class="setting-modal-section">

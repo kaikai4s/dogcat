@@ -1,5 +1,5 @@
 const cloud = require('../../../../utils/cloud') || {}
-const { callFunction, showError, ensureLogin } = cloud
+const { callFunction, showError, ensureLogin, savePendingInvite } = cloud
 const showLoading = (opts) => {
   if (typeof cloud.showLoading === 'function') return cloud.showLoading(opts)
   if (typeof wx !== 'undefined' && typeof wx.showLoading === 'function') return wx.showLoading(opts)
@@ -13,6 +13,17 @@ const hideLoading = () => {
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 
 const RANK_VIEW_STORAGE_KEY = 'petBeautyRankView'
+
+function formatContestTitle(monthKey) {
+  if (monthKey && typeof monthKey === 'string') {
+    const match = monthKey.match(/(?:^\d{4}-)?0?(\d{1,2})$/)
+    if (match) {
+      return `${parseInt(match[1], 10)}月宠物最美大赛`
+    }
+  }
+  const currentMonth = new Date().getMonth() + 1
+  return `${currentMonth}月宠物最美大赛`
+}
 
 function getPetPhotos(pet) {
   const list = []
@@ -103,7 +114,11 @@ Page({
     locked: false,
     currentMonthLocked: false,
     hasVotedToday: false,
+    remainingVotesToday: 1,
+    todayBonusVotes: 0,
+    totalVotesToday: 1,
     votedPetId: '',
+    animatingPetId: '',
     candidates: [],
     ranking: [],
     rankColumns: [],
@@ -117,10 +132,44 @@ Page({
     isHistory: false,
     showPreviewModal: false,
     previewModalPet: null,
-    previewModalPhotoIndex: 0
+    previewModalPhotoIndex: 0,
+    contestConfig: {
+      firstPrizeAmount: 500,
+      rewardAmount: 500,
+      posterUrl: '',
+      posterFileId: '',
+      bannerTitle: '最美爱宠月度大赛',
+      bannerSubtitle: '晒出爱宠萌照 · 争夺月度冠军现金大奖与全服专属头衔',
+      rulesSummary: '每月评选 · 每日免费投1票 · 榜首专享现金奖与全服荣誉',
+      detailedRules: ''
+    },
+    inviteCode: '',
+    userOpenid: '',
+    pageTitle: formatContestTitle(''),
+    posterLoaded: false,
+    photoLoadedMap: {},
+    showRulesModal: false
   },
 
-  onLoad() {
+  updateContestTitle(monthKey) {
+    const title = formatContestTitle(monthKey || this.data.monthKey || this.data.currentMonthKey)
+    this.setData({ pageTitle: title })
+    if (typeof wx !== 'undefined' && typeof wx.setNavigationBarTitle === 'function') {
+      try { wx.setNavigationBarTitle({ title }) } catch (_) {}
+    }
+    return title
+  },
+
+  onLoad(options = {}) {
+    const inviteCode = String((options && options.inviteCode) || '').trim().toUpperCase()
+    const inviterOpenid = String((options && options.inviterOpenid) || '').trim()
+    if (inviteCode || inviterOpenid) {
+      if (typeof savePendingInvite === 'function') {
+        savePendingInvite({ inviteCode, inviterOpenid })
+      }
+      this._pendingInvite = { inviteCode, inviterOpenid }
+    }
+    this.updateContestTitle((options && options.monthKey) || '')
     try {
       const savedView = wx.getStorageSync(RANK_VIEW_STORAGE_KEY)
       if (savedView === 'list' || savedView === 'waterfall') this.setData({ rankView: savedView })
@@ -141,6 +190,7 @@ Page({
   },
 
   onShow() {
+    this.updateContestTitle()
     this.applyCurrentTheme()
     this.loadHome()
     this.loadHistoryMonths()
@@ -174,16 +224,26 @@ Page({
   loadHome() {
     if (this.data.loading) return
     this.setData({ loading: true })
-    callFunction('petBeauty', 'getActivityHome')
+    const pendingInvite = this._pendingInvite || {}
+    callFunction('petBeauty', 'getActivityHome', { ...pendingInvite })
       .then((res) => {
         const monthKey = res.monthKey || ''
+        const contestConfig = res.contestConfig || this.data.contestConfig
+        const remainingVotesToday = Number(res.remainingVotesToday ?? (res.hasVotedToday ? 0 : 1))
+        this.updateContestTitle(monthKey)
         this.setData({
           monthKey,
           currentMonthKey: monthKey,
           locked: res.locked === true,
           currentMonthLocked: res.locked === true,
           hasVotedToday: res.hasVotedToday === true,
+          remainingVotesToday,
+          todayBonusVotes: Number(res.todayBonusVotes || 0),
+          totalVotesToday: Number(res.totalVotesToday || 1),
           votedPetId: res.votedPetId || '',
+          inviteCode: res.inviteCode || this.data.inviteCode || '',
+          userOpenid: res.userOpenid || this.data.userOpenid || '',
+          contestConfig,
           candidates: res.candidates || [],
           ...rankingViewData(res.ranking || []),
           keyword: '',
@@ -203,11 +263,51 @@ Page({
       })
   },
 
+  openRulesModal() {
+    this.setData({ showRulesModal: true })
+  },
+
+  closeRulesModal() {
+    this.setData({ showRulesModal: false })
+  },
+
+  previewPoster() {
+    const poster = this.data.contestConfig && (this.data.contestConfig.posterUrl || this.data.contestConfig.posterFileId)
+    if (poster && typeof wx !== 'undefined' && typeof wx.previewImage === 'function') {
+      wx.previewImage({ current: poster, urls: [poster] })
+    }
+  },
+
+  onPosterLoaded() {
+    this.setData({ posterLoaded: true })
+  },
+
+  onPosterImgError() {
+    this.setData({ posterLoaded: true })
+  },
+
+  onPetPhotoLoaded(e) {
+    const key = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key
+    if (!key || (this.data.photoLoadedMap && this.data.photoLoadedMap[key])) return
+    this.setData({
+      [`photoLoadedMap.${key}`]: true
+    })
+  },
+
+  onPetPhotoError(e) {
+    const key = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key
+    if (!key || (this.data.photoLoadedMap && this.data.photoLoadedMap[key])) return
+    this.setData({
+      [`photoLoadedMap.${key}`]: true
+    })
+  },
+
   onMonthChange(e) {
     if (this.data.loading) return
     const index = Number(e.detail.value)
     const opt = this.data.monthOptions[index]
     if (!opt) return
+    this.updateContestTitle(opt.value)
     this.setData({
       selectedMonthIndex: index,
       isHistory: opt.isHistory,
@@ -337,28 +437,56 @@ Page({
     const petId = e.currentTarget.dataset.id
     if (!petId || this._votingLock || this.data.votingPetId || this.data.hasVotedToday || this.data.locked || this.data.isHistory) return
     this._votingLock = true
-    this.setData({ votingPetId: petId })
-    showLoading({ title: '正在投票...', mask: true })
+    // 立即激活“按钮变透明玻璃爱心 -> 向左飞留心电图变红 -> 水滴融入 -> 票数滚动”动画
+    this.setData({ animatingPetId: petId, votingPetId: petId })
+    if (typeof wx !== 'undefined' && typeof wx.vibrateShort === 'function') {
+      try { wx.vibrateShort({ type: 'light' }) } catch (_) {}
+    }
+
     ensureLogin({ content: '登录后可为喜欢的宠物投票。' })
       .then(() => callFunction('petBeauty', 'vote', { petId }))
       .then((res) => {
-        hideLoading()
-        this._votingLock = false
-        const updateVote = (item) => item.petId === petId ? { ...item, voteCount: res.voteCount } : item
-        this.setData({
-          hasVotedToday: true,
-          votedPetId: petId,
-          votingPetId: '',
-          candidates: this.data.candidates.map(updateVote),
-          ...rankingViewData(this.data.ranking.map(updateVote))
-        })
-        wx.showToast({ title: '投票成功', icon: 'success' })
-        this.loadRanking(true)
+        const isTestEnv = typeof wx === 'undefined' || typeof wx.createSelectorQuery !== 'function'
+        const applyVoteUpdate = () => {
+          this._votingLock = false
+          const nextRemaining = Number(res.remainingVotesToday ?? 0)
+          const updateVote = (item) => item.petId === petId ? { ...item, voteCount: res.voteCount } : item
+          const payload = {
+            hasVotedToday: nextRemaining === 0,
+            remainingVotesToday: nextRemaining,
+            todayBonusVotes: Number(res.todayBonusVotes ?? this.data.todayBonusVotes ?? 0),
+            totalVotesToday: Number(res.totalVotesToday ?? this.data.totalVotesToday ?? 1),
+            votedPetId: petId,
+            candidates: this.data.candidates.map(updateVote),
+            ...rankingViewData(this.data.ranking.map(updateVote))
+          }
+          if (this.data.previewModalPet && this.data.previewModalPet.petId === petId) {
+            payload.previewModalPet = { ...this.data.previewModalPet, voteCount: res.voteCount }
+          }
+          this.setData(payload)
+
+          if (isTestEnv) {
+            this.setData({ animatingPetId: '', votingPetId: '' })
+            this.loadRanking(true)
+          } else {
+            // 动效完整演进（约 1100ms）后清理动画标识，展示已投/剩余票状态
+            setTimeout(() => {
+              this.setData({ animatingPetId: '', votingPetId: '' })
+              this.loadRanking(true)
+            }, 350)
+          }
+        }
+
+        if (isTestEnv) {
+          applyVoteUpdate()
+        } else {
+          // 在真实小程序端，动画进行到水滴汇合融入左侧爱心（约 750ms）时，将真实票数推入滚动动画中
+          setTimeout(applyVoteUpdate, 750)
+        }
       })
       .catch((err) => {
-        hideLoading()
         this._votingLock = false
-        this.setData({ votingPetId: '' })
+        this.setData({ animatingPetId: '', votingPetId: '' })
         showError(err)
       })
   },
@@ -369,16 +497,29 @@ Page({
   },
 
   onShareAppMessage() {
+    const inviteCode = this.data.inviteCode || ''
+    const inviterOpenid = this.data.userOpenid || ''
+    const title = this.data.pageTitle ? `${this.data.pageTitle}火热进行中，快来为我家宝贝投上一票吧！` : '晒出爱宠萌照，快来为我家宝贝投上一票吧！'
+    const queryParts = []
+    if (inviteCode) queryParts.push(`inviteCode=${encodeURIComponent(inviteCode)}`)
+    if (inviterOpenid) queryParts.push(`inviterOpenid=${encodeURIComponent(inviterOpenid)}`)
+    const queryString = queryParts.length ? `?${queryParts.join('&')}` : ''
     return {
-      title: '晒出爱宠美照，快来为我家宝贝投上一票吧！',
-      path: '/pages/client/pet-beauty/activity/index'
+      title,
+      path: `/pages/client/pet-beauty/activity/index${queryString}`
     }
   },
 
   onShareTimeline() {
+    const inviteCode = this.data.inviteCode || ''
+    const inviterOpenid = this.data.userOpenid || ''
+    const title = this.data.pageTitle ? `${this.data.pageTitle}大比拼，快来投票！` : '最美宠物月榜大比拼，快来投票！'
+    const queryParts = []
+    if (inviteCode) queryParts.push(`inviteCode=${encodeURIComponent(inviteCode)}`)
+    if (inviterOpenid) queryParts.push(`inviterOpenid=${encodeURIComponent(inviterOpenid)}`)
     return {
-      title: '最美宠物月榜大比拼，快来投票！',
-      query: ''
+      title,
+      query: queryParts.join('&')
     }
   },
 

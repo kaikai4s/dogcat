@@ -303,6 +303,7 @@ module.exports = function createService({
       const clientWriter = tx ? tx.collection('user_invites') : db.collection('user_invites')
       const userWriter = tx ? tx.collection('users') : db.collection('users')
       const logWriter = tx ? tx.collection('retro_card_logs') : db.collection('retro_card_logs')
+      const bonusVoteWriter = tx ? tx.collection('pet_beauty_bonus_votes') : db.collection('pet_beauty_bonus_votes')
 
       await clientWriter.doc(inviteDocId).set({ data: inviteRecord })
       await userWriter.doc(currentUser._id).update({ data: { inviterOpenid: inviter.openid, updatedAt: time } })
@@ -327,6 +328,21 @@ module.exports = function createService({
           sourceType: 'invite_first_login',
           sourceId: currentUser.openid,
           reason: '邀请新用户首登奖励补签卡 +1',
+          createdAt: time
+        }
+      })
+
+      // 邀请新用户成功首登绑定，为邀请人额外发放当日最美大赛投票数 +1 (当日有效，多邀多得)
+      const currentDayKey = (typeof toCstParts === 'function' ? toCstParts(time) : {}).dateKey || time.slice(0, 10)
+      const bonusVoteDocId = `bonus_vote_${inviter.openid}_${currentUser.openid}`
+      await bonusVoteWriter.doc(bonusVoteDocId).set({
+        data: {
+          openid: inviter.openid,
+          userId: inviter._id,
+          invitedOpenid: currentUser.openid,
+          invitedUserId: currentUser._id,
+          dateKey: currentDayKey,
+          source: 'invite_new_user',
           createdAt: time
         }
       })

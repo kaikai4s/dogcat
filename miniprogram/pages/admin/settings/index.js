@@ -469,9 +469,28 @@ function normalizeHomePageConfig(homePage = {}) {
   }
 }
 
+function normalizePetBeautyContestConfig(contest = {}) {
+  const source = contest || {}
+  const rawPrize = source.firstPrizeAmount !== undefined ? source.firstPrizeAmount : source.rewardAmount
+  const firstPrizeAmount = Number(rawPrize === undefined || rawPrize === '' ? 500 : rawPrize)
+  return {
+    enabled: source.enabled !== false,
+    firstPrizeAmount: Number.isFinite(firstPrizeAmount) ? Math.max(0, firstPrizeAmount) : 500,
+    rewardAmount: Number.isFinite(firstPrizeAmount) ? Math.max(0, firstPrizeAmount) : 500,
+    posterFileId: String(source.posterFileId || source.posterUrl || '').trim(),
+    posterUrl: String(source.posterUrl || source.posterFileId || '').trim(),
+    posterTempUrl: source.posterTempUrl || '',
+    bannerTitle: String(source.bannerTitle || '最美爱宠月度大赛').trim(),
+    bannerSubtitle: String(source.bannerSubtitle || '晒出爱宠萌照 · 赢取月度现金大奖与全服专属头衔').trim(),
+    rulesSummary: String(source.rulesSummary || '每月评选 · 每日免费投1票 · 榜首专享现金奖与全服荣誉').trim(),
+    detailedRules: String(source.detailedRules || '').trim()
+  }
+}
+
 function buildSettingSummary(settings = {}) {
   const payment = settings.payment || normalizePaymentConfig()
   const subscription = settings.subscription || normalizeSubscriptionConfig()
+  const petBeautyContest = settings.petBeautyContest || normalizePetBeautyContestConfig()
   const templates = subscription.templates || {}
   const configuredTemplateCount = Object.keys(templates).filter(key => !subscriptionTemplateIssue(templates[key])).length
   const carousel = settings.homeHeroCarousel || normalizeCarouselConfig()
@@ -501,6 +520,7 @@ function buildSettingSummary(settings = {}) {
     settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · 完单 ${settlement.settlementDelayDays} 天后可提现 · 最低 ¥${Number(settlement.minWithdrawAmount || 0).toFixed(2)}`,
     carousel: `${carousel.enabled ? '轮播已启用' : '轮播已关闭'} · ${enabledCarouselCount}/${carouselItems.length} 个素材启用`,
     homePage: `${enabledModuleCount}/${homeModuleOptions.length} 个模块启用 · ${homePage.ctaTitle || '未配置标题'}`,
+    petBeautyContest: `月度冠军 ¥${petBeautyContest.firstPrizeAmount || 500} · ${petBeautyContest.posterUrl ? '已配海报' : '默认海报'}`,
     staffTraining: `及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题 · ${enabledVideoCount}/${videos.length} 视频 · 审核微信: ${(staffTraining.videoAuditGuide && staffTraining.videoAuditGuide.wechatId) || '未配置'}`,
     pricingSurcharges: (settings.pricingSurcharges && settings.pricingSurcharges.enabled !== false)
       ? `${((settings.pricingSurcharges && settings.pricingSurcharges.dateSurcharges) || []).filter((d) => d.enabled !== false).length} 个日期加价 · ${((settings.pricingSurcharges && settings.pricingSurcharges.timeSlotSurcharges) || []).filter((s) => s.enabled !== false).length} 个时段加价`
@@ -540,6 +560,7 @@ Page({
       checkinShare: normalizeCheckinShareConfig(),
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig(),
+      petBeautyContest: normalizePetBeautyContestConfig(),
       staffTraining: normalizeStaffTrainingConfig(),
       pricingSurcharges: normalizePricingSurcharges()
     },
@@ -556,6 +577,7 @@ Page({
       checkinShare: normalizeCheckinShareConfig(),
       homeHeroCarousel: normalizeCarouselConfig(),
       homePage: normalizeHomePageConfig(),
+      petBeautyContest: normalizePetBeautyContestConfig(),
       staffTraining: normalizeStaffTrainingConfig(),
       pricingSurcharges: normalizePricingSurcharges()
     }),
@@ -581,6 +603,7 @@ Page({
     uploadingOfficialAccountQrCode: false,
     uploadingTrainingVideo: false,
     uploadingTrainingPoster: false,
+    uploadingPetBeautyPoster: false,
     activeTransferTab: 'commission',
     transferSceneTexts: {
       commission: '',
@@ -618,6 +641,7 @@ Page({
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage),
+          petBeautyContest: normalizePetBeautyContestConfig(settings.petBeautyContest),
           staffTraining: normalizeStaffTrainingConfig(settings.staffTraining),
           pricingSurcharges: normalizePricingSurcharges(settings.pricingSurcharges)
         }
@@ -641,6 +665,7 @@ Page({
           this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
           this.resolveInvitationShareImageUrl(normalized.invitation.shareImageUrl)
           this.resolveOfficialAccountQrCodeUrl(normalized.officialAccount.qrCodeUrl)
+          this.resolvePetBeautyPosterUrl(normalized.petBeautyContest.posterFileId)
         })
       })
       .catch(showError)
@@ -1183,6 +1208,97 @@ Page({
   toggleHomeModule(e) {
     const key = e.currentTarget.dataset.key
     this.setData({ [`settings.homePage.modules.${key}`]: e.detail.value })
+  },
+
+  petBeautyContestInput(e) {
+    const field = e.currentTarget.dataset.field
+    if (!field) return
+    this.setData({ [`settings.petBeautyContest.${field}`]: e.detail.value })
+  },
+
+  choosePetBeautyPoster() {
+    if (typeof wx === 'undefined' || typeof wx.chooseMedia !== 'function') return
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const file = res.tempFiles && res.tempFiles[0]
+        if (!file || !file.tempFilePath) return
+        const filePath = file.tempFilePath
+        const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
+        const cloudPath = `pet_beauty/posters/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`
+
+        this.setData({ uploadingPetBeautyPoster: true })
+        wx.showLoading({ title: '上传海报...' })
+        wx.cloud.uploadFile({
+          cloudPath,
+          filePath,
+          success: (upload) => {
+            const fileId = upload.fileID
+            wx.cloud.getTempFileURL({
+              fileList: [fileId],
+              success: (tempRes) => {
+                wx.hideLoading()
+                const tempFile = tempRes.fileList && tempRes.fileList[0]
+                this.setData({
+                  ['settings.petBeautyContest.posterFileId']: fileId,
+                  ['settings.petBeautyContest.posterUrl']: fileId,
+                  ['settings.petBeautyContest.posterTempUrl']: (tempFile && tempFile.tempFileURL) || filePath,
+                  uploadingPetBeautyPoster: false
+                })
+                wx.showToast({ title: '海报上传成功' })
+              },
+              fail: () => {
+                wx.hideLoading()
+                this.setData({
+                  ['settings.petBeautyContest.posterFileId']: fileId,
+                  ['settings.petBeautyContest.posterUrl']: fileId,
+                  ['settings.petBeautyContest.posterTempUrl']: filePath,
+                  uploadingPetBeautyPoster: false
+                })
+                wx.showToast({ title: '海报上传成功' })
+              }
+            })
+          },
+          fail: (err) => {
+            wx.hideLoading()
+            this.setData({ uploadingPetBeautyPoster: false })
+            showError(err)
+          }
+        })
+      }
+    })
+  },
+
+  removePetBeautyPoster() {
+    this.setData({
+      ['settings.petBeautyContest.posterFileId']: '',
+      ['settings.petBeautyContest.posterUrl']: '',
+      ['settings.petBeautyContest.posterTempUrl']: ''
+    })
+    wx.showToast({ title: '已恢复默认海报', icon: 'none' })
+  },
+
+  previewPetBeautyPoster() {
+    const url = this.data.settings?.petBeautyContest?.posterTempUrl || this.data.settings?.petBeautyContest?.posterUrl
+    if (url && typeof wx !== 'undefined' && typeof wx.previewImage === 'function') {
+      wx.previewImage({ current: url, urls: [url] })
+    }
+  },
+
+  resolvePetBeautyPosterUrl(fileId) {
+    if (!fileId || typeof fileId !== 'string' || !fileId.startsWith('cloud://')) return
+    if (typeof wx === 'undefined' || !wx.cloud || typeof wx.cloud.getTempFileURL !== 'function') return
+    wx.cloud.getTempFileURL({
+      fileList: [fileId],
+      success: (res) => {
+        const item = res.fileList && res.fileList[0]
+        if (item && item.tempFileURL) {
+          this.setData({ ['settings.petBeautyContest.posterTempUrl']: item.tempFileURL })
+        }
+      }
+    })
   },
 
   trainingPassScoreInput(e) {
@@ -1949,6 +2065,11 @@ Page({
         imageUrl: checkinShare.imageUrl || ''
       },
       homePage: this.data.settings.homePage,
+      petBeautyContest: {
+        ...this.data.settings.petBeautyContest,
+        firstPrizeAmount: Number(this.data.settings.petBeautyContest?.firstPrizeAmount || 500),
+        rewardAmount: Number(this.data.settings.petBeautyContest?.firstPrizeAmount || 500)
+      },
       staffTraining: {
         ...staffTraining,
         passScore: staffTraining.passScore,
@@ -1984,6 +2105,7 @@ Page({
           checkinShare: normalizeCheckinShareConfig(settings.checkinShare),
           homeHeroCarousel: normalizeCarouselConfig(settings.homeHeroCarousel),
           homePage: normalizeHomePageConfig(settings.homePage),
+          petBeautyContest: normalizePetBeautyContestConfig(settings.petBeautyContest),
           staffTraining: normalizeStaffTrainingConfig(settings.staffTraining),
           pricingSurcharges: normalizePricingSurcharges(settings.pricingSurcharges)
         }
@@ -2006,6 +2128,7 @@ Page({
         this.resolveTrainingVideoUrls(normalized.staffTraining.videos)
         this.resolveInvitationShareImageUrl(normalized.invitation.shareImageUrl)
         this.resolveCheckinShareImageUrl(normalized.checkinShare.imageUrl)
+        this.resolvePetBeautyPosterUrl(normalized.petBeautyContest.posterFileId)
         wx.showToast({ title: '设置已保存' })
       })
       .catch((err) => {

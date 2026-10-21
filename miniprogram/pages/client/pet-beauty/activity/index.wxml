@@ -1,10 +1,110 @@
 <wxs module="cardDrag" src="./card-stack.wxs" />
 <view class="page pet-beauty-page view-{{rankView}} {{themeClass}}">
-  <view class="beauty-hero">
-    <view class="hero-badge"><text class="remix-icon ri-heart-3-fill"></text><text>最美宠物活动</text></view>
-    <view class="hero-title">{{monthKey}} 最美爱宠榜</view>
-    <view class="hero-desc">上传宠物美照参与月榜，每天可以为喜欢的毛孩子投一票。</view>
-    <view class="hero-state">{{locked ? '本月榜单已锁定' : (hasVotedToday ? '今日已投票' : '今日还可投票')}}</view>
+  <!-- 活动海报 & 冠军大奖专区 -->
+  <view class="beauty-poster-section">
+    <!-- 运营上传的定制活动海报 (完整呈现2.5:1或16:9横屏海报，不裁切内容，骨骼预加载，轻薄磨砂角标不挡画面) -->
+    <view class="poster-banner-box" wx:if="{{contestConfig.posterUrl || contestConfig.posterFileId}}" bindtap="previewPoster">
+      <view class="poster-skeleton-box skeleton-shimmer" wx:if="{{!posterLoaded}}"></view>
+      <image class="poster-banner-img {{posterLoaded ? 'is-loaded' : 'is-loading'}}" 
+             src="{{contestConfig.posterUrl || contestConfig.posterFileId}}" 
+             mode="widthFix" 
+             bindload="onPosterLoaded"
+             binderror="onPosterImgError" />
+      <view class="poster-overlay-strip" wx:if="{{posterLoaded}}">
+        <view class="poster-pill-badge">
+          <text class="remix-icon ri-vip-crown-fill"></text>
+          <text>月度冠军现金奖 ¥{{contestConfig.firstPrizeAmount || 500}}</text>
+        </view>
+        <view class="poster-rules-btn" catchtap="openRulesModal">
+          <text class="remix-icon ri-file-list-3-line"></text>
+          <text>规则与奖金</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 默认精美冠军大奖 Hero 舞台 (未上传海报时呈现) -->
+    <view class="beauty-hero" wx:else>
+      <view class="hero-top-row">
+        <view class="hero-badge">
+          <text class="remix-icon ri-heart-3-fill"></text>
+          <text>{{contestConfig.bannerTitle || pageTitle || '宠物最美大赛'}}</text>
+        </view>
+        <view class="hero-rules-tag" bindtap="openRulesModal">
+          <text class="remix-icon ri-file-text-line"></text>
+          <text>规则 & 奖金说明</text>
+          <text class="remix-icon ri-arrow-right-s-line"></text>
+        </view>
+      </view>
+
+      <view class="hero-title">{{pageTitle || (monthKey ? monthKey + ' 宠物最美大赛' : '宠物最美大赛')}}</view>
+      <view class="hero-desc">{{contestConfig.bannerSubtitle || '晒出爱宠萌照 · 争夺月度冠军现金大奖与全服专属头衔'}}</view>
+
+      <!-- 冠军奖金与权益醒目展区 -->
+      <view class="hero-prize-card" bindtap="openRulesModal">
+        <view class="prize-badge-col">
+          <view class="prize-trophy-icon">🏆</view>
+        </view>
+        <view class="prize-info-col">
+          <view class="prize-title-row">
+            <text class="prize-tag">月度冠军大奖</text>
+            <text class="prize-highlight">无门槛现金发放</text>
+          </view>
+          <view class="prize-amount-row">
+            <text class="currency">¥</text>
+            <text class="amount">{{contestConfig.firstPrizeAmount || 500}}</text>
+            <text class="prize-extra">+ 金色全服限定头衔</text>
+          </view>
+        </view>
+        <view class="prize-arrow">
+          <text class="prize-arrow-text">查看奖项</text>
+          <text class="remix-icon ri-arrow-right-s-line"></text>
+        </view>
+      </view>
+
+      <view class="hero-bottom-status">
+        <view class="hero-state {{hasVotedToday ? 'is-voted' : ''}}">
+          <text class="remix-icon {{hasVotedToday ? 'ri-checkbox-circle-fill' : 'ri-heart-pulse-fill'}}"></text>
+          <text>{{locked ? '本月榜单已锁定' : (hasVotedToday ? '今日已完成投票' : '今日免费1票待投')}}</text>
+        </view>
+        <view class="hero-rules-link" bindtap="openRulesModal">
+          <text class="remix-icon ri-gift-line"></text>
+          <text>奖励规则说明</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 顶部轻量规则提示条 (若上传了海报时，在此呈现常驻奖金与规则快捷条) -->
+  <view class="contest-quick-bar" wx:if="{{contestConfig.posterUrl || contestConfig.posterFileId}}" bindtap="openRulesModal">
+    <view class="quick-bar-left">
+      <text class="remix-icon ri-trophy-fill trophy-gold"></text>
+      <text class="quick-bar-strong">冠军奖金 ¥{{contestConfig.firstPrizeAmount || 500}}</text>
+      <text class="quick-bar-divider">|</text>
+      <text class="quick-bar-desc">{{contestConfig.rulesSummary || '每日1票 · 邀请新用户当日+1票'}}</text>
+    </view>
+    <view class="quick-bar-action">
+      <text>详细规则</text>
+      <text class="remix-icon ri-arrow-right-s-line"></text>
+    </view>
+  </view>
+
+  <!-- 今日投票状态与邀请好友额外赠票条 -->
+  <view class="today-vote-strip" wx:if="{{!locked}}">
+    <view class="vote-strip-left">
+      <text class="remix-icon {{hasVotedToday ? 'ri-checkbox-circle-fill is-done' : 'ri-heart-pulse-fill is-active'}}"></text>
+      <block wx:if="{{!hasVotedToday}}">
+        <text class="vote-main-text">今日还可投 <text class="vote-num">{{remainingVotesToday || 1}}</text> 票</text>
+        <text class="vote-badge-hint" wx:if="{{todayBonusVotes > 0}}">含赠票+{{todayBonusVotes}}</text>
+      </block>
+      <block wx:else>
+        <text class="vote-main-text">今日投票已完成</text>
+        <text class="vote-badge-hint">邀新再+1票</text>
+      </block>
+    </view>
+    <button class="invite-bonus-tag" open-type="share">
+      <text class="remix-icon ri-user-add-line"></text>
+      <text>邀请好友+1票</text>
+    </button>
   </view>
 
   <view class="rank-view-toolbar">
@@ -24,9 +124,25 @@
       <view class="pet-card" wx:for="{{candidates}}" wx:for-index="idx" wx:key="petId" data-id="{{item.petId}}" bindtap="previewPet" wx:if="{{idx < 4}}">
         <view class="pet-cover-wrapper {{item.beautyPhotos.length > 1 ? 'grid-' + (item.beautyPhotos.length > 4 ? 9 : 4) : 'single'}}">
           <block wx:if="{{item.beautyPhotos.length > 1}}">
-            <image class="grid-img" wx:for="{{item.beautyPhotos}}" wx:for-item="img" wx:key="id" src="{{img.fileId}}" mode="aspectFill" />
+            <view class="grid-img-box" wx:for="{{item.beautyPhotos}}" wx:for-item="img" wx:for-index="imgIdx" wx:key="id">
+              <view class="grid-skeleton-shimmer skeleton-shimmer" wx:if="{{!photoLoadedMap['grid_' + item.petId + '_' + imgIdx]}}"></view>
+              <image class="grid-img {{photoLoadedMap['grid_' + item.petId + '_' + imgIdx] ? 'is-loaded' : 'is-loading'}}" 
+                     src="{{img.fileId}}" 
+                     mode="aspectFill"
+                     data-key="grid_{{item.petId}}_{{imgIdx}}"
+                     bindload="onPetPhotoLoaded"
+                     binderror="onPetPhotoError" />
+            </view>
           </block>
-          <image class="pet-cover" wx:else src="{{item.avatarFileId || item.beautyPhotos[0].fileId}}" mode="aspectFill" />
+          <view class="single-cover-box" wx:else>
+            <view class="photo-skeleton-shimmer skeleton-shimmer" wx:if="{{!photoLoadedMap['wall_' + item.petId]}}"></view>
+            <image class="pet-cover {{photoLoadedMap['wall_' + item.petId] ? 'is-loaded' : 'is-loading'}}" 
+                   src="{{item.avatarFileId || item.beautyPhotos[0].fileId}}" 
+                   mode="aspectFill"
+                   data-key="wall_{{item.petId}}"
+                   bindload="onPetPhotoLoaded"
+                   binderror="onPetPhotoError" />
+          </view>
         </view>
         <view class="pet-info">
           <view class="pet-name-row">
@@ -99,7 +215,13 @@
                     bindtouchmove="{{cardDrag.touchmove}}"
                     bindtouchend="{{cardDrag.touchend}}"
                     bindtouchcancel="{{cardDrag.touchcancel}}">
-                <image src="{{card.photoUrl}}" mode="aspectFill" />
+                <view class="photo-skeleton-shimmer skeleton-shimmer" wx:if="{{!photoLoadedMap['card_' + item.petId + '_' + card.photoIndex]}}"></view>
+                <image class="pet-photo-img {{photoLoadedMap['card_' + item.petId + '_' + card.photoIndex] ? 'is-loaded' : 'is-loading'}}" 
+                       src="{{card.photoUrl}}" 
+                       mode="aspectFill"
+                       data-key="card_{{item.petId}}_{{card.photoIndex}}"
+                       bindload="onPetPhotoLoaded"
+                       binderror="onPetPhotoError" />
               </view>
 
               <!-- 点状进度指示器 -->
@@ -117,7 +239,13 @@
             <!-- 单图普通展示 (统一采用 440rpx 卡片层级渲染，与多图卡片高度与边角质感完全统一，无文字提示，直接展示美照) -->
             <block wx:else>
               <view class="card-layer card-role-top" wx:if="{{item.topPhotoUrl || item.coverUrl}}">
-                <image src="{{item.topPhotoUrl || item.coverUrl}}" mode="aspectFill" />
+                <view class="photo-skeleton-shimmer skeleton-shimmer" wx:if="{{!photoLoadedMap['cover_' + item.petId]}}"></view>
+                <image class="pet-photo-img {{photoLoadedMap['cover_' + item.petId] ? 'is-loaded' : 'is-loading'}}" 
+                       src="{{item.topPhotoUrl || item.coverUrl}}" 
+                       mode="aspectFill"
+                       data-key="cover_{{item.petId}}"
+                       bindload="onPetPhotoLoaded"
+                       binderror="onPetPhotoError" />
               </view>
               <view class="gallery-placeholder" wx:else>
                 <text class="remix-icon ri-image-line"></text>
@@ -138,9 +266,26 @@
             <view class="gallery-meta">{{item.ageText || '年龄未填写'}} · {{item.speciesText || '毛孩子'}}</view>
             <view class="gallery-id" wx:if="{{item.exclusiveId}}">ID · {{item.exclusiveId}}</view>
             <view class="gallery-title" wx:if="{{item.beautyTitle && item.beautyTitle.title}}"><text class="remix-icon ri-medal-line"></text><text>{{item.beautyTitle.title}}</text></view>
-            <view class="gallery-footer">
-              <view class="gallery-votes"><text class="remix-icon ri-heart-3-fill"></text><text class="gallery-vote-number">{{item.voteCount}}</text><text class="gallery-vote-label">票</text></view>
-              <button size="mini" class="gallery-vote-btn" catchtap="vote" data-id="{{item.petId}}" loading="{{votingPetId === item.petId}}" disabled="{{locked || isHistory || hasVotedToday || votingPetId}}">{{isHistory || locked ? '已封榜' : (votedPetId === item.petId ? '已投票' : '投一票')}}</button>
+            <view class="gallery-footer {{animatingPetId === item.petId ? 'is-voting-anim' : ''}}">
+              <view class="gallery-votes {{animatingPetId === item.petId ? 'is-receiving-heart' : ''}}">
+                <text class="remix-icon ri-heart-3-fill heart-target-icon {{animatingPetId === item.petId ? 'droplet-absorbed' : ''}}"></text>
+                <view class="droplet-ripple" wx:if="{{animatingPetId === item.petId}}"></view>
+                <view class="vote-number-roller {{animatingPetId === item.petId ? 'is-rolling' : ''}}">
+                  <text class="gallery-vote-number">{{item.voteCount}}</text>
+                </view>
+                <text class="gallery-vote-label">票</text>
+                <text class="flying-plus-one" wx:if="{{animatingPetId === item.petId}}">+1</text>
+              </view>
+              <view class="vote-action-box">
+                <button size="mini" class="gallery-vote-btn {{animatingPetId === item.petId ? 'btn-morphing' : ''}}" catchtap="vote" data-id="{{item.petId}}" loading="{{votingPetId === item.petId && animatingPetId !== item.petId}}" disabled="{{locked || isHistory || hasVotedToday || votingPetId}}">{{isHistory || locked ? '已封榜' : (votedPetId === item.petId ? '已投票' : '投一票')}}</button>
+                <block wx:if="{{animatingPetId === item.petId}}">
+                  <view class="ecg-pulse-trail"></view>
+                  <view class="flying-glass-heart">
+                    <text class="remix-icon ri-heart-3-fill glass-heart-icon"></text>
+                    <view class="glass-reflection"></view>
+                  </view>
+                </block>
+              </view>
             </view>
           </view>
         </view>
@@ -153,7 +298,15 @@
           <text class="remix-icon ri-award-fill crown-icon" wx:elif="{{(item.rank || index + 1) <= 3}}"></text>
           <view class="rank-no">{{item.rank || index + 1}}</view>
         </view>
-        <image class="rank-avatar" src="{{item.avatarFileId || item.beautyPhotos[0].fileId}}" mode="aspectFill" />
+        <view class="rank-avatar-box">
+          <view class="avatar-skeleton-shimmer skeleton-shimmer" wx:if="{{!photoLoadedMap['avatar_' + item.petId]}}"></view>
+          <image class="rank-avatar {{photoLoadedMap['avatar_' + item.petId] ? 'is-loaded' : 'is-loading'}}" 
+                 src="{{item.avatarFileId || item.beautyPhotos[0].fileId}}" 
+                 mode="aspectFill"
+                 data-key="avatar_{{item.petId}}"
+                 bindload="onPetPhotoLoaded"
+                 binderror="onPetPhotoError" />
+        </view>
         <view class="rank-main">
           <view class="rank-name-row">
             <text class="rank-name">{{item.name}}</text>
@@ -168,22 +321,40 @@
             <text class="exclusive-tag" wx:if="{{item.exclusiveId}}">ID: {{item.exclusiveId}}</text>
           </view>
         </view>
-        <view class="rank-actions">
-          <view class="rank-votes">
-            <text class="remix-icon ri-thumb-up-fill"></text>
-            <text class="vote-num">{{item.voteCount}}</text>
+        <view class="rank-actions {{animatingPetId === item.petId ? 'is-voting-anim' : ''}}">
+          <view class="rank-votes {{animatingPetId === item.petId ? 'is-receiving-heart' : ''}}">
+            <text class="remix-icon ri-heart-3-fill heart-target-icon {{animatingPetId === item.petId ? 'droplet-absorbed' : ''}}"></text>
+            <view class="droplet-ripple" wx:if="{{animatingPetId === item.petId}}"></view>
+            <text class="vote-num {{animatingPetId === item.petId ? 'is-rolling' : ''}}">{{item.voteCount}}</text>
             <text class="vote-unit">票</text>
+            <text class="flying-plus-one" wx:if="{{animatingPetId === item.petId}}">+1</text>
           </view>
-          <button class="small-vote-btn" catchtap="vote" data-id="{{item.petId}}" loading="{{votingPetId === item.petId}}" disabled="{{locked || isHistory || hasVotedToday || votingPetId === item.petId}}">
+          <button class="small-vote-btn" catchtap="vote" data-id="{{item.petId}}" loading="{{votingPetId === item.petId && animatingPetId !== item.petId}}" disabled="{{locked || isHistory || hasVotedToday || votingPetId === item.petId}}">
             <text class="remix-icon {{votedPetId === item.petId ? 'ri-heart-3-fill' : 'ri-heart-3-line'}}"></text>
             <text>{{isHistory ? '已封榜' : (votedPetId === item.petId ? '已投' : '投票')}}</text>
           </button>
         </view>
       </view>
     </view>
+    <!-- 页面初始加载时的骨骼预加载骨架屏 -->
+    <view class="beauty-skeleton-waterfall" wx:elif="{{loading && !ranking.length}}">
+      <view class="skeleton-column" wx:for="{{[1, 2]}}" wx:key="*this">
+        <view class="skeleton-card" wx:for="{{[1, 2]}}" wx:key="*this">
+          <view class="skeleton-cover skeleton-shimmer"></view>
+          <view class="skeleton-body">
+            <view class="skeleton-line skeleton-name skeleton-shimmer"></view>
+            <view class="skeleton-line skeleton-meta skeleton-shimmer"></view>
+            <view class="skeleton-footer">
+              <view class="skeleton-vote-count skeleton-shimmer"></view>
+              <view class="skeleton-vote-btn skeleton-shimmer"></view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
     <view class="empty-state" wx:else>
       <text class="remix-icon ri-trophy-line empty-icon"></text>
-      <view>{{loading ? '正在加载爱宠榜…' : (keyword ? '未搜索到符合条件的宠物' : '暂无上榜宠物，快去上传美照吧')}}</view>
+      <view>{{keyword ? '未搜索到符合条件的宠物' : '暂无上榜宠物，快去上传美照吧'}}</view>
     </view>
     <button class="ghost-btn load-more" wx:if="{{hasMore}}" loading="{{loading}}" bindtap="loadMore">加载更多排行</button>
   </view>
@@ -237,15 +408,168 @@
       </view>
 
       <!-- 弹窗底部操作条 -->
-      <view class="modal-footer">
-        <view class="modal-votes-count">
-          <text class="remix-icon ri-heart-3-fill"></text>
-          <text class="votes-num">{{previewModalPet.voteCount}}</text>
+      <view class="modal-footer {{animatingPetId === previewModalPet.petId ? 'is-voting-anim' : ''}}">
+        <view class="modal-votes-count {{animatingPetId === previewModalPet.petId ? 'is-receiving-heart' : ''}}">
+          <text class="remix-icon ri-heart-3-fill heart-target-icon {{animatingPetId === previewModalPet.petId ? 'droplet-absorbed' : ''}}"></text>
+          <view class="droplet-ripple" wx:if="{{animatingPetId === previewModalPet.petId}}"></view>
+          <text class="votes-num {{animatingPetId === previewModalPet.petId ? 'is-rolling' : ''}}">{{previewModalPet.voteCount}}</text>
           <text class="votes-text">得票</text>
+          <text class="flying-plus-one" wx:if="{{animatingPetId === previewModalPet.petId}}">+1</text>
         </view>
-        <button class="modal-vote-btn" catchtap="vote" data-id="{{previewModalPet.petId}}" loading="{{votingPetId === previewModalPet.petId}}" disabled="{{locked || isHistory || hasVotedToday || votingPetId}}">
+        <view class="modal-vote-action-box">
+          <button class="modal-vote-btn {{animatingPetId === previewModalPet.petId ? 'btn-morphing' : ''}}" catchtap="vote" data-id="{{previewModalPet.petId}}" loading="{{votingPetId === previewModalPet.petId && animatingPetId !== previewModalPet.petId}}" disabled="{{locked || isHistory || hasVotedToday || votingPetId}}">
+            <text class="remix-icon ri-heart-3-fill"></text>
+            <text>{{isHistory || locked ? '已封榜' : (votedPetId === previewModalPet.petId ? '已投票' : '为Ta投一票')}}</text>
+          </button>
+          <block wx:if="{{animatingPetId === previewModalPet.petId}}">
+            <view class="ecg-pulse-trail modal-ecg"></view>
+            <view class="flying-glass-heart modal-flying-heart">
+              <text class="remix-icon ri-heart-3-fill glass-heart-icon"></text>
+              <view class="glass-reflection"></view>
+            </view>
+          </block>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 活动规则与奖金说明详细弹窗 -->
+  <view class="rules-modal-mask {{showRulesModal ? 'is-visible' : ''}}" wx:if="{{showRulesModal}}" bindtap="closeRulesModal" catchtouchmove="noop">
+    <view class="rules-modal-container" catchtap="noop">
+      <!-- 弹窗顶栏 -->
+      <view class="rules-modal-header">
+        <view class="rules-modal-header-left">
+          <view class="rules-icon-box">🏆</view>
+          <view>
+            <view class="rules-modal-title">最美爱宠大赛 · 规则与奖金说明</view>
+            <view class="rules-modal-subtitle">记录爱宠高光时刻 · 公平竞逐月度星耀冠军</view>
+          </view>
+        </view>
+        <view class="rules-modal-close" bindtap="closeRulesModal" aria-label="关闭">
+          <text class="remix-icon ri-close-line"></text>
+        </view>
+      </view>
+
+      <!-- 弹窗滚动正文 -->
+      <scroll-view class="rules-modal-body" scroll-y="true">
+        <!-- 重点板块 1：冠军现金大奖与奖励说明 -->
+        <view class="rules-block prize-block">
+          <view class="rules-block-header">
+            <view class="rules-badge-icon gold-bg"><text class="remix-icon ri-coins-fill"></text></view>
+            <text class="rules-block-title">月度第一名奖金与专属权益</text>
+          </view>
+          <view class="prize-feature-card">
+            <view class="feature-crown-tag">
+              <text class="remix-icon ri-vip-crown-fill"></text>
+              <text>本月第 1 名 冠军大奖</text>
+            </view>
+            <view class="feature-amount">
+              <text class="symbol">¥</text>
+              <text class="num">{{contestConfig.firstPrizeAmount || 500}}</text>
+              <text class="unit">元现金红包</text>
+            </view>
+            <view class="feature-benefits">
+              <view class="benefit-item">
+                <text class="remix-icon ri-check-double-line check"></text>
+                <text>现金奖励直发：自然月最后一日 24:00 锁榜后，由官方客服于次月前 3 个工作日内核验并原路/零钱发放到账。</text>
+              </view>
+              <view class="benefit-item">
+                <text class="remix-icon ri-check-double-line check"></text>
+                <text>金色限定头衔：获颁全服独一无二的金色专属称号（如“{{monthKey}}月最美爱宠”），在宠物主页、庄园与服务打卡中闪耀外显。</text>
+              </view>
+              <view class="benefit-item">
+                <text class="remix-icon ri-check-double-line check"></text>
+                <text>星耀百强证书：月榜前 100 名均将载入平台星耀荣誉历史榜单，永久留存高光纪录。</text>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 重点板块 2：参赛资格 -->
+        <view class="rules-block">
+          <view class="rules-block-header">
+            <view class="rules-badge-icon orange-bg"><text class="remix-icon ri-service-fill"></text></view>
+            <text class="rules-block-title">参赛资格与美照要求</text>
+          </view>
+          <view class="rules-list">
+            <view class="rule-item">
+              <view class="rule-dot">1</view>
+              <view class="rule-text">所有在平台注册并添加爱宠档案的宠主均可免费报名参赛，不收取任何参与费用。</view>
+            </view>
+            <view class="rule-item">
+              <view class="rule-dot">2</view>
+              <view class="rule-text">爱宠档案需至少上传 1 张健康、清晰的真实照片（支持在宠护服务报告中一键导入宠托师抓拍美照）。</view>
+            </view>
+            <view class="rule-item">
+              <view class="rule-dot">3</view>
+              <view class="rule-text">每只爱宠最多支持上传 9 张美照，用户在榜单中可左右滑动浏览整套萌照集。</view>
+            </view>
+            <view class="rule-item">
+              <view class="rule-dot">4</view>
+              <view class="rule-text">严禁上传非本人所有、虚假网络图、盗图或违反公序良俗的内容，违者将取消当月参赛资格。</view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 重点板块 3：投票机制与公平准则 -->
+        <view class="rules-block">
+          <view class="rules-block-header">
+            <view class="rules-badge-icon blue-bg"><text class="remix-icon ri-shield-check-fill"></text></view>
+            <text class="rules-block-title">投票机制与公平准则</text>
+          </view>
+          <view class="rules-list">
+            <view class="rule-item">
+              <view class="rule-dot">1</view>
+              <view class="rule-text"><text class="highlight">每日投票与邀请赠票：</text>每位微信登录用户每天默认拥有 1 次免费投票机会；成功邀请新用户首次登录绑定，邀请人当日将额外获赠 1 次投票机会（多邀多得，当日有效），为喜爱的宝贝加速冲榜！</view>
+            </view>
+            <view class="rule-item">
+              <view class="rule-dot">2</view>
+              <view class="rule-text"><text class="highlight">公平计票防线：</text>系统采用分布式原子并发防刷票机制，杜绝恶意脚本刷票。一经查实作弊行为，违规票数将直接作废。</view>
+            </view>
+            <view class="rule-item">
+              <view class="rule-dot">3</view>
+              <view class="rule-text"><text class="highlight">同票判定原则：</text>若两只或多只宠物在月底锁榜时最终得票相同，则以率先达到该最终票数的先后时间顺序排列先后名次。</view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 重点板块 4：结算公示与发奖说明 -->
+        <view class="rules-block">
+          <view class="rules-block-header">
+            <view class="rules-badge-icon green-bg"><text class="remix-icon ri-calendar-check-fill"></text></view>
+            <text class="rules-block-title">锁榜周期与奖金发放</text>
+          </view>
+          <view class="rules-list">
+            <view class="rule-item">
+              <view class="rule-dot">1</view>
+              <view class="rule-text"><text class="highlight">锁榜时间：</text>每个自然月最后一日 24:00，系统将准时自动锁定本月榜单，生成不可篡改的历史封榜数据。</view>
+            </view>
+            <view class="rule-item">
+              <view class="rule-dot">2</view>
+              <view class="rule-text"><text class="highlight">发奖核验：</text>官方客服会在次月 1~3 日内通过小程序系统通知或预留电话联系第 1 名宠物主人核验信息并打款发放现金大奖。</view>
+            </view>
+            <view class="rule-item">
+              <view class="rule-dot">3</view>
+              <view class="rule-text"><text class="highlight">历史月榜查阅：</text>往期所有封榜记录与冠军荣誉均可在页面顶部的月度切换中永久查阅。</view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 管理员补充说明 (如有) -->
+        <view class="rules-block notice-block" wx:if="{{contestConfig.detailedRules}}">
+          <view class="rules-block-header">
+            <view class="rules-badge-icon purple-bg"><text class="remix-icon ri-information-fill"></text></view>
+            <text class="rules-block-title">补充说明</text>
+          </view>
+          <view class="custom-rules-content">{{contestConfig.detailedRules}}</view>
+        </view>
+      </scroll-view>
+
+      <!-- 弹窗底部操作按钮 -->
+      <view class="rules-modal-footer">
+        <button class="rules-confirm-btn" bindtap="closeRulesModal">
           <text class="remix-icon ri-heart-3-fill"></text>
-          <text>{{isHistory || locked ? '已封榜' : (votedPetId === previewModalPet.petId ? '已投票' : '为Ta投一票')}}</text>
+          <text>我知道了，去为爱宠投票</text>
         </button>
       </view>
     </view>

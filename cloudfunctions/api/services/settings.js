@@ -103,6 +103,30 @@ module.exports = function createService({
     }
   }
 
+  function normalizePetBeautyContestConfig(contest = {}, existingContest = {}) {
+    const source = typeof contest === 'object' && contest !== null ? contest : {}
+    const existing = typeof existingContest === 'object' && existingContest !== null ? existingContest : {}
+    const posterFileId = safeText(source.posterFileId || source.posterUrl || existing.posterFileId || existing.posterUrl).trim()
+    const posterUrl = safeText(source.posterUrl || existing.posterUrl || posterFileId).trim()
+    const rawPrize = source.firstPrizeAmount !== undefined ? source.firstPrizeAmount : (source.rewardAmount !== undefined ? source.rewardAmount : (existing.firstPrizeAmount !== undefined ? existing.firstPrizeAmount : existing.rewardAmount))
+    const firstPrizeAmount = Math.max(0, safeNumber(rawPrize !== undefined ? rawPrize : 500))
+    const bannerTitle = safeText(source.bannerTitle || existing.bannerTitle).trim() || '最美爱宠月度大赛'
+    const bannerSubtitle = safeText(source.bannerSubtitle || existing.bannerSubtitle).trim() || '晒出爱宠萌照 · 赢取月度现金大奖与全服专属头衔'
+    const rulesSummary = safeText(source.rulesSummary || existing.rulesSummary).trim() || '每月评选 · 每日投1票 · 邀请新用户当日+1票 · 榜首享现金大奖'
+    const detailedRules = safeText(source.detailedRules || existing.detailedRules).trim()
+    return {
+      enabled: source.enabled !== false,
+      firstPrizeAmount: Math.round(firstPrizeAmount * 100) / 100,
+      rewardAmount: Math.round(firstPrizeAmount * 100) / 100,
+      posterFileId,
+      posterUrl,
+      bannerTitle,
+      bannerSubtitle,
+      rulesSummary,
+      detailedRules
+    }
+  }
+
   function pickPaymentSecret(payment, existingPayment, field, inputField) {
     const directValue = payment[field]
     const inputValue = inputField ? payment[inputField] : undefined
@@ -292,7 +316,8 @@ module.exports = function createService({
         imageUrl: safeText((value.checkinShare || {}).imageUrl).trim()
       },
       pricingSurcharges: normalizePricingSurcharges(value.pricingSurcharges),
-      logistics: normalizeLogisticsConfig(logistics, existingSettings.logistics, includeSecrets)
+      logistics: normalizeLogisticsConfig(logistics, existingSettings.logistics, includeSecrets),
+      petBeautyContest: normalizePetBeautyContestConfig(value.petBeautyContest, existingSettings.petBeautyContest)
     }
 
     if (includeSecrets) {
@@ -378,6 +403,15 @@ module.exports = function createService({
         throw new Error('【宠托师芝麻信用】最低准入信用分必须在 350 至 950 之间')
       }
     }
+    if (settings.petBeautyContest) {
+      const prize = Number(settings.petBeautyContest.firstPrizeAmount ?? settings.petBeautyContest.rewardAmount ?? 0)
+      if (!Number.isFinite(prize) || prize < 0 || Math.abs(prize * 100 - Math.round(prize * 100)) > 1e-7) {
+        throw new Error('【最美宠物大赛设置】第一名奖金必须是最多两位小数的非负金额')
+      }
+      if (!Number.isSafeInteger(Math.round(prize * 100))) {
+        throw new Error('【最美宠物大赛设置】第一名奖金金额过大')
+      }
+    }
     const time = now()
     const existing = await db.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()
     const previousValue = existing.data[0] ? existing.data[0].value : {}
@@ -408,6 +442,7 @@ module.exports = function createService({
     maskConfigured,
     normalizePaymentConfig,
     normalizePricingSurcharges,
+    normalizePetBeautyContestConfig,
     normalizeStaffZhimaConfig,
     normalizeSystemSettings,
     getSystemSettings,

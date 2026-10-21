@@ -1,6 +1,7 @@
 module.exports = function createService({
   db,
   getAllDocuments,
+  getSystemSettings,
   normalizeMonthKey,
   now,
   nowText,
@@ -90,7 +91,8 @@ module.exports = function createService({
       beautyPhotos,
       beautyTitle: pet.beautyTitle || null,
       exclusiveId: pet.exclusiveId || '',
-      voteCount: Number(voteCount || 0)
+      voteCount: Number(voteCount || 0),
+      prizeAmount: Number(pet.prizeAmount || 0)
     }
   }
 
@@ -193,6 +195,8 @@ module.exports = function createService({
   async function settlePetBeautyMonthlyRanking(monthKey = toCstParts().monthKey, options = {}) {
     monthKey = normalizeMonthKey(monthKey)
     if (!options.force && await isPetBeautyMonthLocked(monthKey)) return { monthKey, locked: true, skipped: true }
+    const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
+    const firstPrizeAmount = Number(settings?.petBeautyContest?.firstPrizeAmount ?? 500)
     const voteMap = await countPetBeautyVotes(monthKey)
     const votedPetIds = Object.keys(voteMap).filter((id) => (voteMap[id] || 0) > 0)
     let candidatePets = []
@@ -209,7 +213,7 @@ module.exports = function createService({
       candidatePets = await getAllDocuments('pets', 'createdAt', 'desc')
     }
     const ranked = candidatePets
-      .filter((pet) => !pet.deletedAt && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length)
+      .filter((pet) => !pet.deletedAt && !pet.beautyContestDisqualified && Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length)
       .map((pet) => ({ pet, voteCount: Number(voteMap[pet._id] || 0) }))
       .filter((item) => item.voteCount > 0)
       .sort((a, b) => b.voteCount - a.voteCount || String(a.pet.createdAt || '').localeCompare(String(b.pet.createdAt || '')))
@@ -221,6 +225,7 @@ module.exports = function createService({
       const title = formatPetBeautyTitle(monthKey, rank)
       const beautyTitle = { monthKey, rank, title, awardedAt: lockedAt }
       const rankingDocId = `${monthKey}_${pet._id}`
+      const prizeAmount = rank === 1 ? firstPrizeAmount : 0
       await db.collection('pet_beauty_month_rankings').doc(rankingDocId).set({
         data: {
           monthKey,
@@ -230,7 +235,8 @@ module.exports = function createService({
           voteCount,
           locked: true,
           title,
-          petSnapshot: toPetPublicBeautyView({ ...pet, exclusiveId, beautyTitle }, voteCount),
+          prizeAmount,
+          petSnapshot: toPetPublicBeautyView({ ...pet, exclusiveId, beautyTitle, prizeAmount }, voteCount),
           lockedAt,
           createdAt: lockedAt,
           updatedAt: lockedAt
@@ -253,13 +259,14 @@ module.exports = function createService({
         monthKey,
         status: 'locked',
         topCount: ranked.length,
+        firstPrizeAmount,
         lockedAt,
         source: options.source || 'manual',
         createdAt: lockedAt,
         updatedAt: lockedAt
       }
     })
-    return { monthKey, locked: true, topCount: ranked.length }
+    return { monthKey, locked: true, topCount: ranked.length, firstPrizeAmount }
   }
 
   return {

@@ -5,6 +5,9 @@ module.exports = function createHandler(context) {
     db,
     ensurePetExclusiveId,
     getUser,
+    getOptionalUser,
+    createInviteCode,
+    bindInviteRelation,
     isPetBeautyMonthLocked,
     listPetBeautyTitles,
     setPetBeautyTitle,
@@ -21,7 +24,8 @@ module.exports = function createHandler(context) {
     safeText,
     settlePetBeautyMonthlyRanking,
     toCstParts,
-    toPetPublicBeautyView
+    toPetPublicBeautyView,
+    getSystemSettings
   } = context
   return async function petBeauty(openid, action, data) {
     const today = toCstParts()
@@ -53,7 +57,7 @@ module.exports = function createHandler(context) {
         cursor = page[page.length - 1]._id
       }
       return rows
-        .filter((pet) => !pet.deletedAt && ((Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0) || pet.avatarFileId || pet.avatarUrl))
+        .filter((pet) => !pet.deletedAt && !pet.beautyContestDisqualified && ((Array.isArray(pet.beautyPhotos) && pet.beautyPhotos.length > 0) || pet.avatarFileId || pet.avatarUrl))
         .map((pet) => {
           const avatar = safeFileId(pet.avatarFileId || pet.avatarUrl) || safeText(pet.avatarFileId || pet.avatarUrl)
           if (!Array.isArray(pet.beautyPhotos) || !pet.beautyPhotos.length) {
@@ -89,9 +93,24 @@ module.exports = function createHandler(context) {
     }
 
     async function todayVoteState() {
-      if (!openid) return { hasVotedToday: false }
-      const voted = await db.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).limit(1).get()
-      return { hasVotedToday: Boolean(voted.data && voted.data[0]), votedPetId: voted.data && voted.data[0] ? voted.data[0].petId : '' }
+      if (!openid) return { hasVotedToday: false, remainingVotesToday: 0, todayBonusVotes: 0, totalVotesToday: 1, usedVotesToday: 0 }
+      const [votesRes, bonusVotesRes] = await Promise.all([
+        db.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).get(),
+        db.collection('pet_beauty_bonus_votes').where({ openid, dateKey: today.dateKey }).get().catch(() => ({ data: [] }))
+      ])
+      const todayVotes = votesRes.data || []
+      const bonusVotes = (bonusVotesRes && bonusVotesRes.data) || []
+      const totalAllowed = 1 + bonusVotes.length
+      const remainingVotes = Math.max(0, totalAllowed - todayVotes.length)
+      const lastVote = todayVotes[todayVotes.length - 1]
+      return {
+        hasVotedToday: remainingVotes === 0,
+        remainingVotesToday: remainingVotes,
+        todayBonusVotes: bonusVotes.length,
+        totalVotesToday: totalAllowed,
+        usedVotesToday: todayVotes.length,
+        votedPetId: lastVote ? lastVote.petId : ''
+      }
     }
 
     if (action === 'listHistoryMonths') {
@@ -101,8 +120,59 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'getActivityHome') {
+      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
+      const contestConfig = settings.petBeautyContest || {
+        firstPrizeAmount: 500,
+        rewardAmount: 500,
+        posterFileId: '',
+        posterUrl: '',
+        bannerTitle: '最美爱宠月度大赛',
+        bannerSubtitle: '晒出爱宠萌照 · 争夺月度冠军现金大奖与全服专属头衔',
+        rulesSummary: '每月评选 · 每日投1票 · 邀请新用户当日+1票 · 榜首享现金大奖',
+        detailedRules: ''
+      }
+      let userInviteCode = ''
+      if (openid) {
+        let user = typeof getOptionalUser === 'function' ? await getOptionalUser(openid) : null
+        if (user) {
+          const incomingInviteCode = safeText(data && data.inviteCode).trim().toUpperCase()
+          const incomingInviterOpenid = safeText(data && data.inviterOpenid).trim()
+          if (!safeText(user.inviterOpenid).trim() && (incomingInviteCode || incomingInviterOpenid) && typeof bindInviteRelation === 'function') {
+            user = await bindInviteRelation(user, { inviteCode: incomingInviteCode, inviterOpenid: incomingInviterOpenid, bindingSource: 'share' }).catch(() => user)
+          }
+          if (!safeText(user.inviteCode).trim() && typeof createInviteCode === 'function') {
+            userInviteCode = createInviteCode(user)
+            await db.collection('users').doc(user._id).update({ data: { inviteCode: userInviteCode, updatedAt: now() } }).catch(() => {})
+          } else {
+            userInviteCode = safeText(user.inviteCode).trim().toUpperCase()
+          }
+        }
+      }
       const [pets, voteState, locked] = await Promise.all([getPublicPetsWithVotes(), todayVoteState(), isPetBeautyMonthLocked(monthKey)])
-      return { monthKey, locked, ...voteState, candidates: pets.slice(0, 12), ranking: pets.slice(0, 10) }
+      return {
+        monthKey,
+        locked,
+        ...voteState,
+        contestConfig,
+        inviteCode: userInviteCode,
+        userOpenid: openid || '',
+        candidates: pets.slice(0, 12),
+        ranking: pets.slice(0, 10)
+      }
+    }
+
+    if (action === 'getContestConfig') {
+      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
+      return settings.petBeautyContest || {
+        firstPrizeAmount: 500,
+        rewardAmount: 500,
+        posterFileId: '',
+        posterUrl: '',
+        bannerTitle: '最美爱宠月度大赛',
+        bannerSubtitle: '晒出爱宠萌照 · 争夺月度冠军现金大奖与全服专属头衔',
+        rulesSummary: '每月评选 · 每日投1票 · 邀请新用户当日+1票 · 榜首享现金大奖',
+        detailedRules: ''
+      }
     }
 
     if (action === 'listCandidates') {
@@ -118,11 +188,30 @@ module.exports = function createHandler(context) {
         const histRes = await db.collection('pet_beauty_month_rankings').where({ monthKey: historyMonthKey, locked: true }).orderBy('rank', 'asc').get()
         const histList = (histRes.data || [])
           .filter((item) => !keyword || safeText(item.petExclusiveId).toUpperCase().includes(keyword) || safeText(item.petSnapshot && item.petSnapshot.name).toUpperCase().includes(keyword))
-          .map((item) => ({ petId: item.petId, name: item.petSnapshot && item.petSnapshot.name || '', ageText: item.petSnapshot && item.petSnapshot.ageText || '', species: item.petSnapshot && item.petSnapshot.species || '', speciesText: petSpeciesText(item.petSnapshot && item.petSnapshot.species), avatarFileId: item.petSnapshot && item.petSnapshot.avatarFileId || '', beautyPhotos: item.petSnapshot && item.petSnapshot.beautyPhotos || [], exclusiveId: item.petExclusiveId || '', voteCount: item.voteCount || 0, rank: item.rank, beautyTitle: { monthKey: item.monthKey, rank: item.rank, title: item.title } }))
+          .map((item) => ({
+            petId: item.petId,
+            name: item.petSnapshot && item.petSnapshot.name || '',
+            ageText: item.petSnapshot && item.petSnapshot.ageText || '',
+            species: item.petSnapshot && item.petSnapshot.species || '',
+            speciesText: petSpeciesText(item.petSnapshot && item.petSnapshot.species),
+            avatarFileId: item.petSnapshot && item.petSnapshot.avatarFileId || '',
+            beautyPhotos: item.petSnapshot && item.petSnapshot.beautyPhotos || [],
+            exclusiveId: item.petExclusiveId || '',
+            voteCount: item.voteCount || 0,
+            rank: item.rank,
+            prizeAmount: item.prizeAmount || (item.rank === 1 ? (item.petSnapshot && item.petSnapshot.prizeAmount) : 0),
+            beautyTitle: { monthKey: item.monthKey, rank: item.rank, title: item.title }
+          }))
         return { ...paginateList(histList, data), monthKey: historyMonthKey, locked: true, isHistory: true }
       }
+      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
+      const firstPrizeAmount = Number(settings?.petBeautyContest?.firstPrizeAmount ?? 500)
       const pets = (await getPublicPetsWithVotes())
-        .map((pet, index) => ({ ...pet, rank: index + 1 }))
+        .map((pet, index) => ({
+          ...pet,
+          rank: index + 1,
+          prizeAmount: (index === 0 ? firstPrizeAmount : 0)
+        }))
         .filter((pet) => !keyword || safeText(pet.exclusiveId).toUpperCase().includes(keyword) || safeText(pet.name).toUpperCase().includes(keyword))
       return paginateList(pets, { ...data, pageSize: data.pageSize || 100 })
     }
@@ -131,9 +220,19 @@ module.exports = function createHandler(context) {
       const user = await getUser(openid)
       if (await isPetBeautyMonthLocked(monthKey)) throw new Error('本月排行榜已锁定')
 
-      // 1. 事前快速查重拦截
-      const todayVote = await db.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).limit(1).get()
-      if (todayVote.data && todayVote.data[0]) throw new Error('今天已经投过票了')
+      // 1. 事前核查当日基础票数与邀请新用户额外获赠票数
+      const [votesRes, bonusVotesRes] = await Promise.all([
+        db.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).get(),
+        db.collection('pet_beauty_bonus_votes').where({ openid, dateKey: today.dateKey }).get().catch(() => ({ data: [] }))
+      ])
+      const todayVotes = votesRes.data || []
+      const bonusVotes = (bonusVotesRes && bonusVotesRes.data) || []
+      const totalAllowed = 1 + bonusVotes.length
+      const usedCount = todayVotes.length
+
+      if (usedCount >= totalAllowed) {
+        throw new Error('今天已经投过票了')
+      }
 
       const petId = safeText(data.petId).trim()
       if (!petId) throw new Error('请选择要投票的宠物')
@@ -145,11 +244,12 @@ module.exports = function createHandler(context) {
         pet = null
       }
       if (!pet || pet.deletedAt) throw new Error('宠物不存在')
+      if (pet.beautyContestDisqualified) throw new Error('该宠物已被取消参赛资格')
       if (!Array.isArray(pet.beautyPhotos) || !pet.beautyPhotos.length) throw new Error('该宠物还没有美照')
 
       const exclusiveId = await ensurePetExclusiveId({ ...pet, _id: petId })
       const time = now()
-      const voteId = `vote_${openid}_${today.dateKey}`
+      const voteId = usedCount === 0 ? `vote_${openid}_${today.dateKey}` : `vote_${openid}_${today.dateKey}_bonus_${usedCount}`
 
       // 2. 事务原子查重与写入确定性主键记录，强阻断并发重复刷票
       await db.runTransaction(async (tx) => {
@@ -162,6 +262,12 @@ module.exports = function createHandler(context) {
         }
         if (existingVote) throw new Error('今天已经投过票了')
 
+        // 事务内再次校验今日总票数，杜绝并发请求穿透刷票
+        const currentTxVotes = await tx.collection('pet_beauty_votes').where({ openid, dateKey: today.dateKey }).get().catch(() => ({ data: [] }))
+        if ((currentTxVotes.data || []).length >= totalAllowed) {
+          throw new Error('今天已经投过票了')
+        }
+
         await tx.collection('pet_beauty_votes').doc(voteId).set({
           data: {
             openid,
@@ -170,6 +276,8 @@ module.exports = function createHandler(context) {
             petExclusiveId: exclusiveId,
             monthKey,
             dateKey: today.dateKey,
+            isBonusVote: usedCount > 0,
+            voteIndex: usedCount + 1,
             createdAt: time
           }
         })
@@ -182,7 +290,17 @@ module.exports = function createHandler(context) {
       })
 
       const voteMap = await countPetBeautyVotes(monthKey)
-      return { petId, monthKey, dateKey: today.dateKey, hasVotedToday: true, voteCount: Number(voteMap[petId] || 0) }
+      const nextRemaining = Math.max(0, totalAllowed - (usedCount + 1))
+      return {
+        petId,
+        monthKey,
+        dateKey: today.dateKey,
+        hasVotedToday: nextRemaining === 0,
+        remainingVotesToday: nextRemaining,
+        todayBonusVotes: bonusVotes.length,
+        totalVotesToday: totalAllowed,
+        voteCount: Number(voteMap[petId] || 0)
+      }
     }
 
     if (action === 'importFromServiceCheckins') {
@@ -264,6 +382,120 @@ module.exports = function createHandler(context) {
         }
       })
       return { petId, beautyPhotos, avatarFileId }
+    }
+
+    if (action === 'disqualifyPetBeautyCandidate') {
+      await requireAdmin(openid)
+      const petId = safeText(data.petId).trim()
+      if (!petId) throw new Error('请选择要取消参赛资格的宠物')
+      const reason = safeText(data.reason).trim() || '违反大赛规则，取消参赛资格'
+      const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+      const pet = petRes && petRes.data
+      if (!pet) throw new Error('宠物不存在')
+      const time = nowText()
+      await db.collection('pets').doc(petId).update({
+        data: {
+          beautyContestDisqualified: true,
+          disqualifiedReason: reason,
+          disqualifiedAt: time,
+          disqualifiedBy: openid,
+          updatedAt: time
+        }
+      })
+      return { petId, beautyContestDisqualified: true, disqualifiedReason: reason, disqualifiedAt: time }
+    }
+
+    if (action === 'reinstatePetBeautyCandidate') {
+      await requireAdmin(openid)
+      const petId = safeText(data.petId).trim()
+      if (!petId) throw new Error('请选择要恢复参赛资格的宠物')
+      const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+      const pet = petRes && petRes.data
+      if (!pet) throw new Error('宠物不存在')
+      const time = nowText()
+      await db.collection('pets').doc(petId).update({
+        data: {
+          beautyContestDisqualified: false,
+          disqualifiedReason: '',
+          disqualifiedAt: '',
+          updatedAt: time
+        }
+      })
+      return { petId, beautyContestDisqualified: false }
+    }
+
+    if (action === 'grantPetBeautyChampionPrize') {
+      await requireAdmin(openid)
+      const targetMonthKey = normalizeMonthKey(data.monthKey || monthKey)
+      // 1. 查找该月份的第 1 名
+      const rankingRes = await db.collection('pet_beauty_month_rankings').where({ monthKey: targetMonthKey, rank: 1 }).limit(1).get()
+      const championRank = rankingRes.data && rankingRes.data[0]
+      if (!championRank) throw new Error(`未找到 ${targetMonthKey} 月度排行榜第 1 名记录，请先执行月度锁榜结算`)
+
+      const petId = championRank.petId
+      const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
+      const pet = (petRes && petRes.data) || championRank.petSnapshot || {}
+      const targetOpenid = safeText(pet.openid || championRank.openid).trim()
+      if (!targetOpenid) throw new Error('无法确定第 1 名宠物主人的账号身份')
+
+      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
+      const defaultPrize = Number(settings?.petBeautyContest?.firstPrizeAmount ?? 500)
+      const prizeAmount = data.amount !== undefined ? Math.round(Number(data.amount) * 100) / 100 : Number(championRank.prizeAmount || defaultPrize)
+      if (!Number.isFinite(prizeAmount) || prizeAmount <= 0) throw new Error('奖金金额必须为大于 0 的数值')
+
+      const earningId = `beauty_prize_${targetMonthKey}_${petId}`
+      const time = nowText()
+      const title = `${targetMonthKey} 最美爱宠月度冠军现金大奖`
+      const reason = safeText(data.remark).trim() || `${targetMonthKey} 最美爱宠大赛冠军【${pet.name || '爱宠'}】现金奖金直接发放`
+
+      // 幂等防重检查与写入用户可提现零钱
+      const existingRes = await db.collection('user_asset_earnings').doc(earningId).get().catch(() => ({ data: null }))
+      if (existingRes && existingRes.data) {
+        throw new Error(`${targetMonthKey} 月度冠军奖金已发放至该用户可提现零钱，请勿重复发放`)
+      }
+
+      await db.collection('user_asset_earnings').doc(earningId).set({
+        data: {
+          userOpenid: targetOpenid,
+          sourceType: 'pet_beauty_champion_prize',
+          sourceId: `${targetMonthKey}_${petId}`,
+          monthKey: targetMonthKey,
+          petId,
+          petName: pet.name || '',
+          title,
+          amount: prizeAmount,
+          status: 'available',
+          activityEnabled: true,
+          reason,
+          grantedBy: openid,
+          createdAt: time,
+          availableAt: time,
+          updatedAt: time
+        }
+      })
+
+      // 更新榜单记录发奖状态
+      if (championRank._id) {
+        await db.collection('pet_beauty_month_rankings').doc(championRank._id).update({
+          data: {
+            prizeGranted: true,
+            prizeGrantedAt: time,
+            prizeEarningId: earningId,
+            prizeAmount,
+            updatedAt: time
+          }
+        }).catch(() => {})
+      }
+
+      return {
+        monthKey: targetMonthKey,
+        petId,
+        targetOpenid,
+        prizeAmount,
+        earningId,
+        status: 'available',
+        grantedAt: time
+      }
     }
 
     if (action === 'settleMonthlyRanking') {

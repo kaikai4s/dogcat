@@ -2539,6 +2539,55 @@ module.exports = function createHandler(context) {
       await logAdmin(admin, 'user', targetOpenid, 'grantPoints', { delta, reason, clientRequestId })
       return { openid: targetOpenid, delta, balance: pointResult.balance }
     }
+
+    if (action === 'grantUserAssetCash') {
+      const targetOpenid = safeText(data.openid).trim()
+      if (!targetOpenid) throw new Error('请输入目标用户的 openid')
+      const targetUser = (await db.collection('users').where({ openid: targetOpenid }).limit(1).get()).data[0]
+      if (!targetUser) throw new Error('目标用户不存在')
+
+      const rawAmount = Number(data.amount)
+      const amount = Math.round(rawAmount * 100) / 100
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error('发放金额必须是大于 0 的数值，最多两位小数')
+      if (amount > 100000) throw new Error('单次发放金额不能超过 100,000 元')
+
+      const title = safeText(data.title).trim() || '管理员发放现金到可提现零钱'
+      const reason = safeText(data.reason || data.remark).trim() || '系统人工发放'
+      const sourceType = safeText(data.sourceType).trim() || 'admin_manual_grant'
+      const clientRequestId = safeText(data.clientRequestId).trim()
+      const time = now()
+      const earningId = clientRequestId
+        ? `manual_cash_${targetOpenid}_${clientRequestId}`
+        : `manual_cash_${targetOpenid}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+
+      const existing = await db.collection('user_asset_earnings').doc(earningId).get().catch(() => ({ data: null }))
+      if (existing && existing.data) {
+        return { earningId, amount: existing.data.amount, status: 'available', isDuplicate: true }
+      }
+
+      await db.collection('user_asset_earnings').doc(earningId).set({
+        data: {
+          userOpenid: targetOpenid,
+          sourceType,
+          sourceId: clientRequestId || earningId,
+          title,
+          amount,
+          status: 'available',
+          activityEnabled: true,
+          reason,
+          grantedBy: admin._id || openid,
+          createdAt: time,
+          availableAt: time,
+          updatedAt: time
+        }
+      })
+
+      if (typeof logAdmin === 'function') {
+        await logAdmin(admin, 'user', targetOpenid, 'grantUserAssetCash', { amount, title, reason, clientRequestId })
+      }
+
+      return { openid: targetOpenid, amount, earningId, status: 'available', grantedAt: time }
+    }
     if (action === 'listPointLogs') {
       const targetOpenid = safeText(data.openid).trim()
       const where = targetOpenid ? { openid: targetOpenid } : {}
