@@ -1264,29 +1264,31 @@
 .home-group-notice-card {
   padding: 24rpx 28rpx 20rpx;
   border-radius: 32rpx;
-  /* 高通透柔光玻璃漫反射与微透渐变 */
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.52) 0%, rgba(240, 253, 244, 0.35) 45%, rgba(255, 255, 255, 0.46) 100%);
-  backdrop-filter: blur(36rpx) saturate(210%);
-  -webkit-backdrop-filter: blur(36rpx) saturate(210%);
-  /* 柔光玻璃高光微边框与立体光晕 */
-  border: 1.5rpx solid rgba(255, 255, 255, 0.78);
+  /* 超高通透柔光玻璃（Ultra-Translucent Frosted Glass）：底色降至18%~26%，极具空气感与晶莹剔透质感 */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.24) 0%, rgba(240, 253, 244, 0.08) 45%, rgba(255, 255, 255, 0.16) 100%);
+  backdrop-filter: blur(44rpx) saturate(220%);
+  -webkit-backdrop-filter: blur(44rpx) saturate(220%);
+  /* 晶莹柔光玻璃微高光与内折射反光 */
+  border: 1.5rpx solid rgba(255, 255, 255, 0.65);
   box-shadow: 
-    0 20rpx 48rpx rgba(5, 150, 105, 0.12),
-    0 6rpx 18rpx rgba(15, 23, 42, 0.04),
-    0 0 24rpx rgba(255, 255, 255, 0.65),
-    inset 0 2rpx 4rpx rgba(255, 255, 255, 0.95),
-    inset 0 -1rpx 2rpx rgba(255, 255, 255, 0.5);
-  color: #1e293b;
+    0 20rpx 48rpx rgba(15, 23, 42, 0.07),
+    0 4rpx 14rpx rgba(5, 150, 105, 0.05),
+    0 0 20rpx rgba(255, 255, 255, 0.40),
+    inset 0 1.5rpx 3rpx rgba(255, 255, 255, 0.90),
+    inset 0 -1rpx 2rpx rgba(255, 255, 255, 0.20);
+  color: #0f172a;
   box-sizing: border-box;
 }
 
 .theme-night .home-group-notice-card {
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.40) 100%);
-  border: 1.5rpx solid rgba(255, 255, 255, 0.24);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.28) 0%, rgba(15, 23, 42, 0.18) 100%);
+  backdrop-filter: blur(44rpx) saturate(220%);
+  -webkit-backdrop-filter: blur(44rpx) saturate(220%);
+  border: 1.5rpx solid rgba(255, 255, 255, 0.18);
   box-shadow: 
     0 20rpx 48rpx rgba(0, 0, 0, 0.45),
-    0 0 24rpx rgba(16, 185, 129, 0.15),
-    inset 0 1rpx 3rpx rgba(255, 255, 255, 0.35);
+    0 0 24rpx rgba(16, 185, 129, 0.10),
+    inset 0 1rpx 3rpx rgba(255, 255, 255, 0.25);
   color: #f1f5f9;
 }
 
@@ -1325,10 +1327,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-shadow: 0 1rpx 2rpx rgba(255, 255, 255, 0.65);
 }
 
 .theme-night .notice-community-name {
   color: #f8fafc;
+  text-shadow: 0 1rpx 3rpx rgba(0, 0, 0, 0.65);
 }
 
 .notice-close-btn {
@@ -1339,35 +1343,37 @@
   align-items: center;
   justify-content: center;
   font-size: 32rpx;
-  color: #64748b;
-  background: rgba(255, 255, 255, 0.48);
-  border: 1rpx solid rgba(255, 255, 255, 0.75);
-  box-shadow: 0 4rpx 10rpx rgba(0, 0, 0, 0.03);
-  backdrop-filter: blur(12rpx);
-  -webkit-backdrop-filter: blur(12rpx);
+  color: #475569;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1rpx solid rgba(255, 255, 255, 0.65);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.03), inset 0 1rpx 2rpx rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16rpx);
+  -webkit-backdrop-filter: blur(16rpx);
   flex-shrink: 0;
   margin-left: 12rpx;
 }
 
 .theme-night .notice-close-btn {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
   color: #cbd5e1;
 }
 
 .notice-close-btn:active {
-  background: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.45);
 }
 
 .notice-content-row {
   font-size: 26rpx;
-  color: #334155;
+  color: #1e293b;
   line-height: 1.5;
   margin-bottom: 14rpx;
+  text-shadow: 0 1rpx 1rpx rgba(255, 255, 255, 0.50);
 }
 
 .theme-night .notice-content-row {
   color: #cbd5e1;
+  text-shadow: 0 1rpx 2rpx rgba(0, 0, 0, 0.50);
 }
 
 .notice-highlight-text {
@@ -1381,7 +1387,7 @@
 
 .notice-sub-count {
   font-size: 24rpx;
-  color: #64748b;
+  color: #475569;
 }
 
 .theme-night .notice-sub-count {
@@ -1392,12 +1398,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-top: 1rpx solid rgba(0, 0, 0, 0.06);
+  border-top: 1rpx solid rgba(255, 255, 255, 0.50);
   padding-top: 12rpx;
 }
 
 .theme-night .notice-footer-row {
-  border-top-color: rgba(255, 255, 255, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.12);
 }
 
 .notice-action-link {
@@ -1418,24 +1424,25 @@
   align-items: center;
   gap: 6rpx;
   font-size: 22rpx;
-  color: #475569;
+  color: #334155;
   padding: 8rpx 18rpx;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.45);
-  border: 1rpx solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.03), inset 0 1rpx 2rpx rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(12rpx);
-  -webkit-backdrop-filter: blur(12rpx);
+  background: rgba(255, 255, 255, 0.20);
+  border: 1rpx solid rgba(255, 255, 255, 0.65);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.03), inset 0 1rpx 2rpx rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16rpx);
+  -webkit-backdrop-filter: blur(16rpx);
 }
 
 .theme-night .notice-today-btn {
   color: #94a3b8;
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
   box-shadow: none;
 }
 
 .notice-today-btn:active {
-  color: #475569;
-  background: rgba(0, 0, 0, 0.08);
+  color: #334155;
+  background: rgba(255, 255, 255, 0.40);
+}
 }
