@@ -17,7 +17,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
     }
   }
   async function totals(tx, orderId) {
-    const candidates = (await db.collection('refunds').where({ orderId }).limit(51).get()).data || []
+    const candidates = (await tx.collection('refunds').where({ orderId }).limit(51).get()).data || []
     if (candidates.length > 50) throw new Error('退款记录超过50笔，请人工核对')
     const rows = []
     for (const candidate of candidates) {
@@ -74,11 +74,12 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         paymentNo: current.paymentNo || '', wxTransactionId: current.wxTransactionId || '', refundNo: createRefundNo(),
         openid: current.clientOpenid || '', amount: Number(current.payAmount), refundAmount: requested / 100,
         reason: reason || '', source, operatorOpenid, clientRequestId: requestId, status: 'processing',
-        channel: settings.payment.mode, requestedAt: time, createdAt: time, updatedAt: time }
+        channel: settings.payment.mode, earningsAccountingVersion: 2, earningsApplied: settings.payment.mode === 'mock', requestedAt: time, createdAt: time, updatedAt: time }
       await tx.collection('refunds').doc(id).set({ data: value })
       await tx.collection(resolved.collectionName).doc(order._id).update({ data: {
         paymentStatus: 'refunding', refundStatus: 'processing', refundAmount: (reserved + requested) / 100,
         refundNo: value.refundNo, refundRevision: Number(current.refundRevision || 0) + 1, updatedAt: time,
+        pendingEarningRefundIds: settings.payment.mode === 'mock' ? (current.pendingEarningRefundIds || []) : [...new Set([...(current.pendingEarningRefundIds || []), id])],
         ...(options.cancelStatus ? { status: options.cancelStatus, cancelReason: reason || '', cancelledAt: time } : {}),
         ...(options.cancelStatus === 'expired' ? { expiredAt: time, expireReason: '服务开始时间前无人接单' } : {}),
         ...(source === 'mall_after_sale' && current.afterSaleType === 'return_and_refund' && current.refundStatus === 'return_shipped'
@@ -87,13 +88,15 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       } })
       await tx.collection('payment_events').doc(id).set({ data: { eventType: 'refund_create', orderId: order._id,
         refundNo: value.refundNo, status: 'processing', detail: { refundAmount: value.refundAmount, source }, createdAt: time } })
-      if (current.couponId && (reserved + requested >= total)) {
+      if (settings.payment.mode === 'mock' && current.couponId && (reserved + requested >= total)) {
         if (typeof restoreOrderCoupon === 'function') {
           await restoreOrderCoupon(current.couponId, order._id, tx)
         }
       }
       if (typeof adjustStaffEarningsForRefund === 'function') {
-        await adjustStaffEarningsForRefund(order._id, requested / 100, total / 100, reason, tx)
+        await adjustStaffEarningsForRefund(order._id, requested / 100, total / 100, reason, tx, {
+          phase: settings.payment.mode === 'mock' ? 'success' : 'reserve', refundId: id
+        })
       }
       return { _id: id, ...value }
     })
@@ -208,6 +211,11 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       const hasProcessing = rows.some(row => (row._id === refund._id ? status : row.status) === 'processing')
       const total = amountYuanToFen(order.payAmount)
       const full = successful >= total
+      if (latest.earningsAccountingVersion === 2 && !latest.earningsApplied && ['success', 'failed'].includes(status)) {
+        await adjustStaffEarningsForRefund(order._id, latest.refundAmount, latest.amount, latest.reason, tx, { phase: status, refundId: latest._id })
+        patch.earningsApplied = status === 'success'
+        await tx.collection('refunds').doc(refund._id).update({ data: { earningsApplied: patch.earningsApplied } })
+      }
       let paymentStatus = order.paymentStatus
       let refundStatus = order.refundStatus
       if (hasProcessing) {
@@ -300,6 +308,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       await tx.collection(resolved.collectionName).doc(order._id).update({ data: {
         refundAmount: reserved / 100, refundedAmount: successful / 100,
         paymentStatus, refundStatus,
+        ...(['success', 'failed'].includes(status) ? { pendingEarningRefundIds: (order.pendingEarningRefundIds || []).filter(id => id !== refund._id) } : {}),
         status: nextStatus,
         ...(shouldRestoreStock ? { stockRestored: true, stockRestoredAt: time } : {}),
         updatedAt: time

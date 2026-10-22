@@ -1,3 +1,5 @@
+const { documentPages } = require('../utils/documentPages')
+
 module.exports = function createService({
   checkTextSecurity, crypto, db, findByClientRequestId, getClientRequestId, getSystemSettings,
   getUser, now, refreshStaffEarnings, reserveWechatApplicationQuota, safeText
@@ -73,17 +75,16 @@ module.exports = function createService({
     const targetCents = requestedCents === null ? Infinity : requestedCents
     await refreshStaffEarnings(openid)
     const settings = await getSystemSettings()
-    const earnings = (await db.collection('staff_earnings')
-      .where({ staffOpenid: openid, status: 'available' })
-      .orderBy('_id', 'asc').limit(maxEarnings + 1).get()).data || []
     const selected = []
     let totalCents = 0
-    for (const earning of earnings) {
-      if (earning.isMock === true || earning.paymentChannel === 'mock' || earning.status === 'mock_settled') continue
-      if (totalCents >= targetCents) break
-      selected.push(earning)
-      totalCents += cents(earning.amount)
-      if (!Number.isSafeInteger(totalCents)) throw new Error('提现金额不正确')
+    selectEarnings: for await (const earnings of documentPages(db, db.command, 'staff_earnings', { staffOpenid: openid, status: 'available' })) {
+      for (const earning of earnings) {
+        if (earning.isMock === true || earning.paymentChannel === 'mock' || earning.status === 'mock_settled' || earning.pendingRefundIds?.length) continue
+        if (totalCents >= targetCents || selected.length > maxEarnings) break selectEarnings
+        selected.push(earning)
+        totalCents += cents(earning.amount)
+        if (!Number.isSafeInteger(totalCents)) throw new Error('提现金额不正确')
+      }
     }
     // Earnings are indivisible ledger entries. Never silently turn a smaller
     // requested amount into a larger withdrawal by selecting the next entry.
@@ -115,7 +116,7 @@ module.exports = function createService({
         const current = (currentSnapshots[i] && currentSnapshots[i].data) || null
         if (!current || current.staffOpenid !== openid || current.status !== 'available' ||
             current.isMock === true || current.paymentChannel === 'mock' || current.status === 'mock_settled' ||
-            current.withdrawRequestId || current.frozenIncidentId || cents(current.amount) !== cents(earning.amount)) {
+            current.withdrawRequestId || current.frozenIncidentId || current.pendingRefundIds?.length || cents(current.amount) !== cents(earning.amount)) {
           throw new Error('收益状态已变化或包含不可提现的模拟测试收益，请刷新后重试')
         }
       }

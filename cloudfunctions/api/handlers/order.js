@@ -42,6 +42,7 @@ module.exports = function createHandler(context) {
     formatPetSummary,
     getActiveServiceSession,
     getApprovedEarlyStart,
+    getEarlyStartScope,
     getCancelQuoteForOrder,
     getClientPetsByIds,
     getClientRequestId,
@@ -398,7 +399,7 @@ module.exports = function createHandler(context) {
       const levels = await getMemberLevels()
       const displayOrder = await attachOrderDisplayData(order, levels)
       const [earlyStart, securityRes, checkinsRes, tracksRes] = await Promise.all([
-        getPendingEarlyStart(orderId).then((pending) => pending || getApprovedEarlyStart(orderId) || getLatestEarlyStart(orderId)),
+        getPendingEarlyStart(orderId).then(async pending => pending || await getApprovedEarlyStart(orderId) || await getLatestEarlyStart(orderId)),
         db.collection('order_home_security').where({ orderId }).limit(1).get(),
         readScopedDocuments('checkin_logs', { orderId }, 'createdAt', 'asc'),
         readScopedDocuments('track_logs', { orderId }, 'recordedAt', 'asc')
@@ -459,7 +460,7 @@ module.exports = function createHandler(context) {
           .reverse()
       }
       const earlyStart = await getPendingEarlyStart(orderId)
-        .then((pending) => pending || getApprovedEarlyStart(orderId) || getLatestEarlyStart(orderId))
+        .then(async pending => pending || await getApprovedEarlyStart(orderId) || await getLatestEarlyStart(orderId))
       const latestCheckin = liveCheckins[liveCheckins.length - 1]
       return {
         id: orderId,
@@ -644,7 +645,7 @@ module.exports = function createHandler(context) {
         }
       }
       if (order.couponId) {
-        if (!refund || quote.refundAmount >= Number(order.payAmount || 0)) {
+        if (!refund) {
           if (typeof restoreOrderCoupon === 'function') {
             await restoreOrderCoupon(order.couponId, data.orderId)
           } else {
@@ -703,6 +704,7 @@ module.exports = function createHandler(context) {
         clientOpenid: order.clientOpenid,
         staffOpenid: openid,
         staffUserId: user._id,
+        ...getEarlyStartScope(order),
         status: 'pending',
         reason,
         createdAt: time,
@@ -731,7 +733,16 @@ module.exports = function createHandler(context) {
       const update = { status: approved ? 'approved' : 'rejected', clientRemark, updatedAt: time }
       if (approved) update.approvedAt = time
       else update.rejectedAt = time
-      await db.collection('order_early_start_requests').doc(request._id).update({ data: update })
+      await db.runTransaction(async tx => {
+        const currentOrder = (await tx.collection('orders').doc(order._id).get()).data
+        const current = (await tx.collection('order_early_start_requests').doc(request._id).get()).data
+        const scope = getEarlyStartScope(currentOrder)
+        if (!current || current.status !== 'pending' || !['assigned', 'on_the_way', 'day_completed', 'in_service'].includes(currentOrder.status) ||
+            currentOrder.clientOpenid !== openid || Object.keys(scope).some(key => current[key] !== scope[key])) {
+          throw new Error('服务场次或宠托师已变化，请刷新后重新申请')
+        }
+        await tx.collection('order_early_start_requests').doc(request._id).update({ data: update })
+      })
       await appendOrderTimeline(order._id, approved ? 'early_start_approved' : 'early_start_rejected', approved ? '宠物主已同意提前开始' : '宠物主已拒绝提前开始', update.clientRemark, 'client')
       await appendOrderStaffMessage(order, {
         eventType: approved ? 'early_start_approved' : 'early_start_rejected',

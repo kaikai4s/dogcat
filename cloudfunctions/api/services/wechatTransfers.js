@@ -52,6 +52,12 @@ module.exports = function createService({
       if (request.payoutChannel !== 'wechat_wallet') throw new Error('非微信提现单不能执行微信零钱转账')
       if (request.status === 'paid') return request
       if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('仅审核通过的微信提现单可发起转账')
+      if (!request.assetType || request.assetType === 'staff') {
+        for (const id of request.earningIds || []) {
+          const earning = (await tx.collection('staff_earnings').doc(id).get()).data
+          if (earning?.pendingRefundIds?.length) throw new Error('关联订单退款处理中，暂不可发起提现打款')
+        }
+      }
       const validationConfig = getWechatTransferConfig(settings || await getSystemSettings({ includeSecrets: true }))
       validateTransferAmount(request, validationConfig)
       const recipientOpenid = safeText(request.recipientOpenid || request.staffOpenid || request.userOpenid || request.openid).trim()

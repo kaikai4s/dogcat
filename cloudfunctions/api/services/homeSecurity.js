@@ -1,3 +1,5 @@
+const { readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createService({
   db,
   encryptText,
@@ -101,20 +103,25 @@ module.exports = function createService({
     throw new Error('请选择有效的入户方式')
   }
 
-  async function getApprovedEarlyStart(orderId) {
-    const res = await db.collection('order_early_start_requests').where({ orderId, status: 'approved' }).orderBy('approvedAt', 'desc').limit(1).get()
+  function getEarlyStartScope(order, session = null) {
+    const target = session || getActiveServiceSession(order) || getNextPendingServiceSession(order)
+    return {
+      staffOpenid: order.staffOpenid || '',
+      sessionIndex: Number(target?.index || 1),
+      sessionStartTime: target?.startTime || order.startTime || '',
+      assignmentTime: toTimeValue(order.assignedAt)
+    }
+  }
+  async function readEarlyStart(orderId, status, order = null, session = null) {
+    const current = order || await readOptionalDocument(db, 'orders', orderId)
+    if (!current || !current.staffOpenid) return null
+    const scope = getEarlyStartScope(current, session)
+    const res = await db.collection('order_early_start_requests').where({ orderId, ...scope, ...(status ? { status } : {}) }).orderBy('createdAt', 'desc').limit(1).get()
     return res.data[0] || null
   }
-
-  async function getPendingEarlyStart(orderId) {
-    const res = await db.collection('order_early_start_requests').where({ orderId, status: 'pending' }).orderBy('createdAt', 'desc').limit(1).get()
-    return res.data[0] || null
-  }
-
-  async function getLatestEarlyStart(orderId) {
-    const res = await db.collection('order_early_start_requests').where({ orderId }).orderBy('createdAt', 'desc').limit(1).get()
-    return res.data[0] || null
-  }
+  async function getApprovedEarlyStart(orderId, order = null, session = null) { return readEarlyStart(orderId, 'approved', order, session) }
+  async function getPendingEarlyStart(orderId) { return readEarlyStart(orderId, 'pending') }
+  async function getLatestEarlyStart(orderId) { return readEarlyStart(orderId, '') }
 
   function isBeforeServiceStart(order, current = now()) {
     const nextSession = getNextPendingServiceSession(order) || getActiveServiceSession(order)
@@ -124,14 +131,15 @@ module.exports = function createService({
 
   async function canStartOrderService(order, current = now()) {
     if (!isBeforeServiceStart(order, current)) return true
-    return Boolean(await getApprovedEarlyStart(order._id))
+    return Boolean(await getApprovedEarlyStart(order._id, order))
   }
 
   async function canStartOrderSession(order, session, current = now()) {
     const sessionStart = session && session.startTime ? session.startTime : order.startTime
     const start = toTimeValue(sessionStart)
-    if (!start || current.getTime() >= start) return true
-    return Boolean(await getApprovedEarlyStart(order._id))
+    if (!start) return false
+    if (current.getTime() >= start) return true
+    return Boolean(await getApprovedEarlyStart(order._id, order, session))
   }
 
   function toEarlyStartView(request) {
@@ -356,6 +364,7 @@ module.exports = function createService({
     isTimeRangeCovered,
     normalizeHomeSecurityInput,
     getApprovedEarlyStart,
+    getEarlyStartScope,
     getPendingEarlyStart,
     getLatestEarlyStart,
     isBeforeServiceStart,

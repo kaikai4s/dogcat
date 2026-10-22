@@ -169,7 +169,7 @@ module.exports = function createHandler(context) {
           throw new Error('密码查看过于频繁，请稍后再试（1分钟内限查看3次）')
         }
 
-        const approvedEarlyStart = await getApprovedEarlyStart(orderId)
+        let approvedEarlyStart = await getApprovedEarlyStart(orderId, order)
         const regularStart = toTimeValue(order.startTime)
         const start = approvedEarlyStart ? toTimeValue(approvedEarlyStart.approvedAt || approvedEarlyStart.createdAt) : regularStart
         const end = toTimeValue(order.endTime)
@@ -198,6 +198,8 @@ module.exports = function createHandler(context) {
           if (!targetSession) {
             throw new Error('不在服务解锁时间窗口')
           }
+
+          approvedEarlyStart = await getApprovedEarlyStart(orderId, order, targetSession)
 
           const sessionRegularStart = toTimeValue(targetSession.startTime)
           const sessionStart = (approvedEarlyStart && (!order.activeSessionIndex || Number(order.activeSessionIndex) === Number(targetSession.index)))

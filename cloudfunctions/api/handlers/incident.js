@@ -25,6 +25,8 @@ module.exports = function createHandler(context) {
     requireAdmin,
     requireClientOrder,
     requireStaffOrder,
+    toPublicOrderHomeSecurity,
+    toPublicHomeSecuritySnapshot,
     safeText
   } = context
 
@@ -137,7 +139,20 @@ module.exports = function createHandler(context) {
       ])
       const orderRes = incident.orderId ? await db.collection('orders').doc(incident.orderId).get().catch(() => ({ data: null })) : null
       const order = orderRes && orderRes.data
-      return { incident, comments, actions, order: order ? await attachOrderDisplayData(order) : null }
+      let publicOrder = null
+      if (order) {
+        if (user.roles.includes('admin')) {
+          const { groupBuyIntent, groupBuyHouseholdKey, doorLockCode, doorLockCodeCipher, doorLockCodeIv, doorLockCodeTag, code, ...display } = await attachOrderDisplayData(order)
+          const security = toPublicOrderHomeSecurity(order.orderHomeSecurity || order.homeSecuritySnapshot)
+          publicOrder = { ...display, orderHomeSecurity: security, homeSecuritySnapshot: toPublicHomeSecuritySnapshot(security) }
+        } else {
+          // Incident participation survives reassignment; it grants no access to
+          // the current household credentials, contacts or precise locations.
+          const { _id, orderNo, status, serviceSummary, startTime, endTime, petName, amount, payAmount, refundStatus, refundedAmount } = order
+          publicOrder = { _id, orderNo, status, serviceSummary, startTime, endTime, petName, amount, payAmount, refundStatus, refundedAmount }
+        }
+      }
+      return { incident, comments, actions, order: publicOrder }
     }
     if (action === 'appendIncidentComment') {
       const { user, incident } = await getIncidentForAccess(openid, data.incidentId)
@@ -271,6 +286,8 @@ module.exports = function createHandler(context) {
         throw new Error('已结案纠纷不可变更处理方案')
       }
       const type = safeText(data.resolutionType || data.type).trim() || 'explain'
+      const status = data.status ? normalizeIncidentStatus(data.status) : 'processing'
+      if (['closed', 'resolved', 'rejected'].includes(status)) throw new Error('请通过结案流程处理纠纷及关联冻结收益')
       const content = safeText(data.content).trim()
       if (content.length > 500) throw new Error('方案说明不能超过 500 字')
       if (content && typeof checkTextSecurity === 'function') {
@@ -299,8 +316,11 @@ module.exports = function createHandler(context) {
         resolution.couponSnapshot = issued.templateSnapshot
         await recordIncidentAction(id, 'coupon_issued', 'admin', openid, { couponId: issued._id, couponTemplateId })
       }
-      const status = data.status ? normalizeIncidentStatus(data.status) : 'processing'
-      await db.collection('order_incidents').doc(id).update({ data: { resolution, status, updatedAt: now() } })
+      await db.runTransaction(async tx => {
+        const current = (await tx.collection('order_incidents').doc(id).get()).data
+        if (!current || ['closed', 'resolved', 'rejected'].includes(current.status)) throw new Error('纠纷已结案，请刷新后重试')
+        await tx.collection('order_incidents').doc(id).update({ data: { resolution, status, updatedAt: now() } })
+      })
       await recordIncidentAction(id, 'resolution_proposed', 'admin', openid, resolution)
       await appendOrderTimeline(incident.orderId, 'incident_resolution', '平台提出处理方案', resolution.content || type, 'admin')
       return { id, resolution, status }

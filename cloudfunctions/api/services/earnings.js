@@ -2,7 +2,8 @@ module.exports = function createService({
   db,
   getSystemSettings,
   now,
-  parseDateValue
+  parseDateValue,
+  releaseWechatTransferQuota
 }) {
   function splitOrderCents(grossCents, rate) {
     const platformCents = Math.round(grossCents * (1 - rate))
@@ -131,6 +132,17 @@ module.exports = function createService({
         isWithdrawable: !isMock,
         mockReason: isMock ? '模拟支付测试订单，不计入真实可提现资金池' : '',
         status: isMock ? 'mock_settled' : earning.status
+      }
+      value.pendingRefundIds = currentOrder?.pendingEarningRefundIds || []
+      // A completion racing a refund may create this ledger after the refund
+      // was finalized. Explicit retained-amount overrides already include it.
+      if (options.overrideAmount === undefined && Number(currentOrder?.refundedAmount) > 0 && grossCents > 0) {
+        const refundedCents = Math.round(Number(currentOrder.refundedAmount) * 100)
+        if (!Number.isSafeInteger(refundedCents) || refundedCents > grossCents) throw new Error('订单已退款金额异常，请核对收益')
+        const deduction = Math.min(Math.round(value.amount * 100), Math.round(baseCents * refundedCents / grossCents))
+        value.amount = (Math.round(value.amount * 100) - deduction) / 100
+        value.deductedAmount = deduction / 100
+        if (value.amount === 0) value.status = 'refunded_void'
       }
       if (currentOrder?.frozenEarningIncidentId) {
         const incidentId = currentOrder.frozenEarningIncidentId
@@ -274,146 +286,7 @@ module.exports = function createService({
     }, { total: 0, pending: 0, available: 0, withdrawing: 0, withdrawn: 0, frozen: 0, mockTotal: 0 })
   }
 
-  async function adjustStaffEarningsForRefund(orderId, refundAmount, totalPayAmount, reason = '', transaction = null) {
-    if (!orderId) return null
-    const client = transaction || db
-    let earnings = []
-    try {
-      const res = await db.collection('staff_earnings').where({ orderId }).get()
-      earnings = res.data || []
-    } catch (e) {
-      earnings = []
-    }
-    if (!earnings.length) return null
-
-    const time = now()
-    const refundCents = Math.round(Number(refundAmount || 0) * 100)
-    const payCents = Math.max(Math.round(Number(totalPayAmount || 0) * 100), refundCents)
-    const isFullRefund = refundCents >= payCents
-
-    const results = []
-    for (const earning of earnings) {
-      if (['refunded_void'].includes(earning.status) && Number(earning.amount) === 0) {
-        continue
-      }
-      const earningAmountCents = Math.round(Number(earning.amount || 0) * 100)
-      const originalAmountCents = Math.round(Number(earning.originalAmount || earning.amount || 0) * 100)
-      const accumulatedDeductCents = Math.round(Number(earning.deductedAmount || 0) * 100)
-
-      if (earning.status === 'withdrawn') {
-        const debtDeltaCents = isFullRefund ? earningAmountCents : Math.min(earningAmountCents, Math.round(originalAmountCents * (refundCents / payCents)))
-        const debtDelta = debtDeltaCents / 100
-        const updateData = {
-          hasOverpaidDebt: true,
-          overpaidDebtAmount: (Math.round(Number(earning.overpaidDebtAmount || 0) * 100) + debtDeltaCents) / 100,
-          refundVoidReason: reason || '订单退款，收益已提现转入待追缴',
-          updatedAt: time
-        }
-        await client.collection('staff_earnings').doc(earning._id).update({ data: updateData })
-        await client.collection('finance_logs').doc(`refund_debt_${earning._id}_${Date.now()}`).set({
-          data: {
-            action: 'staff_earning_withdrawn_debt',
-            targetType: 'staff_earning',
-            targetId: earning._id,
-            orderId,
-            staffOpenid: earning.staffOpenid,
-            amountDelta: -debtDelta,
-            detail: { isFullRefund, refundAmount, totalPayAmount, reason },
-            createdAt: time
-          }
-        }).catch(() => {})
-        results.push({ _id: earning._id, action: 'debt', delta: debtDelta })
-        continue
-      }
-
-      if (earning.status === 'withdrawing') {
-        const updateData = {
-          status: 'refunded_void',
-          amount: 0,
-          deductedAmount: originalAmountCents / 100,
-          refundVoidAt: time,
-          refundVoidReason: reason || '订单退款，提现中的收益已作废',
-          updatedAt: time
-        }
-        await client.collection('staff_earnings').doc(earning._id).update({ data: updateData })
-        if (earning.withdrawRequestId) {
-          await client.collection('withdraw_requests').doc(earning.withdrawRequestId).update({
-            data: {
-              hasVoidedEarnings: true,
-              auditRemark: `关联订单 ${orderId} 发生退款，收益已作废`,
-              updatedAt: time
-            }
-          }).catch(() => {})
-        }
-        await client.collection('finance_logs').doc(`refund_void_${earning._id}_${Date.now()}`).set({
-          data: {
-            action: 'staff_earning_voided',
-            targetType: 'staff_earning',
-            targetId: earning._id,
-            orderId,
-            staffOpenid: earning.staffOpenid,
-            amountDelta: -earning.amount,
-            detail: { isFullRefund: true, refundAmount, totalPayAmount, reason, fromStatus: 'withdrawing' },
-            createdAt: time
-          }
-        }).catch(() => {})
-        results.push({ _id: earning._id, action: 'voided', delta: earning.amount })
-        continue
-      }
-
-      if (isFullRefund) {
-        const updateData = {
-          status: 'refunded_void',
-          amount: 0,
-          deductedAmount: originalAmountCents / 100,
-          refundVoidAt: time,
-          refundVoidReason: reason || '订单全额退款，收益作废',
-          updatedAt: time
-        }
-        await client.collection('staff_earnings').doc(earning._id).update({ data: updateData })
-        await client.collection('finance_logs').doc(`refund_void_${earning._id}_${Date.now()}`).set({
-          data: {
-            action: 'staff_earning_voided',
-            targetType: 'staff_earning',
-            targetId: earning._id,
-            orderId,
-            staffOpenid: earning.staffOpenid,
-            amountDelta: -earning.amount,
-            detail: { isFullRefund: true, refundAmount, totalPayAmount, reason },
-            createdAt: time
-          }
-        }).catch(() => {})
-        results.push({ _id: earning._id, action: 'voided', delta: earning.amount })
-      } else {
-        const deductRatio = Math.min(refundCents / payCents, 1)
-        const deductCents = Math.min(earningAmountCents, Math.round(originalAmountCents * deductRatio))
-        const newAmountCents = Math.max(0, earningAmountCents - deductCents)
-        const newDeductedCents = accumulatedDeductCents + deductCents
-        const updateData = {
-          amount: newAmountCents / 100,
-          deductedAmount: newDeductedCents / 100,
-          deductReason: reason ? `退款冲减：${reason}` : '订单部分退款冲减收益',
-          status: newAmountCents === 0 ? 'refunded_void' : earning.status,
-          updatedAt: time
-        }
-        await client.collection('staff_earnings').doc(earning._id).update({ data: updateData })
-        await client.collection('finance_logs').doc(`refund_part_${earning._id}_${Date.now()}`).set({
-          data: {
-            action: 'staff_earning_partially_refunded',
-            targetType: 'staff_earning',
-            targetId: earning._id,
-            orderId,
-            staffOpenid: earning.staffOpenid,
-            amountDelta: -deductCents / 100,
-            detail: { refundAmount, totalPayAmount, deductCents, newAmount: newAmountCents / 100, reason },
-            createdAt: time
-          }
-        }).catch(() => {})
-        results.push({ _id: earning._id, action: 'partial_deduct', delta: deductCents / 100 })
-      }
-    }
-    return results
-  }
+  const { adjustStaffEarningsForRefund } = require('./refundEarnings')({ db, now, parseDateValue, releaseWechatTransferQuota })
 
   function buildOrderProfitSummary(order, actualEarning = null, commissionRate = 0.7) {
     if (!order) {

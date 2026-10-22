@@ -1,3 +1,5 @@
+const { readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createService({
   db,
   now,
@@ -164,13 +166,7 @@ module.exports = function createService({
 
     const execute = async (client) => {
       const docRef = client.collection('user_coupons').doc(id)
-      let coupon = null
-      try {
-        const res = await docRef.get()
-        coupon = res && res.data
-      } catch (e) {
-        coupon = null
-      }
+      const coupon = await readOptionalDocument(client, 'user_coupons', id)
       if (!coupon) return null
 
       // 仅当优惠券为 used 或 locked 状态，且确实归属该订单时才恢复

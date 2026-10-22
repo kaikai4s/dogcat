@@ -81,7 +81,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
         const earning = (await tx.collection('staff_earnings').doc(id).get()).data
         if (!earning || !request.staffOpenid || earning.staffOpenid !== request.staffOpenid ||
             earning.isMock === true || earning.paymentChannel === 'mock' ||
-            earning.withdrawRequestId !== data.id || earning.status !== 'withdrawing' || earning.frozenIncidentId) {
+            earning.withdrawRequestId !== data.id || earning.status !== 'withdrawing' || earning.frozenIncidentId || earning.pendingRefundIds?.length) {
           throw new Error('收益状态或提现归属异常，请核对后重试')
         }
         total += cents(earning.amount, true)
@@ -152,7 +152,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
       let total = 0
       for (const id of earningIds) {
         const earning = (await tx.collection('staff_earnings').doc(id).get()).data
-        if (!earning || earning.staffOpenid !== request.staffOpenid || earning.withdrawRequestId !== withdrawId || earning.status !== 'withdrawing' || earning.frozenIncidentId) {
+        if (!earning || earning.staffOpenid !== request.staffOpenid || earning.withdrawRequestId !== withdrawId || earning.status !== 'withdrawing' || earning.frozenIncidentId || earning.pendingRefundIds?.length) {
           throw new Error('收益状态或提现归属异常，请核对后重试')
         }
         total += cents(earning.amount, true)
@@ -332,7 +332,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
         const amount = cents(earning.amount)
         const taken = Math.min(amount, remaining)
         remaining -= taken
-        const patch = { status: releasedStatus(earning, time), frozenIncidentId: '', frozenFromStatus: '', frozenResolvedAt: time, frozenResolveRemark: remark, updatedAt: time }
+        const patch = { status: cents(earning.amount) === 0 ? 'refunded_void' : releasedStatus(earning, time), frozenIncidentId: '', frozenFromStatus: '', frozenResolvedAt: time, frozenResolveRemark: remark, updatedAt: time }
         if (decision === 'deduct') {
           const accumulated = cents(earning.deductedAmount || 0) + taken
           if (!Number.isSafeInteger(accumulated)) throw new Error('金额不正确')

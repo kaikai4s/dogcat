@@ -50,6 +50,7 @@ module.exports = function createService({
     const [startYear, startMonth, startDay] = String(data.startTime).slice(0, 10).split('-').map(Number)
     const startDayTime = new Date(Date.UTC(startYear, startMonth - 1, startDay)).getTime()
     const endDayTime = new Date(Date.UTC(endYear, endMonth - 1, endDay)).getTime()
+    if (formatDateKey(new Date(endDayTime)) !== endDateText) throw new Error('连续服务结束日期无效')
     if (endDayTime < startDayTime) throw new Error('连续服务结束日期不能早于开始日期')
     const sessions = []
     const utcHour = startParts.hour - 8

@@ -1,3 +1,5 @@
+const { documentPages } = require('../utils/documentPages')
+
 module.exports = function createHandler(context) {
   const {
     calcMallPricing,
@@ -74,14 +76,10 @@ module.exports = function createHandler(context) {
       }
       if (!template || template.enabled === false || template.newbieOnly !== true) throw new Error('新人优惠券不可领取')
 
-      const [serviceOrdersRes, mallOrdersRes] = await Promise.all([
-        db.collection('orders').where({ clientOpenid: openid }).limit(50).get().catch(() => ({ data: [] })),
-        db.collection('mall_orders').where({ clientOpenid: openid }).limit(50).get().catch(() => ({ data: [] }))
-      ])
-      const serviceOrders = (serviceOrdersRes && serviceOrdersRes.data) || []
-      const mallOrders = (mallOrdersRes && mallOrdersRes.data) || []
-      if ([...serviceOrders, ...mallOrders].some(isEffectiveOrder)) {
-        throw new Error('新人专享券仅限未下单的新用户领取')
+      for (const collection of ['orders', 'mall_orders']) {
+        for await (const rows of documentPages(db, db.command, collection, { clientOpenid: openid })) {
+          if (rows.some(isEffectiveOrder)) throw new Error('新人专享券仅限未下单的新用户领取')
+        }
       }
 
       const idempotencyKey = `newbie_${openid}_${templateId}`
