@@ -14,7 +14,7 @@ const {
   yardLayout
 } = require('./yard-layout')
 const { sampleNeeds } = require('./pet-needs')
-const { updatePetExcretion, drawSingleDecal } = require('./excretion-system')
+const { updatePetExcretion, drawSingleDecal, isWasteExpired } = require('./excretion-system')
 const { getExcretionAsset, setExcretionAsset: configureExcretionAsset } = require('./excretion-assets')
 const vehicleWorld = require('./vehicle-world')
 const lifeWorld = require('./life-world')
@@ -1762,10 +1762,10 @@ class World2D {
   syncPetWaste() {
     const stamp=Date.now()+this.serverOffset,shared=[]
     for(const pet of this.pets)for(const event of pet.waste||[]) {
-      if(event.vehicleId||stamp-event.createdAt>=86400000||this.pickedPoopIds&&this.pickedPoopIds.has(event.id))continue
+      if(event.vehicleId||isWasteExpired(event, stamp)||this.pickedPoopIds&&this.pickedPoopIds.has(event.id))continue
       shared.push({...event,shared:true})
     }
-    const local=this.groundDecals.filter((d)=>!d.shared)
+    const local=this.groundDecals.filter((d)=>!d.shared && !isWasteExpired(d, stamp))
     this.groundDecals=[...local,...shared].sort((a,b)=>a.createdAt-b.createdAt).slice(-60)
   }
   smoothFollowSample(pet,state,dt) {
@@ -2749,6 +2749,8 @@ class World2D {
       }
     if (!overview && this.groundDecals && this.groundDecals.length) {
       this.loadExcretionAssets()
+      const stamp = Date.now() + this.serverOffset
+      this.groundDecals = this.groundDecals.filter((d) => !isWasteExpired(d, stamp))
       for (const decal of this.groundDecals) {
         if (decal.x < b.minX || decal.x > b.maxX || decal.z < b.minZ || decal.z > b.maxZ) continue
         const pt = this.project(decal.x, decal.z)

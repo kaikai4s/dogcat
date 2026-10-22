@@ -1,4 +1,4 @@
-const { sampleNeeds, settleNeeds, relieveWaste } = require('./pet-needs')
+const { sampleNeeds, settleNeeds, relieveWaste, isWasteExpired } = require('./pet-needs')
 const { getExcretionAsset } = require('./excretion-assets')
 const { YARD_SIZE } = require('./yard-layout')
 
@@ -46,6 +46,11 @@ function triggerRelief(pet, type, amount, context, reason) {
   } else {
     // 发生在地面：生成地贴痕迹
     if (context.groundDecals) {
+      for (let i = context.groundDecals.length - 1; i >= 0; i--) {
+        if (isWasteExpired(context.groundDecals[i], now)) {
+          context.groundDecals.splice(i, 1)
+        }
+      }
       context.groundDecals.push({
         id: `decal_${now}_${Math.floor((context.random || Math.random)() * 10000)}`,
         type,
@@ -235,5 +240,6 @@ module.exports = {
   triggerRelief,
   updatePetExcretion,
   drawSingleDecal,
-  drawVehicleStains
+  drawVehicleStains,
+  isWasteExpired
 }

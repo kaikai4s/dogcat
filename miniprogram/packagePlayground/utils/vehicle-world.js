@@ -1,7 +1,7 @@
 const { createNavigation } = require('./navigation')
 const { yardLayout, VEHICLE_RADIUS } = require('./yard-layout')
 const { VEHICLE_ATLAS:ATLAS,VEHICLE_REAR_ATLAS:REAR_ATLAS } = require('./vehicle-assets')
-const { drawVehicleStains } = require('./excretion-system')
+const { drawVehicleStains, isWasteExpired } = require('./excretion-system')
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n))
 module.exports={
   setVehicleSpeed(value) {
@@ -66,9 +66,10 @@ module.exports={
     const p=this.character&&this.character.position
     const nearby=!!car&&car.state==='outside'&&!driving&&!!p&&Math.hypot(p.x-car.position.x,p.z-car.position.z)<=6&&
       !!this.characterTerrain&&this.characterAreaLoaded(this.characterTerrain)&&this.characterNavigation().clearSegment(p,car.position)
+    const validStains = car && car.stains ? car.stains.filter((s) => !isWasteExpired(s, Date.now() + this.serverOffset)) : []
     const state={driving,vehicleSelected:selected,vehicleParked:!!car&&car.state==='parked',nearbyVehicle:nearby,
       ownVehicleId:car?car.id:'',riding:this.vehicleRole==='passenger',
-      vehicleSoiled:!!(car&&(car.soiled||(car.stains&&car.stains.length>0))),
+      vehicleSoiled:!!(car&&(car.soiled||validStains.length>0)),
       passengers:((this.vehicles.get(this.drivingVehicleId)||{}).passengers||[]),
       nearbyRide:this.nearbyRideCandidate(),nearbyInvite:this.nearbyRideInvite()}
     const key=JSON.stringify(state)
@@ -139,12 +140,15 @@ module.exports={
         c.fillStyle='#244864';c.fillRect(-size*.18,-size*.43,size*.36,size*.1)
       }
       if(car.stains&&car.stains.length) {
-        drawVehicleStains(c,car.stains,size,this.excretionImages)
+        car.stains = car.stains.filter((s) => !isWasteExpired(s, Date.now() + this.serverOffset))
+        if (car.stains.length) {
+          drawVehicleStains(c,car.stains,size,this.excretionImages)
+        }
       }
     }
     c.restore()
     if(!overview){
-      const isSoiled=!!(car.soiled||(car.stains&&car.stains.length>0))
+      const isSoiled=!!(car.soiled||(car.stains&&car.stains.filter((s) => !isWasteExpired(s, Date.now() + this.serverOffset)).length>0))
       const label=isSoiled?'小车（已脏）':'小车'
       const labelColor=isSoiled?'#ba392a':this.ownerNameColor(car.ownerId,car.nameColor)
       const labelY=point.y-size*.66-8

@@ -1,7 +1,7 @@
 const {transaction}=require('../playground-transaction')
 const world=require('../playground-world')
 const {sampleMotion}=require('./shared-motion')
-const {settleNeeds,relieveWaste,RECOVERY,recoverySpec}=require('./pet-needs')
+const {settleNeeds,relieveWaste,RECOVERY,recoverySpec,isWasteExpired}=require('./pet-needs')
 const {yardLayout}=require('./yard-layout')
 const COLLECTION='pet_playground_plots'
 const residentId=(openid)=>'resident_'+world.hash(openid)
@@ -42,7 +42,7 @@ module.exports=function createCompanions(context,hooks) {
   async function recordRelief(tx,resident,pet,type,stamp,position) {
     relieveWaste(pet,type,type==='poop'?40:20,stamp)
     const event={id:'waste_'+world.hash(resident.ownerOpenid)+'_'+world.hash(pet.id).slice(0,8)+'_'+stamp,type,x:position.x,z:position.z,createdAt:stamp,vehicleId:pet.ridingVehicleId||''}
-    pet.waste=[...(pet.waste||[]).filter((w)=>stamp-w.createdAt<86400000).slice(-11),event]
+    pet.waste=[...(pet.waste||[]).filter((w)=>!isWasteExpired(w, stamp)).slice(-11),event]
     pet.relieving={id:event.id,type,start:stamp,until:stamp+3000,position:{...position}}
     // Delay the saved route by the same pause on every client.
     pet.motion={...pet.motion,epoch:pet.motion.epoch+3000}
@@ -51,7 +51,7 @@ module.exports=function createCompanions(context,hooks) {
     if(pet.ridingVehicleId) {
       const car=await hooks.read(tx,pet.ridingVehicleId)
       if(car) {
-        const stains=[...(car.stains||[]).slice(-23),{id:event.id,type,at:stamp,x:0,y:0}]
+        const stains=[...(car.stains||[]).filter((s)=>!isWasteExpired(s, stamp)).slice(-23),{id:event.id,type,at:stamp,x:0,y:0}]
         await tx.collection(COLLECTION).doc(car._id).update({data:{stains,soiled:true,revision:Math.max(stamp,(car.revision||0)+1)}})
       }
     }

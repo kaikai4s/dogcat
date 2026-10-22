@@ -733,6 +733,72 @@ test('22. newer remote packet without excretion relief does not overwrite lower 
   assert.ok(pet.needs.poop >= 60)
 })
 
+test('23. pee automatically air-dries 4 hours after generation, and is cleared across Beijing time 0:00 midnight', () => {
+  const { isWasteExpired } = require('../../miniprogram/packagePlayground/utils/excretion-system')
+
+  // 北京时间 2026-10-22 10:00:00
+  // UTC 时间为 2026-10-22 02:00:00 -> Date.UTC(2026, 9, 22, 2, 0, 0)
+  const beijing10am = Date.UTC(2026, 9, 22, 2, 0, 0)
+  const peeAt10am = { id: 'pee_1', type: 'pee', createdAt: beijing10am }
+
+  // 1. 生成 3 小时 59 分钟后 (13:59:00): 未风干
+  const at1359 = beijing10am + (3 * 3600 + 59 * 60) * 1000
+  assert.equal(isWasteExpired(peeAt10am, at1359), false)
+
+  // 2. 生成 4 小时整 (14:00:00): 自动风干
+  const at1400 = beijing10am + 4 * 3600 * 1000
+  assert.equal(isWasteExpired(peeAt10am, at1400), true)
+
+  // 3. 生成 4 小时 1 分钟后 (14:01:00): 已风干
+  const at1401 = beijing10am + (4 * 3600 + 60) * 1000
+  assert.equal(isWasteExpired(peeAt10am, at1401), true)
+
+  // 北京时间 2026-10-22 23:30:00
+  // UTC 时间为 2026-10-22 15:30:00 -> Date.UTC(2026, 9, 22, 15, 30, 0)
+  const beijing2330 = Date.UTC(2026, 9, 22, 15, 30, 0)
+  const latePee = { id: 'pee_late', type: 'pee', createdAt: beijing2330 }
+
+  // 4. 当天 23:59:00 (仅过了 29 分钟，未跨日): 未过期
+  const sameNight = beijing2330 + 29 * 60 * 1000
+  assert.equal(isWasteExpired(latePee, sameNight), false)
+
+  // 5. 次日 00:01:00 (虽然只过了 31 分钟，但跨越了北京时间 0:00): 统一自动清理
+  const nextDayMidnight = beijing2330 + 31 * 60 * 1000
+  assert.equal(isWasteExpired(latePee, nextDayMidnight), true)
+
+  // 6. 便便跨越北京时间 0:00 不清理，保留 24 小时
+  const latePoop = { id: 'poop_late', type: 'poop', createdAt: beijing2330 }
+  assert.equal(isWasteExpired(latePoop, nextDayMidnight), false)
+  // 便便满 24 小时后清理
+  assert.equal(isWasteExpired(latePoop, beijing2330 + 24 * 3600 * 1000 + 1), true)
+
+  // 7. 测试 World2D.syncPetWaste 对过期小便的过滤
+  const w = new World2D({ setData() {}, fetchRegion: async () => ({ plots: [] }) }, () => {}, {
+    world: { width: 1120, height: 1120 },
+    pets: [{
+      _id: 'dog_1',
+      name: '旺财',
+      species: 'dog'
+    }]
+  })
+  w.buildWorld()
+  w.pets[0].waste = [
+    { id: 'w_pee_old', type: 'pee', createdAt: beijing10am, x: 100, z: 100 },
+    { id: 'w_pee_fresh', type: 'pee', createdAt: at1400 - 3600 * 1000, x: 102, z: 102 }, // 3小时前
+    { id: 'w_poop_yesterday', type: 'poop', createdAt: beijing10am, x: 105, z: 105 }
+  ]
+  w.serverOffset = at1400 - Date.now() // 模拟服务器时间为北京时间 14:00
+  w.syncPetWaste()
+
+  // w_pee_old 满 4 小时已风干，不应出现在 groundDecals
+  assert.ok(!w.groundDecals.some((d) => d.id === 'w_pee_old'))
+  // w_pee_fresh 仅 3 小时，仍存在
+  assert.ok(w.groundDecals.some((d) => d.id === 'w_pee_fresh'))
+  // w_poop_yesterday 便便未满 24 小时，仍存在
+  assert.ok(w.groundDecals.some((d) => d.id === 'w_poop_yesterday'))
+})
+
+
 
 
 

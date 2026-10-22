@@ -77,4 +77,24 @@ function needsView(pet,stamp) {
     return {key:s.key,label:s.label,value:val,low:isLow || isSick,message:msg,direction:s.direction,sick:isSick}
   })
 }
-module.exports={NEEDS,RECOVERY,recoverySpec,sampleNeeds,settleNeeds,treatPetHealth,relieveWaste,needsView}
+function isWasteExpired(event, now = Date.now()) {
+  if (!event) return true
+  const createdAt = Number(event.createdAt || event.at || 0)
+  if (!createdAt) return true
+  const stamp = Number(now) || Date.now()
+  if (stamp < createdAt) {
+    return createdAt - stamp > 60000
+  }
+  if (event.type === 'pee') {
+    // 生成4小时后自动风干 (4小时 = 14400000毫秒)
+    if (stamp - createdAt >= 14400000) return true
+    // 北京时间 0:00 统一自动清理所有小便 (UTC+8 跨自然日判定)
+    const beijingDayStamp = Math.floor((stamp + 8 * 3600 * 1000) / 86400000)
+    const beijingDayCreated = Math.floor((createdAt + 8 * 3600 * 1000) / 86400000)
+    if (beijingDayStamp !== beijingDayCreated) return true
+    return false
+  }
+  // 便便等其他排泄物保持24小时自然消退
+  return stamp - createdAt >= 86400000
+}
+module.exports={NEEDS,RECOVERY,recoverySpec,sampleNeeds,settleNeeds,treatPetHealth,relieveWaste,needsView,isWasteExpired}

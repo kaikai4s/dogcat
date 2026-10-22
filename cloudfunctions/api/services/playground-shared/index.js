@@ -6,7 +6,7 @@ const { createNavigation } = require('./navigation')
 const { yardLayout } = require('./yard-layout')
 const { sampleMotion } = require('./shared-motion')
 const { publicAppearance } = require('../playground-appearance-record')
-const { settleNeeds } = require('./pet-needs')
+const { settleNeeds, isWasteExpired } = require('./pet-needs')
 const COLLECTION = 'pet_playground_plots'
 const presenceId = (openid) => 'presence_' + world.hash(openid)
 const residentId = (openid) => 'resident_' + world.hash(openid)
@@ -106,11 +106,26 @@ module.exports = function createShared(context) {
   function publicRecord(row) {
     const ownerId=presenceId(row.ownerOpenid)
     if(row.kind==='plot') {const {mine,...plot}=service.publicPlot(row,'');return {kind:'plot',...plot,ownerId}}
-    if(row.kind==='resident') return {kind:'resident',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',ownerName:row.name,careAgent:row.careAgent||null,careAgents:row.careAgents||(row.careAgent?[row.careAgent]:[]),pets:(row.pets||[]).map((pet)=>({...pet,lifeManaged:true,appearance:publicAppearance(pet.appearance,'pet',pet.id,row.ownerOpenid)}))}
-    if(row.kind==='vehicle')return {kind:'vehicle',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',plotId:row.plotId,state:row.state,position:row.position,
-      facing:row.facing||'sw',passengers:(row.passengers||[]).map((p)=>({id:p.id,name:p.name})),capacity:3,
-      stains:row.stains||[],soiled:!!row.soiled,
-      mirrored:!!row.mirrored,moving:!!row.moving&&now()-row.lastSeen<3000,online:!!row.online&&now()-row.lastSeen<15000,lastSeen:row.lastSeen,speedMultiplier:row.speedMultiplier}
+    if(row.kind==='resident') {
+      const stamp = now()
+      return {
+        kind:'resident',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',ownerName:row.name,careAgent:row.careAgent||null,careAgents:row.careAgents||(row.careAgent?[row.careAgent]:[]),
+        pets:(row.pets||[]).map((pet)=>({
+          ...pet,
+          waste:(pet.waste||[]).filter((w)=>!isWasteExpired(w, stamp)),
+          lifeManaged:true,
+          appearance:publicAppearance(pet.appearance,'pet',pet.id,row.ownerOpenid)
+        }))
+      }
+    }
+    if(row.kind==='vehicle') {
+      const stamp = now()
+      const stains = (row.stains||[]).filter((s)=>!isWasteExpired(s, stamp))
+      return {kind:'vehicle',id:row._id,ownerId,name:row.name,nameColor:row.nameColor||'',plotId:row.plotId,state:row.state,position:row.position,
+        facing:row.facing||'sw',passengers:(row.passengers||[]).map((p)=>({id:p.id,name:p.name})),capacity:3,
+        stains,soiled:!!row.soiled && stains.length > 0,
+        mirrored:!!row.mirrored,moving:!!row.moving&&now()-row.lastSeen<3000,online:!!row.online&&now()-row.lastSeen<15000,lastSeen:row.lastSeen,speedMultiplier:row.speedMultiplier}
+    }
     return {kind:'presence',id:row._id,ownerId,name:row.name||'邻居',nameColor:row.nameColor||'',position:row.position,characterType:row.characterType==='girl'?'girl':'boy',
       vehicleId:row.vehicleId||'',
       vehicleRole:row.vehicleRole||'',facing:row.facing||'sw',
