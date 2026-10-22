@@ -58,7 +58,7 @@ test('checkin photos with numeric recordedAt (as sent by mini program) are count
     }
   })
 
-  const startRes = await staffFn.main({ module: 'order', action: 'startService', data: { id: orderId } })
+  const startRes = await staffFn.main({ module: 'order', action: 'startService', data: { id: orderId, currentLatitude: 31.2, currentLongitude: 121.5 } })
   assert.equal(startRes.ok, true)
 
   // 3. 模拟小程序前端拍照打卡，前端会发送 recordedAt: Date.now() （毫秒数字类型）

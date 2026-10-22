@@ -27,7 +27,7 @@ function setup() {
     module, wx, getApp: () => app, Date: { now: () => now },
     setTimeout(callback, delay) { const id = ++timerId; timers.set(id, { callback, at: now + delay }); return id },
     clearTimeout: id => timers.delete(id),
-    require: name => name.endsWith('/subscription-options') ? require('../../miniprogram/utils/subscription-options') : { envList: [], saveTheme() {}, saveFont() {} }
+    require: name => name.endsWith('/subscription-options') ? require('../../miniprogram/utils/subscription-options') : { envList: [], getSavedThemeKey: () => '', getSavedFontKey: () => '', saveTheme() {}, saveFont() {} }
   })
   return {
     api: module.exports, app, requests, messages,
@@ -39,6 +39,51 @@ function setup() {
   }
 }
 const ok = user => ({ result: { ok: true, data: user } })
+
+test('a late explicit login cannot undo a subsequent logout', async () => {
+  const { api, requests, app } = setup()
+  const pending = api.loginWithWechat()
+  api.logoutCurrentUser()
+  requests[0].resolve(ok({ _id: 'old-login' }))
+  assert.equal(await pending, null)
+  assert.equal(app.globalData.user, null)
+  assert.equal(app.globalData.isGuest, true)
+  assert.equal(await api.getCurrentUser({ silent: true }), null)
+  assert.equal(requests.length, 1)
+})
+
+test('overlapping explicit logins keep the newest identity regardless of response order', async () => {
+  for (const reverse of [false, true]) {
+    const { api, requests, app } = setup()
+    const first = api.loginWithWechat()
+    const second = api.loginWithWechat()
+    if (reverse) {
+      requests[1].resolve(ok({ _id: 'current' }))
+      await second
+      requests[0].resolve(ok({ _id: 'stale' }))
+    } else {
+      requests[0].resolve(ok({ _id: 'stale' }))
+      await first
+      assert.equal(app.globalData.user, null)
+      requests[1].resolve(ok({ _id: 'current' }))
+    }
+    await Promise.all([first, second])
+    assert.equal(app.globalData.user._id, 'current')
+  }
+})
+
+test('an old session response cannot invalidate an explicit login in progress', async () => {
+  const { api, requests, app } = setup()
+  const session = api.getCurrentUser({ sessionOnly: true })
+  await flush()
+  const login = api.loginWithWechat()
+  requests[0].resolve(ok({ _id: 'stale-session' }))
+  await session
+  assert.equal(app.globalData.user, null)
+  requests[1].resolve(ok({ _id: 'explicit-login' }))
+  await login
+  assert.equal(app.globalData.user._id, 'explicit-login')
+})
 
 test('parallel homepage and booking session checks share one lightweight request', async () => {
   const { api, requests } = setup()

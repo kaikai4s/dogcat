@@ -28,11 +28,9 @@ async function expireUnacceptedOrder(orderId, order, time = now(), forceGroupExp
   let refund = null
   if (isPaid) {
     refund = await createRefundForOrder(current, current.payAmount, refundReason, 'system_expire', current.clientOpenid, makeIdempotencyKey('expire_refund', orderId), { unreadForClient: false, cancelStatus: 'expired' })
-    update.paymentStatus = 'refunding'
-    update.refundStatus = 'processing'
-    update.refundNo = refund ? refund.refundNo : ''
-    update.refundAmount = Number(current.payAmount)
-    await db.collection('orders').doc(orderId).update({ data: update }).catch(() => {})
+    // The refund service owns financial status and may already have committed
+    // SUCCESS/CLOSED. Only synchronize the group metadata after it returns.
+    if (isGroup) await db.collection('orders').doc(orderId).update({ data: { groupBuyStatus: 'cancelled' } })
   }
 
   if (!refund) {

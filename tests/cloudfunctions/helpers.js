@@ -303,7 +303,7 @@ function loadCloudFunction(functionName, db, openid = 'openid_test', cloudOverri
         getTempFileURL: cloudOverrides.getTempFileURL,
         ai: cloudOverrides.ai,
         extend: cloudOverrides.extend,
-        downloadFile: cloudOverrides.downloadFile,
+        downloadFile: cloudOverrides.downloadFile || (async () => ({ fileContent: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGfoAAAAASUVORK5CYII=', 'base64') })),
         uploadFile: cloudOverrides.uploadFile,
         openapi: {
           phonenumber: {

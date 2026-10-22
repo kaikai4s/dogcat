@@ -408,7 +408,7 @@ module.exports = function createService({
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(withdrawId).get()).data
       if (!request || request.assetType !== 'user') throw new Error('用户资产提现申请不存在')
-      if (request.status === 'rejected') return { request, changed: false }
+      if (['paid', 'rejected'].includes(request.status)) return { request, changed: false }
       if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('当前用户资产提现状态不可失败回退')
       const time = now()
       await releaseWechatTransferQuota(tx, { _id: withdrawId, ...request }, 'transfer_failed')

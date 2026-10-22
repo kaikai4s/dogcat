@@ -583,9 +583,12 @@ function getCurrentUser(options = {}) {
 }
 
 function loginWithWechat(extraData = {}) {
+  const revision = ++authRevision
+  pendingUserRequests.clear()
   wx.removeStorageSync(AUTH_LOGGED_OUT_KEY)
   const inviteData = getPendingInvitePayload()
   return callFunction('auth', 'login', { themeKey: getSavedThemeKey(), fontKey: getSavedFontKey(), ...inviteData, ...extraData }).then((user) => {
+    if (revision !== authRevision) return getCachedUser()
     clearPendingInvite()
     return setCachedUser(user)
   })

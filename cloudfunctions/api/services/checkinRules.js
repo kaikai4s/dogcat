@@ -53,22 +53,15 @@ module.exports = function createService({
     if (!safeFileId(fileId)) {
       throw new Error('请现场拍照并上传本订单的消毒照片')
     }
-    if (typeof cloud.downloadFile === 'function') {
-      try {
-        const res = await cloud.downloadFile({ fileID: fileId })
-        const buffer = res && res.fileContent
-        if (Buffer.isBuffer(buffer)) {
-          const image = buffer.length >= 12 && buffer.length <= 10 * 1024 * 1024 && (
-            (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) ||
-            buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
-            (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP')
-          )
-          if (!image) throw new Error('消毒打卡必须上传有效图片（不超过10MB）')
-        }
-      } catch (error) {
-        if (error && error.message && error.message.includes('10MB')) throw error
-      }
-    }
+    if (typeof cloud.downloadFile !== 'function') throw new Error('消毒照片验证暂不可用，请稍后重试')
+    const res = await cloud.downloadFile({ fileID: fileId })
+    const buffer = res && res.fileContent
+    const image = Buffer.isBuffer(buffer) && buffer.length >= 12 && buffer.length <= 10 * 1024 * 1024 && (
+      (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) ||
+      buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+      (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP')
+    )
+    if (!image) throw new Error('消毒打卡必须上传有效图片（不超过10MB）')
   }
 
   async function requireSanitizationEvidence(order, current = now()) {

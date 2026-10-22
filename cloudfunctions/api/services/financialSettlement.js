@@ -195,8 +195,9 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
     return db.runTransaction(async tx => {
       const request = (await tx.collection('withdraw_requests').doc(withdrawId).get()).data
       if (!request) throw new Error('提现申请不存在')
-      if (request.status === 'paid') return { request, changed: false }
+      if (['paid', 'rejected'].includes(request.status)) return { request, changed: false }
       if (request.payoutChannel !== 'wechat_wallet') throw new Error('非微信提现单不能标记微信转账失败')
+      if (!['approved', 'transferring', 'transfer_failed'].includes(request.status)) throw new Error('当前提现状态不可失败回退')
       const time = now()
       await releaseWechatTransferQuota(tx, { _id: withdrawId, ...request }, 'transfer_failed')
       const patch = {

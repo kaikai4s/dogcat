@@ -332,7 +332,10 @@ test('group buy unformed orders are excluded from open hall and expire 2 hours b
     toTimeValue:(t)=>new Date(t).getTime(),
     ORDER_STATUS:{PAID:'paid',EXPIRED:'expired'},
     safeText:(s)=>String(s||''),
-    createRefundForOrder:async(order,amount,reason)=>({refundNo:'ref_123',amount}),
+    createRefundForOrder:async(order,amount,reason)=>{
+      await f.db.collection('orders').doc(order._id).update({data:{status:'expired',paymentStatus:'refunding',refundStatus:'processing',refundAmount:amount,expireReason:reason}})
+      return {refundNo:'ref_123',amount}
+    },
     makeIdempotencyKey:()=>'idem',
     db:f.db,
     appendOrderTimeline:async()=>{},
@@ -393,6 +396,7 @@ test('group buy unformed orders are excluded from open hall and expire 2 hours b
 
   // 3. 执行 expireUnacceptedOrder：验证退款及拼单团状态同步
   f.db.state.pet_playground_groups=[{_id:'g1',status:'recruiting',members:[]}]
+  f.db.state.orders=[...(f.db.state.orders||[]),groupOrder]
   const expired=await expireService.expireUnacceptedOrder('ord_group',groupOrder,time1_9hBefore)
   assert.equal(expired.status,'expired')
   assert.equal(expired.paymentStatus,'refunding')
@@ -956,6 +960,7 @@ test('同小区拼单先支付保障: 成团后服务开始前2小时无人接�
   const refundCalls = []
   f.context.createRefundForOrder = async (order, amount, reason, type, openid, idempotencyKey, options) => {
     refundCalls.push({ orderId: order._id, amount, reason, type, openid, idempotencyKey, options })
+    await f.db.collection('orders').doc(order._id).update({ data: { status: options.cancelStatus, paymentStatus: 'refunding', refundStatus: 'processing', refundAmount: amount } })
     return { refundNo: 'ref_' + order._id, status: 'processing' }
   }
 

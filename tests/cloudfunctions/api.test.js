@@ -2092,7 +2092,7 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
   await staffFn.main({ module: 'order', action: 'requestEarlyStart', data: { orderId: created.data._id, reason: '测试提前开始' } })
   await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId: created.data._id } })
   await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: created.data._id, eventType: 'sanitization', mediaFileId: 'cloud://checkin_sanitization.jpg', remark: '已完成消毒打卡', latitude: 31.2, longitude: 121.5 } })
-  await staffFn.main({ module: 'order', action: 'startService', data: { id: created.data._id } })
+  await staffFn.main({ module: 'order', action: 'startService', data: { id: created.data._id, currentLatitude: 31.2, currentLongitude: 121.5 } })
   for (const eventType of ['enter_door', 'pet_status', 'feed', 'water', 'leave_door']) {
     await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: created.data._id, eventType, mediaFileId: 'cloud://checkin.jpg', remark: '已完成打卡', latitude: 31.2, longitude: 121.5 } })
   }
@@ -2162,7 +2162,7 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   await staffFn.main({ module: 'order', action: 'requestEarlyStart', data: { orderId: directOrder.data._id, reason: '验收提前开始' } })
   await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId: directOrder.data._id } })
   await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: directOrder.data._id, eventType: 'sanitization', mediaFileId: 'cloud://checkin_sanitization.jpg', remark: '服务前隔离消毒', latitude: 31.21, longitude: 121.49, clientRequestId: 'checkin_sanitization' } })
-  const started = await staffFn.main({ module: 'order', action: 'startService', data: { id: directOrder.data._id } })
+  const started = await staffFn.main({ module: 'order', action: 'startService', data: { id: directOrder.data._id, currentLatitude: 31.21, currentLongitude: 121.49 } })
   const track = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p1', batchId: 'b1', latitude: 31.21, longitude: 121.49, accuracy: 10, recordedAt: Date.now() - 20000, isBackfilled: false }, { clientPointId: 'p2', batchId: 'b1', latitude: 31.2101, longitude: 121.4901, accuracy: 10, recordedAt: Date.now() - 10000, isBackfilled: true }] } })
   const duplicateTrack = await staffFn.main({ module: 'track', action: 'batchUploadTrack', data: { orderId: directOrder.data._id, points: [{ clientPointId: 'p2', batchId: 'b2', latitude: 31.2101, longitude: 121.4901, accuracy: 10, recordedAt: Date.now() - 10000, isBackfilled: true }] } })
   for (const eventType of ['enter_door', 'pet_status', 'feed', 'water', 'leave_door']) {

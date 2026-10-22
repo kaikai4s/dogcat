@@ -1376,7 +1376,8 @@ module.exports = function createHandler(context) {
       const currentLng = Number(data.currentLongitude)
       const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
       const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
-      let distanceToService = 0
+      if (!hasCoordinate(currentLat, currentLng)) throw new Error('请允许获取有效当前位置后再开始服务')
+      let distanceToService = null
       if (hasCoordinate(currentLat, currentLng) && hasCoordinate(orderLat, orderLng)) {
         distanceToService = calcDistanceKm(currentLat, currentLng, orderLat, orderLng)
         const maxStartDistanceKm = 0.5 // 500米

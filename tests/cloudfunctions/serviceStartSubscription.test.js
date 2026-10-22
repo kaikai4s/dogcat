@@ -23,7 +23,7 @@ function fixture() {
   optimistic(db)
   const cloud = { openapi: { subscribeMessage: { send: async message => { sent.push(message) } } } }
   const api = loadCloudFunction('api', db, 'staff', cloud)
-  return { db, sent, cloud, api, start: () => api.main({ module: 'order', action: 'startService', data: { id: 'order' } }) }
+  return { db, sent, cloud, api, start: () => api.main({ module: 'order', action: 'startService', data: { id: 'order', currentLatitude: 31.2, currentLongitude: 121.5 } }) }
 }
 
 test('actual start sends template 71479 to client once per service session', async () => {
@@ -84,7 +84,7 @@ for (const sameStaff of [true, false]) {
       return collection
     } }))
     const otherApi = sameStaff ? api : loadCloudFunction('api', db, 'staff2', cloud)
-    const results = await Promise.all([start(), otherApi.main({ module: 'order', action: 'startService', data: { id: 'other' } })])
+    const results = await Promise.all([start(), otherApi.main({ module: 'order', action: 'startService', data: { id: 'other', currentLatitude: 31.2, currentLongitude: 121.5 } })])
     assert.equal(results.filter(result => result.ok).length, sameStaff ? 1 : 2, JSON.stringify(results))
     assert.equal(db.state.orders.filter(row => row.status === 'in_service').length, sameStaff ? 1 : 2)
     assert.equal(sent.length, sameStaff ? 1 : 2)

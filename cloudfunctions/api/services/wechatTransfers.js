@@ -213,16 +213,21 @@ module.exports = function createService({
     return amountFen
   }
 
-  async function patchTransferProcessing(withdrawId, patch = {}) {
-    const time = now()
-    await db.collection('withdraw_requests').doc(withdrawId).update({ data: {
-      status: 'transferring',
-      transferStatus: 'processing',
-      transferSubmittedAt: patch.transferSubmittedAt || time,
-      lastTransferCheckedAt: time,
-      updatedAt: time,
-      ...patch
-    } })
+  async function patchTransferProcessing(withdrawId, patch = {}, { allowRetry = false, incrementAttempt = false } = {}) {
+    return db.runTransaction(async tx => {
+      const request = (await tx.collection('withdraw_requests').doc(withdrawId).get()).data
+      if (!request) throw new Error('提现申请不存在')
+      if (!['approved', 'transferring', ...(allowRetry ? ['transfer_failed'] : [])].includes(request.status)) return { request, changed: false }
+      const time = now()
+      const updated = {
+        status: 'transferring', transferStatus: 'processing',
+        transferSubmittedAt: request.transferSubmittedAt || time,
+        lastTransferCheckedAt: new Date(Math.max(new Date(time).getTime(), (new Date(request.lastTransferCheckedAt || 0).getTime() || 0) + 1)), updatedAt: time, ...patch,
+        ...(incrementAttempt ? { transferAttemptCount: Number(request.transferAttemptCount || 0) + 1 } : {})
+      }
+      await tx.collection('withdraw_requests').doc(withdrawId).update({ data: updated })
+      return { request: { ...request, ...updated }, changed: true }
+    })
   }
 
   async function submitWechatWithdrawalTransfer(withdrawId, operator = {}) {
@@ -240,29 +245,20 @@ module.exports = function createService({
     const config = getWechatTransferConfig(settings)
     const payload = buildTransferPayload(prepared, config)
     const headers = payload.user_name ? { 'Wechatpay-Serial': config.platformCertSerialNo } : {}
-    const attempt = Number(prepared.transferAttemptCount || 0) + 1
-    await db.collection('withdraw_requests').doc(withdrawId).update({ data: {
-      status: 'transferring',
-      transferStatus: 'submitting',
-      transferAttemptCount: attempt,
-      lastTransferError: '',
-      updatedAt: now()
-    } })
+    const submitting = await patchTransferProcessing(withdrawId, { transferStatus: 'submitting', lastTransferError: '' }, { allowRetry: true, incrementAttempt: true })
+    if (!submitting.changed) return submitting
     try {
       const response = await wechatPayRequest('POST', '/v3/fund-app/mch-transfer/transfer-bills', payload, config, headers)
       return applyWechatTransferResult(withdrawId, response, 'submit')
     } catch (error) {
       const uncertain = ['ETIMEDOUT', 'ECONNRESET', 'WECHAT_PAY_ERROR'].includes(error.code) || /超时|timeout|系统|SYSTEM/i.test(error.message || '')
-      const time = now()
-      await db.collection('withdraw_requests').doc(withdrawId).update({ data: {
-        status: 'transferring',
+      const failed = await patchTransferProcessing(withdrawId, {
         transferStatus: uncertain ? 'unknown' : 'failed',
-        lastTransferError: safeText(error.message || '微信转账提交失败').slice(0, 500),
-        lastTransferCheckedAt: time,
-        updatedAt: time
-      } })
+        lastTransferError: safeText(error.message || '微信转账提交失败').slice(0, 500)
+      })
+      if (!failed.changed) return failed
       if (!uncertain) return markWechatWithdrawalFailed(withdrawId, { message: error.message, state: error.code || 'FAIL' })
-      return { _id: withdrawId, status: 'transferring', transferStatus: 'unknown', lastTransferError: error.message }
+      return { ...failed.request, request: failed.request, changed: true }
     }
   }
 
@@ -319,9 +315,7 @@ module.exports = function createService({
     if (packageInfo) {
       patch.wechatPackageInfo = packageInfo
     }
-    await patchTransferProcessing(withdrawId, patch)
-    const latest = await db.collection('withdraw_requests').doc(withdrawId).get().catch(() => ({ data: null }))
-    return { request: latest.data, changed: true }
+    return patchTransferProcessing(withdrawId, patch)
   }
 
   async function retryWechatWithdrawalTransfer(withdrawId, operator = {}) {
@@ -337,15 +331,19 @@ module.exports = function createService({
     const query = statusFilter
       ? db.collection('withdraw_requests').where({ payoutChannel: 'wechat_wallet', status: statusFilter })
       : db.collection('withdraw_requests').where({ payoutChannel: 'wechat_wallet' })
-    const rows = (await query.limit(maxLimit * 3).get().catch(() => ({ data: [] }))).data || []
+    const rows = (await query.orderBy('lastTransferCheckedAt', 'asc').orderBy('_id', 'asc').limit(maxLimit).get()).data || []
     const pending = rows.filter(item => ['approved', 'transferring', 'transfer_failed'].includes(safeText(item.status).trim()) || ['processing', 'unknown', 'submitting'].includes(safeText(item.transferStatus).trim()))
     const results = []
     for (const item of pending.slice(0, maxLimit)) {
+      // Advance the scheduling timestamp before I/O, including failures and
+      // terminal-state no-ops, so waiting or broken requests cannot monopolize a batch.
+      const checkedAt = new Date(Math.max(new Date(now()).getTime(), (new Date(item.lastTransferCheckedAt || 0).getTime() || 0) + 1))
+      await db.collection('withdraw_requests').doc(item._id).update({ data: { lastTransferCheckedAt: checkedAt } })
       try {
         if (item.outBillNo || item.outDetailNo) results.push(await queryWechatWithdrawalTransfer(item._id))
         else results.push(await submitWechatWithdrawalTransfer(item._id, { openid: 'scheduled' }))
       } catch (error) {
-        await db.collection('withdraw_requests').doc(item._id).update({ data: { lastTransferError: safeText(error.message).slice(0, 500), lastTransferCheckedAt: now(), updatedAt: now() } }).catch(() => {})
+        await db.collection('withdraw_requests').doc(item._id).update({ data: { lastTransferError: safeText(error.message).slice(0, 500), updatedAt: now() } }).catch(() => {})
       }
     }
     return { checked: results.length }

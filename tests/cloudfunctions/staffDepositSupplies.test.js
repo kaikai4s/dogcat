@@ -235,7 +235,7 @@ test('pre-service checkin: sanitization photo required before startService', asy
   await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId } })
 
   // Trying to start service without sanitization checkin must fail
-  const startWithoutSanitization = await staffFn.main({ module: 'order', action: 'startService', data: { id: orderId } })
+  const startWithoutSanitization = await staffFn.main({ module: 'order', action: 'startService', data: { id: orderId, currentLatitude: 31.2, currentLongitude: 121.5 } })
   assert.equal(startWithoutSanitization.ok, false)
   assert.match(startWithoutSanitization.message, /消毒拍照打卡/)
 
@@ -255,7 +255,7 @@ test('pre-service checkin: sanitization photo required before startService', asy
   assert.equal(checkinRes.ok, true)
 
   // Now startService must succeed
-  const startWithSanitization = await staffFn.main({ module: 'order', action: 'startService', data: { id: orderId } })
+  const startWithSanitization = await staffFn.main({ module: 'order', action: 'startService', data: { id: orderId, currentLatitude: 31.2, currentLongitude: 121.5 } })
   assert.equal(startWithSanitization.ok, true)
 
   // Deleting sanitization checkin photo must be blocked to preserve evidence
