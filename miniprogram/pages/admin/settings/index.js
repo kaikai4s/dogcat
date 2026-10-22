@@ -585,7 +585,6 @@ Page({
     }),
     showSettingModal: false,
     activeSettingPanel: '',
-    subscriptionTemplatesExpanded: false,
     subscriptionDeliveries: [],
     deliveryCursor: '',
     deliveryHasMore: false,
@@ -785,17 +784,12 @@ Page({
   openSettingModal(e) {
     const panel = e.currentTarget.dataset.panel
     if (!panel) return
-    this.setData({ showSettingModal: true, activeSettingPanel: panel,
-      ...(panel === 'subscription' ? { subscriptionTemplatesExpanded: false } : {}) })
+    this.setData({ showSettingModal: true, activeSettingPanel: panel })
   },
 
   closeSettingModal() {
     this.setData({ showSettingModal: false, activeSettingPanel: '', showCarouselEditor: false })
     this.refreshSettingSummary()
-  },
-
-  toggleSubscriptionTemplates() {
-    this.setData({ subscriptionTemplatesExpanded: !this.data.subscriptionTemplatesExpanded })
   },
 
   noop() {},
