@@ -42,6 +42,16 @@ module.exports = function createService({
     const serviceName = isMallOrder(order) ? buildMallOrderTitle(order) : (order.serviceSummary || (order.serviceType === 'walk' ? '上门遛狗' : '上门喂养') || '宠护服务')
     const orderNo = order.orderNo || order._id || ''
     const statusText = safeText(detail.statusText || templateKey)
+    if (templateKey === 'orderPaid') {
+      const address = order.serviceAddress || (order.shippingAddress && (order.shippingAddress.serviceAddress || order.shippingAddress.addressDetail)) || order.city || '请查看订单地址'
+      return {
+        thing2: { value: safeText(serviceName).slice(0, 20) },
+        character_string1: { value: safeText(orderNo).slice(0, 32) },
+        amount3: { value: Number(order.payAmount || detail.amount || 0).toFixed(2) },
+        time4: { value: formatDateTime(order.startTime || order.createdAt || now()) },
+        thing5: { value: safeText(address).slice(0, 20) }
+      }
+    }
     if (templateKey === 'refundResult') {
       return {
         amount2: { value: Number(detail.refundAmount).toFixed(2) },
