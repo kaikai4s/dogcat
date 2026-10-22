@@ -455,11 +455,12 @@
         <view wx:if="{{activeSettingPanel === 'subscription'}}" class="setting-modal-section">
           <picker mode="selector" range="{{deliveryStatusLabels}}" value="{{deliveryStatusIndex}}" bindchange="changeDeliveryStatus" disabled="{{deliveryLoading}}"><view class="input">通知状态：{{deliveryStatusLabels[deliveryStatusIndex]}}</view></picker>
           <button class="ghost-btn" bindtap="loadSubscriptionDeliveries" disabled="{{deliveryLoading}}"><text class="remix-icon ri-refresh-line"></text><text>刷新通知</text></button>
-          <view wx:for="{{subscriptionDeliveries}}" wx:key="id" class="compact-toggle-row">
+          <view wx:for="{{subscriptionDeliveries}}" wx:key="id" wx:if="{{subscriptionDeliveriesExpanded || index < 3}}" class="compact-toggle-row">
             <view class="compact-toggle-main"><view>{{item.templateName || item.templateKey}}</view><view class="muted">{{item.orderId || '资金通知'}} · {{item.attempts}} 次尝试</view><view class="muted" wx:if="{{item.reasonText}}">{{item.reasonText}}</view></view>
             <button wx:if="{{item.status === 'failed' || item.status === 'skipped'}}" class="ghost-btn" data-id="{{item.id}}" bindtap="retrySubscriptionDelivery"><text class="remix-icon ri-restart-line"></text><text>重试</text></button>
           </view>
-          <button wx:if="{{deliveryHasMore}}" class="ghost-btn" data-more="{{true}}" bindtap="loadSubscriptionDeliveries" disabled="{{deliveryLoading}}">更多</button>
+          <button wx:if="{{subscriptionDeliveries.length > 3}}" class="ghost-btn" bindtap="toggleSubscriptionDeliveries">{{subscriptionDeliveriesExpanded ? '收起通知' : '查看全部通知'}}</button>
+          <button wx:if="{{subscriptionDeliveriesExpanded && deliveryHasMore}}" class="ghost-btn" data-more="{{true}}" bindtap="loadSubscriptionDeliveries" disabled="{{deliveryLoading}}">加载更多通知</button>
           <view class="compact-toggle-row"><view class="compact-toggle-main"><view class="strong">启用订阅消息</view><view class="muted">模板未配置时只记录 skipped 日志。</view></view><switch checked="{{settings.subscription.enabled}}" bindchange="toggleSubscriptionEnabled" /></view>
           <view class="notice">开启此开关不会自动配置模板。请先添加微信模板、填写下方对应的完整模板 ID 并保存；暂未配置的通知请留空，用户需在配置完成后重新进入订阅中心授权。</view>
           <view class="notice">请从当前小程序的微信公众平台「订阅消息 → 我的模板」复制完整模板 ID。7272、8560 等数字是模板编号，不能作为模板 ID 填入；其他小程序的 ID 也不可用。前台出现微信错误码 20001 时请优先核对此处配置，20002 时检查是否混用了不同类型的模板。</view>

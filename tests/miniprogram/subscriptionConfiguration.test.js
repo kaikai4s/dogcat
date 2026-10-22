@@ -33,3 +33,21 @@ test('administrator cannot save template numbers or placeholders, but can leave 
     if (!allowed) assert.match(errors[0], /订阅消息设置/)
   }
 })
+
+test('admin subscription delivery list defaults to three records and supports expanding the rest', () => {
+  let page
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/settings/index.js'), 'utf8'), {
+    Page(config) { page = config }, wx: {},
+    require: name => name.endsWith('/subscription-options') ? options : name.endsWith('/payment-config') ? require('../../miniprogram/pages/admin/settings/payment-config') : {}
+  })
+  page.setData = function (patch) { Object.assign(this.data, patch) }
+  assert.equal(page.data.subscriptionDeliveriesExpanded, false)
+  page.toggleSubscriptionDeliveries()
+  assert.equal(page.data.subscriptionDeliveriesExpanded, true)
+  page.toggleSubscriptionDeliveries()
+  assert.equal(page.data.subscriptionDeliveriesExpanded, false)
+
+  const wxml = fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/settings/index.wxml'), 'utf8')
+  assert.match(wxml, /toggleSubscriptionDeliveries/)
+  assert.match(wxml, /subscriptionDeliveriesExpanded \|\| index < 3/)
+})

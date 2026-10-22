@@ -586,6 +586,7 @@ Page({
     showSettingModal: false,
     activeSettingPanel: '',
     subscriptionDeliveries: [],
+    subscriptionDeliveriesExpanded: false,
     deliveryCursor: '',
     deliveryHasMore: false,
     deliveryLoading: false,
@@ -684,8 +685,11 @@ Page({
   },
   changeDeliveryStatus(e) {
     if (this.data.deliveryLoading) return
-    this.setData({ deliveryStatusIndex: Number(e.detail.value), deliveryCursor: '', deliveryHasMore: false, subscriptionDeliveries: [] })
+    this.setData({ deliveryStatusIndex: Number(e.detail.value), deliveryCursor: '', deliveryHasMore: false, subscriptionDeliveries: [], subscriptionDeliveriesExpanded: false })
     this.loadSubscriptionDeliveries()
+  },
+  toggleSubscriptionDeliveries() {
+    this.setData({ subscriptionDeliveriesExpanded: !this.data.subscriptionDeliveriesExpanded })
   },
   retrySubscriptionDelivery(e) {
     const id = e.currentTarget.dataset.id
@@ -784,7 +788,8 @@ Page({
   openSettingModal(e) {
     const panel = e.currentTarget.dataset.panel
     if (!panel) return
-    this.setData({ showSettingModal: true, activeSettingPanel: panel })
+    this.setData({ showSettingModal: true, activeSettingPanel: panel,
+      ...(panel === 'subscription' ? { subscriptionDeliveriesExpanded: false } : {}) })
   },
 
   closeSettingModal() {
