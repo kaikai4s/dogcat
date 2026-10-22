@@ -473,7 +473,7 @@
           <view class="field-item"><text class="label">服务开始模板</text><input class="input" value="{{settings.subscription.templates.serviceStart}}" data-field="serviceStart" bindinput="subscriptionTemplateInput" placeholder="开始服务通知模板 ID（71479）" /></view>
           <view class="notice">模板 71479：订单编号 character_string1、温馨提示 thing2。仅正式开始每场服务时通知下单用户。</view>
           <view class="field-item"><text class="label">服务进度模板</text><input class="input" value="{{settings.subscription.templates.serviceProgress}}" data-field="serviceProgress" bindinput="subscriptionTemplateInput" placeholder="提前开始、到达、超时等进度通知模板 ID" /></view>
-          <view class="notice">原服务进度模板请填在此处，字段需为 thing9、thing4、character_string5、thing10、date3，不可使用开始服务模板 71479。</view>
+          <view class="notice">服务进度提醒字段：服务项目 thing4、服务状态 phrase7、备注 thing9、订单号 character_string11、宠托师 thing10。用于提前开始、宠托师到达、超时等进度通知；不可使用开始服务模板 71479。</view>
           <view class="field-item"><text class="label">服务完成模板</text><input class="input" value="{{settings.subscription.templates.serviceFinish}}" data-field="serviceFinish" bindinput="subscriptionTemplateInput" placeholder="服务完成通知模板 ID（18325）" /></view>
           <view class="notice">模板 18325：服务订单号 character_string14、服务项目 thing6、温馨提示 thing5、完成时间 time3。每场服务完成及管理员核实完单后通知下单用户。</view>
           <view class="field-item"><text class="label">开锁请求模板</text><input class="input" value="{{settings.subscription.templates.remoteUnlock}}" data-field="remoteUnlock" bindinput="subscriptionTemplateInput" placeholder="订单状态变更通知模板 ID（24826）" /></view>

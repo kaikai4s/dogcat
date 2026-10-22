@@ -124,6 +124,27 @@ module.exports = function createService({
       }
     }
 
+    if (templateKey === 'serviceProgress') {
+      const rawProgressStatus = safeText(detail.statusText || '服务状态更新')
+      const progressStatus = ({
+        '待确认提前开始': '待确认',
+        '已同意提前开始': '已同意',
+        '已拒绝提前开始': '已拒绝',
+        '宠托师即将到达': '即将到达',
+        '服务已超时未开始': '超时未开始',
+        '服务未按时开始': '未按时开始',
+        '请及时完成服务': '待完成'
+      })[rawProgressStatus] || rawProgressStatus.slice(0, 5)
+      const staffName = detail.staffName || order.staffName || order.requestedStaffName || '宠托师'
+      return {
+        thing4: { value: safeText(serviceName).slice(0, 20) },
+        phrase7: { value: progressStatus },
+        thing9: { value: safeText(detail.tip || '请查看订单详情').slice(0, 20) },
+        character_string11: { value: safeText(orderNo).slice(0, 32) },
+        thing10: { value: safeText(staffName).slice(0, 20) }
+      }
+    }
+
     if (templateKey === 'orderChat') {
       const rawSender = safeText(detail.senderName || (detail.senderRole === 'staff' ? '宠托师' : '宠物主'))
       const sender = rawSender.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 20) || '服务沟通'
