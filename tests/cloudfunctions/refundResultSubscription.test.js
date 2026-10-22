@@ -33,8 +33,8 @@ function fixture({ mall = false, template = 'refund-7272', mode = 'wechat', stat
   return { db, ctx, cloud, sent, gateway, refunds, refund, deliveries }
 }
 
-for (const mall of [false, true]) {
-  test(`refund result sends template 7272 with per-refund amount and correct ${mall ? 'mall' : 'service'} detail page`, async () => {
+test('service refund result sends template 7272 with per-refund amount and service detail page', async () => {
+    const mall = false
     const { refund, sent } = fixture({ mall })
     await refund()
     assert.deepEqual(sent[0], { touser: 'client', templateId: 'refund-7272',
@@ -45,8 +45,15 @@ for (const mall of [false, true]) {
     await refund(74.5, 'second')
     assert.equal(sent.length, 2)
     assert.equal(sent[1].data.amount2.value, '74.50', 'never use the cumulative 100 yuan refund')
-  })
-}
+})
+
+test('mall refunds do not send subscription notifications', async () => {
+  const { refund, sent, deliveries } = fixture({ mall: true })
+  await refund()
+  await refund(74.5, 'second')
+  assert.equal(sent.length, 0)
+  assert.equal(deliveries().length, 0)
+})
 
 test('repeated and concurrent refund result processing sends only once', async () => {
   const { refund, sent, refunds, deliveries, db, gateway } = fixture({ status: 'PROCESSING' })

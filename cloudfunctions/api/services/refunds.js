@@ -313,7 +313,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         ...(shouldRestoreStock ? { stockRestored: true, stockRestoredAt: time } : {}),
         updatedAt: time
       } })
-      if (status === 'success' || status === 'failed') {
+      if ((status === 'success' || status === 'failed') && resolved.collectionName !== 'mall_orders') {
         const completedRefund = { ...latest, ...patch }
         await enqueueOrderNotification(tx, order.clientOpenid, 'refundResult', order, notificationDetail(completedRefund), 'client', notificationKey(completedRefund))
       }
@@ -333,7 +333,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       }
       return { ...latest, ...patch }
     })
-    if (result && ['success', 'failed'].includes(result.status)) {
+    if (result && ['success', 'failed'].includes(result.status) && resolved.collectionName !== 'mall_orders') {
       // The committed queue survives a send failure or a process restart.
       await notifyOrder(resolved.order.clientOpenid, 'refundResult', resolved.order, notificationDetail(result), 'client', notificationKey(result))
         .catch(error => console.error('[refund-notification]', { refundId: result._id, message: error.message }))

@@ -479,13 +479,9 @@
           <view class="field-item"><text class="label">开锁请求模板</text><input class="input" value="{{settings.subscription.templates.remoteUnlock}}" data-field="remoteUnlock" bindinput="subscriptionTemplateInput" placeholder="订单状态变更通知模板 ID（24826）" /></view>
           <view class="notice">远程开门使用模板 24826：订单编号 character_string1、订单状态 thing4、温馨提示 thing10、变更时间 time5。提示用户核实到访人员后，在门锁应用远程开门。</view>
           <view class="field-item"><text class="label">退款结果模板</text><input class="input" value="{{settings.subscription.templates.refundResult}}" data-field="refundResult" bindinput="subscriptionTemplateInput" placeholder="退款通知模板 ID（7272）" /></view>
-          <view class="notice">模板 7272：退款金额 amount2、退款说明 thing3、退款时间 date4、退款商品 thing5、订单号 character_string6。服务及商城订单退款成功或失败后通知客户，处理中不发送结果通知。</view>
+          <view class="notice">模板 7272：退款金额 amount2、退款说明 thing3、退款时间 date4、退款商品 thing5、订单号 character_string6。服务订单退款成功或失败后通知客户，商城退款不发送订阅消息，处理中也不发送结果通知。</view>
           <view class="field-item"><text class="label">订单取消/过期通知模板</text><input class="input" value="{{settings.subscription.templates.orderCancelled}}" data-field="orderCancelled" bindinput="subscriptionTemplateInput" placeholder="订单取消通知模板 ID（17217）" /></view>
           <view class="notice">统一用于用户取消、宠托师取消、无人接单过期和超时关单。模板字段：取消原因 thing3、取消时间 time4、订单状态 phrase2、订单号 character_string1、退款金额 amount8。截图中的“订单取消通知”模板 ID 请填写在这里。</view>
-          <view class="field-item"><text class="label">商城支付成功模板（待接入）</text><input class="input" value="{{settings.subscription.templates.mallOrderPaid}}" data-field="mallOrderPaid" bindinput="subscriptionTemplateInput" placeholder="商城支付成功通知模板 ID" /></view>
-          <view class="field-item"><text class="label">商城发货模板（待接入）</text><input class="input" value="{{settings.subscription.templates.mallShipped}}" data-field="mallShipped" bindinput="subscriptionTemplateInput" placeholder="商城发货通知模板 ID" /></view>
-          <view class="field-item"><text class="label">商城订单状态模板（待接入）</text><input class="input" value="{{settings.subscription.templates.mallOrderStatus}}" data-field="mallOrderStatus" bindinput="subscriptionTemplateInput" placeholder="商城收货/售后进度通知模板 ID" /></view>
-          <view class="notice">以上商城模板只作为配置项保存，等模板创建完成后再接入支付、发货、收货和售后状态发送。</view>
           <view class="field-item"><text class="label">宠托师指定单通知模板</text><input class="input" value="{{settings.subscription.templates.staffDirectOrder}}" data-field="staffDirectOrder" bindinput="subscriptionTemplateInput" placeholder="新订单通知模板 ID（8560）" /></view>
           <view class="notice">模板 8560：订单号 character_string2、备注 thing5、服务名称 thing9、服务时间 time10、订单总价 amount3。指定预约支付成功、平台派单或改派成功后通知对应宠托师；宠托师需在订阅中心同意此模板。</view>
           <view class="notice">保存后，两端进入消息页的订阅中心会刷新配置，首页不展示订阅提示。更换模板 ID 后需重新授权；每次自动组合最多 3 个模板，未完成项继续批量申请，仅微信过滤的组合或出错批次拆开处理。指定预约付款不会提前发送接单成功通知，实际接单后才发送。</view>

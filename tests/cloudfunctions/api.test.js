@@ -480,7 +480,7 @@ test('admin can save and public can read system settings', async () => {
     enablePetBreedAi: false,
     payment: { enabled: true, mode: 'mock', mchId: 'mch_1', refundEnabled: true },
     settlement: { staffCommissionRate: 0.75, settlementDelayDays: 2, minWithdrawAmount: 20 },
-    subscription: { enabled: true, templates: { orderPaid: 'tpl_paid', orderAssigned: 'tpl_assigned', orderAccepted: 'tpl_accepted', serviceStart: 'tpl_start', serviceFinish: 'tpl_finish', remoteUnlock: 'tpl_unlock', refundResult: 'tpl_refund', orderCancelled: 'tpl_cancelled', staffCancellation: 'tpl_staff_cancelled', mallOrderPaid: 'tpl_mall_paid', mallShipped: 'tpl_mall_shipped', mallOrderStatus: 'tpl_mall_status' } },
+    subscription: { enabled: true, templates: { orderPaid: 'tpl_paid', orderAssigned: 'tpl_assigned', orderAccepted: 'tpl_accepted', serviceStart: 'tpl_start', serviceFinish: 'tpl_finish', remoteUnlock: 'tpl_unlock', refundResult: 'tpl_refund', orderCancelled: 'tpl_cancelled', staffCancellation: 'tpl_staff_cancelled' } },
     reliability: { enableOfflineQueue: true, maxTrackBatchSize: 60, maxRetryTimes: 6 },
     homeHeroCarousel: {
       enabled: true,
@@ -516,9 +516,9 @@ test('admin can save and public can read system settings', async () => {
   assert.equal(saved.data.subscription.templates.remoteUnlock, 'tpl_unlock')
   assert.equal(saved.data.subscription.templates.orderCancelled, 'tpl_cancelled')
   assert.equal(saved.data.subscription.templates.staffCancellation, 'tpl_staff_cancelled')
-  assert.equal(saved.data.subscription.templates.mallOrderPaid, 'tpl_mall_paid')
-  assert.equal(saved.data.subscription.templates.mallShipped, 'tpl_mall_shipped')
-  assert.equal(saved.data.subscription.templates.mallOrderStatus, 'tpl_mall_status')
+  assert.equal(saved.data.subscription.templates.mallOrderPaid, undefined)
+  assert.equal(saved.data.subscription.templates.mallShipped, undefined)
+  assert.equal(saved.data.subscription.templates.mallOrderStatus, undefined)
   assert.equal(saved.data.reliability.maxTrackBatchSize, 60)
   assert.equal(saved.data.homeHeroCarousel.rotateIntervalMs, 6000)
   assert.equal(saved.data.homeHeroCarousel.items.length, 1)
@@ -530,7 +530,7 @@ test('admin can save and public can read system settings', async () => {
   assert.equal(fetched.data.payment.refundEnabled, true)
   assert.equal(fetched.data.settlement.minWithdrawAmount, 20)
   assert.equal(fetched.data.subscription.templates.refundResult, 'tpl_refund')
-  assert.equal(fetched.data.subscription.templates.mallOrderStatus, 'tpl_mall_status')
+  assert.equal(fetched.data.subscription.templates.mallOrderStatus, undefined)
   assert.equal(fetched.data.reliability.maxRetryTimes, 6)
   assert.equal(fetched.data.homeHeroCarousel.enabled, true)
   assert.equal(fetched.data.homeHeroCarousel.items[0].title, '视频测试')
