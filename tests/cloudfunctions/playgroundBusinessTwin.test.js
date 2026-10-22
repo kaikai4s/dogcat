@@ -146,9 +146,9 @@ test('方案3：getCommunityGroupBuy 返回同小区拼单优惠与本小区常�
   assert.equal(groupBuyRes.sitters[0].rating, '5.0')
 })
 
-test('方案5：关爱权益中心支持查看可用积分、会员等级并消耗积分兑换真实优惠券', async () => {
-  const { handler, openid, issuedCoupons, db } = createTestContext({
-    users: [{ _id: 'u_test_owner', openid: 'test_owner', role: 'client', points: 150, memberLevel: 'gold' }],
+test('会员成长权益显示累计积分，拒绝积分兑换且不发券或扣分', async () => {
+  const { handler, openid, issuedCoupons, pointLogs, db } = createTestContext({
+    users: [{ _id: 'u_test_owner', openid: 'test_owner', role: 'client', points: 150, totalPoints: 500, memberLevel: 'gold' }],
     member_levels: [
       { _id: 'gold', name: '黄金会员' }
     ],
@@ -168,30 +168,19 @@ test('方案5：关爱权益中心支持查看可用积分、会员等级并消�
   })
 
   const rewards = await handler(openid, 'getPlaygroundRewards', {})
-  assert.equal(rewards.points, 150)
+  assert.equal(rewards.points, 500)
   assert.equal(rewards.memberLevelName, '黄金会员')
-  assert.equal(rewards.exchangeableCoupons.length, 1)
-  assert.equal(rewards.exchangeableCoupons[0].requiredPoints, 100) // 10 * 10 = 100 积分
-
-  // 兑换不存在或未启用的券应报错
-  await assert.rejects(handler(openid, 'exchangeCoupon', { templateId: 'missing' }), /暂不可兑换/)
-
-  // 成功兑换
-  const exchangeRes = await handler(openid, 'exchangeCoupon', { templateId: 'coupon_tpl_01' })
-  assert.equal(exchangeRes.success, true)
-  assert.ok(exchangeRes.message.includes('成功消耗 100 积分兑换'))
-
-  // 积分被扣减
+  assert.equal(rewards.exchangeableCoupons, undefined)
+  for (const templateId of ['missing', 'coupon_tpl_01']) {
+    await assert.rejects(handler(openid, 'exchangeCoupon', { templateId }), /积分仅用于累计会员等级/)
+  }
   const userInDb = db.state.users.find((u) => u._id === 'u_test_owner')
-  assert.equal(userInDb.points, 50)
-  assert.equal(issuedCoupons.length, 1)
-  assert.equal(issuedCoupons[0].template._id, 'coupon_tpl_01')
-
-  // 积分不足再次兑换时被拒绝
-  await assert.rejects(
-    handler(openid, 'exchangeCoupon', { templateId: 'coupon_tpl_01' }),
-    /积分不足，兑换该券需要 100 积分/
-  )
+  assert.equal(userInDb.points, 150)
+  assert.equal(userInDb.totalPoints, 500)
+  assert.equal(issuedCoupons.length, 0)
+  assert.equal(pointLogs.length, 0)
+  delete userInDb.totalPoints
+  assert.equal((await handler(openid, 'getPlaygroundRewards', {})).points, 150)
 })
 
 test('local sitters beyond the global first page retain their public personalized names and ratings',async()=>{

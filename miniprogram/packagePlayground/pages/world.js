@@ -106,8 +106,7 @@ Page({
     communityGroupBuyLoading: false,
     rewardsOpen: false,
     rewardsLoading: false,
-    rewardsData: null,
-    exchangingCouponId: ''
+    rewardsData: null
   },
   onLoad() {
     try {
@@ -1796,31 +1795,6 @@ Page({
   },
   closeRewards() {
     this.setData({ rewardsOpen: false })
-  },
-  async exchangeCouponAction(e) {
-    const item = e.currentTarget.dataset.item
-    if (!item || !item.id) return
-    const modalRes = await new Promise((resolve) => {
-      wx.showModal({
-        title: '兑换优惠券',
-        content: `确定消耗 ${item.requiredPoints} 关爱积分兑换【${item.name}】吗？`,
-        confirmText: '确定兑换',
-        cancelText: '再想想',
-        success: (res) => resolve(res.confirm)
-      })
-    })
-    if (!modalRes) return
-    this.setData({ exchangingCouponId: item.id })
-    try {
-      const res = await callFunction('playground', 'exchangeCoupon', { templateId: item.id })
-      wx.showToast({ title: res.message || '兑换成功！', icon: 'success' })
-      this.pushStatusMessage(res.message || '成功兑换优惠券')
-      this.openRewards(true)
-    } catch (err) {
-      wx.showToast({ title: err.message || '兑换失败', icon: 'none' })
-    } finally {
-      this.setData({ exchangingCouponId: '' })
-    }
   },
   goToCouponsList() {
     wx.navigateTo({ url: '/pages/client/coupons/list/index' })

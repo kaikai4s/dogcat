@@ -1,4 +1,5 @@
 const { getOrderRefundState } = require('../utils/orderRefundState')
+const { shouldRestoreMallRefundStock } = require('../utils/mallRefundStock')
 
 module.exports = function createService({ db, crypto, now, getPayableOrder, getSystemSettings,
   assertPaymentModeAllowed, getWechatPayConfig, wechatPayRequest, sanitizeWechatPayload, amountYuanToFen, createRefundNo, restoreOrderCoupon,
@@ -51,7 +52,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         ? await options.beforeReserve(tx, current, { collectionName: resolved.collectionName, requested })
         : {}
       if (!['paid', 'refunding'].includes(current.paymentStatus)) throw new Error('订单未支付或状态不支持退款')
-      if (source === 'mall_after_sale' && current.refundStatus !== 'applied') {
+      if (source === 'mall_after_sale' && !['applied', 'return_shipped'].includes(current.refundStatus)) {
         throw new Error('售后状态已变化，请刷新后重试')
       }
       // Reusing a pending request is allowed only for the same business operation.
@@ -80,6 +81,8 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         refundNo: value.refundNo, refundRevision: Number(current.refundRevision || 0) + 1, updatedAt: time,
         ...(options.cancelStatus ? { status: options.cancelStatus, cancelReason: reason || '', cancelledAt: time } : {}),
         ...(options.cancelStatus === 'expired' ? { expiredAt: time, expireReason: '服务开始时间前无人接单' } : {}),
+        ...(source === 'mall_after_sale' && current.afterSaleType === 'return_and_refund' && current.refundStatus === 'return_shipped'
+          ? { returnReceivedAt: current.returnReceivedAt || time } : {}),
         ...cancellationPatch
       } })
       await tx.collection('payment_events').doc(id).set({ data: { eventType: 'refund_create', orderId: order._id,
@@ -222,7 +225,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
       }
       const isMallOrder = resolved.collectionName === 'mall_orders' || order.orderType === 'mall'
       let shouldRestoreStock = false
-      if (status === 'success' && full && isMallOrder && order.status !== 'completed' && order.oversoldRefundRequired !== true && order.stockRestored !== true && Array.isArray(order.items) && order.items.length) {
+      if (status === 'success' && full && isMallOrder && shouldRestoreMallRefundStock(order)) {
         shouldRestoreStock = true
       }
 
@@ -230,10 +233,11 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
         const productRestores = new Map()
         for (const item of order.items) {
           const quantity = Number(item.quantity)
-          if (!Number.isSafeInteger(quantity) || quantity <= 0) continue
+          if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new Error('退款商品数量异常，请核对库存')
           let product = productRestores.get(item.productId)
           if (!product) {
-            const rawProduct = (await tx.collection('mall_products').doc(item.productId).get().catch(() => ({ data: null }))).data
+            const rawProduct = (await tx.collection('mall_products').doc(item.productId).get()).data
+            if (!rawProduct) throw new Error('退款商品不存在，请核对库存')
             if (rawProduct) product = typeof normalizeMallProduct === 'function' ? normalizeMallProduct(rawProduct) : rawProduct
           }
           if (product) {
@@ -241,6 +245,7 @@ module.exports = function createService({ db, crypto, now, getPayableOrder, getS
             if (!sku && Array.isArray(product.skus)) {
               sku = product.skus.find(s => s.skuId === item.skuId)
             }
+            if (!sku) throw new Error('退款商品规格不存在，请核对库存')
             if (sku) {
               const skus = product.skus.map(row => row.skuId === sku.skuId
                 ? {

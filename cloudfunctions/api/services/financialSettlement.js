@@ -1,4 +1,13 @@
 module.exports = function createService({ db, now, parseDateValue, safeText, enqueueSubscription, buildSubscriptionData, settleUserAssetWithdrawal, markUserAssetPaid, markUserAssetFailed, releaseUserAssetWithdrawal, commitWechatTransferSuccessQuota, releaseWechatTransferQuota }) {
+  async function optionalDocument(transaction, collectionName, id) {
+    try {
+      return (await transaction.collection(collectionName).doc(id).get()).data || null
+    } catch (error) {
+      if (String(error.message || error.errMsg || error).includes(`document with _id ${id} does not exist`)) return null
+      throw error
+    }
+  }
+
   async function optionalOrder(tx, id) {
     try { return (await tx.collection('orders').doc(id).get()).data || null } catch (error) {
       if (String(error.message || error.errMsg).includes(`document with _id ${id} does not exist`)) return null
@@ -55,8 +64,7 @@ module.exports = function createService({ db, now, parseDateValue, safeText, enq
       // 双人复核校验
       let isSameAuditorAndPayer = false
       if (paid) {
-        const settingsRes = await tx.collection('system_settings').doc('default').get().catch(() => ({ data: null }))
-        const settings = settingsRes && settingsRes.data
+        const settings = await optionalDocument(tx, 'system_settings', 'default')
         const strictDualReview = settings?.finance?.strictDualReview === true
         if (request.auditedByOpenid && request.auditedByOpenid === admin.openid) {
           if (strictDualReview) {

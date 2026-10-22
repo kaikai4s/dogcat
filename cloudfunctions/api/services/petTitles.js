@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { readOptionalDocument } = require('../utils/documentPages')
 
 module.exports = function createService({
   addPoints,
@@ -147,6 +148,37 @@ module.exports = function createService({
     const sourceKey = safeText(options.sourceKey).trim() || `${sourceType}:${sourceId || user.openid}:${title._id}`
     const grantDocId = `ptg_${crypto.createHash('md5').update(sourceKey).digest('hex')}`
     const inventoryDocId = `upt_${crypto.createHash('md5').update(`${user.openid}_${title._id}`).digest('hex')}`
+
+    if (options.transaction) {
+      const tx = options.transaction
+      const previous = await readOptionalDocument(tx, 'pet_title_grants', grantDocId) ||
+        (await tx.collection('pet_title_grants').where({ sourceKey }).limit(1).get()).data[0]
+      if (previous) return previous
+      const existing = await readOptionalDocument(tx, 'user_pet_titles', inventoryDocId) ||
+        (await tx.collection('user_pet_titles').where({ openid: user.openid, titleId }).limit(1).get()).data[0]
+      const time = now()
+      let compensationPoints = 0
+      if (existing) {
+        const amount = normalizeDuplicatePoints(options.duplicatePoints !== undefined ? options.duplicatePoints : title.duplicatePoints)
+        if (amount > 0) {
+          const points = await addPoints(user.openid, user._id, amount, 'pet_title_duplicate', sourceKey,
+            `重复获得宠物头衔【${title.name}】补偿`, { baseDelta: amount, transaction: tx })
+          compensationPoints = points.delta
+        }
+      } else {
+        await tx.collection('user_pet_titles').doc(inventoryDocId).set({ data: {
+          userId: user._id, openid: user.openid, titleId, titleSnapshot: titleSnapshot(title),
+          equippedPetId: '', sourceType, sourceId, createdAt: time, updatedAt: time
+        } })
+      }
+      const result = {
+        openid: user.openid, userId: user._id, titleId, sourceType, sourceId, sourceKey,
+        outcome: existing ? 'compensated' : 'owned', inventoryId: existing ? existing._id : inventoryDocId,
+        compensationPoints, titleSnapshot: titleSnapshot(title), createdAt: time
+      }
+      await tx.collection('pet_title_grants').doc(grantDocId).set({ data: result })
+      return { _id: grantDocId, ...result }
+    }
 
     const previousGrant = await findGrant(sourceKey)
     if (previousGrant) return previousGrant

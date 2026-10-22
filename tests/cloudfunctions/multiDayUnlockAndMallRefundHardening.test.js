@@ -327,7 +327,9 @@ test('auth: bindPhone strictly validates 11-digit mainland format and rejects in
     ]
   })
 
-  const authApi = loadCloudFunction('api', db, 'client_open_test')
+  const authApi = loadCloudFunction('api', db, 'client_open_test', {
+    openapi: { phonenumber: { getPhoneNumber: async ({ code }) => ({ phoneInfo: { phoneNumber: code } }) } }
+  })
 
   // 1. 空手机号
   const resEmpty = await authApi.main({
@@ -336,13 +338,13 @@ test('auth: bindPhone strictly validates 11-digit mainland format and rejects in
     data: { phone: '' }
   })
   assert.equal(resEmpty.ok, false)
-  assert.match(resEmpty.message, /手机号不能为空/)
+  assert.match(resEmpty.message, /请使用微信手机号授权/)
 
   // 2. 长度不足 11 位
   const resShort = await authApi.main({
     module: 'auth',
     action: 'bindPhone',
-    data: { phone: '1381234567' }
+    data: { code: '1381234567' }
   })
   assert.equal(resShort.ok, false)
   assert.match(resShort.message, /请输入有效的11位手机号码/)
@@ -351,7 +353,7 @@ test('auth: bindPhone strictly validates 11-digit mainland format and rejects in
   const resLong = await authApi.main({
     module: 'auth',
     action: 'bindPhone',
-    data: { phone: '138123456789' }
+    data: { code: '138123456789' }
   })
   assert.equal(resLong.ok, false)
   assert.match(resLong.message, /请输入有效的11位手机号码/)
@@ -360,7 +362,7 @@ test('auth: bindPhone strictly validates 11-digit mainland format and rejects in
   const resNonOne = await authApi.main({
     module: 'auth',
     action: 'bindPhone',
-    data: { phone: '23812345678' }
+    data: { code: '23812345678' }
   })
   assert.equal(resNonOne.ok, false)
   assert.match(resNonOne.message, /请输入有效的11位手机号码/)
@@ -369,7 +371,7 @@ test('auth: bindPhone strictly validates 11-digit mainland format and rejects in
   const resAlpha = await authApi.main({
     module: 'auth',
     action: 'bindPhone',
-    data: { phone: '1381234abcd' }
+    data: { code: '1381234abcd' }
   })
   assert.equal(resAlpha.ok, false)
   assert.match(resAlpha.message, /请输入有效的11位手机号码/)
@@ -378,7 +380,7 @@ test('auth: bindPhone strictly validates 11-digit mainland format and rejects in
   const resValid = await authApi.main({
     module: 'auth',
     action: 'bindPhone',
-    data: { phone: '13987654321' }
+    data: { code: '13987654321' }
   })
   assert.equal(resValid.ok, true)
   assert.equal(resValid.data.phone, '13987654321')

@@ -1,3 +1,5 @@
+const { shouldRestoreMallRefundStock } = require('../utils/mallRefundStock')
+
 module.exports = function createHandler(context) {
   const {
     cancelUnpaidOrder,
@@ -400,17 +402,20 @@ module.exports = function createHandler(context) {
       // 0 元券单售后通过：无需调用微信支付退款，直接在事务中流转为全额退款完成并恢复优惠券与库存
       await db.runTransaction(async (tx) => {
         const current = (await tx.collection('mall_orders').doc(order._id).get().catch(() => ({ data: null }))).data
-        if (!current || current.refundStatus !== 'applied') throw new Error('售后状态已变化，请刷新后重试')
+        if (!current || !['applied', 'return_shipped'].includes(current.refundStatus)) throw new Error('售后状态已变化，请刷新后重试')
 
-        const shouldRestoreStock = current.status !== 'completed' && current.oversoldRefundRequired !== true && current.stockRestored !== true && Array.isArray(current.items) && current.items.length > 0
+        const returnReceivedAt = current.afterSaleType === 'return_and_refund' && current.refundStatus === 'return_shipped'
+          ? current.returnReceivedAt || time : current.returnReceivedAt
+        const shouldRestoreStock = shouldRestoreMallRefundStock({ ...current, returnReceivedAt })
         if (shouldRestoreStock) {
           const productRestores = new Map()
           for (const item of current.items) {
             const quantity = Number(item.quantity)
-            if (!Number.isSafeInteger(quantity) || quantity <= 0) continue
+            if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new Error('退款商品数量异常，请核对库存')
             let product = productRestores.get(item.productId)
             if (!product) {
-              const rawProduct = (await tx.collection('mall_products').doc(item.productId).get().catch(() => ({ data: null }))).data
+              const rawProduct = (await tx.collection('mall_products').doc(item.productId).get()).data
+              if (!rawProduct) throw new Error('退款商品不存在，请核对库存')
               if (rawProduct) product = typeof normalizeMallProduct === 'function' ? normalizeMallProduct(rawProduct) : rawProduct
             }
             if (product) {
@@ -418,6 +423,7 @@ module.exports = function createHandler(context) {
               if (!sku && Array.isArray(product.skus)) {
                 sku = product.skus.find(s => s.skuId === item.skuId)
               }
+              if (!sku) throw new Error('退款商品规格不存在，请核对库存')
               if (sku) {
                 const skus = product.skus.map(row => row.skuId === sku.skuId
                   ? {
@@ -459,6 +465,7 @@ module.exports = function createHandler(context) {
             refundAmount: 0,
             refundedAmount: 0,
             refundAuditedAt: time,
+            ...(returnReceivedAt ? { returnReceivedAt } : {}),
             ...(shouldRestoreStock ? { stockRestored: true, stockRestoredAt: time } : {}),
             updatedAt: time
           }

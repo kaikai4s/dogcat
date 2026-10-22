@@ -273,7 +273,7 @@ module.exports = function createService(context) {
           const staffUser = userRes.data && userRes.data[0]
           if (!staffUser) continue
 
-          const settings = typeof context.getSystemSettings === 'function' ? await context.getSystemSettings().catch(() => ({})) : {}
+          const settings = typeof context.getSystemSettings === 'function' ? await context.getSystemSettings() : {}
           const ability = typeof validateStaffTakeOrderAbility === 'function' ? validateStaffTakeOrderAbility(profile, settings.staffDeposit) : { can: true }
           if (!ability.can || profile.auditStatus !== 'approved' || staffUser.status !== 'active') {
             await db.collection('orders').doc(order._id).update({

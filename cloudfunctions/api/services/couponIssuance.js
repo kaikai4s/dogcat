@@ -1,3 +1,5 @@
+const { readOptionalDocument, documentPages } = require('../utils/documentPages')
+
 module.exports = function createService({
   db,
   incUpdateValue,
@@ -38,17 +40,12 @@ module.exports = function createService({
     const idempotencyKey = String(adminMeta.idempotencyKey || '').trim()
 
     if (idempotencyKey) {
-      const existingKey = (await db.collection('user_coupons').where({ openid: targetUser.openid, idempotencyKey }).limit(1).get()).data[0]
+      const store = adminMeta.transaction || db
+      const existingKey = (await store.collection('user_coupons').where({ openid: targetUser.openid, idempotencyKey }).limit(1).get()).data[0]
       if (existingKey) {
+        if (existingKey.templateId !== templateId) throw new Error('优惠券幂等标识冲突')
         return { _id: existingKey._id, templateSnapshot: existingKey.templateSnapshot, validFrom: existingKey.validFrom, validTo: existingKey.validTo }
       }
-    }
-
-    const existing = (await db.collection('user_coupons').where({ openid: targetUser.openid, templateId }).get()).data || []
-    const activeCount = existing.filter((coupon) => coupon.status !== 'void').length
-    if (activeCount >= Number(template.perUserLimit || 1)) throw new Error('该用户已达到领取上限')
-    if (Number(template.totalIssueLimit || 0) > 0 && Number(template.issuedCount || 0) >= Number(template.totalIssueLimit || 0)) {
-      throw new Error('优惠券已达到发放上限')
     }
 
     const time = typeof now === 'function' ? now() : new Date()
@@ -79,21 +76,15 @@ module.exports = function createService({
       updatedAt: time
     }
 
-    if (typeof db.runTransaction === 'function') {
-      const txResult = await db.runTransaction(async (tx) => {
-        let templateDoc = null
-        try {
-          templateDoc = (await tx.collection('coupon_templates').doc(templateId).get()).data
-        } catch (err) {
-          templateDoc = null
-        }
+    if (adminMeta.transaction || typeof db.runTransaction === 'function') {
+      const execute = async (tx) => {
+        const templateDoc = await readOptionalDocument(tx, 'coupon_templates', templateId)
         if (!templateDoc || templateDoc.enabled === false) throw new Error('优惠券模板不可用')
+        const currentSnapshot = normalizeCouponSnapshot(templateDoc)
+        const currentValidRange = getCouponValidRange(templateDoc, time)
+        const currentCouponRecord = { ...couponRecord, templateSnapshot: currentSnapshot, ...currentValidRange }
         const currentTotalLimit = Number(templateDoc.totalIssueLimit || 0)
         const currentIssuedCount = Number(templateDoc.issuedCount || 0)
-        if (currentTotalLimit > 0 && currentIssuedCount >= currentTotalLimit) {
-          throw new Error('优惠券已达到发放上限')
-        }
-
         const userLimit = Number(templateDoc.perUserLimit || 1)
         let effectiveCouponDocId = couponDocId
         let isDefaultPerUserSlot = false
@@ -103,14 +94,9 @@ module.exports = function createService({
         }
 
         if (effectiveCouponDocId) {
-          let existingDoc = null
-          try {
-            const got = await tx.collection('user_coupons').doc(effectiveCouponDocId).get()
-            existingDoc = got && got.data
-          } catch (err) {
-            existingDoc = null
-          }
+          const existingDoc = await readOptionalDocument(tx, 'user_coupons', effectiveCouponDocId)
           if (existingDoc) {
+            if (existingDoc.openid !== targetUser.openid || existingDoc.templateId !== templateId) throw new Error('优惠券幂等标识冲突')
             if (isDefaultPerUserSlot) {
               throw new Error('该用户已达到领取上限')
             }
@@ -124,12 +110,20 @@ module.exports = function createService({
           }
         }
 
+        if (currentTotalLimit > 0 && currentIssuedCount >= currentTotalLimit) throw new Error('优惠券已达到发放上限')
+        let activeCount = 0
+        for await (const page of documentPages(tx, db.command, 'user_coupons', { openid: targetUser.openid, templateId })) {
+          activeCount += page.filter(coupon => coupon.status !== 'void').length
+          if (activeCount >= userLimit) throw new Error('该用户已达到领取上限')
+        }
+        if (activeCount >= userLimit) throw new Error('该用户已达到领取上限')
+
         let finalCouponId = effectiveCouponDocId
         if (effectiveCouponDocId) {
-          await tx.collection('user_coupons').doc(effectiveCouponDocId).set({ data: couponRecord })
+          await tx.collection('user_coupons').doc(effectiveCouponDocId).set({ data: currentCouponRecord })
         } else {
           finalCouponId = `uc_${templateId}_${targetUser._id || targetUser.openid}_${time.getTime()}_${Math.random().toString(36).slice(2, 8)}`
-          await tx.collection('user_coupons').doc(finalCouponId).set({ data: couponRecord })
+          await tx.collection('user_coupons').doc(finalCouponId).set({ data: currentCouponRecord })
         }
 
         const nextIssuedCount = currentIssuedCount + 1
@@ -142,15 +136,16 @@ module.exports = function createService({
 
         return {
           _id: finalCouponId,
-          templateSnapshot: snapshot,
-          validFrom: validRange.validFrom,
-          validTo: validRange.validTo,
+          templateSnapshot: currentSnapshot,
+          validFrom: currentValidRange.validFrom,
+          validTo: currentValidRange.validTo,
           isExisting: false,
           issuedCount: nextIssuedCount
         }
-      })
+      }
+      const txResult = adminMeta.transaction ? await execute(adminMeta.transaction) : await db.runTransaction(execute)
 
-      if (!txResult.isExisting && txResult.issuedCount !== undefined) {
+      if (!adminMeta.transaction && !txResult.isExisting && txResult.issuedCount !== undefined) {
         template.issuedCount = txResult.issuedCount
       }
 
@@ -160,6 +155,15 @@ module.exports = function createService({
         validFrom: txResult.validFrom,
         validTo: txResult.validTo
       }
+    }
+
+    let activeCount = 0
+    for await (const page of documentPages(db, db.command, 'user_coupons', { openid: targetUser.openid, templateId })) {
+      activeCount += page.filter(coupon => coupon.status !== 'void').length
+    }
+    if (activeCount >= Number(template.perUserLimit || 1)) throw new Error('该用户已达到领取上限')
+    if (Number(template.totalIssueLimit || 0) > 0 && Number(template.issuedCount || 0) >= Number(template.totalIssueLimit)) {
+      throw new Error('优惠券已达到发放上限')
     }
 
     let createdId = couponDocId

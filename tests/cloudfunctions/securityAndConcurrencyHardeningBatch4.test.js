@@ -28,13 +28,17 @@ test('auth.bindPhone: prevents phone hijacking, protects admin whitelist, and su
         { _id: 'u_attacker', openid: 'openid_attacker', phone: '', roles: ['client'], status: 'active' }
       ]
     })
-    const attackerFn = loadCloudFunction('api', db, 'openid_attacker')
+    const attackerFn = loadCloudFunction('api', db, 'openid_attacker', {
+      openapi: { phonenumber: { getPhoneNumber: async ({ code }) => ({ phoneInfo: {
+        phoneNumber: code === 'wx_alice' ? '13811112222' : '13900000001'
+      } }) } }
+    })
 
     // 1. 试图绑定已被其他活跃账号占用的手机号 -> 拦截
     const resDuplicate = await attackerFn.main({
       module: 'auth',
       action: 'bindPhone',
-      data: { phone: '13811112222' }
+      data: { code: 'wx_alice' }
     })
     assert.equal(resDuplicate.ok, false)
     assert.match(resDuplicate.error, /该手机号码已被其他账号绑定/)
@@ -43,7 +47,7 @@ test('auth.bindPhone: prevents phone hijacking, protects admin whitelist, and su
     const resHijackAdmin = await attackerFn.main({
       module: 'auth',
       action: 'bindPhone',
-      data: { phone: '13900000001' }
+      data: { code: 'wx_admin' }
     })
     assert.equal(resHijackAdmin.ok, false)
     assert.match(resHijackAdmin.error, /该手机号受系统安全保护/)
@@ -52,7 +56,7 @@ test('auth.bindPhone: prevents phone hijacking, protects admin whitelist, and su
     const resAdminWithSecret = await attackerFn.main({
       module: 'auth',
       action: 'bindPhone',
-      data: { phone: '13900000001', secret: 'super-init-secret' }
+      data: { code: 'wx_admin', secret: 'super-init-secret' }
     })
     assert.equal(resAdminWithSecret.ok, true)
     assert.equal(resAdminWithSecret.data.phone, '13900000001')

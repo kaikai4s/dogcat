@@ -58,47 +58,53 @@ module.exports = function createHelpers({
     // Bound transaction size explicitly rather than partially cancelling an order.
     if (payments.length > 50) throw new Error('订单支付记录过多，需人工核对')
     return db.runTransaction(async transaction => {
-      const current = (await transaction.collection(collectionName).doc(order._id).get().catch(() => ({ data: null }))).data
+      const current = (await transaction.collection(collectionName).doc(order._id).get()).data
       if (!current || current.status !== ORDER_STATUS.PENDING_PAY || current.paymentStatus === 'paid') return false
       if (current.paymentNo !== order.paymentNo || current.paymentStatus !== order.paymentStatus) return false
       const deadline = getOrderPaymentDeadline(current)
       if (requireExpired && (!deadline || time.getTime() < deadline)) return false
       for (const payment of payments.filter(item => item._id)) {
-        const fresh = (await transaction.collection('payments').doc(payment._id).get().catch(() => ({ data: null }))).data
+        const fresh = (await transaction.collection('payments').doc(payment._id).get()).data
         if (fresh && ['success', 'paid'].includes(fresh.status)) return false
       }
       const coupon = current.couponId
-        ? (await transaction.collection('user_coupons').doc(current.couponId).get().catch(() => ({ data: null }))).data
+        ? (await transaction.collection('user_coupons').doc(current.couponId).get()).data
         : null
       const reason = options.reason || '超过30分钟未支付，系统自动取消'
       if (current.stockReserved === true && Array.isArray(current.items) && current.items.length) {
         const productRestores = new Map()
         for (const item of current.items) {
           const quantity = Number(item.quantity)
-          if (!Number.isSafeInteger(quantity) || quantity <= 0) continue
+          if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new Error('订单商品数量异常，暂不自动取消')
           let product = productRestores.get(item.productId)
           if (!product) {
-            const rawProduct = (await transaction.collection('mall_products').doc(item.productId).get().catch(() => ({ data: null }))).data
-            if (rawProduct) product = typeof normalizeMallProduct === 'function' ? normalizeMallProduct(rawProduct) : rawProduct
-          }
-          if (product) {
-            const sku = typeof getSkuById === 'function' ? getSkuById(product, item.skuId) : (product.skus && product.skus.find(s => s.skuId === item.skuId))
-            if (sku) {
-              const skus = product.skus.map(row => row.skuId === sku.skuId ? { ...row, stock: Number(row.stock) + quantity } : row)
-              const changed = skus.find(row => row.skuId === sku.skuId)
-              if (typeof normalizeMallProduct === 'function') {
-                product = normalizeMallProduct({
-                  ...product,
-                  ...(product.specMode === 'single' ? { stock: changed.stock } : {}),
-                  skus
-                })
-              } else {
-                product.skus = skus
-                if (product.specMode === 'single') product.stock = changed.stock
+            let rawProduct
+            try {
+              rawProduct = (await transaction.collection('mall_products').doc(item.productId).get()).data
+            } catch (error) {
+              if (error && (error.code === 'DOCUMENT_NOT_FOUND' || error.errCode === 'DATABASE_DOCUMENT_NOT_EXIST' || /document .* does not exist/i.test(error.message || ''))) {
+                throw new Error('预占库存商品不存在，暂不自动取消')
               }
-              productRestores.set(item.productId, product)
+              throw error
             }
+            if (!rawProduct) throw new Error('预占库存商品不存在，暂不自动取消')
+            product = typeof normalizeMallProduct === 'function' ? normalizeMallProduct(rawProduct) : rawProduct
           }
+          const sku = typeof getSkuById === 'function' ? getSkuById(product, item.skuId) : (product.skus && product.skus.find(s => s.skuId === item.skuId))
+          if (!sku) throw new Error('预占库存商品规格不存在，暂不自动取消')
+          const skus = product.skus.map(row => row.skuId === sku.skuId ? { ...row, stock: Number(row.stock) + quantity } : row)
+          const changed = skus.find(row => row.skuId === sku.skuId)
+          if (typeof normalizeMallProduct === 'function') {
+            product = normalizeMallProduct({
+              ...product,
+              ...(product.specMode === 'single' ? { stock: changed.stock } : {}),
+              skus
+            })
+          } else {
+            product.skus = skus
+            if (product.specMode === 'single') product.stock = changed.stock
+          }
+          productRestores.set(item.productId, product)
         }
         for (const [id, product] of productRestores) {
           const { skus, price, originalPrice, stock, totalStock, minPrice, maxPrice, salesCount, specText } = product

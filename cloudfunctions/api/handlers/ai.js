@@ -4,6 +4,8 @@ module.exports = function createHandler(context) {
     cloud,
     db,
     getOrderForAccess,
+    getUser,
+    checkRateLimit,
     nowText,
     readScopedDocuments,
     safeText
@@ -24,6 +26,10 @@ module.exports = function createHandler(context) {
   }
 
   return async function ai(openid, action, data) {
+    await getUser(openid)
+    if (['aiPetAssistant', 'generatePetVoice'].includes(action)) {
+      await checkRateLimit(openid, 'ai.model', { max: 10, windowMs: 60000, message: 'AI 咨询过于频繁，请稍后再试' })
+    }
     if (action === 'aiPetAssistant') {
       const question = safeText(data.question).trim()
       if (!question) throw new Error('请填写咨询问题')

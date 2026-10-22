@@ -1,3 +1,5 @@
+const { readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createService(context) {
   const { crypto, db, now, safeText } = context
   let collectionReady = false
@@ -27,7 +29,7 @@ module.exports = function createService(context) {
 
     return db.runTransaction(async (tx) => {
       const ref = tx.collection('rate_limits').doc(id)
-      const current = (await ref.get().catch(() => ({ data: null }))).data
+      const current = await readOptionalDocument(tx, 'rate_limits', id)
       const count = Number(current && current.count || 0)
       if (count >= max) throw new Error(options.message || '操作过于频繁，请稍后再试')
       const data = {

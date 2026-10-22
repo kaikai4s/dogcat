@@ -74,6 +74,32 @@ test('manual cancellation closes mock payment and cannot release another order c
   await assert.rejects(context.ensurePaymentRecord(db.state.orders[0], 'client', 'mock'), /不可支付/)
 })
 
+test('mall cancellation refuses to close a reserved order when inventory data is missing', async () => {
+  const { db, context } = setup({
+    orders: [],
+    mall_orders: [{
+      _id: 'mall_missing_product',
+      clientOpenid: 'client',
+      status: 'pending_pay',
+      paymentStatus: 'unpaid',
+      payAmount: 100,
+      items: [{ productId: 'missing_product', skuId: 'default', quantity: 1 }],
+      stockReserved: true
+    }],
+    mall_products: []
+  })
+  const order = db.state.mall_orders[0]
+  await context.ensurePaymentRecord(order, 'client', 'mock')
+
+  await assert.rejects(
+    context.cancelUnpaidOrder(order, { collectionName: 'mall_orders', reason: 'cancel' }),
+    /预占库存商品不存在/
+  )
+  assert.equal(db.state.mall_orders[0].status, 'pending_pay')
+  assert.equal(db.state.mall_orders[0].stockReserved, true)
+  assert.equal(db.state.payments[0].status, 'pending')
+})
+
 function refunds(extra = {}) {
   const base = setup({ orders: [{ _id: 'o', clientOpenid: 'client', paymentStatus: 'paid', status: 'paid', paymentNo: 'P1', payAmount: 100 }] })
   const service = require('../../cloudfunctions/api/services/refunds')({ ...base.context, ...extra })

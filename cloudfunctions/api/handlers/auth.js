@@ -88,7 +88,7 @@ module.exports = function createHandler(context) {
     if (phone === '13800138000' && mockPhoneCodeAllowed(settings)) {
       return
     }
-    const existingRes = await db.collection('users').where({ phone, status: 'active' }).limit(1).get().catch(() => ({ data: [] }))
+    const existingRes = await db.collection('users').where({ phone, status: 'active' }).limit(1).get()
     const existingUser = existingRes && existingRes.data && existingRes.data[0]
     if (existingUser && existingUser.openid && existingUser.openid !== user.openid) {
       throw new Error('该手机号码已被其他账号绑定')
@@ -217,8 +217,8 @@ module.exports = function createHandler(context) {
         await checkImageSecurity(openid, avatarUrl, { scene: 1, label: '用户头像' })
       }
       const rawPhone = data.phone !== undefined ? safeText(data.phone).trim() : oldPhone
-      if (rawPhone && rawPhone !== oldPhone) {
-        await validatePhoneBinding(rawPhone, user, data)
+      if (rawPhone !== oldPhone) {
+        throw new Error('修改手机号请使用微信手机号授权')
       }
       const payload = {
         nickname,
@@ -313,15 +313,10 @@ module.exports = function createHandler(context) {
     if (action === 'bindPhone') {
       const user = await getUser(openid)
       const oldPhone = safeText(user.phone).trim()
-      let phone = String(data.phone || '').trim()
       const code = safeText(data.code).trim()
-
-      if (code) {
-        const settings = await getSystemSettings().catch(() => ({}))
-        phone = phone || await resolveWechatPhone(code, settings)
-      }
-
-      if (!phone) throw new Error('手机号不能为空')
+      if (!code) throw new Error('请使用微信手机号授权')
+      const settings = await getSystemSettings()
+      const phone = await resolveWechatPhone(code, settings)
       await validatePhoneBinding(phone, user, data)
 
       const updateTime = now()

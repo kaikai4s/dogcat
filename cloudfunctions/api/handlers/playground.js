@@ -419,72 +419,15 @@ module.exports = function createHandler(context) {
         if (levelDoc && levelDoc.name) memberLevelName = levelDoc.name
       } catch (e) {}
 
-      let exchangeableCoupons = []
-      try {
-        const couponRes = await db.collection('coupon_templates')
-          .where({ status: 'active' })
-          .limit(4)
-          .get()
-        exchangeableCoupons = (couponRes.data || []).map((c) => ({
-          id: c._id,
-          name: c.name,
-          discountAmount: c.discountAmount,
-          minSpend: c.minSpend || 0,
-          requiredPoints: Math.max(50, (c.discountAmount || 5) * 10),
-          type: c.type || 'service'
-        }))
-      } catch (e) {}
-
       return {
-        points: Number(userDoc.points || 0),
+        points: Number(userDoc.totalPoints === undefined ? userDoc.points || 0 : userDoc.totalPoints),
         memberLevel: memberLevelKey,
-        memberLevelName,
-        exchangeableCoupons
+        memberLevelName
       }
     }
 
     if (action === 'exchangeCoupon') {
-      if (!user || !user._id) throw new Error('请先登录后操作')
-      const templateId = String(data.templateId || '').trim()
-      if (!templateId) throw new Error('请选择要兑换的优惠券')
-      const templateDoc = await db.collection('coupon_templates').doc(templateId).get().catch(() => null)
-      const templateRaw = templateDoc && templateDoc.data
-      if (!templateRaw || templateRaw.status !== 'active' || templateRaw.enabled === false) {
-        throw new Error('该优惠券暂不可兑换或已下架')
-      }
-      const template = { ...templateRaw, _id: templateRaw._id || templateId }
-
-      const requiredPoints = Math.max(50, Number(template.discountAmount || 5) * 10)
-      const userDoc = (await db.collection('users').doc(user._id).get().catch(() => ({ data: {} }))).data || user
-      if (Number(userDoc.points || 0) < requiredPoints) {
-        throw new Error(`积分不足，兑换该券需要 ${requiredPoints} 积分（当前可用 ${userDoc.points || 0} 积分）`)
-      }
-
-      // 必须先安全发券（内部会校验库存与每人上限），确保不会出现扣了积分但发券失败的情况
-      if (typeof context.issueCouponToTargetUser === 'function') {
-        await context.issueCouponToTargetUser(template, user, {
-          sourceType: 'playground_exchange',
-          sourceId: templateId
-        })
-      }
-
-      // 发券成功后再扣减积分
-      if (typeof context.addPoints === 'function') {
-        try {
-          await context.addPoints(
-            openid,
-            user._id,
-            -requiredPoints,
-            'coupon_exchange',
-            `${templateId}_${Date.now()}`,
-            `关爱积分兑换优惠券【${template.name}】`
-          )
-        } catch (pointErr) {
-          console.error('[exchangeCoupon] deduct points error:', pointErr)
-        }
-      }
-
-      return { success: true, message: `成功消耗 ${requiredPoints} 积分兑换【${template.name}】！` }
+      throw new Error('积分仅用于累计会员等级，不支持兑换优惠券或物品')
     }
 
     if (action === 'setPetScale') {

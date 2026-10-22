@@ -40,6 +40,33 @@ test('withdrawal approval accepts a one-fen amount', async () => {
   assert.equal(db.state.withdraw_requests[0].amount, 0.01)
 })
 
+test('payout confirmation fails closed when dual-review settings cannot be read', async () => {
+  const { db, context } = setup('withdrawing', 'approved')
+  db.state.withdraw_requests[0].auditedByOpenid = admin.openid
+  const runTransaction = db.runTransaction.bind(db)
+  db.runTransaction = callback => runTransaction(tx => callback({
+    ...tx,
+    collection(name) {
+      const collection = tx.collection(name)
+      if (name !== 'system_settings') return collection
+      const doc = collection.doc.bind(collection)
+      collection.doc = id => {
+        const record = doc(id)
+        if (id === 'default') record.get = async () => { throw new Error('settings storage unavailable') }
+        return record
+      }
+      return collection
+    }
+  }))
+
+  await assert.rejects(
+    context.settleWithdrawal(admin, { id: 'w', paymentConfirmed: true, paymentReference: 'receipt-1' }, true),
+    /settings storage unavailable/
+  )
+  assert.equal(db.state.withdraw_requests[0].status, 'approved')
+  assert.equal(db.state.staff_earnings[0].status, 'withdrawing')
+})
+
 test('concurrent payout confirmations are idempotent and cannot be frozen afterwards', async () => {
   const { db, context } = setup('withdrawing', 'approved')
   optimistic(db)
@@ -80,6 +107,34 @@ test('withdrawal reservation and incident freeze cannot both reserve an earning'
     assert.equal(earning.status, 'withdrawing')
     assert.deepEqual(db.state.order_incidents[0].frozenEarningIds, [])
   }
+})
+
+test('withdrawal eligibility lookup failures do not bypass revoked-profile checks', async () => {
+  const { db, context } = setup('available')
+  const collection = db.collection.bind(db)
+  db.collection = name => {
+    const result = collection(name)
+    if (name !== 'staff_profiles') return result
+    const where = result.where.bind(result)
+    result.where = condition => {
+      const query = where(condition)
+      const limit = query.limit.bind(query)
+      query.limit = count => {
+        const limited = limit(count)
+        limited.get = async () => { throw new Error('staff profile storage unavailable') }
+        return limited
+      }
+      return query
+    }
+    return result
+  }
+
+  await assert.rejects(
+    context.createWithdrawRequest('staff', { amount: 80, clientRequestId: 'profile-read-failure' }),
+    /staff profile storage unavailable/
+  )
+  assert.equal(db.state.withdraw_requests[0].status, 'pending')
+  assert.equal(db.state.staff_earnings[0].status, 'available')
 })
 
 test('two incidents cannot overwrite each other and repeat freeze retains the association', async () => {

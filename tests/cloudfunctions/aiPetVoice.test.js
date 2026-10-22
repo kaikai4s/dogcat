@@ -4,6 +4,7 @@ const { createCollectionStore, loadCloudFunction } = require('./helpers')
 
 test('ai generatePetVoice: successfully generates voice using hy3 model and cleans quotes', async () => {
   const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
     pets: [
       {
         _id: 'pet_doudou',
@@ -74,6 +75,7 @@ test('ai generatePetVoice: successfully generates voice using hy3 model and clea
 
 test('ai generatePetVoice: gracefully falls back to preset when AI is unavailable or fails', async () => {
   const db = createCollectionStore({
+    users: [{ _id: 'client', openid: 'openid_client', roles: ['client'], status: 'active' }],
     pets: [
       {
         _id: 'pet_huahua',

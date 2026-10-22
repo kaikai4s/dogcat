@@ -16,23 +16,23 @@ const securityMock = {
 
 // ========== auth.updateProfile ==========
 
-test('auth.updateProfile: 非法手机号格式被拒', async () => {
+test('auth.updateProfile: 未经微信授权的手机号修改被拒', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'u1', openid: 'openid_u1', status: 'active', roles: ['client'] }]
   })
   const fn = loadCloudFunction('api', db, 'openid_u1', { security: securityMock })
   const res = await fn.main({ module: 'auth', action: 'updateProfile', data: { nickname: '测试', phone: '123abc' } })
   assert.equal(res.ok, false)
-  assert.match(res.error, /手机号格式不正确/)
+  assert.match(res.error, /修改手机号请使用微信手机号授权/)
 
   const resInvalidSegment = await fn.main({ module: 'auth', action: 'updateProfile', data: { nickname: '测试', phone: '11112345678' } })
   assert.equal(resInvalidSegment.ok, false)
-  assert.match(resInvalidSegment.error, /手机号格式不正确/)
+  assert.match(resInvalidSegment.error, /修改手机号请使用微信手机号授权/)
 })
 
-test('auth.updateProfile: 有效11位手机号可通过', async () => {
+test('auth.updateProfile: 保留已绑定手机号时可更新昵称', async () => {
   const db = createCollectionStore({
-    users: [{ _id: 'u1', openid: 'openid_u1b', status: 'active', roles: ['client'] }]
+    users: [{ _id: 'u1', openid: 'openid_u1b', status: 'active', roles: ['client'], phone: '13812345678' }]
   })
   const fn = loadCloudFunction('api', db, 'openid_u1b', { security: securityMock })
   const res = await fn.main({ module: 'auth', action: 'updateProfile', data: { nickname: '测试', phone: '13812345678' } })

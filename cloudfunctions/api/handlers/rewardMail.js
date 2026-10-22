@@ -1,15 +1,15 @@
+const { readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createHandler(context) {
   const {
     addPoints,
     db,
     formatRewardMail,
-    getRewardMailRetroCardGrant,
     getUser,
     grantPetTitleToUser,
     grantRetroCards,
     issueCouponToTargetUser,
     now,
-    resetRewardClaimResultField,
     safeText
   } = context
   async function readUserMails(userOpenid, maxLimit = 1000) {
@@ -84,26 +84,23 @@ module.exports = function createHandler(context) {
       const user = await getUser(openid)
       const id = safeText(data.id).trim()
       if (!id) throw new Error('缺少邮件 ID')
-      const mailRes = await db.collection('reward_mails').doc(id).get().catch(() => ({ data: null }))
-      const mail = mailRes && mailRes.data
-      if (!mail || mail.openid !== openid) throw new Error('奖励邮件不存在')
-      if (mail.claimedAt) return formatRewardMail(mail)
-      const claimTime = now()
-      const claimed = await db.collection('reward_mails').where({ _id: id, openid, claimedAt: null }).update({ data: { readAt: mail.readAt || claimTime, claimedAt: claimTime, updatedAt: claimTime } })
-      if (!claimed.stats || !claimed.stats.updated) throw new Error('奖励已领取，请刷新后查看')
-      const reward = mail.reward || {}
-      let pointsResult = null
-      let couponResult = null
-      let retroCardResult = null
-      let petTitleResult = null
-      try {
+      return db.runTransaction(async tx => {
+        const mail = await readOptionalDocument(tx, 'reward_mails', id)
+        if (!mail || mail.openid !== openid) throw new Error('奖励邮件不存在')
+        if (mail.claimedAt) return formatRewardMail(mail)
+        const claimTime = now()
+        const reward = mail.reward || {}
+        let pointsResult = null
+        let couponResult = null
+        let retroCardResult = null
+        let petTitleResult = null
         if (reward.type === 'coupon') {
           const templateId = safeText(reward.couponTemplateId).trim()
           if (!templateId) throw new Error('奖励优惠券不存在')
-          const templateRes = await db.collection('coupon_templates').doc(templateId).get().catch(() => ({ data: null }))
-          const template = templateRes && templateRes.data
+          const template = await readOptionalDocument(tx, 'coupon_templates', templateId)
           if (!template) throw new Error('奖励优惠券不存在')
           couponResult = await issueCouponToTargetUser(template, user, {
+            transaction: tx,
             idempotencyKey: `reward_mail_${id}`,
             sourceType: 'reward_mail',
             sourceId: id,
@@ -113,14 +110,12 @@ module.exports = function createHandler(context) {
         } else if (reward.type === 'retro_card') {
           const count = Math.max(Math.round(Number(reward.count || 0)), 0)
           if (!count) throw new Error('补签卡奖励数量无效')
-          retroCardResult = await getRewardMailRetroCardGrant(openid, id)
-          if (!retroCardResult) {
-            retroCardResult = await grantRetroCards(openid, user._id, count, 'reward_mail', id, safeText(mail.title).trim() || '奖励邮件补签卡')
-          }
+          retroCardResult = await grantRetroCards(openid, user._id, count, 'reward_mail', id, safeText(mail.title).trim() || '奖励邮件补签卡', { transaction: tx })
         } else if (reward.type === 'pet_title') {
           const titleId = safeText(reward.titleId).trim()
           if (!titleId) throw new Error('宠物头衔奖励不存在')
           petTitleResult = await grantPetTitleToUser(user, titleId, {
+            transaction: tx,
             sourceType: 'reward_mail',
             sourceId: id,
             sourceKey: `mail:${id}`,
@@ -129,31 +124,27 @@ module.exports = function createHandler(context) {
         } else {
           const delta = Math.max(Math.round(Number(reward.points || 0)), 0)
           if (delta > 0) {
-            pointsResult = await addPoints(openid, user._id, delta, 'reward_mail', id, safeText(mail.title).trim() || '奖励邮件积分', { baseDelta: delta })
+            pointsResult = await addPoints(openid, user._id, delta, 'reward_mail', id, safeText(mail.title).trim() || '奖励邮件积分', { baseDelta: delta, transaction: tx })
           }
         }
-      } catch (error) {
-        await db.collection('reward_mails').doc(id).update({ data: { claimedAt: null, updatedAt: now() } })
-        throw error
-      }
-      const updated = {
-        readAt: mail.readAt || claimTime,
-        claimedAt: claimTime,
-        rewardClaimResult: {
-          pointsDelta: pointsResult ? pointsResult.delta : (petTitleResult ? petTitleResult.compensationPoints : 0),
-          couponId: couponResult ? couponResult._id : '',
-          retroCardCountDelta: retroCardResult ? Math.max(Math.round(Number(reward.count || 0)), 0) : 0,
-          retroCardBalance: retroCardResult ? retroCardResult.balance : 0,
-          petTitleInventoryId: petTitleResult ? petTitleResult.inventoryId : '',
-          petTitleId: petTitleResult ? petTitleResult.titleId : '',
-          petTitleOutcome: petTitleResult ? petTitleResult.outcome : '',
-          petTitleSnapshot: petTitleResult ? petTitleResult.titleSnapshot : null
-        },
-        updatedAt: now()
-      }
-      await resetRewardClaimResultField(id)
-      await db.collection('reward_mails').doc(id).update({ data: updated })
-      return formatRewardMail({ ...mail, ...updated })
+        const updated = {
+          readAt: mail.readAt || claimTime,
+          claimedAt: claimTime,
+          rewardClaimResult: {
+            pointsDelta: pointsResult ? pointsResult.delta : (petTitleResult ? petTitleResult.compensationPoints : 0),
+            couponId: couponResult ? couponResult._id : '',
+            retroCardCountDelta: retroCardResult ? Math.max(Math.round(Number(reward.count || 0)), 0) : 0,
+            retroCardBalance: retroCardResult ? retroCardResult.balance : 0,
+            petTitleInventoryId: petTitleResult ? petTitleResult.inventoryId : '',
+            petTitleId: petTitleResult ? petTitleResult.titleId : '',
+            petTitleOutcome: petTitleResult ? petTitleResult.outcome : '',
+            petTitleSnapshot: petTitleResult ? petTitleResult.titleSnapshot : null
+          },
+          updatedAt: now()
+        }
+        await tx.collection('reward_mails').doc(id).update({ data: updated })
+        return formatRewardMail({ ...mail, ...updated })
+      })
     }
     throw new Error('未知 rewardMail 操作')
   }

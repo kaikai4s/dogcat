@@ -36,7 +36,7 @@ test('稳定性防御：当用户未登录或数据库无用户记录时，新�
   // exchangeCoupon 未登录时友好拒绝而非抛出 500 TypeError
   await assert.rejects(
     handler(openid, 'exchangeCoupon', { templateId: 'tpl_01' }),
-    /请先登录后操作/
+    /积分仅用于累计会员等级/
   )
 })
 

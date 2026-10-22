@@ -313,52 +313,30 @@
   </view>
 </view>
 
-<!-- 方案5：关爱权益中心与优惠券兑换弹窗 -->
+<!-- 会员成长权益 -->
 <view class="settings-backdrop rewards-backdrop" wx:if="{{rewardsOpen}}" catchtap="closeRewards" catchtouchmove="swallowTouch">
   <view class="settings-panel rewards-panel" catchtap="swallowTouch">
     <view class="settings-heading">
       <view>
         <text class="panel-main-title">🎁 关爱权益中心</text>
-        <text class="settings-tip">关爱积分兑换真实优惠券 · 抵扣商城与上门服务</text>
+        <text class="settings-tip">累计成长积分 · 提升会员等级</text>
       </view>
       <button bindtap="closeRewards">完成</button>
     </view>
     <view class="rewards-member-card">
       <view class="member-card-left">
         <text class="member-level-tag">{{(rewardsData && rewardsData.memberLevelName) || '普通会员'}}</text>
-        <text class="member-points-label">当前可用关爱积分</text>
+        <text class="member-points-label">累计会员成长积分</text>
         <text class="member-points-num">{{(rewardsData && rewardsData.points) || 0}}</text>
       </view>
       <view class="member-card-right">
         <text class="points-rule-tip">添粮打卡 +5分/天</text>
         <text class="points-rule-tip">社区治理保洁奖励</text>
-        <text class="points-rule-tip">积分可抵扣现金换券</text>
+        <text class="points-rule-tip">积分仅用于会员成长</text>
       </view>
     </view>
-    <view class="rewards-section-title">积分兑换真实立减优惠券</view>
-    <scroll-view scroll-y class="rewards-coupon-list">
-      <view wx:if="{{rewardsLoading}}" class="dispute-empty">正在加载可用权益…</view>
-      <view wx:elif="{{!rewardsData || !rewardsData.exchangeableCoupons || !rewardsData.exchangeableCoupons.length}}" class="dispute-empty">暂无可兑换优惠券，快去打卡攒积分吧～</view>
-      <view wx:for="{{rewardsData.exchangeableCoupons}}" wx:key="id" class="reward-coupon-card">
-        <view class="coupon-left-col">
-          <view class="coupon-amount-box">
-            <text class="coupon-amount-sym">¥</text>
-            <text class="coupon-amount-val">{{item.discountAmount}}</text>
-          </view>
-          <text class="coupon-min-spend">{{item.minSpend ? '满' + item.minSpend + '元可用' : '无门槛立减'}}</text>
-        </view>
-        <view class="coupon-mid-col">
-          <text class="coupon-name">{{item.name}}</text>
-          <text class="coupon-desc">{{item.type === 'mall' ? '商城全场口粮用品通用' : '专业上门照料服务通用'}}</text>
-          <text class="coupon-need-points">消耗 {{item.requiredPoints}} 关爱积分</text>
-        </view>
-        <view class="coupon-right-col">
-          <button class="exchange-btn" data-item="{{item}}" bindtap="exchangeCouponAction" disabled="{{((rewardsData && rewardsData.points) || 0) < item.requiredPoints || exchangingCouponId === item.id}}" loading="{{exchangingCouponId === item.id}}">
-            {{((rewardsData && rewardsData.points) || 0) < item.requiredPoints ? '积分不足' : '立即兑换'}}
-          </button>
-        </view>
-      </view>
-    </scroll-view>
+    <view class="rewards-section-title">会员成长权益</view>
+    <view class="dispute-empty">积分仅用于累计会员等级，不可兑换优惠券、物品或抵扣现金。会员赠券请在优惠券包查看。</view>
     <view class="rewards-footer">
       <button class="rewards-nav-btn" bindtap="goToCouponsList">我的优惠券包</button>
       <button class="rewards-nav-btn btn-primary" bindtap="goToServiceBooking">去预约宠托</button>

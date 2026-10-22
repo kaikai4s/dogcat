@@ -167,7 +167,7 @@ test('api createOrder supports multi-day daily sessions and multiplied pricing',
   assert.deepEqual(result.data.serviceSessions.map((item) => item.date), ['2099-07-28', '2099-07-29', '2099-07-30'])
 })
 
-test('auth updateProfile saves editable nickname avatar and syncs order phone', async () => {
+test('auth updateProfile saves nickname and avatar without changing phone or order contacts', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', nickname: '旧昵称', avatarUrl: '', phone: '' }],
     orders: [
@@ -177,25 +177,27 @@ test('auth updateProfile saves editable nickname avatar and syncs order phone', 
   })
   const fn = loadCloudFunction('api', db, 'openid_client')
 
-  const result = await fn.main({ module: 'auth', action: 'updateProfile', data: { nickname: '豆豆家长', avatarUrl: 'cloud://avatar', phone: '13800000000' } })
+  const result = await fn.main({ module: 'auth', action: 'updateProfile', data: { nickname: '豆豆家长', avatarUrl: 'cloud://avatar' } })
 
   assert.equal(result.ok, true)
   assert.equal(result.data.nickname, '豆豆家长')
   assert.equal(result.data.avatarUrl, 'cloud://avatar')
-  assert.equal(db.state.users[0].phone, '13800000000')
-  assert.equal(db.state.orders[0].contactPhone, '13800000000')
-  assert.equal(db.state.orders[0].clientSnapshot.phoneMasked, '1***0')
+  assert.equal(db.state.users[0].phone, '')
+  assert.equal(db.state.orders[0].contactPhone, '')
+  assert.equal(db.state.orders[0].clientSnapshot.phoneMasked, '')
   assert.equal(db.state.orders[1].contactPhone, '')
 })
 
-test('auth bindPhone syncs existing order phone', async () => {
+test('auth bindPhone syncs the verified phone and ignores client-supplied phone', async () => {
   const db = createCollectionStore({
     users: [{ _id: 'u1', openid: 'openid_client', roles: ['client'], status: 'active', phone: '13800000000' }],
     orders: [{ _id: 'o1', clientOpenid: 'openid_client', contactPhone: '13800000000', clientSnapshot: { phoneMasked: '1***0' } }]
   })
-  const fn = loadCloudFunction('api', db, 'openid_client')
+  const fn = loadCloudFunction('api', db, 'openid_client', {
+    openapi: { phonenumber: { getPhoneNumber: async () => ({ phoneInfo: { phoneNumber: '15900000001' } }) } }
+  })
 
-  const result = await fn.main({ module: 'auth', action: 'bindPhone', data: { phone: '15900000001' } })
+  const result = await fn.main({ module: 'auth', action: 'bindPhone', data: { code: 'verified_phone_code', phone: '13900000000' } })
 
   assert.equal(result.ok, true)
   assert.equal(db.state.users[0].phone, '15900000001')

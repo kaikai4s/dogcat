@@ -172,7 +172,7 @@ module.exports = function createHandler(context) {
 
       const page = Math.max(Number(data.page || 1), 1)
       const pageSize = Math.min(Math.max(Number(data.pageSize || 20), 1), 50)
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
 
       // 1. 数据库条件下推：基础状态下推与城市下推
       const whereCondition = { auditStatus: 'approved' }
@@ -288,7 +288,7 @@ module.exports = function createHandler(context) {
     }
     if (action === 'getPublicSitterDetail') {
       const user = await getOptionalUser(openid)
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
       const staffProfileId = safeText(data.staffProfileId).trim()
       if (!staffProfileId) throw new Error('宠托师不可用')
       const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
@@ -379,7 +379,7 @@ module.exports = function createHandler(context) {
     }
     if (action === 'favoriteSitter') {
       const user = await getUser(openid)
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
       const staffProfileId = safeText(data.staffProfileId).trim()
       if (!staffProfileId) throw new Error('请选择宠托师')
       const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
@@ -400,7 +400,7 @@ module.exports = function createHandler(context) {
     }
     if (action === 'listFavoriteSitters') {
       await getUser(openid)
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const userLat = Number(data.latitude !== undefined ? data.latitude : (data.addressLatitude || 0))
       const userLng = Number(data.longitude !== undefined ? data.longitude : (data.addressLongitude || 0))
@@ -442,7 +442,7 @@ module.exports = function createHandler(context) {
       const res = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = normalizeStaffWorkflow(res.data[0] || null)
       if (!profile) return null
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
       const depositConfig = settings.staffDeposit || normalizeStaffDepositConfig()
       const zhimaConfig = normalizeStaffZhimaConfig(settings.staffZhima)
       const ability = validateStaffTakeOrderAbility(profile, depositConfig)
@@ -471,7 +471,7 @@ module.exports = function createHandler(context) {
       }
     }
     if (action === 'getStaffCertificationConfig') {
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
       const zhima = normalizeStaffZhimaConfig(settings.staffZhima)
       return {
         zhima
@@ -664,7 +664,7 @@ module.exports = function createHandler(context) {
       const idCardBackFileId = safeFileId(data.idCardBackFileId)
       const facePhotoFileId = safeFileId(data.facePhotoFileId)
 
-      const settings = await getSystemSettings({ includeSecrets: true }).catch(() => ({}))
+      const settings = await getSystemSettings({ includeSecrets: true })
       const apiKey = settings.juheTelecomKey || process.env.JUHE_TELECOM_KEY || ''
       const isRealProductionMode = Boolean(apiKey && apiKey !== 'MOCK' && apiKey !== 'TEST')
 
@@ -986,7 +986,7 @@ module.exports = function createHandler(context) {
 
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = normalizeStaffWorkflow(profileRes.data[0] || {})
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
       const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
       if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可查看可接订单')
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
@@ -1141,7 +1141,7 @@ module.exports = function createHandler(context) {
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = normalizeStaffWorkflow(profileRes.data[0] || {})
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
       const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
       if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可查看指定订单')
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
@@ -1170,7 +1170,7 @@ module.exports = function createHandler(context) {
       if (!user.roles.includes('staff')) throw new Error('仅员工可查看')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = normalizeStaffWorkflow(profileRes.data[0] || {})
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
       const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
       if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可查看加急订单')
       const latitude = Number(data.latitude || profile.currentLatitude || 0)
@@ -1260,7 +1260,7 @@ module.exports = function createHandler(context) {
         if (!user.roles.includes('staff')) throw new Error('请选择宠托师')
         profile = (await db.collection('staff_profiles').where({ openid }).limit(1).get()).data[0]
       }
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
       if (!profile || !canTakeOrders(profile, settings.staffDeposit)) throw new Error('宠托师不可用')
       return buildStaffAvailability(profile, data.startDate || data.dateKey || '', data.days || 14)
     }
@@ -1419,7 +1419,7 @@ module.exports = function createHandler(context) {
       if (!user.roles.includes('staff')) throw new Error('仅员工可接单')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = normalizeStaffWorkflow(profileRes.data[0])
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
       const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
       if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可接单')
       if (!hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) || !profile.serviceAddress) {
@@ -1475,7 +1475,7 @@ module.exports = function createHandler(context) {
       if (!user.roles.includes('staff')) throw new Error('仅员工可接单')
       const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       const profile = normalizeStaffWorkflow(profileRes.data[0])
-      const settings = await getSystemSettings().catch(() => ({}))
+      const settings = await getSystemSettings()
       const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
       if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可接单')
       if (!hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) || !profile.serviceAddress) {

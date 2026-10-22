@@ -470,7 +470,7 @@ test('multi-entry length limits: reviews, session messages, auth profile, supply
     }
   })
   assert.equal(longProfilePhoneRes.ok, false)
-  assert.match(longProfilePhoneRes.error, /手机号格式不正确/)
+  assert.match(longProfilePhoneRes.error, /修改手机号请使用微信手机号授权/)
 
   // 4. staff submitSupplyReimbursement 截图数量 > 9 与备注超长拦截
   const tooManyImagesRes = await staffFn.main({

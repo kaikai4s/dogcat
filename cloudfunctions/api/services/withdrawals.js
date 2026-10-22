@@ -34,7 +34,7 @@ module.exports = function createService({
     if (user && user.status && user.status !== 'active') {
       throw new Error('账号已被停用，无法申请提现')
     }
-    const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
+    const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
     const profile = profileRes && profileRes.data && profileRes.data[0]
     if (profile && ['revoked', 'suspended', 'rejected', 'banned'].includes(profile.auditStatus)) {
       throw new Error('宠托师资质已被平台暂停或撤销，暂不可申请提现')

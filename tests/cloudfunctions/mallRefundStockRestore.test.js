@@ -89,6 +89,45 @@ function setupMallRefundTest(initialExtra = {}) {
   return { db, baseContext, ...service }
 }
 
+test('mall refund stock restore: shipped refund-only orders do not restore goods still with the buyer', async () => {
+  const { db, requestOrderRefund } = setupMallRefundTest()
+  Object.assign(db.state.mall_orders[0], {
+    status: 'refund_applied', preRefundStatus: 'shipped', refundStatus: 'applied',
+    afterSaleType: 'refund_only', shippedAt: new Date(), trackingNo: 'TRACKING'
+  })
+  await requestOrderRefund(structuredClone(db.state.mall_orders[0]), 200, '退款', 'mall_after_sale', 'openid_admin', 'shipped')
+  assert.equal(db.state.mall_products[0].stock, 8)
+  assert.equal(db.state.mall_orders[0].stockRestored, undefined)
+})
+
+for (const payAmount of [200, 0]) {
+  test(`mall refund stock restore: inspected returns restore stock once for ${payAmount} yuan orders`, async () => {
+    const { db, baseContext, requestOrderRefund } = setupMallRefundTest()
+    Object.assign(db.state.mall_orders[0], {
+      status: 'refund_applied', preRefundStatus: 'completed', refundStatus: 'return_shipped',
+      afterSaleType: 'return_and_refund', shippedAt: new Date(), receivedAt: new Date(), payAmount
+    })
+    if (payAmount > 0) {
+      await requestOrderRefund(structuredClone(db.state.mall_orders[0]), payAmount, '验货退款', 'mall_after_sale', 'openid_admin', 'return')
+    } else {
+      const handler = require('../../cloudfunctions/api/handlers/adminMall')(baseContext)
+      await handler('openid_admin', 'auditRefund', { id: db.state.mall_orders[0]._id, approved: true })
+    }
+    assert.equal(db.state.mall_products[0].stock, 10)
+    assert.equal(db.state.mall_orders[0].stockRestored, true)
+    assert.ok(db.state.mall_orders[0].returnReceivedAt)
+  })
+}
+
+test('mall refund stock restore: missing SKU blocks settlement without marking stock restored', async () => {
+  const { db, requestOrderRefund } = setupMallRefundTest()
+  db.state.mall_orders[0].items[0].skuId = 'missing_sku'
+  await assert.rejects(requestOrderRefund(structuredClone(db.state.mall_orders[0]), 200, '退款', 'admin_mall_manual', 'openid_admin', 'bad_sku'), /规格不存在/)
+  assert.equal(db.state.mall_products[0].stock, 8)
+  assert.equal(db.state.mall_orders[0].stockRestored, undefined)
+  assert.equal(db.state.refunds[0].status, 'processing')
+})
+
 test('mall refund stock restore: 未发货商城订单全额退款成功后，商品库存与销量精准回滚', async () => {
   const { db, requestOrderRefund } = setupMallRefundTest()
 
