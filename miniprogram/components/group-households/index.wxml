@@ -3,13 +3,13 @@
   <scroll-view scroll-x class="household-scroll" enhanced show-scrollbar="{{false}}">
     <view class="household-tabs">
       <view wx:for="{{bundle.members}}" wx:key="orderId" class="household-tab {{selectedId === item.orderId ? 'active' : ''}}" data-id="{{item.orderId}}" bindtap="select">
-        <text class="tab-household">{{item.householdLabel}} · {{item.clientName}}</text>
+        <text class="tab-household">{{item.householdLabel}} · {{item.clientName}}<text wx:if="{{item.refundStatusText}}"> · {{item.refundStatusText}}</text></text>
         <text class="tab-pets">{{item.petName}}</text>
       </view>
     </view>
   </scroll-view>
   <view class="household-detail" wx:if="{{selected}}">
-    <view class="household-owner"><image wx:if="{{selected.clientAvatar}}" src="{{selected.clientAvatar}}" mode="aspectFill"/><text>{{selected.householdLabel}} · {{selected.clientName}}</text><text wx:if="{{selected.isCompleted}}" class="done">已完成</text></view>
+    <view class="household-owner"><image wx:if="{{selected.clientAvatar}}" src="{{selected.clientAvatar}}" mode="aspectFill"/><text>{{selected.householdLabel}} · {{selected.clientName}}</text><text wx:if="{{selected.isCompleted}}" class="done">已完成</text><text wx:if="{{selected.refundStatusText}}" class="refund-status {{selected.refundState}}">{{selected.refundStatusText}}</text></view>
     <view class="household-service">{{selected.serviceSummary || selected.serviceType}}</view>
     <view class="household-pet" wx:for="{{selected.petSnapshots}}" wx:for-item="pet" wx:key="name">
       <image wx:if="{{pet.avatarFileId}}" class="pet-avatar" src="{{pet.avatarFileId}}" mode="aspectFill" data-url="{{pet.avatarFileId}}" bindtap="preview"/>

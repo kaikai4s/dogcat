@@ -151,14 +151,14 @@ const refundStatusText = {
 
 function formatOrderStatus(status, order = {}) {
   const normalized = String(status || '').toLowerCase().trim()
-  if (order.paymentStatus === 'refunding' || order.refundStatus === 'processing' || normalized === 'refunding') return '退款中'
   if (order.paymentStatus === 'refunded' || ['success', 'refunded', 'full_refunded'].includes(order.refundStatus) || normalized === 'refunded') return '已退款'
+  if (order.paymentStatus === 'refunding' || order.refundStatus === 'processing' || order.refundStatus === 'approved' || normalized === 'refunding') return '退款中'
   if (order.refundStatus === 'partially_refunded' || normalized === 'partial_refunded' || Number(order.refundedAmount) > 0) return '部分退款'
   if (normalized === 'paid' && order.publishMode === 'direct') return '待指定宠托师接单'
   if (normalized === 'paid') return '待附近宠托师接单'
   if (order.autoCompleted && (normalized === 'completed' || normalized === 'day_completed')) return '已自动完成'
   if (orderStatusText[normalized]) return orderStatusText[normalized]
-  if (order.refundStatus === 'approved' || order.paymentStatus === 'refunded' || normalized.includes('refund')) return '已退款'
+  if (order.paymentStatus === 'refunded' || normalized.includes('refund')) return '已退款'
   if (order.paymentStatus === 'refunding') return '退款中'
   return normalized ? '处理中' : ''
 }

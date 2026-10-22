@@ -32,7 +32,7 @@ test('formatOrderStatus: maps all known statuses to Chinese and never leaks Engl
   assert.equal(formatOrderStatus('auto_completed'), '已自动完成')
 
   // Status with refundStatus
-  assert.equal(formatOrderStatus('anything_unknown', { refundStatus: 'approved' }), '已退款')
+  assert.equal(formatOrderStatus('anything_unknown', { refundStatus: 'approved' }), '退款中')
   assert.equal(formatOrderStatus('anything_unknown', { paymentStatus: 'refunded' }), '已退款')
 
   // Unknown statuses fallback to '处理中', never English string
