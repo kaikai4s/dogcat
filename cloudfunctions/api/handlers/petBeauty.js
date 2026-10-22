@@ -2,6 +2,7 @@ module.exports = function createHandler(context) {
   const {
     checkImageSecurity,
     countPetBeautyVotes,
+    clearPetBeautyVotesCache,
     db,
     ensurePetExclusiveId,
     getUser,
@@ -288,6 +289,10 @@ module.exports = function createHandler(context) {
         }
         throw err
       })
+
+      if (typeof clearPetBeautyVotesCache === 'function') {
+        clearPetBeautyVotesCache(monthKey)
+      }
 
       const voteMap = await countPetBeautyVotes(monthKey)
       const nextRemaining = Math.max(0, totalAllowed - (usedCount + 1))

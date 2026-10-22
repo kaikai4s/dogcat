@@ -8,7 +8,7 @@ const collections = [
   'order_message_threads', 'order_messages', 'order_staff_message_threads', 'order_staff_messages', 'order_session_messages', 'risk_bypass_logs',
   'member_levels', 'point_logs', 'lottery_activities', 'lottery_records',
   'pet_titles', 'user_pet_titles', 'pet_title_grants',
-  'pet_beauty_votes', 'pet_beauty_month_rankings', 'pet_beauty_month_locks',
+  'pet_beauty_votes', 'pet_beauty_bonus_votes', 'pet_beauty_month_rankings', 'pet_beauty_month_locks',
   'pet_playgrounds', 'pet_playground_plots', 'pet_playground_live', 'pet_playground_appearance_requests', 'pet_playground_appearance_bindings', 'pet_homes', 'pet_playground_entities',
   'pet_playground_disputes', 'pet_playground_accidents', 'pet_playground_jail', 'pet_playground_groups',
   'checkin_month_configs', 'user_checkins', 'retro_card_logs', 'reward_mails', 'user_invites', 'user_asset_earnings', 'ai_logs',

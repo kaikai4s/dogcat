@@ -16,8 +16,8 @@ test('setupDatabase: initializes collections and seeds default prices and checki
 
   assert.equal(res.ok, true)
   assert.equal(res.data.success, true)
-  assert.equal(res.data.totalCollections, 95)
-  assert.equal(res.data.totalIndexesConfigured, 46)
+  assert.equal(res.data.totalCollections, 96)
+  assert.equal(res.data.totalIndexesConfigured, 53)
   assert.ok(res.data.pricesInitialized > 0)
   assert.ok(res.data.checkinRulesInitialized > 0)
   assert.equal(res.data.settingsInitialized, true)
@@ -34,6 +34,7 @@ test('setupDatabase: initializes collections and seeds default prices and checki
   // 验证打卡规则已初始化
   assert.ok(db.state.service_checkin_rules.length > 0)
   // 验证集合已初始化
+  assert.ok(Array.isArray(db.state.pet_beauty_bonus_votes))
   assert.ok(Array.isArray(db.state.questionnaires))
   assert.ok(Array.isArray(db.state.questionnaire_responses))
   assert.ok(Array.isArray(db.state.user_asset_earnings))

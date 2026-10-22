@@ -104,9 +104,15 @@ module.exports = function createService({
       if (totalCents < Math.round(Number(settings.settlement.minWithdrawAmount || 0) * 100)) {
         throw new Error(`最低提现金额 ¥${settings.settlement.minWithdrawAmount}`)
       }
-      // Read every record before writing. A competing transaction must retry and revalidate.
-      for (const earning of selected) {
-        const current = (await transaction.collection('staff_earnings').doc(earning._id).get().catch(() => ({ data: null }))).data
+      // Read every record concurrently before writing. A competing transaction must retry and revalidate.
+      const currentSnapshots = await Promise.all(
+        selected.map(earning =>
+          transaction.collection('staff_earnings').doc(earning._id).get().catch(() => ({ data: null }))
+        )
+      )
+      for (let i = 0; i < selected.length; i++) {
+        const earning = selected[i]
+        const current = (currentSnapshots[i] && currentSnapshots[i].data) || null
         if (!current || current.staffOpenid !== openid || current.status !== 'available' ||
             current.isMock === true || current.paymentChannel === 'mock' || current.status === 'mock_settled' ||
             current.withdrawRequestId || current.frozenIncidentId || cents(current.amount) !== cents(earning.amount)) {
@@ -131,11 +137,13 @@ module.exports = function createService({
         await reserveWechatApplicationQuota(transaction, { _id: id, ...request }, { settings })
       }
       await transaction.collection('withdraw_requests').doc(id).set({ data: request })
-      for (const earning of selected) {
-        await transaction.collection('staff_earnings').doc(earning._id).update({
-          data: { status: 'withdrawing', withdrawRequestId: id, updatedAt: time }
-        })
-      }
+      await Promise.all(
+        selected.map(earning =>
+          transaction.collection('staff_earnings').doc(earning._id).update({
+            data: { status: 'withdrawing', withdrawRequestId: id, updatedAt: time }
+          })
+        )
+      )
       await transaction.collection('finance_logs').doc(`withdraw_${id}`).set({ data: {
         action: 'withdraw_requested', targetType: 'withdraw_request', targetId: id,
         orderId: '', staffOpenid: openid, amountDelta: -request.amount,

@@ -1,3 +1,11 @@
+const PET_BEAUTY_VOTES_CACHE_TTL_MS = 15000 // 15秒短期内存聚合缓存，防榜单并发扫表穿透
+const petBeautyVotesCache = new Map()
+
+function clearPetBeautyVotesCache(monthKey) {
+  if (monthKey) petBeautyVotesCache.delete(monthKey)
+  else petBeautyVotesCache.clear()
+}
+
 module.exports = function createService({
   db,
   getAllDocuments,
@@ -110,7 +118,13 @@ module.exports = function createService({
     return new Date(year, month, 1, -8, 0, 0, 0)
   }
 
-  async function countPetBeautyVotes(monthKey) {
+  async function countPetBeautyVotes(monthKey, options = {}) {
+    const forceRefresh = options && options.forceRefresh === true
+    const nowMs = typeof now === 'function' ? Date.parse(now()) : Date.now()
+    const cached = petBeautyVotesCache.get(monthKey)
+    if (!forceRefresh && cached && cached.expiresAt > nowMs) {
+      return { ...cached.map }
+    }
     const start = currentMonthStart(monthKey)
     const end = nextMonthStart(monthKey)
     const votes = []
@@ -126,7 +140,7 @@ module.exports = function createService({
       if (page.length < fetchLimit) break
       cursor = page[page.length - 1]._id
     }
-    return votes.filter((vote) => {
+    const resultMap = votes.filter((vote) => {
       const created = parseDateValue(vote.createdAt)
       return !created || (created >= start && created < end)
     }).reduce((map, vote) => {
@@ -134,6 +148,12 @@ module.exports = function createService({
       map[vote.petId] = (map[vote.petId] || 0) + 1
       return map
     }, {})
+
+    petBeautyVotesCache.set(monthKey, {
+      expiresAt: nowMs + PET_BEAUTY_VOTES_CACHE_TTL_MS,
+      map: resultMap
+    })
+    return { ...resultMap }
   }
 
   async function isPetBeautyMonthLocked(monthKey) {
@@ -197,7 +217,7 @@ module.exports = function createService({
     if (!options.force && await isPetBeautyMonthLocked(monthKey)) return { monthKey, locked: true, skipped: true }
     const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
     const firstPrizeAmount = Number(settings?.petBeautyContest?.firstPrizeAmount ?? 500)
-    const voteMap = await countPetBeautyVotes(monthKey)
+    const voteMap = await countPetBeautyVotes(monthKey, { forceRefresh: true })
     const votedPetIds = Object.keys(voteMap).filter((id) => (voteMap[id] || 0) > 0)
     let candidatePets = []
     if (votedPetIds.length > 0) {
@@ -266,6 +286,7 @@ module.exports = function createService({
         updatedAt: lockedAt
       }
     })
+    clearPetBeautyVotesCache(monthKey)
     return { monthKey, locked: true, topCount: ranked.length, firstPrizeAmount }
   }
 
@@ -281,6 +302,7 @@ module.exports = function createService({
     currentMonthStart,
     nextMonthStart,
     countPetBeautyVotes,
+    clearPetBeautyVotesCache,
     isPetBeautyMonthLocked,
     listPetBeautyTitles,
     setPetBeautyTitle,

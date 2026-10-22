@@ -177,3 +177,61 @@ test('petBeauty performance: settleMonthlyRanking efficiently targets voted pets
   assert.equal(rankDoc.rank, 1)
   assert.equal(rankDoc.voteCount, 2)
 })
+
+test('petBeauty performance: countPetBeautyVotes uses short-term memory cache and invalidates upon casting vote', async () => {
+  const monthKey = '2026-10'
+  const db = createCollectionStore({
+    users: [
+      { _id: 'u_voter', openid: 'voter_openid', roles: ['client'], status: 'active' },
+      { _id: 'u_owner', openid: 'owner_openid', roles: ['client'], status: 'active' }
+    ],
+    pets: [
+      { _id: 'pet_cache_test', openid: 'owner_openid', name: '缓存测试宠', hasBeautyPhotos: true, beautyPhotos: [{ fileId: 'cloud://photo1.jpg' }] }
+    ],
+    pet_beauty_votes: [
+      { _id: 'v_init', monthKey, petId: 'pet_cache_test', openid: 'other', dateKey: '2026-10-01', createdAt: '2026-10-01T10:00:00+08:00' }
+    ],
+    pet_beauty_bonus_votes: [],
+    pet_beauty_month_locks: []
+  })
+
+  const voterFn = loadCloudFunction('api', db, 'voter_openid')
+
+  // 1. 首次查询，加载并缓存（初始票数 1）
+  const home1 = await voterFn.main({
+    module: 'petBeauty',
+    action: 'listRanking',
+    data: { monthKey }
+  })
+  assert.equal(home1.ok, true)
+  assert.equal(home1.data.list.find((p) => p.petId === 'pet_cache_test')?.voteCount, 1)
+
+  // 2. 模拟底层数据被增加，但在 TTL 缓存期内未投递新票，应命中缓存仍返回 1
+  db.state.pet_beauty_votes.push({
+    _id: 'v_bypass', monthKey, petId: 'pet_cache_test', openid: 'bypass', dateKey: '2026-10-02', createdAt: '2026-10-02T10:00:00+08:00'
+  })
+  const home2 = await voterFn.main({
+    module: 'petBeauty',
+    action: 'listRanking',
+    data: { monthKey }
+  })
+  assert.equal(home2.ok, true)
+  assert.equal(home2.data.list.find((p) => p.petId === 'pet_cache_test')?.voteCount, 1)
+
+  // 3. 用户正常通过接口投出一票，应主动失效缓存并刷新票数
+  const voteRes = await voterFn.main({
+    module: 'petBeauty',
+    action: 'vote',
+    data: { petId: 'pet_cache_test', monthKey }
+  })
+  assert.equal(voteRes.ok, true)
+
+  // 缓存失效后重新聚合，票数应为 1 (初始) + 1 (旁路新增) + 1 (刚才投的票) = 3
+  const home3 = await voterFn.main({
+    module: 'petBeauty',
+    action: 'listRanking',
+    data: { monthKey }
+  })
+  assert.equal(home3.ok, true)
+  assert.equal(home3.data.list.find((p) => p.petId === 'pet_cache_test')?.voteCount, 3)
+})

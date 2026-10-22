@@ -121,7 +121,14 @@ module.exports = function createHandler(context) {
         { collection: 'questionnaires', name: 'idx_questionnaire_status', keys: { status: 1, createdAt: -1 }, unique: false },
         { collection: 'questionnaires', name: 'idx_questionnaire_roles', keys: { targetRoles: 1, status: 1 }, unique: false },
         { collection: 'questionnaire_responses', name: 'idx_response_questionnaire_user', keys: { questionnaireId: 1, openid: 1 }, unique: false },
-        { collection: 'questionnaire_responses', name: 'idx_response_quality', keys: { questionnaireId: 1, qualityStatus: 1, createdAt: -1 }, unique: false }
+        { collection: 'questionnaire_responses', name: 'idx_response_quality', keys: { questionnaireId: 1, qualityStatus: 1, createdAt: -1 }, unique: false },
+        { collection: 'pet_beauty_votes', name: 'idx_beauty_votes_month_id', keys: { monthKey: 1, _id: 1 }, unique: false },
+        { collection: 'pet_beauty_votes', name: 'idx_beauty_votes_user_daily', keys: { openid: 1, dateKey: 1 }, unique: false },
+        { collection: 'pet_beauty_bonus_votes', name: 'idx_bonus_votes_user_daily', keys: { openid: 1, dateKey: 1 }, unique: false },
+        { collection: 'pet_beauty_month_rankings', name: 'idx_month_rankings_pet_locked', keys: { petId: 1, locked: 1, _id: 1 }, unique: false },
+        { collection: 'pet_playground_plots', name: 'idx_plots_owner_kind', keys: { ownerOpenid: 1, kind: 1, _id: 1 }, unique: false },
+        { collection: 'pet_playground_plots', name: 'idx_plots_community_building', keys: { communityId: 1, kind: 1, buildingType: 1 }, unique: false },
+        { collection: 'staff_earnings', name: 'idx_staff_earnings_withdraw', keys: { staffOpenid: 1, status: 1, createdAt: -1 }, unique: false }
       ]
 
       const indexResults = []
