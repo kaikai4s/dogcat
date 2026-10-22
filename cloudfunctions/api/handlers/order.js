@@ -1,3 +1,4 @@
+const crypto = require('crypto')
 const { normalizeStaffGenderRequirement, assertStaffGenderMatches } = require('../utils/staffGender')
 const { filterTrackPoints } = require('../utils/trackQuality')
 const { getOrderRefundState } = require('../utils/orderRefundState')
@@ -1207,21 +1208,20 @@ module.exports = function createHandler(context) {
       if (typeof checkRateLimit === 'function') await checkRateLimit(openid, 'order.sendOrderSessionMessage', { max: 30, windowMs: 60 * 1000, message: '会话消息发送过于频繁，请稍后再试' })
       const orderId = safeText(data.id || data.orderId).trim()
       if (!orderId) throw new Error('缺少订单ID')
-      const { user, order } = await getOrderForAccess(openid, orderId).catch(() => {
+      const { user, order } = await getOrderForAccess(openid, orderId, { allowAdmin: false }).catch(() => {
         throw new Error('无权参与该订单会话')
       })
 
       const isClient = order.clientOpenid === openid || (user._id && order.clientUserId === user._id)
-      const isStaff = order.staffOpenid === openid || (user._id && order.staffUserId === user._id) || (user.roles && user.roles.includes('staff') && !isClient)
-      const isAdmin = user.roles && user.roles.includes('admin')
-      if (!isClient && !isStaff && !isAdmin) throw new Error('无权参与该订单会话')
+      const isStaff = user.roles.includes('staff') && (order.staffOpenid === openid || (user._id && order.staffUserId === user._id))
+      if (!isClient && !isStaff) throw new Error('无权参与该订单会话')
 
       const content = safeText(data.content || data.message || data.text).trim()
       if (content.length > 500) throw new Error('会话内容不能超过 500 字')
       const mediaUrl = safeText(data.mediaUrl || data.imageUrl || '').trim()
       if (!content && !mediaUrl) throw new Error('请输入会话内容或上传图片')
 
-      const senderRole = isStaff ? 'staff' : (isClient ? 'client' : 'staff')
+      const senderRole = isClient ? 'client' : 'staff'
 
       const saveToCollection = async (colName, docData) => {
         try {
@@ -1331,12 +1331,12 @@ module.exports = function createHandler(context) {
     if (action === 'listOrderSessionMessages') {
       const orderId = safeText(data.id || data.orderId).trim()
       if (!orderId) throw new Error('缺少订单ID')
-      const { user, order } = await getOrderForAccess(openid, orderId).catch(() => {
+      const { user, order } = await getOrderForAccess(openid, orderId, { allowAdmin: false }).catch(() => {
         throw new Error('无权查看该订单会话')
       })
       const isClient = order.clientOpenid === openid || (user._id && order.clientUserId === user._id)
-      const isStaff = order.staffOpenid === openid || (user._id && order.staffUserId === user._id) || (user.roles && user.roles.includes('staff'))
-      const isAuthorized = isClient || isStaff || (user.roles && user.roles.includes('admin'))
+      const isStaff = user.roles.includes('staff') && (order.staffOpenid === openid || (user._id && order.staffUserId === user._id))
+      const isAuthorized = isClient || isStaff
       if (!isAuthorized) {
         throw new Error('无权查看该订单会话')
       }
@@ -1351,12 +1351,10 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'startService') {
-      const { order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
+      const { user, order } = await requireStaffOrder(openid, data.id, '不是该订单员工')
       if (order.status === 'in_service') return { id: data.id, status: order.status }
       assertOrderTransition(order.status, ORDER_STATUS.IN_SERVICE, '订单状态不可开始')
       const time = now()
-      const activeConflict = await findActiveStaffService(openid, data.id)
-      if (activeConflict) throw new Error(`当前已有订单正在服务中，请先完成${activeConflict.petName ? activeConflict.petName + '的' : ''}订单后再开始新的服务`)
       const currentSession = getNextPendingServiceSession({ ...order, _id: data.id }, time)
       if (!currentSession) throw new Error('暂无可开始的当天服务任务')
       if (!(await canStartOrderSession({ ...order, _id: data.id }, currentSession, time))) throw new Error('服务时间未到，可申请提前开始')
@@ -1376,14 +1374,12 @@ module.exports = function createHandler(context) {
         }
       }
 
-      const serviceSessions = markServiceSession(normalizeServiceSessions(order), currentSession.index, { status: 'in_service', startedAt: time, finishedAt: '' })
       const startServiceUpdate = {
         status: ORDER_STATUS.IN_SERVICE,
         startedAt: order.startedAt || time,
         currentSessionStartedAt: time,
         activeSessionIndex: currentSession.index,
         activeSessionDate: currentSession.date,
-        serviceSessions,
         isStartOverdue: false,
         isFinishOverdue: false,
         updatedAt: time
@@ -1398,12 +1394,23 @@ module.exports = function createHandler(context) {
 
       const startNotificationKey = makeIdempotencyKey('service_start', data.id, String(currentSession.index), currentSession.startTime)
       const startedOrder = await db.runTransaction(async tx => {
+        // All starts for one staff write the same document to prevent cross-order write skew.
+        const staff = (await tx.collection('users').doc(user._id).get()).data
+        if (!staff || staff.openid !== openid || staff.status !== 'active' || !staff.roles.includes('staff')) throw new Error('宠托师账号异常，无法开始服务')
         const latest = (await tx.collection('orders').doc(data.id).get()).data
         if (!latest || latest.status !== order.status || latest.staffOpenid !== openid) throw new Error('订单状态不可开始服务')
         const latestSession = getNextPendingServiceSession(latest, time)
         if (!latestSession || latestSession.index !== currentSession.index || latestSession.startTime !== currentSession.startTime) throw new Error('服务场次已变化，请刷新后重试')
-        const nextOrder = { ...latest, ...startServiceUpdate, _id: data.id }
-        await tx.collection('orders').doc(data.id).update({ data: startServiceUpdate })
+        const activeConflict = await findActiveStaffService(openid, data.id, tx)
+        if (activeConflict) throw new Error(`当前已有订单正在服务中，请先完成${activeConflict.petName ? activeConflict.petName + '的' : ''}订单后再开始新的服务`)
+        const patch = {
+          ...startServiceUpdate,
+          startedAt: latest.startedAt || time,
+          serviceSessions: markServiceSession(normalizeServiceSessions(latest), latestSession.index, { status: 'in_service', startedAt: time, finishedAt: '' })
+        }
+        const nextOrder = { ...latest, ...patch, _id: data.id }
+        await tx.collection('users').doc(user._id).update({ data: { staffAssignmentRevision: crypto.randomBytes(16).toString('hex') } })
+        await tx.collection('orders').doc(data.id).update({ data: patch })
         await enqueueOrderNotification(tx, latest.clientOpenid, 'serviceStart', nextOrder, {}, 'client', startNotificationKey)
         return nextOrder
       })

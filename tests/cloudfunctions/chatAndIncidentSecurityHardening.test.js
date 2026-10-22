@@ -229,6 +229,58 @@ test('incident: createComplaint and appendIncidentComment enforce content and im
   assert.equal(resOkComment.ok, true)
 })
 
+for (const roles of [['admin'], ['admin', 'staff']]) {
+  test(`non-assigned ${roles.join('+')} cannot use staff fulfillment endpoints with read-only admin permission`, async () => {
+    const db = createCollectionStore({
+      users: [
+        { _id: 'reader', openid: 'reader', roles, status: 'active' },
+        { _id: 'staff', openid: 'staff', roles: ['staff'], status: 'active' }
+      ],
+      admin_access_config: [{ _id: 'policy', enabled: true, ownerOpenid: 'owner' }],
+      admin_memberships: [{ _id: 'reader', groupIds: ['readers'] }],
+      admin_groups: [{ _id: 'readers', enabled: true, permissions: ['admin.getOrderDetail'] }],
+      orders: [{ _id: 'order', status: 'in_service', clientOpenid: 'client', staffOpenid: 'staff', staffUserId: 'staff', previousStaffRecords: [{ staffOpenid: 'reader' }] }],
+      checkin_logs: [{ _id: 'photo', orderId: 'order', eventType: 'feeding' }]
+    })
+    const api = loadCloudFunction('api', db, 'reader')
+    const beforeOrders = structuredClone(db.state.orders)
+    const beforeCheckins = structuredClone(db.state.checkin_logs)
+    for (const [module, action] of [
+      ['checkin', 'createCheckin'], ['checkin', 'deleteCheckin'],
+      ['order', 'requestEarlyStart'], ['order', 'updateTravelLocation'],
+      ['order', 'departForService'], ['order', 'startService'], ['order', 'finishService'],
+      ['incident', 'createSosIncident'], ['track', 'batchUploadTrack']
+    ]) {
+      const result = await api.main({ module, action, data: { id: 'order', orderId: 'order', checkinId: 'photo', latitude: 31.2, longitude: 121.5, mediaFileId: 'cloud://photo', eventType: 'feeding', points: [] } })
+      assert.equal(result.ok, false, `${module}.${action}`)
+      assert.match(result.message, /无权|订单员工|不是该订单员工/, `${module}.${action}: ${result.message}`)
+    }
+    assert.deepEqual(db.state.orders, beforeOrders)
+    assert.deepEqual(db.state.checkin_logs, beforeCheckins)
+    for (const collection of ['order_incidents', 'track_logs', 'order_timeline', 'staff_earnings', 'subscription_logs', 'admin_notifications']) {
+      assert.equal((db.state[collection] || []).length, 0, collection)
+    }
+  })
+}
+
+test('assigned staff+admin fulfills as staff without admin read permission, but revoked credentials still deny', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'worker', openid: 'worker', roles: ['admin', 'staff'], status: 'active' }],
+    admin_access_config: [{ _id: 'policy', enabled: true, ownerOpenid: 'owner' }],
+    staff_profiles: [{ _id: 'profile', openid: 'worker', auditStatus: 'approved' }],
+    orders: [{ _id: 'order', status: 'in_service', staffOpenid: 'worker', staffUserId: 'worker', clientOpenid: 'client' }],
+    checkin_logs: [{ _id: 'photo', orderId: 'order', eventType: 'feeding' }]
+  })
+  const api = loadCloudFunction('api', db, 'worker')
+  const result = await api.main({ module: 'checkin', action: 'deleteCheckin', data: { orderId: 'order', checkinId: 'photo' } })
+  assert.equal(result.ok, true, result.message)
+  assert.equal(db.state.checkin_logs[0].deletedByOpenid, 'worker')
+  db.state.staff_profiles[0].auditStatus = 'revoked'
+  const denied = await api.main({ module: 'checkin', action: 'deleteCheckin', data: { orderId: 'order', checkinId: 'photo' } })
+  assert.equal(denied.ok, false)
+  assert.match(denied.message, /资质已被平台暂停或撤销/)
+})
+
 test('scheduled: runScheduledTasks completes concurrent retries and order lifecycle within budget', async () => {
   const db = createCollectionStore({
     orders: [],

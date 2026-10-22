@@ -1,3 +1,5 @@
+const { readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createHandler(context) {
   const {
     collections,
@@ -24,16 +26,14 @@ module.exports = function createHandler(context) {
       if (safeText(data.secret).trim() !== secret) throw new Error('初始化密钥不正确')
     }
 
-    async function hasActiveAdmin() {
-      const usersRes = await db.collection('users').where({ status: 'active', roles: db.command.in(['admin']) }).limit(1).get()
+    async function hasActiveAdmin(source = db) {
+      const usersRes = await source.collection('users').where({ status: 'active', roles: db.command.in(['admin']) }).limit(1).get()
       return usersRes.data.length > 0
     }
 
     async function requireInitSecretOrAdmin() {
       if (await hasActiveAdmin()) return requireAdmin(openid)
-      if (getInitAdminSecret()) {
-        assertInitAdminSecret()
-      }
+      assertInitAdminSecret()
       return null
     }
 
@@ -211,32 +211,6 @@ module.exports = function createHandler(context) {
         settingsInitialized = true
       }
 
-      // 5. 若指定了首个管理员 openid 或当前执行者有 openid 且库中无管理员，则自动绑定首位超级管理员
-      let initialAdminBound = null
-      const targetAdminOpenid = safeText(data.adminOpenid || openid).trim()
-      const hasAdmin = await hasActiveAdmin()
-      if (!hasAdmin && targetAdminOpenid) {
-        const uRes = await db.collection('users').where({ openid: targetAdminOpenid }).limit(1).get().catch(() => ({ data: [] }))
-        const u = uRes.data && uRes.data[0]
-        if (u) {
-          const roles = Array.from(new Set([...(Array.isArray(u.roles) ? u.roles : ['client']), 'admin']))
-          await db.collection('users').doc(u._id).update({ data: { roles, activeRole: 'admin', status: 'active', updatedAt: time } })
-          initialAdminBound = targetAdminOpenid
-        } else {
-          await db.collection('users').add({
-            data: {
-              openid: targetAdminOpenid,
-              roles: ['admin', 'client'],
-              activeRole: 'admin',
-              status: 'active',
-              createdAt: time,
-              updatedAt: time
-            }
-          })
-          initialAdminBound = targetAdminOpenid
-        }
-      }
-
       return {
         success: true,
         message: '正式环境数据库与业务索引初始化成功',
@@ -250,7 +224,7 @@ module.exports = function createHandler(context) {
         pricesInitialized,
         checkinRulesInitialized,
         settingsInitialized,
-        initialAdminBound,
+        initialAdminBound: null,
         securityRuleNotice: '重要提示：所有集合数据权限均需在云开发控制台保持为【所有用户不可读写】以确保安全'
       }
     }
@@ -326,11 +300,21 @@ module.exports = function createHandler(context) {
       const phone = safeText(user.phone).trim()
       if (!phone) throw new Error('请先绑定手机号')
       if (!allowedPhones.includes(phone)) throw new Error('当前手机号不在初始管理员白名单')
-      if (await hasActiveAdmin()) throw new Error('初始管理员已存在')
       const time = now()
-      const roles = Array.from(new Set([...(Array.isArray(user.roles) ? user.roles : ['client']), 'admin']))
-      await db.collection('users').doc(user._id).update({ data: { roles, activeRole: 'admin', status: 'active', updatedAt: time } })
-      return { ...user, roles, activeRole: 'admin', status: 'active', updatedAt: time }
+      return db.runTransaction(async (tx) => {
+        const lockRef = tx.collection('admin_access_config').doc('initial_admin_claim')
+        const lock = await readOptionalDocument(tx, 'admin_access_config', 'initial_admin_claim')
+        if (lock || await hasActiveAdmin(tx)) throw new Error('初始管理员已存在')
+        const userResult = await tx.collection('users').doc(user._id).get()
+        const currentUser = userResult && userResult.data
+        if (!currentUser || currentUser.openid !== openid) throw new Error('用户账号状态已变化，请重新登录')
+        const currentPhone = safeText(currentUser.phone).trim()
+        if (!allowedPhones.includes(currentPhone)) throw new Error('当前手机号不在初始管理员白名单')
+        const roles = Array.from(new Set([...(Array.isArray(currentUser.roles) ? currentUser.roles : ['client']), 'admin']))
+        await tx.collection('users').doc(user._id).update({ data: { roles, activeRole: 'admin', status: 'active', updatedAt: time } })
+        await lockRef.set({ data: { claimedBy: openid, claimedAt: time } })
+        return { ...currentUser, roles, activeRole: 'admin', status: 'active', updatedAt: time }
+      })
     }
 
     if (action === 'claimInitialAdmin' || action === 'seedAdmin') return claimInitialAdmin()

@@ -174,6 +174,49 @@ test('chat message with newlines is sanitized to single line without special cha
   assert.equal(sent[0].data.thing2.value, '第一行内容 第二行内容 第三行内容')
 })
 
+for (const kind of ['previous', 'original', 'preview', 'admin', 'unrelated']) {
+  test(`${kind} user cannot read or send current order chat`, async () => {
+    const { db } = fixture()
+    db.state.users.push({ _id: 'reader', openid: 'reader', roles: kind === 'admin' ? ['admin'] : ['staff'], status: 'active' })
+    const order = db.state.orders[0]
+    if (kind === 'previous') order.previousStaffRecords = [{ staffOpenid: 'reader' }]
+    if (kind === 'original') order.originalStaffOpenid = 'reader'
+    if (kind === 'preview') { order.status = 'paid'; order.publishMode = 'open'; order.staffOpenid = '' }
+    const api = loadCloudFunction('api', db, 'reader')
+    if (kind !== 'unrelated') {
+      const detail = await api.main({ module: 'order', action: 'getOrderDetail', data: { id: 'order_1' } })
+      assert.equal(detail.ok, true, detail.message)
+    }
+    for (const action of ['listOrderSessionMessages', 'sendOrderSessionMessage']) {
+      const result = await api.main({ module: 'order', action, data: { orderId: 'order_1', content: '不应发送' } })
+      assert.equal(result.ok, false, kind + action)
+      assert.match(result.message, /无权/)
+    }
+    assert.equal(db.state.order_session_messages.length, 0)
+    assert.equal(db.state.subscription_logs.length, 0)
+    assert.equal((db.state.order_message_threads || []).length, 0)
+    if (kind === 'admin') {
+      const adminRead = await api.main({ module: 'admin', action: 'listOrderSessionMessages', data: { orderId: 'order_1' } })
+      assert.equal(adminRead.ok, true, adminRead.message)
+    }
+  })
+}
+
+for (const participant of ['staff', 'client']) {
+  test(`current ${participant}+admin participates without delegated administrator read permission`, async () => {
+    const { db, apiStaff, apiClient } = fixture()
+    db.state.users.find(row => row.openid === participant).roles.push('admin')
+    db.state.admin_access_config = [{ _id: 'policy', enabled: true, ownerOpenid: 'owner' }]
+    const api = participant === 'staff' ? apiStaff : apiClient
+    const sent = await api.main({ module: 'order', action: 'sendOrderSessionMessage', data: { orderId: 'order_1', content: '合法参与者' } })
+    assert.equal(sent.ok, true, sent.message)
+    assert.equal(sent.data.senderRole, participant)
+    const list = await api.main({ module: 'order', action: 'listOrderSessionMessages', data: { orderId: 'order_1' } })
+    assert.equal(list.ok, true, list.message)
+    assert.equal(list.data.length, 1)
+  })
+}
+
 test('sending chat message to self does not trigger subscription notification', async () => {
   const { db } = fixture()
   // Client and staff share same openid (self-testing scenario)

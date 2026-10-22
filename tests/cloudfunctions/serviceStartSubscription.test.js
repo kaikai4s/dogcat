@@ -53,6 +53,81 @@ test('concurrent start requests create one delivery and one start timeline', asy
   assert.equal(db.state.order_timeline.filter(row => row.type === 'started').length, 1)
 })
 
+for (const sameStaff of [true, false]) {
+  test(`parallel starts for ${sameStaff ? 'one staff are mutually exclusive' : 'different staff both succeed'}`, async () => {
+    const { db, api, start, sent, cloud } = fixture()
+    const staffOpenid = sameStaff ? 'staff' : 'staff2'
+    if (!sameStaff) db.state.users.push({ _id: 'staff2', openid: 'staff2', roles: ['staff'], status: 'active' })
+    db.state.orders.push({ ...structuredClone(db.state.orders[0]), _id: 'other', orderNo: 'OTHER', staffOpenid })
+    db.state.checkin_logs.push({ ...structuredClone(db.state.checkin_logs[0]), _id: 'other-photo', orderId: 'other', staffOpenid })
+    const events = []
+    const transaction = db.runTransaction
+    db.runTransaction = callback => transaction(tx => callback({ collection(name) {
+      const collection = tx.collection(name)
+      if (name === 'users') {
+        const doc = collection.doc
+        collection.doc = id => {
+          const ref = doc(id)
+          return { ...ref,
+            get: async () => { events.push(`read:${id}`); return ref.get() },
+            update: async input => { events.push(`write:${id}`); assert.ok(input.data.staffAssignmentRevision); return ref.update(input) }
+          }
+        }
+      }
+      if (name === 'orders') {
+        const where = collection.where
+        collection.where = input => {
+          if (input.status === 'in_service') events.push(`active:${input.staffOpenid}`)
+          return where(input)
+        }
+      }
+      return collection
+    } }))
+    const otherApi = sameStaff ? api : loadCloudFunction('api', db, 'staff2', cloud)
+    const results = await Promise.all([start(), otherApi.main({ module: 'order', action: 'startService', data: { id: 'other' } })])
+    assert.equal(results.filter(result => result.ok).length, sameStaff ? 1 : 2, JSON.stringify(results))
+    assert.equal(db.state.orders.filter(row => row.status === 'in_service').length, sameStaff ? 1 : 2)
+    assert.equal(sent.length, sameStaff ? 1 : 2)
+    assert.equal(db.state.order_timeline.filter(row => row.type === 'started').length, sameStaff ? 1 : 2)
+    if (sameStaff) assert.match(results.find(result => !result.ok).message, /已有订单正在服务中/)
+    for (const id of sameStaff ? ['staff'] : ['staff', 'staff2']) {
+      assert.ok(events.includes(`read:${id}`))
+      assert.ok(events.includes(`write:${id}`))
+      assert.ok(events.includes(`active:${id}`))
+      assert.ok(db.state.users.find(row => row._id === id).staffAssignmentRevision)
+    }
+  })
+}
+
+test('active service query failure rolls back start and shared staff revision', async () => {
+  const { db, start, sent } = fixture()
+  const transaction = db.runTransaction
+  db.runTransaction = callback => transaction(tx => callback({ collection(name) {
+    const collection = tx.collection(name)
+    if (name === 'orders') collection.where = () => { throw new Error('active query unavailable') }
+    return collection
+  } }))
+  const result = await start()
+  assert.equal(result.ok, false)
+  assert.match(result.message, /active query unavailable/)
+  assert.equal(db.state.orders[0].status, 'assigned')
+  assert.equal(db.state.users[0].staffAssignmentRevision, undefined)
+  assert.equal(sent.length, 0)
+  assert.equal((db.state.subscription_logs || []).length, 0)
+})
+
+test('start preserves latest service session fields rather than overwriting a stale snapshot', async () => {
+  const { db, start } = fixture()
+  const transaction = db.runTransaction
+  db.runTransaction = callback => {
+    db.state.orders[0].serviceSessions[0].endTime = '2099-01-01T00:00:00Z'
+    return transaction(callback)
+  }
+  const result = await start()
+  assert.equal(result.ok, true, result.message)
+  assert.equal(db.state.orders[0].serviceSessions[0].endTime, '2099-01-01T00:00:00Z')
+})
+
 test('failed sanitization validation never sends a started notification', async () => {
   const { db, sent, start } = fixture()
   db.state.checkin_logs = []
@@ -152,5 +227,6 @@ test('queue write failure rolls back service start', async () => {
   } }))
   assert.equal((await start()).ok, false)
   assert.equal(db.state.orders[0].status, 'assigned')
+  assert.equal(db.state.users.find(row => row.openid === 'staff').staffAssignmentRevision, undefined)
   assert.equal(sent.length, 0)
 })

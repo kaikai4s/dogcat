@@ -1,3 +1,5 @@
+const { readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createHandler(context) {
   const {
     checkImageSecurity,
@@ -437,70 +439,47 @@ module.exports = function createHandler(context) {
       const championRank = rankingRes.data && rankingRes.data[0]
       if (!championRank) throw new Error(`未找到 ${targetMonthKey} 月度排行榜第 1 名记录，请先执行月度锁榜结算`)
 
-      const petId = championRank.petId
-      const petRes = await db.collection('pets').doc(petId).get().catch(() => ({ data: null }))
-      const pet = (petRes && petRes.data) || championRank.petSnapshot || {}
-      const targetOpenid = safeText(pet.openid || championRank.openid).trim()
-      if (!targetOpenid) throw new Error('无法确定第 1 名宠物主人的账号身份')
-
       const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
       const defaultPrize = Number(settings?.petBeautyContest?.firstPrizeAmount ?? 500)
-      const prizeAmount = data.amount !== undefined ? Math.round(Number(data.amount) * 100) / 100 : Number(championRank.prizeAmount || defaultPrize)
-      if (!Number.isFinite(prizeAmount) || prizeAmount <= 0) throw new Error('奖金金额必须为大于 0 的数值')
-
-      const earningId = `beauty_prize_${targetMonthKey}_${petId}`
-      const time = nowText()
-      const title = `${targetMonthKey} 最美爱宠月度冠军现金大奖`
-      const reason = safeText(data.remark).trim() || `${targetMonthKey} 最美爱宠大赛冠军【${pet.name || '爱宠'}】现金奖金直接发放`
-
-      // 幂等防重检查与写入用户可提现零钱
-      const existingRes = await db.collection('user_asset_earnings').doc(earningId).get().catch(() => ({ data: null }))
-      if (existingRes && existingRes.data) {
-        throw new Error(`${targetMonthKey} 月度冠军奖金已发放至该用户可提现零钱，请勿重复发放`)
-      }
-
-      await db.collection('user_asset_earnings').doc(earningId).set({
-        data: {
-          userOpenid: targetOpenid,
-          sourceType: 'pet_beauty_champion_prize',
-          sourceId: `${targetMonthKey}_${petId}`,
-          monthKey: targetMonthKey,
-          petId,
-          petName: pet.name || '',
-          title,
-          amount: prizeAmount,
-          status: 'available',
-          activityEnabled: true,
-          reason,
-          grantedBy: openid,
-          createdAt: time,
-          availableAt: time,
-          updatedAt: time
-        }
-      })
-
-      // 更新榜单记录发奖状态
-      if (championRank._id) {
-        await db.collection('pet_beauty_month_rankings').doc(championRank._id).update({
+      return db.runTransaction(async tx => {
+        const rank = await readOptionalDocument(tx, 'pet_beauty_month_rankings', championRank._id)
+        if (!rank || rank.monthKey !== targetMonthKey || rank.rank !== 1 || rank.petId !== championRank.petId) throw new Error('冠军榜单已变化，请刷新后重试')
+        const petId = rank.petId
+        const pet = await readOptionalDocument(tx, 'pets', petId) || rank.petSnapshot || {}
+        const targetOpenid = safeText(pet.openid || rank.openid).trim()
+        if (!targetOpenid) throw new Error('无法确定第 1 名宠物主人的账号身份')
+        const prizeAmount = data.amount !== undefined ? Math.round(Number(data.amount) * 100) / 100 : Number(rank.prizeAmount || defaultPrize)
+        if (!Number.isFinite(prizeAmount) || prizeAmount <= 0) throw new Error('奖金金额必须为大于 0 的数值')
+        const earningId = `beauty_prize_${targetMonthKey}_${petId}`
+        const existing = await readOptionalDocument(tx, 'user_asset_earnings', earningId)
+        if (existing) throw new Error(`${targetMonthKey} 月度冠军奖金已发放至该用户可提现零钱，请勿重复发放`)
+        const time = nowText()
+        const title = `${targetMonthKey} 最美爱宠月度冠军现金大奖`
+        const reason = safeText(data.remark).trim() || `${targetMonthKey} 最美爱宠大赛冠军【${pet.name || '爱宠'}】现金奖金直接发放`
+        await tx.collection('user_asset_earnings').doc(earningId).set({
           data: {
-            prizeGranted: true,
-            prizeGrantedAt: time,
-            prizeEarningId: earningId,
-            prizeAmount,
+            userOpenid: targetOpenid,
+            sourceType: 'pet_beauty_champion_prize',
+            sourceId: `${targetMonthKey}_${petId}`,
+            monthKey: targetMonthKey,
+            petId,
+            petName: pet.name || '',
+            title,
+            amount: prizeAmount,
+            status: 'available',
+            activityEnabled: true,
+            reason,
+            grantedBy: openid,
+            createdAt: time,
+            availableAt: time,
             updatedAt: time
           }
-        }).catch(() => {})
-      }
-
-      return {
-        monthKey: targetMonthKey,
-        petId,
-        targetOpenid,
-        prizeAmount,
-        earningId,
-        status: 'available',
-        grantedAt: time
-      }
+        })
+        await tx.collection('pet_beauty_month_rankings').doc(championRank._id).update({
+          data: { prizeGranted: true, prizeGrantedAt: time, prizeEarningId: earningId, prizeAmount, updatedAt: time }
+        })
+        return { monthKey: targetMonthKey, petId, targetOpenid, prizeAmount, earningId, status: 'available', grantedAt: time }
+      })
     }
 
     if (action === 'settleMonthlyRanking') {

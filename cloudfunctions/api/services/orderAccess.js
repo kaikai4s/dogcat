@@ -17,18 +17,21 @@ module.exports = function createService({
   validateStaffTakeOrderAbility,
   withSitterUserProfile
 }) {
-  async function getOrderForAccess(openid, orderId) {
+  async function getOrderForAccess(openid, orderId, { allowAdmin = true } = {}) {
     const user = await getUser(openid)
-    if (user.roles.includes('admin')) await authorizeAdmin(user, 'admin.getOrderDetail')
+    const adminAccess = allowAdmin && user.roles.includes('admin')
+    if (adminAccess) await authorizeAdmin(user, 'admin.getOrderDetail')
     const res = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
     let order = res && res.data ? { ...res.data, _id: orderId } : null
-    if (!order || (isAdminDeletedOrder(order) && !user.roles.includes('admin'))) throw new Error('订单不存在')
+    if (!order || (isAdminDeletedOrder(order) && !adminAccess)) throw new Error('订单不存在')
     order = await expireUnacceptedOrder(orderId, order)
+    const isClient = order.clientOpenid === openid || (user._id && order.clientUserId === user._id)
+    const isCurrentStaff = order.staffOpenid === openid || (user._id && order.staffUserId === user._id)
     const isPreviousStaff = user.roles.includes('staff') && ((Array.isArray(order.previousStaffRecords) && order.previousStaffRecords.some((r) => r.staffOpenid === openid)) || order.originalStaffOpenid === openid)
     const canPreviewForStaff = user.roles.includes('staff') && order.status === ORDER_STATUS.PAID && (isOpenOrder(order) || order.requestedStaffOpenid === openid)
-    const allowed = order.clientOpenid === openid || order.staffOpenid === openid || order.requestedStaffOpenid === openid || user.roles.includes('admin') || canPreviewForStaff || isPreviousStaff
+    const allowed = isClient || isCurrentStaff || order.requestedStaffOpenid === openid || adminAccess || canPreviewForStaff || isPreviousStaff
     if (!allowed) throw new Error('无权访问订单')
-    if (!user.roles.includes('admin') && order.clientOpenid !== openid && order.staffOpenid !== openid && !isPreviousStaff && user.roles.includes('staff')) {
+    if (!adminAccess && !isClient && !isCurrentStaff && !isPreviousStaff && user.roles.includes('staff')) {
       const profiles = await db.collection('staff_profiles').where({ openid }).limit(1).get()
       if (!matchesStaffGender(order, profiles.data[0] || {})) throw new Error('无权访问订单')
     }
@@ -42,12 +45,11 @@ module.exports = function createService({
   }
 
   async function requireStaffOrder(openid, orderId, message = '仅订单员工可操作') {
-    const { user, order } = await getOrderForAccess(openid, orderId)
-    if (user.roles.includes('admin')) return { user, order }
+    const { user, order } = await getOrderForAccess(openid, orderId, { allowAdmin: false })
     const isStaffMatch = order.staffOpenid === openid || (user._id && order.staffUserId === user._id)
     if (!user.roles.includes('staff') || !isStaffMatch) throw new Error(message)
     if (user.status && user.status !== 'active') throw new Error('宠托师账号异常，已被禁用')
-    const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get().catch(() => ({ data: [] }))
+    const profileRes = await db.collection('staff_profiles').where({ openid }).limit(1).get()
     const profile = profileRes && profileRes.data && profileRes.data[0]
     if (profile && ['revoked', 'suspended', 'rejected', 'banned'].includes(profile.auditStatus)) {
       throw new Error('宠托师资质已被平台暂停或撤销，不可操作订单')

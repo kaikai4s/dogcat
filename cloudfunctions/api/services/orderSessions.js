@@ -104,9 +104,9 @@ module.exports = function createService({
     return sessions.filter((item) => Number(item.index) !== Number(session.index)).every((item) => item.status === 'completed')
   }
 
-  async function findActiveStaffService(staffOpenid, excludeOrderId = '') {
+  async function findActiveStaffService(staffOpenid, excludeOrderId = '', source = db) {
     if (!staffOpenid) return null
-    const res = await db.collection('orders').where({ staffOpenid, status: ORDER_STATUS.IN_SERVICE }).limit(10).get()
+    const res = await source.collection('orders').where({ staffOpenid, status: ORDER_STATUS.IN_SERVICE }).limit(10).get()
     return (res.data || []).find((order) => !excludeOrderId || order._id !== excludeOrderId) || null
   }
 

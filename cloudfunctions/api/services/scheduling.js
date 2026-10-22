@@ -238,7 +238,7 @@ module.exports = function createService({
   async function* staffConflictOrderPages(openid) {
     let cursor1 = ''
     while (true) {
-      const where1 = { staffOpenid: openid, status: db.command.in(['paid', 'assigned', 'in_service', 'day_completed']) }
+      const where1 = { staffOpenid: openid, status: db.command.in(['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed']) }
       if (cursor1) where1._id = db.command.gt(cursor1)
       const page1 = (await db.collection('orders').where(where1).orderBy('_id', 'asc').limit(100).get()).data || []
       if (page1.length) yield page1

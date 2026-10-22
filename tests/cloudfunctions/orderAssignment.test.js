@@ -137,13 +137,36 @@ test('conflict after 100 active orders is detected while completed history is ex
     if (name === 'orders') {
       const where = collection.where
       collection.where = condition => {
-        assert.deepEqual(condition.status.$in, ['paid', 'assigned', 'in_service', 'day_completed'])
+        assert.deepEqual(condition.status.$in, ['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed'])
         return where.call(collection, condition)
       }
     }
     return collection
   }
   assert.equal((await context.findStaffOrderConflict('staff', order('candidate')))._id, 'zzz')
+})
+
+test('on-the-way orders block overlapping assignments and remain visible in availability', async () => {
+  const traveling = { ...order('traveling'), status: 'on_the_way', staffOpenid: 'staff' }
+  const { db, context, assign } = setup([traveling, order('candidate')])
+  assert.equal((await context.findStaffOrderConflict('staff', order('candidate')))._id, 'traveling')
+  await assert.rejects(() => context.validateStaffAvailability({ openid: 'staff' }, `${date} 10:00`, `${date} 11:00`), /该时间段已有订单/)
+  await assert.rejects(() => assign('candidate'), /该时间段已有订单/)
+  assert.equal(db.state.orders.find(item => item._id === 'candidate').status, 'paid')
+  assert.equal(db.state.users[0].staffAssignmentRevision, undefined)
+  const calendar = await context.buildStaffAvailability({ openid: 'staff' }, date, 1)
+  assert.equal(calendar[0].busyOrders.length, 1)
+  assert.equal(calendar[0].busyOrders[0].orderId, 'traveling')
+})
+
+test('on-the-way conflict checks preserve adjacent, self, deleted and same-group exemptions', async () => {
+  const traveling = { ...order('traveling'), status: 'on_the_way', staffOpenid: 'staff', groupBuyId: 'group' }
+  const { context } = setup([traveling])
+  assert.equal(await context.findStaffOrderConflict('staff', order('adjacent', '11:00', '12:00')), null)
+  assert.equal(await context.findStaffOrderConflict('staff', order('self'), 'traveling'), null)
+  assert.equal(await context.findStaffOrderConflict('staff', { ...order('household'), groupBuyId: 'group' }), null)
+  const deleted = setup([{ ...traveling, adminDeletedAt: '2099-09-01 00:00:00' }])
+  assert.equal(await deleted.context.findStaffOrderConflict('staff', order('candidate')), null)
 })
 
 test('multi-day completed sessions do not block slots but remaining sessions do', async () => {

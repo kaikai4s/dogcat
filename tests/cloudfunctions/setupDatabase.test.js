@@ -2,7 +2,13 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createCollectionStore, loadCloudFunction } = require('./helpers')
 
-test('setupDatabase: initializes collections and seeds default prices and checkin rules', async () => {
+test('setupDatabase: initializes data without granting administrator identity', async (t) => {
+  const previousSecret = process.env.INIT_ADMIN_SECRET
+  process.env.INIT_ADMIN_SECRET = 'setup-test-secret'
+  t.after(() => {
+    if (previousSecret === undefined) delete process.env.INIT_ADMIN_SECRET
+    else process.env.INIT_ADMIN_SECRET = previousSecret
+  })
   const db = createCollectionStore({})
   const api = loadCloudFunction('api', db, 'openid_super_admin')
 
@@ -10,7 +16,8 @@ test('setupDatabase: initializes collections and seeds default prices and checki
     module: 'initData',
     action: 'setupDatabase',
     data: {
-      adminOpenid: 'openid_super_admin'
+      adminOpenid: 'openid_super_admin',
+      secret: 'setup-test-secret'
     }
   })
 
@@ -21,13 +28,8 @@ test('setupDatabase: initializes collections and seeds default prices and checki
   assert.ok(res.data.pricesInitialized > 0)
   assert.ok(res.data.checkinRulesInitialized > 0)
   assert.equal(res.data.settingsInitialized, true)
-  assert.equal(res.data.initialAdminBound, 'openid_super_admin')
-
-  // 验证 users 中首位管理员已创建
-  const adminUser = db.state.users.find(u => u.openid === 'openid_super_admin')
-  assert.ok(adminUser)
-  assert.ok(adminUser.roles.includes('admin'))
-  assert.equal(adminUser.activeRole, 'admin')
+  assert.equal(res.data.initialAdminBound, null)
+  assert.equal(db.state.users.length, 0)
 
   // 验证服务价格已初始化
   assert.ok(db.state.service_prices.length >= 7)
@@ -48,6 +50,58 @@ test('setupDatabase: initializes collections and seeds default prices and checki
   assert.ok(Array.isArray(db.state.pet_playground_disputes))
   assert.ok(Array.isArray(db.state.pet_playground_accidents))
   assert.ok(Array.isArray(db.state.pet_playground_jail))
+})
+
+test('bootstrap fails closed without configured secret before any initialization', async (t) => {
+  const previousSecret = process.env.INIT_ADMIN_SECRET
+  delete process.env.INIT_ADMIN_SECRET
+  t.after(() => {
+    if (previousSecret !== undefined) process.env.INIT_ADMIN_SECRET = previousSecret
+  })
+  const db = createCollectionStore({ users: [] })
+  const api = loadCloudFunction('api', db, 'attacker')
+  for (const action of ['setupDatabase', 'initAllCollections', 'checkCollections', 'buildNotificationIndexes', 'setupNotificationIndexes']) {
+    const result = await api.main({ module: 'initData', action, data: { adminOpenid: 'attacker', secret: 'anything' } })
+    assert.equal(result.ok, false, action)
+    assert.match(result.message, /初始管理员配置未完成/)
+  }
+  assert.deepEqual(db.state.users, [])
+  assert.equal(db.state.service_prices, undefined)
+  assert.equal(db.state.system_settings, undefined)
+})
+
+test('bootstrap with a valid secret never upgrades an arbitrary user; explicit whitelisted claim remains available', async (t) => {
+  const previousSecret = process.env.INIT_ADMIN_SECRET
+  const previousPhones = process.env.INIT_ADMIN_PHONES
+  process.env.INIT_ADMIN_SECRET = 'explicit-bootstrap'
+  process.env.INIT_ADMIN_PHONES = '13900000001'
+  t.after(() => {
+    if (previousSecret === undefined) delete process.env.INIT_ADMIN_SECRET
+    else process.env.INIT_ADMIN_SECRET = previousSecret
+    if (previousPhones === undefined) delete process.env.INIT_ADMIN_PHONES
+    else process.env.INIT_ADMIN_PHONES = previousPhones
+  })
+  const db = createCollectionStore({ users: [
+    { _id: 'claimant', openid: 'claimant', roles: ['client'], status: 'active', phone: '13900000001' },
+    { _id: 'target', openid: 'target', roles: ['client'], status: 'active', phone: '13800000000' }
+  ] })
+  const api = loadCloudFunction('api', db, 'claimant')
+  const wrong = await api.main({ module: 'initData', action: 'setupDatabase', data: { secret: 'wrong' } })
+  assert.equal(wrong.ok, false)
+  assert.match(wrong.message, /初始化密钥不正确/)
+  for (const action of ['setupDatabase', 'initAllCollections']) {
+    const setup = await api.main({ module: 'initData', action, data: { secret: 'explicit-bootstrap', adminOpenid: 'target' } })
+    assert.equal(setup.ok, true, setup.message)
+    assert.equal(setup.data.initialAdminBound, null)
+    assert.ok(db.state.users.every(row => !row.roles.includes('admin')))
+  }
+  const claim = await api.main({ module: 'initData', action: 'claimInitialAdmin', data: { secret: 'explicit-bootstrap' } })
+  assert.equal(claim.ok, true, claim.message)
+  assert.ok(db.state.users.find(row => row._id === 'claimant').roles.includes('admin'))
+  assert.deepEqual(db.state.users.find(row => row._id === 'target').roles, ['client'])
+  const client = loadCloudFunction('api', db, 'target')
+  const denied = await client.main({ module: 'initData', action: 'setupDatabase', data: { secret: 'explicit-bootstrap' } })
+  assert.equal(denied.ok, false)
 })
 
 test('buildNotificationIndexes: builds indexes specifically for system_notifications and user_notification_reads', async () => {
