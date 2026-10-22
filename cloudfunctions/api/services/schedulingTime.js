@@ -4,17 +4,19 @@ module.exports = function createService({
   function parseDateTimeParts(dateStr) {
     if (!dateStr) return null
     const text = String(dateStr).trim()
-    const match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{1,2})/)
+    const match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.\d{1,3})?)?/)
     if (match) {
       const year = Number(match[1])
       const month = Number(match[2]) - 1
       const day = Number(match[3])
       const hour = Number(match[4])
       const minute = Number(match[5])
+      const second = Number(match[6] || 0)
 
       // 修复：使用 UTC 正午时间来计算星期几，避免时区问题
       // 正午12:00不会因为时区调整而跨天
       const dateForDayOfWeek = new Date(Date.UTC(year, month, day, 12, 0))
+      if (dateForDayOfWeek.getUTCFullYear() !== year || dateForDayOfWeek.getUTCMonth() !== month || dateForDayOfWeek.getUTCDate() !== day || hour > 23 || minute > 59 || second > 59) return null
       const jsDay = dateForDayOfWeek.getUTCDay()
       const dayOfWeek = jsDay === 0 ? 7 : jsDay
 
@@ -22,7 +24,8 @@ module.exports = function createService({
       const dateObj = new Date(Date.UTC(year, month, day, hour - 8, minute))
 
       // 返回北京时间的 dayOfWeek, hour, minute，用于时间段判断
-      return { dayOfWeek, hour, minute, day, dateObj }
+      // Only unzoned input uses Beijing directly; explicit offsets are parsed below.
+      if (match[0] === text) return { dayOfWeek, hour, minute, day, dateObj }
     }
     const d = new Date(text)
     if (Number.isNaN(d.getTime())) return null

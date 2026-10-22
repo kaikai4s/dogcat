@@ -106,6 +106,8 @@ module.exports = function createService({
     if (!coupon || coupon.openid !== openid) return { applicable: false, reason: '优惠券不存在' }
     const status = couponDisplayStatus(coupon)
     if (status !== 'available') return { applicable: false, reason: couponStatusText(status) }
+    const validFrom = new Date(coupon.validFrom || 0).getTime()
+    if (validFrom > now().getTime()) return { applicable: false, reason: '优惠券尚未生效' }
     const snapshot = normalizeCouponSnapshot(coupon)
     if (!couponBusinessMatches(snapshot, pricing)) return { applicable: false, reason: snapshot.usageScope === 'mall' ? '仅限商城用品订单使用' : '仅限上门服务订单使用' }
     if (pricing.amount < snapshot.minOrderAmount) return { applicable: false, reason: `订单满 ¥${snapshot.minOrderAmount} 可用` }
