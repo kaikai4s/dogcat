@@ -48,6 +48,16 @@
   gap: 18rpx;
 }
 
+.subscription-advanced-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.subscription-template-toggle {
+  margin: 0 0 2rpx;
+}
+
 .compact-toggle-row {
   display: flex;
   align-items: center;

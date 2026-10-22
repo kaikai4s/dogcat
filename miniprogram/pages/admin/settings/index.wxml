@@ -468,6 +468,8 @@
           <view class="field-item"><text class="label">接单/派单模板</text><input class="input" value="{{settings.subscription.templates.orderAssigned}}" data-field="orderAssigned" bindinput="subscriptionTemplateInput" /></view>
           <view class="field-item"><text class="label">师傅接单模板</text><input class="input" value="{{settings.subscription.templates.orderAccepted}}" data-field="orderAccepted" bindinput="subscriptionTemplateInput" placeholder="伴宠师接单通知模板 ID（44245）" /></view>
           <view class="notice">接单通知使用模板 44245：订单编号 character_string1、伴宠师名 thing2、联系电话 phone_number4、商品名称 thing5。联系电话读取本页客服配置中的客服电话；更换模板后需用户重新订阅。</view>
+          <button class="ghost-btn subscription-template-toggle" bindtap="toggleSubscriptionTemplates">{{subscriptionTemplatesExpanded ? '收起其他模板' : '展开其他模板'}}</button>
+          <view wx:if="{{subscriptionTemplatesExpanded}}" class="subscription-advanced-templates">
           <view class="field-item"><text class="label">宠托师出发通知模板</text><input class="input" value="{{settings.subscription.templates.staffDeparture}}" data-field="staffDeparture" bindinput="subscriptionTemplateInput" placeholder="填写宠托师出发通知模板 ID" /></view>
           <view class="notice">模板编号 77732：服务项目 thing1、预约时间 time2、出发时间 time3、宠托师 thing4。宠托师点击出发后通知下单用户，每场服务发送一次；用户需单独同意此模板。</view>
           <view class="field-item"><text class="label">服务开始模板</text><input class="input" value="{{settings.subscription.templates.serviceStart}}" data-field="serviceStart" bindinput="subscriptionTemplateInput" placeholder="开始服务通知模板 ID（71479）" /></view>
@@ -492,6 +494,7 @@
           <view class="notice">模板 19425：服务时间段 time3、服务地点 thing4、宠物类型 short_thing6、宠物名字 thing7、备注 thing5。服务前 1 小时提醒宠托师，完整地址和照护要求请进入订单查看。</view>
           <view class="field-item"><text class="label">在线沟通未读提醒模板</text><input class="input" value="{{settings.subscription.templates.orderChat}}" data-field="orderChat" bindinput="subscriptionTemplateInput" placeholder="在线聊天未读提醒模板 ID（43667）" /></view>
           <view class="notice">模板 43667：发送人 thing1、发送内容 thing2、发送时间 time3。宠托师或宠物主在订单服务会话中发送即时消息时，向离线对方推送微信服务通知。</view>
+          </view>
         </view>
 
         <view wx:if="{{activeSettingPanel === 'customerService'}}" class="setting-modal-section">
