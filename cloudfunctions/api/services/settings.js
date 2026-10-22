@@ -286,7 +286,7 @@ module.exports = function createService({
           remoteUnlock: safeText(subscription.templates && subscription.templates.remoteUnlock).trim(),
           refundResult: safeText(subscription.templates && subscription.templates.refundResult).trim(),
           orderCancelled: safeText(subscription.templates && subscription.templates.orderCancelled).trim(),
-          staffCancellation: safeText(subscription.templates && subscription.templates.staffCancellation).trim(),
+          staffCancellation: safeText(subscription.templates && (subscription.templates.staffCancellation || subscription.templates.orderCancelled)).trim(),
           mallOrderPaid: safeText(subscription.templates && subscription.templates.mallOrderPaid).trim(),
           mallShipped: safeText(subscription.templates && subscription.templates.mallShipped).trim(),
           mallOrderStatus: safeText(subscription.templates && subscription.templates.mallOrderStatus).trim(),

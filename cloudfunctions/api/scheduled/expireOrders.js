@@ -1,4 +1,4 @@
-module.exports = function createHelpers({ now, toTimeValue, ORDER_STATUS, safeText, createRefundForOrder, makeIdempotencyKey, db, appendOrderTimeline, appendOrderClientMessage, restoreOrderCoupon }) {
+module.exports = function createHelpers({ now, toTimeValue, ORDER_STATUS, safeText, createRefundForOrder, makeIdempotencyKey, db, appendOrderTimeline, appendOrderClientMessage, restoreOrderCoupon, notifyOrder }) {
 function shouldExpireUnacceptedOrder(order = {}, time = now()) {
   const start = toTimeValue(order.startTime || (order.serviceSessions && order.serviceSessions[0] && order.serviceSessions[0].startTime))
   const isGroup = !!(order.groupBuyId || order.source === 'community_groupbuy')
@@ -49,6 +49,14 @@ async function expireUnacceptedOrder(orderId, order, time = now(), forceGroupExp
   const noticeDetail = isPaid ? (isGroup ? `服务开始前2小时无人接单，拼单已自动取消并全额退款 ¥${order.payAmount}` : `服务开始时间前无人接单，已发起全额退款 ¥${order.payAmount}`) : expireReason
   await appendOrderTimeline(orderId, 'expired', isGroup ? '拼单已超时取消' : '订单已过期', noticeDetail, 'system')
   await appendOrderClientMessage(updatedOrder, { eventType: 'expired', title: isGroup ? '拼单超时未接单已取消' : '订单已过期', detail: noticeDetail, actorRole: 'system' })
+  if (typeof notifyOrder === 'function' && updatedOrder.clientOpenid) {
+    await notifyOrder(updatedOrder.clientOpenid, 'orderCancelled', updatedOrder, {
+      statusText: '已过期',
+      cancelReason: noticeDetail,
+      refundAmount: isPaid ? Number(order.payAmount || 0) : 0,
+      cancelledAt: time
+    }, 'client', `order_cancelled:expired:${orderId}`).catch(error => console.error('[expire-order-notification]', { orderId, message: error.message }))
+  }
   if (isGroup && order.groupBuyId) {
     await db.collection('pet_playground_groups').doc(order.groupBuyId).update({
       data: {

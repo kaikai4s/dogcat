@@ -677,6 +677,16 @@ module.exports = function createHandler(context) {
           actorRole: 'system'
         }).catch(() => {})
       }
+      const cancellationDetail = {
+        statusText: '已取消',
+        cancelReason: reason || '宠物主取消订单',
+        refundAmount: quote.refundAmount,
+        cancelledAt: time
+      }
+      await notifyOrder(order.clientOpenid, 'orderCancelled', cancelledOrder, cancellationDetail, 'client', `order_cancelled:client:${data.orderId}:${clientRequestId}`).catch(error => console.error('[cancelOrder] client notification error:', error.message))
+      if (order.staffOpenid) {
+        await notifyOrder(order.staffOpenid, 'orderCancelled', cancelledOrder, cancellationDetail, 'staff', `order_cancelled:staff:${data.orderId}:${clientRequestId}`).catch(error => console.error('[cancelOrder] staff notification error:', error.message))
+      }
       if (refund) await appendOrderTimeline(data.orderId, 'refund_processing', '退款处理中', `退款金额 ¥${quote.refundAmount}`, 'system')
       if (order.groupBuyId || order.source === 'community_groupbuy') {
         const groupBuy = require('../services/playground-group-buy')(context)

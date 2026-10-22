@@ -480,10 +480,8 @@
           <view class="notice">远程开门使用模板 24826：订单编号 character_string1、订单状态 thing4、温馨提示 thing10、变更时间 time5。提示用户核实到访人员后，在门锁应用远程开门。</view>
           <view class="field-item"><text class="label">退款结果模板</text><input class="input" value="{{settings.subscription.templates.refundResult}}" data-field="refundResult" bindinput="subscriptionTemplateInput" placeholder="退款通知模板 ID（7272）" /></view>
           <view class="notice">模板 7272：退款金额 amount2、退款说明 thing3、退款时间 date4、退款商品 thing5、订单号 character_string6。服务及商城订单退款成功或失败后通知客户，处理中不发送结果通知。</view>
-          <view class="field-item"><text class="label">订单取消/过期模板（待接入）</text><input class="input" value="{{settings.subscription.templates.orderCancelled}}" data-field="orderCancelled" bindinput="subscriptionTemplateInput" placeholder="订单取消或超时通知模板 ID" /></view>
-          <view class="notice">预留给客户取消、无人接单超时、拼单超时等场景。当前只保存模板 ID，暂未接入发送。</view>
-          <view class="field-item"><text class="label">宠托师取消模板（待接入）</text><input class="input" value="{{settings.subscription.templates.staffCancellation}}" data-field="staffCancellation" bindinput="subscriptionTemplateInput" placeholder="宠托师取消通知模板 ID" /></view>
-          <view class="notice">预留给宠托师接单后取消场景。当前发送逻辑仍使用旧兼容回退，暂不自动使用此字段。</view>
+          <view class="field-item"><text class="label">订单取消/过期通知模板</text><input class="input" value="{{settings.subscription.templates.orderCancelled}}" data-field="orderCancelled" bindinput="subscriptionTemplateInput" placeholder="订单取消通知模板 ID（17217）" /></view>
+          <view class="notice">统一用于用户取消、宠托师取消、无人接单过期和超时关单。模板字段：取消原因 thing3、取消时间 time4、订单状态 phrase2、订单号 character_string1、退款金额 amount8。截图中的“订单取消通知”模板 ID 请填写在这里。</view>
           <view class="field-item"><text class="label">商城支付成功模板（待接入）</text><input class="input" value="{{settings.subscription.templates.mallOrderPaid}}" data-field="mallOrderPaid" bindinput="subscriptionTemplateInput" placeholder="商城支付成功通知模板 ID" /></view>
           <view class="field-item"><text class="label">商城发货模板（待接入）</text><input class="input" value="{{settings.subscription.templates.mallShipped}}" data-field="mallShipped" bindinput="subscriptionTemplateInput" placeholder="商城发货通知模板 ID" /></view>
           <view class="field-item"><text class="label">商城订单状态模板（待接入）</text><input class="input" value="{{settings.subscription.templates.mallOrderStatus}}" data-field="mallOrderStatus" bindinput="subscriptionTemplateInput" placeholder="商城收货/售后进度通知模板 ID" /></view>

@@ -61,6 +61,18 @@ module.exports = function createService({
         character_string6: { value: safeText(orderNo).slice(0, 32) }
       }
     }
+    if (templateKey === 'orderCancelled' || templateKey === 'staffCancellation') {
+      const status = safeText(detail.statusText || (order.status === 'expired' ? '已过期' : '已取消')).slice(0, 5)
+      const cancelledAt = detail.cancelledAt || order.cancelledAt || order.expiredAt || now()
+      const refundAmount = Number(detail.refundAmount ?? order.refundAmount ?? order.payAmount ?? 0)
+      return {
+        thing3: { value: safeText(detail.cancelReason || order.cancelReason || detail.tip || '订单状态已变更').slice(0, 20) },
+        time4: { value: formatDateTime(cancelledAt) },
+        phrase2: { value: status },
+        character_string1: { value: safeText(orderNo).slice(0, 32) },
+        amount8: { value: Math.max(0, refundAmount).toFixed(2) }
+      }
+    }
     if (templateKey === 'staffDirectOrder') {
       return {
         character_string2: { value: safeText(orderNo).slice(0, 32) },
@@ -231,9 +243,12 @@ module.exports = function createService({
     try {
       const settings = await getSystemSettings()
       templateId = settings.subscription.templates[templateKey] || ''
+      if (templateKey === 'orderCancelled') {
+        templateId = templateId || settings.subscription.templates.staffCancellation || ''
+      }
       // Cancellation is an assignment-status update, not a service-start or payment-success event.
-      if (!templateId && templateKey === 'staffCancellation') {
-        templateId = settings.subscription.templates.orderAssigned || ''
+      if (templateKey === 'staffCancellation') {
+        templateId = templateId || settings.subscription.templates.orderCancelled || settings.subscription.templates.orderAssigned || ''
       }
       if (!settings.subscription.enabled || !templateId) {
         const result = { status: 'skipped', error: !settings.subscription.enabled ? 'subscription_disabled' : 'template_not_configured', templateKey, templateId }

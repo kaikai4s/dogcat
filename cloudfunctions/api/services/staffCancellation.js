@@ -233,8 +233,8 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
         await update({ messageDone: true })
       }
       if (!event.subscriptionDone) {
-        const sent = await notifyOrder(event.notificationOrder.clientOpenid, 'staffCancellation', event.notificationOrder,
-          { statusText: direct ? '订单已取消' : '等待重新接单', tip: direct ? '宠托师取消，已发起全额退款' : '宠托师取消，等待重新接单', cancelledAt: event.createdAt }, 'client')
+        const sent = await notifyOrder(event.notificationOrder.clientOpenid, 'orderCancelled', event.notificationOrder,
+          { statusText: direct ? '已取消' : '待重新接单', cancelReason: direct ? '宠托师取消接单，已发起全额退款' : '宠托师取消接单，订单等待重新接单', refundAmount: direct ? event.refundAmount : 0, cancelledAt: event.createdAt }, 'client')
         if (!sent || !['sent', 'skipped'].includes(sent.status)) throw new Error('订阅通知待重试')
         await update({ subscriptionDone: true })
       }
@@ -251,9 +251,10 @@ module.exports = function createService({ db, crypto, now, toTimeValue, createRe
               createdAt: event.createdAt
             })
             if (typeof notifyOrder === 'function') {
-              await notifyOrder(sib.clientOpenid, 'staffCancellation', sib, {
-                statusText: '等待重新接单',
-                tip: '宠托师取消接单，拼单已重新放回大厅',
+              await notifyOrder(sib.clientOpenid, 'orderCancelled', sib, {
+                statusText: '待重新接单',
+                cancelReason: '宠托师取消接单，拼单已重新放回大厅',
+                refundAmount: 0,
                 cancelledAt: event.createdAt
               }, 'client').catch(() => {})
             }

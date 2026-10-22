@@ -2,7 +2,7 @@ module.exports = function createHelpers({
   db, ORDER_STATUS, now, getOrderPaymentDeadline, getSystemSettings,
   getWechatPayConfig, wechatPayRequest, validatePaymentCallbackPayload,
   markOrderPaid, sanitizeWechatPayload, couponDisplayStatus,
-  normalizeMallProduct, getSkuById
+  normalizeMallProduct, getSkuById, notifyOrder
 }) {
   async function reconcilePayment(order, payment, requireExpired = true) {
     if (payment.channel === 'mock') {
@@ -144,6 +144,14 @@ module.exports = function createHelpers({
       } catch (e) {
         console.error('[cancelUnpaidOrder] sync group buy error:', e)
       }
+    }
+    if (success && collectionName === 'orders' && typeof notifyOrder === 'function' && order.clientOpenid) {
+      await notifyOrder(order.clientOpenid, 'orderCancelled', { ...order, status: 'cancelled', paymentStatus: 'closed', cancelReason: options.reason || '超过30分钟未支付，系统自动取消', cancelledAt: time, refundAmount: 0 }, {
+        statusText: '已取消',
+        cancelReason: options.reason || '超过30分钟未支付，系统自动取消',
+        refundAmount: 0,
+        cancelledAt: time
+      }, 'client', `order_cancelled:unpaid:${order._id}`).catch(error => console.error('[cancel-unpaid-notification]', { orderId: order._id, message: error.message }))
     }
     return success
   }
