@@ -1,3 +1,4 @@
+const { sameShipment } = require('../utils/logisticsShipment')
 const { shouldRestoreMallRefundStock } = require('../utils/mallRefundStock')
 
 module.exports = function createHandler(context) {
@@ -220,7 +221,7 @@ module.exports = function createHandler(context) {
         if (current.status !== 'pending_ship') throw new Error('当前订单不可发货')
         if (current.paymentStatus && current.paymentStatus !== 'paid') throw new Error('订单未支付，不能发货')
         if (current.refundStatus === 'applied' || current.refundStatus === 'processing') throw new Error('该订单存在退款申请，请先处理退款后再发货')
-        await tx.collection('mall_orders').doc(order._id).update({ data: { status: 'shipped', expressCompany, trackingNo, shippedAt: time, updatedAt: time } })
+        await tx.collection('mall_orders').doc(order._id).update({ data: { status: 'shipped', expressCompany, trackingNo, shippedAt: time, logisticsCache: null, receivedAt: null, autoDeliveredByLogistics: false, autoDeliveredByTimeout: false, updatedAt: time } })
       })
       await logAdmin(admin, 'mall_order', order._id, 'shipOrder', { expressCompany, trackingNo })
       return { orderId: order._id, status: 'shipped', expressCompany, trackingNo }
@@ -232,17 +233,17 @@ module.exports = function createHandler(context) {
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)
       if (!order) throw new Error('订单不存在')
       const result = await queryOrderLogistics(order)
-      if (result && result.isDelivered && order.status === 'shipped') {
-        const time = now()
-        await db.collection('mall_orders').where({ _id: order._id, status: 'shipped' }).update({
-          data: {
-            status: 'completed',
-            receivedAt: time,
-            autoDeliveredByLogistics: true,
-            updatedAt: time
-          }
-        }).catch(() => {})
-        result.orderStatusUpdated = 'completed'
+      if (result && result.isDelivered && result.isSimulated === false && order.status === 'shipped') {
+        const updated = await db.runTransaction(async tx => {
+          const latest = (await tx.collection('mall_orders').doc(order._id).get()).data
+          if (!latest || latest.status !== 'shipped' || !sameShipment(latest, order) || (latest.refundStatus && !['none', 'rejected'].includes(latest.refundStatus))) return false
+          const time = now()
+          await tx.collection('mall_orders').doc(order._id).update({ data: {
+            status: 'completed', receivedAt: time, autoDeliveredByLogistics: true, updatedAt: time
+          } })
+          return true
+        })
+        if (updated) result.orderStatusUpdated = 'completed'
       }
       return result
     }

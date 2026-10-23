@@ -204,7 +204,7 @@
         </view>
       </view>
       <view wx:else class="logistics-empty">
-        <text>暂无轨迹信息或运输节点尚未录入</text>
+        <text>{{activeLogistics.message || '暂无轨迹信息，请稍后重试。'}}</text>
       </view>
       <view class="modal-actions">
         <button class="primary" bindtap="closeLogisticsModal">关闭</button>

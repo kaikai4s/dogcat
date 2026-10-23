@@ -37,6 +37,7 @@ Page({
     returnExpressCompany: '',
     returnTrackingNo: '',
     logisticsInfo: null,
+    logisticsMessage: '',
     loadingLogistics: false,
     refreshingLogistics: false
   },
@@ -70,13 +71,14 @@ Page({
   },
 
   queryLogistics() {
-    if (!this.data.id) return
-    this.setData({ loadingLogistics: true })
+    if (!this.data.id || this.data.loadingLogistics) return
+    this.setData({ loadingLogistics: true, logisticsMessage: '' })
     callFunction('mall', 'queryOrderLogistics', { orderId: this.data.id })
       .then((res) => {
-        const isDelivered = res && res.isDelivered
+        const isDelivered = res && res.orderStatusUpdated === 'completed'
         const updatePayload = {
           logisticsInfo: res && res.hasLogistics ? res : null,
+          logisticsMessage: res && res.message || '',
           loadingLogistics: false,
           refreshingLogistics: false
         }
@@ -87,14 +89,13 @@ Page({
         this.setData(updatePayload)
       })
       .catch(() => {
-        this.setData({ loadingLogistics: false, refreshingLogistics: false })
+        this.setData({ logisticsMessage: '物流查询暂不可用，请稍后重试', loadingLogistics: false, refreshingLogistics: false })
       })
   },
 
   refreshLogistics() {
     this.setData({ refreshingLogistics: true })
     this.queryLogistics()
-    wx.showToast({ title: '已刷新物流', icon: 'success' })
   },
 
   callExpressTel() {

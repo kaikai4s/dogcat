@@ -102,3 +102,31 @@ test('order payment preserves detailed failure and releases the retry lock', asy
     assert.equal(page._payingLock, false)
   }
 })
+
+test('settings logistics panel submits a separate Juhe key and blocks read-only editing', () => {
+  const calls = []
+  const page = loadPage('pages/admin/settings/index.js', {
+    showError: error => assert.fail(error.message), callFunction: (...args) => { calls.push(args); return new Promise(() => {}) }
+  })
+  const patches = []
+  page.setData = patch => {
+    patches.push(patch)
+    for (const [key, value] of Object.entries(patch)) {
+      const parts = key.split('.')
+      let obj = page.data
+      for (const part of parts.slice(0, -1)) obj = obj[part]
+      obj[parts.at(-1)] = value
+    }
+  }
+  page.logisticsInput({ currentTarget: { dataset: { field: 'juheKeyInput' } }, detail: { value: 'cannot-change' } })
+  assert.equal(patches.length, 0)
+  page.data.adminSuper = true
+  page.data.loaded = true
+  page.logisticsProviderChange({ detail: { value: '0' } })
+  page.logisticsInput({ currentTarget: { dataset: { field: 'juheKeyInput' } }, detail: { value: '  TEST_JUHE_KEY_1234567890  ' } })
+  page.save()
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0][2].logistics.juheKeyInput, 'TEST_JUHE_KEY_1234567890')
+  assert.equal(calls[0][2].logistics.provider, 'juhe')
+  assert.equal(calls[0][2].juheTelecomKeyInput, undefined)
+})

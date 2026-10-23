@@ -81,7 +81,7 @@ module.exports = function createService({
     const activeClientOrderCount = await countByQuery('orders', {
       clientOpenid: target.openid,
       status: inOp(activeClientStatuses)
-    }).catch(() => 0)
+    })
 
     if (activeClientOrderCount > 0) {
       throw new Error('该用户存在履约中或未完结的服务订单，无法删除')
@@ -91,7 +91,7 @@ module.exports = function createService({
     const refundingOrderCount = await countByQuery('orders', {
       clientOpenid: target.openid,
       paymentStatus: 'refunding'
-    }).catch(() => 0)
+    })
 
     if (refundingOrderCount > 0) {
       throw new Error('该用户存在退款处理中的订单，无法删除')
@@ -102,7 +102,7 @@ module.exports = function createService({
     const activeMallOrderCount = await countByQuery('mall_orders', {
       clientOpenid: target.openid,
       status: inOp(activeMallStatuses)
-    }).catch(() => 0)
+    })
 
     if (activeMallOrderCount > 0) {
       throw new Error('该用户存在履约中或售后处理中的商城订单，无法删除')
@@ -113,7 +113,7 @@ module.exports = function createService({
     const activeStaffOrderCount = await countByQuery('orders', {
       staffOpenid: target.openid,
       status: inOp(activeStaffStatuses)
-    }).catch(() => 0)
+    })
 
     if (activeStaffOrderCount > 0) {
       throw new Error('该宠托师有尚未完成的履约订单，无法删除')
@@ -124,29 +124,29 @@ module.exports = function createService({
     const clientIncidentCount = await countByQuery('order_incidents', {
       clientOpenid: target.openid,
       status: inOp(activeIncidentStatuses)
-    }).catch(() => 0)
+    })
     const staffIncidentCount = await countByQuery('order_incidents', {
       staffOpenid: target.openid,
       status: inOp(activeIncidentStatuses)
-    }).catch(() => 0)
+    })
 
     if (clientIncidentCount > 0 || staffIncidentCount > 0) {
       throw new Error('该用户存在处理中的纠纷或投诉，无法删除')
     }
 
     // 4. 检查作为宠托师是否存在待处理的提现申请
-    const activeWithdrawStatuses = ['pending', 'approved']
+    const activeWithdrawStatuses = ['pending', 'approved', 'transferring', 'transfer_failed']
     const activeWithdrawCount = await countByQuery('withdraw_requests', {
       staffOpenid: target.openid,
       status: inOp(activeWithdrawStatuses)
-    }).catch(() => 0)
+    })
 
     if (activeWithdrawCount > 0) {
       throw new Error('该宠托师存在待处理的提现申请，无法删除')
     }
     const activeUserAssetWithdrawCount = await countByQuery('withdraw_requests', {
       assetType: 'user', userOpenid: target.openid, status: inOp(activeWithdrawStatuses)
-    }).catch(() => 0)
+    })
     if (activeUserAssetWithdrawCount > 0) throw new Error('该用户存在待处理的资产提现申请，无法删除')
   }
 
@@ -158,7 +158,8 @@ module.exports = function createService({
     }
     cleanup.userInvitesAsInviter = await removeByQuery('user_invites', { inviterOpenid: targetOpenid })
     cleanup.userInvitesAsInvited = await removeByQuery('user_invites', { invitedOpenid: targetOpenid })
-    cleanup.userAssetEarnings = await removeByQuery('user_asset_earnings', { userOpenid: targetOpenid })
+    // Cash ledgers are historical financial records and also prevent duplicate activity awards.
+    cleanup.userAssetEarningsRetained = await countByQuery('user_asset_earnings', { userOpenid: targetOpenid })
     const staffProfiles = await readScopedDocuments('staff_profiles', { openid: targetOpenid })
     await Promise.all(staffProfiles.map((profile) => db.collection('staff_profiles').doc(profile._id).update({ data: { auditStatus: 'rejected', auditRemark: '用户已删除', isFeatured: false, featuredAt: '', featuredByOpenid: '', updatedAt: now() } })))
     cleanup.staffProfilesMarkedDeleted = staffProfiles.length

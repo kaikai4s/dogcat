@@ -60,7 +60,9 @@
       "Bash(npm:*)",
       "WebFetch(domain:developers.weixin.qq.com)",
       "Bash(gh api:*)",
-      "Bash(set -o pipefail)"
+      "Bash(set -o pipefail)",
+      "Bash(command -v cloc)",
+      "Bash(command -v scc)"
     ]
   }
 }

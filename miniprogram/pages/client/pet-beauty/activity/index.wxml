@@ -3,7 +3,7 @@
   <!-- 活动海报 & 冠军大奖专区 -->
   <view class="beauty-poster-section">
     <!-- 运营上传的定制活动海报 (完整呈现2.5:1或16:9横屏海报，不裁切内容，骨骼预加载，轻薄磨砂角标不挡画面) -->
-    <view class="poster-banner-box" wx:if="{{contestConfig.enabled !== false && (contestConfig.posterUrl || contestConfig.posterFileId)}}" bindtap="previewPoster">
+    <view class="poster-banner-box" wx:if="{{contestConfig.enabled !== false && contestConfig.firstPrizeAmount > 0 && (contestConfig.posterUrl || contestConfig.posterFileId)}}" bindtap="previewPoster">
       <view class="poster-skeleton-box skeleton-shimmer" wx:if="{{!posterLoaded}}"></view>
       <image class="poster-banner-img {{posterLoaded ? 'is-loaded' : 'is-loading'}}" 
              src="{{contestConfig.posterUrl || contestConfig.posterFileId}}" 
@@ -38,7 +38,7 @@
 
       <view class="contest-coming" wx:if="{{contestConfig.enabled === false}}">即将开始</view>
       <view class="hero-title">{{pageTitle || (monthKey ? monthKey + ' 宠物最美大赛' : '宠物最美大赛')}}</view>
-      <view class="hero-desc">{{contestConfig.enabled === false ? '现金奖活动即将开始，排行榜持续开放，月度结算仍可获得专属称号。' : contestConfig.bannerSubtitle}}</view>
+      <view class="hero-desc">{{contestConfig.enabled === false ? '现金奖活动即将开始，排行榜持续开放，月度结算仍可获得专属称号。' : contestConfig.firstPrizeAmount > 0 ? contestConfig.bannerSubtitle : '排行榜持续开放，月度结算可获得专属称号，本月不设现金奖金。'}}</view>
 
       <!-- 冠军奖金与权益醒目展区 -->
       <view class="hero-prize-card" wx:if="{{contestConfig.enabled !== false && contestConfig.firstPrizeAmount > 0}}" bindtap="openRulesModal">
@@ -77,7 +77,7 @@
   </view>
 
   <!-- 顶部轻量规则提示条 (若上传了海报时，在此呈现常驻奖金与规则快捷条) -->
-  <view class="contest-quick-bar" wx:if="{{contestConfig.enabled !== false && (contestConfig.posterUrl || contestConfig.posterFileId)}}" bindtap="openRulesModal">
+  <view class="contest-quick-bar" wx:if="{{contestConfig.enabled !== false && contestConfig.firstPrizeAmount > 0 && (contestConfig.posterUrl || contestConfig.posterFileId)}}" bindtap="openRulesModal">
     <view class="quick-bar-left">
       <text class="remix-icon ri-trophy-fill trophy-gold"></text>
       <text class="quick-bar-strong">{{contestConfig.enabled === false ? '即将开始' : contestConfig.firstPrizeAmount > 0 ? '冠军奖金 ¥' + contestConfig.firstPrizeAmount : '月度荣誉榜'}}</text>

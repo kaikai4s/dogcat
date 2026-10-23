@@ -24,7 +24,7 @@ Page({
   onUnload() { this._closed = true },
   async saveJson(snapshot, filename) {
     const path = wx.env.USER_DATA_PATH + '/' + filename
-    await new Promise((resolve, reject) => wx.getFileSystemManager().writeFile({ filePath: path, data: JSON.stringify(snapshot, null, 2), encoding: 'utf8', success: resolve, fail: reject }))
+    await new Promise((resolve, reject) => wx.getFileSystemManager().writeFile({ filePath: path, data: JSON.stringify(snapshot), encoding: 'utf8', success: resolve, fail: reject }))
     if (this._closed) return
     this.setData({ savedPath: path })
     if (typeof wx.shareFileMessage === 'function') {

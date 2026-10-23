@@ -16,6 +16,7 @@ function fixture() {
   const db = createCollectionStore({ users })
   const context = {
     db,
+    checkTextSecurity: async () => {},
     nowText: () => new Date().toISOString(),
     safeText: (v) => String(v || ''),
     getUser: async (id) => db.state.users.find((u) => u.openid === id)

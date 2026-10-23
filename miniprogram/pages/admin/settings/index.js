@@ -12,6 +12,13 @@ const defaultSupplyItemObjects = [
   { id: 'supply_disinfectant', name: '安全宠物消毒用品', description: '宠物专用安全无毒，进门及工具消毒', purchaseUrl: '', enabled: true }
 ]
 
+function normalizeLogisticsConfig(value = {}) {
+  return { enabled: value.enabled !== false, provider: value.provider || 'juhe',
+    juheKeyConfigured: value.juheKeyConfigured || '', juheKeyInput: '',
+    appCodeConfigured: value.appCodeConfigured || '', appCodeInput: '',
+    keyConfigured: value.keyConfigured || '', keyInput: '', customer: value.customer || '' }
+}
+
 // Amounts use yuan in the existing settings/API; require exact positive cents.
 function validAmount(value, allowZero = false) {
   const text = String(value).trim()
@@ -538,6 +545,7 @@ function buildSettingSummary(settings = {}) {
 
 Page({
   data: {
+    logisticsProviderLabels: ['聚合数据（常用快递查询）', '阿里云', '快递100'],
     loaded: false,
     requiredItemsText: '',
     sceneReportInfosText: '[]',
@@ -552,6 +560,7 @@ Page({
       enablePetBreedAi: true,
       juheTelecomKeyConfigured: '',
       juheTelecomKeyInput: '',
+      logistics: normalizeLogisticsConfig(),
       payment: normalizePaymentConfig(),
       settlement: normalizeSettlementConfig(),
       invitation: normalizeInvitationConfig(),
@@ -570,6 +579,7 @@ Page({
     settingSummary: buildSettingSummary({
       enableTestAddressMode: false,
       enablePetBreedAi: true,
+      logistics: normalizeLogisticsConfig(),
       payment: normalizePaymentConfig(),
       settlement: normalizeSettlementConfig(),
       subscription: normalizeSubscriptionConfig(),
@@ -634,6 +644,7 @@ Page({
           enablePetBreedAi: settings.enablePetBreedAi !== false,
           juheTelecomKeyConfigured: settings.juheTelecomKeyConfigured || '',
           juheTelecomKeyInput: '',
+          logistics: normalizeLogisticsConfig(settings.logistics),
           payment: normalizePaymentConfig(settings.payment),
           settlement: normalizeSettlementConfig(settings.settlement),
           invitation: normalizeInvitationConfig(settings.invitation),
@@ -799,6 +810,20 @@ Page({
   },
 
   noop() {},
+
+  logisticsProviderChange(e) {
+    if (!this.data.adminSuper) return
+    const provider = ['juhe', 'aliyun', 'kuaidi100'][Number(e.detail.value)]
+    if (provider) this.setData({ 'settings.logistics.provider': provider })
+  },
+  logisticsEnabledChange(e) {
+    if (this.data.adminSuper) this.setData({ 'settings.logistics.enabled': e.detail.value === true })
+  },
+  logisticsInput(e) {
+    if (!this.data.adminSuper) return
+    const field = e.currentTarget.dataset.field
+    if (['juheKeyInput', 'keyInput', 'appCodeInput', 'customer'].includes(field)) this.setData({ ['settings.logistics.' + field]: e.detail.value.trim() })
+  },
 
   inputJuheKey(e) {
     const val = (e && e.detail && e.detail.value !== undefined) ? e.detail.value : (e || '')
@@ -2108,6 +2133,7 @@ Page({
           staffZhima: normalizeStaffZhima(settings.staffZhima),
           enableTestAddressMode: settings.enableTestAddressMode === true,
           enablePetBreedAi: settings.enablePetBreedAi !== false,
+          logistics: normalizeLogisticsConfig(settings.logistics),
           payment: normalizePaymentConfig(settings.payment),
           settlement: normalizeSettlementConfig(settings.settlement),
           subscription: normalizeSubscriptionConfig(settings.subscription),

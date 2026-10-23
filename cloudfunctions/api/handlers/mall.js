@@ -1,3 +1,4 @@
+const { sameShipment } = require('../utils/logisticsShipment')
 module.exports = function createHandler(context) {
   const {
     cancelUnpaidOrder,
@@ -297,17 +298,17 @@ module.exports = function createHandler(context) {
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)
       if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
       const result = await queryOrderLogistics(order)
-      if (result && result.isDelivered && order.status === 'shipped') {
-        const time = now()
-        await db.collection('mall_orders').where({ _id: order._id, status: 'shipped' }).update({
-          data: {
-            status: 'completed',
-            receivedAt: time,
-            autoDeliveredByLogistics: true,
-            updatedAt: time
-          }
-        }).catch(() => {})
-        result.orderStatusUpdated = 'completed'
+      if (result && result.isDelivered && result.isSimulated === false && order.status === 'shipped') {
+        const updated = await db.runTransaction(async tx => {
+          const latest = (await tx.collection('mall_orders').doc(order._id).get()).data
+          if (!latest || latest.status !== 'shipped' || !sameShipment(latest, order) || (latest.refundStatus && !['none', 'rejected'].includes(latest.refundStatus))) return false
+          const time = now()
+          await tx.collection('mall_orders').doc(order._id).update({ data: {
+            status: 'completed', receivedAt: time, autoDeliveredByLogistics: true, updatedAt: time
+          } })
+          return true
+        })
+        if (updated) result.orderStatusUpdated = 'completed'
       }
       return result
     }

@@ -37,6 +37,13 @@
         <view class="meta-chip {{settings.staffSupplies.transfer.platformDailyMaxAmount !== '' ? 'success' : 'warning'}}">{{settings.staffSupplies.transfer.platformDailyMaxAmount !== '' ? '日额度 ¥' + settings.staffSupplies.transfer.platformDailyMaxAmount : '日额度不限'}}</view>
       </view>
     </view>
+    <view class="admin-compact-card setting-overview-card" data-panel="logistics" bindtap="openSettingModal">
+      <view class="admin-summary-row"><view class="admin-summary-main">
+        <view class="admin-summary-title">物流查询（聚合数据）</view>
+        <view class="admin-summary-sub">商城订单真实快递轨迹查询</view>
+      </view><view class="meta-chip {{settings.logistics.enabled ? 'success' : 'warning'}}">{{settings.logistics.enabled ? '已开启' : '已关闭'}}</view></view>
+      <view class="setting-summary-line">{{settings.logistics.provider === 'juhe' ? (settings.logistics.juheKeyConfigured ? '聚合数据 Key 已配置' : '待配置聚合数据 Key') : '当前使用其他物流服务'}} · 点击配置</view>
+    </view>
     <view class="admin-compact-card setting-overview-card" data-panel="realNameVerification" bindtap="openSettingModal">
       <view class="admin-summary-row">
         <view class="admin-summary-main">
@@ -900,6 +907,30 @@
               <button class="ghost compact-btn add-btn" bindtap="addTimeSlotSurchargeItem">+ 添加时段加价</button>
             </view>
           </view>
+        </view>
+
+        <view wx:if="{{activeSettingPanel === 'logistics'}}" class="setting-modal-section">
+          <view class="policy-notice">查询商城订单的真实快递轨迹。聚合数据 Key 请从「个人中心 → 我的数据 → 常用快递查询」复制，与实名核验接口的 Key 分开配置。</view>
+          <view class="field-item"><text class="label">开启物流查询</text><switch checked="{{settings.logistics.enabled}}" disabled="{{!adminSuper}}" bindchange="logisticsEnabledChange" /></view>
+          <view class="field-item"><text class="label">查询服务</text>
+            <picker range="{{logisticsProviderLabels}}" value="{{settings.logistics.provider === 'aliyun' ? 1 : settings.logistics.provider === 'kuaidi100' ? 2 : 0}}" disabled="{{!adminSuper}}" bindchange="logisticsProviderChange">
+              <view class="input">{{settings.logistics.provider === 'aliyun' ? '阿里云' : settings.logistics.provider === 'kuaidi100' ? '快递100' : '聚合数据（常用快递查询）'}} ›</view>
+            </picker>
+          </view>
+          <block wx:if="{{settings.logistics.provider === 'juhe'}}">
+            <view class="policy-notice">{{settings.logistics.juheKeyConfigured ? 'Key 已配置，留空保存会保留原 Key。' : '尚未配置 Key，填写后点击下方保存设置。'}}</view>
+            <view class="field-item"><text class="label">聚合数据快递查询 Key</text>
+              <input class="input" password="{{true}}" maxlength="128" disabled="{{!adminSuper}}" placeholder="输入新 Key；留空保留原值" value="{{settings.logistics.juheKeyInput}}" data-field="juheKeyInput" bindinput="logisticsInput" />
+            </view>
+            <view class="policy-notice">顺丰、中通、跨越等查询所需的手机号后四位，会从订单收货电话自动获取。暂无记录或接口异常时会显示提示，不生成模拟轨迹。</view>
+          </block>
+          <block wx:if="{{settings.logistics.provider === 'aliyun'}}">
+            <view class="field-item"><text class="label">阿里云 AppCode{{settings.logistics.appCodeConfigured ? '（已配置）' : ''}}</text><input class="input" password="{{true}}" disabled="{{!adminSuper}}" maxlength="128" placeholder="留空保留原值" value="{{settings.logistics.appCodeInput}}" data-field="appCodeInput" bindinput="logisticsInput" /></view>
+          </block>
+          <block wx:if="{{settings.logistics.provider === 'kuaidi100'}}">
+            <view class="field-item"><text class="label">快递100 Customer</text><input class="input" disabled="{{!adminSuper}}" maxlength="128" value="{{settings.logistics.customer}}" data-field="customer" bindinput="logisticsInput" /></view>
+            <view class="field-item"><text class="label">快递100 Key{{settings.logistics.keyConfigured ? '（已配置）' : ''}}</text><input class="input" password="{{true}}" disabled="{{!adminSuper}}" maxlength="128" placeholder="留空保留原值" value="{{settings.logistics.keyInput}}" data-field="keyInput" bindinput="logisticsInput" /></view>
+          </block>
         </view>
 
         <view wx:if="{{activeSettingPanel === 'realNameVerification'}}" class="setting-modal-section">

@@ -1,3 +1,6 @@
+const { sameShipment } = require('../utils/logisticsShipment')
+const { documentPages, readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createService({
   applyCouponToPricing,
   db,
@@ -296,25 +299,31 @@ module.exports = function createService({
     if (!db || typeof db.collection !== 'function') return []
     const currentTime = now()
     const thresholdMs = timeoutDays * 24 * 3600 * 1000
-    const ordersRes = await db.collection('mall_orders').where({ status: 'shipped' }).limit(100).get().catch(() => ({ data: [] }))
-    const candidates = ordersRes.data || []
-    const updatedOrderIds = []
-    for (const order of candidates) {
-      if (order.refundStatus && !['none', 'rejected'].includes(order.refundStatus)) continue
+    const eligibility = order => {
+      if (!order || order.status !== 'shipped' || (order.refundStatus && !['none', 'rejected'].includes(order.refundStatus))) return null
       const shippedTime = order.shippedAt ? new Date(order.shippedAt).getTime() : 0
-      const isDeliveredByCache = order.logisticsCache && order.logisticsCache.isDelivered === true
+      const isDeliveredByLogistics = Boolean(order.logisticsCache && order.logisticsCache.isSimulated === false && order.logisticsCache.isDelivered === true && sameShipment(order, order.logisticsCache.shipment))
       const isTimeout = shippedTime > 0 && currentTime.getTime() - shippedTime >= thresholdMs
-      if (isDeliveredByCache || isTimeout) {
-        await db.collection('mall_orders').doc(order._id).update({
-          data: {
-            status: 'completed',
-            receivedAt: currentTime,
-            autoDeliveredByTimeout: isTimeout,
-            autoDeliveredByLogistics: isDeliveredByCache,
+      return isDeliveredByLogistics || isTimeout ? { isDeliveredByLogistics, isTimeout } : null
+    }
+    const updatedOrderIds = []
+    for await (const page of documentPages(db, db.command, 'mall_orders', { status: 'shipped' })) {
+      for (const order of page) {
+        if (!eligibility(order)) continue
+        const completed = await db.runTransaction(async tx => {
+          // Recheck refunds and order status inside the write transaction.
+          const latest = await readOptionalDocument(tx, 'mall_orders', order._id)
+          const eligible = eligibility(latest)
+          if (!eligible) return false
+          await tx.collection('mall_orders').doc(order._id).update({ data: {
+            status: 'completed', receivedAt: currentTime,
+            autoDeliveredByTimeout: eligible.isTimeout,
+            autoDeliveredByLogistics: eligible.isDeliveredByLogistics,
             updatedAt: currentTime
-          }
-        }).catch(() => {})
-        updatedOrderIds.push(order._id)
+          } })
+          return true
+        })
+        if (completed) updatedOrderIds.push(order._id)
       }
     }
     return updatedOrderIds

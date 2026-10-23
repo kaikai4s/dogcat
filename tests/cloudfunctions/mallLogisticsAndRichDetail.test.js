@@ -54,7 +54,7 @@ test('mallCatalog: supports detail images, parameters, usage instructions, servi
   assert.equal(pub.usageInstructions, '建议采用7日换粮法循序渐进；每日喂食量请参考体重对照表。')
 })
 
-test('logistics: provides express list and generates realistic traces with status tracking', async () => {
+test('logistics: provides express list and never invents traces or signed delivery without a configured provider', async () => {
   const logistics = createLogisticsService({
     db: {
       collection: () => ({
@@ -102,9 +102,9 @@ test('logistics: provides express list and generates realistic traces with statu
   assert.equal(result.expressCompany, '顺丰速运')
   assert.equal(result.trackingNo, 'SF1234567890')
   assert.ok(Array.isArray(result.traces))
-  assert.ok(result.traces.length >= 3)
-  assert.ok(result.traces[0].time)
-  assert.ok(result.traces[0].context)
+  assert.equal(result.traces.length, 0)
+  assert.equal(result.isDelivered, false)
+  assert.match(result.message, /未配置/)
 
   // 5. Completed order marks isDelivered: true
   const completedOrder = {
@@ -113,9 +113,9 @@ test('logistics: provides express list and generates realistic traces with statu
     receivedAt: new Date().toISOString()
   }
   const completedResult = await logistics.queryOrderLogistics(completedOrder)
-  assert.equal(completedResult.isDelivered, true)
-  assert.equal(completedResult.statusCode, 'delivered')
-  assert.equal(completedResult.traces[0].status, 'delivered')
+  assert.equal(completedResult.isDelivered, false)
+  assert.equal(completedResult.statusCode, 'pending')
+  assert.equal(completedResult.traces.length, 0)
 })
 
 test('mall: supports custom shippingFee per product and customizable service guarantees', () => {
@@ -184,34 +184,11 @@ test('mall: scheduled task auto-completes delivered or expired shipped orders', 
   const eightDaysAgo = new Date(nowTime.getTime() - 8 * 24 * 3600 * 1000)
   const twoDaysAgo = new Date(nowTime.getTime() - 2 * 24 * 3600 * 1000)
 
-  let updatedOrders = []
-  const mockDb = {
-    collection: (name) => {
-      assert.equal(name, 'mall_orders')
-      return {
-        doc: (docId) => ({
-          update: async ({ data }) => {
-            updatedOrders.push({ data, id: docId })
-            return { stats: { updated: 1 } }
-          }
-        }),
-        where: (query) => ({
-          limit: () => ({
-            get: async () => ({
-              data: [
-                // 订单1：发货超7天，无售后，应自动完成
-                { _id: 'ord_timeout', status: 'shipped', shippedAt: eightDaysAgo.toISOString(), refundStatus: 'none' },
-                // 订单2：发货仅2天，但物流缓存显示已签收，应自动完成
-                { _id: 'ord_delivered', status: 'shipped', shippedAt: twoDaysAgo.toISOString(), refundStatus: 'none', logisticsCache: { isDelivered: true } },
-                // 订单3：售后处理中，不应自动收货
-                { _id: 'ord_refunding', status: 'shipped', shippedAt: eightDaysAgo.toISOString(), refundStatus: 'applied' }
-              ]
-            })
-          })
-        })
-      }
-    }
-  }
+  const mockDb = require('./helpers').createCollectionStore({ mall_orders: [
+    { _id: 'ord_timeout', status: 'shipped', shippedAt: eightDaysAgo.toISOString(), refundStatus: 'none' },
+    { _id: 'ord_delivered', status: 'shipped', trackingNo: 'TRACK', expressCompany: '顺丰速运', shippedAt: twoDaysAgo.toISOString(), refundStatus: 'none', logisticsCache: { isDelivered: true, isSimulated: false, shipment: { trackingNo: 'TRACK', expressCompany: '顺丰速运', shippedAt: twoDaysAgo.toISOString() } } },
+    { _id: 'ord_refunding', status: 'shipped', shippedAt: eightDaysAgo.toISOString(), refundStatus: 'applied' }
+  ] })
 
   const catalog = createMallCatalog({
     applyCouponToPricing: (base) => base,

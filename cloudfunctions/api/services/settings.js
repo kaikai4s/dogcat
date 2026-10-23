@@ -200,19 +200,24 @@ module.exports = function createService({
     const rawKey = logistics.keyInput !== undefined ? logistics.keyInput : logistics.key
     const appCode = (rawAppCode !== undefined ? safeText(rawAppCode).trim() : '') || safeText(existingLogistics.appCode).trim()
     const key = (rawKey !== undefined ? safeText(rawKey).trim() : '') || safeText(existingLogistics.key).trim()
+    const rawJuheKey = logistics.juheKeyInput !== undefined ? logistics.juheKeyInput : logistics.juheKey
+    const juheKey = (rawJuheKey !== undefined ? safeText(rawJuheKey).trim() : '') || safeText(existingLogistics.juheKey).trim()
+    if (juheKey && !/^[a-zA-Z0-9_-]{16,128}$/.test(juheKey)) throw new Error('【物流设置】聚合数据 Key 格式不正确，请复制完整 Key')
     const customer = safeText(logistics.customer !== undefined ? logistics.customer : existingLogistics.customer).trim()
-    const provider = safeText(logistics.provider || existingLogistics.provider || 'aliyun').trim().toLowerCase()
+    const provider = safeText(logistics.provider || existingLogistics.provider || 'juhe').trim().toLowerCase()
     const enabled = logistics.enabled !== undefined ? logistics.enabled !== false : existingLogistics.enabled !== false
 
     const normalized = {
       enabled,
-      provider: ['aliyun', 'kuaidi100'].includes(provider) ? provider : 'aliyun',
+      provider: ['juhe', 'aliyun', 'kuaidi100'].includes(provider) ? provider : 'juhe',
       customer,
+      juheKeyConfigured: maskConfigured(juheKey || process.env.JUHE_EXP_KEY),
       appCodeConfigured: maskConfigured(appCode || process.env.ALIYUN_LOGISTICS_APPCODE),
       keyConfigured: maskConfigured(key || process.env.KUAIDI100_KEY)
     }
 
     if (includeSecrets) {
+      normalized.juheKey = juheKey
       normalized.appCode = appCode || process.env.ALIYUN_LOGISTICS_APPCODE || ''
       normalized.key = key || process.env.KUAIDI100_KEY || ''
     }

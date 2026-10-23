@@ -166,7 +166,7 @@ Page({
     callFunction('adminMall', 'queryOrderLogistics', { orderId: order._id })
       .then((res) => {
         this.setData({ activeLogistics: res, loadingLogistics: false })
-        if (res && res.isDelivered && order.status === 'shipped') {
+        if (res && res.orderStatusUpdated === 'completed' && order.status === 'shipped') {
           this.load({ reset: true })
         }
       })

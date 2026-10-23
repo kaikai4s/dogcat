@@ -37,14 +37,14 @@ test('export includes all config sections and defaults but excludes people, orde
     orders: [{ _id: 'private-order' }], admin_access_config: [{ _id: 'policy', enabled: true, ownerOpenid: 'owner' }],
     platform_configs: [{ _id: 'settings', key: 'system_settings', value: {
       payment: { mode: 'wechat', mchId: 'merchant', apiV3Key: 'PAYMENT_SECRET', privateKey: 'PRIVATE_KEY' },
-      qwenApiKey: 'AI_SECRET', logistics: { key: 'LOGISTICS_SECRET', appCode: 'APP_CODE' },
+      qwenApiKey: 'AI_SECRET', logistics: { key: 'LOGISTICS_SECRET', appCode: 'APP_CODE', juheKey: 'JUHE_EXP_SECRET_123456789', juheKeyInput: 'JUHE_INPUT_SECRET_123456789' },
       staffSupplies: { transfer: { enabled: true, sceneId: 'PAYOUT_SCENE' } }, customerService: { phone: '19900000000' }
     } }]
   })
   assert.equal(Object.keys(snapshot.sections).length, 13)
   assert.ok(snapshot.sections.prices.length > 0 && snapshot.sections.checkinRules.length > 0)
   const text = JSON.stringify(snapshot)
-  for (const secret of ['PAYMENT_SECRET', 'PRIVATE_KEY', 'AI_SECRET', 'LOGISTICS_SECRET', 'APP_CODE', 'PAYOUT_SCENE', 'private-order']) assert.ok(!text.includes(secret), secret)
+  for (const secret of ['PAYMENT_SECRET', 'PRIVATE_KEY', 'AI_SECRET', 'LOGISTICS_SECRET', 'JUHE_EXP_SECRET_123456789', 'JUHE_INPUT_SECRET_123456789', 'APP_CODE', 'PAYOUT_SCENE', 'private-order']) assert.ok(!text.includes(secret), secret)
   assert.equal(snapshot.sections.system[0].value.customerService.phone, '19900000000')
   assert.equal(snapshot.source.envId, SOURCE)
 })
@@ -56,7 +56,7 @@ test('cross-env preview rewrites assets, then atomic import retains destination 
   } }] })
   const target = setup(TARGET, { platform_configs: [{ _id: 'production-settings', key: 'system_settings', value: {
     payment: { mode: 'wechat', mchId: 'production-merchant', apiV3Key: 'production-secret' },
-    qwenApiKey: 'production-ai-secret', logistics: { key: 'production-logistics' }, staffSupplies: { transfer: { enabled: true, sceneId: 'production-scene' } }
+    qwenApiKey: 'production-ai-secret', logistics: { key: 'production-logistics', juheKey: 'production-juhe-secret' }, staffSupplies: { transfer: { enabled: true, sceneId: 'production-scene' } }
   } }], orders: [{ _id: 'keep-order', status: 'paid' }] })
   const preview = await target.call('preview', { snapshot })
   assert.equal(preview.ok, true, preview.message)
@@ -69,6 +69,7 @@ test('cross-env preview rewrites assets, then atomic import retains destination 
   assert.equal(settings.payment.mchId, 'production-merchant')
   assert.equal(settings.qwenApiKey, 'production-ai-secret')
   assert.equal(settings.logistics.key, 'production-logistics')
+  assert.equal(settings.logistics.juheKey, 'production-juhe-secret')
   assert.equal(settings.staffSupplies.transfer.sceneId, 'production-scene')
   assert.equal(settings.enableTestAddressMode, false)
   assert.equal(target.db.state.orders[0].status, 'paid')

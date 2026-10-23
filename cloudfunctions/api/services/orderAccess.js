@@ -19,22 +19,26 @@ module.exports = function createService({
 }) {
   async function getOrderForAccess(openid, orderId, { allowAdmin = true } = {}) {
     const user = await getUser(openid)
-    const adminAccess = allowAdmin && user.roles.includes('admin')
-    if (adminAccess) await authorizeAdmin(user, 'admin.getOrderDetail')
+    let adminAccess = false
     const res = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
     let order = res && res.data ? { ...res.data, _id: orderId } : null
-    if (!order || (isAdminDeletedOrder(order) && !adminAccess)) throw new Error('订单不存在')
+    if (!order) throw new Error('订单不存在')
     order = await expireUnacceptedOrder(orderId, order)
     const isClient = order.clientOpenid === openid || (user._id && order.clientUserId === user._id)
     const isCurrentStaff = order.staffOpenid === openid || (user._id && order.staffUserId === user._id)
     const isPreviousStaff = user.roles.includes('staff') && ((Array.isArray(order.previousStaffRecords) && order.previousStaffRecords.some((r) => r.staffOpenid === openid)) || order.originalStaffOpenid === openid)
     const canPreviewForStaff = user.roles.includes('staff') && order.status === ORDER_STATUS.PAID && (isOpenOrder(order) || order.requestedStaffOpenid === openid)
-    const allowed = isClient || isCurrentStaff || order.requestedStaffOpenid === openid || adminAccess || canPreviewForStaff || isPreviousStaff
-    if (!allowed) throw new Error('无权访问订单')
-    if (!adminAccess && !isClient && !isCurrentStaff && !isPreviousStaff && user.roles.includes('staff')) {
+    let participantAccess = isClient || isCurrentStaff || order.requestedStaffOpenid === openid || canPreviewForStaff || isPreviousStaff
+    if (participantAccess && !isClient && !isCurrentStaff && !isPreviousStaff && user.roles.includes('staff')) {
       const profiles = await db.collection('staff_profiles').where({ openid }).limit(1).get()
-      if (!matchesStaffGender(order, profiles.data[0] || {})) throw new Error('无权访问订单')
+      participantAccess = matchesStaffGender(order, profiles.data[0] || {})
     }
+    if ((!participantAccess || isAdminDeletedOrder(order)) && allowAdmin && user.roles.includes('admin')) {
+      await authorizeAdmin(user, 'admin.getOrderDetail')
+      adminAccess = true
+    }
+    if (isAdminDeletedOrder(order) && !adminAccess) throw new Error('订单不存在')
+    if (!participantAccess && !adminAccess) throw new Error('无权访问订单')
     return { user, order }
   }
 

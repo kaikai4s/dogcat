@@ -473,7 +473,8 @@ module.exports = function createHandler(context) {
           updatedAt: context.nowText
             ? context.nowText()
             : new Date().toISOString()
-        }
+        },
+        context.checkTextSecurity
       )
       return { residentialCommunity: normalizedCommunity }
     }

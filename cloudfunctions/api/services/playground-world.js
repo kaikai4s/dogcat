@@ -116,7 +116,16 @@ function publicPlot(plot, openid) {
     staffCard: plot.staffCard ? { id: plot.staffCard.id, label: plot.staffCard.label } : null
   }
 }
-async function updateCommunity(db, openid, userId, community, extra = {}) {
+async function updateCommunity(db, openid, userId, community, extra = {}, checkTextSecurity) {
+  if (community) {
+    const fields = ['name', 'address', 'city', 'district']
+    const limits = [100, 300, 60, 60]
+    if (!String(community.name || '').trim() || fields.some((key, index) => String(community[key] || '').length > limits[index])) throw new Error('小区名称或地址长度无效')
+    const latitude = Number(community.latitude || 0), longitude = Number(community.longitude || 0)
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) throw new Error('小区位置无效')
+    if (typeof checkTextSecurity !== 'function') throw new Error('小区信息安全检测暂不可用，请稍后重试')
+    await checkTextSecurity(openid, fields.map(key => String(community[key] || '').trim()).filter(Boolean).join('\n'), { scene: 2, label: '小区名称和地址' })
+  }
   return transaction(db,async (tx) => {
     const placed = await read(tx, ownerId(openid))
     if (

@@ -1,3 +1,6 @@
+const { shipmentIdentity, sameShipment } = require('../utils/logisticsShipment')
+const { readOptionalDocument } = require('../utils/documentPages')
+
 module.exports = function createService({
   db,
   getSystemSettings,
@@ -15,6 +18,7 @@ module.exports = function createService({
     { name: '申通快递', code: 'sto', queryCode: 'shentong', tel: '95543' },
     { name: '中国邮政EMS', code: 'ems', queryCode: 'ems', tel: '11183' },
     { name: '德邦快递', code: 'dbl', queryCode: 'debangwuliu', tel: '95353' },
+    { name: '跨越速运', code: 'ky', queryCode: 'kuayue', tel: '95324' },
     { name: '丹鸟物流', code: 'dn', queryCode: 'danniao', tel: '400-855-5566' }
   ]
 
@@ -24,200 +28,128 @@ module.exports = function createService({
 
   function normalizeExpressCompany(nameOrCode = '') {
     const raw = safeText(nameOrCode).trim().toLowerCase()
-    if (!raw) return EXPRESS_COMPANIES[0]
+    if (!raw) return { name: '快递配送', code: 'other', queryCode: 'auto', tel: '' }
     const matched = EXPRESS_COMPANIES.find((item) => {
       const n = item.name.toLowerCase()
       const c = item.code.toLowerCase()
       const q = item.queryCode.toLowerCase()
       return n.includes(raw) || raw.includes(n) || c === raw || q === raw
     })
-    return matched || { name: safeText(nameOrCode).trim() || '快递配送', code: 'other', queryCode: 'auto', tel: '95338' }
+    return matched || { name: safeText(nameOrCode).trim() || '快递配送', code: 'other', queryCode: 'auto', tel: '' }
   }
 
-  function formatDateTime(d) {
-    if (!d) return ''
-    const date = new Date(d)
-    if (Number.isNaN(date.getTime())) return String(d)
-    const pad = (n) => String(n).padStart(2, '0')
-    const yyyy = date.getFullYear()
-    const mm = pad(date.getMonth() + 1)
-    const dd = pad(date.getDate())
-    const hh = pad(date.getHours())
-    const mi = pad(date.getMinutes())
-    const ss = pad(date.getSeconds())
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
+  const companyNameKey = value => safeText(value).toLowerCase().replace(/中国|速运|速递|快递|物流|快运|\s/g, '')
+  let juheCompanies = null
+  let juheCompaniesExpires = 0
+  let juheCompaniesKey = ''
+  let juheCompaniesPending = null
+
+  async function juheRequest(path, fields) {
+    const postData = new URLSearchParams(fields).toString()
+    const response = await requestHttps({ hostname: 'v.juhe.cn', path, method: 'POST', headers: {
+      'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(postData)
+    } }, postData)
+    if (response.statusCode !== 200 || !response.data || Number(response.data.error_code) !== 0) throw new Error('物流查询暂不可用，请稍后重试')
+    return response.data.result
   }
 
-  function generateSimulatedTraces(order, company) {
-    const shippedTime = order.shippedAt ? new Date(order.shippedAt).getTime() : Date.now() - 3600 * 1000 * 12
-    const currentTime = Date.now()
-    const elapsedHours = Math.max(0.5, (currentTime - shippedTime) / (3600 * 1000))
-
-    const contactName = safeText(order.shippingAddress && order.shippingAddress.contactName).trim() || '收件人'
-    const city = safeText(order.shippingAddress && (order.shippingAddress.serviceAddress || order.shippingAddress.addressDetail)).trim().slice(0, 3) || '目的地'
-
-    const traces = []
-
-    // 1. 揽件
-    traces.push({
-      time: formatDateTime(shippedTime),
-      context: `【仓储发货中心】商家已打单发货，${company.name} 揽件员已揽收完成`,
-      status: 'picked_up',
-      statusText: '已揽收'
-    })
-
-    // 2. 发往分拨中心 (发货后 2 小时)
-    if (elapsedHours >= 2) {
-      traces.push({
-        time: formatDateTime(shippedTime + 2 * 3600 * 1000),
-        context: `【始发转运中心】快件已离开始发分拨集散中心，正在发往【${city}转运枢纽】`,
-        status: 'in_transit',
-        statusText: '运输中'
-      })
+  async function juheCompanyCode(key, company, originalName) {
+    const fingerprint = require('crypto').createHash('sha256').update(key).digest('hex')
+    if (juheCompaniesKey !== fingerprint || juheCompaniesExpires <= Date.now()) {
+      if (!juheCompaniesPending || juheCompaniesKey !== fingerprint) {
+        juheCompaniesKey = fingerprint
+        juheCompaniesPending = juheRequest('/exp/com', { key }).then(rows => {
+          if (!Array.isArray(rows)) throw new Error('快递公司列表暂不可用')
+          const valid = rows.filter(row => row && /^[a-zA-Z0-9_-]+$/.test(row.no || '') && row.com)
+          if (!valid.length) throw new Error('快递公司列表暂不可用')
+          juheCompanies = valid
+          juheCompaniesExpires = Date.now() + 24 * 3600 * 1000
+          return valid
+        }).finally(() => { juheCompaniesPending = null })
+      }
+      await juheCompaniesPending
     }
+    const names = new Set([companyNameKey(company.name), companyNameKey(originalName)])
+    const raw = safeText(originalName).trim().toLowerCase()
+    const row = juheCompanies.find(item => item.no.toLowerCase() === raw || names.has(companyNameKey(item.com)))
+    if (!row) throw new Error('暂不支持该快递公司，请联系商家核对快递公司名称')
+    return row.no
+  }
 
-    // 3. 到达中转中心 (发货后 8 小时)
-    if (elapsedHours >= 8) {
-      traces.push({
-        time: formatDateTime(shippedTime + 8 * 3600 * 1000),
-        context: `【干线陆运/航空】快件已由干线班车发出，干线高速运行中`,
-        status: 'in_transit',
-        statusText: '运输中'
-      })
+  async function fetchJuheLogistics(key, company, order) {
+    const com = await juheCompanyCode(key, company, order.expressCompany)
+    const phone = safeText(order.shippingAddress && order.shippingAddress.contactPhone).replace(/\D/g, '')
+    const receiverPhone = phone.length >= 4 ? phone.slice(-4) : ''
+    if (['sf', 'zto', 'zt', 'ky', 'kyexpress'].includes(com.toLowerCase()) && !receiverPhone) throw new Error('该快递查询需要收件手机号后四位，请联系商家核对收货信息')
+    const fields = { key, com, no: order.trackingNo, dtype: 'json' }
+    if (receiverPhone) fields.receiverPhone = receiverPhone
+    const result = await juheRequest('/exp/index', fields)
+    if (!result || !Array.isArray(result.list)) throw new Error('暂未查询到物流轨迹，请稍后再试')
+    if (result.no && String(result.no) !== String(order.trackingNo)) throw new Error('物流查询结果与当前运单不一致')
+    const states = {
+      PENDING: ['pending', '待查询'], NO_RECORD: ['pending', '暂无轨迹'], ERROR: ['error', '查询异常'],
+      IN_TRANSIT: ['in_transit', '运输中'], DELIVERING: ['delivering', '派送中'], SIGNED: ['delivered', '已签收'],
+      REJECTED: ['rejected', '拒签'], PROBLEM: ['problem', '疑难件'], INVALID: ['invalid', '无效件'],
+      TIMEOUT: ['timeout', '超时件'], FAILED: ['failed', '派送失败'], SEND_BACK: ['returned', '退回'], TAKING: ['picked_up', '已揽收']
     }
-
-    // 4. 到达目的地集散中心 (发货后 18 小时)
-    if (elapsedHours >= 18) {
-      traces.push({
-        time: formatDateTime(shippedTime + 18 * 3600 * 1000),
-        context: `【${city}分拨中心】快件已到达【${city}转运枢纽】，准备分拣分派至末端网点`,
-        status: 'in_transit',
-        statusText: '运输中'
-      })
-    }
-
-    // 5. 派件中 (发货后 26 小时 或 订单已完成)
-    const isCompleted = order.status === 'completed'
-    if (elapsedHours >= 26 || isCompleted) {
-      traces.push({
-        time: formatDateTime(shippedTime + (isCompleted ? Math.min(elapsedHours - 1, 26) : 26) * 3600 * 1000),
-        context: `【${city}营业部】快件已到达派件网点，专属快递员正在为您加急派送，请保持电话畅通`,
-        status: 'delivering',
-        statusText: '派送中'
-      })
-    }
-
-    // 6. 已签收 (发货后 36 小时 或 订单状态为 completed)
-    if (isCompleted || elapsedHours >= 36) {
-      const receiveTime = order.receivedAt ? new Date(order.receivedAt).getTime() : shippedTime + 36 * 3600 * 1000
-      traces.push({
-        time: formatDateTime(receiveTime),
-        context: `【已签收】快件已由【${contactName}】签收，感谢使用${company.name}，期待再次为您服务`,
-        status: 'delivered',
-        statusText: '已签收'
-      })
-    }
-
-    // 倒序展示：最新的在最前面
-    traces.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
-
-    const latest = traces[0] || {}
-    let statusCode = 'in_transit'
-    let stateText = '运输中'
-    if (latest.status === 'delivered') {
-      statusCode = 'delivered'
-      stateText = '已签收'
-    } else if (latest.status === 'delivering') {
-      statusCode = 'delivering'
-      stateText = '派送中'
-    } else if (latest.status === 'picked_up') {
-      statusCode = 'picked_up'
-      stateText = '已揽件'
-    }
-
-    return {
-      expressCompany: company.name,
-      companyCode: company.code,
-      companyTel: company.tel,
-      trackingNo: order.trackingNo,
-      shippedAt: order.shippedAt || null,
-      statusCode,
-      stateText,
-      isDelivered: statusCode === 'delivered',
-      traces,
-      isSimulated: true
-    }
+    const [statusCode, stateText] = states[result.status_detail] || ['unknown', '状态待更新']
+    const traces = result.list.filter(item => item && item.remark).map(item => ({
+      time: safeText(item.datetime), context: safeText(item.remark), status: 'in_transit', statusText: '物流动态'
+    })).sort((a, b) => String(b.time).localeCompare(String(a.time)))
+    if (traces.length) Object.assign(traces[0], { status: statusCode, statusText: stateText })
+    // Juhe status=1 only means the record is final; rejected/returned shipments are not signed deliveries.
+    return { expressCompany: safeText(result.company) || company.name, companyCode: company.code, companyTel: company.tel,
+      trackingNo: order.trackingNo, shippedAt: order.shippedAt || null, statusCode, stateText,
+      isDelivered: result.status_detail === 'SIGNED', isFinal: String(result.status) === '1', traces,
+      isSimulated: false, provider: 'juhe', message: traces.length ? '' : '暂未查询到物流轨迹，请稍后再试' }
   }
 
   async function queryOrderLogistics(order) {
     if (!order) throw new Error('订单不存在')
-    if (!order.trackingNo) {
-      return {
-        hasLogistics: false,
-        message: '订单尚未发货，暂无物流信息'
-      }
-    }
-
+    if (!order.trackingNo) return { hasLogistics: false, message: '订单尚未发货，暂无物流信息' }
     const company = normalizeExpressCompany(order.expressCompany)
-
-    // 优先从订单缓存中获取（如果30分钟内更新过且不是终态，或者已签收）
-    if (order.logisticsCache && Array.isArray(order.logisticsCache.traces) && order.logisticsCache.traces.length) {
-      const cacheTime = order.logisticsCache.updatedAt ? new Date(order.logisticsCache.updatedAt).getTime() : 0
-      const nowMs = Date.now()
-      const isFresh = nowMs - cacheTime < 30 * 60 * 1000 // 30分钟缓存
-      if (isFresh || order.logisticsCache.isDelivered) {
-        return {
-          hasLogistics: true,
-          ...order.logisticsCache
-        }
-      }
+    const settings = typeof getSystemSettings === 'function' ? await getSystemSettings({ includeSecrets: true }) : {}
+    const config = settings.logistics || {}
+    const provider = config.provider || 'juhe'
+    const base = { hasLogistics: true, expressCompany: company.name, companyCode: company.code, companyTel: company.tel,
+      trackingNo: order.trackingNo, statusCode: 'pending', stateText: '暂无轨迹', isDelivered: false, traces: [], isSimulated: false, provider }
+    if (config.enabled === false) return { ...base, message: '物流查询暂未开启，请稍后再试' }
+    // Never reuse simulated records or records belonging to a previous carrier/tracking number.
+    const cache = order.logisticsCache
+    if (cache && cache.isSimulated === false && cache.provider === provider && cache.trackingNo === order.trackingNo && cache.companyCode === company.code && sameShipment(order, cache.shipment)) {
+      const age = new Date(now()).getTime() - new Date(cache.updatedAt || 0).getTime()
+      if (age >= 0 && (age < 30 * 60 * 1000 || cache.isDelivered)) return { ...base, ...cache }
     }
-
-    // 检查第三方物流服务配置（支持 aliyun 或 kuaidi100，或从环境变量读取）
-    let settings = null
+    let result
     try {
-      if (typeof getSystemSettings === 'function') {
-        settings = await getSystemSettings({ includeSecrets: true })
+      if (provider === 'juhe') {
+        const key = safeText(config.juheKey || process.env.JUHE_EXP_KEY).trim()
+        if (!key) return { ...base, message: '物流查询暂未配置，请联系商家' }
+        result = await fetchJuheLogistics(key, company, order)
+      } else if (provider === 'aliyun') {
+        const appCode = safeText(config.appCode || process.env.ALIYUN_LOGISTICS_APPCODE).trim()
+        if (appCode) result = await fetchAliyunLogistics(appCode, order.trackingNo, company, order)
+      } else if (provider === 'kuaidi100') {
+        const key = safeText(config.key || process.env.KUAIDI100_KEY).trim()
+        const customer = safeText(config.customer || process.env.KUAIDI100_CUSTOMER).trim()
+        if (key && customer) result = await fetchKuaidi100Logistics(customer, key, order.trackingNo, company, order)
       }
-    } catch (_) {}
-
-    const logisticsConfig = (settings && settings.logistics) || {}
-    const provider = logisticsConfig.provider || (process.env.ALIYUN_LOGISTICS_APPCODE ? 'aliyun' : 'kuaidi100')
-    const appCode = safeText(logisticsConfig.appCode || process.env.ALIYUN_LOGISTICS_APPCODE).trim()
-    const customer = safeText(logisticsConfig.customer || process.env.KUAIDI100_CUSTOMER).trim()
-    const key = safeText(logisticsConfig.key || process.env.KUAIDI100_KEY).trim()
-    let result = null
-
-    // 1. 优先尝试真实的第三方 API（若配置了有效密钥）
-    if (logisticsConfig.enabled !== false) {
-      if (provider === 'aliyun' && appCode) {
-        result = await fetchAliyunLogistics(appCode, order.trackingNo, company, order)
-      } else if (provider === 'kuaidi100' && key && customer) {
-        result = await fetchKuaidi100Logistics(customer, key, order.trackingNo, company, order)
-      }
+    } catch (_) {
+      return { ...base, message: '暂未获取到物流信息，请核对快递公司、运单和收件手机号后稍后重试' }
     }
-
-    // 2. 若未配置第三方 API 或第三方接口未返回轨迹，回退到高拟真模式，保证链路绝对可用
-    if (!result || !Array.isArray(result.traces) || !result.traces.length) {
-      result = generateSimulatedTraces(order, company)
+    if (!result) return { ...base, message: '暂未获取到物流信息，请稍后重试' }
+    if (result.traces.length) {
+      const cached = await db.runTransaction(async tx => {
+        const latest = await readOptionalDocument(tx, 'mall_orders', order._id)
+        if (!sameShipment(latest, order)) return false
+        await tx.collection('mall_orders').doc(order._id).update({ data: {
+          logisticsCache: { ...result, shipment: shipmentIdentity(order), updatedAt: now() }
+        } })
+        return true
+      }).catch(() => null)
+      if (cached === false) return { ...base, message: '发货信息已更新，请重新查询物流' }
     }
-
-    // 回写缓存到数据库，防止重复频繁消耗 API 配额
-    try {
-      await db.collection('mall_orders').doc(order._id).update({
-        data: {
-          logisticsCache: {
-            ...result,
-            updatedAt: now()
-          }
-        }
-      })
-    } catch (_) {}
-
-    return {
-      hasLogistics: true,
-      ...result
-    }
+    return { ...base, ...result }
   }
 
   function requestHttps(options, postData = null, timeoutMs = 5000) {
@@ -226,8 +158,16 @@ module.exports = function createService({
         return reject(new Error('https module unavailable'))
       }
       const req = https.request({ ...options, timeout: timeoutMs }, (res) => {
+        if (typeof res.setEncoding === 'function') res.setEncoding('utf8')
         let body = ''
-        res.on('data', chunk => { body += chunk })
+        let bytes = 0
+        res.on('error', () => reject(new Error('物流接口响应异常')))
+        res.on('aborted', () => reject(new Error('物流接口响应中断')))
+        res.on('data', chunk => {
+          bytes += Buffer.byteLength(chunk)
+          if (bytes > 1024 * 1024) { req.destroy(); reject(new Error('物流接口响应过大')); return }
+          body += chunk
+        })
         res.on('end', () => {
           try {
             resolve({ statusCode: res.statusCode, data: JSON.parse(body) })
@@ -265,7 +205,7 @@ module.exports = function createService({
           status: idx === 0 && (r.deliverystatus === '3' || r.issign === '1') ? 'delivered' : 'in_transit',
           statusText: idx === 0 && (r.deliverystatus === '3' || r.issign === '1') ? '已签收' : '运输中'
         }))
-        const isDelivered = r.deliverystatus === '3' || r.issign === '1' || order.status === 'completed'
+        const isDelivered = r.deliverystatus === '3' || r.issign === '1'
         return {
           expressCompany: r.expName || company.name,
           companyCode: company.code,
@@ -281,7 +221,7 @@ module.exports = function createService({
         }
       }
     } catch (e) {
-      console.warn('[logistics] Aliyun API query failed, fallback to simulated:', e.message)
+      console.warn('[logistics] Aliyun API query failed')
     }
     return null
   }
@@ -310,7 +250,7 @@ module.exports = function createService({
           status: idx === 0 && r.state === '3' ? 'delivered' : 'in_transit',
           statusText: idx === 0 && r.state === '3' ? '已签收' : '运输中'
         }))
-        const isDelivered = r.state === '3' || order.status === 'completed'
+        const isDelivered = r.state === '3'
         return {
           expressCompany: company.name,
           companyCode: company.code,
@@ -326,7 +266,7 @@ module.exports = function createService({
         }
       }
     } catch (e) {
-      console.warn('[logistics] Kuaidi100 API query failed, fallback to simulated:', e.message)
+      console.warn('[logistics] Kuaidi100 API query failed')
     }
     return null
   }

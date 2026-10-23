@@ -93,3 +93,19 @@ test('asset manifest contains the exact remapped source and destination paths', 
   assert.equal(manifest.files[0].source, 'old')
   assert.equal(manifest.files[0].target, 'new')
 })
+
+test('configuration exports near the UTF-8 size limit can be selected for import', async () => {
+  const { page, writes } = setup()
+  const snapshot = { format: 'dogcat-config', sections: Array.from({ length: 400 }, () => ({ name: '小区', text: '配'.repeat(644) })) }
+  const compactBytes = Buffer.byteLength(JSON.stringify(snapshot), 'utf8')
+  assert.ok(compactBytes < 768 * 1024)
+  assert.ok(Buffer.byteLength(JSON.stringify(snapshot, null, 2), 'utf8') > 768 * 1024)
+  await page.saveJson(snapshot, 'near-limit.json')
+  const exportedBytes = Buffer.byteLength(writes[0].data, 'utf8')
+  assert.equal(exportedBytes, compactBytes)
+  const imported = setup({ file: { name: 'near-limit.json', path: '/near-limit', size: exportedBytes }, contents: writes[0].data })
+  await imported.page.chooseImport()
+  assert.equal(imported.errors.length, 0)
+  assert.equal(imported.calls[0].action, 'preview')
+  assert.equal(imported.calls[0].data.snapshot.sections.length, 400)
+})

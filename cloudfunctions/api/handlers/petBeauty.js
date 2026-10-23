@@ -35,6 +35,17 @@ module.exports = function createHandler(context) {
     const today = toCstParts()
     const monthKey = normalizeMonthKey(data.monthKey || today.monthKey)
 
+    async function monthContestConfig(settings) {
+      const config = publicContest(settings.petBeautyContest)
+      const locks = (await db.collection('pet_beauty_month_locks').where({ monthKey, status: 'locked' }).limit(1).get()).data || []
+      if (locks[0]?.firstPrizeAmount !== undefined) {
+        const amount = config.enabled ? effectivePrize({ firstPrizeAmount: locks[0].firstPrizeAmount }) : 0
+        config.firstPrizeAmount = amount
+        config.rewardAmount = amount
+      }
+      return config
+    }
+
     if (action === 'listMyBeautyTitles') {
       return listPetBeautyTitles(openid, safeText(data.petId).trim())
     }
@@ -125,7 +136,7 @@ module.exports = function createHandler(context) {
 
     if (action === 'getActivityHome') {
       const settings = typeof getSystemSettings === 'function' ? await getSystemSettings() : {}
-      const contestConfig = publicContest(settings.petBeautyContest)
+      const contestConfig = await monthContestConfig(settings)
       let userInviteCode = ''
       if (openid) {
         let user = typeof getOptionalUser === 'function' ? await getOptionalUser(openid) : null
@@ -158,7 +169,7 @@ module.exports = function createHandler(context) {
 
     if (action === 'getContestConfig') {
       const settings = typeof getSystemSettings === 'function' ? await getSystemSettings() : {}
-      return publicContest(settings.petBeautyContest)
+      return monthContestConfig(settings)
     }
 
     if (action === 'listCandidates') {
@@ -191,7 +202,7 @@ module.exports = function createHandler(context) {
         return { ...paginateList(histList, data), monthKey: historyMonthKey, locked: true, isHistory: true }
       }
       const settings = typeof getSystemSettings === 'function' ? await getSystemSettings() : {}
-      const firstPrizeAmount = effectivePrize(settings.petBeautyContest)
+      const firstPrizeAmount = (await monthContestConfig(settings)).firstPrizeAmount
       const pets = (await getPublicPetsWithVotes())
         .map((pet, index) => ({
           ...pet,
@@ -440,9 +451,14 @@ module.exports = function createHandler(context) {
         if (!targetOpenid) throw new Error('无法确定第 1 名宠物主人的账号身份')
         const prizeAmount = data.amount !== undefined ? Math.round(Number(data.amount) * 100) / 100 : Number(rank.prizeAmount || defaultPrize)
         if (!Number.isFinite(prizeAmount) || prizeAmount <= 0) throw new Error('奖金金额必须为大于 0 的数值')
-        const earningId = `beauty_prize_${targetMonthKey}_${petId}`
+        const earningId = `beauty_prize_${targetMonthKey}`
         const existing = await readOptionalDocument(tx, 'user_asset_earnings', earningId)
-        if (existing) throw new Error(`${targetMonthKey} 月度冠军奖金已发放至该用户可提现零钱，请勿重复发放`)
+        // Older versions keyed awards by pet. Any existing monthly award also consumes the month's prize.
+        const legacyAwards = (await tx.collection('user_asset_earnings').where({
+          sourceType: 'pet_beauty_champion_prize', monthKey: targetMonthKey
+        }).limit(1).get()).data || []
+        const legacyAward = await readOptionalDocument(tx, 'user_asset_earnings', `beauty_prize_${targetMonthKey}_${petId}`)
+        if (existing || legacyAwards.length || legacyAward) throw new Error(`${targetMonthKey} 月度冠军奖金已发放至该用户可提现零钱，请勿重复发放`)
         const time = nowText()
         const title = `${targetMonthKey} 最美爱宠月度冠军现金大奖`
         const reason = safeText(data.remark).trim() || `${targetMonthKey} 最美爱宠大赛冠军【${pet.name || '爱宠'}】现金奖金直接发放`

@@ -246,7 +246,7 @@ module.exports = function createHandler(context) {
         }
       }
       if (data.residentialCommunity !== undefined) {
-        await require('../services/playground-world').updateCommunity(db, openid, user._id, payload.residentialCommunity, payload)
+        await require('../services/playground-world').updateCommunity(db, openid, user._id, payload.residentialCommunity, payload, checkTextSecurity)
       } else {
         await db.collection('users').doc(user._id).update({ data: payload })
       }
@@ -269,7 +269,7 @@ module.exports = function createHandler(context) {
           updatedAt: now()
         }
       }
-      await require('../services/playground-world').updateCommunity(db, openid, user._id, normalizedCommunity, { updatedAt: now() })
+      await require('../services/playground-world').updateCommunity(db, openid, user._id, normalizedCommunity, { updatedAt: now() }, checkTextSecurity)
       return { ...user, residentialCommunity: normalizedCommunity }
     }
 

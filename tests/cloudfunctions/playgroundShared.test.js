@@ -11,7 +11,7 @@ function fixture() {
   const users=['a','b','c'].map((openid,i)=>({_id:'u_'+openid,openid,nickname:openid,residentialCommunity:{name:i===2?'B小区':'A小区',address:i===2?'二号路':'一号路'}}))
   const pets=users.map((u)=>({_id:'pet_'+u.openid,openid:u.openid,name:u.openid+'的宠物',species:'cat'}))
   const db=createCollectionStore({users,pets})
-  const context={db,nowMs:()=>time,nowText:()=>new Date(time).toISOString(),safeText:(s)=>String(s||''),getUser:async(openid)=>db.state.users.find((u)=>u.openid===openid)}
+  const context={db,checkTextSecurity:async()=>{},nowMs:()=>time,nowText:()=>new Date(time).toISOString(),safeText:(s)=>String(s||''),getUser:async(openid)=>db.state.users.find((u)=>u.openid===openid)}
   const shared=createShared(context),plots=world.create(context)
   const enter=(id,community)=>shared.enter(id,users.find((u)=>u.openid===id),{community},pets.filter((p)=>p.openid===id))
   const auth=(scene)=>({session:scene.session,sceneId:scene.sceneId})
@@ -267,7 +267,7 @@ test('demolish is owned and atomic; migration only succeeds after removing the o
   const extraYard=await f.plots.claim('a',f.users[0],{x:560,z:280,isNewPlot:true})
   assert.equal(f.db.state.pet_playground_plots.filter((p)=>p.kind==='plot').length,2)
   const a=await f.enter('a')
-  await assert.rejects(()=>world.updateCommunity(f.db,'a','u_a',f.users[2].residentialCommunity),/先拆除/)
+  await assert.rejects(()=>world.updateCommunity(f.db,'a','u_a',f.users[2].residentialCommunity,{},async()=>{}),/先拆除/)
   await assert.rejects(()=>f.plots.demolish('a',{plotId:plot.id,sceneId:'foreign'}),/原小区/)
   const demRes = await f.plots.demolish('a',{plotId:plot.id,sceneId:a.sceneId})
   assert.ok(demRes.removedPlotIds.includes(plot.id))
@@ -276,7 +276,7 @@ test('demolish is owned and atomic; migration only succeeds after removing the o
   assert.equal(await world.read(f.db,plot.id),null)
   assert.equal(await world.read(f.db,extraYard.id),null)
   assert.equal(await world.read(f.db,'resident_'+world.hash('a')),null)
-  await world.updateCommunity(f.db,'a','u_a',f.users[2].residentialCommunity)
+  await world.updateCommunity(f.db,'a','u_a',f.users[2].residentialCommunity,{},async()=>{})
   const latest=f.db.state.users.find((u)=>u.openid==='a')
   const moved=await f.plots.claim('a',latest,{x:280,z:280})
   assert.notEqual(moved.id,plot.id)

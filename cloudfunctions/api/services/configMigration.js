@@ -50,7 +50,7 @@ function portableSystem(settings) {
   delete value.payment
   if (value.staffSupplies) delete value.staffSupplies.transfer
   if (value.invitation) delete value.invitation.transfer
-  if (value.logistics) { delete value.logistics.key; delete value.logistics.appCode; delete value.logistics.customer; delete value.logistics.keyInput; delete value.logistics.appCodeInput }
+  if (value.logistics) { delete value.logistics.juheKey; delete value.logistics.juheKeyInput; delete value.logistics.key; delete value.logistics.appCode; delete value.logistics.customer; delete value.logistics.keyInput; delete value.logistics.appCodeInput }
   return value
 }
 function merge(base, incoming) {

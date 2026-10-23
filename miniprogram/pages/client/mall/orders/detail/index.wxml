@@ -19,7 +19,7 @@
     <view class="card-head logistics-head">
       <view class="head-left">
         <text class="logistics-title">物流轨迹追踪</text>
-        <text class="logistics-state-badge {{logisticsInfo && logisticsInfo.statusCode === 'delivered' ? 'badge-delivered' : 'badge-transit'}}">{{logisticsInfo ? logisticsInfo.stateText : '运输中'}}</text>
+        <text class="logistics-state-badge {{logisticsInfo && logisticsInfo.statusCode === 'delivered' ? 'badge-delivered' : 'badge-transit'}}">{{logisticsInfo ? logisticsInfo.stateText : '待查询'}}</text>
       </view>
       <view class="head-actions">
         <text class="action-btn copy-btn" bindtap="copyTracking">复制单号</text>
@@ -62,7 +62,7 @@
       <text>正在获取最新快递轨迹节点...</text>
     </view>
     <view class="logistics-loading-bar" wx:else>
-      <text>快件已交由快递揽收，轨迹信息同步中...</text>
+      <text>{{logisticsMessage || '暂未查询到物流轨迹，请稍后刷新。'}}</text>
     </view>
   </view>
 
