@@ -31,7 +31,7 @@ function loadBookingPage(file, { stackDepth = 1, login, navigate, callFunction }
     getCachedSystemSettings: () => ({}),
     getCurrentUser: async () => ({ _id: 'user' }),
     ensureLogin: login || (async () => ({ _id: 'user' })),
-    loadMessageUnread: () => {},
+    loadMessageUnread: () => {}, startStaffEntryUnread() {}, stopStaffEntryUnread() {},
     applyTheme: () => ({ value: 'day' }), getThemeState: () => ({}),
     getSelectedLocation: () => null,
     toBeijingDate: require('../../miniprogram/utils/format').toBeijingDate,

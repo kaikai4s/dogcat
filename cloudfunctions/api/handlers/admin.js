@@ -455,7 +455,7 @@ module.exports = function createHandler(context) {
         if (counted && Number.isFinite(counted.total)) return counted.total
         return (await readAll(collectionName, where, 1000).catch(() => [])).length
       }
-      const [staffPending, trainingPending, promotionPending, vaccinePending, withdrawPending, depositRefundPending, supplyPending, incidentsOpen] = await Promise.all([
+      const [staffPending, trainingPending, promotionPending, vaccinePending, withdrawPending, depositRefundPending, supplyPending, incidentsOpen, appearancePending] = await Promise.all([
         countPending('staff_profiles', { auditStatus: 'pending' }),
         countPending('staff_profiles', { auditStatus: 'approved', videoAuditStatus: 'pending' }),
         countPending('staff_promotion_applications', { status: 'pending' }),
@@ -463,13 +463,15 @@ module.exports = function createHandler(context) {
         countPending('withdraw_requests', { status: 'pending' }),
         countPending('staff_deposits', { refundStatus: 'requested' }),
         countPending('staff_supply_reimbursements', { status: 'pending' }),
-        countPending('order_incidents', { status: 'open' })
+        countPending('order_incidents', { status: 'open' }),
+        countPending('pet_playground_appearance_requests', { status: db.command.in(['pending', 'processing']) })
       ])
       const pendingReviews = {
         staffAudit: staffPending,
         training: trainingPending,
         promotion: promotionPending,
         petVaccine: vaccinePending,
+        playgroundCustomizations: appearancePending,
         withdrawals: withdrawPending,
         depositRefunds: depositRefundPending,
         supplyReimbursements: supplyPending,

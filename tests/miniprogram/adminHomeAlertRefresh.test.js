@@ -124,3 +124,15 @@ test('order formatter suppresses terminal warnings without changing stored histo
   }
   assert.equal(withOrderText({ status: 'in_service', isFinishOverdue: true }).isOverdue, true)
 })
+
+test('appearance customization entry shows outstanding count and clears it after processing', async () => {
+  const { page, requests } = setup()
+  for (const count of [3, 0]) {
+    const pending = page.onShow()
+    for (const request of requests.splice(0)) request.resolve(request.action === 'dashboard'
+      ? { pendingReviews: { playgroundCustomizations: count } } : {})
+    await pending
+    const entry = page.data.adminSections.flatMap(section => section.items).find(item => item.url === '/pages/admin/playground-customizations/index')
+    assert.equal(entry.pendingCount, count)
+  }
+})

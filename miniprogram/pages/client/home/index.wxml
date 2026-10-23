@@ -177,7 +177,7 @@
       <view class="remix-icon ri-shield-keyhole-fill quick-action-icon purple"></view><view class="quick-action-label">家庭安防</view>
     </view>
     <view class="quick-action-item interactive" bindtap="openStaffEntry">
-      <view class="remix-icon ri-shield-user-fill quick-action-icon peach"></view><view class="quick-action-label">{{staffEntryTitle || '宠护端'}}</view>
+      <view class="remix-icon ri-shield-user-fill quick-action-icon peach staff-entry-icon"><view class="staff-entry-unread" wx:if="{{staffUnreadCount > 0}}">{{staffUnreadCountText}}</view></view><view class="quick-action-label">{{staffEntryTitle || '宠护端'}}</view>
     </view>
   </view>
 

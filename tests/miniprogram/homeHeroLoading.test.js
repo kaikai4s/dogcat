@@ -31,7 +31,7 @@ function setup({ storage = {}, cached = {}, resolveFiles, now = { value: Date.no
     refreshHomeSubscriptionReminder: async () => {}, invalidateHomeSubscriptionReminder: () => {},
     loadSystemSettings: () => { calls.push('settings'); return settings.promise },
     callFunction: (_, action) => { calls.push(action); return home.promise },
-    getCurrentUser: async () => null, loadMessageUnread: () => {},
+    getCurrentUser: async () => null, loadMessageUnread: () => {}, startStaffEntryUnread() {}, stopStaffEntryUnread() {},
     applyTheme: () => ({ value: 'day' }), getThemeState: () => ({}), showError: () => {}
   }
   let page

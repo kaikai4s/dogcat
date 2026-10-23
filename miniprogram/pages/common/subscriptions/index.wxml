@@ -13,7 +13,11 @@
   <block wx:else>
     <view class="all-card">
       <view><view class="all-title">补充通知次数</view><view class="all-desc">{{availableCount}} 项通知可按需多次订阅，微信每次最多申请 3 个模板</view></view>
-      <button class="subscribe-button" data-scope="all" bindtap="subscribe" disabled="{{busy || !ready || !availableCount}}" loading="{{busy}}">{{!availableCount ? '待平台配置' : mainSwitch === false ? '去打开设置' : pendingScope === 'all' && pendingKeys.length ? '继续订阅' : '批量订阅'}}</button>
+
+    </view>
+    <view class="batch-card" wx:for="{{subscriptionBatches}}" wx:key="id" wx:for-item="batch">
+      <view class="batch-copy"><view class="all-title">{{batch.title}} · {{batch.count}} 项通知</view><view class="all-desc">{{batch.names}}</view><view class="all-desc">每次同意后，本组对应通知各增加一次提醒机会</view></view>
+      <button class="subscribe-button small" data-scope="{{batch.id}}" bindtap="subscribe" disabled="{{busy || !ready}}" loading="{{busy && pendingScope === batch.id}}">{{pendingScope === batch.id && pendingKeys.length ? '继续订阅本组' : '本组订阅 +1'}}</button>
     </view>
     <view class="notice" wx:if="{{!enabled}}">订阅通知暂未开放，订单进度仍可在消息中心查看。</view>
     <view class="notice" wx:elif="{{!availableCount}}">{{invalidCount ? '现有模板不可用，暂时无法订阅。' : '平台尚未配置通知模板，暂时无法订阅。'}}请管理员在「系统设置 → 订阅消息」填写当前小程序的完整模板 ID 并保存，配置完成后点击下方重新检查。</view>
@@ -29,7 +33,7 @@
       <button class="subscribe-button" data-scope="{{pendingScope}}" bindtap="subscribe" loading="{{busy}}" disabled="{{busy || !ready}}">继续订阅下一批（{{nextBatchCount}} 项）</button>
     </view>
     <view class="group-card" wx:for="{{groups}}" wx:key="id" wx:for-item="group">
-      <view class="group-header"><text class="group-title">{{group.title}}</text><button class="subscribe-button small" data-scope="{{group.id}}" bindtap="subscribe" disabled="{{busy || !group.available}}">{{pendingScope === group.id && pendingKeys.length ? '继续订阅' : '批量订阅'}}</button></view>
+      <view class="group-header"><text class="group-title">{{group.title}}</text></view>
       <view class="notification-row" wx:for="{{group.items}}" wx:key="key">
         <view class="notification-copy"><view class="notification-title">{{item.title}}</view><view class="notification-desc">{{item.desc}}</view><view class="notification-balance {{item.lowBalance ? 'low' : ''}}" wx:if="{{item.balanceText}}">{{item.balanceText}}</view><view class="notification-status {{item.accepted ? 'accepted' : ''}}">{{item.statusText}}</view></view>
         <button class="outline-button" data-scope="{{item.key}}" bindtap="subscribe" disabled="{{busy || !item.available}}">{{item.invalid ? '待修复' : item.accepted ? '再订阅一次' : '订阅一次'}}</button>

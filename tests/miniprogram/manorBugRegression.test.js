@@ -8,7 +8,7 @@ const deferred = () => { let resolve; const promise = new Promise(r => { resolve
 function pageAt(file, deps = {}) {
   let page, timerId = 0
   const timers = new Map(), calls = []
-  const common = { ...require('../../miniprogram/utils/format'), navMethods: () => ({}), createPageNav: () => ({}), showError: error => { throw error }, ...deps }
+  const common = { startStaffEntryUnread() {}, stopStaffEntryUnread() {}, ...require('../../miniprogram/utils/format'), navMethods: () => ({}), createPageNav: () => ({}), showError: error => { throw error }, ...deps }
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../../miniprogram',file),'utf8'), {
     Page: config => { page = config },
     require: name => name.endsWith('/community-group-buy') ? require(path.resolve(__dirname,'../../miniprogram',path.dirname(file),name)) : common,

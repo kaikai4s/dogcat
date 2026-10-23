@@ -464,11 +464,12 @@
           <view class="compact-toggle-row"><view class="compact-toggle-main"><view class="strong">启用订阅消息</view><view class="muted">模板未配置时只记录 skipped 日志。</view></view><switch checked="{{settings.subscription.enabled}}" bindchange="toggleSubscriptionEnabled" /></view>
           <view class="notice">开启此开关不会自动配置模板。请先添加微信模板、填写下方对应的完整模板 ID 并保存；暂未配置的通知请留空，用户需在配置完成后重新进入订阅中心授权。</view>
           <view class="notice">请从当前小程序的微信公众平台「订阅消息 → 我的模板」复制完整模板 ID。7272、8560 等数字是模板编号，不能作为模板 ID 填入；其他小程序的 ID 也不可用。前台出现微信错误码 20001 时请优先核对此处配置，20002 时检查是否混用了不同类型的模板。</view>
+          <view class="notice">管理员提醒：当前订单超时、入驻审核等通知进入后台「系统通知」，尚未接入管理员微信订阅。服务进度模板可作为超时提醒候选；审核待办需另行核对匹配模板，提现结果模板只适合结果通知。填写现有模板 ID 不会自动给管理员发送消息。</view>
           <view class="field-item"><text class="label">支付成功模板</text><input class="input" value="{{settings.subscription.templates.orderPaid}}" data-field="orderPaid" bindinput="subscriptionTemplateInput" /></view>
           <view class="notice">支付成功模板字段：服务项目 thing2、订单编号 character_string1、订单金额 amount3、服务时间 time4、服务地址 thing5。对应图片中的“下单支付成功通知”；请填写该模板的完整模板 ID。</view>
           <view class="field-item"><text class="label">接单/派单模板</text><input class="input" value="{{settings.subscription.templates.orderAssigned}}" data-field="orderAssigned" bindinput="subscriptionTemplateInput" /></view>
-          <view class="field-item"><text class="label">师傅接单模板</text><input class="input" value="{{settings.subscription.templates.orderAccepted}}" data-field="orderAccepted" bindinput="subscriptionTemplateInput" placeholder="伴宠师接单通知模板 ID（44245）" /></view>
-          <view class="notice">接单通知使用模板 44245：订单编号 character_string1、伴宠师名 thing2、联系电话 phone_number4、商品名称 thing5。联系电话读取本页客服配置中的客服电话；更换模板后需用户重新订阅。</view>
+          <view class="field-item"><text class="label">宠托师接单模板</text><input class="input" value="{{settings.subscription.templates.orderAccepted}}" data-field="orderAccepted" bindinput="subscriptionTemplateInput" placeholder="宠托师接单通知模板 ID（44245）" /></view>
+          <view class="notice">接单通知使用模板 44245：订单编号 character_string1、宠托师名 thing2、联系电话 phone_number4、商品名称 thing5。联系电话读取本页客服配置中的客服电话；更换模板后需用户重新订阅。</view>
           <view class="field-item"><text class="label">宠托师出发通知模板</text><input class="input" value="{{settings.subscription.templates.staffDeparture}}" data-field="staffDeparture" bindinput="subscriptionTemplateInput" placeholder="填写宠托师出发通知模板 ID" /></view>
           <view class="notice">模板编号 77732：服务项目 thing1、预约时间 time2、出发时间 time3、宠托师 thing4。宠托师点击出发后通知下单用户，每场服务发送一次；用户需单独同意此模板。</view>
           <view class="field-item"><text class="label">服务开始模板</text><input class="input" value="{{settings.subscription.templates.serviceStart}}" data-field="serviceStart" bindinput="subscriptionTemplateInput" placeholder="开始服务通知模板 ID（71479）" /></view>

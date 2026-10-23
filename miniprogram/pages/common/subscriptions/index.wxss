@@ -40,3 +40,9 @@
 .theme-night .remaining-names { color: #d3b38d; }
 .theme-night .group-header, .theme-night .notification-row { border-color: #393140; }
 .theme-night .intro-desc, .theme-night .notification-desc, .theme-night .switch-desc, .theme-night .all-desc { color: #b9ada2; }
+
+.batch-card { display: flex; align-items: center; gap: 20rpx; padding: 28rpx; margin-bottom: 20rpx; border-radius: 24rpx; background: var(--card-bg, #fff); }
+.batch-copy { flex: 1; min-width: 0; }
+.batch-card .subscribe-button { flex-shrink: 0; }
+
+.theme-night .batch-card { background: #25212e; }

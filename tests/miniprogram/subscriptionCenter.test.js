@@ -688,3 +688,36 @@ test('subscription center handles reject, summary failure, and consent recording
   await flush()
   assert.match(failedConsent.page.data.feedback, /微信授权已完成，但预计次数同步失败，本次暂不计入页面次数/)
 })
+
+test('fixed groups contain at most three template IDs and repeated taps replenish the same group', async () => {
+  for (const role of ['client', 'staff']) {
+    const { page, requests, calls } = await setup({ role })
+    const batches = page.data.subscriptionBatches
+    assert.deepEqual(Array.from(batches, batch => batch.count), role === 'client' ? [3, 3, 3] : [3, 2])
+    for (const batch of batches) {
+      await page.subscribe(tap(batch.id))
+      await flush()
+      const first = requests.at(-1)
+      await page.subscribe(tap(batch.id))
+      await flush()
+      assert.deepEqual(requests.at(-1), first)
+      assert.equal(page.data.pendingKeys.length, 0)
+      assert.ok(first.length <= 3)
+    }
+    const consents = calls.filter(call => call.action === 'recordSubscriptionConsent')
+    assert.equal(new Set(consents.map(call => call.data.requestId)).size, batches.length * 2)
+  }
+})
+
+test('fixed groups keep template aliases together and retry only rejected items', async () => {
+  const { page, requests } = await setup({
+    templates: { orderAccepted: 'shared', staffDeparture: 'shared', serviceStart: 'start', serviceFinish: 'finish', orderPaid: 'paid' },
+    subscribe(options) { options.success(Object.fromEntries(options.tmplIds.map(id => [id, id === 'start' ? 'reject' : 'accept']))) }
+  })
+  const group = page.data.subscriptionBatches[0]
+  assert.equal(group.count, 3)
+  assert.ok(group.keys.includes('orderAccepted') && group.keys.includes('staffDeparture'))
+  await page.subscribe(tap(group.id))
+  await page.subscribe(tap(group.id))
+  assert.deepEqual(Array.from(requests[1]), ['start'])
+})

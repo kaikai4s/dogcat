@@ -46,7 +46,7 @@ function pageAt(relativePath, bindings = {}) {
       }
       if (name.endsWith('/hero-media') || name.endsWith('/client-nav') || name.endsWith('/nav')) {
         return {
-          loadMessageUnread: () => {},
+          loadMessageUnread: () => {}, startStaffEntryUnread() {}, stopStaffEntryUnread() {},
           getCachedHeroMedia: () => null,
           resolveHeroMedia: () => {},
           safeNavigateTo: () => {}

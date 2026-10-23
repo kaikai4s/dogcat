@@ -20,7 +20,7 @@ const catalog = {
 Page({
   data: {
     role: 'client', loading: true, loadFailed: false, ready: false,
-    enabled: false, mainSwitch: null, groups: [], busy: false,
+    enabled: false, mainSwitch: null, groups: [], subscriptionBatches: [], busy: false,
     pendingKeys: [], pendingScope: '', feedback: '', availableCount: 0,
     batchTotal: 0, batchAccepted: 0, batchRemaining: 0, invalidCount: 0,
     pendingNames: '', pendingTitle: '', nextBatchCount: 0, summaryUnavailable: false
@@ -127,7 +127,7 @@ Page({
       batchRemaining: new Set(keys.map(key => this.templateId(key))).size,
       nextBatchCount: this.selectBatchIds(keys).length,
       pendingNames: keys.map(key => catalog[key][0]).join('、'),
-      pendingTitle: scope === 'all' ? '全部通知' : scope === 'common' ? '常用消息' : scope === 'other' ? '其他消息' : catalog[scope] && catalog[scope][0] || '通知'
+      pendingTitle: (this.data.subscriptionBatches.find(group => group.id === scope) || {}).title || (scope === 'all' ? '全部通知' : scope === 'common' ? '常用消息' : scope === 'other' ? '其他消息' : catalog[scope] && catalog[scope][0] || '通知')
     }
   },
   updateGroups() {
@@ -170,7 +170,21 @@ Page({
       })
       return { id, title, items, available: items.some((item) => item.available) }
     })
-    this.setData({ groups, availableCount: groups.reduce((sum, group) => sum + group.items.filter((item) => item.available).length, 0),
+    // Group by distinct WeChat template IDs so aliases share one consent opportunity.
+    const templates = new Map()
+    groups.flatMap(group => group.items).filter(item => item.available).forEach(item => {
+      const id = this.templateId(item.key)
+      if (!templates.has(id)) templates.set(id, [])
+      templates.get(id).push(item)
+    })
+    const entries = Array.from(templates.values())
+    const subscriptionBatches = []
+    for (let i = 0; i < entries.length; i += 3) {
+      const items = entries.slice(i, i + 3).flat()
+      subscriptionBatches.push({ id: `batch_${items[0].key}`, title: `第 ${subscriptionBatches.length + 1} 组`,
+        count: Math.min(3, entries.length - i), names: items.map(item => item.title).join('、'), keys: items.map(item => item.key) })
+    }
+    this.setData({ groups, subscriptionBatches, availableCount: groups.reduce((sum, group) => sum + group.items.filter((item) => item.available).length, 0),
       invalidCount: groups.reduce((sum, group) => sum + group.items.filter(item => item.key !== 'disputeUpdate' && item.invalid).length, 0) })
   },
   applyWechatSettings(result = {}) {
@@ -211,7 +225,8 @@ Page({
     let keys
     if (this.data.pendingScope === scope && this.data.pendingKeys.length) keys = this.data.pendingKeys.filter(key => !this._invalidTemplateIds.has(this.templateId(key)))
     else {
-      keys = this.data.groups.filter((group) => scope === 'all' || scope === group.id || group.items.some((item) => item.key === scope))
+      const fixedBatch = this.data.subscriptionBatches.find(group => group.id === scope)
+      keys = fixedBatch ? fixedBatch.keys : this.data.groups.filter((group) => scope === 'all' || scope === group.id || group.items.some((item) => item.key === scope))
         .flatMap((group) => group.items.filter((item) => item.available && (scope === 'all' || scope === group.id || item.key === scope)).map((item) => item.key))
       this._batchAcceptedIds = new Set()
       this.resetBatchPlan()

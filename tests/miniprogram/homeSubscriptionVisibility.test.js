@@ -18,7 +18,7 @@ test('entering and refreshing home does not query subscription permissions or re
   for (const role of ['client', 'staff']) {
     let page
     const calls = []
-    const deps = { loadSystemSettings: async () => ({}), loadMessageUnread() {} }
+    const deps = { loadSystemSettings: async () => ({}), loadMessageUnread() {}, startStaffEntryUnread() {}, stopStaffEntryUnread() {} }
     vm.runInNewContext(fs.readFileSync(path.join(root, `pages/${role}/home/index.js`), 'utf8'), {
       Page(config) { page = config }, require: () => deps, clearTimeout,
       wx: {

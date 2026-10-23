@@ -89,12 +89,45 @@ function loadMessageUnread(page, role = 'client') {
   })
 }
 
+// The client and staff inboxes remain separate; this badge belongs to the staff entry.
+function stopStaffEntryUnread(page) {
+  page._staffUnreadRevision = (page._staffUnreadRevision || 0) + 1
+  clearTimeout(page._staffUnreadTimer)
+}
+
+function startStaffEntryUnread(page) {
+  if (page._staffEntryVisible === false) return Promise.resolve()
+  stopStaffEntryUnread(page)
+  const revision = page._staffUnreadRevision
+  const active = () => page._staffUnreadRevision === revision
+  const apply = count => {
+    if (active()) page.setData({ staffUnreadCount: count, staffUnreadCountText: count > 99 ? '99+' : String(count) })
+  }
+  const refresh = async () => {
+    try {
+      const user = await getCurrentUser({ silent: true, sessionOnly: true })
+      if (!active()) return
+      if (!user || !(user.roles || []).includes('staff')) { apply(0); return }
+      const summary = await callFunction('staffMessage', 'getUnreadSummary', {})
+      const current = await getCurrentUser({ silent: true, sessionOnly: true })
+      if (!current || (current.openid || current._id) !== (user.openid || user._id) || !(current.roles || []).includes('staff')) { apply(0); return }
+      apply(Math.max(Number(summary && summary.totalUnread || 0), 0))
+    } catch (_) { /* Keep the last displayed count on a transient network failure. */ }
+    finally {
+      if (active()) page._staffUnreadTimer = setTimeout(refresh, 30000)
+    }
+  }
+  return refresh()
+}
+
 function refreshUnread(role = 'client') {
   return fetchUnreadSummary(role)
 }
 
 module.exports = {
   loadMessageUnread,
+  startStaffEntryUnread,
+  stopStaffEntryUnread,
   refreshUnread,
   getCachedUnread,
   setCachedUnread,

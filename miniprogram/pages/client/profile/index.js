@@ -2,7 +2,7 @@ const { callFunction, showError } = require('../../../utils/cloud')
 const { getCurrentUser, loginWithWechat, ensureLogin, setCachedUser, logoutCurrentUser } = require('../../../utils/cloud')
 const { themeOptions, applyTheme, saveTheme, getThemeState } = require('../../../utils/theme')
 const { fontOptions, applyFont, saveFont, getFontState } = require('../../../utils/font')
-const { loadMessageUnread } = require('../../../utils/client-nav')
+const { loadMessageUnread, startStaffEntryUnread, stopStaffEntryUnread } = require('../../../utils/client-nav')
 const { copyText } = require('../../../utils/clipboard')
 
 const staffEntryMap = {
@@ -64,6 +64,8 @@ Page({
     levelDescription: '',
     rewardMailUnreadCount: 0,
     rewardMailUnclaimedCount: 0,
+    staffUnreadCount: 0,
+    staffUnreadCountText: '0',
     messageUnreadCount: 0,
     messageHasUnread: false,
     hidePublicCheckinPhotos: false,
@@ -115,6 +117,7 @@ Page({
           this.loadStaffProfile()
           this.loadPoints()
           this.loadRewardMailUnread()
+          startStaffEntryUnread(this)
           loadMessageUnread(this)
         })
         .catch(() => this.applyGuest())
@@ -122,6 +125,7 @@ Page({
   },
 
   onShow() {
+    this._staffEntryVisible = true
     wx.setNavigationBarTitle({ title: this.data.showSettings ? '设置' : '我的' })
     // 静默刷新宠护师状态，不重置 staffEntryReady: false，避免每次进入页面时金刚区卡片延迟加载跳动
     try {
@@ -144,9 +148,20 @@ Page({
         this.loadStaffProfile()
         this.loadPoints()
         this.loadRewardMailUnread()
+        startStaffEntryUnread(this)
         loadMessageUnread(this)
       })
       .catch(() => this.applyGuest())
+  },
+
+  onHide() {
+    this._staffEntryVisible = false
+    stopStaffEntryUnread(this)
+  },
+
+  onUnload() {
+    this._staffEntryVisible = false
+    stopStaffEntryUnread(this)
   },
 
   applyCurrentTheme(themeKey) {
@@ -172,6 +187,7 @@ Page({
   },
 
   applyGuest() {
+    stopStaffEntryUnread(this)
     try { wx.removeStorageSync('cached_staff_profile_data') } catch (e) {}
     setCachedUser(null)
     this.setData({
@@ -191,6 +207,8 @@ Page({
       levelDescription: '',
       rewardMailUnreadCount: 0,
       rewardMailUnclaimedCount: 0,
+      staffUnreadCount: 0,
+      staffUnreadCountText: '0',
       messageUnreadCount: 0,
       messageHasUnread: false,
       hidePublicCheckinPhotos: false,
@@ -230,6 +248,7 @@ Page({
         this.loadStaffProfile()
         this.loadPoints()
         this.loadRewardMailUnread()
+        startStaffEntryUnread(this)
         loadMessageUnread(this)
         wx.showToast({ title: '已登录' })
         const isNewUser = !user || user.nickname === '微信用户' || !user.avatarUrl

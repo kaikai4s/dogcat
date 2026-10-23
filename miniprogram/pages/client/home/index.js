@@ -1,6 +1,6 @@
 const { getSelectedLocation, chooseSelectedLocation, callFunction, showError, ensureLogin, getCurrentUser, getCachedSystemSettings, loadSystemSettings } = require('../../../utils/cloud')
 const { getCachedHeroMedia, resolveHeroMedia } = require('../../../utils/hero-media')
-const { loadMessageUnread } = require('../../../utils/client-nav')
+const { loadMessageUnread, startStaffEntryUnread, stopStaffEntryUnread } = require('../../../utils/client-nav')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { safeNavigateTo } = require('../../../utils/nav')
 const { formatDateTime } = require('../../../utils/format')
@@ -210,6 +210,8 @@ Page({
     repeatOrder: null,
     recentOrders: [],
     assuranceItems: [],
+    staffUnreadCount: 0,
+    staffUnreadCountText: '0',
     messageUnreadCount: 0,
     messageHasUnread: false,
     communityGroupNotice: null,
@@ -242,6 +244,8 @@ Page({
   },
 
   onShow() {
+    this._staffEntryVisible = true
+    startStaffEntryUnread(this)
     this._isPageActive = true
     clearTimeout(this._navigatingSafetyTimer)
     this._navigatingLock = false
@@ -494,6 +498,8 @@ Page({
   },
 
   onHide() {
+    this._staffEntryVisible = false
+    stopStaffEntryUnread(this)
     clearTimeout(this._groupNoticeTimer)
     clearTimeout(this._noticeDismissTimer)
     clearTimeout(this._noticeReboundTimer)
@@ -524,6 +530,8 @@ Page({
   },
 
   onUnload() {
+    this._staffEntryVisible = false
+    stopStaffEntryUnread(this)
     clearTimeout(this._groupNoticeTimer)
     clearTimeout(this._noticeDismissTimer)
     clearTimeout(this._noticeReboundTimer)

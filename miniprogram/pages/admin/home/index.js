@@ -98,6 +98,7 @@ function pendingCountForUrl(url, pending = {}) {
     '/pages/admin/staff-promotion/list/index': pending.promotion,
     '/pages/admin/pet-vaccine/list/index': pending.petVaccine,
     '/pages/admin/finance/index': pending.finance,
+    '/pages/admin/playground-customizations/index': pending.playgroundCustomizations,
     '/pages/admin/incidents/list/index': pending.incidents
   }
   return Number(map[url] || 0)

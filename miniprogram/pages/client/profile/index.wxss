@@ -824,3 +824,6 @@ button:active,
   flex-direction: column;
   gap: 16rpx;
 }
+
+.staff-entry-icon { position: relative; overflow: visible; }
+.staff-entry-unread { position: absolute; top: -10rpx; right: -14rpx; min-width: 30rpx; height: 32rpx; padding: 0 7rpx; box-sizing: border-box; border-radius: 18rpx; background: #ef4444; color: #fff; border: 2rpx solid #fff; font-size: 20rpx; line-height: 28rpx; font-weight: 600; text-align: center; font-family: sans-serif; }

@@ -108,3 +108,14 @@ test('admin finance list queries use bounded database pagination without full ta
   assert.equal(logsRes.ok, true)
   assert.equal(logsRes.data.length, 25)
 })
+
+test('dashboard counts only submitted and processing appearance requests', async () => {
+  const db = createCollectionStore({
+    users: [{ _id: 'admin', openid: 'openid_admin', roles: ['client', 'admin'], status: 'active' }],
+    pet_playground_appearance_requests: ['draft', 'pending', 'pending', 'processing', 'completed', 'rejected', 'cancelled'].map((status, i) => ({ _id: `appearance_${i}`, status }))
+  })
+  const fn = loadCloudFunction('api', db, 'openid_admin')
+  const result = await fn.main({ module: 'admin', action: 'dashboard', data: {} })
+  assert.equal(result.ok, true)
+  assert.equal(result.data.pendingReviews.playgroundCustomizations, 3)
+})
