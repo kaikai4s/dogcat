@@ -1,4 +1,4 @@
-const { optionalAdminRead } = require('../../../../utils/admin-page-read')
+const { optionalAdminRead } = require('../../utils/admin-page-read')
 const { uploadImage } = require('../../../../utils/image-upload')
 const { callFunction, showError } = require('../../../../utils/cloud')
 

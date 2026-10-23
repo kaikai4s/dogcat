@@ -1,4 +1,4 @@
-const { optionalAdminRead } = require('../../../utils/admin-page-read')
+const { optionalAdminRead } = require('../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
 
 function buildRetroMailMemberLevels(levels, selectedIds) {

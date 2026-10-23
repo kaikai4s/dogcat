@@ -1,5 +1,5 @@
 const { callFunction, showError } = require('../../../utils/cloud')
-const { indexTree, includeDependencies, removeDependencies } = require('../../../utils/admin-permission-selection')
+const { indexTree, includeDependencies, removeDependencies } = require('../utils/admin-permission-selection')
 
 Page({
   data: {

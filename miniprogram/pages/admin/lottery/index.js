@@ -1,4 +1,4 @@
-const { optionalAdminRead } = require('../../../utils/admin-page-read')
+const { optionalAdminRead } = require('../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
 const { PET_BLESSINGS, getFormattedBlessingList, getRandomBlessing, resolvePetBlessing } = require('./petBlessings')
 

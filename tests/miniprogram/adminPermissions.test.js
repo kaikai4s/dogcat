@@ -11,7 +11,7 @@ function setup(call = async () => ({})) {
   let page
   const toasts = []
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/permissions/index.js'), 'utf8'), {
-    Page(value) { page = value }, require(name) { return name.endsWith('/cloud') ? { callFunction: call, showError: error => toasts.push(error.message) } : require('../../miniprogram/utils/admin-permission-selection') },
+    Page(value) { page = value }, require(name) { return name.endsWith('/cloud') ? { callFunction: call, showError: error => toasts.push(error.message) } : require('../../miniprogram/pages/admin/utils/admin-permission-selection') },
     wx: { showToast: value => toasts.push(value.title), pageScrollTo() {}, navigateTo() {} }
   })
   page.setData = patch => {

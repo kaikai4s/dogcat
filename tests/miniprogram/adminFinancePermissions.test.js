@@ -8,8 +8,8 @@ function setup(permissions, respond = async () => []) {
   const calls = [], errors = []
   const cloud = { callFunction: async (module, action, data) => { calls.push({ module, action, data }); return respond(action) }, showError: error => errors.push(error.message) }
   const helper = { exports: {} }
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/utils/admin-page-read.js'), 'utf8'), {
-    module: helper, require: name => name === './cloud' ? cloud : access
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/utils/admin-page-read.js'), 'utf8'), {
+    module: helper, require: name => name.endsWith('/cloud') ? cloud : access
   })
   let page
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/finance/index.js'), 'utf8'), {

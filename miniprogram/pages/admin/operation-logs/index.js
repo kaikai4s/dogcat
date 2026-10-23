@@ -1,4 +1,4 @@
-const { optionalAdminRead } = require('../../../utils/admin-page-read')
+const { optionalAdminRead } = require('../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
 const { formatDateTime } = require('../../../utils/format')
 const statuses = { started: '结果待核实', succeeded: '成功', failed: '失败', denied: '无权限' }
