@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
 
 const COLOR_PALETTE = [
@@ -79,7 +80,7 @@ Page({
   load() {
     Promise.all([
       callFunction('admin', 'listPetTitles'),
-      callFunction('admin', 'listMemberLevels')
+      optionalAdminRead(this, 'admin', 'listMemberLevels')
     ]).then(([titles, levels]) => {
       this.setData({
         titles,

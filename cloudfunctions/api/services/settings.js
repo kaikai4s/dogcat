@@ -115,7 +115,7 @@ module.exports = function createService({
     const rulesSummary = safeText(source.rulesSummary || existing.rulesSummary).trim() || '每月评选 · 每日投1票 · 邀请新用户当日+1票 · 榜首享现金大奖'
     const detailedRules = safeText(source.detailedRules || existing.detailedRules).trim()
     return {
-      enabled: source.enabled !== false,
+      enabled: source.enabled === undefined ? existing.enabled !== false : source.enabled !== false,
       firstPrizeAmount: Math.round(firstPrizeAmount * 100) / 100,
       rewardAmount: Math.round(firstPrizeAmount * 100) / 100,
       posterFileId,

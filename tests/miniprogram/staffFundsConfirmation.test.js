@@ -13,6 +13,8 @@ function pageWith(callFunction) {
   }
   vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/admin/finance/index.js'), 'utf8'), {
     wx, Page(value) { page = value }, require(name) {
+      if (name.endsWith('/adminAccess')) return require('../../miniprogram/utils/adminAccess')
+      if (name.endsWith('/admin-page-read')) return require('../../miniprogram/utils/admin-page-read')
       if (name.endsWith('/image-upload')) return { uploadImage: () => { throw new Error('未模拟图片上传') } }
       if (name.endsWith('/cloud')) return { callFunction, showError() {} }
       if (name.endsWith('/nav')) return { createPageNav() {}, navMethods() { return {} } }

@@ -7,17 +7,17 @@
 
   <view class="admin-card form-card">
     <view class="card-subtitle"><text class="remix-icon ri-team-line sub-icon"></text><text>选择服务人员</text></view>
-    <picker range="{{staff}}" range-key="realName" bindchange="choose">
+    <picker range="{{staff}}" range-key="realName" value="{{staffIndex}}" disabled="{{!staff.length || assigning}}" bindchange="choose">
       <view class="picker-field">
         <view class="picker-main">
           <view class="label">宠托师</view>
-          <view class="value">{{staff.length ? '已选择' : '暂无已审核员工'}}</view>
+          <view class="value">{{selectedStaffName || '暂无可派单的宠托师'}}</view>
         </view>
         <text class="remix-icon ri-arrow-right-s-line picker-arrow"></text>
       </view>
     </picker>
   </view>
 
-  <button class="primary-btn submit-btn" bindtap="assign"><text class="remix-icon ri-checkbox-circle-line"></text><text>确认派单</text></button>
+  <button wx:if="{{adminSuper || adminPermissions.admin_assignOrder}}" class="primary-btn submit-btn" bindtap="assign" loading="{{assigning}}" disabled="{{assigning || !staffProfileId}}"><text class="remix-icon ri-checkbox-circle-line"></text><text>确认派单</text></button>
 </view>
 <global-loading />

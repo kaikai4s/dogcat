@@ -37,8 +37,8 @@
       <image class="file-thumb" wx:for="{{item.fileIds}}" wx:for-item="fileId" wx:key="*this" src="{{fileId}}" mode="aspectFill" data-id="{{item._id}}" data-file="{{fileId}}" bindtap="previewFile" />
     </view>
     <view class="action-row" wx:if="{{item.status === 'pending'}}">
-      <button class="ghost-btn compact-btn" data-id="{{item._id}}" bindtap="reject">驳回</button>
-      <button class="primary-btn compact-btn" data-id="{{item._id}}" bindtap="approve">通过</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_auditPetVaccineCertification}}" class="ghost-btn compact-btn" data-id="{{item._id}}" bindtap="reject">驳回</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_auditPetVaccineCertification}}" class="primary-btn compact-btn" data-id="{{item._id}}" bindtap="approve">通过</button>
     </view>
   </view>
 

@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
 
 function emptyTemplate() {
@@ -148,13 +149,13 @@ Page({
         this.syncDerivedData({ templates, issueByLevel, issueByOpenid, publishMail })
       })
       .catch(showError)
-    callFunction('admin', 'listMemberLevels')
+    optionalAdminRead(this, 'admin', 'listMemberLevels')
       .then((levels) => {
         this.setData({ levels })
         this.syncDerivedData({ levels })
       })
       .catch(showError)
-    callFunction('admin', 'listServicePrices')
+    optionalAdminRead(this, 'admin', 'listServicePrices')
       .then((servicePrices) => {
         this.setData({ servicePrices })
         this.syncDerivedData({ servicePrices })

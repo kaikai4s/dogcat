@@ -522,7 +522,7 @@ function buildSettingSummary(settings = {}) {
     settlementReliability: `分成 ${Math.round(Number(settlement.staffCommissionRate || 0) * 100)}% · 完单 ${settlement.settlementDelayDays} 天后可提现 · 最低 ¥${Number(settlement.minWithdrawAmount || 0).toFixed(2)}`,
     carousel: `${carousel.enabled ? '轮播已启用' : '轮播已关闭'} · ${enabledCarouselCount}/${carouselItems.length} 个素材启用`,
     homePage: `${enabledModuleCount}/${homeModuleOptions.length} 个模块启用 · ${homePage.ctaTitle || '未配置标题'}`,
-    petBeautyContest: `月度冠军 ¥${petBeautyContest.firstPrizeAmount || 500} · ${petBeautyContest.posterUrl ? '已配海报' : '默认海报'}`,
+    petBeautyContest: `${petBeautyContest.enabled === false ? '即将开始 · 无现金奖金' : '已开启 · 月度冠军 ¥' + petBeautyContest.firstPrizeAmount} · ${petBeautyContest.posterUrl ? '已配海报' : '默认海报'}`,
     staffTraining: `及格 ${staffTraining.passScore} 分 · ${quiz.length} 道题 · ${enabledVideoCount}/${videos.length} 视频 · 审核微信: ${(staffTraining.videoAuditGuide && staffTraining.videoAuditGuide.wechatId) || '未配置'}`,
     pricingSurcharges: (settings.pricingSurcharges && settings.pricingSurcharges.enabled !== false)
       ? `${((settings.pricingSurcharges && settings.pricingSurcharges.dateSurcharges) || []).filter((d) => d.enabled !== false).length} 个日期加价 · ${((settings.pricingSurcharges && settings.pricingSurcharges.timeSlotSurcharges) || []).filter((s) => s.enabled !== false).length} 个时段加价`
@@ -677,6 +677,7 @@ Page({
   loadSubscriptionDeliveries(e) {
     if (this.data.deliveryLoading) return
     const append = !!(e && e.currentTarget && e.currentTarget.dataset.more)
+    if (!this.data.adminSuper && !this.data.adminPermissions?.admin_listSubscriptionDeliveries) return Promise.resolve()
     this.setData({ deliveryLoading: true })
     return callFunction('admin', 'listSubscriptionDeliveries', { status: this.data.deliveryStatuses[this.data.deliveryStatusIndex], cursor: append ? this.data.deliveryCursor : '' })
       .then(result => this.setData({ subscriptionDeliveries: append ? [...this.data.subscriptionDeliveries, ...result.list] : result.list,
@@ -1215,6 +1216,11 @@ Page({
   toggleHomeModule(e) {
     const key = e.currentTarget.dataset.key
     this.setData({ [`settings.homePage.modules.${key}`]: e.detail.value })
+  },
+
+  togglePetBeautyContest(e) {
+    if (!this.data.adminSuper) return
+    this.setData({ 'settings.petBeautyContest.enabled': e.detail.value === true })
   },
 
   petBeautyContestInput(e) {
@@ -2074,8 +2080,8 @@ Page({
       homePage: this.data.settings.homePage,
       petBeautyContest: {
         ...this.data.settings.petBeautyContest,
-        firstPrizeAmount: Number(this.data.settings.petBeautyContest?.firstPrizeAmount || 500),
-        rewardAmount: Number(this.data.settings.petBeautyContest?.firstPrizeAmount || 500)
+        firstPrizeAmount: Number(this.data.settings.petBeautyContest?.firstPrizeAmount ?? 500),
+        rewardAmount: Number(this.data.settings.petBeautyContest?.firstPrizeAmount ?? 500)
       },
       staffTraining: {
         ...staffTraining,

@@ -1,4 +1,4 @@
-const { ensureLogin, callFunction, chooseSelectedLocation } = require('../../utils/cloud')
+const { ensureLogin, callFunction } = require('../../utils/cloud')
 const { World2D } = require('../utils/world2d')
 const { placedBuildings, isPublicBuilding } = require('../utils/plot-buildings')
 const { SceneSync } = require('../utils/scene-sync')
@@ -679,9 +679,9 @@ Page({
   },
   async visitCommunity() {
     try {
-      const location=await chooseSelectedLocation()
+      const location=await this.selectComponent('#communityChooser').open()
       if(!location || !location.name) return
-      this.selectedCommunity={name:location.name,address:location.address||'',latitude:location.latitude||0,longitude:location.longitude||0}
+      this.selectedCommunity={name:location.name,city:location.city||'',district:location.district||'',address:location.address||'',latitude:location.latitude||0,longitude:location.longitude||0}
       this.initialize()
     } catch(error) {
       if(!(error.errMsg||'').includes('cancel')) wx.showToast({title:error.message||'选择小区失败',icon:'none'})
@@ -691,9 +691,9 @@ Page({
     this.clearPetSelection()
     this.joystickEnd()
     try {
-      const location=await chooseSelectedLocation()
+      const location=await this.selectComponent('#communityChooser').open()
       if(!location || !location.name) return
-      const community={name:location.name,address:location.address||'',latitude:location.latitude||0,longitude:location.longitude||0}
+      const community={name:location.name,city:location.city||'',district:location.district||'',address:location.address||'',latitude:location.latitude||0,longitude:location.longitude||0}
       await callFunction('playground','saveCommunity',{community})
       this.selectedCommunity=null
       this.placeAfterLoad=true

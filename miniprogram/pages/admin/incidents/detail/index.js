@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { withIncidentText, withIncidentActionText } = require('../../../../utils/format')
@@ -90,7 +91,7 @@ Page({
   },
 
   loadCouponTemplates() {
-    callFunction('admin', 'listCouponTemplates', {})
+    optionalAdminRead(this, 'admin', 'listCouponTemplates', {})
       .then((templates) => this.setData({ couponTemplates: (templates || []).filter((item) => item.enabled !== false).map(decorateCouponTemplate) }))
       .catch(() => {})
   },

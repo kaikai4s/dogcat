@@ -1,3 +1,4 @@
+const { effectivePrize, publicContest } = require('../services/pet-beauty-contest')
 const { readOptionalDocument } = require('../utils/documentPages')
 
 module.exports = function createHandler(context) {
@@ -123,17 +124,8 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'getActivityHome') {
-      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
-      const contestConfig = settings.petBeautyContest || {
-        firstPrizeAmount: 500,
-        rewardAmount: 500,
-        posterFileId: '',
-        posterUrl: '',
-        bannerTitle: '最美爱宠月度大赛',
-        bannerSubtitle: '晒出爱宠萌照 · 争夺月度冠军现金大奖与全服专属头衔',
-        rulesSummary: '每月评选 · 每日投1票 · 邀请新用户当日+1票 · 榜首享现金大奖',
-        detailedRules: ''
-      }
+      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings() : {}
+      const contestConfig = publicContest(settings.petBeautyContest)
       let userInviteCode = ''
       if (openid) {
         let user = typeof getOptionalUser === 'function' ? await getOptionalUser(openid) : null
@@ -165,17 +157,8 @@ module.exports = function createHandler(context) {
     }
 
     if (action === 'getContestConfig') {
-      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
-      return settings.petBeautyContest || {
-        firstPrizeAmount: 500,
-        rewardAmount: 500,
-        posterFileId: '',
-        posterUrl: '',
-        bannerTitle: '最美爱宠月度大赛',
-        bannerSubtitle: '晒出爱宠萌照 · 争夺月度冠军现金大奖与全服专属头衔',
-        rulesSummary: '每月评选 · 每日投1票 · 邀请新用户当日+1票 · 榜首享现金大奖',
-        detailedRules: ''
-      }
+      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings() : {}
+      return publicContest(settings.petBeautyContest)
     }
 
     if (action === 'listCandidates') {
@@ -202,13 +185,13 @@ module.exports = function createHandler(context) {
             exclusiveId: item.petExclusiveId || '',
             voteCount: item.voteCount || 0,
             rank: item.rank,
-            prizeAmount: item.prizeAmount || (item.rank === 1 ? (item.petSnapshot && item.petSnapshot.prizeAmount) : 0),
+            prizeAmount: item.prizeAmount ?? (item.rank === 1 ? (item.petSnapshot && item.petSnapshot.prizeAmount) || 0 : 0),
             beautyTitle: { monthKey: item.monthKey, rank: item.rank, title: item.title }
           }))
         return { ...paginateList(histList, data), monthKey: historyMonthKey, locked: true, isHistory: true }
       }
-      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
-      const firstPrizeAmount = Number(settings?.petBeautyContest?.firstPrizeAmount ?? 500)
+      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings() : {}
+      const firstPrizeAmount = effectivePrize(settings.petBeautyContest)
       const pets = (await getPublicPetsWithVotes())
         .map((pet, index) => ({
           ...pet,
@@ -439,10 +422,17 @@ module.exports = function createHandler(context) {
       const championRank = rankingRes.data && rankingRes.data[0]
       if (!championRank) throw new Error(`未找到 ${targetMonthKey} 月度排行榜第 1 名记录，请先执行月度锁榜结算`)
 
-      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
-      const defaultPrize = Number(settings?.petBeautyContest?.firstPrizeAmount ?? 500)
+      const settings = typeof getSystemSettings === 'function' ? await getSystemSettings() : {}
+      if (settings?.petBeautyContest?.enabled === false) throw new Error('宠物大赛即将开始，当前不发放现金奖金')
+      if (championRank.prizeAmount !== undefined && Number(championRank.prizeAmount) <= 0) throw new Error('该月榜单结算时未设置现金奖金，仅保留荣誉称号')
+      const defaultPrize = effectivePrize(settings.petBeautyContest)
+      if (defaultPrize <= 0) throw new Error('当前未设置现金奖金，仅保留荣誉称号')
       return db.runTransaction(async tx => {
+        const settingsRows = (await tx.collection('platform_configs').where({ key: 'system_settings' }).limit(1).get()).data || []
+        const latestContest = settingsRows[0]?.value?.petBeautyContest || settings.petBeautyContest || {}
+        if (latestContest.enabled === false || effectivePrize(latestContest) <= 0) throw new Error('宠物大赛当前不发放现金奖金')
         const rank = await readOptionalDocument(tx, 'pet_beauty_month_rankings', championRank._id)
+        if (rank && rank.prizeAmount !== undefined && Number(rank.prizeAmount) <= 0) throw new Error('该月榜单结算时未设置现金奖金，仅保留荣誉称号')
         if (!rank || rank.monthKey !== targetMonthKey || rank.rank !== 1 || rank.petId !== championRank.petId) throw new Error('冠军榜单已变化，请刷新后重试')
         const petId = rank.petId
         const pet = await readOptionalDocument(tx, 'pets', petId) || rank.petSnapshot || {}

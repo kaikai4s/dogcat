@@ -151,6 +151,8 @@ function createCollectionStore(initial = {}, options = {}) {
         return pipeline
       },
       _where: null,
+      _projection: null,
+      field(projection) { this._projection = projection; return this },
       _limit: null,
       _order: null,
       _skip: 0,
@@ -192,6 +194,15 @@ function createCollectionStore(initial = {}, options = {}) {
         }
         data = data.slice(this._skip)
         if (this._limit !== null) data = data.slice(0, this._limit)
+        if (this._projection) {
+          const included = Object.entries(this._projection).filter(([key, value]) => key !== '_id' && !!value).map(([key]) => key)
+          data = data.map(row => {
+            if (!included.length) return Object.fromEntries(Object.entries(row).filter(([key]) => this._projection[key] !== false && this._projection[key] !== 0))
+            const result = this._projection._id === false || this._projection._id === 0 ? {} : { _id: row._id }
+            for (const key of included) if (row[key] !== undefined) result[key] = row[key]
+            return result
+          })
+        }
         return { data }
       },
       async count() {
@@ -299,7 +310,7 @@ function loadCloudFunction(functionName, db, openid = 'openid_test', cloudOverri
         DYNAMIC_CURRENT_ENV: 'test-env',
         init() {},
         database() { return db },
-        getWXContext() { return { OPENID: openid } },
+        getWXContext() { return { OPENID: openid, ...cloudOverrides.wxContext } },
         getTempFileURL: cloudOverrides.getTempFileURL,
         ai: cloudOverrides.ai,
         extend: cloudOverrides.extend,

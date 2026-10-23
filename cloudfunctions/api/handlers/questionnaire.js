@@ -416,6 +416,7 @@ module.exports = function createHandler(context) {
         const payload = normalizeQuestionnairePayload(data)
         const time = now()
         const publishImmediately = data.publishImmediately === true || data.status === 'published'
+        if (publishImmediately) await context.authorizeAdmin(admin, 'questionnaire.publish')
         const initialStatus = publishImmediately ? 'published' : 'draft'
         const res = await db.collection('questionnaires').add({
           data: {
@@ -445,6 +446,7 @@ module.exports = function createHandler(context) {
         const payload = normalizeQuestionnairePayload(data)
         const time = now()
         const publishImmediately = data.publishImmediately === true || data.status === 'published'
+        if (publishImmediately) await context.authorizeAdmin(admin, 'questionnaire.publish')
         const nextStatus = publishImmediately ? 'published' : current.status
         const publishedAt = publishImmediately ? (current.publishedAt || time) : current.publishedAt
         await db.collection('questionnaires').doc(id).update({

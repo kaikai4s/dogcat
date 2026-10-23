@@ -10,7 +10,7 @@
         <view class="hero-title">问卷调查中心</view>
         <view class="hero-desc">发布用户/宠托师问卷，AI 自动整理图表与防乱填分析。</view>
       </view>
-      <button class="create-hero-btn" bindtap="create">
+      <button wx:if="{{adminSuper || adminPermissions.questionnaire_create}}" class="create-hero-btn" bindtap="create">
         <text class="remix-icon ri-add-line"></text>新建问卷
       </button>
     </view>
@@ -60,7 +60,7 @@
   <view class="card-list" wx:if="{{displayList.length}}">
     <view class="questionnaire-card" wx:for="{{displayList}}" wx:key="_id">
       <!-- 头部：标题与状态 -->
-      <view class="card-header" data-id="{{item._id}}" bindtap="responses">
+      <view wx:if="{{adminSuper || adminPermissions.questionnaire_responses}}" class="card-header" data-id="{{item._id}}" bindtap="responses">
         <view class="card-title-group">
           <view class="card-title">{{item.title}}</view>
           <view class="tag-row">
@@ -72,12 +72,12 @@
       </view>
 
       <!-- 说明描述 -->
-      <view class="card-desc" data-id="{{item._id}}" bindtap="responses">
+      <view wx:if="{{adminSuper || adminPermissions.questionnaire_responses}}" class="card-desc" data-id="{{item._id}}" bindtap="responses">
         {{item.description || '暂无说明，点击进入查看回收问卷详情'}}
       </view>
 
       <!-- 统计指标与时间 -->
-      <view class="card-meta" data-id="{{item._id}}" bindtap="responses">
+      <view wx:if="{{adminSuper || adminPermissions.questionnaire_responses}}" class="card-meta" data-id="{{item._id}}" bindtap="responses">
         <view class="meta-item">
           <text class="remix-icon ri-inbox-archive-line"></text>
           <text>回收 <text class="strong">{{item.responseCount || 0}}</text> 份</text>
@@ -93,25 +93,25 @@
 
       <!-- 操作按钮条 -->
       <view class="card-actions">
-        <button class="action-btn" data-id="{{item._id}}" bindtap="responses">
+        <button wx:if="{{adminSuper || adminPermissions.questionnaire_responses}}" class="action-btn" data-id="{{item._id}}" bindtap="responses">
           <text class="remix-icon ri-eye-line"></text>回收({{item.responseCount || 0}})
         </button>
-        <button class="action-btn highlight-btn" data-id="{{item._id}}" bindtap="analysis">
+        <button wx:if="{{adminSuper || adminPermissions.questionnaire_getAiReport || adminPermissions.questionnaire_analyzeAI}}" class="action-btn highlight-btn" data-id="{{item._id}}" bindtap="analysis">
           <text class="remix-icon ri-robot-2-line"></text>AI分析
         </button>
-        <button class="action-btn" data-id="{{item._id}}" bindtap="edit" wx:if="{{item.status !== 'closed'}}">
+        <button class="action-btn" data-id="{{item._id}}" bindtap="edit" wx:if="{{(item.status !== 'closed') && (adminSuper || adminPermissions.questionnaire_detailAdmin)}}">
           <text class="remix-icon ri-edit-line"></text>编辑
         </button>
-        <button class="action-btn" data-id="{{item._id}}" bindtap="clone">
+        <button wx:if="{{adminSuper || adminPermissions.questionnaire_clone}}" class="action-btn" data-id="{{item._id}}" bindtap="clone">
           <text class="remix-icon ri-file-copy-line"></text>克隆
         </button>
-        <button class="action-btn publish-btn" data-id="{{item._id}}" bindtap="publish" wx:if="{{item.status !== 'published'}}">
+        <button class="action-btn publish-btn" data-id="{{item._id}}" bindtap="publish" wx:if="{{(item.status !== 'published') && (adminSuper || adminPermissions.questionnaire_publish)}}">
           <text class="remix-icon ri-send-plane-fill"></text>发布
         </button>
-        <button class="action-btn close-btn" data-id="{{item._id}}" bindtap="close" wx:if="{{item.status === 'published'}}">
+        <button class="action-btn close-btn" data-id="{{item._id}}" bindtap="close" wx:if="{{(item.status === 'published') && (adminSuper || adminPermissions.questionnaire_close)}}">
           <text class="remix-icon ri-stop-circle-line"></text>关闭
         </button>
-        <button class="action-btn delete-btn" data-id="{{item._id}}" bindtap="deleteDraft" wx:if="{{item.status === 'draft' || (item.responseCount === 0)}}">
+        <button class="action-btn delete-btn" data-id="{{item._id}}" bindtap="deleteDraft" wx:if="{{(item.status === 'draft' || (item.responseCount === 0)) && (adminSuper || adminPermissions.questionnaire_delete)}}">
           <text class="remix-icon ri-delete-bin-line"></text>删除
         </button>
       </view>

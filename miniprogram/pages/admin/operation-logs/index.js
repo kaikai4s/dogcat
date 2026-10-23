@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
 const { formatDateTime } = require('../../../utils/format')
 const statuses = { started: '结果待核实', succeeded: '成功', failed: '失败', denied: '无权限' }
@@ -16,7 +17,7 @@ Page({
       if (access?.superAdmin || access?.permissions.includes('admin.listOperationActors')) {
         let cursor = '', actors = [{ label: '全部人员', openid: '' }]
         do {
-          const result = await callFunction('admin', 'listOperationActors', { cursor })
+          const result = await optionalAdminRead(this, 'admin', 'listOperationActors', { cursor }, { list: [], hasMore: false })
           actors = actors.concat(result.list.map(user => ({ label: `${user.nickname || '未设置昵称'} (${user.openid})`, openid: user.openid })))
           cursor = result.hasMore ? result.cursor : ''
         } while (cursor)

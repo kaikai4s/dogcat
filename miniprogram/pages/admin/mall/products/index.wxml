@@ -13,8 +13,8 @@
   </view>
 
   <view class="toolbar sticky-toolbar">
-    <button class="tool-btn btn-secondary" bindtap="showCategory">+ 新增分类</button>
-    <button class="tool-btn btn-primary" bindtap="showProduct">+ 新增商品</button>
+    <button wx:if="{{adminSuper || adminPermissions.adminMall_saveCategory}}" class="tool-btn btn-secondary" bindtap="showCategory">+ 新增分类</button>
+    <button wx:if="{{adminSuper || adminPermissions.adminMall_saveProduct}}" class="tool-btn btn-primary" bindtap="showProduct">+ 新增商品</button>
   </view>
 
   <view class="section-card category-card">
@@ -27,12 +27,12 @@
     </view>
     <scroll-view scroll-x class="cat-row compact-row">
       <view class="cat-chip {{item.enabled ? '' : 'disabled'}}" wx:for="{{categories}}" wx:key="_id">
-        <view class="cat-main" bindtap="showCategory" data-id="{{item._id}}">
+        <view wx:if="{{adminSuper || adminPermissions.adminMall_saveCategory}}" class="cat-main" bindtap="showCategory" data-id="{{item._id}}">
           <text class="cat-icon">{{item.icon || '🏷️'}}</text>
           <text class="cat-name">{{item.name}}</text>
         </view>
         <text class="cat-status-badge {{item.enabled ? 'is-enabled' : 'is-disabled'}}">{{item.enabled ? '已启用' : '已停用'}}</text>
-        <view class="cat-del-btn" data-id="{{item._id}}" catchtap="deleteCategory">
+        <view wx:if="{{adminSuper || adminPermissions.adminMall_deleteCategory}}" class="cat-del-btn" data-id="{{item._id}}" catchtap="deleteCategory">
           <text class="del-cross">×</text>
         </view>
       </view>
@@ -86,8 +86,8 @@
         </view>
       </view>
       <view class="actions inline-actions">
-        <button class="product-action-btn btn-edit" data-id="{{item._id}}" bindtap="showProduct">编辑商品</button>
-        <button class="product-action-btn {{item.status === 'on_sale' ? 'btn-danger' : 'btn-primary'}}" data-id="{{item._id}}" data-status="{{item.status}}" bindtap="toggleStatus">{{item.status === 'on_sale' ? '下架' : '上架'}}</button>
+        <button wx:if="{{adminSuper || adminPermissions.adminMall_saveProduct}}" class="product-action-btn btn-edit" data-id="{{item._id}}" bindtap="showProduct">编辑商品</button>
+        <button wx:if="{{adminSuper || adminPermissions.adminMall_toggleProductStatus}}" class="product-action-btn {{item.status === 'on_sale' ? 'btn-danger' : 'btn-primary'}}" data-id="{{item._id}}" data-status="{{item.status}}" bindtap="toggleStatus">{{item.status === 'on_sale' ? '下架' : '上架'}}</button>
       </view>
     </view>
   </view>
@@ -105,7 +105,7 @@
         <input type="number" placeholder="数字越小越靠前" value="{{categoryForm.sortOrder}}" data-field="sortOrder" bindinput="inputCategory" />
         <view class="switch-line">启用分类<switch checked="{{categoryForm.enabled}}" bindchange="switchCategory" /></view>
       </view>
-      <view class="modal-actions"><button bindtap="hideCategory">取消</button><button class="primary" bindtap="saveCategory">保存</button></view>
+      <view class="modal-actions"><button bindtap="hideCategory">取消</button><button wx:if="{{adminSuper || adminPermissions.adminMall_saveCategory}}" class="primary" bindtap="saveCategory">保存</button></view>
     </view>
   </view>
 
@@ -333,7 +333,7 @@
         <view class="section-title small-title">商品纯文字简介</view>
         <textarea placeholder="简短卖点、适用宠物概况、售后概括" value="{{productForm.description}}" data-field="description" bindinput="inputProduct" />
       </view>
-      <view class="modal-actions"><button bindtap="hideProduct">取消</button><button class="primary" bindtap="saveProduct">保存商品</button></view>
+      <view class="modal-actions"><button bindtap="hideProduct">取消</button><button wx:if="{{adminSuper || adminPermissions.adminMall_saveProduct}}" class="primary" bindtap="saveProduct">保存商品</button></view>
     </view>
   </view>
 </view>

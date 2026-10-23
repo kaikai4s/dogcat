@@ -75,12 +75,12 @@ test('opening resolved history does not decrement other pending notification cou
   const home = { route: 'pages/admin/home/index', data: { unreadNotificationCount: 2 }, setData(patch) { Object.assign(this.data, patch) } }
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/notifications/index.js'), 'utf8'), {
     Page: value => { page = value },
-    require: () => ({ callFunction: () => Promise.resolve() }),
+    require: name => name.endsWith('/adminAccess') ? require('../../miniprogram/utils/adminAccess') : ({ callFunction: () => Promise.resolve() }),
     getCurrentPages: () => [home], wx: { navigateTo() {} }
   })
   page.setData = patch => Object.assign(page.data, patch)
   const item = { _id: 'old', orderId: 'completed', isRead: false, isResolved: true }
-  page.setData({ list: [item], unreadCount: 2 })
+  page.setData({ list: [item], unreadCount: 2, adminAccess: { superAdmin: true } })
   page.tapItem({ currentTarget: { dataset: { item } } })
   assert.equal(page.data.unreadCount, 2)
   assert.equal(home.data.unreadNotificationCount, 2)

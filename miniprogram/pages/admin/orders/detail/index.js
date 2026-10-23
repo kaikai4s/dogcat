@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { withOrderText } = require('../../../../utils/format')
@@ -226,7 +227,7 @@ Page({
 
   load() {
     return callFunction('admin', 'getOrderDetail', { id: this.data.id })
-      .then(detail => callFunction('payment', 'listRefunds', { orderId: this.data.id }).then(refunds => [detail, refunds]))
+      .then(detail => optionalAdminRead(this, 'payment', 'listRefunds', { orderId: this.data.id }).then(refunds => [detail, refunds]))
       .then(([detail, refunds]) => {
         const order = withOrderText(detail.order)
         const notifyMap = { sent: '已发送', success: '发送成功', failed: '发送失败', skipped: '无需发送' }
@@ -744,7 +745,7 @@ Page({
       this.setData({ currentStaffDepositBalance: 0 })
       return
     }
-    callFunction('admin', 'getStaffDepositDetail', { staffOpenid })
+    optionalAdminRead(this, 'admin', 'getStaffDepositDetail', { staffOpenid }, null)
       .then((res) => {
         const balance = res && res.availableRefundAmount != null ? Number(res.availableRefundAmount) : 0
         this.setData({ currentStaffDepositBalance: balance })

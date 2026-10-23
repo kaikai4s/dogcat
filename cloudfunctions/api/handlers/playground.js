@@ -16,6 +16,8 @@ module.exports = function createHandler(context) {
 
   return async function playground(openid, action, data = {}) {
     const user = await getUser(openid)
+    if (action === 'listCommunities') return require('../services/playground-communities')(context).list(user, data)
+    if (action === 'getCommunityInfo') return require('../services/playground-communities')(context).info(data.community || user.residentialCommunity)
     if (action === 'listCommunityGroupBuys') return require('../services/playground-group-buy')(context).list(openid)
     if (action === 'getPublicPetCare') return require('../services/playground-care')(context).publicCare(openid, data)
     if (action === 'syncScene') return shared.sync(openid, data)

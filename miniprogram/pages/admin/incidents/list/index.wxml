@@ -10,7 +10,7 @@
     <view class="status-tab {{status === item.value ? 'active' : ''}}" wx:for="{{statusTabs}}" wx:key="value" data-status="{{item.value}}" bindtap="switchStatus">{{item.label}}</view>
   </view>
 
-  <view class="admin-card incident-card interactive" wx:for="{{incidents}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+  <view wx:if="{{adminSuper || adminPermissions.incident_getIncidentDetail}}" class="admin-card incident-card interactive" wx:for="{{incidents}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
     <view class="incident-head">
       <view class="incident-icon"><text class="remix-icon ri-customer-service-2-line"></text></view>
       <view class="incident-main">
@@ -22,7 +22,7 @@
     </view>
     <view class="incident-actions">
       <view class="soft-badge type-badge">{{item.incidentTypeText}}</view>
-      <button class="primary-btn mini-btn" size="mini" data-id="{{item._id}}" catchtap="resolve"><text class="remix-icon ri-check-line"></text><text>快速解决</text></button>
+      <button wx:if="{{adminSuper || adminPermissions.incident_resolveIncident}}" class="primary-btn mini-btn" size="mini" data-id="{{item._id}}" catchtap="resolve"><text class="remix-icon ri-check-line"></text><text>快速解决</text></button>
     </view>
   </view>
 

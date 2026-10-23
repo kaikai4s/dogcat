@@ -6,7 +6,7 @@
   <view class="tabs compact-tabs">
     <view class="tab {{status === item.value ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="value" data-value="{{item.value}}" bindtap="switchStatus">{{item.label}}</view>
   </view>
-  <view class="admin-compact-card" wx:for="{{list}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+  <view wx:if="{{adminSuper || adminPermissions.admin_getPromotionApplicationDetail}}" class="admin-compact-card" wx:for="{{list}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
     <view class="admin-summary-row">
       <view class="admin-summary-main">
         <view class="admin-summary-title">{{item.realName}}</view>

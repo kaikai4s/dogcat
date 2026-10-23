@@ -590,7 +590,7 @@ module.exports = function createHandler(context) {
       const status = safeText(data.status).trim()
       const where = { assetType: 'user' }
       if (status) where.status = status
-      const rows = (await readAll('withdraw_requests', where, 2000)).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      const rows = await queryFinanceListSafely('withdraw_requests', { baseWhere: where, dateRange: buildDateRange(data), dateFields: ['createdAt', 'paidAt'], pageSize: data.pageSize })
       const openids = [...new Set(rows.map((row) => row.userOpenid).filter(Boolean))]
       const users = await fetchUsersByOpenids(openids)
       const userMap = new Map(users.map((user) => [user.openid, user]))
@@ -1302,6 +1302,8 @@ module.exports = function createHandler(context) {
       if (action === 'getOrderDetail') [order.data] = await refreshOrderRefunds([order.data])
       const displayOrder = await attachAdminOrderContactData(order.data)
       Object.assign(displayOrder, await require('../services/order-group-buy-view')(context).attach(displayOrder))
+      const flags = await context.getAdminPermissionFlags(admin, ['admin.listOrderSessionMessages'])
+      const canReadChat = flags['admin.listOrderSessionMessages']
       const payAmount = Number(order.data.payAmount || 0)
       const [timelineRows, trackRows, checkinRows, unlockRows, refundRows, penaltyRows, sessionMessageRows, riskBypassRows] = await Promise.all([
         readScopedDocuments('order_timeline', { orderId: id }, 'createdAt', 'asc').catch(() => []),
@@ -1310,8 +1312,8 @@ module.exports = function createHandler(context) {
         readScopedDocuments('unlock_code_logs', { orderId: id }, 'createdAt', 'desc').catch(() => []),
         readScopedDocuments('refunds', { orderId: id }, 'createdAt', 'desc').catch(() => []),
         readScopedDocuments('staff_deposit_evidences', { orderId: id }, 'createdAt', 'desc').catch(() => []),
-        readScopedDocuments('order_session_messages', { orderId: id }, 'createdAt', 'asc').catch(() => []),
-        readScopedDocuments('risk_bypass_logs', { orderId: id }, 'createdAt', 'desc').catch(() => [])
+        canReadChat ? readScopedDocuments('order_session_messages', { orderId: id }, 'createdAt', 'asc').catch(() => []) : Promise.resolve([]),
+        canReadChat ? readScopedDocuments('risk_bypass_logs', { orderId: id }, 'createdAt', 'desc').catch(() => []) : Promise.resolve([])
       ])
       const successfulRefundsAmount = refundRows
         .filter((r) => ['success', 'processing'].includes(r.status))

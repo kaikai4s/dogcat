@@ -11,7 +11,7 @@ function setup(call = async () => ({})) {
   let page
   const toasts = []
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/permissions/index.js'), 'utf8'), {
-    Page(value) { page = value }, require() { return { callFunction: call, showError: error => toasts.push(error.message) } },
+    Page(value) { page = value }, require(name) { return name.endsWith('/cloud') ? { callFunction: call, showError: error => toasts.push(error.message) } : require('../../miniprogram/utils/admin-permission-selection') },
     wx: { showToast: value => toasts.push(value.title), pageScrollTo() {}, navigateTo() {} }
   })
   page.setData = patch => {
@@ -97,4 +97,38 @@ test('member editor exposes inactive groups and blocks more than ten assignments
   await page.saveMember()
   assert.equal(count, 1)
   assert.ok(toasts.includes('最多分配 10 个用户组'))
+})
+
+test('selecting an operation includes transitive page dependencies, removing the base removes dependent operations', () => {
+  const { page } = setup()
+  page.setData({ access: { ...access, tree: [{ id: 'orders', label: '订单', children: [
+    { id: 'admin.listOrders', label: '订单列表', kind: 'read', requires: [] },
+    { id: 'admin.getOrderDetail', label: '订单详情', kind: 'read', requires: ['admin.listOrders'] },
+    { id: 'admin.refundOrder', label: '订单退款', kind: 'write', risk: true, requires: ['admin.getOrderDetail'] }
+  ] }] } })
+  page.edit(event())
+  page.permissionSearch(event('', '退款'))
+  page.branch(event('orders'))
+  assert.deepEqual([...page.data.selected].sort(), ['admin.listOrders', 'admin.getOrderDetail', 'admin.refundOrder'].sort())
+  assert.equal(page.data.sensitiveCount, 1)
+  page.permissionSearch(event('', '订单列表'))
+  page.permissions(event('orders', []))
+  assert.equal(page.data.selected.length, 0)
+})
+test('existing incomplete groups display missing dependencies; catalog search includes identifiers and owner-only operations', () => {
+  const { page } = setup()
+  page.setData({ access: { ...access, tree: [{ id: 'logs', label: '审计', children: [
+    { id: 'admin.listOperationLogs', label: '操作记录', kind: 'read', requires: [] },
+    { id: 'admin.listOperationActors', label: '人员筛选', kind: 'read', requires: ['admin.listOperationLogs'] }
+  ] }], ownerTree: [{ id: 'migration', label: '配置迁移', children: [{ id: 'configMigration.import', label: '导入' }] }] },
+    groups: [{ _id: 'g', name: '日志', permissions: ['admin.listOperationActors', 'removed.action'] }] })
+  page.edit(event('g'))
+  assert.equal(page.data.removedPermissionCount, 1)
+  assert.equal(page.data.missingDependencies[0].id, 'admin.listOperationLogs')
+  page.completeDependencies()
+  assert.equal(page.data.missingDependencies.length, 0)
+  page.permissionSearch(event('', 'configMigration.import'))
+  assert.equal(page.data.tree.length, 0)
+  assert.equal(page.data.ownerTree[0].children.length, 1)
+  assert.equal(page.data.selected.includes('configMigration.import'), false)
 })

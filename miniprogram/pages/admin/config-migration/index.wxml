@@ -1,0 +1,35 @@
+<view class="page {{themeClass}} {{fontClass}}">
+  <view class="title">配置导入与导出</view>
+  <view class="env">当前环境：{{envId}}</view>
+  <view class="card">
+    <view class="subtitle">一键导出全部配置</view>
+    <view class="description">系统设置、价格与打卡规则、会员、券模板、头衔、签到、抽奖、商城、问卷和庄园配置。</view>
+    <button class="primary" bindtap="exportConfig" disabled="{{busy}}" loading="{{busy}}">导出配置 JSON</button>
+    <button wx:if="{{savedPath}}" bindtap="shareSaved" disabled="{{busy}}">再次分享已生成文件</button>
+  </view>
+  <view class="card">
+    <view class="subtitle">从文件导入配置</view>
+    <view class="description">先将导出的 JSON 发到微信文件传输助手，再在目标环境选择文件预览。仅超级管理员可操作。</view>
+    <button bindtap="chooseImport" disabled="{{busy}}">选择配置文件并预览</button>
+    <view wx:if="{{selectedName}}" class="description">已选：{{selectedName}}</view>
+  </view>
+  <view class="card" wx:if="{{preview}}">
+    <view class="subtitle">导入预览</view>
+    <view class="description">来源：{{preview.source.envId}}</view>
+    <view class="description">目标：{{preview.target.envId}}</view>
+    <view class="summary-row" wx:for="{{preview.summary}}" wx:key="key"><text>{{item.label}}</text><text>新增 {{item.added}} · 更新 {{item.updated}} · 不变 {{item.unchanged}}</text></view>
+    <view class="description">基础配置含系统设置、庄园地面、植物和建筑配置；总计将写入 {{preview.changedCount}} 项。</view>
+    <view class="notice">涉及 {{preview.assets.length}} 个云文件。会自动转换为目标环境地址，但不会自动复制文件，请先同步对应素材。</view>
+    <button wx:if="{{preview.assets.length}}" bindtap="exportAssetList" disabled="{{busy}}">导出需同步的素材清单</button>
+    <view class="description" wx:for="{{preview.protected}}" wx:key="*this">• {{item}}</view>
+    <button class="primary" bindtap="importConfig" disabled="{{busy}}" loading="{{busy}}">确认导入全部配置</button>
+  </view>
+  <view class="card" wx:if="{{backupId}}">
+    <view class="subtitle">{{result ? '导入成功' : '最近导入备份'}}</view>
+    <view class="description" wx:if="{{result}}">已写入 {{result.changedCount}} 项配置。</view>
+    <view class="description">备份编号：{{backupId}}</view>
+    <button bindtap="exportBackup" disabled="{{busy}}">导出本次导入前的配置备份</button>
+  </view>
+  <view class="description footer">用户、订单、资金流水、管理员权限、用户优惠券及问卷答卷不会导入。配置按同 ID 或相同业务键合并，目标独有配置保留；现有商品库存、销量等统计保留。支付、转账和密钥需在目标环境单独配置。</view>
+</view>
+<global-loading />

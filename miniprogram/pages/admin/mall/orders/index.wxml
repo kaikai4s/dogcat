@@ -69,12 +69,12 @@
     </view>
 
     <view class="actions inline-actions order-actions">
-      <button wx:if="{{item.canShip}}" class="primary" data-id="{{item._id}}" bindtap="showShip">录入发货</button>
-      <button wx:if="{{item.trackingNo}}" class="primary" data-id="{{item._id}}" bindtap="viewLogistics">查看物流</button>
+      <button wx:if="{{(item.canShip) && (adminSuper || adminPermissions.adminMall_shipOrder)}}" class="primary" data-id="{{item._id}}" bindtap="showShip">录入发货</button>
+      <button wx:if="{{(item.trackingNo) && (adminSuper || adminPermissions.adminMall_queryOrderLogistics)}}" class="primary" data-id="{{item._id}}" bindtap="viewLogistics">查看物流</button>
       <button wx:if="{{item.trackingNo}}" data-id="{{item._id}}" bindtap="copyLogistics">复制单号</button>
-      <button wx:if="{{item.canAuditRefund}}" class="danger" data-id="{{item._id}}" bindtap="showRefund">{{item.refundStatus === 'return_shipped' ? '验货退款' : '售后审核'}}</button>
-      <button data-id="{{item._id}}" bindtap="openStatusModal">修改状态</button>
-      <button wx:if="{{item.canManualRefund}}" class="danger" data-id="{{item._id}}" bindtap="openManualRefundModal">手动退款</button>
+      <button wx:if="{{(item.canAuditRefund) && (adminSuper || adminPermissions.adminMall_auditRefund)}}" class="danger" data-id="{{item._id}}" bindtap="showRefund">{{item.refundStatus === 'return_shipped' ? '验货退款' : '售后审核'}}</button>
+      <button wx:if="{{adminSuper || adminPermissions.adminMall_updateOrderStatus}}" data-id="{{item._id}}" bindtap="openStatusModal">修改状态</button>
+      <button wx:if="{{(item.canManualRefund) && (adminSuper || adminPermissions.adminMall_refundOrder)}}" class="danger" data-id="{{item._id}}" bindtap="openManualRefundModal">手动退款</button>
     </view>
   </view>
   <view class="empty" wx:if="{{!loading && !orders.length}}">暂无商城订单</view>
@@ -97,7 +97,7 @@
         <view class="form-label">快递单号</view>
         <input placeholder="请输入快递单号" value="{{shipForm.trackingNo}}" data-field="trackingNo" bindinput="inputShip" />
       </view>
-      <view class="modal-actions"><button bindtap="hideShip">取消</button><button class="primary" bindtap="submitShip">确认发货</button></view>
+      <view class="modal-actions"><button bindtap="hideShip">取消</button><button wx:if="{{adminSuper || adminPermissions.adminMall_shipOrder}}" class="primary" bindtap="submitShip">确认发货</button></view>
     </view>
   </view>
 
@@ -124,7 +124,7 @@
         <view class="form-label">审核备注</view>
         <textarea placeholder="说明处理原因，用户可据此理解售后结果" value="{{refundForm.remark}}" data-field="remark" bindinput="inputRefund" />
       </view>
-      <view class="modal-actions"><button bindtap="hideRefund">取消</button><button class="primary" bindtap="submitRefund">提交审核</button></view>
+      <view class="modal-actions"><button bindtap="hideRefund">取消</button><button wx:if="{{adminSuper || adminPermissions.adminMall_auditRefund}}" class="primary" bindtap="submitRefund">提交审核</button></view>
     </view>
   </view>
 
@@ -149,7 +149,7 @@
       </view>
       <view class="modal-actions">
         <button bindtap="closeStatusModal">取消</button>
-        <button class="primary" loading="{{submittingStatus}}" disabled="{{submittingStatus}}" bindtap="submitUpdateStatus">确认修改</button>
+        <button wx:if="{{adminSuper || adminPermissions.adminMall_updateOrderStatus}}" class="primary" loading="{{submittingStatus}}" disabled="{{submittingStatus}}" bindtap="submitUpdateStatus">确认修改</button>
       </view>
     </view>
   </view>
@@ -174,7 +174,7 @@
       </view>
       <view class="modal-actions">
         <button bindtap="closeManualRefundModal">取消</button>
-        <button class="danger" loading="{{submittingManualRefund}}" disabled="{{submittingManualRefund}}" bindtap="submitManualRefund">确认退款</button>
+        <button wx:if="{{adminSuper || adminPermissions.adminMall_refundOrder}}" class="danger" loading="{{submittingManualRefund}}" disabled="{{submittingManualRefund}}" bindtap="submitManualRefund">确认退款</button>
       </view>
     </view>
   </view>

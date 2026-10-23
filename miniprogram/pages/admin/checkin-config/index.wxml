@@ -10,7 +10,7 @@
     <input placeholder="月份，如 2026-08" value="{{monthKey}}" bindinput="monthInput" />
     <view style="display:flex;gap:16rpx;">
       <button class="ghost" style="flex:1;" bindtap="loadConfig">加载月份</button>
-      <button class="primary" style="flex:1;" bindtap="save">保存配置</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_saveCheckinMonthConfig}}" class="primary" style="flex:1;" bindtap="save">保存配置</button>
     </view>
   </view>
 

@@ -725,3 +725,9 @@
 
 
 
+
+/* Keep quick actions independent of global button/grid rules. */
+.button-row { display: flex; flex-wrap: wrap; gap: 16rpx; }
+.button-row > button { box-sizing: border-box; flex: 1 1 240rpx; min-width: 0; margin: 0; padding: 22rpx 12rpx; display: flex; align-items: center; justify-content: center; gap: 10rpx; border: 1rpx solid #efdbc6; border-radius: 18rpx; background: #fff6e9; color: #9f592c; font-size: 24rpx; line-height: 1.5; white-space: nowrap; }
+.button-row > button::after { border: none; }
+.admin-order-hero .hero-title { overflow-wrap: anywhere; font-size: 35rpx; line-height: 1.5; }

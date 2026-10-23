@@ -1,0 +1,30 @@
+.chooser-mask { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: flex-end; background: rgba(33,43,31,.48); }
+.chooser-card { box-sizing: border-box; width: 100%; max-height: 88vh; padding: 30rpx 28rpx calc(28rpx + env(safe-area-inset-bottom)); border-radius: 34rpx 34rpx 0 0; background: #fbfcf7; color: #364534; }
+.chooser-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12rpx; }
+.chooser-title { font-size: 31rpx; font-weight: 700; }
+.chooser-caption { margin-top: 10rpx; font-size: 21rpx; color: #8c9683; line-height: 1.7; }
+button { box-sizing: border-box; margin: 0; padding: 16rpx 22rpx; border-radius: 16rpx; line-height: 1.5; font-size: 24rpx; }
+button::after { border: none; }
+.close { flex-shrink: 0; font-size: 40rpx; line-height: 1; color: #87927f; background: transparent; }
+.search-row { display: flex; gap: 12rpx; margin: 24rpx 0 12rpx; }
+.search-row input { flex: 1; min-width: 0; padding: 18rpx 22rpx; height: 40rpx; background: white; border: 1rpx solid #e5eadf; border-radius: 16rpx; font-size: 25rpx; }
+.search-row button { background: #e6eee0; color: #56744c; }
+.community-list { max-height: 40vh; height: 460rpx; }
+.community-row { display: flex; align-items: center; gap: 20rpx; padding: 24rpx 4rpx; border-bottom: 1rpx solid #e7ecdf; }
+.community-copy { flex: 1; min-width: 0; }
+.name { font-size: 28rpx; line-height: 1.6; font-weight: 650; overflow-wrap: anywhere; }
+.mine { font-size: 19rpx; color: #65915a; background: #e6f1df; border-radius: 8rpx; margin-left: 10rpx; padding: 4rpx 10rpx; white-space: nowrap; }
+.address { margin-top: 8rpx; font-size: 22rpx; color: #9a9f91; line-height: 1.6; overflow-wrap: anywhere; }
+.residents { flex-shrink: 0; text-align: right; color: #65875a; }
+.residents text { font-size: 32rpx; font-weight: 700; }
+.residents view { margin-top: 4rpx; font-size: 20rpx; }
+.empty, .list-error { padding: 28rpx 8rpx; color: #909782; text-align: center; font-size: 24rpx; }
+.map-button, .confirm { width: 100%; margin-top: 20rpx; padding: 22rpx; border-radius: 20rpx; background: #5d8d56; color: white; font-size: 26rpx; }
+.more { background: transparent; color: #6b8b60; margin: 16rpx auto; }
+.candidate { padding: 18rpx 22rpx; background: #edf4e7; border-radius: 20rpx; margin-top: 20rpx; }
+.candidate-count { margin-top: 12rpx; color: #66865b; font-size: 24rpx; }
+.candidate .confirm { padding: 16rpx; margin-top: 16rpx; }
+
+.chooser-card { display: flex; flex-direction: column; height: 86vh; }
+.community-list { flex: 1; min-height: 80rpx; height: 0; max-height: none; }
+.chooser-heading, .search-row, .candidate, .map-button, .list-error { flex-shrink: 0; }

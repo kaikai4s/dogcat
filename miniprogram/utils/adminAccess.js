@@ -1,4 +1,5 @@
 const routes = {
+  'config-migration/index': ['owner'],
   'playground-buildings/index':['playgroundBuilding.list'],
   'playground-crops/index': ['playgroundFarm.list'],
   'playground-customizations/index': ['playgroundAppearance.listAdmin'],
@@ -13,8 +14,8 @@ const routes = {
   'staff-promotion/list/index': ['admin.listPromotionApplications'], 'staff-promotion/detail/index': ['admin.getPromotionApplicationDetail'],
   'incidents/list/index': ['incident.listIncidents'], 'incidents/detail/index': ['incident.getIncidentDetail'],
   'mall/products/index': ['adminMall.listProducts'], 'mall/orders/index': ['adminMall.listOrders'],
-  'finance/index': ['admin.financeDashboard', 'admin.listWithdrawRequests', 'admin.listPayments', 'admin.listRefunds', 'admin.listStaffEarnings', 'admin.listFinanceLogs', 'admin.listStaffDeposits', 'admin.listSupplyReimbursements'],
-  'service-prices/index': ['admin.listServicePrices'], 'prices/index': ['admin.listServicePrices'],
+  'finance/index': ['admin.financeDashboard', 'admin.listWithdrawRequests', 'admin.listUserAssetWithdrawals', 'admin.listPayments', 'admin.listRefunds', 'admin.listStaffEarnings', 'admin.listFinanceLogs', 'admin.listStaffDeposits', 'admin.listSupplyReimbursements'],
+  'service-prices/index': ['admin.listServicePrices', 'admin.listServiceCheckinRules'], 'prices/index': ['admin.listServicePrices'],
   'coupons/index': ['admin.listCouponTemplates'], 'member-levels/index': ['admin.listMemberLevels'],
   'pet-titles/index': ['admin.listPetTitles'], 'pet-vaccine/list/index': ['admin.listPetVaccineCertifications'], 'checkin-config/index': ['admin.getCheckinMonthConfig'],
   'points/index': ['admin.listPointLogs'], 'lottery/index': ['admin.listLotteryActivities'],

@@ -234,10 +234,10 @@
     <button class="add-btn" bindtap="addQuestion">
       <text class="remix-icon ri-add-circle-line"></text>加题
     </button>
-    <button class="draft-btn" loading="{{savingDraft}}" disabled="{{savingDraft || publishing}}" bindtap="saveDraft">
+    <button wx:if="{{adminSuper || (id ? adminPermissions.questionnaire_update : adminPermissions.questionnaire_create)}}" class="draft-btn" loading="{{savingDraft}}" disabled="{{savingDraft || publishing}}" bindtap="saveDraft">
       <text class="remix-icon ri-draft-line"></text>存草稿
     </button>
-    <button class="publish-btn" loading="{{publishing}}" disabled="{{savingDraft || publishing}}" bindtap="saveAndPublish">
+    <button wx:if="{{adminSuper || ((id ? adminPermissions.questionnaire_update : adminPermissions.questionnaire_create) && adminPermissions.questionnaire_publish)}}" class="publish-btn" loading="{{publishing}}" disabled="{{savingDraft || publishing}}" bindtap="saveAndPublish">
       <text class="remix-icon ri-send-plane-fill"></text>保存并立即发布
     </button>
   </view>

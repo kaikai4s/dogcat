@@ -134,6 +134,7 @@ Page({
     previewModalPet: null,
     previewModalPhotoIndex: 0,
     contestConfig: {
+      enabled: true,
       firstPrizeAmount: 500,
       rewardAmount: 500,
       posterUrl: '',

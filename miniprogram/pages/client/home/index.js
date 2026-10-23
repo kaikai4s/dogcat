@@ -185,6 +185,7 @@ Page({
     lotteryActivity: null,
     lotteryLoaded: false,
     lotteryFloatVisible: false,
+    petBeautyContestEnabled: true,
     homePage: {
       ctaTitle: '立即预约上门宠护',
       ctaSubtitle: '填写宠物和服务时间，平台认证宠托师快速响应。',
@@ -815,6 +816,7 @@ Page({
             ...homePage,
             modules: { ...defaultModules, ...(homePage.modules || {}) }
           },
+          petBeautyContestEnabled: homeData.settings?.petBeautyContestEnabled !== false,
           servicePrices,
           featuredSitters: homeData.featuredSitters || [],
           coupons: homeData.coupons || [],

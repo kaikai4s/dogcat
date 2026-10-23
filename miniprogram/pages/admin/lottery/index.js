@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
 const { PET_BLESSINGS, getFormattedBlessingList, getRandomBlessing, resolvePetBlessing } = require('./petBlessings')
 
@@ -125,10 +126,10 @@ Page({
         this.setData({ activities: list })
       })
       .catch(showError)
-    callFunction('admin', 'listCouponTemplates')
+    optionalAdminRead(this, 'admin', 'listCouponTemplates')
       .then((templates) => this.setData({ templates: templates || [] }))
       .catch(showError)
-    callFunction('admin', 'listPetTitles')
+    optionalAdminRead(this, 'admin', 'listPetTitles')
       .then((titles) => this.setData({ petTitles: (titles || []).filter((item) => item.enabled !== false && !item.deletedAt) }))
       .catch(showError)
   },

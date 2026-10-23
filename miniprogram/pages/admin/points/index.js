@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
 
 function buildRetroMailMemberLevels(levels, selectedIds) {
@@ -78,7 +79,7 @@ Page({
   },
 
   loadMemberLevels() {
-    callFunction('admin', 'listMemberLevels')
+    optionalAdminRead(this, 'admin', 'listMemberLevels')
       .then((levels) => {
         const memberLevels = levels || []
         this.setData({

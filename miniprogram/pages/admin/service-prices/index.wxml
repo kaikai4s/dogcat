@@ -10,7 +10,7 @@
     <view class="muted">上门费固定必选；指定实习宠托师下单时使用实习价，普通抢单仍使用标准价。点击服务卡片编辑完整配置。</view>
   </view>
 
-  <button class="primary compact-main-action" bindtap="addService">添加自定义服务</button>
+  <button wx:if="{{adminSuper || adminPermissions.admin_saveServicePrice}}" class="primary compact-main-action" bindtap="addService">添加自定义服务</button>
 
   <view class="admin-compact-card service-summary-card" wx:for="{{prices}}" wx:key="key">
     <view class="admin-summary-row">
@@ -42,7 +42,7 @@
     </view>
   </view>
 
-  <button class="ghost compact-main-action" bindtap="resetDefaults">恢复默认价格</button>
+  <button wx:if="{{adminSuper || adminPermissions.admin_resetDefaultServicePrices}}" class="ghost compact-main-action" bindtap="resetDefaults">恢复默认价格</button>
 
   <view class="admin-compact-card">
     <view class="admin-summary-row">
@@ -50,7 +50,7 @@
         <view class="admin-summary-title">服务打卡证据规则</view>
         <view class="admin-summary-sub">按服务折叠展示，需要调整时展开对应服务。</view>
       </view>
-      <button class="mini-btn" bindtap="saveRules">保存规则</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_saveServiceCheckinRules}}" class="mini-btn" bindtap="saveRules">保存规则</button>
     </view>
   </view>
 
@@ -58,7 +58,7 @@
     <view class="collapse-header" data-group-index="{{groupIndex}}" bindtap="toggleRuleGroup">
       <view class="collapse-title">{{group.title}}</view>
       <view class="meta-chip">{{group.rules.length}} 个打卡项</view>
-      <button class="mini-btn" data-group-index="{{groupIndex}}" catchtap="addRule">新增</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_saveServiceCheckinRules}}" class="mini-btn" data-group-index="{{groupIndex}}" catchtap="addRule">新增</button>
       <view class="collapse-arrow">{{group.expanded ? '收起' : '展开'}}</view>
     </view>
     <view class="collapse-body" wx:if="{{group.expanded}}">
@@ -76,12 +76,12 @@
         </view>
         <input type="number" placeholder="排序" value="{{rule.sortOrder}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" data-field="sortOrder" bindinput="ruleInput" />
         <input placeholder="说明" value="{{rule.description}}" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" data-field="description" bindinput="ruleInput" />
-        <button class="ghost compact-main-action" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindtap="removeRule">删除此打卡项</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_saveServiceCheckinRules}}" class="ghost compact-main-action" data-group-index="{{groupIndex}}" data-rule-index="{{ruleIndex}}" bindtap="removeRule">删除此打卡项</button>
       </view>
     </view>
   </view>
 
-  <button class="ghost compact-main-action" bindtap="resetRuleDefaults">恢复默认打卡规则</button>
+  <button wx:if="{{adminSuper || adminPermissions.admin_resetDefaultServiceCheckinRules}}" class="ghost compact-main-action" bindtap="resetRuleDefaults">恢复默认打卡规则</button>
 
   <view class="modal-backdrop" wx:if="{{showPriceModal}}" bindtap="closePriceModal" catchtouchmove="noop">
     <view class="modal-card" catchtap="noop">
@@ -165,7 +165,7 @@
         </view>
       </scroll-view>
       <view class="modal-actions">
-        <button class="primary" style="flex: 2;" loading="{{uploadingServiceCase}}" disabled="{{uploadingServiceCase}}" bindtap="savePriceForm">保存服务</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_saveServicePrice}}" class="primary" style="flex: 2;" loading="{{uploadingServiceCase}}" disabled="{{uploadingServiceCase}}" bindtap="savePriceForm">保存服务</button>
         <button class="ghost" style="flex: 1;" disabled="{{uploadingServiceCase}}" bindtap="closePriceModal">取消</button>
       </view>
     </view>

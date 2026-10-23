@@ -1,0 +1,15 @@
+<view class="chooser-mask" wx:if="{{visible}}" bindtap="close" catchtouchmove="noop">
+  <view class="chooser-card" catchtap="noop">
+    <view class="chooser-heading"><view><view class="chooser-title">选择小区宠物庄园</view><view class="chooser-caption">已入住人数按建有住宅的住户去重统计</view></view><button class="close" bindtap="close">×</button></view>
+    <view class="search-row"><input placeholder="搜索小区名称" value="{{keyword}}" bindinput="keyword" confirm-type="search" bindconfirm="search"/><button bindtap="search">搜索</button></view>
+    <view class="list-error" wx:if="{{error}}">{{error}}<button bindtap="search">重新加载</button></view>
+    <scroll-view scroll-y class="community-list" bindscrolltolower="more">
+      <view class="community-row" wx:for="{{list}}" wx:key="id" data-id="{{item.id}}" bindtap="select"><view class="community-copy"><view class="name">{{item.community.name}}<text class="mine" wx:if="{{item.mine}}">常住小区</text></view><view class="address">{{item.community.address || '邻里共享宠物庄园'}}</view></view><view class="residents"><text>{{item.residentCount}}</text><view>人已入住 ›</view></view></view>
+      <view class="empty" wx:if="{{!loading && !error && !list.length}}">暂未找到小区，可从地图选择。</view>
+      <view class="empty" wx:if="{{loading}}">正在加载入住人数…</view>
+      <button class="more" wx:if="{{hasMore && !loading}}" bindtap="more">查看更多小区</button>
+    </scroll-view>
+    <view class="candidate" wx:if="{{candidate}}"><view class="name">{{candidate.community.name}}</view><view class="address">{{candidate.community.address}}</view><view class="candidate-count">当前已入住 {{candidate.residentCount}} 人</view><button class="confirm" bindtap="confirmCandidate">选择这个小区</button></view>
+    <button class="map-button" bindtap="map" loading="{{locating}}" disabled="{{locating}}">从地图选择其他小区</button>
+  </view>
+</view>

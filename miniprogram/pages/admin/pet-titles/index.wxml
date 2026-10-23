@@ -5,7 +5,7 @@
         <view class="badge">管理端</view>
         <view class="title">宠物头衔配置</view>
       </view>
-      <button class="primary add-btn" bindtap="openAddModal">＋ 新增头衔</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_savePetTitle}}" class="primary add-btn" bindtap="openAddModal">＋ 新增头衔</button>
     </view>
     <view class="tip">配置宠物可佩戴的头衔、炫彩特效、重复补偿积分和会员等级自动发放规则。</view>
   </view>
@@ -27,16 +27,16 @@
         <text>排序 {{item.sortOrder || 0}}</text>
       </view>
       <view class="actions">
-        <button size="mini" bindtap="openMailModal" data-index="{{titleIndex}}">发邮件</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_publishPetTitleMail}}" size="mini" bindtap="openMailModal" data-index="{{titleIndex}}">发邮件</button>
         <button size="mini" bindtap="chooseTitle" data-index="{{titleIndex}}">编辑</button>
-        <button size="mini" type="warn" bindtap="deleteTitle" data-index="{{titleIndex}}">删除</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_deletePetTitle}}" size="mini" type="warn" bindtap="deleteTitle" data-index="{{titleIndex}}">删除</button>
       </view>
     </view>
   </view>
 
   <view class="empty" wx:if="{{!titles.length}}">
     <view>暂无宠物头衔</view>
-    <button class="primary" bindtap="openAddModal">新增第一个头衔</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_savePetTitle}}" class="primary" bindtap="openAddModal">新增第一个头衔</button>
   </view>
 
   <view class="modal-backdrop" wx:if="{{showFormModal}}" bindtap="closeFormModal">
@@ -79,7 +79,7 @@
           <view class="level-grid"><view wx:for="{{formLevelOptions}}" wx:key="_id" class="level-chip {{item.selected ? 'active' : ''}}" data-id="{{item._id}}" bindtap="toggleAutoLevel">{{item.name}}</view></view>
         </view>
       </scroll-view>
-      <view class="modal-actions"><button class="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存</button><button class="ghost" bindtap="closeFormModal">取消</button></view>
+      <view class="modal-actions"><button wx:if="{{adminSuper || adminPermissions.admin_savePetTitle}}" class="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存</button><button class="ghost" bindtap="closeFormModal">取消</button></view>
     </view>
   </view>
 
@@ -95,7 +95,7 @@
         <view class="form-group" wx:if="{{mailForm.targetType === 'role'}}"><view class="field-label">角色</view><input value="{{mailForm.role}}" data-field="role" bindinput="mailInput" placeholder="client / staff / admin" /></view>
         <view class="form-group" wx:if="{{mailForm.targetType === 'member_level'}}"><view class="field-label">会员等级</view><view class="level-grid"><view wx:for="{{mailLevelOptions}}" wx:key="_id" class="level-chip {{item.selected ? 'active' : ''}}" data-id="{{item._id}}" bindtap="toggleMailLevel">{{item.name}}</view></view></view>
       </scroll-view>
-      <view class="modal-actions"><button class="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="sendMail">发送</button><button class="ghost" bindtap="closeMailModal">取消</button></view>
+      <view class="modal-actions"><button wx:if="{{adminSuper || adminPermissions.admin_publishPetTitleMail}}" class="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="sendMail">发送</button><button class="ghost" bindtap="closeMailModal">取消</button></view>
     </view>
   </view>
 </view>

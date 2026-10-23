@@ -1,4 +1,4 @@
-const { callFunction, showError, ensureLogin, chooseSelectedLocation } = require('../../utils/cloud')
+const { callFunction, showError, ensureLogin } = require('../../utils/cloud')
 
 Page({
   data: {
@@ -75,7 +75,7 @@ Page({
   },
 
   openChooseCommunity() {
-    chooseSelectedLocation()
+    this.selectComponent('#communityChooser').open()
       .then((loc) => this.saveCommunity(loc, false))
       .catch((error) => {
         if (error && error.errMsg && error.errMsg.includes('cancel')) return
@@ -84,7 +84,7 @@ Page({
   },
 
   selectCommunityAndEnter() {
-    chooseSelectedLocation()
+    this.selectComponent('#communityChooser').open()
       .then((loc) => this.saveCommunity(loc, true))
       .catch((error) => {
         this.setData({ savingCommunity: false })
@@ -97,6 +97,7 @@ Page({
     if (!loc || !loc.name) throw new Error('未选择有效小区')
     const community = {
       name: loc.name,
+      city: loc.city || '', district: loc.district || '',
       address: loc.address || '',
       latitude: loc.latitude,
       longitude: loc.longitude

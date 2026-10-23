@@ -11,7 +11,7 @@
         <view class="banner-val">{{videoAuditGuide.wechatId || '未配置'}}</view>
       </view>
     </view>
-    <button class="banner-btn" bindtap="openEditWechatModal">配置微信号</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_updateVideoAuditGuide}}" class="banner-btn" bindtap="openEditWechatModal">配置微信号</button>
   </view>
 
   <view class="search-card compact-search-card">
@@ -55,7 +55,7 @@
       </view>
       <view class="modal-actions">
         <button class="ghost modal-btn" bindtap="closeEditWechatModal">取消</button>
-        <button class="primary modal-btn" loading="{{savingWechat}}" disabled="{{savingWechat}}" bindtap="saveWechatConfig">保存生效</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_updateVideoAuditGuide}}" class="primary modal-btn" loading="{{savingWechat}}" disabled="{{savingWechat}}" bindtap="saveWechatConfig">保存生效</button>
       </view>
     </view>
   </view>

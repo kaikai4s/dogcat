@@ -38,20 +38,20 @@
   </view>
 
   <view class="daily-status">
-    <view class="daily-title">开始 2D 庄园游戏</view>
+    <view class="daily-title">进入小区宠物庄园</view>
     <view class="daily-desc">
       <text wx:if="{{hasCommunity}}">已加入同小区共享草地，选址安家后可带宠物拜访邻居。</text>
       <text wx:else>可以先浏览草地，设置常住小区后可选择永久宅基地。</text>
     </view>
-    <button class="primary-btn" bindtap="openWorld">打开 2D 庄园</button>
+    <button class="manor-entry-btn" bindtap="openWorld"><text class="remix-icon ri-home-5-fill"></text><text>打开庄园</text><text class="remix-icon ri-arrow-right-s-line"></text></button>
     <view class="muted">玩法：点选宠物、拖动地图、双指缩放，再用底部按钮安排吃饭、喝水和休息。</view>
   </view>
 
-  <view class="game-features" wx:if="{{!loading && !empty}}">
+  <scroll-view scroll-x enhanced show-scrollbar="{{false}}" class="feature-scroll" wx:if="{{!loading && !empty}}"><view class="game-features">
     <view class="feature-item"><text class="feature-icon">🐾</text><view><view class="feature-title">手动控制行走</view><view class="muted">点击目的地、从院门进出</view></view></view>
     <view class="feature-item"><text class="feature-icon">🏡</text><view><view class="feature-title">邻里庄园</view><view class="muted">查看相邻别墅和绿化</view></view></view>
     <view class="feature-item"><text class="feature-icon">🍖</text><view><view class="feature-title">庭院安置</view><view class="muted">{{overview.world.canRelocate ? '临时开放重新选址' : '空草坪选址，保存后不能搬迁'}}</view></view></view>
-  </view>
+  </view></scroll-view>
 
   <view class="pet-strip" wx:if="{{pets.length}}">
     <view class="strip-title">乐园成员</view>
@@ -93,3 +93,5 @@
     </view>
   </view>
 </view>
+
+<community-chooser id="communityChooser" />

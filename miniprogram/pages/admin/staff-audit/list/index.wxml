@@ -19,7 +19,7 @@
 
   <view class="empty-state" wx:if="{{!loading && !staff.length}}"><text class="remix-icon ri-user-search-line empty-icon"></text><view>暂无符合条件的审核资料。</view></view>
 
-  <view class="admin-card audit-card interactive" wx:for="{{staff}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
+  <view wx:if="{{adminSuper || adminPermissions.admin_listStaffAudits}}" class="admin-card audit-card interactive" wx:for="{{staff}}" wx:key="_id" data-id="{{item._id}}" bindtap="detail">
     <view class="audit-main">
       <view class="audit-avatar"><text class="remix-icon ri-user-star-line"></text></view>
       <view class="audit-info">

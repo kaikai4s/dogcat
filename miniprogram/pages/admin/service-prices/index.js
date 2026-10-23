@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
 
 const eventOptions = [
@@ -109,8 +110,8 @@ Page({
 
   load() {
     Promise.all([
-      callFunction('admin', 'listServicePrices'),
-      callFunction('admin', 'listServiceCheckinRules')
+      optionalAdminRead(this, 'admin', 'listServicePrices'),
+      optionalAdminRead(this, 'admin', 'listServiceCheckinRules')
     ])
       .then(([prices, rules]) => {
         const decorated = (prices || []).map(decoratePrice)
@@ -442,8 +443,8 @@ Page({
       wx.showLoading({ title: '保存中...' })
       callFunction('admin', 'saveServicePrice', item)
         .then(() => Promise.all([
-          callFunction('admin', 'listServicePrices'),
-          callFunction('admin', 'listServiceCheckinRules')
+          optionalAdminRead(this, 'admin', 'listServicePrices'),
+          optionalAdminRead(this, 'admin', 'listServiceCheckinRules')
         ]))
         .then(([prices, rules]) => {
           wx.hideLoading()

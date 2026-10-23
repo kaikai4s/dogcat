@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../../utils/cloud')
 
 const TYPE_MAP = {
@@ -105,7 +106,7 @@ Page({
   },
 
   loadCoupons() {
-    callFunction('admin', 'listCouponTemplates')
+    optionalAdminRead(this, 'admin', 'listCouponTemplates')
       .then((list) => {
         const templates = list || []
         const names = ['不发放优惠券'].concat(templates.map(item => {

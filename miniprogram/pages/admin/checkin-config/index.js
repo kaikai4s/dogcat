@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../utils/cloud')
 
 const rewardTypeOptions = ['points', 'coupon', 'none']
@@ -27,7 +28,7 @@ Page({
   },
 
   loadTemplates() {
-    callFunction('admin', 'listCouponTemplates')
+    optionalAdminRead(this, 'admin', 'listCouponTemplates')
       .then((templates) => this.setData({ templates }))
       .catch(showError)
   },

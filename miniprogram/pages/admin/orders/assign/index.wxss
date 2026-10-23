@@ -38,3 +38,6 @@
   margin: 32rpx 28rpx 0;
   border-radius: 999rpx;
 }
+
+.assign-page .submit-btn { box-sizing: border-box; width: 100%; margin: 28rpx 0 0; padding: 24rpx; display: flex; align-items: center; justify-content: center; gap: 12rpx; font-size: 28rpx; line-height: 1.5; border-radius: 22rpx; }
+.assign-page .submit-btn[disabled] { opacity: .5; }

@@ -1,4 +1,5 @@
 const collections = [
+  'config_migration_backups',
   'users', 'pets', 'home_security', 'staff_profiles', 'orders', 'payments', 'order_home_security', 'order_early_start_requests',
   'track_logs', 'checkin_logs', 'unlock_code_logs', 'order_incidents', 'incident_comments', 'incident_actions', 'admin_operation_logs', 'service_prices', 'service_checkin_rules', 'staff_identity_verifications',
   'sitter_favorites', 'service_reviews', 'user_addresses', 'order_timeline', 'platform_configs',

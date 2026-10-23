@@ -1,4 +1,5 @@
 const loaders = {
+  configMigration: () => require('./configMigration'),
   system: () => require('./system'),
   auth: () => require('./auth'),
   playground: () => require('./playground'),

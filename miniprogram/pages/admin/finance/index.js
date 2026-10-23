@@ -1,3 +1,5 @@
+const { can } = require('../../../utils/adminAccess')
+const { optionalAdminRead } = require('../../../utils/admin-page-read')
 const { uploadImage } = require('../../../utils/image-upload')
 const { callFunction, showError } = require('../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../utils/nav')
@@ -160,6 +162,7 @@ Page({
   },
 
   onShow() {
+    this.updateAccessibleTabs()
     this.load()
     this.loadStaffFinance()
   },
@@ -168,26 +171,32 @@ Page({
     return { startDate: this.data.startDate, endDate: this.data.endDate }
   },
 
+  updateAccessibleTabs() {
+    const access = this.data.adminAccess
+    const tabs = [
+      ['withdraws', 'admin.listWithdrawRequests', 'admin.listUserAssetWithdrawals'], ['deposits', 'admin.listStaffDeposits'],
+      ['supplies', 'admin.listSupplyReimbursements'], ['payments', 'admin.listPayments'], ['refunds', 'admin.listRefunds'],
+      ['earnings', 'admin.listStaffEarnings'], ['logs', 'admin.listFinanceLogs']
+    ].filter(([, ...permissions]) => permissions.some(key => can(access, key))).map(([tab]) => tab)
+    this.setData({ accessibleTabs: tabs, financeTabs: Object.fromEntries(tabs.map(tab => [tab, true])), activeTab: tabs.includes(this.data.activeTab) ? this.data.activeTab : tabs[0] || '' })
+  },
   load() {
-    const query = this.query()
-    Promise.all([
-      callFunction('admin', 'financeDashboard', query),
-      callFunction('admin', 'listWithdrawRequests', { ...query, status: this.data.status }),
-      callFunction('admin', 'listPayments', query),
-      callFunction('admin', 'listRefunds', query),
-      callFunction('admin', 'listStaffEarnings', query),
-      callFunction('admin', 'listFinanceLogs', query)
-    ])
-      .then(([dashboard, requests, payments, refunds, earnings, logs]) => this.setData({
-        dashboard,
-        metricCards: metricCards(dashboard.metrics),
-        requests: (requests || []).map(decorate),
-        payments: (payments || []).map(decorate),
-        refunds: (refunds || []).map(decorate),
-        earnings: (earnings || []).map(decorate),
-        logs: logs || []
-      }))
-      .catch(showError)
+    const query = this.query(), version = (this._financeVersion || 0) + 1
+    this._financeVersion = version
+    const access = this.data.adminAccess
+    const withdrawalAction = can(access, 'admin.listWithdrawRequests') ? 'listWithdrawRequests' : 'listUserAssetWithdrawals'
+    const fields = [
+      ['financeDashboard', 'dashboard'], [withdrawalAction, 'requests'], ['listPayments', 'payments'],
+      ['listRefunds', 'refunds'], ['listStaffEarnings', 'earnings'], ['listFinanceLogs', 'logs']
+    ]
+    return Promise.all(fields.map(async ([action, field]) => {
+      try {
+        const result = await optionalAdminRead(this, 'admin', action, field === 'requests' ? { ...query, status: this.data.status } : query, field === 'dashboard' ? null : [])
+        if (this._financeVersion !== version) return
+        if (field === 'dashboard') this.setData({ dashboard: result, metricCards: result ? metricCards(result.metrics) : [] })
+        else this.setData({ [field]: field === 'logs' ? result || [] : (result || []).map(decorate) })
+      } catch (error) { if (this._financeVersion === version) { this.setData({ [field]: field === 'dashboard' ? null : [], ...(field === 'dashboard' ? { metricCards: [] } : {}) }); showError(error) } }
+    }))
   },
 
   reloadAll() {
@@ -210,6 +219,7 @@ Page({
 
   switchTab(e) {
     const tab = e.currentTarget.dataset.tab
+    if (!(this.data.accessibleTabs || []).includes(tab)) return
     this.setData({ activeTab: tab })
     if (tab === 'deposits' || tab === 'supplies') {
       this.loadStaffFinance()
@@ -223,7 +233,9 @@ Page({
   audit(e) {
     const id = e.currentTarget.dataset.id
     const approved = e.currentTarget.dataset.approved === true || e.currentTarget.dataset.approved === 'true'
-    callFunction('admin', 'auditWithdrawRequest', { id, approved, auditRemark: approved ? '审核通过' : '审核驳回' })
+    const row = (this.data.requests || []).find(item => item._id === id)
+    const action = row?.assetType === 'user' && !can(this.data.adminAccess, 'admin.auditWithdrawRequest') ? 'auditUserAssetWithdrawal' : 'auditWithdrawRequest'
+    callFunction('admin', action, { id, approved, auditRemark: approved ? '审核通过' : '审核驳回' })
       .then(() => {
         wx.showToast({ title: approved ? '已通过' : '已驳回' })
         this.load()
@@ -290,9 +302,9 @@ Page({
   loadStaffFinance() {
     this.setData({ staffFinanceLoading: true, staffFinanceError: '' })
     const query = this.query()
-    Promise.all([
-      callFunction('admin', 'listStaffDeposits', query),
-      callFunction('admin', 'listSupplyReimbursements', query)
+    return Promise.all([
+      optionalAdminRead(this, 'admin', 'listStaffDeposits', query),
+      optionalAdminRead(this, 'admin', 'listSupplyReimbursements', query)
     ])
       .then(([deposits, supplies]) => {
         const rawDeposits = (deposits || []).map(decorateStaffFinance)
@@ -313,7 +325,7 @@ Page({
           targetStaffLabel
         })
 
-        if (this._autoForfeitParams && this._autoForfeitParams.staffOpenid) {
+        if (can(this.data.adminAccess, 'admin.forfeitStaffDeposit') && this._autoForfeitParams && this._autoForfeitParams.staffOpenid) {
           const params = this._autoForfeitParams
           this._autoForfeitParams = null
 

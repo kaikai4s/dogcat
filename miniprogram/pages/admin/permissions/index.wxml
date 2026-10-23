@@ -25,6 +25,7 @@
   <block wx:elif="{{access.enabled && access.superAdmin}}">
     <view wx:if="{{!editor && !member}}" class="segmented-tabs">
       <button class="segment {{tab === 'groups' ? 'is-active' : ''}}" bindtap="tab" data-tab="groups">用户组 <text>{{groups.length}}</text></button>
+      <button class="segment {{tab === 'catalog' ? 'is-active' : ''}}" bindtap="tab" data-tab="catalog">权限目录</button>
       <button class="segment {{tab === 'members' ? 'is-active' : ''}}" bindtap="tab" data-tab="members">后台人员 <text>{{members.length}}</text></button>
     </view>
 
@@ -35,19 +36,25 @@
         <input class="field-input" value="{{editor.name}}" disabled="{{busy}}" maxlength="40" placeholder="例如：客服、运营、财务" bindinput="name" />
         <view class="setting-row"><view><view class="field-label">启用用户组</view><view class="muted">停用后，成员将失去本组授予的权限</view></view><switch color="#ed7845" checked="{{editor.enabled}}" disabled="{{busy}}" bindchange="enabled" /></view>
       </view>
-      <view class="section-heading"><view><view class="section-title">配置业务权限</view><view class="muted">点击分类展开，按职责选择操作</view></view><text class="count-pill">已选 {{permissionCount}} / {{totalPermissions}}</text></view>
+      <view class="section-heading"><view><view class="section-title">配置业务权限</view><view class="muted">选择操作自动关联查看权限；取消基础权限会移除依赖操作</view></view><text class="count-pill">已选 {{permissionCount}} / {{totalPermissions}}</text></view>
       <view class="search-box"><text class="ri-search-line"></text><input placeholder="查找权限，如退款、订单" value="{{permissionKeyword}}" bindinput="permissionSearch" /></view>
-      <view class="notice subtle">支付设置和人员授权仅限超级管理员，无法通过用户组授予。</view>
+      <template is="permission-filters" data="{{permissionFilter, editor}}" />
+      <view class="notice" wx:if="{{selectionHint}}">{{selectionHint}}</view>
+      <view class="notice" wx:if="{{removedPermissionCount}}">原用户组有 {{removedPermissionCount}} 项已失效权限，保存时将清理。</view>
+      <view class="notice" wx:if="{{missingDependencies.length}}">还缺 {{missingDependencies.length}} 项关联查看权限：<text wx:for="{{missingDependencies}}" wx:key="id">{{item.label}}；</text><button class="btn-small" bindtap="completeDependencies" disabled="{{busy}}">补齐关联查看权限</button></view>
+      <view class="notice subtle">已选 {{sensitiveCount}} 项敏感操作。超级管理员专属操作仅供查阅，不能通过用户组授予。</view>
       <view class="permission-card" wx:for="{{tree}}" wx:key="id" wx:for-item="node">
         <view class="permission-header">
           <view class="branch-title" bindtap="expand" data-id="{{node.id}}"><text class="ri-arrow-{{node.expanded ? 'down' : 'right'}}-s-line"></text><text>{{node.label}}</text><text class="branch-count {{node.count ? 'has-selection' : ''}}">{{node.count}} / {{node.total}}</text></view>
-          <button class="branch-select {{node.checked ? 'selected' : ''}}" bindtap="branch" data-id="{{node.id}}" disabled="{{busy}}">{{node.checked ? '取消全选' : '全选'}}</button>
+          <button class="branch-select {{node.checked ? 'selected' : ''}}" bindtap="branch" data-id="{{node.id}}" disabled="{{busy}}">{{node.checked ? '取消本页可见项' : '选中本页可见项'}}</button>
         </view>
+        <view class="category-description" wx:if="{{node.expanded}}">{{node.description}}</view>
         <checkbox-group wx:if="{{node.expanded}}" class="permission-options" data-id="{{node.id}}" bindchange="permissions">
-          <label class="permission-option {{item.checked ? 'is-checked' : ''}}" wx:for="{{node.children}}" wx:key="id"><checkbox color="#ed7845" value="{{item.id}}" checked="{{item.checked}}" disabled="{{busy}}" /><text>{{item.label}}</text></label>
+          <label class="permission-option {{item.checked ? 'is-checked' : ''}}" wx:for="{{node.children}}" wx:key="id"><checkbox color="#ed7845" value="{{item.id}}" checked="{{item.checked}}" disabled="{{busy}}" /><view class="permission-copy"><view class="permission-name">{{item.label}} <text class="permission-kind">{{item.kindLabel}}</text><text wx:if="{{item.risk}}" class="permission-risk">敏感</text><text wx:if="{{item.apiOnly}}" class="permission-kind">接口功能</text></view><view class="permission-description">{{item.description}}</view><view class="permission-dependencies" wx:if="{{item.dependencyText}}">关联查看：{{item.dependencyText}}</view><text class="permission-id" selectable>{{item.id}}</text></view></label>
         </checkbox-group>
       </view>
       <view class="empty-inline" wx:if="{{!tree.length}}">未找到匹配的权限</view>
+      <template is="owner-catalog" data="{{ownerTree}}" />
       <view class="save-bar"><button class="btn-secondary" bindtap="cancel" disabled="{{busy}}">取消</button><button class="btn-primary" bindtap="save" loading="{{busy}}" disabled="{{busy}}">保存权限 · {{permissionCount}} 项</button></view>
     </block>
 
@@ -63,6 +70,19 @@
     </block>
 
     <block wx:else>
+      <block wx:if="{{tab === 'catalog'}}">
+        <view class="section-heading"><view class="section-title">业务权限目录</view><text class="count-pill">{{catalogCount}} / {{totalPermissions}} 项</text></view>
+        <view class="notice subtle">目录用于核对现有功能。查看权限也可能包含手机号、财务、照片、会话等隐私信息，请按职责授予。标记“接口功能”的项目暂未提供独立后台入口。</view>
+        <view class="search-box"><text class="ri-search-line"></text><input placeholder="搜索功能、说明或接口标识" value="{{permissionKeyword}}" bindinput="permissionSearch" /></view>
+        <template is="permission-filters" data="{{permissionFilter}}" />
+        <view class="permission-card" wx:for="{{tree}}" wx:key="id" wx:for-item="node">
+          <view class="permission-header" bindtap="expand" data-id="{{node.id}}"><view class="branch-title"><text class="ri-arrow-{{node.expanded ? 'down' : 'right'}}-s-line"></text>{{node.label}}</view><text class="count-pill">{{node.children.length}} 项</text></view>
+          <block wx:if="{{node.expanded}}"><view class="category-description">{{node.description}}</view><view class="catalog-item" wx:for="{{node.children}}" wx:key="id"><view class="permission-name">{{item.label}} <text class="permission-kind">{{item.kindLabel}}</text><text class="permission-risk" wx:if="{{item.risk}}">敏感</text><text class="permission-kind" wx:if="{{item.apiOnly}}">接口功能</text></view><view class="permission-description">{{item.description}}</view><view class="permission-dependencies" wx:if="{{item.dependencyText}}">关联查看：{{item.dependencyText}}</view><text class="permission-id" selectable>{{item.id}}</text></view></block>
+        </view>
+        <view class="empty-inline" wx:if="{{!tree.length}}">没有匹配的业务权限</view>
+        <template is="owner-catalog" data="{{ownerTree}}" />
+      </block>
+      <block wx:else>
       <view class="search-box"><text class="ri-search-line"></text><input placeholder="{{tab === 'groups' ? '搜索用户组名称或业务范围' : '搜索人员昵称或 OpenID'}}" value="{{keyword}}" bindinput="search" /></view>
       <block wx:if="{{tab === 'groups'}}">
         <view class="section-heading"><text class="section-title">用户组列表</text><button class="btn-small" bindtap="edit"><text class="ri-add-line"></text> 新建用户组</button></view>
@@ -78,8 +98,25 @@
         <view class="section-card member-card" wx:for="{{filteredMembers}}" wx:key="_id"><view class="avatar">{{item.initial}}</view><view class="member-info"><view class="card-title">{{item.nickname || '未设置昵称'}}</view><text class="openid" selectable>{{item.openid}}</text><text class="status-tag {{item.isOwner ? 'owner' : item.status === 'active' ? 'enabled' : 'disabled'}}">{{item.isOwner ? '超级管理员 · 当前账号' : item.status === 'active' ? '正常' : '已停用'}}</text></view><button wx:if="{{!item.isOwner}}" class="edit-button" bindtap="editMember" data-openid="{{item.openid}}" disabled="{{memberLoading || item.status !== 'active'}}">分组 <text class="ri-arrow-right-s-line"></text></button></view>
         <view class="empty-inline" wx:if="{{!filteredMembers.length}}">{{keyword ? '没有找到匹配的人员' : '暂无后台人员'}}</view>
       </block>
+      </block>
       <button class="audit-link" bindtap="openLogs"><text class="ri-file-list-3-line"></text> 查看后台操作记录 <text class="ri-arrow-right-s-line"></text></button>
     </block>
   </block>
 </view>
 <global-loading />
+
+<template name="permission-filters">
+  <view class="permission-filters">
+    <button class="{{permissionFilter === 'all' ? 'active' : ''}}" data-filter="all" bindtap="permissionFilter">全部</button>
+    <button class="{{permissionFilter === 'read' ? 'active' : ''}}" data-filter="read" bindtap="permissionFilter">查看</button>
+    <button class="{{permissionFilter === 'write' ? 'active' : ''}}" data-filter="write" bindtap="permissionFilter">操作</button>
+    <button class="{{permissionFilter === 'risk' ? 'active' : ''}}" data-filter="risk" bindtap="permissionFilter">敏感</button>
+    <button wx:if="{{editor}}" class="{{permissionFilter === 'selected' ? 'active' : ''}}" data-filter="selected" bindtap="permissionFilter">已选</button>
+  </view>
+  <view wx:if="{{editor}}" class="permission-filters bulk-actions"><button bindtap="selectVisible">添加筛选结果</button><button bindtap="selectVisible" data-remove="true">移除筛选结果</button></view>
+</template>
+<template name="owner-catalog">
+  <view class="section-heading"><view class="section-title"><text class="ri-lock-2-line"></text> 超级管理员专属</view><text class="count-pill">不可分配</text></view>
+  <view class="notice subtle">以下操作由超级管理员身份直接获得，用户组全选也不会授予。未启用分组管理时，仍按旧版全权限模式运行。</view>
+  <view class="section-card" wx:for="{{ownerTree}}" wx:key="id"><view class="card-title">{{item.label}}</view><view class="permission-description">{{item.description}}</view><view class="owner-action" wx:for="{{item.children}}" wx:for-item="action" wx:key="id"><text>{{action.label}}</text><text class="permission-id" selectable>{{action.id}}</text></view></view>
+</template>

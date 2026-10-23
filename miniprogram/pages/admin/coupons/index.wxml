@@ -56,7 +56,7 @@
       <view class="strong">启用模板</view>
       <switch checked="{{form.enabled}}" bindchange="toggleEnabled" />
     </view>
-    <button class="primary" bindtap="saveTemplate">保存模板</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_saveCouponTemplate}}" class="primary" bindtap="saveTemplate">保存模板</button>
     <button class="ghost" bindtap="resetForm">新建模板</button>
   </view>
 
@@ -104,7 +104,7 @@
       <view class="muted" style="margin-top:12rpx;">已选：{{publishMailLevelNamesText}}</view>
     </view>
 
-    <button class="primary" disabled="{{issuing}}" bindtap="issueCoupon">{{issuing ? '处理中...' : (issueMode === 'mail' ? '投递奖励邮箱' : '立即发券')}}</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_issueCouponToUser || adminPermissions.admin_issueCouponByLevels || adminPermissions.admin_publishRewardMailByLevels}}" class="primary" disabled="{{issuing}}" bindtap="issueCoupon">{{issuing ? '处理中...' : (issueMode === 'mail' ? '投递奖励邮箱' : '立即发券')}}</button>
   </view>
 
   <view style="display:flex;gap:16rpx;padding:0 32rpx 24rpx;">
@@ -125,7 +125,7 @@
     </view>
     <view style="display:flex;justify-content:flex-end;gap:16rpx;margin-top:16rpx;">
       <button class="ghost compact-btn" data-index="{{index}}" bindtap="chooseTemplate">编辑</button>
-      <button class="ghost compact-btn" style="color:#ef4444;border-color:rgba(239,68,68,0.35);" data-index="{{index}}" bindtap="deleteTemplate">删除</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_deleteCouponTemplate}}" class="ghost compact-btn" style="color:#ef4444;border-color:rgba(239,68,68,0.35);" data-index="{{index}}" bindtap="deleteTemplate">删除</button>
     </view>
   </view>
 

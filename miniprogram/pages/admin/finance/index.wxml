@@ -34,16 +34,16 @@
   </view>
 
   <scroll-view scroll-x class="chip-tabs">
-    <view class="chip {{activeTab === 'withdraws' ? 'active' : ''}}" data-tab="withdraws" bindtap="switchTab">提现</view>
-    <view class="chip {{activeTab === 'deposits' ? 'active' : ''}}" data-tab="deposits" bindtap="switchTab">保证金</view>
-    <view class="chip {{activeTab === 'supplies' ? 'active' : ''}}" data-tab="supplies" bindtap="switchTab">用品报销</view>
-    <view class="chip {{activeTab === 'payments' ? 'active' : ''}}" data-tab="payments" bindtap="switchTab">支付</view>
-    <view class="chip {{activeTab === 'refunds' ? 'active' : ''}}" data-tab="refunds" bindtap="switchTab">退款</view>
-    <view class="chip {{activeTab === 'earnings' ? 'active' : ''}}" data-tab="earnings" bindtap="switchTab">收益</view>
-    <view class="chip {{activeTab === 'logs' ? 'active' : ''}}" data-tab="logs" bindtap="switchTab">流水</view>
+    <view wx:if="{{financeTabs.withdraws}}" class="chip {{activeTab === 'withdraws' ? 'active' : ''}}" data-tab="withdraws" bindtap="switchTab">提现</view>
+    <view wx:if="{{financeTabs.deposits}}" class="chip {{activeTab === 'deposits' ? 'active' : ''}}" data-tab="deposits" bindtap="switchTab">保证金</view>
+    <view wx:if="{{financeTabs.supplies}}" class="chip {{activeTab === 'supplies' ? 'active' : ''}}" data-tab="supplies" bindtap="switchTab">用品报销</view>
+    <view wx:if="{{financeTabs.payments}}" class="chip {{activeTab === 'payments' ? 'active' : ''}}" data-tab="payments" bindtap="switchTab">支付</view>
+    <view wx:if="{{financeTabs.refunds}}" class="chip {{activeTab === 'refunds' ? 'active' : ''}}" data-tab="refunds" bindtap="switchTab">退款</view>
+    <view wx:if="{{financeTabs.earnings}}" class="chip {{activeTab === 'earnings' ? 'active' : ''}}" data-tab="earnings" bindtap="switchTab">收益</view>
+    <view wx:if="{{financeTabs.logs}}" class="chip {{activeTab === 'logs' ? 'active' : ''}}" data-tab="logs" bindtap="switchTab">流水</view>
   </scroll-view>
 
-  <block wx:if="{{activeTab === 'withdraws'}}">
+  <block wx:if="{{financeTabs.withdraws && activeTab === 'withdraws'}}">
     <scroll-view scroll-x class="chip-tabs sub-tabs">
       <view class="chip small {{status === '' ? 'active' : ''}}" data-status="" bindtap="filter">全部</view>
       <view class="chip small {{status === 'pending' ? 'active' : ''}}" data-status="pending" bindtap="filter">待审核</view>
@@ -79,23 +79,23 @@
           <text>¥{{history.amountText}}</text><text>{{history.statusText}}</text><text>{{beijingTime.format(history.paidAt || history.createdAt)}}</text>
         </view>
       </view>
-      <view class="withdraw-audit-actions" wx:if="{{item.status === 'pending'}}">
-        <button class="withdraw-reject-btn" data-id="{{item._id}}" data-approved="false" bindtap="audit">驳回</button>
-        <button class="withdraw-approve-btn" data-id="{{item._id}}" data-approved="true" bindtap="audit">同意并转账</button>
+      <view class="withdraw-audit-actions" wx:if="{{item.status === 'pending' && (adminSuper || adminPermissions.admin_auditWithdrawRequest || (item.assetType === 'user' && adminPermissions.admin_auditUserAssetWithdrawal))}}">
+        <button wx:if="{{adminSuper || adminPermissions.admin_auditWithdrawRequest || adminPermissions.admin_auditUserAssetWithdrawal}}" class="withdraw-reject-btn" data-id="{{item._id}}" data-approved="false" bindtap="audit">驳回</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_auditWithdrawRequest || adminPermissions.admin_auditUserAssetWithdrawal}}" class="withdraw-approve-btn" data-id="{{item._id}}" data-approved="true" bindtap="audit">同意并转账</button>
       </view>
-      <button class="withdraw-start-btn full-btn" wx:if="{{item.isWechatWallet && item.status === 'approved'}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="retryWithdrawTransfer">发起微信提现</button>
-      <button class="primary-btn full-btn" wx:if="{{item.isWechatWallet && item.status === 'transferring'}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="queryWithdrawTransfer">查询转账结果</button>
+      <button class="withdraw-start-btn full-btn" wx:if="{{(item.isWechatWallet && item.status === 'approved') && (adminSuper || adminPermissions.admin_retryWithdrawTransfer)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="retryWithdrawTransfer">发起微信提现</button>
+      <button class="primary-btn full-btn" wx:if="{{(item.isWechatWallet && item.status === 'transferring') && (adminSuper || adminPermissions.admin_queryWithdrawTransfer)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="queryWithdrawTransfer">查询转账结果</button>
       <view class="action-row" wx:if="{{item.isWechatWallet && item.status === 'transfer_failed'}}">
-        <button class="ghost-btn compact-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="queryWithdrawTransfer">查询结果</button>
-        <button class="primary-btn compact-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="retryWithdrawTransfer">安全重试</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_queryWithdrawTransfer}}" class="ghost-btn compact-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="queryWithdrawTransfer">查询结果</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_retryWithdrawTransfer}}" class="primary-btn compact-btn" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="retryWithdrawTransfer">安全重试</button>
       </view>
-      <button class="ghost-btn full-btn release-failed-btn" wx:if="{{item.isWechatWallet && item.status === 'transfer_failed'}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="releaseFailedWithdraw">释放收益并退回余额</button>
-      <button class="primary-btn full-btn" wx:if="{{!item.isWechatWallet && item.status === 'approved'}}" data-id="{{item._id}}" bindtap="markPaid">标记已打款</button>
+      <button class="ghost-btn full-btn release-failed-btn" wx:if="{{(item.isWechatWallet && item.status === 'transfer_failed') && (adminSuper || adminPermissions.admin_releaseFailedWithdraw)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="releaseFailedWithdraw">释放收益并退回余额</button>
+      <button class="primary-btn full-btn" wx:if="{{(!item.isWechatWallet && item.status === 'approved') && (adminSuper || adminPermissions.admin_markWithdrawPaid)}}" data-id="{{item._id}}" bindtap="markPaid">标记已打款</button>
     </view>
     <view class="empty-state" wx:if="{{!requests.length}}">暂无提现申请。</view>
   </block>
 
-  <block wx:if="{{activeTab === 'deposits'}}">
+  <block wx:if="{{financeTabs.deposits && activeTab === 'deposits'}}">
     <view class="deposit-filter-bar" wx:if="{{targetStaffOpenid}}">
       <view class="filter-bar-content">
         <text class="remix-icon ri-filter-3-fill filter-icon"></text>
@@ -132,16 +132,16 @@
       <view class="info-row"><view class="label">记录时间</view><view class="value">{{beijingTime.format(item.paidAt || item.createdAt)}}</view></view>
       
       <view class="action-row" wx:if="{{item.refundStatus === 'requested'}}">
-        <button class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditDepositRefund">驳回退款</button>
-        <button class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" bindtap="auditDepositRefund">通过退款审核</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_auditDepositRefund}}" class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditDepositRefund">驳回退款</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_auditDepositRefund}}" class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" bindtap="auditDepositRefund">通过退款审核</button>
       </view>
-      <button class="primary-btn full-btn" wx:if="{{item.status === 'refund_approved'}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="confirmDepositRefund">确认已实际退款</button>
-      <button class="ghost-btn full-btn" wx:if="{{item.canForfeit}}" data-id="{{item._id}}" data-max="{{item.availableRefundAmount}}" data-staff="{{item.staffRealName || item.staffNickname || item.staffOpenid}}" bindtap="forfeitDeposit">违规没收保证金</button>
+      <button class="primary-btn full-btn" wx:if="{{(item.status === 'refund_approved') && (adminSuper || adminPermissions.admin_confirmDepositRefund)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="confirmDepositRefund">确认已实际退款</button>
+      <button class="ghost-btn full-btn" wx:if="{{(item.canForfeit) && (adminSuper || adminPermissions.admin_forfeitStaffDeposit)}}" data-id="{{item._id}}" data-max="{{item.availableRefundAmount}}" data-staff="{{item.staffRealName || item.staffNickname || item.staffOpenid}}" bindtap="forfeitDeposit">违规没收保证金</button>
     </view>
     <view class="empty-state" wx:if="{{!deposits.length}}">暂无宠托师保证金记录。</view>
   </block>
 
-  <block wx:if="{{activeTab === 'supplies'}}">
+  <block wx:if="{{financeTabs.supplies && activeTab === 'supplies'}}">
     <view class="card record-card" wx:for="{{supplies}}" wx:key="_id">
       <view class="record-head">
         <view class="record-title">首次用品报销</view>
@@ -165,15 +165,15 @@
       </scroll-view>
 
       <view class="action-row" wx:if="{{item.status === 'pending'}}">
-        <button class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditSupplyReimbursement">驳回申请</button>
-        <button class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" data-amount="{{item.amount}}" data-amount-source="{{item.amountSource}}" bindtap="auditSupplyReimbursement">按后台金额通过</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_auditSupplyReimbursement}}" class="ghost-btn compact-btn" data-id="{{item._id}}" data-approved="false" bindtap="auditSupplyReimbursement">驳回申请</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_auditSupplyReimbursement}}" class="primary-btn compact-btn" data-id="{{item._id}}" data-approved="true" data-amount="{{item.amount}}" data-amount-source="{{item.amountSource}}" bindtap="auditSupplyReimbursement">按后台金额通过</button>
       </view>
-      <button class="primary-btn full-btn" wx:if="{{item.status === 'approved'}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="paySupplyReimbursement">确认已实际打款</button>
+      <button class="primary-btn full-btn" wx:if="{{(item.status === 'approved') && (adminSuper || adminPermissions.admin_paySupplyReimbursement)}}" disabled="{{actionBusy}}" data-id="{{item._id}}" bindtap="paySupplyReimbursement">确认已实际打款</button>
     </view>
     <view class="empty-state" wx:if="{{!supplies.length}}">暂无用品报销记录。</view>
   </block>
 
-  <block wx:if="{{activeTab === 'payments'}}">
+  <block wx:if="{{financeTabs.payments && activeTab === 'payments'}}">
     <view class="card record-card" wx:for="{{payments}}" wx:key="_id">
       <view class="record-head"><view class="record-title">支付单号</view><view class="badge green">{{item.status}}</view></view>
       <view class="info-row"><view class="label">单号</view><view class="value">{{item.paymentNo || item._id}}</view></view>
@@ -185,7 +185,7 @@
     <view class="empty-state" wx:if="{{!payments.length}}">暂无支付流水。</view>
   </block>
 
-  <block wx:if="{{activeTab === 'refunds'}}">
+  <block wx:if="{{financeTabs.refunds && activeTab === 'refunds'}}">
     <view class="card record-card" wx:for="{{refunds}}" wx:key="_id">
       <view class="record-head"><view class="record-title">退款单号</view><view class="badge pink">{{item.status}}</view></view>
       <view class="info-row"><view class="label">单号</view><view class="value">{{item.refundNo || item._id}}</view></view>
@@ -197,7 +197,7 @@
     <view class="empty-state" wx:if="{{!refunds.length}}">暂无退款记录。</view>
   </block>
 
-  <block wx:if="{{activeTab === 'earnings'}}">
+  <block wx:if="{{financeTabs.earnings && activeTab === 'earnings'}}">
     <view class="card record-card" wx:for="{{earnings}}" wx:key="_id">
       <view class="record-head"><view class="record-title">宠托师收益</view><view class="badge pink">{{item.status}}</view></view>
       <view class="info-row"><view class="label">宠托师</view><view class="value">{{item.staffOpenid}}</view></view>
@@ -208,7 +208,7 @@
     <view class="empty-state" wx:if="{{!earnings.length}}">暂无收益明细。</view>
   </block>
 
-  <block wx:if="{{activeTab === 'logs'}}">
+  <block wx:if="{{financeTabs.logs && activeTab === 'logs'}}">
     <view class="card record-card" wx:for="{{logs}}" wx:key="_id">
       <view class="record-head"><view class="record-title">{{item.action}}</view><view class="badge gray">流水</view></view>
       <view class="info-row"><view class="label">对象</view><view class="value">{{item.targetType}} / {{item.targetId}}</view></view>
@@ -295,7 +295,7 @@
       </view>
       <view class="modal-actions">
         <button class="ghost-btn" bindtap="closeForfeitModal">取消</button>
-        <button class="danger-btn" loading="{{forfeiting}}" disabled="{{forfeiting}}" bindtap="submitForfeitDeposit">确认扣除</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_forfeitStaffDeposit}}" class="danger-btn" loading="{{forfeiting}}" disabled="{{forfeiting}}" bindtap="submitForfeitDeposit">确认扣除</button>
       </view>
     </view>
   </view>

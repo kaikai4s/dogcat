@@ -11,7 +11,7 @@
         <view class="strong" style="font-size:30rpx;color:#2d211a;">抽奖活动列表</view>
         <view class="muted" style="font-size:24rpx;margin-top:4rpx;">共 {{activities.length}} 个活动</view>
       </view>
-      <button class="primary action-create-btn" bindtap="openCreateModal">+ 新建抽奖活动</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_saveLotteryActivity}}" class="primary action-create-btn" bindtap="openCreateModal">+ 新建抽奖活动</button>
     </view>
   </view>
 
@@ -41,9 +41,9 @@
 
     <!-- 底部操作按钮栏：水平右对齐 -->
     <view class="activity-footer">
-      <button class="ghost opt-btn" data-index="{{index}}" bindtap="toggle">{{item.enabled ? '关闭活动' : '开启活动'}}</button>
-      <button class="ghost opt-btn" data-index="{{index}}" bindtap="openEditModal">编辑</button>
-      <button class="ghost opt-btn opt-danger" data-index="{{index}}" bindtap="deleteActivity">删除</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_toggleLotteryActivity}}" class="ghost opt-btn" data-index="{{index}}" bindtap="toggle">{{item.enabled ? '关闭活动' : '开启活动'}}</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_saveLotteryActivity}}" class="ghost opt-btn" data-index="{{index}}" bindtap="openEditModal">编辑</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_deleteLotteryActivity}}" class="ghost opt-btn opt-danger" data-index="{{index}}" bindtap="deleteActivity">删除</button>
     </view>
   </view>
 
@@ -195,7 +195,7 @@
 
       <view class="modal-footer">
         <button class="ghost modal-footer-btn" style="flex:1;" bindtap="closeModal">取消</button>
-        <button class="primary modal-footer-btn" style="flex:2;" bindtap="save">保存抽奖活动</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_saveLotteryActivity}}" class="primary modal-footer-btn" style="flex:2;" bindtap="save">保存抽奖活动</button>
       </view>
     </view>
   </view>

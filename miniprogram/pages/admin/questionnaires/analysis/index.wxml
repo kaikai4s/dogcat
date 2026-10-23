@@ -12,7 +12,7 @@
         <view class="hero-title">{{detail.title || '问卷数据分析'}}</view>
         <view class="hero-desc">由腾讯混元 hy3 大模型自动提炼反馈洞察、生成统计图表并识别乱填情况。</view>
       </view>
-      <button class="refresh-btn" loading="{{loading}}" bindtap="analyze">
+      <button wx:if="{{adminSuper || adminPermissions.questionnaire_analyzeAI}}" class="refresh-btn" loading="{{loading}}" bindtap="analyze">
         <text class="remix-icon ri-refresh-line" wx:if="{{!loading}}"></text>
         {{report ? '重新生成' : '一键生成分析'}}
       </button>

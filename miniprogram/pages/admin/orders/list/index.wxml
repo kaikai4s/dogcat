@@ -35,17 +35,17 @@
   <view class="admin-card batch-bar" wx:if="{{orders.length}}">
     <view class="batch-main"><view class="batch-title">批量管理</view><view class="batch-count">共 {{total}} 单，已选 {{selectedOrderIds.length}} 单</view></view>
     <view class="batch-actions">
-      <button class="ghost-btn compact-btn" bindtap="toggleSelectAll"><text class="remix-icon ri-checkbox-multiple-line"></text><text>全选/取消</text></button>
-      <button class="danger-btn compact-btn" loading="{{deleting}}" disabled="{{deleting || !selectedOrderIds.length}}" bindtap="batchDeleteOrders"><text class="remix-icon ri-delete-bin-4-line"></text><text>批量删除</text></button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_batchDeleteOrders}}" class="ghost-btn compact-btn" bindtap="toggleSelectAll"><text class="remix-icon ri-checkbox-multiple-line"></text><text>全选/取消</text></button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_batchDeleteOrders}}" class="danger-btn compact-btn" loading="{{deleting}}" disabled="{{deleting || !selectedOrderIds.length}}" bindtap="batchDeleteOrders"><text class="remix-icon ri-delete-bin-4-line"></text><text>批量删除</text></button>
     </view>
   </view>
 
   <view class="admin-card order-card {{item.selected ? 'selected' : ''}} {{item.autoCompleted ? 'auto-completed-card' : ''}}" wx:for="{{orders}}" wx:key="_id">
-    <view class="order-select-row" data-id="{{item._id}}" bindtap="toggleSelect">
+    <view wx:if="{{adminSuper || adminPermissions.admin_batchDeleteOrders}}" class="order-select-row" data-id="{{item._id}}" bindtap="toggleSelect">
       <view class="select-box {{item.selected ? 'checked' : ''}}"><text class="remix-icon ri-check-line" wx:if="{{item.selected}}"></text></view>
       <view class="muted">选择此订单</view>
     </view>
-    <view class="order-content interactive" data-id="{{item._id}}" bindtap="detail">
+    <view wx:if="{{adminSuper || adminPermissions.admin_getOrderDetail}}" class="order-content interactive" data-id="{{item._id}}" bindtap="detail">
       <view class="order-person">
         <view class="avatar-level-wrap">
           <image class="order-avatar" wx:if="{{item.clientSnapshot && item.clientSnapshot.avatarUrl}}" src="{{item.clientSnapshot.avatarUrl}}" mode="aspectFill" />
@@ -92,7 +92,7 @@
         </view>
       </view>
     </view>
-    <button class="primary-btn mini-assign-btn" wx:if="{{item.status === 'paid'}}" size="mini" data-id="{{item._id}}" bindtap="assign"><text class="remix-icon ri-user-shared-line"></text><text>派单</text></button>
+    <button class="primary-btn mini-assign-btn" wx:if="{{(item.status === 'paid') && (adminSuper || adminPermissions.admin_assignOrder)}}" size="mini" data-id="{{item._id}}" bindtap="assign"><text class="remix-icon ri-user-shared-line"></text><text>派单</text></button>
   </view>
 
   <button class="ghost-btn load-more-btn" wx:if="{{hasMore}}" loading="{{loading}}" disabled="{{loading}}" bindtap="loadMore">{{loading ? '加载中...' : '加载更多'}}</button>

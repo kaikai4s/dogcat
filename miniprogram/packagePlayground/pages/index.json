@@ -1,5 +1,8 @@
 {
   "navigationBarTitleText": "爱宠互动社区",
   "navigationBarBackgroundColor": "#FFF8EC",
-  "navigationBarTextStyle": "black"
+  "navigationBarTextStyle": "black",
+  "usingComponents": {
+    "community-chooser": "../components/community-chooser/index"
+  }
 }

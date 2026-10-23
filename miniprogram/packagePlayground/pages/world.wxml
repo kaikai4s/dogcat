@@ -201,3 +201,5 @@
   </view>
   <include src="./world-life.wxml" />
 </view>
+
+<community-chooser id="communityChooser" />

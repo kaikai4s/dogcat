@@ -10,7 +10,7 @@
     <input placeholder="用户 openid" value="{{form.openid}}" data-field="openid" bindinput="input" />
     <input type="number" placeholder="积分变动（负数为扣减）" value="{{form.delta}}" data-field="delta" bindinput="input" />
     <input placeholder="备注原因" value="{{form.reason}}" data-field="reason" bindinput="input" />
-    <button class="primary" bindtap="grant">确认操作</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_grantPoints}}" class="primary" bindtap="grant">确认操作</button>
   </view>
 
   <view class="card form-card">
@@ -31,7 +31,7 @@
     <input type="number" placeholder="补签卡数量" value="{{retroMailForm.count}}" data-field="count" bindinput="retroMailInput" />
     <input placeholder="邮件标题" value="{{retroMailForm.title}}" data-field="title" bindinput="retroMailInput" />
     <textarea class="textarea" placeholder="邮件内容（可选）" value="{{retroMailForm.content}}" data-field="content" bindinput="retroMailInput" />
-    <button class="primary" bindtap="sendRetroCardMail">发送到奖励邮箱</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_publishRetroCardMail}}" class="primary" bindtap="sendRetroCardMail">发送到奖励邮箱</button>
   </view>
 
   <view class="card form-card">

@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../../utils/admin-page-read')
 const { callFunction, showError } = require('../../../../utils/cloud')
 const { formatDateTime, withStaffWorkflowText } = require('../../../../utils/format')
 
@@ -31,7 +32,7 @@ Page({
   inputKeyword(e) { this.setData({ keyword: e.detail.value }) },
   search() { this.load({ reset: true }) },
   loadAuditGuide() {
-    callFunction('admin', 'getSystemSettings')
+    optionalAdminRead(this, 'admin', 'getSystemSettings')
       .then((settings) => {
         const staffTraining = (settings && settings.staffTraining) || {}
         const guide = staffTraining.videoAuditGuide || {}

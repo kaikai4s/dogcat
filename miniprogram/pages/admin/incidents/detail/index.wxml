@@ -37,7 +37,7 @@
     <view class="card-subtitle"><text class="remix-icon ri-loop-right-line sub-icon"></text><text>状态流转</text></view>
     <picker mode="selector" range="{{statusOptions}}" range-key="label" value="{{statusIndex}}" bindchange="chooseStatus"><view class="picker-field">{{statusOptions[statusIndex].label}}</view></picker>
     <input class="form-input" placeholder="处理备注 / 结案备注" value="{{statusRemark}}" bindinput="inputStatusRemark" />
-    <button class="ghost-btn form-btn" bindtap="setStatus">更新状态</button>
+    <button wx:if="{{adminSuper || adminPermissions.incident_updateIncidentStatus}}" class="ghost-btn form-btn" bindtap="setStatus">更新状态</button>
   </view>
 
   <view class="admin-card form-card">
@@ -46,16 +46,16 @@
     <picker wx:if="{{resolutionOptions[resolutionIndex].value === 'coupon'}}" mode="selector" range="{{couponTemplates}}" range-key="displayName" value="{{couponTemplateIndex}}" bindchange="chooseCouponTemplate"><view class="picker-field">{{couponTemplates[couponTemplateIndex].displayName || '请选择补偿优惠券'}}</view></picker>
     <input class="form-input" placeholder="退款金额，非退款可不填" type="digit" value="{{refundAmount}}" bindinput="inputRefundAmount" />
     <textarea class="form-textarea" placeholder="填写处理方案或说明" value="{{resolutionContent}}" bindinput="inputResolution" maxlength="500" />
-    <button class="ghost-btn form-btn" bindtap="proposeResolution">保存方案</button>
+    <button wx:if="{{adminSuper || adminPermissions.incident_proposeResolution}}" class="ghost-btn form-btn" bindtap="proposeResolution">保存方案</button>
   </view>
 
   <view class="admin-card form-card">
     <view class="card-subtitle"><text class="remix-icon ri-refund-2-line sub-icon"></text><text>退款处理</text></view>
     <input class="form-input" placeholder="退款金额" type="digit" value="{{refundAmount}}" bindinput="inputRefundAmount" />
     <input class="form-input" placeholder="退款原因" value="{{refundReason}}" bindinput="inputRefundReason" />
-    <button class="ghost-btn form-btn" bindtap="createRefund">从纠纷发起退款</button>
+    <button wx:if="{{adminSuper || adminPermissions.payment_createRefund}}" class="ghost-btn form-btn" bindtap="createRefund">从纠纷发起退款</button>
     <input class="form-input" placeholder="或填写已有退款单号" value="{{linkedRefundNo}}" bindinput="inputLinkedRefundNo" />
-    <button class="ghost-btn form-btn" bindtap="linkRefundNo">关联已有退款</button>
+    <button wx:if="{{adminSuper || adminPermissions.incident_linkRefund}}" class="ghost-btn form-btn" bindtap="linkRefundNo">关联已有退款</button>
   </view>
 
   <view class="admin-card form-card">
@@ -63,7 +63,7 @@
     <picker mode="selector" range="{{earningOptions}}" range-key="label" value="{{earningIndex}}" bindchange="chooseEarning"><view class="picker-field">{{earningOptions[earningIndex].label}}</view></picker>
     <input class="form-input" wx:if="{{earningOptions[earningIndex].value === 'deduct'}}" placeholder="扣减金额，不填则全额扣减" type="digit" value="{{deductAmount}}" bindinput="inputDeductAmount" />
     <input class="form-input" placeholder="收益处理备注" value="{{earningRemark}}" bindinput="inputEarningRemark" />
-    <button class="danger-btn form-btn" bindtap="freezeEarning">冻结宠托师收益</button>
+    <button wx:if="{{adminSuper || adminPermissions.incident_freezeStaffEarning}}" class="danger-btn form-btn" bindtap="freezeEarning">冻结宠托师收益</button>
   </view>
 
   <view class="admin-card" wx:if="{{detail.incident.resolution}}">
@@ -84,13 +84,13 @@
   <view class="admin-card form-card">
     <view class="card-subtitle"><text class="remix-icon ri-edit-line sub-icon"></text><text>内部 / 对客留言</text></view>
     <textarea class="form-textarea" placeholder="记录沟通内容" value="{{comment}}" bindinput="inputComment" maxlength="500" />
-    <button class="ghost-btn form-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitComment">添加留言</button>
+    <button wx:if="{{adminSuper || adminPermissions.incident_appendIncidentComment}}" class="ghost-btn form-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitComment">添加留言</button>
   </view>
 
   <view class="bottom-actions three-actions">
-    <button class="primary-btn" bindtap="closeResolved">解决并结案</button>
-    <button class="ghost-btn" bindtap="closeRejected">驳回并结案</button>
-    <button class="ghost-btn" bindtap="goOrder">查看订单详情</button>
+    <button wx:if="{{adminSuper || adminPermissions.incident_closeIncident}}" class="primary-btn" bindtap="closeResolved">解决并结案</button>
+    <button wx:if="{{adminSuper || adminPermissions.incident_closeIncident}}" class="ghost-btn" bindtap="closeRejected">驳回并结案</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_getOrderDetail}}" class="ghost-btn" bindtap="goOrder">查看订单详情</button>
   </view>
 </view>
 <global-loading />

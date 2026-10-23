@@ -200,8 +200,8 @@
   </view>
 
   <view class="audit-sticky-actions" wx:if="{{application.status === 'pending' && (adminSuper || adminPermissions.admin_auditPromotionApplication)}}">
-    <button class="reject" data-status="rejected" bindtap="openAuditModal">拒绝</button>
-    <button class="approve" data-status="approved" bindtap="openAuditModal">通过认证</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_auditPromotionApplication}}" class="reject" data-status="rejected" bindtap="openAuditModal">拒绝</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_auditPromotionApplication}}" class="approve" data-status="approved" bindtap="openAuditModal">通过认证</button>
   </view>
 
   <view class="modal-backdrop" wx:if="{{showAuditModal}}" bindtap="closeAuditModal" catchtouchmove="noop">
@@ -215,7 +215,7 @@
         <textarea class="textarea" placeholder="填写审核备注（拒绝时建议填写原因）" value="{{remark}}" bindinput="inputRemark" />
       </scroll-view>
       <view class="modal-actions">
-        <button class="primary" style="flex: 2;" bindtap="audit" loading="{{submitting}}" disabled="{{submitting}}">确认处理</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_auditPromotionApplication}}" class="primary" style="flex: 2;" bindtap="audit" loading="{{submitting}}" disabled="{{submitting}}">确认处理</button>
         <button class="ghost" style="flex: 1;" bindtap="closeAuditModal" disabled="{{submitting}}">取消</button>
       </view>
     </view>

@@ -22,7 +22,7 @@ function usedIcons(mapping) {
   const sizes = /^ri-(lg|xl|xxs|xs|sm|fw|\d+x)$/
   for (const file of files(mini).filter(file => /\.(js|wxml|wxss|json)$/.test(file) && !file.startsWith(fontDir))) {
     let source = fs.readFileSync(file, 'utf8')
-    source = source.replace("ri-arrow-{{node.expanded ? 'down' : 'right'}}-s-line", 'ri-arrow-down-s-line ri-arrow-right-s-line')
+    source = source.replaceAll("ri-arrow-{{node.expanded ? 'down' : 'right'}}-s-line", 'ri-arrow-down-s-line ri-arrow-right-s-line')
     if (/\bri-[\w-]*(\{\{|\$\{)/.test(source)) throw new Error(`动态图标需要加入显式映射: ${path.relative(root, file)}`)
     for (const name of source.match(/\bri-[a-z0-9]+(?:-[a-z0-9]+)*/g) || []) {
       if (sizes.test(name)) continue

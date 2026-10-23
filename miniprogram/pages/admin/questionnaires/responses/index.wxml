@@ -10,7 +10,7 @@
         <view class="hero-title">{{detail.title || '问卷回收'}}</view>
         <view class="hero-desc">共回收 {{counts.all}} 份提交 · AI 质检有效率 {{validRate}}%</view>
       </view>
-      <button class="analysis-btn" bindtap="analysis">
+      <button wx:if="{{adminSuper || adminPermissions.questionnaire_getAiReport || adminPermissions.questionnaire_analyzeAI}}" class="analysis-btn" bindtap="analysis">
         <text class="remix-icon ri-bar-chart-2-line"></text>查看 AI 分析
       </button>
     </view>
@@ -57,7 +57,7 @@
 
     <view class="batch-bar" wx:if="{{counts.fake > 0}}">
       <text class="batch-tip">发现 {{counts.fake}} 份被拦截乱填，可复核或一键补发</text>
-      <button class="batch-btn" loading="{{retryingAll}}" bindtap="retryAll">批量补发奖励</button>
+      <button wx:if="{{adminSuper || adminPermissions.questionnaire_retryAllRewards}}" class="batch-btn" loading="{{retryingAll}}" bindtap="retryAll">批量补发奖励</button>
     </view>
   </view>
 
@@ -119,7 +119,7 @@
         </view>
         <button
           class="retry-btn"
-          wx:if="{{item.rewardStatus === 'failed' || (item.rewardStatus === 'skipped' && item.verdict === 'fake')}}"
+          wx:if="{{(item.rewardStatus === 'failed' || (item.rewardStatus === 'skipped' && item.verdict === 'fake')) && (adminSuper || adminPermissions.questionnaire_retryReward)}}"
           data-id="{{item._id}}"
           bindtap="retryReward"
         >

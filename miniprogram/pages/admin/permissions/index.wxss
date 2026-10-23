@@ -88,3 +88,20 @@
 .group-option.chosen { border-color: #edb58c; background: #fffaf3; }
 .group-option .muted { margin-top: 8rpx; }
 .audit-link { margin-top: 36rpx !important; padding: 22rpx; color: #a38d78; background: transparent; font-size: 24rpx !important; font-weight: 400 !important; }
+
+.permission-option { width: 100%; align-items: flex-start; padding: 20rpx 12rpx; }
+.permission-copy { flex: 1; min-width: 0; }
+.permission-name { font-size: 25rpx; line-height: 1.7; font-weight: 600; }
+.permission-kind, .permission-risk { display: inline-block; font-size: 19rpx; font-weight: 400; padding: 1rpx 10rpx; border-radius: 7rpx; margin-left: 8rpx; background: #f0f3f3; color: #6c8585; }
+.permission-risk { background: #fff0e9; color: #bc583e; }
+.permission-description, .category-description { font-size: 23rpx; line-height: 1.75; color: #8d7b6c; margin-top: 8rpx; }
+.category-description { padding: 0 26rpx 18rpx; }
+.permission-dependencies { font-size: 21rpx; line-height: 1.7; color: #aa815e; margin-top: 8rpx; }
+.permission-id { display: block; font-size: 20rpx; font-weight: 400; color: #ab9e92; word-break: break-all; margin-top: 6rpx; }
+.permission-filters { display: flex; flex-wrap: wrap; gap: 10rpx; margin: 18rpx 0; }
+.permission-filters button { padding: 12rpx 20rpx; color: #8b7968; background: #eee9e2; font-size: 22rpx; }
+.permission-filters button.active { background: #ffe6d0; color: #b86b36; }
+.bulk-actions button { background: white; border: 1rpx solid #eee5da; }
+.catalog-item { padding: 22rpx 26rpx; border-top: 1rpx solid #f0ebe4; }
+.owner-action { padding-top: 16rpx; margin-top: 16rpx; border-top: 1rpx solid #f0ebe4; font-size: 24rpx; }
+.branch-select { max-width: 195rpx; }

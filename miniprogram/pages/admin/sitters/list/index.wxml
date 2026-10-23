@@ -65,7 +65,7 @@
       </view>
       <text class="batch-label">全选 (已选 {{selectedIds.length}}/{{profiles.length}})</text>
     </view>
-    <button class="mini-btn danger-mini batch-repay-btn" disabled="{{!selectedIds.length}}" bindtap="openRepayModal">
+    <button wx:if="{{adminSuper || adminPermissions.admin_batchRequireDepositRepay}}" class="mini-btn danger-mini batch-repay-btn" disabled="{{!selectedIds.length}}" bindtap="openRepayModal">
       <text class="remix-icon ri-shield-cross-fill"></text>要求重新缴纳保证金
     </button>
   </view>
@@ -101,10 +101,10 @@
     </view>
 
     <view class="admin-summary-row sitter-action-row">
-      <button class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_listStaffAudits}}" class="mini-btn" data-id="{{item._id}}" bindtap="detail">{{item.actionText}}</button>
       <button class="mini-btn danger-mini" wx:if="{{item.auditStatus === 'approved' && item.depositBalance > 0}}" data-item="{{item}}" bindtap="openForfeitModal">扣除保证金</button>
-      <button class="mini-btn ghost-mini" wx:if="{{item.staffLevel === 'certified'}}" data-id="{{item._id}}" data-featured="{{item.isFeatured}}" bindtap="toggleFeatured">{{item.featuredActionText}}</button>
-      <button class="mini-btn danger-mini" wx:if="{{item.canRevokeStaff}}" data-id="{{item._id}}" bindtap="revokeStaff">移除身份</button>
+      <button class="mini-btn ghost-mini" wx:if="{{(item.staffLevel === 'certified') && (adminSuper || adminPermissions.admin_setSitterFeatured)}}" data-id="{{item._id}}" data-featured="{{item.isFeatured}}" bindtap="toggleFeatured">{{item.featuredActionText}}</button>
+      <button class="mini-btn danger-mini" wx:if="{{(item.canRevokeStaff) && (adminSuper || adminPermissions.admin_revokeStaff)}}" data-id="{{item._id}}" bindtap="revokeStaff">移除身份</button>
       <button class="mini-btn ghost-mini" data-index="{{index}}" bindtap="toggleDetails">{{item.expanded ? '收起详情' : '展开详情'}}</button>
     </view>
 
@@ -152,8 +152,8 @@
             <view class="problem-time">{{beijingTime.format(prob.createdAt)}}</view>
           </view>
           <view class="problem-actions">
-            <button class="mini-btn ghost-mini" data-id="{{prob.orderId}}" bindtap="goToOrder">查看出险订单</button>
-            <button class="mini-btn danger-mini" wx:if="{{prob.status === 'pending'}}" data-item="{{item}}" data-evidence-id="{{prob._id}}" bindtap="openForfeitModal">扣除保证金</button>
+            <button wx:if="{{adminSuper || adminPermissions.admin_getOrderDetail}}" class="mini-btn ghost-mini" data-id="{{prob.orderId}}" bindtap="goToOrder">查看出险订单</button>
+            <button class="mini-btn danger-mini" wx:if="{{(prob.status === 'pending') && (adminSuper || adminPermissions.admin_forfeitStaffDeposit)}}" data-item="{{item}}" data-evidence-id="{{prob._id}}" bindtap="openForfeitModal">扣除保证金</button>
           </view>
         </view>
       </view>
@@ -193,7 +193,7 @@
       </view>
       <view class="modal-actions">
         <button class="ghost-btn" bindtap="closeRepayModal">取消</button>
-        <button class="danger-btn" loading="{{submittingRepay}}" disabled="{{submittingRepay}}" bindtap="confirmBatchRepay">确认并执行管控</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_batchRequireDepositRepay}}" class="danger-btn" loading="{{submittingRepay}}" disabled="{{submittingRepay}}" bindtap="confirmBatchRepay">确认并执行管控</button>
       </view>
     </view>
   </view>
@@ -277,7 +277,7 @@
 
       <view class="modal-actions">
         <button class="ghost-btn" bindtap="closeForfeitModal">取消</button>
-        <button class="danger-btn" loading="{{forfeiting}}" disabled="{{forfeiting}}" bindtap="submitForfeitDeposit">确认扣除</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_forfeitStaffDeposit}}" class="danger-btn" loading="{{forfeiting}}" disabled="{{forfeiting}}" bindtap="submitForfeitDeposit">确认扣除</button>
       </view>
     </view>
   </view>

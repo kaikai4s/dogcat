@@ -233,7 +233,8 @@
         "questionnaires/edit/index",
         "questionnaires/responses/index",
         "questionnaires/analysis/index",
-        "playground/index"
+        "playground/index",
+        "config-migration/index"
       ]
     },
     {

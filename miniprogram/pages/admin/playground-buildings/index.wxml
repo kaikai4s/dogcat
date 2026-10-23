@@ -4,7 +4,7 @@
       <text class="title">乐园建筑管理</text>
       <text class="subtitle">可建建筑、尺寸预览换算草地、功能、会员解锁与积分配置</text>
     </view>
-    <button wx:if="{{adminSuper || adminPermissions.playgroundBuilding_save}}" class="primary-btn" bindtap="edit" data-id="">新建建筑</button>
+    <button wx:if="{{adminSuper || adminPermissions.playgroundBuilding_save || adminPermissions.playgroundBuilding_remove || adminPermissions.playgroundBuilding_prepareUpload}}" class="primary-btn" bindtap="edit" data-id="">新建建筑</button>
   </view>
 
   <view class="loading-state" wx:if="{{loading}}">正在加载建筑列表…</view>

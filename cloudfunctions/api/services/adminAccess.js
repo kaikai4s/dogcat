@@ -1,5 +1,5 @@
 const { AsyncLocalStorage } = require('async_hooks')
-const { tree, permissions, ownerActions } = require('../config/adminPermissions')
+const { tree, permissions, ownerActions, ownerTree } = require('../config/adminPermissions')
 
 module.exports = function createService({ db, crypto, now }) {
   const scope = new AsyncLocalStorage()
@@ -23,6 +23,10 @@ module.exports = function createService({ db, crypto, now }) {
       if (group?.enabled) for (const permission of group.permissions || []) if (permissions.has(permission)) granted.add(permission)
     }
     return { enabled: true, superAdmin: false, permissions: [...granted], groupIds }
+  }
+  async function getAdminPermissionFlags(user, keys) {
+    const current = await access(user)
+    return Object.fromEntries(keys.map(key => [key, current.superAdmin || (!ownerActions.has(key) && current.permissions.includes(key))]))
   }
   async function begin(user) {
     const request = scope.getStore()
@@ -97,7 +101,7 @@ module.exports = function createService({ db, crypto, now }) {
     return { list: rows.slice(0, size).map(project), hasMore: rows.length > size, cursor: rows.length > size ? rows[size - 1]._id : '' }
   }
   async function handleAdminAccess(user, action, data) {
-    if (action === 'getMyAdminAccess') return { ...await access(user), tree, currentOpenid: user.openid }
+    if (action === 'getMyAdminAccess') return { ...await access(user), tree, ownerTree, currentOpenid: user.openid }
     if (action === 'enableAdminPermissions') return db.runTransaction(async tx => {
       const current = await optional(tx, 'admin_access_config', 'policy')
       if (current?.enabled) {
@@ -176,5 +180,5 @@ module.exports = function createService({ db, crypto, now }) {
     const config = await policy()
     if (config?.enabled && config.ownerOpenid === target.openid && (!roles.includes('admin') || status !== 'active')) throw new Error('不能停用或删除超级管理员')
   }
-  return { authorizeAdmin, runAdminRequest, handleAdminAccess, protectAdminOwner }
+  return { authorizeAdmin, getAdminPermissionFlags, runAdminRequest, handleAdminAccess, protectAdminOwner }
 }

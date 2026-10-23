@@ -1,10 +1,12 @@
 const { callFunction, showError } = require('../../../utils/cloud')
+const { indexTree, includeDependencies, removeDependencies } = require('../../../utils/admin-permission-selection')
 
 Page({
   data: {
     access: null, groups: [], members: [], filteredGroups: [], filteredMembers: [], tree: [],
     editor: null, selected: [], member: null, selectedGroups: [], groupOptions: [],
     busy: false, loading: true, error: '', tab: 'groups', targetOpenid: '', keyword: '', permissionKeyword: '',
+    permissionFilter: 'all', ownerTree: [], catalogCount: 0, sensitiveCount: 0, missingDependencies: [], removedPermissionCount: 0, selectionHint: '',
     enabledCount: 0, permissionCount: 0, totalPermissions: 0, expanded: {}, memberLoading: false
   },
   async onShow() { if (!this.data.editor && !this.data.member) await this.load() },
@@ -37,6 +39,7 @@ Page({
       })), enabledCount: groups.filter(group => group.enabled).length,
         totalPermissions: (access.tree || []).reduce((sum, node) => sum + node.children.length, 0) })
       this.filterLists()
+      this.paintTree()
     } catch (error) {
       if (version === this._loadVersion) this.setData({ error: error.message || '暂时无法加载，请稍后重试', access: null, groups: [], members: [] })
     } finally { if (version === this._loadVersion) this.setData({ loading: false }) }
@@ -52,7 +55,7 @@ Page({
   },
   tab(e) {
     if (this.data.busy || this.data.memberLoading || this.data.editor || this.data.member) return
-    this.setData({ tab: e.currentTarget.dataset.tab, keyword: '' }); this.filterLists()
+    this.setData({ tab: e.currentTarget.dataset.tab, keyword: '', permissionKeyword: '', permissionFilter: 'all' }); this.filterLists(); this.paintTree()
   },
   search(e) { this.setData({ keyword: e.detail.value }); this.filterLists() },
   filterLists() {
@@ -66,21 +69,55 @@ Page({
     if (this.data.busy || !this.data.access || !this.data.access.superAdmin) return
     const group = this.data.groups.find(item => item._id === e.currentTarget.dataset.id)
     const editor = group ? { ...group } : { name: '', enabled: true, permissions: [], clientRequestId: `group_${Date.now()}_${Math.random().toString(36).slice(2)}` }
-    this.setData({ editor, selected: [...editor.permissions], permissionKeyword: '', expanded: {}, member: null })
+    const index = indexTree(this.data.access.tree)
+    const selected = editor.permissions.filter(id => index.has(id))
+    this.setData({ editor, selected, removedPermissionCount: editor.permissions.length - selected.length, permissionKeyword: '', permissionFilter: 'all', selectionHint: '', expanded: {}, member: null })
     this.paintTree()
     wx.pageScrollTo({ scrollTop: 0, duration: 200 })
   },
   paintTree() {
     const selected = this.data.selected
+    const access = this.data.access || {}
+    const source = access.tree || []
+    const index = indexTree(source)
     const keyword = this.data.permissionKeyword.trim().toLowerCase()
-    const tree = (this.data.access.tree || []).map(node => {
+    const filter = this.data.permissionFilter
+    const matches = (node, child) => (!keyword || `${node.label} ${node.description || ''} ${child.label} ${child.description || ''} ${child.id}`.toLowerCase().includes(keyword)) &&
+      (filter === 'all' || filter === 'selected' && selected.includes(child.id) || filter === 'risk' && child.risk || filter === child.kind)
+    const tree = source.map(node => {
       const count = node.children.filter(child => selected.includes(child.id)).length
-      const children = node.children.filter(child => !keyword || `${node.label} ${child.label}`.toLowerCase().includes(keyword))
-        .map(child => ({ ...child, checked: selected.includes(child.id) }))
-      return { ...node, children, count, total: node.children.length, checked: count === node.children.length,
-        partial: count > 0 && count < node.children.length, expanded: !!keyword || !!this.data.expanded[node.id] }
+      const children = node.children.filter(child => matches(node, child)).map(child => ({ ...child,
+        checked: selected.includes(child.id), kindLabel: child.kind === 'read' ? '查看' : '操作',
+        dependencyText: (child.requires || []).map(id => index.get(id)?.label || id).join('、') }))
+      return { ...node, children, count, total: node.children.length,
+        checked: children.length > 0 && children.every(child => selected.includes(child.id)),
+        partial: count > 0 && count < node.children.length, expanded: !!keyword || filter !== 'all' || !!this.data.expanded[node.id] }
     }).filter(node => node.children.length)
-    this.setData({ tree, permissionCount: selected.length })
+    const ownerTree = (access.ownerTree || []).map(node => ({ ...node,
+      children: node.children.filter(child => !keyword || `${node.label} ${node.description} ${child.label} ${child.id}`.toLowerCase().includes(keyword))
+    })).filter(node => node.children.length)
+    const missing = includeDependencies(source, selected).filter(id => !selected.includes(id))
+    this.setData({ tree, ownerTree, permissionCount: selected.length,
+      catalogCount: tree.reduce((sum, node) => sum + node.children.length, 0),
+      sensitiveCount: selected.filter(id => index.get(id)?.risk).length,
+      missingDependencies: missing.map(id => ({ id, label: index.get(id).label })) })
+  },
+  permissionFilter(e) { this.setData({ permissionFilter: e.currentTarget.dataset.filter }); this.paintTree() },
+  selectPermissions(add = [], remove = []) {
+    if (this.data.busy) return
+    const source = this.data.access.tree || []
+    const base = removeDependencies(source, this.data.selected, remove)
+    const selected = includeDependencies(source, [...new Set([...base, ...add])])
+    const extra = selected.filter(id => !base.includes(id) && !add.includes(id)).length
+    const dropped = this.data.selected.filter(id => !selected.includes(id) && !remove.includes(id)).length
+    this.setData({ selected, selectionHint: extra ? `已补充 ${extra} 项关联查看权限，保证页面可访问。` : dropped ? `已同时移除 ${dropped} 项依赖该查看权限的操作。` : '' })
+    this.paintTree()
+  },
+  completeDependencies() { this.selectPermissions() },
+  selectVisible(e) {
+    if (this.data.busy) return
+    const keys = this.data.tree.flatMap(node => node.children.map(child => child.id))
+    this.selectPermissions(e.currentTarget.dataset.remove ? [] : keys, e.currentTarget.dataset.remove ? keys : [])
   },
   permissionSearch(e) { this.setData({ permissionKeyword: e.detail.value }); this.paintTree() },
   expand(e) {
@@ -94,20 +131,19 @@ Page({
     const node = this.data.tree.find(item => item.id === e.currentTarget.dataset.id)
     if (!node) return
     const visible = new Set(node.children.map(child => child.id))
-    const selected = this.data.selected.filter(id => !visible.has(id)).concat(e.detail.value.filter(id => visible.has(id)))
-    this.setData({ selected: [...new Set(selected)] }); this.paintTree()
+    const values = e.detail.value.filter(id => visible.has(id))
+    this.selectPermissions(values, this.data.selected.filter(id => visible.has(id) && !values.includes(id)))
   },
   branch(e) {
     if (this.data.busy) return
-    const node = (this.data.access.tree || []).find(item => item.id === e.currentTarget.dataset.id)
+    const node = this.data.tree.find(item => item.id === e.currentTarget.dataset.id)
     if (!node) return
-    const selected = new Set(this.data.selected)
-    const checked = node.children.every(child => selected.has(child.id))
-    for (const child of node.children) checked ? selected.delete(child.id) : selected.add(child.id)
-    this.setData({ selected: [...selected] }); this.paintTree()
+    const keys = node.children.map(child => child.id)
+    this.selectPermissions(node.checked ? [] : keys, node.checked ? keys : [])
   },
   async save() {
     if (this.data.busy || !this.data.editor) return
+    if (this.data.missingDependencies.length) { wx.showToast({ title: '请先补齐关联查看权限', icon: 'none' }); return }
     const editor = this.data.editor
     if (!editor.name.trim()) { wx.showToast({ title: '请填写用户组名称', icon: 'none' }); return }
     this.setData({ busy: true })

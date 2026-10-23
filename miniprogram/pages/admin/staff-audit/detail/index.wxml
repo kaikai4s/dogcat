@@ -66,7 +66,7 @@
       <label><radio value="female" checked="{{gender === 'female'}}" />女</label>
     </radio-group>
     <textarea class="remark-textarea" placeholder="填写核实依据或说明" value="{{genderReason}}" bindinput="inputGenderReason" />
-    <button class="primary-btn" loading="{{savingGender}}" disabled="{{savingGender}}" bindtap="completeGender">确认核实并补录</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_completeStaffGender}}" class="primary-btn" loading="{{savingGender}}" disabled="{{savingGender}}" bindtap="completeGender">确认核实并补录</button>
   </view>
 
   <view class="admin-card form-card" wx:if="{{staff.auditStatus === 'pending'}}">
@@ -103,8 +103,8 @@
   </view>
 
   <view class="bottom-actions" wx:if="{{staff.auditStatus === 'pending'}}">
-    <button class="primary-btn" loading="{{auditing}}" disabled="{{auditing}}" data-status="approved" bindtap="audit"><text class="remix-icon ri-check-line"></text><text>审核通过</text></button>
-    <button class="danger-btn" loading="{{auditing}}" disabled="{{auditing}}" data-status="rejected" bindtap="audit"><text class="remix-icon ri-close-line"></text><text>审核拒绝</text></button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_auditStaff}}" class="primary-btn" loading="{{auditing}}" disabled="{{auditing}}" data-status="approved" bindtap="audit"><text class="remix-icon ri-check-line"></text><text>审核通过</text></button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_auditStaff}}" class="danger-btn" loading="{{auditing}}" disabled="{{auditing}}" data-status="rejected" bindtap="audit"><text class="remix-icon ri-close-line"></text><text>审核拒绝</text></button>
   </view>
 </view>
 <global-loading />

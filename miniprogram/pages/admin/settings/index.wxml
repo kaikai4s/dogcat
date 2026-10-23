@@ -2,10 +2,11 @@
   <view class="dashboard-header">
     <view class="badge">管理端</view>
     <view class="title">系统设置</view>
-    <view class="tip">点击配置组进入弹框编辑，底部统一保存。</view>
+    <view class="tip">{{adminSuper ? '点击配置组进入弹框编辑，底部统一保存。' : '当前为只读查看；配置保存与支付密钥仅限超级管理员。'}}</view>
   </view>
 
   <view class="settings-grid">
+    <navigator wx:if="{{adminSuper}}" class="admin-compact-card setting-overview-card" url="/pages/admin/config-migration/index"><view class="admin-summary-title">配置导入与导出</view><view class="setting-summary-line">导出全部配置，跨环境预览导入，自动保留备份 ›</view></navigator>
     <navigator class="admin-compact-card setting-overview-card" url="/pages/admin/playground/index"><view class="admin-summary-title">宠物庄园管理</view><view class="setting-summary-line">拼单优惠、宠物状态、地面及庄园素材统一管理 ›</view></navigator>
     <view class="admin-compact-card setting-overview-card" data-panel="staffPolicy" bindtap="openSettingModal">
       <view class="admin-summary-title">宠托师保证金与用品报销</view>
@@ -185,7 +186,7 @@
         <view class="meta-chip chip-primary">配置</view>
       </view>
       <view class="meta-chip-row">
-        <view class="meta-chip success">月度冠军 ¥{{settings.petBeautyContest.firstPrizeAmount || 500}}</view>
+        <view class="meta-chip success">{{settings.petBeautyContest.enabled === false ? '即将开始 · 无现金奖金' : '月度冠军 ¥' + settings.petBeautyContest.firstPrizeAmount}}</view>
         <view class="meta-chip {{settings.petBeautyContest.posterUrl ? 'success' : 'warning'}}">{{settings.petBeautyContest.posterUrl ? '已配海报' : '默认海报'}}</view>
       </view>
       <view class="setting-summary-line">配置月度第一名奖金、活动宣传海报、大赛标题及规则说明。</view>
@@ -214,7 +215,7 @@
     </view>
   </view>
 
-  <button class="primary save-settings-btn" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>
+  <button wx:if="{{adminSuper}}" class="primary save-settings-btn" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存全局设置'}}</button>
 
   <view class="modal-backdrop" wx:if="{{showSettingModal}}" bindtap="closeSettingModal" catchtouchmove="noop">
     <view class="modal-card settings-modal-card" catchtap="noop">
@@ -454,13 +455,13 @@
 
         <view wx:if="{{activeSettingPanel === 'subscription'}}" class="setting-modal-section">
           <picker mode="selector" range="{{deliveryStatusLabels}}" value="{{deliveryStatusIndex}}" bindchange="changeDeliveryStatus" disabled="{{deliveryLoading}}"><view class="input">通知状态：{{deliveryStatusLabels[deliveryStatusIndex]}}</view></picker>
-          <button class="ghost-btn" bindtap="loadSubscriptionDeliveries" disabled="{{deliveryLoading}}"><text class="remix-icon ri-refresh-line"></text><text>刷新通知</text></button>
+          <button wx:if="{{adminSuper || adminPermissions.admin_listSubscriptionDeliveries}}" class="ghost-btn" bindtap="loadSubscriptionDeliveries" disabled="{{deliveryLoading}}"><text class="remix-icon ri-refresh-line"></text><text>刷新通知</text></button>
           <view wx:for="{{subscriptionDeliveries}}" wx:key="id" wx:if="{{subscriptionDeliveriesExpanded || index < 3}}" class="compact-toggle-row">
             <view class="compact-toggle-main"><view>{{item.templateName || item.templateKey}}</view><view class="muted">{{item.orderId || '资金通知'}} · {{item.attempts}} 次尝试</view><view class="muted" wx:if="{{item.reasonText}}">{{item.reasonText}}</view></view>
-            <button wx:if="{{item.status === 'failed' || item.status === 'skipped'}}" class="ghost-btn" data-id="{{item.id}}" bindtap="retrySubscriptionDelivery"><text class="remix-icon ri-restart-line"></text><text>重试</text></button>
+            <button wx:if="{{(item.status === 'failed' || item.status === 'skipped') && (adminSuper || adminPermissions.admin_retrySubscriptionDelivery)}}" class="ghost-btn" data-id="{{item.id}}" bindtap="retrySubscriptionDelivery"><text class="remix-icon ri-restart-line"></text><text>重试</text></button>
           </view>
           <button wx:if="{{subscriptionDeliveries.length > 3}}" class="ghost-btn" bindtap="toggleSubscriptionDeliveries">{{subscriptionDeliveriesExpanded ? '收起通知' : '查看全部通知'}}</button>
-          <button wx:if="{{subscriptionDeliveriesExpanded && deliveryHasMore}}" class="ghost-btn" data-more="{{true}}" bindtap="loadSubscriptionDeliveries" disabled="{{deliveryLoading}}">加载更多通知</button>
+          <button wx:if="{{(subscriptionDeliveriesExpanded && deliveryHasMore) && (adminSuper || adminPermissions.admin_listSubscriptionDeliveries)}}" class="ghost-btn" data-more="{{true}}" bindtap="loadSubscriptionDeliveries" disabled="{{deliveryLoading}}">加载更多通知</button>
           <view class="compact-toggle-row"><view class="compact-toggle-main"><view class="strong">启用订阅消息</view><view class="muted">模板未配置时只记录 skipped 日志。</view></view><switch checked="{{settings.subscription.enabled}}" bindchange="toggleSubscriptionEnabled" /></view>
           <view class="notice">开启此开关不会自动配置模板。请先添加微信模板、填写下方对应的完整模板 ID 并保存；暂未配置的通知请留空，用户需在配置完成后重新进入订阅中心授权。</view>
           <view class="notice">请从当前小程序的微信公众平台「订阅消息 → 我的模板」复制完整模板 ID。7272、8560 等数字是模板编号，不能作为模板 ID 填入；其他小程序的 ID 也不可用。前台出现微信错误码 20001 时请优先核对此处配置，20002 时检查是否混用了不同类型的模板。</view>
@@ -691,6 +692,8 @@
         </view>
 
         <view wx:if="{{activeSettingPanel === 'petBeautyContest'}}" class="setting-modal-section">
+          <view class="module-switch-row"><view><view class="label">宠物大赛开关</view><view class="muted">关闭后显示“即将开始”，保留投票、排行榜与月度称号。</view></view><switch checked="{{settings.petBeautyContest.enabled !== false}}" disabled="{{!adminSuper}}" bindchange="togglePetBeautyContest" /></view>
+          <view class="notice">开关与奖金金额在底部保存后生效。关闭期间结算的榜单不产生现金奖金，重新开启后也不会补发。</view>
           <view class="section-title-row"><text class="section-title">月度第一名奖金设置</text></view>
           <view class="field-item">
             <text class="label">第一名奖金 (元)</text>
@@ -930,7 +933,7 @@
 
       <view class="modal-actions">
         <button class="ghost" style="flex: 1;" bindtap="closeSettingModal">关闭</button>
-        <button class="primary" style="flex: 2;" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存设置'}}</button>
+        <button wx:if="{{adminSuper}}" class="primary" style="flex: 2;" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : '保存设置'}}</button>
       </view>
     </view>
   </view>

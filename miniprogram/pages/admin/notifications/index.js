@@ -1,3 +1,4 @@
+const { can } = require('../../../utils/adminAccess')
 const { callFunction, showError } = require('../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
 
@@ -35,6 +36,7 @@ Page({
 
   onShow() {
     this.applyCurrentTheme()
+    if (!can(this.data.adminAccess, 'admin.listSystemNotifications') && this.data.activeTab === 'broadcast') this.setData({ activeTab: 'all', broadcastList: [] })
     if (this.data.activeTab === 'broadcast') {
       this.loadBroadcast({ reset: true })
     } else {
@@ -64,6 +66,7 @@ Page({
 
   switchTab(e) {
     const tab = e.currentTarget.dataset.tab || 'all'
+    if (tab === 'broadcast' && !can(this.data.adminAccess, 'admin.listSystemNotifications')) return
     this.setData({ activeTab: tab }, () => {
       if (tab === 'broadcast') {
         this.loadBroadcast({ reset: true })
@@ -140,7 +143,7 @@ Page({
   tapItem(e) {
     const item = e.currentTarget.dataset.item
     if (!item) return
-    if (!item.isRead) {
+    if (!item.isRead && can(this.data.adminAccess, 'admin.markAdminNotificationRead')) {
       callFunction('admin', 'markAdminNotificationRead', { id: item._id }).catch(() => {})
       // 本地乐观更新已读状态
       const list = this.data.list.map((n) => (n._id === item._id ? { ...n, isRead: true } : n))

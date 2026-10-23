@@ -7,10 +7,10 @@
       <view class="hero-desc">监控服务预警待办，并支持向宠托师与用户发布系统通知</view>
     </view>
     <view class="hero-actions">
-      <button class="send-notice-btn primary-btn" bindtap="openSendModal">
+      <button wx:if="{{adminSuper || adminPermissions.admin_sendSystemNotification}}" class="send-notice-btn primary-btn" bindtap="openSendModal">
         <text class="remix-icon ri-send-plane-fill"></text> 发送通知
       </button>
-      <button class="mark-read-btn" bindtap="markAllRead" wx:if="{{activeTab !== 'broadcast' && unreadCount > 0}}">全部已读</button>
+      <button wx:if="{{(adminSuper || adminPermissions.admin_markAdminNotificationRead) && (activeTab !== 'broadcast' && unreadCount > 0)}}"  class="mark-read-btn" bindtap="markAllRead" >全部已读</button>
     </view>
   </view>
 
@@ -24,7 +24,7 @@
       <text class="remix-icon ri-flashlight-fill"></text>
       <text>加急预警</text>
     </view>
-    <view class="tab-item broadcast-tab {{activeTab === 'broadcast' ? 'active' : ''}}" data-tab="broadcast" bindtap="switchTab">
+    <view wx:if="{{adminSuper || adminPermissions.admin_listSystemNotifications}}" class="tab-item broadcast-tab {{activeTab === 'broadcast' ? 'active' : ''}}" data-tab="broadcast" bindtap="switchTab">
       <text class="remix-icon ri-broadcast-line"></text>
       <text>系统广播</text>
     </view>
@@ -92,7 +92,7 @@
           <view class="sender-info">
             <text class="remix-icon ri-user-star-line"></text> {{item.senderAdminName || '管理员'}} · {{beijingTime.format(item.createdAt)}}
           </view>
-          <button class="revoke-btn" wx:if="{{item.status !== 'revoked'}}" data-item="{{item}}" bindtap="revokeNotification">撤回</button>
+          <button class="revoke-btn" wx:if="{{(item.status !== 'revoked') && (adminSuper || adminPermissions.admin_revokeSystemNotification)}}" data-item="{{item}}" bindtap="revokeNotification">撤回</button>
         </view>
       </view>
     </view>
@@ -101,7 +101,7 @@
       <text class="remix-icon ri-mail-send-line empty-icon"></text>
       <view class="empty-title">暂未发布系统通知</view>
       <view class="empty-desc">点击右上角“发送通知”即可向宠托师与用户发布公告</view>
-      <button class="primary-btn mt-20" bindtap="openSendModal">立即发布通知</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_sendSystemNotification}}" class="primary-btn mt-20" bindtap="openSendModal">立即发布通知</button>
     </view>
 
     <view class="list-state" wx:if="{{broadcastLoading && broadcastList.length}}">正在加载系统通知...</view>
@@ -187,7 +187,7 @@
 
       <view class="modal-footer">
         <button class="ghost-btn cancel-btn" bindtap="closeSendModal" disabled="{{sending}}">取消</button>
-        <button class="primary-btn submit-btn" bindtap="submitSend" loading="{{sending}}" disabled="{{sending}}">确认发布通知</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_sendSystemNotification}}" class="primary-btn submit-btn" bindtap="submitSend" loading="{{sending}}" disabled="{{sending}}">确认发布通知</button>
       </view>
     </view>
   </view>

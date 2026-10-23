@@ -76,6 +76,10 @@ module.exports = function createService({
     } catch (error) {
       configured = []
     }
+    return mergeServicePrices(configured, includeDisabled)
+  }
+
+  function mergeServicePrices(configured = [], includeDisabled = false) {
     const configuredMap = configured.reduce((map, item) => ({ ...map, [item.key]: item }), {})
     const merged = defaultServicePrices.map((item) => {
       const configuredItem = configuredMap[item.key] || {}
@@ -97,6 +101,7 @@ module.exports = function createService({
     normalizeExtraPetRule,
     normalizeServiceCaseImageFileIds,
     normalizeServicePrice,
-    listServicePrices
+    listServicePrices,
+    mergeServicePrices
   }
 }

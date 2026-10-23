@@ -44,8 +44,8 @@
   </view>
 
   <view class="audit-sticky-actions">
-    <button class="reject" data-status="rejected" bindtap="openAuditModal">拒绝</button>
-    <button class="approve" data-status="approved" bindtap="openAuditModal">通过，成为实习宠托师</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_auditTrainingVideo}}" class="reject" data-status="rejected" bindtap="openAuditModal">拒绝</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_auditTrainingVideo}}" class="approve" data-status="approved" bindtap="openAuditModal">通过，成为实习宠托师</button>
   </view>
 
   <view class="modal-backdrop" wx:if="{{showAuditModal}}" bindtap="closeAuditModal" catchtouchmove="noop">
@@ -59,7 +59,7 @@
         <textarea class="textarea" placeholder="填写审核备注（选填）" value="{{remark}}" bindinput="inputRemark" />
       </scroll-view>
       <view class="modal-actions">
-        <button class="primary" style="flex: 2;" bindtap="audit">确认处理</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_auditTrainingVideo}}" class="primary" style="flex: 2;" bindtap="audit">确认处理</button>
         <button class="ghost" style="flex: 1;" bindtap="closeAuditModal">取消</button>
       </view>
     </view>

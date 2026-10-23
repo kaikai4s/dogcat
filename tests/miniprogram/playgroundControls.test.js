@@ -523,6 +523,7 @@ test('choosing a new community after demolition starts placement without requiri
   const {page,toasts}=pageFixture({},async(module,action,data)=>{calls.push({action,data});return {}})
   page.world=makeWorld({plot:null,scene:{hasAvatar:false,serverTime:Date.now()}})
   page.data.hasAvatar=false
+  page.selectComponent=()=>({open:async()=>({name:'新小区',address:'新地址',latitude:1,longitude:2})})
   let initialized=0
   page.initialize=()=>{initialized++}
   await page.chooseCommunityAndBuild()

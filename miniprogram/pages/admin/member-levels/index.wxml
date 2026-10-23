@@ -5,7 +5,7 @@
         <view class="badge">管理端</view>
         <view class="title">会员等级配置</view>
       </view>
-      <button class="primary add-level-btn" bindtap="openAddModal">＋ 新增会员等级</button>
+      <button wx:if="{{adminSuper || adminPermissions.admin_saveMemberLevel}}" class="primary add-level-btn" bindtap="openAddModal">＋ 新增会员等级</button>
     </view>
     <view class="tip">设置等级名称、短徽章与炫彩特效，用户累计积分达标后自动升级并享受专属权益。</view>
   </view>
@@ -21,7 +21,7 @@
         </view>
         <view class="level-actions">
           <view class="action-btn edit-btn" data-index="{{levelIndex}}" catchtap="chooseLevel">编辑</view>
-          <view class="action-btn delete-btn" data-index="{{levelIndex}}" catchtap="deleteLevel">删除</view>
+          <view wx:if="{{adminSuper || adminPermissions.admin_deleteMemberLevel}}" class="action-btn delete-btn" data-index="{{levelIndex}}" catchtap="deleteLevel">删除</view>
         </view>
       </view>
 
@@ -40,7 +40,7 @@
 
   <view class="empty" wx:if="{{!levels.length}}">
     <view>暂无会员等级配置</view>
-    <button class="primary" style="width: auto; min-width: 260rpx; margin-top: 20rpx;" bindtap="openAddModal">＋ 新增第一个等级</button>
+    <button wx:if="{{adminSuper || adminPermissions.admin_saveMemberLevel}}" class="primary" style="width: auto; min-width: 260rpx; margin-top: 20rpx;" bindtap="openAddModal">＋ 新增第一个等级</button>
   </view>
 
   <!-- 编辑 / 新建 弹窗Modal -->
@@ -151,7 +151,7 @@
       </scroll-view>
 
       <view class="modal-actions">
-        <button class="primary" style="flex: 2;" loading="{{saving}}" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : (form._id ? '保存修改' : '确认新建')}}</button>
+        <button wx:if="{{adminSuper || adminPermissions.admin_saveMemberLevel}}" class="primary" style="flex: 2;" loading="{{saving}}" disabled="{{saving}}" bindtap="save">{{saving ? '保存中...' : (form._id ? '保存修改' : '确认新建')}}</button>
         <button class="ghost" style="flex: 1;" bindtap="closeFormModal">取消</button>
       </view>
     </view>

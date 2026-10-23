@@ -1,3 +1,4 @@
+const { effectivePrize } = require('./pet-beauty-contest')
 const { documentPages } = require('../utils/documentPages')
 
 const PET_BEAUTY_VOTES_CACHE_TTL_MS = 15000 // 15秒短期内存聚合缓存，防榜单并发扫表穿透
@@ -203,9 +204,10 @@ module.exports = function createService({
 
   async function settlePetBeautyMonthlyRanking(monthKey = toCstParts().monthKey, options = {}) {
     monthKey = normalizeMonthKey(monthKey)
-    if (!options.force && await isPetBeautyMonthLocked(monthKey)) return { monthKey, locked: true, skipped: true }
-    const settings = typeof getSystemSettings === 'function' ? await getSystemSettings().catch(() => ({})) : {}
-    const firstPrizeAmount = Number(settings?.petBeautyContest?.firstPrizeAmount ?? 500)
+    const previousLock = (await db.collection('pet_beauty_month_locks').where({ monthKey, status: 'locked' }).limit(1).get()).data?.[0]
+    if (!options.force && previousLock) return { monthKey, locked: true, skipped: true }
+    const settings = typeof getSystemSettings === 'function' ? await getSystemSettings() : {}
+    const firstPrizeAmount = previousLock?.firstPrizeAmount !== undefined ? Math.max(0, Number(previousLock.firstPrizeAmount) || 0) : effectivePrize(settings.petBeautyContest)
     const voteMap = await countPetBeautyVotes(monthKey, { forceRefresh: true })
     const votedPetIds = Object.keys(voteMap).filter((id) => (voteMap[id] || 0) > 0)
     let candidatePets = []

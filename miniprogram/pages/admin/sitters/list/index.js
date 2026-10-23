@@ -1,3 +1,4 @@
+const { optionalAdminRead } = require('../../../../utils/admin-page-read')
 const { uploadImage } = require('../../../../utils/image-upload')
 const { callFunction, showError } = require('../../../../utils/cloud')
 
@@ -86,7 +87,7 @@ Page({
   },
 
   loadDepositConfig() {
-    callFunction('admin', 'getSystemSettings')
+    optionalAdminRead(this, 'admin', 'getSystemSettings')
       .then((res) => {
         if (res && res.staffDeposit && res.staffDeposit.amount != null) {
           this.setData({ standardDepositAmount: Number(res.staffDeposit.amount).toFixed(2) })

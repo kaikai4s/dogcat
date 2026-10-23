@@ -1,11 +1,11 @@
 <view class="crop-admin">
   <block wx:if="{{!form}}">
-    <view class="heading"><text class="title">农作物管理</text><button wx:if="{{adminSuper || adminPermissions.playgroundFarm_save}}" bindtap="edit"><text class="remix-icon ri-add-line"></text>新增作物</button></view>
+    <view class="heading"><text class="title">农作物管理</text><button wx:if="{{adminSuper || adminPermissions.playgroundFarm_save || adminPermissions.playgroundFarm_remove || adminPermissions.playgroundFarm_prepareUpload}}" bindtap="edit"><text class="remix-icon ri-add-line"></text>新增作物</button></view>
     <view class="error" wx:if="{{error}}">{{error}}<button bindtap="load">重试</button></view>
     <view class="muted" wx:if="{{loading}}">加载中…</view>
     <view class="crop-row" wx:for="{{crops}}" wx:key="id">
       <view class="crop-summary"><view class="crop-name">{{item.name}} <text class="status {{item.enabled ? '' : 'off'}}">{{item.enabled ? '已上架' : '已下架'}}</text></view><view class="muted">{{item.minutes}}分钟 · {{item.stages.length}}阶段</view><view class="muted">装饰作物 · {{item.unlockLevelIds.length ? '指定会员等级可用' : '所有会员可用'}}</view></view>
-      <button wx:if="{{adminSuper || adminPermissions.playgroundFarm_save}}" data-id="{{item.id}}" bindtap="edit">编辑</button>
+      <button wx:if="{{adminSuper || adminPermissions.playgroundFarm_save || adminPermissions.playgroundFarm_remove || adminPermissions.playgroundFarm_prepareUpload}}" data-id="{{item.id}}" bindtap="edit">编辑</button>
     </view>
   </block>
   <block wx:else>
@@ -24,6 +24,6 @@
       <button wx:if="{{adminSuper || adminPermissions.playgroundFarm_prepareUpload}}" class="asset-button" disabled="{{busy}}" bindtap="upload"><text class="remix-icon ri-image-add-line"></text>{{busy && progress ? '上传中 ' + progress + '%' : '上传阶段PNG图集'}}</button>
     </view>
     <button wx:if="{{!isNew && (adminSuper || adminPermissions.playgroundFarm_remove)}}" disabled="{{busy}}" bindtap="removeCrop">删除作物</button>
-    <button class="save" loading="{{busy}}" disabled="{{busy}}" bindtap="save"><text class="remix-icon ri-save-line"></text>保存并发布</button>
+    <button wx:if="{{adminSuper || adminPermissions.playgroundFarm_save}}" class="save" loading="{{busy}}" disabled="{{busy}}" bindtap="save"><text class="remix-icon ri-save-line"></text>保存并发布</button>
   </block>
 </view>
