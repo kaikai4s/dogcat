@@ -1,0 +1,5 @@
+<view class="consent-row">
+  <checkbox-group bindchange="change"><label><checkbox value="agree" checked="{{agreed}}" color="#df7425" /><text>我已阅读并同意</text></label></checkbox-group>
+  <text class="link" data-type="user_service" bindtap="open">《用户服务协议》</text>
+  <text>和</text><text class="link" data-type="privacy" bindtap="open">《隐私政策》</text>
+</view>

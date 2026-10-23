@@ -115,3 +115,14 @@ test('service report poster export modal extracts and formats poster data correc
   instance.closeExportModal()
   assert.equal(instance.data.showExportModal, false)
 })
+
+test('empty report exports and copied posts do not fabricate pet condition or completed care', () => {
+  const instance = { data: { ...pageConfig.data, report: { order: { status: 'cancelled', statusText: '已取消' }, checkins: [], checkinGroups: [] }, aiSummary: '' }, setData(patch) { Object.assign(this.data, patch) } }
+  for (const [key, method] of Object.entries(pageConfig)) if (typeof method === 'function') instance[key] = method.bind(instance)
+  instance.openExportModal()
+  instance.copySocialMediaPost()
+  assert.match(instance.data.displayDiaryContent, /暂无宠托师文字记录/)
+  assert.ok(instance.data.posterMetrics.includes('已取消'))
+  assert.doesNotMatch(clipboardData, /按时吃完|饮水充足|全屋环境均已清理|状态活力满格|准时上门/)
+  assert.doesNotMatch(instance.data.serviceDateText, /圆满履约/)
+})

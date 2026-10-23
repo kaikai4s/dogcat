@@ -1,3 +1,4 @@
+const { uploadImage } = require('../../../../utils/image-upload')
 const { callFunction, showError, ensureLogin, loadSystemSettings, getCachedSystemSettings } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const petCare = require('../../../../utils/format') || {}
@@ -348,7 +349,7 @@ Page({
     const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
     const cloudPath = `pets/beauty/${Date.now()}_${Math.random().toString(36).slice(2, 7)}${ext}`
     return new Promise((resolve, reject) => {
-      wx.cloud.uploadFile({
+      uploadImage({
         cloudPath,
         filePath,
         success: (upload) => {
@@ -489,7 +490,7 @@ Page({
     const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
     const cloudPath = `pet_vaccine_certifications/${this.data.id}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}${ext}`
     return new Promise((resolve, reject) => {
-      wx.cloud.uploadFile({
+      uploadImage({
         cloudPath,
         filePath,
         success: (upload) => {

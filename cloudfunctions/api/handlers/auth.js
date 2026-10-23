@@ -121,6 +121,10 @@ module.exports = function createHandler(context) {
         user = await createUserOnce(openid, userData)
       }
       if (user.status !== 'active') throw new Error('账号不可用')
+      if (data.agreementVersion === '2026-10-23') {
+        await db.collection('users').doc(user._id).update({ data: { loginAgreementVersion: data.agreementVersion, loginAgreementAcceptedAt: time } })
+        user = { ...user, loginAgreementVersion: data.agreementVersion, loginAgreementAcceptedAt: time }
+      }
       user = await bindInviteRelation(user, data)
       const enriched = await enrichUserMemberLevel(user)
       await grantEligiblePetTitlesForUser(enriched)

@@ -1,3 +1,4 @@
+const { uploadImage } = require('../../../../utils/image-upload')
 const { callFunction, showError } = require('../../../../utils/cloud')
 
 const statusTabs = [
@@ -445,7 +446,7 @@ Page({
           const extMatch = img.match(/\.[a-zA-Z0-9]+$/)
           const ext = extMatch ? extMatch[0] : '.jpg'
           const cloudPath = `deposit_forfeits/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`
-          return wx.cloud.uploadFile({ cloudPath, filePath: img }).then((uploadRes) => uploadRes.fileID)
+          return uploadImage({ cloudPath, filePath: img }).then((uploadRes) => uploadRes.fileID)
         }))
       }
 

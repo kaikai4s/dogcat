@@ -6,7 +6,7 @@ const { createCollectionStore } = require('./helpers')
 function createTestContext(initial = {}) {
   const db = createCollectionStore(initial)
   let t = 1717236000000
-  return createContext({ db, cloud: {}, now: () => new Date(t += 1000) })
+  return createContext({ db, cloud: { downloadFile: async () => ({ fileContent: Buffer.from('image') }), openapi: { security: { msgSecCheck: async () => ({ errCode: 0, result: { suggest: 'pass' } }), imgSecCheck: async () => ({ errCode: 0 }) } } }, now: () => new Date(t += 1000) })
 }
 
 test('admin can send system notification with role targeting and validation', async () => {

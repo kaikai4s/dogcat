@@ -179,3 +179,31 @@ test('aiGenerateReport: unauthorized order ID access is rejected, while order pa
   assert.equal(adminRes.ok, true)
   assert.match(adminRes.data.reportSummary, /关键服务打卡记录：2 次/)
 })
+
+test('service record summary never invents completion, pet condition or safety confirmations', async () => {
+  const db = createAiSecurityDb()
+  db.state.orders[0].status = 'cancelled'
+  db.state.checkin_logs = []
+  const fn = loadCloudFunction('api', db, 'openid_victim')
+  const result = await fn.main({ module: 'ai', action: 'aiGenerateReport', data: { orderId: 'order_victim_1' } })
+  assert.equal(result.ok, true)
+  assert.match(result.data.reportSummary, /已取消/)
+  assert.match(result.data.reportSummary, /暂无有效打卡记录/)
+  assert.doesNotMatch(result.data.reportSummary, /已顺利完成|精神状态良好|已确认门锁与电源安全|基础入户与服务/)
+})
+
+test('service record summary excludes deleted checkins and distinguishes recorded events from outcomes', async () => {
+  const db = createAiSecurityDb()
+  db.state.checkin_logs = [
+    { _id: 'active1', orderId: 'order_victim_1', eventType: 'feed', createdAt: '2026-10-23 09:00' },
+    { _id: 'active2', orderId: 'order_victim_1', eventType: 'leave_door', createdAt: '2026-10-23 09:05' },
+    { _id: 'deleted', orderId: 'order_victim_1', eventType: 'pet_status', deletedAt: '2026-10-23 10:00' }
+  ]
+  const fn = loadCloudFunction('api', db, 'openid_victim')
+  const result = await fn.main({ module: 'ai', action: 'aiGenerateReport', data: { orderId: 'order_victim_1' } })
+  assert.equal(result.ok, true)
+  assert.match(result.data.reportSummary, /关键服务打卡记录：2 次/)
+  assert.match(result.data.reportSummary, /喂食 1 次/)
+  assert.match(result.data.reportSummary, /离户 1 次/)
+  assert.doesNotMatch(result.data.reportSummary, /精神状态良好|已确认门锁/)
+})

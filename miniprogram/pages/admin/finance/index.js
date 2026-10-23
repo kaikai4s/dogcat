@@ -1,3 +1,4 @@
+const { uploadImage } = require('../../../utils/image-upload')
 const { callFunction, showError } = require('../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../utils/nav')
 const { toBeijingDate } = require('../../../utils/format')
@@ -82,7 +83,7 @@ async function uploadForfeitImage(filePath) {
   const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
   const cloudPath = `deposit_forfeits/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`
   try {
-    const res = await wx.cloud.uploadFile({ cloudPath, filePath })
+    const res = await uploadImage({ cloudPath, filePath })
     return res.fileID || filePath
   } catch (err) {
     return filePath

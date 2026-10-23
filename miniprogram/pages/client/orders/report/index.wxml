@@ -75,7 +75,7 @@
 
   <view class="card ai-card">
     <view class="ai-head">
-      <view class="card-subtitle no-margin"><text class="remix-icon ri-robot-2-line sub-icon"></text><text>AI 智能总结</text></view>
+      <view class="card-subtitle no-margin"><text class="remix-icon ri-robot-2-line sub-icon"></text><text>服务记录摘要</text></view>
       <button class="primary-btn compact-btn" loading="{{loadingAi}}" bindtap="generateAiReport"><text class="remix-icon ri-sparkling-line"></text><text>一键总结</text></button>
     </view>
     <view wx:if="{{aiSummary}}" class="ai-summary">{{aiSummary}}</view>
@@ -101,7 +101,7 @@
         </view>
         <view class="tab-item {{currentTemplate === 'certified' ? 'active' : ''}}" data-tpl="certified" bindtap="switchTemplate">
           <text class="tab-icon">🛡️</text>
-          <text>安心认证</text>
+          <text>履约记录</text>
         </view>
       </view>
 
@@ -125,9 +125,9 @@
           <view class="poster-top-bar">
             <view class="poster-brand-tag">
               <text class="brand-dot"></text>
-              <text>{{currentTemplate === 'magazine' ? 'DOVELIN PET CARE' : (currentTemplate === 'certified' ? 'Dovelin · 官方履约认证' : 'Dovelin 多芙琳 · 今日照护手账')}}</text>
+              <text>{{currentTemplate === 'magazine' ? 'DOVELIN PET CARE' : (currentTemplate === 'certified' ? 'Dovelin · 订单履约记录' : 'Dovelin 多芙琳 · 今日照护手账')}}</text>
             </view>
-            <view class="poster-date-badge">{{serviceDateText || '服务已圆满完成'}}</view>
+            <view class="poster-date-badge">{{serviceDateText || '服务时间请查看订单'}}</view>
           </view>
 
           <!-- 宠物主副标题 -->
@@ -137,7 +137,7 @@
               <text class="pet-species-pill">{{petSpeciesText}}</text>
               <text class="pet-honor-pill" wx:if="{{petBeautyTitle}}">{{petBeautyTitle}}</text>
             </view>
-            <view class="poster-sub-slogan">{{currentTemplate === 'magazine' ? 'EXCLUSIVE DOVELIN CARE REPORT · VOL. 2026' : (currentTemplate === 'certified' ? '多芙琳专业宠托全链服务 · 100% 实名与合规验证' : '又是被宝贝治愈的一天 ✨ 干粮吃光光 乖巧满分')}}</view>
+            <view class="poster-sub-slogan">{{currentTemplate === 'magazine' ? 'EXCLUSIVE DOVELIN CARE REPORT · VOL. 2026' : (currentTemplate === 'certified' ? '多芙琳专业宠托全链服务 · 订单信息与打卡照片汇总' : '记录每一次陪伴 · 实际情况请查看服务凭证')}}</view>
           </view>
 
           <!-- 海报 Hero 大图卡片 -->
@@ -154,8 +154,8 @@
             <view class="hero-certified-seal" wx:else>
               <view class="seal-inner">
                 <text class="seal-top">多芙琳履约</text>
-                <text class="seal-mid">合格</text>
-                <text class="seal-bot">PASS</text>
+                <text class="seal-mid">记录</text>
+                <text class="seal-bot">RECORD</text>
               </view>
             </view>
           </view>
@@ -170,10 +170,7 @@
 
           <!-- 核心指标气泡行 -->
           <view class="poster-metrics-row">
-            <view class="metric-pill"><text class="metric-val">✅ 准时到达</text></view>
-            <view class="metric-pill"><text class="metric-val">🥣 饮水进食正常</text></view>
-            <view class="metric-pill"><text class="metric-val">🧹 环境清理消毒</text></view>
-            <view class="metric-pill highlight"><text class="metric-val">💯 状态满分</text></view>
+            <view class="metric-pill" wx:for="{{posterMetrics}}" wx:key="*this"><text class="metric-val">{{item}}</text></view>
           </view>
 
           <!-- 宠托师手记/AI总结 -->
@@ -190,7 +187,7 @@
               <view class="staff-meta">
                 <view class="staff-name-row">
                   <text class="staff-name">{{staffDisplayName}}</text>
-                  <text class="staff-role-pill">多芙琳认证宠托师</text>
+                  <text class="staff-role-pill">本单服务宠托师</text>
                 </view>
                 <view class="staff-assurance-tip">服务编号：{{report.order.orderNo}}</view>
               </view>
@@ -199,7 +196,7 @@
               <view class="official-circle-seal">
                 <text class="seal-arc">多芙琳·品质保障</text>
                 <text class="seal-star">★ ★ ★ ★ ★</text>
-                <text class="seal-code">AUDITED</text>
+                <text class="seal-code">RECORD</text>
               </view>
             </view>
           </view>

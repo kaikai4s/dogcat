@@ -9,9 +9,9 @@ const securityMock = {
       err.errCode = 87014
       throw err
     }
-    return { errCode: 0, errMsg: 'ok' }
+    return { errCode: 0, errMsg: 'ok', result: { suggest: 'pass' } }
   },
-  imgSecCheck: async () => ({ errCode: 0, errMsg: 'ok' })
+  imgSecCheck: async () => ({ errCode: 0, errMsg: 'ok', result: { suggest: 'pass' } })
 }
 
 // ========== auth.updateProfile ==========

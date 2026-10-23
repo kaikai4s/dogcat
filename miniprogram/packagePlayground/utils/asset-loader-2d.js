@@ -1,5 +1,6 @@
+const { assetRoot, resolveEnvironmentAsset } = require('./asset-environment')
 const CLOUD_ASSET_BASE =
-  'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage'
+  assetRoot()
 const { YARD_EXTRAS } = require('./yard-layout')
 const { CHARACTER_ASSETS } = require('./character-assets')
 const { PET_ATLASES } = require('./pet-assets')
@@ -31,7 +32,7 @@ function assetId(name) {
   return CHARACTER_ASSETS[name] || (PET_ATLASES[name] && PET_ATLASES[name].fileID) || CLOUD_ASSET_BASE + '/' + name + '.png'
 }
 function download(name) {
-  const id = assetId(name)
+  const id = resolveEnvironmentAsset(assetId(name))
   if (id.startsWith('/') || id.startsWith('wxfile://')) return Promise.resolve(id)
   if (!downloads.has(id))
     downloads.set(

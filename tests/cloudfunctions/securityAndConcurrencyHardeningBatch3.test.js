@@ -9,7 +9,7 @@ const securityMock = {
       err.errCode = 87014
       throw err
     }
-    return { errCode: 0, errMsg: 'ok' }
+    return { errCode: 0, errMsg: 'ok', result: { suggest: 'pass' } }
   },
   imgSecCheck: async ({ media }) => {
     if (media && media.value && media.value.toString().includes('bad-image')) {
@@ -17,7 +17,7 @@ const securityMock = {
       err.errCode = 87014
       throw err
     }
-    return { errCode: 0, errMsg: 'ok' }
+    return { errCode: 0, errMsg: 'ok', result: { suggest: 'pass' } }
   }
 }
 

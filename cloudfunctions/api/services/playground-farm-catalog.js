@@ -1,3 +1,4 @@
+const { resolveEnvironmentAsset } = require('./playground-shared/asset-environment')
 const crypto=require('crypto')
 const {transaction}=require('./playground-transaction')
 const {readDocument}=require('./playground-world')
@@ -9,7 +10,7 @@ const UPLOAD_PATH='packagePlayground/2d/baseImage/farm/custom/'
 const validId=(id)=>typeof id==='string'&&/^[a-z][a-z0-9_-]{0,39}$/.test(id)&&!['constructor','prototype','__proto__'].includes(id)
 async function readCatalog(db) {
   const row=await readDocument(db,COLLECTION,ID,'读取农作物配置',true)
-  const crops=(row?row.crops:CROPS).map(({price,sell,yield:oldYield,xp,level,...crop})=>({...crop,unlockLevelIds:crop.unlockLevelIds||[]}))
+  const crops=(row?row.crops:CROPS).map(({price,sell,yield:oldYield,xp,level,...crop})=>({...crop,unlockLevelIds:crop.unlockLevelIds||[],...(crop.atlas?{atlas:{...crop.atlas,fileID:resolveEnvironmentAsset(crop.atlas.fileID)}}:{})}))
   return {revision:row?row.revision:0,crops,soils:SOILS}
 }
 function normalizeCrop(value) {

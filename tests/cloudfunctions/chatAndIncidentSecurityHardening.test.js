@@ -32,7 +32,7 @@ test('order chat: sendOrderSessionMessage enforces checkTextSecurity and checkIm
         err.errCode = 87014
         throw err
       }
-      return { errCode: 0, errMsg: 'ok' }
+      return { errCode: 0, errMsg: 'ok', result: { suggest: 'pass' } }
     },
     imgSecCheck: async ({ media }) => {
       if (media && media.value && media.value.toString().includes('bad-image')) {
@@ -40,7 +40,7 @@ test('order chat: sendOrderSessionMessage enforces checkTextSecurity and checkIm
         err.errCode = 87014
         throw err
       }
-      return { errCode: 0, errMsg: 'ok' }
+      return { errCode: 0, errMsg: 'ok', result: { suggest: 'pass' } }
     }
   }
 
@@ -167,9 +167,9 @@ test('incident: createComplaint and appendIncidentComment enforce content and im
         err.errCode = 87014
         throw err
       }
-      return { errCode: 0, errMsg: 'ok' }
+      return { errCode: 0, errMsg: 'ok', result: { suggest: 'pass' } }
     },
-    imgSecCheck: async () => ({ errCode: 0, errMsg: 'ok' })
+    imgSecCheck: async () => ({ errCode: 0, errMsg: 'ok', result: { suggest: 'pass' } })
   }
 
   const clientFn = loadCloudFunction('api', db, 'openid_client', {

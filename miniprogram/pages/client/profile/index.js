@@ -36,6 +36,7 @@ function getCachedStaffState() {
 
 Page({
   data: {
+    loginAgreed: false,
     isGuest: true,
     isAdmin: false,
     showSettings: false,
@@ -192,6 +193,7 @@ Page({
     setCachedUser(null)
     this.setData({
       isGuest: true,
+      loginAgreed: false,
       isAdmin: false,
       staffProfile: null,
       staffEntryReady: true,
@@ -238,9 +240,18 @@ Page({
     this.setData(patch)
   },
 
+  onLoginConsentChange(e) {
+    this.setData({ loginAgreed: e.detail.agreed === true })
+  },
+
   login() {
+    if (!this.data.loginAgreed) {
+      wx.showToast({ title: '请先阅读并同意用户协议和隐私政策', icon: 'none' })
+      return
+    }
+    if (this.data.loading || this.data.loadingLogin) return
     this.setData({ loadingLogin: true })
-    loginWithWechat()
+    loginWithWechat({ agreementVersion: '2026-10-23' })
       .then((user) => {
         this.syncUserTheme(user)
         this.syncUserFont(user)
@@ -492,11 +503,11 @@ Page({
   },
 
   openThirdPartySharing() {
-    wx.showModal({ title: '第三方信息数据共享', content: '当前 MVP 版本不主动向第三方共享个人信息。后续如接入支付、地图、消息通知等能力，将在隐私政策中说明共享目的、范围和方式。', showCancel: false })
+    wx.showModal({ title: '第三方信息数据共享', content: '本小程序已接入微信登录、手机号授权、微信支付、地图定位、订阅消息、腾讯云开发与云存储及内容安全检测。AI问答将提问发送至腾讯云开发AI服务。具体用途和范围请查看完整隐私政策。', showCancel: false })
   },
 
   openPrivacySummary() {
-    wx.showModal({ title: '隐私政策概要', content: '我们仅在完成预约、服务履约、安全验证和客服支持所需范围内处理信息。你可以在个人资料、地址、宠物档案等页面查看、修改或删除相关信息。', showCancel: false })
+    wx.navigateTo({ url: '/pages/common/agreement/index?type=privacy&mode=view' })
   },
 
   changeTheme(e) {

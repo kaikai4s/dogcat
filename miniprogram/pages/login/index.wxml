@@ -17,6 +17,7 @@
       登录失败：{{errorText}}
     </view>
 
+    <login-consent agreed="{{loginAgreed}}" bindchange="onLoginConsentChange" />
     <button class="primary login-btn" disabled="{{!envReady}}" loading="{{loading}}" bindtap="login">
       <text class="remix-icon ri-wechat-fill btn-icon"></text>
       <text>微信一键快捷登录</text>
@@ -59,10 +60,10 @@
           <text>联系电话</text>
         </view>
         <view class="phone-input-card">
-          <input class="input-field phone-input" placeholder="输入11位手机号" type="number" maxlength="11" value="{{form.phone}}" bindinput="inputPhone" />
+          <input class="input-field phone-input" placeholder="请通过微信授权绑定手机号" value="{{form.phone}}" disabled />
           <button class="phone-auth-btn" open-type="getPhoneNumber" bindgetphonenumber="bindPhone">一键授权</button>
         </view>
-        <view class="field-tip">点击一键授权微信绑定的手机号，或手动输入</view>
+        <view class="field-tip">手机号仅支持微信授权绑定，不能手动填写。</view>
       </view>
 
       <button class="primary submit-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="saveAndEnter">

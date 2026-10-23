@@ -134,7 +134,7 @@ Page({
     serviceSummaryText: '上门照料服务',
     serviceDateText: '',
     displayDiaryContent: '',
-    staffDisplayName: '多芙琳认证宠托师',
+    staffDisplayName: '本单服务宠托师',
     evidencePhotos: [],
     generatingPoster: false
   },
@@ -286,8 +286,7 @@ Page({
       petDisplayName = order.petCategory === 'cat' ? '小猫咪' : (order.petCategory === 'dog' ? '狗狗' : '萌宠宝贝')
     }
 
-    const titles = ['✨ 乖巧小天使', '🍗 干饭第一名', '👑 颜值天花板', '🐾 治愈系萌宠']
-    const petBeautyTitle = titles[Math.floor(Math.random() * titles.length)]
+    const petBeautyTitle = '🐾 宠物照护记录'
 
     // 3. 提取打卡亮点拼图（最多 4 张）
     const evidencePhotos = []
@@ -308,7 +307,7 @@ Page({
       if (remarks.length) {
         displayDiaryContent = remarks.join('；')
       } else {
-        displayDiaryContent = '今天宝贝超级听话乖巧，按时吃完了准备好的粮食和冻干，饮水充足，全屋环境均已清理消毒。互动时一直蹭手撒娇，活力满满～'
+        displayDiaryContent = '暂无宠托师文字记录，请查看实际打卡照片和订单详情。'
       }
     }
     if (displayDiaryContent.length > 130) {
@@ -317,7 +316,7 @@ Page({
 
     // 5. 宠托师姓名与服务时间
     const staffDisplayName = order.staffName || order.staffNickName || '多芙琳专业宠托师'
-    const serviceDateText = order.serviceTime || order.startTime || '今日圆满履约'
+    const serviceDateText = order.serviceTime || order.startTime || '服务时间请查看订单'
     const serviceSummaryText = order.businessTypeText || '上门照料服务'
 
     this.setData({
@@ -327,6 +326,7 @@ Page({
       heroPhotoUrl: allPhotos.length ? allPhotos[0] : '',
       petDisplayName,
       petSpeciesText,
+      posterMetrics: [`打卡 ${checkins.length} 条`, `照片 ${allPhotos.length} 张`, order.statusText || '订单详情可查', '服务记录汇总'],
       petBeautyTitle,
       serviceSummaryText,
       serviceDateText,
@@ -378,11 +378,8 @@ Page({
 👩‍💼 宠托师：${staffDisplayName}
 📋 履约凭证：单号 ${orderNo} · 累计完成 ${checkinsCount} 项打卡
 
-【履约打卡标准全清单】
-✅ 准时上门，穿戴鞋套与专业消毒
-🥣 科学定量投喂粮水，水碗深度洁净
-🧹 猫砂/宠物便溺彻底清理，居室环境消杀
-💖 梳毛陪伴、轻抚互动，状态活力满格！
+【服务记录】
+具体履约情况以订单状态、打卡照片和宠托师记录为准。
 
 【宠托师手记】
 “${displayDiaryContent}”
@@ -541,7 +538,7 @@ Page({
 
             // 指标胶囊
             const metricY = 830
-            const metrics = ['✅ 准时到达', '🥣 进食正常', '🧹 清洁消杀', '💯 状态满分']
+            const metrics = this.data.posterMetrics || ['订单记录', '打卡照片', '服务手记', '详情可查']
             for (let i = 0; i < 4; i++) {
               const mx = 40 + i * 168
               drawRoundedRect(ctx, mx, metricY, 160, 42, 21, i === 3 ? '#d4af37' : 'rgba(255,255,255,0.08)', null)
@@ -582,10 +579,10 @@ Page({
             ctx.font = 'bold 18px sans-serif'
             ctx.fillText('AUDITED', 594, footY + 52)
             ctx.font = '14px sans-serif'
-            ctx.fillText('多芙琳认证', 590, footY + 80)
+            ctx.fillText('多芙琳记录', 590, footY + 80)
           } else if (tpl === 'certified') {
             // ========================
-            // 模版 3：多芙琳履约认证风 (Certified)
+            // 模版 3：多芙琳履约记录风 (Certified)
             // ========================
             const bgGrad = ctx.createLinearGradient(0, 0, 0, height)
             bgGrad.addColorStop(0, '#eefaf4')
@@ -598,7 +595,7 @@ Page({
             drawRoundedRect(ctx, 40, 48, 320, 44, 22, '#00b42a', null)
             ctx.fillStyle = '#ffffff'
             ctx.font = 'bold 22px sans-serif'
-            ctx.fillText('🛡️ 多芙琳履约认证', 64, 78)
+            ctx.fillText('🛡️ 多芙琳履约记录', 64, 78)
 
             ctx.fillStyle = '#088c52'
             ctx.font = 'bold 18px sans-serif'
@@ -616,7 +613,7 @@ Page({
 
             ctx.fillStyle = '#3b7160'
             ctx.font = '20px sans-serif'
-            ctx.fillText('多芙琳专业宠托全流程打卡 · 100% 实名背书与合规检测', 40, 186)
+            ctx.fillText('多芙琳专业宠托全流程打卡 · 订单信息与照片记录', 40, 186)
 
             // Hero 大图
             const heroY = 210
@@ -634,15 +631,15 @@ Page({
               ctx.drawImage(heroImg, 40, heroY, 670, heroH)
               ctx.restore()
             }
-            // 官方合格红色公章
+            // 服务记录标识
             drawRoundedRect(ctx, 550, heroY + 20, 130, 130, 65, 'rgba(255,255,255,0.92)', '#d9363e', 3)
             ctx.fillStyle = '#d9363e'
             ctx.font = 'bold 16px sans-serif'
             ctx.fillText('多芙琳履约', 574, heroY + 62)
             ctx.font = '900 32px sans-serif'
-            ctx.fillText('合格', 580, heroY + 98)
+            ctx.fillText('记录', 580, heroY + 98)
             ctx.font = 'bold 14px sans-serif'
-            ctx.fillText('PASS', 594, heroY + 124)
+            ctx.fillText('RECORD', 594, heroY + 124)
 
             // 拼图网格
             if (gridImgs.length) {
@@ -673,7 +670,7 @@ Page({
 
             // 指标胶囊
             const metricY = 830
-            const metrics = ['✅ 准时到达', '🥣 饮水进食', '🧹 环境消杀', '💯 状态满分']
+            const metrics = this.data.posterMetrics || ['订单记录', '打卡照片', '服务手记', '详情可查']
             for (let i = 0; i < 4; i++) {
               const mx = 40 + i * 168
               drawRoundedRect(ctx, mx, metricY, 160, 42, 21, i === 3 ? '#00b42a' : '#eefbf4', i === 3 ? null : '#c2f0d9', 1)
@@ -764,7 +761,7 @@ Page({
 
             ctx.fillStyle = '#8c7362'
             ctx.font = '20px sans-serif'
-            ctx.fillText('又是被宝贝治愈的一天 ✨ 干粮吃光光 乖巧满分', 40, 186)
+            ctx.fillText('记录每一次陪伴 · 实际情况请查看服务凭证', 40, 186)
 
             // Hero 大图（拍立得相框风格）
             const heroY = 210
@@ -817,7 +814,7 @@ Page({
 
             // 指标胶囊
             const metricY = 856
-            const metrics = ['✅ 准时到达', '🥣 进食正常', '🧹 清理消杀', '💯 状态满分']
+            const metrics = this.data.posterMetrics || ['订单记录', '打卡照片', '服务手记', '详情可查']
             for (let i = 0; i < 4; i++) {
               const mx = 40 + i * 168
               drawRoundedRect(ctx, mx, metricY, 160, 42, 21, i === 3 ? '#ff7a45' : '#ffffff', i === 3 ? null : 'rgba(255,122,69,0.2)', 1)

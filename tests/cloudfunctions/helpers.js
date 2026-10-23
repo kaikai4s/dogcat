@@ -311,7 +311,7 @@ function loadCloudFunction(functionName, db, openid = 'openid_test', cloudOverri
               return { phoneInfo: { phoneNumber: '19900006302', purePhoneNumber: '19900006302' } }
             }
           },
-          security: (cloudOverrides.openapi && cloudOverrides.openapi.security) || cloudOverrides.security,
+          security: { msgSecCheck: async () => ({ errCode: 0, result: { suggest: 'pass' } }), imgSecCheck: async () => ({ errCode: 0 }), ...((cloudOverrides.openapi && cloudOverrides.openapi.security) || cloudOverrides.security) },
           ...cloudOverrides.openapi
         }
       }

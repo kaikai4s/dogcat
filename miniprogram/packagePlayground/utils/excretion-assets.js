@@ -1,5 +1,6 @@
+const { assetRoot } = require('./asset-environment')
 const CLOUD_ASSET_BASE =
-  'cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage'
+  assetRoot()
 
 // Excretion (pee & poop) asset configuration and cloud image loader
 const EXCRETION_ASSETS = {

@@ -22,10 +22,10 @@
     <input class="input-field" type="nickname" placeholder="昵称（点击键盘可一键填入微信昵称）" value="{{form.nickname}}" data-field="nickname" bindinput="input" bindblur="onNicknameBlur" />
     <view class="card-subtitle"><text class="remix-icon ri-phone-line sub-icon"></text><text>联系电话</text></view>
     <view class="phone-input-card">
-      <input class="input-field phone-input" placeholder="输入11位手机号" type="number" maxlength="11" value="{{form.phone}}" data-field="phone" bindinput="input" />
+      <input class="input-field phone-input" placeholder="请通过微信授权绑定手机号" value="{{form.phone}}" disabled />
       <button class="phone-auth-btn" open-type="getPhoneNumber" bindtap="preparePrivacyAuthorize" bindgetphonenumber="bindPhone">快捷授权</button>
     </view>
-    <view class="field-tip">个人主体小程序支持直接输入手机号保存；企业认证小程序可点击快捷授权。</view>
+    <view class="field-tip">手机号仅支持微信授权绑定，不能手动填写。</view>
   </view>
 
   <button class="primary-btn submit-btn" bindtap="save"><text class="remix-icon ri-save-3-line"></text><text>保存资料</text></button>

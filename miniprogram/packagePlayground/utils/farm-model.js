@@ -1,4 +1,5 @@
-const FARM_BASE='cloud://cloud1-5gnhqn4t0554c1d9.636c-cloud1-5gnhqn4t0554c1d9-1310870236/packagePlayground/2d/baseImage/farm/'
+const { assetPath } = require('./asset-environment')
+const FARM_BASE=assetPath('farm/')
 const SOILS={soil:FARM_BASE+'soil-wild.png',tilled:FARM_BASE+'soil-tilled.png',watered:FARM_BASE+'soil-watered.png'}
 const CROPS = [
   {id:'carrot',name:'胡萝卜',minutes:5,color:'#ed9854'},

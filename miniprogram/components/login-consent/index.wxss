@@ -1,0 +1,4 @@
+.consent-row { display:flex; flex-wrap:wrap; align-items:center; gap:6rpx; font-size:23rpx; line-height:1.8; color:#83786e; padding:20rpx 8rpx; }
+label { display:flex; align-items:center; }
+checkbox { transform:scale(.8); }
+.link { color:#b75e21; }

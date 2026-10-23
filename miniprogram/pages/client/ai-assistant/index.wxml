@@ -29,6 +29,7 @@
     </block>
   </view>
 
+  <view class="ai-error" wx:if="{{errorText}}"><text>{{errorText}}</text><button bindtap="retry" disabled="{{loading}}">重新发送</button></view>
   <view class="input-wrap">
     <view class="input-row">
       <input class="ai-input" placeholder="请输入养宠或服务咨询问题..." placeholder-class="ai-input-ph" value="{{inputText}}" bindinput="onInput" bindconfirm="send" confirm-type="send" />

@@ -5,7 +5,7 @@ const createContext = require('../../cloudfunctions/api/services/context')
 
 function createTestContext(initial = {}) {
   const db = createCollectionStore(initial)
-  const context = createContext({ db, cloud: {} })
+  const context = createContext({ db, cloud: { downloadFile: async () => ({ fileContent: Buffer.from('image') }), openapi: { security: { msgSecCheck: async () => ({ errCode: 0, result: { suggest: 'pass' } }), imgSecCheck: async () => ({ errCode: 0 }) } } } })
   return { db, context }
 }
 

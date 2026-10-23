@@ -1,3 +1,4 @@
+const { uploadImage } = require('../../../../utils/image-upload')
 const cloud = require('../../../../utils/cloud') || {}
 const { callFunction, showError, requestSubscribeTemplates, loadSystemSettings } = cloud
 const showLoading = (opts) => {
@@ -1086,7 +1087,7 @@ typeof Page === 'function' ? Page({
         Promise.all(files.map((file) => new Promise((resolve, reject) => {
           const tempFilePath = file.tempFilePath
           const ext = tempFilePath.includes('.') ? tempFilePath.slice(tempFilePath.lastIndexOf('.')) : '.jpg'
-          wx.cloud.uploadFile({ cloudPath: `home_security_keys/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`, filePath: tempFilePath, success: resolve, fail: reject })
+          uploadImage({ cloudPath: `home_security_keys/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`, filePath: tempFilePath, success: resolve, fail: reject })
         }))).then((uploads) => {
           const ids = uploads.map((item) => item.fileID).filter(Boolean)
           this.setData({ ['form.keyImageFileIds']: [...this.data.form.keyImageFileIds, ...ids], uploadingKeyImage: false, quote: null })

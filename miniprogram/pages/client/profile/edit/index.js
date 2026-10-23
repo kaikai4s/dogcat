@@ -1,3 +1,4 @@
+const { uploadImage } = require('../../../../utils/image-upload')
 const { callFunction, showError, ensureLogin, setCachedUser, requirePrivacyAuthorize } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 
@@ -35,6 +36,7 @@ Page({
   },
 
   input(e) {
+    if (e.currentTarget.dataset.field === 'phone') return
     this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value })
   },
 
@@ -58,14 +60,14 @@ Page({
         return
       }
       if (errMsg.includes('privacy agreement') || errMsg.includes('not declared') || errMsg.includes('errno:112')) {
-        wx.showModal({ title: '隐私协议未配置', content: '微信后台隐私协议还没有声明“手机号”用途，所以微信拦截了快捷授权。请在微信公众平台「设置与开发 > 服务内容声明 > 用户隐私保护指引」补充手机号用途；配置生效前可直接输入手机号保存。', showCancel: false })
+        wx.showModal({ title: '隐私协议未配置', content: '微信后台隐私协议还没有声明“手机号”用途，所以微信拦截了快捷授权。请在微信公众平台「设置与开发 > 服务内容声明 > 用户隐私保护指引」补充手机号用途；请稍后重试微信授权，或联系平台客服。', showCancel: false })
         return
       }
       if (errMsg.includes('no permission') || errMsg.includes('not support') || errMsg.includes('fail')) {
-        wx.showModal({ title: '快捷授权不可用', content: '当前小程序主体、调试环境或权限未返回手机号授权码。配置企业认证与手机号快速验证能力前，请直接输入手机号保存。', showCancel: false })
+        wx.showModal({ title: '快捷授权不可用', content: '当前小程序主体、调试环境或权限未返回手机号授权码。请稍后重试微信授权，或联系平台客服。', showCancel: false })
         return
       }
-      wx.showModal({ title: '快捷授权未完成', content: '微信没有返回手机号授权码，请直接输入手机号保存，或在真机正式环境重新尝试快捷授权。', showCancel: false })
+      wx.showModal({ title: '快捷授权未完成', content: '微信没有返回手机号授权码，请稍后重试微信授权，或联系平台客服。', showCancel: false })
       return
     }
     wx.showLoading({ title: '绑定中...' })
@@ -89,7 +91,7 @@ Page({
     const cleanPath = String(filePath).split('?')[0]
     const rawExt = cleanPath.includes('.') ? cleanPath.substring(cleanPath.lastIndexOf('.')).toLowerCase() : '.jpg'
     const ext = /^\.(jpg|jpeg|png|webp)$/.test(rawExt) ? rawExt : '.jpg'
-    wx.cloud.uploadFile({
+    uploadImage({
       cloudPath: `users/${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`,
       filePath,
       success: (upload) => {
@@ -139,15 +141,9 @@ Page({
       wx.showToast({ title: '请填写昵称', icon: 'none' })
       return
     }
-    const phone = String(this.data.form.phone || '').trim()
-    if (phone && !/^1\d{10}$/.test(phone)) {
-      wx.showToast({ title: '手机号格式不正确', icon: 'none' })
-      return
-    }
     callFunction('auth', 'updateProfile', {
       nickname: this.data.form.nickname,
-      avatarUrl: this.data.form.avatarUrl,
-      phone
+      avatarUrl: this.data.form.avatarUrl
     })
       .then((user) => {
         getApp().globalData.user = user

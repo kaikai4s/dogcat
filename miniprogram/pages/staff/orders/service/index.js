@@ -1,3 +1,4 @@
+const { uploadImage } = require('../../../../utils/image-upload')
 const { sessionChatMethods } = require('../../utils/sessionChat')
 const { callFunction, showError, requirePrivacyAuthorize, requestSubscribeTemplates, loadSystemSettings, showLoading, hideLoading } = require('../../../../utils/cloud')
 const trackingManager = require('../../../../utils/serviceTrackingManager')
@@ -708,7 +709,7 @@ Page({
         Promise.all(files.map((file) => new Promise((resolve, reject) => {
           const tempFilePath = file.tempFilePath
           const ext = tempFilePath.includes('.') ? tempFilePath.slice(tempFilePath.lastIndexOf('.')) : '.jpg'
-          wx.cloud.uploadFile({ cloudPath: `key_returns/${this.data.id}/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`, filePath: tempFilePath, success: resolve, fail: reject })
+          uploadImage({ cloudPath: `key_returns/${this.data.id}/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`, filePath: tempFilePath, success: resolve, fail: reject })
         }))).then((uploads) => {
           this.setData({ keyReturnImageFileIds: [...this.data.keyReturnImageFileIds, ...uploads.map((item) => item.fileID).filter(Boolean)], returningKey: false })
         }).catch((error) => {

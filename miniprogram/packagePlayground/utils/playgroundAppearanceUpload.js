@@ -1,3 +1,4 @@
+const { uploadImage } = require('../../utils/image-upload')
 const {getCloudEnv}=require('../../utils/cloud')
 const STATUS_TEXT={draft:'待补充照片',pending:'等待处理',processing:'制作中',completed:'已生效',rejected:'需重新申请',cancelled:'已取消'}
 function choosePhotos(count=6) {
@@ -10,7 +11,7 @@ function choosePhotos(count=6) {
 }
 function uploadFile(filePath,cloudPath,onProgress) {
   return new Promise((resolve,reject)=>{
-    const task=wx.cloud.uploadFile({filePath,cloudPath,config:{env:getCloudEnv()},success:(result)=>{
+    const task=uploadImage({filePath,cloudPath,config:{env:getCloudEnv()},success:(result)=>{
       if(!result.fileID)return reject(new Error('文件上传失败，请重试'))
       resolve(result.fileID)
     },fail:reject})

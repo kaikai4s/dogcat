@@ -34,7 +34,7 @@
     <view class="settings-section-title">合规说明</view>
     <view class="settings-row interactive" bindtap="openInfoCollection"><view class="settings-label">个人信息收集清单</view><view class="settings-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
     <view class="settings-row interactive" bindtap="openThirdPartySharing"><view class="settings-label">第三方信息数据共享</view><view class="settings-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
-    <view class="settings-row interactive" bindtap="openPrivacySummary"><view class="settings-label">隐私政策概要</view><view class="settings-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
+    <view class="settings-row interactive" bindtap="openPrivacySummary"><view class="settings-label">隐私政策</view><view class="settings-arrow"><text class="remix-icon ri-arrow-right-s-line"></text></view></view>
   </view>
 
   <button class="settings-logout" wx:if="{{!isGuest}}" bindtap="logout">退出登录</button>
@@ -68,6 +68,8 @@
     <view class="guest-main"><view class="strong">微信授权登录</view><view class="muted">登录后可管理宠物、订单、地址和收藏。</view></view>
     <button class="profile-primary-btn compact-btn" loading="{{loadingLogin}}" bindtap="login">微信登录</button>
   </view>
+
+  <login-consent agreed="{{loginAgreed}}" wx:if="{{isGuest}}" bindchange="onLoginConsentChange" />
 
   <view class="asset-card">
     <view class="asset-head">

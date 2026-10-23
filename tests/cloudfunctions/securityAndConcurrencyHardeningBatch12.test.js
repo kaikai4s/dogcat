@@ -9,7 +9,7 @@ const securityMock = {
       err.errCode = 87014
       throw err
     }
-    return { errCode: 0, errMsg: 'ok' }
+    return { errCode: 0, errMsg: 'ok', result: { suggest: 'pass' } }
   },
   imgSecCheck: async ({ media }) => {
     if (media && String(media.value || '').includes('bad_image_data')) {
@@ -17,7 +17,7 @@ const securityMock = {
       err.errCode = 87014
       throw err
     }
-    return { errCode: 0, errMsg: 'ok' }
+    return { errCode: 0, errMsg: 'ok', result: { suggest: 'pass' } }
   }
 }
 
@@ -489,7 +489,7 @@ test('multi-entry length limits: reviews, session messages, auth profile, supply
     module: 'staff',
     action: 'submitSupplyReimbursement',
     data: {
-      mediaFileIds: ['proof_1.jpg'],
+      mediaFileIds: ['cloud://proof_1.jpg'],
       amount: 100,
       remark: 'B'.repeat(501)
     }

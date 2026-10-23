@@ -1,3 +1,4 @@
+const { uploadImage } = require('../../../utils/image-upload')
 const { callFunction, showError, chooseSelectedLocation } = require('../../../utils/cloud')
 const { withAuditText, withStaffWorkflowText } = require('../../../utils/format')
 const { applyTheme, getThemeState } = require('../../../utils/theme')
@@ -22,7 +23,7 @@ const radiusOptions = [
 function uploadIdentityFile(filePath, type) {
   const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
   return new Promise((resolve, reject) => {
-    wx.cloud.uploadFile({
+    uploadImage({
       cloudPath: `staff_identity/${type}_${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`,
       filePath,
       success: (res) => resolve(res.fileID),

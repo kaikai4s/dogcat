@@ -1,6 +1,8 @@
 module.exports = function createHandler(context) {
   const {
     checkTextSecurity,
+    orderStatusText,
+    isActiveCheckin,
     cloud,
     db,
     getOrderForAccess,
@@ -49,11 +51,12 @@ module.exports = function createHandler(context) {
 
       let answer = ''
       // 直接调用微信云开发内置的 hy3-preview 大模型
+      if (!cloud.extend || !cloud.extend.AI || typeof cloud.extend.AI.createModel !== 'function') throw new Error('AI 服务暂不可用，请稍后重试')
       const model = cloud.extend.AI.createModel('hunyuan')
       const res = await model.generateText({
         model: 'hy3',
         messages: [
-          { role: 'system', content: `你是 Dovelin 多芙琳宠物上门服务 的专业AI智能助手和宠物医生顾问，性格温馨专业，精通宠物护理、疾病预防、上门服务注意事项。${petInfo}` },
+          { role: 'system', content: `你是 Dovelin 多芙琳宠物上门服务的AI助手，提供日常养宠和服务咨询信息。不自称兽医，不提供诊断或用药处方，紧急情况建议联系专业兽医。${petInfo}` },
           { role: 'user', content: question }
         ]
       })
@@ -63,9 +66,10 @@ module.exports = function createHandler(context) {
       } else if (res && res.text) {
         answer = res.text
       } else {
-        answer = JSON.stringify(res)
+        throw new Error('AI 暂未返回内容，请稍后重试')
       }
 
+      if (typeof answer !== 'string' || !answer.trim()) throw new Error('AI 暂未返回内容，请稍后重试')
       if (answer && typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, answer, { scene: 2, label: 'AI回答内容' })
       }
@@ -84,14 +88,22 @@ module.exports = function createHandler(context) {
       const { order } = await getOrderForAccess(openid, orderId)
       if (!order) throw new Error('订单不存在')
 
-      const checkins = await readScopedDocuments('checkin_logs', { orderId }, 'createdAt', 'asc')
-      const eventLabels = checkins.map(c => c.eventType).join('、')
-
-      const reportSummary = `【AI 智能宠护报告总结】
-今日给宝贝「${order.petName || '宠物'}」的服务已顺利完成！
-服务项目：${order.serviceSummary || '上门宠护'}
-关键服务打卡记录：${checkins.length} 次（打卡环节包含：${eventLabels || '基础入户与服务'}）。
-宠物状态：精神状态良好，打卡互动顺畅，离户时已确认门锁与电源安全。感谢您的信任！`
+      const allCheckins = await readScopedDocuments('checkin_logs', { orderId }, 'createdAt', 'asc')
+      const checkins = allCheckins.filter(item => typeof isActiveCheckin === 'function' ? isActiveCheckin(item) : !item.deletedAt && !item.deleted)
+      const labels = { sanitization: '服务前消毒', enter_door: '入户', leash_on: '佩戴牵引', feed: '喂食', water: '换水', pet_status: '宠物状态记录', return_home: '返回住所', leave_door: '离户', clean: '清洁', medicine: '喂药协助', video_checkin: '视频打卡', pet_beauty_photo: '宠物照片' }
+      const counts = new Map()
+      for (const item of checkins) {
+        const label = labels[item.eventType] || '其他打卡'
+        counts.set(label, (counts.get(label) || 0) + 1)
+      }
+      const events = Array.from(counts, ([label, count]) => `${label} ${count} 次`).join('、')
+      const status = typeof orderStatusText === 'function' ? orderStatusText(order.status) : '请查看订单详情'
+      const reportSummary = `【服务记录摘要】
+宠物：${safeText(order.petName || '宠物')}
+订单状态：${status}
+服务项目：${safeText(order.serviceSummary || '上门宠护')}
+关键服务打卡记录：${checkins.length} 次${events ? `（${events}）` : '，暂无有效打卡记录'}。
+${order.completedAt ? `订单完成时间：${safeText(order.completedAt)}\n` : ''}宠物状态及离户安全情况请核对对应照片和宠托师记录；本摘要不作未记录事项的确认。`
 
       return {
         orderId,

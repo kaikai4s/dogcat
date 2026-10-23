@@ -1,3 +1,4 @@
+const { uploadImage } = require('../../../../utils/image-upload')
 const { callFunction, showError, requirePrivacyAuthorize } = require('../../../../utils/cloud')
 const { applyTheme, getThemeState } = require('../../../../utils/theme')
 const { copyText } = require('../../../../utils/clipboard')
@@ -18,7 +19,7 @@ const reimbursementStatusText = {
 function uploadReceipt(filePath) {
   const ext = filePath.includes('.') ? filePath.substring(filePath.lastIndexOf('.')) : '.jpg'
   return new Promise((resolve, reject) => {
-    wx.cloud.uploadFile({
+    uploadImage({
       cloudPath: `staff_supplies/${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`,
       filePath,
       success: (res) => resolve(res.fileID),

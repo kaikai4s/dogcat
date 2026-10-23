@@ -1,8 +1,10 @@
+const { uploadImage } = require('../../utils/image-upload')
 const { loginWithWechat, callFunction, showError, setCachedUser } = require('../../utils/cloud')
 const { envList, getActiveEnvId } = require('../../envList')
 
 Page({
   data: {
+    loginAgreed: false,
     step: 'login', // 'login' | 'profile'
     loading: false,
     submitting: false,
@@ -15,9 +17,18 @@ Page({
     }
   },
 
+  onLoginConsentChange(e) {
+    this.setData({ loginAgreed: e.detail.agreed === true })
+  },
+
   login() {
+    if (!this.data.loginAgreed) {
+      wx.showToast({ title: '请先阅读并同意用户协议和隐私政策', icon: 'none' })
+      return
+    }
+    if (this.data.loading || this.data.loadingLogin) return
     this.setData({ loading: true, errorText: '' })
-    loginWithWechat()
+    loginWithWechat({ agreementVersion: '2026-10-23' })
       .then((user) => {
         getApp().globalData.activeRole = 'client'
         getApp().globalData.user = user
@@ -49,7 +60,7 @@ Page({
     if (!avatarUrl) return
     wx.showLoading({ title: '上传头像中...' })
     const ext = avatarUrl.includes('.') ? avatarUrl.substring(avatarUrl.lastIndexOf('.')) : '.jpg'
-    wx.cloud.uploadFile({
+    uploadImage({
       cloudPath: `users/${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`,
       filePath: avatarUrl,
       success: (upload) => {
@@ -73,10 +84,6 @@ Page({
     if (value !== undefined) {
       this.setData({ ['form.nickname']: value })
     }
-  },
-
-  inputPhone(e) {
-    this.setData({ ['form.phone']: e.detail.value })
   },
 
   bindPhone(e) {
@@ -107,17 +114,11 @@ Page({
 
   saveAndEnter() {
     const nickname = String(this.data.form.nickname || '').trim() || '微信爱宠用户'
-    const phone = String(this.data.form.phone || '').trim()
-    if (phone && !/^1\d{10}$/.test(phone)) {
-      wx.showToast({ title: '手机号格式不正确', icon: 'none' })
-      return
-    }
     this.setData({ submitting: true })
     wx.showLoading({ title: '保存中...' })
     callFunction('auth', 'updateProfile', {
       nickname,
-      avatarUrl: this.data.form.avatarUrl,
-      phone
+      avatarUrl: this.data.form.avatarUrl
     })
       .then((user) => {
         wx.hideLoading()

@@ -87,3 +87,6 @@
 .theme-night .input-row .ai-input,
 .theme-night .input-row input { background: #1f2030 !important; color: #f5f4fb !important; border-color: rgba(124, 140, 255, 0.25) !important; }
 .theme-night .ai-input-ph { color: #79768f; }
+
+.ai-error { margin: 24rpx; padding: 24rpx; border-radius: 16rpx; background: #fff1dc; color: #9b6124; font-size: 26rpx; }
+.ai-error button { margin-top: 16rpx; font-size: 26rpx; }

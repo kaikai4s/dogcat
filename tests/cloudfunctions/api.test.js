@@ -2150,7 +2150,7 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
   const staffFn = loadCloudFunction('api', db, 'openid_staff')
   const adminFn = loadCloudFunction('api', db, 'openid_admin')
 
-  const profile = await clientFn.main({ module: 'auth', action: 'updateProfile', data: { nickname: '小明', avatarUrl: 'https://example.com/a.png' } })
+  const profile = await clientFn.main({ module: 'auth', action: 'updateProfile', data: { nickname: '小明', avatarUrl: 'cloud://user_avatar.png' } })
   const pet = await clientFn.main({ module: 'pet', action: 'createPet', data: { name: '可乐', species: 'dog', breed: '柯基', weight: 10, avatarFileId: 'cloud://pet.jpg' } })
   const address = await clientFn.main({ module: 'client', action: 'saveAddress', data: { label: '家', serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', latitude: 31.21, longitude: 121.49, isDefault: true } })
   const security = await clientFn.main({ module: 'homeSecurity', action: 'saveHomeSecurity', data: { doorLockCode: '123456', keyLocation: '门垫下', entryNotes: '轻声进门' } })

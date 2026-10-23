@@ -1,3 +1,4 @@
+const { uploadImage } = require('../../../../utils/image-upload')
 const { callFunction, showError, getServiceLocation } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { createClientRequestId, enqueueOfflineTask } = require('../../../../utils/offlineQueue')
@@ -88,7 +89,7 @@ Page({
       ? `checkins/${this.data.orderId}/sanitization/${Date.now()}_${Math.random().toString(16).slice(2)}${fileExt(tempFilePath)}`
       : `checkins/${this.data.orderId}/${Date.now()}_${Math.random().toString(16).slice(2)}${fileExt(tempFilePath)}`
     return new Promise((resolve, reject) => {
-      wx.cloud.uploadFile({ cloudPath, filePath: tempFilePath, success: resolve, fail: reject })
+      uploadImage({ cloudPath, filePath: tempFilePath, success: resolve, fail: reject })
     }).then((upload) => {
       const payload = {
         orderId: this.data.orderId,
