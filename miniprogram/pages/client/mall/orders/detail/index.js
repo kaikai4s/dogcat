@@ -88,8 +88,9 @@ Page({
         }
         this.setData(updatePayload)
       })
-      .catch(() => {
-        this.setData({ logisticsMessage: '物流查询暂不可用，请稍后重试', loadingLogistics: false, refreshingLogistics: false })
+      .catch(error => {
+        this.setData({ logisticsMessage: error.message || '物流查询暂不可用，请稍后重试', loadingLogistics: false, refreshingLogistics: false })
+        showError(error)
       })
   },
 

@@ -472,7 +472,9 @@
           <view class="compact-toggle-row"><view class="compact-toggle-main"><view class="strong">启用订阅消息</view><view class="muted">模板未配置时只记录 skipped 日志。</view></view><switch checked="{{settings.subscription.enabled}}" bindchange="toggleSubscriptionEnabled" /></view>
           <view class="notice">开启此开关不会自动配置模板。请先添加微信模板、填写下方对应的完整模板 ID 并保存；暂未配置的通知请留空，用户需在配置完成后重新进入订阅中心授权。</view>
           <view class="notice">请从当前小程序的微信公众平台「订阅消息 → 我的模板」复制完整模板 ID。7272、8560 等数字是模板编号，不能作为模板 ID 填入；其他小程序的 ID 也不可用。前台出现微信错误码 20001 时请优先核对此处配置，20002 时检查是否混用了不同类型的模板。</view>
-          <view class="notice">管理员提醒：当前订单超时、入驻审核等通知进入后台「系统通知」，尚未接入管理员微信订阅。服务进度模板可作为超时提醒候选；审核待办需另行核对匹配模板，提现结果模板只适合结果通知。填写现有模板 ID 不会自动给管理员发送消息。</view>
+          <view class="notice">管理员提醒：商城已付款新订单现已支持管理员微信订阅；订单超时、入驻审核等其他通知仍进入后台「系统通知」，尚未接入微信订阅。服务进度模板可作为超时提醒候选；审核待办需另行核对匹配模板，提现结果模板只适合结果通知。填写现有模板 ID 不会自动给管理员发送消息。</view>
+          <view class="field-item"><text class="label">管理员商城新订单提醒模板</text><input class="input" value="{{settings.subscription.templates.adminMallOrderPaid}}" data-field="adminMallOrderPaid" bindinput="subscriptionTemplateInput" placeholder="与支付成功模板字段一致；留空沿用支付成功模板" /></view>
+          <view class="policy-notice">支付到账后通知有商城订单权限的管理员。管理员需在控制台「商城订单订阅」主动授权；每次同意增加一次提醒机会。</view>
           <view class="field-item"><text class="label">支付成功模板</text><input class="input" value="{{settings.subscription.templates.orderPaid}}" data-field="orderPaid" bindinput="subscriptionTemplateInput" /></view>
           <view class="notice">支付成功模板字段：服务项目 thing2、订单编号 character_string1、订单金额 amount3、服务时间 time4、服务地址 thing5。对应图片中的“下单支付成功通知”；请填写该模板的完整模板 ID。</view>
           <view class="field-item"><text class="label">接单/派单模板</text><input class="input" value="{{settings.subscription.templates.orderAssigned}}" data-field="orderAssigned" bindinput="subscriptionTemplateInput" /></view>

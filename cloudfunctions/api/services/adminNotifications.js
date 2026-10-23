@@ -91,6 +91,12 @@ module.exports = function createService({
       const result = await db.collection('order_incidents').where({ _id: db.command.in(incidentIds.slice(i, i + 100)) }).limit(100).get()
       for (const incident of result.data || []) incidents.set(incident._id, incident)
     }
+    const mallIds = [...new Set(notifications.filter(item => item.type === 'mall_order_paid').map(item => item.orderId).filter(Boolean))]
+    const mallOrders = new Map()
+    for (let i = 0; i < mallIds.length; i += 100) {
+      const result = await db.collection('mall_orders').where({ _id: db.command.in(mallIds.slice(i, i + 100)) }).limit(100).get()
+      for (const order of result.data || []) mallOrders.set(order._id, order)
+    }
     return notifications.map(item => {
       let isResolved = item.resolved === true
       if (!isResolved && dispatchTypes.includes(item.type)) {
@@ -110,7 +116,11 @@ module.exports = function createService({
         // terminal state resolves its SOS; missing records must not hide alerts.
         isResolved = !!incident && ['resolved', 'rejected', 'closed'].includes(incident.status)
       }
-      return { ...item, isResolved }
+      if (item.type === 'mall_order_paid') {
+        const order = mallOrders.get(item.orderId)
+        isResolved = isResolved || !order || order.status !== 'pending_ship' || (order.refundStatus && !['none', 'rejected'].includes(order.refundStatus))
+      }
+      return { ...item, isResolved: Boolean(isResolved) }
     })
   }
 

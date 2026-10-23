@@ -136,6 +136,7 @@ module.exports = function createHandler(context) {
       return { id, status }
     }
     if (action === 'listOrders') {
+      if (data.pendingCountsOnly === true) return { pendingCount: await context.countPendingMallOrders() }
       const status = safeText(data.status).trim()
       const keyword = safeText(data.keyword).trim().toLowerCase()
       const where = {}
@@ -232,6 +233,7 @@ module.exports = function createHandler(context) {
     if (action === 'queryOrderLogistics') {
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)
       if (!order) throw new Error('订单不存在')
+      if (order.trackingNo) await context.checkLogisticsQueryRateLimit(openid)
       const result = await queryOrderLogistics(order)
       if (result && result.isDelivered && result.isSimulated === false && order.status === 'shipped') {
         const updated = await db.runTransaction(async tx => {

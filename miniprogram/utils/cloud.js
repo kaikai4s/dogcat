@@ -240,6 +240,7 @@ function normalizeSubscriptionConfig(subscription = {}) {
   return {
     enabled: subscription.enabled === true,
     templates: {
+      adminMallOrderPaid: templates.adminMallOrderPaid || templates.orderPaid || '',
       orderPaid: templates.orderPaid || '',
       orderAssigned: templates.orderAssigned || '',
       staffDirectOrder: templates.staffDirectOrder || '',

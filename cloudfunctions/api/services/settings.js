@@ -280,6 +280,7 @@ module.exports = function createService({
       subscription: {
         enabled: subscription.enabled === true,
         templates: {
+          adminMallOrderPaid: safeText(subscription.templates && (subscription.templates.adminMallOrderPaid || subscription.templates.orderPaid)).trim(),
           orderPaid: safeText(subscription.templates && subscription.templates.orderPaid).trim(),
           orderAssigned: safeText(subscription.templates && subscription.templates.orderAssigned).trim(),
           staffDirectOrder: safeText(subscription.templates && subscription.templates.staffDirectOrder).trim(),

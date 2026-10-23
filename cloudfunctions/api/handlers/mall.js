@@ -297,6 +297,7 @@ module.exports = function createHandler(context) {
       await getUser(openid)
       const order = await getDocOrNull('mall_orders', data.id || data.orderId)
       if (!order || order.clientOpenid !== openid) throw new Error('订单不存在')
+      if (order.trackingNo) await context.checkLogisticsQueryRateLimit(openid)
       const result = await queryOrderLogistics(order)
       if (result && result.isDelivered && result.isSimulated === false && order.status === 'shipped') {
         const updated = await db.runTransaction(async tx => {

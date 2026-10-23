@@ -49,5 +49,34 @@ module.exports = function createService(context) {
     })
   }
 
-  return { checkRateLimit }
+  async function checkLogisticsQueryRateLimit(openid) {
+    const userOpenid = safeText(openid).trim()
+    if (!userOpenid) throw new Error('请先登录后再查询物流')
+    await ensureRateLimitCollection()
+    const max = 3, windowMs = 5 * 60 * 1000
+    const time = typeof now === 'function' ? now() : new Date()
+    const currentMs = new Date(time).getTime()
+    const id = rateLimitDocId(userOpenid, 'logistics.query', 'sliding')
+    return db.runTransaction(async tx => {
+      const current = await readOptionalDocument(tx, 'rate_limits', id)
+      const timestamps = (Array.isArray(current?.timestamps) ? current.timestamps : [])
+        .filter(value => Number.isFinite(value) && value > currentMs - windowMs)
+        .sort((a, b) => a - b)
+      if (timestamps.length >= max) {
+        const seconds = Math.max(1, Math.ceil((timestamps[0] + windowMs - currentMs) / 1000))
+        throw Object.assign(new Error(`物流查询过于频繁，5分钟内最多查询3次，请在${seconds}秒后重试`), {
+          code: 'LOGISTICS_RATE_LIMITED', retryAfterSeconds: seconds
+        })
+      }
+      timestamps.push(currentMs)
+      await tx.collection('rate_limits').doc(id).set({ data: {
+        openid: userOpenid, action: 'logistics.query', timestamps, count: timestamps.length,
+        windowMs, expiresAt: new Date(currentMs + windowMs),
+        createdAt: current?.createdAt || time, updatedAt: time
+      } })
+      return { allowed: true, count: timestamps.length, max, windowMs }
+    })
+  }
+
+  return { checkRateLimit, checkLogisticsQueryRateLimit }
 }

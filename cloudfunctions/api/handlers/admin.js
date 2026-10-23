@@ -476,7 +476,8 @@ module.exports = function createHandler(context) {
         depositRefunds: depositRefundPending,
         supplyReimbursements: supplyPending,
         finance: withdrawPending + depositRefundPending + supplyPending,
-        incidents: incidentsOpen
+        incidents: incidentsOpen,
+        mallOrders: await context.countPendingMallOrders()
       }
       const todayParts = toCstParts()
       const monthStartText = `${todayParts.monthKey}-01 00:00:00`

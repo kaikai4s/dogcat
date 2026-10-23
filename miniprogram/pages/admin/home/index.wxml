@@ -8,6 +8,7 @@
         <view class="notice-dot" wx:if="{{unreadNotificationCount > 0}}">{{unreadNotificationCount}}</view>
       </view>
     </view>
+    <navigator wx:if="{{adminSuper || adminPermissions.adminMall_listOrders}}" class="header-notice-pill" url="/pages/common/subscriptions/index?role=admin"><text class="remix-icon ri-notification-3-line"></text><text>商城订单订阅 ›</text></navigator>
     <view class="title">运营控制台</view>
     <view class="tip">按业务域查看订单、人员、营销和平台配置，快速定位运营动作。</view>
   </view>

@@ -127,6 +127,7 @@ module.exports = function createService({ db, crypto, now }) {
   const templateLabels = {
     staffDirectOrder: '宠托师指定单通知',
     staffDeparture: '宠托师出发通知', orderAccepted: '接单成功通知', orderAssigned: '派单通知',
+    adminMallOrderPaid: '管理员商城新订单提醒',
     orderPaid: '支付成功通知', serviceStart: '服务开始通知', serviceProgress: '服务进度通知', serviceFinish: '服务完成通知',
     remoteUnlock: '开锁请求通知', upcomingServiceReminder: '即将服务提醒', refundResult: '退款结果通知',
     disputeUpdate: '售后进度通知', withdrawResult: '提现结果通知', orderCancelled: '订单取消/过期通知', staffCancellation: '订单取消/过期通知',
@@ -144,6 +145,8 @@ module.exports = function createService({ db, crypto, now }) {
       legacy_service_finish_not_completed: '旧记录为未完单催促，已跳过完成通知发送',
       legacy_service_start_not_started: '旧记录属于提前开始、到达或超时提醒，已跳过开始服务模板发送',
       platform_phone_not_configured: '尚未配置平台客服电话，请在系统设置中填写客服电话后重试',
+      admin_mall_access_revoked: '管理员已停用或无商城订单权限，已跳过提醒',
+      admin_mall_order_handled: '商城订单已处理或不再待发货，已跳过旧提醒',
       openapi_unavailable: '微信发送接口不可用' })[row.error] || (row.error ? '发送失败，请核对模板字段或稍后重试' : '')
   }
   async function listSubscriptionDeliveries(data = {}) {

@@ -2,7 +2,7 @@
   <view class="subscription-intro">
     <view class="intro-icon"><text class="remix-icon ri-notification-3-line"></text></view>
     <view class="intro-title">重要消息，及时知晓</view>
-    <view class="intro-desc">接收与你的订单和服务有关的微信提醒</view>
+    <view class="intro-desc">{{role === 'admin' ? '接收商城已付款新订单提醒，及时处理发货' : '接收与你的订单和服务有关的微信提醒'}}</view>
   </view>
   <view class="switch-card">
     <view><view class="switch-title">微信订阅消息</view><view class="switch-desc">{{mainSwitch === false ? '总开关已关闭，开启后可接收提醒' : mainSwitch === true ? '总开关已开启，选择需要的通知' : '在微信设置中查看通知权限'}}</view></view>

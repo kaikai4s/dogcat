@@ -99,13 +99,14 @@ function pendingCountForUrl(url, pending = {}) {
     '/pages/admin/pet-vaccine/list/index': pending.petVaccine,
     '/pages/admin/finance/index': pending.finance,
     '/pages/admin/playground-customizations/index': pending.playgroundCustomizations,
+    '/pages/admin/mall/orders/index': pending.mallOrders,
     '/pages/admin/incidents/list/index': pending.incidents
   }
   return Number(map[url] || 0)
 }
 
-function buildAdminSections(access, dashboard = null) {
-  const pending = (dashboard && dashboard.pendingReviews) || {}
+function buildAdminSections(access, dashboard = null, mallPendingCount = null) {
+  const pending = { ...((dashboard && dashboard.pendingReviews) || {}), ...(mallPendingCount !== null ? { mallOrders: mallPendingCount } : {}) }
   return adminSections
     .map(section => ({
       ...section,
@@ -118,6 +119,7 @@ function buildAdminSections(access, dashboard = null) {
 
 Page({
   data: {
+    mallPendingCount: null,
     dashboard: null,
     overviewStats: [],
     revenueStats: [],
@@ -141,6 +143,7 @@ Page({
 
   invalidateRequests() {
     this._dashboardRequest = (this._dashboardRequest || 0) + 1
+    this._mallRequest = (this._mallRequest || 0) + 1
     this._notificationRequest = (this._notificationRequest || 0) + 1
   },
 
@@ -151,11 +154,21 @@ Page({
   refreshHome() {
     this.invalidateRequests()
     const access = this.data.adminAccess
-    this.setData({ adminSections: buildAdminSections(access), dashboard: null, urgentNotice: null, unreadNotificationCount: 0, staffAuditTodo: null })
+    this.setData({ adminSections: buildAdminSections(access), dashboard: null, mallPendingCount: null, urgentNotice: null, unreadNotificationCount: 0, staffAuditTodo: null })
     const requests = []
+    if (can(access, 'adminMall.listOrders')) requests.push(this.loadMallPending())
     if (can(access, 'admin.dashboard')) requests.push(this.loadDashboard())
     if (can(access, 'admin.getAdminNotificationBadge')) requests.push(this.loadNotifications())
     return Promise.all(requests)
+  },
+
+  loadMallPending() {
+    const requestId = this._mallRequest = (this._mallRequest || 0) + 1
+    return callFunction('adminMall', 'listOrders', { pendingCountsOnly: true }).then(result => {
+      if (requestId !== this._mallRequest) return
+      const count = Number(result.pendingCount || 0)
+      this.setData({ mallPendingCount: count, adminSections: buildAdminSections(this.data.adminAccess, this.data.dashboard, count) })
+    }).catch(error => { if (requestId === this._mallRequest) showError(error) })
   },
 
   loadDashboard() {
@@ -169,7 +182,7 @@ Page({
           dashboard,
           overviewStats: buildOverviewStats(dashboard),
           revenueStats: buildRevenueStats(dashboard),
-          adminSections: buildAdminSections(this.data.adminAccess, dashboard),
+          adminSections: buildAdminSections(this.data.adminAccess, dashboard, this.data.mallPendingCount),
           staffAuditTodo: staffPending > 0 && canVisit(this.data.adminAccess, staffAuditUrl)
             ? { count: staffPending, url: staffAuditUrl }
             : null

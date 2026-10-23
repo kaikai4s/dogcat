@@ -136,3 +136,25 @@ test('appearance customization entry shows outstanding count and clears it after
     assert.equal(entry.pendingCount, count)
   }
 })
+
+test('mall-only administrator sees pending mall order badge without the dashboard permission', async () => {
+  let page
+  const accessHelpers = require('../../miniprogram/utils/adminAccess')
+  const calls = []
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/admin/home/index.js'), 'utf8'), {
+    Page: value => { page = value },
+    require: () => ({ ...accessHelpers, showError: error => assert.fail(error.message), callFunction: async (module, action, data) => {
+      calls.push({ module, action, data })
+      assert.equal(module, 'adminMall')
+      assert.equal(action, 'listOrders')
+      assert.equal(data.pendingCountsOnly, true)
+      return { pendingCount: 7 }
+    } }), wx: {}
+  })
+  page.setData = patch => Object.assign(page.data, patch)
+  page.data.adminAccess = { superAdmin: false, permissions: ['adminMall.listOrders'] }
+  await page.onShow()
+  assert.equal(calls.length, 1)
+  const entry = page.data.adminSections.flatMap(group => group.items).find(item => item.url === '/pages/admin/mall/orders/index')
+  assert.equal(entry.pendingCount, 7)
+})

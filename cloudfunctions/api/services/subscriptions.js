@@ -14,6 +14,7 @@ module.exports = function createService({
   getActiveServiceSession,
   getNextPendingServiceSession,
   getSystemSettings,
+  getAdminPermissionFlags,
   isMallOrder,
   makeIdempotencyKey,
   now,
@@ -338,6 +339,14 @@ module.exports = function createService({
   }
 
   const sendDelivery = async message => {
+    if (message.templateKey === 'adminMallOrderPaid') {
+      const user = (await db.collection('users').where({ openid: message.openid }).limit(1).get()).data?.[0]
+      if (!user?.roles?.includes('admin') || ['disabled', 'deleted'].includes(user.status) || !(await getAdminPermissionFlags(user, ['adminMall.listOrders']))['adminMall.listOrders']) {
+        return { status: 'skipped', error: 'admin_mall_access_revoked', templateKey: message.templateKey }
+      }
+      const order = (await db.collection('mall_orders').doc(message.orderId).get()).data
+      if (!order || order.paymentStatus !== 'paid' || order.status !== 'pending_ship') return { status: 'skipped', error: 'admin_mall_order_handled', templateKey: message.templateKey }
+    }
     // Earlier versions queued acceptance at payment time, before assigning staff.
     if (message.templateKey === 'orderAccepted' && message.deliveryKey === `order_accepted:${message.orderId}`) {
       return { status: 'skipped', error: 'legacy_order_not_accepted', templateKey: message.templateKey }

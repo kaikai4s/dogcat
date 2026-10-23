@@ -178,7 +178,7 @@ test('ordinary clients cannot save logistics credentials', async () => {
 for (const refundStatus of ['none', 'applied', 'return_shipped']) {
   test(`verified signed logistics ${refundStatus === 'none' ? 'complete the shipment' : 'preserve active refunds: ' + refundStatus}`, async () => {
     const db = createCollectionStore({ mall_orders: [order({ refundStatus })] })
-    const handler = require('../../cloudfunctions/api/handlers/mall')({ db, getUser: async () => ({}),
+    const handler = require('../../cloudfunctions/api/handlers/mall')({ db, checkLogisticsQueryRateLimit: async () => {}, getUser: async () => ({}),
       getDocOrNull: async () => structuredClone(db.state.mall_orders[0]),
       queryOrderLogistics: async () => ({ hasLogistics: true, isDelivered: true, isSimulated: false }), now: () => new Date() })
     const result = await handler('user', 'queryOrderLogistics', { orderId: 'o' })
@@ -189,7 +189,7 @@ for (const refundStatus of ['none', 'applied', 'return_shipped']) {
 
 test('a newly applied refund during the provider request prevents automatic receipt', async () => {
   const db = createCollectionStore({ mall_orders: [order({ refundStatus: 'none' })] })
-  const handler = require('../../cloudfunctions/api/handlers/mall')({ db, getUser: async () => ({}),
+  const handler = require('../../cloudfunctions/api/handlers/mall')({ db, checkLogisticsQueryRateLimit: async () => {}, getUser: async () => ({}),
     getDocOrNull: async () => structuredClone(db.state.mall_orders[0]), now: () => new Date(),
     queryOrderLogistics: async () => {
       db.state.mall_orders[0].refundStatus = 'applied'
@@ -212,7 +212,7 @@ test('delegated admins cannot replace logistics credentials through the global s
 
 test('admin logistics query cannot bypass a refund opened while requesting the provider', async () => {
   const db = createCollectionStore({ mall_orders: [order({ refundStatus: 'none' })] })
-  const handler = require('../../cloudfunctions/api/handlers/adminMall')({ db, requireAdmin: async () => ({}),
+  const handler = require('../../cloudfunctions/api/handlers/adminMall')({ db, checkLogisticsQueryRateLimit: async () => {}, requireAdmin: async () => ({}),
     getDocOrNull: async () => structuredClone(db.state.mall_orders[0]), now: () => new Date(),
     queryOrderLogistics: async () => {
       db.state.mall_orders[0].refundStatus = 'applied'
@@ -290,7 +290,7 @@ test('a late response to an old query cannot overwrite new shipment cache, even 
 for (const module of ['mall', 'adminMall']) {
   test(`${module} signed response cannot complete a reshipment with the same carrier and tracking number`, async () => {
     const db = createCollectionStore({ mall_orders: [order({ refundStatus: 'none' })] })
-    const handler = require(`../../cloudfunctions/api/handlers/${module}`)({ db, getUser: async () => ({}), requireAdmin: async () => ({}),
+    const handler = require(`../../cloudfunctions/api/handlers/${module}`)({ db, checkLogisticsQueryRateLimit: async () => {}, getUser: async () => ({}), requireAdmin: async () => ({}),
       getDocOrNull: async () => structuredClone(db.state.mall_orders[0]), now: () => new Date(),
       queryOrderLogistics: async () => {
         db.state.mall_orders[0].shippedAt = '2026-10-23T11:00:00Z'

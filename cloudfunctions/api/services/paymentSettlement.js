@@ -199,9 +199,11 @@ module.exports = function createService(context) {
         if (order.publishMode === 'direct' && order.requestedStaffOpenid) await enqueueStaffDirectOrder(tx, paid, 'request')
       }
       const paidOrder = { ...order, ...patch }
+      const mallAdminRecipients = resolved.orderType === 'mall'
+        ? await context.enqueueMallPaidAdminNotifications(tx, paidOrder) : []
       const activated = resolved.orderType === 'service' && order.groupBuyId
         ? await require('./playground-group-buy')(context).activatePaidOrder(tx, paidOrder) : paidOrder
-      return { order: activated, changed: true, orderType: resolved.orderType }
+      return { order: activated, changed: true, orderType: resolved.orderType, mallAdminRecipients }
     })
 
     if (result && result.oversoldRefundRequired && typeof context.requestOrderRefund === 'function') {
@@ -249,6 +251,10 @@ module.exports = function createService(context) {
           })
         }
       }
+    }
+    if (result.changed && result.orderType === 'mall') {
+      try { await context.notifyMallPaidAdmins(result.order, result.mallAdminRecipients) }
+      catch (error) { console.error('[mall-admin-notification]', { orderId, message: error.message }) }
     }
     if (result.changed && result.orderType === 'service' && result.order.publishMode === 'direct' && result.order.requestedStaffOpenid) {
       await notifyStaffDirectOrder(result.order, 'request')
