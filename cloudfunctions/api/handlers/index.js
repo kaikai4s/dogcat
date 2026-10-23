@@ -1,4 +1,5 @@
 const loaders = {
+  communityMap: () => require('./communityMap'),
   configMigration: () => require('./configMigration'),
   system: () => require('./system'),
   auth: () => require('./auth'),

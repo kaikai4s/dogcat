@@ -220,7 +220,7 @@ test('pre-service checkin: sanitization photo required before startService', asy
     data: {
       petId: 'p1',
       serviceTypes: ['visit_fee', 'feed'],
-      serviceAddress: '幸福小区',
+      serviceAddress: '幸福小区', addressLatitude: 31.2, addressLongitude: 121.5,
       addressDetail: '2号楼',
       doorplate: '202',
       startTime: '2099-08-01 10:00',
@@ -230,7 +230,7 @@ test('pre-service checkin: sanitization photo required before startService', asy
   })
   const orderId = orderRes.data._id
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId } })
-  await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId } })
+  await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId } })
   await staffFn.main({ module: 'order', action: 'requestEarlyStart', data: { orderId, reason: '提前准备' } })
   await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId } })
 
@@ -422,7 +422,7 @@ test('staff deposit: unpaid deposit strictly blocks grab order, direct order, cl
       requestedStaffProfileId: 'sp_1',
       petId: 'p1',
       serviceTypes: ['visit_fee', 'feed'],
-      serviceAddress: '幸福小区',
+      serviceAddress: '幸福小区', addressLatitude: 31.2, addressLongitude: 121.5,
       addressDetail: '1号楼',
       doorplate: '101',
       startTime: '2099-08-01 10:00',
@@ -440,7 +440,7 @@ test('staff deposit: unpaid deposit strictly blocks grab order, direct order, cl
     data: {
       petId: 'p1',
       serviceTypes: ['visit_fee', 'feed'],
-      serviceAddress: '幸福小区',
+      serviceAddress: '幸福小区', addressLatitude: 31.2, addressLongitude: 121.5,
       addressDetail: '1号楼',
       doorplate: '101',
       startTime: '2099-08-01 10:00',
@@ -457,7 +457,7 @@ test('staff deposit: unpaid deposit strictly blocks grab order, direct order, cl
   assert.equal(nearbyRes.ok, false)
   assert.match(nearbyRes.message, /未缴纳宠托师履约保证金/)
 
-  const grabRes = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId } })
+  const grabRes = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId } })
   assert.equal(grabRes.ok, false)
   assert.match(grabRes.message, /未缴纳宠托师履约保证金/)
 
@@ -478,7 +478,7 @@ test('staff deposit: unpaid deposit strictly blocks grab order, direct order, cl
   assert.equal(profileAfter.data.depositNotice, null)
 
   // 9. Staff can now grab the order
-  const grabAfter = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId } })
+  const grabAfter = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId } })
   assert.equal(grabAfter.ok, true)
   assert.equal(grabAfter.data.status, 'assigned')
 })

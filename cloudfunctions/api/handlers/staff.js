@@ -159,7 +159,66 @@ module.exports = function createHandler(context) {
     videoWatchedTimestamps.set(userOpenid, userTimestamps)
   }
 
-  return async function staff(openid, action, data) {
+  return async function staff(openid, action, data, internal = {}) {
+    if (action === 'getGrabResult') {
+      const user = await getUser(openid)
+      if (!user.roles.includes('staff')) throw new Error('仅宠托师可查询接单结果')
+      await checkRateLimit(openid, 'staff.grabResult', { max: 30 })
+      const id = String(data.orderId || '').trim()
+      if (!id || id.length > 128) throw new Error('订单编号无效')
+      const order = await require('../utils/documentPages').readOptionalDocument(db, 'orders', id)
+      if (!order || order.deletedAt || order.adminDeletedAt) return { state: 'unavailable' }
+      if (order.staffOpenid === openid && ['assigned', 'on_the_way', 'in_service', 'day_completed', 'completed'].includes(order.status)) return { state: 'assigned', orderId: id }
+      return { state: order.status === 'paid' && !order.staffOpenid && (order.publishMode === 'open' || order.requestedStaffOpenid === openid) ? 'available' : 'unavailable' }
+    }
+    if (action === 'listOrderMap') {
+      const city = String(data.city || '').trim().slice(0, 40)
+      if (!city) throw new Error('请先选择城市')
+      await checkRateLimit(openid, 'communityMap.orders', { max: 40 })
+      const orders = await staff(openid, 'listNearbyOrders', { ...data, city }, { map: true })
+      const rows = await context.readMapCommunities(city)
+      const nodes = new Map(rows.map(row => [row._id, { ...context.publicCommunity(row), count: 0, urgentCount: 0 }]))
+      const accepted = [], unknown = []
+      for (const order of orders) {
+        if (data.orderKind === 'urgent' && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish') continue
+        if (data.orderKind === 'normal' && (order.isUrgent || order.assignmentSource === 'admin_urgent_republish')) continue
+        const node = nodes.get(order.mapCommunityId)
+        if (!node) { unknown.push(order); continue }
+        node.count++
+        if (order.isUrgent || order.assignmentSource === 'admin_urgent_republish') node.urgentCount++
+        if (data.communityId === node._id) accepted.push(order)
+      }
+      // Map pagination must not inherit listNearbyOrders' private-distance order.
+      // Service time and document ID are public-safe and provide a stable cursor.
+      const compareMapOrder = (a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime) || String(a._id).localeCompare(String(b._id))
+      accepted.sort(compareMapOrder)
+      const page = Math.max(1, Math.floor(Number(data.page) || 1)), size = 10
+      const cursor = String(data.cursor || '').slice(0, 256)
+      let start = (page - 1) * size
+      if (cursor) {
+        const separator = cursor.lastIndexOf('|')
+        if (separator < 1) throw new Error('分页参数无效，请刷新后重试')
+        let cursorTime = ''
+        try { cursorTime = decodeURIComponent(cursor.slice(0, separator)) } catch (_) { throw new Error('分页参数无效，请刷新后重试') }
+        const cursorOrder = { startTime: cursorTime, _id: cursor.slice(separator + 1) }
+        if (!cursorOrder._id) throw new Error('分页参数无效，请刷新后重试')
+        start = accepted.findIndex(order => compareMapOrder(order, cursorOrder) > 0)
+        if (start < 0) start = accepted.length
+      }
+      const pageRows = accepted.slice(start, start + size)
+      const list = pageRows.map(order => ({
+        _id: order._id, serviceSummary: order.isGroupBuyBundle ? '同小区多户照护' : order.serviceSummary || '', petSummary: order.petSummary || order.petName || '',
+        startTime: order.startTime || '', endTime: order.endTime || '', sessionCount: order.sessionCount || 1,
+        durationMinutes: order.durationMinutes || 0, isUrgent: !!(order.isUrgent || order.assignmentSource === 'admin_urgent_republish'),
+        staffEarningText: `¥${(Number(order.staffEarning) || 0).toFixed(2)}`, isGroupBuyBundle: !!order.isGroupBuyBundle, householdCount: order.householdCount || 1,
+        inRange: order.inRange, inTime: order.inTime
+      }))
+      const hasMore = start + pageRows.length < accepted.length
+      const last = pageRows[pageRows.length - 1]
+      return { communities: [...nodes.values()].filter(row => row.count), list, page, total: accepted.length,
+        hasMore, nextCursor: hasMore && last ? `${encodeURIComponent(last.startTime || '')}|${last._id}` : '',
+        unmatchedCount: unknown.length, generatedAt: now() }
+    }
     if (action === 'listApprovedSitters') {
       const staffGenderRequirement = normalizeStaffGenderRequirement(data.staffGenderRequirement)
       const keyword = String(data.keyword || '').trim().toLowerCase()
@@ -218,17 +277,18 @@ module.exports = function createHandler(context) {
 
       // 4. 计算距离与中间元数据
       const candidateList = rawCandidates.map((profile) => {
+        const booking = context.getBookingPoint(profile)
         const hasSitterLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
-        const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+        const radiusKm = Math.max(booking.radiusKm, 1)
         const distanceKm = (userHasLoc && hasSitterLoc)
-          ? calcDistanceKm(userLat, userLng, profile.serviceLatitude, profile.serviceLongitude)
+          ? calcDistanceKm(userLat, userLng, booking.latitude, booking.longitude)
           : null
         const inServiceRange = !userHasLoc || (distanceKm !== null && distanceKm <= radiusKm)
         return {
           profile,
           distanceKm,
           inServiceRange,
-          canDirectBook: inServiceRange
+          canDirectBook: inServiceRange && profile.acceptDirectOrders !== false && profile.publicBookingNeedsConfirmation !== true
         }
       })
 
@@ -242,7 +302,7 @@ module.exports = function createHandler(context) {
       }
       const compareDefault = (a, b) => compareRating(a, b) || toTimeValue(b.profile.updatedAt) - toTimeValue(a.profile.updatedAt)
       const compareByMode = (a, b) => {
-        if (sortBy === 'distance' && userHasLoc) return (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999) || compareRating(a, b)
+        if (sortBy === 'distance' && userHasLoc) return (context.getBookingPoint(a.profile).isPublic ? a.distanceKm ?? 9999 : 9999) - (context.getBookingPoint(b.profile).isPublic ? b.distanceKm ?? 9999 : 9999) || compareRating(a, b)
         if (sortBy === 'city') return String(a.profile.serviceCity || '').localeCompare(String(b.profile.serviceCity || '')) || String(a.profile.serviceAreas || '').localeCompare(String(b.profile.serviceAreas || '')) || compareRating(a, b)
         if (sortBy === 'latest') return toTimeValue(b.profile.updatedAt || b.profile.createdAt) - toTimeValue(a.profile.updatedAt || a.profile.createdAt) || compareRating(a, b)
         if (sortBy === 'rating') return compareRating(a, b)
@@ -267,11 +327,11 @@ module.exports = function createHandler(context) {
       const list = pagedCandidates.map((item, index) => {
         const fullProfile = pagedProfiles[index] || item.profile
         const publicData = toPublicSitter(fullProfile)
-        if (!userHasLoc) return { ...publicData, inServiceRange: true, canDirectBook: true }
+        if (!userHasLoc) return { ...publicData, bookingNeedsContext: true, inServiceRange: true, canDirectBook: fullProfile.acceptDirectOrders !== false && fullProfile.publicBookingNeedsConfirmation !== true }
         return {
           ...publicData,
-          distanceKm: item.distanceKm,
-          distanceText: formatDistance(item.distanceKm),
+          distanceKm: context.getBookingPoint(fullProfile).isPublic ? item.distanceKm : null,
+          distanceText: context.getBookingPoint(fullProfile).isPublic ? `距小区约 ${formatDistance(item.distanceKm)}` : '',
           inServiceRange: item.inServiceRange,
           canDirectBook: item.canDirectBook,
           rangeStatusText: item.inServiceRange ? '服务范围内' : '超出服务范围'
@@ -295,12 +355,13 @@ module.exports = function createHandler(context) {
       const profile = profileRes && profileRes.data
       if (!profile || !canTakeOrders(profile, settings.staffDeposit)) throw new Error('宠托师不可用')
       const detail = await toPublicSitterDetail(user ? openid : '', await withSitterUserProfile(normalizeStaffWorkflow(profile)))
+      const booking = context.getBookingPoint(profile)
 
       const userLat = Number(data.latitude !== undefined ? data.latitude : (data.addressLatitude || 0))
       const userLng = Number(data.longitude !== undefined ? data.longitude : (data.addressLongitude || 0))
       const userHasLoc = hasCoordinate(userLat, userLng)
       const hasSitterLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
-      const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+      const radiusKm = Math.max(booking.radiusKm, 1)
 
       let distanceKm = null
       let inServiceRange = true
@@ -308,7 +369,7 @@ module.exports = function createHandler(context) {
       let rangeStatusText = ''
       if (userHasLoc) {
         if (hasSitterLoc) {
-          distanceKm = calcDistanceKm(userLat, userLng, profile.serviceLatitude, profile.serviceLongitude)
+          distanceKm = calcDistanceKm(userLat, userLng, booking.latitude, booking.longitude)
           inServiceRange = distanceKm !== null && distanceKm <= radiusKm
           canDirectBook = inServiceRange
           rangeStatusText = inServiceRange ? '服务范围内' : '超出服务范围'
@@ -321,25 +382,31 @@ module.exports = function createHandler(context) {
 
       return {
         ...detail,
-        distanceKm,
-        distanceText: distanceKm !== null ? formatDistance(distanceKm) : '',
+        distanceKm: booking.isPublic ? distanceKm : null,
+        distanceText: booking.isPublic && distanceKm !== null ? `距小区约 ${formatDistance(distanceKm)}` : '',
         inServiceRange,
-        canDirectBook,
+        canDirectBook: canDirectBook && profile.acceptDirectOrders !== false && profile.publicBookingNeedsConfirmation !== true,
         rangeStatusText
       }
     }
     if (action === 'checkSitterRange') {
+      await getUser(openid)
+      await checkRateLimit(openid, 'staff.checkSitterRange', { max: 30 })
       const staffProfileId = safeText(data.staffProfileId).trim()
       if (!staffProfileId) throw new Error('请选择宠托师')
       const profileRes = await db.collection('staff_profiles').doc(staffProfileId).get().catch(() => ({ data: null }))
       const profile = profileRes && profileRes.data
       if (!profile) throw new Error('宠托师档案不存在')
+      const booking = context.getBookingPoint(profile)
+      if (!canTakeOrders(profile, (await getSystemSettings()).staffDeposit) || profile.acceptDirectOrders === false || profile.publicBookingNeedsConfirmation === true) {
+        return { ok: false, inServiceRange: false, canDirectBook: false, message: '该宠托师暂不接受指定预约' }
+      }
 
       const userLat = Number(data.latitude !== undefined ? data.latitude : (data.addressLatitude || 0))
       const userLng = Number(data.longitude !== undefined ? data.longitude : (data.addressLongitude || 0))
       const userHasLoc = hasCoordinate(userLat, userLng)
       const hasSitterLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
-      const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+      const radiusKm = Math.max(booking.radiusKm, 1)
 
       if (!hasSitterLoc) {
         return {
@@ -364,7 +431,7 @@ module.exports = function createHandler(context) {
         }
       }
 
-      const dist = calcDistanceKm(userLat, userLng, profile.serviceLatitude, profile.serviceLongitude)
+      const dist = calcDistanceKm(userLat, userLng, booking.latitude, booking.longitude)
       const inRange = dist !== null && dist <= radiusKm
       const distText = dist !== null ? formatDistance(dist) : ''
       return {
@@ -372,9 +439,9 @@ module.exports = function createHandler(context) {
         inServiceRange: inRange,
         canDirectBook: inRange,
         serviceRadiusKm: radiusKm,
-        distanceKm: dist,
-        distanceText: distText,
-        message: inRange ? '' : `服务地址距宠托师服务区域约 ${distText}，超出其设定的 ${radiusKm}km 接单范围，无法指定预约`
+        distanceKm: booking.isPublic ? dist : null,
+        distanceText: booking.isPublic ? `距小区约 ${distText}` : '',
+        message: inRange ? '' : `服务地址超出其设定的 ${radiusKm}km 接单范围，无法指定预约`
       }
     }
     if (action === 'favoriteSitter') {
@@ -413,21 +480,22 @@ module.exports = function createHandler(context) {
           const profileRes = await db.collection('staff_profiles').doc(favorites.data[i].staffProfileId).get()
           if (profileRes.data && canTakeOrders(profileRes.data, settings.staffDeposit)) {
             const rawProfile = profileRes.data
+            const booking = context.getBookingPoint(rawProfile)
             const profile = await withSitterUserProfile(normalizeStaffWorkflow(rawProfile))
             const detail = await toPublicSitterDetail(openid, profile)
             let distanceKm = null
             let inServiceRange = true
             if (userHasLoc && hasCoordinate(rawProfile.serviceLatitude, rawProfile.serviceLongitude)) {
-              distanceKm = calcDistanceKm(userLat, userLng, rawProfile.serviceLatitude, rawProfile.serviceLongitude)
-              const radiusKm = Math.max(Number(rawProfile.serviceRadiusKm || 5), 1)
+              distanceKm = calcDistanceKm(userLat, userLng, booking.latitude, booking.longitude)
+              const radiusKm = Math.max(booking.radiusKm, 1)
               inServiceRange = distanceKm !== null && distanceKm <= radiusKm
             }
             list.push({
               ...detail,
-              distanceKm,
-              distanceText: distanceKm !== null ? formatDistance(distanceKm) : '',
+              distanceKm: booking.isPublic ? distanceKm : null,
+              distanceText: booking.isPublic && distanceKm !== null ? `距小区约 ${formatDistance(distanceKm)}` : '',
               inServiceRange,
-              canDirectBook: inServiceRange,
+              canDirectBook: inServiceRange && rawProfile.acceptDirectOrders !== false && rawProfile.publicBookingNeedsConfirmation !== true,
               favorite: true
             })
           }
@@ -940,6 +1008,11 @@ module.exports = function createHandler(context) {
         updateData.weeklySchedule = weeklySchedule
       }
 
+      if (profile.publicBookingPolicyVersion === 1 && ['serviceAddress', 'serviceLatitude', 'serviceLongitude', 'serviceRadiusKm'].some(key => updateData[key] !== undefined && updateData[key] !== profile[key])) {
+        updateData.publicMapEnabled = false
+        updateData.publicBookingNeedsConfirmation = true
+      }
+
       if (data.bookableUntilDate !== undefined) {
         const untilDate = safeText(data.bookableUntilDate).trim()
         if (untilDate && !/^\d{4}-\d{2}-\d{2}$/.test(untilDate)) {
@@ -1002,12 +1075,15 @@ module.exports = function createHandler(context) {
         status: 'paid',
         publishMode: 'open'
       }
-      if (db.command && typeof db.command.neq === 'function') {
+      if (internal.map) {
+        // Map mode shares the same pool/bundle logic for normal and urgent tasks.
+      } else if (db.command && typeof db.command.neq === 'function') {
         openWhere.isUrgent = db.command.neq(true)
       } else {
         openWhere.isUrgent = false
       }
-      const availableOrders = (await readAll('orders', openWhere)).sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
+      const availableOrders = (await readAll('orders', openWhere, internal.map ? 2001 : 2000)).sort((a, b) => toTimeValue(a.startTime) - toTimeValue(b.startTime))
+      if (internal.map && availableOrders.length > 2000) throw new Error('待接任务过多，请使用列表查看；地图未截断统计')
       const radiusKm = Math.max(Number(profile.serviceRadiusKm || 5), 1)
 
       function isOrderInRange(order) {
@@ -1033,12 +1109,12 @@ module.exports = function createHandler(context) {
           groupBuyCounts.set(order.groupBuyId, (groupBuyCounts.get(order.groupBuyId) || 0) + 1)
         }
       }
-      let candidates = availableOrders.filter((order) => (!order.groupBuyId || order.groupBuyStatus === 'formed' && order.paymentStatus === 'paid' && !order.groupBuyRefundRequired) && !order.deletedAt && matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish' && !isStaffPreviouslyAssignedToOrder(order, profile.openid) && !(Array.isArray(order.cancelledStaffOpenids) && order.cancelledStaffOpenids.includes(profile.openid)))
+      let candidates = availableOrders.filter((order) => (!order.groupBuyId || order.groupBuyStatus === 'formed' && order.paymentStatus === 'paid' && !order.groupBuyRefundRequired) && !order.deletedAt && matchesStaffGender(order, profile) && !isAdminDeletedOrder(order) && isOpenOrder(order) && (internal.map || !order.isUrgent && order.assignmentSource !== 'admin_urgent_republish') && !isStaffPreviouslyAssignedToOrder(order, profile.openid) && !(Array.isArray(order.cancelledStaffOpenids) && order.cancelledStaffOpenids.includes(profile.openid)))
       if (filterDate) {
-        candidates = candidates.filter((order) => {
-          if (!order.startTime) return false
-          return String(order.startTime).startsWith(filterDate)
-        })
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(filterDate)) throw new Error('请选择有效日期')
+        const start = toTimeValue(`${filterDate} 00:00`), end = start + 86400000
+        // Retain complete bundles; single tasks can be filtered before expensive enrichment.
+        candidates = candidates.filter(order => order.groupBuyId || getOrderTimeRanges(order).some(range => toTimeValue(range.startTime) < end && toTimeValue(range.endTime) > start))
       }
       if (filterCity) {
         candidates = candidates.filter((order) => orderMatchesCity(order, filterCity))
@@ -1047,6 +1123,7 @@ module.exports = function createHandler(context) {
       const scheduleExceptions = candidates.length
         ? await readAll('staff_schedule_exceptions', { staffOpenid: openid })
         : []
+      const mapCommunities = internal.map ? await context.readMapCommunities(filterCity) : []
       let orders = await Promise.all(candidates.map(async (order) => {
         const enriched = await attachOrderDisplayData(order)
         let distanceKm = null
@@ -1061,6 +1138,10 @@ module.exports = function createHandler(context) {
           distanceText: formatDistance(distanceKm),
           staffEarning: earning.earningAmount,
           staffEarningText: `¥${earning.earningAmount.toFixed(2)}`
+        }
+        if (internal.map) {
+          const community = context.matchMapCommunity(enriched, mapCommunities)
+          result.mapCommunityId = community ? community._id : ''
         }
         if (order.groupBuyId) {
           result.isGroupBuy = true
@@ -1113,6 +1194,8 @@ module.exports = function createHandler(context) {
         const allPets = bundleList.map((item) => item.petName || '宠物').filter(Boolean).join('、')
         const aggregated = {
           ...primary,
+          ...(internal.map ? { mapCommunityId: bundleList.every(item => item.mapCommunityId === primary.mapCommunityId) ? primary.mapCommunityId : '',
+            isUrgent: bundleList.some(item => item.isUrgent || item.assignmentSource === 'admin_urgent_republish') } : {}),
           isGroupBuy: true,
           isGroupBuyBundle: true,
           groupBuyId,
@@ -1130,9 +1213,17 @@ module.exports = function createHandler(context) {
         bundleOrders.push(aggregated)
       }
 
-      const displayedOrders = [...regularOrders, ...bundleOrders]
+      let displayedOrders = [...regularOrders, ...bundleOrders]
+      if (filterDate) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(filterDate)) throw new Error('请选择有效日期')
+        const dayStart = toTimeValue(`${filterDate} 00:00`), dayEnd = dayStart + 86400000
+        const matchesDate = order => getOrderTimeRanges(order).some(range => toTimeValue(range.startTime) < dayEnd && toTimeValue(range.endTime) > dayStart)
+        displayedOrders = displayedOrders.filter(order => order.isGroupBuyBundle
+          ? bundleMap.get(order.groupBuyId).some(matchesDate) : matchesDate(order))
+      }
       const sortedOrders = displayedOrders.sort((a, b) => (a.distanceKm === null ? 999999 : a.distanceKm) - (b.distanceKm === null ? 999999 : b.distanceKm))
       const maskedOrders = sortedOrders.map(maskOrderForStaffPreview)
+      if (internal.map) return maskedOrders
       const wantsPage = data.page !== undefined || data.pageSize !== undefined
       return wantsPage ? paginateList(maskedOrders, data) : maskedOrders.slice(0, 20)
     }
@@ -1262,7 +1353,10 @@ module.exports = function createHandler(context) {
       }
       const settings = await getSystemSettings()
       if (!profile || !canTakeOrders(profile, settings.staffDeposit)) throw new Error('宠托师不可用')
-      return buildStaffAvailability(profile, data.startDate || data.dateKey || '', data.days || 14)
+      const calendar = await buildStaffAvailability(profile, data.startDate || data.dateKey || '', data.days || 14)
+      if (profile.openid === openid) return calendar
+      return calendar.map(day => ({ dateKey: day.dateKey, dayOfWeek: day.dayOfWeek, dayName: day.dayName,
+        status: day.status, slots: day.slots, busyOrders: day.busyOrders.map(range => ({ startTime: range.startTime, endTime: range.endTime })), remark: '' }))
     }
     if (action === 'listStaffReviews') {
       const user = await getUser(openid)
@@ -1487,6 +1581,9 @@ module.exports = function createHandler(context) {
       const orderRes = await db.collection('orders').doc(orderId).get().catch(() => ({ data: null }))
       if (!orderRes || !orderRes.data) throw new Error('订单不存在')
       const order = await expireUnacceptedOrder(orderId, orderRes.data)
+      if (order.staffOpenid === openid && ['assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)) {
+        return { orderId, status: order.status, alreadyAssigned: true, assignmentSource: order.assignmentSource || '' }
+      }
       assertStaffGenderMatches(order, profile)
       assertOrderTransition(order.status, ORDER_STATUS.ASSIGNED, '订单状态不可接单')
       if (order.staffOpenid) throw new Error('订单已被分配')
@@ -1536,6 +1633,8 @@ module.exports = function createHandler(context) {
       const currentLng = Number(data.currentLongitude)
       const orderLat = Number(order.serviceLatitude || order.addressLatitude || 0)
       const orderLng = Number(order.serviceLongitude || order.addressLongitude || 0)
+
+      if (!hasCoordinate(currentLat, currentLng) || !hasCoordinate(orderLat, orderLng)) throw new Error('缺少有效的实时位置或订单定位，无法接单')
 
       let distanceFromCurrent = null
       if (hasCoordinate(currentLat, currentLng) && hasCoordinate(orderLat, orderLng)) {
@@ -1596,10 +1695,15 @@ module.exports = function createHandler(context) {
         const durationText = durationMin != null ? `（加急响应耗时：${durationMin}分钟）` : ''
         timelineDetail = `宠托师（${maskStaffName(profile.realName)}）已加急揭榜抢单${durationText}，平台加价补贴生效中。`
       }
-      await appendOrderTimeline(data.orderId, 'assigned', assignedTitle, timelineDetail, 'staff')
-      await appendOrderClientMessage(assignedOrder, { eventType: 'assigned', title: assignedTitle, detail: timelineDetail, actorRole: 'staff' })
-      const notifyResult = await notifyOrderAccepted(assignedOrder, maskStaffName(profile.realName))
-      await db.collection('orders').doc(data.orderId).update({ data: { acceptedNotifyStatus: notifyResult && notifyResult.status || 'skipped', acceptedNotifyError: notifyResult && notifyResult.error || '', updatedAt: time } })
+      // Assignment and its durable notification outbox are already committed.
+      await Promise.allSettled([
+        appendOrderTimeline(data.orderId, 'assigned', assignedTitle, timelineDetail, 'staff'),
+        appendOrderClientMessage(assignedOrder, { eventType: 'assigned', title: assignedTitle, detail: timelineDetail, actorRole: 'staff' })
+      ])
+      let notifyResult = { status: 'pending', error: '' }
+      try { notifyResult = await notifyOrderAccepted(assignedOrder, maskStaffName(profile.realName)) || notifyResult }
+      catch (_) { notifyResult = { status: 'pending', error: '通知等待重试' } }
+      await db.collection('orders').doc(data.orderId).update({ data: { acceptedNotifyStatus: notifyResult.status, acceptedNotifyError: notifyResult.error || '', updatedAt: time } }).catch(() => {})
 
       const bundledCount = assignedOrder.bundledCount || 1
       return { orderId: data.orderId, status: 'assigned', assignmentSource, bundledCount, notifyStatus: notifyResult && notifyResult.status || 'skipped', notifyError: notifyResult && notifyResult.error || '' }

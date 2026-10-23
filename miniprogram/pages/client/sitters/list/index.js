@@ -35,6 +35,10 @@ function visibleOptions(options, active, count) {
 }
 
 Page({
+  openMap() {
+    const city = this.data.activeCity === '全部' ? '' : this.data.activeCity
+    wx.navigateTo({ url: '/pages/common/community-map/index?mode=sitters&city=' + encodeURIComponent(city) + '&gender=' + this.data.staffGenderRequirement })
+  },
   data: {
     themeClass: 'theme-day',
     staffGenderRequirement: 'any',

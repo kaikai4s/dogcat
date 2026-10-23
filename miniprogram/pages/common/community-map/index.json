@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "小区地图",
+  "navigationBarBackgroundColor": "#FFF9F2",
+  "backgroundColor": "#FFF9F2",
+  "disableScroll": true,
+  "usingComponents": {}
+}

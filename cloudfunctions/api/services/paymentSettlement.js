@@ -1,3 +1,5 @@
+const { readDocuments } = require('../utils/documentPages')
+
 module.exports = function createService(context) {
   const { db, crypto, now, getPayableOrder, createPaymentNo,
     normalizeMallProduct, getSkuById, assertOrderPaymentOpen, amountYuanToFen, enqueueOrderNotification,
@@ -289,6 +291,19 @@ module.exports = function createService(context) {
       if (order.clientRequestId) {
         const existing = await optional(tx, collectionName, orderId)
         if (existing) return { order: existing, created: false }
+      }
+      if (collectionName === 'orders' && order.publishMode === 'direct' && order.requestedStaffOpenid) {
+        const staff = await optional(tx, 'users', order.requestedStaffUserId)
+        const profile = await optional(tx, 'staff_profiles', order.requestedStaffProfileId)
+        if (!staff || staff.openid !== order.requestedStaffOpenid || staff.status !== 'active' || !staff.roles?.includes('staff') ||
+          !profile || profile.openid !== staff.openid || profile.acceptDirectOrders === false) throw new Error('指定宠托师暂不可预约')
+        const settings = await context.getSystemSettings()
+        const ability = context.validateStaffTakeOrderAbility(profile, settings.staffDeposit)
+        if (!ability.can) throw new Error('指定宠托师暂不可预约')
+        const exceptions = await readDocuments(tx, db.command, 'staff_schedule_exceptions', { staffOpenid: staff.openid })
+        await context.validateStaffAvailabilityForSessions(profile, context.getOrderTimeRanges(order), { transaction: tx, exceptions })
+        context.validateDirectStaffServiceRange(profile, order)
+        await tx.collection('users').doc(staff._id).update({ data: { staffAssignmentRevision: crypto.randomBytes(16).toString('hex') } })
       }
       // 1. 如果使用了优惠券，在同一事务内进行严格原子校验和锁定
       if (couponId) {

@@ -61,7 +61,7 @@ function useOptimisticTransactions(db) {
       const reads = new Map()
       const writes = []
       const result = await callback({ collection(name) {
-        return { doc(id) {
+        return { where(condition) { return snapshot.collection(name).where(condition) }, doc(id) {
           return {
             async get() {
               const item = snapshot.state[name]?.find(row => row._id === id)
@@ -124,6 +124,22 @@ test('adjacent non-overlapping orders can both be assigned', async () => {
   useOptimisticTransactions(db)
   await Promise.all([assign('a'), assign('b')])
   assert.ok(db.state.orders.every(o => o.status === 'assigned'))
+})
+
+test('competing direct booking creates retry the shared staff lock and cannot reserve the same slot twice', async () => {
+  const { db, context } = setup([])
+  Object.assign(db.state.staff_profiles[0], { serviceAddress: '阳光花园', serviceLatitude: 31.2, serviceLongitude: 121.5 })
+  const retries = useOptimisticTransactions(db)
+  const make = i => context.createOrderWithCouponLock({ collectionName: 'orders', openid: `client${i}`, order: {
+    ...order(`direct${i}`), status: 'pending_pay', paymentStatus: 'unpaid', publishMode: 'direct',
+    requestedStaffOpenid: 'staff', requestedStaffProfileId: 'profile', requestedStaffUserId: 'user',
+    clientOpenid: `client${i}`, serviceAddress: '阳光花园', addressLatitude: 31.2, addressLongitude: 121.5, createdAt: context.now()
+  } })
+  const results = await Promise.allSettled([make(1), make(2)])
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
+  assert.match(results.find(result => result.status === 'rejected').reason.message, /已有订单/)
+  assert.ok(retries() > 0)
+  assert.equal(db.state.orders.length, 1)
 })
 
 test('conflict after 100 active orders is detected while completed history is excluded', async () => {

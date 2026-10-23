@@ -34,6 +34,15 @@ module.exports = function createService({
     return String(city || '').trim().replace(/^(.*省|.*自治区)/, '').replace(/(市|特别行政区|地区|盟|自治州)$/, '')
   }
 
+  function getBookingPoint(profile = {}) {
+    if (profile.publicBookingPolicyVersion === 1 && hasCoordinate(profile.publicBookingLatitude, profile.publicBookingLongitude)) {
+      return { latitude: Number(profile.publicBookingLatitude), longitude: Number(profile.publicBookingLongitude),
+        radiusKm: Number(profile.publicBookingRadiusKm || 5), isPublic: true }
+    }
+    return { latitude: Number(profile.serviceLatitude), longitude: Number(profile.serviceLongitude),
+      radiusKm: Number(profile.serviceRadiusKm || 5), isPublic: false }
+  }
+
   function extractCityFromText(text) {
     const value = String(text || '')
     const directCity = value.match(/(北京市|上海市|天津市|重庆市|香港特别行政区|澳门特别行政区)/)
@@ -61,10 +70,12 @@ module.exports = function createService({
 
   function validateDirectStaffServiceRange(staffProfile, data = {}, options = {}) {
     if (!staffProfile) throw new Error('指定宠托师不存在')
-    const sitterLat = Number(staffProfile.serviceLatitude || 0)
-    const sitterLng = Number(staffProfile.serviceLongitude || 0)
+    if (staffProfile.publicBookingNeedsConfirmation === true) throw new Error('宠托师服务范围正在更新，请稍后预约')
+    const booking = getBookingPoint(staffProfile)
+    const sitterLat = booking.latitude
+    const sitterLng = booking.longitude
     const sitterAddress = String(staffProfile.serviceAddress || '').trim()
-    const radiusKm = Math.max(Number(staffProfile.serviceRadiusKm || 5), 1)
+    const radiusKm = Math.max(booking.radiusKm, 1)
 
     const hasSitterCoord = hasCoordinate(sitterLat, sitterLng)
     const orderLat = Number(data.addressLatitude !== undefined ? data.addressLatitude : (data.latitude || 0))
@@ -89,9 +100,7 @@ module.exports = function createService({
       } else {
         const dist = calcDistanceKm(orderLat, orderLng, sitterLat, sitterLng)
         if (dist !== null && dist > radiusKm) {
-          const distText = `约 ${formatDistance(dist)}`
-          const displayAddr = staffProfile.publicServiceAddress || maskServiceAddress(sitterAddress)
-          throw new Error(`订单服务地址距离宠托师常驻服务地址${displayAddr ? `（${displayAddr}）` : ''}${distText}，超出宠托师设定的接单范围（${radiusKm}公里内），无法预约`)
+          throw new Error(`订单服务地址超出宠托师设定的接单范围（${radiusKm}公里内），无法预约`)
         }
         return { dist, radiusKm, sitterAddress, sitterLat, sitterLng }
       }
@@ -106,6 +115,7 @@ module.exports = function createService({
 
   return {
     hasCoordinate,
+    getBookingPoint,
     calcDistanceKm,
     formatDistance,
     normalizeCityName,

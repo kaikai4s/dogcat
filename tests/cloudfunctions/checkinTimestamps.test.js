@@ -29,7 +29,7 @@ test('checkin photos with numeric recordedAt (as sent by mini program) are count
     data: {
       petId: 'p1',
       serviceTypes: ['visit_fee', 'walk'],
-      serviceAddress: '测试小区',
+      serviceAddress: '测试小区', addressLatitude: 31.2, addressLongitude: 121.5,
       addressDetail: '1栋',
       doorplate: '101',
       startTime: '2099-07-28 10:00',
@@ -41,7 +41,7 @@ test('checkin photos with numeric recordedAt (as sent by mini program) are count
   const orderId = created.data._id
 
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId } })
-  await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId } })
+  await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId } })
   await staffFn.main({ module: 'order', action: 'requestEarlyStart', data: { orderId, reason: '提前开始' } })
   await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId } })
 

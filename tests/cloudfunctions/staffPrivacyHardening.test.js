@@ -97,7 +97,7 @@ test('staff privacy hardening: public sitters list and detail do not leak privat
   assert.equal(sitter2.serviceAddress, '徐汇宠物爱心服务驿站（虹桥路店）')
 
   // 验证服务端计算的相对距离与服务范围判定完全正确
-  assert.equal(typeof sitter1.distanceKm, 'number')
+  assert.equal(sitter1.distanceKm, null, 'legacy private centres must not return exact public distances')
   assert.equal(sitter1.inServiceRange, true)
   assert.equal(sitter1.canDirectBook, true)
   assert.equal(typeof sitter1.distanceText, 'string')
@@ -270,5 +270,6 @@ test('staff privacy hardening: public sitters list and detail do not leak privat
   assert.equal(orderRes.ok, false)
   // 错误信息不得包含私人门牌号 '601室'
   assert.equal(orderRes.message.includes('601室'), false)
-  assert.equal(orderRes.message.includes('***'), true)
+  assert.equal(orderRes.message.includes('***'), false)
+  assert.match(orderRes.message, /超出.*接单范围/)
 })

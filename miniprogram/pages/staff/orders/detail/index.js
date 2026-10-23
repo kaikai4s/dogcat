@@ -115,7 +115,9 @@ Page({
   submitAcceptOrder(riskConfirmed) {
     if (this.data.acceptingRiskOrder) return
     this.setData({ acceptingRiskOrder: true })
-    const doAccept = () => callFunction('staff', 'acceptOrder', { orderId: this.data.id, riskConfirmed: riskConfirmed === true })
+    const doAccept = () => new Promise((resolve, reject) => wx.getLocation({ type: 'gcj02', success: resolve, fail: () => reject(new Error('请允许获取实时位置后再接单')) }))
+      .then(location => callFunction('staff', 'acceptOrder', { orderId: this.data.id, riskConfirmed: riskConfirmed === true,
+        currentLatitude: location.latitude, currentLongitude: location.longitude }))
       .then(() => {
         wx.showToast({ title: '接单成功' })
         this.closeAcceptRiskModal()

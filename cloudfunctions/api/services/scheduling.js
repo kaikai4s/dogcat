@@ -7,6 +7,7 @@ module.exports = function createService({
   formatDistance,
   getDateKeyFromTime,
   now,
+  getOrderPaymentDeadline,
   parseDateTimeParts,
   safeText,
   toTimeValue
@@ -164,8 +165,10 @@ module.exports = function createService({
     if (isAdminDeletedOrder(order)) return false
     if (['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed'].includes(order.status)) return true
     if (order.status === 'pending_pay' && order.publishMode === 'direct') {
-      const created = toTimeValue(order.createdAt)
-      return created > 0 && (now().getTime() - created) <= 15 * 60 * 1000
+      const deadline = getOrderPaymentDeadline(order)
+      // A payment in flight keeps its hold until provider reconciliation closes it.
+      // Releasing it by wall time alone can let a late successful callback double-book.
+      return order.paymentStatus !== 'closed' && (order.paymentStatus === 'paying' || !!order.paymentNo || deadline > now().getTime())
     }
     return false
   }
@@ -227,20 +230,20 @@ module.exports = function createService({
 
   async function validateStaffAvailabilityForSessions(profile, sessions = [], options = {}) {
     for (const session of sessions) {
-      await validateStaffScheduleOnly(profile, session.startTime, session.endTime)
+      await validateStaffScheduleOnly(profile, session.startTime, session.endTime, options)
     }
 
     const candidate = { serviceSessions: sessions }
-    const conflict = await findStaffOrderConflict(profile.openid, candidate, options.excludeOrderId)
+    const conflict = await findStaffOrderConflict(profile.openid, candidate, options.excludeOrderId, options.transaction)
     if (conflict) throw new Error('宠托师该时间段已有订单，无法重复预约')
   }
 
-  async function* staffConflictOrderPages(openid) {
+  async function* staffConflictOrderPages(openid, store = db) {
     let cursor1 = ''
     while (true) {
       const where1 = { staffOpenid: openid, status: db.command.in(['paid', 'assigned', 'on_the_way', 'in_service', 'day_completed']) }
       if (cursor1) where1._id = db.command.gt(cursor1)
-      const page1 = (await db.collection('orders').where(where1).orderBy('_id', 'asc').limit(100).get()).data || []
+      const page1 = (await store.collection('orders').where(where1).orderBy('_id', 'asc').limit(100).get()).data || []
       if (page1.length) yield page1
       if (page1.length < 100) break
       cursor1 = page1[page1.length - 1]._id
@@ -249,7 +252,7 @@ module.exports = function createService({
     while (true) {
       const where2 = { requestedStaffOpenid: openid, publishMode: 'direct', status: db.command.in(['paid', 'pending_pay']) }
       if (cursor2) where2._id = db.command.gt(cursor2)
-      const page2 = (await db.collection('orders').where(where2).orderBy('_id', 'asc').limit(100).get()).data || []
+      const page2 = (await store.collection('orders').where(where2).orderBy('_id', 'asc').limit(100).get()).data || []
       if (page2.length) yield page2
       if (page2.length < 100) break
       cursor2 = page2[page2.length - 1]._id
@@ -258,7 +261,7 @@ module.exports = function createService({
 
   async function findStaffOrderConflict(openid, candidate, excludeOrderId = '', transaction = null) {
     const seenIds = new Set()
-    for await (const page of staffConflictOrderPages(openid)) {
+    for await (const page of staffConflictOrderPages(openid, transaction || db)) {
       for (const item of page) {
         if (item._id === excludeOrderId || seenIds.has(item._id)) continue
         seenIds.add(item._id)

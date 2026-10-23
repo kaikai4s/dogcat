@@ -110,6 +110,11 @@ module.exports = function createService(context) {
         if (!options.admin && member.requestedStaffOpenid && member.requestedStaffOpenid !== patch.staffOpenid) throw new Error('该订单指定了其他宠托师')
         await assertNoConflict(transaction, patch.staffOpenid, member, member._id)
         if (options.enforceAcceptLimits) await assertStaffAssignmentLimits(transaction, patch.staffOpenid, member, member._id, options.dispatchConfig || {}, bundle.length)
+        if (options.enforceAcceptLimits && !options.admin) {
+          const lat = Number(member.serviceLatitude || member.addressLatitude), lng = Number(member.serviceLongitude || member.addressLongitude)
+          if (!context.hasCoordinate(patch.acceptLocationLatitude, patch.acceptLocationLongitude) || !context.hasCoordinate(lat, lng)) throw new Error('缺少有效的实时位置或订单定位，无法接单')
+          if (context.calcDistanceKm(patch.acceptLocationLatitude, patch.acceptLocationLongitude, lat, lng) > Number(profile.serviceRadiusKm || 5)) throw new Error('订单超出当前服务范围，无法接单')
+        }
         for (const range of getOrderTimeRanges(member)) {
           try { await validateStaffScheduleOnly(profile, range.startTime, range.endTime) }
           catch (error) { if (!options.riskConfirmed) throw error }

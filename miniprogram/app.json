@@ -6,6 +6,11 @@
   ],
   "subpackages": [
     {
+      "root": "pages/common/community-map",
+      "name": "community-map",
+      "pages": ["index", "settings"]
+    },
+    {
       "root": "pages/client/sitters",
       "name": "client-sitters",
       "pages": [
@@ -193,6 +198,7 @@
       "root": "pages/admin",
       "name": "admin",
       "pages": [
+        "community-map/index",
         "home/index",
         "users/list/index",
         "users/edit/index",

@@ -156,7 +156,7 @@ test('staff order preview privacy: listNearbyOrders returns coarse GPS coordinat
   const acceptRes = await staffFn.main({
     module: 'staff',
     action: 'acceptOrder',
-    data: { orderId: 'ord_open_pool' }
+    data: { orderId: 'ord_open_pool', currentLatitude: 31.215, currentLongitude: 121.52 }
   })
   assert.equal(acceptRes.ok, true)
 

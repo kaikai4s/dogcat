@@ -1,0 +1,19 @@
+page{background:#fff9f2}
+.settings-page{padding:36rpx 30rpx 80rpx;color:#2d211a}
+.eyebrow{font-size:20rpx;letter-spacing:3rpx;color:#176b5b}
+.page-title{font-size:43rpx;font-weight:800;margin:16rpx 0}
+.description{font-size:25rpx;color:#74665b;line-height:1.7;margin:12rpx 0}
+.settings-card{padding:28rpx;background:#fff;border:1rpx solid #efe7df;border-radius:28rpx;margin-top:25rpx}
+.card-title{font-size:30rpx;font-weight:700}
+.current-name{font-size:34rpx;color:#176b5b;margin-top:20rpx}
+.search-row{display:flex;gap:15rpx;margin:20rpx 0}
+.search-row input{background:#f5f1eb;border-radius:16rpx;padding:20rpx;flex:1;min-width:0;font-size:26rpx}
+.search-btn,.primary,.secondary{border-radius:18rpx;font-size:26rpx;margin:0;padding:20rpx;line-height:1.5;background:#176b5b;color:#fff}
+.search-btn::after,.primary::after,.secondary::after{border:0}
+.secondary{background:#f5f1eb;color:#74665b}
+.community-option{display:flex;align-items:center;justify-content:space-between;border-bottom:1rpx solid #efe7df;padding:16rpx 20rpx;border-radius:16rpx}
+.community-option.selected{background:#eaf5ef;color:#176b5b}
+.option-title{font-size:28rpx;font-weight:600}
+.consent{font-size:27rpx;color:#176b5b;line-height:1.7;padding:24rpx 0}
+button[disabled]{opacity:.5}
+

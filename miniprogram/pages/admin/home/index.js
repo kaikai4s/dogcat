@@ -56,6 +56,7 @@ const adminSections = [
     title: '平台配置',
     desc: '价格、测试模式和平台参数',
     items: [
+      { icon: 'ri-map-pin-line', title: '小区地图管理', desc: '公共小区、别名与地图位置', url: '/pages/admin/community-map/index' },
       { icon: 'ri-price-tag-3-line', title: '价格配置', desc: '服务项目与收费', url: '/pages/admin/service-prices/index' },
       { icon: 'ri-settings-4-line', title: '系统设置', desc: '测试模式与平台参数', url: '/pages/admin/settings/index' }
     ]

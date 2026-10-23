@@ -24,7 +24,7 @@ test('setupDatabase: initializes data without granting administrator identity', 
   assert.equal(res.ok, true)
   assert.equal(res.data.success, true)
   assert.equal(res.data.totalCollections, 97)
-  assert.equal(res.data.totalIndexesConfigured, 53)
+  assert.equal(res.data.totalIndexesConfigured, 57)
   assert.ok(res.data.pricesInitialized > 0)
   assert.ok(res.data.checkinRulesInitialized > 0)
   assert.equal(res.data.settingsInitialized, true)

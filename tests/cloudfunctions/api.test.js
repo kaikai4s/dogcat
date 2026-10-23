@@ -1667,7 +1667,7 @@ test('paid order expires when service start time arrives without acceptance', as
   const staffFn = loadCloudFunction('api', db, 'openid_staff')
 
   const list = await clientFn.main({ module: 'order', action: 'listOrders', data: {} })
-  const accept = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'expired_order' } })
+  const accept = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: 'expired_order' } })
 
   assert.equal(list.ok, true)
   assert.equal(list.data[0].status, 'expired')
@@ -1785,10 +1785,10 @@ test('staff visibility and accept permissions respect open and direct publish mo
   const openDetailResult = await staffAFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'open_order' } })
   const directDetailResult = await staffAFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'direct_order' } })
   const deniedDetailResult = await staffBFn.main({ module: 'order', action: 'getOrderDetail', data: { id: 'direct_order' } })
-  const deniedResult = await staffBFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'direct_order' } })
-  const directAcceptResult = await staffAFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'direct_order' } })
-  const openAcceptResult = await staffBFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'open_order' } })
-  const duplicateOpenAcceptResult = await staffAFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'open_order' } })
+  const deniedResult = await staffBFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: 'direct_order' } })
+  const directAcceptResult = await staffAFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: 'direct_order' } })
+  const openAcceptResult = await staffBFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: 'open_order' } })
+  const duplicateOpenAcceptResult = await staffAFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: 'open_order' } })
 
   assert.equal(nearbyResult.ok, true)
   assert.deepEqual(nearbyResult.data.map((order) => order._id), ['open_order'])
@@ -2092,9 +2092,9 @@ test('order lifecycle writes timeline and completed order can be reviewed once',
   const clientFn = loadCloudFunction('api', db, 'openid_client')
   const staffFn = loadCloudFunction('api', db, 'openid_staff')
 
-  const created = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: 'p1', serviceTypes: ['visit_fee', 'feed'], serviceAddress: '测试小区', addressDetail: '1栋', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
+  const created = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: 'p1', serviceTypes: ['visit_fee', 'feed'], serviceAddress: '测试小区', addressLatitude: 31.2, addressLongitude: 121.5, addressDetail: '1栋', doorplate: '101', startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: created.data._id } })
-  await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: created.data._id } })
+  await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: created.data._id } })
   await staffFn.main({ module: 'order', action: 'requestEarlyStart', data: { orderId: created.data._id, reason: '测试提前开始' } })
   await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId: created.data._id } })
   await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: created.data._id, eventType: 'sanitization', mediaFileId: 'cloud://checkin_sanitization.jpg', remark: '已完成消毒打卡', latitude: 31.2, longitude: 121.5 } })
@@ -2163,8 +2163,8 @@ test('real-device acceptance core flow covers client staff admin lifecycle', asy
     directEarningOrder.isMockPayment = false
   }
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: openOrder.data._id } })
-  const openAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: openOrder.data._id } })
-  const directAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: directOrder.data._id } })
+  const openAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: openOrder.data._id } })
+  const directAccepted = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: directOrder.data._id } })
   await staffFn.main({ module: 'order', action: 'requestEarlyStart', data: { orderId: directOrder.data._id, reason: '验收提前开始' } })
   await clientFn.main({ module: 'order', action: 'approveEarlyStart', data: { orderId: directOrder.data._id } })
   await staffFn.main({ module: 'checkin', action: 'createCheckin', data: { orderId: directOrder.data._id, eventType: 'sanitization', mediaFileId: 'cloud://checkin_sanitization.jpg', remark: '服务前隔离消毒', latitude: 31.21, longitude: 121.49, clientRequestId: 'checkin_sanitization' } })
@@ -3234,8 +3234,8 @@ test('staff schedule exceptions and order conflicts block unavailable slots', as
   const available = await staffFn.main({ module: 'staff', action: 'saveScheduleException', data: { dateKey: '2099-07-28', status: 'available', slots: [{ start: 10, end: 12 }] } })
   const order = await clientFn.main({ module: 'order', action: 'createOrder', data: { petId: 'pet1', publishMode: 'direct', staffProfileId: 'sp1', serviceTypes: ['visit_fee', 'walk'], serviceAddress: '测试地址', addressDetail: '1栋', doorplate: '101', addressLatitude: 31.21, addressLongitude: 121.51, startTime: '2099-07-28 10:00', endTime: '2099-07-28 11:00', durationMinutes: 60 } })
   db.state.orders.push({ _id: 'busy1', clientOpenid: 'other_client', staffOpenid: 'openid_staff', staffProfileId: 'sp1', status: 'assigned', startTime: '2099-07-28 10:30', endTime: '2099-07-28 11:30' })
-  db.state.orders.push({ _id: 'open1', clientOpenid: 'openid_client', status: 'paid', startTime: '2099-07-28 11:00', endTime: '2099-07-28 12:00' })
-  const conflict = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'open1' } })
+  db.state.orders.push({ _id: 'open1', clientOpenid: 'openid_client', status: 'paid', addressLatitude: 31.2, addressLongitude: 121.5, startTime: '2099-07-28 11:00', endTime: '2099-07-28 12:00' })
+  const conflict = await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: 'open1' } })
 
   assert.equal(rest.ok, true)
   assert.equal(blocked.ok, false)
@@ -4002,7 +4002,7 @@ test('acceptOrder rejects staff without fixed service address', async () => {
   })
   const fn = loadCloudFunction('api', db, 'openid_no_addr')
 
-  const result = await fn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: 'ord1' } })
+  const result = await fn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: 'ord1' } })
   assert.equal(result.ok, false)
   assert.equal(result.message, '请先在个人中心设置固定服务地址与接单范围，方可接单')
 })

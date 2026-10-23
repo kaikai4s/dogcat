@@ -76,6 +76,10 @@ module.exports = function createHandler(context) {
 
       // 2. 顺带自动创建全量核心业务索引
       const REQUIRED_INDEXES = [
+        { collection: 'platform_configs', name: 'idx_map_community_city', keys: { key: 1, enabled: 1, cityKey: 1, _id: 1 }, unique: false },
+        { collection: 'platform_configs', name: 'idx_map_community_catalog', keys: { key: 1, enabled: 1, _id: 1 }, unique: false },
+        { collection: 'staff_profiles', name: 'idx_map_staff_city', keys: { publicMapEnabled: 1, serviceCity: 1, _id: 1 }, unique: false },
+        { collection: 'orders', name: 'idx_map_open_tasks', keys: { status: 1, publishMode: 1, _id: 1 }, unique: false },
         { collection: 'pet_playground_appearance_requests', name: 'idx_appearance_owner', keys: { ownerOpenid: 1, _id: 1 }, unique: false },
         { collection: 'pet_playground_appearance_requests', name: 'idx_appearance_owner_status', keys: { ownerOpenid: 1, status: 1, _id: 1 }, unique: false },
         { collection: 'pet_playground_appearance_requests', name: 'idx_appearance_status', keys: { status: 1, _id: 1 }, unique: false },

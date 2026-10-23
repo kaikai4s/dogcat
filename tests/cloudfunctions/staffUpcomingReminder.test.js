@@ -51,7 +51,7 @@ test('staff upcoming service reminder: triggered within 1 hour before service st
     data: {
       petId: 'p1',
       serviceTypes: ['visit_fee', 'walk'],
-      serviceAddress: '阳光花园 1 号楼',
+      serviceAddress: '阳光花园 1 号楼', addressLatitude: 31.2, addressLongitude: 121.5,
       addressDetail: '1单元 201',
       doorplate: '201',
       startTime: formatTime(in45Min),
@@ -62,7 +62,7 @@ test('staff upcoming service reminder: triggered within 1 hour before service st
   assert.equal(orderResA.ok, true)
   const orderIdA = orderResA.data._id
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: orderIdA } })
-  await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: orderIdA } })
+  await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: orderIdA } })
 
   // 2. 创建订单 B（距离开始还有 3 小时，不在 1 小时内）
   const in3Hours = new Date(Date.now() + 3 * 60 * 60 * 1000)
@@ -73,7 +73,7 @@ test('staff upcoming service reminder: triggered within 1 hour before service st
     data: {
       petId: 'p1',
       serviceTypes: ['visit_fee', 'walk'],
-      serviceAddress: '月光花园 2 号楼',
+      serviceAddress: '月光花园 2 号楼', addressLatitude: 31.2, addressLongitude: 121.5,
       addressDetail: '2单元 301',
       doorplate: '301',
       startTime: formatTime(in3Hours),
@@ -84,7 +84,7 @@ test('staff upcoming service reminder: triggered within 1 hour before service st
   assert.equal(orderResB.ok, true)
   const orderIdB = orderResB.data._id
   await clientFn.main({ module: 'payment', action: 'mockPayOrder', data: { orderId: orderIdB } })
-  await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { orderId: orderIdB } })
+  await staffFn.main({ module: 'staff', action: 'acceptOrder', data: { currentLatitude: 31.2, currentLongitude: 121.5, orderId: orderIdB } })
 
   // 3. 普通员工不可触发全平台提醒
   const deniedCheckRes = await staffFn.main({

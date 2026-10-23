@@ -85,6 +85,9 @@ function applyOrderFlags(orders, radiusKm) {
 }
 
 Page({
+  openCommunityMap() {
+    wx.navigateTo({ url: '/pages/common/community-map/index?mode=orders&city=' + encodeURIComponent(this.data.selectedCity || '') + '&date=' + (this.data.filterDate || '') + '&kind=' + (this.data.grabTab === 'urgent' ? 'urgent' : 'normal') })
+  },
   data: {
     themeClass: 'theme-day',
     directOrders: [],

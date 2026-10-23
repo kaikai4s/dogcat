@@ -237,6 +237,7 @@
   </view>
 
   <view class="home-section" wx:if="{{homePage.modules.featuredSitters && featuredSitters.length}}">
+    <view class="section-link" data-url="/pages/common/community-map/index?mode=sitters" bindtap="go">地图找宠托师 · 按小区查看 ↗</view>
     <view class="section-heading"><view><view class="section-title">优选宠托师</view><view class="section-desc">平台认证，服务资料公开可查</view></view><view class="section-link" data-url="/pages/client/sitters/list/index" bindtap="go">查看更多</view></view>
     <scroll-view scroll-x class="sitter-scroll">
       <view class="sitter-home-card interactive" wx:for="{{featuredSitters}}" wx:key="_id" data-url="/pages/client/sitters/detail/index?id={{item._id}}" bindtap="go">

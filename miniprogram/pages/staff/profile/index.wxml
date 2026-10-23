@@ -84,6 +84,7 @@
         <view class="label">固定服务地址</view>
         <view class="value">{{profile.serviceAddress || '⚠️ 未设置（无法接单）'}}</view>
       </view>
+      <view class="info-row" data-url="/pages/common/community-map/settings" bindtap="go"><view class="label">公开服务小区</view><view class="value">{{profile.publicMapEnabled ? profile.publicServiceCommunityName : '未开启地图展示'}} ›</view></view>
       <view class="info-row">
         <view class="label">接单服务半径</view>
         <view class="value">{{profile.serviceRadiusKm || 5}} 公里内</view>

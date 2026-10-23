@@ -4,6 +4,7 @@ module.exports = function createService({
   db,
   formatWeeklyScheduleText,
   hasCoordinate,
+  getBookingPoint,
   isAdminDeletedOrder,
   normalizeStaffWorkflow,
   normalizeWeeklySchedule,
@@ -78,7 +79,7 @@ module.exports = function createService({
     const staffLevel = (normalized && normalized.staffLevel) || 'certified'
     const staffLevelText = isIntern ? '实习宠托师' : '认证宠托师'
     const areaTags = splitServiceAreas(profile.serviceAreas)
-    const radius = Math.max(Number(profile.serviceRadiusKm || 5), 1)
+    const radius = Math.max(getBookingPoint(profile).radiusKm, 1)
     const hasLoc = hasCoordinate(profile.serviceLatitude, profile.serviceLongitude) && Boolean(profile.serviceAddress)
     const verifiedServiceTags = []
     if (profile.auditStatus === 'approved') verifiedServiceTags.push('入驻审核已通过')
@@ -100,6 +101,9 @@ module.exports = function createService({
       publicServiceAddress: safeText(profile.publicServiceAddress).trim(),
       serviceRadiusKm: radius,
       hasServiceAddress: hasLoc,
+      acceptDirectOrders: profile.acceptDirectOrders !== false && profile.publicBookingNeedsConfirmation !== true,
+      publicMapEnabled: profile.publicMapEnabled === true,
+      publicServiceCommunityName: profile.publicMapEnabled === true ? safeText(profile.publicServiceCommunityName) : '',
       weeklySchedule: normalizeWeeklySchedule(profile.weeklySchedule),
       weeklyScheduleText: formatWeeklyScheduleText(profile.weeklySchedule),
       bookableUntilDate: safeText(profile.bookableUntilDate).trim(),

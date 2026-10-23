@@ -1,4 +1,5 @@
 const definitions = [
+  ['communityMap', '小区地图', 'communityMap', 'listAdmin:查看公共小区 saveAdmin:维护公共小区'],
   ['buildings','乐园建筑与土地','playgroundBuilding','list:查看配置 prepareUpload:上传建筑素材 save:保存建筑 remove:删除建筑 savePlotAccess:配置土地等级'],
   ['farm', '农作物管理', 'playgroundFarm', 'list:查看农作物 prepareUpload:上传阶段素材 save:保存及上下架 remove:删除植物'],
   ['playground', '乐园形象定制', 'playgroundAppearance', 'listAdmin:申请列表 detailAdmin:查看照片 prepareUpload:上传图集 publish:发布专属形象 reject:退回申请'],

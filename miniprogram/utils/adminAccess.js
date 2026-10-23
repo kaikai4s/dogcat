@@ -1,4 +1,5 @@
 const routes = {
+  'community-map/index': ['communityMap.listAdmin'],
   'config-migration/index': ['owner'],
   'playground-buildings/index':['playgroundBuilding.list'],
   'playground-crops/index': ['playgroundFarm.list'],

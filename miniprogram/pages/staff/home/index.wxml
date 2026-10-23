@@ -125,6 +125,7 @@
         <text class="remix-icon ri-radar-line title-icon"></text>
         <text class="section-title">附近可接订单</text>
       </view>
+      <button class="ghost-btn" bindtap="openCommunityMap">小区地图 ↗</button>
       <view class="head-right">
         <view class="filter-trigger-btn {{inServiceRange || inServiceTime || filterDate ? 'active' : ''}}" bindtap="toggleFilterPanel">
           <text class="remix-icon ri-filter-3-line filter-icon"></text>
