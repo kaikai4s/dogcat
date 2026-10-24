@@ -158,6 +158,16 @@ module.exports = function createService({
     return fen / 100
   }
 
+  function normalizeReimbursementCount(value, label) {
+    if (value === undefined) return 0
+    const count = Number(value)
+    const validType = typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(value.trim()))
+    if (!validType || !Number.isSafeInteger(count) || count < 0) {
+      throw new Error(`【用品报销设置】${label}必须是有效的非负整数，不设门槛请填写 0`)
+    }
+    return count
+  }
+
   function normalizeStaffSuppliesConfig(supplies = {}) {
     const items = normalizeStaffSuppliesItems(supplies.items, supplies.requiredItems)
     const requiredItems = items.filter((i) => i.enabled !== false).map((i) => i.name)
@@ -192,9 +202,9 @@ module.exports = function createService({
       reimbursementEnabled: supplies.reimbursementEnabled !== false,
       maxReimbursementAmount: Number.isFinite(Number(supplies.maxReimbursementAmount)) && Number(supplies.maxReimbursementAmount) > 0 ? Number(supplies.maxReimbursementAmount) : 200,
       reimbursementAmount: Number.isFinite(Number(supplies.reimbursementAmount)) && Number(supplies.reimbursementAmount) > 0 ? Math.round(Number(supplies.reimbursementAmount) * 100) / 100 : (Number.isFinite(Number(supplies.maxReimbursementAmount)) && Number(supplies.maxReimbursementAmount) > 0 ? Number(supplies.maxReimbursementAmount) : 200),
-      reimbursementMode: ['order_count', 'invite_count'].includes(safeText(supplies.reimbursementMode).trim()) ? safeText(supplies.reimbursementMode).trim() : 'order_count',
-      reimbursementOrderCount: Math.max(Math.round(Number(supplies.reimbursementOrderCount || 0)), 0),
-      reimbursementInviteCount: Math.max(Math.round(Number(supplies.reimbursementInviteCount || 0)), 0),
+      reimbursementMode: ['order_count', 'invite_count', 'either'].includes(safeText(supplies.reimbursementMode).trim()) ? safeText(supplies.reimbursementMode).trim() : 'order_count',
+      reimbursementOrderCount: normalizeReimbursementCount(supplies.reimbursementOrderCount, '需完成订单数量'),
+      reimbursementInviteCount: normalizeReimbursementCount(supplies.reimbursementInviteCount, '需邀请绑定人数'),
       purchaseRequired: supplies.purchaseRequired === true,
       transfer: {
         enabled: supplies.transfer?.enabled === true,
@@ -217,6 +227,27 @@ module.exports = function createService({
     }
   }
 
+  function getSupplyReimbursementQualification(supplies, completedOrderCount, eligibleInviteCount) {
+    const mode = supplies.reimbursementMode || 'order_count'
+    const modes = mode === 'either' ? ['order_count', 'invite_count'] : [mode]
+    const conditions = modes.map(conditionMode => {
+      const requiredCount = Number(conditionMode === 'invite_count' ? supplies.reimbursementInviteCount ?? 0 : supplies.reimbursementOrderCount ?? 0)
+      const progressCount = conditionMode === 'invite_count' ? eligibleInviteCount : completedOrderCount
+      return { mode: conditionMode, requiredCount, progressCount, met: requiredCount <= 0 || progressCount >= requiredCount }
+    })
+    // Preserve the original single-progress fields for older app versions.
+    const progress = conditions.find(condition => condition.met) || conditions[0]
+    return {
+      mode,
+      requiredCount: progress.requiredCount,
+      progressCount: progress.progressCount,
+      completedOrderCount,
+      eligibleInviteCount,
+      conditions,
+      qualificationMet: conditions.some(condition => condition.met)
+    }
+  }
+
   return {
     normalizeTrainingVideos,
     enabledTrainingVideos,
@@ -225,6 +256,7 @@ module.exports = function createService({
     publicTrainingQuiz,
     normalizeStaffDepositConfig,
     normalizeStaffSuppliesItems,
-    normalizeStaffSuppliesConfig
+    normalizeStaffSuppliesConfig,
+    getSupplyReimbursementQualification
   }
 }

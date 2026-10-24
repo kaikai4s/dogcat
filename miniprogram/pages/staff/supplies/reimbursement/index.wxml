@@ -31,7 +31,11 @@
     <view class="muted">{{supplies.serviceReminder}}</view>
     <view class="muted" wx:if="{{supplies.reimbursementEnabled === false}}">平台暂未开放报销申请。</view>
     <view class="muted" wx:if="{{profile && profile.staffLevel !== 'certified'}}">当前尚未正式认证，暂不能提交申请。</view>
-    <view class="muted" wx:if="{{qualification && !qualification.qualificationMet}}">报销资格进度：{{qualification.progressCount}} / {{qualification.requiredCount}}（{{qualification.mode === 'invite_count' ? '有效邀请绑定人数' : '已完成订单数'}}）</view>
+    <block wx:if="{{qualification && qualification.conditions}}">
+      <view class="muted" wx:if="{{qualification.mode === 'either'}}">报销资格：以下条件满足任意一项即可。</view>
+      <view class="muted" wx:for="{{qualification.conditions}}" wx:key="mode">{{item.mode === 'invite_count' ? '有效邀请绑定人数' : '已完成订单数'}}：{{item.progressCount}} / {{item.requiredCount}}（{{item.met ? '已达标' : '未达标'}}）</view>
+    </block>
+    <view class="muted" wx:elif="{{qualification && !qualification.qualificationMet}}">报销资格进度：{{qualification.progressCount}} / {{qualification.requiredCount}}（{{qualification.mode === 'invite_count' ? '有效邀请绑定人数' : '已完成订单数'}}）</view>
     <view class="muted" wx:if="{{supplies.purchaseRequired && !purchaseMet}}">请先在平台线上店铺购买一次性用品，完成支付后再申请。</view>
   </view>
 

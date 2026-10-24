@@ -44,6 +44,7 @@ module.exports = function createHandler(context) {
     getStaffCancellationQuote,
     cancelStaffAcceptedOrder,
     getStaffProfileByOpenid,
+    getSupplyReimbursementQualification,
     getSystemSettings,
     getUser,
     getWechatPayConfig,
@@ -1850,19 +1851,16 @@ module.exports = function createHandler(context) {
       const completedOrders = await readScopedDocuments('orders', { staffOpenid: openid, status: 'completed' })
       const completedOrderCount = completedOrders.filter((order) => order.status === 'completed').length
       const inviteRows = await readScopedDocuments('user_invites', { inviterOpenid: openid, eligibleForSupplyReimbursement: true })
-      const reimbursementMode = supplies.reimbursementMode || 'order_count'
-      const requiredCount = reimbursementMode === 'invite_count' ? Number(supplies.reimbursementInviteCount || 0) : Number(supplies.reimbursementOrderCount || 0)
-      const progressCount = reimbursementMode === 'invite_count' ? inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length : completedOrderCount
+      const qualification = getSupplyReimbursementQualification(supplies, completedOrderCount, inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length)
       const mallOrders = await readScopedDocuments('mall_orders', { clientOpenid: openid })
       const eligibleMallOrders = mallOrders.filter((order) => ['paid', 'pending_ship', 'shipped', 'completed', 'received'].includes(order.status))
-      const qualificationMet = requiredCount <= 0 || progressCount >= requiredCount
       const purchaseMet = supplies.purchaseRequired === false || eligibleMallOrders.length > 0
-      const canApply = Boolean(!application && isCertified && supplies.reimbursementEnabled !== false && qualificationMet && purchaseMet)
+      const canApply = Boolean(!application && isCertified && supplies.reimbursementEnabled !== false && qualification.qualificationMet && purchaseMet)
       return {
         application,
         canApply,
         supplies,
-        qualification: { mode: reimbursementMode, requiredCount, progressCount, completedOrderCount, eligibleInviteCount: inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length, qualificationMet },
+        qualification,
         eligibleMallOrders: eligibleMallOrders.map((order) => ({ _id: order._id, orderNo: order.orderNo || '', status: order.status, items: order.items || [], createdAt: order.createdAt || '' })),
         purchaseMet
       }
@@ -1883,10 +1881,13 @@ module.exports = function createHandler(context) {
       if (supplies.reimbursementEnabled === false) throw new Error('用品报销申请暂未开放')
       const completedOrders = await readScopedDocuments('orders', { staffOpenid: openid, status: 'completed' })
       const inviteRows = await readScopedDocuments('user_invites', { inviterOpenid: openid, eligibleForSupplyReimbursement: true })
-      const mode = supplies.reimbursementMode || 'order_count'
-      const requiredCount = mode === 'invite_count' ? Number(supplies.reimbursementInviteCount || 0) : Number(supplies.reimbursementOrderCount || 0)
-      const progressCount = mode === 'invite_count' ? inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length : completedOrders.filter((order) => order.status === 'completed').length
-      if (requiredCount > 0 && progressCount < requiredCount) throw new Error(mode === 'invite_count' ? `还需邀请 ${requiredCount - progressCount} 人绑定邀请码后才能申请报销` : `还需完成 ${requiredCount - progressCount} 笔订单后才能申请报销`)
+      const qualification = getSupplyReimbursementQualification(supplies, completedOrders.filter((order) => order.status === 'completed').length, inviteRows.filter((row) => row.eligibleForSupplyReimbursement === true).length)
+      if (!qualification.qualificationMet) {
+        const remaining = qualification.conditions.map(condition => condition.mode === 'invite_count'
+          ? `邀请 ${condition.requiredCount - condition.progressCount} 人绑定邀请码`
+          : `完成 ${condition.requiredCount - condition.progressCount} 笔订单`)
+        throw new Error(`还需${remaining.join('，或')}${remaining.length > 1 ? '，满足任一条件后即可申请报销' : '后才能申请报销'}`)
+      }
       const existing = await db.collection('staff_supply_reimbursements').where({ staffOpenid: openid }).limit(1).get()
       if (existing.data && existing.data.length > 0) {
         throw new Error('每位宠托师仅限申请一次首次宠物用品报销，后续服务用品须自备自费')

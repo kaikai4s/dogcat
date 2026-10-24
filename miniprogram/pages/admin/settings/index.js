@@ -27,6 +27,12 @@ function validAmount(value, allowZero = false) {
     Number.isSafeInteger(Math.round(amount * 100)) && (allowZero ? amount >= 0 : amount > 0)
 }
 
+function validReimbursementCount(value) {
+  const count = Number(value)
+  const validType = typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(value.trim()))
+  return validType && Number.isSafeInteger(count) && count >= 0
+}
+
 function normalizeStaffZhima(zhima = {}) {
   const minScoreNum = Number(zhima.minScore)
   return {
@@ -120,7 +126,7 @@ function normalizeStaffSupplies(supplies = {}) {
     ...supplies,
     reimbursementEnabled: supplies.reimbursementEnabled === true,
     reimbursementAmount: validAmount(supplies.reimbursementAmount, true) ? Number(supplies.reimbursementAmount) : (validAmount(supplies.maxReimbursementAmount, true) ? Number(supplies.maxReimbursementAmount) : 200),
-    reimbursementMode: supplies.reimbursementMode === 'invite_count' ? 'invite_count' : 'order_count',
+    reimbursementMode: ['order_count', 'invite_count', 'either'].includes(supplies.reimbursementMode) ? supplies.reimbursementMode : 'order_count',
     reimbursementOrderCount: Math.max(0, Number(supplies.reimbursementOrderCount || 0)),
     reimbursementInviteCount: Math.max(0, Number(supplies.reimbursementInviteCount || 0)),
     purchaseRequired: supplies.purchaseRequired === true,
@@ -1835,6 +1841,15 @@ Page({
     this.setData({ [`settings.${e.currentTarget.dataset.field}`]: e.detail.value })
   },
 
+  reimbursementModesChange(e) {
+    const modes = e.detail.value || []
+    const orderSelected = modes.includes('order_count')
+    const inviteSelected = modes.includes('invite_count')
+    this.setData({
+      'settings.staffSupplies.reimbursementMode': orderSelected && inviteSelected ? 'either' : orderSelected ? 'order_count' : inviteSelected ? 'invite_count' : ''
+    })
+  },
+
   staffDepositToggle(e) {
     if (e.detail.value && !validAmount(this.data.settings.staffDeposit.amount)) {
       this.setData({ 'settings.staffDeposit.enabled': false })
@@ -1987,6 +2002,10 @@ Page({
     const deposit = this.data.settings.staffDeposit
     if (!validAmount(deposit.amount, !deposit.enabled)) return showError(new Error('保证金金额须为有效金额，最多两位小数；启用时必须大于 0'))
     if (!validAmount(this.data.settings.staffSupplies.reimbursementAmount)) return showError(new Error('固定报销金额须为有效金额'))
+    if (!['order_count', 'invite_count', 'either'].includes(this.data.settings.staffSupplies.reimbursementMode)) return showError(new Error('请至少选择一种报销资格方式'))
+    for (const [field, label] of [['reimbursementOrderCount', '需完成订单数量'], ['reimbursementInviteCount', '需邀请绑定人数']]) {
+      if (!validReimbursementCount(this.data.settings.staffSupplies[field])) return showError(new Error(`${label}须为有效的非负整数，不设门槛请填写 0`))
+    }
     if (!validAmount(this.data.settings.invitation.rewardAmount, true) || !validAmount(this.data.settings.invitation.userMinWithdrawAmount, true)) return showError(new Error('邀请收益和用户最低提现金额须为有效金额'))
 
     const activeTab = this.data.activeTransferTab || 'commission'
