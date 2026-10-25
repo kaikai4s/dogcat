@@ -195,3 +195,57 @@ test('changing a mapped sitter service radius requires fresh public confirmation
   const range = await client.main({ module: 'staff', action: 'checkSitterRange', data: { staffProfileId: 'p1', latitude: 31.2, longitude: 121.5 } })
   assert.equal(range.data.canDirectBook, false)
 })
+
+test('sitter card refresh preserves requested order and excludes hidden, filtered, and other-community profiles', async () => {
+  const otherId = 'map_community_' + 'b'.repeat(24)
+  const db = setup({ platform_configs: [community(), community({ _id: otherId, name: '另一个小区' })],
+    staff_profiles: [profile(1), profile(2, { publicMapEnabled: false }), profile(3, { publicServiceCommunityId: otherId }),
+      profile(4, { ratingAverage: 5 }), profile(5, { acceptDirectOrders: false })] })
+  const fn = require('../../cloudfunctions/api/handlers/communityMap')(createContext({ db, cloud: {} }))
+  const result = await fn('client', 'listSitters', { city: '上海市', communityId: id, onlyDirect: true,
+    refreshIds: ['p1', 'p2', 'p3', 'p4', 'p5', 'nonexistent', 'p1'] })
+  assert.deepEqual(result.list.map(row => row._id), ['p4', 'p1'])
+  assert.deepEqual(result.visibleList.map(row => row._id), ['p1', 'p4'])
+  for (const secret of ['serviceLatitude', 'serviceLongitude', '31.201', 'openid', '私人点']) {
+    assert.equal(JSON.stringify(result.visibleList).includes(secret), false, secret)
+  }
+  const noCommunity = await fn('client', 'listSitters', { city: '上海市', refreshIds: ['p1'] })
+  assert.deepEqual(noCommunity.visibleList, [])
+  db.state.users.find(user => user.openid === 's1').status = 'disabled'
+  const afterDisabled = await fn('client', 'listSitters', { city: '上海市', communityId: id, refreshIds: ['p1', 'p4'] })
+  assert.deepEqual(afterDisabled.visibleList.map(row => row._id), ['p4'])
+})
+
+test('order card refresh revalidates availability, community, and whole group-buy bundles', async () => {
+  const otherId = 'map_community_' + 'b'.repeat(24)
+  const db = setup({ platform_configs: [community(), community({ _id: otherId, name: '其他花园', aliases: [] })],
+    orders: [task(1), task(2, { status: 'assigned', staffOpenid: 'someone' }), task(3, { publishMode: 'direct', requestedStaffOpenid: 'other' }),
+      task(4, { serviceAddress: '其他花园' }), task(5, { groupBuyId: 'g', groupBuyStatus: 'formed' }), task(6, { groupBuyId: 'g', groupBuyStatus: 'formed' })] })
+  const fn = require('../../cloudfunctions/api/handlers/staff')(createContext({ db, cloud: {} }))
+  const first = await fn('s1', 'listOrderMap', { city: '上海市', communityId: id })
+  const bundle = first.list.find(row => row.isGroupBuyBundle)
+  assert.ok(bundle)
+  const result = await fn('s1', 'listOrderMap', { city: '上海市', communityId: id,
+    refreshIds: [bundle._id, 'o001', 'o002', 'o003', 'o004', 'nonexistent'] })
+  assert.deepEqual(result.visibleList.map(row => row._id), [bundle._id, 'o001'])
+  assert.equal(result.visibleList[0].householdCount, 2)
+  for (const secret of ['31.201234', '121.501234', 'PRIVATE', 'SECRET', '13800000000', 'staffOpenid']) {
+    assert.equal(JSON.stringify(result.visibleList).includes(secret), false, secret)
+  }
+  await assert.rejects(fn('client', 'listOrderMap', { city: '上海市', communityId: id, refreshIds: ['o001'] }), /员工/)
+  db.state.orders.find(row => row._id === 'o001').status = 'cancelled'
+  const updated = await fn('s1', 'listOrderMap', { city: '上海市', communityId: id, refreshIds: ['o001'] })
+  assert.deepEqual(updated.visibleList, [])
+})
+
+test('both card refresh endpoints reject malformed or unbounded identifier lists', async () => {
+  const db = setup(), context = createContext({ db, cloud: {} })
+  const sitters = require('../../cloudfunctions/api/handlers/communityMap')(context)
+  const staff = require('../../cloudfunctions/api/handlers/staff')(context)
+  for (const refreshIds of [null, 'p1', [123], [''], ['a'.repeat(129)], Array(2001).fill('p1')]) {
+    for (const call of [() => sitters('client', 'listSitters', { city: '上海市', refreshIds }),
+      () => staff('s1', 'listOrderMap', { city: '上海市', refreshIds })]) {
+      await assert.rejects(call, /地图刷新参数无效/)
+    }
+  }
+})

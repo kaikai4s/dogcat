@@ -7,7 +7,7 @@ page{background:#fff9f2}
 .card-title{font-size:30rpx;font-weight:700}
 .current-name{font-size:34rpx;color:#176b5b;margin-top:20rpx}
 .search-row{display:flex;gap:15rpx;margin:20rpx 0}
-.search-row input{background:#f5f1eb;border-radius:16rpx;padding:20rpx;flex:1;min-width:0;font-size:26rpx}
+.search-row input{background:#f5f1eb;border:0;border-radius:16rpx;padding:20rpx;flex:1;width:0;min-width:0;height:80rpx;margin:0;font-size:26rpx}
 .search-btn,.primary,.secondary{border-radius:18rpx;font-size:26rpx;margin:0;padding:20rpx;line-height:1.5;background:#176b5b;color:#fff}
 .search-btn::after,.primary::after,.secondary::after{border:0}
 .secondary{background:#f5f1eb;color:#74665b}
@@ -16,4 +16,11 @@ page{background:#fff9f2}
 .option-title{font-size:28rpx;font-weight:600}
 .consent{font-size:27rpx;color:#176b5b;line-height:1.7;padding:24rpx 0}
 button[disabled]{opacity:.5}
+.settings-page button{width:auto;min-width:0;white-space:nowrap;letter-spacing:0;box-shadow:none}
+.settings-page .search-btn{flex:0 0 auto;margin:0;display:flex;align-items:center;justify-content:center}
+.settings-page .primary,.settings-page .secondary{width:100%;margin-top:16rpx}
+.option-copy{flex:1;min-width:0}
+.option-title{overflow-wrap:break-word;word-break:break-all}
+.option-check{flex-shrink:0;margin-left:12rpx}
+.current-name{overflow-wrap:break-word;word-break:break-all}
 

@@ -1,2 +1,46 @@
-<view class="admin-map-page"><view class="page-title">小区地图管理</view><view class="description">先核验小区公共中心或入口，再启用展示。订单按小区名称/别名与位置共同匹配；不匹配的订单保留在列表。</view><button class="primary" bindtap="add" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}">新增公共小区</button><view class="description" wx:if="{{error}}">{{error}}</view><button class="secondary" bindtap="load" loading="{{loading}}">刷新</button><view class="settings-card" wx:for="{{rows}}" wx:key="_id"><view class="card-title">{{item.name}} · {{item.enabled ? '已启用' : '已停用'}}</view><view class="description">{{item.city}} {{item.district}} · {{item.aliases.length}} 个别名</view><button class="secondary" data-id="{{item._id}}" bindtap="edit" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}">编辑与纠错</button></view><view class="description" wx:if="{{!loading && !rows.length}}">尚未配置小区。新增后，符合条件的订单和主动公开的宠托师才会出现在地图。</view></view>
-<view class="edit-mask" wx:if="{{form}}"><scroll-view scroll-y class="edit-panel"><view class="settings-card"><view class="card-title">{{form.id ? '编辑小区' : '新增小区'}}</view><view class="description">修改公共资料版本后，相关宠托师需重新确认公开，避免未经同意改变展示位置。</view><input class="field" placeholder="规范小区名称" value="{{form.name}}" data-field="name" bindinput="input" maxlength="60" /><input class="field" placeholder="城市，如深圳市" value="{{form.city}}" data-field="city" bindinput="input" maxlength="40" /><input class="field" placeholder="行政区，如南山区" value="{{form.district}}" data-field="district" bindinput="input" maxlength="40" /><textarea class="field aliases" placeholder="小区别名，每行一个；不填写家庭门牌" value="{{form.aliasesText}}" data-field="aliasesText" bindinput="input" maxlength="1600" /><button class="secondary" bindtap="choose">选择公共入口 / 小区中心</button><view class="description">公共坐标：{{form.latitude}}, {{form.longitude}}</view><view class="description">地址匹配最大距离（0.1～3公里，默认1公里）</view><input class="field" type="digit" value="{{form.matchRadiusKm}}" data-field="matchRadiusKm" bindinput="input" /><view class="switch-line"><text>启用地图展示</text><switch checked="{{form.enabled}}" bindchange="toggleEnabled" color="#176b5b" /></view><view class="consent" bindtap="confirm">{{form.confirmPublic ? '☑' : '☐'}} 我已核验：该名称和坐标属于公共小区，不含家庭位置或私人信息</view><button class="primary" bindtap="save" disabled="{{busy || !form.confirmPublic}}" loading="{{busy}}">保存</button><button class="secondary" bindtap="close" disabled="{{busy}}">取消</button></view></scroll-view></view>
+<view class="admin-map-page">
+  <view class="page-title">小区地图管理</view>
+  <view class="description">这里接收用户新增申请并整理未匹配地址。核验公共点后，用户下单可直接选择该小区。</view>
+  <view class="management-tools">
+    <picker mode="region" bindchange="changeCity"><view class="city-filter">{{city || '选择城市'}} ⌄</view></picker>
+    <button class="link-button" wx:if="{{city}}" bindtap="clearCity">全部城市</button>
+    <button class="add-button" bindtap="add" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}">新增小区</button>
+  </view>
+  <view class="search-row"><input placeholder="搜索名称或别名" maxlength="60" value="{{keyword}}" bindinput="inputKeyword" bindconfirm="search" confirm-type="search" /><button class="search-btn" bindtap="search">搜索</button></view>
+  <view class="management-tabs"><view class="management-tab {{view === 'pending' ? 'active' : ''}}" data-view="pending" bindtap="changeView">待处理小区</view><view class="management-tab {{view === 'catalog' ? 'active' : ''}}" data-view="catalog" bindtap="changeView">已维护小区</view></view>
+  <view class="result-line"><text>{{loading ? '正在整理…' : '共 ' + total + ' 个小区'}}</text><button class="link-button" bindtap="load" loading="{{loading}}" disabled="{{loading}}">刷新</button></view>
+  <view class="error-box" wx:if="{{error}}">{{error}}<button class="link-button" bindtap="load">重试</button></view>
+  <view class="description" wx:if="{{missingCityCount && view === 'pending'}}">另有 {{missingCityCount}} 处地址缺少城市，请在原订单或宠托师资料中补充。</view>
+  <view class="settings-card" wx:for="{{rows}}" wx:key="_id">
+    <view class="row-head"><view class="card-title community-name">{{item.name}}</view><text class="state-tag" wx:if="{{view === 'catalog'}}">{{item.enabled ? '已启用' : '已停用'}}</text></view>
+    <view class="description">{{item.city}} {{item.district}}</view>
+    <block wx:if="{{view === 'pending'}}">
+      <view class="candidate-count">{{item.orderCount}} 笔待接订单 · {{item.staffCount}} 位宠托师地址</view>
+      <view class="description" wx:if="{{item.applicationCount}}">{{item.applicationCount}} 项用户新增申请，保存并启用后关联至此小区。</view>
+      <view class="description">{{item.reason}}</view>
+      <view class="row-actions" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}"><button class="primary" data-id="{{item._id}}" bindtap="{{item.existingId ? 'editExisting' : 'addCandidate'}}" disabled="{{busy}}">{{item.existingId ? '查看已有小区' : '选公共点并启用'}}</button><button class="secondary" wx:if="{{item.existingId}}" data-id="{{item._id}}" bindtap="addCandidate" disabled="{{busy}}">另建同名小区</button></view>
+    </block>
+    <block wx:else><view class="description">{{item.aliases.length}} 个别名 · 已自动匹配同名入口</view><button class="secondary" data-id="{{item._id}}" bindtap="edit" wx:if="{{adminSuper || adminPermissions.communityMap_saveAdmin}}">编辑与纠错</button></block>
+  </view>
+  <view class="empty-copy description" wx:if="{{!loading && !rows.length && !error}}">{{view === 'pending' ? '当前没有待处理的小区。新增小区地址会自动出现在这里。' : '尚无符合条件的小区，可从待处理清单选择或新增。'}}</view>
+  <button class="secondary more-button" wx:if="{{hasMore && !error}}" bindtap="more" loading="{{loading}}" disabled="{{loading}}">加载更多</button>
+</view>
+<view class="edit-mask" wx:if="{{form}}" catchtouchmove="noop">
+  <view class="edit-panel">
+    <view class="edit-header"><view class="card-title">{{form.id ? '编辑公共小区' : '确认公共小区'}}</view><view class="description">地图选公共入口，自动填写资料；无需逐个添加东门、南门别名。</view></view>
+    <scroll-view scroll-y class="edit-scroll">
+      <view class="edit-content">
+        <button class="choose-button" bindtap="choose" loading="{{choosing}}" disabled="{{busy || choosing}}">{{form.latitude ? '重新选择公共入口 / 中心' : '地图选择公共入口 / 中心'}}</button>
+        <view class="description" wx:if="{{form.latitude}}">已选公共参考点：{{form.latitude}}, {{form.longitude}}</view>
+        <view class="field-label">小区名称</view><input class="field" placeholder="选择地图地点后自动填写" value="{{form.name}}" data-field="name" bindinput="input" maxlength="60" disabled="{{busy}}" />
+        <view class="field-label">城市</view><input class="field" placeholder="如深圳市" value="{{form.city}}" data-field="city" bindinput="input" maxlength="40" disabled="{{busy}}" />
+        <view class="field-label">行政区</view><input class="field" placeholder="如南山区" value="{{form.district}}" data-field="district" bindinput="input" maxlength="40" disabled="{{busy}}" />
+        <view class="advanced-trigger" bindtap="toggleAdvanced">{{advanced ? '收起更多设置 ⌃' : '更多设置：别名、匹配距离 ⌄'}}</view>
+        <block wx:if="{{advanced}}"><view class="field-label">同一个小区的其他叫法（可不填）</view><textarea class="field aliases" placeholder="如红瓦小区（华府大道二段），每行一个" value="{{form.aliasesText}}" data-field="aliasesText" bindinput="input" maxlength="1600" disabled="{{busy}}" /><view class="description">别名用于兼容旧订单地址，不是另建一个小区。下单直接选择小区后无需名称匹配；东西门通常无需单独填写。</view><view class="field-label">旧地址自动匹配距离（0.1～3公里）</view><input class="field" type="digit" value="{{form.matchRadiusKm}}" data-field="matchRadiusKm" bindinput="input" disabled="{{busy}}" /><view class="description">下单选小区支持服务地址附近3公里。别名与匹配距离调整不要求宠托师重新确认；名称、公共位置或启停变化需要重新确认。</view></block>
+        <view class="switch-line"><text>启用地图展示</text><switch checked="{{form.enabled}}" bindchange="toggleEnabled" color="#176b5b" disabled="{{busy}}" /></view>
+        <view class="consent" bindtap="confirm">{{form.confirmPublic ? '☑' : '☐'}} 已核验名称与坐标属于公共小区入口或中心</view>
+      </view>
+    </scroll-view>
+    <view class="edit-footer"><button class="secondary" bindtap="close" disabled="{{busy || choosing}}">取消</button><button class="primary" bindtap="save" disabled="{{busy || choosing || !form.confirmPublic}}" loading="{{busy}}">保存并自动匹配</button></view>
+  </view>
+</view>

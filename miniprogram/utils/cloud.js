@@ -178,6 +178,7 @@ function normalizeLocation(location) {
   return {
     name: source.name || source.locationName || '已选择位置',
     address: source.address || source.locationTip || '',
+    city: String(source.city || '').trim(),
     latitude,
     longitude,
     accuracy: Number(source.accuracy || 0),

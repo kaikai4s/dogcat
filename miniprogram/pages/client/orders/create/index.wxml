@@ -180,6 +180,32 @@
         </view>
       </view>
     </view>
+    <view class="order-community-box" wx:if="{{!groupBuyMode && form.publishMode === 'open' && locationReady}}">
+      <view class="strong">地图展示小区（选填）</view>
+      <view class="muted">选择服务地址附近3公里内的小区，让宠托师在该小区找到订单。地图只展示小区公共点，上门地址仍以你填写的地址为准。</view>
+      <picker mode="region" bindchange="changeCommunityCity" disabled="{{creating || communityApplicationBusy}}"><view class="order-community-city">{{form.city || '选择服务地址所在城市'}} ⌄</view></picker>
+      <view class="order-community-search"><input placeholder="搜索附近已维护的小区" value="{{communityKeyword}}" bindinput="inputCommunityKeyword" bindconfirm="searchOrderCommunities" maxlength="60" disabled="{{creating}}" /><button bindtap="searchOrderCommunities" loading="{{communityLoading}}" disabled="{{creating}}">搜索</button></view>
+      <view class="order-community-selected" wx:if="{{orderCommunity}}"><view class="order-community-copy"><view class="strong">已选：{{orderCommunity.name}}</view><view class="muted">{{orderCommunity.city}} {{orderCommunity.district}}</view></view><button bindtap="clearOrderCommunity" disabled="{{creating || communityApplicationBusy}}">取消选择</button></view>
+      <view class="order-community-status" wx:if="{{communityApplicationStatus}}">{{communityApplicationStatus}}<button bindtap="clearOrderCommunity" disabled="{{creating || communityApplicationBusy}}">取消关联</button></view>
+      <view class="muted" wx:if="{{communitySelectionNotice}}">{{communitySelectionNotice}}</view>
+      <scroll-view scroll-y class="order-community-list" style="height: {{orderCommunities.length > 2 ? 360 : orderCommunities.length * 160}}rpx" wx:if="{{orderCommunities.length}}">
+        <view class="order-community-option {{form.serviceCommunityId === item._id ? 'active' : ''}}" wx:for="{{orderCommunities}}" wx:key="_id" data-id="{{item._id}}" bindtap="chooseOrderCommunity">
+          <view class="order-community-copy"><view class="order-community-name">{{item.name}}</view><view class="muted">{{item.district}} · 距服务地址 {{item.distanceText}}</view></view><text class="order-community-check">{{form.serviceCommunityId === item._id ? '✓' : '○'}}</text>
+        </view>
+      </scroll-view>
+      <view class="muted" wx:if="{{communityLoading}}">正在查找附近小区…</view>
+      <view class="order-community-error" wx:elif="{{communityError}}">{{communityError}}<button bindtap="retryOrderCommunities" disabled="{{creating}}">重试</button></view>
+      <view class="muted" wx:elif="{{!orderCommunities.length}}">附近暂无符合搜索条件的小区，可以申请新增。</view>
+      <button class="order-community-more" wx:if="{{communityHasMore && !communityError}}" bindtap="moreOrderCommunities" disabled="{{creating || communityLoading}}">查看更多附近小区</button>
+      <view class="muted" wx:if="{{!orderCommunity && !communityApplicationStatus}}">未选择时仍可下单，系统按地址尝试匹配；未匹配的订单可在订单列表查看。</view>
+      <button class="order-community-apply" bindtap="toggleCommunityApplication" disabled="{{creating || communityApplicationBusy}}">{{showCommunityApplication ? '收起新增申请' : '找不到我的小区？申请新增'}}</button>
+      <view class="order-community-application" wx:if="{{showCommunityApplication}}">
+        <view class="muted">只填写小区公共名称及行政区，不要填写楼栋、门牌或电话。平台核验后维护公共入口或中心。</view>
+        <input placeholder="小区公共名称，如红瓦小区（华府大道二段）" value="{{communityApplicationName}}" data-field="communityApplicationName" bindinput="inputCommunityApplication" maxlength="60" disabled="{{creating || communityApplicationBusy}}" />
+        <input placeholder="所在区县（选填），如双流区" value="{{communityApplicationDistrict}}" data-field="communityApplicationDistrict" bindinput="inputCommunityApplication" maxlength="40" disabled="{{creating || communityApplicationBusy}}" />
+        <button class="order-community-apply" bindtap="applyOrderCommunity" loading="{{communityApplicationBusy}}" disabled="{{creating || communityApplicationBusy}}">提交新增申请</button>
+      </view>
+    </view>
     <input placeholder="详细地址（如 3栋2单元18楼）" value="{{form.addressDetail}}" data-field="addressDetail" bindinput="input" />
     <input placeholder="门牌号 / 入户说明（如 1802，门牌朝南）" value="{{form.doorplate}}" data-field="doorplate" bindinput="input" />
     <view class="save-row">

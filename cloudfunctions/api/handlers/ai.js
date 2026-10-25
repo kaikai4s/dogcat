@@ -12,6 +12,16 @@ module.exports = function createHandler(context) {
     readScopedDocuments,
     safeText
   } = context
+  const history = require('../utils/aiHistory')(context)
+
+  function getAiClient() {
+    // wx-server-sdk 4.x exposes AI on cloud.ai(), not the mini-program extension.
+    const client = typeof cloud.ai === 'function' ? cloud.ai() : cloud.extend && cloud.extend.AI
+    if (!client || typeof client.createModel !== 'function') {
+      throw new Error('AI 服务尚未就绪，请联系管理员更新 api 云函数及依赖')
+    }
+    return client
+  }
 
   const aiRequestTimestamps = new Map()
   function checkAiRateLimit(userOpenid, maxPerMinute = 10) {
@@ -27,20 +37,30 @@ module.exports = function createHandler(context) {
     aiRequestTimestamps.set(userOpenid, userTimestamps)
   }
 
-  return async function ai(openid, action, data) {
+  return async function ai(openid, action, data = {}) {
     await getUser(openid)
-    if (['aiPetAssistant', 'generatePetVoice'].includes(action)) {
+    if (action === 'listAiHistory') return history.list(openid, data.cursor)
+    if (action === 'generatePetVoice') {
       await checkRateLimit(openid, 'ai.model', { max: 10, windowMs: 60000, message: 'AI 咨询过于频繁，请稍后再试' })
     }
     if (action === 'aiPetAssistant') {
       const question = safeText(data.question).trim()
       if (!question) throw new Error('请填写咨询问题')
       if (question.length > 300) throw new Error('咨询问题不能超过 300 字')
+      const petId = safeText(data.petId).trim()
+      const requestId = data.clientRequestId || require('crypto').randomBytes(16).toString('hex')
+      if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(requestId)) throw new Error('问答请求标识无效')
+      const id = history.recordId(openid, requestId)
+      const saved = await history.find(openid, id)
+      if (saved) {
+        if (saved.question !== question || saved.petId !== petId) throw new Error('请重新发送新的问题')
+        return history.publicRecord(saved)
+      }
+      await checkRateLimit(openid, 'ai.model', { max: 10, windowMs: 60000, message: 'AI 咨询过于频繁，请稍后再试' })
       checkAiRateLimit(openid, 10)
       if (typeof checkTextSecurity === 'function') {
         await checkTextSecurity(openid, question, { scene: 2, label: 'AI提问内容' })
       }
-      const petId = safeText(data.petId).trim()
       let petInfo = ''
       if (petId) {
         const petRes = await db.collection('pets').doc(petId).get().catch(() => null)
@@ -50,13 +70,14 @@ module.exports = function createHandler(context) {
       }
 
       let answer = ''
-      // 直接调用微信云开发内置的 hy3-preview 大模型
-      if (!cloud.extend || !cloud.extend.AI || typeof cloud.extend.AI.createModel !== 'function') throw new Error('AI 服务暂不可用，请稍后重试')
-      const model = cloud.extend.AI.createModel('hunyuan')
+      // hy3 is served through CloudBase's model gateway, not the legacy Hunyuan route.
+      const model = getAiClient().createModel('cloudbase')
+      const previousMessages = await history.recentMessages(openid, petId)
       const res = await model.generateText({
         model: 'hy3',
         messages: [
           { role: 'system', content: `你是 Dovelin 多芙琳宠物上门服务的AI助手，提供日常养宠和服务咨询信息。不自称兽医，不提供诊断或用药处方，紧急情况建议联系专业兽医。${petInfo}` },
+          ...previousMessages,
           { role: 'user', content: question }
         ]
       })
@@ -74,12 +95,18 @@ module.exports = function createHandler(context) {
         await checkTextSecurity(openid, answer, { scene: 2, label: 'AI回答内容' })
       }
 
-      return {
+      const record = await history.save({
+        _id: id,
+        openid,
+        petId,
+        clientRequestId: requestId,
         question,
         answer,
-        generatedAt: nowText(),
-        source: 'hy3-preview'
-      }
+        createdAt: nowText(),
+        createdAtMs: Date.now(),
+        source: 'hy3'
+      })
+      return history.publicRecord(record)
     }
 
     if (action === 'aiGenerateReport') {
@@ -182,14 +209,9 @@ ${order.completedAt ? `订单完成时间：${safeText(order.completedAt)}\n` : 
       let source = 'preset'
 
       try {
-        const aiExt = cloud.extend && cloud.extend.AI ? cloud.extend.AI : null
+        const aiExt = getAiClient()
         if (aiExt) {
-          let modelInstance
-          try {
-            modelInstance = aiExt.createModel('cloudbase')
-          } catch (_) {
-            modelInstance = aiExt.createModel('hunyuan')
-          }
+          const modelInstance = aiExt.createModel('cloudbase')
           if (modelInstance && typeof modelInstance.generateText === 'function') {
             const petProfile = `【宠物资料】昵称：${name}，种类：${speciesLabel}${breed ? `，品种：${breed}` : ''}${personality ? `，性格：${personality}` : ''}${specialNotes ? `，习惯特质：${specialNotes}` : ''}`
             const res = await modelInstance.generateText({

@@ -4,7 +4,7 @@ const { applyTheme, getThemeState } = require('../../../utils/theme')
 const { loadMessageUnread } = require('../../../utils/client-nav')
 
 function hasCoordinate(latitude, longitude) {
-  return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && Math.abs(Number(latitude)) > 0.000001 && Math.abs(Number(longitude)) > 0.000001
+  return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && Math.abs(Number(latitude)) > 0.000001 && Math.abs(Number(longitude)) > 0.000001 && Math.abs(Number(latitude)) <= 85 && Math.abs(Number(longitude)) <= 180
 }
 
 function calcDistanceKm(lat1, lng1, lat2, lng2) {
@@ -86,7 +86,27 @@ function applyOrderFlags(orders, radiusKm) {
 
 Page({
   openCommunityMap() {
-    wx.navigateTo({ url: '/pages/common/community-map/index?mode=orders&city=' + encodeURIComponent(this.data.selectedCity || '') + '&date=' + (this.data.filterDate || '') + '&kind=' + (this.data.grabTab === 'urgent' ? 'urgent' : 'normal') })
+    const location = this.data.currentWorkbenchLocation || this.data.customLocation
+    wx.navigateTo({ url: '/pages/common/community-map/index?mode=orders&city=' + encodeURIComponent(this.data.selectedCity || '') + '&date=' + (this.data.filterDate || '') + '&kind=' + (this.data.grabTab === 'urgent' ? 'urgent' : 'normal')
+      + '&inServiceRange=' + (this.data.inServiceRange ? '1' : '0') + '&inServiceTime=' + (this.data.inServiceTime ? '1' : '0'),
+    events: {
+      communityMapReferenceChanged: context => {
+        if (this._closed) return
+        const point = context?.reference
+        if (!hasCoordinate(point?.latitude, point?.longitude)) return
+        const location = { latitude: Number(point.latitude), longitude: Number(point.longitude), name: '地图选定位置', city: context.city || this.data.selectedCity }
+        this.cityManuallySelected = true
+        this.invalidateNearby()
+        this.lastWorkbenchLocationUpdatedAt = 0
+        this.setData({ customLocation: location, currentWorkbenchLocation: location, selectedCity: location.city,
+          locationText: formatWorkbenchLocationText('工作台位置', location), loadingNearby: false })
+      }
+    },
+    success: res => {
+      if (hasCoordinate(location?.latitude, location?.longitude)) res.eventChannel?.emit('communityMapContext', {
+        reference: { latitude: Number(location.latitude), longitude: Number(location.longitude) }
+      })
+    } })
   },
   data: {
     themeClass: 'theme-day',
@@ -98,7 +118,7 @@ Page({
     nearbyPageSize: 10,
     nearbyHasMore: true,
     locationReady: false,
-    locationText: '尚未获取当前位置',
+    locationText: '尚未设置参考位置',
     loadingNearby: false,
     contentLoaded: false,
     missingAddressNotice: false,
@@ -137,14 +157,26 @@ Page({
     loadMessageUnread(this, 'staff')
     const justUpdatedWorkbenchLocation = this.lastWorkbenchLocationUpdatedAt && Date.now() - this.lastWorkbenchLocationUpdatedAt < 10000
     if (this.choosingWorkbenchLocation || justUpdatedWorkbenchLocation) return
-    // 每次进入页面，工作台位置默认重置为宠托师个人中心的固定服务地址
-    this.setData({ customLocation: null }, () => {
-      this.initStaffHome()
-    })
+    // 从地图或详情返回时保留本次工作台选址。
+    this.initStaffHome()
   },
 
   onReachBottom() {
     this.loadMoreNearby()
+  },
+
+  onUnload() {
+    this._closed = true
+    this._workbenchChoice = null
+    this._homeSeq = (this._homeSeq || 0) + 1
+    this.invalidateNearby()
+  },
+
+  invalidateNearby() {
+    this._nearbySeq = (this._nearbySeq || 0) + 1
+    this._nearbyRequestKey = null
+    this._nearbyPromise = null
+    this.setData({ loadingNearby: false })
   },
 
   applyCurrentTheme() {
@@ -153,8 +185,11 @@ Page({
   },
 
   initStaffHome() {
-    callFunction('staff', 'getStaffProfile')
+    const seq = this._homeSeq = (this._homeSeq || 0) + 1
+    this.invalidateNearby()
+    return callFunction('staff', 'getStaffProfile')
       .then((profile) => {
+        if (this._closed || seq !== this._homeSeq) return
         if (!profile || profile.auditStatus !== 'approved') {
           wx.showToast({ title: '未通过宠托师认证，不可进入宠托师端', icon: 'none' })
           setTimeout(() => {
@@ -199,17 +234,18 @@ Page({
         }
 
         if (location) {
-          this.loadNearby(location, locationTag)
+          return this.loadNearby(location, locationTag)
         } else {
-          this.loadNearby({ latitude: 0, longitude: 0, name: '当前城市' }, '城市推荐')
+          return this.loadNearby({ latitude: 0, longitude: 0, name: '当前城市' }, '城市推荐')
         }
       })
       .catch(() => {
+        if (this._closed || seq !== this._homeSeq) return
         const location = this.data.customLocation || getSelectedLocation()
         if (location) {
-          this.loadNearby(location, '选定位置')
+          return this.loadNearby(location, '选定位置')
         } else {
-          this.loadNearby({ latitude: 0, longitude: 0, name: '默认位置' }, '城市推荐')
+          return this.loadNearby({ latitude: 0, longitude: 0, name: '默认位置' }, '城市推荐')
         }
       })
   },
@@ -301,44 +337,56 @@ Page({
   },
 
   reFetchOrders() {
+    this._homeSeq = (this._homeSeq || 0) + 1
+    this.invalidateNearby()
     // 重新获取订单：如果有手动更新的工作台位置，保持当前工作台位置；否则重新初始化
     if (this.data.customLocation) {
-      this.loadNearby(this.data.customLocation, '工作台位置')
+      return this.loadNearby(this.data.customLocation, '工作台位置')
     } else {
-      this.initStaffHome()
+      return this.initStaffHome()
     }
   },
 
   loadNearbyWithSavedLocation() {
     const location = getSelectedLocation()
     if (!location) {
-      this.setData({ directOrders: [], nearbyOrders: [], locationReady: false, locationText: '请先选择服务位置' })
+      this.invalidateNearby()
+      this.setData({ directOrders: [], nearbyOrders: [], urgentOrders: [], currentWorkbenchLocation: null, nearbyHasMore: false, locationReady: false, locationText: '请先选择服务位置' })
       return
     }
     this.loadNearby(location, '已推荐订单')
   },
 
   refreshNearby() {
+    if (this._closed || this.choosingWorkbenchLocation) return
+    const choice = this._workbenchChoice = {}
     this.choosingWorkbenchLocation = true
-    requirePrivacyAuthorize()
-      .then(() => new Promise((resolve, reject) => {
-        wx.chooseLocation({
-          success: resolve,
-          fail: reject
+    const initial = this.data.currentWorkbenchLocation || this.data.customLocation
+    return requirePrivacyAuthorize()
+      .then(() => {
+        if (this._closed || this._workbenchChoice !== choice) return null
+        return new Promise((resolve, reject) => {
+          wx.chooseLocation({
+            ...(hasCoordinate(initial?.latitude, initial?.longitude) ? { latitude: Number(initial.latitude), longitude: Number(initial.longitude) } : {}),
+            success: resolve,
+            fail: reject
+          })
         })
-      }))
+      })
       .then((rawLocation) => {
+        if (this._closed || this._workbenchChoice !== choice || !rawLocation) return
         this.choosingWorkbenchLocation = false
-        this.lastWorkbenchLocationUpdatedAt = Date.now()
         const location = {
           name: rawLocation.name || rawLocation.address || '工作台位置',
           address: rawLocation.address || rawLocation.name || '',
+          city: rawLocation.city || '',
           latitude: Number(rawLocation.latitude || 0),
           longitude: Number(rawLocation.longitude || 0),
           accuracy: Number(rawLocation.accuracy || 0),
           updatedAt: Date.now()
         }
         if (!hasCoordinate(location.latitude, location.longitude)) throw new Error('位置信息无效')
+        this.lastWorkbenchLocationUpdatedAt = Date.now()
         const locationCity = getLocationCity(location)
         const updates = {
           customLocation: location,
@@ -349,13 +397,15 @@ Page({
           updates.selectedCity = locationCity
           this.cityManuallySelected = true
         }
-        this.setData(updates, () => {
-          this.loadNearby(location, '更新后位置', true)
-        })
+        this.setData(updates)
+        return this.loadNearby(location, '更新后位置', true)
       })
       .catch((error) => {
-        this.choosingWorkbenchLocation = false
-        showError(error)
+        if (this._closed || this._workbenchChoice !== choice) return
+        if (!/cancel/i.test(error?.errMsg || error?.message || '')) showError(error)
+      })
+      .finally(() => {
+        if (this._workbenchChoice === choice) { this._workbenchChoice = null; this.choosingWorkbenchLocation = false }
       })
   },
 
@@ -383,19 +433,22 @@ Page({
   },
 
   loadNearby(location, locationText, force = false) {
-    if (this.data.loadingNearby && !force) return
+    if (this._closed) return
     const data = this.getNearbyRequestData(location, 1)
+    const requestKey = JSON.stringify(data)
+    if (!force && this._nearbyPromise && requestKey === this._nearbyRequestKey) return this._nearbyPromise
+    this._homeSeq = (this._homeSeq || 0) + 1
+    const seq = this._nearbySeq = (this._nearbySeq || 0) + 1
+    this._nearbyRequestKey = requestKey
     this.setData({ loadingNearby: true, nearbyPage: 1, nearbyHasMore: true })
 
-    // 静默尝试更新宠托师当前定位，不阻断订单列表与距离重算的加载
-    callFunction('staff', 'updateCurrentLocation', data).catch(() => {})
-
-    Promise.all([
+    this._nearbyPromise = Promise.all([
       callFunction('staff', 'listDirectOrders', data),
       callFunction('staff', 'listNearbyOrders', data),
       callFunction('staff', 'listUrgentOrders', data).catch(() => [])
     ])
       .then(([directResult, nearbyResult, urgentResult]) => {
+        if (this._closed || seq !== this._nearbySeq) return
         const directPage = pageList(directResult)
         const nearbyPage = pageList(nearbyResult)
         const urgentPage = pageList(urgentResult)
@@ -416,6 +469,7 @@ Page({
         })
       })
       .catch((error) => {
+        if (this._closed || seq !== this._nearbySeq) return
         this.setData({ loadingNearby: false })
         const msg = (error && error.message) || String(error || '')
         if (msg.includes('保证金')) {
@@ -435,7 +489,10 @@ Page({
           return
         }
         showError(error)
+      }).finally(() => {
+        if (seq === this._nearbySeq) { this._nearbyPromise = null; this._nearbyRequestKey = null }
       })
+    return this._nearbyPromise
   },
 
   switchGrabTab(e) {
@@ -444,24 +501,27 @@ Page({
   },
 
   loadMoreNearby() {
-    if (!this.data.nearbyHasMore || this.data.loadingNearby) return
+    if (this._closed || !this.data.nearbyHasMore || this.data.loadingNearby) return
     const location = this.data.currentWorkbenchLocation || this.data.customLocation
     if (!location) return
     const page = this.data.nearbyPage + 1
     const data = this.getNearbyRequestData(location, page)
+    const seq = this._nearbySeq
     this.setData({ loadingNearby: true })
-    callFunction('staff', 'listNearbyOrders', data)
+    return callFunction('staff', 'listNearbyOrders', data)
       .then((result) => {
+        if (seq !== this._nearbySeq) return
         const nearbyPage = pageList(result)
         const recalculatedNearbyOrders = this.normalizeNearbyOrders(nearbyPage.list, location)
         this.setData({
-          nearbyOrders: this.data.nearbyOrders.concat(recalculatedNearbyOrders),
+          nearbyOrders: [...new Map(this.data.nearbyOrders.concat(recalculatedNearbyOrders).map(order => [order._id, order])).values()],
           nearbyPage: nearbyPage.page,
           nearbyHasMore: nearbyPage.hasMore,
           loadingNearby: false
         })
       })
       .catch((error) => {
+        if (seq !== this._nearbySeq) return
         this.setData({ loadingNearby: false })
         showError(error)
       })

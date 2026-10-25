@@ -153,7 +153,7 @@ module.exports = function createService({
   async function cleanupUserPersonalData(targetOpenid) {
     const cleanup = {}
     const openidWhere = { openid: targetOpenid }
-    for (const name of ['pets', 'user_addresses', 'home_security', 'sitter_favorites', 'user_coupons', 'reward_mails', 'user_checkins', 'retro_card_logs', 'point_logs', 'lottery_records']) {
+    for (const name of ['pets', 'user_addresses', 'home_security', 'sitter_favorites', 'user_coupons', 'reward_mails', 'user_checkins', 'retro_card_logs', 'point_logs', 'lottery_records', 'ai_chat_records']) {
       cleanup[name] = await removeByQuery(name, openidWhere)
     }
     cleanup.userInvitesAsInviter = await removeByQuery('user_invites', { inviterOpenid: targetOpenid })

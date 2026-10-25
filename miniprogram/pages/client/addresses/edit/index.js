@@ -2,6 +2,12 @@ const { callFunction, showError } = require('../../../../utils/cloud')
 const { createPageNav, navMethods } = require('../../../../utils/nav')
 const { chooseSelectedLocation } = require('../../../../utils/cloud')
 const { ensureLogin } = require('../../../../utils/cloud')
+function locationCity(point = {}) {
+  if (point.city) return String(point.city).trim()
+  const text = `${point.address || ''}${point.name || ''}`
+  return text.match(/北京市|上海市|天津市|重庆市|香港特别行政区|澳门特别行政区/)?.[0] ||
+    text.match(/(?:.*省|.*自治区)?([^省自治区特别行政区]{2,20}市|[^省自治区特别行政区]{2,20}自治州|[^省自治区特别行政区]{2,20}地区|[^省自治区特别行政区]{2,20}盟)/)?.[1] || ''
+}
 
 Page({
   data: {
@@ -14,6 +20,7 @@ Page({
       contactName: '',
       contactPhone: '',
       serviceAddress: '',
+      city: '',
       addressDetail: '',
       doorplate: '',
       latitude: 0,
@@ -39,12 +46,14 @@ Page({
   },
 
   load(id) {
-    callFunction('client', 'listAddresses')
+    const seq = this._locationSeq = (this._locationSeq || 0) + 1
+    return callFunction('client', 'listAddresses')
       .then((addresses) => {
+        if (this._closed || seq !== this._locationSeq) return
         const address = addresses.find((item) => item._id === id)
         if (address) this.setData({ form: { ...this.data.form, ...address } })
       })
-      .catch(showError)
+      .catch(error => { if (!this._closed && seq === this._locationSeq) showError(error) })
   },
 
   prepareNewAddressDefault() {
@@ -64,16 +73,22 @@ Page({
   },
 
   chooseLocation() {
-    chooseSelectedLocation()
+    if (this._closed) return
+    const seq = this._locationSeq = (this._locationSeq || 0) + 1
+    return chooseSelectedLocation()
       .then((loc) => {
+        if (this._closed || seq !== this._locationSeq) return
         this.setData({
           ['form.serviceAddress']: loc.name || loc.address || '',
+          ['form.city']: locationCity(loc),
           ['form.latitude']: loc.latitude,
           ['form.longitude']: loc.longitude
         })
       })
-      .catch(showError)
+      .catch(error => { if (!this._closed && seq === this._locationSeq) showError(error) })
   },
+
+  onUnload() { this._closed = true; this._locationSeq = (this._locationSeq || 0) + 1 },
 
   save() {
     const form = this.data.form

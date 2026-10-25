@@ -1,5 +1,6 @@
 const { requireStaffGender, normalizeStaffGenderRequirement, matchesStaffGender, assertStaffGenderMatches, isStaffProfileLocked } = require('../utils/staffGender')
 const { CARD_STYLE_FIELDS, validateCardStyleUpdate } = require('../utils/profileCardStyle')
+const { mapRefreshIds, visibleMapRows, mapConcurrent } = require('../utils/mapCards')
 
 module.exports = function createHandler(context) {
   const {
@@ -94,6 +95,13 @@ module.exports = function createHandler(context) {
     maskIdCard,
     verifyTelecomThreeElements
   } = context
+  function nearbyReference(data, profile) {
+    // Explicitly absent reference coordinates must not resurrect an old GPS fix.
+    const supplied = data.latitude !== undefined || data.longitude !== undefined
+    const latitude = Number(supplied ? data.latitude : profile.currentLatitude)
+    const longitude = Number(supplied ? data.longitude : profile.currentLongitude)
+    return hasCoordinate(latitude, longitude) ? { latitude, longitude } : { latitude: 0, longitude: 0 }
+  }
   async function readAll(collectionName, where = {}, maxLimit = 2000) {
     const rows = []
     let cursor = ''
@@ -173,11 +181,12 @@ module.exports = function createHandler(context) {
       return { state: order.status === 'paid' && !order.staffOpenid && (order.publishMode === 'open' || order.requestedStaffOpenid === openid) ? 'available' : 'unavailable' }
     }
     if (action === 'listOrderMap') {
+      const refreshIds = mapRefreshIds(data.refreshIds)
       const city = String(data.city || '').trim().slice(0, 40)
       if (!city) throw new Error('请先选择城市')
       await checkRateLimit(openid, 'communityMap.orders', { max: 40 })
-      const orders = await staff(openid, 'listNearbyOrders', { ...data, city }, { map: true })
       const rows = await context.readMapCommunities(city)
+      const orders = await staff(openid, 'listNearbyOrders', { ...data, city }, { map: true, communities: rows })
       const nodes = new Map(rows.map(row => [row._id, { ...context.publicCommunity(row), count: 0, urgentCount: 0 }]))
       const accepted = [], unknown = []
       for (const order of orders) {
@@ -207,18 +216,20 @@ module.exports = function createHandler(context) {
         if (start < 0) start = accepted.length
       }
       const pageRows = accepted.slice(start, start + size)
-      const list = pageRows.map(order => ({
+      const toMapOrder = order => ({
         _id: order._id, serviceSummary: order.isGroupBuyBundle ? '同小区多户照护' : order.serviceSummary || '', petSummary: order.petSummary || order.petName || '',
         startTime: order.startTime || '', endTime: order.endTime || '', sessionCount: order.sessionCount || 1,
         durationMinutes: order.durationMinutes || 0, isUrgent: !!(order.isUrgent || order.assignmentSource === 'admin_urgent_republish'),
         staffEarningText: `¥${(Number(order.staffEarning) || 0).toFixed(2)}`, isGroupBuyBundle: !!order.isGroupBuyBundle, householdCount: order.householdCount || 1,
         inRange: order.inRange, inTime: order.inTime
-      }))
+      })
+      const list = pageRows.map(toMapOrder)
       const hasMore = start + pageRows.length < accepted.length
       const last = pageRows[pageRows.length - 1]
       return { communities: [...nodes.values()].filter(row => row.count), list, page, total: accepted.length,
         hasMore, nextCursor: hasMore && last ? `${encodeURIComponent(last.startTime || '')}|${last._id}` : '',
-        unmatchedCount: unknown.length, generatedAt: now() }
+        unmatchedCount: unknown.length, generatedAt: now(),
+        ...(refreshIds ? { visibleList: visibleMapRows(accepted, refreshIds).map(toMapOrder) } : {}) }
     }
     if (action === 'listApprovedSitters') {
       const staffGenderRequirement = normalizeStaffGenderRequirement(data.staffGenderRequirement)
@@ -1063,8 +1074,7 @@ module.exports = function createHandler(context) {
       const settings = await getSystemSettings()
       const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
       if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可查看可接订单')
-      const latitude = Number(data.latitude || profile.currentLatitude || 0)
-      const longitude = Number(data.longitude || profile.currentLongitude || 0)
+      const { latitude, longitude } = nearbyReference(data, profile)
 
       const filterCity = data.city ? String(data.city).trim() : ''
       const inServiceRange = Boolean(data.inServiceRange)
@@ -1124,8 +1134,9 @@ module.exports = function createHandler(context) {
       const scheduleExceptions = candidates.length
         ? await readAll('staff_schedule_exceptions', { staffOpenid: openid })
         : []
-      const mapCommunities = internal.map ? await context.readMapCommunities(filterCity) : []
-      let orders = await Promise.all(candidates.map(async (order) => {
+      const mapCommunities = internal.map ? internal.communities || await context.readMapCommunities(filterCity) : []
+      const matchCommunity = internal.map ? context.createCommunityMatcher(mapCommunities).match : null
+      const enrichCandidate = async (order) => {
         const enriched = await attachOrderDisplayData(order)
         let distanceKm = null
         if (hasCoordinate(latitude, longitude) && hasCoordinate(enriched.addressLatitude, enriched.addressLongitude)) {
@@ -1141,7 +1152,7 @@ module.exports = function createHandler(context) {
           staffEarningText: `¥${earning.earningAmount.toFixed(2)}`
         }
         if (internal.map) {
-          const community = context.matchMapCommunity(enriched, mapCommunities)
+          const community = matchCommunity(enriched)
           result.mapCommunityId = community ? community._id : ''
         }
         if (order.groupBuyId) {
@@ -1150,7 +1161,8 @@ module.exports = function createHandler(context) {
         result.inRange = isOrderInRange(result)
         result.inTime = await isOrderInTime(result, scheduleExceptions)
         return result
-      }))
+      }
+      let orders = internal.map ? await mapConcurrent(candidates, enrichCandidate) : await Promise.all(candidates.map(enrichCandidate))
 
       // 3. 服务范围与时间筛选需在分页前执行，避免当前页被前端过滤后为空
       if (inServiceRange) orders = orders.filter((order) => order.inRange)
@@ -1236,8 +1248,7 @@ module.exports = function createHandler(context) {
       const settings = await getSystemSettings()
       const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
       if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可查看指定订单')
-      const latitude = Number(data.latitude || profile.currentLatitude || 0)
-      const longitude = Number(data.longitude || profile.currentLongitude || 0)
+      const { latitude, longitude } = nearbyReference(data, profile)
       await expireDueUnacceptedOrders()
       if (typeof autoAcceptDueDirectOrders === 'function') await autoAcceptDueDirectOrders()
       const directCandidates = await readAll('orders', { status: 'paid', requestedStaffOpenid: openid })
@@ -1265,8 +1276,7 @@ module.exports = function createHandler(context) {
       const settings = await getSystemSettings()
       const ability = validateStaffTakeOrderAbility(profile, settings.staffDeposit)
       if (!ability.can) throw new Error(ability.message || '完成培训和视频审核成为实习宠托师后方可查看加急订单')
-      const latitude = Number(data.latitude || profile.currentLatitude || 0)
-      const longitude = Number(data.longitude || profile.currentLongitude || 0)
+      const { latitude, longitude } = nearbyReference(data, profile)
       await expireDueUnacceptedOrders()
 
       // 仅检索标记为加急或后台转加急重派的待接订单，避免对全平台所有普通 paid 订单做全表扫描

@@ -10,7 +10,8 @@ function load(file, deps = {}, wxExtra = {}) {
   const calls = [], timers = new Map()
   const defaults = { envList: [{ envId: 'test' }], startStaffEntryUnread() {}, loadMessageUnread() {}, loginWithWechat: async data => { calls.push(['login', data]); return { _id: 'u' } },
     callFunction: async (name, action, data) => { calls.push([action, data]); return { _id: 'u' } },
-    ensureLogin: async () => ({ _id: 'u' }), showError() {}, setCachedUser() {}, navMethods: () => ({}), ...deps }
+    ensureLogin: async () => ({ _id: 'u' }), getCachedUser: () => ({ _id: 'u' }), getCloudEnv: () => 'test', subscribeIdentityChange: () => () => {},
+    showError() {}, setCachedUser() {}, navMethods: () => ({}), ...deps }
   vm.runInNewContext(fs.readFileSync(path.join(root, file), 'utf8'), {
     Page: config => { page = config }, Component: config => { page = config },
     require: () => defaults, getApp: () => ({ globalData: {} }),

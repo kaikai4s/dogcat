@@ -267,15 +267,19 @@ button.refresh-btn::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12rpx;
 }
 
 .section-title-group {
   display: flex;
   align-items: center;
   gap: 10rpx;
+  flex: 1;
+  min-width: 0;
 }
 
 .title-icon {
+  flex-shrink: 0;
   color: #e9672f;
   font-size: 34rpx;
 }
@@ -284,13 +288,26 @@ button.refresh-btn::after {
   color: #2d211a;
   font-size: 32rpx;
   font-weight: 950;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .head-right {
   display: flex;
   align-items: center;
   gap: 12rpx;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
+
+.map-entry-row { display: flex; align-items: center; gap: 16rpx; margin-top: 18rpx; padding-top: 18rpx; border-top: 1rpx solid #f4e9dd; }
+.workbench-location { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8rpx; color: #8e8580; font-size: 23rpx; }
+.workbench-location .remix-icon { flex-shrink: 0; color: #d45f22; }
+.workbench-location-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.staff-home-page .map-entry-button { flex: 0 0 auto; width: auto; min-width: 0; margin: 0; padding: 14rpx 18rpx; border-radius: 18rpx; background: #fff0e2; color: #d45f22; font-size: 24rpx; line-height: 1.4; white-space: nowrap; box-shadow: none; letter-spacing: 0; }
+.staff-home-page .map-entry-button::after { border: 0; }
 
 .count-badge {
   padding: 6rpx 16rpx;

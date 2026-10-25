@@ -23,8 +23,11 @@ test('setupDatabase: initializes data without granting administrator identity', 
 
   assert.equal(res.ok, true)
   assert.equal(res.data.success, true)
-  assert.equal(res.data.totalCollections, 97)
-  assert.equal(res.data.totalIndexesConfigured, 57)
+  assert.equal(res.data.totalCollections, 98)
+  assert.equal(res.data.totalIndexesConfigured, 64)
+  for (const name of ['idx_map_admin_city', 'idx_map_candidates_staff', 'idx_map_candidates_orders', 'idx_map_application_city', 'idx_map_application_pending']) assert.ok(res.data.indexResults.some(index => index.name === name))
+  assert.ok(res.data.indexResults.some(index => index.collection === 'ai_chat_records' && index.name === 'idx_ai_history_owner_time'))
+  assert.ok(res.data.indexResults.some(index => index.collection === 'ai_chat_records' && index.name === 'idx_ai_history_pet_time'))
   assert.ok(res.data.pricesInitialized > 0)
   assert.ok(res.data.checkinRulesInitialized > 0)
   assert.equal(res.data.settingsInitialized, true)
@@ -50,6 +53,7 @@ test('setupDatabase: initializes data without granting administrator identity', 
   assert.ok(Array.isArray(db.state.pet_playground_disputes))
   assert.ok(Array.isArray(db.state.pet_playground_accidents))
   assert.ok(Array.isArray(db.state.pet_playground_jail))
+  assert.ok(Array.isArray(db.state.ai_chat_records))
 })
 
 test('bootstrap fails closed without configured secret before any initialization', async (t) => {

@@ -125,7 +125,6 @@
         <text class="remix-icon ri-radar-line title-icon"></text>
         <text class="section-title">附近可接订单</text>
       </view>
-      <button class="ghost-btn" bindtap="openCommunityMap">小区地图 ↗</button>
       <view class="head-right">
         <view class="filter-trigger-btn {{inServiceRange || inServiceTime || filterDate ? 'active' : ''}}" bindtap="toggleFilterPanel">
           <text class="remix-icon ri-filter-3-line filter-icon"></text>
@@ -135,7 +134,10 @@
         <view class="count-badge">{{nearbyOrders.length}} 单</view>
       </view>
     </view>
-    <view class="section-sub">{{locationText}}</view>
+    <view class="map-entry-row">
+      <view class="workbench-location" bindtap="refreshNearby"><text class="remix-icon ri-map-pin-line"></text><text class="workbench-location-text">{{locationText}}</text></view>
+      <button class="map-entry-button" bindtap="openCommunityMap">小区地图 ↗</button>
+    </view>
 
     <!-- 下拉筛选面板 -->
     <view class="filter-dropdown-panel" wx:if="{{showFilterPanel}}">

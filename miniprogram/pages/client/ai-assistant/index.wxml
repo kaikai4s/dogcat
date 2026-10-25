@@ -16,10 +16,20 @@
   </view>
 
   <view class="chat-list">
-    <block wx:for="{{messages}}" wx:key="index">
+    <view class="history-controls">
+      <text wx:if="{{historyLoading}}">正在加载历史记录…</text>
+      <button wx:elif="{{historyCursor && !historyError}}" bindtap="loadOlder" disabled="{{loading}}">查看更早记录</button>
+      <text wx:elif="{{historyLoaded && messages.length > 1 && !historyError}}">已显示全部记录</text>
+      <view wx:if="{{historyError}}" class="history-error">
+        <text>{{historyError}}</text>
+        <button bindtap="retryHistory" disabled="{{loading || historyLoading}}">重新加载</button>
+      </view>
+    </view>
+    <block wx:for="{{messages}}" wx:key="id">
       <view class="chat-item {{item.role}}">
+        <text class="chat-time" wx:if="{{item.time}}">{{item.time}}</text>
         <view class="chat-msg {{item.role}}">
-          <text selectable="{{true}}">{{item.content}}</text>
+          <text selectable="{{true}}">{{item.pending ? '正在思考…' : item.content}}</text>
         </view>
         <view class="ai-msg-tip" wx:if="{{item.role === 'ai' && item.content}}">
           <text class="remix-icon ri-sparkling-fill"></text>
@@ -33,7 +43,7 @@
   <view class="input-wrap">
     <view class="input-row">
       <input class="ai-input" placeholder="请输入养宠或服务咨询问题..." placeholder-class="ai-input-ph" value="{{inputText}}" bindinput="onInput" bindconfirm="send" confirm-type="send" />
-      <button class="send-btn" loading="{{loading}}" bindtap="send">
+      <button class="send-btn" loading="{{loading}}" disabled="{{loading || historyLoading}}" bindtap="send">
         <text wx:if="{{!loading}}" class="remix-icon ri-send-plane-fill"></text>
         <text>{{loading ? '发送中' : '发送'}}</text>
       </button>

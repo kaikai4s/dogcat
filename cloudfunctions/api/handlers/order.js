@@ -256,11 +256,14 @@ module.exports = function createHandler(context) {
       const checkinRequirements = await resolveCheckinRequirements(pricing.serviceTypes)
       const memberLevels = await getMemberLevels()
       const order = { orderNo: `O${Date.now()}${Math.floor(Math.random() * 1000)}`, clientRequestId, idempotencyKey: clientRequestId || '', clientUserId: user._id, clientOpenid: openid, clientSnapshot: createClientSnapshot(user, memberLevels), contactPhone: safeText(user.phone).trim(), staffUserId: '', staffOpenid: '', staffProfileId: '', ...requestedStaff, distanceFromSitterKm: directDistanceKm, assignmentSource: '', sourceOrderId: data.sourceOrderId || '', petId: primaryPet._id || petIds[0], petIds, petName: petSummary, petNames, petSnapshot: petSnapshots[0], petSnapshots, petSummary, ...orderVaccineSummary, serviceType: pricing.primaryServiceType || pricing.businessServiceTypes[0], serviceTypes: pricing.serviceTypes, serviceLabels: pricing.serviceLabels, serviceSummary: pricing.serviceSummary, city: data.city || '', serviceAddress: data.serviceAddress || '', addressDetail: data.addressDetail || '', doorplate: data.doorplate || '', addressLatitude, addressLongitude, orderType: pricing.orderType, serviceStartDate: serviceSessions[0].date, serviceEndDate: serviceSessions[serviceSessions.length - 1].date, sessionCount: serviceSessions.length, serviceSessions, startTime: serviceSessions[0].startTime, endTime: serviceSessions[serviceSessions.length - 1].endTime, durationMinutes: pricing.durationMinutes, petServiceDurations: pricing.petServiceDurations, amount: pricing.amount, discountAmount: pricing.discountAmount || 0, payAmount: pricing.payAmount, couponId: pricing.coupon ? pricing.coupon.couponId : '', couponTemplateId: pricing.coupon ? pricing.coupon.templateId : '', couponName: pricing.coupon ? pricing.coupon.name : '', couponSnapshot: pricing.coupon ? pricing.coupon.snapshot : null, priceSnapshot: pricing.priceSnapshot, paymentStatus: 'unpaid', status: 'pending_pay', isUrgent: false, checkinRequirements, requiredCheckins: checkinRequirements.filter((item) => item.required).map((item) => item.eventType), optionalCheckins: checkinRequirements.filter((item) => !item.required).map((item) => item.eventType), homeSecuritySnapshot: toPublicHomeSecuritySnapshot(homeSecurity), orderHomeSecurity: homeSecurity, lockMethod: homeSecurity.lockMethod, hasDoorLockCode: homeSecurity.hasDoorLockCode, insurancePolicyNo: '', cancelReason: '', refundStatus: '', refundAmount: 0, createdAt: time, updatedAt: time }
-      Object.assign(order, await context.resolveOrderCommunity(order))
+      Object.assign(order, await context.resolveOrderCommunity({ ...order,
+        ...(!groupPrepared && order.publishMode === 'open' ? { serviceCommunityId: data.serviceCommunityId,
+          serviceCommunityApplicationId: data.serviceCommunityApplicationId } : {}) }))
       let savedAddress = null
       if (data.saveAddress === true) {
         savedAddress = await saveUserAddress(openid, user, {
           label: data.addressLabel || '预约地址',
+          city: order.city,
           serviceAddress: data.serviceAddress,
           addressDetail: data.addressDetail,
           doorplate: data.doorplate,
@@ -501,6 +504,7 @@ module.exports = function createHandler(context) {
         serviceType: order.serviceType,
         serviceTypes: order.serviceTypes || [order.serviceType],
         serviceAddress: order.serviceAddress || '',
+        city: order.city || '',
         addressDetail: order.addressDetail || '',
         doorplate: order.doorplate || '',
         addressLatitude: Number(order.addressLatitude || 0),
@@ -509,7 +513,8 @@ module.exports = function createHandler(context) {
         petServiceDurations: Array.isArray(order.petServiceDurations) ? order.petServiceDurations : (order.priceSnapshot && Array.isArray(order.priceSnapshot.petServiceDurations) ? order.priceSnapshot.petServiceDurations : []),
         publishMode,
         staffGenderRequirement: normalizeStaffGenderRequirement(order.staffGenderRequirement),
-        staffProfileId
+        staffProfileId,
+        ...(publishMode === 'open' ? await context.prepareRebookCommunity(order) : {})
       }
     }
 

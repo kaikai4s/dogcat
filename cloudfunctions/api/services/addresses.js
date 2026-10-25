@@ -81,6 +81,9 @@ module.exports = function createService({
     }
     payload.latitude = latitude
     payload.longitude = longitude
+    const sameLocation = existingRecord && existingRecord.serviceAddress === serviceAddress &&
+      Number(existingRecord.latitude) === latitude && Number(existingRecord.longitude) === longitude
+    payload.city = sanitizeText(data.city !== undefined ? data.city : sameLocation ? existingRecord.city || '' : '').trim().slice(0, 40)
     payload.isDefault = shouldBeDefault
     payload.updatedAt = time
     if (payload.isDefault) {

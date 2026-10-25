@@ -12,6 +12,11 @@
 .strip-icon { font-size: 26rpx; color: #ff7a45; flex-shrink: 0; }
 .strip-text { font-size: 21rpx; line-height: 1.35; color: #a4501f; font-weight: 650; }
 .chat-list { flex: 1; display: flex; flex-direction: column; gap: 20rpx; }
+.history-controls { text-align: center; color: #9a8677; font-size: 23rpx; }
+.history-controls button { display: inline-block; margin: 0; padding: 0 24rpx; font-size: 24rpx; color: #a4501f; background: #fff0df; border-radius: 24rpx; }
+.history-controls button::after { border: none; }
+.history-error { display: flex; flex-direction: column; align-items: center; gap: 12rpx; }
+.chat-time { align-self: center; color: #9a8677; font-size: 21rpx; margin: 8rpx 0 16rpx; }
 .chat-item { display: flex; flex-direction: column; }
 .chat-item.user { align-items: flex-end; }
 .chat-item.ai { align-items: flex-start; }
@@ -83,6 +88,8 @@
 .theme-night .ai-disclaimer-strip { background: rgba(46, 51, 95, 0.5); border-color: rgba(124, 140, 255, 0.25); }
 .theme-night .strip-text { color: #d1ccf0; }
 .theme-night .chat-msg.ai { background: rgba(36, 38, 54, 0.96); color: #f5f4fb; border-color: rgba(124, 140, 255, 0.2); }
+.theme-night .history-controls, .theme-night .chat-time { color: #b9b6c8; }
+.theme-night .history-controls button { color: #d1ccf0; background: #242636; }
 .theme-night .input-wrap { background: rgba(36, 38, 54, 0.96); border-color: rgba(124, 140, 255, 0.2); }
 .theme-night .input-row .ai-input,
 .theme-night .input-row input { background: #1f2030 !important; color: #f5f4fb !important; border-color: rgba(124, 140, 255, 0.25) !important; }

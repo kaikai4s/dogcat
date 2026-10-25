@@ -24,6 +24,12 @@ const getCareCompleteness = typeof petCare.getCareCompleteness === 'function' ? 
 const COUPON_CONTEXT_KEY = 'vip_pet_coupon_select_context'
 const SELECTED_COUPON_KEY = 'vip_pet_selected_coupon'
 const VISIT_FEE_SERVICE_KEY = 'visit_fee'
+function addressCity(point = {}) {
+  if (point.city) return String(point.city).trim()
+  const text = `${point.address || ''}${point.serviceAddress || ''}${point.name || ''}`
+  return text.match(/北京市|上海市|天津市|重庆市|香港特别行政区|澳门特别行政区/)?.[0] ||
+    text.match(/(?:.*省|.*自治区)?([^省自治区特别行政区]{2,20}市|[^省自治区特别行政区]{2,20}自治州|[^省自治区特别行政区]{2,20}地区|[^省自治区特别行政区]{2,20}盟)/)?.[1] || ''
+}
 
 function calcDistanceKm(lat1, lng1, lat2, lng2) {
   const nLat1 = Number(lat1)
@@ -439,6 +445,9 @@ typeof Page === 'function' ? Page({
     walkWithoutDog: false,
     autoSelectWalk: true,
     bookingNotice: '',
+    orderCommunities: [], orderCommunity: null, communityLoading: false, communityHasMore: false,
+    communityError: '', communityKeyword: '', communitySelectionNotice: '', showCommunityApplication: false,
+    communityApplicationName: '', communityApplicationDistrict: '', communityApplicationBusy: false, communityApplicationStatus: '',
     agreementRequired: false,
     isOutOfRange: false,
     rangeDistanceText: '',
@@ -449,6 +458,7 @@ typeof Page === 'function' ? Page({
       serviceType: '',
       serviceTypes: [VISIT_FEE_SERVICE_KEY],
       serviceAddress: '',
+      city: '', serviceCommunityId: '', serviceCommunityApplicationId: '',
       publishMode: 'open',
       staffGenderRequirement: 'any',
       staffProfileId: '',
@@ -762,6 +772,8 @@ typeof Page === 'function' ? Page({
   },
 
   choosePublishMode(e) {
+    if (this._closed || this.data.creating) return
+    if (this.data.communityApplicationBusy) return this.showBookingNotice({ title: '请等待小区申请提交完成' })
     const publishMode = e.currentTarget.dataset.mode
     if (publishMode === 'open') {
       this.setData({ ['form.publishMode']: 'open', ['form.staffProfileId']: '', requestedSitter: null, sitterAvailability: [], selectedAvailability: null, isOutOfRange: false, rangeDistanceText: '', rangeWarningText: '' }, () => {
@@ -921,32 +933,38 @@ typeof Page === 'function' ? Page({
   },
   loadDefaultAddress() {
     if (this.data.groupBuyMode) return this.loadGroupBuyContext()
-    callFunction('client', 'listAddresses')
+    const seq = this._addressSeq = (this._addressSeq || 0) + 1
+    return callFunction('client', 'listAddresses')
       .then((addresses) => {
+        if (this._closed || this.data.creating || seq !== this._addressSeq) return
         const address = addresses.find((item) => item.isDefault)
         if (address) this.applyAddress(address)
         else this.applySelectedLocation()
       })
-      .catch(() => this.applySelectedLocation())
+      .catch(() => { if (!this._closed && !this.data.creating && seq === this._addressSeq) this.applySelectedLocation() })
   },
 
   applySelectedLocation() {
-    if (this.data.groupBuyMode) return
+    if (this._closed || this.data.creating || this.data.groupBuyMode) return
     const location = getSelectedLocation()
     if (!location) return
+    this._addressSeq = (this._addressSeq || 0) + 1
     this.setData({
       ['form.serviceAddress']: location.name || location.address || '',
       ['form.addressLatitude']: location.latitude,
       ['form.addressLongitude']: location.longitude,
+      ['form.city']: addressCity(location),
       locationReady: true,
       locationTip: location.address || '已使用首页选择的位置',
       quote: null
-    })
+    }, () => this.resetOrderCommunity())
   },
 
   loadRebook(orderId) {
-    callFunction('order', 'prepareRebook', { orderId })
+    const seq = this._addressSeq = (this._addressSeq || 0) + 1
+    return callFunction('order', 'prepareRebook', { orderId })
       .then((template) => {
+        if (this._closed || this.data.creating || seq !== this._addressSeq) return
         const serviceTypes = ensureVisitFeeServiceTypes(template.serviceTypes || [template.serviceType])
         const petIds = normalizeSelectedPetIds(template.petIds, template.petId)
         const serviceOptionsWithSelected = markSelected(this.data.serviceOptions, serviceTypes)
@@ -961,6 +979,7 @@ typeof Page === 'function' ? Page({
           ['form.doorplate']: template.doorplate,
           ['form.addressLatitude']: template.addressLatitude,
           ['form.addressLongitude']: template.addressLongitude,
+          ['form.city']: addressCity(template),
           ['form.durationMinutes']: template.durationMinutes,
           ['form.petServiceDurations']: Array.isArray(template.petServiceDurations) ? template.petServiceDurations : [],
           ['form.publishMode']: template.publishMode,
@@ -975,35 +994,43 @@ typeof Page === 'function' ? Page({
         const durationIndex = durationOptions.findIndex((item) => item.value === template.durationMinutes)
         if (durationIndex >= 0) update.durationIndex = durationIndex
         this.setData(update, () => {
+          if (this._closed || this.data.creating || seq !== this._addressSeq) return
+          this.resetOrderCommunity(template)
           this.prepareTime()
           this.syncSelectedPetUI()
           if (template.staffProfileId) this.loadRequestedSitter(template.staffProfileId)
         })
       })
-      .catch(showError)
+      .catch(error => { if (!this._closed && !this.data.creating && seq === this._addressSeq) showError(error) })
   },
 
   applyAddress(address) {
+    if (this._closed || this.data.creating) return
     if (this.data.groupBuyMode) {
       this.showBookingNotice({ title: '拼单地点固定为本人所属小区，请在下方填写本小区楼栋与门牌' })
       return
     }
+    this._addressSeq = (this._addressSeq || 0) + 1
     this.setData({
       ['form.serviceAddress']: address.serviceAddress || '',
       ['form.addressDetail']: address.addressDetail || '',
       ['form.doorplate']: address.doorplate || '',
       ['form.addressLatitude']: Number(address.latitude || address.addressLatitude || 0),
       ['form.addressLongitude']: Number(address.longitude || address.addressLongitude || 0),
+      ['form.city']: addressCity(address),
       locationReady: Boolean(address.serviceAddress),
       locationTip: address.label ? `已选择常用地址：${address.label}` : '已选择常用地址'
     }, () => {
+      this.resetOrderCommunity()
       this.checkSitterRange()
       this.triggerAutoQuote()
     })
   },
 
   chooseSavedAddress() {
+    if (this._closed || this.data.creating) return
     if (this.data.groupBuyMode) return this.showBookingNotice({ title: '拼单仅支持本人所属小区' })
+    this._addressSeq = (this._addressSeq || 0) + 1
     this.showBookingNotice({ title: '正在打开常用地址', icon: 'none' })
     wx.navigateTo({
       url: '/pages/client/addresses/list/index?select=1',
@@ -1019,6 +1046,97 @@ typeof Page === 'function' ? Page({
 
   toggleSaveAddress(e) {
     this.setData({ saveAddress: e.detail.value })
+  },
+
+  resetOrderCommunity(template = null) {
+    if (this._closed) return
+    this._communitySeq = (this._communitySeq || 0) + 1
+    this._applicationSeq = (this._applicationSeq || 0) + 1
+    const restore = template && !this.data.groupBuyMode && this.data.form.publishMode === 'open' ? template : {}
+    const application = restore.orderCommunityApplication
+    this.setData({ orderCommunity: restore.orderCommunity || null, orderCommunities: [], communityKeyword: '', communityError: '',
+      communityHasMore: false, communityLoading: false, communityApplicationStatus: '', communityApplicationBusy: false,
+      communityApplicationName: '', communityApplicationDistrict: '', showCommunityApplication: false,
+      communitySelectionNotice: restore.communitySelectionNotice || '',
+      'form.serviceCommunityId': restore.orderCommunity ? restore.serviceCommunityId : '',
+      'form.serviceCommunityApplicationId': restore.serviceCommunityApplicationId || '',
+      ...(application ? { communityApplicationStatus: `${application.name}：申请已提交；可继续下单，平台核验公共点后，符合条件的待接订单会在该小区展示` } : {}) })
+    this._communitySearch = ''
+    this._communityOffset = 0
+    this._communityFailedAppend = false
+    if (!this.data.groupBuyMode && this.data.form.addressLatitude && this.data.form.addressLongitude) return this.loadOrderCommunities()
+  },
+  changeCommunityCity(e) {
+    if (this.data.creating || this.data.communityApplicationBusy) return
+    const values = e.detail.value || []
+    const city = !values[1] || ['市辖区', '县'].includes(values[1]) ? values[0] : values[1]
+    this.setData({ 'form.city': city || '' })
+    return this.resetOrderCommunity()
+  },
+  inputCommunityKeyword(e) { this.setData({ communityKeyword: e.detail.value }) },
+  searchOrderCommunities() {
+    this._communitySearch = String(this.data.communityKeyword || '').trim()
+    return this.loadOrderCommunities()
+  },
+  moreOrderCommunities() { return this.loadOrderCommunities(true) },
+  retryOrderCommunities() { return this.loadOrderCommunities(this._communityFailedAppend === true) },
+  async loadOrderCommunities(append = false) {
+    append = append === true
+    if (this._closed || this.data.groupBuyMode || (append && (this.data.communityLoading || !this.data.communityHasMore))) return
+    const seq = this._communitySeq = (this._communitySeq || 0) + 1
+    const form = this.data.form
+    if (!form.city) { this.setData({ communityError: '请选择服务地址所在城市，查看附近小区', communityLoading: false }); return }
+    const offset = append ? this._communityOffset || 0 : 0
+    this._communityFailedAppend = false
+    this.setData({ communityLoading: true, communityError: '', ...(!append ? { orderCommunities: [], communityHasMore: false } : {}) })
+    try {
+      const result = await callFunction('communityMap', 'nearbyForOrder', { city: form.city,
+        latitude: form.addressLatitude, longitude: form.addressLongitude, keyword: this._communitySearch || '', offset })
+      if (this._closed || seq !== this._communitySeq) return
+      this._communityOffset = offset + result.list.length
+      const rows = append ? [...this.data.orderCommunities, ...result.list] : result.list
+      this.setData({ orderCommunities: [...new Map(rows.map(row => [row._id, row])).values()], communityHasMore: result.hasMore })
+    } catch (error) {
+      if (!this._closed && seq === this._communitySeq) {
+        this._communityFailedAppend = append
+        this.setData({ communityError: error.message || '附近小区加载失败，请重试' })
+      }
+    } finally { if (!this._closed && seq === this._communitySeq) this.setData({ communityLoading: false }) }
+  },
+  chooseOrderCommunity(e) {
+    if (this.data.creating || this.data.communityApplicationBusy) return
+    const row = this.data.orderCommunities.find(item => item._id === e.currentTarget.dataset.id)
+    if (!row) return
+    this.setData({ orderCommunity: row, 'form.serviceCommunityId': row._id, 'form.serviceCommunityApplicationId': '',
+      communityApplicationStatus: '', communitySelectionNotice: '', showCommunityApplication: false })
+  },
+  clearOrderCommunity() {
+    if (this.data.creating || this.data.communityApplicationBusy) return
+    this.setData({ orderCommunity: null, 'form.serviceCommunityId': '', 'form.serviceCommunityApplicationId': '', communityApplicationStatus: '', communitySelectionNotice: '' })
+  },
+  toggleCommunityApplication() {
+    if (!this.data.creating && !this.data.communityApplicationBusy) this.setData({ showCommunityApplication: !this.data.showCommunityApplication })
+  },
+  inputCommunityApplication(e) {
+    if (this.data.creating || this.data.communityApplicationBusy) return
+    const field = e.currentTarget.dataset.field
+    if (['communityApplicationName', 'communityApplicationDistrict'].includes(field)) this.setData({ [field]: e.detail.value })
+  },
+  async applyOrderCommunity() {
+    if (this._closed || this.data.creating || this.data.communityApplicationBusy) return
+    const name = String(this.data.communityApplicationName || '').trim(), city = this.data.form.city
+    if (!name || !city) { this.showBookingNotice({ title: '请填写小区公共名称并选择所在城市' }); return }
+    const seq = this._applicationSeq = (this._applicationSeq || 0) + 1
+    this.setData({ communityApplicationBusy: true })
+    try {
+      const result = await callFunction('communityMap', 'applyCommunity', { name, city, district: this.data.communityApplicationDistrict || '' })
+      if (this._closed || seq !== this._applicationSeq) return
+      this.setData({ orderCommunity: null, 'form.serviceCommunityId': '', 'form.serviceCommunityApplicationId': result.applicationId,
+        communitySelectionNotice: '',
+        communityApplicationStatus: result.status === 'resolved' ? '该小区已维护，提交订单时会校验服务地址与小区距离' : '申请已提交；可继续下单，平台核验公共点后，符合条件的待接订单会在该小区展示',
+        showCommunityApplication: false })
+    } catch (error) { if (!this._closed && seq === this._applicationSeq) showError(error) }
+    finally { if (!this._closed && seq === this._applicationSeq) this.setData({ communityApplicationBusy: false }) }
   },
 
   getRecommendedCodeTimes() {
@@ -1793,22 +1911,27 @@ typeof Page === 'function' ? Page({
   },
 
   useCurrentLocation() {
+    if (this._closed || this.data.creating) return
     if(this.data.groupBuyMode)return this.showBookingNotice({title:'拼单地点固定为本人所属小区'})
-    chooseSelectedLocation()
+    const seq = this._addressSeq = (this._addressSeq || 0) + 1
+    return chooseSelectedLocation()
       .then((location) => {
+        if (this._closed || this.data.creating || seq !== this._addressSeq) return
         this.setData({
           ['form.serviceAddress']: location.name || location.address || this.data.form.serviceAddress,
           ['form.addressLatitude']: location.latitude,
           ['form.addressLongitude']: location.longitude,
+          ['form.city']: addressCity(location),
           locationReady: true,
           locationTip: location.address || '已选择服务位置'
         }, () => {
+          this.resetOrderCommunity()
           this.checkSitterRange()
           this.triggerAutoQuote()
         })
         this.showBookingNotice({ title: '已更新位置' })
       })
-      .catch(showError)
+      .catch(error => { if (!this._closed && !this.data.creating && seq === this._addressSeq) showError(error) })
   },
 
   validateRequired() {
@@ -1875,6 +1998,8 @@ typeof Page === 'function' ? Page({
     const serviceSessions = buildDailySessions(form)
     return {
       ...form,
+      serviceCommunityId: !this.data.groupBuyMode && form.publishMode === 'open' ? form.serviceCommunityId : '',
+      serviceCommunityApplicationId: !this.data.groupBuyMode && form.publishMode === 'open' ? form.serviceCommunityApplicationId : '',
       ...(this.data.groupBuyMode ? { source: 'community_groupbuy', groupBuyId: this.data.groupBuyId, communityId: this.data.groupBuyCommunityId } : {}),
       petServiceDurations: form.petServiceDurations.map(({ serviceKey, petId, durationMinutes }) => ({ serviceKey, petId, durationMinutes })),
       orderType: form.orderType || 'single',
@@ -2013,6 +2138,10 @@ typeof Page === 'function' ? Page({
   },
 
   onUnload() {
+    this._closed = true
+    this._addressSeq = (this._addressSeq || 0) + 1
+    this._communitySeq = (this._communitySeq || 0) + 1
+    this._applicationSeq = (this._applicationSeq || 0) + 1
     this._quoteRequest = (this._quoteRequest || 0) + 1
     clearTimeout(this.bookingNoticeTimer)
     clearTimeout(this._autoQuoteTimer)
@@ -2035,6 +2164,7 @@ typeof Page === 'function' ? Page({
   },
 
   create() {
+    if (this.data.communityApplicationBusy) { this.showBookingNotice({ title: '请等待小区申请提交完成' }); return }
     if (this.creatingOrder || this.data.creating) return
     if (!this.data.agreeAgreement) {
       this.showBookingNotice({ title: '请先阅读并勾选同意服务保障协议与取消规则', icon: 'none' })
