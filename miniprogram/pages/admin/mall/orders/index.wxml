@@ -168,9 +168,9 @@
           <text class="form-label">退款金额 (元)</text>
           <text class="quick-link" bindtap="setFullManualRefund">全额退款 (¥{{manualRefundOrder.maxRefundable || 0}})</text>
         </view>
-        <input type="digit" placeholder="请输入退款金额" value="{{manualRefundAmount}}" data-field="Amount" bindinput="inputManualRefund" />
+        <input type="digit" placeholder="请输入退款金额" value="{{manualRefundAmount}}" data-field="manualRefundAmount" bindinput="inputManualRefund" />
         <view class="form-label">退款说明</view>
-        <input placeholder="请填写退款原因或说明（必填）" value="{{manualRefundReason}}" data-field="Reason" bindinput="inputManualRefund" />
+        <input placeholder="请填写退款原因或说明（必填）" value="{{manualRefundReason}}" data-field="manualRefundReason" bindinput="inputManualRefund" />
       </view>
       <view class="modal-actions">
         <button bindtap="closeManualRefundModal">取消</button>

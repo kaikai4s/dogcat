@@ -26,7 +26,7 @@ test('client profile entries converted to icon grid with badges and styling', as
     { label: '签到中心', handler: 'openCheckin', icon: 'ri-calendar-check-fill' },
     { label: '奖励邮箱', handler: 'openRewardMails', icon: 'ri-mail-star-fill' },
     { label: '我的积分', handler: 'openPoints', icon: 'ri-coins-fill' },
-    { label: '关注公众号', handler: 'openOfficialAccountModal', icon: 'ri-wechat-fill' },
+    { label: '官方服务号', handler: 'openOfficialAccountModal', icon: 'ri-wechat-fill' },
     { label: '客服中心', handler: 'openCustomerService', icon: 'ri-customer-service-2-fill' },
     { label: '意见反馈', handler: 'openFeedbackModal', icon: 'ri-feedback-fill' },
     { label: '设置', handler: 'openSettings', icon: 'ri-settings-3-fill' },

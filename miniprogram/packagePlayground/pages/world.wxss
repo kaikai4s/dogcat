@@ -39,7 +39,10 @@ button::after { border: none; }
 .joystick-pad { position: fixed; z-index: 20; pointer-events: none; width: 144px; height: 144px; border-radius: 50%; background: rgba(255,253,243,.55); box-shadow: inset 0 0 0 2px rgba(255,255,255,.65), 0 6px 22px rgba(48,71,45,.16); }
 .joystick-pad.running { background: rgba(255,226,165,.65); box-shadow: inset 0 0 0 2px rgba(222,158,53,.8); }
 .joystick-fixed { pointer-events: auto; }
-.settings-backdrop { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(22,44,28,.32); }
+.settings-backdrop { position: fixed; top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(22,44,28,.32); }
 .settings-panel { width: 90%; max-width: 420px; max-height: 82vh; overflow: hidden; padding: 20px; box-sizing: border-box; border-radius: 24px; background: #fffcf0; color: #385743; font-size: 14px; }
 .settings-heading, .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .settings-heading { font-size: 18px; font-weight: bold; margin-bottom: 12px; }

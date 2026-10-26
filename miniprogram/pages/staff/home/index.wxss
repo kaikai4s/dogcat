@@ -778,8 +778,11 @@ button.refresh-btn::after {
 
 .risk-modal-mask {
   position: fixed;
-  inset: 0;
-  z-index: 2000;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30000;
   padding: 48rpx 28rpx;
   display: flex;
   align-items: center;

@@ -168,7 +168,10 @@
     </view>
   </view>
 
-  <view class="selector-mask" wx:if="{{showCitySelector}}" bindtap="closeCitySelector">
+</view>
+</dovlin-refresh>
+
+  <view class="selector-mask {{fontClass}}" wx:if="{{showCitySelector}}" bindtap="closeCitySelector">
     <view class="selector-sheet" catchtap="noop">
       <view class="selector-head">
         <view>
@@ -183,7 +186,7 @@
     </view>
   </view>
 
-  <view class="selector-mask" wx:if="{{showAreaSelector}}" bindtap="closeAreaSelector">
+  <view class="selector-mask {{fontClass}}" wx:if="{{showAreaSelector}}" bindtap="closeAreaSelector">
     <view class="selector-sheet" catchtap="noop">
       <view class="selector-head">
         <view>
@@ -197,9 +200,6 @@
       </scroll-view>
     </view>
   </view>
-</view>
-</dovlin-refresh>
-
 <view class="bottom-nav">
   <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>首页</view></view>
   <view class="nav-item active"><view class="nav-icon remix-icon ri-team-fill"></view><view>宠托师</view></view>

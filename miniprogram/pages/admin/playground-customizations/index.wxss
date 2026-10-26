@@ -17,7 +17,10 @@ button { margin: 0; padding: 0 22rpx; line-height: 66rpx; font-size: 25rpx; bord
 .request-id { margin-top: 8rpx; color: #a0a795; font-size: 20rpx; word-break: break-all; }
 .empty-message, .error-message { padding: 50rpx 20rpx; text-align: center; color: #8b967f; font-size: 25rpx; }
 .error-message { color: #a67452; }
-.detail-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: #20352466; }
+.detail-backdrop { position: fixed; top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: #20352466; }
 .detail-panel { width: 92%; max-width: 600px; padding: 28rpx; box-sizing: border-box; border-radius: 30rpx; background: #fffdf7; }
 .detail-heading { margin-bottom: 22rpx; }
 .detail-content { height: 68vh; }

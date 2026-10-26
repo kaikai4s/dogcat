@@ -1,4 +1,7 @@
-.chooser-mask { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: flex-end; background: rgba(33,43,31,.48); }
+.chooser-mask { position: fixed; top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0; z-index: 3000; display: flex; align-items: flex-end; background: rgba(33,43,31,.48); }
 .chooser-card { box-sizing: border-box; width: 100%; max-height: 88vh; padding: 30rpx 28rpx calc(28rpx + env(safe-area-inset-bottom)); border-radius: 34rpx 34rpx 0 0; background: #fbfcf7; color: #364534; }
 .chooser-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12rpx; }
 .chooser-title { font-size: 31rpx; font-weight: 700; }

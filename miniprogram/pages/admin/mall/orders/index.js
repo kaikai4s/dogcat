@@ -272,6 +272,7 @@ Page({
   },
   inputManualRefund(e) {
     const field = e.currentTarget.dataset.field
+    if (!['manualRefundAmount', 'manualRefundReason'].includes(field)) return
     this.setData({ [field]: e.detail.value })
   },
   setFullManualRefund() {

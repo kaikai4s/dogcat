@@ -136,8 +136,11 @@
     </view>
   </block>
 
+</view>
+</dovlin-refresh>
+
   <!-- 系统通知详情弹窗 -->
-  <view class="modal-mask" wx:if="{{showNoticeModal}}" catchtap="closeNoticeModal">
+  <view class="modal-mask {{fontClass}}" wx:if="{{showNoticeModal}}" catchtap="closeNoticeModal">
     <view class="notice-modal-dialog" catchtap="true">
       <view class="modal-header">
         <view class="modal-tags">
@@ -157,9 +160,6 @@
       </view>
     </view>
   </view>
-</view>
-</dovlin-refresh>
-
 <view class="bottom-nav">
   <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>首页</view></view>
   <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon remix-icon ri-team-line"></view><view>宠托师</view></view>

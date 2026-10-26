@@ -574,7 +574,10 @@
 
 .risk-modal-mask {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 2000;
   padding: 48rpx 28rpx;
   display: flex;

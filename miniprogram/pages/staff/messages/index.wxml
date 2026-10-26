@@ -142,8 +142,11 @@
     </view>
   </block>
 
+</view>
+</dovlin-refresh>
+
   <!-- 系统通知详情弹窗 -->
-  <view class="modal-mask" wx:if="{{showNoticeModal}}" catchtap="closeNoticeModal">
+  <view class="modal-mask {{fontClass}}" wx:if="{{showNoticeModal}}" catchtap="closeNoticeModal">
     <view class="notice-modal-dialog" catchtap="true">
       <view class="modal-header">
         <view class="modal-tags">
@@ -163,9 +166,6 @@
       </view>
     </view>
   </view>
-</view>
-</dovlin-refresh>
-
 <view class="bottom-nav staff-bottom-nav">
   <view class="nav-item" data-url="/pages/staff/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>工作台</view></view>
   <view class="nav-item" data-url="/pages/staff/orders/list/index" bindtap="go"><view class="nav-icon remix-icon ri-file-list-3-line"></view><view>任务</view></view>

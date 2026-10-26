@@ -211,7 +211,14 @@
     </view>
   </view>
 
-  <view class="modal-backdrop" wx:if="{{showCustomerServiceModal}}" bindtap="closeCustomerServiceModal">
+  <!-- 原生关注条属于页面内容，弹窗必须放在刷新滚动容器之外。 -->
+  <view class="oa-native-bar-wrap" wx:if="{{officialAccount.enabled && officialAccount.enableFollowBar}}">
+    <official-account bindload="onOfficialAccountLoad" binderror="onOfficialAccountError"></official-account>
+  </view>
+</view>
+</dovlin-refresh>
+
+  <view class="modal-backdrop {{fontClass}}" wx:if="{{!showSettings && showCustomerServiceModal}}" bindtap="closeCustomerServiceModal">
     <view class="modal-card" catchtap="true">
       <view class="modal-title">客服中心</view>
       <view class="modal-tip">如需人工帮助或订单咨询，可通过以下方式联系我们。</view>
@@ -227,7 +234,7 @@
     </view>
   </view>
 
-  <view class="modal-backdrop" wx:if="{{showFeedbackModal}}" bindtap="closeFeedbackModal">
+  <view class="modal-backdrop {{fontClass}}" wx:if="{{!showSettings && showFeedbackModal}}" bindtap="closeFeedbackModal">
     <view class="modal-card" catchtap="true">
       <view class="modal-title">意见反馈</view>
       <view class="modal-tip">欢迎向我们提出宝贵建议或改进意见。</view>
@@ -240,12 +247,7 @@
     </view>
   </view>
 
-  <!-- 微信原生关注公众号条（满足微信场景条件且关联时自动展示） -->
-  <view class="oa-native-bar-wrap" wx:if="{{officialAccount.enabled && officialAccount.enableFollowBar}}">
-    <official-account bindload="onOfficialAccountLoad" binderror="onOfficialAccountError"></official-account>
-  </view>
-
-  <view class="modal-backdrop" wx:if="{{showOfficialAccountModal}}" bindtap="closeOfficialAccountModal">
+  <view class="modal-backdrop {{fontClass}}" wx:if="{{!showSettings && showOfficialAccountModal}}" bindtap="closeOfficialAccountModal">
     <view class="modal-card official-account-modal-card" catchtap="true">
       <view class="oa-modal-header">
         <view class="oa-modal-avatar">
@@ -272,9 +274,6 @@
       </view>
     </view>
   </view>
-</view>
-</dovlin-refresh>
-
 <view class="bottom-nav client-bottom-nav">
   <view class="nav-item" data-url="/pages/client/home/index" bindtap="go"><view class="nav-icon remix-icon ri-home-5-line"></view><view>首页</view></view>
   <view class="nav-item" data-url="/pages/client/sitters/list/index" bindtap="go"><view class="nav-icon remix-icon ri-team-line"></view><view>宠托师</view></view>

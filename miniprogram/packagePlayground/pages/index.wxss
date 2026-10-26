@@ -105,7 +105,10 @@
 .compact-btn { display: flex; align-items: center; justify-content: center; gap: 8rpx; width: 100%; height: 72rpx; margin-top: 24rpx; border-radius: 999rpx; font-size: 26rpx; }
 .interactive:active { transform: scale(.98); }
 
-.community-modal-mask { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 40rpx; background: rgba(30, 24, 18, .62); }
+.community-modal-mask { position: fixed; top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 40rpx; background: rgba(30, 24, 18, .62); }
 .community-modal-card { width: 100%; max-width: 620rpx; box-sizing: border-box; padding: 46rpx 36rpx; border-radius: 40rpx; background: #fffdf9; box-shadow: 0 24rpx 60rpx rgba(0, 0, 0, .28); text-align: center; }
 .community-modal-icon-wrap { width: 110rpx; height: 110rpx; margin: 0 auto 24rpx; line-height: 110rpx; border-radius: 50%; background: linear-gradient(135deg, #e8f7dc, #cbecc0); }
 .modal-icon { color: #4b8242; font-size: 58rpx; }
